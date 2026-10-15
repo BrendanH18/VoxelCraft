@@ -325,7 +325,7 @@ impl Game {
             "seed": self.world.generator.seed,
             "resolution_physical": [width, height],
             "view_distance_blocks": self.world.render_distance() * 32,
-            "simulation_distance_blocks": 128,
+            "simulation_distance_blocks": self.world.simulation_distance() * 16,
             "warmup_seconds": run.warmup,
             "requested_sample_seconds": run.duration,
             "sample_seconds": sample_seconds,

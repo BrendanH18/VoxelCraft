@@ -368,7 +368,7 @@ impl Entities {
         let n = self.mobs.len();
         for i in 0..n {
             let m = &mut self.mobs[i];
-            if !m.alive() || !world.loaded(m.pos.floor().as_ivec3()) {
+            if !m.alive() || !world.entity_ticking(m.pos.floor().as_ivec3()) {
                 continue;
             }
             let Some(a) = m.animal.as_mut() else { continue };
@@ -386,7 +386,7 @@ impl Entities {
             }
             let m = &self.mobs[i];
             let Some(j) = self.mob_index.nearest(&self.mobs, m.pos, 8.0, |b| {
-                b.uid != m.uid && b.kind.can_mate_with(m.kind) && b.ready_to_breed()
+                b.simulation_active && b.uid != m.uid && b.kind.can_mate_with(m.kind) && b.ready_to_breed()
             }) else {
                 self.mobs[i].animal.as_mut().unwrap().courtship = 0.0;
                 continue;
@@ -530,7 +530,7 @@ impl Mob {
     }
     pub(super) fn companion_think<W: MobWorld + ?Sized>(
         &mut self,
-        dt: f32,
+        _dt: f32,
         w: &W,
         ctx: &Ctx,
         rng: &mut Rng,
@@ -611,8 +611,7 @@ impl Mob {
         }
         self.look_at(t.pos, 1.2);
         if self.kind == MobKind::Parrot {
-            let dir = (t.pos + DVec3::Y * 1.5 - self.pos).normalize_or(DVec3::X);
-            return Some((Some(self.steer(dir, dt, w, rng)), 2.5));
+            return Some((self.pursue(w, t.pos + DVec3::Y * 1.5, 2.5, true, false, rng), 2.5));
         }
         // Java's `FollowOwnerGoal` walks a path to the owner.
         Some((self.pursue(w, t.pos, 2.5, true, false, rng), 2.5))
@@ -684,7 +683,7 @@ impl Entities {
         self.mob_index.rebuild(&self.mobs);
         let n = self.mobs.len();
         for i in 0..n {
-            if !self.mobs[i].alive() || !w.loaded(self.mobs[i].pos.floor().as_ivec3()) {
+            if !self.mobs[i].alive() || !w.entity_ticking(self.mobs[i].pos.floor().as_ivec3()) {
                 continue;
             }
             let m = &self.mobs[i];
@@ -806,7 +805,9 @@ impl Entities {
 }
 
 impl Entities {
-    pub(super) fn natural_animal(&mut self, biome: crate::world::terrain::Biome) {
+    /// Biome variants and babies for the next natural pack member, after
+    /// `pack_size` others (Java's `AgeableMobGroupData`).
+    pub(super) fn natural_animal(&mut self, biome: crate::world::terrain::Biome, pack_size: u32) {
         use crate::world::terrain::Biome::*;
         let m = self.mobs.last_mut().unwrap();
         let Some(a) = m.animal.as_mut() else { return };
@@ -835,12 +836,20 @@ impl Entities {
                 _ => 0,
             };
         }
-        if m.kind.is_breedable()
-            && m.kind != MobKind::Hoglin
-            && self.rng.chance(if m.kind == MobKind::Fox { 0.2 } else { 0.05 })
-        {
-            m.baby = true;
-            m.age = BABY_AGE;
+        if m.kind.is_breedable() && m.kind != MobKind::Hoglin {
+            let baby = match m.kind {
+                // FoxGroupData never rolls babies; the third fox on is one.
+                MobKind::Fox => pack_size >= 2,
+                // The first member of a pack is always an adult.
+                _ if pack_size == 0 => false,
+                // RabbitGroupData's baby chance is 1.
+                MobKind::Rabbit => true,
+                _ => self.rng.chance(0.05),
+            };
+            if baby {
+                m.baby = true;
+                m.age = BABY_AGE;
+            }
         }
     }
 }

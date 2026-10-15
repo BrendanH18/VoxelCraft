@@ -83,7 +83,12 @@ impl World {
     }
 
     pub fn active_fluids(&self) -> usize {
-        self.fluids.pending.len().max(self.fluids.lava_pending.len())
+        self.fluids
+            .pending
+            .iter()
+            .filter(|&&p| self.is_block_ticking(p))
+            .count()
+            .max(self.fluids.lava_pending.iter().filter(|&&p| self.is_block_ticking(p)).count())
     }
 
     pub fn tick_fluids(&mut self, dt: f64) {
@@ -99,11 +104,15 @@ impl World {
         }
         let started = std::time::Instant::now();
 
+        let activity = &self.activity;
+        let chunks = &self.chunks;
         let take = |pending: &mut FxHashSet<IVec3>| -> Vec<IVec3> {
-            if pending.len() <= MAX_UPDATES_PER_TICK {
-                return std::mem::take(pending).into_iter().collect();
-            }
-            let batch: Vec<IVec3> = pending.iter().take(MAX_UPDATES_PER_TICK).copied().collect();
+            let batch: Vec<IVec3> = pending
+                .iter()
+                .filter(|&&p| activity.contains(p, true) && chunks.contains_key(&super::chunk::chunk_of(p)))
+                .take(MAX_UPDATES_PER_TICK)
+                .copied()
+                .collect();
             for p in &batch {
                 pending.remove(p);
             }

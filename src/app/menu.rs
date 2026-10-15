@@ -29,6 +29,7 @@ pub(super) enum Widget {
     LanPvp,
     StartLan,
     RenderDistance,
+    SimulationDistance,
     Fov,
     Sensitivity,
     Volume,
@@ -59,7 +60,12 @@ impl Widget {
     fn is_slider(self) -> bool {
         matches!(
             self,
-            Widget::RenderDistance | Widget::Fov | Widget::Sensitivity | Widget::Volume | Widget::MusicVolume
+            Widget::RenderDistance
+                | Widget::SimulationDistance
+                | Widget::Fov
+                | Widget::Sensitivity
+                | Widget::Volume
+                | Widget::MusicVolume
         )
     }
 
@@ -74,6 +80,7 @@ impl Widget {
             Widget::LanPvp => "PvP".into(),
             Widget::StartLan => "Start LAN World".into(),
             Widget::RenderDistance => format!("Render Distance: {} chunks", s.render_distance),
+            Widget::SimulationDistance => format!("Simulation: {} Java chunks", s.simulation_distance),
             Widget::Fov => format!("FOV: {}", s.fov as i32),
             Widget::Sensitivity => format!("Sensitivity: {}%", (s.sensitivity * 100.0).round() as i32),
             Widget::Volume => match (s.volume * 100.0).round() as i32 {
@@ -102,6 +109,10 @@ impl Widget {
             Widget::RenderDistance => {
                 frac(s.render_distance as f32, (RENDER_DISTANCE.0 as f32, RENDER_DISTANCE.1 as f32))
             }
+            Widget::SimulationDistance => {
+                let (lo, hi) = crate::world::activity::SIMULATION_DISTANCE_RANGE;
+                frac(s.simulation_distance as f32, (lo as f32, hi as f32))
+            }
             Widget::Fov => frac(s.fov, FOV),
             Widget::Sensitivity => frac(s.sensitivity, SENSITIVITY),
             Widget::Volume => s.volume,
@@ -117,6 +128,10 @@ impl Widget {
         match self {
             Widget::RenderDistance => {
                 s.render_distance = lerp((RENDER_DISTANCE.0 as f32, RENDER_DISTANCE.1 as f32)).round() as i32
+            }
+            Widget::SimulationDistance => {
+                let (lo, hi) = crate::world::activity::SIMULATION_DISTANCE_RANGE;
+                s.simulation_distance = lerp((lo as f32, hi as f32)).round() as i32;
             }
             Widget::Fov => s.fov = lerp(FOV).round(),
             // Steps of 5%.
@@ -135,6 +150,7 @@ fn layout(screen: Screen, (sw, sh): (f32, f32)) -> Vec<(Widget, [f32; 4])> {
         Screen::Lan => &[Widget::LanMode, Widget::LanCheats, Widget::LanPvp, Widget::StartLan, Widget::Done],
         Screen::Options => &[
             Widget::RenderDistance,
+            Widget::SimulationDistance,
             Widget::Fov,
             Widget::Sensitivity,
             Widget::Volume,
@@ -335,6 +351,7 @@ impl Game {
         if self.world.render_distance() != s.render_distance {
             self.world.set_render_distance(s.render_distance);
         }
+        self.world.set_simulation_distance(s.simulation_distance);
         if self.renderer.vsync() != s.vsync {
             self.renderer.set_vsync(s.vsync);
         }
@@ -437,6 +454,7 @@ mod tests {
         // Every label fits inside its button.
         for w in [
             Widget::RenderDistance,
+            Widget::SimulationDistance,
             Widget::Fov,
             Widget::Sensitivity,
             Widget::Volume,
@@ -451,6 +469,7 @@ mod tests {
         ] {
             let longest = Settings {
                 render_distance: 32,
+                simulation_distance: 32,
                 fov: 110.0,
                 sensitivity: 3.0,
                 volume: 1.0,

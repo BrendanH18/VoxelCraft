@@ -7,153 +7,170 @@ impl Entities {
         ctx: &Ctx,
         difficulty: crate::simulation::difficulty::Difficulty,
     ) {
-        // Overworld ground monsters follow Java's per-chunk cycle on real
-        // light, caves included (see `monster_spawns`).
-        let java_monsters =
-            ctx.dimension == Dimension::Overworld && difficulty != crate::simulation::difficulty::Difficulty::Peaceful;
-        if java_monsters {
-            self.overworld_monsters(world, ctx);
+        self.spawn_categories(world, ctx, difficulty);
+    }
+
+    /// `ServerChunkCache.tickChunks`: fresh counts and one category filter
+    /// per tick, then chunk order followed by category order.
+    fn spawn_categories<W: MobWorld + ?Sized>(
+        &mut self,
+        world: &W,
+        ctx: &Ctx,
+        difficulty: crate::simulation::difficulty::Difficulty,
+    ) {
+        use category::MobCategory;
+        if !world.light_settled() {
+            return;
         }
-        for center in ctx.players.iter().map(|t| t.pos) {
-            for kind in MobKind::ALL {
-                let cap = kind.spawn_cap(ctx.dimension);
-                // The Nether picks by its biomes' spawn lists below.
-                let nether = ctx.dimension == Dimension::Nether;
-                if (difficulty == crate::simulation::difficulty::Difficulty::Peaceful && kind.is_hostile())
-                    || self.count_near(kind, center) >= cap
-                    || (nether && nether_mob(kind).is_none())
-                    || (ctx.dimension == Dimension::Overworld && monster_spawns::cycle_kind(kind))
-                    || (!nether
-                        && (!kind.spawns_in(ctx.dimension) || !self.rng.chance(kind.spawn_chance(ctx.dimension))))
+        let players: Vec<_> = ctx.players.iter().filter(|t| !t.spectator).map(|t| t.pos).collect();
+        if players.is_empty() {
+            return;
+        }
+        let mut state = category::SpawnState::new(&players, &self.mobs, |c| {
+            world.world_surface(c.x * 16 + 8, c.y * 16 + 8).is_some()
+        });
+        let enabled = MobCategory::SPAWNING.map(|c| {
+            // Bats are the whole ambient list and aren't in VoxelCraft yet; the
+            // pass would only spend biome lookups (see `spawn_lists` tests).
+            c != MobCategory::Ambient
+                && (c.friendly() || difficulty != crate::simulation::difficulty::Difficulty::Peaceful)
+                && (!c.persistent() || self.spawn_ticks.is_multiple_of(400))
+                && state.global_room(c)
+        });
+        if !enabled.iter().any(|&e| e) {
+            return;
+        }
+        let mut structures = Vec::new();
+        for p in &players {
+            for b in world.structures_near(p.floor().as_ivec3(), 160) {
+                if !structures
+                    .iter()
+                    .any(|other: &std::sync::Arc<crate::world::temples::Built>| other.bounds.min == b.bounds.min)
                 {
-                    continue;
-                }
-                let angle = self.rng.range(0.0, TAU) as f64;
-                let dist = self.rng.range(SPAWN_MIN_DIST as f32, SPAWN_MAX_DIST as f32) as f64;
-                let x = (center.x + angle.cos() * dist).floor() as i32;
-                let z = (center.z + angle.sin() * dist).floor() as i32;
-                if ctx.dimension == Dimension::Overworld
-                    && !self.rng.chance(kind.biome_chance(if kind == MobKind::TropicalFish && center.y < 40.0 {
-                        world.cave_biome(IVec3::new(x, center.y as i32, z))
-                    } else {
-                        world.biome(x, z)
-                    }))
-                {
-                    continue;
-                }
-                let mut group = None;
-                if nether {
-                    let Some((spawn, chance)) = nether_spawn(world, kind, x, center.y as i32, z) else { continue };
-                    if !self.rng.chance(chance) {
-                        continue;
-                    }
-                    group = Some(spawn.group);
-                }
-                let spot = match ctx.dimension {
-                    Dimension::Overworld if kind.is_aquatic() => {
-                        aquatic::spawn_spot(world, kind, x, z, center.y as i32, &mut self.rng)
-                    }
-                    Dimension::Overworld => spawn_spot(world, kind, x, z, ctx.daylight),
-                    Dimension::Nether if kind == MobKind::Strider => nether::lava_spot(world, x, z),
-                    Dimension::Nether => cavern_spot(world, kind, x, z, self.rng.range(40.0, 118.0) as i32),
-                    Dimension::End => cavern_spot(world, kind, x, z, self.rng.range(30.0, 90.0) as i32),
-                };
-                let Some(pos) = spot else { continue };
-                if !in_spawn_ring(center, pos) || !clear_of_players(ctx, self.world_spawn, pos) {
-                    continue;
-                }
-                if nether && !self.nether_cost_allows(world, kind, pos.floor().as_ivec3()) {
-                    continue;
-                }
-                self.spawn(kind, pos);
-                self.natural_animal(world.biome(x, z));
-                let herd_coat = self.natural_horse_coat(None);
-                self.note_zombie_villager(kind);
-                // Animals come in small herds, zombified piglins and End
-                // endermen in packs.
-                if !kind.is_hostile() || ctx.dimension != Dimension::Overworld {
-                    // Nether groups follow their biome's spawn list (wastes ghasts and
-                    // magma cubes come in fours, delta ghasts alone).
-                    let extra = match group {
-                        Some((lo, hi)) => lo as i32 - 1 + (self.rng.next_f32() * (hi - lo + 1) as f32) as i32,
-                        None => (self.rng.next_f32() * 3.0) as i32,
-                    };
-                    for _ in 0..extra {
-                        let (dx, dz) = ((self.rng.range(-3.0, 3.0)) as i32, (self.rng.range(-3.0, 3.0)) as i32);
-                        // A group straddling a biome edge stays within its spawn list.
-                        if nether && nether_spawn(world, kind, x + dx, pos.y as i32, z + dz).is_none() {
-                            continue;
-                        }
-                        let spot = if kind.is_aquatic() {
-                            aquatic::spawn_spot(world, kind, x + dx, z + dz, pos.y as i32, &mut self.rng)
-                        } else if kind == MobKind::Strider {
-                            nether::lava_spot(world, x + dx, z + dz)
-                        } else if ctx.dimension.has_sky() {
-                            spawn_spot(world, kind, x + dx, z + dz, ctx.daylight)
-                        } else {
-                            cavern_spot(world, kind, x + dx, z + dz, pos.y as i32 + 2)
-                        };
-                        if self.count_near(kind, center) < cap
-                            && let Some(p) = spot
-                            && clear_of_players(ctx, self.world_spawn, p)
-                            && (!nether || self.nether_cost_allows(world, kind, p.floor().as_ivec3()))
-                        {
-                            self.spawn(kind, p);
-                            self.natural_animal(world.biome(x + dx, z + dz));
-                            self.natural_horse_coat(herd_coat);
-                            self.note_zombie_villager(kind);
-                        }
-                    }
+                    structures.push(b);
                 }
             }
-            if ctx.dimension == Dimension::Nether && difficulty != crate::simulation::difficulty::Difficulty::Peaceful {
-                self.fortress_spawn(world, ctx, center);
+        }
+        let rules =
+            monster_spawns::SpawnRules { dimension: ctx.dimension, light: ctx.spawn_light, moon: self.moon_brightness };
+        // `isNaturalSpawningAllowed`: spawn attempts need an entity-ticking chunk,
+        // although every chunk within eight still counts toward the global cap.
+        let mut order = std::mem::take(&mut state.chunks);
+        order.retain(|c| world.entity_ticking(IVec3::new(c.x * 16 + 8, 0, c.y * 16 + 8)));
+        for i in (1..order.len()).rev() {
+            order.swap(i, self.rng.next_int(i as u32 + 1) as usize);
+        }
+        for c in order {
+            for (category, enabled) in MobCategory::SPAWNING.into_iter().zip(enabled) {
+                if !enabled || !state.local_room(category, c) {
+                    continue;
+                }
+                let x = c.x * 16 + self.rng.next_int(16) as i32;
+                let z = c.y * 16 + self.rng.next_int(16) as i32;
+                let Some(top) = world.world_surface(x, z) else { continue };
+                let min = ctx.dimension.min_y();
+                if top < min {
+                    continue;
+                }
+                let y = min + self.rng.next_int((top + 2 - min) as u32) as i32;
+                if y <= min {
+                    continue;
+                }
+                self.category_packs(world, ctx, IVec3::new(x, y, z), rules, &mut state, category, &structures);
             }
         }
     }
 
-    /// Java's fortress spawn list, used for spots inside fortress pieces:
-    /// blazes, wither skeletons, zombified piglins, magma cubes and skeletons in groups.
-    /// Light doesn't matter.
-    pub(super) fn fortress_spawn<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, center: DVec3) {
-        let total: u32 = FORTRESS_SPAWNS.iter().map(|s| s.1).sum();
-        let mut r = (self.rng.next_f32() * total as f32) as u32;
-        let &(kind, _, lo, hi) = FORTRESS_SPAWNS
-            .iter()
-            .find(|s| {
-                let hit = r < s.1;
-                r = r.saturating_sub(s.1);
-                hit
-            })
-            .unwrap_or(&FORTRESS_SPAWNS[0]);
-        let cap = kind.spawn_cap(Dimension::Nether);
-        if self.count_near(kind, center) >= cap {
+    /// Generation is asynchronous and uses 32-block voxel chunks. Consume
+    /// each 16-block column when it first becomes fully loaded, with a saved
+    /// marker so unload/reload and cleared herds cannot regenerate animals.
+    pub(super) fn populate_generation<W: MobWorld + ?Sized>(&mut self, world: &W) {
+        let mut ready = Vec::new();
+        world.generation_columns(&mut |c| {
+            if !self.generation_populated.contains(&c) {
+                ready.push(c);
+            }
+        });
+        ready.sort_unstable_by_key(|c| (c.y, c.x));
+        for c in ready {
+            self.generation_populated.insert(c);
+            self.spawn_mobs_for_chunk_generation(world, c);
+        }
+    }
+
+    /// `NaturalSpawner.spawnMobsForChunkGeneration`: uncapped creature
+    /// herds, weighted by the source biome, up to four attempts per member.
+    pub fn spawn_mobs_for_chunk_generation<W: MobWorld + ?Sized>(&mut self, world: &W, chunk: glam::IVec2) {
+        use category::MobCategory;
+        let origin = chunk * 16;
+        let biome = world.biome(origin.x, origin.y);
+        let list = spawn_lists::biome_list(biome, MobCategory::Creature);
+        if list.is_empty() {
             return;
         }
-        let angle = self.rng.range(0.0, TAU) as f64;
-        let dist = self.rng.range(SPAWN_MIN_DIST as f32, SPAWN_MAX_DIST as f32) as f64;
-        let x = (center.x + angle.cos() * dist).floor() as i32;
-        let z = (center.z + angle.sin() * dist).floor() as i32;
-        let top = self.rng.range(48.0, 100.0) as i32;
-        let Some(pos) = cavern_spot(world, kind, x, z, top) else { return };
-        if !in_spawn_ring(center, pos)
-            || !clear_of_players(ctx, self.world_spawn, pos)
-            || !world.in_fortress(pos.floor().as_ivec3())
-            || !self.nether_cost_allows(world, kind, pos.floor().as_ivec3())
-        {
-            return;
-        }
-        self.spawn(kind, pos);
-        let group = self.rng.range(lo as f32, hi as f32 + 1.0) as u32;
-        for _ in 1..group {
-            let (dx, dz) = (self.rng.range(-3.0, 3.0) as i32, self.rng.range(-3.0, 3.0) as i32);
-            if self.count_near(kind, center) < cap
-                && let Some(p) = cavern_spot(world, kind, x + dx, z + dz, pos.y as i32 + 1)
-                && world.in_fortress(p.floor().as_ivec3())
-                && clear_of_players(ctx, self.world_spawn, p)
-                && self.nether_cost_allows(world, kind, p.floor().as_ivec3())
-            {
-                self.spawn(kind, p);
+        // Java seeds each chunk's herds from the world seed (`setDecorationSeed`),
+        // so a column's herd doesn't depend on when or in what order it loaded.
+        let seed = world.seed()
+            ^ (chunk.x as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15)
+            ^ (chunk.y as u64).wrapping_mul(0xc2b2_ae3d_27d4_eb4f);
+        let shared = std::mem::replace(&mut self.rng, Rng::new(seed));
+        self.generation_herds(world, chunk, biome, list);
+        self.rng = shared;
+    }
+
+    fn generation_herds<W: MobWorld + ?Sized>(
+        &mut self,
+        world: &W,
+        chunk: glam::IVec2,
+        biome: crate::world::terrain::Biome,
+        list: &'static [monster_spawns::MonsterSpawn],
+    ) {
+        let origin = chunk * 16;
+        let rules = monster_spawns::SpawnRules {
+            dimension: Dimension::Overworld,
+            light: crate::simulation::lighting::SpawnLight::DAY,
+            moon: self.moon_brightness,
+        };
+        while self.rng.next_f32() < spawn_lists::generation_probability(biome) {
+            let Some(entry) = monster_spawns::pick(list, &mut self.rng) else { break };
+            let count = entry.min + self.rng.next_int(entry.max - entry.min + 1);
+            let (mut x, mut z) = (origin.x + self.rng.next_int(16) as i32, origin.y + self.rng.next_int(16) as i32);
+            let (start_x, start_z) = (x, z);
+            let Some(kind) = entry.mob.kind() else { continue };
+            let mut group = monster_spawns::PackGroup::default();
+            for _ in 0..count {
+                for _ in 0..4 {
+                    // MOTION_BLOCKING_NO_LEAVES: leaves don't become the herd's ground.
+                    let Some(mut top) = world.world_surface(x, z) else { break };
+                    while top > Dimension::Overworld.min_y()
+                        && world
+                            .block(IVec3::new(x, top, z))
+                            .is_some_and(|b| b.is_leaves() || (!b.is_solid() && !b.is_fluid()))
+                    {
+                        top -= 1;
+                    }
+                    let cell = IVec3::new(x, top + 1, z);
+                    let width = kind.shape().half_width * 2.0;
+                    let pos = DVec3::new(
+                        (x as f64).clamp(origin.x as f64 + width, (origin.x + 16) as f64 - width),
+                        cell.y as f64,
+                        (z as f64).clamp(origin.y as f64 + width, (origin.y + 16) as f64 - width),
+                    );
+                    let ok = spawn_rules::spot_ok(world, kind, pos.floor().as_ivec3(), rules, &mut self.rng)
+                        && !physics::overlaps_solid(world, pos, kind.shape());
+                    if ok {
+                        self.spawn_natural(kind, pos, biome, &mut group);
+                    }
+                    x += self.rng.next_int(5) as i32 - self.rng.next_int(5) as i32;
+                    z += self.rng.next_int(5) as i32 - self.rng.next_int(5) as i32;
+                    while x < origin.x || x >= origin.x + 16 || z < origin.y || z >= origin.y + 16 {
+                        x = start_x + self.rng.next_int(5) as i32 - self.rng.next_int(5) as i32;
+                        z = start_z + self.rng.next_int(5) as i32 - self.rng.next_int(5) as i32;
+                    }
+                    if ok {
+                        break;
+                    }
+                }
             }
         }
     }
@@ -212,11 +229,59 @@ impl Entities {
             }
         }
     }
+}
 
-    /// Living mobs of `kind` that count against the cap of a player at
-    /// `center` (those within despawn range).
-    pub(super) fn count_near(&self, kind: MobKind, center: DVec3) -> usize {
-        let r2 = DESPAWN_DIST * DESPAWN_DIST;
-        self.mobs.iter().filter(|m| m.kind == kind && m.alive() && m.pos.distance_squared(center) <= r2).count()
+/// StructureSpawnOverride / ChunkGenerator.getMobsAt. The structures' actual
+/// VoxelCraft bounds stand in for Java piece/structure bounds (see evidence).
+pub(super) fn spawn_list<W: MobWorld + ?Sized>(
+    world: &W,
+    category: category::MobCategory,
+    dimension: Dimension,
+    cell: IVec3,
+    structures: &[std::sync::Arc<crate::world::temples::Built>],
+) -> &'static [monster_spawns::MonsterSpawn] {
+    use crate::world::temples::Kind;
+    use category::MobCategory as C;
+    use monster_spawns::{JavaMonster as J, e};
+    const WITCH: [monster_spawns::MonsterSpawn; 1] = [e(J::Witch, 1, 1, 1)];
+    const CAT: [monster_spawns::MonsterSpawn; 1] = [e(J::Known(MobKind::Cat), 1, 1, 1)];
+    const GUARDIAN: [monster_spawns::MonsterSpawn; 1] = [e(J::Known(MobKind::Guardian), 1, 2, 4)];
+    const PILLAGER: [monster_spawns::MonsterSpawn; 1] = [e(J::Known(MobKind::Pillager), 1, 1, 1)];
+    const FORTRESS: [monster_spawns::MonsterSpawn; 5] = [
+        e(J::Known(MobKind::Blaze), 10, 2, 3),
+        e(J::Known(MobKind::ZombifiedPiglin), 5, 4, 4),
+        e(J::Known(MobKind::WitherSkeleton), 8, 5, 5),
+        e(J::Skeleton, 2, 5, 5),
+        e(J::Known(MobKind::MagmaCube), 3, 4, 4),
+    ];
+    if dimension == Dimension::Nether {
+        if category == C::Monster && world.in_fortress(cell) {
+            return &FORTRESS;
+        }
+        return spawn_lists::dimension_list(
+            world.nether_biome_at(cell).unwrap_or(crate::world::nether_biome::NetherBiome::NetherWastes),
+            category,
+        );
+    }
+    if dimension == Dimension::End {
+        return spawn_lists::end_list(category);
+    }
+    for b in structures {
+        if !b.spawns.contains(cell) {
+            continue;
+        }
+        match (b.kind, category) {
+            (Kind::SwampHut, C::Monster) => return &WITCH,
+            (Kind::SwampHut, C::Creature) => return &CAT,
+            (Kind::Monument, C::Monster) => return &GUARDIAN,
+            (Kind::Monument, C::UndergroundWaterCreature | C::Axolotls) => return &[],
+            (Kind::Outpost, C::Monster) => return &PILLAGER,
+            _ => {}
+        }
+    }
+    if category == C::Monster {
+        monster_spawns::monster_list(world.cave_biome(cell))
+    } else {
+        spawn_lists::biome_list(world.cave_biome(cell), category)
     }
 }

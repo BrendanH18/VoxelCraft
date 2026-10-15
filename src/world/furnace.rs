@@ -368,12 +368,13 @@ impl World {
         }
     }
 
-    /// Smelts in every furnace whose chunk is loaded and lights or puts out
+    /// Smelts in every furnace whose chunk is block-ticking and lights or puts out
     /// their blocks to match.
     pub fn tick_furnaces(&mut self, dt: f64) {
         let mut relight = Vec::new();
+        let activity = &self.activity;
         for (&p, f) in self.furnaces.iter_mut() {
-            if !self.chunks.contains_key(&super::chunk::chunk_of(p)) {
+            if !activity.contains(p, true) || !self.chunks.contains_key(&super::chunk::chunk_of(p)) {
                 continue;
             }
             if let Some(b) = self.chunks.get(&super::chunk::chunk_of(p)).map(|c| {

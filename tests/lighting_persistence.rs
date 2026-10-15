@@ -45,7 +45,7 @@ fn lighting_worker() {
         "end" => Dimension::End,
         other => panic!("unexpected dimension {other}"),
     };
-    let storage = Storage::new(path);
+    let storage = Storage::new(path.clone());
     let _lock = storage.lock().unwrap();
     let mut world = World::new_remote(Arc::new(Generator::for_dimension(7, dimension)), 2);
     let shaft = IVec3::new(20, 63, 16);
@@ -75,6 +75,21 @@ fn lighting_worker() {
         world.update_block_light();
         assert_eq!(world.sky_light(probe), Some(11));
         assert_eq!(world.block_light(probe), 14);
+        // Existing partial states are reconstructed from the unchanged disk format.
+        let partials = [
+            Block::slab_of(Block::STONE).unwrap(),
+            Block::STONE_STAIRS,
+            Block::DIRT_PATH,
+            Block::FARMLAND,
+            voxelcraft::world::overworld_blocks::snow_layer(7),
+        ];
+        for (i, b) in partials.into_iter().enumerate() {
+            let p = IVec3::new(6 + i as i32, 80, 8);
+            world.set_block(p - IVec3::Y, Block::STONE);
+            world.set_block(p, b);
+        }
+        world.set_block(IVec3::new(5, 80, 8), Block::TORCH);
+        std::fs::write(std::path::Path::new(&path).join("expected-light.bin"), centre_arrays(&world)).unwrap();
         chunks.extend(world.modified_chunks());
         let chunks: Vec<_> = chunks.into_iter().collect();
         storage.save(&LevelInfo { seed: 7, player: None, props: Default::default() }, &chunks).unwrap();
@@ -84,6 +99,8 @@ fn lighting_worker() {
             world.receive_chunk(pos, data);
         }
         world.update_block_light();
+        let expected = std::fs::read(std::path::Path::new(&path).join("expected-light.bin")).unwrap();
+        assert_eq!(centre_arrays(&world), expected, "two complete chunks of sky/block arrays after restart");
         assert_eq!(world.get_block(shaft), Some(Block::GLASS));
         assert_eq!(world.get_block(probe), Some(Block::TORCH));
         assert_eq!(world.sky_light(probe), Some(11));
@@ -97,4 +114,18 @@ fn lighting_worker() {
         assert!(world.set_block(shaft, Block::AIR));
         assert_eq!(world.sky_light(probe), Some(11));
     }
+}
+
+/// Two complete centre chunks, containing both the underground tunnel and partial blocks.
+fn centre_arrays(world: &World) -> Vec<u8> {
+    (32..96)
+        .flat_map(|y| {
+            (0..32).flat_map(move |z| {
+                (0..32).map(move |x| {
+                    let p = IVec3::new(x, y, z);
+                    world.sky_light(p).expect("fully loaded test columns") | world.block_light(p) << 4
+                })
+            })
+        })
+        .collect()
 }

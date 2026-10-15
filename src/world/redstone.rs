@@ -41,6 +41,9 @@ pub(super) struct RedstoneState {
     scheduled: BinaryHeap<ScheduledTick>,
     /// Due work in unloaded chunks. Woken only by a chunk load, never retried each tick.
     suspended: FxHashMap<IVec3, Vec<ScheduledTick>>,
+    sleeping_updates: FxHashMap<IVec3, Vec<IVec3>>,
+    /// Pack relative scheduled delays while a storage chunk is unloaded.
+    unloaded_at: FxHashMap<IVec3, u64>,
     /// Detector-rail comparator output, filled by the minecart tick.
     pub(super) cart_signal: FxHashMap<IVec3, u8>,
     pub(super) trip_pulse: FxHashMap<IVec3, u64>,
@@ -105,6 +108,30 @@ impl World {
     }
 
     pub(super) fn load_redstone_chunk(&mut self, c: IVec3) {
+        if let Some(at) = self.redstone.unloaded_at.remove(&c) {
+            let elapsed = self.redstone.tick.saturating_sub(at);
+            let mut scheduled = std::mem::take(&mut self.redstone.scheduled).into_vec();
+            for Reverse((due, _, seq, xyz, family)) in &mut scheduled {
+                let p = IVec3::from_array(*xyz);
+                if super::chunk::chunk_of(p) == c && self.redstone.pending.get(&p) == Some(&(*due, *family, *seq)) {
+                    *due = due.saturating_add(elapsed);
+                    self.redstone.pending.insert(p, (*due, *family, *seq));
+                }
+            }
+            self.redstone.scheduled = scheduled.into();
+            if let Some(ticks) = self.redstone.suspended.get_mut(&c) {
+                for Reverse((due, _, seq, xyz, family)) in ticks {
+                    let p = IVec3::from_array(*xyz);
+                    if self.redstone.pending.get(&p) == Some(&(*due, *family, *seq)) {
+                        *due = due.saturating_add(elapsed);
+                        self.redstone.pending.insert(p, (*due, *family, *seq));
+                    }
+                }
+            }
+        }
+        if let Some(updates) = self.redstone.sleeping_updates.remove(&c) {
+            self.redstone.updates.extend(updates);
+        }
         if let Some(ticks) = self.redstone.suspended.remove(&c) {
             self.redstone.scheduled.extend(ticks);
         }
@@ -612,11 +639,51 @@ impl World {
         }
     }
 
+    pub(super) fn unload_redstone_chunk(&mut self, c: IVec3) {
+        if self.redstone.pending.keys().any(|&p| super::chunk::chunk_of(p) == c) {
+            self.redstone.unloaded_at.entry(c).or_insert(self.redstone.tick);
+        }
+    }
+
+    pub(super) fn refresh_redstone_activity(&mut self) {
+        let mut suspended = std::mem::take(&mut self.redstone.suspended);
+        for ticks in suspended.values_mut() {
+            ticks.retain(|&tick @ Reverse((_, _, _, xyz, _))| {
+                if self.is_block_ticking(IVec3::from_array(xyz)) {
+                    self.redstone.scheduled.push(tick);
+                    false
+                } else {
+                    true
+                }
+            });
+        }
+        suspended.retain(|_, ticks| !ticks.is_empty());
+        self.redstone.suspended = suspended;
+        let mut sleeping = std::mem::take(&mut self.redstone.sleeping_updates);
+        for updates in sleeping.values_mut() {
+            updates.retain(|&p| {
+                if self.is_block_ticking(p) {
+                    self.redstone.updates.push_back(p);
+                    false
+                } else {
+                    true
+                }
+            });
+        }
+        sleeping.retain(|_, updates| !updates.is_empty());
+        self.redstone.sleeping_updates = sleeping;
+    }
+
     /// One authoritative 50 ms game step. Neighbour work settles before and
     /// after due scheduled ticks, with stable insertion order for equal priority.
     /// No scanning of loaded blocks or allocation on an idle tick.
     pub fn tick_redstone(&mut self) {
         self.redstone.tick += 1;
+        for (&p, due) in &mut self.automation.cooldown {
+            if !self.activity.contains(p, true) || !self.chunks.contains_key(&super::chunk::chunk_of(p)) {
+                *due = due.saturating_add(1);
+            }
+        }
         self.finish_piston_moves();
         self.redstone.last_updates = 0;
         self.drain_redstone_updates();
@@ -631,7 +698,7 @@ impl World {
                 continue;
             }
             self.redstone.last_updates += 1;
-            if self.get_block(p).is_none() {
+            if !self.is_block_ticking(p) {
                 self.redstone
                     .suspended
                     .entry(super::chunk::chunk_of(p))
@@ -779,8 +846,12 @@ impl World {
     fn drain_redstone_updates(&mut self) {
         while self.redstone.last_updates < MAX_UPDATES {
             let Some(p) = self.redstone.updates.pop_front() else { break };
-            self.redstone.queued.remove(&p);
             self.redstone.last_updates += 1;
+            if !self.is_block_ticking(p) {
+                self.redstone.sleeping_updates.entry(super::chunk::chunk_of(p)).or_default().push(p);
+                continue;
+            }
+            self.redstone.queued.remove(&p);
             self.redstone_update(p);
         }
     }
@@ -868,13 +939,19 @@ impl World {
                 xyz[0],
                 xyz[1],
                 xyz[2],
-                due.saturating_sub(self.redstone.tick),
+                due.saturating_sub(
+                    self.redstone
+                        .unloaded_at
+                        .get(&super::chunk::chunk_of(IVec3::from_array(xyz)))
+                        .copied()
+                        .unwrap_or(self.redstone.tick)
+                ),
                 priority,
                 seq,
                 family
             ));
         }
-        for p in &self.redstone.updates {
+        for p in self.redstone.updates.iter().chain(self.redstone.sleeping_updates.values().flatten()) {
             entries.push(format!("q,{},{},{}", p.x, p.y, p.z));
         }
         for (p, power) in &self.redstone.comparator {
@@ -956,6 +1033,17 @@ impl World {
                 }
                 _ => {}
             }
+        }
+        // Saved delays count from when their chunk loads, like a chunk unloaded now.
+        let absent: Vec<_> = self
+            .redstone
+            .pending
+            .keys()
+            .map(|&p| super::chunk::chunk_of(p))
+            .filter(|c| !self.chunks.contains_key(c))
+            .collect();
+        for c in absent {
+            self.redstone.unloaded_at.entry(c).or_insert(tick);
         }
     }
 }
@@ -1102,13 +1190,17 @@ mod tests {
         assert_eq!(w.redstone.last_updates, 0, "idle unloaded ticks do no work");
         assert_eq!(w.redstone.pending[&AT], deadline);
         let saved = w.redstone_to_string();
-        assert!(saved.contains("t,8,145,8,0,0,"), "overdue work retains the old save encoding: {saved}");
+        // Java saves scheduled ticks as delays; unloaded time doesn't count.
+        assert!(saved.contains("t,8,145,8,20,0,"), "unloaded work keeps its remaining delay: {saved}");
         let mut restored = world();
         restored.remove_chunk(chunk);
         restored.load_redstone(&saved);
         ticks(&mut restored, 50);
         assert!(restored.redstone.scheduled.is_empty());
         restored.insert_chunk(chunk, data.clone(), true);
+        // The restored tick keeps its 20-tick delay from when the chunk loads.
+        ticks(&mut restored, 19);
+        assert!(restored.redstone.pending.contains_key(&AT), "released early after restore");
         ticks(&mut restored, 1);
         assert_eq!(restored.get_block(AT), Some(r::STONE_BUTTON));
         assert!(!restored.redstone.pending.contains_key(&AT));

@@ -116,7 +116,7 @@ impl Entities {
         for i in 0..self.mobs.len() {
             let m = &mut self.mobs[i];
             let Some(leash) = m.leash else { continue };
-            if !w.loaded(m.pos.floor().as_ivec3()) {
+            if !w.entity_ticking(m.pos.floor().as_ivec3()) {
                 continue;
             }
             let (anchor, broken) = match leash {

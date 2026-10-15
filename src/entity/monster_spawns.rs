@@ -44,6 +44,8 @@ pub(super) enum JavaMonster {
     Stray,
     Bogged,
     Ocelot,
+    Known(MobKind),
+    Missing(&'static str),
 }
 
 impl JavaMonster {
@@ -51,6 +53,8 @@ impl JavaMonster {
     #[cfg(test)]
     pub(super) fn id(self) -> &'static str {
         match self {
+            JavaMonster::Known(k) => k.name(),
+            JavaMonster::Missing(id) => id,
             JavaMonster::Spider => "spider",
             JavaMonster::Zombie => "zombie",
             JavaMonster::ZombieVillager => "zombie_villager",
@@ -73,6 +77,7 @@ impl JavaMonster {
     /// bogged, parched and ocelots are not in VoxelCraft yet.
     pub(super) fn kind(self) -> Option<MobKind> {
         Some(match self {
+            JavaMonster::Known(k) => k,
             JavaMonster::Spider => MobKind::Spider,
             JavaMonster::Zombie => MobKind::Zombie,
             JavaMonster::ZombieVillager => MobKind::ZombieVillager,
@@ -97,7 +102,7 @@ pub(super) struct MonsterSpawn {
     pub max: u32,
 }
 
-const fn e(mob: JavaMonster, weight: u32, min: u32, max: u32) -> MonsterSpawn {
+pub(super) const fn e(mob: JavaMonster, weight: u32, min: u32, max: u32) -> MonsterSpawn {
     MonsterSpawn { mob, weight, min, max }
 }
 
@@ -223,7 +228,7 @@ pub(super) fn monster_list(biome: Biome) -> &'static [MonsterSpawn] {
 }
 
 /// Java's `WeightedList.getRandom`: an entry with probability proportional to its weight.
-fn pick(list: &'static [MonsterSpawn], rng: &mut Rng) -> Option<&'static MonsterSpawn> {
+pub(super) fn pick(list: &'static [MonsterSpawn], rng: &mut Rng) -> Option<&'static MonsterSpawn> {
     let total: u32 = list.iter().map(|s| s.weight).sum();
     if total == 0 {
         return None;
@@ -248,7 +253,7 @@ fn full_collision(b: Block) -> bool {
 /// Java's `isRedstoneConductor`. The default is `isCollisionShapeFullBlock`;
 /// `Blocks` overrides it with `never` for glass, ice, leaves, pistons and a few
 /// others, and `always` for soul sand and mud (fixture `redstone_conductor`).
-fn is_redstone_conductor(b: Block) -> bool {
+pub(super) fn is_redstone_conductor(b: Block) -> bool {
     conductor_override(b.name()).unwrap_or_else(|| full_collision(b))
 }
 
@@ -312,7 +317,7 @@ pub(super) fn valid_spawn_floor(b: Block, kind: MobKind) -> bool {
     if b == Block::BEDROCK
         || b == Block::GLASS
         || b == redstone_blocks::MOVING
-        || b.is_leaves()
+        || (b.is_leaves() && kind != MobKind::Parrot)
         || name.ends_with("stained glass")
         || matches!(name, "tinted glass" | "barrier" | "scaffolding" | "chorus flower" | "frosted ice")
         || name.contains("trapdoor")
@@ -371,6 +376,7 @@ pub(super) fn dark_enough<W: MobWorld + ?Sized>(world: &W, cell: IVec3, sky_dark
 /// The light and weather inputs of the spawn rules.
 #[derive(Clone, Copy)]
 pub(super) struct SpawnRules {
+    pub dimension: Dimension,
     /// `Level.skyDarken` and the thunder-adjusted darkening of `Monster.isDarkEnoughToSpawn`.
     pub light: crate::simulation::lighting::SpawnLight,
     /// `Level.getMoonBrightness` (`surface_slime_spawn_chance` is half of it).
@@ -452,6 +458,7 @@ pub(super) fn monster_spot_ok<W: MobWorld + ?Sized>(
 }
 
 /// Whether natural spawning of `kind` in the Overworld belongs to this cycle.
+#[cfg(test)]
 pub(super) fn cycle_kind(kind: MobKind) -> bool {
     matches!(
         kind,
@@ -468,63 +475,8 @@ pub(super) fn cycle_kind(kind: MobKind) -> bool {
     )
 }
 
-/// Java ticks per natural spawn round.
-const TICKS_PER_ROUND: u32 = (SPAWN_INTERVAL * 20.0 + 0.5) as u32;
-/// Java's chunk edge for spawn sampling.
-const SPAWN_CHUNK: i32 = 16;
-
 impl Entities {
-    /// One natural spawn round of Overworld monsters (Java's
-    /// `ServerChunkCache.tickChunks` for the monster category): every loaded
-    /// chunk whose centre is within 128 blocks of a player, in a fresh random
-    /// order each tick, while the category is under its global cap (70 per
-    /// 289 spawnable chunks) and some nearby player is under their local
-    /// cap of 70. Each tries one start, uniform in the chunk and in height
-    /// from the bottom of the world to just above its `WORLD_SURFACE` block.
-    pub(super) fn overworld_monsters<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx) {
-        // Light still being resolved after streaming or a large edit would
-        // read darker than it is and let monsters into lit areas.
-        if !world.light_settled() {
-            return;
-        }
-        let players: Vec<DVec3> = ctx.players.iter().map(|t| t.pos).collect();
-        let loaded =
-            |c: category::ChunkPos| world.world_surface(c.x * SPAWN_CHUNK + 8, c.y * SPAWN_CHUNK + 8).is_some();
-        let mut state = category::SpawnState::new(&players, &self.mobs, loaded);
-        let rules = SpawnRules { light: ctx.spawn_light, moon: self.moon_brightness };
-        let mut order = state.chunks.clone();
-        for _ in 0..TICKS_PER_ROUND {
-            // `getFilteredSpawningCategories` checks the global cap once a tick.
-            if !state.global_room(MobCategory::Monster) {
-                break;
-            }
-            for i in (1..order.len()).rev() {
-                order.swap(i, self.rng.next_int(i as u32 + 1) as usize);
-            }
-            for &c in &order {
-                if !state.local_room(MobCategory::Monster, c) {
-                    continue;
-                }
-                let x = c.x * SPAWN_CHUNK + self.rng.next_int(SPAWN_CHUNK as u32) as i32;
-                let z = c.y * SPAWN_CHUNK + self.rng.next_int(SPAWN_CHUNK as u32) as i32;
-                let Some(surface) = world.world_surface(x, z) else { continue };
-                let min_y = Dimension::Overworld.min_y();
-                let top = surface + 1;
-                if top < min_y {
-                    continue;
-                }
-                let y = min_y + self.rng.next_int((top - min_y + 1) as u32) as i32;
-                if y < min_y + 1 {
-                    continue;
-                }
-                self.monster_packs(world, ctx, IVec3::new(x, y, z), rules, &mut state);
-            }
-        }
-    }
-
-    /// Java's `spawnCategoryForPosition` for monsters: three packs walking
-    /// from `start` in steps of `rand(6) - rand(6)`, each settling on one
-    /// list entry at its first position far enough from every player.
+    #[cfg(test)]
     pub(super) fn monster_packs<W: MobWorld + ?Sized>(
         &mut self,
         world: &W,
@@ -532,6 +484,23 @@ impl Entities {
         start: IVec3,
         rules: SpawnRules,
         state: &mut category::SpawnState,
+    ) {
+        self.category_packs(world, ctx, start, rules, state, MobCategory::Monster, &[]);
+    }
+
+    /// Java's `spawnCategoryForPosition` for monsters: three packs walking
+    /// from `start` in steps of `rand(6) - rand(6)`, each settling on one
+    /// list entry at its first position far enough from every player.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn category_packs<W: MobWorld + ?Sized>(
+        &mut self,
+        world: &W,
+        ctx: &Ctx,
+        start: IVec3,
+        rules: SpawnRules,
+        state: &mut category::SpawnState,
+        category: MobCategory,
+        structures: &[std::sync::Arc<crate::world::temples::Built>],
     ) {
         // Java's `isRedstoneConductor`: a conducting start cell ends the attempt.
         if world.block(start).is_none_or(is_redstone_conductor) {
@@ -541,6 +510,7 @@ impl Entities {
         for _ in 0..3 {
             let (mut x, mut z) = (start.x, start.z);
             let mut entry: Option<&'static MonsterSpawn> = None;
+            let mut group = PackGroup::default();
             let mut steps = (self.rng.next_f32() * 4.0).ceil() as u32;
             let mut step = 0;
             while step < steps {
@@ -558,13 +528,26 @@ impl Entities {
                 if super::near_world_spawn(self.world_spawn, pos) {
                     continue;
                 }
-                if !world.loaded(cell) {
+                // `isValidSpawnPostitionForType`: the start chunk or one that can spawn entities.
+                if !world.entity_ticking(cell) {
                     continue;
                 }
+                // Biome lookups sample generator noise, so each step resolves its list once.
+                let mut list = None;
                 let e = match entry {
                     Some(e) => e,
                     None => {
-                        let Some(e) = pick(monster_list(world.cave_biome(cell)), &mut self.rng) else { break };
+                        if category == MobCategory::WaterAmbient
+                            && world.cave_biome(cell).is_river()
+                            && self.rng.next_f32() < 0.98
+                        {
+                            break;
+                        }
+                        let here = super::spawning::spawn_list(world, category, rules.dimension, cell, structures);
+                        list = Some(here);
+                        let Some(e) = pick(here, &mut self.rng) else {
+                            break;
+                        };
                         entry = Some(e);
                         steps = e.min + self.rng.next_int(e.max - e.min + 1);
                         e
@@ -577,28 +560,67 @@ impl Entities {
                 if d2 > far * far {
                     continue;
                 }
-                if !monster_spot_ok(world, kind, cell, rules, &mut self.rng) {
+                // Placement first: it rejects most cells without a biome lookup.
+                if !super::spawn_rules::spot_ok(world, kind, cell, rules, &mut self.rng)
+                    || !list
+                        .unwrap_or_else(|| {
+                            super::spawning::spawn_list(world, category, rules.dimension, cell, structures)
+                        })
+                        .contains(e)
+                    || (rules.dimension == Dimension::Nether && !self.nether_cost_allows(world, kind, cell))
+                {
                     continue;
                 }
-                self.spawn_natural_monster(kind, pos);
-                state.add(MobCategory::Monster, pos);
+                self.spawn_natural(kind, pos, world.cave_biome(cell), &mut group);
+                state.add(category, pos);
                 spawned += 1;
                 // Java's default `getMaxSpawnClusterSize` is 4 for these monsters.
-                if spawned >= 4 {
+                if spawned
+                    >= match kind {
+                        MobKind::Wolf => 8,
+                        MobKind::Ghast => 1,
+                        _ => 4,
+                    }
+                {
                     return;
                 }
             }
         }
     }
 
-    fn spawn_natural_monster(&mut self, kind: MobKind, pos: DVec3) {
+    /// Spawns one natural mob as the next member of `group`, Java's `SpawnGroupData`.
+    pub(super) fn spawn_natural(&mut self, kind: MobKind, pos: DVec3, biome: Biome, group: &mut PackGroup) {
         if kind == MobKind::ZombieVillager {
             self.spawn(MobKind::Zombie, pos);
             self.make_zombie_villager();
         } else {
             self.spawn(kind, pos);
         }
+        // Natural spawns never require persistence (axolotls and hoglins included),
+        // so they count toward caps. Animal.removeWhenFarAway keeps creatures anyway.
+        self.mobs.last_mut().unwrap().persistent = false;
+        self.natural_animal(biome, group.size);
+        group.size += 1;
+        let Some(m) = self.mobs.last_mut() else { return };
+        // The first member picks the horse coat, llama colour, rabbit or fox
+        // type; later members copy it. Horse markings stay per horse.
+        let variant = match m.kind {
+            MobKind::Horse | MobKind::Llama => m.mount.as_mut().map(|s| &mut s.variant),
+            MobKind::Rabbit | MobKind::Fox => m.animal.as_mut().map(|a| &mut a.variant),
+            _ => None,
+        };
+        if let Some(variant) = variant {
+            *variant = *group.variant.get_or_insert(*variant);
+        }
     }
+}
+
+/// Java's `SpawnGroupData` for one pack or generation herd: the shared variant
+/// and `AgeableMobGroupData`'s count of members spawned so far.
+#[derive(Clone, Copy, Default)]
+pub(super) struct PackGroup {
+    pub variant: Option<u8>,
+    pub size: u32,
 }
 
 #[cfg(test)]
@@ -607,6 +629,24 @@ mod tests {
     use crate::world::lighting::flat_test_world;
     use glam::IVec2;
     use serde_json::Value;
+
+    #[test]
+    fn natural_spawns_never_require_persistence() {
+        let mut e = Entities::new(1);
+        for kind in [MobKind::Axolotl, MobKind::Hoglin, MobKind::Cow, MobKind::Zombie] {
+            e.spawn_natural(kind, DVec3::new(0.5, 64.0, 0.5), Biome::Plains, &mut PackGroup::default());
+            assert!(!e.mobs.last().unwrap().persistent, "{kind:?} counts toward its category cap");
+        }
+        e.ensure_mob_ids();
+        let mut restored = Entities::new(2);
+        restored.load_nether_mobs(&e.nether_mobs_to_string());
+        let kinds: Vec<_> = restored.mobs.iter().map(|m| (m.kind, m.persistent)).collect();
+        assert_eq!(
+            kinds,
+            [(MobKind::Axolotl, false), (MobKind::Hoglin, false), (MobKind::Cow, false)],
+            "breedable natural mobs still save; natural zombies never did"
+        );
+    }
 
     fn fixture() -> Value {
         serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/lighting_spawning.json")).unwrap()
@@ -764,7 +804,7 @@ mod tests {
     }
 
     fn rules(light: crate::simulation::lighting::SpawnLight, moon: f32) -> SpawnRules {
-        SpawnRules { light, moon }
+        SpawnRules { dimension: Dimension::Overworld, light, moon }
     }
 
     /// Accepted spawns out of `trials` for a zombie at `cell`.

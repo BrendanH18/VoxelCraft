@@ -1,19 +1,21 @@
 //! Water creatures and structure residents. Timers are in seconds; bucket
 //! components and one-time population markers survive save/load.
 use super::{Ctx, Entities, EntityEvent, Mob, MobKind, MobWorld, Rng};
+#[cfg(test)]
+use crate::world::{
+    temples::Kind,
+    terrain::{Biome, SEA_LEVEL},
+};
 use crate::{
     inventory::{Inventory, Stack},
     item::Item,
     physics,
     simulation::{difficulty::Difficulty, effects::Effect},
-    world::{
-        World,
-        block::Block,
-        temples::Kind,
-        terrain::{Biome, Dimension, SEA_LEVEL},
-    },
+    world::{World, block::Block, terrain::Dimension},
 };
-use glam::{DVec3, IVec3};
+use glam::DVec3;
+#[cfg(test)]
+use glam::IVec3;
 
 #[derive(Clone, Debug)]
 pub struct State {
@@ -157,6 +159,7 @@ pub(super) fn think<W: MobWorld + ?Sized>(
                 });
                 a.charge = -1.0;
             }
+            m.stop_navigation();
             return (None, 0.0);
         }
         a.target = None;
@@ -213,13 +216,13 @@ pub(super) fn think<W: MobWorld + ?Sized>(
                     knockback: delta.normalize_or_zero() * 0.3,
                 });
             }
-            return (Some(delta.normalize_or_zero()), 2.0);
+            return (m.pursue(w, pos, 2.0, true, true, rng), 2.0);
         }
     }
     if let Some(leader) = a.school {
         let delta = leader - m.pos;
         if delta.length_squared() > 1.5 && delta.length_squared() < 256.0 && wet(w, m.pos + delta.normalize_or_zero()) {
-            return (Some(delta.normalize_or_zero()), 1.4);
+            return (m.pursue(w, leader, 1.4, true, false, rng), 1.4);
         }
     }
     a.wander -= dt;
@@ -237,16 +240,26 @@ pub(super) fn think<W: MobWorld + ?Sized>(
             a.direction = DVec3::ZERO;
         }
     }
-    (
-        Some(a.direction),
-        if m.kind == MobKind::Dolphin {
-            2.8
-        } else if m.kind == MobKind::ElderGuardian {
-            0.65
-        } else {
-            1.2
-        },
-    )
+    let direction = a.direction;
+    let speed = if m.kind == MobKind::Dolphin {
+        2.8
+    } else if m.kind == MobKind::ElderGuardian {
+        0.65
+    } else {
+        1.2
+    };
+    if matches!(m.kind, MobKind::Squid | MobKind::GlowSquid) {
+        // Java squid use SquidRandomMovementGoal/MoveControl, not swimming paths.
+        return (Some(direction), speed);
+    }
+    m.repath_in = (m.repath_in - 1).max(0);
+    if m.nav.is_done() && m.repath_in == 0 {
+        // Failed/finished random destinations must not run a full search every tick.
+        m.repath_in = 40;
+        let goal = m.pos + direction * 8.0;
+        m.walk_to(w, goal.floor().as_ivec3(), 0, speed, false);
+    }
+    (m.follow_path(w, speed, false), speed)
 }
 
 pub(super) fn pillager<W: MobWorld + ?Sized>(
@@ -279,6 +292,7 @@ pub(super) fn pillager<W: MobWorld + ?Sized>(
     (if m.charged { None } else { Some(dir) }, 2.4)
 }
 
+#[cfg(test)]
 pub(super) fn spawn_spot<W: MobWorld + ?Sized>(
     w: &W,
     kind: MobKind,
@@ -366,11 +380,8 @@ impl Entities {
     pub(super) fn grow_turtles(&mut self, dt: f32) {
         self.grow_turtles_matching(dt, |_| true);
     }
-    pub(super) fn grow_loaded_turtles<W: MobWorld + ?Sized>(&mut self, dt: f32, w: &W, ctx: &Ctx) {
-        self.grow_turtles_matching(dt, |m| {
-            w.loaded(m.pos.floor().as_ivec3())
-                && ctx.nearest_player_dist2(m.pos).is_none_or(|d| d <= super::DESPAWN_DIST.powi(2))
-        });
+    pub(super) fn grow_loaded_turtles<W: MobWorld + ?Sized>(&mut self, dt: f32, w: &W, _ctx: &Ctx) {
+        self.grow_turtles_matching(dt, |m| w.entity_ticking(m.pos.floor().as_ivec3()));
     }
     fn grow_turtles_matching(&mut self, dt: f32, mut active: impl FnMut(&Mob) -> bool) {
         let mut scutes = Vec::new();
@@ -463,6 +474,9 @@ impl Entities {
             }));
         }
         for m in &mut self.mobs {
+            if !w.entity_ticking(m.pos.floor().as_ivec3()) {
+                continue;
+            }
             let Some(a) = &mut m.aquatic else { continue };
             a.sense_timer -= dt;
             if a.sense_timer > 0.0 {
@@ -521,29 +535,6 @@ impl Entities {
         for t in &ctx.players {
             for b in w.structures_near(t.pos.floor().as_ivec3(), 80) {
                 if self.structures_populated.contains(&b.bounds.min) {
-                    if ctx.spawning && difficulty != Difficulty::Peaceful && self.rng.chance(0.15) {
-                        let spawn = match b.kind {
-                            Kind::Outpost => Some((MobKind::Pillager, 3)),
-                            Kind::SwampHut => Some((MobKind::Witch, 1)),
-                            _ => None,
-                        };
-                        if let Some((kind, cap)) = spawn {
-                            let count = self
-                                .mobs
-                                .iter()
-                                .filter(|m| m.kind == kind && m.alive() && b.spawns.contains(m.pos.floor().as_ivec3()))
-                                .count();
-                            let p = b.residents.iter().find(|(k, _)| *k == kind).map(|(_, p)| *p);
-                            if count < cap
-                                && let Some(p) = p
-                                && super::clear_of_players(ctx, self.world_spawn, p.as_dvec3())
-                                && w.loaded(p)
-                                && !physics::overlaps_solid(w, p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5), kind.shape())
-                            {
-                                self.spawn(kind, p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
-                            }
-                        }
-                    }
                     continue;
                 }
                 if b.residents.is_empty() || !b.residents.iter().all(|(_, p)| w.loaded(*p)) {

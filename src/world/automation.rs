@@ -26,7 +26,7 @@ pub(super) struct AutomationState {
     moving: FxHashMap<IVec3, MovingBlock>,
     finished: Vec<IVec3>,
     powered: FxHashSet<IVec3>,
-    cooldown: FxHashMap<IVec3, u64>,
+    pub(super) cooldown: FxHashMap<IVec3, u64>,
     /// Redstone tick on which each hopper last ran its transfer tick (Java `tickedGameTime`).
     hopper_ticked: FxHashMap<IVec3, u64>,
     pickups: Vec<IVec3>,
@@ -271,9 +271,14 @@ impl World {
         if self.automation.moving.is_empty() {
             return;
         }
+        for (&p, m) in &mut self.automation.moving {
+            if !self.activity.contains(p, true) || !self.chunks.contains_key(&super::chunk::chunk_of(p)) {
+                m.started = m.started.saturating_add(1);
+            }
+        }
         let mut finished = std::mem::take(&mut self.automation.finished);
         finished.extend(self.automation.moving.iter().filter_map(|(&p, m)| {
-            (self.redstone.tick.saturating_sub(m.started) >= 2 && self.get_block(p).is_some()).then_some(p)
+            (self.redstone.tick.saturating_sub(m.started) >= 2 && self.is_block_ticking(p)).then_some(p)
         }));
         for &p in &finished {
             let Some(m) = self.automation.moving.remove(&p) else {
@@ -759,7 +764,9 @@ impl World {
         self.automation.output = output;
         let mut pickups = std::mem::take(&mut self.automation.pickups);
         for &p in &pickups {
-            if !matches!(self.get_block(p).and_then(r::component), Some(Component::Hopper { disabled: false, .. })) {
+            if !self.is_block_ticking(p)
+                || !matches!(self.get_block(p).and_then(r::component), Some(Component::Hopper { disabled: false, .. }))
+            {
                 continue;
             }
             for entity in &mut entities.items {
@@ -797,6 +804,9 @@ impl World {
         let n = entities.minecarts.len();
         for i in 0..n {
             let cell = entities.minecarts[i].pos.floor().as_ivec3();
+            if !self.is_entity_ticking(cell) {
+                continue;
+            }
             let kind = entities.minecarts[i].kind;
             let slots = entities.minecarts[i].slot_count();
             if !matches!(kind, CartKind::Chest | CartKind::Hopper) {

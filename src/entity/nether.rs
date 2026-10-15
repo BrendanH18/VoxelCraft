@@ -527,6 +527,9 @@ impl Entities {
         let allow_pickup = self.villager_griefing;
         let mut hunts = Vec::new();
         for m in mobs.iter_mut() {
+            if !world.entity_ticking(m.pos.floor().as_ivec3()) {
+                continue;
+            }
             let alive = m.alive();
             let Some(n) = m.nether.as_mut() else { continue };
             n.sense_timer -= dt;
@@ -571,6 +574,10 @@ impl Entities {
         }
         let mut i = 0;
         while i < self.mobs.len() {
+            if !self.mobs[i].simulation_active {
+                i += 1;
+                continue;
+            }
             let Some(n) = self.mobs[i].nether.as_mut() else {
                 i += 1;
                 continue;
@@ -938,7 +945,9 @@ impl Entities {
             .mobs
             .iter()
             .filter(|m| {
-                m.persistent
+                // Breedable mobs (natural axolotls and hoglins too) keep being saved
+                // although natural ones no longer require persistence.
+                (m.persistent || m.kind.never_distance_despawns() || m.kind.has_animal_state())
                     && m.alive()
                     && m.villager.is_none()
                     && !matches!(m.kind, MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama)
@@ -949,12 +958,26 @@ impl Entities {
         bastions.sort_unstable();
         let mut structures: Vec<_> = self.structures_populated.iter().map(|p| p.to_array()).collect();
         structures.sort_unstable();
-        json!({ "mobs": mobs, "bastions": bastions, "structures": structures }).to_string()
+        let mut generation: Vec<_> = self.generation_populated.iter().map(|p| p.to_array()).collect();
+        generation.sort_unstable();
+        json!({ "mobs": mobs, "bastions": bastions, "structures": structures,
+            "generation": generation, "spawn_ticks": self.spawn_ticks })
+        .to_string()
     }
 
     /// Restores [`Entities::nether_mobs_to_string`], skipping bad entries.
     pub fn load_nether_mobs(&mut self, text: &str) {
         let Ok(root) = serde_json::from_str::<Value>(text) else { return };
+        self.spawn_ticks = root["spawn_ticks"].as_u64().unwrap_or(0);
+        if let Some(done) = root["generation"].as_array() {
+            self.generation_populated.extend(done.iter().filter_map(|p| {
+                let p = p.as_array()?;
+                Some(glam::IVec2::new(
+                    i32::try_from(p.first()?.as_i64()?).ok()?,
+                    i32::try_from(p.get(1)?.as_i64()?).ok()?,
+                ))
+            }));
+        }
         if let Some(done) = root["bastions"].as_array() {
             self.bastions_populated.extend(done.iter().filter_map(|p| {
                 let p = p.as_array()?;
@@ -973,12 +996,24 @@ impl Entities {
             }));
         }
         let Some(mobs) = root["mobs"].as_array() else { return };
+        // Saves from before generation herds have no markers. Their animals came
+        // from the old continuous spawner around the player's path, so columns
+        // within two of a saved animal count as populated rather than gaining a second herd.
+        let legacy = root.get("generation").is_none();
         for mut mob in mobs.iter().filter_map(load_mob) {
             if mob.uid == 0 || self.mobs.iter().any(|m| m.uid == mob.uid) {
                 self.next_uid = self.next_uid.max(1);
                 mob.uid = self.next_uid;
             }
             self.next_uid = self.next_uid.max(mob.uid.saturating_add(1));
+            if legacy && mob.kind.category() == super::category::MobCategory::Creature {
+                let c = glam::IVec2::new((mob.pos.x / 16.0).floor() as i32, (mob.pos.z / 16.0).floor() as i32);
+                for dz in -2..=2 {
+                    for dx in -2..=2 {
+                        self.generation_populated.insert(c + glam::IVec2::new(dx, dz));
+                    }
+                }
+            }
             self.mobs.push(mob);
         }
     }
@@ -1388,6 +1423,7 @@ fn sense_strider<W: MobWorld + ?Sized>(m: &mut Mob, world: &W) {
 
 /// Feet position on a lava sea's surface in column (x, z): Java's strider
 /// rule wants open air right above the lava.
+#[cfg(test)]
 pub(super) fn lava_spot<W: MobWorld + ?Sized>(world: &W, x: i32, z: i32) -> Option<DVec3> {
     let sea = crate::world::nether::LAVA_SEA;
     let y = (sea - 8..=sea + 8).rev().find(|&y| {
@@ -1438,6 +1474,7 @@ fn save_mob(m: &Mob) -> Value {
     let n = m.nether.as_deref();
     let armor: Vec<bool> = m.armor.iter().map(|a| a.is_some()).collect();
     json!({
+        "persistence_required": m.persistent,
         "uid": m.uid,
         "riding": m.riding,
         "mount": m.mount.as_ref().map(|s|s.save()),
@@ -1479,7 +1516,7 @@ fn load_mob(v: &Value) -> Option<Mob> {
         return None;
     }
     let mut m = Mob::new(kind, pos, v["yaw"].as_f64().unwrap_or(0.0) as f32);
-    m.persistent = true;
+    m.persistent = v["persistence_required"].as_bool().unwrap_or(true);
     super::leash::load(&mut m, &v["identity"]);
     m.uid =
         v["uid"].as_u64().and_then(|u| u32::try_from(u).ok()).filter(|u| *u < super::mounts::MOB_VEHICLE).unwrap_or(0);

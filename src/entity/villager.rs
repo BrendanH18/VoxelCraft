@@ -585,6 +585,9 @@ impl Entities {
     }
     pub(super) fn village_upkeep<W: MobWorld + ?Sized>(&mut self, dt: f32, world: &W) {
         for m in &mut self.mobs {
+            if !world.entity_ticking(m.pos.floor().as_ivec3()) {
+                continue;
+            }
             if let Some(v) = &mut m.villager
                 && v.promote_left > 0.0
                 && m.kind == MobKind::Villager
@@ -599,7 +602,7 @@ impl Entities {
         }
         self.village_timer = 1.0;
         world.village_homes(&mut |home, spawn| {
-            if self.villager_births.insert(home) {
+            if world.entity_ticking(spawn) && self.villager_births.insert(home) {
                 self.spawn(MobKind::Villager, spawn.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
                 let m = self.mobs.last_mut().unwrap();
                 m.villager.as_mut().unwrap().home = Some(home);
@@ -637,7 +640,7 @@ impl Entities {
                 .nearest(&self.mobs, self.mobs[i].pos, 8.0, |o| o.kind.is_zombie())
                 .map(|j| self.mobs[j].pos);
             let m = &mut self.mobs[i];
-            if !m.alive() || !world.loaded(m.pos.floor().as_ivec3()) {
+            if !m.alive() || !world.entity_ticking(m.pos.floor().as_ivec3()) {
                 continue;
             }
             let Some(v) = &mut m.villager else { continue };

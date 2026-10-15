@@ -742,23 +742,39 @@ pass. Work items, each with Java 26.3 fixtures and acceptance cases:
    *Ground navigation implemented, unverified* ([evidence](verification/2026-10-14-mob-navigation.md)):
    `WalkNodeEvaluator`, `PathFinder` and `PathNavigation` ported from 26.3 with
    per-mob costs; chasers, villagers, strolls, panics and following animals walk
-   paths, and non-swimmers sink in water. Swim/fly/climb evaluators, block-update
-   recomputation and player acceptance remain.
+   paths, and non-swimmers sink in water. Swim, amphibious and fly evaluators,
+   wall climbing and block-update recomputation followed
+   ([evidence](verification/2026-10-14-mob-navigation-swim-fly.md)); strider
+   lava paths and player acceptance remain.
 3. **MOB-01 spawn rules:** Java's `NaturalSpawner` placement, 24/128-block
    ring, per-category caps scaled by loaded chunks, despawn distances and
    persistence, structure spawn overrides, and the slime/drowned paths folded in.
    *Monster category and despawning implemented, unverified*
    ([evidence](verification/2026-10-14-natural-spawning.md)): spawnable chunks,
-   global and per-player caps, the 128-block disc and `checkDespawn`. Creature
-   and water categories, chunk-generation spawning and structure overrides remain.
+   global and per-player caps, the 128-block disc and `checkDespawn`. Creature,
+   water, underground-water and axolotl categories, Java biome spawn lists,
+   chunk-generation herds and structure overrides followed
+   ([evidence](verification/2026-10-15-spawn-categories.md)). Missing mobs (bats,
+   polar bears, frogs and others) and an in-game check remain.
 4. **ENV-05 / PLY-02 block shapes:** shape-aware light occlusion (slabs,
    stairs, snow layers), meshes lit from the authoritative gameplay light
    arrays, and raycasts/placement against full collision and outline shapes
    (top/double slabs, cross plants).
+   *Light shapes and outline targeting implemented, unverified*
+   ([evidence](verification/2026-10-14-block-shapes-light-interaction.md)):
+   Java face-mask occlusion for slabs, stairs, snow and soil; meshes use the
+   gameplay light arrays; targeting uses outline shapes on every input path.
+   Corner-stair light shapes remain; top/double slab states need new IDs (M2).
 5. **PLY-01 loaded-region activity and save integrity:** tick only simulated
    chunks as Java does, frame-rate-independent outcomes, and
    pause/load/unload/death/save regression scenarios across desktop, controller
    and agent paths.
+   *Simulation distance implemented, unverified*
+   ([evidence](verification/2026-10-14-simulation-activity-save-integrity.md)):
+   Java's entity/block-ticking tickets in 16-block chunks gate random ticks,
+   fluids, fire, containers, redstone, entities and mobs; unloaded scheduled
+   ticks keep their delay; falling blocks save. Desktop/controller/agent
+   pause and death scenarios and save-mid-motion tests remain.
 
 Carried known issues that belong to later milestones (M2: waterlogging, door
 hinges, wall/ceiling switches; M3: structure templates, mega trees, 3D terrain;

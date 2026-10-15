@@ -905,9 +905,11 @@ impl super::Entities {
             return;
         }
         for mob in &self.mobs {
-            if mob.alive() && mob.riding.is_none() {
+            if world.is_entity_ticking(mob.pos.floor().as_ivec3()) && mob.alive() && mob.riding.is_none() {
                 for cart in &mut self.minecarts {
-                    if near_cart(mob.pos, mob.shape().half_width, cart.pos) {
+                    if world.is_entity_ticking(cart.pos.floor().as_ivec3())
+                        && near_cart(mob.pos, mob.shape().half_width, cart.pos)
+                    {
                         let delta = (cart.pos - mob.pos).with_y(0.0);
                         let dist = delta.length();
                         if dist >= 0.01 {
@@ -920,6 +922,10 @@ impl super::Entities {
         let mut signals = Vec::new();
         let n = self.minecarts.len();
         for i in 0..n {
+            self.minecarts[i].previous_pos = self.minecarts[i].pos;
+            if !world.is_entity_ticking(self.minecarts[i].pos.floor().as_ivec3()) {
+                continue;
+            }
             let passenger = self.minecarts[i].rider.and_then(|id| wish.iter().find(|w| w.0 == id).map(|w| w.1));
             let mob_passenger = self.mobs.iter().any(|m| m.riding == Some(self.minecarts[i].id) && m.alive());
             let id = self.minecarts[i].id;

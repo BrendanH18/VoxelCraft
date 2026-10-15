@@ -200,8 +200,10 @@ impl World {
         let (Some(slot), col) = (self.chunks.get(&home), self.columns.get(&IVec2::new(home.x, home.z))) else {
             return 0;
         };
+        let l = local_of(p);
+        let from = slot.data.get(l.x as usize, l.y as usize, l.z as usize);
         let mut found = 0;
-        for d in SIDES {
+        for (face, d) in SIDES.into_iter().enumerate() {
             let n = p + d;
             let (b, old) = if chunk_of(n) == home {
                 let l = local_of(n);
@@ -217,7 +219,7 @@ impl World {
                 let Some(cell) = self.light_cell(layer, n) else { continue };
                 cell
             };
-            if b.light_opacity() >= 15 {
+            if b.light_opacity() >= 15 || super::light_shape::occludes(from, b, face) {
                 continue;
             }
             let next = level.saturating_sub(b.light_opacity().max(1));
@@ -259,32 +261,26 @@ impl World {
         }
         let l = local_of(p);
         let packed = light.get_or_insert_with(BlockLight::new);
-        packed.set(index(l.x as usize, l.y as usize, l.z as usize), level);
+        let i = index(l.x as usize, l.y as usize, l.z as usize);
+        if packed.at(i) == level {
+            return;
+        }
+        slot.light_mesh_dirty = true;
+        packed.set(i, level);
         if packed.lit == 0 {
             *light = None;
         }
     }
 
-    /// Current gameplay block light (0..=15). Unloaded cells are dark.
-    /// Shaped opaque cells borrow adjacent light for entity/hand rendering,
-    /// but those borrowed values never propagate through the solid block.
+    /// Current authoritative gameplay block light (0..=15). Unloaded cells are dark.
     pub fn block_light(&self, p: IVec3) -> u8 {
-        if self.get_block(p).is_some_and(Block::borrows_light) {
-            [IVec3::Y, IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z]
-                .into_iter()
-                .map(|d| self.raw_block_light(p + d))
-                .max()
-                .unwrap_or(0)
-        } else {
-            self.raw_block_light(p)
-        }
+        self.raw_block_light(p)
     }
 
     /// Gameplay skylight (0..=15), Java's `LightLayer.SKY` level before the
     /// time of day darkens it. The Nether has none. `None` where it cannot be
     /// exact: cells whose column or a
     /// horizontal neighbour column is not fully loaded and lit.
-    /// Shaped opaque cells borrow adjacent light like [`World::block_light`].
     pub fn sky_light(&self, p: IVec3) -> Option<u8> {
         use super::terrain::Dimension;
         match self.generator.dimension {
@@ -300,12 +296,6 @@ impl World {
         if p.y >= self.max_y() {
             return Some(MAX_LIGHT);
         }
-        if self.get_block(p).is_some_and(Block::borrows_light) {
-            return [IVec3::Y, IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z]
-                .into_iter()
-                .map(|d| self.level(Layer::Sky, p + d))
-                .max();
-        }
         Some(self.level(Layer::Sky, p))
     }
 
@@ -318,7 +308,11 @@ impl World {
     /// Queue removal and relighting after an edit changes emission or opacity.
     /// `old_level` is the cell's stored light before the edit.
     pub(super) fn light_block_changed(&mut self, p: IVec3, old: Block, new: Block, old_level: u8) {
-        if old.emission() == new.emission() && old.light_opacity() == new.light_opacity() {
+        if old.emission() == new.emission()
+            && old.light_opacity() == new.light_opacity()
+            && !old.uses_shape_for_light_occlusion()
+            && !new.uses_shape_for_light_occlusion()
+        {
             return;
         }
         let emission = new.emission();
@@ -356,7 +350,11 @@ impl World {
                 self.clear_sky(q);
                 self.sky_updates.increase.push(q);
             }
-        } else if p.y <= new_height && old.light_opacity() != new.light_opacity() {
+        } else if p.y <= new_height
+            && (old.light_opacity() != new.light_opacity()
+                || old.uses_shape_for_light_occlusion()
+                || new.uses_shape_for_light_occlusion())
+        {
             let old_level = self.stored(Layer::Sky, p);
             self.clear_sky(p);
             if old_level > 0 {
@@ -585,6 +583,8 @@ impl World {
         let mut budget = Budget::unlimited();
         self.run_light(Layer::Block, &mut budget);
         self.run_light(Layer::Sky, &mut budget);
+        self.invalidate_light_meshes();
+        self.flush_sync_meshes();
     }
 
     /// Resolve pending light for roughly `budget` of wall time, then stop with the
@@ -597,6 +597,8 @@ impl World {
         let mut budget = Budget::until(std::time::Instant::now() + budget);
         self.run_light(Layer::Block, &mut budget);
         self.run_light(Layer::Sky, &mut budget);
+        self.invalidate_light_meshes();
+        self.flush_sync_meshes();
         self.light_settled()
     }
 
@@ -653,8 +655,12 @@ impl World {
                     level = level.max(b.emission());
                 }
                 if b.light_opacity() < 15 {
-                    for d in SIDES {
-                        level = level.max(self.level(layer, p + d).saturating_sub(b.light_opacity().max(1)));
+                    for (face, d) in SIDES.into_iter().enumerate() {
+                        let n = p + d;
+                        let from = self.get_block(n).unwrap_or(Block::BEDROCK);
+                        if !super::light_shape::occludes(b, from, face) {
+                            level = level.max(self.level(layer, n).saturating_sub(b.light_opacity().max(1)));
+                        }
                     }
                 }
                 self.store(layer, p, level);
@@ -791,6 +797,23 @@ mod tests {
         world
     }
 
+    #[test]
+    fn generation_herd_columns_wait_for_lit_neighbours() {
+        let generator = Generator::new(7);
+        let mut chunks = Vec::new();
+        for cz in -1..=1 {
+            for cx in -1..=1 {
+                chunks.extend(generator.dimension.chunk_rows().map(|cy| IVec3::new(cx, cy, cz)));
+            }
+        }
+        let world = world(&chunks);
+        let mut seen = Vec::new();
+        world.visit_spawn_columns(&mut |c| seen.push(c));
+        seen.sort_unstable_by_key(|c| (c.y, c.x));
+        // Only the centre storage column has all eight neighbours lit.
+        assert_eq!(seen, [IVec2::new(0, 0), IVec2::new(1, 0), IVec2::new(0, 1), IVec2::new(1, 1)]);
+    }
+
     fn torch(world: &mut World, p: IVec3) {
         world.set_block(p - IVec3::Y, Block::STONE);
         world.set_block(p, Block::TORCH);
@@ -813,6 +836,81 @@ mod tests {
         assert!(world.chunks[&c].block_light.is_none(), "removing the last source releases packed storage");
         assert!(world.light_updates.is_empty());
         assert!(world.mesh_uploads.is_empty());
+    }
+
+    /// A sealed, one-cell-wide channel rules out light going around the block.
+    fn shaped_channel(block: Block) -> World {
+        let mut data = ChunkData::Uniform(Block::STONE);
+        for x in 4..=9 {
+            data.set(x, 8, 8, Block::AIR);
+        }
+        data.set(4, 8, 8, Block::TORCH);
+        data.set(6, 8, 8, block);
+        data.set(6, 7, 8, Block::AIR);
+        let mut w = World::new_headless(Arc::new(Generator::new(7)), Default::default(), 2);
+        w.insert_chunk(IVec3::ZERO, Arc::new(data), true);
+        w.update_block_light();
+        w
+    }
+
+    #[test]
+    fn partial_blocks_pass_side_light_and_stop_it_through_their_bottom() {
+        use crate::world::overworld_blocks::snow_layer;
+        for b in [
+            Block::slab_of(Block::STONE).unwrap(),
+            Block::STONE_STAIRS,
+            Block::FARMLAND,
+            Block::WET_FARMLAND,
+            Block::DIRT_PATH,
+            snow_layer(1),
+            snow_layer(7),
+        ] {
+            let w = shaped_channel(b);
+            assert_eq!(w.block_light(IVec3::new(6, 8, 8)), 12, "inside {b:?}");
+            assert_eq!(w.block_light(IVec3::new(7, 8, 8)), 11, "through {b:?}");
+            assert_eq!(w.block_light(IVec3::new(6, 7, 8)), 0, "under {b:?}");
+        }
+        assert_eq!(shaped_channel(snow_layer(8)).block_light(IVec3::new(7, 8, 8)), 0);
+    }
+
+    #[test]
+    fn rotating_stairs_relights_despite_unchanged_dampening_and_emission() {
+        use crate::world::block::Facing;
+        let p = IVec3::new(6, 8, 8);
+        let mut w = shaped_channel(Block::STONE_STAIRS.with_facing(Facing::East));
+        assert_eq!(w.block_light(p + IVec3::X), 0, "full west face blocks entry");
+        w.set_block(p, Block::STONE_STAIRS.with_facing(Facing::South));
+        assert_eq!(w.block_light(p + IVec3::X), 11, "L face leaves a light path");
+        w.set_block(p, Block::STONE_STAIRS.with_facing(Facing::East));
+        assert_eq!(w.block_light(p + IVec3::X), 0, "rotation removes the old path");
+    }
+
+    #[test]
+    fn bottom_shapes_own_sky_cell_is_a_source_but_the_cell_below_is_not() {
+        use crate::world::overworld_blocks::snow_layer;
+        let columns = || (-1..=1).flat_map(|z| (-1..=1).map(move |x| IVec2::new(x, z)));
+        for b in [
+            Block::slab_of(Block::STONE).unwrap(),
+            Block::STONE_STAIRS,
+            Block::FARMLAND,
+            Block::DIRT_PATH,
+            snow_layer(1),
+            snow_layer(7),
+        ] {
+            let mut w = flat_test_world(columns(), 63);
+            for z in 13..=19 {
+                for x in 13..=19 {
+                    w.edit(IVec3::new(x, 68, z), b, false);
+                }
+            }
+            w.update_block_light();
+            assert_eq!(w.sky_light(IVec3::new(16, 68, 16)), Some(15), "{b:?}");
+            assert_eq!(w.sky_light(IVec3::new(16, 67, 16)), Some(11), "sideways falloff under {b:?}");
+            let fresh = rebuilt(&w);
+            for y in 64..=70 {
+                assert_eq!(w.sky_light(IVec3::new(16, y, 16)), fresh.sky_light(IVec3::new(16, y, 16)), "{b:?}, {y}");
+            }
+        }
     }
 
     #[test]
@@ -909,7 +1007,7 @@ mod tests {
                 world.set_block(IVec3::new(20, 151, 20), Block::STONE);
             }
             world.update_block_light();
-            let mesh = mesh::build(&world.gather(IVec3::new(0, 4, 0)), &mut Region::default());
+            let mesh = mesh::build(&world.mesh_input(IVec3::new(0, 4, 0)), &mut Region::default());
             let reference = mesh.block_light.unwrap();
             for y in 0..32 {
                 for z in 0..32 {
@@ -933,6 +1031,46 @@ mod tests {
 
     fn square(r: i32) -> Vec<IVec2> {
         (-r..=r).flat_map(|z| (-r..=r).map(move |x| IVec2::new(x, z))).collect()
+    }
+
+    #[test]
+    fn meshes_consume_supplied_levels_without_reflooding_emitters() {
+        let mut w = flat(square(1));
+        let p = IVec3::new(16, 70, 16);
+        w.set_block(p, Block::TORCH);
+        let mut input = w.mesh_input(IVec3::new(0, 2, 0));
+        input.light.fill(0x53);
+        let mesh = mesh::build(&input, &mut Region::default());
+        for (light, expected) in [(mesh.block_light.as_ref().unwrap(), 5), (mesh.sky_light.as_ref().unwrap(), 3)] {
+            for y in 0..32 {
+                for z in 0..32 {
+                    for x in 0..32 {
+                        assert_eq!(light.get(x, y, z), expected);
+                    }
+                }
+            }
+        }
+        assert_eq!(w.block_light(p), 14, "mesh jobs cannot mutate gameplay");
+    }
+
+    #[test]
+    fn gameplay_floods_invalidate_mesh_versions_and_sync_edits_wait_for_light() {
+        let mut w = flat(square(1));
+        w.meshes_enabled = true;
+        let c = IVec3::new(0, 2, 0);
+        let p = IVec3::new(16, 70, 16);
+        let before = w.chunks[&c].version;
+        w.edit(p, Block::TORCH, true);
+        assert!(w.mesh_uploads.is_empty(), "do not snapshot unfinished light");
+        assert!(w.sync_meshes.contains(&c));
+        w.update_block_light();
+        assert!(w.chunks[&c].version != before);
+        assert!(w.sync_meshes.is_empty());
+        // No foliage was installed in this headless fixture, so the finished
+        // geometry remains dirty for the regular mesh scheduler.
+        assert!(w.dirty.contains(&c));
+        let mesh = mesh::build(&w.mesh_input(c), &mut Region::default());
+        assert_eq!(mesh.block_light.unwrap().get(16, 6, 16), 14);
     }
 
     /// The same chunks streamed into a new world in another order.
@@ -1191,7 +1329,7 @@ mod tests {
         let fresh = rebuilt(&world);
         for cy in [1, 2] {
             let pos = IVec3::new(0, cy, 0);
-            let mesh = mesh::build(&world.gather(pos), &mut Region::default());
+            let mesh = mesh::build(&world.mesh_input(pos), &mut Region::default());
             let reference = mesh.sky_light.unwrap();
             for y in 0..32 {
                 for z in 0..32 {

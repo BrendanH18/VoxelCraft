@@ -23,7 +23,7 @@ use crate::world::terrain::{Dimension, Generator, SEA_LEVEL};
 use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 12] = [
+pub(super) const DIMENSION_KEYS: [&str; 13] = [
     "furnaces",
     "chests",
     "items",
@@ -36,6 +36,7 @@ pub(super) const DIMENSION_KEYS: [&str; 12] = [
     "automation",
     "minecarts",
     "nether_mobs",
+    "falling",
 ];
 /// Seconds of standing in a portal before it takes you (creative: almost
 /// at once).
@@ -116,6 +117,7 @@ impl Game {
         let mut props = BTreeMap::new();
         props.insert("redstone".to_string(), self.world.redstone_to_string());
         props.insert("automation".to_string(), self.world.automation_to_string());
+        props.insert("falling".to_string(), self.world.falling_to_string());
         props.insert("furnaces".to_string(), self.world.furnaces_to_string());
         props.insert("brewing".to_string(), self.world.brewing_stands_to_string());
         props.insert("chests".to_string(), self.world.chests_to_string());
@@ -142,6 +144,9 @@ impl Game {
         }
         if let Some(a) = props.get("automation") {
             self.world.load_automation(a);
+        }
+        if let Some(f) = props.get("falling") {
+            self.world.load_falling(f);
         }
         if let Some(b) = props.get("brewing") {
             self.world.load_brewing_stands(b);
@@ -208,6 +213,7 @@ impl Game {
         let seed = self.world.generator.seed;
         log::info!("travelling to the {} ({} modified chunks)", to.name(), chunks.len());
         self.world = World::new(Arc::new(Generator::for_dimension(seed, to)), chunks, self.settings.render_distance);
+        self.world.set_simulation_distance(self.settings.simulation_distance);
         self.mobs.entities = crate::entity::Entities::new(seed);
         self.renderer.clear_world();
         self.particles.clear();

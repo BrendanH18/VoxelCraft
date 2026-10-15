@@ -469,7 +469,7 @@ impl Entities {
         // Spitting: Java's LlamaSpit, 1.5 blocks a tick with a little spread.
         for i in 0..self.mobs.len() {
             let m = &self.mobs[i];
-            if m.kind != MobKind::Llama || !m.alive() || m.attack_cooldown > 0.0 || m.baby {
+            if !m.simulation_active || m.kind != MobKind::Llama || !m.alive() || m.attack_cooldown > 0.0 || m.baby {
                 continue;
             }
             let player = m.angry_player.and_then(|id| ctx.players.iter().find(|t| t.id == id && t.targetable));
@@ -512,7 +512,11 @@ impl Entities {
         let llamas: Vec<DVec3> =
             self.mobs.iter().filter(|m| m.kind == MobKind::Llama && m.alive()).map(|m| m.pos).collect();
         for w in &mut self.mobs {
-            if w.kind != MobKind::Wolf || !w.alive() || w.animal.as_ref().is_none_or(|a| a.owner.is_some()) {
+            if !w.simulation_active
+                || w.kind != MobKind::Wolf
+                || !w.alive()
+                || w.animal.as_ref().is_none_or(|a| a.owner.is_some())
+            {
                 continue;
             }
             if let Some(l) = llamas.iter().find(|l| l.distance_squared(w.pos) < 64.0)
@@ -529,7 +533,7 @@ impl Entities {
         let ids: Vec<(u32, DVec3, bool, Option<u32>)> = self
             .mobs
             .iter()
-            .filter(|m| m.kind == MobKind::Llama && m.alive())
+            .filter(|m| m.simulation_active && m.kind == MobKind::Llama && m.alive())
             .map(|m| (m.uid, m.pos, m.leash.is_some(), m.mount.as_ref().and_then(|s| s.caravan)))
             .collect();
         let pos_of = |uid: u32| ids.iter().find(|l| l.0 == uid).map(|l| l.1);
@@ -545,7 +549,7 @@ impl Entities {
             n
         };
         let mut joins = Vec::new();
-        for m in self.mobs.iter().filter(|m| m.kind == MobKind::Llama && m.alive()) {
+        for m in self.mobs.iter().filter(|m| m.simulation_active && m.kind == MobKind::Llama && m.alive()) {
             let Some(s) = m.mount.as_ref() else { continue };
             if m.leash.is_some() || m.baby || s.rider.is_some() || s.caravan.is_some() {
                 continue;
@@ -564,7 +568,7 @@ impl Entities {
                 joins.push((m.uid, h.0));
             }
         }
-        for m in self.mobs.iter_mut().filter(|m| m.kind == MobKind::Llama) {
+        for m in self.mobs.iter_mut().filter(|m| m.simulation_active && m.kind == MobKind::Llama) {
             let Some(s) = m.mount.as_mut() else { continue };
             if let Some((_, head)) = joins.iter().find(|j| j.0 == m.uid) {
                 s.caravan = Some(*head);
@@ -656,20 +660,6 @@ impl Entities {
             s.input(m.kind, player, input, inventory.get(selected).map(|s| s.item), None);
         }
     }
-    /// Java Horse.finalizeSpawn shares the coat through HorseGroupData,
-    /// while each herd member independently rolls its markings.
-    pub(super) fn natural_horse_coat(&mut self, herd_coat: Option<u8>) -> Option<u8> {
-        let m = self.mobs.last_mut()?;
-        if m.kind != MobKind::Horse {
-            return None;
-        }
-        let s = m.mount.as_mut()?;
-        if let Some(coat) = herd_coat {
-            s.variant = coat;
-        }
-        Some(s.variant)
-    }
-
     /// Use saddle/armor/chest/food or mount an adult under the crosshair.
     /// Returns true when the interaction was handled; callers attach via mount_for_player.
     #[allow(clippy::too_many_arguments)]
@@ -942,25 +932,45 @@ mod tests {
         w
     }
     #[test]
-    fn natural_horse_herds_share_coats_but_keep_independent_markings_and_saved_ids() {
+    fn natural_packs_share_variants_and_follow_java_pack_baby_rules() {
+        use crate::entity::monster_spawns::PackGroup;
+        use crate::world::terrain::Biome;
         let mut e = Entities::new(94);
-        e.spawn(MobKind::Horse, DVec3::ZERO);
-        let coat = e.natural_horse_coat(None).unwrap();
-        for _ in 0..24 {
-            e.spawn(MobKind::Horse, DVec3::ZERO);
-            assert_eq!(e.natural_horse_coat(Some(coat)), Some(coat));
+        let mut pack = PackGroup::default();
+        for _ in 0..25 {
+            e.spawn_natural(MobKind::Horse, DVec3::ZERO, Biome::Plains, &mut pack);
         }
+        let coat = pack.variant.unwrap();
         let first = e.mobs[0].mount.as_ref().unwrap().marking;
         assert!(e.mobs.iter().any(|m| m.mount.as_ref().unwrap().marking != first));
+        assert!(!e.mobs[0].baby, "a pack's first member is an adult");
         for m in &e.mobs {
             let state = m.mount.as_ref().unwrap();
             assert_eq!(state.variant, coat);
             let reloaded = State::load(MobKind::Horse, &state.save()).unwrap();
             assert_eq!((reloaded.variant, reloaded.marking), (coat, state.marking));
         }
-        e.spawn(MobKind::Donkey, DVec3::ZERO);
-        assert_eq!(e.natural_horse_coat(Some(coat)), None);
+        let mut donkeys = PackGroup::default();
+        e.spawn_natural(MobKind::Donkey, DVec3::ZERO, Biome::Plains, &mut donkeys);
+        assert_eq!(donkeys.variant, None);
         assert_eq!(e.mobs.last().unwrap().mount.as_ref().unwrap().variant, 0);
+        // RabbitGroupData: an adult, then babies. FoxGroupData: two adults, then babies.
+        for (kind, babies) in [(MobKind::Llama, None), (MobKind::Rabbit, Some(1)), (MobKind::Fox, Some(2))] {
+            e.mobs.clear();
+            let mut pack = PackGroup::default();
+            for _ in 0..12 {
+                e.spawn_natural(kind, DVec3::ZERO, Biome::Plains, &mut pack);
+            }
+            assert!(pack.variant.is_some(), "{kind:?}");
+            assert!(e.mobs.iter().all(|m| {
+                let v = m.mount.as_ref().map(|s| s.variant).or(m.animal.as_ref().map(|a| a.variant));
+                v == pack.variant
+            }));
+            if let Some(adults) = babies {
+                let pattern: Vec<_> = e.mobs.iter().map(|m| m.baby).collect();
+                assert!(pattern.iter().enumerate().all(|(i, &b)| b == (i >= adults)), "{kind:?}: {pattern:?}");
+            }
+        }
     }
 
     #[test]

@@ -51,6 +51,7 @@ impl Entities {
     }
 
     /// Natural zombies everywhere have Java's 5% chance to be zombie villagers.
+    #[cfg(test)]
     pub(super) fn note_zombie_villager(&mut self, kind: MobKind) {
         if kind != MobKind::Zombie {
             return;

@@ -44,6 +44,8 @@ pub mod potion;
 mod projectile;
 mod replica;
 mod slime;
+mod spawn_lists;
+mod spawn_rules;
 mod spawning;
 mod thrown;
 pub mod tnt;
@@ -72,19 +74,10 @@ pub use projectile::Arrow;
 /// Spawns happen this far from the player (blocks).
 pub const SPAWN_MIN_DIST: f64 = 24.0;
 pub const SPAWN_MAX_DIST: f64 = 64.0;
-/// Java's Nether fortress spawns: (mob, weight, smallest and largest group).
-const FORTRESS_SPAWNS: [(MobKind, u32, u32, u32); 5] = [
-    (MobKind::Blaze, 10, 2, 3),
-    (MobKind::WitherSkeleton, 8, 5, 5),
-    (MobKind::ZombifiedPiglin, 5, 4, 4),
-    (MobKind::MagmaCube, 3, 4, 4),
-    (MobKind::Skeleton, 2, 5, 5),
-];
 /// Mobs farther than this are removed.
 pub const DESPAWN_DIST: f64 = 96.0;
 /// Hostile mobs only spawn when it's darker than this.
 pub const HOSTILE_SPAWN_DAYLIGHT: f32 = 0.35;
-const SPAWN_INTERVAL: f32 = 0.25;
 /// Spawners run while a player is this close (Java's required range), try
 /// this many mobs at a time within `SPAWNER_REACH` blocks, and hold off
 /// while `SPAWNER_CROWD` of their mob are nearby.
@@ -346,8 +339,18 @@ pub struct Puff {
 
 /// World queries mobs need beyond plain block access.
 pub trait MobWorld: BlockSource {
+    /// Edits since this navigator's cursor, current cursor and history overflow.
+    /// Immutable reads let all navigators consume changes independently.
+    fn navigation_updates(&self, since: u64, _visit: &mut dyn FnMut(IVec3)) -> (u64, bool) {
+        (since, false)
+    }
+
     /// Whether the chunk containing `p` is loaded.
     fn loaded(&self, p: IVec3) -> bool;
+    /// Entity-ticking ticket, distinct from terrain loaded for rendering.
+    fn entity_ticking(&self, p: IVec3) -> bool {
+        self.loaded(p)
+    }
     /// Highest light-blocking block in a loaded column.
     fn surface(&self, x: i32, z: i32) -> Option<i32>;
     /// Nothing light-blocking above this cell.
@@ -377,6 +380,9 @@ pub trait MobWorld: BlockSource {
     fn world_surface(&self, x: i32, z: i32) -> Option<i32> {
         self.surface(x, z)
     }
+    /// Fully loaded 16-block columns eligible for the one-time generation pass.
+    /// Synthetic worlds opt in explicitly rather than inventing new chunks every tick.
+    fn generation_columns(&self, _visit: &mut dyn FnMut(glam::IVec2)) {}
     /// Loaded spawner cages and the mob each makes.
     fn spawners(&self) -> Vec<(IVec3, MobKind)> {
         Vec::new()
@@ -422,6 +428,13 @@ pub trait MobWorld: BlockSource {
 }
 
 impl MobWorld for World {
+    fn generation_columns(&self, visit: &mut dyn FnMut(glam::IVec2)) {
+        self.visit_spawn_columns(visit);
+    }
+    fn navigation_updates(&self, since: u64, visit: &mut dyn FnMut(IVec3)) -> (u64, bool) {
+        World::navigation_updates(self, since, visit)
+    }
+
     fn village_pois(&self, visit: &mut dyn FnMut(IVec3, Block)) {
         self.visit_village_pois(visit);
     }
@@ -448,6 +461,9 @@ impl MobWorld for World {
     }
     fn loaded(&self, p: IVec3) -> bool {
         self.is_loaded(p)
+    }
+    fn entity_ticking(&self, p: IVec3) -> bool {
+        self.is_entity_ticking(p)
     }
     fn block_light(&self, p: IVec3) -> u8 {
         World::block_light(self, p)
@@ -501,6 +517,8 @@ pub struct Target {
     pub pos: DVec3,
     /// Hostile mobs chase and attack (false in creative or while dead).
     pub targetable: bool,
+    /// Spectators neither drive natural spawning nor prevent despawning.
+    pub spectator: bool,
     /// Experience orbs fly to living players only.
     pub alive: bool,
     /// Unit view direction (zero if unknown): endermen notice stares.
@@ -536,6 +554,7 @@ impl Target {
             pos,
             targetable,
             alive: true,
+            spectator: false,
             look: DVec3::ZERO,
             thorns: [0; 4],
             held_enchants: Default::default(),
@@ -584,7 +603,7 @@ pub struct Ctx {
 impl Ctx {
     /// Squared distance from `pos` to the closest player, if there is any.
     pub fn nearest_player_dist2(&self, pos: DVec3) -> Option<f64> {
-        self.players.iter().map(|t| t.pos.distance_squared(pos)).min_by(f64::total_cmp)
+        self.players.iter().filter(|t| !t.spectator).map(|t| t.pos.distance_squared(pos)).min_by(f64::total_cmp)
     }
 
     /// The closest player hostile mobs may attack, like Minecraft's
@@ -699,7 +718,9 @@ pub struct Entities {
     /// Seconds until each active spawner tries again (not saved, like a
     /// fresh Java spawner's short first delay).
     spawner_delays: rustc_hash::FxHashMap<IVec3, f32>,
-    spawn_timer: f32,
+    spawn_timer: f64,
+    spawn_ticks: u64,
+    generation_populated: rustc_hash::FxHashSet<glam::IVec2>,
     merge_timer: f32,
     /// Next [`Mob::uid`] to hand out.
     next_uid: u32,
@@ -763,6 +784,8 @@ impl Entities {
             pvp: false,
             spawner_delays: Default::default(),
             spawn_timer: 0.0,
+            spawn_ticks: 0,
+            generation_populated: Default::default(),
             merge_timer: 0.0,
             next_uid: 1,
             nether_view: Vec::new(),
@@ -1387,10 +1410,10 @@ impl Entities {
     }
 
     /// Flies thrown eyes; those done drop back as an item or shatter.
-    fn update_eyes(&mut self, dt: f64, events: &mut Vec<EntityEvent>) {
+    fn update_eyes<W: MobWorld + ?Sized>(&mut self, dt: f64, world: &W, events: &mut Vec<EntityEvent>) {
         let mut i = 0;
         while i < self.eyes.len() {
-            if self.eyes[i].update(dt) {
+            if !world.entity_ticking(self.eyes[i].pos.floor().as_ivec3()) || self.eyes[i].update(dt) {
                 i += 1;
                 continue;
             }
@@ -1691,11 +1714,6 @@ pub fn in_spawn_ring(player: DVec3, pos: DVec3) -> bool {
 
 /// No player is closer than [`SPAWN_MIN_DIST`] to `pos`, and `pos` is not
 /// within 24 blocks of the world spawn point.
-fn clear_of_players(ctx: &Ctx, world_spawn: Option<IVec3>, pos: DVec3) -> bool {
-    ctx.nearest_player_dist2(pos).is_none_or(|d| d >= SPAWN_MIN_DIST * SPAWN_MIN_DIST)
-        && !near_world_spawn(world_spawn, pos)
-}
-
 /// Java's minimum distance of natural spawns from the world spawn point.
 pub const SPAWN_POINT_MIN_DIST: f64 = 24.0;
 
@@ -1711,20 +1729,6 @@ pub fn near_world_spawn(world_spawn: Option<IVec3>, pos: DVec3) -> bool {
 
 /// Feet position for a mob on the sky-exposed surface of column (x, z),
 /// if the rules allow it there.
-fn spawn_spot<W: MobWorld + ?Sized>(world: &W, kind: MobKind, x: i32, z: i32, daylight: f32) -> Option<DVec3> {
-    let h = world.surface(x, z)?;
-    let ground = world.block(IVec3::new(x, h, z))?;
-    if !can_spawn_on(kind, ground, daylight) {
-        return None;
-    }
-    let pos = DVec3::new(x as f64 + 0.5, h as f64 + 1.0, z as f64 + 0.5);
-    let clear = !physics::overlaps_solid(world, pos, kind.shape()) && !physics::is_fluid_at(world, pos);
-    clear.then_some(pos)
-}
-
-/// Feet position on the first floor at or below `top` in column (x, z)
-/// with room to stand (for cavern dimensions with no sky).
-/// The Nether spawn list entry for a kind VoxelCraft has.
 fn nether_mob(kind: MobKind) -> Option<crate::world::nether_biome::NetherMob> {
     use crate::world::nether_biome::NetherMob;
     Some(match kind {
@@ -1738,25 +1742,6 @@ fn nether_mob(kind: MobKind) -> Option<crate::world::nether_biome::NetherMob> {
         MobKind::Strider => NetherMob::Strider,
         _ => return None,
     })
-}
-
-/// `kind`'s entry in the spawn list of the Nether biome at `(x, z)` and the
-/// chance an attempt goes ahead. Striders, the only Nether creature, keep
-/// their weight of 60 against zombified piglins' 100.
-fn nether_spawn<W: MobWorld + ?Sized>(
-    world: &W,
-    kind: MobKind,
-    x: i32,
-    y: i32,
-    z: i32,
-) -> Option<(crate::world::nether_biome::Spawn, f32)> {
-    use crate::world::nether_biome::NetherBiome;
-    let biome = world.nether_biome_at(IVec3::new(x, y, z)).unwrap_or(NetherBiome::NetherWastes);
-    let mob = nether_mob(kind)?;
-    if let Some(s) = biome.creatures().iter().find(|s| s.mob == mob) {
-        return Some((*s, s.weight as f32 / 100.0));
-    }
-    biome.monster_spawn(mob)
 }
 
 impl Entities {
@@ -1783,16 +1768,6 @@ impl Entities {
         }
         potential * cost.charge <= cost.energy_budget
     }
-}
-
-fn cavern_spot<W: MobWorld + ?Sized>(world: &W, kind: MobKind, x: i32, z: i32, top: i32) -> Option<DVec3> {
-    let floor = (top - 24..=top).rev().find(|&y| {
-        world.block(IVec3::new(x, y, z)).is_some_and(|b| b.is_solid() && b.is_opaque())
-            && world.block(IVec3::new(x, y + 1, z)) == Some(Block::AIR)
-    })?;
-    let pos = DVec3::new(x as f64 + 0.5, floor as f64 + 1.0, z as f64 + 0.5);
-    let clear = !physics::overlaps_solid(world, pos, kind.shape()) && !physics::is_fluid_at(world, pos);
-    clear.then_some(pos)
 }
 
 #[cfg(test)]
@@ -2076,7 +2051,17 @@ mod tests {
             })
             .count();
         assert!(looted > skulls * 3 / 2, "looting adds 1% per level: {looted}");
-        assert!(FORTRESS_SPAWNS.iter().any(|s| s.0 == MobKind::WitherSkeleton && s.1 == 8));
+        assert!(
+            spawning::spawn_list(
+                &Fortressed(Grid::flat(41)),
+                category::MobCategory::Monster,
+                Dimension::Nether,
+                IVec3::new(30, 41, 0),
+                &[]
+            )
+            .iter()
+            .any(|s| s.mob.kind() == Some(MobKind::WitherSkeleton) && s.weight == 8)
+        );
     }
 
     #[test]
