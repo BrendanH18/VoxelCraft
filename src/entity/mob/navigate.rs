@@ -12,7 +12,7 @@
 use glam::{DVec3, IVec3};
 
 use super::{Ai, Mob, MobKind, yaw_dir};
-use crate::entity::path::{self, Caps, Malus, Mover, PathType};
+use crate::entity::path::{self, Caps, Evaluator, Malus, Mover, PathType};
 use crate::entity::{Ctx, MobWorld, Rng};
 use crate::world::block::Block;
 
@@ -20,9 +20,7 @@ impl MobKind {
     /// Whether this kind walks with Java's ground navigation. Flyers, hopping
     /// slimes, swimmers and lava-walking striders steer themselves.
     pub(crate) fn walks_paths(self) -> bool {
-        !self.is_aquatic()
-            && !self.is_cube()
-            && !matches!(self, MobKind::Ghast | MobKind::Parrot | MobKind::Strider | MobKind::Pillager)
+        !self.is_aquatic() && !self.is_cube() && !matches!(self, MobKind::Ghast | MobKind::Strider | MobKind::Pillager)
     }
 
     /// Swims at the surface: Java's `FloatGoal` or brain `Swim` mobs, and the
@@ -64,6 +62,18 @@ impl MobKind {
         use MobKind as K;
         use PathType as T;
         let mut caps = Caps::new(width, height);
+        caps.evaluator = match self {
+            K::Cod | K::Salmon | K::TropicalFish | K::Pufferfish | K::Guardian | K::ElderGuardian => {
+                Evaluator::Swim { breaching: false }
+            }
+            K::Dolphin => Evaluator::Swim { breaching: true },
+            K::Drowned | K::Axolotl | K::Turtle => Evaluator::Amphibious { shallow: false },
+            K::Parrot => Evaluator::Fly,
+            _ => Evaluator::Walk,
+        };
+        if matches!(caps.evaluator, Evaluator::Swim { .. }) {
+            caps.can_pass_doors = false;
+        }
         caps.step = match self {
             K::Camel => 1.5,
             K::Horse
@@ -139,7 +149,15 @@ impl MobKind {
             K::Strider => m.with(T::Water, -1.0).with(T::Lava, 0.0).with(T::FireInNeighbor, 0.0).with(T::Fire, 0.0),
             K::Enderman => m.with(T::Water, -1.0),
             K::WitherSkeleton | K::ZombifiedPiglin => m.with(T::Lava, 8.0),
-            K::Drowned | K::Axolotl | K::Guardian | K::ElderGuardian => m.with(T::Water, 0.0),
+            K::Drowned
+            | K::Axolotl
+            | K::Guardian
+            | K::ElderGuardian
+            | K::Cod
+            | K::Salmon
+            | K::TropicalFish
+            | K::Pufferfish
+            | K::Dolphin => m.with(T::Water, 0.0),
             _ => m,
         };
         caps.malus = m;
@@ -166,7 +184,7 @@ impl Mob {
         caps
     }
 
-    fn mover(&self, speed: f64) -> Mover {
+    pub(crate) fn mover(&self, speed: f64) -> Mover {
         Mover {
             pos: self.pos,
             on_ground: self.on_ground,
@@ -198,6 +216,12 @@ impl Mob {
         let caps = self.caps(hunting);
         let mover = self.mover(speed);
         let wanted = self.nav.tick(world, &caps, &mover)?;
+        if caps.evaluator == Evaluator::Fly
+            || (matches!(caps.evaluator, Evaluator::Swim { .. }) || caps.evaluator.amphibious()) && self.in_water
+        {
+            self.pathing = true;
+            return Some((wanted - self.pos).normalize_or_zero());
+        }
         let (yaw, jump) = path::steer(world, self.pos, self.yaw, wanted, caps.step, caps.width)?;
         self.yaw = yaw;
         self.jump |= jump;
@@ -220,7 +244,8 @@ impl Mob {
         hunting: bool,
         rng: &mut Rng,
     ) -> Option<DVec3> {
-        if !self.kind.walks_paths() {
+        let caps = self.caps(hunting);
+        if !self.kind.walks_paths() && caps.evaluator == Evaluator::Walk {
             let flat = (goal - self.pos) * DVec3::new(1.0, 0.0, 1.0);
             return Some(flat.normalize_or(DVec3::X));
         }
@@ -228,8 +253,11 @@ impl Mob {
         // Airborne with nothing to follow: `createPath` would fail and cost
         // the 15-tick penalty, which a mob spawned this tick (not yet marked
         // on the ground) must not pay.
-        let airborne = !self.on_ground && !self.in_water && self.riding.is_none();
-        if airborne && self.nav.is_done() {
+        let airborne = !caps.evaluator.can_update(&self.mover(speed), caps.can_float);
+        // A spider pressed against a wall keeps its wanted position while it
+        // climbs (`Spider.onClimbable` follows the horizontal collision).
+        let climbing = matches!(self.kind, MobKind::Spider | MobKind::CaveSpider) && self.blocked;
+        if airborne && self.nav.is_done() && !climbing {
             return None;
         }
         // `MeleeAttackGoal.canUse` retries an unseen target every 20 ticks
@@ -240,6 +268,9 @@ impl Mob {
             && self.pathed.is_none_or(|p| goal.distance_squared(p) >= 1.0 || rng.next_f32() < 0.05)
         {
             self.pathed = Some(goal);
+            if matches!(self.kind, MobKind::Spider | MobKind::CaveSpider) {
+                self.nav.climb_target = Some(goal.floor().as_ivec3());
+            }
             self.repath_in = 4 + rng.next_int(7) as i32;
             let d2 = self.pos.distance_squared(goal);
             if d2 > 1024.0 {
@@ -257,6 +288,8 @@ impl Mob {
         if let Some(dir) = self.follow_path(world, speed, hunting) {
             return Some(dir);
         }
+        // `WallClimberNavigation`: past the path's end, keep pushing toward
+        // the destination so the horizontal collision starts a climb.
         if matches!(self.kind, MobKind::Spider | MobKind::CaveSpider) {
             let flat = (goal - self.pos) * DVec3::new(1.0, 0.0, 1.0);
             if flat.length_squared() > (self.shape().half_width * 2.0).powi(2) {
@@ -269,6 +302,7 @@ impl Mob {
     /// Forget the pursuit so the next chase plans afresh.
     pub(crate) fn stop_navigation(&mut self) {
         self.nav.stop();
+        self.nav.climb_target = None;
         self.pathed = None;
         self.repath_in = 0;
     }
@@ -276,6 +310,15 @@ impl Mob {
     /// `Mob.getWalkTargetValue`: animals favour grass and light, monsters
     /// darkness, everyone else is indifferent.
     fn walk_value<W: MobWorld + ?Sized>(&self, world: &W, ctx: &Ctx, p: IVec3) -> f32 {
+        if self.kind == MobKind::Strider {
+            if world.block(p).is_some_and(Block::is_lava) {
+                return 10.0;
+            }
+            if world.block(self.pos.floor().as_ivec3()).is_some_and(Block::is_lava) {
+                return f32::NEG_INFINITY;
+            }
+            return 0.0;
+        }
         let animal = self.kind.is_animal();
         if !animal && !self.kind.is_hostile() {
             return 0.0;
@@ -309,7 +352,9 @@ impl Mob {
             let dy = rng.next_int((2 * v + 1) as u32) as i32 - v;
             let dz = rng.next_int((2 * h + 1) as u32) as i32 - h;
             let mut p = (self.pos + IVec3::new(dx, dy, dz).as_dvec3()).floor().as_ivec3();
-            if !(crate::world::chunk::WORLD_MIN_Y..=319).contains(&p.y) || !stable(world, p) {
+            if !(crate::world::chunk::WORLD_MIN_Y..=319).contains(&p.y)
+                || !(self.kind == MobKind::Strider && world.block(p).is_some_and(Block::is_lava) || stable(world, p))
+            {
                 continue;
             }
             if land {
@@ -347,10 +392,26 @@ impl Mob {
     /// Mobs idle for 100 ticks (`noActionTime`: no player within 32 blocks
     /// and unhurt) stop strolling.
     pub(crate) fn try_stroll<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, rng: &mut Rng) -> bool {
-        if self.idle >= 5.0 || !self.on_ground && !self.in_water {
+        if self.idle >= 5.0
+            || !self.caps(false).evaluator.can_update(&self.mover(self.kind.wander_speed()), self.caps(false).can_float)
+        {
             return false;
         }
-        let Some(goal) = self.stroll_target(world, ctx, rng) else { return false };
+        let Some(goal) = (if self.kind == MobKind::Parrot {
+            (0..10).find_map(|_| {
+                let p = self.pos.floor().as_ivec3()
+                    + IVec3::new(
+                        rng.next_int(21) as i32 - 10,
+                        rng.next_int(15) as i32 - 7,
+                        rng.next_int(21) as i32 - 10,
+                    );
+                (world.block(p) == Some(Block::AIR)).then_some(p)
+            })
+        } else {
+            self.stroll_target(world, ctx, rng)
+        }) else {
+            return false;
+        };
         let speed = self.kind.wander_speed();
         if self.walk_to(world, goal, 1, speed, false) {
             self.ai = Ai::Wander;

@@ -742,8 +742,10 @@ pass. Work items, each with Java 26.3 fixtures and acceptance cases:
    *Ground navigation implemented, unverified* ([evidence](verification/2026-10-14-mob-navigation.md)):
    `WalkNodeEvaluator`, `PathFinder` and `PathNavigation` ported from 26.3 with
    per-mob costs; chasers, villagers, strolls, panics and following animals walk
-   paths, and non-swimmers sink in water. Swim/fly/climb evaluators, block-update
-   recomputation and player acceptance remain.
+   paths, and non-swimmers sink in water. Swim, amphibious and fly evaluators,
+   wall climbing and block-update recomputation followed
+   ([evidence](verification/2026-10-14-mob-navigation-swim-fly.md)); strider
+   lava paths and player acceptance remain.
 3. **MOB-01 spawn rules:** Java's `NaturalSpawner` placement, 24/128-block
    ring, per-category caps scaled by loaded chunks, despawn distances and
    persistence, structure spawn overrides, and the slime/drowned paths folded in.

@@ -1,4 +1,4 @@
-//! Java 26.3 ground pathfinding: `WalkNodeEvaluator` path types and neighbours,
+//! Java 26.3 ground, swimming, amphibious and flying pathfinding: `WalkNodeEvaluator` path types and neighbours,
 //! `PathFinder`'s A* search and `PathNavigation`/`GroundPathNavigation` path
 //! following, with `MoveControl`'s turn-and-jump steering in [`steer`].
 //!
@@ -27,7 +27,37 @@ use glam::{DVec3, IVec3};
 use super::MobWorld;
 use crate::physics::{self, BlockSource};
 use crate::world::block::{Block, RenderKind, STATE_CAPACITY, Shaped};
-use crate::world::chunk::WORLD_MIN_Y;
+use crate::world::chunk::{WORLD_MAX_Y, WORLD_MIN_Y};
+
+/// The evaluator and navigation selected by a mob's Java `createNavigation`.
+/// These are transient capabilities, never saved identifiers.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Evaluator {
+    #[default]
+    Walk,
+    Swim {
+        breaching: bool,
+    },
+    Amphibious {
+        shallow: bool,
+    },
+    Fly,
+}
+
+impl Evaluator {
+    pub(crate) fn amphibious(self) -> bool {
+        matches!(self, Self::Amphibious { .. })
+    }
+
+    pub fn can_update(self, mover: &Mover, can_float: bool) -> bool {
+        match self {
+            Self::Walk => mover.can_update(),
+            Self::Swim { breaching } => breaching || mover.in_water,
+            Self::Amphibious { .. } => true,
+            Self::Fly => can_float && mover.in_water || !mover.riding,
+        }
+    }
+}
 
 /// Java's `PathType`, in its ordinal order (iteration order matters when a
 /// mob's box covers cells of equal cost).
@@ -148,6 +178,7 @@ impl Malus {
 /// mob attributes the search reads).
 #[derive(Clone, Copy, Debug)]
 pub struct Caps {
+    pub evaluator: Evaluator,
     /// Collision box width and height (Java's `getBbWidth`/`getBbHeight`).
     pub width: f32,
     pub height: f32,
@@ -173,6 +204,7 @@ impl Caps {
     /// A default 0.6 x 1.8-ish mob with Java's base values.
     pub fn new(width: f32, height: f32) -> Self {
         Self {
+            evaluator: Evaluator::Walk,
             width,
             height,
             step: 0.6,
@@ -196,6 +228,14 @@ impl Caps {
     }
 
     fn malus(&self, t: PathType) -> f32 {
+        if self.evaluator.amphibious() {
+            match t {
+                PathType::Water => return 0.0,
+                PathType::Walkable => return 6.0,
+                PathType::WaterBorder => return 4.0,
+                _ => {}
+            }
+        }
         self.malus.get(t)
     }
 }
@@ -441,6 +481,43 @@ fn manhattan(a: IVec3, b: IVec3) -> f32 {
 const HORIZONTAL: [(IVec3, usize); 4] =
     [(IVec3::new(0, 0, -1), 2), (IVec3::new(1, 0, 0), 3), (IVec3::new(0, 0, 1), 0), (IVec3::new(-1, 0, 0), 1)];
 
+// Java Direction.values() and FlyNodeEvaluator's insertion order.
+const DIRECTIONS: [IVec3; 6] = [IVec3::NEG_Y, IVec3::Y, IVec3::NEG_Z, IVec3::Z, IVec3::NEG_X, IVec3::X];
+const FLY_DIRECTIONS: [(i32, i32, i32); 26] = [
+    (0, 0, 1),
+    (-1, 0, 0),
+    (1, 0, 0),
+    (0, 0, -1),
+    (0, 1, 0),
+    (0, -1, 0),
+    (0, 1, 1),
+    (-1, 1, 0),
+    (1, 1, 0),
+    (0, 1, -1),
+    (0, -1, 1),
+    (-1, -1, 0),
+    (1, -1, 0),
+    (0, -1, -1),
+    (1, 0, -1),
+    (1, 0, 1),
+    (-1, 0, -1),
+    (-1, 0, 1),
+    (1, 1, -1),
+    (1, 1, 1),
+    (-1, 1, -1),
+    (-1, 1, 1),
+    (1, -1, -1),
+    (1, -1, 1),
+    (-1, -1, -1),
+    (-1, -1, 1),
+];
+
+fn water_pathfindable(b: Block) -> bool {
+    // WATER's base BlockBehaviour rule is fluid water and no blocking solid;
+    // shaped blocks override it to false, just as for LAND.
+    b.holds_water() && pathfindable_on_land(b)
+}
+
 /// A collision box, keyed by its exact bits for Java's per-search cache.
 type BoxKey = [u64; 6];
 
@@ -501,13 +578,66 @@ impl<'a, W: BlockSource + ?Sized> Search<'a, W> {
         t
     }
 
+    /// Each evaluator's `getPathType` before the inherited volume/door rules.
+    fn cell_type(&self, p: IVec3) -> PathType {
+        let raw = state_type(self.world.block(p));
+        if self.caps.evaluator.amphibious() && raw == PathType::Water {
+            return if DIRECTIONS.iter().any(|d| state_type(self.world.block(p + *d)) == PathType::Blocked) {
+                PathType::WaterBorder
+            } else {
+                PathType::Water
+            };
+        }
+        if self.caps.evaluator != Evaluator::Fly {
+            return static_type(self.world, p);
+        }
+        let mut t = raw;
+        if t == PathType::Open && p.y > WORLD_MIN_Y {
+            t = match state_type(self.world.block(p - IVec3::Y)) {
+                PathType::Fire | PathType::Lava => PathType::Fire,
+                PathType::Damaging => PathType::Damaging,
+                PathType::Cocoa => PathType::Cocoa,
+                PathType::Fence if p - IVec3::Y != self.block_pos => PathType::Fence,
+                PathType::Fence => PathType::Open,
+                PathType::Walkable | PathType::Open | PathType::Water => PathType::Open,
+                _ => PathType::Walkable,
+            };
+        }
+        if matches!(t, PathType::Open | PathType::Walkable) { neighbour_type(self.world, p, t) } else { t }
+    }
+
+    /// `SwimNodeEvaluator.getPathTypeOfMob`: water volume, surface breach,
+    /// and WATER pathfindability (waterlogged solids do not admit a fish).
+    fn swim_type(&self, p: IVec3) -> PathType {
+        let mut last = None;
+        for dx in 0..self.entity_w {
+            for dy in 0..self.entity_h {
+                for dz in 0..self.entity_w {
+                    let q = p + IVec3::new(dx, dy, dz);
+                    let Some(b) = self.world.block(q) else { return PathType::Blocked };
+                    if b == Block::AIR && self.world.block(q - IVec3::Y).is_some_and(water_pathfindable) {
+                        return PathType::Breach;
+                    }
+                    if !b.holds_water() {
+                        return PathType::Blocked;
+                    }
+                    last = Some(b);
+                }
+            }
+        }
+        if last.is_some_and(water_pathfindable) { PathType::Water } else { PathType::Blocked }
+    }
+
     /// `getPathTypeOfMob`: the cells the mob's box would cover from this corner.
     fn type_of_mob(&self, p: IVec3) -> PathType {
+        if matches!(self.caps.evaluator, Evaluator::Swim { .. }) {
+            return self.swim_type(p);
+        }
         let mut set = 0u32;
         for dx in 0..self.entity_w {
             for dy in 0..self.entity_h {
                 for dz in 0..self.entity_w {
-                    let mut t = static_type(self.world, p + IVec3::new(dx, dy, dz));
+                    let mut t = self.cell_type(p + IVec3::new(dx, dy, dz));
                     if t == PathType::DoorWoodClosed && self.caps.can_open_doors && self.caps.can_pass_doors {
                         t = PathType::WalkableDoor;
                     }
@@ -548,7 +678,7 @@ impl<'a, W: BlockSource + ?Sized> Search<'a, W> {
                 highest = t;
             }
         }
-        let own = static_type(self.world, p);
+        let own = self.cell_type(p);
         if self.entity_w > 1 {
             let cheaper = self.caps.malus(own) < highest_cost;
             if cheaper && self.caps.malus(PathType::BigMobsCloseToDanger) < highest_cost {
@@ -564,7 +694,9 @@ impl<'a, W: BlockSource + ?Sized> Search<'a, W> {
     }
 
     fn floor(&self, p: IVec3) -> f64 {
-        if self.caps.can_float && self.world.block(p).is_some_and(|b| b.holds_water()) {
+        if (self.caps.can_float || self.caps.evaluator.amphibious())
+            && self.world.block(p).is_some_and(|b| b.holds_water())
+        {
             p.y as f64 + 0.5
         } else {
             floor_level(self.world, p)
@@ -600,6 +732,16 @@ impl<'a, W: BlockSource + ?Sized> Search<'a, W> {
     /// `WalkNodeEvaluator.getStart`.
     fn start(&mut self) -> u32 {
         let pos = self.start.pos;
+        if matches!(self.caps.evaluator, Evaluator::Swim { .. })
+            || self.caps.evaluator.amphibious() && self.start.in_water
+        {
+            let p =
+                IVec3::new(self.bb.0.x.floor() as i32, (self.bb.0.y + 0.5).floor() as i32, self.bb.0.z.floor() as i32);
+            return self.start_node(p);
+        }
+        if self.caps.evaluator == Evaluator::Fly {
+            return self.fly_start();
+        }
         let (x, z) = (pos.x.floor() as i32, pos.z.floor() as i32);
         let mut y = pos.y.floor() as i32;
         let column = |y: i32| IVec3::new(x, y, z);
@@ -640,9 +782,104 @@ impl<'a, W: BlockSource + ?Sized> Search<'a, W> {
         self.start_node(feet)
     }
 
+    fn fly_start(&mut self) -> u32 {
+        let mut p = (self.start.pos + DVec3::Y * 0.5).floor().as_ivec3();
+        if self.caps.can_float && self.start.in_water {
+            p.y = self.block_pos.y;
+            while p.y < WORLD_MAX_Y && self.world.block(p).is_some_and(|b| b.is_water()) {
+                p.y += 1;
+            }
+        }
+        if self.caps.malus(self.cached_type(p)) >= 0.0 {
+            return self.start_node(p);
+        }
+        let (min, max) = self.bb;
+        for (x, z) in [(min.x, min.z), (min.x, max.z), (max.x, min.z), (max.x, max.z)] {
+            let q = IVec3::new(x.floor() as i32, self.block_pos.y, z.floor() as i32);
+            let t = self.cached_type(q);
+            if self.caps.malus(t) >= 0.0 {
+                return self.start_node(q);
+            }
+        }
+        self.start_node(p)
+    }
+
+    /// Swim/fly accepted nodes retain Java's repeated cost-to-max increments.
+    fn volume_node(&mut self, p: IVec3) -> Option<u32> {
+        if !(WORLD_MIN_Y..WORLD_MAX_Y).contains(&p.y) {
+            return None;
+        }
+        let t = self.cached_type(p);
+        let cost = self.caps.malus(t);
+        if cost < 0.0 {
+            return None;
+        }
+        if let Evaluator::Swim { breaching } = self.caps.evaluator
+            && t != PathType::Water
+            && !(breaching && t == PathType::Breach)
+        {
+            return None;
+        }
+        let n = self.update_cost_to_max(p, t, cost);
+        if self.caps.evaluator == Evaluator::Fly && t == PathType::Walkable {
+            self.nodes[n as usize].cost += 1.0;
+        } else if matches!(self.caps.evaluator, Evaluator::Swim { .. })
+            && self.world.block(p).is_some_and(|b| !b.is_fluid() && !b.is_waterlogged())
+        {
+            self.nodes[n as usize].cost += 8.0;
+        }
+        Some(n)
+    }
+
+    fn volume_neighbours(&mut self, current: u32, out: &mut Vec<u32>) {
+        let p = self.nodes[current as usize].pos;
+        if matches!(self.caps.evaluator, Evaluator::Swim { .. }) {
+            let mut straight = [None; 6];
+            for (i, d) in DIRECTIONS.iter().enumerate() {
+                straight[i] = self.volume_node(p + *d);
+                if let Some(n) = straight[i]
+                    && !self.nodes[n as usize].closed
+                {
+                    out.push(n);
+                }
+            }
+            for (d, _) in HORIZONTAL {
+                let (e, _) = clockwise(d);
+                if [d, e].iter().all(|a| {
+                    let i = DIRECTIONS.iter().position(|b| a == b).unwrap();
+                    straight[i].is_some_and(|n| self.nodes[n as usize].cost >= 0.0)
+                }) && let Some(n) = self.volume_node(p + d + e)
+                    && !self.nodes[n as usize].closed
+                {
+                    out.push(n);
+                }
+            }
+            return;
+        }
+        let mut accepted = [None; 26];
+        for (i, &(x, y, z)) in FLY_DIRECTIONS.iter().enumerate() {
+            let d = IVec3::new(x, y, z);
+            accepted[i] = self.volume_node(p + d);
+            let Some(n) = accepted[i] else { continue };
+            // Every nonzero proper component must be accepted, so diagonals
+            // never cut a blocked edge or corner. Components may be closed.
+            let valid = FLY_DIRECTIONS[..i].iter().enumerate().all(|(j, &(a, b, c))| {
+                let sub = (a == 0 || a == x) && (b == 0 || b == y) && (c == 0 || c == z);
+                !sub || accepted[j].is_some_and(|n| self.nodes[n as usize].cost >= 0.0)
+            });
+            if valid && !self.nodes[n as usize].closed {
+                out.push(n);
+            }
+        }
+    }
+
     /// `getNeighbors`: up to four straight and four diagonal moves.
     fn neighbours(&mut self, current: u32, out: &mut Vec<u32>) {
         out.clear();
+        if matches!(self.caps.evaluator, Evaluator::Swim { .. } | Evaluator::Fly) {
+            self.volume_neighbours(current, out);
+            return;
+        }
         let pos = self.nodes[current as usize].pos;
         let above = self.cached_type(pos + IVec3::Y);
         let here = self.cached_type(pos);
@@ -670,6 +907,27 @@ impl<'a, W: BlockSource + ?Sized> Search<'a, W> {
                 let node = &self.nodes[n as usize];
                 if !node.closed && node.ty != PathType::WalkableDoor && node.cost >= 0.0 {
                     out.push(n);
+                }
+            }
+        }
+        if self.caps.evaluator.amphibious() {
+            for (d, j) in [(IVec3::Y, (jump - 1).max(0)), (-IVec3::Y, jump)] {
+                if d.y < 0 && here == PathType::Trapdoor {
+                    continue;
+                }
+                if let Some(n) = self.accepted(pos + d, j, floor, d, here)
+                    && self.neighbour_valid(n, current)
+                    && self.nodes[n as usize].ty == PathType::Water
+                {
+                    out.push(n);
+                }
+            }
+            if self.caps.evaluator == (Evaluator::Amphibious { shallow: true }) {
+                for &n in out.iter() {
+                    let n = &mut self.nodes[n as usize];
+                    if n.ty == PathType::Water && n.pos.y < crate::world::terrain::SEA_LEVEL - 10 {
+                        n.cost += 1.0;
+                    }
                 }
             }
         }
@@ -737,7 +995,7 @@ impl<'a, W: BlockSource + ?Sized> Search<'a, W> {
         {
             best = None;
         }
-        if t == PathType::Walkable {
+        if t == PathType::Walkable || self.caps.evaluator.amphibious() && t == PathType::Water {
             return best;
         }
         if best.is_none_or(|b| self.nodes[b as usize].cost < 0.0)
@@ -746,7 +1004,7 @@ impl<'a, W: BlockSource + ?Sized> Search<'a, W> {
             && !matches!(t, PathType::UnpassableRail | PathType::Trapdoor | PathType::PowderSnow)
         {
             self.jump_on(p, jump, height, dir, current)
-        } else if t == PathType::Water && !self.caps.can_float {
+        } else if t == PathType::Water && !self.caps.can_float && !self.caps.evaluator.amphibious() {
             self.first_non_water_below(p, best)
         } else if t == PathType::Open {
             Some(self.first_ground_below(p))
@@ -1148,6 +1406,13 @@ pub struct Navigation {
     pub speed: f64,
     /// Skeletons by day: cut the path where it leaves shade (`RestrictSunGoal`).
     pub avoid_sun: bool,
+    evaluator: Evaluator,
+    height: f32,
+    /// Java `WallClimberNavigation.pathToPosition` (not a climb graph).
+    pub climb_target: Option<IVec3>,
+    last_recompute: i64,
+    delayed_recompute: bool,
+    block_revision: u64,
 }
 
 impl Navigation {
@@ -1181,8 +1446,10 @@ impl Navigation {
         reach: i32,
     ) -> Option<Path> {
         world.block(target)?;
-        let target = surface_target(world, target);
-        if mover.pos.y < WORLD_MIN_Y as f64 || !mover.can_update() {
+        let target = if caps.evaluator == Evaluator::Walk { surface_target(world, target) } else { target };
+        self.evaluator = caps.evaluator;
+        self.height = caps.height;
+        if mover.pos.y < WORLD_MIN_Y as f64 || !caps.evaluator.can_update(mover, caps.can_float) {
             return None;
         }
         if let Some(path) = &self.path
@@ -1250,6 +1517,13 @@ impl Navigation {
     }
 
     fn temp_pos<W: BlockSource + ?Sized>(&self, world: &W, mover: &Mover) -> DVec3 {
+        match self.evaluator {
+            Evaluator::Fly => return mover.pos,
+            Evaluator::Swim { .. } | Evaluator::Amphibious { .. } => {
+                return mover.pos + DVec3::Y * self.height as f64 * 0.5;
+            }
+            Evaluator::Walk => {}
+        }
         let y = if mover.floating {
             let mut surface = mover.pos.y.floor() as i32;
             let (x, z) = (mover.pos.x.floor() as i32, mover.pos.z.floor() as i32);
@@ -1272,12 +1546,36 @@ impl Navigation {
 
     /// `PathNavigation.tick`: advance along the path and return where
     /// `MoveControl` should head this tick.
-    pub fn tick<W: BlockSource + ?Sized>(&mut self, world: &W, caps: &Caps, mover: &Mover) -> Option<DVec3> {
+    pub fn tick<W: MobWorld + ?Sized>(&mut self, world: &W, caps: &Caps, mover: &Mover) -> Option<DVec3> {
         self.tick += 1;
-        if self.is_done() {
-            return None;
+        let (revision, overflow) = world.navigation_updates(self.block_revision, &mut |p| {
+            if self.should_recompute_path(p, mover.pos) {
+                self.delayed_recompute = true;
+            }
+        });
+        self.block_revision = revision;
+        if overflow && !self.is_done() {
+            self.delayed_recompute = true;
         }
-        if mover.can_update() {
+        if self.delayed_recompute {
+            self.recompute_path(world, caps, mover);
+        }
+        if self.is_done() {
+            return self.climb_target.and_then(|p| {
+                let center = p.as_dvec3() + DVec3::splat(0.5);
+                let width2 = (caps.width as f64).powi(2);
+                if mover.pos.distance_squared(center) < width2
+                    || mover.pos.y > p.y as f64
+                        && (center.with_y(mover.pos.y.floor() + 0.5) - mover.pos).length_squared() < width2
+                {
+                    self.climb_target = None;
+                    None
+                } else {
+                    Some(p.as_dvec3())
+                }
+            });
+        }
+        if caps.evaluator.can_update(mover, caps.can_float) {
             self.follow(world, caps, mover);
         } else if !self.is_done() {
             let at = self.temp_pos(world, mover);
@@ -1290,10 +1588,34 @@ impl Navigation {
         let path = self.path.as_ref().filter(|p| !p.is_done())?;
         let mut wanted = path.entity_pos(path.next, caps.width);
         let cell = wanted.floor().as_ivec3();
-        if !world.block(cell - IVec3::Y).is_some_and(|b| b == Block::AIR) {
+        if caps.evaluator == Evaluator::Walk && !world.block(cell - IVec3::Y).is_some_and(|b| b == Block::AIR) {
             wanted.y = floor_level(world, cell);
         }
         Some(wanted)
+    }
+
+    /// Java's midpoint sphere test; no scan of every path node per edit.
+    pub fn should_recompute_path(&self, changed: IVec3, mob_pos: DVec3) -> bool {
+        if self.delayed_recompute {
+            return false;
+        }
+        let Some(path) = self.path.as_ref().filter(|p| !p.is_done()) else { return false };
+        let Some(end) = path.end() else { return false };
+        let middle = (end.as_dvec3() + mob_pos) * 0.5;
+        let remaining = (path.nodes.len() - path.next) as f64;
+        (changed.as_dvec3() + DVec3::splat(0.5)).distance_squared(middle) < remaining * remaining
+    }
+
+    /// `recomputePath`: coalesce edits and search at most once per 21 ticks.
+    pub fn recompute_path<W: BlockSource + ?Sized>(&mut self, world: &W, caps: &Caps, mover: &Mover) {
+        if self.tick - self.last_recompute <= 20 || !caps.evaluator.can_update(mover, caps.can_float) {
+            self.delayed_recompute = true;
+        } else if let Some(target) = self.target {
+            self.path = None;
+            self.path = self.create_path(world, caps, mover, target, self.reach);
+            self.last_recompute = self.tick;
+            self.delayed_recompute = false;
+        }
     }
 
     /// `followThePath` and `doStuckDetection`.
@@ -1306,7 +1628,8 @@ impl Navigation {
         let dx = (mover.pos.x - (node.pos.x as f64 + 0.5)).abs();
         let dy = (mover.pos.y - node.pos.y as f64).abs();
         let dz = (mover.pos.z - (node.pos.z as f64 + 0.5)).abs();
-        let close = dx < max && dz < max && dy < 1.0;
+        let vertical = if matches!(caps.evaluator, Evaluator::Swim { .. }) { 0.5 } else { 1.0 };
+        let close = dx < max && dz < max && dy < vertical;
         if close || can_cut_corner(node.ty) && next_in_direction(path, at, caps.width) {
             path.next += 1;
         }
@@ -1437,6 +1760,158 @@ mod tests {
 
     fn cells(p: &Path) -> Vec<IVec3> {
         p.nodes.iter().map(|n| n.pos).collect()
+    }
+
+    fn tank() -> World {
+        let mut w = flat();
+        for x in -10..=15 {
+            for z in -10..=10 {
+                for y in 1..=6 {
+                    w.0.set(IVec3::new(x, y, z), Block::WATER);
+                }
+            }
+        }
+        w
+    }
+
+    fn swimmer() -> Caps {
+        let mut c = Caps::new(0.5, 0.4).follow_range(32.0);
+        c.evaluator = Evaluator::Swim { breaching: false };
+        c.malus = c.malus.with(PathType::Water, 0.0);
+        c
+    }
+
+    #[test]
+    fn fish_route_around_an_underwater_wall_without_leaving_water() {
+        let mut w = tank();
+        for y in 1..=6 {
+            for z in -2..=2 {
+                w.0.set(IVec3::new(3, y, z), Block::STONE);
+            }
+        }
+        let p = find_path(
+            &w,
+            &swimmer(),
+            Start { pos: DVec3::new(0.5, 3.0, 0.5), on_ground: false, in_water: true },
+            &[IVec3::new(7, 3, 0)],
+            0,
+        )
+        .unwrap();
+        assert!(p.reached);
+        assert!(p.nodes.iter().any(|n| n.pos.z.abs() >= 3));
+        assert!(p.nodes.iter().all(|n| n.ty == PathType::Water && w.block(n.pos) == Some(Block::WATER)));
+    }
+
+    #[test]
+    fn only_dolphins_accept_surface_breaches_and_pay_the_air_cost() {
+        let mut w = tank();
+        // Open the tank's stone lid above the start column.
+        w.0.set(IVec3::new(0, 7, 0), Block::AIR);
+        w.0.set(IVec3::new(0, 8, 0), Block::AIR);
+        let start = Start { pos: DVec3::new(0.5, 6.0, 0.5), on_ground: false, in_water: true };
+        let mut c = swimmer();
+        let mut search = Search::new(&w, &c, start);
+        assert_eq!(search.cached_type(IVec3::new(0, 7, 0)), PathType::Breach);
+        assert!(search.volume_node(IVec3::new(0, 7, 0)).is_none());
+        c.evaluator = Evaluator::Swim { breaching: true };
+        let mut search = Search::new(&w, &c, start);
+        let n = search.volume_node(IVec3::new(0, 7, 0)).unwrap();
+        assert_eq!(search.nodes[n as usize].cost, 12.0);
+        assert!(search.volume_node(IVec3::new(0, 8, 0)).is_none(), "air without water below is blocked");
+    }
+
+    #[test]
+    fn swimmers_check_their_whole_volume_and_waterlogged_solids() {
+        let mut w = tank();
+        let mut c = swimmer();
+        c.width = 1.2;
+        let start = Start { pos: DVec3::new(0.5, 3.0, 0.5), on_ground: false, in_water: true };
+        w.0.set(IVec3::new(1, 3, 0), Block::STONE);
+        assert_eq!(Search::new(&w, &c, start).cached_type(IVec3::new(0, 3, 0)), PathType::Blocked);
+    }
+
+    #[test]
+    fn amphibians_swim_vertically_and_keep_water_border_and_land_costs() {
+        let w = tank();
+        let mut c = swimmer();
+        c.evaluator = Evaluator::Amphibious { shallow: false };
+        let start = Start { pos: DVec3::new(0.5, 2.0, 0.5), on_ground: false, in_water: true };
+        let p = find_path(&w, &c, start, &[IVec3::new(0, 5, 0)], 0).unwrap();
+        assert!(p.reached);
+        assert_eq!(p.nodes.len(), 4);
+        let mut search = Search::new(&w, &c, start);
+        assert_eq!(search.cached_type(IVec3::new(0, 1, 0)), PathType::WaterBorder);
+        assert_eq!(c.malus(PathType::Walkable), 6.0);
+        assert_eq!(c.malus(PathType::WaterBorder), 4.0);
+    }
+
+    #[test]
+    fn parrots_fly_across_air_and_cannot_cut_blocked_corners() {
+        let mut w = World(Grid::flat(-64));
+        let mut c = Caps::new(0.5, 0.9);
+        c.evaluator = Evaluator::Fly;
+        let start = Start { pos: DVec3::new(0.5, 3.0, 0.5), on_ground: false, in_water: false };
+        let p = find_path(&w, &c, start, &[IVec3::new(7, 5, 0)], 0).unwrap();
+        assert!(p.reached);
+        assert!(p.nodes.iter().all(|n| n.pos.y >= 3));
+        w.0.set(IVec3::new(1, 3, 0), Block::STONE);
+        let mut search = Search::new(&w, &c, start);
+        let from = search.start();
+        let mut next = Vec::new();
+        search.neighbours(from, &mut next);
+        assert!(
+            !next.iter().any(|n| search.nodes[*n as usize].pos == IVec3::new(1, 4, 1)),
+            "three-axis diagonal must check all six components"
+        );
+    }
+
+    #[test]
+    fn recomputation_uses_midpoint_radius_and_coalesces_for_twenty_ticks() {
+        let mut w = flat();
+        let c = zombie();
+        let mover = Mover {
+            pos: DVec3::new(0.5, 64.0, 0.5),
+            on_ground: true,
+            in_water: false,
+            floating: false,
+            riding: false,
+            speed: 2.0,
+        };
+        let mut nav = Navigation::default();
+        assert!(nav.walk_to(&w, &c, &mover, IVec3::new(8, 64, 0), 0));
+        let changed = IVec3::new(4, 64, 0);
+        assert!(nav.should_recompute_path(changed, mover.pos));
+        assert!(!nav.should_recompute_path(IVec3::new(100, 64, 0), mover.pos));
+        w.0.set(changed, Block::STONE);
+        w.0.set(changed + IVec3::Y, Block::STONE);
+        nav.recompute_path(&w, &c, &mover);
+        assert!(nav.delayed_recompute);
+        for _ in 0..21 {
+            nav.tick(&w, &c, &mover);
+        }
+        assert!(!nav.delayed_recompute);
+        let p = nav.path.as_ref().unwrap();
+        assert!(p.reached);
+        assert!(!p.nodes.iter().any(|n| n.pos == changed));
+    }
+
+    #[test]
+    fn wall_climber_retains_an_unreachable_destination_until_it_gets_above_it() {
+        let w = flat();
+        let c = Caps::new(1.4, 0.9);
+        let mut nav = Navigation { climb_target: Some(IVec3::new(4, 4, 0)), ..Navigation::default() };
+        let mut mover = Mover {
+            pos: DVec3::new(0.5, 1.0, 0.5),
+            on_ground: true,
+            in_water: false,
+            floating: false,
+            riding: false,
+            speed: 2.0,
+        };
+        assert_eq!(nav.tick(&w, &c, &mover), Some(DVec3::new(4.0, 4.0, 0.0)));
+        mover.pos = DVec3::new(4.5, 7.0, 0.5);
+        assert!(nav.tick(&w, &c, &mover).is_none());
+        assert!(nav.climb_target.is_none());
     }
 
     #[test]

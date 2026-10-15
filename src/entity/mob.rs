@@ -2227,7 +2227,7 @@ impl Mob {
             self.hop_left = 0.5;
         }
         let target = wish.map_or(DVec3::ZERO, |d| d * speed);
-        if self.kind.is_aquatic() && self.in_water {
+        if (self.kind.is_aquatic() || matches!(self.kind, MobKind::Drowned | MobKind::Turtle)) && self.in_water {
             self.vel += (target - self.vel) * (dt * 3.0).min(1.0);
             let delta = self.vel * dt;
             let hit = physics::move_box(world, &mut self.pos, &mut self.vel, delta, shape);
@@ -2235,7 +2235,7 @@ impl Mob {
             self.blocked = hit.horizontal;
             return;
         }
-        if self.kind.is_aquatic() && self.on_ground && self.alive() {
+        if self.kind.is_aquatic() && self.kind != MobKind::Axolotl && self.on_ground && self.alive() {
             self.vel.y = 4.0;
             self.vel.x = self.yaw.cos() as f64 * 1.4;
             self.vel.z = self.yaw.sin() as f64 * 1.4;
