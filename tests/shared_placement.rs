@@ -37,6 +37,27 @@ fn slab_targeting_uses_the_half_height_and_the_actual_top_face() {
     assert!(world.raycast(above, DVec3::NEG_Y, f64::NAN).is_none());
 }
 
+#[test]
+fn cross_plant_empty_corners_do_not_hide_blocks_from_either_adapter() {
+    let (mut w, mut direct, _) = scene(Item::from_block(Block::DIRT));
+    // A sapling occupies x/z=2..14, y=0..12 and has no movement collision.
+    let plant = AT;
+    w.set_block(plant - IVec3::Y, Block::DIRT);
+    w.set_block(plant, Block::OAK_SAPLING);
+    let eye = DVec3::new(4.5, 146.1, 4.05);
+    direct.player.pos = eye - DVec3::Y * voxelcraft::player::EYE_HEIGHT;
+    direct.player.yaw = 0.;
+    direct.player.pitch = 0.;
+    let mut cli = Agent::new(direct.player.pos);
+    cli.session.player.yaw = 0.;
+    cli.session.player.pitch = 0.;
+    assert_eq!(w.raycast(eye, DVec3::X, 4.5), Some((WALL, IVec3::NEG_X)));
+    assert_eq!(direct.block_target(&w), cli.session.block_target(&w));
+    assert_eq!(direct.block_target(&w).unwrap().0, WALL);
+    let centre = DVec3::new(4.5, 146.5, 4.5);
+    assert_eq!(w.raycast(centre, DVec3::X, 4.5), Some((plant, IVec3::NEG_X)));
+}
+
 fn scene(item: Item) -> (World, PlayerSession, Entities) {
     scene_in(item, Dimension::Overworld)
 }

@@ -717,7 +717,7 @@ mod tests {
             assert_eq!(wood_id(i, 22).drop(), None, "only the lower half drops");
             assert_eq!(wood_id(i, 4).slab_base(), Some(w.planks()));
             assert_eq!(wood_id(i, 2).stairs_base(), Some(w.planks()));
-            assert!(wood_id(i, 4).borrows_light() && wood_id(i, 0).borrows_light());
+            assert!(wood_id(i, 4).uses_shape_for_light_occlusion() && wood_id(i, 0).uses_shape_for_light_occlusion());
             assert_eq!(wood_id(i, 5).shaped(), Some(Shaped::Fence));
             assert!(!crate::world::shape::item_shape(wood_id(i, 14)).is_empty());
         }

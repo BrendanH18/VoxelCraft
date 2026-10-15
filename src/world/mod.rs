@@ -39,6 +39,7 @@ pub mod furnace;
 pub mod gadgets;
 pub mod geode;
 mod growth;
+mod light_shape;
 pub(crate) mod lighting;
 pub mod mineshaft;
 pub mod nether;
@@ -78,9 +79,9 @@ use std::sync::Arc;
 use glam::{DVec3, IVec2, IVec3};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::mesh::{self, D, MARGIN, MeshData, MeshInput, NO_HEIGHT, Neighborhood, Region};
+use crate::mesh::{self, D, MARGIN, MeshData, MeshInput, NO_HEIGHT, Neighborhood, REGION_VOLUME, Region};
 use crate::workers::{Job, JobResult, Workers};
-use block::{Block, RenderKind};
+use block::Block;
 use chunk::{CHUNK_SIZE, CHUNK_SIZE_I, ChunkData, chunk_of, local_of};
 use terrain::Generator;
 
@@ -92,6 +93,8 @@ pub struct ChunkSlot {
     mesh_in_flight: bool,
     /// Authoritative block light; dark chunks allocate no light array.
     block_light: Option<lighting::BlockLight>,
+    /// Gameplay array changes invalidate meshes once per light pass.
+    light_mesh_dirty: bool,
     /// Authoritative skylight below the column heightmap; cells above it are
     /// implied sources. Absent until the column is lit, and for dark chunks.
     sky_light: Option<lighting::BlockLight>,
@@ -121,6 +124,8 @@ pub struct World {
     mesh_in_flight: usize,
     /// Chunks in mesh range that need (re)meshing.
     dirty: FxHashSet<IVec3>,
+    /// Geometry edits whose synchronous meshes await settled gameplay light.
+    sync_meshes: FxHashSet<IVec3>,
     load_list: Vec<IVec3>,
     load_cursor: usize,
     center: Option<IVec3>,
@@ -309,6 +314,7 @@ impl World {
                 meshed_version: None,
                 mesh_in_flight: in_flight,
                 block_light: None,
+                light_mesh_dirty: false,
                 sky_light: None,
             },
         );
@@ -371,6 +377,7 @@ impl World {
             gen_in_flight: FxHashSet::default(),
             mesh_in_flight: 0,
             dirty: FxHashSet::default(),
+            sync_meshes: FxHashSet::default(),
             load_list: Vec::new(),
             load_cursor: 0,
             center: None,
@@ -699,7 +706,7 @@ impl World {
 
         // Light reaches 15 blocks, plus 1 for the face-adjacent sample cell;
         // a heightmap change also re-exposes everything between old and new.
-        let reach = MARGIN as i32 + 1;
+        let reach = 16;
         let lo_y = p.y.min(old_h).min(new_h).max(self.min_y()) - reach;
         let hi_y = p.y.max(old_h).max(new_h) + reach;
         let rows = self.generator.dimension.chunk_rows();
@@ -724,7 +731,7 @@ impl World {
                     let Some(slot) = self.chunks.get_mut(&c) else { continue };
                     slot.version = slot.version.wrapping_add(1);
                     if sync && geometry(c) {
-                        self.remesh_now(c);
+                        self.sync_meshes.insert(c);
                     } else if self.in_mesh_range(c) {
                         self.dirty.insert(c);
                     }
@@ -771,12 +778,14 @@ impl World {
         let i = (l.x + l.z * CHUNK_SIZE_I) as usize;
         let Some(col) = self.columns.get(&key) else { return (p.y, p.y) };
         let old = col.heights[i] as i32;
-        let new = if block.light_opacity() > 0 {
-            old.max(p.y)
-        } else if p.y == old {
-            (self.min_y()..p.y)
+        let stop = block.sky_stop_height(p.y).unwrap_or(NO_HEIGHT as i32);
+        let new = if stop > old {
+            stop
+        } else if p.y >= old {
+            (self.min_y()..=p.y)
                 .rev()
-                .find(|&y| self.get_block(IVec3::new(p.x, y, p.z)).is_some_and(|b| b.light_opacity() > 0))
+                .filter_map(|y| self.get_block(p.with_y(y)).and_then(|b| b.sky_stop_height(y)))
+                .next()
                 .unwrap_or(NO_HEIGHT as i32)
         } else {
             old
@@ -799,7 +808,9 @@ impl World {
             })
     }
 
-    fn gather(&self, pos: IVec3) -> Box<MeshInput> {
+    /// Copy geometry and authoritative light for a CPU mesh job. Resolve pending
+    /// light first; complete surrounding columns are required for exact skylight.
+    pub fn mesh_input(&self, pos: IVec3) -> Box<MeshInput> {
         let mut neighbors: Neighborhood = Default::default();
         for dy in -1..=1 {
             for dz in -1..=1 {
@@ -811,20 +822,83 @@ impl World {
         }
         let cols: [Option<&Column>; 9] =
             std::array::from_fn(|i| self.columns.get(&IVec2::new(pos.x + i as i32 % 3 - 1, pos.z + i as i32 / 3 - 1)));
-        let mut heights = Box::new([NO_HEIGHT; D * D]);
-        for rz in 0..D {
-            let wz = rz as i32 - MARGIN as i32 + CHUNK_SIZE_I; // relative to the -1 column
-            let (cz, lz) = ((wz / CHUNK_SIZE_I) as usize, (wz % CHUNK_SIZE_I) as usize);
-            for rx in 0..D {
-                let wx = rx as i32 - MARGIN as i32 + CHUNK_SIZE_I;
-                let (cx, lx) = ((wx / CHUNK_SIZE_I) as usize, (wx % CHUNK_SIZE_I) as usize);
-                if let Some(col) = cols[cx + cz * 3] {
-                    heights[rx + rz * D] = col.heights[lx + lz * CHUNK_SIZE];
+        let slots: [Option<&ChunkSlot>; 27] = std::array::from_fn(|i| {
+            let i = i as i32;
+            self.chunks.get(&(pos + IVec3::new(i % 3 - 1, i / 9 - 1, i / 3 % 3 - 1)))
+        });
+        let mut light = Box::new([0; REGION_VOLUME]);
+        for ry in 0..D {
+            let wy = ry + CHUNK_SIZE - MARGIN;
+            let (cy, ly) = (wy / CHUNK_SIZE, wy % CHUNK_SIZE);
+            let world_y = pos.y * CHUNK_SIZE_I + ry as i32 - MARGIN as i32;
+            for rz in 0..D {
+                let wz = rz + CHUNK_SIZE - MARGIN;
+                let (cz, lz) = (wz / CHUNK_SIZE, wz % CHUNK_SIZE);
+                for rx in 0..D {
+                    let wx = rx + CHUNK_SIZE - MARGIN;
+                    let (cx, lx) = (wx / CHUNK_SIZE, wx % CHUNK_SIZE);
+                    let sky = if self.generator.dimension.has_skylight() {
+                        cols[cx + cz * 3].filter(|c| c.sky_lit).map_or(0, |c| {
+                            if world_y > i32::from(c.heights[lx + lz * CHUNK_SIZE]) {
+                                15
+                            } else {
+                                slots[cx + cz * 3 + cy * 9]
+                                    .and_then(|s| s.sky_light.as_ref())
+                                    .map_or(0, |l| l.get(lx, ly, lz))
+                            }
+                        })
+                    } else {
+                        0
+                    };
+                    let block = slots[cx + cz * 3 + cy * 9]
+                        .and_then(|s| s.block_light.as_ref())
+                        .map_or(0, |l| l.get(lx, ly, lz));
+                    light[rx + rz * D + ry * D * D] = sky | block << 4;
                 }
             }
         }
         let foliage = cols[4].and_then(|c| c.foliage.clone()).unwrap_or_else(|| Box::new([0; CHUNK_SIZE * CHUNK_SIZE]));
-        Box::new(MeshInput { neighbors, heights, base_y: pos.y * CHUNK_SIZE_I, min_y: self.min_y(), foliage })
+        Box::new(MeshInput { neighbors, light, base_y: pos.y * CHUNK_SIZE_I, min_y: self.min_y(), foliage })
+    }
+
+    /// A light snapshot can affect corner samples in adjacent chunks. Bump
+    /// versions after each light pass so in-flight older snapshots are discarded.
+    fn invalidate_light_meshes(&mut self) {
+        let changed: Vec<_> =
+            self.chunks.iter_mut().filter_map(|(&p, s)| std::mem::take(&mut s.light_mesh_dirty).then_some(p)).collect();
+        if !self.meshes_enabled || changed.is_empty() {
+            return;
+        }
+        let mut affected = FxHashSet::default();
+        for p in changed {
+            for y in -1..=1 {
+                for z in -1..=1 {
+                    for x in -1..=1 {
+                        affected.insert(p + IVec3::new(x, y, z));
+                    }
+                }
+            }
+        }
+        for p in affected {
+            if let Some(slot) = self.chunks.get_mut(&p) {
+                slot.version = slot.version.wrapping_add(1);
+                if self.in_mesh_range(p) {
+                    self.dirty.insert(p);
+                }
+            }
+        }
+    }
+
+    fn flush_sync_meshes(&mut self) {
+        if !self.light_settled() || self.sync_meshes.is_empty() {
+            return;
+        }
+        let pending = std::mem::take(&mut self.sync_meshes);
+        for &p in &pending {
+            self.remesh_now(p);
+        }
+        self.sync_meshes = pending;
+        self.sync_meshes.clear();
     }
 
     /// Build a ready chunk's mesh immediately and queue it for upload; defer unready chunks.
@@ -841,7 +915,7 @@ impl World {
             self.dirty.insert(pos);
             return;
         }
-        let input = self.gather(pos);
+        let input = self.mesh_input(pos);
         let mesh = mesh::build(&input, self.region.get_or_insert_with(Box::default));
         let slot = self.chunks.get_mut(&pos).unwrap();
         slot.meshed_version = Some(slot.version);
@@ -982,6 +1056,7 @@ impl World {
                 meshed_version: None,
                 mesh_in_flight: false,
                 block_light: None,
+                light_mesh_dirty: false,
                 sky_light: None,
             },
         );
@@ -1122,7 +1197,7 @@ impl World {
                     self.mesh_uploads.push((pos, MeshData::default()));
                     continue;
                 }
-                let input = self.gather(pos);
+                let input = self.mesh_input(pos);
                 let slot = self.chunks.get_mut(&pos).unwrap();
                 slot.mesh_in_flight = true;
                 self.mesh_in_flight += 1;
@@ -1151,16 +1226,11 @@ impl World {
     /// relative to the cell (low blocks and shaped blocks are smaller).
     pub fn outline(&self, p: IVec3) -> ([f32; 3], [f32; 3]) {
         let Some(b) = self.get_block(p) else { return ([0.0; 3], [1.0; 3]) };
-        if b.kind() == RenderKind::Shaped {
-            let neighbour = |f: block::Facing| self.get_block(p + f.offset()).unwrap_or(Block::AIR);
-            let below = self.get_block(p - IVec3::Y).unwrap_or(block::Block::AIR);
-            if let Some(bx) = shape::shape(b, neighbour, below).bounds() {
-                return (bx.min.map(|c| c as f32 / 16.0), bx.max.map(|c| c as f32 / 16.0));
-            }
-        }
-        // The outline follows the visual top, not the collision height (snow
-        // layers collide one layer lower, soul sand and mud sink under their top).
-        ([0.0; 3], [1.0, 1.0 - f32::from(b.top_drop()) / 16.0, 1.0])
+        let neighbour = |f: block::Facing| self.get_block(p + f.offset()).unwrap_or(Block::AIR);
+        let below = self.get_block(p - IVec3::Y).unwrap_or(Block::AIR);
+        shape::outline(b, neighbour, below).bounds().map_or(([0.0; 3], [1.0; 3]), |bx| {
+            (bx.min.map(|c| f32::from(c) / 16.0), bx.max.map(|c| f32::from(c) / 16.0))
+        })
     }
 
     /// Like [`World::raycast`], but also stops at water and lava sources
@@ -1209,18 +1279,7 @@ impl World {
                 && hits(b)
                 && cell.y >= self.min_y()
             {
-                if b.kind() != RenderKind::Shaped && b.top_drop() == 0 {
-                    return Some((cell, normal));
-                }
-                // Low cube forms (including bottom slabs) are selected at
-                // their visual top, not at the full voxel's boundary.
-                let intersection = if b.kind() == RenderKind::Shaped {
-                    crate::physics::ray_shape(self, cell, origin, dir)
-                } else {
-                    let lo = cell.as_dvec3();
-                    let height = 1.0 - f64::from(b.top_drop()) / 16.0;
-                    crate::physics::ray_aabb_face(origin, dir, lo, lo + DVec3::new(1.0, height, 1.0))
-                };
+                let intersection = crate::physics::ray_shape(self, cell, origin, dir);
                 if let Some((hit, face)) = intersection
                     && hit <= max_dist
                 {
