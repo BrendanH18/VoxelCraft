@@ -1222,7 +1222,7 @@ impl Block {
             return drop;
         }
         match self {
-            Block::DIRT_PATH => 1,
+            Block::DIRT_PATH | Block::FARMLAND | Block::WET_FARMLAND => 1,
             b if b.is_bed() => 7,
             b if b.carpet_color().is_some() => 15,
             b if b.is_slab() => 8,
@@ -1875,15 +1875,38 @@ impl Block {
             .or((name == "air").then_some(Block::AIR))
     }
 
-    /// Light opacity: propagation loses at least one level per step,
-    /// or this value if larger. 15 fully blocks light.
+    /// Whether Java's light engine compares this state's occlusion faces.
+    pub fn uses_shape_for_light_occlusion(self) -> bool {
+        shape_blocks_light(self.0)
+    }
+
+    /// Highest non-source sky cell contributed by this block. A bottom
+    /// slab's own cell sees sky; its bottom face stops sources below it.
+    pub fn sky_stop_height(self, y: i32) -> Option<i32> {
+        if self.light_opacity() > 0 {
+            Some(y)
+        } else if self.uses_shape_for_light_occlusion() {
+            if super::light_shape::full_face(self, 2) {
+                Some(y)
+            } else if super::light_shape::full_face(self, 3) {
+                Some(y - 1)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Light propagation loses at least one level per step, or this value
+    /// if larger. 15 fully blocks light.
     #[inline(always)]
     pub fn light_opacity(self) -> u8 {
         // SAFETY: same bound as `info`.
         unsafe { *LIGHT_OPACITY.get_unchecked(self.slot()) }
     }
 
-    /// Blocks light but doesn't fill its cell (slabs, stairs): lit like
+    /// Blocks light but doesn't fill its cell: lit like
     /// the brightest cell beside or above it.
     #[inline(always)]
     pub fn borrows_light(self) -> bool {
@@ -2329,8 +2352,8 @@ const fn make(id: u16) -> BlockInfo {
             let f = Facing::ALL[id as usize - 53];
             ("chest", Opaque, fronted(tex::CHEST_FRONT, tex::CHEST_SIDE, tex::CHEST_TOP, f))
         }
-        57 => ("farmland", Opaque, column(tex::DIRT, tex::FARMLAND, tex::DIRT)),
-        58 => ("wet farmland", Opaque, column(tex::DIRT, tex::WET_FARMLAND, tex::DIRT)),
+        57 => ("farmland", Cutout, column(tex::DIRT, tex::FARMLAND, tex::DIRT)),
+        58 => ("wet farmland", Cutout, column(tex::DIRT, tex::WET_FARMLAND, tex::DIRT)),
         59..=66 => ("wheat crops", Cross, all(tex::WHEAT_0 + (id - 59))),
         67 => ("oak sapling", Cross, all(tex::OAK_SAPLING)),
         68 => ("spruce sapling", Cross, all(tex::SPRUCE_SAPLING)),
@@ -2544,10 +2567,14 @@ pub static INFO: [BlockInfo; STATE_CAPACITY] = {
     arr
 };
 
-/// Slabs and stairs keep light out the way the original seven do. Walls,
-/// fences, gates and doors stay open.
+/// States whose occlusion geometry participates in Java light propagation.
 const fn shape_blocks_light(id: u16) -> bool {
-    if id == 900 {
+    // Mesh bit tests use 4094 as a stairs stand-in at the layer limit.
+    #[cfg(test)]
+    if id == 4094 {
+        return true;
+    }
+    if matches!(id, 57 | 58 | 900 | 1910 | 2516..=2522) {
         return true;
     }
     if let Some((_, 0..=4)) = super::nether_blocks::form(id) {
@@ -2601,13 +2628,12 @@ static LIGHT_OPACITY: [u8; STATE_CAPACITY] = {
     let mut i = 0;
     while i < STATE_CAPACITY {
         arr[i] = match INFO[i].kind {
+            // Eight snow layers have a full occlusion shape. Other dry
+            // partial blocks have zero dampening; their shared faces, rather
+            // than whole cells, block light (BlockBehaviour / LightEngine).
+            _ if i == 2522 => 15,
+            _ if shape_blocks_light(i as u16) => 0,
             RenderKind::Opaque => 15,
-            // Slabs and stairs keep the light out, like Minecraft's (they
-            // borrow light from their neighbours instead; see `borrows_light`).
-            _ if shape_blocks_light(i as u16) => 15,
-            // Mesh bit tests use 4094 as a stairs stand-in at the layer limit.
-            #[cfg(test)]
-            _ if i == 4094 => 15,
             // Kelp, seagrass and live coral dim light like the water they hold.
             _ if super::overworld_blocks::waterlogged(i as u16) => 1,
             RenderKind::Invisible | RenderKind::Cross | RenderKind::Shaped => 0,
@@ -2770,8 +2796,8 @@ mod tests {
         assert_eq!(gate.toggled(Facing::South).shaped(), Some(Shaped::Gate { facing: Facing::South, open: true }));
         let deepslate_slab = crate::world::forms::stone_id(10, 4);
         let dark_oak_stairs = crate::world::forms::wood_id(0, 0);
-        assert!(deepslate_slab.light_opacity() == 15 && deepslate_slab.borrows_light());
-        assert!(dark_oak_stairs.borrows_light() && dark_oak_stairs.best_tool() == Some(ToolKind::Axe));
+        assert!(deepslate_slab.light_opacity() == 0 && deepslate_slab.uses_shape_for_light_occlusion());
+        assert!(dark_oak_stairs.uses_shape_for_light_occlusion() && dark_oak_stairs.best_tool() == Some(ToolKind::Axe));
         assert_eq!(crate::world::forms::wood_id(0, 5).light_opacity(), 0);
         assert_eq!(Block::COBBLESTONE_WALL.light_opacity(), 0);
         assert_eq!(crate::world::forms::wood_id(6, 14).hardness(), 3.0);
@@ -2946,7 +2972,7 @@ mod tests {
             assert_eq!(slab.slab_base(), Some(base));
             assert_eq!(slab.height(), 0.5);
             assert!(slab.is_solid() && !slab.is_opaque() && slab.is_targetable());
-            assert!(slab.light_opacity() == 15 && slab.borrows_light());
+            assert!(slab.light_opacity() == 0 && slab.uses_shape_for_light_occlusion());
             assert_eq!(
                 (slab.hardness(), slab.best_tool(), slab.harvest_level()),
                 (base.hardness(), base.best_tool(), base.harvest_level())
@@ -2988,7 +3014,7 @@ mod tests {
                 assert_eq!((turned.base(), turned.stairs_base()), (stairs, Some(base)));
                 assert_eq!(turned.drop(), Some(stairs.into()));
                 assert_eq!((turned.hardness(), turned.harvest_level()), (base.hardness(), base.harvest_level()));
-                assert!(turned.borrows_light() && turned.is_solid() && !turned.is_opaque());
+                assert!(turned.uses_shape_for_light_occlusion() && turned.is_solid() && !turned.is_opaque());
             }
             assert!(Block::creative_palette().any(|p| p == stairs));
         }

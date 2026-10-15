@@ -1,10 +1,8 @@
 //! Chunk lighting and greedy meshing.
 //!
-//! A mesh job copies the chunk plus a 15-block margin from its 26
-//! neighbours into a flat [`Region`], flood-fills sky and block light there,
-//! then greedily meshes the centre 32³. Light travels at most 15 blocks, so
-//! the margin makes every border value exact: adjacent chunks agree without
-//! sharing any mutable light state, and jobs run fully in parallel.
+//! Mesh workers consume snapshots of the authoritative gameplay light arrays.
+//! A one-cell neighbour margin supplies corner light/AO and connected shapes;
+//! workers never flood or invent a second set of light levels.
 //!
 //! Each quad is one 12-byte record (three `u32`s) that the vertex shader
 //! expands into its four corners (vertex pulling):
@@ -49,12 +47,11 @@ use crate::world::block::{Block, Facing, RenderKind, tex};
 use crate::world::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, ChunkData, WORLD_MAX_Y, WORLD_MIN_Y};
 use crate::world::shape::{self, Boxes};
 
-/// Margin around the chunk that lighting needs to be exact.
-pub const MARGIN: usize = 15;
+/// Margin for adjacent face/corner light, AO and connected shape samples.
+pub const MARGIN: usize = 1;
 /// Region edge length.
 pub const D: usize = CHUNK_SIZE + 2 * MARGIN;
 pub const REGION_VOLUME: usize = D * D * D;
-const MAX_LIGHT: u8 = 15;
 /// Height value for a column with no light-blocking blocks.
 pub const NO_HEIGHT: i16 = i16::MIN;
 const _: () = assert!(WORLD_MAX_Y < i16::MAX as i32 && WORLD_MIN_Y > NO_HEIGHT as i32);
@@ -65,9 +62,8 @@ pub type Neighborhood = [Option<Arc<ChunkData>>; 27];
 /// Everything a worker needs to light and mesh one chunk.
 pub struct MeshInput {
     pub neighbors: Neighborhood,
-    /// World Y of the highest light-blocking block per region column
-    /// (`i16::MIN` if none), indexed `x + z * D`.
-    pub heights: Box<[i16; D * D]>,
+    /// Region light copied from World, sky in the low nibble, block in the high.
+    pub light: Box<[u8; REGION_VOLUME]>,
     /// World Y of the chunk's lowest block.
     pub base_y: i32,
     /// The dimension's lowest block y: missing chunks below it are bedrock.
@@ -107,7 +103,7 @@ pub struct MeshData {
     /// Packed reference light for checking simulation/mesh agreement.
     #[cfg(test)]
     pub(crate) block_light: Option<crate::world::lighting::BlockLight>,
-    /// The mesh's independently flooded skylight, packed the same way.
+    /// Snapshot skylight, packed the same way as gameplay storage.
     #[cfg(test)]
     pub(crate) sky_light: Option<crate::world::lighting::BlockLight>,
 }
@@ -128,12 +124,11 @@ fn ridx(x: usize, y: usize, z: usize) -> usize {
     x + z * D + y * D * D
 }
 
-/// Reusable per-worker scratch space (≈700 KiB).
+/// Reusable per-worker scratch space (≈154 KiB).
 pub struct Region {
     blocks: Vec<Block>,
     sky: Vec<u8>,
     block_light: Vec<u8>,
-    queue: Vec<u32>,
 }
 
 impl Default for Region {
@@ -142,14 +137,8 @@ impl Default for Region {
             blocks: vec![Block::AIR; REGION_VOLUME],
             sky: vec![0; REGION_VOLUME],
             block_light: vec![0; REGION_VOLUME],
-            queue: Vec::with_capacity(1 << 16),
         }
     }
-}
-
-#[inline(always)]
-fn pack_q(x: usize, y: usize, z: usize) -> u32 {
-    (x | y << 8 | z << 16) as u32
 }
 
 impl Region {
@@ -206,116 +195,10 @@ impl Region {
         (any != 0).then(|| crate::world::lighting::BlockLight::from_nibbles(out))
     }
 
-    /// Breadth-first light propagation from everything already in the queue.
-    fn propagate(blocks: &[Block], light: &mut [u8], queue: &mut Vec<u32>) {
-        let mut head = 0;
-        while head < queue.len() {
-            let q = queue[head];
-            head += 1;
-            let (x, y, z) = ((q & 0xFF) as usize, (q >> 8 & 0xFF) as usize, (q >> 16) as usize);
-            let level = light[ridx(x, y, z)];
-            if level <= 1 {
-                continue;
-            }
-            let mut visit = |nx: usize, ny: usize, nz: usize| {
-                let i = ridx(nx, ny, nz);
-                let op = blocks[i].light_opacity();
-                if op >= MAX_LIGHT {
-                    return;
-                }
-                let next = level.saturating_sub(op.max(1));
-                if next > light[i] {
-                    light[i] = next;
-                    queue.push(pack_q(nx, ny, nz));
-                }
-            };
-            if x > 0 {
-                visit(x - 1, y, z)
-            }
-            if x + 1 < D {
-                visit(x + 1, y, z)
-            }
-            if y > 0 {
-                visit(x, y - 1, z)
-            }
-            if y + 1 < D {
-                visit(x, y + 1, z)
-            }
-            if z > 0 {
-                visit(x, y, z - 1)
-            }
-            if z + 1 < D {
-                visit(x, y, z + 1)
-            }
-        }
-        queue.clear();
-    }
-
-    fn light(&mut self, heights: &[i16; D * D], base_y: i32) {
-        let y0 = base_y - MARGIN as i32; // world Y of region row 0
-        // Region row from which each column sees the sky directly.
-        let exposed_from = |x: usize, z: usize| -> usize {
-            let h = heights[x + z * D] as i32;
-            (h + 1 - y0).clamp(0, D as i32) as usize
-        };
-
-        // Skylight: direct exposure, then spread sideways/down from the
-        // boundary of the exposed volume.
-        self.sky.fill(0);
-        for z in 0..D {
-            for x in 0..D {
-                let from = exposed_from(x, z);
-                for y in from..D {
-                    self.sky[ridx(x, y, z)] = MAX_LIGHT;
-                }
-                if from < D && from > 0 {
-                    self.queue.push(pack_q(x, from, z)); // spreads downward through leaves/water
-                }
-                // Exposed cells beside a taller neighbouring column light its overhangs.
-                let mut top = from;
-                for (nx, nz) in [(x.wrapping_sub(1), z), (x + 1, z), (x, z.wrapping_sub(1)), (x, z + 1)] {
-                    if nx < D && nz < D {
-                        top = top.max(exposed_from(nx, nz));
-                    }
-                }
-                for y in from..top.min(D) {
-                    self.queue.push(pack_q(x, y, z));
-                }
-            }
-        }
-        Self::propagate(&self.blocks, &mut self.sky, &mut self.queue);
-
-        // Block light from emitters.
-        self.block_light.fill(0);
-        for y in 0..D {
-            for z in 0..D {
-                let row = ridx(0, y, z);
-                for x in 0..D {
-                    let e = self.blocks[row + x].emission();
-                    if e > 0 {
-                        self.block_light[row + x] = e;
-                        self.queue.push(pack_q(x, y, z));
-                    }
-                }
-            }
-        }
-        Self::propagate(&self.blocks, &mut self.block_light, &mut self.queue);
-
-        // Slabs and stairs stop light but don't fill their cell: they take the
-        // brightest light beside or above them, so their own faces and the
-        // faces next to them aren't drawn black.
-        for y in 1..D - 1 {
-            for z in 1..D - 1 {
-                for x in 1..D - 1 {
-                    let i = ridx(x, y, z);
-                    if !self.blocks[i].borrows_light() {
-                        continue;
-                    }
-                    let near = [i + D * D, i - 1, i + 1, i - D, i + D];
-                    self.sky[i] = near.iter().map(|&n| self.sky[n]).max().unwrap_or(0);
-                    self.block_light[i] = near.iter().map(|&n| self.block_light[n]).max().unwrap_or(0);
-                }
-            }
+    fn copy_light(&mut self, light: &[u8; REGION_VOLUME]) {
+        for ((sky, block), &packed) in self.sky.iter_mut().zip(&mut self.block_light).zip(light) {
+            *sky = packed & 15;
+            *block = packed >> 4;
         }
     }
 }
@@ -412,7 +295,7 @@ fn water_view(b: Block) -> Block {
 /// Lights and meshes one chunk.
 pub fn build(input: &MeshInput, region: &mut Region) -> MeshData {
     region.fill(&input.neighbors, input.base_y, input.min_y);
-    region.light(&input.heights, input.base_y);
+    region.copy_light(&input.light);
     let mesh = mesh_region(region, &input.foliage);
     #[cfg(test)]
     let mesh = MeshData {
@@ -710,10 +593,12 @@ pub fn chunk_heights(data: &ChunkData, base_y: i32) -> [i16; CHUNK_SIZE * CHUNK_
         let mut out = [NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE];
         for z in 0..CHUNK_SIZE {
             for x in 0..CHUNK_SIZE {
-                if let Some(y) =
-                    (0..CHUNK_SIZE).rev().find(|&y| at(crate::world::chunk::index(x, y, z)).light_opacity() > 0)
+                if let Some(y) = (0..CHUNK_SIZE)
+                    .rev()
+                    .find(|&y| at(crate::world::chunk::index(x, y, z)).sky_stop_height(base_y + y as i32).is_some())
                 {
-                    out[x + z * CHUNK_SIZE] = (base_y + y as i32) as i16;
+                    out[x + z * CHUNK_SIZE] =
+                        at(crate::world::chunk::index(x, y, z)).sky_stop_height(base_y + y as i32).unwrap() as i16;
                 }
             }
         }
@@ -721,7 +606,7 @@ pub fn chunk_heights(data: &ChunkData, base_y: i32) -> [i16; CHUNK_SIZE * CHUNK_
     }
     match data {
         ChunkData::Uniform(b) => {
-            let height = if b.light_opacity() > 0 { (base_y + CHUNK_SIZE_I - 1) as i16 } else { NO_HEIGHT };
+            let height = b.sky_stop_height(base_y + CHUNK_SIZE_I - 1).map_or(NO_HEIGHT, |h| h as i16);
             [height; CHUNK_SIZE * CHUNK_SIZE]
         }
         ChunkData::Bytes(blocks) => scan(base_y, |i| Block(blocks[i] as u16)),
@@ -800,23 +685,13 @@ mod tests {
 
     /// Meshes a single chunk surrounded by air with open sky.
     fn mesh_blocks(blocks: &[([usize; 3], Block)]) -> MeshData {
-        let mut data = ChunkData::Uniform(Block::AIR);
+        let columns = (-1..=1).flat_map(|z| (-1..=1).map(move |x| glam::IVec2::new(x, z)));
+        let mut world = crate::world::lighting::flat_test_world(columns, -64);
         for &(p, b) in blocks {
-            data.set(p[0], p[1], p[2], b);
+            world.edit(glam::IVec3::new(p[0] as i32, 64 + p[1] as i32, p[2] as i32), b, false);
         }
-        let mut n: Neighborhood = Default::default();
-        for (i, slot) in n.iter_mut().enumerate() {
-            *slot = Some(Arc::new(if i == 13 { data.clone() } else { ChunkData::Uniform(Block::AIR) }));
-        }
-        let hm = chunk_heights(&data, 64);
-        let mut heights = Box::new([NO_HEIGHT; D * D]);
-        for z in 0..CHUNK_SIZE {
-            for x in 0..CHUNK_SIZE {
-                heights[(x + MARGIN) + (z + MARGIN) * D] = hm[x + z * CHUNK_SIZE];
-            }
-        }
-        let foliage = Box::new([0; CHUNK_SIZE * CHUNK_SIZE]);
-        build(&MeshInput { neighbors: n, heights, base_y: 64, min_y: 0, foliage }, &mut Region::default())
+        world.update_block_light();
+        build(&world.mesh_input(glam::IVec3::new(0, 2, 0)), &mut Region::default())
     }
 
     #[test]

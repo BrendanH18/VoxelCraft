@@ -353,6 +353,42 @@ pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) ->
     out
 }
 
+/// Target selection (`getShape`) differs from visible model boxes and
+/// movement collision. Fence arms fill the spaces between their rails;
+/// small plants occupy only their reference outline within the cell.
+pub fn outline(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) -> Boxes {
+    if matches!(block.shaped(), Some(Shaped::Fence)) {
+        let mut out = Boxes::from_box(FENCE_POST);
+        for f in Facing::ALL {
+            if fence_connects(block, neighbour(f), f) {
+                out.push(b([6, 0, 8], [10, 16, 16]).turned(f));
+            }
+        }
+        return out;
+    }
+    if let Some(Shaped::Gate { facing, .. }) = block.shaped() {
+        let in_wall = Facing::ALL
+            .into_iter()
+            .any(|f| f.along_x() != facing.along_x() && matches!(neighbour(f).shaped(), Some(Shaped::Wall)));
+        return Boxes::from_box(b([0, 0, 6], [16, if in_wall { 13 } else { 16 }, 10]).turned(facing));
+    }
+    if let Some(Shaped::Ladder(facing)) = block.shaped() {
+        return Boxes::from_box(LADDER_COLLISION[0].turned(facing));
+    }
+    if block.shaped().is_some() {
+        return shape(block, neighbour, below);
+    }
+    let bx = match block {
+        Block::TALL_GRASS | Block::FERN => b([2, 0, 2], [14, 13, 14]),
+        Block::DANDELION | Block::POPPY | Block::BLUE_ORCHID => b([5, 0, 5], [11, 10, 11]),
+        Block::TORCH => b([6, 0, 6], [10, 10, 10]),
+        b0 if b0.is_sapling() => b([2, 0, 2], [14, 12, 14]),
+        b0 if b0.is_mushroom() => b([5, 0, 5], [11, 6, 11]),
+        _ => b([0; 3], [16, 16 - block.top_drop(), 16]),
+    };
+    Boxes::from_box(bx)
+}
+
 /// Redstone dust includes diagonal/vertical neighbours while ordinary shapes
 /// need only the four horizontal blocks. Meshing supplies the full lookup.
 pub fn redstone_shape(block: Block, neighbour: impl Fn(glam::IVec3) -> Block) -> Boxes {

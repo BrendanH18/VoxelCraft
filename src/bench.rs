@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use glam::{DVec3, IVec3};
 
-use crate::mesh::{self, D, MARGIN, MeshInput, NO_HEIGHT, Neighborhood, Region};
+use crate::mesh::{self, Region};
 use crate::world::World;
 use crate::world::chunk::{CHUNK_VOLUME, ChunkData};
 use crate::world::terrain::Generator;
@@ -69,16 +69,14 @@ pub fn run(seed: u64, rd: i32) {
         t.elapsed().as_secs_f64() * 1e9 / edited as f64
     );
 
-    // Column heightmaps, as the world would maintain them.
-    let mut heights: rustc_hash::FxHashMap<(i32, i32), [i16; 1024]> = Default::default();
+    // Use the gameplay authority for benchmark mesh input as production does.
+    let mut lit_world = World::new_remote(Arc::new(Generator::new(seed)), rd);
+    let t = Instant::now();
     for (&p, c) in &chunks {
-        let h = heights.entry((p.x, p.z)).or_insert([NO_HEIGHT; 1024]);
-        for (a, b) in h.iter_mut().zip(mesh::chunk_heights(c, p.y * 32)) {
-            *a = (*a).max(b);
-        }
+        lit_world.receive_chunk(p, c.clone());
     }
-    let foliage: rustc_hash::FxHashMap<(i32, i32), _> =
-        heights.keys().map(|&(x, z)| ((x, z), generator.foliage(x, z))).collect();
+    lit_world.update_block_light();
+    println!("gameplay light initialization: {:.1} ms", t.elapsed().as_secs_f64() * 1e3);
     let mut region = Region::default();
     let (mut meshed, mut quads) = (0, 0u64);
     let t = Instant::now();
@@ -86,32 +84,14 @@ pub fn run(seed: u64, rd: i32) {
         if p.x.abs() == r || p.z.abs() == r || c.uniform().is_some() {
             continue;
         }
-        let mut n: Neighborhood = Default::default();
-        for (i, slot) in n.iter_mut().enumerate() {
-            let i = i as i32;
-            let o = IVec3::new(i % 3 - 1, i / 9 - 1, (i / 3) % 3 - 1);
-            *slot = chunks.get(&(p + o)).cloned();
-        }
-        let mut hm = Box::new([NO_HEIGHT; D * D]);
-        for rz in 0..D as i32 {
-            for rx in 0..D as i32 {
-                let (wx, wz) = (p.x * 32 - MARGIN as i32 + rx, p.z * 32 - MARGIN as i32 + rz);
-                if let Some(col) = heights.get(&(wx >> 5, wz >> 5)) {
-                    hm[(rx + rz * D as i32) as usize] = col[((wx & 31) + (wz & 31) * 32) as usize];
-                }
-            }
-        }
-        let foliage = foliage[&(p.x, p.z)].clone();
-        let m = mesh::build(
-            &MeshInput { neighbors: n, heights: hm, base_y: p.y * 32, min_y: generator.dimension.min_y(), foliage },
-            &mut region,
-        );
+        let input = lit_world.mesh_input(p);
+        let m = mesh::build(&input, &mut region);
         quads += m.quads.len() as u64;
         meshed += 1;
     }
     let mesh_time = t.elapsed();
     println!(
-        "light+mesh (1 thread): {} dense chunks in {:.1} ms -> {:.3} ms/chunk, {} quads ({:.0} bytes/chunk GPU)",
+        "snapshot+mesh (1 thread): {} dense chunks in {:.1} ms -> {:.3} ms/chunk, {} quads ({:.0} bytes/chunk GPU)",
         meshed,
         mesh_time.as_secs_f64() * 1e3,
         mesh_time.as_secs_f64() * 1e3 / meshed.max(1) as f64,

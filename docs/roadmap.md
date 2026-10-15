@@ -755,6 +755,11 @@ pass. Work items, each with Java 26.3 fixtures and acceptance cases:
    stairs, snow layers), meshes lit from the authoritative gameplay light
    arrays, and raycasts/placement against full collision and outline shapes
    (top/double slabs, cross plants).
+   *Light shapes and outline targeting implemented, unverified*
+   ([evidence](verification/2026-10-14-block-shapes-light-interaction.md)):
+   Java face-mask occlusion for slabs, stairs, snow and soil; meshes use the
+   gameplay light arrays; targeting uses outline shapes on every input path.
+   Corner-stair light shapes remain; top/double slab states need new IDs (M2).
 5. **PLY-01 loaded-region activity and save integrity:** tick only simulated
    chunks as Java does, frame-rate-independent outcomes, and
    pause/load/unload/death/save regression scenarios across desktop, controller

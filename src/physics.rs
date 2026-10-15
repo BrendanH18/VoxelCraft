@@ -279,7 +279,7 @@ pub fn ray_collision<W: BlockSource + ?Sized>(world: &W, cell: IVec3, origin: DV
     first
 }
 
-/// Where a ray first hits the boxes of the shaped block at `cell`: the
+/// Where a ray first hits the outline boxes of the block at `cell`: the
 /// distance (in units of `dir`) and the face normal.
 pub fn ray_shape<W: BlockSource + ?Sized>(world: &W, cell: IVec3, origin: DVec3, dir: DVec3) -> Option<(f64, IVec3)> {
     let b = world.block(cell)?;
@@ -287,7 +287,7 @@ pub fn ray_shape<W: BlockSource + ?Sized>(world: &W, cell: IVec3, origin: DVec3,
     let lo = cell.as_dvec3();
     let v = |c: [u8; 3]| DVec3::new(c[0] as f64, c[1] as f64, c[2] as f64) / 16.0;
     let below = world.block(cell - IVec3::Y).unwrap_or(Block::AIR);
-    shape::shape(b, neighbour, below)
+    shape::outline(b, neighbour, below)
         .as_slice()
         .iter()
         .filter_map(|bx| ray_aabb_face(origin, dir, lo + v(bx.min), lo + v(bx.max)))
