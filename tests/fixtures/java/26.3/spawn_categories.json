@@ -1,0 +1,2793 @@
+{
+  "source": "Official Java Edition 26.3 server 33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c biome attributes and block tags",
+  "biomes": {
+    "deep_frozen_ocean": {
+      "creature": [
+        [
+          "polar_bear",
+          1,
+          1,
+          2
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [
+        [
+          "squid",
+          1,
+          1,
+          4
+        ],
+        [
+          "nautilus",
+          2,
+          1,
+          1
+        ]
+      ],
+      "water_ambient": [
+        [
+          "salmon",
+          15,
+          1,
+          5
+        ]
+      ]
+    },
+    "deep_cold_ocean": {
+      "creature": [],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [
+        [
+          "squid",
+          3,
+          1,
+          4
+        ],
+        [
+          "nautilus",
+          2,
+          1,
+          1
+        ]
+      ],
+      "water_ambient": [
+        [
+          "cod",
+          15,
+          3,
+          6
+        ],
+        [
+          "salmon",
+          15,
+          1,
+          5
+        ]
+      ]
+    },
+    "deep_ocean": {
+      "creature": [],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [
+        [
+          "squid",
+          1,
+          1,
+          4
+        ],
+        [
+          "dolphin",
+          1,
+          1,
+          2
+        ],
+        [
+          "nautilus",
+          5,
+          1,
+          1
+        ]
+      ],
+      "water_ambient": [
+        [
+          "cod",
+          10,
+          3,
+          6
+        ]
+      ]
+    },
+    "deep_lukewarm_ocean": {
+      "creature": [],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [
+        [
+          "squid",
+          8,
+          1,
+          4
+        ],
+        [
+          "dolphin",
+          2,
+          1,
+          2
+        ],
+        [
+          "nautilus",
+          5,
+          1,
+          1
+        ]
+      ],
+      "water_ambient": [
+        [
+          "cod",
+          8,
+          3,
+          6
+        ],
+        [
+          "pufferfish",
+          5,
+          1,
+          3
+        ],
+        [
+          "tropical_fish",
+          25,
+          8,
+          8
+        ]
+      ]
+    },
+    "frozen_ocean": {
+      "creature": [
+        [
+          "polar_bear",
+          1,
+          1,
+          2
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [
+        [
+          "squid",
+          1,
+          1,
+          4
+        ],
+        [
+          "nautilus",
+          2,
+          1,
+          1
+        ]
+      ],
+      "water_ambient": [
+        [
+          "salmon",
+          15,
+          1,
+          5
+        ]
+      ]
+    },
+    "cold_ocean": {
+      "creature": [],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [
+        [
+          "squid",
+          3,
+          1,
+          4
+        ],
+        [
+          "nautilus",
+          2,
+          1,
+          1
+        ]
+      ],
+      "water_ambient": [
+        [
+          "cod",
+          15,
+          3,
+          6
+        ],
+        [
+          "salmon",
+          15,
+          1,
+          5
+        ]
+      ]
+    },
+    "ocean": {
+      "creature": [],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [
+        [
+          "squid",
+          1,
+          1,
+          4
+        ],
+        [
+          "dolphin",
+          1,
+          1,
+          2
+        ],
+        [
+          "nautilus",
+          5,
+          1,
+          1
+        ]
+      ],
+      "water_ambient": [
+        [
+          "cod",
+          10,
+          3,
+          6
+        ]
+      ]
+    },
+    "lukewarm_ocean": {
+      "creature": [],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [
+        [
+          "squid",
+          10,
+          1,
+          2
+        ],
+        [
+          "dolphin",
+          2,
+          1,
+          2
+        ],
+        [
+          "nautilus",
+          5,
+          1,
+          1
+        ]
+      ],
+      "water_ambient": [
+        [
+          "cod",
+          15,
+          3,
+          6
+        ],
+        [
+          "pufferfish",
+          5,
+          1,
+          3
+        ],
+        [
+          "tropical_fish",
+          25,
+          8,
+          8
+        ]
+      ]
+    },
+    "warm_ocean": {
+      "creature": [],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [
+        [
+          "nautilus",
+          5,
+          1,
+          1
+        ],
+        [
+          "squid",
+          10,
+          4,
+          4
+        ],
+        [
+          "dolphin",
+          2,
+          1,
+          2
+        ]
+      ],
+      "water_ambient": [
+        [
+          "pufferfish",
+          15,
+          1,
+          3
+        ],
+        [
+          "tropical_fish",
+          25,
+          8,
+          8
+        ]
+      ]
+    },
+    "mushroom_fields": {
+      "creature": [
+        [
+          "mooshroom",
+          8,
+          4,
+          8
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "river": {
+      "creature": [],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [
+        [
+          "squid",
+          2,
+          1,
+          4
+        ]
+      ],
+      "water_ambient": [
+        [
+          "salmon",
+          5,
+          1,
+          5
+        ]
+      ]
+    },
+    "frozen_river": {
+      "creature": [],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [
+        [
+          "squid",
+          2,
+          1,
+          4
+        ]
+      ],
+      "water_ambient": [
+        [
+          "salmon",
+          5,
+          1,
+          5
+        ]
+      ]
+    },
+    "beach": {
+      "creature": [
+        [
+          "turtle",
+          5,
+          2,
+          5
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "snowy_beach": {
+      "creature": [],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "stony_shore": {
+      "creature": [],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "plains": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ],
+        [
+          "horse",
+          5,
+          2,
+          6
+        ],
+        [
+          "donkey",
+          1,
+          1,
+          3
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "sunflower_plains": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ],
+        [
+          "horse",
+          5,
+          2,
+          6
+        ],
+        [
+          "donkey",
+          1,
+          1,
+          3
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "snowy_plains": {
+      "creature": [
+        [
+          "rabbit",
+          10,
+          2,
+          3
+        ],
+        [
+          "polar_bear",
+          1,
+          1,
+          2
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "ice_spikes": {
+      "creature": [
+        [
+          "rabbit",
+          10,
+          2,
+          3
+        ],
+        [
+          "polar_bear",
+          1,
+          1,
+          2
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "forest": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ],
+        [
+          "wolf",
+          5,
+          4,
+          4
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "flower_forest": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ],
+        [
+          "rabbit",
+          4,
+          2,
+          3
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "birch_forest": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "old_growth_birch_forest": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "dark_forest": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "pale_garden": {
+      "creature": [],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "taiga": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ],
+        [
+          "wolf",
+          8,
+          4,
+          4
+        ],
+        [
+          "rabbit",
+          4,
+          2,
+          3
+        ],
+        [
+          "fox",
+          8,
+          2,
+          4
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "snowy_taiga": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ],
+        [
+          "wolf",
+          8,
+          4,
+          4
+        ],
+        [
+          "rabbit",
+          4,
+          2,
+          3
+        ],
+        [
+          "fox",
+          8,
+          2,
+          4
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "old_growth_pine_taiga": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ],
+        [
+          "wolf",
+          8,
+          4,
+          4
+        ],
+        [
+          "rabbit",
+          4,
+          2,
+          3
+        ],
+        [
+          "fox",
+          8,
+          2,
+          4
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "old_growth_spruce_taiga": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ],
+        [
+          "wolf",
+          8,
+          4,
+          4
+        ],
+        [
+          "rabbit",
+          4,
+          2,
+          3
+        ],
+        [
+          "fox",
+          8,
+          2,
+          4
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "swamp": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ],
+        [
+          "frog",
+          10,
+          2,
+          5
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "mangrove_swamp": {
+      "creature": [
+        [
+          "frog",
+          10,
+          2,
+          5
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": [
+        [
+          "tropical_fish",
+          25,
+          8,
+          8
+        ]
+      ]
+    },
+    "desert": {
+      "creature": [
+        [
+          "rabbit",
+          12,
+          2,
+          3
+        ],
+        [
+          "camel",
+          1,
+          1,
+          1
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "savanna": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ],
+        [
+          "horse",
+          1,
+          2,
+          6
+        ],
+        [
+          "donkey",
+          1,
+          1,
+          1
+        ],
+        [
+          "armadillo",
+          10,
+          2,
+          3
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "savanna_plateau": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ],
+        [
+          "horse",
+          1,
+          2,
+          6
+        ],
+        [
+          "donkey",
+          1,
+          1,
+          1
+        ],
+        [
+          "armadillo",
+          10,
+          2,
+          3
+        ],
+        [
+          "llama",
+          8,
+          4,
+          4
+        ],
+        [
+          "wolf",
+          8,
+          4,
+          8
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "windswept_savanna": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ],
+        [
+          "horse",
+          1,
+          2,
+          6
+        ],
+        [
+          "donkey",
+          1,
+          1,
+          1
+        ],
+        [
+          "armadillo",
+          10,
+          2,
+          3
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "jungle": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "parrot",
+          40,
+          1,
+          2
+        ],
+        [
+          "panda",
+          1,
+          1,
+          2
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "sparse_jungle": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "wolf",
+          8,
+          2,
+          4
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "bamboo_jungle": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "parrot",
+          40,
+          1,
+          2
+        ],
+        [
+          "panda",
+          80,
+          1,
+          2
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "badlands": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ],
+        [
+          "armadillo",
+          6,
+          1,
+          2
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "wooded_badlands": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ],
+        [
+          "armadillo",
+          6,
+          1,
+          2
+        ],
+        [
+          "wolf",
+          2,
+          4,
+          8
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "eroded_badlands": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ],
+        [
+          "armadillo",
+          6,
+          1,
+          2
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "meadow": {
+      "creature": [
+        [
+          "donkey",
+          1,
+          1,
+          2
+        ],
+        [
+          "rabbit",
+          2,
+          2,
+          6
+        ],
+        [
+          "sheep",
+          2,
+          2,
+          4
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "cherry_grove": {
+      "creature": [
+        [
+          "pig",
+          1,
+          1,
+          2
+        ],
+        [
+          "rabbit",
+          2,
+          2,
+          6
+        ],
+        [
+          "sheep",
+          2,
+          2,
+          4
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "grove": {
+      "creature": [
+        [
+          "wolf",
+          1,
+          1,
+          1
+        ],
+        [
+          "rabbit",
+          8,
+          2,
+          3
+        ],
+        [
+          "fox",
+          4,
+          2,
+          4
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "snowy_slopes": {
+      "creature": [
+        [
+          "rabbit",
+          4,
+          2,
+          3
+        ],
+        [
+          "goat",
+          5,
+          1,
+          3
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "jagged_peaks": {
+      "creature": [
+        [
+          "goat",
+          5,
+          1,
+          3
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "frozen_peaks": {
+      "creature": [
+        [
+          "goat",
+          5,
+          1,
+          3
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "stony_peaks": {
+      "creature": [],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "windswept_hills": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ],
+        [
+          "llama",
+          5,
+          4,
+          6
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "windswept_gravelly_hills": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ],
+        [
+          "llama",
+          5,
+          4,
+          6
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "windswept_forest": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ],
+        [
+          "llama",
+          5,
+          4,
+          6
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "lush_caves": {
+      "creature": [],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [
+        [
+          "axolotl",
+          10,
+          4,
+          6
+        ]
+      ],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": [
+        [
+          "tropical_fish",
+          25,
+          8,
+          8
+        ]
+      ]
+    },
+    "dripstone_caves": {
+      "creature": [],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "nether_wastes": {
+      "monster": [
+        [
+          "ghast",
+          50,
+          4,
+          4
+        ],
+        [
+          "zombified_piglin",
+          100,
+          4,
+          4
+        ],
+        [
+          "magma_cube",
+          2,
+          4,
+          4
+        ],
+        [
+          "enderman",
+          1,
+          4,
+          4
+        ],
+        [
+          "piglin",
+          15,
+          4,
+          4
+        ]
+      ],
+      "creature": [
+        [
+          "strider",
+          60,
+          1,
+          2
+        ]
+      ]
+    },
+    "soul_sand_valley": {
+      "monster": [
+        [
+          "skeleton",
+          20,
+          5,
+          5
+        ],
+        [
+          "ghast",
+          50,
+          4,
+          4
+        ],
+        [
+          "enderman",
+          1,
+          4,
+          4
+        ]
+      ],
+      "creature": [
+        [
+          "strider",
+          60,
+          1,
+          2
+        ]
+      ]
+    },
+    "crimson_forest": {
+      "monster": [
+        [
+          "zombified_piglin",
+          1,
+          2,
+          4
+        ],
+        [
+          "hoglin",
+          9,
+          3,
+          4
+        ],
+        [
+          "piglin",
+          5,
+          3,
+          4
+        ]
+      ],
+      "creature": [
+        [
+          "strider",
+          60,
+          1,
+          2
+        ]
+      ]
+    },
+    "warped_forest": {
+      "monster": [
+        [
+          "enderman",
+          1,
+          4,
+          4
+        ]
+      ],
+      "creature": [
+        [
+          "strider",
+          60,
+          1,
+          2
+        ]
+      ]
+    },
+    "basalt_deltas": {
+      "monster": [
+        [
+          "ghast",
+          40,
+          1,
+          1
+        ],
+        [
+          "magma_cube",
+          100,
+          2,
+          5
+        ]
+      ],
+      "creature": [
+        [
+          "strider",
+          60,
+          1,
+          2
+        ]
+      ]
+    },
+    "the_end": {
+      "monster": [
+        [
+          "enderman",
+          10,
+          4,
+          4
+        ]
+      ],
+      "creature": []
+    }
+  },
+  "tags": {
+    "animals_spawnable_on": [
+      "minecraft:grass_block"
+    ],
+    "axolotls_spawnable_on": [
+      "minecraft:clay"
+    ],
+    "foxes_spawnable_on": [
+      "minecraft:grass_block",
+      "minecraft:snow",
+      "minecraft:snow_block",
+      "minecraft:podzol",
+      "minecraft:coarse_dirt"
+    ],
+    "wolves_spawnable_on": [
+      "minecraft:grass_block",
+      "minecraft:snow",
+      "minecraft:snow_block",
+      "minecraft:coarse_dirt",
+      "minecraft:podzol"
+    ],
+    "goats_spawnable_on": [
+      "#minecraft:animals_spawnable_on",
+      "minecraft:stone",
+      "minecraft:snow",
+      "minecraft:snow_block",
+      "minecraft:packed_ice",
+      "minecraft:gravel"
+    ],
+    "rabbits_spawnable_on": [
+      "minecraft:grass_block",
+      "minecraft:snow",
+      "minecraft:snow_block",
+      "minecraft:sand"
+    ],
+    "parrots_spawnable_on": [
+      "minecraft:grass_block",
+      "minecraft:air",
+      "#minecraft:leaves",
+      "#minecraft:logs"
+    ]
+  },
+  "structures": {
+    "fortress": {
+      "monster": {
+        "bounding_box": "piece",
+        "spawns": [
+          {
+            "type": "minecraft:blaze",
+            "count": {
+              "type": "minecraft:uniform",
+              "max_inclusive": 3,
+              "min_inclusive": 2
+            },
+            "weight": 10
+          },
+          {
+            "type": "minecraft:zombified_piglin",
+            "count": 4,
+            "weight": 5
+          },
+          {
+            "type": "minecraft:wither_skeleton",
+            "count": 5,
+            "weight": 8
+          },
+          {
+            "type": "minecraft:skeleton",
+            "count": 5,
+            "weight": 2
+          },
+          {
+            "type": "minecraft:magma_cube",
+            "count": 4,
+            "weight": 3
+          }
+        ]
+      }
+    },
+    "swamp_hut": {
+      "creature": {
+        "bounding_box": "piece",
+        "spawns": [
+          {
+            "type": "minecraft:cat",
+            "count": 1,
+            "weight": 1
+          }
+        ]
+      },
+      "monster": {
+        "bounding_box": "piece",
+        "spawns": [
+          {
+            "type": "minecraft:witch",
+            "count": 1,
+            "weight": 1
+          }
+        ]
+      }
+    },
+    "monument": {
+      "axolotls": {
+        "bounding_box": "full",
+        "spawns": []
+      },
+      "monster": {
+        "bounding_box": "full",
+        "spawns": [
+          {
+            "type": "minecraft:guardian",
+            "count": {
+              "type": "minecraft:uniform",
+              "max_inclusive": 4,
+              "min_inclusive": 2
+            },
+            "weight": 1
+          }
+        ]
+      },
+      "underground_water_creature": {
+        "bounding_box": "full",
+        "spawns": []
+      }
+    },
+    "pillager_outpost": {
+      "monster": {
+        "bounding_box": "full",
+        "spawns": [
+          {
+            "type": "minecraft:pillager",
+            "count": 1,
+            "weight": 1
+          }
+        ]
+      }
+    }
+  }
+}

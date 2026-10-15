@@ -559,6 +559,19 @@ impl World {
             })
     }
 
+    /// 16-block columns of every fully loaded storage column, for generation herds.
+    pub(crate) fn visit_spawn_columns(&self, visit: &mut dyn FnMut(IVec2)) {
+        for (&c, column) in &self.columns {
+            if column.loaded == self.column_chunks() {
+                for dz in 0..2 {
+                    for dx in 0..2 {
+                        visit(c * 2 + IVec2::new(dx, dz));
+                    }
+                }
+            }
+        }
+    }
+
     /// Whether every chunk of the column holding `(x, z)` is loaded.
     pub fn column_loaded(&self, x: i32, z: i32) -> bool {
         let key = column_of(chunk_of(IVec3::new(x, 0, z)));

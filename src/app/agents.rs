@@ -66,6 +66,7 @@ impl Agents {
     /// Active agents as mob targets.
     pub fn targets(&self) -> impl Iterator<Item = Target> + '_ {
         self.players.values().filter(|b| b.active).map(|b| Target {
+            spectator: b.agent.session.mode == voxelcraft::rules::GameMode::Spectator,
             alive: !b.agent.session.vitals.is_dead(),
             look: b.agent.session.player.forward().as_dvec3(),
             thorns: Target::thorns_of(&b.agent.session.inventory.armor),

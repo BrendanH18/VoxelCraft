@@ -1,19 +1,21 @@
 //! Water creatures and structure residents. Timers are in seconds; bucket
 //! components and one-time population markers survive save/load.
 use super::{Ctx, Entities, EntityEvent, Mob, MobKind, MobWorld, Rng};
+#[cfg(test)]
+use crate::world::{
+    temples::Kind,
+    terrain::{Biome, SEA_LEVEL},
+};
 use crate::{
     inventory::{Inventory, Stack},
     item::Item,
     physics,
     simulation::{difficulty::Difficulty, effects::Effect},
-    world::{
-        World,
-        block::Block,
-        temples::Kind,
-        terrain::{Biome, Dimension, SEA_LEVEL},
-    },
+    world::{World, block::Block, terrain::Dimension},
 };
-use glam::{DVec3, IVec3};
+use glam::DVec3;
+#[cfg(test)]
+use glam::IVec3;
 
 #[derive(Clone, Debug)]
 pub struct State {
@@ -290,6 +292,7 @@ pub(super) fn pillager<W: MobWorld + ?Sized>(
     (if m.charged { None } else { Some(dir) }, 2.4)
 }
 
+#[cfg(test)]
 pub(super) fn spawn_spot<W: MobWorld + ?Sized>(
     w: &W,
     kind: MobKind,
@@ -532,29 +535,6 @@ impl Entities {
         for t in &ctx.players {
             for b in w.structures_near(t.pos.floor().as_ivec3(), 80) {
                 if self.structures_populated.contains(&b.bounds.min) {
-                    if ctx.spawning && difficulty != Difficulty::Peaceful && self.rng.chance(0.15) {
-                        let spawn = match b.kind {
-                            Kind::Outpost => Some((MobKind::Pillager, 3)),
-                            Kind::SwampHut => Some((MobKind::Witch, 1)),
-                            _ => None,
-                        };
-                        if let Some((kind, cap)) = spawn {
-                            let count = self
-                                .mobs
-                                .iter()
-                                .filter(|m| m.kind == kind && m.alive() && b.spawns.contains(m.pos.floor().as_ivec3()))
-                                .count();
-                            let p = b.residents.iter().find(|(k, _)| *k == kind).map(|(_, p)| *p);
-                            if count < cap
-                                && let Some(p) = p
-                                && super::clear_of_players(ctx, self.world_spawn, p.as_dvec3())
-                                && w.loaded(p)
-                                && !physics::overlaps_solid(w, p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5), kind.shape())
-                            {
-                                self.spawn(kind, p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
-                            }
-                        }
-                    }
                     continue;
                 }
                 if b.residents.is_empty() || !b.residents.iter().all(|(_, p)| w.loaded(*p)) {

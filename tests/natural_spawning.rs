@@ -106,3 +106,124 @@ fn persistent_mobs_never_despawn() {
     }
     assert_eq!(e.mobs.len(), 2);
 }
+
+/// Bright grass surface; generation explicitly reports completed columns.
+struct Grass {
+    generation: bool,
+}
+impl BlockSource for Grass {
+    fn block(&self, p: IVec3) -> Option<Block> {
+        Some(if p.y == 63 {
+            Block::GRASS
+        } else if p.y < 63 {
+            Block::STONE
+        } else {
+            Block::AIR
+        })
+    }
+}
+impl MobWorld for Grass {
+    fn loaded(&self, _: IVec3) -> bool {
+        true
+    }
+    fn surface(&self, _: i32, _: i32) -> Option<i32> {
+        Some(63)
+    }
+    fn exposed(&self, p: IVec3) -> bool {
+        p.y >= 64
+    }
+    fn generation_columns(&self, visit: &mut dyn FnMut(glam::IVec2)) {
+        if self.generation {
+            for z in -8..=8 {
+                for x in -8..=8 {
+                    visit(glam::IVec2::new(x, z));
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn creatures_share_the_ten_mob_cap_and_only_spawn_every_400_ticks() {
+    let w = Grass { generation: false };
+    let c = night(true);
+    let mut e = Entities::new(12);
+    // The first tick is game time zero. The next 399 have no creature pass.
+    e.update(0.05, &w, &c);
+    e.mobs.clear();
+    for _ in 0..399 {
+        e.update(0.05, &w, &c);
+    }
+    assert!(e.mobs.iter().all(|m| m.kind.category() != MobCategory::Creature));
+    for _ in 0..400 * 20 {
+        e.update(0.05, &w, &c);
+    }
+    let creatures: Vec<_> = e.mobs.iter().filter(|m| m.kind.category() == MobCategory::Creature).collect();
+    assert!((10..=13).contains(&creatures.len()), "{} creatures", creatures.len());
+    assert!(creatures.iter().any(|m| m.pos.distance(c.players[0].pos) > 64.0));
+}
+
+#[test]
+fn generated_herds_survive_restart_and_cleared_columns_do_not_repopulate() {
+    let w = Grass { generation: true };
+    let mut c = night(true);
+    let mut e = Entities::new(42);
+    e.update(0.05, &w, &c);
+    let before = e.mobs.iter().filter(|m| m.kind.category() == MobCategory::Creature).count();
+    assert!(before > 20, "generation is independent of the ten-creature runtime cap: {before}");
+    e.ensure_mob_ids();
+    let saved = e.nether_mobs_to_string();
+    let mut loaded = Entities::new(42);
+    loaded.load_nether_mobs(&saved);
+    assert_eq!(loaded.mobs.iter().filter(|m| m.kind.category() == MobCategory::Creature).count(), before);
+    c.spawning = false;
+    c.players[0].pos.x = 1000.5;
+    loaded.update(0.05, &w, &c);
+    assert_eq!(loaded.mobs.len(), before, "animals do not distance-despawn");
+    loaded.mobs.clear();
+    let cleared = loaded.nether_mobs_to_string();
+    let mut reloaded = Entities::new(42);
+    reloaded.load_nether_mobs(&cleared);
+    c.spawning = true;
+    c.players[0].pos.x = 0.5;
+    reloaded.update(0.05, &w, &c);
+    assert!(
+        reloaded.mobs.iter().all(|m| m.kind.category() != MobCategory::Creature),
+        "saved generation markers prevent resurrection"
+    );
+}
+
+#[test]
+fn spectators_do_not_create_spawn_chunks_or_hold_mobs_nearby() {
+    let mut c = night(true);
+    c.players[0].spectator = true;
+    let mut e = Entities::new(21);
+    for _ in 0..40 {
+        e.update(0.05, &Plain, &c);
+    }
+    assert!(e.mobs.is_empty());
+    c.players.push(Target::new(PlayerId(2), DVec3::new(1000.5, 64.0, 0.5), false));
+    c.spawning = false;
+    e.spawn(MobKind::Zombie, DVec3::new(0.5, 64.0, 0.5));
+    e.update(0.05, &Plain, &c);
+    assert!(e.mobs.is_empty(), "a nearby spectator cannot prevent distance despawning");
+}
+
+#[test]
+fn saves_without_generation_markers_keep_their_herds_without_doubling_them() {
+    let mut old = Entities::new(5);
+    old.spawn(MobKind::Cow, DVec3::new(8.5, 64.0, 8.5));
+    old.ensure_mob_ids();
+    let mut root: serde_json::Value = serde_json::from_str(&old.nether_mobs_to_string()).unwrap();
+    root.as_object_mut().unwrap().remove("generation");
+    let mut e = Entities::new(5);
+    e.load_nether_mobs(&root.to_string());
+    let mut c = night(false);
+    c.spawning = true;
+    e.update(0.05, &Grass { generation: true }, &c);
+    let near =
+        |m: &&&voxelcraft::entity::Mob| (m.pos.x / 16.0).floor().abs() <= 2.0 && (m.pos.z / 16.0).floor().abs() <= 2.0;
+    let creatures: Vec<_> = e.mobs.iter().filter(|m| m.kind.category() == MobCategory::Creature).collect();
+    assert_eq!(creatures.iter().filter(near).count(), 1, "the legacy herd's columns stay populated");
+    assert!(creatures.len() > 1, "unvisited columns still gain generation herds");
+}

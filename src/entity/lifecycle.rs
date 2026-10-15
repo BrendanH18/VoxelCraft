@@ -26,12 +26,15 @@ impl Entities {
         if difficulty == crate::simulation::difficulty::Difficulty::Peaceful {
             self.despawn_hostiles();
         }
-        if ctx.spawning {
-            self.spawn_timer -= dt as f32;
-            if self.spawn_timer <= 0.0 {
-                self.spawn_timer = SPAWN_INTERVAL;
+        // The normal caller advances one fixed 50 ms tick. Recount on each
+        // spawn tick; never reuse a SpawnState across five ticks of entity changes.
+        self.spawn_timer += dt.max(0.0);
+        while self.spawn_timer >= 0.05 - 1e-9 {
+            self.spawn_timer -= 0.05;
+            if ctx.spawning {
                 self.natural_spawn(world, ctx, difficulty);
             }
+            self.spawn_ticks = self.spawn_ticks.wrapping_add(1);
         }
         if difficulty != crate::simulation::difficulty::Difficulty::Peaceful {
             self.run_spawners(dt as f32, world, ctx);
@@ -65,7 +68,8 @@ impl Entities {
                     | MobKind::SnowGolem
                     | MobKind::WanderingTrader
                     | MobKind::TraderLlama
-            ) || m.persistent
+            ) || m.kind.never_distance_despawns()
+                || m.persistent
                 || m.built
                 || m.convert_left > 0.0
                 || m.villager.as_ref().is_some_and(|v| v.xp > 0);

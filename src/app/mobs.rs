@@ -134,6 +134,7 @@ impl Game {
             self.mobs.entities.hatch_turtles(cell, count);
         }
         let mut players = vec![Target {
+            spectator: self.session.mode == voxelcraft::rules::GameMode::Spectator,
             alive: !self.session.vitals.is_dead(),
             look: self.session.player.forward().as_dvec3(),
             thorns: Target::thorns_of(&self.session.inventory.armor),
