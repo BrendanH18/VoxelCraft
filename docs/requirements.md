@@ -196,5 +196,5 @@ cost.
 
 | ID | Requirement | State | Release | Evidence | Acceptance | Gaps / next action |
 |---|---|---|---|---|---|---|
-| PERF-01 | Valid five-scene M5 baseline (1920 × 1080, 256 blocks) | Missing | v0.8 | [invalid run](verification/2026-10-13-m5-baseline.md), [harness fixes](verification/2026-10-13-review-bench-fixes.md) | Owner runs the suite on an idle machine with the window visible | Owner decision on the 120 Hz presentation cap |
-| PERF-02 | 240 FPS minimum in every representative scene | Missing | v0.18 | [performance §6](roadmap.md#6-performance-acceptance) | Gate passes on the reference machine | Needs PERF-01 |
+| PERF-01 | Valid five-scene M5 baseline (1920 × 1080, 256 blocks) | Partial | v0.8 | [2026-10-15 run](verification/2026-10-15-m5-baseline.md), [first attempt](verification/2026-10-13-m5-baseline.md) | Every run valid on an idle machine with the window visible | 12/15 valid; entity fixture and simulation-distance check fixed; re-run the full suite |
+| PERF-02 | 240 FPS minimum in every representative scene | Missing | v0.18 | [2026-10-15 run](verification/2026-10-15-m5-baseline.md) | Gate passes on the reference machine | Only automation passes; streaming stalls (1% low 17 FPS) come first |

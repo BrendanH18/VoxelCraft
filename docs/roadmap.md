@@ -530,6 +530,14 @@ run presented frames at exactly 8.333 ms, so a 120 Hz display may cap on-screen
 frame rate below the 240 FPS target. Native resolution, profiling, hitch budgets
 and the broader encounter matrix remain open; the performance target is not achieved.
 
+The [second recording](verification/2026-10-15-m5-baseline.md) (2026-10-15,
+`793d3e0`) has 12 of 15 valid runs. Presentation is uncapped (470–634 FPS
+average, about 1.55 ms median), with occasional 120 Hz-paced stretches. The
+gate fails: streaming stalls about 450 frames over 50 ms per run (1% low
+17 FPS), and only automation passes every run. Two harness defects (the
+entity scene counting chunk-generation herds, and an unchecked simulation
+distance) are fixed but uncommitted, so the full suite needs one more run.
+
 All groups are in scope unless an individual requirement is explicitly
 deferred or has an maintainer-approved fidelity exception. IDs are stable tracking
 keys, not release versions or block/item ID allocations.
@@ -717,7 +725,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 
 | Version | Theme | Milestones | Main content | Status |
 |---|---|---|---|---|
-| v0.8 | Foundations | Finish M0, M1 | Valid M5 baseline and the per-requirement inventory; mob pathfinding, Java spawn categories, shape-aware light, simulation distance; pause/death/save scenarios on every input path | In progress: most implementation merged (#34, #35); strider lava paths, pause/death/save scenarios and the [requirement inventory](requirements.md) on `t3/roadmap-next-stage-v0-8`; the owner's M5 baseline remains, then verification |
+| v0.8 | Foundations | Finish M0, M1 | Valid M5 baseline and the per-requirement inventory; mob pathfinding, Java spawn categories, shape-aware light, simulation distance; pause/death/save scenarios on every input path | In progress: most implementation merged (#34, #35); strider lava paths, pause/death/save scenarios and the [requirement inventory](requirements.md) on `t3/roadmap-next-stage-v0-8`; the M5 baseline needs one more full run after harness fixes ([2026-10-15 record](verification/2026-10-15-m5-baseline.md)), then verification |
 | v0.9 | Block states | M2: BLD-04, BLD-06 | Top and double slabs, waterlogging, door hinges, floor/ceiling buttons and levers, wall grindstones, corner-stair light; reserved state ranges for later content | Planned |
 | v0.10 | Building materials | Close M2 | Missing wood, stone, copper and colour family members (pale oak, bamboo, mud brick, prismarine), the unregistered reference fuel items, signs, banners, item frames, cauldrons, soul lanterns and campfires; sponges, coral and sea pickles; falling and dripping dripstone, tilting dripleaf | Planned |
 | v0.11 | Terrain | M3: GEN-01..03 | Java climate and density terrain with overhangs; Java caves, aquifers and ores; deep-dark content, springs, glow lichen; giant spruce and jungle trees and the remaining biome features | Planned |
@@ -788,7 +796,9 @@ fixtures and acceptance cases:
 
 1. **M0 close-out:** a valid five-scene M5 baseline on the reference machine
    (idle, window visible) and the owner's decision on measuring 240 FPS against
-   a 120 Hz display. Every later change is then measured against it. The
+   a 120 Hz display. *Second run 2026-10-15*
+   ([record](verification/2026-10-15-m5-baseline.md)): 12/15 runs valid and
+   presentation uncapped; harness fixes need one more full run. Every later change is then measured against it. The
    per-requirement inventory (one row per requirement with a state and
    acceptance cases, §2) is also an M0 exit check. *First version written*
    ([requirements.md](requirements.md), 2026-10-15): 118 rows, none Verified;

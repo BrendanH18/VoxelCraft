@@ -45,6 +45,9 @@ pub(super) struct Run {
     entities_start: usize,
     /// Population the scene must hold, for scenes that fix one.
     expected_population: Option<usize>,
+    /// The entity scene's own mobs, by uid; the world's generation herds are
+    /// cleared once loading finishes so the scene holds exactly these.
+    fixture_mobs: Vec<u32>,
     /// Generator surface heights on the `HEIGHT_GRID` lattice.
     heights: HashMap<(i32, i32), i32>,
     cold_load_ms: f64,
@@ -71,6 +74,7 @@ impl Run {
             skipped_before: 0,
             entities_start: 0,
             expected_population: None,
+            fixture_mobs: Vec::new(),
             heights: HashMap::new(),
             cold_load_ms: 0.,
             prepared: false,
@@ -188,7 +192,9 @@ impl Game {
                                 (at + IVec3::new(i as i32 % 21 - 10, 1, i as i32 / 21 - 4)).as_dvec3() + 0.5,
                             );
                         }
-                        run.expected_population = Some(preexisting + ENTITY_SCENE_MOBS);
+                        self.mobs.entities.ensure_mob_ids();
+                        run.fixture_mobs = self.mobs.entities.mobs[preexisting..].iter().map(|m| m.uid).collect();
+                        run.expected_population = Some(ENTITY_SCENE_MOBS);
                     }
                     "automation" => {
                         use crate::world::redstone_blocks as r;
@@ -218,6 +224,13 @@ impl Game {
         }
         if run.prepared && run.ready.is_none() && self.world.pending_jobs() == 0 {
             run.ready = Some(now);
+        }
+        if run.ready.is_some() && run.sample_start.is_none() && !run.fixture_mobs.is_empty() {
+            // Chunk generation adds creature herds as columns finish loading
+            // and lighting settles (Java's `spawnMobsForChunkGeneration`, which
+            // `doMobSpawning` doesn't gate). Through the warm-up, keep only the
+            // specified population; a herd arriving while sampling counts as drift.
+            self.mobs.entities.mobs.retain(|m| run.fixture_mobs.contains(&m.uid));
         }
         if run.created.elapsed() > Duration::from_secs(180) && run.ready.is_none() {
             panic!("benchmark {}: scene did not finish loading within 180 seconds", run.scene);

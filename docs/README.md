@@ -99,6 +99,9 @@ roadmap and recorded checks to assess completeness against the current target.
   face-mask light occlusion, gameplay-light meshes and outline targeting.
 - [Loaded-region activity and save integrity](verification/2026-10-14-simulation-activity-save-integrity.md):
   simulation distance tickets, sleeping work and saved delays.
+- [M5 scene baseline, second run](verification/2026-10-15-m5-baseline.md):
+  12 of 15 valid runs, uncapped presentation, streaming stalls, and the two
+  harness defects it exposed.
 - [Death, pause and mid-motion saves](verification/2026-10-15-death-pause-save-scenarios.md):
   the shared death and respawn step, the pause rule and cross-process piston
   and repeater saves.
