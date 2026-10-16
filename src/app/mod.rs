@@ -839,15 +839,16 @@ impl Game {
             self.lan_command("respawn");
             return;
         }
+        let keep_inventory = self.gamerules.bool("keepInventory");
         if self.dimension != Dimension::Overworld {
             let here = self.session.player.pos;
-            self.session.respawn(here);
+            self.session.respawn(here, keep_inventory);
             self.switch_dimension(Dimension::Overworld, dimension::Arrival::Respawn);
             self.set_grab(true);
             return;
         }
         let at = self.respawn_point();
-        self.session.respawn(at);
+        self.session.respawn(at, keep_inventory);
         self.set_grab(true);
     }
 

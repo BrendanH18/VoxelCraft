@@ -26,9 +26,10 @@ implementations: the desktop's `on_death`/`respawn`, the CLI agent's drop and
   the inventory.
 - *Respawning* creates a fresh body: full health, food and air; no effects,
   fire or fall distance; no velocity, vehicle or sneaking; and the game
-  mode's flight abilities. The spawn bed and point are kept. Experience
-  carries over as death left it: kept with the inventory, otherwise zero,
-  keeping the enchantment seed as `restoreFrom` does.
+  mode's flight abilities. The spawn bed and point are kept. Experience and
+  the death-screen score carry over only with `keepInventory` or for a
+  spectator (`transferInventoryXpAndScore`); otherwise only the enchantment
+  seed does, as `restoreFrom` copies it.
 
 Defects this fixed:
 
@@ -55,6 +56,8 @@ menus never pause it. Resuming doesn't charge the paused time.
     items, including work inputs, plus 70 experience for level 10; a
     spectator drops nothing.
   - With `keepInventory`, items and experience survive a CLI respawn.
+  - The death-screen score resets on a normal respawn and survives a
+    `keepInventory` one (review fix).
   - A respawn is a fresh body at the spawn point that keeps the enchantment
     seed and spawn point.
   - The crafting grid drops, or returns under `keepInventory`.

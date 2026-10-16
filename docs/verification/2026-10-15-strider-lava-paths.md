@@ -35,7 +35,9 @@ M5 MacBook Pro.
   - It walks to the cell above the lava (accuracy 1), then replans to the lava
     cell every 20 ticks.
   - It counts as arrived within one block of the lava cell's centre. It stops
-    once in lava, after 1200 ticks away, or after `maxStayTicks`.
+    only once the strider is in lava or the lava is gone: Strider's
+    `canContinueToUse` override skips `MoveToBlockGoal`'s give-up and stay
+    timers.
   - It searches again `reducedTickDelay(200 + nextInt(200))` goal updates
     after each search. Panic preempts it.
 - **`RandomStrollGoal(1.0, 60)`.** Striders stroll twice as often as the
@@ -57,6 +59,8 @@ M5 MacBook Pro.
     collision without the mob's context, so that is a two-block jump. A shore
     level with the top lava cell is reachable.
 - `entity::mob::nether_ai` unit test `strider_lava_search_follows_javas_ring_order`.
+- `entity::nether::tests::the_lava_goal_has_no_give_up_timer`: a strider aiming
+  at walled-off lava still holds the goal after 1300 ticks (review fix).
 - `entity::nether` tests through the real entity tick:
   - A cold strider walks a path round a wall to the lake and then stays on it
     for 30 s.
@@ -82,9 +86,9 @@ M5 MacBook Pro.
 
 - **Shore stops.** Some striders stop on the shore inside the one-block
   arrival radius but outside the lava; most of the shortfall in the table
-  is these. Java's `MoveToBlockGoal` counts that as arrived, and they shiver
-  there until `maxStayTicks` (60–120 s) or until panic, temptation or breeding
-  moves them. Java does the same, but VoxelCraft's movement isn't Java's
+  is these. Java's `MoveToBlockGoal` counts that as arrived, and the goal
+  holds them there, shivering, until panic, temptation or breeding moves them.
+  Java does the same, but VoxelCraft's movement isn't Java's
   `MoveControl`/`travel`, so where a strider comes to rest differs slightly.
 - **Goal priorities.** VoxelCraft runs tempt, breed and follow-parent before
   the lava goal; in Java, follow-parent (priority 5) yields to it (4).

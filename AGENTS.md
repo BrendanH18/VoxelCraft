@@ -20,22 +20,41 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
 - Follow [the restructuring plan](docs/restructuring.md) for proposed architecture
   changes. Planned tasks are not implemented features.
 
+## Shared instructions and configuration
+
+- This file is the single source of agent rules for every tool: Codex, Claude,
+  Cursor, Grok and delegated agents. `CLAUDE.md` only imports it, and any other
+  tool-specific instruction file must do the same rather than hold its own rules.
+- Whenever the owner states a new rule, preference or configuration choice, or
+  an agent changes one, record it in this file (or the tracked document it
+  belongs in) in the same piece of work. Never keep it only in a tool-specific
+  or machine-local place such as Claude memory, `~/.claude`, `~/.codex` or
+  editor settings. Mirror it there only as a convenience.
+- Project configuration (hooks, scripts, CI, tool settings) lives in tracked
+  files too, so a fresh clone from GitHub has every rule and setting. Leave the
+  change uncommitted like any other work; the owner commits and pushes it.
+
 ## Git workflow
 
-- Work on the assigned branch. Create branches or open PRs only when requested
-  by the owner. Push focused commits; never push directly to protected `main`.
-- When asked to prepare a PR, complete and validate the requested change before
-  opening it. The owner merges PRs and publishes releases unless instructed otherwise.
+- **Agents never run `git commit` or `git push`**, including amends, tags and
+  force pushes, unless the owner asks for that specific commit or push. Leave
+  finished work uncommitted in the working tree of the assigned branch; the
+  owner reviews, commits and pushes it. Delegated agents follow the same rule.
+- Work on the assigned branch. Create branches or open PRs only when the owner
+  asks. Never push to protected `main`. The owner merges PRs and publishes
+  releases.
 - Preserve unrelated changes and other worktrees. Never delete
   `refs/t3/checkpoints/*`, use `git push --mirror`, or use a bare `git stash`.
-- Use the repository's configured author identity. Never commit saves, build
-  output, credentials, local backups or machine-specific coordination files.
+- Never leave saves, build output, credentials, local backups or
+  machine-specific coordination files in the working tree for the owner to
+  commit. When the owner asks for a commit, use the repository's configured
+  author identity.
 - Delegate only when requested. Give each implementation agent an isolated
   worktree, explicit scope and reserved IDs; delegated agents do not delegate further.
 
-## Before every commit
+## Before handing work back
 
-Run this exact chain so a failure stops the commit:
+Run this exact chain so a failure stops at the first broken step:
 
 ```sh
 cargo fmt && cargo clippy --release --all-targets -- -D warnings && cargo test --release
@@ -43,8 +62,8 @@ cargo fmt && cargo clippy --release --all-targets -- -D warnings && cargo test -
 
 Run relevant headless, benchmark, visual and persistence checks as described in
 [the agent guide](docs/agent-guide.md) and [development guide](docs/development.md).
-Report what was actually checked and what remains unverified. Keep documentation
-and test evidence aligned with the delivered behavior.
+Report the files changed, what was actually checked and what remains unverified.
+Keep documentation and test evidence aligned with the delivered behavior.
 
 ## Engineering and acceptance
 

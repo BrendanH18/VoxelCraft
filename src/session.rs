@@ -144,10 +144,11 @@ impl PlayerSession {
 
     /// Java's respawn (`ServerPlayer.restoreFrom` after a death): a fresh
     /// body at `at` with full health and food, no effects, fire or fall, and
-    /// the mode's abilities. Experience carries over as death left it (kept
-    /// with the inventory, otherwise reset but for the enchantment seed),
-    /// and so do the spawn bed and point. The look direction is kept.
-    pub fn respawn(&mut self, at: DVec3) {
+    /// the mode's abilities. Experience and the death-screen score carry
+    /// over only with `keepInventory` or for a spectator
+    /// (`transferInventoryXpAndScore`); otherwise only the enchantment seed
+    /// does. The spawn bed and point are kept, and so is the look direction.
+    pub fn respawn(&mut self, at: DVec3, keep_inventory: bool) {
         self.cancel_consumption();
         self.cancel_mining();
         let (yaw, pitch) = (self.player.yaw, self.player.pitch);
@@ -159,7 +160,11 @@ impl PlayerSession {
         self.player.flying = self.mode == GameMode::Spectator;
         let xp = self.vitals.xp;
         self.vitals.respawn();
-        self.vitals.xp = xp;
+        if keep_inventory || self.mode == GameMode::Spectator {
+            self.vitals.xp = xp;
+        } else {
+            self.vitals.xp.seed = xp.seed;
+        }
         self.sleeping = None;
         self.combat = Default::default();
         self.ranged = Default::default();

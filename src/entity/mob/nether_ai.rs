@@ -121,13 +121,14 @@ impl Mob {
     /// Java's `StriderGoToLavaGoal`, a `MoveToBlockGoal` with an 8-block
     /// search range and 2 up or down: a strider out of lava finds the
     /// nearest lava under open space in Java's search order and walks a path
-    /// there, replanning every 20 ticks. It searches again 200–400 ticks
-    /// after the last search. `None` leaves it to the lower-priority goals
-    /// (following its parent, strolling); panicking takes precedence.
+    /// there, replanning every 20 ticks. Unlike its parent goal it has no
+    /// give-up or stay timer: it runs until the strider is in lava or the
+    /// lava is gone. It searches again 200–400 ticks after the last search.
+    /// `None` leaves it to the lower-priority goals (following its parent,
+    /// strolling); panicking takes precedence.
     fn go_to_lava<W: MobWorld + ?Sized>(&mut self, world: &W, rng: &mut Rng) -> Option<(Option<DVec3>, f64)> {
         const RANGE: i32 = 8;
         const VERTICAL: i32 = 2;
-        const GIVE_UP_TICKS: i32 = 1200;
         let valid = |p: IVec3| {
             world.block(p).is_some_and(Block::is_lava)
                 && world
@@ -139,13 +140,8 @@ impl Mob {
         let speed = self.kind.wander_speed();
         let n = self.nether.as_mut()?;
         if let Some(goal) = n.lava_goal {
-            // `canContinueToUse`, Strider's override with `MoveToBlockGoal`'s timers.
-            if in_lava
-                || panicking
-                || !valid(goal.target)
-                || goal.try_ticks < -goal.max_stay
-                || goal.try_ticks > GIVE_UP_TICKS
-            {
+            // Strider's `canContinueToUse` override, which skips `MoveToBlockGoal`'s timers.
+            if in_lava || panicking || !valid(goal.target) {
                 n.lava_goal = None;
                 self.stop_navigation();
                 if self.ai == Ai::Wander {
@@ -166,9 +162,7 @@ impl Mob {
             // `reducedTickDelay(200 + nextInt(200))` goal updates, two ticks each.
             n.lava_next_start = (200 + rng.next_int(200) as i32 + 1) / 2 * 2;
             let target = nearest_block(self.pos.floor().as_ivec3(), RANGE, VERTICAL, valid)?;
-            let bound = rng.next_int(1200) + 1200;
-            let max_stay = rng.next_int(bound) as i32 + 1200;
-            n.lava_goal = Some(LavaGoal { target, try_ticks: 0, max_stay });
+            n.lava_goal = Some(LavaGoal { target, try_ticks: 0 });
             // `moveMobToBlock`: the cell above the lava.
             self.walk_to(world, target + IVec3::Y, 1, speed, false);
         }

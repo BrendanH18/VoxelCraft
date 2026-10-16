@@ -151,10 +151,9 @@ pub(super) enum Goal {
 pub(super) struct LavaGoal {
     /// The lava block it heads for.
     pub target: IVec3,
-    /// `tryTicks`: ticks spent away from the target (less time spent there).
+    /// `tryTicks`: ticks spent away from the target (less time spent there),
+    /// which times the 20-tick replanning.
     pub try_ticks: i32,
-    /// `maxStayTicks`.
-    pub max_stay: i32,
 }
 
 /// Per-mob state for piglins and brutes.
@@ -2688,6 +2687,35 @@ mod tests {
         assert!(!m.nether.as_ref().unwrap().cold && m.pos.x.abs() < 7.0 && m.pos.z.abs() < 7.0, "{:?}", m.pos);
         // In the lava, or at its edge with the box resting on the shore.
         assert!((m.pos.y - 9.5).abs() < 1e-6 || (m.pos.y - 10.0).abs() < 1e-3, "{}", m.pos.y);
+    }
+
+    #[test]
+    fn the_lava_goal_has_no_give_up_timer() {
+        // Java's `StriderGoToLavaGoal.canContinueToUse` checks only lava and
+        // the target, not `MoveToBlockGoal`'s 1200-tick give-up. Lava ringed
+        // by a wall is a valid target the strider can't reach.
+        let mut world = Grid::flat(10);
+        world.set(IVec3::new(0, 9, 0), Block::LAVA);
+        for x in -1..=1 {
+            for z in -1..=1 {
+                if (x, z) != (0, 0) {
+                    for y in 10..13 {
+                        world.set(IVec3::new(x, y, z), Block::STONE);
+                    }
+                }
+            }
+        }
+        let ctx = nether(vec![player(DVec3::new(60.0, 10.0, 0.5))]);
+        let mut e = Entities::new(6);
+        let i = strider_at(&mut e, DVec3::new(5.5, 10.0, 0.5));
+        for _ in 0..1300 {
+            e.update(0.05, &world, &ctx);
+        }
+        let n = e.mobs[i].nether.as_ref().unwrap();
+        assert!(n.cold);
+        let goal = n.lava_goal.expect("still heading for the lava");
+        assert_eq!(goal.target, IVec3::new(0, 9, 0));
+        assert!(goal.try_ticks > 1200, "{}", goal.try_ticks);
     }
 
     #[test]

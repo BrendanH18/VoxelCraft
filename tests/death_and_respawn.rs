@@ -139,6 +139,22 @@ fn respawn_is_a_fresh_body_that_keeps_the_enchantment_seed_and_spawn() {
 }
 
 #[test]
+fn the_death_screen_score_resets_on_respawn_unless_experience_is_kept() {
+    let mut world = world();
+    for keep in [false, true] {
+        let mut entities = Entities::new(1);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        a.tick_rules(&mut world, &mut entities, Default::default(), &rules(keep));
+        a.vitals.xp.add_points(100);
+        a.execute(Command::Kill, &mut world, &mut entities, &[]).unwrap();
+        assert_eq!(a.vitals.xp.total, 100, "the death screen shows the score");
+        a.execute(Command::Respawn, &mut world, &mut entities, &[]).unwrap();
+        // `restoreFrom` copies the score only with the inventory.
+        assert_eq!(a.vitals.xp.total, if keep { 100 } else { 0 }, "keepInventory {keep}");
+    }
+}
+
+#[test]
 fn the_desktop_crafting_grid_drops_or_returns_with_the_inventory() {
     let mut entities = Entities::new(1);
     let grid = vec![Stack::new(Item::STICK, 2), Stack::new(Item::COAL, 1)];

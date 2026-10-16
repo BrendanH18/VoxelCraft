@@ -601,7 +601,7 @@ impl Agent {
                     .personal_spawn(world)
                     .position
                     .unwrap_or_else(|| world.generator.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
-                self.session.respawn(at);
+                self.session.respawn(at, self.keep_inventory);
             }
             Command::Observe(_) | Command::Help | Command::XpQuery | Command::Say(_) => {}
             _ => return Err("command requires host console".into()),
