@@ -2,7 +2,7 @@
 
 [← Back to VoxelCraft](../README.md) · [Documentation index](README.md) · [Contributing](../CONTRIBUTING.md) · [Architecture](architecture.md) · [Development](development.md)
 
-## Current plan — updated 2026-10-12
+## Current plan — updated 2026-10-15
 
 Build a faithful recreation of modern Minecraft Java single-player gameplay
 in Rust. Version 1.0 must deliver complete core survival, building,
@@ -35,6 +35,10 @@ Immediate order:
 6. M5: verify the entire survival and equipment progression.
 7. M6: complete core automation, workstation and storage behavior.
 8. M7: finish presentation, usability, stability and the 1.0 acceptance pass.
+
+Releases follow the [release plan](#release-plan): small, themed versions from
+v0.8 to v1.0, taken in order with no dates. Work on the earliest unreleased
+version; v1.0 is everything in this roadmap.
 
 Work can overlap where dependencies permit. Bring existing working features
 up to the acceptance standard; do not rebuild them merely because this
@@ -697,6 +701,54 @@ keys, not release versions or block/item ID allocations.
 Each milestone stays open until its exit checks pass. Reuse working code and
 land focused changes; a milestone is not permission for a blanket rewrite.
 
+### Release plan
+
+Adopted by the owner on 2026-10-15. Each release is a small, themed slice of
+the milestones below, taken in this order. There are no dates: a version
+ships when its own scope passes the checks in [§7](#7-feature-completion-and-release-policy).
+Unfinished work moves to a later version instead of holding a release open or
+shipping half-done. Patch releases (0.8.1 and so on) carry fixes only.
+
+Work on the earliest unreleased version. Start a later one early only where
+its dependencies allow and it doesn't stall the current one. Version 1.0 is
+every mandatory requirement in this roadmap, Verified; nothing in it is
+optional for 1.0 unless the owner records a deferral or fidelity exception.
+
+| Version | Theme | Milestones | Main content | Status |
+|---|---|---|---|---|
+| v0.8 | Foundations | Finish M0, M1 | Valid M5 baseline and the per-requirement inventory; mob pathfinding, Java spawn categories, shape-aware light, simulation distance; pause/death/save scenarios on every input path | In progress: implementation merged (#34, #35); verification remains |
+| v0.9 | Block states | M2: BLD-04, BLD-06 | Top and double slabs, waterlogging, door hinges, floor/ceiling buttons and levers, wall grindstones, corner-stair light; reserved state ranges for later content | Planned |
+| v0.10 | Building materials | Close M2 | Missing wood, stone, copper and colour family members (pale oak, bamboo, mud brick, prismarine), the unregistered reference fuel items, signs, banners, item frames, cauldrons, soul lanterns and campfires; sponges, coral and sea pickles; falling and dripping dripstone, tilting dripleaf | Planned |
+| v0.11 | Terrain | M3: GEN-01..03 | Java climate and density terrain with overhangs; Java caves, aquifers and ores; deep-dark content, springs, glow lichen; giant spruce and jungle trees and the remaining biome features | Planned |
+| v0.12 | Structures | M3: GEN-05..07 | A Java structure-template (jigsaw) system; villages, outposts, bastions, fossils, shipwrecks, ocean ruins and monuments built from it; buried treasure and explorer maps; Java loot random sequences | Planned |
+| v0.13 | Wildlife | M4: MOB-03/04, FOO, ENV-03 | Bats, frogs, pandas, polar bears, armadillos, mooshrooms, strays, bogged, phantoms and zombie horses (with lightning); drowned conversion and the cat spawner; melon, pumpkin and beetroot crops; animal and mount acceptance | Planned |
+| v0.14 | Deep dark and trials | M3 + M4 + PRO-07 | Ancient cities with sculk and the warden; trial chambers with breezes, trial spawners, vaults and the mace; tridents, spears and the other modern weapon families | Planned |
+| v0.15 | Villages and raids | Close M3, M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M3 and M4 exit checks | Planned |
+| v0.16 | The End and the Wither | M5 | End cities and ships, shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough | Planned |
+| v0.17 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload | Planned |
+| v0.18 | Polish and performance | M7: UX, §6 | Settings, key rebinding, accessibility and subtitles, recipe discovery, asset and sound review in play; the 240 FPS gate in every scene | Planned |
+| v1.0 | Acceptance | M7 exit, §8 | Every mandatory row Verified; fresh-world and long-session playthroughs; save-compatibility policy; installer and update checks; current stable Java scope reconciled | Planned |
+
+Notes:
+
+- v0.13 to v0.15 interleave M3 and M4 because structures need their residents:
+  ancient cities need the warden, trial chambers breezes and bogged, mansions
+  and raids the illagers. M3 and M4 exit checks are run at v0.15.
+- M2 comes before structures because Java templates use the full set of block
+  states (waterlogged stairs, top slabs, hinged doors).
+- v0.11 needs an owner decision first: port Java's terrain noise so seeds
+  reproduce Java's worlds (§1.3, GEN-01), or record original noise as an
+  approved fidelity exception. Until then, original noise is a known difference.
+- Recheck the latest stable Java release when planning each version (§1.2) and
+  slot new core content into an unreleased version as an explicit scope change.
+- When a version ships, set its status here, add a delivery record like
+  [§3.3](#33-v070-delivery-record--2026-10-14) and list its unfinished members
+  in the release notes. Moving an item to another version is an edit to this
+  table, recorded with the reason.
+- After 1.0: multiplayer (dedicated servers, per-player LAN and split-screen
+  dimensions) and the side features in [§1.4](#14-what-can-follow-10) get their
+  own v1.x roadmap.
+
 ### M0 — Reference, inventory and verification tools
 
 Deliver the per-feature catalogue against the selected current stable
@@ -727,14 +779,16 @@ agree with placed states; pause/load/unload/death/save tests preserve state;
 simulation outcomes don't change with render frame rate. Existing headless,
 controller and agent regression paths remain functional.
 
-#### Next release scope (proposed, 2026-10-14): finish M0 and M1
+#### v0.8 scope: finish M0 and M1
 
-No version number is promised; the next release ships when these exit checks
-pass. Work items, each with Java 26.3 fixtures and acceptance cases:
+v0.8 ships when these exit checks pass. Work items, each with Java 26.3
+fixtures and acceptance cases:
 
 1. **M0 close-out:** a valid five-scene M5 baseline on the reference machine
    (idle, window visible) and the owner's decision on measuring 240 FPS against
-   a 120 Hz display. Every later change is then measured against it.
+   a 120 Hz display. Every later change is then measured against it. The
+   per-requirement inventory (one row per requirement with a state and
+   acceptance cases, §2) is also an M0 exit check.
 2. **MOB-02 navigation:** Java's `PathNavigation`/node evaluators for walking,
    swimming and flying mobs, respecting block shapes, hazards, doors and
    fluids; villagers reach beds and job sites, bastion and structure residents
@@ -776,10 +830,10 @@ pass. Work items, each with Java 26.3 fixtures and acceptance cases:
    ticks keep their delay; falling blocks save. Desktop/controller/agent
    pause and death scenarios and save-mid-motion tests remain.
 
-Carried known issues that belong to later milestones (M2: waterlogging, door
-hinges, wall/ceiling switches; M3: structure templates, mega trees, 3D terrain;
-M6: Java redstone update order) stay listed in the release notes until their
-milestone.
+Carried known issues that belong to later releases (v0.9: waterlogging, door
+hinges, wall/ceiling switches, top/double slabs; v0.11: 3D terrain, mega trees;
+v0.12: structure templates; v0.13: the missing mobs; v0.17: Java redstone update
+order) stay listed in the release notes until their release.
 
 ### M2 — Complete materials and interactions
 
@@ -936,8 +990,9 @@ features must meet their defined contract. Label omitted members and
 approved scope limits explicitly. Don't publish a half-functional item or
 system as complete simply because its partial code builds.
 
-There are no promised milestone dates or automatic version increments.
-Assign release versions when a coherent, verified scope is ready.
+There are no promised dates. Version numbers follow the [release plan](#release-plan);
+a version ships when its scope is verified, and unfinished work moves to a
+later version rather than shipping incomplete.
 Keep one focused source commit per feature/fix on the assigned branch,
 following the [contribution workflow](../CONTRIBUTING.md). Keep roadmap updates
 reviewable alongside implementation changes and release notes.

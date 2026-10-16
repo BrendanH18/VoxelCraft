@@ -159,7 +159,7 @@ uses `enchant::enchant_with_levels`; `set_instrument` picks among the first four
 tables the saddle, golden apple, golden carrot, crimson nylium/fungus/roots and bone block
 entries that were left empty are now real items.
 
-Loot still uses VoxelCraft's RNG, not Java's loot random sequences (v0.8 item).
+Loot still uses VoxelCraft's RNG, not Java's loot random sequences (scheduled for v0.12).
 Tests: `world::temples::tests::{loot_tables_match_the_java_26_3_fixture,
 outpost_horns_are_regular_instruments_and_temple_books_use_thirty_levels}` and
 `world::bastion::tests::stable_and_other_chests_hold_saddles_apples_carrots_and_nylium`.

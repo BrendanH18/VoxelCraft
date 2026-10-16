@@ -5,8 +5,9 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
 
 ## Project priorities
 
-- Read [the current roadmap](docs/roadmap.md) before choosing work. Build a
-  faithful modern Minecraft Java single-player game; multiplayer follows 1.0.
+- Read [the current roadmap](docs/roadmap.md) before choosing work, and take it
+  from the earliest unreleased version in its [release plan](docs/roadmap.md#release-plan).
+  Build a faithful modern Minecraft Java single-player game; multiplayer follows 1.0.
 - Match the selected Java reference behavior, including generation and structure
   layouts. Record sources and differences; do not substitute approximate behavior
   without an explicit scope decision.

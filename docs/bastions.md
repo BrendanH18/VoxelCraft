@@ -65,4 +65,4 @@ text is original; Java's End Poem is not copied. Start or the jump button on
 any connected controller skips them, like Escape and Space. Gap: split-screen
 gamepad seats and CLI agents share the host's dimension and never take the exit
 portal themselves, so they have no credits flag of their own; per-player
-dimensions are a v0.8 item.
+dimensions follow 1.0 with multiplayer.

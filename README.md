@@ -37,7 +37,8 @@ repository.
 The [project roadmap](docs/roadmap.md) targets complete core single-player
 gameplay in modern Minecraft Java's style, with close mechanical and world
 generation fidelity. It defines the work, quality checks and performance
-targets still needed for 1.0; multiplayer follows that milestone.
+targets still needed for 1.0, and lays out the releases from v0.8 to 1.0;
+multiplayer follows that milestone.
 
 It's still early, but it's already a real game: you can start in a field with
 nothing, work your way up to diamond, light a portal to the Nether, track down
