@@ -5,6 +5,8 @@
 ## Goals, status and planned changes
 
 - [Roadmap](roadmap.md): authoritative scope, dependencies and completion criteria.
+- [Requirement inventory](requirements.md): every core requirement as its own row,
+  with state, owning release, evidence and acceptance cases.
 - [Restructuring plan](restructuring.md): planned verification, content, gameplay,
   asset and module changes, including how to retain pending v0.7 work.
 
@@ -84,6 +86,22 @@ roadmap and recorded checks to assess completeness against the current target.
 - [Benchmark harness review fixes](verification/2026-10-13-review-bench-fixes.md):
   pause/tick/presentation/population validity checks, input isolation, no saves,
   terrain-following cameras, telemetry and runner gate fixes; proposed roadmap text.
+- [Mob ground navigation](verification/2026-10-14-mob-navigation.md) and
+  [swimming, flying and climbing](verification/2026-10-14-mob-navigation-swim-fly.md):
+  Java 26.3 evaluators, path search and recomputation, with benchmarks.
+- [Strider lava paths](verification/2026-10-15-strider-lava-paths.md):
+  `StriderPathNavigation`, `StriderGoToLavaGoal`, the half-block lava standing
+  height and a generated-Nether scene.
+- [Natural spawning](verification/2026-10-14-natural-spawning.md) and
+  [spawn categories](verification/2026-10-15-spawn-categories.md): Java's
+  `NaturalSpawner` ring, caps, despawning and biome spawn lists.
+- [Block shapes, light and interaction](verification/2026-10-14-block-shapes-light-interaction.md):
+  face-mask light occlusion, gameplay-light meshes and outline targeting.
+- [Loaded-region activity and save integrity](verification/2026-10-14-simulation-activity-save-integrity.md):
+  simulation distance tickets, sleeping work and saved delays.
+- [Death, pause and mid-motion saves](verification/2026-10-15-death-pause-save-scenarios.md):
+  the shared death and respawn step, the pause rule and cross-process piston
+  and repeater saves.
 
 ## History
 

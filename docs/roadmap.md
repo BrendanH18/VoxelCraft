@@ -155,7 +155,8 @@ Minecraft saves is a separate compatibility project.
 
 ## 2. Status and tracking rules
 
-Use one current record per requirement, with these fields:
+Use one current record per requirement, kept in the
+[requirement inventory](requirements.md), with these fields:
 `ID | scope/reference | state | dependencies | code/asset evidence |
 acceptance cases/results | known differences | next action`.
 
@@ -716,7 +717,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 
 | Version | Theme | Milestones | Main content | Status |
 |---|---|---|---|---|
-| v0.8 | Foundations | Finish M0, M1 | Valid M5 baseline and the per-requirement inventory; mob pathfinding, Java spawn categories, shape-aware light, simulation distance; pause/death/save scenarios on every input path | In progress: most implementation merged (#34, #35); strider lava paths, pause/death/save scenarios, the baseline and the inventory remain, then verification |
+| v0.8 | Foundations | Finish M0, M1 | Valid M5 baseline and the per-requirement inventory; mob pathfinding, Java spawn categories, shape-aware light, simulation distance; pause/death/save scenarios on every input path | In progress: most implementation merged (#34, #35); strider lava paths, pause/death/save scenarios and the [requirement inventory](requirements.md) on `t3/roadmap-next-stage-v0-8`; the owner's M5 baseline remains, then verification |
 | v0.9 | Block states | M2: BLD-04, BLD-06 | Top and double slabs, waterlogging, door hinges, floor/ceiling buttons and levers, wall grindstones, corner-stair light; reserved state ranges for later content | Planned |
 | v0.10 | Building materials | Close M2 | Missing wood, stone, copper and colour family members (pale oak, bamboo, mud brick, prismarine), the unregistered reference fuel items, signs, banners, item frames, cauldrons, soul lanterns and campfires; sponges, coral and sea pickles; falling and dripping dripstone, tilting dripleaf | Planned |
 | v0.11 | Terrain | M3: GEN-01..03 | Java climate and density terrain with overhangs; Java caves, aquifers and ores; deep-dark content, springs, glow lichen; giant spruce and jungle trees and the remaining biome features | Planned |
@@ -789,7 +790,9 @@ fixtures and acceptance cases:
    (idle, window visible) and the owner's decision on measuring 240 FPS against
    a 120 Hz display. Every later change is then measured against it. The
    per-requirement inventory (one row per requirement with a state and
-   acceptance cases, §2) is also an M0 exit check.
+   acceptance cases, §2) is also an M0 exit check. *First version written*
+   ([requirements.md](requirements.md), 2026-10-15): 118 rows, none Verified;
+   keep it current with each change.
 2. **MOB-02 navigation:** Java's `PathNavigation`/node evaluators for walking,
    swimming and flying mobs, respecting block shapes, hazards, doors and
    fluids; villagers reach beds and job sites, bastion and structure residents
@@ -799,8 +802,10 @@ fixtures and acceptance cases:
    per-mob costs; chasers, villagers, strolls, panics and following animals walk
    paths, and non-swimmers sink in water. Swim, amphibious and fly evaluators,
    wall climbing and block-update recomputation followed
-   ([evidence](verification/2026-10-14-mob-navigation-swim-fly.md)); strider
-   lava paths and player acceptance remain.
+   ([evidence](verification/2026-10-14-mob-navigation-swim-fly.md)), then
+   `StriderPathNavigation`, `StriderGoToLavaGoal` and Java's half-block lava
+   standing height ([evidence](verification/2026-10-15-strider-lava-paths.md));
+   player acceptance remains.
 3. **MOB-01 spawn rules:** Java's `NaturalSpawner` placement, 24/128-block
    ring, per-category caps scaled by loaded chunks, despawn distances and
    persistence, structure spawn overrides, and the slime/drowned paths folded in.
@@ -828,8 +833,11 @@ fixtures and acceptance cases:
    ([evidence](verification/2026-10-14-simulation-activity-save-integrity.md)):
    Java's entity/block-ticking tickets in 16-block chunks gate random ticks,
    fluids, fire, containers, redstone, entities and mobs; unloaded scheduled
-   ticks keep their delay; falling blocks save. Desktop/controller/agent
-   pause and death scenarios and save-mid-motion tests remain.
+   ticks keep their delay; falling blocks save. One shared death and respawn
+   step now serves the desktop, controller, LAN and CLI paths, and the pause
+   rule and cross-process piston/repeater mid-motion saves are tested
+   ([evidence](verification/2026-10-15-death-pause-save-scenarios.md)); player
+   acceptance remains.
 
 Carried known issues that belong to later releases (v0.9: waterlogging, door
 hinges, wall/ceiling switches, top/double slabs; v0.11: 3D terrain, mega trees;

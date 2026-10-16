@@ -1,0 +1,200 @@
+# VoxelCraft requirement inventory
+
+[← Roadmap](roadmap.md) · [Documentation index](README.md) · [Verification records](verification/)
+
+This is the M0 per-requirement inventory: the roadmap's
+[core requirement groups](roadmap.md#4-core-requirement-catalogue) split into
+individual rows. Each row has a state, the release that owns it in the
+[release plan](roadmap.md#release-plan), its evidence and its acceptance cases.
+It was written on 2026-10-15 against `t3/roadmap-next-stage-v0-8` after
+`c152eb0`. The reference is Java Edition 26.3.
+
+**Rules.** The states are those of [§2](roadmap.md#2-status-and-tracking-rules).
+A row is **Verified** only when every acceptance case passes for a recorded
+commit: correctness against the reference, ordinary player interaction on
+the desktop (plus controller and CLI paths where they apply), save/reload,
+and the M5 performance gate where the feature costs frame or tick time. No
+valid M5 baseline exists yet, so **no row is Verified**. Update a row in the
+same change as the code or evidence it describes. Add rows when a group
+turns out to contain more; never merge rows to hide a missing member.
+
+**Columns.**
+
+- *Release*: the version that should close the row.
+- *Evidence*: the latest record or source.
+- *Acceptance*: what must pass, beyond the automated checks that already do.
+  "Player" means ordinary-player play on the desktop, recorded with the
+  commit.
+- *Gaps*: known differences from Java and the next action.
+
+Shared acceptance for every row: player acceptance and save/reload (P/S),
+and an M5 scene that reaches the gate (M5) where the feature has a runtime
+cost.
+
+## PLY — Player, simulation and controls
+
+| ID | Requirement | State | Release | Evidence | Acceptance | Gaps / next action |
+|---|---|---|---|---|---|---|
+| PLY-01a | Fixed 20 Hz simulation, render interpolation, frame-rate-independent outcomes | Implemented, unverified | v0.8 | [activity](verification/2026-10-14-simulation-activity-save-integrity.md) | Seeded outcomes equal across frame pacings (passes); M5 | Player check that interpolation has no visible stutter at 120/240 Hz |
+| PLY-01b | Java simulation distance: entity- and block-ticking tickets, random ticks per section | Implemented, unverified | v0.8 | [activity](verification/2026-10-14-simulation-activity-save-integrity.md) | Ticket tiers, frozen work past the border, overlapping players (pass); M5 tick cost | Unloaded mobs stay in memory instead of per-chunk entity storage |
+| PLY-01c | Pause, load, unload, death and save scenarios on every input path | Implemented, unverified | v0.8 | [scenarios](verification/2026-10-15-death-pause-save-scenarios.md) | Pause rule, death/respawn, cross-process mid-motion saves (pass); P/S on desktop and a physical controller | No headless desktop-adapter harness |
+| PLY-02a | Java movement: acceleration, friction, sprint, sneak, jump, step-up | Partial | v0.9 | [player.rs](../src/player.rs) | Movement fixture against Java travel per tick; player | Not compared tick by tick with Java `LivingEntity.travel` |
+| PLY-02b | Swimming, crawling, poses and hitboxes | Partial | v0.9 | [player-rendering](player-rendering.md) | Pose/hitbox cases for crawl spaces, swim, sneak under slabs; player | Crawling and pose transitions unassessed against Java |
+| PLY-02c | Climbing, fluids, fall/void damage on every block state | Partial | v0.9 | [world fixes](verification/2026-10-13-world-fixes.md) | Ladders, vines, scaffolding, honey, powder snow, cobweb, hay, slime landing cases | Scaffolding, honey and powder snow missing; depends on BLD-04 states |
+| PLY-02d | Collision and targeting against outline and collision shapes | Implemented, unverified | v0.8 | [block shapes](verification/2026-10-14-block-shapes-light-interaction.md) | Raycast and collision fixtures per shape (pass for current shapes); player | Top/double slab states arrive in v0.9 |
+| PLY-03a | Health, hunger, saturation, exhaustion, regeneration, air | Partial | v0.8 | [player session](verification/2026-10-13-player-session.md) | Java FoodData fixtures; drowning and regeneration timing; P/S | Absorption missing (golden apple) |
+| PLY-03b | Status effects | Partial | v0.13 | [effects.rs](../src/simulation/effects.rs) | Every 26.3 effect's behaviour, icon, particles, save | Missing: Invisibility, Absorption, Health Boost, Glowing, Levitation, Saturation, Conduit Power, Hero of the Village, Darkness, Bad/Raid/Trial Omen, Wind Charged, Weaving, Oozing, Infested |
+| PLY-03c | Death, respawn, beds, spawn points, hardcore | Implemented, unverified | v0.8 | [scenarios](verification/2026-10-15-death-pause-save-scenarios.md) | Death drops and respawn per mode and `keepInventory` (pass); bed respawn; player on desktop and controller | Respawn keeps look direction; effects end at death |
+| PLY-03d | Experience, difficulty and game rules | Partial | v0.8 | [rules.rs](../src/rules.rs) | Each implemented game rule's effect; difficulty scaling cases | No inventory of the 26.3 game rules versus implemented ones |
+| PLY-04a | Shared action contract: mining, placement, melee, use chain, consumption, containers | Implemented, unverified | v0.8 | [mining](verification/2026-10-13-shared-mining.md), [placement](verification/2026-10-13-shared-placement.md), [use](verification/2026-10-13-shared-use.md), [combat](verification/2026-10-13-shared-combat.md) | Adapter parity tests (pass); player on desktop, controller and CLI | Pick-block and drop cancel sites; server destroy tolerance |
+| PLY-04b | Controller and CLI paths stay functional | Partial | v0.8 | [agents](agents.md), [v0.7 playtest](verification/2026-10-14-v0.7.0-playtest.md) | Physical controller session; CLI scripted session | No physical-controller record |
+| PLY-05a | Attack timing, criticals, sweeping, knockback | Implemented, unverified | v0.8 | [combat](verification/2026-10-13-shared-combat.md) | Java attack-strength fixtures (pass); player | Sweeping and knockback not fixture-checked |
+| PLY-05b | Armor, offhand, shields, durability, item remainders | Partial | v0.10 | [survival items](survival-items.md) | Damage reduction fixtures; shield block/disable; offhand use; P/S | Offhand and shield behaviour unassessed against 26.3 |
+| PLY-05c | Bows, crossbows and their enchantments | Partial | v0.10 | [survival items](survival-items.md) | Draw, damage, Multishot, Piercing, Quick Charge, Flame, Punch, Infinity cases | Firework rockets in crossbows missing |
+| PLY-05d | Weapon families: tridents, maces, spears | Missing | v0.14 | — | Each weapon's attack, enchantments, acquisition | Not registered |
+| PLY-06a | Key bindings, sensitivity, FOV, cameras, view bobbing | Partial | v0.18 | [gameplay](gameplay.md#controls) | Rebinding, persistence, third-person cameras | No key rebinding |
+| PLY-06b | Reach, targeting feedback, crosshair and attack indicator | Implemented, unverified | v0.8 | [combat](verification/2026-10-13-shared-combat.md) | Player | — |
+
+## BLD — Blocks, items, crafting and building
+
+| ID | Requirement | State | Release | Evidence | Acceptance | Gaps / next action |
+|---|---|---|---|---|---|---|
+| BLD-01a | Wood families (all 26.3 woods: planks, logs, stairs, slabs, fences, gates, doors, trapdoors, buttons, plates, signs, boats) | Partial | v0.10 | [forms.rs](../src/world/forms.rs), [content](verification/2026-10-12-content-and-assets.md) | Per-family member checklist against the 26.3 registry; craft, place, mine, burn | Pale oak and bamboo stairs/slabs/fences/doors incomplete; signs missing |
+| BLD-01b | Stone families (stone, deepslate, tuff, blackstone, sandstone, prismarine, mud brick, end stone, purpur) | Partial | v0.10 | [forms.rs](../src/world/forms.rs) | Per-family checklist; stonecutter recipes | Mud brick and prismarine shaped forms incomplete; stonecutter non-functional |
+| BLD-01c | Copper family with oxidation and waxing | Unassessed | v0.10 | — | Oxidation stages, waxing, scraping, lightning de-oxidation | Assess against 26.3 |
+| BLD-01d | Colour families (wool, carpet, concrete, terracotta, glass, beds, banners, candles) | Partial | v0.10 | [colors](colors.md) | 16-colour checklist per family; dyeing | Banners and candles missing |
+| BLD-01e | The 171 unregistered reference fuel items | Missing | v0.10 | [fuel inventory](verification/2026-10-12-fuel-inventory.md) | Each registered with its fuel value | — |
+| BLD-02a | Crafting recipes accept exactly Java's alternatives | Partial | v0.10 | [vanilla recipes](vanilla-recipes/), [crafting.rs](../src/crafting.rs) | Recipe-by-recipe comparison with the 26.3 data pack | No full comparison yet |
+| BLD-02b | Smelting, smoking, blasting, campfire cooking and fuel | Partial | v0.10 | [fuel](verification/2026-10-12-fuel-inventory.md) | Each 26.3 cooking recipe and fuel value | Campfire cooking missing |
+| BLD-02c | Composting and repair materials | Partial | v0.10 | [content](verification/2026-10-12-content-and-assets.md) | 26.3 compost chances; anvil repair items | Composter coverage incomplete |
+| BLD-03a | Hardness, tool tiers, mining speed, drops | Implemented, unverified | v0.10 | [mining](verification/2026-10-13-shared-mining.md), [mining fixes](verification/2026-10-13-review-mining-fixes.md) | 26.3 hardness/tool table for every registered block; player | Fortune and Silk Touch per-block loot unassessed |
+| BLD-03b | Gravity, burning, explosion resistance, support removal | Partial | v0.10 | [world fixes](verification/2026-10-13-world-fixes.md) | Per-block flammability and blast resistance cases | No full table comparison |
+| BLD-04a | Slabs: top, bottom, double, waterlogged | Partial | v0.9 | [block shapes](verification/2026-10-14-block-shapes-light-interaction.md) | Placement, collision, light, culling, neighbour updates per state | Top and double states need new IDs |
+| BLD-04b | Stairs: upside-down and corner shapes | Partial | v0.9 | [block shapes](verification/2026-10-14-block-shapes-light-interaction.md) | Shape, light and collision per corner state | Corner-stair light shapes |
+| BLD-04c | Doors with hinges, gates, trapdoors | Partial | v0.9 | [doors.rs](../src/app/doors.rs) | Hinge selection, double doors, redstone, collision | No hinge state |
+| BLD-04d | Walls, fences, panes, bars connections | Partial | v0.9 | [shape.rs](../src/world/shape.rs) | Connection fixtures, tall wall posts | Unassessed against 26.3 wall heights |
+| BLD-04e | Wall and ceiling mounted blocks (buttons, levers, grindstones, torches, lanterns) | Partial | v0.9 | [redstone](redstone.md) | Every mount state places, supports and drops correctly | Floor/ceiling buttons and levers, wall grindstones missing |
+| BLD-04f | Waterlogging across all waterloggable blocks | Partial | v0.9 | [content fixes](verification/2026-10-13-review-content-fixes.md) | Fill, drain, flow, light and collision per waterloggable state | Most shaped blocks can't be waterlogged |
+| BLD-05a | Storage: chests, double chests, barrels, ender chests, shulker boxes | Partial | v0.16 | [chest.rs](../src/world/chest.rs) | Open, merge, comparator, save | Shulker boxes and ender chests missing |
+| BLD-05b | Utilities: signs, item frames, cauldrons, campfires, soul lanterns, beds, lights | Partial | v0.10 | [roadmap](roadmap.md#release-plan) | Each item's interactions and save | Signs, item frames, cauldrons, campfires missing |
+| BLD-05c | Icons, held and dropped models agree with world geometry | Partial | v0.18 | [content](verification/2026-10-12-content-and-assets.md) | Visual review of every registered item | Bud wall states draw as boxes |
+| BLD-06 | Registry capacity and versioned state encoding | Partial | v0.9 | [block.rs](../src/world/block.rs) (`STATE_CAPACITY` 4096) | Capacity report covering the planned catalogue; ranges reserved for v0.9–v0.17 | Measure remaining state space and reserve ranges before v0.10 |
+
+## GEN — Terrain, dimensions and exploration
+
+| ID | Requirement | State | Release | Evidence | Acceptance | Gaps / next action |
+|---|---|---|---|---|---|---|
+| GEN-01a | Climate, biome and density terrain with overhangs | Partial | v0.11 | [overworld terrain](overworld-terrain.md) | Seed/coordinate fixtures against Java biome and height | Owner decision: port Java noise or record a fidelity exception |
+| GEN-01b | Surfaces, rivers, mountains, oceans, dimension bounds | Partial | v0.11 | [overworld terrain](overworld-terrain.md) | Surface-rule fixtures | Depends on GEN-01a |
+| GEN-02a | Caves, carvers and aquifers | Partial | v0.11 | [overworld terrain](overworld-terrain.md#underground) | Java cave fixtures | Original noise |
+| GEN-02b | Ore distributions and exposure rules | Partial | v0.11 | [ore.rs](../src/world/ore.rs) | 26.3 placed-feature parameters per ore | Unassessed against 26.3 configured features |
+| GEN-02c | Geodes, springs, lush, dripstone and deep-dark content | Partial | v0.11 | [geodes](verification/2026-10-13-amethyst-geodes.md) | Feature fixtures | Deep-dark content, springs and glow lichen missing |
+| GEN-03 | Trees, flora, fungi, reefs, ice, snow and other features, continuous across borders | Partial | v0.11 | [overworld terrain](overworld-terrain.md#surface-and-features) | Feature fixtures; border continuity | Giant spruce and jungle trees missing |
+| GEN-04a | Nether biomes, terrain and features | Partial | v0.11 | [nether biomes](nether-biomes.md) | Biome and feature fixtures | Original noise |
+| GEN-04b | End terrain, islands and gateways | Partial | v0.16 | [end.rs](../src/world/end.rs) | Island shape fixtures; gateway placement | End cities and ships missing |
+| GEN-04c | Portals: placement, linking, arrival safety, separate persistence | Partial | v0.16 | [portal.rs](../src/world/portal.rs) | Linking and search fixtures; save per dimension | Unassessed against Java's portal forcer |
+| GEN-05a | Structure-template (jigsaw) system | Missing | v0.12 | — | Template pool expansion matches Java for fixed seeds | Not started |
+| GEN-05b | Villages | Partial | v0.12 | [villages](villages.md) | Layout from Java templates; residents; loot | Hand-built layouts, not templates |
+| GEN-05c | Dungeons, mineshafts, strongholds | Partial | v0.12 | [overworld structures](overworld-structures.md) | Piece layouts; spawners; loot tables | Unassessed piece-by-piece |
+| GEN-05d | Desert pyramids, jungle temples, swamp huts, igloos | Implemented, unverified | v0.12 | [overworld structures](overworld-structures.md) | Placement salts (pass); layouts; traps; loot; player | Terrain alignment uses VoxelCraft terrain |
+| GEN-05e | Pillager outposts, shipwrecks, ocean ruins, monuments | Partial | v0.12 | [overworld structures](overworld-structures.md) | Template layouts; loot; residents | Outposts need the template system |
+| GEN-05f | Buried treasure, ruined portals, fossils, desert wells, trail ruins | Missing | v0.12 | — | Placement and loot | Not registered |
+| GEN-05g | Fortresses and bastions | Partial | v0.12 | [bastions](bastions.md) | Piece layouts; residents; loot | Bastions approximate Java templates |
+| GEN-05h | End cities and ships | Missing | v0.16 | — | Layout; shulkers; elytra | Not started |
+| GEN-05i | Woodland mansions | Missing | v0.15 | — | Layout; illagers; loot | Not started |
+| GEN-05j | Ancient cities and trial chambers | Missing | v0.14 | — | Layout; residents; vaults | Not started |
+| GEN-06 | Maps, compasses, clocks, explorer maps and exploration rewards | Partial | v0.12 | [item.rs](../src/item.rs) | Map rendering and scaling; explorer maps from cartographers and loot | Explorer maps, lodestones and recovery compasses missing |
+| GEN-07 | Order-independent generation, no clipped structures or respawned loot | Partial | v0.12 | [overworld structures](overworld-structures.md#placement-and-generation) | Different request orders and threads give identical chunks; cleared loot stays cleared after restart | Needs a cross-order corpus test |
+
+## MOB — Spawning, AI and the living world
+
+| ID | Requirement | State | Release | Evidence | Acceptance | Gaps / next action |
+|---|---|---|---|---|---|---|
+| MOB-01a | Natural spawning: placement, ring, caps, categories, despawning | Implemented, unverified | v0.8 | [spawning](verification/2026-10-14-natural-spawning.md), [categories](verification/2026-10-15-spawn-categories.md) | Java fixtures (pass); in-game check by day and night, in caves, and in Peaceful | Cat spawner and missing mobs |
+| MOB-01b | Light-based spawning and torch suppression | Implemented, unverified | v0.8 | [lighting and spawning](verification/2026-10-13-lighting-spawning.md) | Fixtures (pass); player | — |
+| MOB-01c | Structure spawn overrides and spawners | Partial | v0.12 | [categories](verification/2026-10-15-spawn-categories.md) | Monument, fortress, outpost, swamp hut lists | Needs the structures |
+| MOB-02a | Ground navigation | Implemented, unverified | v0.8 | [ground](verification/2026-10-14-mob-navigation.md) | Java path fixtures (pass); player | Entity collision boxes not in path checks |
+| MOB-02b | Swimming, amphibious, flying and climbing navigation | Implemented, unverified | v0.8 | [swim/fly](verification/2026-10-14-mob-navigation-swim-fly.md) | Fixtures (pass); M5 scene with swimmers and flyers | Ghasts, blazes, bees, allays, vexes keep own movement |
+| MOB-02c | Strider lava navigation | Implemented, unverified | v0.8 | [striders](verification/2026-10-15-strider-lava-paths.md) | Fixtures and Nether scene (pass); player riding and luring | Goal priority order differs for follow-parent |
+| MOB-02d | Targets, cooldowns, attacks, equipment and line of sight | Partial | v0.13 | [mob parity](mob-parity.md) | Per-mob attack fixtures | No held spawn weapons for mobs |
+| MOB-03a | Farm animals: breeding, ageing, feeding, wool, eggs | Partial | v0.13 | [animals](animals.md) | Breeding and growth timers; P/S | Mooshrooms missing |
+| MOB-03b | Companions: wolves, cats, parrots, taming, sitting | Partial | v0.13 | [animals](animals.md#companions-and-life-cycles) | Taming, following, teleporting | Cat spawner missing |
+| MOB-03c | Aquatic mobs, buckets, axolotls | Partial | v0.13 | [aquatic mobs](aquatic-mobs.md) | Bucketing, schooling, spawning | Frogs and tadpoles missing |
+| MOB-03d | Leads and name tags | Partial | v0.13 | [animals](animals.md#leads-and-name-tags) | Leash physics; fence knots; persistence | — |
+| MOB-03e | Missing passive mobs: bats, bees, frogs, pandas, polar bears, ocelots, armadillos, sniffers, allays, mooshrooms | Missing | v0.13 | — | Each mob's behaviour, drops, spawning | Not registered |
+| MOB-04a | Overworld hostiles present (zombies, skeletons, creepers, spiders, witches, slimes, drowned, husks, silverfish, endermen) | Partial | v0.13 | [mob parity](mob-parity.md) | Per-mob behaviour and drop fixtures | Drowned conversion missing |
+| MOB-04b | Missing hostiles: strays, bogged, phantoms, vexes, vindicators, evokers, ravagers, shulkers, endermites, wardens, breezes, creakings, zombie and skeleton horses | Missing | v0.13–v0.16 | — | Each mob's behaviour, drops, spawning | Registered in the release that adds its structure |
+| MOB-04c | Nether mobs | Partial | v0.13 | [nether mobs](nether-mobs.md) | Brain behaviour fixtures | See the known gaps in that document |
+| MOB-05a | Villagers: jobs, POIs, schedules, trading, restocking | Partial | v0.15 | [villages](villages.md) | Profession and trade tables; schedule cases | Lectern, loom, cartography, stonecutter not functional |
+| MOB-05b | Reputation, breeding, golems, zombie conversion and cures | Partial | v0.15 | [villages](villages.md#reputation) | Gossip fixtures; cure discounts | — |
+| MOB-05c | Wandering traders | Partial | v0.15 | [villages](villages.md#wandering-traders) | Spawn timing; trades | — |
+| MOB-05d | Raids and illagers | Missing | v0.15 | — | Bad Omen, waves, rewards | Not started |
+| MOB-06 | Models, animations, sounds; displayed state agrees with simulation | Partial | v0.18 | [player rendering](player-rendering.md) | Visual and audio review per mob | — |
+
+## FOO — Food, farming and travel
+
+| ID | Requirement | State | Release | Evidence | Acceptance | Gaps / next action |
+|---|---|---|---|---|---|---|
+| FOO-01a | Crops and foods present | Partial | v0.13 | [survival items](survival-items.md) | 26.3 food values and effects | Melon, pumpkin and beetroot crops missing |
+| FOO-01b | Bees, honey and related acquisition | Missing | v0.13 | — | Hives, pollination, honey bottles and combs | Not registered |
+| FOO-02 | Growth, bone meal, soil, trees and propagules, yields | Partial | v0.13 | [content](verification/2026-10-12-content-and-assets.md) | Java growth chances and conditions per plant | Mega trees and sapling stage gaps |
+| FOO-03 | Fishing: open water, loot, enchantments, wear, XP | Implemented, unverified | v0.13 | [roadmap §3.1](roadmap.md#31-confirmed-06-audit-follow-ups) | 26.3 loot fixtures (pass); player | Java random sequences; luck attribute |
+| FOO-04a | Boats, chest boats and rafts | Partial | v0.13 | [mounts](mounts.md) | Boat physics against Java; storage; P/S | Unassessed tick by tick |
+| FOO-04b | Minecarts and rails | Partial | v0.17 | [redstone](redstone.md#rails-and-minecarts-round-2) | Speed and powered rail fixtures | — |
+| FOO-04c | Ridden animals: horses, pigs, striders, camels, llamas | Partial | v0.13 | [mounts](mounts.md#animal-mounts) | Steering, jumping, storage, dismount safety | Zombie and skeleton horses missing |
+
+## PRO — Survival and equipment progression
+
+| ID | Requirement | State | Release | Evidence | Acceptance | Gaps / next action |
+|---|---|---|---|---|---|---|
+| PRO-01 | No-cheat progression to the dragon and back | Partial | v0.16 | [roadmap §3.3](roadmap.md#33-v070-delivery-record--2026-10-14) | Recorded fresh-world playthrough | Needs v0.11–v0.15 content |
+| PRO-02 | Brewing, potions, splash, lingering, tipped arrows | Partial | v0.13 | [potion.rs](../src/potion.rs) | Every 26.3 brewing recipe and effect | Lingering potions and tipped arrows unassessed; several effects missing (PLY-03b) |
+| PRO-03 | Experience, enchanting, anvils, grindstones, renaming | Partial | v0.15 | [enchant.rs](../src/enchant.rs) | Offer fixtures; repair costs; renaming | Missing enchantments: Loyalty, Riptide, Channeling, Impaling, Soul Speed, Swift Sneak, Density, Breach, Wind Burst; anvil naming |
+| PRO-04 | Ancient debris, Netherite, smithing templates | Partial | v0.12 | [smithing.rs](../src/smithing.rs) | Template loot from bastions; upgrades keep enchantments | Templates depend on bastion loot fidelity |
+| PRO-05 | End crystals and dragon respawn, gateways, shulkers, elytra, fireworks | Partial | v0.16 | [dragon.rs](../src/entity/dragon.rs) | Respawn ritual; elytra flight; fireworks | Dragon respawn, shulkers, elytra and fireworks missing |
+| PRO-06 | Wither, Nether stars, beacons | Missing | v0.16 | — | Summoning; fight; beacon pyramid range and effects | Not started |
+| PRO-07 | Modern progression: trial chambers, vaults, maces, spears, new materials | Missing | v0.14 | — | Each item obtainable and useful in survival | Copper tools and armor exist |
+
+## ENV — Environmental systems
+
+| ID | Requirement | State | Release | Evidence | Acceptance | Gaps / next action |
+|---|---|---|---|---|---|---|
+| ENV-01a | Fluid flow, sources, lava/water reactions | Partial | v0.10 | [fluid.rs](../src/world/fluid.rs) | Flow fixtures against Java fluid ticks | Bubble columns missing |
+| ENV-01b | Buckets and entity/item behaviour in fluids | Implemented, unverified | v0.10 | [buckets](verification/2026-10-13-review-bucket-fixes.md) | Shared bucket cases (pass); player | — |
+| ENV-02 | Fire, burning, explosions and TNT | Partial | v0.10 | [fire.rs](../src/world/fire.rs) | Spread chances; blast resistance; entity damage | Unassessed against 26.3 fire tick |
+| ENV-03 | Rain, snow, thunder, lightning, freezing and melting | Partial | v0.13 | [world fixes](verification/2026-10-13-world-fixes.md) | Weather timers (pass); lightning effects; snow accumulation | Lightning conversions (zombie horses, charged creepers) |
+| ENV-04 | Sponges, dripstone, dripleaf, mud and other special blocks | Partial | v0.10 | [content](verification/2026-10-12-content-and-assets.md) | Each block's interactions | Falling and dripping dripstone, tilting dripleaf missing |
+| ENV-05 | Skylight and block light with shape-aware occlusion | Implemented, unverified | v0.8 | [block shapes](verification/2026-10-14-block-shapes-light-interaction.md), [lighting](verification/2026-10-13-lighting-spawning.md) | Light fixtures (pass); visual review of Nether/End ambient | Corner-stair light shapes (v0.9) |
+
+## AUT — Automation, workstations and storage
+
+| ID | Requirement | State | Release | Evidence | Acceptance | Gaps / next action |
+|---|---|---|---|---|---|---|
+| AUT-01a | Redstone dust, switches, torches, repeaters, comparators | Partial | v0.17 | [redstone](redstone.md#signal-engine) | Java signal fixtures; burnout; locking | Java update order |
+| AUT-01b | Sensors: targets, daylight, tripwire, sculk, calibrated sculk | Partial | v0.17 | [redstone](redstone.md#note-blocks-and-tripwire-round-2) | Each sensor's timing | Sculk sensors missing |
+| AUT-02 | Pistons, observers, entity push, slime and honey | Partial | v0.17 | [redstone](redstone.md#pistons-and-observers), [scenarios](verification/2026-10-15-death-pause-save-scenarios.md) | Mid-motion saves (pass); entity push; slime/honey movement | Entity push and slime/honey missing |
+| AUT-03 | Dispensers, droppers, hoppers, composters, crafter | Partial | v0.17 | [redstone](redstone.md#inventory-automation) | Special dispensing table; sided transfers | Crafter missing |
+| AUT-04a | Furnaces, smokers, blast furnaces, brewing | Partial | v0.15 | [furnace.rs](../src/world/furnace.rs) | Cooking times; XP; hopper interaction | — |
+| AUT-04b | Enchanting tables, anvils, smithing, grindstones | Partial | v0.15 | [enchant.rs](../src/enchant.rs) | See PRO-03 | — |
+| AUT-04c | Stonecutters, looms, cartography tables, lecterns | Missing | v0.15 | [villages](villages.md) | Each screen works in survival | Job sites only |
+| AUT-05 | Storage and vehicle transactions without loss or duplication | Partial | v0.17 | [process persistence](../tests/process_persistence.rs) | Container and cart storage fuzz cases across reloads | — |
+| AUT-06 | Representative farms, clocks, sorters across unload and restart | Missing | v0.17 | — | Recorded reference builds working after reload | Needs AUT-01/02 Java order |
+
+## UX — Presentation, usability and distribution
+
+| ID | Requirement | State | Release | Evidence | Acceptance | Gaps / next action |
+|---|---|---|---|---|---|---|
+| UX-01 | Textures, models, icons and animation | Partial | v0.18 | [content](verification/2026-10-12-content-and-assets.md) | Asset review in play; provenance list | — |
+| UX-02 | Sound, music, particles and feedback | Partial | v0.18 | [music](music.md), [particles](particles.md) | Review in play | Subtitles missing |
+| UX-03a | Title screen, world management, seeds | Partial | v0.18 | [gameplay](gameplay.md) | Create, rename, delete, copy seed | Unassessed |
+| UX-03b | Settings, key rebinding, GUI scale, accessibility, subtitles | Partial | v0.18 | [settings.rs](../src/app/settings.rs) | Every option persists and applies | Key rebinding and subtitles missing |
+| UX-03c | Inventory search, recipe book and discovery, every container screen | Partial | v0.18 | [recipe_book.rs](../src/app/recipe_book.rs) | Recipe discovery rules; each screen | Recipe unlocks unassessed |
+| UX-04 | Install, start, save, quit, reopen, update on supported platforms | Partial | v1.0 | [releases](releases.md) | Release package checks per platform | — |
+| UX-05 | Errors, backups, migration and a 1.0 save-compatibility policy | Partial | v1.0 | [storage.rs](../src/world/storage.rs) | Migration tests from each released save version | No written policy |
+
+## Performance (§6)
+
+| ID | Requirement | State | Release | Evidence | Acceptance | Gaps / next action |
+|---|---|---|---|---|---|---|
+| PERF-01 | Valid five-scene M5 baseline (1920 × 1080, 256 blocks) | Missing | v0.8 | [invalid run](verification/2026-10-13-m5-baseline.md), [harness fixes](verification/2026-10-13-review-bench-fixes.md) | Owner runs the suite on an idle machine with the window visible | Owner decision on the 120 Hz presentation cap |
+| PERF-02 | 240 FPS minimum in every representative scene | Missing | v0.18 | [performance §6](roadmap.md#6-performance-acceptance) | Gate passes on the reference machine | Needs PERF-01 |
