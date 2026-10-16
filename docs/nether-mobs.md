@@ -5,8 +5,8 @@
 VoxelCraft v0.5 adds the Nether's living mobs. They follow Java Edition 1.21's
 brains (`PiglinAi`, `PiglinBruteAi`, `HoglinAi`, `Zoglin`, `Strider`) as closely as
 the engine allows. The retained v0.7 implementation adds riding and breeding. They walk Java ground
-paths ([navigation record](verification/2026-10-14-mob-navigation.md)); striders keep
-their own lava steering. The remaining parts
+paths ([navigation record](verification/2026-10-14-mob-navigation.md)); striders walk
+them across lava ([strider record](verification/2026-10-15-strider-lava-paths.md)). The remaining parts
 are approximated or left out (see [Known gaps](#known-gaps)).
 
 | Mob | Health | Box | Damage | XP | Drops |
@@ -199,15 +199,19 @@ persistent hoglins.
 ## Striders
 
 Striders are passive, fire immune and hurt by water and rain.
-- They walk on lava: a lava surface counts as ground, and a strider sunk into lava
-  rises (Java's `floatStrider`).
-- They treat lava as floor when stepping. Once on lava they won't wander onto dry
-  land, matching Java's walk-target scores of 10 for lava and unwalkable for land
+- They walk on lava: a lava source with no lava above holds them half a block up
+  its cell, legs in the lava (Java's `LiquidBlock.STABLE_SHAPE`), and a strider
+  sunk deeper rises (`floatStrider`).
+- They walk Java paths (`StriderPathNavigation`): lava, fire and the cells beside
+  them cost nothing, water is impassable, and lava counts as a stable destination.
+  They stroll twice as often as other animals (`RandomStrollGoal(1.0, 60)`); once
+  in lava they never pick dry land, since Java scores lava 10 and land `-Infinity`
   from lava.
 - **Cold**: when neither the feet nor the block below are lava (Java's
   `strider_warm_blocks` rule), a strider turns purple-grey and shivers. It moves 34%
-  slower (`SUFFOCATING_MODIFIER`) and heads for the nearest open lava within 8 blocks
-  across and 2 up or down (`StriderGoToLavaGoal`).
+  slower (`SUFFOCATING_MODIFIER`). Out of lava, `StriderGoToLavaGoal` looks for lava
+  within 8 blocks across and 2 up or down in Java's search order, then walks a path
+  to it, searching again 200–400 ticks after each search.
 - **Spawning**: on lava seas, where the lava has open air above (Java's
   `checkStriderSpawnRules`), at weight 60 in groups of 1–2 in every Nether biome.
 

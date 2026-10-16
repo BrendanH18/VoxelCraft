@@ -13,6 +13,8 @@ use super::{Ctx, EntityEvent, MobSound, MobWorld, Rng, path};
 
 mod navigate;
 mod nether_ai;
+#[cfg(test)]
+pub(crate) use nether_ai::STABLE_LAVA_HEIGHT;
 
 const GRAVITY: f64 = 28.0;
 /// Clears a 1-block ledge with a little margin (peak ~1.26 blocks).
@@ -1795,9 +1797,9 @@ impl Mob {
                         if rng.chance(0.6) { (rng.range(-1.1, 1.1), rng.range(-0.35, 0.3)) } else { (0.0, 0.0) };
                 }
                 if self.kind.walks_paths() {
-                    // `WaterAvoidingRandomStrollGoal`: a 1-in-120 chance a
-                    // tick (1 in 60 per goal update, every other tick).
-                    if rng.chance(dt * 20.0 / 120.0) && self.try_stroll(world, ctx, rng) {
+                    // `RandomStrollGoal`: a 1-in-`interval` chance a tick (1 in
+                    // half the interval per goal update, every other tick).
+                    if rng.chance(dt * 20.0 / self.kind.stroll_interval()) && self.try_stroll(world, ctx, rng) {
                         self.path_move = true;
                     }
                 } else if self.ai_timer <= 0.0 {

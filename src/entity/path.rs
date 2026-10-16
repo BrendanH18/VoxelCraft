@@ -2018,6 +2018,53 @@ mod tests {
     }
 
     #[test]
+    fn striders_path_across_lava_and_into_it_but_not_onto_a_full_block_shore() {
+        // A lava pool two deep (63 and 62) for x in 0..=8, with a stone
+        // island at x = 4 in the middle rows.
+        let mut w = flat();
+        for x in 0..=8 {
+            for z in -4..=4 {
+                w.0.set(IVec3::new(x, 63, z), Block::LAVA);
+                w.0.set(IVec3::new(x, 62, z), Block::LAVA);
+            }
+        }
+        for z in -1..=1 {
+            for y in 63..66 {
+                w.0.set(IVec3::new(4, y, z), Block::STONE);
+            }
+        }
+        let strider = crate::entity::MobKind::Strider.nav_caps(0.9, 1.7);
+        // Standing on the stable shape half a block up the top source.
+        let on_lava = |x: i32, z: i32| Start {
+            pos: DVec3::new(x as f64 + 0.5, 63.5, z as f64 + 0.5),
+            on_ground: true,
+            in_water: false,
+        };
+        let p = find_path(&w, &strider, on_lava(1, 0), &[IVec3::new(7, 63, 0)], 0).unwrap();
+        assert!(p.reached, "{:?}", cells(&p));
+        assert_eq!(p.nodes[0].pos, IVec3::new(1, 63, 0), "starts on the top lava cell");
+        assert!(p.nodes.iter().all(|n| n.ty == PathType::Lava && n.pos.y == 63), "{:?}", cells(&p));
+        assert!(p.nodes.iter().all(|n| n.pos.x != 4 || n.pos.z.abs() > 1), "round the island");
+        // Others can't stand on lava at all.
+        assert!(!find_path(&w, &zombie(), on_lava(1, 0), &[IVec3::new(7, 63, 0)], 0).is_some_and(|p| p.reached));
+        // From the shore it walks down into the lava.
+        let p = find_path(&w, &strider, at(-2, 0), &[IVec3::new(2, 63, 0)], 0).unwrap();
+        assert!(p.reached && p.nodes.last().unwrap().ty == PathType::Lava, "{:?}", cells(&p));
+        // Java's floor under a lava node is the lava below it (no collision
+        // without the mob's context), so a shore one block above the lava
+        // surface is a two-block jump: it can't path out onto the ground.
+        let p = find_path(&w, &strider, on_lava(1, 0), &[IVec3::new(-2, 64, 0)], 0).unwrap();
+        assert!(!p.reached && p.nodes.iter().all(|n| n.pos.x >= 0), "{:?}", cells(&p));
+        // A shore level with the lava's top cell is a step.
+        for z in -4..=4 {
+            w.0.set(IVec3::new(-1, 63, z), Block::AIR);
+            w.0.set(IVec3::new(-2, 63, z), Block::AIR);
+        }
+        let p = find_path(&w, &strider, on_lava(1, 0), &[IVec3::new(-2, 63, 0)], 0).unwrap();
+        assert!(p.reached, "{:?}", cells(&p));
+    }
+
+    #[test]
     fn drops_at_most_three_blocks_when_idle() {
         // A ledge: ground at 63 for x <= 2, then a pit down to `floor`.
         let pit = |depth: i32| {

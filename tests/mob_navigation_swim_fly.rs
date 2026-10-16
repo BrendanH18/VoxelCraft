@@ -198,3 +198,88 @@ fn drowned_swim_up_after_villagers() {
     }
     assert!(peak > 4.0, "drowned hunting a villager stayed on the bottom: {peak}");
 }
+
+/// Representative Nether check (run with `--ignored --nocapture`): forty
+/// striders on generated lava seas, half of them put ashore beside the
+/// lava, for 30 seconds. Reports how many stand in lava at the end and the
+/// entity tick cost of their lava paths.
+#[test]
+#[ignore]
+fn striders_walk_lava_seas_in_generated_nether() {
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
+    use voxelcraft::world::{
+        World,
+        terrain::{Dimension, Generator},
+    };
+    let seed: u64 = std::env::var("NAV_SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(7);
+    let generator = Arc::new(Generator::for_dimension(seed, Dimension::Nether));
+    let mut world = World::new_headless(generator, Default::default(), 2);
+    let at = DVec3::new(0.5, 40.0, 0.5);
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        world.update(at);
+        if world.loaded_chunks() > 0 && world.is_idle() {
+            break;
+        }
+        assert!(Instant::now() < deadline, "streaming did not finish");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let sea = voxelcraft::world::nether::LAVA_SEA;
+    let lava = |p: IVec3| world.block(p).is_some_and(|b| b.is_lava());
+    let open = |p: IVec3| world.block(p) == Some(Block::AIR) && world.block(p + IVec3::Y) == Some(Block::AIR);
+    let mut on_sea = Vec::new();
+    let mut ashore = Vec::new();
+    for r in 0..40 {
+        for d in -r..=r {
+            for (x, z) in [(d, r), (d, -r), (r, d), (-r, d)] {
+                let top = IVec3::new(x, sea, z);
+                if lava(top) && open(top + IVec3::Y) && on_sea.len() < 20 {
+                    on_sea.push(DVec3::new(x as f64 + 0.5, sea as f64 + 0.5, z as f64 + 0.5));
+                }
+                // Dry ground level with the lava's surface, next to lava.
+                let ground = IVec3::new(x, sea, z);
+                if ashore.len() < 20
+                    && world.block(ground).is_some_and(|b| b.is_solid() && !b.is_fluid())
+                    && open(ground + IVec3::Y)
+                    && [IVec3::X, -IVec3::X, IVec3::Z, -IVec3::Z].iter().any(|&s| lava(ground + s))
+                {
+                    ashore.push(DVec3::new(x as f64 + 0.5, sea as f64 + 1.0, z as f64 + 0.5));
+                }
+            }
+        }
+    }
+    let player = DVec3::new(0.5, sea as f64 + 40.0, 0.5);
+    let ctx = Ctx {
+        spawn_light: SpawnLight::NIGHT,
+        players: vec![Target::new(PlayerId::HOST, player, true)],
+        daylight: 0.0,
+        spawning: false,
+        raining: false,
+        dimension: Dimension::Nether,
+    };
+    let mut e = Entities::new(seed);
+    for &p in on_sea.iter().chain(&ashore) {
+        e.spawn(MobKind::Strider, p);
+    }
+    let mut times = Vec::new();
+    for _ in 0..20 * 30 {
+        let t = Instant::now();
+        e.update(0.05, &world, &ctx);
+        times.push(t.elapsed().as_secs_f64() * 1e3);
+    }
+    times.sort_by(f64::total_cmp);
+    let mean = times.iter().sum::<f64>() / times.len() as f64;
+    // Feet in the top lava cell (Java's stable height), or a block above it
+    // on the old full-block surface.
+    let warm = |p: DVec3| lava(p.floor().as_ivec3()) || lava((p - DVec3::Y * 0.6).floor().as_ivec3());
+    let in_lava = e.mobs.iter().filter(|m| m.kind == MobKind::Strider && warm(m.pos)).count();
+    println!(
+        "seed {seed}: {} on the sea + {} ashore; {in_lava}/{} in lava after 30 s; entity tick mean {mean:.3} ms, p99 {:.3} ms, max {:.3} ms",
+        on_sea.len(),
+        ashore.len(),
+        e.mobs.len(),
+        times[times.len() * 99 / 100],
+        times.last().unwrap()
+    );
+}

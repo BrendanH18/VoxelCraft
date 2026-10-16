@@ -146,6 +146,17 @@ pub(super) enum Goal {
     Walk(DVec3),
 }
 
+/// A strider's running `StriderGoToLavaGoal` (`MoveToBlockGoal` state).
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(super) struct LavaGoal {
+    /// The lava block it heads for.
+    pub target: IVec3,
+    /// `tryTicks`: ticks spent away from the target (less time spent there).
+    pub try_ticks: i32,
+    /// `maxStayTicks`.
+    pub max_stay: i32,
+}
+
 /// Per-mob state for piglins and brutes.
 #[derive(Clone, Debug, PartialEq)]
 pub struct NetherMob {
@@ -174,12 +185,16 @@ pub struct NetherMob {
     pub(super) hunt_cooldown: f32,
     pub(super) ate: f32,
     /// Hoglins: seconds left passive after seeing a repellent and the
-    /// nearest one seen; hoglins and striders: seconds to the next block scan.
+    /// nearest one seen; hoglins: seconds to the next block scan.
     pub(super) pacified: f32,
     pub(super) repellent: Option<DVec3>,
     pub(super) scan_timer: f32,
     /// Striders: out of lava, shivering and slowed.
     pub(super) cold: bool,
+    /// Striders: the running `StriderGoToLavaGoal`, and ticks until it may
+    /// search again (`MoveToBlockGoal.nextStartTick`). Goal state, never saved.
+    pub(super) lava_goal: Option<LavaGoal>,
+    pub(super) lava_next_start: i32,
     /// Seconds spent loading the crossbow toward the next shot.
     pub(super) charge: f32,
     /// Loading plus the once-per-shot random aiming delay, in seconds.
@@ -226,6 +241,8 @@ impl NetherMob {
                     repellent: None,
                     scan_timer: 0.0,
                     cold: false,
+                    lava_goal: None,
+                    lava_next_start: 0,
                     charge: 0.0,
                     aim_at: 0.0,
                     barter: false,
@@ -541,7 +558,7 @@ impl Entities {
             match m.kind {
                 MobKind::Hoglin => sense_hoglin(m, view, world, ctx),
                 MobKind::Zoglin => sense_zoglin(m, view, world, ctx),
-                MobKind::Strider => sense_strider(m, world),
+                MobKind::Strider => {}
                 _ => {
                     if let Some(prey) = sense(m, view, items, world, ctx, rng, allow_pickup) {
                         hunts.push((m.pos, m.uid, prey));
@@ -1388,39 +1405,6 @@ fn sense_hoglin<W: MobWorld + ?Sized>(m: &mut Mob, view: &[Seen], world: &W, ctx
     }
 }
 
-/// Java's `StriderGoToLavaGoal`: a strider out of lava heads for the
-/// nearest open lava within 8 blocks across and 2 up or down.
-fn sense_strider<W: MobWorld + ?Sized>(m: &mut Mob, world: &W) {
-    let pos = m.pos;
-    let Some(n) = m.nether.as_mut() else { return };
-    if !n.cold {
-        n.goal = Goal::None;
-        return;
-    }
-    n.scan_timer -= SENSE_INTERVAL;
-    if n.scan_timer > 0.0 && n.goal != Goal::None {
-        return;
-    }
-    n.scan_timer = SCAN_INTERVAL;
-    let cell = pos.floor().as_ivec3();
-    let mut best: Option<(i32, IVec3)> = None;
-    for dy in -2..=2 {
-        for dz in -8..=8 {
-            for dx in -8..=8 {
-                let p = cell + IVec3::new(dx, dy, dz);
-                let d = dx * dx + dy * dy + dz * dz;
-                if best.is_none_or(|(bd, _)| d < bd)
-                    && world.block(p).is_some_and(|b| b.is_lava())
-                    && world.block(p + IVec3::Y) == Some(Block::AIR)
-                {
-                    best = Some((d, p));
-                }
-            }
-        }
-    }
-    n.goal = best.map_or(Goal::None, |(_, p)| Goal::Walk(p.as_dvec3() + DVec3::new(0.5, 1.0, 0.5)));
-}
-
 /// Feet position on a lava sea's surface in column (x, z): Java's strider
 /// rule wants open air right above the lava.
 #[cfg(test)]
@@ -1430,7 +1414,7 @@ pub(super) fn lava_spot<W: MobWorld + ?Sized>(world: &W, x: i32, z: i32) -> Opti
         world.block(IVec3::new(x, y, z)).is_some_and(|b| b.is_lava())
             && world.block(IVec3::new(x, y + 1, z)) == Some(Block::AIR)
     })?;
-    let pos = DVec3::new(x as f64 + 0.5, y as f64 + 1.0, z as f64 + 0.5);
+    let pos = DVec3::new(x as f64 + 0.5, y as f64 + super::mob::STABLE_LAVA_HEIGHT, z as f64 + 0.5);
     (!crate::physics::overlaps_solid(world, pos, MobKind::Strider.shape())).then_some(pos)
 }
 
@@ -2644,7 +2628,8 @@ mod tests {
         strider_at(&mut e, DVec3::new(2.5, 8.2, 2.5));
         run(&mut e, &world, &ctx, 20.0);
         for m in &e.mobs {
-            assert!((m.pos.y - 10.0).abs() < 0.05, "standing on the surface: {}", m.pos.y);
+            // Java's `STABLE_SHAPE`: half a block up the top lava source.
+            assert!((m.pos.y - 9.5).abs() < 1e-6, "standing in the surface: {}", m.pos.y);
             assert!(m.pos.x.abs() < 7.0 && m.pos.z.abs() < 7.0, "stays on the lake: {:?}", m.pos);
             assert_eq!(m.health, 20.0, "lava doesn't hurt a strider");
             assert!(!m.nether.as_ref().unwrap().cold);
@@ -2674,13 +2659,45 @@ mod tests {
     }
 
     #[test]
+    fn cold_striders_walk_a_path_round_a_wall_to_the_lava() {
+        // Java's `StriderGoToLavaGoal` walks a path: a wall between the
+        // strider and the lake (which straight steering pressed against).
+        let mut world = lava_lake();
+        for z in -2..=2 {
+            for y in 10..13 {
+                world.set(IVec3::new(9, y, z), Block::STONE);
+            }
+        }
+        let ctx = nether(vec![player(DVec3::new(60.0, 10.0, 0.5))]);
+        let mut e = Entities::new(5);
+        let i = strider_at(&mut e, DVec3::new(11.5, 10.0, 0.5));
+        let mut reached = None;
+        for tick in 0..400 {
+            e.update(0.05, &world, &ctx);
+            if !e.mobs[i].nether.as_ref().unwrap().cold {
+                reached = Some(tick);
+                break;
+            }
+        }
+        let m = &e.mobs[i];
+        assert!(reached.is_some(), "stuck behind the wall at {:?}", m.pos);
+        assert!(m.pos.x < 7.0, "on the lake: {:?}", m.pos);
+        // Once in lava it never strolls back onto land.
+        run(&mut e, &world, &ctx, 30.0);
+        let m = &e.mobs[i];
+        assert!(!m.nether.as_ref().unwrap().cold && m.pos.x.abs() < 7.0 && m.pos.z.abs() < 7.0, "{:?}", m.pos);
+        // In the lava, or at its edge with the box resting on the shore.
+        assert!((m.pos.y - 9.5).abs() < 1e-6 || (m.pos.y - 10.0).abs() < 1e-3, "{}", m.pos.y);
+    }
+
+    #[test]
     fn striders_spawn_on_lava_seas_and_drop_string() {
         let mut world = Grid::flat(20);
         let sea = crate::world::nether::LAVA_SEA;
         for y in 20..=sea {
             world.set(IVec3::new(3, y, 4), Block::LAVA);
         }
-        assert_eq!(lava_spot(&world, 3, 4), Some(DVec3::new(3.5, sea as f64 + 1.0, 4.5)));
+        assert_eq!(lava_spot(&world, 3, 4), Some(DVec3::new(3.5, sea as f64 + 0.5, 4.5)));
         assert_eq!(lava_spot(&world, 0, 0), None, "no lava, no strider");
         world.set(IVec3::new(3, sea + 1, 4), Block::STONE);
         assert_eq!(lava_spot(&world, 3, 4), None, "needs open air above the lava");

@@ -18,15 +18,22 @@ use crate::world::block::Block;
 
 impl MobKind {
     /// Whether this kind walks with Java's ground navigation. Flyers, hopping
-    /// slimes, swimmers and lava-walking striders steer themselves.
+    /// slimes and swimmers steer themselves. Striders walk paths across lava
+    /// (`StriderPathNavigation`).
     pub(crate) fn walks_paths(self) -> bool {
-        !self.is_aquatic() && !self.is_cube() && !matches!(self, MobKind::Ghast | MobKind::Strider | MobKind::Pillager)
+        !self.is_aquatic() && !self.is_cube() && !matches!(self, MobKind::Ghast | MobKind::Pillager)
+    }
+
+    /// `RandomStrollGoal.interval`: the mean ticks between stroll starts.
+    pub(crate) fn stroll_interval(self) -> f32 {
+        if self == MobKind::Strider { 60.0 } else { 120.0 }
     }
 
     /// Swims at the surface: Java's `FloatGoal` or brain `Swim` mobs, and the
     /// self-steering kinds that keep VoxelCraft's buoyancy. Others sink.
+    /// Striders keep VoxelCraft's buoyancy in water, which hurts them.
     pub(crate) fn floats(self) -> bool {
-        !self.walks_paths() || self.nav_caps(0.6, 1.8).can_float
+        !self.walks_paths() || self == MobKind::Strider || self.nav_caps(0.6, 1.8).can_float
     }
 
     /// `Animal`'s constructor costs (fire avoidance).
@@ -369,16 +376,22 @@ impl Mob {
             if caps.malus.get(path::static_type(world, p)) != 0.0 {
                 continue;
             }
+            // Java starts from negative infinity with a strict comparison, so
+            // a strider in lava never picks dry land.
             let value = self.walk_value(world, ctx, p);
-            if best.is_none_or(|(b, _)| value > b) {
+            if value > best.map_or(f32::NEG_INFINITY, |(b, _)| b) {
                 best = Some((value, p));
             }
         }
         best.map(|(_, p)| p)
     }
 
-    /// `WaterAvoidingRandomStrollGoal.getPosition`.
+    /// `WaterAvoidingRandomStrollGoal.getPosition`, or the plain
+    /// `RandomStrollGoal`'s `DefaultRandomPos` for striders.
     fn stroll_target<W: MobWorld + ?Sized>(&self, world: &W, ctx: &Ctx, rng: &mut Rng) -> Option<IVec3> {
+        if self.kind == MobKind::Strider {
+            return self.random_pos(world, ctx, rng, 10, 7, false);
+        }
         if self.in_water {
             return self
                 .random_pos(world, ctx, rng, 15, 7, true)
