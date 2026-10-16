@@ -292,11 +292,7 @@ impl Game {
                         Command::TimeAdd(ticks) => self.add_time_ticks(ticks),
                         Command::Weather(kind) => self.apply_weather(kind),
                         Command::Respawn => {
-                            let kept_xp = self.gamerules.bool("keepInventory").then_some(bot.agent.session.vitals.xp);
                             bot.agent.execute(Command::Respawn, &mut self.world, &mut self.mobs.entities, &[])?;
-                            if let Some(xp) = kept_xp {
-                                bot.agent.session.vitals.xp = xp;
-                            }
                         }
                         _ => {
                             let mut others = self.agents.positions();
@@ -344,11 +340,7 @@ impl Game {
             if self.hardcore {
                 bot.agent.hardcore_spectate();
             } else if self.gamerules.bool("doImmediateRespawn") && bot.agent.session.vitals.is_dead() {
-                let kept_xp = self.gamerules.bool("keepInventory").then_some(bot.agent.session.vitals.xp);
                 let _ = bot.agent.execute(Command::Respawn, &mut self.world, &mut self.mobs.entities, &[]);
-                if let Some(xp) = kept_xp {
-                    bot.agent.session.vitals.xp = xp;
-                }
             }
             if bot.agent.remaining == 0
                 && let Some(reply) = bot.reply.take()

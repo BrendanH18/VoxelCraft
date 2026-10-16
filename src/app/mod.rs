@@ -799,19 +799,21 @@ impl Game {
         taken
     }
 
-    /// Releases the mouse and stops all actions for the death screen. A
-    /// survival player drops everything they carried.
+    /// Releases the mouse and stops all actions for the death screen, and
+    /// takes the shared death step (drops unless spectating or
+    /// `keepInventory`, as every adapter does).
     fn on_death(&mut self) {
-        self.session.vitals.effects.clear();
         if self.gamerules.bool("showDeathMessages") {
             log::info!("player {}", self.session.vitals.death.as_deref().unwrap_or("died"));
         }
         if self.inventory_open {
             self.toggle_inventory();
         }
-        if self.session.mode.is_survival() && !self.gamerules.bool("keepInventory") {
-            self.drop_everything();
+        if self.session.player.vehicle.take().is_some() {
+            self.mobs.entities.dismount(&self.world, crate::entity::PlayerId::HOST);
         }
+        let grid = self.craft.take_all();
+        self.session.die(&mut self.mobs.entities, self.gamerules.bool("keepInventory"), grid);
         if self.hardcore {
             self.session.vitals.respawn();
             self.set_mode(GameMode::Spectator);
@@ -824,8 +826,6 @@ impl Game {
         self.jump_pressed = false;
         self.body.mine_pressed = false;
         self.body.actions.reset();
-        self.session.cancel_mining();
-        self.session.cancel_consumption();
         if self.hardcore {
             self.set_grab(true);
         } else if self.gamerules.bool("doImmediateRespawn") {
@@ -833,29 +833,21 @@ impl Game {
         }
     }
 
-    /// Back to the world spawn with full health.
+    /// Back to the bed or world spawn through the shared respawn step.
     fn respawn(&mut self) {
         if self.lan.client.is_some() {
             self.lan_command("respawn");
             return;
         }
-        let kept_xp = self.gamerules.bool("keepInventory").then_some(self.session.vitals.xp);
         if self.dimension != Dimension::Overworld {
-            self.session.vitals.respawn();
-            if let Some(xp) = kept_xp {
-                self.session.vitals.xp = xp;
-            }
+            let here = self.session.player.pos;
+            self.session.respawn(here);
             self.switch_dimension(Dimension::Overworld, dimension::Arrival::Respawn);
             self.set_grab(true);
             return;
         }
-        self.session.player.pos = self.respawn_point();
-        self.session.player.vel = DVec3::ZERO;
-        self.session.player.flying = false;
-        self.session.vitals.respawn();
-        if let Some(xp) = kept_xp {
-            self.session.vitals.xp = xp;
-        }
+        let at = self.respawn_point();
+        self.session.respawn(at);
         self.set_grab(true);
     }
 
@@ -1435,10 +1427,10 @@ impl Game {
         let now = Instant::now();
         self.poll_lan();
         self.poll_agents();
-        let paused = (self.menu.is_some() || self.console.open || self.credits.is_some())
-            && self.agents.host.is_none()
-            && self.lan.host.is_none()
-            && self.lan.client.is_none();
+        let paused = pauses_simulation(
+            self.menu.is_some() || self.console.open || self.credits.is_some(),
+            self.agents.host.is_some() || self.lan.host.is_some() || self.lan.client.is_some(),
+        );
         let elapsed = now - self.last_frame;
         self.last_frame = now;
         let ticks = self.clock.advance(elapsed, paused);
@@ -1759,4 +1751,33 @@ fn push_avatars(
 fn capitalize(s: &str) -> String {
     let mut c = s.chars();
     c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
+}
+
+/// Single-player pause, as Java's integrated server pauses only while it is
+/// not shared: an open game menu, the console or the credits stop gameplay
+/// ticks, unless other players are in this world (the CLI agent server, a
+/// LAN host or a LAN client). Controller players' own menus never pause the
+/// world; the inventory and container screens don't either.
+fn pauses_simulation(screen_open: bool, shared: bool) -> bool {
+    screen_open && !shared
+}
+
+#[cfg(test)]
+mod pause_tests {
+    use super::*;
+    use crate::simulation::FixedClock;
+    use std::time::Duration;
+
+    #[test]
+    fn menus_pause_only_an_unshared_world_and_resume_without_catching_up() {
+        assert!(pauses_simulation(true, false));
+        assert!(!pauses_simulation(true, true), "agents or LAN players keep it running");
+        assert!(!pauses_simulation(false, false));
+        let mut clock = FixedClock::default();
+        assert_eq!(clock.advance(Duration::from_millis(500), pauses_simulation(true, false)), 0);
+        assert_eq!(clock.advance(Duration::from_millis(200), pauses_simulation(true, true)), 4);
+        // Time spent paused is not charged on resume.
+        assert_eq!(clock.advance(Duration::from_millis(50), false), 1);
+        assert_eq!(clock.paused(), Duration::from_millis(500));
+    }
 }

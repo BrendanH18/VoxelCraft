@@ -11,7 +11,7 @@ pub mod ranged;
 use glam::{DVec3, IVec3};
 
 use crate::{
-    entity::PlayerId,
+    entity::{Entities, PlayerId},
     inventory::{Inventory, Stack},
     player::Player,
     rules::GameMode,
@@ -108,6 +108,61 @@ impl PlayerSession {
         self.player.can_fly = mode.can_fly();
         self.player.noclip = mode == GameMode::Spectator;
         self.player.flying = mode == GameMode::Spectator || (self.player.flying && self.player.can_fly);
+    }
+
+    /// Java 26.3 `ServerPlayer.die`, shared by every adapter: actions stop
+    /// and status effects end; unless the player is a spectator or
+    /// `keepInventory` is on, the inventory, workstation inputs and `extra`
+    /// (an adapter's crafting grid) drop where it died, except Curse of
+    /// Vanishing items, with `min(7 × level, 100)` experience. Kept,
+    /// `extra` goes back into the inventory as Java's closing grid does.
+    /// Leaving a vehicle is the adapter's job.
+    pub fn die(&mut self, entities: &mut Entities, keep_inventory: bool, extra: Vec<Stack>) {
+        self.cancel_consumption();
+        self.cancel_mining();
+        self.sleeping = None;
+        self.vitals.effects.clear();
+        let pos = self.player.pos;
+        if keep_inventory || self.mode == GameMode::Spectator {
+            for stack in extra {
+                let left = self.inventory.add_stack(stack);
+                if left > 0 {
+                    entities.scatter(Stack { count: left, ..stack }, pos);
+                }
+            }
+            return;
+        }
+        let stacks = self.inventory.take_all().into_iter().chain(self.work.iter_mut().filter_map(Option::take));
+        for stack in stacks.chain(extra) {
+            if !stack.active_enchants().has(crate::enchant::Enchantment::VanishingCurse) {
+                entities.scatter(stack, pos);
+            }
+        }
+        let xp = self.vitals.xp.die();
+        entities.spawn_xp(pos, xp);
+    }
+
+    /// Java's respawn (`ServerPlayer.restoreFrom` after a death): a fresh
+    /// body at `at` with full health and food, no effects, fire or fall, and
+    /// the mode's abilities. Experience carries over as death left it (kept
+    /// with the inventory, otherwise reset but for the enchantment seed),
+    /// and so do the spawn bed and point. The look direction is kept.
+    pub fn respawn(&mut self, at: DVec3) {
+        self.cancel_consumption();
+        self.cancel_mining();
+        let (yaw, pitch) = (self.player.yaw, self.player.pitch);
+        self.player = Player::new(at);
+        self.player.yaw = yaw;
+        self.player.pitch = pitch;
+        self.player.can_fly = self.mode.can_fly();
+        self.player.noclip = self.mode == GameMode::Spectator;
+        self.player.flying = self.mode == GameMode::Spectator;
+        let xp = self.vitals.xp;
+        self.vitals.respawn();
+        self.vitals.xp = xp;
+        self.sleeping = None;
+        self.combat = Default::default();
+        self.ranged = Default::default();
     }
 
     pub fn personal_spawn(&mut self, world: &crate::world::World) -> PersonalSpawn {

@@ -674,10 +674,6 @@ impl Game {
             "respawn" => {
                 let name = peer.profile.as_deref().unwrap().to_owned();
                 if self.agents.players[&name].agent.session.vitals.is_dead() {
-                    let kept_xp = self
-                        .gamerules
-                        .bool("keepInventory")
-                        .then_some(self.agents.players[&name].agent.session.vitals.xp);
                     self.agents.players.get_mut(&name).unwrap().agent.execute(
                         Command::Respawn,
                         &mut self.world,
@@ -696,9 +692,6 @@ impl Game {
                     let agent = &mut self.agents.players.get_mut(&name).unwrap().agent;
                     agent.session.player.pos = at;
                     agent.previous_pos = at;
-                    if let Some(xp) = kept_xp {
-                        agent.session.vitals.xp = xp;
-                    }
                     peer.body = Body::default();
                     peer.open = false;
                 }

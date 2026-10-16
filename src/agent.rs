@@ -8,9 +8,9 @@ use crate::crafting;
 use crate::entity::Entities;
 use crate::inventory::{Inventory, Stack};
 use crate::item::Item;
-use crate::player::{MoveInput, Player};
+use crate::player::MoveInput;
 use crate::rules::GameMode;
-use crate::simulation::survival::{self, Vitals};
+use crate::simulation::survival;
 use crate::simulation::{self, TICK_SECONDS};
 use crate::world::{World, block::Block};
 
@@ -601,11 +601,7 @@ impl Agent {
                     .personal_spawn(world)
                     .position
                     .unwrap_or_else(|| world.generator.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
-                self.session.cancel_consumption();
-                self.session.player = Player::new(at);
-                self.session.player.can_fly = self.creative || self.session.mode.can_fly();
-                self.session.player.noclip = self.session.mode == GameMode::Spectator;
-                self.session.vitals = Vitals::default();
+                self.session.respawn(at);
             }
             Command::Observe(_) | Command::Help | Command::XpQuery | Command::Say(_) => {}
             _ => return Err("command requires host console".into()),
@@ -831,19 +827,10 @@ impl Agent {
         true
     }
 
-    /// A dead survival agent's inventory and some of its experience spill
-    /// where it died, unless `keepInventory` is on.
+    /// The shared death step: the inventory and some experience spill where
+    /// the agent died, unless `keepInventory` is on or it is a spectator.
     fn drop_everything(&mut self, entities: &mut Entities) {
-        if self.keep_inventory {
-            return;
-        }
-        let stacks =
-            self.session.inventory.take_all().into_iter().chain(self.session.work.iter_mut().filter_map(Option::take));
-        for stack in stacks.filter(|s| !s.active_enchants().has(crate::enchant::Enchantment::VanishingCurse)) {
-            entities.scatter(stack, self.session.player.pos);
-        }
-        let xp = self.session.vitals.xp.die();
-        entities.spawn_xp(self.session.player.pos, xp);
+        self.session.die(entities, self.keep_inventory, Vec::new());
     }
 
     /// Advance the shared consumption clock; item-specific duration comes from
@@ -1125,6 +1112,7 @@ mod tests {
         chunk::ChunkData,
         terrain::{Dimension, Generator},
     };
+    use crate::{player::Player, simulation::survival::Vitals};
     use crate::{simulation::effects::Effect, world::terrain::Biome};
     use std::sync::Arc;
     fn world() -> World {

@@ -172,21 +172,6 @@ impl Game {
         self.mobs.entities.throw(stack, self.session.player.eye(), self.session.player.forward().as_dvec3());
     }
 
-    /// A dying survival player drops their whole inventory, including what
-    /// was on the crafting grid and the cursor, and seven points of
-    /// experience per level (at most 100); the rest is lost.
-    pub(super) fn drop_everything(&mut self) {
-        let mut stacks = self.session.inventory.take_all();
-        stacks.extend(self.craft.take_all());
-        stacks.extend(self.take_work());
-        stacks.retain(|s| !s.active_enchants().has(crate::enchant::Enchantment::VanishingCurse));
-        for stack in stacks {
-            self.mobs.entities.scatter(stack, self.session.player.pos);
-        }
-        let xp = self.session.vitals.xp.die();
-        self.mobs.entities.spawn_xp(self.session.player.pos, xp);
-    }
-
     /// Spinning, bobbing models for nearby dropped items: a small cube for
     /// blocks, a flat icon for everything else, with extra copies for
     /// bigger stacks.
