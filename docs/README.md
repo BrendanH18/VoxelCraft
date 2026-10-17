@@ -102,6 +102,9 @@ roadmap and recorded checks to assess completeness against the current target.
 - [M5 scene baseline, second run](verification/2026-10-15-m5-baseline.md):
   12 of 15 valid runs, uncapped presentation, streaming stalls, and the two
   harness defects it exposed.
+- [M5 scene baseline](verification/2026-10-16-m5-baseline.md): the first
+  valid reference baseline (15/15 runs); the gate fails in streaming, which
+  stalls every 32 blocks.
 - [Death, pause and mid-motion saves](verification/2026-10-15-death-pause-save-scenarios.md):
   the shared death and respawn step, the pause rule and cross-process piston
   and repeater saves.

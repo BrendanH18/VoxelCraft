@@ -356,8 +356,8 @@ the [defect inventory](verification/2026-10-13-v0.7-defect-inventory.md)):
   dispensers, minecart water/fuse/dismount, note and tripwire feedback.
 - **GEN (Partial):** amethyst geodes, jungle temple piece and puzzle, iron-door
   strongholds, 26.3 structure loot, igloo depth.
-- **M0 remains open:** no valid M5 baseline yet (needs the owner's idle machine;
-  the 120 Hz presentation cap vs the 240 FPS target is an owner decision).
+- **M0 baseline recorded:** the [2026-10-16 M5 baseline](verification/2026-10-16-m5-baseline.md)
+  has all 15 runs valid; the 240 FPS gate fails in streaming and one survival run.
 
 #### v0.7 mob worker corrections — 2026-10-13
 
@@ -536,7 +536,15 @@ average, about 1.55 ms median), with occasional 120 Hz-paced stretches. The
 gate fails: streaming stalls about 450 frames over 50 ms per run (1% low
 17 FPS), and only automation passes every run. Two harness defects (the
 entity scene counting chunk-generation herds, and an unchecked simulation
-distance) are fixed but uncommitted, so the full suite needs one more run.
+distance) were fixed in `903884e`.
+
+The [third recording](verification/2026-10-16-m5-baseline.md) (2026-10-16,
+`903884e`) is the first valid baseline: all 15 runs valid, so PERF-01 is
+Verified. Ten runs pass the 240 FPS gate. Building, entities and automation
+pass every run; survival fails one run through stretches of 8.33 ms display
+pacing. Streaming fails every run: a burst of about eight 50–150 ms frames
+every 32 blocks of travel once the camera leaves the preloaded area (1% low
+16–18 FPS). Profiling that per-chunk-row work is the first performance task.
 
 All groups are in scope unless an individual requirement is explicitly
 deferred or has an maintainer-approved fidelity exception. IDs are stable tracking
@@ -725,7 +733,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 
 | Version | Theme | Milestones | Main content | Status |
 |---|---|---|---|---|
-| v0.8 | Foundations | Finish M0, M1 | Valid M5 baseline and the per-requirement inventory; mob pathfinding, Java spawn categories, shape-aware light, simulation distance; pause/death/save scenarios on every input path | In progress: most implementation merged (#34, #35); strider lava paths, pause/death/save scenarios and the [requirement inventory](requirements.md) on `t3/roadmap-next-stage-v0-8`; the M5 baseline needs one more full run after harness fixes ([2026-10-15 record](verification/2026-10-15-m5-baseline.md)), then verification |
+| v0.8 | Foundations | Finish M0, M1 | Valid M5 baseline and the per-requirement inventory; mob pathfinding, Java spawn categories, shape-aware light, simulation distance; pause/death/save scenarios on every input path | In progress: most implementation merged (#34, #35); strider lava paths, pause/death/save scenarios and the [requirement inventory](requirements.md) on `t3/roadmap-next-stage-v0-8`; the [M5 baseline](verification/2026-10-16-m5-baseline.md) is recorded (15/15 valid; gate fails in streaming); verification of the rest remains |
 | v0.9 | Block states | M2: BLD-04, BLD-06 | Top and double slabs, waterlogging, door hinges, floor/ceiling buttons and levers, wall grindstones, corner-stair light; reserved state ranges for later content | Planned |
 | v0.10 | Building materials | Close M2 | Missing wood, stone, copper and colour family members (pale oak, bamboo, mud brick, prismarine), the unregistered reference fuel items, signs, banners, item frames, cauldrons, soul lanterns and campfires; sponges, coral and sea pickles; falling and dripping dripstone, tilting dripleaf | Planned |
 | v0.11 | Terrain | M3: GEN-01..03 | Java climate and density terrain with overhangs; Java caves, aquifers and ores; deep-dark content, springs, glow lichen; giant spruce and jungle trees and the remaining biome features | Planned |
@@ -796,12 +804,15 @@ fixtures and acceptance cases:
 
 1. **M0 close-out:** a valid five-scene M5 baseline on the reference machine
    (idle, window visible) and the owner's decision on measuring 240 FPS against
-   a 120 Hz display. *Second run 2026-10-15*
-   ([record](verification/2026-10-15-m5-baseline.md)): 12/15 runs valid and
-   presentation uncapped; harness fixes need one more full run. Every later change is then measured against it. The
+   a 120 Hz display. *Baseline recorded 2026-10-16*
+   ([record](verification/2026-10-16-m5-baseline.md), `903884e`): 15/15 runs
+   valid, presentation uncapped apart from intermittent 8.33 ms stretches.
+   Open owner decisions: whether runs with those stretches count, and
+   simulation distance 160 blocks as run or 128 as §6.1 says. Every later
+   change is measured against it. The
    per-requirement inventory (one row per requirement with a state and
    acceptance cases, §2) is also an M0 exit check. *First version written*
-   ([requirements.md](requirements.md), 2026-10-15): 118 rows, none Verified;
+   ([requirements.md](requirements.md), 2026-10-15): 118 rows; only PERF-01 Verified (2026-10-16);
    keep it current with each change.
 2. **MOB-02 navigation:** Java's `PathNavigation`/node evaluators for walking,
    swimming and flying mobs, respecting block shapes, hazards, doors and

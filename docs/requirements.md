@@ -13,8 +13,10 @@ It was written on 2026-10-15 against `t3/roadmap-next-stage-v0-8` after
 A row is **Verified** only when every acceptance case passes for a recorded
 commit: correctness against the reference, ordinary player interaction on
 the desktop (plus controller and CLI paths where they apply), save/reload,
-and the M5 performance gate where the feature costs frame or tick time. No
-valid M5 baseline exists yet, so **no row is Verified**. Update a row in the
+and the M5 performance gate where the feature costs frame or tick time. The
+[2026-10-16 M5 baseline](verification/2026-10-16-m5-baseline.md) is the
+reference for that gate; it fails in streaming, so only PERF-01 is Verified
+so far. Update a row in the
 same change as the code or evidence it describes. Add rows when a group
 turns out to contain more; never merge rows to hide a missing member.
 
@@ -196,5 +198,5 @@ cost.
 
 | ID | Requirement | State | Release | Evidence | Acceptance | Gaps / next action |
 |---|---|---|---|---|---|---|
-| PERF-01 | Valid five-scene M5 baseline (1920 × 1080, 256 blocks) | Partial | v0.8 | [2026-10-15 run](verification/2026-10-15-m5-baseline.md), [first attempt](verification/2026-10-13-m5-baseline.md) | Every run valid on an idle machine with the window visible | 12/15 valid; entity fixture and simulation-distance check fixed; re-run the full suite |
-| PERF-02 | 240 FPS minimum in every representative scene | Missing | v0.18 | [2026-10-15 run](verification/2026-10-15-m5-baseline.md) | Gate passes on the reference machine | Only automation passes; streaming stalls (1% low 17 FPS) come first |
+| PERF-01 | Valid five-scene M5 baseline (1920 × 1080, 256 blocks) | Verified | v0.8 | [2026-10-16 baseline](verification/2026-10-16-m5-baseline.md) (`903884e`), [2026-10-15 run](verification/2026-10-15-m5-baseline.md), [first attempt](verification/2026-10-13-m5-baseline.md) | Every run valid on an idle machine with the window visible (15/15) | Owner decision: simulation distance 160 blocks as run, or 128 as §6.1 says |
+| PERF-02 | 240 FPS minimum in every representative scene | Partial | v0.18 | [2026-10-16 baseline](verification/2026-10-16-m5-baseline.md) | Gate passes on the reference machine | 10/15 runs pass; building, entities and automation pass every run. Streaming stalls every 32 blocks (1% low 16–18 FPS); profile them first. Intermittent 8.33 ms pacing failed one survival run |
