@@ -101,6 +101,29 @@ pub struct ChunkSlot {
     sky_light: Option<lighting::BlockLight>,
 }
 
+/// A generated chunk with its generator-only follow-up work done: surface
+/// decoration, structure block entities and geode fluid ticks. Workers build
+/// it, because structure layouts can need terrain and cave sampling that would
+/// stall the main thread when a column's first chunk arrives.
+pub struct GeneratedChunk {
+    data: ChunkData,
+    features: Vec<(IVec3, fortress::Feature)>,
+    fluid_ticks: Vec<IVec3>,
+}
+
+impl GeneratedChunk {
+    pub fn new(generator: &Generator, pos: IVec3, mut data: ChunkData) -> Self {
+        foraging::decorate(generator, pos, &mut data);
+        let features = generator.structure_features(pos);
+        let fluid_ticks = if generator.dimension == terrain::Dimension::Overworld {
+            generator.geodes.fluid_ticks(generator, pos * CHUNK_SIZE_I)
+        } else {
+            Vec::new()
+        };
+        Self { data, features, fluid_ticks }
+    }
+}
+
 /// Per chunk-column state: skylight heightmap and how many of its chunks
 /// are loaded.
 struct Column {
@@ -1029,20 +1052,28 @@ impl World {
 
     /// Install chunk data, seed gameplay light and update column state.
     /// Queue render work when in mesh range; saved chunks also restore scheduled fire.
-    pub(crate) fn insert_chunk(&mut self, pos: IVec3, mut data: Arc<ChunkData>, modified: bool) {
-        if !modified {
-            foraging::decorate(&self.generator, pos, Arc::make_mut(&mut data));
-        }
+    /// Unmodified data is treated as freshly generated (see [`GeneratedChunk`]).
+    pub(crate) fn insert_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>, modified: bool) {
         if modified {
             self.load_fires(pos, &data);
+            self.install_chunk(pos, data, true);
         } else {
-            self.register_structure_features(pos, &data);
-            if self.generator.dimension == terrain::Dimension::Overworld {
-                for p in self.generator.geodes.fluid_ticks(&self.generator, pos * CHUNK_SIZE_I) {
-                    self.wake_fluids(p);
-                }
-            }
+            let data = Arc::unwrap_or_clone(data);
+            self.insert_generated(pos, GeneratedChunk::new(&self.generator, pos, data));
         }
+    }
+
+    /// Install a generated chunk whose generator-derived work is already done.
+    fn insert_generated(&mut self, pos: IVec3, chunk: GeneratedChunk) {
+        let GeneratedChunk { data, features, fluid_ticks } = chunk;
+        self.register_features(&data, features);
+        for p in fluid_ticks {
+            self.wake_fluids(p);
+        }
+        self.install_chunk(pos, Arc::new(data), false);
+    }
+
+    fn install_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>, modified: bool) {
         self.register_village_life(pos, &data);
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
         let workers = &self.workers;
@@ -1148,10 +1179,10 @@ impl World {
         // Collect finished work.
         while let Some(result) = self.workers.try_recv() {
             match result {
-                JobResult::Generated(pos, data) => {
+                JobResult::Generated(pos, chunk) => {
                     self.gen_in_flight.remove(&pos);
                     if self.in_keep_range(pos) && !self.chunks.contains_key(&pos) {
-                        self.insert_chunk(pos, Arc::new(data), false);
+                        self.insert_generated(pos, *chunk);
                     }
                 }
                 JobResult::Foliage(key, foliage, snow) => {

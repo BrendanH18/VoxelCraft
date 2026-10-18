@@ -10,7 +10,8 @@ use crossbeam_channel::{Receiver, Sender, unbounded};
 use glam::{IVec2, IVec3};
 
 use crate::mesh::{self, MeshData, MeshInput, Region};
-use crate::world::chunk::{CHUNK_SIZE, ChunkData};
+use crate::world::GeneratedChunk;
+use crate::world::chunk::CHUNK_SIZE;
 use crate::world::terrain::Generator;
 
 pub enum Job {
@@ -25,7 +26,7 @@ pub enum Job {
 }
 
 pub enum JobResult {
-    Generated(IVec3, ChunkData),
+    Generated(IVec3, Box<GeneratedChunk>),
     /// Foliage colour groups and snow lines (see `Generator::snow_lines`).
     Foliage(IVec2, Box<[u8; CHUNK_SIZE * CHUNK_SIZE]>, Box<[i16; CHUNK_SIZE * CHUNK_SIZE]>),
     Meshed {
@@ -59,7 +60,10 @@ impl Workers {
                     let mut region = None;
                     while let Ok(job) = job_rx.recv() {
                         let result = match job {
-                            Job::Generate(pos) => JobResult::Generated(pos, generator.generate(pos)),
+                            Job::Generate(pos) => JobResult::Generated(
+                                pos,
+                                Box::new(GeneratedChunk::new(&generator, pos, generator.generate(pos))),
+                            ),
                             Job::Foliage(col) => JobResult::Foliage(
                                 col,
                                 generator.foliage(col.x, col.y),

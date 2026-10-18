@@ -725,6 +725,8 @@ the milestones below, taken in this order. There are no dates: a version
 ships when its own scope passes the checks in [§7](#7-feature-completion-and-release-policy).
 Unfinished work moves to a later version instead of holding a release open or
 shipping half-done. Patch releases (0.8.1 and so on) carry fixes only.
+There are no release candidates or pre-releases (owner, 2026-10-17): a version
+is tagged only once its scope is Verified, and testers get that release.
 
 Work on the earliest unreleased version. Start a later one early only where
 its dependencies allow and it doesn't stall the current one. Version 1.0 is
@@ -809,7 +811,9 @@ fixtures and acceptance cases:
    valid, presentation uncapped apart from intermittent 8.33 ms stretches.
    Open owner decisions: whether runs with those stretches count, and
    simulation distance 160 blocks as run or 128 as §6.1 says. Every later
-   change is measured against it. The
+   change is measured against it. Its periodic streaming stalls came from
+   dungeon layout on the main thread; workers now do it, and a valid re-run
+   is pending ([record](verification/2026-10-17-streaming-stalls.md)). The
    per-requirement inventory (one row per requirement with a state and
    acceptance cases, §2) is also an M0 exit check. *First version written*
    ([requirements.md](requirements.md), 2026-10-15): 118 rows; only PERF-01 Verified (2026-10-16);
