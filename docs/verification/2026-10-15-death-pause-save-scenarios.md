@@ -18,7 +18,8 @@ MacBook Pro.
 implementations: the desktop's `on_death`/`respawn`, the CLI agent's drop and
 `respawn` command, and the controller and LAN respawn patches.
 
-- *Dying* stops eating, mining and sleeping and ends status effects. Unless
+- *Dying* stops eating, mining and sleeping. Status effects last until the
+  respawn ([follow-up](#follow-up-respawn-angle-and-effects--2026-10-17)). Unless
   the player is a spectator or `keepInventory` is on, the inventory,
   workstation inputs and the desktop crafting grid drop where the player
   died. Curse of Vanishing items are destroyed. Experience drops as
@@ -118,8 +119,10 @@ point uses the stored respawn angle, and the world spawn
   `effects_keep_counting_down_on_the_death_screen_without_acting` and
   `a_respawn_angle_holds_against_stale_peer_look_until_the_client_adopts_it`;
   the death test now expects effects to last until the respawn. Full desktop and headless suites pass.
-- Difference: VoxelCraft stands the player on the bed's foot rather than
-  searching `findStandUpPosition`, so the angle is measured from there.
-  Spawn points set with the console store no angle (Java's
+- Difference, superseded by the
+  [bed stand-up record](2026-10-17-bed-standup-fire-ticks.md): VoxelCraft
+  stood the player on the bed's foot rather than searching
+  `findStandUpPosition`, so the angle was measured from there. Respawns now
+  use `findStandUpPosition`. Spawn points set with the console store no angle (Java's
   `/spawnpoint` can).
 

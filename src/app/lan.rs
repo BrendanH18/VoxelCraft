@@ -700,13 +700,9 @@ impl Game {
             "respawn" => {
                 let name = peer.profile.as_deref().unwrap().to_owned();
                 if self.agents.players[&name].agent.session.vitals.is_dead() {
-                    self.agents.players.get_mut(&name).unwrap().agent.execute(
-                        Command::Respawn,
-                        &mut self.world,
-                        &mut self.mobs.entities,
-                        &[],
-                    )?;
-                    let at = if self.dimension == Dimension::Overworld {
+                    // Find the spawn before the respawn command does: its own lookup
+                    // forgets a missing bed, so a second lookup would never report it.
+                    let (at, yaw) = if self.dimension == Dimension::Overworld {
                         let (at, yaw, missing) = self.respawn_point_of(&PlayerRef::Agent(name.clone()));
                         if missing {
                             let _ = peer.connection.send(Packet::Chat("Your home bed was missing".into()));
@@ -715,7 +711,12 @@ impl Game {
                     } else {
                         (self.beside_host(), voxelcraft::session::DEFAULT_SPAWN_YAW)
                     };
-                    let (at, yaw) = at;
+                    self.agents.players.get_mut(&name).unwrap().agent.execute(
+                        Command::Respawn,
+                        &mut self.world,
+                        &mut self.mobs.entities,
+                        &[],
+                    )?;
                     let agent = &mut self.agents.players.get_mut(&name).unwrap().agent;
                     agent.session.player.pos = at;
                     agent.session.player.yaw = yaw;

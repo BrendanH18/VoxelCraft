@@ -58,6 +58,9 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
   turns under cargo's lock: put the worktrees under one folder whose
   `.cargo/config.toml` sets `build.target-dir` (or set `CARGO_TARGET_DIR`),
   and tell agents that "Blocking waiting for file lock" means wait, not retry.
+  This shares build output, not responsibility for checks: each agent still
+  runs the hand-off chain below in its own worktree, taking turns under the
+  lock, and the integrator runs it again on the merged result.
 
 ## Before handing work back
 

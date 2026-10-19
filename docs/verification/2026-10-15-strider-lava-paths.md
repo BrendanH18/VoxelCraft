@@ -90,8 +90,10 @@ M5 MacBook Pro.
   holds them there, shivering, until panic, temptation or breeding moves them.
   Java does the same, but VoxelCraft's movement isn't Java's
   `MoveControl`/`travel`, so where a strider comes to rest differs slightly.
-- **Goal priorities.** VoxelCraft runs tempt, breed and follow-parent before
-  the lava goal; in Java, follow-parent (priority 5) yields to it (4).
+- **Goal priorities.** *Fixed 2026-10-17*
+  ([mob goals record](2026-10-17-mob-goals-movement.md)): VoxelCraft ran tempt,
+  breed and follow-parent before the lava goal. The goal selector now uses
+  Java's order, where follow-parent (priority 5) yields to it (4).
 - **Collision context.** Collision with the stable shape is VoxelCraft's own
   check, not Java's entity `CollisionContext`. Riders and mounted striders
   use the same standing rule.

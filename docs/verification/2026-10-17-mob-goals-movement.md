@@ -114,7 +114,7 @@ Per-tick work is bounded:
 - the entity searches (follow targets and avoided mobs) use the mob grid and
   run only on a mob's full selector update;
 - tracked entities are looked up through one uid map per tick;
-- goal selection is a scan of a table of at most six entries.
+- goal selection is a scan of a table of at most seven entries.
 
 ## Evidence
 

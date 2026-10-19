@@ -107,8 +107,10 @@ headless on the M5 MacBook Pro while other agents were building.
   - `chunk_entity_sync_cost` (ignored manual benchmark): with 500 live mobs
     and 500 items, a tick's sync with nothing to move took mean 2.41 µs, p99
     2.50 µs, max 4.50 µs over 2,000 calls. Storing all 1,000 at once took
-    118.5 µs and restoring them 71.1 µs. Measured during concurrent builds;
-    there is no pre-change figure because the step is new.
+    118.5 µs and restoring them 71.1 µs. These figures are provisional: they
+    were measured during concurrent builds, which the test's own `#[ignore]`
+    note rules out, and need a re-run on an idle machine. There is no
+    pre-change figure because the step is new.
 - Unit tests in `entity/chunk_storage.rs`: unload → reload keeps each mob's
   uid, kind, position, velocity, health, name, leash, cart link, age, baby
   flag, persistence, tame owner/sitting/collar, mount tame/owner/chest/slots,
@@ -121,10 +123,13 @@ headless on the M5 MacBook Pro while other agents were building.
   it on return, and it is free once given up. Saved entities wait for their
   chunk after loading. Falling blocks unload and reload with their height and
   speed; a LAN replica never stores the host's falling blocks.
-- Full chain run from the worktree: `cargo fmt && cargo clippy --release
-  --all-targets -- -D warnings && cargo test --release && cargo clippy
-  --release --no-default-features --all-targets -- -D warnings && cargo test
-  --release --no-default-features` (result in the hand-off report).
+- Full chain: `cargo fmt && cargo clippy --release --all-targets -- -D
+  warnings && cargo test --release && cargo clippy --release
+  --no-default-features --all-targets -- -D warnings && cargo test --release
+  --no-default-features`. The agent's run in its worktree has no recorded
+  result. On the integrated branch (`a1e5f98` plus the PR #37 review
+  fixes, 2026-10-19) the chain passed: 1,341 desktop and 1,249 headless
+  tests, none failed.
 
 ## Remaining differences and open work
 

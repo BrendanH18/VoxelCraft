@@ -93,8 +93,8 @@ adds these facts and reference cases to `combat.json`; every method is checked a
 its exact call and constant sequence, so a changed bytecode form fails the extraction.
 Regenerating from the pinned artifact reproduces the committed fixture byte for byte, and
 all previous sections are unchanged. `tests/java_knockback.rs` (37 tests) checks the pure
-rules in `src/knockback.rs` against 14 knockback, 18 attack-strength, 10 yaw, 80 Punch,
-180 hoglin-toss, 20 sweep-eligibility, 192 sweep-damage, 12 sweep-reach and 32 sound
+rules in `src/knockback.rs` against 14 knockback, 18 attack-strength, 10 yaw, 140 Punch,
+240 hoglin-toss, 20 sweep-eligibility, 192 sweep-damage, 12 sweep-reach and 32 sound
 cases, then runs whole-game scenarios against an evaluator built from the fixture's
 constants (itself pinned to the fixture cases):
 

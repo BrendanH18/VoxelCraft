@@ -2,7 +2,7 @@
 
 [← Back to VoxelCraft](../README.md) · [Documentation index](README.md) · [Contributing](../CONTRIBUTING.md) · [Architecture](architecture.md) · [Development](development.md)
 
-## Current plan — updated 2026-10-15
+## Current plan — updated 2026-10-17
 
 Build a faithful recreation of modern Minecraft Java single-player gameplay
 in Rust. Version 1.0 must deliver complete core survival, building,
@@ -556,7 +556,7 @@ distance) were fixed in `903884e`.
 
 The [third recording](verification/2026-10-16-m5-baseline.md) (2026-10-16,
 `903884e`) is the first valid baseline: all 15 runs valid, so PERF-01 is
-Verified. Ten runs pass the 240 FPS gate. Building, entities and automation
+Verified. Eleven runs pass the 240 FPS gate. Building, entities and automation
 pass every run; survival fails one run through stretches of 8.33 ms display
 pacing. Streaming fails every run: a burst of about eight 50–150 ms frames
 every 32 blocks of travel once the camera leaves the preloaded area (1% low

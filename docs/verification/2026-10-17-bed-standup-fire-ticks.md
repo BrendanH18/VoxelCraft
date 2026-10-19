@@ -42,7 +42,11 @@ graphical run or benchmark.
   (`RespawnPosAngle.of`). `spawn_bed` is still saved as the bed foot. A bed that
   is gone, or boxed in so that no cell fits, is the missing-bed outcome: the
   spawn is forgotten, "Your home bed was missing" shows and the world spawn is
-  used. Desktop, controller, LAN and CLI respawns all go through it.
+  used. Desktop, controller, LAN and CLI respawns all go through it; the
+  notice shows on the desktop, on a controller seat and in a LAN peer's chat
+  (the CLI agent has no notice). A PR #37 review found the controller and LAN
+  paths ran the respawn command, which forgets the bed, before looking up
+  the spawn, so the notice never showed; they now look it up first.
 - **Waking up.** `PlayerSession::begin_sleep` records the bed's head and the
   lying spot, and `wake` / `settle_wake` apply `LivingEntity.stopSleeping`: the
   player stands at the stand-up position the player's own yaw picks, looking at

@@ -955,9 +955,12 @@ impl Game {
     /// left alone rather than looked up in the wrong world.
     fn respawn_pad(&mut self, i: usize) {
         let name = self.pads.seats[i].name.clone();
-        let Some(bot) = self.agents.players.get_mut(&name) else { return };
-        let _ = bot.agent.execute(Command::Respawn, &mut self.world, &mut self.mobs.entities, &[]);
-        let at = if self.dimension == crate::world::terrain::Dimension::Overworld {
+        if !self.agents.players.contains_key(&name) {
+            return;
+        }
+        // Find the spawn before the respawn command does: its own lookup forgets a
+        // missing bed, so a second lookup would never report it.
+        let (at, yaw) = if self.dimension == crate::world::terrain::Dimension::Overworld {
             let (at, yaw, missing) = self.respawn_point_of(&super::lan::PlayerRef::Agent(name.clone()));
             if missing {
                 self.pads.seats[i].message = Some(("Your home bed was missing".into(), Instant::now()));
@@ -966,7 +969,9 @@ impl Game {
         } else {
             (self.beside_host(), voxelcraft::session::DEFAULT_SPAWN_YAW)
         };
-        let (at, yaw) = at;
+        if let Some(bot) = self.agents.players.get_mut(&name) {
+            let _ = bot.agent.execute(Command::Respawn, &mut self.world, &mut self.mobs.entities, &[]);
+        }
         let seat = &mut self.pads.seats[i];
         seat.sneaking = false;
         seat.body = Body::default();
