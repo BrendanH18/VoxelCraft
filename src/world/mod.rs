@@ -26,6 +26,7 @@ pub mod chunk;
 pub mod climate;
 pub mod colors;
 pub mod composter;
+pub mod dismount;
 pub mod dungeon;
 pub mod end;
 pub mod end_portal;
@@ -61,6 +62,8 @@ pub mod rails;
 pub mod redstone;
 pub mod redstone_blocks;
 mod redstone_contacts;
+#[cfg(test)]
+mod rule_tests;
 pub mod shape;
 pub mod spawn_finder;
 mod spawner;
@@ -137,6 +140,35 @@ struct Column {
     sky_lit: bool,
 }
 
+/// The game rules which change how blocks tick, as Java 26.3 defaults them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WorldRules {
+    /// `tnt_explodes`: TNT blocks can be primed and primed TNT detonates.
+    pub tnt_explodes: bool,
+    /// `water_source_conversion`: flowing water between two sources becomes one.
+    pub water_source_conversion: bool,
+    /// `lava_source_conversion`: the same for lava.
+    pub lava_source_conversion: bool,
+    /// `fire_spread_radius_around_player`: fire ticks within this many blocks
+    /// of a player; 0 stops fire and -1 removes the limit.
+    pub fire_spread_radius: i32,
+    /// The world difficulty's id (Java's `Difficulty.getId`), which fire
+    /// spreading reads.
+    pub difficulty: u8,
+}
+
+impl Default for WorldRules {
+    fn default() -> Self {
+        Self {
+            tnt_explodes: true,
+            water_source_conversion: true,
+            lava_source_conversion: false,
+            fire_spread_radius: 128,
+            difficulty: 2,
+        }
+    }
+}
+
 pub struct World {
     pub generator: Arc<Generator>,
     workers: Workers,
@@ -166,6 +198,11 @@ pub struct World {
     activity: activity::Activity,
     simulation_others: Vec<DVec3>,
     simulation_host: Option<IVec2>,
+    /// The host's exact position, for distance rules such as fire spread.
+    simulation_host_pos: Option<DVec3>,
+    /// Whether each registered player (host first, then the others in
+    /// order) is a Spectator, whom fire spread ignores.
+    simulation_spectators: Vec<bool>,
     region: Option<Box<Region>>,
     meshes_enabled: bool,
     remote: bool,
@@ -176,6 +213,13 @@ pub struct World {
     redstone: redstone::RedstoneState,
     automation: automation::AutomationState,
     falling: Vec<falling::FallingBlock>,
+    /// Falling blocks of unloaded chunks, held until their chunk loads again
+    /// (Java stores falling block entities with the chunk's other entities).
+    stored_falling: FxHashMap<IVec3, Vec<falling::FallingBlock>>,
+    /// Chunks installed since the entity simulation last asked: their stored
+    /// entities come back. Unloaded chunks leave the set, so it stays within
+    /// the loaded chunk count even when nothing drains it.
+    entity_loads: FxHashSet<IVec3>,
     /// Furnace contents by position (see [`furnace`]).
     furnaces: FxHashMap<IVec3, furnace::Furnace>,
     /// Chest contents by position (see [`chest`]).
@@ -195,6 +239,8 @@ pub struct World {
     rng: u64,
     /// Java `doTileDrops`; block and block-entity removal still occurs when false.
     tile_drops: bool,
+    /// The world-shaping gamerules, refreshed by the game each tick.
+    pub rules: WorldRules,
     /// Items the world let go of (mined blocks, container contents, plants
     /// that popped off or washed away, explosion debris) and the cell they
     /// came from; the game turns them into dropped items.
@@ -417,6 +463,8 @@ impl World {
             activity: Default::default(),
             simulation_others: Vec::new(),
             simulation_host: None,
+            simulation_host_pos: None,
+            simulation_spectators: Vec::new(),
             region: None,
             meshes_enabled,
             remote: false,
@@ -427,6 +475,8 @@ impl World {
             redstone: Default::default(),
             automation: Default::default(),
             falling: Vec::new(),
+            stored_falling: FxHashMap::default(),
+            entity_loads: FxHashSet::default(),
             furnaces: FxHashMap::default(),
             chests: FxHashMap::default(),
             brewing_stands: FxHashMap::default(),
@@ -438,6 +488,7 @@ impl World {
             random_ticks: 0.0,
             rng,
             tile_drops: true,
+            rules: WorldRules::default(),
             drops: Vec::new(),
             particles: Default::default(),
             xp_drops: Vec::new(),
@@ -606,6 +657,29 @@ impl World {
 
     pub fn is_loaded(&self, block: IVec3) -> bool {
         !self.contains_y(block.y) || self.chunks.contains_key(&chunk_of(block))
+    }
+
+    /// The storage chunk an entity at `p` belongs to. Heights beyond the
+    /// world clamp into the top or bottom chunk, so entities above or below
+    /// the build limit still unload with their column (Java keys entity
+    /// sections by column status, not by height).
+    pub fn entity_chunk(&self, p: DVec3) -> IVec3 {
+        let cell = p.floor().as_ivec3();
+        chunk_of(cell.with_y(cell.y.clamp(self.min_y(), self.max_y() - 1)))
+    }
+
+    /// Whether storage chunk `chunk` is loaded (Java's `Visibility` is at
+    /// least `TRACKED`): entities there stay in the level.
+    pub fn chunk_loaded(&self, chunk: IVec3) -> bool {
+        self.chunks.contains_key(&chunk)
+    }
+
+    /// Chunks installed since the previous call, whose stored entities can
+    /// return to the level.
+    pub fn take_entity_loads(&mut self) -> Vec<IVec3> {
+        let mut loads: Vec<IVec3> = self.entity_loads.drain().collect();
+        loads.sort_unstable_by_key(|p| (p.x, p.y, p.z));
+        loads
     }
 
     /// Highest light-blocking block (including leaves and water) in a fully
@@ -1111,6 +1185,10 @@ impl World {
         self.load_block_light(pos);
         self.light_sky_column(column_of(pos));
         self.load_redstone_chunk(pos);
+        self.entity_loads.insert(pos);
+        if let Some(blocks) = self.stored_falling.remove(&pos) {
+            self.falling.extend(blocks);
+        }
         if self.in_mesh_range(pos) {
             self.dirty.insert(pos);
         }
@@ -1122,6 +1200,11 @@ impl World {
         self.unlight_sky_column(column_of(pos));
         self.unload_redstone_chunk(pos);
         let slot = self.chunks.remove(&pos).unwrap();
+        self.entity_loads.remove(&pos);
+        // A LAN replica's falling blocks come from the host's snapshots.
+        if !self.remote {
+            self.store_falling(pos);
+        }
         self.village_pois.retain(|p, _| chunk_of(*p) != pos);
         self.village_homes.retain(|p, _| chunk_of(*p) != pos);
         self.unload_block_light(pos, slot.block_light.as_ref());

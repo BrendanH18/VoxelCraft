@@ -79,11 +79,47 @@ menus never pause it. Resuming doesn't charge the paused time.
 
 ## Remaining differences and open work
 
-- **Look direction.** Respawns keep the player's look direction; Java faces
-  the spawn angle.
-- **Effects.** They end at death rather than on respawn, which shows only on
-  the death screen.
+- **Look direction** *(fixed 2026-10-17, below)*. Respawns kept the
+  player's look direction; Java faces the spawn angle.
+- **Effects** *(fixed 2026-10-17, below)*. They ended at death rather than on
+  respawn, which showed only on the death screen.
 - **Desktop adapter.** It is still exercised through the shared session
   steps, not a headless desktop-adapter harness (PLY-04).
 - **Acceptance.** Ordinary-player acceptance of death, respawn and
   pause on a physical controller remains. PLY-01/03/04 stay **Partial**.
+
+## Follow-up: respawn angle and effects — 2026-10-17
+
+Reference: `ServerPlayer.findRespawnPositionAndUseSpawnBlock`,
+`findRespawnAndUseSpawnBlock` and `ServerPlayer$RespawnPosAngle.of` in the
+26.3 server jar, read with `javap`. A bed or anchor respawn builds
+`RespawnPosAngle.of(standUp, bedPos)`: yaw
+`wrapDegrees(atan2(dz, dx) × 57.2957763671875 − 90)` of the vector from the
+stand-up position to the bed block's bottom centre, pitch 0. A forced spawn
+point uses the stored respawn angle, and the world spawn
+(`TeleportTransition.createDefault`) the level's, which default to 0.
+
+- `PlayerSession::respawn` takes the yaw and sets level pitch.
+  `PersonalSpawn::yaw` looks at the bed's head from the respawn spot;
+  set spawn points and the world spawn use `DEFAULT_SPAWN_YAW`, Java's
+  angle 0 (south, +Z). The desktop, End/Nether respawn arrival, controller
+  seats, LAN peers and the CLI all apply it.
+- `PlayerSession::die` no longer clears effects; the respawn's fresh vitals
+  drop them, as `restoreFrom` copies none. Like `LivingEntity.baseTick`,
+  effects keep counting down on the death screen (desktop and agents) without
+  healing or harming the body.
+- LAN clients own their look. Every respawn (the respawn command or
+  `doImmediateRespawn`) bumps `PlayerSession::respawns`, which snapshots
+  carry; the client adopts the snapshot's angle when the count changes, and
+  the host holds that angle against the peer's stale look input until the
+  client reports it (or two seconds pass).
+- Tests: `respawns_face_the_bed_or_the_default_spawn_angle_with_level_pitch`
+  (four bed facings, a spawn point),
+  `effects_keep_counting_down_on_the_death_screen_without_acting` and
+  `a_respawn_angle_holds_against_stale_peer_look_until_the_client_adopts_it`;
+  the death test now expects effects to last until the respawn. Full desktop and headless suites pass.
+- Difference: VoxelCraft stands the player on the bed's foot rather than
+  searching `findStandUpPosition`, so the angle is measured from there.
+  Spawn points set with the console store no angle (Java's
+  `/spawnpoint` can).
+

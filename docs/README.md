@@ -15,6 +15,8 @@ Neither a planned task nor a historical release report establishes verified pari
 ## Playing
 
 - [Gameplay](gameplay.md) and [survival items](survival-items.md).
+- [Game rules](game-rules.md): every Java 26.3 rule with its type, default,
+  legacy name and what VoxelCraft enforces.
 - [Colours](colors.md), [bastions](bastions.md) and [Nether biomes](nether-biomes.md).
 - [Overworld terrain](overworld-terrain.md), [structures](overworld-structures.md)
   and [aquatic mobs](aquatic-mobs.md).
@@ -108,6 +110,9 @@ roadmap and recorded checks to assess completeness against the current target.
 - [Death, pause and mid-motion saves](verification/2026-10-15-death-pause-save-scenarios.md):
   the shared death and respawn step, the pause rule and cross-process piston
   and repeater saves.
+- [Game rules and difficulty](verification/2026-10-17-game-rules-difficulty.md):
+  the 26.3 rule registry, damage-type rules, Peaceful regeneration and the
+  difficulty effects checked against the reference.
 
 ## History
 

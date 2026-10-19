@@ -47,6 +47,11 @@ pub struct State {
     pub horns: u8,
     pub horn_kind: u8,
     pub screaming: bool,
+    /// `BreedGoal.partner`: its uid and latest position, kept by
+    /// `tick_animals` while the partner can still mate (never saved).
+    pub partner: Option<(u32, DVec3)>,
+    /// `BreedGoal.tick` reached `breed()` with this partner this tick.
+    pub breed_now: Option<u32>,
 }
 impl State {
     pub fn new(pos: DVec3) -> Self {
@@ -84,6 +89,8 @@ impl State {
             horns: 2,
             horn_kind: 0,
             screaming: false,
+            partner: None,
+            breed_now: None,
         }
     }
 }
@@ -108,7 +115,9 @@ impl MobKind {
             Self::Strider => food == Item::from_block(crate::world::nether_biome_blocks::WARPED_FUNGUS),
             Self::Turtle => food == Item::from_block(crate::world::overworld_blocks::SEAGRASS),
             Self::Axolotl => food == Item::TROPICAL_FISH_BUCKET,
-            Self::Horse | Self::Donkey => matches!(food, Item::GOLDEN_CARROT | Item::GOLDEN_APPLE),
+            Self::Horse | Self::Donkey => {
+                matches!(food, Item::GOLDEN_CARROT | Item::GOLDEN_APPLE | Item::ENCHANTED_GOLDEN_APPLE)
+            }
             Self::Llama => food == Item::from_block(crate::world::block::Block::HAY_BALE),
             Self::Camel => food == Item::from_block(crate::world::block::Block::CACTUS),
             _ => false,
@@ -183,36 +192,6 @@ impl Mob {
             self.age = if self.age < 0 { (self.age + ticks).min(0) } else { (self.age - ticks).max(0) };
             self.baby = self.age < 0;
         }
-    }
-    pub(super) fn animal_think<W: MobWorld + ?Sized>(
-        &mut self,
-        _dt: f32,
-        world: &W,
-        ctx: &Ctx,
-        rng: &mut Rng,
-    ) -> Option<(Option<DVec3>, f64)> {
-        let a = self.animal.as_ref()?;
-        if a.sitting || a.grazing > 0.0 {
-            return Some((None, 0.0));
-        }
-        let goal = a.goal.or_else(|| {
-            ctx.players
-                .iter()
-                .filter(|t| {
-                    t.alive
-                        && t.pos.distance_squared(self.pos) <= 100.0
-                        && t.held_item.is_some_and(|i| self.kind.breeding_food(i))
-                })
-                .min_by(|a, b| a.pos.distance_squared(self.pos).total_cmp(&b.pos.distance_squared(self.pos)))
-                .map(|t| t.pos)
-        });
-        let goal = goal?;
-        self.look_at(goal, 1.2);
-        let flat = (goal - self.pos) * DVec3::new(1.0, 0.0, 1.0);
-        if flat.length_squared() < 2.25 {
-            return Some((None, 0.0));
-        }
-        Some((self.pursue(world, goal, 2.0, true, false, rng), 2.0))
     }
 }
 impl Entities {
@@ -357,6 +336,11 @@ impl Entities {
         }
         child
     }
+    /// Love timers and hearts, then `BreedGoal`'s partner: an animal not yet
+    /// courting looks for the nearest mate within 8 blocks
+    /// (`getFreePartner`: in love, not panicking); one courting keeps its
+    /// partner while that partner is alive, in love and not panicking. The
+    /// goal itself runs in the mob's goal selector.
     pub(super) fn tick_animals<W: MobWorld + ?Sized>(
         &mut self,
         dt: f32,
@@ -364,6 +348,8 @@ impl Entities {
         _ctx: &Ctx,
         events: &mut Vec<EntityEvent>,
     ) {
+        // Partners, parents and avoided mobs are tracked by uid.
+        self.ensure_mob_ids();
         self.mob_index.rebuild(&self.mobs);
         let n = self.mobs.len();
         for i in 0..n {
@@ -380,23 +366,37 @@ impl Entities {
                 a.hearts = 0.5;
                 self.animal_hearts(i);
             }
-            if !self.mobs[i].ready_to_breed() {
-                self.mobs[i].animal.as_mut().unwrap().courtship = 0.0;
-                continue;
-            }
+            let courting = self.mobs[i].breeding();
             let m = &self.mobs[i];
-            let Some(j) = self.mob_index.nearest(&self.mobs, m.pos, 8.0, |b| {
-                b.simulation_active && b.uid != m.uid && b.kind.can_mate_with(m.kind) && b.ready_to_breed()
-            }) else {
-                self.mobs[i].animal.as_mut().unwrap().courtship = 0.0;
-                continue;
+            let mate = |b: &Mob| {
+                b.simulation_active
+                    && b.uid != m.uid
+                    && b.kind.can_mate_with(m.kind)
+                    && b.ready_to_breed()
+                    && b.ai != super::mob::Ai::Panic
             };
-            let goal = self.mobs[j].pos;
-            let distance = self.mobs[i].pos.distance_squared(goal);
-            let a = self.mobs[i].animal.as_mut().unwrap();
-            a.goal = Some(goal);
-            a.courtship = if distance < 9.0 { a.courtship + dt } else { 0.0 };
-            if a.courtship < COURTSHIP_SECONDS {
+            let partner = if !m.ready_to_breed() {
+                None
+            } else if let Some((uid, _)) = m.animal.as_ref().unwrap().partner.filter(|_| courting) {
+                self.mobs.iter().find(|b| b.uid == uid && b.alive() && mate(b)).map(|b| (uid, b.pos))
+            } else {
+                self.mob_index.nearest(&self.mobs, m.pos, 8.0, mate).map(|j| (self.mobs[j].uid, self.mobs[j].pos))
+            };
+            self.mobs[i].animal.as_mut().unwrap().partner = partner;
+        }
+        self.tick_animal_lifecycle(dt, world, _ctx, events);
+        self.tick_companions(dt, world, _ctx, events);
+    }
+
+    /// `BreedGoal.breed` / `Animal.spawnChildFromBreeding` for the pairs whose
+    /// goal finished courting this tick: both parents cool down for 6000
+    /// ticks and lose their love, a baby appears (turtles get pregnant
+    /// instead), and 1–7 experience drops.
+    pub(super) fn resolve_breeding(&mut self) {
+        for i in 0..self.mobs.len() {
+            let Some(uid) = self.mobs[i].animal.as_mut().and_then(|a| a.breed_now.take()) else { continue };
+            let Some(j) = self.mobs.iter().position(|b| b.uid == uid) else { continue };
+            if i == j || !self.mobs[i].ready_to_breed() || !self.mobs[j].ready_to_breed() {
                 continue;
             }
             let turtle = self.mobs[i].kind == MobKind::Turtle;
@@ -405,8 +405,8 @@ impl Entities {
                 self.mobs[k].age = BREEDING_COOLDOWN;
                 let a = self.mobs[k].animal.as_mut().unwrap();
                 a.love = 0.0;
-                a.courtship = 0.0;
-                a.goal = None;
+                a.partner = None;
+                a.breed_now = None;
                 self.animal_hearts(k);
             }
             if turtle {
@@ -420,8 +420,6 @@ impl Entities {
                 self.spawn_xp(self.mobs[i].pos, points);
             }
         }
-        self.tick_animal_lifecycle(dt, world, _ctx, events);
-        self.tick_companions(dt, world, _ctx, events);
     }
 }
 /// Sheep and collars use a two-dye crafting result when one exists.
@@ -537,17 +535,26 @@ impl Mob {
         events: &mut Vec<EntityEvent>,
     ) -> Option<(Option<DVec3>, f64)> {
         let a = self.animal.as_ref()?;
+        // `SitWhenOrderedToGoal` (2) and the wolf's `MeleeAttackGoal` (5)
+        // outrank following the owner, breeding and strolling.
         if a.sitting || a.sleeping {
+            self.stop_goal(w);
             return Some((None, 0.0));
         }
         if self.kind == MobKind::Wolf
             && let Some(id) = self.angry_player
         {
             if let Some(t) = ctx.players.iter().find(|t| t.id == id && t.targetable) {
+                self.stop_goal(w);
                 let flat = (t.pos - self.pos) * DVec3::new(1.0, 0.0, 1.0);
                 if flat.length_squared() < 2.25 && self.attack_cooldown <= 0.0 {
                     self.attack_cooldown = 1.0;
+                    // Wolves inherit `Mob.doHurtTarget`: the default push away
+                    // from the wolf, then its attack knockback (none) along its facing.
+                    let extra = crate::knockback::attack_strength(self.attack_knockback(), 0, false);
+                    let yaw = (-flat.x).atan2(flat.z).to_degrees() as f32;
                     events.push(EntityEvent::PlayerHit {
+                        java: Some(crate::knockback::Hit::melee(self.pos, t.pos, yaw, extra)),
                         player: id,
                         damage: 4.0,
                         knockback: (flat.normalize_or(DVec3::X) * 4.0 + DVec3::Y * 3.0).as_vec3(),
@@ -559,6 +566,7 @@ impl Mob {
             self.angry_player = None;
         }
         if let Some((target, goal)) = a.foe {
+            self.stop_goal(w);
             let flat = (goal - self.pos) * DVec3::new(1.0, 0.0, 1.0);
             if flat.length_squared() < 2.25
                 && self.attack_cooldown <= 0.0
@@ -580,41 +588,8 @@ impl Mob {
             let flat = (goal - self.pos) * DVec3::new(1.0, 0.0, 1.0);
             return Some((if a.ram_prepare > 0.0 { None } else { Some(flat.normalize_or(DVec3::X)) }, 8.0));
         }
-        if a.goal.is_some() || ctx.players.iter().any(|t| t.held_item.is_some_and(|i| self.kind.breeding_food(i))) {
-            return None;
-        }
-        let owner = a.owner?;
-        let t = ctx.players.iter().find(|t| t.id == owner && t.alive)?;
-        let distance = t.pos.distance_squared(self.pos);
-        if distance > 144.0 && self.riding.is_none() && self.leash.is_none() {
-            for _ in 0..10 {
-                let p = t.pos.floor().as_ivec3()
-                    + IVec3::new(rng.next_int(7) as i32 - 3, rng.next_int(3) as i32 - 1, rng.next_int(7) as i32 - 3);
-                let at = p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
-                if (at.x - t.pos.x).abs() < 2.0 && (at.z - t.pos.z).abs() < 2.0 {
-                    continue;
-                }
-                if w.loaded(p)
-                    && w.block(p - IVec3::Y).is_some_and(|b| b.is_solid() && !b.is_leaves())
-                    && !crate::physics::overlaps_solid(w, at, self.shape())
-                    && !crate::physics::is_fluid_at(w, at)
-                {
-                    self.pos = at;
-                    self.previous_pos = at;
-                    self.vel = DVec3::ZERO;
-                    break;
-                }
-            }
-        }
-        if distance < 4.0 {
-            return Some((None, 0.0));
-        }
-        self.look_at(t.pos, 1.2);
-        if self.kind == MobKind::Parrot {
-            return Some((self.pursue(w, t.pos + DVec3::Y * 1.5, 2.5, true, false, rng), 2.5));
-        }
-        // Java's `FollowOwnerGoal` walks a path to the owner.
-        Some((self.pursue(w, t.pos, 2.5, true, false, rng), 2.5))
+        // Following the owner is `FollowOwnerGoal` in the goal selector.
+        None
     }
 }
 impl Entities {
@@ -684,22 +659,6 @@ impl Entities {
         let n = self.mobs.len();
         for i in 0..n {
             if !self.mobs[i].alive() || !w.entity_ticking(self.mobs[i].pos.floor().as_ivec3()) {
-                continue;
-            }
-            let m = &self.mobs[i];
-            if m.kind == MobKind::Creeper {
-                if let Some(j) = self.mob_index.nearest(&self.mobs, m.pos, 6.0, |b| b.kind == MobKind::Cat && b.alive())
-                {
-                    let from = self.mobs[j].pos;
-                    let m = &mut self.mobs[i];
-                    m.ai = super::mob::Ai::Panic;
-                    m.ai_timer = 1.0;
-                    m.move_yaw = (m.pos.z - from.z).atan2(m.pos.x - from.x) as f32;
-                    m.fuse = 0.0;
-                    m.hunt = Some(m.pos + (m.pos - from).normalize_or(DVec3::X) * 8.0);
-                } else {
-                    self.mobs[i].hunt = None;
-                }
                 continue;
             }
             let Some(a) = self.mobs[i].animal.as_ref() else { continue };
@@ -937,13 +896,21 @@ mod tests {
         }
         let w = Flat(Grid::flat(0));
         let c = ctx();
-        for _ in 0..61 {
-            e.tick_animals(0.05, &w, &c, &mut Vec::new());
+        // `BreedGoal`: `loveTime` reaches `adjustedTickDelay(60)` = 30 goal
+        // updates, every other tick, within 3 blocks.
+        let mut bred = None;
+        for tick in 0..200 {
+            e.update(0.05, &w, &c);
+            if bred.is_none() && e.mobs.len() == 3 {
+                bred = Some(tick);
+            }
         }
+        let bred = bred.expect("the pair breeds");
+        assert!((56..=62).contains(&bred), "courting takes about 60 ticks, not {bred}");
         assert_eq!(e.mobs.len(), 3);
-        assert_eq!(e.mobs[2].age, BABY_AGE);
+        assert_eq!(e.mobs[2].age, BABY_AGE + (199 - bred));
         for i in 0..2 {
-            assert_eq!(e.mobs[i].age, BREEDING_COOLDOWN);
+            assert_eq!(e.mobs[i].age, BREEDING_COOLDOWN - (199 - bred));
             assert_eq!(e.use_animal(i, Some(Stack::new(Item::WHEAT, 1)), PlayerId(8)), None);
         }
         let xp: u32 = e.orbs.iter().map(|o| o.value).sum();
@@ -998,8 +965,8 @@ mod tests {
             e.mobs[i].uid = i as u32 + 1;
             e.use_animal(i, Some(Stack::new(crate::world::overworld_blocks::SEAGRASS, 1)), PlayerId::HOST);
         }
-        for _ in 0..61 {
-            e.tick_animals(0.05, &Flat(Grid::flat(0)), &ctx(), &mut Vec::new());
+        for _ in 0..80 {
+            e.update(0.05, &Flat(Grid::flat(0)), &ctx());
         }
         assert_eq!(e.mobs.len(), 2);
         assert!(e.mobs.iter().any(|m| m.animal.as_ref().unwrap().pregnant));

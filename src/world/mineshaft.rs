@@ -601,13 +601,13 @@ fn floor_touches(p: &Piece, chunk: &Bounds) -> bool {
 }
 
 /// `chests/abandoned_mineshaft.json` mapped onto items we have. Missing
-/// entries (golden apples, name tags, seeds, glow berries,
+/// entries (name tags, seeds, glow berries,
 /// powered/detector/activator rails) stay weighted blanks.
 type Entry = (Option<Item>, u32, u8, u8);
 const RARE: &[Entry] = &[
-    (None, 20, 1, 1),                 // golden apple
-    (None, 1, 1, 1),                  // enchanted golden apple
-    (Some(Item::NAME_TAG), 30, 1, 1), // name tag
+    (Some(Item::GOLDEN_APPLE), 20, 1, 1),          // golden apple
+    (Some(Item::ENCHANTED_GOLDEN_APPLE), 1, 1, 1), // enchanted golden apple
+    (Some(Item::NAME_TAG), 30, 1, 1),              // name tag
     (Some(Item::ENCHANTED_BOOK), 10, 1, 1),
     (Some(Item::tool(ToolKind::Pickaxe, Tier::Iron)), 5, 1, 1),
     (None, 5, 1, 1), // empty
@@ -860,6 +860,15 @@ mod tests {
     use super::*;
     use crate::world::terrain::Generator;
     use std::sync::Arc;
+
+    /// `chests/abandoned_mineshaft.json`: golden apple 20 and enchanted golden apple 1 of 71.
+    #[test]
+    fn mineshaft_chests_award_both_golden_apples_with_java_weights() {
+        assert!(RARE.contains(&(Some(Item::GOLDEN_APPLE), 20, 1, 1)));
+        assert!(RARE.contains(&(Some(Item::ENCHANTED_GOLDEN_APPLE), 1, 1, 1)));
+        let found = |item| (0..20_000u64).any(|seed| loot(seed).slots.iter().flatten().any(|s| s.item == item));
+        assert!(found(Item::GOLDEN_APPLE) && found(Item::ENCHANTED_GOLDEN_APPLE));
+    }
 
     #[test]
     fn frequency_matches_java_legacy_type_3() {

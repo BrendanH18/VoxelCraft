@@ -231,7 +231,11 @@ impl World {
                     }
                 }
                 let floor = self.cell(p - IVec3::Y);
-                if fluid == Fluid::Water && sources >= 2 && (floor == source || !floor.is_replaceable()) {
+                let converts = match fluid {
+                    Fluid::Water => self.rules.water_source_conversion,
+                    Fluid::Lava => self.rules.lava_source_conversion,
+                };
+                if converts && sources >= 2 && (floor == source || !floor.is_replaceable()) {
                     source
                 } else if let Some(l) = best {
                     fluid.flowing(l)

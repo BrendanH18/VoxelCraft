@@ -285,8 +285,10 @@ impl World {
     fn random_tick_rules(&mut self, p: IVec3, fire_tick: bool) {
         let Some(b) = self.get_block(p) else { return };
         match b {
-            b if fire_tick && b.fire_age().is_some() => self.tick_fire_block(p, b.fire_age().unwrap()),
-            b if fire_tick && b.is_lava() => self.tick_lava_fire(p),
+            b if fire_tick && b.fire_age().is_some() && self.fire_may_spread(p) => {
+                self.tick_fire_block(p, b.fire_age().unwrap())
+            }
+            b if fire_tick && b.is_lava() && self.fire_may_spread(p) => self.tick_lava_fire(p),
             Block::GRASS => self.tick_grass(p),
             Block::FARMLAND | Block::WET_FARMLAND => self.tick_farmland(p, b),
             b if b.is_sapling() => {

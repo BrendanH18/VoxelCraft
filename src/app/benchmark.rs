@@ -142,7 +142,7 @@ impl Game {
             if run.scene == "entities" {
                 // Undead burn in daylight and natural spawning varies the count; hold the
                 // specified population with a fixed dawn and no natural spawns.
-                for rule in ["doDaylightCycle", "doMobSpawning"] {
+                for rule in ["advance_time", "spawn_mobs"] {
                     self.gamerules.set(rule, "false").expect("benchmark gamerule");
                 }
                 self.day_time = ENTITY_SCENE_TIME;
@@ -313,8 +313,8 @@ impl Game {
             "volume": settings.volume,
             "fullscreen": "not applied to scripted runs",
             "day_time_start": if run.scene == "entities" { Some(ENTITY_SCENE_TIME) } else { None },
-            "day_cycle": self.gamerules.bool("doDaylightCycle"),
-            "natural_spawning": self.gamerules.bool("doMobSpawning"),
+            "day_cycle": self.gamerules.bool("advance_time"),
+            "natural_spawning": self.gamerules.bool("spawn_mobs"),
             "camera_route_clearance_blocks": route(&run.scene, 0.).map(|_| ROUTE_CLEARANCE),
         });
         let validity = serde_json::json!({

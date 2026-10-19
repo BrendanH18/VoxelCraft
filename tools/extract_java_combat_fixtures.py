@@ -5,7 +5,9 @@ Requires javap. Records tool attack attributes (`Item$Properties` sword/axe/...
 registrations plus `ToolMaterial` damage bonuses), each material's durability,
 speed, enchantability and incorrect-block/repair tags, player base attributes and
 interaction ranges, and the attack-strength constants used by `Player.attack`.
-Unknown bytecode forms fail rather than regenerating a guessed fixture.
+Sweep attacks, knockback, attack sounds and movement-speed facts come from
+`extract_java_knockback_facts.py`. Unknown bytecode forms fail rather than
+regenerating a guessed fixture.
 No VoxelCraft source or existing fixture is consulted.
 """
 import argparse
@@ -18,6 +20,7 @@ import subprocess
 import tempfile
 import zipfile
 from extract_java_item_fixtures import SERVER_SHA1
+from extract_java_knockback_facts import extract_knockback
 
 TOOLS = ("sword", "shovel", "pickaxe", "axe", "hoe")
 MATERIALS = ("WOOD", "STONE", "COPPER", "IRON", "GOLD", "DIAMOND", "NETHERITE")
@@ -230,6 +233,7 @@ def extract(server):
         sweep = method(player, "private boolean isSweepAttack(boolean, boolean, boolean);")
         if "double 2.5d" not in sweep or "ItemTags.SWORDS" not in sweep:
             raise ValueError("unrecognized sweep condition")
+        knockback_facts = extract_knockback(inspect, path)
     return {
         "source": "official Java 26.3 server artifact, SHA-1 " + SERVER_SHA1,
         "player": {**base, **ranges},
@@ -271,6 +275,7 @@ def extract(server):
         "armor_durability_units": armor_types,
         "armor_materials": dict(sorted(armor.items())),
         "tools": tools,
+        **knockback_facts,
     }
 
 

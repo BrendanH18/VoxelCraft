@@ -1387,6 +1387,13 @@ pub fn java_speed(blocks_per_second: f64) -> f64 {
     (blocks_per_second.max(0.0) / 20.0 * (1.0 - 0.6 * 0.91)).sqrt()
 }
 
+/// The inverse of [`java_speed`]: the steady ground speed (blocks per
+/// second) of a mob whose `MoveControl` sets `getSpeed()` to `speed`
+/// (movement speed attribute times the goal's speed modifier).
+pub fn ground_speed(speed: f64) -> f64 {
+    20.0 * speed * speed / (1.0 - 0.6 * 0.91)
+}
+
 /// A mob's navigation state. Java keeps none of this in saves; a reloaded
 /// mob plans again.
 #[derive(Clone, Debug, Default)]

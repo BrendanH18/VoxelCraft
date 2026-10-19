@@ -263,12 +263,10 @@ fn food_effects_chances_and_always_edible_foods_match_the_reference() {
     for (name, case) in fixture["food_effects"].as_object().unwrap() {
         let item = Item::from_name(name).unwrap();
         assert_eq!(item.food_effect_chance(), case["chance"].as_f64().unwrap() as f32, "{name}");
-        // The game has no Absorption hearts, so that reference effect is the only one left out.
         let expected: Vec<_> = case["effects"]
             .as_array()
             .unwrap()
             .iter()
-            .filter(|e| e["effect"] != "absorption")
             .map(|e| (e["effect"].as_str().unwrap(), e["amplifier"].as_u64().unwrap(), e["ticks"].as_u64().unwrap()))
             .collect();
         let actual: Vec<_> =
@@ -282,7 +280,7 @@ fn food_effects_chances_and_always_edible_foods_match_the_reference() {
         .iter()
         .filter_map(|n| Item::from_name(n.as_str().unwrap()))
         .collect();
-    assert_eq!(registered, vec![Item::GOLDEN_APPLE]);
+    assert_eq!(registered, vec![Item::ENCHANTED_GOLDEN_APPLE, Item::GOLDEN_APPLE]);
     assert!(registered.iter().all(|i| i.always_edible()));
     assert!(!Item::APPLE.always_edible());
 }
@@ -296,6 +294,8 @@ fn full_players_eat_golden_apples_and_creative_players_eat_anything_without_usin
     }
     assert!(golden.inventory.get(0).is_none());
     assert_eq!(golden.vitals.effects.get(Effect::Regeneration).map(|a| (a.amplifier, a.ticks)), Some((1, 100)));
+    assert_eq!(golden.vitals.effects.get(Effect::Absorption).map(|a| (a.amplifier, a.ticks)), Some((0, 2400)));
+    assert_eq!(golden.vitals.effects.absorption(), 4.0, "Absorption I starts with two golden hearts");
 
     let mut full = session(Item::BREAD);
     full.vitals.hunger.food = 20.;
@@ -321,4 +321,35 @@ fn full_players_eat_golden_apples_and_creative_players_eat_anything_without_usin
         stew.tick_consumption(0, true, &mut e).unwrap();
     }
     assert_eq!(stew.inventory.get(0), Some(Stack::new(Item::MUSHROOM_STEW, 1)), "no bowl exchange either");
+}
+
+#[test]
+fn enchanted_golden_apples_give_sixteen_absorption_and_milk_takes_it_away() {
+    let mut e = Entities::new(7);
+    let mut s = session(Item::ENCHANTED_GOLDEN_APPLE);
+    s.vitals.hunger.food = 20.;
+    for _ in 0..32 {
+        s.tick_consumption(0, true, &mut e).unwrap();
+    }
+    assert!(s.inventory.get(0).is_none());
+    assert_eq!(s.vitals.hunger.food, 20.);
+    for (effect, amplifier, ticks) in [
+        (Effect::Regeneration, 1, 400),
+        (Effect::Resistance, 0, 6000),
+        (Effect::FireResistance, 0, 6000),
+        (Effect::Absorption, 3, 2400),
+    ] {
+        assert_eq!(s.vitals.effects.get(effect).map(|a| (a.amplifier, a.ticks)), Some((amplifier, ticks)));
+    }
+    assert_eq!((s.vitals.effects.absorption(), s.vitals.effects.max_absorption()), (16.0, 16.0));
+    // 5 points hit through Resistance I's 20% cut: 4 taken from absorption, none from health.
+    s.vitals.damage(5.0, "test", false);
+    assert_eq!((s.vitals.health, s.vitals.effects.absorption()), (20.0, 12.0));
+
+    s.inventory.slots[0] = Some(Stack::new(Item::MILK_BUCKET, 1));
+    for _ in 0..32 {
+        s.tick_consumption(0, true, &mut e).unwrap();
+    }
+    assert!(s.vitals.effects.is_empty());
+    assert_eq!(s.vitals.effects.absorption(), 0.0, "milk clears the absorption hearts with the effect");
 }

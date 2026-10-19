@@ -121,6 +121,10 @@ fn persistence_worker() {
         session.inventory = inventory;
         session.vitals.hunger.food = 8.;
         session.spawn_point = Some(IVec3::new(15, 145, 5));
+        // Absorption II with 2.5 of its 8 points spent.
+        session.vitals.apply_effect(Effect::Absorption, 1, 2400);
+        assert_eq!(session.vitals.damage(2.5, "test", false), 2.5);
+        assert_eq!((session.vitals.health, session.vitals.effects.absorption()), (20., 5.5));
         for _ in 0..31 {
             assert!(session.tick_consumption(3, true, &mut e).unwrap().completed.is_none());
         }
@@ -147,6 +151,7 @@ fn persistence_worker() {
         e.mobs[2].age = -12000;
         let props = [
             ("inventory", session.inventory.serialize()),
+            ("effects", session.vitals.effects.serialize()),
             ("spawn_point", "15,145,5".into()),
             ("furnaces", w.furnaces_to_string()),
             ("brewing", w.brewing_stands_to_string()),
@@ -192,6 +197,10 @@ fn persistence_worker() {
             voxelcraft::rules::GameMode::Survival,
         );
         session.vitals.hunger.food = 8.;
+        session.vitals.effects = voxelcraft::simulation::effects::Effects::deserialize(&level.props["effects"]);
+        let absorption = session.vitals.effects.get(Effect::Absorption).unwrap();
+        assert_eq!((absorption.amplifier, absorption.ticks), (1, 2400));
+        assert_eq!((session.vitals.effects.absorption(), session.vitals.effects.max_absorption()), (5.5, 8.));
         session.player.yaw = level.player.unwrap().1;
         session.player.pitch = level.player.unwrap().2;
         session.player.on_ground = true;

@@ -119,6 +119,7 @@ impl Thrown {
                 && let Some(t) = players.iter().find(|t| t.targetable && t.contains(next))
             {
                 events.push(EntityEvent::PlayerHit {
+                    java: None,
                     player: t.id,
                     damage: 1.0,
                     knockback: (DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 0.5).as_vec3(),

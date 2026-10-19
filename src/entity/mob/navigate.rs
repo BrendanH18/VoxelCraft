@@ -188,6 +188,10 @@ impl Mob {
             let spare = (self.health - self.max_health() * 0.33) as i32 - (3 - id) * 4;
             caps.max_fall = (spare.max(0) as f32 + 3.0).floor() as i32;
         }
+        // `FollowOwnerGoal.start` sets the water malus to 0 until it stops.
+        if self.goals.water_free {
+            caps.malus = caps.malus.with(PathType::Water, 0.0);
+        }
         caps
     }
 
@@ -306,6 +310,18 @@ impl Mob {
         None
     }
 
+    /// The stroll speed: the table's `RandomStrollGoal` speed modifier on the
+    /// movement speed attribute, else VoxelCraft's wander speed.
+    pub(crate) fn stroll_speed(&self) -> f64 {
+        self.table_speed(|g| matches!(g, super::goals::Goal::Stroll)).unwrap_or_else(|| self.kind.wander_speed())
+    }
+
+    /// The panic speed: the table's `PanicGoal` speed modifier, else
+    /// VoxelCraft's 3.4 blocks a second.
+    pub(crate) fn panic_speed(&self) -> f64 {
+        self.table_speed(|g| matches!(g, super::goals::Goal::Panic)).unwrap_or(3.4)
+    }
+
     /// Forget the pursuit so the next chase plans afresh.
     pub(crate) fn stop_navigation(&mut self) {
         self.nav.stop();
@@ -386,6 +402,46 @@ impl Mob {
         best.map(|(_, p)| p)
     }
 
+    /// `DefaultRandomPos.getPosAway(h, v, from)`: the best-valued of ten
+    /// spots in the half-plane facing away from `from`
+    /// (`RandomPos.generateRandomDirectionWithinRadians` with a quarter turn
+    /// either side), on a stable cell without a path malus.
+    pub(crate) fn pos_away<W: MobWorld + ?Sized>(
+        &self,
+        world: &W,
+        ctx: &Ctx,
+        rng: &mut Rng,
+        h: i32,
+        v: i32,
+        from: DVec3,
+    ) -> Option<IVec3> {
+        let caps = self.caps(false);
+        let away = self.pos - from;
+        let mut best: Option<(f32, IVec3)> = None;
+        for _ in 0..10 {
+            let angle = away.z.atan2(away.x) - std::f64::consts::FRAC_PI_2;
+            let angle = angle + (2.0 * rng.next_f32() - 1.0) as f64 * std::f64::consts::FRAC_PI_2;
+            let r = (rng.next_f32() as f64).sqrt() * h as f64 * std::f64::consts::SQRT_2;
+            let (x, z) = (-r * angle.sin(), r * angle.cos());
+            if x.abs() > h as f64 || z.abs() > h as f64 {
+                continue;
+            }
+            let y = rng.next_int((2 * v + 1) as u32) as i32 - v;
+            let p = (self.pos + DVec3::new(x.floor(), y as f64, z.floor())).floor().as_ivec3();
+            if !(crate::world::chunk::WORLD_MIN_Y..=319).contains(&p.y)
+                || !stable(world, p)
+                || caps.malus.get(path::static_type(world, p)) != 0.0
+            {
+                continue;
+            }
+            let value = self.walk_value(world, ctx, p);
+            if value > best.map_or(f32::NEG_INFINITY, |(b, _)| b) {
+                best = Some((value, p));
+            }
+        }
+        best.map(|(_, p)| p)
+    }
+
     /// `WaterAvoidingRandomStrollGoal.getPosition`, or the plain
     /// `RandomStrollGoal`'s `DefaultRandomPos` for striders.
     fn stroll_target<W: MobWorld + ?Sized>(&self, world: &W, ctx: &Ctx, rng: &mut Rng) -> Option<IVec3> {
@@ -406,7 +462,7 @@ impl Mob {
     /// and unhurt) stop strolling.
     pub(crate) fn try_stroll<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, rng: &mut Rng) -> bool {
         if self.idle >= 5.0
-            || !self.caps(false).evaluator.can_update(&self.mover(self.kind.wander_speed()), self.caps(false).can_float)
+            || !self.caps(false).evaluator.can_update(&self.mover(self.stroll_speed()), self.caps(false).can_float)
         {
             return false;
         }
@@ -425,7 +481,7 @@ impl Mob {
         }) else {
             return false;
         };
-        let speed = self.kind.wander_speed();
+        let speed = self.stroll_speed();
         if self.walk_to(world, goal, 1, speed, false) {
             self.ai = Ai::Wander;
             self.ai_timer = 30.0;

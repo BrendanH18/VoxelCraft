@@ -7,8 +7,8 @@ mod data;
 mod render;
 
 use voxelcraft::{
-    color, crafting, enchant, entity, inventory, item, mesh, mining, particles, physics, player, simulation, smithing,
-    world,
+    color, crafting, enchant, entity, inventory, item, knockback, mesh, mining, particles, physics, player, simulation,
+    smithing, world,
 };
 
 use winit::event_loop::{ControlFlow, EventLoop};

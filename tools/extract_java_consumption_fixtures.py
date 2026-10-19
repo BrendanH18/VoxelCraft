@@ -92,7 +92,8 @@ def extract(server):
         food_cases = {}
         for item, provider in (("SPIDER_EYE", "SPIDER_EYE"), ("POISONOUS_POTATO", "POISONOUS_POTATO"),
                                ("PUFFERFISH", "PUFFERFISH"), ("ROTTEN_FLESH", "ROTTEN_FLESH"),
-                               ("CHICKEN", "CHICKEN"), ("GOLDEN_APPLE", "GOLDEN_APPLE")):
+                               ("CHICKEN", "CHICKEN"), ("GOLDEN_APPLE", "GOLDEN_APPLE"),
+                               ("ENCHANTED_GOLDEN_APPLE", "ENCHANTED_GOLDEN_APPLE")):
             food_cases["raw_chicken" if item == "CHICKEN" else item.lower()] = food_effects(
                 field_initialization(code, provider))
         edible = always_edible(inspect("net.minecraft.world.food.Foods"))

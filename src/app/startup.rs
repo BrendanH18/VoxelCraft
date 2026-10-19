@@ -164,7 +164,7 @@ impl Game {
         }
         let mut world = World::new(generator, saved, settings.render_distance);
         world.set_simulation_distance(settings.simulation_distance);
-        world.set_tile_drops(gamerules.bool("doTileDrops"));
+        world.set_tile_drops(gamerules.bool("block_drops"));
         log::info!("{} worker threads", world.worker_threads());
 
         let now = Instant::now();

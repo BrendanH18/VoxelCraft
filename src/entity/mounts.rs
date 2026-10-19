@@ -352,7 +352,7 @@ pub fn food(kind: MobKind, item: Item) -> Option<(f32, u8, i32)> {
         Item::WHEAT => (2., 3, 400),
         Item::APPLE => (3., 3, 1200),
         Item::GOLDEN_CARROT => (4., 5, 1200),
-        Item::GOLDEN_APPLE => (10., 10, 4800),
+        Item::GOLDEN_APPLE | Item::ENCHANTED_GOLDEN_APPLE => (10., 10, 4800),
         i if i == Item::from_block(crate::world::block::Block::HAY_BALE) => (20., 0, 3600),
         _ => return None,
     })
@@ -507,26 +507,6 @@ impl Entities {
             b.velocity_spread = DVec3::splat(0.01);
             b.color = Some([0.95, 0.95, 0.9, 1.0]);
             self.particles.push(crate::particles::Request::Burst(b));
-        }
-        // Wild wolves keep away from llamas (Java's wolf AvoidEntityGoal).
-        let llamas: Vec<DVec3> =
-            self.mobs.iter().filter(|m| m.kind == MobKind::Llama && m.alive()).map(|m| m.pos).collect();
-        for w in &mut self.mobs {
-            if !w.simulation_active
-                || w.kind != MobKind::Wolf
-                || !w.alive()
-                || w.animal.as_ref().is_none_or(|a| a.owner.is_some())
-            {
-                continue;
-            }
-            if let Some(l) = llamas.iter().find(|l| l.distance_squared(w.pos) < 64.0)
-                && w.ai != super::mob::Ai::Panic
-            {
-                let away = w.pos - *l;
-                w.ai = super::mob::Ai::Panic;
-                w.ai_timer = 2.0;
-                w.move_yaw = away.z.atan2(away.x) as f32;
-            }
         }
         // Caravans: an unled adult llama joins the tail of a led llama (or its caravan)
         // within 9 blocks, up to ten llamas long, and follows the one ahead.
@@ -1204,8 +1184,9 @@ mod tests {
     #[test]
     fn tamed_horse_and_donkey_breed_a_mule_but_untamed_horses_do_not_love() {
         let mut e = Entities::new(4);
-        e.spawn(MobKind::Horse, DVec3::new(0., 140., 0.));
-        e.spawn(MobKind::Donkey, DVec3::new(2., 140., 0.));
+        // Inside the loaded chunk: the breeding goal runs through full updates.
+        e.spawn(MobKind::Horse, DVec3::new(6., 140., 6.));
+        e.spawn(MobKind::Donkey, DVec3::new(8., 140., 6.));
         assert_eq!(e.use_animal(0, Some(Stack::new(Item::GOLDEN_CARROT, 1)), PlayerId::HOST), None);
         for i in 0..2 {
             e.mobs[i].uid = i as u32 + 1;
@@ -1221,8 +1202,8 @@ mod tests {
             raining: false,
             dimension: crate::world::terrain::Dimension::Overworld,
         };
-        for _ in 0..61 {
-            e.tick_animals(0.05, &w, &ctx, &mut Vec::new());
+        for _ in 0..80 {
+            e.update(0.05, &w, &ctx);
         }
         assert_eq!(e.mobs.len(), 3);
         let foal = &e.mobs[2];

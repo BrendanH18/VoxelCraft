@@ -92,8 +92,8 @@ single enchantment; outpost goat horns are one of the four regular horns
 (ponder, sing, seek, feel).
 Entries whose item does not exist yet keep their original weight as an empty
 result: buried treasure and plain maps, trim templates, copper horse armor,
-nautilus armor, spears, enchanted golden apples, experience bottles and
-suspicious stew.
+nautilus armor, spears, experience bottles and suspicious stew. The
+enchanted golden apple is registered and awarded.
 Heart of the sea belongs in buried treasure and is not substituted into
 shipwreck loot. The shared loot helper uses VoxelCraft's seeded layout RNG
 and enchantment selection, rather than Java's exact loot random sequences

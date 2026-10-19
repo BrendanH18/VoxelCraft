@@ -3,6 +3,7 @@
 use super::{Container, Game, GameMode, gamepad::Body, hud::SlotRef};
 use crate::crafting::Grid;
 use crate::inventory::{stack_from_str, stack_to_string};
+use crate::knockback;
 use crate::world::{
     World,
     block::Block,
@@ -42,6 +43,12 @@ pub(super) struct Peer {
     view: i32,
     /// Mobs whose look this client has; others get it on their next snapshot.
     looked: std::collections::BTreeSet<u32>,
+    /// The respawn angle, held against the client's stale look input until
+    /// its input reports that angle (it adopts it from the snapshot that
+    /// shows the new respawn count) or a short timeout passes.
+    look_override: Option<(f32, f32, Instant)>,
+    /// The player's respawn count when last driven, to notice respawns.
+    respawns: Option<u32>,
 }
 impl Peer {
     fn new(connection: Connection) -> Self {
@@ -64,6 +71,8 @@ impl Peer {
             sent: BTreeMap::new(),
             view: 2,
             looked: Default::default(),
+            look_override: None,
+            respawns: None,
         }
     }
 }
@@ -94,6 +103,8 @@ pub(super) struct Lan {
     predictions: VecDeque<Input>,
     ready: bool,
     messages: VecDeque<String>,
+    /// The host's respawn count for this client's player, from the last snapshot.
+    respawns: Option<u64>,
 }
 impl Lan {
     /// The world's remembered session rules, `cheats,pvp` as `0` or `1`.
@@ -212,13 +223,28 @@ fn fit_state(mut v: Value) -> (Option<Value>, bool) {
     (fits(&v).then_some(v), true)
 }
 
+/// A LAN peer's look: its input, unless a respawn angle is still held
+/// because the client hasn't reported adopting it (see `Peer::look_override`).
+fn peer_look(look_override: &mut Option<(f32, f32, Instant)>, input: &Input) -> (f32, f32) {
+    if let Some((yaw, pitch, since)) = *look_override {
+        let turn = (input.yaw - yaw + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
+        if (turn.abs() < 0.01 && (input.pitch - pitch).abs() < 0.01) || since.elapsed() > Duration::from_secs(2) {
+            *look_override = None;
+        } else {
+            return (yaw, pitch);
+        }
+    }
+    (input.yaw.rem_euclid(std::f32::consts::TAU), input.pitch.clamp(-1.55, 1.55))
+}
+
 fn state(agent: &Agent, name: &str) -> Value {
     json!({"id":agent.session.id.0,"name":name,"pos":agent.session.player.pos.to_array(),"vel":agent.session.player.vel.to_array(),
         "yaw":agent.session.player.yaw,"pitch":agent.session.player.pitch,"ground":agent.session.player.on_ground,"flying":agent.session.player.flying,
         "mode":agent.session.mode.name(),"selected":agent.selected,"inventory":agent.session.inventory.serialize(),
         "cursor":stack_to_string(agent.session.inventory.cursor),"health":agent.session.vitals.health,"air":agent.session.vitals.air,
         "food":agent.session.vitals.hunger.food,"saturation":agent.session.vitals.hunger.saturation,"exhaustion":agent.session.vitals.hunger.exhaustion,
-        "death":agent.session.vitals.death,"xp":agent.session.vitals.xp.serialize(),"effects":agent.session.vitals.effects.serialize(),"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle})
+        "death":agent.session.vitals.death,"xp":agent.session.vitals.xp.serialize(),"effects":agent.session.vitals.effects.serialize(),"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle,
+        "respawns":agent.session.respawns})
 }
 /// What clients need of *other* players: pose, held item, armor and health, not their inventory.
 /// Rounds to a millimetre (or a thousandth of a radian): plenty for drawing, far fewer bytes.
@@ -681,16 +707,18 @@ impl Game {
                         &[],
                     )?;
                     let at = if self.dimension == Dimension::Overworld {
-                        let (at, missing) = self.respawn_point_of(&PlayerRef::Agent(name.clone()));
+                        let (at, yaw, missing) = self.respawn_point_of(&PlayerRef::Agent(name.clone()));
                         if missing {
                             let _ = peer.connection.send(Packet::Chat("Your home bed was missing".into()));
                         }
-                        at
+                        (at, yaw)
                     } else {
-                        self.beside_host()
+                        (self.beside_host(), voxelcraft::session::DEFAULT_SPAWN_YAW)
                     };
+                    let (at, yaw) = at;
                     let agent = &mut self.agents.players.get_mut(&name).unwrap().agent;
                     agent.session.player.pos = at;
+                    agent.session.player.yaw = yaw;
                     agent.previous_pos = at;
                     peer.body = Body::default();
                     peer.open = false;
@@ -803,8 +831,17 @@ impl Game {
             } else {
                 Input { sequence: peer.input.sequence, ..Default::default() }
             };
-            bot.agent.session.player.yaw = input.yaw.rem_euclid(std::f32::consts::TAU);
-            bot.agent.session.player.pitch = input.pitch.clamp(-1.55, 1.55);
+            // Every respawn path (the respawn command, `doImmediateRespawn`)
+            // counts on the session; hold the angle it chose.
+            let respawns = bot.agent.session.respawns;
+            if peer.respawns.is_some_and(|seen| seen != respawns) {
+                let player = &bot.agent.session.player;
+                peer.look_override = Some((player.yaw, player.pitch, Instant::now()));
+            }
+            peer.respawns = Some(respawns);
+            let (yaw, pitch) = peer_look(&mut peer.look_override, &input);
+            bot.agent.session.player.yaw = yaw;
+            bot.agent.session.player.pitch = pitch;
             bot.agent.selected = input.selected as usize;
             bot.agent.session.player.flying = bot.agent.session.player.can_fly && input.buttons & 32 != 0;
             if bot.agent.session.sleeping.is_some() && input.buttons & 1 != 0 {
@@ -829,7 +866,7 @@ impl Game {
                 let mut stacks = peer.grid.take_all();
                 let bot = self.agents.players.get_mut(&name).unwrap();
                 stacks.extend(bot.agent.session.work.iter_mut().filter_map(Option::take));
-                if self.gamerules.bool("keepInventory") {
+                if self.gamerules.bool("keep_inventory") {
                     bot.agent.session.inventory.return_stacks(stacks);
                 } else {
                     for stack in
@@ -875,6 +912,7 @@ impl Game {
                         Request::Popup(text) => {
                             let _ = peer.connection.send(Packet::Chat(text));
                         }
+                        Request::StopSprint => self.stop_sprint(&name),
                         Request::Open(Used::OpenMerchant(id)) => {
                             self.peer_open(peer, Container::Trading(id));
                         }
@@ -1284,7 +1322,16 @@ impl Game {
         }
         let mut own = Agent::new(self.session.player.pos);
         apply(&mut own, &snapshot["self"]);
-        let (yaw, pitch) = (self.session.player.yaw, self.session.player.pitch);
+        // The client owns its look, except that a respawn faces the host's
+        // respawn angle (Java's respawn transition sets the rotation).
+        let respawns = snapshot["self"]["respawns"].as_u64();
+        let respawned = self.lan.respawns.zip(respawns).is_some_and(|(seen, now)| seen != now);
+        self.lan.respawns = respawns;
+        let (yaw, pitch) = if respawned {
+            (own.session.player.yaw, own.session.player.pitch)
+        } else {
+            (self.session.player.yaw, self.session.player.pitch)
+        };
         self.previous_eye = self.session.player.eye();
         self.session.player = own.session.player;
         self.session.player.yaw = yaw;
@@ -1726,28 +1773,39 @@ impl Game {
             .map(|(_, who)| who)
     }
 
-    /// Armored PvP damage with knockback and fire; returns where the target
-    /// stands and its armor's Thorns levels if it was found.
-    fn hurt_player_ref(&mut self, target: &PlayerRef, amount: f32, push: DVec3, fire: f32) -> Option<(DVec3, [u8; 4])> {
+    /// Armored PvP damage with Java's knockback (`hurtServer`'s push away from
+    /// `source` (the attacker's feet), then `extra` along Java yaw `yaw`) and fire;
+    /// returns where the target stands, its armor's Thorns levels and whether
+    /// the hit landed (Creative targets and hurt immunity refuse it) if it was found.
+    fn hurt_player_ref(
+        &mut self,
+        target: &PlayerRef,
+        amount: f32,
+        (source, yaw, extra): (DVec3, f32, f32),
+        fire: f32,
+    ) -> Option<(DVec3, [u8; 4], bool)> {
         const CAUSE: &str = "was slain by a player";
-        match target {
+        let hit = knockback::Hit::melee(source, self.player(target)?.player.pos, yaw, extra);
+        let landed = match target {
             PlayerRef::Host => {
-                if self.damage_player_armored(amount, CAUSE) > 0.0 {
-                    self.session.player.hurt_from(push);
-                    let resistance = self.session.inventory.knockback_resistance();
-                    self.session.player.vel += crate::simulation::survival::knockback_taken(push, resistance);
+                let landed = self.damage_player_armored(amount, CAUSE) > 0.0;
+                if landed {
+                    let entities = &mut self.mobs.entities;
+                    self.session.knocked_back(&hit, &mut || f64::from(entities.roll_range(0.0, 1.0)));
                 }
+                landed
             }
             PlayerRef::Agent(name) => {
                 let bot = self.agents.players.get_mut(name)?;
-                bot.agent.hurt(amount, CAUSE, push, &mut self.mobs.entities);
+                bot.agent.hurt_knocked(amount, CAUSE, &hit, &mut self.mobs.entities) > 0.0
             }
-        }
+        };
         let s = self.player_mut(target)?;
-        if fire > 0.0 {
+        // Fire Aspect is a post-attack effect, so only a hit that lands sets fire.
+        if landed && fire > 0.0 {
             s.vitals.ignite(fire);
         }
-        Some((s.player.pos, crate::entity::Target::thorns_of(&s.inventory.armor)))
+        Some((s.player.pos, crate::entity::Target::thorns_of(&s.inventory.armor), landed))
     }
 
     /// Java's player melee against another player: the attack-strength charge
@@ -1771,25 +1829,40 @@ impl Game {
         let critical = strong && me.can_critical_attack(true, sprint);
         let base = (crate::mining::attack_damage(held.map(|s| s.item)) + me.vitals.effects.attack_bonus()).max(0.0)
             * (0.2 + strength * strength * 0.8);
-        let bonus = crate::enchant::damage_bonus(enchants, crate::enchant::Creature::Other) * strength;
-        let damage = base * if critical { 1.5 } else { 1.0 } + bonus;
+        let enchant_bonus = crate::enchant::damage_bonus(enchants, crate::enchant::Creature::Other);
+        let damage = base * if critical { 1.5 } else { 1.0 } + enchant_bonus * strength;
         let (knock_level, fire) = crate::mining::weapon_extras(held);
-        let dir = p.forward().as_dvec3().with_y(0.0).normalize_or_zero();
         let sprint_knockback = sprint && strong;
-        let shove = 0.4 + 0.5 * (knock_level as f64 + if sprint_knockback { 0.5 } else { 0.0 });
+        let extra = knockback::attack_strength(0.0, u32::from(knock_level), sprint_knockback);
         let sword = held.and_then(|s| s.item.as_tool()).is_some_and(|(k, _)| k == crate::item::ToolKind::Sword);
-        let slow = (p.vel.with_y(0.0) / 20.0).length_squared() < 0.25 * 0.25;
-        let sweep = strong && sword && p.on_ground && !critical && !sprint_knockback && slow;
+        let (speed_level, slowness_level) = me.vitals.effects.movement_speed_levels();
+        let speed = knockback::movement_speed(speed_level, slowness_level, sprint);
+        let moved_sqr = (p.vel.with_y(0.0) / knockback::TICK_RATE).length_squared();
+        let sweep = knockback::sweep_allowed(strong, critical, sprint_knockback, p.on_ground, moved_sqr, speed, sword);
         let attacker_pos = p.pos;
+        let yaw = knockback::java_yaw_degrees(p.yaw);
         let survival = me.mode.is_survival();
         let held_item = held.map(|s| s.item);
-        let Some((at, thorns)) = self.hurt_player_ref(&target, damage, dir * shove + DVec3::Y * 0.2, fire) else {
+        let Some((at, thorns, landed)) = self.hurt_player_ref(&target, damage, (attacker_pos, yaw, extra), fire) else {
             return true;
         };
+        // `Player.attack`: the extra knockback, sweep and post-attack effects
+        // (Thorns) follow only a hit `hurtOrSimulate` accepted.
+        let (extra, sweep, thorns) = if landed { (extra, sweep, thorns) } else { (0.0, false, [0; 4]) };
+        if extra > 0.0 {
+            // `causeExtraKnockback`: the push slows the attacker and stops its sprint.
+            if let Some(me) = self.player_mut(attacker) {
+                me.player.vel = knockback::slow_attacker(me.player.vel);
+            }
+            if let PlayerRef::Agent(name) = attacker {
+                self.stop_sprint(name);
+            }
+        }
         if sweep {
-            let level = enchants.level(crate::enchant::Enchantment::SweepingEdge) as f32;
-            let swept = 1.0 + level / (level + 1.0) * base;
-            let near_host = (!self.session.vitals.is_dead()).then_some((PlayerRef::Host, self.session.player.pos));
+            let level = u32::from(enchants.level(crate::enchant::Enchantment::SweepingEdge));
+            let swept = knockback::sweep_damage(base, level, enchant_bonus, strength);
+            let target_box = self.player(&target).map(|s| s.player.collision_shape().aabb(s.player.pos));
+            let near_host = (!self.session.vitals.is_dead()).then_some((PlayerRef::Host, &self.session));
             let near: Vec<PlayerRef> = near_host
                 .into_iter()
                 .chain(
@@ -1797,18 +1870,19 @@ impl Game {
                         .players
                         .iter()
                         .filter(|(_, b)| b.active && !b.agent.session.vitals.is_dead())
-                        .map(|(n, b)| (PlayerRef::Agent(n.clone()), b.agent.session.player.pos)),
+                        .map(|(n, b)| (PlayerRef::Agent(n.clone()), &b.agent.session)),
                 )
-                .filter(|(who, pos)| {
+                .filter(|(who, s)| {
+                    let p = &s.player;
                     *who != target
                         && who != attacker
-                        && pos.distance_squared(at) < 1.0 + 1.0
-                        && pos.distance_squared(attacker_pos) < 9.0
+                        && target_box.is_some_and(|t| knockback::in_sweep_box(t, p.collision_shape().aabb(p.pos)))
+                        && p.pos.distance_squared(attacker_pos) < knockback::SWEEP_RANGE_SQR
                 })
                 .map(|(who, _)| who)
                 .collect();
             for other in near {
-                self.hurt_player_ref(&other, swept * strength + bonus, dir * 0.4 + DVec3::Y * 0.2, 0.0);
+                self.hurt_player_ref(&other, swept, (attacker_pos, yaw, knockback::SWEEP_STRENGTH as f32), 0.0);
             }
             let mut burst = crate::particles::Burst::new(crate::particles::Kind::Poof, at + DVec3::Y, 3);
             burst.spread = DVec3::splat(0.5);
@@ -1885,6 +1959,24 @@ fn button_transitions(mut previous: u8, edges: &[(u8, bool)], latest: u8) -> Vec
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// A respawned peer faces the respawn angle while its client's queued
+    /// inputs still carry the pre-death look, then follows the client again
+    /// once its input reports the angle (or the hold times out).
+    #[test]
+    fn a_respawn_angle_holds_against_stale_peer_look_until_the_client_adopts_it() {
+        let stale = Input { yaw: 3.0, pitch: 1.2, ..Default::default() };
+        let mut held = Some((std::f32::consts::FRAC_PI_2, 0.0, Instant::now()));
+        assert_eq!(peer_look(&mut held, &stale), (std::f32::consts::FRAC_PI_2, 0.0));
+        assert!(held.is_some());
+        let adopted = Input { yaw: std::f32::consts::FRAC_PI_2 + std::f32::consts::TAU, pitch: 0.0, ..stale };
+        assert_eq!(peer_look(&mut held, &adopted).1, 0.0);
+        assert!(held.is_none(), "the client reported the angle");
+        let turned = Input { yaw: 1.0, pitch: 0.3, ..stale };
+        assert_eq!(peer_look(&mut held, &turned), (1.0, 0.3), "the client owns its look again");
+        let mut expired = Some((0.0, 0.0, Instant::now() - Duration::from_secs(3)));
+        assert_eq!(peer_look(&mut expired, &stale), (3.0, 1.2));
+        assert!(expired.is_none());
+    }
     #[test]
     fn oversized_state_sheds_optional_parts_instead_of_disconnecting() {
         let big = "x".repeat(1000);

@@ -64,6 +64,10 @@ pub struct Agent {
     /// The world's `keepInventory` rule, refreshed every tick so deaths
     /// outside `tick_rules` (mobs, pearls, `kill`) honour it too.
     keep_inventory: bool,
+    /// The `ender_pearls_vanish_on_death` rule, as of the last rules tick.
+    pearls_vanish: bool,
+    /// The fall, fire and drowning rules as of the latest tick.
+    immunity: crate::rules::DamageImmunity,
 }
 
 impl std::ops::Deref for Agent {
@@ -96,6 +100,8 @@ impl Agent {
             drawing: false,
             cooldown: 0.0,
             keep_inventory: false,
+            pearls_vanish: true,
+            immunity: Default::default(),
         }
     }
 
@@ -426,8 +432,13 @@ impl Agent {
                 // Java has no attack cooldown; damage scales with the charge instead.
                 self.cooldown = TICK_SECONDS;
                 self.swings += 1;
-                if let crate::session::combat::Outcome::Missed { .. } = outcome {
-                    return Err("nothing to attack within reach".into());
+                match outcome {
+                    crate::session::combat::Outcome::Missed { .. } => {
+                        return Err("nothing to attack within reach".into());
+                    }
+                    // Java's `causeExtraKnockback` stops the sprint until it is asked for again.
+                    crate::session::combat::Outcome::Hit { sprint_cancelled: true, .. } => self.stop_sprint(),
+                    _ => {}
                 }
             }
             Command::Craft(item) => self.craft(item, world)?,
@@ -596,12 +607,11 @@ impl Agent {
                 if !self.session.vitals.is_dead() {
                     return Err("player is alive".into());
                 }
-                let at = self
-                    .session
-                    .personal_spawn(world)
+                let personal = self.session.personal_spawn(world);
+                let at = personal
                     .position
                     .unwrap_or_else(|| world.generator.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
-                self.session.respawn(at, self.keep_inventory);
+                self.session.respawn(at, personal.yaw, self.keep_inventory);
             }
             Command::Observe(_) | Command::Help | Command::XpQuery | Command::Say(_) => {}
             _ => return Err("command requires host console".into()),
@@ -685,8 +695,11 @@ impl Agent {
         difficulty: crate::simulation::difficulty::Difficulty,
         rules: &crate::rules::GameRules,
     ) {
+        self.session.settle_wake(world);
         self.previous_pos = self.session.player.pos;
-        self.keep_inventory = rules.bool("keepInventory");
+        self.keep_inventory = rules.bool("keep_inventory");
+        self.pearls_vanish = rules.bool("ender_pearls_vanish_on_death");
+        self.immunity = rules.damage_immunity();
         // Movement alone returning early is not enough: survival, mining,
         // pickups and timed commands must also wait for local terrain.
         let feet = self.session.player.pos.floor().as_ivec3();
@@ -701,6 +714,8 @@ impl Agent {
         }
         self.cooldown = (self.cooldown - TICK_SECONDS).max(0.0);
         if self.session.vitals.is_dead() {
+            // Effects count down while dead, as on the desktop (`Vitals::tick_rules`).
+            let _ = self.session.vitals.effects.tick(TICK_SECONDS as f32);
             self.session.cancel_consumption();
             self.session.cancel_mining();
             entities.dismount(world, self.session.id);
@@ -750,13 +765,13 @@ impl Agent {
             &env,
             self.creative || self.session.mode.invulnerable(),
             difficulty,
-            rules.bool("naturalRegeneration"),
+            rules.bool("natural_health_regeneration"),
         );
         for (damage, cause) in [
-            (hurts.fall * rules.bool("fallDamage") as u8 as f32, "hit the ground too hard"),
-            (hurts.drown * rules.bool("drowningDamage") as u8 as f32, "drowned"),
-            (hurts.lava * rules.bool("fireDamage") as u8 as f32, "tried to swim in lava"),
-            ((hurts.fire + hurts.burn) * rules.bool("fireDamage") as u8 as f32, "burned to death"),
+            (hurts.fall, "hit the ground too hard"),
+            (hurts.drown, "drowned"),
+            (hurts.lava, "tried to swim in lava"),
+            (hurts.fire + hurts.burn, "burned to death"),
             (hurts.starve, "starved to death"),
         ] {
             if damage > 0.0 && self.damage(damage, cause) > 0.0 {
@@ -831,6 +846,11 @@ impl Agent {
     /// the agent died, unless `keepInventory` is on or it is a spectator.
     fn drop_everything(&mut self, entities: &mut Entities) {
         self.session.die(entities, self.keep_inventory, Vec::new());
+        // `ThrownEnderpearl.tick` sees the dead owner before any respawn.
+        if self.pearls_vanish {
+            let id = self.session.id;
+            entities.discard_pearls_of_dead(|owner| owner == id);
+        }
     }
 
     /// Advance the shared consumption clock; item-specific duration comes from
@@ -967,9 +987,13 @@ impl Agent {
 
     /// Damage through protection enchantments (armor points aside).
     fn damage(&mut self, amount: f32, cause: &str) -> f32 {
+        if self.immunity.blocks(cause) {
+            return 0.0;
+        }
         let amount = crate::enchant::protect(amount, &self.session.inventory.armor, cause);
         let taken = self.session.vitals.damage(amount, cause, self.creative || self.session.mode.invulnerable());
-        if taken > 0.0 {
+        // A stronger hit inside the immunity window keeps the hurt direction, as Java skips it.
+        if taken > 0.0 && self.session.vitals.last_hit_fresh() {
             self.session.player.animation.hurt_direction = 0.0;
         }
         taken
@@ -981,13 +1005,32 @@ impl Agent {
     pub fn hurt(&mut self, amount: f32, cause: &str, knockback: DVec3, entities: &mut Entities) -> f32 {
         let inv = &self.session.inventory;
         let reduced = simulation::survival::armor_reduce(amount, inv.armor_points(), inv.armor_toughness());
-        self.hurt_after_armor(reduced, amount, cause, knockback, entities)
+        self.hurt_after_armor(reduced, amount, cause, knockback, None, entities)
+    }
+
+    /// Java's `setSprinting(false)` after a hit with extra knockback: held input stops
+    /// sprinting until it is asked for again.
+    pub fn stop_sprint(&mut self) {
+        self.input.sprint = false;
+    }
+
+    /// [`Agent::hurt`] delivering Java's knockback sequence instead of an impulse.
+    pub fn hurt_knocked(
+        &mut self,
+        amount: f32,
+        cause: &str,
+        hit: &crate::knockback::Hit,
+        entities: &mut Entities,
+    ) -> f32 {
+        let inv = &self.session.inventory;
+        let reduced = simulation::survival::armor_reduce(amount, inv.armor_points(), inv.armor_toughness());
+        self.hurt_after_armor(reduced, amount, cause, DVec3::ZERO, Some(hit), entities)
     }
 
     /// Magic damage from something consumed (a harming potion): no armor or
     /// knockback, with protection and death/drop rules.
     pub fn hurt_magic(&mut self, amount: f32, entities: &mut Entities) -> f32 {
-        self.hurt_after_armor(amount, 0.0, simulation::survival::CAUSE_MAGIC, DVec3::ZERO, entities)
+        self.hurt_after_armor(amount, 0.0, simulation::survival::CAUSE_MAGIC, DVec3::ZERO, None, entities)
     }
 
     /// Mounted falls bypass armor points, retaining protection and death/drop rules.
@@ -1001,7 +1044,7 @@ impl Agent {
     pub fn hurt_beam(&mut self, physical: f32, magic: f32, entities: &mut Entities) -> f32 {
         let inv = &self.session.inventory;
         let reduced = simulation::survival::armor_reduce(physical, inv.armor_points(), inv.armor_toughness());
-        self.hurt_after_armor(reduced + magic, physical, "was slain by a guardian", DVec3::ZERO, entities)
+        self.hurt_after_armor(reduced + magic, physical, "was slain by a guardian", DVec3::ZERO, None, entities)
     }
 
     fn hurt_after_armor(
@@ -1010,15 +1053,21 @@ impl Agent {
         wear: f32,
         cause: &str,
         knockback: DVec3,
+        java: Option<&crate::knockback::Hit>,
         entities: &mut Entities,
     ) -> f32 {
         let taken = self.damage(reduced, cause);
         if taken <= 0.0 {
             return 0.0;
         }
-        self.session.player.hurt_from(knockback);
-        self.session.player.vel +=
-            simulation::survival::knockback_taken(knockback, self.session.inventory.knockback_resistance());
+        if let Some(hit) = java {
+            let mut jitter = || f64::from(entities.roll_range(0.0, 1.0));
+            self.session.knocked_back(hit, &mut jitter);
+        } else {
+            self.session.player.hurt_from(knockback);
+            self.session.player.vel +=
+                simulation::survival::knockback_taken(knockback, self.session.inventory.knockback_resistance());
+        }
         self.session.inventory.wear_armor(wear);
         self.session.sleeping = None;
         if self.session.vitals.is_dead() {
@@ -1101,7 +1150,7 @@ impl Agent {
         let target = self.target(world).map(|(p, n)| {
             json!({"position":p.to_array(),"face":n.to_array(),"block":world.get_block(p).map(|b|b.name()),"enchanting_offers":offers})
         });
-        json!({"position":self.session.player.pos.to_array(),"yaw":self.session.player.yaw.to_degrees(),"pitch":self.session.player.pitch.to_degrees(),"loaded":world.is_loaded(center),"dimension":world.generator.dimension.name(),"health":self.session.vitals.health,"food":self.session.vitals.hunger.food,"level":self.session.vitals.xp.level,"xp_progress":self.session.vitals.xp.progress(),"dead":self.session.vitals.is_dead(),"mode":self.session.mode.name(),"creative":self.creative,"flying":self.session.player.flying,"sleeping":self.session.sleeping.is_some(),"spawn_bed":self.session.spawn_bed.map(|p|p.to_array()),"spawn_point":self.session.spawn_point.map(|p|p.to_array()),"selected":self.selected+1,"inventory":inventory,"target":target,"blocks":blocks})
+        json!({"position":self.session.player.pos.to_array(),"yaw":self.session.player.yaw.to_degrees(),"pitch":self.session.player.pitch.to_degrees(),"loaded":world.is_loaded(center),"dimension":world.generator.dimension.name(),"health":self.session.vitals.health,"absorption":self.session.vitals.effects.absorption(),"food":self.session.vitals.hunger.food,"level":self.session.vitals.xp.level,"xp_progress":self.session.vitals.xp.progress(),"dead":self.session.vitals.is_dead(),"mode":self.session.mode.name(),"creative":self.creative,"flying":self.session.player.flying,"sleeping":self.session.sleeping.is_some(),"spawn_bed":self.session.spawn_bed.map(|p|p.to_array()),"spawn_point":self.session.spawn_point.map(|p|p.to_array()),"selected":self.selected+1,"inventory":inventory,"target":target,"blocks":blocks})
     }
 }
 
@@ -1314,7 +1363,7 @@ mod tests {
 
         // With keepInventory, mob damage and `kill` keep items and experience.
         let mut rules = crate::rules::GameRules::default();
-        rules.set("keepInventory", "true").unwrap();
+        rules.set("keep_inventory", "true").unwrap();
         let mut kept = Agent::new(DVec3::new(0.5, 150.0, 0.5));
         kept.tick_rules(&mut world, &mut entities, Default::default(), &rules);
         kept.inventory.add(Item::DIAMOND, 2);
@@ -1407,8 +1456,13 @@ mod tests {
         let mut world = world();
         let mut entities = Entities::new(1);
         let bed = IVec3::new(1, 150, 1);
-        world.set_block(bed - IVec3::Y, Block::STONE);
+        for x in 0..4 {
+            for z in 0..3 {
+                world.set_block(IVec3::new(x, 149, z), Block::STONE);
+            }
+        }
         world.set_block(bed, Block::BED_FOOT);
+        world.set_block(bed + IVec3::X, Block::BED_HEAD);
         let mut agent = Agent::new(DVec3::new(1.5, 150.0, 1.5));
         agent.spawn_bed = Some(bed);
         let mut die_and_respawn = |agent: &mut Agent, world: &mut World| {
@@ -1416,7 +1470,8 @@ mod tests {
             agent.execute(Command::Respawn, world, &mut entities, &[]).unwrap();
         };
         die_and_respawn(&mut agent, &mut world);
-        assert_eq!(agent.player.pos, DVec3::new(1.5, 150.0 + Block::BED_FOOT.height(), 1.5));
+        // Beside the head on the side a stored angle of 0 steers to (north).
+        assert_eq!(agent.player.pos, DVec3::new(2.5, 150.0, 0.5));
         world.set_block(bed, Block::AIR);
         die_and_respawn(&mut agent, &mut world);
         assert_eq!(agent.spawn_bed, None, "a broken bed is forgotten");

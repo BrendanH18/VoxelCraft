@@ -38,10 +38,6 @@ pub(super) const DIMENSION_KEYS: [&str; 13] = [
     "nether_mobs",
     "falling",
 ];
-/// Seconds of standing in a portal before it takes you (creative: almost
-/// at once).
-const PORTAL_TIME: f32 = 4.0;
-const CREATIVE_PORTAL_TIME: f32 = 0.5;
 /// How far around the arrival point to look for an existing portal.
 const SEARCH_RADIUS: i32 = 16;
 pub(super) const NETHER_FOG: [f32; 3] = [0.20, 0.035, 0.025];
@@ -122,11 +118,7 @@ impl Game {
         props.insert("brewing".to_string(), self.world.brewing_stands_to_string());
         props.insert("chests".to_string(), self.world.chests_to_string());
         props.insert("spawners".to_string(), self.world.spawners_to_string());
-        props.insert("items".to_string(), self.mobs.entities.items_to_string());
-        props.insert("orbs".to_string(), self.mobs.entities.orbs_to_string());
-        props.insert("minecarts".to_string(), self.mobs.entities.minecarts_to_string());
-        props.insert("villagers".into(), self.mobs.entities.villagers_to_string());
-        props.insert("nether_mobs".into(), self.mobs.entities.nether_mobs_to_string());
+        self.mobs.entities.save_props(&mut props);
         if let Some(fight) = &self.mobs.entities.fight {
             props.insert("dragon".to_string(), fight.serialize());
         }
@@ -160,14 +152,10 @@ impl Game {
         if let Some(s) = props.get("spawners") {
             self.world.load_spawners(s);
         }
-        if let Some(items) = props.get("items") {
-            self.mobs.entities.load_items(items);
-        }
-        if let Some(orbs) = props.get("orbs") {
-            self.mobs.entities.load_orbs(orbs);
-        }
-        if let Some(carts) = props.get("minecarts") {
-            self.mobs.entities.load_minecarts(carts);
+        // Entities in chunks that haven't streamed in yet move to per-chunk
+        // storage on the first tick; ridden vehicles stay with their riders.
+        self.mobs.entities.load_props(props);
+        if props.contains_key("minecarts") {
             if let Some(id) = self.mobs.entities.claim_rider(crate::entity::PlayerId::HOST) {
                 self.session.player.vehicle = Some(id);
             }
@@ -180,11 +168,7 @@ impl Game {
                 }
             }
         }
-        if let Some(v) = props.get("villagers") {
-            self.mobs.entities.load_villagers(v);
-        }
-        if let Some(n) = props.get("nether_mobs") {
-            self.mobs.entities.load_nether_mobs(n);
+        if props.contains_key("nether_mobs") {
             self.session.player.vehicle =
                 self.mobs.entities.mount_for_player(crate::entity::PlayerId::HOST).or(self.session.player.vehicle);
             for bot in self.agents.players.values_mut() {
@@ -258,7 +242,7 @@ impl Game {
             // Load where `respawn_point` will put the player: the bed (checked
             // once its chunk is in), else the set spawn point or the
             // `spawnRadius` spot around the world spawn.
-            Arrival::Respawn => self.session.spawn_bed.unwrap_or_else(|| self.respawn_point().floor().as_ivec3()),
+            Arrival::Respawn => self.session.spawn_bed.unwrap_or_else(|| self.respawn_point().0.floor().as_ivec3()),
         };
         let r = match arrival {
             Arrival::Portal(_) => SEARCH_RADIUS,
@@ -312,7 +296,12 @@ impl Game {
                 self.session.player.pitch = 0.0;
                 spawn.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)
             }
-            Arrival::Respawn => self.respawn_point(),
+            Arrival::Respawn => {
+                let (at, yaw) = self.respawn_point();
+                self.session.player.yaw = yaw;
+                self.session.player.pitch = 0.0;
+                at
+            }
             Arrival::Gateway { exit, from, island, link } => {
                 if island && self.world.get_block(exit - IVec3::Y * 10) == Some(Block::AIR) {
                     self.world.build_end_island(exit - IVec3::Y * 10);
@@ -421,13 +410,19 @@ impl Game {
         if before == 0.0 {
             self.audio.play(Sound::Fuse, None, 0.4, (0.4, 0.5));
         }
-        if self.portal_time >= self.portal_needed() {
+        // `ServerLevel.isAllowedToEnterPortal`: only the Nether is gated.
+        let allowed = self.gamerules.portal_allows_trip_from(self.dimension);
+        if self.portal_time >= self.portal_needed() && allowed {
             self.travel();
         }
     }
 
+    /// Seconds in a portal before it takes you: Java's
+    /// `NetherPortalBlock.getPortalTransitionTime` ticks, from the creative
+    /// delay for invulnerable players and the default delay otherwise.
     pub(super) fn portal_needed(&self) -> f32 {
-        if self.session.mode.is_creative() { CREATIVE_PORTAL_TIME } else { PORTAL_TIME }
+        self.gamerules.portal_delay_ticks(self.session.mode.invulnerable()) as f32
+            * crate::simulation::TICK_SECONDS as f32
     }
 
     /// Beds explode in both the Nether and the End.

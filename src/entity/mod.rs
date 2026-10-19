@@ -18,6 +18,7 @@ pub mod armor;
 mod bell;
 mod bobber;
 pub mod category;
+mod chunk_storage;
 pub mod path;
 pub use bobber::{CatchContext, roll_catch, set_damage};
 pub mod dragon;
@@ -135,11 +136,14 @@ pub enum EntityEvent {
         arrow: bool,
     },
     /// A mob or arrow hit `player`: apply `damage` and add `knockback` to
-    /// their velocity; `cause` is the death message.
+    /// their velocity; `cause` is the death message. A hit with `java` set
+    /// delivers Java's `LivingEntity.knockback` sequence instead (and
+    /// `knockback` is only an estimate of the first push for readers).
     PlayerHit {
         player: PlayerId,
         damage: f32,
         knockback: Vec3,
+        java: Option<crate::knockback::Hit>,
         cause: &'static str,
     },
     /// An equine's landing applies the same fall damage to its rider.
@@ -155,10 +159,13 @@ pub enum EntityEvent {
         magic: f32,
     },
     /// Fixed, armored contact damage (guardian spikes and pufferfish).
+    /// `poison` ticks of Poison follow only when the sting hurts, as in
+    /// `Pufferfish.playerTouch`, which gates the effect on `hurtServer`.
     PlayerSting {
         player: PlayerId,
         damage: f32,
         cause: &'static str,
+        poison: u32,
     },
     /// A mob or splash potion applied a status effect to this player.
     PlayerEffect {
@@ -678,6 +685,8 @@ pub struct Entities {
     pub orbs: Vec<XpOrb>,
     pub minecarts: Vec<minecart::Minecart>,
     next_cart: u32,
+    /// Entities of unloaded chunks, out of the level until their chunk loads.
+    storage: chunk_storage::EntityStorage,
     /// The dragon fight, in the End.
     pub fight: Option<dragon::Fight>,
     /// Java `doMobLoot`; set by the world before each update.
@@ -703,6 +712,15 @@ pub struct Entities {
     trader_spawner: wandering_trader::Spawner,
     trader_leaders: rustc_hash::FxHashMap<u64, (DVec3, f32, bool)>,
     pub trader_spawning: bool,
+    /// The spawn_monsters gamerule: hostile categories join natural spawning.
+    pub monster_spawning: bool,
+    /// The tnt_explodes gamerule: primed TNT and lit carts detonate.
+    pub tnt_explodes: bool,
+    /// The entity_drops gamerule: destroyed boats and minecarts drop their
+    /// item and contents.
+    pub entity_drops: bool,
+    /// The spawner_blocks_work gamerule: monster spawners tick.
+    pub spawner_blocks: bool,
     /// The world spawn point when it lies in this dimension (Java's
     /// `ServerLevel.getRespawnData`); natural spawns keep 24 blocks clear of
     /// its block centre. Set by the world before each update.
@@ -758,6 +776,7 @@ impl Entities {
             orbs: Vec::new(),
             minecarts: Vec::new(),
             next_cart: 1,
+            storage: Default::default(),
             fight: None,
             mob_loot: true,
             moon_brightness: 1.0,
@@ -777,6 +796,10 @@ impl Entities {
             trader_spawner: Default::default(),
             trader_leaders: Default::default(),
             trader_spawning: true,
+            monster_spawning: true,
+            tnt_explodes: true,
+            entity_drops: true,
+            spawner_blocks: true,
             world_spawn: None,
             villager_griefing: true,
             gossip_timer: 60.0,
@@ -858,13 +881,13 @@ impl Entities {
                 mob.age = -24000;
             }
         }
+        // Java's local difficulty at the spawn; chunk inhabited time is not tracked.
+        let special = crate::simulation::difficulty::special_multiplier(self.difficulty.effective(
+            self.clock_time,
+            0,
+            self.moon_brightness,
+        ));
         if kind.is_zombie() || kind == MobKind::Skeleton {
-            // Java's local difficulty at the spawn; chunk inhabited time is not tracked.
-            let special = crate::simulation::difficulty::special_multiplier(self.difficulty.effective(
-                self.clock_time,
-                0,
-                self.moon_brightness,
-            ));
             let (armor, glint) = armor::roll_monster_armor(
                 &mut self.rng,
                 self.difficulty == crate::simulation::difficulty::Difficulty::Hard,
@@ -874,9 +897,14 @@ impl Entities {
             mob.armor_glint = glint;
         }
         if kind.is_cube() {
-            // Java's 1 << random(0..3): sizes 1, 2 and 4. Difficulty's bias
-            // toward larger cubes is not applied.
-            mob.set_size(1 << (self.rng.next_f32() * 3.0) as u8);
+            // `AbstractCubeMob.setSpawnSize`: sizes 1, 2 and 4 from nextInt(3),
+            // and the smaller two grow one step with chance 0.5 x the local
+            // difficulty's special multiplier.
+            let mut exponent = self.rng.next_int(3);
+            if exponent < 2 && self.rng.next_f32() < 0.5 * special {
+                exponent += 1;
+            }
+            mob.set_size(1 << exponent);
         }
         nether::on_spawn(&mut mob, &mut self.rng);
         aquatic::on_spawn(&mut mob, &mut self.rng);
@@ -1145,9 +1173,10 @@ impl Entities {
         self.rng.next_f32()
     }
 
-    /// `;`-separated experience orbs for the level file.
+    /// `;`-separated experience orbs for the level file, stored ones included.
     pub fn orbs_to_string(&self) -> String {
-        self.orbs.iter().map(XpOrb::serialize).collect::<Vec<_>>().join(";")
+        let stored = self.storage.chunks();
+        self.orbs.iter().chain(stored.iter().flat_map(|c| &c.orbs)).map(XpOrb::serialize).collect::<Vec<_>>().join(";")
     }
 
     /// Appends saved experience orbs, skipping empty or malformed entries.
@@ -1156,9 +1185,42 @@ impl Entities {
         self.orbs.extend(text.split(';').filter(|s| !s.is_empty()).filter_map(|s| XpOrb::deserialize(s, rng)));
     }
 
-    /// `;`-separated dropped items for the level file.
+    /// `;`-separated dropped items for the level file, stored ones included.
     pub fn items_to_string(&self) -> String {
-        self.items.iter().map(ItemEntity::serialize).collect::<Vec<_>>().join(";")
+        let stored = self.storage.chunks();
+        let items = self.items.iter().chain(stored.iter().flat_map(|c| &c.items));
+        items.map(ItemEntity::serialize).collect::<Vec<_>>().join(";")
+    }
+
+    /// Writes this dimension's entity properties (`items`, `orbs`, `minecarts`,
+    /// `villagers` and `nether_mobs`), including entities stored in unloaded chunks.
+    pub fn save_props(&self, props: &mut std::collections::BTreeMap<String, String>) {
+        props.insert("items".to_string(), self.items_to_string());
+        props.insert("orbs".to_string(), self.orbs_to_string());
+        props.insert("minecarts".to_string(), self.minecarts_to_string());
+        props.insert("villagers".to_string(), self.villagers_to_string());
+        props.insert("nether_mobs".to_string(), self.nether_mobs_to_string());
+    }
+
+    /// Restores [`Entities::save_props`]. Every entity starts in the level;
+    /// the next [`Entities::sync_chunk_entities`] stores those whose chunk
+    /// hasn't loaded, so saves from before per-chunk storage load unchanged.
+    pub fn load_props(&mut self, props: &std::collections::BTreeMap<String, String>) {
+        if let Some(items) = props.get("items") {
+            self.load_items(items);
+        }
+        if let Some(orbs) = props.get("orbs") {
+            self.load_orbs(orbs);
+        }
+        if let Some(carts) = props.get("minecarts") {
+            self.load_minecarts(carts);
+        }
+        if let Some(v) = props.get("villagers") {
+            self.load_villagers(v);
+        }
+        if let Some(n) = props.get("nether_mobs") {
+            self.load_nether_mobs(n);
+        }
     }
 
     pub fn load_items(&mut self, text: &str) {
@@ -1319,6 +1381,12 @@ impl Entities {
         let a = self.rng.range(0.0, TAU);
         let vel = DVec3::new(a.cos() as f64 * 0.4, 2.0, a.sin() as f64 * 0.4);
         self.tnt.push(tnt::PrimedTnt::new(cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5), vel, fuse));
+    }
+
+    /// `ThrownEnderpearl.tick` under `ender_pearls_vanish_on_death`: pearls
+    /// whose owner is dead are discarded.
+    pub fn discard_pearls_of_dead(&mut self, is_dead: impl Fn(PlayerId) -> bool) {
+        self.pearls.retain(|p| !is_dead(p.owner));
     }
 
     /// Player `owner` throws an ender pearl from `eye` along `dir`, carrying
@@ -1493,24 +1561,48 @@ impl Entities {
         taken
     }
 
-    /// Player melee hit for `damage` on mob `index`, pushed along `dir`.
-    /// Returns the kind of mob if this killed it.
+    /// Player melee hit for `damage` on mob `index`, by an attacker standing
+    /// behind it and facing along `dir`. Returns the kind of mob if this killed it.
     pub fn attack(&mut self, index: usize, dir: DVec3, damage: f32) -> Option<MobKind> {
-        self.knock(index, dir, damage, 0.0, PlayerId::HOST)
+        let (origin, yaw) = self.attacker_behind(index, dir);
+        self.hurt_by_player(
+            index,
+            damage,
+            &crate::knockback::Hit::melee(origin, self.mob_pos(index), yaw, 0.0).pushes,
+            PlayerId::HOST,
+        )
     }
 
-    /// Hits mob `index` for `damage`, pushing it along `dir` harder for
-    /// each `extra` knockback level (Java: 0.4 + 0.5 per level).
-    fn knock(&mut self, index: usize, dir: DVec3, damage: f32, extra: f64, owner: PlayerId) -> Option<MobKind> {
+    fn mob_pos(&self, index: usize) -> DVec3 {
+        self.mobs.get(index).map_or(DVec3::ZERO, |m| m.pos)
+    }
+
+    /// An attacker one block behind mob `index` along `dir` (feet position) and its Java yaw.
+    fn attacker_behind(&self, index: usize, dir: DVec3) -> (DVec3, f32) {
         let flat = DVec3::new(dir.x, 0.0, dir.z).normalize_or_zero();
-        let knockback = flat * 6.0 * (1.0 + 1.25 * extra) + DVec3::Y * 5.0;
+        let pos = self.mobs.get(index).map_or(DVec3::ZERO, |m| m.pos);
+        (pos - flat, (-flat.x).atan2(flat.z).to_degrees() as f32)
+    }
+
+    /// Hits mob `index` for `damage` as a player's attack does after the damage is
+    /// computed, delivering Java's `pushes` in order (`hurtServer`'s push away from the
+    /// attacker, then the extra or sweep push along its facing), each halving the
+    /// motion left by the one before, with the reactions every player hit has.
+    fn hurt_by_player(
+        &mut self,
+        index: usize,
+        damage: f32,
+        pushes: &[Option<crate::knockback::Push>; 2],
+        owner: PlayerId,
+    ) -> Option<MobKind> {
         let mob = self.mobs.get_mut(index)?;
         let (kind, pos) = (mob.kind, mob.pos);
         mob.player_hit();
         if kind == MobKind::IronGolem {
-            mob.angry_player = Some(PlayerId::HOST);
+            mob.angry_player = Some(owner);
         }
-        let killed = mob.damage(damage, Some(knockback), &mut self.rng);
+        let pushes: Vec<_> = pushes.iter().flatten().copied().collect();
+        let killed = mob.damage_pushed(damage, &pushes, &mut self.rng);
         if kind == MobKind::ZombifiedPiglin {
             self.anger_piglins(pos);
         }
@@ -1551,16 +1643,28 @@ impl Entities {
         sweep: Option<DVec3>,
         owner: PlayerId,
     ) -> Option<MobKind> {
-        let hit = PlayerMelee { held, bonus, strength: 1.0, critical, sprint_knockback: false, sweep, owner };
-        self.player_melee(index, dir, hit)
+        let (behind, yaw) = self.attacker_behind(index, dir);
+        let hit = PlayerMelee {
+            held,
+            bonus,
+            strength: 1.0,
+            critical,
+            sprint_knockback: false,
+            origin: sweep.unwrap_or(behind),
+            yaw,
+            sweep: sweep.is_some(),
+            owner,
+        };
+        self.player_melee(index, hit)
     }
 
     /// A player's melee hit following Java 26.3 `Player.attack`: the base
     /// damage is scaled by `0.2 + 0.8 * strength^2` and the enchantment bonus
-    /// by `strength`; a sprint knockback adds half a Knockback level.
-    pub fn player_melee(&mut self, index: usize, dir: DVec3, hit: PlayerMelee) -> Option<MobKind> {
+    /// by `strength`; the attack knockback is the Knockback level over two,
+    /// plus half a level for a sprint hit ([`crate::knockback::attack_strength`]).
+    pub fn player_melee(&mut self, index: usize, hit: PlayerMelee) -> Option<MobKind> {
         use crate::enchant::Enchantment;
-        let PlayerMelee { held, bonus, strength, critical, sprint_knockback, sweep, owner } = hit;
+        let PlayerMelee { held, bonus, strength, critical, sprint_knockback, origin, yaw, sweep, owner } = hit;
         let target = self.mobs.get(index).filter(|m| m.alive())?;
         let spiked = matches!(target.kind, MobKind::Guardian | MobKind::ElderGuardian)
             && target.aquatic.as_ref().is_some_and(|a| a.beam.is_some() || target.vel.length_squared() < 0.1);
@@ -1571,7 +1675,7 @@ impl Entities {
         let enchants = held.map_or(Default::default(), |s| s.active_enchants());
         let damage = base + crate::enchant::damage_bonus(enchants, kind.creature()) * strength;
         let (knockback, fire) = crate::mining::weapon_extras(held);
-        let knockback = f64::from(knockback) + if sprint_knockback { 0.5 } else { 0.0 };
+        let extra = crate::knockback::attack_strength(0.0, u32::from(knockback), sprint_knockback);
         if fire > 0.0 {
             self.mobs[index].ignite(fire);
         }
@@ -1580,22 +1684,15 @@ impl Entities {
                 player: owner,
                 damage: 2.0,
                 cause: "was pricked by a guardian",
+                poison: 0,
             });
         }
         self.animals_owner_attack(index, owner);
         let old_health = self.mobs[index].health;
-        let killed = self.knock(index, dir, damage, knockback, owner);
+        let hit = crate::knockback::Hit::melee(origin, pos, yaw, extra);
+        let killed = self.hurt_by_player(index, damage, &hit.pushes, owner);
         if self.mobs[index].health < old_health {
-            self.note_villager_hurt(index, owner, killed.is_some());
-            if kind == MobKind::Wolf && self.mobs[index].animal.as_ref().is_some_and(|a| a.owner != Some(owner)) {
-                self.mobs[index].angry_player = Some(owner);
-            }
-            if kind == MobKind::IronGolem && !self.mobs[index].built {
-                self.mobs[index].angry_player = Some(owner);
-            }
-            if kind == MobKind::Llama {
-                self.mobs[index].angry_player = Some(owner);
-            }
+            self.player_hurt_mob(index, owner, killed.is_some());
         }
         if self.mobs[index].health < old_health {
             for effect in [
@@ -1622,35 +1719,34 @@ impl Entities {
             );
         }
         let sword = held.and_then(|s| s.item.as_tool()).is_some_and(|(k, _)| k == crate::item::ToolKind::Sword);
-        if let Some(origin) = sweep.filter(|_| sword) {
-            let level = enchants.level(Enchantment::SweepingEdge) as f32;
-            let swept = 1.0 + level / (level + 1.0) * base;
-            let (lo, hi) = (
-                pos - DVec3::new(shape.half_width + 1.0, 0.25, shape.half_width + 1.0),
-                pos + DVec3::new(shape.half_width + 1.0, shape.height + 0.25, shape.half_width + 1.0),
-            );
+        if sweep && sword {
+            use crate::knockback::{Push, SWEEP_RANGE_SQR, SWEEP_STRENGTH, in_sweep_box, sweep_damage};
+            let level = u32::from(enchants.level(Enchantment::SweepingEdge));
+            let target_box = self.mobs[index].aabb();
             let near: Vec<usize> = (0..self.mobs.len())
                 .filter(|&i| {
                     let m = &self.mobs[i];
-                    let s = m.shape();
                     i != index
                         && m.alive()
-                        && m.pos.distance_squared(origin) < 9.0
-                        && m.pos.x + s.half_width > lo.x
-                        && m.pos.x - s.half_width < hi.x
-                        && m.pos.z + s.half_width > lo.z
-                        && m.pos.z - s.half_width < hi.z
-                        && m.pos.y + s.height > lo.y
-                        && m.pos.y < hi.y
+                        && in_sweep_box(target_box, m.aabb())
+                        && m.pos.distance_squared(origin) < SWEEP_RANGE_SQR
                 })
                 .collect();
             for i in near {
-                // Java pushes swept mobs along the attacker's facing.
-                let damage = (swept + crate::enchant::damage_bonus(enchants, self.mobs[i].kind.creature())) * strength;
+                let bonus = crate::enchant::damage_bonus(enchants, self.mobs[i].kind.creature());
+                let damage = sweep_damage(base, level, bonus, strength);
                 if fire > 0.0 {
                     self.mobs[i].ignite(fire);
                 }
-                let killed = self.knock(i, dir, damage, 0.0, owner);
+                // `hurtServer`'s push away from the attacker, then the sweep's along its facing.
+                let pushes = [Some(Push::hurt(origin, self.mobs[i].pos)), Some(Push::facing(SWEEP_STRENGTH, yaw))];
+                let old_health = self.mobs[i].health;
+                let killed = self.hurt_by_player(i, damage, &pushes, owner);
+                // The sweep hurts with the player's damage source, so swept mobs
+                // retaliate and remember it like the main target.
+                if self.mobs[i].health < old_health {
+                    self.player_hurt_mob(i, owner, killed.is_some());
+                }
                 if let Some(kind) = killed {
                     let at = self.mobs[i].pos;
                     self.drop_loot_with_fire(
@@ -1664,6 +1760,22 @@ impl Entities {
             }
         }
         killed
+    }
+
+    /// What a player's hit that hurt mob `index` leaves behind: villager
+    /// gossip, and wild wolves, unbuilt iron golems and llamas turning on them.
+    fn player_hurt_mob(&mut self, index: usize, owner: PlayerId, killed: bool) {
+        self.note_villager_hurt(index, owner, killed);
+        let m = &mut self.mobs[index];
+        let retaliates = match m.kind {
+            MobKind::Wolf => m.animal.as_ref().is_some_and(|a| a.owner != Some(owner)),
+            MobKind::IronGolem => !m.built,
+            MobKind::Llama => true,
+            _ => false,
+        };
+        if retaliates {
+            m.angry_player = Some(owner);
+        }
     }
 
     /// Hitting one zombified piglin angers every one nearby.
@@ -1686,8 +1798,12 @@ pub struct PlayerMelee {
     pub strength: f32,
     pub critical: bool,
     pub sprint_knockback: bool,
-    /// The player's feet when a sweep is allowed.
-    pub sweep: Option<DVec3>,
+    /// The attacker's feet position (the source of `hurtServer`'s knockback and the sweep's range).
+    pub origin: DVec3,
+    /// The attacker's Java yaw in degrees, the direction of the attack knockback.
+    pub yaw: f32,
+    /// Whether `Player.isSweepAttack` holds, for a sword.
+    pub sweep: bool,
     pub owner: PlayerId,
 }
 
@@ -1831,6 +1947,31 @@ mod tests {
     }
 
     #[test]
+    fn cube_spawn_sizes_lean_large_with_the_local_difficulty() {
+        use crate::simulation::difficulty::Difficulty;
+        // `AbstractCubeMob.setSpawnSize`: sizes 1/2/4 at 1/3 each with a zero
+        // special multiplier; one half chance of growing a step at 1.0 makes
+        // them 1/6, 1/3 and 1/2.
+        let shares = |difficulty: Difficulty, clock: i64| {
+            let mut e = Entities::new(11);
+            e.difficulty = difficulty;
+            e.clock_time = clock;
+            for _ in 0..1200 {
+                e.spawn(MobKind::Slime, DVec3::new(0.5, 10.0, 0.5));
+            }
+            [1, 2, 4].map(|size| e.mobs.iter().filter(|m| m.size == size).count() as f64 / 1200.0)
+        };
+        let fresh = shares(Difficulty::Normal, 0);
+        for share in fresh {
+            assert!((share - 1.0 / 3.0).abs() < 0.05, "{fresh:?}");
+        }
+        let late = shares(Difficulty::Hard, 10_000_000);
+        for (share, expected) in late.into_iter().zip([1.0 / 6.0, 1.0 / 3.0, 0.5]) {
+            assert!((share - expected).abs() < 0.05, "{late:?}");
+        }
+    }
+
+    #[test]
     fn cave_spider_poison_matches_difficulty_and_target_id() {
         use crate::simulation::{difficulty::Difficulty, effects::Effect};
         for (difficulty, ticks) in [(Difficulty::Easy, 0), (Difficulty::Normal, 140), (Difficulty::Hard, 300)] {
@@ -1859,14 +2000,29 @@ mod tests {
     fn husks_inflict_hunger_and_zombie_variants_follow_biome_rules() {
         use crate::simulation::{difficulty::Difficulty, effects::Effect};
         use crate::world::terrain::Biome;
-        for (difficulty, ticks) in [(Difficulty::Easy, 140), (Difficulty::Normal, 280), (Difficulty::Hard, 420)] {
+        // `Husk.doHurtTarget`: 140 ticks x the whole part of the effective local
+        // difficulty. A new world is 0.75 x the difficulty id (0.75, 1.5, 2.25);
+        // at full moon late in the world it reaches 1.125, 2.5 and 3.75.
+        for (difficulty, clock, ticks) in [
+            (Difficulty::Easy, 0, 0),
+            (Difficulty::Normal, 0, 140),
+            (Difficulty::Hard, 0, 280),
+            (Difficulty::Easy, 10_000_000, 140),
+            (Difficulty::Normal, 10_000_000, 280),
+            (Difficulty::Hard, 10_000_000, 420),
+        ] {
             let mut e = Entities::new(1);
+            e.clock_time = clock;
+            e.moon_brightness = 1.0;
             e.spawn(MobKind::Husk, DVec3::new(0.5, 10.0, 0.5));
             let mut c = ctx(DVec3::new(100.0, 10.0, 0.5));
             c.players.push(Target::new(PlayerId(2), DVec3::new(1.0, 10.0, 0.5), true));
             let events = e.update_difficulty(0.05, &Grid::flat(10), &c, difficulty);
-            assert!(events.iter().any(|ev| matches!(ev,
-                EntityEvent::PlayerEffect { player: PlayerId(2), effect: Effect::Hunger, ticks: t, .. } if *t == ticks)));
+            let hunger = events.iter().find_map(|ev| match ev {
+                EntityEvent::PlayerEffect { player: PlayerId(2), effect: Effect::Hunger, ticks, .. } => Some(*ticks),
+                _ => None,
+            });
+            assert_eq!(hunger, (ticks > 0).then_some(ticks), "{difficulty:?} at {clock}");
         }
         assert!(!MobKind::Husk.burns_in_sun() && MobKind::Drowned.burns_in_sun());
         assert_eq!(MobKind::Husk.biome_chance(Biome::Desert), 1.0);
@@ -2591,7 +2747,7 @@ mod tests {
         }
         // 1.5 s: an immediate hit plus one after the 1 s cooldown.
         assert_eq!(hits.len(), 2, "{hits:?}");
-        let EntityEvent::PlayerHit { player: id, damage, knockback, cause } = hits[0] else { panic!("{hits:?}") };
+        let EntityEvent::PlayerHit { player: id, damage, knockback, cause, .. } = hits[0] else { panic!("{hits:?}") };
         assert_eq!(id, PlayerId::HOST);
         assert!(damage > 0.0 && knockback.x > 0.0 && knockback.y > 0.0);
         assert_eq!(cause, "was slain by a zombie");
@@ -3248,6 +3404,48 @@ mod tests {
     }
 
     #[test]
+    fn spawner_blocks_work_gates_cages() {
+        let cell = IVec3::new(0, 11, 0);
+        let world = Caged(Grid::flat(10), vec![(cell, MobKind::Blaze)]);
+        let c = ctx(DVec3::new(10.5, 10.0, 0.5));
+        for works in [true, false] {
+            let mut e = Entities::new(17);
+            e.spawner_blocks = works;
+            for _ in 0..60 {
+                e.update(0.05, &world, &c);
+            }
+            assert_eq!(e.count(MobKind::Blaze) > 0, works, "spawner_blocks_work = {works}");
+            assert_eq!(e.spawner_delays.is_empty(), !works);
+        }
+    }
+
+    #[test]
+    fn spawn_wandering_traders_gates_the_trader_spawner() {
+        let world = Grid::flat(10);
+        let c = ctx(DVec3::new(0.5, 11.0, 0.5));
+        for allowed in [true, false] {
+            let mut e = Entities::new(21);
+            e.trader_spawning = allowed;
+            // A trader event rolls once a day with a chance that grows to 75%.
+            for _ in 0..400 {
+                e.trader_tick(1200.0, &world, &c);
+            }
+            assert_eq!(e.count(MobKind::WanderingTrader) > 0, allowed, "spawn_wandering_traders = {allowed}");
+        }
+    }
+
+    #[test]
+    fn mob_drops_gate_loot_and_experience() {
+        for loot in [true, false] {
+            let mut e = Entities::new(7);
+            e.mob_loot = loot;
+            e.drop_loot(MobKind::Pig, DVec3::new(0.5, 10.0, 0.5));
+            assert_eq!(!e.items.is_empty() && !e.orbs.is_empty(), loot, "mob_drops = {loot}");
+            assert_eq!(e.items.is_empty() && e.orbs.is_empty(), !loot, "mob_drops = {loot}");
+        }
+    }
+
+    #[test]
     fn peaceful_removes_monsters_and_suppresses_spawners() {
         let cell = IVec3::new(0, 11, 0);
         let world = Caged(Grid::flat(10), vec![(cell, MobKind::Blaze)]);
@@ -3550,6 +3748,37 @@ mod tests {
         };
         assert!(late.iter().any(boom), "{late:?}");
         assert!(e.tnt.is_empty());
+    }
+
+    #[test]
+    fn primed_tnt_fizzles_without_tnt_explodes() {
+        let world = Grid::flat(10);
+        let c = ctx(DVec3::new(30.0, 10.0, 0.0));
+        for explodes in [true, false] {
+            let mut e = Entities::new(14);
+            e.tnt_explodes = explodes;
+            e.prime_tnt(IVec3::new(0, 10, 0), false);
+            let events = run(&mut e, &world, &c, 5.0);
+            let booms = events
+                .iter()
+                .filter(|ev| matches!(ev, EntityEvent::Explosion { cause: "was blown up by TNT", .. }))
+                .count();
+            assert_eq!(booms, usize::from(explodes), "tnt_explodes = {explodes}");
+            assert!(e.tnt.is_empty(), "the entity is discarded either way");
+        }
+    }
+
+    #[test]
+    fn dead_owners_pearls_are_discarded() {
+        let mut e = Entities::new(3);
+        let mut rng = Rng::new(1);
+        for owner in [PlayerId::HOST, PlayerId(4)] {
+            e.pearls.push(pearl::Pearl::thrown(owner, DVec3::new(0.0, 10.0, 0.0), DVec3::X, DVec3::ZERO, &mut rng));
+        }
+        e.discard_pearls_of_dead(|owner| owner == PlayerId(4));
+        assert_eq!(e.pearls.iter().map(|p| p.owner).collect::<Vec<_>>(), [PlayerId::HOST]);
+        e.discard_pearls_of_dead(|_| false);
+        assert_eq!(e.pearls.len(), 1);
     }
 
     #[test]

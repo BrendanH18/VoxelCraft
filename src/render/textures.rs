@@ -1328,7 +1328,11 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
                 shade([24, 14, 40], 0.85 + r * 0.3)
             }
         }
-        tex::HEART_FULL | tex::HEART_HALF | tex::HEART_EMPTY => heart(layer, x, y),
+        tex::HEART_FULL
+        | tex::HEART_HALF
+        | tex::HEART_EMPTY
+        | tex::HEART_ABSORBING_FULL
+        | tex::HEART_ABSORBING_HALF => heart(layer, x, y),
         tex::FOOD_FULL | tex::FOOD_HALF | tex::FOOD_EMPTY => drumstick(layer, x, y),
         tex::BUBBLE => {
             let (dx, dy) = (x as f32 - 7.5, y as f32 - 7.5);
@@ -1752,14 +1756,18 @@ fn heart(layer: u16, x: usize, y: usize) -> Rgba {
         return [30, 10, 10, 255];
     }
     let filled = match layer {
-        tex::HEART_FULL => true,
-        tex::HEART_HALF => x < 8,
+        tex::HEART_FULL | tex::HEART_ABSORBING_FULL => true,
+        tex::HEART_HALF | tex::HEART_ABSORBING_HALF => x < 8,
         _ => false,
     };
+    // Absorption's hearts are gold, drawn over the empty container.
+    let golden = matches!(layer, tex::HEART_ABSORBING_FULL | tex::HEART_ABSORBING_HALF);
     if !filled {
         [60, 30, 30, 200]
     } else if x < 6 && (3..6).contains(&y) {
-        [255, 170, 170, 255] // highlight
+        if golden { [255, 245, 170, 255] } else { [255, 170, 170, 255] } // highlight
+    } else if golden {
+        [232, 178, 24, 255]
     } else {
         [220, 30, 30, 255]
     }
@@ -1961,5 +1969,45 @@ fn village_pixel(layer: u16, x: usize, y: usize) -> Rgba {
             let c = if edge { if i == 3 { [64, 66, 61] } else { [87, 65, 38] } } else { [145, 110, 64] };
             if i == 3 && face == 2 && x == 8 && y == 8 { [30, 26, 19, 255] } else { noisy(layer, x, y, c, 0.12) }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Golden absorption hearts are a full tile and a left-half tile, distinct
+    /// from the red hearts they sit beside, with the same outline shape.
+    #[test]
+    fn absorption_hearts_are_golden_full_and_half() {
+        let tile = |layer| (0..SIZE).flat_map(move |y| (0..SIZE).map(move |x| pixel(layer, x, y))).collect::<Vec<_>>();
+        let (full, half, red) =
+            (tile(tex::HEART_ABSORBING_FULL), tile(tex::HEART_ABSORBING_HALF), tile(tex::HEART_FULL));
+        assert_ne!(full, red);
+        assert_ne!(full, half);
+        let golden = |p: &Rgba| p[3] == 255 && p[0] > 200 && p[1] > 150 && p[2] < 80;
+        assert!(full.iter().any(golden) && half.iter().any(golden));
+        assert!(!red.iter().any(golden));
+        let right_golden = |tile: &[Rgba]| (0..SIZE).any(|y| (8..SIZE).any(|x| golden(&tile[y * SIZE + x])));
+        assert!(right_golden(&full) && !right_golden(&half), "the half heart fills only its left side");
+        // Same silhouette as the red heart.
+        let outline = |tile: &[Rgba]| tile.iter().map(|p| p[3] > 0).collect::<Vec<_>>();
+        assert_eq!(outline(&full), outline(&red));
+        assert!((tex::HEART_ABSORBING_HALF as u32) < tex::COUNT);
+    }
+
+    #[test]
+    fn absorption_and_the_enchanted_golden_apple_have_icons() {
+        use crate::simulation::effects::Effect;
+        let drawn = |draw: &dyn Fn(usize, usize) -> Rgba| {
+            (0..16).flat_map(|y| (0..16).map(move |x| (x, y))).filter(|&(x, y)| draw(x, y)[3] > 0).count()
+        };
+        assert!(drawn(&|x, y| super::super::item_sprites::effect_pixel(Effect::Absorption, x, y)) > 20);
+        let apple = crate::item::Item::ENCHANTED_GOLDEN_APPLE.icon_layer().unwrap();
+        let plain = crate::item::Item::GOLDEN_APPLE.icon_layer().unwrap();
+        assert_ne!(apple, plain);
+        let differs = (0..16).any(|y| (0..16).any(|x| texel(apple, x, y) != texel(plain, x, y)));
+        assert!(differs, "the enchanted apple is drawn with violet sparkles");
+        assert!(drawn(&|x, y| texel(apple, x, y)) > 40);
     }
 }

@@ -81,8 +81,6 @@ const NIGHT_ZENITH: [f32; 3] = [0.002, 0.003, 0.012];
 const SUNSET: [f32; 3] = [0.95, 0.42, 0.18];
 const WATER_FOG: [f32; 3] = [0.05, 0.14, 0.35];
 const LAVA_FOG: [f32; 3] = [0.75, 0.25, 0.03];
-/// Real seconds per in-game day.
-const DAY_LENGTH: f64 = crate::simulation::DAY_LENGTH;
 
 fn window_icon() -> Icon {
     let decoder = png::Decoder::new(std::io::Cursor::new(include_bytes!("../../packaging/icons/VoxelCraft.png")));
@@ -767,10 +765,17 @@ impl Game {
     /// when absorbed by the 0.5 s hurt immunity that follows each hit (a
     /// stronger hit within it only deals the difference).
     pub(crate) fn damage_player(&mut self, amount: f32, cause: &str) -> f32 {
+        // Java's `Player.isInvulnerableTo` for the fall, fire and drowning rules.
+        if self.gamerules.damage_immunity().blocks(cause) {
+            return 0.0;
+        }
         let amount = crate::enchant::protect(amount, &self.session.inventory.armor, cause);
         let taken = self.session.vitals.damage(amount, cause, self.session.mode.invulnerable());
         if taken > 0.0 {
-            self.session.player.animation.hurt_direction = 0.0;
+            // A stronger hit inside the immunity window keeps the hurt direction, as Java skips it.
+            if self.session.vitals.last_hit_fresh() {
+                self.session.player.animation.hurt_direction = 0.0;
+            }
             self.session.sleeping = None;
             self.audio.play(crate::audio::sounds::Sound::Hurt, None, 0.9, (0.92, 1.05));
         }
@@ -803,7 +808,7 @@ impl Game {
     /// takes the shared death step (drops unless spectating or
     /// `keepInventory`, as every adapter does).
     fn on_death(&mut self) {
-        if self.gamerules.bool("showDeathMessages") {
+        if self.gamerules.bool("show_death_messages") {
             log::info!("player {}", self.session.vitals.death.as_deref().unwrap_or("died"));
         }
         if self.inventory_open {
@@ -813,7 +818,11 @@ impl Game {
             self.mobs.entities.dismount(&self.world, crate::entity::PlayerId::HOST);
         }
         let grid = self.craft.take_all();
-        self.session.die(&mut self.mobs.entities, self.gamerules.bool("keepInventory"), grid);
+        self.session.die(&mut self.mobs.entities, self.gamerules.bool("keep_inventory"), grid);
+        // `ThrownEnderpearl.tick` sees the dead owner before any respawn.
+        if self.gamerules.bool("ender_pearls_vanish_on_death") {
+            self.mobs.entities.discard_pearls_of_dead(|owner| owner == crate::entity::PlayerId::HOST);
+        }
         if self.hardcore {
             self.session.vitals.respawn();
             self.set_mode(GameMode::Spectator);
@@ -828,7 +837,7 @@ impl Game {
         self.body.actions.reset();
         if self.hardcore {
             self.set_grab(true);
-        } else if self.gamerules.bool("doImmediateRespawn") {
+        } else if self.gamerules.respawns_immediately(self.hardcore) {
             self.respawn();
         }
     }
@@ -839,16 +848,16 @@ impl Game {
             self.lan_command("respawn");
             return;
         }
-        let keep_inventory = self.gamerules.bool("keepInventory");
+        let keep_inventory = self.gamerules.bool("keep_inventory");
         if self.dimension != Dimension::Overworld {
             let here = self.session.player.pos;
-            self.session.respawn(here, keep_inventory);
+            self.session.respawn(here, voxelcraft::session::DEFAULT_SPAWN_YAW, keep_inventory);
             self.switch_dimension(Dimension::Overworld, dimension::Arrival::Respawn);
             self.set_grab(true);
             return;
         }
-        let at = self.respawn_point();
-        self.session.respawn(at, keep_inventory);
+        let (at, yaw) = self.respawn_point();
+        self.session.respawn(at, yaw, keep_inventory);
         self.set_grab(true);
     }
 
@@ -1411,6 +1420,8 @@ impl Game {
         let result = f(&mut actor);
         for request in std::mem::take(&mut actor.requests) {
             match request {
+                // The host's sprint follows the held key, which Java's client also re-engages.
+                hands::Request::StopSprint => {}
                 hands::Request::Popup(text) => self.show_popup(&text),
                 hands::Request::Open(used) => self.present_use(used),
                 hands::Request::MagicDamage(amount) => {

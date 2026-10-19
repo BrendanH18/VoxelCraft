@@ -282,7 +282,7 @@ impl PlayerSession {
     ) -> Outcome {
         let held = self.inventory.get(slot);
         let survival = self.mode.is_survival();
-        let drops = survival && rules.bool("doTileDrops");
+        let drops = survival && rules.bool("block_drops");
         let harvest = mining::can_harvest(block, held.map(|s| s.item));
         let tool = held.map_or(Default::default(), |s| s.active_enchants());
         let melts = survival
@@ -306,7 +306,7 @@ impl PlayerSession {
             world.set_block(below, Block::AIR);
         }
         // Neighbor drops use the same gamerule.
-        world.set_tile_drops(rules.bool("doTileDrops"));
+        world.set_tile_drops(rules.bool("block_drops"));
         if held.is_some_and(|s| s.item == Item::SHEARS) {
             world.disarm_tripwire(pos);
         }

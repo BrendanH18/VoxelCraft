@@ -1228,6 +1228,7 @@ impl Dragon {
             let bite = self.parts[3..5].iter().any(|&(_, min, max)| overlaps(t, min - DVec3::ONE, max + DVec3::ONE));
             if bite {
                 events.push(EntityEvent::PlayerHit {
+                    java: None,
                     player: t.id,
                     damage: 10.0,
                     knockback: glam::Vec3::ZERO,
@@ -1243,6 +1244,7 @@ impl Dragon {
                     events.push(EntityEvent::Shove { player: t.id, velocity: push.as_vec3() });
                 } else {
                     events.push(EntityEvent::PlayerHit {
+                        java: None,
                         player: t.id,
                         damage: 5.0,
                         knockback: push.as_vec3(),
@@ -1354,6 +1356,7 @@ impl BreathCloud {
                 if inside && !self.cooldowns.iter().any(|&(id, _)| id == t.id) {
                     self.cooldowns.push((t.id, 20));
                     events.push(EntityEvent::PlayerHit {
+                        java: None,
                         player: t.id,
                         damage: self.damage,
                         knockback: glam::Vec3::ZERO,

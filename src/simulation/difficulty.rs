@@ -70,11 +70,13 @@ impl Difficulty {
         }
     }
 
-    /// Lowest health starvation can reach: 10 on Easy, 1 on Normal, and
-    /// zero on Hard. Peaceful never starves.
+    /// Lowest health starvation can reach, from `FoodData.tick`: it hurts
+    /// above 10 health on every difficulty, above 1 on Normal, and always on
+    /// Hard. Peaceful follows Easy; food never falls there, so it starves
+    /// only an already empty bar (a difficulty change, or regeneration off).
     pub const fn starvation_floor(self) -> f32 {
         match self {
-            Self::Peaceful => 20.0,
+            Self::Peaceful => 10.0,
             Self::Easy => 10.0,
             Self::Normal => 1.0,
             Self::Hard => 0.0,

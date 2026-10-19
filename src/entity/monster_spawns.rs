@@ -972,6 +972,24 @@ mod tests {
     }
 
     #[test]
+    fn spawn_mobs_and_spawn_monsters_gate_natural_monster_spawns() {
+        let world = flat_test_world((-3..=3).flat_map(|x| (-3..=3).map(move |z| IVec2::new(x, z))), 63);
+        let night = || ctx(vec![Target::new(PlayerId::HOST, DVec3::new(0.5, 64.0, 0.5), true)]);
+        let hostile = |spawns: Vec<(MobKind, IVec3)>| spawns.iter().filter(|(kind, _)| kind.is_hostile()).count();
+        // Control: the default rules spawn monsters at night.
+        let mut on = Entities::new(9);
+        assert!(hostile(spawned_cells(&mut on, &world, &night(), 20.0)) > 0);
+        // `spawn_mobs` false: `ServerChunkCache.tickChunks` builds no categories.
+        let mut off = Entities::new(9);
+        let quiet = Ctx { spawning: false, ..night() };
+        assert_eq!(hostile(spawned_cells(&mut off, &world, &quiet, 20.0)), 0);
+        // `spawn_monsters` false: only the hostile categories are skipped.
+        let mut no_monsters = Entities::new(9);
+        no_monsters.monster_spawning = false;
+        assert_eq!(hostile(spawned_cells(&mut no_monsters, &world, &night(), 20.0)), 0);
+    }
+
+    #[test]
     fn starts_sample_the_full_column_height_and_respect_peaceful() {
         let world = flat_test_world((-3..=3).flat_map(|x| (-3..=3).map(move |z| IVec2::new(x, z))), 63);
         let player = Target::new(PlayerId::HOST, DVec3::new(0.5, 64.0, 0.5), true);

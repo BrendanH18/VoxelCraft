@@ -960,6 +960,7 @@ impl Entities {
         let mobs: Vec<Value> = self
             .mobs
             .iter()
+            .chain(self.storage.mobs())
             .filter(|m| {
                 // Breedable mobs (natural axolotls and hoglins too) keep being saved
                 // although natural ones no longer require persistence.

@@ -334,12 +334,12 @@ impl Game {
         for (name, bot) in players.iter_mut().filter(|(_, b)| b.active) {
             let was_dead = bot.agent.session.vitals.is_dead();
             bot.agent.tick_rules(&mut self.world, &mut self.mobs.entities, self.difficulty, &self.gamerules);
-            if !was_dead && bot.agent.session.vitals.is_dead() && self.gamerules.bool("showDeathMessages") {
+            if !was_dead && bot.agent.session.vitals.is_dead() && self.gamerules.bool("show_death_messages") {
                 log::info!("{name} {}", bot.agent.session.vitals.death.as_deref().unwrap_or("died"));
             }
             if self.hardcore {
                 bot.agent.hardcore_spectate();
-            } else if self.gamerules.bool("doImmediateRespawn") && bot.agent.session.vitals.is_dead() {
+            } else if self.gamerules.respawns_immediately(false) && bot.agent.session.vitals.is_dead() {
                 let _ = bot.agent.execute(Command::Respawn, &mut self.world, &mut self.mobs.entities, &[]);
             }
             if bot.agent.remaining == 0

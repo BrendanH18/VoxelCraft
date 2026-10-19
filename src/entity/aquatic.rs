@@ -95,7 +95,7 @@ pub(super) fn environment<W: MobWorld + ?Sized>(m: &mut Mob, dt: f32, w: &W) {
     if suffocating {
         a.damage_tick += dt;
         if a.damage_tick >= 1.0 {
-            m.health -= 2.0 * m.effects.resistance_factor();
+            m.health -= m.effects.absorb(2.0 * m.effects.resistance_factor());
             a.damage_tick %= 1.0;
         }
     } else {
@@ -176,12 +176,7 @@ pub(super) fn think<W: MobWorld + ?Sized>(
                     player: t.id,
                     damage: 1.0 + a.puff as f32,
                     cause: "was stung by a pufferfish",
-                });
-                events.push(EntityEvent::PlayerEffect {
-                    player: t.id,
-                    effect: Effect::Poison,
-                    amplifier: 0,
-                    ticks: 60 * a.puff as u32,
+                    poison: 60 * a.puff as u32,
                 });
                 a.contact_timer = 1.0;
             }
@@ -696,7 +691,9 @@ mod tests {
         let mut e = vec![];
         let mut p = Mob::new(MobKind::Pufferfish, DVec3::ZERO, 0.0);
         think(&mut p, 0.6, &w, &c, &mut r, &mut e);
-        assert!(e.iter().any(|e| matches!(e, EntityEvent::PlayerEffect { effect: Effect::Poison, ticks: 120, .. })));
+        // The Poison rides on the sting: `Pufferfish.playerTouch` applies it only when the sting hurts.
+        assert!(e.iter().any(|e| matches!(e, EntityEvent::PlayerSting { poison: 120, .. })));
+        assert!(!e.iter().any(|e| matches!(e, EntityEvent::PlayerEffect { effect: Effect::Poison, .. })));
         let mut d = Mob::new(MobKind::Dolphin, DVec3::ZERO, 0.0);
         think(&mut d, 0.05, &w, &c, &mut r, &mut e);
         assert!(

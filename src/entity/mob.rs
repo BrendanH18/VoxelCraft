@@ -11,6 +11,7 @@ use crate::world::terrain::Dimension;
 
 use super::{Ctx, EntityEvent, MobSound, MobWorld, Rng, path};
 
+pub(crate) mod goals;
 mod navigate;
 mod nether_ai;
 #[cfg(test)]
@@ -77,6 +78,9 @@ const GHAST_REST: f32 = 2.0;
 const GHAST_SPEED: f64 = 14.0;
 /// Enderman eye height (Java's 2.55).
 const ENDERMAN_EYE: f64 = 2.55;
+/// Seconds `getLastDamageSource` remembers a hit (40 ticks), during which
+/// `PanicGoal` keeps choosing new spots.
+const PANIC_MEMORY: f32 = 2.0;
 /// Falls deeper than this are avoided (blocks).
 const MAX_SAFE_DROP: i32 = 3;
 
@@ -889,6 +893,9 @@ pub struct Mob {
     hop_left: f32,
     hop_delay: f32,
     pub(super) difficulty: crate::simulation::difficulty::Difficulty,
+    /// Java's `DifficultyInstance.getEffectiveDifficulty` where the mob stands
+    /// (chunk inhabited time is not tracked), refreshed every update.
+    pub(super) local_difficulty: f32,
     /// Cart this mob is sitting in.
     pub riding: Option<u32>,
     /// Feet position (bottom centre of the box).
@@ -997,6 +1004,8 @@ pub struct Mob {
     /// Seconds since it was hurt or a player came within 32 blocks (Java's
     /// `noActionTime`): idle mobs stop strolling and may despawn.
     pub(super) idle: f32,
+    /// Java's goal selector for the shared movement goals (never saved).
+    pub(crate) goals: goals::Goals,
 }
 
 impl Mob {
@@ -1035,6 +1044,7 @@ impl Mob {
             hop_left: 0.0,
             hop_delay: 1.0,
             difficulty: Default::default(),
+            local_difficulty: 0.0,
             riding: None,
             pos,
             previous_pos: pos,
@@ -1101,6 +1111,7 @@ impl Mob {
             pathing: false,
             path_move: false,
             idle: 0.0,
+            goals: Default::default(),
         }
     }
 
@@ -1208,6 +1219,16 @@ impl Mob {
         self.dying.is_none()
     }
 
+    /// The player an angry iron golem is set against.
+    pub fn angry_at(&self) -> Option<super::PlayerId> {
+        self.angry_player
+    }
+
+    /// Whether a neutral mob is currently hostile (hit, or angered by a neighbour's hit).
+    pub fn is_provoked(&self) -> bool {
+        self.provoked > 0.0
+    }
+
     /// Turns a neutral mob hostile for `secs`.
     pub fn anger(&mut self, secs: f32) {
         self.provoked = self.provoked.max(secs);
@@ -1219,6 +1240,48 @@ impl Mob {
         if !self.alive() {
             return false;
         }
+        // Full resistance (iron golems) cancels the push and leaves the motion alone, as `knockback` returns early.
+        let taken = 1.0 - self.knockback_resistance();
+        if let Some(kb) = knockback.filter(|_| taken > 0.0).map(|kb| kb * taken) {
+            self.vel.x = kb.x;
+            self.vel.z = kb.z;
+            self.vel.y = self.vel.y.max(kb.y);
+        }
+        self.take_damage(amount, knockback.is_some(), rng)
+    }
+
+    /// Takes a hit followed by Java's knockbacks in order (`hurtServer`'s
+    /// default push, then the attacker's extra one), each halving the motion
+    /// left by the previous. Returns `true` if this killed the mob.
+    pub fn damage_pushed(&mut self, amount: f32, pushes: &[crate::knockback::Push], rng: &mut Rng) -> bool {
+        if !self.alive() {
+            return false;
+        }
+        for &push in pushes {
+            self.knock_back(push, rng);
+        }
+        self.take_damage(amount, true, rng)
+    }
+
+    /// Punch's shove of an arrow with `motion` (blocks per tick), added to the mob's velocity.
+    pub fn shove_punch(&mut self, level: u32, motion: DVec3) {
+        if let Some(shove) = crate::knockback::arrow_push(level, self.knockback_resistance(), motion) {
+            self.vel += shove * crate::knockback::TICK_RATE;
+        }
+    }
+
+    /// Java's `LivingEntity.knockback`, applied to this mob's velocity in blocks per second.
+    pub fn knock_back(&mut self, push: crate::knockback::Push, rng: &mut Rng) {
+        use crate::knockback::{TICK_RATE, apply};
+        let mut jitter = || f64::from(rng.next_f32());
+        if let Some(motion) =
+            apply(self.vel / TICK_RATE, push, self.knockback_resistance(), self.on_ground, &mut jitter)
+        {
+            self.vel = motion * TICK_RATE;
+        }
+    }
+
+    fn take_damage(&mut self, amount: f32, attacked: bool, rng: &mut Rng) -> bool {
         let amount = if self.kind == MobKind::MagmaCube {
             crate::simulation::survival::armor_reduce(amount, self.size as u32 * 3, 0.0)
         } else {
@@ -1231,32 +1294,27 @@ impl Mob {
         let armor = self.mount.as_ref().and_then(|s| s.slots[1]).map_or(0, |s| super::mounts::armor_points(s.item));
         let amount = if armor > 0 { crate::simulation::survival::armor_reduce(amount, armor, 0.) } else { amount };
         let amount = amount * self.effects.resistance_factor();
-        self.health -= amount;
+        self.health -= self.effects.absorb(amount);
         if self.kind == MobKind::Axolotl && self.in_water && self.health > 0.0 && self.health < 7.0 && rng.chance(0.33)
         {
             self.aquatic.as_mut().unwrap().play_dead = 10.0;
         }
         self.hurt = HURT_TIME;
         self.idle = 0.0;
-        if let Some(kb) = knockback.map(|kb| kb * self.knockback_taken())
-            && self.kind != MobKind::IronGolem
-        {
-            self.vel.x = kb.x;
-            self.vel.z = kb.z;
-            self.vel.y = self.vel.y.max(kb.y);
-        }
         // Java's panic goals react to any `PANIC_CAUSES` damage, except wolves
         // (`PANIC_ENVIRONMENTAL_CAUSES` only: an attack doesn't scare them)
         // and golems, which have none.
-        let attacked = knockback.is_some();
         let scared = match self.kind {
             MobKind::IronGolem | MobKind::SnowGolem => false,
             MobKind::Wolf => !attacked,
             k => !k.is_hostile(),
         };
         if scared {
+            // `PanicGoal.shouldPanic` reads `getLastDamageSource`, which
+            // forgets the damage after 40 ticks; the run then ends once its
+            // path is done.
             self.ai = Ai::Panic;
-            self.ai_timer = rng.range(3.0, 5.0);
+            self.ai_timer = PANIC_MEMORY;
             self.move_yaw = rng.range(0.0, TAU);
             self.stop_navigation();
             self.path_move = true;
@@ -1504,7 +1562,27 @@ impl Mob {
         if let Some(wish) = self.companion_think(dt, world, ctx, rng, events) {
             return wish;
         }
-        if let Some(wish) = self.animal_think(dt, world, ctx, rng) {
+        if self.kind == MobKind::Strider {
+            self.update_strider_cold(world);
+        }
+        if self.kind.is_aquatic() {
+            // Aquatic steering has no panic run of its own; the hit is still
+            // forgotten after `PANIC_MEMORY`, so the goals resume.
+            if self.ai == Ai::Panic {
+                self.ai_timer -= dt;
+                if self.ai_timer <= 0.0 {
+                    self.ai = Ai::Idle;
+                    self.ai_timer = 0.0;
+                }
+            }
+            // An axolotl playing dead (`PLAY_DEAD`, its top activity) does
+            // nothing else until the timer runs out.
+            if self.aquatic.as_ref().is_some_and(|a| a.play_dead > 0.0) {
+                self.stop_goal(world);
+                return super::aquatic::think(self, dt, world, ctx, rng, events);
+            }
+        }
+        if let Some(wish) = self.run_goals(world, ctx, rng) {
             return wish;
         }
         if self.kind.is_aquatic() {
@@ -1677,7 +1755,12 @@ impl Mob {
                             } else {
                                 self.melee_attack()
                             };
+                            // `Mob.doHurtTarget`: `hurtServer`'s push away from the mob, then
+                            // `getKnockback` (the attack_knockback attribute over two) along its facing.
+                            let extra = crate::knockback::attack_strength(self.attack_knockback(), 0, false);
+                            let yaw = (-dir.x).atan2(dir.z).to_degrees() as f32;
                             events.push(EntityEvent::PlayerHit {
+                                java: Some(crate::knockback::Hit::melee(self.pos, target.pos, yaw, extra)),
                                 player: target.id,
                                 damage,
                                 knockback: knockback.as_vec3(),
@@ -1685,13 +1768,9 @@ impl Mob {
                             });
                             events.push(EntityEvent::OwnerHurt { player: target.id, attacker: self.uid });
                             if self.kind == MobKind::Husk {
-                                // Java: 140 ticks times the local difficulty (about 1, 2, 3).
-                                let scale = match self.difficulty {
-                                    crate::simulation::difficulty::Difficulty::Peaceful => 0,
-                                    crate::simulation::difficulty::Difficulty::Easy => 1,
-                                    crate::simulation::difficulty::Difficulty::Normal => 2,
-                                    crate::simulation::difficulty::Difficulty::Hard => 3,
-                                };
+                                // `Husk.doHurtTarget`: 140 ticks times the whole part of the
+                                // local effective difficulty.
+                                let scale = self.local_difficulty as u32;
                                 if scale > 0 {
                                     events.push(EntityEvent::PlayerEffect {
                                         player: target.id,
@@ -1741,29 +1820,33 @@ impl Mob {
                 (self.pursue(world, target.pos, speed, sees, true, rng), speed)
             }
             Ai::Panic => {
-                if self.ai_timer <= 0.0 {
+                let pathing = self.path_move && self.kind.walks_paths();
+                if self.ai_timer <= 0.0 && (!pathing || self.nav.is_done()) {
                     self.ai = Ai::Idle;
                     self.ai_timer = rng.range(1.0, 3.0);
                     self.path_move = false;
                     self.stop_navigation();
                     return (None, 0.0);
                 }
-                if self.path_move && self.kind.walks_paths() {
-                    self.panic_target(world, ctx, rng, 3.4);
-                    if let Some(dir) = self.follow_path(world, 3.4, false) {
+                let speed = self.panic_speed();
+                if pathing {
+                    if self.ai_timer > 0.0 {
+                        self.panic_target(world, ctx, rng, speed);
+                    }
+                    if let Some(dir) = self.follow_path(world, speed, false) {
                         self.head_target = (0.0, 0.0);
-                        return (Some(dir), 3.4);
+                        return (Some(dir), speed);
                     }
                 }
                 if rng.chance(dt * 1.2) || self.blocked && rng.chance(dt * 4.0) {
                     self.move_yaw = rng.range(0.0, TAU);
                 }
                 self.head_target = (0.0, 0.0);
-                (Some(yaw_dir(self.move_yaw)), 3.4)
+                (Some(yaw_dir(self.move_yaw)), speed)
             }
             Ai::Wander if self.path_move => {
                 self.head_target = (0.0, 0.0);
-                let speed = self.kind.wander_speed();
+                let speed = self.stroll_speed();
                 match self.follow_path(world, speed, false) {
                     Some(dir) if self.ai_timer > 0.0 => (Some(dir), speed),
                     _ => {
@@ -2212,7 +2295,7 @@ impl Mob {
         if self.kind == MobKind::SnowGolem && self.alive() && self.in_water {
             // Java: one damage each tick while in water. Death loot is emitted
             // by the caller once health is gone.
-            self.health -= 20.0 * dt as f32 * self.effects.resistance_factor();
+            self.health -= self.effects.absorb(20.0 * dt as f32 * self.effects.resistance_factor());
         }
         let hopping = self.kind.is_cube();
         let speed = if hopping { (0.2 + 0.1 * self.size as f64) * 10.0 * effect_speed } else { speed };
@@ -2376,7 +2459,7 @@ impl Mob {
                 } else {
                     (s.fall_distance - 3.).ceil().max(0.) as f32
                 };
-                self.health -= damage * self.effects.resistance_factor();
+                self.health -= self.effects.absorb(damage * self.effects.resistance_factor());
                 if super::mounts::equine(self.kind) && s.rider.is_some() {
                     s.rider_fall += damage;
                 }

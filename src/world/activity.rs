@@ -64,6 +64,7 @@ impl World {
         let mut players = players.into_iter();
         let host = players.next();
         self.simulation_host = host.map(|p| java_chunk(p.floor().as_ivec3()));
+        self.simulation_host_pos = host;
         self.simulation_others.clear();
         self.simulation_others.extend(players);
         let mut centers: Vec<_> = host
@@ -80,14 +81,42 @@ impl World {
         }
     }
 
+    /// Mark which of the players given to [`World::set_simulation_players`]
+    /// (same order) are Spectators. `ChunkMap.playerIsCloseEnoughTo` ignores
+    /// them, so they do not keep distant fire burning.
+    pub fn set_simulation_spectators(&mut self, spectators: impl IntoIterator<Item = bool>) {
+        self.simulation_spectators.clear();
+        self.simulation_spectators.extend(spectators);
+    }
+
     /// Refresh the host position without losing other sessions registered by
     /// streaming. Headless single-player callers use the same path.
     pub(crate) fn simulation_player(&mut self, player: DVec3) {
+        self.simulation_host_pos = Some(player);
         if self.simulation_host == Some(java_chunk(player.floor().as_ivec3())) {
             return;
         }
         let others = self.simulation_others.clone();
         self.set_simulation_players(std::iter::once(player).chain(others));
+    }
+
+    /// Java's `ServerLevel.canSpreadFireAround`: with
+    /// `fire_spread_radius_around_player` of -1 any block may, at 0 none may,
+    /// otherwise a player must be closer than the radius. Fixtures without
+    /// registered players tick every fire.
+    pub fn fire_may_spread(&self, p: IVec3) -> bool {
+        match self.rules.fire_spread_radius {
+            -1 => true,
+            radius if radius <= 0 => false,
+            radius => {
+                let at = p.as_dvec3();
+                self.activity.centers.is_none()
+                    || self.simulation_host_pos.iter().chain(&self.simulation_others).enumerate().any(|(i, q)| {
+                        !self.simulation_spectators.get(i).copied().unwrap_or(false)
+                            && q.distance(at) < f64::from(radius)
+                    })
+            }
+        }
     }
 
     pub fn is_entity_ticking(&self, p: IVec3) -> bool {

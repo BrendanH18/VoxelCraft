@@ -149,6 +149,14 @@ impl CubicBezier {
     }
 }
 
+/// Java's `Mth.sin(double)`: the same table, indexed by
+/// `(long) (x * 10430.378350470453) & 65535`.
+pub fn mth_sin(x: f64) -> f32 {
+    const SCALE: f64 = 10430.378350470453;
+    let i = (x * SCALE) as i64 & 65535;
+    (i as f64 / SCALE).sin() as f32
+}
+
 /// Java's `Mth.cos(double)`: a 65,536-entry float sine table indexed by
 /// `(long) (x * 10430.378350470453 + 16384.0) & 65535`.
 pub fn mth_cos(x: f64) -> f32 {

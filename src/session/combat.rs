@@ -9,7 +9,7 @@ use crate::{
     entity::{Entities, MobKind, PlayerId, PlayerMelee},
     inventory::HOTBAR_SLOTS,
     item::{Item, ToolKind},
-    mining, physics,
+    knockback, mining, physics,
     simulation::survival,
     world::World,
 };
@@ -52,11 +52,32 @@ pub enum Outcome {
         at: DVec3,
         strength: f32,
         critical: bool,
+        /// Java's `strong` attack (charge above 0.9).
+        strong: bool,
+        /// A sprinting, strong attack: Java's extra half level of knockback and its sound.
+        sprint_knockback: bool,
+        /// A sword sweep struck (and `doSweepAttack` ran): its sound and particle.
+        sweep: bool,
+        /// The hit's extra knockback stopped the attacker's sprint and slowed its motion
+        /// (`causeExtraKnockback`); adapters holding a sprint flag clear it.
+        sprint_cancelled: bool,
         killed: Option<MobKind>,
         tool_broken: Option<Item>,
     },
     /// Nothing attackable within reach; the charge restarts as in Java.
     Missed { player: PlayerId },
+}
+
+impl Outcome {
+    /// The sounds Java's `Player.attack` plays for this hit, in order.
+    pub fn sounds(&self) -> Vec<crate::knockback::AttackSound> {
+        match *self {
+            Outcome::Hit { critical, strong, sprint_knockback, sweep, .. } => {
+                crate::knockback::attack_sounds(strong, sprint_knockback, critical, sweep, true)
+            }
+            Outcome::Missed { .. } => Vec::new(),
+        }
+    }
 }
 
 impl PlayerSession {
@@ -132,6 +153,22 @@ impl PlayerSession {
             && !sprinting
     }
 
+    /// Java's knockback on this player: each push halves the motion and adds the
+    /// push, a grounded player rises up to 0.4, and armor's knockback resistance
+    /// scales it. `jitter` supplies `nextDouble()` for a zero-length direction.
+    /// Call it after the hit's damage lands: a stronger hit inside an immunity
+    /// window skips the default push and the hurt direction, as `hurtServer` does.
+    pub fn knocked_back(&mut self, hit: &knockback::Hit, jitter: &mut dyn FnMut() -> f64) {
+        let fresh = self.vitals.last_hit_fresh();
+        let hit = if fresh { *hit } else { hit.without_default() };
+        if fresh && let Some(away) = hit.away() {
+            self.player.hurt_from(away);
+        }
+        let resistance = f64::from(self.inventory.knockback_resistance()).clamp(-2.0, 1.0);
+        let motion = hit.apply(self.player.vel / knockback::TICK_RATE, resistance, self.player.on_ground, jitter);
+        self.player.vel = motion * knockback::TICK_RATE;
+    }
+
     /// Restart the charge, as an attack or a swing at nothing does.
     pub fn reset_attack_strength(&mut self) {
         self.combat.ticker = 0;
@@ -196,20 +233,26 @@ impl PlayerSession {
         let p = &self.player;
         let living = matches!(target, Target::Mob(_));
         let critical = strong && self.can_critical_attack(living, sprinting);
-        // Java compares last-tick horizontal movement with 2.5x movement speed (0.1).
-        let slow = (p.vel.with_y(0.0) / 20.0).length_squared() < (0.1f64 * 2.5).powi(2);
+        // `isSweepAttack`: last tick's horizontal movement against 2.5x the movement speed.
+        let (speed_level, slowness_level) = self.vitals.effects.movement_speed_levels();
+        let speed = knockback::movement_speed(speed_level, slowness_level, sprinting);
+        let moved_sqr = (p.vel.with_y(0.0) / knockback::TICK_RATE).length_squared();
         let sword = held.and_then(Item::as_tool).is_some_and(|(k, _)| k == ToolKind::Sword);
-        let sweep = strong && !critical && !sprint_knockback && p.on_ground && slow && sword;
+        let sweep = knockback::sweep_allowed(strong, critical, sprint_knockback, p.on_ground, moved_sqr, speed, sword);
         let bonus = self.vitals.effects.attack_bonus();
         let base = (mining::attack_damage(held) + bonus).max(0.0)
             * (0.2 + strength * strength * 0.8)
             * if critical { 1.5 } else { 1.0 };
         let enchants = stack.map_or(Default::default(), |s| s.active_enchants());
         let other = enchant::damage_bonus(enchants, Creature::Other) * strength;
+        // `getKnockback`: Knockback level over two, plus half a level for a sprint hit.
+        let extra = knockback::attack_strength(0.0, u32::from(mining::weapon_extras(stack).0), sprint_knockback);
+        let (origin, yaw) = (p.pos, knockback::java_yaw_degrees(p.yaw));
         self.reset_attack_strength();
 
         let mut killed = None;
-        let mut landed = true;
+        let landed;
+        let mut swept = false;
         // Java `itemAttackInteraction` wears the weapon only against a
         // LivingEntity (a dragon part counts as its dragon), never a crystal or cart.
         let mut living_hit = false;
@@ -241,20 +284,40 @@ impl PlayerSession {
             }
             Target::Mob(i) => {
                 let at = entities.mobs[i].pos + DVec3::Y * 0.5;
+                landed = entities.mobs[i].alive();
                 let hit = PlayerMelee {
                     held: stack,
                     bonus,
                     strength,
                     critical,
                     sprint_knockback,
-                    sweep: sweep.then_some(self.player.pos),
+                    origin,
+                    yaw,
+                    sweep,
                     owner: self.id,
                 };
-                killed = entities.player_melee(i, dir, hit);
+                killed = entities.player_melee(i, hit);
                 living_hit = true;
+                swept = landed && sweep;
                 at
             }
         };
+        if swept {
+            // `doSweepAttack`'s particle, one block ahead of the attacker: (x - sin, z + cos).
+            let (sin, cos) = knockback::facing_vector(yaw);
+            let at = DVec3::new(origin.x - sin, origin.y + 0.5 * self.player.collision_shape().height, origin.z - cos);
+            entities.particles.push(crate::particles::Request::Burst(crate::particles::Burst::new(
+                crate::particles::Kind::Poof,
+                at,
+                1,
+            )));
+        }
+        // `causeExtraKnockback`: any hit that pushes stops the sprint and slows the attacker.
+        // A deflected fireball and a leash knot return before any hurt.
+        let sprint_cancelled = landed && extra > 0.0 && matches!(target, Target::Mob(_) | Target::Fight | Target::Cart);
+        if sprint_cancelled {
+            self.player.vel = knockback::slow_attacker(self.player.vel);
+        }
         let mut tool_broken = None;
         if landed && self.mode.is_survival() {
             // A fireball is only deflected (Java returns before exhaustion).
@@ -268,6 +331,18 @@ impl PlayerSession {
                 tool_broken = Some(item);
             }
         }
-        Ok(Outcome::Hit { player: self.id, target, at, strength, critical, killed, tool_broken })
+        Ok(Outcome::Hit {
+            player: self.id,
+            target,
+            at,
+            strength,
+            critical,
+            strong,
+            sprint_knockback,
+            sweep: swept,
+            sprint_cancelled,
+            killed,
+            tool_broken,
+        })
     }
 }

@@ -143,6 +143,22 @@ content. M0 must record the exact boundary: for example, a loot-bearing
 structure still needs a playable exploration/reward loop even if its
 archaeology mechanics are deferred.
 
+**M0 boundary — proposed 2026-10-17, awaiting the owner's approval.** Until
+approved these remain proposals, and v0.8's M0 exit stays open.
+
+| Side feature | Deferred past 1.0 | Stays in 1.0 core |
+|---|---|---|
+| Advancements and statistics | The advancement and statistics screens, toasts and criteria | Recipe unlocking and the recipe book (UX, v0.18); the dragon/Wither progression itself (v0.16) |
+| Archaeology | Brushes, suspicious sand and gravel, pottery sherds and decorated-pot patterns | Trail ruins, desert wells and warm ocean ruins as explorable structures with their non-archaeology loot (v0.12); sniffers obtainable some other Java way, or recorded as a fidelity exception when v0.13 plans them |
+| Commands | The full command and selector language | The cheat console's testing commands (game mode, rules, time, weather, teleport, give, kill, difficulty, spawn point) |
+| Custom skins | Skin selection and loading | The default player models |
+| Resource and data packs | Loading packs | The built-in Java 26.3 recipes, loot tables and tags they would replace |
+| Mod and plugin APIs | All of it | — |
+
+There are no approved fidelity exceptions. The terrain-noise decision
+(port Java's noise or record original noise as an exception) is due before
+v0.11; until then original noise is a known difference.
+
 Modern biomes, building materials, mobs, equipment and travel mechanics
 belong in 1.0 when they participate in the chosen core loops. Being introduced
 in a recent release does not make a feature optional.
@@ -735,7 +751,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 
 | Version | Theme | Milestones | Main content | Status |
 |---|---|---|---|---|
-| v0.8 | Foundations | Finish M0, M1 | Valid M5 baseline and the per-requirement inventory; mob pathfinding, Java spawn categories, shape-aware light, simulation distance; pause/death/save scenarios on every input path | In progress: most implementation merged (#34, #35); strider lava paths, pause/death/save scenarios and the [requirement inventory](requirements.md) on `t3/roadmap-next-stage-v0-8`; the [M5 baseline](verification/2026-10-16-m5-baseline.md) is recorded (15/15 valid; gate fails in streaming); verification of the rest remains |
+| v0.8 | Foundations | Finish M0, M1 | Valid M5 baseline and the per-requirement inventory; mob pathfinding, Java spawn categories, shape-aware light, simulation distance; pause/death/save scenarios on every input path | In progress: most implementation merged (#34, #35); strider lava paths, pause/death/save scenarios and the [requirement inventory](requirements.md) on `t3/roadmap-next-stage-v0-8`; the [M5 baseline](verification/2026-10-16-m5-baseline.md) is recorded (15/15 valid; gate fails in streaming); 2026-10-17/18: sweeping and knockback, absorption, game rules and difficulty, per-chunk entity storage, bed stand-up positions, fire tick containers and mob goals merged there; streaming re-run and player acceptance remain |
 | v0.9 | Block states | M2: BLD-04, BLD-06 | Top and double slabs, waterlogging, door hinges, floor/ceiling buttons and levers, wall grindstones, corner-stair light; reserved state ranges for later content | Planned |
 | v0.10 | Building materials | Close M2 | Missing wood, stone, copper and colour family members (pale oak, bamboo, mud brick, prismarine), the unregistered reference fuel items, signs, banners, item frames, cauldrons, soul lanterns and campfires; sponges, coral and sea pickles; falling and dripping dripstone, tilting dripleaf | Planned |
 | v0.11 | Terrain | M3: GEN-01..03 | Java climate and density terrain with overhangs; Java caves, aquifers and ores; deep-dark content, springs, glow lichen; giant spruce and jungle trees and the remaining biome features | Planned |
@@ -809,14 +825,15 @@ fixtures and acceptance cases:
    a 120 Hz display. *Baseline recorded 2026-10-16*
    ([record](verification/2026-10-16-m5-baseline.md), `903884e`): 15/15 runs
    valid, presentation uncapped apart from intermittent 8.33 ms stretches.
-   Open owner decisions: whether runs with those stretches count, and
-   simulation distance 160 blocks as run or 128 as §6.1 says. Every later
-   change is measured against it. Its periodic streaming stalls came from
+   The owner decided on 2026-10-17 (§6.1): simulation distance stays at 160
+   blocks, the 8.33 ms stretches are display pacing and don't count as
+   failures, and streaming's budget is no frame over 50 ms with p99 at most
+   8.33 ms. Every later change is measured against it. Its periodic streaming stalls came from
    dungeon layout on the main thread; workers now do it, and a valid re-run
    is pending ([record](verification/2026-10-17-streaming-stalls.md)). The
    per-requirement inventory (one row per requirement with a state and
    acceptance cases, §2) is also an M0 exit check. *First version written*
-   ([requirements.md](requirements.md), 2026-10-15): 118 rows; only PERF-01 Verified (2026-10-16);
+   ([requirements.md](requirements.md), 2026-10-15): 119 rows; only PERF-01 Verified (2026-10-16);
    keep it current with each change.
 2. **MOB-02 navigation:** Java's `PathNavigation`/node evaluators for walking,
    swimming and flying mobs, respecting block shapes, hazards, doors and
@@ -829,8 +846,12 @@ fixtures and acceptance cases:
    wall climbing and block-update recomputation followed
    ([evidence](verification/2026-10-14-mob-navigation-swim-fly.md)), then
    `StriderPathNavigation`, `StriderGoToLavaGoal` and Java's half-block lava
-   standing height ([evidence](verification/2026-10-15-strider-lava-paths.md));
-   player acceptance remains.
+   standing height ([evidence](verification/2026-10-15-strider-lava-paths.md)).
+   Java's 26.3 goal selector for the shared movement goals (priority tables,
+   panic, breed, tempt, follow parent and owner, avoid) and `Entity.push`
+   separation followed ([evidence](verification/2026-10-17-mob-goals-movement.md));
+   Java paths ignore entity boxes, so that former gap was inaccurate.
+   Swimmer move controls and ghast/blaze movement remain, then player acceptance.
 3. **MOB-01 spawn rules:** Java's `NaturalSpawner` placement, 24/128-block
    ring, per-category caps scaled by loaded chunks, despawn distances and
    persistence, structure spawn overrides, and the slime/drowned paths folded in.
@@ -861,8 +882,19 @@ fixtures and acceptance cases:
    ticks keep their delay; falling blocks save. One shared death and respawn
    step now serves the desktop, controller, LAN and CLI paths, and the pause
    rule and cross-process piston/repeater mid-motion saves are tested
-   ([evidence](verification/2026-10-15-death-pause-save-scenarios.md)); player
+   ([evidence](verification/2026-10-15-death-pause-save-scenarios.md)).
+   Entities in unloaded chunks now leave the level into per-chunk storage and
+   return with their chunk ([evidence](verification/2026-10-17-entity-storage.md));
+   fire ticks follow `LevelTicks` containers and bed respawns and wake-ups use
+   `findStandUpPosition` ([evidence](verification/2026-10-17-bed-standup-fire-ticks.md));
+   all 59 game rules are inventoried and difficulty effects follow 26.3
+   ([evidence](verification/2026-10-17-game-rules-difficulty.md)). Player
    acceptance remains.
+
+Player acceptance for every v0.8 row follows the
+[v0.8 acceptance checklist](verification/v0.8-acceptance-checklist.md): one
+desktop pass, a physical-controller pass, a scripted CLI session and the
+streaming benchmark, all on one recorded commit.
 
 Carried known issues that belong to later releases (v0.9: waterlogging, door
 hinges, wall/ceiling switches, top/double slabs; v0.11: 3D terrain, mega trees;
@@ -950,8 +982,9 @@ correctness, acquisition, persistence or release-blocking performance defects.
 
 - Reference M5 MacBook Pro; record CPU/GPU variant, RAM, macOS and build commit.
 - Release build, 1920 x 1080 **physical render pixels**, 256-block view range.
-  Record the simulation distance separately; begin with Java's 8 chunks
-  (128 blocks) for the repeatable comparison setup.
+  Simulation distance is the game's default 10 chunks (160 blocks), recorded
+  with each run (owner, 2026-10-17). Java comparisons state the distance
+  each side used.
 - Normal intended visual/audio settings, full in-scope gameplay, no hidden
   entity/particle/content removal. Record all options.
 - VSync/frame caps disabled for measurement. Native-resolution runs are
@@ -964,7 +997,14 @@ correctness, acquisition, persistence or release-blocking performance defects.
   not a new measured claim.
 - Measure cold streaming and interaction stalls separately; don't discard
   them to present steady-state numbers as whole-session performance.
-  M0 establishes explicit streaming/hitch budgets before these are marked Verified.
+  Streaming budget (owner, 2026-10-17): on the streaming route, **no frame over
+  50 ms and p99 at most 8.33 ms**. The full steady-state gate on streaming is a
+  v0.18 target, not a v0.8 requirement.
+- Display pacing (owner, 2026-10-17): stretches of consecutive frames at exactly
+  8.33 ms, the built-in display's 120 Hz pacing despite `Immediate`
+  presentation, are not counted as game frame-time failures. The 2026-10-16
+  baseline stands without a re-run for them; record such stretches with each
+  run.
 
 Use a consistent power/thermal setup, a warm-up period, at least three
 60-second measured runs per steady-state scene and a longer streaming route.

@@ -829,7 +829,9 @@ impl super::Entities {
             && self.minecarts[i].kind == CartKind::Tnt
             && self.minecarts[i].vel.with_y(0.0).length_squared() >= 0.01
         {
-            self.minecarts[i].fuse.get_or_insert(20);
+            if self.tnt_explodes {
+                self.minecarts[i].fuse.get_or_insert(20);
+            }
             return true;
         }
         if !creative && self.minecarts[i].fuse.is_some() && self.minecarts[i].kind == CartKind::Tnt {
@@ -846,7 +848,7 @@ impl super::Entities {
 
     fn drop_cart(&mut self, index: usize, item: Item, pos: DVec3, drop_item: bool) {
         let cart = self.minecarts.swap_remove(index);
-        if cart.kind == CartKind::Tnt && cart.fuse.is_some() {
+        if (cart.kind == CartKind::Tnt && cart.fuse.is_some()) || !self.entity_drops {
             return;
         }
         for stack in cart.slots.into_iter().flatten() {
@@ -919,6 +921,9 @@ impl super::Entities {
                 }
             }
         }
+        // Carts primed before this tick keep burning without `tnt_explodes`.
+        let primed: Vec<u32> =
+            self.minecarts.iter().filter(|c| c.kind == CartKind::Tnt && c.fuse.is_some()).map(|c| c.id).collect();
         let mut signals = Vec::new();
         let n = self.minecarts.len();
         for i in 0..n {
@@ -1027,6 +1032,13 @@ impl super::Entities {
                 push_pair(&mut left[i], &mut right[0]);
             }
         }
+        // Java's `MinecartTNT.primeFuse` refuses new fuses without
+        // `tnt_explodes`; fuses lit earlier keep counting down.
+        if !self.tnt_explodes {
+            for cart in self.minecarts.iter_mut().filter(|c| c.kind == CartKind::Tnt && !primed.contains(&c.id)) {
+                cart.fuse = None;
+            }
+        }
         // A lit TNT cart explodes and is gone.
         let mut i = 0;
         while i < self.minecarts.len() {
@@ -1034,7 +1046,7 @@ impl super::Entities {
             if self.minecarts[i].kind.boat().is_some() && self.minecarts[i].damage > 40.0 && !void {
                 let cart = self.minecarts.swap_remove(i);
                 self.clear_cart(cart.id);
-                if let Some((wood, _)) = cart.kind.boat() {
+                if let Some((wood, _)) = cart.kind.boat().filter(|_| self.entity_drops) {
                     let plank = if wood == 9 {
                         crate::world::overworld_blocks::BAMBOO_PLANKS
                     } else {
@@ -1060,7 +1072,9 @@ impl super::Entities {
             if self.minecarts[i].fuse == Some(0) || void && (boat || self.minecarts[i].damage > 40.0) {
                 let cart = self.minecarts.swap_remove(i);
                 self.clear_cart(cart.id);
-                if cart.fuse == Some(0) {
+                // `MinecartTNT.explode`: without `tnt_explodes` a primed cart
+                // is discarded and nothing blows up.
+                if cart.fuse == Some(0) && self.tnt_explodes {
                     let speed = cart.blast_speed.max(cart.vel.with_y(0.0).length()).min(5.0);
                     let power = 4.0 + self.rng.next_f32() * 1.5 * speed as f32;
                     self.tnt.push(super::tnt::PrimedTnt::with_power(cart.pos, power));
@@ -1077,7 +1091,7 @@ impl super::Entities {
             let cart = &mut self.minecarts[i];
             if let Some((damage, _)) = super::explosion_damage(power, cart.pos.distance(center)) {
                 if cart.kind == CartKind::Tnt {
-                    if cart.fuse.is_none() {
+                    if cart.fuse.is_none() && self.tnt_explodes {
                         cart.fuse = Some((self.rng.next_int(20) + self.rng.next_int(20)) as u16);
                     }
                 } else if damage * 10.0 > 40.0 {
@@ -1091,8 +1105,11 @@ impl super::Entities {
         }
     }
 
+    /// Carts and boats for the level file, those in unloaded chunks included.
     pub fn minecarts_to_string(&self) -> String {
-        self.minecarts.iter().map(Minecart::serialize).collect::<Vec<_>>().join(";")
+        let stored = self.storage.chunks();
+        let carts = self.minecarts.iter().chain(stored.iter().flat_map(|c| &c.minecarts));
+        carts.map(Minecart::serialize).collect::<Vec<_>>().join(";")
     }
 
     pub fn load_minecarts(&mut self, text: &str) {
@@ -1417,6 +1434,59 @@ mod tests {
         assert_eq!(loaded.id, 1);
         assert_eq!(loaded.vel.x, a.vel.x);
         assert_eq!(loaded.slots[0], a.slots[0]);
+    }
+
+    #[test]
+    fn tnt_carts_detonate_only_with_tnt_explodes() {
+        let mut w = world();
+        track(&mut w, 0, 5);
+        for explodes in [true, false] {
+            let mut e = super::super::Entities::new(3);
+            e.tnt_explodes = explodes;
+            let id = e.place_cart(&w, CartKind::Tnt, IVec3::new(2, 140, 0)).unwrap();
+            e.cart_mut(id).unwrap().fuse = Some(0);
+            e.tick_minecarts(&mut w, &[]);
+            assert_eq!(e.tnt.len(), usize::from(explodes), "tnt_explodes = {explodes}");
+            assert!(e.minecarts.is_empty(), "a primed cart is gone either way (`MinecartTNT.explode`)");
+        }
+    }
+
+    #[test]
+    fn disabling_tnt_explodes_keeps_lit_fuses_and_refuses_new_ones() {
+        let mut w = world();
+        track(&mut w, 0, 5);
+        let mut e = super::super::Entities::new(3);
+        e.tnt_explodes = false;
+        let lit = e.place_cart(&w, CartKind::Tnt, IVec3::new(2, 140, 0)).unwrap();
+        e.cart_mut(lit).unwrap().fuse = Some(30);
+        let unlit = e.place_cart(&w, CartKind::Tnt, IVec3::new(3, 140, 0)).unwrap();
+        e.blast_carts(e.cart(unlit).unwrap().pos, 4.0);
+        assert_eq!(e.cart(unlit).unwrap().fuse, None, "an explosion cannot light the cart");
+        e.tick_minecarts(&mut w, &[]);
+        assert!(e.cart(lit).unwrap().fuse.is_some_and(|f| f < 30), "the lit fuse keeps burning");
+        assert_eq!(e.cart(unlit).unwrap().fuse, None);
+    }
+
+    #[test]
+    fn broken_boats_and_carts_drop_their_items_only_with_entity_drops() {
+        let mut w = world();
+        let pos = DVec3::new(2.5, 141.0, 0.5);
+        for drops in [true, false] {
+            let mut e = super::super::Entities::new(3);
+            e.entity_drops = drops;
+            // A chest cart: the cart and what it held.
+            let id = e.spawn_cart(CartKind::Chest, pos);
+            e.cart_mut(id).unwrap().slots[0] = Some(Stack::new(Item::STICK, 3));
+            e.drop_cart(0, Item::CHEST_MINECART, pos, true);
+            assert_eq!(e.items.len(), if drops { 2 } else { 0 }, "cart item and contents, entity_drops = {drops}");
+            // A boat broken by damage drops planks and sticks.
+            let id = e.spawn_cart(CartKind::Boat { wood: 0, chest: false }, pos);
+            e.cart_mut(id).unwrap().damage = 45.0;
+            e.items.clear();
+            e.tick_minecarts(&mut w, &[]);
+            assert!(e.minecarts.is_empty(), "the boat is destroyed either way");
+            assert_eq!(!e.items.is_empty(), drops, "boat drops, entity_drops = {drops}");
+        }
     }
 
     #[test]

@@ -31,10 +31,37 @@ impl World {
     /// blocks are saved in the same world snapshot, preventing loss mid-fall.
     pub fn falling_to_string(&self) -> String {
         let mut entries = vec!["v1".to_string()];
+        let mut stored: Vec<_> = self.stored_falling.iter().collect();
+        stored.sort_unstable_by_key(|(p, _)| (p.x, p.y, p.z));
         entries.extend(
-            self.falling.iter().map(|f| format!("{},{},{},{},{}", f.block.0, f.pos.x, f.pos.y, f.pos.z, f.speed)),
+            self.falling
+                .iter()
+                .chain(stored.into_iter().flat_map(|(_, blocks)| blocks))
+                .map(|f| format!("{},{},{},{},{}", f.block.0, f.pos.x, f.pos.y, f.pos.z, f.speed)),
         );
         entries.join("|")
+    }
+
+    /// Moves the falling blocks of chunk `pos`, which is unloading, into
+    /// storage until the chunk loads again.
+    pub(super) fn store_falling(&mut self, pos: IVec3) {
+        if self.falling.is_empty() {
+            return;
+        }
+        let mut kept = Vec::with_capacity(self.falling.len());
+        for f in std::mem::take(&mut self.falling) {
+            if self.entity_chunk(f.pos) == pos {
+                self.stored_falling.entry(pos).or_default().push(f);
+            } else {
+                kept.push(f);
+            }
+        }
+        self.falling = kept;
+    }
+
+    /// Falling blocks waiting in unloaded chunks.
+    pub fn stored_falling_blocks(&self) -> usize {
+        self.stored_falling.values().map(Vec::len).sum()
     }
 
     pub fn load_falling(&mut self, text: &str) {
@@ -43,6 +70,7 @@ impl World {
             return;
         }
         self.falling.clear();
+        self.stored_falling.clear();
         for entry in entries {
             let fields: Vec<_> = entry.split(',').collect();
             let parsed = (|| {
@@ -56,13 +84,20 @@ impl World {
                     .then_some(FallingBlock { block, pos, previous_pos: pos, speed })
             })();
             if let Some(block) = parsed {
-                self.falling.push(block);
+                // Blocks of chunks that aren't loaded wait in storage.
+                let chunk = self.entity_chunk(block.pos);
+                if self.chunk_loaded(chunk) {
+                    self.falling.push(block);
+                } else {
+                    self.stored_falling.entry(chunk).or_default().push(block);
+                }
             }
         }
     }
 
     /// A LAN client's copy of the host's falling blocks: drawn only.
     pub fn set_falling_replica(&mut self, blocks: impl IntoIterator<Item = (Block, DVec3, DVec3)>) {
+        self.stored_falling.clear();
         self.falling = blocks
             .into_iter()
             .take(256)
@@ -209,6 +244,13 @@ impl World {
 
     /// As [`World::explode`], with block drops controlled by `drop_blocks`.
     pub fn explode_with_drops(&mut self, center: DVec3, power: f64, drop_blocks: bool) -> usize {
+        self.explode_with_decay(center, power, drop_blocks, true)
+    }
+
+    /// As [`World::explode_with_drops`]. With `decay` (Java's
+    /// `DESTROY_WITH_DECAY`) each block drops with chance `1 / power`;
+    /// without it (`DESTROY`, which TNT uses by default) every block drops.
+    pub fn explode_with_decay(&mut self, center: DVec3, power: f64, drop_blocks: bool, decay: bool) -> usize {
         let radius = power * 0.9 + 0.5;
         let c = center.floor().as_ivec3();
         let r = radius.ceil() as i32;
@@ -235,9 +277,13 @@ impl World {
                     if !resists && self.edit(p, Block::AIR, false) {
                         removed.push(p);
                         if b == Block::TNT {
-                            self.primed_tnt.push((p, true));
+                            // `TntBlock.wasExploded` primes it with `tnt_explodes`;
+                            // `dropFromExplosion` is false either way.
+                            if self.rules.tnt_explodes {
+                                self.primed_tnt.push((p, true));
+                            }
                         } else if drop_blocks
-                            && (super::noise::hash_f(p.x, p.y, p.z, seed ^ 0xD20F) as f64) < 1.0 / power
+                            && (!decay || (super::noise::hash_f(p.x, p.y, p.z, seed ^ 0xD20F) as f64) < 1.0 / power)
                         {
                             self.spill_block(p, b);
                         }

@@ -582,5 +582,7210 @@
       "attack_speed_modifier": 0.0,
       "attack_damage_with_material": 0.0
     }
-  ]
+  ],
+  "mth_sin": {
+    "table_size": 65536,
+    "scale": 10430.378350470453,
+    "cos_offset": 16384.0,
+    "mask": 65535,
+    "entry": "float(sin(index / scale))"
+  },
+  "attributes": {
+    "attack_knockback": {
+      "default": 0.0,
+      "min": 0.0,
+      "max": 5.0
+    },
+    "knockback_resistance": {
+      "default": 0.0,
+      "min": -2.0,
+      "max": 1.0
+    },
+    "sweeping_damage_ratio": {
+      "default": 0.0,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "movement_speed_player_base": 0.10000000149011612,
+    "movement_speed_range": [
+      0.0,
+      1024.0
+    ]
+  },
+  "living_entity_knockback": {
+    "resistance_attribute": "knockback_resistance",
+    "strength_scale": "strength * (1 - knockback_resistance); nothing happens when the result is <= 0",
+    "zero_direction_threshold": 9.999999747378752e-06,
+    "zero_direction_jitter": 0.01,
+    "horizontal_motion_divisor": 2.0,
+    "vertical_cap": 0.4,
+    "vertical": "on ground: min(vertical_cap, motion_y / 2 + strength); airborne: motion_y unchanged",
+    "default_strength": 0.4000000059604645,
+    "default_strength_float": 0.4,
+    "hurt_direction": {
+      "direction_is": "vector from the victim toward the damage source, so the victim is pushed away",
+      "projectile": "the projectile's horizontal delta movement, negated",
+      "other": "damage source position (the direct entity's position) minus the victim's position"
+    },
+    "knockback_only_when": "hurtServer applied damage, DamageTypeTags.NO_KNOCKBACK is absent, and the hit was not fully blocked",
+    "damage_cooldown_ticks": 10.0,
+    "cooldown_rejects_hits_not_exceeding_last_damage": true
+  },
+  "attack_knockback": {
+    "attribute": "attack_knockback",
+    "enchantment": "knockback",
+    "enchantment_per_level": 1.0,
+    "divisor": 2.0,
+    "player_sprint_bonus": 0.5,
+    "total": "(attack_knockback + enchantment_level) / 2 (+ 0.5 when sprint knockback)",
+    "direction": "attacker yaw: x = sin(yaw), z = -cos(yaw); the victim is pushed along its facing",
+    "applied_after": "the default 0.4 hurt knockback",
+    "attacker_after": {
+      "horizontal_motion_multiplier": 0.6,
+      "vertical_multiplier": 1.0,
+      "player_sprinting": false,
+      "only_when_strength_positive": true
+    },
+    "non_living_target": {
+      "push": "(-sin(yaw) * strength, 0.1, cos(yaw) * strength)"
+    }
+  },
+  "mob_melee": {
+    "default_hurt_knockback": 0.4000000059604645,
+    "extra": "getKnockback = attack_knockback attribute / 2 (weapon enchantment applies), along the attacker's yaw",
+    "attacker_after": {
+      "horizontal_motion_multiplier": 0.6
+    },
+    "attributes": {
+      "iron_golem": {
+        "knockback_resistance": 1.0
+      },
+      "hoglin": {
+        "knockback_resistance": 0.6000000238418579,
+        "attack_knockback": 1.0
+      },
+      "zoglin": {
+        "knockback_resistance": 0.6000000238418579,
+        "attack_knockback": 1.0
+      },
+      "ravager": {
+        "knockback_resistance": 0.75,
+        "attack_knockback": 1.5
+      },
+      "warden": {
+        "knockback_resistance": 1.0,
+        "attack_knockback": 1.5
+      }
+    }
+  },
+  "hoglin_throw": {
+    "formula": "strength = attack_knockback - resistance (nothing when <= 0); horizontal = normalize(dx, 0, dz) * strength * (nextFloat * 0.5 + 0.2) turned by yRot(nextInt(21) - 10) in radians; vertical = strength * nextFloat * 0.5; added to the victim's motion after the default hurt knockback",
+    "turn_unit": "radians",
+    "turn_range": [
+      -10,
+      10
+    ],
+    "reach_range": [
+      0.2,
+      0.7
+    ],
+    "lift_max": 0.5,
+    "no_extra_knockback": true,
+    "not_when_baby": true
+  },
+  "arrow_knockback": {
+    "enchantment": "punch",
+    "enchantment_applies_to": "arrow direct attackers (#minecraft:arrows)",
+    "arrow_entity_type_tag": [
+      "minecraft:arrow",
+      "minecraft:spectral_arrow"
+    ],
+    "per_level_push": 0.6,
+    "vertical_push": 0.1,
+    "horizontal_direction": "the arrow's horizontal delta movement, normalized",
+    "resistance": "max(0, 1 - knockback_resistance)",
+    "default_knockback": "the 0.4 hurt knockback along the arrow's horizontal motion"
+  },
+  "movement_speed": {
+    "player_base": 0.10000000149011612,
+    "sprint_modifier": 0.30000001192092896,
+    "sprint_operation": "add_multiplied_total",
+    "effects": {
+      "speed": {
+        "amount_per_level": 0.20000000298023224,
+        "operation": "add_multiplied_total"
+      },
+      "slowness": {
+        "amount_per_level": -0.15000000596046448,
+        "operation": "add_multiplied_total"
+      }
+    },
+    "range": [
+      0.0,
+      1024.0
+    ]
+  },
+  "sweep_attack": {
+    "requires": {
+      "attack_strength_above": 0.9,
+      "not_critical": true,
+      "not_sprint_knockback": true,
+      "on_ground": true,
+      "horizontal_movement_below_speed_times": 2.5,
+      "movement_is": "Player.getKnownMovement().horizontalDistanceSqr() < (getSpeed() * 2.5)^2",
+      "main_hand": "#minecraft:swords"
+    },
+    "sword_items": [
+      "minecraft:copper_sword",
+      "minecraft:diamond_sword",
+      "minecraft:golden_sword",
+      "minecraft:iron_sword",
+      "minecraft:netherite_sword",
+      "minecraft:stone_sword",
+      "minecraft:wooden_sword"
+    ],
+    "after_primary_hit_landed": true,
+    "target_box": {
+      "inflate": [
+        1.0,
+        0.25,
+        1.0
+      ],
+      "of": "the primary target's bounding box"
+    },
+    "victims": "LivingEntity intersecting the box",
+    "max_distance_sqr": 9.0,
+    "distance_between": "attacker position and victim position (feet)",
+    "excluded": [
+      "the attacker",
+      "the primary target",
+      "allied entities (scoreboard team)",
+      "marker armor stands"
+    ],
+    "damage": {
+      "base": 1.0,
+      "ratio_attribute": "sweeping_damage_ratio",
+      "ratio_times": "scaled attack damage",
+      "then": "enchantment damage for that victim",
+      "times": "attack strength scale"
+    },
+    "knockback": {
+      "strength": 0.4000000059604645,
+      "direction": "attacker yaw: x = sin(yaw), z = -cos(yaw)",
+      "after": "the victim's own 0.4 hurt knockback from the attacker's position"
+    },
+    "sound": "player.attack.sweep",
+    "particle": "sweep_attack",
+    "particle_position": "(attacker x - sin(yaw), attacker y + 0.5 * height, attacker z + cos(yaw))",
+    "particle_count": 0,
+    "sweeping_edge_ratio": {
+      "1": 0.5,
+      "2": 0.6666666666666666,
+      "3": 0.75
+    },
+    "sweeping_edge_max_level": 3
+  },
+  "cases": {
+    "knockback": [
+      {
+        "old_motion": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "strength": 0.4000000059604645,
+        "resistance": 0.0,
+        "on_ground": true,
+        "x": 1.0,
+        "z": 0.0,
+        "new_motion": [
+          -0.4000000059604645,
+          0.4,
+          0.0
+        ]
+      },
+      {
+        "old_motion": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "strength": 0.4000000059604645,
+        "resistance": 0.0,
+        "on_ground": false,
+        "x": 1.0,
+        "z": 0.0,
+        "new_motion": [
+          -0.4000000059604645,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "old_motion": [
+          0.1,
+          -0.3,
+          0.2
+        ],
+        "strength": 0.4000000059604645,
+        "resistance": 0.0,
+        "on_ground": true,
+        "x": 0.6,
+        "z": -0.8,
+        "new_motion": [
+          -0.19000000357627866,
+          0.25000000596046446,
+          0.4200000047683716
+        ]
+      },
+      {
+        "old_motion": [
+          0.1,
+          -0.3,
+          0.2
+        ],
+        "strength": 0.4000000059604645,
+        "resistance": 0.0,
+        "on_ground": false,
+        "x": 0.6,
+        "z": -0.8,
+        "new_motion": [
+          -0.19000000357627866,
+          -0.3,
+          0.4200000047683716
+        ]
+      },
+      {
+        "old_motion": [
+          0.0,
+          0.3,
+          0.0
+        ],
+        "strength": 0.4000000059604645,
+        "resistance": 0.0,
+        "on_ground": true,
+        "x": 0.0,
+        "z": 2.0,
+        "new_motion": [
+          0.0,
+          0.4,
+          -0.4000000059604645
+        ]
+      },
+      {
+        "old_motion": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "strength": 0.5,
+        "resistance": 0.0,
+        "on_ground": true,
+        "x": -3.0,
+        "z": 4.0,
+        "new_motion": [
+          0.3,
+          0.4,
+          -0.4
+        ]
+      },
+      {
+        "old_motion": [
+          0.2,
+          0.0,
+          -0.1
+        ],
+        "strength": 0.9,
+        "resistance": 0.0,
+        "on_ground": true,
+        "x": 1.0,
+        "z": 1.0,
+        "new_motion": [
+          -0.5363961030678928,
+          0.4,
+          -0.6863961030678928
+        ]
+      },
+      {
+        "old_motion": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "strength": 0.4000000059604645,
+        "resistance": 0.5,
+        "on_ground": true,
+        "x": 1.0,
+        "z": 0.0,
+        "new_motion": [
+          -0.20000000298023224,
+          0.20000000298023224,
+          0.0
+        ]
+      },
+      {
+        "old_motion": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "strength": 0.4000000059604645,
+        "resistance": 0.6000000238418579,
+        "on_ground": true,
+        "x": 1.0,
+        "z": 0.0,
+        "new_motion": [
+          -0.15999999284744248,
+          0.15999999284744248,
+          0.0
+        ]
+      },
+      {
+        "old_motion": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "strength": 0.4000000059604645,
+        "resistance": 1.0,
+        "on_ground": true,
+        "x": 1.0,
+        "z": 0.0,
+        "new_motion": null
+      },
+      {
+        "old_motion": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "strength": 0.4000000059604645,
+        "resistance": -1.0,
+        "on_ground": true,
+        "x": 1.0,
+        "z": 0.0,
+        "new_motion": [
+          -0.800000011920929,
+          0.4,
+          0.0
+        ]
+      },
+      {
+        "old_motion": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "strength": 0.4000000059604645,
+        "resistance": 0.1,
+        "on_ground": true,
+        "x": 0.0,
+        "z": -1.0,
+        "new_motion": [
+          0.0,
+          0.36000000536441806,
+          0.36000000536441806
+        ]
+      },
+      {
+        "old_motion": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "strength": 0.4000000059604645,
+        "resistance": 0.4,
+        "on_ground": false,
+        "x": 1.0,
+        "z": 0.0,
+        "new_motion": [
+          -0.24000000357627868,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "old_motion": [
+          0.0,
+          0.1,
+          0.0
+        ],
+        "strength": 0.0,
+        "resistance": 0.0,
+        "on_ground": true,
+        "x": 1.0,
+        "z": 0.0,
+        "new_motion": null
+      }
+    ],
+    "attack_knockback": [
+      {
+        "attack_knockback_attribute": 0.0,
+        "knockback_level": 0,
+        "sprint_bonus": false,
+        "strength": 0.0
+      },
+      {
+        "attack_knockback_attribute": 0.0,
+        "knockback_level": 0,
+        "sprint_bonus": true,
+        "strength": 0.5
+      },
+      {
+        "attack_knockback_attribute": 0.0,
+        "knockback_level": 1,
+        "sprint_bonus": false,
+        "strength": 0.5
+      },
+      {
+        "attack_knockback_attribute": 0.0,
+        "knockback_level": 1,
+        "sprint_bonus": true,
+        "strength": 1.0
+      },
+      {
+        "attack_knockback_attribute": 0.0,
+        "knockback_level": 2,
+        "sprint_bonus": false,
+        "strength": 1.0
+      },
+      {
+        "attack_knockback_attribute": 0.0,
+        "knockback_level": 2,
+        "sprint_bonus": true,
+        "strength": 1.5
+      },
+      {
+        "attack_knockback_attribute": 1.0,
+        "knockback_level": 0,
+        "sprint_bonus": false,
+        "strength": 0.5
+      },
+      {
+        "attack_knockback_attribute": 1.0,
+        "knockback_level": 0,
+        "sprint_bonus": true,
+        "strength": 1.0
+      },
+      {
+        "attack_knockback_attribute": 1.0,
+        "knockback_level": 1,
+        "sprint_bonus": false,
+        "strength": 1.0
+      },
+      {
+        "attack_knockback_attribute": 1.0,
+        "knockback_level": 1,
+        "sprint_bonus": true,
+        "strength": 1.5
+      },
+      {
+        "attack_knockback_attribute": 1.0,
+        "knockback_level": 2,
+        "sprint_bonus": false,
+        "strength": 1.5
+      },
+      {
+        "attack_knockback_attribute": 1.0,
+        "knockback_level": 2,
+        "sprint_bonus": true,
+        "strength": 2.0
+      },
+      {
+        "attack_knockback_attribute": 1.5,
+        "knockback_level": 0,
+        "sprint_bonus": false,
+        "strength": 0.75
+      },
+      {
+        "attack_knockback_attribute": 1.5,
+        "knockback_level": 0,
+        "sprint_bonus": true,
+        "strength": 1.25
+      },
+      {
+        "attack_knockback_attribute": 1.5,
+        "knockback_level": 1,
+        "sprint_bonus": false,
+        "strength": 1.25
+      },
+      {
+        "attack_knockback_attribute": 1.5,
+        "knockback_level": 1,
+        "sprint_bonus": true,
+        "strength": 1.75
+      },
+      {
+        "attack_knockback_attribute": 1.5,
+        "knockback_level": 2,
+        "sprint_bonus": false,
+        "strength": 1.75
+      },
+      {
+        "attack_knockback_attribute": 1.5,
+        "knockback_level": 2,
+        "sprint_bonus": true,
+        "strength": 2.25
+      }
+    ],
+    "yaw_direction": [
+      {
+        "yaw_degrees": 0.0,
+        "sin": 0.0,
+        "cos": 1.0,
+        "push_x": 0.0,
+        "push_z": -1.0
+      },
+      {
+        "yaw_degrees": 45.0,
+        "sin": 0.7071067690849304,
+        "cos": 0.7071067690849304,
+        "push_x": 0.7071067690849304,
+        "push_z": -0.7071067690849304
+      },
+      {
+        "yaw_degrees": 90.0,
+        "sin": 1.0,
+        "cos": 1.2246468525851679e-16,
+        "push_x": 1.0,
+        "push_z": -1.2246468525851679e-16
+      },
+      {
+        "yaw_degrees": 135.0,
+        "sin": 0.7071067690849304,
+        "cos": -0.7071067690849304,
+        "push_x": 0.7071067690849304,
+        "push_z": 0.7071067690849304
+      },
+      {
+        "yaw_degrees": 180.0,
+        "sin": 1.2246468525851679e-16,
+        "cos": -1.0,
+        "push_x": 1.2246468525851679e-16,
+        "push_z": 1.0
+      },
+      {
+        "yaw_degrees": -90.0,
+        "sin": -1.0,
+        "cos": 0.0,
+        "push_x": -1.0,
+        "push_z": -0.0
+      },
+      {
+        "yaw_degrees": 270.0,
+        "sin": -1.0,
+        "cos": 0.0,
+        "push_x": -1.0,
+        "push_z": -0.0
+      },
+      {
+        "yaw_degrees": 33.3,
+        "sin": 0.5490164160728455,
+        "cos": 0.8358115553855896,
+        "push_x": 0.5490164160728455,
+        "push_z": -0.8358115553855896
+      },
+      {
+        "yaw_degrees": -170.25,
+        "sin": -0.16935580968856812,
+        "cos": -0.9855549931526184,
+        "push_x": -0.16935580968856812,
+        "push_z": 0.9855549931526184
+      },
+      {
+        "yaw_degrees": 361.0,
+        "sin": 0.017448145896196365,
+        "cos": 0.9998477697372437,
+        "push_x": 0.017448145896196365,
+        "push_z": -0.9998477697372437
+      }
+    ],
+    "arrow_punch": [
+      {
+        "punch_level": 0,
+        "resistance": 0.0,
+        "arrow_motion": [
+          1.0,
+          -0.5,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 0.0,
+        "arrow_motion": [
+          0.0,
+          0.3,
+          2.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 0.0,
+        "arrow_motion": [
+          -3.0,
+          0.0,
+          4.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 0.0,
+        "arrow_motion": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 0.0,
+        "arrow_motion": [
+          1e-06,
+          -1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 0.0,
+        "arrow_motion": [
+          0.0,
+          -1.0,
+          -9e-06
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 0.0,
+        "arrow_motion": [
+          1.1e-05,
+          0.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 0.5,
+        "arrow_motion": [
+          1.0,
+          -0.5,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 0.5,
+        "arrow_motion": [
+          0.0,
+          0.3,
+          2.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 0.5,
+        "arrow_motion": [
+          -3.0,
+          0.0,
+          4.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 0.5,
+        "arrow_motion": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 0.5,
+        "arrow_motion": [
+          1e-06,
+          -1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 0.5,
+        "arrow_motion": [
+          0.0,
+          -1.0,
+          -9e-06
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 0.5,
+        "arrow_motion": [
+          1.1e-05,
+          0.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          1.0,
+          -0.5,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          0.0,
+          0.3,
+          2.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          -3.0,
+          0.0,
+          4.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          1e-06,
+          -1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          0.0,
+          -1.0,
+          -9e-06
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          1.1e-05,
+          0.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 1.0,
+        "arrow_motion": [
+          1.0,
+          -0.5,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 1.0,
+        "arrow_motion": [
+          0.0,
+          0.3,
+          2.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 1.0,
+        "arrow_motion": [
+          -3.0,
+          0.0,
+          4.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 1.0,
+        "arrow_motion": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 1.0,
+        "arrow_motion": [
+          1e-06,
+          -1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 1.0,
+        "arrow_motion": [
+          0.0,
+          -1.0,
+          -9e-06
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": 1.0,
+        "arrow_motion": [
+          1.1e-05,
+          0.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": -1.0,
+        "arrow_motion": [
+          1.0,
+          -0.5,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": -1.0,
+        "arrow_motion": [
+          0.0,
+          0.3,
+          2.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": -1.0,
+        "arrow_motion": [
+          -3.0,
+          0.0,
+          4.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": -1.0,
+        "arrow_motion": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": -1.0,
+        "arrow_motion": [
+          1e-06,
+          -1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": -1.0,
+        "arrow_motion": [
+          0.0,
+          -1.0,
+          -9e-06
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 0,
+        "resistance": -1.0,
+        "arrow_motion": [
+          1.1e-05,
+          0.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 1,
+        "resistance": 0.0,
+        "arrow_motion": [
+          1.0,
+          -0.5,
+          0.0
+        ],
+        "push": [
+          0.6,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "punch_level": 1,
+        "resistance": 0.0,
+        "arrow_motion": [
+          0.0,
+          0.3,
+          2.0
+        ],
+        "push": [
+          0.0,
+          0.1,
+          0.6
+        ]
+      },
+      {
+        "punch_level": 1,
+        "resistance": 0.0,
+        "arrow_motion": [
+          -3.0,
+          0.0,
+          4.0
+        ],
+        "push": [
+          -0.36,
+          0.1,
+          0.48
+        ]
+      },
+      {
+        "punch_level": 1,
+        "resistance": 0.0,
+        "arrow_motion": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 1,
+        "resistance": 0.0,
+        "arrow_motion": [
+          1e-06,
+          -1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 1,
+        "resistance": 0.0,
+        "arrow_motion": [
+          0.0,
+          -1.0,
+          -9e-06
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 1,
+        "resistance": 0.0,
+        "arrow_motion": [
+          1.1e-05,
+          0.0,
+          0.0
+        ],
+        "push": [
+          0.6,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "punch_level": 1,
+        "resistance": 0.5,
+        "arrow_motion": [
+          1.0,
+          -0.5,
+          0.0
+        ],
+        "push": [
+          0.3,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "punch_level": 1,
+        "resistance": 0.5,
+        "arrow_motion": [
+          0.0,
+          0.3,
+          2.0
+        ],
+        "push": [
+          0.0,
+          0.1,
+          0.3
+        ]
+      },
+      {
+        "punch_level": 1,
+        "resistance": 0.5,
+        "arrow_motion": [
+          -3.0,
+          0.0,
+          4.0
+        ],
+        "push": [
+          -0.18,
+          0.1,
+          0.24
+        ]
+      },
+      {
+        "punch_level": 1,
+        "resistance": 0.5,
+        "arrow_motion": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 1,
+        "resistance": 0.5,
+        "arrow_motion": [
+          1e-06,
+          -1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 1,
+        "resistance": 0.5,
+        "arrow_motion": [
+          0.0,
+          -1.0,
+          -9e-06
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 1,
+        "resistance": 0.5,
+        "arrow_motion": [
+          1.1e-05,
+          0.0,
+          0.0
+        ],
+        "push": [
+          0.3,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "punch_level": 1,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          1.0,
+          -0.5,
+          0.0
+        ],
+        "push": [
+          0.23999998569488523,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "punch_level": 1,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          0.0,
+          0.3,
+          2.0
+        ],
+        "push": [
+          0.0,
+          0.1,
+          0.23999998569488523
+        ]
+      },
+      {
+        "punch_level": 1,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          -3.0,
+          0.0,
+          4.0
+        ],
+        "push": [
+          -0.14399999141693112,
+          0.1,
+          0.1919999885559082
+        ]
+      },
+      {
+        "punch_level": 1,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 1,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          1e-06,
+          -1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 1,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          0.0,
+          -1.0,
+          -9e-06
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 1,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          1.1e-05,
+          0.0,
+          0.0
+        ],
+        "push": [
+          0.23999998569488523,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "punch_level": 1,
+        "resistance": 1.0,
+        "arrow_motion": [
+          1.0,
+          -0.5,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 1,
+        "resistance": 1.0,
+        "arrow_motion": [
+          0.0,
+          0.3,
+          2.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 1,
+        "resistance": 1.0,
+        "arrow_motion": [
+          -3.0,
+          0.0,
+          4.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 1,
+        "resistance": 1.0,
+        "arrow_motion": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 1,
+        "resistance": 1.0,
+        "arrow_motion": [
+          1e-06,
+          -1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 1,
+        "resistance": 1.0,
+        "arrow_motion": [
+          0.0,
+          -1.0,
+          -9e-06
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 1,
+        "resistance": 1.0,
+        "arrow_motion": [
+          1.1e-05,
+          0.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 1,
+        "resistance": -1.0,
+        "arrow_motion": [
+          1.0,
+          -0.5,
+          0.0
+        ],
+        "push": [
+          1.2,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "punch_level": 1,
+        "resistance": -1.0,
+        "arrow_motion": [
+          0.0,
+          0.3,
+          2.0
+        ],
+        "push": [
+          0.0,
+          0.1,
+          1.2
+        ]
+      },
+      {
+        "punch_level": 1,
+        "resistance": -1.0,
+        "arrow_motion": [
+          -3.0,
+          0.0,
+          4.0
+        ],
+        "push": [
+          -0.72,
+          0.1,
+          0.96
+        ]
+      },
+      {
+        "punch_level": 1,
+        "resistance": -1.0,
+        "arrow_motion": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 1,
+        "resistance": -1.0,
+        "arrow_motion": [
+          1e-06,
+          -1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 1,
+        "resistance": -1.0,
+        "arrow_motion": [
+          0.0,
+          -1.0,
+          -9e-06
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 1,
+        "resistance": -1.0,
+        "arrow_motion": [
+          1.1e-05,
+          0.0,
+          0.0
+        ],
+        "push": [
+          1.2,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "punch_level": 2,
+        "resistance": 0.0,
+        "arrow_motion": [
+          1.0,
+          -0.5,
+          0.0
+        ],
+        "push": [
+          1.2,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "punch_level": 2,
+        "resistance": 0.0,
+        "arrow_motion": [
+          0.0,
+          0.3,
+          2.0
+        ],
+        "push": [
+          0.0,
+          0.1,
+          1.2
+        ]
+      },
+      {
+        "punch_level": 2,
+        "resistance": 0.0,
+        "arrow_motion": [
+          -3.0,
+          0.0,
+          4.0
+        ],
+        "push": [
+          -0.72,
+          0.1,
+          0.96
+        ]
+      },
+      {
+        "punch_level": 2,
+        "resistance": 0.0,
+        "arrow_motion": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 2,
+        "resistance": 0.0,
+        "arrow_motion": [
+          1e-06,
+          -1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 2,
+        "resistance": 0.0,
+        "arrow_motion": [
+          0.0,
+          -1.0,
+          -9e-06
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 2,
+        "resistance": 0.0,
+        "arrow_motion": [
+          1.1e-05,
+          0.0,
+          0.0
+        ],
+        "push": [
+          1.2,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "punch_level": 2,
+        "resistance": 0.5,
+        "arrow_motion": [
+          1.0,
+          -0.5,
+          0.0
+        ],
+        "push": [
+          0.6,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "punch_level": 2,
+        "resistance": 0.5,
+        "arrow_motion": [
+          0.0,
+          0.3,
+          2.0
+        ],
+        "push": [
+          0.0,
+          0.1,
+          0.6
+        ]
+      },
+      {
+        "punch_level": 2,
+        "resistance": 0.5,
+        "arrow_motion": [
+          -3.0,
+          0.0,
+          4.0
+        ],
+        "push": [
+          -0.36,
+          0.1,
+          0.48
+        ]
+      },
+      {
+        "punch_level": 2,
+        "resistance": 0.5,
+        "arrow_motion": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 2,
+        "resistance": 0.5,
+        "arrow_motion": [
+          1e-06,
+          -1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 2,
+        "resistance": 0.5,
+        "arrow_motion": [
+          0.0,
+          -1.0,
+          -9e-06
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 2,
+        "resistance": 0.5,
+        "arrow_motion": [
+          1.1e-05,
+          0.0,
+          0.0
+        ],
+        "push": [
+          0.6,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "punch_level": 2,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          1.0,
+          -0.5,
+          0.0
+        ],
+        "push": [
+          0.47999997138977046,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "punch_level": 2,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          0.0,
+          0.3,
+          2.0
+        ],
+        "push": [
+          0.0,
+          0.1,
+          0.47999997138977046
+        ]
+      },
+      {
+        "punch_level": 2,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          -3.0,
+          0.0,
+          4.0
+        ],
+        "push": [
+          -0.28799998283386224,
+          0.1,
+          0.3839999771118164
+        ]
+      },
+      {
+        "punch_level": 2,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 2,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          1e-06,
+          -1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 2,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          0.0,
+          -1.0,
+          -9e-06
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 2,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          1.1e-05,
+          0.0,
+          0.0
+        ],
+        "push": [
+          0.47999997138977046,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "punch_level": 2,
+        "resistance": 1.0,
+        "arrow_motion": [
+          1.0,
+          -0.5,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 2,
+        "resistance": 1.0,
+        "arrow_motion": [
+          0.0,
+          0.3,
+          2.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 2,
+        "resistance": 1.0,
+        "arrow_motion": [
+          -3.0,
+          0.0,
+          4.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 2,
+        "resistance": 1.0,
+        "arrow_motion": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 2,
+        "resistance": 1.0,
+        "arrow_motion": [
+          1e-06,
+          -1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 2,
+        "resistance": 1.0,
+        "arrow_motion": [
+          0.0,
+          -1.0,
+          -9e-06
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 2,
+        "resistance": 1.0,
+        "arrow_motion": [
+          1.1e-05,
+          0.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 2,
+        "resistance": -1.0,
+        "arrow_motion": [
+          1.0,
+          -0.5,
+          0.0
+        ],
+        "push": [
+          2.4,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "punch_level": 2,
+        "resistance": -1.0,
+        "arrow_motion": [
+          0.0,
+          0.3,
+          2.0
+        ],
+        "push": [
+          0.0,
+          0.1,
+          2.4
+        ]
+      },
+      {
+        "punch_level": 2,
+        "resistance": -1.0,
+        "arrow_motion": [
+          -3.0,
+          0.0,
+          4.0
+        ],
+        "push": [
+          -1.44,
+          0.1,
+          1.92
+        ]
+      },
+      {
+        "punch_level": 2,
+        "resistance": -1.0,
+        "arrow_motion": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 2,
+        "resistance": -1.0,
+        "arrow_motion": [
+          1e-06,
+          -1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 2,
+        "resistance": -1.0,
+        "arrow_motion": [
+          0.0,
+          -1.0,
+          -9e-06
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 2,
+        "resistance": -1.0,
+        "arrow_motion": [
+          1.1e-05,
+          0.0,
+          0.0
+        ],
+        "push": [
+          2.4,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "punch_level": 3,
+        "resistance": 0.0,
+        "arrow_motion": [
+          1.0,
+          -0.5,
+          0.0
+        ],
+        "push": [
+          1.7999999999999998,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "punch_level": 3,
+        "resistance": 0.0,
+        "arrow_motion": [
+          0.0,
+          0.3,
+          2.0
+        ],
+        "push": [
+          0.0,
+          0.1,
+          1.7999999999999998
+        ]
+      },
+      {
+        "punch_level": 3,
+        "resistance": 0.0,
+        "arrow_motion": [
+          -3.0,
+          0.0,
+          4.0
+        ],
+        "push": [
+          -1.0799999999999998,
+          0.1,
+          1.44
+        ]
+      },
+      {
+        "punch_level": 3,
+        "resistance": 0.0,
+        "arrow_motion": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 3,
+        "resistance": 0.0,
+        "arrow_motion": [
+          1e-06,
+          -1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 3,
+        "resistance": 0.0,
+        "arrow_motion": [
+          0.0,
+          -1.0,
+          -9e-06
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 3,
+        "resistance": 0.0,
+        "arrow_motion": [
+          1.1e-05,
+          0.0,
+          0.0
+        ],
+        "push": [
+          1.7999999999999998,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "punch_level": 3,
+        "resistance": 0.5,
+        "arrow_motion": [
+          1.0,
+          -0.5,
+          0.0
+        ],
+        "push": [
+          0.8999999999999999,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "punch_level": 3,
+        "resistance": 0.5,
+        "arrow_motion": [
+          0.0,
+          0.3,
+          2.0
+        ],
+        "push": [
+          0.0,
+          0.1,
+          0.8999999999999999
+        ]
+      },
+      {
+        "punch_level": 3,
+        "resistance": 0.5,
+        "arrow_motion": [
+          -3.0,
+          0.0,
+          4.0
+        ],
+        "push": [
+          -0.5399999999999999,
+          0.1,
+          0.72
+        ]
+      },
+      {
+        "punch_level": 3,
+        "resistance": 0.5,
+        "arrow_motion": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 3,
+        "resistance": 0.5,
+        "arrow_motion": [
+          1e-06,
+          -1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 3,
+        "resistance": 0.5,
+        "arrow_motion": [
+          0.0,
+          -1.0,
+          -9e-06
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 3,
+        "resistance": 0.5,
+        "arrow_motion": [
+          1.1e-05,
+          0.0,
+          0.0
+        ],
+        "push": [
+          0.8999999999999999,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "punch_level": 3,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          1.0,
+          -0.5,
+          0.0
+        ],
+        "push": [
+          0.7199999570846557,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "punch_level": 3,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          0.0,
+          0.3,
+          2.0
+        ],
+        "push": [
+          0.0,
+          0.1,
+          0.7199999570846557
+        ]
+      },
+      {
+        "punch_level": 3,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          -3.0,
+          0.0,
+          4.0
+        ],
+        "push": [
+          -0.4319999742507934,
+          0.1,
+          0.5759999656677246
+        ]
+      },
+      {
+        "punch_level": 3,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 3,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          1e-06,
+          -1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 3,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          0.0,
+          -1.0,
+          -9e-06
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 3,
+        "resistance": 0.6000000238418579,
+        "arrow_motion": [
+          1.1e-05,
+          0.0,
+          0.0
+        ],
+        "push": [
+          0.7199999570846557,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "punch_level": 3,
+        "resistance": 1.0,
+        "arrow_motion": [
+          1.0,
+          -0.5,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 3,
+        "resistance": 1.0,
+        "arrow_motion": [
+          0.0,
+          0.3,
+          2.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 3,
+        "resistance": 1.0,
+        "arrow_motion": [
+          -3.0,
+          0.0,
+          4.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 3,
+        "resistance": 1.0,
+        "arrow_motion": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 3,
+        "resistance": 1.0,
+        "arrow_motion": [
+          1e-06,
+          -1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 3,
+        "resistance": 1.0,
+        "arrow_motion": [
+          0.0,
+          -1.0,
+          -9e-06
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 3,
+        "resistance": 1.0,
+        "arrow_motion": [
+          1.1e-05,
+          0.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 3,
+        "resistance": -1.0,
+        "arrow_motion": [
+          1.0,
+          -0.5,
+          0.0
+        ],
+        "push": [
+          3.5999999999999996,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "punch_level": 3,
+        "resistance": -1.0,
+        "arrow_motion": [
+          0.0,
+          0.3,
+          2.0
+        ],
+        "push": [
+          0.0,
+          0.1,
+          3.5999999999999996
+        ]
+      },
+      {
+        "punch_level": 3,
+        "resistance": -1.0,
+        "arrow_motion": [
+          -3.0,
+          0.0,
+          4.0
+        ],
+        "push": [
+          -2.1599999999999997,
+          0.1,
+          2.88
+        ]
+      },
+      {
+        "punch_level": 3,
+        "resistance": -1.0,
+        "arrow_motion": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 3,
+        "resistance": -1.0,
+        "arrow_motion": [
+          1e-06,
+          -1.0,
+          0.0
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 3,
+        "resistance": -1.0,
+        "arrow_motion": [
+          0.0,
+          -1.0,
+          -9e-06
+        ],
+        "push": null
+      },
+      {
+        "punch_level": 3,
+        "resistance": -1.0,
+        "arrow_motion": [
+          1.1e-05,
+          0.0,
+          0.0
+        ],
+        "push": [
+          3.5999999999999996,
+          0.1,
+          0.0
+        ]
+      }
+    ],
+    "hoglin_throw": [
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.16782248270247102,
+          0.0,
+          -0.10879161519991776
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.37760057045087336,
+          0.125,
+          -0.2447811240678064
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.5873367081208869,
+          0.375,
+          -0.3807434386247053
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.19799813327190474,
+          0.0,
+          0.02822656673530588
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.4454957814217728,
+          0.125,
+          0.06350977252563439
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.6929439365771515,
+          0.375,
+          0.09878592260645291
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          0.20000000298023224,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          0.44999998807907104,
+          0.125,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          0.6999499797821045,
+          0.375,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.13073617414737004,
+          0.0,
+          0.15135406481257174
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.29415637965582775,
+          0.125,
+          0.3405466317323409
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.4575439054382713,
+          0.375,
+          0.5297013651343292
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.16782248270247102,
+          0.0,
+          0.10879161519991776
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.37760057045087336,
+          0.125,
+          0.2447811240678064
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.5873367081208869,
+          0.375,
+          0.3807434386247053
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.10879161519991776,
+          0.0,
+          0.16782248270247102
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.2447811240678064,
+          0.125,
+          0.37760057045087336
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.3807434386247053,
+          0.375,
+          0.5873367081208869
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -3.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          0.02822656673530588,
+          0.0,
+          0.19799813327190474
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -3.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          0.06350977252563439,
+          0.125,
+          0.4454957814217728
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -3.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          0.09878592260645291,
+          0.375,
+          0.6929439365771515
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 0.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          0.0,
+          0.0,
+          -0.20000000298023224
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 0.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          0.0,
+          0.125,
+          -0.44999998807907104
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 0.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          0.0,
+          0.375,
+          -0.6999499797821045
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 4.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          0.15135406481257174,
+          0.0,
+          0.13073617414737004
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 4.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          0.3405466317323409,
+          0.125,
+          0.29415637965582775
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 4.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          0.5297013651343292,
+          0.375,
+          0.4575439054382713
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          0.10879161519991776,
+          0.0,
+          0.16782248270247102
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          0.2447811240678064,
+          0.125,
+          0.37760057045087336
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          0.3807434386247053,
+          0.375,
+          0.5873367081208869
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.01366019746154841,
+          0.0,
+          -0.19953295528192747
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.030735443016278896,
+          0.125,
+          -0.44894913080138255
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.047807273972767905,
+          0.375,
+          -0.6983154296715327
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -3.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.14138013335138755,
+          0.0,
+          -0.14146256657634027
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -3.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.3181052868735712,
+          0.125,
+          -0.3182907616220376
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -3.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.4947951000314532,
+          0.375,
+          -0.4950835956978494
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 0.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          0.12000000178813934,
+          0.0,
+          0.1600000023841858
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 0.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          0.26999999284744264,
+          0.125,
+          0.35999999046325687
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 0.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          0.4199699878692627,
+          0.375,
+          0.5599599838256836
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 4.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.19952495633847944,
+          0.0,
+          -0.013776500430352986
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 4.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.4489311331793694,
+          0.125,
+          -0.03099712468525767
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 4.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.698287435370426,
+          0.375,
+          -0.04821430527001952
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.18772678178141683,
+          0.0,
+          -0.06898301704202617
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.42238524152476914,
+          0.125,
+          -0.15521178192001492
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.6569967757722963,
+          0.375,
+          -0.24142330332188636
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          0.0,
+          0.0,
+          -0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          0.0,
+          0.125,
+          -0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          0.0,
+          0.375,
+          -0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.0,
+          0.125,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.0,
+          0.375,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          0.0,
+          0.125,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          0.0,
+          0.375,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.0,
+          0.125,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.0,
+          0.375,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.0,
+          0.125,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.0,
+          0.375,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.08391124135123551,
+          0.0,
+          -0.05439580759995888
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.18880028522543668,
+          0.0625,
+          -0.1223905620339032
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.29366835406044345,
+          0.1875,
+          -0.19037171931235264
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.09899906663595237,
+          0.0,
+          0.01411328336765294
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.2227478907108864,
+          0.0625,
+          0.031754886262817195
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.34647196828857574,
+          0.1875,
+          0.04939296130322646
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          0.10000000149011612,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          0.22499999403953552,
+          0.0625,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          0.34997498989105225,
+          0.1875,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.06536808707368502,
+          0.0,
+          0.07567703240628587
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.14707818982791387,
+          0.0625,
+          0.17027331586617045
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.22877195271913564,
+          0.1875,
+          0.2648506825671646
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.08391124135123551,
+          0.0,
+          0.05439580759995888
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.18880028522543668,
+          0.0625,
+          0.1223905620339032
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.29366835406044345,
+          0.1875,
+          0.19037171931235264
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.05439580759995888,
+          0.0,
+          0.08391124135123551
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.1223905620339032,
+          0.0625,
+          0.18880028522543668
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.19037171931235264,
+          0.1875,
+          0.29366835406044345
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -3.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          0.01411328336765294,
+          0.0,
+          0.09899906663595237
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -3.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          0.031754886262817195,
+          0.0625,
+          0.2227478907108864
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -3.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          0.04939296130322646,
+          0.1875,
+          0.34647196828857574
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 0.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          0.0,
+          0.0,
+          -0.10000000149011612
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 0.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          0.0,
+          0.0625,
+          -0.22499999403953552
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 0.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          0.0,
+          0.1875,
+          -0.34997498989105225
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 4.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          0.07567703240628587,
+          0.0,
+          0.06536808707368502
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 4.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          0.17027331586617045,
+          0.0625,
+          0.14707818982791387
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 4.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          0.2648506825671646,
+          0.1875,
+          0.22877195271913564
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          0.05439580759995888,
+          0.0,
+          0.08391124135123551
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          0.1223905620339032,
+          0.0625,
+          0.18880028522543668
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          0.19037171931235264,
+          0.1875,
+          0.29366835406044345
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.006830098730774205,
+          0.0,
+          -0.09976647764096373
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.015367721508139448,
+          0.0625,
+          -0.22447456540069127
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.023903636986383953,
+          0.1875,
+          -0.34915771483576635
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -3.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.07069006667569377,
+          0.0,
+          -0.07073128328817013
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -3.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.1590526434367856,
+          0.0625,
+          -0.1591453808110188
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -3.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.2473975500157266,
+          0.1875,
+          -0.2475417978489247
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 0.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          0.06000000089406967,
+          0.0,
+          0.0800000011920929
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 0.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          0.13499999642372132,
+          0.0625,
+          0.17999999523162843
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 0.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          0.20998499393463135,
+          0.1875,
+          0.2799799919128418
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 4.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.09976247816923972,
+          0.0,
+          -0.006888250215176493
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 4.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.2244655665896847,
+          0.0625,
+          -0.015498562342628835
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 4.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.349143717685213,
+          0.1875,
+          -0.02410715263500976
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.09386339089070841,
+          0.0,
+          -0.034491508521013084
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.21119262076238457,
+          0.0625,
+          -0.07760589096000746
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.32849838788614816,
+          0.1875,
+          -0.12071165166094318
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          0.0,
+          0.0,
+          -0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          0.0,
+          0.0625,
+          -0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          0.0,
+          0.1875,
+          -0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.0,
+          0.0625,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.0,
+          0.1875,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          0.0,
+          0.0625,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          0.0,
+          0.1875,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.0,
+          0.0625,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.0,
+          0.1875,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": [
+          -0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": [
+          -0.0,
+          0.0625,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 0.5,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": [
+          -0.0,
+          0.1875,
+          0.0
+        ]
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -3.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -3.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -3.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 0.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 0.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 0.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 4.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 4.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 4.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -3.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -3.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -3.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 0.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 0.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 0.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 4.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 4.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 4.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.0,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1.0,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -3.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -3.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": -3.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 0.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 0.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 0.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 4.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 4.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 4.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.0,
+        "dz": -2.0,
+        "turn": 10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -3.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -3.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": -3.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 0.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 0.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 0.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 4.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 4.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 4.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 0.6,
+        "dz": 0.8,
+        "turn": 10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": -3.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 0.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 4.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.0,
+        "lift_roll": 0.0,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.5,
+        "lift_roll": 0.25,
+        "push": null
+      },
+      {
+        "attack_knockback": 1.0,
+        "resistance": 1.2,
+        "dx": 1e-06,
+        "dz": 0.0,
+        "turn": 10.0,
+        "reach_roll": 0.9999,
+        "lift_roll": 0.75,
+        "push": null
+      }
+    ],
+    "sweep_eligibility": [
+      {
+        "strong": true,
+        "critical": false,
+        "sprint_knockback": false,
+        "on_ground": true,
+        "sword": true,
+        "horizontal_distance_sqr": 0.0,
+        "speed": 0.10000000149011612,
+        "allowed": true
+      },
+      {
+        "strong": false,
+        "critical": false,
+        "sprint_knockback": false,
+        "on_ground": true,
+        "sword": true,
+        "horizontal_distance_sqr": 0.0,
+        "speed": 0.10000000149011612,
+        "allowed": false
+      },
+      {
+        "strong": true,
+        "critical": true,
+        "sprint_knockback": false,
+        "on_ground": true,
+        "sword": true,
+        "horizontal_distance_sqr": 0.0,
+        "speed": 0.10000000149011612,
+        "allowed": false
+      },
+      {
+        "strong": true,
+        "critical": false,
+        "sprint_knockback": true,
+        "on_ground": true,
+        "sword": true,
+        "horizontal_distance_sqr": 0.0,
+        "speed": 0.10000000149011612,
+        "allowed": false
+      },
+      {
+        "strong": true,
+        "critical": false,
+        "sprint_knockback": false,
+        "on_ground": false,
+        "sword": true,
+        "horizontal_distance_sqr": 0.0,
+        "speed": 0.10000000149011612,
+        "allowed": false
+      },
+      {
+        "strong": true,
+        "critical": false,
+        "sprint_knockback": false,
+        "on_ground": true,
+        "sword": false,
+        "horizontal_distance_sqr": 0.0,
+        "speed": 0.10000000149011612,
+        "allowed": false
+      },
+      {
+        "strong": true,
+        "critical": false,
+        "sprint_knockback": false,
+        "on_ground": true,
+        "sword": true,
+        "horizontal_distance_sqr": 0.06249900186264516,
+        "speed": 0.10000000149011612,
+        "speed_name": "walking",
+        "allowed": true
+      },
+      {
+        "strong": true,
+        "critical": false,
+        "sprint_knockback": false,
+        "on_ground": true,
+        "sword": true,
+        "horizontal_distance_sqr": 0.06250100186264516,
+        "speed": 0.10000000149011612,
+        "speed_name": "walking",
+        "allowed": false
+      },
+      {
+        "strong": true,
+        "critical": false,
+        "sprint_knockback": false,
+        "on_ground": true,
+        "sword": true,
+        "horizontal_distance_sqr": 0.08999900715255751,
+        "speed": 0.12000000476837158,
+        "speed_name": "speed_1",
+        "allowed": true
+      },
+      {
+        "strong": true,
+        "critical": false,
+        "sprint_knockback": false,
+        "on_ground": true,
+        "sword": true,
+        "horizontal_distance_sqr": 0.09000100715255752,
+        "speed": 0.12000000476837158,
+        "speed_name": "speed_1",
+        "allowed": false
+      },
+      {
+        "strong": true,
+        "critical": false,
+        "sprint_knockback": false,
+        "on_ground": true,
+        "sword": true,
+        "horizontal_distance_sqr": 0.04515525094994903,
+        "speed": 0.08500000089406967,
+        "speed_name": "slowness_1",
+        "allowed": true
+      },
+      {
+        "strong": true,
+        "critical": false,
+        "sprint_knockback": false,
+        "on_ground": true,
+        "sword": true,
+        "horizontal_distance_sqr": 0.04515725094994903,
+        "speed": 0.08500000089406967,
+        "speed_name": "slowness_1",
+        "allowed": false
+      },
+      {
+        "strong": true,
+        "critical": false,
+        "sprint_knockback": false,
+        "on_ground": true,
+        "sword": true,
+        "horizontal_distance_sqr": 0.12249900104308128,
+        "speed": 0.14000000059604645,
+        "speed_name": "speed_2",
+        "allowed": true
+      },
+      {
+        "strong": true,
+        "critical": false,
+        "sprint_knockback": false,
+        "on_ground": true,
+        "sword": true,
+        "horizontal_distance_sqr": 0.12250100104308129,
+        "speed": 0.14000000059604645,
+        "speed_name": "speed_2",
+        "allowed": false
+      },
+      {
+        "strong": true,
+        "critical": false,
+        "sprint_knockback": false,
+        "on_ground": true,
+        "sword": true,
+        "horizontal_distance_sqr": 0.03062400026077032,
+        "speed": 0.07000000029802322,
+        "speed_name": "slowness_2",
+        "allowed": true
+      },
+      {
+        "strong": true,
+        "critical": false,
+        "sprint_knockback": false,
+        "on_ground": true,
+        "sword": true,
+        "horizontal_distance_sqr": 0.030626000260770322,
+        "speed": 0.07000000029802322,
+        "speed_name": "slowness_2",
+        "allowed": false
+      },
+      {
+        "strong": true,
+        "critical": false,
+        "sprint_knockback": false,
+        "on_ground": true,
+        "sword": true,
+        "horizontal_distance_sqr": 0.1599989928474427,
+        "speed": 0.1599999964237213,
+        "speed_name": "speed_3",
+        "allowed": true
+      },
+      {
+        "strong": true,
+        "critical": false,
+        "sprint_knockback": false,
+        "on_ground": true,
+        "sword": true,
+        "horizontal_distance_sqr": 0.1600009928474427,
+        "speed": 0.1599999964237213,
+        "speed_name": "speed_3",
+        "allowed": false
+      },
+      {
+        "strong": true,
+        "critical": false,
+        "sprint_knockback": false,
+        "on_ground": true,
+        "sword": true,
+        "horizontal_distance_sqr": 0.018905249795109033,
+        "speed": 0.054999999701976776,
+        "speed_name": "slowness_3",
+        "allowed": true
+      },
+      {
+        "strong": true,
+        "critical": false,
+        "sprint_knockback": false,
+        "on_ground": true,
+        "sword": true,
+        "horizontal_distance_sqr": 0.018907249795109035,
+        "speed": 0.054999999701976776,
+        "speed_name": "slowness_3",
+        "allowed": false
+      }
+    ],
+    "sweep_damage": [
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.30000001192092896
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.75
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.8999999761581421
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.25
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 1.0
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.5
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.30000001192092896
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.75
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.8999999761581421
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.25
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 1.0
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.5
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.30000001192092896
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.75
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.8999999761581421
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.25
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 1.0
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.5
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.30000001192092896
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.75
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.8999999761581421
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.25
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 1.0
+      },
+      {
+        "scaled_attack_damage": 0.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.5
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.30000001192092896
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.75
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.8999999761581421
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.25
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 1.0
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.5
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.45000001788139343
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.9000000357627869
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 1.3499999046325684
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.6999998092651367
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 1.5
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 3.0
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.5000000596046448
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.9500000476837158
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 1.5
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.8499999046325684
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 1.6666667461395264
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 3.1666667461395264
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.5250000357627869
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.9750000238418579
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 1.5749999284744263
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.924999952316284
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 1.75
+      },
+      {
+        "scaled_attack_damage": 1.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 3.25
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.30000001192092896
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.75
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.8999999761581421
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.25
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 0,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 1.0
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 0,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.5
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.675000011920929
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 1.125
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 2.0249998569488525
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 3.375
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 1,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 2.25
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 1,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 3.75
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.8000000715255737
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 1.2500001192092896
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 2.4000000953674316
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 3.750000238418579
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 2,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 2.6666667461395264
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 2,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 4.1666669845581055
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.862500011920929
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 1.3125
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 2.5874998569488525
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 3.9375
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 3,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 2.875
+      },
+      {
+        "scaled_attack_damage": 2.5,
+        "sweeping_edge_level": 3,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 4.375
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.30000001192092896
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.75
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.8999999761581421
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.25
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 1.0
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.5
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.9000000357627869
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 1.350000023841858
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 2.6999998092651367
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 4.049999713897705
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 3.0
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 4.5
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 1.100000023841858
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 1.5500001907348633
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 3.299999952316284
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 4.650000095367432
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 3.6666667461395264
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 5.1666669845581055
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 1.2000000476837158
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 1.6500000953674316
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 3.5999999046325684
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 4.949999809265137
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 4.0
+      },
+      {
+        "scaled_attack_damage": 4.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 5.5
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.30000001192092896
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.75
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.8999999761581421
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.25
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 1.0
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.5
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 1.350000023841858
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 1.8000000715255737
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 4.049999713897705
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 5.399999618530273
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 4.5
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 6.0
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 1.7000001668930054
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.1500000953674316
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 5.100000381469727
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 6.450000286102295
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 5.6666669845581055
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 7.1666669845581055
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 1.8750001192092896
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.325000047683716
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 5.625
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 6.974999904632568
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 6.25
+      },
+      {
+        "scaled_attack_damage": 7.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 7.75
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.30000001192092896
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.75
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.8999999761581421
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.25
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 1.0
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 0,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.5
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 2.1000001430511475
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 2.5500001907348633
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 6.299999713897705
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 7.649999618530273
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 7.0
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 1,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 8.5
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 2.700000047683716
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 3.1500000953674316
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 8.09999942779541
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 9.449999809265137
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 9.0
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 2,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 10.5
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 0.0
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 3.0
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.3,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 3.450000047683716
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 9.0
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 0.9,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 10.34999942779541
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 0.0,
+        "damage": 10.0
+      },
+      {
+        "scaled_attack_damage": 12.0,
+        "sweeping_edge_level": 3,
+        "attack_strength": 1.0,
+        "victim_enchantment_bonus": 1.5,
+        "damage": 11.5
+      }
+    ],
+    "sweep_reach": [
+      {
+        "victim_position": [
+          1.3,
+          0.0,
+          0.0
+        ],
+        "victim_half_width": 0.3,
+        "victim_height": 1.95,
+        "attacker_position": [
+          -1.0,
+          0.0,
+          0.0
+        ],
+        "in_box": true,
+        "distance_sqr": 5.289999999999999,
+        "swept": true
+      },
+      {
+        "victim_position": [
+          1.6,
+          0.0,
+          0.0
+        ],
+        "victim_half_width": 0.3,
+        "victim_height": 1.95,
+        "attacker_position": [
+          -1.0,
+          0.0,
+          0.0
+        ],
+        "in_box": false,
+        "distance_sqr": 6.760000000000001,
+        "swept": false
+      },
+      {
+        "victim_position": [
+          1.5999,
+          0.0,
+          0.0
+        ],
+        "victim_half_width": 0.3,
+        "victim_height": 1.95,
+        "attacker_position": [
+          -1.0,
+          0.0,
+          0.0
+        ],
+        "in_box": true,
+        "distance_sqr": 6.759480009999999,
+        "swept": true
+      },
+      {
+        "victim_position": [
+          0.0,
+          2.2,
+          0.0
+        ],
+        "victim_half_width": 0.3,
+        "victim_height": 1.95,
+        "attacker_position": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "in_box": false,
+        "distance_sqr": 5.840000000000001,
+        "swept": false
+      },
+      {
+        "victim_position": [
+          0.0,
+          2.1,
+          0.0
+        ],
+        "victim_half_width": 0.3,
+        "victim_height": 1.95,
+        "attacker_position": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "in_box": true,
+        "distance_sqr": 5.41,
+        "swept": true
+      },
+      {
+        "victim_position": [
+          0.0,
+          -2.2,
+          0.0
+        ],
+        "victim_half_width": 0.3,
+        "victim_height": 1.95,
+        "attacker_position": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "in_box": false,
+        "distance_sqr": 5.840000000000001,
+        "swept": false
+      },
+      {
+        "victim_position": [
+          0.0,
+          -2.1,
+          0.0
+        ],
+        "victim_half_width": 0.3,
+        "victim_height": 1.95,
+        "attacker_position": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "in_box": true,
+        "distance_sqr": 5.41,
+        "swept": true
+      },
+      {
+        "victim_position": [
+          1.0,
+          0.0,
+          1.0
+        ],
+        "victim_half_width": 0.45,
+        "victim_height": 0.9,
+        "attacker_position": [
+          -1.0,
+          0.0,
+          -1.0
+        ],
+        "in_box": true,
+        "distance_sqr": 8.0,
+        "swept": true
+      },
+      {
+        "victim_position": [
+          2.6,
+          0.0,
+          0.0
+        ],
+        "victim_half_width": 0.3,
+        "victim_height": 1.95,
+        "attacker_position": [
+          -0.4,
+          0.0,
+          0.0
+        ],
+        "in_box": false,
+        "distance_sqr": 9.0,
+        "swept": false
+      },
+      {
+        "victim_position": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "victim_half_width": 0.3,
+        "victim_height": 1.95,
+        "attacker_position": [
+          -2.0,
+          0.0,
+          0.0
+        ],
+        "in_box": true,
+        "distance_sqr": 9.0,
+        "swept": false
+      },
+      {
+        "victim_position": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "victim_half_width": 0.3,
+        "victim_height": 1.95,
+        "attacker_position": [
+          -1.9999,
+          0.0,
+          0.0
+        ],
+        "in_box": true,
+        "distance_sqr": 8.999400010000002,
+        "swept": true
+      },
+      {
+        "victim_position": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "victim_half_width": 0.3,
+        "victim_height": 1.95,
+        "attacker_position": [
+          -2.0001,
+          0.0,
+          0.0
+        ],
+        "in_box": true,
+        "distance_sqr": 9.000600010000001,
+        "swept": false
+      }
+    ],
+    "attack_sounds": [
+      {
+        "strong": false,
+        "sprinting": false,
+        "critical": false,
+        "sweep": false,
+        "primary_hit_landed": false,
+        "events": [
+          "player.attack.nodamage"
+        ]
+      },
+      {
+        "strong": false,
+        "sprinting": false,
+        "critical": false,
+        "sweep": false,
+        "primary_hit_landed": true,
+        "events": [
+          "player.attack.weak"
+        ]
+      },
+      {
+        "strong": false,
+        "sprinting": false,
+        "critical": false,
+        "sweep": true,
+        "primary_hit_landed": false,
+        "events": [
+          "player.attack.nodamage"
+        ]
+      },
+      {
+        "strong": false,
+        "sprinting": false,
+        "critical": false,
+        "sweep": true,
+        "primary_hit_landed": true,
+        "events": [
+          "player.attack.sweep"
+        ]
+      },
+      {
+        "strong": false,
+        "sprinting": false,
+        "critical": true,
+        "sweep": false,
+        "primary_hit_landed": false,
+        "events": [
+          "player.attack.nodamage"
+        ]
+      },
+      {
+        "strong": false,
+        "sprinting": false,
+        "critical": true,
+        "sweep": false,
+        "primary_hit_landed": true,
+        "events": [
+          "player.attack.crit"
+        ]
+      },
+      {
+        "strong": false,
+        "sprinting": false,
+        "critical": true,
+        "sweep": true,
+        "primary_hit_landed": false,
+        "events": [
+          "player.attack.nodamage"
+        ]
+      },
+      {
+        "strong": false,
+        "sprinting": false,
+        "critical": true,
+        "sweep": true,
+        "primary_hit_landed": true,
+        "events": [
+          "player.attack.crit",
+          "player.attack.sweep"
+        ]
+      },
+      {
+        "strong": false,
+        "sprinting": true,
+        "critical": false,
+        "sweep": false,
+        "primary_hit_landed": false,
+        "events": [
+          "player.attack.nodamage"
+        ]
+      },
+      {
+        "strong": false,
+        "sprinting": true,
+        "critical": false,
+        "sweep": false,
+        "primary_hit_landed": true,
+        "events": [
+          "player.attack.weak"
+        ]
+      },
+      {
+        "strong": false,
+        "sprinting": true,
+        "critical": false,
+        "sweep": true,
+        "primary_hit_landed": false,
+        "events": [
+          "player.attack.nodamage"
+        ]
+      },
+      {
+        "strong": false,
+        "sprinting": true,
+        "critical": false,
+        "sweep": true,
+        "primary_hit_landed": true,
+        "events": [
+          "player.attack.sweep"
+        ]
+      },
+      {
+        "strong": false,
+        "sprinting": true,
+        "critical": true,
+        "sweep": false,
+        "primary_hit_landed": false,
+        "events": [
+          "player.attack.nodamage"
+        ]
+      },
+      {
+        "strong": false,
+        "sprinting": true,
+        "critical": true,
+        "sweep": false,
+        "primary_hit_landed": true,
+        "events": [
+          "player.attack.crit"
+        ]
+      },
+      {
+        "strong": false,
+        "sprinting": true,
+        "critical": true,
+        "sweep": true,
+        "primary_hit_landed": false,
+        "events": [
+          "player.attack.nodamage"
+        ]
+      },
+      {
+        "strong": false,
+        "sprinting": true,
+        "critical": true,
+        "sweep": true,
+        "primary_hit_landed": true,
+        "events": [
+          "player.attack.crit",
+          "player.attack.sweep"
+        ]
+      },
+      {
+        "strong": true,
+        "sprinting": false,
+        "critical": false,
+        "sweep": false,
+        "primary_hit_landed": false,
+        "events": [
+          "player.attack.nodamage"
+        ]
+      },
+      {
+        "strong": true,
+        "sprinting": false,
+        "critical": false,
+        "sweep": false,
+        "primary_hit_landed": true,
+        "events": [
+          "player.attack.strong"
+        ]
+      },
+      {
+        "strong": true,
+        "sprinting": false,
+        "critical": false,
+        "sweep": true,
+        "primary_hit_landed": false,
+        "events": [
+          "player.attack.nodamage"
+        ]
+      },
+      {
+        "strong": true,
+        "sprinting": false,
+        "critical": false,
+        "sweep": true,
+        "primary_hit_landed": true,
+        "events": [
+          "player.attack.sweep"
+        ]
+      },
+      {
+        "strong": true,
+        "sprinting": false,
+        "critical": true,
+        "sweep": false,
+        "primary_hit_landed": false,
+        "events": [
+          "player.attack.nodamage"
+        ]
+      },
+      {
+        "strong": true,
+        "sprinting": false,
+        "critical": true,
+        "sweep": false,
+        "primary_hit_landed": true,
+        "events": [
+          "player.attack.crit"
+        ]
+      },
+      {
+        "strong": true,
+        "sprinting": false,
+        "critical": true,
+        "sweep": true,
+        "primary_hit_landed": false,
+        "events": [
+          "player.attack.nodamage"
+        ]
+      },
+      {
+        "strong": true,
+        "sprinting": false,
+        "critical": true,
+        "sweep": true,
+        "primary_hit_landed": true,
+        "events": [
+          "player.attack.crit",
+          "player.attack.sweep"
+        ]
+      },
+      {
+        "strong": true,
+        "sprinting": true,
+        "critical": false,
+        "sweep": false,
+        "primary_hit_landed": false,
+        "events": [
+          "player.attack.knockback",
+          "player.attack.nodamage"
+        ]
+      },
+      {
+        "strong": true,
+        "sprinting": true,
+        "critical": false,
+        "sweep": false,
+        "primary_hit_landed": true,
+        "events": [
+          "player.attack.knockback",
+          "player.attack.strong"
+        ]
+      },
+      {
+        "strong": true,
+        "sprinting": true,
+        "critical": false,
+        "sweep": true,
+        "primary_hit_landed": false,
+        "events": [
+          "player.attack.knockback",
+          "player.attack.nodamage"
+        ]
+      },
+      {
+        "strong": true,
+        "sprinting": true,
+        "critical": false,
+        "sweep": true,
+        "primary_hit_landed": true,
+        "events": [
+          "player.attack.knockback",
+          "player.attack.sweep"
+        ]
+      },
+      {
+        "strong": true,
+        "sprinting": true,
+        "critical": true,
+        "sweep": false,
+        "primary_hit_landed": false,
+        "events": [
+          "player.attack.knockback",
+          "player.attack.nodamage"
+        ]
+      },
+      {
+        "strong": true,
+        "sprinting": true,
+        "critical": true,
+        "sweep": false,
+        "primary_hit_landed": true,
+        "events": [
+          "player.attack.knockback",
+          "player.attack.crit"
+        ]
+      },
+      {
+        "strong": true,
+        "sprinting": true,
+        "critical": true,
+        "sweep": true,
+        "primary_hit_landed": false,
+        "events": [
+          "player.attack.knockback",
+          "player.attack.nodamage"
+        ]
+      },
+      {
+        "strong": true,
+        "sprinting": true,
+        "critical": true,
+        "sweep": true,
+        "primary_hit_landed": true,
+        "events": [
+          "player.attack.knockback",
+          "player.attack.crit",
+          "player.attack.sweep"
+        ]
+      }
+    ],
+    "player_speed": {
+      "walking": 0.10000000149011612,
+      "speed_1": 0.12000000476837158,
+      "slowness_1": 0.08500000089406967,
+      "speed_2": 0.14000000059604645,
+      "slowness_2": 0.07000000029802322,
+      "speed_3": 0.1599999964237213,
+      "slowness_3": 0.054999999701976776
+    }
+  }
 }

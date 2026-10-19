@@ -435,7 +435,7 @@ impl PlayerSession {
             }
         };
         if held == Some(Item::FLINT_AND_STEEL) {
-            if world.get_block(pos) == Some(Block::TNT) {
+            if world.get_block(pos) == Some(Block::TNT) && world.rules.tnt_explodes {
                 world.set_block(pos, Block::AIR);
                 entities.prime_tnt(pos, false);
                 wear(self, 1, tool_broken);

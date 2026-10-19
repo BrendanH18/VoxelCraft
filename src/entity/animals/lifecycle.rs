@@ -58,7 +58,9 @@ impl Entities {
                             }
                         }
                     }
-                } else if self.rng.chance(dt * if m.baby { 0.4 } else { 0.02 })
+                } else if m.ai != crate::entity::mob::Ai::Panic
+                    && m.goals.running.is_none()
+                    && self.rng.chance(dt * if m.baby { 0.4 } else { 0.02 })
                     && (w.block(cell) == Some(Block::TALL_GRASS) || w.block(cell - IVec3::Y) == Some(Block::GRASS))
                 {
                     a.grazing = 2.0;
@@ -142,6 +144,7 @@ impl Entities {
                             ctx.players.iter().find(|t| t.targetable && t.pos.distance_squared(m.pos) < 2.25)
                         {
                             events.push(EntityEvent::PlayerHit {
+                                java: None,
                                 player: t.id,
                                 damage: 2.0,
                                 knockback: (dir * 18.0 + DVec3::Y * 4.0).as_vec3(),

@@ -186,6 +186,7 @@ src/
     mob/nether_ai.rs their per-tick movement, attacks and strider lava physics
     model/nether.rs  their box models
     item.rs          dropped items: physics, merging, despawning, saving
+    chunk_storage.rs entities of unloaded chunks, out of the level until the chunk loads
     model.rs         animated box models -> camera-relative triangles
   mesh.rs            lighting + greedy meshing (runs on workers)
   workers.rs         thread pool
@@ -279,7 +280,8 @@ these ranges. Preserve their meanings; do not reuse the unused patterned slots.
 | 1000–1039 | Retained v0.7 animal items |
 | 1040 | Turtle helmet |
 | 1041–1046 | Audit potion and splash-potion slots |
-| 1047–1049 | Unallocated; keep free |
+| 1047 | Enchanted golden apple (Java 26.3 `ENCHANTED_GOLDEN_APPLE`; 1041 was already an audit potion slot) |
+| 1048–1049 | Unallocated; keep free |
 | 1050–1069 | Java 26.3 copper equipment: tools 1050–1054 (pickaxe, shovel, axe, hoe, sword), copper nugget 1055, armor 1056–1059 (helmet, chestplate, leggings, boots); 1060–1069 reserved (spears) |
 
 Texture layers 1753–1758 append pale oak/bamboo doors and trapdoors; existing
@@ -293,7 +295,10 @@ lighting or waterlogging parity. See the [content/resource evidence](verificatio
 `src/agent.rs` owns execution and timed inputs. Entity tick coordination is in
 `src/entity/lifecycle.rs` and population/cage activation in
 `src/entity/spawning.rs`; individual AI/animal/mount systems retain their
-existing modules. Application startup, disk-save assembly, fixed gameplay
+existing modules. `src/entity/chunk_storage.rs` moves entities whose storage
+chunk unloads out of the level and back when it loads (Java's per-chunk
+entity sections); stored entities are saved in the dimension's existing
+entity properties ([evidence](verification/2026-10-17-entity-storage.md)). Application startup, disk-save assembly, fixed gameplay
 steps and client action adapters are in `src/app/startup.rs`, `save.rs`,
 `tick.rs` and `player_actions.rs`. Window events and frame rendering remain
 in the coordinator. Controller/CLI/desktop action ownership is a separate,

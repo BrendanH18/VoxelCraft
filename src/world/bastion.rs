@@ -37,6 +37,20 @@ pub fn netherite_upgrade(kind: ChestKind) -> LootChance {
 mod tests {
     use super::*;
 
+    /// `bastion_treasure.json` enchanted golden apple 2, `bastion_hoglin_stable.json`
+    /// golden apple 10 and `bastion_other.json` golden apple 9.
+    #[test]
+    fn bastion_chests_award_golden_apples_with_java_weights() {
+        let weight = |table: &[Loot], item| table.iter().find(|l| l.item == Some(item)).map(|l| (l.weight, l.lo, l.hi));
+        assert_eq!(weight(TREASURE_0, Item::ENCHANTED_GOLDEN_APPLE), Some((2, 1, 1)));
+        assert_eq!(TREASURE_0.iter().map(|l| l.weight).sum::<u32>(), 112, "bastion_treasure.json pool 0 totals 112");
+        assert_eq!(weight(HOGLIN_STABLE_0, Item::GOLDEN_APPLE), Some((10, 1, 1)));
+        assert_eq!(weight(OTHER_0, Item::GOLDEN_APPLE), Some((9, 1, 1)));
+        let found =
+            |kind, item| (0..4000u64).any(|seed| loot(seed, kind).slots.iter().flatten().any(|s| s.item == item));
+        assert!(found(ChestKind::Treasure, Item::ENCHANTED_GOLDEN_APPLE));
+    }
+
     #[test]
     fn upgrade_template_matches_java_bastion_tables() {
         for kind in [ChestKind::Bridge, ChestKind::HoglinStable, ChestKind::Other] {
@@ -566,7 +580,10 @@ const TREASURE_0: &[Loot] = &[
         damage: None,
     }, // diamond_leggings
     Loot { item: Some(Item::DIAMOND), weight: 5, lo: 2, hi: 6, enchanted: false, damage: None },         // diamond
-    Loot { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None }, // enchanted_golden_apple
+    // Two diamond_spear entries (6 each) have no item yet and stay weighted blanks.
+    Loot { item: None, weight: 6, lo: 1, hi: 1, enchanted: false, damage: None },
+    Loot { item: None, weight: 6, lo: 1, hi: 1, enchanted: false, damage: None },
+    Loot { item: Some(Item::ENCHANTED_GOLDEN_APPLE), weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },
 ];
 const TREASURE_1: &[Loot] = &[
     Loot { item: None, weight: 1, lo: 12, hi: 25, enchanted: false, damage: None }, // spectral_arrow

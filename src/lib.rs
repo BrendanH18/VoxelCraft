@@ -13,6 +13,7 @@ pub mod entity;
 pub mod grindstone;
 pub mod inventory;
 pub mod item;
+pub mod knockback;
 pub mod lan;
 pub mod mesh;
 pub mod mining;

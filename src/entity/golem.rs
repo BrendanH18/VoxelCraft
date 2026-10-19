@@ -176,10 +176,7 @@ impl Entities {
                                 .is_some_and(|p| p.pos.distance_squared(pos) < self.mobs[j].pos.distance_squared(pos))
                         })
                         .map(|j| self.mobs[j].pos),
-                    MobKind::WanderingTrader => self
-                        .mob_index
-                        .nearest(&self.mobs, pos, 8.0, |m| m.kind.is_hostile())
-                        .map(|j| pos + (pos - self.mobs[j].pos).normalize_or_zero() * 10.0),
+                    // Wandering traders flee through `AvoidEntityGoal` (`mob::goals`).
                     // Java creepers do not flee golems (they flee cats/ocelots).
                     _ => None,
                 }
@@ -205,6 +202,7 @@ impl Entities {
             {
                 let dir = (player.pos - pos).normalize_or_zero();
                 events.push(EntityEvent::PlayerHit {
+                    java: None,
                     player: player.id,
                     damage: iron_damage(&mut self.rng),
                     knockback: (dir * 6.0 + DVec3::Y * 8.0).as_vec3(),

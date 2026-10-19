@@ -677,6 +677,7 @@ impl Entities {
                     if b.is_bed_head()
                         && (dist < hd || dist == hd && home.is_some_and(|h: IVec3| p.to_array() < h.to_array()))
                         && !self.claimed_beds.contains(&p)
+                        && !self.storage.claims_bed(p)
                     {
                         hd = dist;
                         home = Some(p);
@@ -685,6 +686,7 @@ impl Entities {
                         && (dist < jd
                             || dist == jd && job.is_some_and(|j: (IVec3, Profession)| p.to_array() < j.0.to_array()))
                         && !self.claimed_jobs.contains(&p)
+                        && !self.storage.claims_job(p)
                     {
                         jd = dist;
                         job = Some((p, prof.unwrap()));
@@ -774,6 +776,7 @@ impl Entities {
         let mobs: Vec<Value> = self
             .mobs
             .iter()
+            .chain(self.storage.mobs())
             .filter(|m| m.alive())
             .filter_map(|m| match m.kind {
                 MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama => Some(json!({

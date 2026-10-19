@@ -16,6 +16,7 @@ use crate::{
     player::Player,
     rules::GameMode,
     simulation::survival::Vitals,
+    world::block::Facing,
 };
 
 pub struct PlayerSession {
@@ -27,17 +28,49 @@ pub struct PlayerSession {
     /// Transient workstation inputs are owned by the player, not a device.
     pub work: [Option<Stack>; 3],
     pub sleeping: Option<f32>,
+    /// The bed `sleeping` lies in, so waking can stand the player up beside it.
+    sleep_spot: Option<SleepSpot>,
     pub spawn_bed: Option<IVec3>,
     pub spawn_point: Option<IVec3>,
+    /// Respawns since this session started (not saved). LAN uses it to tell
+    /// a client its body was replaced, whichever path respawned it.
+    pub respawns: u32,
     combat: combat::State,
     ranged: ranged::State,
     consumption: consumption::State,
     mining: mining::State,
 }
 
+/// Where a sleeper lay down: the bed's head block and the spot on it.
+#[derive(Clone, Copy)]
+struct SleepSpot {
+    head: IVec3,
+    /// From the bed's foot to its head.
+    facing: Facing,
+    lie: DVec3,
+}
+
+/// How far a sleeper may drift from where they lay down (collision settles
+/// them a hair above the bed) and still count as lying there; a teleport or
+/// dimension change moves them further.
+const LIE_DRIFT: f64 = 0.05;
+
+/// The angle (Java degrees) a bed respawn assumes the player had when they set
+/// it. Java stores that yaw with the spawn; VoxelCraft's saves hold only the
+/// bed, and Java's own data fixer gives old spawns 0 as well.
+const STORED_BED_ANGLE: f32 = 0.0;
+
+/// Java's default spawn angle (yaw 0, facing south along +Z) in VoxelCraft's
+/// yaw convention, where yaw 0 faces +X. Used for the world spawn and set
+/// spawn points, which store no angle of their own.
+pub const DEFAULT_SPAWN_YAW: f32 = std::f32::consts::FRAC_PI_2;
+
 /// Personal spawn selection; adapters supply their existing world-spawn fallback.
 pub struct PersonalSpawn {
     pub position: Option<DVec3>,
+    /// The yaw to respawn with: Java's `RespawnPosAngle`, which looks at the
+    /// bed from where the player stands, else [`DEFAULT_SPAWN_YAW`].
+    pub yaw: f32,
     pub missing_bed: bool,
 }
 
@@ -74,8 +107,10 @@ impl PlayerSession {
             mode: GameMode::Survival,
             work: [None; 3],
             sleeping: None,
+            sleep_spot: None,
             spawn_bed: None,
             spawn_point: None,
+            respawns: 0,
             combat: Default::default(),
             ranged: Default::default(),
             consumption: Default::default(),
@@ -92,8 +127,10 @@ impl PlayerSession {
             mode,
             work: [None; 3],
             sleeping: None,
+            sleep_spot: None,
             spawn_bed: None,
             spawn_point: None,
+            respawns: 0,
             combat: Default::default(),
             ranged: Default::default(),
             consumption: Default::default(),
@@ -110,8 +147,8 @@ impl PlayerSession {
         self.player.flying = mode == GameMode::Spectator || (self.player.flying && self.player.can_fly);
     }
 
-    /// Java 26.3 `ServerPlayer.die`, shared by every adapter: actions stop
-    /// and status effects end; unless the player is a spectator or
+    /// Java 26.3 `ServerPlayer.die`, shared by every adapter: actions stop;
+    /// status effects stay until the respawn replaces the body. Unless the player is a spectator or
     /// `keepInventory` is on, the inventory, workstation inputs and `extra`
     /// (an adapter's crafting grid) drop where it died, except Curse of
     /// Vanishing items, with `min(7 × level, 100)` experience. Kept,
@@ -121,7 +158,7 @@ impl PlayerSession {
         self.cancel_consumption();
         self.cancel_mining();
         self.sleeping = None;
-        self.vitals.effects.clear();
+        self.sleep_spot = None;
         let pos = self.player.pos;
         if keep_inventory || self.mode == GameMode::Spectator {
             for stack in extra {
@@ -147,14 +184,15 @@ impl PlayerSession {
     /// the mode's abilities. Experience and the death-screen score carry
     /// over only with `keepInventory` or for a spectator
     /// (`transferInventoryXpAndScore`); otherwise only the enchantment seed
-    /// does. The spawn bed and point are kept, and so is the look direction.
-    pub fn respawn(&mut self, at: DVec3, keep_inventory: bool) {
+    /// does. The spawn bed and point are kept. The new body faces `yaw` with
+    /// level pitch, as Java's respawn transition applies the respawn angle.
+    pub fn respawn(&mut self, at: DVec3, yaw: f32, keep_inventory: bool) {
         self.cancel_consumption();
         self.cancel_mining();
-        let (yaw, pitch) = (self.player.yaw, self.player.pitch);
+        self.respawns = self.respawns.wrapping_add(1);
         self.player = Player::new(at);
-        self.player.yaw = yaw;
-        self.player.pitch = pitch;
+        self.player.yaw = yaw.rem_euclid(std::f32::consts::TAU);
+        self.player.pitch = 0.0;
         self.player.can_fly = self.mode.can_fly();
         self.player.noclip = self.mode == GameMode::Spectator;
         self.player.flying = self.mode == GameMode::Spectator;
@@ -166,28 +204,82 @@ impl PlayerSession {
             self.vitals.xp.seed = xp.seed;
         }
         self.sleeping = None;
+        self.sleep_spot = None;
         self.combat = Default::default();
         self.ranged = Default::default();
     }
 
+    /// Lie down at `at` on the bed with this head block and foot-to-head
+    /// direction (none for a bed that lost its other half), stopping any
+    /// movement.
+    pub fn begin_sleep(&mut self, bed: Option<(IVec3, Facing)>, at: DVec3) {
+        self.player.pos = at;
+        self.player.vel = DVec3::ZERO;
+        self.player.flying = false;
+        self.sleeping = Some(0.0);
+        self.sleep_spot = bed.map(|(head, facing)| SleepSpot { head, facing, lie: at });
+    }
+
+    /// Get out of bed now (`LivingEntity.stopSleeping`).
+    pub fn wake(&mut self, world: &crate::world::World) {
+        self.sleeping = None;
+        self.settle_wake(world);
+    }
+
+    /// Java's `LivingEntity.stopSleeping` position change, for wake-ups that
+    /// only clear `sleeping` (damage, jumping, a command): a player still
+    /// lying where they lay down moves to the bed's stand-up position and
+    /// looks at the bed, level. The spot is the first free one round the bed,
+    /// else just above the head; a bed that is gone leaves the player put.
+    pub fn settle_wake(&mut self, world: &crate::world::World) {
+        use crate::world::dismount;
+        if self.sleeping.is_some() {
+            return;
+        }
+        let Some(spot) = self.sleep_spot.take().filter(|s| s.lie.distance(self.player.pos) < LIE_DRIFT) else { return };
+        if !world.get_block(spot.head).is_some_and(|b| b.is_bed_head()) {
+            return;
+        }
+        let java_yaw = dismount::java_yaw_degrees(self.player.yaw);
+        let (stand, yaw) = dismount::bed_stand_up(world, spot.head, spot.facing, java_yaw).unwrap_or_else(|| {
+            let above = spot.head + IVec3::Y;
+            let stand = DVec3::new(above.x as f64 + 0.5, above.y as f64 + 0.1, above.z as f64 + 0.5);
+            (stand, dismount::look_at_bed(stand, spot.head))
+        });
+        self.player.pos = stand;
+        self.player.yaw = yaw.rem_euclid(std::f32::consts::TAU);
+        self.player.pitch = 0.0;
+    }
+
+    /// Java's `ServerPlayer.findRespawnAndUseSpawnBlock` for a bed: the spot
+    /// beside the bed's head where `AbstractBedBlock.findStandUpPosition`
+    /// finds room, facing the bed. A bed that is gone, or boxed in so nobody
+    /// fits, is the missing-bed outcome: the spawn is forgotten and the
+    /// adapter falls back to the world spawn.
     pub fn personal_spawn(&mut self, world: &crate::world::World) -> PersonalSpawn {
-        use crate::world::{block::Block, terrain::Dimension};
+        use crate::world::{dismount, terrain::Dimension};
         if world.generator.dimension != Dimension::Overworld {
-            return PersonalSpawn { position: None, missing_bed: false };
+            return PersonalSpawn { position: None, yaw: DEFAULT_SPAWN_YAW, missing_bed: false };
         }
         let mut missing_bed = false;
         if let Some(foot) = self.spawn_bed {
-            if world.get_block(foot).is_some_and(|b| b.is_bed() && !b.is_bed_head()) {
-                return PersonalSpawn {
-                    position: Some(foot.as_dvec3() + DVec3::new(0.5, Block::BED_FOOT.height(), 0.5)),
-                    missing_bed: false,
-                };
+            // VoxelCraft stores the foot; Java stores (and checks) the head.
+            let bed = world
+                .get_block(foot)
+                .filter(|b| b.is_bed() && !b.is_bed_head())
+                .and_then(|half| world.bed_partner(foot, half))
+                .and_then(|head| dismount::bed_orientation(foot, head));
+            if let Some((position, yaw)) =
+                bed.and_then(|(head, facing)| dismount::bed_stand_up(world, head, facing, STORED_BED_ANGLE))
+            {
+                return PersonalSpawn { position: Some(position), yaw, missing_bed: false };
             }
             self.spawn_bed = None;
             missing_bed = true;
         }
         PersonalSpawn {
             position: self.spawn_point.map(|point| point.as_dvec3() + DVec3::new(0.5, 0., 0.5)),
+            yaw: DEFAULT_SPAWN_YAW,
             missing_bed,
         }
     }

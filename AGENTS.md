@@ -51,6 +51,13 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
   author identity.
 - Delegate only when requested. Give each implementation agent an isolated
   worktree, explicit scope and reserved IDs; delegated agents do not delegate further.
+- Run at most four agents at once (owner, 2026-10-17): the owner's machine has
+  16 GB of RAM. Queue further work until a slot frees.
+- Agents must not each build the project (owner, 2026-10-17). Agent worktrees
+  share one cargo target directory, so dependencies build once and builds take
+  turns under cargo's lock: put the worktrees under one folder whose
+  `.cargo/config.toml` sets `build.target-dir` (or set `CARGO_TARGET_DIR`),
+  and tell agents that "Blocking waiting for file lock" means wait, not retry.
 
 ## Before handing work back
 
