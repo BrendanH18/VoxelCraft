@@ -2,13 +2,22 @@
 //! fires also tick every 30..39 game ticks, as in Java Minecraft. Only
 //! scheduled fires cost work, and age-only edits never rebuild meshes.
 //!
+//! Scheduled fire ticks follow Java 26.3 `LevelTicks`: each 16-block chunk
+//! column keeps its own container, containers outside the block-ticking
+//! region wait without costing anything, and the ticks that are due run in
+//! Java's collection order (`LevelTicks.drainContainers`): each container
+//! yields by trigger tick, then scheduling order (the sub-tick order), and the
+//! containers take turns by the sub-tick order of their next tick, at most
+//! [`MAX_TICKS_PER_TICK`] per game tick. Fire ticks are not saved: loading a
+//! chunk reschedules every fire in it, so saves are unchanged.
+//!
 //! Reference: MinecraftForge's 1.21.1 FireBlock/LavaFluid patches at
 //! https://github.com/MinecraftForge/MinecraftForge/tree/1.21.1/patches/minecraft/net/minecraft/world/level
 
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
-use glam::{DVec3, IVec3};
+use glam::{DVec3, IVec2, IVec3};
 use rustc_hash::FxHashMap;
 
 use super::World;
@@ -19,16 +28,38 @@ use super::chunk::{CHUNK_SIZE_I, ChunkData};
 
 const SIDES: [IVec3; 6] = [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z];
 const HORIZONTAL: [IVec3; 4] = [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z];
-const MAX_UPDATES: usize = 4096;
+/// The `maxAllowedTicks` Java's `ServerLevel.tickBlocks` passes to
+/// `LevelTicks.tick`; ticks beyond it stay scheduled for the next game tick.
+const MAX_TICKS_PER_TICK: usize = 65_536;
+
+/// A fire's schedule: when it is due and the order it was scheduled in
+/// (Java's `subTickOrder`), which breaks ties between equal trigger ticks.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct Scheduled {
+    due: u64,
+    sequence: u64,
+}
+
+/// One container entry: trigger tick, sub-tick order and position.
+type Entry = Reverse<(u64, u64, [i32; 3])>;
+
+/// Java's chunk column of a block (`ChunkPos`), the key of a tick container.
+fn java_chunk(p: IVec3) -> IVec2 {
+    IVec2::new(p.x >> 4, p.z >> 4)
+}
 
 #[derive(Default)]
 pub(super) struct FireState {
-    /// Authoritative deadlines; removed/replaced fires leave harmless
-    /// stale heap entries that disappear at their original deadline.
-    pending: FxHashMap<IVec3, u64>,
-    queue: BinaryHeap<Reverse<(u64, [i32; 3])>>,
+    /// Authoritative schedules; removed/replaced fires leave harmless stale
+    /// container entries that disappear when they come due.
+    pending: FxHashMap<IVec3, Scheduled>,
+    /// `LevelTicks.allContainers`: each chunk column's scheduled fires, the
+    /// next one due first.
+    containers: FxHashMap<IVec2, BinaryHeap<Entry>>,
     tick: u64,
     remainder: f64,
+    /// Java's `subTickCount`.
+    sequence: u64,
 }
 
 impl World {
@@ -37,8 +68,10 @@ impl World {
             return;
         }
         let due = self.fire.tick + 30 + self.roll() % 10;
-        self.fire.pending.insert(p, due);
-        self.fire.queue.push(Reverse((due, p.to_array())));
+        let sequence = self.fire.sequence;
+        self.fire.sequence += 1;
+        self.fire.pending.insert(p, Scheduled { due, sequence });
+        self.fire.containers.entry(java_chunk(p)).or_default().push(Reverse((due, sequence, p.to_array())));
     }
 
     pub(super) fn track_fire(&mut self, p: IVec3, old: Block, new: Block) {
@@ -67,7 +100,7 @@ impl World {
         });
     }
 
-    /// Advances only due fires in the same simulation radius as growth.
+    /// Advances scheduled fires one game tick at a time, like `LevelTicks`.
     /// Distant fires keep their ages until the player returns.
     pub fn tick_fire(&mut self, dt: f64, player: DVec3) {
         if dt <= 0.0 {
@@ -76,38 +109,68 @@ impl World {
         self.fire.remainder += dt * 20.0;
         let ticks = self.fire.remainder as u64;
         self.fire.remainder -= ticks as f64;
-        self.fire.tick += ticks;
         self.simulation_player(player);
-        let mut sleeping = Vec::new();
-        for _ in 0..MAX_UPDATES {
-            let Some(&Reverse((due, xyz))) = self.fire.queue.peek() else { break };
-            if due > self.fire.tick {
-                break;
+        for _ in 0..ticks {
+            self.fire.tick += 1;
+            self.run_fire_ticks();
+        }
+    }
+
+    /// `LevelTicks.tick` for the current game tick: collect the due ticks of
+    /// the containers in the block-ticking region in global order (up to the
+    /// per-tick limit), then run them.
+    fn run_fire_ticks(&mut self) {
+        let now = self.fire.tick;
+        // `sortContainersToTick`: containers whose next tick is due and that
+        // may tick. Others cost one peek and keep waiting.
+        // Keyed by the sub-tick order, as `CONTAINER_DRAIN_ORDER` compares
+        // the containers' next ticks by `INTRA_TICK_DRAIN_ORDER`.
+        let mut heads: BinaryHeap<Reverse<(u64, [i32; 2])>> = BinaryHeap::new();
+        for (&chunk, container) in &self.fire.containers {
+            if let Some(&Reverse((due, sequence, _))) = container.peek()
+                && due <= now
+                && self.activity.contains(IVec3::new(chunk.x << 4, 0, chunk.y << 4), true)
+            {
+                heads.push(Reverse((sequence, chunk.to_array())));
             }
-            self.fire.queue.pop();
+        }
+        // `drainContainers`: the container with the lowest next sub-tick order
+        // goes first; after each tick the heads are compared again, which is
+        // what `drainFromCurrentContainer` does.
+        let mut due_ticks = Vec::new();
+        while due_ticks.len() < MAX_TICKS_PER_TICK {
+            let Some(Reverse((_, chunk))) = heads.pop() else { break };
+            let chunk = IVec2::from_array(chunk);
+            let Some(container) = self.fire.containers.get_mut(&chunk) else { continue };
+            let Some(Reverse(next)) = container.pop() else { continue };
+            due_ticks.push(next);
+            if let Some(&Reverse((due, sequence, _))) = container.peek()
+                && due <= now
+            {
+                heads.push(Reverse((sequence, chunk.to_array())));
+            }
+            if container.is_empty() {
+                self.fire.containers.remove(&chunk);
+            }
+        }
+        for (due, sequence, xyz) in due_ticks {
             let p = IVec3::from_array(xyz);
-            if self.fire.pending.get(&p) != Some(&due) {
-                continue;
-            }
-            if !self.is_loaded(p) {
-                // Unloaded fire reschedules when its chunk loads again.
-                self.fire.pending.remove(&p);
-                continue;
-            }
-            if !self.is_block_ticking(p) {
-                sleeping.push(Reverse((due, xyz)));
+            if self.fire.pending.get(&p) != Some(&Scheduled { due, sequence }) {
                 continue;
             }
             self.fire.pending.remove(&p);
-            if !self.get_block(p).is_some_and(|b| b.fire_age().is_some()) {
+            // An unloaded fire reschedules when its chunk loads again.
+            if !self.is_loaded(p) || !self.get_block(p).is_some_and(|b| b.fire_age().is_some()) {
                 continue;
             }
-            self.random_tick(p);
+            // `FireBlock.tick` reschedules itself before `canSpreadFireAround`.
+            if self.fire_may_spread(p) {
+                self.random_tick(p);
+            }
             if self.get_block(p).is_some_and(|b| b.fire_age().is_some()) {
                 self.schedule_fire(p);
             }
         }
-        self.fire.queue.extend(sleeping);
     }
 
     fn fire_fuel(&self, p: IVec3) -> u8 {
@@ -213,7 +276,7 @@ impl World {
                 Block::AIR
             };
             if self.edit(q, new, false) {
-                if b == Block::TNT {
+                if b == Block::TNT && self.rules.tnt_explodes {
                     self.primed_tnt.push((q, false));
                 }
                 self.settle(q);
@@ -221,8 +284,8 @@ impl World {
         }
 
         // Fire can leap one block horizontally and up to four upward,
-        // provided the empty destination is beside fuel. Normal difficulty
-        // adds 14 encouragement; humid biomes halve the spread chance.
+        // provided the empty destination is beside fuel. The world difficulty
+        // adds 7 encouragement per level; humid biomes halve the spread chance.
         for dy in -1..=4 {
             for dz in -1..=1 {
                 for dx in -1..=1 {
@@ -234,7 +297,7 @@ impl World {
                     if fuel == 0 {
                         continue;
                     }
-                    let odds = (fuel as u64 + 40 + 14) / (age as u64 + 30) / if humid { 2 } else { 1 };
+                    let odds = spread_odds(fuel as u64, age as u64, self.rules.difficulty, humid);
                     let bound = 100 + (dy - 1).max(0) as u64 * 100;
                     if odds > 0 && self.roll() % bound <= odds && !self.rain_near_fire(q) {
                         let age = (age + (self.roll() % 5 / 4) as u8).min(15);
@@ -284,6 +347,12 @@ impl World {
             }
         }
     }
+}
+
+/// `FireBlock.tick`'s chance for fire to leap to a neighbouring cell:
+/// `(fuel + 40 + 7 x difficulty id) / (age + 30)`, halved in humid biomes.
+fn spread_odds(fuel: u64, age: u64, difficulty: u8, humid: bool) -> u64 {
+    (fuel + 40 + 7 * u64::from(difficulty)) / (age + 30) / if humid { 2 } else { 1 }
 }
 
 #[cfg(test)]
@@ -438,6 +507,71 @@ mod tests {
     }
 
     #[test]
+    fn fire_spreads_more_readily_on_harder_worlds() {
+        // Peaceful, Easy, Normal, Hard are ids 0..3.
+        assert_eq!([0, 1, 2, 3].map(|id| spread_odds(66, 0, id, false)), [3, 3, 4, 4]);
+        assert_eq!([0, 1, 2, 3].map(|id| spread_odds(89, 0, id, false)), [4, 4, 4, 5]);
+        assert_eq!(spread_odds(89, 0, 3, true), 2, "humid biomes halve it");
+        assert_eq!(spread_odds(89, 30, 3, false), 2, "older fire spreads less");
+        assert_eq!(crate::world::WorldRules::default().difficulty, 2, "Normal until the game says otherwise");
+    }
+
+    #[test]
+    fn fire_burning_tnt_primes_nothing_without_tnt_explodes() {
+        let mut w = world();
+        w.rules.tnt_explodes = false;
+        light(&mut w, AT, Block::NETHERRACK);
+        w.edit(AT + IVec3::X, Block::TNT, false);
+        for _ in 0..100 {
+            w.random_tick(AT);
+        }
+        assert!(w.primed_tnt.is_empty());
+    }
+
+    #[test]
+    fn fire_spread_radius_decides_which_fires_tick() {
+        // Fire on bare stone burns out on its own once it ticks.
+        let out_after = |radius: i32, player: DVec3| {
+            let mut w = world();
+            w.rules.fire_spread_radius = radius;
+            w.set_simulation_players([player]);
+            light(&mut w, AT, Block::STONE);
+            for _ in 0..40 {
+                w.tick_fire(1.0, player);
+            }
+            w.get_block(AT) != Some(Block::FIRE)
+        };
+        let here = AT.as_dvec3();
+        assert!(out_after(128, here), "default radius: fire beside the player ticks");
+        assert!(!out_after(0, here), "radius 0 stops fire like doFireTick=false");
+        // 150 blocks is still inside the default 10-chunk simulation distance.
+        assert!(out_after(-1, here + DVec3::X * 150.0), "-1 ticks fire at any distance the world simulates");
+        assert!(!out_after(128, here + DVec3::X * 150.0), "beyond the radius fire is frozen");
+        assert!(out_after(128, here + DVec3::X * 100.0), "inside the radius");
+        assert!(!out_after(16, here + DVec3::X * 17.0));
+        assert!(out_after(16, here + DVec3::X * 15.0));
+    }
+
+    #[test]
+    fn spectators_do_not_keep_fire_ticking() {
+        let mut w = world();
+        w.rules.fire_spread_radius = 128;
+        let here = AT.as_dvec3();
+        w.set_simulation_players([here]);
+        assert!(w.fire_may_spread(AT));
+        w.set_simulation_spectators([true]);
+        assert!(!w.fire_may_spread(AT), "`ChunkMap.playerIsCloseEnoughTo` skips Spectators");
+        w.set_simulation_players([here + DVec3::X * 500.0, here]);
+        w.set_simulation_spectators([false, true]);
+        assert!(!w.fire_may_spread(AT));
+        w.set_simulation_spectators([true, false]);
+        assert!(w.fire_may_spread(AT), "a second player who is not spectating counts");
+        w.rules.fire_spread_radius = -1;
+        w.set_simulation_spectators([true, true]);
+        assert!(w.fire_may_spread(AT), "-1 needs no player");
+    }
+
+    #[test]
     fn fire_spreads_upward_into_air_beside_fuel() {
         let mut w = world();
         light(&mut w, AT, Block::NETHERRACK);
@@ -507,12 +641,12 @@ mod tests {
     fn scheduled_fire_pauses_at_distance_and_resumes_after_chunk_reload() {
         let mut w = world();
         light(&mut w, AT, Block::NETHERRACK);
-        let due = w.fire.pending[&AT];
+        let due = w.fire.pending[&AT].due;
         assert!((30..=39).contains(&due));
         w.tick_fire(1.49, AT.as_dvec3());
-        assert_eq!(w.fire.pending[&AT], due);
+        assert_eq!(w.fire.pending[&AT].due, due);
         w.tick_fire(0.51, AT.as_dvec3());
-        assert!(w.fire.pending[&AT] > due);
+        assert!(w.fire.pending[&AT].due > due);
         w.edit(AT, Block::fire(9), false);
         w.tick_fire(20.0, (AT + IVec3::X * 256).as_dvec3());
         assert_eq!(w.get_block(AT), Some(Block::fire(9)));
@@ -525,15 +659,118 @@ mod tests {
         w.insert_chunk(cpos, data, true);
         assert_eq!(w.get_block(AT), Some(Block::fire(9)));
         assert!(w.fire.pending.contains_key(&AT), "saved fire reschedules on load");
-        let deadline = w.fire.pending[&AT];
+        let deadline = w.fire.pending[&AT].due;
         w.tick_fire(2.0, AT.as_dvec3());
-        assert!(w.fire.pending[&AT] > deadline);
-        let overdue = w.fire.pending[&AT];
+        assert!(w.fire.pending[&AT].due > deadline);
+        let overdue = w.fire.pending[&AT].due;
         w.fire.tick = overdue;
         w.tick_fire(0.0, AT.as_dvec3());
-        assert_eq!(w.fire.pending[&AT], overdue, "menus pause even an overdue update backlog");
+        assert_eq!(w.fire.pending[&AT].due, overdue, "menus pause even an overdue update backlog");
         w.tick_fire(0.05, AT.as_dvec3());
-        assert!(w.fire.pending[&AT] > overdue);
+        assert!(w.fire.pending[&AT].due > overdue);
+    }
+
+    /// The active chunk 1 of the test column ticks around a player in Java
+    /// chunk 7 (simulation distance 5: block ticking out to 6 chunks);
+    /// chunk 0 sleeps, 7 chunks away.
+    const HERE: DVec3 = DVec3::new(120.5, 150.0, 8.5);
+
+    #[test]
+    fn thousands_of_sleeping_fires_never_delay_an_active_one() {
+        let mut w = world();
+        w.set_simulation_distance(5);
+        let active = IVec3::new(24, 145, 8);
+        light(&mut w, active, Block::NETHERRACK);
+        // The most delayed fire possible: due last, scheduled last.
+        let last = Scheduled { due: 39, sequence: u64::MAX };
+        w.fire.pending.insert(active, last);
+        w.fire.containers.entry(java_chunk(active)).or_default().push(Reverse((
+            last.due,
+            last.sequence,
+            active.to_array(),
+        )));
+        let mut sleepers = 0;
+        for y in (100..196).step_by(2) {
+            for z in 0..16 {
+                for x in 0..16 {
+                    w.edit(IVec3::new(x, y, z), Block::STONE, false);
+                    w.edit(IVec3::new(x, y + 1, z), Block::fire(0), false);
+                    sleepers += 1;
+                }
+            }
+        }
+        assert!(sleepers > 12_000);
+        assert!(w.fire.pending.len() > sleepers, "{} pending for {sleepers}", w.fire.pending.len());
+        for _ in 0..40 {
+            w.tick_fire(0.05, HERE);
+        }
+        assert!(w.fire.tick >= 40);
+        assert!(w.fire.pending[&active].due > last.due, "the active fire ticked on schedule");
+        let asleep = w.fire.pending.iter().filter(|(p, _)| p.x < 16);
+        assert_eq!(asleep.clone().count(), sleepers, "sleeping fires wait with their original deadlines");
+        assert!(asleep.clone().all(|(_, s)| s.due <= 39));
+        assert_eq!(w.get_block(IVec3::new(0, 101, 0)), Some(Block::fire(0)), "and do not age");
+        // Back in range the whole backlog runs in one game tick.
+        w.tick_fire(0.05, DVec3::new(8.5, 150.0, 8.5));
+        assert!(w.fire.pending.values().all(|s| s.due > w.fire.tick), "no overdue fire is left behind");
+    }
+
+    #[test]
+    fn at_most_65536_due_ticks_are_collected_per_game_tick_in_container_order() {
+        let mut w = world();
+        w.set_simulation_distance(5);
+        w.simulation_player(HERE);
+        // Distinct fires in chunk 1 with every due time in 30..=39 and
+        // sequences interleaved the other way, so due time orders first.
+        let total = MAX_TICKS_PER_TICK + 4_464;
+        let mut order = Vec::new();
+        for i in 0..total {
+            let p = IVec3::new(16 + (i % 16) as i32, -60 + (i / 256) as i32, ((i / 16) % 16) as i32);
+            let due = 39 - (i % 10) as u64;
+            let sequence = (total - i) as u64;
+            w.fire.pending.insert(p, Scheduled { due, sequence });
+            w.fire.containers.entry(java_chunk(p)).or_default().push(Reverse((due, sequence, p.to_array())));
+            order.push((due, sequence, p));
+        }
+        order.sort_unstable_by_key(|&(due, sequence, _)| (due, sequence));
+        w.fire.tick = 99;
+        w.tick_fire(0.05, HERE);
+        assert_eq!(w.fire.pending.len(), 4_464, "the limit leaves the rest for the next tick");
+        for &(_, _, p) in &order[MAX_TICKS_PER_TICK..] {
+            assert!(w.fire.pending.contains_key(&p), "{p}: the last in (trigger, sub-tick) order waits");
+        }
+        w.tick_fire(0.05, HERE);
+        assert!(w.fire.pending.is_empty());
+        assert!(w.fire.containers.is_empty());
+    }
+
+    /// `CONTAINER_DRAIN_ORDER` compares containers by their next tick's
+    /// sub-tick order alone, so a late-due tick scheduled first in one
+    /// chunk is collected before an earlier-due one scheduled later in
+    /// another. Only the limit makes that visible.
+    #[test]
+    fn containers_take_turns_by_the_sub_tick_order_of_their_next_tick() {
+        let mut w = world();
+        w.set_simulation_distance(5);
+        w.simulation_player(HERE);
+        let first = IVec3::new(16, 100, 16); // chunk (1, 1)
+        let put = |w: &mut World, p: IVec3, due: u64, sequence: u64| {
+            w.fire.pending.insert(p, Scheduled { due, sequence });
+            w.fire.containers.entry(java_chunk(p)).or_default().push(Reverse((due, sequence, p.to_array())));
+        };
+        // Chunk (1, 1): one tick, due last, scheduled first.
+        put(&mut w, first, 39, 0);
+        // Chunk (1, 0): a full tick's worth, due earlier, scheduled later.
+        let mut last = IVec3::ZERO;
+        for i in 0..MAX_TICKS_PER_TICK {
+            last = IVec3::new(16 + (i % 16) as i32, -60 + (i / 256) as i32, ((i / 16) % 16) as i32);
+            put(&mut w, last, 30, 1 + i as u64);
+        }
+        w.fire.tick = 99;
+        w.tick_fire(0.05, HERE);
+        assert!(!w.fire.pending.contains_key(&first), "collected first, despite the later due time");
+        assert!(w.fire.pending.contains_key(&last), "so the limit leaves the other chunk's last tick");
+        assert_eq!(w.fire.pending.len(), 1);
     }
 
     #[test]

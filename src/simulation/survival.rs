@@ -145,11 +145,14 @@ pub struct Hunger {
     pub exhaustion: f32,
     /// Counts up to the next regeneration or starvation tick.
     timer: f32,
+    /// The world is Peaceful, where exhaustion spends saturation but never
+    /// food (Java's `FoodData.tick` skips that step on Peaceful).
+    peaceful: bool,
 }
 
 impl Default for Hunger {
     fn default() -> Self {
-        Self { food: MAX_FOOD, saturation: START_SATURATION, exhaustion: 0.0, timer: 0.0 }
+        Self { food: MAX_FOOD, saturation: START_SATURATION, exhaustion: 0.0, timer: 0.0, peaceful: false }
     }
 }
 
@@ -166,6 +169,7 @@ impl Hunger {
             saturation: saturation.clamp(0.0, food),
             exhaustion: exhaustion.clamp(0.0, EXHAUSTION_PER_POINT),
             timer: 0.0,
+            peaceful: false,
         }
     }
 
@@ -176,7 +180,7 @@ impl Hunger {
             self.exhaustion -= EXHAUSTION_PER_POINT;
             if self.saturation > 0.0 {
                 self.saturation = (self.saturation - 1.0).max(0.0);
-            } else {
+            } else if !self.peaceful {
                 self.food = (self.food - 1.0).max(0.0);
             }
         }
@@ -253,6 +257,10 @@ pub struct Vitals {
     fire_timer: f32,
     /// Damage of the hit that started the current immunity window.
     last_damage: f32,
+    /// False when the last hit that landed was a stronger hit inside an
+    /// existing immunity window, which deals only the difference, without the
+    /// default knockback (`hurtServer`'s flag); true otherwise.
+    fresh_hit: bool,
     /// Highest feet Y since last standing on the ground (None while
     /// flying or swimming).
     fall_peak: Option<f64>,
@@ -262,6 +270,7 @@ pub struct Vitals {
     /// Set while dead: what killed the player.
     pub death: Option<String>,
     peaceful_timer: f32,
+    peaceful_food_timer: f32,
 }
 
 impl Default for Vitals {
@@ -279,11 +288,13 @@ impl Default for Vitals {
             fire_left: 0.0,
             fire_timer: 0.0,
             last_damage: 0.0,
+            fresh_hit: true,
             fall_peak: None,
             critical_fall_distance: 0.0,
             previous_fall_y: None,
             death: None,
             peaceful_timer: 0.0,
+            peaceful_food_timer: 0.0,
         }
     }
 }
@@ -318,6 +329,13 @@ impl Vitals {
     /// Seconds since the hit that started the immunity window; stronger hits within it do not reset this.
     pub fn since_damage(&self) -> f32 {
         self.since_damage
+    }
+
+    /// Whether the last hit that landed started a new immunity window (or no
+    /// hit has landed), so it knocks the player back; a stronger hit inside
+    /// the window does not.
+    pub fn last_hit_fresh(&self) -> bool {
+        self.fresh_hit
     }
 
     /// Seconds since this player died (Java's `deathTime`, which drives the
@@ -355,14 +373,23 @@ impl Vitals {
             }
             let extra = amount - self.last_damage;
             self.last_damage = amount;
+            self.fresh_hit = false;
             extra
         } else {
             self.last_damage = amount;
             self.since_damage = 0.0;
+            self.fresh_hit = true;
             amount
         };
-        self.health = (self.health - taken).max(0.0);
-        self.hunger.exhaust(EXHAUST_DAMAGE);
+        // Java's `Player.actuallyHurt`: absorption soaks up the hit before
+        // health, and a hit it absorbs entirely costs no exhaustion. The hit
+        // still lands (immunity, knockback, armor wear), so `taken` stays the
+        // damage dealt before absorption.
+        let lost = self.effects.absorb(taken);
+        if lost > 0.0 {
+            self.health = (self.health - lost).max(0.0);
+            self.hunger.exhaust(EXHAUST_DAMAGE);
+        }
         if self.health <= 0.0 {
             self.death = Some(cause.to_string());
         }
@@ -396,6 +423,9 @@ impl Vitals {
         self.xp.tick(dt);
         self.pearl_cooldown = (self.pearl_cooldown - dt).max(0.0);
         if self.is_dead() {
+            // `LivingEntity.baseTick` keeps counting effects down on the death
+            // screen; a dead body takes none of their healing or harm.
+            let _ = self.effects.tick(dt);
             return hurts;
         }
         use super::effects::Effect;
@@ -406,7 +436,10 @@ impl Vitals {
         self.health = (self.health + effect.heal).min(MAX_HEALTH);
         // Poison never takes the last half heart, and armor doesn't help.
         if effect.poison > 0.0 && self.health > 1.0 && !creative {
-            self.health = (self.health - effect.poison).max(1.0);
+            // Poison is magic damage through `hurtServer`: Resistance cuts it and
+            // absorption takes it before health.
+            let lost = self.effects.absorb(effect.poison * self.effects.resistance_factor());
+            self.health = (self.health - lost).max(1.0);
             self.since_damage = 0.0;
         }
         if effect.exhaustion > 0.0 {
@@ -498,21 +531,10 @@ impl Vitals {
             (hurts.lava, hurts.fire, hurts.burn) = (0.0, 0.0, 0.0);
         }
 
-        // Peaceful restores one health point per second and replenishes a
-        // depleted food bar quickly. Activity can add exhaustion, but it
-        // cannot consume food on Peaceful.
-        if !creative && difficulty == Difficulty::Peaceful {
-            self.peaceful_timer += dt;
-            while self.peaceful_timer >= 1.0 {
-                self.peaceful_timer -= 1.0;
-                if natural_regeneration {
-                    self.health = (self.health + 1.0).min(MAX_HEALTH);
-                }
-                self.hunger.food = (self.hunger.food + 2.0).min(MAX_FOOD);
-            }
-        } else if !creative {
-            self.peaceful_timer = 0.0;
+        if !creative {
+            let peaceful = difficulty == Difficulty::Peaceful;
             let h = &mut self.hunger;
+            h.peaceful = peaceful;
             let per_block = if env.in_water {
                 EXHAUST_SWIM_PER_BLOCK
             } else if env.sprinting {
@@ -527,6 +549,32 @@ impl Vitals {
             let (heal, starve) = h.tick(dt, self.health, difficulty, natural_regeneration);
             self.health = (self.health + heal).min(MAX_HEALTH);
             hurts.starve = starve;
+        }
+        // Java's `ServerPlayer.tickRegeneration`, which runs in every game mode and is behind the
+        // natural regeneration rule: on Peaceful, one health point and
+        // one saturation point (up to 20) every second, and one food
+        // point every half second while hungry.
+        if difficulty == Difficulty::Peaceful && natural_regeneration {
+            self.peaceful_timer += dt;
+            while self.peaceful_timer >= 1.0 {
+                self.peaceful_timer -= 1.0;
+                if self.health < MAX_HEALTH {
+                    self.health = (self.health + 1.0).min(MAX_HEALTH);
+                }
+                if self.hunger.saturation < MAX_FOOD {
+                    self.hunger.saturation = (self.hunger.saturation + 1.0).min(MAX_FOOD);
+                }
+            }
+            self.peaceful_food_timer += dt;
+            while self.peaceful_food_timer >= 0.5 {
+                self.peaceful_food_timer -= 0.5;
+                if self.hunger.food < MAX_FOOD {
+                    self.hunger.food = (self.hunger.food + 1.0).min(MAX_FOOD);
+                }
+            }
+        } else {
+            self.peaceful_timer = 0.0;
+            self.peaceful_food_timer = 0.0;
         }
         hurts
     }
@@ -917,6 +965,60 @@ mod tests {
     }
 
     #[test]
+    fn peaceful_regeneration_follows_server_player_tick_regeneration() {
+        // Once a second one health point and one saturation point, and a food
+        // point every half second, all behind natural regeneration.
+        let mut v = Vitals { health: 10.0, hunger: Hunger::restore(10.0, 0.0, 0.0), ..Vitals::default() };
+        for _ in 0..40 {
+            v.tick_difficulty(0.05, &ground(0.0), false, Difficulty::Peaceful);
+        }
+        assert_eq!((v.health, v.hunger.food, v.hunger.saturation), (12.0, 14.0, 2.0));
+        let mut off = Vitals { health: 10.0, hunger: Hunger::restore(10.0, 0.0, 0.0), ..Vitals::default() };
+        for _ in 0..40 {
+            off.tick_rules(0.05, &ground(0.0), false, Difficulty::Peaceful, false);
+        }
+        assert_eq!((off.health, off.hunger.food, off.hunger.saturation), (10.0, 10.0, 0.0), "natural regeneration off");
+        let mut normal = Vitals { health: 10.0, hunger: Hunger::restore(10.0, 0.0, 0.0), ..Vitals::default() };
+        for _ in 0..40 {
+            normal.tick_difficulty(0.05, &ground(0.0), false, Difficulty::Normal);
+        }
+        assert_eq!((normal.health, normal.hunger.food), (10.0, 10.0), "other difficulties heal through food only");
+        // Saturation tops out at 20.
+        let mut full = Vitals { hunger: Hunger::restore(20.0, 19.5, 0.0), ..Vitals::default() };
+        for _ in 0..60 {
+            full.tick_difficulty(0.05, &ground(0.0), false, Difficulty::Peaceful);
+        }
+        assert_eq!(full.hunger.saturation, 20.0);
+        // `tickRegeneration` has no game mode check: Creative heals too.
+        let mut creative = Vitals { health: 10.0, ..Vitals::default() };
+        creative.tick_difficulty(2.0, &ground(0.0), true, Difficulty::Peaceful);
+        assert_eq!(creative.health, 12.0);
+    }
+
+    #[test]
+    fn peaceful_exhaustion_spends_saturation_but_never_food() {
+        let mut v = Vitals { hunger: Hunger::restore(20.0, 5.0, 0.0), ..Vitals::default() };
+        v.tick_rules(0.05, &ground(0.0), false, Difficulty::Peaceful, false);
+        v.hunger.exhaust(4.0 * 12.0);
+        assert_eq!((v.hunger.food, v.hunger.saturation), (20.0, 0.0));
+        v.tick_rules(0.05, &ground(0.0), false, Difficulty::Normal, false);
+        v.hunger.exhaust(4.0 * 3.0);
+        assert_eq!(v.hunger.food, 17.0, "outside Peaceful food pays");
+    }
+
+    #[test]
+    fn peaceful_with_an_empty_bar_starves_only_above_ten_health() {
+        // `FoodData.tick` hurts above 10 health on every difficulty, and
+        // Peaceful has no lower floor of its own.
+        let mut v = Vitals { hunger: Hunger::restore(0.0, 0.0, 0.0), ..Vitals::default() };
+        for _ in 0..(400.0 / DT) as usize {
+            let h = v.tick_rules(DT, &ground(0.0), false, Difficulty::Peaceful, false);
+            v.damage(h.starve, CAUSE_STARVE, false);
+        }
+        assert_eq!(v.health, 10.0);
+    }
+
+    #[test]
     fn lava_burns_every_half_second() {
         let mut v = Vitals::default();
         let lava = Env { y: 10.0, in_water: true, in_lava: true, ..Env::default() };
@@ -955,6 +1057,66 @@ mod tests {
             v.tick(DT, &ground(0.0), false);
         }
         assert_eq!(v.damage(3.0, "test", false), 3.0);
+    }
+
+    /// Java's `Player.actuallyHurt`: absorption is spent first, after the
+    /// reductions the caller applies, and an absorbed hit costs no exhaustion.
+    #[test]
+    fn absorption_takes_damage_before_health() {
+        use super::super::effects::Effect;
+        let mut v = Vitals::default();
+        assert_eq!(v.apply_effect(Effect::Absorption, 1, 2400), 0.0);
+        assert_eq!(v.effects.absorption(), 8.0);
+        // Fully absorbed: the hit still lands (immunity starts, `taken` is the whole hit).
+        assert_eq!(v.damage(3.0, "test", false), 3.0);
+        assert_eq!((v.health, v.effects.absorption(), v.hunger.exhaustion), (20.0, 5.0, 0.0));
+        assert_eq!(v.since_damage(), 0.0);
+        // A stronger hit inside the immunity window deals only the 2.0 extra.
+        assert_eq!(v.damage(5.0, "test", false), 2.0);
+        assert_eq!((v.health, v.effects.absorption(), v.hunger.exhaustion), (20.0, 3.0, 0.0));
+        for _ in 0..(INVULNERABLE / DT) as usize + 2 {
+            v.tick(DT, &ground(0.0), false);
+        }
+        // Partly absorbed: 3 soaked, 4.5 hurt.
+        assert_eq!(v.damage(7.5, "test", false), 7.5);
+        assert_eq!((v.health, v.effects.absorption()), (15.5, 0.0));
+        assert_eq!(v.hunger.exhaustion, EXHAUST_DAMAGE);
+        v.respawn();
+        assert_eq!((v.effects.absorption(), v.effects.max_absorption()), (0.0, 0.0));
+    }
+
+    #[test]
+    fn creative_players_keep_their_absorption_and_resistance_applies_before_it() {
+        use super::super::effects::Effect;
+        let mut v = Vitals::default();
+        v.apply_effect(Effect::Absorption, 0, 2400);
+        assert_eq!(v.damage(100.0, "test", true), 0.0);
+        assert_eq!(v.effects.absorption(), 4.0);
+        v.apply_effect(Effect::Resistance, 0, 2400);
+        // 10 * (1 - 0.2) = 8: four soaked, four hurt.
+        v.damage(10.0, "test", false);
+        assert_eq!((v.effects.absorption(), v.health), (0.0, 16.0));
+    }
+
+    /// Poison is magic damage through `hurtServer`, so absorption takes it,
+    /// and the spent effect ends on the following tick.
+    #[test]
+    fn poison_is_absorbed_until_the_hearts_run_out() {
+        use super::super::effects::Effect;
+        let mut v = Vitals::default();
+        v.apply_effect(Effect::Poison, 0, 600);
+        v.apply_effect(Effect::Absorption, 0, 2400);
+        for _ in 0..100 {
+            v.tick_rules(0.05, &ground(0.0), false, Difficulty::Normal, false);
+        }
+        // Poison I hurts at 600, 575, 550 and 525 ticks left: four points, all absorbed.
+        assert_eq!(v.health, 20.0);
+        assert_eq!(v.effects.absorption(), 0.0);
+        assert!(!v.effects.has(Effect::Absorption));
+        for _ in 0..50 {
+            v.tick_rules(0.05, &ground(0.0), false, Difficulty::Normal, false);
+        }
+        assert_eq!(v.health, 18.0, "500 and 475 ticks left hurt health");
     }
 
     /// Real player physics on generated terrain feeding the rules.

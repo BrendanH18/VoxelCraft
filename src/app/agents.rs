@@ -292,11 +292,7 @@ impl Game {
                         Command::TimeAdd(ticks) => self.add_time_ticks(ticks),
                         Command::Weather(kind) => self.apply_weather(kind),
                         Command::Respawn => {
-                            let kept_xp = self.gamerules.bool("keepInventory").then_some(bot.agent.session.vitals.xp);
                             bot.agent.execute(Command::Respawn, &mut self.world, &mut self.mobs.entities, &[])?;
-                            if let Some(xp) = kept_xp {
-                                bot.agent.session.vitals.xp = xp;
-                            }
                         }
                         _ => {
                             let mut others = self.agents.positions();
@@ -338,17 +334,13 @@ impl Game {
         for (name, bot) in players.iter_mut().filter(|(_, b)| b.active) {
             let was_dead = bot.agent.session.vitals.is_dead();
             bot.agent.tick_rules(&mut self.world, &mut self.mobs.entities, self.difficulty, &self.gamerules);
-            if !was_dead && bot.agent.session.vitals.is_dead() && self.gamerules.bool("showDeathMessages") {
+            if !was_dead && bot.agent.session.vitals.is_dead() && self.gamerules.bool("show_death_messages") {
                 log::info!("{name} {}", bot.agent.session.vitals.death.as_deref().unwrap_or("died"));
             }
             if self.hardcore {
                 bot.agent.hardcore_spectate();
-            } else if self.gamerules.bool("doImmediateRespawn") && bot.agent.session.vitals.is_dead() {
-                let kept_xp = self.gamerules.bool("keepInventory").then_some(bot.agent.session.vitals.xp);
+            } else if self.gamerules.respawns_immediately(false) && bot.agent.session.vitals.is_dead() {
                 let _ = bot.agent.execute(Command::Respawn, &mut self.world, &mut self.mobs.entities, &[]);
-                if let Some(xp) = kept_xp {
-                    bot.agent.session.vitals.xp = xp;
-                }
             }
             if bot.agent.remaining == 0
                 && let Some(reply) = bot.reply.take()

@@ -255,7 +255,7 @@ fn invalid_actions_are_atomic_and_dropped_loot_obeys_the_gamerule() {
     assert!(s.tick_mining(9, &mut w, &mut e, &GameRules::default()).is_err());
     s.inventory.slots[0] = Some(Stack::new(Item::tool(ToolKind::Pickaxe, Tier::Iron), 1));
     let mut rules = GameRules::default();
-    rules.set("doTileDrops", "false").unwrap();
+    rules.set("block_drops", "false").unwrap();
     finish(&mut s, &mut w, &mut e, &rules);
     assert!(w.drops.is_empty() && e.orbs.is_empty());
     assert_eq!(s.inventory.get(0).unwrap().damage, 1);

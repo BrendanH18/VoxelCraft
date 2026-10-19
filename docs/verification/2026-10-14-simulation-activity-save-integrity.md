@@ -76,7 +76,7 @@ chunks and of the render distance:
   sleeping fires could delay active ones (Java keeps per-chunk tick containers).
 - Mobs in unloaded chunks stay in memory (frozen) rather than being written to
   per-chunk entity storage.
-- Pause/death/respawn scenarios through the desktop session, controller puppet
-  and CLI agent, and piston/repeater save-mid-motion duplication tests, remain.
+- Pause/death/respawn scenarios and piston/repeater save-mid-motion tests
+  followed on 2026-10-15 ([evidence](2026-10-15-death-pause-save-scenarios.md)).
 - Ordinary-player acceptance and an M5 frame-time scene remain. PLY-01 stays
   **Partial**.

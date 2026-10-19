@@ -8,8 +8,24 @@ impl Game {
             std::iter::once(self.session.player.pos)
                 .chain(self.agents.players.values().filter(|b| b.active).map(|b| b.agent.session.player.pos)),
         );
-        self.world.set_tile_drops(self.gamerules.bool("doTileDrops"));
+        self.world.set_simulation_spectators(
+            std::iter::once(self.session.mode == voxelcraft::rules::GameMode::Spectator).chain(
+                self.agents
+                    .players
+                    .values()
+                    .filter(|b| b.active)
+                    .map(|b| b.agent.session.mode == voxelcraft::rules::GameMode::Spectator),
+            ),
+        );
+        self.world.set_tile_drops(self.gamerules.bool("block_drops"));
+        // Before any interaction this tick: breaking a cart or lighting a TNT
+        // cart reads these rules directly in Java.
+        self.mobs.entities.entity_drops = self.gamerules.bool("entity_drops");
+        self.mobs.entities.tnt_explodes = self.gamerules.bool("tnt_explodes");
+        self.world.rules =
+            crate::world::WorldRules { difficulty: self.difficulty.id(), ..self.gamerules.world_rules() };
         let dt = crate::simulation::TICK_SECONDS;
+        self.session.settle_wake(&self.world);
         let arriving = self.update_arrival();
         let input = self.movement_input(arriving);
         self.jump_pressed = false;
@@ -39,9 +55,7 @@ impl Game {
             }
         }
         let moved = (self.session.player.pos - before).with_y(0.0).length();
-        if self.gamerules.bool("doWeatherCycle") {
-            self.weather.update(dt);
-        }
+        self.weather.update_rules(dt, self.gamerules.bool("advance_weather"));
         self.update_sleep(dt);
         // Java's isRaining compares the faded rain level, not the target state.
         self.world.raining = self.weather.is_raining() && self.dimension.has_sky();
@@ -65,23 +79,23 @@ impl Game {
                 &env,
                 self.session.mode.invulnerable(),
                 self.difficulty,
-                self.gamerules.bool("naturalRegeneration"),
+                self.gamerules.bool("natural_health_regeneration"),
             )
         };
         self.trample(hurts.landed);
-        if hurts.fall > 0.0 && self.gamerules.bool("fallDamage") {
+        if hurts.fall > 0.0 {
             self.damage_player(hurts.fall, survival::CAUSE_FALL);
         }
-        if hurts.drown > 0.0 && self.gamerules.bool("drowningDamage") {
+        if hurts.drown > 0.0 {
             self.damage_player(hurts.drown, survival::CAUSE_DROWN);
         }
-        if hurts.lava > 0.0 && self.gamerules.bool("fireDamage") {
+        if hurts.lava > 0.0 {
             self.damage_player_armored(hurts.lava, survival::CAUSE_LAVA);
         }
-        if hurts.fire > 0.0 && self.gamerules.bool("fireDamage") {
+        if hurts.fire > 0.0 {
             self.damage_player_armored(hurts.fire, survival::CAUSE_FIRE);
         }
-        if hurts.burn > 0.0 && self.gamerules.bool("fireDamage") {
+        if hurts.burn > 0.0 {
             self.damage_player(hurts.burn, survival::CAUSE_FIRE);
         }
         if hurts.starve > 0.0 {
@@ -125,20 +139,15 @@ impl Game {
         crate::simulation::tick_world_rules(
             &mut self.world,
             self.session.player.pos,
-            self.gamerules.bool("doFireTick"),
-            self.gamerules.int("randomTickSpeed") as u32,
+            self.gamerules.int("fire_spread_radius_around_player") != 0,
+            self.gamerules.int("random_tick_speed") as u32,
         );
         self.play_notes();
         self.world.tick_automation_entities(&mut self.mobs.entities);
         self.update_mobs(dt);
         self.update_items();
         self.tick_particles();
-        if self.gamerules.bool("doDaylightCycle") {
-            self.day_time += dt / DAY_LENGTH;
-            if self.day_time >= 1.0 {
-                self.day_time = self.day_time.fract();
-                self.day_count = self.day_count.saturating_add(1);
-            }
-        }
+        (self.day_time, self.day_count) =
+            crate::simulation::advance_day(self.day_time, self.day_count, dt, &self.gamerules);
     }
 }

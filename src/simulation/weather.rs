@@ -75,8 +75,28 @@ impl Weather {
         (lo + splitmix64(&mut self.rng) % (hi - lo + 1)) as f64 / 20.0
     }
 
-    /// Advance the spell timer and rain fade by `dt` game seconds.
+    /// Advance the spell timers and the rain fade by `dt` game seconds.
     pub fn update(&mut self, dt: f64) {
+        self.update_rules(dt, true);
+    }
+
+    /// As [`Weather::update`] under the `advance_weather` rule. Java's
+    /// `ServerLevel.advanceWeatherCycle` freezes only the spell timers when
+    /// it is off: rain and thunder keep fading toward their current state.
+    pub fn update_rules(&mut self, dt: f64, advance: bool) {
+        if advance {
+            self.advance_spells(dt);
+        }
+        let step = dt as f32 / FADE;
+        let fade = |level: f32, on: bool| {
+            let target = if on { 1.0 } else { 0.0 };
+            if level < target { (level + step).min(target) } else { (level - step).max(target) }
+        };
+        self.strength = fade(self.strength, self.raining);
+        self.thunder = fade(self.thunder, self.thundering);
+    }
+
+    fn advance_spells(&mut self, dt: f64) {
         // Java decrements positive timers and flips the flag at zero. It
         // samples the next spell on the following tick, not the toggle tick.
         // Keep the public/save seconds interface, with tick-quantized timers.
@@ -96,13 +116,6 @@ impl Weather {
         if expired(&mut self.timer, &mut self.raining) {
             self.timer = self.spell(if self.raining { RAIN_DURATION } else { RAIN_DELAY });
         }
-        let step = dt as f32 / FADE;
-        let fade = |level: f32, on: bool| {
-            let target = if on { 1.0 } else { 0.0 };
-            if level < target { (level + step).min(target) } else { (level - step).max(target) }
-        };
-        self.strength = fade(self.strength, self.raining);
-        self.thunder = fade(self.thunder, self.thundering);
     }
 
     /// Java's `Level.getRainLevel(1)`.
@@ -253,6 +266,29 @@ mod tests {
         loaded.deserialize(&w.serialize());
         assert!(loaded.raining && (loaded.timer - w.timer).abs() < 1.0);
         assert!(loaded.thundering && loaded.is_thundering(), "a saved storm reloads at full strength");
+    }
+
+    #[test]
+    fn advance_weather_off_freezes_the_spell_timers_but_not_the_fade() {
+        // `ServerLevel.advanceWeatherCycle` gates the timers behind the rule
+        // and always moves the levels toward the current state.
+        let mut w = Weather::new(3);
+        w.set(true, false);
+        w.timer = 100.0;
+        w.thunder_timer = 100.0;
+        w.update_rules(1.0, false);
+        assert_eq!((w.timer, w.thunder_timer), (100.0, 100.0));
+        assert!((w.strength - 0.2).abs() < 1e-6, "rain keeps fading in: {}", w.strength);
+        for _ in 0..30 {
+            w.update_rules(1.0, false);
+        }
+        assert_eq!((w.strength, w.timer), (1.0, 100.0));
+        w.update_rules(1.0, true);
+        assert_eq!(w.timer, 99.0);
+        // Expired timers do not flip the weather while the rule is off.
+        w.timer = 0.05;
+        w.update_rules(1.0, false);
+        assert!(w.raining && w.timer == 0.05);
     }
 
     #[test]

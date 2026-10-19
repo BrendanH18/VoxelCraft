@@ -264,20 +264,20 @@ impl Dungeons {
 // Java's simple_dungeon has three independent pools: 1-3, 1-4, and 3
 // rolls. Entries with no usable VoxelCraft counterpart remain weighted
 // blanks, preserving the relative odds of the items we can award. Omitted:
-// golden apples, three music discs and name tags,
-// redstone and melon, pumpkin and beetroot seeds.
+// three music discs and copper horse armor.
 type Entry = (Option<Item>, u32, u8, u8);
 const RARE: &[Entry] = &[
-    (Some(Item::SADDLE), 20, 1, 1),             // saddle
-    (None, 15, 1, 1),                           // golden apple
-    (None, 2, 1, 1),                            // enchanted golden apple
-    (None, 2, 1, 1),                            // music disc otherside
-    (None, 15, 1, 1),                           // music disc 13
-    (None, 15, 1, 1),                           // music disc cat
-    (Some(Item::NAME_TAG), 20, 1, 1),           // name tag
-    (Some(Item::GOLDEN_HORSE_ARMOR), 10, 1, 1), // golden horse armor
-    (Some(Item::IRON_HORSE_ARMOR), 15, 1, 1),   // iron horse armor
-    (Some(Item::DIAMOND_HORSE_ARMOR), 5, 1, 1), // diamond horse armor
+    (Some(Item::LEATHER), 20, 1, 5),
+    (Some(Item::GOLDEN_APPLE), 15, 1, 1),          // golden apple
+    (Some(Item::ENCHANTED_GOLDEN_APPLE), 2, 1, 1), // enchanted golden apple
+    (None, 2, 1, 1),                               // music disc otherside
+    (None, 15, 1, 1),                              // music disc 13
+    (None, 15, 1, 1),                              // music disc cat
+    (Some(Item::NAME_TAG), 20, 1, 1),              // name tag
+    (Some(Item::GOLDEN_HORSE_ARMOR), 10, 1, 1),    // golden horse armor
+    (None, 15, 1, 1),                              // copper horse armor
+    (Some(Item::IRON_HORSE_ARMOR), 15, 1, 1),      // iron horse armor
+    (Some(Item::DIAMOND_HORSE_ARMOR), 5, 1, 1),    // diamond horse armor
     (Some(Item::ENCHANTED_BOOK), 10, 1, 1),
 ];
 const COMMON: &[Entry] = &[
@@ -286,7 +286,7 @@ const COMMON: &[Entry] = &[
     (Some(Item::BREAD), 20, 1, 1),
     (Some(Item::WHEAT), 20, 1, 4),
     (Some(Item::BUCKET), 10, 1, 1),
-    (None, 15, 1, 4), // redstone
+    (Some(Item::REDSTONE), 15, 1, 4),
     (Some(Item::COAL), 15, 1, 4),
     (Some(Item::MELON_SEEDS), 10, 2, 4),    // melon seeds
     (Some(Item::PUMPKIN_SEEDS), 10, 2, 4),  // pumpkin seeds
@@ -352,9 +352,18 @@ mod tests {
         );
     }
 
+    /// `chests/simple_dungeon.json`, rare pool: golden apple 15, enchanted golden apple 2, one each.
+    #[test]
+    fn dungeon_chests_award_both_golden_apples_with_java_weights() {
+        assert!(RARE.contains(&(Some(Item::GOLDEN_APPLE), 15, 1, 1)));
+        assert!(RARE.contains(&(Some(Item::ENCHANTED_GOLDEN_APPLE), 2, 1, 1)));
+        let found = |item| (0..4000u64).any(|seed| loot(seed).slots.iter().flatten().any(|s| s.item == item));
+        assert!(found(Item::GOLDEN_APPLE) && found(Item::ENCHANTED_GOLDEN_APPLE));
+    }
+
     #[test]
     fn weighted_loot_pools_keep_java_totals_and_are_deterministic() {
-        assert_eq!(RARE.iter().map(|e| e.1).sum::<u32>(), 129);
+        assert_eq!(RARE.iter().map(|e| e.1).sum::<u32>(), 144, "simple_dungeon.json pool 0 totals 144");
         assert_eq!(COMMON.iter().map(|e| e.1).sum::<u32>(), 125);
         assert_eq!(JUNK.iter().map(|e| e.1).sum::<u32>(), 40);
         assert_eq!(MOBS.iter().filter(|&&mob| mob == MobKind::Zombie).count(), 2);

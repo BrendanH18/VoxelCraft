@@ -277,17 +277,32 @@ impl Game {
         const STEP: f32 = 8.0;
         let v = hud.vitals;
         let half_hearts = v.health.ceil() as u32;
-        let shaking = v.since_damage() < survival::INVULNERABLE || v.health <= 4.0;
+        let absorption = v.effects.absorption().ceil() as u32;
+        let shaking = v.since_damage() < survival::INVULNERABLE || v.health + v.effects.absorption() <= 4.0;
         // Re-roll the jitter 20 times a second.
         let tick = ((now - self.started).as_secs_f32() * 20.0) as u32;
-        for i in 0..(MAX_HEALTH as u32 / 2) {
+        // Java's `Gui.renderHearts`: golden absorption hearts follow the
+        // health hearts, ten to a row, rows closing up as there are more.
+        let health_hearts = MAX_HEALTH as u32 / 2;
+        let hearts = health_hearts + absorption.div_ceil(2);
+        let rows = hearts.div_ceil(10);
+        let row_step = (10 - (rows as i32 - 2)).max(3) as f32;
+        for i in 0..hearts {
             let layer = match half_hearts.saturating_sub(i * 2) {
+                _ if i >= health_hearts => tex::HEART_EMPTY,
                 0 => tex::HEART_EMPTY,
                 1 => tex::HEART_HALF,
                 _ => tex::HEART_FULL,
             };
             let jitter = if shaking { (hash(i, tick) % 3) as f32 - 1.0 } else { 0.0 };
-            ui.icon(left + 1.0 + i as f32 * STEP, y + jitter, ICON, layer, WHITE);
+            let (hx, hy) = (left + 1.0 + (i % 10) as f32 * STEP, y - (i / 10) as f32 * row_step + jitter);
+            ui.icon(hx, hy, ICON, layer, WHITE);
+            let absorbed = (i * 2).saturating_sub(health_hearts * 2);
+            if i >= health_hearts && absorbed < absorption {
+                let layer =
+                    if absorbed + 1 == absorption { tex::HEART_ABSORBING_HALF } else { tex::HEART_ABSORBING_FULL };
+                ui.icon(hx, hy, ICON, layer, WHITE);
+            }
         }
 
         // Armor points sit above the hearts: a full chestplate per two
@@ -295,13 +310,14 @@ impl Game {
         let armor = hud.inventory.armor_points();
         if armor > 0 {
             let layer = Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Iron).icon_layer().unwrap_or(0);
+            let armor_y = y - (rows - 1) as f32 * row_step - 10.0;
             for i in 0..10 {
                 let color = match armor.saturating_sub(i * 2) {
                     0 => [0.0, 0.0, 0.0, 0.35],
                     1 => [0.55, 0.55, 0.55, 1.0],
                     _ => WHITE,
                 };
-                ui.icon(left + 1.0 + i as f32 * STEP, y - 10.0, ICON, layer, color);
+                ui.icon(left + 1.0 + i as f32 * STEP, armor_y, ICON, layer, color);
             }
         }
 
@@ -538,7 +554,7 @@ pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool
         (Some(block), _) => ui.block_icon(x + 2.0, y + 2.0, 14.0, block),
         (None, Some(layer)) => {
             ui.icon(x + 1.0, y + 1.0, 16.0, layer, WHITE);
-            if !stack.enchants.is_empty() {
+            if !stack.enchants.is_empty() || stack.item.has_glint() {
                 glint(ui, x + 1.0, y + 1.0, 16.0, layer);
             }
         }
@@ -992,6 +1008,8 @@ impl Game {
             match stack.item.as_potion().or(stack.item.as_splash_potion()) {
                 Some(potion) => self.potion_tooltip(ui, stack.display_name(), potion),
                 None if !stack.enchants.is_empty() => self.enchant_tooltip(ui, stack),
+                // Java's `Rarity.RARE` names are aqua.
+                None if stack.item.is_rare() => self.tooltip_coloured(ui, stack.display_name(), [0.33, 1.0, 1.0, 1.0]),
                 None => self.tooltip(ui, stack.display_name()),
             }
         }
@@ -1111,12 +1129,17 @@ impl Game {
     }
 
     fn tooltip(&self, ui: &mut Ui, text: &str) {
+        self.tooltip_coloured(ui, text, WHITE);
+    }
+
+    /// [`Self::tooltip`] with the name in `colour` (an item's rarity colour).
+    fn tooltip_coloured(&self, ui: &mut Ui, text: &str, colour: Color) {
         let text = capitalize(text);
         let (sw, sh) = ui.size();
         let x = (self.cursor_px.0 / ui.scale + 10.0).min(sw - Ui::text_width(&text) - 6.0).max(3.0);
         let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - 11.0).max(3.0));
         ui.rect(x - 3.0, y - 3.0, Ui::text_width(&text) + 6.0, 14.0, [0.08, 0.02, 0.12, 0.92]);
-        ui.text(x, y, &text, WHITE);
+        ui.text(x, y, &text, colour);
     }
 
     /// The enchanting table's offers: rune words, a lapis count badge and

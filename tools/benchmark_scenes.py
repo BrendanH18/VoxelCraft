@@ -49,6 +49,8 @@ def run_problems(report,specification):
     if not report.get('acceptance_eligible_configuration'): out.append('configuration is not the reference configuration')
     if not report.get('run_valid'): out.append('run reported invalid samples')
     if report.get('graphics')!=specification['graphics']: out.append(f"graphics is not {specification['graphics']}")
+    for key in ('view_distance_blocks','simulation_distance_blocks'):
+        if report.get(key)!=specification[key]: out.append(f"{key.replace('_',' ')} is not {specification[key]}")
     if report.get('paused_simulation_ms',None)!=0: out.append('simulation pause time is not zero')
     if report.get('unpresented_frames',None)!=0: out.append('unpresented frame count is not zero')
     if not ticks_within_tolerance(report.get('completed_simulation_ticks',0),report.get('sample_seconds',0)):

@@ -2,7 +2,7 @@
   "schema": 2,
   "seed": 12345,
   "view_distance_blocks": 256,
-  "simulation_distance_blocks": 128,
+  "simulation_distance_blocks": 160,
   "physical_resolution": [1920, 1080],
   "graphics": "enhanced",
   "warmup_seconds": 10,

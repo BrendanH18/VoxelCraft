@@ -61,8 +61,16 @@ impl World {
     /// Records the spawners and loot chests structures generated in a
     /// fresh chunk. Saved entries win, so a looted chest stays empty when
     /// its unedited chunk generates again.
+    #[cfg(test)]
     pub(super) fn register_structure_features(&mut self, pos: IVec3, data: &ChunkData) {
-        for (p, feature) in self.generator.structure_features(pos) {
+        let features = self.generator.structure_features(pos);
+        self.register_features(data, features);
+    }
+
+    /// Install the block entities of a chunk's `features` (from
+    /// [`super::terrain::Generator::structure_features`]) whose blocks are present.
+    pub(super) fn register_features(&mut self, data: &ChunkData, features: Vec<(IVec3, Feature)>) {
+        for (p, feature) in features {
             let l = local_of(p);
             let block = data.get(l.x as usize, l.y as usize, l.z as usize);
             match feature {

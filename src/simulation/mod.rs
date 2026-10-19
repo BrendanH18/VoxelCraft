@@ -78,6 +78,17 @@ impl FixedClock {
     }
 }
 
+/// Advances the Overworld day clock by `dt` seconds. The `advance_time` rule
+/// stops it (Java's `ServerLevel.tick` skips `tickTime`); the day count and
+/// with it the moon phase advance when the day wraps.
+pub fn advance_day(day_time: f64, day_count: i64, dt: f64, rules: &crate::rules::GameRules) -> (f64, i64) {
+    if !rules.bool("advance_time") {
+        return (day_time, day_count);
+    }
+    let day_time = day_time + dt / DAY_LENGTH;
+    if day_time >= 1.0 { (day_time.fract(), day_count.saturating_add(1)) } else { (day_time, day_count) }
+}
+
 /// Run the world systems once, in the same order for graphical and headless
 /// sessions. Streaming is independent and may be polled between ticks.
 pub fn tick_world(world: &mut World, player: DVec3) {
@@ -231,6 +242,18 @@ mod tests {
         }
         clock.advance(Duration::from_millis(5), true);
         assert_eq!((clock.ticks(), clock.paused(), clock.discarded()), (60, Duration::from_millis(5), Duration::ZERO));
+    }
+
+    #[test]
+    fn advance_time_stops_the_clock_and_the_day_count() {
+        use crate::rules::GameRules;
+        let mut rules = GameRules::default();
+        let (t, d) = advance_day(0.5, 7, DAY_LENGTH / 4.0, &rules);
+        assert_eq!((t, d), (0.75, 7));
+        let (t, d) = advance_day(0.9, 7, DAY_LENGTH / 5.0, &rules);
+        assert!((t - 0.1).abs() < 1e-9 && d == 8, "the day wraps and the moon phase moves on: {t} {d}");
+        rules.set("advance_time", "false").unwrap();
+        assert_eq!(advance_day(0.9, 7, DAY_LENGTH, &rules), (0.9, 7));
     }
 
     #[test]

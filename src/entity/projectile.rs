@@ -218,7 +218,10 @@ impl Arrow {
                             });
                             return false;
                         }
-                        let killed = mob.damage(damage, Some(push), rng);
+                        // `hurtServer`'s 0.4 push along the arrow, then Punch's shove (`doKnockback`).
+                        let motion = self.vel / crate::knockback::TICK_RATE;
+                        let killed = mob.damage_pushed(damage, &[crate::knockback::Push::projectile(motion)], rng);
+                        mob.shove_punch(u32::from(self.enchants.level(Enchantment::Punch)), motion);
                         events.push(EntityEvent::MobShot {
                             kind: mob.kind,
                             pos: mob.pos,
@@ -290,7 +293,13 @@ impl Arrow {
                         DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 3.0 + DVec3::Y * 3.0,
                     )
                 };
+                let punch = if self.from_player {
+                    u32::from(self.enchants.level(crate::enchant::Enchantment::Punch))
+                } else {
+                    0
+                };
                 events.push(EntityEvent::PlayerHit {
+                    java: Some(crate::knockback::Hit::arrow(self.vel / crate::knockback::TICK_RATE, punch)),
                     player: hit.id,
                     damage,
                     knockback: push.as_vec3(),

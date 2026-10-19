@@ -159,7 +159,10 @@ and initial health are explicit fixture overrides; these scenes do not replace
 ordinary-player tests or the full roadmap biome/encounter matrix.
 Survival and streaming cameras fly 24 blocks above the generator's surface along
 their routes and face their direction of travel. The entity scene holds dawn with
-no daylight cycle or natural spawning, so its 160 mobs do not burn.
+no daylight cycle or natural spawning, so its 160 mobs do not burn. Until sampling
+starts it also removes every mob outside that 160-mob fixture, because chunk
+generation adds creature herds that `doMobSpawning` doesn't stop. Runs whose view or simulation distance
+differs from `benchmarks/scenes.json` (256 and 160 blocks) are rejected.
 
 A benchmark run ignores keyboard, pointer, controller and focus input. It never
 autosaves or saves, including when its window is closed. Keep its window

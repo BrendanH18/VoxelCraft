@@ -103,10 +103,10 @@ cargo test --release --test session_consumption --test process_persistence
 ```
 
 It also pins the status effects and chance of the registered foods (spider eye,
-poisonous potato, pufferfish, rotten flesh, raw chicken, golden apple) and the
-`alwaysEdible` set from `Foods`. The fixture proves these facts, not complete
-food/effect parity: honey, chorus fruit, suspicious stew and the enchanted golden
-apple are unregistered, and Absorption (golden apple) has no hearts yet.
+poisonous potato, pufferfish, rotten flesh, raw chicken, golden apple, enchanted
+golden apple) and the `alwaysEdible` set from `Foods`. The fixture proves these
+facts, not complete food/effect parity: honey, chorus fruit and suspicious stew
+are unregistered.
 
 ## Mining rules and ice support
 
@@ -155,10 +155,30 @@ criticals, sprint knockback, sweeps and exhaustion. The extractor reads `Items`,
 ```sh
 python3 tools/extract_java_combat_fixtures.py /path/to/server.jar --output target/java-combat.json
 diff tests/fixtures/java/26.3/combat.json target/java-combat.json
-cargo test --release --test shared_combat --test copper_tools --test shared_screen_ranges
+cargo test --release --test shared_combat --test copper_tools --test shared_screen_ranges --test java_knockback
 ```
 
 All 35 reference tools, including copper, are registered.
+
+### Sweeping and knockback
+
+`tools/extract_java_knockback_facts.py` (called by the combat extractor) adds the
+sweep and knockback facts. Each is read from bytecode with the exact call and
+constant sequence checked (`Player.attack`, `isSweepAttack`, `doSweepAttack`,
+`attackVisualEffects`, `causeExtraKnockback`, `LivingEntity.knockback`,
+`getKnockback`, `dealDefaultKnockback`, `hurtServer`, `Mob.doHurtTarget`,
+`AbstractArrow.doKnockback`, `Projectile.calculateHorizontalHurtKnockbackDirection`,
+`DamageSource.getSourcePosition`, `HoglinBase.throwTarget`, `Vec3.yRot`,
+`Mth.sin/cos`, `Attributes`, `MobEffects`, the entity `createAttributes` of the
+knockback-resistant mobs) and from the knockback, punch and sweeping-edge
+enchantment data and the `swords` and `arrows` tags. The `cases` section holds
+reference results (`knockback`, `attack_knockback`, `yaw_direction`,
+`arrow_punch`, `hoglin_throw`, `sweep_eligibility`, `sweep_damage`, `sweep_reach`,
+`attack_sounds`, `player_speed`) computed by a small model of Java's arithmetic
+(float rounding where Java uses `float`) from the constants just extracted; they
+are not generated from VoxelCraft. `tests/java_knockback.rs` checks the pure
+rules against every case and then compares whole-game scenarios with an
+evaluator built from the fixture's constants.
 
 ## Fishing loot
 

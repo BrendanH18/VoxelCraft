@@ -96,6 +96,8 @@ impl Game {
     }
 
     pub(super) fn update_mobs(&mut self, dt: f64) {
+        // Entities leave the level with their chunk and return when it loads.
+        self.mobs.entities.sync_chunk_entities(&mut self.world);
         self.mobs.entities.moon_brightness =
             [1.0, 0.75, 0.5, 0.25, 0.0, 0.25, 0.5, 0.75][self.day_count.rem_euclid(8) as usize];
         self.mobs.entities.clock_time =
@@ -104,9 +106,11 @@ impl Game {
         self.mobs.entities.world_spawn =
             (self.dimension == crate::world::terrain::Dimension::Overworld).then_some(self.world_spawn);
         self.mobs.entities.trader_spawning =
-            self.gamerules.bool("doTraderSpawning") && self.gamerules.bool("doMobSpawning");
-        self.mobs.entities.villager_griefing = self.gamerules.bool("mobGriefing");
-        self.mobs.entities.mob_loot = self.gamerules.bool("doMobLoot");
+            self.gamerules.bool("spawn_wandering_traders") && self.gamerules.bool("spawn_mobs");
+        self.mobs.entities.monster_spawning = self.gamerules.bool("spawn_monsters");
+        self.mobs.entities.spawner_blocks = self.gamerules.bool("spawner_blocks_work");
+        self.mobs.entities.villager_griefing = self.gamerules.bool("mob_griefing");
+        self.mobs.entities.mob_loot = self.gamerules.bool("mob_drops");
         self.mobs.entities.village_time = self.day_time;
         self.mobs.entities.village_day = self.day_count;
         for m in &mut self.mobs.entities.mobs {
@@ -124,6 +128,18 @@ impl Game {
         }
         if self.difficulty == crate::simulation::difficulty::Difficulty::Peaceful {
             self.mobs.entities.despawn_hostiles();
+        }
+        // `ThrownEnderpearl.tick` discards a dead owner's pearls.
+        if self.gamerules.bool("ender_pearls_vanish_on_death") {
+            let host_dead = self.session.vitals.is_dead();
+            let agents = &self.agents;
+            self.mobs.entities.discard_pearls_of_dead(|owner| {
+                if owner == PlayerId::HOST {
+                    host_dead
+                } else {
+                    agents.players.values().any(|b| b.id == owner && b.agent.session.vitals.is_dead())
+                }
+            });
         }
         for (cell, short_fuse) in std::mem::take(&mut self.world.primed_tnt) {
             self.mobs.entities.prime_tnt(cell, short_fuse);
@@ -175,7 +191,7 @@ impl Game {
                 0.0
             },
             raining: self.weather.is_raining() && self.dimension.has_sky(),
-            spawning: self.gamerules.bool("doMobSpawning"),
+            spawning: self.gamerules.bool("spawn_mobs"),
             dimension: self.dimension,
         };
         let mut smashed = Vec::new();
@@ -185,33 +201,35 @@ impl Game {
                     self.world.hit_redstone_target(cell, pos, normal, arrow);
                     self.world.touch_redstone_ore(cell);
                 }
-                EntityEvent::PlayerHit { player: PlayerId::HOST, damage, knockback, cause } => {
+                EntityEvent::PlayerHit { player: PlayerId::HOST, damage, knockback, java, cause } => {
                     // Knockback only lands with damage, so hurt immunity
                     // also stops repeated shoves.
                     if self.damage_player_armored(self.difficulty.mob_damage(damage), cause) > 0.0 {
-                        self.session.player.hurt_from(knockback.as_dvec3());
-                        let resistance = self.session.inventory.knockback_resistance();
-                        self.session.player.vel +=
-                            crate::simulation::survival::knockback_taken(knockback.as_dvec3(), resistance);
+                        if let Some(hit) = java {
+                            let entities = &mut self.mobs.entities;
+                            self.session.knocked_back(&hit, &mut || f64::from(entities.roll_range(0.0, 1.0)));
+                        } else {
+                            self.session.player.hurt_from(knockback.as_dvec3());
+                            let resistance = self.session.inventory.knockback_resistance();
+                            self.session.player.vel +=
+                                crate::simulation::survival::knockback_taken(knockback.as_dvec3(), resistance);
+                        }
                     }
                 }
-                EntityEvent::PlayerHit { player, damage, knockback, cause } => {
+                EntityEvent::PlayerHit { player, damage, knockback, java, cause } => {
                     if let Some(bot) = self.agents.by_id_mut(player) {
-                        bot.agent.hurt(
-                            self.difficulty.mob_damage(damage),
-                            cause,
-                            knockback.as_dvec3(),
-                            &mut self.mobs.entities,
-                        );
+                        let damage = self.difficulty.mob_damage(damage);
+                        match java {
+                            Some(hit) => bot.agent.hurt_knocked(damage, cause, &hit, &mut self.mobs.entities),
+                            None => bot.agent.hurt(damage, cause, knockback.as_dvec3(), &mut self.mobs.entities),
+                        };
                     }
                 }
                 EntityEvent::PlayerFall { player, damage } => {
-                    if self.gamerules.bool("fallDamage") {
-                        if player == PlayerId::HOST {
-                            self.damage_player(damage, crate::simulation::survival::CAUSE_FALL);
-                        } else if let Some(bot) = self.agents.by_id_mut(player) {
-                            bot.agent.hurt_fall(damage, &mut self.mobs.entities);
-                        }
+                    if player == PlayerId::HOST {
+                        self.damage_player(damage, crate::simulation::survival::CAUSE_FALL);
+                    } else if let Some(bot) = self.agents.by_id_mut(player) {
+                        bot.agent.hurt_fall(damage, &mut self.mobs.entities);
                     }
                 }
                 EntityEvent::PlayerBeam { player, physical, magic } => {
@@ -229,11 +247,19 @@ impl Game {
                         bot.agent.hurt_beam(physical, magic, &mut self.mobs.entities);
                     }
                 }
-                EntityEvent::PlayerSting { player, damage, cause } => {
+                EntityEvent::PlayerSting { player, damage, cause, poison } => {
+                    // Pufferfish contact (`mobAttack`) and guardian thorns both
+                    // have a living, non-player cause, so difficulty scales them.
+                    let damage = self.difficulty.mob_damage(damage);
                     if player == PlayerId::HOST {
-                        self.damage_player_armored(damage, cause);
-                    } else if let Some(bot) = self.agents.by_id_mut(player) {
-                        bot.agent.hurt(damage, cause, DVec3::ZERO, &mut self.mobs.entities);
+                        if self.damage_player_armored(damage, cause) > 0.0 && poison > 0 {
+                            self.session.vitals.apply_effect(crate::simulation::effects::Effect::Poison, 0, poison);
+                        }
+                    } else if let Some(bot) = self.agents.by_id_mut(player)
+                        && bot.agent.hurt(damage, cause, DVec3::ZERO, &mut self.mobs.entities) > 0.0
+                        && poison > 0
+                    {
+                        bot.agent.session.vitals.apply_effect(crate::simulation::effects::Effect::Poison, 0, poison);
                     }
                 }
                 EntityEvent::PlayerEffect { player: PlayerId::HOST, effect, amplifier, ticks } => {
@@ -308,7 +334,7 @@ impl Game {
                     }
                 }
                 EntityEvent::IgniteBlock { cell } => {
-                    if self.gamerules.bool("mobGriefing") {
+                    if self.gamerules.bool("mob_griefing") {
                         self.world.ignite(cell);
                     }
                 }
@@ -442,7 +468,7 @@ impl Game {
             self.mobs.entities.despawn_hostiles();
         }
         // All the blocks the dragon flew through this tick, in one edit.
-        if self.gamerules.bool("mobGriefing") && !smashed.is_empty() {
+        if self.gamerules.bool("mob_griefing") && !smashed.is_empty() {
             smashed.sort_unstable_by_key(|p| (p.x, p.y, p.z));
             smashed.dedup();
             self.world.break_blocks(&smashed);
@@ -506,10 +532,11 @@ impl Game {
     /// Blows a hole in the world and hurts everything around `center`.
     /// `cause` completes the death message, as for [`Game::damage_player`].
     pub(super) fn explode(&mut self, center: DVec3, power: f32, cause: &str, credit_player: bool) {
-        let griefing_mob = cause.contains("creeper") || cause.contains("ghast");
-        let mob_can_grief = !griefing_mob || self.gamerules.bool("mobGriefing");
-        if mob_can_grief {
-            self.world.explode_with_drops(center, power as f64, self.gamerules.bool("doTileDrops"));
+        // `ServerLevel.explode`: the interaction decides whether blocks break
+        // and whether their drops decay.
+        let blast = self.gamerules.explosion(voxelcraft::rules::ExplosionSource::of_cause(cause));
+        if blast.destroys_blocks {
+            self.world.explode_with_decay(center, power as f64, self.gamerules.bool("block_drops"), blast.drop_decay);
         }
         if credit_player {
             self.mobs.entities.explode_credited(center, power);
@@ -551,14 +578,17 @@ impl Game {
         let (passive, hostile): (Vec<_>, Vec<_>) = MobKind::ALL.iter().partition(|k| !k.is_hostile());
         let total = |kinds: Vec<&MobKind>| kinds.into_iter().map(|&k| e.count(k)).sum::<usize>();
         format!(
-            "Entities: {} (passive: {}, hostile: {}, arrows: {}, items: {}), {} rendered, {} falling blocks",
+            "Entities: {} (passive: {}, hostile: {}, arrows: {}, items: {}), {} rendered, {} falling blocks, \
+             {} stored in {} unloaded chunks",
             e.mobs.len(),
             total(passive),
             total(hostile),
             e.arrows.len(),
             e.items.len(),
             e.rendered,
-            self.world.falling_blocks().len()
+            self.world.falling_blocks().len(),
+            e.stored_entities() + self.world.stored_falling_blocks(),
+            e.stored_chunks()
         )
     }
 }

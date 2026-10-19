@@ -5,6 +5,7 @@ use crate::world::terrain::Dimension;
 use glam::{DVec3, IVec2, IVec3};
 use std::collections::VecDeque;
 use voxelcraft::agent::{Command, HELP, TimeQuery, WeatherKind};
+use voxelcraft::rules::GameRules;
 use voxelcraft::simulation::survival;
 use winit::event::KeyEvent;
 use winit::keyboard::{KeyCode, PhysicalKey};
@@ -17,6 +18,15 @@ pub(super) struct Console {
     pub history_index: Option<usize>,
     pub draft: String,
     pub lines: VecDeque<String>,
+}
+
+/// What a finished console command prints: failures always, successes only
+/// with `send_command_feedback` (Java's `CommandSourceStack.sendSuccess`).
+fn console_line(result: Result<String, String>, feedback: bool) -> Option<String> {
+    match result {
+        Ok(text) => feedback.then_some(text),
+        Err(e) => Some(format!("Error: {e}")),
+    }
 }
 
 impl Game {
@@ -77,7 +87,11 @@ impl Game {
                             _ => Command::parse(&input).and_then(|c| self.host_command(c)),
                         }
                     };
-                    self.console.lines.push_back(result.unwrap_or_else(|e| format!("Error: {e}")));
+                    // Java's `CommandSourceStack.sendSuccess` is silent without
+                    // `send_command_feedback`; failures are always shown.
+                    if let Some(line) = console_line(result, self.gamerules.bool("send_command_feedback")) {
+                        self.console.lines.push_back(line);
+                    }
                     while self.console.lines.len() > 64 {
                         self.console.lines.pop_front();
                     }
@@ -202,12 +216,12 @@ impl Game {
                 return Ok(format!("Set difficulty to {difficulty}"));
             }
             Command::GameRule { name, value: None } => {
-                let value = self.gamerules.get(&name).ok_or_else(|| format!("unknown gamerule: {name}"))?;
+                let value = self.gamerules.get(&name).ok_or_else(|| GameRules::unknown(&name))?;
                 return Ok(format!("{name} = {value}"));
             }
             Command::GameRule { name, value: Some(text) } => {
                 let value = self.gamerules.set(&name, &text)?;
-                self.world.set_tile_drops(self.gamerules.bool("doTileDrops"));
+                self.world.set_tile_drops(self.gamerules.bool("block_drops"));
                 return Ok(format!("Set {name} to {value}"));
             }
             Command::Seed => return Ok(format!("Seed: [{}]", self.world.generator.seed)),
@@ -427,5 +441,24 @@ impl Game {
         let text: String =
             self.console.input.chars().rev().take(width.saturating_sub(2)).collect::<String>().chars().rev().collect();
         ui.text_flat(10.0, h - 17.0, &format!("{text}_"), WHITE);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn send_command_feedback_silences_successes_but_never_failures() {
+        let ok = || Ok("Set the time to 1000".to_string());
+        assert_eq!(console_line(ok(), true).as_deref(), Some("Set the time to 1000"));
+        assert_eq!(console_line(ok(), false), None);
+        for feedback in [true, false] {
+            assert_eq!(
+                console_line(Err("unknown gamerule: x".into()), feedback).as_deref(),
+                Some("Error: unknown gamerule: x")
+            );
+        }
+        assert!(voxelcraft::rules::GameRules::default().bool("send_command_feedback"), "Java default is true");
     }
 }

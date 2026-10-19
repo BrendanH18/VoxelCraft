@@ -21,6 +21,7 @@ impl Entities {
             }
         }
         self.difficulty = difficulty;
+        let local_difficulty = difficulty.effective(self.clock_time, 0, self.moon_brightness);
         let mut events = Vec::new();
         events.append(&mut self.pending_sounds);
         if difficulty == crate::simulation::difficulty::Difficulty::Peaceful {
@@ -41,7 +42,9 @@ impl Entities {
             self.spawn_ticks = self.spawn_ticks.wrapping_add(1);
         }
         if difficulty != crate::simulation::difficulty::Difficulty::Peaceful {
-            self.run_spawners(dt as f32, world, ctx);
+            if self.spawner_blocks {
+                self.run_spawners(dt as f32, world, ctx);
+            }
             self.populate_bastions(dt as f32, world, ctx);
         }
 
@@ -58,6 +61,7 @@ impl Entities {
         self.tick_animals(dt as f32, world, ctx, &mut events);
         self.tick_leashes(dt as f32, world, ctx);
         self.tick_llamas(ctx);
+        self.sense_goals(world);
         let mut i = 0;
         while i < self.mobs.len() {
             let m = &self.mobs[i];
@@ -142,6 +146,7 @@ impl Entities {
             let before_tame = self.mobs[i].mount.as_ref().map(|s| (s.tame, s.rider));
             let grounded = self.mobs[i].on_ground;
             self.mobs[i].difficulty = difficulty;
+            self.mobs[i].local_difficulty = local_difficulty;
             self.mobs[i].trader_night = (0.5..0.96).contains(&self.village_time);
             self.mobs[i].update(dt, world, ctx, &mut self.rng, &mut events);
             let m = &self.mobs[i];
@@ -165,6 +170,7 @@ impl Entities {
             }
             i += 1;
         }
+        self.resolve_breeding();
         self.mob_index.rebuild(&self.mobs);
         self.watch_doors(dt as f32, &mut events);
         self.resolve_strikes(ctx, &mut events);
@@ -310,7 +316,10 @@ impl Entities {
         });
         self.items.retain_mut(|item| !world.entity_ticking(item.pos.floor().as_ivec3()) || item.update(dt, world));
         self.orbs.retain_mut(|orb| !world.entity_ticking(orb.pos.floor().as_ivec3()) || orb.update(dt, world, ctx));
-        self.tnt.retain_mut(|t| !world.entity_ticking(t.pos.floor().as_ivec3()) || t.update(dt, world, &mut events));
+        let tnt_explodes = self.tnt_explodes;
+        self.tnt.retain_mut(|t| {
+            !world.entity_ticking(t.pos.floor().as_ivec3()) || t.update(dt, world, &mut events, tnt_explodes)
+        });
         self.merge_timer -= dt as f32;
         if self.merge_timer <= 0.0 {
             self.merge_timer = MERGE_INTERVAL;

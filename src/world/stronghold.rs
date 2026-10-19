@@ -24,7 +24,7 @@ use super::chunk::{CHUNK_SIZE_I, CHUNK_VOLUME};
 use super::fortress::Feature;
 use super::noise::hash3;
 use super::redstone_blocks;
-use super::structure::{Bounds, LootEntry, Oriented, Paint, Rng, fill_chest};
+use super::structure::{Bounds, LootEntry, Oriented, Paint, Rng, fill_chest, fill_chest_with_blanks};
 use crate::entity::MobKind;
 use crate::item::{ArmorMaterial, ArmorPiece, Item, Tier, ToolKind};
 
@@ -502,28 +502,43 @@ const CORRIDOR: u64 = 1;
 const CROSSING: u64 = 2;
 const LIBRARY: u64 = 3;
 
-/// Fills a stronghold chest; the table is picked by the seed's tag.
-pub fn loot(seed: u64) -> Chest {
-    let iron = |p| Item::armor(p, ArmorMaterial::Iron);
-    let tool = |k| Item::tool(k, Tier::Iron);
-    // Java's stronghold_corridor, stronghold_crossing and stronghold_library
-    // tables without the items that don't exist (redstone, saddles, horse
-    // armor, discs, maps, compasses); enchanted books are plain books.
-    let corridor: [LootEntry; 13] = [
-        (Item::ENDER_PEARL, 10, 1, 1),
-        (Item::DIAMOND, 3, 1, 3),
-        (Item::IRON_INGOT, 10, 1, 5),
-        (Item::GOLD_INGOT, 5, 1, 3),
-        (Item::BREAD, 15, 1, 3),
-        (Item::APPLE, 15, 1, 3),
+/// `chests/stronghold_corridor.json` pool 0 (total 101). The copper horse armor
+/// and music disc entries have no item yet and stay weighted blanks.
+fn corridor_table() -> [(Option<Item>, u32, u32, u32); 21] {
+    let iron = |p| Some(Item::armor(p, ArmorMaterial::Iron));
+    let tool = |k| Some(Item::tool(k, Tier::Iron));
+    [
+        (Some(Item::ENDER_PEARL), 10, 1, 1),
+        (Some(Item::DIAMOND), 3, 1, 3),
+        (Some(Item::IRON_INGOT), 10, 1, 5),
+        (Some(Item::GOLD_INGOT), 5, 1, 3),
+        (Some(Item::REDSTONE), 5, 4, 9),
+        (Some(Item::BREAD), 15, 1, 3),
+        (Some(Item::APPLE), 15, 1, 3),
         (tool(ToolKind::Pickaxe), 5, 1, 1),
         (tool(ToolKind::Sword), 5, 1, 1),
         (iron(ArmorPiece::Chestplate), 5, 1, 1),
         (iron(ArmorPiece::Helmet), 5, 1, 1),
         (iron(ArmorPiece::Leggings), 5, 1, 1),
         (iron(ArmorPiece::Boots), 5, 1, 1),
-        (Item::BOOK, 1, 1, 1),
-    ];
+        (Some(Item::GOLDEN_APPLE), 1, 1, 1),
+        (Some(Item::LEATHER), 1, 1, 5),
+        (None, 1, 1, 1), // copper_horse_armor
+        (Some(Item::IRON_HORSE_ARMOR), 1, 1, 1),
+        (Some(Item::GOLDEN_HORSE_ARMOR), 1, 1, 1),
+        (Some(Item::DIAMOND_HORSE_ARMOR), 1, 1, 1),
+        (None, 1, 1, 1), // music_disc_otherside
+        (Some(Item::BOOK), 1, 1, 1),
+    ]
+}
+
+/// Fills a stronghold chest; the table is picked by the seed's tag.
+pub fn loot(seed: u64) -> Chest {
+    let tool = |k| Item::tool(k, Tier::Iron);
+    // Java's stronghold_corridor, stronghold_crossing and stronghold_library
+    // tables without the items that don't exist (copper horse armor, discs,
+    // saddles, maps, compasses); enchanted books are plain books.
+    let corridor = corridor_table();
     let crossing: [LootEntry; 6] = [
         (Item::IRON_INGOT, 10, 1, 5),
         (Item::GOLD_INGOT, 5, 1, 3),
@@ -536,7 +551,7 @@ pub fn loot(seed: u64) -> Chest {
     match seed & 3 {
         CROSSING => fill_chest(seed, (1, 4), &crossing),
         LIBRARY => fill_chest(seed, (2, 10), &library),
-        _ => fill_chest(seed, (2, 3), &corridor),
+        _ => fill_chest_with_blanks(seed, (2, 3), &corridor),
     }
 }
 
@@ -874,6 +889,36 @@ impl Paint<'_, Piece> {
 mod tests {
     use super::*;
 
+    /// `chests/stronghold_corridor.json` lists a golden apple (weight 1 of 101); the
+    /// crossing and library tables have none.
+    #[test]
+    fn corridor_table_keeps_the_java_weights_and_counts() {
+        let table = corridor_table();
+        assert_eq!(table.iter().map(|e| e.1).sum::<u32>(), 101, "stronghold_corridor.json pool 0 totals 101");
+        // 26.3 tables give counts as each entry's `set_count` `modifier`.
+        let counts = |item: Item| table.iter().find(|e| e.0 == Some(item)).map(|e| (e.2, e.3));
+        assert_eq!(counts(Item::DIAMOND), Some((1, 3)));
+        assert_eq!(counts(Item::IRON_INGOT), Some((1, 5)));
+        assert_eq!(counts(Item::GOLD_INGOT), Some((1, 3)));
+        assert_eq!(counts(Item::REDSTONE), Some((4, 9)));
+        assert_eq!(counts(Item::BREAD), Some((1, 3)));
+        assert_eq!(counts(Item::APPLE), Some((1, 3)));
+        assert_eq!(counts(Item::LEATHER), Some((1, 5)));
+        assert_eq!(counts(Item::ENDER_PEARL), Some((1, 1)));
+        assert_eq!(counts(Item::GOLDEN_APPLE), Some((1, 1)));
+    }
+
+    #[test]
+    fn only_corridor_chests_hold_golden_apples() {
+        let with_apple = |tag: u64| {
+            (0..20_000u64)
+                .filter(|n| loot(n * 4 + tag).slots.iter().flatten().any(|s| s.item == Item::GOLDEN_APPLE))
+                .count()
+        };
+        assert!(with_apple(CORRIDOR) > 0 && with_apple(0) > 0);
+        assert_eq!((with_apple(CROSSING), with_apple(LIBRARY)), (0, 0));
+    }
+
     #[test]
     fn rings_start_with_three_far_out_and_hold_128() {
         let s = Strongholds::new(7);
@@ -966,7 +1011,8 @@ mod tests {
                 let (lo, hi) = match tag {
                     CROSSING => (1, 4),
                     LIBRARY => (2, 10),
-                    _ => (2, 3),
+                    // Corridor rolls on the copper horse armor or disc blanks leave a slot empty.
+                    _ => (0, 3),
                 };
                 assert!((lo..=hi).contains(&n), "tag {tag}: {n} stacks");
             }

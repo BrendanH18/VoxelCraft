@@ -15,7 +15,8 @@ def report(scene='survival',**changes):
     seconds=180.0 if scene=='streaming' else 60.0
     out={'scene':scene,'sample_seconds':seconds+0.01,'completed_simulation_ticks':int(seconds*20),'paused_simulation_ms':0.0,
          'unpresented_frames':0,'graphics':'enhanced','acceptance_eligible_configuration':True,'run_valid':True,
-         'ineligible_reasons':[],'source_matches_runner':True,'frame_thresholds_passed':True}
+         'ineligible_reasons':[],'source_matches_runner':True,'frame_thresholds_passed':True,
+         'view_distance_blocks':SPEC['view_distance_blocks'],'simulation_distance_blocks':SPEC['simulation_distance_blocks']}
     out.update(changes)
     return out
 
@@ -47,7 +48,8 @@ class RunnerGate(unittest.TestCase):
         for change in [{'paused_simulation_ms':12.0},{'unpresented_frames':1},{'graphics':'classic'},
                        {'run_valid':False,'ineligible_reasons':['scene population drifted beyond tolerance']},
                        {'acceptance_eligible_configuration':False},{'source_matches_runner':False},
-                       {'completed_simulation_ticks':1150}]:
+                       {'completed_simulation_ticks':1150},{'simulation_distance_blocks':128},
+                       {'view_distance_blocks':128}]:
             self.assertTrue(runner.run_problems(report(**change),SPEC),change)
         self.assertEqual(runner.run_problems(report(completed_simulation_ticks=1201),SPEC),[])
 

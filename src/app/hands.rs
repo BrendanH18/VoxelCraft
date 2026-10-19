@@ -35,6 +35,8 @@ pub(super) enum Request {
     Open(Used),
     /// Damage from something consumed (a harming potion), as magic.
     MagicDamage(f32),
+    /// An attack's extra knockback stopped this player's sprint (`setSprinting(false)`).
+    StopSprint,
 }
 
 pub(super) struct Actor<'a> {
@@ -99,7 +101,10 @@ impl Actor<'_> {
         use voxelcraft::session::combat::{Outcome, Target as Hit};
         let slot = self.body.actions.selected;
         let result = self.session.attack(slot, self.world, self.entities, self.sprinting);
-        let Ok(Outcome::Hit { target, at, critical, tool_broken, .. }) = result else { return false };
+        let Ok(Outcome::Hit { target, at, critical, tool_broken, sprint_cancelled, .. }) = result else { return false };
+        if sprint_cancelled {
+            self.requests.push(Request::StopSprint);
+        }
         let (volume, pitch) = match target {
             Hit::FenceKnot => (0.0, (1.0, 1.0)),
             Hit::Cart => (0.7, (0.8, 1.0)),

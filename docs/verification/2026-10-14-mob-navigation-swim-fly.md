@@ -61,9 +61,9 @@ mob as Java's `createNavigation` does (transient, never saved):
 
 ## Remaining differences and open work
 
-- Striders keep their own lava steering: `StriderPathNavigation` (lava as a
-  stable destination and valid path type) isn't ported; walking paths stalled
-  at the shore.
+- Striders kept their own lava steering here; `StriderPathNavigation` and
+  `StriderGoToLavaGoal` followed on 2026-10-15
+  ([evidence](2026-10-15-strider-lava-paths.md)).
 - Ghasts, blazes, bees, allays and vexes keep their existing movement; squid
   and glow squid have no navigation in Java and are unchanged.
 - Fish, dolphins and other swimmers still use VoxelCraft's swim physics, not

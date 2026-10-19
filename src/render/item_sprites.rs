@@ -265,6 +265,23 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 shaded(&body, x, y, [248, 200, 40], 0.06).map(|p| if shine { [255, 250, 190, 255] } else { p })
             })
         }
+        Sprite::EnchantedGoldenApple => {
+            let stem = (x == 8 && (2..=4).contains(&y)).then_some(tint([90, 60, 25], 1.0));
+            let body = |x: i32, y: i32| disc(6.5, 9.5, 4.6)(x, y) || disc(9.5, 9.5, 4.6)(x, y);
+            let shine = (5..=6).contains(&x) && (7..=8).contains(&y);
+            let sparkle = matches!((x, y), (11, 7) | (12, 8) | (11, 9) | (10, 8) | (4, 11) | (5, 12) | (9, 12));
+            stem.or_else(|| {
+                shaded(&body, x, y, [248, 200, 40], 0.06).map(|p| {
+                    if shine {
+                        [255, 250, 190, 255]
+                    } else if sparkle {
+                        [226, 170, 255, 255]
+                    } else {
+                        p
+                    }
+                })
+            })
+        }
         Sprite::Bread => {
             let loaf = |x: i32, y: i32| {
                 let (px, py) = centre(x, y);
@@ -828,6 +845,10 @@ fn effect_glyph(effect: Effect) -> [&'static str; 8] {
         }
         Effect::Haste => {
             ["...###..", "..###...", ".#######", "######..", "...##...", "..##....", ".##.....", "##......"]
+        }
+        // A heart with a highlight cut out of its upper left lobe, like the golden hearts.
+        Effect::Absorption => {
+            [".##..##.", "#.######", "########", "########", ".######.", "..####..", "...##...", "........"]
         }
     }
 }

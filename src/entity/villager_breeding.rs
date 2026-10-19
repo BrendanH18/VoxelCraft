@@ -148,6 +148,7 @@ impl Entities {
                 let d = p.as_dvec3().distance_squared(pos);
                 if b.is_bed_head()
                     && !self.claimed_beds.contains(&p)
+                    && !self.storage.claims_bed(p)
                     && d < distance
                     && [p + IVec3::Y, p + IVec3::Y * 2]
                         .into_iter()

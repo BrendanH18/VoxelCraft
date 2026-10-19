@@ -33,10 +33,12 @@ pub enum Effect {
     Nausea,
     Luck,
     BadLuck,
+    /// Appended: adds `4 * (amplifier + 1)` to the max-absorption attribute.
+    Absorption,
 }
 
 impl Effect {
-    pub const ALL: [Effect; 23] = [
+    pub const ALL: [Effect; 24] = [
         Effect::Speed,
         Effect::Slowness,
         Effect::Strength,
@@ -60,6 +62,7 @@ impl Effect {
         Effect::Nausea,
         Effect::Luck,
         Effect::BadLuck,
+        Effect::Absorption,
     ];
 
     /// Java's id, as `/effect` and saves use it.
@@ -88,6 +91,7 @@ impl Effect {
             Effect::Nausea => "nausea",
             Effect::Luck => "luck",
             Effect::BadLuck => "unluck",
+            Effect::Absorption => "absorption",
         }
     }
 
@@ -122,6 +126,7 @@ impl Effect {
             Effect::Nausea => "Nausea",
             Effect::Luck => "Luck",
             Effect::BadLuck => "Bad Luck",
+            Effect::Absorption => "Absorption",
         }
     }
 
@@ -151,6 +156,7 @@ impl Effect {
             Effect::Nausea => 0x551D4A,
             Effect::Luck => 0x59C106,
             Effect::BadLuck => 0xC0A44D,
+            Effect::Absorption => 0x2552A5,
         };
         [(c >> 16) as u8, (c >> 8) as u8, c as u8]
     }
@@ -244,7 +250,15 @@ pub struct Effects {
     hidden: Vec<Active>,
     /// Seconds not yet spent on whole ticks.
     carry: f32,
+    /// Java's `LivingEntity.absorptionAmount`: extra health spent before
+    /// health. It lives with the effects because the only source of its cap
+    /// (the max-absorption attribute) is the Absorption effect.
+    absorption: f32,
 }
+
+/// Java 26.3 `MobEffects.ABSORPTION`'s `ADD_VALUE` modifier on the
+/// max-absorption attribute, per level.
+const ABSORPTION_PER_LEVEL: f32 = 4.0;
 
 impl Effects {
     pub fn iter(&self) -> impl Iterator<Item = &Active> {
@@ -266,6 +280,31 @@ impl Effects {
     /// Bit set of the active effects, indexed by `Effect as u32`.
     pub fn mask(&self) -> u32 {
         self.active.iter().fold(0, |m, a| m | 1 << a.effect as u32)
+    }
+
+    /// Java's `getMaxAbsorption`: the attribute's base is 0 and Absorption adds
+    /// `4 * (amplifier + 1)` while active.
+    pub fn max_absorption(&self) -> f32 {
+        self.levels(Effect::Absorption) as f32 * ABSORPTION_PER_LEVEL
+    }
+
+    /// Java's `getAbsorptionAmount`.
+    pub fn absorption(&self) -> f32 {
+        self.absorption
+    }
+
+    /// Java's `setAbsorptionAmount`: clamped to `0..=max_absorption`.
+    pub fn set_absorption(&mut self, amount: f32) {
+        self.absorption = amount.clamp(0.0, self.max_absorption());
+    }
+
+    /// The first half of `actuallyHurt` for damage that already went through
+    /// armour, resistance and enchantments: absorption soaks up what it can
+    /// and the rest, for health, is returned.
+    pub fn absorb(&mut self, damage: f32) -> f32 {
+        let remaining = (damage - self.absorption).max(0.0);
+        self.set_absorption(self.absorption - (damage - remaining));
+        remaining
     }
 
     /// Amplifier + 1 of `effect`, or 0 without it.
@@ -300,19 +339,32 @@ impl Effects {
             None => self.active.push(new),
         }
         self.active.sort_by_key(|a| a.effect);
+        if effect == Effect::Absorption {
+            // `AbsorptionMobEffect.onEffectStarted`, run for every instance
+            // given, even one that only becomes a hidden effect.
+            self.set_absorption(self.absorption.max(((u32::from(amplifier) + 1) * 4) as f32));
+        }
+        self.clamp_absorption();
         Outcome::default()
+    }
+
+    /// Java clamps the absorption amount whenever its attribute changes.
+    fn clamp_absorption(&mut self) {
+        self.set_absorption(self.absorption);
     }
 
     pub fn remove(&mut self, effect: Effect) -> bool {
         let before = self.active.len();
         self.active.retain(|a| a.effect != effect);
         self.hidden.retain(|a| a.effect != effect);
+        self.clamp_absorption();
         self.active.len() != before
     }
 
     pub fn clear(&mut self) {
         self.active.clear();
         self.hidden.clear();
+        self.absorption = 0.0;
     }
 
     /// Advances `dt` seconds: regeneration heals 1 every 50 >> level ticks
@@ -324,6 +376,11 @@ impl Effects {
         let whole = self.carry.floor();
         self.carry -= whole;
         for _ in 0..whole as u32 {
+            // `AbsorptionMobEffect.applyEffectTick` fails once the absorption
+            // is spent, which ends the effect (and any hidden instance).
+            if self.absorption <= 0.0 {
+                self.remove(Effect::Absorption);
+            }
             for a in &mut self.active {
                 let every = match a.effect {
                     Effect::Regeneration => 50u32 >> a.amplifier.min(31),
@@ -356,14 +413,22 @@ impl Effects {
                 }
             }
             self.active.retain(|a| a.ticks > 0);
+            self.clamp_absorption();
         }
         out
     }
 
-    /// Movement speed multiplier: +20% per level of Speed, -15% per level
-    /// of Slowness (Java's attribute modifiers).
+    /// Movement speed multiplier: Speed and Slowness are each an
+    /// `ADD_MULTIPLIED_TOTAL` attribute modifier (+0.2 and -0.15 per level, floats
+    /// widened to doubles), so their effects multiply (Java's `MobEffects`).
     pub fn speed_factor(&self) -> f64 {
-        (1.0 + 0.2 * self.levels(Effect::Speed) as f64 - 0.15 * self.levels(Effect::Slowness) as f64).max(0.0)
+        (1.0 + crate::knockback::SPEED_PER_LEVEL * self.levels(Effect::Speed) as f64).max(0.0)
+            * (1.0 + crate::knockback::SLOWNESS_PER_LEVEL * self.levels(Effect::Slowness) as f64).max(0.0)
+    }
+
+    /// The Speed and Slowness levels (0 when absent), for `Player.getSpeed`.
+    pub fn movement_speed_levels(&self) -> (u32, u32) {
+        (self.levels(Effect::Speed), self.levels(Effect::Slowness))
     }
 
     /// Java's fatigue multipliers for mining speed.
@@ -423,12 +488,20 @@ impl Effects {
         }
     }
 
-    /// `effect:amplifier:ticks|...` for saves.
+    /// `effect:amplifier:ticks|...` for saves. The active Absorption entry
+    /// carries the absorption amount as a fourth field.
     pub fn serialize(&self) -> String {
+        let active = self.active.len();
         self.active
             .iter()
             .chain(&self.hidden)
-            .map(|a| format!("{}:{}:{}", a.effect.id(), a.amplifier, a.ticks))
+            .enumerate()
+            .map(|(i, a)| match a.effect {
+                Effect::Absorption if i < active => {
+                    format!("{}:{}:{}:{}", a.effect.id(), a.amplifier, a.ticks, self.absorption)
+                }
+                _ => format!("{}:{}:{}", a.effect.id(), a.amplifier, a.ticks),
+            })
             .collect::<Vec<_>>()
             .join("|")
     }
@@ -436,6 +509,7 @@ impl Effects {
     /// Restores [`Effects::serialize`] output, skipping malformed entries.
     pub fn deserialize(text: &str) -> Self {
         let mut effects = Self::default();
+        let mut absorption = None;
         for entry in text.split('|') {
             let mut parts = entry.split(':');
             if let (Some(e), Some(Ok(amp)), Some(Ok(ticks))) =
@@ -443,7 +517,16 @@ impl Effects {
                 && ticks > 0
             {
                 effects.add(e, amp, ticks);
+                if e == Effect::Absorption
+                    && let Some(Ok(amount)) = parts.next().map(str::parse::<f32>)
+                    && amount.is_finite()
+                {
+                    absorption = Some(amount);
+                }
             }
+        }
+        if let Some(amount) = absorption {
+            effects.set_absorption(amount);
         }
         effects
     }
@@ -463,9 +546,11 @@ mod tests {
         assert_eq!(e.get(Effect::Speed).map(|a| (a.amplifier, a.ticks)), Some((1, 100)));
         e.add(Effect::Speed, 0, 5000);
         assert_eq!(e.get(Effect::Speed).unwrap().amplifier, 1, "weaker never replaces stronger");
-        assert!((e.speed_factor() - 1.4).abs() < 1e-9);
+        // The modifier amounts are floats widened to doubles (0.2f is 0.20000000298...).
+        assert!((e.speed_factor() - 1.4).abs() < 1e-6);
         e.add(Effect::Slowness, 0, 100);
-        assert!((e.speed_factor() - 1.25).abs() < 1e-9);
+        // Java multiplies the two modifiers: (1 + 2 * 0.2) * (1 - 0.15), not 1 + 0.4 - 0.15.
+        assert!((e.speed_factor() - 1.4 * 0.85).abs() < 1e-6);
     }
 
     /// Java's `MobEffectInstance.hiddenEffect`: a stronger, shorter effect
@@ -519,6 +604,117 @@ mod tests {
         let hurt: f32 = (0..432).map(|_| e.tick(0.05).poison).sum();
         assert_eq!(hurt, 36.0);
         assert!(!e.has(Effect::Poison));
+    }
+
+    /// Java 26.3 `AbsorptionMobEffect` and `MobEffects.ABSORPTION`: a 4.0
+    /// `ADD_VALUE` modifier per level on `max_absorption`, and
+    /// `onEffectStarted` raises the amount to `4 * (amplifier + 1)`.
+    #[test]
+    fn absorption_starts_at_four_per_level_and_never_exceeds_the_attribute() {
+        let mut e = Effects::default();
+        assert_eq!((e.absorption(), e.max_absorption()), (0.0, 0.0));
+        e.set_absorption(5.0);
+        assert_eq!(e.absorption(), 0.0, "no attribute, no absorption");
+        e.add(Effect::Absorption, 0, 2400);
+        assert_eq!((e.absorption(), e.max_absorption()), (4.0, 4.0));
+        e.set_absorption(100.0);
+        assert_eq!(e.absorption(), 4.0);
+        e.set_absorption(-3.0);
+        assert_eq!(e.absorption(), 0.0);
+        // Absorption IV (the enchanted golden apple): 16.
+        e.add(Effect::Absorption, 3, 2400);
+        assert_eq!((e.absorption(), e.max_absorption()), (16.0, 16.0));
+        // `Math.max(current, 4 * (1 + amplifier))`: a weaker apple adds nothing.
+        e.set_absorption(10.0);
+        e.add(Effect::Absorption, 0, 2400);
+        assert_eq!(e.absorption(), 10.0);
+        assert_eq!(e.get(Effect::Absorption).map(|a| a.amplifier), Some(3));
+        assert!(Effect::Absorption.id() == "absorption" && !Effect::Absorption.is_harmful());
+        assert_eq!(Effect::Absorption.colour(), [0x25, 0x52, 0xA5], "MobEffects.ABSORPTION colour 2445989");
+    }
+
+    /// `LivingEntity.actuallyHurt`: `remaining = max(damage - absorption, 0)`
+    /// and absorption loses `damage - remaining`.
+    #[test]
+    fn absorb_spends_absorption_before_health() {
+        let mut e = Effects::default();
+        e.add(Effect::Absorption, 1, 2400);
+        assert_eq!(e.absorb(3.0), 0.0);
+        assert_eq!(e.absorption(), 5.0);
+        assert_eq!(e.absorb(5.0), 0.0);
+        assert_eq!(e.absorption(), 0.0);
+        e.add(Effect::Absorption, 1, 2400);
+        assert_eq!(e.absorb(9.5), 1.5);
+        assert_eq!(e.absorption(), 0.0);
+        assert_eq!(e.absorb(2.0), 2.0, "nothing left to absorb");
+    }
+
+    /// `AbsorptionMobEffect.applyEffectTick` returns `absorption > 0`, and a
+    /// false tick removes the instance.
+    #[test]
+    fn the_effect_ends_on_the_tick_after_its_absorption_is_spent() {
+        let mut e = Effects::default();
+        e.add(Effect::Absorption, 0, 2400);
+        e.tick(0.05);
+        assert!(e.has(Effect::Absorption));
+        e.absorb(4.0);
+        assert!(e.has(Effect::Absorption), "still listed until the next tick");
+        e.tick(0.05);
+        assert!(!e.has(Effect::Absorption) && e.is_empty());
+        assert!(e.serialize().is_empty());
+    }
+
+    #[test]
+    fn expiry_and_removal_clear_the_absorption_amount() {
+        let mut e = Effects::default();
+        e.add(Effect::Absorption, 0, 40);
+        for _ in 0..39 {
+            e.tick(0.05);
+        }
+        assert_eq!(e.absorption(), 4.0);
+        e.tick(0.05);
+        assert!(e.is_empty());
+        assert_eq!(e.absorption(), 0.0, "removing the modifier clamps the amount to the new max of 0");
+        // Milk and /effect clear.
+        e.add(Effect::Absorption, 3, 2400);
+        e.clear();
+        assert_eq!((e.absorption(), e.max_absorption()), (0.0, 0.0));
+        e.add(Effect::Absorption, 3, 2400);
+        assert!(e.remove(Effect::Absorption));
+        assert_eq!(e.absorption(), 0.0);
+        // A hidden weaker instance resurfacing lowers the cap, and the amount with it.
+        e.add(Effect::Absorption, 3, 20);
+        e.add(Effect::Absorption, 0, 2400);
+        assert_eq!(e.absorption(), 16.0);
+        for _ in 0..20 {
+            e.tick(0.05);
+        }
+        assert_eq!(e.get(Effect::Absorption).map(|a| (a.amplifier, a.ticks)), Some((0, 2380)));
+        assert_eq!((e.absorption(), e.max_absorption()), (4.0, 4.0));
+    }
+
+    /// The amount is saved on the active entry as a fourth field.
+    #[test]
+    fn absorption_amount_survives_a_save() {
+        let mut e = Effects::default();
+        e.add(Effect::Absorption, 3, 1800);
+        e.add(Effect::Speed, 0, 600);
+        e.absorb(4.5);
+        assert_eq!(e.absorption(), 11.5);
+        let text = e.serialize();
+        assert_eq!(text, "speed:0:600|absorption:3:1800:11.5");
+        let back = Effects::deserialize(&text);
+        assert_eq!(back, e);
+        assert_eq!((back.absorption(), back.max_absorption()), (11.5, 16.0));
+        // A hidden weaker instance keeps its place and the amount stays on the active one.
+        e.add(Effect::Absorption, 0, 2400);
+        let back = Effects::deserialize(&e.serialize());
+        assert_eq!(back, e);
+        // Older text without the amount restores the effect's starting amount; bad amounts clamp or drop.
+        assert_eq!(Effects::deserialize("absorption:1:100").absorption(), 8.0);
+        assert_eq!(Effects::deserialize("absorption:1:100:99").absorption(), 8.0);
+        assert_eq!(Effects::deserialize("absorption:1:100:-4").absorption(), 0.0);
+        assert_eq!(Effects::deserialize("absorption:1:100:NaN").absorption(), 8.0);
     }
 
     #[test]

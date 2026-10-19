@@ -81,8 +81,6 @@ const NIGHT_ZENITH: [f32; 3] = [0.002, 0.003, 0.012];
 const SUNSET: [f32; 3] = [0.95, 0.42, 0.18];
 const WATER_FOG: [f32; 3] = [0.05, 0.14, 0.35];
 const LAVA_FOG: [f32; 3] = [0.75, 0.25, 0.03];
-/// Real seconds per in-game day.
-const DAY_LENGTH: f64 = crate::simulation::DAY_LENGTH;
 
 fn window_icon() -> Icon {
     let decoder = png::Decoder::new(std::io::Cursor::new(include_bytes!("../../packaging/icons/VoxelCraft.png")));
@@ -767,10 +765,17 @@ impl Game {
     /// when absorbed by the 0.5 s hurt immunity that follows each hit (a
     /// stronger hit within it only deals the difference).
     pub(crate) fn damage_player(&mut self, amount: f32, cause: &str) -> f32 {
+        // Java's `Player.isInvulnerableTo` for the fall, fire and drowning rules.
+        if self.gamerules.damage_immunity().blocks(cause) {
+            return 0.0;
+        }
         let amount = crate::enchant::protect(amount, &self.session.inventory.armor, cause);
         let taken = self.session.vitals.damage(amount, cause, self.session.mode.invulnerable());
         if taken > 0.0 {
-            self.session.player.animation.hurt_direction = 0.0;
+            // A stronger hit inside the immunity window keeps the hurt direction, as Java skips it.
+            if self.session.vitals.last_hit_fresh() {
+                self.session.player.animation.hurt_direction = 0.0;
+            }
             self.session.sleeping = None;
             self.audio.play(crate::audio::sounds::Sound::Hurt, None, 0.9, (0.92, 1.05));
         }
@@ -799,18 +804,24 @@ impl Game {
         taken
     }
 
-    /// Releases the mouse and stops all actions for the death screen. A
-    /// survival player drops everything they carried.
+    /// Releases the mouse and stops all actions for the death screen, and
+    /// takes the shared death step (drops unless spectating or
+    /// `keepInventory`, as every adapter does).
     fn on_death(&mut self) {
-        self.session.vitals.effects.clear();
-        if self.gamerules.bool("showDeathMessages") {
+        if self.gamerules.bool("show_death_messages") {
             log::info!("player {}", self.session.vitals.death.as_deref().unwrap_or("died"));
         }
         if self.inventory_open {
             self.toggle_inventory();
         }
-        if self.session.mode.is_survival() && !self.gamerules.bool("keepInventory") {
-            self.drop_everything();
+        if self.session.player.vehicle.take().is_some() {
+            self.mobs.entities.dismount(&self.world, crate::entity::PlayerId::HOST);
+        }
+        let grid = self.craft.take_all();
+        self.session.die(&mut self.mobs.entities, self.gamerules.bool("keep_inventory"), grid);
+        // `ThrownEnderpearl.tick` sees the dead owner before any respawn.
+        if self.gamerules.bool("ender_pearls_vanish_on_death") {
+            self.mobs.entities.discard_pearls_of_dead(|owner| owner == crate::entity::PlayerId::HOST);
         }
         if self.hardcore {
             self.session.vitals.respawn();
@@ -824,38 +835,29 @@ impl Game {
         self.jump_pressed = false;
         self.body.mine_pressed = false;
         self.body.actions.reset();
-        self.session.cancel_mining();
-        self.session.cancel_consumption();
         if self.hardcore {
             self.set_grab(true);
-        } else if self.gamerules.bool("doImmediateRespawn") {
+        } else if self.gamerules.respawns_immediately(self.hardcore) {
             self.respawn();
         }
     }
 
-    /// Back to the world spawn with full health.
+    /// Back to the bed or world spawn through the shared respawn step.
     fn respawn(&mut self) {
         if self.lan.client.is_some() {
             self.lan_command("respawn");
             return;
         }
-        let kept_xp = self.gamerules.bool("keepInventory").then_some(self.session.vitals.xp);
+        let keep_inventory = self.gamerules.bool("keep_inventory");
         if self.dimension != Dimension::Overworld {
-            self.session.vitals.respawn();
-            if let Some(xp) = kept_xp {
-                self.session.vitals.xp = xp;
-            }
+            let here = self.session.player.pos;
+            self.session.respawn(here, voxelcraft::session::DEFAULT_SPAWN_YAW, keep_inventory);
             self.switch_dimension(Dimension::Overworld, dimension::Arrival::Respawn);
             self.set_grab(true);
             return;
         }
-        self.session.player.pos = self.respawn_point();
-        self.session.player.vel = DVec3::ZERO;
-        self.session.player.flying = false;
-        self.session.vitals.respawn();
-        if let Some(xp) = kept_xp {
-            self.session.vitals.xp = xp;
-        }
+        let (at, yaw) = self.respawn_point();
+        self.session.respawn(at, yaw, keep_inventory);
         self.set_grab(true);
     }
 
@@ -1418,6 +1420,8 @@ impl Game {
         let result = f(&mut actor);
         for request in std::mem::take(&mut actor.requests) {
             match request {
+                // The host's sprint follows the held key, which Java's client also re-engages.
+                hands::Request::StopSprint => {}
                 hands::Request::Popup(text) => self.show_popup(&text),
                 hands::Request::Open(used) => self.present_use(used),
                 hands::Request::MagicDamage(amount) => {
@@ -1435,10 +1439,10 @@ impl Game {
         let now = Instant::now();
         self.poll_lan();
         self.poll_agents();
-        let paused = (self.menu.is_some() || self.console.open || self.credits.is_some())
-            && self.agents.host.is_none()
-            && self.lan.host.is_none()
-            && self.lan.client.is_none();
+        let paused = pauses_simulation(
+            self.menu.is_some() || self.console.open || self.credits.is_some(),
+            self.agents.host.is_some() || self.lan.host.is_some() || self.lan.client.is_some(),
+        );
         let elapsed = now - self.last_frame;
         self.last_frame = now;
         let ticks = self.clock.advance(elapsed, paused);
@@ -1759,4 +1763,33 @@ fn push_avatars(
 fn capitalize(s: &str) -> String {
     let mut c = s.chars();
     c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
+}
+
+/// Single-player pause, as Java's integrated server pauses only while it is
+/// not shared: an open game menu, the console or the credits stop gameplay
+/// ticks, unless other players are in this world (the CLI agent server, a
+/// LAN host or a LAN client). Controller players' own menus never pause the
+/// world; the inventory and container screens don't either.
+fn pauses_simulation(screen_open: bool, shared: bool) -> bool {
+    screen_open && !shared
+}
+
+#[cfg(test)]
+mod pause_tests {
+    use super::*;
+    use crate::simulation::FixedClock;
+    use std::time::Duration;
+
+    #[test]
+    fn menus_pause_only_an_unshared_world_and_resume_without_catching_up() {
+        assert!(pauses_simulation(true, false));
+        assert!(!pauses_simulation(true, true), "agents or LAN players keep it running");
+        assert!(!pauses_simulation(false, false));
+        let mut clock = FixedClock::default();
+        assert_eq!(clock.advance(Duration::from_millis(500), pauses_simulation(true, false)), 0);
+        assert_eq!(clock.advance(Duration::from_millis(200), pauses_simulation(true, true)), 4);
+        // Time spent paused is not charged on resume.
+        assert_eq!(clock.advance(Duration::from_millis(50), false), 1);
+        assert_eq!(clock.paused(), Duration::from_millis(500));
+    }
 }

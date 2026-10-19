@@ -240,6 +240,13 @@ pub type LootEntry = (Item, u32, u32, u32);
 /// A chest filled by `rolls` (fewest, most) weighted picks from `table`,
 /// each into a random empty slot like Java's, seeded by `seed`.
 pub fn fill_chest(seed: u64, rolls: (u32, u32), table: &[LootEntry]) -> Chest {
+    let table: Vec<_> = table.iter().map(|&(item, w, lo, hi)| (Some(item), w, lo, hi)).collect();
+    fill_chest_with_blanks(seed, rolls, &table)
+}
+
+/// [`fill_chest`] for a table whose `None` entries keep their weight but award
+/// nothing (Java items the game lacks), so every present item keeps Java's odds.
+pub fn fill_chest_with_blanks(seed: u64, rolls: (u32, u32), table: &[(Option<Item>, u32, u32, u32)]) -> Chest {
     let total: u32 = table.iter().map(|e| e.1).sum();
     let mut rng = Rng(seed ^ 0x6C6F_6F74);
     let mut chest = Chest::default();
@@ -253,6 +260,7 @@ pub fn fill_chest(seed: u64, rolls: (u32, u32), table: &[LootEntry]) -> Chest {
                 hit
             })
             .unwrap();
+        let Some(item) = item else { continue };
         let count = rng.range(lo, hi) as u8;
         // Java scatters loot into random empty slots.
         let empty: Vec<usize> = (0..SLOTS).filter(|&i| chest.slots[i].is_none()).collect();

@@ -224,6 +224,8 @@ pub enum Sprite {
     Apple,
     /// An apple with a golden skin.
     GoldenApple,
+    /// The golden apple with violet sparkles (its glint is drawn by the HUD).
+    EnchantedGoldenApple,
     Bread,
     /// Raw or cooked cut of meat: flesh colour and fat colour.
     Meat([u8; 3], [u8; 3]),
@@ -632,7 +634,8 @@ const FIRST_POTION: u16 = 400;
 const LEGACY_POTION_COUNT: u16 = 36;
 const AUDIT_POTION: u16 = 1041;
 /// Java 26.3 copper equipment. Reserved ids 1050..=1069 (tools, nugget, and
-/// later copper armor and spears); 1047..=1049 stay free.
+/// later copper armor and spears); 1047 is the enchanted golden apple and
+/// 1048..=1049 stay free.
 const COPPER_ITEM: u16 = 1050;
 const COPPER_ITEMS: &[ItemInfo] = &[
     copper_tool("copper pickaxe", ToolKind::Pickaxe),
@@ -797,6 +800,9 @@ impl Item {
     pub const TURTLE_SCUTE: Item = Item(907);
     /// Standalone append-only audit gear ID; v0.7 reserves 1000..1039.
     pub const TURTLE_HELMET: Item = Item(1040);
+    /// 1041..=1046 are the audit potion slots, so the enchanted golden apple
+    /// takes the first unallocated id (1047).
+    pub const ENCHANTED_GOLDEN_APPLE: Item = Item(1047);
     pub const COPPER_NUGGET: Item = Item(COPPER_ITEM + 5);
     pub const NAUTILUS_SHELL: Item = Item(908);
     pub const HEART_OF_THE_SEA: Item = Item(909);
@@ -933,6 +939,9 @@ impl Item {
                     max_stack: 1,
                     sprite: Sprite::Armor(ArmorPiece::Helmet, ArmorMaterial::Turtle),
                 };
+            }
+            Self::ENCHANTED_GOLDEN_APPLE => {
+                return food("enchanted golden apple", 4, 9.6, Sprite::EnchantedGoldenApple);
             }
             Self::FIRE_CHARGE => return item("fire charge", Sprite::Lump([241, 126, 27])),
             Self::MINECART => {
@@ -1119,15 +1128,20 @@ impl Item {
     }
 
     /// The status effects eating this can give, as Java 26.3 `Consumables`
-    /// registers them (pinned in `consumption.json`). Golden apples also give
-    /// Absorption, which the game has no hearts for yet.
+    /// registers them (pinned in `consumption.json`).
     pub fn food_effects(self) -> &'static [(crate::simulation::effects::Effect, u8, u32)] {
         use crate::simulation::effects::Effect;
         match self {
             Item::SPIDER_EYE | Item::POISONOUS_POTATO => &[(Effect::Poison, 0, 100)],
             Item::PUFFERFISH => &[(Effect::Poison, 1, 1200), (Effect::Hunger, 2, 300), (Effect::Nausea, 0, 300)],
             Item::ROTTEN_FLESH | Item::RAW_CHICKEN => &[(Effect::Hunger, 0, 600)],
-            Item::GOLDEN_APPLE => &[(Effect::Regeneration, 1, 100)],
+            Item::GOLDEN_APPLE => &[(Effect::Regeneration, 1, 100), (Effect::Absorption, 0, 2400)],
+            Item::ENCHANTED_GOLDEN_APPLE => &[
+                (Effect::Regeneration, 1, 400),
+                (Effect::Resistance, 0, 6000),
+                (Effect::FireResistance, 0, 6000),
+                (Effect::Absorption, 3, 2400),
+            ],
             _ => &[],
         }
     }
@@ -1148,10 +1162,21 @@ impl Item {
     }
 
     /// Java's `FoodProperties.canAlwaysEat`: edible even when full. The
-    /// reference also lists chorus fruit, the enchanted golden apple, honey
-    /// bottles and suspicious stew, none of which are registered here.
+    /// reference also lists chorus fruit, honey bottles and suspicious stew,
+    /// none of which are registered here.
     pub fn always_edible(self) -> bool {
-        self == Item::GOLDEN_APPLE
+        matches!(self, Item::GOLDEN_APPLE | Item::ENCHANTED_GOLDEN_APPLE)
+    }
+
+    /// Java's `Rarity.RARE` for items registered with it (aqua names).
+    pub fn is_rare(self) -> bool {
+        self == Item::ENCHANTED_GOLDEN_APPLE
+    }
+
+    /// Java's `DataComponents.ENCHANTMENT_GLINT_OVERRIDE`: drawn with the
+    /// enchantment glint though it carries no enchantment.
+    pub fn has_glint(self) -> bool {
+        self == Item::ENCHANTED_GOLDEN_APPLE
     }
 
     pub fn remainder(self) -> Option<Item> {
@@ -1234,6 +1259,7 @@ impl Item {
             .chain((0..ANIMAL_ITEMS.len() as u16).map(|i| Item(ANIMAL_ITEM + i)))
             .chain([Self::TURTLE_HELMET])
             .chain((0..COPPER_ITEMS.len() as u16).map(|i| Item(COPPER_ITEM + i)))
+            .chain([Self::ENCHANTED_GOLDEN_APPLE])
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1271,6 +1297,7 @@ fn sprite_index(item: Item) -> Option<u16> {
     let materials = ITEMS.len() as u16;
     match item.0 {
         1040 => Some(turtle_icon()),
+        1047 => Some(turtle_icon() + 1 + COPPER_ITEMS.len() as u16),
         i if (COPPER_ITEM..COPPER_ITEM + COPPER_ITEMS.len() as u16).contains(&i) => {
             Some(turtle_icon() + 1 + i - COPPER_ITEM)
         }
@@ -1351,10 +1378,11 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    turtle_icon() as u32 + 1 + COPPER_ITEMS.len() as u32
+    turtle_icon() as u32 + 1 + COPPER_ITEMS.len() as u32 + 1
 }
 
-/// The turtle helmet's icon follows the animal items; copper equipment follows it.
+/// The turtle helmet's icon follows the animal items; copper equipment follows it,
+/// then the enchanted golden apple.
 const fn turtle_icon() -> u16 {
     (base_icon_count() + OVERWORLD_ITEMS.len() as u32 + MOUNT_ITEMS.len() as u32 + ANIMAL_ITEMS.len() as u32) as u16
 }
@@ -1524,6 +1552,35 @@ mod tests {
         assert_eq!(Item(BLOCK_ITEM_BASE + 4096).block(), None);
         assert_eq!(Item::STICK.0, FIRST_ITEM);
         assert_eq!(Item::STICK.block(), None);
+    }
+
+    /// Java 26.3 `Foods`/`Consumables`/`Items` for both golden apples.
+    #[test]
+    fn golden_apples_match_the_reference_foods_and_effects() {
+        use crate::simulation::effects::Effect::{Absorption, FireResistance, Regeneration, Resistance};
+        assert_eq!(Item::GOLDEN_APPLE.food(), Some((4, 9.6)));
+        assert_eq!(Item::ENCHANTED_GOLDEN_APPLE.food(), Some((4, 9.6)));
+        assert_eq!(Item::GOLDEN_APPLE.food_effects(), &[(Regeneration, 1, 100), (Absorption, 0, 2400)]);
+        assert_eq!(
+            Item::ENCHANTED_GOLDEN_APPLE.food_effects(),
+            &[(Regeneration, 1, 400), (Resistance, 0, 6000), (FireResistance, 0, 6000), (Absorption, 3, 2400)]
+        );
+        for apple in [Item::GOLDEN_APPLE, Item::ENCHANTED_GOLDEN_APPLE] {
+            assert_eq!(apple.food_effect_chance(), 1.0);
+            assert!(apple.always_edible() && apple.max_stack() == 64 && apple.durability().is_none());
+            assert!(apple.icon_layer().is_some());
+            assert!(Item::creative_palette().any(|i| i == apple));
+        }
+        // Only the enchanted one has the glint override and RARE rarity.
+        assert!(Item::ENCHANTED_GOLDEN_APPLE.has_glint() && Item::ENCHANTED_GOLDEN_APPLE.is_rare());
+        assert!(!Item::GOLDEN_APPLE.has_glint() && !Item::GOLDEN_APPLE.is_rare());
+        assert_eq!(Item::from_name("minecraft:enchanted_golden_apple"), Some(Item::ENCHANTED_GOLDEN_APPLE));
+        assert_eq!(Item::ENCHANTED_GOLDEN_APPLE.name(), "enchanted golden apple");
+        // Modern Java has no crafting recipe for it.
+        assert!(!crate::crafting::recipes().iter().any(|r| r.result.item == Item::ENCHANTED_GOLDEN_APPLE));
+        // Saved ids stay put: 1047 is the first id after the audit potion slots.
+        assert_eq!(Item::ENCHANTED_GOLDEN_APPLE.0, 1047);
+        assert_eq!(Item::GOLDEN_APPLE.0, 681);
     }
 
     #[test]

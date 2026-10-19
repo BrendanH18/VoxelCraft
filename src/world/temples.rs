@@ -1272,7 +1272,7 @@ const DESERTPYRAMID_0: &[L] = &[
     L { item: Some(Item::DIAMOND_HORSE_ARMOR), weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },
     L { item: Some(Item::BOOK), weight: 20, lo: 1, hi: 1, enchanted: true, damage: None },
     L { item: Some(Item::GOLDEN_APPLE), weight: 20, lo: 1, hi: 1, enchanted: false, damage: None },
-    L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None }, // enchanted_golden_apple
+    L { item: Some(Item::ENCHANTED_GOLDEN_APPLE), weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },
     L { item: None, weight: 15, lo: 1, hi: 1, enchanted: false, damage: None }, // None
 ];
 const DESERTPYRAMID_1: &[L] = &[
@@ -1732,7 +1732,6 @@ mod tests {
             "iron_nautilus_armor",
             "golden_nautilus_armor",
             "diamond_nautilus_armor",
-            "enchanted_golden_apple",
             "experience_bottle",
             "suspicious_stew",
             "stone_spear",

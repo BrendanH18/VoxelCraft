@@ -5,6 +5,8 @@
 ## Goals, status and planned changes
 
 - [Roadmap](roadmap.md): authoritative scope, dependencies and completion criteria.
+- [Requirement inventory](requirements.md): every core requirement as its own row,
+  with state, owning release, evidence and acceptance cases.
 - [Restructuring plan](restructuring.md): planned verification, content, gameplay,
   asset and module changes, including how to retain pending v0.7 work.
 
@@ -13,6 +15,8 @@ Neither a planned task nor a historical release report establishes verified pari
 ## Playing
 
 - [Gameplay](gameplay.md) and [survival items](survival-items.md).
+- [Game rules](game-rules.md): every Java 26.3 rule with its type, default,
+  legacy name and what VoxelCraft enforces.
 - [Colours](colors.md), [bastions](bastions.md) and [Nether biomes](nether-biomes.md).
 - [Overworld terrain](overworld-terrain.md), [structures](overworld-structures.md)
   and [aquatic mobs](aquatic-mobs.md).
@@ -84,6 +88,31 @@ roadmap and recorded checks to assess completeness against the current target.
 - [Benchmark harness review fixes](verification/2026-10-13-review-bench-fixes.md):
   pause/tick/presentation/population validity checks, input isolation, no saves,
   terrain-following cameras, telemetry and runner gate fixes; proposed roadmap text.
+- [Mob ground navigation](verification/2026-10-14-mob-navigation.md) and
+  [swimming, flying and climbing](verification/2026-10-14-mob-navigation-swim-fly.md):
+  Java 26.3 evaluators, path search and recomputation, with benchmarks.
+- [Strider lava paths](verification/2026-10-15-strider-lava-paths.md):
+  `StriderPathNavigation`, `StriderGoToLavaGoal`, the half-block lava standing
+  height and a generated-Nether scene.
+- [Natural spawning](verification/2026-10-14-natural-spawning.md) and
+  [spawn categories](verification/2026-10-15-spawn-categories.md): Java's
+  `NaturalSpawner` ring, caps, despawning and biome spawn lists.
+- [Block shapes, light and interaction](verification/2026-10-14-block-shapes-light-interaction.md):
+  face-mask light occlusion, gameplay-light meshes and outline targeting.
+- [Loaded-region activity and save integrity](verification/2026-10-14-simulation-activity-save-integrity.md):
+  simulation distance tickets, sleeping work and saved delays.
+- [M5 scene baseline, second run](verification/2026-10-15-m5-baseline.md):
+  12 of 15 valid runs, uncapped presentation, streaming stalls, and the two
+  harness defects it exposed.
+- [M5 scene baseline](verification/2026-10-16-m5-baseline.md): the first
+  valid reference baseline (15/15 runs); the gate fails in streaming, which
+  stalls every 32 blocks.
+- [Death, pause and mid-motion saves](verification/2026-10-15-death-pause-save-scenarios.md):
+  the shared death and respawn step, the pause rule and cross-process piston
+  and repeater saves.
+- [Game rules and difficulty](verification/2026-10-17-game-rules-difficulty.md):
+  the 26.3 rule registry, damage-type rules, Peaceful regeneration and the
+  difficulty effects checked against the reference.
 
 ## History
 

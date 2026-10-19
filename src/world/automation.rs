@@ -679,6 +679,10 @@ impl World {
             );
             return;
         }
+        // Java's TNT dispense behaviour fails, keeping the item, without `tnt_explodes`.
+        if !dropper && stack.item.block() == Some(Block::TNT) && !self.rules.tnt_explodes {
+            return;
+        }
         if !dropper && stack.item == Item::BONE_MEAL {
             // Java `BoneMealDispenseItemBehavior`: it fertilises the block in front and is only
             // used up when that grew something; otherwise the stack stays in the slot.
@@ -1170,6 +1174,22 @@ mod tests {
         w.dispense(P, 2, false);
         assert_eq!(w.primed_tnt.len(), 1);
     }
+    #[test]
+    fn dispensers_keep_tnt_without_tnt_explodes() {
+        let mut w = world();
+        put(&mut w, P, r::dispenser(2, false));
+        let tnt = Stack::new(Item::from_block(Block::TNT), 2);
+        w.chest_mut(P).unwrap().slots[0] = Some(tnt);
+        w.rules.tnt_explodes = false;
+        w.dispense(P, 2, false);
+        assert!(w.primed_tnt.is_empty());
+        assert_eq!(w.chest(P).unwrap().slots[0], Some(tnt), "the dispense fails and keeps the item");
+        w.rules.tnt_explodes = true;
+        w.dispense(P, 2, false);
+        assert_eq!(w.primed_tnt.len(), 1);
+        assert_eq!(w.chest(P).unwrap().slots[0], Some(Stack::new(Item::from_block(Block::TNT), 1)));
+    }
+
     #[test]
     fn dispensers_fertilise_the_block_in_front_and_keep_unused_bone_meal() {
         let mut w = world();

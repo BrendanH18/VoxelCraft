@@ -109,6 +109,31 @@
           "ticks": 2400
         }
       ]
+    },
+    "enchanted_golden_apple": {
+      "chance": 1.0,
+      "effects": [
+        {
+          "effect": "regeneration",
+          "amplifier": 1,
+          "ticks": 400
+        },
+        {
+          "effect": "resistance",
+          "amplifier": 0,
+          "ticks": 6000
+        },
+        {
+          "effect": "fire_resistance",
+          "amplifier": 0,
+          "ticks": 6000
+        },
+        {
+          "effect": "absorption",
+          "amplifier": 3,
+          "ticks": 2400
+        }
+      ]
     }
   },
   "always_edible": [

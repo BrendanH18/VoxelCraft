@@ -124,6 +124,7 @@ impl Fireball {
         if let Some(hit) = player {
             let push = DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 2.0 + DVec3::Y * 2.0;
             events.push(EntityEvent::PlayerHit {
+                java: None,
                 player: hit.id,
                 damage: DAMAGE,
                 knockback: push.as_vec3(),

@@ -335,7 +335,10 @@ pub mod tex {
     /// Append-only pale oak and bamboo door/trapdoor textures.
     pub const BUILDING_DOORS: u16 = 1753;
     pub const BUILDING_TRAPDOORS: u16 = 1757;
-    pub const COUNT: u32 = 1759;
+    /// Golden hearts for absorption, drawn after the health hearts.
+    pub const HEART_ABSORBING_FULL: u16 = 1759;
+    pub const HEART_ABSORBING_HALF: u16 = 1760;
+    pub const COUNT: u32 = 1761;
     const _: () = assert!(super::super::overworld_blocks::TEX_END <= 1750);
     const _: () = assert!(super::super::overworld_blocks::TEX == 1450);
     const _: () = assert!((CRYING_OBSIDIAN as u32) < COUNT);

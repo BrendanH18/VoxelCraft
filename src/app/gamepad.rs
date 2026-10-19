@@ -749,6 +749,7 @@ impl Game {
         let name = self.pads.seats[i].name.clone();
         match request {
             Request::Popup(text) => self.pads.seats[i].message = Some((text, Instant::now())),
+            Request::StopSprint => self.stop_sprint(&name),
             Request::Open(Used::OpenVehicle(id)) => self.pads.seats[i].open(Menu::items(Tab::Vehicle(id))),
             Request::Open(Used::OpenMerchant(id)) => self.pads.seats[i].open(Menu::items(Tab::Trading(id))),
             Request::Open(Used::Screen { cell, .. } | Used::Bed { cell }) => self.pad_use_block(i, cell),
@@ -758,6 +759,17 @@ impl Game {
                     bot.agent.hurt_magic(amount, &mut self.mobs.entities);
                 }
             }
+        }
+    }
+
+    /// Java's `setSprinting(false)` for the controller or agent `name`: clears a
+    /// controller's sprint latch and the agent's held sprint input.
+    pub(super) fn stop_sprint(&mut self, name: &str) {
+        if let Some(seat) = self.pads.seats.iter_mut().find(|s| s.name == name) {
+            seat.sprinting = false;
+        }
+        if let Some(bot) = self.agents.players.get_mut(name) {
+            bot.agent.stop_sprint();
         }
     }
 
@@ -943,27 +955,29 @@ impl Game {
     /// left alone rather than looked up in the wrong world.
     fn respawn_pad(&mut self, i: usize) {
         let name = self.pads.seats[i].name.clone();
-        let keep_inventory = self.gamerules.bool("keepInventory");
-        let Some(bot) = self.agents.players.get_mut(&name) else { return };
-        let kept_xp = keep_inventory.then_some(bot.agent.session.vitals.xp);
-        let _ = bot.agent.execute(Command::Respawn, &mut self.world, &mut self.mobs.entities, &[]);
-        if let Some(xp) = kept_xp {
-            bot.agent.session.vitals.xp = xp;
+        if !self.agents.players.contains_key(&name) {
+            return;
         }
-        let at = if self.dimension == crate::world::terrain::Dimension::Overworld {
-            let (at, missing) = self.respawn_point_of(&super::lan::PlayerRef::Agent(name.clone()));
+        // Find the spawn before the respawn command does: its own lookup forgets a
+        // missing bed, so a second lookup would never report it.
+        let (at, yaw) = if self.dimension == crate::world::terrain::Dimension::Overworld {
+            let (at, yaw, missing) = self.respawn_point_of(&super::lan::PlayerRef::Agent(name.clone()));
             if missing {
                 self.pads.seats[i].message = Some(("Your home bed was missing".into(), Instant::now()));
             }
-            at
+            (at, yaw)
         } else {
-            self.beside_host()
+            (self.beside_host(), voxelcraft::session::DEFAULT_SPAWN_YAW)
         };
+        if let Some(bot) = self.agents.players.get_mut(&name) {
+            let _ = bot.agent.execute(Command::Respawn, &mut self.world, &mut self.mobs.entities, &[]);
+        }
         let seat = &mut self.pads.seats[i];
         seat.sneaking = false;
         seat.body = Body::default();
         if let Some(bot) = self.agents.players.get_mut(&name) {
             bot.agent.session.player.pos = at;
+            bot.agent.session.player.yaw = yaw;
             bot.agent.previous_pos = at;
         }
     }

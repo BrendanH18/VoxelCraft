@@ -2,10 +2,11 @@
 //! a golden sword or a crossbow, running away and fetching items. Goals come
 //! from the periodic look around in `entity::nether`.
 
-use glam::DVec3;
+use glam::{DVec3, IVec3};
 
 use super::{ATTACK_RANGE, Ai, Ctx, EntityEvent, Mob, MobKind, MobSound, MobWorld, Rng, line_of_sight, wrap};
-use crate::entity::nether::{Foe, Goal, Weapon, ZOMBIFY_TIME};
+use crate::entity::nether::{Foe, Goal, LavaGoal, Weapon, ZOMBIFY_TIME};
+use crate::world::block::Block;
 use crate::world::terrain::Dimension;
 
 /// Crossbow piglins shoot from Java's 8 blocks and back away inside 5.
@@ -26,6 +27,21 @@ const TUSK_COOLDOWN: f32 = 2.0;
 const BABY_TUSK_COOLDOWN: f32 = 0.75;
 /// Baby piglins are 20% faster (Java's speed modifier).
 const BABY_SPEED: f64 = 1.2;
+/// Height of `LiquidBlock.STABLE_SHAPE` (8/16), which a lava source offers
+/// mobs that can stand on lava.
+pub(crate) const STABLE_LAVA_HEIGHT: f64 = 0.5;
+/// `StriderGoToLavaGoal`'s `MoveToBlockGoal(range 8, vertical 2)`.
+const LAVA_RANGE: i32 = 8;
+const LAVA_VERTICAL: i32 = 2;
+
+/// A lava goal target: lava under a LAND-pathfindable block that isn't lava.
+fn valid_lava<W: MobWorld + ?Sized>(world: &W, p: IVec3) -> bool {
+    world.block(p).is_some_and(Block::is_lava)
+        && world.block(p + IVec3::Y).is_some_and(|b| !b.is_lava() && crate::entity::path::pathfindable_on_land(b))
+}
+
+/// `Mob.maxUpStep` for a strider.
+const STEP_HEIGHT: f64 = crate::player::STEP_HEIGHT;
 
 impl Mob {
     /// Movement for a mob with a [`crate::entity::nether::NetherMob`], or
@@ -40,12 +56,8 @@ impl Mob {
     ) -> Option<(Option<DVec3>, f64)> {
         let speed = self.kind.chase_speed() * if self.baby && self.kind == MobKind::Piglin { BABY_SPEED } else { 1.0 };
         if self.kind == MobKind::Strider {
-            let feet = self.pos.floor().as_ivec3();
-            let warm = |p| world.block(p).is_some_and(|b: crate::world::block::Block| b.is_lava());
-            let cold = !warm(feet) && !warm(feet - glam::IVec3::Y);
-            if let Some(n) = self.nether.as_mut() {
-                n.cold = cold;
-            }
+            // Its lava goal runs in the goal selector (`goals`).
+            return None;
         }
         let n = self.nether.as_mut()?;
         n.admire_disabled = (n.admire_disabled - dt).max(0.0);
@@ -111,6 +123,80 @@ impl Mob {
         }
     }
 
+    /// Java's `StriderGoToLavaGoal`, a `MoveToBlockGoal` with an 8-block
+    /// search range and 2 up or down: a strider out of lava finds the
+    /// nearest lava under open space in Java's search order and walks a path
+    /// there. This is its `canUse`, evaluated on the goal selector's full
+    /// updates: it searches again `reducedTickDelay(200 + nextInt(200))`
+    /// updates (200–400 ticks) after the last search.
+    pub(super) fn go_to_lava_can_use<W: MobWorld + ?Sized>(&mut self, world: &W, rng: &mut Rng) -> bool {
+        let in_lava = self.nether.as_ref().is_some_and(|n| !n.cold);
+        let panicking = self.ai == Ai::Panic;
+        let speed = self.goal_speed(1.0);
+        let Some(n) = self.nether.as_mut() else { return false };
+        if n.lava_goal.is_some() {
+            return true;
+        }
+        if in_lava || panicking {
+            return false;
+        }
+        if n.lava_next_start > 0 {
+            n.lava_next_start -= 1;
+            return false;
+        }
+        n.lava_next_start = (200 + rng.next_int(200) as i32 + 1) / 2;
+        let Some(target) =
+            nearest_block(self.pos.floor().as_ivec3(), LAVA_RANGE, LAVA_VERTICAL, |p| valid_lava(world, p))
+        else {
+            return false;
+        };
+        n.lava_goal = Some(LavaGoal { target, try_ticks: 0 });
+        // `moveMobToBlock`: the cell above the lava.
+        self.walk_to(world, target + IVec3::Y, 1, speed, false);
+        true
+    }
+
+    /// The lava goal's tick, every tick (`MoveToBlockGoal.requiresUpdateEveryTick`):
+    /// within a block of the lava cell's centre counts as there; otherwise it
+    /// replans to the lava cell every 20 ticks. Unlike its parent goal it has
+    /// no give-up or stay timer: it runs until the strider is in lava or the
+    /// lava is gone (Strider's `canContinueToUse`). `None` once it stops.
+    pub(super) fn go_to_lava_tick<W: MobWorld + ?Sized>(&mut self, world: &W) -> Option<(Option<DVec3>, f64)> {
+        let in_lava = self.nether.as_ref().is_some_and(|n| !n.cold);
+        let panicking = self.ai == Ai::Panic;
+        let speed = self.goal_speed(1.0);
+        let n = self.nether.as_mut()?;
+        let goal = n.lava_goal?;
+        if in_lava || panicking || !valid_lava(world, goal.target) {
+            n.lava_goal = None;
+            self.stop_navigation();
+            return None;
+        }
+        let goal = n.lava_goal.as_mut()?;
+        let target = goal.target;
+        if (target.as_dvec3() + DVec3::splat(0.5)).distance_squared(self.pos) < 1.0 {
+            goal.try_ticks -= 1;
+        } else {
+            goal.try_ticks += 1;
+            if goal.try_ticks % 20 == 0 {
+                self.walk_to(world, target, 1, speed, false);
+            }
+        }
+        self.look_at(target.as_dvec3() + DVec3::splat(0.5), 0.5);
+        let dir = self.follow_path(world, speed, false);
+        Some((dir, speed))
+    }
+
+    /// A strider is cold out of lava (at its feet or just below).
+    pub(super) fn update_strider_cold<W: MobWorld + ?Sized>(&mut self, world: &W) {
+        let feet = self.pos.floor().as_ivec3();
+        let warm = |p| world.block(p).is_some_and(|b: Block| b.is_lava());
+        let cold = !warm(feet) && !warm(feet - IVec3::Y);
+        if let Some(n) = self.nether.as_mut() {
+            n.cold = cold;
+        }
+    }
+
     /// Fights `foe`, whose feet are at `at`: crossbow piglins keep between 5
     /// and 8 blocks and shoot living targets they can see; other weapons close in
     /// and strikes once a second.
@@ -171,18 +257,28 @@ impl Mob {
             self.attack_anim = 0.35;
             let (base, cause) = self.kind.melee();
             let mut knockback = dir * 6.0 + DVec3::Y * 5.0;
+            let mut throw = None;
             let damage = if tusks {
                 self.attack_cooldown = if self.baby { BABY_TUSK_COOLDOWN } else { TUSK_COOLDOWN };
                 if self.baby {
                     0.5
                 } else {
-                    // Java's `HoglinBase.throwTarget`: a shove of 0.2-0.7
-                    // blocks a tick within 10 degrees of straight away,
+                    // Java's `HoglinBase.throwTarget`: a toss of attack_knockback less the
+                    // victim's resistance, 0.2-0.7 blocks a tick along a direction turned by
+                    // `nextInt(21) - 10` *radians* (Java passes it to `yRot` unconverted),
                     // and up to 0.5 blocks a tick upward.
-                    let turn = (rng.next_int(21) as f32 - 10.0).to_radians() as f64;
-                    let (s, c) = turn.sin_cos();
-                    let away = DVec3::new(dir.x * c - dir.z * s, 0.0, dir.x * s + dir.z * c);
-                    knockback += away * (rng.range(0.2, 0.7) as f64 * 20.0) + DVec3::Y * (rng.next_f32() as f64 * 10.0);
+                    let toss = crate::knockback::Throw {
+                        strength: self.attack_knockback(),
+                        dx: at.x - self.pos.x,
+                        dz: at.z - self.pos.z,
+                        turn: rng.next_int(21) as f32 - 10.0,
+                        reach: rng.next_f32(),
+                        lift: rng.next_f32(),
+                    };
+                    if let Some(shove) = toss.push(0.0) {
+                        knockback += shove * crate::knockback::TICK_RATE;
+                    }
+                    throw = Some(toss);
                     // Java: half the attack damage plus a random part of it.
                     base / 2.0 + rng.next_int(base as u32) as f32
                 }
@@ -195,7 +291,15 @@ impl Mob {
                 }
             };
             events.push(match foe {
-                Foe::Player(player) => EntityEvent::PlayerHit { player, damage, knockback: knockback.as_vec3(), cause },
+                Foe::Player(player) => {
+                    // `hurtServer`'s push away from the attacker; a hoglin's toss follows.
+                    let hit = crate::knockback::Hit {
+                        pushes: [Some(crate::knockback::Push::hurt(self.pos, at)), None],
+                        throw,
+                        ..Default::default()
+                    };
+                    EntityEvent::PlayerHit { player, damage, knockback: knockback.as_vec3(), java: Some(hit), cause }
+                }
                 Foe::Mob(target) => EntityEvent::MobHit { target, attacker: self.uid, damage, knockback },
             });
             if let Foe::Player(id) = foe
@@ -235,12 +339,21 @@ impl Mob {
         }
     }
 
-    /// Share of a hit's knockback that lands (Java's knockback resistance:
-    /// 0.6 for hoglins and zoglins).
-    pub(super) fn knockback_taken(&self) -> f64 {
+    /// Java's `attack_knockback` attribute (`combat.json`): 1 for hoglins and zoglins, 0 otherwise.
+    pub(crate) fn attack_knockback(&self) -> f64 {
         match self.kind {
-            MobKind::Hoglin | MobKind::Zoglin => 0.4,
-            _ => 1.0,
+            MobKind::Hoglin | MobKind::Zoglin => 1.0,
+            _ => 0.0,
+        }
+    }
+
+    /// Java's `knockback_resistance` attribute (`combat.json`): 1 for iron golems,
+    /// 0.6 (`0.6f`) for hoglins and zoglins.
+    pub(crate) fn knockback_resistance(&self) -> f64 {
+        match self.kind {
+            MobKind::IronGolem => 1.0,
+            MobKind::Hoglin | MobKind::Zoglin => 0.6000000238418579,
+            _ => 0.0,
         }
     }
 
@@ -265,9 +378,10 @@ impl Mob {
         Some(if on_lava { lava_ahead } else { lava_ahead || !super::is_cliff(world, self.pos, dir, self.shape()) })
     }
 
-    /// Java's `floatStrider`: on a lava surface a strider stands as if on
-    /// ground; sunk into lava it rises. Returns whether it handled this
-    /// physics step.
+    /// Java's `floatStrider` and `LiquidBlock.STABLE_SHAPE`: a strider stands
+    /// on a lava source with no lava above it as on a bottom slab, half a
+    /// block up with its legs in the lava; sunk deeper it rises. Returns
+    /// whether it handled this physics step.
     pub(super) fn walk_on_lava<W: crate::physics::BlockSource + ?Sized>(
         &mut self,
         dt: f64,
@@ -275,10 +389,15 @@ impl Mob {
         wish: Option<DVec3>,
         speed: f64,
     ) -> bool {
-        let lava = |p: DVec3| world.block(p.floor().as_ivec3()).is_some_and(|b| b.is_lava());
-        let under = (self.pos - DVec3::Y * 0.05).floor();
-        let sunk = lava(self.pos + DVec3::Y * 0.05);
-        let standing = !sunk && lava(self.pos - DVec3::Y * 0.05) && self.pos.y - (under.y + 1.0) < 0.1;
+        let cell = |p: DVec3| p.floor().as_ivec3();
+        let support = cell(self.pos - DVec3::Y * 0.01);
+        let surface = (world.block(support) == Some(Block::LAVA)
+            && !world.block(support + IVec3::Y).is_some_and(Block::is_lava))
+        .then_some(support.y as f64 + STABLE_LAVA_HEIGHT);
+        // Anywhere in the lava cell above the stable shape it falls onto it,
+        // as onto a bottom slab; below it, it floats up.
+        let standing = surface.is_some_and(|s| self.pos.y >= s - 0.05);
+        let sunk = !standing && world.block(cell(self.pos + DVec3::Y * 0.05)).is_some_and(Block::is_lava);
         if !self.alive() || !sunk && !standing || self.vel.y > 0.5 && !sunk {
             return false;
         }
@@ -287,22 +406,60 @@ impl Mob {
         let k = (dt * 10.0).min(1.0);
         self.vel.x += (target.x - self.vel.x) * k;
         self.vel.z += (target.z - self.vel.z) * k;
-        if sunk {
-            self.vel.y = 2.0;
+        let shape = self.shape();
+        let (hit, landed) = if let Some(s) = surface.filter(|_| standing) {
+            // Fall onto the stable shape through the ordinary collision, so a
+            // shore block under part of the box holds it up first.
+            self.vel.y = self.vel.y.min(0.0) - super::GRAVITY * dt;
+            let mut delta = self.vel * dt;
+            delta.y = delta.y.max(s - self.pos.y);
+            // On the stable shape it steps like ground: a shore whose top is
+            // level with the lava cell's top is half a block up.
+            let hit = if self.on_ground {
+                crate::physics::move_box_stepping(world, &mut self.pos, &mut self.vel, delta, shape, STEP_HEIGHT)
+            } else {
+                crate::physics::move_box(world, &mut self.pos, &mut self.vel, delta, shape)
+            };
+            let landed = self.pos.y <= s + 1e-9;
+            if landed || hit.on_ground {
+                self.vel.y = 0.0;
+            }
+            (hit, landed)
         } else {
-            self.vel.y = 0.0;
-            self.pos.y = under.y + 1.0;
-        }
-        let (delta, shape) = (self.vel * dt, self.shape());
-        let hit = crate::physics::move_box(world, &mut self.pos, &mut self.vel, delta, shape);
-        self.on_ground = standing || hit.on_ground;
+            self.vel.y = 2.0;
+            let delta = self.vel * dt;
+            (crate::physics::move_box(world, &mut self.pos, &mut self.vel, delta, shape), false)
+        };
+        self.on_ground = landed || hit.on_ground;
         self.blocked = hit.horizontal;
-        // Climb out onto a shore one block up.
-        if self.blocked && wish.is_some() && self.can_step_up(world, wish.unwrap_or(DVec3::X)) {
-            self.vel.y = super::JUMP_VELOCITY;
-        }
         true
     }
+}
+
+/// `MoveToBlockGoal.findNearestBlock`: rings out from the mob's block, one
+/// below its feet first, then level, two below, one above and three below,
+/// alternating sides in each ring as Java does.
+fn nearest_block(origin: IVec3, range: i32, vertical: i32, valid: impl Fn(IVec3) -> bool) -> Option<IVec3> {
+    let alternate = |v: i32| if v > 0 { -v } else { 1 - v };
+    let mut y = 0;
+    while y <= vertical {
+        for r in 0..range {
+            let mut x = 0;
+            while x <= r {
+                let mut z = if x < r && x > -r { r } else { 0 };
+                while z <= r {
+                    let p = origin + IVec3::new(x, y - 1, z);
+                    if valid(p) {
+                        return Some(p);
+                    }
+                    z = alternate(z);
+                }
+                x = alternate(x);
+            }
+        }
+        y = alternate(y);
+    }
+    None
 }
 
 #[cfg(test)]
@@ -310,6 +467,7 @@ mod tests {
     use super::*;
     use crate::entity::{PlayerId, Target};
     use crate::physics::test_util::Grid;
+    use glam::IVec3;
 
     #[test]
     fn crossbow_piglins_shoot_mob_targets_instead_of_switching_to_melee() {
@@ -383,5 +541,22 @@ mod tests {
         mob.nether_attack(Foe::Player(PlayerId::HOST), at, 2.0, dt, &world, &ctx, &mut rng, &mut events);
         assert_eq!(mob.nether.as_ref().unwrap().aim_at, next, "the next load draws a new delay");
         assert_eq!(rng.next_f32(), expected.next_f32());
+    }
+
+    #[test]
+    fn strider_lava_search_follows_javas_ring_order() {
+        let within = |set: &'static [(i32, i32, i32)]| move |p: IVec3| set.contains(&(p.x, p.y, p.z));
+        let o = IVec3::ZERO;
+        // One below the feet first, then level, two below, one above, three below.
+        assert_eq!(nearest_block(o, 8, 2, |_| true), Some(IVec3::new(0, -1, 0)));
+        assert_eq!(nearest_block(o, 8, 2, within(&[(0, 0, 0), (0, -2, 0)])), Some(IVec3::ZERO));
+        assert_eq!(nearest_block(o, 8, 2, within(&[(0, 1, 0), (0, -2, 0)])), Some(IVec3::new(0, -2, 0)));
+        assert_eq!(nearest_block(o, 8, 2, within(&[(0, -3, 0), (0, 1, 0)])), Some(IVec3::new(0, 1, 0)));
+        // A ring before its layer's next ring; +z before -x in ring one.
+        assert_eq!(nearest_block(o, 8, 2, within(&[(1, -1, 0), (0, -1, 1), (-1, -1, 0)])), Some(IVec3::new(0, -1, 1)));
+        assert_eq!(nearest_block(o, 8, 2, within(&[(2, -1, 0), (1, 0, 1)])), Some(IVec3::new(2, -1, 0)));
+        // Java's range is exclusive: ring 7 is the last.
+        assert_eq!(nearest_block(o, 8, 2, within(&[(8, -1, 0)])), None);
+        assert_eq!(nearest_block(o, 8, 2, within(&[(7, -1, -7)])), Some(IVec3::new(7, -1, -7)));
     }
 }

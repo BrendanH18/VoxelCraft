@@ -50,9 +50,9 @@ impl MobIndex {
     }
 }
 
-/// Pairwise separation of overlapping mobs on a grid sized to the widest mob,
-/// so each mob only meets the few mobs whose boxes can touch it; buffers are
-/// reused between ticks.
+/// Java's mob pushing (`LivingEntity.pushEntities` and `Entity.push`) on a
+/// grid sized to the widest mob, so each mob only meets the few mobs whose
+/// boxes can touch it; buffers are reused between ticks.
 #[derive(Default)]
 pub(super) struct Separation {
     heads: FxHashMap<(i32, i32), u32>,
@@ -66,16 +66,35 @@ struct Part {
     pos: DVec3,
     half_width: f64,
     height: f64,
-    /// Takes part in separation (not a sleeping or inactive villager).
-    active: bool,
-    /// Present in the grid (alive, and not an inactive villager), like [`MobIndex`].
-    indexed: bool,
+    /// Ticking and alive: runs `pushEntities` this tick.
+    pushes: bool,
+    /// `isPushable` (ticking, alive; not a sleeping or inactive villager) and
+    /// not a vehicle with a rider.
+    pushable: bool,
 }
 
 const NONE: u32 = u32::MAX;
 
+/// `Entity.push(Entity)`: 0.05 blocks a tick along the larger horizontal
+/// axis' square root, as a velocity in blocks per second for `pusher`'s
+/// side; the pushed mob gets the opposite.
+pub(super) fn java_push(pusher: DVec3, pushed: DVec3) -> Option<DVec3> {
+    let (mut dx, mut dz) = (pusher.x - pushed.x, pusher.z - pushed.z);
+    let mut d = dx.abs().max(dz.abs());
+    if d < 0.01 {
+        return None;
+    }
+    d = d.sqrt();
+    dx /= d;
+    dz /= d;
+    let f = (1.0 / d).min(1.0);
+    Some(DVec3::new(dx * f * 0.05, 0.0, dz * f * 0.05) * 20.0)
+}
+
 impl Separation {
-    /// Adds each overlapping pair's push to the mobs' velocities.
+    /// Every ticking mob pushes each pushable mob whose box intersects its
+    /// own (`getPushableEntities`), so an overlapping pair is pushed twice a
+    /// tick, once by each. Pushes add to velocities for the next tick.
     pub fn run(&mut self, mobs: &mut [Mob], dt: f64) {
         self.parts.clear();
         self.heads.clear();
@@ -84,15 +103,16 @@ impl Separation {
         let mut widest = 0.0f64;
         for m in mobs.iter() {
             let shape = m.shape();
-            let asleep = !m.simulation_active || m.villager.as_ref().is_some_and(|v| !v.active || v.sleeping);
-            let indexed = m.simulation_active && m.alive() && m.villager.as_ref().is_none_or(|v| v.active);
+            let asleep = m.villager.as_ref().is_some_and(|v| !v.active || v.sleeping);
+            let pushes = m.simulation_active && m.alive();
+            let vehicle = m.mount.as_ref().is_some_and(|s| s.rider.is_some());
             widest = widest.max(shape.half_width);
             self.parts.push(Part {
                 pos: m.pos,
                 half_width: shape.half_width,
                 height: shape.height,
-                active: !asleep,
-                indexed,
+                pushes,
+                pushable: pushes && !asleep && !vehicle && m.riding.is_none(),
             });
         }
         self.next.resize(mobs.len(), NONE);
@@ -102,13 +122,14 @@ impl Separation {
         let key = |p: DVec3| ((p.x / cell).floor() as i32, (p.z / cell).floor() as i32);
         for i in 0..mobs.len() {
             let part = self.parts[i];
-            if part.indexed && part.active {
+            if part.pushable {
                 self.next[i] = self.heads.insert(key(part.pos), i as u32).unwrap_or(NONE);
             }
         }
+        let scale = dt / 0.05;
         for i in 0..mobs.len() {
             let a = self.parts[i];
-            if !a.active {
+            if !a.pushes {
                 continue;
             }
             let (cx, cz) = key(a.pos);
@@ -119,20 +140,23 @@ impl Separation {
                         let b = self.parts[j as usize];
                         let at = j as usize;
                         j = self.next[at];
-                        if at <= i {
+                        if at == i {
                             continue;
                         }
-                        let d = DVec3::new(b.pos.x - a.pos.x, 0.0, b.pos.z - a.pos.z);
-                        let min = a.half_width + b.half_width;
-                        let overlap_y = a.pos.y < b.pos.y + b.height && b.pos.y < a.pos.y + a.height;
-                        let dist = d.length();
-                        if !overlap_y || dist >= min {
+                        let w = a.half_width + b.half_width;
+                        let touching = (b.pos.x - a.pos.x).abs() < w
+                            && (b.pos.z - a.pos.z).abs() < w
+                            && a.pos.y < b.pos.y + b.height
+                            && b.pos.y < a.pos.y + a.height;
+                        if !touching {
                             continue;
                         }
-                        let dir = if dist > 1e-4 { d / dist } else { DVec3::X };
-                        let push = dir * ((min - dist) * 8.0 * dt).min(0.2) / dt.max(1e-3);
-                        self.push[i] -= push * 0.5;
-                        self.push[at] += push * 0.5;
+                        // `a.doPush(b)` is `b.push(a)`.
+                        let Some(v) = java_push(a.pos, b.pos) else { continue };
+                        self.push[at] -= v * scale;
+                        if a.pushable {
+                            self.push[i] += v * scale;
+                        }
                     }
                 }
             }
@@ -187,22 +211,20 @@ mod tests {
         let dt = 0.05;
         let mut expected = vec![DVec3::ZERO; mobs.len()];
         for i in 0..mobs.len() {
-            for j in i + 1..mobs.len() {
-                if !mobs[j].alive() {
+            for j in 0..mobs.len() {
+                if i == j || !mobs[i].alive() || !mobs[j].alive() {
                     continue;
                 }
                 let (a, b) = (&mobs[i], &mobs[j]);
-                let d = DVec3::new(b.pos.x - a.pos.x, 0.0, b.pos.z - a.pos.z);
-                let min = a.shape().half_width + b.shape().half_width;
-                let overlap_y = a.pos.y < b.pos.y + b.shape().height && b.pos.y < a.pos.y + a.shape().height;
-                let dist = d.length();
-                if !overlap_y || dist >= min {
-                    continue;
+                let w = a.shape().half_width + b.shape().half_width;
+                let touching = (b.pos.x - a.pos.x).abs() < w
+                    && (b.pos.z - a.pos.z).abs() < w
+                    && a.pos.y < b.pos.y + b.shape().height
+                    && b.pos.y < a.pos.y + a.shape().height;
+                if let Some(v) = java_push(a.pos, b.pos).filter(|_| touching) {
+                    expected[j] -= v;
+                    expected[i] += v;
                 }
-                let dir = if dist > 1e-4 { d / dist } else { DVec3::X };
-                let push = dir * ((min - dist) * 8.0 * dt).min(0.2) / dt;
-                expected[i] -= push * 0.5;
-                expected[j] += push * 0.5;
             }
         }
         assert!(expected.iter().any(|v| *v != DVec3::ZERO));
@@ -210,5 +232,18 @@ mod tests {
         for (m, want) in mobs.iter().zip(&expected) {
             assert!((m.vel - *want).length() < 1e-9, "{:?} {:?} != {:?}", m.kind, m.vel, want);
         }
+    }
+
+    /// `Entity.push` in blocks a tick: 0.05 times the dominant axis' square
+    /// root, capped at 0.05 a tick on that axis once a block apart.
+    #[test]
+    fn pushes_follow_javas_entity_push() {
+        let v = java_push(DVec3::new(0.25, 0.0, 0.0), DVec3::ZERO).unwrap() / 20.0;
+        assert!((v.x - 0.05 * 0.5).abs() < 1e-12 && v.z == 0.0, "{v:?}");
+        let v = java_push(DVec3::new(0.36, 0.0, 0.09), DVec3::ZERO).unwrap() / 20.0;
+        assert!((v.x - 0.05 * 0.6).abs() < 1e-12 && (v.z - 0.05 * 0.15).abs() < 1e-12, "{v:?}");
+        let v = java_push(DVec3::new(4.0, 0.0, 0.0), DVec3::ZERO).unwrap() / 20.0;
+        assert!((v.x - 0.05).abs() < 1e-12, "{v:?}");
+        assert!(java_push(DVec3::new(0.005, 0.0, -0.009), DVec3::ZERO).is_none());
     }
 }

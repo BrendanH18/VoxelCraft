@@ -532,7 +532,7 @@ impl World {
                     }
                 }
             }
-            _ if b == Block::TNT && self.redstone_power(p) > 0 => {
+            _ if b == Block::TNT && self.rules.tnt_explodes && self.redstone_power(p) > 0 => {
                 self.edit(p, Block::AIR, false);
                 self.primed_tnt.push((p, false));
             }
@@ -1244,6 +1244,17 @@ mod tests {
         put(&mut w, AT - IVec3::X, r::REDSTONE_BLOCK);
         ticks(&mut w, 10);
         assert_eq!(w.primed_tnt, vec![(AT, false)]);
+    }
+
+    #[test]
+    fn powered_tnt_stays_a_block_without_tnt_explodes() {
+        let mut w = world();
+        w.rules.tnt_explodes = false;
+        put(&mut w, AT, Block::TNT);
+        put(&mut w, AT - IVec3::X, r::REDSTONE_BLOCK);
+        ticks(&mut w, 10);
+        assert!(w.primed_tnt.is_empty());
+        assert_eq!(w.get_block(AT), Some(Block::TNT), "Java's `TntBlock.prime` fails, leaving the block");
     }
 
     #[test]

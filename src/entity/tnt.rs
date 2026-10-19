@@ -47,15 +47,20 @@ impl PrimedTnt {
         dt: f64,
         world: &W,
         events: &mut Vec<EntityEvent>,
+        explodes: bool,
     ) -> bool {
         self.fuse -= dt as f32;
         if self.fuse <= 0.0 {
-            events.push(EntityEvent::Explosion {
-                center: self.pos + DVec3::Y * SHAPE.height / 2.0,
-                power: self.power,
-                cause: "was blown up by TNT",
-                credit_player: false,
-            });
+            // Without `tnt_explodes` Java's `PrimedTnt.explode` does nothing
+            // and the entity is simply discarded.
+            if explodes {
+                events.push(EntityEvent::Explosion {
+                    center: self.pos + DVec3::Y * SHAPE.height / 2.0,
+                    power: self.power,
+                    cause: "was blown up by TNT",
+                    credit_player: false,
+                });
+            }
             return false;
         }
         self.vel.y -= GRAVITY * dt;
