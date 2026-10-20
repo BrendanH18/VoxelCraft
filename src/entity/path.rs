@@ -1431,6 +1431,18 @@ impl Navigation {
         self.path = None;
     }
 
+    /// A one-node path that never finishes, so a move control has a path to
+    /// follow in tests that drive it directly.
+    #[cfg(test)]
+    pub fn force_not_done(&mut self) {
+        self.path = Some(Path {
+            nodes: vec![PathNode { pos: IVec3::ZERO, ty: PathType::Open }],
+            next: 0,
+            target: IVec3::ZERO,
+            reached: false,
+        });
+    }
+
     pub fn target(&self) -> Option<IVec3> {
         self.target
     }
@@ -1641,7 +1653,15 @@ impl Navigation {
         let dz = (mover.pos.z - (node.pos.z as f64 + 0.5)).abs();
         let vertical = if matches!(caps.evaluator, Evaluator::Swim { .. }) { 0.5 } else { 1.0 };
         let close = dx < max && dz < max && dy < vertical;
-        if close || can_cut_corner(node.ty) && next_in_direction(path, at, caps.width) {
+        // `canMoveDirectly`: water, flying and (in a liquid) amphibious
+        // navigation skip a node they have a clear line to. Ground
+        // navigation never does.
+        let direct = match caps.evaluator {
+            Evaluator::Swim { .. } | Evaluator::Fly => true,
+            Evaluator::Amphibious { .. } => mover.in_water,
+            Evaluator::Walk => false,
+        };
+        if close || can_cut_corner(node.ty) && next_in_direction(world, path, at, caps, direct) {
             path.next += 1;
         }
         self.stuck_detection(at);
@@ -1684,8 +1704,11 @@ fn can_cut_corner(t: PathType) -> bool {
     !matches!(t, PathType::FireInNeighbor | PathType::DamagingInNeighbor | PathType::WalkableDoor)
 }
 
-/// `shouldTargetNextNodeInDirection` (ground navigation never moves directly).
-fn next_in_direction(path: &Path, at: DVec3, _width: f32) -> bool {
+/// `shouldTargetNextNodeInDirection`. With `direct`, a clear line from the
+/// mob's middle to the current node's entity position at half the mob's
+/// height (`isClearForMovementBetween`: collision shapes, fluids ignored)
+/// moves on at once. Flying navigation's fluid blocking is not modelled.
+fn next_in_direction<W: BlockSource + ?Sized>(world: &W, path: &Path, at: DVec3, caps: &Caps, direct: bool) -> bool {
     if path.next + 1 >= path.nodes.len() {
         return false;
     }
@@ -1693,6 +1716,12 @@ fn next_in_direction(path: &Path, at: DVec3, _width: f32) -> bool {
     let current = centre(path.nodes[path.next].pos);
     if at.distance_squared(current) >= 4.0 {
         return false;
+    }
+    if direct {
+        let stop = path.entity_pos(path.next, caps.width) + DVec3::Y * (caps.height as f64 * 0.5);
+        if super::mob::line_of_sight(world, at, stop) {
+            return true;
+        }
     }
     let next = centre(path.nodes[path.next + 1].pos);
     let to_current = current - at;

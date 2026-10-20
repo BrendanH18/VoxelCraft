@@ -137,14 +137,16 @@ preserved and regression-checked when shared code changes.
 Candidates for later side-feature work include the full advancement/
 statistics interface, archaeology-specific interactions, the complete
 command/selector language, custom skins, resource/data-pack compatibility,
-and mod/plugin APIs. These are proposed deferrals under the maintainer's allowance
+and mod/plugin APIs. They are deferred under the maintainer's allowance
 for less-used side features, not blanket exclusions of associated core
 content. M0 must record the exact boundary: for example, a loot-bearing
 structure still needs a playable exploration/reward loop even if its
 archaeology mechanics are deferred.
 
-**M0 boundary — proposed 2026-10-17, awaiting the owner's approval.** Until
-approved these remain proposals, and v0.8's M0 exit stays open.
+**M0 boundary — approved by the owner on 2026-10-19** (proposed 2026-10-17).
+These deferrals are the `Deferred` rows DEF-01..06 of the
+[requirement inventory](requirements.md#deferred-side-features); everything
+in the right-hand column stays mandatory for 1.0.
 
 | Side feature | Deferred past 1.0 | Stays in 1.0 core |
 |---|---|---|
@@ -751,7 +753,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 
 | Version | Theme | Milestones | Main content | Status |
 |---|---|---|---|---|
-| v0.8 | Foundations | Finish M0, M1 | Valid M5 baseline and the per-requirement inventory; mob pathfinding, Java spawn categories, shape-aware light, simulation distance; pause/death/save scenarios on every input path | In progress: most implementation merged (#34, #35); strider lava paths, pause/death/save scenarios and the [requirement inventory](requirements.md) on `t3/roadmap-next-stage-v0-8`; the [M5 baseline](verification/2026-10-16-m5-baseline.md) is recorded (15/15 valid; gate fails in streaming); 2026-10-17/18: sweeping and knockback, absorption, game rules and difficulty, per-chunk entity storage, bed stand-up positions, fire tick containers and mob goals merged there; streaming re-run and player acceptance remain |
+| v0.8 | Foundations | Finish M0, M1 | Valid M5 baseline and the per-requirement inventory; mob pathfinding, Java spawn categories, shape-aware light, simulation distance; pause/death/save scenarios on every input path | In progress: most implementation merged (#34, #35); strider lava paths, pause/death/save scenarios and the [requirement inventory](requirements.md) on `t3/roadmap-next-stage-v0-8`; the [M5 baseline](verification/2026-10-16-m5-baseline.md) is recorded (15/15 valid; gate fails in streaming); 2026-10-17/18: sweeping and knockback, absorption, game rules and difficulty, per-chunk entity storage, bed stand-up positions, fire tick containers and mob goals merged there; 2026-10-19: swimmer, ghast and airborne blaze movement (blazes on the ground keep VoxelCraft's ground movement); streaming re-run and player acceptance remain |
 | v0.9 | Block states | M2: BLD-04, BLD-06 | Top and double slabs, waterlogging, door hinges, floor/ceiling buttons and levers, wall grindstones, corner-stair light; reserved state ranges for later content | Planned |
 | v0.10 | Building materials | Close M2 | Missing wood, stone, copper and colour family members (pale oak, bamboo, mud brick, prismarine), the unregistered reference fuel items, signs, banners, item frames, cauldrons, soul lanterns and campfires; sponges, coral and sea pickles; falling and dripping dripstone, tilting dripleaf | Planned |
 | v0.11 | Terrain | M3: GEN-01..03 | Java climate and density terrain with overhangs; Java caves, aquifers and ores; deep-dark content, springs, glow lichen; giant spruce and jungle trees and the remaining biome features | Planned |
@@ -834,7 +836,8 @@ fixtures and acceptance cases:
    per-requirement inventory (one row per requirement with a state and
    acceptance cases, §2) is also an M0 exit check. *First version written*
    ([requirements.md](requirements.md), 2026-10-15): 119 rows; only PERF-01 Verified (2026-10-16);
-   keep it current with each change.
+   keep it current with each change. The side-feature boundary (§1.4) was
+   approved on 2026-10-19 and added as the Deferred rows DEF-01..06.
 2. **MOB-02 navigation:** Java's `PathNavigation`/node evaluators for walking,
    swimming and flying mobs, respecting block shapes, hazards, doors and
    fluids; villagers reach beds and job sites, bastion and structure residents
@@ -851,7 +854,13 @@ fixtures and acceptance cases:
    panic, breed, tempt, follow parent and owner, avoid) and `Entity.push`
    separation followed ([evidence](verification/2026-10-17-mob-goals-movement.md));
    Java paths ignore entity boxes, so that former gap was inaccurate.
-   Swimmer move controls and ghast/blaze movement remain, then player acceptance.
+   Swimmer, ghast and airborne blaze movement followed: each kind's 26.3
+   `MoveControl` and `travel` one tick at a time, fish schools,
+   `BreathAirGoal`, squid strokes, the ghast's float and fire goals, the
+   blaze's hover and attack goal, and `canMoveDirectly` for water, flying and
+   amphibious paths ([evidence](verification/2026-10-19-swimmer-flyer-movement.md)).
+   Blazes on the ground keep VoxelCraft's ground movement. Dolphin
+   play/treasure goals and turtle travel goals remain, then player acceptance.
 3. **MOB-01 spawn rules:** Java's `NaturalSpawner` placement, 24/128-block
    ring, per-category caps scaled by loaded chunks, despawn distances and
    persistence, structure spawn overrides, and the slime/drowned paths folded in.
@@ -1075,7 +1084,7 @@ reviewable alongside implementation changes and release notes.
 
 - [ ] Current stable Java reference and exact core scope recorded.
 - [ ] Every mandatory core feature individually Verified with evidence.
-- [ ] Proposed side-feature deferrals resolved; fidelity exceptions explicit.
+- [ ] Side-feature deferrals resolved (boundary approved 2026-10-19, §1.4); fidelity exceptions explicit.
 - [ ] Fresh-world survival progression and continued post-boss play passed.
 - [ ] Building, exploration, farming, animals, villagers, travel and automation scenarios passed.
 - [ ] Player-facing interfaces, controls, feedback and original assets reviewed in play.

@@ -14,6 +14,7 @@ use super::{Ctx, EntityEvent, MobSound, MobWorld, Rng, path};
 pub(crate) mod goals;
 mod navigate;
 mod nether_ai;
+mod swim;
 #[cfg(test)]
 pub(crate) use nether_ai::STABLE_LAVA_HEIGHT;
 
@@ -61,21 +62,15 @@ const STARE_TIME: f32 = 0.25;
 const STARE_RANGE: f64 = 64.0;
 const FREEZE_DIST: f64 = 16.0;
 const FLEE_DIST: f64 = 4.0;
-/// Blazes notice players this far away (Java's follow range) and melee
-/// within `BLAZE_MELEE`.
+/// Blazes notice players this far away (Java's follow range).
 const BLAZE_RANGE: f64 = 48.0;
-const BLAZE_MELEE: f64 = 2.0;
 /// Seconds a blaze charges (glowing) before a burst, between the burst's
 /// three fireballs, and resting after it (Java's 60, 6 and 100 ticks).
 const BLAZE_CHARGE: f32 = 3.0;
 const BLAZE_VOLLEY: f32 = 0.3;
 const BLAZE_REST: f32 = 5.0;
-/// Ghasts notice players this far (Java's follow range), charge for a
-/// second, then rest two seconds. Flying speed is 0.7 blocks a tick.
+/// Ghasts notice players this far (Java's follow range).
 const GHAST_RANGE: f64 = 100.0;
-const GHAST_CHARGE: f32 = 1.0;
-const GHAST_REST: f32 = 2.0;
-const GHAST_SPEED: f64 = 14.0;
 /// Enderman eye height (Java's 2.55).
 const ENDERMAN_EYE: f64 = 2.55;
 /// Seconds `getLastDamageSource` remembers a hit (40 ticks), during which
@@ -1006,6 +1001,8 @@ pub struct Mob {
     pub(super) idle: f32,
     /// Java's goal selector for the shared movement goals (never saved).
     pub(crate) goals: goals::Goals,
+    /// Java's `MoveControl` for swimmers, ghasts and airborne blazes.
+    pub(crate) move_ctl: swim::MoveCtl,
 }
 
 impl Mob {
@@ -1112,6 +1109,7 @@ impl Mob {
             path_move: false,
             idle: 0.0,
             goals: Default::default(),
+            move_ctl: Default::default(),
         }
     }
 
@@ -1305,7 +1303,14 @@ impl Mob {
         // (`PANIC_ENVIRONMENTAL_CAUSES` only: an attack doesn't scare them)
         // and golems, which have none.
         let scared = match self.kind {
-            MobKind::IronGolem | MobKind::SnowGolem => false,
+            // Squid flee their attacker instead; dolphins and axolotls
+            // have no panic goal.
+            MobKind::IronGolem
+            | MobKind::SnowGolem
+            | MobKind::Squid
+            | MobKind::GlowSquid
+            | MobKind::Dolphin
+            | MobKind::Axolotl => false,
             MobKind::Wolf => !attacked,
             k => !k.is_hostile(),
         };
@@ -1449,8 +1454,11 @@ impl Mob {
             safe
         });
 
+        // Swimmers, ghasts and airborne blazes move a whole Java tick at a
+        // time with their own move controls (`swim`).
+        let java = !controlled && self.riding.is_none() && self.java_moves(world);
         // Turn the body toward the direction of travel.
-        if let Some(dir) = wish.filter(|_| !controlled) {
+        if let Some(dir) = wish.filter(|_| !controlled && !java) {
             let target = (dir.z as f32).atan2(dir.x as f32);
             self.yaw = turn_toward(self.yaw, target, 8.0 * dtf);
         }
@@ -1463,6 +1471,14 @@ impl Mob {
         if self.riding.is_some() || self.animal.as_ref().is_some_and(|a| a.perched.is_some()) {
             self.vel = DVec3::ZERO;
             self.on_ground = true;
+        } else if java {
+            // Whole Java ticks of simulated time; the fixed 20 Hz step runs one.
+            // The move controls apply Speed and Slowness to the raw speed.
+            self.move_ctl.time += dt;
+            while self.move_ctl.time >= swim::TICK - 1e-9 {
+                self.move_ctl.time -= swim::TICK;
+                self.java_tick(world, wish, speed, rng);
+            }
         } else {
             for _ in 0..steps {
                 let controlled = self.mount.as_ref().is_some_and(|s| s.controlled());
@@ -1565,28 +1581,17 @@ impl Mob {
         if self.kind == MobKind::Strider {
             self.update_strider_cold(world);
         }
-        if self.kind.is_aquatic() {
-            // Aquatic steering has no panic run of its own; the hit is still
-            // forgotten after `PANIC_MEMORY`, so the goals resume.
-            if self.ai == Ai::Panic {
-                self.ai_timer -= dt;
-                if self.ai_timer <= 0.0 {
-                    self.ai = Ai::Idle;
-                    self.ai_timer = 0.0;
-                }
-            }
-            // An axolotl playing dead (`PLAY_DEAD`, its top activity) does
-            // nothing else until the timer runs out.
-            if self.aquatic.as_ref().is_some_and(|a| a.play_dead > 0.0) {
-                self.stop_goal(world);
-                return super::aquatic::think(self, dt, world, ctx, rng, events);
-            }
+        // A guardian aiming its beam stands still, and an axolotl playing
+        // dead (`PLAY_DEAD`, its top activity) does nothing else.
+        if self.kind.is_aquatic() && super::aquatic::upkeep(self, dt, world, ctx, events) {
+            self.stop_goal(world);
+            return (None, 0.0);
         }
         if let Some(wish) = self.run_goals(world, ctx, rng) {
             return wish;
         }
         if self.kind.is_aquatic() {
-            return super::aquatic::think(self, dt, world, ctx, rng, events);
+            return super::aquatic::steer(self, dt, world, ctx, rng, events);
         }
         if self.kind == MobKind::Pillager {
             return super::aquatic::pillager(self, dt, world, ctx, events);
@@ -1672,13 +1677,21 @@ impl Mob {
         {
             return wish;
         }
+        if self.kind == MobKind::Ghast {
+            return self.ghast_think(dt, world, ctx, rng, events);
+        }
+        if self.kind == MobKind::Blaze
+            && let Some(wish) = self.blaze_think(dt, world, ctx, rng, events)
+        {
+            return wish;
+        }
         self.ai_timer -= dt;
         let target = ctx.nearest_target(self.pos);
         let to_player = target.map_or(DVec3::ZERO, |t| t.pos - self.pos);
         let flat = DVec3::new(to_player.x, 0.0, to_player.z);
         let hdist = flat.length();
 
-        if self.kind.is_hostile() && self.nether.is_none() {
+        if self.kind.is_hostile() && self.nether.is_none() && self.kind != MobKind::Blaze {
             let aggressive = match self.kind {
                 MobKind::Spider | MobKind::CaveSpider => ctx.daylight < SPIDER_CALM_DAYLIGHT || self.provoked > 0.0,
                 MobKind::ZombifiedPiglin => self.provoked > 0.0,
@@ -1686,8 +1699,6 @@ impl Mob {
                 _ => true,
             };
             let (range, height) = match self.kind {
-                MobKind::Blaze => (BLAZE_RANGE, 24.0),
-                MobKind::Ghast => (GHAST_RANGE, GHAST_RANGE),
                 MobKind::CaveSpider | MobKind::Slime | MobKind::MagmaCube => (16.0, 4.0),
                 _ => (CHASE_RANGE, 12.0),
             };
@@ -1722,15 +1733,7 @@ impl Mob {
                     MobKind::Skeleton => {
                         return self.skeleton_tactics(dt, world, target.pos, dir, hdist, rng, events);
                     }
-                    MobKind::Blaze => {
-                        if let Some(stop) = self.blaze_tactics(dt, world, &target, rng, events) {
-                            return stop;
-                        }
-                    }
                     MobKind::Witch => return self.witch_tactics(world, &target, dir, hdist, rng, events),
-                    MobKind::Ghast => {
-                        return self.ghast_tactics(world, target.pos, dir, hdist, events);
-                    }
                     MobKind::Creeper => {
                         if let Some(stop) = self.creeper_fuse(dt, hdist, events) {
                             return stop;
@@ -1899,104 +1902,232 @@ impl Mob {
         }
     }
 
-    /// Java's blaze attack: rise to hover a little above the target, melee
-    /// when within 2 blocks, otherwise (when it can see the target) charge
-    /// for 3 s and fire three fireballs 0.3 s apart, then rest 5 s. Returns
-    /// the movement to use instead of closing in, if any.
-    fn blaze_tactics<W: MobWorld + ?Sized>(
+    /// Java's `TargetGoal` for a player: `NearestAttackableTargetGoal`
+    /// (`randomInterval` 10, `mustSee`) picks the nearest visible survival
+    /// player within the follow range that `accept` allows, and the target
+    /// is kept while it stays within range and was seen in the last
+    /// `reducedTickDelay(60)` selector updates. Runs on the selector's full
+    /// update; returns the target.
+    fn java_target<'a, W: MobWorld + ?Sized>(
+        &mut self,
+        world: &W,
+        ctx: &'a Ctx,
+        rng: &mut Rng,
+        range: f64,
+        full: bool,
+        accept: impl Fn(&super::Target) -> bool,
+    ) -> Option<&'a super::Target> {
+        let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+        let sees = |t: &super::Target| line_of_sight(world, eye, t.pos + DVec3::Y * crate::player::EYE_HEIGHT);
+        let c = &mut self.move_ctl;
+        let current = c.target.and_then(|id| ctx.players.iter().find(|t| t.id == id));
+        if let Some(t) = current {
+            let keep = t.targetable && t.alive && t.pos.distance_squared(self.pos) <= range * range;
+            if keep && full {
+                c.unseen = if sees(t) { 0 } else { c.unseen + 1 };
+            }
+            if keep && c.unseen <= 30 {
+                return Some(t);
+            }
+            c.target = None;
+        }
+        if !full || rng.next_int(5) != 0 {
+            return None;
+        }
+        let found = ctx
+            .players
+            .iter()
+            .filter(|t| t.targetable && t.alive && t.pos.distance_squared(self.pos) <= range * range && accept(t))
+            .filter(|t| sees(t))
+            .min_by(|l, r| l.pos.distance_squared(self.pos).total_cmp(&r.pos.distance_squared(self.pos)));
+        let c = &mut self.move_ctl;
+        c.target = found.map(|t| t.id);
+        c.unseen = 0;
+        found
+    }
+
+    /// Selector bookkeeping for kinds without a goal table: counts
+    /// `tickCount` and says whether this tick is the full update.
+    fn selector_full(&mut self) -> bool {
+        let full = self.goals.full(self.uid);
+        self.goals.ticks = self.goals.ticks.wrapping_add(1);
+        full
+    }
+
+    /// The blaze's 26.3 goals: `NearestAttackableTargetGoal` (follow range
+    /// 48), `BlazeAttackGoal` and the `customServerAiStep` height offset.
+    /// Within 2 blocks and in sight it hits every 20 ticks and walks at the
+    /// target; farther, while in sight, it holds still and charges for 60
+    /// ticks, fires three small fireballs 6 ticks apart with Java's
+    /// spread, and rests 100 ticks; out of sight it heads for the target for
+    /// 5 ticks. It rises while the target's eyes are more than
+    /// `allowedHeightOffset` above its own. `None` without a target leaves it
+    /// to `WaterAvoidingRandomStrollGoal`.
+    fn blaze_think<W: MobWorld + ?Sized>(
         &mut self,
         dt: f32,
         world: &W,
-        target: &super::Target,
+        ctx: &Ctx,
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> Option<(Option<DVec3>, f64)> {
+        let full = self.selector_full();
+        let ticks = self.goal_ticks(dt);
+        // `nextHeightOffsetChangeTick`: a new offset every 100 ticks.
         self.offset_timer -= dt;
         if self.offset_timer <= 0.0 {
             self.offset_timer = 5.0;
-            self.height_offset = 0.5 + rng.range(-1.0, 1.0) * 3.0;
+            self.height_offset = rng.triangle(0.5, 6.891) as f32;
+        }
+        let Some(&target) = self.java_target(world, ctx, rng, BLAZE_RANGE, full, |_| true) else {
+            if self.ai == Ai::Chase {
+                // `BlazeAttackGoal.stop`.
+                self.ai = Ai::Idle;
+                self.ai_timer = 1.0;
+                self.charged = false;
+                self.move_ctl.last_seen = 0;
+                self.stop_navigation();
+            }
+            self.lift = false;
+            return None;
+        };
+        if self.ai != Ai::Chase {
+            // `BlazeAttackGoal.start`.
+            self.ai = Ai::Chase;
+            self.attack_step = 0;
+            self.path_move = false;
+            self.stop_navigation();
         }
         let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
         let target_eye = target.pos + DVec3::Y * crate::player::EYE_HEIGHT;
         self.lift = target_eye.y > eye.y + self.height_offset as f64;
-        let to = target_eye - eye;
-        let dist = to.length();
-        if dist < BLAZE_MELEE {
-            // Close enough to hit: the usual melee code handles it.
-            return None;
+        let to = target.pos - self.pos;
+        let face = (to.z as f32).atan2(to.x as f32);
+        self.head_target = (wrap(face - self.yaw).clamp(-1.2, 1.2), 0.0);
+        let sees = line_of_sight(world, eye, target_eye);
+        self.move_ctl.last_seen = if sees { 0 } else { self.move_ctl.last_seen + ticks as i32 };
+        let toward = (Some((to * DVec3::new(1.0, 0.0, 1.0)).normalize_or(DVec3::X)), path::ground_speed(0.23));
+        let d2 = to.length_squared();
+        if d2 < 4.0 {
+            if !sees {
+                return Some((None, 0.0));
+            }
+            if self.attack_cooldown <= 0.0 {
+                self.attack_cooldown = 1.0;
+                self.attack_anim = 0.35;
+                let (damage, cause) = self.melee_attack();
+                let dir = (to * DVec3::new(1.0, 0.0, 1.0)).normalize_or(DVec3::X);
+                let knockback = dir * 6.0 + DVec3::Y * 5.0;
+                let extra = crate::knockback::attack_strength(self.attack_knockback(), 0, false);
+                let yaw = (-dir.x).atan2(dir.z).to_degrees() as f32;
+                events.push(EntityEvent::PlayerHit {
+                    java: Some(crate::knockback::Hit::melee(self.pos, target.pos, yaw, extra)),
+                    player: target.id,
+                    damage,
+                    knockback: knockback.as_vec3(),
+                    cause,
+                });
+                events.push(EntityEvent::OwnerHurt { player: target.id, attacker: self.uid });
+                self.thorns_response(&target, knockback, rng, events);
+            }
+            return Some(toward);
         }
-        if !line_of_sight(world, eye, target_eye) {
-            return None;
-        }
-        if self.attack_cooldown <= 0.0 {
-            self.attack_step += 1;
-            match self.attack_step {
-                1 => {
-                    self.attack_cooldown = BLAZE_CHARGE;
-                    self.charged = true;
+        if d2 < BLAZE_RANGE * BLAZE_RANGE && sees {
+            if self.attack_cooldown <= 0.0 {
+                self.attack_step += 1;
+                match self.attack_step {
+                    1 => {
+                        self.attack_cooldown = BLAZE_CHARGE;
+                        self.charged = true;
+                    }
+                    2..=4 => self.attack_cooldown = BLAZE_VOLLEY,
+                    _ => {
+                        self.attack_cooldown = BLAZE_REST;
+                        self.attack_step = 0;
+                        self.charged = false;
+                    }
                 }
-                2..=4 => {
-                    self.attack_cooldown = BLAZE_VOLLEY;
-                    // Java's spread grows with the square root of distance.
-                    let spread = dist.sqrt() * 0.5 * 0.1;
-                    let mut r = || rng.range(-1.0, 1.0) as f64 * spread;
-                    let dir = (to / dist + DVec3::new(r(), 0.0, r())).normalize();
-                    events.push(EntityEvent::Fireball { from: eye + dir * 0.5, dir, large: false });
+                if self.attack_step > 1 {
+                    // Aimed from the middle of the blaze at the middle of the target.
+                    let mid = self.pos.y + self.shape().height * 0.5;
+                    let (xd, yd, zd) = (to.x, target.pos.y + target.shape.height * 0.5 - mid, to.z);
+                    let spread = d2.sqrt().sqrt() * 0.5 * 2.297;
+                    let dir = DVec3::new(rng.triangle(xd, spread), yd, rng.triangle(zd, spread)).normalize_or(DVec3::X);
+                    let from = DVec3::new(self.pos.x, mid + 0.5, self.pos.z);
+                    events.push(EntityEvent::Fireball { from, dir, large: false });
                     events.push(EntityEvent::Sound { sound: MobSound::Fireball, pos: eye });
                 }
-                _ => {
-                    self.attack_cooldown = BLAZE_REST;
-                    self.attack_step = 0;
-                    self.charged = false;
-                }
             }
+            return Some((None, 0.0));
+        }
+        if self.move_ctl.last_seen < 5 {
+            return Some(toward);
         }
         Some((None, 0.0))
     }
 
-    /// Java's ghast: hover out of reach, charge for a second while it can
-    /// see the target, then shoot one explosive fireball.
-    fn ghast_tactics<W: MobWorld + ?Sized>(
+    /// The ghast's 26.3 goals: `RandomFloatAroundGoal` on each full update
+    /// whatever else it does, `NearestAttackableTargetGoal` (follow range
+    /// 100, within 4 blocks vertically), `GhastLookGoal` facing a target
+    /// within 64 blocks, and `GhastShootFireballGoal`: charging while it sees
+    /// a target within 64 blocks, warning at 10 ticks and firing at 20 from 4
+    /// blocks in front, then waiting 40 ticks; out of sight the charge drains.
+    fn ghast_think<W: MobWorld + ?Sized>(
         &mut self,
+        dt: f32,
         world: &W,
-        player: DVec3,
-        dir: DVec3,
-        hdist: f64,
+        ctx: &Ctx,
+        rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> (Option<DVec3>, f64) {
-        let eye = self.pos + DVec3::Y * (self.shape().height * 0.5);
-        let target_eye = player + DVec3::Y * crate::player::EYE_HEIGHT;
-        let to = target_eye - eye;
-        let dist = to.length().max(1e-6);
-        let see = dist < GHAST_RANGE && line_of_sight(world, eye, target_eye);
-        let flat = if hdist > 28.0 {
-            dir
-        } else if hdist < 14.0 {
-            -dir
-        } else {
-            DVec3::new(-dir.z, 0.0, dir.x)
-        };
-        let dy = (target_eye.y + 3.0 - eye.y).clamp(-8.0, 8.0);
-        let wish = (flat * 8.0 + DVec3::Y * dy).normalize_or(DVec3::Y);
-        if see {
-            if self.attack_cooldown <= 0.0 {
-                if !self.charged {
-                    self.charged = true;
-                    self.attack_cooldown = GHAST_CHARGE;
-                    events.push(EntityEvent::Sound { sound: MobSound::Ambient(MobKind::Ghast), pos: eye });
-                } else {
-                    self.charged = false;
-                    self.attack_cooldown = GHAST_REST;
-                    let shot = to / dist;
-                    let from = eye + shot * (self.shape().half_width.max(self.shape().height * 0.5) * 2.2);
-                    events.push(EntityEvent::Fireball { from, dir: shot, large: true });
-                    events.push(EntityEvent::Sound { sound: MobSound::Fireball, pos: eye });
-                }
-            }
-        } else {
-            self.charged = false;
+        let full = self.selector_full();
+        let ticks = self.goal_ticks(dt);
+        if full {
+            self.ghast_float(rng);
         }
-        (Some(wish), GHAST_SPEED)
+        let y = self.pos.y;
+        let target = self.java_target(world, ctx, rng, GHAST_RANGE, full, |t| (t.pos.y - y).abs() <= 4.0).copied();
+        let Some(target) = target else {
+            if self.ai == Ai::Chase {
+                self.ai = Ai::Idle;
+                self.charged = false;
+            }
+            self.move_ctl.look = None;
+            self.move_ctl.charge = 0;
+            return (None, 0.0);
+        };
+        self.ai = Ai::Chase;
+        let mid = self.pos + DVec3::Y * (self.shape().height * 0.5);
+        let target_mid = target.pos + DVec3::Y * (target.shape.height * 0.5);
+        let close = target.pos.distance_squared(self.pos) < 4096.0;
+        self.move_ctl.look = Some(target.pos);
+        if close {
+            let to = target.pos - self.pos;
+            self.yaw = (to.z as f32).atan2(to.x as f32);
+        }
+        let sees = close && ticks > 0 && line_of_sight(world, mid, target_mid);
+        let c = &mut self.move_ctl;
+        // `GhastShootFireballGoal.tick` once per simulated tick.
+        for _ in 0..ticks {
+            if sees {
+                c.charge += 1;
+                if c.charge == 10 {
+                    events.push(EntityEvent::Sound { sound: MobSound::Ambient(MobKind::Ghast), pos: mid });
+                }
+                if c.charge == 20 {
+                    let view = yaw_dir(self.yaw);
+                    let from = DVec3::new(self.pos.x + view.x * 4.0, mid.y + 0.5, self.pos.z + view.z * 4.0);
+                    let aim = DVec3::new(target.pos.x - from.x, target_mid.y - (0.5 + mid.y), target.pos.z - from.z);
+                    events.push(EntityEvent::Fireball { from, dir: aim.normalize_or(view), large: true });
+                    events.push(EntityEvent::Sound { sound: MobSound::Fireball, pos: mid });
+                    c.charge = -40;
+                }
+            } else if c.charge > 0 {
+                c.charge -= 1;
+            }
+        }
+        self.charged = self.move_ctl.charge > 10;
+        (None, 0.0)
     }
 
     /// Where an enderman's eyes are.
@@ -2315,15 +2446,10 @@ impl Mob {
             self.hop_left = 0.5;
         }
         let target = wish.map_or(DVec3::ZERO, |d| d * speed);
-        // Java's `Drowned.wantsToSwim` (a target) and `Turtle.travel` (steering):
-        // otherwise they sink or float like other mobs in water below.
-        let amphibious = matches!(self.kind, MobKind::Drowned | MobKind::Turtle);
-        // Corpses take the ordinary water sink.
-        let swims = match self.kind {
-            MobKind::Drowned => self.alive() && (self.ai == Ai::Chase || self.hunt.is_some()),
-            MobKind::Turtle => self.alive() && wish.is_some(),
-            _ => self.kind.is_aquatic(),
-        };
+        // Java's `Drowned.wantsToSwim` (a target): otherwise they sink like
+        // other mobs in water below. Swimmers with their own `travelInWater`
+        // move in `swim`.
+        let swims = self.kind == MobKind::Drowned && self.alive() && (self.ai == Ai::Chase || self.hunt.is_some());
         if swims && self.in_water {
             self.vel += (target - self.vel) * (dt * 3.0).min(1.0);
             let delta = self.vel * dt;
@@ -2332,8 +2458,7 @@ impl Mob {
             self.blocked = hit.horizontal;
             // `travelInWater`: lift onto a bank only when the way ahead is free
             // 0.6 higher, so underwater walls don't launch them.
-            if amphibious
-                && self.blocked
+            if self.blocked
                 && let Some(w) = wish
             {
                 let ahead = self.pos + DVec3::new(w.x, 0.0, w.z).normalize_or_zero() * 0.3 + DVec3::Y * 0.6;
@@ -2343,14 +2468,7 @@ impl Mob {
             }
             return;
         }
-        if self.kind.is_aquatic() && self.kind != MobKind::Axolotl && self.on_ground && self.alive() {
-            self.vel.y = 4.0;
-            self.vel.x = self.yaw.cos() as f64 * 1.4;
-            self.vel.z = self.yaw.sin() as f64 * 1.4;
-        }
-
-        if self.alive() && (self.kind == MobKind::Ghast || self.kind == MobKind::Parrot && wish.is_some()) {
-            // Java ghasts fly: no gravity, and they steer in three dimensions.
+        if self.alive() && self.kind == MobKind::Parrot && wish.is_some() {
             let k = (dt * 1.6).min(1.0);
             self.vel += (target - self.vel) * k;
         } else if self.in_water {
@@ -2391,13 +2509,6 @@ impl Mob {
             };
             if matches!(self.kind, MobKind::Chicken | MobKind::Parrot) {
                 self.vel.y = self.vel.y.max(-2.5); // flaps its way down
-            }
-            if self.kind == MobKind::Blaze && self.alive() {
-                // Java blazes sink slowly and rise toward a target above.
-                self.vel.y = self.vel.y.max(-2.3);
-                if self.lift {
-                    self.vel.y += (6.0 - self.vel.y) * (1.0 - 0.7f64.powf(dt * 20.0));
-                }
             }
             if matches!(self.kind, MobKind::Spider | MobKind::CaveSpider)
                 && self.blocked

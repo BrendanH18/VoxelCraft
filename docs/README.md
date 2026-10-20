@@ -94,6 +94,10 @@ roadmap and recorded checks to assess completeness against the current target.
 - [Strider lava paths](verification/2026-10-15-strider-lava-paths.md):
   `StriderPathNavigation`, `StriderGoToLavaGoal`, the half-block lava standing
   height and a generated-Nether scene.
+- [Mob goals and movement](verification/2026-10-17-mob-goals-movement.md) and
+  [swimmer and flyer movement](verification/2026-10-19-swimmer-flyer-movement.md):
+  the goal selector and shared movement goals, then each swimmer's, the
+  ghast's and the blaze's 26.3 move control, travel and goals, with timings.
 - [Natural spawning](verification/2026-10-14-natural-spawning.md) and
   [spawn categories](verification/2026-10-15-spawn-categories.md): Java's
   `NaturalSpawner` ring, caps, despawning and biome spawn lists.

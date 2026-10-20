@@ -116,7 +116,7 @@ cost.
 | MOB-01b | Light-based spawning and torch suppression | Implemented, unverified | v0.8 | [lighting and spawning](verification/2026-10-13-lighting-spawning.md) | Fixtures (pass); player | — |
 | MOB-01c | Structure spawn overrides and spawners | Partial | v0.12 | [categories](verification/2026-10-15-spawn-categories.md) | Monument, fortress, outpost, swamp hut lists | Needs the structures |
 | MOB-02a | Ground navigation | Implemented, unverified | v0.8 | [ground](verification/2026-10-14-mob-navigation.md); [goals](verification/2026-10-17-mob-goals-movement.md) | Java path fixtures (pass); `Entity.push` separation (pass); player | Java's `PathNavigationRegion` has no entity collisions, so paths ignore entity boxes as in Java; no entity cramming damage; no pushing against boats, minecarts or shulkers |
-| MOB-02b | Swimming, amphibious, flying and climbing navigation | Implemented, unverified | v0.8 | [swim/fly](verification/2026-10-14-mob-navigation-swim-fly.md); [goals](verification/2026-10-17-mob-goals-movement.md) | Fixtures (pass); M5 scene with swimmers and flyers | Swimmer `MoveControl` variants (fish, smooth swimming, turtle, guardian, dolphin, axolotl) not ported; ghasts and blazes keep own movement; bees, allays, vexes unregistered |
+| MOB-02b | Swimming, amphibious, flying and climbing navigation | Implemented, unverified | v0.8 | [swim/fly](verification/2026-10-14-mob-navigation-swim-fly.md); [goals](verification/2026-10-17-mob-goals-movement.md); [swimmer/flyer movement](verification/2026-10-19-swimmer-flyer-movement.md) | Fixtures (pass); move-control steady speeds, schools, breathing, ghast fire cadence and blaze hover (pass); movement-cost timing (pass); M5 scene with swimmers and flyers; player | Dolphin play/treasure/boat goals, turtle travel goals, guardian home restriction and blaze retaliation not ported; no water currents on swimmers; bees, allays, vexes unregistered |
 | MOB-02c | Strider lava navigation | Implemented, unverified | v0.8 | [striders](verification/2026-10-15-strider-lava-paths.md); [goals](verification/2026-10-17-mob-goals-movement.md) | Fixtures and Nether scene (pass); 26.3 goal tables, follow/tempt/breed/avoid cadences (pass); player riding and luring | Look, float, beg and eat-grass goals stay outside the selector |
 | MOB-02d | Targets, cooldowns, attacks, equipment and line of sight | Partial | v0.13 | [mob parity](mob-parity.md) | Per-mob attack fixtures | No held spawn weapons for mobs |
 | MOB-03a | Farm animals: breeding, ageing, feeding, wool, eggs | Partial | v0.13 | [animals](animals.md) | Breeding and growth timers; P/S | Mooshrooms missing |
@@ -193,6 +193,20 @@ cost.
 | UX-03c | Inventory search, recipe book and discovery, every container screen | Partial | v0.18 | [recipe_book.rs](../src/app/recipe_book.rs) | Recipe discovery rules; each screen | Recipe unlocks unassessed |
 | UX-04 | Install, start, save, quit, reopen, update on supported platforms | Partial | v1.0 | [releases](releases.md) | Release package checks per platform | — |
 | UX-05 | Errors, backups, migration and a 1.0 save-compatibility policy | Partial | v1.0 | [storage.rs](../src/world/storage.rs) | Migration tests from each released save version | No written policy |
+
+## Deferred side features
+
+Approved by the owner on 2026-10-19 ([roadmap §1.4](roadmap.md#14-what-can-follow-10)).
+Deferred rows sit outside 1.0; their core counterparts stay in the rows above.
+
+| ID | Requirement | State | Release | Evidence | Acceptance | Gaps / next action |
+|---|---|---|---|---|---|---|
+| DEF-01 | Advancement and statistics screens, toasts and criteria | Deferred | after 1.0 (v1.x) | [roadmap §1.4](roadmap.md#14-what-can-follow-10) | — | Recipe unlocking and the recipe book stay in UX-03c (v0.18); dragon and Wither progression stay in PRO (v0.16) |
+| DEF-02 | Archaeology: brushes, suspicious sand and gravel, pottery sherds, decorated-pot patterns | Deferred | after 1.0 (v1.x) | [roadmap §1.4](roadmap.md#14-what-can-follow-10) | — | Trail ruins, desert wells and warm ocean ruins stay as explorable structures with non-archaeology loot (v0.12); sniffers need another Java acquisition path or a recorded fidelity exception when v0.13 plans them |
+| DEF-03 | The full command and selector language | Deferred | after 1.0 (v1.x) | [roadmap §1.4](roadmap.md#14-what-can-follow-10) | — | The cheat console's testing commands stay (game mode, rules, time, weather, teleport, give, kill, difficulty, spawn point) |
+| DEF-04 | Custom skin selection and loading | Deferred | after 1.0 (v1.x) | [roadmap §1.4](roadmap.md#14-what-can-follow-10) | — | The default player models stay |
+| DEF-05 | Loading resource and data packs | Deferred | after 1.0 (v1.x) | [roadmap §1.4](roadmap.md#14-what-can-follow-10) | — | Built-in Java 26.3 recipes, loot tables and tags stay (BLD, PRO, GEN rows) |
+| DEF-06 | Mod and plugin APIs | Deferred | after 1.0 (v1.x) | [roadmap §1.4](roadmap.md#14-what-can-follow-10) | — | — |
 
 ## Performance (§6)
 

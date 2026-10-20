@@ -120,6 +120,29 @@ pub fn box_overlaps_solid<W: BlockSource + ?Sized>(world: &W, min: DVec3, max: D
     hit
 }
 
+/// Whether the box at `pos` can sweep by `travel` without meeting a solid
+/// box, ignoring blocks whose cell it already overlaps (Java's
+/// `GhastMoveControl.canReach`). The sweep is sampled at half the box's
+/// smallest extent (at most a block), so consecutive samples overlap.
+pub fn sweep_clear<W: BlockSource + ?Sized>(world: &W, pos: DVec3, shape: Shape, travel: DVec3) -> bool {
+    let (min0, max0) = shape.aabb(pos);
+    let step = (shape.half_width.min(shape.height * 0.5)).clamp(0.05, 1.0);
+    let steps = (travel.length() / step).ceil().max(1.0) as u32;
+    for i in 1..=steps {
+        let (min, max) = shape.aabb(pos + travel * (i as f64 / steps as f64));
+        let mut blocked = false;
+        boxes_near(world, min, max, |bmin, _| {
+            let cell = bmin.floor();
+            let touches = cell.cmplt(max0).all() && (cell + DVec3::ONE).cmpgt(min0).all();
+            blocked |= !touches;
+        });
+        if blocked {
+            return false;
+        }
+    }
+    true
+}
+
 /// If the box at `pos` overlaps solid blocks, returns `pos` pushed back
 /// against them along `axis` (the direction of travel is the sign of `dir`).
 pub fn collide<W: BlockSource + ?Sized>(world: &W, pos: DVec3, shape: Shape, axis: usize, dir: f64) -> Option<DVec3> {

@@ -1,5 +1,6 @@
 //! Water creatures and structure residents. Timers are in seconds; bucket
 //! components and one-time population markers survive save/load.
+use super::mob::Ai;
 use super::{Ctx, Entities, EntityEvent, Mob, MobKind, MobWorld, Rng};
 #[cfg(test)]
 use crate::world::{
@@ -13,9 +14,7 @@ use crate::{
     simulation::{difficulty::Difficulty, effects::Effect},
     world::{World, block::Block, terrain::Dimension},
 };
-use glam::DVec3;
-#[cfg(test)]
-use glam::IVec3;
+use glam::{DVec3, IVec3};
 
 #[derive(Clone, Debug)]
 pub struct State {
@@ -24,17 +23,26 @@ pub struct State {
     pub beam: Option<DVec3>,
     pub charge: f32,
     target: Option<super::PlayerId>,
-    school: Option<DVec3>,
     prey: Option<(u32, DVec3)>,
     sense_timer: f32,
     pub(super) play_dead: f32,
     air: f32,
     dry: f32,
     damage_tick: f32,
-    wander: f32,
-    direction: DVec3,
     effect_timer: f32,
     contact_timer: f32,
+    /// Squid: `movementVector` (blocks a tick) and the tentacle cycle.
+    pub(super) vector: DVec3,
+    pub(super) tentacle: f32,
+    pub(super) tentacle_speed: f32,
+    /// Schooling fish: the leader followed (uid and position), and the
+    /// school this fish leads, itself included (`schoolSize`).
+    pub(super) leader: Option<(u32, DVec3)>,
+    pub(super) school: u8,
+    /// `FollowFlockLeaderGoal.nextStartTick` and `timeToRecalcPath`, in
+    /// selector updates.
+    pub(super) flock_start: i32,
+    pub(super) flock_recalc: i32,
 }
 impl Default for State {
     fn default() -> Self {
@@ -45,7 +53,6 @@ impl State {
     pub fn new() -> Self {
         Self {
             target: None,
-            school: None,
             prey: None,
             sense_timer: 0.0,
             play_dead: 0.0,
@@ -56,10 +63,15 @@ impl State {
             air: 240.0,
             dry: 0.0,
             damage_tick: 0.0,
-            wander: 0.0,
-            direction: DVec3::ZERO,
             effect_timer: 0.0,
             contact_timer: 0.0,
+            vector: DVec3::ZERO,
+            tentacle: 0.0,
+            tentacle_speed: 0.1,
+            leader: None,
+            school: 1,
+            flock_start: 0,
+            flock_recalc: 0,
         }
     }
 }
@@ -103,14 +115,18 @@ pub(super) fn environment<W: MobWorld + ?Sized>(m: &mut Mob, dt: f32, w: &W) {
     }
 }
 
-pub(super) fn think<W: MobWorld + ?Sized>(
+/// Effects and attacks that run whatever the mob is doing: the elder
+/// guardian's Mining Fatigue, the guardian beam, the pufferfish's puffing
+/// and stings, and the dolphin's grace. Returns `true` while the mob must
+/// hold still: a guardian aiming its beam (`GuardianAttackGoal` stops its
+/// navigation) or an axolotl playing dead.
+pub(super) fn upkeep<W: MobWorld + ?Sized>(
     m: &mut Mob,
     dt: f32,
     w: &W,
     ctx: &Ctx,
-    rng: &mut Rng,
     events: &mut Vec<EntityEvent>,
-) -> (Option<DVec3>, f64) {
+) -> bool {
     let shape = m.shape();
     let eye = m.pos + DVec3::Y * shape.height * 0.5;
     let a = m.aquatic.as_mut().unwrap();
@@ -160,7 +176,7 @@ pub(super) fn think<W: MobWorld + ?Sized>(
                 a.charge = -1.0;
             }
             m.stop_navigation();
-            return (None, 0.0);
+            return true;
         }
         a.target = None;
         a.beam = None;
@@ -193,68 +209,262 @@ pub(super) fn think<W: MobWorld + ?Sized>(
             });
         }
     }
-    if m.kind == MobKind::Axolotl {
-        if a.play_dead > 0.0 {
-            a.play_dead -= dt;
-            m.health = (m.health + dt * 0.4).min(m.kind.max_health());
+    if m.kind == MobKind::Axolotl && a.play_dead > 0.0 {
+        a.play_dead -= dt;
+        m.health = (m.health + dt * 0.4).min(m.kind.max_health());
+        m.stop_navigation();
+        return true;
+    }
+    false
+}
+
+/// `RandomStrollGoal.canUse` on the selector's full update: not idle for
+/// 100 ticks, and a one in `reducedTickDelay(interval)` roll.
+fn stroll_roll(m: &Mob, rng: &mut Rng, interval: u32) -> bool {
+    m.idle < 5.0 && rng.next_int(interval.div_ceil(2)) == 0
+}
+
+/// Walk to `cell` (`moveTo(x, y, z, speed)`, within a block) and mark the
+/// stroll as running.
+fn start_stroll<W: MobWorld + ?Sized>(m: &mut Mob, w: &W, cell: IVec3, speed: f64) {
+    if m.walk_to(w, cell, 1, speed, false) {
+        m.ai = Ai::Wander;
+        m.ai_timer = 30.0;
+        m.path_move = true;
+    }
+}
+
+/// The movement goals of swimmers with no running table goal, steering by
+/// navigation into their `MoveControl` (`mob::swim`):
+///
+/// - fish: `PanicGoal` (1.25), `FishSwimGoal` (`RandomSwimmingGoal`, 1.0
+///   every 40 ticks) and, for schooling fish, `FollowFlockLeaderGoal`;
+/// - dolphins: `BreathAirGoal` below 140 ticks of air, then
+///   `RandomSwimmingGoal` (1.0 every 10 ticks);
+/// - guardians: `RandomStrollGoal` (1.0 every 80 ticks);
+/// - squid: `SquidRandomMovementGoal` and `SquidFleeGoal`;
+/// - axolotls: the brain's attack (0.6 in water, 0.15 on land) and its idle
+///   `RandomStroll.swim(0.5)` or `stroll(0.15)` whenever it has no walk target.
+///
+/// Returns the ground steering for axolotls on land.
+pub(super) fn steer<W: MobWorld + ?Sized>(
+    m: &mut Mob,
+    dt: f32,
+    w: &W,
+    ctx: &Ctx,
+    rng: &mut Rng,
+    events: &mut Vec<EntityEvent>,
+) -> (Option<DVec3>, f64) {
+    // Kinds without a goal table count their own selector ticks.
+    if super::mob::goals::table(m.kind).is_empty() {
+        m.goals.ticks = m.goals.ticks.wrapping_add(1);
+    }
+    let t = m.goals.ticks.wrapping_sub(1);
+    let full = t.wrapping_add(m.uid).is_multiple_of(2) || t <= 1;
+    let speed = |m: &Mob, modifier: f64| m.goal_speed(modifier);
+    match m.kind {
+        MobKind::Squid | MobKind::GlowSquid => {
+            squid(m, w, ctx, rng, full);
             return (None, 0.0);
         }
-
-        if let Some((uid, pos)) = a.prey.filter(|(_, pos)| wet(w, *pos)) {
-            let delta = pos - m.pos;
-            if delta.length_squared() < 1.5 && m.attack_cooldown <= 0.0 {
-                m.attack_cooldown = 1.0;
-                events.push(EntityEvent::MobHit {
-                    target: uid,
-                    attacker: m.uid,
-                    damage: 2.0,
-                    knockback: delta.normalize_or_zero() * 0.3,
-                });
+        MobKind::Axolotl => return axolotl(m, w, ctx, rng, events),
+        _ => {}
+    }
+    if m.kind == MobKind::Dolphin {
+        // `BreathAirGoal`: air below 140 ticks; it can't be interrupted.
+        let breathe = m.aquatic.as_ref().is_some_and(|a| a.air < 7.0);
+        if breathe {
+            if !m.move_ctl.breathing {
+                m.stop_navigation();
+                m.ai = Ai::Idle;
+                m.path_move = false;
             }
-            return (m.pursue(w, pos, 2.0, true, true, rng), 2.0);
+            m.move_ctl.breathing = true;
+            let goal = air_above(w, m.pos);
+            let s = speed(m, 1.0);
+            m.walk_to(w, goal + IVec3::Y, 1, s, false);
+            return (m.follow_path(w, s, false), s);
+        }
+        m.move_ctl.breathing = false;
+    }
+    if m.kind.is_fish() && m.ai == Ai::Panic {
+        // `PanicGoal`: a fresh spot five blocks out each time the last is
+        // reached, until the hit is forgotten and the path is done.
+        m.ai_timer -= dt;
+        if m.ai_timer <= 0.0 && m.nav.is_done() {
+            m.ai = Ai::Idle;
+            m.path_move = false;
+            m.stop_navigation();
+        } else {
+            let s = m.panic_speed();
+            if m.ai_timer > 0.0
+                && m.nav.is_done()
+                && let Some(p) = m.default_random_pos(w, ctx, rng, 5, 4)
+            {
+                m.walk_to(w, p, 1, s, false);
+            }
+            return (m.follow_path(w, s, false), s);
+        }
+    } else if !m.kind.is_fish() && m.ai == Ai::Panic {
+        m.ai = Ai::Idle;
+    }
+    let following = m.aquatic.as_ref().and_then(|a| a.leader);
+    if m.ai == Ai::Wander && m.path_move {
+        let s = m.stroll_speed();
+        match m.follow_path(w, s, false) {
+            Some(dir) if m.ai_timer > 0.0 => {
+                m.ai_timer -= dt;
+                if following.is_none() {
+                    return (Some(dir), s);
+                }
+            }
+            _ => {
+                m.ai = Ai::Idle;
+                m.path_move = false;
+                m.stop_navigation();
+            }
         }
     }
-    if let Some(leader) = a.school {
-        let delta = leader - m.pos;
-        if delta.length_squared() > 1.5 && delta.length_squared() < 256.0 && wet(w, m.pos + delta.normalize_or_zero()) {
-            return (m.pursue(w, leader, 1.4, true, false, rng), 1.4);
+    // `FollowFlockLeaderGoal` (no flags: it runs beside the swim goal): path
+    // to the leader every `adjustedTickDelay(10)`.
+    if let Some((_, leader)) = following {
+        let s = speed(m, 1.0);
+        if full {
+            let a = m.aquatic.as_mut().unwrap();
+            a.flock_recalc -= 1;
+            if a.flock_recalc <= 0 {
+                a.flock_recalc = 5;
+                m.walk_to(w, leader.floor().as_ivec3(), 1, s, false);
+            }
+        }
+        return (m.follow_path(w, s, false), s);
+    }
+    if m.ai == Ai::Idle && full {
+        let (interval, swimmable) = match m.kind {
+            MobKind::Dolphin => (10, true),
+            MobKind::Guardian | MobKind::ElderGuardian => (80, false),
+            _ => (40, true),
+        };
+        if stroll_roll(m, rng, interval) {
+            let target =
+                if swimmable { m.swimmable_pos(w, ctx, rng, 10, 7) } else { m.default_random_pos(w, ctx, rng, 10, 7) };
+            if let Some(p) = target {
+                let s = m.stroll_speed();
+                start_stroll(m, w, p, s);
+                return (m.follow_path(w, s, false), s);
+            }
         }
     }
-    a.wander -= dt;
-    let oxygen = m.kind == MobKind::Dolphin && a.air < 20.0;
-    if a.wander <= 0.0 || !wet(w, m.pos + a.direction * 1.5) || physics::overlaps_solid(w, m.pos + a.direction, shape) {
-        a.wander = rng.range(1.0, 3.0);
-        a.direction = DVec3::new(
-            rng.range(-1.0, 1.0) as f64,
-            if oxygen { 1.0 } else { rng.range(-0.45, 0.45) as f64 },
-            rng.range(-1.0, 1.0) as f64,
-        )
-        .normalize_or_zero();
-        // Don't swim into an unloaded chunk or leave water while wandering.
-        if !oxygen && (!wet(w, m.pos + a.direction) || physics::overlaps_solid(w, m.pos + a.direction, shape)) {
-            a.direction = DVec3::ZERO;
+    (None, 0.0)
+}
+
+/// `BreathAirGoal.findAirPosition`: the first cell giving air in the
+/// mob's column and the four beside it, up to 8 blocks up; else 8 up.
+fn air_above<W: MobWorld + ?Sized>(w: &W, pos: DVec3) -> IVec3 {
+    let base = pos.floor().as_ivec3();
+    for step in [IVec3::ZERO, IVec3::NEG_Z, IVec3::X, IVec3::Z, IVec3::NEG_X] {
+        for dy in 0..=8 {
+            let p = base + step + IVec3::Y * dy;
+            if w.block(p).is_some_and(|b| !b.is_fluid() && !b.is_waterlogged() && !b.is_solid()) {
+                return p;
+            }
         }
     }
-    let direction = a.direction;
-    let speed = if m.kind == MobKind::Dolphin {
-        2.8
-    } else if m.kind == MobKind::ElderGuardian {
-        0.65
-    } else {
-        1.2
-    };
-    if matches!(m.kind, MobKind::Squid | MobKind::GlowSquid) {
-        // Java squid use SquidRandomMovementGoal/MoveControl, not swimming paths.
-        return (Some(direction), speed);
+    (pos + DVec3::Y * 8.0).floor().as_ivec3()
+}
+
+/// `SquidRandomMovementGoal` on full updates and `SquidFleeGoal` every
+/// tick. The attacker is the nearest player for five seconds after a player
+/// hit (`getLastHurtByMob` lasts 100 ticks).
+fn squid<W: MobWorld + ?Sized>(m: &mut Mob, w: &W, ctx: &Ctx, rng: &mut Rng, full: bool) {
+    let in_water = m.in_water;
+    let idle = m.idle;
+    let pos = m.pos;
+    let attacker = (m.player_hit_left > 0.0)
+        .then(|| {
+            ctx.players
+                .iter()
+                .filter(|t| t.alive)
+                .min_by(|l, r| l.pos.distance_squared(pos).total_cmp(&r.pos.distance_squared(pos)))
+                .map(|t| t.pos)
+        })
+        .flatten();
+    let a = m.aquatic.as_mut().unwrap();
+    if full {
+        if idle > 5.0 {
+            a.vector = DVec3::ZERO;
+        } else if rng.next_int(25) == 0 || !in_water || a.vector.length_squared() <= 1e-5 {
+            let angle = rng.next_f32() * std::f32::consts::TAU;
+            a.vector = DVec3::new(
+                (angle.cos() * 0.2) as f64,
+                (-0.1 + rng.next_f32() * 0.2) as f64,
+                (angle.sin() * 0.2) as f64,
+            );
+        }
     }
-    m.repath_in = (m.repath_in - 1).max(0);
-    if m.nav.is_done() && m.repath_in == 0 {
-        // Failed/finished random destinations must not run a full search every tick.
-        m.repath_in = 40;
-        let goal = m.pos + direction * 8.0;
-        m.walk_to(w, goal.floor().as_ivec3(), 0, speed, false);
+    if let Some(from) = attacker.filter(|f| in_water && f.distance_squared(pos) < 100.0) {
+        let mut flee = pos - from;
+        let probe = (pos + flee).floor().as_ivec3();
+        let block = w.block(probe);
+        let air = block == Some(Block::AIR);
+        if air || block.is_some_and(Block::holds_water) {
+            let len = flee.length();
+            if len > 0.0 {
+                // Java normalizes into a discarded vector: only the scale applies.
+                let mut avoid = 3.0;
+                if len > 5.0 {
+                    avoid -= (len - 5.0) / 5.0;
+                }
+                if avoid > 0.0 {
+                    flee *= avoid;
+                }
+            }
+            if air {
+                flee.y = 0.0;
+            }
+            a.vector = flee / 20.0;
+        }
     }
-    (m.follow_path(w, speed, false), speed)
+}
+
+/// The axolotl brain's movement: `SetWalkTargetFromAttackTargetIfTargetOutOfReach`
+/// and `MeleeAttack(20)` against prey, else an idle swim or stroll.
+fn axolotl<W: MobWorld + ?Sized>(
+    m: &mut Mob,
+    w: &W,
+    ctx: &Ctx,
+    rng: &mut Rng,
+    events: &mut Vec<EntityEvent>,
+) -> (Option<DVec3>, f64) {
+    let in_water = m.in_water;
+    if let Some((uid, pos)) = m.aquatic.as_ref().and_then(|a| a.prey).filter(|(_, pos)| wet(w, *pos)) {
+        let delta = pos - m.pos;
+        if delta.length_squared() < 1.5 && m.attack_cooldown <= 0.0 {
+            m.attack_cooldown = 1.0;
+            events.push(EntityEvent::MobHit {
+                target: uid,
+                attacker: m.uid,
+                damage: 2.0,
+                knockback: delta.normalize_or_zero() * 0.3,
+            });
+        }
+        let s = m.goal_speed(0.6);
+        return (m.pursue(w, pos, s, true, true, rng), s);
+    }
+    // `RandomStroll.swim(0.5)` in water, `stroll(0.15)` on land, whenever
+    // there is no walk target (`MoveToTargetSink` erases it on arrival).
+    let s = m.goal_speed(0.5);
+    if m.nav.is_done() {
+        let target = if in_water {
+            m.swim_stroll_pos(w, ctx, rng).map(|p| p.floor().as_ivec3())
+        } else {
+            m.land_random_pos(w, ctx, rng)
+        };
+        if let Some(p) = target {
+            m.walk_to(w, p, 0, s, false);
+        }
+    }
+    (m.follow_path(w, s, false), s)
 }
 
 pub(super) fn pillager<W: MobWorld + ?Sized>(
@@ -343,6 +553,11 @@ pub(super) fn spawn_spot<W: MobWorld + ?Sized>(
         _ => {}
     }
     Some(pos)
+}
+
+/// `getMaxSchoolSize`: salmon 5, other schooling fish their spawn cluster of 8.
+fn max_school(kind: MobKind) -> u8 {
+    if kind == MobKind::Salmon { 5 } else { 8 }
 }
 
 pub fn bucket_kind(item: Item) -> Option<MobKind> {
@@ -478,16 +693,7 @@ impl Entities {
                 continue;
             }
             a.sense_timer = 0.5;
-            a.school = None;
             a.prey = None;
-            if matches!(m.kind, MobKind::Cod | MobKind::Salmon | MobKind::TropicalFish) {
-                a.school = self
-                    .nether_view
-                    .iter()
-                    .filter(|v| v.kind == m.kind && v.uid < m.uid && v.pos.distance_squared(m.pos) < 64.0)
-                    .min_by_key(|v| v.uid)
-                    .map(|v| v.pos);
-            }
             if m.kind == MobKind::Axolotl {
                 a.prey = self
                     .nether_view
@@ -512,6 +718,101 @@ impl Entities {
             }
         }
     }
+    /// `AbstractSchoolingFish` schools, after the goal searches and before
+    /// fish think. Followers track their leader and drop one that died, left
+    /// the level or swam past 11 blocks (`FollowFlockLeaderGoal`'s
+    /// `canContinueToUse`); each leader's `schoolSize` is recounted from its
+    /// followers. On its selector's full update, a fish that neither leads
+    /// nor follows counts down `nextStartTick`, then joins a leader with room
+    /// within 8 blocks or gathers the loose fish around it (`canUse`).
+    pub(super) fn sense_schools(&mut self) {
+        let schooling = |k: MobKind| matches!(k, MobKind::Cod | MobKind::Salmon | MobKind::TropicalFish);
+        if !self.mobs.iter().any(|m| schooling(m.kind)) {
+            return;
+        }
+        let by_uid: rustc_hash::FxHashMap<u32, usize> = self
+            .mobs
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| schooling(m.kind) && m.alive())
+            .map(|(j, m)| (m.uid, j))
+            .collect();
+        let mut counts: rustc_hash::FxHashMap<u32, u8> = Default::default();
+        for i in 0..self.mobs.len() {
+            let pos = self.mobs[i].pos;
+            let Some(a) = self.mobs[i].aquatic.as_deref() else { continue };
+            let Some((uid, _)) = a.leader else { continue };
+            let leader = by_uid.get(&uid).map(|&j| self.mobs[j].pos).filter(|p| p.distance_squared(pos) <= 121.0);
+            let a = self.mobs[i].aquatic.as_mut().unwrap();
+            a.leader = leader.map(|p| (uid, p));
+            if leader.is_some() {
+                *counts.entry(uid).or_default() += 1;
+            }
+        }
+        for m in &mut self.mobs {
+            if let Some(a) = &mut m.aquatic {
+                a.school = 1 + counts.get(&m.uid).copied().unwrap_or(0);
+            }
+        }
+        for i in 0..self.mobs.len() {
+            let m = &self.mobs[i];
+            if !schooling(m.kind) || !m.alive() || !m.simulation_active || !m.goals.full(m.uid) {
+                continue;
+            }
+            let a = m.aquatic.as_deref().unwrap();
+            if a.school > 1 || a.leader.is_some() {
+                continue;
+            }
+            if a.flock_start > 0 {
+                self.mobs[i].aquatic.as_mut().unwrap().flock_start -= 1;
+                continue;
+            }
+            let (kind, pos, shape) = (m.kind, m.pos, m.shape());
+            // `reducedTickDelay(200 + nextInt(200) % 20)`.
+            let next = (200 + self.rng.next_int(200) % 20).div_ceil(2) as i32;
+            self.mobs[i].aquatic.as_mut().unwrap().flock_start = next;
+            let max = max_school(kind);
+            let mut near = Vec::new();
+            self.mob_index.visit(pos, 9.0, |j| {
+                let b = &self.mobs[j];
+                if b.kind != kind || !b.alive() {
+                    return;
+                }
+                let d = b.pos - pos;
+                let across = 8.0 + shape.half_width + b.shape().half_width;
+                let a = b.aquatic.as_deref().unwrap();
+                if d.x.abs() < across
+                    && d.z.abs() < across
+                    && b.pos.y < pos.y + shape.height + 8.0
+                    && b.pos.y + b.shape().height > pos.y - 8.0
+                    && (a.school > 1 && a.school < max || a.leader.is_none())
+                {
+                    near.push(j);
+                }
+            });
+            near.sort_unstable();
+            let followed = |j: usize| self.mobs[j].aquatic.as_deref().unwrap();
+            let leader =
+                near.iter().copied().find(|&j| followed(j).school > 1 && followed(j).school < max).unwrap_or(i);
+            // `addFollowers`: `limit(max - schoolSize)` before dropping the leader.
+            let room = max.saturating_sub(followed(leader).school) as usize;
+            let joining: Vec<usize> = near
+                .iter()
+                .copied()
+                .filter(|&j| followed(j).leader.is_none())
+                .take(room)
+                .filter(|&j| j != leader)
+                .collect();
+            let (luid, lpos) = (self.mobs[leader].uid, self.mobs[leader].pos);
+            for j in joining {
+                let a = self.mobs[j].aquatic.as_mut().unwrap();
+                a.leader = Some((luid, lpos));
+                a.flock_recalc = 0;
+                self.mobs[leader].aquatic.as_mut().unwrap().school += 1;
+            }
+        }
+    }
+
     pub(super) fn populate_structures<W: MobWorld + ?Sized>(
         &mut self,
         dt: f32,
@@ -596,6 +897,27 @@ mod tests {
         }
         w
     }
+    /// A walled pool on a stone floor: water from y = -2 to 8 over
+    /// x -10..=30 and z -10..=10.
+    fn pool() -> Grid {
+        let mut w = Grid::flat(-3);
+        for x in -11..=31 {
+            for y in -3..=11 {
+                for z in -11..=11 {
+                    let wall = x == -11 || x == 31 || z == -11 || z == 11 || y == -3;
+                    let b = if wall {
+                        Block::STONE
+                    } else if y <= 8 {
+                        Block::WATER
+                    } else {
+                        Block::AIR
+                    };
+                    w.set(IVec3::new(x, y, z), b);
+                }
+            }
+        }
+        w
+    }
     fn ctx(p: DVec3) -> Ctx {
         Ctx {
             spawn_light: crate::simulation::lighting::SpawnLight::DAY,
@@ -607,16 +929,16 @@ mod tests {
         }
     }
     #[test]
-    fn swimming_stays_underwater_instead_of_bobbing_to_the_surface() {
+    fn swimming_fish_stay_in_the_water() {
         let w = water();
         let mut m = Mob::new(MobKind::Cod, DVec3::new(0.5, 0.0, 0.5), 0.0);
         let mut r = Rng::new(4);
         let mut e = vec![];
-        for _ in 0..100 {
+        for _ in 0..400 {
             m.update(0.05, &w, &Ctx { players: vec![], ..ctx(DVec3::ZERO) }, &mut r, &mut e);
+            // At most its eye leaves the surface at y = 9.
+            assert!(m.pos.y < 9.0 && m.in_water, "{}", m.pos);
         }
-        assert!(m.pos.y < 6.0);
-        assert!(m.in_water);
         assert_eq!(m.health, 3.0);
         assert!(m.pos.distance(DVec3::new(0.5, 0.0, 0.5)) > 0.5);
     }
@@ -636,20 +958,19 @@ mod tests {
         let mut w = water();
         let mut m = Mob::new(MobKind::Guardian, DVec3::ZERO, 0.0);
         let c = ctx(DVec3::new(10.0, 0.0, 0.0));
-        let mut r = Rng::new(1);
         let mut e = vec![];
         for _ in 0..80 {
-            think(&mut m, 0.05, &w, &c, &mut r, &mut e);
+            upkeep(&mut m, 0.05, &w, &c, &mut e);
         }
         assert!(!e.iter().any(|e| matches!(e, EntityEvent::PlayerBeam { .. })));
         w.set(IVec3::new(5, 0, 0), Block::STONE);
         w.set(IVec3::new(5, 1, 0), Block::STONE);
-        think(&mut m, 0.05, &w, &c, &mut r, &mut e);
+        upkeep(&mut m, 0.05, &w, &c, &mut e);
         assert!(m.aquatic.as_ref().unwrap().beam.is_none());
         w.set(IVec3::new(5, 0, 0), Block::WATER);
         w.set(IVec3::new(5, 1, 0), Block::WATER);
         for _ in 0..92 {
-            think(&mut m, 0.05, &w, &c, &mut r, &mut e);
+            upkeep(&mut m, 0.05, &w, &c, &mut e);
         }
         assert!(
             e.iter().any(
@@ -659,7 +980,7 @@ mod tests {
         assert!(e.iter().any(|e| matches!(e,EntityEvent::PlayerBeam{magic,..} if *magic==1.0)));
         let mut other = c;
         other.players[0].id = PlayerId(8);
-        think(&mut m, 0.05, &w, &other, &mut r, &mut e);
+        upkeep(&mut m, 0.05, &w, &other, &mut e);
         assert!(m.aquatic.as_ref().unwrap().charge < 0.0);
     }
     #[test]
@@ -669,7 +990,7 @@ mod tests {
         let mut c = ctx(DVec3::new(40.0, 0.0, 0.0));
         c.players.push(Target::new(PlayerId(8), DVec3::Y, false));
         let mut e = vec![];
-        think(&mut m, 0.05, &w, &c, &mut Rng::new(1), &mut e);
+        upkeep(&mut m, 0.05, &w, &c, &mut e);
         assert_eq!(
             e.iter()
                 .filter(|e| matches!(
@@ -680,42 +1001,123 @@ mod tests {
             1
         );
         e.clear();
-        think(&mut m, 1.0, &w, &c, &mut Rng::new(1), &mut e);
+        upkeep(&mut m, 1.0, &w, &c, &mut e);
         assert!(e.is_empty());
     }
     #[test]
     fn pufferfish_stings_and_dolphins_grant_a_separate_water_effect() {
         let w = water();
         let c = ctx(DVec3::new(0.3, 0.0, 0.0));
-        let mut r = Rng::new(1);
         let mut e = vec![];
         let mut p = Mob::new(MobKind::Pufferfish, DVec3::ZERO, 0.0);
-        think(&mut p, 0.6, &w, &c, &mut r, &mut e);
+        upkeep(&mut p, 0.6, &w, &c, &mut e);
         // The Poison rides on the sting: `Pufferfish.playerTouch` applies it only when the sting hurts.
         assert!(e.iter().any(|e| matches!(e, EntityEvent::PlayerSting { poison: 120, .. })));
         assert!(!e.iter().any(|e| matches!(e, EntityEvent::PlayerEffect { effect: Effect::Poison, .. })));
         let mut d = Mob::new(MobKind::Dolphin, DVec3::ZERO, 0.0);
-        think(&mut d, 0.05, &w, &c, &mut r, &mut e);
+        upkeep(&mut d, 0.05, &w, &c, &mut e);
         assert!(
             e.iter().any(|e| matches!(e, EntityEvent::PlayerEffect { effect: Effect::DolphinsGrace, ticks: 100, .. }))
         );
     }
     #[test]
-    fn axolotls_hunt_fish_and_school_leaders_are_stable() {
+    fn axolotls_hunt_fish_and_loose_fish_gather_a_school() {
         let w = water();
         let mut e = Entities::new(4);
         for x in [0.5, 3.5, 5.5] {
             e.spawn(MobKind::Cod, DVec3::new(x, 0.0, 0.0));
         }
         e.spawn(MobKind::Axolotl, DVec3::ZERO);
+        e.ensure_mob_ids();
         e.nether_sense(0.05, &w, &ctx(DVec3::ZERO));
         e.aquatic_sense(0.05, &w);
-        assert_eq!(e.mobs[1].aquatic.as_ref().unwrap().school, Some(e.mobs[0].pos));
+        e.sense_goals(&w);
+        e.sense_schools();
+        // The first loose fish leads; the others within 8 blocks follow it.
+        let leader = e.mobs[0].uid;
+        assert_eq!(e.mobs[0].aquatic.as_ref().unwrap().school, 3);
+        for i in [1, 2] {
+            assert_eq!(e.mobs[i].aquatic.as_ref().unwrap().leader.map(|l| l.0), Some(leader));
+        }
+        // A follower that swims past 11 blocks drops out, and the school shrinks.
+        e.mobs[2].pos.x = 20.0;
+        e.sense_schools();
+        assert!(e.mobs[2].aquatic.as_ref().unwrap().leader.is_none());
+        assert_eq!(e.mobs[0].aquatic.as_ref().unwrap().school, 2);
         assert_eq!(e.mobs[3].aquatic.as_ref().unwrap().prey.unwrap().0, e.mobs[0].uid);
         let mut events = vec![];
-        think(&mut e.mobs[3], 0.05, &w, &ctx(DVec3::ZERO), &mut Rng::new(1), &mut events);
+        steer(&mut e.mobs[3], 0.05, &w, &ctx(DVec3::ZERO), &mut Rng::new(1), &mut events);
         assert!(events.iter().any(|e| matches!(e, EntityEvent::MobHit { damage: 2.0, .. })));
     }
+
+    /// `AvoidEntityGoal(Player, 8, 1.6, 1.4)`: fish swim away from a
+    /// survival player within 8 blocks; creative players don't count.
+    #[test]
+    fn fish_flee_survival_players_but_not_creative_ones() {
+        let w = pool();
+        for (survival, flees) in [(true, true), (false, false)] {
+            let mut e = Entities::new(9);
+            e.spawn(MobKind::Pufferfish, DVec3::new(6.5, 3.0, 0.5));
+            e.ensure_mob_ids();
+            let p = DVec3::new(2.5, 3.0, 0.5);
+            let c = Ctx { players: vec![Target::new(PlayerId(7), p, survival)], ..ctx(p) };
+            let mut fled = false;
+            for _ in 0..100 {
+                e.update(0.05, &w, &c);
+                fled |= e.mobs[0].goals.avoiding.is_some();
+            }
+            assert_eq!(fled, flees);
+            if flees {
+                // About 1.4 blocks a second once up to speed.
+                assert!(e.mobs[0].pos.distance(p) > 7.0, "{}", e.mobs[0].pos);
+            }
+        }
+    }
+
+    /// `BreathAirGoal`: below 140 ticks of air a dolphin heads for the air
+    /// above it, and the extra stroke speeds it there.
+    #[test]
+    fn dolphins_short_of_air_swim_up_to_breathe() {
+        let w = pool();
+        let mut e = Entities::new(9);
+        e.spawn(MobKind::Dolphin, DVec3::new(5.5, -1.0, 0.5));
+        e.ensure_mob_ids();
+        e.mobs[0].aquatic.as_mut().unwrap().air = 5.0;
+        let c = Ctx { players: vec![], ..ctx(DVec3::ZERO) };
+        let mut breathed = false;
+        for _ in 0..40 {
+            e.update(0.05, &w, &c);
+            breathed |= e.mobs[0].aquatic.as_ref().unwrap().air == 240.0;
+        }
+        assert!(breathed, "{}", e.mobs[0].pos);
+    }
+
+    #[test]
+    fn salmon_schools_hold_at_most_five() {
+        let w = water();
+        let mut e = Entities::new(4);
+        for i in 0..7 {
+            e.spawn(MobKind::Salmon, DVec3::new(0.5 + i as f64 * 0.5, 0.0, 0.0));
+        }
+        e.ensure_mob_ids();
+        e.sense_goals(&w);
+        e.sense_schools();
+        // `addFollowers` limits the loose fish to `max - schoolSize` before
+        // dropping the leader itself, which is one of them: three join.
+        assert_eq!(e.mobs[0].aquatic.as_ref().unwrap().school, 4);
+        let loose = e.mobs.iter().filter(|m| m.aquatic.as_ref().unwrap().leader.is_none()).count();
+        assert_eq!(loose, 4, "the leader and three fish left over");
+        // Later searches never grow a school past five.
+        for _ in 0..400 {
+            for m in &mut e.mobs {
+                m.goals.ticks = m.goals.ticks.wrapping_add(1);
+            }
+            e.sense_goals(&w);
+            e.sense_schools();
+            assert!(e.mobs.iter().all(|m| m.aquatic.as_ref().unwrap().school <= 5));
+        }
+    }
+
     fn world() -> World {
         let mut w = World::new_headless(Arc::new(Generator::new(1)), Default::default(), 2);
         let end = Instant::now() + Duration::from_secs(20);
@@ -831,5 +1233,66 @@ mod tests {
         assert!(!crate::entity::can_spawn_on(MobKind::Turtle, Block::GRASS, 1.0));
         assert!(MobKind::Turtle.biome_chance(crate::world::terrain::Biome::Beach) > 0.0);
         assert_eq!(MobKind::Turtle.biome_chance(crate::world::terrain::Biome::Plains), 0.0);
+    }
+
+    /// Timing for a busy ocean and a Nether sky (`cargo test --release --lib
+    /// mob_movement_cost -- --ignored --nocapture`): 186 swimmers in a
+    /// 64 x 16 x 64 sea, then 8 ghasts and 8 blazes, 400 ticks each.
+    #[test]
+    #[ignore]
+    fn mob_movement_cost() {
+        let mut sea = Grid::flat(-64);
+        for x in -32..32 {
+            for y in -8..8 {
+                for z in -32..32 {
+                    sea.set(IVec3::new(x, y, z), Block::WATER);
+                }
+            }
+        }
+        let mut e = Entities::new(11);
+        let mut r = Rng::new(5);
+        for (kind, n) in [
+            (MobKind::Cod, 120),
+            (MobKind::Salmon, 30),
+            (MobKind::Dolphin, 10),
+            (MobKind::Guardian, 10),
+            (MobKind::Squid, 10),
+            (MobKind::Axolotl, 6),
+        ] {
+            for _ in 0..n {
+                e.spawn(
+                    kind,
+                    DVec3::new(r.range(-28.0, 28.0) as f64, r.range(-6.0, 5.0) as f64, r.range(-28.0, 28.0) as f64),
+                );
+            }
+        }
+        let c = Ctx { players: vec![Target::new(PlayerId(7), DVec3::new(0.0, 9.0, 0.0), false)], ..ctx(DVec3::ZERO) };
+        let start = std::time::Instant::now();
+        for _ in 0..400 {
+            e.update(0.05, &sea, &c);
+        }
+        let swim = start.elapsed().as_secs_f64() * 1000.0 / 400.0;
+        let mut sky = Grid::flat(0);
+        for x in -40..40 {
+            for z in -40..40 {
+                sky.set(IVec3::new(x, 60, z), Block::NETHERRACK);
+            }
+        }
+        let mut e = Entities::new(12);
+        for i in 0..8 {
+            e.spawn(MobKind::Ghast, DVec3::new(i as f64 * 6.0 - 20.0, 30.0, 10.0));
+            e.spawn(MobKind::Blaze, DVec3::new(i as f64 * 3.0 - 10.0, 1.0, -10.0));
+        }
+        let c = Ctx {
+            dimension: Dimension::Nether,
+            players: vec![Target::new(PlayerId(7), DVec3::new(0.0, 1.0, 0.0), true)],
+            ..ctx(DVec3::ZERO)
+        };
+        let start = std::time::Instant::now();
+        for _ in 0..400 {
+            e.update(0.05, &sky, &c);
+        }
+        let fly = start.elapsed().as_secs_f64() * 1000.0 / 400.0;
+        eprintln!("mob_movement_cost: swimmers {swim:.3} ms/tick, ghasts and blazes {fly:.3} ms/tick");
     }
 }

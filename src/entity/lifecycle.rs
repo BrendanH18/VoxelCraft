@@ -62,6 +62,7 @@ impl Entities {
         self.tick_leashes(dt as f32, world, ctx);
         self.tick_llamas(ctx);
         self.sense_goals(world);
+        self.sense_schools();
         let mut i = 0;
         while i < self.mobs.len() {
             let m = &self.mobs[i];

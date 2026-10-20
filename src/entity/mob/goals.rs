@@ -166,7 +166,16 @@ const GOAT: &[Entry] =
     &[e(0, G::Panic, 2.0), e(1, G::Breed, 1.0), e(2, G::Tempt, 1.25), e(3, G::FollowAdult, 1.25), e(4, G::Stroll, 1.0)];
 const CAMEL: &[Entry] =
     &[e(0, G::Panic, 4.0), e(1, G::Breed, 1.0), e(2, G::Tempt, 2.5), e(2, G::FollowAdult, 2.5), e(4, G::Stroll, 2.0)];
-const AXOLOTL: &[Entry] = &[e(0, G::Panic, 2.0), e(1, G::Breed, 1.0), e(2, G::Tempt, 1.0), e(2, G::FollowAdult, 1.0)];
+// The axolotl's brain has no panic; `AnimalMakeLove` walks at 0.2, and
+// `FollowTemptation` and `BabyFollowAdult` at 0.5 and 0.6 in water (see
+// `goal_speed` for land).
+const AXOLOTL: &[Entry] = &[e(1, G::Breed, 0.2), e(2, G::Tempt, 0.5), e(2, G::FollowAdult, 0.6)];
+// `AbstractFish.registerGoals`; `FishSwimGoal` (4) and the schooling fish's
+// `FollowFlockLeaderGoal` run in `aquatic::steer`.
+const FISH: &[Entry] = &[e(0, G::Panic, 1.25), avoid(2, Avoided::Player, 8.0, 1.6, 1.4), e(4, G::Stroll, 1.0)];
+// `Dolphin` and `Guardian`: their random swim and stroll goals.
+const DOLPHIN: &[Entry] = &[e(4, G::Stroll, 1.0)];
+const GUARDIAN: &[Entry] = &[e(7, G::Stroll, 1.0)];
 // Hoglins follow no temptation.
 const HOGLIN: &[Entry] = &[e(1, G::Breed, 1.0), e(2, G::FollowAdult, 0.6)];
 // `WanderingTrader.registerGoals`: the avoid goals VoxelCraft has mobs for
@@ -200,6 +209,9 @@ pub(crate) fn table(kind: MobKind) -> &'static [Entry] {
         K::Goat => GOAT,
         K::Camel => CAMEL,
         K::Axolotl => AXOLOTL,
+        K::Cod | K::Salmon | K::TropicalFish | K::Pufferfish => FISH,
+        K::Dolphin => DOLPHIN,
+        K::Guardian | K::ElderGuardian => GUARDIAN,
         K::Hoglin => HOGLIN,
         K::Creeper => CREEPER,
         K::Skeleton | K::WitherSkeleton => SKELETON,
@@ -220,8 +232,11 @@ pub(crate) fn movement_speed(kind: MobKind) -> f64 {
         K::Strider | K::Donkey | K::Mule | K::Llama | K::TraderLlama => 0.175,
         K::Camel => 0.09,
         K::Axolotl => 1.0,
+        K::Dolphin => 1.2,
+        K::Guardian => 0.5,
+        K::ElderGuardian => 0.3,
         // `Mob.createMobAttributes` leaves the 0.7 default.
-        K::WanderingTrader => 0.7,
+        K::WanderingTrader | K::Cod | K::Salmon | K::TropicalFish | K::Pufferfish | K::Squid | K::GlowSquid => 0.7,
         _ => 0.25,
     }
 }
@@ -313,14 +328,23 @@ impl Mob {
         }
     }
 
-    /// Ground speed (blocks per second) for a goal speed modifier.
-    /// Axolotls keep VoxelCraft's swimming speed: Java scales theirs per
-    /// medium (`AxolotlAi.getSpeedModifier`) under `AxolotlMoveControl`.
+    /// Ground speed (blocks per second) for a goal speed modifier: the
+    /// speed `MoveControl` would set (movement speed times the modifier) as
+    /// steady ground travel. Swimmers convert it back for their own move
+    /// controls (`mob::swim`). On land, an axolotl's brain asks 0.15 (except
+    /// `AnimalMakeLove`'s 0.2) and `SmoothSwimmingMoveControl` halves it, and
+    /// `TurtleMoveControl` holds a turtle near 0.06 eased an eighth of the
+    /// way toward its speed.
     pub(crate) fn goal_speed(&self, modifier: f64) -> f64 {
-        if self.kind == MobKind::Axolotl {
-            return 2.0;
-        }
-        path::ground_speed(self.attribute_speed() * modifier)
+        let raw = self.attribute_speed() * modifier;
+        let raw = match self.kind {
+            MobKind::Axolotl if !self.in_water => {
+                self.attribute_speed() * if modifier <= 0.2 { modifier } else { 0.15 } * 0.5
+            }
+            MobKind::Turtle if !self.in_water => 0.875 * 0.06 + 0.125 * raw,
+            _ => raw,
+        };
+        path::ground_speed(raw)
     }
 
     /// The table's speed for `goal`, as a ground speed.
@@ -998,18 +1022,19 @@ mod tests {
     /// Aquatic mobs steer without a panic run, but they still forget the hit
     /// after 40 ticks: a hurt axolotl follows the tropical fish bucket again.
     #[test]
-    fn a_hurt_axolotl_forgets_the_hit_and_is_tempted_again() {
+    fn a_hurt_axolotl_never_panics_and_stays_tempted() {
         let w = Grid::flat(0);
         let c = ctx(vec![player(1, DVec3::new(5.5, 0.0, 0.5), Some(Item::TROPICAL_FISH_BUCKET))]);
         let mut e = Entities::new(5);
         let i = spawn(&mut e, MobKind::Axolotl, DVec3::new(0.5, 0.0, 0.5));
         let mut rng = crate::entity::Rng::new(2);
+        // `AxolotlAi` has no panic behaviour: a hit doesn't scare it.
         e.mobs[i].damage(1.0, None, &mut rng);
-        assert_eq!(e.mobs[i].ai, Ai::Panic);
+        assert_eq!(e.mobs[i].ai, Ai::Idle);
         for _ in 0..60 {
             e.update(0.05, &w, &c);
         }
-        assert_ne!(e.mobs[i].ai, Ai::Panic, "the hit is forgotten");
+        assert_ne!(e.mobs[i].ai, Ai::Panic);
         assert_eq!(running(&e, i), Some(G::Tempt));
         // Playing dead outranks temptation; the timer and healing still run.
         e.mobs[i].health = 5.0;

@@ -226,7 +226,13 @@ impl Mob {
     pub(crate) fn follow_path<W: MobWorld + ?Sized>(&mut self, world: &W, speed: f64, hunting: bool) -> Option<DVec3> {
         let caps = self.caps(hunting);
         let mover = self.mover(speed);
-        let wanted = self.nav.tick(world, &caps, &mover)?;
+        let wanted = self.nav.tick(world, &caps, &mover);
+        // `followThePath` sets the move control's wanted position; swimmers
+        // steer by it in `swim`.
+        if self.kind.java_swimmer() {
+            self.set_wanted(wanted, speed);
+        }
+        let wanted = wanted?;
         if caps.evaluator == Evaluator::Fly
             || (matches!(caps.evaluator, Evaluator::Swim { .. }) || caps.evaluator.amphibious()) && self.in_water
         {
@@ -346,6 +352,9 @@ impl Mob {
         if !animal && !self.kind.is_hostile() {
             return 0.0;
         }
+        // `Guardian.getWalkTargetValue`: water scores 10 plus the light cost.
+        let guardian_water = matches!(self.kind, MobKind::Guardian | MobKind::ElderGuardian)
+            && world.block(p).is_some_and(|b| b.holds_water());
         if animal && world.block(p - IVec3::Y) == Some(Block::GRASS) {
             return 10.0;
         }
@@ -355,7 +364,13 @@ impl Mob {
         let curve = raw / (4.0 - 3.0 * raw);
         let ambient = ctx.dimension.ambient_light();
         let cost = ambient + (1.0 - ambient) * curve - 0.5;
-        if animal { cost } else { -cost }
+        if guardian_water {
+            10.0 + cost
+        } else if animal {
+            cost
+        } else {
+            -cost
+        }
     }
 
     /// `RandomPos.generateRandomPos`: the best-valued of ten candidates.
@@ -376,7 +391,8 @@ impl Mob {
             let dz = rng.next_int((2 * h + 1) as u32) as i32 - h;
             let mut p = (self.pos + IVec3::new(dx, dy, dz).as_dvec3()).floor().as_ivec3();
             if !(crate::world::chunk::WORLD_MIN_Y..=319).contains(&p.y)
-                || !(self.kind == MobKind::Strider && world.block(p).is_some_and(Block::is_lava) || stable(world, p))
+                || !(self.kind == MobKind::Strider && world.block(p).is_some_and(Block::is_lava)
+                    || self.stable_destination(world, p))
             {
                 continue;
             }
@@ -429,7 +445,7 @@ impl Mob {
             let y = rng.next_int((2 * v + 1) as u32) as i32 - v;
             let p = (self.pos + DVec3::new(x.floor(), y as f64, z.floor())).floor().as_ivec3();
             if !(crate::world::chunk::WORLD_MIN_Y..=319).contains(&p.y)
-                || !stable(world, p)
+                || !self.stable_destination(world, p)
                 || caps.malus.get(path::static_type(world, p)) != 0.0
             {
                 continue;
@@ -525,7 +541,79 @@ impl Mob {
     }
 }
 
-/// `PathNavigation.isStableDestination`: something solid to stand on.
-fn stable<W: MobWorld + ?Sized>(world: &W, p: IVec3) -> bool {
-    world.block(p - IVec3::Y).is_some_and(|b| b.is_solid() && b.is_opaque())
+impl Mob {
+    /// `isStableDestination` of the mob's navigation: something solid to
+    /// stand on (`PathNavigation`), anything below but air
+    /// (`AmphibiousPathNavigation`, for axolotls and turtles), or not a solid
+    /// cube itself (`WaterBoundPathNavigation`).
+    fn stable_destination<W: MobWorld + ?Sized>(&self, world: &W, p: IVec3) -> bool {
+        match self.kind {
+            MobKind::Axolotl | MobKind::Turtle => world.block(p - IVec3::Y).is_some_and(|b| b != Block::AIR),
+            _ if matches!(self.caps(false).evaluator, Evaluator::Swim { .. }) => {
+                world.block(p).is_some_and(|b| !(b.is_solid() && b.is_opaque()))
+            }
+            _ => world.block(p - IVec3::Y).is_some_and(|b| b.is_solid() && b.is_opaque()),
+        }
+    }
+
+    /// `BehaviorUtils.getRandomSwimmablePos`: `DefaultRandomPos.getPos`,
+    /// retried up to ten more times until it lands in water.
+    pub(crate) fn swimmable_pos<W: MobWorld + ?Sized>(
+        &self,
+        world: &W,
+        ctx: &Ctx,
+        rng: &mut Rng,
+        h: i32,
+        v: i32,
+    ) -> Option<IVec3> {
+        let mut pos = self.random_pos(world, ctx, rng, h, v, false);
+        let mut count = 0;
+        while let Some(p) = pos {
+            if world.block(p).is_some_and(|b| b.holds_water()) || count >= 10 {
+                break;
+            }
+            count += 1;
+            pos = self.random_pos(world, ctx, rng, h, v, false);
+        }
+        pos
+    }
+
+    /// `DefaultRandomPos.getPos(h, v)`.
+    pub(crate) fn default_random_pos<W: MobWorld + ?Sized>(
+        &self,
+        world: &W,
+        ctx: &Ctx,
+        rng: &mut Rng,
+        h: i32,
+        v: i32,
+    ) -> Option<IVec3> {
+        self.random_pos(world, ctx, rng, h, v, false)
+    }
+
+    /// `LandRandomPos.getPos(10, 7)`.
+    pub(crate) fn land_random_pos<W: MobWorld + ?Sized>(&self, world: &W, ctx: &Ctx, rng: &mut Rng) -> Option<IVec3> {
+        self.random_pos(world, ctx, rng, 10, 7, true)
+    }
+
+    /// `RandomStroll.getTargetSwimPos`: swimmable spots in widening tiers,
+    /// each tier after the first continuing the direction of the last.
+    pub(crate) fn swim_stroll_pos<W: MobWorld + ?Sized>(&self, world: &W, ctx: &Ctx, rng: &mut Rng) -> Option<DVec3> {
+        const TIERS: [(i32, i32); 6] = [(1, 1), (3, 3), (5, 5), (6, 5), (7, 7), (10, 7)];
+        let mut fallback: Option<DVec3> = None;
+        let mut target = None;
+        for (h, v) in TIERS {
+            target = match fallback {
+                None => self.swimmable_pos(world, ctx, rng, h, v).map(|p| p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)),
+                Some(f) => {
+                    let dir = (f - self.pos).normalize_or_zero();
+                    Some(self.pos + dir * DVec3::new(h as f64, v as f64, h as f64))
+                }
+            };
+            match target {
+                Some(t) if world.block(t.floor().as_ivec3()).is_some_and(|b| b.holds_water()) => fallback = Some(t),
+                _ => return fallback,
+            }
+        }
+        target
+    }
 }
