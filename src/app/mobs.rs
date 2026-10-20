@@ -166,6 +166,7 @@ impl Game {
             health: self.session.vitals.health,
             effects: self.session.vitals.effects.mask(),
             in_water: self.session.player.in_water,
+            swimming: self.session.player.swimming,
             ..Target::new(
                 PlayerId::HOST,
                 self.session.player.pos,

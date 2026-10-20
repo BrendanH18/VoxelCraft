@@ -465,15 +465,7 @@ impl Temples {
         let centre = start * 16 + IVec2::splat(8);
         let col = g.column(centre.x, centre.y);
         let mut rng = Rng(hash3(start.x, start.y, kind as i32, self.seed ^ 0x7E3D));
-        let ok = kind.allowed(col.biome)
-            // Outposts keep away from villages, and stay on dry land.
-            && (kind != Kind::Outpost
-                || (self.outpost_frequency(start) && col.height > SEA_LEVEL && !self.near_village(g, centre)))
-            && match kind {
-                Kind::Shipwreck | Kind::OceanRuin => col.height < SEA_LEVEL - 4 || col.biome.is_beach(),
-                Kind::Monument => col.height < SEA_LEVEL - 18 && self.monument_biomes(g, centre),
-                _ => col.height >= SEA_LEVEL - 1,
-            };
+        let ok = self.valid_start(g, kind, start);
         let built = ok.then(|| Arc::new(self.build(g, kind, centre, col.height, &mut rng)));
         let mut cache = self.cache.lock().unwrap();
         if let Some(found) = cache.get(&(kind, region)) {
@@ -485,6 +477,63 @@ impl Temples {
             cache.remove(&k);
         }
         cache.entry((kind, region)).or_insert(built).clone()
+    }
+
+    /// Whether a structure of `kind` generates at its start chunk `start`:
+    /// the biome and ground checks `get` builds after, without building it.
+    fn valid_start(&self, g: &Generator, kind: Kind, start: IVec2) -> bool {
+        let centre = start * 16 + IVec2::splat(8);
+        let col = g.column(centre.x, centre.y);
+        kind.allowed(col.biome)
+            // Outposts keep away from villages, and stay on dry land.
+            && (kind != Kind::Outpost
+                || (self.outpost_frequency(start) && col.height > SEA_LEVEL && !self.near_village(g, centre)))
+            && match kind {
+                Kind::Shipwreck | Kind::OceanRuin => col.height < SEA_LEVEL - 4 || col.biome.is_beach(),
+                Kind::Monument => col.height < SEA_LEVEL - 18 && self.monument_biomes(g, centre),
+                _ => col.height >= SEA_LEVEL - 1,
+            }
+    }
+
+    /// `ChunkGenerator.findNearestMapStructure` for random-spread structures,
+    /// as `DolphinSwimToTreasureGoal` calls it (`DOLPHIN_LOCATED`: ocean
+    /// ruins and shipwrecks, 50 rings, no reference). Ring `r` holds the
+    /// placement regions `r` regions out from the origin's; each kind takes
+    /// the first valid start on the ring in Java's order (x outer, z inner),
+    /// the nearer kind wins, and the search ends on the first ring with a
+    /// find. The position is `getLocatePos`: the start chunk's lowest corner
+    /// at y 0.
+    pub fn locate_rings(&self, g: &Generator, kinds: &[Kind], origin: IVec3, max_rings: i32) -> Option<IVec3> {
+        if g.dimension != Dimension::Overworld {
+            return None;
+        }
+        let chunk = IVec2::new(origin.x, origin.z).div_euclid(IVec2::splat(16));
+        let dist = |p: IVec3| (p - origin).as_i64vec3().length_squared();
+        for ring in 0..=max_rings {
+            let mut nearest: Option<IVec3> = None;
+            for &kind in kinds {
+                let (spacing, _, _) = kind.placement();
+                let home = chunk.div_euclid(IVec2::splat(spacing));
+                let found = (-ring..=ring).find_map(|x| {
+                    (-ring..=ring).find_map(|z| {
+                        if x.abs() != ring && z.abs() != ring {
+                            return None;
+                        }
+                        let start = self.start(kind, home + IVec2::new(x, z));
+                        self.valid_start(g, kind, start).then(|| IVec3::new(start.x * 16, 0, start.y * 16))
+                    })
+                });
+                if let Some(p) = found
+                    && nearest.is_none_or(|n| dist(p) < dist(n))
+                {
+                    nearest = Some(p);
+                }
+            }
+            if nearest.is_some() {
+                return nearest;
+            }
+        }
+        None
     }
 
     /// Java checks deep-ocean biomes within 16 blocks, and ocean/river

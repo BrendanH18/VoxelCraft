@@ -1457,7 +1457,7 @@ fn sense_zoglin<W: MobWorld + ?Sized>(m: &mut Mob, view: &[Seen], world: &W, ctx
 fn save_mob(m: &Mob) -> Value {
     let n = m.nether.as_deref();
     let armor: Vec<bool> = m.armor.iter().map(|a| a.is_some()).collect();
-    json!({
+    let mut v = json!({
         "persistence_required": m.persistent,
         "uid": m.uid,
         "riding": m.riding,
@@ -1489,7 +1489,21 @@ fn save_mob(m: &Mob) -> Value {
         "cannot_hunt": n.is_some_and(|n| n.cannot_hunt),
         "home": n.and_then(|n| n.home).map(|h| h.to_array()),
         "celebrate": n.filter(|n| n.celebrate_left > 0.0).map(|n| json!([n.celebrate_left, n.celebrate_at.to_array(), n.dancing])),
-    })
+    });
+    // Written only when set, so other mobs save as before: `Mob.homePosition`
+    // and `homeRadius`, and the dolphin's `GotFish` and main hand.
+    if let Some((p, r)) = m.restrict {
+        v["restrict"] = json!([p.x, p.y, p.z, r]);
+    }
+    if let Some(d) = m.dolphin() {
+        if d.got_fish {
+            v["got_fish"] = json!(true);
+        }
+        if let Some(s) = d.hand {
+            v["hand"] = json!(crate::inventory::stack_to_string(Some(s)));
+        }
+    }
+    v
 }
 
 fn load_mob(v: &Value) -> Option<Mob> {
@@ -1536,6 +1550,14 @@ fn load_mob(v: &Value) -> Option<Mob> {
     }
     if kind == MobKind::ZombifiedPiglin {
         m.held = v["held"].as_str().map(Weapon::from_name);
+    }
+    m.restrict = v["restrict"].as_array().filter(|a| a.len() == 4).and_then(|a| {
+        let n = |i: usize| a[i].as_i64().and_then(|n| i32::try_from(n).ok());
+        Some((IVec3::new(n(0)?, n(1)?, n(2)?), n(3)?.max(0)))
+    });
+    if let Some(d) = m.dolphin_mut() {
+        d.got_fish = v["got_fish"].as_bool().unwrap_or(false);
+        d.hand = v["hand"].as_str().and_then(|s| crate::inventory::stack_from_str(s).flatten());
     }
     if let Some(n) = m.nether.as_mut() {
         n.weapon = Weapon::from_name(v["weapon"].as_str().unwrap_or("none"));

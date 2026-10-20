@@ -66,50 +66,7 @@ impl Entities {
                     a.grazing = 2.0;
                 }
             }
-            if m.kind == MobKind::Turtle && a.pregnant {
-                if (m.pos - a.home.as_dvec3()).length_squared() > 81.0 {
-                    a.goal = Some(a.home.as_dvec3() + DVec3::splat(0.5));
-                    a.nest_time = 0.0;
-                    continue;
-                }
-                let mut nest = None;
-                for dy in -3..=3 {
-                    for x in -4..=4 {
-                        for z in -4..=4 {
-                            let p = cell + IVec3::new(x, dy, z);
-                            if w.loaded(p)
-                                && w.block(p) == Some(Block::AIR)
-                                && w.block(p - IVec3::Y) == Some(Block::SAND)
-                                && (p - a.home).length_squared() <= 81
-                                && !events.iter().any(|e| matches!(e,EntityEvent::AnimalBlock{cell,..} if *cell==p))
-                            {
-                                let d = (p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)).distance_squared(m.pos);
-                                if nest.is_none_or(|(_, best)| d < best) {
-                                    nest = Some((p, d));
-                                }
-                            }
-                        }
-                    }
-                }
-                if let Some((p, d)) = nest {
-                    a.goal = Some(p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
-                    if d < 2.25 && !m.in_water {
-                        a.nest_time += dt;
-                    } else {
-                        a.nest_time = 0.0;
-                    }
-                    if a.nest_time >= 10.0 {
-                        events.push(EntityEvent::AnimalBlock {
-                            cell: p,
-                            from: Block::AIR,
-                            to: ob::turtle_eggs(1 + self.rng.next_int(4) as u8),
-                        });
-                        a.pregnant = false;
-                        a.nest_time = 0.0;
-                        a.goal = None;
-                    }
-                }
-            }
+            let Some(a) = m.animal.as_mut() else { continue };
             if m.kind == MobKind::Goat {
                 a.ram_cooldown = (a.ram_cooldown - dt).max(0.0);
                 a.jump_cooldown -= dt;

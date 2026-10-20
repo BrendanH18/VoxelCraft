@@ -184,6 +184,9 @@ src/
     nether.rs        piglins, brutes, hoglins, zoglins, striders: sensing, bartering,
                      anger, zombification, bastion residents, spawn table, saves
     mob/nether_ai.rs their per-tick movement, attacks and strider lava physics
+    mob/selector.rs  Java's flagged GoalSelector, for dolphins and turtles
+    mob/dolphin.rs   the dolphin's 26.3 goals, item play and treasure search
+    mob/turtle.rs    the turtle's travel, go-home, go-to-water and egg goals
     model/nether.rs  their box models
     item.rs          dropped items: physics, merging, despawning, saving
     chunk_storage.rs entities of unloaded chunks, out of the level until the chunk loads

@@ -753,7 +753,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 
 | Version | Theme | Milestones | Main content | Status |
 |---|---|---|---|---|
-| v0.8 | Foundations | Finish M0, M1 | Valid M5 baseline and the per-requirement inventory; mob pathfinding, Java spawn categories, shape-aware light, simulation distance; pause/death/save scenarios on every input path | In progress: most implementation merged (#34, #35); strider lava paths, pause/death/save scenarios and the [requirement inventory](requirements.md) on `t3/roadmap-next-stage-v0-8`; the [M5 baseline](verification/2026-10-16-m5-baseline.md) is recorded (15/15 valid; gate fails in streaming); 2026-10-17/18: sweeping and knockback, absorption, game rules and difficulty, per-chunk entity storage, bed stand-up positions, fire tick containers and mob goals merged there; 2026-10-19: swimmer, ghast and airborne blaze movement (blazes on the ground keep VoxelCraft's ground movement); streaming re-run and player acceptance remain |
+| v0.8 | Foundations | Finish M0, M1 | Valid M5 baseline and the per-requirement inventory; mob pathfinding, Java spawn categories, shape-aware light, simulation distance; pause/death/save scenarios on every input path | In progress: most implementation merged (#34, #35); strider lava paths, pause/death/save scenarios and the [requirement inventory](requirements.md) on `t3/roadmap-next-stage-v0-8`; the [M5 baseline](verification/2026-10-16-m5-baseline.md) is recorded (15/15 valid; gate fails in streaming); 2026-10-17/18: sweeping and knockback, absorption, game rules and difficulty, per-chunk entity storage, bed stand-up positions, fire tick containers and mob goals merged there; 2026-10-19: swimmer, ghast and airborne blaze movement (blazes on the ground keep VoxelCraft's ground movement), then the dolphin and turtle goal tables, the elder guardian's home and blaze retaliation; streaming re-run and player acceptance remain |
 | v0.9 | Block states | M2: BLD-04, BLD-06 | Top and double slabs, waterlogging, door hinges, floor/ceiling buttons and levers, wall grindstones, corner-stair light; reserved state ranges for later content | Planned |
 | v0.10 | Building materials | Close M2 | Missing wood, stone, copper and colour family members (pale oak, bamboo, mud brick, prismarine), the unregistered reference fuel items, signs, banners, item frames, cauldrons, soul lanterns and campfires; sponges, coral and sea pickles; falling and dripping dripstone, tilting dripleaf | Planned |
 | v0.11 | Terrain | M3: GEN-01..03 | Java climate and density terrain with overhangs; Java caves, aquifers and ores; deep-dark content, springs, glow lichen; giant spruce and jungle trees and the remaining biome features | Planned |
@@ -859,8 +859,16 @@ fixtures and acceptance cases:
    `BreathAirGoal`, squid strokes, the ghast's float and fire goals, the
    blaze's hover and attack goal, and `canMoveDirectly` for water, flying and
    amphibious paths ([evidence](verification/2026-10-19-swimmer-flyer-movement.md)).
-   Blazes on the ground keep VoxelCraft's ground movement. Dolphin
-   play/treasure goals and turtle travel goals remain, then player acceptance.
+   Blazes on the ground keep VoxelCraft's ground movement. Dolphins and
+   turtles then got their 26.3 movement goals on a port of Java's flagged
+   `GoalSelector`: swimming with players, treasure, item play, leaps, boats,
+   guardian avoidance and pod retaliation; travel, going home, going to water,
+   egg laying and panic. Left out are the dolphin's `TryFindLiquidGoal`
+   (which has no effect) and nautilus following (no nautiluses), and the look
+   goals only hold their flags; they don't turn heads. Baby dolphins are
+   missing. The elder guardian's home and blaze retaliation came with them
+   ([evidence](verification/2026-10-19-dolphin-turtle-goals.md)). Player
+   acceptance remains.
 3. **MOB-01 spawn rules:** Java's `NaturalSpawner` placement, 24/128-block
    ring, per-category caps scaled by loaded chunks, despawn distances and
    persistence, structure spawn overrides, and the slime/drowned paths folded in.

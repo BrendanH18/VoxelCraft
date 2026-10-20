@@ -53,8 +53,18 @@ impl Entities {
         self.village_upkeep(dt as f32, world);
         self.assign_hunts(ctx);
         self.trader_upkeep();
+        // `Entity.hasMovedHorizontallyRecently`, from last update's positions.
+        let moved: Vec<(PlayerId, bool)> = ctx
+            .players
+            .iter()
+            .map(|t| {
+                let last = self.player_spots.iter().find(|(id, _)| *id == t.id).map(|&(_, p)| p);
+                (t.id, last.is_some_and(|p| (t.pos - p).with_y(0.0).length() > 1e-5))
+            })
+            .collect();
         self.player_spots.clear();
         self.player_spots.extend(ctx.players.iter().map(|t| (t.id, t.pos)));
+        self.resolve_hurt_by(ctx);
         self.nether_sense(dt as f32, world, ctx);
         self.aquatic_sense(dt as f32, world);
         self.grow_loaded_turtles(dt as f32, world, ctx);
@@ -63,6 +73,7 @@ impl Entities {
         self.tick_llamas(ctx);
         self.sense_goals(world);
         self.sense_schools();
+        self.sense_dolphins(world, &moved);
         let mut i = 0;
         while i < self.mobs.len() {
             let m = &self.mobs[i];
@@ -113,9 +124,11 @@ impl Entities {
                     self.particles.push(crate::particles::Request::Burst(burst));
                 }
                 let dead = self.mobs.swap_remove(i);
-                // Whatever a fox carries in its mouth drops, enchantments and names intact.
+                // Whatever a fox carries in its mouth or a dolphin plays with
+                // (`setGuaranteedDrop`) drops, enchantments and names intact.
                 if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
-                    && let Some(stack) = dead.animal.as_ref().and_then(|a| a.mouth)
+                    && let Some(stack) =
+                        dead.animal.as_ref().and_then(|a| a.mouth).or_else(|| dead.dolphin().and_then(|d| d.hand))
                 {
                     self.items.push(ItemEntity::new(stack, dead.pos, DVec3::ZERO, 0.5, &mut self.rng));
                 }
@@ -177,6 +190,25 @@ impl Entities {
         self.resolve_strikes(ctx, &mut events);
         self.separate(dt);
         self.nether_upkeep(ctx, &mut events);
+        self.dolphin_items();
+        // `TurtleLayEggGoal` places its clutch (`setBlockAndUpdate`) in the
+        // update that clears the turtle's eggs, so a save can't fall between.
+        // Two clutches on one cell in one update: the later turtle's
+        // overwrites the earlier, as consecutive `setBlockAndUpdate`s do.
+        let mut clutches: Vec<(IVec3, u8)> = Vec::new();
+        for m in &mut self.mobs {
+            if let Some((cell, eggs)) = m.take_laid_eggs() {
+                clutches.retain(|&(c, _)| c != cell);
+                clutches.push((cell, eggs));
+            }
+        }
+        for (cell, eggs) in clutches {
+            events.push(EntityEvent::AnimalBlock {
+                cell,
+                from: Block::AIR,
+                to: crate::world::overworld_blocks::turtle_eggs(eggs),
+            });
+        }
         if let Some(fight) = &mut self.fight {
             fight.update(dt, world, ctx, &mut self.rng, &mut events);
         }
@@ -271,6 +303,14 @@ impl Entities {
                             self.mobs.iter().position(|m| m.kind == kind && m.pos == pos && m.nether.is_some())
                     {
                         self.nether_hurt(i, nether::Foe::Player(owner));
+                    }
+                    // `HurtByTargetGoal`: projectiles credit their shooter too.
+                    if let Some(owner) = owner
+                        && !killed
+                        && matches!(kind, MobKind::Dolphin | MobKind::Blaze)
+                        && let Some(i) = self.mobs.iter().position(|m| m.kind == kind && m.pos == pos && m.alive())
+                    {
+                        self.hurt_by_player_target(i, owner);
                     }
                     // Java's OwnerHurtTargetGoal: a player's wolves join in on what they shoot.
                     if let Some(owner) = owner

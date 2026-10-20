@@ -83,6 +83,7 @@ impl Agents {
             health: b.agent.session.vitals.health,
             effects: b.agent.session.vitals.effects.mask(),
             in_water: b.agent.session.player.in_water,
+            swimming: b.agent.session.player.swimming,
             ..Target::new(b.id, b.agent.session.player.pos, b.agent.targetable())
         })
     }

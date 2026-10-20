@@ -53,8 +53,10 @@ iron/copper/emerald ore. Screaming goats have shorter ram cooldowns.
 
 Sheep graze grass for two seconds, restoring wool and accelerating baby growth
 by sixty seconds. `mobGriefing=false` preserves the grass while still restoring
-wool. Pregnant turtles return to their imprinted beach, dig for ten seconds
-and lay one to four eggs. Eggs progress through two cracked stages before
+wool. Pregnant turtles return to their imprinted beach, find sand within 16
+blocks of where they are once within 9 of home, dig for ten seconds and lay
+one to four eggs, then stay in love for 30 seconds
+([goal evidence](verification/2026-10-19-dolphin-turtle-goals.md)). Eggs progress through two cracked stages before
 hatching; sand is required. Progress is guaranteed on a random tick between
 21600 and 22560 day ticks, and otherwise has a 1/500 chance. Babies imprint the
 nest and drop a scute on growing up. Egg clusters have individual shell boxes.

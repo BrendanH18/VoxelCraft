@@ -61,8 +61,10 @@ pub(crate) struct MoveCtl {
     float_duration: i32,
     /// `Guardian.isMoving`.
     pub moving: bool,
-    /// `BreathAirGoal` is running: an extra stroke each tick.
-    pub breathing: bool,
+    /// Extra strokes goals asked for since the last tick (`moveRelative`
+    /// and `move` on the last inputs): `BreathAirGoal` 0.02 and
+    /// `FollowPlayerRiddenEntityGoal` 0.015 or 0.01.
+    pub strokes: Vec<f64>,
     /// Simulated seconds not yet spent on a whole tick, for movement and
     /// for the tick-counted attack goals.
     pub time: f64,
@@ -73,6 +75,9 @@ pub(crate) struct MoveCtl {
     /// selector updates since `TargetGoal` last saw it.
     pub target: Option<crate::entity::PlayerId>,
     pub unseen: i32,
+    /// Selector updates the target may stay unseen: 30 for
+    /// `NearestAttackableTargetGoal`, 150 after `HurtByTargetGoal`.
+    pub unseen_limit: i32,
     /// `BlazeAttackGoal.lastSeen` and `GhastShootFireballGoal.chargeTime`,
     /// in ticks.
     pub last_seen: i32,
@@ -122,7 +127,7 @@ fn move_relative(dm: &mut DVec3, speed: f64, input: DVec3, yrot: f32) {
 }
 
 /// `Mth.wrapDegrees`.
-fn wrap_degrees(a: f32) -> f32 {
+pub(crate) fn wrap_degrees(a: f32) -> f32 {
     let a = a.rem_euclid(360.0);
     if a >= 180.0 { a - 360.0 } else { a }
 }
@@ -160,7 +165,7 @@ fn friction(b: Option<Block>) -> f64 {
 
 impl Mob {
     /// Java's `yRot` in degrees (VoxelCraft's yaw faces +X at zero).
-    fn yrot(&self) -> f32 {
+    pub(crate) fn yrot(&self) -> f32 {
         self.yaw.to_degrees() - 90.0
     }
 
@@ -336,10 +341,10 @@ impl Mob {
         if dolphin && in_water {
             dm.y += 0.005;
         }
-        if dolphin && self.move_ctl.breathing {
-            // `BreathAirGoal.tick`: one more stroke on last tick's inputs.
+        // The goals' extra strokes on last tick's inputs.
+        for stroke in std::mem::take(&mut self.move_ctl.strokes) {
             let input = DVec3::new(0.0, self.move_ctl.yya, self.move_ctl.zza);
-            move_relative(dm, 0.02, input, self.yrot());
+            move_relative(dm, stroke, input, self.yrot());
             self.java_move(world, dm, self.step_height());
         }
         let playing_dead = self.aquatic.as_ref().is_some_and(|a| a.play_dead > 0.0);
@@ -383,7 +388,7 @@ impl Mob {
             self.java_move(world, dm, self.step_height());
             *dm *= 0.9;
             // Dolphins sink without an attack target; axolotls drift.
-            if dolphin {
+            if dolphin && !self.dolphin_has_target() {
                 dm.y -= 0.005;
             }
         } else {
@@ -462,8 +467,7 @@ impl Mob {
         move_relative(dm, 0.1, DVec3::new(0.0, 0.0, self.move_ctl.zza), self.yrot());
         self.java_move(world, dm, self.step_height());
         *dm *= 0.9;
-        let going_home = self.animal.as_ref().is_some_and(|a| a.goal.is_some());
-        if !(going_home && near_home(self.pos, 20.0)) {
+        if !(self.turtle_going_home() && near_home(self.pos, 20.0)) {
             dm.y -= 0.005;
         }
     }

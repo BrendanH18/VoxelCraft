@@ -419,6 +419,11 @@ pub trait MobWorld: BlockSource {
     fn structures_near(&self, _p: IVec3, _r: i32) -> Vec<std::sync::Arc<crate::world::temples::Built>> {
         Vec::new()
     }
+    /// `findNearestMapStructure(DOLPHIN_LOCATED, p, 50, false)`: the nearest
+    /// ocean ruin or shipwreck a fed dolphin leads to.
+    fn dolphin_treasure(&self, _p: IVec3) -> Option<IVec3> {
+        None
+    }
     /// The biome at a block, including underground cave biomes; defaults
     /// to the column's biome.
     fn cave_biome(&self, p: IVec3) -> crate::world::terrain::Biome {
@@ -496,6 +501,10 @@ impl MobWorld for World {
     fn structures_near(&self, p: IVec3, r: i32) -> Vec<std::sync::Arc<crate::world::temples::Built>> {
         self.generator.temples.near(&self.generator, p, r)
     }
+    fn dolphin_treasure(&self, p: IVec3) -> Option<IVec3> {
+        use crate::world::temples::Kind;
+        self.generator.temples.locate_rings(&self.generator, &[Kind::OceanRuin, Kind::Shipwreck], p, 50)
+    }
     fn cave_biome(&self, p: IVec3) -> crate::world::terrain::Biome {
         self.generator.biome_at(p)
     }
@@ -542,6 +551,8 @@ pub struct Target {
     pub held_item: Option<crate::item::Item>,
     pub on_ground: bool,
     pub in_water: bool,
+    /// `Player.isSwimming`: sprint-swimming (dolphins swim along).
+    pub swimming: bool,
     /// Current health in half hearts (witches choose potions from it).
     pub health: f32,
     /// Bit set of the target's active [`crate::simulation::effects::Effect`]s.
@@ -570,6 +581,7 @@ impl Target {
             held_item: None,
             on_ground: true,
             in_water: false,
+            swimming: false,
             health: crate::simulation::survival::MAX_HEALTH,
             effects: 0,
         }
@@ -746,6 +758,9 @@ pub struct Entities {
     nether_view: Vec<nether::Seen>,
     /// Players at the last update, to credit melee hits on nether mobs.
     player_spots: Vec<(PlayerId, DVec3)>,
+    /// Player hits waiting for the hurt mob's `HurtByTargetGoal.canUse`
+    /// (mob uid, attacker), resolved against the next update's players.
+    hurt_by: Vec<(u32, PlayerId)>,
     /// Bastion remnants (by their bounds' low corner) whose residents have
     /// spawned; saved with the nether mobs.
     bastions_populated: rustc_hash::FxHashSet<IVec3>,
@@ -813,6 +828,7 @@ impl Entities {
             next_uid: 1,
             nether_view: Vec::new(),
             player_spots: Vec::new(),
+            hurt_by: Vec::new(),
             bastions_populated: Default::default(),
             bastion_timer: 0.0,
             structures_populated: Default::default(),
@@ -1607,6 +1623,7 @@ impl Entities {
             self.anger_piglins(pos);
         }
         self.nether_hurt(index, nether::Foe::Player(owner));
+        self.hurt_by_player_target(index, owner);
         killed.then_some(kind)
     }
 
@@ -3556,6 +3573,38 @@ mod tests {
         }
         assert!(shots.len() >= 2, "{shots:?}");
         assert!(shots.windows(2).all(|w| w[1] - w[0] == 180), "{shots:?}");
+    }
+
+    /// `Blaze`'s `HurtByTargetGoal(this).setAlertOthers()`: the attacker
+    /// becomes the target of the blaze it hit and of every blaze without a
+    /// target within the 48-block follow range, 10 up or down.
+    #[test]
+    fn hurt_blazes_alert_blazes_within_their_follow_range() {
+        let mut e = Entities::new(8);
+        for p in [DVec3::ZERO, DVec3::new(40.0, 5.0, 0.0), DVec3::new(0.0, 20.0, 0.0), DVec3::new(60.0, 0.0, 0.0)] {
+            e.spawn(MobKind::Blaze, p);
+        }
+        e.ensure_mob_ids();
+        e.hurt_by_player_target(0, PlayerId(3));
+        let ctx = |targetable| Ctx {
+            players: vec![Target::new(PlayerId(3), DVec3::new(0.0, 1.0, 30.0), targetable)],
+            ..ctx(DVec3::ZERO)
+        };
+        // A creative attacker changes nothing.
+        e.resolve_hurt_by(&ctx(false));
+        assert!(e.mobs.iter().all(|m| m.move_ctl.target.is_none()));
+        // Only the latest attacker counts: a survival hit followed by one from
+        // an untargetable player changes nothing either.
+        e.hurt_by_player_target(0, PlayerId(3));
+        e.hurt_by_player_target(0, PlayerId(9));
+        e.resolve_hurt_by(&ctx(true));
+        assert!(e.mobs.iter().all(|m| m.move_ctl.target.is_none()));
+        e.hurt_by_player_target(0, PlayerId(9));
+        e.hurt_by_player_target(0, PlayerId(3));
+        e.resolve_hurt_by(&ctx(true));
+        let targets: Vec<_> = e.mobs.iter().map(|m| m.move_ctl.target).collect();
+        assert_eq!(targets, vec![Some(PlayerId(3)), Some(PlayerId(3)), None, None]);
+        assert_eq!(e.mobs[1].move_ctl.unseen_limit, 150);
     }
 
     #[test]
