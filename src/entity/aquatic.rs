@@ -26,7 +26,8 @@ pub struct State {
     prey: Option<(u32, DVec3)>,
     sense_timer: f32,
     pub(super) play_dead: f32,
-    air: f32,
+    /// Seconds of air left (dolphins).
+    pub(crate) air: f32,
     dry: f32,
     damage_tick: f32,
     effect_timer: f32,
@@ -117,7 +118,7 @@ pub(super) fn environment<W: MobWorld + ?Sized>(m: &mut Mob, dt: f32, w: &W) {
 
 /// Effects and attacks that run whatever the mob is doing: the elder
 /// guardian's Mining Fatigue, the guardian beam, the pufferfish's puffing
-/// and stings, and the dolphin's grace. Returns `true` while the mob must
+/// and stings. Returns `true` while the mob must
 /// hold still: a guardian aiming its beam (`GuardianAttackGoal` stops its
 /// navigation) or an axolotl playing dead.
 pub(super) fn upkeep<W: MobWorld + ?Sized>(
@@ -129,6 +130,15 @@ pub(super) fn upkeep<W: MobWorld + ?Sized>(
 ) -> bool {
     let shape = m.shape();
     let eye = m.pos + DVec3::Y * shape.height * 0.5;
+    // `ElderGuardian.customServerAiStep`: a 16-block home where it first acts.
+    if m.kind == MobKind::ElderGuardian && m.restrict.is_none() {
+        m.restrict = Some((m.pos.floor().as_ivec3(), 16));
+    }
+    let restrict = m.restrict;
+    let within_home = |p: DVec3| {
+        restrict
+            .is_none_or(|(home, r)| (p.floor().as_ivec3() - home).as_i64vec3().length_squared() < i64::from(r).pow(2))
+    };
     let a = m.aquatic.as_mut().unwrap();
     a.effect_timer -= dt;
     a.contact_timer -= dt;
@@ -151,8 +161,10 @@ pub(super) fn upkeep<W: MobWorld + ?Sized>(
             .filter(|t| t.targetable && t.alive)
             .filter(|t| {
                 let d = t.pos.distance_squared(m.pos);
+                // `TargetGoal.canAttack`: the target stands inside the home.
                 d < 256.0
                     && (m.kind == MobKind::ElderGuardian || d > 9.0)
+                    && within_home(t.pos)
                     && super::mob::line_of_sight(w, eye, t.pos + DVec3::Y)
             })
             .min_by(|l, r| l.pos.distance_squared(m.pos).total_cmp(&r.pos.distance_squared(m.pos)));
@@ -196,17 +208,6 @@ pub(super) fn upkeep<W: MobWorld + ?Sized>(
                 });
                 a.contact_timer = 1.0;
             }
-        }
-    }
-    if m.kind == MobKind::Dolphin && a.effect_timer <= 0.0 {
-        a.effect_timer = 1.0;
-        for t in ctx.players.iter().filter(|t| t.alive && t.pos.distance_squared(m.pos) < 81.0 && wet(w, t.pos)) {
-            events.push(EntityEvent::PlayerEffect {
-                player: t.id,
-                effect: Effect::DolphinsGrace,
-                amplifier: 0,
-                ticks: 100,
-            });
         }
     }
     if m.kind == MobKind::Axolotl && a.play_dead > 0.0 {
@@ -271,21 +272,7 @@ pub(super) fn steer<W: MobWorld + ?Sized>(
         _ => {}
     }
     if m.kind == MobKind::Dolphin {
-        // `BreathAirGoal`: air below 140 ticks; it can't be interrupted.
-        let breathe = m.aquatic.as_ref().is_some_and(|a| a.air < 7.0);
-        if breathe {
-            if !m.move_ctl.breathing {
-                m.stop_navigation();
-                m.ai = Ai::Idle;
-                m.path_move = false;
-            }
-            m.move_ctl.breathing = true;
-            let goal = air_above(w, m.pos);
-            let s = speed(m, 1.0);
-            m.walk_to(w, goal + IVec3::Y, 1, s, false);
-            return (m.follow_path(w, s, false), s);
-        }
-        m.move_ctl.breathing = false;
+        return m.dolphin_steer(w, ctx, rng, events, full);
     }
     if m.kind.is_fish() && m.ai == Ai::Panic {
         // `PanicGoal`: a fresh spot five blocks out each time the last is
@@ -339,9 +326,38 @@ pub(super) fn steer<W: MobWorld + ?Sized>(
         }
         return (m.follow_path(w, s, false), s);
     }
+    // `MoveTowardsRestrictionGoal` (5, move and look) outranks the guardian's
+    // stroll (7): head back toward a home it has left.
+    if matches!(m.kind, MobKind::Guardian | MobKind::ElderGuardian) {
+        if m.goals.restricting && m.nav.is_done() {
+            m.goals.restricting = false;
+        }
+        if full
+            && !m.goals.restricting
+            && let Some((home, _)) = m.restrict
+            && !m.within_home(m.pos.floor().as_ivec3())
+            && let Some(p) = m.pos_towards(
+                w,
+                ctx,
+                rng,
+                16,
+                7,
+                home.as_dvec3() + DVec3::new(0.5, 0.0, 0.5),
+                std::f64::consts::FRAC_PI_2,
+            )
+        {
+            m.ai = Ai::Idle;
+            m.path_move = false;
+            let s = speed(m, 1.0);
+            m.goals.restricting = m.walk_to(w, p, 1, s, false);
+        }
+        if m.goals.restricting {
+            let s = m.nav.speed;
+            return (m.follow_path(w, s, false), s);
+        }
+    }
     if m.ai == Ai::Idle && full {
         let (interval, swimmable) = match m.kind {
-            MobKind::Dolphin => (10, true),
             MobKind::Guardian | MobKind::ElderGuardian => (80, false),
             _ => (40, true),
         };
@@ -360,7 +376,7 @@ pub(super) fn steer<W: MobWorld + ?Sized>(
 
 /// `BreathAirGoal.findAirPosition`: the first cell giving air in the
 /// mob's column and the four beside it, up to 8 blocks up; else 8 up.
-fn air_above<W: MobWorld + ?Sized>(w: &W, pos: DVec3) -> IVec3 {
+pub(crate) fn air_above<W: MobWorld + ?Sized>(w: &W, pos: DVec3) -> IVec3 {
     let base = pos.floor().as_ivec3();
     for step in [IVec3::ZERO, IVec3::NEG_Z, IVec3::X, IVec3::Z, IVec3::NEG_X] {
         for dy in 0..=8 {
@@ -1005,7 +1021,7 @@ mod tests {
         assert!(e.is_empty());
     }
     #[test]
-    fn pufferfish_stings_and_dolphins_grant_a_separate_water_effect() {
+    fn pufferfish_stings_carry_their_poison() {
         let w = water();
         let c = ctx(DVec3::new(0.3, 0.0, 0.0));
         let mut e = vec![];
@@ -1014,12 +1030,31 @@ mod tests {
         // The Poison rides on the sting: `Pufferfish.playerTouch` applies it only when the sting hurts.
         assert!(e.iter().any(|e| matches!(e, EntityEvent::PlayerSting { poison: 120, .. })));
         assert!(!e.iter().any(|e| matches!(e, EntityEvent::PlayerEffect { effect: Effect::Poison, .. })));
-        let mut d = Mob::new(MobKind::Dolphin, DVec3::ZERO, 0.0);
-        upkeep(&mut d, 0.05, &w, &c, &mut e);
-        assert!(
-            e.iter().any(|e| matches!(e, EntityEvent::PlayerEffect { effect: Effect::DolphinsGrace, ticks: 100, .. }))
-        );
     }
+    /// `ElderGuardian.customServerAiStep` homes it within 16 blocks of where
+    /// it first acts. `TargetGoal.canAttack` then ignores players outside
+    /// the home, and `MoveTowardsRestrictionGoal` brings it back.
+    #[test]
+    fn elder_guardians_keep_to_their_home() {
+        let w = pool();
+        let mut e = Entities::new(6);
+        e.spawn(MobKind::ElderGuardian, DVec3::new(0.5, 2.0, 0.5));
+        e.ensure_mob_ids();
+        let far = Ctx { players: vec![], ..ctx(DVec3::ZERO) };
+        e.update(0.05, &w, &far);
+        assert_eq!(e.mobs[0].restrict, Some((IVec3::new(0, 2, 0), 16)));
+        // Out of its home, a player beside it is no target.
+        e.mobs[0].pos = DVec3::new(25.5, 2.0, 0.5);
+        e.update(0.05, &w, &ctx(DVec3::new(28.5, 2.0, 0.5)));
+        assert!(e.mobs[0].aquatic.as_ref().unwrap().beam.is_none());
+        let mut back = false;
+        for _ in 0..400 {
+            e.update(0.05, &w, &far);
+            back |= e.mobs[0].pos.x < 15.5;
+        }
+        assert!(back, "stayed at {}", e.mobs[0].pos);
+    }
+
     #[test]
     fn axolotls_hunt_fish_and_loose_fish_gather_a_school() {
         let w = water();
@@ -1293,6 +1328,40 @@ mod tests {
             e.update(0.05, &sky, &c);
         }
         let fly = start.elapsed().as_secs_f64() * 1000.0 / 400.0;
-        eprintln!("mob_movement_cost: swimmers {swim:.3} ms/tick, ghasts and blazes {fly:.3} ms/tick");
+        // 40 dolphins and 10 turtles at sea, 10 turtles on a sand beach.
+        let mut coast = Grid::flat(-9);
+        for x in -32..32 {
+            for z in -32..32 {
+                for y in -9..8 {
+                    let b = if y == -9 {
+                        Block::STONE
+                    } else if x < -20 {
+                        Block::SAND
+                    } else {
+                        Block::WATER
+                    };
+                    coast.set(IVec3::new(x, y, z), b);
+                }
+            }
+        }
+        let mut e = Entities::new(13);
+        let mut r = Rng::new(6);
+        for i in 0..60 {
+            let (kind, x, y) = match i {
+                0..40 => (MobKind::Dolphin, r.range(-18.0, 28.0) as f64, r.range(-6.0, 5.0) as f64),
+                40..50 => (MobKind::Turtle, r.range(-18.0, 28.0) as f64, r.range(-6.0, 5.0) as f64),
+                _ => (MobKind::Turtle, r.range(-30.0, -22.0) as f64, 8.0),
+            };
+            e.spawn(kind, DVec3::new(x, y, r.range(-28.0, 28.0) as f64));
+        }
+        let c = Ctx { players: vec![Target::new(PlayerId(7), DVec3::new(0.0, 9.0, 0.0), false)], ..ctx(DVec3::ZERO) };
+        let start = std::time::Instant::now();
+        for _ in 0..400 {
+            e.update(0.05, &coast, &c);
+        }
+        let coastal = start.elapsed().as_secs_f64() * 1000.0 / 400.0;
+        eprintln!(
+            "mob_movement_cost: swimmers {swim:.3} ms/tick, ghasts and blazes {fly:.3} ms/tick, dolphins and turtles {coastal:.3} ms/tick"
+        );
     }
 }

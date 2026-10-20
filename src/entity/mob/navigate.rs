@@ -348,6 +348,15 @@ impl Mob {
             }
             return 0.0;
         }
+        // `Turtle.getWalkTargetValue`: water unless heading home, then sand.
+        if self.kind == MobKind::Turtle {
+            if !self.turtle_going_home() && world.block(p).is_some_and(Block::holds_water) {
+                return 10.0;
+            }
+            if world.block(p - IVec3::Y).is_some_and(is_sand) {
+                return 10.0;
+            }
+        }
         let animal = self.kind.is_animal();
         if !animal && !self.kind.is_hostile() {
             return 0.0;
@@ -355,7 +364,7 @@ impl Mob {
         // `Guardian.getWalkTargetValue`: water scores 10 plus the light cost.
         let guardian_water = matches!(self.kind, MobKind::Guardian | MobKind::ElderGuardian)
             && world.block(p).is_some_and(|b| b.holds_water());
-        if animal && world.block(p - IVec3::Y) == Some(Block::GRASS) {
+        if animal && self.kind != MobKind::Turtle && world.block(p - IVec3::Y) == Some(Block::GRASS) {
             return 10.0;
         }
         // `getPathfindingCostFromLightLevels`: brightness - 0.5 over the raw light.
@@ -384,13 +393,15 @@ impl Mob {
         land: bool,
     ) -> Option<IVec3> {
         let caps = self.caps(false);
+        let restrict = self.restricted(h);
         let mut best: Option<(f32, IVec3)> = None;
         for _ in 0..10 {
             let dx = rng.next_int((2 * h + 1) as u32) as i32 - h;
             let dy = rng.next_int((2 * v + 1) as u32) as i32 - v;
             let dz = rng.next_int((2 * h + 1) as u32) as i32 - h;
-            let mut p = (self.pos + IVec3::new(dx, dy, dz).as_dvec3()).floor().as_ivec3();
+            let mut p = self.toward_direction(rng, h, DVec3::new(dx as f64, dy as f64, dz as f64));
             if !(crate::world::chunk::WORLD_MIN_Y..=319).contains(&p.y)
+                || restrict && !self.within_home(p)
                 || !(self.kind == MobKind::Strider && world.block(p).is_some_and(Block::is_lava)
                     || self.stable_destination(world, p))
             {
@@ -418,10 +429,8 @@ impl Mob {
         best.map(|(_, p)| p)
     }
 
-    /// `DefaultRandomPos.getPosAway(h, v, from)`: the best-valued of ten
-    /// spots in the half-plane facing away from `from`
-    /// (`RandomPos.generateRandomDirectionWithinRadians` with a quarter turn
-    /// either side), on a stable cell without a path malus.
+    /// `DefaultRandomPos.getPosAway(h, v, from)`: [`Mob::pos_towards`] the
+    /// half-plane facing away from `from` (a quarter turn either side).
     pub(crate) fn pos_away<W: MobWorld + ?Sized>(
         &self,
         world: &W,
@@ -431,20 +440,54 @@ impl Mob {
         v: i32,
         from: DVec3,
     ) -> Option<IVec3> {
+        self.pos_in_direction(world, ctx, rng, h, v, self.pos - from, std::f64::consts::FRAC_PI_2)
+    }
+
+    /// `DefaultRandomPos.getPosTowards(h, v, towards, maxRadians)`: the
+    /// best-valued of ten spots within `max` radians of the direction to
+    /// `towards` (`RandomPos.generateRandomDirectionWithinRadians`), on a
+    /// stable cell without a path malus, inside any home restriction.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn pos_towards<W: MobWorld + ?Sized>(
+        &self,
+        world: &W,
+        ctx: &Ctx,
+        rng: &mut Rng,
+        h: i32,
+        v: i32,
+        towards: DVec3,
+        max: f64,
+    ) -> Option<IVec3> {
+        self.pos_in_direction(world, ctx, rng, h, v, towards - self.pos, max)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn pos_in_direction<W: MobWorld + ?Sized>(
+        &self,
+        world: &W,
+        ctx: &Ctx,
+        rng: &mut Rng,
+        h: i32,
+        v: i32,
+        dir: DVec3,
+        max: f64,
+    ) -> Option<IVec3> {
         let caps = self.caps(false);
-        let away = self.pos - from;
+        let restrict = self.restricted(h);
         let mut best: Option<(f32, IVec3)> = None;
         for _ in 0..10 {
-            let angle = away.z.atan2(away.x) - std::f64::consts::FRAC_PI_2;
-            let angle = angle + (2.0 * rng.next_f32() - 1.0) as f64 * std::f64::consts::FRAC_PI_2;
+            // Java subtracts a float quarter turn from the double angle.
+            let angle = dir.z.atan2(dir.x) - std::f32::consts::FRAC_PI_2 as f64;
+            let angle = angle + (2.0 * rng.next_f32() - 1.0) as f64 * max;
             let r = (rng.next_f32() as f64).sqrt() * h as f64 * std::f64::consts::SQRT_2;
             let (x, z) = (-r * angle.sin(), r * angle.cos());
             if x.abs() > h as f64 || z.abs() > h as f64 {
                 continue;
             }
             let y = rng.next_int((2 * v + 1) as u32) as i32 - v;
-            let p = (self.pos + DVec3::new(x.floor(), y as f64, z.floor())).floor().as_ivec3();
+            let p = self.toward_direction(rng, h, DVec3::new(x.floor(), y as f64, z.floor()));
             if !(crate::world::chunk::WORLD_MIN_Y..=319).contains(&p.y)
+                || restrict && !self.within_home(p)
                 || !self.stable_destination(world, p)
                 || caps.malus.get(path::static_type(world, p)) != 0.0
             {
@@ -456,6 +499,34 @@ impl Mob {
             }
         }
         best.map(|(_, p)| p)
+    }
+
+    /// `RandomPos.generateRandomPosTowardDirection`: the offset from the
+    /// mob, pulled up to half of `h` toward its home on each axis.
+    fn toward_direction(&self, rng: &mut Rng, h: i32, offset: DVec3) -> IVec3 {
+        let mut d = offset;
+        if let Some((home, _)) = self.restrict
+            && h > 1
+        {
+            let pull = |rng: &mut Rng| rng.next_f32() as f64 * h as f64 / 2.0;
+            d.x += if self.pos.x > home.x as f64 { -pull(rng) } else { pull(rng) };
+            d.z += if self.pos.z > home.z as f64 { -pull(rng) } else { pull(rng) };
+        }
+        (self.pos + d).floor().as_ivec3()
+    }
+
+    /// `GoalUtils.mobRestricted`: a home whose centre is within its radius
+    /// plus `h + 1` of the mob (Java restricts only near home).
+    fn restricted(&self, h: i32) -> bool {
+        self.restrict.is_some_and(|(home, r)| {
+            let reach = r as f64 + h as f64 + 1.0;
+            (home.as_dvec3() + DVec3::splat(0.5)).distance_squared(self.pos) < reach * reach
+        })
+    }
+
+    /// `Mob.isWithinHome(pos)`: no home, or within its radius.
+    pub(crate) fn within_home(&self, p: IVec3) -> bool {
+        self.restrict.is_none_or(|(home, r)| (p - home).as_i64vec3().length_squared() < i64::from(r) * i64::from(r))
     }
 
     /// `WaterAvoidingRandomStrollGoal.getPosition`, or the plain
@@ -548,6 +619,8 @@ impl Mob {
     /// cube itself (`WaterBoundPathNavigation`).
     fn stable_destination<W: MobWorld + ?Sized>(&self, world: &W, p: IVec3) -> bool {
         match self.kind {
+            // `TurtlePathNavigation`: water while travelling.
+            MobKind::Turtle if self.turtle_travelling() => world.block(p).is_some_and(Block::is_water),
             MobKind::Axolotl | MobKind::Turtle => world.block(p - IVec3::Y).is_some_and(|b| b != Block::AIR),
             _ if matches!(self.caps(false).evaluator, Evaluator::Swim { .. }) => {
                 world.block(p).is_some_and(|b| !(b.is_solid() && b.is_opaque()))
@@ -616,4 +689,26 @@ impl Mob {
         }
         target
     }
+}
+
+/// `BlockTags.SAND`: sand, red sand and suspicious sand.
+pub(crate) fn is_sand(b: Block) -> bool {
+    matches!(b, Block::SAND | Block::RED_SAND)
+}
+
+/// `BlockPos.withinBoxByManhattanDistance(origin, rx, ry, rz)` offsets in
+/// Java's order: by Manhattan depth, then x, then y, each z with its mirror.
+pub(crate) fn manhattan_box(rx: i32, ry: i32, rz: i32) -> impl Iterator<Item = IVec3> {
+    let max_depth = rx + ry + rz;
+    (0..=max_depth).flat_map(move |depth| {
+        let max_x = rx.min(depth);
+        (-max_x..=max_x).flat_map(move |x| {
+            let max_y = ry.min(depth - x.abs());
+            (-max_y..=max_y).flat_map(move |y| {
+                let z = depth - x.abs() - y.abs();
+                let found = (z <= rz).then_some(IVec3::new(x, y, z));
+                [found, found.filter(|_| z != 0).map(|p| p.with_z(-z))].into_iter().flatten()
+            })
+        })
+    })
 }

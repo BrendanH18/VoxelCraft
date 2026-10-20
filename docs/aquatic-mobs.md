@@ -37,8 +37,13 @@ every minute, including through walls. Fatigue affects keyboard, controller
 and CLI mining; milk clears it through the existing effect system.
 
 Pufferfish inflate near survival players, sting on contact and poison.
-Nearby dolphins give swimming players Dolphin’s Grace, which affects only
-water movement. Axolotls hunt fish, squid, guardians and drowned; injured
+Dolphins swim alongside the nearest sprint-swimming player within 10 blocks
+and give them Dolphin’s Grace, which affects only water movement. Feed a
+dolphin a fish and it leads the way to the nearest ocean ruin or shipwreck.
+Dolphins fetch and toss loose items in the water, leap from the surface,
+follow boats that players steer, keep away from guardians, and a hit pod
+turns on its attacker. Elder guardians keep to a 16-block home around where
+they first appear, and ignore players outside it. Axolotls hunt fish, squid, guardians and drowned; injured
 axolotls can play dead and regenerate. Guardians drop prismarine shards
 and a weighted cod/crystal/empty pool. Elder player kills additionally drop
 one wet sponge, unaffected by Looting. Burning cod and salmon cook.
@@ -63,12 +68,13 @@ tested mechanics and remaining player/performance acceptance.
 The retained v0.7 implementation adds turtle breeding, nesting, egg hatching and loaded/near-player growth gating, plus axolotl breeding. See [animals](animals.md) and the assessment reports for verified scope and remaining differences.
 Spawning follows Java's water spawn categories (see the
 [spawn categories evidence](verification/2026-10-15-spawn-categories.md)).
-Movement differences that remain: dolphins don't play with items, seek
-treasure, follow boats or swim alongside players; turtles lack their travel
-and go-to-water goals; guardians aren't held near their monument; and water
-currents don't push swimmers. The
-[movement evidence](verification/2026-10-19-swimmer-flyer-movement.md)
-lists every remaining difference.
+Turtles travel far through the sea, head home to lay their eggs, walk back
+into the water from land, and run for water when hurt. Movement differences
+that remain include baby dolphins, guardians targeting squid and axolotls,
+and water currents, which don't push swimmers. The
+[movement evidence](verification/2026-10-19-swimmer-flyer-movement.md) and
+[dolphin and turtle goal evidence](verification/2026-10-19-dolphin-turtle-goals.md)
+list every remaining difference.
 
 ## References
 

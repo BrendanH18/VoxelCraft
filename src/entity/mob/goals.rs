@@ -65,8 +65,14 @@ pub(crate) enum Goal {
     Avoid(Avoid),
     /// `Strider.StriderGoToLavaGoal`.
     Lava,
-    /// Turtle `TurtleLayEggGoal`/`TurtleGoHomeGoal` toward `animals::State::goal`.
-    Nest,
+    /// `TurtleLayEggGoal` (`MoveToBlockGoal`, every tick).
+    LayEgg,
+    /// `TurtleGoToWaterGoal` (`MoveToBlockGoal`, every tick).
+    GoToWater,
+    /// `TurtleGoHomeGoal` and `TurtleTravelGoal`: flagless goals that run
+    /// beside the move goals (`turtle::Mob::turtle_side_goals`).
+    GoHome,
+    Travel,
     Stroll,
 }
 
@@ -148,9 +154,19 @@ const LLAMA: &[Entry] =
 // `TraderLlama` adds `PanicGoal(2.0)` at 1 to the llama's goals.
 const TRADER_LLAMA: &[Entry] =
     &[e(1, G::Panic, 2.0), e(4, G::Breed, 1.0), e(5, G::Tempt, 1.25), e(6, G::FollowParent, 1.0), e(7, G::Stroll, 0.7)];
-// Turtles have no follow-parent goal.
-const TURTLE: &[Entry] =
-    &[e(0, G::Panic, 1.2), e(1, G::Breed, 1.0), e(1, G::Nest, 1.0), e(2, G::Tempt, 1.1), e(9, G::Stroll, 1.0)];
+// `Turtle.registerGoals`; turtles have no follow-parent goal. The go-to-
+// water goal's speed reads `isBaby` in the constructor, before a hatchling
+// is made a baby, so it is always 1.0.
+const TURTLE: &[Entry] = &[
+    e(0, G::Panic, 1.2),
+    e(1, G::Breed, 1.0),
+    e(1, G::LayEgg, 1.0),
+    e(2, G::Tempt, 1.1),
+    e(3, G::GoToWater, 1.0),
+    e(4, G::GoHome, 1.0),
+    e(7, G::Travel, 1.0),
+    e(9, G::Stroll, 1.0),
+];
 const STRIDER: &[Entry] = &[
     e(1, G::Panic, 1.65),
     e(2, G::Breed, 1.0),
@@ -173,8 +189,8 @@ const AXOLOTL: &[Entry] = &[e(1, G::Breed, 0.2), e(2, G::Tempt, 0.5), e(2, G::Fo
 // `AbstractFish.registerGoals`; `FishSwimGoal` (4) and the schooling fish's
 // `FollowFlockLeaderGoal` run in `aquatic::steer`.
 const FISH: &[Entry] = &[e(0, G::Panic, 1.25), avoid(2, Avoided::Player, 8.0, 1.6, 1.4), e(4, G::Stroll, 1.0)];
-// `Dolphin` and `Guardian`: their random swim and stroll goals.
-const DOLPHIN: &[Entry] = &[e(4, G::Stroll, 1.0)];
+// `Guardian`: its random stroll. Dolphins use the flagged selector in
+// `dolphin`.
 const GUARDIAN: &[Entry] = &[e(7, G::Stroll, 1.0)];
 // Hoglins follow no temptation.
 const HOGLIN: &[Entry] = &[e(1, G::Breed, 1.0), e(2, G::FollowAdult, 0.6)];
@@ -210,7 +226,6 @@ pub(crate) fn table(kind: MobKind) -> &'static [Entry] {
         K::Camel => CAMEL,
         K::Axolotl => AXOLOTL,
         K::Cod | K::Salmon | K::TropicalFish | K::Pufferfish => FISH,
-        K::Dolphin => DOLPHIN,
         K::Guardian | K::ElderGuardian => GUARDIAN,
         K::Hoglin => HOGLIN,
         K::Creeper => CREEPER,
@@ -305,6 +320,8 @@ pub(crate) struct Goals {
     pub avoiding: Option<(Foe, DVec3)>,
     /// `FollowOwnerGoal.start` zeroes the water malus until `stop`.
     pub water_free: bool,
+    /// `MoveTowardsRestrictionGoal` is running (guardians).
+    pub restricting: bool,
 }
 
 impl Goals {
@@ -408,7 +425,7 @@ impl Mob {
             }
             for (i, entry) in t.iter().enumerate() {
                 if self.goals.running == Some(i as u8)
-                    || matches!(entry.goal, G::Panic | G::Stroll)
+                    || matches!(entry.goal, G::Panic | G::Stroll | G::GoHome | G::Travel)
                     || self.priority_of_running(t).is_some_and(|p| entry.priority >= p)
                 {
                     continue;
@@ -427,7 +444,7 @@ impl Mob {
                     self.stop_goal(world);
                     self.stop_stroll();
                     self.goals.running = Some(i as u8);
-                    self.start_goal(*entry);
+                    self.start_goal(world, rng, *entry);
                 }
             }
         }
@@ -442,6 +459,12 @@ impl Mob {
                 return Some((None, 0.0));
             }
         }
+        if self.kind == MobKind::Turtle {
+            self.turtle_panic_plan(world, ctx, rng);
+            if full {
+                self.turtle_side_goals(world, ctx, rng);
+            }
+        }
         let i = self.goals.running?;
         let entry = t[i as usize];
         if entry.goal == G::Lava {
@@ -453,10 +476,13 @@ impl Mob {
                 }
             };
         }
-        if full {
+        // `MoveToBlockGoal.requiresUpdateEveryTick`.
+        if full || matches!(entry.goal, G::LayEgg | G::GoToWater) {
             self.tick_goal(world, ctx, rng, entry);
         }
         let speed = match entry.goal {
+            // Turtles follow whichever goal last planned, flagless ones too.
+            _ if self.kind == MobKind::Turtle && !self.nav.is_done() => self.nav.speed,
             G::FollowOwner { .. } if self.kind == MobKind::Parrot => 2.5,
             G::Avoid(a) => {
                 self.goal_speed(if self.goals.avoiding.is_some_and(|(_, at)| at.distance_squared(self.pos) < 49.0) {
@@ -507,8 +533,7 @@ impl Mob {
                 }
                 self.nav.stop();
             }
-            G::Nest => self.nav.stop(),
-            G::Panic | G::Stroll => {}
+            G::LayEgg | G::GoToWater | G::GoHome | G::Travel | G::Panic | G::Stroll => {}
         }
     }
 
@@ -568,12 +593,13 @@ impl Mob {
                     && self.owner_target(ctx).is_some_and(|t| t.pos.distance_squared(self.pos) >= start * start)
             }
             G::Avoid(a) => self.avoid_can_use(world, ctx, rng, entry, a),
-            G::Nest => self.animal.as_ref().is_some_and(|a| a.goal.is_some()),
-            G::Lava | G::Panic | G::Stroll => false,
+            G::LayEgg => self.lay_egg_can_use(world, rng),
+            G::GoToWater => self.go_to_water_can_use(world, rng),
+            G::Lava | G::Panic | G::Stroll | G::GoHome | G::Travel => false,
         }
     }
 
-    fn can_continue<W: MobWorld + ?Sized>(&mut self, _world: &W, ctx: &Ctx, entry: Entry) -> bool {
+    fn can_continue<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, entry: Entry) -> bool {
         match entry.goal {
             // Partner alive, in love and not panicking (the entity pass keeps
             // `partner` only while that holds), and `loveTime < 60`.
@@ -599,15 +625,20 @@ impl Mob {
                     && self.owner_target(ctx).is_some_and(|t| t.pos.distance_squared(self.pos) > stop * stop)
             }
             G::Avoid(_) => !self.nav.is_done() && self.goals.avoiding.is_some(),
-            G::Nest => self.animal.as_ref().is_some_and(|a| a.goal.is_some()),
+            G::LayEgg => self.move_to_block_can_continue(world, true),
+            G::GoToWater => self.move_to_block_can_continue(world, false),
             // Its tick checks Strider's `canContinueToUse` every tick.
             G::Lava => self.nether.as_ref().is_some_and(|n| n.lava_goal.is_some()),
-            G::Panic | G::Stroll => false,
+            G::Panic | G::Stroll | G::GoHome | G::Travel => false,
         }
     }
 
-    fn start_goal(&mut self, entry: Entry) {
+    fn start_goal<W: MobWorld + ?Sized>(&mut self, world: &W, rng: &mut Rng, entry: Entry) {
         match entry.goal {
+            G::LayEgg | G::GoToWater => {
+                let speed = self.goal_speed(entry.speed);
+                self.move_to_block_start(world, rng, entry.goal == G::LayEgg, speed);
+            }
             G::FollowParent | G::FollowAdult => {
                 self.goals.parent = self.goals.adult;
                 self.goals.recalc = 0;
@@ -691,11 +722,9 @@ impl Mob {
                 let close = self.goals.avoiding.is_some_and(|(_, at)| at.distance_squared(self.pos) < 49.0);
                 self.nav.speed = self.goal_speed(if close { a.sprint } else { a.walk });
             }
-            G::Nest => {
-                let Some(goal) = self.animal.as_ref().and_then(|a| a.goal) else { return };
-                self.walk_to(world, goal.floor().as_ivec3(), 1, speed, false);
-            }
-            G::Lava | G::Panic | G::Stroll => {}
+            G::LayEgg => self.move_to_block_tick(world, rng, true, speed),
+            G::GoToWater => self.move_to_block_tick(world, rng, false, speed),
+            G::Lava | G::Panic | G::Stroll | G::GoHome | G::Travel => {}
         }
     }
 

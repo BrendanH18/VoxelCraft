@@ -22,11 +22,9 @@ pub struct State {
     pub owner: Option<PlayerId>,
     pub sitting: bool,
     pub collar: DyeColor,
-    pub goal: Option<DVec3>,
     growth: f32,
     hearts: f32,
     pub grazing: f32,
-    pub nest_time: f32,
     pub variant: u8,
     pub sleeping: bool,
     pub begging: bool,
@@ -64,11 +62,9 @@ impl State {
             owner: None,
             sitting: false,
             collar: DyeColor::Red,
-            goal: None,
             growth: 0.0,
             hearts: 0.0,
             grazing: 0.0,
-            nest_time: 0.0,
             variant: 0,
             sleeping: false,
             begging: false,
@@ -199,6 +195,9 @@ impl Entities {
     /// empty hand/owner command; `None` permits ordinary item actions.
     pub fn use_animal(&mut self, index: usize, held: Option<Stack>, player: PlayerId) -> Option<bool> {
         if let Some(result) = self.use_lead_or_name(index, held, player) {
+            return Some(result);
+        }
+        if let Some(result) = self.feed_dolphin(index, held) {
             return Some(result);
         }
         let m = self.mobs.get_mut(index)?;
@@ -358,7 +357,6 @@ impl Entities {
                 continue;
             }
             let Some(a) = m.animal.as_mut() else { continue };
-            a.goal = None;
             a.love = (a.love - dt).max(0.0);
             a.hearts -= dt;
             let hearts = a.love > 0.0 && a.hearts <= 0.0;
@@ -439,7 +437,7 @@ pub fn inherit_color(a: DyeColor, b: DyeColor, rng: &mut Rng) -> DyeColor {
     }
 }
 pub(super) fn save(a: &State) -> Value {
-    json!({"love":a.love,"love_by":a.love_by.map(|p|p.0),"courtship":a.courtship,"home":a.home.to_array(),"pregnant":a.pregnant,"owner":a.owner.map(|p|p.0),"sitting":a.sitting,"collar":a.collar as u8,"growth":a.growth,"grazing":a.grazing,"nest_time":a.nest_time, "variant":a.variant, "trusted":a.trusted.map(|p|p.map(|p|p.0)), "mouth":a.mouth.map(|s|crate::inventory::stack_to_string(Some(s))), "mouth_time":a.mouth_time, "perched":a.perched, "horns":a.horns, "horn_kind":a.horn_kind, "screaming":a.screaming, "ram_cooldown":a.ram_cooldown, "jump_cooldown":a.jump_cooldown})
+    json!({"love":a.love,"love_by":a.love_by.map(|p|p.0),"courtship":a.courtship,"home":a.home.to_array(),"pregnant":a.pregnant,"owner":a.owner.map(|p|p.0),"sitting":a.sitting,"collar":a.collar as u8,"growth":a.growth,"grazing":a.grazing,"variant":a.variant, "trusted":a.trusted.map(|p|p.map(|p|p.0)), "mouth":a.mouth.map(|s|crate::inventory::stack_to_string(Some(s))), "mouth_time":a.mouth_time, "perched":a.perched, "horns":a.horns, "horn_kind":a.horn_kind, "screaming":a.screaming, "ram_cooldown":a.ram_cooldown, "jump_cooldown":a.jump_cooldown})
 }
 pub(super) fn load(a: &mut State, v: &Value) {
     let timer =
@@ -467,7 +465,6 @@ pub(super) fn load(a: &mut State, v: &Value) {
     a.collar = DyeColor::ALL.get(v["collar"].as_u64().unwrap_or(14) as usize).copied().unwrap_or(DyeColor::Red);
     a.growth = timer("growth", 1.0);
     a.grazing = timer("grazing", 2.0);
-    a.nest_time = timer("nest_time", 10.0);
     if let Some(p) = v["home"].as_array().filter(|p| p.len() == 3) {
         let coord = |i: usize| p[i].as_i64().and_then(|n| i32::try_from(n).ok());
         if let (Some(x), Some(y), Some(z)) = (coord(0), coord(1), coord(2)) {
@@ -1080,20 +1077,7 @@ mod tests {
         assert!(events.is_empty());
     }
     #[test]
-    fn turtle_nests_only_at_home_and_egg_stages_keep_count() {
-        let mut e = Entities::new(4);
-        e.spawn(MobKind::Turtle, DVec3::new(0.5, 1.0, 0.5));
-        let a = e.mobs[0].animal.as_mut().unwrap();
-        a.pregnant = true;
-        let mut grid = Grid::flat(0);
-        grid.set(IVec3::ZERO, Block::SAND);
-        let w = Flat(grid);
-        let mut events = Vec::new();
-        e.tick_animal_lifecycle(10.0, &w, &ctx(), &mut events);
-        assert!(!e.mobs[0].animal.as_ref().unwrap().pregnant);
-        assert!(events.iter().any(
-            |e| matches!(e,EntityEvent::AnimalBlock{to,..} if crate::world::overworld_blocks::egg_count(*to).is_some())
-        ));
+    fn turtle_egg_stages_keep_count() {
         for count in 1..=4 {
             for stage in 0..=2 {
                 let b = crate::world::overworld_blocks::turtle_eggs_stage(count, stage);

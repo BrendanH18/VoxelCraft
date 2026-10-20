@@ -11,10 +11,13 @@ use crate::world::terrain::Dimension;
 
 use super::{Ctx, EntityEvent, MobSound, MobWorld, Rng, path};
 
+pub(crate) mod dolphin;
 pub(crate) mod goals;
 mod navigate;
 mod nether_ai;
+pub(crate) mod selector;
 mod swim;
+pub(crate) mod turtle;
 #[cfg(test)]
 pub(crate) use nether_ai::STABLE_LAVA_HEIGHT;
 
@@ -1003,6 +1006,21 @@ pub struct Mob {
     pub(crate) goals: goals::Goals,
     /// Java's `MoveControl` for swimmers, ghasts and airborne blazes.
     pub(crate) move_ctl: swim::MoveCtl,
+    /// `Mob.homePosition` and `homeRadius` (`restrictTo`): random targets
+    /// and attack targets stay within the radius. Elder guardians set one
+    /// around where they first act; saved as Java saves it.
+    pub(crate) restrict: Option<(IVec3, i32)>,
+    /// The flagged goal selector and goal state of dolphins and turtles.
+    pub(crate) java_goals: Option<Box<JavaGoals>>,
+}
+
+/// Per-kind state of the mobs on the flagged goal selector. Mobs hold it
+/// boxed, so the variants' sizes don't matter.
+#[derive(Clone, Debug)]
+#[allow(clippy::large_enum_variant)]
+pub(crate) enum JavaGoals {
+    Dolphin(dolphin::Goals),
+    Turtle(turtle::Goals),
 }
 
 impl Mob {
@@ -1110,6 +1128,12 @@ impl Mob {
             idle: 0.0,
             goals: Default::default(),
             move_ctl: Default::default(),
+            restrict: None,
+            java_goals: match kind {
+                MobKind::Dolphin => Some(Box::new(JavaGoals::Dolphin(Default::default()))),
+                MobKind::Turtle => Some(Box::new(JavaGoals::Turtle(Default::default()))),
+                _ => None,
+            },
         }
     }
 
@@ -1590,6 +1614,9 @@ impl Mob {
         if let Some(wish) = self.run_goals(world, ctx, rng) {
             return wish;
         }
+        if self.kind == MobKind::Turtle {
+            return self.turtle_steer(dt, world, ctx, rng);
+        }
         if self.kind.is_aquatic() {
             return super::aquatic::steer(self, dt, world, ctx, rng, events);
         }
@@ -1926,7 +1953,7 @@ impl Mob {
             if keep && full {
                 c.unseen = if sees(t) { 0 } else { c.unseen + 1 };
             }
-            if keep && c.unseen <= 30 {
+            if keep && c.unseen <= c.unseen_limit.max(30) {
                 return Some(t);
             }
             c.target = None;
@@ -1943,7 +1970,17 @@ impl Mob {
         let c = &mut self.move_ctl;
         c.target = found.map(|t| t.id);
         c.unseen = 0;
+        c.unseen_limit = 30;
         found
+    }
+
+    /// `HurtByTargetGoal.start`: target the attacker, remembered unseen for
+    /// `reducedTickDelay(300)` updates.
+    fn hurt_by_target(&mut self, player: super::PlayerId) {
+        let c = &mut self.move_ctl;
+        c.target = Some(player);
+        c.unseen = 0;
+        c.unseen_limit = selector::reduced(300);
     }
 
     /// Selector bookkeeping for kinds without a goal table: counts
@@ -2957,5 +2994,49 @@ mod equipment_effect_tests {
         let before = m.health;
         m.physics_step(0.05, &world, None, 0.);
         assert!((before - m.health - 0.4).abs() < 1e-6);
+    }
+}
+
+impl super::Entities {
+    /// The target selector's `HurtByTargetGoal` after a player hurt mob
+    /// `index`: dolphins and blazes turn on them and alert their kind.
+    /// A player hurt mob `index`. Its `HurtByTargetGoal` decides on the next
+    /// update, as Java's does on the next selector update.
+    pub(super) fn hurt_by_player_target(&mut self, index: usize, player: super::PlayerId) {
+        if self.mobs.get(index).is_some_and(|m| matches!(m.kind, MobKind::Dolphin | MobKind::Blaze)) {
+            self.ensure_mob_ids();
+            self.hurt_by.push((self.mobs[index].uid, player));
+        }
+    }
+
+    /// `HurtByTargetGoal.canUse` for the waiting hits: `canAttack(attacker,
+    /// HURT_BY_TARGETING)` refuses creative and spectating players, so their
+    /// hits change no target and alert nobody.
+    pub(super) fn resolve_hurt_by(&mut self, ctx: &super::Ctx) {
+        for (uid, player) in std::mem::take(&mut self.hurt_by) {
+            if !ctx.players.iter().any(|t| t.id == player && t.targetable) {
+                continue;
+            }
+            let Some(index) = self.mobs.iter().position(|m| m.uid == uid) else { continue };
+            match self.mobs[index].kind {
+                MobKind::Dolphin => self.dolphin_hurt_by(index, player),
+                MobKind::Blaze => self.blaze_hurt_by(index, player),
+                _ => {}
+            }
+        }
+    }
+
+    /// `Blaze`'s `HurtByTargetGoal(this).setAlertOthers()`: the attacker
+    /// becomes the target of the blaze and of every blaze without one within
+    /// its 48-block follow range (10 up and down).
+    fn blaze_hurt_by(&mut self, index: usize, player: super::PlayerId) {
+        let Some(pos) = self.mobs.get(index).filter(|m| m.alive()).map(|m| m.pos) else { return };
+        for (j, m) in self.mobs.iter_mut().enumerate() {
+            let d = m.pos - pos;
+            let near = (-48.0..49.0).contains(&d.x) && (-48.0..49.0).contains(&d.z) && (-10.0..11.0).contains(&d.y);
+            if m.kind == MobKind::Blaze && m.alive() && (j == index || near && m.move_ctl.target.is_none()) {
+                m.hurt_by_target(player);
+            }
+        }
     }
 }

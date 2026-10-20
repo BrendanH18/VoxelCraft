@@ -51,7 +51,9 @@ fn temp_dir(tag: &str) -> std::path::PathBuf {
     ))
 }
 
-/// Save properties with each entity list in a fixed order.
+/// Save properties with each entity list in a fixed order, without the
+/// keys later versions retired: `animal.nest_time` (VoxelCraft's nesting
+/// timer, replaced by Java's unsaved `TurtleLayEggGoal` counter).
 fn normalized(props: &BTreeMap<String, String>) -> BTreeMap<String, Vec<String>> {
     let mut out = BTreeMap::new();
     for key in ["items", "orbs", "minecarts"] {
@@ -61,7 +63,18 @@ fn normalized(props: &BTreeMap<String, String>) -> BTreeMap<String, Vec<String>>
     }
     for key in ["villagers", "nether_mobs"] {
         let root: serde_json::Value = serde_json::from_str(&props[key]).unwrap();
-        let mut mobs: Vec<String> = root["mobs"].as_array().unwrap().iter().map(|m| m.to_string()).collect();
+        let mut mobs: Vec<String> = root["mobs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| {
+                let mut m = m.clone();
+                if let Some(animal) = m["animal"].as_object_mut() {
+                    animal.remove("nest_time");
+                }
+                m.to_string()
+            })
+            .collect();
         mobs.sort();
         out.insert(key.to_string(), mobs);
     }
