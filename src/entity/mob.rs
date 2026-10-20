@@ -1678,7 +1678,7 @@ impl Mob {
             return wish;
         }
         if self.kind == MobKind::Ghast {
-            return self.ghast_think(world, ctx, rng, events);
+            return self.ghast_think(dt, world, ctx, rng, events);
         }
         if self.kind == MobKind::Blaze
             && let Some(wish) = self.blaze_think(dt, world, ctx, rng, events)
@@ -1972,6 +1972,7 @@ impl Mob {
         events: &mut Vec<EntityEvent>,
     ) -> Option<(Option<DVec3>, f64)> {
         let full = self.selector_full();
+        let ticks = self.goal_ticks(dt);
         // `nextHeightOffsetChangeTick`: a new offset every 100 ticks.
         self.offset_timer -= dt;
         if self.offset_timer <= 0.0 {
@@ -2004,7 +2005,7 @@ impl Mob {
         let face = (to.z as f32).atan2(to.x as f32);
         self.head_target = (wrap(face - self.yaw).clamp(-1.2, 1.2), 0.0);
         let sees = line_of_sight(world, eye, target_eye);
-        self.move_ctl.last_seen = if sees { 0 } else { self.move_ctl.last_seen + 1 };
+        self.move_ctl.last_seen = if sees { 0 } else { self.move_ctl.last_seen + ticks as i32 };
         let toward = (Some((to * DVec3::new(1.0, 0.0, 1.0)).normalize_or(DVec3::X)), path::ground_speed(0.23));
         let d2 = to.length_squared();
         if d2 < 4.0 {
@@ -2073,12 +2074,14 @@ impl Mob {
     /// blocks in front, then waiting 40 ticks; out of sight the charge drains.
     fn ghast_think<W: MobWorld + ?Sized>(
         &mut self,
+        dt: f32,
         world: &W,
         ctx: &Ctx,
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> (Option<DVec3>, f64) {
         let full = self.selector_full();
+        let ticks = self.goal_ticks(dt);
         if full {
             self.ghast_float(rng);
         }
@@ -2102,22 +2105,26 @@ impl Mob {
             let to = target.pos - self.pos;
             self.yaw = (to.z as f32).atan2(to.x as f32);
         }
+        let sees = close && ticks > 0 && line_of_sight(world, mid, target_mid);
         let c = &mut self.move_ctl;
-        if close && line_of_sight(world, mid, target_mid) {
-            c.charge += 1;
-            if c.charge == 10 {
-                events.push(EntityEvent::Sound { sound: MobSound::Ambient(MobKind::Ghast), pos: mid });
+        // `GhastShootFireballGoal.tick` once per simulated tick.
+        for _ in 0..ticks {
+            if sees {
+                c.charge += 1;
+                if c.charge == 10 {
+                    events.push(EntityEvent::Sound { sound: MobSound::Ambient(MobKind::Ghast), pos: mid });
+                }
+                if c.charge == 20 {
+                    let view = yaw_dir(self.yaw);
+                    let from = DVec3::new(self.pos.x + view.x * 4.0, mid.y + 0.5, self.pos.z + view.z * 4.0);
+                    let aim = DVec3::new(target.pos.x - from.x, target_mid.y - (0.5 + mid.y), target.pos.z - from.z);
+                    events.push(EntityEvent::Fireball { from, dir: aim.normalize_or(view), large: true });
+                    events.push(EntityEvent::Sound { sound: MobSound::Fireball, pos: mid });
+                    c.charge = -40;
+                }
+            } else if c.charge > 0 {
+                c.charge -= 1;
             }
-            if c.charge == 20 {
-                let view = yaw_dir(self.yaw);
-                let from = DVec3::new(self.pos.x + view.x * 4.0, mid.y + 0.5, self.pos.z + view.z * 4.0);
-                let aim = DVec3::new(target.pos.x - from.x, target_mid.y - (0.5 + mid.y), target.pos.z - from.z);
-                events.push(EntityEvent::Fireball { from, dir: aim.normalize_or(view), large: true });
-                events.push(EntityEvent::Sound { sound: MobSound::Fireball, pos: mid });
-                c.charge = -40;
-            }
-        } else if c.charge > 0 {
-            c.charge -= 1;
         }
         self.charged = self.move_ctl.charge > 10;
         (None, 0.0)

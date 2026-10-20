@@ -2302,8 +2302,12 @@ mod tests {
         let mut e = Entities::new(5);
         e.spawn(MobKind::Ghast, DVec3::new(0.5, 40.0, 0.5));
         let hunt = night(DVec3::new(32.5, 40.0, 0.5));
+        // Acquire (a one in five roll per selector update), then 20 ticks of charge.
         for _ in 0..240 {
             e.update(1.0 / 60.0, &world, &hunt);
+            if !e.fireballs.is_empty() {
+                break;
+            }
         }
         assert!(e.fireballs.iter().any(|f| f.is_large()), "charged and shot");
         let ball = e.fireballs[0].pos;
@@ -3539,6 +3543,19 @@ mod tests {
         }
         assert!(shots.len() >= 3, "{shots:?}");
         assert!(shots.windows(2).all(|w| w[1] - w[0] == 60), "{shots:?}");
+
+        // The same cadence when updated at 60 Hz: 60 ticks are 180 updates.
+        let mut e = Entities::new(21);
+        e.spawn(MobKind::Ghast, DVec3::new(0.5, 6.0, 0.5));
+        let mut shots = Vec::new();
+        for update in 0..600 {
+            let events = e.update(1.0 / 60.0, &world, &c);
+            if events.iter().any(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Fireball, .. })) {
+                shots.push(update);
+            }
+        }
+        assert!(shots.len() >= 2, "{shots:?}");
+        assert!(shots.windows(2).all(|w| w[1] - w[0] == 180), "{shots:?}");
     }
 
     #[test]

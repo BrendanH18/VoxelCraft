@@ -108,6 +108,8 @@ whole ticks, so a 60 Hz caller gets the same motion as the fixed 20 Hz step.
   blocks in front, aimed at the target's middle. Then it waits at -40, so shots
   come every 60 ticks while the target is in sight within 64 blocks. Out of sight
   the charge drains.
+  The charge and the blaze's `lastSeen` count whole simulated ticks, so the
+  cadence is the same however often the entities update.
 - **Blazes:**
   - Airborne blazes multiply falling motion by 0.6 a tick (`aiStep`), so they
     settle at 0.19 blocks a tick, not 2.3 blocks a second.
@@ -215,7 +217,8 @@ cargo test --release --no-default-features
 - **`entity::mob::goals`:** `a_hurt_axolotl_never_panics_and_stays_tempted`
   replaces the panic test.
 - **`entity` tests:**
-  - `ghasts_fire_every_sixty_ticks_while_they_see_their_target`;
+  - `ghasts_fire_every_sixty_ticks_while_they_see_their_target`, at 20 and
+    60 updates a second;
   - `ghasts_hover_shoot_and_credit_a_deflected_blast`: a ghast under open sky
     floats about without falling;
   - `blazes_hover_shoot_fireball_bursts_and_shrug_off_fire`, unchanged and

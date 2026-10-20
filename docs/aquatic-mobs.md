@@ -55,14 +55,20 @@ empty bucket. In the Nether the water evaporates but the creature releases.
 
 Tropical fish have twelve color variants; axolotls have their four ordinary
 natural colors and a blue variant available through saved bucket data.
-These original models approximate Java appearances. Exact tropical fish pattern encoding, dolphin treasure finding, squid ink
-particles and full navigation parity remain later work. Turtle helmets and
+These original models approximate Java appearances. Exact tropical fish
+pattern encoding and squid ink particles remain later work. Turtle helmets and
 Turtle Master brewing are implemented on the assessment branch; see the
 [turtle equipment evidence](verification/2026-10-12-turtle-equipment.md) for
 tested mechanics and remaining player/performance acceptance.
 The retained v0.7 implementation adds turtle breeding, nesting, egg hatching and loaded/near-player growth gating, plus axolotl breeding. See [animals](animals.md) and the assessment reports for verified scope and remaining differences.
-The engine uses its existing per-kind spawn caps and simplified steering,
-rather than Java’s category caps and pathfinding implementation.
+Spawning follows Java's water spawn categories (see the
+[spawn categories evidence](verification/2026-10-15-spawn-categories.md)).
+Movement differences that remain: dolphins don't play with items, seek
+treasure, follow boats or swim alongside players; turtles lack their travel
+and go-to-water goals; guardians aren't held near their monument; and water
+currents don't push swimmers. The
+[movement evidence](verification/2026-10-19-swimmer-flyer-movement.md)
+lists every remaining difference.
 
 ## References
 

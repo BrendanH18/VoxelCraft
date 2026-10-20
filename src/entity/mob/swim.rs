@@ -63,8 +63,10 @@ pub(crate) struct MoveCtl {
     pub moving: bool,
     /// `BreathAirGoal` is running: an extra stroke each tick.
     pub breathing: bool,
-    /// Simulated seconds not yet spent on a whole tick.
+    /// Simulated seconds not yet spent on a whole tick, for movement and
+    /// for the tick-counted attack goals.
     pub time: f64,
+    ai_time: f64,
     /// The target a ghast faces instead of its motion (`GhastLookGoal`).
     pub look: Option<DVec3>,
     /// The ghast's and blaze's player target (`Mob.getTarget`) and the
@@ -556,6 +558,17 @@ impl Mob {
         }
         self.move_ctl.zza = self.move_ctl.cur;
         self.travel_in_air(world, dm, DVec3::new(0.0, 0.0, self.move_ctl.zza));
+    }
+
+    /// Whole 50 ms ticks elapsed by `dt` seconds of simulation, so goal
+    /// counters (`chargeTime`, `lastSeen`) keep Java's timing at any update
+    /// rate.
+    pub(super) fn goal_ticks(&mut self, dt: f32) -> u32 {
+        let c = &mut self.move_ctl;
+        c.ai_time += dt as f64;
+        let n = ((c.ai_time + 1e-9) / TICK).floor().max(0.0);
+        c.ai_time -= n * TICK;
+        n as u32
     }
 
     /// `speedModifier * getAttributeValue(MOVEMENT_SPEED)`: the wanted speed
