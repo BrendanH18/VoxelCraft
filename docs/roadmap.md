@@ -137,14 +137,16 @@ preserved and regression-checked when shared code changes.
 Candidates for later side-feature work include the full advancement/
 statistics interface, archaeology-specific interactions, the complete
 command/selector language, custom skins, resource/data-pack compatibility,
-and mod/plugin APIs. These are proposed deferrals under the maintainer's allowance
+and mod/plugin APIs. They are deferred under the maintainer's allowance
 for less-used side features, not blanket exclusions of associated core
 content. M0 must record the exact boundary: for example, a loot-bearing
 structure still needs a playable exploration/reward loop even if its
 archaeology mechanics are deferred.
 
-**M0 boundary — proposed 2026-10-17, awaiting the owner's approval.** Until
-approved these remain proposals, and v0.8's M0 exit stays open.
+**M0 boundary — approved by the owner on 2026-10-19** (proposed 2026-10-17).
+These deferrals are the `Deferred` rows DEF-01..06 of the
+[requirement inventory](requirements.md#deferred-side-features); everything
+in the right-hand column stays mandatory for 1.0.
 
 | Side feature | Deferred past 1.0 | Stays in 1.0 core |
 |---|---|---|
@@ -834,7 +836,8 @@ fixtures and acceptance cases:
    per-requirement inventory (one row per requirement with a state and
    acceptance cases, §2) is also an M0 exit check. *First version written*
    ([requirements.md](requirements.md), 2026-10-15): 119 rows; only PERF-01 Verified (2026-10-16);
-   keep it current with each change.
+   keep it current with each change. The side-feature boundary (§1.4) was
+   approved on 2026-10-19 and added as the Deferred rows DEF-01..06.
 2. **MOB-02 navigation:** Java's `PathNavigation`/node evaluators for walking,
    swimming and flying mobs, respecting block shapes, hazards, doors and
    fluids; villagers reach beds and job sites, bastion and structure residents
@@ -1080,7 +1083,7 @@ reviewable alongside implementation changes and release notes.
 
 - [ ] Current stable Java reference and exact core scope recorded.
 - [ ] Every mandatory core feature individually Verified with evidence.
-- [ ] Proposed side-feature deferrals resolved; fidelity exceptions explicit.
+- [ ] Side-feature deferrals resolved (boundary approved 2026-10-19, §1.4); fidelity exceptions explicit.
 - [ ] Fresh-world survival progression and continued post-boss play passed.
 - [ ] Building, exploration, farming, animals, villagers, travel and automation scenarios passed.
 - [ ] Player-facing interfaces, controls, feedback and original assets reviewed in play.

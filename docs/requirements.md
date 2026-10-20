@@ -194,6 +194,20 @@ cost.
 | UX-04 | Install, start, save, quit, reopen, update on supported platforms | Partial | v1.0 | [releases](releases.md) | Release package checks per platform | — |
 | UX-05 | Errors, backups, migration and a 1.0 save-compatibility policy | Partial | v1.0 | [storage.rs](../src/world/storage.rs) | Migration tests from each released save version | No written policy |
 
+## Deferred side features
+
+Approved by the owner on 2026-10-19 ([roadmap §1.4](roadmap.md#14-what-can-follow-10)).
+Deferred rows sit outside 1.0; their core counterparts stay in the rows above.
+
+| ID | Requirement | State | Release | Evidence | Acceptance | Gaps / next action |
+|---|---|---|---|---|---|---|
+| DEF-01 | Advancement and statistics screens, toasts and criteria | Deferred | after 1.0 (v1.x) | [roadmap §1.4](roadmap.md#14-what-can-follow-10) | — | Recipe unlocking and the recipe book stay in UX-03c (v0.18); dragon and Wither progression stay in PRO (v0.16) |
+| DEF-02 | Archaeology: brushes, suspicious sand and gravel, pottery sherds, decorated-pot patterns | Deferred | after 1.0 (v1.x) | [roadmap §1.4](roadmap.md#14-what-can-follow-10) | — | Trail ruins, desert wells and warm ocean ruins stay as explorable structures with non-archaeology loot (v0.12); sniffers need another Java acquisition path or a recorded fidelity exception when v0.13 plans them |
+| DEF-03 | The full command and selector language | Deferred | after 1.0 (v1.x) | [roadmap §1.4](roadmap.md#14-what-can-follow-10) | — | The cheat console's testing commands stay (game mode, rules, time, weather, teleport, give, kill, difficulty, spawn point) |
+| DEF-04 | Custom skin selection and loading | Deferred | after 1.0 (v1.x) | [roadmap §1.4](roadmap.md#14-what-can-follow-10) | — | The default player models stay |
+| DEF-05 | Loading resource and data packs | Deferred | after 1.0 (v1.x) | [roadmap §1.4](roadmap.md#14-what-can-follow-10) | — | Built-in Java 26.3 recipes, loot tables and tags stay (BLD, PRO, GEN rows) |
+| DEF-06 | Mod and plugin APIs | Deferred | after 1.0 (v1.x) | [roadmap §1.4](roadmap.md#14-what-can-follow-10) | — | — |
+
 ## Performance (§6)
 
 | ID | Requirement | State | Release | Evidence | Acceptance | Gaps / next action |
