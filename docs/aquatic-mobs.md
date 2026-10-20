@@ -7,8 +7,10 @@ names work with `/summon`, CLI spawning and screenshot `--spawn` options.
 
 ## Water and spawning
 
-Water creatures steer in three dimensions and collide with the world.
-Fish school around stable leaders. Ordinary ocean creatures spawn in
+Water creatures move with Java 26.3's own move controls and water travel
+(see the [movement evidence](verification/2026-10-19-swimmer-flyer-movement.md)).
+Cod, salmon and tropical fish form schools of up to 8 (salmon 5) that follow
+a leader; fish swim away from survival players within 8 blocks. Ordinary ocean creatures spawn in
 water between Y=50 and sea level in their biome families; warm seas have
 tropical fish and pufferfish, cold seas and rivers have salmon. Dolphins
 and squid avoid frozen seas. Glow squid require darkness, Y below 30 and
@@ -19,8 +21,9 @@ cells, player distance and local caps. Peaceful retains passive spawning.
 
 Fish and squid suffocate after 15 seconds out of water. Axolotls dry out
 after five minutes, while rain resets their timer. Dolphins breathe air,
-seek the surface when short of breath, and dry out on land. Aquatic mobs
-flop when stranded. Guardians survive out of water.
+seek the surface below 7 seconds of air, and dry out on land. Fish,
+dolphins and guardians flop when stranded; squid fall. Guardians survive
+out of water.
 
 ## Combat and effects
 

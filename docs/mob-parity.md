@@ -51,11 +51,12 @@ Sources: [MagmaCube](https://raw.githubusercontent.com/mahtomedi/minecraft/main/
 
 ## Ghast
 
-10 health, 4 × 4 hitbox, follow range 100, flying speed 14 blocks/s (Java's 0.7
-per tick), fire immune. Spawns follow the biome's own list (pinned to the 26.3 biome
+10 health, 4 × 4 hitbox, follow range 100, flying speed 0.06, fire immune. It
+floats to random spots up to 16 blocks away, pushed 0.1 a tick every 2–6 ticks
+against 0.91 drag while the way is clear. Spawns follow the biome's own list (pinned to the 26.3 biome
 data in `tests/fixtures/java/26.3/mob_integrations.json`): nether wastes weight 50
 (chance 0.5 against zombified piglins' 100) and soul sand valleys weight 50, both in
-groups of 4; basalt deltas weight 40 in groups of 1; crimson and warped forests none. Charges one second, then shoots one large fireball and rests two seconds.
+groups of 4; basalt deltas weight 40 in groups of 1; crimson and warped forests none. It targets a visible survival player within 100 blocks and 4 vertically, charges 20 ticks (warning at 10) while it sees the target within 64 blocks, fires one large fireball from 4 blocks in front, and waits 40 ticks.
 The fireball explodes at power 1, can be punched back by the host or an agent,
 and a deflected blast credits the player so the kill drops loot. Block breaking
 follows `mobGriefing`, same as creepers. Drops 0–2 gunpowder and, on a player

@@ -2289,15 +2289,20 @@ mod tests {
         );
         let hover =
             Ctx { players: vec![Target::new(PlayerId::HOST, DVec3::new(0.5, 40.0, 0.5), false)], ..night(DVec3::ZERO) };
-        for _ in 0..120 {
+        // `RandomFloatAroundGoal` floats it to spots up to 16 blocks away on
+        // each axis, with no gravity.
+        let mut lowest = f64::MAX;
+        for _ in 0..600 {
             e.update(1.0 / 60.0, &world, &hover);
+            lowest = lowest.min(e.mobs[0].pos.y);
         }
-        assert!((e.mobs[0].pos.y - 40.0).abs() < 1.5, "flew without falling: {}", e.mobs[0].pos.y);
+        assert!(lowest > 5.0, "flew without falling: {lowest}");
+        assert!(e.mobs[0].pos.distance(DVec3::new(0.5, 40.0, 0.5)) > 1.0, "floats about");
 
         let mut e = Entities::new(5);
         e.spawn(MobKind::Ghast, DVec3::new(0.5, 40.0, 0.5));
         let hunt = night(DVec3::new(32.5, 40.0, 0.5));
-        for _ in 0..90 {
+        for _ in 0..240 {
             e.update(1.0 / 60.0, &world, &hunt);
         }
         assert!(e.fireballs.iter().any(|f| f.is_large()), "charged and shot");
@@ -3513,6 +3518,27 @@ mod tests {
             e.update(0.05, &world, &near);
         }
         assert_eq!(e.count(MobKind::Blaze), 6, "stops at six nearby");
+    }
+
+    /// `GhastShootFireballGoal`: the first shot 20 ticks into the charge,
+    /// then one every 60 (back to -40, then up to 20) while the target stays
+    /// in sight within 64 blocks.
+    #[test]
+    fn ghasts_fire_every_sixty_ticks_while_they_see_their_target() {
+        let world = Grid::flat(0);
+        let mut e = Entities::new(21);
+        e.spawn(MobKind::Ghast, DVec3::new(0.5, 6.0, 0.5));
+        let c = night(DVec3::new(24.5, 4.0, 0.5));
+        let mut shots = Vec::new();
+        // It floats about meanwhile, so watch while it is still within 64.
+        for tick in 0..200 {
+            let events = e.update(0.05, &world, &c);
+            if events.iter().any(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Fireball, .. })) {
+                shots.push(tick);
+            }
+        }
+        assert!(shots.len() >= 3, "{shots:?}");
+        assert!(shots.windows(2).all(|w| w[1] - w[0] == 60), "{shots:?}");
     }
 
     #[test]
