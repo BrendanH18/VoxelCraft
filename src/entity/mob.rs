@@ -3001,11 +3001,16 @@ impl super::Entities {
     /// The target selector's `HurtByTargetGoal` after a player hurt mob
     /// `index`: dolphins and blazes turn on them and alert their kind.
     /// A player hurt mob `index`. Its `HurtByTargetGoal` decides on the next
-    /// update, as Java's does on the next selector update.
+    /// update, as Java's does on the next selector update, about the latest
+    /// attacker only (`getLastHurtByMob`).
     pub(super) fn hurt_by_player_target(&mut self, index: usize, player: super::PlayerId) {
         if self.mobs.get(index).is_some_and(|m| matches!(m.kind, MobKind::Dolphin | MobKind::Blaze)) {
             self.ensure_mob_ids();
-            self.hurt_by.push((self.mobs[index].uid, player));
+            let uid = self.mobs[index].uid;
+            match self.hurt_by.iter_mut().find(|(u, _)| *u == uid) {
+                Some(hit) => hit.1 = player,
+                None => self.hurt_by.push((uid, player)),
+            }
         }
     }
 

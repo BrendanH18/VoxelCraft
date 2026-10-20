@@ -193,14 +193,21 @@ impl Entities {
         self.dolphin_items();
         // `TurtleLayEggGoal` places its clutch (`setBlockAndUpdate`) in the
         // update that clears the turtle's eggs, so a save can't fall between.
+        // Two clutches on one cell in one update: the later turtle's
+        // overwrites the earlier, as consecutive `setBlockAndUpdate`s do.
+        let mut clutches: Vec<(IVec3, u8)> = Vec::new();
         for m in &mut self.mobs {
             if let Some((cell, eggs)) = m.take_laid_eggs() {
-                events.push(EntityEvent::AnimalBlock {
-                    cell,
-                    from: Block::AIR,
-                    to: crate::world::overworld_blocks::turtle_eggs(eggs),
-                });
+                clutches.retain(|&(c, _)| c != cell);
+                clutches.push((cell, eggs));
             }
+        }
+        for (cell, eggs) in clutches {
+            events.push(EntityEvent::AnimalBlock {
+                cell,
+                from: Block::AIR,
+                to: crate::world::overworld_blocks::turtle_eggs(eggs),
+            });
         }
         if let Some(fight) = &mut self.fight {
             fight.update(dt, world, ctx, &mut self.rng, &mut events);

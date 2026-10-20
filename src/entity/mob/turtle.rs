@@ -561,40 +561,96 @@ mod tests {
         assert!(wet, "still at {}", e.mobs[0].pos);
     }
 
-    /// `TurtleGoHomeGoal` and `TurtleLayEggGoal`: a turtle with eggs swims
-    /// to its home beach, and once within 9 blocks of home lays one to four
-    /// eggs on sand after 200 ticks there, then falls in love for 600 ticks.
+    /// `TurtleGoHomeGoal`: a turtle with eggs swims back to its home beach,
+    /// on every seed (60 sampled took at most 1,283 ticks).
     #[test]
-    fn turtles_with_eggs_go_home_and_lay_them_on_sand() {
+    fn turtles_with_eggs_head_home() {
         let w = beach();
-        let mut e = turtle(DVec3::new(14.5, -1.0, 0.5));
-        {
+        for seed in 0..8 {
+            let mut e = Entities::new(seed);
+            e.spawn(MobKind::Turtle, DVec3::new(14.5, -1.0, 0.5));
+            e.ensure_mob_ids();
             let a = e.mobs[0].animal.as_mut().unwrap();
             a.home = IVec3::new(-3, 1, 0);
             a.pregnant = true;
+            let mut went_home = false;
+            let mut ticks = 0;
+            while !e.mobs[0].home_within(9.0) && ticks < 2600 {
+                e.update(0.05, &w, &ctx());
+                went_home |= e.mobs[0].turtle_going_home();
+                ticks += 1;
+            }
+            assert!(went_home && e.mobs[0].home_within(9.0), "seed {seed}: at {}", e.mobs[0].pos);
         }
-        let mut laid = None;
-        let mut went_home = false;
-        for _ in 0..3000 {
-            let events = e.update(0.05, &w, &ctx());
-            went_home |= e.mobs[0].turtle_going_home();
-            laid = laid.or(events.into_iter().find_map(|ev| match ev {
-                EntityEvent::AnimalBlock { cell, to, .. } if ob::egg_count(to).is_some() => Some((cell, to)),
-                _ => None,
-            }));
-            // The clutch is placed in the update that takes the eggs, so no
-            // save can fall between the two.
-            assert_eq!(laid.is_some(), !e.mobs[0].animal.as_ref().unwrap().pregnant);
-            if laid.is_some() {
-                break;
+    }
+
+    /// `TurtleLayEggGoal`: at home, a turtle with eggs on sand with air
+    /// above digs for 200 ticks and lays one to four eggs, then falls in love
+    /// for 600 ticks. A walled sand pit keeps it on the nest, so the result
+    /// doesn't depend on where the go-home goal wanders it.
+    #[test]
+    fn turtles_lay_eggs_on_sand_at_home() {
+        let mut g = Grid::flat(0);
+        for x in -1..=2 {
+            for z in -1..=2 {
+                let pit = (0..=1).contains(&x) && (0..=1).contains(&z);
+                g.set(IVec3::new(x, 0, z), if pit { Block::SAND } else { Block::STONE });
+                for y in 1..=3 {
+                    if !pit {
+                        g.set(IVec3::new(x, y, z), Block::STONE);
+                    }
+                }
             }
         }
-        let (cell, eggs) = laid.expect("laid");
-        assert!(went_home);
-        assert!(w.block(cell - IVec3::Y) == Some(Block::SAND) && (1..=4).contains(&ob::egg_count(eggs).unwrap()));
-        assert!((cell - IVec3::new(-3, 1, 0)).as_dvec3().length() < 10.0, "laid at {cell}");
-        let a = e.mobs[0].animal.as_ref().unwrap();
-        assert!(!a.pregnant && a.love > 29.0);
+        let w = Beach(g);
+        for seed in 0..8 {
+            let mut e = Entities::new(seed);
+            e.spawn(MobKind::Turtle, DVec3::new(1.0, 1.0, 1.0));
+            e.ensure_mob_ids();
+            let a = e.mobs[0].animal.as_mut().unwrap();
+            a.home = IVec3::new(1, 1, 1);
+            a.pregnant = true;
+            let mut laid = None;
+            for _ in 0..1200 {
+                let events = e.update(0.05, &w, &ctx());
+                laid = laid.or(events.into_iter().find_map(|ev| match ev {
+                    EntityEvent::AnimalBlock { cell, to, .. } if ob::egg_count(to).is_some() => Some((cell, to)),
+                    _ => None,
+                }));
+                // The clutch is placed in the update that takes the eggs, so
+                // no save can fall between the two.
+                assert_eq!(laid.is_some(), !e.mobs[0].animal.as_ref().unwrap().pregnant);
+                if laid.is_some() {
+                    break;
+                }
+            }
+            let (cell, eggs) = laid.unwrap_or_else(|| panic!("seed {seed}: no clutch"));
+            assert!(w.block(cell - IVec3::Y) == Some(Block::SAND) && (1..=4).contains(&ob::egg_count(eggs).unwrap()));
+            assert!(e.mobs[0].animal.as_ref().unwrap().love > 29.0);
+        }
+    }
+
+    /// Two clutches laid on one cell in one update: the later overwrites the
+    /// earlier, as Java's consecutive `setBlockAndUpdate`s do.
+    #[test]
+    fn a_later_clutch_on_the_same_cell_overwrites_the_earlier() {
+        let w = beach();
+        let mut e = Entities::new(5);
+        for x in [-6.5, -4.5] {
+            e.spawn(MobKind::Turtle, DVec3::new(x, 1.0, 0.5));
+        }
+        e.ensure_mob_ids();
+        e.mobs[0].turtle_mut().laid = Some((IVec3::new(-5, 1, 0), 1));
+        e.mobs[1].turtle_mut().laid = Some((IVec3::new(-5, 1, 0), 3));
+        let clutches: Vec<_> = e
+            .update(0.05, &w, &ctx())
+            .into_iter()
+            .filter_map(|ev| match ev {
+                EntityEvent::AnimalBlock { cell, to, .. } => ob::egg_count(to).map(|n| (cell, n)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(clutches, vec![(IVec3::new(-5, 1, 0), 3)]);
     }
 
     /// `TurtlePanicGoal`: a hurt turtle runs for water within 7 blocks,

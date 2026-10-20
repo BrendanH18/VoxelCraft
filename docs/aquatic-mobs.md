@@ -42,8 +42,9 @@ and give them Dolphin’s Grace, which affects only water movement. Feed a
 dolphin a fish and it leads the way to the nearest ocean ruin or shipwreck.
 Dolphins fetch and toss loose items in the water, leap from the surface,
 follow boats that players steer, keep away from guardians, and a hit pod
-turns on its attacker. Elder guardians keep to a 16-block home around where
-they first appear, and ignore players outside it. Axolotls hunt fish, squid, guardians and drowned; injured
+turns on its attacker. An elder guardian sets a 16-block home where it first
+acts, heads back when it leaves it, and won't target players with its beam
+outside it. Axolotls hunt fish, squid, guardians and drowned; injured
 axolotls can play dead and regenerate. Guardians drop prismarine shards
 and a weighted cod/crystal/empty pool. Elder player kills additionally drop
 one wet sponge, unaffected by Looting. Burning cod and salmon cook.

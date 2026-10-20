@@ -860,12 +860,15 @@ fixtures and acceptance cases:
    blaze's hover and attack goal, and `canMoveDirectly` for water, flying and
    amphibious paths ([evidence](verification/2026-10-19-swimmer-flyer-movement.md)).
    Blazes on the ground keep VoxelCraft's ground movement. Dolphins and
-   turtles then got their full 26.3 goal tables on a port of Java's flagged
+   turtles then got their 26.3 movement goals on a port of Java's flagged
    `GoalSelector`: swimming with players, treasure, item play, leaps, boats,
    guardian avoidance and pod retaliation; travel, going home, going to water,
-   egg laying and panic. The elder guardian's home and blaze retaliation came
-   with them ([evidence](verification/2026-10-19-dolphin-turtle-goals.md)).
-   Player acceptance remains.
+   egg laying and panic. Left out are the dolphin's `TryFindLiquidGoal`
+   (which has no effect) and nautilus following (no nautiluses), and the look
+   goals only hold their flags; they don't turn heads. Baby dolphins are
+   missing. The elder guardian's home and blaze retaliation came with them
+   ([evidence](verification/2026-10-19-dolphin-turtle-goals.md)). Player
+   acceptance remains.
 3. **MOB-01 spawn rules:** Java's `NaturalSpawner` placement, 24/128-block
    ring, per-category caps scaled by loaded chunks, despawn distances and
    persistence, structure spawn overrides, and the slime/drowned paths folded in.

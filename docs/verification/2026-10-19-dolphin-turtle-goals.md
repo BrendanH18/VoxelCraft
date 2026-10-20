@@ -148,8 +148,8 @@ dolphin goals in order:
 
 ## Turtles
 
-[`mob/turtle.rs`](../../src/entity/mob/turtle.rs) completes 26.3's turtle
-table:
+[`mob/turtle.rs`](../../src/entity/mob/turtle.rs) ports 26.3's turtle
+table, apart from the head-only `LookAtPlayerGoal`:
 
 | Priority | Goal | Flags | Here |
 |---|---|---|---|
@@ -259,7 +259,7 @@ cargo clippy --release --no-default-features --all-targets -- -D warnings
 cargo test --release --no-default-features
 ```
 
-All of them pass: 1,372 tests, and 1,280 headless. The new tests:
+All of them pass: 1,374 tests, and 1,282 headless. The new tests:
 
 - **`entity::mob::selector`:** `flags_follow_javas_goal_selector`
   (replacement by priority, uninterruptible goals, flagless goals, and the
@@ -286,9 +286,11 @@ All of them pass: 1,372 tests, and 1,280 headless. The new tests:
 - **`entity::mob::turtle`:**
   - `turtles_travel_through_open_water`;
   - `turtles_on_the_beach_walk_back_into_the_sea`;
-  - `turtles_with_eggs_go_home_and_lay_them_on_sand`: home from 17 blocks
-    out, one to four eggs on sand near home, placed in the same update that
-    takes the eggs, then 30 seconds of love;
+  - `turtles_with_eggs_head_home`: home from 17 blocks out on eight seeds;
+  - `turtles_lay_eggs_on_sand_at_home`: one to four eggs on sand, placed in
+    the same update that takes the eggs, then 30 seconds of love, on eight
+    seeds (a walled pit keeps the turtle on its nest);
+  - `a_later_clutch_on_the_same_cell_overwrites_the_earlier`;
   - `hurt_turtles_heading_home_still_run_for_water`: panic plans before the
     flagless go-home goal ticks;
   - `hurt_turtles_run_for_the_water`: the panic path targets water;
@@ -332,6 +334,18 @@ coastal scene cost 0.047–0.050 ms. The turtle block searches run once every
   - `TryFindLiquidGoal` and the nautilus follow goal are left out (see
     above).
 - **Turtles:**
+  - **Laying time on an open beach:** a turtle with eggs can take a long
+    time to lay there. The go-home goal restarts on every update while the
+    turtle carries eggs (`canUse` is true with an egg), and walks it away
+    from its nest whenever its path ends. A path to the nest can also end on
+    the corner Java's wide-mob node position gives a 1.2-block turtle, out of
+    the lay goal's 1.0 reach.
+    - A 60-seed probe from 17 blocks out (the beach in the turtle tests) put
+      every turtle home within 1,283 ticks. About one in five hadn't laid
+      after 3,000 ticks; the rest laid after about 2,000.
+    - Whether Java's turtles behave the same here is unverified. The earlier
+      single-seed test was flaky across platforms for this reason, and was
+      split into the two deterministic tests above.
   - `LookAtPlayerGoal` isn't modelled.
   - The digging particles and the laying sound aren't played.
   - On land a turtle walks with VoxelCraft's ground movement at the control's

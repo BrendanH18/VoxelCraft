@@ -3593,6 +3593,13 @@ mod tests {
         // A creative attacker changes nothing.
         e.resolve_hurt_by(&ctx(false));
         assert!(e.mobs.iter().all(|m| m.move_ctl.target.is_none()));
+        // Only the latest attacker counts: a survival hit followed by one from
+        // an untargetable player changes nothing either.
+        e.hurt_by_player_target(0, PlayerId(3));
+        e.hurt_by_player_target(0, PlayerId(9));
+        e.resolve_hurt_by(&ctx(true));
+        assert!(e.mobs.iter().all(|m| m.move_ctl.target.is_none()));
+        e.hurt_by_player_target(0, PlayerId(9));
         e.hurt_by_player_target(0, PlayerId(3));
         e.resolve_hurt_by(&ctx(true));
         let targets: Vec<_> = e.mobs.iter().map(|m| m.move_ctl.target).collect();
