@@ -412,7 +412,10 @@ impl World {
             let &[x, y, z, block, fx, fy, fz, bx, by, bz, age, install] = fields.as_slice() else {
                 continue;
             };
-            if !(0..4096).contains(&block) || !(0..=2).contains(&age) || !(0..=1).contains(&install) {
+            if !(0..crate::world::block::STATE_CAPACITY as i64).contains(&block)
+                || !(0..=2).contains(&age)
+                || !(0..=1).contains(&install)
+            {
                 continue;
             }
             let xyz = [x, y, z, fx, fy, fz, bx, by, bz];

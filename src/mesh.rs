@@ -717,9 +717,9 @@ mod tests {
     fn high_layers_render_cube_detail_and_cross_without_corrupting_geometry() {
         // Test-only registry entries mirror the render paths at the registry/layer limits.
         for (high, low, layer, pass) in [
-            (Block(4095), Block::STONE, 2047, OPAQUE),
-            (Block(4094), Block::STONE_STAIRS, 1536, OPAQUE),
-            (Block(4093), Block::TALL_GRASS, 1024, CROSS),
+            (Block(16383), Block::STONE, 2047, OPAQUE),
+            (Block(16382), Block::STONE_STAIRS, 1536, OPAQUE),
+            (Block(16381), Block::TALL_GRASS, 1024, CROSS),
         ] {
             let high = mesh_blocks(&[([31, 31, 31], high)]).quads_of(pass);
             let low = mesh_blocks(&[([31, 31, 31], low)]).quads_of(pass);

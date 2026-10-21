@@ -1,6 +1,6 @@
 //! Block registry: ids, render classification and per-face texture layers.
 //!
-//! Block properties live in a 4096-entry static table so hot loops (meshing,
+//! Block properties live in a 16,384-entry static table so hot loops (meshing,
 //! physics) resolve them with a single indexed load instead of a `match`.
 
 use crate::item::{Item, ToolKind};
@@ -10,7 +10,7 @@ use crate::item::{Item, ToolKind};
 pub struct Block(pub u16);
 
 /// Registry capacity; state IDs are append-only and must be below this bound.
-pub const STATE_CAPACITY: usize = 4096;
+pub const STATE_CAPACITY: usize = 16384;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RenderKind {
@@ -826,7 +826,7 @@ impl Block {
         let f = |i: u16| Facing::ALL[i as usize % 4];
         Some(match self.0 {
             #[cfg(test)]
-            4094 => Shaped::Stairs(Facing::South),
+            16382 => Shaped::Stairs(Facing::South),
             112..=135 | 189..=192 => Shaped::Stairs(f(stairs_index(self.0).unwrap().1)),
             136 | 182 => Shaped::Fence,
             188 => Shaped::BrewingStand,
@@ -954,10 +954,25 @@ impl Block {
         matches!(self.0, 67 | 68 | 80..=82) || super::overworld_blocks::is_sapling(self)
     }
 
-    /// Always holds a water source in its cell (kelp, seagrass, live coral).
+    /// Holds a water source in its cell: always (kelp, seagrass, live coral)
+    /// or as the wet state of a waterloggable block.
     #[inline(always)]
     pub fn is_waterlogged(self) -> bool {
-        super::overworld_blocks::waterlogged(self.0)
+        super::overworld_blocks::waterlogged(self.0) || super::waterlog::wet(self.0)
+    }
+
+    /// Has Java's `waterlogged` property (`SimpleWaterloggedBlock`).
+    pub fn waterloggable(self) -> bool {
+        super::waterlog::pair(self.0).is_some()
+    }
+
+    /// This state with its `waterlogged` property set to `wet`; unchanged
+    /// when it has no such property.
+    pub fn with_water(self, wet: bool) -> Block {
+        match super::waterlog::pair(self.0) {
+            Some((other, is_wet)) if is_wet != wet => Block(other),
+            _ => self,
+        }
     }
 
     /// Water, or a block holding water: what swimming, drowning and water
@@ -2301,11 +2316,11 @@ const fn make(id: u16) -> BlockInfo {
             (stage_zero.name, stage_zero.kind, stage_zero.tex)
         }
         #[cfg(test)]
-        4095 => ("test high cube", Opaque, all(2047)),
+        16383 => ("test high cube", Opaque, all(2047)),
         #[cfg(test)]
-        4094 => ("test high stairs", Shaped, all(1536)),
+        16382 => ("test high stairs", Shaped, all(1536)),
         #[cfg(test)]
-        4093 => ("test high cross", Cross, all(1024)),
+        16381 => ("test high cross", Cross, all(1024)),
         0 => ("air", Invisible, all(0)),
         1 => ("stone", Opaque, all(tex::STONE)),
         2 => ("dirt", Opaque, all(tex::DIRT)),
@@ -2572,9 +2587,9 @@ pub static INFO: [BlockInfo; STATE_CAPACITY] = {
 
 /// States whose occlusion geometry participates in Java light propagation.
 const fn shape_blocks_light(id: u16) -> bool {
-    // Mesh bit tests use 4094 as a stairs stand-in at the layer limit.
+    // Mesh bit tests use 16382 as a stairs stand-in at the layer limit.
     #[cfg(test)]
-    if id == 4094 {
+    if id == 16382 {
         return true;
     }
     if matches!(id, 57 | 58 | 900 | 1910 | 2516..=2522) {

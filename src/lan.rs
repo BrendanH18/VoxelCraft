@@ -13,7 +13,8 @@ use crate::world::{
 };
 use glam::IVec3;
 
-pub const PROTOCOL: u16 = 1;
+/// 2: chunk states may be 4096 and above (`STATE_CAPACITY` 16,384).
+pub const PROTOCOL: u16 = 2;
 pub const GAME_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const MAX_FRAME: usize = 256 * 1024;
 const MAX_QUEUE: usize = 2 * 1024 * 1024;
@@ -623,7 +624,7 @@ mod tests {
         assert!(Packet::decode(&chunk).is_err(), "zero runs cannot allocate or loop forever");
         chunk.truncate(13);
         chunk.extend_from_slice(&32768u16.to_le_bytes());
-        chunk.extend_from_slice(&4096u16.to_le_bytes());
+        chunk.extend_from_slice(&(crate::world::block::STATE_CAPACITY as u16).to_le_bytes());
         assert!(Packet::decode(&chunk).is_err(), "out-of-registry states must be rejected");
         chunk.truncate(13);
         chunk.extend_from_slice(&1u16.to_le_bytes());

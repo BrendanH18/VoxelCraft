@@ -1,5 +1,6 @@
 //! Validated block placement; input/presentation and other item uses stay in adapters.
 use super::PlayerSession;
+use crate::item::Item;
 use crate::{
     entity::PlayerId,
     inventory::HOTBAR_SLOTS,
@@ -22,6 +23,32 @@ pub enum Kind {
     CombinedSlab,
 }
 
+/// What Java's `BlockPlaceContext` gives `getStateForPlacement`: where the
+/// player clicked and how they were facing. Family placement rules
+/// (slab halves, stair halves, door hinges, button faces, waterlogging)
+/// read it instead of re-deriving the raycast.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PlaceContext {
+    /// The clicked cell and the block in it.
+    pub clicked: IVec3,
+    pub clicked_block: Block,
+    /// Outward normal of the clicked face (Java's `getClickedFace`).
+    pub face: IVec3,
+    /// The click point relative to the clicked cell's minimum corner, each
+    /// axis in 0..=1 (Java's `getClickLocation` minus the clicked position).
+    pub click: DVec3,
+    /// The cell the block goes into: the clicked cell when it is replaceable
+    /// or the held slab merges into it, otherwise the cell across `face`.
+    pub at: IVec3,
+    /// The horizontal direction the player looks along (Java's
+    /// `getHorizontalDirection`). Opposite to the legacy `Facing::toward`,
+    /// which gives the front facing back at the player.
+    pub facing: Facing,
+    /// The player's unit look vector (Java's `getNearestLookingDirections`).
+    pub look: glam::Vec3,
+    pub sneaking: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Outcome {
     Placed { player: PlayerId, cell: IVec3, block: Block, kind: Kind },
@@ -29,6 +56,23 @@ pub enum Outcome {
 }
 
 impl PlayerSession {
+    /// The placement context for `held` against `target`, whose default
+    /// destination (after replaceable and snow rules) is `at`.
+    fn place_context(&self, target: crate::world::BlockHit, clicked: Block, held: Item, at: IVec3) -> PlaceContext {
+        let (hit, normal) = (target.cell, target.normal);
+        let merges_slab = held.places().is_some_and(|r| r.is_slab() && normal == IVec3::Y && clicked == r);
+        PlaceContext {
+            clicked: hit,
+            clicked_block: clicked,
+            face: normal,
+            click: (target.point - hit.as_dvec3()).clamp(DVec3::ZERO, DVec3::ONE),
+            at: if merges_slab { hit } else { at },
+            facing: Facing::toward(glam::Vec3::new(self.player.yaw.cos(), 0., self.player.yaw.sin())).opposite(),
+            look: self.player.forward(),
+            sneaking: self.player.sneaking,
+        }
+    }
+
     /// Place from the selected stack against an engine-computed raycast.
     /// All destination/support/player checks precede edits, spending and RNG use.
     /// Existing block-state conventions are retained; full shape/hinge parity
@@ -57,7 +101,8 @@ impl PlayerSession {
         if held.count == 0 || held.count > held.item.max_stack() {
             return Err("invalid held stack");
         }
-        let (hit, normal) = self.block_target(world).ok_or("no block within reach")?;
+        let target = self.block_hit(world).ok_or("no block within reach")?;
+        let (hit, normal) = (target.cell, target.normal);
         let clicked = world.get_block(hit).ok_or("target is unloaded")?;
         // `SnowLayerBlock.canBeReplaced`: a snow layer item stacks onto a snow
         // block of fewer than eight layers, from its top face or in the cell
@@ -72,6 +117,7 @@ impl PlayerSession {
         };
         // Horizontal placement follows yaw even when looking straight down/up.
         let facing = Facing::toward(glam::Vec3::new(self.player.yaw.cos(), 0., self.player.yaw.sin()));
+        let _ctx = self.place_context(target, clicked, held.item, at);
         let blocked =
             |cell| self.player.intersects_block(cell) || others.iter().any(|&p| Player::new(p).intersects_block(cell));
         let free = |world: &World, cell: IVec3| {
@@ -196,5 +242,34 @@ impl PlayerSession {
             self.inventory.take_one(slot);
         }
         Ok(Outcome::Placed { player: self.id, cell, block, kind })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::world::BlockHit;
+
+    #[test]
+    fn place_context_faces_where_the_player_looks_and_merges_slabs_in_place() {
+        let mut session = PlayerSession::new(PlayerId(0), DVec3::ZERO);
+        let slab = Block::slab_of(Block::STONE).unwrap();
+        let cell = IVec3::new(7, 145, 4);
+        let hit = BlockHit { cell, normal: IVec3::Y, point: DVec3::new(7.25, 146.0, 4.75) };
+        for (yaw, facing) in [
+            (0.0f32, Facing::East),
+            (std::f32::consts::FRAC_PI_2, Facing::South),
+            (std::f32::consts::PI, Facing::West),
+            (-std::f32::consts::FRAC_PI_2, Facing::North),
+        ] {
+            session.player.yaw = yaw;
+            let ctx = session.place_context(hit, slab, Item::from_block(Block::STONE), cell + IVec3::Y);
+            assert_eq!(ctx.facing, facing, "yaw {yaw}");
+            assert!(ctx.look.dot(ctx.facing.offset().as_vec3()) > 0.99, "look and facing agree at yaw {yaw}");
+            assert_eq!(ctx.at, cell + IVec3::Y);
+            assert_eq!(ctx.click, DVec3::new(0.25, 1.0, 0.75));
+        }
+        let merging = session.place_context(hit, slab, Item::from_block(slab), cell + IVec3::Y);
+        assert_eq!(merging.at, cell, "a matching slab clicked from above merges into its own cell");
     }
 }

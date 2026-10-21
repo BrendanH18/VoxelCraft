@@ -43,6 +43,7 @@ mod growth;
 mod light_shape;
 pub(crate) mod lighting;
 pub mod mineshaft;
+pub mod mount_states;
 mod navigation;
 pub mod nether;
 pub mod nether_biome;
@@ -65,6 +66,7 @@ mod redstone_contacts;
 #[cfg(test)]
 mod rule_tests;
 pub mod shape;
+pub mod slab_stair_states;
 pub mod spawn_finder;
 mod spawner;
 mod sponge;
@@ -77,6 +79,7 @@ pub mod trees;
 pub mod village;
 pub mod village_blocks;
 mod village_life;
+pub mod waterlog;
 
 use std::sync::Arc;
 
@@ -138,6 +141,15 @@ struct Column {
     snow: Option<Box<[i16; CHUNK_SIZE * CHUNK_SIZE]>>,
     /// Gameplay skylight has been seeded from the complete heightmap.
     sky_lit: bool,
+}
+
+/// A raycast's block hit: the cell, the face normal it entered through and
+/// the world point where it met the block's outline.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BlockHit {
+    pub cell: IVec3,
+    pub normal: IVec3,
+    pub point: DVec3,
 }
 
 /// The game rules which change how blocks tick, as Java 26.3 defaults them.
@@ -1350,6 +1362,12 @@ impl World {
     /// DDA voxel traversal. Returns the first targetable block hit and the
     /// face normal it was entered through.
     pub fn raycast(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<(IVec3, IVec3)> {
+        self.raycast_hit(origin, dir, max_dist).map(|h| (h.cell, h.normal))
+    }
+
+    /// Like [`World::raycast`], with the exact point where the ray meets the
+    /// block's outline (Java's `BlockHitResult.getLocation`).
+    pub fn raycast_hit(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<BlockHit> {
         self.raycast_by(origin, dir, max_dist, Block::is_targetable)
     }
 
@@ -1368,15 +1386,10 @@ impl World {
     /// (for buckets).
     pub fn raycast_sources(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<(IVec3, IVec3)> {
         self.raycast_by(origin, dir, max_dist, |b| b.is_targetable() || b == Block::WATER || b == Block::LAVA)
+            .map(|h| (h.cell, h.normal))
     }
 
-    fn raycast_by(
-        &self,
-        origin: DVec3,
-        dir: DVec3,
-        max_dist: f64,
-        hits: impl Fn(Block) -> bool,
-    ) -> Option<(IVec3, IVec3)> {
+    fn raycast_by(&self, origin: DVec3, dir: DVec3, max_dist: f64, hits: impl Fn(Block) -> bool) -> Option<BlockHit> {
         if !origin.is_finite() || !dir.is_finite() || !max_dist.is_finite() || max_dist < 0.0 || dir == DVec3::ZERO {
             return None;
         }
@@ -1414,7 +1427,8 @@ impl World {
                 if let Some((hit, face)) = intersection
                     && hit <= max_dist
                 {
-                    return Some((cell, if face == IVec3::ZERO { normal } else { face }));
+                    let normal = if face == IVec3::ZERO { normal } else { face };
+                    return Some(BlockHit { cell, normal, point: origin + dir * hit });
                 }
             }
             if t_max.x < t_max.y && t_max.x < t_max.z {

@@ -95,7 +95,12 @@ impl PlayerSession {
     }
 
     pub fn block_target(&self, world: &crate::world::World) -> Option<(IVec3, IVec3)> {
-        world.raycast(self.player.eye(), self.player.forward().as_dvec3(), self.block_reach())
+        self.block_hit(world).map(|h| (h.cell, h.normal))
+    }
+
+    /// The targeted block with the exact point the crosshair meets it.
+    pub fn block_hit(&self, world: &crate::world::World) -> Option<crate::world::BlockHit> {
+        world.raycast_hit(self.player.eye(), self.player.forward().as_dvec3(), self.block_reach())
     }
 
     pub fn new(id: PlayerId, pos: DVec3) -> Self {
