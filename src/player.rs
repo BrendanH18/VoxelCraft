@@ -206,9 +206,13 @@ impl Player {
     }
 
     pub fn intersects_block(&self, b: IVec3) -> bool {
-        let (min, max) = self.collision_shape().aabb(self.pos);
         let bmin = b.as_dvec3();
-        let bmax = bmin + DVec3::ONE;
+        self.intersects_box(bmin, bmin + DVec3::ONE)
+    }
+
+    /// Whether the player's collision box overlaps the world box `bmin..bmax`.
+    pub fn intersects_box(&self, bmin: DVec3, bmax: DVec3) -> bool {
+        let (min, max) = self.collision_shape().aabb(self.pos);
         min.cmplt(bmax).all() && max.cmpgt(bmin).all()
     }
 

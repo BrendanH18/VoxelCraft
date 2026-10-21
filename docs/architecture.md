@@ -291,6 +291,19 @@ free block from the unassigned reserve, recorded here.
 | 12800–14335 | v0.17 | Redstone and automation states |
 | 14336–16383 | — | Unassigned reserve |
 
+Allocations so far:
+
+| Block states | Meaning | Record |
+| --- | --- | --- |
+| 4096–7059 | Stairs states beyond bottom, straight and dry: 76 per family in `slab_stair_states::FAMILIES` order | [slabs and stairs](verification/2026-10-20-slabs-stairs.md) |
+| 7060–7215 | Slab states beyond bottom and dry: bottom wet, top dry, top wet, double, per family | [slabs and stairs](verification/2026-10-20-slabs-stairs.md) |
+| 7680–7691 | Lever mounts 6–11 (floor and ceiling facing north, east, west), off then on | [doors and mounts](verification/2026-10-20-doors-mounts.md) |
+| 7696–7767 | Button mounts 6–11 for stone, oak, crimson, warped, pale oak and bamboo | [doors and mounts](verification/2026-10-20-doors-mounts.md) |
+| 7800–7903 | Right-hinge lower doors: oak, iron, then the 11 wood doors | [doors and mounts](verification/2026-10-20-doors-mounts.md) |
+| 7904–7911 | Wall and ceiling grindstones | [doors and mounts](verification/2026-10-20-doors-mounts.md) |
+| 7920–7927 | Lantern and soul lantern: standing or hanging, dry or wet | [doors and mounts](verification/2026-10-20-doors-mounts.md) |
+| 8192–8476 | Waterlogged partners of 285 existing states (fences, bars, panes, walls, chains, trapdoors, rails, ladders, chests, leaves, amethyst, dripstone, dripleaves, roots, propagules, dead coral) and dry partners of sea pickles and live coral, in `waterlog::RUNS` order; append runs only at the end | [waterlogging](verification/2026-10-20-waterlogging.md) |
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

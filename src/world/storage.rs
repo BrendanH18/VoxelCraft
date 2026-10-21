@@ -128,9 +128,21 @@ impl Storage {
             return Ok(());
         }
         let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
-        let to = self.dir.join(format!("chunks.bin.unknown-{secs}"));
+        let to = self.unused_unknown_name(secs);
         log::error!("keeping {} in an unknown format as {}", path.display(), to.display());
         fs::rename(path, to)
+    }
+
+    /// `chunks.bin.unknown-<secs>`, or with `-1`, `-2`… appended if that is
+    /// taken, so an earlier kept file is never replaced. The world's lock
+    /// keeps other processes from racing for the name.
+    fn unused_unknown_name(&self, secs: u64) -> PathBuf {
+        let base = format!("chunks.bin.unknown-{secs}");
+        std::iter::once(base.clone())
+            .chain((1..).map(|n| format!("{base}-{n}")))
+            .map(|name| self.dir.join(name))
+            .find(|p| !p.exists())
+            .expect("unbounded names")
     }
 
     /// Writes only `level.txt`, leaving the stored chunks alone.
@@ -337,6 +349,11 @@ mod tests {
         assert_eq!(storage.load_chunks().unwrap()[&pos].uniform(), Some(Block::STONE));
         storage.save(&level, &[(pos, Arc::new(ChunkData::Uniform(Block::STONE)))]).unwrap();
         assert_eq!(fs::read_dir(&dir).unwrap().count(), 3, "a known format is replaced without another copy");
+        // A second kept file in the same second takes a new name.
+        fs::write(dir.join("chunks.bin.unknown-7"), b"A").unwrap();
+        fs::write(dir.join("chunks.bin.unknown-7-1"), b"B").unwrap();
+        assert_eq!(storage.unused_unknown_name(7), dir.join("chunks.bin.unknown-7-2"));
+        assert_eq!(storage.unused_unknown_name(8), dir.join("chunks.bin.unknown-8"));
         fs::remove_dir_all(dir).unwrap();
     }
 

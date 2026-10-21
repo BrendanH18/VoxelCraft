@@ -760,9 +760,8 @@ impl World {
     /// unsupported sand, gravel and plants fall or pop off.
     pub fn set_block(&mut self, p: IVec3, block: Block) -> bool {
         let old = self.get_block(p);
-        // Removing a waterlogged plant leaves its water source behind.
+        // Removing a block that holds water leaves its source (see `edit`).
         let broken = block == Block::AIR;
-        let block = if broken && old.is_some_and(Block::is_waterlogged) { Block::WATER } else { block };
         let changed = self.edit(p, block, true);
         if changed
             && broken
@@ -780,7 +779,21 @@ impl World {
 
     /// Changes a block and schedules remeshing of every chunk whose geometry
     /// or lighting depends on it (synchronously for geometry if `sync`).
+    /// The cell's water follows Java's fluid states ([`waterlog::carried`]):
+    /// a waterloggable state written over a water source is waterlogged,
+    /// and removing a block that holds water leaves the source.
     pub(crate) fn edit(&mut self, p: IVec3, block: Block, sync: bool) -> bool {
+        let block = match self.get_block(p) {
+            Some(old) => waterlog::carried(old, block),
+            None => block,
+        };
+        self.edit_exact(p, block, sync)
+    }
+
+    /// [`World::edit`] that writes `block` as given, for the changes that
+    /// drop a cell's water: bucket pickup and sponges drying a waterlogged
+    /// block, sponges clearing kelp and seagrass, pistons moving blocks.
+    pub(crate) fn edit_exact(&mut self, p: IVec3, block: Block, sync: bool) -> bool {
         if !self.contains_y(p.y) {
             return false;
         }
@@ -821,7 +834,49 @@ impl World {
         }
         self.extinguish_unsupported_fire(p);
         self.reheight_and_remesh(p, old, block, sync);
+        self.reshape_stairs_beside(p, old, block, sync);
+        // `updateShape` of a waterlogged state schedules a water tick.
+        if block != old && waterlog::wet(block.0) {
+            self.wake_fluids(p);
+        }
+        // Live coral plants without water die on a scheduled tick.
+        if overworld_flora::live_coral_plant(block) {
+            self.schedule_coral_death(p);
+        }
+        if old.holds_water() && !block.holds_water() {
+            for d in [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z] {
+                if self.get_block(p + d).is_some_and(overworld_flora::live_coral_plant) {
+                    self.schedule_coral_death(p + d);
+                }
+            }
+        }
         true
+    }
+
+    /// Java's `StairBlock.updateShape`: stairs beside a changed cell take the
+    /// corner shape their horizontal neighbours give them. A stairs shape
+    /// depends only on which neighbours are stairs and their facing and
+    /// half, so other changes (fluids, waterlogging, a shape change) skip
+    /// the lookups.
+    fn reshape_stairs_beside(&mut self, p: IVec3, old: Block, block: Block, sync: bool) {
+        let key = |b: Block| slab_stair_states::stairs(b).map(|s| (s.facing, s.top));
+        if key(old) == key(block) {
+            return;
+        }
+        for f in block::Facing::ALL {
+            let n = p + f.offset();
+            let Some(stairs) = self.get_block(n).filter(|&b| key(b).is_some()) else { continue };
+            let shaped = slab_stair_states::reshaped(stairs, |d| self.get_block(n + d.offset()));
+            if shaped != stairs {
+                self.edit(n, shaped, sync);
+            }
+        }
+    }
+
+    /// Java's `Block.updateFromNeighbourShapes` for a block set without its
+    /// own placement rules (a piston's moved block): stairs take their shape.
+    pub(crate) fn shaped_by_neighbours(&self, p: IVec3, block: Block) -> Block {
+        slab_stair_states::reshaped(block, |d| self.get_block(p + d.offset()))
     }
 
     /// Keep the column heightmap and skylight current after a cell changed
@@ -1368,7 +1423,7 @@ impl World {
     /// Like [`World::raycast`], with the exact point where the ray meets the
     /// block's outline (Java's `BlockHitResult.getLocation`).
     pub fn raycast_hit(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<BlockHit> {
-        self.raycast_by(origin, dir, max_dist, Block::is_targetable)
+        self.raycast_by(origin, dir, max_dist, Block::is_targetable, false)
     }
 
     /// The selection outline of the block at `p`: min and max corners
@@ -1377,19 +1432,38 @@ impl World {
         let Some(b) = self.get_block(p) else { return ([0.0; 3], [1.0; 3]) };
         let neighbour = |f: block::Facing| self.get_block(p + f.offset()).unwrap_or(Block::AIR);
         let below = self.get_block(p - IVec3::Y).unwrap_or(Block::AIR);
-        shape::outline(b, neighbour, below).bounds().map_or(([0.0; 3], [1.0; 3]), |bx| {
+        let above = shape::Above::read(b, |d| self.get_block(p + d).unwrap_or(Block::AIR));
+        shape::outline_with(b, neighbour, below, above).bounds().map_or(([0.0; 3], [1.0; 3]), |bx| {
             (bx.min.map(|c| f32::from(c) / 16.0), bx.max.map(|c| f32::from(c) / 16.0))
         })
     }
 
-    /// Like [`World::raycast`], but also stops at water and lava sources
-    /// (for buckets).
+    /// Like [`World::raycast`], but also stops at water and lava sources,
+    /// including the water a waterlogged block holds (Java's
+    /// `ClipContext.Fluid.SOURCE_ONLY`, for buckets and bottles).
     pub fn raycast_sources(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<(IVec3, IVec3)> {
-        self.raycast_by(origin, dir, max_dist, |b| b.is_targetable() || b == Block::WATER || b == Block::LAVA)
-            .map(|h| (h.cell, h.normal))
+        self.raycast_by(
+            origin,
+            dir,
+            max_dist,
+            |b| b.is_targetable() || b == Block::WATER || b == Block::LAVA || b.is_waterlogged(),
+            true,
+        )
+        .map(|h| (h.cell, h.normal))
     }
 
-    fn raycast_by(&self, origin: DVec3, dir: DVec3, max_dist: f64, hits: impl Fn(Block) -> bool) -> Option<BlockHit> {
+    /// DDA traversal stopping at the first cell `hits` accepts whose shape
+    /// the ray meets. With `sources`, a waterlogged cell is also met by its
+    /// water's surface (`FlowingFluid.getShape`: a full cell under more
+    /// water, else as high as a source).
+    fn raycast_by(
+        &self,
+        origin: DVec3,
+        dir: DVec3,
+        max_dist: f64,
+        hits: impl Fn(Block) -> bool,
+        sources: bool,
+    ) -> Option<BlockHit> {
         if !origin.is_finite() || !dir.is_finite() || !max_dist.is_finite() || max_dist < 0.0 || dir == DVec3::ZERO {
             return None;
         }
@@ -1423,7 +1497,17 @@ impl World {
                 && hits(b)
                 && cell.y >= self.min_y()
             {
-                let intersection = crate::physics::ray_shape(self, cell, origin, dir);
+                let mut intersection = crate::physics::ray_shape(self, cell, origin, dir);
+                if sources && b.is_waterlogged() {
+                    let full = self.get_block(cell + IVec3::Y).is_some_and(Block::holds_water);
+                    let top = if full { 1.0 } else { 1.0 - Block::WATER.fluid_drop() as f64 / 16.0 };
+                    let lo = cell.as_dvec3();
+                    let water = crate::physics::ray_aabb_face(origin, dir, lo, lo + DVec3::new(1.0, top, 1.0));
+                    intersection = match (intersection, water) {
+                        (Some(a), Some(w)) => Some(if w.0 < a.0 { w } else { a }),
+                        (a, w) => a.or(w),
+                    };
+                }
                 if let Some((hit, face)) = intersection
                     && hit <= max_dist
                 {

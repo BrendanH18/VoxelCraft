@@ -429,10 +429,12 @@ pub const fn double_of(b: Block) -> Option<(Block, bool)> {
     Some((Block(2041 + i / 2 * 2), i % 2 == 1))
 }
 
-/// Blocks that hold a water source in their cell.
+/// Kelp and seagrass: they always hold a water source (Java
+/// `LiquidBlockContainer`s without a `waterlogged` property). Sea pickles
+/// and coral are waterlogged pairs; see `world::waterlog`.
 #[inline]
 pub const fn waterlogged(id: u16) -> bool {
-    matches!(id, 1960..=1968 | 1990..=1994 | 2000..=2004)
+    matches!(id, 1960..=1964)
 }
 
 const fn all(t: u16) -> [u16; 6] {

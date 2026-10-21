@@ -15,21 +15,30 @@ use crate::item::Item;
 /// keeps no age, so heads stop with this chance per growth tick instead.
 const HEAD_STOP: u64 = 26;
 
+/// A live coral plant or fan, with or without water.
+pub(super) fn live_coral_plant(b: Block) -> bool {
+    matches!(ob::coral_of(b.canonical()), Some((1 | 2, _, false)))
+}
+
 impl World {
     /// Re-checks the plants around a changed cell: hanging plants need what
     /// they hang from, wall plants their wall, double plants both halves.
     /// Kelp and cave vines turn into their stem form under more of
     /// themselves and back into a head at the end of the run.
     pub(super) fn update_overworld_plants(&mut self, p: IVec3) {
+        // Waterlogged plants follow their dry originals' rules; `edit` keeps
+        // their water through these changes and leaves it when they go.
         for q in [p, p - IVec3::Y, p + IVec3::Y, p + IVec3::X, p - IVec3::X, p + IVec3::Z, p - IVec3::Z] {
-            let Some(b) = self.get_block(q) else { continue };
+            let Some(b) = self.get_block(q).map(Block::canonical) else { continue };
             if !(ob::FIRST..=ob::LAST).contains(&b.0) && ob::propagule_age(b).is_none() && ob::bud_facing(b).is_none() {
                 continue;
             }
             // Ceiling plants: the whole run below drops when unsupported.
-            if let Some(false) = self.get_block(q + IVec3::Y).and_then(|above| ob::hangs_from(b, above)) {
+            if let Some(false) = self.get_block(q + IVec3::Y).and_then(|above| ob::hangs_from(b, above.canonical())) {
                 let mut at = q;
-                while let Some(h) = self.get_block(at).filter(|h| ob::hangs_from(*h, Block::STONE).is_some()) {
+                while let Some(h) =
+                    self.get_block(at).map(Block::canonical).filter(|h| ob::hangs_from(*h, Block::STONE).is_some())
+                {
                     self.edit(at, Block::AIR, true);
                     self.spill_block(at, h);
                     at -= IVec3::Y;
@@ -37,7 +46,7 @@ impl World {
                 continue;
             }
             if let Some(wall) = ob::wall_of(b)
-                && let Some(false) = self.get_block(q + wall.offset()).and_then(|w| ob::wall_ok(b, w))
+                && let Some(false) = self.get_block(q + wall.offset()).and_then(|w| ob::wall_ok(b, w.canonical()))
             {
                 self.edit(q, Block::AIR, true);
                 self.spill_block(q, b);
@@ -46,7 +55,7 @@ impl World {
             if let Some((lower, upper)) = ob::double_of(b) {
                 let other = if upper { q - IVec3::Y } else { q + IVec3::Y };
                 let partner = Block(if upper { lower.0 } else { lower.0 + 1 });
-                if self.get_block(other).is_some_and(|o| o != partner) {
+                if self.get_block(other).is_some_and(|o| o.canonical() != partner) {
                     self.edit(q, Block::AIR, true);
                     if !upper {
                         self.spill_block(q, b);
@@ -57,7 +66,7 @@ impl World {
             if matches!(b, ob::SMALL_DRIPLEAF_TOP | ob::TALL_SEAGRASS_TOP)
                 && self.get_block(q - IVec3::Y).is_some_and(|below| !b.can_stay_on(below))
             {
-                self.edit(q, if b.is_waterlogged() { Block::WATER } else { Block::AIR }, true);
+                self.edit(q, Block::AIR, true);
                 continue;
             }
             self.fix_stem(q, b);
@@ -75,7 +84,7 @@ impl World {
             ob::BIG_DRIPLEAF | ob::BIG_DRIPLEAF_STEM => (ob::BIG_DRIPLEAF, ob::BIG_DRIPLEAF_STEM, IVec3::Y),
             b if matches!(b.0, 1944..=1947) => {
                 let lit = matches!(b.0, 1945 | 1947);
-                let continues = self.get_block(q - IVec3::Y).is_some_and(|n| matches!(n.0, 1944..=1947));
+                let continues = self.get_block(q - IVec3::Y).is_some_and(|n| matches!(n.canonical().0, 1944..=1947));
                 let want = Block(if continues { 1946 } else { 1944 } + lit as u16);
                 if want != b {
                     self.edit(q, want, true);
@@ -84,16 +93,45 @@ impl World {
             }
             _ => return,
         };
-        let continues = self.get_block(q + grows).is_some_and(|n| n == head || n == stem);
+        let continues = self.get_block(q + grows).map(Block::canonical).is_some_and(|n| n == head || n == stem);
         let want = if continues { stem } else { head };
         if want != b {
             self.edit(q, want, true);
         }
     }
 
+    /// `CoralPlantBlock.tryScheduleDieTick` (plants and fans): a live coral
+    /// at `p` that holds no water and touches none dies 60-99 ticks later
+    /// unless water reaches it first. Called when such a coral is written
+    /// and when a neighbour's water goes.
+    pub(super) fn schedule_coral_death(&mut self, p: IVec3) {
+        if self.get_block(p).is_some_and(|b| live_coral_plant(b) && !self.coral_has_water(p, b)) {
+            let delay = 60 + self.roll() % 40;
+            self.schedule_redstone(p, delay, 0);
+        }
+    }
+
+    /// `CoralPlantBlock.scanForWater`: its own water or water on any side.
+    fn coral_has_water(&self, p: IVec3, b: Block) -> bool {
+        b.is_waterlogged()
+            || [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z]
+                .iter()
+                .any(|&d| self.get_block(p + d).is_some_and(Block::holds_water))
+    }
+
+    /// `CoralPlantBlock.tick`: still without water, it becomes the dry dead coral.
+    pub(super) fn coral_death_tick(&mut self, p: IVec3, b: Block) {
+        if !self.coral_has_water(p, b)
+            && let Some((kind, colour, false)) = ob::coral_of(b.canonical())
+        {
+            self.edit(p, ob::coral(kind, colour, true), true);
+        }
+    }
+
     /// Random-tick growth for this module's plants. Returns whether `b`
     /// belongs here.
     pub(super) fn tick_overworld_flora(&mut self, p: IVec3, b: Block) -> bool {
+        let b = b.canonical();
         match b.0 {
             2160..=2163 => {
                 self.edit(p, ob::hanging_propagule(ob::propagule_age(b).unwrap() + 1), true);
@@ -155,8 +193,9 @@ impl World {
                         Some(Block::AIR) | Some(Block::WATER) => {
                             self.edit(q, ob::amethyst_bud_facing(0, face), true);
                         }
+                        // A wet bud grows too; `edit` keeps its water.
                         Some(bud)
-                            if let Some((size, facing)) = ob::bud_facing(bud)
+                            if let Some((size, facing)) = ob::bud_facing(bud.canonical())
                                 && size < 3
                                 && facing == face =>
                         {
@@ -166,8 +205,9 @@ impl World {
                     }
                 }
             }
-            // Live coral away from water dies.
-            1980..=1984 | 1990..=1994 | 2000..=2004 => {
+            // Live coral blocks away from water die. Plants and fans use
+            // Java's scheduled tick instead (`schedule_coral_death`).
+            1980..=1984 => {
                 let wet = b.is_waterlogged()
                     || [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z]
                         .iter()
@@ -221,6 +261,7 @@ impl World {
 
     /// Bone meal on one of this module's blocks (`None`: not ours).
     pub(super) fn overworld_bone_meal(&mut self, p: IVec3, b: Block) -> Option<bool> {
+        let (real, b) = (b, b.canonical());
         Some(match b.0 {
             2011 if self.get_block(p - IVec3::Y) == Some(Block::AIR) => {
                 self.edit(p - IVec3::Y, ob::hanging_propagule(0), true);
@@ -300,8 +341,9 @@ impl World {
                 }
             }
             // Sea pickles on coral spread more pickles around them.
+            // Dry pickles are dead (`SeaPickleBlock.isDead`) and don't grow.
             1965..=1968 => {
-                if let Some(n) = ob::pickle_count(b).filter(|&n| n < 4) {
+                if let Some(n) = ob::pickle_count(b).filter(|&n| n < 4 && real.is_waterlogged()) {
                     self.edit(p, ob::sea_pickles(n + 1), true);
                     true
                 } else {
@@ -449,10 +491,13 @@ impl World {
     /// Whether a block placed into `at` against `normal` stays: hanging
     /// plants need a ceiling, wall plants a wall, waterlogged plants water.
     pub fn overworld_placement_ok(&self, at: IVec3, block: Block) -> Option<bool> {
+        let block = block.canonical();
         if !(ob::FIRST..=ob::LAST).contains(&block.0) && ob::bud_facing(block).is_none() {
             return None;
         }
-        if block.is_waterlogged() && self.get_block(at) != Some(Block::WATER) {
+        // Kelp and seagrass need a water source (`KelpBlock`/`SeagrassBlock`
+        // `getStateForPlacement`); sea pickles and coral may stand dry.
+        if ob::waterlogged(block.0) && self.get_block(at) != Some(Block::WATER) {
             return Some(false);
         }
         if let Some(above) = self.get_block(at + IVec3::Y)
@@ -475,7 +520,7 @@ impl World {
     /// Prepares placing one of this module's blocks at `at`: the upper half
     /// of a double plant goes on top first, so the lower half finds it.
     pub fn before_overworld_place(&mut self, at: IVec3, block: Block) {
-        if let Some((lower, false)) = ob::double_of(block) {
+        if let Some((lower, false)) = ob::double_of(block.canonical()) {
             self.edit(at + IVec3::Y, Block(lower.0 + 1), true);
         }
         if block == ob::TALL_SEAGRASS {

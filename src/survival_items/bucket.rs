@@ -11,7 +11,7 @@ use crate::{
     player::Player,
     potion::Potion,
     rules::GameMode,
-    world::{World, block::Block, terrain::Dimension},
+    world::{World, block::Block, terrain::Dimension, waterlog},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -107,20 +107,21 @@ pub fn use_bucket(
         return None;
     }
     match held {
-        Item::BUCKET | Item::GLASS_BOTTLE => {
+        Item::GLASS_BOTTLE => {
+            // `BottleItem.use`: any water source fills it, including the
+            // water a waterlogged block holds; the water stays.
             let (at, _) = world.raycast_sources(eye, dir, reach)?;
-            let fluid = world.get_block(at)?;
-            let result = match (held, fluid) {
-                (Item::BUCKET, Block::WATER) => Item::WATER_BUCKET,
-                (Item::BUCKET, Block::LAVA) => Item::LAVA_BUCKET,
-                (Item::GLASS_BOTTLE, Block::WATER) => Item::potion(Potion::WATER),
-                _ => return None,
-            };
-            if held == Item::BUCKET {
-                world.set_block(at, Block::AIR);
+            if !waterlog::holds_source(world.get_block(at)?) {
+                return None;
             }
+            super::exchange(inventory, slot, Item::potion(Potion::WATER), creative, entities, player);
+            Some(Effect::BottleFilled { at })
+        }
+        Item::BUCKET => {
+            let (at, _) = world.raycast_sources(eye, dir, reach)?;
+            let (result, fluid) = pick_up(world, at)?;
             super::exchange(inventory, slot, result, creative, entities, player);
-            Some(if held == Item::BUCKET { Effect::Filled { at, fluid } } else { Effect::BottleFilled { at } })
+            Some(Effect::Filled { at, fluid })
         }
         Item::WATER_BUCKET | Item::LAVA_BUCKET => {
             let fluid = if held == Item::WATER_BUCKET { Block::WATER } else { Block::LAVA };
@@ -150,11 +151,26 @@ pub fn use_bucket(
     }
 }
 
-/// VoxelCraft's Java `LiquidBlockContainer` blocks: kelp, seagrass, sea
-/// pickles and live coral, all of which always hold water here, so Java's
-/// `canPlaceLiquid` is false and `placeLiquid` changes nothing.
-fn holds_poured_water(b: Block) -> bool {
-    b.is_waterlogged()
+/// `BucketPickup.pickupBlock` for the block at `at`: a water or lava source
+/// becomes air (`LiquidBlock`), a waterlogged block gives up its water
+/// (`SimpleWaterloggedBlock`). Returns the filled bucket and the fluid taken.
+/// Kelp, seagrass and flowing fluid can't be picked up.
+pub fn pick_up(world: &mut World, at: IVec3) -> Option<(Item, Block)> {
+    match world.get_block(at)? {
+        Block::WATER => {
+            world.set_block(at, Block::AIR);
+            Some((Item::WATER_BUCKET, Block::WATER))
+        }
+        Block::LAVA => {
+            world.set_block(at, Block::AIR);
+            Some((Item::LAVA_BUCKET, Block::LAVA))
+        }
+        b if waterlog::wet(b.0) => {
+            world.drain_waterlogged(at);
+            Some((Item::WATER_BUCKET, Block::WATER))
+        }
+        _ => None,
+    }
 }
 
 /// `BucketItem.use` with a raycast that ignores fluids (`ClipContext.Fluid.NONE`).
@@ -164,32 +180,48 @@ fn pour(world: &mut World, eye: DVec3, dir: DVec3, reach: f64, fluid: Block, sne
 }
 
 /// Java `BucketItem.use` target choice and `emptyContents` for a block hit
-/// at `hit` through the face `normal`. Water targets a water-holding hit block
-/// in place; otherwise the cell on the hit face. An unplaceable first choice
-/// (or sneaking at a water holder) retries the hit face. A replaceable or
-/// non-solid, non-fluid block there is destroyed with its drops first.
+/// at `hit` through the face `normal`. Water goes into the hit block itself
+/// when it is a `LiquidBlockContainer` (a waterloggable block, kelp or
+/// seagrass); otherwise into the cell on the hit face. A first choice that
+/// can't take the fluid (or a sneaking click on one that could) retries the
+/// hit face.
 pub fn empty_contents(world: &mut World, hit: IVec3, normal: IVec3, fluid: Block, sneaking: bool) -> Option<Effect> {
+    let first =
+        if fluid == Block::WATER && waterlog::liquid_container(world.get_block(hit)?) { hit } else { hit + normal };
+    empty_at(world, first, fluid, Some((hit + normal, sneaking)))
+}
+
+/// Java `BucketItem.emptyContents` at `at`. `retry` is the hit-face cell
+/// and whether the player sneaks, for a player's click (`hitResult`); a
+/// dispenser passes `None`.
+///
+/// The fluid goes in when the cell is air, or when it can take it (a
+/// non-solid or replaceable block, or water into a waterloggable block)
+/// and the player isn't sneaking. Water evaporates in the Nether, fills a
+/// waterloggable block (`placeLiquid`; a full one, kelp and seagrass take
+/// the bucket without change), and otherwise replaces the block, which
+/// drops its loot first.
+pub fn empty_at(world: &mut World, at: IVec3, fluid: Block, retry: Option<(IVec3, bool)>) -> Option<Effect> {
     let water = fluid == Block::WATER;
-    let face = hit + normal;
-    let first = if water && holds_poured_water(world.get_block(hit)?) { hit } else { face };
-    let placeable = |world: &World, at: IVec3, from_hit: bool| {
-        world.get_block(at).is_some_and(|b| b == Block::AIR || (b.fluid_replaceable() && !(sneaking && from_hit)))
-    };
-    let at = if placeable(world, first, true) {
-        first
-    } else if placeable(world, face, false) {
-        face
-    } else {
-        return None;
-    };
+    let old = world.get_block(at)?;
+    let may_replace = old.fluid_replaceable();
+    // `canPlaceLiquid`: a waterloggable block takes water; kelp and seagrass take nothing.
+    let place_liquid = may_replace || (water && old.waterloggable());
+    let sneaking = retry.is_some_and(|(_, sneaking)| sneaking);
+    if !(old == Block::AIR || (place_liquid && !sneaking)) {
+        return match retry {
+            Some((face, _)) => empty_at(world, face, fluid, None),
+            None => None,
+        };
+    }
     if water && world.generator.dimension == Dimension::Nether {
         return Some(Effect::Evaporated { at });
     }
-    let old = world.get_block(at)?;
-    if water && holds_poured_water(old) {
+    if water && waterlog::liquid_container(old) {
+        world.fill_waterlogged(at);
         return Some(Effect::Poured { at, fluid });
     }
-    if old != Block::AIR && !old.is_fluid() {
+    if may_replace && old != Block::AIR && !old.is_fluid() {
         // `Level.destroyBlock(pos, true)`: the replaced block drops its loot.
         world.spill_block(at, old);
     }

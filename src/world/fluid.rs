@@ -19,12 +19,18 @@
 //! - Plants and torches in the way are washed away.
 //! - Lava touching water hardens: a source into obsidian, flowing lava into
 //!   cobblestone; lava pouring onto water turns the water into stone.
+//! - Waterlogged blocks are water sources that stay put. Fluid moves into or
+//!   out of a waterloggable block only through a face its collision shape
+//!   leaves open (`FlowingFluid.canPassThroughWall`). Flowing water never
+//!   waterlogs a block; one with water sources on two sides and a solid or
+//!   source floor becomes waterlogged, as Java's source conversion makes it.
 
 use glam::IVec3;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::World;
 use super::block::{Block, Fluid};
+use super::waterlog;
 
 const TICK: f64 = 0.25;
 /// Lava moves once every this many water ticks (1.5 s, like Minecraft).
@@ -169,10 +175,15 @@ impl World {
     }
 
     /// Fluid can fall from `p` if the cell below is air, a plant, or weaker
-    /// flowing fluid of the same kind.
+    /// flowing fluid of the same kind, and no shape closes the face between.
     fn can_fall(&self, p: IVec3, fluid: Fluid) -> bool {
         let below = self.cell(p - IVec3::Y);
-        below == Block::AIR || is_flowing(below, fluid) || washes_away(below)
+        (below == Block::AIR || is_flowing(below, fluid) || washes_away(below)) && self.passes(p, IVec3::NEG_Y)
+    }
+
+    /// Fluid can cross from `p` to `p + o` ([`waterlog::flow_passes`]).
+    fn passes(&self, p: IVec3, o: IVec3) -> bool {
+        waterlog::flow_passes(|q| self.get_block(q), p, o)
     }
 
     /// The level the fluid `b` at `p` pushes into its horizontal neighbours,
@@ -182,7 +193,7 @@ impl World {
         if b.fluid() != Some(fluid) || self.can_fall(p, fluid) {
             return None;
         }
-        if b != fluid.source() && self.cell(p - IVec3::Y).fluid() == Some(fluid) {
+        if b != fluid.source() && self.cell(p - IVec3::Y).fluid() == Some(fluid) && self.passes(p, IVec3::NEG_Y) {
             return None;
         }
         let level = b.fluid_level()? + 1;
@@ -191,8 +202,9 @@ impl World {
 
     fn fluid_step(&self, p: IVec3, fluid: Fluid, changes: &mut FxHashMap<IVec3, Block>) {
         // Waterlogged plants spread their water like a source but stay put.
-        if self.get_block(p).is_none() {
-            return;
+        let Some(real) = self.get_block(p) else { return };
+        if fluid == Fluid::Water && real.waterloggable() && !real.is_waterlogged() {
+            return self.waterlog_by_sources(p, real, changes);
         }
         let b = self.cell(p);
         if b.fluid() != Some(fluid) {
@@ -206,7 +218,9 @@ impl World {
                 Self::propose(changes, p, if b == source { Block::OBSIDIAN } else { Block::COBBLESTONE });
                 return;
             }
-            if self.cell(p - IVec3::Y).is_water() {
+            // `LavaFluid.spreadTo` only hardens a water block, not the
+            // water a waterlogged block holds.
+            if self.get_block(p - IVec3::Y).is_some_and(Block::is_water) {
                 Self::propose(changes, p - IVec3::Y, Block::STONE);
                 return;
             }
@@ -216,13 +230,16 @@ impl World {
         let mut state = b;
         if b != source {
             let above = self.cell(p + IVec3::Y);
-            let new = if above.fluid() == Some(fluid) {
+            let new = if above.fluid() == Some(fluid) && self.passes(p, IVec3::Y) {
                 fluid.falling()
             } else {
                 let mut sources = 0;
                 let mut best: Option<u8> = None;
                 for o in HORIZONTAL {
                     let n = self.cell(p + o);
+                    if !self.passes(p, o) {
+                        continue;
+                    }
                     if n == source {
                         sources += 1;
                     }
@@ -263,13 +280,28 @@ impl World {
             let n = self.cell(q);
             n == Block::AIR || washes_away(n) || (is_flowing(n, fluid) && n.fluid_level().unwrap() > level)
         };
-        let dirs: Vec<IVec3> = HORIZONTAL.into_iter().filter(|&o| open(p + o)).collect();
+        let dirs: Vec<IVec3> = HORIZONTAL.into_iter().filter(|&o| open(p + o) && self.passes(p, o)).collect();
         let preferred = if dirs.len() > 1 { self.directions_to_drop(p, fluid) } else { 0 };
         for (i, o) in HORIZONTAL.iter().enumerate() {
             let chosen = if preferred == 0 { dirs.contains(o) } else { preferred & (1 << i) != 0 };
-            if chosen && open(p + *o) {
+            if chosen && dirs.contains(o) {
                 Self::propose(changes, p + *o, target);
             }
+        }
+    }
+
+    /// `FlowingFluid.getNewLiquid` at a dry waterloggable block `real` at
+    /// `p`: two water sources beside it (through open faces) over a solid or
+    /// source floor make a source, which `placeLiquid` takes as its water.
+    /// Anything less is flowing water, which it refuses.
+    fn waterlog_by_sources(&self, p: IVec3, real: Block, changes: &mut FxHashMap<IVec3, Block>) {
+        if !self.rules.water_source_conversion {
+            return;
+        }
+        let sources = HORIZONTAL.into_iter().filter(|&o| self.cell(p + o) == Block::WATER && self.passes(p, o)).count();
+        let floor = self.cell(p - IVec3::Y);
+        if sources >= 2 && (floor == Block::WATER || !floor.is_replaceable()) {
+            Self::propose(changes, p, real.with_water(true));
         }
     }
 
@@ -290,7 +322,7 @@ impl World {
         let mut frontier: Vec<IVec3> = Vec::with_capacity(16);
         for (i, &o) in HORIZONTAL.iter().enumerate() {
             let q = p + o;
-            if self.cell(q).is_replaceable() || washes_away(self.cell(q)) {
+            if (self.cell(q).is_replaceable() || washes_away(self.cell(q))) && self.passes(p, o) {
                 dist[slot(q)] = 1;
                 first[slot(q)] = 1 << i;
                 frontier.push(q);

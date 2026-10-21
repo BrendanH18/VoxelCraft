@@ -15,20 +15,14 @@ enum Drain {
     /// Kelp and seagrass: dropped as items, then air.
     Plant,
     /// A `BucketPickup` waterlogged block keeps its block and loses its water.
-    /// The engine's only such states are live coral plants and fans.
-    Coral,
-    /// Not drained: the traversal does not continue through it.
-    Skip,
+    Pickup,
 }
 
 fn drain(b: Block) -> Drain {
     match b {
         b if b.is_water() => Drain::Liquid,
-        b if matches!(b.0, 1960..=1964) => Drain::Plant,
-        b if matches!(b.0, 1990..=1994 | 2000..=2004) => Drain::Coral,
-        // Sea pickles are `BucketPickup` in Java, but VoxelCraft has no
-        // unwaterlogged pickle state to leave behind; they keep their water.
-        _ => Drain::Skip,
+        b if super::waterlog::wet(b.0) => Drain::Pickup,
+        _ => Drain::Plant,
     }
 }
 
@@ -51,7 +45,6 @@ impl World {
         let mut seen = FxHashSet::default();
         seen.insert(origin);
         let mut removed = Vec::with_capacity(64);
-        let mut coral = Vec::new();
         while let Some((p, depth)) = queue.pop_front() {
             if depth == 6 {
                 continue;
@@ -63,15 +56,17 @@ impl World {
                 }
                 let Some(b) = self.get_block(q).filter(|b| b.holds_water()) else { continue };
                 match drain(b) {
-                    Drain::Skip => continue,
                     Drain::Liquid => {
                         self.edit(q, Block::AIR, true);
                     }
+                    // `setBlockAndUpdate(pos, AIR)`: the plant's water goes too.
                     Drain::Plant => {
                         self.spill_block(q, b);
-                        self.edit(q, Block::AIR, true);
+                        self.edit_exact(q, Block::AIR, true);
                     }
-                    Drain::Coral => coral.push((q, b)),
+                    Drain::Pickup => {
+                        self.drain_waterlogged(q);
+                    }
                 }
                 removed.push(q);
                 queue.push_back((q, depth + 1));
@@ -81,18 +76,6 @@ impl World {
             }
             if removed.len() == 64 {
                 break;
-            }
-        }
-        // A drained live coral is left without water. VoxelCraft has no dry
-        // live coral state, so it takes Java's eventual result: it dies unless
-        // water still touches it (Java waits 60-100 ticks before dying).
-        let drained: FxHashSet<IVec3> = coral.iter().map(|&(q, _)| q).collect();
-        for &(q, b) in &coral {
-            let wet = DIRECTIONS
-                .iter()
-                .any(|&d| !drained.contains(&(q + d)) && self.get_block(q + d).is_some_and(Block::holds_water));
-            if !wet && let Some((kind, colour, _)) = ob::coral_of(b) {
-                self.edit(q, ob::coral(kind, colour, true), true);
             }
         }
         if !removed.is_empty() {
