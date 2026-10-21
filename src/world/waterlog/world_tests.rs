@@ -218,3 +218,74 @@ fn a_waterlogged_chest_lets_its_water_out_through_its_inset_sides() {
     water_ticks(&mut w, 6);
     assert!(w.get_block(P + IVec3::X).is_some_and(Block::is_water));
 }
+
+#[test]
+fn a_bucket_emptied_into_a_wet_block_changes_nothing_like_java() {
+    let mut w = world();
+    let wet = Block::OAK_FENCE.with_water(true);
+    w.set_block(P, wet);
+    // `canPlaceLiquid` ignores the waterlogged state and `placeLiquid` then
+    // does nothing; `BucketItem.emptyContents` still reports success.
+    assert_eq!(
+        bucket::empty_contents(&mut w, P, IVec3::Y, Block::WATER, false),
+        Some(Effect::Poured { at: P, fluid: Block::WATER })
+    );
+    assert_eq!(w.get_block(P), Some(wet));
+    assert_eq!(w.get_block(P + IVec3::Y), Some(Block::AIR));
+}
+
+#[test]
+fn a_wet_rail_keeps_its_water_through_shape_changes() {
+    use crate::world::block::RailShape;
+    let wet = Block::rail(RailShape::NorthSouth).with_water(true);
+    assert_eq!(crate::world::rails::with_shape(wet, RailShape::NorthSouth), wet);
+    assert_eq!(
+        crate::world::rails::with_shape(wet, RailShape::EastWest),
+        Block::rail(RailShape::EastWest).with_water(true)
+    );
+}
+
+#[test]
+fn flowing_fluids_leave_dry_waterloggable_plants_alone() {
+    let dead_fan = ob::coral(2, 0, true);
+    assert!(dead_fan.kind() == crate::world::block::RenderKind::Cross && dead_fan.waterloggable());
+    for fluid in [Block::WATER, Block::LAVA] {
+        let mut w = world();
+        w.set_block(P + IVec3::X, dead_fan);
+        w.set_block(P, fluid);
+        water_ticks(&mut w, 40);
+        assert_eq!(w.get_block(P + IVec3::X), Some(dead_fan), "{}", fluid.name());
+    }
+}
+
+#[test]
+fn a_pending_coral_death_survives_save_and_reload() {
+    let dry = ob::coral(2, 0, false).with_water(false);
+    let mut w = world();
+    w.set_block(P, dry);
+    let saved = w.redstone_to_string();
+    w.load_redstone(&saved);
+    for _ in 0..110 {
+        w.tick_redstone();
+    }
+    assert_eq!(w.get_block(P), Some(ob::coral(2, 0, true)));
+}
+
+#[test]
+fn water_beside_dry_hanging_roots_still_spreads_the_other_ways() {
+    // A source on stone, dry hanging roots east over a hole: Java's
+    // `getSpread` can't route through the roots, so the other sides fill.
+    let roots = Block(1949);
+    assert!(roots.waterloggable() && !roots.is_waterlogged() && roots.is_replaceable());
+    let mut w = world();
+    let east = P + IVec3::X;
+    w.set_block(east + IVec3::Y, Block::STONE);
+    w.set_block(east, roots);
+    w.set_block(east - IVec3::Y, Block::AIR);
+    w.set_block(P, Block::WATER);
+    water_ticks(&mut w, 8);
+    assert_eq!(w.get_block(east), Some(roots));
+    for d in [IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z] {
+        assert!(w.get_block(P + d).is_some_and(Block::is_water), "{d}");
+    }
+}

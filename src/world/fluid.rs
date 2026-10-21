@@ -63,9 +63,19 @@ fn strength(b: Block) -> u8 {
     }
 }
 
-/// Plants and torches: water flows into them and destroys them.
+/// Plants and torches: flowing fluid moves into them and destroys them.
+/// Waterloggable ones are `LiquidBlockContainer`s that neither fluid
+/// destroys (`FlowingFluid.spreadTo` hands water to `placeLiquid`, which
+/// ignores flowing water; `canPlaceLiquid` refuses lava).
 fn washes_away(b: Block) -> bool {
-    b.kind() == super::block::RenderKind::Cross && !b.is_waterlogged()
+    b.kind() == super::block::RenderKind::Cross && !b.is_waterlogged() && !b.waterloggable()
+}
+
+/// A cell the drop search may cross: open, or a plant flowing fluid
+/// destroys. A dry waterloggable block can't hold flowing fluid
+/// (`canHoldSpecificFluid`), so `getSpread` never routes through it.
+fn enterable(b: Block) -> bool {
+    (b.is_replaceable() || washes_away(b)) && !b.waterloggable()
 }
 
 /// Flowing (not source, not falling) fluid of the given kind.
@@ -322,7 +332,7 @@ impl World {
         let mut frontier: Vec<IVec3> = Vec::with_capacity(16);
         for (i, &o) in HORIZONTAL.iter().enumerate() {
             let q = p + o;
-            if (self.cell(q).is_replaceable() || washes_away(self.cell(q))) && self.passes(p, o) {
+            if enterable(self.cell(q)) && self.passes(p, o) {
                 dist[slot(q)] = 1;
                 first[slot(q)] = 1 << i;
                 frontier.push(q);
@@ -342,7 +352,7 @@ impl World {
                     }
                     let si = slot(n);
                     if dist[si] == u8::MAX {
-                        if !(self.cell(n).is_replaceable() || washes_away(self.cell(n))) {
+                        if !enterable(self.cell(n)) {
                             dist[si] = 0;
                             continue;
                         }

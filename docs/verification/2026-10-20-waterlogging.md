@@ -96,8 +96,9 @@ pre-v0.9 baseline, four alternating runs each on the M5 MacBook Pro:
 ## Checks
 
 - `cargo fmt`, `cargo clippy --release --all-targets -- -D warnings` and
-  `cargo test --release` pass (1,418 tests), as do the headless
-  (`--no-default-features`) clippy and tests (1,326).
+  `cargo test --release` pass on the tested commit
+  `abbda8fa5c4e3abeb418746d3e08ea4f64c07498` (1,422 tests), as do the headless
+  (`--no-default-features`) clippy and tests (1,330).
 - [`waterlog/world_tests.rs`](../../src/world/waterlog/world_tests.rs) covers:
   - blocks placed into water holding it and leaving it when broken;
   - buckets filling and draining, with lava doing neither;
@@ -109,6 +110,16 @@ pre-v0.9 baseline, four alternating runs each on the M5 MacBook Pro:
   - partner properties: fire odds and light differ, nothing else;
   - fence and wall connections to sturdy faces, leaves excluded, and the
     wall post and tall sides for open, fence-capped and roofed walls.
+- PR #40 review fixes, each with a world test:
+  - a wet rail keeps its water through shape changes;
+  - flowing water and lava leave dry waterloggable plants alone, and the
+    drop search doesn't route through them (`canHoldSpecificFluid`), so
+    water beside them still spreads the other ways;
+  - a pending coral death survives save and reload.
+
+  A bucket emptied into an already waterlogged block changes nothing and
+  still empties, as in Java (`canPlaceLiquid` ignores the waterlogged
+  state); a test pins that down.
 - The module's own tests cover the pair layout, symmetry and registration.
   Existing tests were updated where the new rules are Java's:
   - water poured into a rail waterlogs it instead of breaking it;

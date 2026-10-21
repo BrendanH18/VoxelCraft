@@ -205,7 +205,9 @@ pub fn empty_at(world: &mut World, at: IVec3, fluid: Block, retry: Option<(IVec3
     let water = fluid == Block::WATER;
     let old = world.get_block(at)?;
     let may_replace = old.fluid_replaceable();
-    // `canPlaceLiquid`: a waterloggable block takes water; kelp and seagrass take nothing.
+    // `canPlaceLiquid`: a waterloggable block takes water, wet or dry (a wet
+    // one's `placeLiquid` then changes nothing, and the bucket still empties,
+    // as in Java); kelp and seagrass take nothing.
     let place_liquid = may_replace || (water && old.waterloggable());
     let sneaking = retry.is_some_and(|(_, sneaking)| sneaking);
     if !(old == Block::AIR || (place_liquid && !sneaking)) {

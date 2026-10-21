@@ -37,7 +37,8 @@ option (a) of the [assessment](2026-10-17-registry-capacity.md).
 
 - `cargo fmt`, `cargo clippy --release --all-targets -- -D warnings` and
   `cargo test --release` pass. So do the headless (`--no-default-features`)
-  clippy and tests (1,282); the desktop tests number 1,374.
+  clippy and tests (1,284); the desktop tests number 1,376. Tested
+  commit: `e050344e2940baac4c584b9a6dde93b299c67091`.
 - New storage cases: a state at `STATE_CAPACITY - 1` round-trips through a
   `VXC3` file; a save whose states are all below 4096 is written as `VXC2`;
   a `VXC2` file holding 4095 loads unchanged; state 16,384 is rejected as

@@ -1024,7 +1024,11 @@ impl World {
                 ("t", &[delay, priority, seq, family])
                     if delay >= 0
                         && seq >= 0
-                        && ((1100..=1599).contains(&family) || matches!(family, 226 | 249 | 904))
+                        && ((1100..=1599).contains(&family)
+                            || matches!(family, 226 | 249 | 904)
+                            // A pending coral death (`CoralPlantBlock.tryScheduleDieTick`).
+                            || u16::try_from(family)
+                                .is_ok_and(|f| super::overworld_flora::live_coral_plant(Block(f))))
                         && (-3..=0).contains(&priority) =>
                 {
                     let due = tick.saturating_add(delay as u64);

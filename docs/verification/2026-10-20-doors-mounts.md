@@ -69,8 +69,9 @@ Other ids in 7680–8191 stay unregistered.
 ## Checks
 
 - `cargo fmt`, `cargo clippy --release --all-targets -- -D warnings` and
-  `cargo test --release` pass (1,408 tests), as do the headless
-  (`--no-default-features`) clippy and tests (1,316).
+  `cargo test --release` pass on the tested commit
+  `abbda8fa5c4e3abeb418746d3e08ea4f64c07498` (1,422 tests), as do the headless
+  (`--no-default-features`) clippy and tests (1,330).
 - Unit tests in [`mount_states/tests.rs`](../../src/world/mount_states/tests.rs):
   - every new id is registered, and the old ones keep their meaning;
   - right-hinge doors share their twin's properties;

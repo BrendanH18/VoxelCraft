@@ -65,13 +65,16 @@ pub fn is_powered(b: Block) -> bool {
 }
 
 /// The same rail with another shape (curves become north_south for straight kinds).
+/// A wet rail stays wet, so an unchanged shape compares equal.
 pub fn with_shape(b: Block, shape: RailShape) -> Block {
+    let wet = b.is_waterlogged();
     let b = Block(super::waterlog::canonical(b.0));
-    match kind(b) {
+    let out = match kind(b) {
         Some(RailKind::Plain) => Block::rail(shape),
         Some(k) => special(k, if shape as u16 > 5 { RailShape::NorthSouth } else { shape }, is_powered(b)),
         None => b,
-    }
+    };
+    out.with_water(wet)
 }
 
 pub fn with_power(b: Block, powered: bool) -> Block {

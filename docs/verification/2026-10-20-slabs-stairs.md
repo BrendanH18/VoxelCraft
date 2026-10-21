@@ -85,8 +85,9 @@ only) and this change four times each on the M5 MacBook Pro:
 ## Checks
 
 - `cargo fmt`, `cargo clippy --release --all-targets -- -D warnings` and
-  `cargo test --release` pass (1,394 tests), as do the headless
-  (`--no-default-features`) clippy and tests (1,302).
+  `cargo test --release` pass on the tested commit
+  `abbda8fa5c4e3abeb418746d3e08ea4f64c07498` (1,422 tests), as do the headless
+  (`--no-default-features`) clippy and tests (1,330).
 - Unit tests: every state decodes and round-trips; existing ids keep their
   meaning; `getStairsShape` gives the expected shape for every facing and
   half, with neighbours behind and in front turned either way, parallel
