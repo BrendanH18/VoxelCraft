@@ -38,8 +38,8 @@ Choose your download:
 
 ### Spawning
 
-- Every mob category (monsters, animals, water and ambient mobs) spawns from
-  Java 26.3's biome spawn lists and caps, counted around each player. Swamp
+- Monsters, animals and water mobs spawn from Java 26.3's biome spawn lists
+  and caps, counted around each player. Swamp
   huts, ocean monuments, pillager outposts and Nether fortresses spawn their
   own mobs.
 - New chunks get their one-time herds of animals, with shared pack coats and
@@ -82,6 +82,8 @@ Choose your download:
   been tested between processes on one computer, not yet across Windows, Mac
   and Linux machines on a real network.
 - Undead horses aren't in yet (they need lightning, which isn't in yet either).
+- Bats, frogs, polar bears and some other mobs aren't in yet, so nothing spawns
+  in the ambient category.
 - Surface terrain has no overhangs or floating islands, and there is no deep
   dark, ancient city, glow lichen or cave spring yet.
 - Buried treasure isn't generated, so there's no way to find the heart of the
