@@ -1,9 +1,9 @@
-VoxelCraft 0.7.0 is about company and correctness. Open your world to LAN and
-play with friends on the same network, tame and breed animals, saddle up horses,
-camels and pigs, load llamas with chests, and sail boats across the sea. This
-release also fixes more than ninety places where existing features behaved
-differently from Minecraft Java Edition 26.3, from combat timing to cave
-lighting, villagers and redstone.
+VoxelCraft 0.8.0 is about foundations. Mobs now find their way around the
+world like Java's do, walking, swimming, flying and climbing along real paths
+instead of heading straight at their goal. Natural spawning follows Java 26.3's
+mob categories and biome spawn lists, light respects slabs and stairs, and a
+new simulation distance setting keeps the world ticking around you. Death and
+respawn, game rules, difficulty, absorption and knockback now match Java too.
 
 VoxelCraft is an unofficial fan project, inspired by Minecraft Java Edition. It
 is not affiliated with or endorsed by Mojang Studios or Microsoft, and it
@@ -11,119 +11,68 @@ contains no Minecraft code or assets.
 
 Choose your download:
 
-- **Windows 10/11 x64:** `VoxelCraft-0.7.0-windows-x64-Setup.exe`
-- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.7.0-macos-apple-silicon.dmg`
+- **Windows 10/11 x64:** `VoxelCraft-0.8.0-windows-x64-Setup.exe`
+- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.8.0-macos-apple-silicon.dmg`
 
-## What's new since 0.6.0
+## What's new since 0.7.0
 
-### Open to LAN
+### Mobs that find their way
 
-- **Host from the pause menu:** Esc → Open to LAN, pick the game mode for
-  joining players, Allow Cheats and PvP, then Start LAN World. Your world keeps
-  running while your menus are open.
-- **Join from the title screen:** Multiplayer lists games found on your
-  network, or type an address into Direct Connect. Each computer keeps a local
-  profile name, and rejoining with it brings back your inventory, position and
-  bed.
-- Players share the host's world and everything in it: mining and building,
-  every screen (chests, furnaces, crafting, brewing, enchanting, anvils,
-  grindstones, smithing, villager trading, and boat, minecart and mount
-  storage), mobs, items, damage and death, sleeping and riding. You see each
-  other's names, swings and mining cracks and hear each other's footsteps and
-  fights. View distance follows each player's setting, up to 256 blocks.
-- Chat with <kbd>T</kbd> and see who's on with <kbd>Tab</kbd>. The host can
-  `/kick`, turn `/pvp` on or off (with Java's criticals, sweeps, enchantments
-  and arrows) and `/save-all`. When the host goes through a portal, everyone
-  follows.
-- Save and Quit saves everyone and sends them back to the title screen.
-- A world can only be open in one VoxelCraft window at a time.
+- **Pathfinding:** mobs plan routes with Java 26.3's pathfinder, with each
+  mob's step height, fall limit and path costs. Monsters chase you around
+  walls, villagers open the doors on their way, and tempted, breeding, leashed
+  and following animals walk to you instead of getting stuck.
+- **Swimmers and fliers:** fish (in schools that follow a leader), dolphins,
+  guardians, drowned, turtles, squid, axolotls, parrots, ghasts and blazes
+  move with Java's swim, amphibious and fly navigation and move controls.
+  Spiders keep climbing walls toward you, and idle drowned sink.
+- **Striders** walk along lava paths, head back to lava when they're ashore,
+  and stand in lava as they do in Java.
+- **Dolphins** swim with players and give Dolphin's Grace, lead you to ocean
+  ruins and shipwrecks when fed fish, fetch and toss items, leap, follow
+  boats, avoid guardians and gang up on attackers.
+- **Turtles** travel, return to their home beach, lay eggs and head back to
+  the water, as in Java.
+- Elder guardians stay near their monument; blazes alert each other when one
+  is hit; ghasts and blazes fire at Java's cadence.
 
-### Tame and breed
+### Spawning
 
-- **Breeding:** feed two adults their favourite food and a baby appears, with
-  hearts and a little experience. Cows, sheep, pigs, chickens, cats, wolves,
-  foxes, rabbits, goats, horses, donkeys, llamas, camels, hoglins, striders,
-  turtles and axolotls all breed. Feeding babies helps them grow up.
-- Sheep regrow wool by eating grass and mix their colours in their lambs;
-  chickens lay eggs, and a thrown egg sometimes hatches a chick.
-- Turtles return to their home beach to lay eggs, which crack and hatch.
-- **Wolves** (bones), **cats** (raw fish) and **parrots** (seeds) can be tamed.
-  They sit and follow, wolves fight for you and wear dyeable collars, cats
-  scare creepers and bring morning gifts, and parrots ride on your shoulder
-  and mimic nearby monsters.
-- **New animals:** wolves, foxes (sleep by day, steal items), parrots,
-  rabbits and goats (watch out for rams).
-- **Leads** (five string make two, as in Java 26.3) walk animals around and tie
-  them to fences. **Name tags**, renamed at an anvil, name a mob and keep it from
-  despawning.
+- Monsters, animals and water mobs spawn from Java 26.3's biome spawn lists
+  and caps, counted around each player. Swamp
+  huts, ocean monuments, pillager outposts and Nether fortresses spawn their
+  own mobs.
+- New chunks get their one-time herds of animals, with shared pack coats and
+  colours and Java's chance of babies. Monsters despawn when you move far away,
+  as in Java.
 
-### Ride
+### World and settings
 
-- **Boats and chest boats** for every wood, and bamboo rafts. Boats seat two
-  (chest boats one, plus 27 stacks of storage), and ice is fast.
-- **Horses, donkeys and mules** with Java's random health, speed and jump.
-  Tame them by riding until they accept you, then saddle and steer; hold jump
-  to charge a leap. Horse armor, and chests for donkeys and mules.
-- **Llamas** in mountains and savannas carry chests sized by their strength,
-  wear carpets, spit at whoever hits them (and at wolves), and follow a led
-  llama in a caravan.
-- **Camels** live in desert villages: saddle one to ride two players at once,
-  dash forward, and step over 1.5-block ledges.
-- **Pigs and striders** take a saddle; steer them with a carrot or warped
-  fungus on a stick.
-
-### New items
-
-Boats and chest boats, saddle, carrot and warped fungus on a stick, leather,
-iron, golden and diamond horse armor, golden carrot, lead, name tag, raw and
-cooked rabbit, rabbit stew, rabbit hide and foot, raw and cooked mutton,
-cookie, goat horns, and melon and beetroot seeds. Saddles, name tags and horse
-armor turn up in dungeon, temple and fortress chests; saddles and name tags are
-also fishing treasure.
-
-### Copper gear
-
-- **Copper tools** (pickaxe, shovel, axe, hoe and sword) and **copper armor**,
-  crafted from copper ingots, with Java 26.3's durability, speed and defense.
-- **Copper nuggets**: nine make an ingot. Iron, golden and copper tools, armor
-  and horse armor melt down to a nugget in a furnace or blast furnace.
-- Zombies and skeletons can now spawn wearing copper armor.
+- **Simulation distance** (Options): crops, fire, fluids, redstone and mobs
+  tick within this distance of you, and pause rather than reset beyond it.
+  Pending redstone and falling blocks are kept when their chunks unload.
+- **Light** is blocked by slabs, stairs, snow layers and farmland according to
+  their shape, and the block outline matches each block's shape.
+- **Game rules:** all 59 Java 26.3 game rules are known by their new and old
+  names. `/gamerule` reports any rule whose system isn't in the game yet.
+- New chunks with dungeons and amethyst geodes generate off the main thread,
+  so exploring stutters less.
 
 ### Fixes: playing like Java 26.3
 
-- **Combat:** attacks now charge up like Java's. Hitting before the charge
-  finishes does less damage, and the crosshair shows the charge. Criticals,
-  sweeps, sprint knockback, Haste and Mining Fatigue follow Java's rules, and
-  entity reach is 3 blocks (5 in Creative). Crossbows gain Multishot, Piercing
-  and Quick Charge, and bows and crossbows show arm poses.
-- **Mining and building:** mining progress, tool speeds and correct tools follow
-  Java's tool rules; shears drop the right loot; snow comes in layers one to
-  eight high; saplings grow in two stages; barrels can face up or down; hay bales
-  soften falls; Adventure players can use doors, buttons, levers and composters.
-- **Lighting and spawning:** sky light now spreads properly into caves, so
-  monsters spawn in dark caves by day and never in torch light, and crops and
-  saplings grow from real light. Thunderstorms, daylight detectors and the
-  spawn-point exclusion match Java, and the End and Nether have their proper
-  ambient light.
-- **Containers and reach:** chests, furnaces, trading and vehicle storage close
-  when you walk out of range, and right-click actions work the same with a
-  mouse, a controller, over LAN and for command agents.
-- **Mobs and villagers:** villagers sleep in their beds, close doors behind them,
-  farmers harvest and replant crops, and promotions take Java's short delay.
-  Iron golems turn on players villagers dislike. Piglins celebrate a kill and
-  zombified piglins keep their weapons; witches choose and drink potions like
-  Java's; camels sit; horses in a herd share a coat; every mob can climb ladders
-  and vines.
-- **Fishing and food:** fishing uses Java 26.3's full loot tables, with luck;
-  the hook can snag mobs; pufferfish and other foods give their full effects.
-- **Redstone:** hoppers, pressure plates, dispensers (fire charges, bone meal),
-  minecarts in water, note block particles and tripwire sounds follow Java more
-  closely.
-- **World:** jungle temples now have their lever puzzle and traps, strongholds
-  use iron doors, structure chests use Java 26.3's loot tables, amethyst geodes
-  generate, and Nether biome edges blend as in Java.
-- **Performance:** large mob groups and basalt delta generation are faster, and
-  lighting work is spread across ticks.
+- **Death and respawn** work the same with mouse and keyboard, a controller,
+  over LAN and for command agents. You drop your items and experience in every
+  mode but Spectator unless `keepInventory` is on. Your vehicle is left behind,
+  and controller and LAN players see the "Your home bed was missing" notice.
+- **Combat:** sweeping attacks and knockback follow Java's impulses, and
+  golden apples give absorption hearts with Java's cap and expiry.
+- **Mobs:** mob goals follow Java 26.3's goal tables, including how often they
+  follow, tempt, breed and flee; wolves no longer panic when hit, and axolotls
+  don't panic when hurt.
+- **Beds:** you stand up from a bed where Java puts you.
+- **Saves:** mobs in unloaded chunks are kept with their chunk until you
+  return, and the world saved mid-way through a piston push or repeater pulse
+  reloads exactly as it was.
 
 ### Known limitations
 
@@ -133,6 +82,8 @@ also fishing treasure.
   been tested between processes on one computer, not yet across Windows, Mac
   and Linux machines on a real network.
 - Undead horses aren't in yet (they need lightning, which isn't in yet either).
+- Bats, frogs, polar bears and some other mobs aren't in yet, so nothing spawns
+  in the ambient category.
 - Surface terrain has no overhangs or floating islands, and there is no deep
   dark, ancient city, glow lichen or cave spring yet.
 - Buried treasure isn't generated, so there's no way to find the heart of the
@@ -148,10 +99,10 @@ also fishing treasure.
 - The Ender Dragon can't be respawned, and the End has no chorus trees, cities,
   shulkers or elytra. The Wither can't be summoned yet.
 - Commands accept `@s` and `@p` only.
-- Mobs steer in straight lines with sidesteps rather than Java's pathfinding,
-  and outposts, Nether fossils and bastions use VoxelCraft's own layouts.
-- Light passes through slabs and stairs as if they were full blocks, and slabs,
-  stairs and fences can't be waterlogged.
+- Outposts, Nether fossils and bastions use VoxelCraft's own layouts, and
+  swamp-hut cats don't spawn yet.
+- Blazes on the ground still use VoxelCraft's own walking.
+- Slabs, stairs and fences can't be waterlogged.
 - Doors have no hinge side, buttons and levers can't go on floors or ceilings,
   and grindstones only stand on the floor.
 - Spruce and jungle saplings don't grow 2x2 giant trees, and melon, pumpkin and
@@ -159,6 +110,7 @@ also fishing treasure.
 - Bells don't swing, horse armor can't be dyed, strider jockeys don't spawn,
   boats ignore currents and bubble columns, and minecarts can't carry mobs
   across a save.
+- Streaming in new terrain quickly can still cause an occasional long frame.
 - Controller menus, beds and respawning, and LAN between different machines,
   haven't had a full manual test pass.
 - World generation is VoxelCraft's own: worlds aren't seed-compatible with
@@ -166,9 +118,10 @@ also fishing treasure.
 
 ## Upgrading and saves
 
-Worlds from 0.6.0 load in 0.7.0, and the new animals appear as you explore. Worlds from 0.5.0 and earlier load too, with the terrain caveat
-from 0.6.0. Back up your worlds before upgrading anyway: older versions can't
-open 0.7.0 worlds.
+Worlds from 0.7.0 and earlier load in 0.8.0; animal herds aren't doubled in
+areas you've already explored. Back up your worlds before upgrading anyway:
+older versions may not load everything in a world saved by 0.8.0. LAN players
+all need 0.8.0.
 
 ## Installing
 

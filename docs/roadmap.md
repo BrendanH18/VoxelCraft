@@ -2,7 +2,7 @@
 
 [← Back to VoxelCraft](../README.md) · [Documentation index](README.md) · [Contributing](../CONTRIBUTING.md) · [Architecture](architecture.md) · [Development](development.md)
 
-## Current plan — updated 2026-10-17
+## Current plan — updated 2026-10-20
 
 Build a faithful recreation of modern Minecraft Java single-player gameplay
 in Rust. Version 1.0 must deliver complete core survival, building,
@@ -443,6 +443,42 @@ Hay bales now apply Java 26.3's 0.2f fall multiplier before flooring, through
 the shared player environment for all three bale axes. Reference threshold
 and shared landing regressions cover the calculation; player acceptance is open.
 
+### 3.4 v0.8.0 delivery record — 2026-10-20
+
+The owner declared v0.8 done on 2026-10-20. `v0.8.0` is tagged at `58b547b`
+on `release/v0.8.0`: #39 (`5e9f025`) plus the version bump and release notes
+([PR #41](https://github.com/BrendanH18/VoxelCraft/pull/41)). It holds #34,
+#35 and #37–#39 (#36 was the release plan). #40, the first v0.9 work, is not
+in it. The release workflow passed formatting, Clippy, tests, packaging and the
+package smoke tests on Windows and macOS. That is build evidence, not
+acceptance: no row moved to **Verified**, because the
+[v0.8 acceptance checklist](verification/v0.8-acceptance-checklist.md) has not
+been played and the streaming budget is not met.
+
+What v0.8.0 moved (details in [§5's v0.8 scope](#v08-scope-finish-m0-and-m1)
+and the [requirement inventory](requirements.md)):
+
+- **M0:** the [M5 baseline](verification/2026-10-16-m5-baseline.md) (PERF-01
+  Verified), the per-requirement inventory and the approved side-feature
+  deferrals (DEF-01..06).
+- **MOB-02 (Implemented, unverified):** Java 26.3 ground, swim, amphibious,
+  fly, climbing and strider lava navigation; the shared goal tables; swimmer,
+  ghast and airborne blaze move controls; dolphin and turtle goals.
+- **MOB-01 (Implemented, unverified):** every spawn category from Java's
+  biome lists and caps, structure overrides, chunk-generation herds and
+  despawning.
+- **ENV-05 / PLY-02 (Implemented, unverified):** shape-aware light occlusion
+  and outline targeting.
+- **PLY-01/03/05 (Implemented, unverified):** simulation distance, per-chunk
+  entity storage, the shared death and respawn step, pause and mid-motion
+  saves, game rules and difficulty, absorption, sweeping and knockback, bed
+  stand-up positions.
+
+Moved on when v0.8 was declared done: the player acceptance pass for the
+v0.8 rows goes to v0.9, and PERF-03's streaming budget (two isolated frames
+over 50 ms in the [2026-10-20 re-run](verification/2026-10-20-streaming-rerun.md))
+goes to v0.18. The M0 and M1 milestones stay open until those pass.
+
 ## 4. Core requirement catalogue
 
 Assessment follow-up (2026-10-13): [shared player-session and consumption work](verification/2026-10-13-player-session.md)
@@ -745,6 +781,10 @@ Unfinished work moves to a later version instead of holding a release open or
 shipping half-done. Patch releases (0.8.1 and so on) carry fixes only.
 There are no release candidates or pre-releases (owner, 2026-10-17): a version
 is tagged only once its scope is Verified, and testers get that release.
+Exception (owner, 2026-10-20): v0.8 was declared done with its implementation
+complete but its player acceptance and streaming budget not yet passed; those
+checks moved to later versions (see its status and the
+[delivery record](#34-v080-delivery-record--2026-10-20)).
 
 Work on the earliest unreleased version. Start a later one early only where
 its dependencies allow and it doesn't stall the current one. Version 1.0 is
@@ -753,8 +793,8 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 
 | Version | Theme | Milestones | Main content | Status |
 |---|---|---|---|---|
-| v0.8 | Foundations | Finish M0, M1 | Valid M5 baseline and the per-requirement inventory; mob pathfinding, Java spawn categories, shape-aware light, simulation distance; pause/death/save scenarios on every input path | In progress: most implementation merged (#34, #35); strider lava paths, pause/death/save scenarios and the [requirement inventory](requirements.md) on `t3/roadmap-next-stage-v0-8`; the [M5 baseline](verification/2026-10-16-m5-baseline.md) is recorded (15/15 valid; gate fails in streaming); 2026-10-17/18: sweeping and knockback, absorption, game rules and difficulty, per-chunk entity storage, bed stand-up positions, fire tick containers and mob goals merged there; 2026-10-19: swimmer, ghast and airborne blaze movement (blazes on the ground keep VoxelCraft's ground movement), then the dolphin and turtle goal tables, the elder guardian's home and blaze retaliation; 2026-10-20: streaming re-run (bursts gone; two isolated frames over 50 ms remain); player acceptance remains |
-| v0.9 | Block states | M2: BLD-04, BLD-06 | Top and double slabs, waterlogging, door hinges, floor/ceiling buttons and levers, wall grindstones, corner-stair light; reserved state ranges for later content | In progress: 2026-10-20 `STATE_CAPACITY` raised to 16,384 with ranges reserved for v0.9–v0.17 ([record](verification/2026-10-20-state-capacity.md)); slab types and stair halves and corners ([record](verification/2026-10-20-slabs-stairs.md)), door hinges, floor/ceiling switches, wall/ceiling grindstones and lanterns ([record](verification/2026-10-20-doors-mounts.md)), and waterlogging with Java fence, wall and pane connections ([record](verification/2026-10-20-waterlogging.md)) implemented, unverified in play |
+| v0.8 | Foundations | Finish M0, M1 | Valid M5 baseline and the per-requirement inventory; mob pathfinding, Java spawn categories, shape-aware light, simulation distance; pause/death/save scenarios on every input path | Done (owner, 2026-10-20): tagged `v0.8.0` at `58b547b` (#34, #35, #37–#39 plus release prep, [#41](https://github.com/BrendanH18/VoxelCraft/pull/41)); [delivery record](#34-v080-delivery-record--2026-10-20). Implementation complete and the [M5 baseline](verification/2026-10-16-m5-baseline.md) recorded; rows stay Implemented, unverified. Player acceptance ([checklist](verification/v0.8-acceptance-checklist.md)) moved to v0.9, the streaming budget (PERF-03; two isolated frames over 50 ms in the [2026-10-20 re-run](verification/2026-10-20-streaming-rerun.md)) to v0.18 |
+| v0.9 | Block states | M2: BLD-04, BLD-06 | Top and double slabs, waterlogging, door hinges, floor/ceiling buttons and levers, wall grindstones, corner-stair light; reserved state ranges for later content | In progress: 2026-10-20 `STATE_CAPACITY` raised to 16,384 with ranges reserved for v0.9–v0.17 ([record](verification/2026-10-20-state-capacity.md)); slab types and stair halves and corners ([record](verification/2026-10-20-slabs-stairs.md)), door hinges, floor/ceiling switches, wall/ceiling grindstones and lanterns ([record](verification/2026-10-20-doors-mounts.md)), and waterlogging with Java fence, wall and pane connections ([record](verification/2026-10-20-waterlogging.md)) implemented, unverified in play. Also carries v0.8's player acceptance pass |
 | v0.10 | Building materials | Close M2 | Missing wood, stone, copper and colour family members (pale oak, bamboo, mud brick, prismarine), the unregistered reference fuel items, signs, banners, item frames, cauldrons, soul lanterns and campfires; sponges, coral and sea pickles; falling and dripping dripstone, tilting dripleaf | Planned |
 | v0.11 | Terrain | M3: GEN-01..03 | Java climate and density terrain with overhangs; Java caves, aquifers and ores; deep-dark content, springs, glow lichen; giant spruce and jungle trees and the remaining biome features | Planned |
 | v0.12 | Structures | M3: GEN-05..07 | A Java structure-template (jigsaw) system; villages, outposts, bastions, fossils, shipwrecks, ocean ruins and monuments built from it; buried treasure and explorer maps; Java loot random sequences | Planned |
@@ -763,7 +803,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.15 | Villages and raids | Close M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M4 exit checks | Planned |
 | v0.16 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough | Planned |
 | v0.17 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload | Planned |
-| v0.18 | Polish and performance | M7: UX, §6 | Settings, key rebinding, accessibility and subtitles, recipe discovery, asset and sound review in play; the 240 FPS gate in every scene | Planned |
+| v0.18 | Polish and performance | M7: UX, §6 | Settings, key rebinding, accessibility and subtitles, recipe discovery, asset and sound review in play; the 240 FPS gate in every scene, including v0.8's streaming budget (PERF-03) | Planned |
 | v1.0 | Acceptance | M7 exit, §8 | Every mandatory row Verified; fresh-world and long-session playthroughs; save-compatibility policy; installer and update checks; current stable Java scope reconciled | Planned |
 
 Notes:
@@ -821,6 +861,12 @@ controller and agent regression paths remain functional.
 
 v0.8 ships when these exit checks pass. Work items, each with Java 26.3
 fixtures and acceptance cases:
+
+*Done (owner, 2026-10-20), tagged `v0.8.0`.* Every work item below is
+implemented and the M5 baseline is recorded, but the player acceptance pass
+(now with v0.9) and the streaming budget (PERF-03, now with v0.18) have not
+passed, so the rows stay Implemented, unverified and the M0 and M1 exit checks
+remain open. See the [delivery record](#34-v080-delivery-record--2026-10-20).
 
 1. **M0 close-out:** a valid five-scene M5 baseline on the reference machine
    (idle, window visible) and the owner's decision on measuring 240 FPS against
