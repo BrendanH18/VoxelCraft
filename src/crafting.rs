@@ -1107,6 +1107,15 @@ fn add_nether_biome_recipes(r: &mut Vec<Recipe>) {
     const BONE_BLOCK: Ingredient = &[b(nb::BONE_BLOCK)];
     const FUEL: Ingredient = &[Item::COAL, Item::CHARCOAL];
     r.push(shaped(&["c", "s", "S"], &[('c', FUEL), ('s', STICK), ('S', SOUL_BASE)], b(nb::SOUL_TORCH), 4));
+    // Java `lantern` and `soul_lantern`: a torch inside eight iron nuggets.
+    const NUGGET: Ingredient = &[Item::IRON_NUGGET];
+    const TORCH_ITEM: Ingredient = &[b(Block::TORCH)];
+    const SOUL_TORCH_ITEM: Ingredient = &[b(nb::SOUL_TORCH)];
+    for (torch, lantern) in
+        [(TORCH_ITEM, crate::world::mount_states::LANTERN), (SOUL_TORCH_ITEM, crate::world::mount_states::SOUL_LANTERN)]
+    {
+        r.push(shaped(&["###", "#T#", "###"], &[('#', NUGGET), ('T', torch)], b(lantern), 1));
+    }
     r.push(shaped(&["###", "###", "###"], &[('#', &[Item::BONE_MEAL])], b(nb::BONE_BLOCK), 1));
     r.push(shapeless(&[BONE_BLOCK], Item::BONE_MEAL, 9));
 }

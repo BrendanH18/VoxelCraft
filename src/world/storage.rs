@@ -14,7 +14,13 @@ use rustc_hash::FxHashMap;
 use super::block::Block;
 use super::chunk::{CHUNK_VOLUME, ChunkData};
 
-const MAGIC: &[u8; 4] = b"VXC2";
+/// `VXC3` files hold state ids from 4096 up (`STATE_CAPACITY` 16,384), so
+/// builds from before that refuse them; `VXC2` has the same records. Saves
+/// stay `VXC2` while every id is below [`V2_CAPACITY`], so older builds can
+/// still open worlds that use no new states.
+const MAGIC: &[u8; 4] = b"VXC3";
+const V2_MAGIC: &[u8; 4] = b"VXC2";
+const V2_CAPACITY: u16 = 4096;
 const LEGACY_MAGIC: &[u8; 4] = b"VXC1";
 
 pub struct LevelInfo {
@@ -81,22 +87,62 @@ impl Storage {
         fs::create_dir_all(&self.dir)?;
 
         let mut buf = Vec::with_capacity(chunks.len() * 256);
-        buf.extend_from_slice(MAGIC);
+        buf.extend_from_slice(V2_MAGIC);
         buf.extend_from_slice(&(chunks.len() as u32).to_le_bytes());
+        let mut high_ids = false;
         for (pos, data) in chunks {
             for c in pos.to_array() {
                 buf.extend_from_slice(&c.to_le_bytes());
             }
             let rle = encode(data);
+            high_ids |= rle.as_chunks::<4>().0.iter().any(|run| u16::from_le_bytes([run[2], run[3]]) >= V2_CAPACITY);
             buf.extend_from_slice(&(rle.len() as u32).to_le_bytes());
             buf.extend_from_slice(&rle);
+        }
+
+        if high_ids {
+            buf[..4].copy_from_slice(MAGIC);
         }
 
         // Write to temp files then rename so a crash never leaves a torn save.
         let tmp = self.dir.join("chunks.bin.tmp");
         fs::File::create(&tmp)?.write_all(&buf)?;
+        self.keep_unknown_format()?;
         fs::rename(&tmp, self.dir.join("chunks.bin"))?;
         self.save_level(level)
+    }
+
+    /// Moves a `chunks.bin` of a format this build can't read (a newer
+    /// build's) to `chunks.bin.unknown-<unix seconds>` instead of letting a
+    /// save replace it. Loading such a file fails and play continues on
+    /// regenerated terrain, so without this the first save would destroy it.
+    fn keep_unknown_format(&self) -> io::Result<()> {
+        let path = self.dir.join("chunks.bin");
+        let mut header = Vec::with_capacity(4);
+        match fs::File::open(&path) {
+            Ok(f) => f.take(4).read_to_end(&mut header)?,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(e),
+        };
+        if [&MAGIC[..], V2_MAGIC, LEGACY_MAGIC].contains(&header.as_slice()) {
+            return Ok(());
+        }
+        let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+        let to = self.unused_unknown_name(secs);
+        log::error!("keeping {} in an unknown format as {}", path.display(), to.display());
+        fs::rename(path, to)
+    }
+
+    /// `chunks.bin.unknown-<secs>`, or with `-1`, `-2`… appended if that is
+    /// taken, so an earlier kept file is never replaced. The world's lock
+    /// keeps other processes from racing for the name.
+    fn unused_unknown_name(&self, secs: u64) -> PathBuf {
+        let base = format!("chunks.bin.unknown-{secs}");
+        std::iter::once(base.clone())
+            .chain((1..).map(|n| format!("{base}-{n}")))
+            .map(|name| self.dir.join(name))
+            .find(|p| !p.exists())
+            .expect("unbounded names")
     }
 
     /// Writes only `level.txt`, leaving the stored chunks alone.
@@ -123,7 +169,7 @@ impl Storage {
             Err(e) => return Err(e),
         };
         let bad = || io::Error::new(io::ErrorKind::InvalidData, "corrupt chunks.bin");
-        if buf.len() < 8 || (&buf[0..4] != MAGIC && &buf[0..4] != LEGACY_MAGIC) {
+        if buf.len() < 8 || ![&MAGIC[..], V2_MAGIC, LEGACY_MAGIC].contains(&&buf[0..4]) {
             return Err(bad());
         }
         let legacy = &buf[0..4] == LEGACY_MAGIC;
@@ -240,18 +286,18 @@ mod tests {
 
     #[test]
     fn high_ids_roundtrip_and_malformed_runs_are_rejected() {
-        let mut c = ChunkData::Uniform(Block(4095));
+        let mut c = ChunkData::Uniform(Block(16383));
         c.set(3, 4, 5, Block(256));
         c.set(31, 31, 31, Block(1024));
         let encoded = encode(&c);
         let d = decode(&encoded, false).unwrap();
-        assert_eq!(d.get(0, 0, 0), Block(4095));
+        assert_eq!(d.get(0, 0, 0), Block(16383));
         assert_eq!(d.get(3, 4, 5), Block(256));
         assert_eq!(d.get(31, 31, 31), Block(1024));
         let mut truncated = encoded.clone();
         truncated.pop();
         assert!(decode(&truncated, false).is_none());
-        assert!(decode(&[0, 128, 0, 16], false).is_none(), "state outside registry");
+        assert!(decode(&[0, 128, 0, 64], false).is_none(), "state outside registry");
         assert!(decode(&[0, 128, 0, 0, 0, 0, 1, 0], false).is_none(), "zero-length run");
         assert!(decode(&[1, 0, 1], true).is_none(), "underfilled chunk");
         assert!(decode(&[255, 255, 1], true).is_none(), "overfilled chunk");
@@ -275,12 +321,39 @@ mod tests {
         let chunks = storage.load_chunks().unwrap();
         assert_eq!(chunks[&pos].uniform(), Some(Block::NETHERITE_BLOCK));
         let level = LevelInfo { seed: 42, player: None, props: Default::default() };
+        let high = Block(super::super::block::STATE_CAPACITY as u16 - 1);
+        storage.save(&level, &[(pos, Arc::new(ChunkData::Uniform(high)))]).unwrap();
+        let saved = fs::read(dir.join("chunks.bin")).unwrap();
+        assert_eq!(&saved[..4], MAGIC, "states from 4096 up need VXC3");
+        assert_eq!(storage.load_chunks().unwrap()[&pos].uniform(), Some(high));
         storage.save(&level, &[(pos, Arc::new(ChunkData::Uniform(Block(4095))))]).unwrap();
-        assert_eq!(&fs::read(dir.join("chunks.bin")).unwrap()[..4], MAGIC);
-        assert_eq!(storage.load_chunks().unwrap()[&pos].uniform(), Some(Block(4095)));
+        assert_eq!(&fs::read(dir.join("chunks.bin")).unwrap()[..4], V2_MAGIC, "older builds keep reading VXC2");
+        let mut v2 = saved.clone();
+        v2[..4].copy_from_slice(V2_MAGIC);
+        let id_at = v2.len() - 2;
+        v2[id_at..].copy_from_slice(&4095u16.to_le_bytes());
+        fs::write(dir.join("chunks.bin"), &v2).unwrap();
+        assert_eq!(storage.load_chunks().unwrap()[&pos].uniform(), Some(Block(4095)), "VXC2 loads unchanged");
         buf[..4].copy_from_slice(b"VXC9");
-        fs::write(dir.join("chunks.bin"), buf).unwrap();
+        fs::write(dir.join("chunks.bin"), &buf).unwrap();
         assert_eq!(storage.load_chunks().err().unwrap().kind(), io::ErrorKind::InvalidData);
+        assert_eq!(fs::read(dir.join("chunks.bin")).unwrap(), buf, "loading leaves an unknown format alone");
+        storage.save(&level, &[(pos, Arc::new(ChunkData::Uniform(Block::STONE)))]).unwrap();
+        let kept: Vec<_> = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.unwrap().file_name().into_string().ok())
+            .filter(|n| n.starts_with("chunks.bin.unknown-"))
+            .collect();
+        assert_eq!(kept.len(), 1, "saving keeps a newer build's chunks instead of replacing them");
+        assert_eq!(fs::read(dir.join(&kept[0])).unwrap(), buf);
+        assert_eq!(storage.load_chunks().unwrap()[&pos].uniform(), Some(Block::STONE));
+        storage.save(&level, &[(pos, Arc::new(ChunkData::Uniform(Block::STONE)))]).unwrap();
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 3, "a known format is replaced without another copy");
+        // A second kept file in the same second takes a new name.
+        fs::write(dir.join("chunks.bin.unknown-7"), b"A").unwrap();
+        fs::write(dir.join("chunks.bin.unknown-7-1"), b"B").unwrap();
+        assert_eq!(storage.unused_unknown_name(7), dir.join("chunks.bin.unknown-7-2"));
+        assert_eq!(storage.unused_unknown_name(8), dir.join("chunks.bin.unknown-8"));
         fs::remove_dir_all(dir).unwrap();
     }
 

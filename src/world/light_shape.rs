@@ -1,4 +1,5 @@
-//! Java 26.3 LightEngine's faceShapeOccludes for existing dry partial states.
+//! Java 26.3 LightEngine's faceShapeOccludes for partial states that use
+//! their shape for light occlusion (slabs, every stairs half and corner).
 //! Geometry uses exact 1/16 face cells, interned once per distinct shape;
 //! each propagation edge needs two byte lookups and four union comparisons.
 use std::sync::LazyLock;
@@ -17,22 +18,31 @@ struct Table {
 
 static TABLE: LazyLock<Table> = LazyLock::new(|| {
     let mut table = Table { states: [0; STATE_CAPACITY], faces: vec![[[0; 4]; 6]] };
+    // Thousands of stairs and slab states share a few dozen shapes; build
+    // each shape's face masks once.
+    let mut shapes: Vec<(Boxes, u8)> = Vec::new();
     for id in 0..STATE_CAPACITY {
         let block = Block(id as u16);
         if !block.uses_shape_for_light_occlusion() {
             continue;
         }
-        let boxes = if matches!(block.shaped(), Some(super::block::Shaped::Stairs(_))) {
+        let boxes = if matches!(block.shaped(), Some(super::block::Shaped::Stairs(_) | super::block::Shaped::Slab)) {
             shape::shape(block, |_| Block::AIR, Block::AIR)
         } else {
             Boxes::from_box(Box16 { min: [0; 3], max: [16, 16 - block.top_drop(), 16] })
         };
+        if let Some(&(_, index)) = shapes.iter().find(|(b, _)| b.as_slice() == boxes.as_slice()) {
+            table.states[id] = index;
+            continue;
+        }
         let faces = faces(&boxes);
         let index = table.faces.iter().position(|f| *f == faces).unwrap_or_else(|| {
             table.faces.push(faces);
             table.faces.len() - 1
         });
-        table.states[id] = u8::try_from(index).expect("light shape table exceeds byte index");
+        let index = u8::try_from(index).expect("light shape table exceeds byte index");
+        shapes.push((boxes, index));
+        table.states[id] = index;
     }
     table
 });
@@ -116,6 +126,52 @@ mod tests {
         let west = Block::STONE_STAIRS.with_facing(Facing::West);
         assert!(occludes(east, west, 4));
         assert!(!occludes(east, east, 4));
-        assert!(TABLE.faces.len() < 20);
+        // Stairs: 24 distinct face sets over facing, half and corner shape.
+        assert!(TABLE.faces.len() < 48);
+    }
+
+    #[test]
+    fn every_slab_and_stairs_state_occludes_exactly_its_full_faces() {
+        use crate::world::slab_stair_states::{self as ss, Slab, SlabType, StairShape, Stairs};
+        // Mesh face index of the side facing `f`.
+        let side = |f: Facing| f.face();
+        for front in Facing::ALL {
+            for top in [false, true] {
+                for shape in StairShape::ALL {
+                    let block = ss::stairs_id(Stairs { family: 9, facing: front, top, shape, wet: false });
+                    assert!(block.uses_shape_for_light_occlusion());
+                    assert_eq!(block.light_opacity(), 0);
+                    let facing = front.opposite();
+                    let (cw, ccw) = (facing.clockwise(), facing.clockwise().opposite());
+                    // The slab side is always whole; the step side never is.
+                    assert!(full_face(block, if top { 2 } else { 3 }));
+                    assert!(!full_face(block, if top { 3 } else { 2 }));
+                    // A side is whole when the step covers both of its quarters.
+                    let whole = |f: Facing| match shape {
+                        StairShape::Straight => f == facing,
+                        StairShape::OuterLeft | StairShape::OuterRight => false,
+                        StairShape::InnerLeft => f == facing || f == ccw,
+                        StairShape::InnerRight => f == facing || f == cw,
+                    };
+                    for f in Facing::ALL {
+                        assert_eq!(full_face(block, side(f)), whole(f), "{block:?} {f:?}");
+                        assert_eq!(occludes(block, Block::AIR, side(f)), whole(f), "{block:?} {f:?}");
+                    }
+                }
+            }
+        }
+        for family in 0..ss::FAMILY_COUNT as u8 {
+            let top = ss::slab_id(Slab { family, kind: SlabType::Top, wet: false });
+            assert!(occludes(top, Block::AIR, 2) && !occludes(top, Block::AIR, 3));
+            assert_eq!(top.sky_stop_height(5), Some(5));
+            let bottom = ss::slab_id(Slab { family, kind: SlabType::Bottom, wet: false });
+            // Down from a top slab into a bottom slab: neither covers the
+            // plane between them. Down from a bottom slab, its own underside does.
+            assert!(!occludes(top, bottom, 3));
+            assert!(occludes(bottom, top, 3));
+            let double = ss::slab_id(Slab { family, kind: SlabType::Double, wet: false });
+            assert!(!double.uses_shape_for_light_occlusion());
+            assert_eq!(double.light_opacity(), 15);
+        }
     }
 }

@@ -265,10 +265,10 @@ mod tests {
         assert_eq!(data.heap_bytes(), CHUNK_VOLUME);
         let original = std::sync::Arc::new(data);
         let mut edited = original.clone();
-        std::sync::Arc::make_mut(&mut edited).set(4, 5, 6, Block(4095));
+        std::sync::Arc::make_mut(&mut edited).set(4, 5, 6, Block(16383));
         assert!(matches!(&*edited, ChunkData::Paletted { .. }));
         assert_eq!(original.get(4, 5, 6), Block::STONE);
-        assert_eq!(edited.get(4, 5, 6), Block(4095));
+        assert_eq!(edited.get(4, 5, 6), Block(16383));
         assert_eq!(edited.get(1, 2, 3), Block::GLASS);
         let mut row = [Block::AIR; 32];
         original.copy_row(index(0, 2, 3), &mut row);
@@ -289,7 +289,7 @@ mod tests {
 
     #[test]
     fn high_states_keep_compact_storage_and_snapshot_isolation() {
-        let mut data = ChunkData::Uniform(Block(4095));
+        let mut data = ChunkData::Uniform(Block(16383));
         data.set(31, 31, 31, Block(1024));
         assert_eq!(data.heap_bytes(), CHUNK_VOLUME + 512);
         let original = std::sync::Arc::new(data);
@@ -299,7 +299,7 @@ mod tests {
         assert_eq!(edited.get(31, 31, 31), Block(2048));
         let mut row = [Block::AIR; CHUNK_SIZE];
         edited.copy_row(index(0, 31, 31), &mut row);
-        assert_eq!(row[0], Block(4095));
+        assert_eq!(row[0], Block(16383));
         assert_eq!(row[31], Block(2048));
     }
 
@@ -313,14 +313,14 @@ mod tests {
         for i in 1..=256 {
             assert_eq!(data.get(i % 32, i / 32, 0), Block(256 + i as u16));
         }
-        let mut blocks = ChunkData::new_dense(Block(4095));
+        let mut blocks = ChunkData::new_dense(Block(16383));
         blocks[0] = Block(256);
         let compact = ChunkData::from_dense(blocks);
         assert!(matches!(compact, ChunkData::Paletted { .. }));
         let mut all = Vec::new();
         compact.for_each_block(|b| all.push(b));
         assert_eq!(all[0], Block(256));
-        assert!(all[1..].iter().all(|&b| b == Block(4095)));
+        assert!(all[1..].iter().all(|&b| b == Block(16383)));
     }
 
     #[test]

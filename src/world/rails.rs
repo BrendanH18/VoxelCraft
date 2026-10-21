@@ -1,5 +1,7 @@
 //! Powered, detector and activator rails (ids 1471..=1506) plus Java's
 //! `RailState` shape logic shared by every rail. Plain rails keep ids 500..=509.
+//! Wet rails (BLD-04f waterlog partners) act as their dry originals here;
+//! `World::edit` keeps their water when the shape or power changes.
 //!
 //! Special rails are straight or ascending only: id = 1471 + 12 * kind
 //! (powered, detector, activator) + 6 * powered + shape (north_south,
@@ -28,6 +30,7 @@ pub enum RailKind {
 }
 
 pub const fn is_special(b: Block) -> bool {
+    let b = Block(super::waterlog::canonical(b.0));
     b.0 >= FIRST && b.0 <= LAST
 }
 
@@ -41,10 +44,12 @@ pub const fn special(kind: RailKind, shape: RailShape, powered: bool) -> Block {
 }
 
 pub fn special_shape(b: Block) -> Option<RailShape> {
+    let b = Block(super::waterlog::canonical(b.0));
     is_special(b).then(|| RailShape::ALL[((b.0 - FIRST) % 6) as usize])
 }
 
 pub fn kind(b: Block) -> Option<RailKind> {
+    let b = Block(super::waterlog::canonical(b.0));
     match b.0 {
         500..=509 => Some(RailKind::Plain),
         FIRST..=1482 => Some(RailKind::Powered),
@@ -55,19 +60,25 @@ pub fn kind(b: Block) -> Option<RailKind> {
 }
 
 pub fn is_powered(b: Block) -> bool {
+    let b = Block(super::waterlog::canonical(b.0));
     is_special(b) && (b.0 - FIRST) % 12 >= 6
 }
 
 /// The same rail with another shape (curves become north_south for straight kinds).
+/// A wet rail stays wet, so an unchanged shape compares equal.
 pub fn with_shape(b: Block, shape: RailShape) -> Block {
-    match kind(b) {
+    let wet = b.is_waterlogged();
+    let b = Block(super::waterlog::canonical(b.0));
+    let out = match kind(b) {
         Some(RailKind::Plain) => Block::rail(shape),
         Some(k) => special(k, if shape as u16 > 5 { RailShape::NorthSouth } else { shape }, is_powered(b)),
         None => b,
-    }
+    };
+    out.with_water(wet)
 }
 
 pub fn with_power(b: Block, powered: bool) -> Block {
+    let b = Block(super::waterlog::canonical(b.0));
     match special_shape(b).zip(kind(b)) {
         Some((shape, k)) => special(k, shape, powered),
         None => b,
@@ -76,11 +87,13 @@ pub fn with_power(b: Block, powered: bool) -> Block {
 
 /// Item and drop form of a special rail: unpowered, north_south.
 pub fn base(b: Block) -> Option<Block> {
+    let b = Block(super::waterlog::canonical(b.0));
     is_special(b).then(|| Block(FIRST + (b.0 - FIRST) / 12 * 12))
 }
 
 /// Scheduled-tick family of a detector rail (the engine keys ticks by block family).
 pub fn family(b: Block) -> Option<Block> {
+    let b = Block(super::waterlog::canonical(b.0));
     (kind(b) == Some(RailKind::Detector) && is_special(b)).then_some(DETECTOR_RAIL)
 }
 

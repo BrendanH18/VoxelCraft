@@ -31,7 +31,7 @@ repeater rising edges stretch short input pulses. Only side-facing repeaters
 and comparators lock repeaters. Eight torch off transitions within 60 ticks
 cause a 160-tick restart delay. Burnout history is bounded per torch.
 
-Wire power, facing, delay and on/off states are in VXC2 block data. A versioned
+Wire power, facing, delay and on/off states are in the chunk block data (`VXC2`, or `VXC3` once a saved state ID is 4096 or above; see [architecture](architecture.md#block-and-texture-ids)). A versioned
 `redstone` dimension property preserves queued work, pending deadlines,
 comparator output, torch history/burnout, and powered door/gate edges. Replaced
 blocks invalidate their old ticks. Due ticks for unloaded blocks are parked by

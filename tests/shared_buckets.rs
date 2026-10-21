@@ -392,7 +392,7 @@ fn water_fills_water_holding_plants_in_place_but_lava_and_sneaking_use_the_face(
 }
 
 #[test]
-fn poured_fluids_destroy_rails_and_fragile_redstone_with_their_loot() {
+fn poured_fluids_waterlog_rails_and_destroy_fragile_redstone_with_their_loot() {
     let r = redstone_blocks::WOOD_PLATE;
     for block in [
         Block::RAIL,
@@ -411,6 +411,13 @@ fn poured_fluids_destroy_rails_and_fragile_redstone_with_their_loot() {
                 bucket::empty_contents(&mut w, HIT, IVec3::NEG_Z, fluid, false),
                 Some(Effect::Poured { at: POUR, fluid })
             );
+            // Rails are waterloggable (`BaseRailBlock`): water fills them in
+            // place (`LiquidBlockContainer.placeLiquid`); lava breaks them.
+            if block == Block::RAIL && fluid == Block::WATER {
+                assert_eq!(w.get_block(POUR), Some(Block::RAIL.with_water(true)));
+                assert!(w.drops.is_empty());
+                continue;
+            }
             assert_eq!(w.get_block(POUR), Some(fluid));
             assert_eq!(w.drops.iter().map(|(_, s)| (s.item, s.count)).collect::<Vec<_>>(), vec![(expected, 1)]);
         }

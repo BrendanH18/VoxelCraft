@@ -284,7 +284,13 @@ fn combining_slabs_and_blocked_double_plants_preserve_resource_accounting() {
         Outcome::Placed { kind: Kind::CombinedSlab, .. }
     ));
     cli.execute(Command::Place, &mut cli_world, &mut entities, &[]).unwrap();
-    assert_eq!(world.get_block(IVec3::new(7, 145, 4)), Some(Block::STONE));
+    // Java's double slab state, not the full block (BLD-04a).
+    let double = voxelcraft::world::slab_stair_states::slab_id(voxelcraft::world::slab_stair_states::Slab {
+        family: 0,
+        kind: voxelcraft::world::slab_stair_states::SlabType::Double,
+        wet: false,
+    });
+    assert_eq!(world.get_block(IVec3::new(7, 145, 4)), Some(double));
     assert_eq!(world.get_block(IVec3::new(7, 145, 4)), cli_world.get_block(IVec3::new(7, 145, 4)));
     assert_eq!(session.inventory.get(0), None);
     assert_eq!(cli.inventory.get(0), None);

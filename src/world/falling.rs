@@ -111,6 +111,7 @@ impl World {
     pub(super) fn settle(&mut self, mut p: IVec3) {
         self.update_sponges(p);
         self.drop_unhung_ladders(p);
+        self.drop_unhung_lantern(p);
         self.solidify_nearby_powder(p);
         self.update_nether_vines(p);
         self.update_overworld_plants(p);
@@ -178,6 +179,21 @@ impl World {
         }
     }
 
+    /// `LanternBlock.updateShape`: a hanging lantern under `p` breaks when
+    /// `p` can no longer hold it (`canSupportCenter` on its underside),
+    /// leaving its water if waterlogged.
+    fn drop_unhung_lantern(&mut self, p: IVec3) {
+        let below = p - IVec3::Y;
+        let Some(lantern) = self.get_block(below) else { return };
+        if !super::mount_states::lantern_of(lantern).is_some_and(|l| l.hanging)
+            || self.get_block(p).is_some_and(|b| super::mount_states::supports_center(b, IVec3::NEG_Y))
+        {
+            return;
+        }
+        self.edit(below, if lantern.is_waterlogged() { Block::WATER } else { Block::AIR }, true);
+        self.spill_block(below, lantern);
+    }
+
     /// Snap render interpolation when the offline game pauses.
     pub fn snapshot_falling_positions(&mut self) {
         for f in &mut self.falling {
@@ -233,7 +249,8 @@ impl World {
 
     /// Destroys the blocks in a ragged sphere around `center` (radius about
     /// `0.9 * power`, like a Minecraft blast in open stone). Bedrock,
-    /// obsidian, ancient debris, Netherite blocks and fluids resist. Each
+    /// obsidian, ancient debris, Netherite blocks, fluids and blocks holding
+    /// water resist. Each
     /// destroyed block drops with a chance of `1 / power`, like Minecraft.
     /// Chunks are remeshed on the workers;
     /// what rested on the blasted blocks falls or pops off. Returns how many
@@ -272,8 +289,11 @@ impl World {
                             | Block::OBSIDIAN
                             | Block::CRYING_OBSIDIAN
                             | Block::ANCIENT_DEBRIS
-                            | Block::NETHERITE_BLOCK
-                    ) || b.is_fluid();
+                            | Block::NETHERITE_BLOCK // `ExplosionDamageCalculator` takes the larger of the block's
+                                                     // and its fluid's resistance: water (100) shields
+                                                     // waterlogged blocks, kelp and seagrass.
+                    ) || b.holds_water()
+                        || b.is_fluid();
                     if !resists && self.edit(p, Block::AIR, false) {
                         removed.push(p);
                         if b == Block::TNT {

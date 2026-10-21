@@ -189,6 +189,8 @@ impl World {
         }
         if b.kind() == super::block::RenderKind::Cross
             || b.is_door()
+            // `PushReaction.POPPED`.
+            || super::mount_states::is_lantern(b.0)
             || b.is_fire()
             || matches!(
                 r::component(b),
@@ -210,6 +212,8 @@ impl World {
     }
 
     fn start_piston_move(&mut self, from: IVec3, to: IVec3, block: Block, base: IVec3, install: bool) {
+        // `PistonMovingBlockEntity.tick` lands a waterlogged block dry.
+        let block = block.with_water(false);
         if install {
             self.edit(to, r::MOVING, false);
         }
@@ -244,7 +248,8 @@ impl World {
             self.edit(end, Block::AIR, false);
         }
         for &(from, block) in push[..count].iter().rev() {
-            self.edit(from, Block::AIR, false);
+            // `PistonBaseBlock.moveBlocks` leaves air, not the moved block's water.
+            self.edit_exact(from, Block::AIR, false);
             self.start_piston_move(from, from + d, block, p, true);
         }
         self.edit(p, r::piston(facing, sticky, true), false);
@@ -261,7 +266,7 @@ impl World {
             if let Some(block) = self.get_block(from)
                 && self.piston_reaction(from, block) == Reaction::Move
             {
-                self.edit(from, Block::AIR, false);
+                self.edit_exact(from, Block::AIR, false);
                 self.start_piston_move(from, p + d, block, p, true);
             }
         }
@@ -291,7 +296,8 @@ impl World {
                     self.get_block(m.base).and_then(r::component),
                     Some(Component::Piston { extended: true, .. })
                 );
-                self.edit(p, if head && !valid { Block::AIR } else { m.block }, false);
+                let landed = if head && !valid { Block::AIR } else { self.shaped_by_neighbours(p, m.block) };
+                self.edit(p, landed, false);
             }
             self.redstone_changed(m.base);
         }
@@ -412,7 +418,10 @@ impl World {
             let &[x, y, z, block, fx, fy, fz, bx, by, bz, age, install] = fields.as_slice() else {
                 continue;
             };
-            if !(0..4096).contains(&block) || !(0..=2).contains(&age) || !(0..=1).contains(&install) {
+            if !(0..crate::world::block::STATE_CAPACITY as i64).contains(&block)
+                || !(0..=2).contains(&age)
+                || !(0..=1).contains(&install)
+            {
                 continue;
             }
             let xyz = [x, y, z, fx, fy, fz, bx, by, bz];
@@ -713,14 +722,14 @@ impl World {
                     self.automation.creatures.push((front, one));
                     Some(Item::BUCKET)
                 }
-                Item::WATER_BUCKET | Item::LAVA_BUCKET if block.is_replaceable() => {
-                    self.set_block(front, if stack.item == Item::WATER_BUCKET { Block::WATER } else { Block::LAVA });
-                    Some(Item::BUCKET)
+                // `DispensibleContainerItem.emptyContents(null, level, target, null)`:
+                // water fills a waterloggable block and evaporates in the Nether.
+                Item::WATER_BUCKET | Item::LAVA_BUCKET => {
+                    let fluid = if stack.item == Item::WATER_BUCKET { Block::WATER } else { Block::LAVA };
+                    crate::survival_items::bucket::empty_at(self, front, fluid, None).map(|_| Item::BUCKET)
                 }
-                Item::BUCKET if block == Block::WATER || block == Block::LAVA => {
-                    self.set_block(front, Block::AIR);
-                    Some(if block == Block::WATER { Item::WATER_BUCKET } else { Item::LAVA_BUCKET })
-                }
+                // `BucketPickup.pickupBlock`, waterlogged blocks included.
+                Item::BUCKET => crate::survival_items::bucket::pick_up(self, front).map(|(item, _)| item),
                 _ => None,
             };
             if let Some(item) = replacement {
@@ -957,6 +966,38 @@ mod tests {
             assert_eq!(w.get_block(P), Some(r::PISTON), "{}", block.name());
             assert_eq!(w.get_block(P + IVec3::Z), Some(block));
         }
+    }
+    #[test]
+    fn pushed_stairs_take_their_corner_shape_where_they_land() {
+        use crate::world::block::Facing;
+        use crate::world::slab_stair_states::{self as ss, StairShape};
+        let mut w = world();
+        put(&mut w, P, r::piston(2, false, false));
+        // Fronts: south is Java's north (tall side north), west is Java's east.
+        put(&mut w, P + IVec3::X, Block::STONE_STAIRS.with_facing(Facing::South));
+        let beside = P + IVec3::X * 2 - IVec3::Z;
+        put(&mut w, beside, Block::STONE_STAIRS.with_facing(Facing::West));
+        assert_eq!(ss::stairs(w.get_block(P + IVec3::X).unwrap()).unwrap().shape, StairShape::Straight);
+        put(&mut w, P - IVec3::X, r::REDSTONE_BLOCK);
+        ticks(&mut w, 3);
+        // `PistonMovingBlockEntity` lands it through `updateFromNeighbourShapes`.
+        let landed = ss::stairs(w.get_block(P + IVec3::X * 2).unwrap()).unwrap();
+        assert_eq!((landed.facing, landed.shape), (Facing::South, StairShape::OuterRight));
+    }
+    #[test]
+    fn pistons_break_lanterns_instead_of_moving_them() {
+        use crate::world::mount_states::LANTERN;
+        let mut w = world();
+        for x in 1..4 {
+            put(&mut w, P + IVec3::new(x, -1, 0), Block::STONE);
+        }
+        put(&mut w, P, r::piston(2, false, false));
+        put(&mut w, P + IVec3::X, LANTERN);
+        put(&mut w, P - IVec3::X, r::REDSTONE_BLOCK);
+        ticks(&mut w, 3);
+        // `PushReaction.POPPED`: the head takes the lantern's cell.
+        assert_ne!(w.get_block(P + IVec3::X), Some(LANTERN));
+        assert_ne!(w.get_block(P + IVec3::X * 2), Some(LANTERN));
     }
     #[test]
     fn sticky_pulls_one_while_normal_piston_leaves_it_and_front_power_is_ignored() {

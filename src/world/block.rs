@@ -1,6 +1,6 @@
 //! Block registry: ids, render classification and per-face texture layers.
 //!
-//! Block properties live in a 4096-entry static table so hot loops (meshing,
+//! Block properties live in a 16,384-entry static table so hot loops (meshing,
 //! physics) resolve them with a single indexed load instead of a `match`.
 
 use crate::item::{Item, ToolKind};
@@ -10,7 +10,7 @@ use crate::item::{Item, ToolKind};
 pub struct Block(pub u16);
 
 /// Registry capacity; state IDs are append-only and must be below this bound.
-pub const STATE_CAPACITY: usize = 4096;
+pub const STATE_CAPACITY: usize = 16384;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RenderKind {
@@ -40,6 +40,9 @@ pub struct BlockInfo {
     pub self_cull: bool,
     /// Texture layer per face, ordered +X, -X, +Y, -Y, +Z, -Z.
     pub tex: [u16; 6],
+    /// Holds water ([`Block::is_waterlogged`]); kept here because meshing
+    /// asks for every face and already has this entry in cache.
+    pub waterlogged: bool,
 }
 
 /// Texture array layers. Must match the generators in `render::textures`.
@@ -338,7 +341,10 @@ pub mod tex {
     /// Golden hearts for absorption, drawn after the health hearts.
     pub const HEART_ABSORBING_FULL: u16 = 1759;
     pub const HEART_ABSORBING_HALF: u16 = 1760;
-    pub const COUNT: u32 = 1761;
+    /// Lantern and soul lantern (`mount_states`).
+    pub const LANTERN: u16 = 1761;
+    pub const SOUL_LANTERN: u16 = 1762;
+    pub const COUNT: u32 = 1763;
     const _: () = assert!(super::super::overworld_blocks::TEX_END <= 1750);
     const _: () = assert!(super::super::overworld_blocks::TEX == 1450);
     const _: () = assert!((CRYING_OBSIDIAN as u32) < COUNT);
@@ -665,6 +671,13 @@ impl Block {
     /// Minecraft's (encouragement, consumption) fire odds. Wooden doors,
     /// ladders and containers can kindle lava fires but aren't consumed.
     pub fn fire_odds(self) -> (u8, u8) {
+        // `FireBlock.getBurnOdds`/`getIgniteOdds`: waterlogged states never burn.
+        if super::waterlog::wet(self.0) {
+            return (0, 0);
+        }
+        if let Some(c) = self.alias() {
+            return c.fire_odds();
+        }
         if self.carpet_color().is_some() {
             return (60, 20);
         }
@@ -689,6 +702,9 @@ impl Block {
     }
 
     pub fn ignited_by_lava(self) -> bool {
+        if let Some(c) = self.alias() {
+            return c.ignited_by_lava();
+        }
         self.fire_odds().0 > 0
             || self.is_bed()
             || matches!(
@@ -697,9 +713,11 @@ impl Block {
             )
     }
 
-    /// A complete top face can support fire, even on glass.
+    /// A complete top face can support fire, even on glass; top slabs and
+    /// upside-down stairs have one.
     pub fn supports_fire(self) -> bool {
-        self.is_solid() && self.top_drop() == 0 && self.kind() != RenderKind::Shaped
+        (self.is_solid() && self.top_drop() == 0 && self.kind() != RenderKind::Shaped)
+            || super::slab_stair_states::sturdy_top(self)
     }
 
     pub const fn flowing_water(level: u8) -> Block {
@@ -778,6 +796,9 @@ impl Block {
 
     /// The full block stairs were cut from.
     pub fn stairs_base(self) -> Option<Block> {
+        if super::slab_stair_states::owns(self.0) {
+            return super::slab_stair_states::stairs(self).and_then(|_| super::slab_stair_states::family_base(self));
+        }
         if let Some((i, 0..=3)) = super::nether_blocks::form(self.0) {
             return Some(super::nether_blocks::SHAPE_BASES[i]);
         }
@@ -803,6 +824,21 @@ impl Block {
 
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
+        if super::slab_stair_states::owns(self.0) {
+            return super::slab_stair_states::shaped(self.0);
+        }
+        if let Some(twin) = super::mount_states::door_twin(self.0) {
+            return twin.shaped();
+        }
+        if let Some((_, facing)) = super::mount_states::grindstone_state(self.0) {
+            return Some(Shaped::Village { kind: 10, facing });
+        }
+        if super::mount_states::is_lantern(self.0) {
+            return Some(Shaped::Custom);
+        }
+        if let Some(c) = self.alias() {
+            return c.shaped();
+        }
         if let Some(s) = super::village_blocks::shaped(self.0) {
             return Some(s);
         }
@@ -826,7 +862,7 @@ impl Block {
         let f = |i: u16| Facing::ALL[i as usize % 4];
         Some(match self.0 {
             #[cfg(test)]
-            4094 => Shaped::Stairs(Facing::South),
+            16382 => Shaped::Stairs(Facing::South),
             112..=135 | 189..=192 => Shaped::Stairs(f(stairs_index(self.0).unwrap().1)),
             136 | 182 => Shaped::Fence,
             188 => Shaped::BrewingStand,
@@ -855,6 +891,9 @@ impl Block {
     }
 
     pub fn is_rail(self) -> bool {
+        if let Some(c) = self.alias() {
+            return c.is_rail();
+        }
         (500..=509).contains(&self.0) || super::rails::is_special(self)
     }
 
@@ -863,6 +902,9 @@ impl Block {
     }
 
     pub fn rail_shape(self) -> Option<RailShape> {
+        if let Some(c) = self.alias() {
+            return c.rail_shape();
+        }
         if (500..=509).contains(&self.0) {
             Some(RailShape::ALL[(self.0 - 500) as usize])
         } else {
@@ -882,6 +924,9 @@ impl Block {
 
     /// Java's `BlockTags.CLIMBABLE`: ladders and every kind of vine.
     pub fn is_climbable(self) -> bool {
+        if let Some(c) = self.alias() {
+            return c.is_climbable();
+        }
         self.is_ladder() || super::nether_biome_blocks::climbable(self) || super::overworld_blocks::climbable(self)
     }
 
@@ -900,6 +945,12 @@ impl Block {
     /// The other state of a door half or gate (open <-> closed), facing
     /// `facing`.
     pub fn toggled(self, facing: Facing) -> Block {
+        if let Some(twin) = super::mount_states::door_twin(self.0) {
+            return super::mount_states::keep_hinge(self, twin.toggled(facing));
+        }
+        if let Some(c) = self.alias() {
+            return c.toggled(facing).with_water(self.is_waterlogged());
+        }
         if let Some(super::redstone_blocks::Component::IronDoor { open, upper, .. }) =
             super::redstone_blocks::component(self)
         {
@@ -939,25 +990,54 @@ impl Block {
     }
 
     pub fn is_log(self) -> bool {
+        if let Some(c) = self.alias() {
+            return c.is_log();
+        }
         matches!(self.0, 6 | 69..=72 | 333..=335) || super::overworld_blocks::is_log(self)
     }
 
     pub fn is_leaves(self) -> bool {
+        if let Some(c) = self.alias() {
+            return c.is_leaves();
+        }
         matches!(self.0, 7 | 23 | 73..=75) || super::overworld_blocks::is_leaves(self)
     }
 
     pub fn is_planks(self) -> bool {
+        if let Some(c) = self.alias() {
+            return c.is_planks();
+        }
         matches!(self.0, 8 | 76..=79 | 336..=338) || super::overworld_blocks::is_planks(self)
     }
 
     pub fn is_sapling(self) -> bool {
+        if let Some(c) = self.alias() {
+            return c.is_sapling();
+        }
         matches!(self.0, 67 | 68 | 80..=82) || super::overworld_blocks::is_sapling(self)
     }
 
-    /// Always holds a water source in its cell (kelp, seagrass, live coral).
+    /// Holds a water source in its cell: always (kelp and seagrass) or as
+    /// the wet state of a waterloggable block.
     #[inline(always)]
     pub fn is_waterlogged(self) -> bool {
-        super::overworld_blocks::waterlogged(self.0)
+        self.info().waterlogged
+    }
+
+    /// Has Java's `waterlogged` property (`SimpleWaterloggedBlock`).
+    #[inline]
+    pub fn waterloggable(self) -> bool {
+        super::waterlog::partner(self.0).is_some()
+    }
+
+    /// This state with its `waterlogged` property set to `wet`; unchanged
+    /// when it has no such property.
+    #[inline]
+    pub fn with_water(self, wet: bool) -> Block {
+        match super::waterlog::partner(self.0) {
+            Some((other, is_wet)) if is_wet != wet => Block(other),
+            _ => self,
+        }
     }
 
     /// Water, or a block holding water: what swimming, drowning and water
@@ -967,6 +1047,23 @@ impl Block {
         self.is_water() || self.is_waterlogged()
     }
 
+    /// The registered state a BLD-04f waterlog partner (ids from
+    /// [`super::waterlog::FIRST`]) shares its properties with: the dry
+    /// original, or the wet one for sea pickles and live coral. Every other
+    /// state is its own.
+    #[inline(always)]
+    pub fn canonical(self) -> Block {
+        Block(super::waterlog::canonical(self.0))
+    }
+
+    /// [`Block::canonical`] when it differs: the property lookups below
+    /// answer for a partner as for its original.
+    #[inline(always)]
+    fn alias(self) -> Option<Block> {
+        let c = self.canonical();
+        (c != self).then_some(c)
+    }
+
     pub fn is_farmland(self) -> bool {
         self == Block::FARMLAND || self == Block::WET_FARMLAND
     }
@@ -974,6 +1071,19 @@ impl Block {
     /// The block items, recipes and rules use for an oriented block (a
     /// furnace or chest facing any way), and the way it faces.
     pub fn oriented(self) -> Option<(Block, Facing)> {
+        if super::slab_stair_states::owns(self.0) {
+            return super::slab_stair_states::stairs(self)
+                .map(|s| (super::slab_stair_states::FAMILIES[s.family as usize].stairs, s.facing));
+        }
+        if let Some(twin) = super::mount_states::door_twin(self.0) {
+            return twin.oriented();
+        }
+        if super::mount_states::grindstone_state(self.0).is_some() && !(933..=936).contains(&self.0) {
+            return Some((Block::GRINDSTONE, Facing::South));
+        }
+        if let Some(c) = self.alias() {
+            return c.oriented();
+        }
         if let Some(s) = super::village_blocks::oriented(self.0).or_else(|| super::pumpkin_blocks::oriented(self.0)) {
             return Some(s);
         }
@@ -1021,6 +1131,15 @@ impl Block {
 
     /// This block without its orientation (itself if it has none).
     pub fn base(self) -> Block {
+        if let Some(b) = super::slab_stair_states::item_block(self.0) {
+            return b;
+        }
+        if let Some(l) = super::mount_states::lantern_of(self) {
+            return if l.soul { super::mount_states::SOUL_LANTERN } else { super::mount_states::LANTERN };
+        }
+        if let Some(c) = self.alias() {
+            return c.base();
+        }
         if let Some(b) = super::village_blocks::base(self.0) {
             return b;
         }
@@ -1050,11 +1169,17 @@ impl Block {
 
     /// The same block facing `facing` (unchanged if it has no front).
     pub fn with_facing(self, facing: Facing) -> Block {
+        if let Some(c) = self.alias() {
+            return c.with_facing(facing).with_water(self.is_waterlogged());
+        }
         use super::redstone_blocks::{self as r, Component};
         match r::component(self) {
             Some(Component::Repeater { delay, on, .. }) => return r::repeater(facing, delay, on),
             Some(Component::Comparator { subtract, on, .. }) => return r::comparator(facing, subtract, on),
             _ => {}
+        }
+        if let Some(b) = super::slab_stair_states::with_facing(self, facing) {
+            return b;
         }
         let i = facing as u16;
         match self.base() {
@@ -1180,8 +1305,11 @@ impl Block {
         Self::SLAB_BASES.iter().position(|&b| b == base).map(slab_id)
     }
 
-    /// The full block a slab was cut from (two stacked slabs make it).
+    /// The full block a slab of any type was cut from.
     pub fn slab_base(self) -> Option<Block> {
+        if super::slab_stair_states::owns(self.0) {
+            return super::slab_stair_states::slab(self).and_then(|_| super::slab_stair_states::family_base(self));
+        }
         if let Some((i, 4)) = super::nether_blocks::form(self.0) {
             return Some(super::nether_blocks::SHAPE_BASES[i]);
         }
@@ -1221,6 +1349,9 @@ impl Block {
     /// How far (in 1/16 block) the top of this block sits below the top of
     /// its cell; 0 for full blocks.
     pub fn top_drop(self) -> u8 {
+        if let Some(c) = self.alias() {
+            return c.top_drop();
+        }
         if let Some(drop) = super::overworld_blocks::top_drop(self) {
             return drop;
         }
@@ -1228,7 +1359,7 @@ impl Block {
             Block::DIRT_PATH | Block::FARMLAND | Block::WET_FARMLAND => 1,
             b if b.is_bed() => 7,
             b if b.carpet_color().is_some() => 15,
-            b if b.is_slab() => 8,
+            b if super::slab_stair_states::slab_type(b) == Some(super::slab_stair_states::SlabType::Bottom) => 8,
             _ => 0,
         }
     }
@@ -1245,6 +1376,9 @@ impl Block {
 
     /// What breaking this block yields in survival.
     pub fn drop(self) -> Option<Item> {
+        if let Some(c) = self.alias() {
+            return c.drop();
+        }
         if matches!(
             super::redstone_blocks::component(self),
             Some(super::redstone_blocks::Component::PistonHead { .. } | super::redstone_blocks::Component::Moving)
@@ -1334,6 +1468,15 @@ impl Block {
     /// held item can harvest the block and 5x when it can't, divided by the
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
     pub fn hardness(self) -> f32 {
+        if super::mount_states::is_lantern(self.0) {
+            return 3.5;
+        }
+        if let Some(twin) = super::mount_states::twin(self.0) {
+            return twin.hardness();
+        }
+        if let Some(c) = self.alias() {
+            return c.hardness();
+        }
         if let Some(h) = super::village_blocks::hardness(self.0) {
             return h;
         }
@@ -1491,6 +1634,15 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
+        if super::mount_states::is_lantern(self.0) {
+            return Some(ToolKind::Pickaxe);
+        }
+        if let Some(twin) = super::mount_states::twin(self.0) {
+            return twin.best_tool();
+        }
+        if let Some(c) = self.alias() {
+            return c.best_tool();
+        }
         if self == super::gadgets::LEGACY_BONE_BLOCK || self == super::gadgets::PACKED_ICE {
             return Some(ToolKind::Pickaxe);
         }
@@ -1621,6 +1773,9 @@ impl Block {
     /// Pickaxe harvest level needed for any drop (0 wood or gold, 1 stone,
     /// 2 iron, 3 diamond); `None` if a bare hand will do.
     pub fn harvest_level(self) -> Option<u8> {
+        if let Some(c) = self.alias() {
+            return c.harvest_level();
+        }
         if self == super::gadgets::LEGACY_BONE_BLOCK {
             return Some(0);
         }
@@ -1750,11 +1905,15 @@ impl Block {
             .chain(super::nether_biome_blocks::palette_ids())
             .chain([1800])
             .chain(super::overworld_blocks::palette_ids())
+            .chain(super::mount_states::palette_ids())
             .map(Block)
     }
 
     /// Blocks that placing another block overwrites (air, fluids, grass).
     pub fn is_replaceable(self) -> bool {
+        if let Some(c) = self.alias() {
+            return c.is_replaceable();
+        }
         self == Block::AIR
             || self.is_fluid()
             || self.is_fire()
@@ -1769,6 +1928,9 @@ impl Block {
     /// solid. The retained non-solid set includes plants, rails and fragile
     /// redstone controls (cobwebs are forced solid in Java).
     pub fn fluid_replaceable(self) -> bool {
+        if let Some(c) = self.alias() {
+            return c.fluid_replaceable();
+        }
         self.is_replaceable()
             || (self.kind() == RenderKind::Cross && self != Block::COBWEB)
             || self.is_rail()
@@ -1796,6 +1958,9 @@ impl Block {
 
     /// Sand, gravel and the dragon egg fall when nothing holds them up.
     pub fn has_gravity(self) -> bool {
+        if let Some(c) = self.alias() {
+            return c.has_gravity();
+        }
         matches!(self, Block::SAND | Block::RED_SAND | Block::GRAVEL | Block::DRAGON_EGG)
             || self.is_anvil()
             || self.concrete_powder_color().is_some()
@@ -1804,6 +1969,9 @@ impl Block {
     /// Whether this block can rest on `below`. Plants need soil and torches
     /// a full block; everything else stays put.
     pub fn can_stay_on(self, below: Block) -> bool {
+        if self.alias().is_some() || below.alias().is_some() {
+            return self.canonical().can_stay_on(below.canonical());
+        }
         if let Some(
             super::redstone_blocks::Component::Wire(_)
             | super::redstone_blocks::Component::Repeater { .. }
@@ -1835,14 +2003,19 @@ impl Block {
             Block::SUGAR_CANE => {
                 matches!(below, Block::SUGAR_CANE | Block::GRASS | Block::DIRT | Block::SAND | Block::RED_SAND)
             }
-            Block::TORCH => below.is_opaque(),
+            // `TorchBlock.canSurvive`: `Block.canSupportCenter(below, UP)`.
+            Block::TORCH => super::mount_states::supports_center(below, glam::IVec3::Y),
             b if b.is_rail() => below.supports_fire(),
             b if b.is_door() => {
                 if b.is_door_upper() {
                     below.is_door() && !below.is_door_upper()
                 } else {
-                    below.is_opaque()
+                    super::mount_states::face_sturdy(below, glam::IVec3::Y)
                 }
+            }
+            // `LanternBlock.canSurvive`; a hanging lantern checks the block above.
+            b if let Some(l) = super::mount_states::lantern_of(b) => {
+                l.hanging || super::mount_states::supports_center(below, glam::IVec3::Y)
             }
             b if b.is_sapling() => {
                 matches!(below, Block::GRASS | Block::DIRT | Block::SNOWY_GRASS) || below.is_farmland()
@@ -1879,8 +2052,10 @@ impl Block {
     }
 
     /// Whether Java's light engine compares this state's occlusion faces.
+    #[inline]
     pub fn uses_shape_for_light_occlusion(self) -> bool {
-        shape_blocks_light(self.0)
+        // SAFETY: same bound as `info`.
+        unsafe { *SHAPE_LIGHT.get_unchecked(self.slot()) }
     }
 
     /// Highest non-source sky cell contributed by this block. A bottom
@@ -2122,8 +2297,12 @@ pub enum Shaped {
         kind: u8,
         facing: Facing,
     },
-    /// The low step faces this way; the tall half is behind it.
+    /// The low step faces this way; the tall half is behind it. Half and
+    /// corner shape are in the state (`slab_stair_states::stairs`).
     Stairs(Facing),
+    /// A top slab (Java's `SlabType.TOP`): the upper half of its cell.
+    /// Bottom slabs are low cutout blocks and double slabs full cubes.
+    Slab,
     /// Redstone components derive their small boxes from state and neighbours.
     Redstone,
     /// Three stone plates and a rod.
@@ -2262,9 +2441,32 @@ const fn fronted(front: u16, side: u16, top: u16, facing: Facing) -> [u16; 6] {
     t
 }
 
+/// [`Block::is_waterlogged`]: always wet (kelp, seagrass) or the wet state
+/// of a waterlogged pair.
+const fn holds_water(id: u16) -> bool {
+    super::overworld_blocks::waterlogged(id) || matches!(super::waterlog::pair(id), Some((_, true)))
+}
+
 const fn make(id: u16) -> BlockInfo {
     use RenderKind::*;
+    // A BLD-04f waterlog partner looks and collides like its original.
+    let canonical = super::waterlog::canonical(id);
+    if canonical != id {
+        let mut info = make(canonical);
+        info.waterlogged = holds_water(id);
+        return info;
+    }
     let (name, kind, tex) = match id {
+        7680..=8191 => match super::mount_states::twin(id) {
+            Some(t) => {
+                let twin = make(t.0);
+                (twin.name, twin.kind, twin.tex)
+            }
+            None => match super::mount_states::lantern_registry(id) {
+                Some(info) => info,
+                None => ("unknown", Invisible, all(0)),
+            },
+        },
         953..=960 => match super::pumpkin_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
@@ -2300,12 +2502,22 @@ const fn make(id: u16) -> BlockInfo {
             });
             (stage_zero.name, stage_zero.kind, stage_zero.tex)
         }
+        super::slab_stair_states::STAIRS_ORIGIN..=super::slab_stair_states::RESERVED_LAST => {
+            match super::slab_stair_states::registry(id) {
+                // A family's states share the name and textures of its existing ids.
+                Some((existing, kind)) => {
+                    let b = make(existing);
+                    (b.name, kind, b.tex)
+                }
+                None => ("unknown", Invisible, all(0)),
+            }
+        }
         #[cfg(test)]
-        4095 => ("test high cube", Opaque, all(2047)),
+        16383 => ("test high cube", Opaque, all(2047)),
         #[cfg(test)]
-        4094 => ("test high stairs", Shaped, all(1536)),
+        16382 => ("test high stairs", Shaped, all(1536)),
         #[cfg(test)]
-        4093 => ("test high cross", Cross, all(1024)),
+        16381 => ("test high cross", Cross, all(1024)),
         0 => ("air", Invisible, all(0)),
         1 => ("stone", Opaque, all(tex::STONE)),
         2 => ("dirt", Opaque, all(tex::DIRT)),
@@ -2557,7 +2769,14 @@ const fn make(id: u16) -> BlockInfo {
     // a surface to fall through.
     let stained_glass = matches!(id, 624..=639);
     let solid = (matches!(kind, Opaque | Cutout | Shaped) || id == 97 || stained_glass) && id != 208 && id != 210;
-    BlockInfo { name, kind, solid, self_cull: matches!(id, 5 | 10 | 97 | 104) || stained_glass, tex }
+    BlockInfo {
+        name,
+        kind,
+        solid,
+        self_cull: matches!(id, 5 | 10 | 97 | 104) || stained_glass,
+        tex,
+        waterlogged: holds_water(id),
+    }
 }
 
 pub static INFO: [BlockInfo; STATE_CAPACITY] = {
@@ -2572,9 +2791,9 @@ pub static INFO: [BlockInfo; STATE_CAPACITY] = {
 
 /// States whose occlusion geometry participates in Java light propagation.
 const fn shape_blocks_light(id: u16) -> bool {
-    // Mesh bit tests use 4094 as a stairs stand-in at the layer limit.
+    // Mesh bit tests use 16382 as a stairs stand-in at the layer limit.
     #[cfg(test)]
-    if id == 4094 {
+    if id == 16382 {
         return true;
     }
     if matches!(id, 57 | 58 | 900 | 1910 | 2516..=2522) {
@@ -2583,7 +2802,7 @@ const fn shape_blocks_light(id: u16) -> bool {
     if let Some((_, 0..=4)) = super::nether_blocks::form(id) {
         return true;
     }
-    if matches!(id, 106..=135 | 189..=193) {
+    if matches!(id, 106..=135 | 189..=193) || super::slab_stair_states::uses_shape_for_light(id) {
         return true;
     }
     if let Some(super::forms::StoneForm::Stairs { .. } | super::forms::StoneForm::Slab { .. }) =
@@ -2604,7 +2823,24 @@ static EMISSION: [u8; STATE_CAPACITY] = {
     let mut arr = [0; STATE_CAPACITY];
     let mut i = 0;
     while i < STATE_CAPACITY {
-        arr[i] = match i {
+        arr[i] = emission_of(i);
+        i += 1;
+    }
+    arr
+};
+
+/// Per-state emission for [`EMISSION`]. A BLD-04f partner glows like its
+/// original, except dry sea pickles (`SeaPickleBlock.isDead`), which don't.
+const fn emission_of(i: usize) -> u8 {
+    let canonical = super::waterlog::canonical(i as u16) as usize;
+    if canonical != i {
+        return match super::waterlog::family_pair(i as u16) {
+            Some((_, false)) if super::overworld_blocks::pickle_count(Block(canonical as u16)).is_some() => 0,
+            _ => emission_of(canonical),
+        };
+    }
+    {
+        match i {
             22 | 37..=41 | 165..=180 | 208 | 210 => 15, // glowstone, lava, fire, portals
             36 => 14,                                   // torch
             46 | 50..=52 | 913..=916 | 921..=924 => 13, // lit furnace, every facing
@@ -2615,12 +2851,23 @@ static EMISSION: [u8; STATE_CAPACITY] = {
             1435..=1436 => 9,                           // glowing redstone ores
             1211 => 15,                                 // lit redstone lamp
             957..=960 => 15,                            // jack o'lanterns
+            7920..=7927 => super::mount_states::emission(i as u16), // lanterns
             812 => 3,                                   // magma
             1600..=1687 => super::nether_biome_blocks::emission(i as u16),
             1800 => 10, // crying obsidian
             1900..=2076 | 2400..=2415 => super::overworld_blocks::emission(i as u16),
             _ => 0,
-        };
+        }
+    }
+}
+
+/// [`shape_blocks_light`] per state: light and heightmap code ask for
+/// every transparent cell, so it must not decode forms per call.
+static SHAPE_LIGHT: [bool; STATE_CAPACITY] = {
+    let mut arr = [false; STATE_CAPACITY];
+    let mut i = 0;
+    while i < STATE_CAPACITY {
+        arr[i] = shape_blocks_light(super::waterlog::canonical(i as u16));
         i += 1;
     }
     arr
@@ -2630,23 +2877,36 @@ static LIGHT_OPACITY: [u8; STATE_CAPACITY] = {
     let mut arr = [15u8; STATE_CAPACITY];
     let mut i = 0;
     while i < STATE_CAPACITY {
-        arr[i] = match INFO[i].kind {
-            // Eight snow layers have a full occlusion shape. Other dry
-            // partial blocks have zero dampening; their shared faces, rather
-            // than whole cells, block light (BlockBehaviour / LightEngine).
-            _ if i == 2522 => 15,
-            _ if shape_blocks_light(i as u16) => 0,
-            RenderKind::Opaque => 15,
-            // Kelp, seagrass and live coral dim light like the water they hold.
-            _ if super::overworld_blocks::waterlogged(i as u16) => 1,
-            RenderKind::Invisible | RenderKind::Cross | RenderKind::Shaped => 0,
-            _ if matches!(i, 10 | 98 | 99 | 576..=623 | 624..=639) => 0, // glass, beds, stained glass
-            _ => 1,                                                      // leaves, water: attenuate skylight too
-        };
+        arr[i] = opacity_of(i);
         i += 1;
     }
     arr
 };
+
+/// Per-state dampening for [`LIGHT_OPACITY`] (Java `getLightDampening`).
+const fn opacity_of(i: usize) -> u8 {
+    // A waterlogged state no longer propagates skylight down
+    // (`propagatesSkylightDown` is false with a fluid), so it dampens by 1
+    // unless its dry state is already opaque; a shape that occludes light
+    // keeps doing so through `uses_shape_for_light_occlusion`.
+    if let Some((dry, true)) = super::waterlog::pair(i as u16) {
+        let dry = opacity_of(dry as usize);
+        return if dry > 1 { dry } else { 1 };
+    }
+    match INFO[i].kind {
+        // Eight snow layers have a full occlusion shape. Other dry
+        // partial blocks have zero dampening; their shared faces, rather
+        // than whole cells, block light (BlockBehaviour / LightEngine).
+        _ if i == 2522 => 15,
+        _ if shape_blocks_light(super::waterlog::canonical(i as u16)) => 0,
+        RenderKind::Opaque => 15,
+        // Kelp and seagrass dim light like the water they hold.
+        _ if super::overworld_blocks::waterlogged(i as u16) => 1,
+        RenderKind::Invisible | RenderKind::Cross | RenderKind::Shaped => 0,
+        _ if matches!(i, 10 | 98 | 99 | 576..=623 | 624..=639) => 0, // glass, beds, stained glass
+        _ => 1,                                                      // leaves, water: attenuate skylight too
+    }
+}
 
 static BORROWS_LIGHT: [bool; STATE_CAPACITY] = {
     let mut arr = [false; STATE_CAPACITY];
@@ -2675,6 +2935,13 @@ mod tests {
     #[test]
     fn emission_table_matches_base_state_lookup_for_every_state() {
         fn reference(block: Block) -> u8 {
+            let canonical = block.canonical();
+            if canonical != block {
+                // A BLD-04f partner glows like its original; a dry sea
+                // pickle is dead (`SeaPickleBlock.isDead`).
+                let dead = super::super::overworld_blocks::pickle_count(canonical).is_some() && !block.is_waterlogged();
+                return if dead { 0 } else { reference(canonical) };
+            }
             match super::super::redstone_blocks::component(block) {
                 Some(super::super::redstone_blocks::Component::Torch { lit, .. }) => return if lit { 7 } else { 0 },
                 Some(super::super::redstone_blocks::Component::Lamp(on)) => return if on { 15 } else { 0 },
@@ -2693,6 +2960,8 @@ mod tests {
                 }
             }
             match block.base() {
+                super::super::mount_states::LANTERN => 15,
+                super::super::mount_states::SOUL_LANTERN => 10,
                 Block::MAGMA => 3,
                 Block::CRYING_OBSIDIAN => 10,
                 Block::GLOWSTONE => 15,
@@ -2872,7 +3141,8 @@ mod tests {
         assert!(!Block::POPPY.can_stay_on(Block::SAND));
         assert!(Block::DEAD_BUSH.can_stay_on(Block::SAND));
         assert!(Block::TORCH.can_stay_on(Block::COBBLESTONE));
-        assert!(!Block::TORCH.can_stay_on(Block::GLASS) && !Block::TORCH.can_stay_on(Block::AIR));
+        // `canSupportCenter`: glass's full collision shape holds a torch.
+        assert!(Block::TORCH.can_stay_on(Block::GLASS) && !Block::TORCH.can_stay_on(Block::AIR));
         assert!(Block::STONE.can_stay_on(Block::AIR));
     }
 
@@ -3042,7 +3312,12 @@ mod tests {
         // The upper half stands on the lower; the lower on a full block.
         assert!(Block::door(Facing::East, false, true).can_stay_on(Block::door(Facing::East, false, false)));
         assert!(!Block::door(Facing::East, false, true).can_stay_on(Block::AIR));
-        assert!(Block::OAK_DOOR.can_stay_on(Block::STONE) && !Block::OAK_DOOR.can_stay_on(Block::GLASS));
+        // `DoorBlock.canSurvive`: a sturdy top face, which glass has.
+        assert!(Block::OAK_DOOR.can_stay_on(Block::STONE) && Block::OAK_DOOR.can_stay_on(Block::GLASS));
+        assert!(
+            !Block::OAK_DOOR.can_stay_on(Block::AIR)
+                && !Block::OAK_DOOR.can_stay_on(Block::slab_of(Block::STONE).unwrap())
+        );
         assert_eq!(Block::OAK_FENCE.hardness(), Block::PLANKS.hardness());
         assert_eq!(Block::LADDER.best_tool(), Some(ToolKind::Axe));
         assert!(Block::LADDER.flat_icon() && !Block::OAK_FENCE.flat_icon());

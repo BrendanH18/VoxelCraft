@@ -61,6 +61,12 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
   This shares build output, not responsibility for checks: each agent still
   runs the hand-off chain below in its own worktree, taking turns under the
   lock, and the integrator runs it again on the merged result.
+- A shared target directory can hand one worktree another's build: cargo
+  treats the `voxelcraft` crate as fresh when none of your source files is
+  newer than the last build, whichever worktree made it (found 2026-10-20).
+  Before checks or benchmarks in a tree whose files didn't change since
+  another tree built, run `cargo clean --release -p voxelcraft` (it keeps the
+  dependencies), and keep copies of binaries you compare.
 
 ## Before handing work back
 
