@@ -55,7 +55,9 @@ Render distance is measured in 32-block chunks, so `--rd 8` is 256 blocks
 
 ## Block and texture IDs
 
-`Block(pub u16)` indexes 4096 static property entries directly. State IDs are
+`Block(pub u16)` indexes 16,384 static property entries directly (raised from
+4096 for v0.9, owner decision 2026-10-20; one ID per Java state, waterlogged
+states included). State IDs are
 append-only and must be below `world::block::STATE_CAPACITY`; unregistered
 entries remain invisible, including the unused IDs in legacy saves. Constants
 and `Block(n)` construction retain their existing shape. Generation builds a
@@ -66,9 +68,15 @@ Palettes are expanded by row into meshing scratch storage, outside the lighting
 and greedy-meshing loops. Repeated edits reuse palette entries; a full palette
 is rebuilt to discard removed states before promoting to direct storage.
 
-Chunk files now have a `VXC2` header and RLE records of `(u16 run length,
-u16 state ID)`, both little-endian. The reader also accepts `VXC1` records
-with byte state IDs and preserves their numeric values. Existing inventory,
+Chunk files hold RLE records of `(u16 run length, u16 state ID)`, both
+little-endian, under a `VXC2` header, or `VXC3` once any saved state is 4096
+or above. Builds from before the capacity raise refuse `VXC3` files, and
+worlds that use no new states stay readable by them. The reader also accepts
+`VXC1` records with byte state IDs and preserves their numeric values. A
+chunk file in a format this build doesn't know (a newer build's) fails to
+load, and play continues on regenerated terrain; saving then renames it to
+`chunks.bin.unknown-<unix seconds>` instead of replacing it. Runs that never
+save, such as benchmarks and screenshots, leave it alone. Existing inventory,
 container, entity and level IDs keep their meanings: block items below 256
 retain their IDs; higher block states use `item::BLOCK_ITEM_BASE + state_id`
 (currently `0x8000 + state_id`). Always convert with `Item::from_block` or
@@ -258,6 +266,43 @@ runs silently.
 wgpu and winit (graphics and windowing), cpal (audio output), glam (math),
 bytemuck, crossbeam-channel, rustc-hash, font8x8, png, pollster, log and
 env_logger.
+
+## Release ID reservations (v0.9–v0.17)
+
+Reserved on 2026-10-20 when `STATE_CAPACITY` rose to 16,384 (BLD-06), so
+concurrent content work never collides. Allocate inside your release's range,
+record each allocation in the table of the change that uses it, and leave
+unused IDs unregistered. A release that outgrows its range takes the next
+free block from the unassigned reserve, recorded here.
+
+| Block states | Release | Use |
+| --- | --- | --- |
+| 2525–4095 | v0.10 | New building-material families' base states |
+| 4096–7679 | v0.9 | Slab types and stair halves, shapes and waterlogged states (BLD-04a/b) |
+| 7680–8191 | v0.9 | Door hinges, floor/ceiling buttons and levers, wall grindstones and other mounts (BLD-04c/e) |
+| 8192–8703 | v0.9 | Waterlogged states of the other waterloggable families (BLD-04f) |
+| 8704–9727 | v0.10 | Sign and banner rotations, waterlogged and hinged forms of new families |
+| 9728–10239 | v0.11 | Terrain blocks and states |
+| 10240–10751 | v0.12 | Structure blocks and states |
+| 10752–11263 | v0.13 | Wildlife and crop states |
+| 11264–11775 | v0.14 | Deep dark and trial chamber states |
+| 11776–12287 | v0.15 | Village workstation and raid states |
+| 12288–12799 | v0.16 | End and Wither states |
+| 12800–14335 | v0.17 | Redstone and automation states |
+| 14336–16383 | — | Unassigned reserve |
+
+Allocations so far:
+
+| Block states | Meaning | Record |
+| --- | --- | --- |
+| 4096–7059 | Stairs states beyond bottom, straight and dry: 76 per family in `slab_stair_states::FAMILIES` order | [slabs and stairs](verification/2026-10-20-slabs-stairs.md) |
+| 7060–7215 | Slab states beyond bottom and dry: bottom wet, top dry, top wet, double, per family | [slabs and stairs](verification/2026-10-20-slabs-stairs.md) |
+| 7680–7691 | Lever mounts 6–11 (floor and ceiling facing north, east, west), off then on | [doors and mounts](verification/2026-10-20-doors-mounts.md) |
+| 7696–7767 | Button mounts 6–11 for stone, oak, crimson, warped, pale oak and bamboo | [doors and mounts](verification/2026-10-20-doors-mounts.md) |
+| 7800–7903 | Right-hinge lower doors: oak, iron, then the 11 wood doors | [doors and mounts](verification/2026-10-20-doors-mounts.md) |
+| 7904–7911 | Wall and ceiling grindstones | [doors and mounts](verification/2026-10-20-doors-mounts.md) |
+| 7920–7927 | Lantern and soul lantern: standing or hanging, dry or wet | [doors and mounts](verification/2026-10-20-doors-mounts.md) |
+| 8192–8476 | Waterlogged partners of 285 existing states (fences, bars, panes, walls, chains, trapdoors, rails, ladders, chests, leaves, amethyst, dripstone, dripleaves, roots, propagules, dead coral) and dry partners of sea pickles and live coral, in `waterlog::RUNS` order; append runs only at the end | [waterlogging](verification/2026-10-20-waterlogging.md) |
 
 ## Assessment branch ID reservations
 

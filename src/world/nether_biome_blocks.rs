@@ -392,7 +392,7 @@ pub fn can_stay_on(block: Block, below: Block) -> Option<bool> {
             is_nylium(below) || below == SOUL_SOIL || bush()
         }
         SOUL_FIRE => soul_fire_base(below),
-        SOUL_TORCH => below.is_opaque(),
+        SOUL_TORCH => super::mount_states::supports_center(below, glam::IVec3::Y),
         b => match Vine::of(b) {
             // Twisting vines stand on a sturdy top or more of themselves.
             Some((Vine::Twisting, _)) => sturdy_face(below) || matches!(Vine::of(below), Some((Vine::Twisting, _))),
@@ -438,6 +438,11 @@ pub fn stripped(b: Block) -> Option<Block> {
 
 /// The oak redstone state an id mirrors, and its wood (0 crimson, 1 warped).
 pub const fn switch_oak(id: u16) -> Option<(Block, u16)> {
+    let id = super::waterlog::canonical(id);
+    // Floor and ceiling buttons (`mount_states`): kinds 2.. are the wood twins.
+    if id >= 7720 && id < 7768 {
+        return Some((Block(7708 + (id - 7696) % 12), (id - 7696) / 12 - 2));
+    }
     let (wood, local) = if id >= SWITCH_ORIGIN && id <= LAST {
         ((id - SWITCH_ORIGIN) / SWITCH_STRIDE, (id - SWITCH_ORIGIN) % SWITCH_STRIDE)
     } else if id >= 2269 && id < 2329 {
@@ -464,6 +469,7 @@ pub const fn switch_reskin(oak: Block, wood: u16) -> Block {
         1437..=1452 => Block(base + oak.0 - 1437),
         1140..=1151 => Block(base + 16 + oak.0 - 1140),
         1215..=1216 => Block(base + 28 + oak.0 - 1215),
+        7708..=7719 => Block(7696 + (2 + wood) * 12 + oak.0 - 7708),
         _ => oak,
     }
 }

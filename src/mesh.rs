@@ -286,10 +286,25 @@ const PRESENT: u64 = 1 << 31;
 /// Top drop of a low block (see `Block::top_drop`), in 1/16 block.
 const DROP_SHIFT: u64 = 11;
 
-/// What face culling and water surfaces see: waterlogged blocks are water.
+/// What face culling and water surfaces see: waterlogged blocks are water
+/// (their own model is added separately), except a waterlogged cube that
+/// hides its water (a chest, drawn here as a full block).
 #[inline(always)]
 fn water_view(b: Block) -> Block {
-    if b.is_waterlogged() { Block::WATER } else { b }
+    if b.is_waterlogged() && !b.is_opaque() { Block::WATER } else { b }
+}
+
+/// The boxes of the shaped block `b` at region index `i`.
+fn shaped_boxes(blocks: &[Block], i: usize, b: Block) -> Boxes {
+    let at = |d: glam::IVec3| {
+        blocks[(i as isize + d.x as isize + d.y as isize * (D * D) as isize + d.z as isize * D as isize) as usize]
+    };
+    if matches!(b.shaped(), Some(crate::world::block::Shaped::Redstone)) {
+        return shape::redstone_shape(b, at);
+    }
+    let neighbour = |f: Facing| at(f.offset());
+    let below = i.checked_sub(D * D).map(|j| blocks[j]).unwrap_or(Block::AIR);
+    shape::shape_with(b, neighbour, below, shape::Above::read(b, at))
 }
 
 /// Lights and meshes one chunk.
@@ -340,10 +355,20 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                 let mut i = ridx(p[0], p[1], p[2]) as isize;
                 for uu in 0..CHUNK_SIZE {
                     let raw = blocks[i as usize];
-                    // Waterlogged plants mesh as water here; their cross is
-                    // added with the other cross-shaped blocks.
-                    if face == 0 && raw.is_waterlogged() {
-                        cross_cells.push(i as usize);
+                    // Waterlogged blocks mesh as water here; their own model
+                    // joins the other cross-shaped or shaped blocks (a leaf
+                    // or root cube, or a bottom slab, as one box).
+                    if face == 0 && raw.is_waterlogged() && !raw.is_opaque() {
+                        match raw.kind() {
+                            RenderKind::Shaped => {
+                                shaped_cells.push((i as usize, shaped_boxes(blocks, i as usize, raw)))
+                            }
+                            RenderKind::Cutout => shaped_cells.push((
+                                i as usize,
+                                Boxes::from_box(shape::Box16 { min: [0; 3], max: [16, 16 - raw.top_drop(), 16] }),
+                            )),
+                            _ => cross_cells.push(i as usize),
+                        }
                     }
                     let b = water_view(raw);
                     let ni = i + sd;
@@ -377,24 +402,7 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                                 false
                             }
                             RenderKind::Shaped if face == 0 => {
-                                let i = i as usize;
-                                let neighbour = |f: Facing| {
-                                    let o = f.offset();
-                                    blocks[(i as isize + o.x as isize + o.z as isize * D as isize) as usize]
-                                };
-                                let below = i.checked_sub(D * D).map(|j| blocks[j]).unwrap_or(Block::AIR);
-                                let boxes = if matches!(b.shaped(), Some(crate::world::block::Shaped::Redstone)) {
-                                    shape::redstone_shape(b, |d| {
-                                        blocks[(i as isize
-                                            + d.x as isize
-                                            + d.y as isize * (D * D) as isize
-                                            + d.z as isize * D as isize)
-                                            as usize]
-                                    })
-                                } else {
-                                    shape::shape(b, neighbour, below)
-                                };
-                                shaped_cells.push((i, boxes));
+                                shaped_cells.push((i as usize, shaped_boxes(blocks, i as usize, b)));
                                 false
                             }
                             _ => false,
@@ -490,12 +498,15 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
         // Shaped blocks: each box face pointing this way, unless it's hidden
         // by another box or lies against an opaque neighbour.
         for (i, boxes) in &shaped_cells {
-            let (i, b) = (*i, blocks[*i]);
+            // A waterlogged block draws as its dry original.
+            let (i, b) = (*i, blocks[*i].canonical());
             // See-through textures need the alpha test.
-            let see_through = matches!(
-                crate::world::redstone_blocks::component(b),
-                Some(crate::world::redstone_blocks::Component::Trapdoor { .. })
-            ) || b.is_ladder()
+            let see_through = b.kind() == RenderKind::Cutout
+                || matches!(
+                    crate::world::redstone_blocks::component(b),
+                    Some(crate::world::redstone_blocks::Component::Trapdoor { .. })
+                )
+                || b.is_ladder()
                 || b.is_door()
                 || b.is_rail()
                 || matches!(b, Block::IRON_BARS | Block::BREWING_STAND)
@@ -717,9 +728,9 @@ mod tests {
     fn high_layers_render_cube_detail_and_cross_without_corrupting_geometry() {
         // Test-only registry entries mirror the render paths at the registry/layer limits.
         for (high, low, layer, pass) in [
-            (Block(4095), Block::STONE, 2047, OPAQUE),
-            (Block(4094), Block::STONE_STAIRS, 1536, OPAQUE),
-            (Block(4093), Block::TALL_GRASS, 1024, CROSS),
+            (Block(16383), Block::STONE, 2047, OPAQUE),
+            (Block(16382), Block::STONE_STAIRS, 1536, OPAQUE),
+            (Block(16381), Block::TALL_GRASS, 1024, CROSS),
         ] {
             let high = mesh_blocks(&[([31, 31, 31], high)]).quads_of(pass);
             let low = mesh_blocks(&[([31, 31, 31], low)]).quads_of(pass);

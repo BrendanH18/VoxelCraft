@@ -103,6 +103,18 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     if (tex::SOUL_FIRE_0..=1399).contains(&layer) {
         return nether::pixel(layer, x, y);
     }
+    if layer == tex::LANTERN || layer == tex::SOUL_LANTERN {
+        // An iron cage around a flame; the body spans x 5..11, the cap 6..10.
+        let soul = layer == tex::SOUL_LANTERN;
+        let caged = x % 3 == 2 || y.is_multiple_of(7) || y % 7 == 6 || matches!(x, 5 | 10);
+        return if caged {
+            shade([58, 58, 64], 0.9 + rnd(layer, x, y, 3) * 0.2)
+        } else if soul {
+            shade([96, 226, 238], 0.85 + rnd(layer, x, y, 5) * 0.3)
+        } else {
+            shade([255, 206, 110], 0.85 + rnd(layer, x, y, 5) * 0.3)
+        };
+    }
     if (1750..=1752).contains(&layer) {
         let speckle = rnd(layer, x, y, 1) < 0.14;
         let crack = layer > 1750 && ((x + y * 2).is_multiple_of(13) || layer == 1752 && (x * 3 + y).is_multiple_of(11));

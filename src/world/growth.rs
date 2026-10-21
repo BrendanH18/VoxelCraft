@@ -60,6 +60,7 @@ impl World {
     /// `tool`: silk touch drops the block itself, fortune adds to ore and
     /// crop drops (Java's loot tables).
     pub fn spill_with_item(&mut self, p: IVec3, block: Block, held: Option<Stack>) {
+        let block = block.canonical();
         if self.tile_drops
             && held.is_some_and(|s| s.item == Item::SHEARS)
             && let Some(stack) = Self::shear_loot(block)
@@ -87,18 +88,21 @@ impl World {
         if !self.tile_drops {
             return;
         }
+        // A waterlogged block drops what its dry original does.
+        let block = block.canonical();
         use crate::enchant::Enchantment;
         if tool.has(Enchantment::SilkTouch)
             && let Some(item) = crate::mining::silk_drop(block)
         {
-            // A silk-touched snow block keeps every layer.
-            let count = super::overworld_blocks::snow_layers(block).unwrap_or(1);
+            // A silk-touched snow block keeps every layer; a double slab is two slabs.
+            let count = super::overworld_blocks::snow_layers(block).unwrap_or(1) * double_slab_count(block);
             self.drops.push((p, Stack::new(item, count)));
             return;
         }
         let fortune = tool.level(Enchantment::Fortune) as u64;
         let mut out = Vec::new();
-        out.extend(block.drop().map(|item| Stack::new(item, 1)));
+        // Java's slab loot table: two for `type=double`.
+        out.extend(block.drop().map(|item| Stack::new(item, double_slab_count(block))));
         if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&block.0)
             || super::overworld_blocks::snow_layers(block).is_some()
             || super::overworld_blocks::bud_facing(block).is_some()
@@ -315,9 +319,9 @@ impl World {
             Block::SUGAR_CANE => self.tick_cane(p),
             b if b.is_mushroom() => self.tick_mushroom(p, b),
             b if (1600..=1687).contains(&b.0) => self.tick_nether_flora(p, b),
-            b if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&b.0)
+            b if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&b.canonical().0)
                 || (2150..=2157).contains(&b.0)
-                || (2160..=2164).contains(&b.0) =>
+                || (2160..=2164).contains(&b.canonical().0) =>
             {
                 self.tick_overworld_flora(p, b);
             }
@@ -637,6 +641,11 @@ impl World {
             .iter()
             .any(|&d| self.get_block(soil + d).is_some_and(|b| b.holds_water() || b == Block::ICE))
     }
+}
+
+/// Items a slab's loot table gives per drop: two for a double slab.
+fn double_slab_count(block: Block) -> u8 {
+    if super::slab_stair_states::slab_type(block) == Some(super::slab_stair_states::SlabType::Double) { 2 } else { 1 }
 }
 
 #[cfg(test)]

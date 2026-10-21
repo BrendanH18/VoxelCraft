@@ -1,5 +1,6 @@
 //! Validated block placement; input/presentation and other item uses stay in adapters.
 use super::PlayerSession;
+use crate::item::Item;
 use crate::{
     entity::PlayerId,
     inventory::HOTBAR_SLOTS,
@@ -7,8 +8,9 @@ use crate::{
     world::{
         World,
         block::{Block, Facing, RenderKind},
-        overworld_blocks as ob,
+        overworld_blocks as ob, slab_stair_states as ss,
         terrain::Dimension,
+        waterlog,
     },
 };
 use glam::{DVec3, IVec3};
@@ -22,6 +24,32 @@ pub enum Kind {
     CombinedSlab,
 }
 
+/// What Java's `BlockPlaceContext` gives `getStateForPlacement`: where the
+/// player clicked and how they were facing. Family placement rules
+/// (slab halves, stair halves, door hinges, button faces, waterlogging)
+/// read it instead of re-deriving the raycast.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PlaceContext {
+    /// The clicked cell and the block in it.
+    pub clicked: IVec3,
+    pub clicked_block: Block,
+    /// Outward normal of the clicked face (Java's `getClickedFace`).
+    pub face: IVec3,
+    /// The click point relative to the clicked cell's minimum corner, each
+    /// axis in 0..=1 (Java's `getClickLocation` minus the clicked position).
+    pub click: DVec3,
+    /// The cell the block goes into: the clicked cell when it is replaceable
+    /// or the held slab merges into it, otherwise the cell across `face`.
+    pub at: IVec3,
+    /// The horizontal direction the player looks along (Java's
+    /// `getHorizontalDirection`). Opposite to the legacy `Facing::toward`,
+    /// which gives the front facing back at the player.
+    pub facing: Facing,
+    /// The player's unit look vector (Java's `getNearestLookingDirections`).
+    pub look: glam::Vec3,
+    pub sneaking: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Outcome {
     Placed { player: PlayerId, cell: IVec3, block: Block, kind: Kind },
@@ -29,6 +57,26 @@ pub enum Outcome {
 }
 
 impl PlayerSession {
+    /// The placement context for `held` against `target`, whose default
+    /// destination (after replaceable and snow rules) is `at`.
+    fn place_context(&self, target: crate::world::BlockHit, clicked: Block, held: Item, at: IVec3) -> PlaceContext {
+        let (hit, normal) = (target.cell, target.normal);
+        let click = (target.point - hit.as_dvec3()).clamp(DVec3::ZERO, DVec3::ONE);
+        // `SlabBlock.canBeReplaced` with `replacingClickedOnBlock`: a single
+        // slab of the held kind clicked on its open side takes the other half.
+        let merges_slab = held.places().is_some_and(|r| ss::slab_takes_click(clicked, r, normal, click.y));
+        PlaceContext {
+            clicked: hit,
+            clicked_block: clicked,
+            face: normal,
+            click,
+            at: if merges_slab { hit } else { at },
+            facing: Facing::toward(glam::Vec3::new(self.player.yaw.cos(), 0., self.player.yaw.sin())).opposite(),
+            look: self.player.forward(),
+            sneaking: self.player.sneaking,
+        }
+    }
+
     /// Place from the selected stack against an engine-computed raycast.
     /// All destination/support/player checks precede edits, spending and RNG use.
     /// Existing block-state conventions are retained; full shape/hinge parity
@@ -57,7 +105,8 @@ impl PlayerSession {
         if held.count == 0 || held.count > held.item.max_stack() {
             return Err("invalid held stack");
         }
-        let (hit, normal) = self.block_target(world).ok_or("no block within reach")?;
+        let target = self.block_hit(world).ok_or("no block within reach")?;
+        let (hit, normal) = (target.cell, target.normal);
         let clicked = world.get_block(hit).ok_or("target is unloaded")?;
         // `SnowLayerBlock.canBeReplaced`: a snow layer item stacks onto a snow
         // block of fewer than eight layers, from its top face or in the cell
@@ -72,6 +121,8 @@ impl PlayerSession {
         };
         // Horizontal placement follows yaw even when looking straight down/up.
         let facing = Facing::toward(glam::Vec3::new(self.player.yaw.cos(), 0., self.player.yaw.sin()));
+        let ctx = self.place_context(target, clicked, held.item, at);
+        let at = ctx.at;
         let blocked =
             |cell| self.player.intersects_block(cell) || others.iter().any(|&p| Player::new(p).intersects_block(cell));
         let free = |world: &World, cell: IVec3| {
@@ -80,7 +131,16 @@ impl PlayerSession {
                 && world.is_loaded(cell)
                 && world.get_block(cell).is_some_and(Block::is_replaceable)
         };
-        let supported = |world: &World, cell| world.get_block(cell - IVec3::Y).is_some_and(Block::is_opaque);
+        let supported = |world: &World, cell| {
+            world.get_block(cell - IVec3::Y).is_some_and(|b| crate::world::mount_states::face_sturdy(b, IVec3::Y))
+        };
+        // Java's `isUnobstructed`: the placed state's collision shape against players.
+        let obstructed = |world: &World, cell: IVec3, block: Block| {
+            let boxes = collision_boxes(world, cell, block);
+            boxes.iter().any(|&(lo, hi)| {
+                self.player.intersects_box(lo, hi) || others.iter().any(|&p| Player::new(p).intersects_box(lo, hi))
+            })
+        };
         let (cell, mut block, partner, kind) = if let Some(color) = held.item.bed_color() {
             let head = at + facing.opposite().offset();
             if !free(world, at)
@@ -94,6 +154,12 @@ impl PlayerSession {
             }
             (at, Block::colored_bed(color, false), Some((head, Block::colored_bed(color, true))), Kind::Bed)
         } else if let Some([lower, upper]) = crate::content::placement::door_halves(held.item, facing) {
+            // `DoorBlock.getHinge`: neighbouring doors and solid blocks, then the click.
+            let lower = if crate::world::mount_states::door_hinge_right(&ctx, |c| world.get_block(c)) {
+                crate::world::mount_states::right_of(lower).unwrap_or(lower)
+            } else {
+                lower
+            };
             let up = at + IVec3::Y;
             if up.y >= world.max_y()
                 || !free(world, at)
@@ -117,12 +183,14 @@ impl PlayerSession {
                     return Err("ladder does not fit");
                 }
                 (cell, raw.with_facing(direction), None, Kind::Ladder)
-            } else if raw.is_slab() && normal == IVec3::Y && clicked == raw {
-                let full = raw.slab_base().ok_or("unsupported slab")?;
-                if blocked(hit) {
+            } else if world.get_block(at).is_some_and(|b| ss::slab_takes_placement(b, raw)) {
+                // `SlabBlock.getStateForPlacement` on a slab of the same kind:
+                // the double slab, never waterlogged.
+                let double = ss::placed(raw, world.get_block(at).unwrap_or(Block::AIR), normal, ctx.click.y, |_| None);
+                if obstructed(world, at, double) {
                     return Err("placement intersects a player");
                 }
-                (hit, full, None, Kind::CombinedSlab)
+                (at, double, None, Kind::CombinedSlab)
             } else {
                 let mut raw = raw;
                 if raw == ob::SNOW_LAYER
@@ -139,14 +207,27 @@ impl PlayerSession {
                     }
                     (at, raw, None, Kind::Block)
                 } else {
-                    let block = ob::placed(raw, normal).unwrap_or(raw);
-                    let block = crate::world::village_blocks::placed(
-                        crate::world::nether_blocks::placed(block, normal),
-                        normal,
-                    )
-                    .with_facing(facing);
-                    let block = crate::world::redstone_blocks::placed_with_look(block, normal, self.player.forward());
-                    let block = crate::world::village_blocks::placed_with_look(block, self.player.forward());
+                    // Levers, buttons, grindstones, lanterns and redstone torches
+                    // follow Java's nearest-looking-direction rules.
+                    let block =
+                        if let Some(mounted) = crate::world::mount_states::placed(raw, &ctx, |c| world.get_block(c)) {
+                            mounted.ok_or("block cannot survive here")?
+                        } else {
+                            let block = ob::placed(raw, normal).unwrap_or(raw);
+                            let block = crate::world::village_blocks::placed(
+                                crate::world::nether_blocks::placed(block, normal),
+                                normal,
+                            )
+                            .with_facing(facing);
+                            let block =
+                                crate::world::redstone_blocks::placed_with_look(block, normal, self.player.forward());
+                            let block = crate::world::village_blocks::placed_with_look(block, self.player.forward());
+                            // Slab type and stairs half and corner shape (Java's
+                            // `getStateForPlacement` of `SlabBlock` and `StairBlock`).
+                            ss::placed(block, world.get_block(at).unwrap_or(Block::AIR), normal, ctx.click.y, |f| {
+                                world.get_block(at + f.offset())
+                            })
+                        };
                     if !free(world, at) {
                         return Err("destination occupied or unloaded");
                     }
@@ -166,7 +247,8 @@ impl PlayerSession {
                     } else {
                         None
                     };
-                    if (block.is_solid() && blocked(at))
+                    let shaped_half = ss::stairs(block).is_some() || ss::slab(block).is_some();
+                    if (block.is_solid() && if shaped_half { obstructed(world, at, block) } else { blocked(at) })
                         || partner.is_some_and(|(p, b)| !free(world, p) || (b.is_solid() && blocked(p)))
                     {
                         return Err("placement intersects a player or occupied partner cell");
@@ -178,6 +260,12 @@ impl PlayerSession {
                 }
             }
         };
+        // Every `SimpleWaterloggedBlock.getStateForPlacement`: waterlogged
+        // exactly when the final cell holds a water source.
+        let watered =
+            |world: &World, at: IVec3, b: Block| b.with_water(world.get_block(at).is_some_and(waterlog::holds_source));
+        block = watered(world, cell, block);
+        let partner = partner.map(|(at, b)| (at, watered(world, at, b)));
         // Complete validation before rolling vine age or changing neighbor/drop rules.
         block = world.placed_vine_age(cell, block)?;
         world.touch_redstone_ore(hit);
@@ -196,5 +284,47 @@ impl PlayerSession {
             self.inventory.take_one(slot);
         }
         Ok(Outcome::Placed { player: self.id, cell, block, kind })
+    }
+}
+
+/// World-space collision boxes `block` would have at `cell`.
+fn collision_boxes(world: &World, cell: IVec3, block: Block) -> Vec<(DVec3, DVec3)> {
+    let lo = cell.as_dvec3();
+    let neighbour = |f: Facing| world.get_block(cell + f.offset()).unwrap_or(Block::AIR);
+    let below = world.get_block(cell - IVec3::Y).unwrap_or(Block::AIR);
+    let v = |c: [u8; 3]| DVec3::new(c[0] as f64, c[1] as f64, c[2] as f64) / 16.0;
+    crate::world::shape::collision_or_cube(block, neighbour, below, crate::world::shape::Above::NONE)
+        .as_slice()
+        .iter()
+        .map(|b| (lo + v(b.min), lo + v(b.max)))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::world::BlockHit;
+
+    #[test]
+    fn place_context_faces_where_the_player_looks_and_merges_slabs_in_place() {
+        let mut session = PlayerSession::new(PlayerId(0), DVec3::ZERO);
+        let slab = Block::slab_of(Block::STONE).unwrap();
+        let cell = IVec3::new(7, 145, 4);
+        let hit = BlockHit { cell, normal: IVec3::Y, point: DVec3::new(7.25, 146.0, 4.75) };
+        for (yaw, facing) in [
+            (0.0f32, Facing::East),
+            (std::f32::consts::FRAC_PI_2, Facing::South),
+            (std::f32::consts::PI, Facing::West),
+            (-std::f32::consts::FRAC_PI_2, Facing::North),
+        ] {
+            session.player.yaw = yaw;
+            let ctx = session.place_context(hit, slab, Item::from_block(Block::STONE), cell + IVec3::Y);
+            assert_eq!(ctx.facing, facing, "yaw {yaw}");
+            assert!(ctx.look.dot(ctx.facing.offset().as_vec3()) > 0.99, "look and facing agree at yaw {yaw}");
+            assert_eq!(ctx.at, cell + IVec3::Y);
+            assert_eq!(ctx.click, DVec3::new(0.25, 1.0, 0.75));
+        }
+        let merging = session.place_context(hit, slab, Item::from_block(slab), cell + IVec3::Y);
+        assert_eq!(merging.at, cell, "a matching slab clicked from above merges into its own cell");
     }
 }

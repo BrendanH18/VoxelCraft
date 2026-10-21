@@ -56,9 +56,15 @@ pub const fn wire(power: u8) -> Block {
     Block(1100 + power as u16)
 }
 pub const fn lever(mount: u8, on: bool) -> Block {
+    if mount >= 6 {
+        return super::mount_states::lever(mount, on);
+    }
     Block(1116 + mount as u16 * 2 + on as u16)
 }
 pub const fn button(mount: u8, on: bool, wood: bool) -> Block {
+    if mount >= 6 {
+        return super::mount_states::button(mount, on, wood);
+    }
     Block(1128 + wood as u16 * 12 + mount as u16 * 2 + on as u16)
 }
 pub const fn torch(mount: u8, lit: bool) -> Block {
@@ -124,6 +130,8 @@ pub fn hopper_direction(facing: u8) -> glam::IVec3 {
 }
 
 pub const fn component(b: Block) -> Option<Component> {
+    // A wet trapdoor is the trapdoor (BLD-04f waterlog partner).
+    let b = Block(super::waterlog::canonical(b.0));
     // Crimson and warped trapdoors, buttons and plates act as their oak twins.
     if let Some((oak, _)) = super::nether_biome_blocks::switch_oak(b.0) {
         return component(oak);
@@ -176,6 +184,7 @@ pub const fn component(b: Block) -> Option<Component> {
         1377..=1388 => Component::Dispenser { facing: ((id - 1377) % 6) as u8, dropper: id >= 1383 },
         1389..=1398 => Component::Hopper { facing: (((id - 1389) % 5 + 4) % 5) as u8, disabled: id >= 1394 },
         1435..=1436 => Component::GlowingOre(id == 1436),
+        7680..=8191 => return super::mount_states::component(id),
         _ => return None,
     })
 }
@@ -237,11 +246,13 @@ pub const fn base(b: Block) -> Option<Block> {
     })
 }
 
-/// Mount 0 is floor, 1..4 face south/north/east/west, 5 is ceiling.
+/// Mount 0 is floor, 1..4 face south/north/east/west, 5 is ceiling; 6..=8
+/// and 9..=11 are the floor and ceiling states facing north, east and west
+/// (see `mount_states::mount_attach`). The direction to the supporting block.
 pub fn support(mount: u8) -> glam::IVec3 {
     match mount {
-        0 => glam::IVec3::NEG_Y,
-        5 => glam::IVec3::Y,
+        0 | 6..=8 => glam::IVec3::NEG_Y,
+        5 | 9..=11 => glam::IVec3::Y,
         _ => -Facing::ALL[(mount - 1) as usize].offset(),
     }
 }

@@ -122,6 +122,9 @@ fn sponge_drains_waterlogged_coral_and_continues_through_it() {
     let mut w = world(Dimension::Overworld);
     let fan = ob::coral(2, 0, false);
     let plant = ob::coral(1, 3, false);
+    for x in 2..4 {
+        w.set_block(P + IVec3::X * x - IVec3::Y, Block::STONE);
+    }
     w.set_block(P + IVec3::X, Block::WATER);
     w.set_block(P + IVec3::X * 2, fan);
     w.set_block(P + IVec3::X * 3, plant);
@@ -129,9 +132,11 @@ fn sponge_drains_waterlogged_coral_and_continues_through_it() {
     w.set_block(P, ob::SPONGE);
     assert_eq!(w.get_block(P), Some(ob::WET_SPONGE));
     assert_eq!(w.get_block(P + IVec3::X), Some(Block::AIR));
-    // No dry live-coral state exists, so drained coral takes Java's eventual dead form.
-    assert_eq!(w.get_block(P + IVec3::X * 2), Some(ob::coral(2, 0, true)));
-    assert_eq!(w.get_block(P + IVec3::X * 3), Some(ob::coral(1, 3, true)));
+    // `SimpleWaterloggedBlock.pickupBlock` leaves dry live coral, which
+    // dies later on its scheduled tick.
+    assert_eq!(w.get_block(P + IVec3::X * 2), Some(fan.with_water(false)));
+    assert_eq!(w.get_block(P + IVec3::X * 3), Some(plant.with_water(false)));
+    assert!(!fan.with_water(false).is_waterlogged() && fan.with_water(false) != fan);
     assert_eq!(w.get_block(P + IVec3::X * 4), Some(Block::AIR), "the search continues past waterlogged blocks");
     assert!(w.drops.is_empty(), "drained coral is not broken");
 }

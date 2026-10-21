@@ -432,16 +432,26 @@ impl World {
             }
             return;
         }
+        // `updateShape`: a lever, button or torch whose attached block no
+        // longer has a sturdy face pops off; so does a diode or plate over
+        // a block that is not solid.
         let support = match r::component(b) {
             Some(Component::Lever { mount, .. } | Component::Button { mount, .. } | Component::Torch { mount, .. }) => {
-                Some(r::support(mount))
+                Some((r::support(mount), true))
             }
             Some(Component::Repeater { .. } | Component::Comparator { .. } | Component::Plate { .. }) => {
-                Some(IVec3::NEG_Y)
+                Some((IVec3::NEG_Y, false))
             }
             _ => None,
         };
-        if support.is_some_and(|d| self.get_block(p + d).is_some_and(|b| !b.is_solid())) {
+        if support.is_some_and(|(d, sturdy)| {
+            self.get_block(p + d).is_some()
+                && if sturdy {
+                    !self.redstone_supported(p, b)
+                } else {
+                    self.get_block(p + d).is_some_and(|b| !b.is_solid())
+                }
+        }) {
             self.spill_block(p, b);
             self.edit(p, Block::AIR, false);
             return;
@@ -554,6 +564,9 @@ impl World {
         if super::composter::level(b).is_some() {
             self.finish_compost(p);
             return;
+        }
+        if super::overworld_flora::live_coral_plant(b) {
+            return self.coral_death_tick(p, b);
         }
         match r::component(b) {
             Some(
@@ -743,10 +756,12 @@ impl World {
                 let lower = if upper { p - IVec3::Y } else { p };
                 let on = self.redstone_power(lower) > 0 || self.redstone_power(lower + IVec3::Y) > 0;
                 for (q, upper) in [(lower, false), (lower + IVec3::Y, true)] {
-                    if let Some(Component::IronDoor { facing, open, .. }) = self.get_block(q).and_then(r::component)
+                    if let Some(block) = self.get_block(q)
+                        && let Some(Component::IronDoor { facing, open, .. }) = r::component(block)
                         && open != on
                     {
-                        self.edit(q, r::iron_door(facing, on, upper), false);
+                        let door = super::mount_states::keep_hinge(block, r::iron_door(facing, on, upper));
+                        self.edit(q, door, false);
                     }
                 }
             }
@@ -809,16 +824,15 @@ impl World {
         if let Some((facing, _, _)) = super::gadgets::hook_state(b) {
             return self.get_block(p - facing.offset()).is_some_and(Block::supports_fire);
         }
-        let support = match r::component(b) {
-            Some(Component::Torch { mount, .. } | Component::Lever { mount, .. } | Component::Button { mount, .. }) => {
-                r::support(mount)
-            }
+        let (support, torch_floor) = match r::component(b) {
+            Some(Component::Torch { mount, .. }) => (r::support(mount), mount == 0),
+            Some(Component::Lever { mount, .. } | Component::Button { mount, .. }) => (r::support(mount), false),
             Some(
                 Component::Wire(_)
                 | Component::Repeater { .. }
                 | Component::Comparator { .. }
                 | Component::Plate { .. },
-            ) => IVec3::NEG_Y,
+            ) => (IVec3::NEG_Y, false),
             _ if matches!(
                 super::nether_biome_blocks::Vine::of(b),
                 Some((super::nether_biome_blocks::Vine::Weeping, _))
@@ -828,8 +842,14 @@ impl World {
             }
             _ => return true,
         };
-        self.get_block(p + support)
-            .is_some_and(|b| b.is_opaque() || b == Block::GLASS || b.stained_glass_color().is_some())
+        // `canSupportCenter` for a standing torch, `isFaceSturdy` otherwise.
+        self.get_block(p + support).is_some_and(|b| {
+            if torch_floor {
+                super::mount_states::supports_center(b, -support)
+            } else {
+                super::mount_states::face_sturdy(b, -support)
+            }
+        })
     }
 
     /// Shared two-cell iron door placement for all input sources.
@@ -1004,7 +1024,11 @@ impl World {
                 ("t", &[delay, priority, seq, family])
                     if delay >= 0
                         && seq >= 0
-                        && ((1100..=1599).contains(&family) || matches!(family, 226 | 249 | 904))
+                        && ((1100..=1599).contains(&family)
+                            || matches!(family, 226 | 249 | 904)
+                            // A pending coral death (`CoralPlantBlock.tryScheduleDieTick`).
+                            || u16::try_from(family)
+                                .is_ok_and(|f| super::overworld_flora::live_coral_plant(Block(f))))
                         && (-3..=0).contains(&priority) =>
                 {
                     let due = tick.saturating_add(delay as u64);

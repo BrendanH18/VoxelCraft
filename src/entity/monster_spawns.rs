@@ -241,13 +241,16 @@ pub(super) fn pick(list: &'static [MonsterSpawn], rng: &mut Rng) -> Option<&'sta
     })
 }
 
+/// A bottom slab: a low cutout block whose box `shaped()` doesn't describe.
+/// Top slabs are shaped and double slabs full cubes.
+fn bottom_slab(b: Block) -> bool {
+    use crate::world::slab_stair_states as ss;
+    ss::slab_type(b) == Some(ss::SlabType::Bottom)
+}
+
 /// Whether a block fills its whole cell for collision (Java's `isCollisionShapeFullBlock`).
 fn full_collision(b: Block) -> bool {
-    use crate::world::shape;
-    b.is_solid()
-        && !b.is_slab()
-        && (b.shaped().is_none()
-            || shape::collision(b, |_| Block::AIR, Block::AIR).as_slice().contains(&shape::Box16::FULL))
+    crate::world::mount_states::collision_is_full(b)
 }
 
 /// Java's `isRedstoneConductor`. The default is `isCollisionShapeFullBlock`;
@@ -280,7 +283,7 @@ fn conductor_override(name: &str) -> Option<bool> {
 /// covering the whole top of the cell) and emission below 14.
 fn sturdy_top(b: Block) -> bool {
     use crate::world::shape;
-    if !b.is_solid() || b.is_slab() {
+    if !b.is_solid() || bottom_slab(b) {
         return false;
     }
     // Java's 15/16-high farmland and paths have no full top face.
