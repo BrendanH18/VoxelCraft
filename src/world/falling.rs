@@ -249,10 +249,18 @@ impl World {
         self.falling = falling;
         for (p, block) in landed {
             // FallingBlockEntity only places scaffolding when canSurvive succeeds.
-            if super::scaffolding::is_scaffolding(block) && super::scaffolding::distance(|q| self.get_block(q), p) == 7
-            {
+            // An unloaded support neighbour isn't proof it can't: place it
+            // and let its scheduled tick decide once the chunk loads.
+            let scaffold = super::scaffolding::is_scaffolding(block);
+            let unknown = [IVec3::NEG_Y, IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z]
+                .into_iter()
+                .any(|d| self.get_block(p + d).is_none());
+            if scaffold && !unknown && super::scaffolding::distance(|q| self.get_block(q), p) == 7 {
                 self.spill_block(p, block);
                 continue;
+            }
+            if scaffold && unknown {
+                self.schedule_redstone(p, 1, 0);
             }
             // Something may have been built in the way since; then it's lost.
             if self.get_block(p).is_some_and(can_fall_into) {

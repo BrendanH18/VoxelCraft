@@ -59,7 +59,7 @@ enforced.
 | `fire_damage` | `fireDamage` | boolean | `true` | Implemented | - | Player-only, `is_fire` tag: fire, burning, lava, magma, campfire and blaze fireballs. A ghast fireball's blast is explosion damage and is not blocked (its direct 6-damage hit, which is fire-tagged, is not modelled). |
 | `fire_spread_radius_around_player` | `fireSpreadRadiusAroundPlayer` | integer -1..2147483647 | `128` | Implemented | - | Replaces `doFireTick` and `allowFireTicksAwayFromPlayer` (0: no fire ticks, -1: everywhere, else within the radius of a player). VoxelCraft saves it as `fireSpreadRadiusAroundPlayer` and still reads and accepts both older booleans. |
 | `forgive_dead_players` | `forgiveDeadPlayers` | boolean | `true` | Missing | v0.15 | Neutral-mob anger after the target dies is not modelled (the Java default, forgiving, is what happens). |
-| `freeze_damage` | `freezeDamage` | boolean | `true` | Missing | v0.9 | Powder snow freezing does not exist yet (PLY-02c). |
+| `freeze_damage` | `freezeDamage` | boolean | `true` | Implemented | - | Powder snow freezing damage to players; off makes them immune to it (PLY-02c). |
 | `global_sound_events` | `globalSoundEvents` | boolean | `true` | Not applicable | n/a | Only chooses whether dragon, wither and similar sounds reach players in other dimensions or far away. |
 | `immediate_respawn` | `doImmediateRespawn` | boolean | `false` | Implemented | - | Skips the death screen (`GameRules::respawns_immediately`); Hardcore still becomes Spectator. |
 | `keep_inventory` | `keepInventory` | boolean | `false` | Implemented | - | Keeps inventory, vanishing items and experience; no orbs drop (`Player.dropEquipment`, `getBaseExperienceReward`). |

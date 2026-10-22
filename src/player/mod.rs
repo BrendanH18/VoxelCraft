@@ -315,6 +315,17 @@ impl Player {
         [m.no_jump_delay, m.sprint_trigger_time, m.was_shift as u8, m.had_forward as u8]
     }
 
+    /// The cobweb, berry bush or powder snow slow-down the next move takes
+    /// (Java's `stuckSpeedMultiplier`), carried like [`Player::carried_motion`].
+    pub fn carried_stuck(&self) -> DVec3 {
+        self.motion.stuck
+    }
+
+    /// Restores [`Player::carried_stuck`].
+    pub fn restore_carried_stuck(&mut self, stuck: DVec3) {
+        self.motion.stuck = stuck.clamp(DVec3::ZERO, DVec3::splat(2.0));
+    }
+
     /// Restores [`Player::carried_motion`].
     pub fn restore_carried_motion(&mut self, carried: [u8; 4]) {
         let m = &mut self.motion;

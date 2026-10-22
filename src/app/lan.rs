@@ -105,6 +105,8 @@ pub(super) struct Lan {
     /// drawn: started when use could start a draw, kept while use stays held
     /// on it (the host's `tick_draw` doesn't recheck what is targeted).
     predicted_draw: Option<usize>,
+    /// Whether the use button was held on the last client tick.
+    use_was_held: bool,
     ready: bool,
     messages: VecDeque<String>,
     /// The host's respawn count for this client's player, from the last snapshot.
@@ -244,7 +246,7 @@ fn peer_look(look_override: &mut Option<(f32, f32, Instant)>, input: &Input) -> 
 fn state(agent: &Agent, name: &str) -> Value {
     json!({"id":agent.session.id.0,"name":name,"pos":agent.session.player.pos.to_array(),"vel":agent.session.player.vel.to_array(),
         "yaw":agent.session.player.yaw,"pitch":agent.session.player.pitch,"ground":agent.session.player.on_ground,"flying":agent.session.player.flying,
-        "sprint":agent.session.player.sprinting,"motion":agent.session.player.carried_motion(),"mode":agent.session.mode.name(),"selected":agent.selected,"inventory":agent.session.inventory.serialize(),
+        "sprint":agent.session.player.sprinting,"motion":agent.session.player.carried_motion(),"stuck":agent.session.player.carried_stuck().to_array(),"mode":agent.session.mode.name(),"selected":agent.selected,"inventory":agent.session.inventory.serialize(),
         "cursor":stack_to_string(agent.session.inventory.cursor),"ticks_frozen":agent.session.vitals.ticks_frozen,"health":agent.session.vitals.health,"air":agent.session.vitals.air,
         "food":agent.session.vitals.hunger.food,"saturation":agent.session.vitals.hunger.saturation,"exhaustion":agent.session.vitals.hunger.exhaustion,
         "death":agent.session.vitals.death,"xp":agent.session.vitals.xp.serialize(),"effects":agent.session.vitals.effects.serialize(),"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle,
@@ -284,6 +286,9 @@ fn apply(agent: &mut Agent, v: &Value) {
     if let Some(m) = v["motion"].as_array().filter(|m| m.len() == 4) {
         let byte = |i: usize| m[i].as_u64().unwrap_or(0).min(255) as u8;
         agent.session.player.restore_carried_motion([byte(0), byte(1), byte(2), byte(3)]);
+    }
+    if let Some(stuck) = vector(&v["stuck"]) {
+        agent.session.player.restore_carried_stuck(stuck);
     }
     agent.selected = v["selected"].as_u64().unwrap_or(0).min(8) as usize;
     if let Some(inv) = v["inventory"].as_str().and_then(crate::inventory::Inventory::deserialize) {
@@ -1298,9 +1303,19 @@ impl Game {
     fn lan_movement(&self, input: &Input) -> voxelcraft::player::MoveInput {
         let slot = usize::from(input.selected).min(8);
         let drawable = self.lan.predicted_draw == Some(slot);
+        // As `Hands::eat`: food (not drink) aimed at a composter without
+        // sneaking fills the composter instead of being eaten.
+        let drink = self.session.inventory.get(slot).is_some_and(|s| s.item.is_drink());
+        let composting = input.buttons & 2 == 0
+            && self
+                .session
+                .block_target(&self.world)
+                .and_then(|(pos, _)| self.world.get_block(pos))
+                .is_some_and(|b| voxelcraft::world::composter::level(b).is_some());
+        let eating = self.session.consumption_duration(slot).is_ok() && (drink || !composting);
         voxelcraft::player::MoveInput {
             sprint_blocked: !self.session.vitals.may_sprint(self.session.mode.invulnerable()),
-            using_item: input.buttons & 16 != 0 && (self.session.consumption_duration(slot).is_ok() || drawable),
+            using_item: input.buttons & 16 != 0 && (eating || drawable),
             ..input.movement()
         }
     }
@@ -1313,9 +1328,13 @@ impl Game {
             .inventory
             .get(slot)
             .is_some_and(|s| matches!(s.item, voxelcraft::item::Item::BOW | voxelcraft::item::Item::CROSSBOW));
+        // The host starts a draw on the press of use (`Hands::use_button`),
+        // then keeps it while use stays held on the same bow.
+        let pressed = use_held && !self.lan.use_was_held;
+        self.lan.use_was_held = use_held;
         self.lan.predicted_draw = match self.lan.predicted_draw {
             Some(drawn) if use_held && drawn == slot && bow => Some(drawn),
-            _ if use_held && self.session.can_draw(slot, &self.world) => Some(slot),
+            _ if pressed && self.session.can_draw(slot, &self.world) => Some(slot),
             _ => None,
         };
         let movement = self.lan_movement(&input);
@@ -2106,6 +2125,7 @@ mod tests {
         // so its replayed inputs move as the host's did.
         original.player.sprinting = true;
         original.player.restore_carried_motion([6, 3, 1, 1]);
+        original.player.restore_carried_stuck(DVec3::new(0.25, 0.05, 0.25));
         let frame = Packet::State(state(&original, "Builder")).encode().unwrap();
         let Packet::State(snapshot) = Packet::decode(&frame[4..]).unwrap() else { panic!("wrong packet") };
         let mut restored = Agent::new(DVec3::ZERO);
@@ -2114,6 +2134,7 @@ mod tests {
         assert_eq!(restored.player.vel, original.player.vel);
         assert!(restored.player.sprinting);
         assert_eq!(restored.player.carried_motion(), [6, 3, 1, 1]);
+        assert_eq!(restored.player.carried_stuck(), DVec3::new(0.25, 0.05, 0.25));
         assert_eq!(restored.mode, original.mode);
         assert_eq!(restored.selected, 3);
         assert_eq!(restored.inventory.serialize(), original.inventory.serialize());

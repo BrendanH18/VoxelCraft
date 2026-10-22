@@ -44,7 +44,7 @@ pub(super) struct Motion {
     pub(super) was_shift: bool,
     pub(super) had_forward: bool,
     /// The movement scale a cobweb or berry bush set for the next move.
-    stuck: DVec3,
+    pub(super) stuck: DVec3,
     pub(super) fluid: FluidContact,
     /// `mainSupportingBlockPos`.
     supporting: Option<IVec3>,

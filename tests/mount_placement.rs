@@ -130,15 +130,6 @@ fn every_door_opens_immediately_when_either_half_is_placed_beside_power() {
                 world.tick_redstone();
             }
             assert_eq!(open(&world), expected, "after ticks");
-            // POWERED must already be remembered at placement: closing a
-            // powered wooden door manually must survive the first update.
-            if expected && !matches!(world.get_block(lower).and_then(r::component), Some(Component::IronDoor { .. })) {
-                voxelcraft::session::interact::toggle_door(&mut world, lower, s.player.forward());
-                for _ in 0..5 {
-                    world.tick_redstone();
-                }
-                assert!(!open(&world), "manual close while powered");
-            }
             if let Some(y) = power_y {
                 world.set_block(lower + IVec3::X + IVec3::Y * y, Block::AIR);
                 for _ in 0..6 {
@@ -150,6 +141,16 @@ fn every_door_opens_immediately_when_either_half_is_placed_beside_power() {
                     world.tick_redstone();
                 }
                 assert!(open(&world), "restoring power opens the door");
+            }
+            // Removing power above closes an open door for every family; then
+            // a powered wooden door closed by hand stays closed (POWERED is
+            // remembered, so the next update isn't a new rising edge).
+            if expected && !matches!(world.get_block(lower).and_then(r::component), Some(Component::IronDoor { .. })) {
+                voxelcraft::session::interact::toggle_door(&mut world, lower, s.player.forward());
+                for _ in 0..5 {
+                    world.tick_redstone();
+                }
+                assert!(!open(&world), "manual close while powered");
             }
         }
     }

@@ -433,8 +433,8 @@ impl World {
             return;
         }
         // `updateShape`: a lever, button or torch whose attached block no
-        // longer has a sturdy face pops off; so does a diode or plate over
-        // a block that is not solid.
+        // longer has a sturdy face pops off; so does a diode or plate whose
+        // support no longer holds it (`canSurvive`, as placement checks).
         let support = match r::component(b) {
             Some(Component::Lever { mount, .. } | Component::Button { mount, .. } | Component::Torch { mount, .. }) => {
                 Some((r::support(mount), true))
@@ -449,7 +449,7 @@ impl World {
                 && if sturdy {
                     !self.redstone_supported(p, b)
                 } else {
-                    self.get_block(p + d).is_some_and(|b| !b.is_solid())
+                    self.get_block(p + d).is_some_and(|below| !b.can_stay_on(below))
                 }
         }) {
             self.spill_block(p, b);
@@ -464,7 +464,7 @@ impl World {
                 | Component::Hopper { .. },
             ) => self.automation_update(p, b),
             Some(Component::Wire(power)) => {
-                if self.get_block(p - IVec3::Y).is_some_and(|b| !b.is_solid()) {
+                if self.get_block(p - IVec3::Y).is_some_and(|below| !b.can_stay_on(below)) {
                     self.spill_block(p, b);
                     self.edit(p, Block::AIR, false);
                 } else {

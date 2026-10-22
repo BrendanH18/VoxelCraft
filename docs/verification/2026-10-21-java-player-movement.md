@@ -137,9 +137,11 @@ the `--no-default-features` clippy and tests, and the headless example pass.
   is not implemented.
 - Fall damage is still computed by the vitals from height; the player's
   Java `fallDistance` only drives the sneaking back-off.
-- Elytra, riptide, levitation, Soul Speed, Swift Sneak, bubble columns,
-  slime blocks, honey, scaffolding and powder snow arrive with their blocks
-  and items (scaffolding, powder snow and honey are in progress for v0.9).
+- Elytra, riptide, levitation, Soul Speed, Swift Sneak, bubble columns and
+  slime blocks arrive with their blocks and items. Honey, scaffolding and
+  powder snow movement shipped in v0.9 and are recorded in their own reports
+  ([honey](2026-10-21-honey-block.md),
+  [scaffolding and powder snow](2026-10-21-scaffolding-powder-snow.md)).
 - LAN clients receive the host's latched sprint and carried movement state
   (jump delay, sprint double-tap window, last tick's keys) with each
   snapshot, and predict item use from the use button and the held item;

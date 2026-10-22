@@ -399,3 +399,36 @@ fn frost_is_added_to_the_base_speed_before_the_sprint_multiplier() {
     let expected = ((0.10000000149011612 + f64::from(-0.05_f32 * 0.5)) * (1.0 + f64::from(0.3_f32))) as f32;
     assert_eq!(p.movement_speed(), expected);
 }
+#[test]
+fn redstone_on_stable_scaffolding_survives_updates_and_pops_off_a_bottom_slab() {
+    // `RedStoneWireBlock.canSurvive` on update: scaffolding's planks are a
+    // sturdy top; a bottom slab's top is not.
+    let mut w = world();
+    w.set_block(P, state(0, false, false));
+    w.set_block(P + IVec3::Y, crate::world::redstone_blocks::WIRE);
+    w.set_block(P + IVec3::Y + IVec3::X, Block::STONE);
+    ticks(&mut w, 4);
+    assert_eq!(w.get_block(P + IVec3::Y), Some(crate::world::redstone_blocks::WIRE), "stays on scaffolding");
+    w.set_block(P, Block::STONE_SLAB);
+    ticks(&mut w, 4);
+    assert_eq!(w.get_block(P + IVec3::Y), Some(Block::AIR), "pops off a bottom slab");
+}
+#[test]
+fn a_scaffold_landing_beside_an_unloaded_chunk_waits_instead_of_dropping() {
+    // Only chunk (0, 4, 0) is loaded: x = 32 is unknown, so the landing
+    // can't prove the scaffold unsupported.
+    let mut w = world();
+    let land = IVec3::new(31, 140, 8);
+    w.set_block(land - IVec3::Y, Block::STONE_SLAB);
+    // A scaffold already falling here (its own tick would wait too).
+    w.set_block(land + IVec3::Y * 4, SCAFFOLDING);
+    w.start_scaffolding_fall(land + IVec3::Y * 4, SCAFFOLDING, false);
+    assert_eq!(w.falling.len(), 1);
+    for _ in 0..100 {
+        w.tick_falling(0.05);
+        ticks(&mut w, 1);
+    }
+    assert!(w.falling.is_empty());
+    assert!(is_scaffolding(w.get_block(land).unwrap()), "kept until its neighbour loads");
+    assert!(w.drops.is_empty(), "not dropped as an item");
+}
