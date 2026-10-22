@@ -2037,17 +2037,23 @@ impl Block {
             | super::redstone_blocks::Component::Plate { .. },
         ) = super::redstone_blocks::component(self)
         {
-            // `RedStoneWireBlock.canSurviveOn`: a sturdy top face or a
-            // hopper; diodes need `canSupportRigidBlock` and plates that or
-            // `canSupportCenter` (a full sturdy face stands in for rigid).
+            // `RedStoneWireBlock.canSurviveOn`: a sturdy top face or any
+            // hopper; diodes need `canSupportRigidBlock`, and plates that or
+            // `canSupportCenter`.
             let up = glam::IVec3::Y;
-            let sturdy = super::mount_states::face_sturdy(below, up);
+            let rigid = super::mount_states::supports_rigid(below);
             return match super::redstone_blocks::component(self) {
-                Some(super::redstone_blocks::Component::Wire(_)) => sturdy || below == super::redstone_blocks::HOPPER,
-                Some(super::redstone_blocks::Component::Plate { .. }) => {
-                    sturdy || super::mount_states::supports_center(below, up)
+                Some(super::redstone_blocks::Component::Wire(_)) => {
+                    super::mount_states::face_sturdy(below, up)
+                        || matches!(
+                            super::redstone_blocks::component(below),
+                            Some(super::redstone_blocks::Component::Hopper { .. })
+                        )
                 }
-                _ => sturdy,
+                Some(super::redstone_blocks::Component::Plate { .. }) => {
+                    rigid || super::mount_states::supports_center(below, up)
+                }
+                _ => rigid,
             };
         }
         if let Some(ok) = super::nether_biome_blocks::can_stay_on(self, below) {

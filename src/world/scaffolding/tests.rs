@@ -432,3 +432,18 @@ fn a_scaffold_landing_beside_an_unloaded_chunk_waits_instead_of_dropping() {
     assert!(is_scaffolding(w.get_block(land).unwrap()), "kept until its neighbour loads");
     assert!(w.drops.is_empty(), "not dropped as an item");
 }
+#[test]
+fn redstone_supports_follow_javas_support_types() {
+    use crate::world::mount_states::{face_sturdy, supports_rigid};
+    use crate::world::redstone_blocks::{self as r, WIRE};
+    // Every hopper state holds dust (`canSurviveOn` tests the block); its
+    // rim is a rigid top for diodes and plates, though not a full face.
+    for id in 1389..=1398 {
+        let hopper = Block(id);
+        assert!(WIRE.can_stay_on(hopper), "hopper state {id}");
+        assert!(supports_rigid(hopper) && !face_sturdy(hopper, IVec3::Y), "hopper state {id}");
+        assert!(r::repeater(crate::world::block::Facing::North, 1, false).can_stay_on(hopper));
+    }
+    assert!(supports_rigid(Block::STONE) && supports_rigid(SCAFFOLDING));
+    assert!(!supports_rigid(Block::STONE_SLAB) && !supports_rigid(Block::HONEY_BLOCK));
+}

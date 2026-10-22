@@ -107,6 +107,9 @@ pub(super) struct Lan {
     predicted_draw: Option<usize>,
     /// Whether the use button was held on the last client tick.
     use_was_held: bool,
+    /// Use was pressed since the last client tick (it may also have been
+    /// released and pressed again in between).
+    use_pressed: bool,
     ready: bool,
     messages: VecDeque<String>,
     /// The host's respawn count for this client's player, from the last snapshot.
@@ -1287,6 +1290,10 @@ impl Game {
         }
     }
     pub(super) fn lan_button_edge(&mut self, attack: bool, pressed: bool) {
+        if !attack && pressed {
+            // The host sees every press; remember one between client ticks.
+            self.lan.use_pressed = true;
+        }
         let input = self.sample_lan_input();
         self.lan_send(Packet::Input(input));
         self.lan_command(match (attack, pressed) {
@@ -1330,10 +1337,14 @@ impl Game {
             .is_some_and(|s| matches!(s.item, voxelcraft::item::Item::BOW | voxelcraft::item::Item::CROSSBOW));
         // The host starts a draw on the press of use (`Hands::use_button`),
         // then keeps it while use stays held on the same bow.
-        let pressed = use_held && !self.lan.use_was_held;
+        // A press since the last tick means use was released first, which
+        // ends any draw; the press then starts a new one only if it can.
+        let repressed = self.lan.use_pressed;
+        let pressed = use_held && (!self.lan.use_was_held || repressed);
         self.lan.use_was_held = use_held;
+        self.lan.use_pressed = false;
         self.lan.predicted_draw = match self.lan.predicted_draw {
-            Some(drawn) if use_held && drawn == slot && bow => Some(drawn),
+            Some(drawn) if use_held && !repressed && drawn == slot && bow => Some(drawn),
             _ if pressed && self.session.can_draw(slot, &self.world) => Some(slot),
             _ => None,
         };
