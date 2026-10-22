@@ -259,6 +259,12 @@ pub enum Request {
     EyeBreak {
         pos: DVec3,
     },
+    /// HoneyBlock entity events 53/54 and slide sound.
+    Honey {
+        pos: DVec3,
+        count: u8,
+        sound: bool,
+    },
 }
 
 impl Request {
@@ -267,7 +273,7 @@ impl Request {
         match self {
             Request::Particle(p) => p.pos,
             Request::Burst(b) | Request::Tracking(b) => b.pos,
-            Request::Explosion { pos, .. } | Request::EyeBreak { pos } => *pos,
+            Request::Explosion { pos, .. } | Request::EyeBreak { pos } | Request::Honey { pos, .. } => *pos,
             Request::Break { cell, .. } | Request::Hit { cell, .. } => cell.as_dvec3() + DVec3::splat(0.5),
         }
     }
@@ -288,6 +294,7 @@ impl Request {
             Request::Break { cell, block } => json!({"t": "r", "p": c(*cell), "b": block.0}),
             Request::Hit { cell, block, face } => json!({"t": "h", "p": c(*cell), "b": block.0, "d": c(*face)}),
             Request::EyeBreak { pos } => json!({"t": "e", "p": v(*pos)}),
+            Request::Honey { pos, count, sound } => json!({"t": "honey", "p": v(*pos), "n": count, "sound": sound}),
         })
     }
 
@@ -332,6 +339,11 @@ impl Request {
             "r" => Request::Break { cell: c("p")?, block: block()? },
             "h" => Request::Hit { cell: c("p")?, block: block()?, face: c("d")?.clamp(IVec3::NEG_ONE, IVec3::ONE) },
             "e" => Request::EyeBreak { pos: v("p")? },
+            "honey" => Request::Honey {
+                pos: v("p")?,
+                count: u8::try_from(j["n"].as_u64()?).ok()?.min(10),
+                sound: j["sound"] == true,
+            },
             _ => return None,
         })
     }
@@ -394,6 +406,12 @@ impl Pool {
     pub fn tick<W: BlockSource + ?Sized>(&mut self, world: &W) {
         self.particles.retain_mut(|p| p.tick(world));
     }
+}
+
+/// Shared player movement presentation for desktop, controller and CLI sessions.
+pub fn movement_effects(player: &crate::player::Player, previous: DVec3, world: &mut crate::world::World) {
+    world.honey_contact_effects(player);
+    water_entry(player, previous, world);
 }
 
 /// Shared player movement feedback; both the host and headless agents call

@@ -60,11 +60,69 @@ pub struct Collision {
 /// Calls `f` with the (min, max) of every solid box in cell `p`: the whole
 /// cell for unloaded chunks, a lowered box for low blocks (beds, slabs) and
 /// a few smaller ones for shaped blocks (stairs, fences, doors).
-fn cell_boxes<W: BlockSource + ?Sized>(world: &W, p: IVec3, mut f: impl FnMut(DVec3, DVec3)) {
+fn cell_boxes<W: BlockSource + ?Sized>(world: &W, p: IVec3, f: impl FnMut(DVec3, DVec3)) {
+    cell_boxes_context(world, p, None, f);
+}
+
+/// Minimal Java `EntityCollisionContext` for the player path. `descending`
+/// is the sneak key, not negative velocity. Above checks use the entity's
+/// original feet position, even when querying a swept/step-up box.
+#[derive(Clone, Copy, Debug)]
+pub struct CollisionContext {
+    pub feet_y: f64,
+    pub descending: bool,
+    pub fall_distance: f64,
+    pub leather_boots: bool,
+}
+impl CollisionContext {
+    fn above(self, p: IVec3, top: f64) -> bool {
+        self.feet_y > p.y as f64 + top - f64::from(1.0e-5_f32)
+    }
+}
+fn cell_boxes_context<W: BlockSource + ?Sized>(
+    world: &W,
+    p: IVec3,
+    context: Option<CollisionContext>,
+    mut f: impl FnMut(DVec3, DVec3),
+) {
+    use crate::world::scaffolding as sc;
     let lo = p.as_dvec3();
-    match world.block(p) {
+    let b = world.block(p);
+    if let Some(b) = b {
+        if let Some((distance, bottom, _)) = sc::properties(b) {
+            let stable = context.is_none_or(|c| c.above(p, 1.0) && !c.descending);
+            if stable {
+                for bx in sc::STABLE {
+                    f(
+                        lo + DVec3::from_array(bx.min.map(|n| n as f64 / 16.0)),
+                        lo + DVec3::from_array(bx.max.map(|n| n as f64 / 16.0)),
+                    );
+                }
+            } else if distance != 0 && bottom && context.is_none_or(|c| c.above(p, 0.0)) {
+                f(lo, lo + DVec3::new(1.0, 0.125, 1.0));
+            }
+            return;
+        }
+        if b == sc::POWDER_SNOW {
+            if let Some(c) = context {
+                let height = if c.fall_distance > 2.5 {
+                    Some(f64::from(0.9_f32))
+                } else if c.leather_boots && c.above(p, 1.0) && !c.descending {
+                    Some(1.0)
+                } else {
+                    None
+                };
+                if let Some(height) = height {
+                    f(lo, lo + DVec3::new(1.0, height, 1.0));
+                }
+            }
+            return;
+        }
+    }
+    match b {
         None => f(lo, lo + DVec3::ONE),
         Some(b) if !b.is_solid() => {}
+        Some(Block::HONEY_BLOCK) => f(lo + DVec3::new(1.0, 0.0, 1.0) / 16.0, lo + DVec3::splat(15.0 / 16.0)),
         Some(b) if b.kind() == RenderKind::Shaped => {
             let neighbour = |side: Facing| world.block(p + side.offset()).unwrap_or(Block::AIR);
             let below = world.block(p - IVec3::Y).unwrap_or(Block::AIR);
@@ -230,6 +288,129 @@ pub fn move_box_stepping<W: BlockSource + ?Sized>(
     vel.z = v.z;
     vel.y = 0.0;
     Collision { on_ground: true, horizontal: across.horizontal, ceiling: false }
+}
+
+/// Java's collision tolerance (`Shapes.EPSILON`).
+pub const JAVA_EPSILON: f64 = 1.0e-7;
+
+/// One block collision box, tagged with its cell: Java's per-block
+/// `VoxelShape` as returned by `level.getBlockCollisions`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Collider {
+    pub min: DVec3,
+    pub max: DVec3,
+    pub cell: IVec3,
+}
+
+/// Java's `level.getBlockCollisions(entity, area)`: the collision boxes of
+/// every block whose shape overlaps `min..max` (an unloaded cell counts as a
+/// full block). Shapes are kept whole, so step-up sees every height of a
+/// stair that only partly overlaps. The row below is searched for shapes
+/// taller than a block (fences, walls).
+pub fn colliders<W: BlockSource + ?Sized>(world: &W, min: DVec3, max: DVec3, out: &mut Vec<Collider>) {
+    colliders_context(world, min, max, None, out);
+}
+
+/// Player-aware variant; legacy mob callers retain the empty context.
+pub fn colliders_context<W: BlockSource + ?Sized>(
+    world: &W,
+    min: DVec3,
+    max: DVec3,
+    context: Option<CollisionContext>,
+    out: &mut Vec<Collider>,
+) {
+    out.clear();
+    let lo = (min - DVec3::splat(JAVA_EPSILON)).floor().as_ivec3();
+    let hi = (max + DVec3::splat(JAVA_EPSILON)).floor().as_ivec3();
+    for y in lo.y - 1..=hi.y {
+        for z in lo.z..=hi.z {
+            for x in lo.x..=hi.x {
+                let cell = IVec3::new(x, y, z);
+                let start = out.len();
+                let mut overlaps = false;
+                cell_boxes_context(world, cell, context, |bmin, bmax| {
+                    overlaps |= bmin.cmplt(max).all() && bmax.cmpgt(min).all();
+                    out.push(Collider { min: bmin, max: bmax, cell });
+                });
+                if !overlaps {
+                    out.truncate(start);
+                }
+            }
+        }
+    }
+}
+
+/// Java's `level.noCollision` for a box: no block shape overlaps it.
+pub fn no_collision<W: BlockSource + ?Sized>(world: &W, min: DVec3, max: DVec3) -> bool {
+    no_collision_context(world, min, max, None)
+}
+pub fn no_collision_context<W: BlockSource + ?Sized>(
+    world: &W,
+    min: DVec3,
+    max: DVec3,
+    context: Option<CollisionContext>,
+) -> bool {
+    let lo = (min - DVec3::splat(JAVA_EPSILON)).floor().as_ivec3();
+    let hi = (max + DVec3::splat(JAVA_EPSILON)).floor().as_ivec3();
+    let mut hit = false;
+    for y in lo.y - 1..=hi.y {
+        for z in lo.z..=hi.z {
+            for x in lo.x..=hi.x {
+                cell_boxes_context(world, IVec3::new(x, y, z), context, |bmin, bmax| {
+                    hit |= bmin.cmplt(max).all() && bmax.cmpgt(min).all();
+                });
+                if hit {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+/// Java's `Shapes.collide(axis, box, shapes, distance)`: how far the box
+/// `min..max` can move along `axis` before meeting a collider ahead of it.
+/// Colliders it already overlaps along the axis don't stop it.
+pub fn collide_axis(colliders: &[Collider], min: DVec3, max: DVec3, axis: usize, mut distance: f64) -> f64 {
+    let (a, b) = ((axis + 1) % 3, (axis + 2) % 3);
+    for c in colliders {
+        if distance.abs() < JAVA_EPSILON {
+            return 0.0;
+        }
+        // `VoxelShape.collideX`: the shape's cells across the other two axes.
+        let across = |o: usize| c.max[o] > min[o] + JAVA_EPSILON && c.min[o] <= max[o] - JAVA_EPSILON;
+        if !across(a) || !across(b) {
+            continue;
+        }
+        if distance > 0.0 && c.min[axis] > max[axis] - JAVA_EPSILON {
+            let gap = c.min[axis] - max[axis];
+            if gap >= -JAVA_EPSILON {
+                distance = distance.min(gap);
+            }
+        } else if distance < 0.0 && c.max[axis] <= min[axis] + JAVA_EPSILON {
+            let gap = c.max[axis] - min[axis];
+            if gap <= JAVA_EPSILON {
+                distance = distance.max(gap);
+            }
+        }
+    }
+    if distance.abs() < JAVA_EPSILON { 0.0 } else { distance }
+}
+
+/// Java's `Entity.collideWithShapes`: Y first, then the larger of X and Z
+/// (`Direction.axisStepOrder`), each against the box moved so far.
+pub fn collide_with(colliders: &[Collider], min: DVec3, max: DVec3, movement: DVec3) -> DVec3 {
+    if colliders.is_empty() {
+        return movement;
+    }
+    let order = if movement.x.abs() < movement.z.abs() { [1, 2, 0] } else { [1, 0, 2] };
+    let mut resolved = DVec3::ZERO;
+    for axis in order {
+        if movement[axis] != 0.0 {
+            resolved[axis] = collide_axis(colliders, min + resolved, max + resolved, axis, movement[axis]);
+        }
+    }
+    resolved
 }
 
 /// Whether the cell containing `p` holds water or lava.

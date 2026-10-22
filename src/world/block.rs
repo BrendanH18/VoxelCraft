@@ -344,7 +344,17 @@ pub mod tex {
     /// Lantern and soul lantern (`mount_states`).
     pub const LANTERN: u16 = 1761;
     pub const SOUL_LANTERN: u16 = 1762;
-    pub const COUNT: u32 = 1763;
+    /// Honey reserves L+9..L+12, with L=1762 at d17fb37.
+    pub const HONEY_SIDE: u16 = 1771;
+    pub const HONEY_TOP: u16 = 1772;
+    pub const HONEY_BOTTOM: u16 = 1773;
+    // PLY-02c: base L=1762; this task owns L+1..L+8 only.
+    pub const SCAFFOLD_TOP: u16 = 1763;
+    pub const SCAFFOLD_SIDE: u16 = 1764;
+    pub const POWDER_SNOW: u16 = 1765;
+    pub const HEART_FROZEN_FULL: u16 = 1766;
+    pub const HEART_FROZEN_HALF: u16 = 1767;
+    pub const COUNT: u32 = 1775;
     const _: () = assert!(super::super::overworld_blocks::TEX_END <= 1750);
     const _: () = assert!(super::super::overworld_blocks::TEX == 1450);
     const _: () = assert!((CRYING_OBSIDIAN as u32) < COUNT);
@@ -646,6 +656,7 @@ impl Block {
     pub const LIT_BLAST_FURNACE: Block = Block(921);
     pub const CARTOGRAPHY_TABLE: Block = Block(925);
     pub const FLETCHING_TABLE: Block = Block(929);
+    pub const HONEY_BLOCK: Block = Block(8128);
     pub const GRINDSTONE: Block = Block(933);
     pub const LECTERN: Block = Block(937);
     pub const LOOM: Block = Block(941);
@@ -677,6 +688,9 @@ impl Block {
         }
         if let Some(c) = self.alias() {
             return c.fire_odds();
+        }
+        if super::scaffolding::is_scaffolding(self) {
+            return (60, 60);
         }
         if self.carpet_color().is_some() {
             return (60, 20);
@@ -813,6 +827,9 @@ impl Block {
 
     /// The full block a wall was built from.
     pub fn wall_base(self) -> Option<Block> {
+        if let Some(c) = self.alias() {
+            return c.wall_base();
+        }
         if let Some((i, 5)) = super::nether_blocks::form(self.0) {
             return Some(super::nether_blocks::SHAPE_BASES[i]);
         }
@@ -824,6 +841,9 @@ impl Block {
 
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
+        if super::scaffolding::is_scaffolding(self) {
+            return Some(Shaped::Custom);
+        }
         if super::slab_stair_states::owns(self.0) {
             return super::slab_stair_states::shaped(self.0);
         }
@@ -927,7 +947,10 @@ impl Block {
         if let Some(c) = self.alias() {
             return c.is_climbable();
         }
-        self.is_ladder() || super::nether_biome_blocks::climbable(self) || super::overworld_blocks::climbable(self)
+        super::scaffolding::is_scaffolding(self)
+            || self.is_ladder()
+            || super::nether_biome_blocks::climbable(self)
+            || super::overworld_blocks::climbable(self)
     }
 
     pub fn is_door(self) -> bool {
@@ -1050,7 +1073,8 @@ impl Block {
     /// The registered state a BLD-04f waterlog partner (ids from
     /// [`super::waterlog::FIRST`]) shares its properties with: the dry
     /// original, or the wet one for sea pickles and live coral. Every other
-    /// state is its own.
+    /// state is its own. Wall UP=false dry states remain distinct so shape
+    /// consumers retain the post; property aliases use their material twin.
     #[inline(always)]
     pub fn canonical(self) -> Block {
         Block(super::waterlog::canonical(self.0))
@@ -1061,6 +1085,7 @@ impl Block {
     #[inline(always)]
     fn alias(self) -> Option<Block> {
         let c = self.canonical();
+        let c = super::wall_states::original(c.0).unwrap_or(c);
         (c != self).then_some(c)
     }
 
@@ -1131,6 +1156,9 @@ impl Block {
 
     /// This block without its orientation (itself if it has none).
     pub fn base(self) -> Block {
+        if super::scaffolding::is_scaffolding(self) {
+            return super::scaffolding::SCAFFOLDING;
+        }
         if let Some(b) = super::slab_stair_states::item_block(self.0) {
             return b;
         }
@@ -1169,6 +1197,9 @@ impl Block {
 
     /// The same block facing `facing` (unchanged if it has no front).
     pub fn with_facing(self, facing: Facing) -> Block {
+        if super::scaffolding::is_scaffolding(self) {
+            return self;
+        }
         if let Some(c) = self.alias() {
             return c.with_facing(facing).with_water(self.is_waterlogged());
         }
@@ -1376,6 +1407,12 @@ impl Block {
 
     /// What breaking this block yields in survival.
     pub fn drop(self) -> Option<Item> {
+        if super::scaffolding::is_scaffolding(self) {
+            return Some(Item::SCAFFOLDING);
+        }
+        if self == super::scaffolding::POWDER_SNOW {
+            return None;
+        }
         if let Some(c) = self.alias() {
             return c.drop();
         }
@@ -1468,6 +1505,15 @@ impl Block {
     /// held item can harvest the block and 5x when it can't, divided by the
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
     pub fn hardness(self) -> f32 {
+        if self == Self::HONEY_BLOCK {
+            return 0.0;
+        }
+        if super::scaffolding::is_scaffolding(self) {
+            return 0.0;
+        }
+        if self == super::scaffolding::POWDER_SNOW {
+            return 0.25;
+        }
         if super::mount_states::is_lantern(self.0) {
             return 3.5;
         }
@@ -1634,6 +1680,14 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
+        if self == Self::HONEY_BLOCK {
+            return None;
+        }
+        // Powder snow is absent from Java 26.3 mineable/shovel: all tools
+        // use the same base speed (unlike snow layers and snow blocks).
+        if self == super::scaffolding::POWDER_SNOW {
+            return None;
+        }
         if super::mount_states::is_lantern(self.0) {
             return Some(ToolKind::Pickaxe);
         }
@@ -1773,6 +1827,9 @@ impl Block {
     /// Pickaxe harvest level needed for any drop (0 wood or gold, 1 stone,
     /// 2 iron, 3 diamond); `None` if a bare hand will do.
     pub fn harvest_level(self) -> Option<u8> {
+        if self == Self::HONEY_BLOCK {
+            return None;
+        }
         if let Some(c) = self.alias() {
             return c.harvest_level();
         }
@@ -1906,6 +1963,7 @@ impl Block {
             .chain([1800])
             .chain(super::overworld_blocks::palette_ids())
             .chain(super::mount_states::palette_ids())
+            .chain([Self::HONEY_BLOCK.0, super::scaffolding::SCAFFOLDING.0])
             .map(Block)
     }
 
@@ -1970,7 +2028,7 @@ impl Block {
     /// a full block; everything else stays put.
     pub fn can_stay_on(self, below: Block) -> bool {
         if self.alias().is_some() || below.alias().is_some() {
-            return self.canonical().can_stay_on(below.canonical());
+            return self.alias().unwrap_or(self).can_stay_on(below.alias().unwrap_or(below));
         }
         if let Some(
             super::redstone_blocks::Component::Wire(_)
@@ -1979,7 +2037,24 @@ impl Block {
             | super::redstone_blocks::Component::Plate { .. },
         ) = super::redstone_blocks::component(self)
         {
-            return below.is_opaque() || below == Block::GLASS || below.stained_glass_color().is_some();
+            // `RedStoneWireBlock.canSurviveOn`: a sturdy top face or any
+            // hopper; diodes need `canSupportRigidBlock`, and plates that or
+            // `canSupportCenter`.
+            let up = glam::IVec3::Y;
+            let rigid = super::mount_states::supports_rigid(below);
+            return match super::redstone_blocks::component(self) {
+                Some(super::redstone_blocks::Component::Wire(_)) => {
+                    super::mount_states::face_sturdy(below, up)
+                        || matches!(
+                            super::redstone_blocks::component(below),
+                            Some(super::redstone_blocks::Component::Hopper { .. })
+                        )
+                }
+                Some(super::redstone_blocks::Component::Plate { .. }) => {
+                    rigid || super::mount_states::supports_center(below, up)
+                }
+                _ => rigid,
+            };
         }
         if let Some(ok) = super::nether_biome_blocks::can_stay_on(self, below) {
             return ok;
@@ -2042,6 +2117,9 @@ impl Block {
     /// Looks a block up by name (spaces or underscores).
     pub fn from_name(name: &str) -> Option<Block> {
         let name = name.replace('_', " ");
+        if name == "scaffolding" {
+            return Some(super::scaffolding::SCAFFOLDING);
+        }
         if name == "white wool" {
             return Some(Block::WOOL);
         }
@@ -2456,7 +2534,17 @@ const fn make(id: u16) -> BlockInfo {
         info.waterlogged = holds_water(id);
         return info;
     }
+    if let Some(original) = super::wall_states::original(id) {
+        let mut info = make(original.0);
+        info.waterlogged = holds_water(id);
+        return info;
+    }
     let (name, kind, tex) = match id {
+        8128 => ("honey block", Translucent, column(tex::HONEY_SIDE, tex::HONEY_TOP, tex::HONEY_BOTTOM)),
+        7936..=7968 => match super::scaffolding::registry(id) {
+            Some(info) => info,
+            None => ("unknown", Invisible, all(0)),
+        },
         7680..=8191 => match super::mount_states::twin(id) {
             Some(t) => {
                 let twin = make(t.0);
@@ -2768,12 +2856,13 @@ const fn make(id: u16) -> BlockInfo {
     // Ice is see-through like water but solid underfoot; End portals are
     // a surface to fall through.
     let stained_glass = matches!(id, 624..=639);
-    let solid = (matches!(kind, Opaque | Cutout | Shaped) || id == 97 || stained_glass) && id != 208 && id != 210;
+    let solid =
+        (matches!(kind, Opaque | Cutout | Shaped) || id == 97 || id == 8128 || stained_glass) && id != 208 && id != 210;
     BlockInfo {
         name,
         kind,
-        solid,
-        self_cull: matches!(id, 5 | 10 | 97 | 104) || stained_glass,
+        solid: solid && !(id >= 7936 && id <= 7968),
+        self_cull: matches!(id, 5 | 10 | 97 | 104 | 7968 | 8128) || stained_glass,
         tex,
         waterlogged: holds_water(id),
     }
@@ -2903,8 +2992,8 @@ const fn opacity_of(i: usize) -> u8 {
         // Kelp and seagrass dim light like the water they hold.
         _ if super::overworld_blocks::waterlogged(i as u16) => 1,
         RenderKind::Invisible | RenderKind::Cross | RenderKind::Shaped => 0,
-        _ if matches!(i, 10 | 98 | 99 | 576..=623 | 624..=639) => 0, // glass, beds, stained glass
-        _ => 1,                                                      // leaves, water: attenuate skylight too
+        _ if matches!(i, 10 | 98 | 99 | 576..=623 | 624..=639 | 8128) => 0, // glass, beds, stained glass
+        _ => 1,                                                             // leaves, water: attenuate skylight too
     }
 }
 

@@ -130,7 +130,14 @@ impl PlayerSession {
         // Held input survives a missed ray or adapter error. Re-aiming is a
         // continue, not a new press; a changed target starts at zero.
         let started = !std::mem::replace(&mut self.mining.held, true);
-        let (pos, face) = self.block_target(world).ok_or("no block in reach")?;
+        let (pos, face) = if held.is_some_and(|s| s.item == crate::item::Item::SCAFFOLDING) {
+            world
+                .raycast_scaffolding(self.player.eye(), self.player.forward().as_dvec3(), self.block_reach())
+                .map(|h| (h.cell, h.normal))
+        } else {
+            self.block_target(world)
+        }
+        .ok_or("no block in reach")?;
         let block = world.get_block(pos).ok_or("target is unloaded")?;
         let creative = self.mode.is_creative();
         // Java `Item.canDestroyBlock`: tools without `can_destroy_blocks_in_creative`.

@@ -39,7 +39,7 @@ movement and survival code as singleplayer.
 
 The desktop loop uses `FixedClock` at 20 Hz (50 ms), matching Java's normal
 [gameplay tick rate](https://www.minecraft.net/en-us/article/minecraft-java-edition-1-20-3).
-Player collision retains substeps of at most 1/120 second. Rendering polls
+The player moves one Java tick per step (`src/player/travel.rs`). Rendering polls
 streaming jobs independently and interpolates positions between ticks;
 mouse look and the hand animation update each frame. Jump and mining taps
 are retained until the next game tick. Offline pause clears

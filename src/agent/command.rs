@@ -392,6 +392,7 @@ impl Command {
                         jump: flags.contains(&"jump"),
                         sprint: flags.contains(&"sprint"),
                         descend: flags.contains(&"sneak"),
+                        ..Default::default()
                     },
                     ticks(n)?,
                     false,

@@ -40,6 +40,7 @@ pub mod furnace;
 pub mod gadgets;
 pub mod geode;
 mod growth;
+mod honey;
 mod light_shape;
 pub(crate) mod lighting;
 pub mod mineshaft;
@@ -65,6 +66,7 @@ pub mod redstone_blocks;
 mod redstone_contacts;
 #[cfg(test)]
 mod rule_tests;
+pub mod scaffolding;
 pub mod shape;
 pub mod slab_stair_states;
 pub mod spawn_finder;
@@ -79,6 +81,7 @@ pub mod trees;
 pub mod village;
 pub mod village_blocks;
 mod village_life;
+pub mod wall_states;
 pub mod waterlog;
 
 use std::sync::Arc;
@@ -794,9 +797,16 @@ impl World {
     /// drop a cell's water: bucket pickup and sponges drying a waterlogged
     /// block, sponges clearing kelp and seagrass, pistons moving blocks.
     pub(crate) fn edit_exact(&mut self, p: IVec3, block: Block, sync: bool) -> bool {
+        self.edit_exact_inner(p, block, sync, true)
+    }
+
+    /// The wall-post walk owns its downward notifications; other edits
+    /// notify surrounding walls after recording the normal edit effects.
+    fn edit_exact_inner(&mut self, p: IVec3, block: Block, sync: bool, update_walls: bool) -> bool {
         if !self.contains_y(p.y) {
             return false;
         }
+        let block = wall_states::reshaped(block, |d| self.get_block(p + d).unwrap_or(Block::AIR));
         let cpos = chunk_of(p);
         let l = local_of(p);
         let Some(slot) = self.chunks.get_mut(&cpos) else { return false };
@@ -817,6 +827,9 @@ impl World {
         self.light_block_changed(p, old, block, old_light);
         self.track_fire(p, old, block);
         self.track_redstone(p, old, block);
+        if old != block {
+            self.scaffolding_changed(p);
+        }
         self.track_automation(p, old, block);
         self.track_furnace(p, old, block);
         self.track_chest(p, old, block);
@@ -835,6 +848,9 @@ impl World {
         self.extinguish_unsupported_fire(p);
         self.reheight_and_remesh(p, old, block, sync);
         self.reshape_stairs_beside(p, old, block, sync);
+        if update_walls {
+            self.reshape_walls_beside(p, old, block, sync);
+        }
         // `updateShape` of a waterlogged state schedules a water tick.
         if block != old && waterlog::wet(block.0) {
             self.wake_fluids(p);
@@ -874,9 +890,10 @@ impl World {
     }
 
     /// Java's `Block.updateFromNeighbourShapes` for a block set without its
-    /// own placement rules (a piston's moved block): stairs take their shape.
+    /// own placement rules (a piston's moved block): stairs and walls take their shape.
     pub(crate) fn shaped_by_neighbours(&self, p: IVec3, block: Block) -> Block {
-        slab_stair_states::reshaped(block, |d| self.get_block(p + d.offset()))
+        let block = slab_stair_states::reshaped(block, |d| self.get_block(p + d.offset()));
+        wall_states::reshaped(block, |d| self.get_block(p + d).unwrap_or(Block::AIR))
     }
 
     /// Keep the column heightmap and skylight current after a cell changed
@@ -1423,7 +1440,12 @@ impl World {
     /// Like [`World::raycast`], with the exact point where the ray meets the
     /// block's outline (Java's `BlockHitResult.getLocation`).
     pub fn raycast_hit(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<BlockHit> {
-        self.raycast_by(origin, dir, max_dist, Block::is_targetable, false)
+        self.raycast_by(origin, dir, max_dist, Block::is_targetable, false, false)
+    }
+
+    /// `ScaffoldingBlock.getShape` is a full cube while holding scaffolding.
+    pub fn raycast_scaffolding(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<BlockHit> {
+        self.raycast_by(origin, dir, max_dist, Block::is_targetable, false, true)
     }
 
     /// The selection outline of the block at `p`: min and max corners
@@ -1448,6 +1470,7 @@ impl World {
             max_dist,
             |b| b.is_targetable() || b == Block::WATER || b == Block::LAVA || b.is_waterlogged(),
             true,
+            false,
         )
         .map(|h| (h.cell, h.normal))
     }
@@ -1463,6 +1486,7 @@ impl World {
         max_dist: f64,
         hits: impl Fn(Block) -> bool,
         sources: bool,
+        holding_scaffolding: bool,
     ) -> Option<BlockHit> {
         if !origin.is_finite() || !dir.is_finite() || !max_dist.is_finite() || max_dist < 0.0 || dir == DVec3::ZERO {
             return None;
@@ -1497,7 +1521,11 @@ impl World {
                 && hits(b)
                 && cell.y >= self.min_y()
             {
-                let mut intersection = crate::physics::ray_shape(self, cell, origin, dir);
+                let mut intersection = if holding_scaffolding && scaffolding::is_scaffolding(b) {
+                    crate::physics::ray_aabb_face(origin, dir, cell.as_dvec3(), cell.as_dvec3() + DVec3::ONE)
+                } else {
+                    crate::physics::ray_shape(self, cell, origin, dir)
+                };
                 if sources && b.is_waterlogged() {
                     let full = self.get_block(cell + IVec3::Y).is_some_and(Block::holds_water);
                     let top = if full { 1.0 } else { 1.0 - Block::WATER.fluid_drop() as f64 / 16.0 };
@@ -1776,7 +1804,7 @@ mod tests {
         // A player dropped from above lands on the ground and stays there.
         let mut player = Player::new(DVec3::new(x as f64 + 0.5, ground as f64 + 6.0, z as f64 + 0.5));
         for _ in 0..240 {
-            player.update(1.0 / 60.0, MoveInput::default(), &world);
+            player.tick(MoveInput::default(), &world);
         }
         let top = surface_y(&world, x, z) as f64 + 1.0;
         assert!(player.on_ground, "player should land");
@@ -1798,7 +1826,7 @@ mod tests {
         let walk = MoveInput { forward: 1.0, ..Default::default() };
         player.yaw = 0.0; // facing +X
         for _ in 0..120 {
-            player.update(1.0 / 60.0, walk, &world);
+            player.tick(walk, &world);
         }
         assert!(player.pos.x <= wall_x as f64 - 0.3 + 1e-3, "walked through wall: x={}", player.pos.x);
         assert!(player.pos.x > wall_x as f64 - 0.4);
@@ -1811,7 +1839,7 @@ mod tests {
             player.yaw = 0.7; // diagonal, toward +X +Z
             let input = MoveInput { forward: 1.0, descend: sneak, ..Default::default() };
             for _ in 0..120 {
-                player.update(1.0 / 60.0, input, &world);
+                player.tick(input, &world);
             }
             let on_pillar = (player.pos.y - (pillar.y as f64 + 1.0)).abs() < 0.01;
             assert_eq!(on_pillar, stays, "sneak {sneak}: {}", player.pos);

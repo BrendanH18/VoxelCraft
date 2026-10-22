@@ -806,9 +806,11 @@ fn a_hit_with_extra_knockback_stops_an_agent_sprinting() {
     aim(&mut a.session, &e, i);
     charge(&mut a.session, 20);
     a.hold(MoveInput { forward: 1.0, sprint: true, ..Default::default() }, false, false);
-    assert!(a.movement_input().sprint);
+    // The sprint key latches Java's sprint flag on a movement tick.
+    a.player.sprinting = true;
     a.execute(Command::Attack, &mut w, &mut e, &[]).unwrap();
-    assert!(!a.movement_input().sprint, "sprint knockback stops the sprint (setSprinting(false))");
+    assert!(!a.player.sprinting, "sprint knockback stops the sprint (setSprinting(false))");
+    assert!(!a.movement_input().sprint);
 }
 
 #[test]

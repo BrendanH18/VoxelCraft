@@ -1351,9 +1351,10 @@ impl Game {
                 right: axis(KeyCode::KeyD, KeyCode::KeyA),
                 jump: held(KeyCode::Space) || self.jump_pressed,
                 descend: held(KeyCode::ShiftLeft),
-                // Too hungry to sprint at 6 food or less (survival).
-                sprint: (held(KeyCode::ControlLeft) || held(KeyCode::KeyR))
-                    && self.session.vitals.may_sprint(self.session.mode.invulnerable()),
+                sprint: held(KeyCode::ControlLeft) || held(KeyCode::KeyR),
+                using_item: self.body.actions.eat_timer > 0.0 || self.session.using_item(),
+                // Too hungry to sprint at 6 food or less (survival), or blind.
+                sprint_blocked: !self.session.vitals.may_sprint(self.session.mode.invulnerable()),
             }
         } else {
             MoveInput::default()
@@ -1485,7 +1486,6 @@ impl Game {
             self.mobs.entities.snapshot_positions();
             self.world.snapshot_falling_positions();
         }
-        let input = self.movement_input(self.arrival.is_some());
         let rain_here = weather::rain_at(&self.world, &self.weather, self.session.player.pos);
         // `followed()`, spelled out so `audio` can be borrowed mutably.
         let others: Vec<_> = (self.split.follow.iter())
@@ -1620,7 +1620,7 @@ impl Game {
                 self.settings.view_bobbing,
             ),
             fov_y: self.settings.fov.to_radians()
-                * if input.sprint && input.forward > 0.0 { 1.08 } else { 1.0 }
+                * self.session.player.fov_modifier(alpha as f32)
                 * (1.0 - 0.15 * self.bow_power().unwrap_or(0.0)),
             sky_color: fog_color.map(|c| c as f64),
             fog_color,

@@ -40,6 +40,7 @@ impl FuelClass {
 pub fn class(item: Item) -> Option<FuelClass> {
     use FuelClass::*;
     match item {
+        Item::SCAFFOLDING => return Some(Bamboo),
         Item::LAVA_BUCKET => return Some(Lava),
         Item::COAL | Item::CHARCOAL => return Some(Coal),
         Item::BLAZE_ROD => return Some(BlazeRod),

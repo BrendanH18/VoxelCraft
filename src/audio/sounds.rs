@@ -24,10 +24,11 @@ pub enum Material {
     Leaves,
     Glass,
     Water,
+    Honey,
 }
 
 impl Material {
-    pub const ALL: [Material; 10] = [
+    pub const ALL: [Material; 11] = [
         Material::Stone,
         Material::Wood,
         Material::Dirt,
@@ -38,6 +39,7 @@ impl Material {
         Material::Leaves,
         Material::Glass,
         Material::Water,
+        Material::Honey,
     ];
 
     pub fn name(self) -> &'static str {
@@ -52,6 +54,7 @@ impl Material {
             Material::Leaves => "leaves",
             Material::Glass => "glass",
             Material::Water => "water",
+            Material::Honey => "honey",
         }
     }
 }
@@ -59,6 +62,7 @@ impl Material {
 /// The one place blocks are mapped to sound materials.
 pub fn material(block: Block) -> Material {
     match block.base() {
+        Block::HONEY_BLOCK => Material::Honey,
         b if b.is_log()
             || b.is_planks()
             || crate::world::gadgets::is_note(b)
@@ -71,6 +75,9 @@ pub fn material(block: Block) -> Material {
             Material::Wood
         }
         Block::CRAFTING_TABLE | Block::CHEST | Block::PUMPKIN | Block::MELON | Block::SMITHING_TABLE => Material::Wood,
+        // Nearest shared materials for `SoundType.SCAFFOLDING` and `POWDER_SNOW`.
+        crate::world::scaffolding::SCAFFOLDING => Material::Wood,
+        crate::world::scaffolding::POWDER_SNOW => Material::Snow,
         Block::DIRT | Block::FARMLAND | Block::WET_FARMLAND => Material::Dirt,
         b if matches!(b.0, 1900..=1906 | 2021) => Material::Dirt,
         b if matches!(b.0, 1907 | 1908 | 1911 | 1912 | 1940..=1943 | 2029) => Material::Grass,
@@ -103,6 +110,8 @@ pub fn material(block: Block) -> Material {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Sound {
+    HoneySlide,
+    HoneyDrink,
     Note(Instrument),
     Break(Material),
     Place(Material),
@@ -168,13 +177,15 @@ const M: usize = Material::ALL.len();
 const CALLS: usize = Call::ALL.len();
 
 impl Sound {
-    pub const COUNT: usize = 3 * M + 27 + Voice::ALL.len() * CALLS + 16 + 1;
+    pub const COUNT: usize = 3 * M + 27 + Voice::ALL.len() * CALLS + 16 + 3;
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
         match self {
             Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
-            Sound::Bell => Self::COUNT - 1,
+            Sound::Bell => Self::COUNT - 3,
+            Sound::HoneySlide => Self::COUNT - 2,
+            Sound::HoneyDrink => Self::COUNT - 1,
             Sound::Break(m) => m as usize,
             Sound::Place(m) => M + m as usize,
             Sound::Step(m) => 2 * M + m as usize,
@@ -256,12 +267,14 @@ impl Sound {
             ])
             .chain(Voice::ALL.into_iter().flat_map(|v| Call::ALL.map(|c| Sound::Mob(v, c))))
             .chain(Instrument::ALL.map(Sound::Note))
-            .chain([Sound::Bell])
+            .chain([Sound::Bell, Sound::HoneySlide, Sound::HoneyDrink])
     }
 
     /// Stable sound name used when exporting or identifying samples.
     pub fn name(self) -> String {
         match self {
+            Sound::HoneySlide => "honey_block_slide".into(),
+            Sound::HoneyDrink => "honey_drink".into(),
             Sound::Note(i) => format!("note_{i:?}").to_ascii_lowercase(),
             Sound::Break(m) => format!("break_{}", m.name()),
             Sound::Place(m) => format!("place_{}", m.name()),
@@ -312,7 +325,9 @@ impl Sound {
             }
             Sound::Mob(_, Call::Death) => 1,
             Sound::Mob(..) => 2,
-            Sound::Bell
+            Sound::HoneyDrink
+            | Sound::HoneySlide
+            | Sound::Bell
             | Sound::Click
             | Sound::Wind
             | Sound::Cave
@@ -333,6 +348,8 @@ impl Sound {
     pub fn render(self, variant: u32) -> Vec<f32> {
         let mut rng = Rng::new((self.key() as u64) << 8 | variant as u64);
         match self {
+            Sound::HoneySlide => honey_sound(&mut rng, 0.35),
+            Sound::HoneyDrink => honey_sound(&mut rng, 0.22),
             Sound::Note(i) => note_sound(i, &mut rng),
             Sound::Break(m) => break_sound(m, &mut rng),
             Sound::Place(m) => place_sound(m, &mut rng),
@@ -538,7 +555,7 @@ fn crunch_params(m: Material) -> Crunch {
             flutter: 0.0,
         },
         // Wood and water use their own recipes; neutral fallback.
-        Material::Wood | Material::Water => crunch_params(Material::Dirt),
+        Material::Wood | Material::Water | Material::Honey => crunch_params(Material::Dirt),
     }
 }
 
@@ -1124,6 +1141,14 @@ enum Kind {
 
 fn material_sound(m: Material, rng: &mut Rng, kind: Kind) -> Vec<f32> {
     match m {
+        Material::Honey => honey_sound(
+            rng,
+            match kind {
+                Kind::Break => 0.28,
+                Kind::Place => 0.18,
+                Kind::Step => 0.12,
+            },
+        ),
         Material::Wood => wood(rng, kind),
         Material::Glass => glass(rng, kind),
         Material::Water => match kind {
@@ -1140,6 +1165,17 @@ fn material_sound(m: Material, rng: &mut Rng, kind: Kind) -> Vec<f32> {
             }
         }
     }
+}
+
+/// Original viscous squelch: damped low noise with a descending resonant bubble.
+fn honey_sound(rng: &mut Rng, duration: f32) -> Vec<f32> {
+    let mut out = noise(rng, samples(duration), |t| (1.0 - t / duration).max(0.0).powi(2));
+    Biquad::lowpass(650.0, 1.1).run(&mut out);
+    for (i, sample) in out.iter_mut().enumerate() {
+        let t = i as f32 / RATE;
+        *sample += (TAU * (180.0 * t - 150.0 * t * t)).sin() * (-18.0 * t).exp() * 0.2;
+    }
+    dsp::finish(out, 0.65)
 }
 
 fn break_sound(m: Material, rng: &mut Rng) -> Vec<f32> {

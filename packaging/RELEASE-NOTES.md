@@ -1,9 +1,8 @@
-VoxelCraft 0.8.0 is about foundations. Mobs now find their way around the
-world like Java's do, walking, swimming, flying and climbing along real paths
-instead of heading straight at their goal. Natural spawning follows Java 26.3's
-mob categories and biome spawn lists, light respects slabs and stairs, and a
-new simulation distance setting keeps the world ticking around you. Death and
-respawn, game rules, difficulty, absorption and knockback now match Java too.
+VoxelCraft 0.9.0 is about building and moving like Java. Slabs, stairs,
+doors, buttons, levers, walls and lanterns now have Java's full set of
+states, almost everything can be waterlogged, and you move with Java 26.3's
+own physics: the same walking, sprinting, jumping, sneaking, swimming and
+climbing. Scaffolding, powder snow and honey blocks are new.
 
 VoxelCraft is an unofficial fan project, inspired by Minecraft Java Edition. It
 is not affiliated with or endorsed by Mojang Studios or Microsoft, and it
@@ -11,76 +10,69 @@ contains no Minecraft code or assets.
 
 Choose your download:
 
-- **Windows 10/11 x64:** `VoxelCraft-0.8.0-windows-x64-Setup.exe`
-- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.8.0-macos-apple-silicon.dmg`
+- **Windows 10/11 x64:** `VoxelCraft-0.9.0-windows-x64-Setup.exe`
+- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.9.0-macos-apple-silicon.dmg`
 
-## What's new since 0.7.0
+## What's new since 0.8.0
 
-### Mobs that find their way
+### Moving like Java
 
-- **Pathfinding:** mobs plan routes with Java 26.3's pathfinder, with each
-  mob's step height, fall limit and path costs. Monsters chase you around
-  walls, villagers open the doors on their way, and tempted, breeding, leashed
-  and following animals walk to you instead of getting stuck.
-- **Swimmers and fliers:** fish (in schools that follow a leader), dolphins,
-  guardians, drowned, turtles, squid, axolotls, parrots, ghasts and blazes
-  move with Java's swim, amphibious and fly navigation and move controls.
-  Spiders keep climbing walls toward you, and idle drowned sink.
-- **Striders** walk along lava paths, head back to lava when they're ashore,
-  and stand in lava as they do in Java.
-- **Dolphins** swim with players and give Dolphin's Grace, lead you to ocean
-  ruins and shipwrecks when fed fish, fetch and toss items, leap, follow
-  boats, avoid guardians and gang up on attackers.
-- **Turtles** travel, return to their home beach, lay eggs and head back to
-  the water, as in Java.
-- Elder guardians stay near their monument; blazes alert each other when one
-  is hit; ghasts and blazes fire at Java's cadence.
+- **Java 26.3 physics:** walking (4.3 blocks a second), sprinting (5.6) and
+  sneaking (1.3), the jump arc, step-up onto slabs and stairs, ice and soul
+  sand, and sneaking stopping you at edges all follow Java tick for tick.
+- **Sprinting** works as in Java: press sprint or double-tap forward, and it
+  keeps going until you stop, run into a wall, get hungry or use an item.
+  Eating, drinking and drawing a bow slow you down.
+- **Crouching and crawling:** a 1.5-block gap makes you crouch and a 1-block
+  gap makes you crawl, without holding sneak.
+- **Water and lava:** swimming, sinking and lava movement match Java, and
+  flowing water now pushes you along.
+- **Ladders and vines** climb at Java's speed, and sneaking holds on.
+  Cobwebs and sweet berry bushes slow you, and beds bounce you unless you
+  sneak.
+- The field of view widens smoothly while sprinting or flying.
 
-### Spawning
+### New blocks
 
-- Monsters, animals and water mobs spawn from Java 26.3's biome spawn lists
-  and caps, counted around each player. Swamp
-  huts, ocean monuments, pillager outposts and Nether fortresses spawn their
-  own mobs.
-- New chunks get their one-time herds of animals, with shared pack coats and
-  colours and Java's chance of babies. Monsters despawn when you move far away,
-  as in Java.
+- **Scaffolding:** place it onto scaffolding to build outward or upward. It
+  falls when it's more than 7 blocks from support, collapses when you break
+  what holds it up, lets you stand on top, climb inside and sneak down
+  through it, and can be waterlogged.
+- **Powder snow and the powder snow bucket:** you sink in and slowly freeze,
+  with frozen hearts and a frost overlay. Leather boots let you walk on top,
+  and any leather armour stops the freezing.
+- **Honey block and honey bottle:** honey slows you down, halves your jumps,
+  lets you slide slowly down its sides and softens falls. Honey bottles cure
+  poison.
+- **Lanterns and soul lanterns**, standing or hanging.
 
-### World and settings
+### Building
 
-- **Simulation distance** (Options): crops, fire, fluids, redstone and mobs
-  tick within this distance of you, and pause rather than reset beyond it.
-  Pending redstone and falling blocks are kept when their chunks unload.
-- **Light** is blocked by slabs, stairs, snow layers and farmland according to
-  their shape, and the block outline matches each block's shape.
-- **Game rules:** all 59 Java 26.3 game rules are known by their new and old
-  names. `/gamerule` reports any rule whose system isn't in the game yet.
-- New chunks with dungeons and amethyst geodes generate off the main thread,
-  so exploring stutters less.
+- **Slabs** can go on top or double up, and **stairs** turn upside down and
+  form corners, with matching light and collision.
+- **Doors** have left and right hinges and open by themselves when placed
+  next to power. **Buttons and levers** go on floors and ceilings, and
+  **grindstones** on walls and ceilings.
+- **Waterlogging:** slabs, stairs, fences, walls, panes, bars, chains,
+  trapdoors, rails, ladders, chests, leaves, lanterns, scaffolding and more
+  hold water, which flows through their open sides as in Java.
+- **Walls** keep their posts the way Java does down a stack, and fences,
+  walls and panes connect by Java's rules.
+- **Redstone** dust, repeaters, comparators and pressure plates stand on any
+  block with a solid top, such as top slabs and scaffolding.
 
-### Fixes: playing like Java 26.3
-
-- **Death and respawn** work the same with mouse and keyboard, a controller,
-  over LAN and for command agents. You drop your items and experience in every
-  mode but Spectator unless `keepInventory` is on. Your vehicle is left behind,
-  and controller and LAN players see the "Your home bed was missing" notice.
-- **Combat:** sweeping attacks and knockback follow Java's impulses, and
-  golden apples give absorption hearts with Java's cap and expiry.
-- **Mobs:** mob goals follow Java 26.3's goal tables, including how often they
-  follow, tempt, breed and flee; wolves no longer panic when hit, and axolotls
-  don't panic when hurt.
-- **Beds:** you stand up from a bed where Java puts you.
-- **Saves:** mobs in unloaded chunks are kept with their chunk until you
-  return, and the world saved mid-way through a piston push or repeater pulse
-  reloads exactly as it was.
-
-### Known limitations
+## Known limitations
 
 - LAN is for VoxelCraft players on a trusted local network: there are no
   accounts or encryption, and it can't join Minecraft servers. Everyone stays
   in the host's dimension; when the host travels, the others follow. It has
   been tested between processes on one computer, not yet across Windows, Mac
   and Linux machines on a real network.
+- Honey can't be collected in survival yet: bees and beehives aren't in.
+  Powder snow doesn't generate in the world yet, and there are no cauldrons.
+- Mobs and dropped items treat scaffolding and powder snow as plain blocks.
+- Walls built in older versions show their posts until a neighbouring block
+  changes.
 - Undead horses aren't in yet (they need lightning, which isn't in yet either).
 - Bats, frogs, polar bears and some other mobs aren't in yet, so nothing spawns
   in the ambient category.
@@ -89,9 +81,9 @@ Choose your download:
 - Buried treasure isn't generated, so there's no way to find the heart of the
   sea.
 - Big dripleaves don't tilt, and pointed dripstone doesn't fall or drip.
-- There are no soul lanterns, soul campfires, Soul Speed or spears, and no
-  wither skeleton skull block, item frames, frosted ice (Frost Walker) or
-  cauldrons.
+- There are no soul campfires, Soul Speed, spears, slime blocks or bubble
+  columns, and no wither skeleton skull block, item frames or frosted ice
+  (Frost Walker).
 - Raids aren't in yet. Lecterns, looms, cartography tables and stonecutters are
   decorative.
 - Complex redstone contraptions that depend on Java's exact update order may
@@ -101,27 +93,22 @@ Choose your download:
 - Commands accept `@s` and `@p` only.
 - Outposts, Nether fossils and bastions use VoxelCraft's own layouts, and
   swamp-hut cats don't spawn yet.
-- Blazes on the ground still use VoxelCraft's own walking.
-- Slabs, stairs and fences can't be waterlogged.
-- Doors have no hinge side, buttons and levers can't go on floors or ceilings,
-  and grindstones only stand on the floor.
 - Spruce and jungle saplings don't grow 2x2 giant trees, and melon, pumpkin and
   beetroot crops aren't in yet.
 - Bells don't swing, horse armor can't be dyed, strider jockeys don't spawn,
   boats ignore currents and bubble columns, and minecarts can't carry mobs
   across a save.
-- Streaming in new terrain quickly can still cause an occasional long frame.
-- Controller menus, beds and respawning, and LAN between different machines,
-  haven't had a full manual test pass.
+- Streaming in new terrain quickly can still cause an occasional long frame,
+  and the new blocks haven't had a frame-time benchmark yet.
 - World generation is VoxelCraft's own: worlds aren't seed-compatible with
   Minecraft.
 
 ## Upgrading and saves
 
-Worlds from 0.7.0 and earlier load in 0.8.0; animal herds aren't doubled in
-areas you've already explored. Back up your worlds before upgrading anyway:
-older versions may not load everything in a world saved by 0.8.0. LAN players
-all need 0.8.0.
+Worlds from 0.8.0 and earlier load in 0.9.0. Back up your worlds before
+upgrading, and don't open a world saved by 0.9.0 in 0.8.0: once it uses any
+of the new block states, 0.8.0 can't read its terrain and would overwrite it.
+LAN players all need 0.9.0.
 
 ## Installing
 

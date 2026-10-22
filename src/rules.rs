@@ -204,7 +204,7 @@ pub const JAVA_RULES: [RuleDef; 59] = [
     boolean("fire_damage", "fireDamage", true, I),
     integer("fire_spread_radius_around_player", "fireSpreadRadiusAroundPlayer", 128, -1, i32::MAX, I),
     boolean("forgive_dead_players", "forgiveDeadPlayers", true, M("v0.15")),
-    boolean("freeze_damage", "freezeDamage", true, M("v0.9")),
+    boolean("freeze_damage", "freezeDamage", true, I),
     boolean("global_sound_events", "globalSoundEvents", true, N("broadcast range only")),
     boolean("immediate_respawn", "doImmediateRespawn", false, I),
     boolean("keep_inventory", "keepInventory", false, I),
@@ -519,8 +519,7 @@ impl GameRules {
             fall: !self.bool("fall_damage"),
             fire: !self.bool("fire_damage"),
             drowning: !self.bool("drowning_damage"),
-            // `freeze_damage` governs powder snow, which VoxelCraft lacks.
-            freezing: false,
+            freezing: !self.bool("freeze_damage"),
         }
     }
 }
@@ -536,6 +535,15 @@ fn parse_bool(name: &str, text: &str) -> Result<bool, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn freeze_damage_is_enforced_and_switchable() {
+        // Powder snow freezing (PLY-02c) hurts unless `freeze_damage` is off.
+        let mut rules = GameRules::default();
+        assert!(rules.bool("freeze_damage") && !rules.damage_immunity().freezing);
+        rules.set("freezeDamage", "false").unwrap();
+        assert!(rules.damage_immunity().freezing);
+    }
 
     #[test]
     fn game_mode_names_and_abilities_match_java() {

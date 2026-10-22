@@ -91,6 +91,7 @@ impl Game {
             ui.rect(0.0, 0.0, sw, sh, [0.05, 0.15, 0.4, 0.3]);
         }
 
+        frozen_overlay(&mut ui, sw, sh, self.session.vitals.ticks_frozen);
         if self.session.vitals.burning() {
             let frame = ((now - self.started).as_secs_f32() * 10.0) as u32 % tex::FIRE_FRAMES as u32;
             for (x, tilt) in [(-sw * 0.1, -sw * 0.12), (sw * 0.55, sw * 0.12)] {
@@ -291,7 +292,9 @@ impl Game {
             let layer = match half_hearts.saturating_sub(i * 2) {
                 _ if i >= health_hearts => tex::HEART_EMPTY,
                 0 => tex::HEART_EMPTY,
+                1 if v.ticks_frozen >= 140 => tex::HEART_FROZEN_HALF,
                 1 => tex::HEART_HALF,
+                _ if v.ticks_frozen >= 140 => tex::HEART_FROZEN_FULL,
                 _ => tex::HEART_FULL,
             };
             let jitter = if shaking { (hash(i, tick) % 3) as f32 - 1.0 } else { 0.0 };
@@ -1451,4 +1454,20 @@ pub(super) fn bow_bar(ui: &mut Ui, cx: f32, cy: f32, power: f32) {
     ui.rect(cx - 12.0, cy + 12.0, 24.0, 4.0, [0.0, 0.0, 0.0, 0.7]);
     let colour = if full { [1.0, 0.95, 0.5, 1.0] } else { [0.85, 0.85, 0.85, 1.0] };
     ui.rect(cx - 11.0, cy + 13.0, 22.0 * power, 2.0, colour);
+}
+
+/// Original frost at the screen edge, opacity follows Java's percentFrozen.
+pub(super) fn frozen_overlay(ui: &mut Ui, w: f32, h: f32, ticks: u16) {
+    let k = f32::from(ticks.min(140)) / 140.0;
+    if k == 0.0 {
+        return;
+    }
+    for i in 0..8 {
+        let t = i as f32;
+        let color = [0.76, 0.90, 0.98, k * (0.12 - t * 0.012)];
+        ui.rect(t * 2.0, t * 2.0, w - t * 4.0, 2.0, color);
+        ui.rect(t * 2.0, h - (t + 1.0) * 2.0, w - t * 4.0, 2.0, color);
+        ui.rect(t * 2.0, 16.0, 2.0, (h - 32.0).max(0.0), color);
+        ui.rect(w - (t + 1.0) * 2.0, 16.0, 2.0, (h - 32.0).max(0.0), color);
+    }
 }

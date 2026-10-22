@@ -5,5 +5,9 @@ pub fn ticks(item: Item) -> Option<u32> {
     if !item.is_drink() && item.food().is_none() {
         return None;
     }
-    Some(if item == Item::DRIED_KELP { 16 } else { 32 })
+    Some(match item {
+        Item::DRIED_KELP => 16,
+        Item::HONEY_BOTTLE => 40,
+        _ => 32,
+    })
 }

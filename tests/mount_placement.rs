@@ -100,3 +100,136 @@ fn lanterns_hang_from_a_ceiling_and_stand_on_a_floor() {
     assert_eq!(world.get_block(floor + IVec3::Y), Some(ms::LANTERN));
     assert_eq!(s.inventory.get(0).unwrap().count, 62);
 }
+
+#[test]
+fn every_door_opens_immediately_when_either_half_is_placed_beside_power() {
+    use voxelcraft::world::{block::Shaped, forms};
+    let items = [Item::OAK_DOOR, Item::from_block(r::IRON_DOOR)]
+        .into_iter()
+        .chain((0..11).map(|i| Item::from_block(forms::wood_id(i, 14))));
+    for item in items {
+        for power_y in [None, Some(0), Some(1)] {
+            let (mut world, mut s) = scene(item);
+            let lower = IVec3::new(10, 140, 10);
+            world.set_block(lower - IVec3::Y, Block::STONE);
+            if let Some(y) = power_y {
+                world.set_block(lower + IVec3::X + IVec3::Y * y, r::REDSTONE_BLOCK);
+            }
+            place(&mut world, &mut s, DVec3::new(10.5, 141.6, 13.0), DVec3::new(10.5, 140.0, 10.5));
+            let expected = power_y.is_some();
+            let open = |world: &World| match world.get_block(lower).unwrap().shaped() {
+                Some(Shaped::Door { open, upper: false, .. }) => open,
+                other => panic!("no door for {}: {other:?}", item.name()),
+            };
+            assert_eq!(open(&world), expected, "{} / power at {power_y:?}, before ticks", item.name());
+            assert!(world.get_block(lower + IVec3::Y).unwrap().is_door_upper());
+            if let Some(Component::IronDoor { open, .. }) = world.get_block(lower + IVec3::Y).and_then(r::component) {
+                assert_eq!(open, expected, "iron upper half");
+            }
+            for _ in 0..5 {
+                world.tick_redstone();
+            }
+            assert_eq!(open(&world), expected, "after ticks");
+            if let Some(y) = power_y {
+                world.set_block(lower + IVec3::X + IVec3::Y * y, Block::AIR);
+                for _ in 0..6 {
+                    world.tick_redstone();
+                }
+                assert!(!open(&world), "removing either half's power closes the door");
+                world.set_block(lower + IVec3::X + IVec3::Y * y, r::REDSTONE_BLOCK);
+                for _ in 0..6 {
+                    world.tick_redstone();
+                }
+                assert!(open(&world), "restoring power opens the door");
+            }
+            // Removing power above closes an open door for every family; then
+            // a powered wooden door closed by hand stays closed (POWERED is
+            // remembered, so the next update isn't a new rising edge).
+            if expected && !matches!(world.get_block(lower).and_then(r::component), Some(Component::IronDoor { .. })) {
+                voxelcraft::session::interact::toggle_door(&mut world, lower, s.player.forward());
+                for _ in 0..5 {
+                    world.tick_redstone();
+                }
+                assert!(!open(&world), "manual close while powered");
+            }
+        }
+    }
+}
+
+#[test]
+fn powered_placement_keeps_a_right_hinge_and_the_saved_powered_edge() {
+    use voxelcraft::world::block::Shaped;
+    let (mut world, mut s) = scene(Item::OAK_DOOR);
+    let lower = IVec3::new(10, 140, 10);
+    world.set_block(lower - IVec3::Y, Block::STONE);
+    world.set_block(lower - IVec3::X - IVec3::Y, Block::STONE);
+    world.set_block(lower - IVec3::X, Block::door(Facing::North, false, false));
+    world.set_block(lower - IVec3::X + IVec3::Y, Block::door(Facing::North, false, true));
+    world.set_block(lower + IVec3::X, r::REDSTONE_BLOCK);
+    place(&mut world, &mut s, DVec3::new(10.5, 141.6, 13.0), DVec3::new(10.5, 140.0, 10.5));
+    assert!(ms::is_right_hinge(world.get_block(lower).unwrap()));
+    assert!(matches!(world.get_block(lower).unwrap().shaped(), Some(Shaped::Door { open: true, .. })));
+    // Close before the first redstone tick; a spurious rising edge would
+    // reopen it. The placement POWERED edge also survives serialization.
+    voxelcraft::session::interact::toggle_door(&mut world, lower, s.player.forward());
+    let redstone = world.redstone_to_string();
+    let mut replica = World::new_remote(Arc::new(Generator::new(7)), 2);
+    for (pos, data) in world.modified_chunks() {
+        replica.receive_chunk(pos, data);
+    }
+    replica.load_redstone(&redstone);
+    for _ in 0..6 {
+        replica.tick_redstone();
+    }
+    assert!(matches!(replica.get_block(lower).unwrap().shaped(), Some(Shaped::Door { open: false, .. })));
+    assert!(ms::is_right_hinge(replica.get_block(lower).unwrap()));
+}
+
+#[test]
+fn every_wall_places_with_the_java_post_and_keeps_its_water_and_item() {
+    use voxelcraft::{session::placement::Outcome, world::wall_states};
+    for wall in wall_states::FAMILIES {
+        for wet in [false, true] {
+            let item = Item::from_block(wall);
+            let (mut world, mut s) = scene(item);
+            let cell = IVec3::new(10, 140, 10);
+            world.set_block(cell - IVec3::Y, Block::STONE);
+            world.set_block(cell - IVec3::X, wall);
+            world.set_block(cell + IVec3::X, wall);
+            if wet {
+                world.set_block(cell, Block::WATER);
+            }
+            let eye = DVec3::new(10.5, 141.6, 13.0);
+            let point = DVec3::new(10.5, 140.0, 10.5);
+            let d = (point - eye).normalize();
+            s.player.pos = eye - DVec3::Y * EYE_HEIGHT;
+            s.player.yaw = d.z.atan2(d.x) as f32;
+            s.player.pitch = d.y.asin() as f32;
+            let Outcome::Placed { block, cell: placed, .. } = s.place_held(0, &mut world, &[]).unwrap() else {
+                panic!("wall not placed")
+            };
+            assert_eq!(placed, cell);
+            assert_eq!(world.get_block(cell), Some(block));
+            assert_eq!(wall_states::up(block), Some(false));
+            assert_eq!(block.is_waterlogged(), wet);
+            assert_eq!(voxelcraft::session::interact::picked_item(block), item);
+            assert_eq!(block.drop(), Some(item));
+            assert_eq!(s.inventory.get(0).unwrap().count, 63);
+        }
+    }
+}
+
+#[test]
+fn legacy_iron_door_helper_also_samples_power_at_either_half() {
+    use voxelcraft::world::block::Shaped;
+    for y in [0, 1] {
+        let (mut world, _) = scene(Item::OAK_DOOR);
+        let p = IVec3::new(10, 140, 10);
+        world.set_block(p - IVec3::Y, Block::STONE);
+        world.set_block(p + IVec3::X + IVec3::Y * y, r::REDSTONE_BLOCK);
+        assert!(world.place_iron_door(p, Facing::North));
+        for cell in [p, p + IVec3::Y] {
+            assert!(matches!(world.get_block(cell).unwrap().shaped(), Some(Shaped::Door { open: true, .. })));
+        }
+    }
+}

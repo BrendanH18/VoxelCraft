@@ -3,7 +3,8 @@ name: Release packages
 on:
   push:
     branches: ['release/**']
-    tags: ['v*']
+    # Two-part version tags: v0.9, 0.9 or 1.0 (v0.9.1 also works for a fix).
+    tags: ['v[0-9]*', '[0-9]*']
   workflow_dispatch:
 
 permissions:
@@ -60,6 +61,11 @@ jobs:
           tool: cargo-about@0.9.2
       - name: Generate bundled license notices
         run: cargo about generate --locked --fail --target ${{ matrix.target }} --output-file packaging/THIRD-PARTY-LICENSES.html packaging/licenses.hbs
+      - name: Link VoxelCraft's source archive to this commit
+        # The template names tag v<Cargo version> (v0.9.0), but releases are
+        # tagged v0.9; the commit's archive exists for every build.
+        shell: bash
+        run: python3 packaging/source-link.py packaging/THIRD-PARTY-LICENSES.html "$GITHUB_SHA"
       - name: Install Inno Setup
         if: runner.os == 'Windows'
         shell: pwsh
@@ -117,5 +123,5 @@ jobs:
               echo "Release is already published; keeping its downloads unchanged."
             fi
           else
-            gh release create "$RELEASE_TAG" dist/* --verify-tag --draft --title "VoxelCraft $RELEASE_TAG" --notes-file packaging/RELEASE-NOTES.md
+            gh release create "$RELEASE_TAG" dist/* --verify-tag --draft --title "VoxelCraft v${RELEASE_TAG#v}" --notes-file packaging/RELEASE-NOTES.md
           fi

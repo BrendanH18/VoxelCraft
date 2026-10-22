@@ -5,6 +5,7 @@
 //! [`FIRST_ITEM`] up are tools, materials and food, described by a static
 //! table like the block registry. Extended block items use `BLOCK_ITEM_BASE +
 //! state_id`, keeping the established materials/tools/potions IDs intact.
+//! Honey uses explicitly reserved item 1072 for its block (see `from_block`).
 
 use crate::world::block::{Block, RenderKind, tex};
 
@@ -712,6 +713,8 @@ impl Item {
     pub const STRING: Item = Item(273);
     pub const FEATHER: Item = Item(274);
     pub const GUNPOWDER: Item = Item(275);
+    pub const SCAFFOLDING: Item = Item(1070);
+    pub const POWDER_SNOW_BUCKET: Item = Item(1071);
     pub const LEATHER: Item = Item(276);
     pub const ARROW: Item = Item(277);
     pub const WHEAT_SEEDS: Item = Item(278);
@@ -800,8 +803,10 @@ impl Item {
     pub const TURTLE_SCUTE: Item = Item(907);
     /// Standalone append-only audit gear ID; v0.7 reserves 1000..1039.
     pub const TURTLE_HELMET: Item = Item(1040);
-    /// 1041..=1046 are the audit potion slots, so the enchanted golden apple
-    /// takes the first unallocated id (1047).
+    /// Explicit honey item reservations, including the block placing item.
+    pub const HONEY_BLOCK: Item = Item(1072);
+    pub const HONEY_BOTTLE: Item = Item(1073);
+    /// 1041..=1046 are the audit potion slots; the enchanted apple follows.
     pub const ENCHANTED_GOLDEN_APPLE: Item = Item(1047);
     pub const COPPER_NUGGET: Item = Item(COPPER_ITEM + 5);
     pub const NAUTILUS_SHELL: Item = Item(908);
@@ -877,6 +882,15 @@ impl Item {
     }
 
     pub const fn from_block(block: Block) -> Item {
+        if block.0 == Block::HONEY_BLOCK.0 {
+            return Self::HONEY_BLOCK;
+        }
+        if crate::world::scaffolding::is_scaffolding(block) {
+            return Self::SCAFFOLDING;
+        }
+        if block.0 == crate::world::scaffolding::POWDER_SNOW.0 {
+            return Self::POWDER_SNOW_BUCKET;
+        }
         Item(if block.0 < FIRST_ITEM { block.0 } else { BLOCK_ITEM_BASE + block.0 })
     }
 
@@ -900,6 +914,12 @@ impl Item {
 
     /// The block this item is, if any.
     pub fn block(self) -> Option<Block> {
+        if self == Self::HONEY_BLOCK {
+            return Some(Block::HONEY_BLOCK);
+        }
+        if self == Self::SCAFFOLDING {
+            return Some(crate::world::scaffolding::SCAFFOLDING);
+        }
         let id = if self.0 < FIRST_ITEM {
             Some(self.0)
         } else {
@@ -932,6 +952,15 @@ impl Item {
 
     pub fn info(self) -> ItemInfo {
         match self {
+            Self::HONEY_BOTTLE => {
+                return ItemInfo {
+                    name: "honey bottle",
+                    kind: ItemKind::Food { hunger: 6, saturation: 1.2 },
+                    max_stack: 16,
+                    sprite: Sprite::Bottle(Some([235, 166, 35])),
+                };
+            }
+            Self::POWDER_SNOW_BUCKET => return single("powder snow bucket", Sprite::Bucket(Some([230, 242, 250]))),
             Self::TURTLE_HELMET => {
                 return ItemInfo {
                     name: "turtle helmet",
@@ -1162,10 +1191,9 @@ impl Item {
     }
 
     /// Java's `FoodProperties.canAlwaysEat`: edible even when full. The
-    /// reference also lists chorus fruit, honey bottles and suspicious stew,
-    /// none of which are registered here.
+    /// reference also lists chorus fruit and suspicious stew, not yet registered.
     pub fn always_edible(self) -> bool {
-        matches!(self, Item::GOLDEN_APPLE | Item::ENCHANTED_GOLDEN_APPLE)
+        matches!(self, Item::GOLDEN_APPLE | Item::ENCHANTED_GOLDEN_APPLE | Item::HONEY_BOTTLE)
     }
 
     /// Java's `Rarity.RARE` for items registered with it (aqua names).
@@ -1182,13 +1210,14 @@ impl Item {
     pub fn remainder(self) -> Option<Item> {
         match self {
             Self::MILK_BUCKET => Some(Self::BUCKET),
+            Self::HONEY_BOTTLE => Some(Self::GLASS_BOTTLE),
             Self::MUSHROOM_STEW | Self::RABBIT_STEW => Some(Self::BOWL),
             _ => None,
         }
     }
 
     pub fn is_drink(self) -> bool {
-        self.as_potion().is_some() || self == Self::MILK_BUCKET
+        self.as_potion().is_some() || matches!(self, Self::MILK_BUCKET | Self::HONEY_BOTTLE)
     }
 
     /// Hunger and saturation restored, for food.
@@ -1259,7 +1288,7 @@ impl Item {
             .chain((0..ANIMAL_ITEMS.len() as u16).map(|i| Item(ANIMAL_ITEM + i)))
             .chain([Self::TURTLE_HELMET])
             .chain((0..COPPER_ITEMS.len() as u16).map(|i| Item(COPPER_ITEM + i)))
-            .chain([Self::ENCHANTED_GOLDEN_APPLE])
+            .chain([Self::ENCHANTED_GOLDEN_APPLE, Self::HONEY_BOTTLE, Self::POWDER_SNOW_BUCKET])
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1297,7 +1326,9 @@ fn sprite_index(item: Item) -> Option<u16> {
     let materials = ITEMS.len() as u16;
     match item.0 {
         1040 => Some(turtle_icon()),
+        1073 => Some(turtle_icon() + 2 + COPPER_ITEMS.len() as u16),
         1047 => Some(turtle_icon() + 1 + COPPER_ITEMS.len() as u16),
+        1071 => Some(turtle_icon() + 3 + COPPER_ITEMS.len() as u16),
         i if (COPPER_ITEM..COPPER_ITEM + COPPER_ITEMS.len() as u16).contains(&i) => {
             Some(turtle_icon() + 1 + i - COPPER_ITEM)
         }
@@ -1378,11 +1409,11 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    turtle_icon() as u32 + 1 + COPPER_ITEMS.len() as u32 + 1
+    turtle_icon() as u32 + 1 + COPPER_ITEMS.len() as u32 + 3
 }
 
 /// The turtle helmet's icon follows the animal items; copper equipment follows it,
-/// then the enchanted golden apple.
+/// then the enchanted golden apple, the honey bottle and the powder snow bucket.
 const fn turtle_icon() -> u16 {
     (base_icon_count() + OVERWORLD_ITEMS.len() as u32 + MOUNT_ITEMS.len() as u32 + ANIMAL_ITEMS.len() as u32) as u16
 }

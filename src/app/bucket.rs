@@ -7,11 +7,16 @@ use crate::world::block::Block;
 use voxelcraft::survival_items::bucket::Effect;
 
 pub(super) fn feedback(audio: &mut Audio, effect: Effect) {
-    let stone = Sound::Place(Material::Stone);
+    // Powder snow's `BUCKET_FILL/EMPTY_POWDER_SNOW` use the nearest shared material.
+    let solid = |fluid: Block| {
+        Sound::Place(if fluid == crate::world::scaffolding::POWDER_SNOW { Material::Snow } else { Material::Stone })
+    };
     let (sound, at, gain, pitch) = match effect {
-        Effect::Filled { at, fluid } => (if fluid == Block::WATER { Sound::Swim } else { stone }, at, 0.8, (0.8, 0.9)),
+        Effect::Filled { at, fluid } => {
+            (if fluid == Block::WATER { Sound::Swim } else { solid(fluid) }, at, 0.8, (0.8, 0.9))
+        }
         Effect::Poured { at, fluid } => {
-            (if fluid == Block::WATER { Sound::Splash } else { stone }, at, 0.6, (0.9, 1.0))
+            (if fluid == Block::WATER { Sound::Splash } else { solid(fluid) }, at, 0.6, (0.9, 1.0))
         }
         Effect::Released { at } => (Sound::Splash, at, 0.5, (1.2, 1.35)),
         Effect::Evaporated { at } => (Sound::Fuse, at, 0.6, (1.6, 1.8)),

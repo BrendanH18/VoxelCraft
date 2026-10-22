@@ -39,6 +39,7 @@ impl Input {
             jump: self.buttons & 1 != 0,
             descend: self.buttons & 2 != 0,
             sprint: self.buttons & 4 != 0,
+            ..Default::default()
         }
     }
 }

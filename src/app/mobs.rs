@@ -50,7 +50,7 @@ impl Game {
 
     /// The host's sprint state for an attack.
     pub(super) fn sprinting_for_attack(&self) -> bool {
-        self.movement_input(self.arrival.is_some()).sprint
+        self.session.player.sprinting
     }
 
     /// The End crystal or dragon part under the crosshair, if it's within

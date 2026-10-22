@@ -79,7 +79,8 @@ load, and play continues on regenerated terrain; saving then renames it to
 save, such as benchmarks and screenshots, leave it alone. Existing inventory,
 container, entity and level IDs keep their meanings: block items below 256
 retain their IDs; higher block states use `item::BLOCK_ITEM_BASE + state_id`
-(currently `0x8000 + state_id`). Always convert with `Item::from_block` or
+(currently `0x8000 + state_id`), except the explicitly reserved honey block
+item 1072 (state 8128). Always convert with `Item::from_block` or
 `Item::from`, rather than casting a block ID to an item ID.
 
 Block texture constants and `BlockInfo::tex` are u16. Quads still occupy
@@ -108,8 +109,10 @@ is allocated only when an actual mesh is built.
 Singleplayer advances movement, survival, weather, actions, world systems,
 entities and time in fixed 50 ms steps. Rendering and worker polling run
 independently, with position interpolation for the camera, mobs, arrows,
-smoke, dropped items, falling blocks and primed TNT. Collision substeps remain
-at most 1/120 second. Offline menus pause the game clock.
+smoke, dropped items, falling blocks and primed TNT. The player moves one
+Java tick per step (`Player::tick`, a port of `LivingEntity.travel` and
+`Entity.move` with Java's swept collision); mob collision substeps remain at
+most 1/120 second. Offline menus pause the game clock.
 
 Gameplay sky and block light belong to `World`, with incremental removal and
 increase queues. Edits, streaming and fixed world steps resolve it without
@@ -183,7 +186,7 @@ src/
   enchant.rs         enchantments: Java's definitions, effects, table offers,
                      anvil rules, java.util.Random port
   smithing.rs        diamond-to-Netherite metadata-preserving transforms
-  player.rs          player movement
+  player/            Java player tick: travel, collision, fluids and currents
   physics.rs         shared AABB-vs-block collision, ray-vs-box test
   entity/
     mod.rs           mob list, spawning/despawning rules, events, explosions
@@ -302,7 +305,19 @@ Allocations so far:
 | 7800–7903 | Right-hinge lower doors: oak, iron, then the 11 wood doors | [doors and mounts](verification/2026-10-20-doors-mounts.md) |
 | 7904–7911 | Wall and ceiling grindstones | [doors and mounts](verification/2026-10-20-doors-mounts.md) |
 | 7920–7927 | Lantern and soul lantern: standing or hanging, dry or wet | [doors and mounts](verification/2026-10-20-doors-mounts.md) |
+| 8000–8039 | Stored wall UP=false, dry then wet, per `wall_states::FAMILIES`; existing wall IDs (including their wet partners) mean UP=true (owner-approved 2026-10-21); 8040–8127 remain reserved/unregistered | [wall posts and powered doors](verification/2026-10-21-wall-posts-powered-doors.md) |
+| 8128 (8129–8143 reserved, unused) | Honey block; explicit block item 1072 and honey bottle item 1073; base texture maximum L=1762, honey side/top/bottom layers 1771–1773 (L+9..L+11), 1774 (L+12) reserved unused | [honey](verification/2026-10-21-honey-block.md) |
+| 7936–7967 | Scaffolding: `7936 + distance + 8*bottom + 16*waterlogged`, distance 0–7; default 7943 | [scaffolding and powder snow](verification/2026-10-21-scaffolding-powder-snow.md) |
+| 7968 | Powder snow; 7969–7999 remain unused in this task's reservation | [scaffolding and powder snow](verification/2026-10-21-scaffolding-powder-snow.md) |
 | 8192–8476 | Waterlogged partners of 285 existing states (fences, bars, panes, walls, chains, trapdoors, rails, ladders, chests, leaves, amethyst, dripstone, dripleaves, roots, propagules, dead coral) and dry partners of sea pickles and live coral, in `waterlog::RUNS` order; append runs only at the end | [waterlogging](verification/2026-10-20-waterlogging.md) |
+
+PLY-02c items: **1070 scaffolding**, **1071 powder snow bucket**. Scaffolding
+uses its reserved item ID rather than `BLOCK_ITEM_BASE + state`. Powder snow
+has no block item; pick-block returns its bucket. The original highest texture
+layer at base `d17fb37` is **L = 1762** (soul lantern). This task allocates
+**1763–1767**: scaffold top, scaffold side, powder snow, frozen full heart,
+frozen half heart. **1768–1770** (L+6..L+8) stay unused; the other task owns
+L+9..L+12. Textures are original procedural pixels.
 
 ## Assessment branch ID reservations
 

@@ -197,6 +197,14 @@ impl System {
                 }
             }
             Request::EyeBreak { pos } => self.eye_break(pos, setting),
+            Request::Honey { pos, count, .. } => {
+                for _ in 0..count {
+                    if self.accept(setting, false, false) {
+                        let p = self.terrain(pos, pos.floor(), Block::HONEY_BLOCK, DVec3::ZERO);
+                        self.pool.spawn(p);
+                    }
+                }
+            }
         }
     }
 

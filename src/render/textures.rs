@@ -90,7 +90,40 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     if let Some(pixel) = voxelcraft::assets::texture_pixel(layer, x, y) {
         return pixel;
     }
+    if (tex::HONEY_SIDE..=tex::HONEY_BOTTOM).contains(&layer) {
+        // Original amber shell: streaks and small trapped air pockets.
+        let edge = x == 0 || y == 0 || x == 15 || y == 15;
+        let bubble = ((x * 7 + y * 11 + layer as usize) % 41) < 3;
+        let streak = layer == tex::HONEY_SIDE && (x + 3 * (y / 5)).is_multiple_of(7);
+        let mut p = noisy(
+            layer,
+            x,
+            y,
+            if edge {
+                [239, 177, 53]
+            } else if bubble {
+                [255, 207, 93]
+            } else if streak {
+                [205, 127, 20]
+            } else {
+                [231, 153, 28]
+            },
+            0.06,
+        );
+        p[3] = if edge { 220 } else { 165 };
+        return p;
+    }
     let r = rnd(layer, x, y, 0);
+    if layer == tex::SCAFFOLD_TOP {
+        let slat = x % 4 < 2 || y % 4 < 2;
+        return if slat { noisy(layer, x, y, [186, 166, 91], 0.10) } else { [0, 0, 0, 0] };
+    }
+    if layer == tex::SCAFFOLD_SIDE {
+        return noisy(layer, x, y, if y % 7 < 2 { [121, 112, 61] } else { [195, 180, 102] }, 0.12);
+    }
+    if layer == tex::POWDER_SNOW {
+        return noisy(layer, x, y, [232, 244, 251], 0.025);
+    }
     if layer == tex::COMPOST || layer == tex::COMPOST_READY {
         return noisy(layer, x, y, if layer == tex::COMPOST_READY { [139, 119, 90] } else { [99, 72, 42] }, 0.22);
     }
@@ -1344,7 +1377,9 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         | tex::HEART_HALF
         | tex::HEART_EMPTY
         | tex::HEART_ABSORBING_FULL
-        | tex::HEART_ABSORBING_HALF => heart(layer, x, y),
+        | tex::HEART_ABSORBING_HALF
+        | tex::HEART_FROZEN_FULL
+        | tex::HEART_FROZEN_HALF => heart(layer, x, y),
         tex::FOOD_FULL | tex::FOOD_HALF | tex::FOOD_EMPTY => drumstick(layer, x, y),
         tex::BUBBLE => {
             let (dx, dy) = (x as f32 - 7.5, y as f32 - 7.5);
@@ -1768,12 +1803,15 @@ fn heart(layer: u16, x: usize, y: usize) -> Rgba {
         return [30, 10, 10, 255];
     }
     let filled = match layer {
-        tex::HEART_FULL | tex::HEART_ABSORBING_FULL => true,
-        tex::HEART_HALF | tex::HEART_ABSORBING_HALF => x < 8,
+        tex::HEART_FULL | tex::HEART_ABSORBING_FULL | tex::HEART_FROZEN_FULL => true,
+        tex::HEART_HALF | tex::HEART_ABSORBING_HALF | tex::HEART_FROZEN_HALF => x < 8,
         _ => false,
     };
     // Absorption's hearts are gold, drawn over the empty container.
     let golden = matches!(layer, tex::HEART_ABSORBING_FULL | tex::HEART_ABSORBING_HALF);
+    if filled && matches!(layer, tex::HEART_FROZEN_FULL | tex::HEART_FROZEN_HALF) {
+        return if x < 6 && (3..6).contains(&y) { [220, 252, 255, 255] } else { [93, 190, 233, 255] };
+    }
     if !filled {
         [60, 30, 30, 200]
     } else if x < 6 && (3..6).contains(&y) {

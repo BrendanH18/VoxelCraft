@@ -210,23 +210,51 @@ pub fn collision_is_full(b: Block) -> bool {
 
 /// Unshaped blocks drawn as cubes whose Java shape is smaller than the cell.
 fn smaller_than_its_cell(b: Block) -> bool {
-    matches!(b.base(), Block::CHEST | Block::CACTUS)
+    matches!(b.base(), Block::CHEST | Block::CACTUS | Block::HONEY_BLOCK)
 }
 
 // ---- Sturdy faces ------------------------------------------------------
 
+/// Java's `SupportType`: how much of a face a support must cover.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Support {
+    /// The whole face.
+    Full,
+    /// The 2×2 centre.
+    Center,
+    /// The outer two-pixel ring (`RIGID`, what diodes and plates stand on).
+    Rigid,
+}
+
 /// Whether the union of `b`'s support boxes covers the face whose outward
 /// normal is `dir` (`center_only`: just the 2×2 centre, Java's
 /// `SupportType.CENTER`).
-fn covers_face(b: Block, dir: IVec3, center_only: bool) -> bool {
+fn covers_face(b: Block, dir: IVec3, support: Support) -> bool {
     // A waterlogged partner has its dry original's shape.
     let b = b.canonical();
+    // Scaffolding's empty-context support shape has a full top plate even
+    // though player placement and inside collision are empty.
+    if super::scaffolding::is_scaffolding(b) {
+        return dir == IVec3::Y;
+    }
     // `LeavesBlock.getBlockSupportShape` is empty.
     if b.is_leaves() || !b.is_solid() {
         return false;
     }
+    // `HoneyBlock`'s support shape is its collision box, inset a pixel on
+    // the sides and top: only its underside's centre holds anything.
+    if b == Block::HONEY_BLOCK {
+        return support == Support::Center && dir == IVec3::NEG_Y;
+    }
     if b.is_opaque() || matches!(b, Block::SOUL_SAND | super::overworld_blocks::MUD) {
         return true;
+    }
+    // Every ordinary wall state covers the centre with its post or at
+    // least one arm. Arms and posts both have 24-high collision/support
+    // shapes. Side connections are derived, so this context-free support
+    // query must not treat an UP=false wall as an empty isolated shape.
+    if super::wall_states::up(b).is_some() && dir.y != 0 {
+        return support == Support::Center;
     }
     if b.shaped().is_none() {
         // A plain cube of reduced height (slab, path, bed, snow layer) is
@@ -253,12 +281,25 @@ fn covers_face(b: Block, dir: IVec3, center_only: bool) -> bool {
             }
         }
     }
-    if center_only { (7..9).all(|y| rows[y] >> 7 & 0b11 == 0b11) } else { rows.iter().all(|&row| row == u16::MAX) }
+    match support {
+        Support::Center => (7..9).all(|y| rows[y] >> 7 & 0b11 == 0b11),
+        Support::Full => rows.iter().all(|&row| row == u16::MAX),
+        Support::Rigid => rows.iter().enumerate().all(|(y, &row)| {
+            let ring = if !(2..14).contains(&y) { u16::MAX } else { 0b11 | 0b11 << 14 };
+            row & ring == ring
+        }),
+    }
 }
 
 /// Java `isFaceSturdy(.., face, SupportType.FULL)`.
 pub fn face_sturdy(b: Block, face: IVec3) -> bool {
-    covers_face(b, face, false)
+    covers_face(b, face, Support::Full)
+}
+
+/// Java `Block.canSupportRigidBlock`: the top face covers its outer
+/// two-pixel ring (a hopper's rim does; a wall post doesn't).
+pub fn supports_rigid(b: Block) -> bool {
+    covers_face(b, IVec3::Y, Support::Rigid)
 }
 
 /// Java `Block.canSupportCenter`: fence posts, chains and slab tops hold a
@@ -267,7 +308,7 @@ pub fn supports_center(b: Block, face: IVec3) -> bool {
     if face == IVec3::NEG_Y && b.is_gate() {
         return false;
     }
-    covers_face(b, face, true)
+    covers_face(b, face, Support::Center)
 }
 
 // ---- Placement ---------------------------------------------------------

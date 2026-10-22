@@ -4,7 +4,7 @@
 //!
 //! Fences and gates look at their four horizontal neighbours, so their
 //! shape is computed from a neighbour lookup rather than stored. Walls also
-//! read the block above ([`Above`]) for their post and tall sides.
+//! store UP and read the block above ([`Above`]) for tall sides.
 //!
 //! A waterlogged state (BLD-04f partner) has its dry original's shape: each
 //! entry point looks at [`Block::canonical`] states.
@@ -74,7 +74,7 @@ impl Boxes {
         out
     }
 
-    fn push(&mut self, b: Box16) {
+    pub(crate) fn push(&mut self, b: Box16) {
         self.boxes[self.len as usize] = b;
         self.len += 1;
     }
@@ -264,10 +264,11 @@ impl Above {
 /// tall) and whether the post is raised. A side is tall where the block
 /// above covers it; a straight run drops its post unless something above
 /// (a raised wall post, a torch, a covering block over the middle) holds
-/// it up, and never with tall sides on both ends.
+/// it up. Opposite tall sides suppress the post unless an upper wall
+/// already has UP=true (that rule takes precedence in Java).
 /// `neighbour` is `dyn` so the recursion through `collision_with` (for the
 /// block above) instantiates once.
-fn wall_state(neighbour: &dyn Fn(Facing) -> Block, above: Above) -> ([Option<bool>; 4], bool) {
+pub(crate) fn wall_state(neighbour: &dyn Fn(Facing) -> Block, above: Above) -> ([Option<bool>; 4], bool) {
     let above_block = above.block.canonical();
     // `getCollisionShape(...).getFaceShape(DOWN)` of the block above.
     let above_face = if above_block == Block::AIR {
@@ -299,11 +300,7 @@ fn wall_state(neighbour: &dyn Fn(Facing) -> Block, above: Above) -> ([Option<boo
         }
     }
     let side = |f: Facing| sides[f as usize];
-    let raised_above = matches!(above_block.shaped(), Some(Shaped::Wall)) && {
-        let sides = above.sides;
-        let (_, post) = wall_state(&|f: Facing| sides[f as usize], Above::NONE);
-        post
-    };
+    let raised_above = super::wall_states::up(above_block) == Some(true);
     let none = |f: Facing| side(f).is_none();
     let corner = Facing::ALL.into_iter().all(none)
         || none(Facing::North) != none(Facing::South)
@@ -460,7 +457,8 @@ pub fn shape_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bloc
             out.push_turned(&DOOR, if open { open_door_side(facing, hinge_right) } else { facing })
         }
         Some(Shaped::Wall) => {
-            let (sides, post) = wall_state(&neighbour, above);
+            let (sides, _) = wall_state(&neighbour, above);
+            let post = super::wall_states::up(block).unwrap_or(true);
             if post {
                 out.push(WALL_POST);
             }
@@ -482,6 +480,7 @@ pub fn shape_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bloc
             out.push(b(min, max));
         }
         Some(Shaped::Rail) => out.push(RAIL),
+        Some(Shaped::Custom) if super::scaffolding::is_scaffolding(block) => return super::scaffolding::outline(block),
         Some(Shaped::Custom) if super::mount_states::is_lantern(block.0) => lantern_boxes(block, &mut out),
         Some(Shaped::Custom) => super::overworld_blocks::boxes(block).unwrap_or(&[]).iter().for_each(|&b| out.push(b)),
         Some(Shaped::Hook { facing }) => out.push_turned(
@@ -734,7 +733,7 @@ pub fn collision_or_cube(block: Block, neighbour: impl Fn(Facing) -> Block, belo
         // Drawn as cubes, but Java's shapes are inset: a single chest
         // (`Block.column(14, 0, 14)`) and cactus collision.
         Block::CHEST => out.push(b([1, 0, 1], [15, 14, 15])),
-        Block::CACTUS => out.push(b([1, 0, 1], [15, 15, 15])),
+        Block::CACTUS | Block::HONEY_BLOCK => out.push(b([1, 0, 1], [15, 15, 15])),
         _ if block.is_solid() => out.push(b([0, 0, 0], [16, 16 - block.top_drop(), 16])),
         _ => {}
     }
@@ -744,6 +743,12 @@ pub fn collision_or_cube(block: Block, neighbour: impl Fn(Facing) -> Block, belo
 /// [`collision`] with what is above the cell (a wall's raised post).
 pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block, above: Above) -> Boxes {
     let block = block.canonical();
+    if super::scaffolding::is_scaffolding(block) {
+        return super::scaffolding::outline(super::scaffolding::state(0, false, false));
+    }
+    if block == super::scaffolding::POWDER_SNOW {
+        return Boxes::new();
+    }
     let neighbour = |f: Facing| neighbour(f).canonical();
     let below = below.canonical();
     let mut out = Boxes::new();
@@ -779,7 +784,8 @@ pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: 
             }
         }
         Some(Shaped::Wall) => {
-            let (sides, post) = wall_state(&neighbour, above);
+            let (sides, _) = wall_state(&neighbour, above);
+            let post = super::wall_states::up(block).unwrap_or(true);
             if post {
                 out.push(WALL_POST_COLLISION);
             }

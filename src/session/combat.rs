@@ -317,6 +317,7 @@ impl PlayerSession {
         let sprint_cancelled = landed && extra > 0.0 && matches!(target, Target::Mob(_) | Target::Fight | Target::Cart);
         if sprint_cancelled {
             self.player.vel = knockback::slow_attacker(self.player.vel);
+            self.player.sprinting = false;
         }
         let mut tool_broken = None;
         if landed && self.mode.is_survival() {

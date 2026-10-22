@@ -49,8 +49,10 @@ pub enum Use {
 }
 
 pub fn handles(item: Item) -> bool {
-    matches!(item, Item::BUCKET | Item::WATER_BUCKET | Item::LAVA_BUCKET | Item::GLASS_BOTTLE)
-        || crate::entity::aquatic::bucket_kind(item).is_some()
+    matches!(
+        item,
+        Item::BUCKET | Item::WATER_BUCKET | Item::LAVA_BUCKET | Item::POWDER_SNOW_BUCKET | Item::GLASS_BOTTLE
+    ) || crate::entity::aquatic::bucket_kind(item).is_some()
 }
 
 /// The shared input priority for buckets and bottles. Every adapter runs its
@@ -123,6 +125,19 @@ pub fn use_bucket(
             super::exchange(inventory, slot, result, creative, entities, player);
             Some(Effect::Filled { at, fluid })
         }
+        Item::POWDER_SNOW_BUCKET => {
+            let (hit, normal) = world.raycast(eye, dir, reach)?;
+            let old = world.get_block(hit)?;
+            let at = if old.is_replaceable() { hit } else { hit + normal };
+            if at.y < world.min_y() || at.y >= world.max_y() || !world.get_block(at)?.is_replaceable() {
+                return None;
+            }
+            world.set_block(at, crate::world::scaffolding::POWDER_SNOW);
+            if !creative {
+                super::exchange(inventory, slot, Item::BUCKET, false, entities, player);
+            }
+            Some(Effect::Poured { at, fluid: crate::world::scaffolding::POWDER_SNOW })
+        }
         Item::WATER_BUCKET | Item::LAVA_BUCKET => {
             let fluid = if held == Item::WATER_BUCKET { Block::WATER } else { Block::LAVA };
             let effect = pour(world, eye, dir, reach, fluid, player.sneaking)?;
@@ -157,6 +172,10 @@ pub fn use_bucket(
 /// Kelp, seagrass and flowing fluid can't be picked up.
 pub fn pick_up(world: &mut World, at: IVec3) -> Option<(Item, Block)> {
     match world.get_block(at)? {
+        crate::world::scaffolding::POWDER_SNOW => {
+            world.set_block(at, Block::AIR);
+            Some((Item::POWDER_SNOW_BUCKET, crate::world::scaffolding::POWDER_SNOW))
+        }
         Block::WATER => {
             world.set_block(at, Block::AIR);
             Some((Item::WATER_BUCKET, Block::WATER))

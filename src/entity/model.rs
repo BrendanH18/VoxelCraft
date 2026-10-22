@@ -1394,7 +1394,7 @@ pub fn build_player_name(
     let toward = (rel + Vec3::Y * 2.1).normalize_or(Vec3::X);
     labels::label(name, rel + Vec3::Y * 2.1, toward, out);
 }
-pub use super::player_pose::{PlayerPose, fits_at, resolve_pose};
+pub use super::player_pose::{PlayerPose, fits_at, fits_player, resolve_pose};
 
 #[cfg(test)]
 mod tests {

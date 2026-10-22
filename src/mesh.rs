@@ -756,6 +756,37 @@ mod tests {
     }
 
     #[test]
+    fn stored_wall_post_reaches_meshing_for_dry_and_waterlogged_stacks() {
+        // Straight 3-wide wall rows, three levels high. A torch raises the
+        // middle column's posts all the way down; its lowest post must
+        // appear as an 8-pixel-wide face rather than the 6-pixel arms.
+        for wet in [false, true] {
+            let mut blocks = Vec::new();
+            for y in 5..8 {
+                for z in 4..7 {
+                    blocks.push(([5, y, z], Block::COBBLESTONE_WALL.with_water(wet)));
+                }
+            }
+            let low = mesh_blocks(&blocks);
+            blocks.push(([5, 8, 5], Block::TORCH));
+            let raised = mesh_blocks(&blocks);
+            let post_face = |m: &MeshData| {
+                m.quads.iter().any(|q| {
+                    let c = corners(*q);
+                    c.iter().all(|c| {
+                        c.pos[0] == 5.25 && c.pos[1] >= 5.0 && c.pos[1] <= 6.0 && c.pos[2] >= 5.25 && c.pos[2] <= 5.75
+                    }) && c.iter().any(|c| c.pos[1] == 6.0)
+                })
+            };
+            assert!(!post_face(&low));
+            assert!(post_face(&raised), "wet={wet}");
+            if wet {
+                assert!(raised.pass_quads(TRANSLUCENT) > 0);
+            }
+        }
+    }
+
+    #[test]
     fn single_block_has_six_faces() {
         let m = mesh_blocks(&[([5, 5, 5], Block::STONE)]);
         assert_eq!(m.pass_quads(OPAQUE), 6);

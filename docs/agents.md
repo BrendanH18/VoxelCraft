@@ -60,7 +60,7 @@ positive pitch looks up. Wait until `state.loaded` is true before moving.
 | `look yaw pitch` | Set camera direction |
 | `move forward right ticks [jump sprint sneak]` | Physics input; axes −1 through 1; sneak also descends in flight |
 | `wait ticks`, `mine ticks` | Wait or hold mining with normal tool speed, harvest rules and wear |
-| `eat` | Eat one of the selected food over 1.6 seconds (32 ticks), when hungry and in survival |
+| `eat` | Eat or drink one of the selected item over its Java use time (32 ticks for most food, 40 for honey bottles), when hungry (or always-edible) and in survival |
 | `draw [ticks]` | Hold use with the selected bow or crossbow for 1..200 ticks (default 25): a bow shoots at that draw (full power at 20), a crossbow loads at 25 ticks, and a charged crossbow fires at once. Needs an arrow and an aim away from blocks that take use. Emits a shot event |
 | `sleep` | Make the targeted bed the respawn point and lie down in it at night or in rain, with no monsters within 8 blocks; any action other than `observe`, `wait` or a still `move` gets up, as does damage |
 | `select 1..9`, `fly on/off` | Choose hotbar slot or toggle creative flight |

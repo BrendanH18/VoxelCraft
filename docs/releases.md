@@ -14,7 +14,12 @@ Visual C++ redistributable installation.
 
 - Push a `release/*` branch to build downloadable workflow artifacts.
 - A manual workflow run builds artifacts, without publishing.
-- Push a tag matching Cargo.toml, such as `v0.3.0`, to build both packages
+- Push a two-part version tag, such as `v0.9` or `1.0` (owner, 2026-10-22),
+  to build both packages. The tag names Cargo version `0.9.0` / `1.0.0`, and
+  `packaging/check-version.py` rejects a tag that doesn't match Cargo.toml.
+  A three-part tag such as `v0.9.1` still works for a fix release. CI points
+  the bundled notices' VoxelCraft source link at the built commit
+  (`packaging/source-link.py`), since no `v0.9.0` tag exists. The build
   and create a **draft** GitHub Release with SHA-256 checksums and the notes from
   `packaging/RELEASE-NOTES.md`. The workflow never publishes automatically.
   Rerunning a tag build refreshes an existing draft's downloads; published

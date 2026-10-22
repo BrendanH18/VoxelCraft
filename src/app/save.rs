@@ -29,6 +29,7 @@ impl Game {
         props.insert("air".to_string(), format!("{:.2}", self.session.vitals.air));
         props.insert("xp".to_string(), self.session.vitals.xp.serialize());
         props.insert("effects".to_string(), self.session.vitals.effects.serialize());
+        props.insert("ticks_frozen".to_string(), self.session.vitals.ticks_frozen.to_string());
         let h = self.session.vitals.hunger;
         props.insert("hunger".to_string(), format!("{:.2},{:.2},{:.3}", h.food, h.saturation, h.exhaustion));
         if let Some(cause) = &self.session.vitals.death {

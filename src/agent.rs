@@ -23,6 +23,7 @@ pub enum Event {
     Placed(IVec3, Block),
     Bucket(crate::survival_items::bucket::Effect),
     Chew,
+    HoneyDrink,
     /// Drew, loaded, fired or shot a bow or crossbow.
     Shot(crate::session::ranged::Shot),
     /// Absorbed an experience orb; with the level-up chime volume when it
@@ -427,7 +428,7 @@ impl Agent {
                 if self.cooldown > 0.0 {
                     return Err("action cooling down".into());
                 }
-                let sprinting = self.movement_input().sprint && self.session.vitals.may_sprint(self.creative);
+                let sprinting = self.session.player.sprinting;
                 let outcome = self.session.attack(self.selected, world, entities, sprinting)?;
                 // Java has no attack cooldown; damage scales with the charge instead.
                 self.cooldown = TICK_SECONDS;
@@ -441,7 +442,7 @@ impl Agent {
                     _ => {}
                 }
             }
-            Command::Craft(item) => self.craft(item, world)?,
+            Command::Craft(item) => self.craft(item, world, entities)?,
             Command::Furnace(take, slot) => self.furnace_transfer(take, slot, world, entities)?,
             Command::Chest(take, slot) => {
                 let eye = self.session.player.eye();
@@ -619,14 +620,17 @@ impl Agent {
         Ok(())
     }
 
-    fn craft(&mut self, item: Item, world: &World) -> Result<(), String> {
+    fn craft(&mut self, item: Item, world: &World, entities: &mut Entities) -> Result<(), String> {
         let at_table = self.at_crafting_table(world);
-        let inventory = crafting::recipes()
+        let (inventory, remainders) = crafting::recipes()
             .iter()
             .filter(|r| r.result.item == item)
             .find_map(|r| self.crafted(r, at_table))
             .ok_or("missing ingredients, inventory space or targeted crafting table")?;
         self.session.inventory = inventory;
+        for remainder in remainders {
+            entities.throw(remainder, self.session.player.eye(), self.session.player.forward().as_dvec3());
+        }
         Ok(())
     }
 
@@ -636,12 +640,13 @@ impl Agent {
 
     /// The inventory after crafting `recipe` once, if the ingredients and
     /// room are there (3x3 recipes need a targeted crafting table).
-    fn crafted(&self, recipe: &crafting::Recipe, at_table: bool) -> Option<Inventory> {
+    fn crafted(&self, recipe: &crafting::Recipe, at_table: bool) -> Option<(Inventory, Vec<Stack>)> {
         let grid = recipe.preview();
         if grid.size == 3 && !at_table {
             return None;
         }
         let mut inventory = self.session.inventory.clone();
+        let mut remainders = Vec::new();
         for i in 0..grid.cells.len() {
             if grid.cells[i].is_none() {
                 continue;
@@ -650,13 +655,18 @@ impl Agent {
             let slot = inventory.slots.iter().position(|s| s.is_some_and(|s| options.contains(&s.item)))?;
             let used = inventory.get(slot)?.item;
             inventory.take_one(slot);
-            if let Some(rest) = used.remainder()
-                && inventory.add(rest, 1) != 0
-            {
-                return None;
+            if let Some(rest) = used.remainder() {
+                remainders.push(Stack::new(rest, 1));
             }
         }
-        (inventory.add_stack(recipe.result) == 0).then_some(inventory)
+        if inventory.add_stack(recipe.result) != 0 {
+            return None;
+        }
+        remainders.retain_mut(|stack| {
+            stack.count = inventory.add_stack(*stack);
+            stack.count != 0
+        });
+        Some((inventory, remainders))
     }
 
     /// Every result that `craft` would make right now, once each, in recipe
@@ -725,7 +735,8 @@ impl Agent {
             return;
         }
         let mut input = self.movement_input();
-        input.sprint &= self.session.vitals.may_sprint(self.creative || self.session.mode.invulnerable());
+        input.sprint_blocked = !self.session.vitals.may_sprint(self.creative || self.session.mode.invulnerable());
+        input.using_item = self.bite > 0 || self.session.using_item();
         let before = self.session.player.pos;
         if self.session.player.vehicle.is_some()
             && input.descend
@@ -735,17 +746,21 @@ impl Agent {
             self.session.player.vehicle = None;
             self.session.player.vel = DVec3::ZERO;
         }
+        // `LivingEntity.canFreeze` reads the current armour, riding or not.
+        self.session.player.powder_snow_equipment(&self.session.inventory.armor, self.session.vitals.ticks_frozen);
         if self.session.player.vehicle.is_none() {
             self.session.player.apply_effects(&self.session.vitals.effects);
             self.session.player.wear_boots(crate::enchant::armor_level(
                 &self.session.inventory.armor,
                 crate::enchant::Enchantment::DepthStrider,
             ));
-            self.session.player.update(TICK_SECONDS, input, world);
-            crate::particles::water_entry(&self.session.player, before, world);
+            self.session.player.tick(input, world);
+            world.powder_snow_fire(&self.session.player, self.session.vitals.burning());
+            crate::particles::movement_effects(&self.session.player, before, world);
         } else {
             entities.mount_input(self.session.id, &self.session.player, input, &self.session.inventory, self.selected);
             entities.seat_player(&mut self.session.player, self.session.id);
+            self.session.player.refresh_riding_contact(world);
         }
         let moved = (self.session.player.pos - before).with_y(0.0).length();
         let env = simulation::survival::Env {
@@ -758,7 +773,7 @@ impl Agent {
                 crate::enchant::Enchantment::FrostWalker,
             ) > 0,
             turtle_helmet: self.session.inventory.armor[0].is_some_and(|s| s.item == Item::TURTLE_HELMET),
-            ..simulation::player_environment(&self.session.player, world, input, moved)
+            ..simulation::player_environment(&self.session.player, world, moved)
         };
         let hurts = self.session.vitals.tick_rules(
             TICK_SECONDS as f32,
@@ -773,6 +788,7 @@ impl Agent {
             (hurts.lava, "tried to swim in lava"),
             (hurts.fire + hurts.burn, "burned to death"),
             (hurts.starve, "starved to death"),
+            (hurts.freeze, simulation::survival::CAUSE_FREEZE),
         ] {
             if damage > 0.0 && self.damage(damage, cause) > 0.0 {
                 self.session.sleeping = None;
@@ -871,7 +887,11 @@ impl Agent {
         };
         self.bite = (f64::from(step.progress) * EAT_TICKS as f64) as u32;
         if ((before / TICK_SECONDS).round() as u32).is_multiple_of(5) {
-            self.emit(Event::Chew);
+            self.emit(if self.session.inventory.get(self.selected).is_some_and(|s| s.item == Item::HONEY_BOTTLE) {
+                Event::HoneyDrink
+            } else {
+                Event::Chew
+            });
         }
         if let Some(consumed) = step.completed {
             self.damage(consumed.magic_damage, survival::CAUSE_MAGIC);
@@ -1012,6 +1032,7 @@ impl Agent {
     /// sprinting until it is asked for again.
     pub fn stop_sprint(&mut self) {
         self.input.sprint = false;
+        self.session.player.sprinting = false;
     }
 
     /// [`Agent::hurt`] delivering Java's knockback sequence instead of an impulse.
@@ -1246,6 +1267,8 @@ mod tests {
             a.player.vel = DVec3::ZERO;
             a.player.on_ground = true;
             a.hold(MoveInput { forward: 1.0, sprint, ..Default::default() }, false, false);
+            // The sprint key latches Java's sprint on the next movement tick.
+            a.player.sprinting = sprint;
             let mut e = Entities::new(1);
             e.spawn(crate::entity::MobKind::Zombie, DVec3::new(3.0, 150.0, 1.5));
             e.spawn(crate::entity::MobKind::Zombie, DVec3::new(3.0, 150.0, 2.3));
@@ -1292,6 +1315,21 @@ mod tests {
     }
 
     #[test]
+    fn a_riding_player_freezes_or_not_by_current_armour() {
+        // `LivingEntity.canFreeze` reads the armour every tick, mounted too.
+        use crate::item::{ArmorMaterial, ArmorPiece};
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        a.session.player.vehicle = Some(999);
+        a.tick(&mut world, &mut entities);
+        assert!(!a.session.player.freeze_immune);
+        a.session.inventory.armor[0] = Some(Stack::new(Item::armor(ArmorPiece::Helmet, ArmorMaterial::Leather), 1));
+        a.tick(&mut world, &mut entities);
+        assert!(a.session.player.freeze_immune, "equipping leather while riding counts");
+    }
+
+    #[test]
     fn depth_strider_bonus_is_halved_off_the_ground() {
         let mut world = world();
         world.set_block(IVec3::new(1, 149, 1), Block::STONE);
@@ -1300,13 +1338,21 @@ mod tests {
             let mut p = Player::new(DVec3::new(1.5, 150.0, 1.5));
             p.on_ground = grounded;
             p.wear_boots(level);
-            p.update(1.0 / 120.0, MoveInput { forward: 1.0, ..Default::default() }, world);
-            p.vel.x
+            p.tick(MoveInput { forward: 1.0, ..Default::default() }, world);
+            p.vel.x / 20.0
         };
-        let grounded_bonus = speed(&world, true, 3) - speed(&world, true, 0);
-        let airborne_bonus = speed(&world, false, 3) - speed(&world, false, 0);
-        assert!(grounded_bonus > 0.0);
-        assert!((airborne_bonus * 2.0 - grounded_bonus).abs() < 1e-9);
+        // `travelInWater`: efficiency e moves the 0.8 slow-down toward
+        // 0.546 and the 0.02 speed toward the walking speed; off the ground
+        // e is halved. From rest, one tick keeps speed * 0.98 * slow-down.
+        let expected = |e: f32| {
+            let slow = 0.8_f32 + (0.54600006 - 0.8) * e;
+            let speed = 0.02_f32 + (0.1 - 0.02) * e;
+            speed as f64 * 0.98_f32 as f64 * slow as f64
+        };
+        let full = 0.33333334_f32 * 3.0;
+        assert!((speed(&world, true, 3) - expected(full)).abs() < 1e-9);
+        assert!((speed(&world, false, 3) - expected(full * 0.5)).abs() < 1e-9);
+        assert!((speed(&world, true, 0) - expected(0.0)).abs() < 1e-9);
         world.set_block(IVec3::new(1, 150, 1), Block::LAVA);
         assert_eq!(speed(&world, true, 3), speed(&world, true, 0));
     }
@@ -1590,7 +1636,8 @@ mod tests {
         for _ in 0..20 {
             a.tick(&mut world, &mut entities);
         }
-        assert!(a.player.pos.x > 8.0);
+        // Java's creative flight from rest covers about six blocks in a second.
+        assert!(a.player.pos.x > 7.0, "{}", a.player.pos.x);
         assert_eq!(a.remaining, 0);
         assert_eq!(b.player.pos.x, 4.5);
     }

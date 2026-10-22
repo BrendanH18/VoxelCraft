@@ -113,7 +113,7 @@ fn headless_explosion_removes_light_before_returning() {
 
 #[test]
 fn fixed_steps_preserve_movement_and_survival_across_frame_rates() {
-    let world = platform();
+    let mut world = platform();
     let mut expected = None;
     for frame_ms in [1, 10, 25, 50, 100, 200] {
         let mut player = Player::new(DVec3::new(2.5, 150.0, 2.5));
@@ -122,15 +122,18 @@ fn fixed_steps_preserve_movement_and_survival_across_frame_rates() {
         let input = MoveInput { forward: 1.0, sprint: true, ..Default::default() };
         for _ in 0..1000 / frame_ms {
             for _ in 0..clock.advance(Duration::from_millis(frame_ms), false) {
-                let step = simulation::tick_player(&mut player, &world, &mut vitals, &[None; 4], input, false);
+                let step = simulation::tick_player(&mut player, &mut world, &mut vitals, &[None; 4], input, false);
                 assert_eq!(step.hurts.fall, 0.0);
                 assert_eq!(step.hurts.fire, 0.0);
             }
         }
         assert_eq!(clock.ticks(), 20);
         assert!(player.on_ground);
-        assert!((7.5..8.5).contains(&player.pos.x), "sprinting accelerates toward six blocks/sec: {:?}", player.pos);
-        assert!((player.vel.x - 6.0).abs() < 0.01);
+        // Java's sprint tops out at 5.612 blocks/sec; from rest a second
+        // covers about 4.9 blocks. `vel` keeps the motion after ground
+        // friction (0.6 * 0.91), as Java's `deltaMovement` does.
+        assert!((7.3..7.5).contains(&player.pos.x), "sprinting accelerates toward 5.6 blocks/sec: {:?}", player.pos);
+        assert!((player.vel.x - 5.612 * (0.6_f32 * 0.91_f32) as f64).abs() < 0.01, "{}", player.vel.x);
         let state = (player.pos, player.vel, vitals.health, vitals.hunger);
         if let Some(expected) = expected {
             assert_eq!(state, expected);

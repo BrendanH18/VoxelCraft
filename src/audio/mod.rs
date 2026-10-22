@@ -55,6 +55,9 @@ pub struct Audio {
     /// Last muffle sent: the share of listeners with their head underwater.
     muffle: f32,
     prev_vel_y: f64,
+    /// The player's feet last frame: steps and strokes count the distance
+    /// actually moved (velocity is kept after friction, as Java's is).
+    prev_pos: Option<glam::DVec3>,
     stride: f64,
     swim: f64,
     ground: Material,
@@ -114,6 +117,7 @@ impl Audio {
             was_in_water: false,
             muffle: 0.0,
             prev_vel_y: 0.0,
+            prev_pos: None,
             stride: 0.0,
             swim: 0.0,
             ground: Material::Grass,
@@ -280,6 +284,10 @@ impl Audio {
         }
 
         let speed = player.vel.x.hypot(player.vel.z);
+        // A jump of more than a few blocks in one frame is a teleport, not a walk.
+        let moved = self.prev_pos.map_or(glam::DVec3::ZERO, |p| player.pos - p);
+        let moved = if moved.length_squared() > 16.0 { glam::DVec3::ZERO } else { moved };
+        self.prev_pos = Some(player.pos);
         if player.on_ground && !player.in_water {
             if let Some(b) = ground_block(player, world) {
                 self.ground = material(b);
@@ -296,7 +304,7 @@ impl Audio {
                 }
                 self.stride = 0.0;
             } else if speed > 0.5 {
-                self.stride += speed * dt;
+                self.stride += moved.with_y(0.0).length();
                 if self.stride >= STRIDE {
                     self.stride -= STRIDE;
                     // Sneaking is near silent.
@@ -323,7 +331,7 @@ impl Audio {
         } else if player.in_water && !player.flying {
             let v = player.vel.length();
             if v > 1.0 {
-                self.swim += v * dt;
+                self.swim += moved.length();
                 if self.swim >= SWIM_STROKE {
                     self.swim = 0.0;
                     self.play(Sound::Swim, None, 0.3, (0.85, 1.15));
