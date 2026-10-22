@@ -210,8 +210,7 @@ impl Actor<'_> {
     /// Held use advances the shared fixed-tick consumption clock.
     fn eat(&mut self, acting: bool, dt: f64) {
         let held = self.held();
-        let milk = held == Some(Item::MILK_BUCKET);
-        let potion = held.and_then(|i| i.as_potion());
+        let drink = held.is_some_and(Item::is_drink);
         let food = held.and_then(|i| i.food());
         let hungry = held.is_some_and(|item| self.session.can_eat(item));
         // Right-clicking a composter fills it instead, as in Java.
@@ -221,8 +220,7 @@ impl Actor<'_> {
                 .block_target(self.world)
                 .and_then(|(pos, _)| self.world.get_block(pos))
                 .is_some_and(|b| crate::world::composter::level(b).is_some());
-        let using =
-            acting && self.body.right_held && (milk || potion.is_some() || (food.is_some() && hungry && !composting));
+        let using = acting && self.body.right_held && (drink || (food.is_some() && hungry && !composting));
         if !using {
             self.session.cancel_consumption();
             self.body.actions.eat_timer = 0.0;
@@ -239,7 +237,11 @@ impl Actor<'_> {
         self.body.actions.eat_timer = f64::from(step.progress) * EAT_TIME;
         if (before / 0.25).floor() != ((before + dt) / 0.25).floor() {
             let eye = self.session.player.eye();
-            self.audio.play(Sound::Step(Material::Snow), Some(eye), 0.7, (1.4, 1.7));
+            if held == Some(Item::HONEY_BOTTLE) {
+                self.audio.play(Sound::HoneyDrink, Some(eye), 0.7, (0.9, 1.1));
+            } else {
+                self.audio.play(Sound::Step(Material::Snow), Some(eye), 0.7, (1.4, 1.7));
+            }
         }
         if let Some(consumed) = step.completed {
             self.requests.push(Request::MagicDamage(consumed.magic_damage));

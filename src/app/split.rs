@@ -169,7 +169,10 @@ impl Game {
         let underwater = fluid.is_some();
         let view_dist = (self.world.render_distance() * 32) as f32;
         let (horizon, zenith) = self.view_sky(scene, view, camera);
-        let (color, start, end) = if in_lava {
+        let powder = self.world.get_block(cell) == Some(crate::world::scaffolding::POWDER_SNOW);
+        let (color, start, end) = if powder {
+            ([0.623, 0.734, 0.785], 0.0, 2.0)
+        } else if in_lava {
             (super::LAVA_FOG, 0.0, 2.0)
         } else if underwater {
             (super::WATER_FOG.map(|c| c * scene.sky.daylight), 0.0, 28.0)
@@ -180,7 +183,7 @@ impl Game {
         } else {
             (horizon, view_dist * 0.55, view_dist * 0.95)
         };
-        Fog { color, zenith: if underwater { color } else { zenith }, start, end }
+        Fog { color, zenith: if underwater || powder { color } else { zenith }, start, end }
     }
 
     /// Plays what agents did since last frame: breaking, placing, chewing.
@@ -192,6 +195,14 @@ impl Game {
                     Event::Broke(pos, block) => self.audio.block_break(block, pos),
                     Event::Placed(pos, block) => self.audio.block_place(block, pos),
                     Event::Bucket(effect) => super::bucket::feedback(&mut self.audio, effect),
+                    Event::HoneyDrink => {
+                        self.audio.play(
+                            crate::audio::Sound::HoneyDrink,
+                            Some(bot.agent.session.player.eye()),
+                            0.7,
+                            (0.9, 1.1),
+                        );
+                    }
                     Event::Chew => {
                         let sound = crate::audio::sounds::Sound::Step(crate::audio::sounds::Material::Snow);
                         self.audio.play(sound, Some(bot.agent.session.player.eye()), 0.7, (1.4, 1.7));
@@ -365,6 +376,7 @@ impl Game {
         let mut ui =
             Ui::with_scale(w as f32, h as f32, Ui::fitted_scale(w as f32, h as f32, self.renderer.scale_factor()));
         let (sw, sh) = ui.size();
+        super::hud::frozen_overlay(&mut ui, sw, sh, a.vitals.ticks_frozen);
         let underwater = a.player.head_in_water(&self.world);
         if underwater {
             ui.rect(0.0, 0.0, sw, sh, [0.05, 0.15, 0.4, 0.3]);

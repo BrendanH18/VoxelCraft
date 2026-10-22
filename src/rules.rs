@@ -519,8 +519,7 @@ impl GameRules {
             fall: !self.bool("fall_damage"),
             fire: !self.bool("fire_damage"),
             drowning: !self.bool("drowning_damage"),
-            // `freeze_damage` governs powder snow, which VoxelCraft lacks.
-            freezing: false,
+            freezing: !self.bool("freeze_damage"),
         }
     }
 }

@@ -191,6 +191,7 @@ impl World {
             || b.is_door()
             // `PushReaction.POPPED`.
             || super::mount_states::is_lantern(b.0)
+            || super::scaffolding::is_scaffolding(b)
             || b.is_fire()
             || matches!(
                 r::component(b),
@@ -724,6 +725,9 @@ impl World {
                 }
                 // `DispensibleContainerItem.emptyContents(null, level, target, null)`:
                 // water fills a waterloggable block and evaporates in the Nether.
+                Item::POWDER_SNOW_BUCKET => (self.get_block(front) == Some(Block::AIR)
+                    && self.set_block(front, super::scaffolding::POWDER_SNOW))
+                .then_some(Item::BUCKET),
                 Item::WATER_BUCKET | Item::LAVA_BUCKET => {
                     let fluid = if stack.item == Item::WATER_BUCKET { Block::WATER } else { Block::LAVA };
                     crate::survival_items::bucket::empty_at(self, front, fluid, None).map(|_| Item::BUCKET)

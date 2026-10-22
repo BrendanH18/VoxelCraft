@@ -552,6 +552,9 @@ impl World {
 
     fn redstone_scheduled_tick(&mut self, p: IVec3) {
         let Some(b) = self.get_block(p) else { return };
+        if super::scaffolding::is_scaffolding(b) {
+            return self.tick_scaffolding(p);
+        }
         if super::gadgets::is_hook(b) {
             return self.hook_tick(p);
         }
@@ -852,6 +855,17 @@ impl World {
         })
     }
 
+    /// The saved POWERED edge state for a newly placed door. Called after
+    /// both halves exist, before any tick can mistake placement for a new
+    /// rising edge (including after a player manually closes a powered door).
+    pub(crate) fn finish_door_placement(&mut self, p: IVec3) {
+        if self.redstone_power(p) > 0 || self.redstone_power(p + IVec3::Y) > 0 {
+            self.redstone.powered.insert(p);
+        } else {
+            self.redstone.powered.remove(&p);
+        }
+    }
+
     /// Shared two-cell iron door placement for all input sources.
     pub fn place_iron_door(&mut self, p: IVec3, facing: Facing) -> bool {
         if ![p, p + IVec3::Y].into_iter().all(|q| self.get_block(q).is_some_and(Block::is_replaceable))
@@ -859,8 +873,11 @@ impl World {
         {
             return false;
         }
-        self.set_block(p, r::iron_door(facing, false, false));
-        self.set_block(p + IVec3::Y, r::iron_door(facing, false, true))
+        let powered = self.redstone_power(p) > 0 || self.redstone_power(p + IVec3::Y) > 0;
+        self.set_block(p, r::iron_door(facing, powered, false));
+        let placed = self.set_block(p + IVec3::Y, r::iron_door(facing, powered, true));
+        self.finish_door_placement(p);
+        placed
     }
 
     fn drain_redstone_updates(&mut self) {
@@ -1026,6 +1043,7 @@ impl World {
                         && seq >= 0
                         && ((1100..=1599).contains(&family)
                             || matches!(family, 226 | 249 | 904)
+                            || family == i64::from(super::scaffolding::SCAFFOLDING.0)
                             // A pending coral death (`CoralPlantBlock.tryScheduleDieTick`).
                             || u16::try_from(family)
                                 .is_ok_and(|f| super::overworld_flora::live_coral_plant(Block(f))))

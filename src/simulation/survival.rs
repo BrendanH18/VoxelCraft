@@ -49,6 +49,7 @@ pub const CAUSE_DROWN: &str = "drowned";
 pub const CAUSE_LAVA: &str = "tried to swim in lava";
 pub const CAUSE_FIRE: &str = "burned to death";
 pub const CAUSE_STARVE: &str = "starved to death";
+pub const CAUSE_FREEZE: &str = "froze to death";
 pub const CAUSE_MAGIC: &str = "was killed by magic";
 
 /// Damage left after armor worth `points` with `toughness` (Java's
@@ -102,12 +103,20 @@ pub struct Env {
     pub turtle_helmet: bool,
     /// Body touching lava: burns.
     pub in_lava: bool,
+    /// Touching lava when the movement tick began (`Entity.baseTick`'s
+    /// fluid contact), which halves the fall distance before the move.
+    pub lava_before_move: bool,
     pub in_fire: bool,
     /// Touching soul fire, which burns twice as hard (Java's 2 damage).
     pub in_soul_fire: bool,
     pub on_magma: bool,
     /// Standing on a hay bale, which cushions a landing.
     pub on_hay: bool,
+    /// HoneyBlock.fallOn uses the same 0.2f multiplier as hay.
+    pub on_honey: bool,
+    pub in_powder_snow: bool,
+    pub on_powder_snow: bool,
+    pub freeze_immune: bool,
     pub frost_walker: bool,
     /// Exposed to rain: extinguishes the player like body water does.
     pub wet: bool,
@@ -131,6 +140,7 @@ pub struct Hurts {
     /// Lingering burning damage bypasses armor; contact fire does not.
     pub burn: f32,
     pub starve: f32,
+    pub freeze: f32,
 }
 
 /// Minecraft's hunger: a food bar backed by a hidden saturation buffer that
@@ -271,6 +281,10 @@ pub struct Vitals {
     pub death: Option<String>,
     peaceful_timer: f32,
     peaceful_food_timer: f32,
+    /// Java Entity.TicksFrozen; additive save field, 0 for older saves.
+    pub ticks_frozen: u16,
+    freeze_clock: f32,
+    freeze_tick: u64,
 }
 
 impl Default for Vitals {
@@ -295,6 +309,9 @@ impl Default for Vitals {
             death: None,
             peaceful_timer: 0.0,
             peaceful_food_timer: 0.0,
+            ticks_frozen: 0,
+            freeze_clock: 0.0,
+            freeze_tick: 0,
         }
     }
 }
@@ -318,6 +335,8 @@ impl Vitals {
     pub fn ignite(&mut self, secs: f32) {
         if !self.is_dead() {
             self.fire_left = self.fire_left.max(secs);
+            // `Entity.igniteForTicks` ends with `clearFreeze`.
+            self.ticks_frozen = 0;
         }
     }
 
@@ -428,6 +447,21 @@ impl Vitals {
             let _ = self.effects.tick(dt);
             return hurts;
         }
+        // FREEZE applies at most once per entity tick, even across many powder cells.
+        // Damage is aligned with entity tickCount % 40, not 40 ticks after entering.
+        self.freeze_clock += dt;
+        while self.freeze_clock >= 0.05 - 1.0e-6 {
+            self.freeze_clock = (self.freeze_clock - 0.05).max(0.0);
+            self.freeze_tick = self.freeze_tick.wrapping_add(1);
+            if env.in_powder_snow && !env.freeze_immune {
+                self.ticks_frozen = self.ticks_frozen.saturating_add(1).min(140);
+            } else {
+                self.ticks_frozen = self.ticks_frozen.saturating_sub(2);
+            }
+            if self.freeze_tick.is_multiple_of(40) && self.ticks_frozen >= 140 && !env.freeze_immune && !creative {
+                hurts.freeze += 1.0;
+            }
+        }
         use super::effects::Effect;
         let effect = self.effects.tick(dt);
         if env.turtle_helmet && !env.head_in_water {
@@ -462,12 +496,19 @@ impl Vitals {
         } else if let Some(y) = self.previous_fall_y {
             self.critical_fall_distance += f64::from((y - env.y).max(0.0) as f32);
         }
+        // `Entity.baseTick` halves the fall distance in lava before the
+        // tick's move, which then adds its own descent (landing included).
+        if env.lava_before_move
+            && let (Some(peak), Some(last)) = (self.fall_peak, self.previous_fall_y)
+        {
+            self.fall_peak = Some(last + (peak.max(last) - last) * 0.5);
+        }
         self.previous_fall_y = Some(env.y);
 
         // Falling: remember the highest point since standing on the ground
         // (including the ground itself, so stepping off a ledge counts
         // the full drop).
-        if env.flying || env.in_water {
+        if env.flying || env.in_water || env.on_powder_snow {
             self.fall_peak = None;
         } else if env.climbing {
             self.fall_peak = Some(env.y);
@@ -475,7 +516,7 @@ impl Vitals {
             if let Some(peak) = self.fall_peak {
                 hurts.landed = peak - env.y;
                 let distance = peak - env.y - jump_levels;
-                hurts.fall = if env.on_hay { hay_fall_damage(distance) } else { fall_damage(distance) };
+                hurts.fall = if env.on_hay || env.on_honey { hay_fall_damage(distance) } else { fall_damage(distance) };
             }
             self.fall_peak = Some(env.y);
         } else {
@@ -503,14 +544,16 @@ impl Vitals {
 
         // Lava ignites for 15 s; fire for 8 s. Contact hurts immediately,
         // and after leaving it the player burns for 1 damage each second.
-        if creative {
+        if creative || env.in_powder_snow {
             self.fire_left = 0.0;
         } else if env.in_lava {
             self.fire_left = 15.0;
+            self.ticks_frozen = 0;
         } else if env.in_water || env.wet {
             self.fire_left = 0.0;
         } else if env.in_fire {
             self.fire_left = 8.0;
+            self.ticks_frozen = 0;
             hurts.fire = if env.in_soul_fire { 2.0 } else { 1.0 };
         } else {
             self.fire_left = (self.fire_left - dt).max(0.0);
@@ -1019,6 +1062,31 @@ mod tests {
     }
 
     #[test]
+    fn lava_halves_a_fall_every_tick() {
+        // `Entity.baseTick` halves `fallDistance` in lava before each move:
+        // a 20-block drop into a lava pool, sinking four ticks before the
+        // floor, lands with about three blocks of fall left.
+        let mut v = Vitals::default();
+        v.apply_effect(crate::simulation::effects::Effect::FireResistance, 0, 6000);
+        let mut fall = 0.0;
+        for y in (20..=40).rev() {
+            fall += v.tick(DT, &Env { y: y as f64, ..Env::default() }, false).fall;
+        }
+        // The tick that enters the lava began in air: no halving yet.
+        let entry = Env { y: 19.0, in_lava: true, ..Env::default() };
+        fall += v.tick(DT, &entry, false).fall;
+        for y in [18.0, 17.0, 16.0] {
+            fall += v.tick(DT, &Env { y, in_lava: true, lava_before_move: true, ..Env::default() }, false).fall;
+        }
+        let floor = Env { y: 15.0, in_lava: true, lava_before_move: true, on_ground: true, ..Env::default() };
+        let landing = v.tick(DT, &floor, false);
+        // Peak 40 at 19; then 19 + 21/2 = 29.5, 23.75, 20.375; landing at
+        // 15 from 16: 16 + 4.375/2 = 18.1875, a 3.1875-block fall.
+        assert!((landing.landed - 3.1875).abs() < 1e-9, "{}", landing.landed);
+        assert!(fall + landing.fall <= 1.0, "a cushioned landing, not the whole drop");
+    }
+
+    #[test]
     fn lava_burns_every_half_second() {
         let mut v = Vitals::default();
         let lava = Env { y: 10.0, in_water: true, in_lava: true, ..Env::default() };
@@ -1151,7 +1219,7 @@ mod tests {
             v.tick(DT, &Env { y: player.pos.y, ..Env::default() }, false);
             let mut taken = 0.0;
             for _ in 0..240 {
-                player.update(DT as f64, MoveInput::default(), world);
+                player.tick(MoveInput::default(), world);
                 let env = Env {
                     y: player.pos.y,
                     on_ground: player.on_ground,
@@ -1198,5 +1266,57 @@ mod tests {
         assert!(restored.is_dead());
         let restored = Vitals::restore(7.5, 99.0, None);
         assert_eq!((restored.health, restored.air), (7.5, MAX_AIR));
+    }
+}
+
+#[cfg(test)]
+mod powder_snow_tests {
+    use super::*;
+    #[test]
+    fn java_freezing_reaches_140_and_damage_uses_entity_tick_modulo_40() {
+        let mut v = Vitals::default();
+        let snow = Env { in_powder_snow: true, ..Default::default() };
+        for tick in 1..=200 {
+            let h = v.tick_rules(0.05, &snow, false, Difficulty::Normal, false);
+            assert_eq!(v.ticks_frozen, tick.min(140));
+            assert_eq!(h.freeze, if tick == 160 || tick == 200 { 1.0 } else { 0.0 }, "tick {tick}");
+        }
+        for tick in 1..=70 {
+            v.tick(0.05, &Env::default(), false);
+            assert_eq!(v.ticks_frozen, 140 - tick * 2);
+        }
+    }
+    #[test]
+    fn catching_fire_thaws_a_frozen_player_at_once() {
+        // `Entity.igniteForTicks` calls `clearFreeze`.
+        for ignite in [
+            (|v: &mut Vitals| v.ignite(5.0)) as fn(&mut Vitals),
+            |v| _ = v.tick(0.05, &Env { in_fire: true, ..Default::default() }, false),
+            |v| _ = v.tick(0.05, &Env { in_lava: true, ..Default::default() }, false),
+        ] {
+            let mut v = Vitals { ticks_frozen: 140, ..Vitals::default() };
+            ignite(&mut v);
+            assert_eq!(v.ticks_frozen, 0);
+        }
+    }
+
+    #[test]
+    fn java_leather_piece_prevents_freezing_and_powder_extinguishes_and_cushions() {
+        let mut v = Vitals::default();
+        let snow = Env { in_powder_snow: true, freeze_immune: true, ..Default::default() };
+        v.ticks_frozen = 100;
+        for _ in 0..200 {
+            assert_eq!(v.tick(0.05, &snow, false).freeze, 0.0);
+        }
+        assert_eq!(v.ticks_frozen, 0);
+        v.tick(0.05, &Env { in_fire: true, ..Default::default() }, false);
+        assert!(v.burning());
+        let h = v.tick(0.05, &snow, false);
+        assert!(!v.burning());
+        assert_eq!((h.fire, h.burn), (0.0, 0.0));
+        let mut v = Vitals::default();
+        v.tick(0.05, &Env { y: 20.0, ..Default::default() }, false);
+        let h = v.tick(0.05, &Env { y: 0.9, on_ground: true, on_powder_snow: true, ..Default::default() }, false);
+        assert_eq!(h.fall, 0.0);
     }
 }

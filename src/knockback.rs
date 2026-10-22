@@ -149,7 +149,13 @@ pub fn arrow_push(punch_level: u32, resistance: f64, arrow_motion: DVec3) -> Opt
 /// The player's movement-speed attribute (`Player.getSpeed`) with `Speed` and
 /// `Slowness` levels (0 when absent), and the sprinting modifier when `sprinting`.
 pub fn movement_speed(speed_level: u32, slowness_level: u32, sprinting: bool) -> f32 {
-    let mut value = PLAYER_SPEED;
+    movement_speed_with(speed_level, slowness_level, sprinting, 0.0)
+}
+
+/// [`movement_speed`] with an `ADD_VALUE` modifier (Java's powder-snow frost,
+/// `-0.05F * percentFrozen`), added to the base before the multipliers.
+pub fn movement_speed_with(speed_level: u32, slowness_level: u32, sprinting: bool, add: f32) -> f32 {
+    let mut value = PLAYER_SPEED + f64::from(add);
     if sprinting {
         value *= 1.0 + 0.30000001192092896;
     }

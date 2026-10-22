@@ -122,6 +122,7 @@ impl Game {
         if let Some(xp) = prop("xp").and_then(|t| crate::simulation::experience::Experience::parse(t)) {
             vitals.xp = xp;
         }
+        vitals.ticks_frozen = prop("ticks_frozen").and_then(|s| s.parse::<u16>().ok()).unwrap_or(0).min(140);
         if let Some(text) = prop("effects") {
             vitals.effects = crate::simulation::effects::Effects::deserialize(text);
         }

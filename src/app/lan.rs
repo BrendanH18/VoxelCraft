@@ -101,6 +101,10 @@ pub(super) struct Lan {
     id: u32,
     sequence: u32,
     predictions: VecDeque<Input>,
+    /// The hotbar slot whose bow or crossbow this client predicts is being
+    /// drawn: started when use could start a draw, kept while use stays held
+    /// on it (the host's `tick_draw` doesn't recheck what is targeted).
+    predicted_draw: Option<usize>,
     ready: bool,
     messages: VecDeque<String>,
     /// The host's respawn count for this client's player, from the last snapshot.
@@ -240,8 +244,8 @@ fn peer_look(look_override: &mut Option<(f32, f32, Instant)>, input: &Input) -> 
 fn state(agent: &Agent, name: &str) -> Value {
     json!({"id":agent.session.id.0,"name":name,"pos":agent.session.player.pos.to_array(),"vel":agent.session.player.vel.to_array(),
         "yaw":agent.session.player.yaw,"pitch":agent.session.player.pitch,"ground":agent.session.player.on_ground,"flying":agent.session.player.flying,
-        "mode":agent.session.mode.name(),"selected":agent.selected,"inventory":agent.session.inventory.serialize(),
-        "cursor":stack_to_string(agent.session.inventory.cursor),"health":agent.session.vitals.health,"air":agent.session.vitals.air,
+        "sprint":agent.session.player.sprinting,"motion":agent.session.player.carried_motion(),"mode":agent.session.mode.name(),"selected":agent.selected,"inventory":agent.session.inventory.serialize(),
+        "cursor":stack_to_string(agent.session.inventory.cursor),"ticks_frozen":agent.session.vitals.ticks_frozen,"health":agent.session.vitals.health,"air":agent.session.vitals.air,
         "food":agent.session.vitals.hunger.food,"saturation":agent.session.vitals.hunger.saturation,"exhaustion":agent.session.vitals.hunger.exhaustion,
         "death":agent.session.vitals.death,"xp":agent.session.vitals.xp.serialize(),"effects":agent.session.vitals.effects.serialize(),"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle,
         "respawns":agent.session.respawns})
@@ -258,7 +262,7 @@ fn state_lite(agent: &Agent, name: &str, swing: Option<f32>, eating: f32) -> Val
         "flying":agent.session.player.flying,"sneak":agent.session.player.sneaking,"mode":agent.session.mode.name(),"selected":agent.selected,
         "held":stack_to_string(agent.session.inventory.get(agent.selected)),
         "armor":agent.session.inventory.armor.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),
-        "health":agent.session.vitals.health,"death":agent.session.vitals.death,"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle})
+        "ticks_frozen":agent.session.vitals.ticks_frozen,"health":agent.session.vitals.health,"death":agent.session.vitals.death,"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle})
 }
 fn apply(agent: &mut Agent, v: &Value) {
     if let Some(pos) = vector(&v["pos"]) {
@@ -275,6 +279,12 @@ fn apply(agent: &mut Agent, v: &Value) {
     agent.session.player.pitch = v["pitch"].as_f64().unwrap_or(0.0) as f32;
     agent.session.player.on_ground = v["ground"] == true;
     agent.session.player.flying = v["flying"] == true;
+    // Java's latched sprint, so a client's replayed inputs accelerate as the host's did.
+    agent.session.player.sprinting = v["sprint"] == true;
+    if let Some(m) = v["motion"].as_array().filter(|m| m.len() == 4) {
+        let byte = |i: usize| m[i].as_u64().unwrap_or(0).min(255) as u8;
+        agent.session.player.restore_carried_motion([byte(0), byte(1), byte(2), byte(3)]);
+    }
     agent.selected = v["selected"].as_u64().unwrap_or(0).min(8) as usize;
     if let Some(inv) = v["inventory"].as_str().and_then(crate::inventory::Inventory::deserialize) {
         agent.session.inventory = inv;
@@ -302,6 +312,7 @@ fn apply(agent: &mut Agent, v: &Value) {
     if let Some(xp) = v["xp"].as_str().and_then(crate::simulation::experience::Experience::parse) {
         agent.session.vitals.xp = xp;
     }
+    agent.session.vitals.ticks_frozen = v["ticks_frozen"].as_u64().unwrap_or(0).min(140) as u16;
     if let Some(effects) = v["effects"].as_str() {
         agent.session.vitals.effects = crate::simulation::effects::Effects::deserialize(effects);
     }
@@ -1280,9 +1291,34 @@ impl Game {
             (false, false) => "use_up",
         });
     }
+    /// The movement a LAN client predicts for one of its inputs: the host
+    /// blocks sprinting by hunger and blindness, and slows the player while
+    /// the use button holds food it may eat, a drink, or a bow or crossbow it
+    /// can draw (Java's `isUsingItem`; the client runs no consumption clock).
+    fn lan_movement(&self, input: &Input) -> voxelcraft::player::MoveInput {
+        let slot = usize::from(input.selected).min(8);
+        let drawable = self.lan.predicted_draw == Some(slot);
+        voxelcraft::player::MoveInput {
+            sprint_blocked: !self.session.vitals.may_sprint(self.session.mode.invulnerable()),
+            using_item: input.buttons & 16 != 0 && (self.session.consumption_duration(slot).is_ok() || drawable),
+            ..input.movement()
+        }
+    }
     pub(super) fn tick_lan_client(&mut self) {
         let input = self.sample_lan_input();
-        let movement = input.movement();
+        let slot = usize::from(input.selected).min(8);
+        let use_held = input.buttons & 16 != 0;
+        let bow = self
+            .session
+            .inventory
+            .get(slot)
+            .is_some_and(|s| matches!(s.item, voxelcraft::item::Item::BOW | voxelcraft::item::Item::CROSSBOW));
+        self.lan.predicted_draw = match self.lan.predicted_draw {
+            Some(drawn) if use_held && drawn == slot && bow => Some(drawn),
+            _ if use_held && self.session.can_draw(slot, &self.world) => Some(slot),
+            _ => None,
+        };
+        let movement = self.lan_movement(&input);
         self.lan_send(Packet::Input(input));
         self.previous_eye = self.session.player.eye();
         // A seated client takes its position from the host; the vehicle moves it.
@@ -1290,11 +1326,12 @@ impl Game {
             self.lan.predictions.push_back(input);
         } else if self.lan.ready {
             self.session.player.apply_effects(&self.session.vitals.effects);
+            self.session.player.powder_snow_equipment(&self.session.inventory.armor, self.session.vitals.ticks_frozen);
             self.session.player.wear_boots(crate::enchant::armor_level(
                 &self.session.inventory.armor,
                 crate::enchant::Enchantment::DepthStrider,
             ));
-            self.session.player.update(crate::simulation::TICK_SECONDS, movement, &self.world);
+            self.session.player.tick(movement, &self.world);
             self.lan.predictions.push_back(input);
         }
         if self.lan.ready {
@@ -1350,7 +1387,9 @@ impl Game {
             self.session.player.yaw = input.yaw;
             self.session.player.pitch = input.pitch;
             self.session.player.apply_effects(&self.session.vitals.effects);
-            self.session.player.update(crate::simulation::TICK_SECONDS, input.movement(), &self.world);
+            self.session.player.powder_snow_equipment(&self.session.inventory.armor, self.session.vitals.ticks_frozen);
+            let movement = self.lan_movement(input);
+            self.session.player.tick(movement, &self.world);
         }
         self.session.player.yaw = yaw;
         self.session.player.pitch = pitch;
@@ -1545,6 +1584,9 @@ impl Game {
             let setting = self.settings.particles;
             for e in effects.iter().take(128) {
                 if let Some(request) = crate::particles::Request::from_json(e) {
+                    if let crate::particles::Request::Honey { pos, sound: true, .. } = request {
+                        self.audio.play(crate::audio::Sound::HoneySlide, Some(pos), 1.0, (1.0, 1.0));
+                    }
                     self.particles.request(request, setting, &self.world);
                 }
             }
@@ -1854,6 +1896,7 @@ impl Game {
             // `causeExtraKnockback`: the push slows the attacker and stops its sprint.
             if let Some(me) = self.player_mut(attacker) {
                 me.player.vel = knockback::slow_attacker(me.player.vel);
+                me.player.sprinting = false;
             }
             if let PlayerRef::Agent(name) = attacker {
                 self.stop_sprint(name);
@@ -2059,12 +2102,18 @@ mod tests {
         original.vitals.xp.add_levels(9);
         original.sleeping = Some(0.75);
         original.selected = 3;
+        // Java's latched sprint and carried movement state reach the client
+        // so its replayed inputs move as the host's did.
+        original.player.sprinting = true;
+        original.player.restore_carried_motion([6, 3, 1, 1]);
         let frame = Packet::State(state(&original, "Builder")).encode().unwrap();
         let Packet::State(snapshot) = Packet::decode(&frame[4..]).unwrap() else { panic!("wrong packet") };
         let mut restored = Agent::new(DVec3::ZERO);
         apply(&mut restored, &snapshot);
         assert_eq!(restored.player.pos, original.player.pos);
         assert_eq!(restored.player.vel, original.player.vel);
+        assert!(restored.player.sprinting);
+        assert_eq!(restored.player.carried_motion(), [6, 3, 1, 1]);
         assert_eq!(restored.mode, original.mode);
         assert_eq!(restored.selected, 3);
         assert_eq!(restored.inventory.serialize(), original.inventory.serialize());

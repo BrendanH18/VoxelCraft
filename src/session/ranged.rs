@@ -87,6 +87,20 @@ pub struct Shot {
 impl PlayerSession {
     /// Start drawing a held bow or crossbow, or fire a charged crossbow.
     /// Aiming at a block that takes right-clicks defers to it.
+    /// Whether using `slot` would start drawing a bow or loading a
+    /// crossbow: one is held, an arrow is available (or Creative), and no
+    /// targeted block takes the use first.
+    pub fn can_draw(&self, slot: usize, world: &World) -> bool {
+        let held = self.inventory.get(slot).map(|s| s.item);
+        let has_arrow = self.mode.is_creative() || self.inventory.find(Item::ARROW).is_some();
+        self.mode.can_interact()
+            && !self.vitals.is_dead()
+            && self.sleeping.is_none()
+            && matches!(held, Some(Item::BOW | Item::CROSSBOW))
+            && has_arrow
+            && !self.block_takes_use(slot, world, self.player.sneaking)
+    }
+
     pub fn start_draw(&mut self, slot: usize, world: &World, entities: &mut Entities) -> Option<Shot> {
         if !self.mode.can_interact() || self.vitals.is_dead() || self.sleeping.is_some() {
             return None;
@@ -98,8 +112,7 @@ impl PlayerSession {
         if held == Some(Item::CHARGED_CROSSBOW) {
             return Some(self.fire_crossbow(slot, entities));
         }
-        let has_arrow = self.mode.is_creative() || self.inventory.find(Item::ARROW).is_some();
-        if !matches!(held, Some(Item::BOW | Item::CROSSBOW)) || !has_arrow {
+        if !self.can_draw(slot, world) {
             return None;
         }
         self.ranged.draw = Some((slot, 0));

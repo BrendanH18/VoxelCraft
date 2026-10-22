@@ -175,14 +175,15 @@ fn fences_and_walls_join_sturdy_faces_but_not_leaves() {
     let wall = Block::COBBLESTONE_WALL;
     let run = |f: Facing| if f.along_x() { Block::AIR } else { wall };
     let post = shape::Box16 { min: [4, 0, 4], max: [12, 16, 12] };
-    let open = shape::shape_with(wall, run, Block::AIR, shape::Above::NONE);
+    let placed = |above| crate::world::wall_states::with_up(wall, shape::wall_state(&run, above).1);
+    let open = shape::shape_with(placed(shape::Above::NONE), run, Block::AIR, shape::Above::NONE);
     assert!(!open.as_slice().contains(&post));
     assert!(open.as_slice().iter().all(|b| b.max[1] == 14), "low sides in the open");
     let fence_above = shape::Above { block: Block::OAK_FENCE, sides: [Block::AIR; 4] };
-    let raised = shape::shape_with(wall, run, Block::AIR, fence_above);
+    let raised = shape::shape_with(placed(fence_above), run, Block::AIR, fence_above);
     assert!(raised.as_slice().contains(&post));
-    let roofed =
-        shape::shape_with(wall, run, Block::AIR, shape::Above { block: Block::STONE, sides: [Block::STONE; 4] });
+    let roof = shape::Above { block: Block::STONE, sides: [Block::STONE; 4] };
+    let roofed = shape::shape_with(placed(roof), run, Block::AIR, roof);
     assert!(!roofed.as_slice().contains(&post));
     assert!(roofed.as_slice().iter().all(|b| b.max[1] == 16), "tall sides under a full block");
 }

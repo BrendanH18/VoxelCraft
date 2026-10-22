@@ -105,7 +105,12 @@ impl PlayerSession {
         if held.count == 0 || held.count > held.item.max_stack() {
             return Err("invalid held stack");
         }
-        let target = self.block_hit(world).ok_or("no block within reach")?;
+        let target = if held.item == Item::SCAFFOLDING {
+            world.raycast_scaffolding(self.player.eye(), self.player.forward().as_dvec3(), self.block_reach())
+        } else {
+            self.block_hit(world)
+        }
+        .ok_or("no block within reach")?;
         let (hit, normal) = (target.cell, target.normal);
         let clicked = world.get_block(hit).ok_or("target is unloaded")?;
         // `SnowLayerBlock.canBeReplaced`: a snow layer item stacks onto a snow
@@ -121,7 +126,31 @@ impl PlayerSession {
         };
         // Horizontal placement follows yaw even when looking straight down/up.
         let facing = Facing::toward(glam::Vec3::new(self.player.yaw.cos(), 0., self.player.yaw.sin()));
-        let ctx = self.place_context(target, clicked, held.item, at);
+        let mut ctx = self.place_context(target, clicked, held.item, at);
+        if held.item == Item::SCAFFOLDING {
+            let inside = self.player.eye().floor().as_ivec3() == hit;
+            // A ray beginning inside returns the face opposite its dominant look
+            // axis (`Direction.getApproximateNearest`: ties go to Y, then Z).
+            if ctx.face == IVec3::ZERO {
+                let look = self.player.forward();
+                let axis = if look.x.abs() > look.y.abs() && look.x.abs() > look.z.abs() {
+                    0
+                } else if look.y.abs() >= look.z.abs() {
+                    1
+                } else {
+                    2
+                };
+                ctx.face[axis] = if look[axis] > 0.0 { -1 } else { 1 };
+            }
+            ctx.at = crate::world::scaffolding::placement_target(
+                |p| world.get_block(p),
+                &ctx,
+                inside,
+                world.min_y(),
+                world.max_y(),
+            )
+            .ok_or("scaffolding cannot extend here")?;
+        }
         let at = ctx.at;
         let blocked =
             |cell| self.player.intersects_block(cell) || others.iter().any(|&p| Player::new(p).intersects_block(cell));
@@ -170,6 +199,10 @@ impl PlayerSession {
             {
                 return Err("door does not fit");
             }
+            // Java `DoorBlock.getStateForPlacement`: either half receiving
+            // a neighbour signal sets OPEN and POWERED before the first tick.
+            let powered = world.redstone_power(at) > 0 || world.redstone_power(up) > 0;
+            let (lower, upper) = if powered { (lower.toggled(facing), upper.toggled(facing)) } else { (lower, upper) };
             (at, lower, Some((up, upper)), Kind::Door)
         } else {
             let raw = held.item.places().ok_or("selected item cannot be placed")?;
@@ -193,6 +226,9 @@ impl PlayerSession {
                 (at, double, None, Kind::CombinedSlab)
             } else {
                 let mut raw = raw;
+                if crate::world::scaffolding::is_scaffolding(raw) {
+                    raw = crate::world::scaffolding::placed(|p| world.get_block(p), at, false);
+                }
                 if raw == ob::SNOW_LAYER
                     && let Some(layers) = world.get_block(at).and_then(ob::snow_layers).filter(|&n| n < 8)
                 {
@@ -266,6 +302,7 @@ impl PlayerSession {
             |world: &World, at: IVec3, b: Block| b.with_water(world.get_block(at).is_some_and(waterlog::holds_source));
         block = watered(world, cell, block);
         let partner = partner.map(|(at, b)| (at, watered(world, at, b)));
+        block = crate::world::wall_states::reshaped(block, |d| world.get_block(cell + d).unwrap_or(Block::AIR));
         // Complete validation before rolling vine age or changing neighbor/drop rules.
         block = world.placed_vine_age(cell, block)?;
         world.touch_redstone_ore(hit);
@@ -279,6 +316,9 @@ impl PlayerSession {
         {
             let placed = world.set_block(pos, partner);
             debug_assert!(placed, "validated loaded partner must succeed");
+        }
+        if kind == Kind::Door {
+            world.finish_door_placement(cell);
         }
         if self.mode.is_survival() {
             self.inventory.take_one(slot);

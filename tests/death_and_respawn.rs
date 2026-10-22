@@ -425,8 +425,8 @@ fn waking_stands_the_player_up_beside_the_bed() {
     a.settle_wake(&world);
     assert_eq!(a.player.pos, DVec3::new(14.5, 150.0, 14.5), "teleported away: left alone");
 
-    // Physics settles a sleeper a hair above the bed; that still counts as
-    // lying there.
+    // Ticking a sleeper's physics leaves them lying on the bed: Java's
+    // collision rests the box exactly on the bed top.
     let mut a = loaded(GameMode::Survival);
     a.tick_rules(&mut world, &mut entities, Default::default(), &rules(false));
     a.player.yaw = std::f32::consts::FRAC_PI_2;
@@ -435,7 +435,7 @@ fn waking_stands_the_player_up_beside_the_bed() {
     for _ in 0..5 {
         a.tick_rules(&mut world, &mut entities, Default::default(), &rules(false));
     }
-    assert_ne!(a.player.pos, lie, "the collision epsilon moved the sleeper");
+    assert!((a.player.pos - lie).length() < 1e-9, "{:?}", a.player.pos);
     a.wake(&world);
     assert!((a.player.pos - DVec3::new(11.5, 150.0, 9.5)).length() < 1e-3, "{:?}", a.player.pos);
     assert_eq!(a.player.pitch, 0.0);

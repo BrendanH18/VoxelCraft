@@ -31,6 +31,15 @@ impl PlayerSession {
     pub fn cancel_consumption(&mut self) {
         self.consumption = State::default();
     }
+    /// Eating or drinking is under way (Java's `isUsingItem` for food).
+    pub fn consuming(&self) -> bool {
+        self.consumption.key.is_some()
+    }
+    /// Java's `isUsingItem` for the movement slow-down: eating, drinking, or
+    /// drawing a bow or crossbow.
+    pub fn using_item(&self) -> bool {
+        self.consuming() || self.drawing()
+    }
     pub fn consumption_progress(&self) -> f32 {
         if self.consumption.duration == 0 {
             0.
@@ -124,6 +133,9 @@ impl PlayerSession {
                 }
             }
             self.vitals.hunger.eat(food, saturation);
+            if held.item == Item::HONEY_BOTTLE {
+                self.vitals.effects.remove(crate::simulation::effects::Effect::Poison);
+            }
             for &(effect, amplifier, ticks) in effects {
                 magic_damage += self.vitals.apply_effect(effect, amplifier, ticks);
             }

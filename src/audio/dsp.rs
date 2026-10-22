@@ -222,7 +222,8 @@ pub fn finish(mut buf: Vec<f32>, peak: f32) -> Vec<f32> {
     let max = buf.iter().fold(0.0f32, |m, s| m.max(s.abs()));
     let g = peak / max.max(1e-9);
     for s in buf.iter_mut() {
-        *s *= g;
+        // `max * (peak / max)` can round one ulp past `peak`.
+        *s = (*s * g).clamp(-peak, peak);
     }
     buf
 }

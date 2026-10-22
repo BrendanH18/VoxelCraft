@@ -137,6 +137,7 @@ pre-v0.9 baseline, four alternating runs each on the M5 MacBook Pro:
   wall's `UP` and a lower wall copies an upper wall's post
   (`shouldRaisePost`), while VoxelCraft derives wall shapes from the cell
   above only. Matching it needs stored wall-post states (new ids), an owner
-  scope decision.
+  scope decision. Resolved 2026-10-21 by
+  [stored wall posts](2026-10-21-wall-posts-powered-doors.md).
 - Not played by hand: bucket and bottle use with a mouse and a physical
   controller, and swimming through waterlogged blocks.

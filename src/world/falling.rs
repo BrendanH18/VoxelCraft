@@ -27,6 +27,12 @@ pub fn can_fall_into(b: Block) -> bool {
 }
 
 impl World {
+    /// `FallingBlockEntity.fall`: the cell keeps its fluid, the entity is dry.
+    pub(super) fn start_scaffolding_fall(&mut self, p: IVec3, block: Block, wet: bool) {
+        self.set_block(p, if wet { Block::WATER } else { Block::AIR });
+        self.falling.push(FallingBlock { block, pos: p.as_dvec3(), previous_pos: p.as_dvec3(), speed: 0.0 });
+    }
+
     /// Optional dimension property. Removed source cells and these in-flight
     /// blocks are saved in the same world snapshot, preventing loss mid-fall.
     pub fn falling_to_string(&self) -> String {
@@ -80,8 +86,11 @@ impl World {
                 let block = Block(block.parse().ok()?);
                 let pos = DVec3::new(x.parse().ok()?, y.parse().ok()?, z.parse().ok()?);
                 let speed: f64 = speed.parse().ok()?;
-                (block.has_gravity() && pos.is_finite() && speed.is_finite() && (0.0..=TERMINAL_SPEED).contains(&speed))
-                    .then_some(FallingBlock { block, pos, previous_pos: pos, speed })
+                ((block.has_gravity() || super::scaffolding::is_scaffolding(block))
+                    && pos.is_finite()
+                    && speed.is_finite()
+                    && (0.0..=TERMINAL_SPEED).contains(&speed))
+                .then_some(FallingBlock { block, pos, previous_pos: pos, speed })
             })();
             if let Some(block) = parsed {
                 // Blocks of chunks that aren't loaded wait in storage.
@@ -239,6 +248,12 @@ impl World {
         });
         self.falling = falling;
         for (p, block) in landed {
+            // FallingBlockEntity only places scaffolding when canSurvive succeeds.
+            if super::scaffolding::is_scaffolding(block) && super::scaffolding::distance(|q| self.get_block(q), p) == 7
+            {
+                self.spill_block(p, block);
+                continue;
+            }
             // Something may have been built in the way since; then it's lost.
             if self.get_block(p).is_some_and(can_fall_into) {
                 self.edit(p, self.solidify_powder(p, block), true);

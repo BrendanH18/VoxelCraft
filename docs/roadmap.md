@@ -479,6 +479,38 @@ v0.8 rows goes to v0.9, and PERF-03's streaming budget (two isolated frames
 over 50 ms in the [2026-10-20 re-run](verification/2026-10-20-streaming-rerun.md))
 goes to v0.18. The M0 and M1 milestones stay open until those pass.
 
+### 3.5 v0.9 delivery record — 2026-10-22
+
+The owner declared v0.9 done on 2026-10-22 and tags it `v0.9`, the first
+two-part tag ([releases](releases.md)), once the branch is merged. It holds
+#40 (slab types, stair halves and corners, door hinges, floor and ceiling
+switches, wall and ceiling grindstones, lanterns, waterlogging, the 16,384-state
+capacity) and the v0.9 completion work on `t3/e2f55514`, reviewed by Codex
+before merging:
+
+- **PLY-02a/b (Implemented, unverified):** Java 26.3 player movement, one
+  tick per step: input, the latched sprint, collision, step-up, edge back-off,
+  friction, jumping, climbing, water and lava travel, currents, poses
+  ([record](verification/2026-10-21-java-player-movement.md)).
+- **PLY-02c (Implemented, unverified):** cobwebs, berry bushes, bed bounce,
+  the honey block and bottle ([record](verification/2026-10-21-honey-block.md)),
+  scaffolding and powder snow ([record](verification/2026-10-21-scaffolding-powder-snow.md)).
+- **BLD-04c/d (Implemented, unverified):** stored wall posts and doors that
+  open when placed beside power
+  ([record](verification/2026-10-21-wall-posts-powered-doors.md)); redstone
+  stands on any sturdy top face.
+- **Policy (owner, 2026-10-22):** the owner's own play is the player
+  evidence (no formal checklist or physical-controller session, §7), and
+  release tags are two-part.
+
+No row moved to **Verified**: the windowed M5 scene suite with the larger
+state table and the new content was deferred to v0.18 with the rows
+(owner, 2026-10-22), next to PERF-03's streaming budget. The known
+differences listed in each record (Nether lava currents, stricter support
+for diodes and plates, mobs and items treating scaffolding and powder snow
+as plain blocks, wall posts in old saves, no survival honey until bees) ship
+as documented limitations.
+
 ## 4. Core requirement catalogue
 
 Assessment follow-up (2026-10-13): [shared player-session and consumption work](verification/2026-10-13-player-session.md)
@@ -781,6 +813,8 @@ Unfinished work moves to a later version instead of holding a release open or
 shipping half-done. Patch releases (0.8.1 and so on) carry fixes only.
 There are no release candidates or pre-releases (owner, 2026-10-17): a version
 is tagged only once its scope is Verified, and testers get that release.
+Tags are two-part (owner, 2026-10-22): `v0.9` or `1.0`, not `v0.9.0`
+([releases](releases.md)).
 Exception (owner, 2026-10-20): v0.8 was declared done with its implementation
 complete but its player acceptance and streaming budget not yet passed; those
 checks moved to later versions (see its status and the
@@ -794,7 +828,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | Version | Theme | Milestones | Main content | Status |
 |---|---|---|---|---|
 | v0.8 | Foundations | Finish M0, M1 | Valid M5 baseline and the per-requirement inventory; mob pathfinding, Java spawn categories, shape-aware light, simulation distance; pause/death/save scenarios on every input path | Done (owner, 2026-10-20): tagged `v0.8.0` at `58b547b` (#34, #35, #37–#39 plus release prep, [#41](https://github.com/BrendanH18/VoxelCraft/pull/41)); [delivery record](#34-v080-delivery-record--2026-10-20). Implementation complete and the [M5 baseline](verification/2026-10-16-m5-baseline.md) recorded; rows stay Implemented, unverified. Player acceptance ([checklist](verification/v0.8-acceptance-checklist.md)) moved to v0.9, the streaming budget (PERF-03; two isolated frames over 50 ms in the [2026-10-20 re-run](verification/2026-10-20-streaming-rerun.md)) to v0.18 |
-| v0.9 | Block states | M2: BLD-04, BLD-06 | Top and double slabs, waterlogging, door hinges, floor/ceiling buttons and levers, wall grindstones, corner-stair light; reserved state ranges for later content | In progress: 2026-10-20 `STATE_CAPACITY` raised to 16,384 with ranges reserved for v0.9–v0.17 ([record](verification/2026-10-20-state-capacity.md)); slab types and stair halves and corners ([record](verification/2026-10-20-slabs-stairs.md)), door hinges, floor/ceiling switches, wall/ceiling grindstones and lanterns ([record](verification/2026-10-20-doors-mounts.md)), and waterlogging with Java fence, wall and pane connections ([record](verification/2026-10-20-waterlogging.md)) implemented, unverified in play. Also carries v0.8's player acceptance pass |
+| v0.9 | Block states | M2: BLD-04, BLD-06 | Top and double slabs, waterlogging, door hinges, floor/ceiling buttons and levers, wall grindstones, corner-stair light; reserved state ranges for later content | Done (owner, 2026-10-22): ready to tag `v0.9` once merged; [delivery record](#35-v09-delivery-record--2026-10-22). Block states (#40), Java player movement, wall posts, powered doors, honey, scaffolding and powder snow; the owner's play is the player evidence for v0.8 and v0.9 (the checklist and controller session were dropped). Rows stay Implemented, unverified: the windowed performance check was deferred to v0.18 (owner, 2026-10-22) |
 | v0.10 | Building materials | Close M2 | Missing wood, stone, copper and colour family members (pale oak, bamboo, mud brick, prismarine), the unregistered reference fuel items, signs, banners, item frames, cauldrons, soul lanterns and campfires; sponges, coral and sea pickles; falling and dripping dripstone, tilting dripleaf | Planned |
 | v0.11 | Terrain | M3: GEN-01..03 | Java climate and density terrain with overhangs; Java caves, aquifers and ores; deep-dark content, springs, glow lichen; giant spruce and jungle trees and the remaining biome features | Planned |
 | v0.12 | Structures | M3: GEN-05..07 | A Java structure-template (jigsaw) system; villages, outposts, bastions, fossils, shipwrecks, ocean ruins and monuments built from it; buried treasure and explorer maps; Java loot random sequences | Planned |
@@ -803,7 +837,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.15 | Villages and raids | Close M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M4 exit checks | Planned |
 | v0.16 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough | Planned |
 | v0.17 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload | Planned |
-| v0.18 | Polish and performance | M7: UX, §6 | Settings, key rebinding, accessibility and subtitles, recipe discovery, asset and sound review in play; the 240 FPS gate in every scene, including v0.8's streaming budget (PERF-03) | Planned |
+| v0.18 | Polish and performance | M7: UX, §6 | Settings, key rebinding, accessibility and subtitles, recipe discovery, asset and sound review in play; the 240 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, which moved here unverified | Planned |
 | v1.0 | Acceptance | M7 exit, §8 | Every mandatory row Verified; fresh-world and long-session playthroughs; save-compatibility policy; installer and update checks; current stable Java scope reconciled | Planned |
 
 Notes:
@@ -957,10 +991,10 @@ remain open. See the [delivery record](#34-v080-delivery-record--2026-10-20).
    ([evidence](verification/2026-10-17-game-rules-difficulty.md)). Player
    acceptance remains.
 
-Player acceptance for every v0.8 row follows the
-[v0.8 acceptance checklist](verification/v0.8-acceptance-checklist.md): one
-desktop pass, a physical-controller pass, a scripted CLI session and the
-streaming benchmark, all on one recorded commit.
+Player acceptance for the v0.8 rows was first planned as the
+[v0.8 acceptance checklist](verification/v0.8-acceptance-checklist.md); on
+2026-10-22 the owner replaced it with their own play, which covers v0.8 and
+v0.9 together.
 
 Carried known issues that belong to later releases (v0.9: waterlogging, door
 hinges, wall/ceiling switches, top/double slabs; v0.11: 3D terrain, mega trees;
@@ -1111,7 +1145,10 @@ For every individual feature, all applicable checks must pass:
    light/physics/AI and relevant existing input paths agree.
 4. **Player testing:** interact through the normal UI and controls. Inspect
    appearance/animation and listen to sound; a screenshot or constructor
-   test alone is insufficient.
+   test alone is insufficient. The owner's own ordinary play is this
+   evidence (owner, 2026-10-22): there is no formal checklist pass or
+   physical-controller session; controller and CLI paths rely on the
+   automated adapter tests, and problems found in play go back to the agents.
 5. **Persistence:** save/restart and unload/reload relevant state, including
    interrupted work, carried components, scheduled actions and cleared loot.
 6. **Performance:** measure the feature in representative loaded gameplay;

@@ -210,7 +210,7 @@ pub fn collision_is_full(b: Block) -> bool {
 
 /// Unshaped blocks drawn as cubes whose Java shape is smaller than the cell.
 fn smaller_than_its_cell(b: Block) -> bool {
-    matches!(b.base(), Block::CHEST | Block::CACTUS)
+    matches!(b.base(), Block::CHEST | Block::CACTUS | Block::HONEY_BLOCK)
 }
 
 // ---- Sturdy faces ------------------------------------------------------
@@ -221,12 +221,29 @@ fn smaller_than_its_cell(b: Block) -> bool {
 fn covers_face(b: Block, dir: IVec3, center_only: bool) -> bool {
     // A waterlogged partner has its dry original's shape.
     let b = b.canonical();
+    // Scaffolding's empty-context support shape has a full top plate even
+    // though player placement and inside collision are empty.
+    if super::scaffolding::is_scaffolding(b) {
+        return dir == IVec3::Y;
+    }
     // `LeavesBlock.getBlockSupportShape` is empty.
     if b.is_leaves() || !b.is_solid() {
         return false;
     }
+    // `HoneyBlock`'s support shape is its collision box, inset a pixel on
+    // the sides and top: only its underside's centre holds anything.
+    if b == Block::HONEY_BLOCK {
+        return center_only && dir == IVec3::NEG_Y;
+    }
     if b.is_opaque() || matches!(b, Block::SOUL_SAND | super::overworld_blocks::MUD) {
         return true;
+    }
+    // Every ordinary wall state covers the centre with its post or at
+    // least one arm. Arms and posts both have 24-high collision/support
+    // shapes. Side connections are derived, so this context-free support
+    // query must not treat an UP=false wall as an empty isolated shape.
+    if super::wall_states::up(b).is_some() && dir.y != 0 {
+        return center_only;
     }
     if b.shaped().is_none() {
         // A plain cube of reduced height (slab, path, bed, snow layer) is

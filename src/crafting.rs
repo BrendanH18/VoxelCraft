@@ -47,17 +47,28 @@ impl Grid {
         recipes().iter().find(|r| r.matches(w, h, &items)).map(|r| r.result)
     }
 
-    /// Uses up one of each ingredient (after taking the result).
+    /// Consume a grid whose remainders all fit in their ingredient slots.
+    /// Player adapters use `consume_with_remainders` to return overflow too.
     pub fn consume(&mut self) {
+        let _ = self.consume_with_remainders();
+    }
+
+    /// Java crafting remainders: empty ingredient slots keep their bottle;
+    /// a still-stacked ingredient returns its bottle to the player inventory.
+    pub fn consume_with_remainders(&mut self) -> Vec<Stack> {
+        let mut overflow = Vec::new();
         for cell in self.cells.iter_mut().take(self.size * self.size) {
             if let Some(s) = cell {
                 let rest = s.item.remainder();
                 s.count -= 1;
                 if s.count == 0 {
                     *cell = rest.map(|item| Stack::new(item, 1));
+                } else if let Some(item) = rest {
+                    overflow.push(Stack::new(item, 1));
                 }
             }
         }
+        overflow
     }
 
     /// Empties the grid, returning its stacks.
@@ -271,6 +282,19 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["##", "##"], &[('#', &[Item::BRICK])], b(Block::BRICKS), 1),
             shapeless(&[MELON], Item::MELON_SLICE, 9),
             shapeless(&[SUGAR_CANE], Item::SUGAR, 1),
+            shaped(&["##", "##"], &[('#', &[Item::HONEY_BOTTLE])], Item::HONEY_BLOCK, 1),
+            shapeless(
+                &[
+                    &[Item::HONEY_BLOCK],
+                    &[Item::GLASS_BOTTLE],
+                    &[Item::GLASS_BOTTLE],
+                    &[Item::GLASS_BOTTLE],
+                    &[Item::GLASS_BOTTLE],
+                ],
+                Item::HONEY_BOTTLE,
+                4,
+            ),
+            shapeless(&[&[Item::HONEY_BOTTLE]], Item::SUGAR, 3),
             shaped(&["###"], &[('#', SUGAR_CANE)], Item::PAPER, 3),
             shapeless(&[&[Item::PAPER], &[Item::PAPER], &[Item::PAPER], &[Item::LEATHER]], Item::BOOK, 1),
             shaped(&["###", "bbb", "###"], &[('#', PLANKS), ('b', &[Item::BOOK])], b(Block::BOOKSHELF), 1),
@@ -982,6 +1006,7 @@ fn add_overworld_recipes(r: &mut Vec<Recipe>) {
     r.push(shapeless(&[ingredient(one(ob::BAMBOO_BLOCK))], one(ob::BAMBOO_PLANKS), 2));
     r.push(shaped(&["###", "###", "###"], &[('#', ingredient(one(ob::BAMBOO)))], one(ob::BAMBOO_BLOCK), 1));
     r.push(shaped(&["#", "#"], &[('#', ingredient(one(ob::BAMBOO)))], Item::STICK, 1));
+    r.push(shaped(&["I~I", "I I", "I I"], &[('I', ingredient(one(ob::BAMBOO))), ('~', STRING)], Item::SCAFFOLDING, 6));
     r.push(shapeless(&[ingredient(one(ob::MUD)), &[Item::WHEAT]], one(ob::PACKED_MUD), 1));
     r.push(shaped(&["##", "##"], &[('#', ingredient(one(ob::PACKED_MUD)))], one(ob::MUD_BRICKS), 4));
     r.push(shaped(&["##"], &[('#', ingredient(one(ob::MOSS_BLOCK)))], one(ob::MOSS_CARPET), 3));

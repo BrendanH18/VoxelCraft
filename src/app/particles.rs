@@ -21,7 +21,7 @@ impl Game {
                 Request::Break { cell, .. } | Request::Hit { cell, .. } => (cell.as_dvec3(), 128.0),
                 Request::Burst(b) | Request::Tracking(b) => (b.pos, if b.forced { 128.0 } else { 32.0 }),
                 Request::Explosion { pos, .. } => (*pos, 128.0),
-                Request::EyeBreak { pos } => (*pos, 48.0),
+                Request::EyeBreak { pos } | Request::Honey { pos, .. } => (*pos, 48.0),
             };
             centers.iter().any(|center| pos.distance_squared(*center) <= radius * radius)
         };
@@ -31,6 +31,9 @@ impl Game {
                 self.lan.effects.push((request.pos(), j));
             }
             if visible(&request) {
+                if let Request::Honey { pos, sound: true, .. } = request {
+                    self.audio.play(crate::audio::Sound::HoneySlide, Some(pos), 1.0, (1.0, 1.0));
+                }
                 self.particles.request(request, setting, &self.world);
             }
         }
@@ -39,6 +42,9 @@ impl Game {
                 self.lan.effects.push((request.pos(), j));
             }
             if visible(&request) {
+                if let Request::Honey { pos, sound: true, .. } = request {
+                    self.audio.play(crate::audio::Sound::HoneySlide, Some(pos), 1.0, (1.0, 1.0));
+                }
                 self.particles.request(request, setting, &self.world);
             }
         }

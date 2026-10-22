@@ -40,18 +40,22 @@ impl Game {
                 self.session.player.vehicle = None;
                 self.session.player.vel = DVec3::ZERO;
             }
+            // `LivingEntity.canFreeze` reads the current armour, riding or not.
+            self.session.player.powder_snow_equipment(&self.session.inventory.armor, self.session.vitals.ticks_frozen);
             if self.session.player.vehicle.is_none() {
                 self.session.player.apply_effects(&self.session.vitals.effects);
                 let armor = &self.session.inventory.armor;
                 self.session
                     .player
                     .wear_boots(crate::enchant::armor_level(armor, crate::enchant::Enchantment::DepthStrider));
-                self.session.player.update(dt, input, &self.world);
-                crate::particles::water_entry(&self.session.player, before, &mut self.world);
+                self.session.player.tick(input, &self.world);
+                self.world.powder_snow_fire(&self.session.player, self.session.vitals.burning());
+                crate::particles::movement_effects(&self.session.player, before, &mut self.world);
                 self.update_portal(dt);
             } else {
                 self.session.player.vel = DVec3::ZERO;
                 self.session.player.on_ground = true;
+                self.session.player.refresh_riding_contact(&self.world);
             }
         }
         let moved = (self.session.player.pos - before).with_y(0.0).length();
@@ -69,7 +73,7 @@ impl Game {
                 crate::enchant::Enchantment::FrostWalker,
             ) > 0,
             turtle_helmet: self.session.inventory.armor[0].is_some_and(|s| s.item == Item::TURTLE_HELMET),
-            ..crate::simulation::player_environment(&self.session.player, &self.world, input, moved)
+            ..crate::simulation::player_environment(&self.session.player, &self.world, moved)
         };
         let hurts = if arriving || self.arrival.is_some() {
             Default::default()
@@ -82,6 +86,9 @@ impl Game {
                 self.gamerules.bool("natural_health_regeneration"),
             )
         };
+        if hurts.freeze > 0.0 {
+            self.damage_player(hurts.freeze, survival::CAUSE_FREEZE);
+        }
         self.trample(hurts.landed);
         if hurts.fall > 0.0 {
             self.damage_player(hurts.fall, survival::CAUSE_FALL);

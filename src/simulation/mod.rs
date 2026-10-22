@@ -117,11 +117,11 @@ pub struct PlayerStep {
     pub hurts: Hurts,
 }
 
-/// Movement uses the player's existing <= 1/120 s collision substeps.
-/// Damage is returned to the caller's damage/armor/death entry point.
+/// One Java movement tick ([`Player::tick`]). Damage is returned to the
+/// caller's damage/armor/death entry point.
 pub fn tick_player(
     player: &mut Player,
-    world: &World,
+    world: &mut World,
     vitals: &mut Vitals,
     armor: &[Option<crate::inventory::Stack>; 4],
     input: MoveInput,
@@ -129,44 +129,55 @@ pub fn tick_player(
 ) -> PlayerStep {
     let before = player.pos;
     player.apply_effects(&vitals.effects);
+    player.powder_snow_equipment(armor, vitals.ticks_frozen);
     player.wear_boots(crate::enchant::armor_level(armor, crate::enchant::Enchantment::DepthStrider));
-    player.update(TICK_SECONDS, input, world);
+    // Hunger or blindness forbid sprinting, double tap included.
+    let input = MoveInput { sprint_blocked: input.sprint_blocked || !vitals.may_sprint(creative), ..input };
+    player.tick(input, world);
+    world.powder_snow_fire(player, vitals.burning());
     let moved = (player.pos - before).with_y(0.0).length();
     let env = Env {
         respiration: crate::enchant::armor_level(armor, crate::enchant::Enchantment::Respiration),
         turtle_helmet: armor[0].is_some_and(|s| s.item == crate::item::Item::TURTLE_HELMET),
         frost_walker: crate::enchant::armor_level(armor, crate::enchant::Enchantment::FrostWalker) > 0,
-        ..player_environment(player, world, input, moved)
+        ..player_environment(player, world, moved)
     };
     PlayerStep { moved, hurts: vitals.tick(TICK_SECONDS as f32, &env, creative) }
 }
 
 /// Collect survival inputs after movement; `moved` is horizontal distance for this step.
-pub fn player_environment(player: &Player, world: &World, input: MoveInput, moved: f64) -> Env {
+pub fn player_environment(player: &Player, world: &World, moved: f64) -> Env {
     Env {
         y: player.pos.y,
         on_ground: player.on_ground,
         flying: player.flying,
         in_water: player.in_water,
-        climbing: player.climbing || player.in_web,
+        climbing: player.climbing || player.in_web || player.honey_sliding,
         head_in_water: player.head_in_water(world),
         in_lava: player.in_lava(world),
+        lava_before_move: player.lava_before_move(),
         in_fire: player.in_fire(world),
         in_soul_fire: player.in_soul_fire(world),
         on_magma: player.on_ground
             && !player.sneaking
             && world.get_block((player.pos - DVec3::Y * 0.01).floor().as_ivec3())
                 == Some(crate::world::block::Block::MAGMA),
+        on_honey: player.on_honey(world),
         on_hay: player.on_ground
             && world.get_block((player.pos - DVec3::Y * 0.01).floor().as_ivec3()).map(|b| b.base())
                 == Some(crate::world::block::Block::HAY_BALE),
         frost_walker: false,
         wet: world.rains_on(player.eye().floor().as_ivec3()),
         moved: if player.flying { 0.0 } else { moved },
-        sprinting: input.sprint && moved > 0.0,
+        sprinting: player.sprinting && moved > 0.0,
         jumped: player.jumped,
         respiration: 0,
         turtle_helmet: false,
+        in_powder_snow: player.in_powder_snow,
+        on_powder_snow: player.on_ground
+            && world.get_block((player.pos - DVec3::Y * 0.2).floor().as_ivec3())
+                == Some(crate::world::scaffolding::POWDER_SNOW),
+        freeze_immune: player.freeze_immune || player.noclip,
     }
 }
 
@@ -190,13 +201,13 @@ mod tests {
         for id in 901..=903 {
             world.set_block(cell, Block(id));
             player.on_ground = true;
-            assert!(player_environment(&player, &world, MoveInput::default(), 0.0).on_hay);
+            assert!(player_environment(&player, &world, 0.0).on_hay);
             player.on_ground = false;
-            assert!(!player_environment(&player, &world, MoveInput::default(), 0.0).on_hay);
+            assert!(!player_environment(&player, &world, 0.0).on_hay);
         }
         world.set_block(cell, Block::STONE);
         player.on_ground = true;
-        assert!(!player_environment(&player, &world, MoveInput::default(), 0.0).on_hay);
+        assert!(!player_environment(&player, &world, 0.0).on_hay);
     }
 
     #[test]

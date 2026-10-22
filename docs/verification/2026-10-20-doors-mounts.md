@@ -101,5 +101,6 @@ Other ids in 7680–8191 stay unregistered.
 - Lantern textures are procedural stand-ins, not Java's art. Lanterns are
   not yet placed by structures or sold by villagers.
 - Not checked: a door placed beside a powered block opening at once, as
-  `getStateForPlacement` sets `powered` and `open`.
+  `getStateForPlacement` sets `powered` and `open`. Done 2026-10-21 in
+  [powered door placement](2026-10-21-wall-posts-powered-doors.md).
 - Not yet played by hand with a mouse or a physical controller.

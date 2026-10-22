@@ -131,7 +131,7 @@ impl Screen<'_> {
                         break;
                     }
                     self.session.inventory.slots = slots;
-                    self.craft.consume();
+                    self.consume_craft();
                 }
             }
             SlotRef::FurnaceInput | SlotRef::FurnaceFuel | SlotRef::FurnaceOutput => {
@@ -382,6 +382,16 @@ impl Screen<'_> {
         self.entities.spawn_xp(self.session.player.pos, xp);
     }
 
+    /// Shared desktop/controller/LAN remainder delivery, including stacked honey.
+    fn consume_craft(&mut self) {
+        for mut stack in self.craft.consume_with_remainders() {
+            stack.count = self.session.inventory.add_stack(stack);
+            if stack.count != 0 {
+                self.entities.throw(stack, self.session.player.eye(), self.session.player.forward().as_dvec3());
+            }
+        }
+    }
+
     /// Clicking the crafting result: takes one craft onto the cursor (or
     /// onto a matching held stack, if it fits) and uses up the ingredients.
     pub(super) fn take_craft_result(&mut self) {
@@ -393,7 +403,7 @@ impl Screen<'_> {
             }
             Some(_) => return,
         }
-        self.craft.consume();
+        self.consume_craft();
     }
 
     /// A left (or right) click on a slot of the open container screen.
