@@ -168,6 +168,11 @@ impl PlayerSession {
         Some(self.shot(Ranged::ArrowShot { from: eye, power }, broken))
     }
 
+    /// The hotbar slot whose bow or crossbow is being drawn, if any.
+    pub fn drawing_slot(&self) -> Option<usize> {
+        self.ranged.draw.map(|(slot, _)| slot)
+    }
+
     /// Ticks the held bow or crossbow has been drawn, while drawing.
     pub fn draw_ticks(&self) -> Option<u32> {
         self.ranged.draw.map(|(_, ticks)| ticks)

@@ -110,6 +110,9 @@ pub(super) struct Lan {
     /// Use was pressed since the last client tick (it may also have been
     /// released and pressed again in between).
     use_pressed: bool,
+    /// The input sequence of the latest use press or release: a snapshot
+    /// acknowledging it settles the predicted draw.
+    use_edge_sequence: u32,
     ready: bool,
     messages: VecDeque<String>,
     /// The host's respawn count for this client's player, from the last snapshot.
@@ -253,7 +256,7 @@ fn state(agent: &Agent, name: &str) -> Value {
         "cursor":stack_to_string(agent.session.inventory.cursor),"ticks_frozen":agent.session.vitals.ticks_frozen,"health":agent.session.vitals.health,"air":agent.session.vitals.air,
         "food":agent.session.vitals.hunger.food,"saturation":agent.session.vitals.hunger.saturation,"exhaustion":agent.session.vitals.hunger.exhaustion,
         "death":agent.session.vitals.death,"xp":agent.session.vitals.xp.serialize(),"effects":agent.session.vitals.effects.serialize(),"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle,
-        "respawns":agent.session.respawns})
+        "respawns":agent.session.respawns,"drawing":agent.session.drawing_slot()})
 }
 /// What clients need of *other* players: pose, held item, armor and health, not their inventory.
 /// Rounds to a millimetre (or a thousandth of a radian): plenty for drawing, far fewer bytes.
@@ -1341,6 +1344,9 @@ impl Game {
         // ends any draw; the press then starts a new one only if it can.
         let repressed = self.lan.use_pressed;
         let pressed = use_held && (!self.lan.use_was_held || repressed);
+        if use_held != self.lan.use_was_held || repressed {
+            self.lan.use_edge_sequence = input.sequence;
+        }
         self.lan.use_was_held = use_held;
         self.lan.use_pressed = false;
         self.lan.predicted_draw = match self.lan.predicted_draw {
@@ -1390,6 +1396,12 @@ impl Game {
         }
         let mut own = Agent::new(self.session.player.pos);
         apply(&mut own, &snapshot["self"]);
+        // The host's draw is authoritative (a charged crossbow fired and
+        // reloading, say) once it has seen this client's latest use press or
+        // release; until then the local prediction stands.
+        if sequence >= self.lan.use_edge_sequence {
+            self.lan.predicted_draw = snapshot["self"]["drawing"].as_u64().map(|slot| slot as usize);
+        }
         // The client owns its look, except that a respawn faces the host's
         // respawn angle (Java's respawn transition sets the rotation).
         let respawns = snapshot["self"]["respawns"].as_u64();
