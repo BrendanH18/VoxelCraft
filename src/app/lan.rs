@@ -100,7 +100,10 @@ pub(super) struct Lan {
     pub pvp: bool,
     id: u32,
     sequence: u32,
-    predictions: VecDeque<Input>,
+    /// Inputs the host hasn't acknowledged, each with the movement this
+    /// client predicted for it when sampled (a replay must not re-predict
+    /// item use from a draw that has since ended).
+    predictions: VecDeque<(Input, voxelcraft::player::MoveInput)>,
     /// The hotbar slot whose bow or crossbow this client predicts is being
     /// drawn: started when use could start a draw, kept while use stays held
     /// on it (the host's `tick_draw` doesn't recheck what is targeted).
@@ -1359,7 +1362,7 @@ impl Game {
         self.previous_eye = self.session.player.eye();
         // A seated client takes its position from the host; the vehicle moves it.
         if self.lan.ready && self.session.player.vehicle.is_some() {
-            self.lan.predictions.push_back(input);
+            self.lan.predictions.push_back((input, movement));
         } else if self.lan.ready {
             self.session.player.apply_effects(&self.session.vitals.effects);
             self.session.player.powder_snow_equipment(&self.session.inventory.armor, self.session.vitals.ticks_frozen);
@@ -1368,7 +1371,7 @@ impl Game {
                 crate::enchant::Enchantment::DepthStrider,
             ));
             self.session.player.tick(movement, &self.world);
-            self.lan.predictions.push_back(input);
+            self.lan.predictions.push_back((input, movement));
         }
         if self.lan.ready {
             self.tick_particles();
@@ -1391,7 +1394,7 @@ impl Game {
             self.chat_line("Host changed dimension; all LAN players follow the host");
         }
         let sequence = snapshot["sequence"].as_u64().unwrap_or(0) as u32;
-        while self.lan.predictions.front().is_some_and(|i| i.sequence <= sequence) {
+        while self.lan.predictions.front().is_some_and(|(i, _)| i.sequence <= sequence) {
             self.lan.predictions.pop_front();
         }
         let mut own = Agent::new(self.session.player.pos);
@@ -1425,12 +1428,11 @@ impl Game {
             self.previous_eye = self.session.player.eye();
         }
         let seated = self.session.player.vehicle.is_some();
-        for input in self.lan.predictions.iter().filter(|_| !seated) {
+        for &(input, movement) in self.lan.predictions.iter().filter(|_| !seated) {
             self.session.player.yaw = input.yaw;
             self.session.player.pitch = input.pitch;
             self.session.player.apply_effects(&self.session.vitals.effects);
             self.session.player.powder_snow_equipment(&self.session.inventory.armor, self.session.vitals.ticks_frozen);
-            let movement = self.lan_movement(input);
             self.session.player.tick(movement, &self.world);
         }
         self.session.player.yaw = yaw;
