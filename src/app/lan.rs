@@ -20,6 +20,14 @@ use std::time::{Duration, Instant};
 use voxelcraft::agent::{Agent, Command};
 use voxelcraft::lan::{Connection, Input, Listener, Packet};
 
+/// What a LAN client's use button was doing when it sampled an input: the
+/// part of a movement prediction that must replay as it was.
+#[derive(Clone, Copy, Debug, Default)]
+struct LanUse {
+    eating: bool,
+    drawing: bool,
+}
+
 /// Largest view distance (in 32-block chunks) a LAN host streams to clients.
 pub(super) const LAN_VIEW_MAX: i32 = 8;
 pub(super) struct Peer {
@@ -100,10 +108,10 @@ pub(super) struct Lan {
     pub pvp: bool,
     id: u32,
     sequence: u32,
-    /// Inputs the host hasn't acknowledged, each with the movement this
-    /// client predicted for it when sampled (a replay must not re-predict
-    /// item use from a draw that has since ended).
-    predictions: VecDeque<(Input, voxelcraft::player::MoveInput)>,
+    /// Inputs the host hasn't acknowledged, each with what the use button
+    /// was doing when sampled (a replay must not re-predict item use from a
+    /// draw that has since ended).
+    predictions: VecDeque<(Input, LanUse)>,
     /// The hotbar slot whose bow or crossbow this client predicts is being
     /// drawn: started when use could start a draw, kept while use stays held
     /// on it (the host's `tick_draw` doesn't recheck what is targeted).
@@ -1313,11 +1321,19 @@ impl Game {
     /// blocks sprinting by hunger and blindness, and slows the player while
     /// the use button holds food it may eat, a drink, or a bow or crossbow it
     /// can draw (Java's `isUsingItem`; the client runs no consumption clock).
-    fn lan_movement(&self, input: &Input) -> voxelcraft::player::MoveInput {
+    fn lan_movement(&self, input: &Input, use_state: LanUse) -> voxelcraft::player::MoveInput {
+        voxelcraft::player::MoveInput {
+            sprint_blocked: !self.session.vitals.may_sprint(self.session.mode.invulnerable()),
+            using_item: input.buttons & 16 != 0 && (use_state.eating || use_state.drawing),
+            ..input.movement()
+        }
+    }
+
+    /// What the use button was doing when `input` was sampled: eating or
+    /// drinking (as `Hands::eat`: food, not drink, aimed at a composter
+    /// without sneaking fills the composter instead), or drawing.
+    fn lan_use(&self, input: &Input) -> LanUse {
         let slot = usize::from(input.selected).min(8);
-        let drawable = self.lan.predicted_draw == Some(slot);
-        // As `Hands::eat`: food (not drink) aimed at a composter without
-        // sneaking fills the composter instead of being eaten.
         let drink = self.session.inventory.get(slot).is_some_and(|s| s.item.is_drink());
         let composting = input.buttons & 2 == 0
             && self
@@ -1325,11 +1341,9 @@ impl Game {
                 .block_target(&self.world)
                 .and_then(|(pos, _)| self.world.get_block(pos))
                 .is_some_and(|b| voxelcraft::world::composter::level(b).is_some());
-        let eating = self.session.consumption_duration(slot).is_ok() && (drink || !composting);
-        voxelcraft::player::MoveInput {
-            sprint_blocked: !self.session.vitals.may_sprint(self.session.mode.invulnerable()),
-            using_item: input.buttons & 16 != 0 && (eating || drawable),
-            ..input.movement()
+        LanUse {
+            eating: self.session.consumption_duration(slot).is_ok() && (drink || !composting),
+            drawing: self.lan.predicted_draw == Some(slot),
         }
     }
     pub(super) fn tick_lan_client(&mut self) {
@@ -1357,12 +1371,13 @@ impl Game {
             _ if pressed && self.session.can_draw(slot, &self.world) => Some(slot),
             _ => None,
         };
-        let movement = self.lan_movement(&input);
+        let use_state = self.lan_use(&input);
+        let movement = self.lan_movement(&input, use_state);
         self.lan_send(Packet::Input(input));
         self.previous_eye = self.session.player.eye();
         // A seated client takes its position from the host; the vehicle moves it.
         if self.lan.ready && self.session.player.vehicle.is_some() {
-            self.lan.predictions.push_back((input, movement));
+            self.lan.predictions.push_back((input, use_state));
         } else if self.lan.ready {
             self.session.player.apply_effects(&self.session.vitals.effects);
             self.session.player.powder_snow_equipment(&self.session.inventory.armor, self.session.vitals.ticks_frozen);
@@ -1371,7 +1386,7 @@ impl Game {
                 crate::enchant::Enchantment::DepthStrider,
             ));
             self.session.player.tick(movement, &self.world);
-            self.lan.predictions.push_back((input, movement));
+            self.lan.predictions.push_back((input, use_state));
         }
         if self.lan.ready {
             self.tick_particles();
@@ -1402,7 +1417,11 @@ impl Game {
         // The host's draw is authoritative (a charged crossbow fired and
         // reloading, say) once it has seen this client's latest use press or
         // release; until then the local prediction stands.
-        if sequence >= self.lan.use_edge_sequence {
+        // Once the host has seen the latest use press or release, every
+        // queued input belongs to the hold it reports, so its draw state
+        // (a crossbow finishing loading, say) also overrides theirs.
+        let settled = sequence >= self.lan.use_edge_sequence;
+        if settled {
             self.lan.predicted_draw = snapshot["self"]["drawing"].as_u64().map(|slot| slot as usize);
         }
         // The client owns its look, except that a respawn faces the host's
@@ -1428,12 +1447,27 @@ impl Game {
             self.previous_eye = self.session.player.eye();
         }
         let seated = self.session.player.vehicle.is_some();
-        for &(input, movement) in self.lan.predictions.iter().filter(|_| !seated) {
+        // Carry the host's draw through the queue: with every use press
+        // acknowledged, a queued input can only end it (use released or
+        // another slot selected), never start one.
+        let mut running = self.lan.predicted_draw;
+        for &(input, sampled) in self.lan.predictions.iter().filter(|_| !seated) {
             self.session.player.yaw = input.yaw;
             self.session.player.pitch = input.pitch;
             self.session.player.apply_effects(&self.session.vitals.effects);
             self.session.player.powder_snow_equipment(&self.session.inventory.armor, self.session.vitals.ticks_frozen);
+            // Sprint eligibility comes from the host's vitals just applied;
+            // the use state is the sampled one, unless settled above.
+            let slot = usize::from(input.selected).min(8);
+            if running.is_some_and(|drawn| drawn != slot || input.buttons & 16 == 0) {
+                running = None;
+            }
+            let drawing = if settled { running == Some(slot) } else { sampled.drawing };
+            let movement = self.lan_movement(&input, LanUse { drawing, ..sampled });
             self.session.player.tick(movement, &self.world);
+        }
+        if settled && !seated {
+            self.lan.predicted_draw = running;
         }
         self.session.player.yaw = yaw;
         self.session.player.pitch = pitch;
