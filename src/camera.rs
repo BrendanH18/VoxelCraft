@@ -116,11 +116,13 @@ pub fn bob_view(walk: &crate::entity::player_model::WalkAnimation, alpha: f32) -
 }
 
 /// GameRenderer.bobHurt: a ten-tick hurt interval, quartic envelope and
-/// fourteen-degree directional tilt, plus the twenty-tick death roll.
-pub fn bob_hurt(since_damage: f32, death: Option<f32>, direction: f32) -> Mat4 {
+/// fourteen-degree directional tilt scaled by the Damage Tilt option
+/// (`damageTiltStrength`, 0..1), plus the twenty-tick death roll, which the
+/// option leaves alone as in Java.
+pub fn bob_hurt(since_damage: f32, death: Option<f32>, direction: f32, damage_tilt: f32) -> Mat4 {
     let roll = death.map_or(0.0, |t| (40.0 - 8000.0 / ((t * 20.0).min(20.0) + 200.0)).to_radians());
     let remaining = (1.0 - since_damage / 0.5).clamp(0.0, 1.0);
-    let tilt = -(remaining.powi(4) * std::f32::consts::PI).sin() * 14f32.to_radians();
+    let tilt = -(remaining.powi(4) * std::f32::consts::PI).sin() * 14f32.to_radians() * damage_tilt;
     Mat4::from_rotation_z(roll)
         * Mat4::from_rotation_y(-direction)
         * Mat4::from_rotation_z(tilt)
@@ -132,12 +134,29 @@ pub fn view_effect(
     vitals: &crate::simulation::survival::Vitals,
     alpha: f32,
     bobbing: bool,
+    damage_tilt: f32,
 ) -> Mat4 {
     let elapsed = vitals.since_damage() + alpha * 0.05;
     let death = vitals.death_time().map(|t| t + alpha * 0.05);
-    let hurt = bob_hurt(elapsed, death, player.animation.hurt_direction);
+    let hurt = bob_hurt(elapsed, death, player.animation.hurt_direction, damage_tilt);
     let bob = bobbing && !vitals.is_dead() && !player.swimming && !player.pose.visually_swimming();
     if bob { hurt * bob_view(&player.animation, alpha) } else { hurt }
+}
+
+/// GameRenderer.renderLevel's nausea and portal warp: the view squeezed
+/// along an axis that turns with `angle_degrees`. `intensity` is the
+/// stronger of the two effects times the square of the Distortion Effects
+/// option; zero leaves the view alone.
+pub fn spin_warp(intensity: f32, angle_degrees: f32) -> Mat4 {
+    if intensity <= 0.0 {
+        return Mat4::IDENTITY;
+    }
+    let skew = (5.0 / (intensity * intensity + 5.0) - intensity * 0.04).powi(2);
+    let axis = Vec3::new(0.0, std::f32::consts::FRAC_1_SQRT_2, std::f32::consts::FRAC_1_SQRT_2);
+    let angle = angle_degrees.to_radians();
+    Mat4::from_axis_angle(axis, angle)
+        * Mat4::from_scale(Vec3::new(1.0 / skew, 1.0, 1.0))
+        * Mat4::from_axis_angle(axis, -angle)
 }
 
 #[cfg(test)]
@@ -150,6 +169,27 @@ mod tests {
             Some(self.0.iter().find(|(at, _)| *at == p).map_or(Block::AIR, |(_, b)| *b))
         }
     }
+    #[test]
+    fn damage_tilt_scales_the_hurt_roll_but_not_the_death_roll() {
+        let roll = |m: Mat4| m.transform_vector3(Vec3::X).y;
+        let full = roll(bob_hurt(0.2, None, 0.0, 1.0));
+        assert!(full.abs() > 0.05);
+        assert!((roll(bob_hurt(0.2, None, 0.0, 0.5)) - full / 2.0).abs() < 0.02);
+        assert_eq!(bob_hurt(0.2, None, 0.0, 0.0), Mat4::IDENTITY);
+        let dying = roll(bob_hurt(1.0, Some(1.0), 0.0, 0.0));
+        assert!(dying.abs() > 0.05, "the death roll (3.6 degrees) stays at Damage Tilt OFF");
+    }
+
+    #[test]
+    fn spin_warp_is_off_without_intensity_and_squeezes_with_it() {
+        assert_eq!(spin_warp(0.0, 30.0), Mat4::IDENTITY);
+        let m = spin_warp(1.0, 0.0);
+        // Unrotated, the squeeze stretches x by 1 / skew.
+        let skew = (5.0f32 / 6.0 - 0.04).powi(2);
+        assert!((m.transform_vector3(Vec3::X).x - 1.0 / skew).abs() < 1e-4);
+        assert!((m.transform_vector3(Vec3::Y) - Vec3::Y).length() < 1e-5);
+    }
+
     #[test]
     fn cycle_and_front_pitch_are_per_view() {
         let world = Grid(vec![]);
@@ -208,11 +248,11 @@ mod tests {
     }
     #[test]
     fn hurt_uses_quartic_envelope_and_damage_direction() {
-        assert!(bob_hurt(0.5, None, 0.).abs_diff_eq(Mat4::IDENTITY, 1e-6));
+        assert!(bob_hurt(0.5, None, 0., 1.).abs_diff_eq(Mat4::IDENTITY, 1e-6));
         let angle = -(0.5f32.powi(4) * std::f32::consts::PI).sin() * 14f32.to_radians();
-        assert!(bob_hurt(0.25, None, 0.).abs_diff_eq(Mat4::from_rotation_z(angle), 1e-6));
-        assert!(bob_hurt(0.25, None, std::f32::consts::FRAC_PI_2).abs_diff_eq(Mat4::from_rotation_x(-angle), 1e-6));
-        let death = bob_hurt(2., Some(1.), 0.);
+        assert!(bob_hurt(0.25, None, 0., 1.).abs_diff_eq(Mat4::from_rotation_z(angle), 1e-6));
+        assert!(bob_hurt(0.25, None, std::f32::consts::FRAC_PI_2, 1.).abs_diff_eq(Mat4::from_rotation_x(-angle), 1e-6));
+        let death = bob_hurt(2., Some(1.), 0., 1.);
         assert!(death.abs_diff_eq(Mat4::from_rotation_z((40f32 - 8000. / 220.).to_radians()), 1e-6));
     }
 }

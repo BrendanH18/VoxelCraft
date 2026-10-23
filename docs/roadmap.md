@@ -850,7 +850,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.8 | Foundations | Finish M0, M1 | Valid M5 baseline and the per-requirement inventory; mob pathfinding, Java spawn categories, shape-aware light, simulation distance; pause/death/save scenarios on every input path | Done (owner, 2026-10-20): tagged `v0.8.0` at `58b547b` (#34, #35, #37–#39 plus release prep, [#41](https://github.com/BrendanH18/VoxelCraft/pull/41)); [delivery record](#34-v080-delivery-record--2026-10-20). Implementation complete and the [M5 baseline](verification/2026-10-16-m5-baseline.md) recorded; rows stay Implemented, unverified. Player acceptance ([checklist](verification/v0.8-acceptance-checklist.md)) moved to v0.9, the streaming budget (PERF-03; two isolated frames over 50 ms in the [2026-10-20 re-run](verification/2026-10-20-streaming-rerun.md)) to v0.20 |
 | v0.9 | Block states | M2: BLD-04, BLD-06 | Top and double slabs, waterlogging, door hinges, floor/ceiling buttons and levers, wall grindstones, corner-stair light; reserved state ranges for later content | Done (owner, 2026-10-22): ready to tag `v0.9` once merged; [delivery record](#35-v09-delivery-record--2026-10-22). Block states (#40), Java player movement, wall posts, powered doors, honey, scaffolding and powder snow; the owner's play is the player evidence for v0.8 and v0.9 (the checklist and controller session were dropped). Rows stay Implemented, unverified: the windowed performance check was deferred to v0.20 (owner, 2026-10-22) |
 | v0.10 | Updates | M7 early: UX-04b, part of UX-05a | In-game update check, signed download, pre-update world backup and install on Windows and Apple Silicon Macs ([design](updates.md)); worlds whose level file can't be read are no longer started fresh. See [v0.10 scope](#v010-scope-updates) | Release prepared (2026-10-22): Cargo 0.10.0, release notes and the `UPDATE_SIGNING_KEY` secret; tag `v0.10` once merged (owner exception: before the exit check, which needs a later release). Rows Implemented, unverified until the owner updates a real v0.10 install (the exit check); the stepping-stone release every player installs by hand |
-| v0.11 | Menus and settings | M7 early: UX-03a/b, UX-05a | Java's title screen, world list and Edit World screen; Java-style options screens, key rebinding, GUI scale and per-category volume; consistent menu navigation and error screens. See [v0.11 scope](#v011-scope-menus-and-settings) | Planned (owner priority, 2026-10-22) |
+| v0.11 | Menus and settings | M7 early: UX-03a/b, UX-05a | Java's title screen, world list and Edit World screen; Java-style options screens, key rebinding, GUI scale and per-category volume; consistent menu navigation and error screens. See [v0.11 scope](#v011-scope-menus-and-settings) | In progress (2026-10-23): every work item implemented, unverified; Codex-reviewed with its findings fixed; awaiting the owner's play and the frame-time check |
 | v0.12 | Building materials | Close M2 | Missing wood, stone, copper and colour family members (pale oak, bamboo, mud brick, prismarine), the unregistered reference fuel items, signs, banners, item frames, cauldrons, soul lanterns and campfires; sponges, coral and sea pickles; falling and dripping dripstone, tilting dripleaf | Planned |
 | v0.13 | Terrain | M3: GEN-01..03 | Java climate and density terrain with overhangs; Java caves, aquifers and ores; deep-dark content, springs, glow lichen; giant spruce and jungle trees and the remaining biome features | Planned |
 | v0.14 | Structures | M3: GEN-05..07 | A Java structure-template (jigsaw) system; villages, outposts, bastions, fossils, shipwrecks, ocean ruins and monuments built from it; buried treasure and explorer maps; Java loot random sequences | Planned |
@@ -1131,7 +1131,79 @@ that next release (owner exception above).
 #### v0.11 scope: menus and settings
 
 v0.11 ships when the menus below match Java 26.3 and work on every input
-path. Work items:
+path. Java 26.3 is still the latest stable release (rechecked 2026-10-23;
+26.4 is in snapshots).
+
+Owner decisions (2026-10-23):
+
+- Java options that need renderer or engine work VoxelCraft doesn't have yet
+  (Clouds, Biome Blend, Entity Distance and the like) are left off the
+  screens rather than shown as switches that do nothing, and are listed below
+  as known gaps. Options that are cheap to make real are added: Brightness,
+  Max Framerate, Damage Tilt, FOV Effects and Distortion Effects.
+- The work runs as a shared menu toolkit first (screens, focus and
+  navigation, text fields, dialogs, scrolling lists, controller input), then
+  three parallel tracks: title and world management; options, controls and
+  GUI scale; sound categories.
+- A track that isn't ready moves to v0.12 instead of holding v0.11 open
+  (patch releases carry fixes only).
+
+Progress (2026-10-23), *implemented, unverified* (awaiting the owner's play
+and a frame-time check):
+
+- **Toolkit** (`src/app/gui/`): a stack of screens with the same focus and
+  navigation for mouse, keyboard (Tab, arrows, Enter, Escape) and a
+  controller that hasn't joined as a split-screen player (D-pad, A, B).
+  Sliders follow Java's editing rule: the mouse or Tab can adjust at once;
+  arrow keys and the D-pad need Enter, Space or A first. Text fields
+  support selection, word jumps and the clipboard. Also Java's scrolling
+  option lists and labels, tooltips, and confirm and error screens.
+- **Title and worlds** (`src/app/title/`): Java's title menu; Select World
+  with search and Java's three-line rows; Edit World (rename, Make Backup,
+  open the world and backups folders, a Seed button that copies it);
+  Re-Create; Create New World with Game and World tabs; Multiplayer, Direct
+  Connection and the update screen. Saves write `version=` to `level.txt`.
+  A world saved by a newer version shows Java's downgrade prompt with a
+  backup. A failed open, save, backup, rename or delete shows a notice
+  saying what to do.
+- **Options, controls and GUI scale** (`src/app/options/`, `src/app/keys.rs`):
+  Java's Options, Video Settings (its three sections), Controls, Mouse
+  Settings, Key Binds and Accessibility Settings, with Credits & Attribution.
+  There is a binding table for every gameplay key and mouse button: Java's
+  names, categories and defaults, saved as `key_` lines in `options.txt`,
+  with click-to-rebind, conflicts and both resets. New options: GUI Scale
+  (Auto and 1..max, also on the title screen), Max Framerate, Brightness,
+  Sneak and Sprint Hold/Toggle, Scroll Sensitivity, Discrete Scrolling,
+  Invert Mouse X/Y, Distortion Effects, FOV Effects, Damage Tilt, and Java's
+  difficulty lock (saved per world). Render Distance is labelled in Java's
+  16-block chunks.
+- **Sound categories** (`src/audio/source.rs`): every sound plays in its
+  Java 26.3 category. The mixer applies master x category volume live, and
+  Music & Sound Options has a slider per category.
+- Older `options.txt` files and worlds load unchanged.
+
+Known gaps and differences, recorded per the owner decision above:
+
+- Java options with nothing behind them are left off: Online, Skin
+  Customization, Language, Chat, Resource Packs, Telemetry, Inactivity FPS
+  Limit, fullscreen resolution, Graphics API, Biome Blend, clouds, mipmaps,
+  Entity Shadows and Distance, menu blur, the attack indicator, Directional
+  Audio, the output device, and the Voice slider.
+- Also left off: Attack/Use Toggle, Auto-Jump and Allow Cursor Changes;
+  Create New World's More tab, Allow Commands and World Type; and Edit
+  World's Reset Icon, Optimize World and Export.
+- There are no world icons, and Multiplayer lists LAN games only.
+- Java 26.3 moved Difficulty to the pause menu's World Options; VoxelCraft
+  keeps it on the Options screen. Graphics stays Classic/Enhanced.
+- Key changes: R no longer sprints, the backtick no longer opens the
+  console, and `-`/`=` no longer change render distance. Java has none of
+  these, and each can be rebound.
+- Not yet seen working in play: Brightness, the frame limit, GUI Scale in a
+  window, the hold/toggle keys, the distortion and hurt-tilt effects, real
+  clipboard and folder buttons, and the update screen with a live offer.
+  The title screen has no frame limit.
+
+Work items:
 
 1. **Title screen (UX-03a).** Java's layout: Singleplayer, Multiplayer,
    Options… and Quit Game, with the version and update status. Options are

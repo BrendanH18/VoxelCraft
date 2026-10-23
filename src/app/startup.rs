@@ -10,7 +10,7 @@ impl Game {
         world_dir: &str,
         new: Option<title::NewWorld>,
     ) -> Game {
-        let Shell { renderer, audio, settings, settings_path, updates } = shell;
+        let Shell { renderer, audio, settings, settings_path, updates, gilrs } = shell;
         let storage = Storage::new(saves_dir.join(world_dir));
         let existing = if args.join.is_some() || args.new_world || new.is_some() || !storage.exists() {
             None
@@ -210,7 +210,7 @@ impl Game {
             // Screenshot runs never read controllers.
             virtual_pad: args.pad_player.clone(),
             pads: {
-                let mut pads = if args.screenshot.is_none() { gamepad::Pads::new() } else { Default::default() };
+                let mut pads = gamepad::Pads::new(gilrs);
                 let prop = |k: &str| root_props.get(k).map_or("", String::as_str);
                 pads.restore(prop("pads"));
                 pads
@@ -225,11 +225,17 @@ impl Game {
             world,
             storage,
             keys: FxHashSet::default(),
+            sneak_toggled: false,
+            sprint_toggled: false,
+            scroll: 0.0,
+            frame_limit: Default::default(),
+            distortion: Default::default(),
             modifiers: Default::default(),
             mouse_grabbed: false,
             jump_pressed: false,
             difficulty,
             hardcore,
+            difficulty_locked: root_props.get("difficulty_locked").is_some_and(|v| v == "true"),
             gamerules,
             inventory_open: args.open_inventory,
             craft: crate::crafting::Grid::new(2),
@@ -298,13 +304,8 @@ impl Game {
             audio,
             mobs: mobs::Mobs::new(seed, args.spawn.clone(), args.wait),
             particles: crate::particles::System::new(seed),
-            menu: match args.open_menu.as_deref() {
-                Some("pause") => Some(menu::Screen::Pause),
-                Some("lan") => Some(menu::Screen::Lan),
-                Some("options") => Some(menu::Screen::Options),
-                _ => None,
-            },
-            menu_drag: None,
+            menu: menu::startup_menu(args.open_menu.as_deref()),
+            menu_action: None,
             had_focus: false,
             settings,
             settings_path,

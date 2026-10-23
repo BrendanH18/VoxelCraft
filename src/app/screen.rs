@@ -6,7 +6,7 @@
 use glam::{DVec3, IVec3};
 
 use crate::audio::{
-    Audio,
+    Audio, SoundSource,
     sounds::{Material, Sound},
 };
 use crate::crafting::Grid;
@@ -524,7 +524,8 @@ impl Screen<'_> {
         }
         self.session.vitals.xp.seed = (enchant::roll() * u32::MAX as f32) as u32 as i32;
         let at = pos.as_dvec3() + DVec3::splat(0.5);
-        self.audio.play(Sound::LevelUp, Some(at), 0.6, (1.5, 1.7));
+        // `ENCHANTMENT_TABLE_USE` is `BLOCKS`.
+        self.audio.play_in(SoundSource::Blocks, Sound::LevelUp, Some(at), 0.6, (1.5, 1.7));
     }
 
     /// Shift-click from the inventory onto the table: lapis to its slot,

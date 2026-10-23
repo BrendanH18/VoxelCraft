@@ -152,7 +152,11 @@ voxelcraft [options]
                     inventory, with play, pause, inventory, crafting or
                     palette (creative) open
                     (screenshots)
-  --open-menu <m>   start with a menu open: pause, options, title, create, lan or multiplayer (screenshots)
+  --open-menu <m>   start with a menu open (screenshots): pause, options, video, sound,
+                    controls, mouse, keybinds, accessibility or lan in a world; title,
+                    select, create, edit, recreate, backup, multiplayer or direct on the
+                    title screens (edit, recreate and backup use --world's save, else
+                    the last played)
   --open-block x,y,z  open the furnace, chest, brewing stand, enchanting
                     table, anvil or smithing table once loaded (screenshots)
   --place x,y,z,b   set a block once loaded (repeatable; y may be ~ for the
@@ -351,10 +355,27 @@ fn parse_args() -> Result<Args, String> {
             }
             "--open-menu" => {
                 let m = value("--open-menu")?;
-                if !matches!(m.as_str(), "pause" | "options" | "title" | "create" | "lan" | "multiplayer") {
-                    return Err(format!(
-                        "--open-menu: expected pause, options, title, create, lan or multiplayer, got {m}"
-                    ));
+                const MENUS: [&str; 17] = [
+                    "pause",
+                    "options",
+                    "video",
+                    "sound",
+                    "controls",
+                    "mouse",
+                    "keybinds",
+                    "accessibility",
+                    "lan",
+                    "title",
+                    "select",
+                    "create",
+                    "edit",
+                    "recreate",
+                    "backup",
+                    "multiplayer",
+                    "direct",
+                ];
+                if !MENUS.contains(&m.as_str()) {
+                    return Err(format!("--open-menu: expected one of {}, got {m}", MENUS.join(", ")));
                 }
                 args.open_menu = Some(m);
             }

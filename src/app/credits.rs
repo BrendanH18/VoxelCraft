@@ -4,12 +4,13 @@
 //! original. Which players have seen it is saved as `credits_seen`.
 
 use super::Game;
+use crate::audio::SoundSource;
 use crate::audio::sounds::Sound;
 use crate::render::ui::{Ui, WHITE};
 use crate::world::terrain::Dimension;
 
 /// How fast the text scrolls, in UI units per second.
-const SPEED: f32 = 22.0;
+pub(super) const SPEED: f32 = 22.0;
 /// Seconds before Escape, Space or a click may skip (so a held key from the
 /// portal fall can't dismiss it).
 const SKIP_DELAY: f32 = 0.75;
@@ -72,7 +73,8 @@ impl Game {
         self.session.cancel_consumption();
         self.keys.clear();
         self.set_grab(false);
-        self.audio.play(Sound::PortalSpawn, None, 0.4, (0.6, 0.6));
+        // Java plays no sound here; the closest is the local portal ambience.
+        self.audio.play_in(SoundSource::Ambient, Sound::PortalSpawn, None, 0.4, (0.6, 0.6));
         true
     }
 
@@ -111,12 +113,12 @@ fn line_height(line: &str) -> f32 {
     if line.starts_with('#') { LINE * 2.0 } else { LINE }
 }
 
-fn total_height(screen_h: f32) -> f32 {
+pub(super) fn total_height(screen_h: f32) -> f32 {
     screen_h + TEXT.iter().map(|l| line_height(l)).sum::<f32>()
 }
 
 /// Draws the lines that are on screen `t` seconds into the scroll.
-fn draw(ui: &mut Ui, t: f32) {
+pub(super) fn draw(ui: &mut Ui, t: f32) {
     let (sw, sh) = ui.size();
     let top = sh - t * SPEED;
     let mut offset = 0.0;

@@ -10,6 +10,7 @@ mod dsp;
 mod export;
 pub mod mixer;
 pub mod sounds;
+mod source;
 mod voices;
 
 use std::sync::Arc;
@@ -26,6 +27,7 @@ use dsp::Rng;
 pub use export::{export_music, export_sounds};
 use mixer::{Command, Mixer};
 pub use sounds::{Bank, Material, Sound, material};
+pub use source::SoundSource;
 use voxelcraft::music::{Context, MusicReader, MusicStream};
 
 /// Horizontal distance between footsteps, in blocks (Minecraft's ~1.67).
@@ -36,7 +38,7 @@ const SWIM_STROKE: f64 = 2.4;
 const HIT_INTERVAL: f64 = 0.22;
 
 /// A sound copied for LAN clients: (sound, position or `None` for the host's own, gain, pitch range).
-pub type Tapped = (Sound, Option<DVec3>, f32, (f32, f32));
+pub type Tapped = (Sound, Option<DVec3>, f32, (f32, f32), SoundSource);
 
 pub struct Audio {
     /// While a LAN world has players, every played sound is copied here for them:
@@ -141,10 +143,17 @@ impl Audio {
     /// Plays `sound` at a world position (or at the listener if `None`),
     /// with a random pitch in `pitch`.
     pub fn play(&mut self, sound: Sound, pos: Option<DVec3>, gain: f32, pitch: (f32, f32)) {
+        self.play_in(sound.source(), sound, pos, gain, pitch);
+    }
+
+    /// Like [`Audio::play`], for a sound Java plays in a different category
+    /// than the sound's own (see [`Sound::source`]), such as a footstep
+    /// standing in for a hoe tilling soil (`BLOCKS`).
+    pub fn play_in(&mut self, source: SoundSource, sound: Sound, pos: Option<DVec3>, gain: f32, pitch: (f32, f32)) {
         if let Some(tap) = &mut self.tap
             && tap.len() < 512
         {
-            tap.push((sound, pos, gain, pitch));
+            tap.push((sound, pos, gain, pitch, source));
         }
         if self.muted || self.tx.is_none() {
             return;
@@ -152,7 +161,7 @@ impl Audio {
         let variant = self.rng.next_u32();
         let pitch = self.rng.range(pitch.0, pitch.1);
         let pos = pos.map(|p| p.as_vec3().to_array());
-        self.send(Command::Play { sound, variant, gain, pitch, pos });
+        self.send(Command::Play { sound, variant, gain, pitch, source, pos });
     }
 
     fn at_block(pos: IVec3) -> Option<DVec3> {
@@ -172,7 +181,8 @@ impl Audio {
         self.hit_timer -= dt;
         if self.hit_timer <= 0.0 {
             self.hit_timer = HIT_INTERVAL;
-            self.play(Sound::Step(material(block)), Self::at_block(pos), 0.45, (0.7, 0.8));
+            // Java plays the block's hit sound in `BLOCKS`.
+            self.play_in(SoundSource::Blocks, Sound::Step(material(block)), Self::at_block(pos), 0.45, (0.7, 0.8));
         }
     }
 
@@ -189,17 +199,24 @@ impl Audio {
         self.play(Sound::Click, None, 0.8, (0.97, 1.03));
     }
 
-    /// Sets the master volume (0..1); takes effect when not muted.
-    pub fn set_volume(&mut self, volume: f32) {
-        self.volume = volume.clamp(0.0, 1.0);
-        if !self.muted {
-            self.send(Command::Master(self.volume));
+    /// Sets a category's volume (0..1). Master takes effect when not muted;
+    /// every other category is multiplied by it. Playing sounds follow at once.
+    pub fn set_volume(&mut self, source: SoundSource, volume: f32) {
+        let volume = if volume.is_nan() { 0.0 } else { volume.clamp(0.0, 1.0) };
+        if source == SoundSource::Master {
+            self.volume = volume;
+            if self.muted {
+                return;
+            }
         }
+        self.send(Command::Volume(source, volume));
     }
 
-    /// The independent Music category, multiplied by master volume.
-    pub fn set_music_volume(&mut self, volume: f32) {
-        self.send(Command::MusicVolume(volume));
+    /// Sets every category from `volume` (the player's options).
+    pub fn set_volumes(&mut self, volume: impl Fn(SoundSource) -> f32) {
+        for source in SoundSource::ALL {
+            self.set_volume(source, volume(source));
+        }
     }
 
     /// Update once per frame even while the simulation is paused. The host
@@ -225,7 +242,7 @@ impl Audio {
     pub fn toggle_mute(&mut self) -> bool {
         self.muted = !self.muted;
         let master = if self.muted { 0.0 } else { self.volume };
-        self.send(Command::Master(master));
+        self.send(Command::Volume(SoundSource::Master, master));
         self.muted
     }
 

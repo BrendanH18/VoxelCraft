@@ -77,6 +77,50 @@ pub fn backup_saves(saves: &Path, backups: &Path, version: &str) -> Result<PathB
     Ok(dest)
 }
 
+/// Copies one world to a new folder in `backups` named for the time and
+/// the world's folder (Java's Make Backup, `2026-10-22_16-05-09_world`),
+/// returning it and the bytes copied. The world's session lock is held for
+/// the copy. These folders are never pruned.
+pub fn backup_world(world: &Path, backups: &Path) -> Result<(PathBuf, u64), String> {
+    let folder = world.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let lock = match Storage::new(world).lock() {
+        Ok(lock) => lock,
+        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+            return Err(format!("\"{folder}\" is open in another VoxelCraft window. Close it, then try again."));
+        }
+        Err(e) => return Err(format!("could not lock {}: {e}", world.display())),
+    };
+    std::fs::create_dir_all(backups).map_err(|e| format!("could not create {}: {e}", backups.display()))?;
+    let base = format!("{}_{folder}", timestamp(SystemTime::now()));
+    let dest = std::iter::once(base.clone())
+        .chain((2..).map(|n| format!("{base}-{n}")))
+        .map(|name| backups.join(name))
+        .find(|p| !p.exists())
+        .expect("unbounded names");
+    let partial = backups.join(format!(".{}.partial", dest.file_name().unwrap().to_string_lossy()));
+    let _ = std::fs::remove_dir_all(&partial);
+    let copied = copy_tree(world, &partial).and_then(|()| std::fs::rename(&partial, &dest));
+    drop(lock);
+    if let Err(e) = copied {
+        let _ = std::fs::remove_dir_all(&partial);
+        return Err(format!("could not back up \"{folder}\": {e}"));
+    }
+    Ok((dest.clone(), tree_size(&dest)))
+}
+
+/// Total bytes of the files under `dir`.
+fn tree_size(dir: &Path) -> u64 {
+    let Ok(entries) = std::fs::read_dir(dir) else { return 0 };
+    entries
+        .flatten()
+        .map(|e| match e.file_type() {
+            Ok(t) if t.is_dir() => tree_size(&e.path()),
+            Ok(t) if t.is_file() => e.metadata().map_or(0, |m| m.len()),
+            _ => 0,
+        })
+        .sum()
+}
+
 /// Where a folder made by [`backup_saves`] sorts: its name up to the
 /// version, and its same-second number (1 for none). `None` for any other
 /// folder, which is never pruned.
@@ -154,8 +198,14 @@ fn prune(backups: &Path, keep: usize) {
 fn timestamp(t: SystemTime) -> String {
     let secs = t.duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
     let (days, rem) = (secs / 86_400, secs % 86_400);
-    // Howard Hinnant's days-to-civil conversion.
-    let z = days as i64 + 719_468;
+    let (year, month, day) = civil(days as i64);
+    format!("{year:04}-{month:02}-{day:02}_{:02}-{:02}-{:02}", rem / 3600, rem / 60 % 60, rem % 60)
+}
+
+/// The year, month and day `days` after 1970-01-01 (Howard Hinnant's
+/// days-to-civil conversion).
+pub(crate) fn civil(days: i64) -> (i64, i64, i64) {
+    let z = days + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z - era * 146_097;
     let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
@@ -164,7 +214,7 @@ fn timestamp(t: SystemTime) -> String {
     let day = doy - (153 * mp + 2) / 5 + 1;
     let month = if mp < 10 { mp + 3 } else { mp - 9 };
     let year = yoe + era * 400 + i64::from(month <= 2);
-    format!("{year:04}-{month:02}-{day:02}_{:02}-{:02}-{:02}", rem / 3600, rem / 60 % 60, rem % 60)
+    (year, month, day)
 }
 
 #[cfg(test)]
@@ -252,6 +302,29 @@ mod tests {
         let err = backup_saves(&saves, &root.join("backups"), "0.11.0").unwrap_err();
         assert!(err.contains("is a link or special file"), "{err}");
         assert_eq!(std::fs::read_dir(root.join("backups")).unwrap().count(), 0, "no partial backup left");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn backs_up_one_world_beside_update_backups() {
+        let root = scratch("one-world");
+        let saves = root.join("saves");
+        world(&saves, "alpha");
+        world(&saves, "beta");
+        let backups = root.join("backups");
+        let (dest, size) = backup_world(&saves.join("alpha"), &backups).unwrap();
+        let name = dest.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(name.ends_with("_alpha") && backup_order(&name).is_none(), "{name} is never pruned");
+        assert_eq!(std::fs::read(dest.join("DIM-1/chunks.bin")).unwrap(), [1, 2, 3]);
+        assert!(!dest.join("session.lock").exists() && !dest.join("beta").exists());
+        assert_eq!(size, "name=alpha\n".len() as u64 + 3);
+        // A second backup in the same second takes the next name.
+        let (again, _) = backup_world(&saves.join("alpha"), &backups).unwrap();
+        assert_ne!(again, dest);
+        let held = Storage::new(saves.join("alpha")).lock().unwrap();
+        let err = backup_world(&saves.join("alpha"), &backups).unwrap_err();
+        assert!(err.contains("open in another VoxelCraft window"), "{err}");
+        drop(held);
         std::fs::remove_dir_all(root).unwrap();
     }
 

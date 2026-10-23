@@ -81,7 +81,11 @@ fn dimension_light(sky: vec3<f32>, torch: vec3<f32>) -> vec3<f32> {
     var lit = dimension_light(vec3<f32>(sky), torch);
     if in.light.w > 1.5 { lit = vec3<f32>(1.); }
     let peak = max(max(lit.r, lit.g), max(lit.b, 0.001));
-    lit = mix(lit, lit / peak, g.effects.x);
+    lit = clamp(mix(lit, lit / peak, g.effects.x), vec3<f32>(0.), vec3<f32>(1.));
+    // Brightness (Java's gamma, g.effects.y), as in chunk.wgsl.
+    let top = max(max(lit.r, lit.g), max(lit.b, 1e-4));
+    let inv = 1. - top;
+    lit = mix(lit, lit * ((1. - inv * inv * inv * inv) / top), g.effects.y);
     let base = texel.rgb * pow(in.color.rgb, vec3<f32>(2.2)) * lit;
     let fog = clamp((in.dist - g.params.x) / (g.params.y - g.params.x), 0., 1.);
     return vec4<f32>(mix(base, g.fog_color.rgb, fog * fog * (3. - 2. * fog)), 1.);

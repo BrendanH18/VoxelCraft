@@ -31,6 +31,7 @@ impl Game {
         self.jump_pressed = false;
         self.previous_eye = self.session.player.eye();
         let before = self.session.player.pos;
+        let portal_before = self.portal_time;
         if !arriving {
             if self.session.player.vehicle.is_some()
                 && input.descend
@@ -58,6 +59,8 @@ impl Game {
                 self.session.player.refresh_riding_contact(&self.world);
             }
         }
+        let nausea = self.session.vitals.effects.get(voxelcraft::simulation::effects::Effect::Nausea).map(|e| e.ticks);
+        self.distortion.tick(nausea, self.portal_time > portal_before);
         let moved = (self.session.player.pos - before).with_y(0.0).length();
         self.weather.update_rules(dt, self.gamerules.bool("advance_weather"));
         self.update_sleep(dt);
@@ -109,7 +112,7 @@ impl Game {
             self.damage_player(hurts.starve, survival::CAUSE_STARVE);
         }
 
-        let acting = self.menu.is_none() && !self.console.open && self.mouse_grabbed && !self.inventory_open;
+        let acting = !self.menu.is_open() && !self.console.open && self.mouse_grabbed && !self.inventory_open;
         self.act(acting, dt);
         self.drive_lan(dt);
         self.drive_pads(dt);

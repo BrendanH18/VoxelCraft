@@ -167,7 +167,15 @@ src/
     actions.rs       hotbar/mining state and consumption presentation mirror
     recipe_book.rs   recipe navigation, responsive layout and hit testing
     hud.rs           HUD: hotbar, hearts/food/bubbles, containers, death and F3
-    menu.rs          pause menu and options screen
+    gui/             menu toolkit: screen stack, focus and navigation for mouse,
+                     keyboard and controller, sliders, text fields and clipboard,
+                     scrolling option lists, confirm and error screens
+    menu.rs          pause menu and Open to LAN screen on the toolkit
+    options/         Java's Options screen and sub-screens, shared by the title
+                     screen and the pause menu
+    title/           title screen, Select World, Edit World, Create New World,
+                     the newer-version backup prompt, Multiplayer and the
+                     update screen, all on the toolkit
     settings.rs      options file (per-user data folder: saves/options.txt)
     weather.rs       rain/snow render geometry
     mobs.rs          mob glue: melee, loot, explosions, entity events, --spawn

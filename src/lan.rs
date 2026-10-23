@@ -553,9 +553,12 @@ impl Discovery {
                 continue;
             };
             let address = SocketAddr::new(from.ip(), port);
-            self.servers.retain(|s| s.address != address);
-            if self.servers.len() < 32 {
-                self.servers.push(Advertisement { address, name, players, version, seen: Instant::now() });
+            let ad = Advertisement { address, name, players, version, seen: Instant::now() };
+            // Keep each server's place in the list, so a focused row stays on it.
+            if let Some(known) = self.servers.iter_mut().find(|s| s.address == address) {
+                *known = ad;
+            } else if self.servers.len() < 32 {
+                self.servers.push(ad);
             }
         }
         self.servers.retain(|s| s.seen.elapsed() < Duration::from_secs(5));

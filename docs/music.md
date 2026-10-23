@@ -48,7 +48,9 @@ within 0.0001, and increases by clamp(current, 0.0005, 0.005) per tick. Reaching
 silence stops playback and adds 100 ticks to the delay. A null selection keeps
 a minimum 100-tick delay without starting tracks. The renderer interpolates
 these tick gains over PCM frames. Separately, the saved `music_volume` option
-and Music slider multiply music by master volume, without changing effects.
+and Music slider multiply music by master volume, without changing effects
+(every other sound category has its own slider too; see
+[gameplay](gameplay.md#sound-categories)).
 Music is non-positional and bypasses underwater environmental muffling.
 
 Intentional adaptation: Java stops a replaced track immediately; VoxelCraft

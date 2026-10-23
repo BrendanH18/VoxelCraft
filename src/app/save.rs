@@ -13,6 +13,7 @@ impl Game {
         props.insert("mode".to_string(), self.session.mode.name().to_string());
         props.insert("difficulty".to_string(), self.difficulty.name().to_string());
         props.insert("hardcore".to_string(), self.hardcore.to_string());
+        props.insert("difficulty_locked".to_string(), self.difficulty_locked.to_string());
         props.insert("gamerules".to_string(), self.gamerules.serialize());
         props.insert("lan_rules".to_string(), self.lan.rules_text());
         props.insert(

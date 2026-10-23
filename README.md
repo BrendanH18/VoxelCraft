@@ -217,8 +217,10 @@ cd VoxelCraft
 cargo run --release
 ```
 
-You'll land on the title screen with your saved worlds, most recent first.
-Hit **Create New World**, give it a name, pick a mode and (optionally) a seed.
+You'll land on the title screen. **Singleplayer** lists your saved worlds,
+most recent first (or goes straight to **Create New World** when there are
+none); give a new world a name, pick a game mode and difficulty, and
+(optionally) a seed on the **World** tab.
 Worlds live under `saves/` in your
 [per-user data folder](docs/releases.md#player-data-and-old-saves), autosave
 every two minutes, and only store the chunks you've changed. Everything else
@@ -237,7 +239,7 @@ cargo run --release -- --creative --world sandbox --seed 42
 | Option | What it does |
 | --- | --- |
 | `--creative` / `--survival` | Choose a game mode |
-| `--world <name>` | Load or create `saves/<name>` directly, skipping the title screen |
+| `--world <name>` | Load or create `saves/<name>` directly, skipping the title screen (a world saved by a newer version asks first) |
 | `--new` | Start the selected world fresh, replacing it when it saves |
 | `--data-dir <dir>` | Use an isolated folder for saves, options and logs |
 | `--seed <n>` | Set the seed for a new world |

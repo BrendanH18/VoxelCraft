@@ -30,32 +30,28 @@ fn console_line(result: Result<String, String>, feedback: bool) -> Option<String
 }
 
 impl Game {
+    /// Open Chat (`chat`) or Open Command: the console, starting with a
+    /// slash unless chatting with LAN players.
+    pub(super) fn open_console(&mut self, chat: bool) {
+        self.console.open = true;
+        self.console.input =
+            if chat && (self.lan.host.is_some() || self.lan.client.is_some()) { String::new() } else { "/".into() };
+        self.keys.clear();
+        self.body.left_held = false;
+        self.body.right_held = false;
+        self.body.actions.reset();
+        self.session.cancel_mining();
+        self.session.cancel_consumption();
+        self.set_grab(false);
+    }
+
     /// Consume text entry before gameplay bindings so commands cannot move or drop items.
     pub(super) fn console_key(&mut self, event: &KeyEvent) -> bool {
         let PhysicalKey::Code(code) = event.physical_key else {
             return self.console.open;
         };
         if !self.console.open {
-            if self.menu.is_none()
-                && !self.inventory_open
-                && matches!(code, KeyCode::Slash | KeyCode::KeyT | KeyCode::Backquote)
-            {
-                self.console.open = true;
-                self.console.input = if code == KeyCode::KeyT && (self.lan.host.is_some() || self.lan.client.is_some())
-                {
-                    String::new()
-                } else {
-                    "/".into()
-                };
-                self.keys.clear();
-                self.body.left_held = false;
-                self.body.right_held = false;
-                self.body.actions.reset();
-                self.session.cancel_mining();
-                self.session.cancel_consumption();
-                self.set_grab(false);
-                return true;
-            }
+            // Opened by the Open Chat and Open Command bindings (`Game::press`).
             return false;
         }
         match code {
@@ -211,6 +207,10 @@ impl Game {
             Command::Difficulty(difficulty) => {
                 if self.hardcore {
                     return Err("Hardcore locks difficulty to Hard".into());
+                }
+                // Java's setDifficulty ignores a locked world's difficulty too.
+                if self.difficulty_locked {
+                    return Err("This world's difficulty is locked".into());
                 }
                 self.difficulty = difficulty;
                 return Ok(format!("Set difficulty to {difficulty}"));

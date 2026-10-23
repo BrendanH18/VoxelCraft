@@ -1,7 +1,10 @@
 //! Real-time mixer. Runs inside the audio device callback: drains game
 //! commands from a bounded lock-free channel, mixes up to [`MAX_VOICES`]
 //! resampled, panned and distance-attenuated voices plus two ambient loops,
-//! then applies the underwater low-pass, master gain and a peak limiter.
+//! then applies the underwater low-pass, master gain and a peak limiter. Every
+//! voice, loop and the music stream is scaled by its sound category's volume
+//! (see [`SoundSource`]), smoothed per block so sliders can move while sounds
+//! play.
 //!
 //! Nothing here allocates or locks after construction: voices index into the
 //! shared, immutable [`Bank`], and all scratch space is fixed-size.
@@ -12,6 +15,7 @@ use crossbeam_channel::Receiver;
 
 use super::dsp::{OnePole, RATE};
 use super::sounds::{Bank, Sound};
+use super::source::SoundSource;
 
 pub const MAX_VOICES: usize = 32;
 /// Frames mixed per inner block; gains ramp linearly across a block.
@@ -34,6 +38,8 @@ pub enum Command {
         variant: u32,
         gain: f32,
         pitch: f32,
+        /// The category whose volume scales this sound.
+        source: SoundSource,
         /// World position, or `None` for sounds at the listener (UI, own
         /// footsteps).
         pos: Option<[f32; 3]>,
@@ -48,8 +54,9 @@ pub enum Command {
         count: u8,
         ears: [[f32; 4]; MAX_OTHERS],
     },
-    Master(f32),
-    MusicVolume(f32),
+    /// A category's volume, 0..1 (Master up to 2). The mixer multiplies the
+    /// master volume and the sound's category on every sound.
+    Volume(SoundSource, f32),
     /// Low-pass the whole mix, 0..1: the share of split-screen players
     /// whose head is underwater.
     Muffle(f32),
@@ -68,6 +75,7 @@ struct Voice {
     step: f64,
     gain: f32,
     spatial: Option<[f32; 3]>,
+    source: u8,
     /// Gains applied at the end of the last block (ramp start).
     cur: (f32, f32),
 }
@@ -75,6 +83,7 @@ struct Voice {
 #[derive(Clone, Copy, Default)]
 struct Loop {
     buf: u16,
+    source: u8,
     pos: f64,
     gain: f32,
     target: f32,
@@ -136,10 +145,11 @@ pub struct Mixer {
     others: [[f32; 4]; MAX_OTHERS],
     other_count: usize,
     music: Option<voxelcraft::music::MusicReader>,
-    music_gain: f32,
-    music_target: f32,
-    master: f32,
-    master_target: f32,
+    /// Each category's volume: where it is heading and where it is now
+    /// (smoothed so dragging a slider doesn't click). Master is index 0 and
+    /// applies to the whole mix at the end; the rest scale their own voices.
+    volume_target: [f32; SoundSource::COUNT],
+    volume: [f32; SoundSource::COUNT],
     muffle: f32,
     muffle_target: f32,
     lp: [OnePole; 4],
@@ -152,11 +162,13 @@ pub struct Mixer {
 impl Mixer {
     pub fn new(bank: Arc<Bank>, rx: Receiver<Command>, out_rate: f32, master: f32) -> Self {
         let loop_buf = |s: Sound| bank.variants(s).0 as u16;
-        let ambient = [
-            Loop { buf: loop_buf(Sound::Wind), ..Default::default() },
-            Loop { buf: loop_buf(Sound::Cave), ..Default::default() },
-            Loop { buf: loop_buf(Sound::Rain), ..Default::default() },
-        ];
+        let ambient = [Sound::Wind, Sound::Cave, Sound::Rain].map(|s| Loop {
+            buf: loop_buf(s),
+            source: s.source().index() as u8,
+            ..Default::default()
+        });
+        let mut volume = [1.0; SoundSource::COUNT];
+        volume[SoundSource::Master.index()] = master;
         Self {
             bank,
             rx,
@@ -168,10 +180,8 @@ impl Mixer {
             others: [[0.0; 4]; MAX_OTHERS],
             other_count: 0,
             music: None,
-            music_gain: 1.0,
-            music_target: 1.0,
-            master,
-            master_target: master,
+            volume_target: volume,
+            volume,
             muffle: 0.0,
             muffle_target: 0.0,
             lp: [OnePole::default(); 4],
@@ -216,7 +226,9 @@ impl Mixer {
 
     pub fn apply(&mut self, cmd: Command) {
         match cmd {
-            Command::Play { sound, variant, gain, pitch, pos } => self.play(sound, variant, gain, pitch, pos),
+            Command::Play { sound, variant, gain, pitch, source, pos } => {
+                self.play(sound, variant, gain, pitch, source, pos)
+            }
             Command::Listener { pos, yaw } => {
                 self.listener = pos;
                 self.yaw = yaw;
@@ -225,8 +237,12 @@ impl Mixer {
                 self.others = ears;
                 self.other_count = (count as usize).min(MAX_OTHERS);
             }
-            Command::MusicVolume(g) => self.music_target = g.clamp(0.0, 1.0),
-            Command::Master(g) => self.master_target = g.clamp(0.0, 2.0),
+            Command::Volume(source, g) => {
+                let max = if source == SoundSource::Master { 2.0 } else { 1.0 };
+                if !g.is_nan() {
+                    self.volume_target[source.index()] = g.clamp(0.0, max);
+                }
+            }
             Command::Muffle(amount) => self.muffle_target = amount.clamp(0.0, 1.0),
             Command::Ambience { wind, cave, rain } => {
                 self.ambient[0].target = wind.clamp(0.0, 1.0);
@@ -236,7 +252,7 @@ impl Mixer {
         }
     }
 
-    fn play(&mut self, sound: Sound, variant: u32, gain: f32, pitch: f32, pos: Option<[f32; 3]>) {
+    fn play(&mut self, sound: Sound, variant: u32, gain: f32, pitch: f32, source: SoundSource, pos: Option<[f32; 3]>) {
         let (start, count) = self.bank.variants(sound);
         if count == 0 || gain.is_nan() || pitch.is_nan() || gain <= 0.0 || pitch <= 0.0 {
             return;
@@ -254,9 +270,13 @@ impl Mixer {
             step: pitch as f64 * RATE as f64 / self.out_rate as f64,
             gain,
             spatial: pos,
+            source: source.index() as u8,
             cur: (0.0, 0.0),
         };
+        // A category turned right down takes no voice at all.
+        let category = self.volume[source.index()];
         let g = heard(&voice, self.listener, self.yaw, &self.others[..self.other_count]);
+        let g = (g.0 * category, g.1 * category);
         if g.0.max(g.1) < 1e-4 {
             return; // out of earshot
         }
@@ -291,10 +311,22 @@ impl Mixer {
         right.fill(0.0);
         let inv_n = 1.0 / n.max(1) as f32;
 
+        // Category volumes glide to their targets (about 30 ms) and ramp
+        // across the block like every other gain. Master is applied last.
+        let vk = 1.0 - (-(n as f32) / (0.03 * self.out_rate)).exp();
+        let mut ramp = [(0.0f32, 0.0f32); SoundSource::COUNT];
+        for (i, r) in ramp.iter_mut().enumerate() {
+            let v0 = self.volume[i];
+            self.volume[i] += (self.volume_target[i] - v0) * vk;
+            *r = (v0, self.volume[i]);
+        }
+
         // --- One-shot voices ------------------------------------------------
         for slot in 0..MAX_VOICES {
             let Some(mut v) = self.voices[slot] else { continue };
             let target = heard(&v, self.listener, self.yaw, &self.others[..self.other_count]);
+            let category = ramp[v.source as usize].1;
+            let target = (target.0 * category, target.1 * category);
             let buf = &self.bank.buffers[v.buf as usize];
             let len = buf.len();
             let (dl, dr) = ((target.0 - v.cur.0) * inv_n, (target.1 - v.cur.1) * inv_n);
@@ -323,15 +355,17 @@ impl Mixer {
         let k = 1.0 - (-(n as f32) / (1.5 * self.out_rate)).exp();
         let step = RATE as f64 / self.out_rate as f64;
         for amb in self.ambient.iter_mut() {
-            let start = amb.gain;
+            let (c0, c1) = ramp[amb.source as usize];
+            let start = amb.gain * c0;
             amb.gain += (amb.target - amb.gain) * k;
+            let end = amb.gain * c1;
             let buf = &self.bank.buffers[amb.buf as usize];
             let len = buf.len() as f64;
-            if start.max(amb.gain) < 1e-4 || len < 2.0 {
+            if start.max(end) < 1e-4 || len < 2.0 {
                 amb.pos = (amb.pos + step * n as f64) % len.max(1.0);
                 continue;
             }
-            let dg = (amb.gain - start) * inv_n;
+            let dg = (end - start) * inv_n;
             let mut g = start;
             for i in 0..n {
                 let idx = amb.pos as usize;
@@ -377,9 +411,8 @@ impl Mixer {
         // Non-positional stereo Music category bypasses environmental
         // muffling. This is one shared stream for every split-screen ear.
         if let Some(music) = &mut self.music {
-            let start = self.music_gain;
-            self.music_gain += (self.music_target - start) * (1.0 - (-(n as f32) / (0.05 * self.out_rate)).exp());
-            let dg = (self.music_gain - start) * inv_n;
+            let (start, end) = ramp[SoundSource::Music.index()];
+            let dg = (end - start) * inv_n;
             let mut gain = start;
             for i in 0..n {
                 gain += dg;
@@ -389,9 +422,8 @@ impl Mixer {
             }
         }
 
-        let m_start = self.master;
-        self.master += (self.master_target - self.master) * (1.0 - (-(n as f32) / (0.02 * self.out_rate)).exp());
-        let dm = (self.master - m_start) * inv_n;
+        let (m_start, m_end) = ramp[SoundSource::Master.index()];
+        let dm = (m_end - m_start) * inv_n;
         let release = (-1.0 / (0.12 * self.out_rate)).exp();
         let mut m = m_start;
         for i in 0..n {

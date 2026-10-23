@@ -11,18 +11,23 @@ mod console;
 mod containers;
 mod credits;
 mod dimension;
+mod distortion;
 mod doors;
 mod enchanting;
 mod farming;
+mod frame_limit;
 mod fullscreen;
 mod gamepad;
+mod gui;
 mod hand;
 mod hands;
 mod hud;
 mod items;
+mod keys;
 mod lan;
 mod menu;
 mod mobs;
+mod options;
 mod pad_menu;
 mod particles;
 mod player_actions;
@@ -138,7 +143,17 @@ struct Game {
     camera: voxelcraft::camera::CameraMode,
     scripted_ride: Option<String>,
     storage: Storage,
-    keys: FxHashSet<KeyCode>,
+    /// Keys and mouse buttons held down during play (the binding table
+    /// looks actions up in it).
+    keys: FxHashSet<keys::Input>,
+    /// Sneak and Sprint while their Controls option is Toggle.
+    sneak_toggled: bool,
+    sprint_toggled: bool,
+    /// Java's `ScrollWheelHandler`: wheel movement short of a whole notch.
+    scroll: f64,
+    frame_limit: frame_limit::FrameLimit,
+    /// Nausea and portal warp (Distortion Effects).
+    distortion: distortion::Distortion,
     /// Shift / Ctrl state (shift-click, Ctrl+Q, sneak-placing).
     modifiers: winit::keyboard::ModifiersState,
     mouse_grabbed: bool,
@@ -148,6 +163,8 @@ struct Game {
     difficulty: Difficulty,
     /// World-wide one-life flag; locks difficulty to Hard.
     hardcore: bool,
+    /// Java's `DifficultyLocked`: the Options screen's lock was used.
+    difficulty_locked: bool,
     gamerules: GameRules,
     inventory_open: bool,
     /// Crafting grid of the open screen: 2x2 in the inventory, 3x3 at a
@@ -216,10 +233,10 @@ struct Game {
     audio: crate::audio::Audio,
     mobs: mobs::Mobs,
     particles: crate::particles::System,
-    /// Open menu screen, if any (the game is paused while one is up).
-    menu: Option<menu::Screen>,
-    /// Slider being dragged.
-    menu_drag: Option<menu::Widget>,
+    /// Open menu screens (the game is paused while one is up).
+    menu: gui::Stack<Game>,
+    /// What a controller asked the menus for during the frame, for the app.
+    menu_action: Option<menu::MenuAction>,
     /// The window has had keyboard focus at some point (losing focus only
     /// pauses after that, not when the game starts in the background).
     had_focus: bool,
@@ -273,7 +290,13 @@ impl App {
         {
             log::warn!("cannot open world '{world_dir}': {e}");
             let mut title = title::Title::new(shell, &self.saves_dir);
-            title.world_error(format!("Can't open \"{world_dir}\": {e}"));
+            title.show_select();
+            let what = if e.kind() == std::io::ErrorKind::WouldBlock {
+                format!("\"{world_dir}\" is open in another VoxelCraft window. Close it there, then try again.")
+            } else {
+                format!("Can't open \"{world_dir}\": {e}. Check that the saves folder can be written, then try again.")
+            };
+            title.world_error("Couldn't open the world", what);
             self.title = Some(title);
             return;
         }
@@ -286,7 +309,14 @@ impl App {
                 std::process::exit(1);
             }
             let mut title = title::Title::new(shell, &self.saves_dir);
-            title.world_error(format!("Can't open \"{world_dir}\": {e}. Nothing was changed."));
+            title.show_select();
+            title.world_error(
+                "Couldn't open the world",
+                format!(
+                    "Can't open \"{world_dir}\": {e}. Nothing was changed. Fix its level.txt, or restore the world \
+                     from the backups folder."
+                ),
+            );
             self.title = Some(title);
             return;
         }
@@ -326,7 +356,13 @@ impl App {
         let shell = game.into_shell();
         let mut title = title::Title::new(shell, &self.saves_dir);
         if let Some(e) = save_error {
-            title.world_error(format!("Could not save the world: {e}"));
+            title.world_error(
+                "Couldn't save the world",
+                format!(
+                    "Could not save the world: {e}. Recent changes may be lost. Check for free disk space and that \
+                     the saves folder can be written, then open the world again."
+                ),
+            );
         }
         self.title = Some(title);
     }
@@ -352,6 +388,21 @@ pub(crate) struct Shell {
     settings_path: Option<std::path::PathBuf>,
     /// The in-game updater; its check runs once per launch.
     updates: crate::update::Updater,
+    /// Controller input: menu navigation on the title screen, then
+    /// split-screen players and menus in a world.
+    gilrs: Option<gilrs::Gilrs>,
+}
+
+impl Shell {
+    /// Pushes the options the title screen can change to the renderer and audio.
+    fn apply_settings(&mut self) {
+        let s = self.settings;
+        if self.renderer.vsync() != s.vsync {
+            self.renderer.set_vsync(s.vsync);
+        }
+        self.renderer.set_brightness(s.brightness);
+        self.audio.set_volumes(|source| s.sound_volume(source));
+    }
 }
 
 impl ApplicationHandler for App {
@@ -392,7 +443,7 @@ impl ApplicationHandler for App {
         }
         let renderer = pollster::block_on(Renderer::new(window, settings.vsync));
         let mut audio = crate::audio::Audio::new(self.args.mute, settings.volume);
-        audio.set_music_volume(settings.music_volume);
+        audio.set_volumes(|source| settings.sound_volume(source));
         let root = self.saves_dir.parent().unwrap_or(&self.saves_dir);
         let source = match &self.args.update_source {
             Some(dir) => crate::update::Source::Folder(dir.clone()),
@@ -417,9 +468,10 @@ impl ApplicationHandler for App {
             // The window and renderer work: tell a pending update it started.
             updates.after_start();
         }
-        let shell = Shell { renderer, audio, settings, settings_path, updates };
+        let gilrs = if self.args.screenshot.is_none() { gamepad::Pads::open() } else { None };
+        let shell = Shell { renderer, audio, settings, settings_path, updates, gilrs };
         // A named world, a fresh one or a scripted run skips the title screen.
-        let to_title = matches!(self.args.open_menu.as_deref(), Some("title" | "create" | "multiplayer"));
+        let to_title = self.args.open_menu.as_deref().is_some_and(|m| title::TITLE_MENUS.contains(&m));
         if let Some(address) = self.args.join.clone() {
             let mut title = title::Title::new(shell, &self.saves_dir);
             title.connect_address(address, self.args.profile.clone());
@@ -427,15 +479,22 @@ impl ApplicationHandler for App {
             return;
         }
         match self.args.world.clone() {
+            // A world saved by a newer version asks first, as from the list.
+            Some(world)
+                if !to_title && !scripted && !self.args.new_world && title::saved_by_newer(&self.saves_dir, &world) =>
+            {
+                let mut title = title::Title::new(shell, &self.saves_dir);
+                match title.confirm_open(&world) {
+                    Some(title::Action::Play(dir, new)) => self.play(title.into_shell(), &dir, new),
+                    _ => self.title = Some(title),
+                }
+            }
             Some(world) if !to_title => self.play(shell, &world, None),
             None if !to_title && (self.args.new_world || scripted) => self.play(shell, "world", None),
             _ => {
                 let mut title = title::Title::new(shell, &self.saves_dir);
-                if self.args.open_menu.as_deref() == Some("create") {
-                    title.show_create();
-                }
-                if self.args.open_menu.as_deref() == Some("multiplayer") {
-                    title.show_multiplayer();
+                if let Some(menu) = self.args.open_menu.as_deref() {
+                    title.open_menu(menu, self.args.world.as_deref());
                 }
                 title.screenshot = self.args.screenshot.take();
                 self.title = Some(title);
@@ -492,7 +551,7 @@ impl ApplicationHandler for App {
                 // Like Minecraft: switching away pauses (not in scripted runs).
                 if game.had_focus
                     && game.settings_path.is_some()
-                    && game.menu.is_none()
+                    && !game.menu.is_open()
                     && !game.session.vitals.is_dead()
                 {
                     game.open_menu();
@@ -512,20 +571,31 @@ impl ApplicationHandler for App {
                         if game.console_key(&event) || game.search_key(&event) {
                             return;
                         }
+                        if game.menu.is_open() {
+                            if game.menu_key(&event) == Some(menu::MenuAction::Quit) {
+                                self.quit_to_title();
+                            }
+                            return;
+                        }
                         if !event.repeat {
                             game.on_key(code);
                         }
-                        if game.menu.is_none() {
-                            game.keys.insert(code);
+                        if !game.menu.is_open() && !game.console.open {
+                            game.keys.insert(keys::Input::Key(code));
                         }
                     }
                     ElementState::Released => {
-                        game.keys.remove(&code);
+                        game.keys.remove(&keys::Input::Key(code));
+                        game.on_release(keys::Input::Key(code));
                     }
                 }
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 let pressed = state == ElementState::Pressed;
+                let input = keys::Input::Mouse(button);
+                if !pressed {
+                    game.keys.remove(&input);
+                }
                 if game.console.open {
                     return;
                 }
@@ -535,8 +605,8 @@ impl ApplicationHandler for App {
                     }
                     return;
                 }
-                if game.menu.is_some() {
-                    if button == MouseButton::Left && game.menu_click(pressed) == Some(menu::MenuAction::Quit) {
+                if game.menu.is_open() {
+                    if game.menu_click(button, pressed) == Some(menu::MenuAction::Quit) {
                         self.quit_to_title();
                     }
                     return;
@@ -548,7 +618,11 @@ impl ApplicationHandler for App {
                     return;
                 }
                 if game.inventory_open {
-                    if pressed {
+                    // Java's container screens close on the inventory key,
+                    // even when it's a mouse button.
+                    if pressed && game.settings.keys.is(keys::Action::Inventory, input) {
+                        game.toggle_inventory();
+                    } else if pressed {
                         game.inventory_click(button == MouseButton::Right);
                     }
                     return;
@@ -557,32 +631,27 @@ impl ApplicationHandler for App {
                     game.set_grab(true);
                     return;
                 }
-                match button {
-                    MouseButton::Left => game.attack_button(pressed),
-                    MouseButton::Right => game.use_button(pressed),
-                    MouseButton::Middle if pressed => game.pick_block(),
-                    _ => {}
+                if pressed {
+                    game.keys.insert(input);
+                    game.on_press(input);
+                } else {
+                    game.on_release(input);
                 }
             }
-            WindowEvent::MouseWheel { .. } if game.menu.is_some() || game.console.open => {}
+            WindowEvent::MouseWheel { .. } if game.console.open => {}
             WindowEvent::MouseWheel { delta, .. } => {
-                let dy = match delta {
-                    MouseScrollDelta::LineDelta(_, y) => y,
-                    MouseScrollDelta::PixelDelta(p) => (p.y / 30.0) as f32,
+                let lines = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => y as f64,
+                    MouseScrollDelta::PixelDelta(p) => p.y / 30.0,
                 };
-                if dy.abs() >= 0.5 && game.inventory_open {
-                    if game.recipe_book.open && game.shows_recipes() {
-                        game.recipe_book.step(if dy > 0.0 { -1 } else { 1 });
-                    } else {
-                        game.scroll_palette(if dy > 0.0 { -1 } else { 1 });
-                    }
-                } else if dy.abs() >= 0.5 {
-                    let step = if dy > 0.0 { 8 } else { 1 };
-                    game.select((game.body.actions.selected + step) % 9);
-                }
+                game.wheel(lines);
             }
             WindowEvent::RedrawRequested => {
                 game.frame();
+                if game.menu_action.take() == Some(menu::MenuAction::Quit) {
+                    self.quit_to_title();
+                    return;
+                }
                 if let Some(reason) = game.lan.lost.take() {
                     self.quit_to_title();
                     if let Some(title) = self.title.as_mut() {
@@ -605,7 +674,11 @@ impl ApplicationHandler for App {
             && game.benchmark.is_none()
         {
             let k = MOUSE_SENSITIVITY * game.settings.sensitivity;
-            game.session.player.look(delta.0 as f32 * k, delta.1 as f32 * k);
+            let sign = |invert: bool| if invert { -1.0 } else { 1.0 };
+            game.session.player.look(
+                delta.0 as f32 * k * sign(game.settings.invert_mouse_x),
+                delta.1 as f32 * k * sign(game.settings.invert_mouse_y),
+            );
         }
     }
 
@@ -665,10 +738,10 @@ fn sky_state(t: f64) -> SkyState {
 impl Game {
     /// Ends the game, keeping what the title screen needs.
     fn into_shell(self) -> Shell {
-        let Game { mut renderer, mut audio, settings, settings_path, updates, .. } = self;
+        let Game { mut renderer, mut audio, settings, settings_path, updates, pads, .. } = self;
         renderer.clear_world();
         audio.leave_world();
-        Shell { renderer, audio, settings, settings_path, updates }
+        Shell { renderer, audio, settings, settings_path, updates, gilrs: pads.into_gilrs() }
     }
 
     fn set_grab(&mut self, grab: bool) {
@@ -687,7 +760,8 @@ impl Game {
         }
     }
 
-    /// Dispatch a key press through menu/death guards and retain gameplay taps for the next tick.
+    /// A key press during play (not a repeat): Escape, which stays fixed as
+    /// in Java, then every action bound to the key.
     fn on_key(&mut self, code: KeyCode) {
         if self.credits.is_some() {
             if matches!(code, KeyCode::Escape | KeyCode::Space | KeyCode::Enter) {
@@ -695,44 +769,96 @@ impl Game {
             }
             return;
         }
-        if self.menu.is_some() {
-            if code == KeyCode::Escape {
-                self.menu_back();
+        if self.menu.is_open() {
+            return;
+        }
+        if code == KeyCode::Escape {
+            // The death screen ignores Escape.
+            if self.session.vitals.is_dead() {
+                return;
+            }
+            if self.inventory_open {
+                self.toggle_inventory();
+            } else {
+                self.open_menu();
             }
             return;
         }
-        let blocked_when_dead =
-            [KeyCode::KeyE, KeyCode::KeyG, KeyCode::KeyF, KeyCode::KeyQ, KeyCode::Space, KeyCode::Escape];
-        if self.session.vitals.is_dead() && blocked_when_dead.contains(&code) {
+        self.on_press(keys::Input::Key(code));
+    }
+
+    /// A key or mouse button pressed during play: runs every action bound
+    /// to it, as Java's `KeyMapping.click` does.
+    fn on_press(&mut self, input: keys::Input) {
+        let bindings = self.settings.keys;
+        for action in bindings.actions(input) {
+            if self.menu.is_open() {
+                break;
+            }
+            self.press(action);
+        }
+    }
+
+    /// A key or mouse button let go during play.
+    fn on_release(&mut self, input: keys::Input) {
+        if self.menu.is_open() || self.console.open || self.inventory_open || !self.mouse_grabbed {
             return;
         }
-        match code {
-            KeyCode::Escape if self.inventory_open => self.toggle_inventory(),
-            KeyCode::Escape => self.open_menu(),
-            KeyCode::KeyE => self.toggle_inventory(),
-            KeyCode::KeyQ => self.drop_selected(self.modifiers.control_key()),
+        let bindings = self.settings.keys;
+        for action in bindings.actions(input) {
+            match action {
+                keys::Action::Attack => self.attack_button(false),
+                keys::Action::Use => self.use_button(false),
+                _ => {}
+            }
+        }
+    }
+
+    /// One action's press, with the death screen's guards.
+    fn press(&mut self, action: keys::Action) {
+        use keys::Action as A;
+        let dead = self.session.vitals.is_dead();
+        if dead && matches!(action, A::Inventory | A::GameMode | A::Fly | A::Drop | A::Jump) {
+            return;
+        }
+        // The hands only act in play, with the mouse captured.
+        let playing = !dead && !self.inventory_open && !self.console.open && self.mouse_grabbed;
+        if !playing && matches!(action, A::Attack | A::Use | A::PickBlock) {
+            return;
+        }
+        if let Some(slot) = action.hotbar() {
+            self.select(slot);
+            return;
+        }
+        match action {
+            A::Attack => self.attack_button(true),
+            A::Use => self.use_button(true),
+            A::PickBlock => self.pick_block(),
+            A::Inventory => self.toggle_inventory(),
+            A::Drop => self.drop_selected(self.modifiers.control_key()),
+            A::Chat | A::Command if !self.inventory_open && !self.console.open => self.open_console(action == A::Chat),
             // Hardcore deaths end in spectator for good; only `/gamemode` cheats out.
-            KeyCode::KeyG if self.lan.client.is_some() => self.lan_command(if self.session.mode.is_creative() {
+            A::GameMode if self.lan.client.is_some() => self.lan_command(if self.session.mode.is_creative() {
                 "/gamemode survival"
             } else {
                 "/gamemode creative"
             }),
-            KeyCode::KeyG if !self.hardcore => {
+            A::GameMode if !self.hardcore => {
                 let mode = match self.session.mode {
                     GameMode::Survival => GameMode::Creative,
                     GameMode::Creative | GameMode::Adventure | GameMode::Spectator => GameMode::Survival,
                 };
                 self.set_mode(mode);
             }
-            KeyCode::KeyF if self.session.player.can_fly => {
+            A::Fly if self.session.player.can_fly => {
                 self.session.player.flying = !self.session.player.flying;
                 self.session.player.vel = DVec3::ZERO;
             }
             // Waiting in bed for other players: jumping gets up.
-            KeyCode::Space if self.session.sleeping.is_some() => self.session.sleeping = None,
-            KeyCode::Space => {
+            A::Jump if self.session.sleeping.is_some() => self.session.sleeping = None,
+            A::Jump => {
                 self.jump_pressed = true;
-                // Double-tap space toggles flight, like Minecraft creative.
+                // Double-tap jump toggles flight, like Minecraft creative.
                 let now = Instant::now();
                 if self.session.player.can_fly && now - self.last_space < Duration::from_millis(280) {
                     self.session.player.flying = !self.session.player.flying;
@@ -740,19 +866,22 @@ impl Game {
                 }
                 self.last_space = now;
             }
-            KeyCode::KeyV => {
+            // Java's `ToggleKeyMapping`: a press flips the held state.
+            A::Sneak if self.settings.toggle_sneak => self.sneak_toggled = !self.sneak_toggled,
+            A::Sprint if self.settings.toggle_sprint => self.sprint_toggled = !self.sprint_toggled,
+            A::Vsync => {
                 self.settings.vsync = !self.settings.vsync;
                 self.apply_settings();
                 self.show_popup(if self.settings.vsync { "VSync on" } else { "VSync off" });
             }
-            KeyCode::KeyM => {
+            A::Mute => {
                 let muted = self.audio.toggle_mute();
                 self.show_popup(if muted { "Sound off" } else { "Sound on" });
             }
-            KeyCode::F1 => self.show_hud = !self.show_hud,
-            KeyCode::F3 => self.show_debug = !self.show_debug,
-            KeyCode::F5 => self.camera.cycle(),
-            KeyCode::F11 => {
+            A::ToggleGui => self.show_hud = !self.show_hud,
+            A::DebugOverlay => self.show_debug = !self.show_debug,
+            A::TogglePerspective => self.camera.cycle(),
+            A::Fullscreen => {
                 // Leaves whatever fullscreen the window is in, or enters the
                 // chosen mode (borderless if the option is Off).
                 let w = &self.renderer.window;
@@ -766,27 +895,64 @@ impl Game {
                 self.settings.fullscreen.apply(w);
                 self.save_settings();
             }
-            KeyCode::BracketLeft | KeyCode::Minus | KeyCode::BracketRight | KeyCode::Equal => {
-                let step = if matches!(code, KeyCode::BracketLeft | KeyCode::Minus) { -1 } else { 1 };
+            A::RenderDistanceDown | A::RenderDistanceUp => {
+                let step = if action == A::RenderDistanceDown { -1 } else { 1 };
                 self.settings.render_distance = (self.settings.render_distance + step)
                     .clamp(settings::RENDER_DISTANCE.0, settings::RENDER_DISTANCE.1);
                 self.apply_settings();
             }
-            _ => {
-                let digits = [
-                    KeyCode::Digit1,
-                    KeyCode::Digit2,
-                    KeyCode::Digit3,
-                    KeyCode::Digit4,
-                    KeyCode::Digit5,
-                    KeyCode::Digit6,
-                    KeyCode::Digit7,
-                    KeyCode::Digit8,
-                    KeyCode::Digit9,
-                ];
-                if let Some(i) = digits.iter().position(|&d| d == code) {
-                    self.select(i);
+            _ => {}
+        }
+    }
+
+    /// Whether an action's key is down: held, or toggled on for Sneak and
+    /// Sprint in Toggle mode. A table lookup per call.
+    fn held(&self, action: keys::Action) -> bool {
+        match action {
+            keys::Action::Sneak if self.settings.toggle_sneak => self.sneak_toggled,
+            keys::Action::Sprint if self.settings.toggle_sprint => self.sprint_toggled,
+            _ => self.keys.contains(&self.settings.keys.get(action)),
+        }
+    }
+
+    /// Mouse wheel, `lines` up positive: Scroll Sensitivity and Discrete
+    /// Scrolling (`MouseHandler.onScroll`), then the menu, the inventory's
+    /// lists or the hotbar.
+    fn wheel(&mut self, lines: f64) {
+        let s = &self.settings;
+        let lines = if s.discrete_scroll && lines != 0.0 { lines.signum() } else { lines } * s.scroll_sensitivity;
+        if self.menu.is_open() {
+            self.menu_wheel(lines as f32);
+        } else if self.inventory_open {
+            // Small steps add up, as on the hotbar, so low sensitivities still scroll.
+            if self.scroll != 0.0 && lines.signum() != self.scroll.signum() {
+                self.scroll = 0.0;
+            }
+            self.scroll += lines;
+            let notches = self.scroll.trunc();
+            if notches != 0.0 {
+                self.scroll -= notches;
+                let step = if notches > 0.0 { -1 } else { 1 };
+                for _ in 0..(notches.abs() as usize).min(64) {
+                    if self.recipe_book.open && self.shows_recipes() {
+                        self.recipe_book.step(step);
+                    } else {
+                        self.scroll_palette(step);
+                    }
                 }
+            }
+        } else {
+            // `ScrollWheelHandler`: whole notches, one slot each, keeping
+            // the rest unless the direction changes.
+            if self.scroll != 0.0 && lines.signum() != self.scroll.signum() {
+                self.scroll = 0.0;
+            }
+            self.scroll += lines;
+            let notches = self.scroll.trunc();
+            if notches != 0.0 {
+                self.scroll -= notches;
+                let step = if notches > 0.0 { 8 } else { 1 };
+                self.select((self.body.actions.selected + step) % 9);
             }
         }
     }
@@ -811,7 +977,7 @@ impl Game {
 
     /// Sneaking builds against containers and beds instead of using them.
     fn sneak_building(&self) -> bool {
-        self.modifiers.shift_key()
+        self.held(keys::Action::Sneak)
     }
 
     /// The single entry point for hurting the player (falls, drowning,
@@ -855,7 +1021,7 @@ impl Game {
             for item in self.session.inventory.wear_armor(amount) {
                 self.show_popup(&format!("{} broke", capitalize(item.name())));
                 let sound = crate::audio::sounds::Sound::Break(crate::audio::sounds::Material::Wood);
-                self.audio.play(sound, None, 0.8, (1.3, 1.5));
+                self.audio.play_in(crate::audio::SoundSource::Players, sound, None, 0.8, (1.3, 1.5));
             }
         }
         taken
@@ -887,6 +1053,10 @@ impl Game {
         }
         self.set_grab(false);
         self.keys.clear();
+        // Java's `resetToggleKeys`.
+        self.sneak_toggled = false;
+        self.sprint_toggled = false;
+        self.distortion.reset();
         self.body.left_held = false;
         self.body.right_held = false;
         self.jump_pressed = false;
@@ -1154,7 +1324,8 @@ impl Game {
         }
         for (pos, sound) in std::mem::take(&mut self.world.trip_sounds) {
             // The existing click, at Java's volume 0.4 and the hook's pitch.
-            self.audio.play(
+            self.audio.play_in(
+                crate::audio::SoundSource::Blocks,
                 crate::audio::sounds::Sound::Click,
                 Some(pos.as_dvec3() + glam::DVec3::splat(0.5)),
                 0.4,
@@ -1327,7 +1498,7 @@ impl Game {
             // Paused captures cannot drain simulation work queued by
             // --place (fluid wakeups, falling blocks). Wait only for jobs.
             0 if settled
-                && (self.menu.is_some() || self.console.open || self.world.is_idle())
+                && (self.menu.is_open() || self.console.open || self.world.is_idle())
                 && self.mobs.waited() =>
             {
                 self.screenshot_state = 1;
@@ -1393,9 +1564,10 @@ impl Game {
 
     /// Sample held keys and a queued jump tap for a gameplay tick; return neutral input while control is blocked.
     fn movement_input(&self, arriving: bool) -> MoveInput {
-        let held = |k: KeyCode| self.keys.contains(&k);
-        let axis = |pos: KeyCode, neg: KeyCode| held(pos) as i32 as f64 - held(neg) as i32 as f64;
-        if self.menu.is_none()
+        use keys::Action as A;
+        let held = |a: A| self.held(a);
+        let axis = |pos: A, neg: A| held(pos) as i32 as f64 - held(neg) as i32 as f64;
+        if !self.menu.is_open()
             && !self.console.open
             && self.mouse_grabbed
             && !self.inventory_open
@@ -1404,11 +1576,11 @@ impl Game {
             && !arriving
         {
             MoveInput {
-                forward: axis(KeyCode::KeyW, KeyCode::KeyS),
-                right: axis(KeyCode::KeyD, KeyCode::KeyA),
-                jump: held(KeyCode::Space) || self.jump_pressed,
-                descend: held(KeyCode::ShiftLeft),
-                sprint: held(KeyCode::ControlLeft) || held(KeyCode::KeyR),
+                forward: axis(A::Forward, A::Back),
+                right: axis(A::Right, A::Left),
+                jump: held(A::Jump) || self.jump_pressed,
+                descend: held(A::Sneak),
+                sprint: held(A::Sprint),
                 using_item: self.body.actions.eat_timer > 0.0 || self.session.using_item(),
                 // Too hungry to sprint at 6 food or less (survival), or blind.
                 sprint_blocked: !self.session.vitals.may_sprint(self.session.mode.invulnerable()),
@@ -1498,7 +1670,7 @@ impl Game {
         self.poll_lan();
         self.poll_agents();
         let paused = pauses_simulation(
-            self.menu.is_some() || self.console.open || self.credits.is_some(),
+            self.menu.is_open() || self.console.open || self.credits.is_some(),
             self.agents.host.is_some() || self.lan.host.is_some() || self.lan.client.is_some(),
         );
         let elapsed = now - self.last_frame;
@@ -1506,6 +1678,7 @@ impl Game {
         let ticks = self.clock.advance(elapsed, paused);
         let dt = if paused { 0.0 } else { elapsed.as_secs_f64().min(0.25) };
         self.update_credits(elapsed.as_secs_f32().min(0.25));
+        self.menu_tick();
         // Benchmark scenes take no controller input (a stray Start would pause sampling).
         if self.lan.client.is_none() && self.benchmark.is_none() {
             self.poll_pads(dt as f32, paused);
@@ -1675,10 +1848,13 @@ impl Game {
                 &self.session.vitals,
                 alpha as f32,
                 self.settings.view_bobbing,
-            ),
+                self.settings.damage_tilt,
+            ) * self.distortion.warp(alpha as f32, self.settings.distortion),
             fov_y: self.settings.fov.to_radians()
-                * self.session.player.fov_modifier(alpha as f32)
-                * (1.0 - 0.15 * self.bow_power().unwrap_or(0.0)),
+                * fov_effects(
+                    self.session.player.fov_modifier(alpha as f32) * (1.0 - 0.15 * self.bow_power().unwrap_or(0.0)),
+                    self.settings.fov_effects,
+                ),
             sky_color: fog_color.map(|c| c as f64),
             fog_color,
             fog_start,
@@ -1711,7 +1887,7 @@ impl Game {
             night_vision: self.session.vitals.effects.night_vision(scene.time),
             ui: if self.show_hud
                 || self.session.vitals.is_dead()
-                || self.menu.is_some()
+                || self.menu.is_open()
                 || self.console.open
                 || self.credits.is_some()
             {
@@ -1738,7 +1914,17 @@ impl Game {
             self.frame_time_sum = 0.0;
             self.stats_since = now;
         }
+        // Max Framerate. Scripted runs (screenshots, benchmarks) are never held back.
+        if self.settings_path.is_some() && self.benchmark.is_none() {
+            self.frame_limit.wait(self.settings.frame_cap());
+        }
     }
+}
+
+/// The FOV Effects option (`fovEffectScale`, 0..1) applied to a gameplay
+/// FOV modifier, as `AbstractClientPlayer.getFieldOfViewModifier` does.
+pub(super) fn fov_effects(modifier: f32, scale: f32) -> f32 {
+    1.0 + (modifier - 1.0) * scale
 }
 
 impl Game {

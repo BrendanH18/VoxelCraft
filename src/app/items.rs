@@ -4,8 +4,8 @@
 
 use glam::DVec3;
 
-use crate::audio::Audio;
 use crate::audio::sounds::Sound;
+use crate::audio::{Audio, SoundSource};
 use crate::inventory::Stack;
 use crate::render::BlockModel;
 use crate::world::block::Block;
@@ -27,7 +27,8 @@ impl Game {
         for cell in std::mem::take(&mut self.world.brews_done) {
             // Java's brewing stand bubbling as a brew finishes.
             let at = cell.as_dvec3() + DVec3::splat(0.5);
-            self.audio.play(crate::audio::sounds::Sound::Swim, Some(at), 0.5, (1.6, 1.9));
+            // The brewing stand's bubbling is `BLOCKS` in Java.
+            self.audio.play_in(SoundSource::Blocks, crate::audio::sounds::Sound::Swim, Some(at), 0.5, (1.6, 1.9));
         }
         for (cell, xp) in std::mem::take(&mut self.world.xp_drops) {
             self.mobs.entities.spawn_xp(cell.as_dvec3() + DVec3::splat(0.5), xp);
@@ -107,7 +108,14 @@ impl Game {
             if self.session.vitals.is_dead() || self.session.sleeping.is_some() {
                 return;
             }
-            self.audio.play(Sound::Teleport, Some(self.session.player.pos + DVec3::Y), 0.8, (0.9, 1.1));
+            // `ThrownEnderpearl` plays the landing sound as `PLAYERS`.
+            self.audio.play_in(
+                SoundSource::Players,
+                Sound::Teleport,
+                Some(self.session.player.pos + DVec3::Y),
+                0.8,
+                (0.9, 1.1),
+            );
             self.session.player.pos = pos;
             self.session.player.vel = DVec3::ZERO;
             self.session.vitals.reset_fall();
@@ -118,10 +126,10 @@ impl Game {
         {
             let from = bot.agent.session.player.pos;
             if bot.agent.pearl_teleport(pos, &mut self.mobs.entities) {
-                self.audio.play(Sound::Teleport, Some(from + DVec3::Y), 0.8, (0.9, 1.1));
+                self.audio.play_in(SoundSource::Players, Sound::Teleport, Some(from + DVec3::Y), 0.8, (0.9, 1.1));
             }
         }
-        self.audio.play(Sound::Teleport, Some(pos + DVec3::Y), 0.8, (0.9, 1.1));
+        self.audio.play_in(SoundSource::Players, Sound::Teleport, Some(pos + DVec3::Y), 0.8, (0.9, 1.1));
     }
 
     /// Q: drops one of the selected item, or the whole stack with Ctrl.
@@ -250,7 +258,7 @@ pub(super) fn shot_sound(audio: &mut Audio, ranged: voxelcraft::session::ranged:
 
 /// Java's eye launch whoosh, pitched down like a thrown pearl.
 pub(super) fn eye_thrown_sound(audio: &mut Audio, from: DVec3) {
-    audio.play(Sound::Bow, Some(from), 0.5, (0.42, 0.62));
+    audio.play_in(SoundSource::Neutral, Sound::Bow, Some(from), 0.5, (0.42, 0.62));
 }
 
 /// An eye settling into the frame at `pos`, and the portal opening.
