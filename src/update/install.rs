@@ -327,6 +327,8 @@ pub fn finish_mac(args: &[String]) -> i32 {
     if let Err(e) = swap(&staged, &bundle) {
         note(&format!("could not swap in the new app: {e}"));
         let _ = std::fs::remove_dir_all(&staged);
+        // Unlocked first, so the reopened game reports the failed update.
+        drop(locks);
         let _ = game(&bundle).spawn();
         return 1;
     }
@@ -368,6 +370,8 @@ pub fn finish_mac(args: &[String]) -> i32 {
         }
         Err(e) => note(&format!("could not restore the previous app: {e}")),
     }
+    // Unlocked first, so the reopened game reports the failed update.
+    drop(locks);
     let _ = game(&bundle).spawn();
     1
 }

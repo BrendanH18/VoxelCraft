@@ -250,8 +250,14 @@ impl Updater {
         let Some(target) = std::fs::read_to_string(&pending).ok().and_then(|s| Version::parse(s.trim())) else {
             return;
         };
-        let _ = std::fs::remove_file(&pending);
         let current = Version::current();
+        // An older version opened while an update is still finishing (its
+        // lock is held) leaves the record for the new version, which must
+        // see it to report that it started.
+        if current < target && lock_file(&self.updates.join("update.lock")).is_err() {
+            return;
+        }
+        let _ = std::fs::remove_file(&pending);
         if current >= target {
             let _ = std::fs::write(started_marker(&self.updates, target), b"");
             let _ = std::fs::remove_dir_all(self.updates.join(target.to_string()));
@@ -264,6 +270,7 @@ impl Updater {
                 current.short()
             ));
             log::warn!("update to {target} did not complete; still {current}");
+            let _ = std::fs::remove_dir_all(self.updates.join(target.to_string()));
             // `--update-now` reopens with the same arguments: don't retry forever.
             self.auto = false;
         }
@@ -450,6 +457,14 @@ mod tests {
         // An update that didn't take leaves the old version running.
         let newer = Version(current.0, current.1 + 1, 0);
         std::fs::write(updates.join(PENDING), format!("{newer}\n")).unwrap();
+        // While the update still holds its lock, an older window leaves the
+        // record alone.
+        let busy = lock_file(&updates.join("update.lock")).unwrap();
+        let mut updater = Updater::new(&root, Source::Folder(root.clone()), false);
+        updater.after_start();
+        assert_eq!(updater.notice, None);
+        assert!(updates.join(PENDING).exists(), "kept for the version being installed");
+        drop(busy);
         let mut updater = Updater::new(&root, Source::Folder(root.clone()), false);
         updater.auto = true;
         updater.after_start();

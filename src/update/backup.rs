@@ -22,7 +22,9 @@ pub fn backup_saves(saves: &Path, backups: &Path, version: &str) -> Result<PathB
     if let Ok(entries) = std::fs::read_dir(saves) {
         for entry in entries.flatten() {
             let storage = Storage::new(entry.path());
-            if !entry.path().is_dir() || !storage.exists() {
+            // A world being created holds its session lock before its first
+            // save writes `level.txt`.
+            if !entry.path().is_dir() || !(storage.exists() || entry.path().join("session.lock").exists()) {
                 continue;
             }
             match storage.lock() {
@@ -205,6 +207,12 @@ mod tests {
         let err = backup_saves(&saves, &root.join("backups"), "0.11.0").unwrap_err();
         assert!(err.contains("\"alpha\" is open in another VoxelCraft window"), "{err}");
         assert!(!root.join("backups").exists(), "nothing written");
+        drop(held);
+        // A brand-new world open elsewhere, before its first save writes level.txt.
+        let held = Storage::new(saves.join("fresh")).lock().unwrap();
+        std::fs::remove_dir_all(saves.join("alpha")).unwrap();
+        let err = backup_saves(&saves, &root.join("backups"), "0.11.0").unwrap_err();
+        assert!(err.contains("\"fresh\" is open"), "{err}");
         drop(held);
         std::fs::remove_dir_all(root).unwrap();
     }

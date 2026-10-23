@@ -112,6 +112,15 @@ making a backup. A final run with both locks handed to the watcher repeated the
 update and the rollback, and both locks were free afterwards, so the
 reopened game doesn't keep them.
 
+Two further Macroscope findings were fixed and the real Mac run repeated: an
+older version opened while an update was still finishing consumed the update
+record, so the new version couldn't confirm it started and was rolled back
+(older versions now leave the record while the update lock is held, and the
+watcher unlocks before reopening the old version after a rollback); and a
+world created moments before, whose window holds its session lock before
+`level.txt` exists, was copied rather than refused (any world folder with a
+`session.lock` is now locked too).
+
 ## Not yet verified
 
 - A real Windows update: the installer's update mode is covered by the
