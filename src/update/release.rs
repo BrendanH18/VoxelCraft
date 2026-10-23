@@ -52,7 +52,12 @@ impl Release {
         Ok(Self {
             version,
             notes: v["body"].as_str().unwrap_or_default().replace("\r\n", "\n"),
-            page: v["html_url"].as_str().unwrap_or(super::RELEASES_PAGE).to_string(),
+            // Opened with the system's URL handler: web pages only.
+            page: v["html_url"]
+                .as_str()
+                .filter(|url| url.starts_with("https://"))
+                .unwrap_or(super::RELEASES_PAGE)
+                .to_string(),
             assets,
         })
     }
@@ -139,5 +144,10 @@ mod tests {
         assert!(Release::parse(&LATEST.replace("\"v0.11\"", "\"nightly\"")).is_err());
         assert!(Release::parse("not json").is_err());
         assert_eq!(strip_links("a [b](c) d [e"), "a b d [e");
+        for page in ["file:///Applications/Calculator.app", "javascript:alert(1)", "http://example.com"] {
+            let r =
+                Release::parse(&LATEST.replace("https://github.com/BrendanH18/VoxelCraft/releases/tag/v0.11", page));
+            assert_eq!(r.unwrap().page, super::super::RELEASES_PAGE, "{page}");
+        }
     }
 }
