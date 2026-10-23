@@ -201,7 +201,8 @@ fn two_columns(widgets: &[Widget], (sw, sh): (f32, f32)) -> Vec<(Widget, [f32; 4
     };
     let rows = items.len().div_ceil(2) + usize::from(done);
     let w = BUTTON_W.min(((sw - 3.0 * GAP) / 2.0).floor());
-    let gap = GAP.min(((sh - rows as f32 * BUTTON_H - 24.0) / (rows as f32 + 2.0)).max(1.0));
+    // Down to no gaps at all in the smallest UI (320 x 180 pixels).
+    let gap = GAP.min(((sh - rows as f32 * BUTTON_H - 24.0) / (rows as f32 + 2.0)).max(0.0));
     let total = rows as f32 * BUTTON_H + (rows as f32 + 2.0) * gap + 20.0;
     let top = ((sh - total) / 2.0).floor() + 20.0;
     let (left, right) = ((sw / 2.0 - w - GAP / 2.0).floor(), (sw / 2.0 + GAP / 2.0).floor());
@@ -447,6 +448,8 @@ impl Game {
                 bevel(ui, [x, y, w, h], if hot { HOT } else { BUTTON }, true);
             }
             let color = if hot { [1.0, 1.0, 0.63, 1.0] } else { WHITE };
+            // Narrow two-column buttons shorten long labels rather than overlap.
+            let label = super::title::fit(&label, w - 4.0);
             ui.text((x + (w - Ui::text_width(&label)) / 2.0).floor(), y + 6.0, &label, color);
         }
     }
@@ -533,12 +536,16 @@ mod tests {
     /// Options screen switches to two columns and keeps every button on screen.
     #[test]
     fn short_windows_fit_every_option() {
-        for size in [(533.0, 300.0), (480.0, 270.0), (640.0, 360.0)] {
+        // 320 x 180 is the smallest UI `Ui::fitted_scale` allows.
+        for size in [(533.0, 300.0), (480.0, 270.0), (640.0, 360.0), (320.0, 240.0), (320.0, 180.0)] {
             let widgets = layout(Screen::Options, size);
             assert_eq!(widgets.len(), 15);
             for (i, &(w, r)) in widgets.iter().enumerate() {
                 assert!(r[0] >= 0.0 && r[0] + r[2] <= size.0, "{w:?} on screen at {size:?}");
-                assert!(r[1] > 0.0 && r[1] + r[3] <= size.1, "{w:?} on screen at {size:?}");
+                assert!(r[1] >= 20.0 && r[1] + r[3] <= size.1, "{w:?} and the title on screen at {size:?}");
+                let longest = Settings { render_distance: 32, simulation_distance: 32, ..Settings::default() };
+                let label = super::super::title::fit(&w.label(&longest, Difficulty::Normal, false), r[2] - 4.0);
+                assert!(Ui::text_width(&label) <= r[2] - 4.0, "{w:?} label fits at {size:?}");
                 let centre = (r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
                 assert_eq!(widgets.iter().position(|&(_, r)| inside(r, centre)), Some(i), "{w:?} overlaps");
             }

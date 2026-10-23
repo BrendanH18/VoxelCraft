@@ -925,7 +925,7 @@ fn wrap(text: &str, width: f32) -> Vec<String> {
 }
 
 /// `text`, cut short with "..." if it's wider than `width` UI pixels.
-fn fit(text: &str, width: f32) -> String {
+pub(super) fn fit(text: &str, width: f32) -> String {
     if Ui::text_width(text) <= width {
         return text.to_string();
     }
