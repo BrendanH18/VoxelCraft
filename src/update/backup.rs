@@ -82,13 +82,13 @@ fn backup_order(name: &str) -> Option<(&str, u32)> {
     });
     let rest = rest.strip_prefix(MARKER)?;
     let (version, n) = match rest.split_once('-') {
-        Some((v, n)) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => (v, n.parse().ok()?),
-        Some(_) => return None,
+        // Numbers are written from 2, without leading zeros.
+        Some((v, n)) => (v, n.parse::<u32>().ok().filter(|&k| k >= 2 && k.to_string() == n)?),
         None => (rest, 1),
     };
-    let three_part = version.split('.').count() == 3;
-    (shape && three_part && super::Version::parse(version).is_some())
-        .then(|| (&name[..19 + MARKER.len() + version.len()], n))
+    // Exactly as `Version` writes it: no `v`, no leading zeros, three parts.
+    let canonical = super::Version::parse(version).is_some_and(|v| v.to_string() == version);
+    (shape && canonical).then(|| (&name[..19 + MARKER.len() + version.len()], n))
 }
 
 /// Copies a directory tree, leaving out session locks (which another
@@ -310,6 +310,10 @@ mod tests {
             "2026-10-22_16-05-09-before-0.11",
             "2026-10-22_16-05-09-before-0.11.0-copy",
             "2026-10-22_16-05-09-before-0.11.0-",
+            "2026-10-22_16-05-09-before-v0.11.0",
+            "2026-10-22_16-05-09-before-0.011.0",
+            "2026-10-22_16-05-09-before-0.11.0-1",
+            "2026-10-22_16-05-09-before-0.11.0-02",
             "2026-10-22 16-05-09-before-0.11.0",
             "x026-10-22_16-05-09-before-0.11.0",
             ".2026-10-22_16-05-09-before-0.11.0.partial",

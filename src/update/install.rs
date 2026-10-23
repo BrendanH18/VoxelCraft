@@ -92,6 +92,20 @@ pub fn detect() -> Result<Install, String> {
     }
 }
 
+impl Install {
+    /// The update locks' files, always taken in this order: the data
+    /// folder's (`updates`, holding its downloads), and for a Mac app also
+    /// one beside it (the staged and rollback app, whatever the data folder).
+    pub fn lock_paths(&self, updates: &Path) -> Vec<PathBuf> {
+        match self {
+            Install::Mac { bundle } => {
+                vec![updates.join("update.lock"), bundle.with_file_name(".VoxelCraft-update.lock")]
+            }
+            Install::Windows => vec![updates.join("update.lock")],
+        }
+    }
+}
+
 /// A verified package, ready to install once the game exits.
 #[derive(Debug)]
 pub enum Prepared {
@@ -156,8 +170,15 @@ impl Prepared {
 }
 
 /// Starts the installer or the Mac watcher, which reopens the game with
-/// `restart_args`. The caller must exit promptly.
-pub fn launch(prepared: &Prepared, updates: &Path, version: Version, restart_args: &[OsString]) -> Result<(), String> {
+/// `restart_args`. The Mac watcher inherits `locks`, the held update locks.
+/// The caller must exit promptly.
+pub fn launch(
+    prepared: &Prepared,
+    updates: &Path,
+    version: Version,
+    restart_args: &[OsString],
+    locks: &[std::fs::File],
+) -> Result<(), String> {
     match prepared {
         Prepared::Windows { installer } => {
             let mut command = Command::new(installer);
@@ -171,29 +192,46 @@ pub fn launch(prepared: &Prepared, updates: &Path, version: Version, restart_arg
                 .stderr(Stdio::null());
             command.spawn().map(drop).map_err(|e| format!("could not start the installer: {e}"))
         }
+        #[cfg(target_os = "macos")]
         Prepared::Mac { staged, bundle } => {
+            use std::os::fd::AsRawFd;
             let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-            Command::new(exe)
+            // The watcher inherits the locked files, so the locks never lapse
+            // between the game exiting and the watcher taking over.
+            let fds: Vec<i32> = locks.iter().map(|l| l.as_raw_fd()).collect();
+            if fds.is_empty() || !fds.iter().all(|&fd| set_inherited(fd, true)) {
+                fds.iter().for_each(|&fd| _ = set_inherited(fd, false));
+                return Err("could not hand the update lock to the installer".into());
+            }
+            let fd_list = fds.iter().map(i32::to_string).collect::<Vec<_>>().join(",");
+            let spawned = Command::new(exe)
                 .arg("--finish-update")
                 .arg(std::process::id().to_string())
                 .arg(staged)
                 .arg(bundle)
                 .arg(updates)
                 .arg(version.to_string())
+                .arg(fd_list)
                 .args(restart_args)
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
-                .spawn()
-                .map(drop)
-                .map_err(|e| format!("could not start the update: {e}"))
+                .spawn();
+            fds.iter().for_each(|&fd| _ = set_inherited(fd, false));
+            spawned.map(drop).map_err(|e| format!("could not start the update: {e}"))
+        }
+        #[cfg(not(target_os = "macos"))]
+        Prepared::Mac { bundle, .. } => {
+            let _ = (updates, version, locks);
+            Err(format!("{} can only be updated on a Mac", bundle.display()))
         }
     }
 }
 
 /// `--data-dir <dir>` and `--update-source <dir>` as Inno Setup parameters
-/// (`/DATADIR=<dir>`, `/UPDATESOURCE=<dir>`), without trailing separators
-/// so the installer's quoting holds.
+/// (`/DATADIR=<dir>`, `/UPDATESOURCE=<dir>`). A trailing separator gets a
+/// `.` after it (`C:\` becomes `C:\.`), so the installer's quotes around
+/// the value aren't escaped and a drive root stays a root.
 fn installer_restart_params(restart_args: &[OsString]) -> Vec<OsString> {
     restart_args
         .chunks(2)
@@ -204,8 +242,11 @@ fn installer_restart_params(restart_args: &[OsString]) -> Vec<OsString> {
                 "--update-source" => "UPDATESOURCE",
                 _ => return None,
             };
-            let value = value.to_string_lossy();
-            Some(format!("/{name}={}", value.trim_end_matches(['\\', '/'])).into())
+            let mut value = value.to_string_lossy().into_owned();
+            if value.ends_with(['\\', '/']) {
+                value.push('.');
+            }
+            Some(format!("/{name}={value}").into())
         })
         .collect()
 }
@@ -234,15 +275,28 @@ fn run(command: &mut Command) -> Result<(), String> {
     }
 }
 
-/// `--finish-update <pid> <staged> <bundle> <updates> <version> [game
-/// arguments...]`: the Mac watcher. Returns the process exit code.
+/// `--finish-update <pid> <staged> <bundle> <updates> <version> <lock fds>
+/// [game arguments...]`: the Mac watcher, holding the update locks it
+/// inherited (comma-separated descriptors). Returns the process exit code.
 #[cfg(target_os = "macos")]
 pub fn finish_mac(args: &[String]) -> i32 {
     use std::io::Write;
     use std::time::{Duration, Instant};
 
-    let [pid, staged, bundle, updates, version, game_args @ ..] = args else { return 2 };
-    let (Ok(pid), Some(version)) = (pid.parse::<i32>(), Version::parse(version)) else { return 2 };
+    let [pid, staged, bundle, updates, version, fds, game_args @ ..] = args else { return 2 };
+    let fds: Option<Vec<i32>> = fds.split(',').map(|fd| fd.parse().ok()).collect();
+    let (Ok(pid), Some(version), Some(fds)) = (pid.parse::<i32>(), Version::parse(version), fds) else {
+        return 2;
+    };
+    // Own the inherited locks (released when this returns), and keep the
+    // game we start from inheriting them.
+    if !fds.iter().all(|&fd| set_inherited(fd, false)) {
+        return 2;
+    }
+    use std::os::fd::FromRawFd;
+    // SAFETY: the game passed us these descriptors, open and locked, and
+    // nothing else in this process uses them.
+    let locks: Vec<std::fs::File> = fds.into_iter().map(|fd| unsafe { std::fs::File::from_raw_fd(fd) }).collect();
     let (staged, bundle, updates) = (PathBuf::from(staged), PathBuf::from(bundle), PathBuf::from(updates));
     let mut log = std::fs::OpenOptions::new().create(true).append(true).open(updates.join("update.log")).ok();
     let mut note = |msg: &str| {
@@ -259,26 +313,17 @@ pub fn finish_mac(args: &[String]) -> i32 {
     let started = super::started_marker(&updates, version);
     let _ = std::fs::remove_file(&started);
 
-    // Wait for the game to exit (it does so right after starting us), then
-    // take the updates lock it held: no other update may touch the staged
-    // app, which becomes the rollback copy.
+    // Wait for the game to exit (it does so right after starting us).
     let deadline = Instant::now() + Duration::from_secs(60);
     while alive(pid) && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(100));
     }
-    let lock = loop {
-        match super::lock_updates(&updates) {
-            Ok(lock) => break lock,
-            Err(_) if Instant::now() < deadline + Duration::from_secs(10) => {
-                std::thread::sleep(Duration::from_millis(100));
-            }
-            Err(e) => {
-                note(&format!("{e}; leaving the installed app as it is"));
-                let _ = game(&bundle).spawn();
-                return 1;
-            }
-        }
-    };
+    if alive(pid) {
+        // Never swap the app under a running game; the staged copy waits for
+        // the next update to replace it.
+        note("the game didn't exit; leaving the installed app as it is");
+        return 1;
+    }
     if let Err(e) = swap(&staged, &bundle) {
         note(&format!("could not swap in the new app: {e}"));
         let _ = std::fs::remove_dir_all(&staged);
@@ -309,7 +354,7 @@ pub fn finish_mac(args: &[String]) -> i32 {
         note("the new version started; removing the old app");
         let _ = std::fs::remove_file(&started);
         let _ = std::fs::remove_dir_all(&staged);
-        drop(lock);
+        drop(locks);
         return 0;
     }
     note("the new version didn't start; restoring the previous app");
@@ -347,6 +392,18 @@ fn swap(a: &Path, b: &Path) -> std::io::Result<()> {
     }
 }
 
+/// Whether child processes inherit `fd` (clears or sets close-on-exec).
+#[cfg(target_os = "macos")]
+fn set_inherited(fd: i32, inherited: bool) -> bool {
+    unsafe extern "C" {
+        fn fcntl(fd: i32, cmd: i32, ...) -> i32;
+    }
+    const F_SETFD: i32 = 2;
+    const FD_CLOEXEC: i32 = 1;
+    // SAFETY: F_SETFD only changes the descriptor's flags; an invalid one fails.
+    unsafe { fcntl(fd, F_SETFD, if inherited { 0 } else { FD_CLOEXEC }) != -1 }
+}
+
 #[cfg(target_os = "macos")]
 fn alive(pid: i32) -> bool {
     unsafe extern "C" {
@@ -374,10 +431,10 @@ mod tests {
     #[test]
     fn restart_args_become_installer_parameters() {
         let args: Vec<OsString> =
-            ["--data-dir", r"C:\Users\a b\Data\", "--update-source", "fixture", "--new", "x"].map(Into::into).into();
+            ["--data-dir", r"C:\Users\a b\Data\", "--update-source", r"D:\", "--new", "x"].map(Into::into).into();
         assert_eq!(
             installer_restart_params(&args),
-            [OsString::from(r"/DATADIR=C:\Users\a b\Data"), "/UPDATESOURCE=fixture".into()]
+            [OsString::from(r"/DATADIR=C:\Users\a b\Data\."), r"/UPDATESOURCE=D:\.".into()]
         );
     }
 
@@ -385,6 +442,38 @@ mod tests {
     fn test_builds_cannot_replace_themselves() {
         // The test binary lives in target/, not in an installer's folder or an app.
         assert!(detect().is_err());
+    }
+
+    #[test]
+    fn mac_installs_lock_beside_the_app() {
+        let mac = Install::Mac { bundle: "/Applications/VoxelCraft.app".into() };
+        let updates = Path::new("/data/updates");
+        assert_eq!(
+            mac.lock_paths(updates),
+            [updates.join("update.lock"), PathBuf::from("/Applications/.VoxelCraft-update.lock")]
+        );
+        assert_eq!(Install::Windows.lock_paths(updates), [updates.join("update.lock")]);
+    }
+
+    /// The handoff to the watcher: a lock inherited by a child process stays
+    /// held after the game drops (or exits with) its own handle.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn an_inherited_lock_outlives_the_game() {
+        use std::os::fd::AsRawFd;
+        let dir = std::env::temp_dir().join(format!("voxelcraft-handoff-{}", std::process::id()));
+        let path = dir.join("update.lock");
+        let lock = super::super::lock_file(&path).unwrap();
+        let fd = lock.as_raw_fd();
+        assert!(set_inherited(fd, true));
+        let mut watcher = Command::new("/bin/sleep").arg("30").spawn().unwrap();
+        assert!(set_inherited(fd, false));
+        drop(lock);
+        assert!(super::super::lock_file(&path).is_err(), "the watcher still holds it");
+        watcher.kill().unwrap();
+        watcher.wait().unwrap();
+        assert!(super::super::lock_file(&path).is_ok(), "released when the watcher ends");
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[cfg(target_os = "macos")]

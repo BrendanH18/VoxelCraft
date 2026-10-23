@@ -35,13 +35,13 @@ parity feature; there is no Java reference.
 On the owner's M5 MacBook Pro (macOS, Apple Silicon):
 
 - `cargo fmt && cargo clippy --release --all-targets -- -D warnings && cargo
-  test --release`: 1,535 tests passed. `--no-default-features` clippy and
+  test --release`: 1,537 tests passed. `--no-default-features` clippy and
   tests: 1,412 passed.
 - Windows: `cargo clippy --release --target x86_64-pc-windows-msvc
   --all-targets -- -D warnings` passed in a scratch copy with the icon
   resource step disabled (no Windows resource compiler on the Mac). It was
   not built or run on Windows.
-- 29 updater unit tests: tag parsing and ordering; release JSON and notes;
+- 31 updater unit tests: tag parsing and ordering; release JSON and notes;
   OpenSSL-made Ed25519 signatures, tampering and key rotation; checksum
   lists; backups (locks held, `session.lock` left out, a busy world refused,
   three kept, one per version, UTC names, an unlistable folder fails); the atomic Mac swap; the offer
@@ -95,8 +95,10 @@ pruning could delete any folder in `backups` whose name contained
 `-before-` (it now recognises only the exact generated name); a third
 backup in the same second sorted before the second and was pruned; two
 windows updating at once could delete each other's download or the Mac
-rollback copy (one `updates/update.lock` is now held from the download until
-the game exits, then by the watcher); Cancel with `--update-now` restarted
+rollback copy (update locks, the data folder's and on a Mac one beside the
+app, are now held from the download until the game exits, and the Mac
+watcher inherits the locked files so they never lapse in between; the
+watcher also never swaps the apps while the old game is still running); Cancel with `--update-now` restarted
 the update; an unreadable world left screenshot and benchmark runs waiting
 on the title screen (they now exit with an error); the Windows relaunch
 dropped `--data-dir` (now passed through the installer); and the smoke test
@@ -106,7 +108,9 @@ After these, the Mac end-to-end run was repeated with 0.10.0 and 0.10.1
 packages: the update completed in about 5 seconds, a crashing 0.10.2 rolled
 back once, and an update attempted while another process held the updates
 lock stopped with "another VoxelCraft window is already updating" without
-making a backup.
+making a backup. A final run with both locks handed to the watcher repeated the
+update and the rollback, and both locks were free afterwards, so the
+reopened game doesn't keep them.
 
 ## Not yet verified
 

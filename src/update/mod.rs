@@ -56,8 +56,8 @@ pub enum Step {
 
 enum Msg {
     Step(Step),
-    /// Ready to install, with the lock on the updates folder.
-    Done(install::Prepared, std::fs::File),
+    /// Ready to install, with the update locks.
+    Done(install::Prepared, Vec<std::fs::File>),
     Failed(String),
 }
 
@@ -74,9 +74,9 @@ pub struct Updater {
     /// Arguments for the game after an update: the data folder and update
     /// source only, never one-shot options.
     pub restart_args: Vec<std::ffi::OsString>,
-    /// The updates folder's lock, from a finished download until the game
-    /// exits; then the Mac watcher takes it.
-    held: Option<std::fs::File>,
+    /// The update lock, from a finished download until the game exits; the
+    /// Mac watcher inherits it from there.
+    held: Vec<std::fs::File>,
     source: Source,
     /// The data folder's `updates` and `backups` folders.
     updates: PathBuf,
@@ -94,7 +94,7 @@ impl Updater {
             dismissed: false,
             auto: false,
             restart_args: Vec::new(),
-            held: None,
+            held: Vec::new(),
             source,
             updates: root.join("updates"),
             backups: root.join("backups"),
@@ -153,8 +153,8 @@ impl Updater {
                         prepared.discard();
                         self.state = State::Available(job.release.clone());
                     }
-                    Some(Ok((prepared, lock))) => {
-                        self.held = Some(lock);
+                    Some(Ok((prepared, locks))) => {
+                        self.held = locks;
                         self.state = State::Ready(job.release.clone(), prepared);
                     }
                     Some(Err(e)) if e == fetch::CANCELLED => self.state = State::Available(job.release.clone()),
@@ -190,6 +190,7 @@ impl Updater {
         let job = Worker {
             release: release.clone(),
             package,
+            locks: install.lock_paths(&self.updates),
             install,
             source: self.source.clone(),
             work: self.updates.join(release.version.to_string()),
@@ -200,7 +201,7 @@ impl Updater {
         };
         std::thread::spawn(move || {
             let msg = match job.run(&tx) {
-                Ok((prepared, lock)) => Msg::Done(prepared, lock),
+                Ok((prepared, locks)) => Msg::Done(prepared, locks),
                 Err(e) => Msg::Failed(e),
             };
             let _ = tx.send(msg);
@@ -224,7 +225,7 @@ impl Updater {
         let result = std::fs::create_dir_all(&self.updates)
             .and_then(|()| std::fs::write(&pending, format!("{version}\n")))
             .map_err(|e| format!("could not record the update: {e}"))
-            .and_then(|()| install::launch(prepared, &self.updates, version, &self.restart_args));
+            .and_then(|()| install::launch(prepared, &self.updates, version, &self.restart_args, &self.held));
         match result {
             Ok(()) => {
                 log::info!("installing VoxelCraft {version}; exiting");
@@ -233,7 +234,7 @@ impl Updater {
             }
             Err(e) => {
                 let _ = std::fs::remove_file(&pending);
-                self.held = None;
+                self.held.clear();
                 log::error!("could not install {version}: {e}");
                 self.state = State::Failed(release.clone(), e);
                 false
@@ -272,14 +273,15 @@ impl Updater {
 /// Written before installing: the version being installed.
 const PENDING: &str = "pending.txt";
 
-/// Takes the updates folder's lock, held by one update at a time: from
-/// downloading until the game exits, then by the Mac watcher until the new
-/// version starts. Another window's update would otherwise delete this
-/// one's download or the Mac rollback copy.
-pub(crate) fn lock_updates(updates: &Path) -> Result<std::fs::File, String> {
-    std::fs::create_dir_all(updates).map_err(|e| format!("could not create {}: {e}", updates.display()))?;
-    let file =
-        std::fs::File::create(updates.join("update.lock")).map_err(|e| format!("could not lock updates: {e}"))?;
+/// Takes an update lock, held by one update at a time: from downloading
+/// until the game exits, then (inherited, so it never lapses) by the Mac
+/// watcher until the new version starts. Another window's update would
+/// otherwise delete this one's download or the Mac rollback copy.
+fn lock_file(path: &Path) -> Result<std::fs::File, String> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("could not create {}: {e}", dir.display()))?;
+    }
+    let file = std::fs::File::create(path).map_err(|e| format!("could not lock updates: {e}"))?;
     match file.try_lock() {
         Ok(()) => Ok(file),
         Err(std::fs::TryLockError::WouldBlock) => {
@@ -304,6 +306,9 @@ impl Package {
 struct Worker {
     release: Release,
     package: Package,
+    /// The update locks: the data folder's (its downloads), and on a Mac also
+    /// the installation's (the staged and rollback app beside it).
+    locks: Vec<PathBuf>,
     install: install::Install,
     source: Source,
     /// `updates/<version>`: the downloads.
@@ -317,11 +322,11 @@ struct Worker {
 
 impl Worker {
     /// Downloads, checks, backs up and prepares the update while holding the
-    /// updates folder's lock, which comes back with the prepared update.
-    fn run(&self, tx: &crossbeam_channel::Sender<Msg>) -> Result<(install::Prepared, std::fs::File), String> {
-        let lock = lock_updates(self.work.parent().unwrap_or(&self.work))?;
+    /// update locks, which come back with the prepared update.
+    fn run(&self, tx: &crossbeam_channel::Sender<Msg>) -> Result<(install::Prepared, Vec<std::fs::File>), String> {
+        let locks = self.locks.iter().map(|path| lock_file(path)).collect::<Result<Vec<_>, _>>()?;
         match self.prepare(tx) {
-            Ok(prepared) => Ok((prepared, lock)),
+            Ok(prepared) => Ok((prepared, locks)),
             Err(e) => {
                 let _ = std::fs::remove_dir_all(&self.work);
                 Err(e)
@@ -487,11 +492,11 @@ mod tests {
         updater.state = State::Working(Job { release, step: Step::Preparing, rx, cancel: cancel.clone() });
         updater.cancel();
         assert!(cancel.load(Ordering::Relaxed));
-        let lock = lock_updates(&root.join("updates")).unwrap();
-        tx.send(Msg::Done(install::Prepared::Windows { installer: "/nonexistent".into() }, lock)).unwrap();
+        let lock = lock_file(&root.join("updates").join("update.lock")).unwrap();
+        tx.send(Msg::Done(install::Prepared::Windows { installer: "/nonexistent".into() }, vec![lock])).unwrap();
         updater.poll(None);
         assert!(matches!(updater.state, State::Available(_)), "offered again, not ready to install");
-        assert!(lock_updates(&root.join("updates")).is_ok(), "the lock was released");
+        assert!(lock_file(&root.join("updates").join("update.lock")).is_ok(), "the lock was released");
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -521,6 +526,7 @@ mod tests {
         let worker = Worker {
             release: Release::parse(&json).unwrap(),
             package: Package::Windows,
+            locks: vec![root.join("updates").join("update.lock")],
             install: install::Install::Windows,
             source: Source::Folder(fixture),
             work: root.join("updates").join(newer.to_string()),
@@ -562,7 +568,7 @@ mod tests {
     fn one_update_at_a_time() {
         let root = scratch("one-at-a-time");
         let (worker, _) = signed_fixture(&root, 7);
-        let held = lock_updates(&root.join("updates")).unwrap();
+        let held = lock_file(&worker.locks[0]).unwrap();
         std::fs::create_dir_all(&worker.work).unwrap();
         std::fs::write(worker.work.join("other window's download"), b"x").unwrap();
         let (tx, _rx) = unbounded();
