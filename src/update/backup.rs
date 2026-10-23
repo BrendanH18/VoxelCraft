@@ -43,12 +43,17 @@ pub fn backup_saves(saves: &Path, backups: &Path, version: &str) -> Result<PathB
     let base = format!("{}{MARKER}{version}", timestamp(SystemTime::now()));
     // Another backup made in the same second gets the next number, so the
     // names keep the order the backups were made in.
-    let taken = std::fs::read_dir(backups)
-        .map_err(|e| format!("could not read {}: {e}", backups.display()))?
-        .flatten()
-        .filter_map(|e| e.file_name().into_string().ok())
-        .filter_map(|n| backup_order(&n).filter(|(time, _)| *time == base).map(|(_, k)| k))
-        .max();
+    let unreadable = |e: std::io::Error| format!("could not read {}: {e}", backups.display());
+    let mut taken = None;
+    for entry in std::fs::read_dir(backups).map_err(unreadable)? {
+        // An entry skipped here could be the name the new backup would reuse.
+        let name = entry.map_err(unreadable)?.file_name();
+        if let Some((time, k)) = name.to_str().and_then(backup_order)
+            && time == base
+        {
+            taken = taken.max(Some(k));
+        }
+    }
     let dest = match taken {
         None => backups.join(&base),
         Some(k) => backups.join(format!("{base}-{}", k + 1)),

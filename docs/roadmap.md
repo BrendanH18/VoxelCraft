@@ -44,10 +44,13 @@ version; v1.0 is everything in this roadmap.
 Releases will be frequent, so players must be able to upgrade easily. v0.10
 is the stepping stone: it ships the in-game updater ([design](updates.md))
 as soon as it works, and every player installs it by hand once. From then on
-the game updates itself on Windows x64 and Apple Silicon Macs, the platforms
-with release packages; Intel Mac and Linux players build from source and
-upgrade by hand, and their game only points them to the release page. v0.11 polishes the title screen, world management
-and options, and content resumes with v0.12. This pulls those parts of M7
+the game updates itself where it was installed from a release package on
+Windows x64 or an Apple Silicon Mac, in a folder the player can change.
+Other copies (Intel Mac and Linux source builds, a Mac app run from the disk
+image or a read-only folder, a Windows copy not from the installer) show the
+release page instead and upgrade by hand ([updates](updates.md)). v0.11
+polishes the title screen, world management and options, and content
+resumes with v0.12. This pulls those parts of M7
 forward; the later releases moved up two numbers (building materials is now
 v0.12, polish and performance v0.20).
 
@@ -832,6 +835,10 @@ Exception (owner, 2026-10-20): v0.8 was declared done with its implementation
 complete but its player acceptance and streaming budget not yet passed; those
 checks moved to later versions (see its status and the
 [delivery record](#34-v080-delivery-record--2026-10-20)).
+Exception (owner, 2026-10-22): v0.10 is tagged once merged, before its exit
+check, because the owner wants players on the updater as soon as possible
+and the check (updating a real v0.10 install) needs a later release to update
+to. The rows stay Implemented, unverified until it passes.
 
 Work on the earliest unreleased version. Start a later one early only where
 its dependencies allow and it doesn't stall the current one. Version 1.0 is
@@ -842,7 +849,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 |---|---|---|---|---|
 | v0.8 | Foundations | Finish M0, M1 | Valid M5 baseline and the per-requirement inventory; mob pathfinding, Java spawn categories, shape-aware light, simulation distance; pause/death/save scenarios on every input path | Done (owner, 2026-10-20): tagged `v0.8.0` at `58b547b` (#34, #35, #37–#39 plus release prep, [#41](https://github.com/BrendanH18/VoxelCraft/pull/41)); [delivery record](#34-v080-delivery-record--2026-10-20). Implementation complete and the [M5 baseline](verification/2026-10-16-m5-baseline.md) recorded; rows stay Implemented, unverified. Player acceptance ([checklist](verification/v0.8-acceptance-checklist.md)) moved to v0.9, the streaming budget (PERF-03; two isolated frames over 50 ms in the [2026-10-20 re-run](verification/2026-10-20-streaming-rerun.md)) to v0.20 |
 | v0.9 | Block states | M2: BLD-04, BLD-06 | Top and double slabs, waterlogging, door hinges, floor/ceiling buttons and levers, wall grindstones, corner-stair light; reserved state ranges for later content | Done (owner, 2026-10-22): ready to tag `v0.9` once merged; [delivery record](#35-v09-delivery-record--2026-10-22). Block states (#40), Java player movement, wall posts, powered doors, honey, scaffolding and powder snow; the owner's play is the player evidence for v0.8 and v0.9 (the checklist and controller session were dropped). Rows stay Implemented, unverified: the windowed performance check was deferred to v0.20 (owner, 2026-10-22) |
-| v0.10 | Updates | M7 early: UX-04b, part of UX-05a | In-game update check, signed download, pre-update world backup and install on Windows and Apple Silicon Macs ([design](updates.md)); worlds whose level file can't be read are no longer started fresh. See [v0.10 scope](#v010-scope-updates) | Release prepared (2026-10-22): Cargo 0.10.0, release notes and the `UPDATE_SIGNING_KEY` secret; tag `v0.10` once merged. Rows Implemented, unverified until the owner updates a real v0.10 install (the exit check); the stepping-stone release every player installs by hand |
+| v0.10 | Updates | M7 early: UX-04b, part of UX-05a | In-game update check, signed download, pre-update world backup and install on Windows and Apple Silicon Macs ([design](updates.md)); worlds whose level file can't be read are no longer started fresh. See [v0.10 scope](#v010-scope-updates) | Release prepared (2026-10-22): Cargo 0.10.0, release notes and the `UPDATE_SIGNING_KEY` secret; tag `v0.10` once merged (owner exception: before the exit check, which needs a later release). Rows Implemented, unverified until the owner updates a real v0.10 install (the exit check); the stepping-stone release every player installs by hand |
 | v0.11 | Menus and settings | M7 early: UX-03a/b, UX-05a | Java's title screen, world list and Edit World screen; Java-style options screens, key rebinding, GUI scale and per-category volume; consistent menu navigation and error screens. See [v0.11 scope](#v011-scope-menus-and-settings) | Planned (owner priority, 2026-10-22) |
 | v0.12 | Building materials | Close M2 | Missing wood, stone, copper and colour family members (pale oak, bamboo, mud brick, prismarine), the unregistered reference fuel items, signs, banners, item frames, cauldrons, soul lanterns and campfires; sponges, coral and sea pickles; falling and dripping dripstone, tilting dripleaf | Planned |
 | v0.13 | Terrain | M3: GEN-01..03 | Java climate and density terrain with overhangs; Java caves, aquifers and ores; deep-dark content, springs, glow lichen; giant spruce and jungle trees and the remaining biome features | Planned |
@@ -1114,10 +1121,12 @@ adds no blocks, items or states. Work items:
    read now goes back to the title with an error instead of starting fresh
    over it, and a failed save shows a message in game.
 
-Exit: the release workflow signs a v0.10 build's checksums; the owner
-updates a real v0.10 install to the next release on Windows and on a Mac,
-keeping worlds and settings; a failed or cancelled update leaves the
-installed version working.
+Exit: the release workflow signs a v0.10 build's checksums, checked on the
+tag's draft release (`SHA256SUMS.txt.sig` attached) before publishing; the
+owner updates a real v0.10 install to the next release on Windows and on a
+Mac, keeping worlds and settings; a failed or cancelled update leaves the
+installed version working. v0.10 ships before the second check, which needs
+that next release (owner exception above).
 
 #### v0.11 scope: menus and settings
 

@@ -40,7 +40,7 @@ Choose your download:
 
 ## What's new in 0.9.0 (if you're coming from 0.8.0)
 
-#### Moving like Java
+### Moving like Java
 
 - **Java 26.3 physics:** walking (4.3 blocks a second), sprinting (5.6) and
   sneaking (1.3), the jump arc, step-up onto slabs and stairs, ice and soul
@@ -57,7 +57,7 @@ Choose your download:
   sneak.
 - The field of view widens smoothly while sprinting or flying.
 
-#### New blocks
+### New blocks
 
 - **Scaffolding:** place it onto scaffolding to build outward or upward. It
   falls when it's more than 7 blocks from support, collapses when you break
@@ -71,7 +71,7 @@ Choose your download:
   poison.
 - **Lanterns and soul lanterns**, standing or hanging.
 
-#### Building
+### Building
 
 - **Slabs** can go on top or double up, and **stairs** turn upside down and
   form corners, with matching light and collision.
