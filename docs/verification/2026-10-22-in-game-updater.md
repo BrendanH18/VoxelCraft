@@ -99,8 +99,8 @@ run was not repeated after these fixes.
   only been compiled.
 - A download from GitHub: the tests used fixture folders. The first real
   check needs a published release.
-- The signing step in the release workflow, which needs the
-  `UPDATE_SIGNING_KEY` secret.
+- The signing step in the release workflow. The `UPDATE_SIGNING_KEY` secret
+  is set; the step first runs on the `v0.10` tag.
 - An app in `/Applications`, the disk-image and translocation refusals, and
   the update screen as a player sees it, including Cancel.
 - The owner updating a real v0.10 install to the next release on both

@@ -24,8 +24,14 @@ or notarization. No Apple Developer account was used to build it.
 Requires an Apple Silicon (M-series) Mac running macOS 13 or later.
 
 UPDATES AND UNINSTALLING
-Quit the game before updating. Windows: run the new installer over the old
-version. Mac: replace the old app in Applications with the new one.
+From 0.10.0 the game updates itself: when a new version is out, the title
+screen shows "Update to ..." in the bottom-right corner. Choosing Update and
+Restart backs up your worlds (the "backups" folder beside "saves"; the last
+three are kept), installs the new version and reopens the game. Options >
+Check for Updates turns the check off.
+To install by hand instead, quit the game first. Windows: run the new
+installer over the old version. Mac: replace the old app in Applications
+with the new one.
 Worlds and options are kept outside the installation, so upgrades and
 uninstalling preserve them. Back up worlds before trying a newer release;
 loading a newer world's data in an older game version is not guaranteed.
