@@ -14,6 +14,18 @@ packaging/INSTALL.txt
 packaging/LICENSE.txt
 LICENSE-MIT
 LICENSE-APACHE
+docs/archive/**
+
+# === VoxelCraft: generated, copied and gitignored output ===
+# Worlds and options written when run from the checkout, cargo-about notices
+saves/**
+packaging/THIRD-PARTY-LICENSES.html
+# Java reference facts written by tools/extract_java_*.py and a save snapshot written by the game
+**/fixtures/**
+# Copied Mojang vanilla recipe data, kept as reference
+docs/vanilla-recipes/**
+# Binary macOS icon written by packaging/generate-icons.py
+**/*.icns
 
 # === Macroscope defaults (copied 2026-10-22): vendored / dependency directories ===
 **/.git/**
@@ -165,7 +177,9 @@ ENV/**
 **/*.arrow
 **/*.npy
 **/*.pkl
-**/*.json
+# Default **/*.json removed: assets/manifest.json drives the build's resource embedding,
+# assets/models and assets/*/*.source.json are hand-authored, and benchmarks/scenes.json
+# is the benchmark harness spec. Generated and copied JSON is ignored by path above.
 **/*.jsonl
 
 # === ML models ===
