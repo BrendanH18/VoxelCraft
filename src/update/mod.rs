@@ -253,10 +253,16 @@ impl Updater {
         let current = Version::current();
         // An older version opened while an update is still finishing (its
         // lock is held) leaves the record for the new version, which must
-        // see it to report that it started.
-        if current < target && lock_file(&self.updates.join("update.lock")).is_err() {
-            return;
-        }
+        // see it to report that it started. Otherwise it keeps the lock
+        // while tidying up, so no other window's retry starts meanwhile.
+        let _lock = if current < target {
+            match lock_file(&self.updates.join("update.lock")) {
+                Ok(lock) => Some(lock),
+                Err(_) => return,
+            }
+        } else {
+            None
+        };
         let _ = std::fs::remove_file(&pending);
         if current >= target {
             let _ = std::fs::write(started_marker(&self.updates, target), b"");
