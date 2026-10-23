@@ -39,7 +39,13 @@ try {
     $game = Start-Process -FilePath "powershell" -ArgumentList @("-NoProfile", "-Command", "Start-Sleep -Seconds 5") -PassThru
     $log = Join-Path $env:TEMP "voxelcraft-update-$PID.log"
     $started = Get-Date
-    Run-And-Wait $installer[0].FullName @("/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/UPDATE=1", "/WAITPID=$($game.Id)", "/DIR=`"$installDir`"", "/LOG=`"$log`"")
+    $data = Join-Path $env:TEMP "VoxelCraft update data $PID"
+    # Wait for the installer alone: Start-Process -Wait would also wait for the
+    # game it reopens.
+    $setup = Start-Process -FilePath $installer[0].FullName -PassThru -ArgumentList @("/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/UPDATE=1", "/WAITPID=$($game.Id)", "/DATADIR=`"$data`"", "/DIR=`"$installDir`"", "/LOG=`"$log`"")
+    $null = $setup.Handle
+    if (-not $setup.WaitForExit(600000)) { throw "The update install did not finish" }
+    if ($setup.ExitCode -ne 0) { throw "The update install exited with $($setup.ExitCode)" }
     if (-not $game.HasExited) { throw "The installer did not wait for the game to exit" }
     if (((Get-Date) - $started).TotalSeconds -lt 3) { throw "The installer finished before the game exited" }
     # Inno Setup logs only the [Run] entries it executes; silent mode skips the

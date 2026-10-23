@@ -66,12 +66,17 @@ background service.
    it. A symbolic link or special file in the saves folder also stops it,
    since the backup can't include it. Worlds and `options.txt` go to
    `<data-root>/backups/<date>_<time>-before-<version>/` (UTC); the three
-   newest pre-update backups are kept.
+   newest pre-update backups are kept, one per version. Pruning only ever
+   removes folders with exactly that name, never a player's own copies in
+   `backups`. Only one window can update at a time: a second one is told
+   another window is already updating.
 6. **Install and restart.**
    - **Windows:** the game starts the installer with
-     `/SILENT /SUPPRESSMSGBOXES /NORESTART /UPDATE=1 /WAITPID=<game>` and exits.
-     The installer waits for the game to close, upgrades the installation in
-     place (Inno Setup rolls back an install that fails) and reopens the game.
+     `/SILENT /SUPPRESSMSGBOXES /NORESTART /UPDATE=1 /WAITPID=<game>` and exits,
+     adding `/DATADIR=` and `/UPDATESOURCE=` when the game was started with
+     `--data-dir` or `--update-source`. The installer waits for the game to
+     close, upgrades the installation in place (Inno Setup rolls back an
+     install that fails) and reopens the game with those options.
    - **Mac:** the game mounts the disk image read-only, copies the new app to
      `.VoxelCraft-update.app` beside the installed one, and checks its code
      signature and version. It then starts a watcher (the game's own program,

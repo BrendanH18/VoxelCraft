@@ -61,7 +61,7 @@ Name: "{autodesktop}\VoxelCraft"; Filename: "{app}\voxelcraft.exe"; WorkingDir: 
 [Run]
 Filename: "{app}\voxelcraft.exe"; Description: "Launch VoxelCraft"; Flags: nowait postinstall skipifsilent
 ; The in-game updater installs silently with /UPDATE=1; reopen the game afterwards.
-Filename: "{app}\voxelcraft.exe"; WorkingDir: "{app}"; Flags: nowait; Check: IsUpdate
+Filename: "{app}\voxelcraft.exe"; Parameters: "{code:RestartParams}"; WorkingDir: "{app}"; Flags: nowait; Check: IsUpdate
 
 ; Player saves/logs live in LocalAppData\VoxelCraft, outside {app}.
 ; Deliberately omit UninstallDelete: uninstalling must preserve player data.
@@ -100,4 +100,19 @@ end;
 function IsUpdate(): Boolean;
 begin
   Result := ExpandConstant('{param:UPDATE|0}') = '1';
+end;
+
+// The game's data folder and update source, passed as /DATADIR= and
+// /UPDATESOURCE=, so an updated game reopens with the same data.
+function RestartParams(Param: String): String;
+var
+  Value: String;
+begin
+  Result := '';
+  Value := ExpandConstant('{param:DATADIR|}');
+  if Value <> '' then
+    Result := '--data-dir "' + Value + '"';
+  Value := ExpandConstant('{param:UPDATESOURCE|}');
+  if Value <> '' then
+    Result := Result + ' --update-source "' + Value + '"';
 end;

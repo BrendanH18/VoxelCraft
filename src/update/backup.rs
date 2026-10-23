@@ -39,12 +39,18 @@ pub fn backup_saves(saves: &Path, backups: &Path, version: &str) -> Result<PathB
     }
     std::fs::create_dir_all(backups).map_err(|e| format!("could not create {}: {e}", backups.display()))?;
     let base = format!("{}{MARKER}{version}", timestamp(SystemTime::now()));
-    let mut dest = backups.join(&base);
-    let mut n = 2;
-    while dest.exists() {
-        dest = backups.join(format!("{base}-{n}"));
-        n += 1;
-    }
+    // Another backup made in the same second gets the next number, so the
+    // names keep the order the backups were made in.
+    let taken = std::fs::read_dir(backups)
+        .map_err(|e| format!("could not read {}: {e}", backups.display()))?
+        .flatten()
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter_map(|n| backup_order(&n).filter(|(time, _)| *time == base).map(|(_, k)| k))
+        .max();
+    let dest = match taken {
+        None => backups.join(&base),
+        Some(k) => backups.join(format!("{base}-{}", k + 1)),
+    };
     // Copy beside the destination first, so an interrupted copy never looks
     // like a finished backup.
     let partial = backups.join(format!(".{}.partial", dest.file_name().unwrap().to_string_lossy()));
@@ -62,6 +68,27 @@ pub fn backup_saves(saves: &Path, backups: &Path, version: &str) -> Result<PathB
     }
     prune(backups, KEEP);
     Ok(dest)
+}
+
+/// Where a folder made by [`backup_saves`] sorts: its name up to the
+/// version, and its same-second number (1 for none). `None` for any other
+/// folder, which is never pruned.
+fn backup_order(name: &str) -> Option<(&str, u32)> {
+    let (time, rest) = name.split_at_checked(19)?;
+    let shape = time.bytes().enumerate().all(|(i, b)| match i {
+        4 | 7 | 13 | 16 => b == b'-',
+        10 => b == b'_',
+        _ => b.is_ascii_digit(),
+    });
+    let rest = rest.strip_prefix(MARKER)?;
+    let (version, n) = match rest.split_once('-') {
+        Some((v, n)) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => (v, n.parse().ok()?),
+        Some(_) => return None,
+        None => (rest, 1),
+    };
+    let three_part = version.split('.').count() == 3;
+    (shape && three_part && super::Version::parse(version).is_some())
+        .then(|| (&name[..19 + MARKER.len() + version.len()], n))
 }
 
 /// Copies a directory tree, leaving out session locks (which another
@@ -99,13 +126,12 @@ fn prune(backups: &Path, keep: usize) {
         .flatten()
         .filter(|e| e.path().is_dir())
         .filter_map(|e| e.file_name().into_string().ok())
-        .filter(|n| !n.starts_with('.') && n.contains(MARKER))
+        .filter(|n| backup_order(n).is_some())
         .collect();
-    names.sort();
+    names.sort_by(|a, b| backup_order(a).cmp(&backup_order(b)));
     let mut versions = std::collections::HashSet::new();
     let mut kept = 0;
     for old in names.iter().rev() {
-        // `<time>-before-<version>`, or `...-<version>-2` when made in the same second.
         let version = old.split(MARKER).nth(1).unwrap_or_default().split('-').next().unwrap_or_default();
         if versions.insert(version.to_string()) && kept < keep {
             kept += 1;
@@ -229,6 +255,10 @@ mod tests {
             "2026-10-04_00-05-00-before-0.12.0",
             "2026-10-04_00-05-00-before-0.12.0-2",
             "my-own-copy",
+            // Players' own folders that merely look similar are never touched.
+            "2025-before-manual-copy",
+            "2026-10-04_00-05-00-before-0.12.0-copy",
+            "2026-10-04 00-05-00-before-0.12.0",
             ".2026-10-05_00-00-00-before-0.13.0.partial",
         ] {
             std::fs::create_dir_all(backups.join(name)).unwrap();
@@ -241,13 +271,52 @@ mod tests {
             left,
             [
                 ".2026-10-05_00-00-00-before-0.13.0.partial",
+                "2025-before-manual-copy",
                 "2026-10-02_00-00-00-before-0.10.1",
                 "2026-10-03_00-00-00-before-0.11.0",
+                "2026-10-04 00-05-00-before-0.12.0",
                 "2026-10-04_00-05-00-before-0.12.0-2",
+                "2026-10-04_00-05-00-before-0.12.0-copy",
                 "my-own-copy",
             ]
         );
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// Three backups before the same version in one second: the newest is
+    /// kept, not the second.
+    #[test]
+    fn same_second_backups_keep_the_newest() {
+        let root = scratch("same-second");
+        let saves = root.join("saves");
+        world(&saves, "alpha");
+        let backups = root.join("backups");
+        std::fs::create_dir_all(&backups).unwrap();
+        let base = format!("{}{MARKER}0.12.0", timestamp(SystemTime::now()));
+        std::fs::create_dir_all(backups.join(format!("{base}-2"))).unwrap();
+        let dest = backup_saves(&saves, &backups, "0.12.0").unwrap();
+        // Unless the second ticked over, the new one is numbered after -2.
+        assert!(dest.exists(), "the backup just made survives pruning");
+        assert_eq!(std::fs::read_dir(&backups).unwrap().count(), 1, "the older retry is replaced");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn recognises_only_its_own_names() {
+        assert_eq!(backup_order("2026-10-22_16-05-09-before-0.11.0"), Some(("2026-10-22_16-05-09-before-0.11.0", 1)));
+        assert_eq!(backup_order("2026-10-22_16-05-09-before-0.11.0-3"), Some(("2026-10-22_16-05-09-before-0.11.0", 3)));
+        for other in [
+            "2025-before-manual-copy",
+            "2026-10-22_16-05-09-before-0.11",
+            "2026-10-22_16-05-09-before-0.11.0-copy",
+            "2026-10-22_16-05-09-before-0.11.0-",
+            "2026-10-22 16-05-09-before-0.11.0",
+            "x026-10-22_16-05-09-before-0.11.0",
+            ".2026-10-22_16-05-09-before-0.11.0.partial",
+            "my-own-copy",
+        ] {
+            assert_eq!(backup_order(other), None, "{other}");
+        }
     }
 
     #[test]

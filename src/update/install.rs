@@ -164,6 +164,8 @@ pub fn launch(prepared: &Prepared, updates: &Path, version: Version, restart_arg
             command
                 .args(["/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/UPDATE=1"])
                 .arg(format!("/WAITPID={}", std::process::id()))
+                // The installer reopens the game with these (installer.iss RestartParams).
+                .args(installer_restart_params(restart_args))
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null());
@@ -187,6 +189,25 @@ pub fn launch(prepared: &Prepared, updates: &Path, version: Version, restart_arg
                 .map_err(|e| format!("could not start the update: {e}"))
         }
     }
+}
+
+/// `--data-dir <dir>` and `--update-source <dir>` as Inno Setup parameters
+/// (`/DATADIR=<dir>`, `/UPDATESOURCE=<dir>`), without trailing separators
+/// so the installer's quoting holds.
+fn installer_restart_params(restart_args: &[OsString]) -> Vec<OsString> {
+    restart_args
+        .chunks(2)
+        .filter_map(|pair| {
+            let [flag, value] = pair else { return None };
+            let name = match flag.to_str()? {
+                "--data-dir" => "DATADIR",
+                "--update-source" => "UPDATESOURCE",
+                _ => return None,
+            };
+            let value = value.to_string_lossy();
+            Some(format!("/{name}={}", value.trim_end_matches(['\\', '/'])).into())
+        })
+        .collect()
 }
 
 /// Opens a web page in the player's browser.
@@ -229,12 +250,6 @@ pub fn finish_mac(args: &[String]) -> i32 {
             let _ = writeln!(f, "{msg}");
         }
     };
-    // One watcher at a time: a second one must not swap the apps back.
-    let Ok(lock) = std::fs::File::create(updates.join("watcher.lock")) else { return 1 };
-    if lock.try_lock().is_err() {
-        note("another update is already finishing; leaving it alone");
-        return 1;
-    }
     let executable = |app: &Path| app.join("Contents/MacOS/voxelcraft");
     let game = |app: &Path| {
         let mut command = Command::new(executable(app));
@@ -244,11 +259,26 @@ pub fn finish_mac(args: &[String]) -> i32 {
     let started = super::started_marker(&updates, version);
     let _ = std::fs::remove_file(&started);
 
-    // Wait for the game to exit (it does so right after starting us).
+    // Wait for the game to exit (it does so right after starting us), then
+    // take the updates lock it held: no other update may touch the staged
+    // app, which becomes the rollback copy.
     let deadline = Instant::now() + Duration::from_secs(60);
     while alive(pid) && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(100));
     }
+    let lock = loop {
+        match super::lock_updates(&updates) {
+            Ok(lock) => break lock,
+            Err(_) if Instant::now() < deadline + Duration::from_secs(10) => {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Err(e) => {
+                note(&format!("{e}; leaving the installed app as it is"));
+                let _ = game(&bundle).spawn();
+                return 1;
+            }
+        }
+    };
     if let Err(e) = swap(&staged, &bundle) {
         note(&format!("could not swap in the new app: {e}"));
         let _ = std::fs::remove_dir_all(&staged);
@@ -279,6 +309,7 @@ pub fn finish_mac(args: &[String]) -> i32 {
         note("the new version started; removing the old app");
         let _ = std::fs::remove_file(&started);
         let _ = std::fs::remove_dir_all(&staged);
+        drop(lock);
         return 0;
     }
     note("the new version didn't start; restoring the previous app");
@@ -337,6 +368,16 @@ mod tests {
         assert_eq!(
             staged_path(Path::new("/Applications/VoxelCraft.app")),
             Path::new("/Applications/.VoxelCraft-update.app")
+        );
+    }
+
+    #[test]
+    fn restart_args_become_installer_parameters() {
+        let args: Vec<OsString> =
+            ["--data-dir", r"C:\Users\a b\Data\", "--update-source", "fixture", "--new", "x"].map(Into::into).into();
+        assert_eq!(
+            installer_restart_params(&args),
+            [OsString::from(r"/DATADIR=C:\Users\a b\Data"), "/UPDATESOURCE=fixture".into()]
         );
     }
 

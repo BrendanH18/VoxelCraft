@@ -474,7 +474,11 @@ impl Title {
                 self.shell.updates.dismissed = true;
                 self.screen = Screen::List;
             }
-            Widget::CancelUpdate => self.shell.updates.cancel(),
+            Widget::CancelUpdate => {
+                // `--update-now` would start the cancelled update again.
+                self.shell.updates.auto = false;
+                self.shell.updates.cancel();
+            }
             Widget::Delete | Widget::Difficulty => {}
         }
         None

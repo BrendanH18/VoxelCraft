@@ -280,6 +280,11 @@ impl App {
         let replacing = new.is_some() || self.args.new_world || self.args.join.is_some();
         if let Some(e) = unreadable_level(&Storage::new(self.saves_dir.join(world_dir)), replacing) {
             log::error!("cannot open world '{world_dir}': {e}");
+            if scripted {
+                // Screenshots and benchmarks have no one to read the title screen.
+                eprintln!("cannot open world '{world_dir}': {e}");
+                std::process::exit(1);
+            }
             let mut title = title::Title::new(shell, &self.saves_dir);
             title.world_error(format!("Can't open \"{world_dir}\": {e}. Nothing was changed."));
             self.title = Some(title);
