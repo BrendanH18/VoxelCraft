@@ -208,10 +208,9 @@ impl Game {
                 if self.hardcore {
                     return Err("Hardcore locks difficulty to Hard".into());
                 }
-                // Java's setDifficulty ignores a locked world's difficulty too.
-                if self.difficulty_locked {
-                    return Err("This world's difficulty is locked".into());
-                }
+                // Java's DifficultyCommand forces the change past the
+                // difficulty lock (`setDifficulty(difficulty, true)`); only
+                // the Options button respects it.
                 self.difficulty = difficulty;
                 return Ok(format!("Set difficulty to {difficulty}"));
             }

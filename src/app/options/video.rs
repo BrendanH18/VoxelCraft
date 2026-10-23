@@ -38,7 +38,8 @@ pub(in crate::app) fn max_fps_label(fps: u32) -> String {
 
 /// Java's Brightness label: Moody, Default and Bright at 0, 50 and 100.
 pub(in crate::app) fn brightness_label(v: f32) -> String {
-    match (v * 100.0) as i32 {
+    // Rounded: f32 makes 0.53 * 100 come out as 52.999996.
+    match (v * 100.0).round() as i32 {
         0 => "Brightness: Moody".into(),
         50 => "Brightness: Default".into(),
         100 => "Brightness: Bright".into(),

@@ -661,4 +661,7 @@ fn labels_follow_java() {
     assert_eq!(percent_label("Master Volume", 0.0), "Master Volume: OFF");
     assert_eq!(percent_label("Music", 0.456), "Music: 46%");
     assert_eq!(video::max_fps_label(60), "Max Framerate: 60 fps");
+    // f32 values just under a whole percent still show that percent.
+    assert_eq!(video::brightness_label(0.53), "Brightness: 53");
+    assert_eq!(video::brightness_label(0.59), "Brightness: 59");
 }

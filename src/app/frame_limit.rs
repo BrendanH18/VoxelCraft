@@ -68,7 +68,8 @@ mod tests {
         }
         let took = start.elapsed();
         assert!(took >= Duration::from_millis(49), "five frames at 100 fps take 50 ms, took {took:?}");
-        assert!(took < Duration::from_millis(200), "{took:?}");
+        // Loose: shared CI runners oversleep (356 ms was seen on macOS).
+        assert!(took < Duration::from_secs(2), "{took:?}");
         let start = Instant::now();
         for _ in 0..100 {
             limit.wait(None);

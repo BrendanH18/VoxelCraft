@@ -55,6 +55,10 @@ impl OptionsHost for Game {
     }
 
     fn difficulty(&self) -> Option<options::WorldDifficulty> {
+        // A LAN client's difficulty is the host's: nothing here would change it.
+        if self.lan.client.is_some() {
+            return None;
+        }
         Some(options::WorldDifficulty {
             level: self.difficulty,
             hardcore: self.hardcore,

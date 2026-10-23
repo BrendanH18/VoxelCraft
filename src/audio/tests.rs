@@ -455,7 +455,10 @@ fn category_volume_changes_reach_playing_sounds() {
     tx.send(Command::Volume(SoundSource::Blocks, 0.0)).unwrap();
     let mut out = vec![0.0; 2 * 4800];
     mixer.render(&mut out, 2);
-    let step = out.windows(2).step_by(2).map(|w| (w[1] - w[0]).abs()).fold(0.0f32, f32::max);
+    // Consecutive left-channel samples, starting from the level before the
+    // change, so a jump on the first frame counts too.
+    let left: Vec<f32> = std::iter::once(loud).chain(out.iter().step_by(2).copied()).collect();
+    let step = left.windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0f32, f32::max);
     assert!(step < loud * 0.05, "volume change clicks: step {step} for a {loud} voice");
     mixer.render(&mut out, 2);
     mixer.render(&mut out, 2);

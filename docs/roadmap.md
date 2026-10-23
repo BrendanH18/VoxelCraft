@@ -1206,21 +1206,19 @@ Known gaps and differences, recorded per the owner decision above:
 Work items:
 
 1. **Title screen (UX-03a).** Java's layout: Singleplayer, Multiplayer,
-   Options… and Quit Game, with the version and update status. Options are
-   currently reachable only from the pause menu.
+   Options… and Quit Game, with the version and update status.
 2. **World management (UX-03a).** Java's Select World list with each world's
    name, folder, last-played time, game mode and the version that last saved
    it, warning before opening a world saved by a newer version. Edit World
    (rename, Make Backup, open the world and backups folders), Re-Create,
-   copy seed and confirmed deletion. Today the list offers only play, create
-   and delete.
+   copy seed and confirmed deletion.
 3. **Options (UX-03b).** Java's Options screen and its sub-screens (Video
    Settings, Music & Sounds, Controls with Mouse Settings and Key Binds,
    Accessibility), keeping every existing option. Key rebinding for every
    keyboard and mouse action, with conflict highlighting and Reset Keys; GUI
    scale (Auto and fixed steps) that applies immediately; Java's sound
-   category sliders for the categories the mixer can separate (today only
-   master and music exist). Every option persists in `options.txt` and
+   category sliders for the categories the mixer can separate. Every option
+   persists in `options.txt` and
    applies without a restart where Java's does. Subtitles stay with v0.20
    (UX-03d).
 4. **Consistent menus (UX-03a/b).** Escape and the controller's back button
