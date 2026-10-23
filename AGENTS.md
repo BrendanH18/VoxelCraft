@@ -33,6 +33,9 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
 - Project configuration (hooks, scripts, CI, tool settings) lives in tracked
   files too, so a fresh clone from GitHub has every rule and setting. Leave the
   change uncommitted like any other work; the owner commits and pushes it.
+- When you add generated, vendored or build-output paths, add matching patterns
+  to `.macroscope/ignore.md` (see https://docs.macroscope.com/code-review/ignore-files)
+  and run `python3 ~/.agents/skills/macroscope-ignore/scripts/macroscope_ignore.py validate`.
 
 ## Git workflow
 
