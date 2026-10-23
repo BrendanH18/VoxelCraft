@@ -23,6 +23,11 @@ const V2_MAGIC: &[u8; 4] = b"VXC2";
 const V2_CAPACITY: u16 = 4096;
 const LEGACY_MAGIC: &[u8; 4] = b"VXC1";
 
+/// The `level.txt` key holding the game version that last saved the world
+/// (Cargo's form, `0.11.0`), added in v0.11. Worlds saved before it have no
+/// such key; the world list shows their version as unknown.
+pub const VERSION_KEY: &str = "version";
+
 pub struct LevelInfo {
     pub seed: u64,
     pub player: Option<(DVec3, f32, f32)>,
@@ -60,6 +65,13 @@ impl Storage {
 
     pub fn exists(&self) -> bool {
         self.dir.join("level.txt").exists()
+    }
+
+    /// Whether another process holds this save's session lock. Unlike
+    /// [`Storage::lock`] it never creates the lock file.
+    pub fn locked_elsewhere(&self) -> bool {
+        let Ok(file) = fs::OpenOptions::new().write(true).open(self.dir.join("session.lock")) else { return false };
+        matches!(file.try_lock(), Err(fs::TryLockError::WouldBlock))
     }
 
     pub fn load_level(&self) -> io::Result<LevelInfo> {
@@ -145,16 +157,48 @@ impl Storage {
             .expect("unbounded names")
     }
 
-    /// Writes only `level.txt`, leaving the stored chunks alone.
+    /// Writes only `level.txt`, leaving the stored chunks alone. The game
+    /// saves through here, so it records this version as the last to save.
     pub fn save_level(&self, level: &LevelInfo) -> io::Result<()> {
         fs::create_dir_all(&self.dir)?;
         let mut text = format!("seed={}\n", level.seed);
         if let Some((p, yaw, pitch)) = level.player {
             text += &format!("player={},{},{},{},{}\n", p.x, p.y, p.z, yaw, pitch);
         }
-        for (k, v) in &level.props {
+        for (k, v) in level.props.iter().filter(|(k, _)| *k != VERSION_KEY) {
             text += &format!("{k}={v}\n");
         }
+        text += &format!("{VERSION_KEY}={}\n", env!("CARGO_PKG_VERSION"));
+        self.write_level(&text)
+    }
+
+    /// Sets `key=value` lines in `level.txt` without otherwise touching it:
+    /// other lines, their order and the saving version stay as they were,
+    /// as Java's rename leaves the world's version alone.
+    pub fn set_props(&self, changes: &[(&str, &str)]) -> io::Result<()> {
+        let old = fs::read_to_string(self.dir.join("level.txt"))?;
+        let mut pending: Vec<(&str, &str)> = changes.to_vec();
+        let mut text = String::with_capacity(old.len() + 64);
+        for line in old.lines() {
+            let key = line.split_once('=').map(|(k, _)| k);
+            match pending.iter().position(|(k, _)| Some(*k) == key) {
+                Some(i) => {
+                    let (k, v) = pending.remove(i);
+                    text += &format!("{k}={v}\n");
+                }
+                None => {
+                    text += line;
+                    text.push('\n');
+                }
+            }
+        }
+        for (k, v) in pending {
+            text += &format!("{k}={v}\n");
+        }
+        self.write_level(&text)
+    }
+
+    fn write_level(&self, text: &str) -> io::Result<()> {
         let tmp = self.dir.join("level.txt.tmp");
         fs::write(&tmp, text)?;
         fs::rename(&tmp, self.dir.join("level.txt"))
@@ -354,6 +398,39 @@ mod tests {
         fs::write(dir.join("chunks.bin.unknown-7-1"), b"B").unwrap();
         assert_eq!(storage.unused_unknown_name(7), dir.join("chunks.bin.unknown-7-2"));
         assert_eq!(storage.unused_unknown_name(8), dir.join("chunks.bin.unknown-8"));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn saves_record_their_version_and_edits_keep_it() {
+        let dir = std::env::temp_dir().join(format!("voxelcraft-level-version-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let storage = Storage::new(&dir);
+        let mut props = std::collections::BTreeMap::new();
+        props.insert("name".to_string(), "Old".to_string());
+        props.insert(VERSION_KEY.to_string(), "0.1.0".to_string());
+        storage.save_level(&LevelInfo { seed: 7, player: None, props }).unwrap();
+        let level = storage.load_level().unwrap();
+        assert_eq!(level.props[VERSION_KEY], env!("CARGO_PKG_VERSION"), "every save records this version");
+        assert_eq!(fs::read_to_string(dir.join("level.txt")).unwrap().matches("version=").count(), 1);
+        // A newer build's save, then a rename here: the version stays.
+        fs::write(dir.join("level.txt"), "seed=7\nname=Old\nunknown line\nversion=9.0.0\nfuture=1\n").unwrap();
+        storage.set_props(&[("name", "New Name"), ("added", "x")]).unwrap();
+        assert_eq!(
+            fs::read_to_string(dir.join("level.txt")).unwrap(),
+            "seed=7\nname=New Name\nunknown line\nversion=9.0.0\nfuture=1\nadded=x\n"
+        );
+        let level = storage.load_level().unwrap();
+        assert_eq!((level.seed, level.props["name"].as_str()), (7, "New Name"));
+        // Worlds from before the key load as before.
+        fs::write(dir.join("level.txt"), "seed=3\nname=Older\n").unwrap();
+        assert!(!storage.load_level().unwrap().props.contains_key(VERSION_KEY));
+        assert!(!storage.locked_elsewhere(), "no lock file: nobody has it open");
+        let lock = storage.lock().unwrap();
+        // This process holds it; a second handle sees it taken, as another process would.
+        assert!(storage.locked_elsewhere());
+        drop(lock);
+        assert!(!storage.locked_elsewhere());
         fs::remove_dir_all(dir).unwrap();
     }
 

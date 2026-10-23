@@ -1196,7 +1196,7 @@ impl Game {
             let me = bot.agent.session.player.pos;
             let sounds: Vec<_> = sounds
                 .iter()
-                .filter_map(|&(sound, pos, gain, (lo, hi))| {
+                .filter_map(|&(sound, pos, gain, (lo, hi), source)| {
                     use crate::audio::sounds::Sound;
                     let movement = matches!(sound, Sound::Step(_) | Sound::Land | Sound::Splash | Sound::Swim);
                     // Positionless sounds are the host's own: only body sounds others would hear.
@@ -1210,7 +1210,7 @@ impl Game {
                         return None;
                     }
                     (pos.distance_squared(me) < 64.0 * 64.0)
-                        .then(|| json!([sound.key(), pos.x, pos.y, pos.z, gain, lo, hi]))
+                        .then(|| json!([sound.key(), pos.x, pos.y, pos.z, gain, lo, hi, source.index()]))
                 })
                 .take(96)
                 .collect();
@@ -1286,7 +1286,7 @@ impl Game {
     }
     fn sample_lan_input(&mut self) -> Input {
         let movement = self.movement_input(false);
-        let active = self.menu.is_none() && !self.console.open && !self.inventory_open && self.mouse_grabbed;
+        let active = !self.menu.is_open() && !self.console.open && !self.inventory_open && self.mouse_grabbed;
         self.lan.sequence = self.lan.sequence.wrapping_add(1);
         Input {
             sequence: self.lan.sequence,
@@ -1390,6 +1390,10 @@ impl Game {
         }
         if self.lan.ready {
             self.tick_particles();
+            // The client doesn't track portal time; nausea comes from the host.
+            let nausea =
+                self.session.vitals.effects.get(voxelcraft::simulation::effects::Effect::Nausea).map(|e| e.ticks);
+            self.distortion.tick(nausea, false);
             if self.lan.predictions.len() > 128 {
                 self.lan.lost = Some("Server stopped acknowledging input".into());
             }
@@ -1429,6 +1433,9 @@ impl Game {
         let respawns = snapshot["self"]["respawns"].as_u64();
         let respawned = self.lan.respawns.zip(respawns).is_some_and(|(seen, now)| seen != now);
         self.lan.respawns = respawns;
+        if respawned {
+            self.distortion.reset();
+        }
         let (yaw, pitch) = if respawned {
             (own.session.player.yaw, own.session.player.pitch)
         } else {
@@ -1489,7 +1496,7 @@ impl Game {
         let was_open = self.inventory_open;
         self.inventory_open = snapshot["open"] == true;
         if self.inventory_open != was_open {
-            self.set_grab(!self.inventory_open && self.menu.is_none());
+            self.set_grab(!self.inventory_open && !self.menu.is_open());
             self.body.left_held = false;
             self.body.right_held = false;
             self.keys.clear();
@@ -1654,7 +1661,13 @@ impl Game {
                 let pos = DVec3::new(x, y, z);
                 if pos.is_finite() {
                     let pitch = (lo.clamp(0.1, 4.0) as f32, hi.clamp(0.1, 4.0) as f32);
-                    self.audio.play(sound, Some(pos), gain.clamp(0.0, 4.0) as f32, pitch);
+                    // The host's category for this play, else the sound's own.
+                    let source = s
+                        .get(7)
+                        .and_then(Value::as_u64)
+                        .and_then(|i| crate::audio::SoundSource::ALL.get(i as usize).copied())
+                        .unwrap_or(sound.source());
+                    self.audio.play_in(source, sound, Some(pos), gain.clamp(0.0, 4.0) as f32, pitch);
                 }
             }
         }
@@ -1713,7 +1726,7 @@ impl Game {
         if self.session.vitals.is_dead() {
             self.set_grab(false);
         } else if was_dead {
-            self.set_grab(self.menu.is_none());
+            self.set_grab(!self.menu.is_open());
         }
     }
 }
@@ -1801,7 +1814,7 @@ impl Game {
             return;
         }
         let (sw, sh) = ui.size();
-        if self.keys.contains(&winit::keyboard::KeyCode::Tab) && !self.console.open {
+        if self.held(super::keys::Action::PlayerList) && !self.console.open {
             let mut names = vec![self.lan.profile.as_str()];
             names.extend(self.agents.players.iter().filter(|(_, b)| b.active).map(|(n, _)| n.as_str()));
             let width = names.iter().map(|n| crate::render::ui::Ui::text_width(n)).fold(100.0, f32::max) + 16.0;
@@ -1810,7 +1823,7 @@ impl Game {
                 ui.text((sw - width) / 2.0 + 8.0, 20.0 + i as f32 * 12.0, name, crate::render::ui::WHITE);
             }
         }
-        if !self.console.open && self.menu.is_none() && !self.inventory_open {
+        if !self.console.open && !self.menu.is_open() && !self.inventory_open {
             for (i, line) in self.console.lines.iter().rev().filter(|s| !s.is_empty()).take(4).enumerate() {
                 ui.rect(
                     4.0,
@@ -2048,7 +2061,8 @@ impl Game {
         if let Some(item) = broke {
             match attacker {
                 PlayerRef::Host => self.tool_broke(item),
-                PlayerRef::Agent(_) => self.audio.play(
+                PlayerRef::Agent(_) => self.audio.play_in(
+                    crate::audio::SoundSource::Players,
                     crate::audio::sounds::Sound::Break(crate::audio::sounds::Material::Wood),
                     Some(attacker_pos + DVec3::Y),
                     0.8,

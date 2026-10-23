@@ -112,6 +112,13 @@ impl Game {
             // The portal's purple swims in as it takes hold.
             let k = (self.portal_time / self.portal_needed()).min(1.0);
             ui.rect(0.0, 0.0, sw, sh, [0.45, 0.1, 0.75, 0.15 + 0.55 * k]);
+        } else {
+            // Java's green nausea overlay, which takes over from the warp as
+            // Distortion Effects goes down (a flat tint: no nausea texture).
+            let green = self.distortion.overlay(1.0, self.settings.distortion);
+            if green > 0.0 {
+                ui.rect(0.0, 0.0, sw, sh, [0.2, 0.4, 0.2, 0.45 * green]);
+            }
         }
         if self.arrival.is_some() {
             ui.rect(0.0, 0.0, sw, sh, [0.03, 0.0, 0.06, 1.0]);
@@ -129,12 +136,12 @@ impl Game {
             let (cx, cy) = ((sw / 2.0).floor(), (sh / 2.0).floor());
             ui.rect(cx - 5.0, cy - 0.5, 10.0, 1.0, [1.0, 1.0, 1.0, 0.85]);
             ui.rect(cx - 0.5, cy - 5.0, 1.0, 10.0, [1.0, 1.0, 1.0, 0.85]);
-            if self.body.actions.eat_timer > 0.0 && !self.inventory_open && self.menu.is_none() {
+            if self.body.actions.eat_timer > 0.0 && !self.inventory_open && !self.menu.is_open() {
                 eating_bar(&mut ui, cx, cy, (self.body.actions.eat_timer / super::EAT_TIME) as f32);
             }
-            if let Some(power) = self.bow_power().filter(|_| !self.inventory_open && self.menu.is_none()) {
+            if let Some(power) = self.bow_power().filter(|_| !self.inventory_open && !self.menu.is_open()) {
                 bow_bar(&mut ui, cx, cy, power);
-            } else if !self.inventory_open && self.menu.is_none() && self.session.mode != GameMode::Spectator {
+            } else if !self.inventory_open && !self.menu.is_open() && self.session.mode != GameMode::Spectator {
                 let living =
                     self.mob_target().is_some() || self.lan_player_target(&super::lan::PlayerRef::Host).is_some();
                 if let Some(indicator) = self.session.attack_indicator(self.body.actions.selected, living) {
@@ -178,7 +185,7 @@ impl Game {
             ui.text(n, y + 48.0, &self.session.vitals.xp.total.to_string(), [1.0, 1.0, 0.33, 1.0]);
             let hint = "Click to respawn";
             ui.text(((sw - Ui::text_width(hint)) / 2.0).floor(), y + 64.0, hint, [1.0, 1.0, 0.6, 1.0]);
-        } else if self.menu.is_some() {
+        } else if self.menu.is_open() {
             self.menu_ui(&mut ui);
         } else if self.inventory_open {
             self.inventory_ui(&mut ui);
@@ -1365,7 +1372,7 @@ impl Game {
             format!(
                 "Tick: {} (20 Hz{})",
                 self.clock.ticks(),
-                if (self.menu.is_some() || self.console.open) && self.agents.host.is_none() { ", paused" } else { "" }
+                if (self.menu.is_open() || self.console.open) && self.agents.host.is_none() { ", paused" } else { "" }
             ),
             format!(
                 "Mode: {}{}{}",

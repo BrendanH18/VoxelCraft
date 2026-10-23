@@ -7,6 +7,7 @@
 use std::f32::consts::TAU;
 
 use super::dsp::{self, Biquad, Mode, OnePole, RATE, Rng, add_mode, crackle, mix_into, noise, samples};
+pub use super::source::SoundSource;
 pub use super::voices::{Call, Voice};
 use crate::world::block::Block;
 use crate::world::gadgets::Instrument;
@@ -307,6 +308,54 @@ impl Sound {
             Sound::DragonGrowl => "ender_dragon_growl".into(),
             Sound::DragonDeath => "ender_dragon_death".into(),
             Sound::Mob(v, c) => format!("{}_{}", v.name(), c.name()),
+        }
+    }
+
+    /// The Java 26.3 sound category this sound plays in by default, from
+    /// where Java plays the matching sound event. Call sites that use a sound
+    /// as a stand-in for something Java plays elsewhere pass the category
+    /// with [`Audio::play_in`](super::Audio::play_in).
+    pub fn source(self) -> SoundSource {
+        match self {
+            // Block placing, breaking, doors, bells, explosions and the eye
+            // clicking into an End portal frame play in `BLOCKS`.
+            Sound::Break(_) | Sound::Place(_) | Sound::Door(_) | Sound::Bell | Sound::Explosion | Sound::FrameFill => {
+                SoundSource::Blocks
+            }
+            // The player's (and `Entity.playSound`'s) own noises: footsteps,
+            // landing, swimming, hurt, melee, item and orb pickup, level-up,
+            // shooting, drinking honey and sliding down honey.
+            Sound::Step(_)
+            | Sound::Land
+            | Sound::Splash
+            | Sound::Swim
+            | Sound::Hurt
+            | Sound::Hit
+            | Sound::Pop
+            | Sound::Orb
+            | Sound::LevelUp
+            | Sound::Bow
+            | Sound::HoneyDrink
+            | Sound::HoneySlide => SoundSource::Players,
+            Sound::Note(_) => SoundSource::Records,
+            Sound::Rain => SoundSource::Weather,
+            // No Java counterpart for VoxelCraft's synthesized wind, cave
+            // room tone and random cave drips; `ambient.cave` is the closest.
+            Sound::Wind | Sound::Cave | Sound::Drip => SoundSource::Ambient,
+            Sound::Click => SoundSource::Ui,
+            // Creeper fuse, enderman teleport and stare, blaze and ghast
+            // fireballs, the End portal opening and the Ender Dragon.
+            Sound::Fuse
+            | Sound::Teleport
+            | Sound::Scream
+            | Sound::Fireball
+            | Sound::PortalSpawn
+            | Sound::DragonFlap
+            | Sound::DragonGrowl
+            | Sound::DragonDeath => SoundSource::Hostile,
+            // `EyeOfEnder` is a plain entity, whose source is `NEUTRAL`.
+            Sound::EyeDeath => SoundSource::Neutral,
+            Sound::Mob(voice, _) => voice.source(),
         }
     }
 

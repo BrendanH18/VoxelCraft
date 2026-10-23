@@ -67,8 +67,8 @@ background service.
    since the backup can't include it. Worlds and `options.txt` go to
    `<data-root>/backups/<date>_<time>-before-<version>/` (UTC); the three
    newest pre-update backups are kept, one per version. Pruning only ever
-   removes folders with exactly that name, never a player's own copies in
-   `backups`. Only one window can update at a time: a second one is told
+   removes folders with exactly that name, never a player's own copies or
+   Edit World's single-world backups in `backups`. Only one window can update at a time: a second one is told
    another window is already updating.
 6. **Install and restart.**
    - **Windows:** the game starts the installer with

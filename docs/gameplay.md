@@ -4,13 +4,17 @@
 
 ## Controls
 
+These are the default keys. Options → Controls → Key Binds... rebinds
+every one except Esc, under Java's names and categories, and Sneak and
+Sprint can be set to Toggle there.
+
 | Input | Action |
 |---|---|
 | Mouse | Look (click the window to capture the mouse) |
 | W A S D | Move |
 | Space | Jump / swim up / fly up — double-tap to toggle flying (creative) |
 | Left Shift | Sneak: walk slowly and quietly, never off an edge, and hold on to ladders / fly down |
-| Left Ctrl or R | Sprint |
+| Left Ctrl | Sprint |
 | F | Toggle flying (creative) |
 | Left / right click | Break / place block (hold to repeat); left click on a mob attacks it; respawn on the death screen |
 | Middle click | Pick block |
@@ -27,11 +31,13 @@
 | G | Toggle survival / creative |
 | 1–9, scroll wheel | Select hotbar slot |
 | `[` / `]` | Decrease / increase render distance |
-| /, T, backtick | Open slash command console (Enter runs, Esc closes, Up/Down history, Tab completion) |
+| /, T | Open the slash command console (Enter runs, Esc closes, Up/Down history, Tab completion); T opens it without the slash when chatting with LAN players |
+| Tab | List players (LAN) |
 | M | Mute / unmute sound (`--mute` starts muted, `--volume 0..1` sets the master volume) |
 | V | Toggle vsync |
 | F1 | Toggle HUD |
 | F3 | Debug screen |
+| F5 | Cycle first-person, behind and front views |
 | F11 | Toggle fullscreen; Options → Fullscreen chooses Borderless (macOS native fullscreen Space) or Exclusive (native resolution), and it is remembered |
 | Esc | Pause menu (the game pauses): Back to Game, Options..., Save and Quit to Title; Esc again goes back |
 
@@ -41,9 +47,18 @@ before upgrading or returning to an older build.
 A host started with `--agent-listen` keeps
 simulating while menus are open. See [hosted agent CLI and console commands](agents.md).
 
-**Options** (Esc → Options...): render distance (2–32 chunks), field of
-view (30–110°), mouse sensitivity (25–300%), master volume, vsync, Classic/Enhanced graphics and the FPS counter.
-Changes apply immediately and are saved to `saves/options.txt` inside the
+**Options** (Esc → Options..., or Options... on the title screen) follows
+Java 26.3's screens with the options VoxelCraft can honour: FOV and, in a
+world, Difficulty with Java's lock; Music & Sounds (Master Volume and a
+slider per sound category); Video Settings
+(Max Framerate, VSync, GUI Scale, Fullscreen, Brightness, Graphics, Render
+and Simulation Distance, Particles, FPS Counter); Controls (Mouse Settings
+with Sensitivity, Scroll Sensitivity, Discrete Scrolling and Invert Mouse;
+Key Binds; Sneak and Sprint Hold/Toggle); Accessibility Settings (View
+Bobbing, Distortion Effects, FOV Effects, Damage Tilt); Credits &
+Attribution; and Check for Updates. Render Distance is shown in Java's
+16-block chunks. Changes apply immediately and are saved to
+`saves/options.txt` inside the
 [per-user data folder](releases.md#player-data-and-old-saves) when you
 leave the screen; `[`/`]` and V adjust render distance and vsync in game.
 `--rd`, `--volume`, `--no-vsync` and `--graphics classic|enhanced` override the saved options for one
@@ -535,3 +550,15 @@ beside it. The links are saved with the End.
 Respawning the dragon, the gateway beam, chorus trees, cities, shulkers and
 elytra are still roadmap work. Mojang's [End Highlands overview](https://www.minecraft.net/en-us/article/around-block--end-highlands)
 describes the larger progression being built toward.
+
+## Sound categories
+
+Every sound plays in one of Java 26.3's categories, and each has its own volume
+(0–100%, OFF at zero) multiplied by Master Volume: Music, Jukebox/Note Blocks,
+Weather, Blocks, Hostile Mobs, Friendly Mobs, Players, Ambient/Environment and
+UI. They apply to sounds already playing. `options.txt` keeps `volume` and
+`music_volume` and adds `volume_record`, `volume_weather`, `volume_block`,
+`volume_hostile`, `volume_neutral`, `volume_player`, `volume_ambient` and
+`volume_ui` (0..1); older files load with the new ones at full volume. Show
+Subtitles, Directional Audio and the output device are not offered, and Java's
+Voice (narrator) category is omitted.

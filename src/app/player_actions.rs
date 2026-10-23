@@ -19,7 +19,8 @@ impl Game {
     /// Popup and sound for a held tool that just broke.
     pub(super) fn tool_broke(&mut self, held: Item) {
         self.show_popup(&format!("{} broke", capitalize(held.name())));
-        self.audio.play(
+        self.audio.play_in(
+            crate::audio::SoundSource::Players,
             crate::audio::sounds::Sound::Break(crate::audio::sounds::Material::Wood),
             Some(self.session.player.eye()),
             0.8,

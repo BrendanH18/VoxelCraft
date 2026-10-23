@@ -274,6 +274,8 @@ pub struct Renderer {
     meshes: FxHashMap<IVec3, ChunkMesh>,
     arena: arena::QuadArena,
     vsync: bool,
+    /// The Brightness option (Java's gamma), 0..1, for every lit pass.
+    brightness: f32,
     pub stats: RenderStats,
     pub gpu_name: String,
     /// The name wgpu reports for the adapter, used to match it to its Metal device.
@@ -826,6 +828,7 @@ impl Renderer {
             meshes: FxHashMap::default(),
             arena,
             vsync,
+            brightness: 0.5,
             stats: RenderStats::default(),
             gpu_name,
             adapter_name: info.name.clone(),
@@ -1012,10 +1015,6 @@ impl Renderer {
         texture.create_view(&Default::default())
     }
 
-    pub fn scale_factor(&self) -> f32 {
-        self.window.scale_factor() as f32
-    }
-
     pub fn resize(&mut self, width: u32, height: u32) {
         if width == 0 || height == 0 {
             return;
@@ -1028,6 +1027,12 @@ impl Renderer {
 
     pub fn vsync(&self) -> bool {
         self.vsync
+    }
+
+    /// Java's Brightness: how far each light level moves along the lightmap's
+    /// `notGamma` curve (0 Moody, 0.5 Default, 1 Bright).
+    pub fn set_brightness(&mut self, brightness: f32) {
+        self.brightness = brightness.clamp(0.0, 1.0);
     }
 
     pub fn set_vsync(&mut self, vsync: bool) {
@@ -1233,7 +1238,7 @@ impl Renderer {
             ],
             sun: [p.sun_dir.x, p.sun_dir.y, p.sun_dir.z, p.time % 3600.0],
             params: [p.fog_start, p.fog_end, p.daylight, p.rain],
-            effects: [p.night_vision, 0.0, 0.0, 0.0],
+            effects: [p.night_vision, self.brightness, 0.0, 0.0],
             ambient: {
                 let [r, g, b] = p.dimension.ambient_light_color();
                 [r, g, b, if p.dimension.has_sky() { 0.0 } else { 1.0 }]

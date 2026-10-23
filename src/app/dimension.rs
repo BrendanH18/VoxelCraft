@@ -13,6 +13,7 @@ use std::sync::Arc;
 use glam::{DVec3, IVec3};
 use rustc_hash::FxHashMap;
 
+use crate::audio::SoundSource;
 use crate::audio::sounds::{Material, Sound};
 use crate::world::World;
 use crate::world::block::Block;
@@ -313,7 +314,7 @@ impl Game {
                     fight.link_gateways(from, exit);
                     fight.link_gateways(exit, from);
                 }
-                self.audio.play(Sound::Teleport, None, 0.8, (0.9, 1.0));
+                self.audio.play_in(SoundSource::Ambient, Sound::Teleport, None, 0.8, (0.9, 1.0));
                 self.world.gateway_arrival(exit)
             }
         };
@@ -323,7 +324,8 @@ impl Game {
         self.session.vitals.reset_fall();
         self.arrival = None;
         let sound = Sound::Place(Material::Glass);
-        self.audio.play(sound, None, 0.8, (0.5, 0.6));
+        // Java's portal travel and trigger sounds are local `AMBIENT`.
+        self.audio.play_in(SoundSource::Ambient, sound, None, 0.8, (0.5, 0.6));
         false
     }
 
@@ -348,7 +350,7 @@ impl Game {
                 Arrival::Gateway { exit, from: cell, island, link: true }
             }
         };
-        self.audio.play(Sound::Teleport, None, 0.8, (0.7, 0.8));
+        self.audio.play_in(SoundSource::Ambient, Sound::Teleport, None, 0.8, (0.7, 0.8));
         self.arrival = Some(arrival);
         self.session.player.vel = DVec3::ZERO;
         self.session.vitals.reset_fall();
@@ -408,7 +410,7 @@ impl Game {
         let before = self.portal_time;
         self.portal_time += dt as f32;
         if before == 0.0 {
-            self.audio.play(Sound::Fuse, None, 0.4, (0.4, 0.5));
+            self.audio.play_in(SoundSource::Ambient, Sound::Fuse, None, 0.4, (0.4, 0.5));
         }
         // `ServerLevel.isAllowedToEnterPortal`: only the Nether is gated.
         let allowed = self.gamerules.portal_allows_trip_from(self.dimension);

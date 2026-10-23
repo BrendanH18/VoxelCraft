@@ -7,6 +7,7 @@
 //! are made of clicks and hisses instead.
 
 use super::dsp::{self, Biquad, Mode, Rng, add_mode, crackle, mix_into, noise, samples};
+use super::source::SoundSource;
 
 /// Who is making the sound.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -85,6 +86,44 @@ impl Voice {
         Voice::Goat,
         Voice::Horse,
     ];
+
+    /// The category the creature plays in: `Monster`, `Ghast`, `Hoglin` and
+    /// the slimes override `Entity.getSoundSource` to `HOSTILE`; every other
+    /// mob uses the default `NEUTRAL`.
+    pub fn source(self) -> SoundSource {
+        match self {
+            Voice::Zombie
+            | Voice::Skeleton
+            | Voice::Creeper
+            | Voice::Spider
+            | Voice::Enderman
+            | Voice::Blaze
+            | Voice::Slime
+            | Voice::Ghast
+            | Voice::Witch
+            | Voice::Piglin
+            | Voice::Hoglin
+            | Voice::Guardian
+            | Voice::Pillager => SoundSource::Hostile,
+            Voice::Pig
+            | Voice::Cow
+            | Voice::Sheep
+            | Voice::Chicken
+            | Voice::Villager
+            | Voice::Strider
+            | Voice::Fish
+            | Voice::Squid
+            | Voice::Dolphin
+            | Voice::Axolotl
+            | Voice::Cat
+            | Voice::Wolf
+            | Voice::Fox
+            | Voice::Parrot
+            | Voice::Rabbit
+            | Voice::Goat
+            | Voice::Horse => SoundSource::Neutral,
+        }
+    }
 
     pub fn name(self) -> &'static str {
         match self {

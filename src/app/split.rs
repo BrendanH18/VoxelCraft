@@ -92,11 +92,17 @@ impl Game {
         (v.width, v.height)
     }
 
-    /// Physical pixels per UI pixel for the host's HUD and screens, smaller
-    /// when split-screen shrinks its view.
+    /// Physical pixels per UI pixel for the host's HUD and screens: the GUI
+    /// Scale option, smaller when split-screen shrinks its view.
     pub(super) fn ui_scale(&self) -> f32 {
         let (w, h) = self.ui_size();
-        Ui::fitted_scale(w as f32, h as f32, self.renderer.scale_factor())
+        self.view_scale((w, h))
+    }
+
+    /// The GUI scale for a view `size` physical pixels big.
+    fn view_scale(&self, (w, h): (u32, u32)) -> f32 {
+        let (ww, wh) = self.renderer.size();
+        Ui::view_scale((w as f32, h as f32), (ww as f32, wh as f32), self.settings.gui_scale)
     }
 
     /// `/splitscreen <player>|off|side|stacked`: follow an agent in another
@@ -338,6 +344,7 @@ impl Game {
                     &a.vitals,
                     scene.alpha as f32,
                     self.settings.view_bobbing,
+                    self.settings.damage_tilt,
                 ),
                 fov_y: self.settings.fov.to_radians(),
                 sky_color: fog.color.map(|c| c as f64),
@@ -373,8 +380,7 @@ impl Game {
     /// and their death message.
     fn follower_ui(&self, name: &str, bot: &Bot, (w, h): (u32, u32), now: Instant) -> Vec<UiVertex> {
         let a = &bot.agent;
-        let mut ui =
-            Ui::with_scale(w as f32, h as f32, Ui::fitted_scale(w as f32, h as f32, self.renderer.scale_factor()));
+        let mut ui = Ui::with_scale(w as f32, h as f32, self.view_scale((w, h)));
         let (sw, sh) = ui.size();
         super::hud::frozen_overlay(&mut ui, sw, sh, a.vitals.ticks_frozen);
         let underwater = a.player.head_in_water(&self.world);

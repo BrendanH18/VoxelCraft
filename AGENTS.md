@@ -60,8 +60,11 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
   16 GB of RAM. Queue further work until a slot frees.
 - Delegated implementation agents run on Claude models (owner, 2026-10-22:
   the owner now has the Claude Max plan). Reviews always run on Codex
-  (GPT-6.1-Sol), as the debate-review protocol does. Use other providers only
-  when the owner asks.
+  (GPT-6.1-Sol), as the debate-review protocol does. While Codex is at its
+  usage limit, reviews run on both Reflection Beam 1.0
+  (`openrouter/reflection/beam-1.0-501b-a23b`) and DeepSeek V4.1 Flash
+  (`openrouter/deepseek/deepseek-v4.1-flash-1017`) through OpenCode until
+  Codex resets (owner, 2026-10-23). Use other providers only when the owner asks.
 - Agents must not each build the project (owner, 2026-10-17). Agent worktrees
   share one cargo target directory, so dependencies build once and builds take
   turns under cargo's lock: put the worktrees under one folder whose

@@ -90,8 +90,11 @@ use the [per-user data folder](releases.md#player-data-and-old-saves); add
 `--spawn`, `~` for the y coordinate means the terrain surface; `--place` also
 takes a raw block id instead of a name, for oriented states such as stairs
 facing east.
-`--open-menu title --screenshot <file>` captures the title screen's world list
-instead.
+`--open-menu title --screenshot <file>` captures the title screen instead;
+`select`, `create`, `multiplayer` and `direct` capture Select World, Create New
+World, Play Multiplayer and Direct Connection, and `edit`, `recreate` and
+`backup` capture Edit World, Re-Create and the newer-version backup prompt for
+`--world`'s save (else the most recently played world).
 
 These examples use a separate `screenshots` save. `--new` ignores its existing
 save, which is replaced when the game saves; use a different `--world` name to
@@ -113,7 +116,7 @@ cargo run --release -- --world screenshots --new --seed 42 --creative \
 ```
 
 For UI captures, add `--f3` for the debug overlay, `--open-inventory` for
-the inventory or `--open-menu pause|options` for the menus, `--weather rain` for rain (snow in cold biomes), and `--give iron_pickaxe --give coal,16` to fill it (`--drop` throws items
+the inventory or `--open-menu pause|options|video|sound|controls|mouse|keybinds|accessibility|lan` for the menus, `--weather rain` for rain (snow in cold biomes), and `--give iron_pickaxe --give coal,16` to fill it (`--drop` throws items
 in front of the player instead). In
 survival, `--health 5 --air 6 --food 8` sets the vitals; `--health 0` opens the death
 screen. `--xp 30` sets the experience level and `--orbs 40` spawns orbs worth 40

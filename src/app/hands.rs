@@ -8,7 +8,7 @@
 use glam::DVec3;
 
 use crate::audio::{
-    Audio,
+    Audio, SoundSource,
     sounds::{Material, Sound},
 };
 use crate::entity::Entities;
@@ -67,7 +67,8 @@ impl Actor<'_> {
     fn tool_broke(&mut self, item: Item) {
         self.popup(format!("{} broke", capitalize(item.name())));
         let eye = self.session.player.eye();
-        self.audio.play(Sound::Break(Material::Wood), Some(eye), 0.8, (1.3, 1.5));
+        // Java plays the item-break sound as the player (`PLAYERS`).
+        self.audio.play_in(SoundSource::Players, Sound::Break(Material::Wood), Some(eye), 0.8, (1.3, 1.5));
     }
 
     /// Attack/mine button pressed or released. `hit_player` is whether the
@@ -197,7 +198,7 @@ impl Actor<'_> {
             }
             Ok(Outcome::TeleportedEgg { destination, .. }) => {
                 if let Some(to) = destination {
-                    self.audio.play(Sound::Teleport, Some(to.as_dvec3()), 0.6, (0.9, 1.1));
+                    self.audio.play_in(SoundSource::Blocks, Sound::Teleport, Some(to.as_dvec3()), 0.6, (0.9, 1.1));
                 }
             }
             // The session's destroy delay replaces the former adapter repeat cooldowns.
@@ -260,7 +261,7 @@ impl Actor<'_> {
             return false;
         }
         let eye = self.session.player.eye();
-        self.audio.play(Sound::Place(Material::Wood), Some(eye), 0.6, (1.4, 1.6));
+        self.audio.play_in(SoundSource::Players, Sound::Place(Material::Wood), Some(eye), 0.6, (1.4, 1.6));
         true
     }
 
@@ -293,28 +294,34 @@ impl Actor<'_> {
                 self.requests.push(Request::Open(done.used));
             }
             Used::Bucket(effect) => bucket::feedback(audio, effect),
-            Used::PearlThrown { from }
-            | Used::PotionThrown { from }
-            | Used::ProjectileThrown { from }
-            | Used::Rod { from, broke: false } => audio.play(Sound::Bow, Some(from), throw.0, throw.1),
+            // Pearls, snowballs, eggs and fishing rods play in `NEUTRAL`, splash potions in `PLAYERS`.
+            Used::PearlThrown { from } | Used::ProjectileThrown { from } | Used::Rod { from, broke: false } => {
+                audio.play_in(SoundSource::Neutral, Sound::Bow, Some(from), throw.0, throw.1)
+            }
+            Used::PotionThrown { from } => audio.play(Sound::Bow, Some(from), throw.0, throw.1),
             Used::EyeReleased { from } => items::eye_thrown_sound(audio, from),
             Used::EyeInserted { cell, opened } => items::frame_filled_sounds(audio, cell, opened),
             Used::EggTeleported { destination: Some(to) } => {
-                audio.play(Sound::Teleport, Some(to.as_dvec3()), 0.6, (0.9, 1.1));
+                audio.play_in(SoundSource::Blocks, Sound::Teleport, Some(to.as_dvec3()), 0.6, (0.9, 1.1));
             }
             Used::Harvested { cell } => audio.play(Sound::Break(Material::Grass), Some(centre(cell)), 0.8, (1.0, 1.2)),
             Used::Door { cell, open: Some(open) } => {
                 audio.play(Sound::Door(open), Some(centre(cell)), 0.8, (0.9, 1.1));
             }
-            Used::TntPrimed { cell } => audio.play(Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05)),
+            // TNT's fuse, flint and steel and fire are `BLOCKS` in Java.
+            Used::TntPrimed { cell } => {
+                audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05))
+            }
             Used::Ignited { cell, portal } => {
                 audio.play(Sound::Place(Material::Stone), Some(cell.as_dvec3()), 0.7, (1.6, 1.9));
                 if portal {
-                    audio.play(Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.5, 0.6));
+                    audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.5, 0.6));
                 }
             }
             Used::Stripped { cell } => audio.play(Sound::Place(Material::Wood), Some(centre(cell)), 1.0, (0.8, 1.0)),
-            Used::Tilled { cell } => audio.play(Sound::Step(Material::Gravel), Some(centre(cell)), 1.0, (0.8, 0.9)),
+            Used::Tilled { cell } => {
+                audio.play_in(SoundSource::Blocks, Sound::Step(Material::Gravel), Some(centre(cell)), 1.0, (0.8, 0.9))
+            }
             Used::Carved { cell } => audio.play(Sound::Break(Material::Wood), Some(centre(cell)), 0.8, (0.9, 1.1)),
             Used::BoneMeal { cell } => audio.play(Sound::Place(Material::Grass), Some(centre(cell)), 0.8, (1.2, 1.4)),
             Used::Placed(placement) => {
@@ -324,7 +331,7 @@ impl Actor<'_> {
                         audio.block_place(if kind == Kind::Bed { Block::WOOL } else { block }, cell);
                     }
                     Outcome::WaterEvaporated { cell, .. } => {
-                        audio.play(Sound::Fuse, Some(cell.as_dvec3()), 0.6, (1.6, 1.8));
+                        audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(cell.as_dvec3()), 0.6, (1.6, 1.8));
                     }
                 }
             }

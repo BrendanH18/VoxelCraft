@@ -3,7 +3,9 @@ use std::sync::{Arc, OnceLock};
 use super::dsp::{self, RATE};
 use super::export::{stats, wav_bytes};
 use super::mixer::{Command, FAR, MAX_OTHERS, MAX_VOICES, Mixer, NEAR, attenuation, pan_gains};
+use super::sounds::{Call, Voice};
 use super::*;
+use crate::world::gadgets::Instrument;
 
 fn bank() -> Arc<Bank> {
     static BANK: OnceLock<Arc<Bank>> = OnceLock::new();
@@ -123,7 +125,11 @@ fn test_mixer(buf: Vec<f32>) -> (Mixer, crossbeam_channel::Sender<Command>) {
 }
 
 fn play(gain: f32, pos: Option<[f32; 3]>) -> Command {
-    Command::Play { sound: Sound::Click, variant: 0, gain, pitch: 1.0, pos }
+    play_in(SoundSource::Ui, gain, pos)
+}
+
+fn play_in(source: SoundSource, gain: f32, pos: Option<[f32; 3]>) -> Command {
+    Command::Play { sound: Sound::Click, variant: 0, gain, pitch: 1.0, source, pos }
 }
 
 #[test]
@@ -187,7 +193,7 @@ fn mixer_master_and_distance() {
     let a = attenuation(10.0) * 0.5;
     assert!((l - pl * a).abs() < 1e-4 && (r - pr * a).abs() < 1e-4, "{l} {r}");
     // Muting fades to silence within a few blocks.
-    tx.send(Command::Master(0.0)).unwrap();
+    tx.send(Command::Volume(SoundSource::Master, 0.0)).unwrap();
     for _ in 0..20 {
         mixer.render(&mut out, 2);
     }
@@ -309,6 +315,7 @@ fn mixer_is_cheap() {
                 variant: i as u32,
                 gain: 1.0,
                 pitch: 1.1,
+                source: SoundSource::Blocks,
                 pos,
             });
         }
@@ -326,4 +333,186 @@ fn every_sound_round_trips_through_its_key() {
         assert_eq!(Sound::from_key(sound.key()), Some(sound));
     }
     assert_eq!(Sound::from_key(Sound::COUNT), None);
+}
+
+#[test]
+fn every_sound_plays_in_a_java_category() {
+    use SoundSource::*;
+    for sound in Sound::all() {
+        let source = sound.source();
+        assert!(!matches!(source, Master | Music), "{}: Master and Music are not sound categories", sound.name());
+    }
+    // Where Java plays the matching sound event.
+    let expect = [
+        (Sound::Break(Material::Stone), Blocks),
+        (Sound::Place(Material::Wood), Blocks),
+        (Sound::Door(true), Blocks),
+        (Sound::Bell, Blocks),
+        (Sound::Explosion, Blocks),
+        (Sound::Step(Material::Grass), Players),
+        (Sound::Hurt, Players),
+        (Sound::Pop, Players),
+        (Sound::Orb, Players),
+        (Sound::Note(Instrument::ALL[0]), Records),
+        (Sound::Rain, Weather),
+        (Sound::Wind, Ambient),
+        (Sound::Cave, Ambient),
+        (Sound::Click, Ui),
+        (Sound::Fuse, Hostile),
+        (Sound::Scream, Hostile),
+        (Sound::DragonGrowl, Hostile),
+        (Sound::PortalSpawn, Hostile),
+        (Sound::EyeDeath, Neutral),
+        (Sound::Mob(Voice::Zombie, Call::Hurt), Hostile),
+        (Sound::Mob(Voice::Hoglin, Call::Ambient), Hostile),
+        (Sound::Mob(Voice::Cow, Call::Death), Neutral),
+        (Sound::Mob(Voice::Villager, Call::Ambient), Neutral),
+        (Sound::Mob(Voice::Strider, Call::Ambient), Neutral),
+    ];
+    for (sound, source) in expect {
+        assert_eq!(sound.source(), source, "{}", sound.name());
+    }
+    // Every category is used by some sound (or is Master/Music).
+    for source in SoundSource::ALL.into_iter().skip(2) {
+        assert!(Sound::all().any(|s| s.source() == source), "{source:?} has no sounds");
+    }
+}
+
+#[test]
+fn categories_have_java_labels_and_unique_option_keys() {
+    let labels: Vec<_> = SoundSource::ALL.iter().map(|s| s.label()).collect();
+    assert_eq!(
+        labels,
+        [
+            "Master Volume",
+            "Music",
+            "Jukebox/Note Blocks",
+            "Weather",
+            "Blocks",
+            "Hostile Mobs",
+            "Friendly Mobs",
+            "Players",
+            "Ambient/Environment",
+            "UI"
+        ]
+    );
+    for (i, source) in SoundSource::ALL.into_iter().enumerate() {
+        assert_eq!(source.index(), i);
+        assert_eq!(SoundSource::from_option_key(source.option_key()), Some(source));
+    }
+    assert_eq!(SoundSource::from_option_key("volume"), Some(SoundSource::Master));
+    assert_eq!(SoundSource::from_option_key("music_volume"), Some(SoundSource::Music));
+    assert_eq!(SoundSource::from_option_key("fov"), None);
+}
+
+/// A mixer playing one long constant voice in `source`, settled at `volumes`.
+fn settled(source: SoundSource, volumes: &[(SoundSource, f32)]) -> (Mixer, crossbeam_channel::Sender<Command>, f32) {
+    let (mut mixer, tx) = test_mixer(vec![0.5; 4 * 48_000]);
+    for &(s, v) in volumes {
+        tx.send(Command::Volume(s, v)).unwrap();
+    }
+    // Let the glide to the new volumes finish before the voice starts.
+    let mut out = vec![0.0; 2 * 4800];
+    for _ in 0..4 {
+        mixer.render(&mut out, 2);
+    }
+    tx.send(play_in(source, 0.8, None)).unwrap();
+    for _ in 0..4 {
+        mixer.render(&mut out, 2);
+    }
+    (mixer, tx, out[out.len() - 1])
+}
+
+#[test]
+fn master_and_category_multiply() {
+    let level = |volumes: &[(SoundSource, f32)]| settled(SoundSource::Players, volumes).2;
+    assert!((level(&[]) - 0.4).abs() < 1e-3, "full volume plays the voice unchanged");
+    assert!((level(&[(SoundSource::Master, 0.5)]) - 0.2).abs() < 1e-3);
+    assert!((level(&[(SoundSource::Players, 0.5)]) - 0.2).abs() < 1e-3);
+    assert!((level(&[(SoundSource::Master, 0.5), (SoundSource::Players, 0.5)]) - 0.1).abs() < 1e-3);
+    assert!((level(&[(SoundSource::Master, 0.25), (SoundSource::Players, 0.8)]) - 0.08).abs() < 1e-3);
+    // Other categories leave the voice alone.
+    let others =
+        [(SoundSource::Music, 0.0), (SoundSource::Blocks, 0.0), (SoundSource::Hostile, 0.1), (SoundSource::Ui, 0.0)];
+    assert!((level(&others) - 0.4).abs() < 1e-3);
+    assert!(level(&[(SoundSource::Players, 0.0)]).abs() < 1e-6);
+}
+
+#[test]
+fn category_volume_changes_reach_playing_sounds() {
+    let (mut mixer, tx, loud) = settled(SoundSource::Blocks, &[]);
+    assert_eq!(mixer.active_voices(), 1);
+    let mut out = vec![0.0; 2 * 4800];
+    tx.send(Command::Volume(SoundSource::Blocks, 0.25)).unwrap();
+    mixer.render(&mut out, 2);
+    mixer.render(&mut out, 2);
+    let quiet = out[out.len() - 1];
+    assert!((quiet / loud - 0.25).abs() < 0.01, "{loud} -> {quiet}");
+    assert_eq!(mixer.active_voices(), 1, "the same voice, no restart");
+    // It glides rather than jumping: no step between samples bigger than a
+    // small fraction of the change.
+    let (mut mixer, tx, loud) = settled(SoundSource::Blocks, &[]);
+    tx.send(Command::Volume(SoundSource::Blocks, 0.0)).unwrap();
+    let mut out = vec![0.0; 2 * 4800];
+    mixer.render(&mut out, 2);
+    // Consecutive left-channel samples, starting from the level before the
+    // change, so a jump on the first frame counts too.
+    let left: Vec<f32> = std::iter::once(loud).chain(out.iter().step_by(2).copied()).collect();
+    let step = left.windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0f32, f32::max);
+    assert!(step < loud * 0.05, "volume change clicks: step {step} for a {loud} voice");
+    mixer.render(&mut out, 2);
+    mixer.render(&mut out, 2);
+    assert!(out.iter().all(|s| s.abs() < 1e-3), "and ends in silence");
+}
+
+#[test]
+fn a_silent_category_takes_no_voice() {
+    let (mut mixer, tx) = test_mixer(vec![0.5; 48_000]);
+    tx.send(Command::Volume(SoundSource::Hostile, 0.0)).unwrap();
+    let mut out = vec![0.0; 2 * 4800];
+    for _ in 0..3 {
+        mixer.render(&mut out, 2);
+    }
+    tx.send(play_in(SoundSource::Hostile, 1.0, None)).unwrap();
+    tx.send(play_in(SoundSource::Neutral, 1.0, None)).unwrap();
+    mixer.render(&mut out, 2);
+    assert_eq!(mixer.active_voices(), 1, "only the audible category plays");
+    // Out-of-range and non-finite volumes are clamped or ignored.
+    tx.send(Command::Volume(SoundSource::Neutral, f32::NAN)).unwrap();
+    tx.send(Command::Volume(SoundSource::Players, 7.0)).unwrap();
+    tx.send(Command::Volume(SoundSource::Ui, -3.0)).unwrap();
+    mixer.render(&mut out, 2);
+    assert!(out.iter().all(|s| s.is_finite()));
+}
+
+#[test]
+fn ambience_loops_follow_their_own_categories() {
+    let energy = |volumes: &[(SoundSource, f32)], wind: f32, rain: f32| {
+        let (tx, rx) = crossbeam_channel::bounded(64);
+        let mut mixer = Mixer::new(bank(), rx, RATE, 1.0);
+        for &(s, v) in volumes {
+            tx.send(Command::Volume(s, v)).unwrap();
+        }
+        tx.send(Command::Ambience { wind, cave: 0.0, rain }).unwrap();
+        let mut out = vec![0.0; 2 * 4800];
+        let mut total = 0.0;
+        // Four seconds, past the loops' fade-in.
+        for block in 0..40 {
+            mixer.render(&mut out, 2);
+            if block >= 30 {
+                total += out.iter().map(|s| s * s).sum::<f32>();
+            }
+        }
+        total
+    };
+    let rain = energy(&[], 0.0, 1.0);
+    assert!(rain > 1.0, "rain is audible: {rain}");
+    assert!(energy(&[(SoundSource::Weather, 0.0)], 0.0, 1.0) < rain * 1e-4, "Weather silences rain");
+    assert!(energy(&[(SoundSource::Ambient, 0.0)], 0.0, 1.0) > rain * 0.99, "Ambient leaves rain alone");
+    let wind = energy(&[], 1.0, 0.0);
+    assert!(wind > 1.0, "wind is audible: {wind}");
+    assert!(energy(&[(SoundSource::Ambient, 0.0)], 1.0, 0.0) < wind * 1e-4, "Ambient silences wind");
+    assert!(energy(&[(SoundSource::Weather, 0.0)], 1.0, 0.0) > wind * 0.99, "Weather leaves wind alone");
+    let half = energy(&[(SoundSource::Master, 0.5), (SoundSource::Weather, 0.5)], 0.0, 1.0);
+    assert!((half / rain - 0.0625).abs() < 0.01, "master x weather: {}", half / rain);
 }

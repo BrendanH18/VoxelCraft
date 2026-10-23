@@ -293,9 +293,19 @@ pub(super) struct Pads {
 }
 
 impl Pads {
-    pub fn new() -> Self {
-        let gilrs = Gilrs::new().map_err(|e| log::warn!("gamepads unavailable: {e}")).ok();
+    /// Controller input, if any (screenshot runs have none).
+    pub fn new(gilrs: Option<Gilrs>) -> Self {
         Self { gilrs, ..Default::default() }
+    }
+
+    /// Opens controller input for the window's lifetime.
+    pub fn open() -> Option<Gilrs> {
+        Gilrs::new().map_err(|e| log::warn!("gamepads unavailable: {e}")).ok()
+    }
+
+    /// Hands controller input back to the title screen.
+    pub fn into_gilrs(self) -> Option<Gilrs> {
+        self.gilrs
     }
 
     /// Saved with the world: `uuid=profile` pairs separated by `;`.
@@ -394,6 +404,7 @@ impl Game {
         let mut joins = Vec::new();
         let mut popups = Vec::new();
         let mut navs = Vec::new();
+        let mut host_navs = Vec::new();
         let mut closing = Vec::new();
         let mut skip_credits = false;
         while let Some(event) = gilrs.next_event() {
@@ -407,6 +418,10 @@ impl Game {
             let seat = self.pads.seats.iter_mut().find(|s| s.id == Some(event.id));
             match (event.event, seat) {
                 (EventType::ButtonPressed(Button::Start, _), None) => joins.push(event.id),
+                // A controller that hasn't joined drives the host's open menus.
+                (EventType::ButtonPressed(button, _), None) if self.menu.is_open() => {
+                    host_navs.extend(super::gui::Nav::from_pad(button));
+                }
                 (EventType::ButtonPressed(button, _), Some(seat)) => match button {
                     _ if seat.menu.is_some() => navs.extend(nav_for(button).map(|n| (seat.name.clone(), n))),
                     Button::Start => seat.open(Menu::Pause { choice: 0 }),
@@ -493,6 +508,11 @@ impl Game {
         for (name, nav) in navs {
             if self.pad_nav(&name, nav) {
                 popups.push(format!("{name} left the game"));
+            }
+        }
+        for nav in host_navs {
+            if let Some(action) = self.menu_nav(nav) {
+                self.menu_action = Some(action);
             }
         }
         if let Some(text) = popups.last() {

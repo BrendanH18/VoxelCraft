@@ -72,29 +72,40 @@ pub struct Ui {
 }
 
 impl Ui {
-    pub fn new(width: f32, height: f32, dpi: f32) -> Self {
-        Self { verts: Vec::with_capacity(4096), width, height, scale: Self::scale_for(dpi) }
-    }
-
-    /// A UI with an explicit scale (see [`Ui::fitted_scale`]).
+    /// A UI with an explicit scale (see [`Ui::gui_scale`] and [`Ui::view_scale`]).
     pub fn with_scale(width: f32, height: f32, scale: f32) -> Self {
         Self { verts: Vec::with_capacity(4096), width, height, scale }
     }
 
-    /// Like Minecraft's automatic GUI scale: the display's scale, lowered
-    /// (not below 1) until the view is at least 320x180 UI pixels, so small
-    /// split-screen views keep their whole HUD on screen.
-    pub fn fitted_scale(width: f32, height: f32, dpi: f32) -> f32 {
-        let mut scale = Self::scale_for(dpi);
-        while scale > 1.0 && (width / scale < 320.0 || height / scale < 180.0) {
-            scale -= 1.0;
+    /// The largest GUI scale that leaves at least 320x240 UI pixels, at
+    /// least 1 (Java's `Window.calculateScale(0, false)`). It's the top of
+    /// the GUI Scale option and what Auto picks.
+    pub fn max_gui_scale(width: f32, height: f32) -> u32 {
+        let mut scale = 1;
+        while width / (scale + 1) as f32 >= 320.0 && height / (scale + 1) as f32 >= 240.0 {
+            scale += 1;
         }
         scale
     }
 
-    /// Physical pixels per UI pixel for a display scale factor.
-    pub fn scale_for(dpi: f32) -> f32 {
-        (dpi * 1.5).round().max(1.0)
+    /// Java's GUI scale for a window `width` x `height` physical pixels:
+    /// `setting` (0 is Auto, the largest that fits), never more than
+    /// [`Ui::max_gui_scale`].
+    pub fn gui_scale(width: f32, height: f32, setting: u32) -> f32 {
+        let max = Self::max_gui_scale(width, height);
+        (if setting == 0 { max } else { setting.min(max) }) as f32
+    }
+
+    /// The scale for one split-screen view of a window: the window's GUI
+    /// scale, lowered (not below 1) until the view is at least 320x180 UI
+    /// pixels, so small views keep their whole HUD on screen. A view filling
+    /// the window gets the window's scale.
+    pub fn view_scale((vw, vh): (f32, f32), (ww, wh): (f32, f32), setting: u32) -> f32 {
+        let mut scale = Self::gui_scale(ww, wh, setting);
+        while scale > 1.0 && (vw / scale < 320.0 || vh / scale < 180.0) {
+            scale -= 1.0;
+        }
+        scale
     }
 
     /// UI-pixel dimensions of the screen.
@@ -223,6 +234,35 @@ impl Ui {
         pen - x
     }
 
+    /// Shadowed text drawn only between `min_x` and `max_x`, glyphs cut at
+    /// the edges (Java's scissored widget labels).
+    pub fn text_clipped(&mut self, x: f32, y: f32, s: &str, color: Color, (min_x, max_x): (f32, f32)) {
+        let shadow = [color[0] * 0.25, color[1] * 0.25, color[2] * 0.25, color[3]];
+        self.glyphs_clipped(x + 1.0, y + 1.0, s, shadow, (min_x, max_x));
+        self.glyphs_clipped(x, y, s, color, (min_x, max_x));
+    }
+
+    fn glyphs_clipped(&mut self, x: f32, y: f32, s: &str, color: Color, (min_x, max_x): (f32, f32)) {
+        let mut pen = x;
+        for c in s.chars() {
+            let c = if (c as u32) < 128 { c } else { '?' };
+            let left = pen - glyph_left(c);
+            if c != ' ' && left + 8.0 > min_x && left < max_x {
+                let (gx, gy) = ((c as u32 % 16) as f32 * 8.0, (c as u32 / 16) as f32 * 8.0);
+                let (x0, x1) = (left.max(min_x), (left + 8.0).min(max_x));
+                let (u0, u1) = ((gx + x0 - left) / FONT_ATLAS_W as f32, (gx + x1 - left) / FONT_ATLAS_W as f32);
+                let (v0, v1) = (gy / FONT_ATLAS_H as f32, (gy + 8.0) / FONT_ATLAS_H as f32);
+                self.quad(
+                    [[x0, y], [x1, y], [x1, y + 8.0], [x0, y + 8.0]],
+                    [[u0, v0], [u1, v0], [u1, v1], [u0, v1]],
+                    GLYPH,
+                    color,
+                );
+            }
+            pen += glyph_advance(c);
+        }
+    }
+
     /// Text on a translucent backing panel, like Minecraft's F3 screen.
     pub fn label(&mut self, x: f32, y: f32, s: &str, color: Color) {
         let w = Self::text_width(s);
@@ -236,13 +276,28 @@ mod scale_tests {
     use super::Ui;
 
     #[test]
+    fn auto_is_the_largest_scale_keeping_320_by_240() {
+        // Java's rule: 1920x1080 is 4 (480x270), 1600x900 is 3 (533x300).
+        assert_eq!(Ui::max_gui_scale(1920.0, 1080.0), 4);
+        assert_eq!(Ui::max_gui_scale(1600.0, 900.0), 3);
+        assert_eq!(Ui::max_gui_scale(2560.0, 1440.0), 6);
+        assert_eq!(Ui::max_gui_scale(640.0, 480.0), 2);
+        assert_eq!(Ui::max_gui_scale(639.0, 480.0), 1);
+        assert_eq!(Ui::max_gui_scale(200.0, 100.0), 1, "never below 1");
+        assert_eq!(Ui::gui_scale(1920.0, 1080.0, 0), 4.0, "Auto");
+        assert_eq!(Ui::gui_scale(1920.0, 1080.0, 2), 2.0);
+        assert_eq!(Ui::gui_scale(1920.0, 1080.0, 9), 4.0, "capped at what fits");
+    }
+
+    #[test]
     fn small_views_lower_the_gui_scale() {
-        // A full 1600x900 window at 2x keeps the display's scale.
-        assert_eq!(Ui::fitted_scale(1600.0, 900.0, 2.0), 3.0);
+        let window = (1600.0, 900.0);
+        assert_eq!(Ui::view_scale(window, window, 0), 3.0);
         // Stacked halves and quarters drop a step to stay 320x180.
-        assert_eq!(Ui::fitted_scale(1600.0, 450.0, 2.0), 2.0);
-        assert_eq!(Ui::fitted_scale(800.0, 450.0, 2.0), 2.0);
+        assert_eq!(Ui::view_scale((1600.0, 450.0), window, 0), 2.0);
+        assert_eq!(Ui::view_scale((800.0, 450.0), window, 0), 2.0);
+        assert_eq!(Ui::view_scale((800.0, 450.0), window, 1), 1.0, "a smaller choice stays");
         // Never below one physical pixel per UI pixel.
-        assert_eq!(Ui::fitted_scale(200.0, 100.0, 2.0), 1.0);
+        assert_eq!(Ui::view_scale((200.0, 100.0), window, 0), 1.0);
     }
 }

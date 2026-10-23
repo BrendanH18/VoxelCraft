@@ -23,10 +23,20 @@ struct Globals {
 @group(0) @binding(0) var<uniform> g: Globals;
 
 // Night vision (Java's lightmap): brightens every light level toward full,
-// keeping its hue; g.effects.x is its strength.
+// keeping its hue; g.effects.x is its strength. Brightness follows.
 fn night_vision(lit: vec3<f32>) -> vec3<f32> {
     let peak = max(max(lit.r, lit.g), max(lit.b, 1e-3));
-    return mix(lit, lit / peak, g.effects.x);
+    return brightness(mix(lit, lit / peak, g.effects.x));
+}
+
+// The Brightness option (Java's gamma, g.effects.y): lightmap.fsh moves each
+// clamped light level toward its `notGamma` curve, which lifts dark levels.
+fn brightness(lit: vec3<f32>) -> vec3<f32> {
+    let c = clamp(lit, vec3<f32>(0.0), vec3<f32>(1.0));
+    let peak = max(max(c.r, c.g), max(c.b, 1e-4));
+    let inverted = 1.0 - peak;
+    let curved = c * ((1.0 - inverted * inverted * inverted * inverted) / peak);
+    return mix(c, curved, g.effects.y);
 }
 @group(1) @binding(0) var blocks: texture_2d_array<f32>;
 @group(1) @binding(1) var blocks_sampler: sampler;

@@ -121,6 +121,14 @@ its dimension subfolders, to a backup outside the active saves directory.
 To return to an older build, restore its pre-upgrade backup while the game
 is closed; keep the upgraded world separately rather than opening it in that build.
 
+From v0.11 every save records the version that wrote it (`version=0.11.0` in
+`level.txt`; older worlds have none and show as "unknown"). Select World shows
+it, and opening a world saved by a newer version first shows Java's
+"Downgrading a world is not supported" prompt: **Create Backup and Load**,
+**I Know What I'm Doing!** or **Cancel**. That backup, and Edit World's
+**Make Backup**, copy the one world to
+`<data-root>/backups/<date>_<time>_<folder>/` (UTC), which is never pruned.
+
 ## Unsigned first launch
 
 Windows SmartScreen may offer **More info → Run anyway**. Windows 11 Smart App

@@ -5,6 +5,7 @@ use std::time::Instant;
 
 use glam::{DVec3, IVec3};
 
+use crate::audio::SoundSource;
 use crate::audio::sounds::{Call, Sound, Voice};
 use crate::entity::{self, Entities, EntityEvent, MobKind, MobSound, PlayerId, Target};
 use crate::physics;
@@ -143,7 +144,7 @@ impl Game {
         }
         for (cell, short_fuse) in std::mem::take(&mut self.world.primed_tnt) {
             self.mobs.entities.prime_tnt(cell, short_fuse);
-            self.audio.play(Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05));
+            self.audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05));
         }
         crate::entity::golem::finish_golems(&mut self.world, &mut self.mobs.entities);
         for (cell, count) in std::mem::take(&mut self.world.hatched_turtles) {
@@ -288,7 +289,9 @@ impl Game {
                     burst.color =
                         Some([colour[0] as f32 / 255.0, colour[1] as f32 / 255.0, colour[2] as f32 / 255.0, 1.0]);
                     self.world.particles.push(crate::particles::Request::Burst(burst));
-                    self.audio.play(Sound::Break(crate::audio::sounds::Material::Glass), Some(pos), 1.0, (0.9, 1.1));
+                    // `SPLASH_POTION_BREAK` plays in `NEUTRAL`.
+                    let glass = Sound::Break(crate::audio::sounds::Material::Glass);
+                    self.audio.play_in(SoundSource::Neutral, glass, Some(pos), 1.0, (0.9, 1.1));
                 }
                 EntityEvent::PlayerMagic { player: PlayerId::HOST, amount } => {
                     if self.session.mode.is_survival() {
@@ -348,6 +351,7 @@ impl Game {
                             | MobSound::Hurt(MobKind::PiglinBrute | MobKind::Zoglin)
                             | MobSound::Death(MobKind::PiglinBrute | MobKind::Zoglin)
                     );
+                    let source = mob_sound_source(sound);
                     let (sound, gain) = match sound {
                         MobSound::Bell => (Sound::Bell, 1.0),
                         // Procedural stand-ins for Java's `wandering_trader.disappeared`/`reappeared`.
@@ -387,10 +391,11 @@ impl Game {
                     } else {
                         (0.9, 1.1)
                     };
-                    self.audio.play(sound, Some(pos), gain, pitch);
+                    self.audio.play_in(source.unwrap_or(sound.source()), sound, Some(pos), gain, pitch);
                 }
                 EntityEvent::MobShot { pos, .. } => {
-                    self.audio.play(Sound::Hit, Some(pos + DVec3::Y * 0.5), 0.8, (0.9, 1.1))
+                    // An arrow landing is the arrow entity's sound, `NEUTRAL`.
+                    self.audio.play_in(SoundSource::Neutral, Sound::Hit, Some(pos + DVec3::Y * 0.5), 0.8, (0.9, 1.1))
                 }
                 EntityEvent::Shoot { .. }
                 | EntityEvent::MobHit { .. }
@@ -486,6 +491,24 @@ fn shove(vel: &mut DVec3, push: DVec3) {
         if along < len {
             *vel += push / len * (len - along);
         }
+    }
+}
+
+/// The category Java plays a mob sound in, where it isn't the sound's own
+/// ([`Sound::source`]): the creature's voice decides hostile or friendly,
+/// and these are the exceptions.
+fn mob_sound_source(sound: MobSound) -> Option<SoundSource> {
+    match sound {
+        // `AbstractVillager`, boats and the dragon's smashing: `NEUTRAL`, `NEUTRAL`, `HOSTILE`.
+        MobSound::TraderDrink(_) | MobSound::BoatPaddle(_) => Some(SoundSource::Neutral),
+        MobSound::DragonSmash => Some(SoundSource::Hostile),
+        // Skeletons and pillagers shoot as hostile mobs, not as the player.
+        MobSound::Bow => Some(SoundSource::Hostile),
+        // The snow golem borrows the slime's voice but is a friendly mob.
+        MobSound::Ambient(MobKind::SnowGolem)
+        | MobSound::Hurt(MobKind::SnowGolem)
+        | MobSound::Death(MobKind::SnowGolem) => Some(SoundSource::Neutral),
+        _ => None,
     }
 }
 
