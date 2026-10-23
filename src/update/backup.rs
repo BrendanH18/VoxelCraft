@@ -49,8 +49,12 @@ pub fn backup_saves(saves: &Path, backups: &Path, version: &str) -> Result<PathB
     // like a finished backup.
     let partial = backups.join(format!(".{}.partial", dest.file_name().unwrap().to_string_lossy()));
     let _ = std::fs::remove_dir_all(&partial);
-    let copied = if saves.exists() { copy_tree(saves, &partial) } else { std::fs::create_dir_all(&partial) }
-        .and_then(|()| std::fs::rename(&partial, &dest));
+    let copied = match saves.try_exists() {
+        Ok(true) => copy_tree(saves, &partial),
+        Ok(false) => std::fs::create_dir_all(&partial),
+        Err(e) => Err(e),
+    }
+    .and_then(|()| std::fs::rename(&partial, &dest));
     drop(locks);
     if let Err(e) = copied {
         let _ = std::fs::remove_dir_all(&partial);
@@ -61,8 +65,8 @@ pub fn backup_saves(saves: &Path, backups: &Path, version: &str) -> Result<PathB
 }
 
 /// Copies a directory tree, leaving out session locks (which another
-/// handle can't read on Windows while held) and anything that isn't a
-/// plain file or folder.
+/// handle can't read on Windows while held). A symbolic link or special
+/// file fails the copy: leaving it out would leave a world out.
 fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(to)?;
     for entry in std::fs::read_dir(from)? {
@@ -71,8 +75,15 @@ fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
         let target = to.join(entry.file_name());
         if kind.is_dir() {
             copy_tree(&entry.path(), &target)?;
-        } else if kind.is_file() && entry.file_name() != "session.lock" {
-            std::fs::copy(entry.path(), target)?;
+        } else if kind.is_file() {
+            if entry.file_name() != "session.lock" {
+                std::fs::copy(entry.path(), target)?;
+            }
+        } else {
+            return Err(std::io::Error::other(format!(
+                "{} is a link or special file; back it up by hand, then update from the release page",
+                entry.path().display()
+            )));
         }
     }
     Ok(())
@@ -185,6 +196,22 @@ mod tests {
         let result = backup_saves(&saves, &root.join("backups"), "0.11.0");
         std::fs::set_permissions(&dim, std::fs::Permissions::from_mode(0o755)).unwrap();
         assert!(result.unwrap_err().starts_with("could not back up your worlds"));
+        assert_eq!(std::fs::read_dir(root.join("backups")).unwrap().count(), 0, "no partial backup left");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// A world reached through a symbolic link would be locked but not
+    /// copied; the backup refuses instead.
+    #[cfg(unix)]
+    #[test]
+    fn links_fail_the_backup() {
+        let root = scratch("links");
+        let saves = root.join("saves");
+        std::fs::create_dir_all(&saves).unwrap();
+        let elsewhere = world(&root, "elsewhere");
+        std::os::unix::fs::symlink(&elsewhere, saves.join("linked")).unwrap();
+        let err = backup_saves(&saves, &root.join("backups"), "0.11.0").unwrap_err();
+        assert!(err.contains("is a link or special file"), "{err}");
         assert_eq!(std::fs::read_dir(root.join("backups")).unwrap().count(), 0, "no partial backup left");
         std::fs::remove_dir_all(root).unwrap();
     }

@@ -63,7 +63,8 @@ background service.
 5. **Back up.** The game holds each world's `session.lock` while copying it,
    so no other window can save it halfway through. If any world is open in
    another VoxelCraft window, the update stops and asks the player to close
-   it. Worlds and `options.txt` go to
+   it. A symbolic link or special file in the saves folder also stops it,
+   since the backup can't include it. Worlds and `options.txt` go to
    `<data-root>/backups/<date>_<time>-before-<version>/` (UTC); the three
    newest pre-update backups are kept.
 6. **Install and restart.**

@@ -43,8 +43,10 @@ version; v1.0 is everything in this roadmap.
 **Priority (owner, 2026-10-22): updates and menus before more content.**
 Releases will be frequent, so players must be able to upgrade easily. v0.10
 is the stepping stone: it ships the in-game updater ([design](updates.md))
-as soon as it works, and every player installs it by hand once; from then on
-the game updates itself. v0.11 polishes the title screen, world management
+as soon as it works, and every player installs it by hand once. From then on
+the game updates itself on Windows x64 and Apple Silicon Macs, the platforms
+with release packages; Intel Mac and Linux players build from source and
+upgrade by hand, and their game only points them to the release page. v0.11 polishes the title screen, world management
 and options, and content resumes with v0.12. This pulls those parts of M7
 forward; the later releases moved up two numbers (building materials is now
 v0.12, polish and performance v0.20).
