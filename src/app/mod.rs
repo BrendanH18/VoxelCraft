@@ -195,6 +195,8 @@ struct Game {
     show_debug: bool,
     /// Short message above the hotbar (item names, mode changes).
     popup: (String, Instant),
+    /// Why the last save failed, until it succeeds again.
+    save_error: Option<String>,
     screenshot: Option<String>,
     screenshot_state: u32,
     open_trading: bool,
@@ -225,6 +227,8 @@ struct Game {
     /// Where options are saved; `None` for scripted runs (screenshots,
     /// benchmarks), which neither read nor write them.
     settings_path: Option<std::path::PathBuf>,
+    /// Carried through a world for the title screen.
+    updates: crate::update::Updater,
     /// Name shown in the world list (the save folder's name may differ).
     world_name: String,
     /// Terrain generator the world was made with: 1 before v0.6's
@@ -273,6 +277,19 @@ impl App {
             self.title = Some(title);
             return;
         }
+        let replacing = new.is_some() || self.args.new_world || self.args.join.is_some();
+        if let Some(e) = unreadable_level(&Storage::new(self.saves_dir.join(world_dir)), replacing) {
+            log::error!("cannot open world '{world_dir}': {e}");
+            if scripted {
+                // Screenshots and benchmarks have no one to read the title screen.
+                eprintln!("cannot open world '{world_dir}': {e}");
+                std::process::exit(1);
+            }
+            let mut title = title::Title::new(shell, &self.saves_dir);
+            title.world_error(format!("Can't open \"{world_dir}\": {e}. Nothing was changed."));
+            self.title = Some(title);
+            return;
+        }
         let mut game = Game::start(shell, &self.args, &self.saves_dir, world_dir, new);
         game.session_lock = lock.ok();
         game.apply_settings();
@@ -305,9 +322,23 @@ impl App {
         game.save();
         game.save_settings();
         game.close_lan("Server closed");
+        let save_error = game.save_error.take();
         let shell = game.into_shell();
-        self.title = Some(title::Title::new(shell, &self.saves_dir));
+        let mut title = title::Title::new(shell, &self.saves_dir);
+        if let Some(e) = save_error {
+            title.world_error(format!("Could not save the world: {e}"));
+        }
+        self.title = Some(title);
     }
+}
+
+/// Why an existing world can't be opened, if its level file is unreadable.
+/// Opening it anyway would start a fresh world over the old one.
+fn unreadable_level(storage: &Storage, replacing: bool) -> Option<String> {
+    if replacing || !storage.exists() {
+        return None;
+    }
+    storage.load_level().err().map(|e| format!("its level file is unreadable ({e})"))
 }
 
 /// What outlives a world: the window's renderer, sound and options. A game
@@ -319,6 +350,8 @@ pub(crate) struct Shell {
     /// Where options are saved; `None` for scripted runs (screenshots,
     /// benchmarks), which neither read nor write them.
     settings_path: Option<std::path::PathBuf>,
+    /// The in-game updater; its check runs once per launch.
+    updates: crate::update::Updater,
 }
 
 impl ApplicationHandler for App {
@@ -360,7 +393,31 @@ impl ApplicationHandler for App {
         let renderer = pollster::block_on(Renderer::new(window, settings.vsync));
         let mut audio = crate::audio::Audio::new(self.args.mute, settings.volume);
         audio.set_music_volume(settings.music_volume);
-        let shell = Shell { renderer, audio, settings, settings_path };
+        let root = self.saves_dir.parent().unwrap_or(&self.saves_dir);
+        let source = match &self.args.update_source {
+            Some(dir) => crate::update::Source::Folder(dir.clone()),
+            None => crate::update::Source::GitHub,
+        };
+        // Isolated data folders (screenshots, tests) check only a fixture.
+        let check = !scripted
+            && !self.args.no_update_check
+            && settings.check_updates
+            && (self.args.data_dir.is_none() || self.args.update_source.is_some());
+        let mut updates = crate::update::Updater::new(root, source, check);
+        updates.auto = self.args.update_now;
+        // A restart after updating must not replay one-shot options such as
+        // `--new`, which would replace a world.
+        if self.args.data_dir.is_some() {
+            updates.restart_args.extend(["--data-dir".into(), root.as_os_str().to_owned()]);
+        }
+        if let Some(dir) = &self.args.update_source {
+            updates.restart_args.extend(["--update-source".into(), dir.as_os_str().to_owned()]);
+        }
+        if !scripted {
+            // The window and renderer work: tell a pending update it started.
+            updates.after_start();
+        }
+        let shell = Shell { renderer, audio, settings, settings_path, updates };
         // A named world, a fresh one or a scripted run skips the title screen.
         let to_title = matches!(self.args.open_menu.as_deref(), Some("title" | "create" | "multiplayer"));
         if let Some(address) = self.args.join.clone() {
@@ -608,10 +665,10 @@ fn sky_state(t: f64) -> SkyState {
 impl Game {
     /// Ends the game, keeping what the title screen needs.
     fn into_shell(self) -> Shell {
-        let Game { mut renderer, mut audio, settings, settings_path, .. } = self;
+        let Game { mut renderer, mut audio, settings, settings_path, updates, .. } = self;
         renderer.clear_world();
         audio.leave_world();
-        Shell { renderer, audio, settings, settings_path }
+        Shell { renderer, audio, settings, settings_path, updates }
     }
 
     fn set_grab(&mut self, grab: bool) {
@@ -1791,5 +1848,20 @@ mod pause_tests {
         // Time spent paused is not charged on resume.
         assert_eq!(clock.advance(Duration::from_millis(50), false), 1);
         assert_eq!(clock.paused(), Duration::from_millis(500));
+    }
+
+    #[test]
+    fn unreadable_levels_are_not_opened() {
+        let dir = std::env::temp_dir().join(format!("voxelcraft-unreadable-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let storage = Storage::new(dir.clone());
+        assert_eq!(unreadable_level(&storage, false), None, "no world yet: create one");
+        std::fs::write(dir.join("level.txt"), "seed=12\nname=ok\n").unwrap();
+        assert_eq!(unreadable_level(&storage, false), None);
+        std::fs::write(dir.join("level.txt"), "seed=not-a-number\n").unwrap();
+        assert!(unreadable_level(&storage, false).unwrap().contains("bad seed"));
+        assert_eq!(unreadable_level(&storage, true), None, "--new and new worlds replace it on purpose");
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

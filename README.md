@@ -192,6 +192,16 @@ Head to [**Releases**](https://github.com/BrendanH18/VoxelCraft/releases):
 > may warn you on first launch. The bundled installation notes walk you
 > through it. Packaging details live in the [release guide](docs/releases.md).
 
+### Update
+
+From v0.10, the game offers each new release on the title screen and
+updates itself, backing up your worlds first. To get v0.10 from an older
+version, install it over the old one: run the new setup wizard, or drag the
+new app into Applications and choose **Replace**. Your worlds and settings
+live in a separate data folder and carry over, but back up worlds you care
+about first, since older versions can't open upgraded worlds. See
+[Updating VoxelCraft](docs/updates.md).
+
 ### Build from source
 
 You'll need a recent stable **Rust** toolchain (edition 2024; developed on
@@ -363,6 +373,7 @@ These recorded sweeps are separate from the roadmap's
 | [Nether mobs](docs/nether-mobs.md): piglins, bartering, hoglins, striders | [Overworld terrain](docs/overworld-terrain.md): biomes, caves, aquifers |
 | [Overworld structures](docs/overworld-structures.md) and [aquatic mobs](docs/aquatic-mobs.md) | [LAN play](docs/lan.md) |
 | [Animals](docs/animals.md): breeding, taming, leads; [boats and riding](docs/mounts.md) | |
+| [Updating VoxelCraft](docs/updates.md): the in-game updater and upgrading by hand | |
 
 The [roadmap](docs/roadmap.md) is the source of truth for goals, scope,
 milestones and completion criteria.

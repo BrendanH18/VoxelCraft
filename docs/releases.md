@@ -30,6 +30,27 @@ Review both packages before publishing the draft through GitHub Releases.
 Do not move published version tags or replace published binaries; create a new
 version for fixes so downloads remain identifiable.
 
+## Updates
+
+From v0.10 the game updates itself from the latest *published* GitHub Release
+([Updating VoxelCraft](updates.md)). Publishing a draft offers that version to
+every player, so publish only what everyone should get.
+
+- The tag build signs `SHA256SUMS.txt` with the `UPDATE_SIGNING_KEY` secret
+  (`packaging/sign-checksums.sh`) and attaches `SHA256SUMS.txt.sig`. Without
+  the secret, or with a key missing from `packaging/update-keys.txt`, the
+  build fails: games refuse unsigned releases. See
+  [the signing key](updates.md#the-signing-key).
+- The updater finds its download by name, so keep the asset names
+  (`VoxelCraft-<version>-windows-x64-Setup.exe`,
+  `VoxelCraft-<version>-macos-apple-silicon.dmg`) unchanged.
+- The release body is the in-game "what's new" text.
+- The installer's update mode (`/UPDATE=1 /WAITPID=<pid>`) waits for the game
+  to exit and reopens it afterwards; the Windows smoke test exercises it.
+
+Players on v0.9 and earlier update by hand, as
+[Updating VoxelCraft](updates.md#updating-by-hand-v09-and-earlier) describes.
+
 ## Local macOS build
 
 Install the desired Rust target(s), then build with the deployment target set:

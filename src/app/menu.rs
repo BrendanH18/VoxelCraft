@@ -41,6 +41,7 @@ pub(super) enum Widget {
     Fullscreen,
     Difficulty,
     Particles,
+    CheckUpdates,
     Done,
 }
 
@@ -98,6 +99,7 @@ impl Widget {
             Widget::Difficulty => format!("Difficulty: {difficulty}{}", if hardcore { " Locked" } else { "" }),
             Widget::Particles => format!("Particles: {}", s.particles.name()),
             Widget::Fullscreen => format!("Fullscreen: {}", s.fullscreen.name()),
+            Widget::CheckUpdates => format!("Check for Updates: {}", if s.check_updates { "On" } else { "Off" }),
             Widget::Done => "Done".into(),
         }
     }
@@ -162,6 +164,7 @@ fn layout(screen: Screen, (sw, sh): (f32, f32)) -> Vec<(Widget, [f32; 4])> {
             Widget::ViewBobbing,
             Widget::Difficulty,
             Widget::Particles,
+            Widget::CheckUpdates,
             Widget::Done,
         ],
     };
@@ -170,7 +173,7 @@ fn layout(screen: Screen, (sw, sh): (f32, f32)) -> Vec<(Widget, [f32; 4])> {
     let total = widgets.len() as f32 * BUTTON_H + (widgets.len() as f32 + 1.0) * gap + 20.0;
     let x = ((sw - BUTTON_W) / 2.0).floor();
     let mut y = ((sh - total) / 2.0).floor() + 20.0;
-    widgets
+    let column = widgets
         .iter()
         .map(|&w| {
             // "Done" and "Save and Quit" sit a little apart from the rest.
@@ -181,7 +184,41 @@ fn layout(screen: Screen, (sw, sh): (f32, f32)) -> Vec<(Widget, [f32; 4])> {
             y += BUTTON_H + gap;
             (w, r)
         })
-        .collect()
+        .collect::<Vec<_>>();
+    match column.last() {
+        Some((_, r)) if r[1] + r[3] > sh && widgets.len() > 5 => two_columns(widgets, (sw, sh)),
+        _ => column,
+    }
+}
+
+/// A long screen in a short window (a 1600 x 900 window on a 2x display is
+/// 533 x 300 UI pixels): two columns, as Java lays out its Options, with
+/// "Done" centred below.
+fn two_columns(widgets: &[Widget], (sw, sh): (f32, f32)) -> Vec<(Widget, [f32; 4])> {
+    let (items, done) = match widgets.split_last() {
+        Some((&Widget::Done, items)) => (items, true),
+        _ => (widgets, false),
+    };
+    let rows = items.len().div_ceil(2) + usize::from(done);
+    let w = BUTTON_W.min(((sw - 3.0 * GAP) / 2.0).floor());
+    // Down to no gaps at all in the smallest UI (320 x 180 pixels).
+    let gap = GAP.min(((sh - rows as f32 * BUTTON_H - 24.0) / (rows as f32 + 2.0)).max(0.0));
+    let total = rows as f32 * BUTTON_H + (rows as f32 + 2.0) * gap + 20.0;
+    let top = ((sh - total) / 2.0).floor() + 20.0;
+    let (left, right) = ((sw / 2.0 - w - GAP / 2.0).floor(), (sw / 2.0 + GAP / 2.0).floor());
+    let mut out: Vec<_> = items
+        .iter()
+        .enumerate()
+        .map(|(i, &widget)| {
+            let x = if i % 2 == 0 { left } else { right };
+            (widget, [x, top + (i / 2) as f32 * (BUTTON_H + gap), w, BUTTON_H])
+        })
+        .collect();
+    if done {
+        let y = top + items.len().div_ceil(2) as f32 * (BUTTON_H + gap) + gap;
+        out.push((Widget::Done, [((sw - BUTTON_W) / 2.0).floor(), y, BUTTON_W, BUTTON_H]));
+    }
+    out
 }
 
 pub(super) fn inside([x, y, w, h]: [f32; 4], (mx, my): (f32, f32)) -> bool {
@@ -301,6 +338,8 @@ impl Game {
                 self.settings.view_bobbing = !self.settings.view_bobbing;
                 self.apply_settings();
             }
+            // Takes effect at the next launch's title screen.
+            Widget::CheckUpdates => self.settings.check_updates = !self.settings.check_updates,
             Widget::Difficulty => {
                 if !self.hardcore {
                     self.difficulty = self.difficulty.next();
@@ -409,6 +448,8 @@ impl Game {
                 bevel(ui, [x, y, w, h], if hot { HOT } else { BUTTON }, true);
             }
             let color = if hot { [1.0, 1.0, 0.63, 1.0] } else { WHITE };
+            // Narrow two-column buttons shorten long labels rather than overlap.
+            let label = super::title::fit(&label, w - 4.0);
             ui.text((x + (w - Ui::text_width(&label)) / 2.0).floor(), y + 6.0, &label, color);
         }
     }
@@ -466,6 +507,7 @@ mod tests {
             Widget::Difficulty,
             Widget::Particles,
             Widget::Fullscreen,
+            Widget::CheckUpdates,
         ] {
             let longest = Settings {
                 render_distance: 32,
@@ -480,12 +522,41 @@ mod tests {
                 view_bobbing: true,
                 particles: crate::particles::Setting::Decreased,
                 fullscreen: super::super::fullscreen::Mode::Borderless,
+                check_updates: true,
+                skip_update: None,
             };
             assert!(
                 Ui::text_width(&w.label(&longest, Difficulty::Hard, false)) < BUTTON_W - 8.0,
                 "{w:?} label too wide"
             );
         }
+    }
+
+    /// A 1600 x 900 window on a 2x display gives 533 x 300 UI pixels: the
+    /// Options screen switches to two columns and keeps every button on screen.
+    #[test]
+    fn short_windows_fit_every_option() {
+        // 320 x 180 is the smallest UI `Ui::fitted_scale` allows.
+        for size in [(533.0, 300.0), (480.0, 270.0), (640.0, 360.0), (320.0, 240.0), (320.0, 180.0)] {
+            let widgets = layout(Screen::Options, size);
+            assert_eq!(widgets.len(), 15);
+            for (i, &(w, r)) in widgets.iter().enumerate() {
+                assert!(r[0] >= 0.0 && r[0] + r[2] <= size.0, "{w:?} on screen at {size:?}");
+                assert!(r[1] >= 20.0 && r[1] + r[3] <= size.1, "{w:?} and the title on screen at {size:?}");
+                let longest = Settings { render_distance: 32, simulation_distance: 32, ..Settings::default() };
+                let label = super::super::title::fit(&w.label(&longest, Difficulty::Normal, false), r[2] - 4.0);
+                assert!(Ui::text_width(&label) <= r[2] - 4.0, "{w:?} label fits at {size:?}");
+                let centre = (r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
+                assert_eq!(widgets.iter().position(|&(_, r)| inside(r, centre)), Some(i), "{w:?} overlaps");
+            }
+            let done = widgets.last().unwrap();
+            assert_eq!(done.0, Widget::Done);
+            assert!((done.1[0] + done.1[2] / 2.0 - size.0 / 2.0).abs() <= 0.5, "Done centred at {size:?}");
+        }
+        // Short screens keep their single column.
+        assert!(layout(Screen::Pause, (533.0, 300.0)).iter().all(|(_, r)| r[0] + r[2] / 2.0 == 266.0));
+        let two = |size| layout(Screen::Options, size).iter().any(|(_, r)| r[0] + r[2] / 2.0 != size.0 / 2.0);
+        assert!(two((533.0, 300.0)) && !two((640.0, 360.0)), "two columns only when one doesn't fit");
     }
 
     #[test]

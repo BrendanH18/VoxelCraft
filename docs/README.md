@@ -14,6 +14,8 @@ Neither a planned task nor a historical release report establishes verified pari
 
 ## Playing
 
+- [Updating VoxelCraft](updates.md): the in-game updater (v0.10 and later)
+  and upgrading by hand from older versions.
 - [Gameplay](gameplay.md) and [survival items](survival-items.md).
 - [Game rules](game-rules.md): every Java 26.3 rule with its type, default,
   legacy name and what VoxelCraft enforces.
@@ -114,6 +116,8 @@ roadmap and recorded checks to assess completeness against the current target.
 - [Death, pause and mid-motion saves](verification/2026-10-15-death-pause-save-scenarios.md):
   the shared death and respawn step, the pause rule and cross-process piston
   and repeater saves.
+- [In-game updater](verification/2026-10-22-in-game-updater.md): the v0.10
+  updater's tests, a real Mac update and rollback, and what is unverified.
 - [Game rules and difficulty](verification/2026-10-17-game-rules-difficulty.md):
   the 26.3 rule registry, damage-type rules, Peaceful regeneration and the
   difficulty effects checked against the reference.

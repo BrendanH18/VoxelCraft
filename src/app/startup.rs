@@ -10,7 +10,7 @@ impl Game {
         world_dir: &str,
         new: Option<title::NewWorld>,
     ) -> Game {
-        let Shell { renderer, audio, settings, settings_path } = shell;
+        let Shell { renderer, audio, settings, settings_path, updates } = shell;
         let storage = Storage::new(saves_dir.join(world_dir));
         let existing = if args.join.is_some() || args.new_world || new.is_some() || !storage.exists() {
             None
@@ -18,6 +18,7 @@ impl Game {
             match storage.load_level() {
                 Ok(level) => Some(level),
                 Err(e) => {
+                    // `App::play` refuses unreadable levels; this is a file changed since.
                     log::error!("failed to load level, starting fresh: {e}");
                     None
                 }
@@ -281,6 +282,7 @@ impl Game {
             cpu_ms: 0.0,
             show_debug: args.debug_overlay,
             popup: (String::new(), now - Duration::from_secs(10)),
+            save_error: None,
             screenshot: args.screenshot.clone(),
             screenshot_state: 0,
             open_trading: args.open_trading,
@@ -306,6 +308,7 @@ impl Game {
             had_focus: false,
             settings,
             settings_path,
+            updates,
             dimension,
             overworld_props: if dimension != Dimension::Overworld { overworld_props } else { Default::default() },
             arrival,

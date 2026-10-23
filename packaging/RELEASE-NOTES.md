@@ -1,8 +1,8 @@
-VoxelCraft 0.9.0 is about building and moving like Java. Slabs, stairs,
-doors, buttons, levers, walls and lanterns now have Java's full set of
-states, almost everything can be waterlogged, and you move with Java 26.3's
-own physics: the same walking, sprinting, jumping, sneaking, swimming and
-climbing. Scaffolding, powder snow and honey blocks are new.
+VoxelCraft 0.10.0 updates itself. This is the last version you install by
+hand: from now on, when a new version comes out, the title screen offers it
+and installs it for you, backing up your worlds first. If you're coming from
+0.8.0, this release also brings everything from 0.9.0: Java's movement and
+the full set of block states.
 
 VoxelCraft is an unofficial fan project, inspired by Minecraft Java Edition. It
 is not affiliated with or endorsed by Mojang Studios or Microsoft, and it
@@ -10,10 +10,35 @@ contains no Minecraft code or assets.
 
 Choose your download:
 
-- **Windows 10/11 x64:** `VoxelCraft-0.9.0-windows-x64-Setup.exe`
-- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.9.0-macos-apple-silicon.dmg`
+- **Windows 10/11 x64:** `VoxelCraft-0.10.0-windows-x64-Setup.exe`
+- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.10.0-macos-apple-silicon.dmg`
 
-## What's new since 0.8.0
+## What's new in 0.10.0
+
+### Updates in game
+
+- When a new version is published, the title screen shows an **Update to…**
+  button in the bottom-right corner. It opens the release notes with
+  **Update and Restart**, **Release Page**, **Later** and **Skip This
+  Version**.
+- **Update and Restart** downloads the new version, checks that it was
+  signed by VoxelCraft's release key, backs up all your worlds and options,
+  installs it and reopens the game. Nothing downloads until you choose to
+  update.
+- Backups go to the `backups` folder beside your `saves` folder; the three
+  most recent are kept.
+- The game asks GitHub for the latest release when the title screen opens.
+  It sends only the game's version, nothing about you or your worlds. Turn
+  this off with **Options →
+  Check for Updates** (from the next launch).
+
+### Safer saves
+
+- A world whose save file can't be read is no longer replaced by a fresh
+  world: the game goes back to the title screen and says what went wrong.
+- If saving fails, the game tells you instead of only writing it to the log.
+
+## What's new in 0.9.0 (if you're coming from 0.8.0)
 
 ### Moving like Java
 
@@ -63,6 +88,13 @@ Choose your download:
 
 ## Known limitations
 
+- Updating in game works on Windows x64 and Apple Silicon Macs, for copies
+  installed by the installer or dragged into a folder you can change, such as
+  Applications. A Mac app run straight from the disk image shows a link to the
+  release page instead.
+- On Windows, if a new version installs but won't start, reinstall it from the
+  release page; your worlds are in the backup. On a Mac, a new version that
+  doesn't start is replaced by the old one automatically.
 - LAN is for VoxelCraft players on a trusted local network: there are no
   accounts or encryption, and it can't join Minecraft servers. Everyone stays
   in the host's dimension; when the host travels, the others follow. It has
@@ -105,10 +137,11 @@ Choose your download:
 
 ## Upgrading and saves
 
-Worlds from 0.8.0 and earlier load in 0.9.0. Back up your worlds before
-upgrading, and don't open a world saved by 0.9.0 in 0.8.0: once it uses any
-of the new block states, 0.8.0 can't read its terrain and would overwrite it.
-LAN players all need 0.9.0.
+Install 0.10.0 by hand, as below; later versions arrive in game. Worlds from
+0.9.0 and earlier load in 0.10.0, which uses the same save format as 0.9.0.
+Back up your worlds before upgrading from 0.8.0, and don't open a world saved
+by 0.9.0 or later in 0.8.0: once it uses any of the new block states, 0.8.0
+can't read its terrain and would overwrite it. LAN players all need 0.10.0.
 
 ## Installing
 
@@ -121,13 +154,15 @@ On Mac, drag the app into Applications and try launching it once. If blocked,
 open **System Settings → Privacy & Security → Open Anyway**, then confirm Open.
 See [Apple's instructions](https://support.apple.com/en-us/102445).
 
-To update, quit the game, then run the new Windows installer over the old one,
-or replace the app in Applications on Mac. Worlds, options and logs live in
-`%LOCALAPPDATA%\VoxelCraft` on Windows and `~/Library/Application Support/VoxelCraft`
-on Mac, and updating or uninstalling keeps them.
+To install this version over an older one, quit the game, then run the new
+Windows installer over the old one, or replace the app in Applications on Mac.
+Worlds, options and logs live in `%LOCALAPPDATA%\VoxelCraft` on Windows and
+`~/Library/Application Support/VoxelCraft` on Mac, and updating or
+uninstalling keeps them.
 
 See the bundled **INSTALL.txt / READ ME FIRST.txt** for controls, migration
-from source-build saves and troubleshooting. Checksums are in `SHA256SUMS.txt`.
+from source-build saves and troubleshooting. Checksums are in `SHA256SUMS.txt`,
+signed in `SHA256SUMS.txt.sig`.
 
 This game is still in development. Report problems with your OS, GPU, steps
 to reproduce and `voxelcraft.log` through

@@ -1,6 +1,6 @@
 # Door hinges, floor and ceiling switches, grindstones and lanterns — 2026-10-20
 
-[Roadmap](../roadmap.md#release-plan) · [Requirement inventory](../requirements.md) · [Slabs and stairs](2026-10-20-slabs-stairs.md) · [ID reservations](../architecture.md#release-id-reservations-v09v017)
+[Roadmap](../roadmap.md#release-plan) · [Requirement inventory](../requirements.md) · [Slabs and stairs](2026-10-20-slabs-stairs.md) · [ID reservations](../architecture.md#release-id-reservations-v09v019)
 
 Scope: BLD-04c (door hinges) and BLD-04e (floor and ceiling buttons and
 levers, wall and ceiling grindstones, lanterns), on `t3/continue-build-brief`

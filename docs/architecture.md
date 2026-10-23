@@ -270,28 +270,31 @@ wgpu and winit (graphics and windowing), cpal (audio output), glam (math),
 bytemuck, crossbeam-channel, rustc-hash, font8x8, png, pollster, log and
 env_logger.
 
-## Release ID reservations (v0.9–v0.17)
+## Release ID reservations (v0.9–v0.19)
 
 Reserved on 2026-10-20 when `STATE_CAPACITY` rose to 16,384 (BLD-06), so
 concurrent content work never collides. Allocate inside your release's range,
 record each allocation in the table of the change that uses it, and leave
 unused IDs unregistered. A release that outgrows its range takes the next
 free block from the unassigned reserve, recorded here.
+The ranges are unchanged by the 2026-10-22 renumbering: v0.10 (updates) and
+v0.11 (menus and settings) add no states, so each later range kept its
+content and took its release's new number.
 
 | Block states | Release | Use |
 | --- | --- | --- |
-| 2525–4095 | v0.10 | New building-material families' base states |
+| 2525–4095 | v0.12 | New building-material families' base states |
 | 4096–7679 | v0.9 | Slab types and stair halves, shapes and waterlogged states (BLD-04a/b) |
 | 7680–8191 | v0.9 | Door hinges, floor/ceiling buttons and levers, wall grindstones and other mounts (BLD-04c/e) |
 | 8192–8703 | v0.9 | Waterlogged states of the other waterloggable families (BLD-04f) |
-| 8704–9727 | v0.10 | Sign and banner rotations, waterlogged and hinged forms of new families |
-| 9728–10239 | v0.11 | Terrain blocks and states |
-| 10240–10751 | v0.12 | Structure blocks and states |
-| 10752–11263 | v0.13 | Wildlife and crop states |
-| 11264–11775 | v0.14 | Deep dark and trial chamber states |
-| 11776–12287 | v0.15 | Village workstation and raid states |
-| 12288–12799 | v0.16 | End and Wither states |
-| 12800–14335 | v0.17 | Redstone and automation states |
+| 8704–9727 | v0.12 | Sign and banner rotations, waterlogged and hinged forms of new families |
+| 9728–10239 | v0.13 | Terrain blocks and states |
+| 10240–10751 | v0.14 | Structure blocks and states |
+| 10752–11263 | v0.15 | Wildlife and crop states |
+| 11264–11775 | v0.16 | Deep dark and trial chamber states |
+| 11776–12287 | v0.17 | Village workstation and raid states |
+| 12288–12799 | v0.18 | End and Wither states |
+| 12800–14335 | v0.19 | Redstone and automation states |
 | 14336–16383 | — | Unassigned reserve |
 
 Allocations so far:

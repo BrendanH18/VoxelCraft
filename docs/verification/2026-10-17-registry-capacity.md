@@ -34,7 +34,7 @@ Current states of the families v0.9 extends:
 | Fences, panes, walls, bars, chains | 13, 17, 20, 1, 1 | 54 |
 | Rails | 4 | 46 |
 
-## v0.9 and v0.10 demand, if each Java state gets its own id
+## v0.9 and v0.12 demand, if each Java state gets its own id
 
 Rough counts from Java 26.3's properties (`SlabBlock` type and waterlogged,
 `StairBlock` half and waterlogged, `DoorBlock` hinge,
@@ -50,7 +50,7 @@ Rough counts from Java 26.3's properties (`SlabBlock` type and waterlogged,
 | Other v0.9 states (wall grindstones, ladders, signs and so on) | about 100 |
 | **v0.9 total** | **about 1,150 of 2,263 free** |
 
-v0.10 then adds whole families: three wood sets (pale oak, bamboo and
+v0.12 then adds whole families: three wood sets (pale oak, bamboo and
 another), each with stairs, slabs, fences, gates, doors, trapdoors, buttons
 and signs in every waterlogged/hinged/mounted form (about 120 ids each before
 sign rotations); stone families (mud brick, prismarine variants); 16
@@ -61,7 +61,7 @@ after v0.9.
 
 ## Finding
 
-- **The 4096-state space holds v0.9 but not v0.10.** Waterlogging is the
+- **The 4096-state space holds v0.9 but not v0.12.** Waterlogging is the
   largest single consumer: as separate ids it roughly doubles every
   waterloggable family.
 - Raising `STATE_CAPACITY` is bounded by item encoding: block items use
@@ -76,7 +76,7 @@ after v0.9.
   per-chunk layer, so the id space grows only with real shapes; (c) both.
   Each option needs a save-version bump with old saves loading unchanged.
 - Whichever option is chosen, v0.9 starts by reserving id ranges for
-  v0.9–v0.17 in this record's successor, so concurrent content work never
+  v0.9–v0.19 in this record's successor, so concurrent content work never
   collides.
 
 No code changed for this assessment.

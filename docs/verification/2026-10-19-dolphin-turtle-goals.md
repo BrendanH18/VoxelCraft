@@ -354,7 +354,7 @@ coastal scene cost 0.047–0.050 ms. The turtle block searches run once every
   and guardians still don't target squid or axolotls.
 - **Blazes:** only player attackers are credited.
 - **All swimmers:** water currents still don't push them.
-- **Treasure search:** the structures themselves still differ from Java (v0.12).
+- **Treasure search:** the structures themselves still differ from Java (v0.14).
 - **No graphical play** of any of this. Swimming with dolphins, feeding them
   and following them to treasure, their leaps and item play, boats, turtles
   travelling, returning home and laying eggs, and the elder guardian's home

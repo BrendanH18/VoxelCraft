@@ -60,6 +60,59 @@ Name: "{autodesktop}\VoxelCraft"; Filename: "{app}\voxelcraft.exe"; WorkingDir: 
 
 [Run]
 Filename: "{app}\voxelcraft.exe"; Description: "Launch VoxelCraft"; Flags: nowait postinstall skipifsilent
+; The in-game updater installs silently with /UPDATE=1; reopen the game afterwards.
+Filename: "{app}\voxelcraft.exe"; Parameters: "{code:RestartParams}"; WorkingDir: "{app}"; Flags: nowait; Check: IsUpdate
 
 ; Player saves/logs live in LocalAppData\VoxelCraft, outside {app}.
 ; Deliberately omit UninstallDelete: uninstalling must preserve player data.
+
+[Code]
+const
+  SYNCHRONIZE = $00100000;
+
+function OpenProcess(DesiredAccess: Cardinal; InheritHandle: Integer; ProcessId: Cardinal): THandle;
+  external 'OpenProcess@kernel32.dll stdcall';
+function WaitForSingleObject(Handle: THandle; Milliseconds: Cardinal): Cardinal;
+  external 'WaitForSingleObject@kernel32.dll stdcall';
+function CloseHandle(Handle: THandle): Integer;
+  external 'CloseHandle@kernel32.dll stdcall';
+
+// The in-game updater passes /WAITPID=<game process>: wait (up to a minute)
+// for the game to exit so its files can be replaced.
+function InitializeSetup(): Boolean;
+var
+  Pid: Cardinal;
+  Process: THandle;
+begin
+  Pid := StrToIntDef(ExpandConstant('{param:WAITPID|0}'), 0);
+  if Pid <> 0 then
+  begin
+    Process := OpenProcess(SYNCHRONIZE, 0, Pid);
+    if Process <> 0 then
+    begin
+      WaitForSingleObject(Process, 60000);
+      CloseHandle(Process);
+    end;
+  end;
+  Result := True;
+end;
+
+function IsUpdate(): Boolean;
+begin
+  Result := ExpandConstant('{param:UPDATE|0}') = '1';
+end;
+
+// The game's data folder and update source, passed as /DATADIR= and
+// /UPDATESOURCE=, so an updated game reopens with the same data.
+function RestartParams(Param: String): String;
+var
+  Value: String;
+begin
+  Result := '';
+  Value := ExpandConstant('{param:DATADIR|}');
+  if Value <> '' then
+    Result := '--data-dir "' + Value + '"';
+  Value := ExpandConstant('{param:UPDATESOURCE|}');
+  if Value <> '' then
+    Result := Result + ' --update-source "' + Value + '"';
+end;

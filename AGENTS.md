@@ -104,6 +104,10 @@ Keep documentation and test evidence aligned with the delivered behavior.
   owner reports problems found in play.
 - Use original or appropriately licensed implementation and assets. License:
   MIT OR Apache-2.0.
+- Released games trust only the update-signing keys in
+  `packaging/update-keys.txt` (owner, 2026-10-22). Never commit a private
+  key, never rename release assets, and never remove a key before a release
+  signed by its replacement has shipped ([updates](docs/updates.md#the-signing-key)).
 
 ## Reading map
 

@@ -1,0 +1,8 @@
+# Ed25519 public keys that sign SHA256SUMS.txt for the in-game updater
+# (docs/updates.md). One key per line, 64 hex digits. The game accepts a
+# signature from any key listed here, so a replacement key is added beside
+# the old one for at least one release before the old one is removed.
+#
+# 2026-10-22: the owner's release key (private half: the
+# UPDATE_SIGNING_KEY secret in GitHub Actions).
+893343c9fa33d5a0eb90a61cbfdfe8532bb56a6f73498cbea4f85a7f2a848417

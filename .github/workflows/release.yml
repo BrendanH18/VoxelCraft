@@ -111,6 +111,13 @@ jobs:
       - name: Create checksums
         working-directory: dist
         run: sha256sum *.exe *.dmg > SHA256SUMS.txt
+      - name: Sign checksums for the in-game updater
+        # Fails without the UPDATE_SIGNING_KEY secret: players' games refuse
+        # unsigned releases (docs/updates.md).
+        working-directory: dist
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: bash ../packaging/sign-checksums.sh SHA256SUMS.txt
       - name: Upload draft release
         env:
           GH_TOKEN: ${{ github.token }}
