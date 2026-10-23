@@ -67,13 +67,20 @@ impl Game {
             }
         };
         match result {
-            Ok(()) => log::info!(
-                "saved {} modified {} chunks to {}",
-                chunks.len(),
-                self.dimension.name(),
-                self.storage.dir().display()
-            ),
-            Err(e) => log::error!("save failed: {e}"),
+            Ok(()) => {
+                self.save_error = None;
+                log::info!(
+                    "saved {} modified {} chunks to {}",
+                    chunks.len(),
+                    self.dimension.name(),
+                    self.storage.dir().display()
+                )
+            }
+            Err(e) => {
+                log::error!("save failed: {e}");
+                self.show_popup(&format!("Could not save the world: {e}"));
+                self.save_error = Some(e.to_string());
+            }
         }
         self.last_save = Instant::now();
     }

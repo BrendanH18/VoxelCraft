@@ -5,6 +5,7 @@ mod audio;
 mod bench;
 mod data;
 mod render;
+mod update;
 
 use voxelcraft::{
     color, crafting, enchant, entity, inventory, item, knockback, mesh, mining, particles, physics, player, simulation,
@@ -33,6 +34,13 @@ pub struct Args {
     /// `--world`: load this save directly instead of showing the title screen.
     pub world: Option<String>,
     pub data_dir: Option<std::path::PathBuf>,
+    /// `--no-update-check`: don't ask GitHub for a newer release this session.
+    pub no_update_check: bool,
+    /// `--update-source <dir>`: read releases from a local fixture folder.
+    pub update_source: Option<std::path::PathBuf>,
+    /// `--update-now`: with `--update-source`, install an offered update
+    /// without waiting for a click (update tests).
+    pub update_now: bool,
     /// Overrides the saved option for this session.
     pub render_distance: Option<i32>,
     pub no_vsync: bool,
@@ -124,6 +132,9 @@ voxelcraft [options]
                     (letters, digits, - or _)
   --data-dir <dir>  override the per-user data folder (saves and logs)
   --version         show the game version
+  --no-update-check don't check for a newer release this session
+  --update-source <dir>  read updates from a local release folder (testing)
+  --update-now      with --update-source: install an offered update at once
   --rd <chunks>     render distance in 32-block chunks (default: 8, or the
                     saved option)
   --new             ignore any existing save and start a fresh world (in
@@ -203,6 +214,9 @@ fn parse_args() -> Result<Args, String> {
         split_side: false,
         world: None,
         data_dir: None,
+        no_update_check: false,
+        update_source: None,
+        update_now: false,
         render_distance: None,
         no_vsync: false,
         enhanced_graphics: None,
@@ -288,6 +302,9 @@ fn parse_args() -> Result<Args, String> {
             "--seed" => args.seed = Some(value("--seed")?.parse().map_err(|_| "bad seed")?),
             "--world" => args.world = Some(value("--world")?),
             "--data-dir" => args.data_dir = Some(value("--data-dir")?.into()),
+            "--no-update-check" => args.no_update_check = true,
+            "--update-source" => args.update_source = Some(value("--update-source")?.into()),
+            "--update-now" => args.update_now = true,
             "--rd" => args.render_distance = Some(value("--rd")?.parse::<i32>().map_err(|_| "bad --rd")?.clamp(2, 32)),
             "--no-vsync" => args.no_vsync = true,
             "--graphics" => {
@@ -546,6 +563,12 @@ impl Args {
 }
 
 fn main() {
+    // The Mac updater's watcher: swaps in the new app once the game has exited.
+    #[cfg(target_os = "macos")]
+    if std::env::args().nth(1).as_deref() == Some("--finish-update") {
+        let rest: Vec<String> = std::env::args().skip(2).collect();
+        std::process::exit(update::install::finish_mac(&rest));
+    }
     if std::env::args().len() == 2 {
         match std::env::args().nth(1).as_deref() {
             Some("--version") => {
@@ -580,6 +603,10 @@ fn main() {
             std::process::exit(2);
         }
     };
+    if args.update_now && args.update_source.is_none() {
+        eprintln!("--update-now only works with --update-source");
+        std::process::exit(2);
+    }
     if args.benchmark_scene.is_some()
         && (args.benchmark_output.is_none()
             || args.bench_render

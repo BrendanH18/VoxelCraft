@@ -23,6 +23,10 @@ pub struct Settings {
     pub view_bobbing: bool,
     pub particles: crate::particles::Setting,
     pub fullscreen: super::fullscreen::Mode,
+    /// Ask GitHub for a newer release on the title screen.
+    pub check_updates: bool,
+    /// A release the player chose to skip.
+    pub skip_update: Option<crate::update::Version>,
 }
 
 pub const RENDER_DISTANCE: (i32, i32) = (2, 32);
@@ -44,6 +48,8 @@ impl Default for Settings {
             view_bobbing: true,
             particles: Default::default(),
             fullscreen: Default::default(),
+            check_updates: true,
+            skip_update: None,
         }
     }
 }
@@ -93,6 +99,8 @@ impl Settings {
                 "particles" if value == "decreased" => s.particles = crate::particles::Setting::Decreased,
                 "particles" if value == "minimal" => s.particles = crate::particles::Setting::Minimal,
                 "fullscreen" => s.fullscreen = super::fullscreen::Mode::parse(value).unwrap_or(s.fullscreen),
+                "check_updates" => s.check_updates = value != "false",
+                "skip_update" => s.skip_update = crate::update::Version::parse(value),
                 _ => {}
             }
         }
@@ -101,7 +109,7 @@ impl Settings {
 
     pub fn serialize(&self) -> String {
         format!(
-            "render_distance={}\nsimulation_distance={}\nfov={}\nsensitivity={:.2}\nvolume={:.2}\nmusic_volume={:.2}\nvsync={}\ngraphics={}\nshow_fps={}\nview_bobbing={}\nparticles={}\nfullscreen={}\n",
+            "render_distance={}\nsimulation_distance={}\nfov={}\nsensitivity={:.2}\nvolume={:.2}\nmusic_volume={:.2}\nvsync={}\ngraphics={}\nshow_fps={}\nview_bobbing={}\nparticles={}\nfullscreen={}\ncheck_updates={}\nskip_update={}\n",
             self.render_distance,
             self.simulation_distance,
             self.fov,
@@ -113,7 +121,9 @@ impl Settings {
             self.show_fps,
             self.view_bobbing,
             self.particles.name().to_ascii_lowercase(),
-            self.fullscreen.name().to_ascii_lowercase()
+            self.fullscreen.name().to_ascii_lowercase(),
+            self.check_updates,
+            self.skip_update.map_or(String::new(), |v| v.to_string())
         )
     }
 
@@ -149,6 +159,8 @@ mod tests {
             view_bobbing: false,
             particles: crate::particles::Setting::Decreased,
             fullscreen: super::super::fullscreen::Mode::Exclusive,
+            check_updates: false,
+            skip_update: Some(crate::update::Version(0, 11, 0)),
         };
         assert_eq!(Settings::parse(&s.serialize()), s);
         let wild = Settings::parse("render_distance=99\nfov=5\nvolume=nan\nsensitivity=abc\njunk\nunknown=1\n");
@@ -157,5 +169,7 @@ mod tests {
         assert_eq!(Settings::parse("music_volume=-1").music_volume, 0.0);
         assert_eq!(Settings::parse("music_volume=nan").music_volume, 1.0);
         assert_eq!(Settings::parse(""), Settings::default());
+        assert_eq!(Settings::parse("skip_update=junk").skip_update, None);
+        assert!(Settings::parse("check_updates=junk").check_updates);
     }
 }

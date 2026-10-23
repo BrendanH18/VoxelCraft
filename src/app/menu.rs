@@ -41,6 +41,7 @@ pub(super) enum Widget {
     Fullscreen,
     Difficulty,
     Particles,
+    CheckUpdates,
     Done,
 }
 
@@ -98,6 +99,7 @@ impl Widget {
             Widget::Difficulty => format!("Difficulty: {difficulty}{}", if hardcore { " Locked" } else { "" }),
             Widget::Particles => format!("Particles: {}", s.particles.name()),
             Widget::Fullscreen => format!("Fullscreen: {}", s.fullscreen.name()),
+            Widget::CheckUpdates => format!("Check for Updates: {}", if s.check_updates { "On" } else { "Off" }),
             Widget::Done => "Done".into(),
         }
     }
@@ -162,6 +164,7 @@ fn layout(screen: Screen, (sw, sh): (f32, f32)) -> Vec<(Widget, [f32; 4])> {
             Widget::ViewBobbing,
             Widget::Difficulty,
             Widget::Particles,
+            Widget::CheckUpdates,
             Widget::Done,
         ],
     };
@@ -301,6 +304,8 @@ impl Game {
                 self.settings.view_bobbing = !self.settings.view_bobbing;
                 self.apply_settings();
             }
+            // Takes effect at the next launch's title screen.
+            Widget::CheckUpdates => self.settings.check_updates = !self.settings.check_updates,
             Widget::Difficulty => {
                 if !self.hardcore {
                     self.difficulty = self.difficulty.next();
@@ -466,6 +471,7 @@ mod tests {
             Widget::Difficulty,
             Widget::Particles,
             Widget::Fullscreen,
+            Widget::CheckUpdates,
         ] {
             let longest = Settings {
                 render_distance: 32,
@@ -480,6 +486,8 @@ mod tests {
                 view_bobbing: true,
                 particles: crate::particles::Setting::Decreased,
                 fullscreen: super::super::fullscreen::Mode::Borderless,
+                check_updates: true,
+                skip_update: None,
             };
             assert!(
                 Ui::text_width(&w.label(&longest, Difficulty::Hard, false)) < BUTTON_W - 8.0,

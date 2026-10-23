@@ -1,6 +1,6 @@
 # Stored wall posts and powered door placement — 2026-10-21
 
-[Roadmap](../roadmap.md#release-plan) · [Requirement inventory](../requirements.md) · [Waterlogging](2026-10-20-waterlogging.md) · [Doors and mounts](2026-10-20-doors-mounts.md) · [ID reservations](../architecture.md#release-id-reservations-v09v017)
+[Roadmap](../roadmap.md#release-plan) · [Requirement inventory](../requirements.md) · [Waterlogging](2026-10-20-waterlogging.md) · [Doors and mounts](2026-10-20-doors-mounts.md) · [ID reservations](../architecture.md#release-id-reservations-v09v019)
 
 Scope: the remaining wall-post propagation gap in BLD-04d and placement
 beside power in BLD-04c. Implementation worktree `wall-posts`, detached at

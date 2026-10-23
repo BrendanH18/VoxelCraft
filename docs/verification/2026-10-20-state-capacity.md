@@ -1,6 +1,6 @@
 # Block-state capacity raise — 2026-10-20
 
-[Roadmap](../roadmap.md#release-plan) · [Requirement inventory](../requirements.md) · [M0 capacity assessment](2026-10-17-registry-capacity.md) · [ID reservations](../architecture.md#release-id-reservations-v09v017)
+[Roadmap](../roadmap.md#release-plan) · [Requirement inventory](../requirements.md) · [M0 capacity assessment](2026-10-17-registry-capacity.md) · [ID reservations](../architecture.md#release-id-reservations-v09v019)
 
 Scope: BLD-06's encoding change at the start of v0.9, on
 `t3/continue-build-brief` after `5e9f025`. The owner chose (2026-10-20) to
@@ -27,11 +27,11 @@ option (a) of the [assessment](2026-10-17-registry-capacity.md).
 - The LAN `PROTOCOL` goes from 1 to 2, so a host and client built either side
   of the raise refuse each other at the handshake.
 - The test-only registry entries for the high texture-layer meshing test
-  move from 4093–4095 to 16,381–16,383, freeing the v0.10 range. The
+  move from 4093–4095 to 16,381–16,383, freeing the v0.12 range. The
   automation save parser and the LAN out-of-registry test now use
   `STATE_CAPACITY` instead of a literal 4096.
-- ID ranges for v0.9–v0.17 are reserved in the
-  [architecture document](../architecture.md#release-id-reservations-v09v017).
+- ID ranges for v0.9–v0.19 are reserved in the
+  [architecture document](../architecture.md#release-id-reservations-v09v019).
 
 ## Checks
 

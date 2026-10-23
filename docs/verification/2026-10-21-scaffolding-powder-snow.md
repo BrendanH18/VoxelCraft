@@ -1,6 +1,6 @@
 # Scaffolding and powder snow — 2026-10-21
 
-[Roadmap](../roadmap.md#release-plan) · [Requirement inventory](../requirements.md) · [ID allocations](../architecture.md#release-id-reservations-v09v017) · [Waterlogging](2026-10-20-waterlogging.md)
+[Roadmap](../roadmap.md#release-plan) · [Requirement inventory](../requirements.md) · [ID allocations](../architecture.md#release-id-reservations-v09v019) · [Waterlogging](2026-10-20-waterlogging.md)
 
 Scope: PLY-02c / BLD, on detached base `d17fb37` plus the integrator's
 uncommitted Java player-movement port, in the assigned `new-blocks` worktree.
@@ -178,8 +178,8 @@ plus the movement port):
 
 ## Remaining and verification limits
 
-- **Out of scope:** snowy-slopes powder-snow generation (v0.11 terrain) and
-  cauldron interactions (v0.10).
+- **Out of scope:** snowy-slopes powder-snow generation (v0.13 terrain) and
+  cauldron interactions (v0.12).
 - Player tests are derived from the local Java source and data; no live
   Java/Rust trace capture has been compared for this task.
 - The minimal collision context is explicitly the player path. Existing mob

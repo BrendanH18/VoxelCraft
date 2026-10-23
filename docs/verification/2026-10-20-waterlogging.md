@@ -1,6 +1,6 @@
 # Waterlogging and wall, fence and pane connections — 2026-10-20
 
-[Roadmap](../roadmap.md#release-plan) · [Requirement inventory](../requirements.md) · [Slabs and stairs](2026-10-20-slabs-stairs.md) · [Doors and mounts](2026-10-20-doors-mounts.md) · [ID reservations](../architecture.md#release-id-reservations-v09v017)
+[Roadmap](../roadmap.md#release-plan) · [Requirement inventory](../requirements.md) · [Slabs and stairs](2026-10-20-slabs-stairs.md) · [Doors and mounts](2026-10-20-doors-mounts.md) · [ID reservations](../architecture.md#release-id-reservations-v09v019)
 
 Scope: BLD-04f (waterlogging across the waterloggable blocks VoxelCraft
 has) and the BLD-04d connection rules it touches, on `t3/continue-build-brief`

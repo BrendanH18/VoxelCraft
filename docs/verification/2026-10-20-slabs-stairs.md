@@ -1,6 +1,6 @@
 # Slab types and stairs halves and corners — 2026-10-20
 
-[Roadmap](../roadmap.md#release-plan) · [Requirement inventory](../requirements.md) · [Capacity raise](2026-10-20-state-capacity.md) · [Earlier block shapes](2026-10-14-block-shapes-light-interaction.md) · [ID reservations](../architecture.md#release-id-reservations-v09v017)
+[Roadmap](../roadmap.md#release-plan) · [Requirement inventory](../requirements.md) · [Capacity raise](2026-10-20-state-capacity.md) · [Earlier block shapes](2026-10-14-block-shapes-light-interaction.md) · [ID reservations](../architecture.md#release-id-reservations-v09v019)
 
 Scope: BLD-04a (top, bottom, double and waterlogged slab states) and BLD-04b
 (upside-down stairs and corner shapes), on `t3/continue-build-brief` after

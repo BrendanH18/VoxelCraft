@@ -1,6 +1,6 @@
 # Honey block and honey bottle — 2026-10-21
 
-[Roadmap](../roadmap.md#release-plan) · [Requirement inventory](../requirements.md) · [ID allocations](../architecture.md#release-id-reservations-v09v017)
+[Roadmap](../roadmap.md#release-plan) · [Requirement inventory](../requirements.md) · [ID allocations](../architecture.md#release-id-reservations-v09v019)
 
 Scope: the honey slice of PLY-02c, on detached `d17fb37` with the
 integrator's uncommitted Java player movement port retained. This report
@@ -99,7 +99,7 @@ through two independent writer/reader processes.
 
 - **No survival source until bees and hives.** Bee nests, beehives, bees and
   harvesting are intentionally not introduced in this slice.
-- Slime-like piston stickiness is out of scope until **v0.17 pistons**.
+- Slime-like piston stickiness is out of scope until **v0.19 pistons**.
 - Original procedural textures, bottle sprite and audio replace Mojang art
   and recordings. Slide effect probabilities/counts match; their exact
   random sequence uses VoxelCraft's existing world RNG, not Java's RNG.

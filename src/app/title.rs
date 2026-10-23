@@ -16,6 +16,7 @@ use winit::window::CursorGrabMode;
 use crate::render::FrameParams;
 use crate::render::ui::{Ui, WHITE};
 use crate::simulation::difficulty::Difficulty;
+use crate::update::{State, Step};
 use crate::world::storage::Storage;
 
 use super::menu::{BUTTON, HOT, bevel, inside};
@@ -58,6 +59,8 @@ enum Screen {
     Create,
     ConfirmDelete,
     Multiplayer,
+    /// A newer release: its notes, then downloading and installing it.
+    Update,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -81,6 +84,13 @@ enum Widget {
     CreateWorld,
     Cancel,
     ConfirmDelete,
+    /// "Update to 0.11" on the world list.
+    UpdateOffer,
+    UpdateNow,
+    ReleasePage,
+    Later,
+    SkipVersion,
+    CancelUpdate,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -271,6 +281,16 @@ impl Title {
                 }
             }
             WindowEvent::RedrawRequested => {
+                self.shell.updates.poll(self.shell.settings.skip_update);
+                if self.shell.updates.auto && matches!(self.shell.updates.state, State::Available(_)) {
+                    self.shell.updates.start(&self.saves_dir);
+                }
+                if matches!(self.shell.updates.state, State::Ready(..)) && self.shell.updates.launch() {
+                    return Some(Action::Quit);
+                }
+                if self.screen == Screen::Update && self.shell.updates.offer().is_none() {
+                    self.screen = Screen::List;
+                }
                 if let Some(discovery) = &mut self.discovery {
                     discovery.poll();
                 }
@@ -319,6 +339,11 @@ impl Title {
                 self.field().pop();
             }
             (Screen::Create | Screen::ConfirmDelete, KeyCode::Escape) => self.screen = Screen::List,
+            (Screen::Update, KeyCode::Escape)
+                if !matches!(self.shell.updates.state, State::Working(_) | State::Ready(..) | State::Installing(_)) =>
+            {
+                self.screen = Screen::List;
+            }
             _ => {}
         }
         None
@@ -433,6 +458,23 @@ impl Title {
                 self.delete_selected();
                 self.screen = Screen::List;
             }
+            Widget::UpdateOffer => self.screen = Screen::Update,
+            Widget::UpdateNow => self.shell.updates.start(&self.saves_dir),
+            Widget::ReleasePage => {
+                let page = self.shell.updates.offer().map_or(crate::update::RELEASES_PAGE, |r| r.page.as_str());
+                crate::update::install::open_url(page);
+            }
+            Widget::Later => {
+                self.shell.updates.dismissed = true;
+                self.screen = Screen::List;
+            }
+            Widget::SkipVersion => {
+                self.shell.settings.skip_update = self.shell.updates.offer().map(|r| r.version);
+                self.save_settings();
+                self.shell.updates.dismissed = true;
+                self.screen = Screen::List;
+            }
+            Widget::CancelUpdate => self.shell.updates.cancel(),
             Widget::Delete | Widget::Difficulty => {}
         }
         None
@@ -524,8 +566,41 @@ impl Title {
                 out.push((Widget::ConfirmDelete, [cx - HALF_W - 2.0, y, HALF_W, BUTTON_H]));
                 out.push((Widget::Cancel, [cx + 2.0, y, HALF_W, BUTTON_H]));
             }
+            Screen::Update => {
+                let (left, right) = (cx - HALF_W - 2.0, cx + 2.0);
+                let (row1, row2) = (sh - 2.0 * (BUTTON_H + 4.0) - 10.0, sh - BUTTON_H - 10.0);
+                let installable = self.shell.updates.install.is_ok();
+                match self.shell.updates.state {
+                    State::Working(_) => {
+                        out.push((Widget::CancelUpdate, [cx - BUTTON_W / 2.0, row2, BUTTON_W, BUTTON_H]))
+                    }
+                    State::Ready(..) | State::Installing(_) => {}
+                    _ if installable => {
+                        out.push((Widget::UpdateNow, [left, row1, HALF_W, BUTTON_H]));
+                        out.push((Widget::ReleasePage, [right, row1, HALF_W, BUTTON_H]));
+                        out.push((Widget::Later, [left, row2, HALF_W, BUTTON_H]));
+                        out.push((Widget::SkipVersion, [right, row2, HALF_W, BUTTON_H]));
+                    }
+                    _ => {
+                        out.push((Widget::ReleasePage, [left, row1, HALF_W, BUTTON_H]));
+                        out.push((Widget::Later, [right, row1, HALF_W, BUTTON_H]));
+                        out.push((Widget::SkipVersion, [cx - BUTTON_W / 2.0, row2, BUTTON_W, BUTTON_H]));
+                    }
+                }
+            }
+        }
+        if self.screen == Screen::List && self.shell.updates.offer().is_some() {
+            out.push((Widget::UpdateOffer, [sw - HALF_W - 4.0, sh - BUTTON_H - 4.0, HALF_W, BUTTON_H]));
         }
         out
+    }
+
+    /// The update screen's notes box (x, y, w, h).
+    fn notes_rect((sw, sh): (f32, f32)) -> [f32; 4] {
+        let w = (LIST_W + 120.0).min(sw - 16.0);
+        let top = 44.0;
+        let bottom = sh - 2.0 * (BUTTON_H + 4.0) - 40.0;
+        [((sw - w) / 2.0).floor(), top, w, (bottom - top).max(ROW_H)]
     }
 
     fn label(&self, widget: Widget) -> String {
@@ -552,6 +627,15 @@ impl Title {
             Widget::CreateWorld => "Create World".into(),
             Widget::Cancel => "Cancel".into(),
             Widget::ConfirmDelete => "Delete".into(),
+            Widget::UpdateOffer => {
+                self.shell.updates.offer().map_or(String::new(), |r| format!("Update to {}", r.version.short()))
+            }
+            Widget::UpdateNow if matches!(self.shell.updates.state, State::Failed(..)) => "Try Again".into(),
+            Widget::UpdateNow => "Update and Restart".into(),
+            Widget::ReleasePage => "Release Page".into(),
+            Widget::Later => "Later".into(),
+            Widget::SkipVersion => "Skip This Version".into(),
+            Widget::CancelUpdate => "Cancel".into(),
             Widget::World(_) | Widget::NameField | Widget::SeedField => String::new(),
         }
     }
@@ -603,6 +687,7 @@ impl Title {
                 ui.text(sw / 2.0 - BUTTON_W / 2.0, 96.0, "Local Profile", grey);
                 centred(&mut ui, 136.0, &fit(&self.message, sw - 16.0), grey);
             }
+            Screen::Update => self.draw_update(&mut ui, (sw, sh)),
             Screen::ConfirmDelete => {
                 ui.rect(0.0, 0.0, sw, sh, [0.25, 0.0, 0.0, 0.75]);
                 let name = self.selected.and_then(|i| self.worlds.get(i)).map_or("", |e| e.name.as_str());
@@ -670,7 +755,76 @@ impl Title {
         }
         let version = format!("VoxelCraft {}", env!("CARGO_PKG_VERSION"));
         ui.text(2.0, sh - 10.0, &version, WHITE);
+        if let Some(notice) = &self.shell.updates.notice
+            && self.screen == Screen::List
+        {
+            ui.text(2.0, sh - 22.0, &fit(notice, sw / 2.0), [0.6, 1.0, 0.6, 1.0]);
+        }
         ui.verts
+    }
+
+    /// The update screen: the release notes, then progress or what failed.
+    fn draw_update(&self, ui: &mut Ui, (sw, sh): (f32, f32)) {
+        let grey = [0.63, 0.63, 0.63, 1.0];
+        let centred = |ui: &mut Ui, y: f32, s: &str, color| {
+            ui.text(((sw - Ui::text_width(s)) / 2.0).floor(), y, s, color);
+        };
+        ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.0, 0.7]);
+        let updates = &self.shell.updates;
+        let Some(release) = updates.offer() else { return };
+        let heading = match updates.state {
+            State::Working(_) | State::Ready(..) | State::Installing(_) => {
+                format!("Updating to VoxelCraft {}", release.version.short())
+            }
+            _ => format!("VoxelCraft {} is available", release.version.short()),
+        };
+        centred(ui, 24.0, &heading, WHITE);
+        let [x, y, w, h] = Self::notes_rect((sw, sh));
+        ui.rect(x, y, w, h, [0.0, 0.0, 0.0, 0.8]);
+        let mut lines: Vec<String> = release.plain_notes().iter().flat_map(|l| wrap(l, w - 12.0)).collect();
+        let rows = ((h - 8.0) / 11.0).floor().max(1.0) as usize;
+        if lines.len() > rows {
+            lines.truncate(rows.saturating_sub(1));
+            lines.push("More on the release page...".into());
+        }
+        if lines.is_empty() {
+            lines.push("See the release page for what's new.".into());
+        }
+        for (i, line) in lines.iter().enumerate() {
+            ui.text(x + 6.0, y + 5.0 + i as f32 * 11.0, line, [0.88, 0.88, 0.88, 1.0]);
+        }
+        let status_y = y + h + 6.0;
+        let red = [1.0, 0.5, 0.45, 1.0];
+        match &updates.state {
+            State::Working(job) => {
+                let text = match job.step {
+                    Step::Downloading { done, total } if total > 0 => {
+                        let mb = |b: u64| b as f64 / 1_000_000.0;
+                        let bar = [x, status_y + 12.0, w, 6.0];
+                        ui.rect(bar[0], bar[1], bar[2], bar[3], [0.2, 0.2, 0.2, 1.0]);
+                        let frac = (done as f32 / total as f32).clamp(0.0, 1.0);
+                        ui.rect(bar[0], bar[1], bar[2] * frac, bar[3], [0.5, 0.85, 0.45, 1.0]);
+                        format!("Downloading... {:.1} of {:.1} MB", mb(done), mb(total))
+                    }
+                    Step::Downloading { .. } => "Downloading...".into(),
+                    Step::Verifying => "Checking the download...".into(),
+                    Step::BackingUp => "Backing up your worlds...".into(),
+                    Step::Preparing => "Getting the update ready...".into(),
+                };
+                centred(ui, status_y, &text, WHITE);
+            }
+            State::Ready(..) | State::Installing(_) => {
+                centred(ui, status_y, "Restarting to finish the update...", WHITE);
+            }
+            State::Failed(_, e) => centred(ui, status_y, &fit(&format!("Update failed: {e}"), sw - 16.0), red),
+            _ => match &updates.install {
+                Ok(_) => centred(ui, status_y, "Your worlds are backed up before updating.", grey),
+                Err(why) => {
+                    centred(ui, status_y, &fit(&format!("{why}."), sw - 16.0), grey);
+                    centred(ui, status_y + 11.0, "Download it from the release page instead.", grey);
+                }
+            },
+        }
     }
 
     fn screenshot_done(&mut self) -> bool {
@@ -746,6 +900,28 @@ fn list_worlds(saves_dir: &Path) -> Vec<Entry> {
         .collect();
     worlds.sort_by(|a, b| b.played.cmp(&a.played).then_with(|| a.dir.cmp(&b.dir)));
     worlds
+}
+
+/// `text` broken into lines no wider than `width` UI pixels, at spaces
+/// where possible. Leading spaces (list indentation) are kept.
+fn wrap(text: &str, width: f32) -> Vec<String> {
+    if text.is_empty() {
+        return vec![String::new()];
+    }
+    let indent: String = text.chars().take_while(|c| *c == ' ').collect();
+    let mut lines = Vec::new();
+    let mut line = indent.clone();
+    for word in text.split_whitespace() {
+        let candidate = if line.trim().is_empty() { format!("{line}{word}") } else { format!("{line} {word}") };
+        if Ui::text_width(&candidate) <= width || line.trim().is_empty() {
+            line = candidate;
+        } else {
+            lines.push(fit(&line, width));
+            line = format!("{indent}  {word}");
+        }
+    }
+    lines.push(fit(&line, width));
+    lines
 }
 
 /// `text`, cut short with "..." if it's wider than `width` UI pixels.
