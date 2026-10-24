@@ -39,7 +39,47 @@ impl FrameStats {
 }
 
 /// Live benchmark scene names accepted by `--benchmark-scene`, matching `benchmarks/scenes.json`.
-pub const SCENES: [&str; 5] = ["survival", "building", "entities", "automation", "streaming"];
+pub const SCENES: [&str; 7] = ["survival", "building", "entities", "automation", "streaming", "menus", "title"];
+/// Scenes that cycle through menu screens. Most of them pause a single-player
+/// game, as Java's do, so their runs don't count simulation ticks.
+pub const MENU_SCENES: [&str; 2] = ["menus", "title"];
+/// Seconds each screen of a menu scene stays open before the next.
+pub const MENU_SCREEN_SECONDS: f64 = 2.0;
+
+/// The menus scene's screens, in order: `--open-menu` names, and the inventory.
+pub const MENUS_SCREENS: [&str; 9] =
+    ["pause", "options", "video", "sound", "controls", "mouse", "keybinds", "accessibility", "inventory"];
+/// The title scene's screens, in order: title `--open-menu` names, then the
+/// Options screens opened from the title menu.
+pub const TITLE_SCREENS: [&str; 12] = [
+    "title",
+    "select",
+    "create",
+    "multiplayer",
+    "direct",
+    "options",
+    "video",
+    "sound",
+    "controls",
+    "mouse",
+    "keybinds",
+    "accessibility",
+];
+
+/// The screen a menu scene shows `seconds` after it is ready.
+pub fn menu_screen(screens: &[&'static str], seconds: f64) -> &'static str {
+    screens[(seconds / MENU_SCREEN_SECONDS).max(0.0) as usize % screens.len()]
+}
+
+/// Whether `scene` has a world open; the title scene draws only the sky.
+pub fn scene_has_world(scene: &str) -> bool {
+    scene != "title"
+}
+
+/// Whether `scene`'s runs must show unpaused 20 Hz simulation.
+pub fn scene_measures_simulation(scene: &str) -> bool {
+    !MENU_SCENES.contains(&scene)
+}
 /// Mobs the entity scene places; its population must stay near this count.
 pub const ENTITY_SCENE_MOBS: usize = 160;
 /// Allowed relative drift of the entity scene's population during sampling.
@@ -83,6 +123,10 @@ pub fn population_within_tolerance(expected: usize, count: usize) -> bool {
 /// Everything a scene run must satisfy before its frame statistics may count.
 #[derive(Clone, Debug)]
 pub struct RunEvidence {
+    /// A world is open, so the view distance counts.
+    pub world: bool,
+    /// The simulation must run unpaused at 20 Hz (not in menu scenes).
+    pub simulation: bool,
     pub resolution: (u32, u32),
     pub render_distance_chunks: i32,
     pub warmup_seconds: f64,
@@ -106,7 +150,7 @@ impl RunEvidence {
         if self.resolution != (1920, 1080) {
             out.push("resolution is not 1920x1080");
         }
-        if self.render_distance_chunks != 8 {
+        if self.world && self.render_distance_chunks != 8 {
             out.push("view distance is not 256 blocks");
         }
         if self.requested_seconds < 60.0 || self.warmup_seconds < 10.0 {
@@ -124,10 +168,10 @@ impl RunEvidence {
     /// Reasons the run's samples are invalid regardless of configuration; empty when valid.
     pub fn run_problems(&self) -> Vec<&'static str> {
         let mut out = Vec::new();
-        if self.paused_ms > 0.0 {
+        if self.simulation && self.paused_ms > 0.0 {
             out.push("simulation was paused during sampling");
         }
-        if !ticks_within_tolerance(self.completed_ticks, self.sample_seconds) {
+        if self.simulation && !ticks_within_tolerance(self.completed_ticks, self.sample_seconds) {
             out.push("completed simulation ticks differ from 20 per sampled second");
         }
         if self.unpresented_frames > 0 {
@@ -148,6 +192,8 @@ mod tests {
 
     fn eligible() -> RunEvidence {
         RunEvidence {
+            world: true,
+            simulation: true,
             resolution: (1920, 1080),
             render_distance_chunks: 8,
             warmup_seconds: 10.0,
@@ -205,10 +251,38 @@ mod tests {
     }
 
     #[test]
+    fn menu_scenes_skip_the_simulation_and_the_title_the_view_distance() {
+        // The pause menu stops the game, so a menus run has paused time and few ticks.
+        let menus = RunEvidence { simulation: false, completed_ticks: 300, paused_ms: 45_000.0, ..eligible() };
+        assert!(menus.run_problems().is_empty());
+        let title = RunEvidence { world: false, render_distance_chunks: 0, ..menus.clone() };
+        assert!(title.configuration_problems().is_empty());
+        assert_eq!(RunEvidence { unpresented_frames: 1, ..title.clone() }.run_problems().len(), 1);
+        assert_eq!(RunEvidence { resolution: (1600, 900), ..title }.configuration_problems().len(), 1);
+        for scene in SCENES {
+            assert_eq!(scene_measures_simulation(scene), !MENU_SCENES.contains(&scene), "{scene}");
+            assert_eq!(scene_has_world(scene), scene != "title", "{scene}");
+        }
+    }
+
+    #[test]
     fn specification_matches_the_runtime_scenes() {
         let spec: serde_json::Value = serde_json::from_str(include_str!("../benchmarks/scenes.json")).unwrap();
         let names: Vec<&str> = spec["scenes"].as_array().unwrap().iter().map(|s| s["name"].as_str().unwrap()).collect();
         assert_eq!(names, SCENES);
+        for scene in spec["scenes"].as_array().unwrap() {
+            let name = scene["name"].as_str().unwrap();
+            assert_eq!(scene["simulation"].as_bool().unwrap_or(true), scene_measures_simulation(name), "{name}");
+            assert_eq!(scene["world"].as_bool().unwrap_or(true), scene_has_world(name), "{name}");
+        }
+        let screens = |i: usize| -> Vec<&str> {
+            spec["scenes"][i]["screens"].as_array().unwrap().iter().map(|s| s.as_str().unwrap()).collect()
+        };
+        assert_eq!(screens(5), MENUS_SCREENS);
+        assert_eq!(screens(6), TITLE_SCREENS);
+        assert_eq!(menu_screen(&TITLE_SCREENS, 0.0), "title");
+        assert_eq!(menu_screen(&TITLE_SCREENS, 2.5), "select");
+        assert_eq!(menu_screen(&MENUS_SCREENS, 18.0), "pause", "the cycle repeats");
         let entities = &spec["scenes"][2]["fixture"];
         assert_eq!(entities["population"].as_u64(), Some(ENTITY_SCENE_MOBS as u64));
         assert_eq!(entities["population_tolerance"].as_f64(), Some(POPULATION_TOLERANCE));

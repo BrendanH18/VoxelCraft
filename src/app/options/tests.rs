@@ -17,6 +17,8 @@ pub(in crate::app) struct Host {
     pub settings: Settings,
     pub applied: u32,
     pub saves: Cell<u32>,
+    /// Makes saving fail with this reason.
+    pub save_error: Option<String>,
     pub fullscreen: u32,
     pub world: Option<WorldDifficulty>,
     pub window: Option<(u32, u32)>,
@@ -40,8 +42,9 @@ impl OptionsHost for Host {
     fn apply_settings(&mut self) {
         self.applied += 1;
     }
-    fn save_settings(&self) {
+    fn save_settings(&self) -> Result<(), String> {
         self.saves.set(self.saves.get() + 1);
+        self.save_error.clone().map_or(Ok(()), Err)
     }
     fn apply_fullscreen(&mut self) {
         self.fullscreen += 1;
@@ -422,6 +425,25 @@ fn closing_any_options_screen_saves_and_goes_back() {
     assert_eq!(host.saves.get(), 2);
     stack.nav(&mut host, Nav::Back, (640.0, 360.0));
     assert_eq!(host.saves.get(), 3);
+    assert!(!stack.is_open());
+}
+
+#[test]
+fn an_options_file_that_cant_be_written_shows_a_notice() {
+    let size = (640.0, 360.0);
+    let mut stack: Stack<Host> = Stack::default();
+    let mut host = Host { save_error: Some("options.txt: read-only".into()), ..Host::default() };
+    stack.open(Options);
+    stack.open(VideoSettings);
+    stack.key(&mut host, &Key::new(KeyCode::Escape), size);
+    // The notice takes Video Settings' place, so Back returns to Options.
+    assert_eq!((host.saves.get(), stack.depth()), (1, 2));
+    assert_eq!(stack.peek(&host, size).0.slots.len(), 1, "the notice's Back button");
+    stack.key(&mut host, &Key::new(KeyCode::Enter), size);
+    assert_eq!(stack.depth(), 1);
+    // Once saving works again, leaving closes the screen as usual.
+    host.save_error = None;
+    stack.key(&mut host, &Key::new(KeyCode::Escape), size);
     assert!(!stack.is_open());
 }
 

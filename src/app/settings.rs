@@ -308,6 +308,15 @@ impl Settings {
     }
 }
 
+/// Saves `settings` to `path`; a failure is logged and returned as the
+/// line an error notice shows.
+pub fn save_or_report(settings: &Settings, path: &Path) -> Result<(), String> {
+    settings.save(path).map_err(|e| {
+        log::error!("failed to save options to {}: {e}", path.display());
+        format!("{}: {e}", path.display())
+    })
+}
+
 /// The largest fixed GUI Scale kept in the file (Java's encodable maximum is
 /// far larger; no display reaches this).
 pub const MAX_GUI_SCALE: u32 = 64;

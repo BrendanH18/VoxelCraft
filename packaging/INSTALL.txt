@@ -55,6 +55,7 @@ Left click to break/attack, right click to place/use.
 E opens inventory, Esc opens the pause menu, F11 toggles fullscreen.
 Left Shift sneaks; /, T or ` opens the command console (/help lists commands).
 Survival is the default; G switches between survival and creative.
+These are the default keys; change them in Options > Controls > Key Binds.
 Worlds save every two minutes and on normal exit.
 Gameplay guide: https://github.com/BrendanH18/VoxelCraft/blob/main/docs/gameplay.md
 

@@ -167,6 +167,15 @@ starts it also removes every mob outside that 160-mob fixture, because chunk
 generation adds creature herds that `doMobSpawning` doesn't stop. Runs whose view or simulation distance
 differs from `benchmarks/scenes.json` (256 and 160 blocks) are rejected.
 
+The two menu scenes open each screen in their `screens` list for two seconds
+in turn. `menus` does this in a world at spawn, with the camera turning: the
+pause menu, Options and each Options sub-screen, then the inventory. `title`
+starts on the title screen with no world open and cycles through Select World,
+Create New World, Multiplayer, Direct Connection, Options and its sub-screens.
+The pause screens stop the simulation as Java's do, so these runs skip the
+tick and pause checks. `title` also skips the view-distance check. Run just
+these two with `--scenes menus,title`.
+
 A benchmark run ignores keyboard, pointer, controller and focus input. It never
 autosaves or saves, including when its window is closed. Keep its window
 visible and unobstructed. Frames skipped because the surface is hidden or
@@ -186,7 +195,8 @@ measure presented throughput.
 
 Each report has `acceptance_eligible_configuration`, `run_valid` and
 `ineligible_reasons`. A run is valid only with zero paused time, completed ticks
-within max(2, 0.5%) of 20 per sampled second, zero unpresented frames and, for
+within max(2, 0.5%) of 20 per sampled second (neither applies to the menu
+scenes), zero unpresented frames and, for
 the entity scene, start and end populations within 5% of 160. The runner's
 `reference_gate_passed` also requires enhanced graphics, an uncapped resolved
 present mode, a matching source fingerprint, M5 hardware, all scenes and three
