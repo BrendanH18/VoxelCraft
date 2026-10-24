@@ -17,7 +17,7 @@ use std::{
     path::PathBuf,
     time::{Duration, Instant},
 };
-use voxelcraft::performance::{ENTITY_SCENE_MOBS, RunEvidence};
+use voxelcraft::performance::{self as perf, ENTITY_SCENE_MOBS, MENUS_SCREENS, RunEvidence};
 
 /// Camera height above the generator's surface along flight routes.
 const ROUTE_CLEARANCE: f64 = 24.0;
@@ -50,6 +50,8 @@ pub(super) struct Run {
     fixture_mobs: Vec<u32>,
     /// Generator surface heights on the `HEIGHT_GRID` lattice.
     heights: HashMap<(i32, i32), i32>,
+    /// The menus scene's open screen.
+    screen: Option<&'static str>,
     cold_load_ms: f64,
     prepared: bool,
     finished: bool,
@@ -76,6 +78,7 @@ impl Run {
             expected_population: None,
             fixture_mobs: Vec::new(),
             heights: HashMap::new(),
+            screen: None,
             cold_load_ms: 0.,
             prepared: false,
             finished: false,
@@ -153,7 +156,7 @@ impl Game {
             && self.world.is_loaded(self.session.player.pos.floor().as_ivec3())
         {
             run.origin = self.session.player.pos;
-            if run.scene != "survival" && run.scene != "streaming" {
+            if !matches!(run.scene.as_str(), "survival" | "streaming" | "menus") {
                 let at = run.origin.floor().as_ivec3();
                 // A compact inspection platform, built on the actual seed's surface.
                 for x in -12..=12 {
@@ -246,6 +249,13 @@ impl Game {
                 run.entities_start = self.mobs.entities.mobs.len();
             }
             let t = ready.elapsed().as_secs_f64();
+            if run.scene == "menus" {
+                let screen = perf::menu_screen(&MENUS_SCREENS, t);
+                if run.screen != Some(screen) {
+                    run.screen = Some(screen);
+                    self.show_benchmark_screen(screen);
+                }
+            }
             if let Some((offset, dir)) = route(&run.scene, t) {
                 // Follow the generated surface at a fixed clearance, facing the direction of travel.
                 let mut pos = run.origin + offset;
@@ -285,6 +295,8 @@ impl Game {
         let uncapped = matches!(resolved_present, wgpu::PresentMode::Immediate | wgpu::PresentMode::Mailbox);
         let graphics = if self.settings.enhanced_graphics { "enhanced" } else { "classic" };
         let evidence = RunEvidence {
+            world: true,
+            simulation: perf::scene_measures_simulation(&run.scene),
             resolution: (width, height),
             render_distance_chunks: self.world.render_distance(),
             warmup_seconds: run.warmup,
@@ -335,6 +347,9 @@ impl Game {
         let mut report = serde_json::json!({
             "schema": 2,
             "scene": run.scene,
+            "screens": if run.scene == "menus" { Some(MENUS_SCREENS.as_slice()) } else { None },
+            "screen_seconds": if run.scene == "menus" { Some(perf::MENU_SCREEN_SECONDS) } else { None },
+            "simulation_measured": perf::scene_measures_simulation(&run.scene),
             "seed": self.world.generator.seed,
             "resolution_physical": [width, height],
             "view_distance_blocks": self.world.render_distance() * 32,
@@ -383,14 +398,194 @@ impl Game {
         );
         run.finished = true;
     }
+    /// Opens one of the menus scene's screens over the world, as the
+    /// player would: the inventory, or the pause menu and the screens under it.
+    fn show_benchmark_screen(&mut self, screen: &str) {
+        if screen == "inventory" {
+            self.menu.close();
+            if !self.inventory_open {
+                self.toggle_inventory();
+            }
+        } else {
+            if self.inventory_open {
+                self.toggle_inventory();
+            }
+            self.menu = super::menu::startup_menu(Some(screen));
+        }
+    }
+
     pub(super) fn benchmark_done(&self) -> bool {
         self.benchmark.as_ref().is_some_and(|r| r.finished)
     }
 }
 
+/// The title scene: frame intervals while the title screens cycle over the
+/// turning sky, with no world open. It ignores input like the world scenes.
+pub(super) struct TitleRun {
+    output: PathBuf,
+    warmup: f64,
+    duration: f64,
+    created: Instant,
+    sample_start: Option<Instant>,
+    previous: Option<Instant>,
+    frames: Vec<f64>,
+    skipped_before: u64,
+    screen: Option<&'static str>,
+}
+
+impl TitleRun {
+    pub fn from_args(args: &Args) -> Option<Self> {
+        (args.benchmark_scene.as_deref() == Some("title")).then(|| Self {
+            output: args.benchmark_output.clone().expect("checked when parsing"),
+            warmup: args.benchmark_warmup,
+            duration: args.benchmark_duration,
+            created: Instant::now(),
+            sample_start: None,
+            previous: None,
+            frames: Vec::new(),
+            skipped_before: 0,
+            screen: None,
+        })
+    }
+
+    /// After a presented frame: records its interval once warm-up is over and
+    /// returns the screen to show if it is time for the next one.
+    pub fn frame(&mut self, skipped_frames: u64) -> Option<&'static str> {
+        self.frame_at(Instant::now(), skipped_frames)
+    }
+
+    fn frame_at(&mut self, now: Instant, skipped_frames: u64) -> Option<&'static str> {
+        let t = now.duration_since(self.created).as_secs_f64();
+        if self.sample_start.is_none() {
+            if t >= self.warmup {
+                self.sample_start = Some(now);
+                self.previous = Some(now);
+                self.skipped_before = skipped_frames;
+            }
+        } else if let Some(previous) = self.previous.replace(now)
+            && now > previous
+        {
+            self.frames.push(now.duration_since(previous).as_secs_f64() * 1000.);
+        }
+        let screen = perf::menu_screen(&perf::TITLE_SCREENS, t);
+        (self.screen.replace(screen) != Some(screen)).then_some(screen)
+    }
+
+    /// Whether the sample period is over.
+    pub fn done(&self) -> bool {
+        self.sample_start.is_some_and(|s| s.elapsed().as_secs_f64() >= self.duration)
+    }
+
+    /// Writes the report, as a world scene does, without the world's parts.
+    pub fn finish(&self, renderer: &crate::render::Renderer, settings: &super::settings::Settings) {
+        renderer.wait_idle();
+        let start = self.sample_start.expect("sampling started");
+        let stats =
+            perf::FrameStats::from_milliseconds(&self.frames).expect("benchmark produced no finite frame samples");
+        let sample_seconds = start.elapsed().as_secs_f64();
+        let unpresented = renderer.skipped_frames - self.skipped_before;
+        let (width, height) = renderer.size();
+        let (requested_present, resolved_present) = renderer.present_modes();
+        let uncapped = matches!(resolved_present, wgpu::PresentMode::Immediate | wgpu::PresentMode::Mailbox);
+        let evidence = RunEvidence {
+            world: false,
+            simulation: false,
+            resolution: (width, height),
+            render_distance_chunks: 0,
+            warmup_seconds: self.warmup,
+            requested_seconds: self.duration,
+            sample_seconds,
+            enhanced_graphics: settings.enhanced_graphics,
+            uncapped_presentation: uncapped,
+            completed_ticks: 0,
+            paused_ms: 0.,
+            unpresented_frames: unpresented,
+            population: None,
+        };
+        let configuration_problems = evidence.configuration_problems();
+        let run_problems = evidence.run_problems();
+        let report = serde_json::json!({
+            "schema": 2,
+            "scene": "title",
+            "screens": perf::TITLE_SCREENS,
+            "screen_seconds": perf::MENU_SCREEN_SECONDS,
+            "simulation_measured": false,
+            "resolution_physical": [width, height],
+            "view_distance_blocks": null,
+            "simulation_distance_blocks": null,
+            "warmup_seconds": self.warmup,
+            "requested_sample_seconds": self.duration,
+            "sample_seconds": sample_seconds,
+            "frame_stats": stats.json(),
+            "frame_times_ms": self.frames,
+            "gpu_timestamp_ms": null,
+            "presentation": "window surface; title screen",
+            "present_mode_requested": format!("{requested_present:?}"),
+            "present_mode_resolved": format!("{resolved_present:?}"),
+            "vsync": !uncapped,
+            "graphics": if settings.enhanced_graphics { "enhanced" } else { "classic" },
+            "options": {"gui_scale": settings.gui_scale, "vsync_setting": settings.vsync},
+            "source_revision": option_env!("VOXELCRAFT_BUILD_REVISION").unwrap_or("unknown"),
+            "completed_simulation_ticks": 0,
+            "paused_simulation_ms": null,
+            "unpresented_frames": unpresented,
+            "frame_thresholds_passed": stats.low_one_percent_fps >= 240. && stats.p99_ms <= 1000. / 240.,
+            "acceptance_eligible_configuration": configuration_problems.is_empty(),
+            "run_valid": run_problems.is_empty(),
+            "ineligible_reasons": configuration_problems.iter().chain(&run_problems).collect::<Vec<_>>(),
+        });
+        if let Some(parent) = self.output.parent() {
+            std::fs::create_dir_all(parent).expect("create benchmark output directory");
+        }
+        std::fs::write(&self.output, serde_json::to_string_pretty(&report).unwrap() + "\n")
+            .expect("write benchmark results");
+        println!(
+            "benchmark title: {} frames, {:.1} FPS average, {:.1} FPS 1% low, {:.3} ms p99; {} unpresented; {}",
+            stats.frames,
+            stats.average_fps,
+            stats.low_one_percent_fps,
+            stats.p99_ms,
+            unpresented,
+            self.output.display()
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::route;
+    use super::{TitleRun, route};
+    use std::{
+        path::PathBuf,
+        time::{Duration, Instant},
+    };
+
+    #[test]
+    fn the_title_scene_samples_only_after_its_warm_up() {
+        let created = Instant::now();
+        let mut run = TitleRun {
+            output: PathBuf::new(),
+            warmup: 1.0,
+            duration: 60.0,
+            created,
+            sample_start: None,
+            previous: None,
+            frames: Vec::new(),
+            skipped_before: 0,
+            screen: None,
+        };
+        let at = |ms: u64| created + Duration::from_millis(ms);
+        assert_eq!(run.frame_at(at(0), 0), Some("title"));
+        for ms in [100, 500, 900] {
+            run.frame_at(at(ms), 0);
+        }
+        assert!(run.frames.is_empty() && run.sample_start.is_none(), "warm-up frames don't count");
+        run.frame_at(at(1000), 3);
+        run.frame_at(at(1004), 3);
+        assert_eq!(run.screen, Some("title"));
+        assert_eq!(run.frame_at(at(2500), 3), Some("select"));
+        assert_eq!(run.frames, [4.0, 1496.0]);
+        assert_eq!(run.skipped_before, 3);
+    }
 
     #[test]
     fn routes_face_their_direction_of_travel() {

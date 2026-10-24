@@ -39,10 +39,10 @@ class RunnerGate(unittest.TestCase):
         # Schema-1 reports carry no pause or presentation telemetry and cannot pass.
         legacy={k:v for k,v in report().items() if k not in ('paused_simulation_ms','unpresented_frames','run_valid')}
         self.assertTrue(runner.run_problems(legacy,SPEC))
-        runs=full_suite();runs[-1]=paused
+        runs=full_suite();last=max(i for i,r in enumerate(runs) if r['scene']=='streaming');runs[last]=paused
         passed,problems=runner.reference_gate(summary(runs),DEFINITIONS,False,None,3)
         self.assertFalse(passed)
-        self.assertTrue(any('streaming-15' in p for p in problems),problems)
+        self.assertTrue(any(f'streaming-{last+1}' in p for p in problems),problems)
 
     def test_each_run_requirement(self):
         for change in [{'paused_simulation_ms':12.0},{'unpresented_frames':1},{'graphics':'classic'},
@@ -52,6 +52,14 @@ class RunnerGate(unittest.TestCase):
                        {'view_distance_blocks':128}]:
             self.assertTrue(runner.run_problems(report(**change),SPEC),change)
         self.assertEqual(runner.run_problems(report(completed_simulation_ticks=1201),SPEC),[])
+
+    def test_menu_scenes_pause_and_the_title_has_no_world(self):
+        menus=report('menus',completed_simulation_ticks=310,paused_simulation_ms=44_500.0)
+        self.assertEqual(runner.run_problems(menus,SPEC),[])
+        title=report('title',completed_simulation_ticks=0,paused_simulation_ms=None,view_distance_blocks=None,simulation_distance_blocks=None)
+        self.assertEqual(runner.run_problems(title,SPEC),[])
+        self.assertTrue(runner.run_problems(report('menus',view_distance_blocks=128),SPEC))
+        self.assertTrue(runner.run_problems(report('title',unpresented_frames=2),SPEC))
 
     def test_protocol_requirements(self):
         runs=summary(full_suite())

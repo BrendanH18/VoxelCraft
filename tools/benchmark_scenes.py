@@ -43,17 +43,23 @@ def ticks_within_tolerance(ticks,seconds):
     expected=seconds*TICKS_PER_SECOND
     return abs(ticks-expected)<=max(2.0,expected*TICK_TOLERANCE)
 
+def scene_definition(specification,name):
+    return next((s for s in specification['scenes'] if s['name']==name),{})
+
 def run_problems(report,specification):
-    """Reasons one scene report cannot count toward the reference gate; empty when it can."""
+    """Reasons one scene report cannot count toward the reference gate; empty when it can.
+    Menu scenes pause the simulation, as Java's menus do, and the title scene has no world."""
+    scene=scene_definition(specification,report.get('scene'))
+    world=scene.get('world',True);simulation=scene.get('simulation',True)
     out=list(report.get('ineligible_reasons',[]))
     if not report.get('acceptance_eligible_configuration'): out.append('configuration is not the reference configuration')
     if not report.get('run_valid'): out.append('run reported invalid samples')
     if report.get('graphics')!=specification['graphics']: out.append(f"graphics is not {specification['graphics']}")
-    for key in ('view_distance_blocks','simulation_distance_blocks'):
+    for key in ('view_distance_blocks','simulation_distance_blocks') if world else ():
         if report.get(key)!=specification[key]: out.append(f"{key.replace('_',' ')} is not {specification[key]}")
-    if report.get('paused_simulation_ms',None)!=0: out.append('simulation pause time is not zero')
+    if simulation and report.get('paused_simulation_ms',None)!=0: out.append('simulation pause time is not zero')
     if report.get('unpresented_frames',None)!=0: out.append('unpresented frame count is not zero')
-    if not ticks_within_tolerance(report.get('completed_simulation_ticks',0),report.get('sample_seconds',0)):
+    if simulation and not ticks_within_tolerance(report.get('completed_simulation_ticks',0),report.get('sample_seconds',0)):
         out.append('completed simulation ticks differ from 20 per sampled second')
     if not report.get('source_matches_runner'): out.append('executable was not built from the measured source')
     return list(dict.fromkeys(out))
@@ -75,7 +81,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--executable',type=Path)
     parser.add_argument('--output',type=Path,default=ROOT/'target/benchmarks')
-    parser.add_argument('--scenes',default='survival,building,entities,automation,streaming')
+    parser.add_argument('--scenes',help='comma-separated scene names (default: every scene in benchmarks/scenes.json)')
     parser.add_argument('--repeats',type=int,default=3)
     parser.add_argument('--quick',action='store_true',help='five-second smoke only, never acceptance evidence')
     parser.add_argument('--native-resolution',help='WIDTHxHEIGHT, reported separately from the 1080p gate')
@@ -83,7 +89,7 @@ def main():
     assert 1<=args.repeats<=10,'repeat count must be 1..10'
     specification=json.loads((ROOT/'benchmarks/scenes.json').read_text())
     definitions={s['name']:s for s in specification['scenes']}
-    names=args.scenes.split(',')
+    names=args.scenes.split(',') if args.scenes else list(definitions)
     assert all(n in definitions for n in names),'unknown scene'
     revision=source()
     if args.executable:
@@ -103,8 +109,9 @@ def main():
             duration=5 if args.quick else definitions[scene].get('sample_seconds',specification['sample_seconds'])
             warmup=1 if args.quick else specification['warmup_seconds']
             cmd=[str(executable),'--benchmark-scene',scene,'--benchmark-output',str(output.resolve()),'--benchmark-duration',str(duration),'--benchmark-warmup',str(warmup),
-                 '--size',resolution,'--seed',str(specification['seed']),'--rd','8','--graphics',specification['graphics'],'--no-vsync','--new','--world','benchmark',
+                 '--size',resolution,'--seed',str(specification['seed']),'--rd','8','--graphics',specification['graphics'],'--no-vsync',
                  '--data-dir',str((args.output/'player-data').resolve())]
+            if definitions[scene].get('world',True): cmd+=['--new','--world','benchmark']
             print(f'{scene} run {run+1}/{args.repeats} at {resolution}',flush=True)
             peak_rss_kib=0;started=time.monotonic()
             with (args.output/f'{scene}-{run+1}.log').open('w') as log:
@@ -134,7 +141,7 @@ def main():
     metadata['reference_gate_passed']=passed
     metadata['reference_gate_problems']=problems
     metadata['all_runs_valid']=all(not r['gate_problems'] for r in metadata['runs'])
-    metadata['remaining_acceptance']='These five initial scenes do not cover the full roadmap environment/encounter matrix or ordinary player testing. GPU timestamp costs and long-session memory stability remain separate checks.'
+    metadata['remaining_acceptance']='These scenes do not cover the full roadmap environment/encounter matrix or ordinary player testing. GPU timestamp costs and long-session memory stability remain separate checks.'
     (args.output/'summary.json').write_text(json.dumps(metadata,indent=2)+'\n')
 
 if __name__=='__main__':main()

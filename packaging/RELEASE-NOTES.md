@@ -1,8 +1,9 @@
-VoxelCraft 0.10.0 updates itself. This is the last version you install by
-hand: from now on, when a new version comes out, the title screen offers it
-and installs it for you, backing up your worlds first. If you're coming from
-0.8.0, this release also brings everything from 0.9.0: Java's movement and
-the full set of block states.
+VoxelCraft 0.11.0 brings Java's menus: the title screen, world list and
+Edit World screen, the full Options screens, key rebinding, GUI scale and a
+volume slider for each sound category. If you have 0.10.0, the title screen
+offers this update; choose **Update and Restart**. If you're coming from
+0.9.0 or earlier, install it by hand once, as below, and it updates itself
+from then on.
 
 VoxelCraft is an unofficial fan project, inspired by Minecraft Java Edition. It
 is not affiliated with or endorsed by Mojang Studios or Microsoft, and it
@@ -10,10 +11,52 @@ contains no Minecraft code or assets.
 
 Choose your download:
 
-- **Windows 10/11 x64:** `VoxelCraft-0.10.0-windows-x64-Setup.exe`
-- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.10.0-macos-apple-silicon.dmg`
+- **Windows 10/11 x64:** `VoxelCraft-0.11.0-windows-x64-Setup.exe`
+- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.11.0-macos-apple-silicon.dmg`
 
-## What's new in 0.10.0
+## What's new in 0.11.0
+
+### Title screen and worlds
+
+- Java's title menu: **Singleplayer**, **Multiplayer**, **Options...** and
+  **Quit Game**, with the version and the update button.
+- **Select World** lists each world with its name, folder, when it was last
+  played, its game mode and the version that last saved it, with a search
+  box. Opening a world saved by a newer version warns you first and offers
+  a backup.
+- **Edit World** renames a world, makes a backup, opens the world and
+  backups folders and copies the seed. **Re-Create** starts a new world
+  with the same settings, and deleting a world asks first.
+- **Create New World** has Java's Game and World tabs.
+- Multiplayer and Direct Connection join LAN games.
+
+### Options
+
+- Java's **Options** screen and its **Video Settings**, **Music & Sounds**,
+  **Controls**, **Mouse Settings**, **Key Binds** and **Accessibility
+  Settings** screens, from both the title screen and the pause menu.
+- **Key Binds:** rebind every keyboard and mouse action. Conflicting keys
+  are highlighted, and you can reset one key or all of them.
+- **GUI Scale** (Auto or a fixed size) changes the menus and HUD at once.
+- **Music & Sounds** has a slider for each of Java's sound categories:
+  music, jukebox and note blocks, weather, blocks, hostile and friendly
+  creatures, players and ambient sounds, under the master volume.
+- New options: Brightness, **Max Framerate** (120 by default, as in Java),
+  Sneak and Sprint as Hold or Toggle, Scroll Sensitivity, Discrete
+  Scrolling, Invert Mouse X and Y, Distortion Effects, FOV Effects, Damage
+  Tilt and Java's difficulty lock (saved with each world).
+- Render Distance is shown in Java's 16-block chunks.
+
+### Menus everywhere
+
+- Mouse, keyboard (Tab, the arrow keys, Enter and Escape) and a controller
+  (D-pad, A and B) reach every button, slider and text box, with visible
+  hover and focus.
+- Text boxes support selecting, word jumps, copy and paste.
+- When a world can't be opened, saved, backed up, renamed or deleted, or
+  your options can't be saved, a screen says what happened and what to do.
+
+## What's new in 0.10.0 (if you're coming from 0.9.0 or earlier)
 
 ### Updates in game
 
@@ -38,56 +81,16 @@ Choose your download:
   world: the game goes back to the title screen and says what went wrong.
 - If saving fails, the game tells you instead of only writing it to the log.
 
-## What's new in 0.9.0 (if you're coming from 0.8.0)
-
-### Moving like Java
-
-- **Java 26.3 physics:** walking (4.3 blocks a second), sprinting (5.6) and
-  sneaking (1.3), the jump arc, step-up onto slabs and stairs, ice and soul
-  sand, and sneaking stopping you at edges all follow Java tick for tick.
-- **Sprinting** works as in Java: press sprint or double-tap forward, and it
-  keeps going until you stop, run into a wall, get hungry or use an item.
-  Eating, drinking and drawing a bow slow you down.
-- **Crouching and crawling:** a 1.5-block gap makes you crouch and a 1-block
-  gap makes you crawl, without holding sneak.
-- **Water and lava:** swimming, sinking and lava movement match Java, and
-  flowing water now pushes you along.
-- **Ladders and vines** climb at Java's speed, and sneaking holds on.
-  Cobwebs and sweet berry bushes slow you, and beds bounce you unless you
-  sneak.
-- The field of view widens smoothly while sprinting or flying.
-
-### New blocks
-
-- **Scaffolding:** place it onto scaffolding to build outward or upward. It
-  falls when it's more than 7 blocks from support, collapses when you break
-  what holds it up, lets you stand on top, climb inside and sneak down
-  through it, and can be waterlogged.
-- **Powder snow and the powder snow bucket:** you sink in and slowly freeze,
-  with frozen hearts and a frost overlay. Leather boots let you walk on top,
-  and any leather armour stops the freezing.
-- **Honey block and honey bottle:** honey slows you down, halves your jumps,
-  lets you slide slowly down its sides and softens falls. Honey bottles cure
-  poison.
-- **Lanterns and soul lanterns**, standing or hanging.
-
-### Building
-
-- **Slabs** can go on top or double up, and **stairs** turn upside down and
-  form corners, with matching light and collision.
-- **Doors** have left and right hinges and open by themselves when placed
-  next to power. **Buttons and levers** go on floors and ceilings, and
-  **grindstones** on walls and ceilings.
-- **Waterlogging:** slabs, stairs, fences, walls, panes, bars, chains,
-  trapdoors, rails, ladders, chests, leaves, lanterns, scaffolding and more
-  hold water, which flows through their open sides as in Java.
-- **Walls** keep their posts the way Java does down a stack, and fences,
-  walls and panes connect by Java's rules.
-- **Redstone** dust, repeaters, comparators and pressure plates stand on any
-  block with a solid top, such as top slabs and scaffolding.
-
 ## Known limitations
 
+- Some Java options aren't in yet because nothing in the game uses them:
+  clouds, biome blend, entity distance and shadows, mipmaps, menu blur,
+  resource packs, language, chat and skin options, the attack indicator,
+  directional audio, the sound output device and voice volume.
+- There are no world icons. Create New World has no More tab, and Edit World
+  can't optimize or export a world. Multiplayer lists LAN games only.
+- Difficulty stays on the Options screen; Java 26.3 moved it to the pause
+  menu.
 - Updating in game works on Windows x64 and Apple Silicon Macs, for copies
   installed by the installer or dragged into a folder you can change, such as
   Applications. A Mac app run straight from the disk image shows a link to the
@@ -137,11 +140,12 @@ Choose your download:
 
 ## Upgrading and saves
 
-Install 0.10.0 by hand, as below; later versions arrive in game. Worlds from
-0.9.0 and earlier load in 0.10.0, which uses the same save format as 0.9.0.
-Back up your worlds before upgrading from 0.8.0, and don't open a world saved
-by 0.9.0 or later in 0.8.0: once it uses any of the new block states, 0.8.0
-can't read its terrain and would overwrite it. LAN players all need 0.10.0.
+Players on 0.10.0 get this version from the title screen. Install it by hand
+if you're on 0.9.0 or earlier; later versions then arrive in game. Worlds and
+options from 0.10.0 and earlier load in 0.11.0. Back up your worlds before upgrading from 0.8.0, and
+don't open a world saved by 0.9.0 or later in 0.8.0: once it uses any of the
+new block states, 0.8.0 can't read its terrain and would overwrite it. LAN
+players all need the same version.
 
 ## Installing
 

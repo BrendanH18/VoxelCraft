@@ -350,11 +350,14 @@ impl App {
     fn quit_to_title(&mut self) {
         let Some(mut game) = self.game.take() else { return };
         game.save();
-        game.save_settings();
+        let options_error = game.save_settings().err();
         game.close_lan("Server closed");
         let save_error = game.save_error.take();
         let shell = game.into_shell();
         let mut title = title::Title::new(shell, &self.saves_dir);
+        if let Some(reason) = options_error {
+            title.options_error(reason);
+        }
         if let Some(e) = save_error {
             title.world_error(
                 "Couldn't save the world",
@@ -471,7 +474,8 @@ impl ApplicationHandler for App {
         let gilrs = if self.args.screenshot.is_none() { gamepad::Pads::open() } else { None };
         let shell = Shell { renderer, audio, settings, settings_path, updates, gilrs };
         // A named world, a fresh one or a scripted run skips the title screen.
-        let to_title = self.args.open_menu.as_deref().is_some_and(|m| title::TITLE_MENUS.contains(&m));
+        let to_title = self.args.open_menu.as_deref().is_some_and(|m| title::TITLE_MENUS.contains(&m))
+            || self.args.benchmark_scene.as_deref() == Some("title");
         if let Some(address) = self.args.join.clone() {
             let mut title = title::Title::new(shell, &self.saves_dir);
             title.connect_address(address, self.args.profile.clone());
@@ -497,6 +501,7 @@ impl ApplicationHandler for App {
                     title.open_menu(menu, self.args.world.as_deref());
                 }
                 title.screenshot = self.args.screenshot.take();
+                title.benchmark = benchmark::TitleRun::from_args(&self.args);
                 self.title = Some(title);
             }
         }
@@ -689,11 +694,12 @@ impl ApplicationHandler for App {
             && let Some(game) = &mut self.game
         {
             game.save();
-            game.save_settings();
+            // Already logged; the game is closing, so there's no screen to show it on.
+            let _ = game.save_settings();
             game.close_lan("Server closed");
         }
         if let Some(title) = &self.title {
-            title.save_settings();
+            let _ = title.save_settings();
         }
     }
 
@@ -893,7 +899,8 @@ impl Game {
                     _ => fullscreen::Mode::Off,
                 };
                 self.settings.fullscreen.apply(w);
-                self.save_settings();
+                // Logged; leaving Options or the world shows a failure on screen.
+                let _ = self.save_settings();
             }
             A::RenderDistanceDown | A::RenderDistanceUp => {
                 let step = if action == A::RenderDistanceDown { -1 } else { 1 };

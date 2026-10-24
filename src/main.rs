@@ -195,7 +195,7 @@ voxelcraft [options]
   --mute            start with sound muted (M toggles in game)
   --no-hud          start with the HUD and hand hidden (F1 toggles in game)
   --volume <0..1>   master volume (default: 1, or the saved option)
-  --export-sounds   write every synthesized sound to target/sounds/*.wav with stats, and exit\n  --benchmark-scene <survival|building|entities|automation|streaming> run live scene
+  --export-sounds   write every synthesized sound to target/sounds/*.wav with stats, and exit\n  --benchmark-scene <survival|building|entities|automation|streaming|menus|title> run live scene
   --benchmark-output <file.json>  write frame samples and statistics
   --benchmark-duration <seconds>  sample period (default 60)
   --benchmark-warmup <seconds>    warm-up after loading (default 10)

@@ -92,8 +92,10 @@ impl Screen<Title> for UpdateScreen {
             Id::SkipVersion => {
                 title.shell.settings.skip_update = updates.offer().map(|r| r.version);
                 updates.dismissed = true;
-                title.save_settings();
-                return Step::Pop;
+                return match title.save_settings() {
+                    Ok(()) => Step::Pop,
+                    Err(reason) => Step::replace(crate::app::options::save_failed(reason)),
+                };
             }
             Id::Cancel => {
                 // `--update-now` would start the cancelled update again.
