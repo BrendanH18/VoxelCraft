@@ -118,6 +118,8 @@ roadmap and recorded checks to assess completeness against the current target.
   and repeater saves.
 - [In-game updater](verification/2026-10-22-in-game-updater.md): the v0.10
   updater's tests, a real Mac update and rollback, and what is unverified.
+- [v0.12 registry audit](verification/2026-10-23-v0.12-registry-audit.md):
+  Java 26.3 blocks VoxelCraft lacks, sorted by release, and the state budget.
 - [Game rules and difficulty](verification/2026-10-17-game-rules-difficulty.md):
   the 26.3 rule registry, damage-type rules, Peaceful regeneration and the
   difficulty effects checked against the reference.

@@ -89,6 +89,22 @@ cargo run --release --no-default-features --example fuel_inventory > target/fuel
 cargo test --release --test full_fuel_integrations
 ```
 
+## Registry names
+
+`registry_names.json` lists every Java 26.3 block and item registry name with
+its English display name, read from the official client
+(SHA-1 `e877b6a07acd633fb3bb475002175cec036e7b87`): blockstate and item-model
+file names, and `lang/en_us.json`. `examples/registry_audit.rs` reports the
+names VoxelCraft doesn't register and the VoxelCraft names Java lacks. It is
+a name-level probe, not a parity check. See the
+[v0.12 audit](../../../../docs/verification/2026-10-23-v0.12-registry-audit.md).
+
+```sh
+python3 tools/extract_java_registry_names.py /path/to/client.jar --output target/java-registry-names.json
+diff tests/fixtures/java/26.3/registry_names.json target/java-registry-names.json
+cargo run --release --no-default-features --example registry_audit > target/registry-audit.json
+```
+
 ## Consumption durations
 
 `consumption.json` records independent Java consumption timing for representative
