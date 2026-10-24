@@ -851,7 +851,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.9 | Block states | M2: BLD-04, BLD-06 | Top and double slabs, waterlogging, door hinges, floor/ceiling buttons and levers, wall grindstones, corner-stair light; reserved state ranges for later content | Done (owner, 2026-10-22): ready to tag `v0.9` once merged; [delivery record](#35-v09-delivery-record--2026-10-22). Block states (#40), Java player movement, wall posts, powered doors, honey, scaffolding and powder snow; the owner's play is the player evidence for v0.8 and v0.9 (the checklist and controller session were dropped). Rows stay Implemented, unverified: the windowed performance check was deferred to v0.20 (owner, 2026-10-22) |
 | v0.10 | Updates | M7 early: UX-04b, part of UX-05a | In-game update check, signed download, pre-update world backup and install on Windows and Apple Silicon Macs ([design](updates.md)); worlds whose level file can't be read are no longer started fresh. See [v0.10 scope](#v010-scope-updates) | Release prepared (2026-10-22): Cargo 0.10.0, release notes and the `UPDATE_SIGNING_KEY` secret; tag `v0.10` once merged (owner exception: before the exit check, which needs a later release). Rows Implemented, unverified until the owner updates a real v0.10 install (the exit check); the stepping-stone release every player installs by hand |
 | v0.11 | Menus and settings | M7 early: UX-03a/b, UX-05a | Java's title screen, world list and Edit World screen; Java-style options screens, key rebinding, GUI scale and per-category volume; consistent menu navigation and error screens. See [v0.11 scope](#v011-scope-menus-and-settings) | In progress (2026-10-23): every work item implemented, unverified; Codex-reviewed with its findings fixed; awaiting the owner's play and the frame-time check |
-| v0.12 | Building materials | Close M2 | Missing wood, stone, copper and colour family members, the unregistered reference fuel items, signs, banners, item frames, cauldrons and campfires; coral wall fans; falling and dripping dripstone, tilting dripleaf. See [v0.12 scope](#v012-scope-building-materials) | Scoped (2026-10-23): the [registry audit](verification/2026-10-23-v0.12-registry-audit.md) found about 480 missing blocks in v0.12's families; the scope's decisions await the owner |
+| v0.12 | Building materials | Close M2 | Missing wood, stone, copper and colour family members, the unregistered reference fuel items, signs, banners, item frames, cauldrons and campfires; coral wall fans; falling and dripping dripstone, tilting dripleaf. See [v0.12 scope](#v012-scope-building-materials) | Scoped (2026-10-23): the [registry audit](verification/2026-10-23-v0.12-registry-audit.md) found about 420 missing blocks in v0.12's families; the scope's decisions await the owner |
 | v0.13 | Terrain | M3: GEN-01..03 | Java climate and density terrain with overhangs; Java caves, aquifers and ores; deep-dark content, springs, glow lichen; giant spruce and jungle trees and the remaining biome features | Planned |
 | v0.14 | Structures | M3: GEN-05..07 | A Java structure-template (jigsaw) system; villages, outposts, bastions, fossils, shipwrecks, ocean ruins and monuments built from it; buried treasure and explorer maps; Java loot random sequences | Planned |
 | v0.15 | Wildlife | M4: MOB-03/04, FOO, ENV-03 | Bats, frogs, pandas, polar bears, armadillos, mooshrooms, strays, bogged, phantoms and zombie horses (with lightning); drowned conversion and the cat spawner; melon, pumpkin and beetroot crops; animal and mount acceptance | Planned |
@@ -1045,15 +1045,16 @@ v0.12 closes M2 for every family whose material can be obtained in survival
 today. Java 26.3 is still the latest stable release (rechecked 2026-10-23).
 The [registry audit](verification/2026-10-23-v0.12-registry-audit.md)
 (2026-10-23) compared VoxelCraft's names with Java 26.3's: 669 of Java's
-1,286 blocks are missing, about 480 of them in v0.12's families. That is far
+1,286 blocks are missing, about 420 of them in v0.12's families. That is far
 more than this row first listed, so the work is split into tracks, and a
 track that isn't ready moves to v0.13 instead of holding v0.12 open (as in
-v0.11). `cargo run --release --example registry_audit` reports what remains.
+v0.11). `cargo run --release --no-default-features --example registry_audit`
+reports what remains.
 
 Proposed decisions, awaiting the owner (2026-10-23):
 
-- **State capacity first (BLD-06).** The audit's minimum is 4,268 new
-  states, likely 7,000–10,000 with waterlogged partners and multipart
+- **State capacity first (BLD-06).** The audit's minimum is 3,795 new
+  states, likely 6,000–8,000 with waterlogged partners and multipart
   blocks, against 4,643 available (v0.12's two ranges plus the unassigned
   reserve). Raise `STATE_CAPACITY` from 16,384 to 32,768, the most the
   current block-item encoding allows, measured the way the
@@ -1064,7 +1065,12 @@ Proposed decisions, awaiting the owner (2026-10-23):
   sulfur (sulfur springs, v0.13), resin (the creaking, v0.15), copper golem
   statues (the copper golem, v0.15), honeycomb blocks, bee nests and hives
   (bees, v0.15), heads and skulls (their mobs), purpur, end rods and shulker
-  boxes (v0.18). The audit lists each block's release.
+  boxes (v0.18), and potted plants with their plants. The audit lists each
+  block's release.
+- **Waxing waits for bees.** Honeycomb has no survival source until bees
+  (v0.15), so the 56 waxed copper blocks, copper waxing and sign waxing
+  ship with them. Unwaxed copper oxidises in v0.12 and an axe scrapes it
+  back.
 - **Banners are plain in v0.12.** Patterns are applied at the loom, which
   arrives in v0.17, so banner patterns and their items come with it.
 - **Retire the 11 invented blocks.** Calcite stairs, slab and wall,
@@ -1092,7 +1098,8 @@ Work items (all Missing unless noted):
    spruce, birch, jungle, acacia, dark oak, mangrove and cherry, and the
    polished blackstone button and plate; shelves for every wood; standing,
    wall and hanging signs with Java's edit screen (built on v0.11's text
-   fields), dye, glow ink and waxing; the chiseled bookshelf.
+   fields), dye and glow ink (waxing comes with bees); the chiseled
+   bookshelf.
 2. **Stone and minerals (BLD-01b).** Polished tuff and tuff bricks;
    deepslate bricks and tiles with cracked and chiseled forms; quartz
    blocks; smooth, cut, chiseled and red sandstone; red nether bricks and the
@@ -1100,12 +1107,11 @@ Work items (all Missing unless noted):
    brick shapes; blocks of coal and diamond, tinted glass and the slime
    block; retiring the invented blocks. The stonecutter's recipes are data
    here; its screen stays with v0.17.
-3. **Copper (BLD-01c).** Every oxidation stage, waxed and unwaxed, of the
-   copper block, cut copper and its stairs and slab, chiseled copper, grate,
-   bulb, door, trapdoor, bars, chain, lantern, chest and lightning rod, plus
-   the copper torch. Random-tick oxidation, honeycomb waxing (honeycomb is
-   given its item now; bees bring the survival source in v0.15) and axe
-   scraping.
+3. **Copper (BLD-01c).** Every unwaxed oxidation stage of the copper block,
+   cut copper and its stairs and slab, chiseled copper, grate, bulb, door,
+   trapdoor, bars, chain, lantern, chest and lightning rod, plus the copper
+   torch. Random-tick oxidation and axe scraping. The waxed forms and
+   honeycomb waxing follow with bees in v0.15.
 4. **Colour (BLD-01d).** Plain banners, standing and on walls, in 16
    colours; candles in 17 colours (one to four per block, lit, waterlogged)
    and candle cakes; 26.3's wool and concrete stairs and slabs; cushions and
@@ -1116,9 +1122,10 @@ Work items (all Missing unless noted):
    campfires and soul campfires (cooking, damage, smoke signals, putting
    out and lighting); flower pots and the potted forms of plants that
    exist; coral wall fans and coral dying out of water; falling and
-   dripping pointed dripstone;
-   big dripleaf tilting; trapped and ender chests; decorated pots without
-   sherds; lodestones and respawn anchors. Sponges already drain water
+   dripping pointed dripstone; big dripleaf tilting; trapped chests and
+   ender chests (moved from v0.18, since obsidian and eyes of ender exist
+   now); decorated pots without sherds; lodestones and respawn anchors.
+   Sponges already drain water
    (`src/world/sponge.rs`); they need only the M2 exit sample.
 6. **Data pass (BLD-01e, BLD-02, BLD-03).** Register the fuel values of
    every reference fuel item that now exists; compare every crafting,
