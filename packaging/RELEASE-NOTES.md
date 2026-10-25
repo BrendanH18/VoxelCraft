@@ -46,6 +46,9 @@ Choose your download:
   Scrolling, Invert Mouse X and Y, Distortion Effects, FOV Effects, Damage
   Tilt and Java's difficulty lock (saved with each world).
 - Render Distance is shown in Java's 16-block chunks.
+- **Changed keys:** Sprint is Left Ctrl only (R no longer sprints), / or T
+  opens the console (the backtick no longer does), and only [ and ] change
+  render distance (- and = no longer do). Rebind any of them in Key Binds.
 
 ### Menus everywhere
 
@@ -53,8 +56,10 @@ Choose your download:
   (D-pad, A and B) reach every button, slider and text box, with visible
   hover and focus.
 - Text boxes support selecting, word jumps, copy and paste.
-- When a world can't be opened, saved, backed up, renamed or deleted, or
-  your options can't be saved, a screen says what happened and what to do.
+- When a world can't be opened, saved, backed up, renamed or deleted, a
+  screen says what happened and what to do. So does a failure to save your
+  options when you close Options, leave a world or choose Skip This Version;
+  a failure when quitting or pressing F11 is only logged.
 
 ## What's new in 0.10.0 (if you're coming from 0.9.0 or earlier)
 
