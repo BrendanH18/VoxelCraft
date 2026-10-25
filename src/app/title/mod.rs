@@ -89,6 +89,8 @@ pub(super) struct Title {
     started: Instant,
     /// `--open-menu title --screenshot`: capture after a few frames, then quit.
     pub screenshot: Option<String>,
+    /// `--benchmark-scene title`: cycle the screens and sample frame times.
+    pub benchmark: Option<super::benchmark::TitleRun>,
     frames: u32,
     /// The last address typed on Direct Connection.
     address: String,
@@ -125,8 +127,8 @@ impl OptionsHost for Title {
         self.shell.apply_settings();
     }
 
-    fn save_settings(&self) {
-        Title::save_settings(self);
+    fn save_settings(&self) -> Result<(), String> {
+        Title::save_settings(self)
     }
 
     fn window_size(&self) -> Option<(u32, u32)> {
@@ -181,6 +183,7 @@ impl Title {
             cursor_px: (0.0, 0.0),
             started: Instant::now(),
             screenshot: None,
+            benchmark: None,
             frames: 0,
             address: "127.0.0.1:25565".into(),
             profile: super::lan::local_profile(saves_dir),
@@ -206,6 +209,11 @@ impl Title {
     /// whatever is open.
     pub fn world_error(&mut self, title: &str, reason: String) {
         self.menus.open(Notice::new(title, vec![reason]));
+    }
+
+    /// Shows that `options.txt` couldn't be written, over whatever is open.
+    pub fn options_error(&mut self, reason: String) {
+        self.menus.open(super::options::save_failed(reason));
     }
 
     /// Opens a world from outside the list (`--world`) the way the list
@@ -319,15 +327,26 @@ impl Title {
         self.shell.renderer.window.request_redraw();
     }
 
-    pub fn save_settings(&self) {
-        if let Some(path) = &self.shell.settings_path
-            && let Err(e) = self.shell.settings.save(path)
-        {
-            log::error!("failed to save options to {}: {e}", path.display());
-        }
+    /// Writes `options.txt`, logging and returning what went wrong.
+    pub fn save_settings(&self) -> Result<(), String> {
+        let Some(path) = &self.shell.settings_path else { return Ok(()) };
+        super::settings::save_or_report(&self.shell.settings, path)
     }
 
     pub fn event(&mut self, event: WindowEvent) -> Option<Action> {
+        // A benchmark ignores input, as in a world.
+        if self.benchmark.is_some()
+            && matches!(
+                event,
+                WindowEvent::KeyboardInput { .. }
+                    | WindowEvent::MouseInput { .. }
+                    | WindowEvent::MouseWheel { .. }
+                    | WindowEvent::CursorMoved { .. }
+                    | WindowEvent::ModifiersChanged(_)
+            )
+        {
+            return None;
+        }
         match event {
             WindowEvent::ModifiersChanged(m) => self.modifiers = m.state(),
             WindowEvent::Resized(size) => self.shell.renderer.resize(size.width, size.height),
@@ -352,6 +371,9 @@ impl Title {
                 return self.with_menus(|stack, title, size| stack.key(title, &key, size));
             }
             WindowEvent::RedrawRequested => {
+                if self.benchmark.is_some() {
+                    return self.benchmark_frame().then_some(Action::Quit);
+                }
                 if let Some(action) = self.poll_pads() {
                     return Some(action);
                 }
@@ -384,6 +406,26 @@ impl Title {
         let mut ui = Ui::with_scale(w as f32, h as f32, self.ui_scale());
         self.menus.draw(self, &mut ui);
         ui.verts
+    }
+
+    /// A title benchmark frame; true once the report is written.
+    fn benchmark_frame(&mut self) -> bool {
+        let Some(mut run) = self.benchmark.take() else { return false };
+        self.frame();
+        if let Some(screen) = run.frame(self.shell.renderer.skipped_frames) {
+            self.reset();
+            match screen {
+                "title" => {}
+                "select" | "create" | "multiplayer" | "direct" => self.open_menu(screen, None),
+                _ => super::options::open_screens(&mut self.menus, screen),
+            }
+        }
+        let done = run.done();
+        if done {
+            run.finish(&self.shell.renderer, &self.shell.settings);
+        }
+        self.benchmark = Some(run);
+        done
     }
 
     fn screenshot_done(&mut self) -> bool {

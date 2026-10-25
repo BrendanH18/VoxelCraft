@@ -16,7 +16,7 @@ pub(super) use keybinds::KeyBinds;
 pub(super) use sound::MusicAndSounds;
 pub(super) use video::VideoSettings;
 
-use super::gui::{self, Confirm, Host, Look, OptionList, Rect, Screen, Size, Step, Widget};
+use super::gui::{self, Confirm, Host, Look, OptionList, Rect, Screen, Size, Stack, Step, Widget};
 use super::settings::{FOV, Settings};
 use crate::render::ui::Ui;
 use crate::simulation::difficulty::Difficulty;
@@ -36,7 +36,8 @@ pub(super) trait OptionsHost: Host {
     fn settings_mut(&mut self) -> &mut Settings;
     /// Pushes the settings to the renderer, audio and (in a world) the world.
     fn apply_settings(&mut self);
-    fn save_settings(&self);
+    /// Writes `options.txt`; the error says what failed, for a notice.
+    fn save_settings(&self) -> Result<(), String>;
     /// Puts the window into the fullscreen mode the settings ask for.
     fn apply_fullscreen(&mut self);
     /// The window's size in physical pixels, which bounds GUI Scale.
@@ -89,10 +90,46 @@ pub(super) fn percent_label(name: &str, v: f32) -> String {
     }
 }
 
-/// Back from an options screen: save, then return to the screen below.
+/// Opens Options and, for a sub-screen's `--open-menu` name, the screens a
+/// player passes through to reach it.
+pub(super) fn open_screens<H: OptionsHost>(stack: &mut Stack<H>, name: &str) {
+    stack.open(Options);
+    match name {
+        "video" => stack.open(VideoSettings),
+        "sound" => stack.open(MusicAndSounds),
+        "controls" => stack.open(Controls),
+        "mouse" => {
+            stack.open(Controls);
+            stack.open(MouseSettings);
+        }
+        "keybinds" => {
+            stack.open(Controls);
+            stack.open(KeyBinds::default());
+        }
+        "accessibility" => stack.open(Accessibility),
+        _ => {}
+    }
+}
+
+/// Back from an options screen: save, then return to the screen below,
+/// through a notice if `options.txt` couldn't be written.
 pub(super) fn close<H: OptionsHost>(host: &mut H) -> Step<H> {
-    host.save_settings();
-    Step::Pop
+    match host.save_settings() {
+        Ok(()) => Step::Pop,
+        Err(reason) => Step::replace(save_failed(reason)),
+    }
+}
+
+/// The notice for an `options.txt` that couldn't be written.
+pub(in crate::app) fn save_failed(reason: String) -> gui::Notice {
+    gui::Notice::new(
+        "Couldn't save options",
+        vec![
+            "The changes work for now, but are lost when the game closes.".into(),
+            reason,
+            "Check that the folder exists, isn't read-only and has free space.".into(),
+        ],
+    )
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

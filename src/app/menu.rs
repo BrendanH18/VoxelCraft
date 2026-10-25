@@ -42,8 +42,8 @@ impl OptionsHost for Game {
         Game::apply_settings(self);
     }
 
-    fn save_settings(&self) {
-        Game::save_settings(self);
+    fn save_settings(&self) -> Result<(), String> {
+        Game::save_settings(self)
     }
 
     fn apply_fullscreen(&mut self) {
@@ -207,24 +207,10 @@ pub(super) fn startup_menu(name: Option<&str>) -> Stack<Game> {
         return stack;
     }
     stack.open(Pause);
-    if name != Some("pause") && name != Some("lan") {
-        stack.open(options::Options);
-    }
     match name {
+        Some("pause") | None => {}
         Some("lan") => stack.open(OpenLan),
-        Some("video") => stack.open(options::VideoSettings),
-        Some("sound") => stack.open(options::MusicAndSounds),
-        Some("controls") => stack.open(options::Controls),
-        Some("mouse") => {
-            stack.open(options::Controls);
-            stack.open(options::MouseSettings);
-        }
-        Some("keybinds") => {
-            stack.open(options::Controls);
-            stack.open(options::KeyBinds::default());
-        }
-        Some("accessibility") => stack.open(options::Accessibility),
-        _ => {}
+        Some(screen) => options::open_screens(&mut stack, screen),
     }
     stack
 }
@@ -340,18 +326,14 @@ impl Game {
         self.audio.set_volumes(|source| s.sound_volume(source));
     }
 
-    pub(super) fn save_settings(&self) {
-        if let Some(path) = &self.settings_path
-            && let Err(e) = {
-                let mut settings = self.settings;
-                if let Some(distance) = self.lan.offline_render_distance {
-                    settings.render_distance = distance;
-                }
-                settings.save(path)
-            }
-        {
-            log::error!("failed to save options to {}: {e}", path.display());
+    /// Writes `options.txt`, logging and returning what went wrong.
+    pub(super) fn save_settings(&self) -> Result<(), String> {
+        let Some(path) = &self.settings_path else { return Ok(()) };
+        let mut settings = self.settings;
+        if let Some(distance) = self.lan.offline_render_distance {
+            settings.render_distance = distance;
         }
+        super::settings::save_or_report(&settings, path)
     }
 
     pub(super) fn menu_ui(&self, ui: &mut Ui) {

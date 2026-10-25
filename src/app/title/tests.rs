@@ -85,7 +85,9 @@ impl OptionsHost for Host {
         &mut self.settings
     }
     fn apply_settings(&mut self) {}
-    fn save_settings(&self) {}
+    fn save_settings(&self) -> Result<(), String> {
+        Ok(())
+    }
     fn apply_fullscreen(&mut self) {}
 }
 
