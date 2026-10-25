@@ -119,8 +119,9 @@ roadmap and recorded checks to assess completeness against the current target.
 - [In-game updater](verification/2026-10-22-in-game-updater.md): the v0.10
   updater's tests, a real Mac update and rollback, and what is unverified.
 - [v0.11 menu frame time](verification/2026-10-24-v0.11-menu-frame-time.md):
-  the menu and title benchmark scenes, and a first run on a busy machine that
-  doesn't count toward the gate.
+  the menu and title benchmark scenes, a first run held to the display's
+  120 Hz that doesn't count toward the gate, and a check that the cap isn't
+  in the code.
 - [v0.12 registry audit](verification/2026-10-23-v0.12-registry-audit.md):
   Java 26.3 blocks VoxelCraft lacks, sorted by release, and the state budget.
 - [Game rules and difficulty](verification/2026-10-17-game-rules-difficulty.md):

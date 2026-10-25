@@ -150,7 +150,10 @@ seconds of warm-up and sixty measured seconds (streaming uses 180 seconds).
 The tool builds a release executable with a runtime source fingerprint, records
 hardware and executable identity, and writes per-frame samples and summaries
 under ignored `target/benchmarks/`. Set `CARGO_TARGET_DIR` normally if you use a
-shared build cache. Run benchmarks without concurrent builds or GPU workloads.
+shared build cache. Run benchmarks on AC power without concurrent builds or GPU
+workloads. A `building` run averaging exactly 120 FPS means something outside the
+game held frames to the 120 Hz display (seen on battery on 2026-10-24), so its
+figures measure the display, not the game.
 
 Use `--quick --repeats 1` only to smoke-test the runner. Such results are always
 ineligible for acceptance. `--native-resolution WIDTHxHEIGHT` writes a separate
