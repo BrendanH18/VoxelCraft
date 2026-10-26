@@ -49,12 +49,13 @@ fn brightness(lit: vec3<f32>) -> vec3<f32> {
 @group(1) @binding(9) var blocks_7: texture_2d_array<f32>;
 // Specialized at startup: one array when supported, portable pages otherwise.
 const BLOCK_PAGING: bool = false;
+const PAGE_SHIFT: u32 = 8u;
 fn sample_block(uv: vec2<f32>, layer: u32) -> vec4<f32> {
     if !BLOCK_PAGING { return textureSample(blocks, blocks_sampler, uv, layer); }
     let dx = dpdx(uv);
     let dy = dpdy(uv);
-    let local = layer & 255u;
-    switch layer >> 8u {
+    let local = layer & ((1u << PAGE_SHIFT) - 1u);
+    switch layer >> PAGE_SHIFT {
         case 1u: { return textureSampleGrad(blocks_1, blocks_sampler, uv, local, dx, dy); }
         case 2u: { return textureSampleGrad(blocks_2, blocks_sampler, uv, local, dx, dy); }
         case 3u: { return textureSampleGrad(blocks_3, blocks_sampler, uv, local, dx, dy); }
@@ -123,7 +124,7 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> Vs
             // and plane offset in 1/16 block.
             let tag = (w0 >> 21u) & 31u;
             let slope = face >= 2u && face <= 3u && tag >= 17u && tag <= 20u;
-            let lo = vec2<u32>(select(tag, 0u, slope), (w0 >> 26u) & 31u);
+            let lo = vec2<u32>(select(tag, 0u, slope), (w0 >> 26u) & 15u);
             let hi = vec2<u32>((w1 >> 16u) & 31u, (w1 >> 21u) & 31u);
             var p = vec3<f32>(base);
             p[d] += f32((w1 >> 26u) & 31u) / 16.0;
@@ -178,8 +179,9 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> Vs
     var out: VsOut;
     out.clip = g.view_proj * vec4<f32>(rel, 1.0);
     out.uv = uv;
-    let layer_high = select((w1 >> 21u) & 7u,
-        ((w0 >> 5u) & 1u) | (((w0 >> 11u) & 1u) << 1u) | (((w0 >> 17u) & 1u) << 2u), detail);
+    let layer_high = select((w1 >> 21u) & 15u,
+        ((w0 >> 5u) & 1u) | (((w0 >> 11u) & 1u) << 1u) | (((w0 >> 17u) & 1u) << 2u) | (((w0 >> 30u) & 1u) << 3u),
+        detail);
     out.layer = (w1 & 255u) | (layer_high << 8u);
     out.shade = face_shade[face] * ao_curve[ao];
     out.dist = length(rel);

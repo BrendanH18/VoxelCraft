@@ -133,7 +133,7 @@ impl BlockModelPass {
         device: &wgpu::Device,
         layout: &wgpu::PipelineLayout,
         format: wgpu::TextureFormat,
-        paged_blocks: bool,
+        paged_blocks: Option<u32>,
     ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("block model shader"),

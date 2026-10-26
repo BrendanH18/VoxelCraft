@@ -23,20 +23,27 @@
 use super::block::{Block, Facing, RenderKind, Shaped};
 use super::forms;
 
-/// Stair and slab families, each with one stairs and one slab block.
-pub const FAMILY_COUNT: usize = 39;
+/// Families laid out in this module's range (4096–7679).
+pub const LEGACY_COUNT: usize = 39;
+/// Stair and slab families, each with one stairs and one slab block. The
+/// families from [`LEGACY_COUNT`] on (v0.12) keep all their states in
+/// their own module's range; see [`super::stone_blocks`].
+pub const FAMILY_COUNT: usize = LEGACY_COUNT + super::stone_blocks::SHAPES.len();
 pub const STAIRS_ORIGIN: u16 = 4096;
 const STAIRS_STRIDE: u16 = 76;
-pub const SLABS_ORIGIN: u16 = STAIRS_ORIGIN + FAMILY_COUNT as u16 * STAIRS_STRIDE;
+pub const SLABS_ORIGIN: u16 = STAIRS_ORIGIN + LEGACY_COUNT as u16 * STAIRS_STRIDE;
 const SLABS_STRIDE: u16 = 4;
 /// One past the last registered id.
-pub const END: u16 = SLABS_ORIGIN + FAMILY_COUNT as u16 * SLABS_STRIDE;
+pub const END: u16 = SLABS_ORIGIN + LEGACY_COUNT as u16 * SLABS_STRIDE;
 /// Last id of the reserved range (docs/architecture.md, "Release ID reservations").
 pub const RESERVED_LAST: u16 = 7679;
 const _: () = assert!(END - 1 <= RESERVED_LAST);
+// `PACKED` keeps the family in six bits.
+const _: () = assert!(FAMILY_COUNT <= 64);
 
 /// One family: its full block and the existing ids of its south-facing
-/// bottom straight stairs and bottom slab.
+/// bottom straight stairs and bottom slab. A slab-only family's `stairs`
+/// is air.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Family {
     pub base: Block,
@@ -73,7 +80,7 @@ pub const FAMILIES: [Family; FAMILY_COUNT] = {
                     slab: forms::wood_id(index, 4),
                 }
             }
-            _ => {
+            36..=38 => {
                 let index = i - 36;
                 Family {
                     base: super::nether_blocks::SHAPE_BASES[index],
@@ -81,6 +88,7 @@ pub const FAMILIES: [Family; FAMILY_COUNT] = {
                     slab: super::nether_blocks::shape_id(index, 4),
                 }
             }
+            _ => super::stone_blocks::SHAPES[i - LEGACY_COUNT],
         };
         i += 1;
     }
@@ -177,19 +185,26 @@ const fn legacy_slab(id: u16) -> Option<u8> {
     }
 }
 
+/// The stairs state at `local` (see the module notes) of `family`.
+const fn stairs_from_local(family: u8, local: u16) -> Stairs {
+    let rest = local / 4;
+    Stairs {
+        family,
+        facing: Facing::ALL[(local % 4) as usize],
+        top: rest >= 10,
+        shape: StairShape::ALL[(rest / 2 % 5) as usize],
+        wet: rest % 2 == 1,
+    }
+}
+
 /// Decodes any stairs state, existing or new.
 pub const fn stairs_const(id: u16) -> Option<Stairs> {
     if id >= STAIRS_ORIGIN && id < SLABS_ORIGIN {
         let i = id - STAIRS_ORIGIN;
-        let local = i % STAIRS_STRIDE + 4;
-        let rest = local / 4;
-        return Some(Stairs {
-            family: (i / STAIRS_STRIDE) as u8,
-            facing: Facing::ALL[(local % 4) as usize],
-            top: rest >= 10,
-            shape: StairShape::ALL[(rest / 2 % 5) as usize],
-            wet: rest % 2 == 1,
-        });
+        return Some(stairs_from_local((i / STAIRS_STRIDE) as u8, i % STAIRS_STRIDE + 4));
+    }
+    if let Some((f, local)) = super::stone_blocks::stairs_local(id) {
+        return Some(stairs_from_local(LEGACY_COUNT as u8 + f as u8, local));
     }
     match legacy_stairs(id) {
         Some((family, f)) => Some(Stairs {
@@ -215,6 +230,16 @@ pub const fn slab_const(id: u16) -> Option<Slab> {
         };
         return Some(Slab { family: (i / SLABS_STRIDE) as u8, kind, wet });
     }
+    if let Some((f, local)) = super::stone_blocks::slab_local(id) {
+        let (kind, wet) = match local {
+            0 => (SlabType::Bottom, false),
+            1 => (SlabType::Bottom, true),
+            2 => (SlabType::Top, false),
+            3 => (SlabType::Top, true),
+            _ => (SlabType::Double, false),
+        };
+        return Some(Slab { family: LEGACY_COUNT as u8 + f as u8, kind, wet });
+    }
     match legacy_slab(id) {
         Some(family) => Some(Slab { family, kind: SlabType::Bottom, wet: false }),
         None => None,
@@ -225,6 +250,9 @@ pub const fn slab_const(id: u16) -> Option<Slab> {
 pub const fn stairs_id(s: Stairs) -> Block {
     let shape = s.shape as u16;
     let local = ((s.top as u16 * 5 + shape) * 2 + s.wet as u16) * 4 + s.facing as u16;
+    if s.family as usize >= LEGACY_COUNT {
+        return super::stone_blocks::stairs_at(s.family as u16 - LEGACY_COUNT as u16, local);
+    }
     if local < 4 {
         Block(FAMILIES[s.family as usize].stairs.0 + local)
     } else {
@@ -234,6 +262,16 @@ pub const fn stairs_id(s: Stairs) -> Block {
 
 /// The id of a slab state. A double slab is never waterlogged.
 pub const fn slab_id(s: Slab) -> Block {
+    if s.family as usize >= LEGACY_COUNT {
+        let local = match (s.kind, s.wet) {
+            (SlabType::Bottom, false) => 0,
+            (SlabType::Bottom, true) => 1,
+            (SlabType::Top, false) => 2,
+            (SlabType::Top, true) => 3,
+            (SlabType::Double, _) => 4,
+        };
+        return super::stone_blocks::slab_at(s.family as u16 - LEGACY_COUNT as u16, local);
+    }
     let local = match (s.kind, s.wet) {
         (SlabType::Bottom, false) => return FAMILIES[s.family as usize].slab,
         (SlabType::Bottom, true) => 0,
@@ -333,10 +371,11 @@ pub const fn registry(id: u16) -> Option<(u16, RenderKind)> {
     }
 }
 
-/// Whether `id` is in this module's range (registered or not).
+/// Whether `id` is in this module's range (registered or not) or is one
+/// of the v0.12 families' states.
 #[inline(always)]
 pub const fn owns(id: u16) -> bool {
-    id >= STAIRS_ORIGIN && id <= RESERVED_LAST
+    (id >= STAIRS_ORIGIN && id <= RESERVED_LAST) || super::stone_blocks::owns_shape(id)
 }
 
 /// `Block::shaped` for this module's ids.
@@ -362,7 +401,7 @@ pub const fn uses_shape_for_light(id: u16) -> bool {
 /// The block a new state's item is (the family's existing stairs or slab);
 /// `None` for existing ids and other blocks.
 pub fn item_block(id: u16) -> Option<Block> {
-    if !(STAIRS_ORIGIN..END).contains(&id) {
+    if !(STAIRS_ORIGIN..END).contains(&id) && !super::stone_blocks::owns_shape(id) {
         return None;
     }
     if let Some(s) = stairs(Block(id)) {
@@ -497,10 +536,15 @@ mod tests {
         assert_eq!(END, 7216);
         let mut seen = std::collections::HashSet::new();
         for (f, fam) in FAMILIES.iter().enumerate() {
-            assert!(seen.insert(fam.stairs) && seen.insert(fam.slab), "{fam:?} listed twice");
-            assert_eq!(fam.stairs.stairs_base(), Some(fam.base), "{f}");
+            let has_stairs = fam.stairs != Block::AIR;
+            assert!((!has_stairs || seen.insert(fam.stairs)) && seen.insert(fam.slab), "{fam:?} listed twice");
+            if has_stairs {
+                assert_eq!(fam.stairs.stairs_base(), Some(fam.base), "{f}");
+            } else {
+                assert!(f >= LEGACY_COUNT, "only v0.12 families may be slab-only");
+            }
             assert_eq!(fam.slab.slab_base(), Some(fam.base), "{f}");
-            for facing in Facing::ALL {
+            for facing in Facing::ALL.into_iter().filter(|_| has_stairs) {
                 for top in [false, true] {
                     for shape in StairShape::ALL {
                         for wet in [false, true] {
@@ -509,7 +553,9 @@ mod tests {
                             assert_eq!(stairs(id), Some(s));
                             assert_eq!(stairs_const(id.0), Some(s));
                             let legacy = !top && shape == StairShape::Straight && !wet;
-                            assert_eq!(legacy, id.0 < STAIRS_ORIGIN, "{s:?}");
+                            if f < LEGACY_COUNT {
+                                assert_eq!(legacy, id.0 < STAIRS_ORIGIN, "{s:?}");
+                            }
                             if legacy {
                                 assert_eq!(id, fam.stairs.with_facing(facing));
                             }

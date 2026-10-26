@@ -1572,7 +1572,7 @@ mod tests {
 
     #[test]
     fn extended_block_items_do_not_collide_with_saved_item_ids() {
-        for block in [Block::NETHERITE_BLOCK, Block(16381), Block(16382), Block(16383)] {
+        for block in [Block::NETHERITE_BLOCK, Block(32765), Block(32766), Block(32767)] {
             let item = Item::from_block(block);
             assert_eq!(item.block(), Some(block));
             assert_eq!(Item::from_name(item.name()), Some(item));
@@ -1580,7 +1580,8 @@ mod tests {
         assert_eq!(Item::from_block(Block::NETHERITE_BLOCK).0, 222);
         assert_eq!(Item::from_block(Block(256)).0, BLOCK_ITEM_BASE + 256);
         assert_eq!(Item(BLOCK_ITEM_BASE + 255).block(), None);
-        assert_eq!(Item(BLOCK_ITEM_BASE + crate::world::block::STATE_CAPACITY as u16).block(), None);
+        assert_eq!(Item(BLOCK_ITEM_BASE - 1).block(), None);
+        assert_eq!(Item(u16::MAX).block(), Some(Block(crate::world::block::STATE_CAPACITY as u16 - 1)));
         assert_eq!(Item::STICK.0, FIRST_ITEM);
         assert_eq!(Item::STICK.block(), None);
     }

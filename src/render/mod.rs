@@ -337,12 +337,16 @@ fn metal_allocated_bytes(_: wgpu::Backend, _: &str) -> Option<u64> {
     None
 }
 
-/// Specialize away paging branches on adapters that can hold all block layers.
-fn block_shader(source: &'static str, paged: bool) -> wgpu::ShaderSource<'static> {
-    let source = if paged {
-        std::borrow::Cow::Owned(source.replace("const BLOCK_PAGING: bool = false;", "const BLOCK_PAGING: bool = true;"))
-    } else {
-        std::borrow::Cow::Borrowed(source)
+/// Specialize away paging branches on adapters that can hold all block
+/// layers; otherwise `page_layers` (a power of two) layers per page.
+fn block_shader(source: &'static str, page_layers: Option<u32>) -> wgpu::ShaderSource<'static> {
+    let source = match page_layers {
+        Some(layers) => std::borrow::Cow::Owned(
+            source
+                .replace("const BLOCK_PAGING: bool = false;", "const BLOCK_PAGING: bool = true;")
+                .replace("const PAGE_SHIFT: u32 = 8u;", &format!("const PAGE_SHIFT: u32 = {}u;", layers.ilog2())),
+        ),
+        None => std::borrow::Cow::Borrowed(source),
     };
     wgpu::ShaderSource::Wgsl(source)
 }
@@ -364,8 +368,8 @@ impl Renderer {
         log::info!("GPU: {} ({:?})", info.name, info.backend);
         let gpu_name = format!("{} ({:?})", info.name, info.backend);
 
-        let paged_blocks = tex::COUNT > adapter.limits().max_texture_array_layers;
-        let page_layers = if paged_blocks { tex::PAGE_LAYERS } else { tex::COUNT };
+        let paged_blocks = tex::page_layers(adapter.limits().max_texture_array_layers);
+        let page_layers = paged_blocks.unwrap_or(tex::COUNT);
         let limits = wgpu::Limits {
             max_texture_array_layers: page_layers.max(textures::item_layers()).max(256),
             ..wgpu::Limits::default()
@@ -430,8 +434,9 @@ impl Renderer {
             entries: &[wgpu::BindGroupEntry { binding: 0, resource: globals_buf.as_entire_binding() }],
         });
 
-        // Large arrays avoid page-selection cost on capable adapters. Portable
-        // pages preserve filtering on 256-layer adapters without extra features.
+        // Large arrays avoid page-selection cost on capable adapters. Pages
+        // preserve filtering on adapters with smaller arrays (2048 layers on
+        // Apple GPUs, 256 on the most limited) without extra features.
         let block_mips = textures::generate_mips();
         let block_views: Vec<_> = (0..tex::COUNT.div_ceil(page_layers))
             .map(|page| {
@@ -1449,13 +1454,17 @@ mod tests {
             ("weather", include_str!("shaders/weather.wgsl")),
         ];
         for (name, source) in shaders {
-            for paged in [false, true] {
+            for paged in [None, Some(256), Some(2048)] {
                 let wgpu::ShaderSource::Wgsl(source) = block_shader(source, paged) else { unreachable!() };
+                if let Some(layers) = paged.filter(|_| source.contains("BLOCK_PAGING")) {
+                    let shift = format!("const PAGE_SHIFT: u32 = {}u;", layers.ilog2());
+                    assert!(source.contains(&shift) && source.contains("BLOCK_PAGING: bool = true"), "{name}");
+                }
                 let module = naga::front::wgsl::parse_str(&source)
-                    .unwrap_or_else(|e| panic!("{name}, paged={paged}: {}", e.emit_to_string(&source)));
+                    .unwrap_or_else(|e| panic!("{name}, paged={paged:?}: {}", e.emit_to_string(&source)));
                 naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::all())
                     .validate(&module)
-                    .unwrap_or_else(|e| panic!("{name}, paged={paged}: {}", e.emit_to_string(&source)));
+                    .unwrap_or_else(|e| panic!("{name}, paged={paged:?}: {}", e.emit_to_string(&source)));
             }
         }
     }

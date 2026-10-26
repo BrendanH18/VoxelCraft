@@ -163,6 +163,7 @@ pub fn player_environment(player: &Player, world: &World, moved: f64) -> Env {
             && world.get_block((player.pos - DVec3::Y * 0.01).floor().as_ivec3())
                 == Some(crate::world::block::Block::MAGMA),
         on_honey: player.on_honey(world),
+        on_slime: player.on_slime(world),
         on_hay: player.on_ground
             && world.get_block((player.pos - DVec3::Y * 0.01).floor().as_ivec3()).map(|b| b.base())
                 == Some(crate::world::block::Block::HAY_BALE),

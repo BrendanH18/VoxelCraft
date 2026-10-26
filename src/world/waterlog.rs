@@ -183,6 +183,9 @@ pub const fn canonical(id: u16) -> u16 {
     if id >= super::wall_states::FIRST && id < super::wall_states::END {
         return id - (id - super::wall_states::FIRST) % 2;
     }
+    if let Some(dry) = super::stone_blocks::wall_canonical(id) {
+        return dry;
+    }
     if id >= FIRST && id < FIRST + COUNT { CANONICAL[(id - FIRST) as usize] } else { id }
 }
 

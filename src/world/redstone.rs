@@ -60,8 +60,10 @@ pub(super) struct RedstoneState {
     sun_angle: f32,
 }
 
+/// Java's default `isRedstoneConductor` is a full collision shape, so the
+/// see-through slime block conducts as well as opaque blocks.
 fn conductor(b: Block) -> bool {
-    b.is_opaque()
+    b.is_opaque() || b == crate::world::stone_blocks::SLIME_BLOCK
 }
 
 impl World {
@@ -1155,6 +1157,16 @@ mod tests {
         put(&mut w, AT + IVec3::Y, r::REDSTONE_BLOCK);
         assert_eq!(w.redstone_power(AT + IVec3::X), 0, "redstone block emits only weak power");
         assert_eq!(w.redstone_power(AT + IVec3::Y + IVec3::X), 15);
+    }
+
+    #[test]
+    fn slime_blocks_conduct_like_solid_blocks() {
+        let mut w = world();
+        put(&mut w, AT, crate::world::stone_blocks::SLIME_BLOCK);
+        put(&mut w, AT + IVec3::Y, r::lever(0, true));
+        assert_eq!(w.redstone_power(AT + IVec3::X), 15, "lever strongly powers slime");
+        put(&mut w, AT, crate::world::stone_blocks::TINTED_GLASS);
+        assert_eq!(w.redstone_power(AT + IVec3::X), 0, "tinted glass never conducts");
     }
 
     #[test]

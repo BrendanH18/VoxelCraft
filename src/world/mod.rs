@@ -72,6 +72,7 @@ pub mod slab_stair_states;
 pub mod spawn_finder;
 mod spawner;
 mod sponge;
+pub mod stone_blocks;
 pub mod storage;
 pub mod stronghold;
 pub mod structure;

@@ -24,12 +24,13 @@ struct Globals {
 @group(1) @binding(9) var blocks_7: texture_2d_array<f32>;
 // Specialized at startup: one array when supported, portable pages otherwise.
 const BLOCK_PAGING: bool = false;
+const PAGE_SHIFT: u32 = 8u;
 fn sample_block(uv: vec2<f32>, layer: u32) -> vec4<f32> {
     if !BLOCK_PAGING { return textureSample(blocks, blocks_sampler, uv, layer); }
     let dx = dpdx(uv);
     let dy = dpdy(uv);
-    let local = layer & 255u;
-    switch layer >> 8u {
+    let local = layer & ((1u << PAGE_SHIFT) - 1u);
+    switch layer >> PAGE_SHIFT {
         case 1u: { return textureSampleGrad(blocks_1, blocks_sampler, uv, local, dx, dy); }
         case 2u: { return textureSampleGrad(blocks_2, blocks_sampler, uv, local, dx, dy); }
         case 3u: { return textureSampleGrad(blocks_3, blocks_sampler, uv, local, dx, dy); }
@@ -42,8 +43,8 @@ fn sample_block(uv: vec2<f32>, layer: u32) -> vec4<f32> {
 }
 fn sample_block_level(uv: vec2<f32>, layer: u32) -> vec4<f32> {
     if !BLOCK_PAGING { return textureSampleLevel(blocks, blocks_sampler, uv, layer, 0.0); }
-    let local = layer & 255u;
-    switch layer >> 8u {
+    let local = layer & ((1u << PAGE_SHIFT) - 1u);
+    switch layer >> PAGE_SHIFT {
         case 1u: { return textureSampleLevel(blocks_1, blocks_sampler, uv, local, 0.0); }
         case 2u: { return textureSampleLevel(blocks_2, blocks_sampler, uv, local, 0.0); }
         case 3u: { return textureSampleLevel(blocks_3, blocks_sampler, uv, local, 0.0); }
@@ -55,7 +56,7 @@ fn sample_block_level(uv: vec2<f32>, layer: u32) -> vec4<f32> {
     }
 }
 
-// Item icons, addressed as layers from 2048 on (see `tex::ITEM_BASE`).
+// Item icons, addressed as layers from 4096 on (see `tex::ITEM_BASE`).
 @group(1) @binding(2) var items: texture_2d_array<f32>;
 @group(2) @binding(0) var font: texture_2d<f32>;
 
@@ -114,13 +115,13 @@ fn vs_ui(
 @fragment
 fn fs_ui(in: UiOut) -> @location(0) vec4<f32> {
     // layer -2: font glyph, -1: flat colour, >= 0: tinted block texture,
-    // >= 2048: tinted item icon. A negative alpha fills the texture's shape
+    // >= 4096: tinted item icon. A negative alpha fills the texture's shape
     // with the colour instead (the enchantment glint).
     if in.layer >= 0.0 && in.color.a < 0.0 {
         let layer = i32(in.layer + 0.5);
         var a = 0.0;
-        if layer >= 2048 {
-            a = textureSampleLevel(items, blocks_sampler, in.uv, layer - 2048, 0.0).a;
+        if layer >= 4096 {
+            a = textureSampleLevel(items, blocks_sampler, in.uv, layer - 4096, 0.0).a;
         } else {
             a = sample_block_level(in.uv, u32(layer)).a;
         }
@@ -134,8 +135,8 @@ fn fs_ui(in: UiOut) -> @location(0) vec4<f32> {
         return in.color;
     }
     let layer = i32(in.layer + 0.5);
-    if layer >= 2048 {
-        return textureSampleLevel(items, blocks_sampler, in.uv, layer - 2048, 0.0) * in.color;
+    if layer >= 4096 {
+        return textureSampleLevel(items, blocks_sampler, in.uv, layer - 4096, 0.0) * in.color;
     }
     return sample_block_level(in.uv, u32(layer)) * in.color;
 }

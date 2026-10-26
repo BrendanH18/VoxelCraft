@@ -64,6 +64,9 @@ impl Material {
 pub fn material(block: Block) -> Material {
     match block.base() {
         Block::HONEY_BLOCK => Material::Honey,
+        // Nearest shared materials for `SoundType.SLIME_BLOCK` and tinted glass's `GLASS`.
+        crate::world::stone_blocks::SLIME_BLOCK => Material::Honey,
+        crate::world::stone_blocks::TINTED_GLASS => Material::Glass,
         b if b.is_log()
             || b.is_planks()
             || crate::world::gadgets::is_note(b)

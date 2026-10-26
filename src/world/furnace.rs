@@ -118,6 +118,9 @@ pub fn smelt(item: Item) -> Option<Item> {
     if let Some(nugget) = nugget_of(item) {
         return Some(nugget);
     }
+    if let Some(out) = super::stone_blocks::smelt(item) {
+        return Some(out);
+    }
     Some(match item {
         i if ore_of(i) == Some(Block::IRON_ORE) || i == Item::RAW_IRON => Item::IRON_INGOT,
         i if ore_of(i) == Some(Block::GOLD_ORE) || i == Item::RAW_GOLD => Item::GOLD_INGOT,

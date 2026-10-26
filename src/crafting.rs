@@ -567,9 +567,12 @@ pub fn recipes() -> &'static [Recipe] {
         add_overworld_recipes(&mut r);
         r.push(shaped(&["###", "# #"], &[('#', &[Item::TURTLE_SCUTE])], Item::TURTLE_HELMET, 1));
         add_mount_recipes(&mut r);
+        stone::add_recipes(&mut r);
         r
     })
 }
+
+pub mod stone;
 
 #[cfg(test)]
 mod tests {

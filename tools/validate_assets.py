@@ -38,7 +38,7 @@ def validate():
                 at += size+12
             assert len(zlib.decompress(compressed)) == 16*(1+16*4), f'{key}: truncated pixels'
             layer = entry['texture_layer']
-            assert 0 <= layer < 2048 and layer not in layers, f'{key}: invalid/duplicate texture layer'
+            assert 0 <= layer < 4096 and layer not in layers, f'{key}: invalid/duplicate texture layer'
             layers.add(layer)
             if 'source' in entry:
                 source = json.loads((ROOT / entry['source']).read_text())

@@ -61,6 +61,7 @@ pub fn friction(b: Option<Block>) -> f32 {
     match b {
         Some(Block::ICE) | Some(crate::world::gadgets::PACKED_ICE) => 0.98,
         Some(crate::world::overworld_blocks::BLUE_ICE) => 0.989,
+        Some(crate::world::stone_blocks::SLIME_BLOCK) => 0.8,
         _ => 0.6,
     }
 }
@@ -82,6 +83,7 @@ pub fn jump_factor(b: Option<Block>) -> f32 {
 fn bounciness(b: Option<Block>) -> f64 {
     match b {
         Some(b) if b.is_bed() => 0.75_f32 as f64,
+        Some(crate::world::stone_blocks::SLIME_BLOCK) => 1.0,
         _ => 0.0,
     }
 }
@@ -889,6 +891,7 @@ impl Player {
         if self.noclip {
             return;
         }
+        self.slime_step_on(world, dm);
         let (min, max) = self.collision_shape().aabb(self.pos);
         let (min, max) = (min + DVec3::splat(1.0e-5), max - DVec3::splat(1.0e-5));
         let (lo, hi) = (min.floor().as_ivec3(), max.floor().as_ivec3());
@@ -926,6 +929,7 @@ impl Player {
 }
 
 mod honey;
+mod slime;
 #[cfg(test)]
 mod tests;
 

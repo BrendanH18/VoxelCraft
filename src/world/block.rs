@@ -1,6 +1,6 @@
 //! Block registry: ids, render classification and per-face texture layers.
 //!
-//! Block properties live in a 16,384-entry static table so hot loops (meshing,
+//! Block properties live in a 32,768-entry static table so hot loops (meshing,
 //! physics) resolve them with a single indexed load instead of a `match`.
 
 use crate::item::{Item, ToolKind};
@@ -10,7 +10,7 @@ use crate::item::{Item, ToolKind};
 pub struct Block(pub u16);
 
 /// Registry capacity; state IDs are append-only and must be below this bound.
-pub const STATE_CAPACITY: usize = 16384;
+pub const STATE_CAPACITY: usize = 32768;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RenderKind {
@@ -354,15 +354,34 @@ pub mod tex {
     pub const POWDER_SNOW: u16 = 1765;
     pub const HEART_FROZEN_FULL: u16 = 1766;
     pub const HEART_FROZEN_HALF: u16 = 1767;
-    pub const COUNT: u32 = 1775;
+    // v0.12 stone and minerals: 2000..2128 (`world::stone_blocks::t`);
+    // layers below that no block uses yet draw the missing-texture pattern.
+    pub const COUNT: u32 = super::super::stone_blocks::t::END as u32;
     const _: () = assert!(super::super::overworld_blocks::TEX_END <= 1750);
     const _: () = assert!(super::super::overworld_blocks::TEX == 1450);
     const _: () = assert!((CRYING_OBSIDIAN as u32) < COUNT);
-    /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
-    pub const CAPACITY: u32 = 2048;
-    pub const PAGE_LAYERS: u32 = 256;
-    pub const PAGES: usize = (CAPACITY / PAGE_LAYERS) as usize;
+    /// Twelve bits in the 12-byte quad record. Adapters whose array limit is
+    /// below [`COUNT`] bind up to eight pages of the largest power-of-two
+    /// size they support (two of 2048 on Apple GPUs; 256-layer pages hold
+    /// the first 2048 layers).
+    pub const CAPACITY: u32 = 4096;
+    pub const PAGES: usize = 8;
     const _: () = assert!(COUNT <= CAPACITY);
+
+    /// Layers per page on an adapter whose array limit is `limit`, or `None`
+    /// when every block layer fits in one array.
+    pub fn page_layers(limit: u32) -> Option<u32> {
+        if COUNT <= limit {
+            return None;
+        }
+        let page = 1 << limit.clamp(1, CAPACITY).ilog2();
+        assert!(
+            COUNT.div_ceil(page) as usize <= PAGES,
+            "this GPU holds {limit} texture array layers; VoxelCraft needs pages of at least {}",
+            COUNT.div_ceil(PAGES as u32)
+        );
+        Some(page)
+    }
 
     /// Item icons live in a texture array of their own (see
     /// `item::sprite_for_layer`); renderers address icon `index` as layer
@@ -833,6 +852,9 @@ impl Block {
         if let Some((i, 5)) = super::nether_blocks::form(self.0) {
             return Some(super::nether_blocks::SHAPE_BASES[i]);
         }
+        if let Some(b) = super::stone_blocks::wall_base(self.0) {
+            return Some(b);
+        }
         match super::forms::stone_form(self.0) {
             Some(super::forms::StoneForm::Wall { index }) => Some(super::forms::wall_material(index)),
             _ => None,
@@ -846,6 +868,9 @@ impl Block {
         }
         if super::slab_stair_states::owns(self.0) {
             return super::slab_stair_states::shaped(self.0);
+        }
+        if let Some(s) = super::stone_blocks::shaped(self.0) {
+            return Some(s);
         }
         if let Some(twin) = super::mount_states::door_twin(self.0) {
             return twin.shaped();
@@ -882,7 +907,7 @@ impl Block {
         let f = |i: u16| Facing::ALL[i as usize % 4];
         Some(match self.0 {
             #[cfg(test)]
-            16382 => Shaped::Stairs(Facing::South),
+            32766 => Shaped::Stairs(Facing::South),
             112..=135 | 189..=192 => Shaped::Stairs(f(stairs_index(self.0).unwrap().1)),
             136 | 182 => Shaped::Fence,
             188 => Shaped::BrewingStand,
@@ -1162,6 +1187,9 @@ impl Block {
         if let Some(b) = super::slab_stair_states::item_block(self.0) {
             return b;
         }
+        if let Some(b) = super::stone_blocks::base(self.0) {
+            return b;
+        }
         if let Some(l) = super::mount_states::lantern_of(self) {
             return if l.soul { super::mount_states::SOUL_LANTERN } else { super::mount_states::LANTERN };
         }
@@ -1197,7 +1225,7 @@ impl Block {
 
     /// The same block facing `facing` (unchanged if it has no front).
     pub fn with_facing(self, facing: Facing) -> Block {
-        if super::scaffolding::is_scaffolding(self) {
+        if super::scaffolding::is_scaffolding(self) || super::stone_blocks::is_pillar(self) {
             return self;
         }
         if let Some(c) = self.alias() {
@@ -1523,6 +1551,9 @@ impl Block {
         if let Some(c) = self.alias() {
             return c.hardness();
         }
+        if let Some(h) = super::stone_blocks::slab_hardness(self) {
+            return h;
+        }
         if let Some(h) = super::village_blocks::hardness(self.0) {
             return h;
         }
@@ -1569,6 +1600,9 @@ impl Block {
         }
         if let Some((hardness, ..)) = super::overworld_blocks::mining(self.material()) {
             return if self.is_door() { 3.0 } else { hardness };
+        }
+        if let Some((hardness, ..)) = super::stone_blocks::mining(self.material()) {
+            return hardness;
         }
         if super::nether_blocks::registry(self.material().0).is_some() {
             return match self.material() {
@@ -1730,6 +1764,9 @@ impl Block {
         if let Some((_, tool, _)) = super::overworld_blocks::mining(self.material()) {
             return tool;
         }
+        if let Some((_, tool, _)) = super::stone_blocks::mining(self.material()) {
+            return tool;
+        }
         if super::nether_blocks::registry(self.material().0).is_some() {
             return Some(ToolKind::Pickaxe);
         }
@@ -1872,6 +1909,9 @@ impl Block {
         if let Some((.., level)) = super::overworld_blocks::mining(self.material()) {
             return level;
         }
+        if let Some((.., level)) = super::stone_blocks::mining(self.material()) {
+            return level;
+        }
         if super::nether_blocks::registry(self.material().0).is_some() {
             return Some(if self.material() == Block::GOLD_BLOCK { 2 } else { 0 });
         }
@@ -1964,6 +2004,7 @@ impl Block {
             .chain(super::overworld_blocks::palette_ids())
             .chain(super::mount_states::palette_ids())
             .chain([Self::HONEY_BLOCK.0, super::scaffolding::SCAFFOLDING.0])
+            .chain(super::stone_blocks::palette_ids())
             .map(Block)
     }
 
@@ -2541,6 +2582,11 @@ const fn make(id: u16) -> BlockInfo {
     }
     let (name, kind, tex) = match id {
         8128 => ("honey block", Translucent, column(tex::HONEY_SIDE, tex::HONEY_TOP, tex::HONEY_BOTTOM)),
+        super::stone_blocks::ORIGIN..=super::stone_blocks::RESERVED_LAST => match super::stone_blocks::registry(id) {
+            Some((name, kind, super::stone_blocks::Tex::Faces(t))) => (name, kind, t),
+            Some((name, kind, super::stone_blocks::Tex::Like(b))) => (name, kind, make(b.0).tex),
+            None => ("unknown", Invisible, all(0)),
+        },
         7936..=7968 => match super::scaffolding::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
@@ -2601,11 +2647,11 @@ const fn make(id: u16) -> BlockInfo {
             }
         }
         #[cfg(test)]
-        16383 => ("test high cube", Opaque, all(2047)),
+        32767 => ("test high cube", Opaque, all(4095)),
         #[cfg(test)]
-        16382 => ("test high stairs", Shaped, all(1536)),
+        32766 => ("test high stairs", Shaped, all(3072)),
         #[cfg(test)]
-        16381 => ("test high cross", Cross, all(1024)),
+        32765 => ("test high cross", Cross, all(2560)),
         0 => ("air", Invisible, all(0)),
         1 => ("stone", Opaque, all(tex::STONE)),
         2 => ("dirt", Opaque, all(tex::DIRT)),
@@ -2856,18 +2902,26 @@ const fn make(id: u16) -> BlockInfo {
     // Ice is see-through like water but solid underfoot; End portals are
     // a surface to fall through.
     let stained_glass = matches!(id, 624..=639);
-    let solid =
-        (matches!(kind, Opaque | Cutout | Shaped) || id == 97 || id == 8128 || stained_glass) && id != 208 && id != 210;
+    let solid = (matches!(kind, Opaque | Cutout | Shaped)
+        || id == 97
+        || id == 8128
+        || stained_glass
+        || super::stone_blocks::translucent_solid(id))
+        && id != 208
+        && id != 210;
     BlockInfo {
         name,
         kind,
         solid: solid && !(id >= 7936 && id <= 7968),
-        self_cull: matches!(id, 5 | 10 | 97 | 104 | 7968 | 8128) || stained_glass,
+        self_cull: matches!(id, 5 | 10 | 97 | 104 | 7968 | 8128) || stained_glass || super::stone_blocks::self_cull(id),
         tex,
         waterlogged: holds_water(id),
     }
 }
 
+// Evaluating every state takes longer than the lint's default budget; the
+// loop is bounded by `STATE_CAPACITY`.
+#[allow(long_running_const_eval)]
 pub static INFO: [BlockInfo; STATE_CAPACITY] = {
     let mut arr = [make(0); STATE_CAPACITY];
     let mut i = 0;
@@ -2880,9 +2934,9 @@ pub static INFO: [BlockInfo; STATE_CAPACITY] = {
 
 /// States whose occlusion geometry participates in Java light propagation.
 const fn shape_blocks_light(id: u16) -> bool {
-    // Mesh bit tests use 16382 as a stairs stand-in at the layer limit.
+    // Mesh bit tests use 32766 as a stairs stand-in at the layer limit.
     #[cfg(test)]
-    if id == 16382 {
+    if id == 32766 {
         return true;
     }
     if matches!(id, 57 | 58 | 900 | 1910 | 2516..=2522) {
@@ -2982,6 +3036,9 @@ const fn opacity_of(i: usize) -> u8 {
         let dry = opacity_of(dry as usize);
         return if dry > 1 { dry } else { 1 };
     }
+    if let Some(opacity) = super::stone_blocks::opacity(i as u16) {
+        return opacity;
+    }
     match INFO[i].kind {
         // Eight snow layers have a full occlusion shape. Other dry
         // partial blocks have zero dampening; their shared faces, rather
@@ -3019,6 +3076,19 @@ static OPAQUE: [bool; STATE_CAPACITY] = {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn texture_pages_fit_every_adapter_limit() {
+        assert_eq!(tex::page_layers(tex::CAPACITY), None);
+        assert_eq!(tex::page_layers(tex::COUNT), None);
+        if tex::COUNT > 2048 {
+            assert_eq!(tex::page_layers(2048), Some(2048), "Apple GPUs bind two pages");
+        }
+        if tex::COUNT <= 2048 {
+            assert_eq!(tex::page_layers(256), Some(256), "the most limited adapters keep 256-layer pages");
+        }
+        assert_eq!(tex::page_layers(tex::COUNT - 1).map(u32::is_power_of_two), Some(true));
+    }
     use super::*;
 
     #[test]
@@ -3335,9 +3405,12 @@ mod tests {
             assert_eq!(slab.height(), 0.5);
             assert!(slab.is_solid() && !slab.is_opaque() && slab.is_targetable());
             assert!(slab.light_opacity() == 0 && slab.uses_shape_for_light_occlusion());
+            // Java's `registerSlab(SANDSTONE_SLAB, SANDSTONE, 2.0F, 6.0F)`
+            // is harder than sandstone; the others copy their base.
+            let hardness = if base == Block::SANDSTONE { 2.0 } else { base.hardness() };
             assert_eq!(
                 (slab.hardness(), slab.best_tool(), slab.harvest_level()),
-                (base.hardness(), base.best_tool(), base.harvest_level())
+                (hardness, base.best_tool(), base.harvest_level())
             );
             assert_eq!(slab.drop(), Some(slab.into()), "{}", slab.name());
             assert_eq!(slab.info().tex, base.info().tex);

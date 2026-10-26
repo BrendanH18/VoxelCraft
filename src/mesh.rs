@@ -19,7 +19,7 @@
 //! | 1    | 0-7   | texture layer, low 8 bits                          |
 //! | 1    | 8-15  | ambient occlusion per corner, 2 bits (0 dark .. 3) |
 //! | 1    | 16-20 | water surface drop of the upper edge, 1/16 block   |
-//! | 1    | 21-23 | texture layer, high 3 bits (normal and cross quads) |
+//! | 1    | 21-24 | texture layer, high 4 bits (normal and cross quads) |
 //! | 2    | 0-31  | per corner: sky light (low 4 bits), block light    |
 //!
 //! For a face on axis `d` the u and v axes are `(d + 1) % 3` and
@@ -33,8 +33,10 @@
 //! the face's lower u and v bounds (bits 21-25 and 26-30); word 1 holds the
 //! upper u and v bounds (bits 16-20 and 21-25) and the plane's offset along
 //! the face axis (bits 26-30), all in 0..=16. Detail cells are 0..31,
-//! so their three unused coordinate bits in word 0 (5, 11, 17) store the
-//! layer's high 3 bits instead. All passes address 2048 texture layers.
+//! so their three unused coordinate bits in word 0 (5, 11, 17) store
+//! layer bits 8-10 instead. A face with area has a lower v bound of at most
+//! 15, so the top bit of that bound (word 0 bit 30) stores layer bit 11.
+//! All passes address 4096 texture layers.
 //!
 //! Faces 6 and 7 are the two diagonal planes of a cross-shaped block
 //! (plants, torches) at the cell `(x, y, z)`: face 6 runs from (0, 0) to
@@ -283,8 +285,9 @@ const KIND_SHIFT: u64 = 24;
 const AO_SHIFT: u64 = 16;
 const LIGHT_SHIFT: u64 = 32;
 const PRESENT: u64 = 1 << 31;
-/// Top drop of a low block (see `Block::top_drop`), in 1/16 block.
-const DROP_SHIFT: u64 = 11;
+/// Top drop of a low block (see `Block::top_drop`), in 1/16 block, above
+/// the 12 layer bits, AO and kind.
+const DROP_SHIFT: u64 = 26;
 
 /// What face culling and water surfaces see: waterlogged blocks are water
 /// (their own model is added separately), except a waterlogged cube that
@@ -468,7 +471,7 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                     // (For water the AO bits hold the surface drop.)
                     let flip = flip_diagonal(((key >> AO_SHIFT) & 0xFF) as u32, (key >> LIGHT_SHIFT) as u32);
                     let kind = ((key >> KIND_SHIFT) & 3) as usize;
-                    let layer = (key & 0x7FF) as u32;
+                    let layer = (key & 0xFFF) as u32;
                     // Water has no AO; its upper edge is lowered instead.
                     let (corner_ao, drop) = if kind == 2 {
                         (0xFF, ((key >> AO_SHIFT) & 31) as u32)
@@ -533,7 +536,8 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                             | (layer >> 9 & 1) << 11
                             | (layer >> 10 & 1) << 17
                             | (face as u32) << 18
-                            | slope << 21,
+                            | slope << 21
+                            | (layer >> 11 & 1) << 30,
                         (layer & 255) | 255 << 8 | 16 << 16 | 16 << 21 | 1 << 26 | DETAIL,
                         light,
                     ]);
@@ -543,6 +547,11 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
             for (j, bx) in boxes.as_slice().iter().enumerate() {
                 let depth = if positive { bx.max[d] } else { bx.min[d] };
                 let r = [bx.min[u], bx.max[u], bx.min[v], bx.max[v]];
+                // Flat boxes have no area on their edge faces; skipping them
+                // also keeps the lower v bound below 16 (see the module docs).
+                if r[0] >= r[1] || r[2] >= r[3] {
+                    continue;
+                }
                 let on_edge = depth == if positive { 16 } else { 0 };
                 let front = if on_edge { i as isize + sd } else { i as isize };
                 if (on_edge && blocks[front as usize].is_opaque()) || boxes.face_hidden(j, d, positive, r) {
@@ -559,6 +568,7 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                         | (face as u32) << 18
                         | r[0] << 21
                         | r[2] << 26
+                        | (layer >> 11 & 1) << 30
                         | flip_diagonal(ao, light) << 31,
                     (layer & 255) | ao << 8 | r[1] << 16 | r[3] << 21 | (depth as u32) << 26 | DETAIL,
                     light,
@@ -659,7 +669,8 @@ mod tests {
                 let mut p = base;
                 p[d] += sixteenths(26, q[1]);
                 p[u] += if c == 1 || c == 2 { sixteenths(16, q[1]) } else { sixteenths(21, q[0]) };
-                p[v] += if c >= 2 { sixteenths(21, q[1]) } else { sixteenths(26, q[0]) };
+                // The lower v bound's top bit is layer bit 11.
+                p[v] += if c >= 2 { sixteenths(21, q[1]) } else { (q[0] >> 26 & 15) as f32 / 16.0 };
                 p
             } else {
                 let du = if c == 1 || c == 2 { w } else { 0 };
@@ -728,9 +739,9 @@ mod tests {
     fn high_layers_render_cube_detail_and_cross_without_corrupting_geometry() {
         // Test-only registry entries mirror the render paths at the registry/layer limits.
         for (high, low, layer, pass) in [
-            (Block(16383), Block::STONE, 2047, OPAQUE),
-            (Block(16382), Block::STONE_STAIRS, 1536, OPAQUE),
-            (Block(16381), Block::TALL_GRASS, 1024, CROSS),
+            (Block(32767), Block::STONE, 4095, OPAQUE),
+            (Block(32766), Block::STONE_STAIRS, 3072, OPAQUE),
+            (Block(32765), Block::TALL_GRASS, 2560, CROSS),
         ] {
             let high = mesh_blocks(&[([31, 31, 31], high)]).quads_of(pass);
             let low = mesh_blocks(&[([31, 31, 31], low)]).quads_of(pass);
@@ -738,14 +749,14 @@ mod tests {
             for (high, low) in high.quads.iter().zip(&low.quads) {
                 let detail = high[1] & DETAIL != 0;
                 let high_bits = if detail {
-                    (high[0] >> 5 & 1) | (high[0] >> 11 & 1) << 1 | (high[0] >> 17 & 1) << 2
+                    (high[0] >> 5 & 1) | (high[0] >> 11 & 1) << 1 | (high[0] >> 17 & 1) << 2 | (high[0] >> 30 & 1) << 3
                 } else {
-                    high[1] >> 21 & 7
+                    high[1] >> 21 & 15
                 };
                 assert_eq!((high[1] & 255) | high_bits << 8, layer);
-                let coord_extras = if detail { (1 << 5) | (1 << 11) | (1 << 17) } else { 0 };
+                let coord_extras = if detail { (1 << 5) | (1 << 11) | (1 << 17) | (1 << 30) } else { 0 };
                 assert_eq!(high[0] & !coord_extras, low[0] & !coord_extras);
-                let layer_bits = 255 | if detail { 0 } else { 7 << 21 };
+                let layer_bits = 255 | if detail { 0 } else { 15 << 21 };
                 assert_eq!(high[1] & !layer_bits, low[1] & !layer_bits);
                 assert_eq!(high[2], low[2]);
                 if pass != CROSS {

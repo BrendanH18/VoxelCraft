@@ -114,6 +114,10 @@ pub struct Env {
     pub on_hay: bool,
     /// HoneyBlock.fallOn uses the same 0.2f multiplier as hay.
     pub on_honey: bool,
+    /// Landing on a slime block. Java 26.3's `SlimeBlock.fallOn` multiplies
+    /// the damage by zero, and when sneaking suppresses the bounce it
+    /// returns without calling `causeFallDamage` at all.
+    pub on_slime: bool,
     pub in_powder_snow: bool,
     pub on_powder_snow: bool,
     pub freeze_immune: bool,
@@ -516,7 +520,13 @@ impl Vitals {
             if let Some(peak) = self.fall_peak {
                 hurts.landed = peak - env.y;
                 let distance = peak - env.y - jump_levels;
-                hurts.fall = if env.on_hay || env.on_honey { hay_fall_damage(distance) } else { fall_damage(distance) };
+                hurts.fall = if env.on_slime {
+                    0.0
+                } else if env.on_hay || env.on_honey {
+                    hay_fall_damage(distance)
+                } else {
+                    fall_damage(distance)
+                };
             }
             self.fall_peak = Some(env.y);
         } else {
@@ -807,6 +817,15 @@ mod tests {
         let hay = Env { on_hay: true, ..ground(64.0) };
         assert_eq!(fall(&mut v, 84.0, 64.0, hay).fall, 3.0, "20 blocks onto hay vs 17 on stone");
         assert_eq!(fall(&mut v, 84.0, 64.0, ground(64.0)).fall, 17.0);
+    }
+
+    #[test]
+    fn slime_blocks_cancel_landing_damage() {
+        // `SlimeBlock.fallOn`: `causeFallDamage(distance, 0.0F, ...)`, or nothing when sneaking.
+        let mut v = Vitals::default();
+        let slime = Env { on_slime: true, ..ground(64.0) };
+        assert_eq!(fall(&mut v, 104.0, 64.0, slime).fall, 0.0);
+        assert_eq!(fall(&mut v, 104.0, 64.0, ground(64.0)).fall, 37.0);
     }
 
     #[test]

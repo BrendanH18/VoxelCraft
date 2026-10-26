@@ -835,6 +835,9 @@ Exception (owner, 2026-10-20): v0.8 was declared done with its implementation
 complete but its player acceptance and streaming budget not yet passed; those
 checks moved to later versions (see its status and the
 [delivery record](#34-v080-delivery-record--2026-10-20)).
+Exception (owner, 2026-10-25): v0.11 is tagged without its exit checks,
+the owner's play and the idle-machine menu frame-time run. The frame-time
+run moved to v0.20 and the rows stay Implemented, unverified.
 Exception (owner, 2026-10-22): v0.10 is tagged once merged, before its exit
 check, because the owner wants players on the updater as soon as possible
 and the check (updating a real v0.10 install) needs a later release to update
@@ -850,8 +853,8 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.8 | Foundations | Finish M0, M1 | Valid M5 baseline and the per-requirement inventory; mob pathfinding, Java spawn categories, shape-aware light, simulation distance; pause/death/save scenarios on every input path | Done (owner, 2026-10-20): tagged `v0.8.0` at `58b547b` (#34, #35, #37–#39 plus release prep, [#41](https://github.com/BrendanH18/VoxelCraft/pull/41)); [delivery record](#34-v080-delivery-record--2026-10-20). Implementation complete and the [M5 baseline](verification/2026-10-16-m5-baseline.md) recorded; rows stay Implemented, unverified. Player acceptance ([checklist](verification/v0.8-acceptance-checklist.md)) moved to v0.9, the streaming budget (PERF-03; two isolated frames over 50 ms in the [2026-10-20 re-run](verification/2026-10-20-streaming-rerun.md)) to v0.20 |
 | v0.9 | Block states | M2: BLD-04, BLD-06 | Top and double slabs, waterlogging, door hinges, floor/ceiling buttons and levers, wall grindstones, corner-stair light; reserved state ranges for later content | Done (owner, 2026-10-22): ready to tag `v0.9` once merged; [delivery record](#35-v09-delivery-record--2026-10-22). Block states (#40), Java player movement, wall posts, powered doors, honey, scaffolding and powder snow; the owner's play is the player evidence for v0.8 and v0.9 (the checklist and controller session were dropped). Rows stay Implemented, unverified: the windowed performance check was deferred to v0.20 (owner, 2026-10-22) |
 | v0.10 | Updates | M7 early: UX-04b, part of UX-05a | In-game update check, signed download, pre-update world backup and install on Windows and Apple Silicon Macs ([design](updates.md)); worlds whose level file can't be read are no longer started fresh. See [v0.10 scope](#v010-scope-updates) | Release prepared (2026-10-22): Cargo 0.10.0, release notes and the `UPDATE_SIGNING_KEY` secret; tag `v0.10` once merged (owner exception: before the exit check, which needs a later release). Rows Implemented, unverified until the owner updates a real v0.10 install (the exit check); the stepping-stone release every player installs by hand |
-| v0.11 | Menus and settings | M7 early: UX-03a/b, UX-05a | Java's title screen, world list and Edit World screen; Java-style options screens, key rebinding, GUI scale and per-category volume; consistent menu navigation and error screens. See [v0.11 scope](#v011-scope-menus-and-settings) | Release prepared (2026-10-24): Cargo 0.11.0 and release notes; every work item implemented, unverified; options-file failures now show a notice; the menu and title benchmark scenes exist, but their [first run](verification/2026-10-24-v0.11-menu-frame-time.md) was capped at the display's 120 Hz by the machine's state and doesn't count. Awaiting the owner's play and an idle-machine frame-time run on AC power; tag `v0.11` once both pass |
-| v0.12 | Building materials | Close M2 | Missing wood, stone, copper and colour family members, the unregistered reference fuel items, signs, banners, item frames, cauldrons and campfires; coral wall fans; falling and dripping dripstone, tilting dripleaf. See [v0.12 scope](#v012-scope-building-materials) | Scoped (2026-10-23): the [registry audit](verification/2026-10-23-v0.12-registry-audit.md) found about 420 missing blocks in v0.12's families; the scope's decisions await the owner |
+| v0.11 | Menus and settings | M7 early: UX-03a/b, UX-05a | Java's title screen, world list and Edit World screen; Java-style options screens, key rebinding, GUI scale and per-category volume; consistent menu navigation and error screens. See [v0.11 scope](#v011-scope-menus-and-settings) | Release prepared (2026-10-24): Cargo 0.11.0 and release notes; every work item implemented, unverified; options-file failures now show a notice; the menu and title benchmark scenes exist, but their [first run](verification/2026-10-24-v0.11-menu-frame-time.md) was capped at the display's 120 Hz by the machine's state and doesn't count. Done (owner, 2026-10-25): tag `v0.11` from `ec74556` without its exit checks (owner exception). Rows stay Implemented, unverified; the menu and title frame-time run moved to v0.20, and problems found in the owner's ordinary play come back as fixes |
+| v0.12 | Building materials | Close M2 | Missing wood, stone, copper and colour family members, the unregistered reference fuel items, signs, banners, item frames, cauldrons and campfires; coral wall fans; falling and dripping dripstone, tilting dripleaf. See [v0.12 scope](#v012-scope-building-materials) | In progress (2026-10-25): the [registry audit](verification/2026-10-23-v0.12-registry-audit.md) found about 420 missing blocks in v0.12's families; the owner approved the scope's decisions on 2026-10-25, and the capacity work (item 0) comes first |
 | v0.13 | Terrain | M3: GEN-01..03 | Java climate and density terrain with overhangs; Java caves, aquifers and ores; deep-dark content, springs, glow lichen; giant spruce and jungle trees and the remaining biome features | Planned |
 | v0.14 | Structures | M3: GEN-05..07 | A Java structure-template (jigsaw) system; villages, outposts, bastions, fossils, shipwrecks, ocean ruins and monuments built from it; buried treasure and explorer maps; Java loot random sequences | Planned |
 | v0.15 | Wildlife | M4: MOB-03/04, FOO, ENV-03 | Bats, frogs, pandas, polar bears, armadillos, mooshrooms, strays, bogged, phantoms and zombie horses (with lightning); drowned conversion and the cat spawner; melon, pumpkin and beetroot crops; animal and mount acceptance | Planned |
@@ -859,7 +862,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.17 | Villages and raids | Close M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M4 exit checks | Planned |
 | v0.18 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough | Planned |
 | v0.19 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload | Planned |
-| v0.20 | Polish and performance | M7: UX, §6 | Subtitles, recipe discovery, asset and sound review in play, and menu fixes found since v0.11; the 240 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, which moved here unverified | Planned |
+| v0.20 | Polish and performance | M7: UX, §6 | Subtitles, recipe discovery, asset and sound review in play, and menu fixes found since v0.11; the 240 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows and v0.11's menu and title frame-time run, which moved here unverified | Planned |
 | v1.0 | Acceptance | M7 exit, §8 | Every mandatory row Verified; fresh-world and long-session playthroughs; save-compatibility policy; installer and update checks; current stable Java scope reconciled | Planned |
 
 Notes:
@@ -1051,7 +1054,7 @@ track that isn't ready moves to v0.13 instead of holding v0.12 open (as in
 v0.11). `cargo run --release --no-default-features --example registry_audit`
 reports what remains.
 
-Proposed decisions, awaiting the owner (2026-10-23):
+Decisions, proposed on 2026-10-23 and approved by the owner on 2026-10-25:
 
 - **State capacity first (BLD-06).** The audit's minimum is 3,795 new
   states, likely 6,000–8,000 with waterlogged partners and multipart
@@ -1090,8 +1093,12 @@ Work items (all Missing unless noted):
 0. **Capacity and allocation (BLD-06).** The raise above, chunk-format and
    LAN-protocol handling as in the 16,384 raise, and an ID range, item range
    and texture-layer range reserved per track in the
-   [architecture document](architecture.md#release-id-reservations-v09v019).
-   Done before the tracks start.
+   [architecture document](architecture.md#v012-track-reservations).
+   Done before the tracks start. *Implemented, unverified (2026-10-25):*
+   32,768 states, `VXC4` chunk files and LAN protocol 3, plus a texture
+   capacity raise from 2048 to 4096 layers, since only 273 were left; see
+   the [record](verification/2026-10-25-state-capacity-32768.md). Owed: the
+   cost of texture paging on the M5 once v0.12 passes 2048 layers.
 1. **Wood (BLD-01a, BLD-04).** Axis states for overworld logs and the
    bamboo block (they have one state today); stripped logs and wood with axe
    stripping; `*_wood` blocks; buttons, pressure plates and trapdoors for
@@ -1107,6 +1114,16 @@ Work items (all Missing unless noted):
    brick shapes; blocks of coal and diamond, tinted glass and the slime
    block; retiring the invented blocks. The stonecutter's recipes are data
    here; its screen stays with v0.17.
+   *Implemented, unverified (2026-10-25):* all 67 blocks of the audit's
+   stone list (`src/world/stone_blocks.rs`), with every stairs, slab and
+   wall state, the quartz pillar's axes, Java hardness, tools and drops,
+   crafting, smelting and 99 stonecutter recipes as data, tinted glass
+   blocking light and the slime block's bounce, friction, slowdown and
+   fall-damage cancel; the 11 invented blocks left the recipes and palette
+   ([record](verification/2026-10-25-v0.12-stone.md)). Owed: owner play,
+   mobs and items bouncing on slime, slime stickiness for pistons (pistons
+   push no block structures yet), block-of-coal fuel (data pass), and red
+   sandstone in badlands terrain (v0.13).
 3. **Copper (BLD-01c).** Every unwaxed oxidation stage of the copper block,
    cut copper and its stairs and slab, chiseled copper, grate, bulb, door,
    trapdoor, bars, chain, lantern, chest and lightning rod, plus the copper
@@ -1262,6 +1279,8 @@ baseline commit `903884e`, rerun that night, was held to 120 Hz the same way
 with the same scores, so the cap came from the machine's state (likely
 battery power), not v0.9–v0.11. Repeat the check on an idle M5 on AC power:
 `caffeinate -dis python3 tools/benchmark_scenes.py --scenes menus,title,building`.
+On 2026-10-25 the owner chose to ship v0.11 without its exit checks; the
+frame-time run moved to v0.20.
 
 - **Toolkit** (`src/app/gui/`): a stack of screens with the same focus and
   navigation for mouse, keyboard (Tab, arrows, Enter, Escape) and a

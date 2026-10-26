@@ -55,9 +55,11 @@ Render distance is measured in 32-block chunks, so `--rd 8` is 256 blocks
 
 ## Block and texture IDs
 
-`Block(pub u16)` indexes 16,384 static property entries directly (raised from
-4096 for v0.9, owner decision 2026-10-20; one ID per Java state, waterlogged
-states included). State IDs are
+`Block(pub u16)` indexes 32,768 static property entries directly (raised from
+4096 to 16,384 for v0.9, owner decision 2026-10-20, and to 32,768 for v0.12,
+owner decision 2026-10-25; one ID per Java state, waterlogged states
+included). 32,768 is the most the block-item encoding allows
+(`BLOCK_ITEM_BASE` 0x8000 + state). State IDs are
 append-only and must be below `world::block::STATE_CAPACITY`; unregistered
 entries remain invisible, including the unused IDs in legacy saves. Constants
 and `Block(n)` construction retain their existing shape. Generation builds a
@@ -69,9 +71,10 @@ and greedy-meshing loops. Repeated edits reuse palette entries; a full palette
 is rebuilt to discard removed states before promoting to direct storage.
 
 Chunk files hold RLE records of `(u16 run length, u16 state ID)`, both
-little-endian, under a `VXC2` header, or `VXC3` once any saved state is 4096
-or above. Builds from before the capacity raise refuse `VXC3` files, and
-worlds that use no new states stay readable by them. The reader also accepts
+little-endian, under a `VXC2` header, `VXC3` once any saved state is 4096
+or above, or `VXC4` once any is 16,384 or above. Builds from before each
+capacity raise refuse the newer header, and worlds that use no states newer
+than a build knows stay readable by it. The reader also accepts
 `VXC1` records with byte state IDs and preserves their numeric values. A
 chunk file in a format this build doesn't know (a newer build's) fails to
 load, and play continues on regenerated terrain; saving then renames it to
@@ -84,17 +87,23 @@ item 1072 (state 8128). Always convert with `Item::from_block` or
 `Item::from`, rather than casting a block ID to an item ID.
 
 Block texture constants and `BlockInfo::tex` are u16. Quads still occupy
-12 bytes, with 11 layer bits (2048 layers): the low byte remains in word 1;
-normal/cross quads use word 1 bits 21..23 for the high bits. Shaped quads use
-word 0 bits 5, 11 and 17, since their cell coordinates need only five bits.
+12 bytes, with 12 layer bits (4096 layers, raised from 2048 for v0.12): the
+low byte remains in word 1; normal/cross quads use word 1 bits 21..24 for the
+high bits. Shaped quads use word 0 bits 5, 11 and 17, since their cell
+coordinates need only five bits, and bit 30, the top bit of the lower v
+bound, which is at most 15 on a face with area (faces without area are not
+emitted).
 AO, lighting, bounds and normal-face corner coordinates retain full precision.
 The GPU requests enough array layers for the registered textures when the
-adapter supports them. Otherwise it binds eight 256-layer pages, so adapters
-supporting only wgpu's default array-layer limit still work. Empty pages share
+adapter supports them. Otherwise it binds up to eight pages of the largest
+power-of-two size the adapter supports (`tex::page_layers`): two pages of
+2048 on Apple GPUs once `tex::COUNT` passes 2048, and 256-layer pages on
+adapters with only wgpu's default limit, which therefore hold at most 2048
+layers. Empty pages share
 the first texture; explicit gradients preserve mip selection across page
 branches. Shaders specialize away paging on adapters using a single array.
 Item icons retain their own texture array, addressed from `tex::ITEM_BASE`
-(2048), not a hard-coded 256. Append block layers and update `tex::COUNT`; paging is automatic
+(4096; the shaders use the same literal). Append block layers and update `tex::COUNT`; paging is automatic
 up to `tex::CAPACITY`. New block states also need their registry properties,
 base/orientation/material rules, recipes and creative-palette entries as usual.
 
@@ -304,6 +313,33 @@ content and took its release's new number.
 | 12288–12799 | v0.18 | End and Wither states |
 | 12800–14335 | v0.19 | Redstone and automation states |
 | 14336–16383 | — | Unassigned reserve |
+| 16384–32767 | v0.12 and later | Added by the 32,768 raise (2026-10-25); see the v0.12 tracks below |
+
+### v0.12 track reservations
+
+Reserved on 2026-10-25 when `STATE_CAPACITY` rose to 32,768, so the
+[v0.12 tracks](roadmap.md#v012-scope-building-materials) can run in
+parallel. Each track allocates only inside its own rows. v0.12's older
+ranges (2525–4095 and 8704–9727) are kept for the integrator and the data
+pass; a track that outgrows its range asks for a block of them, or of the
+reserve, and records it here.
+
+| Block states | Item IDs | Texture layers | Track |
+| --- | --- | --- | --- |
+| 16384–20479 | 1080–1099 | 1776–1999 | 1. Wood (BLD-01a, BLD-04) |
+| 20480–22527 | 1100–1109 | 2000–2127 | 2. Stone and minerals (BLD-01b) |
+| 22528–24575 | 1110–1129 | 2128–2383 | 3. Copper (BLD-01c); v0.15's waxed forms are not in this range |
+| 24576–28671 | 1130–1159 | 2384–2575 | 4. Colour (BLD-01d) |
+| 28672–29695 | 1160–1189 | 2576–2767 | 5. Utilities and special blocks (BLD-05b, BLD-02b, ENV-04) |
+| — | 1190–1199 | — | 6. Data pass (reference fuel items) |
+| 29696–32767 | 1200–1299 | 2768–4095 | Unassigned reserve for v0.13 and later |
+
+Texture layers, unlike state and item IDs, are never saved, so the
+integrator may pack each track's layers together when merging; define a
+track's layers as offsets from one base constant so that is a one-line
+change. Block items still use `Item::from_block`; the item rows are for
+items that place no block state (item frames, paintings, armor stands and
+the like).
 
 Allocations so far:
 
@@ -321,6 +357,10 @@ Allocations so far:
 | 7936–7967 | Scaffolding: `7936 + distance + 8*bottom + 16*waterlogged`, distance 0–7; default 7943 | [scaffolding and powder snow](verification/2026-10-21-scaffolding-powder-snow.md) |
 | 7968 | Powder snow; 7969–7999 remain unused in this task's reservation | [scaffolding and powder snow](verification/2026-10-21-scaffolding-powder-snow.md) |
 | 8192–8476 | Waterlogged partners of 285 existing states (fences, bars, panes, walls, chains, trapdoors, rails, ladders, chests, leaves, amethyst, dripstone, dripleaves, roots, propagules, dead coral) and dry partners of sea pickles and live coral, in `waterlog::RUNS` order; append runs only at the end | [waterlogging](verification/2026-10-20-waterlogging.md) |
+| 20480–20511 | v0.12 stone and minerals full blocks (29 in `stone_blocks` order), then the quartz pillar's Y, X and Z axes; texture layers 2000–2035 (`stone_blocks::t`, offsets from `t::TEX`) | [stone and minerals](verification/2026-10-25-v0.12-stone.md) |
+| 20512–21471 | Stairs for 12 v0.12 families, 80 states each (`slab_stair_states` local order, local 0 is the item); `slab_stair_states` families 39–50 | [stone and minerals](verification/2026-10-25-v0.12-stone.md) |
+| 21472–21541 | Slabs for those 12 families plus cut and cut red sandstone, 5 states each: bottom, bottom wet, top, top wet, double; families 39–52 | [stone and minerals](verification/2026-10-25-v0.12-stone.md) |
+| 21552–21595 | 11 v0.12 walls, 4 states each: UP, UP wet, no UP, no UP wet (`wall_states` families 20–30); 21542–21551 and 21596–22527 stay unused; items 1100–1109 unused | [stone and minerals](verification/2026-10-25-v0.12-stone.md) |
 
 PLY-02c items: **1070 scaffolding**, **1071 powder snow bucket**. Scaffolding
 uses its reserved item ID rather than `BLOCK_ITEM_BASE + state`. Powder snow

@@ -42,6 +42,9 @@ pub fn placed(block: Block, normal: glam::IVec3) -> Block {
     if let Some(b) = super::nether_biome_blocks::axis_placed(block, normal) {
         return b;
     }
+    if let Some(b) = super::stone_blocks::axis_placed(block, normal) {
+        return b;
+    }
     let base = block.base();
     if matches!(base, Block::BASALT | Block::POLISHED_BASALT | Block::CHAIN) {
         Block(

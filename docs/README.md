@@ -124,6 +124,12 @@ roadmap and recorded checks to assess completeness against the current target.
   in the code.
 - [v0.12 registry audit](verification/2026-10-23-v0.12-registry-audit.md):
   Java 26.3 blocks VoxelCraft lacks, sorted by release, and the state budget.
+- [32,768-state capacity raise](verification/2026-10-25-state-capacity-32768.md):
+  v0.12's item 0, with `VXC4` chunk files, 4096 texture layers and the
+  benchmark comparison.
+- [v0.12 stone and minerals](verification/2026-10-25-v0.12-stone.md):
+  track 2's 67 blocks, their IDs, recipes, slime and tinted glass
+  behaviour, the retired invented blocks and what remains.
 - [Game rules and difficulty](verification/2026-10-17-game-rules-difficulty.md):
   the 26.3 rule registry, damage-type rules, Peaceful regeneration and the
   difficulty effects checked against the reference.
