@@ -1128,7 +1128,13 @@ Work items (all Missing unless noted):
    cut copper and its stairs and slab, chiseled copper, grate, bulb, door,
    trapdoor, bars, chain, lantern, chest and lightning rod, plus the copper
    torch. Random-tick oxidation and axe scraping. The waxed forms and
-   honeycomb waxing follow with bees in v0.15.
+   honeycomb waxing follow with bees in v0.15. *Implemented, unverified
+   (2026-10-25; checks rerun on the merge with stone 2026-10-26):* all 57
+   blocks (732 registered states laid out in 22528–23372), with Java's
+   `ChangeOverTimeBlock` odds, scraping, bulb toggling and comparator
+   output, recipes and stonecutting data; see the
+   [record](verification/2026-10-25-v0.12-copper.md). Not done: double
+   copper chests (no chest pairs yet), copper sounds, lightning (v0.15).
 4. **Colour (BLD-01d).** Plain banners, standing and on walls, in 16
    colours; candles in 17 colours (one to four per block, lit, waterlogged)
    and candle cakes; 26.3's wool and concrete stairs and slabs; cushions and

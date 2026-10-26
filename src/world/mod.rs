@@ -26,6 +26,7 @@ pub mod chunk;
 pub mod climate;
 pub mod colors;
 pub mod composter;
+pub mod copper;
 pub mod dismount;
 pub mod dungeon;
 pub mod end;

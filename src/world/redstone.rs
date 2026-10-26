@@ -11,11 +11,14 @@ use super::block::{Block, Facing, Shaped};
 use super::chunk::CHUNK_SIZE_I;
 use super::nether_biome_blocks::keep_wood;
 use super::rails;
-use super::redstone_blocks::{self as r, Component};
+use super::redstone_blocks::{self as r, Component, conductor};
 
 /// The block a scheduled tick is keyed by: the redstone, rail or gadget
 /// family, or the plain base block (bells, composters).
 fn family(b: Block) -> Block {
+    if let Some(copper) = super::copper::unstaged(b) {
+        return copper;
+    }
     r::base(b)
         .or_else(|| rails::family(b))
         .or_else(|| {
@@ -60,12 +63,6 @@ pub(super) struct RedstoneState {
     sun_angle: f32,
 }
 
-/// Java's default `isRedstoneConductor` is a full collision shape, so the
-/// see-through slime block conducts as well as opaque blocks.
-fn conductor(b: Block) -> bool {
-    b.is_opaque() || b == crate::world::stone_blocks::SLIME_BLOCK
-}
-
 impl World {
     fn queue_redstone(&mut self, p: IVec3) {
         if self.get_block(p).is_some_and(|b| {
@@ -76,6 +73,7 @@ impl World {
                 || super::gadgets::participates(b)
                 || b == Block::TNT
                 || b.base() == Block::BELL
+                || super::copper::bulb(b).is_some()
         }) && self.redstone.queued.insert(p)
         {
             self.redstone.updates.push_back(p);
@@ -152,6 +150,7 @@ impl World {
                 || b.is_rail()
                 || super::gadgets::participates(b)
                 || b.base() == Block::BELL
+                || super::copper::bulb(b).is_some()
             {
                 let local =
                     IVec3::new(i % CHUNK_SIZE_I, i / (CHUNK_SIZE_I * CHUNK_SIZE_I), i / CHUNK_SIZE_I % CHUNK_SIZE_I);
@@ -378,6 +377,9 @@ impl World {
         if let Some(level) = self.get_block(p).and_then(super::composter::level) {
             return Some(level);
         }
+        if let Some(signal) = self.get_block(p).and_then(super::copper::bulb_signal) {
+            return Some(signal);
+        }
         fn strength(slots: impl Iterator<Item = Option<crate::inventory::Stack>>, count: usize) -> u8 {
             let mut fullness = 0.0f64;
             let mut nonempty = false;
@@ -420,6 +422,9 @@ impl World {
         }
         if super::gadgets::is_tripwire(b) {
             return;
+        }
+        if super::copper::bulb(b).is_some() {
+            return self.copper_bulb_update(p, b);
         }
         if b.base() == Block::BELL {
             let powered = self.redstone_power(p) > 0;
@@ -1167,6 +1172,12 @@ mod tests {
         assert_eq!(w.redstone_power(AT + IVec3::X), 15, "lever strongly powers slime");
         put(&mut w, AT, crate::world::stone_blocks::TINTED_GLASS);
         assert_eq!(w.redstone_power(AT + IVec3::X), 0, "tinted glass never conducts");
+        // Chests have an inset collision shape, so they don't conduct either.
+        use crate::world::copper::{Family, Stage, block};
+        for chest in [Block::CHEST, block(Family::Chest, Stage::Exposed, 0)] {
+            w.set_block(AT, chest);
+            assert_eq!(w.redstone_power(AT + IVec3::X), 0, "{chest:?} doesn't conduct");
+        }
     }
 
     #[test]

@@ -136,6 +136,10 @@ pub const fn component(b: Block) -> Option<Component> {
     if let Some((oak, _)) = super::nether_biome_blocks::switch_oak(b.0) {
         return component(oak);
     }
+    // So do copper trapdoors (`world::copper`), wet or dry.
+    if let Some(oak) = super::copper::trapdoor_twin(b.0) {
+        return component(oak);
+    }
     let id = b.0;
     Some(match id {
         1100..=1115 => Component::Wire((id - 1100) as u8),
@@ -190,6 +194,12 @@ pub const fn component(b: Block) -> Option<Component> {
 }
 
 pub const fn base(b: Block) -> Option<Block> {
+    if let Some(oak) = super::copper::trapdoor_twin(b.0) {
+        return match base(oak) {
+            Some(oak) => super::copper::trapdoor_reskin(b, oak),
+            None => None,
+        };
+    }
     if let Some((oak, wood)) = super::nether_biome_blocks::switch_oak(b.0) {
         return match base(oak) {
             Some(oak) => Some(super::nether_biome_blocks::switch_reskin(oak, wood)),
@@ -335,10 +345,20 @@ pub fn palette_ids() -> impl Iterator<Item = u16> {
         .chain([1329, 1341, 1365, 1377, 1383, 1389])
 }
 
+/// Java `isRedstoneConductor`: full opaque cubes except copper bulbs and
+/// chests (whose collision shape is inset); the see-through slime block
+/// conducts because its collision shape is full.
+pub fn conductor(b: Block) -> bool {
+    (b.is_opaque() && super::copper::bulb(b).is_none() && b.base() != Block::CHEST && !super::copper::is_chest(b))
+        || b == super::stone_blocks::SLIME_BLOCK
+}
+
 /// Java wire sides: 0 none, 1 side, 2 up. Isolated default wire is a cross.
+/// `RedStoneWireBlock.getConnectingSide` tests `isRedstoneConductor` above
+/// the wire and at the side.
 pub fn connections(neighbour: impl Fn(glam::IVec3) -> Block) -> [u8; 4] {
     use glam::IVec3;
-    let clear = !neighbour(IVec3::Y).is_opaque();
+    let clear = !conductor(neighbour(IVec3::Y));
     let mut out = [0; 4];
     for f in Facing::ALL {
         let d = f.offset();
@@ -366,7 +386,7 @@ pub fn connections(neighbour: impl Fn(glam::IVec3) -> Block) -> [u8; 4] {
             if clear && n.is_solid() && matches!(component(neighbour(d + IVec3::Y)), Some(Component::Wire(_))) {
                 2
             } else if connects
-                || (!n.is_opaque() && matches!(component(neighbour(d - IVec3::Y)), Some(Component::Wire(_))))
+                || (!conductor(n) && matches!(component(neighbour(d - IVec3::Y)), Some(Component::Wire(_))))
             {
                 1
             } else {
@@ -473,6 +493,22 @@ mod tests {
             }
             let observer = placed_with_look(observer(0, false), glam::IVec3::Y, look);
             assert_eq!(dir(observer), -toward, "observer looking {look}");
+        }
+    }
+
+    #[test]
+    fn wire_climbs_under_blocks_that_do_not_conduct() {
+        // A copper bulb is opaque but not a conductor, so wire under it
+        // still climbs the stone beside it (`getConnectingSide`).
+        let bulb = crate::world::copper::bulb_block(crate::world::copper::Stage::Unaffected, false, false);
+        for (above, climbs) in [(Block::STONE, false), (bulb, true), (Block::AIR, true)] {
+            let sides = connections(|d: glam::IVec3| match (d.x, d.y, d.z) {
+                (0, 1, 0) => above,
+                (1, 0, 0) => Block::STONE,
+                (1, 1, 0) => wire(0),
+                _ => Block::AIR,
+            });
+            assert_eq!(sides[Facing::East as usize] == 2, climbs, "above {above:?}");
         }
     }
 

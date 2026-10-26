@@ -319,6 +319,8 @@ impl Actor<'_> {
                 }
             }
             Used::Stripped { cell } => audio.play(Sound::Place(Material::Wood), Some(centre(cell)), 1.0, (0.8, 1.0)),
+            // Nearest shared sound for `item.axe.scrape`: a high, scratchy stone step.
+            Used::Scraped { cell } => audio.play(Sound::Step(Material::Stone), Some(centre(cell)), 1.0, (1.5, 1.8)),
             Used::Tilled { cell } => {
                 audio.play_in(SoundSource::Blocks, Sound::Step(Material::Gravel), Some(centre(cell)), 1.0, (0.8, 0.9))
             }

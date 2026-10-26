@@ -245,25 +245,26 @@ impl PlayerSession {
                 } else {
                     // Levers, buttons, grindstones, lanterns and redstone torches
                     // follow Java's nearest-looking-direction rules.
-                    let block =
-                        if let Some(mounted) = crate::world::mount_states::placed(raw, &ctx, |c| world.get_block(c)) {
-                            mounted.ok_or("block cannot survive here")?
-                        } else {
-                            let block = ob::placed(raw, normal).unwrap_or(raw);
-                            let block = crate::world::village_blocks::placed(
-                                crate::world::nether_blocks::placed(block, normal),
-                                normal,
-                            )
-                            .with_facing(facing);
-                            let block =
-                                crate::world::redstone_blocks::placed_with_look(block, normal, self.player.forward());
-                            let block = crate::world::village_blocks::placed_with_look(block, self.player.forward());
-                            // Slab type and stairs half and corner shape (Java's
-                            // `getStateForPlacement` of `SlabBlock` and `StairBlock`).
-                            ss::placed(block, world.get_block(at).unwrap_or(Block::AIR), normal, ctx.click.y, |f| {
-                                world.get_block(at + f.offset())
-                            })
-                        };
+                    let mounted = crate::world::copper::placed(raw, &ctx, |c| world.get_block(c))
+                        .or_else(|| crate::world::mount_states::placed(raw, &ctx, |c| world.get_block(c)));
+                    let block = if let Some(mounted) = mounted {
+                        mounted.ok_or("block cannot survive here")?
+                    } else {
+                        let block = ob::placed(raw, normal).unwrap_or(raw);
+                        let block = crate::world::village_blocks::placed(
+                            crate::world::nether_blocks::placed(block, normal),
+                            normal,
+                        )
+                        .with_facing(facing);
+                        let block =
+                            crate::world::redstone_blocks::placed_with_look(block, normal, self.player.forward());
+                        let block = crate::world::village_blocks::placed_with_look(block, self.player.forward());
+                        // Slab type and stairs half and corner shape (Java's
+                        // `getStateForPlacement` of `SlabBlock` and `StairBlock`).
+                        ss::placed(block, world.get_block(at).unwrap_or(Block::AIR), normal, ctx.click.y, |f| {
+                            world.get_block(at + f.offset())
+                        })
+                    };
                     if !free(world, at) {
                         return Err("destination occupied or unloaded");
                     }

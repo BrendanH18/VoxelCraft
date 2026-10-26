@@ -42,6 +42,7 @@ impl Chest {
 
 pub fn is_chest(b: Block) -> bool {
     matches!(b.base(), Block::CHEST | Block::BARREL)
+        || super::copper::is_chest(b)
         || matches!(
             super::redstone_blocks::component(b),
             Some(
@@ -73,6 +74,7 @@ impl World {
     pub(super) fn track_chest(&mut self, p: IVec3, old: Block, new: Block) {
         if is_chest(old)
             && old.base() != new.base()
+            && !super::copper::same_chest(old, new)
             && let Some(chest) = self.chests.remove(&p)
             && self.tile_drops
         {

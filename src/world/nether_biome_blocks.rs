@@ -476,6 +476,9 @@ pub const fn switch_reskin(oak: Block, wood: u16) -> Block {
 
 /// `to` (an oak-twin state computed by redstone rules) on the wood of `from`.
 pub const fn keep_wood(from: Block, to: Block) -> Block {
+    if let Some(copper) = super::copper::trapdoor_reskin(from, to) {
+        return copper;
+    }
     match switch_oak(from.0) {
         Some((_, wood)) => switch_reskin(to, wood),
         None => to,

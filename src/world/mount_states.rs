@@ -131,6 +131,9 @@ pub const fn door_twin(id: u16) -> Option<Block> {
 
 /// The right-hinge twin of a left-hinge lower door (`None` for anything else).
 pub const fn right_of(left: Block) -> Option<Block> {
+    if let Some(right) = super::copper::right_of(left) {
+        return Some(right);
+    }
     let id = left.0;
     let (family, local) = if id >= 149 && id <= 156 {
         (0, id - 149)
@@ -150,7 +153,7 @@ pub const fn right_of(left: Block) -> Option<Block> {
 /// Java `DoorBlock.HINGE == RIGHT`. Upper halves answer `false`; read the
 /// lower half.
 pub const fn is_right_hinge(b: Block) -> bool {
-    b.0 >= DOOR_FIRST && b.0 < DOOR_FIRST + DOOR_FAMILIES * 8
+    (b.0 >= DOOR_FIRST && b.0 < DOOR_FIRST + DOOR_FAMILIES * 8) || super::copper::is_right_hinge(b.0)
 }
 
 /// `to` (a door state computed from `from`) with `from`'s hinge.
@@ -210,7 +213,7 @@ pub fn collision_is_full(b: Block) -> bool {
 
 /// Unshaped blocks drawn as cubes whose Java shape is smaller than the cell.
 fn smaller_than_its_cell(b: Block) -> bool {
-    matches!(b.base(), Block::CHEST | Block::CACTUS | Block::HONEY_BLOCK)
+    matches!(b.base(), Block::CHEST | Block::CACTUS | Block::HONEY_BLOCK) || super::copper::is_chest(b)
 }
 
 // ---- Sturdy faces ------------------------------------------------------

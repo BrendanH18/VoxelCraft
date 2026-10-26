@@ -10,6 +10,9 @@ use crate::inventory::Stack;
 use crate::item::{ArmorMaterial, ArmorPiece, Item, Tier, ToolKind};
 use crate::world::block::Block;
 
+mod copper;
+pub use copper::stonecutting as copper_stonecutting;
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Grid {
     /// Edge length: 2 or 3.
@@ -568,6 +571,7 @@ pub fn recipes() -> &'static [Recipe] {
         r.push(shaped(&["###", "# #"], &[('#', &[Item::TURTLE_SCUTE])], Item::TURTLE_HELMET, 1));
         add_mount_recipes(&mut r);
         stone::add_recipes(&mut r);
+        copper::add_recipes(&mut r);
         r
     })
 }

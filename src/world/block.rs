@@ -354,9 +354,11 @@ pub mod tex {
     pub const POWDER_SNOW: u16 = 1765;
     pub const HEART_FROZEN_FULL: u16 = 1766;
     pub const HEART_FROZEN_HALF: u16 = 1767;
-    // v0.12 stone and minerals: 2000..2128 (`world::stone_blocks::t`);
-    // layers below that no block uses yet draw the missing-texture pattern.
-    pub const COUNT: u32 = super::super::stone_blocks::t::END as u32;
+    // v0.12 stone and minerals: 2000..2036 (`world::stone_blocks::t`);
+    // copper (BLD-01c) uses 2128..2201 (`world::copper::t`). Layers below
+    // that no block uses yet draw the missing-texture pattern.
+    pub const COUNT: u32 = super::super::copper::t::END as u32;
+    const _: () = assert!(super::super::stone_blocks::t::END <= super::super::copper::t::BASE);
     const _: () = assert!(super::super::overworld_blocks::TEX_END <= 1750);
     const _: () = assert!(super::super::overworld_blocks::TEX == 1450);
     const _: () = assert!((CRYING_OBSIDIAN as u32) < COUNT);
@@ -829,7 +831,7 @@ impl Block {
 
     /// The full block stairs were cut from.
     pub fn stairs_base(self) -> Option<Block> {
-        if super::slab_stair_states::owns(self.0) {
+        if super::slab_stair_states::owns(self.0) || super::copper::owns(self.0) {
             return super::slab_stair_states::stairs(self).and_then(|_| super::slab_stair_states::family_base(self));
         }
         if let Some((i, 0..=3)) = super::nether_blocks::form(self.0) {
@@ -865,6 +867,9 @@ impl Block {
     pub fn shaped(self) -> Option<Shaped> {
         if super::scaffolding::is_scaffolding(self) {
             return Some(Shaped::Custom);
+        }
+        if super::copper::owns(self.0) {
+            return super::copper::shaped(self);
         }
         if super::slab_stair_states::owns(self.0) {
             return super::slab_stair_states::shaped(self.0);
@@ -993,6 +998,9 @@ impl Block {
     /// The other state of a door half or gate (open <-> closed), facing
     /// `facing`.
     pub fn toggled(self, facing: Facing) -> Block {
+        if let Some(b) = super::copper::toggled(self, facing) {
+            return b;
+        }
         if let Some(twin) = super::mount_states::door_twin(self.0) {
             return super::mount_states::keep_hinge(self, twin.toggled(facing));
         }
@@ -1121,6 +1129,9 @@ impl Block {
     /// The block items, recipes and rules use for an oriented block (a
     /// furnace or chest facing any way), and the way it faces.
     pub fn oriented(self) -> Option<(Block, Facing)> {
+        if super::copper::owns(self.0) {
+            return super::copper::oriented(self);
+        }
         if super::slab_stair_states::owns(self.0) {
             return super::slab_stair_states::stairs(self)
                 .map(|s| (super::slab_stair_states::FAMILIES[s.family as usize].stairs, s.facing));
@@ -1184,6 +1195,9 @@ impl Block {
         if super::scaffolding::is_scaffolding(self) {
             return super::scaffolding::SCAFFOLDING;
         }
+        if let Some(b) = super::copper::base(self) {
+            return b;
+        }
         if let Some(b) = super::slab_stair_states::item_block(self.0) {
             return b;
         }
@@ -1227,6 +1241,9 @@ impl Block {
     pub fn with_facing(self, facing: Facing) -> Block {
         if super::scaffolding::is_scaffolding(self) || super::stone_blocks::is_pillar(self) {
             return self;
+        }
+        if let Some(b) = super::copper::with_facing(self, facing) {
+            return b;
         }
         if let Some(c) = self.alias() {
             return c.with_facing(facing).with_water(self.is_waterlogged());
@@ -1366,7 +1383,7 @@ impl Block {
 
     /// The full block a slab of any type was cut from.
     pub fn slab_base(self) -> Option<Block> {
-        if super::slab_stair_states::owns(self.0) {
+        if super::slab_stair_states::owns(self.0) || super::copper::owns(self.0) {
             return super::slab_stair_states::slab(self).and_then(|_| super::slab_stair_states::family_base(self));
         }
         if let Some((i, 4)) = super::nether_blocks::form(self.0) {
@@ -1437,6 +1454,9 @@ impl Block {
     pub fn drop(self) -> Option<Item> {
         if super::scaffolding::is_scaffolding(self) {
             return Some(Item::SCAFFOLDING);
+        }
+        if let Some(drop) = super::copper::drop(self) {
+            return drop;
         }
         if self == super::scaffolding::POWDER_SNOW {
             return None;
@@ -1535,6 +1555,9 @@ impl Block {
     pub fn hardness(self) -> f32 {
         if self == Self::HONEY_BLOCK {
             return 0.0;
+        }
+        if let Some((hardness, ..)) = super::copper::mining(self) {
+            return hardness;
         }
         if super::scaffolding::is_scaffolding(self) {
             return 0.0;
@@ -1717,6 +1740,9 @@ impl Block {
         if self == Self::HONEY_BLOCK {
             return None;
         }
+        if let Some((_, tool, _)) = super::copper::mining(self) {
+            return tool;
+        }
         // Powder snow is absent from Java 26.3 mineable/shovel: all tools
         // use the same base speed (unlike snow layers and snow blocks).
         if self == super::scaffolding::POWDER_SNOW {
@@ -1867,6 +1893,9 @@ impl Block {
         if self == Self::HONEY_BLOCK {
             return None;
         }
+        if let Some((.., level)) = super::copper::mining(self) {
+            return level;
+        }
         if let Some(c) = self.alias() {
             return c.harvest_level();
         }
@@ -2005,6 +2034,7 @@ impl Block {
             .chain(super::mount_states::palette_ids())
             .chain([Self::HONEY_BLOCK.0, super::scaffolding::SCAFFOLDING.0])
             .chain(super::stone_blocks::palette_ids())
+            .chain(super::copper::palette_ids())
             .map(Block)
     }
 
@@ -2033,6 +2063,7 @@ impl Block {
         self.is_replaceable()
             || (self.kind() == RenderKind::Cross && self != Block::COBWEB)
             || self.is_rail()
+            || super::copper::is_wall_torch(self)
             || matches!(
                 super::redstone_blocks::component(self),
                 Some(
@@ -2098,6 +2129,9 @@ impl Block {
             };
         }
         if let Some(ok) = super::nether_biome_blocks::can_stay_on(self, below) {
+            return ok;
+        }
+        if let Some(ok) = super::copper::can_stay_on(self, below) {
             return ok;
         }
         if let Some(ok) = super::overworld_blocks::can_stay_on(self, below) {
@@ -2587,6 +2621,10 @@ const fn make(id: u16) -> BlockInfo {
             Some((name, kind, super::stone_blocks::Tex::Like(b))) => (name, kind, make(b.0).tex),
             None => ("unknown", Invisible, all(0)),
         },
+        super::copper::FIRST..=super::copper::RESERVED_LAST => match super::copper::registry(id) {
+            Some(info) => info,
+            None => ("unknown", Invisible, all(0)),
+        },
         7936..=7968 => match super::scaffolding::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
@@ -2913,7 +2951,10 @@ const fn make(id: u16) -> BlockInfo {
         name,
         kind,
         solid: solid && !(id >= 7936 && id <= 7968),
-        self_cull: matches!(id, 5 | 10 | 97 | 104 | 7968 | 8128) || stained_glass || super::stone_blocks::self_cull(id),
+        self_cull: matches!(id, 5 | 10 | 97 | 104 | 7968 | 8128)
+            || stained_glass
+            || super::stone_blocks::self_cull(id)
+            || super::copper::self_culls(id),
         tex,
         waterlogged: holds_water(id),
     }
@@ -2999,6 +3040,7 @@ const fn emission_of(i: usize) -> u8 {
             1600..=1687 => super::nether_biome_blocks::emission(i as u16),
             1800 => 10, // crying obsidian
             1900..=2076 | 2400..=2415 => super::overworld_blocks::emission(i as u16),
+            _ if super::copper::owns(i as u16) => super::copper::emission(i as u16),
             _ => 0,
         }
     }
@@ -3016,6 +3058,8 @@ static SHAPE_LIGHT: [bool; STATE_CAPACITY] = {
     arr
 };
 
+// Bounded by `STATE_CAPACITY`, like `INFO`.
+#[allow(long_running_const_eval)]
 static LIGHT_OPACITY: [u8; STATE_CAPACITY] = {
     let mut arr = [15u8; STATE_CAPACITY];
     let mut i = 0;
@@ -3045,6 +3089,8 @@ const fn opacity_of(i: usize) -> u8 {
         // than whole cells, block light (BlockBehaviour / LightEngine).
         _ if i == 2522 => 15,
         _ if shape_blocks_light(super::waterlog::canonical(i as u16)) => 0,
+        // Dry copper grates are see-through like glass (`TransparentBlock`).
+        _ if super::copper::clear(i as u16) => 0,
         RenderKind::Opaque => 15,
         // Kelp and seagrass dim light like the water they hold.
         _ if super::overworld_blocks::waterlogged(i as u16) => 1,
@@ -3109,6 +3155,15 @@ mod tests {
             }
             if (1900..=2076).contains(&block.0) || (2400..=2415).contains(&block.0) {
                 return super::super::overworld_blocks::emission(block.0);
+            }
+            // Java's copper bulbs (`litBlockEmission` 15, 12, 8, 4), lanterns and torches.
+            if let Some((stage, lit, _)) = super::super::copper::bulb(block) {
+                return if lit { [15, 12, 8, 4][stage as usize] } else { 0 };
+            }
+            match super::super::copper::state(block).map(|c| c.family) {
+                Some(super::super::copper::Family::Lantern) => return 15,
+                Some(super::super::copper::Family::Torch) => return 14,
+                _ => {}
             }
             {
                 use super::super::nether_biome_blocks as nb;

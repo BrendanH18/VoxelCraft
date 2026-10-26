@@ -5,6 +5,8 @@
 use crate::world::block::tex;
 use crate::world::noise::hash_f;
 
+#[path = "copper_textures.rs"]
+mod copper;
 #[path = "nether_textures.rs"]
 mod nether;
 #[path = "overworld_textures.rs"]
@@ -192,6 +194,9 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     }
     if (crate::world::stone_blocks::t::TEX..crate::world::stone_blocks::t::END).contains(&layer) {
         return stone::pixel(layer, x, y);
+    }
+    if (crate::world::copper::t::BASE..crate::world::copper::t::END).contains(&layer) {
+        return copper::pixel(layer, x, y);
     }
     if (tex::COLORED_WOOL..tex::COLORED_WOOL + 16).contains(&layer) || layer == tex::WOOL {
         let color = if layer == tex::WOOL { 0 } else { (layer - tex::COLORED_WOOL) as usize };

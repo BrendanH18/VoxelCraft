@@ -107,6 +107,10 @@ pub enum Used {
     Stripped {
         cell: IVec3,
     },
+    /// An axe scraped copper back one oxidation stage.
+    Scraped {
+        cell: IVec3,
+    },
     Tilled {
         cell: IVec3,
     },
@@ -456,7 +460,7 @@ impl PlayerSession {
         Ok(Some(Used::Placed(result)))
     }
 
-    /// Shovel paths, axe stripping, hoe tilling, pumpkin carving and bone meal.
+    /// Shovel paths, axe stripping and scraping, hoe tilling, pumpkin carving and bone meal.
     fn use_item_on(
         &mut self,
         slot: usize,
@@ -491,6 +495,11 @@ impl PlayerSession {
         {
             wear(self);
             return Some(Used::Stripped { cell: pos });
+        }
+        // The axe's copper `scrape` transformer (Java's block_transformer/axe.json).
+        if tool == Some(ToolKind::Axe) && world.scrape_copper(pos) {
+            wear(self);
+            return Some(Used::Scraped { cell: pos });
         }
         if tool == Some(ToolKind::Hoe) {
             if matches!(block, Block::GRASS | Block::DIRT) && open_above && world.set_block(pos, Block::FARMLAND) {

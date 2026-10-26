@@ -257,11 +257,9 @@ impl World {
         chunks.sort_unstable_by_key(|p| (p.x, p.y, p.z));
         chunks.dedup();
         for cpos in chunks {
-            if self
-                .chunks
-                .get(&cpos)
-                .is_none_or(|s| s.data.uniform().is_some_and(|b| !b.is_lava() && b.fire_age().is_none()))
-            {
+            if self.chunks.get(&cpos).is_none_or(|s| {
+                s.data.uniform().is_some_and(|b| !b.is_lava() && b.fire_age().is_none() && !super::copper::ages(b))
+            }) {
                 continue;
             }
             for sy in 0..2 {
@@ -317,6 +315,7 @@ impl World {
                 self.extinguish_ore(p, b);
             }
             Block::SUGAR_CANE => self.tick_cane(p),
+            b if super::copper::ages(b) => self.tick_copper(p, b),
             b if b.is_mushroom() => self.tick_mushroom(p, b),
             b if (1600..=1687).contains(&b.0) => self.tick_nether_flora(p, b),
             b if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&b.canonical().0)
