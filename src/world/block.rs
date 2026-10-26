@@ -354,10 +354,12 @@ pub mod tex {
     pub const POWDER_SNOW: u16 = 1765;
     pub const HEART_FROZEN_FULL: u16 = 1766;
     pub const HEART_FROZEN_HALF: u16 = 1767;
-    // v0.12 stone and minerals: 2000..2036 (`world::stone_blocks::t`);
-    // copper (BLD-01c) uses 2128..2201 (`world::copper::t`). Layers below
-    // that no block uses yet draw the missing-texture pattern.
+    // v0.12 wood: 1776..1985 (`world::wood::tex`); stone and minerals:
+    // 2000..2036 (`world::stone_blocks::t`); copper (BLD-01c): 2128..2201
+    // (`world::copper::t`). Layers below that no block uses yet draw the
+    // missing-texture pattern.
     pub const COUNT: u32 = super::super::copper::t::END as u32;
+    const _: () = assert!(super::super::wood::tex::END <= super::super::stone_blocks::t::TEX);
     const _: () = assert!(super::super::stone_blocks::t::END <= super::super::copper::t::BASE);
     const _: () = assert!(super::super::overworld_blocks::TEX_END <= 1750);
     const _: () = assert!(super::super::overworld_blocks::TEX == 1450);
@@ -707,6 +709,9 @@ impl Block {
         if super::waterlog::wet(self.0) {
             return (0, 0);
         }
+        if let Some(p) = super::wood::props(self) {
+            return p.fire;
+        }
         if let Some(c) = self.alias() {
             return c.fire_odds();
         }
@@ -737,6 +742,9 @@ impl Block {
     }
 
     pub fn ignited_by_lava(self) -> bool {
+        if let Some(p) = super::wood::props(self) {
+            return p.lava;
+        }
         if let Some(c) = self.alias() {
             return c.ignited_by_lava();
         }
@@ -886,6 +894,9 @@ impl Block {
         if super::mount_states::is_lantern(self.0) {
             return Some(Shaped::Custom);
         }
+        if super::wood::owns(self.0) && super::wood::custom_shape(super::wood::canonical(self.0)) {
+            return Some(Shaped::Custom);
+        }
         if let Some(c) = self.alias() {
             return c.shaped();
         }
@@ -1030,7 +1041,7 @@ impl Block {
 
     /// Drawn as a flat sprite in inventories and when dropped.
     pub fn flat_icon(self) -> bool {
-        self.kind() == RenderKind::Cross || self.is_ladder() || self.is_rail()
+        self.kind() == RenderKind::Cross || self.is_ladder() || self.is_rail() || super::wood::flat_icon(self)
     }
 
     /// Badlands terracotta: 0 plain, then orange, yellow, red, brown, white
@@ -1049,7 +1060,7 @@ impl Block {
         if let Some(c) = self.alias() {
             return c.is_log();
         }
-        matches!(self.0, 6 | 69..=72 | 333..=335) || super::overworld_blocks::is_log(self)
+        matches!(self.0, 6 | 69..=72 | 333..=335) || super::overworld_blocks::is_log(self) || super::wood::is_log(self)
     }
 
     pub fn is_leaves(self) -> bool {
@@ -1119,6 +1130,8 @@ impl Block {
     fn alias(self) -> Option<Block> {
         let c = self.canonical();
         let c = super::wall_states::original(c.0).unwrap_or(c);
+        // A log or wood block on its side answers as its Y-axis state.
+        let c = super::wood::alias(c.0).map_or(c, Block);
         (c != self).then_some(c)
     }
 
@@ -1210,6 +1223,9 @@ impl Block {
         if let Some(c) = self.alias() {
             return c.base();
         }
+        if let Some(b) = super::wood::base(self.0) {
+            return b;
+        }
         if let Some(b) = super::village_blocks::base(self.0) {
             return b;
         }
@@ -1244,6 +1260,9 @@ impl Block {
         }
         if let Some(b) = super::copper::with_facing(self, facing) {
             return b;
+        }
+        if super::wood::owns(self.0) && super::wood::switches::twin(self.0).is_none() {
+            return super::wood::with_facing(self, facing);
         }
         if let Some(c) = self.alias() {
             return c.with_facing(facing).with_water(self.is_waterlogged());
@@ -1461,6 +1480,9 @@ impl Block {
         if self == super::scaffolding::POWDER_SNOW {
             return None;
         }
+        if let Some(p) = super::wood::props(self) {
+            return p.drop;
+        }
         if let Some(c) = self.alias() {
             return c.drop();
         }
@@ -1570,6 +1592,9 @@ impl Block {
         }
         if let Some(twin) = super::mount_states::twin(self.0) {
             return twin.hardness();
+        }
+        if let Some(p) = super::wood::props(self) {
+            return p.hardness;
         }
         if let Some(c) = self.alias() {
             return c.hardness();
@@ -1754,6 +1779,9 @@ impl Block {
         if let Some(twin) = super::mount_states::twin(self.0) {
             return twin.best_tool();
         }
+        if let Some(p) = super::wood::props(self) {
+            return p.tool;
+        }
         if let Some(c) = self.alias() {
             return c.best_tool();
         }
@@ -1896,6 +1924,9 @@ impl Block {
         if let Some((.., level)) = super::copper::mining(self) {
             return level;
         }
+        if super::wood::props(self).is_some() {
+            return None;
+        }
         if let Some(c) = self.alias() {
             return c.harvest_level();
         }
@@ -2035,6 +2066,7 @@ impl Block {
             .chain([Self::HONEY_BLOCK.0, super::scaffolding::SCAFFOLDING.0])
             .chain(super::stone_blocks::palette_ids())
             .chain(super::copper::palette_ids())
+            .chain(super::wood::palette_ids())
             .map(Block)
     }
 
@@ -2099,6 +2131,9 @@ impl Block {
     /// Whether this block can rest on `below`. Plants need soil and torches
     /// a full block; everything else stays put.
     pub fn can_stay_on(self, below: Block) -> bool {
+        if let Some(ok) = super::wood::can_stay_on(self, below) {
+            return ok;
+        }
         if self.alias().is_some() || below.alias().is_some() {
             return self.alias().unwrap_or(self).can_stay_on(below.alias().unwrap_or(below));
         }
@@ -2600,7 +2635,7 @@ const fn holds_water(id: u16) -> bool {
     super::overworld_blocks::waterlogged(id) || matches!(super::waterlog::pair(id), Some((_, true)))
 }
 
-const fn make(id: u16) -> BlockInfo {
+pub(super) const fn make(id: u16) -> BlockInfo {
     use RenderKind::*;
     // A BLD-04f waterlog partner looks and collides like its original.
     let canonical = super::waterlog::canonical(id);
@@ -2622,6 +2657,10 @@ const fn make(id: u16) -> BlockInfo {
             None => ("unknown", Invisible, all(0)),
         },
         super::copper::FIRST..=super::copper::RESERVED_LAST => match super::copper::registry(id) {
+            Some(info) => info,
+            None => ("unknown", Invisible, all(0)),
+        },
+        super::wood::FIRST..=super::wood::LAST => match super::wood::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },
@@ -2980,7 +3019,7 @@ const fn shape_blocks_light(id: u16) -> bool {
     if id == 32766 {
         return true;
     }
-    if matches!(id, 57 | 58 | 900 | 1910 | 2516..=2522) {
+    if matches!(id, 57 | 58 | 900 | 1910 | 2516..=2522) || super::wood::shape_blocks_light(id) {
         return true;
     }
     if let Some((_, 0..=4)) = super::nether_blocks::form(id) {

@@ -293,6 +293,7 @@ impl Game {
             screenshot_state: 0,
             open_trading: args.open_trading,
             place: args.place.clone(),
+            signs: args.signs.clone(),
             carts: args.carts.clone(),
             open_block: args.open_block,
             drop: args.drop.clone(),

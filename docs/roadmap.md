@@ -1106,7 +1106,21 @@ Work items (all Missing unless noted):
    polished blackstone button and plate; shelves for every wood; standing,
    wall and hanging signs with Java's edit screen (built on v0.11's text
    fields), dye and glow ink (waxing comes with bees); the chiseled
-   bookshelf.
+   bookshelf. *Implemented, unverified (2026-10-25):* every block of the
+   audit's wood list is registered (ids 16384–19583, `world::wood`): X and
+   Z states for the nine logs and the bamboo block placed by the clicked
+   face, the nine `*_wood` blocks, stripped logs, wood and bamboo with
+   axe stripping, the seven trapdoor, button and plate families and the
+   polished blackstone button and plate (oak and stone twins, so redstone
+   is unchanged), 12 woods of standing, wall, hanging and wall hanging
+   signs (Java's placement and support rules, both sides, an edit screen on
+   the v0.11 text fields, dyes, ink and glow ink, text drawn in the world),
+   12 shelves (three slots, redstone power, chains of three and hotbar
+   swaps, comparator output) and the chiseled bookshelf (six books,
+   comparator output, silk touch). See the
+   [record](verification/2026-10-25-v0.12-wood.md); owed: play by hand, LAN
+   and controller sign editing, original sounds, and the windowed
+   performance check with the track's textures.
 2. **Stone and minerals (BLD-01b).** Polished tuff and tuff bricks;
    deepslate bricks and tiles with cracked and chiseled forms; quartz
    blocks; smooth, cut, chiseled and red sandstone; red nether bricks and the

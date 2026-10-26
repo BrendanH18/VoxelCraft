@@ -74,6 +74,7 @@ impl World {
                 || b == Block::TNT
                 || b.base() == Block::BELL
                 || super::copper::bulb(b).is_some()
+                || super::wood::redstone_participant(b)
         }) && self.redstone.queued.insert(p)
         {
             self.redstone.updates.push_back(p);
@@ -326,11 +327,15 @@ impl World {
     fn comparator_target(&self, p: IVec3, facing: Facing, subtract: bool) -> u8 {
         let mut input = self.diode_input(p, facing);
         let rear = p - facing.offset();
-        if let Some(value) = self.container_signal(rear) {
+        // Shelves and chiseled bookshelves read by side (`world::wood`).
+        let signal = |q: IVec3| self.wood_comparator_signal(q, p - q).or_else(|| self.container_signal(q));
+        if let Some(value) = signal(rear) {
             input = value;
         } else if input < 15
             && self.get_block(rear).is_some_and(conductor)
-            && let Some(value) = self.container_signal(rear - facing.offset())
+            && let Some(value) = self
+                .wood_comparator_signal(rear - facing.offset(), facing.offset())
+                .or_else(|| self.container_signal(rear - facing.offset()))
         {
             input = value;
         }
@@ -549,6 +554,7 @@ impl World {
                     }
                 }
             }
+            _ if super::wood::redstone_participant(b) => self.shelf_power(p),
             _ if b == Block::TNT && self.rules.tnt_explodes && self.redstone_power(p) > 0 => {
                 self.edit(p, Block::AIR, false);
                 self.primed_tnt.push((p, false));

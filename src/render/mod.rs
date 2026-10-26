@@ -15,6 +15,7 @@ pub mod entity;
 pub mod hand;
 mod item_sprites;
 pub mod particles;
+pub mod signs;
 pub mod textures;
 pub mod ui;
 pub mod weather;
@@ -119,6 +120,8 @@ pub struct FrameParams {
     pub cracks: Vec<(IVec3, u16)>,
     /// Free-standing blocks (falling sand and gravel).
     pub block_models: Vec<BlockModel>,
+    /// Sign boards and posts (`signs::models`), drawn with the block models.
+    pub signs: Vec<signs::SignModel>,
     /// The first-person hand (`None` in third person or with the HUD hidden).
     pub hand: Option<hand::Hand>,
     /// HUD geometry, drawn last.
@@ -1268,7 +1271,7 @@ impl Renderer {
             self.queue.write_buffer(&self.line_buf, 0, bytemuck::cast_slice(&verts));
         }
         let hand = p.hand.as_ref().map(|h| (h, p.forward, p.fov_y, vp.aspect(), p.view_effect));
-        self.block_models.set(&self.device, &self.queue, &p.block_models, hand, p.camera);
+        self.block_models.set(&self.device, &self.queue, &p.block_models, &p.signs, hand, p.camera);
         let hud = &p.ui;
         if hud.len() > self.ui_capacity {
             self.ui_capacity = hud.len().next_power_of_two();

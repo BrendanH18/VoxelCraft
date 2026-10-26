@@ -245,9 +245,12 @@ impl PlayerSession {
                 } else {
                     // Levers, buttons, grindstones, lanterns and redstone torches
                     // follow Java's nearest-looking-direction rules.
-                    let mounted = crate::world::copper::placed(raw, &ctx, |c| world.get_block(c))
-                        .or_else(|| crate::world::mount_states::placed(raw, &ctx, |c| world.get_block(c)));
-                    let block = if let Some(mounted) = mounted {
+                    let block = if let Some(placed) = crate::world::wood::placed(raw, &ctx, |c| world.get_block(c)) {
+                        // Signs, shelves and chiseled bookshelves (`world::wood`).
+                        placed.ok_or("block cannot survive here")?
+                    } else if let Some(mounted) = crate::world::copper::placed(raw, &ctx, |c| world.get_block(c))
+                        .or_else(|| crate::world::mount_states::placed(raw, &ctx, |c| world.get_block(c)))
+                    {
                         mounted.ok_or("block cannot survive here")?
                     } else {
                         let block = ob::placed(raw, normal).unwrap_or(raw);
@@ -284,7 +287,9 @@ impl PlayerSession {
                     } else {
                         None
                     };
-                    let shaped_half = ss::stairs(block).is_some() || ss::slab(block).is_some();
+                    // Partial shapes (and signs, which have none) check their own collision.
+                    let shaped_half =
+                        ss::stairs(block).is_some() || ss::slab(block).is_some() || crate::world::wood::owns(block.0);
                     if (block.is_solid() && if shaped_half { obstructed(world, at, block) } else { blocked(at) })
                         || partner.is_some_and(|(p, b)| !free(world, p) || (b.is_solid() && blocked(p)))
                     {

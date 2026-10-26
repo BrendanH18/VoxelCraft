@@ -12,6 +12,7 @@ use crate::world::block::Block;
 
 mod copper;
 pub use copper::stonecutting as copper_stonecutting;
+mod wood;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Grid {
@@ -195,17 +196,8 @@ const WOOD_SLAB: Ingredient = &[
 const FURNACE: Ingredient = &[b(Block::FURNACE)];
 const STONE_SLAB: Ingredient = &[b(Block::STONE_SLAB)];
 const BOOKSHELF: Ingredient = &[b(Block::BOOKSHELF)];
-const ANY_LOG: Ingredient = &[
-    b(Block::LOG),
-    b(Block::SPRUCE_LOG),
-    b(Block::BIRCH_LOG),
-    b(Block::JUNGLE_LOG),
-    b(Block::ACACIA_LOG),
-    b(Block::DARK_OAK_LOG),
-    b(Block::MANGROVE_LOG),
-    b(Block::CHERRY_LOG),
-    b(crate::world::overworld_blocks::PALE_OAK_LOG),
-];
+/// Every overworld log, wood and stripped block (`#logs_that_burn`).
+const ANY_LOG: Ingredient = &crate::world::wood::ALL_LOGS;
 const OAK_PLANKS: Ingredient = &[b(Block::PLANKS)];
 const MELON: Ingredient = &[b(Block::MELON)];
 const SAND: Ingredient = &[b(Block::SAND)];
@@ -236,9 +228,10 @@ const ACACIA_PLANKS: Ingredient = &[b(Block::ACACIA_PLANKS)];
 const DARK_OAK_PLANKS: Ingredient = &[b(Block::DARK_OAK_PLANKS)];
 const MANGROVE_PLANKS: Ingredient = &[b(Block::MANGROVE_PLANKS)];
 const CHERRY_PLANKS: Ingredient = &[b(Block::CHERRY_PLANKS)];
-const DARK_OAK_LOG: Ingredient = &[b(Block::DARK_OAK_LOG)];
-const MANGROVE_LOG: Ingredient = &[b(Block::MANGROVE_LOG)];
-const CHERRY_LOG: Ingredient = &[b(Block::CHERRY_LOG)];
+// `#dark_oak_logs`, `#mangrove_logs` and `#cherry_logs`.
+const DARK_OAK_LOG: Ingredient = &crate::world::wood::LOG_TAGS[5];
+const MANGROVE_LOG: Ingredient = &crate::world::wood::LOG_TAGS[6];
+const CHERRY_LOG: Ingredient = &crate::world::wood::LOG_TAGS[7];
 const QUARTZ: Ingredient = &[Item::NETHER_QUARTZ];
 const NETHER_BRICKS: Ingredient = &[b(Block::NETHER_BRICKS)];
 const STICK: Ingredient = &[Item::STICK];
@@ -417,12 +410,13 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&[" #s", "# s", " #s"], &[('#', STICK), ('s', &[Item::STRING])], Item::BOW, 1),
             shaped(&["f", "#", "e"], &[('f', &[Item::FLINT]), ('#', STICK), ('e', &[Item::FEATHER])], Item::ARROW, 4),
         ];
+        // Java's `#oak_logs` and the rest: log, wood and both stripped forms.
         const LOGS: [(Ingredient, Block); 5] = [
-            (&[b(Block::LOG)], Block::PLANKS),
-            (&[b(Block::SPRUCE_LOG)], Block::SPRUCE_PLANKS),
-            (&[b(Block::BIRCH_LOG)], Block::BIRCH_PLANKS),
-            (&[b(Block::JUNGLE_LOG)], Block::JUNGLE_PLANKS),
-            (&[b(Block::ACACIA_LOG)], Block::ACACIA_PLANKS),
+            (&crate::world::wood::LOG_TAGS[0], Block::PLANKS),
+            (&crate::world::wood::LOG_TAGS[1], Block::SPRUCE_PLANKS),
+            (&crate::world::wood::LOG_TAGS[2], Block::BIRCH_PLANKS),
+            (&crate::world::wood::LOG_TAGS[3], Block::JUNGLE_PLANKS),
+            (&crate::world::wood::LOG_TAGS[4], Block::ACACIA_PLANKS),
         ];
         const BLACK: Ingredient = &[b(Block::BLACKSTONE)];
         const POLISHED: Ingredient = &[b(Block::POLISHED_BLACKSTONE)];
@@ -572,6 +566,7 @@ pub fn recipes() -> &'static [Recipe] {
         add_mount_recipes(&mut r);
         stone::add_recipes(&mut r);
         copper::add_recipes(&mut r);
+        wood::add(&mut r);
         r
     })
 }
@@ -1009,8 +1004,8 @@ fn add_overworld_recipes(r: &mut Vec<Recipe>) {
         }
     }
     r.push(shaped(&["#", "#"], &[('#', ingredient(b(crate::world::forms::wood_id(10, 4))))], b(ob::BAMBOO_MOSAIC), 1));
-    r.push(shapeless(&[ingredient(one(ob::PALE_OAK_LOG))], one(ob::PALE_OAK_PLANKS), 4));
-    r.push(shapeless(&[ingredient(one(ob::BAMBOO_BLOCK))], one(ob::BAMBOO_PLANKS), 2));
+    r.push(shapeless(&[&crate::world::wood::LOG_TAGS[8]], one(ob::PALE_OAK_PLANKS), 4));
+    r.push(shapeless(&[&crate::world::wood::BAMBOO_BLOCKS], one(ob::BAMBOO_PLANKS), 2));
     r.push(shaped(&["###", "###", "###"], &[('#', ingredient(one(ob::BAMBOO)))], one(ob::BAMBOO_BLOCK), 1));
     r.push(shaped(&["#", "#"], &[('#', ingredient(one(ob::BAMBOO)))], Item::STICK, 1));
     r.push(shaped(&["I~I", "I I", "I I"], &[('I', ingredient(one(ob::BAMBOO))), ('~', STRING)], Item::SCAFFOLDING, 6));

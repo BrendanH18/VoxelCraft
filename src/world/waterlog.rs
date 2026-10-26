@@ -30,6 +30,9 @@ pub const fn pair(id: u16) -> Option<(u16, bool)> {
     if let Some(p) = super::copper::water_pair(id) {
         return Some(p);
     }
+    if let Some(p) = super::wood::water_pair(id) {
+        return Some(p);
+    }
     family_pair(id)
 }
 
@@ -188,6 +191,9 @@ pub const fn canonical(id: u16) -> u16 {
     }
     if let Some(dry) = super::stone_blocks::wall_canonical(id) {
         return dry;
+    }
+    if super::wood::owns(id) {
+        return super::wood::canonical(id);
     }
     if id >= FIRST && id < FIRST + COUNT { CANONICAL[(id - FIRST) as usize] } else { id }
 }

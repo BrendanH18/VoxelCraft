@@ -13,6 +13,8 @@ mod nether;
 mod overworld;
 #[path = "stone_textures.rs"]
 mod stone;
+#[path = "wood_textures.rs"]
+mod wood;
 
 pub const SIZE: usize = 16;
 pub const MIP_LEVELS: u32 = 5; // 16, 8, 4, 2, 1
@@ -93,6 +95,9 @@ const GRASS: [u8; 3] = [95, 159, 53];
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     if let Some(pixel) = voxelcraft::assets::texture_pixel(layer, x, y) {
         return pixel;
+    }
+    if (crate::world::wood::tex::BASE..crate::world::wood::tex::END).contains(&layer) {
+        return wood::pixel(layer, x, y);
     }
     if (tex::HONEY_SIDE..=tex::HONEY_BOTTOM).contains(&layer) {
         // Original amber shell: streaks and small trapped air pockets.

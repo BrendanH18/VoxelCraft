@@ -82,7 +82,8 @@ pub fn material(block: Block) -> Material {
             || block.stairs_base().is_some_and(Block::is_planks)
             || block.slab_base().is_some_and(Block::is_planks)
             || crate::world::forms::planks_of(block).is_some()
-            || crate::world::nether_biome_blocks::is_nether_wood(block) =>
+            || crate::world::nether_biome_blocks::is_nether_wood(block)
+            || crate::world::wood::wooden(block) =>
         {
             Material::Wood
         }

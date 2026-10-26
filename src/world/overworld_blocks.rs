@@ -913,7 +913,7 @@ pub fn wall_ok(block: Block, wall: Block) -> Option<bool> {
         return Some(sturdy(wall) || wall.is_leaves() || wall.is_log());
     }
     if cocoa_of(block).is_some() {
-        return Some(wall == Block::JUNGLE_LOG);
+        return Some(super::wood::is_jungle_log(wall));
     }
     None
 }
@@ -932,8 +932,9 @@ pub fn fire_odds(b: Block) -> Option<(u8, u8)> {
         1942 | 1943 | 2010..=2013 => (30, 60),
         1940 | 1941 | 1944 | 1948 | 1949 | 2014..=2017 | 2029..=2054 | 2058 => (60, 100),
         1907 | 1911 | 1908 | 1912 => (5, 100),
-        2018 | 2020 => (5, 5),
-        2019 | 2026..=2028 => (5, 20),
+        // Java's `FireBlock.bootStrap`: the bamboo block burns like a log.
+        2018 | 2020 | 2026 => (5, 5),
+        2019 | 2027 | 2028 => (5, 20),
         2022 | 1969 => (60, 60),
         _ => return None,
     })

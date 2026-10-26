@@ -290,8 +290,27 @@ impl Actor<'_> {
         let throw = (0.5, (0.42, 0.62));
         let audio = &mut *self.audio;
         match done.used {
-            Used::OpenVehicle(_) | Used::OpenMerchant(_) | Used::Screen { .. } | Used::Bed { .. } => {
+            Used::OpenVehicle(_)
+            | Used::OpenMerchant(_)
+            | Used::Screen { .. }
+            | Used::Bed { .. }
+            | Used::EditSign { .. } => {
                 self.requests.push(Request::Open(done.used));
+            }
+            // Dyes, ink sacs and glow ink sacs on signs; shelves and chiseled
+            // bookshelves (nearest existing sounds).
+            Used::SignInked { cell, .. } => {
+                audio.play(Sound::Place(Material::Wood), Some(centre(cell)), 0.6, (1.3, 1.5))
+            }
+            Used::Shelf { cell, used } => {
+                use crate::world::wood::ShelfUse;
+                let pitch = match used {
+                    ShelfUse::Placed | ShelfUse::BookIn { .. } => (1.0, 1.1),
+                    ShelfUse::Swapped { .. } | ShelfUse::BookOut { .. } => (1.2, 1.3),
+                    ShelfUse::Hotbar => (0.8, 0.9),
+                    ShelfUse::Nothing => return,
+                };
+                audio.play(Sound::Place(Material::Wood), Some(centre(cell)), 0.8, pitch);
             }
             Used::Bucket(effect) => bucket::feedback(audio, effect),
             // Pearls, snowballs, eggs and fishing rods play in `NEUTRAL`, splash potions in `PLAYERS`.
@@ -331,6 +350,10 @@ impl Actor<'_> {
                 match placement {
                     Outcome::Placed { cell, block, kind, .. } => {
                         audio.block_place(if kind == Kind::Bed { Block::WOOL } else { block }, cell);
+                        // `SignBlock.setPlacedBy`: the placer edits the front.
+                        if crate::world::wood::signs::sign(block).is_some() {
+                            self.requests.push(Request::Open(Used::EditSign { cell, front: true }));
+                        }
                     }
                     Outcome::WaterEvaporated { cell, .. } => {
                         audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(cell.as_dvec3()), 0.6, (1.6, 1.8));

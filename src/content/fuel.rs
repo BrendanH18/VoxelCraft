@@ -9,6 +9,8 @@ use crate::{
 pub enum FuelClass {
     Bamboo,
     Carpet,
+    /// Hanging signs (Java 26.3: 800 ticks).
+    HangingSign,
     Small,
     Slab,
     Large,
@@ -24,6 +26,7 @@ impl FuelClass {
         match self {
             Self::Bamboo => 50,
             Self::Carpet => 67,
+            Self::HangingSign => 800,
             Self::Small => 100,
             Self::Slab => 150,
             Self::Large => 200,
@@ -53,6 +56,9 @@ pub fn class(item: Item) -> Option<FuelClass> {
         _ => {}
     }
     let block = item.block()?.base();
+    if let Some(class) = crate::world::wood::fuel(block) {
+        return Some(class);
+    }
     if super::burnable_planks(Item::from_block(block)) || block.is_log() {
         return Some(Wood);
     }
@@ -66,12 +72,11 @@ pub fn class(item: Item) -> Option<FuelClass> {
         return Some(Carpet);
     }
     if let Some((oak, wood)) = crate::world::nether_biome_blocks::switch_oak(block.0) {
-        // Crimson/warped switches are explicitly non-fuels; pale oak/bamboo burn.
-        return (wood >= 2).then_some(if matches!(rb::component(oak), Some(rb::Component::Button { .. })) {
-            Small
-        } else {
-            Wood
-        });
+        // Crimson/warped and polished blackstone switches are explicitly
+        // non-fuels; the other woods burn.
+        return (2..=10)
+            .contains(&wood)
+            .then_some(if matches!(rb::component(oak), Some(rb::Component::Button { .. })) { Small } else { Wood });
     }
     if let Some(form) = forms::wood_form(block.0) {
         let (index, class) = match form {

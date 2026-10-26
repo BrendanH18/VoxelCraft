@@ -1022,7 +1022,9 @@ impl Item {
             return item(c.dye_name(), Sprite::Powder(c.rgb()));
         }
         if let Some(b) = self.block() {
-            return ItemInfo { name: b.name(), kind: ItemKind::Block(b), max_stack: 64, sprite: Sprite::Stick };
+            // Java registers signs and hanging signs with `stacksTo(16)`.
+            let max_stack = if crate::world::wood::signs::sign(b).is_some() { 16 } else { 64 };
+            return ItemInfo { name: b.name(), kind: ItemKind::Block(b), max_stack, sprite: Sprite::Stick };
         }
         if let Some(info) = self.0.checked_sub(FIRST_ITEM).and_then(|i| ITEMS.get(i as usize)) {
             return *info;

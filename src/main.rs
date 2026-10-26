@@ -75,6 +75,8 @@ pub struct Args {
     pub dimension: Option<world::terrain::Dimension>,
     /// Blocks to set once the world has loaded (debugging/screenshots).
     pub place: Vec<(glam::IVec3, world::block::Block)>,
+    /// `--sign`: front text for signs placed with `--place` (screenshots).
+    pub signs: Vec<(glam::IVec3, [String; 4])>,
     /// Opens the container at this block once loaded (screenshots).
     pub open_block: Option<glam::IVec3>,
     /// Debug cart placements on rails once the world loads.
@@ -161,6 +163,8 @@ voxelcraft [options]
                     table, anvil or smithing table once loaded (screenshots)
   --place x,y,z,b   set a block once loaded (repeatable; y may be ~ for the
                     terrain surface, e.g. 0,~,0,water; b may be a raw block id)
+  --sign x,y,z,text write a sign's front text once placed, lines split by |
+                    (repeatable; e.g. --sign 0,90,0,Hello|World)
   --health <0..20>  starting health in half hearts (0 opens the death screen)
   --air <0..15>     starting air in seconds
   --food <0..20>    starting hunger in half drumsticks (no saturation)
@@ -246,6 +250,7 @@ fn parse_args() -> Result<Args, String> {
         weather: None,
         dimension: None,
         place: Vec::new(),
+        signs: Vec::new(),
         open_block: None,
         carts: Vec::new(),
         spawn: Vec::new(),
@@ -413,6 +418,21 @@ fn parse_args() -> Result<Args, String> {
                 .or_else(|| world::block::Block::from_name(name))
                 .ok_or_else(bad)?;
                 args.place.push((glam::IVec3::new(n[0], n[1], n[2]), block));
+            }
+            "--sign" => {
+                let v = value("--sign")?;
+                let parts: Vec<&str> = v.splitn(4, ',').collect();
+                let bad = || format!("--sign needs x,y,z,line1|line2|line3|line4 (got {v})");
+                if parts.len() != 4 {
+                    return Err(bad());
+                }
+                let n: Vec<i32> =
+                    parts[..3].iter().map(|s| s.trim().parse().map_err(|_| bad())).collect::<Result<_, _>>()?;
+                let mut lines: [String; 4] = Default::default();
+                for (line, text) in lines.iter_mut().zip(parts[3].split('|')) {
+                    *line = text.to_string();
+                }
+                args.signs.push((glam::IVec3::new(n[0], n[1], n[2]), lines));
             }
             "--ride" => args.ride = Some(value("--ride")?.replace('_', " ")),
             "--cart" => {

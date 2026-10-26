@@ -175,6 +175,9 @@ impl World {
             || self.chest(p).is_some()
             || self.furnace(p).is_some()
             || self.brewing_stand(p).is_some()
+            // Signs, shelves and chiseled bookshelves have block entities
+            // (`PistonBaseBlock.isPushable`: `!hasBlockEntity()`).
+            || super::wood::has_entity(b)
             || matches!(
                 r::component(b),
                 Some(

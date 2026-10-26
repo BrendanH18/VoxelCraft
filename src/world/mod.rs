@@ -85,6 +85,7 @@ pub mod village_blocks;
 mod village_life;
 pub mod wall_states;
 pub mod waterlog;
+pub mod wood;
 
 use std::sync::Arc;
 
@@ -243,6 +244,8 @@ pub struct World {
     chests: FxHashMap<IVec3, chest::Chest>,
     /// Brewing stand contents by position (see [`brewing`]).
     brewing_stands: FxHashMap<IVec3, brewing::BrewingStand>,
+    /// Sign text, shelf items and chiseled bookshelf books (see [`wood::entities`]).
+    wood: wood::entities::WoodEntities,
     /// Spawner cages and the mob each makes (see `spawner`).
     spawners: FxHashMap<IVec3, crate::entity::MobKind>,
     village_pois: FxHashMap<IVec3, Block>,
@@ -497,6 +500,7 @@ impl World {
             furnaces: FxHashMap::default(),
             chests: FxHashMap::default(),
             brewing_stands: FxHashMap::default(),
+            wood: Default::default(),
             spawners: FxHashMap::default(),
             village_pois: FxHashMap::default(),
             navigation_updates: navigation::Updates::default(),
@@ -836,6 +840,7 @@ impl World {
         self.track_furnace(p, old, block);
         self.track_chest(p, old, block);
         self.track_brewing_stand(p, old, block);
+        self.track_wood(p, old, block);
         self.track_spawner(p, old, block);
         self.track_village_poi(p, block);
         if composter::level(block) == Some(7) {

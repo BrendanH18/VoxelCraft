@@ -8,6 +8,7 @@ pub mod interact;
 pub mod mining;
 pub mod placement;
 pub mod ranged;
+mod wood;
 use glam::{DVec3, IVec3};
 
 use crate::{

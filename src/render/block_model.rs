@@ -205,10 +205,12 @@ impl BlockModelPass {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         models: &[BlockModel],
+        signs: &[super::signs::SignModel],
         hand: Option<(&super::hand::Hand, Vec3, f32, f32, glam::Mat4)>,
         camera: DVec3,
     ) {
         let mut verts = vertices(models, camera);
+        super::signs::vertices(signs, camera, &mut verts);
         self.count = verts.len() as u32;
         if let Some((hand, forward, fov_y, aspect, view_effect)) = hand {
             verts.extend(super::hand::vertices(hand, forward, fov_y, aspect, view_effect, &mut self.sprite_masks));

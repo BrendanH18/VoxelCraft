@@ -79,6 +79,12 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
   Before checks or benchmarks in a tree whose files didn't change since
   another tree built, run `cargo clean --release -p voxelcraft` (it keeps the
   dependencies), and keep copies of binaries you compare.
+- The build script writes absolute asset paths into its output and reruns
+  only when the assets change (found 2026-10-26). In a shared target, a
+  build of another checkout, or of a temporary copy that has since been
+  deleted, leaves that output pointing there ("couldn't read
+  `/tmp/…/assets/…`"). Run `touch build.rs` before checks so it
+  regenerates for your tree.
 
 ## Before handing work back
 

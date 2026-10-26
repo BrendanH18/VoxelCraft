@@ -119,6 +119,7 @@ impl World {
     /// rested on it, all the way up.
     pub(super) fn settle(&mut self, mut p: IVec3) {
         self.update_sponges(p);
+        self.drop_unsupported_signs(p);
         self.drop_unhung_ladders(p);
         self.drop_unhung_lantern(p);
         self.drop_unsupported_copper(p);

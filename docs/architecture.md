@@ -357,11 +357,25 @@ Allocations so far:
 | 7936–7967 | Scaffolding: `7936 + distance + 8*bottom + 16*waterlogged`, distance 0–7; default 7943 | [scaffolding and powder snow](verification/2026-10-21-scaffolding-powder-snow.md) |
 | 7968 | Powder snow; 7969–7999 remain unused in this task's reservation | [scaffolding and powder snow](verification/2026-10-21-scaffolding-powder-snow.md) |
 | 8192–8476 | Waterlogged partners of 285 existing states (fences, bars, panes, walls, chains, trapdoors, rails, ladders, chests, leaves, amethyst, dripstone, dripleaves, roots, propagules, dead coral) and dry partners of sea pickles and live coral, in `waterlog::RUNS` order; append runs only at the end | [waterlogging](verification/2026-10-20-waterlogging.md) |
+| 16384–16403 | Wood track: X then Z axis of oak, spruce, birch, jungle, acacia, dark oak, mangrove, cherry and pale oak logs and the bamboo block (`wood::LOGS`); the existing log ids mean Y | [v0.12 wood](verification/2026-10-25-v0.12-wood.md) |
+| 16416–16496 | Wood track: wood, stripped log and stripped wood per overworld wood, Y/X/Z: `16416 + 9*wood + 3*kind + axis` | [v0.12 wood](verification/2026-10-25-v0.12-wood.md) |
+| 16497–16499 | Wood track: block of stripped bamboo, Y/X/Z | [v0.12 wood](verification/2026-10-25-v0.12-wood.md) |
+| 16512–17023 | Wood track: trapdoors, buttons and plates of spruce, birch, jungle, acacia, dark oak, mangrove, cherry and polished blackstone, 64 per family (`wood::switches`; polished blackstone leaves its trapdoor slots unregistered) | [v0.12 wood](verification/2026-10-25-v0.12-wood.md) |
+| 17024–18559 | Wood track: standing, wall, hanging and wall hanging signs, 128 per wood (112 used; `wood::signs`) | [v0.12 wood](verification/2026-10-25-v0.12-wood.md) |
+| 18560–19327 | Wood track: shelves, 64 per wood (`wood::shelves`) | [v0.12 wood](verification/2026-10-25-v0.12-wood.md) |
+| 19328–19583 | Wood track: chiseled bookshelf, `19328 + 64*facing + slots`; 19584–20479 remain unused in the track's reservation | [v0.12 wood](verification/2026-10-25-v0.12-wood.md) |
 | 20480–20511 | v0.12 stone and minerals full blocks (29 in `stone_blocks` order), then the quartz pillar's Y, X and Z axes; texture layers 2000–2035 (`stone_blocks::t`, offsets from `t::TEX`) | [stone and minerals](verification/2026-10-25-v0.12-stone.md) |
 | 20512–21471 | Stairs for 12 v0.12 families, 80 states each (`slab_stair_states` local order, local 0 is the item); `slab_stair_states` families 39–50 | [stone and minerals](verification/2026-10-25-v0.12-stone.md) |
 | 21472–21541 | Slabs for those 12 families plus cut and cut red sandstone, 5 states each: bottom, bottom wet, top, top wet, double; families 39–52 | [stone and minerals](verification/2026-10-25-v0.12-stone.md) |
 | 21552–21595 | 11 v0.12 walls, 4 states each: UP, UP wet, no UP, no UP wet (`wall_states` families 20–30); 21542–21551 and 21596–22527 stay unused; items 1100–1109 unused | [stone and minerals](verification/2026-10-25-v0.12-stone.md) |
 | 22528–23372 (23373–24575 reserved, unused) | v0.12 copper (BLD-01c), `world::copper`: per family, `stride` ids per oxidation stage (unaffected, exposed, weathered, oxidized) from its origin: block 22528 (stride 1; 22528 unused, the unaffected block stays 231), cut 22532, chiseled 22536, grate 22540 (2), bulb 22548 (4), stairs 22564 (80; `slab_stair_states` families 53–56), slab 22884 (5), door 22904 (24), trapdoor 23000 (32), bars 23128 (2), chain 23136 (6), lantern 23160 (4), chest 23176 (24; only the 8 single states registered), lightning rod 23272 (24; only the 12 unpowered states registered), torch 23368–23372 (standing, then wall facing south, north, east, west). No item IDs (all are block items). Texture layers 2128–2200: 18 per stage from 2128, then the torch | [copper](verification/2026-10-25-v0.12-copper.md) |
+
+Wood track textures use layers **1776–1984** as offsets from
+`wood::tex::BASE` (stripped log sides and ends, quarter-turned log sides,
+seven trapdoors, sign and hanging sign item sprites, shelf bodies and
+fronts, and the chiseled bookshelf's top, side and 64 fronts); 1985–1999
+stay unused. The track uses no item ids (1080–1099 stay unused): signs, hanging signs, shelves and
+the chiseled bookshelf are block items (`Item::from_block`).
 
 PLY-02c items: **1070 scaffolding**, **1071 powder snow bucket**. Scaffolding
 uses its reserved item ID rather than `BLOCK_ITEM_BASE + state`. Powder snow

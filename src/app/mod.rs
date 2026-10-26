@@ -36,6 +36,7 @@ mod save;
 mod screen;
 mod search;
 mod settings;
+mod sign_edit;
 mod smithing;
 mod split;
 mod startup;
@@ -218,6 +219,8 @@ struct Game {
     screenshot_state: u32,
     open_trading: bool,
     place: Vec<(glam::IVec3, Block)>,
+    /// `--sign` front texts, written after `--place`.
+    signs: Vec<(glam::IVec3, [String; 4])>,
     carts: Vec<(crate::entity::minecart::CartKind, glam::IVec3)>,
     /// `--open-block`: a container to open once placements are done.
     open_block: Option<IVec3>,
@@ -1356,6 +1359,7 @@ impl Game {
             Used::OpenMerchant(id) => self.open_merchant(id),
             Used::Screen { cell, block } => self.open_block_screen(cell, block),
             Used::Bed { cell } => self.use_bed(cell),
+            Used::EditSign { cell, front } => self.open_sign_editor(cell, front),
             _ => {}
         }
     }
@@ -1410,6 +1414,11 @@ impl Game {
             }
         }
         self.world.tick_redstone();
+        for (pos, lines) in std::mem::take(&mut self.signs) {
+            if let Err(e) = self.world.set_sign_text(pos, true, lines) {
+                log::warn!("--sign {pos}: {e}");
+            }
+        }
         for (kind, pos) in std::mem::take(&mut self.carts) {
             if self.mobs.entities.place_cart(&self.world, kind, pos).is_none() {
                 log::warn!("--cart {pos}: no rail");
@@ -1820,6 +1829,7 @@ impl Game {
             .collect();
         let verts = self.mobs.entities.mesh(camera, forward, fog_end, scene.time, alpha);
         push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
+        crate::render::signs::text(&self.world, camera, verts);
         if !self.camera.first_person() {
             crate::entity::model::build_player(
                 &self.session.player,
@@ -1877,7 +1887,12 @@ impl Game {
                 (p, min, max)
             }),
             cracks: self.cracks_seen_from(eye),
-            block_models: self.block_models(alpha),
+            block_models: {
+                let mut models = self.block_models(alpha);
+                crate::render::signs::shelf_items(&self.world, camera, &mut models);
+                models
+            },
+            signs: crate::render::signs::models(&self.world, camera),
             hand: (self.camera.first_person()
                 && self.show_hud
                 && !self.session.vitals.is_dead()

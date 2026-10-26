@@ -439,6 +439,10 @@ pub fn stripped(b: Block) -> Option<Block> {
 /// The oak redstone state an id mirrors, and its wood (0 crimson, 1 warped).
 pub const fn switch_oak(id: u16) -> Option<(Block, u16)> {
     let id = super::waterlog::canonical(id);
+    // The v0.12 wood families (switch woods 4..=11, `wood::switches`).
+    if id >= super::wood::switches::FIRST && id < super::wood::switches::END {
+        return super::wood::switches::twin(id);
+    }
     // Floor and ceiling buttons (`mount_states`): kinds 2.. are the wood twins.
     if id >= 7720 && id < 7768 {
         return Some((Block(7708 + (id - 7696) % 12), (id - 7696) / 12 - 2));
@@ -464,6 +468,9 @@ pub const fn switch_oak(id: u16) -> Option<(Block, u16)> {
 /// The `wood` (0 crimson, 1 warped) twin of an oak trapdoor, button or
 /// plate state; anything else is returned unchanged.
 pub const fn switch_reskin(oak: Block, wood: u16) -> Block {
+    if wood >= super::wood::switches::WOOD_OFFSET {
+        return super::wood::switches::reskin(oak, wood);
+    }
     let base = if wood < 2 { SWITCH_ORIGIN + wood * SWITCH_STRIDE } else { 2269 + (wood - 2) * SWITCH_STRIDE };
     match oak.0 {
         1437..=1452 => Block(base + oak.0 - 1437),
@@ -488,6 +495,9 @@ pub const fn keep_wood(from: Block, to: Block) -> Block {
 /// Names and textures of the crimson and warped trapdoors, buttons and plates.
 pub const fn switch_registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
     let Some((_, wood)) = switch_oak(id) else { return None };
+    if wood >= super::wood::switches::WOOD_OFFSET {
+        return super::wood::switches::registry(id);
+    }
     let origin = if wood < 2 { SWITCH_ORIGIN } else { 2269 };
     let local = (id - origin) % SWITCH_STRIDE;
     let planks = [

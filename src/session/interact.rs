@@ -121,6 +121,22 @@ pub enum Used {
         cell: IVec3,
     },
     Placed(super::placement::Outcome),
+    /// A sign's text editor should open for its front or back (the adapter
+    /// answers with `PlayerSession::edit_sign`).
+    EditSign {
+        cell: IVec3,
+        front: bool,
+    },
+    /// A dye, ink sac or glow ink sac recoloured or lit a sign's text.
+    SignInked {
+        cell: IVec3,
+        item: Item,
+    },
+    /// A shelf or chiseled bookshelf traded items with the player.
+    Shelf {
+        cell: IVec3,
+        used: crate::world::wood::ShelfUse,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -392,6 +408,9 @@ impl PlayerSession {
         if !ctx.sneaking && survival_items::use_composter(world, entities, pos, &mut self.inventory, slot, creative) {
             return Ok(Some(Used::Composter { cell: pos }));
         }
+        if let Some(used) = self.use_wood_block(slot, world, ctx.sneaking) {
+            return Ok(Some(used));
+        }
         // Containers open on right-click; sneaking builds against them.
         if !ctx.sneaking {
             match world.get_block(pos) {
@@ -488,9 +507,11 @@ impl PlayerSession {
             wear(self);
             return Some(Used::Path { cell: pos });
         }
-        // Axes strip crimson and warped stems and hyphae, keeping their axis.
+        // Axes strip stems, hyphae, logs, wood and bamboo blocks, keeping
+        // their axis (Java's `block_transformer/axe.json`).
         if tool == Some(ToolKind::Axe)
-            && let Some(stripped) = crate::world::nether_biome_blocks::stripped(block)
+            && let Some(stripped) =
+                crate::world::nether_biome_blocks::stripped(block).or_else(|| crate::world::wood::stripped(block))
             && world.set_block(pos, stripped)
         {
             wear(self);

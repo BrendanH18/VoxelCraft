@@ -89,7 +89,8 @@ use the [per-user data folder](releases.md#player-data-and-old-saves); add
 `--data-dir target/screenshots` to isolate a scripted run. In `--place` and
 `--spawn`, `~` for the y coordinate means the terrain surface; `--place` also
 takes a raw block id instead of a name, for oriented states such as stairs
-facing east.
+facing east. `--sign x,y,z,line|line|line|line` writes the front text of a
+sign placed there (y must be a number).
 `--open-menu title --screenshot <file>` captures the title screen instead;
 `select`, `create`, `multiplayer` and `direct` capture Select World, Create New
 World, Play Multiplayer and Direct Connection, and `edit`, `recreate` and

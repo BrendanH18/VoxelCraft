@@ -24,7 +24,7 @@ use crate::world::terrain::{Dimension, Generator, SEA_LEVEL};
 use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 13] = [
+pub(super) const DIMENSION_KEYS: [&str; 14] = [
     "furnaces",
     "chests",
     "items",
@@ -38,6 +38,7 @@ pub(super) const DIMENSION_KEYS: [&str; 13] = [
     "minecarts",
     "nether_mobs",
     "falling",
+    "wood",
 ];
 /// How far around the arrival point to look for an existing portal.
 const SEARCH_RADIUS: i32 = 16;
@@ -118,6 +119,7 @@ impl Game {
         props.insert("furnaces".to_string(), self.world.furnaces_to_string());
         props.insert("brewing".to_string(), self.world.brewing_stands_to_string());
         props.insert("chests".to_string(), self.world.chests_to_string());
+        props.insert("wood".to_string(), self.world.wood_to_string());
         props.insert("spawners".to_string(), self.world.spawners_to_string());
         self.mobs.entities.save_props(&mut props);
         if let Some(fight) = &self.mobs.entities.fight {
@@ -149,6 +151,9 @@ impl Game {
         }
         if let Some(c) = props.get("chests") {
             self.world.load_chests(c);
+        }
+        if let Some(w) = props.get("wood") {
+            self.world.load_wood(w);
         }
         if let Some(s) = props.get("spawners") {
             self.world.load_spawners(s);

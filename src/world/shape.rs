@@ -29,7 +29,7 @@ impl Box16 {
     /// The box turned a quarter `turns` times clockwise (seen from above)
     /// about the cell's vertical centre line. Boxes below are drawn for a
     /// block facing south (+Z); this turns them to face any way.
-    fn turned(self, facing: Facing) -> Box16 {
+    pub(crate) fn turned(self, facing: Facing) -> Box16 {
         let turns = match facing {
             Facing::South => 0,
             Facing::West => 1,
@@ -64,7 +64,7 @@ pub struct Boxes {
 impl Boxes {
     pub const CAPACITY: usize = 10;
 
-    const fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Boxes { boxes: [Box16::FULL; Self::CAPACITY], len: 0 }
     }
 
@@ -482,6 +482,7 @@ pub fn shape_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bloc
         }
         Some(Shaped::Rail) => out.push(RAIL),
         Some(Shaped::Custom) if super::scaffolding::is_scaffolding(block) => return super::scaffolding::outline(block),
+        Some(Shaped::Custom) if super::wood::owns(block.0) => return super::wood::mesh_boxes(block).unwrap_or(out),
         Some(Shaped::Custom) if super::mount_states::is_lantern(block.0) => lantern_boxes(block, &mut out),
         Some(Shaped::Custom) if super::copper::owns(block.0) => super::copper::boxes(block, &mut out),
         Some(Shaped::Custom) => super::overworld_blocks::boxes(block).unwrap_or(&[]).iter().for_each(|&b| out.push(b)),
@@ -536,6 +537,9 @@ pub fn outline_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bl
     let block = block.canonical();
     let neighbour = |f: Facing| neighbour(f).canonical();
     let below = below.canonical();
+    if let Some(boxes) = super::wood::outline(block) {
+        return boxes;
+    }
     if matches!(block.shaped(), Some(Shaped::Fence)) {
         let mut out = Boxes::from_box(FENCE_POST);
         for f in Facing::ALL {
@@ -776,6 +780,7 @@ pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: 
         Some(Shaped::EndPortal) => {}
         Some(Shaped::Custom) if super::mount_states::is_lantern(block.0) => lantern_boxes(block, &mut out),
         Some(Shaped::Custom) if super::copper::owns(block.0) => super::copper::collision(block, &mut out),
+        Some(Shaped::Custom) if super::wood::owns(block.0) => return super::wood::collision(block).unwrap_or(out),
         Some(Shaped::Custom) => {
             super::overworld_blocks::collision(block).unwrap_or(&[]).iter().for_each(|&b| out.push(b))
         }
