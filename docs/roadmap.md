@@ -1201,17 +1201,20 @@ Work items (all Missing unless noted):
    chances, repair materials, hardness, tools, drops, Silk Touch and
    Fortune for each new block.
    *Implemented, unverified (2026-10-27):* each area now has an extractor
-   that reads the pinned 26.3 server jar, a fixture and a test that fails
-   on any difference for every registered block or item.
+   that reads the pinned 26.3 server jar, a fixture and a test over every
+   registered block or item. Fixed values must match exactly; random drops
+   are sampled with a seeded RNG and must match Java's chance and mean
+   within five standard errors. Drops are checked only with tools that
+   can harvest the state, since the harvest rule has its own test.
    - **Recipes:** 1,335 crafting, cooking, stonecutting and smithing recipes
      match in both directions; 178 fixed and 2 invented ones removed
      (melon to slices, a second packed ice). 406 wait on unregistered items;
      22 are allow-listed (dyed leather, grid repair, banner copying).
      ([record](verification/2026-10-27-v0.12-data-recipes.md))
    - **Drops:** all 1,046 registered blocks drop what their loot table gives
-     for each state and tool, including Silk Touch, Fortune and shears; 46
-     fixed, such as sticks from leaves, beds dropping from the head and the
-     sea lantern's crystals. ([record](verification/2026-10-27-v0.12-data-drops.md))
+     for each state and harvesting tool, including Silk Touch, Fortune and
+     shears; 46 fixed, such as sticks from leaves, beds dropping from the
+     head and the sea lantern's crystals. ([record](verification/2026-10-27-v0.12-data-drops.md))
    - **Mining, fuel, compost, repair:** hardness, harvest rule and dig speed
      per tool for every state (29 blocks fixed; 26.3 lets the ender chest,
      bell, brewing stand, iron door, weighted plates and pointed dripstone
