@@ -94,6 +94,9 @@ Run this exact chain so a failure stops at the first broken step:
 cargo fmt && cargo clippy --release --all-targets -- -D warnings && cargo test --release
 ```
 
+Documentation-only changes skip this chain (owner, 2026-10-26); check their
+links and rendering instead.
+
 Run relevant headless, benchmark, visual and persistence checks as described in
 [the agent guide](docs/agent-guide.md) and [development guide](docs/development.md).
 Report the files changed, what was actually checked and what remains unverified.
