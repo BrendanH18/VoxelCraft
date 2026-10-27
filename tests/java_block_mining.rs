@@ -293,5 +293,21 @@ fn unmatched_block_names_are_known_voxelcraft_states() {
         .map(|i| Block(i).name())
         .filter(|n| !n.is_empty())
         .collect();
-    println!("{} unmatched names: {unmatched:?}", unmatched.len());
+    // The 11 retired invented blocks (owner decision, 2026-10-25) and the
+    // placeholder name of unassigned states.
+    let known = BTreeSet::from([
+        "calcite slab",
+        "calcite stairs",
+        "calcite wall",
+        "deepslate slab",
+        "deepslate stairs",
+        "deepslate wall",
+        "polished andesite wall",
+        "polished diorite wall",
+        "polished granite wall",
+        "smooth stone stairs",
+        "smooth stone wall",
+        "unknown",
+    ]);
+    assert_eq!(unmatched, known, "registered states without a Java name lose mining coverage");
 }
