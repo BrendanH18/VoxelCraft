@@ -98,6 +98,22 @@ impl System {
         self.burst(burst, setting);
     }
 
+    /// `AbstractCandleBlock.animateTick`: each flame smokes three times in
+    /// ten and always shows a small (half-size) flame.
+    fn candle_flames(&mut self, block: Block, base: DVec3, setting: Setting) {
+        for offset in crate::world::colour_blocks::candle::flame_offsets(block) {
+            let pos = base + DVec3::from_array(*offset) / 16.0;
+            if self.rng.next_f32() < 0.3 {
+                self.burst(Burst::new(Kind::Smoke, pos, 1), setting);
+            }
+            if self.accept(setting, false, false) {
+                let mut flame = self.make(Kind::Flame, pos, DVec3::ZERO);
+                flame.size *= 0.5;
+                self.pool.spawn(flame);
+            }
+        }
+    }
+
     pub fn animate_block(&mut self, world: &World, cell: IVec3, setting: Setting) {
         let Some(block) = world.get_block(cell) else { return };
         let base = cell.as_dvec3();
@@ -106,6 +122,8 @@ impl System {
             let flame = if block == SOUL_TORCH { Kind::SoulFlame } else { Kind::Flame };
             self.burst(Burst::new(Kind::Smoke, pos, 1), setting);
             self.burst(Burst::new(flame, pos, 1), setting);
+        } else if crate::world::colour_blocks::candle::is_lit(block) {
+            self.candle_flames(block, base, setting);
         } else if block.is_fire() {
             self.fire_smoke(world, cell, setting);
         } else if block.is_lava() {

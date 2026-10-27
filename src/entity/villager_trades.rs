@@ -273,5 +273,5 @@ pub(super) const TRADES: &[(Profession, u8, TradeDef)] = &[
     (Profession::Mason, 4, TradeDef::sell("yellow glazed terracotta", 1, 1, 12, 15, 0.05)),
     (Profession::Mason, 4, TradeDef::sell("brown glazed terracotta", 1, 1, 12, 15, 0.05)),
     (Profession::Mason, 5, TradeDef::sell("quartz pillar", 1, 1, 12, 30, 0.05)),
-    (Profession::Mason, 5, TradeDef::sell("quartz block", 1, 1, 12, 30, 0.05)),
+    (Profession::Mason, 5, TradeDef::sell("block of quartz", 1, 1, 12, 30, 0.05)),
 ];

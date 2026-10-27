@@ -280,6 +280,10 @@ pub enum Sprite {
     Crossbow {
         loaded: bool,
     },
+    /// A plump square cushion of this colour.
+    Cushion([u8; 3]),
+    /// The v0.12 decorations: item frame, glow item frame, painting, armor stand.
+    Decor(u8),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -638,6 +642,9 @@ const AUDIT_POTION: u16 = 1041;
 /// later copper armor and spears); 1047 is the enchanted golden apple and
 /// 1048..=1049 stay free.
 const COPPER_ITEM: u16 = 1050;
+/// The v0.12 decoration items (utilities track, reserved 1160..=1189).
+const DECOR_ITEM: u16 = 1160;
+const DECOR_ITEMS: u16 = 4;
 const COPPER_ITEMS: &[ItemInfo] = &[
     copper_tool("copper pickaxe", ToolKind::Pickaxe),
     copper_tool("copper shovel", ToolKind::Shovel),
@@ -651,6 +658,10 @@ const COPPER_ITEMS: &[ItemInfo] = &[
     copper_armor("copper boots", ArmorPiece::Boots),
 ];
 const _: () = assert!(COPPER_ITEM as usize + COPPER_ITEMS.len() <= 1070);
+/// v0.12 colour track items, reserved 1130..=1159: the 16 cushions, in
+/// `DyeColor` order, from 1130.
+pub const CUSHION_ITEM: u16 = 1130;
+const _: () = assert!(CUSHION_ITEM + 16 <= 1160);
 const AUDIT_SPLASH_POTION: u16 = 1044;
 /// Raw metals and gems. 360 is diamond boots (`FIRST_ARMOR` ends there),
 /// so these start at 361.
@@ -806,6 +817,11 @@ impl Item {
     /// Explicit honey item reservations, including the block placing item.
     pub const HONEY_BLOCK: Item = Item(1072);
     pub const HONEY_BOTTLE: Item = Item(1073);
+    /// v0.12 utilities (reserved 1160..=1189): the decoration items.
+    pub const ITEM_FRAME: Item = Item(DECOR_ITEM);
+    pub const GLOW_ITEM_FRAME: Item = Item(DECOR_ITEM + 1);
+    pub const PAINTING: Item = Item(DECOR_ITEM + 2);
+    pub const ARMOR_STAND: Item = Item(DECOR_ITEM + 3);
     /// 1041..=1046 are the audit potion slots; the enchanted apple follows.
     pub const ENCHANTED_GOLDEN_APPLE: Item = Item(1047);
     pub const COPPER_NUGGET: Item = Item(COPPER_ITEM + 5);
@@ -950,7 +966,39 @@ impl Item {
         }
     }
 
+    /// The colour of a cushion item.
+    pub fn cushion_color(self) -> Option<crate::color::DyeColor> {
+        self.0.checked_sub(CUSHION_ITEM).filter(|&i| i < 16).map(|i| crate::color::DyeColor::ALL[i as usize])
+    }
+
+    pub const fn cushion(c: crate::color::DyeColor) -> Item {
+        Item(CUSHION_ITEM + c as u16)
+    }
+
     pub fn info(self) -> ItemInfo {
+        if let Some(c) = self.cushion_color() {
+            const NAMES: [&str; 16] = [
+                "white cushion",
+                "orange cushion",
+                "magenta cushion",
+                "light blue cushion",
+                "yellow cushion",
+                "lime cushion",
+                "pink cushion",
+                "gray cushion",
+                "light gray cushion",
+                "cyan cushion",
+                "purple cushion",
+                "blue cushion",
+                "brown cushion",
+                "green cushion",
+                "red cushion",
+                "black cushion",
+            ];
+            // `Items.CUSHION`: stacks to 16.
+            let name = NAMES[c as usize];
+            return ItemInfo { name, kind: ItemKind::Material, max_stack: 16, sprite: Sprite::Cushion(c.rgb()) };
+        }
         match self {
             Self::HONEY_BOTTLE => {
                 return ItemInfo {
@@ -961,6 +1009,17 @@ impl Item {
                 };
             }
             Self::POWDER_SNOW_BUCKET => return single("powder snow bucket", Sprite::Bucket(Some([230, 242, 250]))),
+            Self::ITEM_FRAME => return item("item frame", Sprite::Decor(0)),
+            Self::GLOW_ITEM_FRAME => return item("glow item frame", Sprite::Decor(1)),
+            Self::PAINTING => return item("painting", Sprite::Decor(2)),
+            Self::ARMOR_STAND => {
+                return ItemInfo {
+                    name: "armor stand",
+                    kind: ItemKind::Material,
+                    max_stack: 16,
+                    sprite: Sprite::Decor(3),
+                };
+            }
             Self::TURTLE_HELMET => {
                 return ItemInfo {
                     name: "turtle helmet",
@@ -1022,7 +1081,13 @@ impl Item {
             return item(c.dye_name(), Sprite::Powder(c.rgb()));
         }
         if let Some(b) = self.block() {
-            return ItemInfo { name: b.name(), kind: ItemKind::Block(b), max_stack: 64, sprite: Sprite::Stick };
+            // Java registers signs and hanging signs with `stacksTo(16)`.
+            let max_stack = if crate::world::wood::signs::sign(b).is_some() {
+                16
+            } else {
+                crate::world::colour_blocks::max_stack(b).unwrap_or(64)
+            };
+            return ItemInfo { name: b.name(), kind: ItemKind::Block(b), max_stack, sprite: Sprite::Stick };
         }
         if let Some(info) = self.0.checked_sub(FIRST_ITEM).and_then(|i| ITEMS.get(i as usize)) {
             return *info;
@@ -1289,6 +1354,8 @@ impl Item {
             .chain([Self::TURTLE_HELMET])
             .chain((0..COPPER_ITEMS.len() as u16).map(|i| Item(COPPER_ITEM + i)))
             .chain([Self::ENCHANTED_GOLDEN_APPLE, Self::HONEY_BOTTLE, Self::POWDER_SNOW_BUCKET])
+            .chain((0..16).map(|i| Item(CUSHION_ITEM + i)))
+            .chain((0..DECOR_ITEMS).map(|i| Item(DECOR_ITEM + i)))
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1329,6 +1396,13 @@ fn sprite_index(item: Item) -> Option<u16> {
         1073 => Some(turtle_icon() + 2 + COPPER_ITEMS.len() as u16),
         1047 => Some(turtle_icon() + 1 + COPPER_ITEMS.len() as u16),
         1071 => Some(turtle_icon() + 3 + COPPER_ITEMS.len() as u16),
+        i if (CUSHION_ITEM..CUSHION_ITEM + 16).contains(&i) => {
+            Some(turtle_icon() + 4 + COPPER_ITEMS.len() as u16 + i - CUSHION_ITEM)
+        }
+        // The v0.12 decoration items follow the cushions.
+        i if (DECOR_ITEM..DECOR_ITEM + DECOR_ITEMS).contains(&i) => {
+            Some(turtle_icon() + 4 + COPPER_ITEMS.len() as u16 + 16 + i - DECOR_ITEM)
+        }
         i if (COPPER_ITEM..COPPER_ITEM + COPPER_ITEMS.len() as u16).contains(&i) => {
             Some(turtle_icon() + 1 + i - COPPER_ITEM)
         }
@@ -1409,7 +1483,7 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    turtle_icon() as u32 + 1 + COPPER_ITEMS.len() as u32 + 3
+    turtle_icon() as u32 + 1 + COPPER_ITEMS.len() as u32 + 3 + 16 + DECOR_ITEMS as u32
 }
 
 /// The turtle helmet's icon follows the animal items; copper equipment follows it,
@@ -1572,7 +1646,7 @@ mod tests {
 
     #[test]
     fn extended_block_items_do_not_collide_with_saved_item_ids() {
-        for block in [Block::NETHERITE_BLOCK, Block(16381), Block(16382), Block(16383)] {
+        for block in [Block::NETHERITE_BLOCK, Block(32765), Block(32766), Block(32767)] {
             let item = Item::from_block(block);
             assert_eq!(item.block(), Some(block));
             assert_eq!(Item::from_name(item.name()), Some(item));
@@ -1580,7 +1654,8 @@ mod tests {
         assert_eq!(Item::from_block(Block::NETHERITE_BLOCK).0, 222);
         assert_eq!(Item::from_block(Block(256)).0, BLOCK_ITEM_BASE + 256);
         assert_eq!(Item(BLOCK_ITEM_BASE + 255).block(), None);
-        assert_eq!(Item(BLOCK_ITEM_BASE + crate::world::block::STATE_CAPACITY as u16).block(), None);
+        assert_eq!(Item(BLOCK_ITEM_BASE - 1).block(), None);
+        assert_eq!(Item(u16::MAX).block(), Some(Block(crate::world::block::STATE_CAPACITY as u16 - 1)));
         assert_eq!(Item::STICK.0, FIRST_ITEM);
         assert_eq!(Item::STICK.block(), None);
     }

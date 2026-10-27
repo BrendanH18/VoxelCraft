@@ -261,7 +261,7 @@ impl Game {
                 a.vitals.effects.get(voxelcraft::simulation::effects::Effect::Blindness).map(|e| e.ticks),
                 self.settings.render_distance as f32 * 32.0,
             );
-            let models = self.block_models(scene.alpha);
+            let models = self.block_models(scene.alpha, camera);
             let highlight = a.target(&self.world).map(|(p, _)| {
                 let (min, max) = self.world.outline(p);
                 (p, min, max)
@@ -316,6 +316,7 @@ impl Game {
             }
             let verts = self.mobs.entities.mesh(camera, forward, fog.end, scene.time, scene.alpha);
             super::push_avatars(&self.world, &others, camera, fog.end, scene.time, verts);
+            crate::render::signs::text(&self.world, camera, verts);
             if !bot.camera.first_person() {
                 crate::entity::model::build_player(
                     &a.player,
@@ -359,7 +360,12 @@ impl Game {
                 time: scene.time,
                 highlight,
                 cracks,
-                block_models: models,
+                block_models: {
+                    let mut models = models;
+                    crate::render::signs::shelf_items(&self.world, camera, &mut models);
+                    models
+                },
+                signs: crate::render::signs::models(&self.world, camera),
                 hand: (bot.camera.first_person() && self.show_hud && !a.vitals.is_dead()).then(|| {
                     let eating = pad.map_or(a.eating(), |p| p.1);
                     Self::stamp_hand(

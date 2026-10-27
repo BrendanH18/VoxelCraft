@@ -1,6 +1,8 @@
 //! Stored Java 26.3 `WallBlock.UP` (BLD-04d). Existing dry/wet wall ids
 //! mean UP=true, Java's default. 8000–8039 add UP=false, dry then wet, in
 //! FAMILIES order. Horizontal NONE/LOW/TALL sides still derive from neighbours.
+//! v0.12's walls keep all four of their states (UP dry, UP wet, no UP dry,
+//! no UP wet) together in their own module's range ([`super::stone_blocks`]).
 use super::{
     World,
     block::{Block, Facing},
@@ -35,11 +37,20 @@ pub const END: u16 = FIRST + FAMILIES.len() as u16 * 2;
 
 /// Material twin of a new state, for property, item and registry lookups.
 pub const fn original(id: u16) -> Option<Block> {
-    if id >= FIRST && id < END { Some(FAMILIES[((id - FIRST) / 2) as usize]) } else { None }
+    if id >= FIRST && id < END {
+        return Some(FAMILIES[((id - FIRST) / 2) as usize]);
+    }
+    match super::stone_blocks::wall_local(id) {
+        Some((w, 2 | 3)) => Some(super::stone_blocks::wall(w)),
+        _ => None,
+    }
 }
 
 pub const fn water_pair(id: u16) -> Option<(u16, bool)> {
-    if id >= FIRST && id < END { Some((FIRST + ((id - FIRST) ^ 1), (id - FIRST) % 2 == 1)) } else { None }
+    if id >= FIRST && id < END {
+        return Some((FIRST + ((id - FIRST) ^ 1), (id - FIRST) % 2 == 1));
+    }
+    super::stone_blocks::wall_water_pair(id)
 }
 
 // One byte lookup keeps non-wall edits and geometry queries cheap. Low
@@ -57,8 +68,19 @@ static STATES: [u8; super::block::STATE_CAPACITY] = {
         states[FIRST as usize + i * 2 + 1] = (i as u8 + 1) | 128;
         i += 1;
     }
+    let mut w = 0;
+    while w < super::stone_blocks::WALL_COUNT {
+        let family = (FAMILIES.len() as u16 + w + 1) as u8;
+        let first = super::stone_blocks::wall(w).0 as usize;
+        states[first] = family;
+        states[first + 1] = family;
+        states[first + 2] = family | 128;
+        states[first + 3] = family | 128;
+        w += 1;
+    }
     states
 };
+const _: () = assert!(FAMILIES.len() + (super::stone_blocks::WALL_COUNT as usize) < 128);
 
 /// Stored UP, including old waterlogged partners.
 #[inline]
@@ -74,6 +96,10 @@ pub fn with_up(block: Block, up: bool) -> Block {
     }
     let i = (state & 127) as usize - 1;
     let wet = block.is_waterlogged();
+    if i >= FAMILIES.len() {
+        let first = super::stone_blocks::wall((i - FAMILIES.len()) as u16).0;
+        return Block(first + (!up as u16) * 2 + wet as u16);
+    }
     if up { FAMILIES[i].with_water(wet) } else { Block(FIRST + i as u16 * 2 + wet as u16) }
 }
 

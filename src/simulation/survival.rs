@@ -49,6 +49,7 @@ pub const CAUSE_DROWN: &str = "drowned";
 pub const CAUSE_LAVA: &str = "tried to swim in lava";
 pub const CAUSE_FIRE: &str = "burned to death";
 pub const CAUSE_STARVE: &str = "starved to death";
+pub const CAUSE_STALACTITE: &str = "was skewered by a falling stalactite";
 pub const CAUSE_FREEZE: &str = "froze to death";
 pub const CAUSE_MAGIC: &str = "was killed by magic";
 
@@ -110,10 +111,18 @@ pub struct Env {
     /// Touching soul fire, which burns twice as hard (Java's 2 damage).
     pub in_soul_fire: bool,
     pub on_magma: bool,
+    /// Fire damage of a lit campfire the body touches (`CampfireBlock.entityInside`).
+    pub campfire: f32,
+    /// Damage of a stalactite that landed on the body this tick.
+    pub stalactite: f32,
     /// Standing on a hay bale, which cushions a landing.
     pub on_hay: bool,
     /// HoneyBlock.fallOn uses the same 0.2f multiplier as hay.
     pub on_honey: bool,
+    /// Landing on a slime block. Java 26.3's `SlimeBlock.fallOn` multiplies
+    /// the damage by zero, and when sneaking suppresses the bounce it
+    /// returns without calling `causeFallDamage` at all.
+    pub on_slime: bool,
     pub in_powder_snow: bool,
     pub on_powder_snow: bool,
     pub freeze_immune: bool,
@@ -141,6 +150,8 @@ pub struct Hurts {
     pub burn: f32,
     pub starve: f32,
     pub freeze: f32,
+    /// A falling stalactite (`DamageTypes.FALLING_STALACTITE`).
+    pub stalactite: f32,
 }
 
 /// Minecraft's hunger: a food bar backed by a hidden saturation buffer that
@@ -516,7 +527,13 @@ impl Vitals {
             if let Some(peak) = self.fall_peak {
                 hurts.landed = peak - env.y;
                 let distance = peak - env.y - jump_levels;
-                hurts.fall = if env.on_hay || env.on_honey { hay_fall_damage(distance) } else { fall_damage(distance) };
+                hurts.fall = if env.on_slime {
+                    0.0
+                } else if env.on_hay || env.on_honey {
+                    hay_fall_damage(distance)
+                } else {
+                    fall_damage(distance)
+                };
             }
             self.fall_peak = Some(env.y);
         } else {
@@ -569,6 +586,13 @@ impl Vitals {
         }
         if env.on_magma && !env.frost_walker && !creative {
             hurts.fire = hurts.fire.max(1.0);
+        }
+        // Campfires hurt without setting anyone alight.
+        if env.campfire > 0.0 && !creative {
+            hurts.fire = hurts.fire.max(env.campfire);
+        }
+        if !creative {
+            hurts.stalactite = env.stalactite;
         }
         if fire_proof {
             (hurts.lava, hurts.fire, hurts.burn) = (0.0, 0.0, 0.0);
@@ -807,6 +831,15 @@ mod tests {
         let hay = Env { on_hay: true, ..ground(64.0) };
         assert_eq!(fall(&mut v, 84.0, 64.0, hay).fall, 3.0, "20 blocks onto hay vs 17 on stone");
         assert_eq!(fall(&mut v, 84.0, 64.0, ground(64.0)).fall, 17.0);
+    }
+
+    #[test]
+    fn slime_blocks_cancel_landing_damage() {
+        // `SlimeBlock.fallOn`: `causeFallDamage(distance, 0.0F, ...)`, or nothing when sneaking.
+        let mut v = Vitals::default();
+        let slime = Env { on_slime: true, ..ground(64.0) };
+        assert_eq!(fall(&mut v, 104.0, 64.0, slime).fall, 0.0);
+        assert_eq!(fall(&mut v, 104.0, 64.0, ground(64.0)).fall, 37.0);
     }
 
     #[test]

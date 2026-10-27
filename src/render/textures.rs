@@ -5,10 +5,20 @@
 use crate::world::block::tex;
 use crate::world::noise::hash_f;
 
+#[path = "colour_textures.rs"]
+mod colour;
+#[path = "copper_textures.rs"]
+mod copper;
 #[path = "nether_textures.rs"]
 mod nether;
 #[path = "overworld_textures.rs"]
 mod overworld;
+#[path = "stone_textures.rs"]
+mod stone;
+#[path = "utility_textures.rs"]
+mod utility;
+#[path = "wood_textures.rs"]
+mod wood;
 
 pub const SIZE: usize = 16;
 pub const MIP_LEVELS: u32 = 5; // 16, 8, 4, 2, 1
@@ -89,6 +99,12 @@ const GRASS: [u8; 3] = [95, 159, 53];
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     if let Some(pixel) = voxelcraft::assets::texture_pixel(layer, x, y) {
         return pixel;
+    }
+    if (crate::world::wood::tex::BASE..crate::world::wood::tex::END).contains(&layer) {
+        return wood::pixel(layer, x, y);
+    }
+    if (crate::world::colour_blocks::tex::TEX..crate::world::colour_blocks::tex::TEX_END).contains(&layer) {
+        return colour::pixel(layer, x, y);
     }
     if (tex::HONEY_SIDE..=tex::HONEY_BOTTOM).contains(&layer) {
         // Original amber shell: streaks and small trapped air pockets.
@@ -187,6 +203,15 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     }
     if (crate::world::overworld_blocks::TEX..crate::world::overworld_blocks::TEX_END).contains(&layer) {
         return overworld::pixel(layer, x, y);
+    }
+    if (crate::world::stone_blocks::t::TEX..crate::world::stone_blocks::t::END).contains(&layer) {
+        return stone::pixel(layer, x, y);
+    }
+    if (crate::world::copper::t::BASE..crate::world::copper::t::END).contains(&layer) {
+        return copper::pixel(layer, x, y);
+    }
+    if (crate::world::utilities::TEX..crate::world::utilities::TEX_END).contains(&layer) {
+        return utility::pixel(layer, x, y);
     }
     if (tex::COLORED_WOOL..tex::COLORED_WOOL + 16).contains(&layer) || layer == tex::WOOL {
         let color = if layer == tex::WOOL { 0 } else { (layer - tex::COLORED_WOOL) as usize };

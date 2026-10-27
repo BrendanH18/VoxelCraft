@@ -173,8 +173,16 @@ impl World {
                     | Block::END_GATEWAY
             )
             || self.chest(p).is_some()
+            // Banners are block entities, which pistons don't move.
+            || super::colour_blocks::banner::decode(b.0).is_some()
             || self.furnace(p).is_some()
             || self.brewing_stand(p).is_some()
+            // Signs, shelves and chiseled bookshelves have block entities
+            // (`PistonBaseBlock.isPushable`: `!hasBlockEntity()`).
+            || super::wood::has_entity(b)
+            // So do ender chests and campfires.
+            || super::utilities::ender_chest_of(b).is_some()
+            || super::utilities::campfire_of(b).is_some()
             || matches!(
                 r::component(b),
                 Some(
@@ -191,7 +199,13 @@ impl World {
             || b.is_door()
             // `PushReaction.POPPED`.
             || super::mount_states::is_lantern(b.0)
+            || super::copper::pops_when_pushed(b)
+            // `PushReaction.DESTROY` for flower pots and decorated pots.
+            || b == super::utilities::FLOWER_POT
+            || super::utilities::potted_plant(b).is_some()
+            || super::utilities::decorated_pot_of(b).is_some()
             || super::scaffolding::is_scaffolding(b)
+            || super::colour_blocks::pops_on_push(b)
             || b.is_fire()
             || matches!(
                 r::component(b),
@@ -445,7 +459,11 @@ impl World {
 
 impl World {
     fn container_count(&self, p: IVec3) -> usize {
-        if self.get_block(p).is_none() {
+        // An ender chest's table entry is a player's inventory lent to an
+        // open screen; hoppers and droppers can't reach it.
+        if self.lent_chest() == Some(p)
+            || self.get_block(p).is_none_or(|b| super::utilities::ender_chest_of(b).is_some())
+        {
             return 0;
         }
         if self.get_block(p).and_then(super::composter::level).is_some() {
@@ -1002,6 +1020,21 @@ mod tests {
         // `PushReaction.POPPED`: the head takes the lantern's cell.
         assert_ne!(w.get_block(P + IVec3::X), Some(LANTERN));
         assert_ne!(w.get_block(P + IVec3::X * 2), Some(LANTERN));
+        // So do copper lanterns and copper wall torches.
+        use crate::world::copper::{Family, Stage, block};
+        for popped in [block(Family::Lantern, Stage::Weathered, 0), block(Family::Torch, Stage::Unaffected, 1)] {
+            assert!(crate::world::copper::pops_when_pushed(popped));
+            let mut w = world();
+            for x in 1..4 {
+                put(&mut w, P + IVec3::new(x, -1, 0), Block::STONE);
+            }
+            put(&mut w, P, r::piston(2, false, false));
+            w.set_block(P + IVec3::X, popped);
+            put(&mut w, P - IVec3::X, r::REDSTONE_BLOCK);
+            ticks(&mut w, 3);
+            assert_ne!(w.get_block(P + IVec3::X), Some(popped));
+            assert_ne!(w.get_block(P + IVec3::X * 2), Some(popped));
+        }
     }
     #[test]
     fn sticky_pulls_one_while_normal_piston_leaves_it_and_front_power_is_ignored() {

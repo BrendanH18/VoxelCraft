@@ -42,7 +42,7 @@ impl ParticlePass {
         globals: &wgpu::BindGroupLayout,
         blocks: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
-        paged_blocks: bool,
+        paged_blocks: Option<u32>,
     ) -> Self {
         let sprite_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("particle sprites layout"),

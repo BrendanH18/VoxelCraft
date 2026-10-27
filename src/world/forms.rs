@@ -390,12 +390,15 @@ pub const fn gate_index(block: Block) -> Option<u16> {
     }
 }
 
+/// Creative palette ids, without the retired forms
+/// ([`super::stone_blocks::RETIRED`]).
 pub fn palette_ids() -> impl Iterator<Item = u16> {
     (0..STONE_MATERIALS)
         .flat_map(|i| {
             let b = STONE_ORIGIN + i * STONE_STRIDE;
             [b, b + 4, b + 5]
         })
+        .filter(|&id| !super::stone_blocks::RETIRED.contains(&Block(id)))
         .chain(
             (15..19).flat_map(|i| {
                 [stone_id(i, 0).0, stone_id(i, 4).0].into_iter().chain((i < 17).then(|| stone_id(i, 5).0))

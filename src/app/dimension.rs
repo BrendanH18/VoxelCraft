@@ -24,7 +24,7 @@ use crate::world::terrain::{Dimension, Generator, SEA_LEVEL};
 use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 13] = [
+pub(super) const DIMENSION_KEYS: [&str; 16] = [
     "furnaces",
     "chests",
     "items",
@@ -36,8 +36,11 @@ pub(super) const DIMENSION_KEYS: [&str; 13] = [
     "redstone",
     "automation",
     "minecarts",
+    "decor",
     "nether_mobs",
     "falling",
+    "wood",
+    "utilities",
 ];
 /// How far around the arrival point to look for an existing portal.
 const SEARCH_RADIUS: i32 = 16;
@@ -51,6 +54,8 @@ pub(super) enum Arrival {
     Portal(IVec3),
     /// Back from the dead: the bed or world spawn.
     Respawn,
+    /// Back from the dead to the Nether respawn anchor at this cell.
+    Anchor(IVec3),
     EndSpawn,
     /// Through an End gateway at `from` to the one at `exit`, which is
     /// built (with an island under it if `island`) and linked back if it's
@@ -118,7 +123,9 @@ impl Game {
         props.insert("furnaces".to_string(), self.world.furnaces_to_string());
         props.insert("brewing".to_string(), self.world.brewing_stands_to_string());
         props.insert("chests".to_string(), self.world.chests_to_string());
+        props.insert("wood".to_string(), self.world.wood_to_string());
         props.insert("spawners".to_string(), self.world.spawners_to_string());
+        props.insert("utilities".to_string(), self.world.utilities_to_string());
         self.mobs.entities.save_props(&mut props);
         if let Some(fight) = &self.mobs.entities.fight {
             props.insert("dragon".to_string(), fight.serialize());
@@ -150,8 +157,14 @@ impl Game {
         if let Some(c) = props.get("chests") {
             self.world.load_chests(c);
         }
+        if let Some(w) = props.get("wood") {
+            self.world.load_wood(w);
+        }
         if let Some(s) = props.get("spawners") {
             self.world.load_spawners(s);
+        }
+        if let Some(u) = props.get("utilities") {
+            self.world.load_utilities(u);
         }
         // Entities in chunks that haven't streamed in yet move to per-chunk
         // storage on the first tick; ridden vehicles stay with their riders.
@@ -187,6 +200,12 @@ impl Game {
     /// Saves this dimension and swaps in `to`, with the player waiting at
     /// `arrival` until the ground there has loaded.
     pub(super) fn switch_dimension(&mut self, to: Dimension, arrival: Arrival) {
+        // An open ender chest hands its contents back before the world goes.
+        if let super::Container::Chest(pos) = self.body.container
+            && self.inventory_open
+        {
+            self.close_ender_chest(pos);
+        }
         // Scripted runs (screenshots, benchmarks) never write saves.
         if self.settings_path.is_some() {
             self.save();
@@ -244,10 +263,12 @@ impl Game {
             // once its chunk is in), else the set spawn point or the
             // `spawnRadius` spot around the world spawn.
             Arrival::Respawn => self.session.spawn_bed.unwrap_or_else(|| self.respawn_point().0.floor().as_ivec3()),
+            Arrival::Anchor(anchor) => anchor,
         };
         let r = match arrival {
             Arrival::Portal(_) => SEARCH_RADIUS,
             Arrival::Respawn => 0,
+            Arrival::Anchor(_) => 1,
             Arrival::EndSpawn => 2,
             Arrival::Gateway { .. } => 6,
         };
@@ -303,6 +324,20 @@ impl Game {
                 self.session.player.pitch = 0.0;
                 at
             }
+            Arrival::Anchor(anchor) => match self.world.use_anchor_respawn(anchor) {
+                Some((at, yaw)) => {
+                    self.session.player.yaw = yaw;
+                    self.session.player.pitch = 0.0;
+                    at
+                }
+                // Gone, out of charge or boxed in: the world spawn instead.
+                None => {
+                    self.session.spawn_anchor = None;
+                    self.show_popup("You have no home bed or charged respawn anchor, or it was obstructed");
+                    self.switch_dimension(Dimension::Overworld, Arrival::Respawn);
+                    return true;
+                }
+            },
             Arrival::Gateway { exit, from, island, link } => {
                 if island && self.world.get_block(exit - IVec3::Y * 10) == Some(Block::AIR) {
                     self.world.build_end_island(exit - IVec3::Y * 10);
@@ -431,6 +466,13 @@ impl Game {
     pub(super) fn bed_explodes(&mut self, pos: IVec3) -> bool {
         if self.dimension.has_sky() {
             return false;
+        }
+        // `straw_bed_rule` here is `destroy_on_use`: it falls apart instead.
+        if super::bed::is_straw(self.world.get_block(pos)) {
+            if let Some((_, head, _)) = self.straw_bed_halves(pos) {
+                self.destroy_straw_bed(head);
+            }
+            return true;
         }
         let half = self.world.get_block(pos).unwrap_or(Block::AIR);
         self.world.set_block(pos, Block::AIR);

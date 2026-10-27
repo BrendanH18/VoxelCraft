@@ -1249,6 +1249,13 @@ pub(super) fn build_minecarts(
         let rot = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2 - cart.yaw);
         let xf = |p: Vec3| rel + rot * (p / 16.0);
         let light = ([220, 255, 0, 0], 160);
+        if let Some(colour) = cart.kind.cushion() {
+            // `CushionModel`: one 16 x 4 x 16 box filling its entity box.
+            let rgb = crate::color::DyeColor::ALL[colour as usize].rgb();
+            let pad = cube([-8., 0., -8.], [8., 4., 8.], rgb, 16);
+            push_cuboid(out, &pad, &xf, rot, light, ([0.; 3], 0.), cart.id as f32);
+            continue;
+        }
         if let Some((wood, chest)) = cart.kind.boat() {
             let colors = [
                 [162, 130, 79],
@@ -1320,7 +1327,9 @@ pub(super) fn build_minecarts(
                 [-6.0, 7.0, -6.0],
                 [6.0, 16.0, 6.0],
             )),
-            super::minecart::CartKind::Rideable | super::minecart::CartKind::Boat { .. } => None,
+            super::minecart::CartKind::Rideable
+            | super::minecart::CartKind::Boat { .. }
+            | super::minecart::CartKind::Cushion { .. } => None,
         };
         if let Some((color, min, max)) = cargo {
             let box_ = cube(min, max, color, 16);

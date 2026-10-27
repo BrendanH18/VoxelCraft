@@ -39,7 +39,13 @@ pub const fn base(id: u16) -> Option<Block> {
 }
 /// Axis states are Y, X, Z. Placement follows the clicked face.
 pub fn placed(block: Block, normal: glam::IVec3) -> Block {
+    if let Some(b) = super::wood::axis_placed(block, normal) {
+        return b;
+    }
     if let Some(b) = super::nether_biome_blocks::axis_placed(block, normal) {
+        return b;
+    }
+    if let Some(b) = super::stone_blocks::axis_placed(block, normal) {
         return b;
     }
     let base = block.base();

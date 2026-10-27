@@ -25,7 +25,9 @@ pub mod chest;
 pub mod chunk;
 pub mod climate;
 pub mod colors;
+pub mod colour_blocks;
 pub mod composter;
+pub mod copper;
 pub mod dismount;
 pub mod dungeon;
 pub mod end;
@@ -72,17 +74,20 @@ pub mod slab_stair_states;
 pub mod spawn_finder;
 mod spawner;
 mod sponge;
+pub mod stone_blocks;
 pub mod storage;
 pub mod stronghold;
 pub mod structure;
 pub mod temples;
 pub mod terrain;
 pub mod trees;
+pub mod utilities;
 pub mod village;
 pub mod village_blocks;
 mod village_life;
 pub mod wall_states;
 pub mod waterlog;
+pub mod wood;
 
 use std::sync::Arc;
 
@@ -241,11 +246,19 @@ pub struct World {
     chests: FxHashMap<IVec3, chest::Chest>,
     /// Brewing stand contents by position (see [`brewing`]).
     brewing_stands: FxHashMap<IVec3, brewing::BrewingStand>,
+    /// Sign text, shelf items and chiseled bookshelf books (see [`wood::entities`]).
+    wood: wood::entities::WoodEntities,
+    /// Campfire, decorated pot and cauldron-drip state (see [`utilities`]).
+    utilities: utilities::State,
     /// Spawner cages and the mob each makes (see `spawner`).
     spawners: FxHashMap<IVec3, crate::entity::MobKind>,
     village_pois: FxHashMap<IVec3, Block>,
     navigation_updates: navigation::Updates,
     village_homes: FxHashMap<IVec3, IVec3>,
+    /// Banners in loaded chunks (see `colour_blocks`), which draw as models.
+    banners: FxHashMap<IVec3, Block>,
+    /// Straw beds in use (head, where the sleeper lies), which break when left.
+    straw_sleepers: Vec<(IVec3, DVec3)>,
     /// Leaves waiting to decay (seconds left) after a log near them went.
     leaf_decay: FxHashMap<IVec3, f32>,
     /// Fractional random block ticks carried over between frames.
@@ -375,6 +388,7 @@ impl World {
             }
             self.light_block_changed(p, old, block, old_light);
             self.reheight_and_remesh(p, old, block, false);
+            self.track_banner(p, old, block);
         }
         self.update_block_light();
     }
@@ -394,6 +408,11 @@ impl World {
         let version = self.chunks.get(&pos).map_or(0, |s| s.version.wrapping_add(1));
         let in_flight = self.chunks.get(&pos).is_some_and(|s| s.mesh_in_flight);
         let existed = self.chunks.contains_key(&pos);
+        // The snapshot replaces the chunk's banners for the renderer.
+        self.banners.retain(|p, _| chunk_of(*p) != pos);
+        self.register_banners(pos, &data);
+        self.forget_campfires(pos);
+        self.register_campfires(pos, &data);
         self.chunks.insert(
             pos,
             ChunkSlot {
@@ -495,10 +514,14 @@ impl World {
             furnaces: FxHashMap::default(),
             chests: FxHashMap::default(),
             brewing_stands: FxHashMap::default(),
+            wood: Default::default(),
+            utilities: Default::default(),
             spawners: FxHashMap::default(),
             village_pois: FxHashMap::default(),
             navigation_updates: navigation::Updates::default(),
             village_homes: FxHashMap::default(),
+            banners: FxHashMap::default(),
+            straw_sleepers: Vec::new(),
             leaf_decay: FxHashMap::default(),
             random_ticks: 0.0,
             rng,
@@ -807,6 +830,7 @@ impl World {
             return false;
         }
         let block = wall_states::reshaped(block, |d| self.get_block(p + d).unwrap_or(Block::AIR));
+        let block = colour_blocks::settled_state(block);
         let cpos = chunk_of(p);
         let l = local_of(p);
         let Some(slot) = self.chunks.get_mut(&cpos) else { return false };
@@ -833,7 +857,10 @@ impl World {
         self.track_automation(p, old, block);
         self.track_furnace(p, old, block);
         self.track_chest(p, old, block);
+        self.track_banner(p, old, block);
         self.track_brewing_stand(p, old, block);
+        self.track_wood(p, old, block);
+        self.track_utilities(p, old, block);
         self.track_spawner(p, old, block);
         self.track_village_poi(p, block);
         if composter::level(block) == Some(7) {
@@ -1233,6 +1260,8 @@ impl World {
 
     fn install_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>, modified: bool) {
         self.register_village_life(pos, &data);
+        self.register_banners(pos, &data);
+        self.register_campfires(pos, &data);
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
         let workers = &self.workers;
         let col = self.columns.entry(column_of(pos)).or_insert_with(|| {
@@ -1291,6 +1320,8 @@ impl World {
         }
         self.village_pois.retain(|p, _| chunk_of(*p) != pos);
         self.village_homes.retain(|p, _| chunk_of(*p) != pos);
+        self.banners.retain(|p, _| chunk_of(*p) != pos);
+        self.forget_campfires(pos);
         self.unload_block_light(pos, slot.block_light.as_ref());
         if slot.modified {
             self.saved.insert(pos, slot.data);

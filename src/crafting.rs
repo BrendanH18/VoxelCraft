@@ -6,9 +6,16 @@
 //! left to right, like Minecraft. Shapeless recipes match any arrangement
 //! of exactly their ingredients.
 
+mod utilities;
+
 use crate::inventory::Stack;
 use crate::item::{ArmorMaterial, ArmorPiece, Item, Tier, ToolKind};
 use crate::world::block::Block;
+
+mod copper;
+pub use copper::stonecutting as copper_stonecutting;
+pub mod colour;
+mod wood;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Grid {
@@ -192,17 +199,8 @@ const WOOD_SLAB: Ingredient = &[
 const FURNACE: Ingredient = &[b(Block::FURNACE)];
 const STONE_SLAB: Ingredient = &[b(Block::STONE_SLAB)];
 const BOOKSHELF: Ingredient = &[b(Block::BOOKSHELF)];
-const ANY_LOG: Ingredient = &[
-    b(Block::LOG),
-    b(Block::SPRUCE_LOG),
-    b(Block::BIRCH_LOG),
-    b(Block::JUNGLE_LOG),
-    b(Block::ACACIA_LOG),
-    b(Block::DARK_OAK_LOG),
-    b(Block::MANGROVE_LOG),
-    b(Block::CHERRY_LOG),
-    b(crate::world::overworld_blocks::PALE_OAK_LOG),
-];
+/// Every overworld log, wood and stripped block (`#logs_that_burn`).
+const ANY_LOG: Ingredient = &crate::world::wood::ALL_LOGS;
 const OAK_PLANKS: Ingredient = &[b(Block::PLANKS)];
 const MELON: Ingredient = &[b(Block::MELON)];
 const SAND: Ingredient = &[b(Block::SAND)];
@@ -233,9 +231,10 @@ const ACACIA_PLANKS: Ingredient = &[b(Block::ACACIA_PLANKS)];
 const DARK_OAK_PLANKS: Ingredient = &[b(Block::DARK_OAK_PLANKS)];
 const MANGROVE_PLANKS: Ingredient = &[b(Block::MANGROVE_PLANKS)];
 const CHERRY_PLANKS: Ingredient = &[b(Block::CHERRY_PLANKS)];
-const DARK_OAK_LOG: Ingredient = &[b(Block::DARK_OAK_LOG)];
-const MANGROVE_LOG: Ingredient = &[b(Block::MANGROVE_LOG)];
-const CHERRY_LOG: Ingredient = &[b(Block::CHERRY_LOG)];
+// `#dark_oak_logs`, `#mangrove_logs` and `#cherry_logs`.
+const DARK_OAK_LOG: Ingredient = &crate::world::wood::LOG_TAGS[5];
+const MANGROVE_LOG: Ingredient = &crate::world::wood::LOG_TAGS[6];
+const CHERRY_LOG: Ingredient = &crate::world::wood::LOG_TAGS[7];
 const QUARTZ: Ingredient = &[Item::NETHER_QUARTZ];
 const NETHER_BRICKS: Ingredient = &[b(Block::NETHER_BRICKS)];
 const STICK: Ingredient = &[Item::STICK];
@@ -414,12 +413,13 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&[" #s", "# s", " #s"], &[('#', STICK), ('s', &[Item::STRING])], Item::BOW, 1),
             shaped(&["f", "#", "e"], &[('f', &[Item::FLINT]), ('#', STICK), ('e', &[Item::FEATHER])], Item::ARROW, 4),
         ];
+        // Java's `#oak_logs` and the rest: log, wood and both stripped forms.
         const LOGS: [(Ingredient, Block); 5] = [
-            (&[b(Block::LOG)], Block::PLANKS),
-            (&[b(Block::SPRUCE_LOG)], Block::SPRUCE_PLANKS),
-            (&[b(Block::BIRCH_LOG)], Block::BIRCH_PLANKS),
-            (&[b(Block::JUNGLE_LOG)], Block::JUNGLE_PLANKS),
-            (&[b(Block::ACACIA_LOG)], Block::ACACIA_PLANKS),
+            (&crate::world::wood::LOG_TAGS[0], Block::PLANKS),
+            (&crate::world::wood::LOG_TAGS[1], Block::SPRUCE_PLANKS),
+            (&crate::world::wood::LOG_TAGS[2], Block::BIRCH_PLANKS),
+            (&crate::world::wood::LOG_TAGS[3], Block::JUNGLE_PLANKS),
+            (&crate::world::wood::LOG_TAGS[4], Block::ACACIA_PLANKS),
         ];
         const BLACK: Ingredient = &[b(Block::BLACKSTONE)];
         const POLISHED: Ingredient = &[b(Block::POLISHED_BLACKSTONE)];
@@ -567,9 +567,16 @@ pub fn recipes() -> &'static [Recipe] {
         add_overworld_recipes(&mut r);
         r.push(shaped(&["###", "# #"], &[('#', &[Item::TURTLE_SCUTE])], Item::TURTLE_HELMET, 1));
         add_mount_recipes(&mut r);
+        stone::add_recipes(&mut r);
+        copper::add_recipes(&mut r);
+        wood::add(&mut r);
+        colour::add(&mut r);
+        utilities::add(&mut r);
         r
     })
 }
+
+pub mod stone;
 
 #[cfg(test)]
 mod tests {
@@ -1002,8 +1009,8 @@ fn add_overworld_recipes(r: &mut Vec<Recipe>) {
         }
     }
     r.push(shaped(&["#", "#"], &[('#', ingredient(b(crate::world::forms::wood_id(10, 4))))], b(ob::BAMBOO_MOSAIC), 1));
-    r.push(shapeless(&[ingredient(one(ob::PALE_OAK_LOG))], one(ob::PALE_OAK_PLANKS), 4));
-    r.push(shapeless(&[ingredient(one(ob::BAMBOO_BLOCK))], one(ob::BAMBOO_PLANKS), 2));
+    r.push(shapeless(&[&crate::world::wood::LOG_TAGS[8]], one(ob::PALE_OAK_PLANKS), 4));
+    r.push(shapeless(&[&crate::world::wood::BAMBOO_BLOCKS], one(ob::BAMBOO_PLANKS), 2));
     r.push(shaped(&["###", "###", "###"], &[('#', ingredient(one(ob::BAMBOO)))], one(ob::BAMBOO_BLOCK), 1));
     r.push(shaped(&["#", "#"], &[('#', ingredient(one(ob::BAMBOO)))], Item::STICK, 1));
     r.push(shaped(&["I~I", "I I", "I I"], &[('I', ingredient(one(ob::BAMBOO))), ('~', STRING)], Item::SCAFFOLDING, 6));
@@ -1154,7 +1161,8 @@ fn add_wool_recipes(r: &mut Vec<Recipe>) {
     static OTHER_BED: [[Item; 15]; 16] = other_colors(3);
     for (i, c) in DyeColor::ALL.into_iter().enumerate() {
         r.push(shapeless(&[&OTHER_WOOL[i], &DYES[i]], b(Block::wool(c)), 1));
-        r.push(shaped(&["###"], &[('#', &WOOLS[i])], b(Block::carpet(c)), 3));
+        // Java 26.3 `white_carpet.json`: two wool (three now make wool slabs).
+        r.push(shaped(&["##"], &[('#', &WOOLS[i])], b(Block::carpet(c)), 3));
         r.push(shapeless(&[&OTHER_CARPET[i], &DYES[i]], b(Block::carpet(c)), 1));
         r.push(shaped(&["WWW", "###"], &[('W', &WOOLS[i]), ('#', PLANKS)], c.bed(), 1));
         r.push(shapeless(&[&OTHER_BED[i], &DYES[i]], c.bed(), 1));
@@ -1245,10 +1253,13 @@ mod wool_recipe_tests {
             g.cells[0] = Some(Stack::new(Block::wool(other), 1));
             assert_eq!(g.result(), Some(Stack::new(Block::wool(c), 1)));
             let mut g = Grid::new(3);
-            for x in 0..3 {
+            for x in 0..2 {
                 g.cells[x] = Some(Stack::new(Block::wool(c), 1));
             }
             assert_eq!(g.result(), Some(Stack::new(Block::carpet(c), 3)));
+            g.cells[2] = Some(Stack::new(Block::wool(c), 1));
+            let slab = crate::world::colour_blocks::family_slab(c as usize);
+            assert_eq!(g.result(), Some(Stack::new(slab, 6)), "three wool make wool slabs");
         }
         let mut g = Grid::new(2);
         g.cells[1] = Some(Stack::new(Item::IRON_INGOT, 1));

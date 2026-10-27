@@ -128,9 +128,10 @@ static TEXTURES: LazyLock<rustc_hash::FxHashMap<u16, Vec<u8>>> = LazyLock::new(|
         .filter(|e| e["kind"] == "texture")
         .map(|entry| {
             let key = entry["key"].as_str().unwrap();
-            let layer =
-                entry["texture_layer"].as_u64().filter(|&l| l < 2048).expect("asset texture layer must fit the atlas")
-                    as u16;
+            let layer = entry["texture_layer"]
+                .as_u64()
+                .filter(|&l| l < crate::world::block::tex::CAPACITY as u64)
+                .expect("asset texture layer must fit the atlas") as u16;
             let mut reader = png::Decoder::new(std::io::Cursor::new(resource(key).unwrap()))
                 .read_info()
                 .unwrap_or_else(|e| panic!("asset {key}: PNG decode failed: {e}"));

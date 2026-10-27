@@ -109,6 +109,12 @@ impl Actor<'_> {
         let (volume, pitch) = match target {
             Hit::FenceKnot => (0.0, (1.0, 1.0)),
             Hit::Cart => (0.7, (0.8, 1.0)),
+            Hit::Decor(effect) => {
+                if let Some(effect) = effect {
+                    super::utilities::decor_feedback(self.audio, at, effect);
+                }
+                (0.0, (1.0, 1.0))
+            }
             Hit::Fireball => (0.7, (0.6, 0.8)),
             Hit::Fight => (0.8, (0.9, 1.1)),
             Hit::Mob(_) if critical => (0.8, (1.25, 1.4)),
@@ -288,10 +294,31 @@ impl Actor<'_> {
         let centre = |cell: glam::IVec3| cell.as_dvec3() + DVec3::splat(0.5);
         // Java's throw is the bow sound, pitched well down.
         let throw = (0.5, (0.42, 0.62));
+        let cushion = |id: u32| self.entities.cart(id).is_some_and(|c| c.kind.cushion().is_some());
+        let sat_on_cushion = matches!(done.used, Used::Mounted(id) if cushion(id));
         let audio = &mut *self.audio;
         match done.used {
-            Used::OpenVehicle(_) | Used::OpenMerchant(_) | Used::Screen { .. } | Used::Bed { .. } => {
+            Used::OpenVehicle(_)
+            | Used::OpenMerchant(_)
+            | Used::Screen { .. }
+            | Used::Bed { .. }
+            | Used::EditSign { .. } => {
                 self.requests.push(Request::Open(done.used));
+            }
+            // Dyes, ink sacs and glow ink sacs on signs; shelves and chiseled
+            // bookshelves (nearest existing sounds).
+            Used::SignInked { cell, .. } => {
+                audio.play(Sound::Place(Material::Wood), Some(centre(cell)), 0.6, (1.3, 1.5))
+            }
+            Used::Shelf { cell, used } => {
+                use crate::world::wood::ShelfUse;
+                let pitch = match used {
+                    ShelfUse::Placed | ShelfUse::BookIn { .. } => (1.0, 1.1),
+                    ShelfUse::Swapped { .. } | ShelfUse::BookOut { .. } => (1.2, 1.3),
+                    ShelfUse::Hotbar => (0.8, 0.9),
+                    ShelfUse::Nothing => return,
+                };
+                audio.play(Sound::Place(Material::Wood), Some(centre(cell)), 0.8, pitch);
             }
             Used::Bucket(effect) => bucket::feedback(audio, effect),
             // Pearls, snowballs, eggs and fishing rods play in `NEUTRAL`, splash potions in `PLAYERS`.
@@ -319,16 +346,42 @@ impl Actor<'_> {
                 }
             }
             Used::Stripped { cell } => audio.play(Sound::Place(Material::Wood), Some(centre(cell)), 1.0, (0.8, 1.0)),
+            // Nearest shared sound for `item.axe.scrape`: a high, scratchy stone step.
+            Used::Scraped { cell } => audio.play(Sound::Step(Material::Stone), Some(centre(cell)), 1.0, (1.5, 1.8)),
+            // `CANDLE_EXTINGUISH` and `CAKE_ADD_CANDLE`, from the shared sound set.
+            Used::CandleExtinguished { cell } => {
+                audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(centre(cell)), 0.3, (1.8, 2.0))
+            }
+            Used::CandlePlacedOnCake { cell } => {
+                audio.play_in(SoundSource::Blocks, Sound::Place(Material::Snow), Some(centre(cell)), 1.0, (1.0, 1.0))
+            }
+            // `CUSHION_PLACE` (0.75, 0.8) and `CUSHION_SIT`, from the shared wool set.
+            Used::CushionPlaced { at } => {
+                audio.play_in(SoundSource::Blocks, Sound::Place(Material::Snow), Some(at), 0.75, (0.8, 0.8))
+            }
+            Used::Mounted(_) if sat_on_cushion => {
+                let at = self.session.player.pos;
+                audio.play_in(SoundSource::Neutral, Sound::Step(Material::Snow), Some(at), 1.0, (0.8, 0.9))
+            }
             Used::Tilled { cell } => {
                 audio.play_in(SoundSource::Blocks, Sound::Step(Material::Gravel), Some(centre(cell)), 1.0, (0.8, 0.9))
             }
             Used::Carved { cell } => audio.play(Sound::Break(Material::Wood), Some(centre(cell)), 0.8, (0.9, 1.1)),
             Used::BoneMeal { cell } => audio.play(Sound::Place(Material::Grass), Some(centre(cell)), 0.8, (1.2, 1.4)),
+            Used::Utility { cell, effect } => {
+                super::utilities::feedback(audio, cell, effect);
+                self.requests.push(Request::Open(done.used));
+            }
+            Used::Decor { at, effect } => super::utilities::decor_feedback(audio, at, effect),
             Used::Placed(placement) => {
                 use voxelcraft::session::placement::{Kind, Outcome};
                 match placement {
                     Outcome::Placed { cell, block, kind, .. } => {
                         audio.block_place(if kind == Kind::Bed { Block::WOOL } else { block }, cell);
+                        // `SignBlock.setPlacedBy`: the placer edits the front.
+                        if crate::world::wood::signs::sign(block).is_some() {
+                            self.requests.push(Request::Open(Used::EditSign { cell, front: true }));
+                        }
                     }
                     Outcome::WaterEvaporated { cell, .. } => {
                         audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(cell.as_dvec3()), 0.6, (1.6, 1.8));

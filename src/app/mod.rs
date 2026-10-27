@@ -3,6 +3,7 @@
 mod actions;
 mod agents;
 mod anvil;
+mod banners;
 mod bed;
 mod benchmark;
 mod bow;
@@ -36,11 +37,13 @@ mod save;
 mod screen;
 mod search;
 mod settings;
+mod sign_edit;
 mod smithing;
 mod split;
 mod startup;
 mod tick;
 mod trading;
+mod utilities;
 pub use crate::simulation::survival;
 pub use voxelcraft::rules::GameMode;
 mod title;
@@ -218,7 +221,10 @@ struct Game {
     screenshot_state: u32,
     open_trading: bool,
     place: Vec<(glam::IVec3, Block)>,
+    /// `--sign` front texts, written after `--place`.
+    signs: Vec<(glam::IVec3, [String; 4])>,
     carts: Vec<(crate::entity::minecart::CartKind, glam::IVec3)>,
+    decor_scene: Vec<(IVec3, IVec3, Item, Option<Item>)>,
     /// `--open-block`: a container to open once placements are done.
     open_block: Option<IVec3>,
     /// `--drop`: thrown once the world has loaded.
@@ -1083,6 +1089,18 @@ impl Game {
             return;
         }
         let keep_inventory = self.gamerules.bool("keep_inventory");
+        // A Nether respawn anchor: wait for its chunk, then stand beside it.
+        if let Some(anchor) = self.session.spawn_anchor {
+            let here = self.session.player.pos;
+            self.session.respawn(here, voxelcraft::session::DEFAULT_SPAWN_YAW, keep_inventory);
+            if self.dimension == Dimension::Nether {
+                self.arrival = Some(dimension::Arrival::Anchor(anchor));
+            } else {
+                self.switch_dimension(Dimension::Nether, dimension::Arrival::Anchor(anchor));
+            }
+            self.set_grab(true);
+            return;
+        }
         if self.dimension != Dimension::Overworld {
             let here = self.session.player.pos;
             self.session.respawn(here, voxelcraft::session::DEFAULT_SPAWN_YAW, keep_inventory);
@@ -1135,6 +1153,8 @@ impl Game {
         } else {
             if let Container::Chest(pos) = self.body.container {
                 self.chest_sound(pos, 0.8);
+                self.world.chest_closed(pos);
+                self.close_ender_chest(pos);
             }
             let table = self.take_work();
             self.session.inventory.return_stacks(self.craft.take_all().into_iter().chain(table));
@@ -1356,6 +1376,8 @@ impl Game {
             Used::OpenMerchant(id) => self.open_merchant(id),
             Used::Screen { cell, block } => self.open_block_screen(cell, block),
             Used::Bed { cell } => self.use_bed(cell),
+            Used::EditSign { cell, front } => self.open_sign_editor(cell, front),
+            Used::Utility { cell, effect } => self.present_utility(cell, effect),
             _ => {}
         }
     }
@@ -1410,10 +1432,28 @@ impl Game {
             }
         }
         self.world.tick_redstone();
+        for (pos, lines) in std::mem::take(&mut self.signs) {
+            if let Err(e) = self.world.set_sign_text(pos, true, lines) {
+                log::warn!("--sign {pos}: {e}");
+            }
+        }
         for (kind, pos) in std::mem::take(&mut self.carts) {
+            // A cushion sits on the floor of its cell.
+            if let Some(colour) = kind.cushion() {
+                let at = pos.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
+                if !crate::world::colour_blocks::cushion::can_be_placed_at(&self.world, at)
+                    || self.mobs.entities.place_cushion(colour, at, 0.0).is_none()
+                {
+                    log::warn!("--cart {pos}: nothing holds a cushion here");
+                }
+                continue;
+            }
             if self.mobs.entities.place_cart(&self.world, kind, pos).is_none() {
                 log::warn!("--cart {pos}: no rail");
             }
+        }
+        for (pos, face, item, held) in std::mem::take(&mut self.decor_scene) {
+            self.place_scripted_decor(pos, face, item, held);
         }
         // Fanned out so each one can be seen.
         let drops = std::mem::take(&mut self.drop);
@@ -1820,6 +1860,7 @@ impl Game {
             .collect();
         let verts = self.mobs.entities.mesh(camera, forward, fog_end, scene.time, alpha);
         push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
+        crate::render::signs::text(&self.world, camera, verts);
         if !self.camera.first_person() {
             crate::entity::model::build_player(
                 &self.session.player,
@@ -1877,7 +1918,12 @@ impl Game {
                 (p, min, max)
             }),
             cracks: self.cracks_seen_from(eye),
-            block_models: self.block_models(alpha),
+            block_models: {
+                let mut models = self.block_models(alpha, camera);
+                crate::render::signs::shelf_items(&self.world, camera, &mut models);
+                models
+            },
+            signs: crate::render::signs::models(&self.world, camera),
             hand: (self.camera.first_person()
                 && self.show_hud
                 && !self.session.vitals.is_dead()
@@ -1935,8 +1981,9 @@ pub(super) fn fov_effects(modifier: f32, scale: f32) -> f32 {
 }
 
 impl Game {
-    /// Falling blocks, primed TNT and dropped items, at interpolated positions.
-    fn block_models(&self, alpha: f64) -> Vec<crate::render::BlockModel> {
+    /// Falling blocks, primed TNT, dropped items and banners near `camera`,
+    /// at interpolated positions.
+    fn block_models(&self, alpha: f64, camera: glam::DVec3) -> Vec<crate::render::BlockModel> {
         self.world
             .falling_blocks()
             .iter()
@@ -1948,6 +1995,7 @@ impl Game {
                 block_light: self.torch_light(f.pos + glam::DVec3::splat(0.5)),
                 yaw: 0.0,
                 icon: None,
+                orient: None,
             })
             .chain(self.mobs.entities.tnt.iter().map(|t| {
                 let s = t.size();
@@ -1961,6 +2009,7 @@ impl Game {
                     block_light: self.torch_light(t.pos + glam::DVec3::Y * 0.5),
                     yaw: 0.0,
                     icon: None,
+                    orient: None,
                 }
             }))
             .chain(self.world.moving_piston_blocks(alpha).map(|(block, min)| crate::render::BlockModel {
@@ -1971,8 +2020,11 @@ impl Game {
                 block_light: self.torch_light(min + glam::DVec3::splat(0.5)),
                 yaw: 0.0,
                 icon: None,
+                orient: None,
             }))
             .chain(self.item_models(alpha))
+            .chain(self.banner_models(camera))
+            .chain(self.decor_models())
             .collect()
     }
 }

@@ -28,6 +28,8 @@ pub(super) struct State {
 pub enum Target {
     FenceKnot,
     Cart,
+    /// An item frame, painting or armor stand, and what the hit did to it.
+    Decor(Option<crate::entity::decor::Effect>),
     Fireball,
     /// An End crystal or dragon part.
     Fight,
@@ -215,6 +217,11 @@ impl PlayerSession {
             .is_some()
         {
             Target::Cart
+        } else if entities
+            .decor_ray(eye, dir, reach)
+            .is_some_and(|(_, t)| entities.raycast(eye, dir, reach).is_none_or(|(_, mob)| t < mob))
+        {
+            Target::Decor(None)
         } else if entities.large_fireball(eye, dir, reach).is_some() {
             Target::Fireball
         } else if entities.fight_raycast(eye, dir, reach).is_some() {
@@ -251,6 +258,7 @@ impl PlayerSession {
         self.reset_attack_strength();
 
         let mut killed = None;
+        let mut decor_effect = None;
         let landed;
         let mut swept = false;
         // Java `itemAttackInteraction` wears the weapon only against a
@@ -264,12 +272,23 @@ impl PlayerSession {
             }
             Target::Cart => {
                 let cart_reach = crate::entity::minecart::interaction_reach(world, eye, dir, reach);
-                landed = entities.hurt_cart(eye, dir, cart_reach, self.mode.is_creative());
+                // `Cushion.isBreakingDeniedFor`: only players who may build break cushions.
+                let denied = !self.mode.can_build()
+                    && entities
+                        .cart_ray(eye, dir, cart_reach)
+                        .is_some_and(|i| entities.minecarts[i].kind.cushion().is_some());
+                landed = !denied && entities.hurt_cart(eye, dir, cart_reach, self.mode.is_creative());
                 eye + dir * 2.0
             }
             Target::Fireball => {
                 landed = entities.punch_fireball(eye, dir, reach);
                 eye + dir * 2.0
+            }
+            Target::Decor(_) => {
+                let hit = entities.hurt_decor(eye, dir, reach, self.mode.is_creative());
+                landed = hit.is_some();
+                decor_effect = hit.map(|(_, effect)| effect);
+                hit.map_or(eye + dir * 2.0, |(at, _)| at)
             }
             Target::Fight => {
                 let (hit, t) = entities.fight_raycast(eye, dir, reach).ok_or("target vanished")?;
@@ -332,6 +351,7 @@ impl PlayerSession {
                 tool_broken = Some(item);
             }
         }
+        let target = if let Target::Decor(_) = target { Target::Decor(decor_effect) } else { target };
         Ok(Outcome::Hit {
             player: self.id,
             target,

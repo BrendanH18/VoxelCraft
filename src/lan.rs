@@ -14,7 +14,8 @@ use crate::world::{
 use glam::IVec3;
 
 /// 2: chunk states may be 4096 and above (`STATE_CAPACITY` 16,384).
-pub const PROTOCOL: u16 = 2;
+/// 3: chunk states may be 16,384 and above (`STATE_CAPACITY` 32,768).
+pub const PROTOCOL: u16 = 3;
 pub const GAME_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const MAX_FRAME: usize = 256 * 1024;
 const MAX_QUEUE: usize = 2 * 1024 * 1024;

@@ -8,6 +8,7 @@ pub mod interact;
 pub mod mining;
 pub mod placement;
 pub mod ranged;
+mod wood;
 use glam::{DVec3, IVec3};
 
 use crate::{
@@ -32,6 +33,16 @@ pub struct PlayerSession {
     sleep_spot: Option<SleepSpot>,
     pub spawn_bed: Option<IVec3>,
     pub spawn_point: Option<IVec3>,
+    /// The Nether respawn anchor last set as the respawn point (it replaces
+    /// a bed, and a bed replaces it).
+    pub spawn_anchor: Option<IVec3>,
+    /// Damage of a stalactite that landed in this player's box during the
+    /// last world tick, taken as it landed (as mobs are hit) and applied by
+    /// the next vitals tick.
+    pub stalactite: f32,
+    /// The player's ender chest contents (`PlayerEnderChestContainer`),
+    /// shared by every ender chest and saved with the player.
+    pub ender: crate::world::chest::Chest,
     /// Respawns since this session started (not saved). LAN uses it to tell
     /// a client its body was replaced, whichever path respawned it.
     pub respawns: u32,
@@ -115,6 +126,9 @@ impl PlayerSession {
             sleep_spot: None,
             spawn_bed: None,
             spawn_point: None,
+            spawn_anchor: None,
+            stalactite: 0.0,
+            ender: Default::default(),
             respawns: 0,
             combat: Default::default(),
             ranged: Default::default(),
@@ -135,6 +149,9 @@ impl PlayerSession {
             sleep_spot: None,
             spawn_bed: None,
             spawn_point: None,
+            spawn_anchor: None,
+            stalactite: 0.0,
+            ender: Default::default(),
             respawns: 0,
             combat: Default::default(),
             ranged: Default::default(),
@@ -194,6 +211,8 @@ impl PlayerSession {
     pub fn respawn(&mut self, at: DVec3, yaw: f32, keep_inventory: bool) {
         self.cancel_consumption();
         self.cancel_mining();
+        // A stalactite that hit the body before respawning stays with it.
+        self.stalactite = 0.0;
         self.respawns = self.respawns.wrapping_add(1);
         self.player = Player::new(at);
         self.player.yaw = yaw.rem_euclid(std::f32::consts::TAU);
@@ -242,7 +261,7 @@ impl PlayerSession {
             return;
         }
         let Some(spot) = self.sleep_spot.take().filter(|s| s.lie.distance(self.player.pos) < LIE_DRIFT) else { return };
-        if !world.get_block(spot.head).is_some_and(|b| b.is_bed_head()) {
+        if !world.get_block(spot.head).is_some_and(dismount::is_sleep_head) {
             return;
         }
         let java_yaw = dismount::java_yaw_degrees(self.player.yaw);

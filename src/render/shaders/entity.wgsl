@@ -31,12 +31,13 @@ struct Globals {
 @group(1) @binding(9) var blocks_7: texture_2d_array<f32>;
 // Specialized at startup: one array when supported, portable pages otherwise.
 const BLOCK_PAGING: bool = false;
+const PAGE_SHIFT: u32 = 8u;
 fn sample_block(uv: vec2<f32>, layer: u32) -> vec4<f32> {
     if !BLOCK_PAGING { return textureSample(blocks, blocks_sampler, uv, layer); }
     let dx = dpdx(uv);
     let dy = dpdy(uv);
-    let local = layer & 255u;
-    switch layer >> 8u {
+    let local = layer & ((1u << PAGE_SHIFT) - 1u);
+    switch layer >> PAGE_SHIFT {
         case 1u: { return textureSampleGrad(blocks_1, blocks_sampler, uv, local, dx, dy); }
         case 2u: { return textureSampleGrad(blocks_2, blocks_sampler, uv, local, dx, dy); }
         case 3u: { return textureSampleGrad(blocks_3, blocks_sampler, uv, local, dx, dy); }
@@ -157,8 +158,8 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 
     // Held blocks and item icons share the terrain bind group. Both are
     // sampled up front so derivatives stay in uniform control flow.
-    let held_block = sample_block(in.uv, min(in.layer, 2047u));
-    let held_icon = textureSample(items, blocks_sampler, in.uv, max(in.layer, 2048u) - 2048u);
+    let held_block = sample_block(in.uv, min(in.layer, 4095u));
+    let held_icon = textureSample(items, blocks_sampler, in.uv, max(in.layer, 4096u) - 4096u);
     let texel = clamp(vec2<i32>(floor(in.uv)), vec2<i32>(0), vec2<i32>(63));
     if in.material == 1u {
         let tex = textureLoad(skin, texel, 0, 0);
@@ -170,8 +171,8 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         if tex.a < 0.5 { discard; }
         base = tex.rgb * pow(in.color.rgb, vec3<f32>(2.2));
     } else if in.material == 2u {
-        // Block layers are below tex::ITEM_BASE (2048); icons are at and above it.
-        let tex = select(held_block, held_icon, in.layer >= 2048u);
+        // Block layers are below tex::ITEM_BASE (4096); icons are at and above it.
+        let tex = select(held_block, held_icon, in.layer >= 4096u);
         if tex.a < 0.5 { discard; }
         base = tex.rgb;
     }

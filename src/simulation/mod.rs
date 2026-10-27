@@ -103,6 +103,7 @@ pub fn tick_world_rules(world: &mut World, player: DVec3, fire_tick: bool, rando
     world.tick_falling(TICK_SECONDS);
     world.tick_furnaces(TICK_SECONDS);
     world.tick_brewing(TICK_SECONDS);
+    world.tick_utilities();
     if fire_tick {
         world.tick_fire(TICK_SECONDS, player);
     }
@@ -134,6 +135,7 @@ pub fn tick_player(
     // Hunger or blindness forbid sprinting, double tap included.
     let input = MoveInput { sprint_blocked: input.sprint_blocked || !vitals.may_sprint(creative), ..input };
     player.tick(input, world);
+    world.dripleaf_step(player.pos, player.on_ground);
     world.powder_snow_fire(player, vitals.burning());
     let moved = (player.pos - before).with_y(0.0).length();
     let env = Env {
@@ -147,6 +149,8 @@ pub fn tick_player(
 
 /// Collect survival inputs after movement; `moved` is horizontal distance for this step.
 pub fn player_environment(player: &Player, world: &World, moved: f64) -> Env {
+    use crate::world::utilities::Contents;
+    let cauldron = world.cauldron_contents_around(player.pos, player.collision_shape().aabb(player.pos).1.y);
     Env {
         y: player.pos.y,
         on_ground: player.on_ground,
@@ -154,7 +158,8 @@ pub fn player_environment(player: &Player, world: &World, moved: f64) -> Env {
         in_water: player.in_water,
         climbing: player.climbing || player.in_web || player.honey_sliding,
         head_in_water: player.head_in_water(world),
-        in_lava: player.in_lava(world),
+        // `LavaCauldronBlock.entityInside`: lava contents hurt like lava.
+        in_lava: player.in_lava(world) || matches!(cauldron, Some(Contents::Lava)),
         lava_before_move: player.lava_before_move(),
         in_fire: player.in_fire(world),
         in_soul_fire: player.in_soul_fire(world),
@@ -163,11 +168,18 @@ pub fn player_environment(player: &Player, world: &World, moved: f64) -> Env {
             && world.get_block((player.pos - DVec3::Y * 0.01).floor().as_ivec3())
                 == Some(crate::world::block::Block::MAGMA),
         on_honey: player.on_honey(world),
+        on_slime: player.on_slime(world),
+        campfire: crate::world::utilities::campfire::contact_damage(world, player),
+        stalactite: {
+            let (min, max) = player.collision_shape().aabb(player.pos);
+            world.stalactite_damage(min, max)
+        },
         on_hay: player.on_ground
             && world.get_block((player.pos - DVec3::Y * 0.01).floor().as_ivec3()).map(|b| b.base())
                 == Some(crate::world::block::Block::HAY_BALE),
         frost_walker: false,
-        wet: world.rains_on(player.eye().floor().as_ivec3()),
+        // `LayeredCauldronBlock.entityInside`: water contents put out a fire.
+        wet: world.rains_on(player.eye().floor().as_ivec3()) || matches!(cauldron, Some(Contents::Water(_))),
         moved: if player.flying { 0.0 } else { moved },
         sprinting: player.sprinting && moved > 0.0,
         jumped: player.jumped,

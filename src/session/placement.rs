@@ -8,6 +8,7 @@ use crate::{
     world::{
         World,
         block::{Block, Facing, RenderKind},
+        colour_blocks::{self as cb, candle, straw_bed},
         overworld_blocks as ob, slab_stair_states as ss,
         terrain::Dimension,
         waterlog,
@@ -65,6 +66,9 @@ impl PlayerSession {
         // `SlabBlock.canBeReplaced` with `replacingClickedOnBlock`: a single
         // slab of the held kind clicked on its open side takes the other half.
         let merges_slab = held.places().is_some_and(|r| ss::slab_takes_click(clicked, r, normal, click.y));
+        // `CandleBlock.canBeReplaced`: a candle of the held kind takes another.
+        let merges_slab =
+            merges_slab || held.places().is_some_and(|r| candle::takes_another(clicked, r, self.player.sneaking));
         PlaceContext {
             clicked: hit,
             clicked_block: clicked,
@@ -182,6 +186,15 @@ impl PlayerSession {
                 return Err("bed does not fit");
             }
             (at, Block::colored_bed(color, false), Some((head, Block::colored_bed(color, true))), Kind::Bed)
+        } else if held.item.places() == Some(straw_bed::ITEM_BLOCK) {
+            // `AbstractBedBlock.getStateForPlacement` and `setPlacedBy`: the
+            // head goes the way the player looks; beds need no support.
+            let toward = facing.opposite();
+            let head = at + toward.offset();
+            if !free(world, at) || !free(world, head) || blocked(at) || blocked(head) {
+                return Err("bed does not fit");
+            }
+            (at, straw_bed::half(toward, false), Some((head, straw_bed::half(toward, true))), Kind::Bed)
         } else if let Some([lower, upper]) = crate::content::placement::door_halves(held.item, facing) {
             // `DoorBlock.getHinge`: neighbouring doors and solid blocks, then the click.
             let lower = if crate::world::mount_states::door_hinge_right(&ctx, |c| world.get_block(c)) {
@@ -216,6 +229,13 @@ impl PlayerSession {
                     return Err("ladder does not fit");
                 }
                 (cell, raw.with_facing(direction), None, Kind::Ladder)
+            } else if world.get_block(at).is_some_and(|b| candle::takes_another(b, raw, self.player.sneaking)) {
+                // `CandleBlock.getStateForPlacement` on its own kind: one more candle.
+                let more = candle::placed(raw, world.get_block(at).unwrap_or(Block::AIR));
+                if obstructed(world, at, more) {
+                    return Err("placement intersects a player");
+                }
+                (at, more, None, Kind::Block)
             } else if world.get_block(at).is_some_and(|b| ss::slab_takes_placement(b, raw)) {
                 // `SlabBlock.getStateForPlacement` on a slab of the same kind:
                 // the double slab, never waterlogged.
@@ -245,25 +265,50 @@ impl PlayerSession {
                 } else {
                     // Levers, buttons, grindstones, lanterns and redstone torches
                     // follow Java's nearest-looking-direction rules.
-                    let block =
-                        if let Some(mounted) = crate::world::mount_states::placed(raw, &ctx, |c| world.get_block(c)) {
-                            mounted.ok_or("block cannot survive here")?
-                        } else {
-                            let block = ob::placed(raw, normal).unwrap_or(raw);
-                            let block = crate::world::village_blocks::placed(
-                                crate::world::nether_blocks::placed(block, normal),
-                                normal,
-                            )
-                            .with_facing(facing);
-                            let block =
-                                crate::world::redstone_blocks::placed_with_look(block, normal, self.player.forward());
-                            let block = crate::world::village_blocks::placed_with_look(block, self.player.forward());
-                            // Slab type and stairs half and corner shape (Java's
-                            // `getStateForPlacement` of `SlabBlock` and `StairBlock`).
+                    let block = if let Some(placed) = crate::world::wood::placed(raw, &ctx, |c| world.get_block(c)) {
+                        // Signs, shelves and chiseled bookshelves (`world::wood`).
+                        placed.ok_or("block cannot survive here")?
+                    } else if let Some(banner) = cb::placed(raw, &ctx, |c| world.get_block(c)) {
+                        banner.ok_or("block cannot survive here")?
+                    } else if let Some(mounted) = crate::world::copper::placed(raw, &ctx, |c| world.get_block(c))
+                        .or_else(|| crate::world::mount_states::placed(raw, &ctx, |c| world.get_block(c)))
+                    {
+                        mounted.ok_or("block cannot survive here")?
+                    } else {
+                        let block = ob::placed(raw, normal).unwrap_or(raw);
+                        let block = crate::world::village_blocks::placed(
+                            crate::world::nether_blocks::placed(block, normal),
+                            normal,
+                        )
+                        .with_facing(facing);
+                        let block =
+                            crate::world::redstone_blocks::placed_with_look(block, normal, self.player.forward());
+                        let block = crate::world::village_blocks::placed_with_look(block, self.player.forward());
+                        // Slab type and stairs half and corner shape (Java's
+                        // `getStateForPlacement` of `SlabBlock` and `StairBlock`).
+                        let block =
                             ss::placed(block, world.get_block(at).unwrap_or(Block::AIR), normal, ctx.click.y, |f| {
                                 world.get_block(at + f.offset())
-                            })
-                        };
+                            });
+                        // v0.12 utilities: campfires, chests and pots face the
+                        // player; coral fans hang on a clicked wall.
+                        match crate::world::utilities::placed(
+                            block,
+                            at,
+                            ctx.facing,
+                            ctx.look,
+                            world.get_block(at).is_some_and(waterlog::holds_source),
+                            |c| world.get_block(c),
+                        ) {
+                            Some(b) => b,
+                            None if crate::world::overworld_blocks::coral_of(block.canonical())
+                                .is_some_and(|(kind, ..)| kind == 2) =>
+                            {
+                                return Err("block cannot survive here");
+                            }
+                            None => block,
+                        }
+                    };
                     if !free(world, at) {
                         return Err("destination occupied or unloaded");
                     }
@@ -283,7 +328,12 @@ impl PlayerSession {
                     } else {
                         None
                     };
-                    let shaped_half = ss::stairs(block).is_some() || ss::slab(block).is_some();
+                    // Partial shapes (and signs and banners, which have no
+                    // collision) check their own collision (`isUnobstructed`).
+                    let shaped_half = ss::stairs(block).is_some()
+                        || ss::slab(block).is_some()
+                        || crate::world::wood::owns(block.0)
+                        || cb::owns(block.0);
                     if (block.is_solid() && if shaped_half { obstructed(world, at, block) } else { blocked(at) })
                         || partner.is_some_and(|(p, b)| !free(world, p) || (b.is_solid() && blocked(p)))
                     {

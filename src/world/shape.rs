@@ -29,7 +29,7 @@ impl Box16 {
     /// The box turned a quarter `turns` times clockwise (seen from above)
     /// about the cell's vertical centre line. Boxes below are drawn for a
     /// block facing south (+Z); this turns them to face any way.
-    fn turned(self, facing: Facing) -> Box16 {
+    pub(crate) fn turned(self, facing: Facing) -> Box16 {
         let turns = match facing {
             Facing::South => 0,
             Facing::West => 1,
@@ -64,7 +64,7 @@ pub struct Boxes {
 impl Boxes {
     pub const CAPACITY: usize = 10;
 
-    const fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Boxes { boxes: [Box16::FULL; Self::CAPACITY], len: 0 }
     }
 
@@ -324,6 +324,7 @@ fn wall_post_override(b: Block) -> bool {
     use super::redstone_blocks::{self as r, Component};
     b == Block::TORCH
         || b == super::nether_biome_blocks::SOUL_TORCH
+        || super::copper::is_standing_torch(b)
         || super::gadgets::is_tripwire(b)
         || matches!(r::component(b), Some(Component::Torch { mount: 0, .. } | Component::Plate { .. }))
 }
@@ -384,6 +385,9 @@ pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) ->
 
 /// [`shape`] with what is above the cell (walls read it).
 pub fn shape_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block, above: Above) -> Boxes {
+    if super::utilities::is_custom(block) {
+        return super::utilities::boxes(block);
+    }
     let block = block.canonical();
     let neighbour = |f: Facing| neighbour(f).canonical();
     let below = below.canonical();
@@ -481,7 +485,10 @@ pub fn shape_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bloc
         }
         Some(Shaped::Rail) => out.push(RAIL),
         Some(Shaped::Custom) if super::scaffolding::is_scaffolding(block) => return super::scaffolding::outline(block),
+        Some(Shaped::Custom) if super::wood::owns(block.0) => return super::wood::mesh_boxes(block).unwrap_or(out),
+        Some(Shaped::Custom) if let Some(boxes) = super::colour_blocks::boxes(block) => return boxes,
         Some(Shaped::Custom) if super::mount_states::is_lantern(block.0) => lantern_boxes(block, &mut out),
+        Some(Shaped::Custom) if super::copper::owns(block.0) => super::copper::boxes(block, &mut out),
         Some(Shaped::Custom) => super::overworld_blocks::boxes(block).unwrap_or(&[]).iter().for_each(|&b| out.push(b)),
         Some(Shaped::Hook { facing }) => out.push_turned(
             &[
@@ -531,9 +538,18 @@ pub fn outline(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) 
 
 /// [`outline`] with what is above the cell (walls read it).
 pub fn outline_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block, above: Above) -> Boxes {
+    if super::utilities::is_custom(block) {
+        return super::utilities::outline(block);
+    }
     let block = block.canonical();
     let neighbour = |f: Facing| neighbour(f).canonical();
     let below = below.canonical();
+    if let Some(boxes) = super::wood::outline(block) {
+        return boxes;
+    }
+    if let Some(boxes) = super::colour_blocks::outline(block) {
+        return boxes;
+    }
     if matches!(block.shaped(), Some(Shaped::Fence)) {
         let mut out = Boxes::from_box(FENCE_POST);
         for f in Facing::ALL {
@@ -551,6 +567,9 @@ pub fn outline_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bl
     }
     if let Some(Shaped::Ladder(facing)) = block.shaped() {
         return Boxes::from_box(LADDER_COLLISION[0].turned(facing));
+    }
+    if let Some(boxes) = super::copper::outline(block) {
+        return boxes;
     }
     if block.shaped().is_some() {
         return shape_with(block, neighbour, below, above);
@@ -733,6 +752,7 @@ pub fn collision_or_cube(block: Block, neighbour: impl Fn(Facing) -> Block, belo
         // Drawn as cubes, but Java's shapes are inset: a single chest
         // (`Block.column(14, 0, 14)`) and cactus collision.
         Block::CHEST => out.push(b([1, 0, 1], [15, 14, 15])),
+        _ if super::copper::is_chest(block) => out.push(b([1, 0, 1], [15, 14, 15])),
         Block::CACTUS | Block::HONEY_BLOCK => out.push(b([1, 0, 1], [15, 15, 15])),
         _ if block.is_solid() => out.push(b([0, 0, 0], [16, 16 - block.top_drop(), 16])),
         _ => {}
@@ -742,6 +762,9 @@ pub fn collision_or_cube(block: Block, neighbour: impl Fn(Facing) -> Block, belo
 
 /// [`collision`] with what is above the cell (a wall's raised post).
 pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block, above: Above) -> Boxes {
+    if super::utilities::is_custom(block) {
+        return super::utilities::collision(block);
+    }
     let block = block.canonical();
     if super::scaffolding::is_scaffolding(block) {
         return super::scaffolding::outline(super::scaffolding::state(0, false, false));
@@ -769,6 +792,9 @@ pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: 
         Some(Shaped::BrewingStand) => out.push_turned(&BREWING_STAND_COLLISION, Facing::South),
         Some(Shaped::EndPortal) => {}
         Some(Shaped::Custom) if super::mount_states::is_lantern(block.0) => lantern_boxes(block, &mut out),
+        Some(Shaped::Custom) if super::copper::owns(block.0) => super::copper::collision(block, &mut out),
+        Some(Shaped::Custom) if super::wood::owns(block.0) => return super::wood::collision(block).unwrap_or(out),
+        Some(Shaped::Custom) if let Some(boxes) = super::colour_blocks::collision(block) => return boxes,
         Some(Shaped::Custom) => {
             super::overworld_blocks::collision(block).unwrap_or(&[]).iter().for_each(|&b| out.push(b))
         }

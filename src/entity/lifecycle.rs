@@ -50,6 +50,7 @@ impl Entities {
 
         self.populate_structures(dt as f32, world, ctx, difficulty);
         self.trader_tick(dt as f32, world, ctx);
+        self.tick_decor(world);
         self.village_upkeep(dt as f32, world);
         self.assign_hunts(ctx);
         self.trader_upkeep();

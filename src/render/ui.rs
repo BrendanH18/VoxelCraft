@@ -43,7 +43,7 @@ pub fn font_atlas() -> Vec<u8> {
 }
 
 /// Advance width of a glyph in font pixels (proportional, 1px gap).
-fn glyph_advance(c: char) -> f32 {
+pub(crate) fn glyph_advance(c: char) -> f32 {
     if c == ' ' {
         return 4.0;
     }

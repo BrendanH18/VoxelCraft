@@ -312,6 +312,12 @@ impl PlayerSession {
             world.set_tile_drops(false);
             world.set_block(below, Block::AIR);
         }
+        // `AbstractBedBlock.playerWillDestroy`: a Creative player breaking a
+        // straw bed's foot takes its head away first, without a drop.
+        if !survival && let Some(head) = crate::world::colour_blocks::straw_bed::head_of(world, pos) {
+            world.set_tile_drops(false);
+            world.set_block(head, Block::AIR);
+        }
         // Neighbor drops use the same gamerule.
         world.set_tile_drops(rules.bool("block_drops"));
         if held.is_some_and(|s| s.item == Item::SHEARS) {

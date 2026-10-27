@@ -75,10 +75,14 @@ pub struct Args {
     pub dimension: Option<world::terrain::Dimension>,
     /// Blocks to set once the world has loaded (debugging/screenshots).
     pub place: Vec<(glam::IVec3, world::block::Block)>,
+    /// `--sign`: front text for signs placed with `--place` (screenshots).
+    pub signs: Vec<(glam::IVec3, [String; 4])>,
     /// Opens the container at this block once loaded (screenshots).
     pub open_block: Option<glam::IVec3>,
     /// Debug cart placements on rails once the world loads.
     pub carts: Vec<(entity::minecart::CartKind, glam::IVec3)>,
+    /// `--decor`: a decoration placed against a block face, with what it holds.
+    pub decor: Vec<(glam::IVec3, glam::IVec3, item::Item, Option<item::Item>)>,
     /// Mobs to spawn once the world has loaded (y = i32::MIN: surface).
     /// The optional armor material forces a full set on a zombie or skeleton.
     pub spawn: Vec<(entity::MobKind, glam::IVec3, Option<entity::armor::Equipped>)>,
@@ -161,6 +165,8 @@ voxelcraft [options]
                     table, anvil or smithing table once loaded (screenshots)
   --place x,y,z,b   set a block once loaded (repeatable; y may be ~ for the
                     terrain surface, e.g. 0,~,0,water; b may be a raw block id)
+  --sign x,y,z,text write a sign's front text once placed, lines split by |
+                    (repeatable; e.g. --sign 0,90,0,Hello|World)
   --health <0..20>  starting health in half hearts (0 opens the death screen)
   --air <0..15>     starting air in seconds
   --food <0..20>    starting hunger in half drumsticks (no saturation)
@@ -177,6 +183,10 @@ voxelcraft [options]
   --enchant e[,l]   enchant the first hotbar stack (or a book there) with
                     level l (default 1) of enchantment e (repeatable)
   --cart x,y,z,kind spawn a cart on rails, or a named boat/raft (repeatable)
+  --decor x,y,z,face,item[,held]
+                    hang an item frame or painting on, or stand an armor stand
+                    against, face up|down|north|south|east|west of block x,y,z;
+                    a frame holds `held`, a stand wears it (repeatable)
   --ride name      ride a scripted boat or saddled/tamed animal (screenshots)
   --spawn kind,x,y,z[,material[,glint]]
                     spawn a mob once loaded (repeatable; any mob name, such as
@@ -246,8 +256,10 @@ fn parse_args() -> Result<Args, String> {
         weather: None,
         dimension: None,
         place: Vec::new(),
+        signs: Vec::new(),
         open_block: None,
         carts: Vec::new(),
+        decor: Vec::new(),
         spawn: Vec::new(),
         wait: 0.0,
         pose: None,
@@ -414,12 +426,48 @@ fn parse_args() -> Result<Args, String> {
                 .ok_or_else(bad)?;
                 args.place.push((glam::IVec3::new(n[0], n[1], n[2]), block));
             }
+            "--sign" => {
+                let v = value("--sign")?;
+                let parts: Vec<&str> = v.splitn(4, ',').collect();
+                let bad = || format!("--sign needs x,y,z,line1|line2|line3|line4 (got {v})");
+                if parts.len() != 4 {
+                    return Err(bad());
+                }
+                let n: Vec<i32> =
+                    parts[..3].iter().map(|s| s.trim().parse().map_err(|_| bad())).collect::<Result<_, _>>()?;
+                let mut lines: [String; 4] = Default::default();
+                for (line, text) in lines.iter_mut().zip(parts[3].split('|')) {
+                    *line = text.to_string();
+                }
+                args.signs.push((glam::IVec3::new(n[0], n[1], n[2]), lines));
+            }
             "--ride" => args.ride = Some(value("--ride")?.replace('_', " ")),
+            "--decor" => {
+                let v = value("--decor")?;
+                let parts: Vec<&str> = v.split(',').map(str::trim).collect();
+                let bad = || format!("--decor needs x,y,z,face,item[,held] (got {v})");
+                if !(5..=6).contains(&parts.len()) {
+                    return Err(bad());
+                }
+                let n: Vec<i32> = parts[..3].iter().map(|s| s.parse().map_err(|_| bad())).collect::<Result<_, _>>()?;
+                let face = match parts[3] {
+                    "up" => glam::IVec3::Y,
+                    "down" => glam::IVec3::NEG_Y,
+                    "north" => glam::IVec3::NEG_Z,
+                    "south" => glam::IVec3::Z,
+                    "east" => glam::IVec3::X,
+                    "west" => glam::IVec3::NEG_X,
+                    _ => return Err(bad()),
+                };
+                let item = item::Item::from_name(parts[4]).ok_or_else(bad)?;
+                let held = parts.get(5).map(|h| item::Item::from_name(h).ok_or_else(bad)).transpose()?;
+                args.decor.push((glam::IVec3::new(n[0], n[1], n[2]), face, item, held));
+            }
             "--cart" => {
                 let v = value("--cart")?;
                 let parts: Vec<_> = v.split(',').collect();
                 if parts.len() != 4 {
-                    return Err("--cart needs x,y,z,rideable|chest|hopper|tnt".into());
+                    return Err("--cart needs x,y,z,rideable|chest|hopper|tnt|<boat or cushion item>".into());
                 }
                 let n: Vec<i32> = parts[..3]
                     .iter()
@@ -567,6 +615,8 @@ impl Args {
         self.dimension = None;
         self.place.clear();
         self.carts.clear();
+        self.signs.clear();
+        self.decor.clear();
         self.open_block = None;
         self.spawn.clear();
         self.pose = None;

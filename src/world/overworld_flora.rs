@@ -18,6 +18,7 @@ const HEAD_STOP: u64 = 26;
 /// A live coral plant or fan, with or without water.
 pub(super) fn live_coral_plant(b: Block) -> bool {
     matches!(ob::coral_of(b.canonical()), Some((1 | 2, _, false)))
+        || matches!(super::utilities::wall_fan_of(b), Some((_, false, _, _)))
 }
 
 impl World {
@@ -30,11 +31,17 @@ impl World {
         // their water through these changes and leaves it when they go.
         for q in [p, p - IVec3::Y, p + IVec3::Y, p + IVec3::X, p - IVec3::X, p + IVec3::Z, p - IVec3::Z] {
             let Some(b) = self.get_block(q).map(Block::canonical) else { continue };
+            let b = if super::utilities::dripleaf_of(b).is_some() { ob::BIG_DRIPLEAF } else { b };
             if !(ob::FIRST..=ob::LAST).contains(&b.0) && ob::propagule_age(b).is_none() && ob::bud_facing(b).is_none() {
                 continue;
             }
             // Ceiling plants: the whole run below drops when unsupported.
             if let Some(false) = self.get_block(q + IVec3::Y).and_then(|above| ob::hangs_from(b, above.canonical())) {
+                // Stalactites fall instead (`PointedDripstoneBlock.tick`).
+                if matches!(ob::dripstone_of(b), Some((true, _))) {
+                    self.drop_stalactite(q);
+                    continue;
+                }
                 let mut at = q;
                 while let Some(h) =
                     self.get_block(at).map(Block::canonical).filter(|h| ob::hangs_from(*h, Block::STONE).is_some())
@@ -121,6 +128,9 @@ impl World {
 
     /// `CoralPlantBlock.tick`: still without water, it becomes the dry dead coral.
     pub(super) fn coral_death_tick(&mut self, p: IVec3, b: Block) {
+        if !self.coral_has_water(p, b) && self.wall_fan_death(p, b) {
+            return;
+        }
         if !self.coral_has_water(p, b)
             && let Some((kind, colour, false)) = ob::coral_of(b.canonical())
         {
@@ -262,6 +272,8 @@ impl World {
     /// Bone meal on one of this module's blocks (`None`: not ours).
     pub(super) fn overworld_bone_meal(&mut self, p: IVec3, b: Block) -> Option<bool> {
         let (real, b) = (b, b.canonical());
+        // A big dripleaf facing or tilted any way grows like the plain one.
+        let b = if super::utilities::dripleaf_of(b).is_some() { ob::BIG_DRIPLEAF } else { b };
         Some(match b.0 {
             2011 if self.get_block(p - IVec3::Y) == Some(Block::AIR) => {
                 self.edit(p - IVec3::Y, ob::hanging_propagule(0), true);

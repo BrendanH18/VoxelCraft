@@ -46,12 +46,13 @@ fn brightness(lit: vec3<f32>) -> vec3<f32> {
 @group(1) @binding(9) var blocks_7: texture_2d_array<f32>;
 // Specialized at startup: one array when supported, portable pages otherwise.
 const BLOCK_PAGING: bool = false;
+const PAGE_SHIFT: u32 = 8u;
 fn sample_block(uv: vec2<f32>, layer: u32) -> vec4<f32> {
     if !BLOCK_PAGING { return textureSample(blocks, blocks_sampler, uv, layer); }
     let dx = dpdx(uv);
     let dy = dpdy(uv);
-    let local = layer & 255u;
-    switch layer >> 8u {
+    let local = layer & ((1u << PAGE_SHIFT) - 1u);
+    switch layer >> PAGE_SHIFT {
         case 1u: { return textureSampleGrad(blocks_1, blocks_sampler, uv, local, dx, dy); }
         case 2u: { return textureSampleGrad(blocks_2, blocks_sampler, uv, local, dx, dy); }
         case 3u: { return textureSampleGrad(blocks_3, blocks_sampler, uv, local, dx, dy); }
@@ -64,7 +65,7 @@ fn sample_block(uv: vec2<f32>, layer: u32) -> vec4<f32> {
 }
 
 
-// Item icons, addressed as layers from 2048 on (see `tex::ITEM_BASE`).
+// Item icons, addressed as layers from 4096 on (see `tex::ITEM_BASE`).
 @group(1) @binding(2) var items: texture_2d_array<f32>;
 
 struct VsOut {
@@ -150,9 +151,9 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     }
     let normal = select(face_normal, -face_normal, dot(face_normal, -in.rel) < 0.0);
     // Both arrays are sampled so derivatives stay in uniform control flow.
-    let block = sample_block(in.uv, min(in.layer, 2047u));
-    let icon = textureSample(items, blocks_sampler, in.uv, max(in.layer, 2048u) - 2048u);
-    let tex = select(block, icon, in.layer >= 2048u);
+    let block = sample_block(in.uv, min(in.layer, 4095u));
+    let icon = textureSample(items, blocks_sampler, in.uv, max(in.layer, 4096u) - 4096u);
+    let tex = select(block, icon, in.layer >= 4096u);
     if tex.a < 0.5 {
         discard;
     }

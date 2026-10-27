@@ -14,11 +14,14 @@ use rustc_hash::FxHashMap;
 use super::block::Block;
 use super::chunk::{CHUNK_VOLUME, ChunkData};
 
-/// `VXC3` files hold state ids from 4096 up (`STATE_CAPACITY` 16,384), so
-/// builds from before that refuse them; `VXC2` has the same records. Saves
-/// stay `VXC2` while every id is below [`V2_CAPACITY`], so older builds can
-/// still open worlds that use no new states.
-const MAGIC: &[u8; 4] = b"VXC3";
+/// `VXC4` files hold state ids from 16,384 up (`STATE_CAPACITY` 32,768) and
+/// `VXC3` files ids from 4096 up, so builds from before each raise refuse
+/// them; `VXC2` has the same records. A save takes the oldest header whose
+/// capacity holds every id it stores, so older builds can still open worlds
+/// that use no states newer than they know.
+const MAGIC: &[u8; 4] = b"VXC4";
+const V3_MAGIC: &[u8; 4] = b"VXC3";
+const V3_CAPACITY: u16 = 16384;
 const V2_MAGIC: &[u8; 4] = b"VXC2";
 const V2_CAPACITY: u16 = 4096;
 const LEGACY_MAGIC: &[u8; 4] = b"VXC1";
@@ -101,19 +104,22 @@ impl Storage {
         let mut buf = Vec::with_capacity(chunks.len() * 256);
         buf.extend_from_slice(V2_MAGIC);
         buf.extend_from_slice(&(chunks.len() as u32).to_le_bytes());
-        let mut high_ids = false;
+        let mut max_id = 0;
         for (pos, data) in chunks {
             for c in pos.to_array() {
                 buf.extend_from_slice(&c.to_le_bytes());
             }
             let rle = encode(data);
-            high_ids |= rle.as_chunks::<4>().0.iter().any(|run| u16::from_le_bytes([run[2], run[3]]) >= V2_CAPACITY);
+            max_id =
+                rle.as_chunks::<4>().0.iter().map(|run| u16::from_le_bytes([run[2], run[3]])).fold(max_id, u16::max);
             buf.extend_from_slice(&(rle.len() as u32).to_le_bytes());
             buf.extend_from_slice(&rle);
         }
 
-        if high_ids {
+        if max_id >= V3_CAPACITY {
             buf[..4].copy_from_slice(MAGIC);
+        } else if max_id >= V2_CAPACITY {
+            buf[..4].copy_from_slice(V3_MAGIC);
         }
 
         // Write to temp files then rename so a crash never leaves a torn save.
@@ -136,7 +142,7 @@ impl Storage {
             Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
             Err(e) => return Err(e),
         };
-        if [&MAGIC[..], V2_MAGIC, LEGACY_MAGIC].contains(&header.as_slice()) {
+        if [&MAGIC[..], V3_MAGIC, V2_MAGIC, LEGACY_MAGIC].contains(&header.as_slice()) {
             return Ok(());
         }
         let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
@@ -213,7 +219,7 @@ impl Storage {
             Err(e) => return Err(e),
         };
         let bad = || io::Error::new(io::ErrorKind::InvalidData, "corrupt chunks.bin");
-        if buf.len() < 8 || ![&MAGIC[..], V2_MAGIC, LEGACY_MAGIC].contains(&&buf[0..4]) {
+        if buf.len() < 8 || ![&MAGIC[..], V3_MAGIC, V2_MAGIC, LEGACY_MAGIC].contains(&&buf[0..4]) {
             return Err(bad());
         }
         let legacy = &buf[0..4] == LEGACY_MAGIC;
@@ -330,18 +336,18 @@ mod tests {
 
     #[test]
     fn high_ids_roundtrip_and_malformed_runs_are_rejected() {
-        let mut c = ChunkData::Uniform(Block(16383));
+        let mut c = ChunkData::Uniform(Block(32767));
         c.set(3, 4, 5, Block(256));
         c.set(31, 31, 31, Block(1024));
         let encoded = encode(&c);
         let d = decode(&encoded, false).unwrap();
-        assert_eq!(d.get(0, 0, 0), Block(16383));
+        assert_eq!(d.get(0, 0, 0), Block(32767));
         assert_eq!(d.get(3, 4, 5), Block(256));
         assert_eq!(d.get(31, 31, 31), Block(1024));
         let mut truncated = encoded.clone();
         truncated.pop();
         assert!(decode(&truncated, false).is_none());
-        assert!(decode(&[0, 128, 0, 64], false).is_none(), "state outside registry");
+        assert!(decode(&[0, 128, 0, 128], false).is_none(), "state outside registry");
         assert!(decode(&[0, 128, 0, 0, 0, 0, 1, 0], false).is_none(), "zero-length run");
         assert!(decode(&[1, 0, 1], true).is_none(), "underfilled chunk");
         assert!(decode(&[255, 255, 1], true).is_none(), "overfilled chunk");
@@ -368,8 +374,11 @@ mod tests {
         let high = Block(super::super::block::STATE_CAPACITY as u16 - 1);
         storage.save(&level, &[(pos, Arc::new(ChunkData::Uniform(high)))]).unwrap();
         let saved = fs::read(dir.join("chunks.bin")).unwrap();
-        assert_eq!(&saved[..4], MAGIC, "states from 4096 up need VXC3");
+        assert_eq!(&saved[..4], MAGIC, "states from 16,384 up need VXC4");
         assert_eq!(storage.load_chunks().unwrap()[&pos].uniform(), Some(high));
+        storage.save(&level, &[(pos, Arc::new(ChunkData::Uniform(Block(V3_CAPACITY - 1))))]).unwrap();
+        assert_eq!(&fs::read(dir.join("chunks.bin")).unwrap()[..4], V3_MAGIC, "v0.9 to v0.11 builds keep reading VXC3");
+        assert_eq!(storage.load_chunks().unwrap()[&pos].uniform(), Some(Block(V3_CAPACITY - 1)));
         storage.save(&level, &[(pos, Arc::new(ChunkData::Uniform(Block(4095))))]).unwrap();
         assert_eq!(&fs::read(dir.join("chunks.bin")).unwrap()[..4], V2_MAGIC, "older builds keep reading VXC2");
         let mut v2 = saved.clone();

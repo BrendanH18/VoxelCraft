@@ -13,6 +13,9 @@ pub fn door_halves(item: Item, facing: Facing) -> Option<[Block; 2]> {
         return Some([Block::door(facing, false, false), Block::door(facing, false, true)]);
     }
     let block = item.places()?;
+    if let Some(halves) = crate::world::copper::door_halves(block, facing) {
+        return Some(halves);
+    }
     if matches!(redstone_blocks::component(block), Some(redstone_blocks::Component::IronDoor { .. })) {
         return Some([
             redstone_blocks::iron_door(facing, false, false),

@@ -181,6 +181,7 @@ impl Game {
             Command::SpawnPoint(pos) => {
                 let p = pos.resolve(self.session.player.pos)?.floor().as_ivec3();
                 self.session.spawn_bed = None;
+                self.session.spawn_anchor = None;
                 self.session.spawn_point = Some(p);
                 return Ok(format!("Set spawn point to {} {} {}", p.x, p.y, p.z));
             }

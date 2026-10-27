@@ -7,7 +7,7 @@ struct Axes { right: vec4<f32>, up: vec4<f32> };
 @group(0) @binding(0) var<uniform> g: Globals;
 @group(1) @binding(0) var blocks: texture_2d_array<f32>;
 @group(1) @binding(1) var block_sampler: sampler;
-// Extra 256-layer pages on adapters that cap texture arrays (see `block_shader`).
+// Extra pages on adapters that cap texture arrays (see `block_shader`).
 @group(1) @binding(3) var blocks_1: texture_2d_array<f32>;
 @group(1) @binding(4) var blocks_2: texture_2d_array<f32>;
 @group(1) @binding(5) var blocks_3: texture_2d_array<f32>;
@@ -16,12 +16,13 @@ struct Axes { right: vec4<f32>, up: vec4<f32> };
 @group(1) @binding(8) var blocks_6: texture_2d_array<f32>;
 @group(1) @binding(9) var blocks_7: texture_2d_array<f32>;
 const BLOCK_PAGING: bool = false;
+const PAGE_SHIFT: u32 = 8u;
 fn sample_block(uv: vec2<f32>, layer: u32) -> vec4<f32> {
     if !BLOCK_PAGING { return textureSample(blocks, block_sampler, uv, layer); }
     let dx = dpdx(uv);
     let dy = dpdy(uv);
-    let local = layer & 255u;
-    switch layer >> 8u {
+    let local = layer & ((1u << PAGE_SHIFT) - 1u);
+    switch layer >> PAGE_SHIFT {
         case 1u: { return textureSampleGrad(blocks_1, block_sampler, uv, local, dx, dy); }
         case 2u: { return textureSampleGrad(blocks_2, block_sampler, uv, local, dx, dy); }
         case 3u: { return textureSampleGrad(blocks_3, block_sampler, uv, local, dx, dy); }

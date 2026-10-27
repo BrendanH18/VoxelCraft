@@ -250,6 +250,9 @@ pub fn mined_xp(block: Block, tool: Enchants, rng: &mut crate::entity::Rng) -> u
 /// Whether a block mined with silk touch drops itself (Java's
 /// silk-touchable blocks among ours).
 pub fn silk_drop(block: Block) -> Option<Item> {
+    if let Some(item) = crate::world::utilities::silk_drop(block) {
+        return Some(item);
+    }
     let b = if block.base() == Block::SNOWY_GRASS { Block::GRASS } else { block.base() };
     let silky = matches!(
         b,
@@ -282,6 +285,9 @@ pub fn silk_drop(block: Block) -> Option<Item> {
         || b.stained_glass_color().is_some()
         || b.stained_pane_color().is_some();
     if let Some(item) = crate::world::nether_biome_blocks::silk_drop(block) {
+        return Some(item);
+    }
+    if let Some(item) = crate::world::wood::silk_drop(block) {
         return Some(item);
     }
     if let Some(item) = crate::world::overworld_blocks::silk_drop(block) {

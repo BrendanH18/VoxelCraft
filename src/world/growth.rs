@@ -60,7 +60,7 @@ impl World {
     /// `tool`: silk touch drops the block itself, fortune adds to ore and
     /// crop drops (Java's loot tables).
     pub fn spill_with_item(&mut self, p: IVec3, block: Block, held: Option<Stack>) {
-        let block = block.canonical();
+        let block = super::utilities::shattered(block.canonical(), held);
         if self.tile_drops
             && held.is_some_and(|s| s.item == Item::SHEARS)
             && let Some(stack) = Self::shear_loot(block)
@@ -101,8 +101,10 @@ impl World {
         }
         let fortune = tool.level(Enchantment::Fortune) as u64;
         let mut out = Vec::new();
-        // Java's slab loot table: two for `type=double`.
-        out.extend(block.drop().map(|item| Stack::new(item, double_slab_count(block))));
+        // Java's slab loot table: two for `type=double`; candles, one per candle.
+        let count = double_slab_count(block) * super::colour_blocks::drop_count(block);
+        out.extend(block.drop().map(|item| Stack::new(item, count)));
+        out.extend(super::utilities::extra_drops(block));
         if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&block.0)
             || super::overworld_blocks::snow_layers(block).is_some()
             || super::overworld_blocks::bud_facing(block).is_some()
@@ -257,11 +259,9 @@ impl World {
         chunks.sort_unstable_by_key(|p| (p.x, p.y, p.z));
         chunks.dedup();
         for cpos in chunks {
-            if self
-                .chunks
-                .get(&cpos)
-                .is_none_or(|s| s.data.uniform().is_some_and(|b| !b.is_lava() && b.fire_age().is_none()))
-            {
+            if self.chunks.get(&cpos).is_none_or(|s| {
+                s.data.uniform().is_some_and(|b| !b.is_lava() && b.fire_age().is_none() && !super::copper::ages(b))
+            }) {
                 continue;
             }
             for sy in 0..2 {
@@ -317,12 +317,14 @@ impl World {
                 self.extinguish_ore(p, b);
             }
             Block::SUGAR_CANE => self.tick_cane(p),
+            b if super::copper::ages(b) => self.tick_copper(p, b),
             b if b.is_mushroom() => self.tick_mushroom(p, b),
             b if (1600..=1687).contains(&b.0) => self.tick_nether_flora(p, b),
             b if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&b.canonical().0)
                 || (2150..=2157).contains(&b.0)
                 || (2160..=2164).contains(&b.canonical().0) =>
             {
+                self.utilities_random_tick(p, b);
                 self.tick_overworld_flora(p, b);
             }
             b if b.crop_stage().is_some_and(|s| s < 7) => {

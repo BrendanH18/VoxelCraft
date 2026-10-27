@@ -239,9 +239,14 @@ fn the_creative_palette_lists_each_stairs_and_slab_item_once() {
     let palette: Vec<Block> = Block::creative_palette().collect();
     assert!(palette.iter().all(|b| b.0 < ss::STAIRS_ORIGIN || b.0 > ss::RESERVED_LAST));
     for family in FAMILIES {
+        // Slab-only v0.12 families have no stairs; retired forms
+        // (`stone_blocks::RETIRED`) have no creative entry.
+        let offered = |b: Block| b != Block::AIR && !voxelcraft::world::stone_blocks::is_retired(b);
         let stairs = palette.iter().filter(|b| b.stairs_base() == Some(family.base)).count();
         let slabs = palette.iter().filter(|b| b.slab_base() == Some(family.base)).count();
-        assert_eq!((stairs, slabs), (1, 1), "{}", family.stairs.name());
-        assert!(palette.contains(&family.stairs) && palette.contains(&family.slab));
+        let expected = (offered(family.stairs) as usize, offered(family.slab) as usize);
+        assert_eq!((stairs, slabs), expected, "{}", family.slab.name());
+        assert_eq!(palette.contains(&family.stairs), expected.0 == 1);
+        assert_eq!(palette.contains(&family.slab), expected.1 == 1);
     }
 }

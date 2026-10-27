@@ -464,6 +464,7 @@ impl Title {
             hand: None,
             cracks: Vec::new(),
             block_models: Vec::new(),
+            signs: Vec::new(),
             ui: self.build_ui(),
             rain: 0.0,
             night_vision: 0.0,
