@@ -27,6 +27,7 @@ impl Game {
                     block_light: self.torch_light(centre),
                     yaw: 0.0,
                     icon: None,
+                    orient: None,
                 }
             })
             .collect()

@@ -180,6 +180,9 @@ impl World {
             // Signs, shelves and chiseled bookshelves have block entities
             // (`PistonBaseBlock.isPushable`: `!hasBlockEntity()`).
             || super::wood::has_entity(b)
+            // So do ender chests and campfires.
+            || super::utilities::ender_chest_of(b).is_some()
+            || super::utilities::campfire_of(b).is_some()
             || matches!(
                 r::component(b),
                 Some(
@@ -197,6 +200,10 @@ impl World {
             // `PushReaction.POPPED`.
             || super::mount_states::is_lantern(b.0)
             || super::copper::pops_when_pushed(b)
+            // `PushReaction.DESTROY` for flower pots and decorated pots.
+            || b == super::utilities::FLOWER_POT
+            || super::utilities::potted_plant(b).is_some()
+            || super::utilities::decorated_pot_of(b).is_some()
             || super::scaffolding::is_scaffolding(b)
             || super::colour_blocks::pops_on_push(b)
             || b.is_fire()

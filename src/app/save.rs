@@ -46,6 +46,10 @@ impl Game {
         if let Some(b) = self.session.spawn_bed {
             props.insert("bed".to_string(), format!("{},{},{}", b.x, b.y, b.z));
         }
+        props.insert("ender_chest".to_string(), self.ender_for_save().serialize());
+        if let Some(a) = self.session.spawn_anchor {
+            props.insert("spawn_anchor".to_string(), format!("{},{},{}", a.x, a.y, a.z));
+        }
         if let Some(p) = self.session.spawn_point {
             props.insert("spawn_point".to_string(), format!("{},{},{}", p.x, p.y, p.z));
         }

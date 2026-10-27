@@ -36,6 +36,9 @@ pub const fn pair(id: u16) -> Option<(u16, bool)> {
     if let Some(p) = super::colour_blocks::water_pair(id) {
         return Some(p);
     }
+    if let Some(p) = super::utilities::water_pair(id) {
+        return Some(p);
+    }
     family_pair(id)
 }
 

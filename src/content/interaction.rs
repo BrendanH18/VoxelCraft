@@ -45,6 +45,7 @@ pub fn block_use_precedes_item(
     }
     let Some(b) = world.get_block(pos) else { return false };
     blocks_item_use(b)
+        || crate::world::utilities::interact::takes_use(world, pos, held)
         || b == Block::DRAGON_EGG
         || crate::world::wood::signs::sign(b).is_some()
         || front_face_use(world, pos, b, aim)

@@ -226,6 +226,7 @@ impl Game {
                     block_light,
                     yaw: spin,
                     icon,
+                    orient: None,
                 });
             }
         }

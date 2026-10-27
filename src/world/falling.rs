@@ -19,6 +19,17 @@ pub struct FallingBlock {
     pub pos: DVec3,
     pub previous_pos: DVec3,
     speed: f64,
+    /// Damage per block fallen to whatever it lands on
+    /// (`FallingBlockEntity.setHurtsEntities`; only a stalactite's tip).
+    pub(super) hurt: f32,
+    /// Where it started falling, for the fall distance.
+    pub(super) from_y: f64,
+}
+
+impl FallingBlock {
+    pub(super) fn new(block: Block, pos: DVec3, speed: f64) -> Self {
+        FallingBlock { block, pos, previous_pos: pos, speed, hurt: 0.0, from_y: pos.y }
+    }
 }
 
 /// Whether a falling block passes through (and lands over) this block.
@@ -30,7 +41,7 @@ impl World {
     /// `FallingBlockEntity.fall`: the cell keeps its fluid, the entity is dry.
     pub(super) fn start_scaffolding_fall(&mut self, p: IVec3, block: Block, wet: bool) {
         self.set_block(p, if wet { Block::WATER } else { Block::AIR });
-        self.falling.push(FallingBlock { block, pos: p.as_dvec3(), previous_pos: p.as_dvec3(), speed: 0.0 });
+        self.falling.push(FallingBlock::new(block, p.as_dvec3(), 0.0));
     }
 
     /// Optional dimension property. Removed source cells and these in-flight
@@ -39,12 +50,11 @@ impl World {
         let mut entries = vec!["v1".to_string()];
         let mut stored: Vec<_> = self.stored_falling.iter().collect();
         stored.sort_unstable_by_key(|(p, _)| (p.x, p.y, p.z));
-        entries.extend(
-            self.falling
-                .iter()
-                .chain(stored.into_iter().flat_map(|(_, blocks)| blocks))
-                .map(|f| format!("{},{},{},{},{}", f.block.0, f.pos.x, f.pos.y, f.pos.z, f.speed)),
-        );
+        entries.extend(self.falling.iter().chain(stored.into_iter().flat_map(|(_, blocks)| blocks)).map(|f| {
+            let entry = format!("{},{},{},{},{}", f.block.0, f.pos.x, f.pos.y, f.pos.z, f.speed);
+            // A stalactite's tip also keeps its damage and start height.
+            if f.hurt > 0.0 { format!("{entry},{},{}", f.hurt, f.from_y) } else { entry }
+        }));
         entries.join("|")
     }
 
@@ -80,17 +90,27 @@ impl World {
         for entry in entries {
             let fields: Vec<_> = entry.split(',').collect();
             let parsed = (|| {
-                let &[block, x, y, z, speed] = fields.as_slice() else {
+                let (&[block, x, y, z, speed], tip) = fields.split_at_checked(5)? else {
                     return None;
                 };
                 let block = Block(block.parse().ok()?);
                 let pos = DVec3::new(x.parse().ok()?, y.parse().ok()?, z.parse().ok()?);
                 let speed: f64 = speed.parse().ok()?;
-                ((block.has_gravity() || super::scaffolding::is_scaffolding(block))
+                let mut f = FallingBlock::new(block, pos, speed);
+                if let &[hurt, from_y] = tip {
+                    (f.hurt, f.from_y) = (hurt.parse().ok()?, from_y.parse().ok()?);
+                } else if !tip.is_empty() {
+                    return None;
+                }
+                ((block.has_gravity()
+                    || super::scaffolding::is_scaffolding(block)
+                    || super::overworld_blocks::dripstone_of(block.canonical()).is_some())
                     && pos.is_finite()
                     && speed.is_finite()
+                    && f.hurt.is_finite()
+                    && f.from_y.is_finite()
                     && (0.0..=TERMINAL_SPEED).contains(&speed))
-                .then_some(FallingBlock { block, pos, previous_pos: pos, speed })
+                .then_some(f)
             })();
             if let Some(block) = parsed {
                 // Blocks of chunks that aren't loaded wait in storage.
@@ -110,7 +130,7 @@ impl World {
         self.falling = blocks
             .into_iter()
             .take(256)
-            .map(|(block, pos, previous_pos)| FallingBlock { block, pos, previous_pos, speed: 0.0 })
+            .map(|(block, pos, previous_pos)| FallingBlock { previous_pos, ..FallingBlock::new(block, pos, 0.0) })
             .collect();
     }
 
@@ -127,12 +147,13 @@ impl World {
         self.solidify_nearby_powder(p);
         self.update_nether_vines(p);
         self.update_overworld_plants(p);
+        self.update_utilities(p);
         loop {
             self.wake_fluids(p);
             let Some(b) = self.get_block(p) else { return };
             if b.has_gravity() && self.get_block(p - IVec3::Y).is_some_and(can_fall_into) {
                 self.edit(p, Block::AIR, true);
-                self.falling.push(FallingBlock { block: b, pos: p.as_dvec3(), previous_pos: p.as_dvec3(), speed: 0.0 });
+                self.falling.push(FallingBlock::new(b, p.as_dvec3(), 0.0));
                 continue; // `p` is air now: look at what was on top of it
             }
             let above = p + IVec3::Y;
@@ -233,7 +254,7 @@ impl World {
                 match self.get_block(IVec3::new(cell.x, y, cell.z)) {
                     Some(b) if can_fall_into(b) && y >= self.min_y() => {
                         if f.block.concrete_powder_color().is_some() && b.is_water() {
-                            landed.push((IVec3::new(cell.x, y, cell.z), f.block));
+                            landed.push((IVec3::new(cell.x, y, cell.z), *f));
                             return false;
                         }
                         y -= 1;
@@ -241,7 +262,7 @@ impl World {
                     // Unloaded below: wait for the chunk rather than vanish.
                     None => return true,
                     Some(_) => {
-                        landed.push((IVec3::new(cell.x, y + 1, cell.z), f.block));
+                        landed.push((IVec3::new(cell.x, y + 1, cell.z), *f));
                         return false;
                     }
                 }
@@ -250,7 +271,13 @@ impl World {
             true
         });
         self.falling = falling;
-        for (p, block) in landed {
+        self.clear_stalactite_hits();
+        for (p, fell) in landed {
+            let block = fell.block;
+            // Pointed dripstone breaks where it lands (`onBrokenAfterFall`).
+            if self.stalactite_landed(p, &fell) {
+                continue;
+            }
             // FallingBlockEntity only places scaffolding when canSurvive succeeds.
             // An unloaded support neighbour isn't proof it can't: place it
             // and let its scheduled tick decide once the chunk loads.

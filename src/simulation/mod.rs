@@ -103,6 +103,7 @@ pub fn tick_world_rules(world: &mut World, player: DVec3, fire_tick: bool, rando
     world.tick_falling(TICK_SECONDS);
     world.tick_furnaces(TICK_SECONDS);
     world.tick_brewing(TICK_SECONDS);
+    world.tick_utilities();
     if fire_tick {
         world.tick_fire(TICK_SECONDS, player);
     }
@@ -134,6 +135,7 @@ pub fn tick_player(
     // Hunger or blindness forbid sprinting, double tap included.
     let input = MoveInput { sprint_blocked: input.sprint_blocked || !vitals.may_sprint(creative), ..input };
     player.tick(input, world);
+    world.dripleaf_step(player.pos, player.on_ground);
     world.powder_snow_fire(player, vitals.burning());
     let moved = (player.pos - before).with_y(0.0).length();
     let env = Env {
@@ -164,6 +166,11 @@ pub fn player_environment(player: &Player, world: &World, moved: f64) -> Env {
                 == Some(crate::world::block::Block::MAGMA),
         on_honey: player.on_honey(world),
         on_slime: player.on_slime(world),
+        campfire: crate::world::utilities::campfire::contact_damage(world, player),
+        stalactite: {
+            let (min, max) = player.collision_shape().aabb(player.pos);
+            world.stalactite_damage(min, max)
+        },
         on_hay: player.on_ground
             && world.get_block((player.pos - DVec3::Y * 0.01).floor().as_ivec3()).map(|b| b.base())
                 == Some(crate::world::block::Block::HAY_BALE),

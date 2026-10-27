@@ -282,6 +282,8 @@ pub enum Sprite {
     },
     /// A plump square cushion of this colour.
     Cushion([u8; 3]),
+    /// The v0.12 decorations: item frame, glow item frame, painting, armor stand.
+    Decor(u8),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -640,6 +642,9 @@ const AUDIT_POTION: u16 = 1041;
 /// later copper armor and spears); 1047 is the enchanted golden apple and
 /// 1048..=1049 stay free.
 const COPPER_ITEM: u16 = 1050;
+/// The v0.12 decoration items (utilities track, reserved 1160..=1189).
+const DECOR_ITEM: u16 = 1160;
+const DECOR_ITEMS: u16 = 4;
 const COPPER_ITEMS: &[ItemInfo] = &[
     copper_tool("copper pickaxe", ToolKind::Pickaxe),
     copper_tool("copper shovel", ToolKind::Shovel),
@@ -812,6 +817,11 @@ impl Item {
     /// Explicit honey item reservations, including the block placing item.
     pub const HONEY_BLOCK: Item = Item(1072);
     pub const HONEY_BOTTLE: Item = Item(1073);
+    /// v0.12 utilities (reserved 1160..=1189): the decoration items.
+    pub const ITEM_FRAME: Item = Item(DECOR_ITEM);
+    pub const GLOW_ITEM_FRAME: Item = Item(DECOR_ITEM + 1);
+    pub const PAINTING: Item = Item(DECOR_ITEM + 2);
+    pub const ARMOR_STAND: Item = Item(DECOR_ITEM + 3);
     /// 1041..=1046 are the audit potion slots; the enchanted apple follows.
     pub const ENCHANTED_GOLDEN_APPLE: Item = Item(1047);
     pub const COPPER_NUGGET: Item = Item(COPPER_ITEM + 5);
@@ -999,6 +1009,17 @@ impl Item {
                 };
             }
             Self::POWDER_SNOW_BUCKET => return single("powder snow bucket", Sprite::Bucket(Some([230, 242, 250]))),
+            Self::ITEM_FRAME => return item("item frame", Sprite::Decor(0)),
+            Self::GLOW_ITEM_FRAME => return item("glow item frame", Sprite::Decor(1)),
+            Self::PAINTING => return item("painting", Sprite::Decor(2)),
+            Self::ARMOR_STAND => {
+                return ItemInfo {
+                    name: "armor stand",
+                    kind: ItemKind::Material,
+                    max_stack: 16,
+                    sprite: Sprite::Decor(3),
+                };
+            }
             Self::TURTLE_HELMET => {
                 return ItemInfo {
                     name: "turtle helmet",
@@ -1334,6 +1355,7 @@ impl Item {
             .chain((0..COPPER_ITEMS.len() as u16).map(|i| Item(COPPER_ITEM + i)))
             .chain([Self::ENCHANTED_GOLDEN_APPLE, Self::HONEY_BOTTLE, Self::POWDER_SNOW_BUCKET])
             .chain((0..16).map(|i| Item(CUSHION_ITEM + i)))
+            .chain((0..DECOR_ITEMS).map(|i| Item(DECOR_ITEM + i)))
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1376,6 +1398,10 @@ fn sprite_index(item: Item) -> Option<u16> {
         1071 => Some(turtle_icon() + 3 + COPPER_ITEMS.len() as u16),
         i if (CUSHION_ITEM..CUSHION_ITEM + 16).contains(&i) => {
             Some(turtle_icon() + 4 + COPPER_ITEMS.len() as u16 + i - CUSHION_ITEM)
+        }
+        // The v0.12 decoration items follow the cushions.
+        i if (DECOR_ITEM..DECOR_ITEM + DECOR_ITEMS).contains(&i) => {
+            Some(turtle_icon() + 4 + COPPER_ITEMS.len() as u16 + 16 + i - DECOR_ITEM)
         }
         i if (COPPER_ITEM..COPPER_ITEM + COPPER_ITEMS.len() as u16).contains(&i) => {
             Some(turtle_icon() + 1 + i - COPPER_ITEM)
@@ -1457,7 +1483,7 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    turtle_icon() as u32 + 1 + COPPER_ITEMS.len() as u32 + 3 + 16
+    turtle_icon() as u32 + 1 + COPPER_ITEMS.len() as u32 + 3 + 16 + DECOR_ITEMS as u32
 }
 
 /// The turtle helmet's icon follows the animal items; copper equipment follows it,

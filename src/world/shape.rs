@@ -385,6 +385,9 @@ pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) ->
 
 /// [`shape`] with what is above the cell (walls read it).
 pub fn shape_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block, above: Above) -> Boxes {
+    if super::utilities::is_custom(block) {
+        return super::utilities::boxes(block);
+    }
     let block = block.canonical();
     let neighbour = |f: Facing| neighbour(f).canonical();
     let below = below.canonical();
@@ -535,6 +538,9 @@ pub fn outline(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) 
 
 /// [`outline`] with what is above the cell (walls read it).
 pub fn outline_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block, above: Above) -> Boxes {
+    if super::utilities::is_custom(block) {
+        return super::utilities::outline(block);
+    }
     let block = block.canonical();
     let neighbour = |f: Facing| neighbour(f).canonical();
     let below = below.canonical();
@@ -756,6 +762,9 @@ pub fn collision_or_cube(block: Block, neighbour: impl Fn(Facing) -> Block, belo
 
 /// [`collision`] with what is above the cell (a wall's raised post).
 pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block, above: Above) -> Boxes {
+    if super::utilities::is_custom(block) {
+        return super::utilities::collision(block);
+    }
     let block = block.canonical();
     if super::scaffolding::is_scaffolding(block) {
         return super::scaffolding::outline(super::scaffolding::state(0, false, false));

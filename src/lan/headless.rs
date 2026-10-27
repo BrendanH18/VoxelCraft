@@ -173,6 +173,30 @@ impl HeadlessHost {
             if s.dead || s.connection.send(Packet::State(json!({"tick":self.tick,"sequence":s.input.sequence,"harness":true,"state":agent.observe(&self.world,0)}))).and_then(|()|s.connection.flush()).is_err() {s.dead=true;s.connection.close("Client is too slow or disconnected");}
         }
         crate::simulation::tick_world_rules(&mut self.world, self.spawn, true, 3);
+        // As `Game::tick` does: players in a stalactite's cell as it lands
+        // are hit on their next tick, and anchors used outside the Nether
+        // explode (`RespawnAnchorBlock.explode`, power 5).
+        for agent in self.players.values_mut() {
+            let (min, max) = agent.player.collision_shape().aabb(agent.player.pos);
+            agent.session.stalactite = agent.session.stalactite.max(self.world.stalactite_damage(min, max));
+        }
+        for cell in self.world.take_anchor_blasts() {
+            let center = cell.as_dvec3() + DVec3::splat(0.5);
+            self.world.explode(center, 5.0);
+            self.entities.explode(center, 5.0);
+            for agent in self.players.values_mut() {
+                let mid = agent.player.pos + DVec3::Y * 0.9;
+                if let Some((damage, impact)) = crate::entity::explosion_damage(5.0, mid.distance(center)) {
+                    let away = (mid - center).normalize_or(DVec3::Y);
+                    let push = away * (impact as f64 * 14.0) + DVec3::Y * 4.0;
+                    agent.hurt(damage, "was killed by [Intentional Game Design]", push, &mut self.entities);
+                }
+            }
+        }
+        // This harness simulates no item or TNT entities: what blocks drop
+        // and TNT a blast primes are discarded rather than kept forever.
+        self.world.drops.clear();
+        self.world.primed_tnt.clear();
         sessions.retain(|s| !s.dead);
         self.players.retain(|name, _| sessions.iter().any(|s| s.profile.as_ref() == Some(name)));
         self.sessions = sessions;

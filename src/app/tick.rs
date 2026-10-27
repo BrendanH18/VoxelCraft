@@ -63,6 +63,8 @@ impl Game {
                     .wear_boots(crate::enchant::armor_level(armor, crate::enchant::Enchantment::DepthStrider));
                 self.session.player.tick(input, &self.world);
                 self.world.powder_snow_fire(&self.session.player, self.session.vitals.burning());
+                // `BigDripleafBlock.entityInside`: a leaf stood on starts to tilt.
+                self.world.dripleaf_step(self.session.player.pos, self.session.player.on_ground);
                 crate::particles::movement_effects(&self.session.player, before, &mut self.world);
                 self.update_portal(dt);
             } else {
@@ -88,6 +90,7 @@ impl Game {
                 crate::enchant::Enchantment::FrostWalker,
             ) > 0,
             turtle_helmet: self.session.inventory.armor[0].is_some_and(|s| s.item == Item::TURTLE_HELMET),
+            stalactite: std::mem::take(&mut self.session.stalactite),
             ..crate::simulation::player_environment(&self.session.player, &self.world, moved)
         };
         let hurts = if arriving || self.arrival.is_some() {
@@ -114,6 +117,9 @@ impl Game {
         if hurts.lava > 0.0 {
             self.damage_player_armored(hurts.lava, survival::CAUSE_LAVA);
         }
+        if hurts.stalactite > 0.0 {
+            self.damage_player_armored(hurts.stalactite, survival::CAUSE_STALACTITE);
+        }
         if hurts.fire > 0.0 {
             self.damage_player_armored(hurts.fire, survival::CAUSE_FIRE);
         }
@@ -129,6 +135,7 @@ impl Game {
         self.drive_lan(dt);
         self.drive_pads(dt);
         self.tick_agents();
+        self.explode_anchors();
         self.ride_minecarts(input);
         // Detectors share Java's skyDarken with spawning, then apply the sun
         // angle themselves (DaylightDetectorBlock.updateSignalStrength).
@@ -165,6 +172,17 @@ impl Game {
             self.gamerules.int("random_tick_speed") as u32,
         );
         self.play_notes();
+        self.mobs.entities.stalactite_hits(self.world.stalactite_hits());
+        // Players in a stalactite's cell as it lands are hit too, wherever
+        // they move before their next vitals tick applies it.
+        let landed = |world: &crate::world::World, s: &mut voxelcraft::session::PlayerSession| {
+            let (min, max) = s.player.collision_shape().aabb(s.player.pos);
+            s.stalactite = s.stalactite.max(world.stalactite_damage(min, max));
+        };
+        landed(&self.world, &mut self.session);
+        for bot in self.agents.players.values_mut().filter(|b| b.active) {
+            landed(&self.world, &mut bot.agent.session);
+        }
         self.world.tick_automation_entities(&mut self.mobs.entities);
         self.update_mobs(dt);
         self.update_items();

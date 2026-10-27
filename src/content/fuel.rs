@@ -111,6 +111,7 @@ pub fn class(item: Item) -> Option<FuelClass> {
         rb::WOOD_BUTTON => Some(Small),
         Block::CRAFTING_TABLE
         | Block::CHEST
+        | crate::world::utilities::TRAPPED_CHEST
         | Block::BOOKSHELF
         | Block::SMITHING_TABLE
         | Block::BARREL

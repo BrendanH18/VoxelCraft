@@ -81,6 +81,7 @@ pub mod structure;
 pub mod temples;
 pub mod terrain;
 pub mod trees;
+pub mod utilities;
 pub mod village;
 pub mod village_blocks;
 mod village_life;
@@ -247,6 +248,8 @@ pub struct World {
     brewing_stands: FxHashMap<IVec3, brewing::BrewingStand>,
     /// Sign text, shelf items and chiseled bookshelf books (see [`wood::entities`]).
     wood: wood::entities::WoodEntities,
+    /// Campfire, decorated pot and cauldron-drip state (see [`utilities`]).
+    utilities: utilities::State,
     /// Spawner cages and the mob each makes (see `spawner`).
     spawners: FxHashMap<IVec3, crate::entity::MobKind>,
     village_pois: FxHashMap<IVec3, Block>,
@@ -510,6 +513,7 @@ impl World {
             chests: FxHashMap::default(),
             brewing_stands: FxHashMap::default(),
             wood: Default::default(),
+            utilities: Default::default(),
             spawners: FxHashMap::default(),
             village_pois: FxHashMap::default(),
             navigation_updates: navigation::Updates::default(),
@@ -854,6 +858,7 @@ impl World {
         self.track_banner(p, old, block);
         self.track_brewing_stand(p, old, block);
         self.track_wood(p, old, block);
+        self.track_utilities(p, old, block);
         self.track_spawner(p, old, block);
         self.track_village_poi(p, block);
         if composter::level(block) == Some(7) {

@@ -375,6 +375,16 @@ Allocations so far:
 | 27568–27601 | Candle cakes, plain then the 16 dyes: unlit, lit; 27602–27615 stay unused | [colour](verification/2026-10-25-v0.12-colour.md) |
 | 27616–27935 | Standing banners (16 rotations per colour), then wall banners (4 facings per colour, `Facing::ALL` order) | [colour](verification/2026-10-25-v0.12-colour.md) |
 | 27936–27943 | Straw bed: foot then head, 4 facings each; 27944–28671 stay unused. Items 1130–1145 are the 16 cushions (1146–1159 unused); texture layers 2384–2456 (`colour_blocks::tex`, offsets from `tex::TEX`; 2457–2575 unused) | [colour](verification/2026-10-25-v0.12-colour.md) |
+| 28672–28679 | Cauldrons: empty, water levels 1–3, lava, powder snow levels 1–3 (`utilities` module) | [utilities](verification/2026-10-25-v0.12-utilities.md) |
+| 28680–28713 | Flower pot, then 33 potted plants in `utilities::POTTED` order; 28714–28720 free for later potted plants | [utilities](verification/2026-10-25-v0.12-utilities.md) |
+| 28721–28726 | Lodestone; respawn anchor charges 0–4; 28727 unused | [utilities](verification/2026-10-25-v0.12-utilities.md) |
+| 28728–28791 | Campfires: `28728 + soul*32 + wet*16 + signal*8 + unlit*4 + facing` (north, east, south, west) | [utilities](verification/2026-10-25-v0.12-utilities.md) |
+| 28792–28871 | Coral wall fans: `28792 + dead*40 + colour*8 + dry*4 + facing` | [utilities](verification/2026-10-25-v0.12-utilities.md) |
+| 28872–28879 | Ender chests: `28872 + wet*4 + facing` | [utilities](verification/2026-10-25-v0.12-utilities.md) |
+| 28880–28903 | Trapped chests: `28880 + wet*12 + type*4 + facing`; only `type` single is registered (left and right wait for double chests) | [utilities](verification/2026-10-25-v0.12-utilities.md) |
+| 28904–28919 | Decorated pots: `28904 + wet*8 + cracked*4 + facing` | [utilities](verification/2026-10-25-v0.12-utilities.md) |
+| 28920–28951 | Big dripleaf `facing` and `tilt`: `28920 + wet*16 + tilt*4 + facing`; north with no tilt stays 1950 and its wet partner, so 28920 and 28936 are unregistered; 28952–29695 unused | [utilities](verification/2026-10-25-v0.12-utilities.md) |
+| (items) 1160–1163 | Item frame, glow item frame, painting, armor stand (`Item::ITEM_FRAME`…); 1164–1189 unused. Texture layers 2576–2685 (`utilities::t`, offsets from `utilities::TEX`); 2686–2767 unused | [utilities](verification/2026-10-25-v0.12-utilities.md) |
 
 Wood track textures use layers **1776–1984** as offsets from
 `wood::tex::BASE` (stripped log sides and ends, quarter-turned log sides,

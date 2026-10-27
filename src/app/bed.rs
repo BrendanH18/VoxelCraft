@@ -60,6 +60,7 @@ impl Game {
         if !is_straw(self.world.get_block(foot)) && self.session.spawn_bed != Some(foot) {
             self.session.spawn_bed = Some(foot);
             self.session.spawn_point = None;
+            self.session.spawn_anchor = None;
             self.show_popup("Respawn point set");
         }
         rest.map_err(|e| self.show_popup(e)).ok().map(|at| (at, head))
@@ -129,6 +130,7 @@ impl Game {
         if !straw {
             agent.session.spawn_bed = Some(foot);
             agent.session.spawn_point = None;
+            agent.session.spawn_anchor = None;
         }
         let at = match rest {
             Ok(at) => at,

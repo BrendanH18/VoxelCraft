@@ -60,7 +60,7 @@ impl World {
     /// `tool`: silk touch drops the block itself, fortune adds to ore and
     /// crop drops (Java's loot tables).
     pub fn spill_with_item(&mut self, p: IVec3, block: Block, held: Option<Stack>) {
-        let block = block.canonical();
+        let block = super::utilities::shattered(block.canonical(), held);
         if self.tile_drops
             && held.is_some_and(|s| s.item == Item::SHEARS)
             && let Some(stack) = Self::shear_loot(block)
@@ -104,6 +104,7 @@ impl World {
         // Java's slab loot table: two for `type=double`; candles, one per candle.
         let count = double_slab_count(block) * super::colour_blocks::drop_count(block);
         out.extend(block.drop().map(|item| Stack::new(item, count)));
+        out.extend(super::utilities::extra_drops(block));
         if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&block.0)
             || super::overworld_blocks::snow_layers(block).is_some()
             || super::overworld_blocks::bud_facing(block).is_some()
@@ -323,6 +324,7 @@ impl World {
                 || (2150..=2157).contains(&b.0)
                 || (2160..=2164).contains(&b.canonical().0) =>
             {
+                self.utilities_random_tick(p, b);
                 self.tick_overworld_flora(p, b);
             }
             b if b.crop_stage().is_some_and(|s| s < 7) => {

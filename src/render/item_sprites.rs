@@ -446,6 +446,7 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 shaded(&cushion, x, y, c, 0.05)
             }
         }
+        Sprite::Decor(kind) => decor(kind, x, y),
         Sprite::Crossbow { loaded } => {
             // A stock along the diagonal with a bowed limb across its top end.
             // `s` runs along the stock toward the top right, `k` across it.
@@ -768,6 +769,46 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
         }
     };
     out.unwrap_or(CLEAR)
+}
+
+/// The v0.12 decoration items: a frame (golden for the glow frame) round
+/// leather or a glowing backing, a small landscape painting, and an armor
+/// stand's posts on a stone slab.
+fn decor(kind: u8, x: i32, y: i32) -> Option<Rgba> {
+    let border = |x: i32, y: i32| {
+        (1..=14).contains(&x) && (1..=14).contains(&y) && !((3..=12).contains(&x) && (3..=12).contains(&y))
+    };
+    match kind {
+        0 | 1 => {
+            let wood = if kind == 1 { [222, 176, 84] } else { [150, 106, 58] };
+            let back = if kind == 1 { [84, 196, 178] } else { [128, 84, 50] };
+            shaded(&border, x, y, wood, 0.08).or_else(|| {
+                ((3..=12).contains(&x) && (3..=12).contains(&y)).then(|| tint(back, 0.85 + noise(x, y, 61) * 0.2))
+            })
+        }
+        2 => shaded(&border, x, y, [124, 86, 50], 0.08).or_else(|| {
+            ((3..=12).contains(&x) && (3..=12).contains(&y)).then(|| {
+                let hill = 9 - ((x as f32 * 0.9).sin() * 1.5) as i32;
+                if (x - 9).pow(2) + (y - 5).pow(2) <= 2 {
+                    tint([240, 214, 110], 1.0)
+                } else if y >= hill {
+                    tint([84, 140, 64], 0.85 + noise(x, y, 62) * 0.2)
+                } else {
+                    tint([120, 170, 230], 0.9 + y as f32 * 0.015)
+                }
+            })
+        }),
+        _ => {
+            let posts = |x: i32, y: i32| {
+                (x == 7 || x == 8) && (1..=13).contains(&y)
+                    || (4..=11).contains(&x) && (4..=5).contains(&y)
+                    || (5..=10).contains(&x) && y == 9
+                    || (x == 6 || x == 9) && (10..=13).contains(&y)
+            };
+            let slab = |x: i32, y: i32| (3..=12).contains(&x) && (14..=15).contains(&y);
+            shaded(&posts, x, y, [176, 138, 84], 0.05).or_else(|| shaded(&slab, x, y, [150, 150, 150], 0.08))
+        }
+    }
 }
 
 /// One compass or clock frame. `frame` 0 points the marker up; later frames turn clockwise.

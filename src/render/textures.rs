@@ -15,6 +15,8 @@ mod nether;
 mod overworld;
 #[path = "stone_textures.rs"]
 mod stone;
+#[path = "utility_textures.rs"]
+mod utility;
 #[path = "wood_textures.rs"]
 mod wood;
 
@@ -207,6 +209,9 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     }
     if (crate::world::copper::t::BASE..crate::world::copper::t::END).contains(&layer) {
         return copper::pixel(layer, x, y);
+    }
+    if (crate::world::utilities::TEX..crate::world::utilities::TEX_END).contains(&layer) {
+        return utility::pixel(layer, x, y);
     }
     if (tex::COLORED_WOOL..tex::COLORED_WOOL + 16).contains(&layer) || layer == tex::WOOL {
         let color = if layer == tex::WOOL { 0 } else { (layer - tex::COLORED_WOOL) as usize };

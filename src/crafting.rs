@@ -6,6 +6,8 @@
 //! left to right, like Minecraft. Shapeless recipes match any arrangement
 //! of exactly their ingredients.
 
+mod utilities;
+
 use crate::inventory::Stack;
 use crate::item::{ArmorMaterial, ArmorPiece, Item, Tier, ToolKind};
 use crate::world::block::Block;
@@ -569,6 +571,7 @@ pub fn recipes() -> &'static [Recipe] {
         copper::add_recipes(&mut r);
         wood::add(&mut r);
         colour::add(&mut r);
+        utilities::add(&mut r);
         r
     })
 }

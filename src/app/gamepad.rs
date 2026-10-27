@@ -774,6 +774,12 @@ impl Game {
             Request::Open(Used::OpenVehicle(id)) => self.pads.seats[i].open(Menu::items(Tab::Vehicle(id))),
             Request::Open(Used::OpenMerchant(id)) => self.pads.seats[i].open(Menu::items(Tab::Trading(id))),
             Request::Open(Used::Screen { cell, .. } | Used::Bed { cell }) => self.pad_use_block(i, cell),
+            Request::Open(Used::Utility {
+                effect: voxelcraft::world::utilities::interact::Effect::EnderChest, ..
+            }) => {
+                self.pads.seats[i].message =
+                    Some(("Ender chests open only for the keyboard player for now".into(), Instant::now()));
+            }
             Request::Open(_) => {}
             Request::MagicDamage(amount) => {
                 if let Some(bot) = self.agents.players.get_mut(&name) {

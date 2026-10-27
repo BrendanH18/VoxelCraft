@@ -132,6 +132,17 @@ pub enum Used {
     BoneMeal {
         cell: IVec3,
     },
+    /// A v0.12 utility block took the use (pots, cauldrons, campfires,
+    /// respawn anchors); adapters play its sound, the host follows up.
+    Utility {
+        cell: IVec3,
+        effect: crate::world::utilities::interact::Effect,
+    },
+    /// An item frame, painting or armor stand was placed or used.
+    Decor {
+        at: DVec3,
+        effect: crate::entity::decor::Effect,
+    },
     Placed(super::placement::Outcome),
     /// A sign's text editor should open for its front or back (the adapter
     /// answers with `PlayerSession::edit_sign`).
@@ -280,6 +291,10 @@ impl PlayerSession {
         if !sneaking_at_cushion && let Some(id) = entities.mount_cart(eye, dir, reach, self.id) {
             self.player.vehicle = Some(id);
             return Ok(Some(Used::Mounted(id)));
+        }
+        // Item frames take and turn items; armor stands swap armor.
+        if let Some((at, effect)) = entities.use_decor(eye, dir, reach, &mut self.inventory, slot, creative) {
+            return Ok(Some(Used::Decor { at, effect }));
         }
         // Cushions go on top faces through `use_item_on` (`CushionItem.useOn`).
         if let Some(kind) = self
@@ -430,6 +445,32 @@ impl PlayerSession {
         if let Some(used) = self.use_colour_block(slot, world, pos, ctx) {
             return Ok(Some(used));
         }
+        // Java skips block use only when sneaking with something in hand.
+        if !(ctx.sneaking && held.is_some())
+            && let Some(effect) = crate::world::utilities::interact::use_block(
+                world,
+                entities,
+                &self.player,
+                &mut self.inventory,
+                slot,
+                self.mode,
+                pos,
+                normal,
+            )
+        {
+            use crate::world::utilities::interact::Effect;
+            // `RespawnAnchorBlock.useWithoutItem` in the Nether: the anchor
+            // becomes the respawn point, replacing any bed.
+            let effect = match effect {
+                Effect::AnchorSpawn if self.spawn_anchor == Some(pos) => Effect::Consumed,
+                Effect::AnchorSpawn => {
+                    (self.spawn_anchor, self.spawn_bed, self.spawn_point) = (Some(pos), None, None);
+                    effect
+                }
+                other => other,
+            };
+            return Ok(Some(Used::Utility { cell: pos, effect }));
+        }
         if !ctx.sneaking && survival_items::use_composter(world, entities, pos, &mut self.inventory, slot, creative) {
             return Ok(Some(Used::Composter { cell: pos }));
         }
@@ -511,6 +552,22 @@ impl PlayerSession {
         }
         if let Some(used) = self.use_item_on(slot, world, entities, pos, normal, tool_broken) {
             return Ok(Some(used));
+        }
+        // `HangingEntityItem` and `ArmorStandItem`: decorations hang on or
+        // stand against the clicked face.
+        if let Some(item) = held
+            && let Some(placed) = {
+                let mut players = ctx.others.to_vec();
+                players.push(self.player.pos);
+                let yaw = crate::knockback::java_yaw_degrees(self.player.yaw);
+                entities.place_decor(world, item, pos, normal, yaw, &players)
+            }
+        {
+            let effect = placed.ok_or("that decoration doesn't fit there")?;
+            if survival {
+                self.inventory.take_one(slot);
+            }
+            return Ok(Some(Used::Decor { at: pos.as_dvec3() + DVec3::splat(0.5) + normal.as_dvec3() * 0.5, effect }));
         }
         let result = self.place_held(slot, world, ctx.others)?;
         Ok(Some(Used::Placed(result)))
@@ -653,6 +710,9 @@ impl PlayerSession {
 /// The item pick-block (middle click) looks for: crops give seeds, and
 /// farmland and lit furnaces their plain blocks.
 pub fn picked_item(block: Block) -> Item {
+    if let Some(item) = crate::world::utilities::picked(block) {
+        return item;
+    }
     if matches!(
         crate::world::redstone_blocks::component(block),
         Some(crate::world::redstone_blocks::Component::Wire(_))

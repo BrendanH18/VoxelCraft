@@ -133,6 +133,9 @@ roadmap and recorded checks to assess completeness against the current target.
 - [v0.12 colour](verification/2026-10-25-v0.12-colour.md): track 4's 131
   blocks (wool and concrete stairs and slabs, candles, candle cakes,
   banners, the straw bed) and cushions, their IDs, sources and gaps.
+- [v0.12 utilities and special blocks](verification/2026-10-25-v0.12-utilities.md):
+  track 5's 55 blocks and the item frame, painting and armor stand
+  entities, their IDs, Java rules, checks and what remains.
 - [Game rules and difficulty](verification/2026-10-17-game-rules-difficulty.md):
   the 26.3 rule registry, damage-type rules, Peaceful regeneration and the
   difficulty effects checked against the reference.

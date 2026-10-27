@@ -201,6 +201,15 @@ impl Game {
             let n: Vec<i32> = text.split(',').filter_map(|value| value.parse().ok()).collect();
             (n.len() == 3).then(|| IVec3::new(n[0], n[1], n[2]))
         });
+        session.spawn_anchor = existing.as_ref().and_then(|l| l.props.get("spawn_anchor")).and_then(|text| {
+            let n: Vec<i32> = text.split(',').filter_map(|value| value.parse().ok()).collect();
+            (n.len() == 3).then(|| IVec3::new(n[0], n[1], n[2]))
+        });
+        session.ender = existing
+            .as_ref()
+            .and_then(|l| l.props.get("ender_chest"))
+            .and_then(|text| crate::world::chest::Chest::deserialize(text))
+            .unwrap_or_default();
         let mut game = Game {
             session,
             session_lock: None,
@@ -295,6 +304,7 @@ impl Game {
             place: args.place.clone(),
             signs: args.signs.clone(),
             carts: args.carts.clone(),
+            decor_scene: args.decor.clone(),
             open_block: args.open_block,
             drop: args.drop.clone(),
             orbs: args.orbs.clone(),

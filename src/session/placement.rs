@@ -286,9 +286,28 @@ impl PlayerSession {
                         let block = crate::world::village_blocks::placed_with_look(block, self.player.forward());
                         // Slab type and stairs half and corner shape (Java's
                         // `getStateForPlacement` of `SlabBlock` and `StairBlock`).
-                        ss::placed(block, world.get_block(at).unwrap_or(Block::AIR), normal, ctx.click.y, |f| {
-                            world.get_block(at + f.offset())
-                        })
+                        let block =
+                            ss::placed(block, world.get_block(at).unwrap_or(Block::AIR), normal, ctx.click.y, |f| {
+                                world.get_block(at + f.offset())
+                            });
+                        // v0.12 utilities: campfires, chests and pots face the
+                        // player; coral fans hang on a clicked wall.
+                        match crate::world::utilities::placed(
+                            block,
+                            at,
+                            ctx.facing,
+                            ctx.look,
+                            world.get_block(at).is_some_and(waterlog::holds_source),
+                            |c| world.get_block(c),
+                        ) {
+                            Some(b) => b,
+                            None if crate::world::overworld_blocks::coral_of(block.canonical())
+                                .is_some_and(|(kind, ..)| kind == 2) =>
+                            {
+                                return Err("block cannot survive here");
+                            }
+                            None => block,
+                        }
                     };
                     if !free(world, at) {
                         return Err("destination occupied or unloaded");

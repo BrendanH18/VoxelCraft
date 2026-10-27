@@ -19,6 +19,7 @@ mod bell;
 mod bobber;
 pub mod category;
 mod chunk_storage;
+pub mod decor;
 pub mod path;
 pub use bobber::{CatchContext, roll_catch, set_damage};
 pub mod dragon;
@@ -700,6 +701,10 @@ pub struct Entities {
     pub orbs: Vec<XpOrb>,
     pub minecarts: Vec<minecart::Minecart>,
     next_cart: u32,
+    /// Item frames, paintings and armor stands (see [`decor`]).
+    pub decor: Vec<decor::Decor>,
+    /// Ticks the decorations have run, for an armor stand's double hit.
+    decor_clock: u64,
     /// Entities of unloaded chunks, out of the level until their chunk loads.
     storage: chunk_storage::EntityStorage,
     /// The dragon fight, in the End.
@@ -794,6 +799,8 @@ impl Entities {
             orbs: Vec::new(),
             minecarts: Vec::new(),
             next_cart: 1,
+            decor: Vec::new(),
+            decor_clock: 0,
             storage: Default::default(),
             fight: None,
             mob_loot: true,
@@ -952,6 +959,7 @@ impl Entities {
 
     fn blast(&mut self, center: DVec3, power: f32, credit_player: bool) {
         self.blast_carts(center, power);
+        self.blast_decor(center, power);
         if let Some(fight) = &mut self.fight {
             fight.explode(center, power);
         }
@@ -1212,11 +1220,12 @@ impl Entities {
     }
 
     /// Writes this dimension's entity properties (`items`, `orbs`, `minecarts`,
-    /// `villagers` and `nether_mobs`), including entities stored in unloaded chunks.
+    /// `decor`, `villagers` and `nether_mobs`), including entities stored in unloaded chunks.
     pub fn save_props(&self, props: &mut std::collections::BTreeMap<String, String>) {
         props.insert("items".to_string(), self.items_to_string());
         props.insert("orbs".to_string(), self.orbs_to_string());
         props.insert("minecarts".to_string(), self.minecarts_to_string());
+        props.insert("decor".to_string(), self.decor_to_string());
         props.insert("villagers".to_string(), self.villagers_to_string());
         props.insert("nether_mobs".to_string(), self.nether_mobs_to_string());
     }
@@ -1233,6 +1242,9 @@ impl Entities {
         }
         if let Some(carts) = props.get("minecarts") {
             self.load_minecarts(carts);
+        }
+        if let Some(decor) = props.get("decor") {
+            self.load_decor(decor);
         }
         if let Some(v) = props.get("villagers") {
             self.load_villagers(v);
@@ -1319,6 +1331,7 @@ impl Entities {
         model::build_puffs(&self.puffs, camera, alpha, &mut self.verts);
         model::build_orbs(&self.orbs, camera, max_dist, time, alpha, &mut self.verts);
         model::build_minecarts(&self.minecarts, camera, alpha, &mut self.verts);
+        decor::build(&self.decor, camera, max_dist, alpha, &mut self.verts);
         if let Some(fight) = &self.fight {
             dragon_model::build_fight(fight, camera, time, alpha, &mut self.verts);
         }

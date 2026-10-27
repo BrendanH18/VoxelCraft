@@ -25,7 +25,7 @@
 use glam::{DVec3, IVec3};
 use rustc_hash::FxHashMap;
 
-use super::{Arrow, Entities, ItemEntity, Mob, MobKind, XpOrb, eye, fireball, minecart, potion, thrown, tnt};
+use super::{Arrow, Entities, ItemEntity, Mob, MobKind, XpOrb, decor, eye, fireball, minecart, potion, thrown, tnt};
 use crate::world::World;
 
 /// The entities of one unloaded storage chunk (Java's `ChunkEntities`).
@@ -41,6 +41,7 @@ pub(super) struct ChunkEntities {
     pub(super) eyes: Vec<eye::EnderEye>,
     pub(super) fireballs: Vec<fireball::Fireball>,
     pub(super) tnt: Vec<tnt::PrimedTnt>,
+    pub(super) decor: Vec<decor::Decor>,
 }
 
 impl ChunkEntities {
@@ -55,6 +56,7 @@ impl ChunkEntities {
             + self.eyes.len()
             + self.fireballs.len()
             + self.tnt.len()
+            + self.decor.len()
     }
 }
 
@@ -186,6 +188,7 @@ impl Entities {
         self.eyes.extend(c.eyes);
         self.fireballs.extend(c.fireballs);
         self.tnt.extend(c.tnt);
+        self.decor.extend(c.decor);
     }
 
     fn store_unloaded(&mut self, world: &World) {
@@ -230,6 +233,12 @@ impl Entities {
         unload(&mut self.eyes, |e| away(e.pos), |chunk, e| storage.entry(chunk).eyes.push(e));
         unload(&mut self.fireballs, |e| away(e.pos), |chunk, e| storage.entry(chunk).fireballs.push(e));
         unload(&mut self.tnt, |e| away(e.pos), |chunk, e| storage.entry(chunk).tnt.push(e));
+        // Hanging decorations belong to the cell they hang in.
+        unload(
+            &mut self.decor,
+            |d| away(if d.is_hanging() { d.cell.as_dvec3() + DVec3::splat(0.5) } else { d.pos }),
+            |chunk, d| storage.entry(chunk).decor.push(d),
+        );
     }
 }
 

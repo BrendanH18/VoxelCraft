@@ -356,12 +356,14 @@ pub mod tex {
     pub const HEART_FROZEN_HALF: u16 = 1767;
     // v0.12 wood: 1776..1985 (`world::wood::tex`); stone and minerals:
     // 2000..2036 (`world::stone_blocks::t`); copper (BLD-01c): 2128..2201
-    // (`world::copper::t`); colour: 2384..2457 (`world::colour_blocks::tex`).
-    // Layers below that no block uses yet draw the missing-texture pattern.
-    pub const COUNT: u32 = super::super::colour_blocks::tex::TEX_END as u32;
+    // (`world::copper::t`); colour: 2384..2457 (`world::colour_blocks::tex`);
+    // utilities: from `world::utilities::TEX`. Layers below that no block
+    // uses yet draw the missing-texture pattern.
+    pub const COUNT: u32 = super::super::utilities::TEX_END as u32;
     const _: () = assert!(super::super::wood::tex::END <= super::super::stone_blocks::t::TEX);
     const _: () = assert!(super::super::stone_blocks::t::END <= super::super::copper::t::BASE);
     const _: () = assert!(super::super::copper::t::END <= super::super::colour_blocks::tex::TEX);
+    const _: () = assert!(super::super::colour_blocks::tex::TEX_END <= super::super::utilities::TEX);
     const _: () = assert!(super::super::overworld_blocks::TEX_END <= 1750);
     const _: () = assert!(super::super::overworld_blocks::TEX == 1450);
     const _: () = assert!((CRYING_OBSIDIAN as u32) < COUNT);
@@ -878,6 +880,9 @@ impl Block {
 
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
+        if super::utilities::is_custom(self) {
+            return Some(Shaped::Custom);
+        }
         if super::scaffolding::is_scaffolding(self) {
             return Some(Shaped::Custom);
         }
@@ -1217,6 +1222,9 @@ impl Block {
 
     /// This block without its orientation (itself if it has none).
     pub fn base(self) -> Block {
+        if let Some(b) = super::utilities::base(self) {
+            return b;
+        }
         if super::scaffolding::is_scaffolding(self) {
             return super::scaffolding::SCAFFOLDING;
         }
@@ -1491,6 +1499,9 @@ impl Block {
 
     /// What breaking this block yields in survival.
     pub fn drop(self) -> Option<Item> {
+        if let Some(drop) = super::utilities::drop(self) {
+            return drop;
+        }
         if super::scaffolding::is_scaffolding(self) {
             return Some(Item::SCAFFOLDING);
         }
@@ -1598,6 +1609,9 @@ impl Block {
     /// held item can harvest the block and 5x when it can't, divided by the
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
     pub fn hardness(self) -> f32 {
+        if let Some((hardness, ..)) = super::utilities::mining(self) {
+            return hardness;
+        }
         if self == Self::HONEY_BLOCK {
             return 0.0;
         }
@@ -1788,6 +1802,9 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
+        if let Some((_, tool, _)) = super::utilities::mining(self) {
+            return tool;
+        }
         if self == Self::HONEY_BLOCK {
             return None;
         }
@@ -1947,6 +1964,9 @@ impl Block {
     /// Pickaxe harvest level needed for any drop (0 wood or gold, 1 stone,
     /// 2 iron, 3 diamond); `None` if a bare hand will do.
     pub fn harvest_level(self) -> Option<u8> {
+        if let Some((.., level)) = super::utilities::mining(self) {
+            return level;
+        }
         if self == Self::HONEY_BLOCK {
             return None;
         }
@@ -2100,6 +2120,7 @@ impl Block {
             .chain(super::copper::palette_ids())
             .chain(super::wood::palette_ids())
             .chain(super::colour_blocks::palette_ids())
+            .chain(super::utilities::palette_ids())
             .map(Block)
     }
 
@@ -2165,6 +2186,9 @@ impl Block {
     /// a full block; everything else stays put.
     pub fn can_stay_on(self, below: Block) -> bool {
         if let Some(ok) = super::wood::can_stay_on(self, below) {
+            return ok;
+        }
+        if let Some(ok) = super::utilities::can_stay_on(self, below) {
             return ok;
         }
         if self.alias().is_some() || below.alias().is_some() {
@@ -2686,6 +2710,10 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         return info;
     }
     let (name, kind, tex) = match id {
+        id if super::utilities::owns(id) => match super::utilities::registry(id) {
+            Some(info) => info,
+            None => ("unknown", Invisible, all(0)),
+        },
         8128 => ("honey block", Translucent, column(tex::HONEY_SIDE, tex::HONEY_TOP, tex::HONEY_BOTTOM)),
         super::stone_blocks::ORIGIN..=super::stone_blocks::RESERVED_LAST => match super::stone_blocks::registry(id) {
             Some((name, kind, super::stone_blocks::Tex::Faces(t))) => (name, kind, t),
@@ -3121,6 +3149,7 @@ const fn emission_of(i: usize) -> u8 {
             1900..=2076 | 2400..=2415 => super::overworld_blocks::emission(i as u16),
             _ if super::copper::owns(i as u16) => super::copper::emission(i as u16),
             24576..=28671 => super::colour_blocks::emission(i as u16), // candles
+            28672..=29695 => super::utilities::emission(i as u16),
             _ => 0,
         }
     }
@@ -3254,6 +3283,10 @@ mod tests {
                 if let Some((_, lit)) = candle::decode_cake(block.0) {
                     return if lit { 3 } else { 0 };
                 }
+            }
+            // Checked against Java in `utilities::tests`.
+            if super::super::utilities::owns(block.0) {
+                return super::super::utilities::emission(block.0);
             }
             {
                 use super::super::nether_biome_blocks as nb;

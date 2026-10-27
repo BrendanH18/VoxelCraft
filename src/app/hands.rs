@@ -109,6 +109,12 @@ impl Actor<'_> {
         let (volume, pitch) = match target {
             Hit::FenceKnot => (0.0, (1.0, 1.0)),
             Hit::Cart => (0.7, (0.8, 1.0)),
+            Hit::Decor(effect) => {
+                if let Some(effect) = effect {
+                    super::utilities::decor_feedback(self.audio, at, effect);
+                }
+                (0.0, (1.0, 1.0))
+            }
             Hit::Fireball => (0.7, (0.6, 0.8)),
             Hit::Fight => (0.8, (0.9, 1.1)),
             Hit::Mob(_) if critical => (0.8, (1.25, 1.4)),
@@ -362,6 +368,11 @@ impl Actor<'_> {
             }
             Used::Carved { cell } => audio.play(Sound::Break(Material::Wood), Some(centre(cell)), 0.8, (0.9, 1.1)),
             Used::BoneMeal { cell } => audio.play(Sound::Place(Material::Grass), Some(centre(cell)), 0.8, (1.2, 1.4)),
+            Used::Utility { cell, effect } => {
+                super::utilities::feedback(audio, cell, effect);
+                self.requests.push(Request::Open(done.used));
+            }
+            Used::Decor { at, effect } => super::utilities::decor_feedback(audio, at, effect),
             Used::Placed(placement) => {
                 use voxelcraft::session::placement::{Kind, Outcome};
                 match placement {

@@ -182,6 +182,9 @@ impl World {
     /// Strong output energizes a conductor; weak output activates devices only.
     fn emitted_signal(&self, p: IVec3, direction: IVec3, strong: bool, wires: bool) -> u8 {
         let Some(b) = self.get_block(p) else { return 0 };
+        if let Some(power) = self.trapped_signal(p, b, direction, strong) {
+            return power;
+        }
         if rails::is_powered(b) && rails::kind(b) == Some(rails::RailKind::Detector) {
             return if !strong || direction == IVec3::NEG_Y { 15 } else { 0 };
         }

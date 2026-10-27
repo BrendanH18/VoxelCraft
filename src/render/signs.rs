@@ -372,6 +372,7 @@ pub fn shelf_items(world: &World, camera: DVec3, out: &mut Vec<BlockModel>) {
                 block_light,
                 yaw: yaw.to_radians(),
                 icon,
+                orient: None,
             });
         }
     }

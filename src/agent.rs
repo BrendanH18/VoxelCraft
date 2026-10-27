@@ -349,6 +349,7 @@ impl Agent {
             Command::SpawnPoint(pos) => {
                 let pos = pos.resolve(self.session.player.pos)?.floor().as_ivec3();
                 self.session.spawn_bed = None;
+                self.session.spawn_anchor = None;
                 self.session.spawn_point = Some(pos);
             }
             Command::SetBlock(pos, block) => {
@@ -414,6 +415,9 @@ impl Agent {
                     Used::Bed { .. } => return Err("use the sleep command for beds".into()),
                     Used::OpenVehicle(_) => return Err("that vehicle has storage; use chest take/put".into()),
                     Used::OpenMerchant(_) => return Err("use trade to see this villager's offers".into()),
+                    Used::Utility { effect: crate::world::utilities::interact::Effect::EnderChest, .. } => {
+                        return Err("ender chests open a screen the agent protocol doesn't have yet".into());
+                    }
                     _ => {}
                 }
                 if !matches!(done.used, Used::PearlThrown { .. } | Used::PotionThrown { .. } | Used::Bucket(_)) {
@@ -756,6 +760,7 @@ impl Agent {
             ));
             self.session.player.tick(input, world);
             world.powder_snow_fire(&self.session.player, self.session.vitals.burning());
+            world.dripleaf_step(self.session.player.pos, self.session.player.on_ground);
             crate::particles::movement_effects(&self.session.player, before, world);
         } else {
             entities.mount_input(self.session.id, &self.session.player, input, &self.session.inventory, self.selected);
@@ -773,6 +778,7 @@ impl Agent {
                 crate::enchant::Enchantment::FrostWalker,
             ) > 0,
             turtle_helmet: self.session.inventory.armor[0].is_some_and(|s| s.item == Item::TURTLE_HELMET),
+            stalactite: std::mem::take(&mut self.session.stalactite),
             ..simulation::player_environment(&self.session.player, world, moved)
         };
         let hurts = self.session.vitals.tick_rules(
@@ -793,6 +799,13 @@ impl Agent {
             if damage > 0.0 && self.damage(damage, cause) > 0.0 {
                 self.session.sleeping = None;
             }
+        }
+        // `falling_stalactite` isn't in `bypasses_armor`: armor reduces it,
+        // as `damage_player_armored` does for the host.
+        if hurts.stalactite > 0.0
+            && self.hurt(hurts.stalactite, simulation::survival::CAUSE_STALACTITE, DVec3::ZERO, entities) > 0.0
+        {
+            self.session.sleeping = None;
         }
         if self.session.vitals.is_dead() {
             self.drop_everything(entities);

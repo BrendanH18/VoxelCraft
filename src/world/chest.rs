@@ -41,7 +41,7 @@ impl Chest {
 }
 
 pub fn is_chest(b: Block) -> bool {
-    matches!(b.base(), Block::CHEST | Block::BARREL)
+    matches!(b.base(), Block::CHEST | Block::BARREL | super::utilities::TRAPPED_CHEST)
         || super::copper::is_chest(b)
         || matches!(
             super::redstone_blocks::component(b),
@@ -85,10 +85,13 @@ impl World {
         }
     }
 
-    /// `x,y,z=slots|...` for the level file.
+    /// `x,y,z=slots|...` for the level file. An ender chest's entry is a
+    /// player's ender inventory lent to an open screen
+    /// ([`World::lend_chest`]); the player saves it, so it never goes here.
     pub fn chests_to_string(&self) -> String {
         self.chests
             .iter()
+            .filter(|(p, _)| !self.get_block(**p).is_some_and(|b| super::utilities::ender_chest_of(b).is_some()))
             .map(|(p, c)| format!("{},{},{}={}", p.x, p.y, p.z, c.serialize()))
             .collect::<Vec<_>>()
             .join("|")
@@ -101,7 +104,11 @@ impl World {
             let Some((pos, slots)) = entry.split_once('=') else { continue };
             let c: Vec<i32> = pos.split(',').filter_map(|v| v.parse().ok()).collect();
             if let (&[x, y, z], Some(chest)) = (&c[..], Chest::deserialize(slots)) {
-                self.chests.insert(IVec3::new(x, y, z), chest);
+                let p = IVec3::new(x, y, z);
+                // An ender chest's entry was only ever a lent screen.
+                if !self.get_block(p).is_some_and(|b| super::utilities::ender_chest_of(b).is_some()) {
+                    self.chests.insert(p, chest);
+                }
             }
         }
     }

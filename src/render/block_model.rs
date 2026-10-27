@@ -28,6 +28,8 @@ pub struct BlockModel {
     /// Draw this texture layer as a flat, upright square (an item icon)
     /// instead of the block.
     pub icon: Option<u16>,
+    /// A full turn about the centre instead of `yaw` (an item in a frame).
+    pub orient: Option<glam::Quat>,
 }
 
 #[repr(C)]
@@ -58,9 +60,12 @@ pub fn vertices(models: &[BlockModel], camera: DVec3, ticks: f64) -> Vec<BlockVe
         let tex = m.block.info().tex;
         let (sin, cos) = m.yaw.sin_cos();
         // Unit-cube corner -> camera-relative position, turned about the centre.
-        let place = |c: Vec3| {
-            let (x, z) = (c.x - 0.5, c.z - 0.5);
-            min + Vec3::new(x * cos - z * sin + 0.5, c.y, x * sin + z * cos + 0.5) * s
+        let place = |c: Vec3| match m.orient {
+            Some(q) => min + (q * (c - Vec3::splat(0.5)) + Vec3::splat(0.5)) * s,
+            None => {
+                let (x, z) = (c.x - 0.5, c.z - 0.5);
+                min + Vec3::new(x * cos - z * sin + 0.5, c.y, x * sin + z * cos + 0.5) * s
+            }
         };
         // UVs as in `chunk.wgsl`: sides map (horizontal, down), tops map (x, z).
         let mut quad = |corners: [Vec3; 4], layer: u16, shade: f32, axis: usize| {
@@ -289,6 +294,7 @@ mod tests {
             block_light: 0.0,
             yaw: 0.0,
             icon: None,
+            orient: None,
         };
         let icon = BlockModel { icon: Some(crate::world::block::tex::ITEM_BASE), yaw: 1.0, ..at(Block::AIR) };
         let v = vertices(&[at(Block::SAND), at(Block::POPPY), icon], DVec3::new(10.0, 64.0, 5.0), 0.0);

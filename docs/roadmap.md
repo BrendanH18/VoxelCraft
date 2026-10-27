@@ -1180,6 +1180,21 @@ Work items (all Missing unless noted):
    now); decorated pots without sherds; lodestones and respawn anchors.
    Sponges already drain water
    (`src/world/sponge.rs`); they need only the M2 exit sample.
+   *Implemented, unverified (2026-10-26):* all 55 blocks of the audit's
+   utilities list (`src/world/utilities.rs`, 254 states) and the item
+   frame, glow item frame, painting and armor stand as entities
+   (`src/entity/decor.rs`), with Java's states, shapes, light, mining and
+   drops, recipes, cauldron buckets and bottles with rain, snow and
+   stalactite filling, campfire cooking, damage, smoke signals, lighting and
+   dousing, coral wall fans and their dying, falling stalactites, big
+   dripleaf tilting, trapped chest signals, the per-player ender chest,
+   decorated pots that keep a stack, and anchors charged with glowstone that
+   set a Nether respawn point or explode elsewhere
+   ([record](verification/2026-10-25-v0.12-utilities.md)). Owed: owner play,
+   dye washing (dyed leather and banners don't exist yet), lodestone
+   compasses, stalactites broken by tridents, item frame comparator output,
+   LAN replication of the new entities, ender chests for controller and CLI
+   players (keyboard player only for now), and a frame-time scene.
 6. **Data pass (BLD-01e, BLD-02, BLD-03).** Register the fuel values of
    every reference fuel item that now exists; compare every crafting,
    smelting, stonecutting and campfire recipe with the 26.3 data; compost

@@ -49,6 +49,7 @@ pub const CAUSE_DROWN: &str = "drowned";
 pub const CAUSE_LAVA: &str = "tried to swim in lava";
 pub const CAUSE_FIRE: &str = "burned to death";
 pub const CAUSE_STARVE: &str = "starved to death";
+pub const CAUSE_STALACTITE: &str = "was skewered by a falling stalactite";
 pub const CAUSE_FREEZE: &str = "froze to death";
 pub const CAUSE_MAGIC: &str = "was killed by magic";
 
@@ -110,6 +111,10 @@ pub struct Env {
     /// Touching soul fire, which burns twice as hard (Java's 2 damage).
     pub in_soul_fire: bool,
     pub on_magma: bool,
+    /// Fire damage of a lit campfire the body touches (`CampfireBlock.entityInside`).
+    pub campfire: f32,
+    /// Damage of a stalactite that landed on the body this tick.
+    pub stalactite: f32,
     /// Standing on a hay bale, which cushions a landing.
     pub on_hay: bool,
     /// HoneyBlock.fallOn uses the same 0.2f multiplier as hay.
@@ -145,6 +150,8 @@ pub struct Hurts {
     pub burn: f32,
     pub starve: f32,
     pub freeze: f32,
+    /// A falling stalactite (`DamageTypes.FALLING_STALACTITE`).
+    pub stalactite: f32,
 }
 
 /// Minecraft's hunger: a food bar backed by a hidden saturation buffer that
@@ -579,6 +586,13 @@ impl Vitals {
         }
         if env.on_magma && !env.frost_walker && !creative {
             hurts.fire = hurts.fire.max(1.0);
+        }
+        // Campfires hurt without setting anyone alight.
+        if env.campfire > 0.0 && !creative {
+            hurts.fire = hurts.fire.max(env.campfire);
+        }
+        if !creative {
+            hurts.stalactite = env.stalactite;
         }
         if fire_proof {
             (hurts.lava, hurts.fire, hurts.burn) = (0.0, 0.0, 0.0);
