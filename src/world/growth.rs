@@ -11,7 +11,7 @@ use super::block::Block;
 use super::chunk::{CHUNK_BITS, CHUNK_SIZE_I, chunk_of};
 use super::noise::splitmix64;
 use crate::inventory::Stack;
-use crate::item::Item;
+use crate::item::{Item, ToolKind};
 
 /// Random block ticks per chunk per second: Minecraft's 3 per 16³ section
 /// per game tick, so each block is picked about once every 68 seconds.
@@ -52,7 +52,14 @@ impl World {
     /// Queues what `block`, gone from `p`, drops: its usual item, plus
     /// Minecraft's chance drops (seeds from grass and ripe wheat, saplings
     /// and apples from leaves).
+    ///
+    /// Nothing breaks it here (melting, water, lost support, pistons), so
+    /// snow layers, whose Java table needs an entity (`entity_properties`
+    /// on `this`), drop nothing.
     pub fn spill_block(&mut self, p: IVec3, block: Block) {
+        if super::overworld_blocks::snow_layers(block.canonical()).is_some() {
+            return;
+        }
         self.spill_mined(p, block, crate::enchant::Enchants::NONE);
     }
 
@@ -67,7 +74,9 @@ impl World {
         {
             self.drops.push((p, stack));
         } else {
-            self.spill_mined(p, block, held.map_or(Default::default(), |s| s.active_enchants()));
+            // `#cluster_max_harvestables`: the pickaxes.
+            let pickaxe = held.and_then(|s| s.item.as_tool()).is_some_and(|(kind, _)| kind == ToolKind::Pickaxe);
+            self.spill_loot(p, block, held.map_or(Default::default(), |s| s.active_enchants()), pickaxe);
         }
     }
 
@@ -85,6 +94,11 @@ impl World {
     }
 
     pub fn spill_mined(&mut self, p: IVec3, block: Block, tool: crate::enchant::Enchants) {
+        self.spill_loot(p, block, tool, false);
+    }
+
+    /// [`World::spill_mined`]; `pickaxe` is whether the tool is one.
+    fn spill_loot(&mut self, p: IVec3, block: Block, tool: crate::enchant::Enchants, pickaxe: bool) {
         if !self.tile_drops {
             return;
         }
@@ -94,9 +108,13 @@ impl World {
         if tool.has(Enchantment::SilkTouch)
             && let Some(item) = crate::mining::silk_drop(block)
         {
-            // A silk-touched snow block keeps every layer; a double slab is two slabs.
-            let count = super::overworld_blocks::snow_layers(block).unwrap_or(1) * double_slab_count(block);
-            self.drops.push((p, Stack::new(item, count)));
+            // Silk-touched snow keeps every layer, and eight are a snow
+            // block; a double slab is two slabs.
+            let stack = match super::overworld_blocks::snow_layers(block) {
+                Some(8) => Stack::new(Block::SNOW, 1),
+                layers => Stack::new(item, layers.unwrap_or(1) * double_slab_count(block)),
+            };
+            self.drops.push((p, stack));
             return;
         }
         let fortune = tool.level(Enchantment::Fortune) as u64;
@@ -109,11 +127,24 @@ impl World {
             || super::overworld_blocks::snow_layers(block).is_some()
             || super::overworld_blocks::bud_facing(block).is_some()
         {
-            self.overworld_drops(block, fortune, &mut out);
+            self.overworld_drops(block, fortune, pickaxe, &mut out);
+        }
+        // A full composter also gives its bone meal.
+        if super::composter::level(block) == Some(8) {
+            out.push(Stack::new(Item::BONE_MEAL, 1));
+        }
+        // Leaves: one or two sticks, 2% of the time (more with fortune).
+        if block.is_leaves() && self.loot_chance([0.02, 0.022_222_223, 0.025, 0.033_333_335][fortune.min(3) as usize]) {
+            out.push(Stack::new(Item::STICK, (1 + self.roll() % 2) as u8));
         }
         match block.as_stone_ore() {
             // Java's ore bonus: the drop times 1 + max(0, rand(fortune + 2) - 1).
-            Block::COAL_ORE | Block::IRON_ORE | Block::GOLD_ORE | Block::DIAMOND_ORE | Block::EMERALD_ORE
+            Block::COAL_ORE
+            | Block::IRON_ORE
+            | Block::GOLD_ORE
+            | Block::DIAMOND_ORE
+            | Block::EMERALD_ORE
+            | Block::QUARTZ_ORE
                 if fortune > 0 =>
             {
                 let times = 1 + (self.roll() % (fortune + 2)).saturating_sub(1) as u8;
@@ -132,8 +163,9 @@ impl World {
                 Some((crate::world::block::Crop::Carrot | crate::world::block::Crop::Potato, 7))
             ) =>
             {
-                // Java's crop bonus: one item, plus three (plus fortune) tries at 4 in 7.
-                let extra = (0..3 + fortune).filter(|_| self.roll() % 7 < 4).count() as u8;
+                // Java's crop bonus: one item, and a second pool's one more
+                // plus three (plus fortune) tries at 4 in 7.
+                let extra = 1 + (0..3 + fortune).filter(|_| self.roll() % 7 < 4).count() as u8;
                 if let Some(stack) = out.first_mut() {
                     stack.count = stack.count.saturating_add(extra);
                 }
@@ -171,6 +203,13 @@ impl World {
             b if let Some((item, chance)) = super::nether_biome_blocks::vine_drop_chance(b, fortune as u8) => {
                 if (self.roll() % 1_000_000) as f32 / 1_000_000.0 < chance {
                     out.push(Stack::new(item, 1));
+                }
+            }
+            // Zero to two sticks.
+            Block::DEAD_BUSH => {
+                let n = self.roll() % 3;
+                if n > 0 {
+                    out.push(Stack::new(Item::STICK, n as u8));
                 }
             }
             Block::CLAY => out.push(Stack::new(Item::CLAY_BALL, 3)),
@@ -212,6 +251,11 @@ impl World {
             _ => {}
         }
         self.drops.extend(out.into_iter().map(|s| (p, s)));
+    }
+
+    /// True with probability `p`, Java's `nextFloat() < p`.
+    pub(super) fn loot_chance(&mut self, p: f32) -> bool {
+        ((self.roll() >> 40) as f32 / (1u64 << 24) as f32) < p
     }
 
     /// Runs random block ticks in the chunks around `player`.
@@ -300,7 +344,8 @@ impl World {
                     self.advance_tree(p);
                 }
             }
-            // `SnowLayerBlock.randomTick`: block light above 11 melts it, with drops.
+            // `SnowLayerBlock.randomTick`: block light above 11 melts it
+            // (`dropResources` without an entity: no snowballs).
             b if super::overworld_blocks::snow_layers(b).is_some() => {
                 self.update_block_light();
                 if self.block_light(p) > 11 {
@@ -665,7 +710,7 @@ mod tests {
             world.drops.clear();
             world.spill_block(IVec3::ZERO, Block::crop(crate::world::block::Crop::Potato, 7));
             let potatoes = world.drops.iter().find(|(_, s)| s.item == Item::POTATO).map(|(_, s)| s.count).unwrap();
-            assert!((1..=4).contains(&potatoes));
+            assert!((2..=5).contains(&potatoes), "one, plus one and three 4-in-7 tries: {potatoes}");
             if world.drops.iter().any(|(_, s)| s.item == Item::POISONOUS_POTATO) {
                 poison += 1;
             }

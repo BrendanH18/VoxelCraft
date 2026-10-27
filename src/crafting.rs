@@ -15,6 +15,7 @@ use crate::world::block::Block;
 mod copper;
 pub use copper::stonecutting as copper_stonecutting;
 pub mod colour;
+pub mod stonecutting;
 mod wood;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -85,7 +86,14 @@ impl Grid {
 }
 
 /// An ingredient slot: one of these items.
-type Ingredient = &'static [Item];
+pub type Ingredient = &'static [Item];
+
+/// A recipe's ingredient layout, for comparison with the reference data.
+pub enum Layout<'a> {
+    /// Width, height and the row-major cells of the pattern (`None` empty).
+    Shaped(usize, usize, Vec<Option<Ingredient>>),
+    Shapeless(&'a [Ingredient]),
+}
 
 enum Shape {
     /// Rows of the pattern; each char is a key into the ingredient list,
@@ -121,6 +129,18 @@ impl Recipe {
                 }
                 grid
             }
+        }
+    }
+
+    /// The pattern or ingredient list. Shaped recipes also match mirrored.
+    pub fn layout(&self) -> Layout<'_> {
+        match &self.shape {
+            Shape::Shaped(rows, key) => {
+                let cell = |c: char| key.iter().find(|(k, _)| *k == c).map(|(_, options)| *options);
+                let cells = rows.iter().flat_map(|row| row.chars().map(cell)).collect();
+                Layout::Shaped(rows[0].len(), rows.len(), cells)
+            }
+            Shape::Shapeless(ingredients) => Layout::Shapeless(ingredients),
         }
     }
 
@@ -181,6 +201,7 @@ const fn b(block: Block) -> Item {
 /// Any kind of planks (oak first, so guides show oak).
 const PLANKS: Ingredient = &crate::content::PLANKS;
 const HAY: Ingredient = &[b(Block::HAY_BALE)];
+/// Java's `#wooden_slabs` (the bamboo mosaic slab isn't one).
 const WOOD_SLAB: Ingredient = &[
     b(Block(108)),
     b(crate::world::forms::wood_id(0, 4)),
@@ -194,7 +215,6 @@ const WOOD_SLAB: Ingredient = &[
     b(crate::world::forms::wood_id(8, 4)),
     b(crate::world::forms::wood_id(9, 4)),
     b(crate::world::forms::wood_id(10, 4)),
-    b(crate::world::forms::wood_id(11, 4)),
 ];
 const FURNACE: Ingredient = &[b(Block::FURNACE)];
 const STONE_SLAB: Ingredient = &[b(Block::STONE_SLAB)];
@@ -202,7 +222,7 @@ const BOOKSHELF: Ingredient = &[b(Block::BOOKSHELF)];
 /// Every overworld log, wood and stripped block (`#logs_that_burn`).
 const ANY_LOG: Ingredient = &crate::world::wood::ALL_LOGS;
 const OAK_PLANKS: Ingredient = &[b(Block::PLANKS)];
-const MELON: Ingredient = &[b(Block::MELON)];
+const MELON_SLICE: Ingredient = &[Item::MELON_SLICE];
 const SAND: Ingredient = &[b(Block::SAND)];
 const SAND_STONE: Ingredient = &[b(Block::SANDSTONE)];
 const GLASS: Ingredient = &[b(Block::GLASS)];
@@ -253,8 +273,8 @@ const NETHERITE_SCRAP: Ingredient = &[Item::NETHERITE_SCRAP];
 const NETHERITE_INGOT: Ingredient = &[Item::NETHERITE_INGOT];
 const NETHERITE_BLOCK: Ingredient = &[b(Block::NETHERITE_BLOCK)];
 const FUEL_LUMP: Ingredient = &[Item::COAL, Item::CHARCOAL];
-const BROWN_MUSHROOM: Ingredient = &[b(Block::BROWN_MUSHROOM)];
-const RED_MUSHROOM: Ingredient = &[b(Block::RED_MUSHROOM)];
+/// Java's `#mushrooms`.
+const MUSHROOMS: Ingredient = &[b(Block::BROWN_MUSHROOM), b(Block::RED_MUSHROOM)];
 const BOWL: Ingredient = &[Item::BOWL];
 const SNOWBALL: Ingredient = &[Item::SNOWBALL];
 const PUMPKIN: Ingredient = &[b(Block::PUMPKIN)];
@@ -279,7 +299,8 @@ pub fn recipes() -> &'static [Recipe] {
         let mut r = vec![
             shaped(&["##", "##"], &[('#', &[Item::CLAY_BALL])], b(Block::CLAY), 1),
             shaped(&["##", "##"], &[('#', &[Item::BRICK])], b(Block::BRICKS), 1),
-            shapeless(&[MELON], Item::MELON_SLICE, 9),
+            // Java has no recipe back to slices.
+            shapeless(&[MELON_SLICE; 9], b(Block::MELON), 1),
             shapeless(&[SUGAR_CANE], Item::SUGAR, 1),
             shaped(&["##", "##"], &[('#', &[Item::HONEY_BOTTLE])], Item::HONEY_BLOCK, 1),
             shapeless(
@@ -318,10 +339,10 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["##", "##"], &[('#', DIORITE)], b(Block::POLISHED_DIORITE), 4),
             shaped(&["##", "##"], &[('#', ANDESITE)], b(Block::POLISHED_ANDESITE), 4),
             shaped(&["##", "##"], &[('#', COBBLED_DEEPSLATE)], b(Block::POLISHED_DEEPSLATE), 4),
-            // Vanilla: diorite and quartz, no stonecutter.
+            // Java 26.3: diorite is shaped, granite and andesite shapeless.
             shaped(&["CQ", "QC"], &[('C', COBBLESTONE), ('Q', QUARTZ)], b(Block::DIORITE), 2),
-            shaped(&["DQ", "QD"], &[('D', DIORITE), ('Q', QUARTZ)], b(Block::GRANITE), 1),
-            shaped(&["CD", "DC"], &[('C', COBBLESTONE), ('D', DIORITE)], b(Block::ANDESITE), 2),
+            shapeless(&[DIORITE, QUARTZ], b(Block::GRANITE), 1),
+            shapeless(&[COBBLESTONE, DIORITE], b(Block::ANDESITE), 2),
             shapeless(
                 &[NETHERITE_SCRAP, GOLD, NETHERITE_SCRAP, GOLD, NETHERITE_SCRAP, GOLD, NETHERITE_SCRAP, GOLD],
                 Item::NETHERITE_INGOT,
@@ -355,21 +376,22 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["##", "##"], &[('#', PLANKS)], b(Block::CRAFTING_TABLE), 1),
             shaped(&["@@", "##", "##"], &[('@', IRON), ('#', PLANKS)], b(Block::SMITHING_TABLE), 1),
             shaped(&["###", "# #", "###"], &[('#', STONE_CRAFTING)], b(Block::FURNACE), 1),
-            shaped(&[" r ", "###"], &[('r', &[Item::BLAZE_ROD]), ('#', COBBLESTONE)], b(Block::BREWING_STAND), 1),
+            shaped(&[" r ", "###"], &[('r', &[Item::BLAZE_ROD]), ('#', STONE_CRAFTING)], b(Block::BREWING_STAND), 1),
             shaped(&["###", "# #", "###"], &[('#', PLANKS)], b(Block::CHEST), 1),
             shaped(&["###"], &[('#', &[Item::WHEAT])], Item::BREAD, 1),
-            shaped(&["###", "###", "###"], &[('#', WHEAT)], b(Block::HAY_BALE), 1),
+            shapeless(&[WHEAT; 9], b(Block::HAY_BALE), 1),
             shaped(&["GGG", "GAG", "GGG"], &[('G', &[Item::GOLD_INGOT]), ('A', &[Item::APPLE])], Item::GOLDEN_APPLE, 1),
             shapeless(&[const { &[b(Block::PUMPKIN)] }], Item::PUMPKIN_SEEDS, 4),
-            shapeless(
-                &[const { &[b(Block::CARVED_PUMPKIN)] }, const { &[b(Block::TORCH)] }],
+            shaped(
+                &["A", "B"],
+                &[('A', const { &[b(Block::CARVED_PUMPKIN)] }), ('B', const { &[b(Block::TORCH)] })],
                 b(Block::JACK_O_LANTERN),
                 1,
             ),
             shapeless(&[HAY], Item::WHEAT, 9),
             shaped(&["# #", "# #", "###"], &[('#', WOOD_SLAB)], b(Block::COMPOSTER), 1),
             shaped(&["#s#", "# #", "#s#"], &[('#', PLANKS), ('s', WOOD_SLAB)], b(Block::BARREL), 1),
-            shaped(&[" l ", "lFl", " l "], &[('l', ANY_LOG), ('F', FURNACE)], b(Block::SMOKER), 1),
+            shaped(&[" l ", "lFl", " l "], &[('l', utilities::LOGS), ('F', FURNACE)], b(Block::SMOKER), 1),
             shaped(
                 &["III", "IFI", "SSS"],
                 &[('I', IRON), ('F', FURNACE), ('S', SMOOTH_STONE)],
@@ -389,7 +411,7 @@ pub fn recipes() -> &'static [Recipe] {
             shapeless(&[&[Item::IRON_INGOT], &[Item::FLINT]], Item::FLINT_AND_STEEL, 1),
             shaped(&["# #", " # "], &[('#', &[Item::IRON_INGOT])], Item::BUCKET, 1),
             shaped(&["# #", " # "], &[('#', PLANKS)], Item::BOWL, 4),
-            shapeless(&[BROWN_MUSHROOM, RED_MUSHROOM, BOWL], Item::MUSHROOM_STEW, 1),
+            shapeless(&[BOWL, MUSHROOMS, MUSHROOMS], Item::MUSHROOM_STEW, 1),
             shaped(&["##", "##"], &[('#', SNOWBALL)], b(Block::SNOW), 1),
             shaped(&[" # ", "#X#", " # "], &[('#', IRON), ('X', &[Item::REDSTONE])], Item::COMPASS, 1),
             shaped(&[" # ", "#X#", " # "], &[('#', GOLD), ('X', &[Item::REDSTONE])], Item::CLOCK, 1),
@@ -398,7 +420,12 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["  #", " #X", "# X"], &[('#', STICK), ('X', STRING)], Item::FISHING_ROD, 1),
             shaped(&[" #", "# "], &[('#', &[Item::IRON_INGOT])], Item::SHEARS, 1),
             shaped(&["# #", " # "], &[('#', GLASS)], Item::GLASS_BOTTLE, 3),
-            shaped(&["X#X", "#X#", "X#X"], &[('X', &[Item::GUNPOWDER]), ('#', SAND)], b(Block::TNT), 1),
+            shaped(
+                &["X#X", "#X#", "X#X"],
+                &[('X', &[Item::GUNPOWDER]), ('#', const { &[b(Block::SAND), b(Block::RED_SAND)] })],
+                b(Block::TNT),
+                1,
+            ),
             shaped(&["##", "##"], &[('#', &[Item::NETHER_BRICK])], b(Block::NETHER_BRICKS), 1),
             shaped(&["##", "##"], &[('#', &[Item::GLOWSTONE_DUST])], b(Block::GLOWSTONE), 1),
             shaped(&["###", "###", "###"], &[('#', &[Item::GOLD_NUGGET])], Item::GOLD_INGOT, 1),
@@ -498,6 +525,14 @@ pub fn recipes() -> &'static [Recipe] {
         }
         r.push(shaped(&["###", "###"], &[('#', COBBLESTONE)], b(Block::COBBLESTONE_WALL), 6));
         r.push(shaped(&["###", "###"], &[('#', STONE_BRICKS)], b(Block::STONE_BRICK_WALL), 6));
+        r.push(shaped(&["#  ", "## ", "###"], &[('#', STONE_BRICKS)], b(Block::STONE_BRICK_STAIRS), 4));
+        r.push(shaped(&["###"], &[('#', STONE_BRICKS)], b(Block::STONE_BRICK_SLAB), 6));
+        r.push(shaped(
+            &[" N", "P "],
+            &[('N', const { &[Item::GOLD_NUGGET, Item::IRON_NUGGET, Item::COPPER_NUGGET] }), ('P', &[Item::PAPER])],
+            Item::NAME_TAG,
+            1,
+        ));
         const WOOD_SHAPES: [Ingredient; 7] = [
             DARK_OAK_PLANKS,
             SPRUCE_PLANKS,
@@ -550,17 +585,14 @@ pub fn recipes() -> &'static [Recipe] {
             1,
         ));
         r.push(shapeless(&[&[Item::MELON_SLICE]], Item::MELON_SEEDS, 1));
-        r.push(shapeless(
-            &[
-                &[Item::COOKED_RABBIT],
-                &[Item::BAKED_POTATO],
-                &[Item::CARROT],
-                const { &[Item::from_block(Block::BROWN_MUSHROOM), Item::from_block(Block::RED_MUSHROOM)] },
-                &[Item::BOWL],
-            ],
-            Item::RABBIT_STEW,
-            1,
-        ));
+        // `rabbit_stew_from_brown_mushroom` and `_from_red_mushroom`.
+        for mushroom in [const { &[b(Block::BROWN_MUSHROOM)] }, const { &[b(Block::RED_MUSHROOM)] }] {
+            r.push(shapeless(
+                &[&[Item::COOKED_RABBIT], &[Item::BAKED_POTATO], &[Item::CARROT], mushroom, &[Item::BOWL]],
+                Item::RABBIT_STEW,
+                1,
+            ));
+        }
         add_wool_recipes(&mut r);
         add_glass_terracotta_recipes(&mut r);
         add_nether_biome_recipes(&mut r);
@@ -893,12 +925,13 @@ mod tests {
             *cell = Some(Stack::new(Block::GRANITE, 1));
         }
         assert_eq!(polished.result(), Some(Stack::new(Block::POLISHED_GRANITE, 4)));
+        // Java 26.3 `andesite.json`: shapeless, one cobblestone and one diorite.
         let mut andesite = Grid::new(2);
-        andesite.cells[0] = Some(Stack::new(Block::COBBLESTONE, 1));
-        andesite.cells[1] = Some(Stack::new(Block::DIORITE, 1));
-        andesite.cells[2] = Some(Stack::new(Block::DIORITE, 1));
         andesite.cells[3] = Some(Stack::new(Block::COBBLESTONE, 1));
+        andesite.cells[0] = Some(Stack::new(Block::DIORITE, 1));
         assert_eq!(andesite.result(), Some(Stack::new(Block::ANDESITE, 2)));
+        andesite.cells[1] = Some(Stack::new(Block::DIORITE, 1));
+        assert_eq!(andesite.result(), None, "the old 2x2 pattern is gone");
         assert_eq!(
             crate::world::furnace::smelt(Item::from_block(Block::STONE)),
             Some(Item::from_block(Block::SMOOTH_STONE))
@@ -991,14 +1024,10 @@ fn add_overworld_recipes(r: &mut Vec<Recipe>) {
         r.push(shaped(&["#s#", "#s#"], &[('#', mat), ('s', STICK)], b(crate::world::forms::wood_id(i, 5)), 3));
         r.push(shaped(&["s#s", "s#s"], &[('#', mat), ('s', STICK)], b(crate::world::forms::wood_id(i, 6)), 1));
         r.push(shaped(&["##", "##", "##"], &[('#', mat)], b(crate::world::forms::wood_id(i, 14)), 3));
-        for (rows, oak, count) in [(&["###", "###"][..], 1437, 2), (&["#"][..], 1140, 1), (&["##"][..], 1215, 1)] {
-            r.push(shaped(
-                rows,
-                &[('#', mat)],
-                b(crate::world::nether_biome_blocks::switch_reskin(Block(oak), i - 7)),
-                count,
-            ));
-        }
+        let reskin = |oak| b(crate::world::nether_biome_blocks::switch_reskin(Block(oak), i - 7));
+        r.push(shaped(&["###", "###"], &[('#', mat)], reskin(1437), 2));
+        r.push(shapeless(&[mat], reskin(1140), 1));
+        r.push(shaped(&["##"], &[('#', mat)], reskin(1215), 1));
     }
     for i in 15..19 {
         let mat = ingredient(b(crate::world::forms::stone_base(i)));
@@ -1011,7 +1040,7 @@ fn add_overworld_recipes(r: &mut Vec<Recipe>) {
     r.push(shaped(&["#", "#"], &[('#', ingredient(b(crate::world::forms::wood_id(10, 4))))], b(ob::BAMBOO_MOSAIC), 1));
     r.push(shapeless(&[&crate::world::wood::LOG_TAGS[8]], one(ob::PALE_OAK_PLANKS), 4));
     r.push(shapeless(&[&crate::world::wood::BAMBOO_BLOCKS], one(ob::BAMBOO_PLANKS), 2));
-    r.push(shaped(&["###", "###", "###"], &[('#', ingredient(one(ob::BAMBOO)))], one(ob::BAMBOO_BLOCK), 1));
+    r.push(shapeless(&[ingredient(one(ob::BAMBOO)); 9], one(ob::BAMBOO_BLOCK), 1));
     r.push(shaped(&["#", "#"], &[('#', ingredient(one(ob::BAMBOO)))], Item::STICK, 1));
     r.push(shaped(&["I~I", "I I", "I I"], &[('I', ingredient(one(ob::BAMBOO))), ('~', STRING)], Item::SCAFFOLDING, 6));
     r.push(shapeless(&[ingredient(one(ob::MUD)), &[Item::WHEAT]], one(ob::PACKED_MUD), 1));
@@ -1022,7 +1051,7 @@ fn add_overworld_recipes(r: &mut Vec<Recipe>) {
     r.push(shaped(&["###", "###", "###"], &[('#', &[Item::DRIED_KELP])], one(ob::DRIED_KELP_BLOCK), 1));
     r.push(shapeless(&[ingredient(one(ob::DRIED_KELP_BLOCK))], Item::DRIED_KELP, 9));
     r.push(shaped(&["##", "##"], &[('#', &[Item::PRISMARINE_SHARD])], one(ob::PRISMARINE), 1));
-    r.push(shaped(&["###", "###", "###"], &[('#', &[Item::PRISMARINE_SHARD])], one(ob::PRISMARINE_BRICKS), 1));
+    r.push(shapeless(&[const { &[Item::PRISMARINE_SHARD] as Ingredient }; 9], one(ob::PRISMARINE_BRICKS), 1));
     r.push(shaped(
         &["###", "#d#", "###"],
         &[('#', &[Item::PRISMARINE_SHARD]), ('d', ingredient(DyeColor::Black.dye()))],
@@ -1036,16 +1065,23 @@ fn add_overworld_recipes(r: &mut Vec<Recipe>) {
         1,
     ));
     r.push(shaped(&["##", "##"], &[('#', &[Item::AMETHYST_SHARD])], one(ob::AMETHYST_BLOCK), 1));
+    r.push(shapeless(&[ingredient(one(Block::ICE)); 9], one(crate::world::gadgets::PACKED_ICE), 1));
+    r.push(shapeless(&[ingredient(one(crate::world::gadgets::PACKED_ICE)); 9], one(ob::BLUE_ICE), 1));
     r.push(shaped(
-        &["###", "###", "###"],
-        &[('#', ingredient(one(Block::ICE)))],
-        one(crate::world::gadgets::PACKED_ICE),
-        1,
+        &["DG", "GD"],
+        &[('D', ingredient(one(Block::DIRT))), ('G', ingredient(one(Block::GRAVEL)))],
+        one(ob::COARSE_DIRT),
+        4,
     ));
     r.push(shaped(
-        &["###", "###", "###"],
-        &[('#', ingredient(one(crate::world::gadgets::PACKED_ICE)))],
-        one(ob::BLUE_ICE),
+        &["##", "##"],
+        &[('#', ingredient(one(ob::pointed_dripstone(false, ob::Thickness::Tip))))],
+        one(ob::DRIPSTONE_BLOCK),
+        1,
+    ));
+    r.push(shapeless(
+        &[ingredient(one(ob::MUD)), ingredient(one(ob::MANGROVE_ROOTS))],
+        one(ob::MUDDY_MANGROVE_ROOTS),
         1,
     ));
     r.push(shapeless(
@@ -1069,7 +1105,7 @@ fn add_overworld_recipes(r: &mut Vec<Recipe>) {
         1,
     ));
     // Dyes from cocoa, ink and the new flowers.
-    let dyes: [(Item, DyeColor, u8); 16] = [
+    let dyes: [(Item, DyeColor, u8); 17] = [
         (Item::COCOA_BEANS, DyeColor::Brown, 1),
         (Item::INK_SAC, DyeColor::Black, 1),
         (one(ob::CORNFLOWER), DyeColor::Blue, 1),
@@ -1086,6 +1122,7 @@ fn add_overworld_recipes(r: &mut Vec<Recipe>) {
         (one(ob::ROSE_BUSH), DyeColor::Red, 2),
         (one(ob::PEONY), DyeColor::Pink, 2),
         (one(ob::PINK_PETALS), DyeColor::Pink, 1),
+        (Item::BEETROOT, DyeColor::Red, 1),
     ];
     for (source, colour, count) in dyes {
         r.push(Recipe { shape: Shape::Shapeless(vec![ingredient(source)]), result: Stack::new(colour.dye(), count) });
@@ -1134,7 +1171,7 @@ fn add_nether_biome_recipes(r: &mut Vec<Recipe>) {
         r.push(shapeless(&[planks], b(wood.button()), 1));
         r.push(shaped(&["##"], &[('#', planks)], b(wood.pressure_plate()), 1));
     }
-    r.push(shaped(&["###", "###", "###"], &[('#', &[Item::NETHER_WART])], b(nb::NETHER_WART_BLOCK), 1));
+    r.push(shapeless(&[const { &[Item::NETHER_WART] as Ingredient }; 9], b(nb::NETHER_WART_BLOCK), 1));
     const SOUL_BASE: Ingredient = &[b(Block::SOUL_SAND), b(nb::SOUL_SOIL)];
     const BONE_BLOCK: Ingredient = &[b(nb::BONE_BLOCK)];
     const FUEL: Ingredient = &[Item::COAL, Item::CHARCOAL];
@@ -1317,7 +1354,6 @@ fn add_redstone_recipes(recipes: &mut Vec<Recipe>) {
     const OAK: Ingredient = &[b(Block::PLANKS)];
     const GLOW: Ingredient = &[b(Block::GLOWSTONE)];
     const REDSTONE_BLOCK: Ingredient = &[b(r::REDSTONE_BLOCK)];
-    const SLAB: Ingredient = &[b(Block(108))];
     const HAY: Ingredient = &[b(Block::HAY_BALE)];
     const PISTON: Ingredient = &[b(r::PISTON)];
     const SLIME: Ingredient = &[Item::SLIME_BALL];
@@ -1327,7 +1363,6 @@ fn add_redstone_recipes(recipes: &mut Vec<Recipe>) {
     const HOPPER: Ingredient = &[b(r::HOPPER)];
     const TNT_BLOCK: Ingredient = &[b(Block::TNT)];
     const CART: Ingredient = &[Item::MINECART];
-    const ICE: Ingredient = &[b(Block::ICE)];
     const HOOK: Ingredient = &[b(crate::world::gadgets::HOOK)];
     const CHARCOAL: Ingredient = &[Item::COAL, Item::CHARCOAL];
     const GUNPOWDER: Ingredient = &[Item::GUNPOWDER];
@@ -1349,7 +1384,7 @@ fn add_redstone_recipes(recipes: &mut Vec<Recipe>) {
         shaped(&["ii", "ii", "ii"], &[('i', IRON)], b(r::IRON_DOOR), 3),
         shaped(&["ii", "ii"], &[('i', IRON)], b(r::IRON_TRAPDOOR), 1),
         shaped(&["ppp", "ppp"], &[('p', OAK)], b(r::WOOD_TRAPDOOR), 2),
-        shaped(&["ggg", "qqq", "sss"], &[('g', GLASS), ('q', QUARTZ), ('s', SLAB)], b(r::DAYLIGHT), 1),
+        shaped(&["ggg", "qqq", "sss"], &[('g', GLASS), ('q', QUARTZ), ('s', WOOD_SLAB)], b(r::DAYLIGHT), 1),
         shaped(&[" r ", "rhr", " r "], &[('r', DUST), ('h', HAY)], b(r::TARGET), 1),
         shaped(&["ccc", "cbc", "crc"], &[('c', COBBLESTONE), ('b', BOW), ('r', DUST)], b(r::DISPENSER), 1),
         shaped(&["ccc", "c c", "crc"], &[('c', COBBLESTONE), ('r', DUST)], b(r::DROPPER), 1),
@@ -1380,7 +1415,6 @@ fn add_redstone_recipes(recipes: &mut Vec<Recipe>) {
         shapeless(&[CHEST, CART], Item::CHEST_MINECART, 1),
         shapeless(&[HOPPER, CART], Item::HOPPER_MINECART, 1),
         shapeless(&[TNT_BLOCK, CART], Item::TNT_MINECART, 1),
-        shaped(&["iii", "iii", "iii"], &[('i', ICE)], b(crate::world::gadgets::PACKED_ICE), 1),
         shaped(&["PPP", "PRP", "PPP"], &[('P', PLANKS), ('R', DUST)], b(crate::world::gadgets::NOTE), 1),
         shaped(&["I", "S", "P"], &[('I', IRON), ('S', STICK), ('P', PLANKS)], b(crate::world::gadgets::HOOK), 2),
         shaped(&["#I#", "~H~", " # "], &[('#', STICK), ('I', IRON), ('~', STRING), ('H', HOOK)], Item::CROSSBOW, 1),

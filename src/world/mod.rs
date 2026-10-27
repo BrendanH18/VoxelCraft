@@ -2141,17 +2141,15 @@ mod tests {
             world.random_tick(far);
         }
         assert_eq!(world.get_block(far), Some(ob::snow_layer(3)));
-        // Beside a torch (block light 13 > 11) they melt and drop their snowballs.
+        // Beside a torch (block light 13 > 11) they melt. Java's snow loot needs
+        // an entity, so melting drops nothing.
         let near = IVec3::new(2, y + 1, 2);
         world.set_block(near, ob::snow_layer(3));
         world.set_block(near + IVec3::X, Block::TORCH);
         world.drops.clear();
         world.random_tick(near);
         assert_eq!(world.get_block(near), Some(Block::AIR));
-        assert_eq!(
-            world.drops.iter().map(|(_, s)| (s.item, s.count)).collect::<Vec<_>>(),
-            [(crate::item::Item::SNOWBALL, 3)]
-        );
+        assert!(world.drops.is_empty());
     }
 
     #[test]

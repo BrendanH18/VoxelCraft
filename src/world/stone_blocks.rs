@@ -476,7 +476,20 @@ pub fn mining(b: Block) -> Option<(f32, Option<ToolKind>, Option<u8>)> {
 /// sandstone and cut red sandstone slabs take 2.0 where the block takes 0.8.
 pub fn slab_hardness(b: Block) -> Option<f32> {
     let base = super::slab_stair_states::slab(b).map(|s| super::slab_stair_states::FAMILIES[s.family as usize].base)?;
-    matches!(base, Block::SANDSTONE | CUT_SANDSTONE | QUARTZ_BLOCK | RED_SANDSTONE | CUT_RED_SANDSTONE).then_some(2.0)
+    // Java's `registerSlab(id, base, 2.0f)` forms.
+    matches!(
+        base,
+        Block::STONE
+            | Block::STONE_BRICKS
+            | Block::BLACKSTONE
+            | Block::POLISHED_BLACKSTONE_BRICKS
+            | Block::SANDSTONE
+            | CUT_SANDSTONE
+            | QUARTZ_BLOCK
+            | RED_SANDSTONE
+            | CUT_RED_SANDSTONE
+    )
+    .then_some(2.0)
 }
 
 /// Java 26.3 smelting recipes producing this track's blocks (all 0.1

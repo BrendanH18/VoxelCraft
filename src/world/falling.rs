@@ -358,7 +358,9 @@ impl World {
                         } else if drop_blocks
                             && (!decay || (super::noise::hash_f(p.x, p.y, p.z, seed ^ 0xD20F) as f64) < 1.0 / power)
                         {
-                            self.spill_block(p, b);
+                            // Not `spill_block`: TNT, creepers and fireballs give the
+                            // loot context an entity, so snow layers drop snowballs.
+                            self.spill_mined(p, b, crate::enchant::Enchants::NONE);
                         }
                     }
                 }

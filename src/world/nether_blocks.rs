@@ -127,7 +127,10 @@ mod tests {
         for b in SHAPE_BASES {
             for local in [0, 4, 5] {
                 let shaped = shape_of(b, local).unwrap();
-                assert_eq!(shaped.hardness(), b.hardness());
+                // Java's `registerSlab(id, base, 2.0F)` for the blackstone
+                // and polished blackstone brick slabs.
+                let slab_2 = local == 4 && matches!(b, Block::BLACKSTONE | Block::POLISHED_BLACKSTONE_BRICKS);
+                assert_eq!(shaped.hardness(), if slab_2 { 2.0 } else { b.hardness() });
                 assert!(!mining::can_harvest(shaped, None));
                 assert!(mining::can_harvest(shaped, Some(Item::tool(ToolKind::Pickaxe, Tier::Wood))));
             }

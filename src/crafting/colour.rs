@@ -61,6 +61,14 @@ pub(super) fn add(r: &mut Vec<Recipe>) {
         r.push(shaped(&["###"], &[('#', &SLABS[i])], Item::cushion(c), 1));
         r.push(shapeless(&[&DYES[i], &OTHER_CUSHIONS[i]], Item::cushion(c), 1));
     }
+    // `dye_white_wool_slab.json`, `dye_white_wool_stairs.json`: any other
+    // colour's wool slab or stairs and a dye.
+    static OTHER_WOOL_SLABS: [[Item; 15]; 16] = other_wool_shapes(false);
+    static OTHER_WOOL_STAIRS: [[Item; 15]; 16] = other_wool_shapes(true);
+    for i in 0..16 {
+        r.push(shapeless(&[&DYES[i], &OTHER_WOOL_SLABS[i]], b(cb::family_slab(i)), 1));
+        r.push(shapeless(&[&DYES[i], &OTHER_WOOL_STAIRS[i]], b(cb::family_stairs(i)), 1));
+    }
     // `straw_bed.json`: three hay bales make four.
     r.push(shaped(&["XXX"], &[('X', super::HAY)], b(straw_bed::ITEM_BLOCK), 4));
 }
@@ -75,4 +83,21 @@ pub fn stonecutting() -> Vec<(Item, Item, u8)> {
             [(base, Item::from_block(cb::family_stairs(i)), 1), (base, Item::from_block(cb::family_slab(i)), 2)]
         })
         .collect()
+}
+
+/// For each colour, the wool slabs (or stairs) of the other fifteen colours.
+const fn other_wool_shapes(stairs: bool) -> [[Item; 15]; 16] {
+    let mut out = [[Item(0); 15]; 16];
+    let mut i = 0;
+    while i < 16 {
+        let mut j = 0;
+        while j < 15 {
+            let family = j + (j >= i) as usize;
+            let block = if stairs { cb::family_stairs(family) } else { cb::family_slab(family) };
+            out[i][j] = Item::from_block(block);
+            j += 1;
+        }
+        i += 1;
+    }
+    out
 }

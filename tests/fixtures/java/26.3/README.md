@@ -89,6 +89,77 @@ cargo run --release --no-default-features --example fuel_inventory > target/fuel
 cargo test --release --test full_fuel_integrations
 ```
 
+Since v0.12 the extractor names each item by its registry ID, not its `Items`
+field (`java_item_associations.provider_ids`); the two fields that differ,
+`DRY_SHORT_GRASS` and `DRY_TALL_GRASS`, are now `short_dry_grass` and
+`tall_dry_grass`. The test and the inventory resolve Java IDs by ID or English
+name (the block of coal is `coal_block`), and `only_java_fuels_burn` rejects
+any VoxelCraft item that burns without being a Java fuel.
+
+## Block mining properties
+
+`block_mining.json` records every block `Blocks` registers (1,286): its
+`destroyTime` (hardness), blast resistance and `requiresCorrectToolForDrops`,
+plus the expanded `incorrect_for_<tier>_tool` tags and the sword and shears
+`minesAndDrops` rule (cobweb only). `tools/java_block_properties.py` evaluates
+`Blocks.<clinit>` bytecode on a small symbolic stack machine: `strength`,
+`destroyTime`, `explosionResistance`, `instabreak`, `requiresCorrectToolForDrops`,
+`ofFullCopy`/`ofLegacyCopy` of earlier blocks, helper methods, lambdas and the
+colour and copper collections, with IDs from `BlockItemIds` and `BlockIds`.
+Branches inside helpers run both ways and must agree; registrations inside a
+branch, unknown opcodes and unknown collection helpers fail. The extractor also
+checks `Player.hasCorrectToolForDrops`, `Tool.isCorrectForDrops` and the tool,
+sword and shears rule order.
+
+```sh
+python3 tools/extract_java_block_mining_fixtures.py /path/to/server.jar --output target/java-block-mining.json
+diff tests/fixtures/java/26.3/block_mining.json target/java-block-mining.json
+cargo test --release --test java_block_mining --test shared_mining
+```
+
+`tests/java_block_mining.rs` maps every registered state to its Java block (by
+ID, English name or an explicit state alias such as `lit furnace` or a bed
+half), then compares hardness, `mining::can_harvest` and `mining::dig_progress`
+for a bare hand, a stick, shears and all 35 tools against a model of Java's
+rules built from this fixture, `mining.json` (mineable, sword and shears tags)
+and `combat.json` (tier speeds). Air, water and lava are allow-listed: Java
+never targets them. Blast resistance is recorded but VoxelCraft's explosions
+don't model it yet.
+
+## Composting
+
+`compost.json` lists every compostable item (122) with its provider and chance,
+from the `Items` `compostable` registrations (followed through callbacks and
+colour collections, named by registry ID) and
+`data/minecraft/context_int_provider/compostable/*.json`. Every provider is
+checked to add the first layer to an empty composter, and
+`ComposterBlock.addLayer` to roll the item's provider. It supersedes the
+99-item hand-picked list in `plant_integrations.json`, which stays for its
+existing tests.
+
+```sh
+python3 tools/extract_java_compost_fixtures.py /path/to/server.jar --output target/java-compost.json
+diff tests/fixtures/java/26.3/compost.json target/java-compost.json
+cargo test --release --test java_compost --test plant_integrations
+```
+
+## Anvil repair materials
+
+`repair.json` lists every item with a `repairable` component (75) and its
+material tag or item, with the tags expanded. `Items` sets the component
+through tool forms (`ToolMaterial` repair tags), `humanoidArmor` and
+`wolfArmor` (`ArmorMaterials`), or a direct `repairable` call (elytra, mace,
+shield); horse and nautilus armor are checked to have none.
+`tests/java_repair.rs` checks `enchant::repairs` for every registered
+repairable item against every item as a candidate material, and that every
+other item accepts no material.
+
+```sh
+python3 tools/extract_java_repair_fixtures.py /path/to/server.jar --output target/java-repair.json
+diff tests/fixtures/java/26.3/repair.json target/java-repair.json
+cargo test --release --test java_repair
+```
+
 ## Registry names
 
 `registry_names.json` lists every Java 26.3 block and item registry name with
@@ -218,3 +289,72 @@ reproduced; the tests check shares and ranges.
 `world_defects.json` extracts Nether spawn costs and structure loot pool
 weights/counts/modifier names from the pinned server data, independently of
 engine code. Reproduce with `tools/extract_java_world_defect_fixtures.py`.
+
+## Recipes
+
+`recipes.json` normalizes all 1,763 recipes in the pinned server's
+`data/minecraft/recipe/*.json` (brewing, in `recipe/brewing/`, is a separate
+system and not included): shaped patterns and keys, shapeless ingredient
+lists, transmute, dye and imbue slots, cooking ingredient, result, time and
+experience, stonecutting counts, smithing slots and the special recipes'
+slots. Item tags stay by name in the recipes and are expanded once in
+`item_tags`. A count of one is omitted. `cooking_speed` records 26.3's
+furnace speed multiplier: every cooking recipe says 200 ticks, and
+`AbstractFurnaceBlockEntity.getTotalCookTime` divides by the fuel's speed
+(`context_float_provider/cooking/speed_default`), 2.0 in the
+`predicate/block/fast_cooking` blocks (smoker and blast furnace), so they
+take 100.
+
+`tests/java_recipes.rs` compares both ways: every reference recipe whose
+result and at least one alternative per slot are registered must exist with
+the same shape (mirrors are equal), alternatives, count, cooking result,
+experience and time, and its grids must craft it; every VoxelCraft crafting,
+cooking, stonecutting and smithing recipe must have a Java counterpart.
+Unregistered recipes are listed, not failed; intentional differences are in
+the commented allow-lists in `tests/java_recipes/compare.rs`.
+`examples/recipe_audit.rs` prints the same report, with the unregistered
+recipes and the names they lack. See the
+[recipe record](../../../../docs/verification/2026-10-27-v0.12-data-recipes.md).
+
+```sh
+python3 tools/extract_java_recipe_fixtures.py /path/to/server.jar --output target/java-recipes.json
+diff tests/fixtures/java/26.3/recipes.json target/java-recipes.json
+cargo test --release --test java_recipes
+cargo run --release --no-default-features --example recipe_audit > target/recipe-audit.json
+```
+
+## Block loot
+
+`block_loot.json` evaluates every block loot table in the pinned artifact
+(`data/minecraft/loot_table/blocks/*.json`, 1,201 tables) for all 1,286 Java
+blocks. Wall variants (torches, signs, hanging signs, banners, heads and coral
+fans, 63 in all) take their standing block's table through `Blocks.wallVariant`;
+the 22 other blocks without a table (air, fluids, portals, bedrock, command and
+structure blocks and the like) drop nothing. For every combination of the
+block-state values a table's conditions name (`*` for any other value) and
+for each mining scenario (bare hand, a plain pickaxe, shears, Silk Touch,
+Fortune I-III) it stores each item's exact chance, count range, mean and
+variance. The extractor models `set_count`, `limit_count`, the three Fortune
+formulas, `table_bonus` and `random_chance` after checking their bytecode,
+and fails on any entry type, condition, function or key it doesn't know.
+Mining has no explosion, so `survives_explosion` passes and `explosion_decay`
+keeps every item; each table's explosion conditions are listed but not
+compared. A decorated pot broken by a `#breaks_decorated_pots` tool without
+Silk Touch is cracked first (`DecoratedPotBlock.playerWillDestroy`) and drops
+its four sides, bricks when undecorated.
+
+`tests/java_block_loot.rs` maps every registered VoxelCraft state to its Java
+block and state values, breaks it through `World::spill_with_item` with each
+scenario's tool that can harvest it, and compares the drops: exactly for fixed
+drops, and by chance and mean (five standard errors, seeded world RNG) for
+random ones. It also breaks beds and double tall grass and large ferns through
+the mining session, where Java drops the loot once. Unregistered Java blocks are
+listed, not failed; `examples/block_loot_audit.rs` prints them with the counts.
+See the [verification record](../../../../docs/verification/2026-10-27-v0.12-data-drops.md).
+
+```sh
+python3 tools/extract_java_block_loot_fixtures.py /path/to/server.jar --output target/java-block-loot.json
+diff tests/fixtures/java/26.3/block_loot.json target/java-block-loot.json
+cargo test --release --test java_block_loot
+cargo run --release --no-default-features --example block_loot_audit > target/block-loot-audit.json
+```

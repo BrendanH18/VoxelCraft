@@ -655,11 +655,13 @@ pub fn mining(b: Block) -> Option<(f32, Option<ToolKind>, Option<u8>)> {
         1910 => (0.1, Some(Shovel), Some(0)),
         1911 | 1912 => (0.1, Some(Hoe), None),
         1913 => (1.5, Some(Pickaxe), Some(0)),
-        1914..=1923 => (1.5, Some(Pickaxe), Some(0)),
+        // Pointed dripstone drops by hand since 26.3.
+        1914..=1923 => (1.5, Some(Pickaxe), None),
         1924 | 1925 => (1.5, Some(Pickaxe), Some(0)),
         1926..=1933 => (1.5, Some(Pickaxe), None),
         1934 => (1.25, Some(Pickaxe), Some(0)),
-        1940 | 1941 | 1944..=1949 | 1951..=1968 | 1976..=1979 => (0.0, None, None),
+        1940 | 1941 | 1944..=1949 | 1951..=1968 => (0.0, None, None),
+        1976..=1979 => (0.5, None, None),
         1942 | 1943 => (0.2, Some(Hoe), None),
         1950 => (0.1, Some(Axe), None),
         1969 => (0.5, Some(Hoe), None),
@@ -667,9 +669,12 @@ pub fn mining(b: Block) -> Option<(f32, Option<ToolKind>, Option<u8>)> {
         1973 => (0.3, None, None),
         1974 | 1975 => (0.6, Some(Hoe), None),
         1980..=1989 => (1.5, Some(Pickaxe), Some(0)),
-        1990..=2009 => (0.0, None, None),
+        // Coral plants and fans break instantly; dead ones need a pickaxe.
+        1990..=1994 | 2000..=2004 => (0.0, None, None),
+        1995..=1999 | 2005..=2009 => (0.0, Some(Pickaxe), Some(0)),
         2010..=2013 => (0.2, Some(Hoe), None),
-        2014..=2017 | 2025 | 2029..=2053 | 2058..=2061 => (0.0, None, None),
+        2014..=2017 | 2029..=2053 | 2058..=2061 => (0.0, None, None),
+        2025 => (1.0, Some(Axe), None),
         2018 | 2019 | 2026..=2028 => (2.0, Some(Axe), None),
         2020 => (0.7, Some(Axe), None),
         2021 => (0.7, Some(Shovel), None),
@@ -714,8 +719,8 @@ pub fn drop(b: Block) -> Option<Option<Item>> {
         // Shears-only plants.
         1949 | 1952 | 1953 | 1962..=1964 | 2030 | 2031 | 2049..=2052 | 2054..=2057 => None,
         1951 => Some(BIG_DRIPLEAF.into()),
-        // Pickles: one per pickle (see `spill_mined`).
-        1965..=1968 => None,
+        // Pickles: one per pickle; the sea lantern 2-3 crystals (see `spill_mined`).
+        1965..=1968 | 1973 => None,
         // Live coral needs silk touch; blocks die into dead ones.
         1980..=1984 => Some(coral(0, b.0 - 1980, true).into()),
         1990..=2009 => None,
@@ -744,18 +749,30 @@ pub fn sheared_drop(b: Block) -> Option<Item> {
     }
 }
 
-/// What silk touch keeps beyond shears: coral, buds, blue ice, eggs,
-/// podzol and mycelium, mushroom blocks.
+/// What silk touch keeps: coral, buds, blue ice, eggs, podzol and
+/// mycelium, mushroom blocks, the sea lantern, pale hanging moss and
+/// leaves. Shears-only
+/// plants (`tool/can_shear` alone in Java) drop nothing for it.
 pub fn silk_drop(b: Block) -> Option<Item> {
     if egg_count(b).is_some() {
         return Some(TURTLE_EGG.into());
     }
     match b.0 {
-        1900 | 1903 | 1909 | 1926..=1933 | 2400..=2415 | 1976..=1979 | 1990..=2009 | 1980..=1984 | 2074..=2076 => {
-            Some(b.base().into())
-        }
+        1900
+        | 1903
+        | 1909
+        | 1926..=1933
+        | 2400..=2415
+        | 1976..=1979
+        | 1990..=2009
+        | 1980..=1984
+        | 2074..=2076
+        | 1973
+        | 2030
+        | 2031 => Some(b.base().into()),
         1910 | SNOW_LAYERS_2..=SNOW_LAYERS_8 => Some(SNOW_LAYER.into()),
-        _ => sheared_drop(b),
+        2010..=2013 | 1942 | 1943 => Some(b.into()),
+        _ => None,
     }
 }
 

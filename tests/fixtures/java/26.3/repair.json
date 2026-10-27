@@ -1,0 +1,394 @@
+{
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "net.minecraft.world.item.Items repairable registrations, including nested callbacks",
+    "Item.Properties tool and armor forms",
+    "ToolMaterial",
+    "ArmorMaterials",
+    "ItemTags",
+    "net.minecraft.references.BlockItemIds and ItemIds (registry IDs)",
+    "data/minecraft/tags/item/copper_tool_materials.json",
+    "data/minecraft/tags/item/diamond_tool_materials.json",
+    "data/minecraft/tags/item/gold_tool_materials.json",
+    "data/minecraft/tags/item/iron_tool_materials.json",
+    "data/minecraft/tags/item/netherite_tool_materials.json",
+    "data/minecraft/tags/item/repairs_chain_armor.json",
+    "data/minecraft/tags/item/repairs_copper_armor.json",
+    "data/minecraft/tags/item/repairs_diamond_armor.json",
+    "data/minecraft/tags/item/repairs_gold_armor.json",
+    "data/minecraft/tags/item/repairs_iron_armor.json",
+    "data/minecraft/tags/item/repairs_leather_armor.json",
+    "data/minecraft/tags/item/repairs_netherite_armor.json",
+    "data/minecraft/tags/item/repairs_turtle_helmet.json",
+    "data/minecraft/tags/item/repairs_wolf_armor.json",
+    "data/minecraft/tags/item/stone_tool_materials.json",
+    "data/minecraft/tags/item/wooden_tool_materials.json"
+  ],
+  "repairs": [
+    {
+      "item": "minecraft:chainmail_boots",
+      "tag": "repairs_chain_armor"
+    },
+    {
+      "item": "minecraft:chainmail_chestplate",
+      "tag": "repairs_chain_armor"
+    },
+    {
+      "item": "minecraft:chainmail_helmet",
+      "tag": "repairs_chain_armor"
+    },
+    {
+      "item": "minecraft:chainmail_leggings",
+      "tag": "repairs_chain_armor"
+    },
+    {
+      "item": "minecraft:copper_axe",
+      "tag": "copper_tool_materials"
+    },
+    {
+      "item": "minecraft:copper_boots",
+      "tag": "repairs_copper_armor"
+    },
+    {
+      "item": "minecraft:copper_chestplate",
+      "tag": "repairs_copper_armor"
+    },
+    {
+      "item": "minecraft:copper_helmet",
+      "tag": "repairs_copper_armor"
+    },
+    {
+      "item": "minecraft:copper_hoe",
+      "tag": "copper_tool_materials"
+    },
+    {
+      "item": "minecraft:copper_leggings",
+      "tag": "repairs_copper_armor"
+    },
+    {
+      "item": "minecraft:copper_pickaxe",
+      "tag": "copper_tool_materials"
+    },
+    {
+      "item": "minecraft:copper_shovel",
+      "tag": "copper_tool_materials"
+    },
+    {
+      "item": "minecraft:copper_spear",
+      "tag": "copper_tool_materials"
+    },
+    {
+      "item": "minecraft:copper_sword",
+      "tag": "copper_tool_materials"
+    },
+    {
+      "item": "minecraft:diamond_axe",
+      "tag": "diamond_tool_materials"
+    },
+    {
+      "item": "minecraft:diamond_boots",
+      "tag": "repairs_diamond_armor"
+    },
+    {
+      "item": "minecraft:diamond_chestplate",
+      "tag": "repairs_diamond_armor"
+    },
+    {
+      "item": "minecraft:diamond_helmet",
+      "tag": "repairs_diamond_armor"
+    },
+    {
+      "item": "minecraft:diamond_hoe",
+      "tag": "diamond_tool_materials"
+    },
+    {
+      "item": "minecraft:diamond_leggings",
+      "tag": "repairs_diamond_armor"
+    },
+    {
+      "item": "minecraft:diamond_pickaxe",
+      "tag": "diamond_tool_materials"
+    },
+    {
+      "item": "minecraft:diamond_shovel",
+      "tag": "diamond_tool_materials"
+    },
+    {
+      "item": "minecraft:diamond_spear",
+      "tag": "diamond_tool_materials"
+    },
+    {
+      "item": "minecraft:diamond_sword",
+      "tag": "diamond_tool_materials"
+    },
+    {
+      "item": "minecraft:elytra",
+      "material": "phantom_membrane"
+    },
+    {
+      "item": "minecraft:golden_axe",
+      "tag": "gold_tool_materials"
+    },
+    {
+      "item": "minecraft:golden_boots",
+      "tag": "repairs_gold_armor"
+    },
+    {
+      "item": "minecraft:golden_chestplate",
+      "tag": "repairs_gold_armor"
+    },
+    {
+      "item": "minecraft:golden_helmet",
+      "tag": "repairs_gold_armor"
+    },
+    {
+      "item": "minecraft:golden_hoe",
+      "tag": "gold_tool_materials"
+    },
+    {
+      "item": "minecraft:golden_leggings",
+      "tag": "repairs_gold_armor"
+    },
+    {
+      "item": "minecraft:golden_pickaxe",
+      "tag": "gold_tool_materials"
+    },
+    {
+      "item": "minecraft:golden_shovel",
+      "tag": "gold_tool_materials"
+    },
+    {
+      "item": "minecraft:golden_spear",
+      "tag": "gold_tool_materials"
+    },
+    {
+      "item": "minecraft:golden_sword",
+      "tag": "gold_tool_materials"
+    },
+    {
+      "item": "minecraft:iron_axe",
+      "tag": "iron_tool_materials"
+    },
+    {
+      "item": "minecraft:iron_boots",
+      "tag": "repairs_iron_armor"
+    },
+    {
+      "item": "minecraft:iron_chestplate",
+      "tag": "repairs_iron_armor"
+    },
+    {
+      "item": "minecraft:iron_helmet",
+      "tag": "repairs_iron_armor"
+    },
+    {
+      "item": "minecraft:iron_hoe",
+      "tag": "iron_tool_materials"
+    },
+    {
+      "item": "minecraft:iron_leggings",
+      "tag": "repairs_iron_armor"
+    },
+    {
+      "item": "minecraft:iron_pickaxe",
+      "tag": "iron_tool_materials"
+    },
+    {
+      "item": "minecraft:iron_shovel",
+      "tag": "iron_tool_materials"
+    },
+    {
+      "item": "minecraft:iron_spear",
+      "tag": "iron_tool_materials"
+    },
+    {
+      "item": "minecraft:iron_sword",
+      "tag": "iron_tool_materials"
+    },
+    {
+      "item": "minecraft:leather_boots",
+      "tag": "repairs_leather_armor"
+    },
+    {
+      "item": "minecraft:leather_chestplate",
+      "tag": "repairs_leather_armor"
+    },
+    {
+      "item": "minecraft:leather_helmet",
+      "tag": "repairs_leather_armor"
+    },
+    {
+      "item": "minecraft:leather_leggings",
+      "tag": "repairs_leather_armor"
+    },
+    {
+      "item": "minecraft:mace",
+      "material": "breeze_rod"
+    },
+    {
+      "item": "minecraft:netherite_axe",
+      "tag": "netherite_tool_materials"
+    },
+    {
+      "item": "minecraft:netherite_boots",
+      "tag": "repairs_netherite_armor"
+    },
+    {
+      "item": "minecraft:netherite_chestplate",
+      "tag": "repairs_netherite_armor"
+    },
+    {
+      "item": "minecraft:netherite_helmet",
+      "tag": "repairs_netherite_armor"
+    },
+    {
+      "item": "minecraft:netherite_hoe",
+      "tag": "netherite_tool_materials"
+    },
+    {
+      "item": "minecraft:netherite_leggings",
+      "tag": "repairs_netherite_armor"
+    },
+    {
+      "item": "minecraft:netherite_pickaxe",
+      "tag": "netherite_tool_materials"
+    },
+    {
+      "item": "minecraft:netherite_shovel",
+      "tag": "netherite_tool_materials"
+    },
+    {
+      "item": "minecraft:netherite_spear",
+      "tag": "netherite_tool_materials"
+    },
+    {
+      "item": "minecraft:netherite_sword",
+      "tag": "netherite_tool_materials"
+    },
+    {
+      "item": "minecraft:shield",
+      "tag": "wooden_tool_materials"
+    },
+    {
+      "item": "minecraft:stone_axe",
+      "tag": "stone_tool_materials"
+    },
+    {
+      "item": "minecraft:stone_hoe",
+      "tag": "stone_tool_materials"
+    },
+    {
+      "item": "minecraft:stone_pickaxe",
+      "tag": "stone_tool_materials"
+    },
+    {
+      "item": "minecraft:stone_shovel",
+      "tag": "stone_tool_materials"
+    },
+    {
+      "item": "minecraft:stone_spear",
+      "tag": "stone_tool_materials"
+    },
+    {
+      "item": "minecraft:stone_sword",
+      "tag": "stone_tool_materials"
+    },
+    {
+      "item": "minecraft:turtle_helmet",
+      "tag": "repairs_turtle_helmet"
+    },
+    {
+      "item": "minecraft:wolf_armor",
+      "tag": "repairs_wolf_armor"
+    },
+    {
+      "item": "minecraft:wooden_axe",
+      "tag": "wooden_tool_materials"
+    },
+    {
+      "item": "minecraft:wooden_hoe",
+      "tag": "wooden_tool_materials"
+    },
+    {
+      "item": "minecraft:wooden_pickaxe",
+      "tag": "wooden_tool_materials"
+    },
+    {
+      "item": "minecraft:wooden_shovel",
+      "tag": "wooden_tool_materials"
+    },
+    {
+      "item": "minecraft:wooden_spear",
+      "tag": "wooden_tool_materials"
+    },
+    {
+      "item": "minecraft:wooden_sword",
+      "tag": "wooden_tool_materials"
+    }
+  ],
+  "tags": {
+    "copper_tool_materials": [
+      "copper_ingot"
+    ],
+    "diamond_tool_materials": [
+      "diamond"
+    ],
+    "gold_tool_materials": [
+      "gold_ingot"
+    ],
+    "iron_tool_materials": [
+      "iron_ingot"
+    ],
+    "netherite_tool_materials": [
+      "netherite_ingot"
+    ],
+    "repairs_chain_armor": [
+      "iron_ingot"
+    ],
+    "repairs_copper_armor": [
+      "copper_ingot"
+    ],
+    "repairs_diamond_armor": [
+      "diamond"
+    ],
+    "repairs_gold_armor": [
+      "gold_ingot"
+    ],
+    "repairs_iron_armor": [
+      "iron_ingot"
+    ],
+    "repairs_leather_armor": [
+      "leather"
+    ],
+    "repairs_netherite_armor": [
+      "netherite_ingot"
+    ],
+    "repairs_turtle_helmet": [
+      "turtle_scute"
+    ],
+    "repairs_wolf_armor": [
+      "armadillo_scute"
+    ],
+    "stone_tool_materials": [
+      "blackstone",
+      "cobbled_deepslate",
+      "cobblestone"
+    ],
+    "wooden_tool_materials": [
+      "acacia_planks",
+      "bamboo_planks",
+      "birch_planks",
+      "cherry_planks",
+      "crimson_planks",
+      "dark_oak_planks",
+      "jungle_planks",
+      "mangrove_planks",
+      "oak_planks",
+      "pale_oak_planks",
+      "poplar_planks",
+      "spruce_planks",
+      "warped_planks"
+    ]
+  }
+}

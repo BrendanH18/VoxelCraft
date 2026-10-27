@@ -296,12 +296,14 @@ fn creative_destroys_bedrock_and_the_dragon_egg_while_a_survival_attack_teleport
 }
 
 #[test]
-fn iron_doors_drop_only_with_a_pickaxe_from_either_half_and_never_in_creative() {
+fn iron_doors_drop_from_either_half_and_never_in_creative() {
+    // Java 26.3's iron door has no `requiresCorrectToolForDrops`, so a bare
+    // hand harvests it too (`block_mining.json`).
     let pick = Some(Stack::new(Item::tool(ToolKind::Pickaxe, Tier::Wood), 1));
     for (upper, held, mode, drops) in [
-        (true, None, GameMode::Survival, 0),
+        (true, None, GameMode::Survival, 1),
         (true, pick, GameMode::Survival, 1),
-        (false, None, GameMode::Survival, 0),
+        (false, None, GameMode::Survival, 1),
         (false, pick, GameMode::Survival, 1),
         (true, None, GameMode::Creative, 0),
         (true, pick, GameMode::Creative, 0),

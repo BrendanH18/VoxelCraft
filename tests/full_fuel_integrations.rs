@@ -5,8 +5,44 @@ use voxelcraft::{content::fuel, item::Item};
 fn fixture() -> Value {
     serde_json::from_str(include_str!("fixtures/java/26.3/fuel_integrations.json")).unwrap()
 }
+/// The registered item for a Java ID, matched by ID or by English name
+/// (VoxelCraft keeps names such as "block of coal" for `coal_block`).
 fn registered(name: &str) -> Option<Item> {
-    Item::from_name(name)
+    let names: Value = serde_json::from_str(include_str!("fixtures/java/26.3/registry_names.json")).unwrap();
+    let english = names["items"][name.strip_prefix("minecraft:").unwrap_or(name)].as_str();
+    Item::from_name(name).or_else(|| english.and_then(|e| Item::from_name(&e.to_lowercase())))
+}
+
+/// Every VoxelCraft item a player can hold, block items included (blocks
+/// placed by another item, such as door halves, resolve to that item).
+fn all_items() -> Vec<Item> {
+    use voxelcraft::world::block::{Block, STATE_CAPACITY};
+    let blocks = (0..STATE_CAPACITY as u16).map(Block).filter(|b| b.base() == *b && !b.name().is_empty());
+    let blocks = blocks.filter_map(|b| Item::from_name(b.name()));
+    let mut items: Vec<Item> = blocks.chain(Item::all_items()).collect();
+    items.sort_by_key(|i| i.0);
+    items.dedup();
+    items
+}
+
+/// No item burns unless Java 26.3 registers it as a fuel.
+#[test]
+fn only_java_fuels_burn() {
+    let f = fixture();
+    let fuels: std::collections::BTreeSet<u16> = f["fuels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|case| registered(case["item"].as_str().unwrap()))
+        .map(|i| i.0)
+        .collect();
+    let extra: Vec<&str> = all_items()
+        .into_iter()
+        // A charged crossbow is Java's crossbow with a loaded projectile.
+        .filter(|i| fuel::ticks(*i).is_some() && !fuels.contains(&i.0) && *i != Item::CHARGED_CROSSBOW)
+        .map(|i| i.name())
+        .collect();
+    assert!(extra.is_empty(), "these burn but aren't Java 26.3 fuels: {extra:?}");
 }
 #[test]
 fn every_registered_reference_fuel_and_nonfuel_has_its_exact_tick_value() {
