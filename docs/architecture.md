@@ -50,6 +50,11 @@ The headless figures above were remeasured on 2026-10-07 (seed 12345, seven-run 
 See [the regression investigation](performance-2026-10-07.md) for commit attribution,
 phase timings and output verification. The render figures were recorded separately.
 
+The render sweep was re-run on 2026-10-26 at `05831cd` (M5 on battery, three runs
+each). It now draws more: 0.54M quads at `--rd 8` and 1.60M at `--rd 16`. Averages
+were 2.36, 3.17 and 2.73 ms at `--rd 8` (median ~366 fps) and 7.54, 7.53 and
+6.87 ms at `--rd 16` (median ~133 fps). The README quotes these medians.
+
 Render distance is measured in 32-block chunks, so `--rd 8` is 256 blocks
 (Minecraft's 16) and `--rd 16` is 512 blocks (Minecraft's 32).
 
