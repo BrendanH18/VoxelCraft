@@ -64,7 +64,9 @@ impl World {
                 let partner = Block(if upper { lower.0 } else { lower.0 + 1 });
                 if self.get_block(other).is_some_and(|o| o.canonical() != partner) {
                     self.edit(q, Block::AIR, true);
-                    if !upper {
+                    // Tall grass and large fern loot needs both halves
+                    // (`location_check`), so an orphaned lower half drops nothing.
+                    if !upper && !matches!(b, ob::LARGE_FERN | ob::DOUBLE_TALL_GRASS) {
                         self.spill_block(q, b);
                     }
                 }
@@ -440,11 +442,13 @@ impl World {
 
     /// Extra drops of this module's blocks (fruit, shards, pickles,
     /// saplings from the new leaves). Pushes onto `out`.
-    pub(super) fn overworld_drops(&mut self, b: Block, fortune: u64, out: &mut Vec<Stack>) {
+    pub(super) fn overworld_drops(&mut self, b: Block, fortune: u64, pickaxe: bool, out: &mut Vec<Stack>) {
         match b.0 {
             1910 | 2516..=2522 => out.push(Stack::new(Item::SNOWBALL, ob::snow_layers(b).unwrap_or(1))),
+            // Clusters: 4 shards with a pickaxe, times Java's ore bonus with
+            // fortune; 2 with anything else.
+            1929 | 1933 | 2403 | 2407 | 2411 | 2415 if !pickaxe => out.push(Stack::new(Item::AMETHYST_SHARD, 2)),
             1929 | 1933 | 2403 | 2407 | 2411 | 2415 => {
-                // Clusters: 4 shards, times Java's ore bonus with fortune.
                 let times = 1 + (self.roll() % (fortune + 2)).saturating_sub(1);
                 out.push(Stack::new(Item::AMETHYST_SHARD, (4 * times).min(64) as u8));
             }
@@ -454,11 +458,11 @@ impl World {
                 let n = (2 + self.roll() % 2 + self.up_to(fortune)).min(5);
                 out.push(Stack::new(Item::PRISMARINE_CRYSTALS, n as u8));
             }
+            // Ripe bushes: 1-2 berries at age 2, 2-3 at age 3, plus 0..=fortune.
             2060 | 2061 => {
-                let n = 1 + self.roll() % 2 + (b.0 == 2061) as u64;
+                let n = 1 + self.roll() % 2 + (b.0 == 2061) as u64 + self.up_to(fortune);
                 out.push(Stack::new(Item::SWEET_BERRIES, n as u8));
             }
-            2058 | 2059 => out.push(Stack::new(Item::SWEET_BERRIES, 1)),
             2062..=2073 => {
                 let (age, _) = ob::cocoa_of(b).unwrap();
                 let n = if age == 2 { 3 } else { 1 };

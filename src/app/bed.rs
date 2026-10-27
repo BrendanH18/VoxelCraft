@@ -27,9 +27,10 @@ pub(super) fn can_sleep(day_time: f64, raining: bool) -> bool {
 }
 
 impl Game {
-    /// Bed explosions use the same two-cell removal helper as mining.
+    /// Bed explosions use the same two-cell removal helper as mining, but
+    /// `BedBlock.useWithoutItem` removes both halves without drops.
     pub(super) fn break_bed_partner(&mut self, pos: IVec3, half: Block) {
-        self.world.break_bed_partner(pos, half, self.session.mode.is_survival() && self.gamerules.bool("block_drops"));
+        self.world.break_bed_partner(pos, half, false);
     }
 
     /// Right-click on a bed: sets the respawn point and, at night or in the

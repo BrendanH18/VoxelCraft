@@ -9,7 +9,11 @@ use crate::{
     entity::MobKind,
     inventory::Stack,
     item::Item,
-    world::{block::Block, forms, terrain::SEA_LEVEL},
+    world::{
+        block::{Block, RenderKind},
+        forms,
+        terrain::SEA_LEVEL,
+    },
 };
 use glam::{DVec3, IVec3};
 use std::{
@@ -25,6 +29,9 @@ const ROUTE_CLEARANCE: f64 = 24.0;
 const HEIGHT_GRID: i32 = 8;
 /// Entity scene time of day: dawn, below the undead sunburn threshold, held fixed.
 const ENTITY_SCENE_TIME: f64 = 0.0;
+/// Block states the materials scene draws from: the v0.12 track reservations
+/// (docs/architecture.md), below the unassigned reserve.
+const MATERIALS_STATES: (u16, u16) = (16384, 29696);
 
 pub(super) struct Run {
     scene: String,
@@ -135,7 +142,7 @@ impl Game {
         let Some(mut run) = self.benchmark.take() else {
             return;
         };
-        let now = Instant::now();
+        let mut now = Instant::now();
         if run.finished {
             self.benchmark = Some(run);
             return;
@@ -213,6 +220,7 @@ impl Game {
                             }
                         }
                     }
+                    "materials" => self.build_materials_scene(at),
                     _ => {}
                 }
                 self.session.player.pos = run.origin + DVec3::new(0., 10., -18.);
@@ -224,6 +232,9 @@ impl Game {
             run.origin = self.session.player.pos;
             run.cold_load_ms = run.created.elapsed().as_secs_f64() * 1000.;
             run.prepared = true;
+            // Building a scene can take seconds; time readiness, warm-up and
+            // samples from after it, not from the start of this frame.
+            now = Instant::now();
         }
         if run.prepared && run.ready.is_none() && self.world.pending_jobs() == 0 {
             run.ready = Some(now);
@@ -234,6 +245,11 @@ impl Game {
             // `doMobSpawning` doesn't gate). Through the warm-up, keep only the
             // specified population; a herd arriving while sampling counts as drift.
             self.mobs.entities.mobs.retain(|m| run.fixture_mobs.contains(&m.uid));
+        }
+        if run.ready.is_some() && run.sample_start.is_none() && run.scene == "materials" {
+            // Blocks the support pass couldn't hold popped off as items; keep
+            // them out of the scene.
+            self.mobs.entities.items.clear();
         }
         if run.created.elapsed() > Duration::from_secs(180) && run.ready.is_none() {
             panic!("benchmark {}: scene did not finish loading within 180 seconds", run.scene);
@@ -278,6 +294,59 @@ impl Game {
             }
         }
         self.benchmark = Some(run);
+    }
+
+    /// The materials scene: one state of every v0.12 block, cycled over a
+    /// 25 x 25 grid three blocks apart on a stone floor ahead of the camera,
+    /// with text on every sign and item frames holding items on a wall.
+    fn build_materials_scene(&mut self, at: IVec3) {
+        for x in -37..=37 {
+            for z in -8..=70 {
+                self.world.set_block(at + IVec3::new(x, -1, z), Block::STONE);
+                // Clear trees and hills over the grid so every block shows.
+                for y in 0..32 {
+                    let p = at + IVec3::new(x, y, z);
+                    if self.world.get_block(p).is_some_and(|b| b != Block::AIR && !b.is_fluid()) {
+                        self.world.set_block(p, Block::AIR);
+                    }
+                }
+            }
+        }
+        let mut names = std::collections::HashSet::new();
+        let blocks: Vec<Block> = (MATERIALS_STATES.0..MATERIALS_STATES.1)
+            .map(Block)
+            .filter(|b| b.kind() != RenderKind::Invisible && names.insert(b.name()))
+            .collect();
+        let lines = || ["VoxelCraft".to_string(), "v0.12".to_string(), "materials".to_string(), "scene".to_string()];
+        for (i, block) in blocks.iter().cycle().take(25 * 25).enumerate() {
+            let p = at + IVec3::new(i as i32 % 25 * 3 - 36, 0, i as i32 / 25 * 3 - 3);
+            // Attached blocks pop off without support: add stone on one side
+            // at a time until the state stays.
+            self.world.set_block(p, *block);
+            for side in [IVec3::Y, IVec3::Z, IVec3::NEG_Z, IVec3::X, IVec3::NEG_X] {
+                if self.world.get_block(p) == Some(*block) {
+                    break;
+                }
+                self.world.set_block(p + side, Block::STONE);
+                self.world.set_block(p, *block);
+            }
+            for front in [true, false] {
+                let _ = self.world.set_sign_text(p, front, lines());
+            }
+        }
+        // A wall of item frames facing the camera, behind the grid's first row.
+        let held = [Item::DIAMOND, Item::COPPER_INGOT, Item::GLOW_INK_SAC, Item::RAW_IRON, Item::COAL];
+        for x in -12..=12 {
+            for y in 0..4 {
+                let wall = at + IVec3::new(x, y, -7);
+                self.world.set_block(wall, Block::STONE);
+                let item = if (x + y) % 2 == 0 { Item::ITEM_FRAME } else { Item::GLOW_ITEM_FRAME };
+                let placed = self.mobs.entities.place_decor(&self.world, item, wall, IVec3::NEG_Z, 0., &[]);
+                if let (Some(Some(_)), Some(frame)) = (placed, self.mobs.entities.decor.last_mut()) {
+                    frame.item = Some(Stack::new(held[(x + y).rem_euclid(5) as usize], 1));
+                }
+            }
+        }
     }
 
     fn finish_benchmark(&mut self, run: &mut Run, start: Instant) {

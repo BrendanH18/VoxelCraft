@@ -307,8 +307,9 @@ fn combining_slabs_and_blocked_double_plants_preserve_resource_accounting() {
 
 /// Java `SnowLayerBlock`: one to eight layers of two sixteenths each, collision
 /// one layer lower than the outline, `canBeReplaced` stacking from the top face,
-/// loot of one snowball (or silk-touched layer) per layer, and a melt above
-/// block light 11. Stages append at 2516..=2522.
+/// loot of one snowball (or silk-touched layer, eight being a snow block) per
+/// layer when a player breaks them, and a melt above block light 11. Stages
+/// append at 2516..=2522.
 #[test]
 fn snow_layers_stack_to_eight_and_have_java_heights() {
     let layer = Item::from_block(ob::SNOW_LAYER);
@@ -365,11 +366,9 @@ fn snow_layers_drop_by_count_melt_in_light_and_keep_every_layer_with_silk_touch(
         let mut silk = Enchants::NONE;
         silk.set(Enchantment::SilkTouch, 1);
         world.spill_mined(AT, ob::snow_layer(n), silk);
-        assert_eq!(
-            world.drops.iter().map(|(_, s)| (s.item, s.count)).collect::<Vec<_>>(),
-            [(Item::from_block(ob::SNOW_LAYER), n)],
-            "{n}"
-        );
+        // Java's silk-touch alternatives: n layers, but eight make a snow block.
+        let kept = if n == 8 { (Item::from_block(Block::SNOW), 1) } else { (Item::from_block(ob::SNOW_LAYER), n) };
+        assert_eq!(world.drops.iter().map(|(_, s)| (s.item, s.count)).collect::<Vec<_>>(), [kept], "{n}");
     }
 }
 

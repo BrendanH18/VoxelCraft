@@ -14,6 +14,7 @@
     {"name": "entities", "description": "160 cows, sheep, pigs, chickens, zombies, skeletons, wolves and horses, active AI and camera sweep",
      "fixture": {"day_time": 0.0, "gamerules": {"doDaylightCycle": false, "doMobSpawning": false}, "population": 160, "population_tolerance": 0.05}},
     {"name": "automation", "description": "85 active furnaces with loaded fuel/input, redstone sources and powered dust"},
+    {"name": "materials", "description": "One state of every v0.12 block (states 16384-29695) cycled over a 25 x 25 grid three blocks apart, signs with text on both sides, and a 25 x 4 wall of item and glow item frames holding items, with a camera sweep"},
     {"name": "streaming", "description": "12-block/s route across terrain with lateral turns, facing its direction of travel, continued generation and simulation", "sample_seconds": 180, "camera_clearance_blocks": 24},
     {"name": "menus", "description": "In a world at spawn with the camera turning, the pause menu, Options and each Options sub-screen, then the inventory, each open for 2 seconds in turn; the pause screens stop the simulation, as in Java", "simulation": false,
      "screens": ["pause", "options", "video", "sound", "controls", "mouse", "keybinds", "accessibility", "inventory"]},

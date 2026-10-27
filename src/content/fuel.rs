@@ -21,6 +21,8 @@ pub enum FuelClass {
     Coal,
     BlazeRod,
     DriedKelp,
+    /// `COOKING_TIME_COAL_BLOCK`: the block of coal.
+    CoalBlock,
     Lava,
 }
 impl FuelClass {
@@ -37,6 +39,7 @@ impl FuelClass {
             Self::Coal => 1600,
             Self::BlazeRod => 2400,
             Self::DriedKelp => 4001,
+            Self::CoalBlock => 16000,
             Self::Lava => 20000,
         }
     }
@@ -107,6 +110,7 @@ pub fn class(item: Item) -> Option<FuelClass> {
         ob::BAMBOO => Some(Bamboo),
         ob::BAMBOO_BLOCK | ob::BAMBOO_MOSAIC | ob::MANGROVE_ROOTS => Some(Wood),
         ob::DRIED_KELP_BLOCK => Some(DriedKelp),
+        crate::world::stone_blocks::COAL_BLOCK => Some(CoalBlock),
         Block::OAK_DOOR => Some(Large),
         rb::WOOD_BUTTON => Some(Small),
         Block::CRAFTING_TABLE

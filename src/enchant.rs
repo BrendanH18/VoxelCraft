@@ -707,7 +707,10 @@ pub fn repairs(item: Item, material: Item) -> bool {
                             | crate::world::nether_biome_blocks::WARPED_PLANKS
                     )
             }),
-            Tier::Stone => material == Item::from(Block::COBBLESTONE),
+            // `#stone_tool_materials`.
+            Tier::Stone => [Block::COBBLESTONE, Block::BLACKSTONE, Block::COBBLED_DEEPSLATE]
+                .iter()
+                .any(|&b| material == Item::from(b)),
             Tier::Iron => material == Item::IRON_INGOT,
             Tier::Copper => material == Item::COPPER_INGOT,
             Tier::Gold => material == Item::GOLD_INGOT,

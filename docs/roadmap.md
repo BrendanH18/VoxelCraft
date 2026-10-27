@@ -854,7 +854,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.9 | Block states | M2: BLD-04, BLD-06 | Top and double slabs, waterlogging, door hinges, floor/ceiling buttons and levers, wall grindstones, corner-stair light; reserved state ranges for later content | Done (owner, 2026-10-22): ready to tag `v0.9` once merged; [delivery record](#35-v09-delivery-record--2026-10-22). Block states (#40), Java player movement, wall posts, powered doors, honey, scaffolding and powder snow; the owner's play is the player evidence for v0.8 and v0.9 (the checklist and controller session were dropped). Rows stay Implemented, unverified: the windowed performance check was deferred to v0.20 (owner, 2026-10-22) |
 | v0.10 | Updates | M7 early: UX-04b, part of UX-05a | In-game update check, signed download, pre-update world backup and install on Windows and Apple Silicon Macs ([design](updates.md)); worlds whose level file can't be read are no longer started fresh. See [v0.10 scope](#v010-scope-updates) | Release prepared (2026-10-22): Cargo 0.10.0, release notes and the `UPDATE_SIGNING_KEY` secret; tag `v0.10` once merged (owner exception: before the exit check, which needs a later release). Rows Implemented, unverified until the owner updates a real v0.10 install (the exit check); the stepping-stone release every player installs by hand |
 | v0.11 | Menus and settings | M7 early: UX-03a/b, UX-05a | Java's title screen, world list and Edit World screen; Java-style options screens, key rebinding, GUI scale and per-category volume; consistent menu navigation and error screens. See [v0.11 scope](#v011-scope-menus-and-settings) | Release prepared (2026-10-24): Cargo 0.11.0 and release notes; every work item implemented, unverified; options-file failures now show a notice; the menu and title benchmark scenes exist, but their [first run](verification/2026-10-24-v0.11-menu-frame-time.md) was capped at the display's 120 Hz by the machine's state and doesn't count. Done (owner, 2026-10-25): tag `v0.11` from `ec74556` without its exit checks (owner exception). Rows stay Implemented, unverified; the menu and title frame-time run moved to v0.20, and problems found in the owner's ordinary play come back as fixes |
-| v0.12 | Building materials | Close M2 | Missing wood, stone, copper and colour family members, the unregistered reference fuel items, signs, banners, item frames, cauldrons and campfires; coral wall fans; falling and dripping dripstone, tilting dripleaf. See [v0.12 scope](#v012-scope-building-materials) | In progress (2026-10-26): items 0–5 implemented, unverified, and reviewed (capacity raise and the wood, stone, copper, colour and utilities tracks; `registry_audit` on the merged tree: 669 → 247 missing blocks, the rest belonging to later releases); owed: item 6 (data pass), the texture-paging cost on the M5 now that `tex::COUNT` passes 2048, the frame-time scene and owner play |
+| v0.12 | Building materials | Close M2 | Missing wood, stone, copper and colour family members, the unregistered reference fuel items, signs, banners, item frames, cauldrons and campfires; coral wall fans; falling and dripping dripstone, tilting dripleaf. See [v0.12 scope](#v012-scope-building-materials) | In progress (2026-10-27): items 0–5 implemented, unverified, and reviewed (capacity raise and the wood, stone, copper, colour and utilities tracks; `registry_audit` on the merged tree: 669 → 247 missing blocks, the rest belonging to later releases); item 6, the data pass, implemented, unverified (2026-10-27: recipes, drops, mining, fuel, compost and repair compared with the 26.3 jar for every registered block and item); the `materials` frame-time scene exists. Owed: a valid run of that scene on AC power on an idle M5, which also measures the texture-paging cost now that `tex::COUNT` passes 2048, and owner play |
 | v0.13 | Terrain | M3: GEN-01..03 | Java climate and density terrain with overhangs; Java caves, aquifers and ores; deep-dark content, springs, glow lichen; giant spruce and jungle trees and the remaining biome features | Planned |
 | v0.14 | Structures | M3: GEN-05..07 | A Java structure-template (jigsaw) system; villages, outposts, bastions, fossils, shipwrecks, ocean ruins and monuments built from it; buried treasure and explorer maps; Java loot random sequences | Planned |
 | v0.15 | Wildlife | M4: MOB-03/04, FOO, ENV-03 | Bats, frogs, pandas, polar bears, armadillos, mooshrooms, strays, bogged, phantoms and zombie horses (with lightning); drowned conversion and the cat spawner; melon, pumpkin and beetroot crops; animal and mount acceptance | Planned |
@@ -1200,6 +1200,26 @@ Work items (all Missing unless noted):
    smelting, stonecutting and campfire recipe with the 26.3 data; compost
    chances, repair materials, hardness, tools, drops, Silk Touch and
    Fortune for each new block.
+   *Implemented, unverified (2026-10-27):* each area now has an extractor
+   that reads the pinned 26.3 server jar, a fixture and a test that fails
+   on any difference for every registered block or item.
+   - **Recipes:** 1,335 crafting, cooking, stonecutting and smithing recipes
+     match in both directions; 178 fixed and 2 invented ones removed
+     (melon to slices, a second packed ice). 406 wait on unregistered items;
+     22 are allow-listed (dyed leather, grid repair, banner copying).
+     ([record](verification/2026-10-27-v0.12-data-recipes.md))
+   - **Drops:** all 1,046 registered blocks drop what their loot table gives
+     for each state and tool, including Silk Touch, Fortune and shears; 46
+     fixed, such as sticks from leaves, beds dropping from the head and the
+     sea lantern's crystals. ([record](verification/2026-10-27-v0.12-data-drops.md))
+   - **Mining, fuel, compost, repair:** hardness, harvest rule and dig speed
+     per tool for every state (29 blocks fixed; 26.3 lets the ender chest,
+     bell, brewing stand, iron door, weighted plates and pointed dripstone
+     drop by hand), 323 fuels (block of coal 16,000 ticks), 101 compostables
+     and 60 repairable items. ([record](verification/2026-10-27-v0.12-data-blockdata.md))
+
+   Owed: explosion loot (VoxelCraft keeps a whole block at 1/power where Java
+   rolls each table), blast resistance per block, and owner play.
 
 Tracks 1–5 can run in parallel once item 0 is done, at most four at a time;
 item 6 runs last, over the integrated result.

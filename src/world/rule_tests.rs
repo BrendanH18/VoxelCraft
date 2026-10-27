@@ -94,6 +94,21 @@ fn explosion_drops_decay_by_one_over_power_unless_the_source_never_decays() {
 }
 
 #[test]
+fn blasts_drop_snowballs_from_snow_layers() {
+    // Java's snow loot needs an entity in the context; a TNT, creeper or
+    // fireball blast supplies one, unlike melting or losing support.
+    let mut w = world();
+    w.set_tile_drops(true);
+    let snow = IVec3::new(0, FLOOR + 1, 0);
+    w.edit(snow, super::overworld_blocks::snow_layer(3), false);
+    w.explode_with_decay(DVec3::new(0.5, FLOOR as f64 + 1.5, 0.5), 4.0, true, false);
+    assert_eq!(w.get_block(snow), Some(Block::AIR));
+    let snowballs: u32 =
+        w.drops.iter().filter(|(_, s)| s.item == crate::item::Item::SNOWBALL).map(|(_, s)| s.count as u32).sum();
+    assert_eq!(snowballs, 3, "three layers drop three snowballs");
+}
+
+#[test]
 fn tnt_in_a_blast_chains_only_with_tnt_explodes() {
     for explodes in [true, false] {
         let mut w = world();

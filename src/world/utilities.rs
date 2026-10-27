@@ -637,6 +637,9 @@ pub fn mining(b: Block) -> Option<(f32, Option<ToolKind>, Option<u8>)> {
     }
     Some(if cauldron_of(b).is_some() {
         (2.0, Some(Pickaxe), Some(0))
+    } else if let Some((_, true, ..)) = wall_fan_of(b) {
+        // Dead coral needs a pickaxe to drop anything, even with silk touch.
+        (0.0, Some(Pickaxe), Some(0))
     } else if is_pot(b) || wall_fan_of(b).is_some() || decorated_pot_of(b).is_some() {
         (0.0, None, None)
     } else if b == LODESTONE {
@@ -646,7 +649,8 @@ pub fn mining(b: Block) -> Option<(f32, Option<ToolKind>, Option<u8>)> {
     } else if campfire_of(b).is_some() {
         (2.0, Some(Axe), None)
     } else if ender_chest_of(b).is_some() {
-        (22.5, Some(Pickaxe), Some(0))
+        // 26.3 dropped `requiresCorrectToolForDrops`: any tool yields obsidian.
+        (22.5, Some(Pickaxe), None)
     } else {
         // Trapped chests.
         (2.5, Some(Axe), None)

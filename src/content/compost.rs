@@ -129,6 +129,8 @@ const CHANCE_85: &[Item] = &[
     Item::from_block(ob::BROWN_MUSHROOM_BLOCK),
     Item::from_block(nb::NETHER_WART_BLOCK),
     Item::from_block(nb::WARPED_WART_BLOCK),
+    // `Items.STRAW_BED`: `COMPOSTABLE_MEDIUM_HIGH`.
+    Item::from_block(crate::world::colour_blocks::straw_bed::ITEM_BLOCK),
 ];
 const CHANCE_100: &[Item] = &[Item::CAKE, Item::PUMPKIN_PIE];
 pub fn class(item: Item) -> Option<CompostClass> {

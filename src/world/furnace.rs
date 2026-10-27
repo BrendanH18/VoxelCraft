@@ -34,35 +34,18 @@ impl FurnaceKind {
             _ => Self::Normal,
         }
     }
+    /// What this furnace makes of `item`: smokers run only Java's `smoking`
+    /// recipes and blast furnaces only its `blasting` recipes.
     pub fn smelt(self, item: Item) -> Option<Item> {
         let out = smelt(item)?;
-        let food = matches!(
-            item,
-            Item::RAW_PORKCHOP
-                | Item::RAW_BEEF
-                | Item::RAW_CHICKEN
-                | Item::RAW_RABBIT
-                | Item::RAW_MUTTON
-                | Item::POTATO
-                | Item::COD
-                | Item::SALMON
-        );
-        let ore = item.block().is_some_and(|b| {
-            matches!(
-                b.as_stone_ore(),
-                Block::IRON_ORE
-                    | Block::GOLD_ORE
-                    | Block::COPPER_ORE
-                    | Block::COAL_ORE
-                    | Block::DIAMOND_ORE
-                    | Block::LAPIS_ORE
-                    | Block::QUARTZ_ORE
-                    | Block::ANCIENT_DEBRIS
-            )
-        }) || matches!(item, Item::RAW_IRON | Item::RAW_GOLD | Item::RAW_COPPER)
-            || nugget_of(item).is_some();
-        (self == Self::Normal || self == Self::Smoker && food || self == Self::Blast && ore).then_some(out)
+        match self {
+            Self::Normal => Some(out),
+            Self::Smoker => smokes(item).then_some(out),
+            Self::Blast => blasts(item).then_some(out),
+        }
     }
+    /// Seconds to cook one item. Java 26.3's recipes all take 200 ticks;
+    /// smokers and blast furnaces apply the fuel's fast speed multiplier (2).
     pub fn cook_time(self) -> f32 {
         if self == Self::Normal { COOK_TIME } else { COOK_TIME / 2.0 }
     }
@@ -92,6 +75,42 @@ pub struct Furnace {
     /// Experience stored by finished items, released when the output is
     /// taken or the furnace is broken (Java's recipes-used tally).
     pub xp: f32,
+}
+
+/// Java's `*_from_smoking` inputs: raw meat and fish, potatoes and kelp.
+fn smokes(item: Item) -> bool {
+    matches!(
+        item,
+        Item::RAW_PORKCHOP
+            | Item::RAW_BEEF
+            | Item::RAW_CHICKEN
+            | Item::RAW_RABBIT
+            | Item::RAW_MUTTON
+            | Item::POTATO
+            | Item::COD
+            | Item::SALMON
+    ) || item == Item::from_block(crate::world::overworld_blocks::KELP)
+}
+
+/// Java's `*_from_blasting` inputs: ores, raw metal, ancient debris and the
+/// metal gear that melts into nuggets.
+fn blasts(item: Item) -> bool {
+    ore_of(item).is_some_and(|b| {
+        matches!(
+            b,
+            Block::IRON_ORE
+                | Block::GOLD_ORE
+                | Block::COPPER_ORE
+                | Block::COAL_ORE
+                | Block::DIAMOND_ORE
+                | Block::EMERALD_ORE
+                | Block::LAPIS_ORE
+                | Block::REDSTONE_ORE
+                | Block::QUARTZ_ORE
+                | Block::ANCIENT_DEBRIS
+        )
+    }) || matches!(item, Item::RAW_IRON | Item::RAW_GOLD | Item::RAW_COPPER)
+        || nugget_of(item).is_some()
 }
 
 fn ore_of(item: Item) -> Option<Block> {
@@ -128,12 +147,15 @@ pub fn smelt(item: Item) -> Option<Item> {
         i if ore_of(i) == Some(Block::COAL_ORE) => Item::COAL,
         i if ore_of(i) == Some(Block::DIAMOND_ORE) => Item::DIAMOND,
         i if ore_of(i) == Some(Block::LAPIS_ORE) => Item::LAPIS_LAZULI,
+        i if ore_of(i) == Some(Block::REDSTONE_ORE) => Item::REDSTONE,
+        i if ore_of(i) == Some(Block::EMERALD_ORE) => Item::EMERALD,
         i if i == b(Block::POLISHED_BLACKSTONE_BRICKS) => b(Block::CRACKED_POLISHED_BLACKSTONE_BRICKS),
         i if i == b(Block::STONE) => b(Block::SMOOTH_STONE),
         i if i == b(Block::COBBLED_DEEPSLATE) => b(Block::DEEPSLATE),
         i if i == b(Block::ANCIENT_DEBRIS) => Item::NETHERITE_SCRAP,
         i if i == b(Block::CACTUS) => crate::color::DyeColor::Green.dye(),
-        i if i == b(Block::SAND) => b(Block::GLASS),
+        // `#smelts_to_glass`.
+        i if i == b(Block::SAND) || i == b(Block::RED_SAND) => b(Block::GLASS),
         i if i == b(Block::COBBLESTONE) => b(Block::STONE),
         i if i.block().is_some_and(Block::is_log) => Item::CHARCOAL,
         Item::CLAY_BALL => Item::BRICK,
@@ -162,9 +184,9 @@ pub fn smelt(item: Item) -> Option<Item> {
 pub fn smelt_xp(out: Item) -> f32 {
     let b = Item::from_block;
     match out {
-        Item::GOLD_INGOT | Item::DIAMOND => 1.0,
+        Item::GOLD_INGOT | Item::DIAMOND | Item::EMERALD => 1.0,
         i if i == crate::color::DyeColor::Green.dye() => 1.0,
-        Item::IRON_INGOT | Item::COPPER_INGOT => 0.7,
+        Item::IRON_INGOT | Item::COPPER_INGOT | Item::REDSTONE => 0.7,
         Item::NETHERITE_SCRAP => 2.0,
         Item::COOKED_PORKCHOP
         | Item::STEAK
@@ -178,6 +200,7 @@ pub fn smelt_xp(out: Item) -> f32 {
         Item::BRICK => 0.3,
         Item::NETHER_QUARTZ | Item::LAPIS_LAZULI => 0.2,
         Item::CHARCOAL => 0.15,
+        i if i == b(crate::world::overworld_blocks::SPONGE) => 0.15,
         _ => 0.1,
     }
 }

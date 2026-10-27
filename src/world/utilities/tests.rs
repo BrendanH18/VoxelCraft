@@ -103,7 +103,8 @@ fn java_light_hardness_tools_and_drops() {
     assert_eq!((CAULDRON.hardness(), CAULDRON.best_tool(), CAULDRON.harvest_level()), (2.0, Some(Pickaxe), Some(0)));
     assert_eq!((RESPAWN_ANCHOR.hardness(), RESPAWN_ANCHOR.harvest_level()), (50.0, Some(3)));
     assert_eq!((CAMPFIRE.best_tool(), CAMPFIRE.harvest_level()), (Some(Axe), None));
-    assert_eq!((ENDER_CHEST.hardness(), ENDER_CHEST.harvest_level()), (22.5, Some(0)));
+    // 26.3's ender chest has no `requiresCorrectToolForDrops`.
+    assert_eq!((ENDER_CHEST.hardness(), ENDER_CHEST.harvest_level()), (22.5, None));
     assert_eq!((TRAPPED_CHEST.hardness(), TRAPPED_CHEST.best_tool()), (2.5, Some(Axe)));
     assert_eq!((LODESTONE.hardness(), LODESTONE.harvest_level()), (3.5, Some(0)));
     assert_eq!(FLOWER_POT.hardness(), 0.0);

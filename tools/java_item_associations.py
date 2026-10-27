@@ -12,6 +12,26 @@ COLOR_NAMES = {"DYED_TERRACOTTA": "terracotta", "DYED_SHULKER_BOX": "shulker_box
 
 
 def provider_associations(jar_path, prefix):
+    """`{name: provider}`, naming items by their `Items` field (see
+    `provider_ids` for registry IDs)."""
+    return {name: provider for name, provider, _ in _associations(jar_path, prefix)}
+
+
+def provider_ids(jar_path, prefix):
+    """`{registry ID: provider}`: like `provider_associations`, with each
+    `Items` field resolved to the registry IDs its registration passes."""
+    from java_block_properties import item_registry_ids
+    ids = item_registry_ids(jar_path)
+    result = {}
+    for _, provider, field in _associations(jar_path, prefix):
+        for name in ids[field] or ():
+            result[name] = provider
+        if ids[field] is None:
+            raise ValueError(f"Items.{field} has a {prefix} provider but no plain registry ID")
+    return result
+
+
+def _associations(jar_path, prefix):
     def inspect(*flags):
         return subprocess.check_output(["javap", "-classpath", str(jar_path), *flags,
                                         "net.minecraft.world.item.Items"], text=True)
@@ -33,7 +53,7 @@ def provider_associations(jar_path, prefix):
         return set(fields)
 
     clinit = code.split("  static {};")[1]
-    start, result = 0, {}
+    start, result = 0, []
     for match in re.finditer(r"putstatic\s+#[^\n]*// Field ([A-Z0-9_]+):([^\n]+)", clinit):
         block = clinit[start:match.start()]
         start = match.end()
@@ -47,5 +67,5 @@ def provider_associations(jar_path, prefix):
                 suffix = COLOR_NAMES.get(match[1], name)
                 names = [f"{color}_{suffix}" for color in COLORS]
             for name in names:
-                result[name] = next(iter(fields)).lower()
+                result.append((name, next(iter(fields)).lower(), match[1]))
     return result

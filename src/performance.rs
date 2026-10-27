@@ -39,7 +39,8 @@ impl FrameStats {
 }
 
 /// Live benchmark scene names accepted by `--benchmark-scene`, matching `benchmarks/scenes.json`.
-pub const SCENES: [&str; 7] = ["survival", "building", "entities", "automation", "streaming", "menus", "title"];
+pub const SCENES: [&str; 8] =
+    ["survival", "building", "entities", "automation", "materials", "streaming", "menus", "title"];
 /// Scenes that cycle through menu screens. Most of them pause a single-player
 /// game, as Java's do, so their runs don't count simulation ticks.
 pub const MENU_SCENES: [&str; 2] = ["menus", "title"];
@@ -275,15 +276,16 @@ mod tests {
             assert_eq!(scene["simulation"].as_bool().unwrap_or(true), scene_measures_simulation(name), "{name}");
             assert_eq!(scene["world"].as_bool().unwrap_or(true), scene_has_world(name), "{name}");
         }
-        let screens = |i: usize| -> Vec<&str> {
-            spec["scenes"][i]["screens"].as_array().unwrap().iter().map(|s| s.as_str().unwrap()).collect()
+        let scene = |name: &str| spec["scenes"].as_array().unwrap().iter().find(|s| s["name"] == name).unwrap();
+        let screens = |name: &str| -> Vec<&str> {
+            scene(name)["screens"].as_array().unwrap().iter().map(|s| s.as_str().unwrap()).collect()
         };
-        assert_eq!(screens(5), MENUS_SCREENS);
-        assert_eq!(screens(6), TITLE_SCREENS);
+        assert_eq!(screens("menus"), MENUS_SCREENS);
+        assert_eq!(screens("title"), TITLE_SCREENS);
         assert_eq!(menu_screen(&TITLE_SCREENS, 0.0), "title");
         assert_eq!(menu_screen(&TITLE_SCREENS, 2.5), "select");
         assert_eq!(menu_screen(&MENUS_SCREENS, 18.0), "pause", "the cycle repeats");
-        let entities = &spec["scenes"][2]["fixture"];
+        let entities = &scene("entities")["fixture"];
         assert_eq!(entities["population"].as_u64(), Some(ENTITY_SCENE_MOBS as u64));
         assert_eq!(entities["population_tolerance"].as_f64(), Some(POPULATION_TOLERANCE));
         assert_eq!(spec["graphics"], "enhanced");

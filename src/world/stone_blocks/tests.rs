@@ -224,7 +224,8 @@ fn stairs_and_slabs_have_every_java_state_and_their_bases_rules() {
 #[test]
 fn slab_destroy_times_follow_register_slab() {
     // `registerSlab(id, base, 2.0F)` for sandstone, cut sandstone, quartz,
-    // red sandstone and cut red sandstone; other slabs copy their base.
+    // red sandstone, cut red sandstone, stone, stone bricks, blackstone and
+    // polished blackstone bricks; other slabs copy their base.
     let slab = |f: u16| SHAPES[f as usize].slab;
     for f in [4, 6, 12, 13] {
         assert_eq!(slab(f).hardness(), 2.0, "{}", slab(f).name());
@@ -235,7 +236,8 @@ fn slab_destroy_times_follow_register_slab() {
     assert_eq!(stairs_at(4, 0).hardness(), 0.8, "quartz stairs copy the block");
     assert_eq!(slab(5).hardness(), 2.0, "smooth quartz slab copies smooth quartz");
     assert_eq!(slab(2).hardness(), 3.5);
-    assert_eq!(Block::slab_of(Block::STONE).unwrap().hardness(), Block::STONE.hardness());
+    assert_eq!(Block::slab_of(Block::STONE).unwrap().hardness(), 2.0);
+    assert_eq!(Block::slab_of(Block::COBBLESTONE).unwrap().hardness(), Block::COBBLESTONE.hardness());
 }
 
 #[test]

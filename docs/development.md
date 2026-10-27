@@ -172,7 +172,13 @@ Survival and streaming cameras fly 24 blocks above the generator's surface along
 their routes and face their direction of travel. The entity scene holds dawn with
 no daylight cycle or natural spawning, so its 160 mobs do not burn. Until sampling
 starts it also removes every mob outside that 160-mob fixture, because chunk
-generation adds creature herds that `doMobSpawning` doesn't stop. Runs whose view or simulation distance
+generation adds creature herds that `doMobSpawning` doesn't stop. The
+`materials` scene clears the ground ahead of the camera and lays one state of
+every v0.12 block (states 16384–29695) over a 25 x 25 grid three blocks
+apart. It adds stone beside a block that needs support and writes text on
+both sides of every sign. In front of the grid is a wall of item frames
+holding items. Building it takes several seconds, which count toward cold
+load but not toward warm-up or samples. Runs whose view or simulation distance
 differs from `benchmarks/scenes.json` (256 and 160 blocks) are rejected.
 
 The two menu scenes open each screen in their `screens` list for two seconds

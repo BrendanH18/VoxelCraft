@@ -1543,8 +1543,10 @@ impl Block {
             }
             return Some(if b == super::redstone_blocks::WIRE { Item::REDSTONE } else { b.into() });
         }
+        // Only the head drops the bed (`match_block` on `part=head`); breaking
+        // the foot destroys the head with its drops.
         if let Some(c) = self.bed_color() {
-            return (!self.is_bed_head()).then_some(c.bed());
+            return self.is_bed_head().then_some(c.bed());
         }
         if let Some(drop) = super::nether_biome_blocks::drop(self) {
             return drop;
@@ -1568,7 +1570,10 @@ impl Block {
             Block::COPPER_ORE | Block::REDSTONE_ORE => None,
             // Lapis ore drops 4-9 (see `World::spill_mined`).
             Block::LAPIS_ORE => None,
-            Block::DEAD_BUSH => Some(Item::STICK),
+            // Zero to two sticks (see `World::spill_mined`).
+            Block::DEAD_BUSH => None,
+            // Java's cake table is empty.
+            b if b.cake_bites().is_some() => None,
             Block::LIT_FURNACE => Some(Block::FURNACE.into()),
             Block::FARMLAND | Block::WET_FARMLAND => Some(Block::DIRT.into()),
             b if b.as_crop() == Some((Crop::Wheat, 7)) => Some(Item::WHEAT),
@@ -1578,9 +1583,6 @@ impl Block {
             b if b.wart_age().is_some() => Some(Item::NETHER_WART),
             Block::CLAY => Some(Item::CLAY_BALL),
             Block::MELON => Some(Item::MELON_SLICE),
-            // The foot drops the bed; breaking either half breaks both.
-            Block::BED_FOOT => Some(Item::BED),
-            Block::BED_HEAD => None,
             // Only the lower half of a door drops it.
             Block::OAK_DOOR => (!self.is_door_upper()).then_some(Item::OAK_DOOR),
             b if super::forms::planks_of(b).is_some() && b.is_door() => {
@@ -1993,7 +1995,6 @@ impl Block {
                 | Block::LIT_BLAST_FURNACE
                 | Block::GRINDSTONE
                 | Block::STONECUTTER
-                | Block::BELL
         ) {
             return Some(0);
         }
@@ -2007,9 +2008,7 @@ impl Block {
                     | super::redstone_blocks::Component::Observer { .. }
                     | super::redstone_blocks::Component::Dispenser { .. }
                     | super::redstone_blocks::Component::Hopper { .. }
-                    | super::redstone_blocks::Component::IronDoor { .. }
                     | super::redstone_blocks::Component::Trapdoor { iron: true, .. }
-                    | super::redstone_blocks::Component::Plate { kind: 2 | 3, .. }
             )
         ) {
             return Some(0);
@@ -2044,7 +2043,6 @@ impl Block {
             | Block::QUARTZ_ORE
             | Block::END_STONE
             | Block::SPAWNER
-            | Block::BREWING_STAND
             | Block::STONE_BRICKS
             | Block::MOSSY_STONE_BRICKS
             | Block::CRACKED_STONE_BRICKS
@@ -2066,7 +2064,8 @@ impl Block {
             | Block::SMOOTH_STONE
             | Block::DEEPSLATE
             | Block::COBBLED_DEEPSLATE
-            | Block::POLISHED_DEEPSLATE => Some(0),
+            | Block::POLISHED_DEEPSLATE
+            | Block::SNOW => Some(0),
             b if b.terracotta_colour().is_some() => Some(0),
             Block::IRON_ORE
             | Block::COPPER_ORE
@@ -3583,9 +3582,10 @@ mod tests {
             assert_eq!(slab.height(), 0.5);
             assert!(slab.is_solid() && !slab.is_opaque() && slab.is_targetable());
             assert!(slab.light_opacity() == 0 && slab.uses_shape_for_light_occlusion());
-            // Java's `registerSlab(SANDSTONE_SLAB, SANDSTONE, 2.0F, 6.0F)`
-            // is harder than sandstone; the others copy their base.
-            let hardness = if base == Block::SANDSTONE { 2.0 } else { base.hardness() };
+            // Java's `registerSlab(id, base, 2.0F[, 6.0F])` forms are
+            // harder than their base; the others copy it.
+            let harder = matches!(base, Block::SANDSTONE | Block::STONE | Block::STONE_BRICKS);
+            let hardness = if harder { 2.0 } else { base.hardness() };
             assert_eq!(
                 (slab.hardness(), slab.best_tool(), slab.harvest_level()),
                 (hardness, base.best_tool(), base.harvest_level())

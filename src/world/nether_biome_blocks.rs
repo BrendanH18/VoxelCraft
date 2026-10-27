@@ -365,10 +365,11 @@ pub fn sheared_drop(b: Block) -> Option<Item> {
     }
 }
 
-/// Silk touch keeps nylium (and anything shears would keep).
+/// Silk touch keeps nylium and vines; sprouts need shears.
 pub fn silk_drop(b: Block) -> Option<Item> {
     match b {
         CRIMSON_NYLIUM | WARPED_NYLIUM => Some(b.into()),
+        NETHER_SPROUTS => None,
         _ => sheared_drop(b),
     }
 }

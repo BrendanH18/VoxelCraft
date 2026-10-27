@@ -2,15 +2,22 @@
 use serde_json::{Value, json};
 use voxelcraft::{content::fuel, item::Item};
 
+/// The registered item for a Java ID, matched by ID or by English name.
+fn registered(names: &Value, id: &str) -> Option<Item> {
+    let english = names["items"][id.strip_prefix("minecraft:").unwrap_or(id)].as_str();
+    Item::from_name(id).or_else(|| english.and_then(|e| Item::from_name(&e.to_lowercase())))
+}
+
 fn main() {
     let reference: Value =
         serde_json::from_str(include_str!("../tests/fixtures/java/26.3/fuel_integrations.json")).unwrap();
+    let names: Value = serde_json::from_str(include_str!("../tests/fixtures/java/26.3/registry_names.json")).unwrap();
     let mut implemented = Vec::new();
     let mut unregistered = Vec::new();
     let mut failures = Vec::new();
     for case in reference["fuels"].as_array().unwrap() {
         let id = case["item"].as_str().unwrap();
-        if let Some(item) = Item::from_name(id) {
+        if let Some(item) = registered(&names, id) {
             let expected = case["ticks"].as_u64().unwrap() as u32;
             let actual = fuel::ticks(item);
             implemented.push(json!({"reference_id":id,"saved_item_id":item.0,"name":item.name(),"expected_ticks":expected,"actual_ticks":actual}));
@@ -23,7 +30,7 @@ fn main() {
     }
     let mut non_fuels = Vec::new();
     for id in reference["non_fuels"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()) {
-        if let Some(item) = Item::from_name(id) {
+        if let Some(item) = registered(&names, id) {
             non_fuels.push(json!({"reference_id":id,"saved_item_id":item.0,"actual_ticks":fuel::ticks(item)}));
             if fuel::ticks(item).is_some() {
                 failures.push(json!({"reference_id":id,"expected":null,"actual":fuel::ticks(item)}));

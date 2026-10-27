@@ -652,16 +652,6 @@
       "ticks": 4001
     },
     {
-      "item": "minecraft:dry_short_grass",
-      "provider": "dry_plants",
-      "ticks": 100
-    },
-    {
-      "item": "minecraft:dry_tall_grass",
-      "provider": "dry_plants",
-      "ticks": 100
-    },
-    {
       "item": "minecraft:fishing_rod",
       "provider": "wood_items_small",
       "ticks": 300
@@ -1447,6 +1437,11 @@
       "ticks": 50
     },
     {
+      "item": "minecraft:short_dry_grass",
+      "provider": "dry_plants",
+      "ticks": 100
+    },
+    {
       "item": "minecraft:smithing_table",
       "provider": "wood_blocks",
       "ticks": 300
@@ -1645,6 +1640,11 @@
       "item": "minecraft:stripped_spruce_wood",
       "provider": "wood_blocks",
       "ticks": 300
+    },
+    {
+      "item": "minecraft:tall_dry_grass",
+      "provider": "dry_plants",
+      "ticks": 100
     },
     {
       "item": "minecraft:trapped_chest",

@@ -289,11 +289,15 @@ impl super::World {
         self.set_block(head, Block::colored_bed(color, true));
         true
     }
+    /// Removes the other half of a bed broken at `pos`. With `drops` it is
+    /// destroyed with its own loot, as Java's `updateShape` removal does: the
+    /// head drops the bed, the foot nothing.
     pub fn break_bed_partner(&mut self, pos: glam::IVec3, half: Block, drops: bool) {
         let Some(other) = self.bed_partner(pos, half) else { return };
+        let partner = Block::colored_bed(half.bed_color().unwrap(), !half.is_bed_head());
         self.set_block(other, Block::AIR);
-        if half.is_bed_head() && drops {
-            self.spill_block(other, Block::colored_bed(half.bed_color().unwrap(), false));
+        if drops {
+            self.spill_block(other, partner);
         }
     }
 }
@@ -319,8 +323,8 @@ mod tests {
             let head = Block::colored_bed(c, true);
             assert_eq!(foot.bed_color(), Some(c));
             assert!(head.is_bed_head() && !foot.is_bed_head());
-            assert_eq!(foot.drop(), Some(c.bed()));
-            assert_eq!(head.drop(), None);
+            assert_eq!(foot.drop(), None);
+            assert_eq!(head.drop(), Some(c.bed()));
             assert_eq!(foot.with_facing(Facing::East), foot);
             assert_eq!(Item::from_name(c.bed_name()), Some(c.bed()));
             assert_eq!(c.bed().max_stack(), 1);

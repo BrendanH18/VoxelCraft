@@ -7,7 +7,7 @@ use crate::world::{block::Block, gadgets, nether_biome_blocks as n, utilities as
 /// Java's `#minecraft:logs`: every log and wood that exists here, and the
 /// Nether stems and hyphae (`logs_that_burn` plus `crimson_stems` and
 /// `warped_stems`).
-const LOGS: &[Item] = &{
+pub(super) const LOGS: &[Item] = &{
     const STEMS: [Item; 8] = [
         b(n::CRIMSON_STEM),
         b(n::WARPED_STEM),

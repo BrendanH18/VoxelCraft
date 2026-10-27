@@ -12,7 +12,7 @@ from pathlib import Path
 import tempfile
 import zipfile
 from extract_java_item_fixtures import SERVER_SHA1
-from java_item_associations import COLORS, provider_associations
+from java_item_associations import COLORS, provider_ids
 
 
 def extract(server):
@@ -24,7 +24,7 @@ def extract(server):
     with tempfile.TemporaryDirectory(prefix="voxelcraft-java-fuels-") as temporary:
         path = Path(temporary) / "reference.jar"
         path.write_bytes(data)
-        providers = provider_associations(path, "COOKING_TIME_")
+        providers = provider_ids(path, "COOKING_TIME_")
     with zipfile.ZipFile(io.BytesIO(data)) as jar:
         def read(path):
             return json.loads(jar.read(path))
