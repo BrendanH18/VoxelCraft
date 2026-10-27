@@ -141,6 +141,17 @@ roadmap and recorded checks to assess completeness against the current target.
 - [v0.12 utilities and special blocks](verification/2026-10-25-v0.12-utilities.md):
   track 5's 55 blocks and the item frame, painting and armor stand
   entities, their IDs, Java rules, checks and what remains.
+- [v0.12 data pass: recipes](verification/2026-10-27-v0.12-data-recipes.md):
+  every crafting, cooking, stonecutting and smithing recipe compared with
+  Java 26.3, the fixes and the allow-list.
+- [v0.12 data pass: drops](verification/2026-10-27-v0.12-data-drops.md):
+  every registered block's drops per state and tool against Java 26.3's
+  loot tables, and what changed.
+- [v0.12 data pass: mining, fuel, compost and repair](verification/2026-10-27-v0.12-data-blockdata.md):
+  hardness, harvest rules and dig speed per state, fuel values, compost
+  chances and repair materials against Java 26.3.
+- [v0.12 materials frame time](verification/2026-10-27-v0.12-materials-frame-time.md):
+  the `materials` benchmark scene and a first run that doesn't count yet.
 - [Game rules and difficulty](verification/2026-10-17-game-rules-difficulty.md):
   the 26.3 rule registry, damage-type rules, Peaceful regeneration and the
   difficulty effects checked against the reference.
