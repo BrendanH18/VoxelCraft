@@ -304,9 +304,10 @@ The [gameplay guide](docs/gameplay.md) covers survival rules, mobs and every rec
       beside you with their own split-screen view, hotbar, health and hunger.
       Up to three controllers can join the keyboard player.
       <h3>🌐 Open to LAN</h3>
-      Load a world and press <strong>Esc → Open to LAN</strong>. Friends on
-      your network find it under <strong>Multiplayer</strong> and share your
-      world, with chat, a player list and optional PvP.
+      Load a world, press <strong>Esc → Open to LAN</strong>, pick the
+      settings and choose <strong>Start LAN World</strong>. Friends on your
+      network find it under <strong>Multiplayer</strong> and share your world,
+      with chat, a player list and optional PvP.
     </td>
   </tr>
 </table>
@@ -393,7 +394,7 @@ survival closely. Each release completes one area:
 **v0.14** structures → **v0.15** wildlife → **v0.16** deep dark and trial
 chambers → **v0.17** villages and raids → **v0.18** the End and the Wither →
 **v0.19** redstone and automation → **v0.20** polish and performance →
-**1.0**. Multiplayer comes after 1.0.
+**1.0**. Multiplayer expansion comes after 1.0.
 
 The [roadmap](docs/roadmap.md) lists the scope of each release, its acceptance
 checks and the known differences from Java.
