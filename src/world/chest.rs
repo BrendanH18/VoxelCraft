@@ -91,7 +91,10 @@ impl World {
     pub fn chests_to_string(&self) -> String {
         self.chests
             .iter()
-            .filter(|(p, _)| !self.get_block(**p).is_some_and(|b| super::utilities::ender_chest_of(b).is_some()))
+            .filter(|(p, _)| {
+                self.lent_chest() != Some(**p)
+                    && !self.get_block(**p).is_some_and(|b| super::utilities::ender_chest_of(b).is_some())
+            })
             .map(|(p, c)| format!("{},{},{}={}", p.x, p.y, p.z, c.serialize()))
             .collect::<Vec<_>>()
             .join("|")

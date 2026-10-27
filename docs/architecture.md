@@ -99,7 +99,11 @@ adapter supports them. Otherwise it binds up to eight pages of the largest
 power-of-two size the adapter supports (`tex::page_layers`): two pages of
 2048 on Apple GPUs once `tex::COUNT` passes 2048, and 256-layer pages on
 adapters with only wgpu's default limit, which therefore hold at most 2048
-layers. Empty pages share
+layers. With all of v0.12's textures (`tex::COUNT` about 2,690) an adapter
+needs arrays of at least 512 layers; one limited to 256 stops at startup
+with that message. Eight pages is the current implementation limit;
+supporting such adapters again needs more page bindings (a follow-up).
+Empty pages share
 the first texture; explicit gradients preserve mip selection across page
 branches. Shaders specialize away paging on adapters using a single array.
 Item icons retain their own texture array, addressed from `tex::ITEM_BASE`

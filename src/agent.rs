@@ -494,6 +494,13 @@ impl Agent {
                     return Ok(());
                 }
                 let (pos, _) = self.target(world).ok_or("no chest within reach")?;
+                // An ender chest holds each player's own inventory; the table
+                // entry under an open one is the host's, not this player's.
+                if world.lent_chest() == Some(pos)
+                    || world.get_block(pos).is_some_and(|b| crate::world::utilities::ender_chest_of(b).is_some())
+                {
+                    return Err("ender chests open a screen the agent protocol doesn't have yet".into());
+                }
                 if slot >= world.container_slots(pos) {
                     return Err("container slot out of range".into());
                 }

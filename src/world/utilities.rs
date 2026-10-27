@@ -51,6 +51,9 @@ pub struct State {
     anchor_blasts: Vec<IVec3>,
     /// Every campfire in loaded chunks, lit or not, for smoke.
     fires: rustc_hash::FxHashSet<IVec3>,
+    /// Where a player's ender inventory is lent into the chest table for an
+    /// open ender chest screen (whatever block is there now).
+    lent: Option<IVec3>,
 }
 
 impl crate::world::World {

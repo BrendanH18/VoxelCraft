@@ -37,15 +37,27 @@ impl World {
     /// chest showing its player's inventory).
     pub fn lend_chest(&mut self, p: IVec3, contents: crate::world::chest::Chest) {
         self.chests.insert(p, contents);
+        self.utilities.lent = Some(p);
     }
 
-    /// Takes back what [`World::lend_chest`] put at `p`, unless a real
-    /// chest stands there.
+    /// Takes back what [`World::lend_chest`] put at `p`, even if the ender
+    /// chest has since been mined; `None` for any other chest.
     pub fn take_lent_chest(&mut self, p: IVec3) -> Option<crate::world::chest::Chest> {
-        if self.get_block(p).is_some_and(crate::world::chest::is_chest) {
+        if self.utilities.lent != Some(p) {
             return None;
         }
-        self.chests.remove(&p)
+        self.utilities.lent = None;
+        let lent = self.chests.remove(&p);
+        // A real chest placed there meanwhile keeps (empty) storage of its own.
+        if self.get_block(p).is_some_and(crate::world::chest::is_chest) {
+            self.chests.entry(p).or_default();
+        }
+        lent
+    }
+
+    /// The cell whose chest table entry is a lent ender inventory.
+    pub fn lent_chest(&self) -> Option<IVec3> {
+        self.utilities.lent
     }
 
     /// A player opened the chest at `p`; trapped chests start signalling.

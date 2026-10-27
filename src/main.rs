@@ -615,6 +615,7 @@ impl Args {
         self.dimension = None;
         self.place.clear();
         self.carts.clear();
+        self.signs.clear();
         self.decor.clear();
         self.open_block = None;
         self.spawn.clear();

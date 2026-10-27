@@ -614,3 +614,24 @@ fn a_tilt_timer_waits_for_its_chunk_to_load() {
     }
     assert_eq!(w.utilities.tilts, vec![(far, 1)], "kept until the chunk is there");
 }
+
+#[test]
+fn a_lent_ender_inventory_comes_back_after_its_chest_is_mined() {
+    let mut w = world();
+    let p = IVec3::new(6, 100, 6);
+    w.set_block(p, ender_chest(Facing::North, false));
+    let mut contents = crate::world::chest::Chest::default();
+    contents.slots[0] = Some(crate::inventory::Stack::new(Item::DIAMOND, 1));
+    w.lend_chest(p, contents);
+    // Someone else mines the ender chest while the screen is open.
+    w.set_block(p, Block::AIR);
+    assert_eq!(w.chests_to_string(), "", "never saved as a ghost chest");
+    assert_eq!(w.container_signal(p), None, "hoppers and comparators can't reach it under air either");
+    assert_eq!(w.take_lent_chest(p).map(|c| c.slots[0]), Some(contents.slots[0]), "the player gets it back");
+    assert_eq!(w.lent_chest(), None);
+    // A chest placed in its cell meanwhile keeps empty storage of its own.
+    w.lend_chest(p, contents);
+    w.set_block(p, Block::CHEST);
+    assert!(w.take_lent_chest(p).is_some());
+    assert_eq!(w.chest(p).map(|c| c.slots[0]), Some(None));
+}

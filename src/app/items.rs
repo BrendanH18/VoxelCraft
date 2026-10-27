@@ -43,7 +43,16 @@ impl Game {
         let far = |pos: glam::IVec3| !session.can_keep_using_block(pos);
         let gone = match self.body.container {
             Container::Furnace(pos) => self.world.furnace(pos).is_none() || far(pos),
-            Container::Chest(pos) => self.world.chest(pos).is_none() || far(pos),
+            // A lent ender inventory whose ender chest was mined closes too.
+            Container::Chest(pos) => {
+                self.world.chest(pos).is_none()
+                    || far(pos)
+                    || (self.world.lent_chest() == Some(pos)
+                        && !self
+                            .world
+                            .get_block(pos)
+                            .is_some_and(|b| voxelcraft::world::utilities::ender_chest_of(b).is_some()))
+            }
             Container::Minecart(id) => {
                 !self.mobs.entities.vehicle_in_reach(id, session.player.eye(), session.entity_screen_range())
             }

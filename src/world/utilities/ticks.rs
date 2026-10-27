@@ -88,7 +88,7 @@ impl World {
     pub fn load_utilities(&mut self, text: &str) {
         for entry in text.split('|').filter(|e| !e.is_empty()) {
             let Some((head, body)) = entry.split_once('=') else { continue };
-            let (kind, pos) = head.split_at(1);
+            let Some((kind, pos)) = head.split_at_checked(1) else { continue };
             let c: Vec<i32> = pos.split(',').filter_map(|v| v.parse().ok()).collect();
             let &[x, y, z] = &c[..] else { continue };
             let p = IVec3::new(x, y, z);

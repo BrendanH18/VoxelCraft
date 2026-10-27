@@ -151,13 +151,7 @@ impl Game {
     /// The ender inventory as it stands, including an open ender chest's.
     pub(super) fn ender_for_save(&self) -> voxelcraft::world::chest::Chest {
         match self.body.container {
-            super::Container::Chest(pos)
-                if self.inventory_open
-                    && self
-                        .world
-                        .get_block(pos)
-                        .is_some_and(|b| voxelcraft::world::utilities::ender_chest_of(b).is_some()) =>
-            {
+            super::Container::Chest(pos) if self.inventory_open && self.world.lent_chest() == Some(pos) => {
                 self.world.chest(pos).copied().unwrap_or(self.session.ender)
             }
             _ => self.session.ender,

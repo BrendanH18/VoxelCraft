@@ -97,8 +97,8 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             // Crying obsidian with a glowstone gauge: one lit cell per charge.
             let charges = (l - t::ANCHOR_SIDE) as usize;
             let gauge = (3..13).contains(&x) && (3..13).contains(&y) && (x - 3) % 5 < 4 && (y - 3) % 5 < 4;
-            let cell = (y - 3).min(9) / 5 * 2 + (x - 3).min(9) / 5;
             if gauge {
+                let cell = (y - 3).min(9) / 5 * 2 + (x - 3).min(9) / 5;
                 return if cell < charges {
                     shade([255, 168, 60], 0.85 + r * 0.25)
                 } else {

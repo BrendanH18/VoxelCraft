@@ -118,7 +118,7 @@ fn hex(s: &str) -> String {
 }
 
 fn unhex(s: &str) -> Option<String> {
-    if !s.len().is_multiple_of(2) {
+    if !s.is_ascii() || !s.len().is_multiple_of(2) {
         return None;
     }
     let bytes: Option<Vec<u8>> = (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok()).collect();

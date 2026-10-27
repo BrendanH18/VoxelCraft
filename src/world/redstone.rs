@@ -375,7 +375,9 @@ impl World {
 
     pub fn container_signal(&self, p: IVec3) -> Option<u8> {
         // Comparators read nothing from an ender chest (no `hasAnalogOutputSignal`).
-        if self.get_block(p).is_some_and(|b| super::utilities::ender_chest_of(b).is_some()) {
+        if self.lent_chest() == Some(p)
+            || self.get_block(p).is_some_and(|b| super::utilities::ender_chest_of(b).is_some())
+        {
             return None;
         }
         if let Some(b) = self.get_block(p)
