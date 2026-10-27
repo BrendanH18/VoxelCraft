@@ -49,6 +49,8 @@ pub struct State {
     /// Respawn anchors used outside the Nether this tick, for the host to
     /// blow up whichever player used them.
     anchor_blasts: Vec<IVec3>,
+    /// Every campfire in loaded chunks, lit or not, for smoke.
+    fires: rustc_hash::FxHashSet<IVec3>,
 }
 
 impl crate::world::World {

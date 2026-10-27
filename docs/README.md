@@ -127,9 +127,14 @@ roadmap and recorded checks to assess completeness against the current target.
 - [32,768-state capacity raise](verification/2026-10-25-state-capacity-32768.md):
   v0.12's item 0, with `VXC4` chunk files, 4096 texture layers and the
   benchmark comparison.
+- [v0.12 wood](verification/2026-10-25-v0.12-wood.md): track 1's 112
+  blocks (log axes, stripped logs and wood, switches, signs, shelves and
+  the chiseled bookshelf), their IDs, Java rules and gaps.
 - [v0.12 stone and minerals](verification/2026-10-25-v0.12-stone.md):
   track 2's 67 blocks, their IDs, recipes, slime and tinted glass
   behaviour, the retired invented blocks and what remains.
+- [v0.12 copper](verification/2026-10-25-v0.12-copper.md): track 3's 57
+  unwaxed copper blocks at four oxidation stages, scraping and bulbs.
 - [v0.12 colour](verification/2026-10-25-v0.12-colour.md): track 4's 131
   blocks (wool and concrete stairs and slabs, candles, candle cakes,
   banners, the straw bed) and cushions, their IDs, sources and gaps.

@@ -411,6 +411,8 @@ impl World {
         // The snapshot replaces the chunk's banners for the renderer.
         self.banners.retain(|p, _| chunk_of(*p) != pos);
         self.register_banners(pos, &data);
+        self.forget_campfires(pos);
+        self.register_campfires(pos, &data);
         self.chunks.insert(
             pos,
             ChunkSlot {
@@ -1259,6 +1261,7 @@ impl World {
     fn install_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>, modified: bool) {
         self.register_village_life(pos, &data);
         self.register_banners(pos, &data);
+        self.register_campfires(pos, &data);
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
         let workers = &self.workers;
         let col = self.columns.entry(column_of(pos)).or_insert_with(|| {
@@ -1318,6 +1321,7 @@ impl World {
         self.village_pois.retain(|p, _| chunk_of(*p) != pos);
         self.village_homes.retain(|p, _| chunk_of(*p) != pos);
         self.banners.retain(|p, _| chunk_of(*p) != pos);
+        self.forget_campfires(pos);
         self.unload_block_light(pos, slot.block_light.as_ref());
         if slot.modified {
             self.saved.insert(pos, slot.data);

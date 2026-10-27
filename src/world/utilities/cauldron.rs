@@ -2,7 +2,7 @@
 //! `LavaCauldronBlock`, `CauldronInteractions`): bucket and bottle
 //! exchanges, filling from rain and snow, and from dripstone above.
 
-use glam::IVec3;
+use glam::{DVec3, IVec3};
 
 use super::{CAULDRON, Contents, cauldron, cauldron_of};
 use crate::item::Item;
@@ -196,6 +196,20 @@ impl World {
         }
     }
 
+    /// `AbstractCauldronBlock.isEntityInsideContent`: the contents of the
+    /// cauldron at `feet` when a body from `feet` up to `top` is inside them
+    /// (`getContentHeight`: 6 + 3 per level sixteenths, lava 15).
+    pub fn cauldron_contents_around(&self, feet: DVec3, top: f64) -> Option<Contents> {
+        let p = feet.floor().as_ivec3();
+        let contents = self.get_block(p).and_then(cauldron_of)?;
+        let height = match contents {
+            Contents::Empty => return None,
+            Contents::Water(level) | Contents::PowderSnow(level) => (6.0 + 3.0 * level as f64) / 16.0,
+            Contents::Lava => 15.0 / 16.0,
+        };
+        (feet.y < p.y as f64 + height && top > p.y as f64 + 0.25).then_some(contents)
+    }
+
     /// `AbstractCauldronBlock.tick`: the scheduled drip arrives if a
     /// stalactite with fluid above still points at the cauldron.
     pub(super) fn tick_drips(&mut self) {
@@ -203,7 +217,18 @@ impl World {
             return;
         }
         let mut due = Vec::new();
+        // Scheduled ticks wait while their chunk isn't loaded and block-ticking.
+        let ready: Vec<bool> = self
+            .utilities
+            .drips
+            .iter()
+            .map(|&(p, _)| self.activity.contains(p, true) && self.get_block(p).is_some())
+            .collect();
+        let mut ready = ready.into_iter();
         self.utilities.drips.retain_mut(|(p, ticks)| {
+            if !ready.next().unwrap_or(false) {
+                return true;
+            }
             *ticks = ticks.saturating_sub(1);
             if *ticks == 0 {
                 due.push(*p);

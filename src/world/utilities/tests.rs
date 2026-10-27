@@ -550,3 +550,67 @@ fn an_open_ender_chest_is_never_saved_as_a_chest() {
     assert_eq!(w.chests_to_string(), "", "the player saves their ender inventory");
     assert_eq!(w.take_lent_chest(p).map(|c| c.slots[0]), Some(contents.slots[0]));
 }
+
+#[test]
+fn an_empty_lit_campfire_still_smokes() {
+    let mut w = world();
+    let p = IVec3::new(5, 100, 5);
+    w.set_block(p, campfire(Campfire { soul: false, lit: true, signal: false, wet: false, facing: Facing::North }));
+    while w.particles.pop().is_some() {}
+    for _ in 0..200 {
+        w.tick_utilities();
+    }
+    assert!(w.particles.pop().is_some(), "smoke rises with nothing cooking");
+}
+
+#[test]
+fn a_powered_dripleaf_levels_at_once() {
+    let mut w = world();
+    let p = IVec3::new(5, 110, 5);
+    w.set_block(p - IVec3::Y, Block::DIRT);
+    w.set_block(p, big_dripleaf(Facing::East, Tilt::Full, false));
+    w.set_block(p + IVec3::X, crate::world::redstone_blocks::REDSTONE_BLOCK);
+    for _ in 0..2 {
+        w.tick_redstone();
+    }
+    assert_eq!(dripleaf_of(w.get_block(p).unwrap()).unwrap().1, Tilt::None, "no wait for its timer");
+}
+
+#[test]
+fn ender_chests_feed_no_hoppers_or_comparators() {
+    let mut w = world();
+    let p = IVec3::new(6, 100, 6);
+    w.set_block(p, ender_chest(Facing::North, false));
+    let mut contents = crate::world::chest::Chest::default();
+    contents.slots[0] = Some(crate::inventory::Stack::new(Item::DIAMOND, 64));
+    w.lend_chest(p, contents);
+    assert_eq!(w.container_signal(p), None);
+}
+
+#[test]
+fn lava_cauldrons_burn_and_water_cauldrons_put_out_fire() {
+    let mut w = world();
+    let p = IVec3::new(7, 100, 7);
+    for (contents, lava, wet) in [(Contents::Lava, true, false), (Contents::Water(3), false, true)] {
+        w.set_block(p, cauldron(contents));
+        let player = crate::player::Player::new(p.as_dvec3() + glam::DVec3::new(0.5, 0.3, 0.5));
+        let env = crate::simulation::player_environment(&player, &w, 0.0);
+        assert_eq!((env.in_lava, env.wet), (lava, wet), "{contents:?}");
+        // Standing on the rim is outside the contents.
+        let player = crate::player::Player::new(p.as_dvec3() + glam::DVec3::new(0.5, 1.0, 0.5));
+        let env = crate::simulation::player_environment(&player, &w, 0.0);
+        assert!(!env.in_lava, "{contents:?} from the rim");
+    }
+}
+
+#[test]
+fn a_tilt_timer_waits_for_its_chunk_to_load() {
+    let mut w = world();
+    // A tilt saved for a cell whose chunk isn't loaded.
+    let far = IVec3::new(5, 110, 5 + 32 * 3);
+    w.load_utilities(&format!("t{},{},{}=1", far.x, far.y, far.z));
+    for _ in 0..5 {
+        w.tick_utilities();
+    }
+    assert_eq!(w.utilities.tilts, vec![(far, 1)], "kept until the chunk is there");
+}

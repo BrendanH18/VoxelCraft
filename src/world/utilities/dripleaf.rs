@@ -51,13 +51,33 @@ impl World {
         }
     }
 
+    /// `BigDripleafBlock.neighborChanged`: a signal levels a tilted leaf at
+    /// once and cancels its timer (`resetTilt`).
+    pub(in crate::world) fn dripleaf_neighbor_changed(&mut self, p: IVec3) {
+        let Some((facing, tilt, wet)) = self.get_block(p).and_then(dripleaf_of) else { return };
+        if tilt != Tilt::None && self.redstone_power(p) > 0 {
+            self.set_dripleaf_tilt(p, big_dripleaf(facing, Tilt::None, wet));
+        }
+    }
+
     /// Scheduled tilt ticks.
     pub(super) fn tick_tilts(&mut self) {
         if self.utilities.tilts.is_empty() {
             return;
         }
         let mut due = Vec::new();
+        // Scheduled ticks wait while their chunk isn't loaded and block-ticking.
+        let ready: Vec<bool> = self
+            .utilities
+            .tilts
+            .iter()
+            .map(|&(p, _)| self.activity.contains(p, true) && self.get_block(p).is_some())
+            .collect();
+        let mut ready = ready.into_iter();
         self.utilities.tilts.retain_mut(|(p, ticks)| {
+            if !ready.next().unwrap_or(false) {
+                return true;
+            }
             *ticks = ticks.saturating_sub(1);
             if *ticks == 0 {
                 due.push(*p);

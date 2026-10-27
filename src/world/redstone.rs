@@ -75,6 +75,7 @@ impl World {
                 || b.base() == Block::BELL
                 || super::copper::bulb(b).is_some()
                 || super::wood::redstone_participant(b)
+                || super::utilities::dripleaf_of(b).is_some()
         }) && self.redstone.queued.insert(p)
         {
             self.redstone.updates.push_back(p);
@@ -373,6 +374,10 @@ impl World {
     }
 
     pub fn container_signal(&self, p: IVec3) -> Option<u8> {
+        // Comparators read nothing from an ender chest (no `hasAnalogOutputSignal`).
+        if self.get_block(p).is_some_and(|b| super::utilities::ender_chest_of(b).is_some()) {
+            return None;
+        }
         if let Some(b) = self.get_block(p)
             && rails::kind(b) == Some(rails::RailKind::Detector)
         {
@@ -433,6 +438,9 @@ impl World {
         }
         if super::copper::bulb(b).is_some() {
             return self.copper_bulb_update(p, b);
+        }
+        if super::utilities::dripleaf_of(b).is_some() {
+            return self.dripleaf_neighbor_changed(p);
         }
         if b.base() == Block::BELL {
             let powered = self.redstone_power(p) > 0;

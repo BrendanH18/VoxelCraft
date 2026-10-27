@@ -134,7 +134,7 @@ impl World {
     /// (`cookTick`), unlit ones let their progress cool by two
     /// (`cooldownTick`); cooked food drops at the fire. Lit ones smoke.
     pub(super) fn tick_campfires(&mut self) {
-        if self.utilities.campfires.is_empty() {
+        if self.utilities.campfires.is_empty() && self.utilities.fires.is_empty() {
             return;
         }
         let mut done = Vec::new();
@@ -144,7 +144,9 @@ impl World {
             if !self.activity.contains(p, true) {
                 continue;
             }
-            let Some(c) = self.get_block(p).and_then(campfire_of) else {
+            // A cell whose chunk hasn't streamed in keeps its food.
+            let Some(b) = self.get_block(p) else { continue };
+            let Some(c) = campfire_of(b) else {
                 self.utilities.campfires.remove(&p);
                 continue;
             };
@@ -164,17 +166,54 @@ impl World {
                     slots.progress[i] = slots.progress[i].saturating_sub(2);
                 }
             }
-            if c.lit {
-                smoke.push((p, c.signal));
-            }
             if slots.is_empty() {
                 self.utilities.campfires.remove(&p);
             }
         }
         self.drops.extend(done);
+        for &p in &self.utilities.fires {
+            if self.activity.contains(p, true)
+                && let Some(c) = self.get_block(p).and_then(campfire_of)
+                && c.lit
+            {
+                smoke.push((p, c.signal));
+            }
+        }
         for (p, signal) in smoke {
             self.campfire_smoke(p, signal);
         }
+    }
+
+    /// Indexes the campfires of a chunk being loaded, for their smoke
+    /// (`CampfireBlockEntity.particleTick` runs for every lit one).
+    pub(in crate::world) fn register_campfires(&mut self, cpos: IVec3, data: &crate::world::chunk::ChunkData) {
+        use crate::world::chunk::{CHUNK_SIZE, ChunkData};
+        let may_hold = match data {
+            ChunkData::Uniform(b) => campfire_of(*b).is_some(),
+            ChunkData::Bytes(_) => false,
+            ChunkData::Paletted { palette, len, .. } => {
+                palette[..*len as usize].iter().any(|&b| campfire_of(b).is_some())
+            }
+            ChunkData::Dense(_) => true,
+        };
+        if !may_hold {
+            return;
+        }
+        let base = cpos * CHUNK_SIZE as i32;
+        for y in 0..CHUNK_SIZE {
+            for z in 0..CHUNK_SIZE {
+                for x in 0..CHUNK_SIZE {
+                    if campfire_of(data.get(x, y, z)).is_some() {
+                        self.utilities.fires.insert(base + IVec3::new(x as i32, y as i32, z as i32));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Drops the campfire index of a chunk leaving memory.
+    pub(in crate::world) fn forget_campfires(&mut self, cpos: IVec3) {
+        self.utilities.fires.retain(|p| crate::world::chunk::chunk_of(*p) != cpos);
     }
 
     /// `CampfireBlockEntity.particleTick`: 11% of ticks, two or three puffs
@@ -199,6 +238,11 @@ impl World {
     /// A campfire changed: a wet campfire goes out (`placeLiquid` dowses
     /// it), and one that is gone spills its food.
     pub(super) fn track_campfire(&mut self, p: IVec3, old: Block, new: Block) {
+        if campfire_of(new).is_some() {
+            self.utilities.fires.insert(p);
+        } else if campfire_of(old).is_some() {
+            self.utilities.fires.remove(&p);
+        }
         if campfire_of(old).is_some()
             && campfire_of(new).is_none()
             && let Some(slots) = self.utilities.campfires.remove(&p)

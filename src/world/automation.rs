@@ -459,7 +459,9 @@ impl World {
 
 impl World {
     fn container_count(&self, p: IVec3) -> usize {
-        if self.get_block(p).is_none() {
+        // An ender chest's table entry is a player's inventory lent to an
+        // open screen; hoppers and droppers can't reach it.
+        if self.get_block(p).is_none_or(|b| super::utilities::ender_chest_of(b).is_some()) {
             return 0;
         }
         if self.get_block(p).and_then(super::composter::level).is_some() {
