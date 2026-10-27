@@ -123,6 +123,7 @@ impl World {
         self.drop_unhung_ladders(p);
         self.drop_unhung_lantern(p);
         self.drop_unsupported_copper(p);
+        self.drop_unhung_colour_blocks(p);
         self.solidify_nearby_powder(p);
         self.update_nether_vines(p);
         self.update_overworld_plants(p);

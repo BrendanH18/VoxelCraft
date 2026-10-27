@@ -483,6 +483,7 @@ pub fn shape_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bloc
         Some(Shaped::Rail) => out.push(RAIL),
         Some(Shaped::Custom) if super::scaffolding::is_scaffolding(block) => return super::scaffolding::outline(block),
         Some(Shaped::Custom) if super::wood::owns(block.0) => return super::wood::mesh_boxes(block).unwrap_or(out),
+        Some(Shaped::Custom) if let Some(boxes) = super::colour_blocks::boxes(block) => return boxes,
         Some(Shaped::Custom) if super::mount_states::is_lantern(block.0) => lantern_boxes(block, &mut out),
         Some(Shaped::Custom) if super::copper::owns(block.0) => super::copper::boxes(block, &mut out),
         Some(Shaped::Custom) => super::overworld_blocks::boxes(block).unwrap_or(&[]).iter().for_each(|&b| out.push(b)),
@@ -538,6 +539,9 @@ pub fn outline_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bl
     let neighbour = |f: Facing| neighbour(f).canonical();
     let below = below.canonical();
     if let Some(boxes) = super::wood::outline(block) {
+        return boxes;
+    }
+    if let Some(boxes) = super::colour_blocks::outline(block) {
         return boxes;
     }
     if matches!(block.shaped(), Some(Shaped::Fence)) {
@@ -781,6 +785,7 @@ pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: 
         Some(Shaped::Custom) if super::mount_states::is_lantern(block.0) => lantern_boxes(block, &mut out),
         Some(Shaped::Custom) if super::copper::owns(block.0) => super::copper::collision(block, &mut out),
         Some(Shaped::Custom) if super::wood::owns(block.0) => return super::wood::collision(block).unwrap_or(out),
+        Some(Shaped::Custom) if let Some(boxes) = super::colour_blocks::collision(block) => return boxes,
         Some(Shaped::Custom) => {
             super::overworld_blocks::collision(block).unwrap_or(&[]).iter().for_each(|&b| out.push(b))
         }

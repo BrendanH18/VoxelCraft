@@ -101,8 +101,9 @@ impl World {
         }
         let fortune = tool.level(Enchantment::Fortune) as u64;
         let mut out = Vec::new();
-        // Java's slab loot table: two for `type=double`.
-        out.extend(block.drop().map(|item| Stack::new(item, double_slab_count(block))));
+        // Java's slab loot table: two for `type=double`; candles, one per candle.
+        let count = double_slab_count(block) * super::colour_blocks::drop_count(block);
+        out.extend(block.drop().map(|item| Stack::new(item, count)));
         if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&block.0)
             || super::overworld_blocks::snow_layers(block).is_some()
             || super::overworld_blocks::bud_facing(block).is_some()

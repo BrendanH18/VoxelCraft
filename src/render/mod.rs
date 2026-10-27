@@ -1271,7 +1271,15 @@ impl Renderer {
             self.queue.write_buffer(&self.line_buf, 0, bytemuck::cast_slice(&verts));
         }
         let hand = p.hand.as_ref().map(|h| (h, p.forward, p.fov_y, vp.aspect(), p.view_effect));
-        self.block_models.set(&self.device, &self.queue, &p.block_models, &p.signs, hand, p.camera);
+        self.block_models.set(
+            &self.device,
+            &self.queue,
+            &p.block_models,
+            &p.signs,
+            hand,
+            p.camera,
+            p.time as f64 * 20.0,
+        );
         let hud = &p.ui;
         if hud.len() > self.ui_capacity {
             self.ui_capacity = hud.len().next_power_of_two();

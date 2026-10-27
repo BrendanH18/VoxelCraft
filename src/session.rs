@@ -243,7 +243,7 @@ impl PlayerSession {
             return;
         }
         let Some(spot) = self.sleep_spot.take().filter(|s| s.lie.distance(self.player.pos) < LIE_DRIFT) else { return };
-        if !world.get_block(spot.head).is_some_and(|b| b.is_bed_head()) {
+        if !world.get_block(spot.head).is_some_and(dismount::is_sleep_head) {
             return;
         }
         let java_yaw = dismount::java_yaw_degrees(self.player.yaw);

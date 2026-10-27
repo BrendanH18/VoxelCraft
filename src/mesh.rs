@@ -546,6 +546,8 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                 continue;
             }
             for (j, bx) in boxes.as_slice().iter().enumerate() {
+                // Candle wax and wicks have layers of their own.
+                let layer = crate::world::colour_blocks::box_layer(b, j).map_or(layer, u32::from);
                 let depth = if positive { bx.max[d] } else { bx.min[d] };
                 let r = [bx.min[u], bx.max[u], bx.min[v], bx.max[v]];
                 // Flat boxes have no area on their edge faces; skipping them

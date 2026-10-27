@@ -44,12 +44,17 @@ pub struct BlockVertex {
 /// Face shading, ordered +X, -X, +Y, -Y, +Z, -Z (as in `chunk.wgsl`).
 const FACE_SHADE: [f32; 6] = [0.8, 0.8, 1.0, 0.55, 0.68, 0.68];
 
-/// Triangles for every model, camera-relative.
-pub fn vertices(models: &[BlockModel], camera: DVec3) -> Vec<BlockVertex> {
+/// Triangles for every model, camera-relative. `ticks` (game ticks, with
+/// the fraction) sways banner flags.
+pub fn vertices(models: &[BlockModel], camera: DVec3, ticks: f64) -> Vec<BlockVertex> {
     let mut out = Vec::with_capacity(models.len() * 36);
     for m in models {
         let min = (m.min - camera).as_vec3();
         let s = m.size;
+        if let Some(b) = crate::world::colour_blocks::banner::decode(m.block.0) {
+            banner_vertices(&mut out, m, b, min, ticks);
+            continue;
+        }
         let tex = m.block.info().tex;
         let (sin, cos) = m.yaw.sin_cos();
         // Unit-cube corner -> camera-relative position, turned about the centre.
@@ -114,6 +119,33 @@ pub fn vertices(models: &[BlockModel], camera: DVec3) -> Vec<BlockVertex> {
         }
     }
     out
+}
+
+/// A banner's pole, bar and flag (`colour_blocks::banner::quads`), lit by
+/// its cell and shaded by how each face is turned.
+fn banner_vertices(
+    out: &mut Vec<BlockVertex>,
+    m: &BlockModel,
+    b: crate::world::colour_blocks::Banner,
+    min: Vec3,
+    ticks: f64,
+) {
+    use crate::world::colour_blocks::banner;
+    let cell = m.min.floor().as_ivec3();
+    for q in banner::quads(b, banner::phase(cell, ticks)) {
+        // FACE_SHADE blended by the normal: up, down, then x and z sides.
+        let n = q.normal;
+        let vertical = if n.y > 0.0 { FACE_SHADE[2] } else { FACE_SHADE[3] };
+        let shade = n.y * n.y * vertical + n.x * n.x * FACE_SHADE[0] + n.z * n.z * FACE_SHADE[4];
+        for i in [0, 1, 2, 2, 3, 0] {
+            out.push(BlockVertex {
+                pos: (min + q.corners[i] * m.size).to_array(),
+                uv: q.uv[i],
+                layer: q.layer as u32,
+                light: [m.sky_light, shade, m.block_light],
+            });
+        }
+    }
 }
 
 pub(super) struct BlockModelPass {
@@ -199,7 +231,8 @@ impl BlockModelPass {
         })
     }
 
-    /// Uploads this frame's models and hand.
+    /// Uploads this frame's models, signs and hand.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn set(
         &mut self,
         device: &wgpu::Device,
@@ -208,8 +241,9 @@ impl BlockModelPass {
         signs: &[super::signs::SignModel],
         hand: Option<(&super::hand::Hand, Vec3, f32, f32, glam::Mat4)>,
         camera: DVec3,
+        ticks: f64,
     ) {
-        let mut verts = vertices(models, camera);
+        let mut verts = vertices(models, camera, ticks);
         super::signs::vertices(signs, camera, &mut verts);
         self.count = verts.len() as u32;
         if let Some((hand, forward, fov_y, aspect, view_effect)) = hand {
@@ -257,7 +291,7 @@ mod tests {
             icon: None,
         };
         let icon = BlockModel { icon: Some(crate::world::block::tex::ITEM_BASE), yaw: 1.0, ..at(Block::AIR) };
-        let v = vertices(&[at(Block::SAND), at(Block::POPPY), icon], DVec3::new(10.0, 64.0, 5.0));
+        let v = vertices(&[at(Block::SAND), at(Block::POPPY), icon], DVec3::new(10.0, 64.0, 5.0), 0.0);
         assert_eq!(v.len(), 36 + 12 + 6);
         // Camera-relative and within the unit cube (a turned icon too).
         assert!(v.iter().all(|v| v.pos.iter().all(|&c| (-1e-6..=1.0 + 1e-6).contains(&c))));

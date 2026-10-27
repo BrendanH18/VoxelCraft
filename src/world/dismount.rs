@@ -158,9 +158,15 @@ pub fn look_at_bed(from: DVec3, head: IVec3) -> f32 {
 /// foot lies behind it, opposite `facing`) and the yaw they face there, or
 /// `None` when the bed is gone or boxed in.
 pub fn bed_stand_up(world: &World, head: IVec3, facing: Facing, java_yaw: f32) -> Option<(DVec3, f32)> {
-    world.get_block(head).filter(|b| b.is_bed_head())?;
+    world.get_block(head).filter(|&b| is_sleep_head(b))?;
     let stand = find_stand_up_position(world, head, facing, java_yaw)?;
     Some((stand, look_at_bed(stand, head)))
+}
+
+/// The head of any `AbstractBedBlock`: a bed or a straw bed
+/// (`LivingEntity.stopSleeping` stands the sleeper up beside either).
+pub fn is_sleep_head(b: Block) -> bool {
+    b.is_bed_head() || super::colour_blocks::straw_bed::decode(b.0).is_some_and(|(_, head)| head)
 }
 
 /// A bed's head block and the direction from its foot to it.

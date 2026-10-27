@@ -251,7 +251,8 @@ A per-dimension `minecarts` property saves ids, variant, full-precision position
 and velocity, yaw, contents with stack components, hopper enabled state, TNT
 fuse and player rider. Loading older worlds without it works. `--cart
 x,y,z,rideable|chest|hopper|tnt` places a test cart after `--place` edits, for
-visual verification.
+visual verification; a boat or cushion item name (`red_cushion`) places that
+vehicle instead, a cushion on the floor of the given cell.
 
 A TNT cart lit by fire or lava gets Java's `nextInt(20) + nextInt(20)` fuse.
 

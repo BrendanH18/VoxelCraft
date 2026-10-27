@@ -261,7 +261,7 @@ impl Game {
                 a.vitals.effects.get(voxelcraft::simulation::effects::Effect::Blindness).map(|e| e.ticks),
                 self.settings.render_distance as f32 * 32.0,
             );
-            let models = self.block_models(scene.alpha);
+            let models = self.block_models(scene.alpha, camera);
             let highlight = a.target(&self.world).map(|(p, _)| {
                 let (min, max) = self.world.outline(p);
                 (p, min, max)

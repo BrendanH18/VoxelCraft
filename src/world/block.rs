@@ -356,11 +356,12 @@ pub mod tex {
     pub const HEART_FROZEN_HALF: u16 = 1767;
     // v0.12 wood: 1776..1985 (`world::wood::tex`); stone and minerals:
     // 2000..2036 (`world::stone_blocks::t`); copper (BLD-01c): 2128..2201
-    // (`world::copper::t`). Layers below that no block uses yet draw the
-    // missing-texture pattern.
-    pub const COUNT: u32 = super::super::copper::t::END as u32;
+    // (`world::copper::t`); colour: 2384..2457 (`world::colour_blocks::tex`).
+    // Layers below that no block uses yet draw the missing-texture pattern.
+    pub const COUNT: u32 = super::super::colour_blocks::tex::TEX_END as u32;
     const _: () = assert!(super::super::wood::tex::END <= super::super::stone_blocks::t::TEX);
     const _: () = assert!(super::super::stone_blocks::t::END <= super::super::copper::t::BASE);
+    const _: () = assert!(super::super::copper::t::END <= super::super::colour_blocks::tex::TEX);
     const _: () = assert!(super::super::overworld_blocks::TEX_END <= 1750);
     const _: () = assert!(super::super::overworld_blocks::TEX == 1450);
     const _: () = assert!((CRYING_OBSIDIAN as u32) < COUNT);
@@ -715,6 +716,9 @@ impl Block {
         if let Some(c) = self.alias() {
             return c.fire_odds();
         }
+        if let Some(odds) = super::colour_blocks::fire_odds(self) {
+            return odds;
+        }
         if super::scaffolding::is_scaffolding(self) {
             return (60, 60);
         }
@@ -749,6 +753,7 @@ impl Block {
             return c.ignited_by_lava();
         }
         self.fire_odds().0 > 0
+            || super::colour_blocks::ignited_by_lava(self)
             || self.is_bed()
             || matches!(
                 self.base(),
@@ -878,6 +883,9 @@ impl Block {
         }
         if super::copper::owns(self.0) {
             return super::copper::shaped(self);
+        }
+        if let Some(s) = super::colour_blocks::shaped(self.0) {
+            return Some(s);
         }
         if super::slab_stair_states::owns(self.0) {
             return super::slab_stair_states::shaped(self.0);
@@ -1041,7 +1049,11 @@ impl Block {
 
     /// Drawn as a flat sprite in inventories and when dropped.
     pub fn flat_icon(self) -> bool {
-        self.kind() == RenderKind::Cross || self.is_ladder() || self.is_rail() || super::wood::flat_icon(self)
+        self.kind() == RenderKind::Cross
+            || self.is_ladder()
+            || self.is_rail()
+            || super::wood::flat_icon(self)
+            || super::colour_blocks::flat_icon(self)
     }
 
     /// Badlands terracotta: 0 plain, then orange, yellow, red, brown, white
@@ -1211,6 +1223,9 @@ impl Block {
         if let Some(b) = super::copper::base(self) {
             return b;
         }
+        if let Some(b) = super::colour_blocks::base(self) {
+            return b;
+        }
         if let Some(b) = super::slab_stair_states::item_block(self.0) {
             return b;
         }
@@ -1263,6 +1278,11 @@ impl Block {
         }
         if super::wood::owns(self.0) && super::wood::switches::twin(self.0).is_none() {
             return super::wood::with_facing(self, facing);
+        }
+        // Candles, cakes, banners and straw beds keep their state; stairs
+        // turn through `slab_stair_states` below.
+        if super::colour_blocks::owns(self.0) && !super::colour_blocks::owns_shape(self.0) {
+            return self;
         }
         if let Some(c) = self.alias() {
             return c.with_facing(facing).with_water(self.is_waterlogged());
@@ -1486,6 +1506,9 @@ impl Block {
         if let Some(c) = self.alias() {
             return c.drop();
         }
+        if let Some(drop) = super::colour_blocks::drop(self) {
+            return drop;
+        }
         if matches!(
             super::redstone_blocks::component(self),
             Some(super::redstone_blocks::Component::PistonHead { .. } | super::redstone_blocks::Component::Moving)
@@ -1601,6 +1624,9 @@ impl Block {
         }
         if let Some(h) = super::stone_blocks::slab_hardness(self) {
             return h;
+        }
+        if let Some((hardness, ..)) = super::colour_blocks::mining(self) {
+            return hardness;
         }
         if let Some(h) = super::village_blocks::hardness(self.0) {
             return h;
@@ -1785,6 +1811,9 @@ impl Block {
         if let Some(c) = self.alias() {
             return c.best_tool();
         }
+        if let Some((_, tool, _)) = super::colour_blocks::mining(self) {
+            return tool;
+        }
         if self == super::gadgets::LEGACY_BONE_BLOCK || self == super::gadgets::PACKED_ICE {
             return Some(ToolKind::Pickaxe);
         }
@@ -1930,6 +1959,9 @@ impl Block {
         if let Some(c) = self.alias() {
             return c.harvest_level();
         }
+        if let Some((.., level)) = super::colour_blocks::mining(self) {
+            return level;
+        }
         if self == super::gadgets::LEGACY_BONE_BLOCK {
             return Some(0);
         }
@@ -2067,6 +2099,7 @@ impl Block {
             .chain(super::stone_blocks::palette_ids())
             .chain(super::copper::palette_ids())
             .chain(super::wood::palette_ids())
+            .chain(super::colour_blocks::palette_ids())
             .map(Block)
     }
 
@@ -2162,6 +2195,9 @@ impl Block {
                 }
                 _ => rigid,
             };
+        }
+        if let Some(ok) = super::colour_blocks::can_stay_on(self, below) {
+            return ok;
         }
         if let Some(ok) = super::nether_biome_blocks::can_stay_on(self, below) {
             return ok;
@@ -2664,6 +2700,10 @@ pub(super) const fn make(id: u16) -> BlockInfo {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },
+        super::colour_blocks::FIRST..=super::colour_blocks::RESERVED_LAST => match super::colour_blocks::registry(id) {
+            Some(info) => info,
+            None => ("unknown", Invisible, all(0)),
+        },
         7936..=7968 => match super::scaffolding::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
@@ -3080,6 +3120,7 @@ const fn emission_of(i: usize) -> u8 {
             1800 => 10, // crying obsidian
             1900..=2076 | 2400..=2415 => super::overworld_blocks::emission(i as u16),
             _ if super::copper::owns(i as u16) => super::copper::emission(i as u16),
+            24576..=28671 => super::colour_blocks::emission(i as u16), // candles
             _ => 0,
         }
     }
@@ -3203,6 +3244,16 @@ mod tests {
                 Some(super::super::copper::Family::Lantern) => return 15,
                 Some(super::super::copper::Family::Torch) => return 14,
                 _ => {}
+            }
+            {
+                use super::super::colour_blocks::candle;
+                // `CandleBlock.LIGHT_EMISSION` and `litBlockEmission(3)`.
+                if let Some(c) = candle::decode(block.0) {
+                    return if c.lit { 3 * c.candles } else { 0 };
+                }
+                if let Some((_, lit)) = candle::decode_cake(block.0) {
+                    return if lit { 3 } else { 0 };
+                }
             }
             {
                 use super::super::nether_biome_blocks as nb;

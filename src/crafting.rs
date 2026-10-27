@@ -12,6 +12,7 @@ use crate::world::block::Block;
 
 mod copper;
 pub use copper::stonecutting as copper_stonecutting;
+pub mod colour;
 mod wood;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -567,6 +568,7 @@ pub fn recipes() -> &'static [Recipe] {
         stone::add_recipes(&mut r);
         copper::add_recipes(&mut r);
         wood::add(&mut r);
+        colour::add(&mut r);
         r
     })
 }
@@ -1156,7 +1158,8 @@ fn add_wool_recipes(r: &mut Vec<Recipe>) {
     static OTHER_BED: [[Item; 15]; 16] = other_colors(3);
     for (i, c) in DyeColor::ALL.into_iter().enumerate() {
         r.push(shapeless(&[&OTHER_WOOL[i], &DYES[i]], b(Block::wool(c)), 1));
-        r.push(shaped(&["###"], &[('#', &WOOLS[i])], b(Block::carpet(c)), 3));
+        // Java 26.3 `white_carpet.json`: two wool (three now make wool slabs).
+        r.push(shaped(&["##"], &[('#', &WOOLS[i])], b(Block::carpet(c)), 3));
         r.push(shapeless(&[&OTHER_CARPET[i], &DYES[i]], b(Block::carpet(c)), 1));
         r.push(shaped(&["WWW", "###"], &[('W', &WOOLS[i]), ('#', PLANKS)], c.bed(), 1));
         r.push(shapeless(&[&OTHER_BED[i], &DYES[i]], c.bed(), 1));
@@ -1247,10 +1250,13 @@ mod wool_recipe_tests {
             g.cells[0] = Some(Stack::new(Block::wool(other), 1));
             assert_eq!(g.result(), Some(Stack::new(Block::wool(c), 1)));
             let mut g = Grid::new(3);
-            for x in 0..3 {
+            for x in 0..2 {
                 g.cells[x] = Some(Stack::new(Block::wool(c), 1));
             }
             assert_eq!(g.result(), Some(Stack::new(Block::carpet(c), 3)));
+            g.cells[2] = Some(Stack::new(Block::wool(c), 1));
+            let slab = crate::world::colour_blocks::family_slab(c as usize);
+            assert_eq!(g.result(), Some(Stack::new(slab, 6)), "three wool make wool slabs");
         }
         let mut g = Grid::new(2);
         g.cells[1] = Some(Stack::new(Item::IRON_INGOT, 1));

@@ -33,10 +33,22 @@ impl Game {
         let before = self.session.player.pos;
         let portal_before = self.portal_time;
         if !arriving {
+            let on_cushion = self
+                .session
+                .player
+                .vehicle
+                .and_then(|id| self.mobs.entities.cart(id))
+                .is_some_and(|c| c.kind.cushion().is_some());
             if self.session.player.vehicle.is_some()
                 && input.descend
                 && let Some(pos) = self.mobs.entities.dismount(&self.world, crate::entity::PlayerId::HOST)
             {
+                // `Cushion.removePassenger`: `CUSHION_GET_UP`, from the shared wool set.
+                if on_cushion {
+                    let source = crate::audio::SoundSource::Neutral;
+                    let sound = crate::audio::sounds::Sound::Step(crate::audio::sounds::Material::Snow);
+                    self.audio.play_in(source, sound, Some(pos), 1.0, (1.1, 1.2));
+                }
                 self.session.player.pos = pos;
                 self.session.player.vehicle = None;
                 self.session.player.vel = DVec3::ZERO;

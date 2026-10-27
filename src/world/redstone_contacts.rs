@@ -72,7 +72,10 @@ impl World {
             self.redstone_contact_box(crate::physics::Shape::new(0.125, 0.25).aabb(eye.pos), false, false, false);
         }
         for cart in &entities.minecarts {
-            self.redstone_contact_box(cart.aabb(), false, false, true);
+            // Detector rails find only `AbstractMinecart`s; boats and
+            // cushions share this list but press plates as other entities.
+            let minecart = cart.kind.boat().is_none() && cart.kind.cushion().is_none();
+            self.redstone_contact_box(cart.aabb(), false, false, minecart);
         }
         // Iterate by temporarily taking the retained map; no per-tick allocation.
         let contacts = std::mem::take(&mut self.redstone.contacts);

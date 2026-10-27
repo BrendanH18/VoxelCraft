@@ -128,12 +128,15 @@ pub enum MobSound {
 /// Something an entity did that the game needs to react to.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EntityEvent {
-    /// Shared block impact for target blocks and touched redstone ore.
+    /// Shared block impact for target blocks, touched redstone ore and
+    /// candles a burning arrow lights.
     ProjectileBlockHit {
         cell: IVec3,
         pos: DVec3,
         normal: IVec3,
         arrow: bool,
+        /// The projectile is on fire (a Flame arrow), which lights candles.
+        burning: bool,
     },
     /// A mob or arrow hit `player`: apply `damage` and add `knockback` to
     /// their velocity; `cause` is the death message. A hit with `java` set

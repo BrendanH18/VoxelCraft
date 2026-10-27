@@ -430,6 +430,22 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 (k == 0 && s.abs() <= 11).then_some(tint([225, 225, 225], 0.95))
             }
         }
+        Sprite::Cushion(c) => {
+            // A plump square seen slightly from above: rounded corners, a
+            // button in the middle and a seam round the edge.
+            let cushion = |x: i32, y: i32| {
+                let (dx, dy) = ((2 * x - 15).abs(), (2 * y - 17).abs());
+                dx <= 13 && dy <= 9 && dx + dy <= 19
+            };
+            let seam = cushion(x, y) && !cushion(x + 1, y + 1) || !cushion(x - 1, y - 1) && cushion(x, y);
+            if (x, y) == (7, 8) || (x, y) == (8, 8) {
+                Some(tint(c, 0.65))
+            } else if seam {
+                shaded(&cushion, x, y, c, 0.03).map(|_| tint(c, 0.78))
+            } else {
+                shaded(&cushion, x, y, c, 0.05)
+            }
+        }
         Sprite::Crossbow { loaded } => {
             // A stock along the diagonal with a bowed limb across its top end.
             // `s` runs along the stock toward the top right, `k` across it.

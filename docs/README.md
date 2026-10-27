@@ -130,6 +130,9 @@ roadmap and recorded checks to assess completeness against the current target.
 - [v0.12 stone and minerals](verification/2026-10-25-v0.12-stone.md):
   track 2's 67 blocks, their IDs, recipes, slime and tinted glass
   behaviour, the retired invented blocks and what remains.
+- [v0.12 colour](verification/2026-10-25-v0.12-colour.md): track 4's 131
+  blocks (wool and concrete stairs and slabs, candles, candle cakes,
+  banners, the straw bed) and cushions, their IDs, sources and gaps.
 - [Game rules and difficulty](verification/2026-10-17-game-rules-difficulty.md):
   the 26.3 rule registry, damage-type rules, Peaceful regeneration and the
   difficulty effects checked against the reference.

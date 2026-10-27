@@ -5,6 +5,8 @@
 use crate::world::block::tex;
 use crate::world::noise::hash_f;
 
+#[path = "colour_textures.rs"]
+mod colour;
 #[path = "copper_textures.rs"]
 mod copper;
 #[path = "nether_textures.rs"]
@@ -98,6 +100,9 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     }
     if (crate::world::wood::tex::BASE..crate::world::wood::tex::END).contains(&layer) {
         return wood::pixel(layer, x, y);
+    }
+    if (crate::world::colour_blocks::tex::TEX..crate::world::colour_blocks::tex::TEX_END).contains(&layer) {
+        return colour::pixel(layer, x, y);
     }
     if (tex::HONEY_SIDE..=tex::HONEY_BOTTOM).contains(&layer) {
         // Original amber shell: streaks and small trapped air pockets.

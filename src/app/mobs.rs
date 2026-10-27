@@ -199,9 +199,12 @@ impl Game {
         let mut smashed = Vec::new();
         for event in self.mobs.entities.update_difficulty(dt, &self.world, &ctx, self.difficulty) {
             match event {
-                EntityEvent::ProjectileBlockHit { cell, pos, normal, arrow } => {
+                EntityEvent::ProjectileBlockHit { cell, pos, normal, arrow, burning } => {
                     self.world.hit_redstone_target(cell, pos, normal, arrow);
                     self.world.touch_redstone_ore(cell);
+                    if burning {
+                        self.world.light_candle(cell);
+                    }
                 }
                 EntityEvent::PlayerHit { player: PlayerId::HOST, damage, knockback, java, cause } => {
                     // Knockback only lands with damage, so hurt immunity

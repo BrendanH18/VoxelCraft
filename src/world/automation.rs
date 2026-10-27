@@ -173,6 +173,8 @@ impl World {
                     | Block::END_GATEWAY
             )
             || self.chest(p).is_some()
+            // Banners are block entities, which pistons don't move.
+            || super::colour_blocks::banner::decode(b.0).is_some()
             || self.furnace(p).is_some()
             || self.brewing_stand(p).is_some()
             // Signs, shelves and chiseled bookshelves have block entities
@@ -196,6 +198,7 @@ impl World {
             || super::mount_states::is_lantern(b.0)
             || super::copper::pops_when_pushed(b)
             || super::scaffolding::is_scaffolding(b)
+            || super::colour_blocks::pops_on_push(b)
             || b.is_fire()
             || matches!(
                 r::component(b),

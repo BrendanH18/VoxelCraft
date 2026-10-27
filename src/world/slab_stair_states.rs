@@ -19,8 +19,10 @@
 //! owners lay out every state contiguously, 80 stairs ids from `stairs` and
 //! five slab ids from `slab` (bottom dry, bottom wet, top dry, top wet,
 //! double), with the stairs local above. Families 39..=52 are stone
-//! (`world::stone_blocks`) and 53..=56 copper (`world::copper`), in stage
-//! order.
+//! (`world::stone_blocks`), 53..=56 copper (`world::copper`, in stage
+//! order) and from [`COLOUR_FIRST`] the 16 wools and 16 concretes
+//! (`world::colour_blocks`, 24576..=27295). Family numbers are only
+//! in-memory packing; saved ids never depend on them.
 //!
 //! A family's states share its name, textures, mining, sounds and item:
 //! they drop, and are picked as, the existing bottom slab or south-facing
@@ -28,15 +30,18 @@
 //! `facing` (the side of the tall half) is the opposite.
 
 use super::block::{Block, Facing, RenderKind, Shaped};
-use super::forms;
+use super::{colour_blocks, forms};
 
 /// Families laid out in this module's range (4096–7679).
 pub const LEGACY_COUNT: usize = 39;
 /// Stair and slab families, each with one stairs and one slab block. The
 /// families from [`LEGACY_COUNT`] on (v0.12) keep all their states in
-/// their own module's range; see [`super::stone_blocks`] (families 39–52)
-/// and [`super::copper`] (from [`super::copper::STAIR_FAMILY`]).
-pub const FAMILY_COUNT: usize = super::copper::STAIR_FAMILY + super::copper::STAIR_FAMILIES;
+/// their own module's range; see [`super::stone_blocks`] (families 39–52),
+/// [`super::copper`] (from [`super::copper::STAIR_FAMILY`]) and
+/// [`colour_blocks`] (from [`COLOUR_FIRST`]).
+pub const FAMILY_COUNT: usize = COLOUR_FIRST + colour_blocks::SHAPE_FAMILIES;
+/// The first wool and concrete family, after copper's.
+pub const COLOUR_FIRST: usize = super::copper::STAIR_FAMILY + super::copper::STAIR_FAMILIES;
 /// Ids per appended copper family (see the module docs).
 const EXTENDED_STAIRS: u16 = 80;
 const EXTENDED_SLABS: u16 = 5;
@@ -49,8 +54,9 @@ pub const END: u16 = SLABS_ORIGIN + LEGACY_COUNT as u16 * SLABS_STRIDE;
 /// Last id of the reserved range (docs/architecture.md, "Release ID reservations").
 pub const RESERVED_LAST: u16 = 7679;
 const _: () = assert!(END - 1 <= RESERVED_LAST);
-// `PACKED` keeps the family in six bits.
-const _: () = assert!(FAMILY_COUNT <= 64);
+// `PACKED` keeps the family in seven bits (widened from six in v0.12;
+// only the in-memory packing changed, never a saved id).
+const _: () = assert!(FAMILY_COUNT <= 128);
 
 /// One family: its full block and the existing ids of its south-facing
 /// bottom straight stairs and bottom slab. A slab-only family's `stairs`
@@ -100,7 +106,15 @@ pub const FAMILIES: [Family; FAMILY_COUNT] = {
                 }
             }
             _ if i < super::copper::STAIR_FAMILY => super::stone_blocks::SHAPES[i - LEGACY_COUNT],
-            _ => super::copper::stair_family(i - super::copper::STAIR_FAMILY),
+            _ if i < COLOUR_FIRST => super::copper::stair_family(i - super::copper::STAIR_FAMILY),
+            _ => {
+                let index = i - COLOUR_FIRST;
+                Family {
+                    base: colour_blocks::family_base(index),
+                    stairs: colour_blocks::family_stairs(index),
+                    slab: colour_blocks::family_slab(index),
+                }
+            }
         };
         i += 1;
     }
@@ -204,7 +218,7 @@ const fn extended(id: u16, slab: bool) -> Option<(u8, u16)> {
         return None;
     }
     let mut f = super::copper::STAIR_FAMILY;
-    while f < FAMILY_COUNT {
+    while f < COLOUR_FIRST {
         let (first, stride) =
             if slab { (FAMILIES[f].slab.0, EXTENDED_SLABS) } else { (FAMILIES[f].stairs.0, EXTENDED_STAIRS) };
         if id >= first && id < first + stride {
@@ -219,7 +233,7 @@ const fn extended(id: u16, slab: bool) -> Option<(u8, u16)> {
 const EXTENDED_BOUNDS: (u16, u16) = {
     let (mut lo, mut hi) = (u16::MAX, 0);
     let mut f = super::copper::STAIR_FAMILY;
-    while f < FAMILY_COUNT {
+    while f < COLOUR_FIRST {
         let (stairs, slab) = (FAMILIES[f].stairs.0, FAMILIES[f].slab.0);
         lo = if stairs < lo { stairs } else { lo };
         lo = if slab < lo { slab } else { lo };
@@ -244,6 +258,9 @@ const fn stairs_local(family: u8, local: u16) -> Stairs {
 
 /// Decodes any stairs state, existing or new.
 pub const fn stairs_const(id: u16) -> Option<Stairs> {
+    if let Some((family, local)) = colour_blocks::stairs_local(id) {
+        return Some(stairs_local((COLOUR_FIRST as u16 + family) as u8, local));
+    }
     if let Some((family, local)) = extended(id, false) {
         return Some(stairs_local(family, local));
     }
@@ -268,7 +285,11 @@ pub const fn stairs_const(id: u16) -> Option<Stairs> {
 
 /// Decodes any slab state, existing or new.
 pub const fn slab_const(id: u16) -> Option<Slab> {
-    if let Some((family, local)) = extended(id, true) {
+    let appended = match colour_blocks::slab_local(id) {
+        Some((f, local)) => Some(((COLOUR_FIRST as u16 + f) as u8, local)),
+        None => extended(id, true),
+    };
+    if let Some((family, local)) = appended {
         let (kind, wet) = match local {
             0 => (SlabType::Bottom, false),
             1 => (SlabType::Bottom, true),
@@ -338,7 +359,7 @@ pub const fn slab_id(s: Slab) -> Block {
 }
 
 /// Per-state decode for hot paths: 0 for other blocks, else bit 15 (stairs)
-/// or 14 (slab), the family in bits 0..6, then the properties.
+/// or 14 (slab), the family in bits 0..7, then the properties.
 static PACKED: [u16; super::block::STATE_CAPACITY] = {
     let mut arr = [0; super::block::STATE_CAPACITY];
     let mut i = 0;
@@ -346,12 +367,12 @@ static PACKED: [u16; super::block::STATE_CAPACITY] = {
         arr[i] = if let Some(s) = stairs_const(i as u16) {
             1 << 15
                 | s.family as u16
-                | (s.facing as u16) << 6
-                | (s.top as u16) << 8
-                | (s.shape as u16) << 9
-                | (s.wet as u16) << 12
+                | (s.facing as u16) << 7
+                | (s.top as u16) << 9
+                | (s.shape as u16) << 10
+                | (s.wet as u16) << 13
         } else if let Some(s) = slab_const(i as u16) {
-            1 << 14 | s.family as u16 | (s.kind as u16) << 6 | (s.wet as u16) << 12
+            1 << 14 | s.family as u16 | (s.kind as u16) << 7 | (s.wet as u16) << 13
         } else {
             0
         };
@@ -365,11 +386,11 @@ static PACKED: [u16; super::block::STATE_CAPACITY] = {
 pub fn stairs(block: Block) -> Option<Stairs> {
     let p = *PACKED.get(block.0 as usize)?;
     (p & 1 << 15 != 0).then(|| Stairs {
-        family: (p & 63) as u8,
-        facing: Facing::ALL[(p >> 6 & 3) as usize],
-        top: p >> 8 & 1 == 1,
-        shape: StairShape::ALL[(p >> 9 & 7) as usize],
-        wet: p >> 12 & 1 == 1,
+        family: (p & 127) as u8,
+        facing: Facing::ALL[(p >> 7 & 3) as usize],
+        top: p >> 9 & 1 == 1,
+        shape: StairShape::ALL[(p >> 10 & 7) as usize],
+        wet: p >> 13 & 1 == 1,
     })
 }
 
@@ -378,9 +399,9 @@ pub fn stairs(block: Block) -> Option<Stairs> {
 pub fn slab(block: Block) -> Option<Slab> {
     let p = *PACKED.get(block.0 as usize)?;
     (p & 1 << 14 != 0).then(|| Slab {
-        family: (p & 63) as u8,
-        kind: [SlabType::Top, SlabType::Bottom, SlabType::Double][(p >> 6 & 3) as usize],
-        wet: p >> 12 & 1 == 1,
+        family: (p & 127) as u8,
+        kind: [SlabType::Top, SlabType::Bottom, SlabType::Double][(p >> 7 & 3) as usize],
+        wet: p >> 13 & 1 == 1,
     })
 }
 
@@ -430,7 +451,7 @@ pub const fn registry(id: u16) -> Option<(u16, RenderKind)> {
 /// of the v0.12 families' states.
 #[inline(always)]
 pub const fn owns(id: u16) -> bool {
-    (id >= STAIRS_ORIGIN && id <= RESERVED_LAST) || super::stone_blocks::owns_shape(id)
+    (id >= STAIRS_ORIGIN && id <= RESERVED_LAST) || super::stone_blocks::owns_shape(id) || colour_blocks::owns_shape(id)
 }
 
 /// `Block::shaped` for this module's ids.
@@ -456,7 +477,7 @@ pub const fn uses_shape_for_light(id: u16) -> bool {
 /// The block a new state's item is (the family's existing stairs or slab);
 /// `None` for existing ids and other blocks.
 pub fn item_block(id: u16) -> Option<Block> {
-    if !(STAIRS_ORIGIN..END).contains(&id) && !super::stone_blocks::owns_shape(id) {
+    if !(STAIRS_ORIGIN..END).contains(&id) && !super::stone_blocks::owns_shape(id) && !colour_blocks::owns_shape(id) {
         return None;
     }
     if let Some(s) = stairs(Block(id)) {

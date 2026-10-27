@@ -288,6 +288,8 @@ impl Actor<'_> {
         let centre = |cell: glam::IVec3| cell.as_dvec3() + DVec3::splat(0.5);
         // Java's throw is the bow sound, pitched well down.
         let throw = (0.5, (0.42, 0.62));
+        let cushion = |id: u32| self.entities.cart(id).is_some_and(|c| c.kind.cushion().is_some());
+        let sat_on_cushion = matches!(done.used, Used::Mounted(id) if cushion(id));
         let audio = &mut *self.audio;
         match done.used {
             Used::OpenVehicle(_)
@@ -340,6 +342,21 @@ impl Actor<'_> {
             Used::Stripped { cell } => audio.play(Sound::Place(Material::Wood), Some(centre(cell)), 1.0, (0.8, 1.0)),
             // Nearest shared sound for `item.axe.scrape`: a high, scratchy stone step.
             Used::Scraped { cell } => audio.play(Sound::Step(Material::Stone), Some(centre(cell)), 1.0, (1.5, 1.8)),
+            // `CANDLE_EXTINGUISH` and `CAKE_ADD_CANDLE`, from the shared sound set.
+            Used::CandleExtinguished { cell } => {
+                audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(centre(cell)), 0.3, (1.8, 2.0))
+            }
+            Used::CandlePlacedOnCake { cell } => {
+                audio.play_in(SoundSource::Blocks, Sound::Place(Material::Snow), Some(centre(cell)), 1.0, (1.0, 1.0))
+            }
+            // `CUSHION_PLACE` (0.75, 0.8) and `CUSHION_SIT`, from the shared wool set.
+            Used::CushionPlaced { at } => {
+                audio.play_in(SoundSource::Blocks, Sound::Place(Material::Snow), Some(at), 0.75, (0.8, 0.8))
+            }
+            Used::Mounted(_) if sat_on_cushion => {
+                let at = self.session.player.pos;
+                audio.play_in(SoundSource::Neutral, Sound::Step(Material::Snow), Some(at), 1.0, (0.8, 0.9))
+            }
             Used::Tilled { cell } => {
                 audio.play_in(SoundSource::Blocks, Sound::Step(Material::Gravel), Some(centre(cell)), 1.0, (0.8, 0.9))
             }

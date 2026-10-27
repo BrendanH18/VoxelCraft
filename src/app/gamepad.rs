@@ -941,7 +941,7 @@ impl Game {
             seat.open(Menu::items(Tab::Grindstone(pos)));
         } else if block == Block::SMITHING_TABLE {
             seat.open(Menu::items(Tab::Smithing(pos)));
-        } else if block.is_bed() {
+        } else if block.is_bed() || super::bed::is_straw(Some(block)) {
             self.pad_sleep(i, pos);
         }
     }

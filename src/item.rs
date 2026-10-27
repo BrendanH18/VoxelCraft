@@ -280,6 +280,8 @@ pub enum Sprite {
     Crossbow {
         loaded: bool,
     },
+    /// A plump square cushion of this colour.
+    Cushion([u8; 3]),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -651,6 +653,10 @@ const COPPER_ITEMS: &[ItemInfo] = &[
     copper_armor("copper boots", ArmorPiece::Boots),
 ];
 const _: () = assert!(COPPER_ITEM as usize + COPPER_ITEMS.len() <= 1070);
+/// v0.12 colour track items, reserved 1130..=1159: the 16 cushions, in
+/// `DyeColor` order, from 1130.
+pub const CUSHION_ITEM: u16 = 1130;
+const _: () = assert!(CUSHION_ITEM + 16 <= 1160);
 const AUDIT_SPLASH_POTION: u16 = 1044;
 /// Raw metals and gems. 360 is diamond boots (`FIRST_ARMOR` ends there),
 /// so these start at 361.
@@ -950,7 +956,39 @@ impl Item {
         }
     }
 
+    /// The colour of a cushion item.
+    pub fn cushion_color(self) -> Option<crate::color::DyeColor> {
+        self.0.checked_sub(CUSHION_ITEM).filter(|&i| i < 16).map(|i| crate::color::DyeColor::ALL[i as usize])
+    }
+
+    pub const fn cushion(c: crate::color::DyeColor) -> Item {
+        Item(CUSHION_ITEM + c as u16)
+    }
+
     pub fn info(self) -> ItemInfo {
+        if let Some(c) = self.cushion_color() {
+            const NAMES: [&str; 16] = [
+                "white cushion",
+                "orange cushion",
+                "magenta cushion",
+                "light blue cushion",
+                "yellow cushion",
+                "lime cushion",
+                "pink cushion",
+                "gray cushion",
+                "light gray cushion",
+                "cyan cushion",
+                "purple cushion",
+                "blue cushion",
+                "brown cushion",
+                "green cushion",
+                "red cushion",
+                "black cushion",
+            ];
+            // `Items.CUSHION`: stacks to 16.
+            let name = NAMES[c as usize];
+            return ItemInfo { name, kind: ItemKind::Material, max_stack: 16, sprite: Sprite::Cushion(c.rgb()) };
+        }
         match self {
             Self::HONEY_BOTTLE => {
                 return ItemInfo {
@@ -1023,7 +1061,11 @@ impl Item {
         }
         if let Some(b) = self.block() {
             // Java registers signs and hanging signs with `stacksTo(16)`.
-            let max_stack = if crate::world::wood::signs::sign(b).is_some() { 16 } else { 64 };
+            let max_stack = if crate::world::wood::signs::sign(b).is_some() {
+                16
+            } else {
+                crate::world::colour_blocks::max_stack(b).unwrap_or(64)
+            };
             return ItemInfo { name: b.name(), kind: ItemKind::Block(b), max_stack, sprite: Sprite::Stick };
         }
         if let Some(info) = self.0.checked_sub(FIRST_ITEM).and_then(|i| ITEMS.get(i as usize)) {
@@ -1291,6 +1333,7 @@ impl Item {
             .chain([Self::TURTLE_HELMET])
             .chain((0..COPPER_ITEMS.len() as u16).map(|i| Item(COPPER_ITEM + i)))
             .chain([Self::ENCHANTED_GOLDEN_APPLE, Self::HONEY_BOTTLE, Self::POWDER_SNOW_BUCKET])
+            .chain((0..16).map(|i| Item(CUSHION_ITEM + i)))
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1331,6 +1374,9 @@ fn sprite_index(item: Item) -> Option<u16> {
         1073 => Some(turtle_icon() + 2 + COPPER_ITEMS.len() as u16),
         1047 => Some(turtle_icon() + 1 + COPPER_ITEMS.len() as u16),
         1071 => Some(turtle_icon() + 3 + COPPER_ITEMS.len() as u16),
+        i if (CUSHION_ITEM..CUSHION_ITEM + 16).contains(&i) => {
+            Some(turtle_icon() + 4 + COPPER_ITEMS.len() as u16 + i - CUSHION_ITEM)
+        }
         i if (COPPER_ITEM..COPPER_ITEM + COPPER_ITEMS.len() as u16).contains(&i) => {
             Some(turtle_icon() + 1 + i - COPPER_ITEM)
         }
@@ -1411,7 +1457,7 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    turtle_icon() as u32 + 1 + COPPER_ITEMS.len() as u32 + 3
+    turtle_icon() as u32 + 1 + COPPER_ITEMS.len() as u32 + 3 + 16
 }
 
 /// The turtle helmet's icon follows the animal items; copper equipment follows it,

@@ -30,12 +30,25 @@ pub enum CartKind {
     Chest,
     Hopper,
     Tnt,
-    Boat { wood: u8, chest: bool },
+    Boat {
+        wood: u8,
+        chest: bool,
+    },
+    /// A cushion (Java 26.3 `Cushion`, a block-attached entity one rides
+    /// sitting): it never moves, and breaks into its item when hit, pushed
+    /// or left without anything under it (`colour_blocks::cushion`).
+    Cushion {
+        colour: u8,
+    },
 }
 
 impl CartKind {
     pub fn boat(self) -> Option<(u8, bool)> {
         if let Self::Boat { wood, chest } = self { Some((wood, chest)) } else { None }
+    }
+    /// The `DyeColor` index of a cushion.
+    pub fn cushion(self) -> Option<u8> {
+        if let Self::Cushion { colour } = self { Some(colour) } else { None }
     }
     fn code(self) -> u8 {
         match self {
@@ -44,11 +57,12 @@ impl CartKind {
             Self::Hopper => 2,
             Self::Tnt => 3,
             Self::Boat { wood, chest } => 4 + wood + if chest { 10 } else { 0 },
+            Self::Cushion { colour } => 24 + colour,
         }
     }
     pub fn seats(self) -> usize {
         match self {
-            Self::Rideable => 1,
+            Self::Rideable | Self::Cushion { .. } => 1,
             Self::Boat { chest, .. } => {
                 if chest {
                     1
@@ -66,6 +80,7 @@ impl CartKind {
             2 => Self::Hopper,
             3 => Self::Tnt,
             4..=23 => Self::Boat { wood: (v - 4) % 10, chest: v >= 14 },
+            24..=39 => Self::Cushion { colour: v - 24 },
             _ => return None,
         })
     }
@@ -77,10 +92,14 @@ impl CartKind {
             Self::Hopper => Item::HOPPER_MINECART,
             Self::Tnt => Item::TNT_MINECART,
             Self::Boat { wood, chest } => Item::boat(wood, chest),
+            Self::Cushion { colour } => Item::cushion(crate::color::DyeColor::ALL[colour as usize]),
         }
     }
 
     pub fn from_item(item: Item) -> Option<Self> {
+        if let Some(c) = item.cushion_color() {
+            return Some(Self::Cushion { colour: c as u8 });
+        }
         if (960..980).contains(&item.0) {
             return Some(Self::Boat { wood: ((item.0 - 960) % 10) as u8, chest: item.0 >= 970 });
         }
@@ -135,6 +154,9 @@ pub struct Minecart {
     pub eject: bool,
     fall_distance: f64,
     blast_speed: f64,
+    /// Ticks since a cushion last checked that it survives
+    /// (`BlockAttachedEntity.ticksSinceLastCheck`).
+    check_ticks: u16,
 }
 
 impl Minecart {
@@ -162,6 +184,7 @@ impl Minecart {
             eject: false,
             fall_distance: 0.0,
             blast_speed: 0.0,
+            check_ticks: 0,
         }
     }
 
@@ -175,6 +198,9 @@ impl Minecart {
     }
 
     pub fn shape(&self) -> Shape {
+        if self.kind.cushion().is_some() {
+            return crate::world::colour_blocks::cushion::SHAPE;
+        }
         if self.kind.boat().is_some() { Shape::new(0.6875, 0.5625) } else { SHAPE }
     }
     pub fn seat_for(&self, player: super::PlayerId) -> Option<DVec3> {
@@ -188,6 +214,9 @@ impl Minecart {
         Some(self.passenger_seat(index))
     }
     pub fn passenger_seat(&self, index: usize) -> DVec3 {
+        if self.kind.cushion().is_some() {
+            return crate::world::colour_blocks::cushion::seat(self.pos);
+        }
         if self.kind.boat().is_some() {
             self.pos
                 + DVec3::Y * -0.1
@@ -221,7 +250,8 @@ impl Minecart {
 
     /// One punch. Creative breaks immediately. Returns the dropped item when it breaks.
     pub fn hurt(&mut self, creative: bool) -> Option<Item> {
-        if creative {
+        // `BlockAttachedEntity.hurtServer`: any hit breaks a cushion.
+        if creative || self.kind.cushion().is_some() {
             return Some(self.kind.item());
         }
         self.damage += 10.0;
@@ -230,6 +260,11 @@ impl Minecart {
 
     pub fn step(&mut self, world: &World, passenger: DVec3, mob_passenger: bool) {
         if !world.is_loaded(self.pos.floor().as_ivec3()) {
+            return;
+        }
+        if self.kind.cushion().is_some() {
+            // Cushions don't move; `tick_minecarts` checks what holds them.
+            self.check_ticks = self.check_ticks.saturating_add(1);
             return;
         }
         self.damage = (self.damage - 1.0).max(0.0);
@@ -503,6 +538,11 @@ impl Minecart {
     /// swimming player: the first of the eight cells around the cart (sideways first), at
     /// the heights 0, +1, -1 (0, +1 swimming), whose floor is valid and whose box is free.
     fn dismount_position(&self, world: &World) -> DVec3 {
+        // A cushion keeps `Entity.getDismountLocationForPassenger`: its
+        // centre, at the top of its box.
+        if self.kind.cushion().is_some() {
+            return DVec3::new(self.pos.x, self.aabb().1.y, self.pos.z);
+        }
         let motion = self.motion_direction();
         let clockwise = IVec3::new(-motion.z, 0, motion.x);
         let offsets = [
@@ -754,6 +794,10 @@ pub fn push_pair(a: &mut Minecart, b: &mut Minecart) {
 impl super::Entities {
     /// Using a cart item succeeds only on a rail, including its slope height.
     pub fn place_cart(&mut self, world: &World, kind: CartKind, cell: IVec3) -> Option<u32> {
+        // Cushions go on top faces (`colour_blocks::cushion::placement`).
+        if kind.cushion().is_some() {
+            return None;
+        }
         if kind.boat().is_some() {
             let block = world.get_block(cell)?;
             let pos = cell.as_dvec3() + DVec3::new(0.5, if block.is_water() { 0.45 } else { 0.0 }, 0.5);
@@ -865,6 +909,43 @@ impl super::Entities {
         }
     }
 
+    /// `BlockAttachedEntity.tick`: every hundred ticks a cushion checks that
+    /// something holds it up and that no fire burns in it
+    /// (`Cushion.destroyIfInFire`), and breaks into its item if not.
+    fn check_cushions(&mut self, world: &World) {
+        use crate::world::colour_blocks::cushion;
+        let mut i = 0;
+        while i < self.minecarts.len() {
+            let cart = &mut self.minecarts[i];
+            if cart.kind.cushion().is_some() && cart.check_ticks > 100 {
+                cart.check_ticks = 0;
+                if !cushion::survives(world, cart.pos) || cushion::in_fire(world, cart.pos) {
+                    let (id, item, pos) = (cart.id, cart.kind.item(), cart.pos);
+                    self.drop_cart(i, item, pos, true);
+                    self.clear_cart(id);
+                    continue;
+                }
+            }
+            i += 1;
+        }
+    }
+
+    /// `Cushion.destroyIfInFire`, which `CushionItem.useOn` runs on a cushion
+    /// it has just placed: fire or lava breaks it into its item.
+    pub fn burn_cushion(&mut self, world: &World, id: u32) -> bool {
+        let Some(i) = self.minecarts.iter().position(|c| c.id == id && c.kind.cushion().is_some()) else {
+            return false;
+        };
+        let cart = &self.minecarts[i];
+        if !crate::world::colour_blocks::cushion::in_fire(world, cart.pos) {
+            return false;
+        }
+        let (item, pos) = (cart.kind.item(), cart.pos);
+        self.drop_cart(i, item, pos, true);
+        self.clear_cart(id);
+        true
+    }
+
     fn clear_cart(&mut self, id: u32) {
         for mob in &mut self.mobs {
             if mob.riding == Some(id) {
@@ -889,7 +970,8 @@ impl super::Entities {
     /// Contact push from a walking player or mob; velocity is in blocks/tick.
     pub fn push_carts(&mut self, feet: DVec3, half: f64) {
         for cart in &mut self.minecarts {
-            if !near_cart(feet, half, cart.pos) {
+            // Cushions aren't pushable (`Entity.isPushable`).
+            if !near_cart(feet, half, cart.pos) || cart.kind.cushion().is_some() {
                 continue;
             }
             let delta = (cart.pos - feet).with_y(0.0);
@@ -910,6 +992,7 @@ impl super::Entities {
             if world.is_entity_ticking(mob.pos.floor().as_ivec3()) && mob.alive() && mob.riding.is_none() {
                 for cart in &mut self.minecarts {
                     if world.is_entity_ticking(cart.pos.floor().as_ivec3())
+                        && cart.kind.cushion().is_none()
                         && near_cart(mob.pos, mob.shape().half_width, cart.pos)
                     {
                         let delta = (cart.pos - mob.pos).with_y(0.0);
@@ -1029,9 +1112,12 @@ impl super::Entities {
         for i in 0..n {
             for j in i + 1..n {
                 let (left, right) = self.minecarts.split_at_mut(j);
-                push_pair(&mut left[i], &mut right[0]);
+                if left[i].kind.cushion().is_none() && right[0].kind.cushion().is_none() {
+                    push_pair(&mut left[i], &mut right[0]);
+                }
             }
         }
+        self.check_cushions(world);
         // Java's `MinecartTNT.primeFuse` refuses new fuses without
         // `tnt_explodes`; fuses lit earlier keep counting down.
         if !self.tnt_explodes {
@@ -1094,7 +1180,7 @@ impl super::Entities {
                     if cart.fuse.is_none() && self.tnt_explodes {
                         cart.fuse = Some((self.rng.next_int(20) + self.rng.next_int(20)) as u16);
                     }
-                } else if damage * 10.0 > 40.0 {
+                } else if damage * 10.0 > 40.0 || cart.kind.cushion().is_some() && damage > 0.0 {
                     let (id, item, pos) = (cart.id, cart.kind.item(), cart.pos);
                     self.drop_cart(i, item, pos, true);
                     self.clear_cart(id);

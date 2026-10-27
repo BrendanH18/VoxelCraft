@@ -5,6 +5,7 @@ use glam::{DVec3, IVec3};
 
 use crate::audio::sounds::{Material, Sound};
 use crate::world::block::{Block, Facing};
+use crate::world::colour_blocks::straw_bed;
 
 use super::Game;
 
@@ -36,6 +37,7 @@ impl Game {
     pub(super) fn use_bed(&mut self, pos: IVec3) {
         let Some((at, head)) = self.bed_rest(pos) else { return };
         self.session.begin_sleep(head, at);
+        self.occupy_straw_bed(head, at);
         self.keys.clear();
         self.body.left_held = false;
         self.body.right_held = false;
@@ -54,7 +56,8 @@ impl Game {
             return None;
         }
         let (foot, head, rest) = self.bed_rules(pos)?;
-        if self.session.spawn_bed != Some(foot) {
+        // `straw_bed_rule`: `can_set_spawn` is never.
+        if !is_straw(self.world.get_block(foot)) && self.session.spawn_bed != Some(foot) {
             self.session.spawn_bed = Some(foot);
             self.session.spawn_point = None;
             self.show_popup("Respawn point set");
@@ -67,12 +70,18 @@ impl Game {
     /// why not.
     fn bed_rules(&self, pos: IVec3) -> Option<BedRules> {
         let half = self.world.get_block(pos)?;
-        let partner = self.world.bed_partner(pos, half);
-        let foot = if !half.is_bed_head() { Some(pos) } else { partner }?;
-        let head = if half.is_bed_head() { Some(pos) } else { partner };
-        let head = head.and_then(|head| crate::world::dismount::bed_orientation(foot, head));
+        let (foot, head, height) = if let Some((foot, head, facing)) = self.straw_bed_halves(pos) {
+            // `StrawBedBlock.getSleepHeight`: the top of the foot's shape.
+            (foot, Some((head, facing)), 4.0 / 16.0)
+        } else {
+            let partner = self.world.bed_partner(pos, half);
+            let foot = if !half.is_bed_head() { Some(pos) } else { partner }?;
+            let head = if half.is_bed_head() { Some(pos) } else { partner };
+            let head = head.and_then(|head| crate::world::dismount::bed_orientation(foot, head));
+            (foot, head, Block::BED_FOOT.height())
+        };
         let centre = foot.as_dvec3() + DVec3::splat(0.5);
-        let at = DVec3::new(centre.x, foot.y as f64 + Block::BED_FOOT.height(), centre.z);
+        let at = DVec3::new(centre.x, foot.y as f64 + height, centre.z);
         let monsters =
             || self.mobs.entities.mobs.iter().any(|m| m.kind.is_hostile() && m.pos.distance(centre) < MONSTER_RANGE);
         let host = self.session.sleeping.is_some().then_some(self.session.player.pos);
@@ -100,7 +109,7 @@ impl Game {
     pub(super) fn agent_sleep(&mut self, name: &str) -> Result<(), String> {
         let agent = &self.agents.players[name].agent;
         let pos = (agent.target(&self.world).map(|(p, _)| p))
-            .filter(|&p| self.world.get_block(p).is_some_and(|b| b.is_bed()))
+            .filter(|&p| self.world.get_block(p).is_some_and(|b| b.is_bed() || is_straw(Some(b))))
             .ok_or("not looking at a bed")?;
         if self.bed_explodes(pos) {
             return Err("beds explode outside the Overworld".into());
@@ -115,9 +124,12 @@ impl Game {
         let Some((foot, head, rest)) = self.bed_rules(pos) else { return (false, Err("not looking at a bed".into())) };
         let Some(bot) = self.agents.players.get_mut(name) else { return (false, Err("no such player".into())) };
         let agent = &mut bot.agent;
-        let changed = agent.session.spawn_bed != Some(foot);
-        agent.session.spawn_bed = Some(foot);
-        agent.session.spawn_point = None;
+        let straw = is_straw(self.world.get_block(foot));
+        let changed = !straw && agent.session.spawn_bed != Some(foot);
+        if !straw {
+            agent.session.spawn_bed = Some(foot);
+            agent.session.spawn_point = None;
+        }
         let at = match rest {
             Ok(at) => at,
             Err(e) => return (changed, Err(e.into())),
@@ -125,14 +137,71 @@ impl Game {
         agent.session.begin_sleep(head, at);
         agent.previous_pos = at;
         agent.remaining = 0;
+        self.occupy_straw_bed(head, at);
         self.audio.play(Sound::Step(Material::Snow), Some(at), 0.6, (0.8, 0.9));
         (changed, Ok(()))
+    }
+
+    /// Foot, head and foot-to-head facing of the whole straw bed at `pos`;
+    /// `None` for anything else, a straw bed missing its other half
+    /// included (`useWithoutItem` does nothing then).
+    pub(super) fn straw_bed_halves(&self, pos: IVec3) -> Option<(IVec3, IVec3, Facing)> {
+        let (facing, head) = straw_bed::decode(self.world.get_block(pos)?.0)?;
+        let foot = if head { pos - facing.offset() } else { pos };
+        let whole = self.world.get_block(foot) == Some(straw_bed::half(facing, false))
+            && self.world.get_block(foot + facing.offset()) == Some(straw_bed::half(facing, true));
+        whole.then_some((foot, foot + facing.offset(), facing))
+    }
+
+    /// `StrawBedBlock.destroyBed`: the head goes (its foot follows without
+    /// a drop) with the straw bed's leaving sound.
+    pub(super) fn destroy_straw_bed(&mut self, head: IVec3) {
+        if self.world.get_block(head).and_then(|b| straw_bed::decode(b.0)).is_some_and(|(_, h)| h) {
+            self.world.set_block(head, Block::AIR);
+            self.audio.play(Sound::Break(Material::Grass), Some(head.as_dvec3() + DVec3::splat(0.5)), 1.0, (0.8, 1.0));
+        }
+    }
+
+    /// Remembers a straw bed someone lies in, to break it once they leave.
+    fn occupy_straw_bed(&mut self, head: Option<BedHead>, at: DVec3) {
+        if let Some((head, _)) = head.filter(|&(head, _)| is_straw(self.world.get_block(head))) {
+            self.world.straw_sleepers_mut().push((head, at));
+        }
+    }
+
+    /// `destroy_on_leave`: a straw bed nobody lies in any more falls apart.
+    fn release_straw_beds(&mut self) {
+        let sleepers: Vec<DVec3> = std::iter::once(&self.session)
+            .chain(self.agents.players.values().map(|b| &b.agent.session))
+            .filter(|s| s.sleeping.is_some())
+            .map(|s| s.player.pos)
+            .collect();
+        let world = &mut self.world;
+        let mut left = Vec::new();
+        world.straw_sleepers_mut().retain(|&(head, at)| {
+            let occupied = sleepers.iter().any(|p| p.distance(at) < 0.5);
+            if !occupied {
+                left.push(head);
+            }
+            occupied
+        });
+        for head in left {
+            self.destroy_straw_bed(head);
+        }
     }
 
     /// Advances sleep. Once every player (the host and each active, living
     /// agent or controller player) has faded out in bed, it's morning and
     /// the rain has stopped, as in Java with everyone needing to sleep.
     pub(super) fn update_sleep(&mut self, dt: f64) {
+        // Anyone who woke since the last tick (a CLI player's command wakes
+        // it before the gameplay tick) stands up beside their bed first, as
+        // `LivingEntity.stopSleeping` does, before an empty straw bed breaks.
+        self.session.settle_wake(&self.world);
+        for b in self.agents.players.values_mut() {
+            b.agent.session.settle_wake(&self.world);
+        }
+        self.release_straw_beds();
         if let Some(t) = &mut self.session.sleeping {
             *t = (*t + dt as f32).min(SLEEP_TIME);
         }
@@ -229,6 +298,10 @@ impl Game {
             (self.world.min_y(), self.world.max_y()),
         )
     }
+}
+
+pub(super) fn is_straw(b: Option<Block>) -> bool {
+    b.is_some_and(|b| straw_bed::decode(b.0).is_some())
 }
 
 fn required_sleepers(players: usize, percentage: i32) -> usize {

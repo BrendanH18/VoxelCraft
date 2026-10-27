@@ -62,6 +62,9 @@ impl Material {
 
 /// The one place blocks are mapped to sound materials.
 pub fn material(block: Block) -> Material {
+    if let Some(m) = colour_material(block) {
+        return m;
+    }
     match block.base() {
         Block::HONEY_BLOCK => Material::Honey,
         // Nearest shared materials for `SoundType.SLIME_BLOCK` and tinted glass's `GLASS`.
@@ -119,6 +122,28 @@ pub fn material(block: Block) -> Material {
         // Stone, cobblestone, ores, bricks, sandstone, bedrock and unknowns.
         _ => Material::Stone,
     }
+}
+
+/// Nearest shared materials for v0.12's colour blocks: wool stairs and
+/// slabs sound like wool, candles and candle cakes like the soft wool set
+/// (`SoundType.CANDLE`, cake's `WOOL`), banners like wood and the straw bed
+/// like grass (`SoundType.STRAW_BED`).
+fn colour_material(block: Block) -> Option<Material> {
+    use crate::world::colour_blocks::{self as cb, banner, candle, straw_bed};
+    if !cb::owns(block.0) {
+        return None;
+    }
+    if cb::owns_shape(block.0) {
+        let base = block.stairs_base().or(block.slab_base())?;
+        return Some(if base.wool_color().is_some() { Material::Snow } else { Material::Stone });
+    }
+    if candle::decode(block.0).is_some() || candle::decode_cake(block.0).is_some() {
+        return Some(Material::Snow);
+    }
+    if banner::decode(block.0).is_some() {
+        return Some(Material::Wood);
+    }
+    straw_bed::decode(block.0).map(|_| Material::Grass)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

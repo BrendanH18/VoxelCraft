@@ -1153,6 +1153,22 @@ Work items (all Missing unless noted):
    colours; candles in 17 colours (one to four per block, lit, waterlogged)
    and candle cakes; 26.3's wool and concrete stairs and slabs; cushions and
    the straw bed, from the 26.3 source.
+   *Implemented, unverified (2026-10-25):* all 131 blocks of the audit's
+   colour list (`src/world/colour_blocks.rs`): every wool and concrete
+   stairs and slab state with recipes and concrete stonecutter data
+   (`slab_stair_states`' in-memory family field widened to 7 bits; no saved
+   ID changed), candles with one to four candles, lighting, putting out,
+   waterlogging and dyeing, candle cakes, plain standing and wall banners
+   drawn as Java-shaped models, the straw bed with `straw_bed_rule` (no
+   respawn point, falls apart on waking and instead of exploding outside
+   the Overworld), and the 16 cushions as stationary seats on the vehicle
+   system, crafted from three wool slabs
+   ([record](verification/2026-10-25-v0.12-colour.md)). Owed: owner play;
+   a survival source for candles (the plain candle needs honeycomb, which
+   comes with bees in v0.15, so candles and candle cakes are creative-only
+   until then; integrator's decision, 2026-10-26: keep the finished blocks
+   rather than hold them for bees, as with waxing); banner patterns (loom,
+   v0.17); arrows hitting cushions (no projectile hits vehicles yet).
 5. **Utilities and special blocks (BLD-05b, BLD-02b, ENV-04).** Item frames
    and glow item frames, paintings and armor stands; empty, water, lava and
    powder snow cauldrons (filling, bottles, dye washing, dripstone filling);

@@ -965,7 +965,7 @@ impl Game {
                 if let Some(p) = used {
                     peer.used_at = Some(p);
                     match self.world.get_block(p) {
-                        Some(b) if b.is_bed() => {
+                        Some(b) if b.is_bed() || super::bed::is_straw(Some(b)) => {
                             let _ = self.agent_sleep(&name);
                         }
                         Some(Block::CRAFTING_TABLE) => {

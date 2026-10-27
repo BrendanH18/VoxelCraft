@@ -437,6 +437,13 @@ impl Game {
         if self.dimension.has_sky() {
             return false;
         }
+        // `straw_bed_rule` here is `destroy_on_use`: it falls apart instead.
+        if super::bed::is_straw(self.world.get_block(pos)) {
+            if let Some((_, head, _)) = self.straw_bed_halves(pos) {
+                self.destroy_straw_bed(head);
+            }
+            return true;
+        }
         let half = self.world.get_block(pos).unwrap_or(Block::AIR);
         self.world.set_block(pos, Block::AIR);
         self.break_bed_partner(pos, half);

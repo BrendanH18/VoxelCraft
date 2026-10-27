@@ -439,7 +439,7 @@ fn parse_args() -> Result<Args, String> {
                 let v = value("--cart")?;
                 let parts: Vec<_> = v.split(',').collect();
                 if parts.len() != 4 {
-                    return Err("--cart needs x,y,z,rideable|chest|hopper|tnt".into());
+                    return Err("--cart needs x,y,z,rideable|chest|hopper|tnt|<boat or cushion item>".into());
                 }
                 let n: Vec<i32> = parts[..3]
                     .iter()

@@ -32,6 +32,10 @@ pub enum Used {
     /// The player now rides this vehicle.
     Mounted(u32),
     CartPlaced,
+    /// A cushion was set down at this position (`CushionItem.useOn`).
+    CushionPlaced {
+        at: DVec3,
+    },
     /// A villager with offers was targeted; its trading screen should open.
     OpenMerchant(u64),
     /// A villager with no offers was targeted; nothing else happens.
@@ -77,6 +81,14 @@ pub enum Used {
         destination: Option<IVec3>,
     },
     CakeBitten {
+        cell: IVec3,
+    },
+    /// A lit candle or candle cake was put out by hand.
+    CandleExtinguished {
+        cell: IVec3,
+    },
+    /// A candle was set on an uneaten cake.
+    CandlePlacedOnCake {
         cell: IVec3,
     },
     /// A bed was used; the adapter applies sleeping rules.
@@ -167,7 +179,9 @@ impl PlayerSession {
             sneaking,
             (self.player.eye(), self.player.forward().as_dvec3()),
         ) || (!(sneaking && held.is_some())
-            && world.get_block(pos).is_some_and(|b| b.cake_bites().is_some())
+            && world.get_block(pos).is_some_and(|b| {
+                b.cake_bites().is_some() || crate::world::colour_blocks::candle::decode_cake(b.0).is_some()
+            })
             && (self.mode.is_creative() || self.vitals.hunger.can_eat()))
     }
 
@@ -260,11 +274,19 @@ impl PlayerSession {
             }
             return Ok(Some(Used::Animal));
         }
-        if let Some(id) = entities.mount_cart(eye, dir, reach, self.id) {
+        // `Cushion.interact` passes while sneaking.
+        let sneaking_at_cushion = ctx.sneaking
+            && entities.cart_ray(eye, dir, reach).is_some_and(|i| entities.minecarts[i].kind.cushion().is_some());
+        if !sneaking_at_cushion && let Some(id) = entities.mount_cart(eye, dir, reach, self.id) {
             self.player.vehicle = Some(id);
             return Ok(Some(Used::Mounted(id)));
         }
-        if let Some(kind) = self.inventory.get(slot).and_then(|s| crate::entity::minecart::CartKind::from_item(s.item))
+        // Cushions go on top faces through `use_item_on` (`CushionItem.useOn`).
+        if let Some(kind) = self
+            .inventory
+            .get(slot)
+            .and_then(|s| crate::entity::minecart::CartKind::from_item(s.item))
+            .filter(|k| k.cushion().is_none())
             && let Some((pos, normal)) = self.block_target(world)
         {
             let cell = if world.get_block(pos).is_some_and(|b| b.is_rail()) { pos } else { pos + normal };
@@ -405,6 +427,9 @@ impl PlayerSession {
             return Ok(Some(Used::Redstone { cell: pos }));
         }
         world.touch_redstone_ore(pos);
+        if let Some(used) = self.use_colour_block(slot, world, pos, ctx) {
+            return Ok(Some(used));
+        }
         if !ctx.sneaking && survival_items::use_composter(world, entities, pos, &mut self.inventory, slot, creative) {
             return Ok(Some(Used::Composter { cell: pos }));
         }
@@ -457,6 +482,18 @@ impl PlayerSession {
                 *broken = Some(item);
             }
         };
+        // `FlintAndSteelItem.useOn` and `FireChargeItem.useOn` light candles
+        // and candle cakes before setting fire to the cell beside them.
+        if matches!(held, Some(Item::FLINT_AND_STEEL | Item::FIRE_CHARGE)) && world.light_candle(pos) {
+            if held == Some(Item::FIRE_CHARGE) {
+                if survival {
+                    self.inventory.take_one(slot);
+                }
+            } else {
+                wear(self, 1, tool_broken);
+            }
+            return Ok(Some(Used::Ignited { cell: pos, portal: false }));
+        }
         if held == Some(Item::FLINT_AND_STEEL) {
             if world.get_block(pos) == Some(Block::TNT) && world.rules.tnt_explodes {
                 world.set_block(pos, Block::AIR);
@@ -479,6 +516,57 @@ impl PlayerSession {
         Ok(Some(Used::Placed(result)))
     }
 
+    /// Candle and cake uses (Java 26.3 `CandleBlock`, `CandleCakeBlock` and
+    /// `CakeBlock.useItemOn`): a bare hand puts out a lit candle (or a candle
+    /// cake's flame, clicked on the candle), a candle goes onto an uneaten
+    /// cake, and a candle cake is eaten from like a cake, dropping its
+    /// candle. Flint and steel and fire charges pass to the item.
+    fn use_colour_block(&mut self, slot: usize, world: &mut World, pos: IVec3, ctx: &UseContext) -> Option<Used> {
+        use crate::world::colour_blocks::candle;
+        let block = world.get_block(pos)?;
+        let held = self.inventory.get(slot).map(|s| s.item);
+        // Sneaking with an item skips block use (`ServerPlayerGameMode.useItemOn`).
+        if ctx.sneaking && held.is_some() {
+            return None;
+        }
+        let creative = self.mode.is_creative();
+        // `AbstractBedBlock.useWithoutItem`: the adapter applies the straw bed's rules.
+        if crate::world::colour_blocks::straw_bed::decode(block.0).is_some() && !ctx.sneaking {
+            return Some(Used::Bed { cell: pos });
+        }
+        if candle::decode(block.0).is_some() {
+            if held.is_none() && self.mode.can_build() && candle::is_lit(block) && world.extinguish_candle(pos) {
+                return Some(Used::CandleExtinguished { cell: pos });
+            }
+            return None;
+        }
+        if block == Block::cake(0)
+            && let Some(item) = held.filter(|&i| candle::colour_of_item(i).is_some())
+        {
+            if !self.mode.can_build() || !world.add_candle_to_cake(pos, item) {
+                return None;
+            }
+            if !creative {
+                self.inventory.take_one(slot);
+            }
+            return Some(Used::CandlePlacedOnCake { cell: pos });
+        }
+        candle::decode_cake(block.0)?;
+        if matches!(held, Some(Item::FLINT_AND_STEEL | Item::FIRE_CHARGE)) {
+            return None;
+        }
+        let click_y = self.block_hit(world).map_or(0.0, |hit| hit.point.y - pos.y as f64);
+        if held.is_none() && candle::candle_hit(click_y) && candle::is_lit(block) && world.extinguish_candle(pos) {
+            return Some(Used::CandleExtinguished { cell: pos });
+        }
+        // `CakeBlock.eat` with the plain cake's state, then the candle drops.
+        if !creative && !self.vitals.hunger.can_eat() {
+            return None;
+        }
+        self.vitals.hunger.eat(2, 0.4);
+        world.bite_candle_cake(pos).then_some(Used::CakeBitten { cell: pos })
+    }
+
     /// Shovel paths, axe stripping and scraping, hoe tilling, pumpkin carving and bone meal.
     fn use_item_on(
         &mut self,
@@ -492,6 +580,19 @@ impl PlayerSession {
         let item = self.inventory.get(slot)?.item;
         let block = world.get_block(pos)?;
         let survival = self.mode.is_survival();
+        // `CushionItem.useOn`: a cushion sits on the top face clicked.
+        if let Some(colour) = item.cushion_color() {
+            let hit = self.block_hit(world)?;
+            let at = crate::world::colour_blocks::cushion::placement(world, hit.cell, hit.normal, hit.point)?;
+            let quarter = std::f32::consts::FRAC_PI_2;
+            let yaw = (self.player.yaw / quarter).round() * quarter;
+            let id = entities.place_cushion(colour as u8, at, yaw)?;
+            entities.burn_cushion(world, id);
+            if survival {
+                self.inventory.take_one(slot);
+            }
+            return Some(Used::CushionPlaced { at });
+        }
         let tool = item.as_tool().map(|(kind, _)| kind);
         let mut wear = |s: &mut Self| {
             if survival && s.inventory.wear(slot, crate::mining::wear(item, false)) {
@@ -574,6 +675,8 @@ pub fn picked_item(block: Block) -> Item {
             crate::world::nether_biome_blocks::TWISTING_VINES.into()
         }
         Block::OAK_DOOR => Item::OAK_DOOR,
+        // `CandleCakeBlock.getCloneItemStack`.
+        b if crate::world::colour_blocks::candle::decode_cake(b.0).is_some() => Item::CAKE,
         b if let Some(c) = b.bed_color() => c.bed(),
         b => b.into(),
     }

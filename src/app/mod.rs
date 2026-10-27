@@ -3,6 +3,7 @@
 mod actions;
 mod agents;
 mod anvil;
+mod banners;
 mod bed;
 mod benchmark;
 mod bow;
@@ -1420,6 +1421,16 @@ impl Game {
             }
         }
         for (kind, pos) in std::mem::take(&mut self.carts) {
+            // A cushion sits on the floor of its cell.
+            if let Some(colour) = kind.cushion() {
+                let at = pos.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
+                if !crate::world::colour_blocks::cushion::can_be_placed_at(&self.world, at)
+                    || self.mobs.entities.place_cushion(colour, at, 0.0).is_none()
+                {
+                    log::warn!("--cart {pos}: nothing holds a cushion here");
+                }
+                continue;
+            }
             if self.mobs.entities.place_cart(&self.world, kind, pos).is_none() {
                 log::warn!("--cart {pos}: no rail");
             }
@@ -1888,7 +1899,7 @@ impl Game {
             }),
             cracks: self.cracks_seen_from(eye),
             block_models: {
-                let mut models = self.block_models(alpha);
+                let mut models = self.block_models(alpha, camera);
                 crate::render::signs::shelf_items(&self.world, camera, &mut models);
                 models
             },
@@ -1950,8 +1961,9 @@ pub(super) fn fov_effects(modifier: f32, scale: f32) -> f32 {
 }
 
 impl Game {
-    /// Falling blocks, primed TNT and dropped items, at interpolated positions.
-    fn block_models(&self, alpha: f64) -> Vec<crate::render::BlockModel> {
+    /// Falling blocks, primed TNT, dropped items and banners near `camera`,
+    /// at interpolated positions.
+    fn block_models(&self, alpha: f64, camera: glam::DVec3) -> Vec<crate::render::BlockModel> {
         self.world
             .falling_blocks()
             .iter()
@@ -1988,6 +2000,7 @@ impl Game {
                 icon: None,
             }))
             .chain(self.item_models(alpha))
+            .chain(self.banner_models(camera))
             .collect()
     }
 }

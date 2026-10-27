@@ -253,6 +253,8 @@ impl Arrow {
                     .unwrap();
                 let mut normal = glam::IVec3::ZERO;
                 normal[axis] = if local[axis] < 0.5 { -1 } else { 1 };
+                // `AbstractCandleBlock.onProjectileHit`: a burning arrow lights a candle.
+                let burning = self.enchants.has(crate::enchant::Enchantment::Flame);
                 if world.block(cell).is_some_and(|b| {
                     matches!(
                         crate::world::redstone_blocks::component(b),
@@ -260,9 +262,9 @@ impl Arrow {
                     ) || matches!(
                         b.base(),
                         crate::world::block::Block::REDSTONE_ORE | crate::world::block::Block::DEEPSLATE_REDSTONE_ORE
-                    )
+                    ) || burning && crate::world::colour_blocks::candle::can_light(b)
                 }) {
-                    events.push(EntityEvent::ProjectileBlockHit { cell, pos: hit, normal, arrow: true });
+                    events.push(EntityEvent::ProjectileBlockHit { cell, pos: hit, normal, arrow: true, burning });
                 }
                 self.age = 0.0;
                 return true;
@@ -342,7 +344,11 @@ fn first_solid<W: BlockSource + ?Sized>(world: &W, from: DVec3, step: DVec3) -> 
             for x in lo.x..=hi.x {
                 let cell = glam::IVec3::new(x, y, z);
                 let Some(block) = world.block(cell).filter(|b| b.is_solid()) else { continue };
-                let boxes = if block.shaped().is_some() {
+                // Candles, candle cakes and straw beds hit by their Java
+                // collision shape (`getShape`), not their drawn boxes.
+                let boxes = if let Some(boxes) = crate::world::colour_blocks::collision(block) {
+                    boxes
+                } else if block.shaped().is_some() {
                     crate::world::shape::shape(
                         block,
                         |f| world.block(cell + f.offset()).unwrap_or(crate::world::block::Block::AIR),
@@ -439,6 +445,41 @@ mod tests {
         assert!(events.is_empty(), "{events:?}");
         assert_eq!(mobs[0].health, MobKind::Cow.max_health());
     }
+    #[test]
+    fn only_a_flame_arrow_lights_the_candle_it_hits() {
+        use crate::world::colour_blocks::candle;
+        let ctx = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+            players: vec![Target::new(PlayerId::HOST, DVec3::new(50.0, 10.0, 0.0), true)],
+            daylight: 1.0,
+            spawning: false,
+            raining: false,
+            dimension: Dimension::Overworld,
+        };
+        // Two candles leave a gap at the block's centre between their bodies,
+        // but Java's collision box for them covers it.
+        for (flame, count) in [(false, 1), (true, 1), (true, 2)] {
+            let mut world = Grid::flat(10);
+            world.set(IVec3::new(0, 11, 0), candle::candle(3, count, false, false));
+            let mut arrow = Arrow::shot(DVec3::new(0.5, 14.0, 0.5), DVec3::NEG_Y, 1.0, true);
+            if flame {
+                arrow.enchants.set(crate::enchant::Enchantment::Flame, 1);
+            }
+            let mut events = Vec::new();
+            for _ in 0..40 {
+                if !arrow.update(0.05, &world, &ctx, &mut [], None, &mut Rng::new(1), &mut events) || arrow.is_stuck() {
+                    break;
+                }
+            }
+            assert!(arrow.is_stuck());
+            assert_eq!(arrow.pos.floor().as_ivec3(), IVec3::new(0, 11, 0), "stuck in the candle");
+            let lit = events.iter().any(|e| {
+                matches!(e, EntityEvent::ProjectileBlockHit { cell, burning: true, .. } if *cell == IVec3::new(0, 11, 0))
+            });
+            assert_eq!(lit, flame, "{events:?}");
+        }
+    }
+
     #[test]
     fn dispenser_arrows_hurt_mobs_and_players_without_player_kill_credit() {
         let world = Grid::flat(10);

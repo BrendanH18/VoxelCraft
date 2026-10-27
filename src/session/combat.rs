@@ -264,7 +264,12 @@ impl PlayerSession {
             }
             Target::Cart => {
                 let cart_reach = crate::entity::minecart::interaction_reach(world, eye, dir, reach);
-                landed = entities.hurt_cart(eye, dir, cart_reach, self.mode.is_creative());
+                // `Cushion.isBreakingDeniedFor`: only players who may build break cushions.
+                let denied = !self.mode.can_build()
+                    && entities
+                        .cart_ray(eye, dir, cart_reach)
+                        .is_some_and(|i| entities.minecarts[i].kind.cushion().is_some());
+                landed = !denied && entities.hurt_cart(eye, dir, cart_reach, self.mode.is_creative());
                 eye + dir * 2.0
             }
             Target::Fireball => {
