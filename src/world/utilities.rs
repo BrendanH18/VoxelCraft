@@ -356,7 +356,7 @@ pub const fn ender_chest(facing: Facing, wet: bool) -> Block {
 
 /// `EnderChestBlock.useWithoutItem`: a conductor on top keeps it shut.
 pub fn ender_chest_opens(world: &super::World, pos: IVec3) -> bool {
-    !world.get_block(pos + IVec3::Y).is_some_and(|a| a.is_opaque())
+    !world.get_block(pos + IVec3::Y).is_some_and(super::redstone_blocks::conductor)
 }
 
 /// `(facing, wet)` of an ender chest.

@@ -1516,6 +1516,13 @@ impl Game {
         }
         let c = &snapshot["container"];
         let pos = vector(&c["pos"]).map(|p| p.as_ivec3());
+        // Any other screen takes back an earlier ender chest's loan, so a
+        // chest later placed in that cell isn't hidden behind it.
+        if c["kind"] != "ender_chest"
+            && let Some(lent) = self.world.lent_chest()
+        {
+            self.world.take_lent_chest(lent);
+        }
         self.body.container = match (c["kind"].as_str(), pos) {
             (Some("chest"), Some(p)) => {
                 if let Some(text) = c["state"].as_str() {

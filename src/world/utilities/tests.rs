@@ -589,6 +589,21 @@ fn ender_chests_feed_no_hoppers_or_comparators() {
 }
 
 #[test]
+fn a_redstone_conductor_on_top_keeps_an_ender_chest_shut() {
+    let mut w = world();
+    let p = IVec3::new(6, 100, 6);
+    w.set_block(p, ender_chest(Facing::North, false));
+    assert!(ender_chest_opens(&w, p));
+    // `isRedstoneConductor`: the see-through slime block counts, glass doesn't.
+    for (above, opens) in
+        [(Block::GLASS, true), (crate::world::stone_blocks::SLIME_BLOCK, false), (Block::STONE, false)]
+    {
+        w.set_block(p + IVec3::Y, above);
+        assert_eq!(ender_chest_opens(&w, p), opens, "{}", above.name());
+    }
+}
+
+#[test]
 fn lava_cauldrons_burn_and_water_cauldrons_put_out_fire() {
     let mut w = world();
     let p = IVec3::new(7, 100, 7);

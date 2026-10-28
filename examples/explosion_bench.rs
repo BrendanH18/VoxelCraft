@@ -1,7 +1,8 @@
 //! Time `World::explode` on generated terrain: single TNT-sized blasts at the
-//! surface and underground, and a 64-block TNT cube going off one after
-//! another as a chain does. Uses only the `World::explode` API, so the same
-//! file measures older builds too.
+//! surface and underground, and the 64 blocks of a TNT cube blasted one
+//! after another at fixed positions (primed TNT is discarded, not ticked).
+//! Uses only the `World::explode` API, so the same file measures older
+//! builds too.
 //!
 //! `cargo run --release --no-default-features --example explosion_bench`
 use glam::{DVec3, IVec3};
@@ -77,6 +78,6 @@ fn main() {
         world.primed_tnt.clear();
     }
     let total = start_all.elapsed().as_secs_f64() * 1000.0;
-    report("64-TNT cube chain", &mut times, removed);
-    println!("64-TNT cube chain total: {total:.1} ms");
+    report("64-TNT cube, one blast per block", &mut times, removed);
+    println!("64-TNT cube, one blast per block, total: {total:.1} ms");
 }
