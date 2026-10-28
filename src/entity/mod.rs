@@ -961,16 +961,42 @@ impl Entities {
     /// it before the blast breaks any blocks: Java hurts entities first, so
     /// the walls about to go still shield them.
     pub fn explode<W: BlockSource + ?Sized>(&mut self, world: &W, center: DVec3, power: f32) {
-        self.blast(world, center, power, false);
+        self.blast(world, center, power, false, true);
     }
 
     /// As [`Entities::explode`], but mobs it kills count as the player's
     /// (a ghast fireball punched back).
     pub fn explode_credited<W: BlockSource + ?Sized>(&mut self, world: &W, center: DVec3, power: f32) {
-        self.blast(world, center, power, true);
+        self.blast(world, center, power, true, true);
     }
 
-    fn blast<W: BlockSource + ?Sized>(&mut self, world: &W, center: DVec3, power: f32, credit_player: bool) {
+    /// [`Entities::explode`] with its source's rules: `credit_player` as for
+    /// [`Entities::explode_credited`], and `breaks_blocks` whether the blast
+    /// breaks blocks (a mob's doesn't without `mob_griefing`), which decides
+    /// whether dropped items are hurt and pushed
+    /// (`ServerExplosion.shouldAffectBlocklikeEntities`).
+    pub fn explode_with<W: BlockSource + ?Sized>(
+        &mut self,
+        world: &W,
+        center: DVec3,
+        power: f32,
+        credit_player: bool,
+        breaks_blocks: bool,
+    ) {
+        self.blast(world, center, power, credit_player, breaks_blocks);
+    }
+
+    fn blast<W: BlockSource + ?Sized>(
+        &mut self,
+        world: &W,
+        center: DVec3,
+        power: f32,
+        credit_player: bool,
+        breaks_blocks: bool,
+    ) {
+        // Java gathers the entities before hurting any, so drops from what
+        // this blast breaks or kills are spared.
+        self.blast_drops(world, center, power, breaks_blocks);
         self.blast_carts(world, center, power);
         self.blast_decor(center, power);
         if let Some(fight) = &mut self.fight {
@@ -999,6 +1025,39 @@ impl Entities {
         for (kind, pos, burning) in killed {
             self.drop_loot_with_fire(kind, pos, 0, burning, true);
         }
+    }
+
+    /// `ServerExplosion.hurtEntities` for dropped items and experience
+    /// orbs: each takes the blast's damage from its 5 health and is pushed
+    /// away from `center`. Items ignore blasts that break no blocks
+    /// (`ItemEntity.ignoreExplosion`); orbs never do.
+    fn blast_drops<W: BlockSource + ?Sized>(&mut self, world: &W, center: DVec3, power: f32, items: bool) {
+        let reach = f64::from(power) * 2.0;
+        let hit = |pos: DVec3, (min, max): (DVec3, DVec3), eye: f64| {
+            if pos.distance(center) > reach {
+                return None;
+            }
+            let exposure = crate::world::explosion::seen_percent(world, center, min, max);
+            let (damage, knockback) = explosion_damage(power, pos.distance(center), exposure)?;
+            let push = (pos + DVec3::Y * eye - center).normalize_or_zero() * knockback;
+            Some((damage, push * crate::knockback::TICK_RATE))
+        };
+        if items {
+            self.items.retain_mut(|item| match hit(item.pos, item.aabb(), item::ItemEntity::EYE) {
+                Some((damage, push)) => {
+                    item.vel += push;
+                    item.hurt(damage)
+                }
+                None => true,
+            });
+        }
+        self.orbs.retain_mut(|orb| match hit(orb.pos, orb.aabb(), orb::XpOrb::EYE) {
+            Some((damage, push)) => {
+                orb.vel += push;
+                orb.hurt(damage)
+            }
+            None => true,
+        });
     }
 
     /// Drops the loot and experience of a mob of `kind` the player killed
@@ -3918,6 +3977,45 @@ mod tests {
             chicken.update(1.0 / 60.0, &world, &ctx(DVec3::new(50.0, 10.0, 0.0)), &mut rng, &mut Vec::new());
         }
         assert!(chicken.vel.y >= -2.5 && chicken.pos.y > 26.0, "{:?}", chicken.pos);
+    }
+
+    #[test]
+    fn explosions_destroy_dropped_items_and_orbs_near_them() {
+        let world = Grid::flat(10);
+        let center = DVec3::new(0.5, 10.5, 0.5);
+        let mut e = Entities::new(9);
+        let mut rng = Rng::new(2);
+        let stack = crate::inventory::Stack::new(crate::item::Item::DIAMOND, 3);
+        // Beside the blast, and 7.4 blocks out: power 4 reaches 8 blocks, and
+        // there the damage, (impact² + impact) / 2 * 56 + 1 with impact
+        // about 0.07, is about 3.2. Java keeps whole health points, so the
+        // far item keeps one of its 5 (at 7 blocks, 4.9 would leave none).
+        for x in [1.0, 7.9] {
+            e.items.push(ItemEntity::new(stack, DVec3::new(x, 10.0, 0.5), DVec3::ZERO, 0.0, &mut rng));
+            e.orbs.push(orb::XpOrb::new(3, DVec3::new(x, 10.0, 0.5), &mut rng));
+            e.orbs.last_mut().unwrap().vel = DVec3::ZERO;
+        }
+        e.explode(&world, center, 4.0);
+        assert_eq!(e.items.len(), 1, "the near item is gone");
+        assert_eq!(e.items[0].health, 1);
+        assert!(e.items[0].vel.x > 0.0, "and the far one pushed away");
+        assert_eq!(e.orbs.len(), 1, "so is the near orb");
+        assert_eq!(e.orbs[0].health, 1);
+        // Their health saves.
+        let saved = e.items[0].serialize();
+        assert!(saved.ends_with(",1"), "{saved}");
+        assert_eq!(ItemEntity::deserialize(&saved, &mut rng).map(|i| i.health), Some(1));
+        let saved = e.orbs[0].serialize();
+        assert_eq!(orb::XpOrb::deserialize(&saved, &mut rng).map(|o| o.health), Some(1));
+        let fresh = ItemEntity::new(stack, DVec3::ZERO, DVec3::ZERO, 0.0, &mut rng);
+        assert_eq!(fresh.serialize().split(',').count(), 5, "an unhurt item saves as before");
+        // A blast that breaks no blocks (a mob's without mob griefing)
+        // spares items but not orbs.
+        let mut e = Entities::new(9);
+        e.items.push(ItemEntity::new(stack, DVec3::new(1.0, 10.0, 0.5), DVec3::ZERO, 0.0, &mut rng));
+        e.orbs.push(orb::XpOrb::new(3, DVec3::new(1.0, 10.0, 0.5), &mut rng));
+        e.explode_with(&world, center, 4.0, false, false);
+        assert_eq!((e.items.len(), e.items[0].health, e.orbs.len()), (1, 5, 0));
     }
 
     #[test]

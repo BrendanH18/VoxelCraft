@@ -630,8 +630,11 @@ impl Game {
                 .and_then(|m| m.villager.as_ref())
                 .map_or(46.0, |v| 26.0 + if v.wandering { 60.0 } else { v.level as f32 * 20.0 });
         }
-        if self.open_container_count() == 5 {
-            return SLOT + 14.0;
+        match self.open_container_count() {
+            5 => return SLOT + 14.0,
+            // A double chest's six rows (`ContainerScreen`, 54 slots).
+            54 => return 6.0 * SLOT + 14.0,
+            _ => {}
         }
         match (self.has_top_section(), self.shows_armor()) {
             (false, _) => 0.0,
@@ -878,6 +881,7 @@ impl Game {
         let title = match (self.body.container, self.session.mode) {
             (Container::CraftingTable, _) => "Crafting",
             (Container::Furnace(_), _) => "Furnace",
+            (Container::Chest(p), _) if self.world.chest_partner(p).is_some() => "Large Chest",
             (Container::Chest(p), _) => container_title(self.world.get_block(p)),
             (Container::EnderChest(_), _) => "Ender Chest",
             (Container::Minecart(id), _) => self.mobs.entities.vehicle_title(id),
@@ -1108,7 +1112,7 @@ impl Game {
             return self.mobs.entities.vehicle_slots(id)?.get(i).copied().flatten();
         }
         if let (Container::Chest(p), SlotRef::Chest(i)) = (self.body.container, slot) {
-            return self.world.chest(p)?.slots[i];
+            return self.world.chest_slot(p, i);
         }
         match slot {
             SlotRef::EnchantItem => return self.session.work[0],

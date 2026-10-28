@@ -35,7 +35,12 @@ pub struct ItemEntity {
     pub pickup_delay: f32,
     /// Random phase for the spin and bob.
     pub phase: f32,
+    /// Java's `ItemEntity.health`: explosions take it, and at 0 the item is gone.
+    pub health: i32,
 }
+
+/// Health of a fresh dropped item (`ItemEntity.health`).
+pub const HEALTH: i32 = 5;
 
 impl ItemEntity {
     /// Create a fresh dropped stack with pickup delay in seconds and coincident interpolation positions.
@@ -48,7 +53,25 @@ impl ItemEntity {
             age: 0.0,
             pickup_delay,
             phase: rng.range(0.0, std::f32::consts::TAU),
+            health: HEALTH,
         }
+    }
+
+    /// The item's box, for explosions' line of sight.
+    pub fn aabb(&self) -> (DVec3, DVec3) {
+        SHAPE.aabb(self.pos)
+    }
+
+    /// Eye height of Java's 0.25 x 0.25 item (`EntityDimensions`: 0.85 of it).
+    pub const EYE: f64 = 0.25 * 0.85;
+
+    /// `ItemEntity.hurtServer` for an explosion: health drops by `amount`
+    /// (Java keeps whole points, truncated); returns false once it is gone.
+    /// Every item is hurt by explosions today; the nether star, the one item
+    /// Java makes explosion-proof (`damage_resistant`), comes with the Wither.
+    pub fn hurt(&mut self, amount: f32) -> bool {
+        self.health = (self.health as f32 - amount) as i32;
+        self.health > 0
     }
 
     /// Steps physics; returns `false` when the item is gone (burnt or
@@ -100,10 +123,12 @@ impl ItemEntity {
         min.cmplt(pmax).all() && max.cmpgt(pmin).all()
     }
 
-    /// `x,y,z,age,stack` for the level file.
+    /// `x,y,z,age,stack` for the level file, then `,health` once hurt
+    /// (older builds read the first five fields).
     pub fn serialize(&self) -> String {
         let p = self.pos;
-        format!("{:.3},{:.3},{:.3},{:.1},{}", p.x, p.y, p.z, self.age, stack_to_string(Some(self.stack)))
+        let health = if self.health == HEALTH { String::new() } else { format!(",{}", self.health) };
+        format!("{:.3},{:.3},{:.3},{:.1},{}{health}", p.x, p.y, p.z, self.age, stack_to_string(Some(self.stack)))
     }
 
     pub fn deserialize(text: &str, rng: &mut Rng) -> Option<Self> {
@@ -114,6 +139,9 @@ impl ItemEntity {
         let stack = stack_from_str(f.next()?)??;
         let mut item = Self::new(stack, pos, DVec3::ZERO, 0.0, rng);
         item.age = age;
+        if let Some(health) = f.next() {
+            item.health = health.parse().ok().filter(|h| (1..=HEALTH).contains(h))?;
+        }
         Some(item)
     }
 }

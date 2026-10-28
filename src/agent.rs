@@ -502,37 +502,24 @@ impl Agent {
                 if ender && !crate::world::utilities::ender_chest_opens(world, pos) {
                     return Err("the ender chest is blocked from above".into());
                 }
+                if !ender
+                    && world.get_block(pos).and_then(crate::world::double_chest::state).is_some()
+                    && !world.chest_opens(pos)
+                {
+                    return Err("the chest is blocked from above".into());
+                }
                 let slots = if ender { crate::world::chest::SLOTS } else { world.container_slots(pos) };
                 if slot >= slots {
                     return Err("container slot out of range".into());
                 }
-                let chest = if ender {
-                    &mut self.session.ender
+                let (inventory, selected) = (&mut self.session.inventory, self.selected);
+                if ender {
+                    chest_transfer(&mut self.session.ender.slots[slot], inventory, selected, take)?;
                 } else {
-                    world.chest_mut(pos).ok_or("target is not a chest")?
-                };
-                if take {
-                    let stack = chest.slots[slot].ok_or("chest slot empty")?;
-                    let left = self.session.inventory.add_stack(stack);
-                    chest.slots[slot] = (left > 0).then_some(Stack { count: left, ..stack });
-                    if left == stack.count {
-                        return Err("inventory full".into());
-                    }
-                } else {
-                    let stack = self.session.inventory.get(self.selected).ok_or("selected slot empty")?;
-                    let dest = &mut chest.slots[slot];
-                    let room = match dest {
-                        None => stack.max(),
-                        Some(s) if s.stacks_with(&stack) => s.max() - s.count,
-                        _ => 0,
-                    };
-                    let n = room.min(stack.count);
-                    if n == 0 {
-                        return Err("chest slot full or incompatible".into());
-                    }
-                    *dest = Some(Stack { count: dest.map_or(0, |s| s.count) + n, ..stack });
-                    self.session.inventory.slots[self.selected] =
-                        (stack.count > n).then_some(Stack { count: stack.count - n, ..stack });
+                    // Both halves of a double chest, as one container.
+                    world
+                        .with_chest_slots(pos, |slots| chest_transfer(&mut slots[slot], inventory, selected, take))
+                        .ok_or("target is not a chest")??;
                 }
                 if world.get_block(pos).is_some_and(crate::entity::nether::guarded_by_piglins) {
                     entities.piglins_notice(self.session.id, self.session.player.pos, true, world);
@@ -1199,6 +1186,38 @@ impl Agent {
         });
         json!({"position":self.session.player.pos.to_array(),"yaw":self.session.player.yaw.to_degrees(),"pitch":self.session.player.pitch.to_degrees(),"loaded":world.is_loaded(center),"dimension":world.generator.dimension.name(),"health":self.session.vitals.health,"absorption":self.session.vitals.effects.absorption(),"food":self.session.vitals.hunger.food,"level":self.session.vitals.xp.level,"xp_progress":self.session.vitals.xp.progress(),"dead":self.session.vitals.is_dead(),"mode":self.session.mode.name(),"creative":self.creative,"flying":self.session.player.flying,"sleeping":self.session.sleeping.is_some(),"spawn_bed":self.session.spawn_bed.map(|p|p.to_array()),"spawn_point":self.session.spawn_point.map(|p|p.to_array()),"selected":self.selected+1,"inventory":inventory,"target":target,"blocks":blocks})
     }
+}
+
+/// `chest take` or `chest put` on one container slot: the slot's stack
+/// into the inventory, or as much of the selected stack as the slot takes.
+fn chest_transfer(
+    dest: &mut Option<Stack>,
+    inventory: &mut crate::inventory::Inventory,
+    selected: usize,
+    take: bool,
+) -> Result<(), String> {
+    if take {
+        let stack = dest.ok_or("chest slot empty")?;
+        let left = inventory.add_stack(stack);
+        *dest = (left > 0).then_some(Stack { count: left, ..stack });
+        if left == stack.count {
+            return Err("inventory full".into());
+        }
+    } else {
+        let stack = inventory.get(selected).ok_or("selected slot empty")?;
+        let room = match dest {
+            None => stack.max(),
+            Some(s) if s.stacks_with(&stack) => s.max() - s.count,
+            _ => 0,
+        };
+        let n = room.min(stack.count);
+        if n == 0 {
+            return Err("chest slot full or incompatible".into());
+        }
+        *dest = Some(Stack { count: dest.map_or(0, |s| s.count) + n, ..stack });
+        inventory.slots[selected] = (stack.count > n).then_some(Stack { count: stack.count - n, ..stack });
+    }
+    Ok(())
 }
 
 #[cfg(test)]

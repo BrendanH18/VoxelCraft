@@ -46,8 +46,11 @@ recomputed from neighbours rather than saved.
 
 Comparators use Java inventory fullness (floor(14 × average normalized slot
 fullness) plus one for any nonempty slot), reading chests, furnaces and brewing
-stands directly or through one conductor. Item frames and double chests are
-not implemented. Container mutable access wakes adjacent comparators.
+stands directly or through one conductor, and item frames on a conductor's
+far side. A double chest reads as one 54-slot container from either half,
+and a chest blocked from above (a conductor on either half) reads 0, as
+Java's `ChestBlock.getAnalogOutputSignal` does. Container mutable access
+wakes adjacent comparators (both halves of a double chest).
 Wooden doors and fence gates respond to rising/falling power edges, preserving
 manual operation while power stays unchanged. Powered TNT primes once.
 

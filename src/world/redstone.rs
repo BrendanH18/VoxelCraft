@@ -428,9 +428,13 @@ impl World {
             }
             ((fullness / count as f64 * 14.0).floor() as u8 + nonempty as u8).min(15)
         }
-        if let Some(c) = self.chest(p) {
+        if self.chest(p).is_some() {
+            // `ChestBlock.getAnalogOutputSignal` reads no container when blocked.
+            if self.get_block(p).and_then(super::double_chest::state).is_some() && !self.chest_opens(p) {
+                return Some(0);
+            }
             let count = self.container_slots(p);
-            return Some(strength(c.slots[..count].iter().copied(), count));
+            return Some(strength((0..count).map(|i| self.chest_slot(p, i)), count));
         }
         if let Some(f) = self.furnace(p) {
             return Some(strength([f.input, f.fuel, f.output].into_iter(), 3));

@@ -39,13 +39,30 @@ pub struct XpOrb {
     pub age: f32,
     /// Random phase for the colour shimmer.
     pub phase: f32,
+    /// Java's `ExperienceOrb.health`: explosions take it, and at 0 the orb is gone.
+    pub health: i32,
 }
+
+/// Health of a fresh orb (`ExperienceOrb.health`).
+pub const HEALTH: i32 = 5;
 
 impl XpOrb {
     /// A fresh orb popping out in a random direction, like Java's.
     pub fn new(value: u32, pos: DVec3, rng: &mut Rng) -> Self {
         let vel = DVec3::new(rng.range(-4.0, 4.0) as f64, rng.range(0.0, 8.0) as f64, rng.range(-4.0, 4.0) as f64);
-        Self { value, count: 1, pos, previous_pos: pos, vel, age: 0.0, phase: rng.range(0.0, std::f32::consts::TAU) }
+        let phase = rng.range(0.0, std::f32::consts::TAU);
+        Self { value, count: 1, pos, previous_pos: pos, vel, age: 0.0, phase, health: HEALTH }
+    }
+
+    /// Eye height of Java's 0.5 x 0.5 orb (`EntityDimensions`: 0.85 of it).
+    pub const EYE: f64 = 0.5 * 0.85;
+
+    /// `ExperienceOrb.hurtServer`: health drops by `amount` (whole points,
+    /// truncated); returns false once the orb, with every orb merged into
+    /// it, is gone.
+    pub fn hurt(&mut self, amount: f32) -> bool {
+        self.health = (self.health as f32 - amount) as i32;
+        self.health > 0
     }
 
     /// Steps physics; returns `false` when the orb is gone (burnt or
@@ -104,21 +121,28 @@ impl XpOrb {
         min.cmplt(pmax).all() && max.cmpgt(pmin).all()
     }
 
-    /// `x,y,z,age,value,count` for the level file.
+    /// `x,y,z,age,value,count` for the level file, then `,health` once hurt.
     pub fn serialize(&self) -> String {
         let p = self.pos;
-        format!("{:.3},{:.3},{:.3},{:.1},{},{}", p.x, p.y, p.z, self.age, self.value, self.count)
+        let health = if self.health == HEALTH { String::new() } else { format!(",{}", self.health) };
+        format!("{:.3},{:.3},{:.3},{:.1},{},{}{health}", p.x, p.y, p.z, self.age, self.value, self.count)
     }
 
     /// Restores a stationary orb, rejecting nonfinite positions and empty values or counts.
     pub fn deserialize(text: &str, rng: &mut Rng) -> Option<Self> {
         let f: Vec<&str> = text.split(',').collect();
-        let [x, y, z, age, value, count] = f[..] else { return None };
+        let (&[x, y, z, age, value, count], health) = (&f[..f.len().min(6)], f.get(6)) else { return None };
+        if f.len() > 7 {
+            return None;
+        }
         let num = |s: &str| s.parse::<f64>().ok().filter(|v| v.is_finite());
         let mut orb = Self::new(value.parse().ok().filter(|&v| v > 0)?, DVec3::new(num(x)?, num(y)?, num(z)?), rng);
         orb.vel = DVec3::ZERO;
         orb.age = num(age)?.clamp(0.0, LIFETIME as f64) as f32;
         orb.count = count.parse().ok().filter(|&c| c > 0)?;
+        if let Some(health) = health {
+            orb.health = health.parse().ok().filter(|h| (1..=HEALTH).contains(h))?;
+        }
         Some(orb)
     }
 }

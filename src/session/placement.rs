@@ -292,7 +292,7 @@ impl PlayerSession {
                             });
                         // v0.12 utilities: campfires, chests and pots face the
                         // player; coral fans hang on a clicked wall.
-                        match crate::world::utilities::placed(
+                        let block = match crate::world::utilities::placed(
                             block,
                             at,
                             ctx.facing,
@@ -307,7 +307,9 @@ impl PlayerSession {
                                 return Err("block cannot survive here");
                             }
                             None => block,
-                        }
+                        };
+                        // Chests pair with a neighbour (`ChestBlock.getStateForPlacement`).
+                        crate::world::double_chest::placed(block, &ctx, |c| world.get_block(c)).unwrap_or(block)
                     };
                     if !free(world, at) {
                         return Err("destination occupied or unloaded");

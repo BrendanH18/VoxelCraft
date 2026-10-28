@@ -480,6 +480,11 @@ impl PlayerSession {
         // Containers open on right-click; sneaking builds against them.
         if !ctx.sneaking {
             match world.get_block(pos) {
+                // `ChestBlock.getMenuProvider`: a chest blocked from above stays shut.
+                Some(b) if crate::world::double_chest::state(b).is_some() && !world.chest_opens(pos) => {
+                    let effect = crate::world::utilities::interact::Effect::Consumed;
+                    return Ok(Some(Used::Utility { cell: pos, effect }));
+                }
                 Some(b)
                     if b == Block::CRAFTING_TABLE
                         || crate::world::furnace::is_furnace(b)

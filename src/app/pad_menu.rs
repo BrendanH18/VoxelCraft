@@ -455,6 +455,7 @@ impl Game {
             Tab::Crafting if creative => "Crafting  (RB: items)",
             Tab::Crafting => "Crafting  (LB: inventory)",
             Tab::Palette => "Items  (RB: inventory)",
+            Tab::Chest(p) if self.world.chest_partner(p).is_some() => "Large Chest",
             Tab::Chest(p) => super::hud::container_title(self.world.get_block(p)),
             Tab::EnderChest(_) => "Ender Chest",
             Tab::Vehicle(id) => self.mobs.entities.vehicle_title(id),
@@ -548,6 +549,8 @@ impl Game {
                     Slot::Ref(SlotRef::Chest(i)) => {
                         if let Tab::Vehicle(id) = tab {
                             self.mobs.entities.vehicle_slots(id).and_then(|s| s.get(i).copied().flatten())
+                        } else if let Tab::Chest(pos) = tab {
+                            self.world.chest_slot(pos, i)
                         } else {
                             chest.and_then(|ch| ch.slots[i])
                         }

@@ -21,7 +21,7 @@
 //! | bars | 2 | waterlogged |
 //! | chain | 6 | `wet * 3 + axis` (Y, X, Z) |
 //! | lantern | 4 | `hanging * 2 + wet` |
-//! | chest | 24 | `type * 8 + wet * 4 + facing`; only `type` single (0) is registered |
+//! | chest | 24 | `type * 8 + wet * 4 + facing` (type single, left, right; `double_chest`) |
 //! | lightning rod | 24 | `powered * 12 + wet * 6 + direction` (up, down, then [`Facing::ALL`]); only unpowered is registered |
 //! | torch | 5, one stage | standing, then wall states facing [`Facing::ALL`] |
 //!
@@ -133,11 +133,10 @@ impl Family {
         }
     }
 
-    /// How many of a stage's locals are registered: copper chests have no
-    /// double halves yet and lightning rods no powered state (no lightning).
+    /// How many of a stage's locals are registered: lightning rods have no
+    /// powered state yet (no lightning).
     pub const fn registered(self) -> u16 {
         match self {
-            Family::Chest => 8,
             Family::Rod => 12,
             f => f.stride(),
         }
@@ -356,13 +355,10 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
         Family::Bars => (Shaped, [t::layer(s, t::BARS); 6]),
         Family::Chain => (Shaped, [t::layer(s, t::CHAIN); 6]),
         Family::Lantern => (Shaped, [t::layer(s, t::LANTERN); 6]),
-        Family::Chest => {
-            let side = t::layer(s, t::CHEST_SIDE);
-            let top = t::layer(s, t::CHEST_TOP);
-            let mut tex = [side, side, top, top, side, side];
-            tex[Facing::ALL[(c.local % 4) as usize].face()] = t::layer(s, t::CHEST_FRONT);
-            (Opaque, tex)
-        }
+        Family::Chest => match super::double_chest::state(Block(id)) {
+            Some(chest) => (Opaque, super::double_chest::faces(chest)),
+            None => return None,
+        },
         Family::Rod => (Shaped, [t::layer(s, t::ROD); 6]),
         Family::Torch => (if c.local == 0 { Cross } else { Shaped }, [t::TORCH; 6]),
     };
@@ -717,8 +713,8 @@ pub fn placed(raw: Block, ctx: &PlaceContext, get: impl Fn(IVec3) -> Option<Bloc
             };
             Some(Some(encode(Copper { local: axis, ..c })))
         }
-        // `ChestBlock.getStateForPlacement`: facing the placer.
-        Family::Chest => Some(Some(encode(Copper { local: ctx.facing.opposite() as u16, ..c }))),
+        // `ChestBlock.getStateForPlacement` (`double_chest::placed`).
+        Family::Chest => Some(super::double_chest::placed(raw, ctx, get)),
         _ => None,
     }
 }
@@ -829,6 +825,17 @@ pub fn ages(b: Block) -> bool {
     })
 }
 
+/// `WeatheringCopperChestBlock.randomTick`: a pair ages through its half
+/// that isn't `right` (the other half follows by `updateShape`), and not
+/// while anyone has it open.
+fn chest_ticks(world: &World, p: IVec3, b: Block) -> bool {
+    use super::double_chest as dc;
+    match dc::state(b) {
+        Some(s) => s.ty != dc::ChestType::Right && world.chest_viewers(p) == 0,
+        None => true,
+    }
+}
+
 impl World {
     /// Uniform in `[0, 1)` from the world's random stream (Java `nextFloat`).
     pub(super) fn next_float(&mut self) -> f32 {
@@ -843,7 +850,7 @@ impl World {
     /// (`DoorBlock.updateShape`).
     pub(super) fn tick_copper(&mut self, p: IVec3, b: Block) {
         let Some(c) = state(b) else { return };
-        if !ages(b) || self.next_float() >= AGE_CHANCE {
+        if !ages(b) || !chest_ticks(self, p, b) || self.next_float() >= AGE_CHANCE {
             return;
         }
         let (mut same, mut older) = (0u32, 0u32);

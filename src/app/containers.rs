@@ -23,7 +23,6 @@ impl Game {
         }
         self.body.container = Container::Chest(pos);
         self.toggle_inventory();
-        self.world.chest_opened(pos);
         self.chest_sound(pos, 0.65);
         if self.world.get_block(pos).is_some_and(crate::entity::nether::guarded_by_piglins) {
             self.piglins_notice(true);

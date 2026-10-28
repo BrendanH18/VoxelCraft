@@ -1,6 +1,8 @@
 //! Chests: 27 slots of storage kept in [`World`] by position (block
 //! entities), like furnaces. They appear when a chest is placed, spill into
 //! [`World::drops`] when it's removed, and are saved in the level file.
+//! The two halves of a double chest keep their own 27 slots and act as one
+//! 54-slot container (`double_chest`).
 
 use glam::IVec3;
 
@@ -57,6 +59,7 @@ impl World {
         match self.get_block(p).and_then(super::redstone_blocks::component) {
             Some(super::redstone_blocks::Component::Hopper { .. }) => 5,
             Some(super::redstone_blocks::Component::Dispenser { .. }) => 9,
+            _ if self.chest_partner(p).is_some() => 2 * SLOTS,
             _ => SLOTS,
         }
     }

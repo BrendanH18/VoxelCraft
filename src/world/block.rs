@@ -1149,6 +1149,8 @@ impl Block {
         let c = super::wall_states::original(c.0).unwrap_or(c);
         // A log or wood block on its side answers as its Y-axis state.
         let c = super::wood::alias(c.0).map_or(c, Block);
+        // A chest's double half answers as the single chest.
+        let c = super::double_chest::plain_single(c.0).unwrap_or(c);
         (c != self).then_some(c)
     }
 
@@ -1283,6 +1285,10 @@ impl Block {
         }
         if let Some(b) = super::copper::with_facing(self, facing) {
             return b;
+        }
+        // Chests and trapped chests turn keeping their type and water.
+        if let Some(s) = super::double_chest::state(self) {
+            return super::double_chest::block(super::double_chest::ChestState { facing, ..s });
         }
         if super::wood::owns(self.0) && super::wood::switches::twin(self.0).is_none() {
             return super::wood::with_facing(self, facing);
@@ -2502,6 +2508,11 @@ impl Facing {
         }
     }
 
+    /// A quarter turn counter-clockwise seen from above.
+    pub const fn counter_clockwise(self) -> Facing {
+        self.clockwise().opposite()
+    }
+
     /// Whether this faces along X (east or west).
     pub const fn along_x(self) -> bool {
         matches!(self, Facing::East | Facing::West)
@@ -3072,14 +3083,40 @@ pub(super) const fn make(id: u16) -> BlockInfo {
     }
 }
 
-// Evaluating every state takes longer than the lint's default budget; the
-// loop is bounded by `STATE_CAPACITY`.
-#[allow(long_running_const_eval)]
+/// States per part of [`INFO`]'s evaluation.
+const INFO_PART: usize = STATE_CAPACITY / 4;
+
+const fn info_part(start: usize) -> [BlockInfo; INFO_PART] {
+    let mut arr = [make(0); INFO_PART];
+    let mut i = 0;
+    while i < INFO_PART {
+        arr[i] = make((start + i) as u16);
+        i += 1;
+    }
+    arr
+}
+
+// Evaluating every state takes longer than the lint's default budget, so
+// the table is evaluated in four parts (each its own evaluation, which
+// keeps rustc's long-evaluation progress warning away); the loops are
+// bounded by `STATE_CAPACITY`. The parts are consts, not statics, so the
+// binary holds only `INFO` (clippy's `large_const_arrays` warns of copies at
+// each use; each part has one, at compile time).
+#[allow(long_running_const_eval, clippy::large_const_arrays)]
+const INFO_0: [BlockInfo; INFO_PART] = info_part(0);
+#[allow(long_running_const_eval, clippy::large_const_arrays)]
+const INFO_1: [BlockInfo; INFO_PART] = info_part(INFO_PART);
+#[allow(long_running_const_eval, clippy::large_const_arrays)]
+const INFO_2: [BlockInfo; INFO_PART] = info_part(2 * INFO_PART);
+#[allow(long_running_const_eval, clippy::large_const_arrays)]
+const INFO_3: [BlockInfo; INFO_PART] = info_part(3 * INFO_PART);
+
 pub static INFO: [BlockInfo; STATE_CAPACITY] = {
+    let parts = [INFO_0, INFO_1, INFO_2, INFO_3];
     let mut arr = [make(0); STATE_CAPACITY];
     let mut i = 0;
     while i < STATE_CAPACITY {
-        arr[i] = make(i as u16);
+        arr[i] = parts[i / INFO_PART][i % INFO_PART];
         i += 1;
     }
     arr

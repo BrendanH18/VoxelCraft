@@ -3,7 +3,7 @@
 
 use glam::IVec3;
 
-use super::{campfire_of, decorated_pot_of, trapped_chest_of, wall_fan, wall_fan_of, wall_of, wall_ok};
+use super::{campfire_of, decorated_pot_of, wall_fan, wall_fan_of, wall_of, wall_ok};
 use crate::inventory::{stack_from_str, stack_to_string};
 use crate::world::{World, block::Block};
 
@@ -30,7 +30,7 @@ impl World {
         {
             self.drops.push((p, stack));
         }
-        if trapped_chest_of(old).is_some() && trapped_chest_of(new).is_none() {
+        if crate::world::double_chest::state(old).is_some() && !crate::world::chest::is_chest(new) {
             self.utilities.viewers.remove(&p);
         }
     }

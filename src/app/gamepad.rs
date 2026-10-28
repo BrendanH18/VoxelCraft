@@ -382,6 +382,14 @@ fn nav_for(button: Button) -> Option<Nav> {
 }
 
 impl Pads {
+    /// The chests controller players have open.
+    pub(super) fn open_chests(&self) -> impl Iterator<Item = IVec3> + '_ {
+        self.seats.iter().filter_map(|s| match s.menu {
+            Some(Menu::Items { tab: Tab::Chest(p), .. }) => Some(p),
+            _ => None,
+        })
+    }
+
     pub(super) fn trading(&self, id: u64) -> bool {
         self.seats.iter().any(|s| matches!(s.menu,Some(Menu::Items {tab:Tab::Trading(other),..}) if id==other))
     }
