@@ -392,8 +392,8 @@ Allocations so far:
 | 28872–28879 | Ender chests: `28872 + wet*4 + facing` | [utilities](verification/2026-10-25-v0.12-utilities.md) |
 | 28880–28903 | Trapped chests: `28880 + wet*12 + type*4 + facing` (type single, left, right; all registered since double chests, 2026-10-28) | [utilities](verification/2026-10-25-v0.12-utilities.md), [double chests](verification/2026-10-28-v0.12-double-chests.md) |
 | 28904–28919 | Decorated pots: `28904 + wet*8 + cracked*4 + facing` | [utilities](verification/2026-10-25-v0.12-utilities.md) |
-| 28920–28951 | Big dripleaf `facing` and `tilt`: `28920 + wet*16 + tilt*4 + facing`; north with no tilt stays 1950 and its wet partner, so 28920 and 28936 are unregistered |
-| 28952–28967 | The plain chest's double halves: `28952 + wet*8 + (type - 1)*4 + facing` (left, right; north, east, south, west; `double_chest::PLAIN_DOUBLE`); the single chest stays 53–56 and its wet partners; 28968–29695 unused | [double chests](verification/2026-10-28-v0.12-double-chests.md) | [utilities](verification/2026-10-25-v0.12-utilities.md) |
+| 28920–28951 | Big dripleaf `facing` and `tilt`: `28920 + wet*16 + tilt*4 + facing`; north with no tilt stays 1950 and its wet partner, so 28920 and 28936 are unregistered | [utilities](verification/2026-10-25-v0.12-utilities.md) |
+| 28952–28967 | The plain chest's double halves: `28952 + wet*8 + (type - 1)*4 + facing` (left, right; north, east, south, west; `double_chest::PLAIN_DOUBLE`); the single chest stays 53–56 and its wet partners; 28968–29695 unused | [double chests](verification/2026-10-28-v0.12-double-chests.md) |
 | (items) 1160–1163 | Item frame, glow item frame, painting, armor stand (`Item::ITEM_FRAME`…); 1164–1189 unused. Texture layers 2576–2685 (`utilities::t`, offsets from `utilities::TEX`); 2686–2727 the double chest halves' faces (`double_chest::tex`, 2026-10-28); 2728–2767 unused | [utilities](verification/2026-10-25-v0.12-utilities.md) |
 
 Wood track textures use layers **1776–1984** as offsets from
