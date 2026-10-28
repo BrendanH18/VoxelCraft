@@ -1221,7 +1221,12 @@ mod tests {
         assert_eq!(w.redstone_power(AT + IVec3::X), 0, "tinted glass never conducts");
         // Chests have an inset collision shape, so they don't conduct either.
         use crate::world::copper::{Family, Stage, block};
-        for chest in [Block::CHEST, block(Family::Chest, Stage::Exposed, 0)] {
+        for chest in [
+            Block::CHEST,
+            block(Family::Chest, Stage::Exposed, 0),
+            crate::world::utilities::TRAPPED_CHEST,
+            crate::world::utilities::ENDER_CHEST,
+        ] {
             w.set_block(AT, chest);
             assert_eq!(w.redstone_power(AT + IVec3::X), 0, "{chest:?} doesn't conduct");
         }

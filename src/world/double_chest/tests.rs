@@ -205,6 +205,9 @@ fn hoppers_fill_the_first_half_then_the_second_and_comparators_read_both() {
     assert_eq!(w.container_signal(p), Some(0));
     w.set_block(p + IVec3::X + IVec3::Y, Block::GLASS);
     assert!(w.chest_opens(p), "glass isn't a conductor");
+    // Nor is any chest: stacked chests still open.
+    w.set_block(p + IVec3::X + IVec3::Y, crate::world::utilities::TRAPPED_CHEST);
+    assert!(w.chest_opens(p), "a trapped chest on top doesn't block it");
 }
 
 #[test]
