@@ -565,11 +565,7 @@ impl Game {
         // `ServerExplosion.explode`: find the cells, hurt entities while the
         // walls about to go still shield them, then break the blocks.
         let cells = if blast.destroys_blocks { self.world.exploded_cells(center, power) } else { Vec::new() };
-        if credit_player {
-            self.mobs.entities.explode_credited(&self.world, center, power);
-        } else {
-            self.mobs.entities.explode(&self.world, center, power);
-        }
+        self.mobs.entities.explode_with(&self.world, center, power, credit_player, blast.destroys_blocks);
         if let Some((damage, push)) = self.session.blast(&self.world, center, power) {
             if self.damage_player_armored(self.difficulty.mob_damage(damage), cause) > 0.0 {
                 self.session.player.hurt_from(push);

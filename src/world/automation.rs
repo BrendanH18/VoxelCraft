@@ -484,8 +484,8 @@ impl World {
         if self.get_block(p).and_then(super::composter::level) == Some(8) {
             return Some(Stack::new(Item::BONE_MEAL, 1));
         }
-        if let Some(c) = self.chest(p) {
-            return c.slots[slot];
+        if self.chest(p).is_some() {
+            return self.chest_slot(p, slot);
         }
         if let Some(f) = self.furnace(p) {
             return [f.input, f.fuel, f.output][slot];
@@ -498,8 +498,7 @@ impl World {
         if stack.is_none() && self.take_compost(p).is_some() {
             return;
         }
-        if let Some(c) = self.chest_mut(p) {
-            c.slots[slot] = stack;
+        if self.set_chest_slot(p, slot, stack) {
             return;
         }
         if let Some(f) = self.furnace_mut(p) {

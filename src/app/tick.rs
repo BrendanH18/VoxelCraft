@@ -165,6 +165,13 @@ impl Game {
                     .map(|b| (b.agent.session.player.pos, b.agent.session.player.collision_shape())),
             );
         self.world.redstone_contacts(players, &self.mobs.entities);
+        // Every chest a player has open, whichever input path opened it.
+        let keyboard = match self.body.container {
+            super::Container::Chest(p) if self.inventory_open => Some(p),
+            _ => None,
+        };
+        let open: Vec<_> = keyboard.into_iter().chain(self.pads.open_chests()).chain(self.open_chests()).collect();
+        self.world.set_chest_viewers(open);
         crate::simulation::tick_world_rules(
             &mut self.world,
             self.session.player.pos,

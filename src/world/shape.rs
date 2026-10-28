@@ -749,10 +749,10 @@ pub fn collision_or_cube(block: Block, neighbour: impl Fn(Facing) -> Block, belo
     }
     let mut out = Boxes::new();
     match block.base() {
-        // Drawn as cubes, but Java's shapes are inset: a single chest
-        // (`Block.column(14, 0, 14)`) and cactus collision.
-        Block::CHEST => out.push(b([1, 0, 1], [15, 14, 15])),
-        _ if super::copper::is_chest(block) => out.push(b([1, 0, 1], [15, 14, 15])),
+        // Drawn as cubes, but Java's shapes are inset: chests (a single
+        // one is `Block.column(14, 0, 14)`; a half reaches its partner)
+        // and cactus collision.
+        _ if let Some(chest) = super::double_chest::shape(block) => out.push(chest),
         Block::CACTUS | Block::HONEY_BLOCK => out.push(b([1, 0, 1], [15, 15, 15])),
         _ if block.is_solid() => out.push(b([0, 0, 0], [16, 16 - block.top_drop(), 16])),
         _ => {}

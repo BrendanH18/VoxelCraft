@@ -117,11 +117,10 @@ impl Screen<'_> {
                 if i >= self.world.container_slots(p) {
                     return;
                 }
-                let Some(stack) = self.world.chest_mut(p).and_then(|c| c.slots[i].take()) else { return };
+                let Some(stack) = self.world.chest_slot(p, i) else { return };
+                self.world.set_chest_slot(p, i, None);
                 let left = self.move_to_player(stack);
-                if let Some(c) = self.world.chest_mut(p) {
-                    c.slots[i] = left;
-                }
+                self.world.set_chest_slot(p, i, left);
             }
             SlotRef::Craft(i) => {
                 let Some(stack) = self.craft.cells[i].take() else { return };
@@ -239,10 +238,7 @@ impl Screen<'_> {
             }
             Container::Chest(p) => {
                 let order: Vec<usize> = (0..self.world.container_slots(p)).collect();
-                return match self.world.chest_mut(p) {
-                    Some(c) => move_into(stack, &mut c.slots, &order),
-                    None => Some(stack),
-                };
+                return self.world.with_chest_slots(p, |slots| move_into(stack, slots, &order)).unwrap_or(Some(stack));
             }
             Container::Furnace(p) => {
                 let smeltable = self.world.furnace(p).is_some_and(|f| f.kind.smelt(stack.item).is_some());
@@ -444,9 +440,10 @@ impl Screen<'_> {
                 }
                 if let Container::Chest(pos) = *self.container
                     && i < self.world.container_slots(pos)
-                    && let Some(chest) = self.world.chest_mut(pos)
                 {
-                    crate::inventory::click_slot(&mut chest.slots[i], &mut self.session.inventory.cursor, right);
+                    let cursor = &mut self.session.inventory.cursor;
+                    self.world
+                        .with_chest_slots(pos, |slots| crate::inventory::click_slot(&mut slots[i], cursor, right));
                 }
             }
             Some(s @ (SlotRef::FurnaceInput | SlotRef::FurnaceFuel | SlotRef::FurnaceOutput)) => {

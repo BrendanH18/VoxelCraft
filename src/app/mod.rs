@@ -1156,7 +1156,6 @@ impl Game {
         } else {
             if let Container::Chest(pos) = self.body.container {
                 self.chest_sound(pos, 0.8);
-                self.world.chest_closed(pos);
                 self.close_ender_chest(pos);
             }
             let table = self.take_work();

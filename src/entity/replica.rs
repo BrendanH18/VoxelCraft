@@ -112,6 +112,7 @@ impl Entities {
                     vel: DVec3::ZERO,
                     age: e["age"].as_f64().unwrap_or(0.0) as f32,
                     phase: e["phase"].as_f64().unwrap_or(0.0) as f32,
+                    health: super::orb::HEALTH,
                 })
             })
             .collect();

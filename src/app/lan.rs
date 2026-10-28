@@ -620,6 +620,14 @@ impl Game {
             }
         }
     }
+    /// The chests LAN players have open.
+    pub(super) fn open_chests(&self) -> impl Iterator<Item = IVec3> + '_ {
+        self.lan.peers.iter().filter(|p| p.open).filter_map(|p| match p.body.container() {
+            Container::Chest(pos) => Some(pos),
+            _ => None,
+        })
+    }
+
     /// Opens screen `container` for a LAN player, as their click would.
     fn peer_open(&mut self, peer: &mut Peer, container: Container) {
         let Some(name) = peer.profile.clone() else { return };
@@ -1145,7 +1153,11 @@ impl Game {
             let work: Vec<_> = bot.agent.session.work.iter().map(|s| stack_to_string(*s)).collect();
             let container = match peer.body.container() {
                 Container::Chest(p) => {
-                    json!({"kind":"chest","pos":p.to_array(),"state":self.world.chest(p).map(|c|c.serialize())})
+                    // A double chest's other half (protocol 3 clients without it see one half).
+                    let partner = self.world.chest_partner(p);
+                    let partner_state = partner.and_then(|q| self.world.chest(q)).map(|c| c.serialize());
+                    json!({"kind":"chest","pos":p.to_array(),"state":self.world.chest(p).map(|c|c.serialize()),
+                        "partner":partner.map(|q|q.to_array()),"partner_state":partner_state})
                 }
                 Container::EnderChest(p) => {
                     json!({"kind":"ender_chest","pos":p.to_array(),"state":bot.agent.session.ender.serialize()})
@@ -1527,6 +1539,11 @@ impl Game {
             (Some("chest"), Some(p)) => {
                 if let Some(text) = c["state"].as_str() {
                     self.world.load_chests(&format!("{},{},{}={text}", p.x, p.y, p.z));
+                }
+                if let (Some(q), Some(text)) =
+                    (vector(&c["partner"]).map(|q| q.as_ivec3()), c["partner_state"].as_str())
+                {
+                    self.world.load_chests(&format!("{},{},{}={text}", q.x, q.y, q.z));
                 }
                 Container::Chest(p)
             }

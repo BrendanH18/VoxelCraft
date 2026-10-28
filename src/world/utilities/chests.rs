@@ -1,6 +1,6 @@
-//! Decorated pots (`DecoratedPotBlock`), which keep one stack; trapped
-//! chests (`TrappedChestBlock`), whose redstone signal is the number of
-//! players looking in; and ender chests (`EnderChestBlock`), whose
+//! Decorated pots (`DecoratedPotBlock`), which keep one stack; chest
+//! viewers, which trapped chests (`TrappedChestBlock`) signal as their
+//! redstone power; and ender chests (`EnderChestBlock`), whose
 //! contents belong to the player.
 
 use glam::IVec3;
@@ -60,23 +60,33 @@ impl World {
         self.utilities.lent
     }
 
-    /// A player opened the chest at `p`; trapped chests start signalling.
-    pub fn chest_opened(&mut self, p: IVec3) {
-        if self.get_block(p).is_some_and(|b| trapped_chest_of(b).is_some()) {
-            let n = self.utilities.viewers.entry(p).or_default();
-            *n = n.saturating_add(1);
-            self.redstone_changed(p);
-        }
-    }
-
-    /// A player closed the chest at `p`.
-    pub fn chest_closed(&mut self, p: IVec3) {
-        if let Some(n) = self.utilities.viewers.get_mut(&p) {
-            *n = n.saturating_sub(1);
-            if *n == 0 {
-                self.utilities.viewers.remove(&p);
+    /// `ContainerOpenersCounter.recheckOpeners`: every chest a player has
+    /// open, once per tick from all input paths. Both halves of a double
+    /// chest count each viewer, so trapped chests signal and copper chests
+    /// stop aging; comparators and trapped chests hear of each change.
+    pub fn set_chest_viewers(&mut self, open: impl IntoIterator<Item = IVec3>) {
+        let mut viewers: rustc_hash::FxHashMap<IVec3, u8> = Default::default();
+        for p in open {
+            let (first, second) = self.chest_halves(p);
+            for q in std::iter::once(first).chain(second) {
+                if self.get_block(q).is_some_and(|b| crate::world::double_chest::state(b).is_some()) {
+                    let n = viewers.entry(q).or_default();
+                    *n = n.saturating_add(1);
+                }
             }
-            self.redstone_changed(p);
+        }
+        if viewers == self.utilities.viewers {
+            return;
+        }
+        let old = std::mem::replace(&mut self.utilities.viewers, viewers);
+        let changed: Vec<IVec3> = old
+            .iter()
+            .filter(|(q, n)| self.utilities.viewers.get(q) != Some(n))
+            .map(|(q, _)| *q)
+            .chain(self.utilities.viewers.keys().filter(|q| !old.contains_key(q)).copied())
+            .collect();
+        for q in changed {
+            self.redstone_changed(q);
         }
     }
 

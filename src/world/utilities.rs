@@ -23,7 +23,7 @@ mod tests;
 use glam::IVec3;
 use rustc_hash::FxHashMap;
 
-use super::block::{Block, Facing, RenderKind, tex as btex};
+use super::block::{Block, Facing, RenderKind};
 use super::shape::{Box16, Boxes};
 use crate::inventory::Stack;
 use crate::item::{Item, ToolKind};
@@ -66,8 +66,9 @@ impl crate::world::World {
 
 /// First state of the reservation.
 pub const FIRST: u16 = 28672;
-/// One past the last registered state; 28952..=29695 stay free.
-pub const END: u16 = 28952;
+/// One past the last registered state (the plain chest's double halves,
+/// [`super::double_chest::PLAIN_DOUBLE`], end it); 28968..=29695 stay free.
+pub const END: u16 = super::double_chest::PLAIN_DOUBLE_END;
 const _: () = assert!(END <= 29696);
 
 /// Empty cauldron; water cauldron levels 1–3 follow, then lava, then powder
@@ -94,8 +95,7 @@ const WALL_FAN_FIRST: u16 = 28792;
 const ENDER_FIRST: u16 = 28872;
 pub const ENDER_CHEST: Block = Block(ENDER_FIRST);
 /// Trapped chests: `28880 + wet * 12 + type * 4 + facing` (type single, left,
-/// right). Chests here are single, as the plain chest is, so the left and
-/// right ids stay unregistered until double chests exist.
+/// right; see `double_chest`).
 const TRAPPED_FIRST: u16 = 28880;
 pub const TRAPPED_CHEST: Block = Block(TRAPPED_FIRST);
 /// Decorated pots: `28904 + wet * 8 + cracked * 4 + facing`.
@@ -157,7 +157,9 @@ pub mod t {
     pub const DECORATED_SIDE: u16 = TEX + 107;
     pub const DECORATED_TOP: u16 = TEX + 108;
     pub const DECORATED_CRACKED: u16 = TEX + 109;
-    pub const COUNT: u16 = 110;
+    /// The double chest halves' faces (`double_chest::tex`).
+    pub const DOUBLE: u16 = TEX + 110;
+    pub const COUNT: u16 = 110 + crate::world::double_chest::tex::COUNT;
 }
 /// One past this module's last layer; the track owns 2576..=2767.
 pub const TEX_END: u16 = TEX + t::COUNT;
@@ -373,15 +375,12 @@ pub const fn trapped_chest(facing: Facing, wet: bool) -> Block {
     Block(TRAPPED_FIRST + wet as u16 * 12 + fi(facing))
 }
 
-/// `(facing, wet)` of a (single) trapped chest.
+/// `(facing, wet)` of a trapped chest, single or either half of a pair.
 pub const fn trapped_chest_of(b: Block) -> Option<(Facing, bool)> {
     if b.0 < TRAPPED_FIRST || b.0 >= TRAPPED_FIRST + 24 {
         return None;
     }
     let i = b.0 - TRAPPED_FIRST;
-    if i % 12 >= 4 {
-        return None;
-    }
     Some((FACINGS[(i % 4) as usize], i >= 12))
 }
 
@@ -515,16 +514,17 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
             let Some((facing, _)) = ender_chest_of(Block(id)) else { return None };
             ("ender chest", Opaque, fronted(t::ENDER_FRONT, t::ENDER_SIDE, t::ENDER_TOP, facing))
         }
-        TRAPPED_FIRST..DECORATED_FIRST => {
-            let Some((facing, _)) = trapped_chest_of(Block(id)) else { return None };
-            ("trapped chest", Opaque, fronted(t::TRAPPED_FRONT, btex::CHEST_SIDE, btex::CHEST_TOP, facing))
+        TRAPPED_FIRST..DECORATED_FIRST | super::double_chest::PLAIN_DOUBLE..END => {
+            let Some(s) = super::double_chest::state(Block(id)) else { return None };
+            let name = if matches!(s.kind, super::double_chest::Kind::Trapped) { "trapped chest" } else { "chest" };
+            (name, Opaque, super::double_chest::faces(s))
         }
         DECORATED_FIRST..DRIPLEAF_FIRST => {
             let Some((_, cracked, _)) = decorated_pot_of(Block(id)) else { return None };
             let side = if cracked { t::DECORATED_CRACKED } else { t::DECORATED_SIDE };
             ("decorated pot", Shaped, column(side, t::DECORATED_TOP, t::DECORATED_TOP))
         }
-        DRIPLEAF_FIRST..END => {
+        DRIPLEAF_FIRST..super::double_chest::PLAIN_DOUBLE => {
             if dripleaf_of(Block(id)).is_none() {
                 return None;
             }
@@ -548,7 +548,8 @@ pub const fn water_pair(id: u16) -> Option<(u16, bool)> {
         ENDER_FIRST..TRAPPED_FIRST => (ENDER_FIRST, 4, true),
         TRAPPED_FIRST..DECORATED_FIRST => (TRAPPED_FIRST, 12, true),
         DECORATED_FIRST..DRIPLEAF_FIRST => (DECORATED_FIRST, 8, true),
-        DRIPLEAF_FIRST..END => (DRIPLEAF_FIRST, 16, true),
+        DRIPLEAF_FIRST..super::double_chest::PLAIN_DOUBLE => (DRIPLEAF_FIRST, 16, true),
+        super::double_chest::PLAIN_DOUBLE..END => (super::double_chest::PLAIN_DOUBLE, 8, true),
         _ => return None,
     };
     let i = id - first;

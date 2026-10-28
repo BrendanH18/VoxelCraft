@@ -19,9 +19,10 @@ fn registered() -> impl Iterator<Item = Block> {
 fn every_state_is_registered_once_with_rules() {
     let states: Vec<Block> = registered().collect();
     // 8 cauldrons, 34 pots, a lodestone, 5 anchors, 64 campfires, 80 wall
-    // fans, 8 ender chests, 8 single trapped chests, 16 decorated pots and
-    // 30 dripleaf states (north/no tilt is the existing big dripleaf).
-    assert_eq!(states.len(), 8 + 34 + 1 + 5 + 64 + 80 + 8 + 8 + 16 + 30);
+    // fans, 8 ender chests, 24 trapped chests (single and double halves),
+    // 16 decorated pots, 30 dripleaf states (north/no tilt is the existing
+    // big dripleaf) and the plain chest's 16 double halves.
+    assert_eq!(states.len(), 8 + 34 + 1 + 5 + 64 + 80 + 8 + 24 + 16 + 30 + 16);
     for b in states {
         assert_ne!(b.kind(), RenderKind::Invisible, "{}", b.0);
         assert!(b.hardness().is_finite(), "{}", b.name());
@@ -339,13 +340,11 @@ fn trapped_chests_signal_their_viewers() {
     assert!(crate::world::chest::is_chest(TRAPPED_CHEST));
     assert!(w.chest(p).is_some(), "it stores items like a chest");
     assert_eq!(w.trapped_signal(p, TRAPPED_CHEST, IVec3::X, false), Some(0));
-    w.chest_opened(p);
-    w.chest_opened(p);
+    w.set_chest_viewers([p, p]);
     assert_eq!(w.trapped_signal(p, TRAPPED_CHEST, IVec3::X, false), Some(2));
     assert_eq!(w.trapped_signal(p, TRAPPED_CHEST, IVec3::X, true), Some(0));
     assert_eq!(w.trapped_signal(p, TRAPPED_CHEST, IVec3::NEG_Y, true), Some(2));
-    w.chest_closed(p);
-    w.chest_closed(p);
+    w.set_chest_viewers([]);
     assert_eq!(w.chest_viewers(p), 0);
 }
 

@@ -346,10 +346,14 @@ pub fn palette_ids() -> impl Iterator<Item = u16> {
 }
 
 /// Java `isRedstoneConductor`: full opaque cubes except copper bulbs and
-/// chests (whose collision shape is inset); the see-through slime block
-/// conducts because its collision shape is full.
+/// chests of every kind, ender chests included (their collision shape is
+/// inset); the see-through slime block conducts because its collision
+/// shape is full.
 pub fn conductor(b: Block) -> bool {
-    (b.is_opaque() && super::copper::bulb(b).is_none() && b.base() != Block::CHEST && !super::copper::is_chest(b))
+    (b.is_opaque()
+        && super::copper::bulb(b).is_none()
+        && super::double_chest::state(b).is_none()
+        && super::utilities::ender_chest_of(b).is_none())
         || b == super::stone_blocks::SLIME_BLOCK
 }
 

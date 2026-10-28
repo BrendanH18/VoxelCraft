@@ -1,7 +1,7 @@
 //! Procedural textures for the v0.12 utility blocks (layers from
 //! `utilities::TEX`): original artwork for cauldrons, flower pots, potted
 //! plants, lodestones, respawn anchors, campfires, coral wall fans, ender
-//! and trapped chests and decorated pots.
+//! and trapped chests, decorated pots and the double chest halves.
 //!
 //! Shaped blocks sample a face texture by position in the cell: a side
 //! texel `(x, row)` is the cell's `y = 15 - row`, and a top texel `(x, y)`
@@ -22,6 +22,16 @@ const CORAL: [[u8; 3]; 5] = [[50, 90, 210], [206, 80, 160], [160, 30, 190], [190
 const DEAD_CORAL: [u8; 3] = [130, 122, 118];
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
+    // Double chest halves copy their single chest's texture without the
+    // frame at the joint, each showing half the latch.
+    if let Some((single, rows, hi)) = crate::world::double_chest::texture(layer) {
+        use crate::world::double_chest::joint_source;
+        return if rows {
+            base_pixel(single, x, joint_source(y, hi))
+        } else {
+            base_pixel(single, joint_source(x, hi), y)
+        };
+    }
     let r = rnd(layer, x, y, 0);
     match layer {
         t::CAULDRON_SIDE => {
