@@ -32,6 +32,7 @@ pub mod dismount;
 pub mod dungeon;
 pub mod end;
 pub mod end_portal;
+pub mod explosion;
 pub mod falling;
 mod fire;
 mod fluid;
@@ -475,6 +476,9 @@ impl World {
         render_distance: i32,
         meshes_enabled: bool,
     ) -> Self {
+        // Build the per-state explosion tables while the world loads, not
+        // in the frame of the first blast.
+        explosion::prepare();
         let rng = generator.seed ^ 0x6772_6f77;
         Self {
             workers: Workers::new(generator.clone()),
@@ -2099,7 +2103,7 @@ mod tests {
         for x in -6..=6 {
             for z in -6..=6 {
                 for dy in -4..=0 {
-                    world.edit(IVec3::new(x, y + dy, z), Block::STONE, false);
+                    world.edit(IVec3::new(x, y + dy, z), Block::DIRT, false);
                 }
             }
         }
@@ -2113,12 +2117,12 @@ mod tests {
         }
 
         let removed = world.explode(DVec3::new(0.5, y as f64 + 1.0, 0.5), 3.0);
-        assert!(removed > 30, "only {removed} blocks");
+        assert!(removed > 15, "only {removed} blocks");
         assert_eq!(world.get_block(IVec3::new(0, y, 0)), Some(Block::AIR));
         assert_eq!(world.get_block(IVec3::new(1, y, 0)), Some(Block::OBSIDIAN));
         assert_eq!(world.get_block(IVec3::new(-1, y, 0)), Some(Block::ANCIENT_DEBRIS));
         assert_eq!(world.get_block(IVec3::new(0, y, 1)), Some(Block::NETHERITE_BLOCK));
-        assert_eq!(world.get_block(IVec3::new(6, y - 4, 6)), Some(Block::STONE), "outside the blast");
+        assert_eq!(world.get_block(IVec3::new(6, y - 4, 6)), Some(Block::DIRT), "outside the blast");
         assert_eq!(world.get_block(IVec3::new(0, y + 1, 0)), Some(Block::AIR));
         let falling = world.falling_blocks().len();
         assert!((3..=4).contains(&falling), "{falling} sand blocks falling");

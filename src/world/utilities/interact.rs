@@ -104,9 +104,7 @@ pub fn use_block(
         return Some(Effect::PotEmptied);
     }
     if super::ender_chest_of(b).is_some() {
-        // `EnderChestBlock.useWithoutItem`: a conductor on top keeps it shut.
-        let blocked = world.get_block(pos + IVec3::Y).is_some_and(|a| a.is_opaque());
-        return Some(if blocked { Effect::Consumed } else { Effect::EnderChest });
+        return Some(if super::ender_chest_opens(world, pos) { Effect::EnderChest } else { Effect::Consumed });
     }
     if super::decorated_pot_of(b).is_some() {
         // `DecoratedPotBlock.useItemOn`: one of the held item goes in when

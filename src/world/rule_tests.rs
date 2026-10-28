@@ -78,12 +78,12 @@ fn explosion_drops_decay_by_one_over_power_unless_the_source_never_decays() {
         for x in -8..=8 {
             for z in -8..=8 {
                 for y in FLOOR - 4..=FLOOR {
-                    w.edit(IVec3::new(x, y, z), Block::STONE, false);
+                    w.edit(IVec3::new(x, y, z), Block::DIRT, false);
                 }
             }
         }
         let removed = w.explode_with_decay(DVec3::new(0.5, FLOOR as f64 + 1.0, 0.5), 4.0, drops, decay);
-        (removed, w.drops.len())
+        (removed, w.drops.iter().map(|(_, s)| usize::from(s.count)).sum::<usize>())
     };
     let (removed, kept) = blast(false, true);
     assert!(removed > 40);

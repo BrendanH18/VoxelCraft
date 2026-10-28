@@ -5,7 +5,8 @@
 //! Each VoxelCraft state is mapped to its Java block and the state values its
 //! table names, then broken through `World::spill_with_item` (the mining drop
 //! path) with each scenario's tool: bare hand, a plain tool, shears, Silk Touch
-//! and Fortune I-III. Fixed drops must match exactly; random ones are sampled
+//! and Fortune I-III, and caught in a radius-4 explosion with decay
+//! (`World::spill_exploded`). Fixed drops must match exactly; random ones are sampled
 //! with the world's seeded RNG and checked against the exact chance, mean and
 //! range the extractor computed. Java blocks VoxelCraft doesn't register are
 //! listed, not failed; intentional differences are allow-listed below.

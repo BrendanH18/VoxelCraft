@@ -1,7 +1,8 @@
 //! Shared by `tests/java_block_loot.rs` and `examples/block_loot_audit.rs`:
 //! compares every registered state's drops with the Java 26.3 block loot
 //! fixture. The fixture is independent Java data; this module only maps
-//! VoxelCraft states to Java blocks and state values, and samples drops.
+//! VoxelCraft states to Java blocks and state values, and samples drops,
+//! mined and caught in an explosion.
 #![allow(dead_code)]
 
 use glam::IVec3;
@@ -32,6 +33,8 @@ const RANDOM_RUNS: usize = 4000;
 const FIXED_RUNS: usize = 4;
 /// Further states of an already sampled case check only the range.
 const REPEAT_RUNS: usize = 8;
+/// The fixture's `explosion` scenario: a TNT block or creeper with decay.
+const EXPLOSION_RADIUS: f32 = 4.0;
 
 /// Intentional differences, each a decision or a mechanic a later release
 /// brings. An entry that matches again fails the test so the list stays honest.
@@ -283,6 +286,8 @@ fn held(b: Block, scenario: &str) -> Option<Option<Stack>> {
     let harvests = |s: Option<Stack>| mining::can_harvest(b, s.map(|s| s.item)).then_some(s);
     match scenario {
         "hand" => harvests(None),
+        // A blast rolls the table with an empty tool whatever the block needs.
+        "explosion" => Some(None),
         "shears" => harvests(Some(Stack::new(Item::SHEARS, 1))),
         _ => {
             let mut enchants = Enchants::NONE;
@@ -334,6 +339,22 @@ fn sample(world: &mut World, b: Block, held: Option<Stack>, runs: usize) -> Vec<
         .map(|_| {
             world.drops.clear();
             world.spill_with_item(IVec3::ZERO, b, held);
+            let mut totals = BTreeMap::new();
+            for (_, s) in &world.drops {
+                *totals.entry(s.item.0).or_insert(0) += u32::from(s.count);
+            }
+            totals
+        })
+        .collect()
+}
+
+/// Item totals of `runs` blasts of radius [`EXPLOSION_RADIUS`] with decay
+/// (`ServerExplosion.interactWithBlocks`), before drops are merged.
+fn sample_exploded(world: &mut World, b: Block, runs: usize) -> Vec<BTreeMap<u16, u32>> {
+    (0..runs)
+        .map(|_| {
+            world.drops.clear();
+            world.spill_exploded(IVec3::ZERO, b, Some(EXPLOSION_RADIUS));
             let mut totals = BTreeMap::new();
             for (_, s) in &world.drops {
                 *totals.entry(s.item.0).or_insert(0) += u32::from(s.count);
@@ -439,7 +460,9 @@ pub fn audit() -> Audit {
         let mut problems: Vec<String> = Vec::new();
         let mut failed_scenarios = BTreeSet::new();
         for &b in blocks {
-            for scenario in ["hand", "pickaxe", "shears", "silk_touch", "fortune_1", "fortune_2", "fortune_3"] {
+            for scenario in
+                ["hand", "pickaxe", "shears", "silk_touch", "fortune_1", "fortune_2", "fortune_3", "explosion"]
+            {
                 let Some(held) = held(b, scenario) else {
                     audit.skipped += 1;
                     continue;
@@ -458,7 +481,11 @@ pub fn audit() -> Audit {
                     (true, false) => FIXED_RUNS,
                     (false, _) => REPEAT_RUNS,
                 };
-                let observed = sample(&mut world, b, held, runs);
+                let observed = if scenario == "explosion" {
+                    sample_exploded(&mut world, b, runs)
+                } else {
+                    sample(&mut world, b, held, runs)
+                };
                 if let Some(message) = compare(&expected, &observed, first) {
                     failed_scenarios.insert(scenario);
                     problems.push(format!("{java} [{} #{} {key}] {scenario}: {message}", b.name(), b.0));

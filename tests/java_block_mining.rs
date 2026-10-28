@@ -1,6 +1,6 @@
 //! Every registered block state against Java 26.3's mining properties:
-//! hardness, whether each tool (and a bare hand) harvests it, and the
-//! per-tick dig progress each tool makes. See `block_mining.json`.
+//! hardness, blast resistance, whether each tool (and a bare hand) harvests
+//! it, and the per-tick dig progress each tool makes. See `block_mining.json`.
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use voxelcraft::{
@@ -248,6 +248,10 @@ fn every_registered_block_state_mines_like_java_26_3() {
         let expected = if expected == -1.0 { f32::INFINITY } else { expected };
         if block.hardness() != expected {
             found.insert(format!("hardness {} (Java {expected})", block.hardness()));
+        }
+        let resistance = java.blocks[id]["blast_resistance"].as_f64().unwrap() as f32;
+        if block.blast_resistance() != resistance {
+            found.insert(format!("blast resistance {} (Java {resistance})", block.blast_resistance()));
         }
         for &item in &held {
             if mining::can_harvest(block, item) != java.harvests(id, item) {

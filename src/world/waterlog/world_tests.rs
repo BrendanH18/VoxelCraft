@@ -124,7 +124,8 @@ fn explosions_spare_blocks_that_hold_water() {
     let mut w = world();
     w.set_block(P, Block::OAK_FENCE.with_water(true));
     w.set_block(P + IVec3::X, Block::OAK_FENCE);
-    w.explode_with_drops(P.as_dvec3() + DVec3::splat(0.5), 2.0, false);
+    // Water's resistance (100) stops every ray in the waterlogged cell.
+    w.explode_with_drops(P.as_dvec3() + DVec3::new(2.5, 0.5, 0.5), 4.0, false);
     assert_eq!(w.get_block(P), Some(Block::OAK_FENCE.with_water(true)));
     assert_eq!(w.get_block(P + IVec3::X), Some(Block::AIR));
 }

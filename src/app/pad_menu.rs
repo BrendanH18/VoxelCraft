@@ -43,6 +43,8 @@ pub(super) enum Tab {
     /// Creative players' item palette.
     Palette,
     Chest(IVec3),
+    /// The player's own ender inventory, at the ender chest in this cell.
+    EnderChest(IVec3),
     Vehicle(u32),
     Furnace(IVec3),
     Brewing(IVec3),
@@ -58,6 +60,7 @@ impl Tab {
     pub fn matches_block(self, block: Block) -> bool {
         match self {
             Tab::Chest(_) | Tab::Vehicle(_) => crate::world::chest::is_chest(block),
+            Tab::EnderChest(_) => crate::world::utilities::ender_chest_of(block).is_some(),
             Tab::Furnace(_) => crate::world::furnace::is_furnace(block),
             Tab::Brewing(_) => block == Block::BREWING_STAND,
             Tab::Enchanting(_) => block == Block::ENCHANTING_TABLE,
@@ -72,6 +75,7 @@ impl Tab {
     pub fn container(self) -> Container {
         match self {
             Tab::Chest(p) => Container::Chest(p),
+            Tab::EnderChest(p) => Container::EnderChest(p),
             Tab::Vehicle(id) => Container::Minecart(id),
             Tab::Furnace(p) => Container::Furnace(p),
             Tab::Brewing(p) => Container::Brewing(p),
@@ -236,7 +240,7 @@ fn rows(tab: Tab, lists: Lists) -> usize {
         | Tab::Grindstone(_)
         | Tab::Smithing(_) => 5,
         Tab::Trading(_) => 6,
-        Tab::Chest(_) | Tab::Vehicle(_) => container_rows(lists) + 4,
+        Tab::Chest(_) | Tab::EnderChest(_) | Tab::Vehicle(_) => container_rows(lists) + 4,
         Tab::Crafting => lists.crafts.div_ceil(COLS),
         Tab::Palette => lists.palette.div_ceil(COLS),
     }
@@ -245,7 +249,7 @@ fn rows(tab: Tab, lists: Lists) -> usize {
 fn row_len(tab: Tab, row: usize, lists: Lists) -> usize {
     let list = match tab {
         Tab::Trading(_) if row < 2 => return 5,
-        Tab::Chest(_) | Tab::Vehicle(_) if row < container_rows(lists) => {
+        Tab::Chest(_) | Tab::EnderChest(_) | Tab::Vehicle(_) if row < container_rows(lists) => {
             return (lists.container - row * container_cols(lists)).min(container_cols(lists));
         }
         Tab::Inventory if row == 0 => return ArmorPiece::ALL.len(),
@@ -291,11 +295,11 @@ fn slot(tab: Tab, col: usize, row: usize, lists: Lists) -> Slot {
         | Tab::Anvil(_)
         | Tab::Grindstone(_)
         | Tab::Smithing(_) => inv(COLS * row + col),
-        Tab::Chest(_) | Tab::Vehicle(_) if row < container_rows(lists) => {
+        Tab::Chest(_) | Tab::EnderChest(_) | Tab::Vehicle(_) if row < container_rows(lists) => {
             Slot::Ref(SlotRef::Chest(container_cols(lists) * row + col))
         }
-        Tab::Chest(_) | Tab::Vehicle(_) if row == container_rows(lists) + 3 => inv(col),
-        Tab::Chest(_) | Tab::Vehicle(_) => inv(COLS * (row - container_rows(lists) + 1) + col),
+        Tab::Chest(_) | Tab::EnderChest(_) | Tab::Vehicle(_) if row == container_rows(lists) + 3 => inv(col),
+        Tab::Chest(_) | Tab::EnderChest(_) | Tab::Vehicle(_) => inv(COLS * (row - container_rows(lists) + 1) + col),
         Tab::Crafting => Slot::Recipe(COLS * row + col),
         Tab::Palette => Slot::Palette(COLS * row + col),
     }
@@ -436,7 +440,7 @@ impl Game {
             | Tab::Grindstone(_)
             | Tab::Smithing(_) => 4.0 * ((r >= 1) as u8 + (r >= 4) as u8) as f32,
             Tab::Trading(_) => 4.0 * ((r >= 2) as u8 + (r >= 5) as u8) as f32,
-            Tab::Chest(_) | Tab::Vehicle(_) => {
+            Tab::Chest(_) | Tab::EnderChest(_) | Tab::Vehicle(_) => {
                 4.0 * ((r >= container_rows(lists)) as u8 + (r >= container_rows(lists) + 3) as u8) as f32
             }
             Tab::Crafting | Tab::Palette => 0.0,
@@ -452,6 +456,7 @@ impl Game {
             Tab::Crafting => "Crafting  (LB: inventory)",
             Tab::Palette => "Items  (RB: inventory)",
             Tab::Chest(p) => super::hud::container_title(self.world.get_block(p)),
+            Tab::EnderChest(_) => "Ender Chest",
             Tab::Vehicle(id) => self.mobs.entities.vehicle_title(id),
             Tab::Furnace(_) => "Furnace",
             Tab::Brewing(_) => "Brewing Stand  (fuel, ingredient, bottles)",
@@ -464,6 +469,7 @@ impl Game {
         ui.text(px + 6.0, py + 5.0, title, WHITE);
         let chest = match tab {
             Tab::Chest(pos) => self.world.chest(pos),
+            Tab::EnderChest(_) => Some(&bot.agent.session.ender),
             _ => None,
         };
         let furnace = match tab {
@@ -509,7 +515,9 @@ impl Game {
         let mut clue = None;
         for r in first..first + shown {
             for c in 0..row_len(tab, r, lists) {
-                let offset = if matches!(tab, Tab::Chest(_) | Tab::Vehicle(_)) && r < container_rows(lists) {
+                let offset = if matches!(tab, Tab::Chest(_) | Tab::EnderChest(_) | Tab::Vehicle(_))
+                    && r < container_rows(lists)
+                {
                     if lists.container == 9 {
                         54.0
                     } else if lists.container == 5 {

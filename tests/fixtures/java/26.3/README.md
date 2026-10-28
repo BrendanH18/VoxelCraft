@@ -338,14 +338,18 @@ variance. The extractor models `set_count`, `limit_count`, the three Fortune
 formulas, `table_bonus` and `random_chance` after checking their bytecode,
 and fails on any entry type, condition, function or key it doesn't know.
 Mining has no explosion, so `survives_explosion` passes and `explosion_decay`
-keeps every item; each table's explosion conditions are listed but not
-compared. A decorated pot broken by a `#breaks_decorated_pots` tool without
+keeps every item. A separate `explosion` scenario evaluates each table as
+`ServerExplosion.interactWithBlocks` does with decay at radius 4 (a TNT
+block or creeper): an empty tool, `survives_explosion` passing with chance
+1/4 (`ExplosionCondition`) and each item surviving `explosion_decay` with
+chance 1/4 (`ApplyExplosionDecay`), both checked in bytecode. A decorated pot broken by a `#breaks_decorated_pots` tool without
 Silk Touch is cracked first (`DecoratedPotBlock.playerWillDestroy`) and drops
 its four sides, bricks when undecorated.
 
 `tests/java_block_loot.rs` maps every registered VoxelCraft state to its Java
 block and state values, breaks it through `World::spill_with_item` with each
-scenario's tool that can harvest it, and compares the drops: exactly for fixed
+scenario's tool that can harvest it (and through `World::spill_exploded` for
+the explosion scenario, whatever the block needs), and compares the drops: exactly for fixed
 drops, and by chance and mean (five standard errors, seeded world RNG) for
 random ones. It also breaks beds and double tall grass and large ferns through
 the mining session, where Java drops the loot once. Unregistered Java blocks are

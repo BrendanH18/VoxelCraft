@@ -1607,6 +1607,12 @@ impl Block {
         }
     }
 
+    /// Java's blast resistance (`explosionResistance`), which weakens an
+    /// explosion's rays (see [`super::explosion`]).
+    pub fn blast_resistance(self) -> f32 {
+        super::explosion::resistance(self)
+    }
+
     /// Minecraft's hardness: mining takes 1.5x this many seconds when the
     /// held item can harvest the block and 5x when it can't, divided by the
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.

@@ -493,6 +493,15 @@ impl GameRules {
         }
     }
 
+    /// Whether a blast with this death message sets fires
+    /// (`ServerExplosion.createFire`): beds and respawn anchors always
+    /// (`BedBlock`, `RespawnAnchorBlock`), ghast fireballs with
+    /// `mob_griefing` (`LargeFireball.onHit`). Creepers, TNT and end
+    /// crystals never do.
+    pub fn explosion_fire(&self, cause: &str) -> bool {
+        cause.contains("[Intentional Game Design]") || cause.contains("ghast") && self.bool("mob_griefing")
+    }
+
     /// `NetherPortalBlock.getPortalTransitionTime`: ticks a player stands in
     /// a Nether portal before it takes them. Invulnerable players (Creative
     /// and Spectator) use their own delay.

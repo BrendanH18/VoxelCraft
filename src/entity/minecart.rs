@@ -8,7 +8,7 @@ use glam::{DVec3, IVec3};
 
 use crate::inventory::{Stack, stack_from_str, stack_to_string};
 use crate::item::Item;
-use crate::physics::{self, Shape};
+use crate::physics::{self, BlockSource, Shape};
 use crate::world::World;
 use crate::world::block::{Block, RailShape};
 use crate::world::rails::{self, RailKind};
@@ -1171,11 +1171,18 @@ impl super::Entities {
         }
     }
 
-    pub(super) fn blast_carts(&mut self, center: DVec3, power: f32) {
+    pub(super) fn blast_carts<W: BlockSource + ?Sized>(&mut self, world: &W, center: DVec3, power: f32) {
         let mut i = 0;
         while i < self.minecarts.len() {
             let cart = &mut self.minecarts[i];
-            if let Some((damage, _)) = super::explosion_damage(power, cart.pos.distance(center)) {
+            let in_reach = cart.pos.distance(center) <= f64::from(power) * 2.0;
+            let exposure = if in_reach {
+                let (min, max) = cart.aabb();
+                crate::world::explosion::seen_percent(world, center, min, max)
+            } else {
+                0.0
+            };
+            if let Some((damage, _)) = super::explosion_damage(power, cart.pos.distance(center), exposure) {
                 if cart.kind == CartKind::Tnt {
                     if cart.fuse.is_none() && self.tnt_explodes {
                         cart.fuse = Some((self.rng.next_int(20) + self.rng.next_int(20)) as u16);
@@ -1546,7 +1553,7 @@ mod tests {
         let lit = e.place_cart(&w, CartKind::Tnt, IVec3::new(2, 140, 0)).unwrap();
         e.cart_mut(lit).unwrap().fuse = Some(30);
         let unlit = e.place_cart(&w, CartKind::Tnt, IVec3::new(3, 140, 0)).unwrap();
-        e.blast_carts(e.cart(unlit).unwrap().pos, 4.0);
+        e.blast_carts(&w, e.cart(unlit).unwrap().pos, 4.0);
         assert_eq!(e.cart(unlit).unwrap().fuse, None, "an explosion cannot light the cart");
         e.tick_minecarts(&mut w, &[]);
         assert!(e.cart(lit).unwrap().fuse.is_some_and(|f| f < 30), "the lit fuse keeps burning");
@@ -1647,7 +1654,7 @@ mod tests {
         let id = e.spawn_cart(CartKind::Tnt, DVec3::new(4.5, 140.0, 10.5));
         let reach = interaction_reach(&w, eye, DVec3::Z, 6.0);
         assert!(e.cart_ray(eye, DVec3::Z, reach).is_none());
-        e.explode(eye + DVec3::Z * 4.0, 4.0);
+        e.explode(&w, eye + DVec3::Z * 4.0, 4.0);
         assert!(e.cart(id).unwrap().fuse.is_some());
     }
     #[test]

@@ -670,6 +670,7 @@ impl Game {
                     Menu::Items {
                         tab:
                             tab @ (Tab::Chest(pos)
+                            | Tab::EnderChest(pos)
                             | Tab::Furnace(pos)
                             | Tab::Brewing(pos)
                             | Tab::Enchanting(pos)
@@ -775,10 +776,11 @@ impl Game {
             Request::Open(Used::OpenMerchant(id)) => self.pads.seats[i].open(Menu::items(Tab::Trading(id))),
             Request::Open(Used::Screen { cell, .. } | Used::Bed { cell }) => self.pad_use_block(i, cell),
             Request::Open(Used::Utility {
-                effect: voxelcraft::world::utilities::interact::Effect::EnderChest, ..
+                effect: voxelcraft::world::utilities::interact::Effect::EnderChest,
+                cell,
             }) => {
-                self.pads.seats[i].message =
-                    Some(("Ender chests open only for the keyboard player for now".into(), Instant::now()));
+                self.pads.seats[i].open(Menu::items(Tab::EnderChest(cell)));
+                self.chest_sound(cell, 0.9);
             }
             Request::Open(_) => {}
             Request::MagicDamage(amount) => {

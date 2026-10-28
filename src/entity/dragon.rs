@@ -620,7 +620,7 @@ impl Fight {
     /// takes the damage of its nearest part.
     pub fn explode(&mut self, center: DVec3, power: f32) {
         for i in 0..self.crystals.len() {
-            if super::explosion_damage(power, self.crystals[i].center().distance(center)).is_some() {
+            if super::explosion_damage(power, self.crystals[i].center().distance(center), 1.0).is_some() {
                 self.hit_crystal(i, None);
             }
         }
@@ -629,7 +629,7 @@ impl Fight {
                 .parts
                 .iter()
                 .filter_map(|&(part, min, max)| {
-                    let (damage, _) = super::explosion_damage(power, ((min + max) / 2.0).distance(center))?;
+                    let (damage, _) = super::explosion_damage(power, ((min + max) / 2.0).distance(center), 1.0)?;
                     Some((part, damage))
                 })
                 .max_by(|a, b| part_damage(a.0, a.1).total_cmp(&part_damage(b.0, b.1)));

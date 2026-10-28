@@ -432,6 +432,7 @@ pub(super) fn container_title(block: Option<crate::world::block::Block>) -> &'st
     use crate::world::redstone_blocks::{self as r, Component};
     match block {
         Some(b) if b.base() == crate::world::block::Block::BARREL => "Barrel",
+        Some(b) if crate::world::utilities::ender_chest_of(b).is_some() => "Ender Chest",
         Some(b) => match r::component(b) {
             Some(Component::Hopper { .. }) => "Item Hopper",
             Some(Component::Dispenser { dropper: true, .. }) => "Dropper",
@@ -878,6 +879,7 @@ impl Game {
             (Container::CraftingTable, _) => "Crafting",
             (Container::Furnace(_), _) => "Furnace",
             (Container::Chest(p), _) => container_title(self.world.get_block(p)),
+            (Container::EnderChest(_), _) => "Ender Chest",
             (Container::Minecart(id), _) => self.mobs.entities.vehicle_title(id),
             (Container::Brewing(_), _) => "Brewing Stand",
             (Container::Enchanting(_), _) => "Enchant",

@@ -120,6 +120,9 @@ pub(crate) enum Container {
     CraftingTable,
     Furnace(IVec3),
     Chest(IVec3),
+    /// The player's own ender inventory, opened at the ender chest in this
+    /// cell (controller screens; the keyboard player's is lent to `Chest`).
+    EnderChest(IVec3),
     Minecart(u32),
     Brewing(IVec3),
     Enchanting(IVec3),
@@ -1324,6 +1327,7 @@ impl Game {
             wish.push((bot.agent.session.id, bot.agent.session.player.ride_push(bot.agent.movement_input())));
         }
         self.mobs.entities.tick_minecarts(&mut self.world, &wish);
+        self.world.refresh_frame_signals(self.mobs.entities.frame_signals());
         seat_rider(&self.mobs.entities, &mut self.session.player, crate::entity::PlayerId::HOST);
         let ids: Vec<_> = self
             .agents

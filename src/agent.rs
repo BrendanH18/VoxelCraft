@@ -14,7 +14,7 @@ use crate::simulation::survival;
 use crate::simulation::{self, TICK_SECONDS};
 use crate::world::{World, block::Block};
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | draw [ticks] (hold use with a bow or crossbow: a bow shoots at that draw, a crossbow loads after 25 ticks; a charged crossbow fires at once) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | furnace take/put input/fuel/output | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp [~] x y z, spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | draw [ticks] (hold use with a bow or crossbow: a bow shoots at that draw, a crossbow loads after 25 ticks; a charged crossbow fires at once) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot (an aimed ender chest holds your own items) | furnace take/put input/fuel/output | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp [~] x y z, spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -416,7 +416,7 @@ impl Agent {
                     Used::OpenVehicle(_) => return Err("that vehicle has storage; use chest take/put".into()),
                     Used::OpenMerchant(_) => return Err("use trade to see this villager's offers".into()),
                     Used::Utility { effect: crate::world::utilities::interact::Effect::EnderChest, .. } => {
-                        return Err("ender chests open a screen the agent protocol doesn't have yet".into());
+                        return Err("that is your ender chest; use chest take/put".into());
                     }
                     _ => {}
                 }
@@ -494,17 +494,23 @@ impl Agent {
                     return Ok(());
                 }
                 let (pos, _) = self.target(world).ok_or("no chest within reach")?;
-                // An ender chest holds each player's own inventory; the table
-                // entry under an open one is the host's, not this player's.
-                if world.lent_chest() == Some(pos)
-                    || world.get_block(pos).is_some_and(|b| crate::world::utilities::ender_chest_of(b).is_some())
-                {
-                    return Err("ender chests open a screen the agent protocol doesn't have yet".into());
+                // An ender chest holds each player's own inventory
+                // (`PlayerEnderChestContainer`); the table entry under an open
+                // one is the host's, not this player's.
+                let ender = world.lent_chest() == Some(pos)
+                    || world.get_block(pos).is_some_and(|b| crate::world::utilities::ender_chest_of(b).is_some());
+                if ender && !crate::world::utilities::ender_chest_opens(world, pos) {
+                    return Err("the ender chest is blocked from above".into());
                 }
-                if slot >= world.container_slots(pos) {
+                let slots = if ender { crate::world::chest::SLOTS } else { world.container_slots(pos) };
+                if slot >= slots {
                     return Err("container slot out of range".into());
                 }
-                let chest = world.chest_mut(pos).ok_or("target is not a chest")?;
+                let chest = if ender {
+                    &mut self.session.ender
+                } else {
+                    world.chest_mut(pos).ok_or("target is not a chest")?
+                };
                 if take {
                     let stack = chest.slots[slot].ok_or("chest slot empty")?;
                     let left = self.session.inventory.add_stack(stack);

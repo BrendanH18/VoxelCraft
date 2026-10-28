@@ -300,14 +300,12 @@ impl World {
         }
     }
 
-    /// Destroys the blocks in a ragged sphere around `center` (radius about
-    /// `0.9 * power`, like a Minecraft blast in open stone). Bedrock,
-    /// obsidian, ancient debris, Netherite blocks, fluids and blocks holding
-    /// water resist. Each
-    /// destroyed block drops with a chance of `1 / power`, like Minecraft.
-    /// Chunks are remeshed on the workers;
-    /// what rested on the blasted blocks falls or pops off. Returns how many
-    /// blocks were destroyed.
+    /// A Java blast of `power` at `center` that breaks blocks
+    /// ([`World::exploded_cells`] then [`World::detonate`]): each drop
+    /// survives by its loot table's explosion rules. Chunks are remeshed on
+    /// the workers; what rested on the blasted blocks falls or pops off.
+    /// Returns how many blocks were destroyed. Hurt entities first with
+    /// [`crate::entity::Entities::explode`].
     pub fn explode(&mut self, center: DVec3, power: f64) -> usize {
         self.explode_with_drops(center, power, true)
     }
@@ -318,59 +316,11 @@ impl World {
     }
 
     /// As [`World::explode_with_drops`]. With `decay` (Java's
-    /// `DESTROY_WITH_DECAY`) each block drops with chance `1 / power`;
-    /// without it (`DESTROY`, which TNT uses by default) every block drops.
+    /// `DESTROY_WITH_DECAY`) drops are rolled with the explosion radius;
+    /// without it (`DESTROY`, which TNT uses by default) every drop stays.
     pub fn explode_with_decay(&mut self, center: DVec3, power: f64, drop_blocks: bool, decay: bool) -> usize {
-        let radius = power * 0.9 + 0.5;
-        let c = center.floor().as_ivec3();
-        let r = radius.ceil() as i32;
-        let seed = self.generator.seed ^ 0xB1A5;
-        let mut removed = Vec::new();
-        for dy in -r..=r {
-            for dz in -r..=r {
-                for dx in -r..=r {
-                    let p = c + IVec3::new(dx, dy, dz);
-                    let dist = (p.as_dvec3() + DVec3::splat(0.5) - center).length();
-                    if dist > radius * (0.7 + 0.3 * super::noise::hash_f(p.x, p.y, p.z, seed) as f64) {
-                        continue;
-                    }
-                    let Some(b) = self.get_block(p) else { continue };
-                    let resists = matches!(
-                        b,
-                        Block::AIR
-                            | Block::BEDROCK
-                            | Block::OBSIDIAN
-                            | Block::CRYING_OBSIDIAN
-                            | Block::ANCIENT_DEBRIS
-                            | Block::NETHERITE_BLOCK // `ExplosionDamageCalculator` takes the larger of the block's
-                                                     // and its fluid's resistance: water (100) shields
-                                                     // waterlogged blocks, kelp and seagrass.
-                    ) || b.holds_water()
-                        || b.is_fluid();
-                    if !resists && self.edit(p, Block::AIR, false) {
-                        removed.push(p);
-                        if b == Block::TNT {
-                            // `TntBlock.wasExploded` primes it with `tnt_explodes`;
-                            // `dropFromExplosion` is false either way.
-                            if self.rules.tnt_explodes {
-                                self.primed_tnt.push((p, true));
-                            }
-                        } else if drop_blocks
-                            && (!decay || (super::noise::hash_f(p.x, p.y, p.z, seed ^ 0xD20F) as f64) < 1.0 / power)
-                        {
-                            // Not `spill_block`: TNT, creepers and fireballs give the
-                            // loot context an entity, so snow layers drop snowballs.
-                            self.spill_mined(p, b, crate::enchant::Enchants::NONE);
-                        }
-                    }
-                }
-            }
-        }
-        for &p in &removed {
-            self.settle(p);
-        }
-        self.update_block_light();
-        removed.len()
+        let cells = self.exploded_cells(center, power as f32);
+        self.detonate(&cells, power as f32, drop_blocks, decay, false)
     }
 
     /// Removes many blocks at once without drops (the dragon smashing

@@ -49,6 +49,9 @@ pub(super) struct RedstoneState {
     unloaded_at: FxHashMap<IVec3, u64>,
     /// Detector-rail comparator output, filled by the minecart tick.
     pub(super) cart_signal: FxHashMap<IVec3, u8>,
+    /// Item frame comparator output by the frame's cell and facing, filled
+    /// by the entity tick.
+    frame_signal: FxHashMap<(IVec3, IVec3), u8>,
     pub(super) trip_pulse: FxHashMap<IVec3, u64>,
     toggles: FxHashMap<IVec3, VecDeque<u64>>,
     burnout: FxHashMap<IVec3, u64>,
@@ -335,13 +338,15 @@ impl World {
         let signal = |q: IVec3| self.wood_comparator_signal(q, p - q).or_else(|| self.container_signal(q));
         if let Some(value) = signal(rear) {
             input = value;
-        } else if input < 15
-            && self.get_block(rear).is_some_and(conductor)
-            && let Some(value) = self
-                .wood_comparator_signal(rear - facing.offset(), facing.offset())
-                .or_else(|| self.container_signal(rear - facing.offset()))
-        {
-            input = value;
+        } else if input < 15 && self.get_block(rear).is_some_and(conductor) {
+            // `ComparatorBlock.getInputSignal`: through a conductor, the larger
+            // of the block behind it and an item frame hung on its far side.
+            let far = rear - facing.offset();
+            let block = self.wood_comparator_signal(far, facing.offset()).or_else(|| self.container_signal(far));
+            let frame = self.redstone.frame_signal.get(&(far, -facing.offset())).copied();
+            if let Some(value) = block.max(frame) {
+                input = value;
+            }
         }
         let side = self.diode_side(p, facing, false);
         if subtract {
@@ -371,6 +376,25 @@ impl World {
             }
         }
         self.redstone.cart_signal = next;
+    }
+
+    /// Refresh item frame readings (`ItemFrame.getAnalogOutput`, keyed by
+    /// the frame's cell and facing), waking comparators only on a change.
+    pub fn refresh_frame_signals(&mut self, signals: impl IntoIterator<Item = ((IVec3, IVec3), u8)>) {
+        let next: FxHashMap<(IVec3, IVec3), u8> = signals.into_iter().collect();
+        if next == self.redstone.frame_signal {
+            return;
+        }
+        let previous = std::mem::replace(&mut self.redstone.frame_signal, next);
+        let changed: Vec<IVec3> = previous
+            .iter()
+            .filter(|&(k, v)| self.redstone.frame_signal.get(k) != Some(v))
+            .chain(self.redstone.frame_signal.iter().filter(|&(k, v)| previous.get(k) != Some(v)))
+            .map(|(&(cell, _), _)| cell)
+            .collect();
+        for cell in changed {
+            self.redstone_changed(cell);
+        }
     }
 
     pub fn container_signal(&self, p: IVec3) -> Option<u8> {
@@ -1310,6 +1334,31 @@ mod tests {
         assert_eq!(w.comparator_target(AT, Facing::East, true), 0);
         w.chest_mut(AT - IVec3::X).unwrap().slots.fill(Some(Stack::new(Item::DIAMOND, 64)));
         assert_eq!(w.container_signal(AT - IVec3::X), Some(15));
+    }
+
+    #[test]
+    fn comparators_read_an_item_frame_on_the_far_side_of_a_conductor() {
+        let mut w = world();
+        supported(&mut w, AT, r::comparator(Facing::East, false, false));
+        put(&mut w, AT - IVec3::X, Block::STONE);
+        let frame = (AT - IVec3::X * 2, IVec3::NEG_X);
+        // A frame facing the comparator, or hung elsewhere, doesn't count.
+        w.refresh_frame_signals([((frame.0, IVec3::X), 5), ((frame.0, IVec3::Y), 6)]);
+        ticks(&mut w, 3);
+        assert_eq!(w.redstone_power(AT + IVec3::X), 0);
+        // `ItemFrame.getAnalogOutput`: rotation 3 reads 4.
+        w.refresh_frame_signals([(frame, 4)]);
+        ticks(&mut w, 3);
+        assert_eq!(w.redstone_power(AT + IVec3::X), 4);
+        // The larger of the frame and a container behind it.
+        put(&mut w, frame.0, Block::CHEST);
+        w.chest_mut(frame.0).unwrap().slots.fill(Some(Stack::new(Item::DIAMOND, 64)));
+        ticks(&mut w, 3);
+        assert_eq!(w.redstone_power(AT + IVec3::X), 15);
+        put(&mut w, frame.0, Block::AIR);
+        w.refresh_frame_signals([]);
+        ticks(&mut w, 3);
+        assert_eq!(w.redstone_power(AT + IVec3::X), 0, "a removed frame stops the signal");
     }
 
     #[test]

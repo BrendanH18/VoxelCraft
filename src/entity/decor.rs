@@ -629,11 +629,20 @@ impl Entities {
         while i > 0 {
             i -= 1;
             let (min, max) = self.decor[i].aabb();
-            if super::explosion_damage(power, ((min + max) * 0.5).distance(center)).is_some() {
+            if super::explosion_damage(power, ((min + max) * 0.5).distance(center), 1.0).is_some() {
                 let stand = self.decor[i].kind == Kind::Stand;
                 self.break_decor(i, drops && !stand, drops);
             }
         }
+    }
+
+    /// Every item frame's comparator output (`ItemFrame.getAnalogOutput`:
+    /// 0 empty, else the rotation plus one), by its cell and facing.
+    pub fn frame_signals(&self) -> impl Iterator<Item = ((IVec3, IVec3), u8)> + '_ {
+        self.decor.iter().filter(|d| matches!(d.kind, Kind::Frame { .. })).map(|d| {
+            let signal = if d.item.is_some() { d.rotation % 8 + 1 } else { 0 };
+            ((d.cell, d.facing), signal)
+        })
     }
 
     /// Falling stalactites that landed this tick hurt the mobs in their cells.
@@ -658,6 +667,27 @@ impl Entities {
     /// Restores [`Entities::decor_to_string`]; malformed entries are skipped.
     pub fn load_decor(&mut self, text: &str) {
         self.decor.extend(text.split(';').filter(|s| !s.is_empty()).filter_map(Decor::deserialize));
+    }
+
+    /// Up to `max` loaded decorations within `radius` of `pos`, in the
+    /// [`Entities::decor_to_string`] format, for a LAN snapshot.
+    pub fn decor_near(&self, pos: DVec3, radius: f64, max: usize) -> String {
+        let near = self.decor.iter().filter(|d| d.pos.distance_squared(pos) < radius * radius).take(max);
+        near.map(Decor::serialize).collect::<Vec<_>>().join(";")
+    }
+
+    /// A LAN client's copy of the host's decorations near it: replaces the
+    /// list, keeping each armor stand's last position for smooth motion.
+    pub fn replace_decor(&mut self, text: &str) {
+        let previous: Vec<(IVec3, DVec3)> =
+            self.decor.iter().filter(|d| d.kind == Kind::Stand).map(|d| (d.cell, d.pos)).collect();
+        self.decor.clear();
+        self.load_decor(text);
+        for d in self.decor.iter_mut().filter(|d| d.kind == Kind::Stand) {
+            if let Some(&(_, pos)) = previous.iter().find(|(cell, _)| *cell == d.cell) {
+                d.previous_pos = pos;
+            }
+        }
     }
 }
 

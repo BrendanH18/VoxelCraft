@@ -14,7 +14,11 @@ every combination of the block-state values its conditions name and for each
 mining scenario below. A state value no condition names is written `*`. Mining
 has no explosion, so `survives_explosion` passes and `explosion_decay` keeps
 every item; `location_check` (the other half of a double plant) and
-`entity_properties` on `this` (a player broke the block) pass. Unknown entry
+`entity_properties` on `this` (a player broke the block) pass. The `explosion`
+scenario is `ServerExplosion.interactWithBlocks` with decay at radius 4 (a
+TNT block or creeper): the tool is empty, the direct source entity is
+`this`, `survives_explosion` passes with chance 1/4 and `explosion_decay`
+keeps each item with chance 1/4. Unknown entry
 types, conditions, functions or keys fail instead of producing a guessed
 fixture. No VoxelCraft source or existing fixture is consulted.
 """
@@ -43,6 +47,7 @@ SCENARIOS = {
     "fortune_1": {"shears": False, "silk_touch": False, "fortune": 1, "pickaxe": True},
     "fortune_2": {"shears": False, "silk_touch": False, "fortune": 2, "pickaxe": True},
     "fortune_3": {"shears": False, "silk_touch": False, "fortune": 3, "pickaxe": True},
+    "explosion": {"shears": False, "silk_touch": False, "fortune": 0, "pickaxe": False, "explosion_radius": 4},
 }
 EPSILON = 1e-12
 
@@ -92,6 +97,17 @@ def check_bytecode(inspect):
     binomial_int = method(inspect(ints + "BinomialDistributionGenerator"), "public int getIntUnsafe(")
     if not re.search(r"nextFloat:\(\)F\n.*fload_3\n.*fcmpg\n.*ifge", binomial_int):
         raise ValueError("binomial count provider is no longer n rounds of nextFloat < p")
+    survives = method(inspect("net.minecraft.world.level.storage.loot.predicates.ExplosionCondition"),
+                      "public boolean test(net.minecraft.world.level.storage.loot.LootContext);")
+    if not re.search(r"EXPLOSION_RADIUS(?:.*\n){1,10}.*fconst_1\n.*aload_2\n.*floatValue:\(\)F\n.*fdiv\n"
+                     r"(?:.*\n){1,3}.*nextFloat:\(\)F\n.*fload\s+4\n.*fcmpg\n.*ifgt", survives):
+        raise ValueError("survives_explosion is no longer nextFloat <= 1 / radius")
+    decay = method(inspect("net.minecraft.world.level.storage.loot.functions.ApplyExplosionDecay"),
+                   "public net.minecraft.world.item.ItemStack run(")
+    if not re.search(r"EXPLOSION_RADIUS(?:.*\n){1,14}.*fconst_1\n.*aload_3\n.*floatValue:\(\)F\n.*fdiv\n"
+                     r"(?:.*\n){1,14}.*nextFloat:\(\)F\n.*fload\s+5\n.*fcmpg\n.*ifgt(?:.*\n){1,6}"
+                     r".*ItemStack\.setCount", decay):
+        raise ValueError("explosion_decay is no longer one nextFloat <= 1 / radius per item")
     pot = method(inspect("net.minecraft.world.level.block.DecoratedPotBlock"),
                  "public net.minecraft.world.level.block.state.BlockState playerWillDestroy(")
     if not re.search(r"ItemTags\.BREAKS_DECORATED_POTS(?:.*\n){1,3}.*ifeq(?:.*\n){1,4}"
@@ -297,7 +313,10 @@ class Table:
             raise ValueError(f"unknown tool predicate {predicate}")
         if kind == "minecraft:match_block":
             return float(all(state.get(k) == v for k, v in c["state"].items()))
-        if kind in ("minecraft:survives_explosion", "minecraft:location_check", "minecraft:entity_properties"):
+        if kind == "minecraft:survives_explosion":
+            # `ExplosionCondition`: `nextFloat() <= 1 / radius` when a radius is set.
+            return 1.0 / tool["explosion_radius"] if "explosion_radius" in tool else 1.0
+        if kind in ("minecraft:location_check", "minecraft:entity_properties"):
             return 1.0
         if kind == "minecraft:table_bonus":
             return c["chances"][min(tool["fortune"], len(c["chances"]) - 1)]
@@ -345,6 +364,10 @@ class Table:
             elif kind == "minecraft:limit_count":
                 limit = f["limit"]
                 add(min(max(count, limit.get("min", count)), limit.get("max", count)), weight)
+            elif kind == "minecraft:explosion_decay" and "explosion_radius" in tool:
+                # `ApplyExplosionDecay`: each item stays with `nextFloat() <= 1 / radius`.
+                for value, w in binomial(count, 1.0 / tool["explosion_radius"]).items():
+                    add(value, weight * w)
             else:  # explosion_decay, copy_components, copy_state keep the count when mining.
                 add(count, weight)
         if p < 1.0:
@@ -551,7 +574,8 @@ def extract(server):
             "net.minecraft.world.level.block.Blocks (wallVariant, noLootTable)",
             "net.minecraft.world.level.storage.loot.functions.ApplyBonusCount$OreDrops, $UniformBonusCount, "
             "$BinomialWithBonusCount; SetItemCountFunction",
-            "net.minecraft.world.level.storage.loot.predicates.BonusLevelTableCondition",
+            "net.minecraft.world.level.storage.loot.predicates.BonusLevelTableCondition, ExplosionCondition",
+            "net.minecraft.world.level.storage.loot.functions.ApplyExplosionDecay",
             "net.minecraft.world.level.storage.loot.providers.number.ints.UniformGenerator, "
             "BinomialDistributionGenerator",
             "net.minecraft.world.level.block.DecoratedPotBlock.playerWillDestroy; "
@@ -564,6 +588,8 @@ def extract(server):
             "each case lists 'pickaxe' and only the scenarios whose drops differ from it",
             "chance: probability of at least one; min/max: over counts above zero; mean/variance include zero",
             "mining: survives_explosion passes and explosion_decay keeps every item",
+            "explosion: an empty tool at radius 4; survives_explosion passes and each item survives explosion_decay "
+            "with chance 1/4, whether or not a tool could harvest the block",
             "requiresCorrectToolForDrops is outside the tables: a scenario applies only to a tool that harvests",
             "a decorated pot broken by a #breaks_decorated_pots tool without Silk Touch is cracked first",
         ],
