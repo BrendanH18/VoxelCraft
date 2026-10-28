@@ -1272,6 +1272,18 @@ impl Mob {
         self.take_damage(amount, knockback.is_some(), rng)
     }
 
+    /// Explosion damage, which carries no hit knockback (`#no_knockback`),
+    /// then `Entity.pushFromExplosion` adds `push` (blocks per tick) to the
+    /// motion. Returns `true` if this killed the mob.
+    pub fn blast(&mut self, amount: f32, push: DVec3, rng: &mut Rng) -> bool {
+        if !self.alive() {
+            return false;
+        }
+        let killed = self.take_damage(amount, true, rng);
+        self.vel += push * crate::knockback::TICK_RATE;
+        killed
+    }
+
     /// Takes a hit followed by Java's knockbacks in order (`hurtServer`'s
     /// default push, then the attacker's extra one), each halving the motion
     /// left by the previous. Returns `true` if this killed the mob.

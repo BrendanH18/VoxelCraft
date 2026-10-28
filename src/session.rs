@@ -86,6 +86,29 @@ pub struct PersonalSpawn {
 }
 
 impl PlayerSession {
+    /// `ServerExplosion.hurtEntities` for this player and a blast of `power`
+    /// at `center`, with the blocks still standing: the damage before
+    /// difficulty and armor, and the push in blocks per second. Spectators
+    /// and flying Creative players aren't pushed (`hitPlayers`).
+    pub fn blast<W: crate::physics::BlockSource + ?Sized>(
+        &self,
+        world: &W,
+        center: DVec3,
+        power: f32,
+    ) -> Option<(f32, DVec3)> {
+        let player = &self.player;
+        if self.mode == GameMode::Spectator || player.pos.distance(center) > f64::from(power) * 2.0 {
+            return None;
+        }
+        let (min, max) = player.collision_shape().aabb(player.pos);
+        let exposure = crate::world::explosion::seen_percent(world, center, min, max);
+        let (damage, knockback) = crate::entity::explosion_damage(power, player.pos.distance(center), exposure)?;
+        let pushed = !(self.mode.is_creative() && player.flying);
+        let resisted = knockback * (1.0 - self.inventory.explosion_knockback_resistance());
+        let push = if pushed { (player.eye() - center).normalize_or_zero() * resisted } else { DVec3::ZERO };
+        Some((damage, push * crate::knockback::TICK_RATE))
+    }
+
     /// Default Java 26.3 block interaction range, including Creative's modifier.
     pub fn block_reach(&self) -> f64 {
         self.mode.block_reach()

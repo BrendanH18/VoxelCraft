@@ -150,6 +150,9 @@ roadmap and recorded checks to assess completeness against the current target.
 - [v0.12 data pass: mining, fuel, compost and repair](verification/2026-10-27-v0.12-data-blockdata.md):
   hardness, harvest rules and dig speed per state, fuel values, compost
   chances and repair materials against Java 26.3.
+- [v0.12 explosions, frame signals, LAN decor and ender chests](verification/2026-10-27-v0.12-explosions.md):
+  Java 26.3 explosion rays, blast resistance and explosion loot, item frame
+  comparator output, LAN decorations and ender chests for every player kind.
 - [v0.12 materials frame time](verification/2026-10-27-v0.12-materials-frame-time.md):
   the `materials` benchmark scene and a first run that doesn't count yet.
 - [Game rules and difficulty](verification/2026-10-17-game-rules-difficulty.md):

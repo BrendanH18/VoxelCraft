@@ -268,6 +268,19 @@ impl Inventory {
         self.armor.iter().flatten().filter_map(|s| s.item.as_armor()).map(|(_, m)| m.knockback_resistance()).sum()
     }
 
+    /// `explosion_knockback_resistance`: Blast Protection's 0.15 per level on
+    /// each worn piece, at most 1. Netherite's knockback resistance doesn't
+    /// count against blasts.
+    pub fn explosion_knockback_resistance(&self) -> f64 {
+        let levels: u32 = self
+            .armor
+            .iter()
+            .flatten()
+            .map(|s| u32::from(s.active_enchants().level(crate::enchant::Enchantment::BlastProtection)))
+            .sum();
+        (0.15 * f64::from(levels)).min(1.0)
+    }
+
     /// Puts on the armor in `slot`, swapping out whatever piece was worn
     /// there. Returns `false` if the slot holds no armor, or the worn piece
     /// is bound.

@@ -562,41 +562,37 @@ impl Game {
         // `ServerLevel.explode`: the interaction decides whether blocks break
         // and whether their drops decay.
         let blast = self.gamerules.explosion(voxelcraft::rules::ExplosionSource::of_cause(cause));
-        if blast.destroys_blocks {
-            self.world.explode_with_decay(center, power as f64, self.gamerules.bool("block_drops"), blast.drop_decay);
-        }
+        // `ServerExplosion.explode`: find the cells, hurt entities while the
+        // walls about to go still shield them, then break the blocks.
+        let cells = if blast.destroys_blocks { self.world.exploded_cells(center, power) } else { Vec::new() };
         if credit_player {
-            self.mobs.entities.explode_credited(center, power);
+            self.mobs.entities.explode_credited(&self.world, center, power);
         } else {
-            self.mobs.entities.explode(center, power);
+            self.mobs.entities.explode(&self.world, center, power);
+        }
+        if let Some((damage, push)) = self.session.blast(&self.world, center, power) {
+            if self.damage_player_armored(self.difficulty.mob_damage(damage), cause) > 0.0 {
+                self.session.player.hurt_from(push);
+            }
+            self.session.player.vel += push;
+        }
+        if self.arrival.is_none() {
+            for bot in self.agents.players.values_mut().filter(|b| b.active) {
+                if let Some((damage, push)) = bot.agent.session.blast(&self.world, center, power) {
+                    bot.agent.hurt(self.difficulty.mob_damage(damage), cause, DVec3::ZERO, &mut self.mobs.entities);
+                    bot.agent.session.player.vel += push;
+                }
+            }
+        }
+        if blast.destroys_blocks {
+            let fire = self.gamerules.explosion_fire(cause);
+            self.world.detonate(&cells, power, self.gamerules.bool("block_drops"), blast.drop_decay, fire);
         }
         // TNT caught in the blast goes off soon after.
         for (cell, short_fuse) in std::mem::take(&mut self.world.primed_tnt) {
             self.mobs.entities.prime_tnt(cell, short_fuse);
         }
         self.audio.play(Sound::Explosion, Some(center), 1.0, (0.9, 1.05));
-        let mid = self.session.player.pos + DVec3::Y * 0.9;
-        if let Some((damage, impact)) = entity::explosion_damage(power, mid.distance(center))
-            && let damage = self.difficulty.mob_damage(damage)
-            && self.damage_player_armored(damage, cause) > 0.0
-        {
-            let away = (mid - center).normalize_or(DVec3::Y);
-            self.session.player.hurt_from(away);
-            let push = away * (impact as f64 * 14.0) + DVec3::Y * 4.0;
-            self.session.player.vel +=
-                crate::simulation::survival::knockback_taken(push, self.session.inventory.knockback_resistance());
-        }
-        if self.arrival.is_some() {
-            return;
-        }
-        for bot in self.agents.players.values_mut().filter(|b| b.active) {
-            let mid = bot.agent.session.player.pos + DVec3::Y * 0.9;
-            if let Some((damage, impact)) = entity::explosion_damage(power, mid.distance(center)) {
-                let away = (mid - center).normalize_or(DVec3::Y);
-                let push = away * (impact as f64 * 14.0) + DVec3::Y * 4.0;
-                bot.agent.hurt(self.difficulty.mob_damage(damage), cause, push, &mut self.mobs.entities);
-            }
-        }
     }
 
     /// F3 line with entity counts.

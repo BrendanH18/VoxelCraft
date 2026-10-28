@@ -183,7 +183,7 @@ impl World {
 
     /// Java's `BaseFireBlock.getState`: soul fire over soul sand and soul
     /// soil, ordinary fire of `age` anywhere else.
-    fn fire_state(&self, p: IVec3, age: u8) -> Block {
+    pub(super) fn fire_state(&self, p: IVec3, age: u8) -> Block {
         if self.get_block(p - IVec3::Y).is_some_and(super::nether_biome_blocks::soul_fire_base) {
             super::nether_biome_blocks::SOUL_FIRE
         } else {

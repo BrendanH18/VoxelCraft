@@ -220,12 +220,13 @@ fn vector(v: &Value) -> Option<DVec3> {
     (p.is_finite() && p.abs().max_element() <= 30_000_000.0).then_some(p)
 }
 /// Keeps a state snapshot inside one frame: in a crowded scene, sheds (in order) the
-/// extra entities, dropped items, mob looks and finally all mobs, rather than disconnecting.
+/// extra entities, decorations, dropped items, mob looks and finally all mobs, rather
+/// than disconnecting.
 /// Returns the snapshot (if anything fits) and whether mob looks were shed.
 fn fit_state(mut v: Value) -> (Option<Value>, bool) {
     let fits = |v: &Value| serde_json::to_vec(v).is_ok_and(|b| b.len() < voxelcraft::lan::MAX_FRAME - 16);
     let mut shed_looks = false;
-    for shed in ["extras", "items", "looks", "mobs"] {
+    for shed in ["extras", "decor", "items", "looks", "mobs"] {
         if fits(&v) {
             return (Some(v), shed_looks);
         }
@@ -654,7 +655,7 @@ impl Game {
         peer.body.let_go();
         peer.body.container = container;
         peer.open = true;
-        if let Container::Chest(pos) = container {
+        if let Container::Chest(pos) | Container::EnderChest(pos) = container {
             self.chest_sound(pos, 0.65);
             if self.world.get_block(pos).is_some_and(crate::entity::nether::guarded_by_piglins) {
                 self.mobs.entities.piglins_notice(id, at, true, &self.world);
@@ -668,7 +669,7 @@ impl Game {
         if !peer.open {
             return;
         }
-        if let Container::Chest(pos) = peer.body.container {
+        if let Container::Chest(pos) | Container::EnderChest(pos) = peer.body.container {
             self.chest_sound(pos, 0.8);
         }
         if let Some(bot) = self.agents.players.get_mut(&name) {
@@ -811,6 +812,7 @@ impl Game {
         match container {
             Container::Inventory | Container::CraftingTable => true,
             Container::Chest(p) => near(p, crate::world::chest::is_chest),
+            Container::EnderChest(p) => near(p, |b| crate::world::utilities::ender_chest_of(b).is_some()),
             Container::Furnace(p) => near(p, crate::world::furnace::is_furnace),
             Container::Brewing(p) => near(p, |b| b == Block::BREWING_STAND),
             Container::Enchanting(p) => near(p, |b| b == Block::ENCHANTING_TABLE),
@@ -954,6 +956,13 @@ impl Game {
                             self.peer_open(peer, Container::Minecart(id));
                         }
                         Request::Open(Used::Screen { cell, .. } | Used::Bed { cell }) => used = Some(cell),
+                        Request::Open(Used::Utility {
+                            effect: crate::world::utilities::interact::Effect::EnderChest,
+                            cell,
+                        }) => {
+                            peer.used_at = Some(cell);
+                            self.peer_open(peer, Container::EnderChest(cell));
+                        }
                         Request::Open(_) => {}
                         Request::MagicDamage(amount) => {
                             if let Some(bot) = self.agents.players.get_mut(&name) {
@@ -1138,6 +1147,9 @@ impl Game {
                 Container::Chest(p) => {
                     json!({"kind":"chest","pos":p.to_array(),"state":self.world.chest(p).map(|c|c.serialize())})
                 }
+                Container::EnderChest(p) => {
+                    json!({"kind":"ender_chest","pos":p.to_array(),"state":bot.agent.session.ender.serialize()})
+                }
                 Container::Furnace(p) => {
                     json!({"kind":"furnace","pos":p.to_array(),"state":self.world.furnace(p).map(|c|c.serialize())})
                 }
@@ -1257,9 +1269,10 @@ impl Game {
                 .collect::<Vec<_>>()
                 .join(";");
             let arrows:Vec<_>=self.mobs.entities.arrows.iter().filter(|a|a.pos.distance_squared(bot.agent.session.player.pos)<160.0*160.0).take(256).map(|a|json!({"pos":a.pos.to_array(),"previous":a.previous_pos.to_array(),"dir":a.dir.to_array(),"player":a.from_player,"critical":a.critical})).collect();
+            let decor = self.mobs.entities.decor_near(bot.agent.session.player.pos, 160.0, 256);
             // Everyone but this client itself (it has its own full state).
             let others: Vec<&Value> = players.iter().filter(|p| p["id"] != bot.id.0).collect();
-            let snapshot = json!({"sequence":peer.applied,"self":state(&bot.agent,name),"players":others,"time":self.day_time,"rain":self.weather.raining,"rain_strength":self.weather.strength,"thunder":self.weather.thundering,"dimension":self.dimension.name(),"seed":self.world.generator.seed,"view":view,"open":peer.open,"container":container,"grid":peer.grid.cells.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),"grid_size":peer.grid.size,"mobs":mobs,"carts":carts,"items":items,"arrows":arrows,"extras":extras,"falling":falling,"sounds":sounds,"effects":effects,"cracks":cracks});
+            let snapshot = json!({"sequence":peer.applied,"self":state(&bot.agent,name),"players":others,"time":self.day_time,"rain":self.weather.raining,"rain_strength":self.weather.strength,"thunder":self.weather.thundering,"dimension":self.dimension.name(),"seed":self.world.generator.seed,"view":view,"open":peer.open,"container":container,"grid":peer.grid.cells.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),"grid_size":peer.grid.size,"mobs":mobs,"carts":carts,"items":items,"decor":decor,"arrows":arrows,"extras":extras,"falling":falling,"sounds":sounds,"effects":effects,"cracks":cracks});
             let (snapshot, shed_looks) = fit_state(snapshot);
             if shed_looks {
                 // Looks dropped to fit: resend them all next tick.
@@ -1503,10 +1516,25 @@ impl Game {
         }
         let c = &snapshot["container"];
         let pos = vector(&c["pos"]).map(|p| p.as_ivec3());
+        // Any other screen takes back an earlier ender chest's loan, so a
+        // chest later placed in that cell isn't hidden behind it.
+        if c["kind"] != "ender_chest"
+            && let Some(lent) = self.world.lent_chest()
+        {
+            self.world.take_lent_chest(lent);
+        }
         self.body.container = match (c["kind"].as_str(), pos) {
             (Some("chest"), Some(p)) => {
                 if let Some(text) = c["state"].as_str() {
                     self.world.load_chests(&format!("{},{},{}={text}", p.x, p.y, p.z));
+                }
+                Container::Chest(p)
+            }
+            // The host keeps each player's ender inventory; this copy is lent
+            // to the screen, like the keyboard player's own.
+            (Some("ender_chest"), Some(p)) => {
+                if let Some(chest) = c["state"].as_str().and_then(crate::world::chest::Chest::deserialize) {
+                    self.world.lend_chest(p, chest);
                 }
                 Container::Chest(p)
             }
@@ -1709,6 +1737,10 @@ impl Game {
                 self.mobs.entities.arrows.push(arrow);
             }
         }
+        // Item frames, paintings and armor stands; a shed list keeps the last copy.
+        if let Some(decor) = snapshot["decor"].as_str() {
+            self.mobs.entities.replace_decor(decor);
+        }
         let old_items = std::mem::take(&mut self.mobs.entities.items);
         if let Some(items) = snapshot["items"].as_str() {
             self.mobs.entities.load_items(items);
@@ -1765,7 +1797,7 @@ fn decode_slot(slot: u16, container: Container, mode: GameMode, grid_size: usize
         0..=35 => Some(SlotRef::Inventory(slot as usize)),
         100..=108 if (slot - 100) < (grid_size * grid_size) as u16 => Some(SlotRef::Craft((slot - 100) as usize)),
         109 => Some(SlotRef::CraftResult),
-        200..=253 if matches!(container, Container::Chest(_) | Container::Minecart(_)) => {
+        200..=253 if matches!(container, Container::Chest(_) | Container::EnderChest(_) | Container::Minecart(_)) => {
             Some(SlotRef::Chest((slot - 200) as usize))
         }
         500..=504 if matches!(container, Container::Brewing(_)) => Some(match slot {

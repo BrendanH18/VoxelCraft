@@ -182,16 +182,15 @@ impl HeadlessHost {
         }
         for cell in self.world.take_anchor_blasts() {
             let center = cell.as_dvec3() + DVec3::splat(0.5);
-            self.world.explode(center, 5.0);
-            self.entities.explode(center, 5.0);
+            let cells = self.world.exploded_cells(center, 5.0);
+            self.entities.explode(&self.world, center, 5.0);
             for agent in self.players.values_mut() {
-                let mid = agent.player.pos + DVec3::Y * 0.9;
-                if let Some((damage, impact)) = crate::entity::explosion_damage(5.0, mid.distance(center)) {
-                    let away = (mid - center).normalize_or(DVec3::Y);
-                    let push = away * (impact as f64 * 14.0) + DVec3::Y * 4.0;
-                    agent.hurt(damage, "was killed by [Intentional Game Design]", push, &mut self.entities);
+                if let Some((damage, push)) = agent.session.blast(&self.world, center, 5.0) {
+                    agent.hurt(damage, "was killed by [Intentional Game Design]", DVec3::ZERO, &mut self.entities);
+                    agent.session.player.vel += push;
                 }
             }
+            self.world.detonate(&cells, 5.0, true, true, true);
         }
         // This harness simulates no item or TNT entities: what blocks drop
         // and TNT a blast primes are discarded rather than kept forever.

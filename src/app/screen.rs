@@ -108,6 +108,11 @@ impl Screen<'_> {
                     }
                     return;
                 }
+                if let Container::EnderChest(_) = *self.container {
+                    let Some(stack) = self.session.ender.slots.get_mut(i).and_then(Option::take) else { return };
+                    self.session.ender.slots[i] = self.move_to_player(stack);
+                    return;
+                }
                 let Container::Chest(p) = *self.container else { return };
                 if i >= self.world.container_slots(p) {
                     return;
@@ -227,6 +232,10 @@ impl Screen<'_> {
                     return Some(stack);
                 }
                 return self.entities.insert_vehicle(id, stack);
+            }
+            Container::EnderChest(_) => {
+                let order: Vec<usize> = (0..crate::world::chest::SLOTS).collect();
+                return move_into(stack, &mut self.session.ender.slots, &order);
             }
             Container::Chest(p) => {
                 let order: Vec<usize> = (0..self.world.container_slots(p)).collect();
@@ -423,6 +432,12 @@ impl Screen<'_> {
                     if self.session.inventory.cursor.is_none_or(|s| self.entities.vehicle_accepts(id, i, s.item))
                         && let Some(slot) = self.entities.vehicle_slots_mut(id).and_then(|slots| slots.get_mut(i))
                     {
+                        crate::inventory::click_slot(slot, &mut self.session.inventory.cursor, right);
+                    }
+                    return;
+                }
+                if let Container::EnderChest(_) = *self.container {
+                    if let Some(slot) = self.session.ender.slots.get_mut(i) {
                         crate::inventory::click_slot(slot, &mut self.session.inventory.cursor, right);
                     }
                     return;

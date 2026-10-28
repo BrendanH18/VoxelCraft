@@ -327,15 +327,26 @@ pub enum EntityEvent {
     },
 }
 
-/// Damage and knockback strength (0..1) of an explosion of `power` at
-/// `dist` blocks, following Minecraft: reaches `2 * power` blocks.
-pub fn explosion_damage(power: f32, dist: f64) -> Option<(f32, f32)> {
-    let reach = 2.0 * power as f64;
-    if dist >= reach {
+/// Java 26.3 `ServerExplosion.hurtEntities` for an entity standing `dist`
+/// blocks from a blast of `power`, `exposure` of it in view
+/// ([`crate::world::explosion::seen_percent`]): the damage
+/// (`ExplosionDamageCalculator.getEntityDamageAmount`) and the knockback
+/// strength in blocks per tick, `(1 - dist / (2 * power)) * exposure`.
+/// `None` beyond `2 * power` blocks.
+pub fn explosion_damage(power: f32, dist: f64, exposure: f32) -> Option<(f32, f64)> {
+    let diameter = power * 2.0;
+    let d = dist / f64::from(diameter);
+    if power < 1.0e-5 || d > 1.0 {
         return None;
     }
-    let impact = (1.0 - dist / reach) as f32;
-    Some((((impact * impact + impact) / 2.0 * 7.0 * reach as f32 + 1.0).floor(), impact))
+    let impact = (1.0 - d) * f64::from(exposure);
+    Some((((impact * impact + impact) / 2.0 * 7.0 * f64::from(diameter) + 1.0) as f32, impact))
+}
+
+/// Java's `Level.clip` from `from` to `to` against collision shapes with
+/// fluids ignored: whether nothing is in the way.
+pub fn clear_line<W: BlockSource + ?Sized>(world: &W, from: DVec3, to: DVec3) -> bool {
+    mob::line_of_sight(world, from, to)
 }
 
 /// One cube of explosion smoke.
@@ -946,32 +957,41 @@ impl Entities {
 
     /// Snapshot positions and advance entity simulation on Normal difficulty.
     /// Return events for the caller to apply world edits, damage, loot and sounds.
-    /// Hurts and flings mobs caught in an explosion, and puffs smoke.
-    pub fn explode(&mut self, center: DVec3, power: f32) {
-        self.blast(center, power, false);
+    /// Hurts and flings mobs caught in an explosion, and puffs smoke. Call
+    /// it before the blast breaks any blocks: Java hurts entities first, so
+    /// the walls about to go still shield them.
+    pub fn explode<W: BlockSource + ?Sized>(&mut self, world: &W, center: DVec3, power: f32) {
+        self.blast(world, center, power, false);
     }
 
     /// As [`Entities::explode`], but mobs it kills count as the player's
     /// (a ghast fireball punched back).
-    pub fn explode_credited(&mut self, center: DVec3, power: f32) {
-        self.blast(center, power, true);
+    pub fn explode_credited<W: BlockSource + ?Sized>(&mut self, world: &W, center: DVec3, power: f32) {
+        self.blast(world, center, power, true);
     }
 
-    fn blast(&mut self, center: DVec3, power: f32, credit_player: bool) {
-        self.blast_carts(center, power);
+    fn blast<W: BlockSource + ?Sized>(&mut self, world: &W, center: DVec3, power: f32, credit_player: bool) {
+        self.blast_carts(world, center, power);
         self.blast_decor(center, power);
         if let Some(fight) = &mut self.fight {
             fight.explode(center, power);
         }
         let mut killed = Vec::new();
         for m in &mut self.mobs {
-            let mid = m.pos + DVec3::Y * (m.shape().height * 0.5);
-            let Some((damage, impact)) = explosion_damage(power, mid.distance(center)) else { continue };
-            let away = (mid - center).normalize_or(DVec3::Y);
+            if !m.alive() || m.pos.distance(center) > f64::from(power) * 2.0 {
+                continue;
+            }
+            let (min, max) = m.aabb();
+            let exposure = crate::world::explosion::seen_percent(world, center, min, max);
+            let Some((damage, knockback)) = explosion_damage(power, m.pos.distance(center), exposure) else {
+                continue;
+            };
+            let eye = m.pos + DVec3::Y * (m.shape().height * 0.85);
+            let push = (eye - center).normalize_or_zero() * knockback;
             if credit_player {
                 m.player_hit();
             }
-            if m.damage(damage, Some(away * (impact as f64 * 14.0) + DVec3::Y * 6.0), &mut self.rng) && credit_player {
+            if m.blast(damage, push, &mut self.rng) && credit_player {
                 killed.push((m.kind, m.pos, m.burning));
             }
         }
@@ -2352,11 +2372,11 @@ mod tests {
         let mut e = Entities::new(6);
         e.spawn(MobKind::Pig, DVec3::new(0.5, 10.0, 0.5));
         e.mobs[0].health = 1.0;
-        e.explode(DVec3::new(0.5, 10.9, 0.5), 3.0);
+        e.explode(&world, DVec3::new(0.5, 10.9, 0.5), 3.0);
         assert!(e.items.is_empty(), "an uncredited blast drops nothing");
         e.spawn(MobKind::Pig, DVec3::new(4.5, 10.0, 0.5));
         e.mobs.last_mut().unwrap().health = 1.0;
-        e.explode_credited(DVec3::new(4.5, 10.9, 0.5), 3.0);
+        e.explode_credited(&world, DVec3::new(4.5, 10.9, 0.5), 3.0);
         assert!(!e.items.is_empty(), "a deflected blast drops the victim's loot");
     }
 
@@ -3902,14 +3922,17 @@ mod tests {
 
     #[test]
     fn explosions_fall_off_with_distance_and_kill_nearby_mobs() {
-        assert_eq!(explosion_damage(3.0, 0.0), Some((43.0, 1.0)));
-        assert_eq!(explosion_damage(3.0, 3.0).unwrap().0, 16.0);
-        assert_eq!(explosion_damage(3.0, 6.0), None);
+        // `getEntityDamageAmount`, unrounded; one point at the edge of reach.
+        assert_eq!(explosion_damage(3.0, 0.0, 1.0), Some((43.0, 1.0)));
+        assert_eq!(explosion_damage(3.0, 3.0, 1.0), Some((16.75, 0.5)));
+        assert_eq!(explosion_damage(3.0, 3.0, 0.5).unwrap().0, 0.3125 * 21.0 + 1.0);
+        assert_eq!(explosion_damage(3.0, 6.0, 1.0), Some((1.0, 0.0)));
+        assert_eq!(explosion_damage(3.0, 6.01, 1.0), None);
 
         let mut e = Entities::new(7);
         e.spawn(MobKind::Pig, DVec3::new(1.0, 10.0, 0.0));
         e.spawn(MobKind::Pig, DVec3::new(20.0, 10.0, 0.0));
-        e.explode(DVec3::new(0.0, 10.5, 0.0), 3.0);
+        e.explode(&Grid::flat(10), DVec3::new(0.0, 10.5, 0.0), 3.0);
         assert!(!e.mobs[0].alive() && e.mobs[0].vel.x > 0.0);
         assert!(e.mobs[1].alive());
         assert!(e.particles.drain().any(|p| matches!(p, crate::particles::Request::Explosion { large: true, .. })));

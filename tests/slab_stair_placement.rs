@@ -184,9 +184,11 @@ fn explosions_and_other_edits_update_neighbouring_corners() {
     assert_eq!(ss::stairs(world.get_block(a).unwrap()).unwrap().shape, StairShape::Straight);
     world.set_block(a - IVec3::Z, state(2, Facing::West, true));
     assert_eq!(ss::stairs(world.get_block(a).unwrap()).unwrap().shape, StairShape::OuterRight);
-    // An explosion too small to reach `a` (radius 0.95 from the oak
-    // stairs' centre) takes the oak stairs, and `a` straightens.
-    world.explode_with_drops((a - IVec3::Z).as_dvec3() + DVec3::splat(0.5), 0.5, false);
+    // A blast of 2 in the oak stairs (blast resistance 3) takes them, but
+    // spends its rays before the blackstone stairs (6) at `a`, which
+    // straighten.
+    world.explode_with_drops((a - IVec3::Z).as_dvec3() + DVec3::splat(0.5), 2.0, false);
+    assert!(world.get_block(a).is_some_and(|b| ss::stairs(b).is_some()), "the blackstone stairs stand");
     assert_eq!(world.get_block(a - IVec3::Z), Some(Block::AIR));
     let left = ss::stairs(world.get_block(a).unwrap()).unwrap();
     assert_eq!((left.top, left.shape), (true, StairShape::Straight));

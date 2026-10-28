@@ -243,3 +243,26 @@ fn every_painting_has_art_and_the_items_have_recipes() {
     }
     assert_eq!(Item::ARMOR_STAND.max_stack(), 16);
 }
+
+#[test]
+fn lan_clients_mirror_nearby_decor_and_frame_comparator_output() {
+    let w = walled();
+    let mut host = Entities::new(1);
+    let wall = IVec3::new(7, GROUND + 2, 2);
+    host.place_decor(&w, Item::ITEM_FRAME, wall, IVec3::X, 0.0, &[]);
+    host.place_decor(&w, Item::PAINTING, wall + IVec3::Z * 3, IVec3::X, 0.0, &[]);
+    let (eye, dir) = aim(GROUND as f64 + 2.5);
+    let mut inv = inventory(Item::DIAMOND, 1);
+    host.use_decor(eye, dir, 3.0, &mut inv, 0, false);
+    host.use_decor(eye, dir, 3.0, &mut inv, 0, false);
+    // `ItemFrame.getAnalogOutput`: one turn of a held item reads 2.
+    let frame = host.decor.iter().find(|d| matches!(d.kind, Kind::Frame { .. })).unwrap();
+    let signals: Vec<_> = host.frame_signals().collect();
+    assert_eq!(signals, [((frame.cell, frame.facing), 2)]);
+
+    let mut client = Entities::new(2);
+    client.place_decor(&w, Item::ITEM_FRAME, wall + IVec3::Z * 5, IVec3::X, 0.0, &[]);
+    client.replace_decor(&host.decor_near(eye, 160.0, 256));
+    assert_eq!(client.decor, host.decor, "the client's stale frame is replaced");
+    assert!(host.decor_near(eye + DVec3::X * 500.0, 160.0, 256).is_empty(), "far decor isn't sent");
+}
