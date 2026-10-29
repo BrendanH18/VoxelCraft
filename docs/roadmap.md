@@ -842,6 +842,9 @@ Exception (owner, 2026-10-22): v0.10 is tagged once merged, before its exit
 check, because the owner wants players on the updater as soon as possible
 and the check (updating a real v0.10 install) needs a later release to update
 to. The rows stay Implemented, unverified until it passes.
+Exception (owner, 2026-10-29): v0.12 is tagged after the owner's play,
+without its frame-time gate: the three-run `materials` set moved to v0.20
+with the gate, and the rows stay Implemented, unverified until it passes.
 
 Work on the earliest unreleased version. Start a later one early only where
 its dependencies allow and it doesn't stall the current one. Version 1.0 is
