@@ -350,8 +350,8 @@ fn mob_arrows_spare_decorations_without_mob_griefing_but_still_pop_framed_items(
     e.place_decor(&w, Item::PAINTING, wall, IVec3::X, 0.0, &[]).unwrap().unwrap();
     fly(&mut e, &w, skeleton(GROUND as f64 + 2.5), true);
     assert_eq!(e.decor.len(), 1, "BlockAttachedEntity refuses a mob's damage");
-    // The refused arrow bounced back off the painting, east.
-    assert!(e.arrows.iter().all(|a| a.pos.x > 8.0));
+    // The refused arrow bounced back off the painting, east, and keeps going.
+    assert!(e.arrows.iter().all(|a| a.pos.x > 9.0), "{:?}", e.arrows.iter().map(|a| a.pos).collect::<Vec<_>>());
 
     let mut e = Entities::new(1);
     e.villager_griefing = false;

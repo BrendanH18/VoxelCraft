@@ -120,8 +120,8 @@ binary framing:
 - sounds (dense bank keys) and particle requests near the player, and every
   player's block-breaking progress within 32 blocks;
 - the text of signs and the contents of shelves and chiseled bookshelves
-  within 160 blocks, sent when any of them changes or the player has moved 16
-  blocks since the last send;
+  within 160 blocks, nearest first up to 64 KiB, sent when any of them
+  changes or the player has moved 16 blocks since the last send;
 - a request to open the sign editor (Java's `openTextEdit`) after the player
   places or uses a sign. The client answers Done with
   `sign x y z front|back ["line", ...]`, which the host accepts only for the

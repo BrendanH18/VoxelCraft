@@ -237,6 +237,10 @@ fn vector(v: &Value) -> Option<DVec3> {
 /// extra entities, decorations, dropped items, mob looks and finally all mobs, rather
 /// than disconnecting.
 /// Returns the snapshot (if anything fits) and whether mob looks were shed.
+/// Most bytes of sign, shelf and bookshelf contents in one snapshot, a
+/// quarter of the frame; the nearest entries go first.
+const WOOD_BYTES: usize = voxelcraft::lan::MAX_FRAME / 4;
+
 fn fit_state(mut v: Value) -> (Option<Value>, bool) {
     let fits = |v: &Value| serde_json::to_vec(v).is_ok_and(|b| b.len() < voxelcraft::lan::MAX_FRAME - 16);
     let mut shed_looks = false;
@@ -1319,7 +1323,7 @@ impl Game {
             let wood_version = self.world.wood_entities().version();
             let wood = match peer.wood_sent {
                 Some((v, at)) if v == wood_version && at.distance_squared(here) < 16.0 * 16.0 => Value::Null,
-                _ => json!(self.world.wood_near(here, 160.0)),
+                _ => json!(self.world.wood_near(here, 160.0, WOOD_BYTES)),
             };
             let sign_edit =
                 peer.sign_edit.map(|(p, front, n)| json!({"pos": p.to_array(), "front": front, "serial": n}));

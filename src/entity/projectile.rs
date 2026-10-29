@@ -208,8 +208,9 @@ impl Arrow {
                         && boss.as_ref().is_none_or(|(_, b)| t < *b)
                     {
                         if o.mob_proof && self.shooter.is_some() {
-                            // `hurtOrSimulate` refused: the arrow bounces back off it.
-                            self.pos = from + step * t;
+                            // `hurtOrSimulate` refused: the arrow bounces back off it,
+                            // from outside its box so it doesn't hit it again.
+                            self.pos = from;
                             self.vel = -self.vel * 0.2;
                             return true;
                         }
