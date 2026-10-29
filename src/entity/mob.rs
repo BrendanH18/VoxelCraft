@@ -28,6 +28,11 @@ const GRAVITY: f64 = 28.0;
 /// motion by 0.4 a tick as well, so with slime's 0.8 against 0.6 the ratio
 /// is `(0.546 / 0.728)³ * (1 - 0.546) / (1 - 0.4 * 0.728)`.
 const SLIME_WALK: f64 = 0.270;
+/// What a bounce keeps of a mob's speed. Mobs fall here without Java's
+/// vertical drag of 0.98 a tick, which makes each of Java's slime bounces
+/// about 0.7 as high as the last (a 5-block drop: 3.6, 2.3, 1.8 blocks);
+/// `√0.7` of the speed gives the same.
+const BOUNCE_DRAG: f64 = 0.84;
 /// Clears a 1-block ledge with a little margin (peak ~1.26 blocks).
 const JUMP_VELOCITY: f64 = 8.4;
 const MAX_STEP: f64 = 1.0 / 60.0;
@@ -2624,7 +2629,7 @@ impl Mob {
         let below = world.block(super::item::below_pos(self.pos));
         let bounce = crate::player::bounciness(below);
         if hit.on_ground && bounce > 0.0 && -falling > 0.08 * 20.0 {
-            self.vel.y = -falling * bounce;
+            self.vel.y = -falling * bounce * BOUNCE_DRAG;
         }
         if let Some(s) = &mut self.mount {
             if self.in_water {

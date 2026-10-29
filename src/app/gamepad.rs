@@ -828,7 +828,15 @@ impl Game {
             Request::Open(Used::EditSign { cell, front }) => {
                 let Some((sign, entity)) = self.world.sign_at(cell) else { return };
                 let seat = &mut self.pads.seats[i];
-                seat.sign_text = entity.side(front).lines.clone();
+                // Text an agent wrote can be wider than the sign; cut it as the
+                // keyboard editor's tick does.
+                let max = if sign.hanging() { 60.0 } else { 90.0 };
+                seat.sign_text = entity.side(front).lines.clone().map(|mut line| {
+                    while crate::render::ui::Ui::text_width(&line) > max {
+                        line.pop();
+                    }
+                    line
+                });
                 seat.open(Menu::Sign { cell, front, hanging: sign.hanging(), line: 0, key: (0, 0), shift: false });
             }
             Request::Open(Used::Utility {

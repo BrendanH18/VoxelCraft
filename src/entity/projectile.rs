@@ -66,6 +66,8 @@ pub struct ArrowTarget {
     pub struck: Struck,
     /// Stays the same from tick to tick, for piercing arrows.
     pub key: u64,
+    /// Players riding it: their own arrows pass it (`Projectile.canHitEntity`).
+    pub riders: [Option<PlayerId>; 2],
     pub min: DVec3,
     pub max: DVec3,
     pub mob_proof: bool,
@@ -198,6 +200,12 @@ impl Arrow {
                 let other = others
                     .iter()
                     .filter(|o| !self.pierced_other.contains(&o.key))
+                    // `Projectile.canHitEntity`: not the vehicle carrying the shooter.
+                    .filter(|o| !(self.from_player && self.owner.is_some() && o.riders.contains(&self.owner)))
+                    .filter(|o| {
+                        let Struck::Cart(id) = o.struck else { return true };
+                        self.shooter.is_none_or(|uid| !mobs.iter().any(|m| m.uid == uid && m.riding == Some(id)))
+                    })
                     .filter_map(|o| {
                         crate::physics::ray_aabb(from, step, o.min, o.max).filter(|&t| t <= reach).map(|t| (o, t))
                     })

@@ -125,9 +125,10 @@ impl Screen<Game> for SignEdit {
 
 impl Game {
     /// Opens the editor for one side of the sign at `cell` (Java's
-    /// `openTextEdit`). A LAN client opens it when the host asks.
-    pub(super) fn open_sign_editor(&mut self, cell: IVec3, front: bool) {
-        let Some((sign, entity)) = self.world.sign_at(cell) else { return };
+    /// `openTextEdit`). A LAN client opens it when the host asks. `false`
+    /// when there is no sign there.
+    pub(super) fn open_sign_editor(&mut self, cell: IVec3, front: bool) -> bool {
+        let Some((sign, entity)) = self.world.sign_at(cell) else { return false };
         let side = entity.side(front);
         let board = match sign.kind {
             crate::world::wood::Kind::Crimson => [0.40, 0.19, 0.27, 1.0],
@@ -152,6 +153,7 @@ impl Game {
         self.body.actions.reset();
         self.session.cancel_mining();
         self.session.cancel_consumption();
+        true
     }
 
     /// The edit screen closed: the text goes to the sign through the

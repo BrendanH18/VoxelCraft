@@ -567,7 +567,14 @@ impl Entities {
         let carts = self.minecarts.iter().map(|c| {
             let (min, max) = c.aabb();
             let mob_proof = c.kind.cushion().is_some() && !self.villager_griefing;
-            ArrowTarget { struck: Struck::Cart(c.id), key: c.id as u64, min, max, mob_proof }
+            ArrowTarget {
+                struck: Struck::Cart(c.id),
+                key: c.id as u64,
+                riders: [c.rider, c.second_rider],
+                min,
+                max,
+                mob_proof,
+            }
         });
         let decor = self.decor.iter().enumerate().map(|(i, d)| {
             let (min, max) = d.aabb();
@@ -580,7 +587,14 @@ impl Entities {
                 | (at.y as u16 as u64) << 24
                 | (at.z as u16 as u64) << 8
                 | (d.facing.x + 1 + 3 * (d.facing.y + 1) + 9 * (d.facing.z + 1)) as u64;
-            ArrowTarget { struck: Struck::Decor(i), key, min, max, mob_proof: !framed && !self.villager_griefing }
+            ArrowTarget {
+                struck: Struck::Decor(i),
+                key,
+                riders: [None; 2],
+                min,
+                max,
+                mob_proof: !framed && !self.villager_griefing,
+            }
         });
         carts.chain(decor).collect()
     }

@@ -106,7 +106,7 @@ impl Game {
                 self.gamerules.bool("natural_health_regeneration"),
             )
         };
-        if burning && self.session.mode.can_build() {
+        if burning {
             let top = self.session.player.collision_shape().aabb(self.session.player.pos).1.y;
             self.world.douse_in_cauldron(self.session.player.pos, top);
         }

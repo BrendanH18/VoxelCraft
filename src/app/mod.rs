@@ -1389,7 +1389,9 @@ impl Game {
             Used::OpenMerchant(id) => self.open_merchant(id),
             Used::Screen { cell, block } => self.open_block_screen(cell, block),
             Used::Bed { cell } => self.use_bed(cell),
-            Used::EditSign { cell, front } => self.open_sign_editor(cell, front),
+            Used::EditSign { cell, front } => {
+                self.open_sign_editor(cell, front);
+            }
             Used::Utility { cell, effect } => self.present_utility(cell, effect),
             _ => {}
         }

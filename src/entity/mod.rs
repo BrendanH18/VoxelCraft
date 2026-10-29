@@ -2482,18 +2482,26 @@ mod tests {
         // `Entity.restituteMovementAfterCollisions` with slime's restitution 1.0.
         let mut world = Grid::flat(10);
         world.set(IVec3::new(0, 9, 0), crate::world::stone_blocks::SLIME_BLOCK);
-        let mut mob = Mob::new(MobKind::Pig, DVec3::new(0.5, 16.0, 0.5), 0.0);
-        let (mut landed, mut peak) = (false, f64::MIN);
-        for _ in 0..90 {
+        // Java's bounces from 5 blocks reach about 3.6, then 2.3 blocks, and die out.
+        let mut mob = Mob::new(MobKind::Pig, DVec3::new(0.5, 15.0, 0.5), 0.0);
+        let mut peaks = Vec::new();
+        let (mut rising, mut top) = (false, f64::MIN);
+        for _ in 0..60 * 20 {
             mob.physics_step(1.0 / 60.0, &world, None, 0.0);
             if mob.vel.y > 0.0 {
-                landed = true;
+                rising = true;
             }
-            if landed {
-                peak = peak.max(mob.pos.y);
+            top = top.max(mob.pos.y);
+            if rising && mob.vel.y < 0.0 {
+                peaks.push(top - 10.0);
+                (rising, top) = (false, f64::MIN);
             }
         }
-        assert!(landed && peak > 13.0, "bounced to {peak}");
+        // The first peak recorded is the drop itself.
+        let bounces = &peaks[1..];
+        assert!(bounces.len() >= 3 && (3.0..4.2).contains(&bounces[0]), "{peaks:?}");
+        assert!(bounces.windows(2).all(|w| w[1] < w[0] * 0.8), "{peaks:?}");
+        assert!(mob.on_ground && mob.vel.y.abs() < 1e-9, "settles: {:?} {peaks:?}", mob.vel);
         // A walker on slime keeps about a quarter of its speed.
         let mut world = Grid::flat(10);
         for x in -2..40 {

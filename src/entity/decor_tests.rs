@@ -379,3 +379,24 @@ fn piercing_arrows_go_on_through_decorations() {
     assert_eq!(stands(0), 1, "a plain arrow stops at the first stand");
     assert_eq!(stands(1), 0, "a piercing arrow breaks both");
 }
+
+#[test]
+fn arrows_pass_the_vehicle_their_shooter_rides() {
+    // `Projectile.canHitEntity`: not the vehicle carrying the arrow's owner.
+    let w = world();
+    let shot_at_own_boat = |riding: bool| {
+        let mut e = Entities::new(1);
+        let id = e.spawn_cart(
+            crate::entity::minecart::CartKind::Boat { wood: 0, chest: false },
+            DVec3::new(3.5, GROUND as f64 + 1.0, 2.5),
+        );
+        if riding {
+            e.minecarts[0].rider = Some(crate::entity::PlayerId::HOST);
+        }
+        let arrow = crate::entity::Arrow::shot(DVec3::new(3.5, GROUND as f64 + 4.0, 2.5), DVec3::NEG_Y, 1.0, true);
+        fly(&mut e, &w, arrow, true);
+        e.cart(id).is_some()
+    };
+    assert!(shot_at_own_boat(true), "the rider's own arrow passes its boat");
+    assert!(!shot_at_own_boat(false), "anyone else's breaks it");
+}

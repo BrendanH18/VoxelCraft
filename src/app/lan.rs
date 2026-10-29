@@ -1142,6 +1142,7 @@ impl Game {
             if peer.dimension != self.dimension {
                 peer.dimension = self.dimension;
                 peer.sent.clear();
+                peer.wood_sent = None;
                 peer.open = false;
                 let _ = peer.connection.send(Packet::Welcome {
                     seed: self.world.generator.seed,
@@ -1580,9 +1581,10 @@ impl Game {
         let edit = &snapshot["sign_edit"];
         if let (Some(serial), Some(p)) = (edit["serial"].as_u64(), vector(&edit["pos"]))
             && serial as u32 != self.lan.sign_serial
+            // Retried until the sign's contents have arrived to open it.
+            && self.open_sign_editor(p.as_ivec3(), edit["front"] == true)
         {
             self.lan.sign_serial = serial as u32;
-            self.open_sign_editor(p.as_ivec3(), edit["front"] == true);
         }
         let c = &snapshot["container"];
         let pos = vector(&c["pos"]).map(|p| p.as_ivec3());
