@@ -91,8 +91,26 @@ impl Tab {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) enum Menu {
-    Pause { choice: usize },
-    Items { tab: Tab, col: usize, row: usize },
+    Pause {
+        choice: usize,
+    },
+    Items {
+        tab: Tab,
+        col: usize,
+        row: usize,
+    },
+    /// One side of a sign, written on an on-screen keyboard (Java's sign
+    /// screen has only a keyboard): the cursor picks `key` (column, row), A
+    /// types it, X erases, Y shifts, LB/RB change `line`, and B or Start is
+    /// Done, which keeps the text as Java's `onClose` does.
+    Sign {
+        cell: IVec3,
+        front: bool,
+        hanging: bool,
+        line: usize,
+        key: (usize, usize),
+        shift: bool,
+    },
 }
 
 /// A slot under the menu cursor.
@@ -114,6 +132,9 @@ pub(super) enum Action {
     Leave,
     Click(Slot, bool),
     QuickMove(Slot),
+    /// Sign editor: type a character, or erase the last one.
+    Type(char),
+    Erase,
 }
 
 /// Lengths of the list tabs: craftable results, and palette items (zero
@@ -131,6 +152,21 @@ impl Default for Lists {
 }
 
 const PAUSE_CHOICES: [&str; 2] = ["Resume", "Leave game"];
+/// The sign editor's keys, plain and shifted, then a row of Shift, Space,
+/// Delete and Done.
+const KEYS: [&str; 4] = ["1234567890", "qwertyuiop", "asdfghjkl'", "zxcvbnm,.-"];
+const SHIFTED: [&str; 4] = ["!@#$%&*()?", "QWERTYUIOP", "ASDFGHJKL\"", "ZXCVBNM;:_"];
+const SPECIAL_KEYS: [&str; 4] = ["Shift", "Space", "Delete", "Done"];
+
+/// Keys in sign keyboard row `row`.
+fn key_count(row: usize) -> usize {
+    if row < KEYS.len() { KEYS[row].len() } else { SPECIAL_KEYS.len() }
+}
+
+/// The character key (`col`, `row`) types.
+fn key_char(col: usize, row: usize, shift: bool) -> Option<char> {
+    (if shift { SHIFTED } else { KEYS }).get(row)?.chars().nth(col)
+}
 const COLS: usize = 9;
 const FURNACE: [SlotRef; 3] = [SlotRef::FurnaceInput, SlotRef::FurnaceFuel, SlotRef::FurnaceOutput];
 const ENCHANTING: [SlotRef; 5] = [
@@ -173,6 +209,36 @@ impl Menu {
                 Nav::A | Nav::B | Nav::Start => Action::Close,
                 _ => Action::None,
             },
+            Menu::Sign { line, key, shift, .. } => {
+                let rows = KEYS.len() + 1;
+                let (col, row) = key;
+                match nav {
+                    Nav::Up | Nav::Down => {
+                        *row = if nav == Nav::Up { (*row + rows - 1) % rows } else { (*row + 1) % rows };
+                        *col = (*col).min(key_count(*row) - 1);
+                    }
+                    Nav::Left => *col = (*col + key_count(*row) - 1) % key_count(*row),
+                    Nav::Right => *col = (*col + 1) % key_count(*row),
+                    // `AbstractSignEditScreen.keyPressed`: up and down wrap through the four lines.
+                    Nav::Lb => *line = (*line + 3) % 4,
+                    Nav::Rb => *line = (*line + 1) % 4,
+                    Nav::Y => *shift = !*shift,
+                    Nav::X => return Action::Erase,
+                    Nav::B | Nav::Start => return Action::Close,
+                    Nav::A => {
+                        if let Some(c) = key_char(*col, *row, *shift) {
+                            return Action::Type(c);
+                        }
+                        match *col {
+                            0 => *shift = !*shift,
+                            1 => return Action::Type(' '),
+                            2 => return Action::Erase,
+                            _ => return Action::Close,
+                        }
+                    }
+                }
+                Action::None
+            }
             Menu::Items { tab, col, row } => {
                 let rows = rows(*tab, lists);
                 // Crafting can shrink the list under the cursor.
@@ -333,6 +399,18 @@ impl Game {
     /// Do what a menu press asked for seat `seat`, playing `name`. Returns
     /// false to close the menu.
     pub(super) fn apply_menu(&mut self, seat: usize, name: &str, menu: Menu, action: Action) -> bool {
+        if let Menu::Sign { cell, front, hanging, line, .. } = menu {
+            match action {
+                Action::Type(c) => self.pad_sign_type(seat, line, hanging, Some(c)),
+                Action::Erase => self.pad_sign_type(seat, line, hanging, None),
+                Action::Close | Action::Leave => {
+                    self.pad_sign_done(seat, name, cell, front);
+                    return false;
+                }
+                _ => {}
+            }
+            return true;
+        }
         let Menu::Items { tab, .. } = menu else {
             return !matches!(action, Action::Close | Action::Leave);
         };
@@ -341,6 +419,7 @@ impl Game {
             Action::Close | Action::Leave => return false,
             Action::Click(slot, right) => (slot, false, right),
             Action::QuickMove(slot) => (slot, true, false),
+            Action::Type(_) | Action::Erase => return true,
         };
         let slot = match slot {
             Slot::Ref(s) => s,
@@ -380,6 +459,45 @@ impl Game {
         }
     }
 
+    /// The controller sign editor: the board with its four lines, the
+    /// keyboard, and what the buttons do.
+    fn pad_sign_ui(&self, ui: &mut Ui, name: &str, hanging: bool, line: usize, key: (usize, usize), shift: bool) {
+        let (sw, sh) = ui.size();
+        let Some(lines) = self.pad_sign_text(name) else { return };
+        let title = if hanging { "Edit Hanging Sign Message" } else { "Edit Sign Message" };
+        let top = (sh / 2.0 - 100.0).max(4.0).floor();
+        ui.text(((sw - Ui::text_width(title)) / 2.0).floor(), top, title, WHITE);
+        let width = if hanging { 60.0 } else { 90.0 } + 24.0;
+        let left = ((sw - width) / 2.0).floor();
+        ui.rect(left, top + 14.0, width, 4.0 * 12.0 + 8.0, [0.60, 0.47, 0.29, 1.0]);
+        for (i, text) in lines.iter().enumerate() {
+            let y = top + 18.0 + i as f32 * 12.0;
+            let shown = if i == line { format!("> {text}_") } else { text.clone() };
+            let x = ((sw - Ui::text_width(&shown)) / 2.0).floor();
+            ui.text_flat(x, y, &shown, [0.0, 0.0, 0.0, 1.0]);
+        }
+        let mut y = top + 4.0 * 12.0 + 30.0;
+        for row in 0..=KEYS.len() {
+            let count = key_count(row);
+            let w = if row < KEYS.len() { 16.0 } else { 40.0 };
+            let x0 = ((sw - count as f32 * (w + 2.0)) / 2.0).floor();
+            for col in 0..count {
+                let x = x0 + col as f32 * (w + 2.0);
+                let lit = (col, row) == key;
+                ui.rect(x, y, w, 14.0, if lit { [0.45, 0.5, 0.75, 0.95] } else { [0.2, 0.2, 0.2, 0.9] });
+                let label = match key_char(col, row, shift) {
+                    Some(c) => c.to_string(),
+                    None if col == 0 && shift => "SHIFT".to_string(),
+                    None => SPECIAL_KEYS.get(col).copied().unwrap_or_default().to_string(),
+                };
+                ui.text(x + ((w - Ui::text_width(&label)) / 2.0).floor(), y + 3.0, &label, WHITE);
+            }
+            y += 16.0;
+        }
+        let help = "A type  X delete  Y shift  LB/RB line  B done";
+        ui.text(((sw - Ui::text_width(help)) / 2.0).floor(), y + 4.0, help, WHITE);
+    }
+
     /// Draws `menu` over a controller player's view.
     pub(super) fn pad_menu_ui(&self, ui: &mut Ui, name: &str, menu: Menu) {
         let (sw, sh) = ui.size();
@@ -392,7 +510,8 @@ impl Game {
             z: bot.agent.session.player.pos.z,
             spawn_x: self.world_spawn.x as f64 + 0.5,
             spawn_z: self.world_spawn.z as f64 + 0.5,
-            overworld: self.dimension == crate::world::terrain::Dimension::Overworld,
+            dimension: self.dimension,
+            lodestone: None,
             day_time: self.day_time as f32,
             spin: self.lost_dials().0,
             clock_spin: self.lost_dials().1,
@@ -411,6 +530,10 @@ impl Game {
                 return;
             }
             Menu::Items { tab, col, row } => (tab, col, row),
+            Menu::Sign { hanging, line, key, shift, .. } => {
+                self.pad_sign_ui(ui, name, hanging, line, key, shift);
+                return;
+            }
         };
         let crafts = if tab == Tab::Crafting { self.pad_crafts(name) } else { Vec::new() };
         let items = if tab == Tab::Palette { palette() } else { Vec::new() };
@@ -742,6 +865,33 @@ mod tests {
         m.press(Nav::Down, NONE);
         assert_eq!(m.press(Nav::A, NONE), Action::Leave);
         assert_eq!(m.press(Nav::Start, NONE), Action::Close);
+    }
+    #[test]
+    fn the_sign_keyboard_types_shifts_erases_and_changes_lines() {
+        let mut m = Menu::Sign { cell: IVec3::ZERO, front: true, hanging: false, line: 0, key: (0, 0), shift: false };
+        assert_eq!(m.press(Nav::A, NONE), Action::Type('1'));
+        // Down to "q", right to "w"; Y shifts it.
+        m.press(Nav::Down, NONE);
+        m.press(Nav::Right, NONE);
+        assert_eq!(m.press(Nav::A, NONE), Action::Type('w'));
+        m.press(Nav::Y, NONE);
+        assert_eq!(m.press(Nav::A, NONE), Action::Type('W'));
+        assert_eq!(m.press(Nav::X, NONE), Action::Erase);
+        // The bottom row: Shift, Space, Delete, Done; up from the top row wraps to it.
+        m.press(Nav::Up, NONE);
+        m.press(Nav::Up, NONE);
+        assert!(matches!(m, Menu::Sign { key: (1, 4), .. }), "{m:?}");
+        assert_eq!(m.press(Nav::A, NONE), Action::Type(' '));
+        m.press(Nav::Right, NONE);
+        assert_eq!(m.press(Nav::A, NONE), Action::Erase);
+        m.press(Nav::Right, NONE);
+        assert_eq!(m.press(Nav::A, NONE), Action::Close);
+        // LB and RB wrap through the four lines.
+        m.press(Nav::Lb, NONE);
+        assert!(matches!(m, Menu::Sign { line: 3, .. }));
+        m.press(Nav::Rb, NONE);
+        assert!(matches!(m, Menu::Sign { line: 0, .. }));
+        assert_eq!(m.press(Nav::B, NONE), Action::Close);
     }
     #[test]
     fn small_storage_containers_expose_only_their_real_slots() {

@@ -67,6 +67,7 @@ positive pitch looks up. Wait until `state.loaded` is true before moving.
 | `place`, `attack`, `drop` | Place selected block, hit a targeted mob, or drop selected stack |
 | `craft item` | Craft once with available recipe alternatives; larger recipes require targeting a crafting table |
 | `chest take/put slot` | Transfer a stack using chest slot 0–26; put uses selected hotbar slot |
+| `sign x y z front\|back ["line", ...]` | Write up to four lines on one side of a sign within reach, as the sign editor's Done does (a JSON array keeps spaces) |
 | `furnace take/put slot` | Slot is `input`, `fuel` or `output`; move items through the aimed furnace; put uses the selected hotbar slot, output is take-only and taking releases stored XP |
 | `anvil 1..9` | On the targeted anvil, combine the selected stack with that hotbar slot (repair with material, merge two of an item, or apply an enchanted book), paying levels; the result replaces the selected stack |
 | `enchanting 1..3` | Take that offer of the targeted enchanting table for one of the selected item, paying 1–3 levels and lapis from the inventory; `observe` lists the offers (cost and clue) under `target.enchanting_offers` |
@@ -159,6 +160,12 @@ armor, into or out of an open chest, or into a furnace's input or fuel slot.
 LB/RB switch between the inventory, crafting (everything you can make right
 now; A crafts one, Y as many as fit; 3x3 recipes need a crafting table opened
 with LT) and, in creative, every item. B closes, putting any held stack back.
+
+Placing a sign, or using one, opens its editor in the player's view, with an
+on-screen keyboard (Java's sign screen needs a keyboard). Move over the keys
+with the D-pad or left stick; A types, X deletes, Y switches to capitals and
+symbols, and LB/RB move between the four lines. B, Start or the Done key
+writes the text, as closing Java's screen does. Lines stop at the sign's width.
 
 Sleeping needs everyone: the night (or the rain) passes once the keyboard
 player and every active agent and controller player are in bed, as in Java.

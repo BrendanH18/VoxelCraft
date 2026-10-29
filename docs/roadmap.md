@@ -854,7 +854,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.9 | Block states | M2: BLD-04, BLD-06 | Top and double slabs, waterlogging, door hinges, floor/ceiling buttons and levers, wall grindstones, corner-stair light; reserved state ranges for later content | Done (owner, 2026-10-22): ready to tag `v0.9` once merged; [delivery record](#35-v09-delivery-record--2026-10-22). Block states (#40), Java player movement, wall posts, powered doors, honey, scaffolding and powder snow; the owner's play is the player evidence for v0.8 and v0.9 (the checklist and controller session were dropped). Rows stay Implemented, unverified: the windowed performance check was deferred to v0.20 (owner, 2026-10-22) |
 | v0.10 | Updates | M7 early: UX-04b, part of UX-05a | In-game update check, signed download, pre-update world backup and install on Windows and Apple Silicon Macs ([design](updates.md)); worlds whose level file can't be read are no longer started fresh. See [v0.10 scope](#v010-scope-updates) | Release prepared (2026-10-22): Cargo 0.10.0, release notes and the `UPDATE_SIGNING_KEY` secret; tag `v0.10` once merged (owner exception: before the exit check, which needs a later release). Rows Implemented, unverified until the owner updates a real v0.10 install (the exit check); the stepping-stone release every player installs by hand |
 | v0.11 | Menus and settings | M7 early: UX-03a/b, UX-05a | Java's title screen, world list and Edit World screen; Java-style options screens, key rebinding, GUI scale and per-category volume; consistent menu navigation and error screens. See [v0.11 scope](#v011-scope-menus-and-settings) | Release prepared (2026-10-24): Cargo 0.11.0 and release notes; every work item implemented, unverified; options-file failures now show a notice; the menu and title benchmark scenes exist, but their [first run](verification/2026-10-24-v0.11-menu-frame-time.md) was capped at the display's 120 Hz by the machine's state and doesn't count. Done (owner, 2026-10-25): tag `v0.11` from `ec74556` without its exit checks (owner exception). Rows stay Implemented, unverified; the menu and title frame-time run moved to v0.20, and problems found in the owner's ordinary play come back as fixes |
-| v0.12 | Building materials | Close M2 | Missing wood, stone, copper and colour family members, the unregistered reference fuel items, signs, banners, item frames, cauldrons and campfires; coral wall fans; falling and dripping dripstone, tilting dripleaf. See [v0.12 scope](#v012-scope-building-materials) | In progress (2026-10-27): items 0–5 implemented, unverified, and reviewed (capacity raise and the wood, stone, copper, colour and utilities tracks; `registry_audit` on the merged tree: 669 → 247 missing blocks, the rest belonging to later releases); item 6, the data pass, implemented, unverified (2026-10-27: recipes, drops, mining, fuel, compost and repair compared with the 26.3 jar for every registered block and item; Java explosions, blast resistance and explosion loot, plus item frame comparator output, LAN decor and ender chests for every player kind, 2026-10-27); double chests (chests, trapped and copper chests) and explosions destroying dropped items and orbs implemented, unverified (2026-10-28, [record](verification/2026-10-28-v0.12-double-chests.md)); the `materials` frame-time scene exists ([first runs](verification/2026-10-27-v0.12-materials-frame-time.md): one valid run, 549 FPS average but a 207 FPS 1% low, below the gate). Owed: three valid runs of that scene on an idle M5 on AC power, a profile separating the texture-paging cost (two pages now that `tex::COUNT` passes 2048) from model geometry if the gate still fails, and owner play |
+| v0.12 | Building materials | Close M2 | Missing wood, stone, copper and colour family members, the unregistered reference fuel items, signs, banners, item frames, cauldrons and campfires; coral wall fans; falling and dripping dripstone, tilting dripleaf. See [v0.12 scope](#v012-scope-building-materials) | Release prepared (2026-10-29): Cargo 0.12.0 and release notes. Items 0–6 implemented, unverified (capacity raise; wood, stone, copper, colour and utilities tracks; data pass, explosions, double chests; `registry_audit`: 669 → 247 missing blocks, the rest belonging to later releases). The remaining gaps of v0.12's own blocks were closed on 2026-10-29 ([record](verification/2026-10-29-v0.12-finish.md)): sign editing for CLI, LAN and controller players, lodestone compasses, slime blocks for mobs and items, arrows hitting vehicles, cushions and decorations, cauldrons putting out fires, and a hidden-window memory leak. Frame time: one valid `materials` run (539 FPS average, 137.8 FPS 1% low) and a profile showing the per-frame mob-model rebuild, not texture paging, as the cost; the three-run gate moved to v0.20 as for v0.8, v0.9 and v0.11. Rows that weren't ready moved out under the 2026-10-25 policy (see the [scope](#v012-scope-building-materials)). Tag `v0.12` once merged; rows stay Implemented, unverified until the owner's play |
 | v0.13 | Terrain | M3: GEN-01..03 | Java climate and density terrain with overhangs; Java caves, aquifers and ores; deep-dark content, springs, glow lichen; giant spruce and jungle trees and the remaining biome features | Planned |
 | v0.14 | Structures | M3: GEN-05..07 | A Java structure-template (jigsaw) system; villages, outposts, bastions, fossils, shipwrecks, ocean ruins and monuments built from it; buried treasure and explorer maps; Java loot random sequences | Planned |
 | v0.15 | Wildlife | M4: MOB-03/04, FOO, ENV-03 | Bats, frogs, pandas, polar bears, armadillos, mooshrooms, strays, bogged, phantoms and zombie horses (with lightning); drowned conversion and the cat spawner; melon, pumpkin and beetroot crops; animal and mount acceptance | Planned |
@@ -862,7 +862,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.17 | Villages and raids | Close M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M4 exit checks | Planned |
 | v0.18 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough | Planned |
 | v0.19 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload | Planned |
-| v0.20 | Polish and performance | M7: UX, §6 | Subtitles, recipe discovery, asset and sound review in play, and menu fixes found since v0.11; the 240 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows and v0.11's menu and title frame-time run, which moved here unverified | Planned |
+| v0.20 | Polish and performance | M7: UX, §6 | Subtitles, recipe discovery, asset and sound review in play (including the v0.12 blocks' own sounds), and menu fixes found since v0.11; the 240 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, v0.11's menu and title frame-time run and v0.12's `materials` runs, which moved here unverified ([v0.12 profile](verification/2026-10-29-v0.12-finish.md#frame-time): per-frame entity model rebuilds) | Planned |
 | v1.0 | Acceptance | M7 exit, §8 | Every mandatory row Verified; fresh-world and long-session playthroughs; save-compatibility policy; installer and update checks; current stable Java scope reconciled | Planned |
 
 Notes:
@@ -1118,9 +1118,11 @@ Work items (all Missing unless noted):
    12 shelves (three slots, redstone power, chains of three and hotbar
    swaps, comparator output) and the chiseled bookshelf (six books,
    comparator output, silk touch). See the
-   [record](verification/2026-10-25-v0.12-wood.md); owed: play by hand, LAN
-   and controller sign editing, original sounds, and the windowed
-   performance check with the track's textures.
+   [record](verification/2026-10-25-v0.12-wood.md); owed: play by hand,
+   original sounds (v0.20), and the windowed performance check with the
+   track's textures (v0.20). LAN, controller and CLI sign editing:
+   *implemented, unverified (2026-10-29,
+   [record](verification/2026-10-29-v0.12-finish.md))*.
 2. **Stone and minerals (BLD-01b).** Polished tuff and tuff bricks;
    deepslate bricks and tiles with cracked and chiseled forms; quartz
    blocks; smooth, cut, chiseled and red sandstone; red nether bricks and the
@@ -1135,9 +1137,10 @@ Work items (all Missing unless noted):
    blocking light and the slime block's bounce, friction, slowdown and
    fall-damage cancel; the 11 invented blocks left the recipes and palette
    ([record](verification/2026-10-25-v0.12-stone.md)). Owed: owner play,
-   mobs and items bouncing on slime, slime stickiness for pistons (pistons
-   push no block structures yet), block-of-coal fuel (data pass), and red
-   sandstone in badlands terrain (v0.13).
+   slime stickiness for pistons (pistons push no block structures yet,
+   v0.19), and red sandstone in badlands terrain (v0.13). Block-of-coal fuel
+   came with the data pass; mobs and items bouncing on slime: *implemented,
+   unverified (2026-10-29)*.
 3. **Copper (BLD-01c).** Every unwaxed oxidation stage of the copper block,
    cut copper and its stairs and slab, chiseled copper, grate, bulb, door,
    trapdoor, bars, chain, lantern, chest and lightning rod, plus the copper
@@ -1170,7 +1173,9 @@ Work items (all Missing unless noted):
    comes with bees in v0.15, so candles and candle cakes are creative-only
    until then; integrator's decision, 2026-10-26: keep the finished blocks
    rather than hold them for bees, as with waxing); banner patterns (loom,
-   v0.17); arrows hitting cushions (no projectile hits vehicles yet).
+   v0.17). Arrows hitting cushions, boats, minecarts and decorations:
+   *implemented, unverified (2026-10-29,
+   [record](verification/2026-10-29-v0.12-finish.md))*.
 5. **Utilities and special blocks (BLD-05b, BLD-02b, ENV-04).** Item frames
    and glow item frames, paintings and armor stands; empty, water, lava and
    powder snow cauldrons (filling, bottles, dye washing, dripstone filling);
@@ -1193,8 +1198,10 @@ Work items (all Missing unless noted):
    decorated pots that keep a stack, and anchors charged with glowstone that
    set a Nether respawn point or explode elsewhere
    ([record](verification/2026-10-25-v0.12-utilities.md)). Owed: owner play,
-   dye washing (dyed leather and banners don't exist yet), lodestone
-   compasses, stalactites broken by tridents, and a frame-time scene.
+   dye washing (dyed leather armour and banner patterns, v0.17), and
+   stalactites broken by tridents (v0.16). The frame-time scene is
+   `materials`. Lodestone compasses, and cauldrons putting out a burning
+   player with a level: *implemented, unverified (2026-10-29)*.
    *Implemented, unverified (2026-10-27):* item frame comparator output
    through a conductor, LAN snapshots of nearby frames, paintings and armor
    stands, and ender chests for controller players (their own screen), LAN
@@ -1243,6 +1250,21 @@ Work items (all Missing unless noted):
 
 Tracks 1–5 can run in parallel once item 0 is done, at most four at a time;
 item 6 runs last, over the integrated result.
+
+Moved out of v0.12 (2026-10-29). Under the policy approved on 2026-10-25, a
+row that isn't ready moves on rather than holding v0.12 open:
+
+- To v0.13: bubble columns (ENV-01a), the fire-tick and flammability
+  comparison with 26.3 (ENV-02, BLD-03b), and the offhand and shield
+  assessment (PLY-05b). None was started.
+- With their dependencies: firework rockets in crossbows (PLY-05c, with
+  fireworks in v0.18), stalactites broken by tridents (ENV-04, v0.16),
+  splash water bottles putting out fire, candles and campfires (with the
+  potion work, v0.20), item frames holding maps (cartography, v0.17), and
+  copper chests waiting to age while open (container viewers, with chest
+  lids, v0.20).
+- To v0.20: the blocks' own sounds, the three-run `materials` frame-time
+  set, and the small model and lighting differences in the track records.
 
 Exit: the [M2 exit](#m2--complete-materials-and-interactions) for each
 family in v0.12. A sample of every family is obtained in survival, crafted,

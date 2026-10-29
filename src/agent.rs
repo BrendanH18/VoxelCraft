@@ -14,7 +14,7 @@ use crate::simulation::survival;
 use crate::simulation::{self, TICK_SECONDS};
 use crate::world::{World, block::Block};
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | draw [ticks] (hold use with a bow or crossbow: a bow shoots at that draw, a crossbow loads after 25 ticks; a charged crossbow fires at once) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot (an aimed ender chest holds your own items) | furnace take/put input/fuel/output | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp [~] x y z, spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | draw [ticks] (hold use with a bow or crossbow: a bow shoots at that draw, a crossbow loads after 25 ticks; a charged crossbow fires at once) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot (an aimed ender chest holds your own items) | sign x y z front|back [\"line\", ...] (write one side of a sign within reach) | furnace take/put input/fuel/output | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp [~] x y z, spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -413,6 +413,7 @@ impl Agent {
                     // trade and sleep commands, or sneak to build against the block.
                     Used::Screen { .. } => return Err("that block opens a screen; use its command or sneak".into()),
                     Used::Bed { .. } => return Err("use the sleep command for beds".into()),
+                    Used::EditSign { .. } => return Err("signs are written with: sign x y z front|back [lines]".into()),
                     Used::OpenVehicle(_) => return Err("that vehicle has storage; use chest take/put".into()),
                     Used::OpenMerchant(_) => return Err("use trade to see this villager's offers".into()),
                     Used::Utility { effect: crate::world::utilities::interact::Effect::EnderChest, .. } => {
@@ -604,6 +605,7 @@ impl Agent {
                 self.session.inventory.take_one(addition_slot);
                 self.session.inventory.slots[self.selected] = Some(result);
             }
+            Command::Sign(pos, front, lines) => self.session.edit_sign(world, pos, front, lines)?,
             Command::Drop => {
                 let stack = self.session.inventory.slots[self.selected].take().ok_or("selected slot empty")?;
                 entities.throw(stack, self.session.player.eye(), self.session.player.forward().as_dvec3());
@@ -710,6 +712,7 @@ impl Agent {
         rules: &crate::rules::GameRules,
     ) {
         self.session.settle_wake(world);
+        self.session.tick_lodestones(world);
         self.previous_pos = self.session.player.pos;
         self.keep_inventory = rules.bool("keep_inventory");
         self.pearls_vanish = rules.bool("ender_pearls_vanish_on_death");
@@ -781,6 +784,7 @@ impl Agent {
             stalactite: std::mem::take(&mut self.session.stalactite),
             ..simulation::player_environment(&self.session.player, world, moved)
         };
+        let burning = self.session.vitals.burning();
         let hurts = self.session.vitals.tick_rules(
             TICK_SECONDS as f32,
             &env,
@@ -788,6 +792,10 @@ impl Agent {
             difficulty,
             rules.bool("natural_health_regeneration"),
         );
+        if burning {
+            let top = self.session.player.collision_shape().aabb(self.session.player.pos).1.y;
+            world.douse_in_cauldron(self.session.player.pos, top);
+        }
         for (damage, cause) in [
             (hurts.fall, "hit the ground too hard"),
             (hurts.drown, "drowned"),
@@ -1884,6 +1892,65 @@ mod tests {
         assert!(a.execute(Command::Furnace(true, 2), &mut restored, &mut e, &[]).is_err());
         assert_eq!(restored.furnace(p).unwrap().xp, 4.0);
         assert_eq!(restored.furnace(p).unwrap().output, Some(Stack::new(Item::IRON_INGOT, 1)));
+    }
+
+    #[test]
+    fn compasses_lock_onto_lodestones_and_lose_them_when_they_go() {
+        use crate::inventory::{stack_from_str, stack_to_string};
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        let pos = IVec3::new(4, 151, 1);
+        world.set_block(pos, crate::world::utilities::LODESTONE);
+        // `CompassItem.useOn`: one of a stack of three splits off, keeping its name.
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        a.inventory.slots[0] = Stack::new(Item::COMPASS, 3).with_name("Home");
+        a.execute(Command::Place, &mut world, &mut entities, &[]).unwrap();
+        assert_eq!(a.inventory.get(0).map(|s| (s.count, s.lodestone)), Some((2, None)));
+        let locked = *a.inventory.slots.iter().flatten().find(|s| s.lodestone.is_some()).unwrap();
+        assert_eq!((locked.count, locked.display_name()), (1, "Home"));
+        assert_eq!(locked.lodestone.unwrap().target, Some((pos, Dimension::Overworld)));
+        assert!(!locked.stacks_with(&a.inventory.get(0).unwrap()));
+        assert_eq!(stack_from_str(&stack_to_string(Some(locked))), Some(Some(locked)));
+        // A lone compass becomes the lodestone compass itself.
+        let mut b = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        b.inventory.add(Item::COMPASS, 1);
+        b.execute(Command::Place, &mut world, &mut entities, &[]).unwrap();
+        let lone = b.inventory.get(0).unwrap();
+        assert_eq!((lone.count, lone.display_name()), (1, "lodestone compass"));
+        assert!(b.inventory.slots[1..].iter().all(Option::is_none));
+        // `LodestoneTracker.tick`: with the lodestone gone it loses its target.
+        world.set_block(pos, Block::AIR);
+        b.tick_lodestones(&world);
+        let lost = b.inventory.get(0).unwrap();
+        assert_eq!(lost.lodestone.map(|l| l.target), Some(None));
+        assert_eq!(stack_from_str(&stack_to_string(Some(lost))), Some(Some(lost)));
+    }
+
+    #[test]
+    fn the_sign_command_writes_one_side_of_a_sign_in_reach() {
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        let pos = IVec3::new(4, 151, 1);
+        let sign = crate::world::wood::signs::Sign {
+            kind: crate::world::wood::Kind::Oak,
+            mount: crate::world::wood::signs::Mount::Standing { rotation: 0 },
+            wet: false,
+        };
+        world.set_block(pos, sign.block());
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        let command = Command::parse(r#"sign 4 151 1 back ["Hello  there", "", "line 3"]"#).unwrap();
+        a.execute(command, &mut world, &mut entities, &[]).unwrap();
+        let (_, entity) = world.sign_at(pos).unwrap();
+        assert_eq!(entity.side(false).lines, ["Hello  there", "", "line 3", ""].map(String::from));
+        assert!(entity.side(true).lines.iter().all(String::is_empty));
+        assert!(Command::parse("sign 4 151 1 up []").is_err());
+        assert!(Command::parse(r#"sign 4 151 1 front ["1","2","3","4","5"]"#).is_err());
+        // Out of reach.
+        let mut far = Agent::new(DVec3::new(30.5, 150.0, 1.5));
+        assert!(
+            far.execute(Command::parse(r#"sign 4 151 1 front ["x"]"#).unwrap(), &mut world, &mut entities, &[])
+                .is_err()
+        );
     }
 
     #[test]

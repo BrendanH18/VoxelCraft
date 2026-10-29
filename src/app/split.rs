@@ -368,8 +368,13 @@ impl Game {
                 signs: crate::render::signs::models(&self.world, camera),
                 hand: (bot.camera.first_person() && self.show_hud && !a.vitals.is_dead()).then(|| {
                     let eating = pad.map_or(a.eating(), |p| p.1);
+                    let held = a.session.inventory.get(a.selected);
                     Self::stamp_hand(
-                        host_dial.at(a.player.yaw, a.player.pos.x, a.player.pos.z),
+                        held.map_or(host_dial, |s| host_dial.for_stack(&s)).at(
+                            a.player.yaw,
+                            a.player.pos.x,
+                            a.player.pos.z,
+                        ),
                         bot.hand.view(eating, crate::entity::sky_light(&self.world, camera), self.torch_light(camera)),
                     )
                 }),

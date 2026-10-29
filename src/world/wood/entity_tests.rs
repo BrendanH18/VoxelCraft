@@ -386,3 +386,25 @@ fn chiseled_bookshelves_hold_six_books_and_report_the_last_slot() {
     assert!(w.drops.iter().any(|(_, s)| s.item == Item::ENCHANTED_BOOK));
     assert_eq!(fuel::ticks(Item::from_block(bookshelf::CHISELED_BOOKSHELF)), Some(300));
 }
+
+#[test]
+fn lan_sign_contents_go_nearest_first_within_their_byte_budget() {
+    let mut w = world();
+    let sign = Sign { kind: Kind::Oak, mount: Mount::Standing { rotation: 0 }, wet: false }.block();
+    let long = || std::array::from_fn(|_| "x".repeat(super::entities::MAX_LINE_CHARS));
+    for dx in [0, 4] {
+        w.set_block(AT + IVec3::X * dx, sign);
+        w.set_sign_text(AT + IVec3::X * dx, true, long()).unwrap();
+    }
+    let at = AT.as_dvec3();
+    let both = w.wood_near(at, 160.0, usize::MAX);
+    assert_eq!(both.split('|').count(), 2);
+    // Room for one: the nearer sign.
+    let one = w.wood_near(at, 160.0, both.len() / 2 + 8);
+    assert_eq!(one.split('|').count(), 1);
+    assert!(one.starts_with(&format!("s:{},{},{}=", AT.x, AT.y, AT.z)), "{}", &one[..30]);
+    let mut client = world();
+    client.set_block(AT, sign);
+    client.replace_wood(&one);
+    assert_eq!(client.sign_at(AT).unwrap().1.side(true).lines, long());
+}

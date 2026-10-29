@@ -46,6 +46,31 @@ pub struct Arrow {
     pub enchants: crate::enchant::Enchants,
     /// Mobs (`Mob::uid`) this piercing arrow already passed through.
     pierced: Vec<u32>,
+    /// Vehicles and decorations ([`ArrowTarget::key`]) it passed through.
+    pierced_other: Vec<u64>,
+}
+
+/// Something other than a mob an arrow can hit: a minecart, boat or
+/// cushion (by id) or a decoration (by index this tick).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Struck {
+    Cart(u32),
+    Decor(usize),
+}
+
+/// A non-living entity's box for arrows this tick. `mob_proof`: it takes no
+/// harm from a mob's arrow (paintings, item frames and armor stands with
+/// mobGriefing off), which bounces back off it.
+#[derive(Clone, Copy, Debug)]
+pub struct ArrowTarget {
+    pub struck: Struck,
+    /// Stays the same from tick to tick, for piercing arrows.
+    pub key: u64,
+    /// Players riding it: their own arrows pass it (`Projectile.canHitEntity`).
+    pub riders: [Option<PlayerId>; 2],
+    pub min: DVec3,
+    pub max: DVec3,
+    pub mob_proof: bool,
 }
 
 impl Arrow {
@@ -73,6 +98,7 @@ impl Arrow {
             critical: false,
             enchants: Default::default(),
             pierced: Vec::new(),
+            pierced_other: Vec::new(),
         }
     }
 
@@ -97,6 +123,7 @@ impl Arrow {
             critical: power >= 1.0,
             enchants: Default::default(),
             pierced: Vec::new(),
+            pierced_other: Vec::new(),
         }
     }
 
@@ -127,6 +154,7 @@ impl Arrow {
         world: &W,
         ctx: &Ctx,
         mobs: &mut [Mob],
+        others: &[ArrowTarget],
         mut fight: Option<&mut super::dragon::Fight>,
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
@@ -165,73 +193,132 @@ impl Arrow {
                     })
                     .min_by(|a, b| a.1.total_cmp(&b.1));
                 let boss = fight.as_deref().and_then(|f| f.raycast(from, step, reach));
-                if let Some((hit, _)) = boss.filter(|&(_, t)| mob.is_none_or(|(_, m)| t < m))
-                    && let Some(fight) = fight.as_deref_mut()
-                {
-                    let damage = (self.vel.length() / BOW_SPEED * BOW_DAMAGE * self.power_factor()).ceil() as f32;
-                    if fight.strike(hit, damage, None, self.from_player) {
-                        return false;
-                    }
-                    // Bounced off a perched dragon's scales.
-                    self.vel = -self.vel * 0.1;
-                    return true;
-                }
-                if let Some((i, _)) = mob {
-                    let mob = &mut mobs[i];
-                    // Endermen dodge arrows by teleporting; the arrow flies on.
-                    if mob.kind == super::MobKind::Enderman {
-                        mob.teleport_pending = true;
-                    } else {
-                        use crate::enchant::Enchantment;
-                        // `AbstractArrow.onHitEntity`: a piercing arrow passes through
-                        // `pierce level + 1` mobs, and the next one discards it unhurt.
-                        let pierce = usize::from(self.enchants.level(Enchantment::Piercing));
+                // `AbstractArrow.onHitEntity` on a vehicle, cushion or
+                // decoration nearer than any mob or dragon part: it takes the
+                // arrow's damage and the arrow is gone, unless it pierces.
+                let pierce = usize::from(self.enchants.level(crate::enchant::Enchantment::Piercing));
+                let other = others
+                    .iter()
+                    .filter(|o| !self.pierced_other.contains(&o.key))
+                    // `Projectile.canHitEntity`: not the vehicle carrying the shooter.
+                    .filter(|o| !(self.from_player && self.owner.is_some() && o.riders.contains(&self.owner)))
+                    .filter(|o| {
+                        let Struck::Cart(id) = o.struck else { return true };
+                        self.shooter.is_none_or(|uid| !mobs.iter().any(|m| m.uid == uid && m.riding == Some(id)))
+                    })
+                    .filter_map(|o| {
+                        crate::physics::ray_aabb(from, step, o.min, o.max).filter(|&t| t <= reach).map(|t| (o, t))
+                    })
+                    .min_by(|a, b| a.1.total_cmp(&b.1));
+                'hit: {
+                    if let Some((o, t)) = other
+                        && mob.is_none_or(|(_, m)| t < m)
+                        && boss.as_ref().is_none_or(|(_, b)| t < *b)
+                    {
+                        if o.mob_proof && self.shooter.is_some() {
+                            // `hurtOrSimulate` refused: the arrow bounces back off it,
+                            // from outside its box so it doesn't hit it again.
+                            self.pos = from;
+                            self.vel = -self.vel * 0.2;
+                            return true;
+                        }
+                        // Piercing counts every entity passed through, mobs or not.
                         if pierce > 0 {
-                            if self.pierced.len() > pierce {
+                            if self.pierced.len() + self.pierced_other.len() > pierce {
                                 return false;
                             }
-                            self.pierced.push(mob.uid);
+                            self.pierced_other.push(o.key);
                         }
-                        let speed = self.vel.length();
-                        let mut damage = (speed / BOW_SPEED * BOW_DAMAGE * self.power_factor()).ceil() as f32;
-                        if self.critical {
-                            damage += (rng.next_f32() * (damage / 2.0 + 1.0)).floor();
-                        }
-                        // Punch adds 0.6 blocks/tick of shove per level.
-                        let punch = 1.0 + 3.0 * self.enchants.level(Enchantment::Punch) as f64;
-                        let push =
-                            DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 4.0 * punch + DVec3::Y * 4.0;
-                        if self.enchants.has(Enchantment::Flame) {
-                            mob.ignite(5.0);
-                        }
-                        if self.from_player {
-                            mob.player_hit();
-                        }
-                        if let Some(attacker) = self.shooter {
-                            // Resolve through the shared mob-on-mob path so
-                            // retaliation and loot attribution retain the shooter.
-                            events.push(EntityEvent::MobHit {
-                                target: mob.uid,
-                                attacker,
-                                damage: (speed / SPEED * 3.0).ceil() as f32,
-                                knockback: push,
-                            });
-                            return false;
-                        }
-                        // `hurtServer`'s 0.4 push along the arrow, then Punch's shove (`doKnockback`).
-                        let motion = self.vel / crate::knockback::TICK_RATE;
-                        let killed = mob.damage_pushed(damage, &[crate::knockback::Push::projectile(motion)], rng);
-                        mob.shove_punch(u32::from(self.enchants.level(Enchantment::Punch)), motion);
-                        events.push(EntityEvent::MobShot {
-                            kind: mob.kind,
-                            pos: mob.pos,
-                            killed,
-                            burning: mob.burning,
-                            player_kill: self.from_player,
-                            owner: self.owner,
+                        let damage = if self.shooter.is_some() {
+                            (self.vel.length() / SPEED * 3.0).ceil() as f32
+                        } else {
+                            let mut damage =
+                                (self.vel.length() / BOW_SPEED * BOW_DAMAGE * self.power_factor()).ceil() as f32;
+                            if self.critical {
+                                damage += (rng.next_f32() * (damage / 2.0 + 1.0)).floor();
+                            }
+                            damage
+                        };
+                        events.push(EntityEvent::EntityShot {
+                            struck: o.struck,
+                            pos: from + step * t,
+                            damage,
+                            burning: self.enchants.has(crate::enchant::Enchantment::Flame),
+                            owner: if self.from_player { self.owner } else { None },
+                            motion: self.vel,
                         });
                         if pierce == 0 {
                             return false;
+                        }
+                        break 'hit;
+                    }
+                    if let Some((hit, _)) = boss.filter(|&(_, t)| mob.is_none_or(|(_, m)| t < m))
+                        && let Some(fight) = fight.as_deref_mut()
+                    {
+                        let damage = (self.vel.length() / BOW_SPEED * BOW_DAMAGE * self.power_factor()).ceil() as f32;
+                        if fight.strike(hit, damage, None, self.from_player) {
+                            return false;
+                        }
+                        // Bounced off a perched dragon's scales.
+                        self.vel = -self.vel * 0.1;
+                        return true;
+                    }
+                    if let Some((i, _)) = mob {
+                        let mob = &mut mobs[i];
+                        // Endermen dodge arrows by teleporting; the arrow flies on.
+                        if mob.kind == super::MobKind::Enderman {
+                            mob.teleport_pending = true;
+                        } else {
+                            use crate::enchant::Enchantment;
+                            // `AbstractArrow.onHitEntity`: a piercing arrow passes through
+                            // `pierce level + 1` mobs, and the next one discards it unhurt.
+                            if pierce > 0 {
+                                if self.pierced.len() + self.pierced_other.len() > pierce {
+                                    return false;
+                                }
+                                self.pierced.push(mob.uid);
+                            }
+                            let speed = self.vel.length();
+                            let mut damage = (speed / BOW_SPEED * BOW_DAMAGE * self.power_factor()).ceil() as f32;
+                            if self.critical {
+                                damage += (rng.next_f32() * (damage / 2.0 + 1.0)).floor();
+                            }
+                            // Punch adds 0.6 blocks/tick of shove per level.
+                            let punch = 1.0 + 3.0 * self.enchants.level(Enchantment::Punch) as f64;
+                            let push = DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 4.0 * punch
+                                + DVec3::Y * 4.0;
+                            if self.enchants.has(Enchantment::Flame) {
+                                mob.ignite(5.0);
+                            }
+                            if self.from_player {
+                                mob.player_hit();
+                            }
+                            if let Some(attacker) = self.shooter {
+                                // Resolve through the shared mob-on-mob path so
+                                // retaliation and loot attribution retain the shooter.
+                                events.push(EntityEvent::MobHit {
+                                    target: mob.uid,
+                                    attacker,
+                                    damage: (speed / SPEED * 3.0).ceil() as f32,
+                                    knockback: push,
+                                });
+                                return false;
+                            }
+                            // `hurtServer`'s 0.4 push along the arrow, then Punch's shove (`doKnockback`).
+                            let motion = self.vel / crate::knockback::TICK_RATE;
+                            let killed = mob.damage_pushed(damage, &[crate::knockback::Push::projectile(motion)], rng);
+                            mob.shove_punch(u32::from(self.enchants.level(Enchantment::Punch)), motion);
+                            events.push(EntityEvent::MobShot {
+                                kind: mob.kind,
+                                pos: mob.pos,
+                                killed,
+                                burning: mob.burning,
+                                player_kill: self.from_player,
+                                owner: self.owner,
+                            });
+                            if pierce == 0 {
+                                return false;
+                            }
                         }
                     }
                 }
@@ -401,7 +488,7 @@ mod tests {
         arrow.shooter = Some(shooter);
         let mut events = Vec::new();
         for _ in 0..20 {
-            if !arrow.update(0.05, &world, &ctx, &mut e.mobs, None, &mut e.rng, &mut events) {
+            if !arrow.update(0.05, &world, &ctx, &mut e.mobs, &[], None, &mut e.rng, &mut events) {
                 break;
             }
         }
@@ -439,7 +526,7 @@ mod tests {
             dimension: Dimension::Overworld,
         };
         let mut events = Vec::new();
-        assert!(arrow.update(dt, &world, &ctx, &mut mobs, None, &mut Rng::new(1), &mut events));
+        assert!(arrow.update(dt, &world, &ctx, &mut mobs, &[], None, &mut Rng::new(1), &mut events));
         assert!(arrow.is_stuck());
         assert_eq!(arrow.pos.floor().as_ivec3(), IVec3::new(0, 20, 0));
         assert!(events.is_empty(), "{events:?}");
@@ -467,7 +554,9 @@ mod tests {
             }
             let mut events = Vec::new();
             for _ in 0..40 {
-                if !arrow.update(0.05, &world, &ctx, &mut [], None, &mut Rng::new(1), &mut events) || arrow.is_stuck() {
+                if !arrow.update(0.05, &world, &ctx, &mut [], &[], None, &mut Rng::new(1), &mut events)
+                    || arrow.is_stuck()
+                {
                     break;
                 }
             }
@@ -503,7 +592,7 @@ mod tests {
             let mut events = Vec::new();
             let mut rng = Rng::new(7);
             for _ in 0..20 {
-                if !arrow.update(0.05, &world, &ctx, &mut mobs, None, &mut rng, &mut events) {
+                if !arrow.update(0.05, &world, &ctx, &mut mobs, &[], None, &mut rng, &mut events) {
                     break;
                 }
             }

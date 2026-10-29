@@ -8,6 +8,7 @@ mod fluid;
 mod travel;
 
 pub use fluid::{FluidCell, FluidContact, fluid_at};
+pub use travel::{bounciness, friction};
 
 use glam::{DVec3, IVec3, Vec3};
 

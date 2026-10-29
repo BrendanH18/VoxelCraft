@@ -162,15 +162,62 @@ impl World {
     /// `s:x,y,z=front;back;waxed`, `h:x,y,z=items` and `b:x,y,z=books;last`
     /// entries joined by `|`, for the level file.
     pub fn wood_to_string(&self) -> String {
+        self.wood_where(|_| true)
+    }
+
+    /// [`World::wood_to_string`]'s entries within `radius` of `at`, nearest
+    /// first, up to `max_bytes` (long sign text could otherwise outgrow a
+    /// LAN client's snapshot frame).
+    pub fn wood_near(&self, at: glam::DVec3, radius: f64, max_bytes: usize) -> String {
+        let distance = |p: &IVec3| (p.as_dvec3() + glam::DVec3::splat(0.5)).distance_squared(at);
+        let all = self.wood_where(|p| distance(p) <= radius * radius);
+        let mut entries: Vec<(f64, &str)> = all
+            .split('|')
+            .filter_map(|e| {
+                let (head, _) = e.split_once('=')?;
+                let c: Vec<i32> = head.split_once(':')?.1.split(',').filter_map(|v| v.parse().ok()).collect();
+                let &[x, y, z] = &c[..] else { return None };
+                Some((distance(&IVec3::new(x, y, z)), e))
+            })
+            .collect();
+        entries.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut out = String::new();
+        for (_, entry) in entries {
+            if out.len() + entry.len() + 1 > max_bytes {
+                break;
+            }
+            if !out.is_empty() {
+                out.push('|');
+            }
+            out.push_str(entry);
+        }
+        out
+    }
+
+    fn wood_where(&self, keep: impl Fn(&IVec3) -> bool) -> String {
         let pos = |p: &IVec3| format!("{},{},{}", p.x, p.y, p.z);
-        let signs = self.wood.signs.iter().map(|(p, s)| {
+        let signs = self.wood.signs.iter().filter(|(p, _)| keep(p)).map(|(p, s)| {
             format!("s:{}={};{};{}", pos(p), text_to_string(&s.front), text_to_string(&s.back), s.waxed as u8)
         });
-        let shelves = self.wood.shelves.iter().map(|(p, items)| format!("h:{}={}", pos(p), stacks_to_string(items)));
-        let books = self.wood.bookshelves.iter().map(|(p, b)| {
+        let shelves = self
+            .wood
+            .shelves
+            .iter()
+            .filter(|(p, _)| keep(p))
+            .map(|(p, items)| format!("h:{}={}", pos(p), stacks_to_string(items)));
+        let books = self.wood.bookshelves.iter().filter(|(p, _)| keep(p)).map(|(p, b)| {
             format!("b:{}={};{}", pos(p), stacks_to_string(&b.books), b.last_slot.map_or(-1, |s| s as i32))
         });
         signs.chain(shelves).chain(books).collect::<Vec<_>>().join("|")
+    }
+
+    /// A LAN client: replaces its signs, shelves and chiseled bookshelves
+    /// with the host's ([`World::wood_near`]).
+    pub fn replace_wood(&mut self, text: &str) {
+        self.wood.signs.clear();
+        self.wood.shelves.clear();
+        self.wood.bookshelves.clear();
+        self.load_wood(text);
     }
 
     /// Restores entities saved by [`World::wood_to_string`]; malformed

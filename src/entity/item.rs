@@ -105,10 +105,27 @@ impl ItemEntity {
             return true;
         }
         let delta = self.vel * dt;
+        let falling = self.vel.y;
         let hit = physics::move_box(world, &mut self.pos, &mut self.vel, delta, SHAPE);
         if hit.on_ground {
-            // Ground friction: Minecraft's slipperiness 0.6 * 0.98 per tick.
-            let f = (0.6f64 * 0.98).powf(dt * 20.0);
+            let below = world.block(below_pos(self.pos));
+            // `Entity.restituteMovementAfterCollisions`: slime blocks and beds
+            // throw a falling item back up at 0.8 of their restitution, once
+            // it falls faster than one tick of gravity (0.04 a tick).
+            let restitution = crate::player::bounciness(below) * 0.8_f32 as f64;
+            if restitution > 0.0 && -falling > GRAVITY / 20.0 {
+                self.vel.y = -falling * restitution;
+            }
+            // `SlimeBlock.stepOn`: a nearly level item is slowed to
+            // `0.4 + |dy| * 0.2` a tick.
+            let dy = self.vel.y.abs() / 20.0;
+            if below == Some(crate::world::stone_blocks::SLIME_BLOCK) && dy < 0.1 {
+                let k = (0.4 + dy * 0.2).powf(dt * 20.0);
+                self.vel.x *= k;
+                self.vel.z *= k;
+            }
+            // `ItemEntity.tick`: the block's friction times 0.98 a tick.
+            let f = (crate::player::friction(below) as f64 * 0.98).powf(dt * 20.0);
             self.vel.x *= f;
             self.vel.z *= f;
         }
@@ -144,6 +161,12 @@ impl ItemEntity {
         }
         Some(item)
     }
+}
+
+/// `Entity.getBlockPosBelowThatAffectsMyMovement`: the block half a block
+/// under the feet, whose friction and bounce act on the entity.
+pub(super) fn below_pos(feet: DVec3) -> IVec3 {
+    (feet - DVec3::Y * 0.500001).floor().as_ivec3()
 }
 
 /// Merges matching stacks lying close together (the older item absorbs the
@@ -198,6 +221,53 @@ mod tests {
 
     fn settle(item: &mut ItemEntity, world: &Grid, secs: f64) -> bool {
         (0..(secs * 60.0) as usize).all(|_| item.update(1.0 / 60.0, world))
+    }
+
+    #[test]
+    fn items_bounce_on_slime_at_four_fifths_and_slide_on_ice() {
+        // `Entity.getBlockBounciness`: 0.8 of the block's restitution for non-living entities.
+        let bounce = |block: Block| {
+            let mut world = Grid::flat(10);
+            world.set(IVec3::new(0, 9, 0), block);
+            let mut item = ItemEntity::new(
+                Stack::new(Block::DIRT, 1),
+                DVec3::new(0.5, 15.0, 0.5),
+                DVec3::ZERO,
+                0.0,
+                &mut Rng::new(1),
+            );
+            let (mut landed, mut peak) = (false, f64::MIN);
+            for _ in 0..180 {
+                item.update(1.0 / 60.0, &world);
+                landed |= item.vel.y > 0.0;
+                if landed {
+                    peak = peak.max(item.pos.y);
+                }
+            }
+            if landed { peak - 10.0 } else { 0.0 }
+        };
+        // Java's ticks (gravity 0.04, drag 0.98, restitution 0.8) bounce a
+        // 5-block fall back up about 2.1 blocks.
+        let slime = bounce(crate::world::stone_blocks::SLIME_BLOCK);
+        assert!((1.9..2.4).contains(&slime), "{slime}");
+        assert_eq!(bounce(Block::STONE), 0.0);
+        // Ice keeps a sliding item going much further than stone.
+        let slide = |block: Block| {
+            let mut world = Grid::flat(10);
+            for x in -1..40 {
+                world.set(IVec3::new(x, 9, 0), block);
+            }
+            let mut item = ItemEntity::new(
+                Stack::new(Block::DIRT, 1),
+                DVec3::new(0.5, 10.0, 0.5),
+                DVec3::X * 4.0,
+                0.0,
+                &mut Rng::new(1),
+            );
+            settle(&mut item, &world, 3.0);
+            item.pos.x
+        };
+        assert!(slide(Block::ICE) > 2.0 * slide(Block::STONE));
     }
 
     #[test]

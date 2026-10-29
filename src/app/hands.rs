@@ -346,6 +346,10 @@ impl Actor<'_> {
                 }
             }
             Used::Stripped { cell } => audio.play(Sound::Place(Material::Wood), Some(centre(cell)), 1.0, (0.8, 1.0)),
+            // Nearest shared sound for `LODESTONE_COMPASS_LOCK` (`PLAYERS`).
+            Used::CompassLocked { cell } => {
+                audio.play_in(SoundSource::Players, Sound::Place(Material::Stone), Some(centre(cell)), 1.0, (1.4, 1.6))
+            }
             // Nearest shared sound for `item.axe.scrape`: a high, scratchy stone step.
             Used::Scraped { cell } => audio.play(Sound::Step(Material::Stone), Some(centre(cell)), 1.0, (1.5, 1.8)),
             // `CANDLE_EXTINGUISH` and `CAKE_ADD_CANDLE`, from the shared sound set.

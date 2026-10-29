@@ -5,6 +5,7 @@
 pub mod combat;
 pub mod consumption;
 pub mod interact;
+mod lodestone;
 pub mod mining;
 pub mod placement;
 pub mod ranged;

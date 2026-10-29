@@ -191,8 +191,10 @@ tick and pause checks. `title` also skips the view-distance check. Run just
 these two with `--scenes menus,title`.
 
 A benchmark run ignores keyboard, pointer, controller and focus input. It never
-autosaves or saves, including when its window is closed. Keep its window
-visible and unobstructed. Frames skipped because the surface is hidden or
+autosaves or saves, including when its window is closed. Its window asks for
+focus and stays above other windows, since one started from a terminal or an
+agent otherwise opens behind the active app; it can't show over a locked
+screen or a display that has gone to sleep. Keep it visible and unobstructed. Frames skipped because the surface is hidden or
 occluded are counted, and any skipped frame makes the run invalid.
 
 Reports include average FPS, the reciprocal of the mean of the slowest 1% of

@@ -146,6 +146,8 @@ struct Seat {
     body: Body,
     /// A message for this player's view ("Respawn point set").
     message: Option<(String, Instant)>,
+    /// The lines of the sign side open in [`Menu::Sign`].
+    sign_text: [String; 4],
 }
 
 /// What a seat asks of its agent for one tick.
@@ -174,6 +176,7 @@ impl Seat {
             nav: None,
             body: Body::default(),
             message: None,
+            sign_text: Default::default(),
         }
     }
 
@@ -614,7 +617,7 @@ impl Game {
         let Some(mut menu) = self.pads.seats[i].menu else { return false };
         let tab = match menu {
             Menu::Items { tab, .. } => tab,
-            Menu::Pause { .. } => Tab::Inventory,
+            Menu::Pause { .. } | Menu::Sign { .. } => Tab::Inventory,
         };
         let action = menu.press(nav, self.pad_lists(name, tab));
         if action == Action::Leave {
@@ -628,6 +631,43 @@ impl Game {
             self.close_pad_menu(name);
         }
         false
+    }
+
+    /// The lines a controller player is writing on a sign.
+    pub(super) fn pad_sign_text(&self, name: &str) -> Option<&[String; 4]> {
+        self.pads.seats.iter().find(|s| s.name == name).map(|s| &s.sign_text)
+    }
+
+    /// A controller player's sign editor typed or erased a character on
+    /// `line`, within the sign's width (`SignEditScreen`'s limit).
+    pub(super) fn pad_sign_type(&mut self, seat: usize, line: usize, hanging: bool, typed: Option<char>) {
+        let text = &mut self.pads.seats[seat].sign_text[line];
+        match typed {
+            Some(c) => {
+                let mut longer = text.clone();
+                longer.push(c);
+                let max = if hanging { 60.0 } else { 90.0 };
+                if voxelcraft::world::wood::entities::allowed(c)
+                    && longer.chars().count() <= voxelcraft::world::wood::entities::MAX_LINE_CHARS
+                    && crate::render::ui::Ui::text_width(&longer) <= max
+                {
+                    *text = longer;
+                }
+            }
+            None => {
+                text.pop();
+            }
+        }
+    }
+
+    /// Done: the lines go to the sign through the shared session rule.
+    pub(super) fn pad_sign_done(&mut self, seat: usize, name: &str, cell: IVec3, front: bool) {
+        let lines = self.pads.seats[seat].sign_text.clone();
+        if let Some(bot) = self.agents.players.get_mut(name)
+            && let Err(e) = bot.agent.session.edit_sign(&mut self.world, cell, front, lines)
+        {
+            log::info!("{name}'s sign edit at {cell} not applied: {e}");
+        }
     }
 
     /// The open screen of a controller player, for drawing.
@@ -700,6 +740,8 @@ impl Game {
                             || !self.mobs.entities.merchant_in_reach(id, eye, agent.session.entity_screen_range())
                     }
                     Menu::Items { .. } => agent.session.vitals.is_dead(),
+                    // `SignEditScreen.tick`: the editor closes once the sign goes.
+                    Menu::Sign { cell, .. } => self.world.sign_at(cell).is_none() || agent.session.vitals.is_dead(),
                     Menu::Pause { .. } => false,
                 };
                 if gone {
@@ -783,6 +825,20 @@ impl Game {
             Request::Open(Used::OpenVehicle(id)) => self.pads.seats[i].open(Menu::items(Tab::Vehicle(id))),
             Request::Open(Used::OpenMerchant(id)) => self.pads.seats[i].open(Menu::items(Tab::Trading(id))),
             Request::Open(Used::Screen { cell, .. } | Used::Bed { cell }) => self.pad_use_block(i, cell),
+            Request::Open(Used::EditSign { cell, front }) => {
+                let Some((sign, entity)) = self.world.sign_at(cell) else { return };
+                let seat = &mut self.pads.seats[i];
+                // Text an agent wrote can be wider than the sign; cut it as the
+                // keyboard editor's tick does.
+                let max = if sign.hanging() { 60.0 } else { 90.0 };
+                seat.sign_text = entity.side(front).lines.clone().map(|mut line| {
+                    while crate::render::ui::Ui::text_width(&line) > max {
+                        line.pop();
+                    }
+                    line
+                });
+                seat.open(Menu::Sign { cell, front, hanging: sign.hanging(), line: 0, key: (0, 0), shift: false });
+            }
             Request::Open(Used::Utility {
                 effect: voxelcraft::world::utilities::interact::Effect::EnderChest,
                 cell,

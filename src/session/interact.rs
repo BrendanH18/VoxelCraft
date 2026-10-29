@@ -119,6 +119,10 @@ pub enum Used {
     Stripped {
         cell: IVec3,
     },
+    /// A compass now points to the lodestone at `cell`.
+    CompassLocked {
+        cell: IVec3,
+    },
     /// An axe scraped copper back one oxidation stage.
     Scraped {
         cell: IVec3,
@@ -654,6 +658,9 @@ impl PlayerSession {
                 self.inventory.take_one(slot);
             }
             return Some(Used::CushionPlaced { at });
+        }
+        if self.lock_compass(world, entities, slot, pos) {
+            return Some(Used::CompassLocked { cell: pos });
         }
         let tool = item.as_tool().map(|(kind, _)| kind);
         let mut wear = |s: &mut Self| {
