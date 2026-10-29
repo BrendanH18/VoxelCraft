@@ -380,7 +380,8 @@ impl Game {
             z: player.pos.z,
             spawn_x: self.world_spawn.x as f64 + 0.5,
             spawn_z: self.world_spawn.z as f64 + 0.5,
-            overworld: self.dimension == crate::world::terrain::Dimension::Overworld,
+            dimension: self.dimension,
+            lodestone: None,
             day_time: self.day_time as f32,
             spin: self.lost_dials().0,
             clock_spin: self.lost_dials().1,
@@ -560,12 +561,12 @@ fn xp_bar_ui(ui: &mut Ui, xp: Experience, x: f32, y: f32, w: f32) {
 /// Item icon, durability bar and (when `counts`) stack size in an 18x18
 /// slot at (x, y).
 pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool, dial: crate::item::Dial) {
-    let layer = stack.item.dial_layer(dial).or_else(|| stack.item.icon_layer());
+    let layer = stack.item.dial_layer(dial.for_stack(&stack)).or_else(|| stack.item.icon_layer());
     match (stack.item.block(), layer) {
         (Some(block), _) => ui.block_icon(x + 2.0, y + 2.0, 14.0, block),
         (None, Some(layer)) => {
             ui.icon(x + 1.0, y + 1.0, 16.0, layer, WHITE);
-            if !stack.enchants.is_empty() || stack.item.has_glint() {
+            if !stack.enchants.is_empty() || stack.item.has_glint() || stack.lodestone.is_some() {
                 glint(ui, x + 1.0, y + 1.0, 16.0, layer);
             }
         }

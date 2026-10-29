@@ -396,7 +396,7 @@ impl Game {
                     };
                     self.audio.play_in(source.unwrap_or(sound.source()), sound, Some(pos), gain, pitch);
                 }
-                EntityEvent::MobShot { pos, .. } => {
+                EntityEvent::MobShot { pos, .. } | EntityEvent::EntityShot { pos, .. } => {
                     // An arrow landing is the arrow entity's sound, `NEUTRAL`.
                     self.audio.play_in(SoundSource::Neutral, Sound::Hit, Some(pos + DVec3::Y * 0.5), 0.8, (0.9, 1.1))
                 }

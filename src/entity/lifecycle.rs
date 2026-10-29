@@ -250,11 +250,12 @@ impl Entities {
         if self.arrows.iter().any(|a| a.piercing()) {
             self.ensure_mob_ids();
         }
+        let targets = if self.arrows.is_empty() { Vec::new() } else { self.arrow_targets() };
         {
             let (mobs, rng, fight) = (&mut self.mobs, &mut self.rng, &mut self.fight);
             self.arrows.retain_mut(|a| {
                 !world.entity_ticking(a.pos.floor().as_ivec3())
-                    || a.update(dt, world, ctx, mobs, fight.as_mut(), rng, &mut events)
+                    || a.update(dt, world, ctx, mobs, &targets, fight.as_mut(), rng, &mut events)
             });
             self.pearls.retain_mut(|p| {
                 !world.entity_ticking(p.pos.floor().as_ivec3()) || p.update(dt, world, mobs, rng, &mut events)
@@ -281,6 +282,7 @@ impl Entities {
             }
         }
         self.update_eyes(dt, world, &mut events);
+        self.apply_entity_shots(&events, ctx);
         self.resolve_mob_hits(&mut events);
         for e in &events {
             match *e {

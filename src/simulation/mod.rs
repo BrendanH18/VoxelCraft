@@ -178,8 +178,9 @@ pub fn player_environment(player: &Player, world: &World, moved: f64) -> Env {
             && world.get_block((player.pos - DVec3::Y * 0.01).floor().as_ivec3()).map(|b| b.base())
                 == Some(crate::world::block::Block::HAY_BALE),
         frost_walker: false,
-        // `LayeredCauldronBlock.entityInside`: water contents put out a fire.
-        wet: world.rains_on(player.eye().floor().as_ivec3()) || matches!(cauldron, Some(Contents::Water(_))),
+        // `LayeredCauldronBlock.entityInside`: water and powder snow put out a fire.
+        wet: world.rains_on(player.eye().floor().as_ivec3())
+            || matches!(cauldron, Some(Contents::Water(_) | Contents::PowderSnow(_))),
         moved: if player.flying { 0.0 } else { moved },
         sprinting: player.sprinting && moved > 0.0,
         jumped: player.jumped,

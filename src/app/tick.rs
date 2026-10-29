@@ -76,6 +76,7 @@ impl Game {
         let nausea = self.session.vitals.effects.get(voxelcraft::simulation::effects::Effect::Nausea).map(|e| e.ticks);
         self.distortion.tick(nausea, self.portal_time > portal_before);
         let moved = (self.session.player.pos - before).with_y(0.0).length();
+        self.session.tick_lodestones(&self.world);
         self.weather.update_rules(dt, self.gamerules.bool("advance_weather"));
         self.update_sleep(dt);
         // Java's isRaining compares the faded rain level, not the target state.
@@ -93,6 +94,7 @@ impl Game {
             stalactite: std::mem::take(&mut self.session.stalactite),
             ..crate::simulation::player_environment(&self.session.player, &self.world, moved)
         };
+        let burning = self.session.vitals.burning();
         let hurts = if arriving || self.arrival.is_some() {
             Default::default()
         } else {
@@ -104,6 +106,10 @@ impl Game {
                 self.gamerules.bool("natural_health_regeneration"),
             )
         };
+        if burning && self.session.mode.can_build() {
+            let top = self.session.player.collision_shape().aabb(self.session.player.pos).1.y;
+            self.world.douse_in_cauldron(self.session.player.pos, top);
+        }
         if hurts.freeze > 0.0 {
             self.damage_player(hurts.freeze, survival::CAUSE_FREEZE);
         }

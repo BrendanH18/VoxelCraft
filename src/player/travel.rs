@@ -79,8 +79,9 @@ pub fn jump_factor(b: Option<Block>) -> f32 {
     if b == Some(Block::HONEY_BLOCK) { 0.5 } else { 1.0 }
 }
 
-/// `Block.getBounceRestitution` for living entities.
-fn bounciness(b: Option<Block>) -> f64 {
+/// `Block.getBounceRestitution` for living entities; other entities take
+/// 0.8 of it (`Entity.getBlockBounciness`).
+pub fn bounciness(b: Option<Block>) -> f64 {
     match b {
         Some(b) if b.is_bed() => 0.75_f32 as f64,
         Some(crate::world::stone_blocks::SLIME_BLOCK) => 1.0,

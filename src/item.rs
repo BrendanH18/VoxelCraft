@@ -1525,7 +1525,10 @@ pub struct Dial {
     pub z: f64,
     pub spawn_x: f64,
     pub spawn_z: f64,
-    pub overworld: bool,
+    pub dimension: crate::world::terrain::Dimension,
+    /// A lodestone compass's needle: its lodestone (`None` once lost or in
+    /// another dimension); see [`Dial::for_stack`].
+    pub lodestone: Option<Option<(f64, f64)>>,
     /// 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight.
     pub day_time: f32,
     /// Wobbling needle turn (0..1) a compass shows where it has no natural target.
@@ -1569,19 +1572,37 @@ pub fn visual_random() -> f64 {
 }
 
 impl Dial {
+    fn overworld(self) -> bool {
+        self.dimension == crate::world::terrain::Dimension::Overworld
+    }
+
+    /// This dial as `stack` reads it (`CompassAngleState`): a lodestone
+    /// compass points to its lodestone in this dimension and spins once the
+    /// lodestone is gone or elsewhere.
+    pub fn for_stack(self, stack: &crate::inventory::Stack) -> Self {
+        let lodestone = stack
+            .lodestone
+            .map(|l| l.target.filter(|&(_, d)| d == self.dimension).map(|(p, _)| (p.x as f64 + 0.5, p.z as f64 + 0.5)));
+        Self { lodestone, ..self }
+    }
+
     /// Java's compass angle, as one of 32 frames. Outside the overworld it wobbles at random.
     pub fn compass_frame(self) -> u16 {
-        if !self.overworld {
+        let target = match self.lodestone {
+            Some(lodestone) => lodestone,
+            None => self.overworld().then_some((self.spawn_x, self.spawn_z)),
+        };
+        let Some((tx, tz)) = target else {
             return (self.spin.rem_euclid(1.0) * COMPASS_FRAMES as f32).round() as u16 % COMPASS_FRAMES;
-        }
-        let bearing = (self.spawn_z - self.z).atan2(self.spawn_x - self.x) as f32;
+        };
+        let bearing = (tz - self.z).atan2(tx - self.x) as f32;
         let relative = (self.yaw - bearing).rem_euclid(std::f32::consts::TAU);
         ((relative / std::f32::consts::TAU) * COMPASS_FRAMES as f32).round() as u16 % COMPASS_FRAMES
     }
 
     /// Java's celestial angle: frame 0 is noon. Outside the overworld it wobbles at random.
     pub fn clock_frame(self) -> u16 {
-        if !self.overworld {
+        if !self.overworld() {
             return (self.clock_spin.rem_euclid(1.0) * CLOCK_FRAMES as f32).round() as u16 % CLOCK_FRAMES;
         }
         let celestial = (self.day_time - 0.25).rem_euclid(1.0);
@@ -1828,7 +1849,8 @@ mod tests {
             z: 0.0,
             spawn_x: 10.0,
             spawn_z: 0.0,
-            overworld: true,
+            dimension: crate::world::terrain::Dimension::Overworld,
+            lodestone: None,
             day_time: 0.25,
             spin: 0.0,
             clock_spin: 0.0,
@@ -1837,7 +1859,7 @@ mod tests {
         assert_eq!(Item::COMPASS.dial_layer(looking), Some(tex::item_layer(icon_count() as u16)));
         let right = Dial { spawn_z: -10.0, spawn_x: 0.0, ..looking };
         assert_eq!(right.compass_frame(), 8, "spawn on the right is a quarter turn");
-        let lost = Dial { overworld: false, spin: 0.5, clock_spin: 0.25, ..looking };
+        let lost = Dial { dimension: crate::world::terrain::Dimension::Nether, spin: 0.5, clock_spin: 0.25, ..looking };
         assert_eq!(lost.compass_frame(), 16);
         assert_eq!(lost.clock_frame(), 16);
         assert_eq!(looking.clock_frame(), 0, "noon is frame 0");

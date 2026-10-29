@@ -28,6 +28,9 @@ pub enum Command {
     Fly(bool),
     Craft(Item),
     Chest(bool, usize),
+    /// `sign x y z front|back ["line", ...]`: one side's text, as the sign
+    /// edit screen's Done sends it (`ServerboundSignUpdatePacket`).
+    Sign(IVec3, bool, [String; 4]),
     Furnace(bool, usize),
     Drop,
     Respawn,
@@ -353,10 +356,41 @@ pub fn tab_complete(input: &str) -> Option<String> {
 }
 
 impl Command {
+    /// `sign x y z front|back` and a JSON array of up to four lines, which
+    /// keeps the lines' spaces.
+    fn parse_sign(text: &str) -> Option<Self> {
+        let mut rest = text.trim().trim_start_matches('/').strip_prefix("sign")?;
+        let mut word = || {
+            let t = rest.trim_start();
+            let end = t.find(char::is_whitespace).unwrap_or(t.len());
+            rest = &t[end..];
+            Some(&t[..end]).filter(|w| !w.is_empty())
+        };
+        let mut coordinate = || word()?.parse::<i32>().ok();
+        let pos = IVec3::new(coordinate()?, coordinate()?, coordinate()?);
+        let front = match word()? {
+            "front" => true,
+            "back" => false,
+            _ => return None,
+        };
+        let given: Vec<String> = serde_json::from_str(rest.trim()).ok()?;
+        if given.len() > 4 {
+            return None;
+        }
+        let mut lines: [String; 4] = Default::default();
+        for (line, text) in lines.iter_mut().zip(given) {
+            *line = text;
+        }
+        Some(Self::Sign(pos, front, lines))
+    }
+
     /// Parse slash commands and CLI input identically, rejecting extra arguments and non-finite numbers.
     pub fn parse(text: &str) -> Result<Self, String> {
         let words: Vec<_> = text.trim().trim_start_matches('/').split_whitespace().collect();
         let bad = || "unknown command or arguments; use /help".to_string();
+        if words.first() == Some(&"sign") {
+            return Self::parse_sign(text).ok_or_else(|| "use: sign x y z front|back [\"line\", ...]".to_string());
+        }
         let item = |name: &str| Item::from_name(name).ok_or_else(|| format!("unknown item: {name}"));
         let xyz = |x: &str, y: &str, z: &str| -> Result<DVec3, String> {
             let v = DVec3::new(number(x)?, number(y)?, number(z)?);

@@ -72,7 +72,7 @@ impl Game {
                     .item
                     .block()
                     .map(|b| b.info().tex[0])
-                    .or_else(|| stack.item.dial_layer(self.dial_of(&self.session.player)))
+                    .or_else(|| stack.item.dial_layer(self.dial_of(&self.session.player).for_stack(&stack)))
                     .or_else(|| stack.item.icon_layer()),
             };
             // A block sits on the frame's backing rather than in the wall.

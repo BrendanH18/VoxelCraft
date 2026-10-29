@@ -118,13 +118,22 @@ binary framing:
   dragon breath, XP orbs, primed TNT, falling blocks and the Ender Dragon fight
   (pose, health for the boss bar, crystals and beams, fireballs);
 - sounds (dense bank keys) and particle requests near the player, and every
-  player's block-breaking progress within 32 blocks.
+  player's block-breaking progress within 32 blocks;
+- the text of signs and the contents of shelves and chiseled bookshelves
+  within 160 blocks, sent when any of them changes or the player has moved 16
+  blocks since the last send;
+- a request to open the sign editor (Java's `openTextEdit`) after the player
+  places or uses a sign. The client answers Done with
+  `sign x y z front|back ["line", ...]`, which the host accepts only for the
+  side it opened, once, through the same reach and build checks as every
+  player.
 
 Seated clients take their position from the host instead of predicting walking,
 so boats, minecarts, pigs, striders, horses, llamas and camels work. Snapshots
 are capped (256 mobs, items and arrows, 128 of each other entity) within 160
-blocks; a crowded frame sheds extras, items, mob looks and then mobs rather than
-exceeding 256 KiB.
+blocks; a crowded frame sheds extras, sign and shelf contents (sent again
+next tick), decorations, items, mob looks and then mobs rather than exceeding
+256 KiB.
 
 Sockets are nonblocking during gameplay. Each peer has at most 2 MiB queued;
 chunk sending yields at 512 KiB backlog and sends at most 32 new chunks per

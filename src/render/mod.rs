@@ -1165,6 +1165,11 @@ impl Renderer {
         if frame.is_none() {
             if !self.force_offscreen && self.capture.is_none() {
                 self.skipped_frames += 1;
+                // Chunk meshes keep uploading while the window is hidden;
+                // their staged copies are freed only after a submit, so
+                // without one a minimised game grew by gigabytes.
+                self.queue.submit([]);
+                let _ = self.device.poll(wgpu::PollType::Poll);
                 std::thread::sleep(std::time::Duration::from_millis(8));
                 return None;
             }

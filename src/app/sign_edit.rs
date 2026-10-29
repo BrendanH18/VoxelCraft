@@ -125,11 +125,8 @@ impl Screen<Game> for SignEdit {
 
 impl Game {
     /// Opens the editor for one side of the sign at `cell` (Java's
-    /// `openTextEdit`); LAN clients have no sign editing yet.
+    /// `openTextEdit`). A LAN client opens it when the host asks.
     pub(super) fn open_sign_editor(&mut self, cell: IVec3, front: bool) {
-        if self.lan.client.is_some() {
-            return;
-        }
         let Some((sign, entity)) = self.world.sign_at(cell) else { return };
         let side = entity.side(front);
         let board = match sign.kind {
@@ -160,6 +157,13 @@ impl Game {
     /// The edit screen closed: the text goes to the sign through the
     /// shared session rule (reach and build checks).
     pub(super) fn finish_sign_edit(&mut self, cell: IVec3, front: bool, lines: [String; 4]) {
+        if self.lan.client.is_some() {
+            // The host applies it through the same rule (`ServerboundSignUpdatePacket`).
+            let side = if front { "front" } else { "back" };
+            let lines = serde_json::to_string(&lines).unwrap_or_default();
+            self.lan_command(&format!("sign {} {} {} {side} {lines}", cell.x, cell.y, cell.z));
+            return;
+        }
         if let Err(e) = self.session.edit_sign(&mut self.world, cell, front, lines) {
             log::info!("sign edit at {cell} not applied: {e}");
         }

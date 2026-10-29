@@ -210,6 +210,17 @@ impl World {
         (feet.y < p.y as f64 + height && top > p.y as f64 + 0.25).then_some(contents)
     }
 
+    /// `LayeredCauldronBlock.handleEntityOnFireInside`: a burning player
+    /// in a water or powder snow cauldron puts the fire out with one level
+    /// (powder snow melts to water first). `false` when there was none.
+    pub fn douse_in_cauldron(&mut self, feet: DVec3, top: f64) -> bool {
+        let level = match self.cauldron_contents_around(feet, top) {
+            Some(Contents::Water(level) | Contents::PowderSnow(level)) => level,
+            _ => return false,
+        };
+        self.set_block(feet.floor().as_ivec3(), cauldron(Contents::Water(level - 1)))
+    }
+
     /// `AbstractCauldronBlock.tick`: the scheduled drip arrives if a
     /// stalactite with fluid above still points at the cauldron.
     pub(super) fn tick_drips(&mut self) {

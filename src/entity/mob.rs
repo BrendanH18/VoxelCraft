@@ -22,6 +22,12 @@ pub(crate) mod turtle;
 pub(crate) use nether_ai::STABLE_LAVA_HEIGHT;
 
 const GRAVITY: f64 = 28.0;
+/// A walker's speed on a slime block against ordinary ground. Java moves a
+/// walker `a / (1 - f)` a tick on ground of friction `f * 0.91` with
+/// acceleration `a ∝ 0.216 / f³`; `SlimeBlock.stepOn` multiplies the
+/// motion by 0.4 a tick as well, so with slime's 0.8 against 0.6 the ratio
+/// is `(0.546 / 0.728)³ * (1 - 0.546) / (1 - 0.4 * 0.728)`.
+const SLIME_WALK: f64 = 0.270;
 /// Clears a 1-block ledge with a little margin (peak ~1.26 blocks).
 const JUMP_VELOCITY: f64 = 8.4;
 const MAX_STEP: f64 = 1.0 / 60.0;
@@ -2495,6 +2501,12 @@ impl Mob {
             self.hop_left = 0.5;
         }
         let target = wish.map_or(DVec3::ZERO, |d| d * speed);
+        let below = world.block(super::item::below_pos(self.pos));
+        let target = if self.on_ground && below == Some(crate::world::stone_blocks::SLIME_BLOCK) {
+            target * SLIME_WALK
+        } else {
+            target
+        };
         // Java's `Drowned.wantsToSwim` (a target): otherwise they sink like
         // other mobs in water below. Swimmers with their own `travelInWater`
         // move in `swim`.
@@ -2593,6 +2605,7 @@ impl Mob {
 
         let delta = self.vel * dt;
         let from_y = self.pos.y;
+        let falling = self.vel.y;
         let step_height = if self.kind == MobKind::Camel {
             1.5
         } else if super::mounts::equine(self.kind) || self.mount.as_ref().is_some_and(|s| s.controlled()) {
@@ -2605,11 +2618,23 @@ impl Mob {
         } else {
             physics::move_box(world, &mut self.pos, &mut self.vel, delta, shape)
         };
+        // `Entity.restituteMovementAfterCollisions`: slime blocks and beds
+        // throw a falling mob back up, once it falls faster than one tick of
+        // gravity (0.08 a tick).
+        let below = world.block(super::item::below_pos(self.pos));
+        let bounce = crate::player::bounciness(below);
+        if hit.on_ground && bounce > 0.0 && -falling > 0.08 * 20.0 {
+            self.vel.y = -falling * bounce;
+        }
         if let Some(s) = &mut self.mount {
             if self.in_water {
                 s.fall_distance = 0.;
             } else {
                 s.fall_distance += (from_y - self.pos.y).max(0.);
+            }
+            // `SlimeBlock.fallOn`: no fall damage on slime.
+            if hit.on_ground && below == Some(crate::world::stone_blocks::SLIME_BLOCK) {
+                s.fall_distance = 0.;
             }
             if hit.on_ground {
                 let damage = if super::mounts::equine(self.kind) {

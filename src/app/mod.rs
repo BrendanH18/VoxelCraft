@@ -433,7 +433,17 @@ impl ApplicationHandler for App {
                 });
                 PhysicalSize::new(w, h)
             });
+        // A benchmark run is invalid once its window is covered, and one
+        // started from a terminal or agent opens behind the active app.
+        let attrs = if self.args.benchmark_scene.is_some() {
+            attrs.with_window_level(winit::window::WindowLevel::AlwaysOnTop).with_active(true)
+        } else {
+            attrs
+        };
         let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
+        if self.args.benchmark_scene.is_some() {
+            window.focus_window();
+        }
 
         // Saved options, with command-line overrides for this session.
         let scripted = self.args.screenshot.is_some() || self.args.bench_render || self.args.benchmark_scene.is_some();
@@ -1934,8 +1944,9 @@ impl Game {
             .then(|| {
                 let eye = self.session.player.eye();
                 let eating = (self.body.actions.eat_timer / EAT_TIME) as f32;
+                let held = self.session.inventory.get(self.body.actions.selected);
                 Self::stamp_hand(
-                    dial,
+                    held.map_or(dial, |s| dial.for_stack(&s)),
                     self.hand.view(eating, crate::entity::sky_light(&self.world, eye), self.torch_light(eye)),
                 )
             }),

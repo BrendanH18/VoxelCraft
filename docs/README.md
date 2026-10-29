@@ -158,6 +158,11 @@ roadmap and recorded checks to assess completeness against the current target.
 - [v0.12 double chests and explosions destroying drops](verification/2026-10-28-v0.12-double-chests.md):
   Java 26.3 chest pairing, the shared 54-slot container, copper pairs and
   blocked chests, and dropped items and orbs destroyed by explosions.
+- [Finishing v0.12](verification/2026-10-29-v0.12-finish.md): sign editing
+  on every input path, lodestone compasses, slime for mobs and items, arrows
+  hitting vehicles and decorations, cauldrons putting out fires, the
+  hidden-window memory fix, frame-time runs and profile, and what moved out
+  of v0.12.
 - [Game rules and difficulty](verification/2026-10-17-game-rules-difficulty.md):
   the 26.3 rule registry, damage-type rules, Peaceful regeneration and the
   difficulty effects checked against the reference.

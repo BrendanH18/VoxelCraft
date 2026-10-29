@@ -559,6 +559,68 @@ impl Entities {
         }
     }
 
+    /// Vehicles, cushions and decorations for arrows to hit this tick.
+    pub(super) fn arrow_targets(&self) -> Vec<super::projectile::ArrowTarget> {
+        use super::projectile::{ArrowTarget, Struck};
+        // `BlockAttachedEntity` and `ArmorStand` refuse a mob's damage without
+        // mobGriefing; a framed item still pops out first (`ItemFrame.hurtServer`).
+        let carts = self.minecarts.iter().map(|c| {
+            let (min, max) = c.aabb();
+            let mob_proof = c.kind.cushion().is_some() && !self.villager_griefing;
+            ArrowTarget { struck: Struck::Cart(c.id), key: c.id as u64, min, max, mob_proof }
+        });
+        let decor = self.decor.iter().enumerate().map(|(i, d)| {
+            let (min, max) = d.aabb();
+            let framed = matches!(d.kind, Kind::Frame { .. }) && d.item.is_some();
+            // Decorations have no ids: a hanging one is known by its cell and
+            // facing, a stand by its position to a sixteenth.
+            let at = if d.is_hanging() { d.cell } else { (d.pos * 16.0).floor().as_ivec3() };
+            let key = 1 << 63
+                | (at.x as u16 as u64) << 40
+                | (at.y as u16 as u64) << 24
+                | (at.z as u16 as u64) << 8
+                | (d.facing.x + 1 + 3 * (d.facing.y + 1) + 9 * (d.facing.z + 1)) as u64;
+            ArrowTarget { struck: Struck::Decor(i), key, min, max, mob_proof: !framed && !self.villager_griefing }
+        });
+        carts.chain(decor).collect()
+    }
+
+    /// Applies this tick's arrow hits on vehicles, cushions and decorations.
+    /// A decoration hit by an arrow: a framed item pops out
+    /// (`ItemFrame.hurtServer`), an empty frame or a painting breaks
+    /// (`HangingEntity.hurtServer`), and an armor stand breaks at once
+    /// (`ALWAYS_KILLS_ARMOR_STANDS`), dropping itself and what it wears.
+    /// A creative player's arrow leaves no drops.
+    pub(super) fn apply_entity_shots(&mut self, events: &[super::EntityEvent], ctx: &super::Ctx) {
+        use super::projectile::Struck;
+        let mut decor = Vec::new();
+        for e in events {
+            let super::EntityEvent::EntityShot { struck, damage, burning, owner, motion, .. } = *e else { continue };
+            // A creative shooter: alive but not a target for mobs.
+            let creative = owner.is_some_and(|id| ctx.players.iter().any(|p| p.id == id && p.alive && !p.targetable));
+            match struck {
+                Struck::Cart(id) => self.shoot_cart(id, damage, burning, creative, motion),
+                Struck::Decor(i) => decor.push((i, creative)),
+            }
+        }
+        // Highest index first, so `swap_remove` never moves one still to come.
+        decor.sort_by_key(|&(i, _)| std::cmp::Reverse(i));
+        decor.dedup_by_key(|&mut (i, _)| i);
+        for (i, creative) in decor {
+            let drops = !creative && self.entity_drops;
+            let d = &mut self.decor[i];
+            if matches!(d.kind, Kind::Frame { .. }) && d.item.is_some() {
+                let stack = d.item.take();
+                let spot = drop_spot(d);
+                if let Some(s) = stack.filter(|_| drops) {
+                    self.items.push(ItemEntity::new(s, spot, DVec3::ZERO, 0.5, &mut self.rng));
+                }
+            } else {
+                self.break_decor(i, drops, drops);
+            }
+        }
+    }
+
     /// Removes decoration `i`, dropping its item (`drop_self`) and what it
     /// holds or wears (`drop_contents`).
     fn break_decor(&mut self, i: usize, drop_self: bool, drop_contents: bool) {

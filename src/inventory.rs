@@ -85,6 +85,36 @@ pub struct Stack {
     pub name: StackName,
     /// Captured water creature variant and health; zero means an ordinary item.
     pub entity_data: u32,
+    /// A lodestone compass's `lodestone_tracker`; `None` on everything else.
+    pub lodestone: Option<Lodestone>,
+}
+
+/// Java's `LodestoneTracker` (always `tracked`, as a lodestone makes it):
+/// the lodestone a compass points to, or `None` once that lodestone is gone.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Lodestone {
+    pub target: Option<(glam::IVec3, crate::world::terrain::Dimension)>,
+}
+
+impl Lodestone {
+    /// `x_y_z_dimension`, or `-` with no target.
+    fn to_field(self) -> String {
+        match self.target {
+            Some((p, d)) => format!("{}_{}_{}_{}", p.x, p.y, p.z, d.name()),
+            None => "-".into(),
+        }
+    }
+
+    fn from_field(text: &str) -> Option<Self> {
+        if text == "-" {
+            return Some(Self { target: None });
+        }
+        let mut f = text.split('_');
+        let mut n = || f.next()?.parse::<i32>().ok();
+        let pos = glam::IVec3::new(n()?, n()?, n()?);
+        let dimension = crate::world::terrain::Dimension::from_name(f.next()?)?;
+        f.next().is_none().then_some(Self { target: Some((pos, dimension)) })
+    }
 }
 
 impl Stack {
@@ -97,6 +127,7 @@ impl Stack {
             repair_cost: 0,
             name: StackName::default(),
             entity_data: 0,
+            lodestone: None,
         }
     }
 
@@ -109,6 +140,7 @@ impl Stack {
             && self.repair_cost == other.repair_cost
             && self.name == other.name
             && self.entity_data == other.entity_data
+            && self.lodestone == other.lodestone
     }
 
     /// The enchantments that take effect when held or worn: a book's are
@@ -127,7 +159,10 @@ impl Stack {
     }
 
     pub fn display_name(&self) -> &str {
-        self.name.as_str().unwrap_or_else(|| self.item.name())
+        // `CompassItem.getName`.
+        self.name
+            .as_str()
+            .unwrap_or_else(|| if self.lodestone.is_some() { "lodestone compass" } else { self.item.name() })
     }
 
     /// Remaining durability as a fraction, for tools that have been used.
@@ -422,13 +457,20 @@ impl Inventory {
 
 /// `id:count` (or `id:count:damage` for worn tools, and
 /// `id:count:damage:enchantments:repair cost:name` for enchanted,
-/// anvil-worked or named ones; enchantments and UTF-8 name bytes are hex),
-/// or `-` for nothing.
+/// anvil-worked or named ones; enchantments and UTF-8 name bytes are hex;
+/// then the captured-creature data and, for a lodestone compass, its
+/// target), or `-` for nothing.
 pub fn stack_to_string(stack: Option<Stack>) -> String {
     match stack {
         None => "-".to_string(),
-        Some(s) if !s.enchants.is_empty() || s.repair_cost > 0 || s.name.as_str().is_some() || s.entity_data > 0 => {
-            format!(
+        Some(s)
+            if !s.enchants.is_empty()
+                || s.repair_cost > 0
+                || s.name.as_str().is_some()
+                || s.entity_data > 0
+                || s.lodestone.is_some() =>
+        {
+            let mut text = format!(
                 "{}:{}:{}:{}:{}:{}:{}",
                 s.item.0,
                 s.count,
@@ -437,7 +479,12 @@ pub fn stack_to_string(stack: Option<Stack>) -> String {
                 s.repair_cost,
                 s.name.to_hex(),
                 s.entity_data
-            )
+            );
+            if let Some(tracker) = s.lodestone {
+                text.push(':');
+                text.push_str(&tracker.to_field());
+            }
+            text
         }
         Some(s) if s.damage > 0 => format!("{}:{}:{}", s.item.0, s.count, s.damage),
         Some(s) => format!("{}:{}", s.item.0, s.count),
@@ -458,6 +505,10 @@ pub fn stack_from_str(text: &str) -> Option<Option<Stack>> {
     let repair_cost: u16 = fields.next().map_or(Some(0), |d| d.parse().ok())?;
     let name = fields.next().map_or(Some(StackName::default()), StackName::from_hex)?;
     let entity_data = fields.next().map_or(Some(0), |d| d.parse().ok())?;
+    let lodestone = match fields.next() {
+        Some(text) => Some(Lodestone::from_field(text)?),
+        None => None,
+    };
     if fields.next().is_some() {
         return None;
     }
@@ -474,6 +525,7 @@ pub fn stack_from_str(text: &str) -> Option<Option<Stack>> {
         repair_cost,
         name,
         entity_data,
+        lodestone,
     }))
 }
 

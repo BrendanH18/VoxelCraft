@@ -266,3 +266,116 @@ fn lan_clients_mirror_nearby_decor_and_frame_comparator_output() {
     assert_eq!(client.decor, host.decor, "the client's stale frame is replaced");
     assert!(host.decor_near(eye + DVec3::X * 500.0, 160.0, 256).is_empty(), "far decor isn't sent");
 }
+
+/// Runs a second of entity updates with `arrow` in flight; the host is far
+/// away (and in creative unless `survival`).
+fn fly(e: &mut Entities, w: &World, arrow: crate::entity::Arrow, survival: bool) -> Vec<crate::entity::EntityEvent> {
+    use crate::entity::{Ctx, PlayerId, Target};
+    e.arrows.push(arrow);
+    let ctx = Ctx {
+        spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+        players: vec![Target::new(PlayerId::HOST, DVec3::new(9.5, GROUND as f64 + 1.0, 40.0), survival)],
+        daylight: 1.0,
+        spawning: false,
+        raining: false,
+        dimension: crate::world::terrain::Dimension::Overworld,
+    };
+    (0..20).flat_map(|_| e.update(0.05, w, &ctx)).collect()
+}
+
+/// A player's fully drawn arrow from the east, along the aim of [`aim`].
+fn arrow_at(y: f64) -> crate::entity::Arrow {
+    let (eye, dir) = aim(y);
+    crate::entity::Arrow::shot(eye, dir, 1.0, true)
+}
+
+#[test]
+fn arrows_pop_framed_items_and_break_frames_paintings_and_stands() {
+    let w = walled();
+    let mut e = Entities::new(1);
+    let wall = IVec3::new(7, GROUND + 2, 2);
+    e.place_decor(&w, Item::ITEM_FRAME, wall, IVec3::X, 0.0, &[]).unwrap().unwrap();
+    let (eye, dir) = aim(GROUND as f64 + 2.5);
+    e.use_decor(eye, dir, 3.0, &mut inventory(Item::DIAMOND, 1), 0, false).unwrap();
+    // `ItemFrame.hurtServer`: the item pops out and the frame stays; the arrow is gone.
+    let events = fly(&mut e, &w, arrow_at(GROUND as f64 + 2.5), true);
+    assert!(events.iter().any(|e| matches!(e, crate::entity::EntityEvent::EntityShot { .. })));
+    assert!(e.arrows.is_empty());
+    assert_eq!((e.decor.len(), e.decor[0].item), (1, None));
+    assert_eq!(e.items.iter().map(|i| i.stack.item).collect::<Vec<_>>(), [Item::DIAMOND]);
+    // The next arrow breaks the empty frame.
+    fly(&mut e, &w, arrow_at(GROUND as f64 + 2.5), true);
+    assert!(e.decor.is_empty());
+    assert!(e.items.iter().any(|i| i.stack.item == Item::ITEM_FRAME));
+
+    // A painting breaks at once; a creative player's arrow leaves no drop.
+    let mut e = Entities::new(1);
+    e.place_decor(&w, Item::PAINTING, wall, IVec3::X, 0.0, &[]).unwrap().unwrap();
+    fly(&mut e, &w, arrow_at(GROUND as f64 + 2.5), false);
+    assert!(e.decor.is_empty() && e.items.is_empty());
+
+    // `ALWAYS_KILLS_ARMOR_STANDS`: one arrow breaks a stand, dropping it and its armor.
+    let w = world();
+    let mut e = Entities::new(1);
+    let ground = IVec3::new(3, GROUND, 2);
+    e.place_decor(&w, Item::ARMOR_STAND, ground, IVec3::Y, 0.0, &[]).unwrap().unwrap();
+    e.decor[0].armor[1] = Some(Stack::new(Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Iron), 1));
+    fly(
+        &mut e,
+        &w,
+        crate::entity::Arrow::shot(DVec3::new(9.5, GROUND as f64 + 1.8, 2.5), DVec3::NEG_X, 1.0, true),
+        true,
+    );
+    assert!(e.decor.is_empty());
+    let mut dropped: Vec<Item> = e.items.iter().map(|i| i.stack.item).collect();
+    dropped.sort_by_key(|i| i.0);
+    let mut expected = vec![Item::ARMOR_STAND, Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Iron)];
+    expected.sort_by_key(|i| i.0);
+    assert_eq!(dropped, expected);
+}
+
+#[test]
+fn mob_arrows_spare_decorations_without_mob_griefing_but_still_pop_framed_items() {
+    let w = walled();
+    let wall = IVec3::new(7, GROUND + 2, 2);
+    let skeleton = |y: f64| {
+        let mut a = arrow_at(y);
+        a.from_player = false;
+        a.owner = None;
+        a.shooter = Some(9);
+        a
+    };
+    let mut e = Entities::new(1);
+    e.villager_griefing = false;
+    e.place_decor(&w, Item::PAINTING, wall, IVec3::X, 0.0, &[]).unwrap().unwrap();
+    fly(&mut e, &w, skeleton(GROUND as f64 + 2.5), true);
+    assert_eq!(e.decor.len(), 1, "BlockAttachedEntity refuses a mob's damage");
+    // The refused arrow bounced back off the painting, east.
+    assert!(e.arrows.iter().all(|a| a.pos.x > 8.0));
+
+    let mut e = Entities::new(1);
+    e.villager_griefing = false;
+    e.place_decor(&w, Item::ITEM_FRAME, wall, IVec3::X, 0.0, &[]).unwrap().unwrap();
+    let (eye, dir) = aim(GROUND as f64 + 2.5);
+    e.use_decor(eye, dir, 3.0, &mut inventory(Item::DIAMOND, 1), 0, false).unwrap();
+    fly(&mut e, &w, skeleton(GROUND as f64 + 2.5), true);
+    assert_eq!((e.decor.len(), e.decor[0].item), (1, None), "the item pops out before the griefing check");
+}
+
+#[test]
+fn piercing_arrows_go_on_through_decorations() {
+    // `AbstractArrow.onHitEntity` keeps a piercing arrow for `level + 1` entities.
+    let w = world();
+    let stands = |level: u8| {
+        let mut e = Entities::new(1);
+        for x in [3, 5] {
+            e.place_decor(&w, Item::ARMOR_STAND, IVec3::new(x, GROUND, 2), IVec3::Y, 0.0, &[]).unwrap().unwrap();
+        }
+        let mut arrow = crate::entity::Arrow::shot(DVec3::new(9.5, GROUND as f64 + 1.8, 2.5), DVec3::NEG_X, 1.0, true);
+        arrow.enchants = crate::enchant::Enchants::NONE.with(crate::enchant::Enchantment::Piercing, level);
+        fly(&mut e, &w, arrow, true);
+        e.decor.len()
+    };
+    assert_eq!(stands(0), 1, "a plain arrow stops at the first stand");
+    assert_eq!(stands(1), 0, "a piercing arrow breaks both");
+}

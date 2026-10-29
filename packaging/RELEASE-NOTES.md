@@ -1,9 +1,11 @@
-VoxelCraft 0.11.0 brings Java's menus: the title screen, world list and
-Edit World screen, the full Options screens, key rebinding, GUI scale and a
-volume slider for each sound category. If you have 0.10.0, the title screen
-offers this update; choose **Update and Restart**. If you're coming from
-0.9.0 or earlier, install it by hand once, as below, and it updates itself
-from then on.
+VoxelCraft 0.12.0 fills in Java's building materials: every wood, stone,
+copper and colour block you can get in survival today, signs, banners,
+candles, item frames, paintings, armor stands, cauldrons, campfires, double
+chests and more, with Java 26.3's recipes, drops, mining speeds and
+explosions. If you have 0.10.0 or 0.11.0, the title screen offers this
+update; choose **Update and Restart**. If you're coming from 0.9.0 or
+earlier, install it by hand once, as below, and it updates itself from then
+on.
 
 VoxelCraft is an unofficial fan project, inspired by Minecraft Java Edition. It
 is not affiliated with or endorsed by Mojang Studios or Microsoft, and it
@@ -11,10 +13,89 @@ contains no Minecraft code or assets.
 
 Choose your download:
 
-- **Windows 10/11 x64:** `VoxelCraft-0.11.0-windows-x64-Setup.exe`
-- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.11.0-macos-apple-silicon.dmg`
+- **Windows 10/11 x64:** `VoxelCraft-0.12.0-windows-x64-Setup.exe`
+- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.12.0-macos-apple-silicon.dmg`
 
-## What's new in 0.11.0
+## What's new in 0.12.0
+
+### Wood
+
+- Logs, stems and the bamboo block lie along the axis you place them on, and
+  an axe strips every log, wood and bamboo block. All nine `*_wood` blocks and
+  their stripped forms are in.
+- Trapdoors, buttons and pressure plates for every wood, and the polished
+  blackstone button and plate.
+- **Signs and hanging signs** of all 12 woods, standing, on walls and
+  hanging. Write on both sides, colour the text with dyes and make it glow
+  with glow ink. Controller players write with an on-screen keyboard, and
+  LAN players get the same editor as the host.
+- **Shelves** of every wood (three items, swapped with your hotbar, and
+  chained three wide) and the **chiseled bookshelf**.
+
+### Stone and minerals
+
+- Polished tuff and tuff bricks; deepslate bricks and tiles; quartz, smooth,
+  cut and chiseled sandstone and red sandstone; red nether bricks; end stone
+  bricks; mossy stone brick shapes; blocks of coal and diamond; tinted glass.
+- Every stairs, slab and wall of those families, and 99 stonecutter recipes
+  (the stonecutter screen itself comes later).
+- **Slime blocks:** you, mobs and dropped items bounce on them, and walking
+  over one is slow.
+- Calcite, deepslate and smooth stone stairs, slabs and walls and polished
+  granite, diorite and andesite walls aren't in Java, so they can no longer be
+  crafted. Blocks you already placed stay.
+
+### Copper
+
+- Every copper block, cut copper, stairs, slab, chiseled copper, grate, bulb,
+  door, trapdoor, bars, chain, lantern, chest, lightning rod and the copper
+  torch, in all four stages of age. Copper ages slowly; an axe scrapes it
+  back. Waxing comes with bees.
+
+### Colour
+
+- **Banners** in 16 colours, standing and on walls (patterns come with the
+  loom).
+- **Candles** in 17 colours, up to four to a block, lit with flint and steel
+  or a Flame arrow, and candle cakes. Candles can't be crafted until bees
+  bring honeycomb.
+- Wool and concrete stairs and slabs, the straw bed and the 16 cushions you
+  can sit on.
+
+### Around the house
+
+- **Item frames** and glow item frames, **paintings** and **armor stands**.
+  Arrows knock items out of frames and break frames, paintings, armor
+  stands and cushions, and wear down boats and minecarts.
+- **Cauldrons** hold water, lava and powder snow, fill from buckets,
+  bottles, rain, snow and dripping stalactites, and put out a burning player
+  (using up a level).
+- **Campfires** and soul campfires cook, hurt, send up smoke signals and can
+  be put out and relit.
+- Flower pots, decorated pots, coral wall fans, falling and dripping pointed
+  dripstone and tilting big dripleaves.
+- **Lodestones:** use a compass on one and it points there, in any
+  dimension, until the lodestone is broken. **Respawn anchors** charged with
+  glowstone set your spawn in the Nether and explode anywhere else.
+- **Chests, trapped chests and copper chests** pair into double chests, and
+  every player has their own **ender chest**.
+
+### Java's data
+
+- Every recipe, drop, mining speed, fuel, compostable and repair material
+  for the blocks and items in the game now matches Java 26.3, apart from
+  dyeing leather, repairing in the crafting grid and copying banners.
+- Explosions follow Java: blast resistance shields what's behind it, blocks
+  drop by their loot rules, and items and experience lying in the blast are
+  destroyed.
+
+### Fixes
+
+- A minimised or hidden game window no longer grows by gigabytes of memory
+  while chunks load.
+- Dropped items slide on ice as far as they do in Java.
+
+## What's new in 0.11.0 (if you're coming from 0.10.0 or earlier)
 
 ### Title screen and worlds
 
@@ -108,8 +189,15 @@ Choose your download:
   in the host's dimension; when the host travels, the others follow. It has
   been tested between processes on one computer, not yet across Windows, Mac
   and Linux machines on a real network.
-- Honey can't be collected in survival yet: bees and beehives aren't in.
-  Powder snow doesn't generate in the world yet, and there are no cauldrons.
+- Honey can't be collected in survival yet: bees and beehives aren't in, so
+  copper can't be waxed and candles can't be crafted. Powder snow doesn't
+  generate in the world yet.
+- Banners have no patterns, and item frames can't hold maps, until the loom
+  and cartography table work.
+- Lightning rods don't attract lightning (there's no lightning yet), and
+  tridents can't knock down stalactites.
+- Many of the new blocks borrow the nearest existing sound; their own sounds
+  come with the sound review.
 - Mobs and dropped items treat scaffolding and powder snow as plain blocks.
 - Walls built in older versions show their posts until a neighbouring block
   changes.
@@ -120,10 +208,8 @@ Choose your download:
   dark, ancient city, glow lichen or cave spring yet.
 - Buried treasure isn't generated, so there's no way to find the heart of the
   sea.
-- Big dripleaves don't tilt, and pointed dripstone doesn't fall or drip.
-- There are no soul campfires, Soul Speed, spears, slime blocks or bubble
-  columns, and no wither skeleton skull block, item frames or frosted ice
-  (Frost Walker).
+- There is no Soul Speed, spears or bubble columns, and no wither skeleton
+  skull block or frosted ice (Frost Walker).
 - Raids aren't in yet. Lecterns, looms, cartography tables and stonecutters are
   decorative.
 - Complex redstone contraptions that depend on Java's exact update order may
@@ -139,15 +225,18 @@ Choose your download:
   boats ignore currents and bubble columns, and minecarts can't carry mobs
   across a save.
 - Streaming in new terrain quickly can still cause an occasional long frame,
-  and the new blocks haven't had a frame-time benchmark yet.
+  and a scene crowded with mobs and the new blocks can dip below the 240 FPS
+  target on an Apple M5; that work is planned for 0.20.
 - World generation is VoxelCraft's own: worlds aren't seed-compatible with
   Minecraft.
 
 ## Upgrading and saves
 
-Players on 0.10.0 get this version from the title screen. Install it by hand
-if you're on 0.9.0 or earlier; later versions then arrive in game. Worlds and
-options from 0.10.0 and earlier load in 0.11.0. Back up your worlds before upgrading from 0.8.0, and
+Players on 0.10.0 or 0.11.0 get this version from the title screen. Install
+it by hand if you're on 0.9.0 or earlier; later versions then arrive in game.
+Worlds and options from 0.11.0 and earlier load in 0.12.0. Don't open a
+world in an older version once it has any of the new blocks: older versions
+can't read the chunks that hold them. Back up your worlds before upgrading from 0.8.0, and
 don't open a world saved by 0.9.0 or later in 0.8.0: once it uses any of the
 new block states, 0.8.0 can't read its terrain and would overwrite it. LAN
 players all need the same version.

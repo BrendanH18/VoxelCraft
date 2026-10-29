@@ -57,6 +57,15 @@ pub(super) struct Peer {
     look_override: Option<(f32, f32, Instant)>,
     /// The player's respawn count when last driven, to notice respawns.
     respawns: Option<u32>,
+    /// The sign and wood entity version, and where the player stood, when
+    /// this client last got its signs, shelves and chiseled bookshelves.
+    wood_sent: Option<(u64, DVec3)>,
+    /// A sign side this client should open its editor for, numbered so the
+    /// client opens each request once.
+    sign_edit: Option<(IVec3, bool, u32)>,
+    /// That editor is open: only it may write the sign (Java's
+    /// `playerWhoMayEdit`), once.
+    sign_editing: bool,
 }
 impl Peer {
     fn new(connection: Connection) -> Self {
@@ -81,6 +90,9 @@ impl Peer {
             looked: Default::default(),
             look_override: None,
             respawns: None,
+            wood_sent: None,
+            sign_edit: None,
+            sign_editing: false,
         }
     }
 }
@@ -128,6 +140,8 @@ pub(super) struct Lan {
     messages: VecDeque<String>,
     /// The host's respawn count for this client's player, from the last snapshot.
     respawns: Option<u64>,
+    /// The last sign editor request this client opened.
+    sign_serial: u32,
 }
 impl Lan {
     /// The world's remembered session rules, `cheats,pvp` as `0` or `1`.
@@ -226,7 +240,7 @@ fn vector(v: &Value) -> Option<DVec3> {
 fn fit_state(mut v: Value) -> (Option<Value>, bool) {
     let fits = |v: &Value| serde_json::to_vec(v).is_ok_and(|b| b.len() < voxelcraft::lan::MAX_FRAME - 16);
     let mut shed_looks = false;
-    for shed in ["extras", "decor", "items", "looks", "mobs"] {
+    for shed in ["extras", "wood", "decor", "items", "looks", "mobs"] {
         if fits(&v) {
             return (Some(v), shed_looks);
         }
@@ -771,6 +785,16 @@ impl Game {
                 self.save();
                 let _ = peer.connection.send(Packet::Chat("Saved the game".into()));
             }
+            c if c.starts_with("sign ") => {
+                let Command::Sign(cell, front, lines) = Command::parse(c)? else { return Err("Bad sign text".into()) };
+                if !peer.sign_editing || peer.sign_edit.is_none_or(|(p, f, _)| (p, f) != (cell, front)) {
+                    return Err("That sign isn't open for editing".into());
+                }
+                peer.sign_editing = false;
+                let name = peer.profile.as_deref().unwrap();
+                let bot = self.agents.players.get_mut(name).unwrap();
+                bot.agent.session.edit_sign(&mut self.world, cell, front, lines)?;
+            }
             _ => {
                 if !command.starts_with('/') {
                     return Err("Unknown LAN action".into());
@@ -964,6 +988,13 @@ impl Game {
                             self.peer_open(peer, Container::Minecart(id));
                         }
                         Request::Open(Used::Screen { cell, .. } | Used::Bed { cell }) => used = Some(cell),
+                        // `openTextEdit`: the client opens its sign editor and
+                        // answers with a `sign` command.
+                        Request::Open(Used::EditSign { cell, front }) => {
+                            let serial = peer.sign_edit.map_or(1, |(_, _, n)| n.wrapping_add(1));
+                            peer.sign_edit = Some((cell, front, serial));
+                            peer.sign_editing = true;
+                        }
                         Request::Open(Used::Utility {
                             effect: crate::world::utilities::interact::Effect::EnderChest,
                             cell,
@@ -1282,10 +1313,23 @@ impl Game {
                 .join(";");
             let arrows:Vec<_>=self.mobs.entities.arrows.iter().filter(|a|a.pos.distance_squared(bot.agent.session.player.pos)<160.0*160.0).take(256).map(|a|json!({"pos":a.pos.to_array(),"previous":a.previous_pos.to_array(),"dir":a.dir.to_array(),"player":a.from_player,"critical":a.critical})).collect();
             let decor = self.mobs.entities.decor_near(bot.agent.session.player.pos, 160.0, 256);
+            // Signs, shelves and chiseled bookshelves near the player, when
+            // they changed or the player moved 16 blocks since the last send.
+            let here = bot.agent.session.player.pos;
+            let wood_version = self.world.wood_entities().version();
+            let wood = match peer.wood_sent {
+                Some((v, at)) if v == wood_version && at.distance_squared(here) < 16.0 * 16.0 => Value::Null,
+                _ => json!(self.world.wood_near(here, 160.0)),
+            };
+            let sign_edit =
+                peer.sign_edit.map(|(p, front, n)| json!({"pos": p.to_array(), "front": front, "serial": n}));
             // Everyone but this client itself (it has its own full state).
             let others: Vec<&Value> = players.iter().filter(|p| p["id"] != bot.id.0).collect();
-            let snapshot = json!({"sequence":peer.applied,"self":state(&bot.agent,name),"players":others,"time":self.day_time,"rain":self.weather.raining,"rain_strength":self.weather.strength,"thunder":self.weather.thundering,"dimension":self.dimension.name(),"seed":self.world.generator.seed,"view":view,"open":peer.open,"container":container,"grid":peer.grid.cells.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),"grid_size":peer.grid.size,"mobs":mobs,"carts":carts,"items":items,"decor":decor,"arrows":arrows,"extras":extras,"falling":falling,"sounds":sounds,"effects":effects,"cracks":cracks});
+            let snapshot = json!({"sequence":peer.applied,"self":state(&bot.agent,name),"players":others,"time":self.day_time,"rain":self.weather.raining,"rain_strength":self.weather.strength,"thunder":self.weather.thundering,"dimension":self.dimension.name(),"seed":self.world.generator.seed,"view":view,"open":peer.open,"container":container,"grid":peer.grid.cells.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),"grid_size":peer.grid.size,"mobs":mobs,"carts":carts,"items":items,"decor":decor,"arrows":arrows,"extras":extras,"falling":falling,"sounds":sounds,"effects":effects,"cracks":cracks,"wood":wood,"sign_edit":sign_edit});
             let (snapshot, shed_looks) = fit_state(snapshot);
+            if snapshot.as_ref().is_some_and(|v| v["wood"].is_string()) {
+                peer.wood_sent = Some((wood_version, here));
+            }
             if shed_looks {
                 // Looks dropped to fit: resend them all next tick.
                 peer.looked.clear();
@@ -1525,6 +1569,16 @@ impl Game {
             self.body.left_held = false;
             self.body.right_held = false;
             self.keys.clear();
+        }
+        if let Some(text) = snapshot["wood"].as_str() {
+            self.world.replace_wood(text);
+        }
+        let edit = &snapshot["sign_edit"];
+        if let (Some(serial), Some(p)) = (edit["serial"].as_u64(), vector(&edit["pos"]))
+            && serial as u32 != self.lan.sign_serial
+        {
+            self.lan.sign_serial = serial as u32;
+            self.open_sign_editor(p.as_ivec3(), edit["front"] == true);
         }
         let c = &snapshot["container"];
         let pos = vector(&c["pos"]).map(|p| p.as_ivec3());

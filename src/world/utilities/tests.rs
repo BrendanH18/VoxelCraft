@@ -650,3 +650,25 @@ fn a_lent_ender_inventory_comes_back_after_its_chest_is_mined() {
     assert!(w.take_lent_chest(p).is_some());
     assert_eq!(w.chest(p).map(|c| c.slots[0]), Some(None));
 }
+
+#[test]
+fn a_burning_player_puts_out_in_water_and_powder_snow_cauldrons_with_a_level() {
+    use glam::DVec3;
+    let mut w = world();
+    let p = IVec3::new(3, 70, 3);
+    let feet = p.as_dvec3() + DVec3::new(0.5, 0.25, 0.5);
+    let top = feet.y + 1.8;
+    // `LayeredCauldronBlock.lowerFillLevel`: water drops a level, the last empties it.
+    w.set_block(p, cauldron(Contents::Water(2)));
+    assert!(w.douse_in_cauldron(feet, top));
+    assert_eq!(w.get_block(p), Some(cauldron(Contents::Water(1))));
+    assert!(w.douse_in_cauldron(feet, top));
+    assert_eq!(w.get_block(p), Some(CAULDRON));
+    assert!(!w.douse_in_cauldron(feet, top));
+    // Powder snow melts into water a level lower; lava does nothing.
+    w.set_block(p, cauldron(Contents::PowderSnow(3)));
+    assert!(w.douse_in_cauldron(feet, top));
+    assert_eq!(w.get_block(p), Some(cauldron(Contents::Water(2))));
+    w.set_block(p, LAVA_CAULDRON);
+    assert!(!w.douse_in_cauldron(feet, top));
+}

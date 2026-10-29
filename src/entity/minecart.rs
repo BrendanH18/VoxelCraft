@@ -890,6 +890,40 @@ impl super::Entities {
         true
     }
 
+    /// An arrow hit cart `id` (`VehicleEntity.hurtServer`, with
+    /// `MinecartTNT.hurtServer` for a burning arrow on a TNT cart).
+    /// `creative`: shot by a creative player, which removes it without drops.
+    pub(super) fn shoot_cart(&mut self, id: u32, damage: f32, burning: bool, creative: bool, motion: DVec3) {
+        let Some(i) = self.minecarts.iter().position(|c| c.id == id) else { return };
+        let cart = &mut self.minecarts[i];
+        if cart.kind == CartKind::Tnt && burning {
+            // `explode(source, projectile speed²)`: the blast grows with the arrow's speed.
+            if self.tnt_explodes {
+                cart.fuse = Some(0);
+                cart.blast_speed = motion.length() / 20.0;
+            }
+            return;
+        }
+        let broken = if creative || cart.kind.cushion().is_some() {
+            true
+        } else {
+            cart.damage += damage * 10.0;
+            cart.damage > 40.0
+        };
+        // `MinecartTNT.destroy`: a moving TNT cart is primed instead of dropping.
+        if broken && !creative && cart.kind == CartKind::Tnt && cart.vel.with_y(0.0).length_squared() >= 0.01 {
+            if self.tnt_explodes {
+                cart.fuse.get_or_insert(20);
+            }
+            return;
+        }
+        if broken {
+            let (item, pos) = (cart.kind.item(), cart.pos);
+            self.drop_cart(i, item, pos, !creative);
+            self.clear_cart(id);
+        }
+    }
+
     fn drop_cart(&mut self, index: usize, item: Item, pos: DVec3, drop_item: bool) {
         let cart = self.minecarts.swap_remove(index);
         if (cart.kind == CartKind::Tnt && cart.fuse.is_some()) || !self.entity_drops {
@@ -1392,6 +1426,26 @@ mod tests {
         let before = c.vel.x;
         c.step(&w, DVec3::ZERO, false);
         assert!(c.vel.x > 0. && c.vel.x < before);
+    }
+
+    #[test]
+    fn arrows_wear_boats_down_break_cushions_and_set_off_tnt_carts_when_burning() {
+        let mut e = super::super::Entities::new(1);
+        let boat = e.spawn_cart(CartKind::Boat { wood: 0, chest: false }, DVec3::new(3., 140., 3.));
+        // `VehicleEntity.hurtServer`: damage * 10 adds up, and past 40 it breaks.
+        e.shoot_cart(boat, 2.0, false, false, DVec3::X * 20.0);
+        assert!(e.cart(boat).is_some_and(|c| c.damage == 20.0));
+        e.shoot_cart(boat, 3.0, false, false, DVec3::X * 20.0);
+        assert!(e.cart(boat).is_none());
+        assert_eq!(e.items.len(), 1);
+        // A creative player's arrow removes it without a drop.
+        let boat = e.spawn_cart(CartKind::Boat { wood: 0, chest: false }, DVec3::new(3., 140., 3.));
+        e.shoot_cart(boat, 1.0, false, true, DVec3::X * 20.0);
+        assert!(e.cart(boat).is_none() && e.items.len() == 1);
+        // `MinecartTNT.hurtServer`: a burning arrow sets it off.
+        let tnt = e.spawn_cart(CartKind::Tnt, DVec3::new(3., 140., 3.));
+        e.shoot_cart(tnt, 1.0, true, false, DVec3::X * 60.0);
+        assert_eq!(e.cart(tnt).and_then(|c| c.fuse), Some(0));
     }
 
     #[test]

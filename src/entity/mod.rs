@@ -244,6 +244,17 @@ pub enum EntityEvent {
         player: PlayerId,
         attacker: u32,
     },
+    /// An arrow hit a vehicle, cushion or decoration (`motion` in blocks
+    /// per second); [`Entities::update`] applies it.
+    EntityShot {
+        struck: projectile::Struck,
+        /// Where the arrow hit.
+        pos: DVec3,
+        damage: f32,
+        burning: bool,
+        owner: Option<PlayerId>,
+        motion: DVec3,
+    },
     /// An arrow or player potion hit a mob (loot is dropped internally).
     MobShot {
         kind: MobKind,
@@ -2467,6 +2478,36 @@ mod tests {
     }
 
     #[test]
+    fn mobs_bounce_on_slime_and_walk_slowly_over_it() {
+        // `Entity.restituteMovementAfterCollisions` with slime's restitution 1.0.
+        let mut world = Grid::flat(10);
+        world.set(IVec3::new(0, 9, 0), crate::world::stone_blocks::SLIME_BLOCK);
+        let mut mob = Mob::new(MobKind::Pig, DVec3::new(0.5, 16.0, 0.5), 0.0);
+        let (mut landed, mut peak) = (false, f64::MIN);
+        for _ in 0..90 {
+            mob.physics_step(1.0 / 60.0, &world, None, 0.0);
+            if mob.vel.y > 0.0 {
+                landed = true;
+            }
+            if landed {
+                peak = peak.max(mob.pos.y);
+            }
+        }
+        assert!(landed && peak > 13.0, "bounced to {peak}");
+        // A walker on slime keeps about a quarter of its speed.
+        let mut world = Grid::flat(10);
+        for x in -2..40 {
+            for z in -2..=2 {
+                world.set(IVec3::new(x, 9, z), crate::world::stone_blocks::SLIME_BLOCK);
+            }
+        }
+        let on_slime = walk_east(&world, Mob::new(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5), 0.0), 3.0);
+        let on_stone = walk_east(&Grid::flat(10), Mob::new(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5), 0.0), 3.0);
+        let ratio = (on_slime.pos.x - 0.5) / (on_stone.pos.x - 0.5);
+        assert!((0.2..0.4).contains(&ratio), "{ratio}");
+    }
+
+    #[test]
     fn mob_stops_at_walls_and_jumps_ledges() {
         // A 3-high wall at x = 4.
         let mut world = Grid::flat(10);
@@ -3218,6 +3259,7 @@ mod tests {
                 &world,
                 &ctx(DVec3::new(0.0, 10.0, 0.0)),
                 &mut mobs,
+                &[],
                 Some(&mut fight),
                 &mut Rng::new(1),
                 &mut events,
@@ -3278,7 +3320,7 @@ mod tests {
         );
         let c = ctx(DVec3::new(50.0, 10.0, 0.0));
         for _ in 0..120 {
-            arrow.update(1.0 / 60.0, &world, &c, &mut [], None, &mut Rng::new(1), &mut Vec::new());
+            arrow.update(1.0 / 60.0, &world, &c, &mut [], &[], None, &mut Rng::new(1), &mut Vec::new());
         }
         assert!(arrow.is_stuck() && (9.5..10.5).contains(&arrow.pos.y), "{:?}", arrow.pos);
     }

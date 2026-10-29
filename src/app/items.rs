@@ -206,7 +206,7 @@ impl Game {
                     .item
                     .block()
                     .map(|b| b.info().tex[0])
-                    .or_else(|| item.stack.item.dial_layer(self.dial_of(&self.session.player)))
+                    .or_else(|| item.stack.item.dial_layer(self.dial_of(&self.session.player).for_stack(&item.stack)))
                     .or_else(|| item.stack.item.icon_layer()),
             };
             let size = if block.is_some() { 0.25 } else { 0.5 };
