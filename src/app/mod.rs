@@ -78,6 +78,10 @@ use survival::Vitals;
 /// Placement/use repeat; mining timing is owned by the shared session.
 const ACTION_REPEAT: f64 = 0.22;
 const AUTOSAVE_EVERY: Duration = Duration::from_secs(120);
+/// How long `--screenshot` waits, once streaming settles, for fluids to
+/// come to rest. Placed water settles well inside it; generation 2's
+/// springs can pour for minutes and would otherwise hold a capture open.
+const SCREENSHOT_FLUID_WAIT: Duration = Duration::from_secs(5);
 /// Seconds of holding right-click to eat (Minecraft's 32 ticks).
 const EAT_TIME: f64 = 1.6;
 const MOUSE_SENSITIVITY: f32 = 0.0022;
@@ -222,6 +226,8 @@ struct Game {
     save_error: Option<String>,
     screenshot: Option<String>,
     screenshot_state: u32,
+    /// When `--screenshot` first found streaming settled (see [`SCREENSHOT_FLUID_WAIT`]).
+    screenshot_settled: Option<Instant>,
     open_trading: bool,
     place: Vec<(glam::IVec3, Block)>,
     /// `--sign` front texts, written after `--place`.
@@ -1592,7 +1598,10 @@ impl Game {
             // Paused captures cannot drain simulation work queued by
             // --place (fluid wakeups, falling blocks). Wait only for jobs.
             0 if settled
-                && (self.menu.is_open() || self.console.open || self.world.is_idle())
+                && (self.menu.is_open()
+                    || self.console.open
+                    || self.world.is_idle()
+                    || self.screenshot_settled.get_or_insert_with(Instant::now).elapsed() >= SCREENSHOT_FLUID_WAIT)
                 && self.mobs.waited() =>
             {
                 self.screenshot_state = 1;

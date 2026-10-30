@@ -307,6 +307,7 @@ impl Game {
             save_error: None,
             screenshot: args.screenshot.clone(),
             screenshot_state: 0,
+            screenshot_settled: None,
             open_trading: args.open_trading,
             place: args.place.clone(),
             signs: args.signs.clone(),

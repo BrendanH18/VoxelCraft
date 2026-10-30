@@ -27,7 +27,9 @@ fn main() {
     let deadline = Instant::now() + Duration::from_secs(20);
     loop {
         world.update(spawn);
-        if world.loaded_chunks() > 0 && world.is_idle() {
+        // Streamed, not settled: generated springs keep fluids pending until
+        // the ticks below run them.
+        if world.loaded_chunks() > 0 && world.pending_jobs() == 0 {
             break;
         }
         assert!(Instant::now() < deadline, "terrain streaming timed out");
