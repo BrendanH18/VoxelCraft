@@ -39,6 +39,9 @@ pub const fn pair(id: u16) -> Option<(u16, bool)> {
     if let Some(p) = super::utilities::water_pair(id) {
         return Some(p);
     }
+    if let Some(p) = super::cave_blocks::water_pair(id) {
+        return Some(p);
+    }
     family_pair(id)
 }
 
@@ -248,7 +251,7 @@ pub fn wet(id: u16) -> bool {
 /// (Java `FluidState.is(Fluids.WATER)`, which excludes flowing water).
 #[inline]
 pub fn holds_source(b: Block) -> bool {
-    b == Block::WATER || b.is_waterlogged()
+    b == Block::WATER || b.is_waterlogged() || super::bubble::is_column(b)
 }
 
 /// Java `LiquidBlockContainer`: a block a water bucket fills in place

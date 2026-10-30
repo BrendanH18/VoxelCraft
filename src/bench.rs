@@ -33,6 +33,8 @@ pub fn run(seed: u64, rd: i32) {
         chunks.len() - dense
     );
 
+    generations(seed, r);
+
     // The Nether: caverns, biome surfaces and features, fortresses and bastions.
     let nether = Generator::for_dimension(seed, crate::world::terrain::Dimension::Nether);
     let t = Instant::now();
@@ -124,6 +126,40 @@ pub fn run(seed: u64, rd: i32) {
         t.elapsed().as_secs_f64()
     );
     storage_profiles(chunks.values().map(Arc::as_ref).filter(|c| c.uniform().is_none()));
+}
+
+/// Overworld generation speed of each world generation (generation 1:
+/// worlds from before v0.13; 2: density terrain), on fresh generators,
+/// around the origin and in the nearest jagged peaks.
+fn generations(seed: u64, r: i32) {
+    use crate::world::terrain::{Biome, Dimension, Generation};
+    let latest = Generator::new(seed);
+    let peaks = latest.nearest_biome(glam::IVec2::ZERO, Biome::JaggedPeaks, 20_000);
+    let peaks = peaks.map(|p| glam::IVec2::new(p.x >> 5, p.z >> 5));
+    for (place, centre) in [("origin", Some(glam::IVec2::ZERO)), ("mountains", peaks)] {
+        let Some(centre) = centre else { continue };
+        for generation in [Generation::V1, Generation::V2] {
+            let generator = Generator::with_generation(seed, Dimension::Overworld, generation);
+            let rows = generator.dimension.chunk_rows();
+            let t = Instant::now();
+            let mut n = 0;
+            for x in -r..=r {
+                for z in -r..=r {
+                    for y in rows.clone() {
+                        std::hint::black_box(generator.generate(IVec3::new(centre.x + x, y, centre.y + z)));
+                        n += 1;
+                    }
+                }
+            }
+            let secs = t.elapsed().as_secs_f64();
+            println!(
+                "generate {place} generation {} (1 thread): {n} chunks -> {:.3} ms/chunk, {:.0} chunks/s",
+                generation.number(),
+                secs * 1e3 / n as f64,
+                n as f64 / secs
+            );
+        }
+    }
 }
 
 /// Compare representation costs using identical generated block contents. These

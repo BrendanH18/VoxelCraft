@@ -235,9 +235,7 @@ impl World {
             return;
         }
         let below = self.get_block(p - IVec3::Y).unwrap_or(Block::AIR);
-        // Bedrock burns forever in the End, like the crystals' flames.
-        let eternal = below == Block::NETHERRACK
-            || (below == Block::BEDROCK && self.generator.dimension == super::terrain::Dimension::End);
+        let eternal = infiniburn(below, self.generator.dimension);
         if !eternal && self.rain_near_fire(p) && self.roll() % 100 < 20 + age as u64 * 3 {
             self.edit(p, Block::AIR, false);
             return;
@@ -310,6 +308,30 @@ impl World {
         }
     }
 
+    /// `LightningBolt.spawnFire`: on Normal or Hard (with fire ticking
+    /// allowed) a strike at `p` lights that cell if it is empty and a fire
+    /// can stand there, then tries `extra` more cells within one block of it.
+    /// Returns how many fires were lit. Nothing in the game strikes lightning
+    /// yet; this is the rule it will call.
+    pub fn lightning_fire(&mut self, p: IVec3, extra: u32) -> u32 {
+        if self.rules.difficulty < 2 || self.rules.fire_spread_radius == 0 {
+            return 0;
+        }
+        let mut lit = 0;
+        for i in 0..=extra {
+            let q = if i == 0 {
+                p
+            } else {
+                p + IVec3::new((self.roll() % 3) as i32 - 1, (self.roll() % 3) as i32 - 1, (self.roll() % 3) as i32 - 1)
+            };
+            if self.contains_y(q.y) && self.get_block(q) == Some(Block::AIR) && self.fire_supported(q) {
+                self.edit(q, self.fire_state(q, 0), false);
+                lit += 1;
+            }
+        }
+        lit
+    }
+
     /// Minecraft's lava random tick: walk upward 1..2 cells, looking for
     /// air beside fuel, or try three nearby blocks at the lava's height.
     /// Unloaded chunks and solid blocks stop the upward walk.
@@ -349,6 +371,15 @@ impl World {
     }
 }
 
+/// The `infiniburn_overworld`, `infiniburn_nether` and `infiniburn_end` block
+/// tags: fire on netherrack and magma blocks never ages out or rains out, and
+/// bedrock joins them in the End (the crystals' flames).
+pub fn infiniburn(below: Block, dimension: super::terrain::Dimension) -> bool {
+    below == Block::NETHERRACK
+        || below == Block::MAGMA
+        || (below == Block::BEDROCK && dimension == super::terrain::Dimension::End)
+}
+
 /// `FireBlock.tick`'s chance for fire to leap to a neighbouring cell:
 /// `(fuel + 40 + 7 x difficulty id) / (age + 30)`, halved in humid biomes.
 fn spread_odds(fuel: u64, age: u64, difficulty: u8, humid: bool) -> u64 {
@@ -384,6 +415,160 @@ mod tests {
     fn light(world: &mut World, p: IVec3, base: Block) {
         world.edit(p - IVec3::Y, base, false);
         assert!(world.ignite(p));
+    }
+
+    /// The (encouragement, flammability) a block family has in Java's public
+    /// flammability table (the wiki's "Fire" page), by registry name; `None`
+    /// for names the table does not mention (checked to burn nothing).
+    fn documented(name: &str) -> Option<(u8, u8)> {
+        const WOODS: [&str; 10] =
+            ["oak", "spruce", "birch", "jungle", "acacia", "dark oak", "mangrove", "cherry", "pale oak", "bamboo"];
+        let wood = WOODS.iter().find_map(|w| name.strip_prefix(w).and_then(|rest| rest.strip_prefix(' ')));
+        if let Some(kind) = wood {
+            return match kind {
+                "planks" | "slab" | "stairs" | "fence" | "fence gate" | "mosaic" | "roots" => Some((5, 20)),
+                "log" | "wood" | "block" => Some((5, 5)),
+                "leaves" => Some((30, 60)),
+                "shelf" => Some((30, 20)),
+                _ => None,
+            };
+        }
+        let stripped = name.strip_prefix("stripped ").unwrap_or(name);
+        if stripped.ends_with(" log") || stripped.ends_with(" wood") || name == "block of stripped bamboo" {
+            return Some((5, 5));
+        }
+        if name == "block of bamboo" {
+            return Some((5, 5));
+        }
+        Some(match name {
+            "azalea leaves" | "flowering azalea leaves" => (30, 60),
+            "wool" => (30, 60),
+            n if n.ends_with(" wool") => (30, 60),
+            n if n.ends_with(" carpet") && !n.contains("moss") => (60, 20),
+            "bookshelf" | "lectern" => (30, 20),
+            "composter" => (5, 20),
+            "hay bale" => (60, 20),
+            "tnt" => (15, 100),
+            "vines" | "glow lichen" => (15, 100),
+            "leaf litter" | "wildflowers" | "bush" | "firefly bush" | "short dry grass" | "tall dry grass" => (60, 100),
+            "dried kelp block" => (30, 60),
+            "bamboo" | "scaffolding" => (60, 60),
+            "tall grass" | "fern" | "dead bush" | "large fern" | "sweet berry bush" | "dandelion" | "poppy"
+            | "blue orchid" | "allium" | "azure bluet" | "red tulip" | "orange tulip" | "white tulip"
+            | "pink tulip" | "oxeye daisy" | "cornflower" | "lily of the valley" | "sunflower" | "lilac"
+            | "rose bush" | "peony" => (60, 100),
+            _ => return None,
+        })
+    }
+
+    /// Every registered state, family by family, against the documented table.
+    #[test]
+    fn every_flammable_family_matches_the_documented_flammability_table() {
+        let mut checked = std::collections::BTreeSet::new();
+        for id in 0..crate::world::block::STATE_CAPACITY as u16 {
+            let b = Block(id);
+            if b.name() == "unknown" || b.is_waterlogged() || b.waterloggable() && b.with_water(false) != b {
+                continue;
+            }
+            // Wool stairs and slabs are VoxelCraft's, burning as the wool they are cut from.
+            if b.name().ends_with("wool slab") || b.name().ends_with("wool stairs") {
+                assert_eq!(b.fire_odds(), (30, 60), "{}", b.name());
+                continue;
+            }
+            // Top halves of tall plants answer as their bottoms.
+            let name = b.name().strip_suffix(" top").unwrap_or(b.name());
+            if let Some(odds) = documented(name) {
+                assert_eq!(b.fire_odds(), odds, "{} ({id})", b.name());
+                checked.insert(name.to_string());
+            } else if !matches!(
+                name,
+                "moss block"
+                    | "moss carpet"
+                    | "pale moss block"
+                    | "pale moss carpet"
+                    | "azalea"
+                    | "flowering azalea"
+                    | "cave vines"
+                    | "cave vines plant"
+                    | "spore blossom"
+                    | "hanging roots"
+                    | "pink petals"
+                    | "pale hanging moss"
+                    | "pale hanging moss plant"
+                    | "tall grass plant"
+                    | "straw bed"
+            ) {
+                assert_eq!(b.fire_odds(), (0, 0), "{} ({id}) is not in the flammability table", b.name());
+            }
+        }
+        // The sweep reached every family the table names.
+        for family in [
+            "oak planks",
+            "spruce slab",
+            "birch stairs",
+            "jungle fence",
+            "acacia fence gate",
+            "oak log",
+            "stripped oak log",
+            "oak wood",
+            "mangrove roots",
+            "dark oak leaves",
+            "azalea leaves",
+            "bookshelf",
+            "lectern",
+            "composter",
+            "hay bale",
+            "tnt",
+            "vines",
+            "dried kelp block",
+            "bamboo",
+            "scaffolding",
+            "wool",
+            "red carpet",
+            "dead bush",
+            "sunflower",
+            "sweet berry bush",
+            "bamboo mosaic",
+            "block of bamboo",
+            "block of stripped bamboo",
+            "pale oak shelf",
+        ] {
+            assert!(checked.contains(family), "no state of {family} was checked");
+        }
+    }
+
+    #[test]
+    fn doors_saplings_mushrooms_and_furniture_without_an_entry_do_not_burn_by_fire() {
+        for name in [
+            "oak door",
+            "acacia door",
+            "bamboo door",
+            "oak sapling",
+            "mangrove propagule",
+            "red mushroom",
+            "lily pad",
+            "oak trapdoor",
+            "oak button",
+            "oak pressure plate",
+            "oak sign",
+            "chiseled bookshelf",
+            "crafting table",
+            "ladder",
+            "chest",
+            "crimson planks",
+            "warped fence",
+            "white banner",
+        ] {
+            if let Some(b) = Block::from_name(name) {
+                assert_eq!(b.fire_odds(), (0, 0), "{name}");
+            }
+        }
+        // Wooden doors, ladders and containers still catch from lava.
+        for name in ["oak door", "acacia door", "ladder", "chest", "crafting table", "white banner"] {
+            if let Some(b) = Block::from_name(name) {
+                assert!(b.ignited_by_lava(), "{name}");
+            }
+        }
     }
 
     #[test]
@@ -451,6 +636,53 @@ mod tests {
             w.random_tick(AT);
         }
         assert_eq!(w.get_block(AT), Some(Block::fire(15)), "even rain leaves netherrack lit");
+    }
+
+    #[test]
+    fn magma_blocks_burn_forever_too_and_the_end_adds_bedrock() {
+        use crate::world::terrain::Dimension::{End, Nether, Overworld};
+        let mut w = world();
+        light(&mut w, AT, Block::MAGMA);
+        w.raining = true;
+        for _ in 0..300 {
+            w.random_tick(AT);
+        }
+        assert_eq!(w.get_block(AT), Some(Block::fire(15)), "magma is infiniburn in every dimension, rain or not");
+        for d in [Overworld, Nether, End] {
+            assert!(infiniburn(Block::NETHERRACK, d) && infiniburn(Block::MAGMA, d));
+            assert!(!infiniburn(Block::STONE, d) && !infiniburn(Block::SOUL_SAND, d));
+            assert_eq!(infiniburn(Block::BEDROCK, d), d == End);
+        }
+    }
+
+    #[test]
+    fn lightning_lights_its_cell_and_neighbours_only_from_normal_difficulty() {
+        let mut w = world();
+        w.edit(AT - IVec3::Y, Block::STONE, false);
+        for difficulty in [0, 1] {
+            w.rules.difficulty = difficulty;
+            assert_eq!(w.lightning_fire(AT, 3), 0, "Peaceful and Easy: lightning starts no fires");
+        }
+        w.rules.difficulty = 2;
+        w.rules.fire_spread_radius = 0;
+        assert_eq!(w.lightning_fire(AT, 3), 0, "fire ticking off");
+        w.rules.fire_spread_radius = 128;
+        assert!(w.lightning_fire(AT, 0) == 1 && w.get_block(AT) == Some(Block::FIRE));
+        assert_eq!(w.lightning_fire(AT, 0), 0, "the cell is no longer empty");
+        // Unsupported cells (nothing below, nothing to burn) stay dark.
+        assert_eq!(w.lightning_fire(AT + IVec3::Y * 20, 0), 0);
+        // The extra tries stay within one block of the strike.
+        let before: Vec<_> = (-1..=1).flat_map(|x| (-1..=1).map(move |z| AT + IVec3::new(x, 0, z))).collect();
+        w.edit(AT, Block::AIR, false);
+        for dx in -1..=1 {
+            for dz in -1..=1 {
+                w.edit(AT + IVec3::new(dx, -1, dz), Block::STONE, false);
+            }
+        }
+        let lit = w.lightning_fire(AT, 3);
+        assert!((1..=4).contains(&lit));
+        let burning = before.iter().filter(|&&p| w.get_block(p) == Some(Block::FIRE)).count();
+        assert!(burning >= 1 && burning as u32 <= lit);
     }
 
     #[test]

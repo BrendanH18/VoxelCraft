@@ -135,13 +135,19 @@ impl Actor<'_> {
             return;
         }
         self.body.right_held = pressed;
+        self.body.used_once = false;
         if pressed && !self.equip_held() && !self.start_draw() {
             if self.held().is_none_or(|i| i.food().is_none()) {
                 self.hand.swing();
             }
-            self.use_held();
+            let did = self.use_held();
+            // A click nothing answered raises a shield held in either hand.
+            if !did && self.session.consumable_in_hands(self.body.actions.selected).is_none() {
+                self.session.start_blocking(self.body.actions.selected);
+            }
             self.body.action_cooldown = ACTION_REPEAT;
         } else if !pressed {
+            self.session.stop_blocking();
             self.session.cancel_consumption();
             self.body.actions.eat_timer = 0.0;
             if let Some(shot) = self.session.release_draw(self.body.actions.selected, self.entities) {
@@ -171,11 +177,10 @@ impl Actor<'_> {
             && self.body.action_cooldown <= 0.0
             && self.body.right_held
             && !self.session.drawing()
-            // Buckets, snowballs, eggs and rods act once per click.
-            && !self.held().is_some_and(|i| {
-                (i != Item::GLASS_BOTTLE && voxelcraft::survival_items::bucket::handles(i))
-                    || matches!(i, Item::SNOWBALL | Item::EGG | Item::FISHING_ROD)
-            })
+            && !self.session.shield_raised()
+            // Buckets, snowballs, eggs and rods act once per click, in either hand.
+            && !self.held().is_some_and(once_per_click)
+            && !self.body.used_once
         {
             self.use_held();
             self.hand.swing();
@@ -185,6 +190,7 @@ impl Actor<'_> {
             self.body.actions.breaking = None;
             self.session.cancel_mining();
         }
+        self.session.tick_blocking(self.body.actions.selected, acting && self.body.right_held);
         self.eat(acting, dt);
         if let Some(shot) = self.session.tick_draw(self.body.actions.selected, acting) {
             self.present_shot(shot);
@@ -216,7 +222,7 @@ impl Actor<'_> {
 
     /// Held use advances the shared fixed-tick consumption clock.
     fn eat(&mut self, acting: bool, dt: f64) {
-        let held = self.held();
+        let held = self.session.consumable_in_hands(self.body.actions.selected).or(self.held());
         let drink = held.is_some_and(Item::is_drink);
         let food = held.and_then(|i| i.food());
         let hungry = held.is_some_and(|item| self.session.can_eat(item));
@@ -234,7 +240,7 @@ impl Actor<'_> {
             return;
         }
         let before = self.session.consumption_elapsed();
-        let result = self.session.tick_consumption(self.body.actions.selected, using, self.entities);
+        let result = self.session.tick_consumption_either(self.body.actions.selected, using, self.entities);
         let Ok(step) = result else {
             self.session.cancel_consumption();
             self.body.actions.eat_timer = 0.0;
@@ -284,10 +290,14 @@ impl Actor<'_> {
     }
 
     /// The shared right-click chain, with its sounds; screens and beds are requested.
-    fn use_held(&mut self) {
+    fn use_held(&mut self) -> bool {
         let ctx = UseContext { sneaking: self.sneaking, others: self.others };
         let slot = self.body.actions.selected;
-        let Ok(Some(done)) = self.session.use_held(slot, self.world, self.entities, &ctx) else { return };
+        let off = self.session.inventory.offhand.map(|s| s.item);
+        let Ok(Some(done)) = self.session.use_held(slot, self.world, self.entities, &ctx) else { return false };
+        if done.off_hand && off.is_some_and(once_per_click) {
+            self.body.used_once = true;
+        }
         if let Some(item) = done.tool_broken {
             self.tool_broke(item);
         }
@@ -316,7 +326,7 @@ impl Actor<'_> {
                     ShelfUse::Placed | ShelfUse::BookIn { .. } => (1.0, 1.1),
                     ShelfUse::Swapped { .. } | ShelfUse::BookOut { .. } => (1.2, 1.3),
                     ShelfUse::Hotbar => (0.8, 0.9),
-                    ShelfUse::Nothing => return,
+                    ShelfUse::Nothing => return true,
                 };
                 audio.play(Sound::Place(Material::Wood), Some(centre(cell)), 0.8, pitch);
             }
@@ -394,5 +404,24 @@ impl Actor<'_> {
             }
             _ => {}
         }
+        true
     }
+
+    /// Swap-item-with-offhand: the selected stack and the off-hand trade places.
+    pub fn swap_hands(&mut self) -> bool {
+        let swapped = self.session.swap_hands(self.body.actions.selected);
+        if swapped {
+            self.body.actions.eat_timer = 0.0;
+            let eye = self.session.player.eye();
+            self.audio.play_in(SoundSource::Players, Sound::Place(Material::Wood), Some(eye), 0.4, (1.2, 1.4));
+        }
+        swapped
+    }
+}
+
+/// Buckets, snowballs, eggs and rods act once per click, not again while
+/// the button is held.
+fn once_per_click(i: Item) -> bool {
+    (i != Item::GLASS_BOTTLE && voxelcraft::survival_items::bucket::handles(i))
+        || matches!(i, Item::SNOWBALL | Item::EGG | Item::FISHING_ROD)
 }

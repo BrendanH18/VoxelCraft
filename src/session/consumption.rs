@@ -30,6 +30,7 @@ pub struct Step {
 impl PlayerSession {
     pub fn cancel_consumption(&mut self) {
         self.consumption = State::default();
+        self.hands.eating_off = false;
     }
     /// Eating or drinking is under way (Java's `isUsingItem` for food).
     pub fn consuming(&self) -> bool {
@@ -38,7 +39,7 @@ impl PlayerSession {
     /// Java's `isUsingItem` for the movement slow-down: eating, drinking, or
     /// drawing a bow or crossbow.
     pub fn using_item(&self) -> bool {
-        self.consuming() || self.drawing()
+        self.consuming() || self.drawing() || self.shield_raised()
     }
     pub fn consumption_progress(&self) -> f32 {
         if self.consumption.duration == 0 {

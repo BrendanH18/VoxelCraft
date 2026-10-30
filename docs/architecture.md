@@ -343,6 +343,35 @@ reserve, and records it here.
 | — | 1190–1199 | — | 6. Data pass (reference fuel items) |
 | 29696–32767 | 1200–1299 | 2768–4095 | Unassigned reserve for v0.13 and later |
 
+### v0.13 track reservations
+
+Reserved on 2026-10-30 for the [v0.13 tracks](roadmap.md#v013-scope-terrain).
+The deep-dark blocks take the start of v0.16's range (deep dark and trial
+chambers), since v0.13 generates them; v0.16 keeps 11520–11775.
+
+| Block states | Item IDs | Texture layers | Track |
+| --- | --- | --- | --- |
+| — | — | — | 2. Density terrain (no new blocks expected) |
+| 9728–9983, 11264–11519 | 1200–1219 | 2768–2831 | 3. Underground: glow lichen, springs, ores, deep dark and sculk |
+| 9984–10111 | 1220–1229 | 2832–2863 | 4. Giant trees and biome features |
+| 10112–10239 | 1230–1239 | 2864–2895 | 5. Bubble columns, fire, offhand and shields |
+
+v0.13 allocations (2026-10-30):
+
+| Block states | Meaning | Record |
+| --- | --- | --- |
+| 9728–9855 | Glow lichen: `9728 + 64*wet + faces`, faces 1–63 in `Direction` bit order; 9728 and 9792 unregistered | [v0.13 underground](verification/2026-10-30-v0.13-underground.md) |
+| 9856–9983 | Sculk vein, same layout; 9856 and 9920 unregistered | [v0.13 underground](verification/2026-10-30-v0.13-underground.md) |
+| 11264–11266 | Sculk; sculk catalyst bloom false, true | [v0.13 underground](verification/2026-10-30-v0.13-underground.md) |
+| 11268–11274 | Sculk sensor: `11268 + 4*wet + phase` (inactive, active, cooldown); 11271 unregistered | [v0.13 underground](verification/2026-10-30-v0.13-underground.md) |
+| 11276–11283 | Sculk shrieker: `11276 + 4*wet + 2*shrieking + can_summon`; 11284–11519 free | [v0.13 underground](verification/2026-10-30-v0.13-underground.md) |
+| 9984–9987 | Leaf litter, 1–4 segments | [v0.13 trees](verification/2026-10-30-v0.13-trees.md) |
+| 10000–10003 | Wildflowers, 1–4 flowers | [v0.13 trees](verification/2026-10-30-v0.13-trees.md) |
+| 10004–10009 | Bush, firefly bush, short dry grass, tall dry grass lower and upper, cactus flower; 9988–9999 and 10010–10111 free | [v0.13 trees](verification/2026-10-30-v0.13-trees.md) |
+| 10112, 10113 | Bubble column up (soul sand), down (magma); 10114–10239 free | [v0.13 carried](verification/2026-10-30-v0.13-carried.md) |
+| (items) 1230, 1231 | Shield, totem of undying; items 1200–1229 and 1232–1239 unused | [v0.13 carried](verification/2026-10-30-v0.13-carried.md) |
+| (texture layers) | Underground 2768–2784 (`cave_blocks::TEX`), plants 2832–2845 (`biome_plants::TEX`), bubbles 2864–2865 (`tex::BUBBLE_BASE`); the rest of each track's layers unused | the track records |
+
 Texture layers, unlike state and item IDs, are never saved, so the
 integrator may pack each track's layers together when merging; define a
 track's layers as offsets from one base constant so that is a one-line

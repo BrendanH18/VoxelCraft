@@ -87,8 +87,13 @@ impl ItemEntity {
             return false;
         }
         if physics::is_fluid_at(world, self.pos + DVec3::Y * 0.1) {
-            // Bob up to the surface and drift slowly.
-            self.vel.y = (self.vel.y + 10.0 * dt).min(1.2);
+            // Bob up to the surface and drift slowly, unless a bubble column
+            // (`BubbleColumnBlock.entityInside`) carries the item instead.
+            let (min, max) = SHAPE.aabb(self.pos);
+            match crate::world::bubble::apply(|p| world.block(p), min, max, self.vel.y / 20.0) {
+                Some(dy) => self.vel.y += (dy * 20.0 - self.vel.y) * (dt * 20.0).min(1.0),
+                None => self.vel.y = (self.vel.y + 10.0 * dt).min(1.2),
+            }
             let drag = (1.0 - 3.0 * dt).max(0.0);
             self.vel.x *= drag;
             self.vel.z *= drag;
@@ -405,5 +410,26 @@ mod tests {
         assert_eq!((back.stack, back.age), (item.stack, item.age));
         assert!(back.pos.distance(item.pos) < 1e-3);
         assert!(ItemEntity::deserialize("1,2,3", &mut rng).is_none());
+    }
+
+    #[test]
+    fn bubble_columns_lift_and_sink_items() {
+        use crate::world::bubble::{DOWN, UP};
+        let mut rng = Rng::new(3);
+        for (column, rises) in [(UP, true), (DOWN, false)] {
+            let mut world = Grid::flat(0);
+            for y in 0..30 {
+                world.set(IVec3::new(0, y, 0), column);
+                for (dx, dz) in [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1)] {
+                    world.set(IVec3::new(dx, y, dz), Block::WATER);
+                }
+            }
+            let mut item =
+                ItemEntity::new(Stack::new(Item::STICK, 1), DVec3::new(0.5, 10.5, 0.5), DVec3::ZERO, 0.0, &mut rng);
+            settle(&mut item, &world, 1.0);
+            // Plain water only bobs near the surface (y ~ 30); the up column
+            // gets there much sooner and the down column drives the item to the floor.
+            assert_eq!(item.pos.y > 14.0, rises, "{column:?}: {:?}", item.pos);
+        }
     }
 }

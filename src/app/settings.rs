@@ -206,6 +206,7 @@ impl Settings {
                 }
             }
         }
+        s.keys.migrate(text);
         s.clamped()
     }
 

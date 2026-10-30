@@ -432,6 +432,13 @@ mod tests {
             (MobCategory::WaterAmbient, "water_ambient"),
         ];
         for biome in Biome::ALL {
+            // `deep_dark` has no spawn settings at all (Java's
+            // `OverworldBiomes.deepDark` registers none); the fixture
+            // predates the biome here.
+            if biome == Biome::DeepDark {
+                assert!(categories.iter().all(|&(c, _)| biome_list(biome, c).is_empty()));
+                continue;
+            }
             for (category, name) in categories {
                 let ours: Vec<_> = biome_list(biome, category)
                     .iter()

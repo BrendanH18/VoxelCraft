@@ -359,7 +359,17 @@ pub mod tex {
     // (`world::copper::t`); colour: 2384..2457 (`world::colour_blocks::tex`);
     // utilities: from `world::utilities::TEX`. Layers below that no block
     // uses yet draw the missing-texture pattern.
-    pub const COUNT: u32 = super::super::utilities::TEX_END as u32;
+    // v0.13 underground (track 3): from `world::cave_blocks::TEX`; trees
+    // and biome plants (track 4): from `world::biome_plants::TEX`.
+    /// v0.13 track 5 reserves 2864..2895; bubble columns use the first two
+    /// as offsets from one base so the integrator can repack the layers.
+    pub const BUBBLE_BASE: u16 = 2864;
+    pub const BUBBLE_UP: u16 = BUBBLE_BASE;
+    pub const BUBBLE_DOWN: u16 = BUBBLE_BASE + 1;
+    pub const COUNT: u32 = BUBBLE_DOWN as u32 + 1;
+    const _: () = assert!(super::super::biome_plants::TEX_END <= BUBBLE_BASE);
+    const _: () = assert!(super::super::utilities::TEX_END <= super::super::cave_blocks::TEX);
+    const _: () = assert!(super::super::cave_blocks::TEX_END <= super::super::biome_plants::TEX);
     const _: () = assert!(super::super::wood::tex::END <= super::super::stone_blocks::t::TEX);
     const _: () = assert!(super::super::stone_blocks::t::END <= super::super::copper::t::BASE);
     const _: () = assert!(super::super::copper::t::END <= super::super::colour_blocks::tex::TEX);
@@ -712,6 +722,9 @@ impl Block {
         if super::waterlog::wet(self.0) {
             return (0, 0);
         }
+        if let Some(odds) = super::cave_blocks::fire_odds(self) {
+            return odds;
+        }
         if let Some(p) = super::wood::props(self) {
             return p.fire;
         }
@@ -727,22 +740,28 @@ impl Block {
         if self.carpet_color().is_some() {
             return (60, 20);
         }
-        if let Some(odds) = super::overworld_blocks::fire_odds(self) {
+        if let Some(odds) = super::overworld_blocks::fire_odds(self).or_else(|| super::biome_plants::fire_odds(self)) {
             return odds;
+        }
+        // `FireBlock.bootStrap` lists no doors: the wooden ones only burn from lava.
+        if self.is_door() || matches!(super::forms::wood_form(self.0), Some(super::forms::WoodForm::Door { .. })) {
+            return (0, 0);
         }
         match self.material() {
             b if b.is_log() => (5, 5),
             b if b.is_planks() => (5, 20),
             b if b.is_leaves() || b.wool_color().is_some() => (30, 60),
             Block::TNT => (15, 100),
+            // Wooden furniture of the village, as `FireBlock` lists it.
+            Block::BOOKSHELF | Block::LECTERN => (30, 20),
+            Block::COMPOSTER => (5, 20),
+            Block::HAY_BALE => (60, 20),
             Block::TALL_GRASS
             | Block::FERN
             | Block::DEAD_BUSH
             | Block::DANDELION
             | Block::POPPY
             | Block::BLUE_ORCHID => (60, 100),
-            b if b.is_mushroom() => (60, 100),
-            b if b.is_sapling() => (60, 100),
             _ => (0, 0),
         }
     }
@@ -755,6 +774,8 @@ impl Block {
             return c.ignited_by_lava();
         }
         self.fire_odds().0 > 0
+            // Wooden doors (not the nether woods') catch from lava though fire leaves them alone.
+            || super::forms::planks_of(self).is_some_and(|planks| planks.fire_odds().0 > 0)
             || super::colour_blocks::ignited_by_lava(self)
             || self.is_bed()
             || matches!(
@@ -880,6 +901,9 @@ impl Block {
 
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
+        if super::cave_blocks::is_custom(self) {
+            return Some(Shaped::Custom);
+        }
         if super::utilities::is_custom(self) {
             return Some(Shaped::Custom);
         }
@@ -1059,6 +1083,7 @@ impl Block {
             || self.is_rail()
             || super::wood::flat_icon(self)
             || super::colour_blocks::flat_icon(self)
+            || super::cave_blocks::multiface_of(self).is_some()
     }
 
     /// Badlands terracotta: 0 plain, then orange, yellow, red, brown, white
@@ -1224,6 +1249,12 @@ impl Block {
 
     /// This block without its orientation (itself if it has none).
     pub fn base(self) -> Block {
+        if let Some(b) = super::biome_plants::base(self.0) {
+            return b;
+        }
+        if let Some(b) = super::cave_blocks::base(self) {
+            return b;
+        }
         if let Some(b) = super::utilities::base(self) {
             return b;
         }
@@ -1361,7 +1392,7 @@ impl Block {
 
     #[inline(always)]
     pub fn is_water(self) -> bool {
-        self.0 == 5 || (24..=31).contains(&self.0)
+        self.0 == 5 || (24..=31).contains(&self.0) || super::bubble::is_column(self)
     }
 
     /// Water flow level: 0 for sources and falling water, 1..=7 for flowing.
@@ -1369,6 +1400,7 @@ impl Block {
         match self.0 {
             5 | 31 => Some(0),
             24..=30 => Some((self.0 - 23) as u8),
+            _ if super::bubble::is_column(self) => Some(0),
             _ => None,
         }
     }
@@ -1383,6 +1415,7 @@ impl Block {
         match self.0 {
             5 | 24..=31 => Some(Fluid::Water),
             37..=41 => Some(Fluid::Lava),
+            _ if super::bubble::is_column(self) => Some(Fluid::Water),
             _ => None,
         }
     }
@@ -1399,6 +1432,7 @@ impl Block {
             5 | 31 | 37 | 41 => Some(0),
             24..=30 => Some((self.0 - 23) as u8),
             38..=40 => Some((self.0 - 37) as u8),
+            _ if super::bubble::is_column(self) => Some(0),
             _ => None,
         }
     }
@@ -1409,6 +1443,7 @@ impl Block {
     pub fn fluid_drop(self) -> u8 {
         match self.0 {
             5 | 37 => 2,
+            _ if super::bubble::is_column(self) => 2,
             24..=30 => 2 + ((self.0 - 23) * 12 / 7) as u8,
             38..=40 => 2 + ((self.0 - 37) * 24 / 7) as u8,
             _ => 0,
@@ -1481,7 +1516,7 @@ impl Block {
         if let Some(c) = self.alias() {
             return c.top_drop();
         }
-        if let Some(drop) = super::overworld_blocks::top_drop(self) {
+        if let Some(drop) = super::overworld_blocks::top_drop(self).or_else(|| super::biome_plants::top_drop(self)) {
             return drop;
         }
         match self {
@@ -1505,6 +1540,9 @@ impl Block {
 
     /// What breaking this block yields in survival.
     pub fn drop(self) -> Option<Item> {
+        if let Some(drop) = super::cave_blocks::drop(self) {
+            return drop;
+        }
         if let Some(drop) = super::utilities::drop(self) {
             return drop;
         }
@@ -1557,7 +1595,7 @@ impl Block {
         if let Some(drop) = super::nether_biome_blocks::drop(self) {
             return drop;
         }
-        if let Some(drop) = super::overworld_blocks::drop(self) {
+        if let Some(drop) = super::overworld_blocks::drop(self).or_else(|| super::biome_plants::drop(self)) {
             return drop;
         }
         if self.glazed_color().is_some() {
@@ -1616,6 +1654,10 @@ impl Block {
     /// Java's blast resistance (`explosionResistance`), which weakens an
     /// explosion's rays (see [`super::explosion`]).
     pub fn blast_resistance(self) -> f32 {
+        // Unlike water, a bubble column has no strength at all.
+        if super::bubble::is_column(self) {
+            return 0.0;
+        }
         super::explosion::resistance(self)
     }
 
@@ -1623,10 +1665,16 @@ impl Block {
     /// held item can harvest the block and 5x when it can't, divided by the
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
     pub fn hardness(self) -> f32 {
+        if super::bubble::is_column(self) {
+            return 0.0;
+        }
+        if let Some((hardness, ..)) = super::cave_blocks::mining(self) {
+            return hardness;
+        }
         if let Some((hardness, ..)) = super::utilities::mining(self) {
             return hardness;
         }
-        if self == Self::HONEY_BLOCK {
+        if self == Self::HONEY_BLOCK || super::biome_plants::owns(self.0) {
             return 0.0;
         }
         if let Some((hardness, ..)) = super::copper::mining(self) {
@@ -1816,6 +1864,9 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
+        if let Some((_, tool, _)) = super::cave_blocks::mining(self) {
+            return tool;
+        }
         if let Some((_, tool, _)) = super::utilities::mining(self) {
             return tool;
         }
@@ -1978,6 +2029,9 @@ impl Block {
     /// Pickaxe harvest level needed for any drop (0 wood or gold, 1 stone,
     /// 2 iron, 3 diamond); `None` if a bare hand will do.
     pub fn harvest_level(self) -> Option<u8> {
+        if let Some((.., level)) = super::cave_blocks::mining(self) {
+            return level;
+        }
         if let Some((.., level)) = super::utilities::mining(self) {
             return level;
         }
@@ -2132,6 +2186,8 @@ impl Block {
             .chain(super::wood::palette_ids())
             .chain(super::colour_blocks::palette_ids())
             .chain(super::utilities::palette_ids())
+            .chain(super::biome_plants::palette_ids())
+            .chain(super::cave_blocks::palette_ids())
             .map(Block)
     }
 
@@ -2148,6 +2204,8 @@ impl Block {
             || self == Block::FERN
             || super::nether_biome_blocks::replaceable(self)
             || super::overworld_blocks::replaceable(self)
+            || super::biome_plants::replaceable(self)
+            || super::cave_blocks::replaceable(self)
     }
 
     /// Java `BlockBehaviour.canBeReplaced(state, fluid)`: replaceable, or not
@@ -2240,7 +2298,9 @@ impl Block {
         if let Some(ok) = super::copper::can_stay_on(self, below) {
             return ok;
         }
-        if let Some(ok) = super::overworld_blocks::can_stay_on(self, below) {
+        if let Some(ok) =
+            super::overworld_blocks::can_stay_on(self, below).or_else(|| super::biome_plants::can_stay_on(self, below))
+        {
             return ok;
         }
         match self {
@@ -2726,6 +2786,14 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         return info;
     }
     let (name, kind, tex) = match id {
+        id if super::cave_blocks::owns(id) => match super::cave_blocks::registry(id) {
+            Some(info) => info,
+            None => ("unknown", Invisible, all(0)),
+        },
+        id if super::biome_plants::owns(id) => match super::biome_plants::registry(id) {
+            Some(info) => info,
+            None => ("unknown", Invisible, all(0)),
+        },
         id if super::utilities::owns(id) => match super::utilities::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
@@ -2745,6 +2813,10 @@ pub(super) const fn make(id: u16) -> BlockInfo {
             None => ("unknown", Invisible, all(0)),
         },
         super::colour_blocks::FIRST..=super::colour_blocks::RESERVED_LAST => match super::colour_blocks::registry(id) {
+            Some(info) => info,
+            None => ("unknown", Invisible, all(0)),
+        },
+        super::bubble::FIRST..=super::bubble::LAST => match super::bubble::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },
@@ -3069,7 +3141,8 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         || stained_glass
         || super::stone_blocks::translucent_solid(id))
         && id != 208
-        && id != 210;
+        && id != 210
+        && !super::cave_blocks::passable(id);
     BlockInfo {
         name,
         kind,
@@ -3192,6 +3265,8 @@ const fn emission_of(i: usize) -> u8 {
             _ if super::copper::owns(i as u16) => super::copper::emission(i as u16),
             24576..=28671 => super::colour_blocks::emission(i as u16), // candles
             28672..=29695 => super::utilities::emission(i as u16),
+            _ if super::cave_blocks::owns(i as u16) => super::cave_blocks::emission(i as u16),
+            9984..=10111 => super::biome_plants::emission(i as u16),
             _ => 0,
         }
     }
@@ -3325,6 +3400,13 @@ mod tests {
                 if let Some((_, lit)) = candle::decode_cake(block.0) {
                     return if lit { 3 } else { 0 };
                 }
+            }
+            // Checked against Java in `cave_blocks::tests`.
+            if super::super::cave_blocks::owns(block.0) {
+                return super::super::cave_blocks::emission(block.0);
+            }
+            if super::super::biome_plants::owns(block.0) {
+                return if block == super::super::biome_plants::FIREFLY_BUSH { 2 } else { 0 };
             }
             // Checked against Java in `utilities::tests`.
             if super::super::utilities::owns(block.0) {

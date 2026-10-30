@@ -54,6 +54,7 @@ impl Game {
             props.insert("spawn_point".to_string(), format!("{},{},{}", p.x, p.y, p.z));
         }
         let seed = self.world.generator.seed;
+        props.insert(Generation::KEY.to_string(), self.world.generator.generation.number().to_string());
         let chunks = self.world.modified_chunks();
         // The overworld saves with the player; the Nether in its own folder.
         let result = match self.dimension {

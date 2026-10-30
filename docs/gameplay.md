@@ -15,7 +15,8 @@ Sprint can be set to Toggle there.
 | Space | Jump / swim up / fly up — double-tap to toggle flying (creative) |
 | Left Shift | Sneak: walk slowly and quietly, never off an edge, and hold on to ladders / fly down |
 | Left Ctrl | Sprint |
-| F | Toggle flying (creative) |
+| R | Toggle flying (creative); the old `F` binding moved so `F` can match Java |
+| F | Swap the selected item with the off-hand (controller: D-pad down; CLI/LAN: `swap`) |
 | Left / right click | Break / place block (hold to repeat); left click on a mob attacks it; respawn on the death screen |
 | Middle click | Pick block |
 | Q / Ctrl+Q | Drop one of the selected item / the whole stack (with the inventory open: from the slot under the mouse) |
@@ -24,6 +25,8 @@ Sprint can be set to Toggle there.
 | Right click on a door or fence gate | Open / close it |
 | Shift + right click | Build against a crafting table, furnace, chest, door or gate instead of using it |
 | Hold / release right click with a bow | Draw / shoot an arrow (needs arrows in survival) |
+| Right click with an off-hand item | When the main hand does nothing with the click (an empty hand, a sword, a block with no place to go), the off-hand item is used: torches and blocks place, food is eaten, a shield is raised |
+| Hold right click with a shield | Raise it (blocks after 0.25 s; slows walking like eating) |
 | Right click with flint and steel | Start a fire, light an obsidian portal frame or prime TNT |
 | Right click with a bucket | Scoop up a water or lava source / pour it out again |
 | Right click with a hoe | Till grass or dirt (with air above) into farmland |
@@ -149,6 +152,18 @@ full performance display instead of duplicating the compact counter.
   them out; zombified piglins resist both. Fire destroys dropped items,
   and burning blocks leave no loot. Punch fire to put it out, or replace
   it with a block. Fire ages survive saving and chunk reloads
+- Bubble columns: water sources directly above soul sand lift entities and
+  those above magma blocks drag them down, as in Java. The column runs up
+  through every water source above its base, forms again when the base or
+  the water changes (a 0.25 s step), and turns back into water when the
+  base goes. Players, mobs, dropped items and boats are pushed (up to 0.7 / 1.8
+  blocks per tick inside / at the surface of an upward column; 0.3 / 0.9 down),
+  lose their fall distance, and a player whose eyes are in a column keeps
+  and refills their air. Buckets, sponges and waterlogging treat it as a
+  water source. See [the v0.13 carried items](verification/2026-10-30-v0.13-carried.md)
+- Fire spreads and burns out by the rules in
+  [that record's flammability table](verification/2026-10-30-v0.13-carried.md#flammability-table);
+  netherrack and magma blocks burn forever (bedrock too in the End)
 - Sand and gravel fall when unsupported, as free-moving blocks that land
   on the first solid block (replacing plants and fluids in the way);
   knocking out a column's base drops the whole column

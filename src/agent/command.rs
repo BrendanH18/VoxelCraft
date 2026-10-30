@@ -18,6 +18,10 @@ pub enum Command {
     Look(f32, f32),
     Run(MoveInput, u32, bool),
     Eat,
+    /// Swaps the selected hotbar stack with the off-hand (Java's `F`).
+    SwapHands,
+    /// Holds use with a shield (main hand, else off-hand) for this many ticks.
+    Block(u32),
     /// Holds use with a bow or crossbow for this many ticks (Java's draw and
     /// release, or load), or fires a charged crossbow at once.
     Draw(u32),
@@ -433,6 +437,9 @@ impl Command {
                 )
             }
             ["eat"] => Self::Eat,
+            ["swap"] | ["swaphands"] | ["offhand"] => Self::SwapHands,
+            ["block"] => Self::Block(40),
+            ["block", n] => Self::Block(ticks(n)?),
             ["draw"] => Self::Draw(25),
             ["draw", n] => Self::Draw(ticks(n)?),
             ["sleep"] => Self::Sleep,

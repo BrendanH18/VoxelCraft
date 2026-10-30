@@ -385,6 +385,9 @@ pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) ->
 
 /// [`shape`] with what is above the cell (walls read it).
 pub fn shape_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block, above: Above) -> Boxes {
+    if super::cave_blocks::is_custom(block) {
+        return super::cave_blocks::boxes(block);
+    }
     if super::utilities::is_custom(block) {
         return super::utilities::boxes(block);
     }
@@ -538,6 +541,9 @@ pub fn outline(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) 
 
 /// [`outline`] with what is above the cell (walls read it).
 pub fn outline_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block, above: Above) -> Boxes {
+    if super::cave_blocks::is_custom(block) {
+        return super::cave_blocks::outline(block);
+    }
     if super::utilities::is_custom(block) {
         return super::utilities::outline(block);
     }
@@ -762,6 +768,9 @@ pub fn collision_or_cube(block: Block, neighbour: impl Fn(Facing) -> Block, belo
 
 /// [`collision`] with what is above the cell (a wall's raised post).
 pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block, above: Above) -> Boxes {
+    if super::cave_blocks::is_custom(block) {
+        return super::cave_blocks::collision(block);
+    }
     if super::utilities::is_custom(block) {
         return super::utilities::collision(block);
     }

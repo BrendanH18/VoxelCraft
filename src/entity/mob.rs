@@ -2608,6 +2608,13 @@ impl Mob {
             self.vel.z *= 1.0 - (dt * 8.0).min(1.0);
         }
 
+        if self.in_water {
+            // `BubbleColumnBlock.entityInside`, rescaled from ticks to `dt`.
+            let (min, max) = shape.aabb(self.pos);
+            if let Some(dy) = crate::world::bubble::apply(|p| world.block(p), min, max, self.vel.y / 20.0) {
+                self.vel.y += (dy * 20.0 - self.vel.y) * (dt * 20.0).min(1.0);
+            }
+        }
         let delta = self.vel * dt;
         let from_y = self.pos.y;
         let falling = self.vel.y;

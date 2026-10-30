@@ -19,6 +19,7 @@
 //! - Plants and torches in the way are washed away.
 //! - Lava touching water hardens: a source into obsidian, flowing lava into
 //!   cobblestone; lava pouring onto water turns the water into stone.
+//! - Bubble columns are water sources too (`bubble`).
 //! - Waterlogged blocks are water sources that stay put. Fluid moves into or
 //!   out of a waterloggable block only through a face its collision shape
 //!   leaves open (`FlowingFluid.canPassThroughWall`). Flowing water never
@@ -44,7 +45,9 @@ const ALL_DIRS: [IVec3; 6] = [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IV
 pub(super) struct FluidState {
     /// Cells to update on the next water / lava tick.
     pending: FxHashSet<IVec3>,
-    lava_pending: FxHashSet<IVec3>,
+    pub(super) lava_pending: FxHashSet<IVec3>,
+    /// Cells whose bubble column needs re-deriving (see `bubble`).
+    pub(super) bubbles: FxHashSet<IVec3>,
     timer: f64,
     ticks: u32,
     /// Duration of the most recent tick, for the debug screen.
@@ -105,6 +108,7 @@ impl World {
             .filter(|&&p| self.is_block_ticking(p))
             .count()
             .max(self.fluids.lava_pending.iter().filter(|&&p| self.is_block_ticking(p)).count())
+            .max(self.fluids.bubbles.iter().filter(|&&p| self.is_block_ticking(p)).count())
     }
 
     pub fn tick_fluids(&mut self, dt: f64) {
@@ -114,6 +118,7 @@ impl World {
         }
         self.fluids.timer -= TICK;
         self.fluids.ticks = self.fluids.ticks.wrapping_add(1);
+        self.tick_bubbles();
         let lava_turn = self.fluids.ticks.is_multiple_of(LAVA_EVERY);
         if self.fluids.pending.is_empty() && !(lava_turn && !self.fluids.lava_pending.is_empty()) {
             return;
@@ -175,10 +180,10 @@ impl World {
     }
 
     /// Unloaded cells read as solid so fluid never flows into them, and
-    /// waterlogged plants as the water source they hold.
+    /// waterlogged plants and bubble columns as the water source they hold.
     fn cell(&self, p: IVec3) -> Block {
         match self.get_block(p) {
-            Some(b) if b.is_waterlogged() => Block::WATER,
+            Some(b) if b.is_waterlogged() || super::bubble::is_column(b) => Block::WATER,
             Some(b) => b,
             None => Block::STONE,
         }

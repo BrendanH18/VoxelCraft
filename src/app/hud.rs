@@ -47,6 +47,8 @@ pub(super) enum SlotRef {
     SmithAddition,
     SmithResult,
     Trade(usize),
+    /// The off-hand slot (survival inventory).
+    Offhand,
     /// Worn armor (survival inventory).
     Armor(ArmorPiece),
 }
@@ -79,6 +81,8 @@ pub(super) struct HudPlayer<'a> {
     pub underwater: bool,
     pub dial: crate::item::Dial,
     pub vehicle: Option<u32>,
+    /// Share of a disabled shield's cooldown left, 0..1.
+    pub shield_cooldown: f32,
 }
 
 impl Game {
@@ -217,6 +221,7 @@ impl Game {
             underwater: self.session.player.head_in_water(&self.world),
             dial: self.dial_of(&self.session.player),
             vehicle: self.session.player.vehicle,
+            shield_cooldown: self.session.shield_cooldown_fraction(),
         };
         let y0 = self.bar_ui(ui, &hud, now);
         let survival = hud.survival;
@@ -259,7 +264,16 @@ impl Game {
                     let h = (16.0 * cooling).ceil();
                     ui.rect(sx + 2.0, y0 + 3.0 + 16.0 - h, 16.0, h, [1.0, 1.0, 1.0, 0.5]);
                 }
+                shield_veil(ui, stack, hud.shield_cooldown, sx + 2.0, y0 + 3.0);
             }
+        }
+        // The off-hand slot sits left of the hotbar, as Java's does on the left.
+        if let Some(stack) = hud.inventory.offhand {
+            let sx = x0 - slot - 4.0;
+            ui.rect(sx, y0, slot + 2.0, slot + 2.0, [0.0, 0.0, 0.0, 0.5]);
+            ui.rect(sx + 2.0, y0 + 2.0, slot - 2.0, slot - 2.0, [0.35, 0.35, 0.35, 0.5]);
+            draw_stack(ui, sx + 2.0, y0 + 2.0, stack, hud.survival, hud.dial);
+            shield_veil(ui, stack, hud.shield_cooldown, sx + 3.0, y0 + 3.0);
         }
         if hud.survival {
             if let Some(m) = hud.vehicle.and_then(|id| self.mobs.entities.mount(id))
@@ -560,6 +574,14 @@ fn xp_bar_ui(ui: &mut Ui, xp: Experience, x: f32, y: f32, w: f32) {
 
 /// Item icon, durability bar and (when `counts`) stack size in an 18x18
 /// slot at (x, y).
+/// A disabled shield's cooldown: the pale veil that drains downward.
+fn shield_veil(ui: &mut Ui, stack: Stack, cooldown: f32, x: f32, y: f32) {
+    if stack.item == Item::SHIELD && cooldown > 0.0 {
+        let h = (16.0 * cooldown).ceil();
+        ui.rect(x, y + 16.0 - h, 16.0, h, [1.0, 1.0, 1.0, 0.5]);
+    }
+}
+
 pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool, dial: crate::item::Dial) {
     let layer = stack.item.dial_layer(dial.for_stack(&stack)).or_else(|| stack.item.icon_layer());
     match (stack.item.block(), layer) {
@@ -797,6 +819,7 @@ impl Game {
                 for (i, piece) in ArmorPiece::ALL.into_iter().enumerate() {
                     out.push((SlotRef::Armor(piece), px + 7.0, py + 18.0 + i as f32 * SLOT));
                 }
+                out.push((SlotRef::Offhand, px + 7.0 + 8.0 * SLOT, py + 18.0 + self.top_mid()));
             }
             self.top_h()
         } else {
@@ -971,11 +994,13 @@ impl Game {
                 SlotRef::Craft(i) => self.craft.cells[i],
                 SlotRef::CraftResult => self.craft.result(),
                 SlotRef::Armor(p) => self.session.inventory.armor[p as usize],
+                SlotRef::Offhand => self.session.inventory.offhand,
                 f => self.container_slot(f),
             };
             // Faint outline of what goes in an empty armor or lapis slot.
             let outline = match (r, stack) {
                 (SlotRef::Armor(p), None) => Item::armor(p, ArmorMaterial::Iron).icon_layer(),
+                (SlotRef::Offhand, None) => Item::SHIELD.icon_layer(),
                 (SlotRef::EnchantLapis, None) => Item::LAPIS_LAZULI.icon_layer(),
                 (SlotRef::SmithTemplate, None) => Item::NETHERITE_UPGRADE.icon_layer(),
                 (SlotRef::SmithBase, None) => Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Diamond).icon_layer(),
@@ -1013,6 +1038,7 @@ impl Game {
             Some(SlotRef::Craft(i)) => self.craft.cells[i],
             Some(SlotRef::CraftResult) => self.craft.result(),
             Some(SlotRef::Armor(p)) => self.session.inventory.armor[p as usize],
+            Some(SlotRef::Offhand) => self.session.inventory.offhand,
             Some(f) => self.container_slot(f),
             None => None,
         };

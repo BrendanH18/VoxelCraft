@@ -88,3 +88,33 @@ player per tick and costs five uses (items on the ground are not hookable yet).
 The rows are checked against `tests/fixtures/java/26.3/fishing.json`.
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/projectile/FishingHook.java
 - Java 26.3 server `data/minecraft/loot_table/gameplay/fishing*.json`
+
+## Off-hand, shield and totem of undying (v0.13)
+
+The inventory has an off-hand slot (right of the crafting result in the
+survival inventory, and left of the hotbar when filled). `F` swaps it with
+the selected hotbar slot (an empty hand swaps with a full one); a controller
+uses D-pad down, a CLI or LAN player the `swap` command. It is saved with the
+inventory as a fifth field after the four armor pieces (older saves load with
+it empty), dropped on death, and repaired by Mending. When the main hand's use
+passes, Java tries the off-hand: `use_held` places blocks and torches, uses
+buckets and other items from it, and eating or drinking falls back to it, all
+through the same session code the desktop, controller, LAN and CLI paths share.
+A held use the main hand starts (food it can eat, a bow, its own shield) keeps
+the click. Drawing a bow from the off-hand is not implemented.
+
+The shield (item 1230, 336 durability, six planks around an iron ingot,
+repaired with planks, Unbreaking and Mending apply) is raised by holding use
+with it in either hand and blocks after 5 ticks. A raised shield stops
+attacks from the front half (within 90 degrees of the view): melee, arrows and
+explosion damage and their knockback; fall, drowning, fire, lava, hunger and
+magic have no source and bypass it. A blocked hit of 3 or more half hearts wears
+it by `1 + floor(damage)` (Unbreaking can save points; Creative loses none). An
+axe hit that a shield blocks disables it for 5 seconds with a draining overlay
+on its slot (PvP over LAN; no axe-wielding mob exists yet). Banner patterns on
+shields are out of scope (banners exist but the shield has no pattern slot);
+attackers are not pushed back by the block.
+
+The totem of undying (item 1231, creative palette only until evokers exist)
+cancels a lethal hit from either hand: 1 half heart, Regeneration II 45 s,
+Absorption II 5 s and Fire Resistance 40 s; void damage bypasses it.

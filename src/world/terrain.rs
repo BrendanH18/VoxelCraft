@@ -31,6 +31,10 @@ pub use super::biome::{Biome, Climate};
 pub use super::caves::LAVA_LEVEL;
 pub use super::climate::SEA_LEVEL;
 
+#[path = "biome_features.rs"]
+mod biome_features;
+mod density;
+
 const TREE_CELL: i32 = 5;
 const TREE_REACH: i32 = trees::REACH;
 const TREE_TOP: i32 = trees::TOP;
@@ -47,6 +51,47 @@ pub struct Column {
     /// Cold enough for the sea and rivers to freeze over.
     pub frozen: bool,
     pub climate: Climate,
+}
+
+/// Which version of the world generator made a world, saved as
+/// `worldgen=<n>` in `level.txt`. Unmodified chunks are never saved, so a
+/// world keeps its generation for life: changing what an existing world
+/// generates would move terrain under builds and cut seams where saved
+/// chunks meet regenerated ones. Generation-specific code checks
+/// `generator.generation`; [`Generation::V1`]'s output is pinned by
+/// `generated_chunk_hashes_stay_identical`.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum Generation {
+    /// v0.12 and earlier: a climate heightmap with noise caves.
+    V1 = 1,
+    /// v0.13: density terrain with overhangs and the v0.13 features.
+    V2 = 2,
+}
+
+impl Generation {
+    /// What new worlds use.
+    pub const LATEST: Generation = Generation::V2;
+    /// The `level.txt` key.
+    pub const KEY: &'static str = "worldgen";
+
+    /// The generation recorded in a saved world's properties. Worlds saved
+    /// before v0.13 have no key and are [`Generation::V1`]; a number this
+    /// build doesn't know (a newer build's world) falls back to the latest.
+    pub fn from_prop(value: Option<&str>) -> Generation {
+        match value.map(|v| v.trim().parse::<u8>()) {
+            None => Generation::V1,
+            Some(Ok(1)) => Generation::V1,
+            Some(Ok(2)) => Generation::V2,
+            Some(_) => {
+                log::warn!("unknown world generation {value:?}; using {:?}", Generation::LATEST);
+                Generation::LATEST
+            }
+        }
+    }
+
+    pub fn number(self) -> u8 {
+        self as u8
+    }
 }
 
 /// Which world a generator, world or save belongs to.
@@ -169,6 +214,8 @@ struct ChunkColumns {
     cols: [[Column; W]; W],
     max_h: i32,
     min_h: i32,
+    /// Generation 2's density field (see [`density`]).
+    relief: Option<Box<density::Relief>>,
 }
 
 impl ChunkColumns {
@@ -187,6 +234,8 @@ impl ChunkColumns {
 pub struct Generator {
     pub seed: u64,
     pub dimension: Dimension,
+    /// The generator version this world was made with.
+    pub generation: Generation,
     /// Set for the Nether, which generates from its own noise.
     nether: Option<super::nether::NetherGen>,
     end: Option<super::end::EndGen>,
@@ -232,11 +281,17 @@ impl Generator {
         Self::for_dimension(seed, Dimension::Overworld)
     }
 
+    /// A generator of the [latest](Generation::LATEST) generation.
     pub fn for_dimension(seed: u64, dimension: Dimension) -> Self {
+        Self::with_generation(seed, dimension, Generation::LATEST)
+    }
+
+    pub fn with_generation(seed: u64, dimension: Dimension, generation: Generation) -> Self {
         let p = |salt: u64| Perlin::new(seed ^ salt.wrapping_mul(0x2545_F491_4F6C_DD1D));
         Self {
             seed,
             dimension,
+            generation,
             nether: (dimension == Dimension::Nether).then(|| super::nether::NetherGen::new(seed)),
             end: (dimension == Dimension::End).then(|| super::end::EndGen::new(seed)),
             strongholds: super::stronghold::Strongholds::new(seed),
@@ -288,7 +343,7 @@ impl Generator {
     /// otherwise the column's surface biome.
     pub fn biome_at(&self, p: IVec3) -> Biome {
         let col = self.column(p.x, p.z);
-        super::biome::cave(&col.climate, col.height - p.y).unwrap_or(col.biome)
+        super::deep_dark::cave_biome(self.generation, &col.climate, col.height, p.y).unwrap_or(col.biome)
     }
 
     /// Nearest column of `target`, searching outward from `origin` in 32-block
@@ -298,13 +353,35 @@ impl Generator {
         if self.dimension != Dimension::Overworld {
             return None;
         }
+        // GEN-02: the deep dark (generation 2) lies far under the surface.
+        let deep = target == Biome::DeepDark;
+        if deep && self.generation < Generation::V2 {
+            return None;
+        }
+        // Climate alone decides other biomes: generation 2 heights cost a
+        // density field per chunk column, so only the find reads one.
         let here = |x, z| {
-            let c = self.column(x, z);
-            if target.is_cave() { super::biome::cave(&c.climate, 40) == Some(target) } else { c.biome == target }
+            if deep {
+                let c = self.column(x, z);
+                return super::deep_dark::locate_y(&c.climate, c.height).is_some();
+            }
+            let climate = self.climate.sample(x, z);
+            if target.is_cave() {
+                super::biome::cave(&climate, 40) == Some(target)
+            } else {
+                super::biome::pick(&climate) == target
+            }
         };
         let found = |x, z| {
-            let h = self.column(x, z).height;
-            IVec3::new(x, if target.is_cave() { h - 40 } else { h + 1 }, z)
+            let c = self.column(x, z);
+            let y = if deep {
+                super::deep_dark::locate_y(&c.climate, c.height).unwrap_or(c.height)
+            } else if target.is_cave() {
+                c.height - 40
+            } else {
+                c.height + 1
+            };
+            IVec3::new(x, y, z)
         };
         if here(origin.x, origin.y) {
             return Some(found(origin.x, origin.y));
@@ -335,6 +412,9 @@ impl Generator {
                 frozen: false,
                 climate: Climate::default(),
             };
+        }
+        if self.density_terrain() {
+            return self.column_v2(x, z);
         }
         let climate = self.climate.sample(x, z);
         let mut h = self.climate.height(&climate, x, z);
@@ -394,6 +474,12 @@ impl Generator {
             };
         }
         out
+    }
+
+    /// The surface biome of column `(x, z)`, as [`Generator::column`] gives
+    /// it, without working out the height.
+    pub fn surface_biome(&self, x: i32, z: i32) -> Biome {
+        if self.end.is_some() { Biome::Plains } else { self.climate_biome(x, z) }
     }
 
     /// The biome alone, without the height (cheaper than [`Generator::column`]).
@@ -598,6 +684,9 @@ impl Generator {
             return Arc::clone(found);
         }
         // Do noise work outside the lock, so unrelated columns run in parallel.
+        if self.density_terrain() {
+            return self.cache_columns(pos, Arc::new(self.chunk_columns_v2(pos)));
+        }
         let base = IVec3::new(pos.x * CHUNK_SIZE_I, 0, pos.y * CHUNK_SIZE_I) - IVec3::new(M as i32, 0, M as i32);
         let blank = Column { height: 0, biome: Biome::Plains, frozen: false, climate: Climate::default() };
         let mut cols = [[blank; W]; W];
@@ -613,7 +702,10 @@ impl Generator {
                 }
             }
         }
-        let found = Arc::new(ChunkColumns { cols, max_h, min_h });
+        self.cache_columns(pos, Arc::new(ChunkColumns { cols, max_h, min_h, relief: None }))
+    }
+
+    fn cache_columns(&self, pos: IVec2, found: Arc<ChunkColumns>) -> Arc<ChunkColumns> {
         let mut cache = self.columns.lock().unwrap();
         if cache.len() >= COLUMN_CACHE_LIMIT
             && let Some(key) = cache.keys().next().copied()
@@ -639,9 +731,17 @@ impl Generator {
             return ChunkData::Uniform(Block::AIR);
         }
         let mut blocks = ChunkData::new_dense(Block::AIR);
-        self.fill(&mut blocks, base, &columns);
+        let masks = if self.density_terrain() {
+            Some(self.fill_v2(&mut blocks, base, &columns))
+        } else {
+            self.fill(&mut blocks, base, &columns);
+            None
+        };
         if base.y <= max_h {
-            self.carve(&mut blocks, base, &columns);
+            match &masks {
+                Some(masks) => self.carve_v2(&mut blocks, base, &columns, masks),
+                None => self.carve(&mut blocks, base, &columns),
+            }
         }
         // Java places geodes in `local_modifications`, after carvers and
         // before monster rooms, ores and cave vegetation.
@@ -657,7 +757,17 @@ impl Generator {
                     self.climate_biome(x, z)
                 }
             };
-            super::ore::paint(self.seed, blocks.as_mut(), base, biome_at);
+            // GEN-02 (generation 2): ore biome rules read the cave biome.
+            let cave_at = |x: i32, y: i32, z: i32| {
+                let (lx, lz) = (x - base.x, z - base.z);
+                if (0..CHUNK_SIZE_I).contains(&lx) && (0..CHUNK_SIZE_I).contains(&lz) {
+                    let c = columns.at(lx as usize, lz as usize);
+                    super::deep_dark::cave_biome(self.generation, &c.climate, c.height, y).unwrap_or(c.biome)
+                } else {
+                    self.biome_at(IVec3::new(x, y, z))
+                }
+            };
+            super::ore::paint(self.seed, self.generation, blocks.as_mut(), base, biome_at, cave_at);
             if base.y < max_h - 15 {
                 self.decorate_caves(&mut blocks, base, &columns);
             }
@@ -665,7 +775,13 @@ impl Generator {
         if base.y <= max_h + TREE_TOP && top >= min_h - 40 {
             self.column_features(&mut blocks, base, &columns);
             self.place_trees(&mut blocks, base);
+            if self.generation >= Generation::V2 {
+                self.place_ground_features(&mut blocks, base);
+            }
             self.place_plants(&mut blocks, base, &columns);
+            if self.generation >= Generation::V2 {
+                self.place_biome_plants(&mut blocks, base, &columns);
+            }
             self.freeze(&mut blocks, base, &columns);
         }
         if base.y < SEA_LEVEL {
@@ -675,6 +791,12 @@ impl Generator {
         self.mineshafts.paint(&mut blocks, base);
         self.villages.paint(self, &mut blocks, base);
         self.temples.paint(self, &mut blocks, base);
+        // GEN-02 (generation 2): deep dark, glow lichen and springs, after
+        // the structures like Java's decoration steps.
+        if self.generation >= Generation::V2 {
+            let column = |x: usize, z: usize| (columns.at(x, z).height, columns.at(x, z).climate);
+            super::underground::decorate(self, &mut blocks, base, column);
+        }
         ChunkData::from_dense(blocks)
     }
 
@@ -776,7 +898,10 @@ impl Generator {
                     if wy <= LAVA_LEVEL + 4 {
                         continue;
                     }
-                    let Some(biome) = super::biome::cave(&col.climate, col.height - wy) else { continue };
+                    let Some(biome) = super::deep_dark::cave_biome(self.generation, &col.climate, col.height, wy)
+                    else {
+                        continue;
+                    };
                     let here = blocks[index(x, y, z)];
                     let below = blocks[index(x, y - 1, z)];
                     let above = blocks[index(x, y + 1, z)];
@@ -1063,6 +1188,9 @@ impl Generator {
         if !self.dimension.contains_y(p.y) {
             return Block::AIR;
         }
+        if self.density_terrain() {
+            return self.natural_block_v2(p, nodes);
+        }
         let col = *columns.entry(IVec2::new(p.x, p.z)).or_insert_with(|| self.column(p.x, p.z));
         if p.y > col.height {
             return if p.y < SEA_LEVEL { Block::WATER } else { Block::AIR };
@@ -1115,13 +1243,11 @@ impl Generator {
                 let variant = (h >> 32) as u32;
                 let pick = (h >> 24) % 100;
                 let ground = IVec3::new(tx, col.height, tz);
-                // The same steep rule as `fill`, so trees skip bare cliffs.
-                let h = |dx: i32, dz: i32| self.column(tx + dx, tz + dz).height;
-                let steep = (h(1, 0) - h(-1, 0)).abs().max((h(0, 1) - h(0, -1)).abs());
-                let surface = self.surface_block(col, tx, tz, steep);
+                let surface = self.ground_block(col, tx, tz);
                 let mut tree_blocks: Vec<(IVec3, Block)> = Vec::new();
                 let collect = &mut |p, b| tree_blocks.push((p, b));
-                if !grow_tree_for(col.biome, surface, ground, variant, pick, collect) {
+                if !grow_tree_for(col.biome, surface, ground, variant, pick, self.generation >= Generation::V2, collect)
+                {
                     continue;
                 }
                 let put = &mut |p, b| Self::put(blocks, base, p, b);
@@ -1142,8 +1268,24 @@ impl Generator {
                     }
                     _ => {}
                 }
-                // Old growth spruces turn the ground around them to podzol.
-                if matches!(col.biome, Biome::OldGrowthSpruceTaiga | Biome::OldGrowthPineTaiga) && pick < 40 {
+                // Giant spruces turn the ground around them to podzol and a
+                // little coarse dirt (generation 2; generation 1 used a square).
+                if self.generation >= Generation::V2
+                    && matches!(col.biome, Biome::OldGrowthSpruceTaiga | Biome::OldGrowthPineTaiga)
+                    && pick < 40
+                {
+                    for (g, b) in podzol_disc(ground, variant) {
+                        let l = g - base;
+                        if l.cmpge(IVec3::ZERO).all() && l.cmplt(IVec3::splat(CHUNK_SIZE_I)).all() {
+                            let i = index(l.x as usize, l.y as usize, l.z as usize);
+                            if matches!(blocks[i], Block::GRASS | Block::SNOWY_GRASS | Block::DIRT)
+                                || blocks[i] == ob::PODZOL
+                            {
+                                blocks[i] = b;
+                            }
+                        }
+                    }
+                } else if matches!(col.biome, Biome::OldGrowthSpruceTaiga | Biome::OldGrowthPineTaiga) && pick < 40 {
                     for dz in -2..=3 {
                         for dx in -2..=3 {
                             let g = ground + IVec3::new(dx, 0, dz);
@@ -1177,6 +1319,18 @@ impl Generator {
         }
     }
 
+    /// The block `fill` puts on top of column `(x, z)`, for trees decided
+    /// outside their chunk.
+    fn ground_block(&self, col: Column, x: i32, z: i32) -> Block {
+        if self.density_terrain() {
+            return self.top_block_at_v2(x, z);
+        }
+        // The same steep rule as `fill`, so trees skip bare cliffs.
+        let h = |dx: i32, dz: i32| self.column(x + dx, z + dz).height;
+        let steep = (h(1, 0) - h(-1, 0)).abs().max((h(0, 1) - h(0, -1)).abs());
+        self.surface_block(col, x, z, steep)
+    }
+
     fn lush_below(&self, col: &Column) -> bool {
         col.climate.humidity >= 0.7
     }
@@ -1197,7 +1351,12 @@ impl Generator {
                 let (wx, wz) = (base.x + x as i32, base.z + z as i32);
                 let (ground, above) = (index(x, y as usize, z), index(x, y as usize + 1, z));
                 let soil = blocks[ground];
-                if blocks[above] != Block::AIR || soil != self.surface_block(col, wx, wz, columns.steepness(x, z)) {
+                let top = if self.density_terrain() {
+                    self.top_block_v2(columns, x, z, wx, wz)
+                } else {
+                    self.surface_block(col, wx, wz, columns.steepness(x, z))
+                };
+                if blocks[above] != Block::AIR || soil != top {
                     continue; // carved by a cave, or covered by a tree
                 }
                 let roll = hash_f(wx, 0, wz, self.seed ^ 0x9A5);
@@ -1404,6 +1563,10 @@ impl Generator {
                 let a = i as f32 / (r * 8).max(1) as f32 * std::f32::consts::TAU;
                 let x = (a.cos() * r as f32 * 16.0) as i32;
                 let z = (a.sin() * r as f32 * 16.0) as i32;
+                let biome = self.climate_biome(x, z);
+                if biome.is_watery() || biome.is_peak() {
+                    continue;
+                }
                 let c = self.column(x, z);
                 if c.height > SEA_LEVEL && c.height < 120 && !c.biome.is_watery() && !c.biome.is_peak() {
                     return IVec3::new(x, c.height + 1, z);
@@ -1447,10 +1610,12 @@ fn tree_density(biome: Biome) -> f32 {
 
 /// Grows a biome's tree on `ground` (whose block is `soil`). Returns false
 /// when nothing grows there.
-fn grow_tree_for(biome: Biome, soil: Block, ground: IVec3, v: u32, pick: u64, put: Put) -> bool {
+fn grow_tree_for(biome: Biome, soil: Block, ground: IVec3, v: u32, pick: u64, v2: bool, put: Put) -> bool {
     use Biome::*;
     let grass = matches!(soil, Block::GRASS | Block::SNOWY_GRASS) || soil == ob::PODZOL || soil == ob::COARSE_DIRT;
     match biome {
+        Desert if soil == Block::SAND && v2 => cactus_v2(ground, v, put),
+        Badlands | ErodedBadlands if soil == Block::RED_SAND && v2 => cactus_v2(ground, v, put),
         Desert if soil == Block::SAND => cactus(ground, v, put),
         Badlands | ErodedBadlands if soil == Block::RED_SAND => cactus(ground, v, put),
         WoodedBadlands if grass => oak(ground, v % 2, put),
@@ -1459,6 +1624,9 @@ fn grow_tree_for(biome: Biome, soil: Block, ground: IVec3, v: u32, pick: u64, pu
         _ if !grass => return false,
         Taiga | SnowyTaiga | Grove | SnowyPlains if pick < 33 => pine(ground, v, put),
         Taiga | SnowyTaiga | Grove | SnowyPlains => spruce(ground, v, put),
+        OldGrowthSpruceTaiga | OldGrowthPineTaiga if pick < 40 && v2 => {
+            mega_spruce_v2(ground, v, biome == OldGrowthPineTaiga, put)
+        }
         OldGrowthSpruceTaiga if pick < 40 => mega_spruce(ground, v, false, put),
         OldGrowthPineTaiga if pick < 40 => mega_spruce(ground, v, true, put),
         OldGrowthSpruceTaiga | OldGrowthPineTaiga if pick < 70 => spruce(ground, v, put),
@@ -1474,6 +1642,9 @@ fn grow_tree_for(biome: Biome, soil: Block, ground: IVec3, v: u32, pick: u64, pu
         DarkForest if pick < 85 => birch(ground, v, put),
         PaleGarden if pick < 90 => pale_oak(ground, v, put),
         CherryGrove => cherry(ground, v, put),
+        Jungle | BambooJungle | SparseJungle if pick < 12 && biome != SparseJungle && v2 => {
+            mega_jungle_v2(ground, v, put)
+        }
         Jungle | BambooJungle | SparseJungle if pick < 12 && biome != SparseJungle => mega_jungle(ground, v, put),
         Jungle | BambooJungle | SparseJungle if pick < 50 => jungle(ground, v, put),
         Jungle | BambooJungle | SparseJungle if pick < 90 => jungle_bush(ground, v, put),
@@ -1503,7 +1674,7 @@ mod tests {
             (Dimension::Nether, 12345, 0xb0c9_36c6_81b7_bfd5u64),
             (Dimension::End, 12345, 0xc5aa_2549_4a63_5b2bu64),
         ] {
-            let g = Generator::for_dimension(seed, dimension);
+            let g = Generator::with_generation(seed, dimension, Generation::V1);
             let mut hash = 0xcbf2_9ce4_8422_2325u64;
             let (lo, hi) = (dimension.chunk_rows().start, dimension.chunk_rows().end);
             let mut positions: Vec<_> =
@@ -1521,6 +1692,16 @@ mod tests {
             }
             assert_eq!(hash, expected, "{dimension:?} seed {seed}: {hash:#x}");
         }
+    }
+
+    #[test]
+    fn saved_worlds_keep_their_generation() {
+        assert_eq!(Generation::from_prop(None), Generation::V1, "worlds from before v0.13");
+        assert_eq!(Generation::from_prop(Some("1")), Generation::V1);
+        assert_eq!(Generation::from_prop(Some("2")), Generation::V2);
+        assert_eq!(Generation::from_prop(Some("99")), Generation::LATEST);
+        assert_eq!(Generation::from_prop(Some(&Generation::LATEST.number().to_string())), Generation::LATEST);
+        assert_eq!(Generator::new(1).generation, Generation::LATEST);
     }
 
     #[test]

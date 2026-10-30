@@ -30,6 +30,10 @@ pub const JAVA_ALLOWED: &[(&str, &str)] = &[
     ("crafting_dye/leather_boots_dyed", "dyed leather colours (a data component) don't exist yet"),
     ("crafting_dye/leather_horse_armor_dyed", "dyed leather colours (a data component) don't exist yet"),
     (
+        "crafting_special_shielddecoration/shield_decoration",
+        "banner patterns arrive with the loom (v0.17); a shield has no pattern to carry yet",
+    ),
+    (
         "crafting_special_repairitem/repair_item",
         "grid repair of two damaged items isn't implemented; anvils and grindstones repair",
     ),

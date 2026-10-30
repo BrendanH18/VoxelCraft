@@ -182,6 +182,10 @@ pub struct Inventory {
     pub cursor: Option<Stack>,
     /// Worn armor, indexed by [`ArmorPiece`].
     pub armor: [Option<Stack>; 4],
+    /// The off-hand slot (Java's `Inventory.offhand`): swapped with the
+    /// selected hotbar slot by the swap-hands key and used when the main
+    /// hand's item does nothing.
+    pub offhand: Option<Stack>,
     /// Stacks that didn't fit back (container leftovers, the cursor): the
     /// game drops them in the world. Saved with the inventory, so a save
     /// taken with a full inventory and a crafting screen open loses nothing.
@@ -190,7 +194,7 @@ pub struct Inventory {
 
 impl Default for Inventory {
     fn default() -> Self {
-        Self { slots: [None; SLOTS], cursor: None, armor: [None; 4], spill: Vec::new() }
+        Self { slots: [None; SLOTS], cursor: None, armor: [None; 4], offhand: None, spill: Vec::new() }
     }
 }
 
@@ -205,6 +209,13 @@ impl Inventory {
 
     pub fn get(&self, slot: usize) -> Option<Stack> {
         self.slots[slot]
+    }
+
+    /// Java's swap-item-with-offhand action: the selected hotbar stack and
+    /// the off-hand stack trade places. Always allowed; an empty hand swaps
+    /// with a full one.
+    pub fn swap_offhand(&mut self, slot: usize) {
+        std::mem::swap(&mut self.slots[slot], &mut self.offhand);
     }
 
     /// Adds new (unworn) items, filling existing stacks first (hotbar
@@ -275,6 +286,9 @@ impl Inventory {
         let mut cells: Vec<&mut Option<Stack>> = self.armor.iter_mut().filter(|s| mendable(s)).collect();
         if mendable(&self.slots[selected]) {
             cells.push(&mut self.slots[selected]);
+        }
+        if mendable(&self.offhand) {
+            cells.push(&mut self.offhand);
         }
         while !cells.is_empty() && points > 0 {
             let pick = ((enchant::roll() * cells.len() as f32) as usize).min(cells.len() - 1);
@@ -358,6 +372,11 @@ impl Inventory {
         }
     }
 
+    /// Clicks the off-hand slot: any stack goes in, as in Java.
+    pub fn click_offhand(&mut self, right: bool) {
+        click_slot(&mut self.offhand, &mut self.cursor, right);
+    }
+
     /// Wears every armor piece for a hit of `damage` half hearts (a quarter
     /// of it, at least one use; unbreaking skips some). Returns the pieces
     /// that broke.
@@ -408,7 +427,8 @@ impl Inventory {
     /// Empties every slot and the cursor (a dying player drops it all).
     /// Items with curse of vanishing are destroyed instead.
     pub fn take_all(&mut self) -> Vec<Stack> {
-        let mut all: Vec<Stack> = self.slots.iter_mut().chain(&mut self.armor).filter_map(Option::take).collect();
+        let mut all: Vec<Stack> =
+            self.slots.iter_mut().chain(&mut self.armor).chain([&mut self.offhand]).filter_map(Option::take).collect();
         all.extend(self.cursor.take());
         all.append(&mut self.spill);
         all.retain(|s| !s.active_enchants().has(enchant::Enchantment::VanishingCurse));
@@ -425,9 +445,16 @@ impl Inventory {
             text.push('|');
             text.push_str(&self.spill.iter().map(|&s| stack_to_string(Some(s))).collect::<Vec<_>>().join(","));
         }
-        if self.armor.iter().any(Option::is_some) {
+        // The off-hand stack is a fifth field after the four armor pieces, so
+        // older builds that read four fields still load a newer save.
+        if self.armor.iter().any(Option::is_some) || self.offhand.is_some() {
             text.push('#');
-            text.push_str(&self.armor.iter().map(|&s| stack_to_string(s)).collect::<Vec<_>>().join(","));
+            let worn = self.armor.iter().map(|&s| stack_to_string(s));
+            let mut fields: Vec<String> = worn.collect();
+            if self.offhand.is_some() {
+                fields.push(stack_to_string(self.offhand));
+            }
+            text.push_str(&fields.join(","));
         }
         text
     }
@@ -435,8 +462,12 @@ impl Inventory {
     pub fn deserialize(text: &str) -> Option<Self> {
         let mut inv = Self::default();
         let (text, armor) = text.trim().split_once('#').unwrap_or((text.trim(), ""));
-        for (slot, part) in inv.armor.iter_mut().zip(armor.split(',').filter(|s| !s.is_empty())) {
+        let mut fields = armor.split(',').filter(|s| !s.is_empty());
+        for (slot, part) in inv.armor.iter_mut().zip(fields.by_ref()) {
             *slot = stack_from_str(part)?;
+        }
+        if let Some(part) = fields.next() {
+            inv.offhand = stack_from_str(part)?;
         }
         let (slots, returns) = text.split_once('|').unwrap_or((text, ""));
         let parts: Vec<&str> = slots.split(',').collect();

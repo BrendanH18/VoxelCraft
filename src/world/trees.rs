@@ -219,6 +219,15 @@ pub fn cactus(ground: IVec3, v: u32, put: Put) {
     }
 }
 
+/// A cactus of the v0.13 world generation: the usual one to three blocks,
+/// and one in four wears a cactus flower on top.
+pub fn cactus_v2(ground: IVec3, v: u32, put: Put) {
+    cactus(ground, v, put);
+    if (v >> 6).is_multiple_of(4) {
+        put(ground + IVec3::Y * (2 + (v % 3) as i32), super::biome_plants::CACTUS_FLOWER);
+    }
+}
+
 /// A leafy blob: an ellipsoid of `radius` (and half `height`) around
 /// `centre`, with ragged edges picked by `v`.
 fn blob(centre: IVec3, radius: f32, height: f32, leaves: Block, v: u32, put: Put) {
@@ -441,6 +450,174 @@ pub fn mega_spruce(ground: IVec3, v: u32, pine: bool, put: Put) {
     }
 }
 
+/// The four 2x2 trunk columns of a giant tree, as offsets from its ground.
+const TRUNK: [(i32, i32); 4] = [(0, 0), (1, 0), (0, 1), (1, 1)];
+
+/// An old growth spruce or pine of the v0.13 world generation: a 2x2 trunk
+/// that stays bare near the ground under a tall cone of leaf rings (a
+/// pine keeps only a tuft near the top), tapering to a 2x2 tip. Used by
+/// [`Generation::V2`](super::terrain::Generation) worlds and by 2x2 spruce
+/// saplings; generation 1 keeps [`mega_spruce`].
+pub fn mega_spruce_v2(ground: IVec3, v: u32, pine: bool, put: Put) {
+    let height = 13 + (v % 14) as i32;
+    let top = ground.y + height;
+    let layers = if pine { 5 + (v >> 4) as i32 % 3 } else { (height * 3 / 4).max(9) };
+    for i in 0..layers {
+        // The tip is the 2x2 trunk's own width; the cone then widens with
+        // every layer and every third layer pulls in a little.
+        let r = (0.9 + i as f32 * 0.4).min(5.0) - if i % 3 == 2 && i > 2 { 1.1 } else { 0.0 };
+        let ri = r.ceil() as i32;
+        let y = top + 1 - i;
+        for dz in -ri..=ri + 1 {
+            for dx in -ri..=ri + 1 {
+                let (cx, cz) = (dx as f32 - 0.5, dz as f32 - 0.5);
+                // Ragged rim: the outermost ring loses some blocks by hash.
+                let rim = cx * cx + cz * cz > (r - 1.0).max(0.0).powi(2) + 0.5;
+                let ragged = rim && (v >> ((dx * 5 + dz * 3 + i * 7) & 31)) & 3 == 0;
+                if cx * cx + cz * cz <= r * r && !ragged {
+                    put(IVec3::new(ground.x + dx, y, ground.z + dz), Block::SPRUCE_LEAVES);
+                }
+            }
+        }
+    }
+    for y in 1..=height {
+        for (dx, dz) in TRUNK {
+            put(ground + IVec3::new(dx, y, dz), Block::SPRUCE_LOG);
+        }
+    }
+}
+
+/// The 2x2 trunk of a giant jungle tree (from the first block above the
+/// ground to `top`), its four columns, and the blocks that stand outside it.
+fn trunk_sides(ground: IVec3) -> impl Iterator<Item = (usize, IVec3, IVec3)> {
+    // Outside faces of the trunk columns: (face index, trunk column, direction).
+    const OUT: [(usize, (i32, i32), IVec3); 8] = [
+        (0, (0, 0), IVec3::NEG_X),
+        (1, (0, 1), IVec3::NEG_X),
+        (2, (1, 0), IVec3::X),
+        (3, (1, 1), IVec3::X),
+        (4, (0, 0), IVec3::NEG_Z),
+        (5, (1, 0), IVec3::NEG_Z),
+        (6, (0, 1), IVec3::Z),
+        (7, (1, 1), IVec3::Z),
+    ];
+    OUT.into_iter().map(move |(i, (dx, dz), dir)| (i, ground + IVec3::new(dx, 0, dz), dir))
+}
+
+/// A giant jungle tree of the v0.13 world generation: a 2x2 trunk from the
+/// first block above the ground to a broad dome with leafy side branches,
+/// vines growing up the trunk's sides and cocoa pods low on it. Generation 1
+/// keeps [`mega_jungle`].
+pub fn mega_jungle_v2(ground: IVec3, v: u32, put: Put) {
+    let height = 18 + (v % 10) as i32;
+    let top = ground.y + height;
+    let leaves = Wood::Jungle.leaves();
+    for (dy, r) in [(-2, 4.5f32), (-1, 4.2), (0, 3.4), (1, 2.3)] {
+        for dz in -4..=5 {
+            for dx in -4..=5 {
+                let (cx, cz) = (dx as f32 - 0.5, dz as f32 - 0.5);
+                if cx * cx + cz * cz <= r * r {
+                    put(IVec3::new(ground.x + dx, top + dy, ground.z + dz), leaves);
+                }
+            }
+        }
+    }
+    let mut logs = Vec::new();
+    for i in 0..2u32 {
+        let y = top - 6 - i as i32 * 5 - ((v >> (4 + i * 2)) & 3) as i32;
+        let dir = DIRS[((v >> (10 + i * 2)) & 3) as usize];
+        let start = IVec3::new(ground.x + (dir.x > 0) as i32, y, ground.z + (dir.z > 0) as i32);
+        let end = start + dir * 2 + IVec3::Y;
+        logs.extend([start + dir, start + dir * 2, end]);
+        for dz in -1..=1 {
+            for dx in -1..=1 {
+                for dy in 0..=1 {
+                    if dy == 1 && dx != 0 && dz != 0 {
+                        continue;
+                    }
+                    put(end + IVec3::new(dx, dy, dz), leaves);
+                }
+            }
+        }
+    }
+    // Vines climb most outer faces of the trunk in runs; the faces facing
+    // away from them, lower down, carry cocoa pods.
+    for (face, column, dir) in trunk_sides(ground) {
+        let roll = super::noise::hash3(ground.x, face as i32, ground.z, u64::from(v) ^ 0x71E5) as u32;
+        let wall = super::block::Facing::from_offset(dir).expect("horizontal");
+        if !roll.is_multiple_of(4) {
+            let start = 2 + (roll >> 4) as i32 % 8;
+            let len = 4 + (roll >> 9) as i32 % 12;
+            for y in start..(start + len).min(height - 1) {
+                put(column + IVec3::Y * y + dir, ob::vine(wall.opposite()));
+            }
+        }
+        if (roll >> 14).is_multiple_of(3) {
+            let y = 3 + (roll >> 16) as i32 % 5;
+            put(column + IVec3::Y * y + dir, ob::cocoa(((roll >> 20) % 3) as u8, wall.opposite()));
+        }
+    }
+    for y in 1..=height {
+        for (dx, dz) in TRUNK {
+            put(IVec3::new(ground.x + dx, ground.y + y, ground.z + dz), Wood::Jungle.log());
+        }
+    }
+    for p in logs {
+        put(p, Wood::Jungle.log());
+    }
+}
+
+/// Ground around a giant spruce's trunk: the cells (relative to `ground`)
+/// that turn to podzol, and the few that turn to coarse dirt. An irregular
+/// disc about 3 to 4 blocks across the trunk's centre.
+pub fn podzol_disc(ground: IVec3, v: u32) -> Vec<(IVec3, Block)> {
+    let radius = 3.0 + (v >> 8 & 3) as f32 * 0.5;
+    let mut out = Vec::new();
+    for dz in -5..=6 {
+        for dx in -5..=6 {
+            let (cx, cz) = (dx as f32 - 0.5, dz as f32 - 0.5);
+            let d = (cx * cx + cz * cz).sqrt();
+            let roll = super::noise::hash3(ground.x + dx, 7, ground.z + dz, u64::from(v) ^ 0x90D) as u32;
+            // The edge frays: the outer half block of the disc is a coin flip.
+            if d < radius - 0.7 || (d < radius + 0.4 && roll & 1 == 0) {
+                let block = if roll >> 8 & 7 == 0 { ob::COARSE_DIRT } else { ob::PODZOL };
+                out.push((ground + IVec3::new(dx, 0, dz), block));
+            }
+        }
+    }
+    out
+}
+
+/// A mossy cobblestone boulder half buried in the ground: a lumpy ball of
+/// one or two blocks' radius around `ground`.
+pub fn mossy_boulder(ground: IVec3, v: u32, put: Put) {
+    let radius = 1.3 + (v % 3) as f32 * 0.5;
+    let r = radius.ceil() as i32;
+    for dy in 1..=r + 1 {
+        for dz in -r..=r {
+            for dx in -r..=r {
+                let d = (dx * dx + dz * dz + (dy - 1) * (dy - 1)) as f32;
+                let lump = ((v.wrapping_mul(0x9E37_79B9) >> ((dx * 3 + dz * 5 + dy * 7) & 31)) & 3) as f32 * 0.2;
+                if d <= (radius - lump * 0.5).powi(2) + 0.4 {
+                    put(ground + IVec3::new(dx, dy, dz), Block::MOSSY_COBBLESTONE);
+                }
+            }
+        }
+    }
+}
+
+/// A tree trunk fallen on the ground: three to five logs lying along X or Z
+/// on the cells above `ground`, in the wood of the forest's trees.
+pub fn fallen_log(ground: IVec3, v: u32, wood: Wood, put: Put) {
+    let len = 3 + (v % 3) as i32;
+    let along_x = (v >> 3) & 1 == 0;
+    let (step, normal) = if along_x { (IVec3::X, IVec3::X) } else { (IVec3::Z, IVec3::Z) };
+    let log = super::wood::axis_placed(wood.log(), normal).unwrap_or(wood.log());
+    for i in 0..len {
+        put(ground + step * i + IVec3::Y, log);
+    }
+}
+
 /// A pine: a spruce with leaves only around its upper half.
 pub fn pine(ground: IVec3, v: u32, put: Put) {
     let height = 7 + (v % 5) as i32;
@@ -592,6 +769,122 @@ mod tests {
                 mega_spruce(IVec3::ZERO, v, flag, &mut |p, b| blocks.push((p, b)));
                 huge_mushroom(IVec3::ZERO, v, flag, &mut |p, b| blocks.push((p, b)));
                 assert!(blocks.iter().all(|&(p, _)| p.x.abs() <= REACH && p.z.abs() <= REACH && p.y <= TOP));
+            }
+        }
+    }
+
+    fn collect(grow: impl Fn(IVec3, u32, Put)) -> Vec<(IVec3, Block)> {
+        let mut blocks = Vec::new();
+        grow(IVec3::ZERO, 0xDEAD_BEEF, &mut |p, b| blocks.push((p, b)));
+        blocks
+    }
+
+    #[test]
+    fn giant_trees_have_two_by_two_trunks_from_the_ground_up() {
+        for v in 0..40u32 {
+            let v = v.wrapping_mul(0x9E37_79B9);
+            let mut spruce = Vec::new();
+            mega_spruce_v2(IVec3::ZERO, v, v & 1 == 0, &mut |p, b| spruce.push((p, b)));
+            let mut jungle = Vec::new();
+            mega_jungle_v2(IVec3::ZERO, v, &mut |p, b| jungle.push((p, b)));
+            for (blocks, log, height) in
+                [(&spruce, Block::SPRUCE_LOG, 13 + (v % 14) as i32), (&jungle, Block::JUNGLE_LOG, 18 + (v % 10) as i32)]
+            {
+                for y in 1..=height {
+                    for (dx, dz) in TRUNK {
+                        assert!(blocks.contains(&(IVec3::new(dx, y, dz), log)), "{log:?} column {dx},{dz} y={y}");
+                    }
+                }
+                assert!(!blocks.iter().any(|&(p, b)| b == log && p.y < 1), "no log below the ground");
+                assert!(blocks.iter().all(|&(p, _)| p.x.abs() <= REACH && p.z.abs() <= REACH && p.y <= TOP));
+            }
+        }
+    }
+
+    #[test]
+    fn giant_spruce_crown_is_a_cone_over_a_bare_trunk() {
+        let blocks = collect(|g, v, put| mega_spruce_v2(g, v & !1, false, put));
+        let width = |y: i32| {
+            let xs: Vec<i32> =
+                blocks.iter().filter(|&&(p, b)| p.y == y && b == Block::SPRUCE_LEAVES).map(|&(p, _)| p.x).collect();
+            xs.iter().max().zip(xs.iter().min()).map_or(0, |(hi, lo)| hi - lo + 1)
+        };
+        let top = blocks.iter().filter(|&&(_, b)| b == Block::SPRUCE_LEAVES).map(|&(p, _)| p.y).max().unwrap();
+        let low = blocks.iter().filter(|&&(_, b)| b == Block::SPRUCE_LEAVES).map(|&(p, _)| p.y).min().unwrap();
+        assert_eq!(width(top), 2, "the tip is the trunk's own 2x2");
+        assert!(width(low + 1) >= 8, "the crown spreads wide near its base: {}", width(low + 1));
+        assert!(low > 3, "the trunk is bare near the ground");
+    }
+
+    #[test]
+    fn giant_jungle_trunks_carry_vines_and_cocoa_on_their_outside() {
+        let mut vines = 0;
+        let mut cocoa = 0;
+        for v in 0..30u32 {
+            let v = v.wrapping_mul(0x9E37_79B9);
+            let mut blocks = Vec::new();
+            mega_jungle_v2(IVec3::ZERO, v, &mut |p, b| blocks.push((p, b)));
+            let logs: Vec<IVec3> = blocks.iter().filter(|&&(_, b)| b == Block::JUNGLE_LOG).map(|&(p, _)| p).collect();
+            for &(p, b) in &blocks {
+                if let Some(wall) = ob::vine_wall(b) {
+                    // A vine clings to the log on the side it faces.
+                    if logs.contains(&(p + wall.offset())) {
+                        vines += 1;
+                    }
+                }
+                if let Some((_, log_side)) = ob::cocoa_of(b) {
+                    assert!(logs.contains(&(p + log_side.offset())), "cocoa hangs on a log");
+                    assert!(
+                        !TRUNK.iter().any(|&(dx, dz)| p == IVec3::new(dx, p.y, dz)),
+                        "cocoa never replaces the trunk"
+                    );
+                    cocoa += 1;
+                }
+            }
+        }
+        assert!(vines > 100 && cocoa > 10, "vines {vines}, cocoa {cocoa}");
+    }
+
+    #[test]
+    fn podzol_discs_are_podzol_with_some_coarse_dirt() {
+        let mut podzol = 0;
+        let mut coarse = 0;
+        for v in 0..30u32 {
+            let disc = podzol_disc(IVec3::ZERO, v.wrapping_mul(0x9E37_79B9));
+            assert!(disc.iter().all(|&(p, _)| p.y == 0 && p.x.abs() <= 5 && p.z.abs() <= 6));
+            for (dx, dz) in TRUNK {
+                assert!(disc.iter().any(|&(p, _)| p == IVec3::new(dx, 0, dz)), "ground under the trunk is converted");
+            }
+            podzol += disc.iter().filter(|&&(_, b)| b == ob::PODZOL).count();
+            coarse += disc.iter().filter(|&&(_, b)| b == ob::COARSE_DIRT).count();
+        }
+        assert!(podzol > 4 * coarse && coarse > 0, "podzol {podzol}, coarse dirt {coarse}");
+    }
+
+    #[test]
+    fn boulders_logs_and_flowered_cacti() {
+        let boulder = collect(mossy_boulder);
+        assert!(boulder.len() >= 8 && boulder.iter().all(|&(p, b)| b == Block::MOSSY_COBBLESTONE && p.y >= 1));
+        for wood in [Wood::Oak, Wood::Spruce, Wood::DarkOak] {
+            let log = collect(|g, v, put| fallen_log(g, v, wood, put));
+            assert!((3..=5).contains(&log.len()));
+            assert!(log.iter().all(|&(p, b)| p.y == 1 && b.is_log() && b.wood() == Some(wood)));
+            // Lying down: the log's axis is horizontal.
+            assert!(log.iter().all(|&(_, b)| crate::world::wood::axis(b).is_some_and(|a| a != 0)));
+        }
+        let flowered = (0..64u32)
+            .filter(|&v| {
+                collect(|g, _, put| cactus_v2(g, v << 6, put))
+                    .iter()
+                    .any(|&(_, b)| b == super::super::biome_plants::CACTUS_FLOWER)
+            })
+            .count();
+        assert_eq!(flowered, 16, "one cactus in four");
+        // A flower always sits on the cactus's top block.
+        for v in 0..64u32 {
+            let blocks = collect(|g, _, put| cactus_v2(g, v, put));
+            if let Some(&(f, _)) = blocks.iter().find(|&&(_, b)| b == super::super::biome_plants::CACTUS_FLOWER) {
+                assert!(blocks.contains(&(f - IVec3::Y, Block::CACTUS)));
             }
         }
     }

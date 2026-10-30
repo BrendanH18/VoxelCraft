@@ -82,9 +82,10 @@ pub(super) enum Action {
     Mute,
     RenderDistanceDown,
     RenderDistanceUp,
+    SwapHands,
 }
 
-pub(super) const COUNT: usize = Action::RenderDistanceUp as usize + 1;
+pub(super) const COUNT: usize = Action::SwapHands as usize + 1;
 
 /// One row of the table: save name, label, category and default.
 struct Spec {
@@ -135,12 +136,14 @@ const SPECS: [Spec; COUNT] = [
     spec("key.hotbar.8", "Hotbar Slot 8", C::Inventory, key(KeyCode::Digit8)),
     spec("key.hotbar.9", "Hotbar Slot 9", C::Inventory, key(KeyCode::Digit9)),
     Spec { order: -2, ..spec("key.debug.overlay", "Toggle Overlay", C::Debug, key(KeyCode::F3)) },
-    spec("key.voxelcraft.fly", "Toggle Flying", C::VoxelCraft, key(KeyCode::KeyF)),
+    // Java's `F` swaps hands; flying keeps double-tap jump and takes `R`.
+    spec("key.voxelcraft.fly", "Toggle Flying", C::VoxelCraft, key(KeyCode::KeyR)),
     spec("key.voxelcraft.gameMode", "Switch Survival/Creative", C::VoxelCraft, key(KeyCode::KeyG)),
     spec("key.voxelcraft.vsync", "Toggle VSync", C::VoxelCraft, key(KeyCode::KeyV)),
     spec("key.voxelcraft.mute", "Toggle Sound", C::VoxelCraft, key(KeyCode::KeyM)),
     spec("key.voxelcraft.renderDistanceDown", "Lower Render Distance", C::VoxelCraft, key(KeyCode::BracketLeft)),
     spec("key.voxelcraft.renderDistanceUp", "Raise Render Distance", C::VoxelCraft, key(KeyCode::BracketRight)),
+    spec("key.swapOffhand", "Swap Item With Offhand", C::Inventory, key(KeyCode::KeyF)),
 ];
 
 impl Action {
@@ -181,6 +184,7 @@ impl Action {
             Mute,
             RenderDistanceDown,
             RenderDistanceUp,
+            SwapHands,
         ]
     };
 
@@ -279,6 +283,19 @@ impl Bindings {
             self.set(action, input);
         }
         true
+    }
+
+    /// Options saved before the off-hand (v0.13) list flying on `F`, which
+    /// is now Java's swap-hands key: move flying to its new default rather
+    /// than leave one press doing both. A player who rebinds swap-hands
+    /// afterwards keeps whatever they choose.
+    pub fn migrate(&mut self, text: &str) {
+        let swap_line = format!("key_{}=", Action::SwapHands.name());
+        if !text.lines().any(|l| l.trim_start().starts_with(&swap_line))
+            && self.get(Action::Fly) == Action::SwapHands.default_input()
+        {
+            self.reset(Action::Fly);
+        }
     }
 
     /// One `key_<name>=<key>` line per action.
@@ -579,6 +596,25 @@ mod tests {
         let gameplay: Vec<_> =
             sorted.iter().filter(|a| a.category() == Category::Gameplay).map(|a| a.label()).collect();
         assert_eq!(gameplay, ["Attack/Destroy", "Pick Block", "Use Item/Place Block"]);
+    }
+
+    #[test]
+    fn options_from_before_the_off_hand_move_flying_off_f() {
+        let old = "key_key.voxelcraft.fly=key.keyboard.f\n";
+        let mut b = Bindings::default();
+        b.set(Action::Fly, Action::SwapHands.default_input());
+        b.migrate(old);
+        assert_eq!(b.get(Action::Fly), Action::Fly.default_input());
+        assert!(b.actions(Action::SwapHands.default_input()).eq([Action::SwapHands]));
+
+        // A newer file that chose F for flying keeps it.
+        let mut b = Bindings::default();
+        b.set(Action::Fly, Action::SwapHands.default_input());
+        b.set(Action::SwapHands, Input::Unbound);
+        let mut text = String::new();
+        b.serialize(&mut text);
+        b.migrate(&text);
+        assert_eq!(b.get(Action::Fly), Action::SwapHands.default_input());
     }
 
     #[test]

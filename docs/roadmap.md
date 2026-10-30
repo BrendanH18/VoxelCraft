@@ -171,9 +171,15 @@ in the right-hand column stays mandatory for 1.0.
 | Resource and data packs | Loading packs | The built-in Java 26.3 recipes, loot tables and tags they would replace |
 | Mod and plugin APIs | All of it | — |
 
-There are no approved fidelity exceptions. The terrain-noise decision
-(port Java's noise or record original noise as an exception) is due before
-v0.13; until then original noise is a known difference.
+**Fidelity exception FE-01 — original terrain noise (owner, 2026-10-30).**
+The Overworld keeps VoxelCraft's own noise and terrain algorithms; Java's
+generator is not ported, so a seed does not reproduce Java's world. GEN-01
+to GEN-03 are accepted on the gameplay behaviours they list (biome and
+landform variety, overhangs, cave and aquifer types, ore bands, features
+and their continuity across chunk borders), checked by VoxelCraft fixtures
+and play rather than Java seed/coordinate fixtures. Player impact: Java
+seeds and coordinates from guides don't carry over. This is the only
+approved fidelity exception.
 
 Modern biomes, building materials, mobs, equipment and travel mechanics
 belong in 1.0 when they participate in the chosen core loops. Being introduced
@@ -858,7 +864,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.10 | Updates | M7 early: UX-04b, part of UX-05a | In-game update check, signed download, pre-update world backup and install on Windows and Apple Silicon Macs ([design](updates.md)); worlds whose level file can't be read are no longer started fresh. See [v0.10 scope](#v010-scope-updates) | Release prepared (2026-10-22): Cargo 0.10.0, release notes and the `UPDATE_SIGNING_KEY` secret; tag `v0.10` once merged (owner exception: before the exit check, which needs a later release). Rows Implemented, unverified until the owner updates a real v0.10 install (the exit check); the stepping-stone release every player installs by hand |
 | v0.11 | Menus and settings | M7 early: UX-03a/b, UX-05a | Java's title screen, world list and Edit World screen; Java-style options screens, key rebinding, GUI scale and per-category volume; consistent menu navigation and error screens. See [v0.11 scope](#v011-scope-menus-and-settings) | Release prepared (2026-10-24): Cargo 0.11.0 and release notes; every work item implemented, unverified; options-file failures now show a notice; the menu and title benchmark scenes exist, but their [first run](verification/2026-10-24-v0.11-menu-frame-time.md) was capped at the display's 120 Hz by the machine's state and doesn't count. Done (owner, 2026-10-25): tag `v0.11` from `ec74556` without its exit checks (owner exception). Rows stay Implemented, unverified; the menu and title frame-time run moved to v0.20, and problems found in the owner's ordinary play come back as fixes |
 | v0.12 | Building materials | Close M2 | Missing wood, stone, copper and colour family members, the unregistered reference fuel items, signs, banners, item frames, cauldrons and campfires; coral wall fans; falling and dripping dripstone, tilting dripleaf. See [v0.12 scope](#v012-scope-building-materials) | Done (owner, 2026-10-29): merged in [#55](https://github.com/BrendanH18/VoxelCraft/pull/55) at `ec7e18b`; tag `v0.12` from it. The owner's own play is the player evidence (no problems found). Release prepared (2026-10-29): Cargo 0.12.0 and release notes. Items 0–6 implemented, unverified (capacity raise; wood, stone, copper, colour and utilities tracks; data pass, explosions, double chests; `registry_audit`: 669 → 247 missing blocks, the rest belonging to later releases). The remaining gaps of v0.12's own blocks were closed on 2026-10-29 ([record](verification/2026-10-29-v0.12-finish.md)): sign editing for CLI, LAN and controller players, lodestone compasses, slime blocks for mobs and items, arrows hitting vehicles, cushions and decorations, cauldrons putting out fires, and a hidden-window memory leak. Frame time: one valid `materials` run (539 FPS average, 137.8 FPS 1% low) and a profile showing the per-frame mob-model rebuild, not texture paging, as the cost; the three-run gate moved to v0.20 as for v0.8, v0.9 and v0.11. Rows that weren't ready moved out under the 2026-10-25 policy (see the [scope](#v012-scope-building-materials)). Rows stay Implemented, unverified until the frame-time check in v0.20 |
-| v0.13 | Terrain | M3: GEN-01..03 | Java climate and density terrain with overhangs; Java caves, aquifers and ores; deep-dark content, springs, glow lichen; giant spruce and jungle trees and the remaining biome features | Planned |
+| v0.13 | Terrain | M3: GEN-01..03 | Density terrain with overhangs from the climate noise (original noise, FE-01); caves and aquifers fitted to it, springs, glow lichen and an ore pass; deep-dark terrain with sculk; giant spruce and jungle trees and the remaining biome features; bubble columns, fire spread, offhand and shields carried from v0.12. See [v0.13 scope](#v013-scope-terrain) | In progress (2026-10-30): scope approved by the owner; every item implemented, unverified and integrated; waiting for the owner's play |
 | v0.14 | Structures | M3: GEN-05..07 | A Java structure-template (jigsaw) system; villages, outposts, bastions, fossils, shipwrecks, ocean ruins and monuments built from it; buried treasure and explorer maps; Java loot random sequences | Planned |
 | v0.15 | Wildlife | M4: MOB-03/04, FOO, ENV-03 | Bats, frogs, pandas, polar bears, armadillos, mooshrooms, strays, bogged, phantoms and zombie horses (with lightning); drowned conversion and the cat spawner; melon, pumpkin and beetroot crops; animal and mount acceptance | Planned |
 | v0.16 | Deep dark and trials | M3 + M4 + PRO-07 | Ancient cities with sculk and the warden; trial chambers with breezes, trial spawners, vaults and the mace; tridents, spears and the other modern weapon families | Planned |
@@ -880,9 +886,8 @@ Notes:
   once End cities and ships (GEN-05) exist alongside shulkers and elytra.
 - M2 comes before structures because Java templates use the full set of block
   states (waterlogged stairs, top slabs, hinged doors).
-- v0.13 needs an owner decision first: port Java's terrain noise so seeds
-  reproduce Java's worlds (§1.3, GEN-01), or record original noise as an
-  approved fidelity exception. Until then, original noise is a known difference.
+- v0.13's terrain-noise decision was made on 2026-10-30: original noise,
+  recorded as fidelity exception FE-01 in [§1.4](#14-what-can-follow-10).
 - Recheck the latest stable Java release when planning each version (§1.2) and
   slot new core content into an unreleased version as an explicit scope change.
 - When a version ships, set its status here, add a delivery record like
@@ -1288,6 +1293,60 @@ Generate neighboring chunks in different orders/threads and across cache
 evictions; compare outputs and inspect borders. Explore each core biome/
 structure family without cheats, obtain its rewards, and prove cleared
 containers/residents stay cleared after restart.
+
+#### v0.13 scope: terrain
+
+Approved by the owner on 2026-10-30, with fidelity exception FE-01
+([§1.4](#14-what-can-follow-10)): the terrain keeps VoxelCraft's own noise,
+and its rows are checked against the behaviours they describe, not Java
+seeds.
+
+0. **Decision and IDs.** FE-01 recorded; v0.13's state, item and texture
+   ranges split per track in the
+   [architecture reservations](architecture.md#v013-track-reservations).
+1. **World-generation version.** Unmodified chunks are never saved, so
+   changing the generator would change every existing world's untouched
+   terrain. Worlds record `worldgen=<n>` in `level.txt`; worlds saved
+   before v0.13 have none and keep generation 1, whose output is pinned by
+   the golden chunk hashes. New worlds use generation 2, and every v0.13
+   generation change applies to generation 2 only. LAN protocol 4 sends the
+   generation in `Welcome`.
+2. **Density terrain** (GEN-01a/b). A 3D density field built from the
+   existing climate values replaces the heightmap: overhangs, cliffs,
+   arches and jagged peaks, sampled on a coarse grid and interpolated.
+   Surface rules work from the density surface (steep faces, floating
+   undersides), and column heights stay available to structures, spawning
+   and `/locate`.
+3. **Underground** (GEN-02). Caves and aquifers fitted to the density
+   terrain; water and lava springs; glow lichen; an ore-distribution pass;
+   a deep-dark cave biome deep under low-erosion (mountainous) ground, with
+   sculk, sculk veins, catalysts, sensors and shriekers as world content
+   (shriekers summon nothing until the warden, v0.16).
+4. **Features** (GEN-03). Giant spruce (with podzol) and giant jungle
+   trees (trunk vines and cocoa) checked and corrected, the remaining
+   biome features, all continuous across chunk borders.
+5. **Carried from v0.12.** Bubble columns (ENV-01a), a fire spread and
+   flammability review (ENV-02, BLD-03b) and an offhand and shield review
+   (PLY-05b).
+6. **Checks.** Chunks identical whatever order and thread generates them
+   (GEN-07); save/reload of generation-1 and generation-2 worlds; chunk
+   generation throughput before and after in the streaming benchmark.
+
+Tracks 2–5 run in parallel after items 0 and 1, at most four agents at a
+time; item 6 runs over the integrated result.
+
+Status (2026-10-30): items 0–6 implemented, unverified, integrated on one
+branch with the full check chain passing (1,866 tests). Records:
+[density](verification/2026-10-30-v0.13-density.md),
+[underground](verification/2026-10-30-v0.13-underground.md),
+[trees and features](verification/2026-10-30-v0.13-trees.md),
+[carried items](verification/2026-10-30-v0.13-carried.md) and the
+[integration record](verification/2026-10-30-v0.13-integration.md)
+(save/reload of both generations, screenshots, chunk generation speed).
+Known gaps: a few small rocks float above some generation 2 peaks; plant
+and feature densities are tuned by hand; the sensor, shrieker and catalyst
+are inert until v0.16; the changed fire odds need a check against the 26.3
+artifact. Waiting for the owner's play.
 
 ### M4 — A complete living world
 

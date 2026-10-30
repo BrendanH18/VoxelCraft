@@ -64,6 +64,7 @@ const BLOCK_NAMES: &[(&str, &str)] = &[
     ("tall grass", "short_grass"),
     ("tall grass plant", "tall_grass"),
     ("tall grass plant top", "tall_grass"),
+    ("tall dry grass top", "tall_dry_grass"),
     ("flowing water", "water"),
     ("falling water", "water"),
     ("flowing lava", "lava"),
@@ -225,13 +226,24 @@ fn property(b: Block, java: &str, prop: &str) -> String {
         // VoxelCraft's pale moss carpet is the bottom carpet only.
         "bottom" => flag(true),
         "cracked" => flag(utilities::decorated_pot_of(b).is_some_and(|(_, cracked, _)| cracked)),
-        // One petal per state.
-        "flower_amount" => "1".to_owned(),
+        // Pink petals are one petal per state; wildflowers and leaf litter
+        // keep their count in the state.
+        "flower_amount" => voxelcraft::world::biome_plants::segments(b).map_or(1, |(_, n)| n).to_string(),
+        "segment_amount" => voxelcraft::world::biome_plants::segments(b).map_or_else(missing, |(_, n)| n).to_string(),
         "layers" => ob::snow_layers(b).unwrap_or_else(missing).to_string(),
         "level" => composter::level(b).unwrap_or_else(missing).to_string(),
         "pickles" => ob::pickle_count(b).unwrap_or_else(missing).to_string(),
         // VoxelCraft TNT has no unstable state.
         "unstable" => flag(false),
+        // Glow lichen and sculk vein faces (`MultifaceBlock`).
+        "down" | "up" | "north" | "south" | "west" | "east" => {
+            let i = ["down", "up", "north", "south", "west", "east"].iter().position(|&d| d == prop).unwrap();
+            flag(
+                voxelcraft::world::cave_blocks::multiface_of(b).unwrap_or_else(|| panic!("{java}: no faces")).1
+                    & (1 << i)
+                    != 0,
+            )
+        }
         _ => panic!("{java}: no mapping for state property {prop}"),
     }
 }

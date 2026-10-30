@@ -144,6 +144,15 @@ impl Player {
         }
         self.base_tick(world, &mut dm);
         self.ai_step(input, world, &mut dm);
+        // `BubbleColumnBlock.entityInside`: the column lifts or drags the
+        // player and resets the fall distance.
+        if !self.flying {
+            let (min, max) = self.collision_shape().aabb(self.pos);
+            if let Some(dy) = crate::world::bubble::apply(|p| world.block(p), min, max, dm.y) {
+                dm.y = dy;
+                self.motion.fall_distance = 0.0;
+            }
+        }
         self.vel = dm * TICK_RATE;
         self.climbing = self.on_climbable(world);
         // `Player.tick` ends with `updatePlayerPose`.

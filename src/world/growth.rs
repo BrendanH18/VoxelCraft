@@ -7,7 +7,7 @@
 use glam::{DVec3, IVec3};
 
 use super::World;
-use super::block::Block;
+use super::block::{Block, Wood};
 use super::chunk::{CHUNK_BITS, CHUNK_SIZE_I, chunk_of};
 use super::noise::splitmix64;
 use crate::inventory::Stack;
@@ -84,11 +84,16 @@ impl World {
     /// the usual roll: the plant or leaf itself, and two for the tall grass,
     /// large fern and tall seagrass pools (`tests/fixtures/java/26.3/mining.json`).
     fn shear_loot(block: Block) -> Option<Stack> {
+        if let Some(stack) = super::cave_blocks::sheared(block) {
+            return Some(stack);
+        }
         let count = if matches!(block.0, 1963 | 1964 | 2049..=2052) { 2 } else { 1 };
         let item = match block {
             Block::TALL_GRASS | Block::FERN | Block::DEAD_BUSH | Block::COBWEB => block.into(),
             b if b.is_leaves() => b.base().into(),
-            b => super::nether_biome_blocks::sheared_drop(b).or_else(|| super::overworld_blocks::sheared_drop(b))?,
+            b => super::nether_biome_blocks::sheared_drop(b)
+                .or_else(|| super::overworld_blocks::sheared_drop(b))
+                .or_else(|| super::biome_plants::sheared_drop(b))?,
         };
         Some(Stack::new(item, count))
     }
@@ -112,7 +117,10 @@ impl World {
             // block; a double slab is two slabs.
             let stack = match super::overworld_blocks::snow_layers(block) {
                 Some(8) => Stack::new(Block::SNOW, 1),
-                layers => Stack::new(item, layers.unwrap_or(1) * double_slab_count(block)),
+                layers => Stack::new(
+                    item,
+                    layers.unwrap_or(1) * double_slab_count(block) * super::cave_blocks::drop_count(block),
+                ),
             };
             self.drops.push((p, stack));
             return;
@@ -120,7 +128,8 @@ impl World {
         let fortune = tool.level(Enchantment::Fortune) as u64;
         let mut out = Vec::new();
         // Java's slab loot table: two for `type=double`; candles, one per candle.
-        let count = double_slab_count(block) * super::colour_blocks::drop_count(block);
+        let count =
+            double_slab_count(block) * super::colour_blocks::drop_count(block) * super::biome_plants::drop_count(block);
         out.extend(block.drop().map(|item| Stack::new(item, count)));
         out.extend(super::utilities::extra_drops(block));
         if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&block.0)
@@ -497,12 +506,26 @@ impl World {
             let Some(corner) = self.two_by_two_corner(p, sapling) else { return false };
             p = corner;
         }
+        // Four spruce or jungle saplings in a 2x2 grow the giant tree.
+        let mut giant = false;
+        if matches!(sapling.base(), Block::SPRUCE_SAPLING | Block::JUNGLE_SAPLING)
+            && let Some(corner) = self.two_by_two_corner(p, sapling)
+        {
+            (p, giant) = (corner, true);
+        }
         let v = self.roll() as u32;
         let mut blocks = Vec::new();
         let ground = p - IVec3::Y;
         let Some(wood) = sapling.wood().filter(|_| sapling.is_sapling()) else { return false };
         let sapling = sapling.base();
-        super::trees::tree(wood, ground, v, &mut |q, b| blocks.push((q, b)));
+        let spruce = giant && wood == Wood::Spruce;
+        match wood {
+            Wood::Spruce if giant => {
+                super::trees::mega_spruce_v2(ground, v, v & 0x100 != 0, &mut |q, b| blocks.push((q, b)))
+            }
+            Wood::Jungle if giant => super::trees::mega_jungle_v2(ground, v, &mut |q, b| blocks.push((q, b))),
+            _ => super::trees::tree(wood, ground, v, &mut |q, b| blocks.push((q, b))),
+        }
         let room = blocks.iter().filter(|(_, b)| b.is_log()).all(|&(q, _)| {
             q == p
                 || self
@@ -518,8 +541,21 @@ impl World {
                 self.edit(q, b, false);
             }
         }
-        if self.get_block(ground) == Some(Block::GRASS) || self.get_block(ground).is_some_and(Block::is_farmland) {
-            self.edit(ground, Block::DIRT, false);
+        let trunk: &[(i32, i32)] =
+            if giant || needs_two_by_two(sapling) { &[(0, 0), (1, 0), (0, 1), (1, 1)] } else { &[(0, 0)] };
+        for &(dx, dz) in trunk {
+            let soil = ground + IVec3::new(dx, 0, dz);
+            if self.get_block(soil) == Some(Block::GRASS) || self.get_block(soil).is_some_and(Block::is_farmland) {
+                self.edit(soil, Block::DIRT, false);
+            }
+        }
+        if spruce {
+            // A giant spruce leaves podzol and a little coarse dirt around it.
+            for (soil, b) in super::trees::podzol_disc(ground, v) {
+                if matches!(self.get_block(soil), Some(Block::GRASS | Block::DIRT | Block::SNOWY_GRASS)) {
+                    self.edit(soil, b, false);
+                }
+            }
         }
         true
     }
@@ -544,6 +580,12 @@ impl World {
             return used;
         }
         if let Some(used) = self.overworld_bone_meal(p, b) {
+            return used;
+        }
+        if let Some(used) = self.cave_bone_meal(p, b) {
+            return used;
+        }
+        if let Some(used) = self.plant_bone_meal(p, b) {
             return used;
         }
         match b {
@@ -918,6 +960,66 @@ mod tests {
         world.set_block(grass + IVec3::Y, Block::STONE);
         world.random_tick(grass);
         assert_eq!(world.get_block(grass), Some(Block::DIRT));
+    }
+
+    /// A flat grass field, and a 2x2 of `sapling` growing on it.
+    fn sapling_square(sapling: Block) -> (World, IVec3) {
+        let mut world = World::new_headless(Arc::new(Generator::new(3)), Default::default(), 2);
+        for y in world.generator.dimension.chunk_rows() {
+            for (x, z) in [(0, 0), (-1, 0), (0, -1), (-1, -1)] {
+                world.insert_chunk(IVec3::new(x, y, z), Arc::new(ChunkData::Uniform(Block::AIR)), false);
+            }
+        }
+        let corner = IVec3::new(8, 100, 8);
+        for dz in -8..=9 {
+            for dx in -8..=9 {
+                world.set_block(IVec3::new(8 + dx, 99, 8 + dz), Block::GRASS);
+            }
+        }
+        for (dx, dz) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+            world.set_block(corner + IVec3::new(dx, 0, dz), sapling);
+        }
+        (world, corner)
+    }
+
+    #[test]
+    fn two_by_two_saplings_grow_giant_and_dark_oak_trees() {
+        for (sapling, log, tall) in [
+            (Block::SPRUCE_SAPLING, Block::SPRUCE_LOG, 13),
+            (Block::JUNGLE_SAPLING, Block::JUNGLE_LOG, 18),
+            (super::super::overworld_blocks::DARK_OAK_SAPLING, Block::DARK_OAK_LOG, 6),
+        ] {
+            let (mut world, corner) = sapling_square(sapling);
+            assert!(world.grow_tree(corner + IVec3::X), "{sapling:?}");
+            for (dx, dz) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                assert_eq!(
+                    world.get_block(corner + IVec3::new(dx, tall - 1, dz)),
+                    Some(log),
+                    "2x2 trunk of {sapling:?}"
+                );
+                assert_ne!(
+                    world.get_block(corner + IVec3::new(dx, -1, dz)),
+                    Some(Block::GRASS),
+                    "grass under the trunk turns to dirt or podzol"
+                );
+            }
+        }
+        // Three saplings are not enough for the giant tree: a lone one grows its small tree.
+        let (mut world, corner) = sapling_square(Block::SPRUCE_SAPLING);
+        world.set_block(corner + IVec3::new(1, 0, 1), Block::AIR);
+        assert!(world.grow_tree(corner));
+        assert_ne!(world.get_block(corner + IVec3::new(1, 3, 0)), Some(Block::SPRUCE_LOG), "no second trunk column");
+    }
+
+    #[test]
+    fn giant_spruce_saplings_leave_podzol() {
+        let (mut world, corner) = sapling_square(Block::SPRUCE_SAPLING);
+        assert!(world.grow_tree(corner));
+        let podzol = (-5..=6)
+            .flat_map(|dz| (-5..=6).map(move |dx| IVec3::new(8 + dx, 99, 8 + dz)))
+            .filter(|&p| world.get_block(p) == Some(super::super::overworld_blocks::PODZOL))
+            .count();
+        assert!(podzol > 15, "podzol {podzol}");
     }
 
     #[test]

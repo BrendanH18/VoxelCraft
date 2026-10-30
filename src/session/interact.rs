@@ -172,6 +172,8 @@ pub struct Use {
     pub used: Used,
     /// The held tool broke doing this.
     pub tool_broken: Option<Item>,
+    /// The off-hand's item did this (the main hand's use passed).
+    pub off_hand: bool,
 }
 
 /// Inputs the session does not own.
@@ -229,18 +231,66 @@ impl PlayerSession {
             return Err("player view is unavailable");
         }
         let mut tool_broken = None;
-        let mut used = self.use_entity(slot, world, entities, ctx, &mut tool_broken)?;
+        let mut off_hand = false;
+        // An empty main hand has nothing to use; the off-hand may.
+        let main = self.use_chain(slot, world, entities, ctx, &mut tool_broken);
+        let (mut used, main_error) = match main {
+            Ok(used) => (used, None),
+            Err(e) if self.inventory.offhand.is_some() => (None, Some(e)),
+            Err(e) => return Err(e),
+        };
+        // Java tries the off-hand when the main hand's use passes; a held use
+        // the main hand starts (eating, a bow, a shield) is not passed over.
+        if used.is_none()
+            && let Some(off) = self.inventory.offhand
+            && self.shield_hand(slot) != Some(super::hands::Hand::Main)
+            && !self.inventory.get(slot).is_some_and(|s| {
+                s.item.is_drink() || s.item.food().is_some() && self.can_eat(s.item) || self.starts_draw(s.item)
+            })
+            && off.item != Item::SHIELD
+        {
+            self.inventory.swap_offhand(slot);
+            let result = self.use_chain(slot, world, entities, ctx, &mut tool_broken);
+            self.inventory.swap_offhand(slot);
+            match result {
+                Ok(u) => {
+                    off_hand = u.is_some();
+                    used = u;
+                }
+                Err(e) => return Err(main_error.unwrap_or(e)),
+            }
+        } else if let Some(e) = main_error {
+            return Err(e);
+        }
+        if let Some(Used::Rod { broke: true, .. }) = used {
+            tool_broken = Some(Item::FISHING_ROD);
+        }
+        Ok(used.map(|used| Use { player: self.id, used, tool_broken, off_hand }))
+    }
+
+    /// The entity, item and block uses for the stack in `slot`, in Java's order.
+    fn use_chain(
+        &mut self,
+        slot: usize,
+        world: &mut World,
+        entities: &mut Entities,
+        ctx: &UseContext,
+        tool_broken: &mut Option<Item>,
+    ) -> Result<Option<Used>, &'static str> {
+        let mut used = self.use_entity(slot, world, entities, ctx, tool_broken)?;
         if used.is_none() {
             used = self.use_item(slot, world, entities, ctx)?;
         }
         // Riders use items (Java `Item.use` has no vehicle check) but not blocks.
         if used.is_none() && self.player.vehicle.is_none() {
-            used = self.use_block(slot, world, entities, ctx, &mut tool_broken)?;
+            used = self.use_block(slot, world, entities, ctx, tool_broken)?;
         }
-        if let Some(Used::Rod { broke: true, .. }) = used {
-            tool_broken = Some(Item::FISHING_ROD);
-        }
-        Ok(used.map(|used| Use { player: self.id, used, tool_broken }))
+        Ok(used)
+    }
+
+    /// Items whose right-click starts drawing (bows and crossbows).
+    fn starts_draw(&self, item: Item) -> bool {
+        matches!(item, Item::BOW | Item::CROSSBOW | Item::CHARGED_CROSSBOW)
     }
 
     fn use_entity(

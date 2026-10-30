@@ -61,10 +61,10 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
 - Delegated implementation agents run on Claude models (owner, 2026-10-22:
   the owner now has the Claude Max plan). Reviews always run on Codex
   (GPT-6.1-Sol), as the debate-review protocol does. While Codex is at its
-  usage limit, reviews run on both Reflection Beam 1.0
-  (`openrouter/reflection/beam-1.0-501b-a23b`) and DeepSeek V4.1 Flash
+  usage limit, reviews run on DeepSeek V4.1 Flash only
   (`openrouter/deepseek/deepseek-v4.1-flash-1017`) through OpenCode until
-  Codex resets (owner, 2026-10-23). Use other providers only when the owner asks.
+  Codex resets (owner, 2026-10-30; Reflection Beam is no longer used). Use
+  other providers only when the owner asks.
 - Extra hands-on tests (running the game, playing it and looking at the
   result through computer use) may be delegated to Codex on GPT-6.1 Terra at
   `high` or `xhigh` reasoning effort, never Sol, which costs too much for

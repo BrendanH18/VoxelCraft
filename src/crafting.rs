@@ -598,6 +598,7 @@ pub fn recipes() -> &'static [Recipe] {
         add_nether_biome_recipes(&mut r);
         add_overworld_recipes(&mut r);
         r.push(shaped(&["###", "# #"], &[('#', &[Item::TURTLE_SCUTE])], Item::TURTLE_HELMET, 1));
+        add_shield_recipes(&mut r);
         add_mount_recipes(&mut r);
         stone::add_recipes(&mut r);
         copper::add_recipes(&mut r);
@@ -1105,7 +1106,7 @@ fn add_overworld_recipes(r: &mut Vec<Recipe>) {
         1,
     ));
     // Dyes from cocoa, ink and the new flowers.
-    let dyes: [(Item, DyeColor, u8); 17] = [
+    let dyes: [(Item, DyeColor, u8); 19] = [
         (Item::COCOA_BEANS, DyeColor::Brown, 1),
         (Item::INK_SAC, DyeColor::Black, 1),
         (one(ob::CORNFLOWER), DyeColor::Blue, 1),
@@ -1122,6 +1123,8 @@ fn add_overworld_recipes(r: &mut Vec<Recipe>) {
         (one(ob::ROSE_BUSH), DyeColor::Red, 2),
         (one(ob::PEONY), DyeColor::Pink, 2),
         (one(ob::PINK_PETALS), DyeColor::Pink, 1),
+        (one(crate::world::biome_plants::CACTUS_FLOWER), DyeColor::Pink, 1),
+        (one(crate::world::biome_plants::WILDFLOWERS), DyeColor::Yellow, 1),
         (Item::BEETROOT, DyeColor::Red, 1),
     ];
     for (source, colour, count) in dyes {
@@ -1501,6 +1504,11 @@ mod nether_biome_tests {
         assert_eq!(craft(2, &[(0, 0, b(nb::BONE_BLOCK))]), Some(Stack::new(Item::BONE_MEAL, 9)));
         assert_eq!(craft(3, &filled(b(nb::WARPED_WART_BLOCK), 3, 3)), None, "warped wart blocks are found, not made");
     }
+}
+
+/// `shield.json`: six planks of any kind around an iron ingot.
+fn add_shield_recipes(r: &mut Vec<Recipe>) {
+    r.push(shaped(&["#i#", "###", " # "], &[('#', PLANKS), ('i', ingredient(Item::IRON_INGOT))], Item::SHIELD, 1));
 }
 
 /// Java 1.21: five matching planks, no shovel; chest variants are shapeless.

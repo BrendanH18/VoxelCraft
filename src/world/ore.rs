@@ -14,6 +14,13 @@
 //! replace either. Tuff's range is Java y ≤ 0, the deepslate layer. Buried
 //! variants skip blocks with an air neighbour inside the chunk. Calcite is
 //! not a placed feature in 1.21 (it only occurs in amethyst geodes).
+//!
+//! Generation 2 (v0.13, GEN-02b) follows Java's biome rules for copper:
+//! dripstone caves place `ore_copper_large` (size 20) instead of
+//! `ore_copper` (size 10), judged by the cave biome at the vein's origin.
+//! It also adds Java's large ore veins (`OreVeinifier`): copper veins
+//! through granite at y 0..=50 and iron veins through tuff at y -60..=-8,
+//! with a few raw ore blocks, shaped by this engine's noise.
 
 use glam::IVec3;
 
@@ -21,8 +28,9 @@ use super::biome::Biome;
 use super::block::Block;
 use super::chunk::{CHUNK_SIZE_I, CHUNK_VOLUME, index};
 use super::chunk::{WORLD_MAX_Y, WORLD_MIN_Y};
-use super::noise::hash3;
+use super::noise::{Perlin, hash_f, hash3};
 use super::structure::Rng;
+use super::terrain::Generation;
 
 const JAVA_CELL: i32 = 16;
 
@@ -49,6 +57,24 @@ enum Where {
     Overworld,
     Mountains,
     Badlands,
+    /// Generation 2: only where the origin is in dripstone caves.
+    Dripstone,
+    /// Generation 2: anywhere but dripstone caves.
+    NotDripstone,
+}
+
+/// The large copper vein (`ore_copper_large`) and the plain one.
+const COPPER_LARGE: u64 = 0xC0C1;
+const COPPER_PLAIN: u64 = 0xC0C2;
+
+/// Where `feature` places in `generation`: generation 1 placed both copper
+/// features everywhere.
+fn where_in(feature: &Feature, generation: Generation) -> Where {
+    match feature.salt {
+        COPPER_LARGE if generation >= Generation::V2 => Where::Dripstone,
+        COPPER_PLAIN if generation >= Generation::V2 => Where::NotDripstone,
+        _ => feature.where_,
+    }
 }
 
 struct Feature {
@@ -377,8 +403,21 @@ fn overlaps_chunk(band: Band, reach: i32, base_y: i32) -> bool {
     max + reach >= base_y && min - reach < base_y + CHUNK_SIZE_I
 }
 
-/// Replace stone and deepslate in `blocks` with veins that can reach this chunk.
-pub fn paint(seed: u64, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3, biome_at: impl Fn(i32, i32) -> Biome) {
+/// Replace stone and deepslate in `blocks` with veins that can reach this
+/// chunk. `biome_at(x, z)` is the surface biome of a column and
+/// `cave_at(x, y, z)` the biome at a block, cave biomes included (read
+/// only in generation 2).
+pub fn paint(
+    seed: u64,
+    generation: Generation,
+    blocks: &mut [Block; CHUNK_VOLUME],
+    base: IVec3,
+    biome_at: impl Fn(i32, i32) -> Biome,
+    cave_at: impl Fn(i32, i32, i32) -> Biome,
+) {
+    if generation >= Generation::V2 {
+        paint_ore_veins(seed, blocks, base);
+    }
     for feature in FEATURES {
         let reach = vein_reach(feature.size);
         if !overlaps_chunk(feature.band, reach, base.y) {
@@ -392,20 +431,23 @@ pub fn paint(seed: u64, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3, biome_a
         let max_cz = (base.z + CHUNK_SIZE_I - 1 + reach).div_euclid(JAVA_CELL);
         for cz in min_cz..=max_cz {
             for cx in min_cx..=max_cx {
-                paint_cell(seed, feature, cx, cz, blocks, base, &biome_at);
+                paint_cell(seed, feature, where_in(feature, generation), cx, cz, blocks, base, &biome_at, &cave_at);
             }
         }
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn paint_cell(
     seed: u64,
     feature: &Feature,
+    where_: Where,
     cx: i32,
     cz: i32,
     blocks: &mut [Block; CHUNK_VOLUME],
     base: IVec3,
     biome_at: &impl Fn(i32, i32) -> Biome,
+    cave_at: &impl Fn(i32, i32, i32) -> Biome,
 ) {
     let mut rng = Rng(hash3(cx, cz, feature.salt as i32, seed ^ feature.salt));
     let tries = attempts(feature.tries, &mut rng);
@@ -417,21 +459,24 @@ fn paint_cell(
         let x = cx * JAVA_CELL + rng.below(JAVA_CELL as u32) as i32;
         let z = cz * JAVA_CELL + rng.below(JAVA_CELL as u32) as i32;
         let Some(y) = sample_world_y(&mut rng, feature.band) else { continue };
-        if feature.where_ != Where::Overworld {
-            let biome = biome_at(x, z);
-            let ok = match feature.where_ {
-                Where::Mountains => biome.is_mountain(),
-                Where::Badlands => biome.is_badlands(),
+        // Both filters only skip the try, so their order doesn't change
+        // the output; the cheap one goes first.
+        let reach = vein_reach(feature.size);
+        let misses = |origin: i32, chunk: i32| origin + reach < chunk || origin - reach >= chunk + CHUNK_SIZE_I;
+        if misses(x, base.x) || misses(y, base.y) || misses(z, base.z) {
+            continue;
+        }
+        if where_ != Where::Overworld {
+            let ok = match where_ {
+                Where::Mountains => biome_at(x, z).is_mountain(),
+                Where::Badlands => biome_at(x, z).is_badlands(),
+                Where::Dripstone => cave_at(x, y, z) == Biome::DripstoneCaves,
+                Where::NotDripstone => cave_at(x, y, z) != Biome::DripstoneCaves,
                 Where::Overworld => true,
             };
             if !ok {
                 continue;
             }
-        }
-        let reach = vein_reach(feature.size);
-        let misses = |origin: i32, chunk: i32| origin + reach < chunk || origin - reach >= chunk + CHUNK_SIZE_I;
-        if misses(x, base.x) || misses(y, base.y) || misses(z, base.z) {
-            continue;
         }
         place_vein(&mut vein_rng, IVec3::new(x, y, z), feature, blocks, base);
     }
@@ -578,6 +623,137 @@ fn deepslate_variant(ore: Block) -> Block {
     }
 }
 
+// ---- Large ore veins (generation 2) -------------------------------------
+
+/// One kind of Java ore vein (`OreVeinifier.VeinType`).
+struct VeinKind {
+    ore: Block,
+    raw: Block,
+    filler: Block,
+    min_y: i32,
+    max_y: i32,
+}
+
+const COPPER_VEIN: VeinKind =
+    VeinKind { ore: Block::COPPER_ORE, raw: Block::RAW_COPPER_BLOCK, filler: Block::GRANITE, min_y: 0, max_y: 50 };
+const IRON_VEIN: VeinKind =
+    VeinKind { ore: Block::DEEPSLATE_IRON_ORE, raw: Block::RAW_IRON_BLOCK, filler: Block::TUFF, min_y: -60, max_y: -8 };
+/// `OreVeinifier`'s constants.
+const VEININESS_THRESHOLD: f32 = 0.4;
+const EDGE_ROUNDOFF_BEGIN: f32 = 20.0;
+const MAX_EDGE_ROUNDOFF: f32 = 0.2;
+const VEIN_SOLIDNESS: f32 = 0.7;
+const MIN_RICHNESS: f32 = 0.1;
+const MAX_RICHNESS: f32 = 0.3;
+const MAX_RICHNESS_THRESHOLD: f32 = 0.6;
+const CHANCE_OF_RAW_ORE_BLOCK: f32 = 0.02;
+const SKIP_ORE_IF_GAP_NOISE_IS_BELOW: f32 = -0.3;
+/// Ridges where both vein noises are within this of zero.
+const VEIN_RIDGE: f32 = 0.08;
+const TOGGLE_SALT: u64 = 0x0E7E_1001;
+const RIDGE_A_SALT: u64 = 0x0E7E_1002;
+const RIDGE_B_SALT: u64 = 0x0E7E_1003;
+const GAP_SALT: u64 = 0x0E7E_1004;
+const CELL_SALT: u64 = 0x0E7E_1005;
+/// The toggle noise is smooth (period ~170 blocks): sampled every
+/// [`TOGGLE_STEP`] blocks and interpolated.
+const TOGGLE_STEP: usize = 8;
+
+/// Java's `Mth.clampedMap`.
+fn clamped_map(v: f32, from0: f32, from1: f32, to0: f32, to1: f32) -> f32 {
+    let t = ((v - from0) / (from1 - from0)).clamp(0.0, 1.0);
+    to0 + (to1 - to0) * t
+}
+
+/// Java's large ore veins in the stone and deepslate of this chunk: where
+/// the low-frequency toggle noise is far from zero (positive copper,
+/// negative iron) inside that kind's heights, and two ridge noises are both
+/// near zero, the vein is its filler with ore through it.
+fn paint_ore_veins(seed: u64, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3) {
+    let (lo, hi) = (IRON_VEIN.min_y, COPPER_VEIN.max_y);
+    if base.y > hi || base.y + CHUNK_SIZE_I <= lo {
+        return;
+    }
+    let toggle = Perlin::new(seed ^ TOGGLE_SALT);
+    const N: usize = super::chunk::CHUNK_SIZE / TOGGLE_STEP + 1;
+    let mut grid = [[[0f32; N]; N]; N];
+    let mut strongest = 0f32;
+    for (gy, plane) in grid.iter_mut().enumerate() {
+        for (gz, row) in plane.iter_mut().enumerate() {
+            for (gx, v) in row.iter_mut().enumerate() {
+                let p = base + IVec3::new(gx as i32, gy as i32, gz as i32) * TOGGLE_STEP as i32;
+                *v = toggle.noise3(p.x as f32 / 170.0, p.y as f32 / 170.0, p.z as f32 / 170.0) * 1.6;
+                strongest = strongest.max(v.abs());
+            }
+        }
+    }
+    // The interpolated toggle never exceeds its corners.
+    if strongest < VEININESS_THRESHOLD {
+        return;
+    }
+    let ridge_a = Perlin::new(seed ^ RIDGE_A_SALT);
+    let ridge_b = Perlin::new(seed ^ RIDGE_B_SALT);
+    let gap = Perlin::new(seed ^ GAP_SALT);
+    let sample = |x: usize, y: usize, z: usize| {
+        let (gx, gy, gz) = (x / TOGGLE_STEP, y / TOGGLE_STEP, z / TOGGLE_STEP);
+        let s = TOGGLE_STEP as f32;
+        let (fx, fy, fz) = ((x % TOGGLE_STEP) as f32 / s, (y % TOGGLE_STEP) as f32 / s, (z % TOGGLE_STEP) as f32 / s);
+        let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
+        let c = |dx: usize, dy: usize, dz: usize| grid[gy + dy][gz + dz][gx + dx];
+        let x00 = lerp(c(0, 0, 0), c(1, 0, 0), fx);
+        let x10 = lerp(c(0, 1, 0), c(1, 1, 0), fx);
+        let x01 = lerp(c(0, 0, 1), c(1, 0, 1), fx);
+        let x11 = lerp(c(0, 1, 1), c(1, 1, 1), fx);
+        lerp(lerp(x00, x01, fz), lerp(x10, x11, fz), fy)
+    };
+    for y in 0..super::chunk::CHUNK_SIZE {
+        let wy = base.y + y as i32;
+        if !(lo..=hi).contains(&wy) {
+            continue;
+        }
+        for z in 0..super::chunk::CHUNK_SIZE {
+            for x in 0..super::chunk::CHUNK_SIZE {
+                let i = index(x, y, z);
+                if !matches!(blocks[i], Block::STONE | Block::DEEPSLATE) {
+                    continue;
+                }
+                let t = sample(x, y, z);
+                let kind = if t > 0.0 { &COPPER_VEIN } else { &IRON_VEIN };
+                if !(kind.min_y..=kind.max_y).contains(&wy) {
+                    continue;
+                }
+                let edge = (kind.max_y - wy).min(wy - kind.min_y) as f32;
+                let roundoff = clamped_map(edge, 0.0, EDGE_ROUNDOFF_BEGIN, -MAX_EDGE_ROUNDOFF, 0.0);
+                if t.abs() + roundoff < VEININESS_THRESHOLD {
+                    continue;
+                }
+                let (wx, wz) = (base.x + x as i32, base.z + z as i32);
+                if hash_f(wx, wy, wz, seed ^ CELL_SALT) > VEIN_SOLIDNESS {
+                    continue;
+                }
+                let (fx, fy, fz) = (wx as f32 / 24.0, wy as f32 / 24.0, wz as f32 / 24.0);
+                let ridged = ridge_a.noise3(fx, fy, fz).abs().max(ridge_b.noise3(fx, fy, fz).abs()) - VEIN_RIDGE;
+                if ridged >= 0.0 {
+                    continue;
+                }
+                let richness =
+                    clamped_map(t.abs(), VEININESS_THRESHOLD, MAX_RICHNESS_THRESHOLD, MIN_RICHNESS, MAX_RICHNESS);
+                let roll = hash_f(wx, wy, wz, seed ^ CELL_SALT ^ 0x55);
+                let open = gap.noise3(wx as f32 / 32.0, wy as f32 / 32.0, wz as f32 / 32.0) * 1.6;
+                blocks[i] = if roll < richness && open > SKIP_ORE_IF_GAP_NOISE_IS_BELOW {
+                    if hash_f(wx, wy, wz, seed ^ CELL_SALT ^ 0xAA) < CHANCE_OF_RAW_ORE_BLOCK {
+                        kind.raw
+                    } else {
+                        kind.ore
+                    }
+                } else {
+                    kind.filler
+                };
+            }
+        }
+    }
+}
+
 fn exposed(blocks: &[Block; CHUNK_VOLUME], base: IVec3, p: IVec3) -> bool {
     const DIRS: [IVec3; 6] = [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z];
     DIRS.into_iter().any(|d| {
@@ -620,26 +796,96 @@ mod tests {
         // Painting is a pure function of world position: two bases that
         // overlap by half a chunk must paint the shared half identically,
         // even when one of them skips veins the other places.
-        let paint_at = |base: IVec3| {
-            let mut blocks = Box::new([Block::STONE; CHUNK_VOLUME]);
-            paint(11, &mut blocks, base, |_, _| Biome::Plains);
-            blocks
-        };
-        for y in [0, 32, 64] {
-            let a = paint_at(IVec3::new(0, y, 0));
-            let b = paint_at(IVec3::new(16, y + 16, 8));
-            for z in 8..CHUNK_SIZE_I {
-                for yy in 16..CHUNK_SIZE_I {
-                    for x in 16..CHUNK_SIZE_I {
-                        let (ia, ib) = (
-                            index(x as usize, yy as usize, z as usize),
-                            index((x - 16) as usize, (yy - 16) as usize, (z - 8) as usize),
-                        );
-                        assert_eq!(a[ia], b[ib], "seam mismatch at {x},{},{z}", y + yy);
+        for generation in [Generation::V1, Generation::V2] {
+            let paint_at = |base: IVec3| {
+                let mut blocks = Box::new([Block::STONE; CHUNK_VOLUME]);
+                paint(11, generation, &mut blocks, base, |_, _| Biome::Plains, |_, _, _| Biome::Plains);
+                blocks
+            };
+            for y in [-64, -32, 0, 32, 64] {
+                let a = paint_at(IVec3::new(0, y, 0));
+                let b = paint_at(IVec3::new(16, y + 16, 8));
+                for z in 8..CHUNK_SIZE_I {
+                    for yy in 16..CHUNK_SIZE_I {
+                        for x in 16..CHUNK_SIZE_I {
+                            let (ia, ib) = (
+                                index(x as usize, yy as usize, z as usize),
+                                index((x - 16) as usize, (yy - 16) as usize, (z - 8) as usize),
+                            );
+                            assert_eq!(a[ia], b[ib], "seam mismatch at {x},{},{z}", y + yy);
+                        }
                     }
                 }
             }
         }
+    }
+
+    /// Count of `ores` painted into all-stone chunks over a 4×4 area.
+    fn painted(generation: Generation, cave: Biome, ys: &[i32], ores: &[Block]) -> usize {
+        let mut n = 0;
+        for &y in ys {
+            for cz in -2..2 {
+                for cx in -2..2 {
+                    let base = IVec3::new(cx * CHUNK_SIZE_I, y, cz * CHUNK_SIZE_I);
+                    let fill = if y < 0 { Block::DEEPSLATE } else { Block::STONE };
+                    let mut blocks = Box::new([fill; CHUNK_VOLUME]);
+                    paint(5, generation, &mut blocks, base, |_, _| Biome::Plains, |_, _, _| cave);
+                    n += blocks.iter().filter(|b| ores.contains(b)).count();
+                }
+            }
+        }
+        n
+    }
+
+    #[test]
+    fn generation_2_copper_follows_dripstone_caves() {
+        // Above the ore veins' heights, so only the placed features count.
+        let copper = [Block::COPPER_ORE];
+        let ys = [64, 96];
+        let old = painted(Generation::V1, Biome::Plains, &ys, &copper);
+        let plain = painted(Generation::V2, Biome::Plains, &ys, &copper);
+        let dripstone = painted(Generation::V2, Biome::DripstoneCaves, &ys, &copper);
+        assert_eq!(old, painted(Generation::V1, Biome::DripstoneCaves, &ys, &copper), "generation 1 ignores caves");
+        assert!(plain < old && dripstone < old, "one copper feature each: {plain}, {dripstone} of {old}");
+        assert!(dripstone > plain * 2, "dripstone caves' large copper veins: {dripstone} vs {plain}");
+    }
+
+    #[test]
+    fn generation_2_adds_javas_large_ore_veins() {
+        let ys = [-64, -32, 0, 32];
+        let raw = [Block::RAW_COPPER_BLOCK, Block::RAW_IRON_BLOCK];
+        assert_eq!(painted(Generation::V1, Biome::Plains, &ys, &raw), 0, "generation 1 has no ore veins");
+        let mut found = [0usize; 4];
+        for &y in &ys {
+            for cz in -6..6 {
+                for cx in -6..6 {
+                    let base = IVec3::new(cx * CHUNK_SIZE_I, y, cz * CHUNK_SIZE_I);
+                    let fill = if y < 0 { Block::DEEPSLATE } else { Block::STONE };
+                    let mut blocks = Box::new([fill; CHUNK_VOLUME]);
+                    paint(21, Generation::V2, &mut blocks, base, |_, _| Biome::Plains, |_, _, _| Biome::Plains);
+                    for (i, &b) in blocks.iter().enumerate() {
+                        let wy = y + (i / (CHUNK_SIZE * CHUNK_SIZE)) as i32;
+                        match b {
+                            Block::RAW_COPPER_BLOCK => {
+                                assert!((0..=50).contains(&wy), "raw copper at y={wy}");
+                                found[0] += 1;
+                            }
+                            Block::RAW_IRON_BLOCK => {
+                                assert!((-60..=-8).contains(&wy), "raw iron at y={wy}");
+                                found[1] += 1;
+                            }
+                            Block::GRANITE if (0..=50).contains(&wy) => found[2] += 1,
+                            Block::TUFF if (-60..=-8).contains(&wy) => found[3] += 1,
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+        eprintln!("raw copper {}, raw iron {}, granite {}, tuff {}", found[0], found[1], found[2], found[3]);
+        assert!(found[0] > 0 && found[1] > 0, "{found:?}");
+        // The filler dwarfs the raw blocks (2% of the ore, itself 10-30%).
+        assert!(found[2] > found[0] * 20 && found[3] > found[1] * 20, "{found:?}");
     }
 
     #[test]

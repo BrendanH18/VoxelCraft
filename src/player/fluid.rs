@@ -27,7 +27,7 @@ pub fn fluid_at(b: Block) -> Option<FluidCell> {
         Block::FALLING_WATER => cell(Fluid::Water, 8, false, true),
         Block::LAVA => cell(Fluid::Lava, 8, true, false),
         Block::FALLING_LAVA => cell(Fluid::Lava, 8, false, true),
-        _ if b.is_waterlogged() => cell(Fluid::Water, 8, true, false),
+        _ if b.is_waterlogged() || crate::world::bubble::is_column(b) => cell(Fluid::Water, 8, true, false),
         _ => match (b.fluid(), b.fluid_level()) {
             (Some(Fluid::Water), Some(n)) => cell(Fluid::Water, 8 - n, false, false),
             (Some(Fluid::Lava), Some(n)) => cell(Fluid::Lava, 8 - 2 * n, false, false),

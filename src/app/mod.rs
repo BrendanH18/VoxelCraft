@@ -70,7 +70,7 @@ use crate::simulation::difficulty::Difficulty;
 use crate::world::World;
 use crate::world::block::Block;
 use crate::world::storage::{LevelInfo, Storage};
-use crate::world::terrain::{Dimension, Generator};
+use crate::world::terrain::{Dimension, Generation, Generator};
 use voxelcraft::rules::GameRules;
 
 use survival::Vitals;
@@ -861,6 +861,13 @@ impl Game {
             A::PickBlock => self.pick_block(),
             A::Inventory => self.toggle_inventory(),
             A::Drop => self.drop_selected(self.modifiers.control_key()),
+            A::SwapHands if playing => {
+                if self.lan.client.is_some() {
+                    self.lan_command("swap");
+                } else {
+                    self.swap_hands();
+                }
+            }
             A::Chat | A::Command if !self.inventory_open && !self.console.open => self.open_console(action == A::Chat),
             // Hardcore deaths end in spectator for good; only `/gamemode` cheats out.
             A::GameMode if self.lan.client.is_some() => self.lan_command(if self.session.mode.is_creative() {
@@ -1029,9 +1036,34 @@ impl Game {
             self.audio.play(crate::audio::sounds::Sound::Hurt, None, 0.9, (0.92, 1.05));
         }
         if taken > 0.0 && self.session.vitals.is_dead() {
+            if self.session.totem_saves(self.body.actions.selected) {
+                self.show_popup("Totem of Undying");
+                self.audio.play(crate::audio::sounds::Sound::Hurt, None, 0.6, (1.4, 1.6));
+                return taken;
+            }
             self.on_death();
         }
         taken
+    }
+
+    /// [`Game::damage_player_armored`] for an attack that comes from a place,
+    /// `toward` being the horizontal direction from the player to its source:
+    /// a raised shield facing it stops the hit (and its knockback).
+    pub(crate) fn damage_player_from(&mut self, amount: f32, cause: &str, toward: Option<glam::DVec3>) -> f32 {
+        if let Some(toward) = toward {
+            let slot = self.body.actions.selected;
+            let hit = self.session.shield_intercept(slot, amount, toward);
+            if hit.blocked {
+                self.audio.play(crate::audio::sounds::Sound::Hit, None, 0.7, (0.5, 0.7));
+                if hit.broke {
+                    self.show_popup("Shield broke");
+                    let sound = crate::audio::sounds::Sound::Break(crate::audio::sounds::Material::Wood);
+                    self.audio.play_in(crate::audio::SoundSource::Players, sound, None, 0.8, (1.3, 1.5));
+                }
+                return 0.0;
+            }
+        }
+        self.damage_player_armored(amount, cause)
     }
 
     /// Hurts the player through their armor (mobs, arrows, blasts, lava),
@@ -1667,6 +1699,11 @@ impl Game {
             && self.session.mode.can_interact()
             && self.attack_lan_player(&lan::PlayerRef::Host, self.body.actions.selected, sprint);
         self.with_hands(|hands| hands.attack_button(pressed, hit_player));
+    }
+
+    /// The swap-hands key: the selected stack and the off-hand trade places.
+    fn swap_hands(&mut self) {
+        self.with_hands(|hands| hands.swap_hands());
     }
 
     /// Use button (right click, or a controller's LT) pressed or released.

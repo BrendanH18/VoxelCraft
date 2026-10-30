@@ -483,7 +483,7 @@ impl MobWorld for World {
         self.generator.seed
     }
     fn biome(&self, x: i32, z: i32) -> crate::world::terrain::Biome {
-        self.generator.column(x, z).biome
+        self.generator.surface_biome(x, z)
     }
     fn snow_golem_melts(&self, p: IVec3) -> bool {
         self.generator.dimension == Dimension::Nether || self.generator.biome_at(p).snow_golem_melts()

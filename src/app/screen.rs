@@ -201,6 +201,10 @@ impl Screen<'_> {
                 self.session.work[i] = self.move_to_player(stack);
             }
             SlotRef::SmithResult => self.quick_take_smithing(),
+            SlotRef::Offhand => {
+                let Some(stack) = self.session.inventory.offhand.take() else { return };
+                self.session.inventory.offhand = self.move_to_player(stack);
+            }
             SlotRef::Armor(piece) => {
                 if !self.session.inventory.can_unequip(piece, self.session.mode.is_creative()) {
                     return;
@@ -420,6 +424,7 @@ impl Screen<'_> {
             }
             Some(SlotRef::CraftResult) => self.take_craft_result(),
             Some(SlotRef::Trade(i)) => self.buy_trade(i),
+            Some(SlotRef::Offhand) => self.session.inventory.click_offhand(right),
             Some(SlotRef::Armor(piece)) => {
                 self.session.inventory.click_armor(piece, right, self.session.mode.is_creative())
             }

@@ -2,7 +2,7 @@
 //! Static IDs and typed classes keep gameplay lookups independent of names and assets.
 use crate::{
     item::Item,
-    world::{block::Block, nether_biome_blocks as nb, overworld_blocks as ob},
+    world::{biome_plants as bp, block::Block, nether_biome_blocks as nb, overworld_blocks as ob},
 };
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CompostClass {
@@ -60,12 +60,20 @@ const CHANCE_30: &[Item] = &[
     Item::from_block(ob::PINK_PETALS),
     Item::from_block(ob::PALE_HANGING_MOSS_TIP),
     Item::from_block(ob::PALE_HANGING_MOSS),
+    Item::from_block(bp::LEAF_LITTER),
+    Item::from_block(bp::WILDFLOWERS),
+    Item::from_block(bp::BUSH),
+    Item::from_block(bp::FIREFLY_BUSH),
+    Item::from_block(bp::SHORT_DRY_GRASS),
+    Item::from_block(bp::TALL_DRY_GRASS),
+    Item::from_block(bp::CACTUS_FLOWER),
 ];
 const CHANCE_50: &[Item] = &[
     Item::MELON_SLICE,
     Item::from_block(Block::CACTUS),
     Item::from_block(Block::SUGAR_CANE),
     Item::from_block(ob::FLOWERING_AZALEA_LEAVES),
+    Item::from_block(crate::world::cave_blocks::GLOW_LICHEN),
     Item::from_block(ob::DRIED_KELP_BLOCK),
     Item::from_block(ob::DOUBLE_TALL_GRASS),
     Item::from_block(ob::VINE),

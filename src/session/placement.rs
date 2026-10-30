@@ -123,6 +123,9 @@ impl PlayerSession {
         let snow = ob::snow_layers(clicked).filter(|_| held.item.places() == Some(ob::SNOW_LAYER));
         let at = if snow.is_some() {
             if normal == IVec3::Y && snow < Some(8) { hit } else { hit + normal }
+        } else if held.item.places().is_some_and(|b| crate::world::biome_plants::stacked(b, clicked).is_some()) {
+            // Another leaf litter or wildflower segment goes into the same cell.
+            hit
         } else if clicked.is_replaceable() {
             hit
         } else {
@@ -249,7 +252,14 @@ impl PlayerSession {
                 if crate::world::scaffolding::is_scaffolding(raw) {
                     raw = crate::world::scaffolding::placed(|p| world.get_block(p), at, false);
                 }
-                if raw == ob::SNOW_LAYER
+                if let Some(more) = crate::world::biome_plants::stacked(raw, world.get_block(at).unwrap_or(Block::AIR))
+                {
+                    // One more segment of leaf litter or wildflowers in the cell.
+                    if blocked(at) {
+                        return Err("placement intersects a player");
+                    }
+                    (at, more, None, Kind::Block)
+                } else if raw == ob::SNOW_LAYER
                     && let Some(layers) = world.get_block(at).and_then(ob::snow_layers).filter(|&n| n < 8)
                 {
                     // Stacking replaces the existing snow block with one more layer.
@@ -265,7 +275,12 @@ impl PlayerSession {
                 } else {
                     // Levers, buttons, grindstones, lanterns and redstone torches
                     // follow Java's nearest-looking-direction rules.
-                    let block = if let Some(placed) = crate::world::wood::placed(raw, &ctx, |c| world.get_block(c)) {
+                    let block = if let Some(placed) =
+                        crate::world::cave_blocks::placed(raw, at, ctx.look, |c| world.get_block(c))
+                    {
+                        // Glow lichen and sculk veins take a face (`MultifaceBlock`).
+                        placed.ok_or("block cannot survive here")?
+                    } else if let Some(placed) = crate::world::wood::placed(raw, &ctx, |c| world.get_block(c)) {
                         // Signs, shelves and chiseled bookshelves (`world::wood`).
                         placed.ok_or("block cannot survive here")?
                     } else if let Some(banner) = cb::placed(raw, &ctx, |c| world.get_block(c)) {

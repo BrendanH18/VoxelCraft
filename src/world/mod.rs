@@ -17,9 +17,12 @@ mod automation;
 pub mod bastion;
 pub mod bell;
 pub mod biome;
+pub mod biome_plants;
 pub mod biome_zoom;
 pub mod block;
 pub mod brewing;
+pub mod bubble;
+pub mod cave_blocks;
 pub mod caves;
 pub mod chest;
 pub mod chunk;
@@ -28,6 +31,7 @@ pub mod colors;
 pub mod colour_blocks;
 pub mod composter;
 pub mod copper;
+pub mod deep_dark;
 pub mod dismount;
 pub mod double_chest;
 pub mod dungeon;
@@ -83,6 +87,7 @@ pub mod structure;
 pub mod temples;
 pub mod terrain;
 pub mod trees;
+pub mod underground;
 pub mod utilities;
 pub mod village;
 pub mod village_blocks;
@@ -125,18 +130,29 @@ pub struct GeneratedChunk {
     data: ChunkData,
     features: Vec<(IVec3, fortress::Feature)>,
     fluid_ticks: Vec<IVec3>,
+    /// Water above soul sand or magma: where bubble columns start.
+    bubble_seeds: Vec<IVec3>,
 }
 
 impl GeneratedChunk {
     pub fn new(generator: &Generator, pos: IVec3, mut data: ChunkData) -> Self {
         foraging::decorate(generator, pos, &mut data);
         let features = generator.structure_features(pos);
-        let fluid_ticks = if generator.dimension == terrain::Dimension::Overworld {
+        let mut fluid_ticks = if generator.dimension == terrain::Dimension::Overworld {
             generator.geodes.fluid_ticks(generator, pos * CHUNK_SIZE_I)
         } else {
             Vec::new()
         };
-        Self { data, features, fluid_ticks }
+        // GEN-02: generation 2's springs start flowing.
+        if generator.dimension == terrain::Dimension::Overworld && generator.generation >= terrain::Generation::V2 {
+            fluid_ticks.extend(underground::spring_ticks(generator, pos, &data));
+        }
+        let bubble_seeds = if generator.dimension == terrain::Dimension::End {
+            Vec::new()
+        } else {
+            bubble::seeds(&data, pos * CHUNK_SIZE_I)
+        };
+        Self { data, features, fluid_ticks, bubble_seeds }
     }
 }
 
@@ -859,6 +875,7 @@ impl World {
         if old != block {
             self.scaffolding_changed(p);
         }
+        self.bubble_changed(p, old, block);
         self.track_automation(p, old, block);
         self.track_furnace(p, old, block);
         self.track_chest(p, old, block);
@@ -1256,12 +1273,14 @@ impl World {
 
     /// Install a generated chunk whose generator-derived work is already done.
     fn insert_generated(&mut self, pos: IVec3, chunk: GeneratedChunk) {
-        let GeneratedChunk { data, features, fluid_ticks } = chunk;
+        let GeneratedChunk { data, features, fluid_ticks, bubble_seeds } = chunk;
         self.register_features(&data, features);
+        self.fluids.bubbles.extend(bubble_seeds);
+        // Installed first, so `wake_fluids` sees this chunk's lava.
+        self.install_chunk(pos, Arc::new(data), false);
         for p in fluid_ticks {
             self.wake_fluids(p);
         }
-        self.install_chunk(pos, Arc::new(data), false);
     }
 
     fn install_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>, modified: bool) {
@@ -1505,7 +1524,9 @@ impl World {
             origin,
             dir,
             max_dist,
-            |b| b.is_targetable() || b == Block::WATER || b == Block::LAVA || b.is_waterlogged(),
+            |b| {
+                b.is_targetable() || b == Block::WATER || b == Block::LAVA || b.is_waterlogged() || bubble::is_column(b)
+            },
             true,
             false,
         )
@@ -1607,9 +1628,10 @@ mod tests {
     use crate::player::{MoveInput, Player};
     use std::time::{Duration, Instant};
 
-    /// Streams the world around `at` until all jobs are done.
+    /// Streams the world around `at` until all jobs are done. Generation 1
+    /// terrain: generation 2's springs pour while these scenes run.
     fn settled_world(at: DVec3) -> World {
-        let generator = Arc::new(Generator::new(7));
+        let generator = Arc::new(Generator::with_generation(7, terrain::Dimension::Overworld, terrain::Generation::V1));
         let mut world = World::new(generator, Default::default(), 3);
         let deadline = Instant::now() + Duration::from_secs(20);
         loop {
@@ -1648,7 +1670,10 @@ mod tests {
     #[test]
     fn generated_jungle_fluids_settle_after_neighbor_updates() {
         let pos = DVec3::new(1882.0, 99.0, 682.0);
-        let mut world = World::new_headless(Arc::new(Generator::new(1)), Default::default(), 4);
+        // Generation 1's jungle: generation 2's lava springs keep flowing past this test's 1200 ticks.
+        let generator =
+            Generator::with_generation(1, super::terrain::Dimension::Overworld, super::terrain::Generation::V1);
+        let mut world = World::new_headless(Arc::new(generator), Default::default(), 4);
         let end = Instant::now() + Duration::from_secs(30);
         while world.loaded_chunks() == 0 || world.pending_jobs() > 0 {
             world.update(pos);

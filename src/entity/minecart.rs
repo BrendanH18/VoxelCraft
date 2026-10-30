@@ -339,7 +339,15 @@ impl Minecart {
             self.fall_distance = 0.0;
             let drop = world.get_block(cell).filter(|b| b.is_water()).map_or(0.0, |b| b.fluid_drop() as f64 / 16.0);
             let surface = cell.y as f64 + 1.0 - drop;
-            self.vel.y = (self.vel.y * 0.75 + (surface - self.pos.y - 0.15) * 0.1).clamp(-0.04, 0.1);
+            // A bubble column overrides the surface spring: it lifts the boat
+            // out of the water or drags it under (`Boat.onAboveBubbleColumn`).
+            let (min, max) = shape.aabb(self.pos);
+            match crate::world::bubble::apply(|p| world.get_block(p), min, max, self.vel.y) {
+                Some(dy) => self.vel.y = dy,
+                None => {
+                    self.vel.y = (self.vel.y * 0.75 + (surface - self.pos.y - 0.15) * 0.1).clamp(-0.04, 0.1);
+                }
+            }
             self.underwater_ticks = if submerged { self.underwater_ticks.saturating_add(1) } else { 0 };
             if submerged {
                 self.vel.y = (self.vel.y + 0.01) * 0.95;
@@ -1426,6 +1434,29 @@ mod tests {
         let before = c.vel.x;
         c.step(&w, DVec3::ZERO, false);
         assert!(c.vel.x > 0. && c.vel.x < before);
+    }
+
+    #[test]
+    fn boats_ride_up_bubble_columns_and_are_dragged_under_by_magma_ones() {
+        use crate::world::bubble::{DOWN, UP};
+        for (column, rises) in [(UP, true), (DOWN, false)] {
+            let mut w = world();
+            for x in 0..16 {
+                for z in 0..16 {
+                    for y in 130..160 {
+                        w.set_block(IVec3::new(x, y, z), Block::WATER);
+                    }
+                }
+            }
+            for y in 130..160 {
+                w.edit(IVec3::new(3, y, 3), column, false);
+            }
+            let mut c = Minecart::new(1, CartKind::Boat { wood: 0, chest: false }, DVec3::new(3.5, 145.0, 3.5));
+            for _ in 0..40 {
+                c.step(&w, DVec3::ZERO, false);
+            }
+            assert_eq!(c.pos.y > 145.5, rises, "{column:?}: {}", c.pos.y);
+        }
     }
 
     #[test]
