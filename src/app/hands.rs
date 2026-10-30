@@ -136,6 +136,7 @@ impl Actor<'_> {
         }
         self.body.right_held = pressed;
         self.body.used_once = false;
+        self.body.main_used = false;
         if pressed && !self.equip_held() && !self.start_draw() {
             if self.held().is_none_or(|i| i.food().is_none()) {
                 self.hand.swing();
@@ -178,6 +179,7 @@ impl Actor<'_> {
             && self.body.right_held
             && !self.session.drawing()
             && !self.session.shield_raised()
+            && !self.session.consuming()
             // Buckets, snowballs, eggs and rods act once per click, in either hand.
             && !self.held().is_some_and(once_per_click)
             && !self.body.used_once
@@ -222,7 +224,12 @@ impl Actor<'_> {
 
     /// Held use advances the shared fixed-tick consumption clock.
     fn eat(&mut self, acting: bool, dt: f64) {
-        let held = self.session.consumable_in_hands(self.body.actions.selected).or(self.held());
+        let slot = self.body.actions.selected;
+        // Java uses the off-hand only when the main hand's use passes: a
+        // click that placed a block doesn't also eat off-hand food.
+        let off_allowed =
+            !self.body.main_used || self.session.consuming() || self.session.consumption_duration(slot).is_ok();
+        let held = if off_allowed { self.session.consumable_in_hands(slot).or(self.held()) } else { self.held() };
         let drink = held.is_some_and(Item::is_drink);
         let food = held.and_then(|i| i.food());
         let hungry = held.is_some_and(|item| self.session.can_eat(item));
@@ -298,6 +305,7 @@ impl Actor<'_> {
         if done.off_hand && off.is_some_and(once_per_click) {
             self.body.used_once = true;
         }
+        self.body.main_used |= !done.off_hand;
         if let Some(item) = done.tool_broken {
             self.tool_broke(item);
         }

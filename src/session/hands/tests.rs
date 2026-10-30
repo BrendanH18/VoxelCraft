@@ -320,3 +320,17 @@ fn a_totem_in_either_hand_undoes_a_lethal_hit_once() {
     s.vitals.damage(100.0, crate::simulation::survival::CAUSE_MAGIC, false);
     assert!(s.totem_saves(0));
 }
+
+#[test]
+fn swapping_hands_ends_a_draw() {
+    let w = world();
+    let mut entities = Entities::new(7);
+    let mut s = session();
+    s.inventory.slots[0] = Some(Stack::new(Item::BOW, 1));
+    s.inventory.offhand = Some(Stack::new(Item::BOW, 1));
+    s.inventory.slots[1] = Some(Stack::new(Item::ARROW, 8));
+    s.start_draw(0, &w, &mut entities);
+    assert!(s.drawing());
+    assert!(s.swap_hands(0));
+    assert!(!s.drawing(), "the incoming bow starts undrawn");
+}

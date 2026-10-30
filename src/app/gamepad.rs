@@ -86,6 +86,8 @@ pub(super) struct Body {
     /// This click's off-hand use was a once-per-click item (bucket,
     /// snowball, egg, rod), so holding the button doesn't repeat it.
     pub(super) used_once: bool,
+    /// The main hand's item answered this click, so off-hand food waits.
+    pub(super) main_used: bool,
     pub(super) container: Container,
 }
 
@@ -99,6 +101,7 @@ impl Default for Body {
             mine_pressed: false,
             attack_held: false,
             used_once: false,
+            main_used: false,
             container: Container::Inventory,
         }
     }

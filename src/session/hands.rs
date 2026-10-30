@@ -214,6 +214,7 @@ impl PlayerSession {
             return false;
         }
         self.cancel_consumption();
+        self.cancel_draw();
         self.stop_blocking();
         self.inventory.swap_offhand(slot);
         true
