@@ -125,6 +125,8 @@ fn a_shield_stops_frontal_hits_and_wears_by_one_plus_the_damage() {
     // From behind: not.
     assert!(!s.shield_intercept(0, 4.0, DVec3::NEG_X).blocked);
     assert!(!s.shield_intercept(0, 4.0, DVec3::new(-1.0, 0.0, 2.0)).blocked);
+    // Straight above or below: no horizontal source, not blocked.
+    assert!(!s.shield_intercept(0, 4.0, DVec3::Y).blocked);
     // Below three half-hearts the shield takes no wear; at four it takes five.
     assert_eq!(s.inventory.slots[0].unwrap().damage, 0);
     assert!(s.shield_intercept(0, 4.0, DVec3::X).blocked);

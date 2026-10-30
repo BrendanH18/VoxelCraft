@@ -172,7 +172,8 @@ impl PlayerSession {
         let flat = DVec3::new(toward.x, 0.0, toward.z);
         let view = self.player.forward().as_dvec3();
         let facing = DVec3::new(view.x, 0.0, view.z);
-        if flat.length_squared() > 1e-9 && flat.normalize().dot(facing) <= 0.0 {
+        // A hit straight from above or below has no horizontal source: not blocked.
+        if flat.length_squared() <= 1e-9 || flat.normalize().dot(facing) <= 0.0 {
             return ShieldHit::default();
         }
         let mut hit = ShieldHit { blocked: true, broke: false };

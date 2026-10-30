@@ -221,6 +221,6 @@ for generation 1: 1.16× and 1.22×
 
 Generation 1's surface is a heightmap, so its worlds have no overhanging
 cliffs. Generation 2's density field is original rather than Java's
-density functions (FE-01). There is no deep dark,
-no glow lichen, and no water or lava springs. Cave and climate noise are
+density functions (FE-01). Generation 1 has no deep dark, no glow
+lichen, and no water or lava springs. Cave and climate noise are
 original, so a Java seed does not reproduce Java terrain.

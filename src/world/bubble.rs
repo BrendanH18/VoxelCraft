@@ -170,7 +170,7 @@ impl World {
         let mut p = start;
         while let Some(b) = self.get_block(p).filter(|&b| can_exist_in(b)) {
             if b != want {
-                self.edit_exact(p, want, true);
+                self.edit_exact(p, want, false);
             }
             p += IVec3::Y;
         }

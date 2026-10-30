@@ -725,6 +725,12 @@ impl Game {
             }
             "inventory" => self.peer_open(peer, Container::Inventory),
             "close" => self.peer_close(peer),
+            "swap" => {
+                let name = peer.profile.clone().unwrap_or_default();
+                self.agent_hands(&name, &mut peer.body, |h| {
+                    h.swap_hands();
+                });
+            }
             "pick" => {
                 let name = peer.profile.clone().unwrap_or_default();
                 if let Some(bot) = self.agents.players.get_mut(&name) {
