@@ -1627,7 +1627,7 @@ For every individual feature, all applicable checks must pass:
 7. **Delivery evidence:** record the commit, scope, test results, manual
    steps/captures and remaining differences; update the requirement state.
 
-Use the repository's required pre-commit chain for source changes:
+Use the repository's required check chain for source changes:
 `cargo fmt && cargo clippy --release --all-targets -- -D warnings && cargo test --release`.
 Also run relevant headless checks, shader validation, cross-platform CI
 and applicable benchmark/player/save checks. Tests that merely mirror the
@@ -1641,9 +1641,8 @@ system as complete simply because its partial code builds.
 There are no promised dates. Version numbers follow the [release plan](#release-plan);
 a version ships when its scope is verified, and unfinished work moves to a
 later version rather than shipping incomplete.
-Keep one focused source commit per feature/fix on the assigned branch,
-following the [contribution workflow](../CONTRIBUTING.md). Keep roadmap updates
-reviewable alongside implementation changes and release notes.
+Keep roadmap updates reviewable alongside implementation changes and release
+notes.
 
 ## 8. Final acceptance record for 1.0
 

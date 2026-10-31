@@ -49,11 +49,8 @@ Keep pull requests focused and explain the behavior they change. Add or update
 tests when changing rules that can be checked without a GPU, and describe manual
 checks for graphics, input, or audio changes.
 
-Submit changes through a pull request; `main` is protected. Work on your assigned
-branch and preserve unrelated work. Coding agents never commit or push: they
-leave finished work uncommitted for the owner, and create branches or open PRs
-only when the owner asks (see [AGENTS.md](AGENTS.md#git-workflow)). The owner
-handles commits, pushes, merging and releases. Record local checks separately from GitHub CI and
+Submit changes through a pull request; `main` is protected. Preserve unrelated
+work. Record local checks separately from GitHub CI and
 CodeQL results, and do not bypass repository protections.
 
 Run the same checks as CI before submitting:
