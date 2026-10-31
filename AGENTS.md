@@ -11,8 +11,8 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
 - Match the selected Java reference behavior, including generation and structure
   layouts. Record sources and differences; do not substitute approximate behavior
   without an explicit scope decision.
-- Retain useful existing and pending work. Do not discard
-  uncommitted changes or rewrite working features because the plan changed.
+- Retain useful existing and pending work. Do not delete branches, discard
+  uncommitted changes, or rewrite working features because the plan changed.
 - Existing controller, CLI-agent and multiplayer paths receive maintenance and
   shared-feature integration; expansion is deferred under the roadmap.
 - Update `docs/roadmap.md` with verified behavior, discovered gaps and approved
@@ -37,7 +37,8 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
 
 - Release tags are two-part (owner, 2026-10-22): `v0.9`, `0.9` or `1.0`, naming
   Cargo version `0.9.0` / `1.0.0`. See [releases](docs/releases.md).
-- Preserve unrelated changes and other worktrees.
+- Preserve unrelated changes and other worktrees. Never delete
+  `refs/t3/checkpoints/*`, use `git push --mirror`, or use a bare `git stash`.
 - Keep saves, build output, credentials, local backups and
   machine-specific coordination files out of git: put them under an ignored
   path such as `target/` (for example `--data-dir target/playtest`), never as
