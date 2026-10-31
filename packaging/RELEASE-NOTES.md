@@ -74,8 +74,9 @@ new giant trees.
 - **Shields** (planks and an iron ingot): hold right click to block melee
   hits, arrows and explosions from the front. A blocked axe hit disables
   the shield for five seconds.
-- **The totem of undying** saves you from death in either hand. There's no
-  way to get one in survival yet: evokers come with raids in 0.17.
+- **The totem of undying**, held in either hand, saves you from death,
+  except in the void or from `/kill`. There's no way to get one in
+  survival yet: evokers come with raids in 0.17.
 
 ### Fire
 
@@ -309,11 +310,10 @@ new giant trees.
 Players on 0.10.0 or later get this version from the title screen. Install
 it by hand if you're on 0.9.0 or earlier; later versions then arrive in game.
 Worlds and options from 0.12.0 and earlier load in 0.13.0, and keep their
-old terrain generation. Don't open a world in an older version once it has
-any of the new blocks: older versions can't read the chunks that hold them.
-Don't open a world created in 0.13.0 in an older version either: it doesn't
-know the new terrain, so it fills unexplored land with the old kind, and it
-can lose the item in your off-hand. Back up your worlds before upgrading from 0.8.0, and
+old terrain generation. Once 0.13.0 has saved a world, don't open it in an
+older version: older versions can't read chunks holding the new blocks, and
+they drop the item in your off-hand. A world created in 0.13.0 would also
+have its unexplored land filled with the old terrain. Back up your worlds before upgrading from 0.8.0, and
 don't open a world saved by 0.9.0 or later in 0.8.0: once it uses any of the
 new block states, 0.8.0 can't read its terrain and would overwrite it. LAN
 players all need the same version.
