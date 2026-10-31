@@ -61,6 +61,7 @@ enum Press {
     Sprint,
     Sneak,
     Camera,
+    SwapHands,
 }
 
 /// Held controls, sampled every frame.
@@ -82,6 +83,11 @@ pub(super) struct Body {
     pub(super) mine_pressed: bool,
     /// The current click started as an attack, so it does not mine.
     pub(super) attack_held: bool,
+    /// This click's off-hand use was a once-per-click item (bucket,
+    /// snowball, egg, rod), so holding the button doesn't repeat it.
+    pub(super) used_once: bool,
+    /// The main hand's item answered this click, so off-hand food waits.
+    pub(super) main_used: bool,
     pub(super) container: Container,
 }
 
@@ -94,6 +100,8 @@ impl Default for Body {
             right_held: false,
             mine_pressed: false,
             attack_held: false,
+            used_once: false,
+            main_used: false,
             container: Container::Inventory,
         }
     }
@@ -363,6 +371,7 @@ fn press_for(button: Button) -> Option<Press> {
         Button::LeftThumb => Press::Sprint,
         Button::RightThumb => Press::Sneak,
         Button::West => Press::Camera,
+        Button::DPadDown => Press::SwapHands,
         _ => return None,
     })
 }
@@ -795,6 +804,9 @@ impl Game {
                     Press::MineUp => self.agent_hands(&name, &mut body, |h| h.attack_button(false, false)),
                     Press::UseDown => self.agent_hands(&name, &mut body, |h| h.use_button(true)),
                     Press::UseUp => self.agent_hands(&name, &mut body, |h| h.use_button(false)),
+                    Press::SwapHands => self.agent_hands(&name, &mut body, |h| {
+                        h.swap_hands();
+                    }),
                     Press::DropOne | Press::DropStack => {
                         self.drop_agent_selected(&name, &mut body, press == Press::DropStack);
                         None

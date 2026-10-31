@@ -158,6 +158,15 @@ impl System {
                 b.velocity = velocity;
                 self.burst(b, setting);
             }
+        } else if crate::world::bubble::is_column(block) {
+            // `BubbleColumnBlock.animateTick`: a bubble rises (or, over magma,
+            // sinks) through every cell. VoxelCraft has no whirlpool ambience.
+            let down = crate::world::bubble::drags(block);
+            let mut pos = base + random_vec(&mut self.rng);
+            pos.y = base.y + if down { 0.8 } else { 0.0 };
+            let mut b = Burst::new(Kind::Bubble, pos, 1);
+            b.velocity = DVec3::new(0.0, if down { -0.5 } else { 0.5 }, 0.0);
+            self.burst(b, setting);
         } else if block == Block::END_PORTAL {
             // Java End portals produce smoke rather than Nether-style purple particles.
             let mut pos = base + random_vec(&mut self.rng);

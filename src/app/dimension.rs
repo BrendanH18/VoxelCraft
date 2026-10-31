@@ -214,9 +214,13 @@ impl Game {
             self.overworld_props = self.dimension_props();
         }
         let (chunks, props) = load_dimension(&self.storage, to, &self.overworld_props);
-        let seed = self.world.generator.seed;
+        let (seed, generation) = (self.world.generator.seed, self.world.generator.generation);
         log::info!("travelling to the {} ({} modified chunks)", to.name(), chunks.len());
-        self.world = World::new(Arc::new(Generator::for_dimension(seed, to)), chunks, self.settings.render_distance);
+        self.world = World::new(
+            Arc::new(Generator::with_generation(seed, to, generation)),
+            chunks,
+            self.settings.render_distance,
+        );
         self.world.set_simulation_distance(self.settings.simulation_distance);
         self.mobs.entities = crate::entity::Entities::new(seed);
         self.renderer.clear_world();
@@ -243,7 +247,8 @@ impl Game {
             Dimension::Nether => (self.session.player.pos.y as i32).clamp(40, 100),
             Dimension::End => unreachable!("Nether portals cannot enter the End"),
             Dimension::Overworld => {
-                let ground = Generator::new(self.world.generator.seed).column(x, z).height;
+                let (seed, generation) = (self.world.generator.seed, self.world.generator.generation);
+                let ground = Generator::with_generation(seed, Dimension::Overworld, generation).column(x, z).height;
                 ground.max(SEA_LEVEL) + 1
             }
         };

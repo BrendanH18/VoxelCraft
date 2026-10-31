@@ -222,7 +222,7 @@ pub(super) fn monster_list(biome: Biome) -> &'static [MonsterSpawn] {
         DripstoneCaves => &DRIPSTONE,
         Jungle => &JUNGLE,
         BambooJungle => &BAMBOO_JUNGLE,
-        MushroomFields => &[],
+        MushroomFields | DeepDark => &[],
         _ => &DEFAULT,
     }
 }

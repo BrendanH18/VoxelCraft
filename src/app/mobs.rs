@@ -120,7 +120,9 @@ impl Game {
                     || self.pads.trading(v.id);
             }
         }
-        if self.held_item() != Some(crate::item::Item::FISHING_ROD) || self.session.vitals.is_dead() {
+        // Java keeps the hook while a rod is in either hand.
+        let off_rod = self.session.inventory.offhand.is_some_and(|s| s.item == crate::item::Item::FISHING_ROD);
+        if !(self.held_item() == Some(crate::item::Item::FISHING_ROD) || off_rod) || self.session.vitals.is_dead() {
             self.mobs.entities.drop_bobber(self.session.id);
         }
         super::seat_rider(&self.mobs.entities, &mut self.session.player, crate::entity::PlayerId::HOST);
@@ -209,7 +211,11 @@ impl Game {
                 EntityEvent::PlayerHit { player: PlayerId::HOST, damage, knockback, java, cause } => {
                     // Knockback only lands with damage, so hurt immunity
                     // also stops repeated shoves.
-                    if self.damage_player_armored(self.difficulty.mob_damage(damage), cause) > 0.0 {
+                    let toward = match java.and_then(|hit| hit.away()) {
+                        Some(away) => Some(-away),
+                        None => Some(-knockback.as_dvec3()),
+                    };
+                    if self.damage_player_from(self.difficulty.mob_damage(damage), cause, toward) > 0.0 {
                         if let Some(hit) = java {
                             let entities = &mut self.mobs.entities;
                             self.session.knocked_back(&hit, &mut || f64::from(entities.roll_range(0.0, 1.0)));
@@ -567,7 +573,8 @@ impl Game {
         let cells = if blast.destroys_blocks { self.world.exploded_cells(center, power) } else { Vec::new() };
         self.mobs.entities.explode_with(&self.world, center, power, credit_player, blast.destroys_blocks);
         if let Some((damage, push)) = self.session.blast(&self.world, center, power) {
-            if self.damage_player_armored(self.difficulty.mob_damage(damage), cause) > 0.0 {
+            let toward = Some(center - self.session.player.pos);
+            if self.damage_player_from(self.difficulty.mob_damage(damage), cause, toward) > 0.0 {
                 self.session.player.hurt_from(push);
             }
             self.session.player.vel += push;

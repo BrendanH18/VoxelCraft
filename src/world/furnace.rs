@@ -158,6 +158,8 @@ pub fn smelt(item: Item) -> Option<Item> {
         i if i == b(Block::SAND) || i == b(Block::RED_SAND) => b(Block::GLASS),
         i if i == b(Block::COBBLESTONE) => b(Block::STONE),
         i if i.block().is_some_and(Block::is_log) => Item::CHARCOAL,
+        // `#leaves` smelt to leaf litter.
+        i if i.block().is_some_and(Block::is_leaves) => b(crate::world::biome_plants::LEAF_LITTER),
         Item::CLAY_BALL => Item::BRICK,
         i if i == b(Block::CLAY) => b(Block::TERRACOTTA),
         i if let Some(c) = i.block().and_then(Block::stained_terracotta_color) => b(Block::glazed(c)),

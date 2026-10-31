@@ -447,6 +447,37 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             }
         }
         Sprite::Decor(kind) => decor(kind, x, y),
+        Sprite::Shield => {
+            // A heater shield: planks face with an iron rim and boss.
+            let inside = |x: i32, y: i32| (2..=14).contains(&y) && (x - 8).abs() <= 6 - (y - 4).max(0) * 6 / 10;
+            if !inside(x, y) {
+                None
+            } else if !inside(x - 1, y) || !inside(x + 1, y) || !inside(x, y - 1) || !inside(x, y + 1) {
+                Some(tint([176, 180, 188], 1.0))
+            } else if (x - 8).abs() <= 1 && (6..=8).contains(&y) {
+                Some(tint([210, 214, 220], 1.0))
+            } else if (x - 8).abs() <= 1 || y == 8 {
+                Some(tint([128, 98, 58], 1.0))
+            } else {
+                Some(tint([156, 124, 76], 1.0))
+            }
+        }
+        Sprite::Totem => {
+            // A gold totem with a green face.
+            let body = |x: i32, y: i32| {
+                ((2..=13).contains(&y) && (x - 8).abs() <= 3 && !(y >= 11 && (x - 8).abs() == 3))
+                    || ((x - 8).abs() <= 5 && (5..=7).contains(&y))
+            };
+            if !body(x, y) {
+                None
+            } else if (4..=5).contains(&y) && ((x - 8).abs() == 1) {
+                Some(tint([20, 30, 20], 1.0))
+            } else if (8..=9).contains(&y) && (x - 8).abs() <= 1 {
+                Some(tint([53, 133, 62], 1.0))
+            } else {
+                Some(tint([232, 188, 52], 1.0))
+            }
+        }
         Sprite::Crossbow { loaded } => {
             // A stock along the diagonal with a bowed limb across its top end.
             // `s` runs along the stock toward the top right, `k` across it.

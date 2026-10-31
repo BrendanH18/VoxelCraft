@@ -148,6 +148,7 @@ impl World {
         self.update_nether_vines(p);
         self.update_overworld_plants(p);
         self.update_utilities(p);
+        self.update_multiface(p);
         loop {
             self.wake_fluids(p);
             let Some(b) = self.get_block(p) else { return };

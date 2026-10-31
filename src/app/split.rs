@@ -429,6 +429,7 @@ impl Game {
             underwater,
             dial: self.dial_of(&a.player),
             vehicle: a.player.vehicle,
+            shield_cooldown: a.session.shield_cooldown_fraction(),
         };
         // Screens cover the hotbar, as Minecraft's do.
         let pad = self.pad_view(name).unwrap_or_default();

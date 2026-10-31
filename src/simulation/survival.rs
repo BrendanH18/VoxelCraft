@@ -351,6 +351,11 @@ impl Vitals {
         }
     }
 
+    /// Puts the player's fire out (a totem of undying does).
+    pub fn extinguish(&mut self) {
+        self.fire_left = 0.0;
+    }
+
     /// Whether a living player has time remaining on their fire effect.
     pub fn burning(&self) -> bool {
         self.fire_left > 0.0 && !self.is_dead()
@@ -1231,7 +1236,13 @@ mod tests {
         use std::sync::Arc;
         use std::time::{Duration, Instant};
 
-        let generator = Arc::new(Generator::new(7));
+        // Generation 1 terrain: `is_idle` waits for fluids, and generation
+        // 2's springs keep pouring until simulated.
+        let generator = Arc::new(Generator::with_generation(
+            7,
+            crate::world::terrain::Dimension::Overworld,
+            crate::world::terrain::Generation::V1,
+        ));
         let spawn = generator.find_spawn();
         let mut world = World::new(generator, Default::default(), 3);
         let deadline = Instant::now() + Duration::from_secs(20);

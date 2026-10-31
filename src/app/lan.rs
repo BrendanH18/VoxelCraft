@@ -8,7 +8,7 @@ use crate::world::{
     World,
     block::Block,
     chunk::{ChunkData, chunk_of},
-    terrain::{Dimension, Generator},
+    terrain::{Dimension, Generation, Generator},
 };
 use glam::{DVec3, IVec3};
 use serde_json::{Value, json};
@@ -300,6 +300,7 @@ fn state_lite(agent: &Agent, name: &str, swing: Option<f32>, eating: f32) -> Val
         "flying":agent.session.player.flying,"sneak":agent.session.player.sneaking,"mode":agent.session.mode.name(),"selected":agent.selected,
         "held":stack_to_string(agent.session.inventory.get(agent.selected)),
         "armor":agent.session.inventory.armor.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),
+        "offhand":stack_to_string(agent.session.inventory.offhand),
         "ticks_frozen":agent.session.vitals.ticks_frozen,"health":agent.session.vitals.health,"death":agent.session.vitals.death,"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle})
 }
 fn apply(agent: &mut Agent, v: &Value) {
@@ -337,6 +338,7 @@ fn apply(agent: &mut Agent, v: &Value) {
         for (slot, s) in agent.session.inventory.armor.iter_mut().zip(v["armor"].as_array().into_iter().flatten()) {
             *slot = s.as_str().and_then(stack_from_str).flatten();
         }
+        agent.session.inventory.offhand = v["offhand"].as_str().and_then(stack_from_str).flatten();
     }
     agent.session.player.sneaking = v["sneak"] == true;
     agent.session.inventory.cursor = v["cursor"].as_str().and_then(stack_from_str).flatten();
@@ -497,13 +499,14 @@ impl Game {
             };
             for packet in packets {
                 match packet {
-                    Packet::Welcome { seed, dimension, id } => {
+                    Packet::Welcome { seed, generation, dimension, id } => {
                         let Some(dimension) = Dimension::from_name(&dimension) else {
                             self.lan.lost = Some("Invalid server dimension".into());
                             break;
                         };
                         self.lan.id = id;
-                        self.reset_lan_world(seed, dimension);
+                        let generation = Generation::from_prop(Some(&generation.to_string()));
+                        self.reset_lan_world(seed, generation, dimension);
                         let view = self.lan.offline_render_distance.unwrap_or(LAN_VIEW_MAX).clamp(2, LAN_VIEW_MAX);
                         self.lan_command(&format!("view {view}"));
                     }
@@ -575,6 +578,7 @@ impl Game {
                         peer.connection
                             .send(Packet::Welcome {
                                 seed: self.world.generator.seed,
+                                generation: self.world.generator.generation.number(),
                                 dimension: self.dimension.name().into(),
                                 id: bot.id.0,
                             })
@@ -721,6 +725,12 @@ impl Game {
             }
             "inventory" => self.peer_open(peer, Container::Inventory),
             "close" => self.peer_close(peer),
+            "swap" => {
+                let name = peer.profile.clone().unwrap_or_default();
+                self.agent_hands(&name, &mut peer.body, |h| {
+                    h.swap_hands();
+                });
+            }
             "pick" => {
                 let name = peer.profile.clone().unwrap_or_default();
                 if let Some(bot) = self.agents.players.get_mut(&name) {
@@ -1146,6 +1156,7 @@ impl Game {
                 peer.open = false;
                 let _ = peer.connection.send(Packet::Welcome {
                     seed: self.world.generator.seed,
+                    generation: self.world.generator.generation.number(),
                     dimension: self.dimension.name().into(),
                     id: bot.id.0,
                 });
@@ -1348,12 +1359,14 @@ impl Game {
             }
         }
     }
-    fn reset_lan_world(&mut self, seed: u64, dimension: Dimension) {
+    fn reset_lan_world(&mut self, seed: u64, generation: Generation, dimension: Dimension) {
         self.renderer.clear_world();
         self.dimension = dimension;
         self.arrival = None;
-        self.world =
-            World::new_remote(Arc::new(Generator::for_dimension(seed, dimension)), self.settings.render_distance);
+        self.world = World::new_remote(
+            Arc::new(Generator::with_generation(seed, dimension, generation)),
+            self.settings.render_distance,
+        );
         self.lan.predictions.clear();
         self.lan.ready = false;
         self.mobs.entities = crate::entity::Entities::new(seed);
@@ -1483,7 +1496,8 @@ impl Game {
         if let Some(dimension) = snapshot["dimension"].as_str().and_then(Dimension::from_name)
             && dimension != self.dimension
         {
-            self.reset_lan_world(snapshot["seed"].as_u64().unwrap_or(0), dimension);
+            let generation = self.world.generator.generation;
+            self.reset_lan_world(snapshot["seed"].as_u64().unwrap_or(0), generation, dimension);
             self.chat_line("Host changed dimension; all LAN players follow the host");
         }
         let sequence = snapshot["sequence"].as_u64().unwrap_or(0) as u32;
@@ -1851,6 +1865,7 @@ pub(super) fn encode_slot(slot: SlotRef) -> Option<u16> {
         SlotRef::FurnaceFuel => 301,
         SlotRef::FurnaceOutput => 302,
         SlotRef::Armor(piece) => 400 + piece as u16,
+        SlotRef::Offhand => 404,
         SlotRef::BrewBottle(i) if i < 3 => 500 + i as u16,
         SlotRef::BrewIngredient => 503,
         SlotRef::BrewFuel => 504,
@@ -1910,6 +1925,7 @@ fn decode_slot(slot: u16, container: Container, mode: GameMode, grid_size: usize
             402 => crate::item::ArmorPiece::Leggings,
             _ => crate::item::ArmorPiece::Boots,
         })),
+        404 if container == Container::Inventory => Some(SlotRef::Offhand),
         1000.. if mode.is_creative() && container == Container::Inventory => {
             crate::item::Item::creative_palette().nth((slot - 1000) as usize).map(SlotRef::Palette)
         }
@@ -2031,7 +2047,8 @@ impl Game {
         let hit = knockback::Hit::melee(source, self.player(target)?.player.pos, yaw, extra);
         let landed = match target {
             PlayerRef::Host => {
-                let landed = self.damage_player_armored(amount, CAUSE) > 0.0;
+                let toward = source - self.session.player.pos;
+                let landed = self.damage_player_from(amount, CAUSE, Some(toward)) > 0.0;
                 if landed {
                     let entities = &mut self.mobs.entities;
                     self.session.knocked_back(&hit, &mut || f64::from(entities.roll_range(0.0, 1.0)));
@@ -2086,7 +2103,16 @@ impl Game {
         let yaw = knockback::java_yaw_degrees(p.yaw);
         let survival = me.mode.is_survival();
         let held_item = held.map(|s| s.item);
-        let Some((at, thorns, landed)) = self.hurt_player_ref(&target, damage, (attacker_pos, yaw, extra), fire) else {
+        // An axe hit that a raised shield blocks disables the shield.
+        let axe = held_item.and_then(|i| i.as_tool()).is_some_and(|(kind, _)| kind == crate::item::ToolKind::Axe);
+        if let Some(t) = self.player_mut(&target) {
+            t.axe_incoming(axe);
+        }
+        let hurt = self.hurt_player_ref(&target, damage, (attacker_pos, yaw, extra), fire);
+        if let Some(t) = self.player_mut(&target) {
+            t.axe_incoming(false);
+        }
+        let Some((at, thorns, landed)) = hurt else {
             return true;
         };
         // `Player.attack`: the extra knockback, sweep and post-attack effects

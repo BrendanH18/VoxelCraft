@@ -230,6 +230,9 @@ pub fn charge_refuses_attack(minimum: f32, ticker: u32, lead: u32, delay: f32) -
 /// Experience a harvested block drops (Java's ore ranges; silk touch
 /// skips it: see [`mined_xp`]).
 pub fn ore_xp(block: Block, rng: &mut crate::entity::Rng) -> u32 {
+    if let Some(xp) = crate::world::cave_blocks::xp(block) {
+        return xp;
+    }
     let (lo, hi) = match block.as_stone_ore() {
         Block::COAL_ORE => (0, 2),
         Block::DIAMOND_ORE | Block::EMERALD_ORE => (3, 7),
@@ -250,8 +253,13 @@ pub fn mined_xp(block: Block, tool: Enchants, rng: &mut crate::entity::Rng) -> u
 /// Whether a block mined with silk touch drops itself (Java's
 /// silk-touchable blocks among ours).
 pub fn silk_drop(block: Block) -> Option<Item> {
-    if let Some(item) = crate::world::utilities::silk_drop(block) {
+    if let Some(item) =
+        crate::world::utilities::silk_drop(block).or_else(|| crate::world::biome_plants::sheared_drop(block))
+    {
         return Some(item);
+    }
+    if crate::world::cave_blocks::owns(block.0) {
+        return crate::world::cave_blocks::silk_drop(block);
     }
     let b = if block.base() == Block::SNOWY_GRASS { Block::GRASS } else { block.base() };
     let silky = matches!(

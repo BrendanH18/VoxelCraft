@@ -32,7 +32,11 @@ impl World {
         for q in [p, p - IVec3::Y, p + IVec3::Y, p + IVec3::X, p - IVec3::X, p + IVec3::Z, p - IVec3::Z] {
             let Some(b) = self.get_block(q).map(Block::canonical) else { continue };
             let b = if super::utilities::dripleaf_of(b).is_some() { ob::BIG_DRIPLEAF } else { b };
-            if !(ob::FIRST..=ob::LAST).contains(&b.0) && ob::propagule_age(b).is_none() && ob::bud_facing(b).is_none() {
+            if !(ob::FIRST..=ob::LAST).contains(&b.0)
+                && !super::biome_plants::owns(b.0)
+                && ob::propagule_age(b).is_none()
+                && ob::bud_facing(b).is_none()
+            {
                 continue;
             }
             // Ceiling plants: the whole run below drops when unsupported.

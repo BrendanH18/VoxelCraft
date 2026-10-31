@@ -422,6 +422,9 @@ pub const fn turtle_eggs_stage(count: u8, stage: u8) -> Block {
 }
 /// Lower half of a double plant (itself for the lower half), and whether `b` is the upper half.
 pub const fn double_of(b: Block) -> Option<(Block, bool)> {
+    if b.0 == super::biome_plants::TALL_DRY_GRASS.0 || b.0 == super::biome_plants::TALL_DRY_GRASS_TOP.0 {
+        return Some((super::biome_plants::TALL_DRY_GRASS, b.0 == super::biome_plants::TALL_DRY_GRASS_TOP.0));
+    }
     if b.0 < 2041 || b.0 > 2052 {
         return None;
     }
@@ -947,12 +950,18 @@ pub fn wall_of(block: Block) -> Option<Facing> {
 pub fn fire_odds(b: Block) -> Option<(u8, u8)> {
     Some(match b.base().0 {
         1942 | 1943 | 2010..=2013 => (30, 60),
-        1940 | 1941 | 1944 | 1948 | 1949 | 2014..=2017 | 2029..=2054 | 2058 => (60, 100),
+        // Saplings, propagules and the lily pad are not in `FireBlock`; vines are
+        // 15/100, with flowers and grasses at 60/100.
+        1940 | 1941 | 1944 | 1948 | 1949 | 2029..=2052 | 2058 => (60, 100),
+        2054 => (15, 100),
         1907 | 1911 | 1908 | 1912 => (5, 100),
         // Java's `FireBlock.bootStrap`: the bamboo block burns like a log.
-        2018 | 2020 | 2026 => (5, 5),
-        2019 | 2027 | 2028 => (5, 20),
-        2022 | 1969 => (60, 60),
+        2018 | 2026 => (5, 5),
+        // Mangrove roots, like planks.
+        2019 | 2020 | 2027 | 2028 => (5, 20),
+        2022 => (60, 60),
+        // Dried kelp burns slower to catch and quicker to go than bamboo.
+        1969 => (30, 60),
         _ => return None,
     })
 }

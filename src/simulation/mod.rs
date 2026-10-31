@@ -157,7 +157,7 @@ pub fn player_environment(player: &Player, world: &World, moved: f64) -> Env {
         flying: player.flying,
         in_water: player.in_water,
         climbing: player.climbing || player.in_web || player.honey_sliding,
-        head_in_water: player.head_in_water(world),
+        head_in_water: player.head_in_water(world) && !player.eye_in_bubble_column(world),
         // `LavaCauldronBlock.entityInside`: lava contents hurt like lava.
         in_lava: player.in_lava(world) || matches!(cauldron, Some(Contents::Lava)),
         lava_before_move: player.lava_before_move(),

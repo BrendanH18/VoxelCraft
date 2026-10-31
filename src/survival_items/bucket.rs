@@ -176,7 +176,8 @@ pub fn pick_up(world: &mut World, at: IVec3) -> Option<(Item, Block)> {
             world.set_block(at, Block::AIR);
             Some((Item::POWDER_SNOW_BUCKET, crate::world::scaffolding::POWDER_SNOW))
         }
-        Block::WATER => {
+        // `BubbleColumnBlock.pickupBlock` empties the cell like a source.
+        b if b == Block::WATER || crate::world::bubble::is_column(b) => {
             world.set_block(at, Block::AIR);
             Some((Item::WATER_BUCKET, Block::WATER))
         }

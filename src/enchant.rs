@@ -697,6 +697,10 @@ pub fn wear_anvil(world: &mut crate::world::World, pos: glam::IVec3) -> Option<b
 /// Whether `material` repairs `item` on an anvil (Java's repair tags).
 pub fn repairs(item: Item, material: Item) -> bool {
     use crate::item::{ArmorMaterial, Tier};
+    if item == Item::SHIELD {
+        // `#wooden_planks`, as for wooden tools.
+        return repairs(Item::tool(crate::item::ToolKind::Pickaxe, Tier::Wood), material);
+    }
     match item.info().kind {
         ItemKind::Tool(_, tier) => match tier {
             Tier::Wood => material.block().is_some_and(|b| {

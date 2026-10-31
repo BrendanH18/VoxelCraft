@@ -19,6 +19,7 @@ fn fixture(name: &str) -> Value {
 /// VoxelCraft state names that are a state of a differently named Java block.
 const STATE_ALIASES: &[(&str, &str)] = &[
     ("snowy grass", "grass_block"),
+    ("tall dry grass top", "tall_dry_grass"),
     ("lit redstone ore", "redstone_ore"),
     ("lit deepslate redstone ore", "deepslate_redstone_ore"),
     ("lit furnace", "furnace"),

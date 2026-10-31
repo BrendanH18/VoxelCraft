@@ -136,8 +136,15 @@ impl Game {
             vitals.xp = crate::simulation::experience::Experience::restore(level, 0, total);
         }
 
-        let generator = Arc::new(Generator::for_dimension(seed, dimension));
-        let mut player = Player::new(Generator::new(seed).find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
+        // New worlds take the latest generator; saved ones keep theirs.
+        let generation = if existing.is_some() {
+            Generation::from_prop(root_props.get(Generation::KEY).map(String::as_str))
+        } else {
+            Generation::LATEST
+        };
+        let generator = Arc::new(Generator::with_generation(seed, dimension, generation));
+        let overworld = Generator::with_generation(seed, Dimension::Overworld, generation);
+        let mut player = Player::new(overworld.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
         if let Some((pos, yaw, pitch)) = existing.as_ref().and_then(|l| l.player) {
             player.pos = pos;
             player.yaw = yaw;
@@ -275,7 +282,7 @@ impl Game {
                     let n: Vec<i32> = text.split(',').filter_map(|value| value.parse().ok()).collect();
                     (n.len() == 3).then(|| IVec3::new(n[0], n[1], n[2]))
                 })
-                .unwrap_or_else(|| Generator::new(seed).find_spawn()),
+                .unwrap_or_else(|| overworld.find_spawn()),
             weather: {
                 let mut w = weather::Weather::new(seed);
                 if let Some(text) = existing.as_ref().and_then(|l| l.props.get("weather")) {
@@ -300,6 +307,7 @@ impl Game {
             save_error: None,
             screenshot: args.screenshot.clone(),
             screenshot_state: 0,
+            screenshot_settled: None,
             open_trading: args.open_trading,
             place: args.place.clone(),
             signs: args.signs.clone(),

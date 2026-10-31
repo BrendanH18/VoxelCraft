@@ -8,6 +8,11 @@
 //! low erosion and high peaks-and-valleys raise mountains, mid erosion
 //! makes plateaus, valleys sink toward rivers and high erosion flattens
 //! swamps. Heights are Java's: sea level 63, peaks above 200.
+//!
+//! Generation 2 worlds keep that height as the base of a 3D density field:
+//! [`ClimateNoise::relief`] says how far 3D noise ([`ClimateNoise::relief_noise`])
+//! may move the surface up or down, from the same parameters (see
+//! `terrain::density`).
 
 use super::biome::Climate;
 use super::noise::Perlin;
@@ -24,6 +29,9 @@ pub struct ClimateNoise {
     shift: Perlin,
     detail: Perlin,
     jagged: Perlin,
+    /// Generation 2's 3D relief noise: broad lobes and finer ledges.
+    relief_broad: Perlin,
+    relief_fine: Perlin,
 }
 
 #[inline]
@@ -77,6 +85,8 @@ impl ClimateNoise {
             shift: p(26),
             detail: p(27),
             jagged: p(28),
+            relief_broad: p(61),
+            relief_fine: p(62),
         }
     }
 
@@ -138,6 +148,42 @@ impl ClimateNoise {
             h = lerp(h, SEA_LEVEL as f32 - 0.2 + detail * 1.6, swampy);
         }
         h.clamp(-50.0, 300.0)
+    }
+
+    /// Generation 2: how many blocks the 3D relief noise may move the
+    /// surface of a column with climate `c` and base height `h` (from
+    /// [`ClimateNoise::height`]). Rugged inland ground, mountains and
+    /// windswept hills get tens of blocks, enough for overhangs and arches;
+    /// oceans, plains, swamps, rivers and the ground near sea level stay
+    /// within a block or two of the base, so shores and rivers keep their
+    /// levels.
+    pub fn relief(&self, c: &Climate, h: f32) -> f32 {
+        let cont = c.continentalness;
+        let e = c.erosion;
+        let pv = c.peaks_valleys();
+        let land = smoothstep(-0.2, -0.1, cont);
+        let inland = smoothstep(-0.11, 0.55, cont);
+        let rugged = 1.0 - smoothstep(-0.78, 0.45, e);
+        let peak = smoothstep(-0.2, 1.0, pv).powf(1.7);
+        let mountain = peak * rugged.powf(1.4) * (0.55 + 0.45 * inland);
+        let shatter = smoothstep(0.38, 0.45, e) * (1.0 - smoothstep(0.55, 0.62, e)) * smoothstep(-0.3, 0.3, pv);
+        let plateau_band = smoothstep(-0.5, -0.375, e) * (1.0 - smoothstep(-0.2225, -0.05, e));
+        let plateau = plateau_band * smoothstep(0.0, 0.3, cont) * (1.0 - mountain);
+        let valley = smoothstep(-0.55, -0.95, pv);
+        let carves = smoothstep(-0.45, -0.375, e).max(1.0 - smoothstep(0.0, 0.05, cont));
+        let river = valley * carves * land * (1.0 - smoothstep(0.5, 0.56, e));
+        let swampy = smoothstep(0.5, 0.6, e) * land * (1.0 - mountain);
+        // Rivers, swamps and the ground just above the sea stay calm.
+        let calm = (1.0 - river.max(swampy)) * smoothstep(SEA_LEVEL as f32 - 1.0, SEA_LEVEL as f32 + 9.0, h);
+        let rough = 1.5 + 10.0 * rugged * inland + 42.0 * mountain + 20.0 * shatter + 6.0 * plateau;
+        1.0 + land * calm * rough
+    }
+
+    /// Generation 2's relief noise at a block, in `[-1, 1]`.
+    pub fn relief_noise(&self, x: f32, y: f32, z: f32) -> f32 {
+        let broad = self.relief_broad.noise3(x / 64.0, y / 30.0, z / 64.0);
+        let fine = self.relief_fine.noise3(x / 24.0, y / 13.0, z / 24.0);
+        ((broad + 0.55 * fine) * 1.3).clamp(-1.0, 1.0)
     }
 }
 

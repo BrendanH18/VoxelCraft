@@ -251,8 +251,28 @@ impl Agent {
                 self.session.cancel_consumption();
                 self.session.cancel_mining();
             }
+            Command::SwapHands => {
+                if !self.session.swap_hands(self.selected) {
+                    return Err("cannot swap hands now".into());
+                }
+                self.bite = 0;
+                self.eating = false;
+            }
+            Command::Block(duration) => {
+                if self.session.shield_cooldown() > 0 {
+                    return Err("the shield is disabled".into());
+                }
+                if !self.session.start_blocking(self.selected) {
+                    return Err("hold a shield in either hand".into());
+                }
+                self.input = MoveInput::default();
+                self.remaining = duration;
+                self.mining = false;
+                self.eating = true;
+                self.bite = 0;
+            }
             Command::Eat => {
-                let duration = self.session.consumption_duration(self.selected)?;
+                let duration = self.session.consumption_duration_either(self.selected)?;
                 self.input = MoveInput::default();
                 self.remaining = duration;
                 self.mining = false;
@@ -725,7 +745,10 @@ impl Agent {
         }
         // Every agent (CLI, controller and LAN hands) charges here once per tick.
         self.session.tick_attack_strength(self.selected);
-        let holding_rod = self.session.inventory.get(self.selected).is_some_and(|s| s.item == Item::FISHING_ROD);
+        // Java keeps the hook while a rod is in either hand.
+        let holding_rod = [self.session.inventory.get(self.selected), self.session.inventory.offhand]
+            .iter()
+            .any(|s| s.is_some_and(|s| s.item == Item::FISHING_ROD));
         if self.session.vitals.is_dead() || !holding_rod {
             entities.drop_bobber(self.session.id);
         }
@@ -785,6 +808,7 @@ impl Agent {
             ..simulation::player_environment(&self.session.player, world, moved)
         };
         let burning = self.session.vitals.burning();
+        let was_alive = !self.session.vitals.is_dead();
         let hurts = self.session.vitals.tick_rules(
             TICK_SECONDS as f32,
             &env,
@@ -792,6 +816,10 @@ impl Agent {
             difficulty,
             rules.bool("natural_health_regeneration"),
         );
+        // Wither damage lands inside the rule tick, not through `damage`.
+        if was_alive && self.session.vitals.is_dead() {
+            self.session.totem_saves(self.selected);
+        }
         if burning {
             let top = self.session.player.collision_shape().aabb(self.session.player.pos).1.y;
             world.douse_in_cauldron(self.session.player.pos, top);
@@ -835,6 +863,7 @@ impl Agent {
             }
         }
         self.draw(entities);
+        self.session.tick_blocking_unless_ticked(self.selected, self.eating && self.remaining > 0);
         self.chew(entities);
         if self.session.vitals.is_dead() {
             self.drop_everything(entities);
@@ -900,10 +929,12 @@ impl Agent {
             return;
         }
         let before = self.session.consumption_elapsed();
-        let result = self.session.tick_consumption(self.selected, true, entities);
+        let result = self.session.tick_consumption_either(self.selected, true, entities);
         let Ok(step) = result else {
             self.bite = 0;
             self.session.cancel_consumption();
+            // Held use with nothing to eat raises a shield, as a right-click does.
+            self.session.start_blocking(self.selected);
             return;
         };
         self.bite = (f64::from(step.progress) * EAT_TICKS as f64) as u32;
@@ -1033,6 +1064,9 @@ impl Agent {
         }
         let amount = crate::enchant::protect(amount, &self.session.inventory.armor, cause);
         let taken = self.session.vitals.damage(amount, cause, self.creative || self.session.mode.invulnerable());
+        if taken > 0.0 && self.session.vitals.is_dead() {
+            self.session.totem_saves(self.selected);
+        }
         // A stronger hit inside the immunity window keeps the hurt direction, as Java skips it.
         if taken > 0.0 && self.session.vitals.last_hit_fresh() {
             self.session.player.animation.hurt_direction = 0.0;
@@ -1044,9 +1078,18 @@ impl Agent {
     /// with damage (hurt immunity also stops repeated shoves), and a survival
     /// agent killed this way drops everything. Returns the damage taken.
     pub fn hurt(&mut self, amount: f32, cause: &str, knockback: DVec3, entities: &mut Entities) -> f32 {
+        if knockback.with_y(0.0).length_squared() > 0.0 && self.shielded(amount, -knockback) {
+            return 0.0;
+        }
         let inv = &self.session.inventory;
         let reduced = simulation::survival::armor_reduce(amount, inv.armor_points(), inv.armor_toughness());
         self.hurt_after_armor(reduced, amount, cause, knockback, None, entities)
+    }
+
+    /// A raised shield facing `toward` (horizontally, from this agent to the
+    /// attacker) stops the hit.
+    fn shielded(&mut self, amount: f32, toward: DVec3) -> bool {
+        self.session.shield_intercept(self.selected, amount, toward).blocked
     }
 
     /// Java's `setSprinting(false)` after a hit with extra knockback: held input stops
@@ -1064,6 +1107,11 @@ impl Agent {
         hit: &crate::knockback::Hit,
         entities: &mut Entities,
     ) -> f32 {
+        if let Some(away) = hit.away()
+            && self.shielded(amount, -away)
+        {
+            return 0.0;
+        }
         let inv = &self.session.inventory;
         let reduced = simulation::survival::armor_reduce(amount, inv.armor_points(), inv.armor_toughness());
         self.hurt_after_armor(reduced, amount, cause, DVec3::ZERO, Some(hit), entities)
@@ -1449,6 +1497,65 @@ mod tests {
         assert!(bare.inventory.get(0).is_none());
         assert_eq!(entities.items.iter().map(|i| i.stack.count).sum::<u8>(), 2);
     }
+    #[test]
+    fn device_hands_keep_a_raised_shield_up() {
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        let mut a = Agent::new(DVec3::new(0.5, 150.0, 0.5));
+        a.inventory.offhand = Some(Stack::new(Item::SHIELD, 1));
+        assert!(a.session.start_blocking(0));
+        for _ in 0..crate::session::hands::SHIELD_DELAY + 1 {
+            // A controller or LAN adapter: held input, then its shared hands tick the shield.
+            a.hold(MoveInput::default(), false, false);
+            a.session.tick_blocking(0, true);
+            a.tick(&mut world, &mut entities);
+        }
+        assert!(a.session.blocking(), "the agent's own tick must not lower a device-held shield");
+
+        // No shared hands (a headless host, or a controller menu open): the
+        // agent's own tick raises the shield while use is held and lowers it on release.
+        let mut b = Agent::new(DVec3::new(0.5, 150.0, 0.5));
+        b.inventory.offhand = Some(Stack::new(Item::SHIELD, 1));
+        assert!(b.session.start_blocking(0));
+        for _ in 0..crate::session::hands::SHIELD_DELAY + 1 {
+            b.hold(MoveInput::default(), false, true);
+            b.tick(&mut world, &mut entities);
+        }
+        assert!(b.session.blocking());
+        b.hold(MoveInput::default(), false, false);
+        b.tick(&mut world, &mut entities);
+        assert!(!b.session.shield_raised());
+    }
+
+    #[test]
+    fn an_offhand_rod_keeps_its_bobber() {
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        let mut a = Agent::new(DVec3::new(0.5, 150.0, 0.5));
+        a.inventory.offhand = Some(Stack::new(Item::FISHING_ROD, 1));
+        entities.cast_bobber(a.session.id, a.session.player.eye(), DVec3::X, 0, 0);
+        a.tick(&mut world, &mut entities);
+        assert!(entities.has_bobber(a.session.id));
+        a.inventory.offhand = None;
+        a.tick(&mut world, &mut entities);
+        assert!(!entities.has_bobber(a.session.id));
+    }
+
+    #[test]
+    fn a_totem_saves_from_wither() {
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        let mut a = Agent::new(DVec3::new(0.5, 150.0, 0.5));
+        a.inventory.offhand = Some(Stack::new(Item::TOTEM_OF_UNDYING, 1));
+        a.vitals.health = 1.0;
+        a.vitals.effects.add(crate::simulation::effects::Effect::Wither, 1, 200);
+        for _ in 0..60 {
+            a.tick_rules(&mut world, &mut entities, Default::default(), &Default::default());
+        }
+        assert!(!a.vitals.is_dead(), "{:?}", a.vitals.death);
+        assert_eq!(a.inventory.offhand, None, "the totem is used up");
+    }
+
     #[test]
     fn every_death_path_follows_keep_inventory() {
         let mut world = world();

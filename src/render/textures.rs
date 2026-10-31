@@ -5,6 +5,8 @@
 use crate::world::block::tex;
 use crate::world::noise::hash_f;
 
+#[path = "cave_textures.rs"]
+mod cave;
 #[path = "colour_textures.rs"]
 mod colour;
 #[path = "copper_textures.rs"]
@@ -13,6 +15,8 @@ mod copper;
 mod nether;
 #[path = "overworld_textures.rs"]
 mod overworld;
+#[path = "plant_textures.rs"]
+mod plants;
 #[path = "stone_textures.rs"]
 mod stone;
 #[path = "utility_textures.rs"]
@@ -137,6 +141,13 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     if layer == tex::SCAFFOLD_SIDE {
         return noisy(layer, x, y, if y % 7 < 2 { [121, 112, 61] } else { [195, 180, 102] }, 0.12);
     }
+    if layer == tex::BUBBLE_UP || layer == tex::BUBBLE_DOWN {
+        // Water with pale bubbles; the magma column is a shade darker.
+        let down = layer == tex::BUBBLE_DOWN;
+        let c = noisy(layer, x, y, if down { [38, 78, 176] } else { [44, 90, 200] }, 0.08);
+        let bubble = rnd(layer, x, y, 7) < 0.09;
+        return if bubble { [205, 228, 255, 200] } else { [c[0], c[1], c[2], 170] };
+    }
     if layer == tex::POWDER_SNOW {
         return noisy(layer, x, y, [232, 244, 251], 0.025);
     }
@@ -212,6 +223,12 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     }
     if (crate::world::utilities::TEX..crate::world::utilities::TEX_END).contains(&layer) {
         return utility::pixel(layer, x, y);
+    }
+    if (crate::world::biome_plants::TEX..crate::world::biome_plants::TEX_END).contains(&layer) {
+        return plants::pixel(layer, x, y);
+    }
+    if (crate::world::cave_blocks::TEX..crate::world::cave_blocks::TEX_END).contains(&layer) {
+        return cave::pixel(layer, x, y);
     }
     if (tex::COLORED_WOOL..tex::COLORED_WOOL + 16).contains(&layer) || layer == tex::WOOL {
         let color = if layer == tex::WOOL { 0 } else { (layer - tex::COLORED_WOOL) as usize };

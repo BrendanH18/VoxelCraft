@@ -95,6 +95,7 @@ impl Game {
             ..crate::simulation::player_environment(&self.session.player, &self.world, moved)
         };
         let burning = self.session.vitals.burning();
+        let was_alive = !self.session.vitals.is_dead();
         let hurts = if arriving || self.arrival.is_some() {
             Default::default()
         } else {
@@ -106,6 +107,11 @@ impl Game {
                 self.gamerules.bool("natural_health_regeneration"),
             )
         };
+        // Wither damage lands inside the rule tick, not through `damage_player`.
+        if was_alive && self.session.vitals.is_dead() && self.session.totem_saves(self.body.actions.selected) {
+            self.show_popup("Totem of Undying");
+            self.audio.play(crate::audio::sounds::Sound::Hurt, None, 0.6, (1.4, 1.6));
+        }
         if burning {
             let top = self.session.player.collision_shape().aabb(self.session.player.pos).1.y;
             self.world.douse_in_cauldron(self.session.player.pos, top);

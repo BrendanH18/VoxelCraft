@@ -407,6 +407,8 @@ const RESISTANCE: &[(f32, &[&str])] = &[
     (3_600_000.0, &["bedrock", "end gateway", "end portal", "end portal frame"]),
 ];
 const DECAY: &[&str] = &[
+    "leaf litter",
+    "wildflowers",
     "acacia slab",
     "amethyst cluster",
     "andesite slab",
@@ -555,6 +557,10 @@ const DECAY: &[&str] = &[
     "yellow wool slab",
 ];
 const KEEP: &[&str] = &[
+    "bush",
+    "short dry grass",
+    "tall dry grass",
+    "tall dry grass top",
     "cake with black candle",
     "cake with blue candle",
     "cake with brown candle",

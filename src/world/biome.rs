@@ -116,6 +116,8 @@ biomes! {
     WindsweptForest "windswept_forest" 0.2 4,
     LushCaves "lush_caves" 0.5 3,
     DripstoneCaves "dripstone_caves" 0.8 0,
+    // Generation 2 only (`world::deep_dark`); biomes are never saved.
+    DeepDark "deep_dark" 0.8 0,
 }
 
 impl Biome {
@@ -213,7 +215,7 @@ impl Biome {
     }
 
     pub fn is_cave(self) -> bool {
-        matches!(self, Biome::LushCaves | Biome::DripstoneCaves)
+        matches!(self, Biome::LushCaves | Biome::DripstoneCaves | Biome::DeepDark)
     }
 
     /// Snow instead of rain, and ice on still water (Java: temperature

@@ -15,7 +15,8 @@ use glam::IVec3;
 
 /// 2: chunk states may be 4096 and above (`STATE_CAPACITY` 16,384).
 /// 3: chunk states may be 16,384 and above (`STATE_CAPACITY` 32,768).
-pub const PROTOCOL: u16 = 3;
+/// 4: `Welcome` carries the world's generation (v0.13).
+pub const PROTOCOL: u16 = 4;
 pub const GAME_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const MAX_FRAME: usize = 256 * 1024;
 const MAX_QUEUE: usize = 2 * 1024 * 1024;
@@ -54,6 +55,8 @@ pub enum Packet {
     },
     Welcome {
         seed: u64,
+        /// The world's [`Generation`](crate::world::terrain::Generation) number.
+        generation: u8,
         dimension: String,
         id: u32,
     },
@@ -103,9 +106,10 @@ impl Packet {
                 string(&mut out, version);
                 string(&mut out, profile);
             }
-            Self::Welcome { seed, dimension, id } => {
+            Self::Welcome { seed, generation, dimension, id } => {
                 out.push(1);
                 out.extend_from_slice(&seed.to_le_bytes());
+                out.push(*generation);
                 string(&mut out, dimension);
                 out.extend_from_slice(&id.to_le_bytes());
             }
@@ -185,7 +189,7 @@ impl Packet {
         let mut r = Reader(bytes);
         let packet = match r.u8()? {
             0 => Self::Hello { protocol: r.u16()?, version: r.text(32)?, profile: r.text(24)? },
-            1 => Self::Welcome { seed: r.u64()?, dimension: r.text(16)?, id: r.u32()? },
+            1 => Self::Welcome { seed: r.u64()?, generation: r.u8()?, dimension: r.text(16)?, id: r.u32()? },
             2 => {
                 let i = Input {
                     sequence: r.u32()?,

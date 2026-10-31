@@ -70,7 +70,7 @@ use crate::simulation::difficulty::Difficulty;
 use crate::world::World;
 use crate::world::block::Block;
 use crate::world::storage::{LevelInfo, Storage};
-use crate::world::terrain::{Dimension, Generator};
+use crate::world::terrain::{Dimension, Generation, Generator};
 use voxelcraft::rules::GameRules;
 
 use survival::Vitals;
@@ -78,6 +78,10 @@ use survival::Vitals;
 /// Placement/use repeat; mining timing is owned by the shared session.
 const ACTION_REPEAT: f64 = 0.22;
 const AUTOSAVE_EVERY: Duration = Duration::from_secs(120);
+/// How long `--screenshot` waits, once streaming settles, for fluids to
+/// come to rest. Placed water settles well inside it; generation 2's
+/// springs can pour for minutes and would otherwise hold a capture open.
+const SCREENSHOT_FLUID_WAIT: Duration = Duration::from_secs(5);
 /// Seconds of holding right-click to eat (Minecraft's 32 ticks).
 const EAT_TIME: f64 = 1.6;
 const MOUSE_SENSITIVITY: f32 = 0.0022;
@@ -222,6 +226,8 @@ struct Game {
     save_error: Option<String>,
     screenshot: Option<String>,
     screenshot_state: u32,
+    /// When `--screenshot` first found streaming settled (see [`SCREENSHOT_FLUID_WAIT`]).
+    screenshot_settled: Option<Instant>,
     open_trading: bool,
     place: Vec<(glam::IVec3, Block)>,
     /// `--sign` front texts, written after `--place`.
@@ -861,6 +867,13 @@ impl Game {
             A::PickBlock => self.pick_block(),
             A::Inventory => self.toggle_inventory(),
             A::Drop => self.drop_selected(self.modifiers.control_key()),
+            A::SwapHands if playing => {
+                if self.lan.client.is_some() {
+                    self.lan_command("swap");
+                } else {
+                    self.swap_hands();
+                }
+            }
             A::Chat | A::Command if !self.inventory_open && !self.console.open => self.open_console(action == A::Chat),
             // Hardcore deaths end in spectator for good; only `/gamemode` cheats out.
             A::GameMode if self.lan.client.is_some() => self.lan_command(if self.session.mode.is_creative() {
@@ -1029,9 +1042,34 @@ impl Game {
             self.audio.play(crate::audio::sounds::Sound::Hurt, None, 0.9, (0.92, 1.05));
         }
         if taken > 0.0 && self.session.vitals.is_dead() {
+            if self.session.totem_saves(self.body.actions.selected) {
+                self.show_popup("Totem of Undying");
+                self.audio.play(crate::audio::sounds::Sound::Hurt, None, 0.6, (1.4, 1.6));
+                return taken;
+            }
             self.on_death();
         }
         taken
+    }
+
+    /// [`Game::damage_player_armored`] for an attack that comes from a place,
+    /// `toward` being the horizontal direction from the player to its source:
+    /// a raised shield facing it stops the hit (and its knockback).
+    pub(crate) fn damage_player_from(&mut self, amount: f32, cause: &str, toward: Option<glam::DVec3>) -> f32 {
+        if let Some(toward) = toward {
+            let slot = self.body.actions.selected;
+            let hit = self.session.shield_intercept(slot, amount, toward);
+            if hit.blocked {
+                self.audio.play(crate::audio::sounds::Sound::Hit, None, 0.7, (0.5, 0.7));
+                if hit.broke {
+                    self.show_popup("Shield broke");
+                    let sound = crate::audio::sounds::Sound::Break(crate::audio::sounds::Material::Wood);
+                    self.audio.play_in(crate::audio::SoundSource::Players, sound, None, 0.8, (1.3, 1.5));
+                }
+                return 0.0;
+            }
+        }
+        self.damage_player_armored(amount, cause)
     }
 
     /// Hurts the player through their armor (mobs, arrows, blasts, lava),
@@ -1560,7 +1598,10 @@ impl Game {
             // Paused captures cannot drain simulation work queued by
             // --place (fluid wakeups, falling blocks). Wait only for jobs.
             0 if settled
-                && (self.menu.is_open() || self.console.open || self.world.is_idle())
+                && (self.menu.is_open()
+                    || self.console.open
+                    || self.world.is_idle()
+                    || self.screenshot_settled.get_or_insert_with(Instant::now).elapsed() >= SCREENSHOT_FLUID_WAIT)
                 && self.mobs.waited() =>
             {
                 self.screenshot_state = 1;
@@ -1667,6 +1708,11 @@ impl Game {
             && self.session.mode.can_interact()
             && self.attack_lan_player(&lan::PlayerRef::Host, self.body.actions.selected, sprint);
         self.with_hands(|hands| hands.attack_button(pressed, hit_player));
+    }
+
+    /// The swap-hands key: the selected stack and the off-hand trade places.
+    fn swap_hands(&mut self) {
+        self.with_hands(|hands| hands.swap_hands());
     }
 
     /// Use button (right click, or a controller's LT) pressed or released.

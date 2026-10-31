@@ -100,6 +100,7 @@ impl HeadlessHost {
                     if s.connection
                         .send(Packet::Welcome {
                             seed: self.world.generator.seed,
+                            generation: self.world.generator.generation.number(),
                             dimension: self.world.generator.dimension.name().into(),
                             id,
                         })

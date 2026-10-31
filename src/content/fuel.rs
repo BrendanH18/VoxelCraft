@@ -1,7 +1,7 @@
 //! Java 26.3 cooking-fuel metadata for implemented content. No runtime data parsing.
 use crate::{
     item::{Item, Tier},
-    world::{block::Block, forms, gadgets, overworld_blocks as ob, redstone_blocks as rb},
+    world::{biome_plants as bp, block::Block, forms, gadgets, overworld_blocks as ob, redstone_blocks as rb},
 };
 
 /// Typed provider classes; normal/fast furnace adapters share these exact ticks.
@@ -70,6 +70,10 @@ pub fn class(item: Item) -> Option<FuelClass> {
         return Some(Wood);
     }
     if block.is_sapling() || matches!(block, ob::AZALEA | ob::FLOWERING_AZALEA | Block::DEAD_BUSH) {
+        return Some(Small);
+    }
+    // The `dry_plants` provider: leaf litter and both dry grasses.
+    if matches!(block, bp::LEAF_LITTER | bp::SHORT_DRY_GRASS | bp::TALL_DRY_GRASS) {
         return Some(Small);
     }
     if block.wool_color().is_some() {

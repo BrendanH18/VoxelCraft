@@ -384,7 +384,7 @@ fn open_water<W: MobWorld + ?Sized>(world: &W, origin: IVec3) -> bool {
         for dz in -2..=2 {
             for dx in -2..=2 {
                 let cell = match world.block(origin + IVec3::new(dx, dy, dz)) {
-                    Some(Block::WATER) => Kind::Inside,
+                    Some(b) if b == Block::WATER || crate::world::bubble::is_column(b) => Kind::Inside,
                     Some(Block::AIR) => Kind::Above,
                     _ => Kind::Invalid,
                 };

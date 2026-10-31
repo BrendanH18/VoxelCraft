@@ -4,6 +4,7 @@
 //! Camera, hand animation and screen navigation belong to their adapters.
 pub mod combat;
 pub mod consumption;
+pub mod hands;
 pub mod interact;
 mod lodestone;
 pub mod mining;
@@ -50,6 +51,7 @@ pub struct PlayerSession {
     combat: combat::State,
     ranged: ranged::State,
     consumption: consumption::State,
+    hands: hands::State,
     mining: mining::State,
 }
 
@@ -157,6 +159,7 @@ impl PlayerSession {
             combat: Default::default(),
             ranged: Default::default(),
             consumption: Default::default(),
+            hands: Default::default(),
             mining: Default::default(),
         }
     }
@@ -180,6 +183,7 @@ impl PlayerSession {
             combat: Default::default(),
             ranged: Default::default(),
             consumption: Default::default(),
+            hands: Default::default(),
             mining: Default::default(),
         }
     }
@@ -255,6 +259,7 @@ impl PlayerSession {
         self.sleep_spot = None;
         self.combat = Default::default();
         self.ranged = Default::default();
+        self.hands = Default::default();
     }
 
     /// Lie down at `at` on the bed with this head block and foot-to-head

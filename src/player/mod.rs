@@ -206,6 +206,12 @@ impl Player {
         })
     }
 
+    /// The eye is inside a bubble column, where `LivingEntity.baseTick` spends
+    /// no air and refills it.
+    pub fn eye_in_bubble_column<W: physics::BlockSource + ?Sized>(&self, world: &W) -> bool {
+        world.block(self.eye().floor().as_ivec3()).is_some_and(crate::world::bubble::is_column)
+    }
+
     /// Whether any part of the player's box is in lava.
     pub fn in_lava(&self, world: &World) -> bool {
         physics::touches_block(world, self.pos, self.collision_shape(), Block::is_lava)
