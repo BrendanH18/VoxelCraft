@@ -1350,8 +1350,8 @@ Known gaps: a few small rocks float above some generation 2 peaks; plant
 and feature densities are tuned by hand; the sensor, shrieker and catalyst
 are inert until v0.16; the changed fire odds need a check against the 26.3
 artifact. Done (owner, 2026-10-31): the owner played it and declared v0.13
-done; Cargo 0.13.0 and the release notes are prepared, and `v0.13` is
-tagged from the merge that carries them.
+done; Cargo 0.13.0 and the release notes are prepared, and `v0.13` is to
+be tagged from the merge that carries them.
 
 ### M4 — A complete living world
 
