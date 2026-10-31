@@ -163,6 +163,17 @@ roadmap and recorded checks to assess completeness against the current target.
   hitting vehicles and decorations, cauldrons putting out fires, the
   hidden-window memory fix, frame-time runs and profile, and what moved out
   of v0.12.
+- [v0.13 density terrain](verification/2026-10-30-v0.13-density.md):
+  generation 2's 3D density field, surface rules, caves and aquifers.
+- [v0.13 underground](verification/2026-10-30-v0.13-underground.md): glow
+  lichen and the sculk blocks, the deep dark, springs and the ore pass.
+- [v0.13 trees and features](verification/2026-10-30-v0.13-trees.md):
+  giant spruce and jungle trees, the new plants and biome features.
+- [v0.13 carried items](verification/2026-10-30-v0.13-carried.md): bubble
+  columns, the flammability review, the off-hand, shields and totems.
+- [v0.13 integration](verification/2026-10-30-v0.13-integration.md):
+  save/reload of both generations, chunk generation speed and the owner's
+  play.
 - [Game rules and difficulty](verification/2026-10-17-game-rules-difficulty.md):
   the 26.3 rule registry, damage-type rules, Peaceful regeneration and the
   difficulty effects checked against the reference.

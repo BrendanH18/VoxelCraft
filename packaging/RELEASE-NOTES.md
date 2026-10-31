@@ -1,11 +1,11 @@
-VoxelCraft 0.12.0 fills in Java's building materials: every wood, stone,
-copper and colour block you can get in survival today, signs, banners,
-candles, item frames, paintings, armor stands, cauldrons, campfires, double
-chests and more, with Java 26.3's recipes, drops, mining speeds and
-explosions. If you have 0.10.0 or 0.11.0, the title screen offers this
-update; choose **Update and Restart**. If you're coming from 0.9.0 or
-earlier, install it by hand once, as below, and it updates itself from then
-on.
+VoxelCraft 0.13.0 reshapes the Overworld: new worlds have overhanging
+cliffs, arches and jagged peaks, caves and underground lakes fitted to them,
+a deep dark full of sculk, giant spruce and jungle trees, and glow lichen and
+springs underground. It also brings bubble columns, the off-hand slot,
+shields and the totem of undying. Worlds you already have keep their old
+terrain. If you have 0.10.0 or later, the title screen offers this update;
+choose **Update and Restart**. If you're coming from 0.9.0 or earlier,
+install it by hand once, as below, and it updates itself from then on.
 
 VoxelCraft is an unofficial fan project, inspired by Minecraft Java Edition. It
 is not affiliated with or endorsed by Mojang Studios or Microsoft, and it
@@ -13,10 +13,79 @@ contains no Minecraft code or assets.
 
 Choose your download:
 
-- **Windows 10/11 x64:** `VoxelCraft-0.12.0-windows-x64-Setup.exe`
-- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.12.0-macos-apple-silicon.dmg`
+- **Windows 10/11 x64:** `VoxelCraft-0.13.0-windows-x64-Setup.exe`
+- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.13.0-macos-apple-silicon.dmg`
 
-## What's new in 0.12.0
+## What's new in 0.13.0
+
+### New terrain (new worlds only)
+
+- The surface is no longer a heightmap: cliffs overhang, arches and
+  overhangs form, and mountain peaks are jagged. Plains and oceans stay
+  gentle. Steep faces and the undersides of overhangs show stone (or
+  sandstone under sand), and badlands bands run through the cliffs.
+- Caves and underground lakes follow the new shape, and caves open onto
+  the surface.
+- Worlds created before 0.13.0 keep the terrain they had, including the
+  parts nobody has explored yet. Only worlds created in 0.13.0 or later get
+  the new terrain.
+
+### Underground
+
+- **The deep dark:** far under mountainous ground, a cave biome of sculk,
+  sculk veins, sculk catalysts, sculk sensors and sculk shriekers. They
+  can be mined and placed, but the sensors and shriekers don't react yet:
+  the warden comes in 0.16.
+- **Glow lichen** grows on cave walls and gives off light. Shears collect
+  it, and bone meal spreads it.
+- **Water and lava springs** pour from cave and cliff walls.
+- **Large ore veins:** copper through granite and iron through tuff deep
+  underground, with blocks of raw copper and raw iron. Dripstone caves
+  have bigger copper ore.
+- All of this is generated in new worlds only, but the blocks themselves
+  work everywhere.
+
+### Trees and plants
+
+New worlds have:
+
+- **Giant spruce and pine trees** in old growth taigas, with podzol and
+  coarse dirt around them, and mossy cobblestone boulders.
+- **Giant jungle trees** with vines up the trunk and cocoa pods.
+- Leaf litter, wildflowers, bushes, firefly bushes, short and tall dry
+  grass, cactus flowers and fallen logs.
+
+In every world, four spruce or jungle saplings in a square grow one of the
+new giant trees.
+
+### Bubble columns
+
+- Water above soul sand pushes you up, and water above a magma block pulls
+  you down. Inside a column you don't run out of air. Columns form in the
+  world wherever there's water above magma.
+
+### Off-hand and shields
+
+- **The off-hand slot:** press **F** to swap the held item into your
+  off-hand. It shows beside the hotbar and in your inventory. Torches,
+  blocks, food and buckets work from it.
+- **Flying in creative has moved from F to R.** If you never changed the
+  key, your options move it for you.
+- **Shields** (planks and an iron ingot): hold right click to block melee
+  hits, arrows and explosions from the front. A blocked axe hit disables
+  the shield for five seconds.
+- **The totem of undying**, held in either hand, saves you from death,
+  except in the void or from `/kill`. There's no way to get one in
+  survival yet: evokers come with raids in 0.17.
+
+### Fire
+
+- How easily blocks catch fire and burn away now follows Java for more
+  blocks: bookshelves, lecterns, composters, hay bales and mangrove roots
+  burn, saplings, mushrooms and lily pads don't, and vines and dried kelp
+  catch more slowly.
+
+## What's new in 0.12.0 (if you're coming from 0.11.0 or earlier)
 
 ### Wood
 
@@ -204,11 +273,18 @@ Choose your download:
 - Undead horses aren't in yet (they need lightning, which isn't in yet either).
 - Bats, frogs, polar bears and some other mobs aren't in yet, so nothing spawns
   in the ambient category.
-- Surface terrain has no overhangs or floating islands, and there is no deep
-  dark, ancient city, glow lichen or cave spring yet.
+- The new terrain, caves, deep dark, springs, glow lichen and giant trees
+  appear only in worlds created in 0.13.0 or later. A few small rocks float
+  above some mountain peaks, and plant and feature amounts are VoxelCraft's
+  own.
+- There are no ancient cities or wardens yet, so sculk sensors, shriekers
+  and catalysts do nothing. Frozen lava springs aren't in.
+- Shields can't carry banner patterns, the off-hand item isn't drawn in your
+  hand, and bows can't be drawn from the off-hand. Bubble columns have no
+  sounds of their own.
 - Buried treasure isn't generated, so there's no way to find the heart of the
   sea.
-- There is no Soul Speed, spears or bubble columns, and no wither skeleton
+- There is no Soul Speed or spears, and no wither skeleton
   skull block or frosted ice (Frost Walker).
 - Raids aren't in yet. Lecterns, looms, cartography tables and stonecutters are
   decorative.
@@ -219,10 +295,9 @@ Choose your download:
 - Commands accept `@s` and `@p` only.
 - Outposts, Nether fossils and bastions use VoxelCraft's own layouts, and
   swamp-hut cats don't spawn yet.
-- Spruce and jungle saplings don't grow 2x2 giant trees, and melon, pumpkin and
-  beetroot crops aren't in yet.
+- Melon, pumpkin and beetroot crops aren't in yet.
 - Bells don't swing, horse armor can't be dyed, strider jockeys don't spawn,
-  boats ignore currents and bubble columns, and minecarts can't carry mobs
+  boats ignore currents, and minecarts can't carry mobs
   across a save.
 - Streaming in new terrain quickly can still cause an occasional long frame,
   and a scene crowded with mobs and the new blocks can dip below the 240 FPS
@@ -232,11 +307,13 @@ Choose your download:
 
 ## Upgrading and saves
 
-Players on 0.10.0 or 0.11.0 get this version from the title screen. Install
+Players on 0.10.0 or later get this version from the title screen. Install
 it by hand if you're on 0.9.0 or earlier; later versions then arrive in game.
-Worlds and options from 0.11.0 and earlier load in 0.12.0. Don't open a
-world in an older version once it has any of the new blocks: older versions
-can't read the chunks that hold them. Back up your worlds before upgrading from 0.8.0, and
+Worlds and options from 0.12.0 and earlier load in 0.13.0, and keep their
+old terrain generation. Once 0.13.0 has saved a world, don't open it in an
+older version: older versions can't read chunks holding the new blocks, and
+they drop the item in your off-hand. A world created in 0.13.0 would also
+have its unexplored land filled with the old terrain. Back up your worlds before upgrading from 0.8.0, and
 don't open a world saved by 0.9.0 or later in 0.8.0: once it uses any of the
 new block states, 0.8.0 can't read its terrain and would overwrite it. LAN
 players all need the same version.
