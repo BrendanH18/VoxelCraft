@@ -11,8 +11,8 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
 - Match the selected Java reference behavior, including generation and structure
   layouts. Record sources and differences; do not substitute approximate behavior
   without an explicit scope decision.
-- Retain useful existing and pending work. Do not delete branches, discard
-  uncommitted changes, or rewrite working features because the plan changed.
+- Retain useful existing and pending work. Do not discard
+  uncommitted changes or rewrite working features because the plan changed.
 - Existing controller, CLI-agent and multiplayer paths receive maintenance and
   shared-feature integration; expansion is deferred under the roadmap.
 - Update `docs/roadmap.md` with verified behavior, discovered gaps and approved
@@ -33,12 +33,11 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
 - Project configuration (hooks, scripts, CI, tool settings) lives in tracked
   files too, so a fresh clone from GitHub has every rule and setting.
 
-## Worktrees, delegation and builds
+## Delegation and builds
 
 - Release tags are two-part (owner, 2026-10-22): `v0.9`, `0.9` or `1.0`, naming
   Cargo version `0.9.0` / `1.0.0`. See [releases](docs/releases.md).
-- Preserve unrelated changes and other worktrees. Never delete
-  `refs/t3/checkpoints/*`, use `git push --mirror`, or use a bare `git stash`.
+- Preserve unrelated changes and other worktrees.
 - Keep saves, build output, credentials, local backups and
   machine-specific coordination files out of git: put them under an ignored
   path such as `target/` (for example `--data-dir target/playtest`), never as
@@ -49,11 +48,10 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
   16 GB of RAM. Queue further work until a slot frees.
 - Delegated implementation agents run on Claude models (owner, 2026-10-22:
   the owner now has the Claude Max plan). Reviews always run on Codex
-  (GPT-6.1-Sol). While Codex is at its
-  usage limit, reviews run on DeepSeek V4.1 Flash only
-  (`openrouter/deepseek/deepseek-v4.1-flash-1017`) through OpenCode until
-  Codex resets (owner, 2026-10-30; Reflection Beam is no longer used). Use
-  other providers only when the owner asks.
+  (GPT-6.1-Sol). While Codex is at its usage limit, reviews run on DeepSeek
+  V4.1 Flash only (`openrouter/deepseek/deepseek-v4.1-flash-1017`) through
+  OpenCode until Codex resets (owner, 2026-10-30; Reflection Beam is no longer
+  used). Use other providers only when the owner asks.
 - Extra hands-on tests (running the game, playing it and looking at the
   result through computer use) run on Codex with GPT-6.1 Terra
   (`gpt-6.1-terra`), never Sol, at whatever reasoning effort fits the task
@@ -126,3 +124,11 @@ Keep documentation and test evidence aligned with the delivered behavior.
 - [Documentation index](docs/README.md)
 - [Historical plans and briefs](docs/archive/README.md), which never override
   current instructions or establish current completion claims
+
+## Context maintenance
+
+- Keep project rules and durable project knowledge in tracked `AGENTS.md` and
+  repository docs; do not store them in agent auto-memory or machine-local notes.
+- `CLAUDE.md` contains only `@AGENTS.md`. Shared hooks, scripts and settings
+  belong in tracked files. Do not ignore instruction files or shared settings;
+  ignore only machine-local settings and agent worktrees.

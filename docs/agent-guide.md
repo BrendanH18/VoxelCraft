@@ -75,28 +75,11 @@ defines the planned reproducible suite.
 Update these pointers with the implementation rather than maintaining an
 unversioned copy elsewhere.
 
-## Transition for older local worktrees
+## Older local worktrees
 
-The initial migration replaced the old external-note symlinks with ordinary
-files in the owner's existing worktrees. Older branches temporarily have ignored local copies of
-`AGENTS.md`, `CLAUDE.md` and a root `roadmap.md` pointer until this change is
-integrated. These copies are transitional, not a second authoritative plan.
-The pointer identifies the published documentation branch for missing documents.
-
-After integrating this PR into an older branch, use the tracked instructions and
-`docs/roadmap.md`; remove the ignored root pointer. Once no older worktrees need
-local copies, remove their temporary entries from `.git/info/exclude`.
-Do not copy the obsolete checkout hook into new clones.
-
-Git does not update another checkout's local hooks or excludes when a PR merges.
-For any other checkout still using the former setup:
-
-1. Back up its notes, then inspect its checkout hook (including a configured
-   `core.hooksPath`, if present). Remove only the external-note linking code;
-   preserve unrelated hooks.
-2. Replace external `AGENTS.md` and `CLAUDE.md` symlinks with the tracked files
-   from this branch. Remove the root `roadmap.md` symlink and use `docs/roadmap.md`.
-   Inspect each existing worktree without changing its code or branch.
-3. Remove obsolete local exclude entries when no older worktree needs the
-   transitional copies. Verify a fresh clone includes the guidance before
-   retiring the external directory.
+Keep each worktree's guidance with that worktree's code version. Preserve its
+unique engineering notes when consolidating instructions into `AGENTS.md`, and
+make `CLAUDE.md` contain only `@AGENTS.md`. Instruction files and shared settings
+must remain visible to Git; ignore only machine-local settings and agent
+worktrees. Do not restore the former external-note checkout hook or local
+excludes for instruction files.
