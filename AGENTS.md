@@ -39,8 +39,10 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
   Cargo version `0.9.0` / `1.0.0`. See [releases](docs/releases.md).
 - Preserve unrelated changes and other worktrees. Never delete
   `refs/t3/checkpoints/*`, use `git push --mirror`, or use a bare `git stash`.
-- Never leave saves, build output, credentials, local backups or
-  machine-specific coordination files in the working tree.
+- Keep saves, build output, credentials, local backups and
+  machine-specific coordination files out of git: put them under an ignored
+  path such as `target/` (for example `--data-dir target/playtest`), never as
+  untracked files git would pick up.
 - Delegate only when requested. Give each implementation agent an isolated
   worktree, explicit scope and reserved IDs; delegated agents do not delegate further.
 - Run at most four agents at once (owner, 2026-10-17): the owner's machine has
