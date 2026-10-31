@@ -3,4 +3,5 @@
 /dist
 /packaging/THIRD-PARTY-LICENSES.html
 .DS_Store
-/.claude
+/.claude/settings.local.json
+/.claude/worktrees/

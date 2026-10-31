@@ -11,7 +11,6 @@ conversation. Keep only useful historical briefs in `docs/archive/briefs/`.
 ## Checks and feature evidence
 
 Before handing work back, run the chain in [AGENTS.md](../AGENTS.md#before-handing-work-back).
-Agents leave the result uncommitted; the owner commits and pushes it.
 CI additionally runs a headless benchmark on Linux, macOS and Windows; see
 [the workflow](../.github/workflows/ci.yml). For engine/shared-feature changes,
 also check the device-independent configuration:

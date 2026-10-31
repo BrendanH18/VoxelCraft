@@ -31,45 +31,31 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
   or machine-local place such as Claude memory, `~/.claude`, `~/.codex` or
   editor settings. Mirror it there only as a convenience.
 - Project configuration (hooks, scripts, CI, tool settings) lives in tracked
-  files too, so a fresh clone from GitHub has every rule and setting. Leave the
-  change uncommitted like any other work; the owner commits and pushes it.
-- When you add generated, vendored or build-output paths, add matching patterns
-  to `.macroscope/ignore.md` (see https://docs.macroscope.com/code-review/ignore-files)
-  and run `python3 ~/.agents/skills/macroscope-ignore/scripts/macroscope_ignore.py validate`.
+  files too, so a fresh clone from GitHub has every rule and setting.
 
-## Git workflow
+## Worktrees, delegation and builds
 
-- **Agents never run `git commit` or `git push`**, including amends, tags and
-  force pushes, unless the owner asks for that specific commit or push. Leave
-  finished work uncommitted in the working tree of the assigned branch; the
-  owner reviews, commits and pushes it. Delegated agents follow the same rule.
-- Work on the assigned branch. Create branches or open PRs only when the owner
-  asks. Never push to protected `main`. The owner merges PRs and publishes
-  releases.
 - Release tags are two-part (owner, 2026-10-22): `v0.9`, `0.9` or `1.0`, naming
   Cargo version `0.9.0` / `1.0.0`. See [releases](docs/releases.md).
 - Preserve unrelated changes and other worktrees. Never delete
   `refs/t3/checkpoints/*`, use `git push --mirror`, or use a bare `git stash`.
 - Never leave saves, build output, credentials, local backups or
-  machine-specific coordination files in the working tree for the owner to
-  commit. When the owner asks for a commit, use the repository's configured
-  author identity.
+  machine-specific coordination files in the working tree.
 - Delegate only when requested. Give each implementation agent an isolated
   worktree, explicit scope and reserved IDs; delegated agents do not delegate further.
 - Run at most four agents at once (owner, 2026-10-17): the owner's machine has
   16 GB of RAM. Queue further work until a slot frees.
 - Delegated implementation agents run on Claude models (owner, 2026-10-22:
   the owner now has the Claude Max plan). Reviews always run on Codex
-  (GPT-6.1-Sol), as the debate-review protocol does. While Codex is at its
+  (GPT-6.1-Sol). While Codex is at its
   usage limit, reviews run on DeepSeek V4.1 Flash only
   (`openrouter/deepseek/deepseek-v4.1-flash-1017`) through OpenCode until
   Codex resets (owner, 2026-10-30; Reflection Beam is no longer used). Use
   other providers only when the owner asks.
 - Extra hands-on tests (running the game, playing it and looking at the
-  result through computer use) may be delegated to Codex on GPT-6.1 Terra at
-  `high` or `xhigh` reasoning effort, never Sol, which costs too much for
-  this (owner, 2026-10-29). These runs are agent evidence, not the owner's
-  play.
+  result through computer use) run on Codex with GPT-6.1 Terra
+  (`gpt-6.1-terra`), never Sol, at whatever reasoning effort fits the task
+  (owner, 2026-10-31). These runs are agent evidence, not the owner's play.
 - Agents must not each build the project (owner, 2026-10-17). Agent worktrees
   share one cargo target directory, so dependencies build once and builds take
   turns under cargo's lock: put the worktrees under one folder whose
