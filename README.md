@@ -276,7 +276,8 @@ These are the defaults. Rebind any of them except <kbd>Esc</kbd> under
 | <kbd>Shift</kbd> + click | Move a stack, or craft as many as fit |
 | Left <kbd>Ctrl</kbd> | Sprint (needs more than three drumsticks of food) |
 | Left <kbd>Shift</kbd> | Sneak, so you won't walk off edges (fly down in creative) |
-| <kbd>F</kbd> | Toggle flight in creative |
+| <kbd>F</kbd> | Swap the held item with your off-hand (hold right click with a shield to block) |
+| <kbd>R</kbd> | Toggle flight in creative |
 | <kbd>G</kbd> | Switch between survival and creative |
 | <kbd>F5</kbd> | First person / third person back / third person front |
 | <kbd>[</kbd> / <kbd>]</kbd> | Lower / raise render distance |
@@ -390,9 +391,8 @@ cargo run --release -- --creative --world sandbox --seed 42
 VoxelCraft is working toward a 1.0 that matches modern Java single-player
 survival closely. Each release completes one area:
 
-**v0.12** building materials (in progress) → **v0.13** terrain →
-**v0.14** structures → **v0.15** wildlife → **v0.16** deep dark and trial
-chambers → **v0.17** villages and raids → **v0.18** the End and the Wither →
+**v0.13** terrain → **v0.14** structures (next) → **v0.15** wildlife →
+**v0.16** deep dark and trial chambers → **v0.17** villages and raids → **v0.18** the End and the Wither →
 **v0.19** redstone and automation → **v0.20** polish and performance →
 **1.0**. Multiplayer expansion comes after 1.0.
 
