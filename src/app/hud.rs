@@ -417,7 +417,7 @@ impl Game {
 
     pub(super) fn map_hand(
         &self,
-        session: &crate::session::PlayerSession,
+        session: &voxelcraft::session::PlayerSession,
         selected: usize,
         mut hand: crate::render::hand::Hand,
     ) -> crate::render::hand::Hand {
