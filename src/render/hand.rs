@@ -19,7 +19,7 @@ use crate::world::block::tex;
 use crate::world::shape;
 
 /// Everything about the hand this frame.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Hand {
     /// What's held (`None`: the bare arm).
     pub item: Option<Item>,
@@ -33,6 +33,9 @@ pub struct Hand {
     pub block_light: f32,
     /// Compass or clock frame. Absent for every other item.
     pub icon: Option<u16>,
+    pub map: Option<Box<crate::world::maps::MapData>>,
+    pub off_map: Option<Box<crate::world::maps::MapData>>,
+    pub map_small: bool,
 }
 
 /// Minecraft draws the hand with this field of view, whatever the setting.
@@ -203,6 +206,117 @@ pub(super) fn vertices(
     let inward = 0.56 * (1.0 - (aspect / WIDE_ASPECT).clamp(0.0, 1.0));
     let bob = translate(-inward, 0.0, 0.0);
 
+    for (map, small, left) in [(&hand.map, hand.map_small, false), (&hand.off_map, true, true)] {
+        let Some(map) = map else { continue };
+        let size = if small { 0.52 } else { 1.05 };
+        let m = bob
+            * translate(if small { if left { -0.45 } else { 0.45 } } else { 0.0 }, -0.42 - hand.equip * 0.6, -1.05)
+            * rot_x(-18.0)
+            * Mat4::from_scale(Vec3::splat(size));
+        let palette = |color: u8| [[((color % 16) as f32 + 0.5) / 16.0, ((color / 16) as f32 + 0.5) / 16.0]; 4];
+        let point = |x: f32, y: f32, z: f32| m.transform_point3(Vec3::new(x / 128.0 - 0.5, 0.5 - y / 128.0, z));
+        let mut rect = |x: f32, y: f32, w: f32, h: f32, c: u8, depth: f32| {
+            b.quad(
+                [point(x, y + h, depth), point(x + w, y + h, depth), point(x + w, y, depth), point(x, y, depth)],
+                palette(c),
+                2955,
+            )
+        };
+        rect(-7.0, -7.0, 142.0, 142.0, 0, 0.0);
+        // Coalesce same-colour runs; the map costs one quad per run.
+        for y in 0..128 {
+            let mut x = 0;
+            while x < 128 {
+                let c = map.colors[y * 128 + x];
+                let begin = x;
+                x += 1;
+                while x < 128 && map.colors[y * 128 + x] == c {
+                    x += 1;
+                }
+                if c / 4 != 0 {
+                    rect(begin as f32, y as f32, (x - begin) as f32, 1.0, c, 0.001);
+                }
+            }
+        }
+        for d in &map.decorations {
+            let Some((x, y, rotation, outside)) = map.decoration_view(d) else { continue };
+            if outside {
+                let point = |x: f32, y: f32| point(x, y, 0.005);
+                b.quad(
+                    [
+                        point(x - 1.0, y + 1.0),
+                        point(x + 1.0, y + 1.0),
+                        point(x + 1.0, y - 1.0),
+                        point(x - 1.0, y - 1.0),
+                    ],
+                    palette(8 * 4 + 2),
+                    2955,
+                );
+                continue;
+            }
+            if d.kind == "player" {
+                let angle = (rotation as f32 * 22.5).to_radians();
+                let center = point(x, y, 0.005);
+                let p = |dx: f32, dy: f32| {
+                    center
+                        + m.transform_vector3(Vec3::new(
+                            (dx * angle.cos() - dy * angle.sin()) / 128.0,
+                            (-dx * angle.sin() - dy * angle.cos()) / 128.0,
+                            0.0,
+                        ))
+                };
+                b.quad([p(-2.0, 3.0), p(2.0, 3.0), p(0.0, -4.0), p(0.0, -4.0)], palette(8 * 4 + 2), 2955);
+            } else if d.kind.contains("treasure") || d.kind == "target_x" {
+                for offset in -3..=3 {
+                    let offset = offset as f32;
+                    b.quad(
+                        [
+                            point(x + offset - 0.7, y + offset + 0.7, 0.005),
+                            point(x + offset + 0.7, y + offset + 0.7, 0.005),
+                            point(x + offset + 0.7, y + offset - 0.7, 0.005),
+                            point(x + offset - 0.7, y + offset - 0.7, 0.005),
+                        ],
+                        palette(28 * 4 + 2),
+                        2955,
+                    );
+                    b.quad(
+                        [
+                            point(x + offset - 0.7, y - offset + 0.7, 0.005),
+                            point(x + offset + 0.7, y - offset + 0.7, 0.005),
+                            point(x + offset + 0.7, y - offset - 0.7, 0.005),
+                            point(x + offset - 0.7, y - offset - 0.7, 0.005),
+                        ],
+                        palette(28 * 4 + 2),
+                        2955,
+                    );
+                }
+            } else {
+                let layer = if d.kind.contains("monument") {
+                    2956
+                } else if d.kind.contains("jungle") {
+                    2957
+                } else if d.kind.contains("swamp") {
+                    2958
+                } else {
+                    2959
+                };
+                b.quad(
+                    [
+                        point(x - 5.0, y + 5.0, 0.005),
+                        point(x + 5.0, y + 5.0, 0.005),
+                        point(x + 5.0, y - 5.0, 0.005),
+                        point(x - 5.0, y - 5.0, 0.005),
+                    ],
+                    [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+                    layer,
+                );
+            }
+        }
+    }
+    if hand.map.is_some() {
+        return out;
+    }
+
     let Some(item) = hand.item else {
         // The bare arm (Minecraft's `renderPlayerArm`).
         let m =
@@ -347,5 +461,34 @@ mod tests {
                 assert!((clip_a / clip_a.w).abs_diff_eq(clip_b / clip_b.w, 1e-5));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod map_tests {
+    use super::*;
+    #[test]
+    fn maps_build_bounded_geometry_with_valid_reserved_palette_layers() {
+        let mut data =
+            crate::world::maps::MapData::fresh(0, 0, 0, crate::world::terrain::Dimension::Overworld, true, false);
+        data.colors.fill(12 * 4 + 1);
+        data.decorations.push(crate::world::maps::Decoration { kind: "player".into(), x: 0.0, z: 0.0, rotation: 90.0 });
+        let hand =
+            Hand { item: Some(Item::FILLED_MAP), map: Some(Box::new(data)), sky_light: 1.0, ..Default::default() };
+        let geometry =
+            vertices(&hand, Vec3::NEG_Z, 70.0f32.to_radians(), 16.0 / 9.0, Mat4::IDENTITY, &mut SpriteMasks::default());
+        assert!(geometry.len() < 1000, "uniform colours coalesce into one run per row");
+        assert!(geometry.iter().all(|v| v.layer == 2955 && v.pos.iter().all(|p| p.is_finite())));
+        let mut small = hand.clone();
+        small.map_small = true;
+        let small_vertices = vertices(
+            &small,
+            Vec3::NEG_Z,
+            70.0f32.to_radians(),
+            16.0 / 9.0,
+            Mat4::IDENTITY,
+            &mut SpriteMasks::default(),
+        );
+        assert!(small_vertices.iter().all(|v| v.pos.iter().all(|p| p.is_finite())));
     }
 }

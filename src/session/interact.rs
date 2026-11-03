@@ -32,6 +32,7 @@ pub enum Used {
     /// The player now rides this vehicle.
     Mounted(u32),
     CartPlaced,
+    MapCreated,
     /// A cushion was set down at this position (`CushionItem.useOn`).
     CushionPlaced {
         at: DVec3,
@@ -296,7 +297,7 @@ impl PlayerSession {
     fn use_entity(
         &mut self,
         slot: usize,
-        world: &World,
+        world: &mut World,
         entities: &mut Entities,
         ctx: &UseContext,
         tool_broken: &mut Option<Item>,
@@ -370,6 +371,7 @@ impl PlayerSession {
         if !ctx.sneaking
             && let Some(id) = entities.target_merchant(world, eye, dir, self.entity_reach())
         {
+            entities.prepare_merchant_maps(world, id);
             let offers = entities
                 .merchant(id)
                 .and_then(|m| m.villager.as_ref())
@@ -410,6 +412,22 @@ impl PlayerSession {
         let target = self.block_target(world);
         if self.block_takes_use(slot, world, ctx.sneaking) {
             return Ok(None);
+        }
+        if self.inventory.get(slot).is_some_and(|s| s.item == Item::MAP) {
+            let pos = self.player.pos.floor().as_ivec3();
+            let data = crate::world::maps::MapData::fresh(pos.x, pos.z, 0, world.generator.dimension, true, false);
+            let filled = world.maps.create(data, Item::FILLED_MAP);
+            if !self.mode.is_creative() && self.inventory.get(slot).unwrap().count == 1 {
+                self.inventory.slots[slot] = Some(filled);
+            } else {
+                if !self.mode.is_creative() {
+                    self.inventory.take_one(slot);
+                }
+                if self.inventory.add_stack(filled) > 0 {
+                    entities.throw(filled, self.player.eye(), self.player.forward().as_dvec3());
+                }
+            }
+            return Ok(Some(Used::MapCreated));
         }
         let creative = self.mode.is_creative();
         let survival = self.mode.is_survival();

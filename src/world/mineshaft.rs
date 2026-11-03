@@ -21,6 +21,7 @@ use super::fortress::Feature;
 use super::noise::{hash_f, hash3};
 use super::structure::{Bounds, Oriented, Paint, Rng};
 use crate::entity::MobKind;
+#[cfg(test)]
 use crate::item::{Item, Tier, ToolKind};
 
 /// Java's `random_spread` frequency for mineshafts.
@@ -603,7 +604,9 @@ fn floor_touches(p: &Piece, chunk: &Bounds) -> bool {
 /// `chests/abandoned_mineshaft.json` mapped onto items we have. Missing
 /// entries (name tags, seeds, glow berries,
 /// powered/detector/activator rails) stay weighted blanks.
+#[cfg(test)]
 type Entry = (Option<Item>, u32, u8, u8);
+#[cfg(test)]
 const RARE: &[Entry] = &[
     (Some(Item::GOLDEN_APPLE), 20, 1, 1),          // golden apple
     (Some(Item::ENCHANTED_GOLDEN_APPLE), 1, 1, 1), // enchanted golden apple
@@ -612,6 +615,7 @@ const RARE: &[Entry] = &[
     (Some(Item::tool(ToolKind::Pickaxe, Tier::Iron)), 5, 1, 1),
     (None, 5, 1, 1), // empty
 ];
+#[cfg(test)]
 const COMMON: &[Entry] = &[
     (Some(Item::IRON_INGOT), 10, 1, 5),
     (Some(Item::GOLD_INGOT), 5, 1, 3),
@@ -625,6 +629,7 @@ const COMMON: &[Entry] = &[
     (Some(Item::PUMPKIN_SEEDS), 10, 2, 4),  // pumpkin seeds
     (Some(Item::BEETROOT_SEEDS), 10, 2, 4), // beetroot seeds
 ];
+#[cfg(test)]
 const RAILS: &[Entry] = &[
     (Some(Item::from_block(Block::RAIL)), 20, 4, 8),
     (None, 5, 1, 4), // powered rail
@@ -633,18 +638,16 @@ const RAILS: &[Entry] = &[
     (Some(Item::from_block(Block::TORCH)), 15, 1, 16),
 ];
 
-fn roll_pool(chest: &mut Chest, rng: &mut Rng, table: &[Entry], rolls: u32) {
+#[cfg(test)]
+fn roll_pool(chest: &mut super::loot::LootItems, rng: &mut super::loot::LootRandom, table: &[Entry], rolls: u32) {
     let total: u32 = table.iter().map(|e| e.1).sum();
     for _ in 0..rolls {
         let mut choice = rng.below(total);
         for &(item, weight, lo, hi) in table {
             if choice < weight {
+                let count = rng.range(lo as u32, hi as u32) as u8;
                 if let Some(item) = item {
-                    let count = rng.range(lo as u32, hi as u32) as u8;
-                    let empty: Vec<usize> = (0..super::chest::SLOTS).filter(|&i| chest.slots[i].is_none()).collect();
-                    if let Some(&slot) = empty.get(rng.below(empty.len() as u32) as usize) {
-                        chest.slots[slot] = Some(crate::inventory::Stack::new(item, count));
-                    }
+                    chest.push(crate::inventory::Stack::new(item, count));
                 }
                 break;
             }
@@ -654,13 +657,19 @@ fn roll_pool(chest: &mut Chest, rng: &mut Rng, table: &[Entry], rolls: u32) {
 }
 
 pub fn loot(seed: u64) -> Chest {
-    let mut rng = Rng(seed ^ 0x6D69_6E65);
-    let mut chest = Chest::default();
+    super::loot::table(seed, "abandoned_mineshaft")
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+fn legacy_loot(seed: u64) -> Chest {
+    let mut rng = super::loot::LootRandom::new(seed);
+    let mut chest = super::loot::LootItems::default();
     roll_pool(&mut chest, &mut rng, RARE, 1);
     let common = rng.range(2, 4);
     roll_pool(&mut chest, &mut rng, COMMON, common);
     roll_pool(&mut chest, &mut rng, RAILS, 3);
-    chest
+    chest.finish(&mut rng, 27)
 }
 
 impl Paint<'_, Piece> {

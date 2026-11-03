@@ -5,8 +5,9 @@ of calls (`strength`, `requiresCorrectToolForDrops`, copies of other blocks,
 helper methods and colour or copper collection lambdas). This module runs that
 bytecode on a small symbolic stack machine and records, for every registered
 block ID, the three properties the mining fixture needs: `destroyTime`,
-`explosionResistance` and `requiresCorrectToolForDrops`. Every other value is
-opaque. Unknown opcodes, unknown collection helpers, registrations inside a
+`explosionResistance` and `requiresCorrectToolForDrops`, plus map colours for
+the map fixture. Unresolved state-dependent map colours remain explicit.
+Other values are opaque. Unknown opcodes, unknown collection helpers, registrations inside a
 branch and branches whose outcomes differ fail instead of guessing.
 
 Used by fixture extractors only. Never reads VoxelCraft source.
@@ -50,17 +51,18 @@ class Opaque:
 
 
 class Props:
-    def __init__(self, destroy=0.0, resistance=0.0, requires=False):
+    def __init__(self, destroy=0.0, resistance=0.0, requires=False, map_color="NONE"):
         self.destroy, self.resistance, self.requires = destroy, resistance, requires
+        self.map_color = map_color
 
     def key(self):
         return (self.destroy, self.resistance, self.requires)
 
     def copy(self):
-        return Props(*self.key())
+        return Props(*self.key(), self.map_color)
 
     def __eq__(self, other):
-        return isinstance(other, Props) and self.key() == other.key()
+        return isinstance(other, Props) and self.key() == other.key() and self.map_color == other.map_color
 
     def __repr__(self):
         return f"Props{self.key()}"
@@ -285,6 +287,8 @@ class Interpreter:
             if field not in self.statics[owner]:
                 raise ValueError(f"{owner}.{field} read before initialization")
             return self.statics[owner][field]
+        if owner == "net/minecraft/world/level/material/MapColor":
+            return Enum("map_color", field)
         if owner == DYE_COLOR:
             return Enum("color", field)
         if owner == WEATHER_STATE:
@@ -341,6 +345,21 @@ class Interpreter:
                 receiver.resistance = max(0.0, args[1])
             elif method == "instabreak":
                 receiver.destroy, receiver.resistance = 0.0, 0.0
+            elif method == "mapColor":
+                color = args[1]
+                receiver.map_color = color.name if isinstance(color, Enum) and color.kind == "map_color" else "state_dependent"
+                if isinstance(color, Lambda) and color.owner == BLOCKS:
+                    captured = color.captured
+                    if "logProperties" in color.method and len(captured) == 2 and all(isinstance(c, Enum) and c.kind == "map_color" for c in captured):
+                        receiver.map_color = {"axis": [c.name for c in captured]}
+                    elif "netherStemProperties" in color.method and len(captured) == 1:
+                        receiver.map_color = captured[0].name
+                    elif "waterloggedMapColor" in color.method and len(captured) == 1:
+                        receiver.map_color = {"waterlogged": captured[0].name}
+                    elif len(captured) == 1 and isinstance(captured[0], Enum) and captured[0].kind == "color":
+                        code, _ = self.cls(BLOCKS).method(color.method, color.descriptor)
+                        if any("BedBlock.PART" in c for _, _, c, _ in code.values()):
+                            receiver.map_color = {"bed": captured[0].name}
             elif method == "requiresCorrectToolForDrops":
                 receiver.requires = True
             elif returns != "L" + PROPERTIES + ";":
@@ -362,6 +381,17 @@ class Interpreter:
             # Keys built from other registries' keys (pottery sherds, discs)
             # stay unnamed; nothing here reads them.
             return Key(args[1] if isinstance(args[1], str) else None)
+        if owner == DYE_COLOR and method == "getMapColor":
+            names = {"WHITE":"SNOW", "ORANGE":"COLOR_ORANGE", "MAGENTA":"COLOR_MAGENTA", "LIGHT_BLUE":"COLOR_LIGHT_BLUE", "YELLOW":"COLOR_YELLOW", "LIME":"COLOR_LIGHT_GREEN", "PINK":"COLOR_PINK", "GRAY":"COLOR_GRAY", "LIGHT_GRAY":"COLOR_LIGHT_GRAY", "CYAN":"COLOR_CYAN", "PURPLE":"COLOR_PURPLE", "BLUE":"COLOR_BLUE", "BROWN":"COLOR_BROWN", "GREEN":"COLOR_GREEN", "RED":"COLOR_RED", "BLACK":"COLOR_BLACK"}
+            return Enum("map_color", names[args[0].name])
+        if method == "defaultMapColor" and args and isinstance(args[0], Key):
+            color = self.registered[args[0].name].map_color
+            if isinstance(color, dict):
+                color = color.get("axis", [color.get("waterlogged", "state_dependent")])[0]
+            return Enum("map_color", color) if color != "state_dependent" else Opaque("default map color")
+        if owner == DYE_COLOR and method == "getTerracottaColor":
+            name = {"LIME": "LIGHT_GREEN"}.get(args[0].name, args[0].name)
+            return Enum("map_color", "TERRACOTTA_" + name)
         if owner == COLOR_COLLECTION:
             return self.color_collection(method, args)
         if owner in (COPPER_COLLECTION, BY_STATE):
@@ -440,8 +470,13 @@ class Interpreter:
                 # An unreachable switch default (`MatchException`): not an outcome.
                 return DEAD
             if op in BRANCHES or op in ("tableswitch", "lookupswitch"):
-                for _ in range(BRANCH_POPS.get(op, 1)):
-                    stack.pop()
+                operands = [stack.pop() for _ in range(BRANCH_POPS.get(op, 1))]
+                # Collection lambdas branch on known colour enums. Evaluate
+                # those comparisons; world/block-state branches remain unknown.
+                if op in ("if_acmpeq", "if_acmpne") and all(isinstance(v, Enum) for v in operands):
+                    equal = operands[0] == operands[1]
+                    pc = int(operand) if equal == (op == "if_acmpeq") else nxt
+                    continue
                 outcomes = []
                 destinations = targets if targets else [int(operand), nxt]
                 self.fork_depth += 1
@@ -452,6 +487,11 @@ class Interpreter:
                 finally:
                     self.fork_depth -= 1
                 outcomes = [o for o in outcomes if o is not DEAD] or [DEAD]
+                if all(isinstance(o, Props) for o in outcomes) and all(o.key() == outcomes[0].key() for o in outcomes):
+                    result = outcomes[0]
+                    if any(o.map_color != result.map_color for o in outcomes):
+                        result.map_color = "state_dependent"
+                    return result
                 if any(o != outcomes[0] for o in outcomes):
                     raise ValueError(f"branch outcomes differ in {owner}: {outcomes}")
                 return outcomes[0]
@@ -567,3 +607,10 @@ def item_registry_ids(jar):
         named = all(isinstance(k, Key) and k.name for k in keys)
         result[match[1]] = [k.item for k in keys] if named else None
     return result
+
+
+def block_map_colors(jar):
+    """Java map colours by registry ID; state functions stay explicitly unknown."""
+    interpreter = Interpreter(jar)
+    interpreter.static(BLOCKS, "AIR")
+    return {name: props.map_color for name, props in interpreter.registered.items()}

@@ -415,6 +415,40 @@ impl Game {
         turns
     }
 
+    pub(super) fn map_hand(
+        &self,
+        session: &crate::session::PlayerSession,
+        selected: usize,
+        mut hand: crate::render::hand::Hand,
+    ) -> crate::render::hand::Hand {
+        let main = session.inventory.get(selected);
+        let image = |stack: Option<Stack>| {
+            let stack = stack.filter(|s| s.item.is_map() && s.item != Item::MAP)?;
+            let mut map = self.world.maps.maps.get(&stack.map_id?)?.clone();
+            if map.tracking && map.dimension == self.dimension {
+                let rotation = if self.dimension == crate::world::terrain::Dimension::Nether {
+                    let tick = ((self.day_count as f64 + self.day_time) * 24000.0 / 10.0) as i32;
+                    ((tick.wrapping_mul(tick).wrapping_mul(34187121).wrapping_add(tick.wrapping_mul(121)) >> 15) & 15)
+                        as f32
+                        * 22.5
+                } else {
+                    session.player.yaw.to_degrees() + 90.0
+                };
+                map.decorations.push(crate::world::maps::Decoration {
+                    kind: "player".into(),
+                    x: session.player.pos.x,
+                    z: session.player.pos.z,
+                    rotation,
+                });
+            }
+            Some(Box::new(map))
+        };
+        hand.map = image(main);
+        hand.off_map = image(session.inventory.offhand);
+        hand.map_small = session.inventory.offhand.is_some();
+        hand
+    }
+
     pub(super) fn stamp_hand(
         dial: crate::item::Dial,
         mut hand: crate::render::hand::Hand,

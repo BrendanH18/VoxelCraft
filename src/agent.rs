@@ -733,6 +733,9 @@ impl Agent {
     ) {
         self.session.settle_wake(world);
         self.session.tick_lodestones(world);
+        for stack in [self.session.inventory.get(self.selected), self.session.inventory.offhand].into_iter().flatten() {
+            world.tick_map(stack, self.session.player.pos, self.session.id.0 as u64);
+        }
         self.previous_pos = self.session.player.pos;
         self.keep_inventory = rules.bool("keep_inventory");
         self.pearls_vanish = rules.bool("ender_pearls_vanish_on_death");

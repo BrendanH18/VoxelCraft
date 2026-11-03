@@ -1993,9 +1993,13 @@ impl Game {
                 let eye = self.session.player.eye();
                 let eating = (self.body.actions.eat_timer / EAT_TIME) as f32;
                 let held = self.session.inventory.get(self.body.actions.selected);
-                Self::stamp_hand(
-                    held.map_or(dial, |s| dial.for_stack(&s)),
-                    self.hand.view(eating, crate::entity::sky_light(&self.world, eye), self.torch_light(eye)),
+                self.map_hand(
+                    &self.session,
+                    self.body.actions.selected,
+                    Self::stamp_hand(
+                        held.map_or(dial, |s| dial.for_stack(&s)),
+                        self.hand.view(eating, crate::entity::sky_light(&self.world, eye), self.torch_light(eye)),
+                    ),
                 )
             }),
             rain: scene.rain,

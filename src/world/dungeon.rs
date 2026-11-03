@@ -11,14 +11,17 @@ use glam::{IVec2, IVec3};
 use rustc_hash::FxHashMap;
 
 use super::block::Block;
-use super::chest::{Chest, SLOTS, is_chest};
+#[cfg(test)]
+use super::chest::SLOTS;
+use super::chest::{Chest, is_chest};
 use super::chunk::{CHUNK_SIZE_I, CHUNK_VOLUME, index};
 use super::fortress::Feature;
 use super::noise::hash3;
 use super::structure::{Bounds, Rng};
 use super::terrain::Generator;
 use crate::entity::MobKind;
-use crate::inventory::Stack;
+
+#[cfg(test)]
 use crate::item::Item;
 
 const FULL_SALT: u64 = 0x004D_4F4E_5354_4552;
@@ -265,7 +268,9 @@ impl Dungeons {
 // rolls. Entries with no usable VoxelCraft counterpart remain weighted
 // blanks, preserving the relative odds of the items we can award. Omitted:
 // three music discs and copper horse armor.
+#[cfg(test)]
 type Entry = (Option<Item>, u32, u8, u8);
+#[cfg(test)]
 const RARE: &[Entry] = &[
     (Some(Item::LEATHER), 20, 1, 5),
     (Some(Item::GOLDEN_APPLE), 15, 1, 1),          // golden apple
@@ -280,6 +285,7 @@ const RARE: &[Entry] = &[
     (Some(Item::DIAMOND_HORSE_ARMOR), 5, 1, 1),    // diamond horse armor
     (Some(Item::ENCHANTED_BOOK), 10, 1, 1),
 ];
+#[cfg(test)]
 const COMMON: &[Entry] = &[
     (Some(Item::IRON_INGOT), 10, 1, 4),
     (Some(Item::GOLD_INGOT), 5, 1, 4),
@@ -292,6 +298,7 @@ const COMMON: &[Entry] = &[
     (Some(Item::PUMPKIN_SEEDS), 10, 2, 4),  // pumpkin seeds
     (Some(Item::BEETROOT_SEEDS), 10, 2, 4), // beetroot seeds
 ];
+#[cfg(test)]
 const JUNK: &[Entry] = &[
     (Some(Item::BONE), 10, 1, 8),
     (Some(Item::GUNPOWDER), 10, 1, 8),
@@ -299,18 +306,16 @@ const JUNK: &[Entry] = &[
     (Some(Item::STRING), 10, 1, 8),
 ];
 
-fn roll_pool(chest: &mut Chest, rng: &mut Rng, table: &[Entry], rolls: u32) {
+#[cfg(test)]
+fn roll_pool(chest: &mut super::loot::LootItems, rng: &mut super::loot::LootRandom, table: &[Entry], rolls: u32) {
     let total: u32 = table.iter().map(|e| e.1).sum();
     for _ in 0..rolls {
         let mut choice = rng.below(total);
         for &(item, weight, lo, hi) in table {
             if choice < weight {
+                let count = rng.range(lo as u32, hi as u32) as u8;
                 if let Some(item) = item {
-                    let count = rng.range(lo as u32, hi as u32) as u8;
-                    let empty: Vec<usize> = (0..SLOTS).filter(|&i| chest.slots[i].is_none()).collect();
-                    if let Some(&slot) = empty.get(rng.below(empty.len() as u32) as usize) {
-                        chest.slots[slot] = Some(Stack::new(item, count));
-                    }
+                    chest.push(crate::inventory::Stack::new(item, count));
                 }
                 break;
             }
@@ -320,14 +325,20 @@ fn roll_pool(chest: &mut Chest, rng: &mut Rng, table: &[Entry], rolls: u32) {
 }
 
 pub fn loot(seed: u64) -> Chest {
-    let mut rng = Rng(seed ^ 0x7369_6D70_6C65);
-    let mut chest = Chest::default();
+    super::loot::table(seed, "simple_dungeon")
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+fn legacy_loot(seed: u64) -> Chest {
+    let mut rng = super::loot::LootRandom::new(seed);
+    let mut chest = super::loot::LootItems::default();
     let rare_rolls = rng.range(1, 3);
     roll_pool(&mut chest, &mut rng, RARE, rare_rolls);
     let common_rolls = rng.range(1, 4);
     roll_pool(&mut chest, &mut rng, COMMON, common_rolls);
     roll_pool(&mut chest, &mut rng, JUNK, 3);
-    chest
+    chest.finish(&mut rng, 27)
 }
 
 #[cfg(test)]
@@ -372,7 +383,8 @@ mod tests {
         assert_eq!(loot(17).serialize(), loot(17).serialize());
         for seed in 0..100 {
             let chest = loot(seed);
-            assert!(chest.slots.iter().flatten().count() <= 10);
+            assert!(chest.slots.iter().flatten().count() <= 27);
+            assert!(chest.slots.iter().flatten().map(|s| s.count as u32).sum::<u32>() <= 80);
         }
     }
 

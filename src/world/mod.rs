@@ -52,6 +52,8 @@ mod honey;
 pub mod jigsaw;
 mod light_shape;
 pub(crate) mod lighting;
+pub mod loot;
+pub mod maps;
 pub mod mineshaft;
 pub mod mount_states;
 mod navigation;
@@ -210,6 +212,8 @@ impl Default for WorldRules {
 
 pub struct World {
     pub generator: Arc<Generator>,
+    pub maps: maps::MapStorage,
+    pub loot_sequences: loot::RandomSequences,
     workers: Workers,
     chunks: FxHashMap<IVec3, ChunkSlot>,
     columns: FxHashMap<IVec2, Column>,
@@ -497,8 +501,11 @@ impl World {
         // Build the per-state explosion tables while the world loads, not
         // in the frame of the first blast.
         explosion::prepare();
+        loot::prepare();
         let rng = generator.seed ^ 0x6772_6f77;
         Self {
+            maps: Default::default(),
+            loot_sequences: Default::default(),
             workers: Workers::new(generator.clone()),
             generator,
             chunks: FxHashMap::default(),

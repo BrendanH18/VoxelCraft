@@ -341,6 +341,12 @@ impl Game {
             game.set_grab(false);
         }
         game.renderer.force_offscreen = game.bench_render.is_some();
+        game.world.loot_sequences = root_props
+            .get("loot_sequences")
+            .and_then(|s| crate::world::loot::RandomSequences::load(s))
+            .unwrap_or_default();
+        game.world.maps =
+            root_props.get("maps").and_then(|s| crate::world::maps::MapStorage::load(s)).unwrap_or_default();
         game.restore_dimension(&dimension_props);
         if game.session.vitals.is_dead() {
             game.on_death();

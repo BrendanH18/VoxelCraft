@@ -168,6 +168,9 @@ impl TradeDef {
     const fn sell(output: &'static str, price: u8, count: u8, uses: u8, xp: u16, mult: f32) -> Self {
         Self { input: "emerald", n: price, price: 0, output, count, uses, xp, mult, ench: 0 }
     }
+    const fn explorer(output: &'static str, price: u8, xp: u16) -> Self {
+        Self { ench: 3, ..Self::sell(output, price, 1, 12, xp, 0.2) }
+    }
     const fn gear(output: &'static str, price: u8, uses: u8, xp: u16, mult: f32) -> Self {
         Self { ench: 1, ..Self::sell(output, price, 1, uses, xp, mult) }
     }
@@ -194,6 +197,9 @@ impl TradeDef {
         let mut cost = Stack::new(Item::from_name(self.input)?, self.n);
         let mut output = Stack::new(Item::from_name(self.output)?, self.count);
         let mut second = (self.price > 0).then(|| Stack::new(Item::EMERALD, self.price));
+        if self.ench == 3 {
+            second = Some(Stack::new(Item::COMPASS, 1));
+        }
         if self.ench == 1 {
             let level = 5 + rng.next_bounded(15) as u32;
             cost.count = (self.n as u32 + level).min(64) as u8;
@@ -245,6 +251,8 @@ pub struct Villager {
     pub(super) courtship: u16,
     pub(crate) bell_hide: f32,
     pub wandering: bool,
+    /// Biome variant used by Java 26.3 cartographer predicates.
+    pub map_variant: Option<String>,
     pub(super) gossip: super::villager_gossip::Gossip,
     seed: u64,
     restock_day: i64,
@@ -309,6 +317,7 @@ impl Villager {
             courtship: 0,
             bell_hide: 0.0,
             wandering: false,
+            map_variant: None,
             gossip: Default::default(),
             restock_day: -1,
             restocks: 0,
@@ -362,7 +371,11 @@ impl Villager {
         let mut seen = 0u32;
         let mut seed = hash(self.seed ^ ((self.profession as u64) << 32) ^ self.level as u64);
         for &(p, l, d) in tables::TRADES {
-            if p == self.profession && l == self.level && d.available() {
+            if p == self.profession
+                && l == self.level
+                && d.available()
+                && tables::explorer_allowed(d.output, self.map_variant.as_deref().unwrap_or("plains"))
+            {
                 seen += 1;
                 seed = hash(seed);
                 let i = (seed % seen as u64) as usize;
@@ -529,6 +542,36 @@ fn bed_pose<W: MobWorld + ?Sized>(world: &W, head: IVec3) -> Option<(DVec3, f32)
     Some((at, (toward.x as f32).atan2(-(toward.z as f32))))
 }
 impl Entities {
+    /// Resolve deferred exploration modifiers before the merchant screen opens.
+    pub fn prepare_merchant_maps(&mut self, world: &mut crate::world::World, id: u64) {
+        let Some(m) = self.mobs.iter_mut().find(|m| m.villager.as_ref().is_some_and(|v| v.id == id)) else { return };
+        let v = m.villager.as_mut().unwrap();
+        if v.map_variant.is_none() {
+            v.map_variant = Some(map_variant(world.generator.surface_biome(m.pos.x as i32, m.pos.z as i32)).into());
+        }
+        for slot in &mut v.offers {
+            if let Some(offer) = slot
+                && offer.output.item.is_map()
+                && offer.output.item != Item::MAP
+                && offer.output.map_id.is_none()
+            {
+                if !tables::explorer_allowed(
+                    &offer.output.item.name().replace(' ', "_"),
+                    v.map_variant.as_deref().unwrap_or("plains"),
+                ) {
+                    *slot = None;
+                    continue;
+                }
+                if let Some(stack) =
+                    world.maps.explorer(&world.generator, m.pos.floor().as_ivec3(), offer.output.item, 100)
+                {
+                    offer.output = stack;
+                } else {
+                    *slot = None;
+                }
+            }
+        }
+    }
     pub fn merchant(&self, id: u64) -> Option<&Mob> {
         self.mobs.iter().find(|m| m.alive() && m.villager.as_ref().is_some_and(|v| v.id == id))
     }
@@ -644,6 +687,9 @@ impl Entities {
                 continue;
             }
             let Some(v) = &mut m.villager else { continue };
+            if v.map_variant.is_none() {
+                v.map_variant = Some(map_variant(world.biome(m.pos.x as i32, m.pos.z as i32)).into());
+            }
             v.gossip.decay(self.village_day);
             if m.kind != MobKind::Villager {
                 continue;
@@ -787,7 +833,7 @@ impl Entities {
                     let v = m.villager.as_ref()?;
                     Some(json!({"identity":super::leash::save(m),"trader":m.trader.as_ref().map(|t|t.save()),"kind":m.kind.name(),"id":v.id,"seed":v.seed,"p":m.pos.to_array(),"yaw":m.yaw,
                     "health":m.health,"effects":m.effects.serialize(),"age":m.age,"built":m.built,"armor":m.armor.map(|a|a.map(|a|a as u8)),"glint":m.armor_glint,"profession":v.profession as u8,"level":v.level,"xp":v.xp,
-                    "job":v.job.map(|p|p.to_array()),"home":v.home.map(|p|p.to_array()),
+                    "job":v.job.map(|p|p.to_array()),"home":v.home.map(|p|p.to_array()),"map_variant":v.map_variant,
                     "offers":v.offers.map(|o|o.map(Offer::save)),"day":v.restock_day,"restocks":v.restocks,
                     "last":v.last_restock,"slept":v.last_slept,"golem_seen":v.golem_seen,"gossip":v.gossip.save(),"food":v.food.map(stack_to_string),"food_level":v.food_level,"bell_hide":v.bell_hide,"promote":v.promote_left,"promote_pending":v.promote_pending,"reputation":v.reputation,"weakness":m.weakness_left,"convert":m.convert_left,"convert_tick":m.convert_tick,"convert_by":m.convert_by.map(|p|p.0)}))
                 }
@@ -875,6 +921,7 @@ impl Entities {
                 }
                 v.xp = u16::try_from(a["xp"].as_u64()?).ok()?;
                 v.home = pos(&a["home"]);
+                v.map_variant = a["map_variant"].as_str().map(str::to_owned);
                 v.job = pos(&a["job"]);
                 for (i, o) in a["offers"].as_array()?.iter().take(10).enumerate() {
                     if !o.is_null() {
@@ -1435,5 +1482,76 @@ mod tests {
         let mut saved = Entities::new(9);
         saved.load_villagers(&restored.villagers_to_string());
         assert_eq!(saved.mobs[0].villager.as_ref().unwrap().priced_for(o, owner).count, 14);
+    }
+}
+
+#[cfg(test)]
+mod map_tests {
+    use super::*;
+    use crate::world::{World, terrain::Generator};
+    use std::sync::Arc;
+    #[test]
+    fn cartographer_explorer_offer_points_at_located_monument_and_reloads() {
+        let generator = Arc::new(Generator::new(42));
+        let mut world = World::new_headless(generator.clone(), Default::default(), 1);
+        let mut entities = Entities::new(42);
+        entities.spawn(MobKind::Villager, DVec3::new(0.0, 80.0, 0.0));
+        let v = entities.mobs[0].villager.as_mut().unwrap();
+        v.set_profession(Profession::Cartographer);
+        v.level = 3;
+        v.map_variant = Some("desert".into());
+        v.unlock();
+        let id = v.id;
+        entities.prepare_merchant_maps(&mut world, id);
+        let offer = entities.mobs[0]
+            .villager
+            .as_ref()
+            .unwrap()
+            .offers
+            .iter()
+            .flatten()
+            .find(|o| o.output.item == Item::OCEAN_MONUMENT_MAP)
+            .unwrap();
+        assert_eq!(offer.cost, Stack::new(Item::EMERALD, 13));
+        assert_eq!(offer.second, Some(Stack::new(Item::COMPASS, 1)));
+        let data = &world.maps.maps[&offer.output.map_id.unwrap()];
+        let target = generator
+            .temples
+            .locate_rings(&generator, &[crate::world::temples::Kind::Monument], IVec3::new(0, 80, 0), 100)
+            .unwrap();
+        assert_eq!((data.decorations[0].x, data.decorations[0].z), (target.x as f64, target.z as f64));
+        let saved = entities.villagers_to_string();
+        let mut loaded = Entities::new(42);
+        loaded.load_villagers(&saved);
+        assert_eq!(
+            loaded.mobs[0].villager.as_ref().unwrap().offers,
+            entities.mobs[0].villager.as_ref().unwrap().offers
+        );
+        assert_eq!(loaded.mobs[0].villager.as_ref().unwrap().map_variant.as_deref(), Some("desert"));
+    }
+    #[test]
+    fn java_26_3_cartographer_predicates_filter_biome_variants() {
+        assert!(tables::explorer_allowed("jungle_pyramid_map", "desert"));
+        assert!(!tables::explorer_allowed("jungle_pyramid_map", "plains"));
+        assert!(tables::explorer_allowed("taiga_village_map", "plains"));
+        assert!(!tables::explorer_allowed("taiga_village_map", "desert"));
+        assert!(tables::explorer_allowed("ocean_monument_map", "snow"));
+    }
+}
+
+fn map_variant(b: crate::world::terrain::Biome) -> &'static str {
+    use crate::world::terrain::Biome;
+    if b.is_jungle() {
+        "jungle"
+    } else if b.is_swamp() {
+        "swamp"
+    } else {
+        match b {
+            Biome::Desert => "desert",
+            Biome::Savanna | Biome::SavannaPlateau | Biome::WindsweptSavanna => "savanna",
+            Biome::Taiga | Biome::SnowyTaiga | Biome::OldGrowthPineTaiga | Biome::OldGrowthSpruceTaiga => "taiga",
+            Biome::SnowyPlains | Biome::IceSpikes => "snow",
+            _ => "plains",
+        }
     }
 }

@@ -201,6 +201,8 @@ pub enum Sprite {
     Compass,
     /// A clock face; the sun's position is a separate texture frame.
     Clock,
+    /// Original folded parchment.
+    Map(bool),
     /// An orange carrot.
     Carrot,
     /// A brown potato. `baked` is darker; `poison` is greenish.
@@ -678,6 +680,17 @@ const POTION_COUNT: u16 = crate::potion::Potion::COUNT as u16;
 const _: () = assert!(POTION_COUNT - LEGACY_POTION_COUNT <= 3);
 
 impl Item {
+    pub const MAP: Self = Self(1255);
+    pub const FILLED_MAP: Self = Self(1256);
+    pub const OCEAN_MONUMENT_MAP: Self = Self(1257);
+    pub const JUNGLE_PYRAMID_MAP: Self = Self(1258);
+    pub const SWAMP_HUT_MAP: Self = Self(1259);
+    pub const DESERT_VILLAGE_MAP: Self = Self(1260);
+    pub const PLAINS_VILLAGE_MAP: Self = Self(1261);
+    pub const SAVANNA_VILLAGE_MAP: Self = Self(1262);
+    pub const SNOWY_VILLAGE_MAP: Self = Self(1263);
+    pub const TAIGA_VILLAGE_MAP: Self = Self(1264);
+    pub const BURIED_TREASURE_MAP: Self = Self(1265);
     pub const MILK_BUCKET: Item = Item(513);
     pub const BOWL: Item = Item(514);
     pub const MUSHROOM_STEW: Item = Item(515);
@@ -985,7 +998,32 @@ impl Item {
         Item(CUSHION_ITEM + c as u16)
     }
 
+    pub fn is_map(self) -> bool {
+        (1255..=1265).contains(&self.0)
+    }
+
     pub fn info(self) -> ItemInfo {
+        if self.is_map() {
+            const NAMES: [&str; 11] = [
+                "map",
+                "filled map",
+                "ocean monument map",
+                "jungle pyramid map",
+                "swamp hut map",
+                "desert village map",
+                "plains village map",
+                "savanna village map",
+                "snowy village map",
+                "taiga village map",
+                "buried treasure map",
+            ];
+            return ItemInfo {
+                name: NAMES[(self.0 - 1255) as usize],
+                kind: ItemKind::Material,
+                max_stack: 64,
+                sprite: Sprite::Map(self.0 > 1256),
+            };
+        }
         if let Some(c) = self.cushion_color() {
             const NAMES: [&str; 16] = [
                 "white cushion",
@@ -1174,6 +1212,9 @@ impl Item {
 
     /// Whether this id names a real block or item.
     pub fn is_valid(self) -> bool {
+        if self.is_map() {
+            return true;
+        }
         self.info().name != "unknown"
     }
 
@@ -1311,6 +1352,9 @@ impl Item {
     /// Texture layer of the flat inventory icon (non-block items only), in
     /// the item icon range from `tex::ITEM_BASE`.
     pub fn icon_layer(self) -> Option<u16> {
+        if self.is_map() {
+            return Some(2944 + self.0 - 1255);
+        }
         sprite_index(self).map(tex::item_layer)
     }
 
@@ -1372,6 +1416,7 @@ impl Item {
             .chain((0..16).map(|i| Item(CUSHION_ITEM + i)))
             .chain((0..DECOR_ITEMS).map(|i| Item(DECOR_ITEM + i)))
             .chain((0..HAND_ITEMS).map(|i| Item(HAND_ITEM + i)))
+            .chain((1255..=1265).map(Item))
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1843,10 +1888,10 @@ mod tests {
 
     #[test]
     fn icon_layers_fit_the_texture_array() {
-        for i in Item::all_items() {
+        for i in Item::all_items().filter(|i| !i.is_map()) {
             let index = tex::item_index(i.icon_layer().unwrap()).unwrap();
             assert!((index as u32) < icon_count());
-            assert_eq!(Item::all_items().count() as u32, icon_count());
+            assert_eq!(Item::all_items().filter(|i| !i.is_map()).count() as u32, icon_count());
             assert_eq!(sprite_for_layer(index), Some(i.info().sprite));
         }
         // Icons stay addressable by the UI's and models' 16-bit layers.

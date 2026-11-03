@@ -15,7 +15,8 @@ use std::sync::{Arc, Mutex};
 use glam::{IVec2, IVec3};
 use rustc_hash::FxHashMap;
 
-use super::bastion::{Loot as L, pool, pool_with};
+#[cfg(test)]
+use super::bastion::Loot as L;
 use super::biome::Biome;
 use super::block::{Block, Facing};
 use super::chest::Chest;
@@ -28,7 +29,9 @@ use super::terrain::{Dimension, Generator, SEA_LEVEL};
 use crate::color::DyeColor;
 use crate::enchant::JavaRandom;
 use crate::inventory::Stack;
-use crate::item::{ArmorMaterial, ArmorPiece, Item, Tier, ToolKind};
+use crate::item::Item;
+#[cfg(test)]
+use crate::item::{ArmorMaterial, ArmorPiece, Tier, ToolKind};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Kind {
@@ -1306,6 +1309,7 @@ fn monument(g: &Generator, centre: IVec2, rot: u8, rng: &mut Rng) -> Built {
 // yet (trim templates, nautilus and copper horse armor, enchanted golden
 // apples, experience bottles, stews, maps, spears) stay empty at their
 // original weight rather than redistributing their probability.
+#[cfg(test)]
 const DESERTPYRAMID_0: &[L] = &[
     L { item: Some(Item::DIAMOND), weight: 5, lo: 1, hi: 3, enchanted: false, damage: None },
     L { item: Some(Item::IRON_INGOT), weight: 15, lo: 1, hi: 5, enchanted: false, damage: None },
@@ -1324,6 +1328,7 @@ const DESERTPYRAMID_0: &[L] = &[
     L { item: Some(Item::ENCHANTED_GOLDEN_APPLE), weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },
     L { item: None, weight: 15, lo: 1, hi: 1, enchanted: false, damage: None }, // None
 ];
+#[cfg(test)]
 const DESERTPYRAMID_1: &[L] = &[
     L { item: Some(Item::BONE), weight: 10, lo: 1, hi: 8, enchanted: false, damage: None },
     L { item: Some(Item::GUNPOWDER), weight: 10, lo: 1, hi: 8, enchanted: false, damage: None },
@@ -1331,10 +1336,12 @@ const DESERTPYRAMID_1: &[L] = &[
     L { item: Some(Item::STRING), weight: 10, lo: 1, hi: 8, enchanted: false, damage: None },
     L { item: Some(Item::from_block(Block::SAND)), weight: 10, lo: 1, hi: 8, enchanted: false, damage: None },
 ];
+#[cfg(test)]
 const DESERTPYRAMID_2: &[L] = &[
     L { item: None, weight: 6, lo: 1, hi: 1, enchanted: false, damage: None }, // None
     L { item: None, weight: 1, lo: 2, hi: 2, enchanted: false, damage: None }, // dune_armor_trim_smithing_template
 ];
+#[cfg(test)]
 const JUNGLETEMPLE_0: &[L] = &[
     L { item: Some(Item::DIAMOND), weight: 3, lo: 1, hi: 3, enchanted: false, damage: None },
     L { item: Some(Item::IRON_INGOT), weight: 10, lo: 1, hi: 5, enchanted: false, damage: None },
@@ -1350,10 +1357,12 @@ const JUNGLETEMPLE_0: &[L] = &[
     L { item: Some(Item::DIAMOND_HORSE_ARMOR), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None },
     L { item: Some(Item::BOOK), weight: 1, lo: 1, hi: 1, enchanted: true, damage: None },
 ];
+#[cfg(test)]
 const JUNGLETEMPLE_1: &[L] = &[
     L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None }, // None
     L { item: None, weight: 1, lo: 2, hi: 2, enchanted: false, damage: None }, // wild_armor_trim_smithing_template
 ];
+#[cfg(test)]
 const IGLOO_0: &[L] = &[
     L { item: Some(Item::APPLE), weight: 15, lo: 1, hi: 3, enchanted: false, damage: None },
     L { item: Some(Item::COAL), weight: 15, lo: 1, hi: 4, enchanted: false, damage: None },
@@ -1363,15 +1372,20 @@ const IGLOO_0: &[L] = &[
     L { item: Some(Item::EMERALD), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None },
     L { item: Some(Item::WHEAT), weight: 10, lo: 2, hi: 3, enchanted: false, damage: None },
 ];
+#[cfg(test)]
 const IGLOO_1: &[L] = &[L { item: Some(Item::GOLDEN_APPLE), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }];
+#[cfg(test)]
 const OUTPOST_0: &[L] = &[L { item: Some(Item::CROSSBOW), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }];
+#[cfg(test)]
 const OUTPOST_1: &[L] = &[
     L { item: Some(Item::WHEAT), weight: 7, lo: 3, hi: 5, enchanted: false, damage: None },
     L { item: Some(Item::POTATO), weight: 5, lo: 2, hi: 5, enchanted: false, damage: None },
     L { item: Some(Item::CARROT), weight: 5, lo: 3, hi: 5, enchanted: false, damage: None },
 ];
+#[cfg(test)]
 const OUTPOST_2: &[L] =
     &[L { item: Some(Item::from_block(Block::DARK_OAK_LOG)), weight: 1, lo: 2, hi: 3, enchanted: false, damage: None }];
+#[cfg(test)]
 const OUTPOST_3: &[L] = &[
     L { item: None, weight: 7, lo: 1, hi: 1, enchanted: false, damage: None }, // experience_bottle
     L { item: Some(Item::STRING), weight: 4, lo: 1, hi: 6, enchanted: false, damage: None },
@@ -1380,11 +1394,14 @@ const OUTPOST_3: &[L] = &[
     L { item: Some(Item::IRON_INGOT), weight: 3, lo: 1, hi: 3, enchanted: false, damage: None },
     L { item: Some(Item::BOOK), weight: 1, lo: 1, hi: 1, enchanted: true, damage: None },
 ];
+#[cfg(test)]
 const OUTPOST_4: &[L] = &[L { item: Some(Item::GOAT_HORN), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }];
+#[cfg(test)]
 const OUTPOST_5: &[L] = &[
     L { item: None, weight: 3, lo: 1, hi: 1, enchanted: false, damage: None }, // None
     L { item: None, weight: 1, lo: 2, hi: 2, enchanted: false, damage: None }, // sentry_armor_trim_smithing_template
 ];
+#[cfg(test)]
 const SHIPSUPPLY_0: &[L] = &[
     L { item: Some(Item::PAPER), weight: 8, lo: 1, hi: 12, enchanted: false, damage: None },
     L { item: Some(Item::POTATO), weight: 7, lo: 2, hi: 6, enchanted: false, damage: None },
@@ -1432,10 +1449,12 @@ const SHIPSUPPLY_0: &[L] = &[
         damage: None,
     },
 ];
+#[cfg(test)]
 const SHIPSUPPLY_1: &[L] = &[
     L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None }, // None
     L { item: None, weight: 1, lo: 2, hi: 2, enchanted: false, damage: None }, // coast_armor_trim_smithing_template
 ];
+#[cfg(test)]
 const SHIPSUPPLY_2: &[L] = &[
     L { item: None, weight: 148, lo: 1, hi: 1, enchanted: false, damage: None }, // None
     L { item: None, weight: 20, lo: 1, hi: 1, enchanted: false, damage: None },  // copper_nautilus_armor
@@ -1443,6 +1462,7 @@ const SHIPSUPPLY_2: &[L] = &[
     L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },   // golden_nautilus_armor
     L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },   // diamond_nautilus_armor
 ];
+#[cfg(test)]
 const SHIPTREASURE_0: &[L] = &[
     L { item: Some(Item::IRON_INGOT), weight: 90, lo: 1, hi: 5, enchanted: false, damage: None },
     L { item: Some(Item::GOLD_INGOT), weight: 10, lo: 1, hi: 5, enchanted: false, damage: None },
@@ -1450,15 +1470,18 @@ const SHIPTREASURE_0: &[L] = &[
     L { item: Some(Item::DIAMOND), weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },
     L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None }, // experience_bottle
 ];
+#[cfg(test)]
 const SHIPTREASURE_1: &[L] = &[
     L { item: Some(Item::IRON_NUGGET), weight: 50, lo: 1, hi: 10, enchanted: false, damage: None },
     L { item: Some(Item::GOLD_NUGGET), weight: 10, lo: 1, hi: 10, enchanted: false, damage: None },
     L { item: Some(Item::LAPIS_LAZULI), weight: 20, lo: 1, hi: 10, enchanted: false, damage: None },
 ];
+#[cfg(test)]
 const SHIPTREASURE_2: &[L] = &[
     L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None }, // None
     L { item: None, weight: 1, lo: 2, hi: 2, enchanted: false, damage: None }, // coast_armor_trim_smithing_template
 ];
+#[cfg(test)]
 const SHIPTREASURE_3: &[L] = &[
     L { item: None, weight: 148, lo: 1, hi: 1, enchanted: false, damage: None }, // None
     L { item: None, weight: 20, lo: 1, hi: 1, enchanted: false, damage: None },  // copper_nautilus_armor
@@ -1466,21 +1489,25 @@ const SHIPTREASURE_3: &[L] = &[
     L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },   // golden_nautilus_armor
     L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },   // diamond_nautilus_armor
 ];
+#[cfg(test)]
 const SHIPMAP_0: &[L] = &[
-    L { item: None, weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // buried_treasure_map
+    L { item: Some(Item::BURIED_TREASURE_MAP), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // buried_treasure_map
 ];
+#[cfg(test)]
 const SHIPMAP_1: &[L] = &[
     L { item: Some(Item::COMPASS), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None },
-    L { item: None, weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // map
+    L { item: Some(Item::MAP), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // map
     L { item: Some(Item::CLOCK), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None },
     L { item: Some(Item::PAPER), weight: 20, lo: 1, hi: 10, enchanted: false, damage: None },
     L { item: Some(Item::FEATHER), weight: 10, lo: 1, hi: 5, enchanted: false, damage: None },
     L { item: Some(Item::BOOK), weight: 5, lo: 1, hi: 5, enchanted: false, damage: None },
 ];
+#[cfg(test)]
 const SHIPMAP_2: &[L] = &[
     L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None }, // None
     L { item: None, weight: 1, lo: 2, hi: 2, enchanted: false, damage: None }, // coast_armor_trim_smithing_template
 ];
+#[cfg(test)]
 const SHIPMAP_3: &[L] = &[
     L { item: None, weight: 148, lo: 1, hi: 1, enchanted: false, damage: None }, // None
     L { item: None, weight: 20, lo: 1, hi: 1, enchanted: false, damage: None },  // copper_nautilus_armor
@@ -1488,6 +1515,7 @@ const SHIPMAP_3: &[L] = &[
     L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },   // golden_nautilus_armor
     L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },   // diamond_nautilus_armor
 ];
+#[cfg(test)]
 const RUINSMALL_0: &[L] = &[
     L { item: Some(Item::COAL), weight: 10, lo: 1, hi: 4, enchanted: false, damage: None },
     L { item: Some(Item::tool(ToolKind::Axe, Tier::Stone)), weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },
@@ -1496,6 +1524,7 @@ const RUINSMALL_0: &[L] = &[
     L { item: Some(Item::EMERALD), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None },
     L { item: Some(Item::WHEAT), weight: 10, lo: 2, hi: 3, enchanted: false, damage: None },
 ];
+#[cfg(test)]
 const RUINSMALL_1: &[L] = &[
     L {
         item: Some(Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Leather)),
@@ -1514,8 +1543,9 @@ const RUINSMALL_1: &[L] = &[
         damage: None,
     },
     L { item: Some(Item::FISHING_ROD), weight: 5, lo: 1, hi: 1, enchanted: true, damage: None },
-    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None }, // buried_treasure_map
+    L { item: Some(Item::BURIED_TREASURE_MAP), weight: 5, lo: 1, hi: 1, enchanted: false, damage: None }, // buried_treasure_map
 ];
+#[cfg(test)]
 const RUINSMALL_2: &[L] = &[
     L { item: None, weight: 148, lo: 1, hi: 1, enchanted: false, damage: None }, // None
     L { item: None, weight: 20, lo: 1, hi: 1, enchanted: false, damage: None },  // copper_nautilus_armor
@@ -1523,6 +1553,7 @@ const RUINSMALL_2: &[L] = &[
     L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },   // golden_nautilus_armor
     L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },   // diamond_nautilus_armor
 ];
+#[cfg(test)]
 const RUINBIG_0: &[L] = &[
     L { item: Some(Item::COAL), weight: 10, lo: 1, hi: 4, enchanted: false, damage: None },
     L { item: Some(Item::GOLD_NUGGET), weight: 10, lo: 1, hi: 3, enchanted: false, damage: None },
@@ -1530,6 +1561,7 @@ const RUINBIG_0: &[L] = &[
     L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None }, // stone_spear
     L { item: Some(Item::WHEAT), weight: 10, lo: 2, hi: 3, enchanted: false, damage: None },
 ];
+#[cfg(test)]
 const RUINBIG_1: &[L] = &[
     L { item: Some(Item::GOLDEN_APPLE), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None },
     L { item: Some(Item::BOOK), weight: 5, lo: 1, hi: 1, enchanted: true, damage: None },
@@ -1550,8 +1582,9 @@ const RUINBIG_1: &[L] = &[
         damage: None,
     },
     L { item: Some(Item::FISHING_ROD), weight: 5, lo: 1, hi: 1, enchanted: true, damage: None },
-    L { item: None, weight: 10, lo: 1, hi: 1, enchanted: false, damage: None }, // buried_treasure_map
+    L { item: Some(Item::BURIED_TREASURE_MAP), weight: 10, lo: 1, hi: 1, enchanted: false, damage: None }, // buried_treasure_map
 ];
+#[cfg(test)]
 const RUINBIG_2: &[L] = &[
     L { item: None, weight: 148, lo: 1, hi: 1, enchanted: false, damage: None }, // None
     L { item: None, weight: 20, lo: 1, hi: 1, enchanted: false, damage: None },  // copper_nautilus_armor
@@ -1560,76 +1593,34 @@ const RUINBIG_2: &[L] = &[
     L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },   // diamond_nautilus_armor
 ];
 
-/// Items in the `#minecraft:regular_goat_horns` tag.
+#[cfg(test)]
 const REGULAR_GOAT_HORNS: u32 = 4;
 
 /// Fills a structure's chest from its loot table.
 pub fn loot(seed: u64, table: LootTable) -> Chest {
-    let mut rng = Rng(seed ^ 0x7E3D_1007);
-    let mut chest = Chest::default();
-    match table {
-        LootTable::Dispenser => {
-            // Dispensers expose only their first nine backing slots.
-            for slot in 0..rng.range(1, 2) as usize {
-                chest.slots[slot] = Some(Stack::new(Item::ARROW, rng.range(2, 7) as u8));
-            }
-        }
-        LootTable::DesertPyramid => {
-            pool(&mut chest, &mut rng, DESERTPYRAMID_0, (2, 4));
-            pool(&mut chest, &mut rng, DESERTPYRAMID_1, (4, 4));
-            pool(&mut chest, &mut rng, DESERTPYRAMID_2, (1, 1));
-        }
-        LootTable::JungleTemple => {
-            // The book is `enchant_with_levels` 30, not `enchant_randomly`.
-            pool_with(&mut chest, &mut rng, JUNGLETEMPLE_0, (2, 6), Some(30));
-            pool(&mut chest, &mut rng, JUNGLETEMPLE_1, (1, 1));
-        }
-        LootTable::Igloo => {
-            pool(&mut chest, &mut rng, IGLOO_0, (2, 8));
-            pool(&mut chest, &mut rng, IGLOO_1, (1, 1));
-        }
-        LootTable::Outpost => {
-            pool(&mut chest, &mut rng, OUTPOST_0, (0, 1));
-            pool(&mut chest, &mut rng, OUTPOST_1, (2, 3));
-            pool(&mut chest, &mut rng, OUTPOST_2, (1, 3));
-            pool(&mut chest, &mut rng, OUTPOST_3, (2, 3));
-            pool(&mut chest, &mut rng, OUTPOST_4, (0, 1));
-            pool(&mut chest, &mut rng, OUTPOST_5, (1, 1));
-            // `set_instrument` picks from `#minecraft:regular_goat_horns`:
-            // ponder, sing, seek and feel, the first four horn items.
-            for stack in chest.slots.iter_mut().flatten().filter(|s| s.item == Item::GOAT_HORN) {
-                stack.item = Item(Item::GOAT_HORN.0 + rng.below(REGULAR_GOAT_HORNS) as u16);
-            }
-        }
-        LootTable::ShipSupply => {
-            pool(&mut chest, &mut rng, SHIPSUPPLY_0, (3, 10));
-            pool(&mut chest, &mut rng, SHIPSUPPLY_1, (1, 1));
-            pool(&mut chest, &mut rng, SHIPSUPPLY_2, (1, 1));
-        }
-        LootTable::ShipTreasure => {
-            pool(&mut chest, &mut rng, SHIPTREASURE_0, (3, 6));
-            pool(&mut chest, &mut rng, SHIPTREASURE_1, (2, 5));
-            pool(&mut chest, &mut rng, SHIPTREASURE_2, (1, 1));
-            pool(&mut chest, &mut rng, SHIPTREASURE_3, (1, 1));
-        }
-        LootTable::ShipMap => {
-            pool(&mut chest, &mut rng, SHIPMAP_0, (1, 1));
-            pool(&mut chest, &mut rng, SHIPMAP_1, (3, 3));
-            pool(&mut chest, &mut rng, SHIPMAP_2, (1, 1));
-            pool(&mut chest, &mut rng, SHIPMAP_3, (1, 1));
-        }
-        LootTable::RuinSmall => {
-            pool(&mut chest, &mut rng, RUINSMALL_0, (2, 8));
-            pool(&mut chest, &mut rng, RUINSMALL_1, (1, 1));
-            pool(&mut chest, &mut rng, RUINSMALL_2, (1, 1));
-        }
-        LootTable::RuinBig => {
-            pool(&mut chest, &mut rng, RUINBIG_0, (2, 8));
-            pool(&mut chest, &mut rng, RUINBIG_1, (1, 1));
-            pool(&mut chest, &mut rng, RUINBIG_2, (1, 1));
+    loot_resolved(seed, table, |s| (s.item != Item::BURIED_TREASURE_MAP).then_some(s))
+}
+
+/// Resolves exploration functions before LootTable.fill shuffles or splits.
+pub fn loot_resolved(seed: u64, table: LootTable, resolve: impl FnMut(Stack) -> Option<Stack>) -> Chest {
+    super::loot::table_with_random(table.name(), &mut super::loot::LootRandom::new(seed), resolve)
+}
+
+impl LootTable {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::DesertPyramid => "desert_pyramid",
+            Self::JungleTemple => "jungle_temple",
+            Self::Dispenser => "jungle_temple_dispenser",
+            Self::Igloo => "igloo_chest",
+            Self::Outpost => "pillager_outpost",
+            Self::ShipSupply => "shipwreck_supply",
+            Self::ShipTreasure => "shipwreck_treasure",
+            Self::ShipMap => "shipwreck_map",
+            Self::RuinSmall => "underwater_ruin_small",
+            Self::RuinBig => "underwater_ruin_big",
         }
     }
-    chest
 }
 
 #[cfg(test)]
@@ -1698,8 +1689,9 @@ mod tests {
     fn dispenser_loot_fits_the_visible_inventory() {
         for seed in 0..256 {
             let chest = loot(seed, LootTable::Dispenser);
-            assert!(chest.slots[..9].iter().flatten().all(|s| s.item == Item::ARROW && (2..=7).contains(&s.count)));
-            assert!((1..=2).contains(&chest.slots[..9].iter().flatten().count()));
+            assert!(chest.slots[..9].iter().flatten().all(|s| s.item == Item::ARROW && (1..=7).contains(&s.count)));
+            assert!((1..=9).contains(&chest.slots[..9].iter().flatten().count()));
+            assert!((2..=14).contains(&chest.slots.iter().flatten().map(|s| s.count as u32).sum::<u32>()));
             assert!(chest.slots[9..].iter().all(Option::is_none));
             assert!(loot(seed, LootTable::Igloo).slots.iter().flatten().any(|s| s.item == Item::GOLDEN_APPLE));
             assert!(
@@ -1770,8 +1762,6 @@ mod tests {
         ];
         // Java items the game does not have yet; their entries stay empty.
         let absent = [
-            "buried_treasure_map",
-            "map",
             "coast_armor_trim_smithing_template",
             "dune_armor_trim_smithing_template",
             "sentry_armor_trim_smithing_template",

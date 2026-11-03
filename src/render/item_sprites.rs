@@ -784,6 +784,22 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             shaded(&body, x, y, colour, 0.06)
         }
         Sprite::Compass => compass_face(0, 32, x, y, [62, 86, 112], [176, 40, 36]),
+        Sprite::Map(explorer) => {
+            if (2..14).contains(&x) && (2..14).contains(&y) {
+                let rgb = if x == 2 || x == 13 || y == 2 || y == 13 {
+                    [112, 76, 42]
+                } else if explorer && (x - y).abs() < 2 && (5..11).contains(&x) {
+                    [174, 48, 37]
+                } else if (x == 6 || x == 10) && y > 4 {
+                    [190, 165, 111]
+                } else {
+                    [229, 213, 164]
+                };
+                Some([rgb[0], rgb[1], rgb[2], 255])
+            } else {
+                None
+            }
+        }
         Sprite::Clock => compass_face(0, 64, x, y, [236, 214, 150], [250, 196, 48]),
         Sprite::Arrow => {
             let head = |x: i32, y: i32| {
@@ -1004,4 +1020,33 @@ mod tests {
         enc.set_color(png::ColorType::Rgba);
         enc.write_header().unwrap().write_image_data(&img).unwrap();
     }
+}
+
+/// Original silhouettes for map destinations, independent of Minecraft art.
+pub fn map_decoration_pixel(kind: u16, x: usize, y: usize) -> Rgba {
+    let (x, y) = (x as i32, y as i32);
+    let filled = match kind {
+        0 => {
+            (3..13).contains(&x) && (10..14).contains(&y)
+                || (5..11).contains(&x) && (7..10).contains(&y)
+                || (7..9).contains(&x) && (3..7).contains(&y)
+        }
+        1 => (4..14).contains(&y) && ((14 - y) / 2 + 1..=14 - (14 - y) / 2 - 1).contains(&x),
+        2 => {
+            (3..13).contains(&x) && (7..11).contains(&y)
+                || (x == 5 || x == 10) && (11..15).contains(&y)
+                || (3..7).contains(&y) && (x - 8).abs() <= y
+        }
+        _ => (4..12).contains(&x) && (8..14).contains(&y) || (4..9).contains(&y) && (x - 8).abs() <= y - 3,
+    };
+    if !filled {
+        return [0; 4];
+    }
+    let c = match kind {
+        0 => [41, 126, 132],
+        1 => [88, 119, 49],
+        2 => [111, 75, 42],
+        _ => [180, 100, 45],
+    };
+    if x == 7 && y > 9 { [38, 35, 29, 255] } else { [c[0], c[1], c[2], 255] }
 }

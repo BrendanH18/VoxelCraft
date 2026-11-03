@@ -77,6 +77,12 @@ impl Game {
         self.distortion.tick(nausea, self.portal_time > portal_before);
         let moved = (self.session.player.pos - before).with_y(0.0).length();
         self.session.tick_lodestones(&self.world);
+        for stack in [self.session.inventory.get(self.body.actions.selected), self.session.inventory.offhand]
+            .into_iter()
+            .flatten()
+        {
+            self.world.tick_map(stack, self.session.player.pos, self.session.id.0 as u64);
+        }
         self.weather.update_rules(dt, self.gamerules.bool("advance_weather"));
         self.update_sleep(dt);
         // Java's isRaining compares the faded rain level, not the target state.
