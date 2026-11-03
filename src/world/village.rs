@@ -872,6 +872,35 @@ mod tests {
         }
     }
 
+    /// Streets follow the ground, so one can pass through a house's box;
+    /// it must not replace the house's chest, bed or job site (seeds and
+    /// spots from the 2026-11-03 review).
+    #[test]
+    fn generation_3_streets_never_replace_house_contents() {
+        for (seed, spot) in [(12345, IVec3::new(5230, 111, -1829)), (2024, IVec3::new(3651, 70, 818))] {
+            let g = Generator::with_generation(seed, Dimension::Overworld, Generation::V3);
+            let region = IVec2::new(spot.x.div_euclid(REGION), spot.z.div_euclid(REGION));
+            let v = g.villages.get(&g, region).unwrap();
+            let features: Vec<_> = v.features().collect();
+            assert!(features.iter().any(|(at, _)| *at == spot), "seed {seed}: {spot} is no longer a feature");
+            for (at, f) in features {
+                let want = match f {
+                    Feature::VillageHome(_) => Block::BED_HEAD,
+                    Feature::VillageChest(..) => Block::CHEST,
+                    Feature::VillageWorkstation(job) => job,
+                    _ => continue,
+                };
+                let data = g.generate(super::super::chunk::chunk_of(at));
+                let l = super::super::chunk::local_of(at);
+                assert_eq!(
+                    data.get(l.x as usize, l.y as usize, l.z as usize).base(),
+                    want,
+                    "seed {seed}: {f:?} at {at}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn generation_3_streets_bridge_water_on_planks() {
         let lib = jigsaw::villages();

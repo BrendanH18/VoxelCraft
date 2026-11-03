@@ -621,7 +621,12 @@ pub fn paint(
             }
         }
     }
-    for p in &near {
+    // Terrain pieces first: following the ground can take a street outside
+    // the box its placement was checked with, and it must not cut through
+    // a building's chest, bed or job site.
+    let terrain_first = near.iter().filter(|p| lib.templates[p.template as usize].projection == Projection::Terrain);
+    let rigid = near.iter().filter(|p| lib.templates[p.template as usize].projection == Projection::Rigid);
+    for p in terrain_first.chain(rigid) {
         let t = &lib.templates[p.template as usize];
         for cell in &t.cells {
             let mut at = p.world(cell.pos);

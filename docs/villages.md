@@ -117,7 +117,9 @@ Assembly follows Java's `JigsawPlacement` with the village settings
 
 Painting is clipped to each chunk and reads only the cached layout and the
 terrain columns, so chunks agree whatever order or thread generates them.
-Rigid pieces get foundation pillars down to the ground and the terrain
+Streets and other terrain-following pieces are painted before buildings,
+so a street that follows the ground through a house's box never replaces
+its chest, bed or job site. Rigid pieces get foundation pillars down to the ground and the terrain
 above their footprint is cleared, as in older generations.
 
 Differences from Java: the templates and pools are VoxelCraft's, so no
