@@ -393,7 +393,7 @@ mob 4 3 4 bastion/mobs/piglin_melee
 fill 6 2 6 22 2 22 magma_block
 fill 6 3 6 22 3 22 lava
 fill 10 3 10 18 4 18 polished_blackstone_bricks
-fill 12 5 12 16 6 16 gold_block
+fill 12 5 12 16 6 16 block_of_gold
 fill 13 3 19 15 3 26 polished_blackstone_bricks
 fill 10 8 14 10 28 14 chain
 fill 18 8 14 18 28 14 chain
@@ -573,8 +573,8 @@ fill 8 2 3 10 2 5 gilded_blackstone
 mob 4 3 4 bastion/mobs/piglin_melee
 fill 5 11 18 19 23 18 polished_blackstone
 fill 9 13 17 15 17 18 chiseled_polished_blackstone
-fill 7 19 18 8 20 18 gold_block
-fill 16 19 18 17 20 18 gold_block
+fill 7 19 18 8 20 18 block_of_gold
+fill 16 19 18 17 20 18 block_of_gold
 fill 8 11 18 8 15 18 gilded_blackstone
 fill 16 11 18 16 15 18 gilded_blackstone
 key A chest:bastion_bridge@north

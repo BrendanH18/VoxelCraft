@@ -119,6 +119,12 @@ fn generation_ignores_order_threads_and_caches(generation: Generation) {
     let has = |f: fn(&Feature) -> bool| all.iter().any(f);
     assert!(has(|f| matches!(f, Feature::VillageHome(_) | Feature::VillageChest(..))), "{generation:?}: no village");
     assert!(has(|f| matches!(f, Feature::TempleChest(..))), "{generation:?}: no temple-family chest");
+    if generation >= Generation::V3 {
+        assert!(
+            has(|f| matches!(f, Feature::TempleChest(_, crate::world::temples::LootTable::Outpost))),
+            "generation 3: no outpost chest"
+        );
+    }
     assert!(has(|f| matches!(f, Feature::DungeonChest(_))), "{generation:?}: no dungeon");
     assert!(has(|f| matches!(f, Feature::MineshaftChest(_))), "{generation:?}: no mineshaft chest");
     let mut failures = Vec::new();
