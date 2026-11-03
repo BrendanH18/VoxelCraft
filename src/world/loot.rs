@@ -314,6 +314,8 @@ pub fn java_item(name: &str) -> Option<crate::item::Item> {
                             _ => None,
                         };
                         block.map(Item::from_block).or_else(|| match name {
+                            "goat_horn" => Some(Item::GOAT_HORN),
+                            "potion" => Some(Item::potion(crate::potion::Potion::WATER)),
                             "porkchop" => Some(Item::RAW_PORKCHOP),
                             "beef" => Some(Item::RAW_BEEF),
                             "chicken" => Some(Item::RAW_CHICKEN),
@@ -494,11 +496,14 @@ pub fn table_with_random(name: &str, rng: &mut impl Random, mut resolve: impl Fn
             // no inventory item exists.
             let item = java_item(name);
             let mut stack = Stack::new(item.unwrap_or(crate::item::Item::STICK), 1);
-            let mods = match &entry["modifier"] {
-                serde_json::Value::Array(a) => a.iter().collect::<Vec<_>>(),
-                serde_json::Value::Object(_) => vec![&entry["modifier"]],
-                _ => Vec::new(),
-            };
+            let mut mods = Vec::new();
+            for list in [&entry["modifier"], &pool["modifier"], &table["modifier"]] {
+                match list {
+                    serde_json::Value::Array(a) => mods.extend(a.iter()),
+                    serde_json::Value::Object(_) => mods.push(list),
+                    _ => {}
+                }
+            }
             let mut discard = false;
             for m in mods {
                 if m.get("condition").is_some() {
@@ -514,6 +519,11 @@ pub fn table_with_random(name: &str, rng: &mut impl Random, mut resolve: impl Fn
                     }
                     "enchant_randomly" => enchant_random(&mut stack, name, m, rng),
                     "enchant_with_levels" => enchant_levels(&mut stack, name, m, rng),
+                    "set_potion" => {
+                        if let Some(potion) = m["id"].as_str().and_then(crate::potion::Potion::from_id) {
+                            stack.item = crate::item::Item::potion(potion);
+                        }
+                    }
                     "set_instrument" => {
                         stack.item = crate::item::Item(crate::item::Item::GOAT_HORN.0 + rng.bounded(4) as u16);
                     }
@@ -659,11 +669,14 @@ mod reference_tests {
             assert_eq!(t["random_sequence"], format!("minecraft:chests/{name}"));
             for p in t["pools"].as_array().unwrap() {
                 for e in p["entries"].as_array().unwrap() {
-                    let modifiers = match &e["modifier"] {
-                        serde_json::Value::Array(a) => a.iter().collect::<Vec<_>>(),
-                        serde_json::Value::Object(_) => vec![&e["modifier"]],
-                        _ => vec![],
-                    };
+                    let mut modifiers = Vec::new();
+                    for list in [&e["modifier"], &p["modifier"], &t["modifier"]] {
+                        match list {
+                            serde_json::Value::Array(a) => modifiers.extend(a.iter()),
+                            serde_json::Value::Object(_) => modifiers.push(list),
+                            _ => {}
+                        }
+                    }
                     for m in modifiers {
                         assert!(matches!(
                             m["type"].as_str().unwrap(),
@@ -685,5 +698,16 @@ mod reference_tests {
                 "{name}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod pool_modifier_tests {
+    use super::*;
+    #[test]
+    fn buried_treasure_pool_modifier_makes_water_breathing_potions() {
+        let potion = crate::potion::Potion::from_id("water_breathing").unwrap();
+        let chest = table(42, "buried_treasure");
+        assert!(chest.slots.iter().flatten().any(|s| s.item == crate::item::Item::potion(potion)));
     }
 }
