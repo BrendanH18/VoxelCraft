@@ -345,7 +345,12 @@ impl World {
             && map.dimension == self.generator.dimension
         {
             map.update(pos, *step, |x, z| {
-                let mut y = self.world_surface_height(x, z)?;
+                if !self.column_loaded(x, z) {
+                    return None;
+                }
+                let Some(mut y) = self.world_surface_height(x, z) else {
+                    return Some((block_color(Block::BEDROCK), self.generator.dimension.min_y(), 0));
+                };
                 let mut b = self.get_block(IVec3::new(x, y, z))?;
                 while block_color(b) == 0 && y > self.generator.dimension.min_y() {
                     y -= 1;
@@ -688,6 +693,25 @@ mod storage_tests {
 mod performance_tests {
     use super::*;
     use std::sync::Arc;
+    #[test]
+    fn loaded_void_columns_use_java_bedrock_colour() {
+        let g = Arc::new(Generator::new(42));
+        let mut world = World::new_headless(g, Default::default(), 1);
+        for z in -2..2 {
+            for x in -2..2 {
+                for y in Dimension::Overworld.chunk_rows() {
+                    world.insert_chunk(
+                        IVec3::new(x, y, z),
+                        Arc::new(super::super::chunk::ChunkData::Uniform(Block::AIR)),
+                        false,
+                    );
+                }
+            }
+        }
+        let stack = world.maps.create(MapData::fresh(0, 0, 0, Dimension::Overworld, true, false), Item::FILLED_MAP);
+        world.tick_map(stack, DVec3::ZERO, 1);
+        assert_eq!(world.maps.maps[&0].colors[64 * 128 + 64], 11 * 4 + 1);
+    }
     #[test]
     fn loaded_world_map_updates_have_bounded_work() {
         // A complete 128x128 loaded scene, built from the ordinary chunk API.
