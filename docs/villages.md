@@ -80,6 +80,58 @@ After village generation, the same idle-system benchmark measured 0.210
 ms/generated chunk and 0.663 ms/dense light+mesh chunk (no material
 regression; this fixed benchmark volume does not intersect a village).
 
+## Generation 3: jigsaw villages
+
+Worlds created by v0.14 and later (`worldgen=3`) build villages with the
+jigsaw assembler in [`jigsaw.rs`](../src/world/jigsaw.rs) from the
+templates and pools in [`jigsaw/village.txt`](../src/world/jigsaw/village.txt).
+Worlds from v0.13 and earlier keep the layout described above, so their
+untouched chunks never change. Placement, the start biome check, `/locate`,
+loot tables and residents are the same for every generation.
+
+The templates are original designs (owner, 2026-11-03), drawn once and
+dressed per style through roles such as `$planks`, `$log`, `$roof_stairs`
+and `$path`: two town centres (a covered well and a plaza with a bell and
+lamps), five street pieces (long, short, crossroad and two turns, with a
+dead-end fallback), a small house (one bed), a medium house (two beds), a
+farm, an animal pen and a lamp post. Houses hold a chest, a job site and
+beds; each bed head is a home whose villager spawns inside.
+
+Assembly follows Java's `JigsawPlacement` with the village settings
+(start pool `town_centers`, size 6, 80 blocks from the centre):
+
+- the start template takes a random rotation and sits with its layer 0 on
+  the top block at its centre;
+- connectors are expanded breadth first; each one's pool is shuffled by
+  weight, with the fallback pool after it, and only the fallback at the
+  last depth; an empty element stops the connector;
+- a candidate fits when, at some shuffled rotation, one of its shuffled
+  connectors faces back at this one with a name equal to this connector's
+  target, and its box lies inside the free space (the 80-block box minus
+  the pieces already placed, or the parent's interior for connectors that
+  point into it);
+- rigid pieces (houses, wells) line their connector up with the parent's;
+  streets and their children take their height from the surface at the
+  connector; streets follow every column of the ground and cross water on
+  planks.
+
+Painting is clipped to each chunk and reads only the cached layout and the
+terrain columns, so chunks agree whatever order or thread generates them.
+Rigid pieces get foundation pillars down to the ground and the terrain
+above their footprint is cleared, as in older generations.
+
+Differences from Java: the templates and pools are VoxelCraft's, so no
+seed reproduces a Java village; job sites are chosen per house rather than
+fixed by profession buildings; there are no abandoned or zombie variants,
+no decoration pools, no animals or cats spawned with the pens, and no
+beardifier, so pieces on slopes stand on pillars or in cut-away hillsides.
+Placement and selection priorities are all 0 and the start box isn't grown
+by Java's "expansion hack".
+
+![A generation 3 taiga village from above](images/v0.14-village-taiga.jpg)
+
+![A generation 3 desert village](images/v0.14-village-desert.jpg)
+
 ## Residents and trading
 
 Each generated house registers one resident and a permanent birth receipt.

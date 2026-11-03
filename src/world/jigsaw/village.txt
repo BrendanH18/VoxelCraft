@@ -1,0 +1,674 @@
+# Village templates and pools for the jigsaw assembler (generation 3).
+#
+# These are original VoxelCraft designs, not copies of Minecraft's template
+# files: the assembler, pools, weights and connector rules follow Java's
+# jigsaw system, the buildings are our own. See docs/villages.md.
+#
+# Format (src/world/jigsaw.rs): `template <name>` ... `end` and
+# `pool <name> [fallback <pool>]` ... `end`. In a template, `size x y z`,
+# `projection rigid|terrain`, `key <char> <spec>`, then `layer <y>` followed
+# by one row per z (north first), one char per x (west first). `.` leaves
+# the world as it is and `-` is air in every template. Specs: `$role` (from
+# the village style), a block name with underscores, or `door`, `bed_foot`,
+# `bed_head`, `crop`, `job`, `chest`; `@dir` turns a block to face `dir` and
+# `^dir` makes stairs climb toward `dir`, both in template directions (north
+# is row 0); `/upper` is a door's top half. `jigsaw x y z dir name target
+# pool` is a connector facing out of the template, and `home bx by bz sx sy
+# sz` is a bed (its head) whose villager spawns at `s`.
+
+template village/well
+size 9 6 9
+projection rigid
+key p $path
+key # $foundation
+key w water
+key F $fence
+key P $planks
+key b bell
+key L $light
+key c $cap
+layer 0
+ppppppppp
+ppppppppp
+pp#####pp
+pp#www#pp
+pp#www#pp
+pp#www#pp
+pp#####pp
+ppppppppp
+ppppppppp
+layer 1
+---------
+-b-------
+--F###F--
+--#---#--
+--#---#--
+--#---#--
+--F###F--
+---------
+---------
+layer 2
+---------
+---------
+--F---F--
+---------
+---------
+---------
+--F---F--
+---------
+---------
+layer 3
+---------
+---------
+--F---F--
+---------
+---------
+---------
+--F---F--
+---------
+---------
+layer 4
+---------
+---------
+--PPPPP--
+--PPPPP--
+--PPPPP--
+--PPPPP--
+--PPPPP--
+---------
+---------
+layer 5
+.........
+.........
+..ccccc..
+..ccccc..
+..ccLcc..
+..ccccc..
+..ccccc..
+.........
+.........
+jigsaw 4 0 0 north street street village/streets
+jigsaw 4 0 8 south street street village/streets
+jigsaw 0 0 4 west street street village/streets
+jigsaw 8 0 4 east street street village/streets
+end
+
+template village/plaza
+size 11 4 11
+projection rigid
+key p $path
+key # $foundation
+key b bell
+key F $fence
+key L $light
+key h hay_bale
+layer 0
+ppppppppppp
+ppppppppppp
+ppppppppppp
+ppppppppppp
+pppp###pppp
+pppp###pppp
+pppp###pppp
+ppppppppppp
+ppppppppppp
+ppppppppppp
+ppppppppppp
+layer 1
+-----------
+-F-------F-
+--------h--
+-----------
+-----------
+-----#-----
+-----------
+-----------
+--h--------
+-F-------F-
+-----------
+layer 2
+-----------
+-F-------F-
+-----------
+-----------
+-----------
+-----b-----
+-----------
+-----------
+-----------
+-F-------F-
+-----------
+layer 3
+-----------
+-L-------L-
+-----------
+-----------
+-----------
+-----------
+-----------
+-----------
+-----------
+-L-------L-
+-----------
+jigsaw 5 0 0 north street street village/streets
+jigsaw 5 0 10 south street street village/streets
+jigsaw 0 0 5 west street street village/streets
+jigsaw 10 0 5 east street street village/streets
+end
+
+# Streets follow the ground (terrain projection): layer 0 replaces the
+# surface and the layers above clear plants and low leaves.
+
+template village/street_long
+size 3 4 13
+projection terrain
+key p $path
+layer 0
+ppp
+ppp
+ppp
+ppp
+ppp
+ppp
+ppp
+ppp
+ppp
+ppp
+ppp
+ppp
+ppp
+layer 1
+---
+---
+---
+---
+---
+---
+---
+---
+---
+---
+---
+---
+---
+layer 2
+---
+---
+---
+---
+---
+---
+---
+---
+---
+---
+---
+---
+---
+layer 3
+---
+---
+---
+---
+---
+---
+---
+---
+---
+---
+---
+---
+---
+jigsaw 1 0 0 north street street empty
+jigsaw 1 0 12 south street street village/streets
+jigsaw 0 0 3 west side building_entrance village/houses
+jigsaw 2 0 3 east side building_entrance village/houses
+jigsaw 0 0 9 west side building_entrance village/houses
+jigsaw 2 0 9 east side building_entrance village/houses
+end
+
+template village/street_short
+size 3 4 7
+projection terrain
+key p $path
+layer 0
+ppp
+ppp
+ppp
+ppp
+ppp
+ppp
+ppp
+layer 1
+---
+---
+---
+---
+---
+---
+---
+layer 2
+---
+---
+---
+---
+---
+---
+---
+layer 3
+---
+---
+---
+---
+---
+---
+---
+jigsaw 1 0 0 north street street empty
+jigsaw 1 0 6 south street street village/streets
+jigsaw 0 0 3 west side building_entrance village/houses
+jigsaw 2 0 3 east side building_entrance village/houses
+end
+
+template village/crossroad
+size 7 4 7
+projection terrain
+key p $path
+layer 0
+..ppp..
+..ppp..
+ppppppp
+ppppppp
+ppppppp
+..ppp..
+..ppp..
+layer 1
+..---..
+..---..
+-------
+-------
+-------
+..---..
+..---..
+layer 2
+..---..
+..---..
+-------
+-------
+-------
+..---..
+..---..
+layer 3
+..---..
+..---..
+-------
+-------
+-------
+..---..
+..---..
+jigsaw 3 0 0 north street street empty
+jigsaw 3 0 6 south street street village/streets
+jigsaw 0 0 3 west street street village/streets
+jigsaw 6 0 3 east street street village/streets
+end
+
+template village/turn_east
+size 5 4 3
+projection terrain
+key p $path
+layer 0
+ppppp
+ppppp
+ppppp
+layer 1
+-----
+-----
+-----
+layer 2
+-----
+-----
+-----
+layer 3
+-----
+-----
+-----
+jigsaw 1 0 0 north street street empty
+jigsaw 4 0 1 east street street village/streets
+jigsaw 1 0 2 south side building_entrance village/houses
+end
+
+template village/turn_west
+size 5 4 3
+projection terrain
+key p $path
+layer 0
+ppppp
+ppppp
+ppppp
+layer 1
+-----
+-----
+-----
+layer 2
+-----
+-----
+-----
+layer 3
+-----
+-----
+-----
+jigsaw 3 0 0 north street street empty
+jigsaw 0 0 1 west street street village/streets
+jigsaw 3 0 2 south side building_entrance village/houses
+end
+
+template village/street_end
+size 3 4 2
+projection terrain
+key p $path
+layer 0
+ppp
+ppp
+layer 1
+---
+---
+layer 2
+---
+---
+layer 3
+---
+---
+jigsaw 1 0 0 north street street empty
+end
+
+# Buildings stand at the height of the street they open onto; their door
+# connector is on row 0 facing north.
+
+template village/small_house
+size 7 8 7
+projection rigid
+key # $foundation
+key P $planks
+key L $log
+key d door@north
+key D door@north/upper
+key g glass_pane
+key f bed_foot
+key h bed_head
+key C chest@north
+key J job@west
+key t torch
+key e $roof_stairs^east
+key w $roof_stairs^west
+key R $ridge
+layer 0
+#######
+#######
+#######
+#######
+#######
+#######
+#######
+layer 1
+LPPdPPL
+P-----P
+P----CP
+Pf----P
+Ph---JP
+P-t---P
+LPPPPPL
+layer 2
+LgPDPgL
+P-----P
+g-----g
+g-----g
+P-----P
+P-----P
+LPgggPL
+layer 3
+LPPPPPL
+P-----P
+P-----P
+P-----P
+P-----P
+P-----P
+LPPPPPL
+layer 4
+LPPPPPL
+PPPPPPP
+PPPPPPP
+PPPPPPP
+PPPPPPP
+PPPPPPP
+LPPPPPL
+layer 5
+ePPPPPw
+ePPPPPw
+ePPPPPw
+ePPPPPw
+ePPPPPw
+ePPPPPw
+ePPPPPw
+layer 6
+.ePPPw.
+.ePPPw.
+.ePPPw.
+.ePPPw.
+.ePPPw.
+.ePPPw.
+.ePPPw.
+layer 7
+..eRw..
+..eRw..
+..eRw..
+..eRw..
+..eRw..
+..eRw..
+..eRw..
+jigsaw 3 1 0 north building_entrance street empty
+home 1 1 4 3 1 3
+end
+
+template village/medium_house
+size 9 8 7
+projection rigid
+key # $foundation
+key P $planks
+key L $log
+key d door@north
+key D door@north/upper
+key g glass_pane
+key f bed_foot
+key h bed_head
+key C chest@east
+key J job@north
+key t torch
+key s $roof_stairs^south
+key n $roof_stairs^north
+key R $ridge
+layer 0
+#########
+#########
+#########
+#########
+#########
+#########
+#########
+layer 1
+LPPPdPPPL
+P-------P
+Pf-----fP
+Ph-----hP
+P-------P
+PC-t--J-P
+LPPPPPPPL
+layer 2
+LPgPDPgPL
+P-------P
+P-------P
+g-------g
+P-------P
+P-------P
+LPgPPPgPL
+layer 3
+LPPPPPPPL
+P-------P
+P-------P
+P-------P
+P-------P
+P-------P
+LPPPPPPPL
+layer 4
+LPPPPPPPL
+PPPPPPPPP
+PPPPPPPPP
+PPPPPPPPP
+PPPPPPPPP
+PPPPPPPPP
+LPPPPPPPL
+layer 5
+sssssssss
+PPPPPPPPP
+PPPPPPPPP
+PPPPPPPPP
+PPPPPPPPP
+PPPPPPPPP
+nnnnnnnnn
+layer 6
+.........
+sssssssss
+PPPPPPPPP
+PPPPPPPPP
+PPPPPPPPP
+nnnnnnnnn
+.........
+layer 7
+.........
+.........
+sssssssss
+RRRRRRRRR
+nnnnnnnnn
+.........
+.........
+jigsaw 4 1 0 north building_entrance street empty
+home 1 1 3 3 1 4
+home 7 1 3 5 1 4
+end
+
+template village/farm
+size 9 3 9
+projection rigid
+key L $log
+key W wet_farmland
+key w water
+key c crop
+key k composter
+key h hay_bale
+layer 0
+LLLLLLLLL
+LWWWwWWWL
+LWWWwWWWL
+LWWWwWWWL
+LWWWwWWWL
+LWWWwWWWL
+LWWWwWWWL
+LWWWwWWWL
+LLLLLLLLL
+layer 1
+---------
+-ccc-ccc-
+-ccc-ccc-
+-ccc-ccc-
+kccc-ccc-
+-ccc-ccc-
+-ccc-ccc-
+-ccc-ccch
+---------
+layer 2
+---------
+---------
+---------
+---------
+---------
+---------
+---------
+---------
+---------
+jigsaw 4 1 0 north building_entrance street empty
+end
+
+template village/pen
+size 7 3 7
+projection rigid
+key G $ground
+key F $fence
+key a oak_fence_gate@north
+key h hay_bale
+layer 0
+GGGGGGG
+GGGGGGG
+GGGGGGG
+GGGGGGG
+GGGGGGG
+GGGGGGG
+GGGGGGG
+layer 1
+FFFaFFF
+F-----F
+F-----F
+F-----F
+F-----F
+F----hF
+FFFFFFF
+layer 2
+-------
+-------
+-------
+-------
+-------
+-------
+-------
+jigsaw 3 1 0 north building_entrance street empty
+end
+
+template village/lamp
+size 1 4 1
+projection rigid
+key # $foundation
+key F $fence
+key L $light
+layer 0
+#
+layer 1
+F
+layer 2
+F
+layer 3
+L
+jigsaw 0 1 0 north building_entrance street empty
+end
+
+pool village/town_centers
+3 village/well
+2 village/plaza
+end
+
+pool village/streets fallback village/terminators
+6 village/street_long
+4 village/street_short
+2 village/crossroad
+2 village/turn_east
+2 village/turn_west
+end
+
+pool village/terminators
+1 village/street_end
+end
+
+pool village/houses
+6 village/small_house
+3 village/medium_house
+3 village/farm
+2 village/pen
+3 village/lamp
+4 empty
+end
