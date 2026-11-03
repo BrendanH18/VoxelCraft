@@ -709,7 +709,7 @@ mod performance_tests {
                     world.insert_chunk(
                         IVec3::new(x, y, z),
                         Arc::new(super::super::chunk::ChunkData::Uniform(Block::AIR)),
-                        false,
+                        true,
                     );
                 }
             }
@@ -734,7 +734,7 @@ mod performance_tests {
                         } else {
                             Block::AIR
                         })),
-                        false,
+                        true,
                     );
                 }
             }
