@@ -237,6 +237,8 @@ impl MapData {
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct MapStorage {
     pub next_id: u32,
+    /// Global simulation age for Java's Nether decoration rotation.
+    pub game_ticks: u64,
     pub maps: BTreeMap<u32, MapData>,
     steps: BTreeMap<(u32, u64), u32>,
 }
@@ -271,11 +273,15 @@ impl MapStorage {
     }
     pub fn serialize(&self) -> String {
         let maps: Vec<_> = self.maps.iter().map(|(id,m)| json!({"id":id,"x":m.center.x,"z":m.center.y,"scale":m.scale,"dimension":m.dimension.name(),"tracking":m.tracking,"unlimited":m.unlimited,"locked":m.locked,"colors":m.colors.iter().map(|b|format!("{b:02x}")).collect::<String>(),"decorations":m.decorations.iter().map(|d|json!([d.kind,d.x,d.z,d.rotation])).collect::<Vec<_>>()})).collect();
-        json!({"version":1,"next":self.next_id,"maps":maps}).to_string()
+        json!({"version":1,"next":self.next_id,"time":self.game_ticks,"maps":maps}).to_string()
     }
     pub fn load(text: &str) -> Option<Self> {
         let v: Value = serde_json::from_str(text).ok()?;
-        let mut out = Self { next_id: u32::try_from(v["next"].as_u64()?).ok()?, ..Self::default() };
+        let mut out = Self {
+            next_id: u32::try_from(v["next"].as_u64()?).ok()?,
+            game_ticks: v["time"].as_u64().unwrap_or(0),
+            ..Self::default()
+        };
         for m in v["maps"].as_array()? {
             let id = u32::try_from(m["id"].as_u64()?).ok()?;
             let mut data = MapData::fresh(

@@ -427,7 +427,7 @@ impl Game {
             let mut map = self.world.maps.maps.get(&stack.map_id?)?.clone();
             if map.tracking && map.dimension == self.dimension {
                 let rotation = if self.dimension == crate::world::terrain::Dimension::Nether {
-                    let tick = ((self.day_count as f64 + self.day_time) * 24000.0 / 10.0) as i32;
+                    let tick = (self.world.maps.game_ticks / 10) as i32;
                     ((tick.wrapping_mul(tick).wrapping_mul(34187121).wrapping_add(tick.wrapping_mul(121)) >> 15) & 15)
                         as f32
                         * 22.5
