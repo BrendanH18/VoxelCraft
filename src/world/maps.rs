@@ -401,6 +401,9 @@ pub fn block_color(b: Block) -> u8 {
     if b.is_water() {
         return 12;
     }
+    if matches!(b, Block::GRASS | Block::SNOWY_GRASS) {
+        return 1;
+    }
     const DYE: [u8; 16] = [8, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29];
     if let Some(c) = b.wool_color().or_else(|| b.carpet_color()) {
         return DYE[c as usize];
@@ -559,6 +562,9 @@ mod tests {
         assert_eq!(rgba(0), [0; 4]);
         assert_eq!(block_color(Block::WATER), 12);
         assert_eq!(block_color(Block::STONE), 11);
+        assert_eq!(block_color(Block::GRASS), 1);
+        assert_eq!(block_color(Block::SNOWY_GRASS), 1);
+        assert_eq!(block_color(Block::GOLD_BLOCK), 30);
         assert_eq!(block_color(Block::AIR), 0);
     }
     #[test]
