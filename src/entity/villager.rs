@@ -1536,6 +1536,11 @@ mod map_tests {
         assert!(tables::explorer_allowed("taiga_village_map", "plains"));
         assert!(!tables::explorer_allowed("taiga_village_map", "desert"));
         assert!(tables::explorer_allowed("ocean_monument_map", "snow"));
+        use crate::world::terrain::Biome;
+        assert_eq!(map_variant(Biome::SnowyTaiga), "snow");
+        assert_eq!(map_variant(Biome::Badlands), "desert");
+        assert_eq!(map_variant(Biome::WindsweptHills), "taiga");
+        assert_eq!(map_variant(Biome::FrozenPeaks), "snow");
     }
 }
 
@@ -1547,10 +1552,25 @@ fn map_variant(b: crate::world::terrain::Biome) -> &'static str {
         "swamp"
     } else {
         match b {
-            Biome::Desert => "desert",
+            Biome::Desert | Biome::Badlands | Biome::ErodedBadlands | Biome::WoodedBadlands => "desert",
             Biome::Savanna | Biome::SavannaPlateau | Biome::WindsweptSavanna => "savanna",
-            Biome::Taiga | Biome::SnowyTaiga | Biome::OldGrowthPineTaiga | Biome::OldGrowthSpruceTaiga => "taiga",
-            Biome::SnowyPlains | Biome::IceSpikes => "snow",
+            Biome::Taiga
+            | Biome::OldGrowthPineTaiga
+            | Biome::OldGrowthSpruceTaiga
+            | Biome::WindsweptGravellyHills
+            | Biome::WindsweptHills
+            | Biome::WindsweptForest => "taiga",
+            Biome::DeepFrozenOcean
+            | Biome::FrozenOcean
+            | Biome::FrozenRiver
+            | Biome::IceSpikes
+            | Biome::SnowyBeach
+            | Biome::SnowyTaiga
+            | Biome::SnowyPlains
+            | Biome::Grove
+            | Biome::SnowySlopes
+            | Biome::FrozenPeaks
+            | Biome::JaggedPeaks => "snow",
             _ => "plains",
         }
     }
