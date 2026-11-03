@@ -1701,7 +1701,7 @@ pub fn effect_icon_layer(effect: crate::simulation::effects::Effect) -> u16 {
 
 /// The sprite drawn on item icon `index` (see `tex::item_layer`).
 pub fn sprite_for_layer(index: u16) -> Option<Sprite> {
-    Item::all_items().nth(index as usize).map(|i| i.info().sprite)
+    Item::all_items().filter(|i| !i.is_map()).nth(index as usize).map(|i| i.info().sprite)
 }
 
 fn tool_name(kind: ToolKind, tier: Tier) -> &'static str {
