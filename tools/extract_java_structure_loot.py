@@ -7,7 +7,7 @@ from pathlib import Path
 TABLES = ['bastion_treasure', 'bastion_bridge', 'bastion_hoglin_stable', 'bastion_other',
           'desert_pyramid', 'jungle_temple', 'jungle_temple_dispenser', 'igloo_chest',
           'pillager_outpost', 'shipwreck_supply', 'shipwreck_treasure', 'shipwreck_map',
-          'underwater_ruin_small', 'underwater_ruin_big', 'nether_bridge',
+          'underwater_ruin_small', 'underwater_ruin_big', 'ruined_portal', 'buried_treasure', 'nether_bridge',
           'abandoned_mineshaft', 'simple_dungeon', 'stronghold_corridor',
           'stronghold_crossing', 'stronghold_library', 'village/village_cartographer',
           *['village/village_' + s + '_house' for s in ['plains', 'desert', 'savanna', 'taiga', 'snowy']]]
