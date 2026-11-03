@@ -280,7 +280,7 @@ impl Library {
                 }
                 "key" if words.len() == 3 && words[1].chars().count() == 1 => {
                     let c = words[1].chars().next().unwrap();
-                    let spec = self.spec(words[2]).map_err(&err)?;
+                    let spec = self.spec(words[2]).map_err(err)?;
                     if keys.insert(c, Some(spec)).is_some() {
                         return Err(err(format!("key {c:?} defined twice")));
                     }
@@ -295,7 +295,7 @@ impl Library {
                 }
                 "jigsaw" if words.len() == 8 => jigsaws.push(Jigsaw {
                     pos: vec3(&words[1..4])?,
-                    facing: parse_facing(words[4]).map_err(&err)?,
+                    facing: parse_facing(words[4]).map_err(err)?,
                     name: words[5].to_string(),
                     target: words[6].to_string(),
                     pool: words[7].to_string(),
