@@ -1306,8 +1306,8 @@ fn monument(g: &Generator, centre: IVec2, rot: u8, rng: &mut Rng) -> Built {
 // Tables are the Java 26.3 chest loot tables, pinned in
 // `tests/fixtures/java/26.3/world_defects.json` and checked against it by
 // `loot_tables_match_the_java_26_3_fixture`. Entries whose item does not exist
-// yet (trim templates, nautilus and copper horse armor, enchanted golden
-// apples, experience bottles, stews, maps, spears) stay empty at their
+// yet (trim templates, nautilus and copper horse armor, experience bottles,
+// stews and spears) stay empty at their
 // original weight rather than redistributing their probability.
 #[cfg(test)]
 const DESERTPYRAMID_0: &[L] = &[
