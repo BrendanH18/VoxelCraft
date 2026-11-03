@@ -10,6 +10,15 @@ impl Palette for OutpostPalette {
     fn role(&self, role: &str) -> Option<Block> {
         (role == "foundation").then_some(Block::COBBLESTONE)
     }
+    fn process(&self, block: Block, at: IVec3, _piece: &jigsaw::Placed) -> Option<Block> {
+        // The original overgrown overlay contains only dark oak leaves.
+        // Java outpost_rot keeps a block on nextFloat() <= integrity (0.05).
+        if block == ob::DARK_OAK_LEAVES && jigsaw::processor_random(at).next_float() > 0.05 {
+            None
+        } else {
+            Some(block)
+        }
+    }
 }
 
 fn surface(g: &Generator, x: i32, z: i32) -> i32 {
@@ -58,6 +67,33 @@ mod tests {
         terrain::Generation,
     };
     use std::collections::BTreeSet;
+
+    #[test]
+    fn outpost_rot_keeps_five_percent_of_its_overlay_and_preserves_the_underlay() {
+        let lib =
+            jigsaw::Library::parse("template overlay\nsize 32 1 32\nfill 0 0 0 31 0 31 dark_oak_leaves\nend").unwrap();
+        let piece = jigsaw::single(&lib, "overlay", IVec3::new(0, 70, 0), 0, 0);
+        let base = IVec3::new(0, 64, 0);
+        let mut blocks = Box::new([Block::STONE; CHUNK_VOLUME]);
+        jigsaw::paint(
+            &lib,
+            &[piece],
+            &OutpostPalette,
+            &jigsaw::Ground { surface: &|_, _| 70, solid: &|_, _| 70 },
+            &mut blocks,
+            base,
+        );
+        let mut kept = 0;
+        for x in 0..32 {
+            for z in 0..32 {
+                let block = blocks[index(x, 6, z)];
+                kept += usize::from(block == ob::DARK_OAK_LEAVES);
+                assert!(matches!(block, ob::DARK_OAK_LEAVES | Block::STONE));
+            }
+        }
+        // Java Mth.getSeed / java.util.Random fixture: y=70, x/z=0..31.
+        assert_eq!(kept, 39);
+    }
 
     #[test]
     fn pools_cover_every_feature_and_layouts_are_repeatable_without_overlaps() {

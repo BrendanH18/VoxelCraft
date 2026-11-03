@@ -26,10 +26,7 @@ impl Palette for Degradation {
         }
         // RuleProcessor seeds random per world position, independently of paint
         // order. Each predicate takes a separate draw, in the JSON rule order.
-        let seed =
-            i64::from(at.x.wrapping_mul(3_129_871)) ^ i64::from(at.z).wrapping_mul(116_129_781) ^ i64::from(at.y);
-        let seed = seed.wrapping_mul(seed).wrapping_mul(42_317_861).wrapping_add(seed.wrapping_mul(11)) >> 16;
-        let mut rng = crate::enchant::JavaRandom::new(seed);
+        let mut rng = jigsaw::processor_random(at);
         for (input, probability, output) in [
             (BRICKS, 0.3, Block::CRACKED_POLISHED_BLACKSTONE_BRICKS),
             (BLACK, 0.0001, AIR),

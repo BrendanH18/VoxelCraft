@@ -47,6 +47,11 @@ fill 0 24 0 10 24 10 dark_oak_slab
 fill 4 15 1 6 17 1 air
 fill 5 1 2 5 22 2 ladder@south
 fill 5 1 1 5 22 1 dark_oak_planks
+# Original overgrown overlay; outpost_rot retains 5% without replacing its underlay.
+fill 0 1 0 10 20 0 dark_oak_leaves
+fill 0 1 10 10 20 10 dark_oak_leaves
+fill 0 1 1 0 20 9 dark_oak_leaves
+fill 10 1 1 10 20 9 dark_oak_leaves
 mob 3 1 5 pillager
 mob 7 8 5 pillager
 mob 3 22 5 pillager

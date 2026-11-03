@@ -727,6 +727,14 @@ pub fn resolve(
     })
 }
 
+/// Java's position-seeded random used by structure rule/rot processors
+/// (`Mth.getSeed` and `StructurePlaceSettings.getRandom`).
+pub fn processor_random(at: IVec3) -> crate::enchant::JavaRandom {
+    let seed = i64::from(at.x.wrapping_mul(3_129_871)) ^ i64::from(at.z).wrapping_mul(116_129_781) ^ i64::from(at.y);
+    let seed = seed.wrapping_mul(seed).wrapping_mul(42_317_861).wrapping_add(seed.wrapping_mul(11)) >> 16;
+    crate::enchant::JavaRandom::new(seed)
+}
+
 /// A box of the world being generated: a chunk, or one column of a chunk
 /// (the Nether's exposure checks).
 pub struct Canvas<'a> {
