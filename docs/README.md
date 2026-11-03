@@ -174,6 +174,9 @@ roadmap and recorded checks to assess completeness against the current target.
 - [v0.13 integration](verification/2026-10-30-v0.13-integration.md):
   save/reload of both generations, chunk generation speed and the owner's
   play.
+- [v0.14 jigsaw villages](verification/2026-11-03-v0.14-jigsaw-villages.md):
+  world generation 3, the jigsaw engine, template-built villages, the
+  GEN-07 cross-order corpus and the generation 2 golden hash.
 - [Game rules and difficulty](verification/2026-10-17-game-rules-difficulty.md):
   the 26.3 rule registry, damage-type rules, Peaceful regeneration and the
   difficulty effects checked against the reference.
