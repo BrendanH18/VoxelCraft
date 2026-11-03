@@ -1,0 +1,2 @@
+# Placeholder until its v0.14 track adds templates (see src/world/jigsaw.rs and
+# docs/architecture.md#v014-track-reservations).

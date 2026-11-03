@@ -246,7 +246,11 @@ impl Game {
                         self.session.player.pos.z.floor() as i32,
                     )),
                     "bastion_remnant" | "bastion" if self.dimension == Dimension::Nether => {
-                        crate::world::bastion::Bastions::new(self.world.generator.seed).nearest(IVec2::new(
+                        crate::world::bastion::Bastions::with_generation(
+                            self.world.generator.seed,
+                            self.world.generator.generation,
+                        )
+                        .nearest(IVec2::new(
                             self.session.player.pos.x.floor() as i32,
                             self.session.player.pos.z.floor() as i32,
                         ))

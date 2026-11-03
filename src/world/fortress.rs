@@ -337,7 +337,15 @@ pub struct Fortresses {
 
 impl Fortresses {
     pub fn new(seed: u64) -> Self {
-        Self { seed, bastions: super::bastion::Bastions::new(seed), cache: Mutex::new(FxHashMap::default()) }
+        Self::with_generation(seed, super::terrain::Generation::LATEST)
+    }
+
+    pub fn with_generation(seed: u64, generation: super::terrain::Generation) -> Self {
+        Self {
+            seed,
+            bastions: super::bastion::Bastions::with_generation(seed, generation),
+            cache: Mutex::new(FxHashMap::default()),
+        }
     }
 
     fn rng(&self, region: IVec2) -> Rng {

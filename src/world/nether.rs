@@ -168,7 +168,14 @@ fn interpolate(c: [[[f32; 2]; 2]; 2], t: [f32; 3]) -> f32 {
 }
 
 impl NetherGen {
+    /// The Nether of the [latest](super::terrain::Generation::LATEST) world generation.
     pub fn new(seed: u64) -> Self {
+        Self::with_generation(seed, super::terrain::Generation::LATEST)
+    }
+
+    /// The Nether of a world made with `generation` (its structures differ
+    /// from generation 3 on; the terrain is the same in every generation).
+    pub fn with_generation(seed: u64, generation: super::terrain::Generation) -> Self {
         let p = |salt: u64| Perlin::new(seed ^ salt.wrapping_mul(0x9E37_79B9_7F4A_7C15));
         Self {
             seed: seed ^ 0x4E45_5448,
@@ -176,7 +183,7 @@ impl NetherGen {
             detail: p(22),
             patches: p(23),
             glow: p(24),
-            fortresses: Fortresses::new(seed),
+            fortresses: Fortresses::with_generation(seed, generation),
             biomes: NetherBiomeSource::new(seed),
             columns: Mutex::new(FxHashMap::default()),
         }

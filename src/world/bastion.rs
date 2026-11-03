@@ -200,14 +200,21 @@ impl Bastion {
 
 pub struct Bastions {
     seed: u64,
+    /// The world's generation: generation 3 builds bastions from templates.
+    pub generation: super::terrain::Generation,
     cache: Mutex<FxHashMap<IVec2, Arc<Bastion>>>,
     /// Java only starts bastions in biomes tagged `has_structure/bastion_remnant`.
     biomes: super::nether_biome::NetherBiomeSource,
 }
 impl Bastions {
     pub fn new(seed: u64) -> Self {
+        Self::with_generation(seed, super::terrain::Generation::LATEST)
+    }
+
+    pub fn with_generation(seed: u64, generation: super::terrain::Generation) -> Self {
         Self {
             seed,
+            generation,
             cache: Mutex::new(FxHashMap::default()),
             biomes: super::nether_biome::NetherBiomeSource::new(seed),
         }

@@ -298,7 +298,8 @@ impl Generator {
             seed,
             dimension,
             generation,
-            nether: (dimension == Dimension::Nether).then(|| super::nether::NetherGen::new(seed)),
+            nether: (dimension == Dimension::Nether)
+                .then(|| super::nether::NetherGen::with_generation(seed, generation)),
             end: (dimension == Dimension::End).then(|| super::end::EndGen::new(seed)),
             strongholds: super::stronghold::Strongholds::new(seed),
             dungeons: super::dungeon::Dungeons::new(seed),

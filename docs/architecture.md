@@ -451,8 +451,13 @@ texture layers after the bubble columns (2864–2895).
 | --- | --- | --- | --- |
 | — | — | — | 1–3. Generation 3, the jigsaw engine and villages (no new blocks) |
 | 10240–10367 | 1240–1244 | 2896–2911 | 4. Outposts and bastions on templates |
-| 10368–10623 | 1245–1259 | 2912–2943 | 5. Fossils, desert wells, ruined portals, trail ruins, buried treasure |
-| 10624–10751 | 1260–1269 | 2944–2959 | 6. Explorer maps and loot random sequences |
+| 10368–10495 | 1245–1249 | 2912–2927 | 5a. Ruined portals and buried treasure |
+| 10496–10623 | 1250–1254 | 2928–2943 | 5b. Fossils, Nether fossils, desert wells and trail ruins |
+| 10624–10751 | 1255–1269 | 2944–2959 | 6. Maps, explorer maps and loot random sequences |
+
+Track 5 was split in two on 2026-11-03 so four agents can run at once;
+items 1255–1259 moved from track 5 to track 6, which needs an item for
+each 26.3 explorer map type.
 
 ## Assessment branch ID reservations
 
