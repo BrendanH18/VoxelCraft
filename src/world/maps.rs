@@ -344,6 +344,9 @@ pub fn locate(g: &Generator, from: IVec3, item: Item, radius: i32) -> Option<IVe
 impl World {
     pub fn tick_map(&mut self, stack: Stack, pos: DVec3, player: u64) {
         let Some(id) = stack.map_id else { return };
+        if self.maps.maps.get(&id).is_none_or(|m| m.locked || m.dimension != self.generator.dimension) {
+            return;
+        }
         let mut storage = std::mem::take(&mut self.maps);
         let step = storage.steps.entry((id, player)).or_default();
         *step = step.wrapping_add(1);
@@ -699,6 +702,18 @@ mod storage_tests {
 mod performance_tests {
     use super::*;
     use std::sync::Arc;
+    #[test]
+    fn other_dimension_and_locked_maps_do_not_advance_the_update_stripe() {
+        let mut world = World::new_headless(Arc::new(Generator::new(42)), Default::default(), 1);
+        let stack = world.maps.create(MapData::fresh(0, 0, 0, Dimension::Nether, true, false), Item::FILLED_MAP);
+        world.tick_map(stack, DVec3::ZERO, 1);
+        assert!(world.maps.steps.is_empty());
+        let data = world.maps.maps.get_mut(&0).unwrap();
+        data.dimension = Dimension::Overworld;
+        data.locked = true;
+        world.tick_map(stack, DVec3::ZERO, 1);
+        assert!(world.maps.steps.is_empty());
+    }
     #[test]
     fn loaded_void_columns_use_java_bedrock_colour() {
         let g = Arc::new(Generator::new(42));
