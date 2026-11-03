@@ -2142,7 +2142,7 @@ mod tests {
     fn every_structure_paints_its_blocks_across_chunk_boundaries() {
         // This legacy sparse-block fixture predates template painting; the
         // generation 3 outpost has dedicated chunk/marker/order regressions.
-        let g = Generator::with_generation(1, Dimension::Overworld, super::terrain::Generation::V2);
+        let g = Generator::with_generation(1, Dimension::Overworld, super::super::terrain::Generation::V2);
         let mut found = 0;
         for kind in Kind::ALL {
             let at =
