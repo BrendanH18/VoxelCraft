@@ -974,6 +974,35 @@ pub fn effect_pixel(effect: Effect, x: usize, y: usize) -> Rgba {
     }
 }
 
+/// Original silhouettes for map destinations, independent of Minecraft art.
+pub fn map_decoration_pixel(kind: u16, x: usize, y: usize) -> Rgba {
+    let (x, y) = (x as i32, y as i32);
+    let filled = match kind {
+        0 => {
+            (3..13).contains(&x) && (10..14).contains(&y)
+                || (5..11).contains(&x) && (7..10).contains(&y)
+                || (7..9).contains(&x) && (3..7).contains(&y)
+        }
+        1 => (4..14).contains(&y) && ((14 - y) / 2 + 1..=14 - (14 - y) / 2 - 1).contains(&x),
+        2 => {
+            (3..13).contains(&x) && (7..11).contains(&y)
+                || (x == 5 || x == 10) && (11..15).contains(&y)
+                || (3..7).contains(&y) && (x - 8).abs() <= y
+        }
+        _ => (4..12).contains(&x) && (8..14).contains(&y) || (4..9).contains(&y) && (x - 8).abs() <= y - 3,
+    };
+    if !filled {
+        return [0; 4];
+    }
+    let c = match kind {
+        0 => [41, 126, 132],
+        1 => [88, 119, 49],
+        2 => [111, 75, 42],
+        _ => [180, 100, 45],
+    };
+    if x == 7 && y > 9 { [38, 35, 29, 255] } else { [c[0], c[1], c[2], 255] }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1022,31 +1051,3 @@ mod tests {
     }
 }
 
-/// Original silhouettes for map destinations, independent of Minecraft art.
-pub fn map_decoration_pixel(kind: u16, x: usize, y: usize) -> Rgba {
-    let (x, y) = (x as i32, y as i32);
-    let filled = match kind {
-        0 => {
-            (3..13).contains(&x) && (10..14).contains(&y)
-                || (5..11).contains(&x) && (7..10).contains(&y)
-                || (7..9).contains(&x) && (3..7).contains(&y)
-        }
-        1 => (4..14).contains(&y) && ((14 - y) / 2 + 1..=14 - (14 - y) / 2 - 1).contains(&x),
-        2 => {
-            (3..13).contains(&x) && (7..11).contains(&y)
-                || (x == 5 || x == 10) && (11..15).contains(&y)
-                || (3..7).contains(&y) && (x - 8).abs() <= y
-        }
-        _ => (4..12).contains(&x) && (8..14).contains(&y) || (4..9).contains(&y) && (x - 8).abs() <= y - 3,
-    };
-    if !filled {
-        return [0; 4];
-    }
-    let c = match kind {
-        0 => [41, 126, 132],
-        1 => [88, 119, 49],
-        2 => [111, 75, 42],
-        _ => [180, 100, 45],
-    };
-    if x == 7 && y > 9 { [38, 35, 29, 255] } else { [c[0], c[1], c[2], 255] }
-}
