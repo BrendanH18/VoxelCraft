@@ -600,25 +600,16 @@ mod reference_tests {
     }
     #[test]
     fn cartographer_pool_and_slot_order_match_jdk_random_and_collections() {
-        // Reproduce: java tools/JavaLootVectors.java. Its independent oracle
-        // uses java.util.Random and Collections.shuffle, not these helpers.
+        // Reproduce: java tools/JavaLootVectors.java. This independent oracle
+        // uses JDK Random, exact set_count ranges and Collections.shuffle.
         for (seed, expected) in [
-            (0, vec![(2, Item::STICK)]),
-            (42, vec![(17, Item::PAPER)]),
-            (12345, vec![(4, Item::BREAD), (16, Item::BREAD)]),
+            (0, vec![(26, Item::STICK, 1)]),
+            (42, vec![(9, Item::PAPER, 2), (17, Item::PAPER, 2)]),
+            (12345, vec![(2, Item::BREAD, 1), (13, Item::BREAD, 1), (25, Item::BREAD, 2), (26, Item::COMPASS, 1)]),
         ] {
             let c = table(seed, "village/village_cartographer");
-            let observed: Vec<_> = c
-                .slots
-                .iter()
-                .enumerate()
-                .filter_map(|(i, s)| {
-                    s.map(|s| {
-                        assert_eq!(s.count, 1);
-                        (i, s.item)
-                    })
-                })
-                .collect();
+            let observed: Vec<_> =
+                c.slots.iter().enumerate().filter_map(|(i, s)| s.map(|s| (i, s.item, s.count))).collect();
             assert_eq!(observed, expected);
         }
     }

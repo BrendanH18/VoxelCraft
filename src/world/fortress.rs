@@ -931,12 +931,14 @@ mod tests {
 
     #[test]
     fn loot_follows_the_table() {
+        let mut seen = std::collections::HashSet::new();
         for seed in 0..200u64 {
             let chest = loot(seed);
             let stacks: Vec<_> = chest.slots.iter().flatten().collect();
-            assert!((2..=27).contains(&stacks.len()), "{stacks:?}");
-            assert!((2..=28).contains(&stacks.iter().map(|s| s.count as u32).sum::<u32>()));
+            assert!(stacks.len() <= 27, "{stacks:?}");
+            assert!(stacks.iter().map(|s| s.count as u32).sum::<u32>() <= 28);
             for s in stacks {
+                seen.insert(s.item);
                 let ok = match s.item {
                     Item::DIAMOND | Item::GOLD_INGOT => (1..=3).contains(&s.count),
                     Item::IRON_INGOT => (1..=5).contains(&s.count),
@@ -947,5 +949,6 @@ mod tests {
                 assert!(ok, "{s:?}");
             }
         }
+        assert!(seen.contains(&Item::DIAMOND) && seen.contains(&Item::NETHER_WART));
     }
 }

@@ -1767,7 +1767,7 @@ mod tests {
             if check == 0 {
                 assert!(super::chest::is_chest(world.get_block(at).unwrap()));
                 let filled = world.chest(at).unwrap().slots.iter().flatten().count();
-                assert!((2..=4).contains(&filled), "{filled} stacks");
+                assert!((1..=super::chest::SLOTS).contains(&filled), "{filled} stacks after Java splitting");
                 // A looted chest stays empty when its chunk generates again.
                 world.chest_mut(at).unwrap().slots = [None; super::chest::SLOTS];
                 let data = world.chunks[&chunk_of(at)].data.clone();

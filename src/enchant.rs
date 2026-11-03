@@ -46,6 +46,15 @@ pub enum Enchantment {
     Multishot,
     Piercing,
     QuickCharge,
+    // v0.14 loot metadata; append-only save bits 33–39. Their weapon
+    // families are not implemented, but books must preserve Java's choices.
+    Loyalty,
+    Impaling,
+    Riptide,
+    Channeling,
+    Density,
+    Breach,
+    Lunge,
 }
 
 /// Which items an enchantment goes on (Java's item tags).
@@ -65,6 +74,8 @@ enum Fits {
     FishingRod,
     /// Anything that wears out.
     Durable,
+    /// Metadata for loot books whose weapon family is not implemented.
+    UnsupportedWeapon,
 }
 
 impl Fits {
@@ -195,10 +206,17 @@ static DEFS: [Def; Enchantment::COUNT] = [
     in_group(def("multishot", 1, 2, (20, 0), (50, 0), 4, Fits::Crossbow), Group::Crossbow),
     in_group(def("piercing", 4, 10, (1, 10), (50, 0), 1, Fits::Crossbow), Group::Crossbow),
     def("quick charge", 3, 5, (12, 20), (50, 0), 2, Fits::Crossbow),
+    def("loyalty", 3, 5, (12, 7), (50, 0), 2, Fits::UnsupportedWeapon),
+    in_group(def("impaling", 5, 2, (1, 8), (21, 8), 4, Fits::UnsupportedWeapon), Group::Damage),
+    def("riptide", 3, 2, (17, 7), (50, 0), 4, Fits::UnsupportedWeapon),
+    def("channeling", 1, 1, (25, 0), (50, 0), 8, Fits::UnsupportedWeapon),
+    in_group(def("density", 5, 5, (5, 8), (25, 8), 2, Fits::UnsupportedWeapon), Group::Damage),
+    in_group(def("breach", 4, 2, (15, 9), (65, 9), 4, Fits::UnsupportedWeapon), Group::Damage),
+    def("lunge", 3, 5, (5, 8), (25, 8), 2, Fits::UnsupportedWeapon),
 ];
 
 impl Enchantment {
-    pub const COUNT: usize = 33;
+    pub const COUNT: usize = 40;
     pub const ALL: [Enchantment; Enchantment::COUNT] = {
         let mut all = [Enchantment::Protection; Enchantment::COUNT];
         let mut i = 0;
@@ -233,6 +251,11 @@ impl Enchantment {
     /// Whether `self` and `other` may share an item.
     pub fn compatible(self, other: Enchantment) -> bool {
         if matches!((self, other), (Self::FrostWalker, Self::DepthStrider) | (Self::DepthStrider, Self::FrostWalker)) {
+            return false;
+        }
+        if (self == Self::Riptide && matches!(other, Self::Loyalty | Self::Channeling))
+            || (other == Self::Riptide && matches!(self, Self::Loyalty | Self::Channeling))
+        {
             return false;
         }
         let (a, b) = (self.def().group, other.def().group);
@@ -1085,5 +1108,24 @@ mod tests {
         assert_eq!(efficiency_bonus(Enchants::NONE.with(Enchantment::Efficiency, 5)), 26.0);
         assert!(wears(Enchants::NONE, false, 0.99));
         assert!(!wears(Enchants::NONE.with(Enchantment::Unbreaking, 3), false, 0.3));
+    }
+}
+
+#[cfg(test)]
+mod loot_metadata_tests {
+    use super::*;
+    #[test]
+    fn appended_book_enchantments_preserve_old_save_indices_and_roundtrip() {
+        assert_eq!(Enchantment::QuickCharge as u8, 32);
+        assert_eq!(Enchantment::Loyalty as u8, 33);
+        assert_eq!(Enchantment::Lunge as u8, 39);
+        let old = Enchants::NONE.with(Enchantment::Mending, 1).with(Enchantment::QuickCharge, 3);
+        assert_eq!(Enchants::from_hex(&old.to_hex()), Some(old));
+        let book = old.with(Enchantment::Density, 5).with(Enchantment::Lunge, 3);
+        assert_eq!(Enchants::from_hex(&book.to_hex()), Some(book));
+        assert!(book.lines().iter().any(|(line, _)| line == "Density V"));
+        assert!(!Enchantment::Loyalty.fits(Item::tool(ToolKind::Sword, crate::item::Tier::Iron)));
+        assert!(Enchantment::Loyalty.fits(Item::ENCHANTED_BOOK));
+        assert!(!Enchantment::Riptide.compatible(Enchantment::Loyalty));
     }
 }
