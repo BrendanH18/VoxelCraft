@@ -598,7 +598,10 @@ pub fn assemble(
                         }
                         let local = rotate(cj.pos, r);
                         let mut origin = target - local;
-                        let y = if rigid && ct.projection == Projection::Rigid {
+                        // A vertical join sits on/below its parent, including
+                        // terrain-projected plates. Projecting again would move
+                        // the child into the parent's already occupied box.
+                        let y = if jig.vertical != 0 || rigid && ct.projection == Projection::Rigid {
                             target.y - local.y
                         } else {
                             *ground_at.get_or_insert_with(|| surface(p.x, p.z) + 1) - local.y
@@ -1152,6 +1155,51 @@ end
                     }
                 }
             }
+        }
+    }
+
+    #[test]
+    fn a_vertical_child_sits_above_its_terrain_projected_plate() {
+        let lib = Library::parse(
+            r#"
+template base
+size 1 1 1
+jigsaw 0 0 0 east base plate plates
+end
+template plate
+size 1 1 1
+projection terrain
+jigsaw 0 0 0 west plate base empty
+jigsaw 0 0 0 up plate top tops
+end
+template top
+size 1 1 1
+jigsaw 0 0 0 down top plate empty
+end
+pool starts
+1 base
+end
+pool plates
+1 plate
+end
+pool tops
+1 top
+end
+"#,
+        )
+        .unwrap();
+        for seed in 0..16 {
+            let pieces = assemble(
+                &lib,
+                &Settings { start_pool: "starts", max_depth: 7, max_distance: 80 },
+                IVec2::ZERO,
+                &|_, _| 70,
+                seed,
+            );
+            assert_eq!(pieces.len(), 3);
+            assert_eq!(pieces[1].origin.y, 71);
+            assert_eq!(pieces[2].origin.y, 72);
+            assert!(!pieces[1].bounds.intersects(&pieces[2].bounds));
         }
     }
 
