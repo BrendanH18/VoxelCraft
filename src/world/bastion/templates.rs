@@ -344,6 +344,28 @@ mod tests {
                     .get(&chunk_of(p))
                     .map_or(Block::NETHERRACK, |c| c[index(l.x as usize, l.y as usize, l.z as usize)])
             };
+            if b.kind == Kind::Treasure {
+                let room = b.placed[0].bounds;
+                let mut lava = 0;
+                for x in room.min.x..=room.max.x {
+                    for z in room.min.z..=room.max.z {
+                        for y in room.min.y..=room.max.y {
+                            let at = IVec3::new(x, y, z);
+                            if !block(at).is_lava() {
+                                continue;
+                            }
+                            lava += 1;
+                            for d in [IVec3::X, -IVec3::X, IVec3::Z, -IVec3::Z, -IVec3::Y] {
+                                assert!(
+                                    block(at + d).is_solid() || block(at + d).is_lava(),
+                                    "treasure lava can escape from {at} toward {d}"
+                                );
+                            }
+                        }
+                    }
+                }
+                assert!(lava > 100);
+            }
             let can_stand = |p| {
                 block(p) == AIR
                     && block(p + IVec3::Y) == AIR

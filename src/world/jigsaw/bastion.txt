@@ -398,6 +398,10 @@ fill 8 2 3 10 2 5 gilded_blackstone
 mob 8 3 4 bastion/mobs/piglin_melee
 fill 6 2 6 22 2 22 magma_block
 fill 6 3 6 22 3 22 lava
+fill 5 3 5 23 3 5 polished_blackstone_bricks
+fill 5 3 23 23 3 23 polished_blackstone_bricks
+fill 5 3 6 5 3 22 polished_blackstone_bricks
+fill 23 3 6 23 3 22 polished_blackstone_bricks
 fill 10 3 10 18 4 18 polished_blackstone_bricks
 fill 12 5 12 16 6 16 block_of_gold
 fill 13 3 19 15 3 26 polished_blackstone_bricks
