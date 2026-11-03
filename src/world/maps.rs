@@ -683,3 +683,46 @@ mod storage_tests {
         assert_eq!(m.decoration_view(&d), Some((127.5, 64.0, 4, true)));
     }
 }
+
+#[cfg(test)]
+mod performance_tests {
+    use super::*;
+    use std::sync::Arc;
+    #[test]
+    fn loaded_world_map_updates_have_bounded_work() {
+        // A complete 128x128 loaded scene, built from the ordinary chunk API.
+        // Timings are evidence, not flaky pass/fail thresholds.
+        let g = Arc::new(Generator::new(42));
+        let mut world = World::new_headless(g, Default::default(), 1);
+        for z in -2..2 {
+            for x in -2..2 {
+                for y in Dimension::Overworld.chunk_rows() {
+                    world.insert_chunk(
+                        IVec3::new(x, y, z),
+                        Arc::new(super::super::chunk::ChunkData::Uniform(if y < 2 {
+                            Block::STONE
+                        } else {
+                            Block::AIR
+                        })),
+                        false,
+                    );
+                }
+            }
+        }
+        let stack = world.maps.create(MapData::fresh(0, 0, 0, Dimension::Overworld, true, false), Item::FILLED_MAP);
+        let start = std::time::Instant::now();
+        world.tick_map(stack, DVec3::new(0.0, 65.0, 0.0), 1);
+        let initial = start.elapsed();
+        let start = std::time::Instant::now();
+        for _ in 0..20 {
+            world.tick_map(stack, DVec3::new(0.0, 65.0, 0.0), 1);
+        }
+        let steady = start.elapsed() / 20;
+        assert!(world.maps.maps[&0].colors.iter().all(|&c| c / 4 == 11));
+        eprintln!(
+            "map update, seed 42, loaded 128x128 stone scene: first {:.3} ms, steady mean {:.3} ms/tick",
+            initial.as_secs_f64() * 1000.0,
+            steady.as_secs_f64() * 1000.0
+        );
+    }
+}
