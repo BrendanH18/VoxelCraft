@@ -66,11 +66,14 @@ pub enum Generation {
     V1 = 1,
     /// v0.13: density terrain with overhangs and the v0.13 features.
     V2 = 2,
+    /// v0.14: generation 2's terrain with structures built from templates
+    /// by the jigsaw assembler (villages first).
+    V3 = 3,
 }
 
 impl Generation {
     /// What new worlds use.
-    pub const LATEST: Generation = Generation::V2;
+    pub const LATEST: Generation = Generation::V3;
     /// The `level.txt` key.
     pub const KEY: &'static str = "worldgen";
 
@@ -82,6 +85,7 @@ impl Generation {
             None => Generation::V1,
             Some(Ok(1)) => Generation::V1,
             Some(Ok(2)) => Generation::V2,
+            Some(Ok(3)) => Generation::V3,
             Some(_) => {
                 log::warn!("unknown world generation {value:?}; using {:?}", Generation::LATEST);
                 Generation::LATEST
@@ -1699,6 +1703,7 @@ mod tests {
         assert_eq!(Generation::from_prop(None), Generation::V1, "worlds from before v0.13");
         assert_eq!(Generation::from_prop(Some("1")), Generation::V1);
         assert_eq!(Generation::from_prop(Some("2")), Generation::V2);
+        assert_eq!(Generation::from_prop(Some("3")), Generation::V3);
         assert_eq!(Generation::from_prop(Some("99")), Generation::LATEST);
         assert_eq!(Generation::from_prop(Some(&Generation::LATEST.number().to_string())), Generation::LATEST);
         assert_eq!(Generator::new(1).generation, Generation::LATEST);
