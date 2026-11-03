@@ -1050,4 +1050,3 @@ mod tests {
         enc.write_header().unwrap().write_image_data(&img).unwrap();
     }
 }
-

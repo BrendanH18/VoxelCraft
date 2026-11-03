@@ -687,6 +687,7 @@ mod reference_tests {
                                 | "minecraft:exploration_map"
                                 | "minecraft:filtered"
                                 | "minecraft:set_instrument"
+                                | "minecraft:set_potion"
                                 | "minecraft:set_stew_effect"
                         ));
                     }
