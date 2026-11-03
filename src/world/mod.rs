@@ -49,6 +49,7 @@ pub mod gadgets;
 pub mod geode;
 mod growth;
 mod honey;
+pub mod jigsaw;
 mod light_shape;
 pub(crate) mod lighting;
 pub mod mineshaft;

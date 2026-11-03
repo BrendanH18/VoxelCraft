@@ -1,10 +1,16 @@
 //! Surface villages: terrain-projected, connector-driven pieces in five biome
 //! palettes. Placement matches Java 1.21 random_spread; piece artwork is an
 //! original compact pool rather than a copy of Minecraft's NBT templates.
+//!
+//! Generation 3 worlds build villages with the jigsaw assembler
+//! ([`super::jigsaw`]) from the templates in `jigsaw/village.txt`; older
+//! generations keep the hand-grown layout below, unchanged.
 use super::block::{Block, Facing};
 use super::chunk::{CHUNK_SIZE_I, CHUNK_VOLUME};
 use super::fortress::Feature;
+use super::jigsaw::{self, Placed};
 use super::structure::{Bounds, Oriented, Paint, Rng};
+use super::terrain::Generation;
 use super::terrain::{Biome, Dimension, Generator, SEA_LEVEL};
 use crate::enchant::JavaRandom;
 use glam::{IVec2, IVec3};
@@ -74,7 +80,10 @@ impl Oriented for Piece {
 pub struct Village {
     pub center: IVec3,
     pub style: Style,
+    /// Generations 1 and 2: the hand-grown layout.
     pub pieces: Vec<Piece>,
+    /// Generation 3: templates placed by the jigsaw assembler.
+    pub placed: Vec<Placed>,
     pub bounds: Bounds,
 }
 struct Builder<'a> {
@@ -178,22 +187,155 @@ impl Builder<'_> {
             }
         }
         let bounds = self.pieces.iter().fold(self.pieces[0].bounds, |a, p| a.union(&p.bounds));
-        Village { center: self.center, style, pieces: self.pieces, bounds }
+        Village { center: self.center, style, pieces: self.pieces, placed: Vec::new(), bounds }
     }
 }
 fn horizontal_intersects(a: &Bounds, b: &Bounds) -> bool {
     a.min.x <= b.max.x && a.max.x >= b.min.x && a.min.z <= b.max.z && a.max.z >= b.min.z
 }
+/// Java's village jigsaw settings: size 6, 80 blocks from the centre.
+const SETTINGS: jigsaw::Settings =
+    jigsaw::Settings { start_pool: "village/town_centers", max_depth: 6, max_distance: 80 };
+
+/// Names looked up once (`Block::from_name` scans every state).
+struct Named {
+    oak_stairs: Block,
+    spruce_stairs: Block,
+    acacia_stairs: Block,
+    sandstone_stairs: Block,
+    spruce_fence: Block,
+    acacia_fence: Block,
+    smooth_sandstone: Block,
+    cut_sandstone: Block,
+}
+
+fn named() -> &'static Named {
+    static NAMED: std::sync::OnceLock<Named> = std::sync::OnceLock::new();
+    NAMED.get_or_init(|| {
+        let b = |n: &str| Block::from_name(n).unwrap_or_else(|| panic!("no block {n}"));
+        Named {
+            oak_stairs: b("oak stairs"),
+            spruce_stairs: b("spruce stairs"),
+            acacia_stairs: b("acacia stairs"),
+            sandstone_stairs: b("sandstone stairs"),
+            spruce_fence: b("spruce fence"),
+            acacia_fence: b("acacia fence"),
+            smooth_sandstone: b("smooth sandstone"),
+            cut_sandstone: b("cut sandstone"),
+        }
+    })
+}
+
+impl Style {
+    /// The block a template `$role` stands for in this style.
+    fn role(self, role: &str) -> Option<Block> {
+        let n = named();
+        let (log, planks, stone) = self.materials();
+        Some(match (role, self) {
+            ("path", _) => Block::DIRT_PATH,
+            ("foundation", Self::Savanna) => Block::TERRACOTTA,
+            ("foundation", _) => stone,
+            ("planks", Self::Desert) => n.smooth_sandstone,
+            ("planks", _) => planks,
+            ("log", Self::Desert) => n.cut_sandstone,
+            ("log", _) => log,
+            ("fence", Self::Taiga | Self::Snowy) => n.spruce_fence,
+            ("fence", Self::Savanna) => n.acacia_fence,
+            ("fence", _) => Block::OAK_FENCE,
+            ("light", _) => super::mount_states::LANTERN,
+            ("roof_stairs", Self::Plains) => n.oak_stairs,
+            ("roof_stairs", Self::Desert) => n.sandstone_stairs,
+            ("roof_stairs", Self::Savanna) => n.acacia_stairs,
+            ("roof_stairs", Self::Taiga | Self::Snowy) => n.spruce_stairs,
+            ("ridge", Self::Snowy) => Block::SNOW,
+            ("ridge", Self::Desert) => Block::SANDSTONE,
+            ("ridge", _) => planks,
+            ("cap", Self::Snowy) => super::overworld_blocks::SNOW_LAYER,
+            ("cap", _) => return None,
+            ("ground", Self::Desert) => Block::SAND,
+            ("ground", Self::Snowy) => Block::SNOWY_GRASS,
+            ("ground", _) => Block::GRASS,
+            _ => return None,
+        })
+    }
+}
+
+impl jigsaw::Palette for Style {
+    fn role(&self, role: &str) -> Option<Block> {
+        Style::role(*self, role)
+    }
+    fn job(&self, piece: &Placed) -> Block {
+        JOBS[(piece.seed % JOBS.len() as u64) as usize]
+    }
+    fn crop(&self, hash: u64) -> Block {
+        let age = (hash % 8) as u8;
+        match (hash >> 8) % 3 {
+            0 => Block::wheat(age),
+            1 => Block::crop(super::block::Crop::Carrot, age),
+            _ => Block::crop(super::block::Crop::Potato, age),
+        }
+    }
+    /// Streets cross water on planks, like Java's street processors.
+    fn on_water(&self, block: Block) -> Block {
+        if block == Block::DIRT_PATH { self.materials().1 } else { block }
+    }
+}
+
+/// The top block of a column, water included.
+fn surface(g: &Generator, x: i32, z: i32) -> i32 {
+    g.column(x, z).height.max(SEA_LEVEL - 1)
+}
+
 impl Village {
     fn generate(g: &Generator, center: IVec3, style: Style, seed: u64) -> Self {
+        if g.generation >= Generation::V3 {
+            let lib = jigsaw::villages();
+            let placed =
+                jigsaw::assemble(lib, &SETTINGS, IVec2::new(center.x, center.z), &|x, z| surface(g, x, z), seed);
+            let bounds = placed.iter().fold(placed[0].bounds, |a, p| a.union(&p.bounds));
+            return Village { center, style, pieces: Vec::new(), placed, bounds };
+        }
         let bounds = Bounds { min: center - IVec3::new(4, 0, 4), max: center + IVec3::new(4, 6, 4) };
         let meeting = Piece { kind: Kind::Meeting, bounds, facing: Facing::South, job: Block::BELL, seed };
         Builder { generator: g, center, rng: Rng(seed), pieces: vec![meeting] }.grow(style)
     }
-    pub fn homes(&self) -> impl Iterator<Item = IVec3> + '_ {
-        self.pieces.iter().filter(|p| p.kind == Kind::House).map(|p| p.world(1, 0, 4))
+    /// Every bed (its head) of a generated house.
+    pub fn homes(&self) -> Vec<IVec3> {
+        if !self.placed.is_empty() {
+            return self.features().filter_map(|(at, f)| matches!(f, Feature::VillageHome(_)).then_some(at)).collect();
+        }
+        self.pieces.iter().filter(|p| p.kind == Kind::House).map(|p| p.world(1, 0, 4)).collect()
     }
+
+    /// Block entities and homes of a generation 3 village: chests, job
+    /// sites and beds, wherever they are.
+    fn features(&self) -> impl Iterator<Item = (IVec3, Feature)> + '_ {
+        let lib = jigsaw::villages();
+        self.placed.iter().flat_map(move |p| {
+            let t = &lib.templates[p.template as usize];
+            let cells = t.cells.iter().filter_map(move |c| match c.spec.base {
+                jigsaw::Base::Chest => {
+                    let at = p.world(c.pos);
+                    Some((at, Feature::VillageChest(super::noise::hash3(at.x, at.y, at.z, p.seed), self.style)))
+                }
+                jigsaw::Base::Job => {
+                    Some((p.world(c.pos), Feature::VillageWorkstation(jigsaw::Palette::job(&self.style, p))))
+                }
+                _ => None,
+            });
+            let homes = t.homes.iter().map(move |&(bed, spawn)| (p.world(bed), Feature::VillageHome(p.world(spawn))));
+            cells.chain(homes)
+        })
+    }
+
     fn paint(&self, g: &Generator, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3) {
+        if !self.placed.is_empty() {
+            let surface = |x: i32, z: i32| surface(g, x, z);
+            let solid = |x: i32, z: i32| g.column(x, z).height;
+            let ground = jigsaw::Ground { surface: &surface, solid: &solid };
+            jigsaw::paint(jigsaw::villages(), &self.placed, &self.style, &ground, blocks, base);
+            return;
+        }
         let chunk = Bounds { min: base, max: base + IVec3::splat(CHUNK_SIZE_I - 1) };
         let (log, planks, stone) = self.style.materials();
         for piece in &self.pieces {
@@ -391,6 +533,7 @@ impl Villages {
         let bounds = Bounds { min: base, max: base + IVec3::splat(CHUNK_SIZE_I - 1) };
         let mut out = Vec::new();
         self.visit(g, base, |v| {
+            out.extend(v.features().filter(|(at, _)| bounds.contains(*at)));
             for p in &v.pieces {
                 if p.kind == Kind::House {
                     let home = p.world(1, 0, 4);
@@ -561,6 +704,22 @@ pub fn loot(seed: u64, style: Style) -> super::chest::Chest {
 mod tests {
     use super::super::chunk::index;
     use super::*;
+
+    fn generator(generation: Generation) -> Generator {
+        Generator::with_generation(42, Dimension::Overworld, generation)
+    }
+
+    /// Chests, job sites and beds of a village, whichever generation built it.
+    fn all_features(v: &Village) -> Vec<(IVec3, Feature)> {
+        let mut out: Vec<_> = v.features().collect();
+        for p in v.pieces.iter().filter(|p| p.kind == Kind::House) {
+            out.push((p.world(1, 0, 4), Feature::VillageHome(p.world(3, 0, 3))));
+            out.push((p.world(5, 0, 2), Feature::VillageChest(p.seed, v.style)));
+            out.push((p.world(5, 0, 4), Feature::VillageWorkstation(p.job)));
+        }
+        out
+    }
+
     #[test]
     fn placement_uses_java_spacing_separation_and_signed_regions() {
         let v = Villages::new(42);
@@ -572,40 +731,85 @@ mod tests {
         }
         assert_eq!(v.candidate(IVec2::ZERO), IVec2::new(144, 176));
     }
+
     #[test]
     fn all_five_biomes_have_connected_non_overlapping_villages() {
-        let g = Generator::new(42);
-        let mut found = [false; 5];
-        for z in -12..=12 {
-            for x in -12..=12 {
-                if let Some(v) = g.villages.get(&g, IVec2::new(x, z)) {
+        for generation in [Generation::V2, Generation::V3] {
+            let g = generator(generation);
+            let mut found = [false; 5];
+            for z in -12..=12 {
+                for x in -12..=12 {
+                    let Some(v) = g.villages.get(&g, IVec2::new(x, z)) else { continue };
                     let first = !found[v.style as usize];
                     found[v.style as usize] = true;
-                    for (i, a) in v.pieces.iter().enumerate() {
-                        for b in &v.pieces[i + 1..] {
-                            assert!(!horizontal_intersects(&a.bounds, &b.bounds));
+                    if generation >= Generation::V3 {
+                        assert!(v.pieces.is_empty());
+                        // Java checks whole boxes, so pieces may share columns at
+                        // different heights but never a block.
+                        for (i, a) in v.placed.iter().enumerate() {
+                            for b in &v.placed[i + 1..] {
+                                assert!(!a.bounds.intersects(&b.bounds));
+                            }
                         }
+                        assert!(v.placed.iter().all(|p| (p.bounds.min.x - v.center.x).abs() <= EXTENT
+                            && (p.bounds.max.z - v.center.z).abs() <= EXTENT));
+                    } else {
+                        assert!(v.placed.is_empty());
+                        for (i, a) in v.pieces.iter().enumerate() {
+                            for b in &v.pieces[i + 1..] {
+                                assert!(!horizontal_intersects(&a.bounds, &b.bounds));
+                            }
+                        }
+                        assert!(v.pieces.iter().all(|p| (p.bounds.min.x - v.center.x).abs() <= EXTENT
+                            && (p.bounds.min.z - v.center.z).abs() <= EXTENT));
                     }
-                    assert!(v.pieces.iter().all(|p| (p.bounds.min.x - v.center.x).abs() <= EXTENT
-                        && (p.bounds.min.z - v.center.z).abs() <= EXTENT));
                     if first {
+                        let pieces = v.pieces.len() + v.placed.len();
                         println!(
-                            "village {:?}: {} {} {}, {} houses",
+                            "{generation:?} village {:?}: {} {} {}, {pieces} pieces, {} beds",
                             v.style,
                             v.center.x,
                             v.center.y,
                             v.center.z,
-                            v.homes().count()
+                            v.homes().len()
                         );
                     }
                 }
             }
+            assert!(found.into_iter().all(|v| v), "{generation:?}");
+            assert_eq!(
+                g.villages.nearest(&Generator::with_generation(42, Dimension::Nether, generation), IVec3::ZERO),
+                None
+            );
+            let at = g.villages.nearest(&g, IVec3::ZERO).unwrap();
+            assert!(Style::of(g.column(at.x, at.z).biome).is_some());
         }
-        assert!(found.into_iter().all(|v| v));
-        assert_eq!(g.villages.nearest(&Generator::for_dimension(42, Dimension::Nether), IVec3::ZERO), None);
-        let at = g.villages.nearest(&g, IVec3::ZERO).unwrap();
-        assert!(Style::of(g.column(at.x, at.z).biome).is_some());
     }
+
+    #[test]
+    fn generation_3_villages_have_homes_jobs_and_chests_on_average() {
+        let g = generator(Generation::V3);
+        let (mut villages, mut beds, mut chests, mut jobs) = (0, 0, 0, 0);
+        for z in -8..=8 {
+            for x in -8..=8 {
+                let Some(v) = g.villages.get(&g, IVec2::new(x, z)) else { continue };
+                villages += 1;
+                for (_, f) in v.features() {
+                    match f {
+                        Feature::VillageHome(_) => beds += 1,
+                        Feature::VillageChest(..) => chests += 1,
+                        Feature::VillageWorkstation(_) => jobs += 1,
+                        _ => {}
+                    }
+                }
+            }
+        }
+        println!("{villages} villages: {beds} beds, {chests} chests, {jobs} job sites");
+        assert!(villages >= 10);
+        assert!(beds >= villages * 3, "{beds} beds in {villages} villages");
+        assert!(chests >= villages && jobs >= villages);
+    }
+
     fn ground(g: &Generator, base: IVec3) -> Box<[Block; CHUNK_VOLUME]> {
         let mut b = super::super::chunk::ChunkData::new_dense(Block::AIR);
         for z in 0..32 {
@@ -620,37 +824,114 @@ mod tests {
         }
         b
     }
+
     #[test]
     fn village_painting_agrees_in_overlapping_chunks_and_preserves_features() {
-        let g = Generator::new(42);
-        let at = g.villages.nearest(&g, IVec3::ZERO).unwrap();
-        let region = IVec2::new(at.x.div_euclid(REGION), at.z.div_euclid(REGION));
-        let v = g.villages.get(&g, region).unwrap();
-        let base = v.center - IVec3::new(12, 8, 12);
-        let next = base + IVec3::new(1, 1, 1);
-        let mut a = ground(&g, base);
-        let mut b = ground(&g, next);
-        v.paint(&g, &mut a, base);
-        v.paint(&g, &mut b, next);
-        for y in 1..32 {
-            for z in 1..32 {
-                for x in 1..32 {
-                    assert_eq!(a[index(x, y, z)], b[index(x - 1, y - 1, z - 1)], "{x} {y} {z}");
+        for generation in [Generation::V2, Generation::V3] {
+            let g = generator(generation);
+            let at = g.villages.nearest(&g, IVec3::ZERO).unwrap();
+            let region = IVec2::new(at.x.div_euclid(REGION), at.z.div_euclid(REGION));
+            let v = g.villages.get(&g, region).unwrap();
+            for offset in [IVec3::new(-12, -8, -12), IVec3::new(5, -3, -20), IVec3::new(-30, -2, 7)] {
+                let base = v.center + offset;
+                let next = base + IVec3::new(1, 1, 1);
+                let mut a = ground(&g, base);
+                let mut b = ground(&g, next);
+                v.paint(&g, &mut a, base);
+                v.paint(&g, &mut b, next);
+                for y in 1..32 {
+                    for z in 1..32 {
+                        for x in 1..32 {
+                            assert_eq!(a[index(x, y, z)], b[index(x - 1, y - 1, z - 1)], "{generation:?} {x} {y} {z}");
+                        }
+                    }
                 }
             }
-        }
-        for p in v.pieces.iter().filter(|p| p.kind == Kind::House) {
-            for (at, want) in [(p.world(1, 0, 4), Block::BED_HEAD), (p.world(5, 0, 2), Block::CHEST)] {
+            let features = all_features(&v);
+            assert!(features.iter().any(|f| matches!(f.1, Feature::VillageHome(_))));
+            for (at, f) in features {
+                let want = match f {
+                    Feature::VillageHome(_) => Block::BED_HEAD,
+                    Feature::VillageChest(..) => Block::CHEST,
+                    Feature::VillageWorkstation(job) => job,
+                    _ => continue,
+                };
                 let c = super::super::chunk::chunk_of(at);
                 let data = g.generate(c);
                 let l = super::super::chunk::local_of(at);
-                assert_eq!(data.get(l.x as usize, l.y as usize, l.z as usize).base(), want);
+                assert_eq!(
+                    data.get(l.x as usize, l.y as usize, l.z as usize).base(),
+                    want,
+                    "{generation:?} {f:?} at {at}"
+                );
+            }
+            let before = (v.pieces.len(), v.placed.clone());
+            g.villages.cache.lock().unwrap().clear();
+            let again = g.villages.get(&g, region).unwrap();
+            assert_eq!((again.pieces.len(), again.placed.clone()), before);
+        }
+    }
+
+    /// Streets follow the ground, so one can pass through a house's box;
+    /// it must not replace the house's chest, bed or job site (seeds and
+    /// spots from the 2026-11-03 review).
+    #[test]
+    fn generation_3_streets_never_replace_house_contents() {
+        for (seed, spot) in [(12345, IVec3::new(5230, 111, -1829)), (2024, IVec3::new(3651, 70, 818))] {
+            let g = Generator::with_generation(seed, Dimension::Overworld, Generation::V3);
+            let region = IVec2::new(spot.x.div_euclid(REGION), spot.z.div_euclid(REGION));
+            let v = g.villages.get(&g, region).unwrap();
+            let features: Vec<_> = v.features().collect();
+            assert!(features.iter().any(|(at, _)| *at == spot), "seed {seed}: {spot} is no longer a feature");
+            for (at, f) in features {
+                let want = match f {
+                    Feature::VillageHome(_) => Block::BED_HEAD,
+                    Feature::VillageChest(..) => Block::CHEST,
+                    Feature::VillageWorkstation(job) => job,
+                    _ => continue,
+                };
+                let data = g.generate(super::super::chunk::chunk_of(at));
+                let l = super::super::chunk::local_of(at);
+                assert_eq!(
+                    data.get(l.x as usize, l.y as usize, l.z as usize).base(),
+                    want,
+                    "seed {seed}: {f:?} at {at}"
+                );
             }
         }
-        let before = v.pieces.len();
-        g.villages.cache.lock().unwrap().clear();
-        assert_eq!(g.villages.get(&g, region).unwrap().pieces.len(), before);
     }
+
+    #[test]
+    fn generation_3_streets_bridge_water_on_planks() {
+        let lib = jigsaw::villages();
+        let street = lib.templates.iter().position(|t| t.name == "village/street_short").unwrap() as u16;
+        let t = &lib.templates[street as usize];
+        let base = IVec3::new(0, 32, 0);
+        let origin = IVec3::new(4, 0, 4);
+        let placed = Placed {
+            template: street,
+            origin,
+            rotation: 0,
+            bounds: Bounds { min: origin, max: origin + t.size - IVec3::ONE },
+            depth: 0,
+            seed: 1,
+        };
+        let surface = |_: i32, z: i32| if z < 7 { 40 } else { 45 };
+        let solid = |_: i32, z: i32| if z < 7 { 36 } else { 45 };
+        let mut blocks = super::super::chunk::ChunkData::new_dense(Block::AIR);
+        jigsaw::paint(
+            lib,
+            &[placed],
+            &Style::Taiga,
+            &jigsaw::Ground { surface: &surface, solid: &solid },
+            &mut blocks,
+            base,
+        );
+        let at = |x: i32, y: i32, z: i32| blocks[index(x as usize, (y - base.y) as usize, z as usize)];
+        assert_eq!(at(5, 40, 5), Block::SPRUCE_PLANKS, "over water");
+        assert_eq!(at(5, 45, 8), Block::DIRT_PATH, "on land");
+    }
+
     #[test]
     fn village_loot_is_seeded_and_follows_java_counts() {
         for style in [Style::Plains, Style::Desert, Style::Savanna, Style::Taiga, Style::Snowy] {
@@ -661,6 +942,19 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn every_style_resolves_every_role() {
+        let lib = jigsaw::villages();
+        for style in [Style::Plains, Style::Desert, Style::Savanna, Style::Taiga, Style::Snowy] {
+            for role in &lib.roles {
+                if role != "cap" {
+                    assert!(style.role(role).is_some(), "{style:?} has no {role}");
+                }
+            }
+            assert!(style.role("roof_stairs").unwrap().stairs_base().is_some());
+        }
+    }
 }
 
 #[cfg(test)]
@@ -668,30 +962,43 @@ mod registration_tests {
     use super::*;
     #[test]
     fn generated_containers_work_and_saved_empty_chests_never_refill() {
-        let g = Arc::new(Generator::new(42));
-        let at = g.villages.nearest(&g, IVec3::ZERO).unwrap();
-        let v = g.villages.get(&g, IVec2::new(at.x.div_euclid(REGION), at.z.div_euclid(REGION))).unwrap();
-        let mut world = super::super::World::new_headless(Arc::clone(&g), Default::default(), 1);
-        for p in v.pieces.iter().filter(|p| p.kind == Kind::House) {
-            let chest = p.world(5, 0, 2);
-            let c = super::super::chunk::chunk_of(chest);
-            world.register_structure_features(c, &g.generate(c));
-            assert!(world.chest(chest).is_some());
-            world.chest_mut(chest).unwrap().slots.fill(None);
-            let saved = world.chests_to_string();
-            let mut other = super::super::World::new_headless(Arc::clone(&g), Default::default(), 1);
-            other.load_chests(&saved);
-            other.register_structure_features(c, &g.generate(c));
-            assert!(other.chest(chest).unwrap().slots.iter().all(Option::is_none));
-            let at = p.world(5, 0, 4);
-            let c = super::super::chunk::chunk_of(at);
-            world.register_structure_features(c, &g.generate(c));
-            if super::super::furnace::is_furnace(p.job) {
-                assert_eq!(world.furnace(at).unwrap().kind, super::super::furnace::FurnaceKind::of(p.job));
+        for generation in [Generation::V2, Generation::V3] {
+            let g = Arc::new(Generator::with_generation(42, Dimension::Overworld, generation));
+            let at = g.villages.nearest(&g, IVec3::ZERO).unwrap();
+            let v = g.villages.get(&g, IVec2::new(at.x.div_euclid(REGION), at.z.div_euclid(REGION))).unwrap();
+            let mut world = super::super::World::new_headless(Arc::clone(&g), Default::default(), 1);
+            let mut chests = 0;
+            for (at, f) in g
+                .villages
+                .features(&g, IVec3::ZERO)
+                .into_iter()
+                .chain(v.homes().iter().flat_map(|&h| g.villages.features(&g, super::super::chunk::chunk_of(h))))
+            {
+                let c = super::super::chunk::chunk_of(at);
+                world.register_structure_features(c, &g.generate(c));
+                match f {
+                    Feature::VillageChest(..) => {
+                        chests += 1;
+                        assert!(world.chest(at).is_some(), "{generation:?} chest at {at}");
+                        world.chest_mut(at).unwrap().slots.fill(None);
+                        let saved = world.chests_to_string();
+                        let mut other = super::super::World::new_headless(Arc::clone(&g), Default::default(), 1);
+                        other.load_chests(&saved);
+                        other.register_structure_features(c, &g.generate(c));
+                        assert!(other.chest(at).unwrap().slots.iter().all(Option::is_none));
+                    }
+                    Feature::VillageWorkstation(job) => {
+                        if super::super::furnace::is_furnace(job) {
+                            assert_eq!(world.furnace(at).unwrap().kind, super::super::furnace::FurnaceKind::of(job));
+                        }
+                        if job == Block::BARREL {
+                            assert!(world.chest(at).is_some());
+                        }
+                    }
+                    _ => {}
+                }
             }
-            if p.job == Block::BARREL {
-                assert!(world.chest(at).is_some());
-            }
+            assert!(chests > 0, "{generation:?}: no chests checked");
         }
     }
 }

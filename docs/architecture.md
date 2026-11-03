@@ -260,6 +260,7 @@ src/
     bastion.rs       reserved bastion-remnant loot data
     stronghold.rs    stronghold rings and layouts (Java's pieces), painted per chunk
     structure.rs     shared structure-piece frames, chunk painting and chest loot
+    jigsaw.rs        structure templates, pools and the jigsaw assembler (jigsaw/*.txt)
     brewing.rs       brewing stand contents and Java's brewing mixes
     spawner.rs       spawner table, structure spawners and chests on chunk load
     noise.rs         Perlin noise and hashing
@@ -439,6 +440,19 @@ layer at base `d17fb37` is **L = 1762** (soul lantern). This task allocates
 **1763–1767**: scaffold top, scaffold side, powder snow, frozen full heart,
 frozen half heart. **1768–1770** (L+6..L+8) stay unused; the other task owns
 L+9..L+12. Textures are original procedural pixels.
+
+### v0.14 track reservations
+
+Reserved on 2026-11-03 for the [v0.14 tracks](roadmap.md#v014-scope-structures),
+inside v0.14's state range 10240–10751. Items continue after v0.13's, and
+texture layers after the bubble columns (2864–2895).
+
+| Block states | Item IDs | Texture layers | Track |
+| --- | --- | --- | --- |
+| — | — | — | 1–3. Generation 3, the jigsaw engine and villages (no new blocks) |
+| 10240–10367 | 1240–1244 | 2896–2911 | 4. Outposts and bastions on templates |
+| 10368–10623 | 1245–1259 | 2912–2943 | 5. Fossils, desert wells, ruined portals, trail ruins, buried treasure |
+| 10624–10751 | 1260–1269 | 2944–2959 | 6. Explorer maps and loot random sequences |
 
 ## Assessment branch ID reservations
 

@@ -868,7 +868,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.11 | Menus and settings | M7 early: UX-03a/b, UX-05a | Java's title screen, world list and Edit World screen; Java-style options screens, key rebinding, GUI scale and per-category volume; consistent menu navigation and error screens. See [v0.11 scope](#v011-scope-menus-and-settings) | Release prepared (2026-10-24): Cargo 0.11.0 and release notes; every work item implemented, unverified; options-file failures now show a notice; the menu and title benchmark scenes exist, but their [first run](verification/2026-10-24-v0.11-menu-frame-time.md) was capped at the display's 120 Hz by the machine's state and doesn't count. Done (owner, 2026-10-25): tag `v0.11` from `ec74556` without its exit checks (owner exception). Rows stay Implemented, unverified; the menu and title frame-time run moved to v0.20, and problems found in the owner's ordinary play come back as fixes |
 | v0.12 | Building materials | Close M2 | Missing wood, stone, copper and colour family members, the unregistered reference fuel items, signs, banners, item frames, cauldrons and campfires; coral wall fans; falling and dripping dripstone, tilting dripleaf. See [v0.12 scope](#v012-scope-building-materials) | Done (owner, 2026-10-29): merged in [#55](https://github.com/BrendanH18/VoxelCraft/pull/55) at `ec7e18b`; tag `v0.12` from it. The owner's own play is the player evidence (no problems found). Release prepared (2026-10-29): Cargo 0.12.0 and release notes. Items 0–6 implemented, unverified (capacity raise; wood, stone, copper, colour and utilities tracks; data pass, explosions, double chests; `registry_audit`: 669 → 247 missing blocks, the rest belonging to later releases). The remaining gaps of v0.12's own blocks were closed on 2026-10-29 ([record](verification/2026-10-29-v0.12-finish.md)): sign editing for CLI, LAN and controller players, lodestone compasses, slime blocks for mobs and items, arrows hitting vehicles, cushions and decorations, cauldrons putting out fires, and a hidden-window memory leak. Frame time: one valid `materials` run (539 FPS average, 137.8 FPS 1% low) and a profile showing the per-frame mob-model rebuild, not texture paging, as the cost; the three-run gate moved to v0.20 as for v0.8, v0.9 and v0.11. Rows that weren't ready moved out under the 2026-10-25 policy (see the [scope](#v012-scope-building-materials)). Rows stay Implemented, unverified until the frame-time check in v0.20 |
 | v0.13 | Terrain | M3: GEN-01..03 | Density terrain with overhangs from the climate noise (original noise, FE-01); caves and aquifers fitted to it, springs, glow lichen and an ore pass; deep-dark terrain with sculk; giant spruce and jungle trees and the remaining biome features; bubble columns, fire spread, offhand and shields carried from v0.12. See [v0.13 scope](#v013-scope-terrain) | Done (owner, 2026-10-31): merged in [#57](https://github.com/BrendanH18/VoxelCraft/pull/57) at `a8c3172`; the owner's own play is the player evidence. Release prepared (2026-10-31): Cargo 0.13.0 and release notes; tag `v0.13` from the merge that carries them. Items 0–6 implemented, unverified and integrated ([integration record](verification/2026-10-30-v0.13-integration.md)): generation 2 for new worlds only, density terrain, underground and deep dark, giant trees and biome features, bubble columns, fire odds, off-hand, shields and totems. Known gaps: floating rocks above some peaks, hand-tuned densities, inert sculk until v0.16, fire odds unchecked against the 26.3 artifact. Rows stay Implemented, unverified until the frame-time check in v0.20 |
-| v0.14 | Structures | M3: GEN-05..07 | A Java structure-template (jigsaw) system; villages, outposts, bastions, fossils, shipwrecks, ocean ruins and monuments built from it; buried treasure and explorer maps; Java loot random sequences | Planned |
+| v0.14 | Structures | M3: GEN-05..07 | A Java structure-template (jigsaw) system; villages, outposts, bastions, fossils, shipwrecks, ocean ruins and monuments built from it; buried treasure and explorer maps; Java loot random sequences. See [v0.14 scope](#v014-scope-structures) | In progress (2026-11-03): scope approved with original templates (no fidelity exception yet); world generation 3, the jigsaw engine, villages on templates and the GEN-07 cross-order check implemented, unverified ([record](verification/2026-11-03-v0.14-jigsaw-villages.md)); outposts, bastions, new structures and explorer maps planned |
 | v0.15 | Wildlife | M4: MOB-03/04, FOO, ENV-03 | Bats, frogs, pandas, polar bears, armadillos, mooshrooms, strays, bogged, phantoms and zombie horses (with lightning); drowned conversion and the cat spawner; melon, pumpkin and beetroot crops; animal and mount acceptance | Planned |
 | v0.16 | Deep dark and trials | M3 + M4 + PRO-07 | Ancient cities with sculk and the warden; trial chambers with breezes, trial spawners, vaults and the mace; tridents, spears and the other modern weapon families | Planned |
 | v0.17 | Villages and raids | Close M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M4 exit checks | Planned |
@@ -1352,6 +1352,45 @@ are inert until v0.16; the changed fire odds need a check against the 26.3
 artifact. Done (owner, 2026-10-31): the owner played it and declared v0.13
 done; Cargo 0.13.0 and the release notes are prepared, and `v0.13` is to
 be tagged from the merge that carries them.
+
+#### v0.14 scope: structures
+
+Approved by the owner on 2026-11-03. Templates are original VoxelCraft
+designs: the jigsaw algorithm, pools, placement, loot and residents follow
+Java, but no Minecraft template file or block-for-block layout is copied.
+No fidelity exception was recorded for this (owner, 2026-11-03): the
+GEN-05 layout rows stay "not Java's templates" until the owner decides at
+release.
+
+0. **Decision and IDs.** The template decision above; v0.14's state,
+   item and texture ranges split per track in the
+   [architecture reservations](architecture.md#v014-track-reservations).
+1. **World generation 3.** New structure layouts change untouched
+   terrain, so they apply to new worlds only: `worldgen=3`, with
+   generation 2's terrain. Generation 1 and 2 output stays pinned by
+   golden chunk hashes.
+2. **Template and jigsaw engine** (GEN-05a). A text template format
+   (blocks, style roles, connectors, beds), weighted pools with
+   fallbacks, and Java's `JigsawPlacement` expansion: breadth-first
+   connectors, depth and distance limits, free-space checks, rigid and
+   terrain-following pieces ([design](villages.md#generation-3-jigsaw-villages)).
+3. **Villages on templates** (GEN-05b). The five village styles built
+   from original town centres, streets, houses, farms, pens and lamps.
+4. **Outposts and bastions on templates** (GEN-05e, GEN-05g).
+5. **New structures** (GEN-05f). Fossils, desert wells, ruined portals,
+   trail ruins (without archaeology, DEF-02) and buried treasure.
+6. **Explorer maps** (GEN-06) from loot and cartographers; Java loot
+   random sequences for chest loot.
+7. **Checks.** Chunks identical whatever order, thread or cache state
+   generates them (GEN-07); save/reload of generation 3 worlds; looted
+   chests stay looted; chunk generation time before and after.
+
+Items 0–3 and the GEN-07 check land first, in one change; items 4–6
+follow in later changes.
+
+Status (2026-11-03): items 0–3 and the GEN-07 cross-order check are
+implemented, unverified ([record](verification/2026-11-03-v0.14-jigsaw-villages.md)).
+Items 4–6 are planned.
 
 ### M4 — A complete living world
 
