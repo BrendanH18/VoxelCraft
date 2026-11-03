@@ -255,7 +255,8 @@ pub(super) fn vertices(
                 continue;
             }
             if d.kind == "player" {
-                let angle = (rotation as f32 * 22.5).to_radians();
+                // Java's player glyph points south at rotation zero; this original glyph points north.
+                let angle = (((rotation + 8) & 15) as f32 * 22.5).to_radians();
                 let center = point(x, y, 0.005);
                 let p = |dx: f32, dy: f32| {
                     center

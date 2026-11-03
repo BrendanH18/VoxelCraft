@@ -17,6 +17,7 @@ pub struct Decoration {
     pub kind: String,
     pub x: f64,
     pub z: f64,
+    /// Java Y rotation in degrees, before sixteenth-turn quantization.
     pub rotation: f32,
 }
 #[derive(Clone, Debug, PartialEq)]
@@ -695,6 +696,13 @@ mod storage_tests {
         let mut m = MapData::fresh(0, 0, 0, Dimension::Overworld, true, false);
         let mut d = Decoration { kind: "player".into(), x: 0.0, z: 0.0, rotation: 90.0 };
         assert_eq!(m.decoration_view(&d), Some((64.0, 64.0, 4, false)));
+        d.rotation = -80.0;
+        assert_eq!(
+            m.decoration_view(&d).unwrap().2,
+            13,
+            "negative Java yaw must quantize before the glyph basis changes"
+        );
+        d.rotation = 90.0;
         d.x = -100.0;
         assert_eq!(m.decoration_view(&d), Some((0.0, 64.0, 4, true)));
         d.x = 320.0;

@@ -432,7 +432,7 @@ impl Game {
                         as f32
                         * 22.5
                 } else {
-                    session.player.yaw.to_degrees() + 90.0
+                    session.player.yaw.to_degrees() - 90.0
                 };
                 map.decorations.push(crate::world::maps::Decoration {
                     kind: "player".into(),
