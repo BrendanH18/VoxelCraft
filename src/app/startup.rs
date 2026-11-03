@@ -136,12 +136,7 @@ impl Game {
             vitals.xp = crate::simulation::experience::Experience::restore(level, 0, total);
         }
 
-        // New worlds take the latest generator; saved ones keep theirs.
-        let generation = if existing.is_some() {
-            Generation::from_prop(root_props.get(Generation::KEY).map(String::as_str))
-        } else {
-            Generation::LATEST
-        };
+        let generation = world_generation(existing.as_ref());
         let generator = Arc::new(Generator::with_generation(seed, dimension, generation));
         let overworld = Generator::with_generation(seed, Dimension::Overworld, generation);
         let mut player = Player::new(overworld.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
@@ -367,5 +362,47 @@ impl Game {
             game.show_popup(&e);
         }
         game
+    }
+}
+
+/// The generator a world uses: new worlds take the latest, saved ones keep
+/// the one their `level.txt` records (see [`super::save::record_generation`]).
+fn world_generation(existing: Option<&LevelInfo>) -> Generation {
+    existing
+        .map_or(Generation::LATEST, |level| Generation::from_prop(level.props.get(Generation::KEY).map(String::as_str)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_worlds_save_and_reload_as_generation_3() {
+        let dir = std::env::temp_dir().join(format!("voxelcraft-worldgen-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let storage = Storage::new(&dir);
+
+        // A new world: generation 3, written as `worldgen=3`.
+        let generation = world_generation(None);
+        assert_eq!(generation, Generation::V3);
+        let generator = Generator::with_generation(7, Dimension::Overworld, generation);
+        let mut props = std::collections::BTreeMap::new();
+        super::super::save::record_generation(&mut props, generator.generation);
+        storage.save(&LevelInfo { seed: 7, player: None, props }, &[]).unwrap();
+        let text = std::fs::read_to_string(dir.join("level.txt")).unwrap();
+        assert!(text.lines().any(|line| line == "worldgen=3"), "{text}");
+
+        // Reloaded, it stays generation 3.
+        let saved = storage.load_level().unwrap();
+        assert_eq!(world_generation(Some(&saved)), Generation::V3);
+        assert_eq!(Generator::with_generation(saved.seed, Dimension::Overworld, Generation::V3).generation.number(), 3);
+
+        // Older worlds keep theirs.
+        storage.set_props(&[(Generation::KEY, "2")]).unwrap();
+        assert_eq!(world_generation(Some(&storage.load_level().unwrap())), Generation::V2);
+        let mut legacy = storage.load_level().unwrap();
+        legacy.props.remove(Generation::KEY);
+        assert_eq!(world_generation(Some(&legacy)), Generation::V1, "saved before v0.13");
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

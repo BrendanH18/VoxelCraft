@@ -113,7 +113,7 @@ cost.
 | GEN-05i | Woodland mansions | Missing | v0.17 | — | Layout; illagers; loot | Not started |
 | GEN-05j | Ancient cities and trial chambers | Missing | v0.16 | — | Layout; residents; vaults | Not started |
 | GEN-06 | Maps, compasses, clocks, explorer maps and exploration rewards | Partial | v0.14 | [item.rs](../src/item.rs) | Map rendering and scaling; explorer maps from cartographers and loot | Explorer maps, lodestones and recovery compasses missing |
-| GEN-07 | Order-independent generation, no clipped structures or respawned loot | Partial | v0.14 | [overworld structures](overworld-structures.md#placement-and-generation) | Different request orders and threads give identical chunks; cleared loot stays cleared after restart | Needs a cross-order corpus test |
+| GEN-07 | Order-independent generation, no clipped structures or respawned loot | Partial | v0.14 | [overworld structures](overworld-structures.md#placement-and-generation) | Different request orders and threads give identical chunks; cleared loot stays cleared after restart | 2026-11-03: a corpus test ([order_tests.rs](../src/world/terrain/order_tests.rs)) gives generations 1–3 identical blocks and structure features shuffled, on six threads and with caches emptied, over a village, temples, a mineshaft, dungeons and negative chunk borders; cleared loot after restart unchecked |
 
 ## MOB — Spawning, AI and the living world
 

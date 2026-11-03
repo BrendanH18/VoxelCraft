@@ -129,7 +129,8 @@ pub fn run(seed: u64, rd: i32) {
 }
 
 /// Overworld generation speed of each world generation (generation 1:
-/// worlds from before v0.13; 2: density terrain), on fresh generators,
+/// worlds from before v0.13; 2: density terrain; 3: v0.14 template
+/// structures), on fresh generators,
 /// around the origin and in the nearest jagged peaks.
 fn generations(seed: u64, r: i32) {
     use crate::world::terrain::{Biome, Dimension, Generation};
@@ -138,7 +139,7 @@ fn generations(seed: u64, r: i32) {
     let peaks = peaks.map(|p| glam::IVec2::new(p.x >> 5, p.z >> 5));
     for (place, centre) in [("origin", Some(glam::IVec2::ZERO)), ("mountains", peaks)] {
         let Some(centre) = centre else { continue };
-        for generation in [Generation::V1, Generation::V2] {
+        for generation in [Generation::V1, Generation::V2, Generation::V3] {
             let generator = Generator::with_generation(seed, Dimension::Overworld, generation);
             let rows = generator.dimension.chunk_rows();
             let t = Instant::now();

@@ -54,7 +54,7 @@ impl Game {
             props.insert("spawn_point".to_string(), format!("{},{},{}", p.x, p.y, p.z));
         }
         let seed = self.world.generator.seed;
-        props.insert(Generation::KEY.to_string(), self.world.generator.generation.number().to_string());
+        record_generation(&mut props, self.world.generator.generation);
         let chunks = self.world.modified_chunks();
         // The overworld saves with the player; the Nether in its own folder.
         let result = match self.dimension {
@@ -90,4 +90,10 @@ impl Game {
         }
         self.last_save = Instant::now();
     }
+}
+
+/// Records the world's generator in its `level.txt` properties, for
+/// `startup::world_generation` to read back.
+pub(super) fn record_generation(props: &mut std::collections::BTreeMap<String, String>, generation: Generation) {
+    props.insert(Generation::KEY.to_string(), generation.number().to_string());
 }
