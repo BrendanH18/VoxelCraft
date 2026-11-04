@@ -69,7 +69,8 @@ fn all_56_families_and_792_registered_states_mirror_without_losing_properties() 
             }
         }
     }
-    assert_eq!(states, 792);
+    let powered_rods = copper::decode(copper::Family::Rod.origin() + 12).is_some();
+    assert_eq!(states, if powered_rods { 840 } else { 792 });
     let palette: Vec<_> = Block::creative_palette().collect();
     for family in Family::ALL.into_iter().filter(|f| f.weathers()) {
         for stage in Stage::ALL {

@@ -1344,7 +1344,9 @@ impl Generator {
                 for &(p, b) in &tree_blocks {
                     put(p, b);
                 }
-                if let Some((p, b)) = super::bees::decorate_tree(col.biome, &tree_blocks, h) {
+                if self.generation >= Generation::V3
+                    && let Some((p, b)) = super::bees::decorate_tree(col.biome, &tree_blocks, h)
+                {
                     put(p, b);
                 }
                 match col.biome {

@@ -50,7 +50,9 @@ fn registry_states_food_and_recipes_are_reference_values() {
         assert_eq!(b.hardness(), if nest { 0.3 } else { 0.6 });
         assert!(b.is_solid());
     }
-    assert_eq!(MobKind::ALL.last(), Some(&MobKind::Bee));
+    let bee_index = MobKind::ALL.iter().position(|k| *k == MobKind::Bee).unwrap();
+    let camel_index = MobKind::ALL.iter().position(|k| *k == MobKind::Camel).unwrap();
+    assert!(bee_index > camel_index, "append after the saved legacy kinds");
     assert_eq!(MobKind::from_name("minecraft:bee"), Some(MobKind::Bee));
     assert_eq!(MobKind::Bee.max_health(), 10.);
     assert_eq!(MobKind::Bee.shape().half_width, 0.35);
@@ -388,4 +390,26 @@ fn empty_harvest_is_safe_but_smoke_does_not_protect_mining() {
     assert!(w.hive_smoked(P));
     assert!(w.mine_beehive(&mut e, P, HIVE, None, PlayerId::HOST, true));
     assert!(e.mobs[0].bee.unwrap().anger > 0, "pinned playerDestroy always alerts nearby bees");
+}
+
+#[test]
+fn current_generated_tree_nests_supply_occupants_without_commands() {
+    let generator = Arc::new(Generator::new(12345));
+    let mut w = World::new_headless(generator.clone(), Default::default(), 2);
+    for x in -6..=6 {
+        for z in -6..=6 {
+            for y in 2..=8 {
+                let p = IVec3::new(x, y, z);
+                let data = generator.generate(p);
+                let mut nest = false;
+                data.for_each_block(|b| nest |= hive(b).is_some());
+                if nest {
+                    w.insert_chunk(p, Arc::new(data), false);
+                    assert!(w.beehives.hives.values().any(|h| (2..=3).contains(&h.bees.iter().flatten().count())));
+                    return;
+                }
+            }
+        }
+    }
+    panic!("current generation must supply populated nests in the bounded reference scene");
 }

@@ -213,9 +213,13 @@ impl Entities {
         }
     }
     pub fn anger_bees(&mut self, p: IVec3, player: PlayerId) {
+        let min = p.as_dvec3() - DVec3::new(8., 6., 8.);
+        let max = (p + IVec3::ONE).as_dvec3() + DVec3::new(8., 6., 8.);
         for m in &mut self.mobs {
+            let (lo, hi) = m.aabb();
             if m.alive()
-                && (m.pos - p.as_dvec3()).abs().cmple(DVec3::new(8., 6., 8.)).all()
+                && lo.cmplt(max).all()
+                && hi.cmpgt(min).all()
                 && let Some(s) = &mut m.bee
                 && s.target.is_none()
             {
