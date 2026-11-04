@@ -89,7 +89,13 @@ fn loopback_handshake_chunk_edit_and_clean_disconnect() {
         }
     }
     assert!(closed, "server must send the shutdown reason before EOF");
-    assert!(client.poll().is_err());
+    // The reader thread can deliver the reason before it observes socket EOF.
+    // Wait for that separate event, retaining a bounded shutdown requirement.
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while client.poll().is_ok() {
+        assert!(Instant::now() < deadline, "socket EOF must follow the shutdown reason");
+        std::thread::sleep(Duration::from_millis(1));
+    }
     eprintln!(
         "LAN loopback: first chunk {:.2} ms / {} bytes, edit {:.2} ms, total {} bytes received / {} sent",
         join.as_secs_f64() * 1000.0,
