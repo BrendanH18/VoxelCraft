@@ -138,6 +138,14 @@ pub(super) const TRADES: &[(Profession, u8, TradeDef)] = &[
     (Profession::Librarian, 5, TradeDef::sell("name tag", 20, 1, 12, 30, 0.05)),
     (Profession::Cartographer, 1, TradeDef::buy("paper", 24, 16, 2)),
     (Profession::Cartographer, 1, TradeDef::sell("map", 7, 1, 12, 1, 0.05)),
+    (Profession::Cartographer, 2, TradeDef::explorer("jungle_pyramid_map", 8, 5)),
+    (Profession::Cartographer, 2, TradeDef::explorer("swamp_hut_map", 8, 5)),
+    (Profession::Cartographer, 2, TradeDef::explorer("desert_village_map", 8, 5)),
+    (Profession::Cartographer, 2, TradeDef::explorer("plains_village_map", 8, 5)),
+    (Profession::Cartographer, 2, TradeDef::explorer("savanna_village_map", 8, 5)),
+    (Profession::Cartographer, 2, TradeDef::explorer("snowy_village_map", 8, 5)),
+    (Profession::Cartographer, 2, TradeDef::explorer("taiga_village_map", 8, 5)),
+    (Profession::Cartographer, 3, TradeDef::explorer("ocean_monument_map", 13, 10)),
     (Profession::Cartographer, 2, TradeDef::buy("glass pane", 11, 16, 10)),
     (Profession::Cartographer, 3, TradeDef::buy("compass", 1, 12, 20)),
     (Profession::Cartographer, 4, TradeDef::sell("item frame", 7, 1, 12, 15, 0.05)),
@@ -275,3 +283,17 @@ pub(super) const TRADES: &[(Profession, u8, TradeDef)] = &[
     (Profession::Mason, 5, TradeDef::sell("quartz pillar", 1, 1, 12, 30, 0.05)),
     (Profession::Mason, 5, TradeDef::sell("block of quartz", 1, 1, 12, 30, 0.05)),
 ];
+
+// Java 26.3 merchant_predicate, restricted to structures implemented here.
+pub(super) fn explorer_allowed(output: &str, variant: &str) -> bool {
+    match output {
+        "jungle_pyramid_map" => matches!(variant, "swamp" | "savanna" | "desert"),
+        "swamp_hut_map" => matches!(variant, "taiga" | "snow" | "jungle"),
+        "desert_village_map" => matches!(variant, "savanna" | "jungle"),
+        "plains_village_map" => matches!(variant, "taiga" | "snow" | "savanna" | "desert"),
+        "savanna_village_map" => matches!(variant, "plains" | "jungle" | "desert"),
+        "snowy_village_map" => matches!(variant, "taiga" | "swamp"),
+        "taiga_village_map" => matches!(variant, "swamp" | "snow" | "plains"),
+        _ => true,
+    }
+}

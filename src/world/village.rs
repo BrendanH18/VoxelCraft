@@ -528,6 +528,29 @@ impl Villages {
     pub fn paint(&self, g: &Generator, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3) {
         self.visit(g, base, |v| v.paint(g, blocks, base));
     }
+    /// The chest inherits the loot table of its own house's job, even when
+    /// the job block belongs to an adjacent chunk.
+    pub fn cartographer_chest(&self, g: &Generator, chest: IVec3) -> bool {
+        let mut found = false;
+        self.visit(g, chest, |v| {
+            for piece in &v.placed {
+                if jigsaw::Palette::job(&v.style, piece) == Block::CARTOGRAPHY_TABLE
+                    && jigsaw::villages().templates[piece.template as usize]
+                        .cells
+                        .iter()
+                        .any(|c| matches!(c.spec.base, jigsaw::Base::Chest) && piece.world(c.pos) == chest)
+                {
+                    found = true;
+                }
+            }
+            for piece in &v.pieces {
+                if piece.kind == Kind::House && piece.job == Block::CARTOGRAPHY_TABLE && piece.world(5, 0, 2) == chest {
+                    found = true;
+                }
+            }
+        });
+        found
+    }
     pub fn features(&self, g: &Generator, cpos: IVec3) -> Vec<(IVec3, Feature)> {
         let base = cpos * CHUNK_SIZE_I;
         let bounds = Bounds { min: base, max: base + IVec3::splat(CHUNK_SIZE_I - 1) };
@@ -567,6 +590,28 @@ impl Villages {
         })
     }
 
+    /// Map locate: first matching candidate on the first occupied placement ring.
+    pub fn locate_style(&self, g: &Generator, from: IVec3, style: Style, max_rings: i32) -> Option<IVec3> {
+        if g.dimension != Dimension::Overworld {
+            return None;
+        }
+        let home = IVec2::new(from.x, from.z).div_euclid(IVec2::splat(REGION));
+        for r in 0..=max_rings {
+            for x in -r..=r {
+                for z in -r..=r {
+                    if x.abs() != r && z.abs() != r {
+                        continue;
+                    }
+                    if let Some((at, s)) = self.start(g, home + IVec2::new(x, z))
+                        && s == style
+                    {
+                        return Some(IVec3::new(at.x.div_euclid(16) * 16, 0, at.z.div_euclid(16) * 16));
+                    }
+                }
+            }
+        }
+        None
+    }
     pub fn nearest(&self, g: &Generator, from: IVec3) -> Option<IVec3> {
         if g.dimension != Dimension::Overworld {
             return None;
@@ -602,7 +647,9 @@ impl Villages {
 
 // Java 1.21 chests/village/village_*_house.json weights/counts.
 // Missing items remain weighted empty rolls; supported items are not inflated.
+#[cfg(test)]
 type Loot = (&'static str, u32, u8, u8);
+#[cfg(test)]
 const PLAINS_LOOT: &[Loot] = &[
     ("gold_nugget", 1, 1, 3),
     ("dandelion", 2, 1, 1),
@@ -615,6 +662,7 @@ const PLAINS_LOOT: &[Loot] = &[
     ("emerald", 2, 1, 4),
     ("oak_sapling", 5, 1, 2),
 ];
+#[cfg(test)]
 const DESERT_LOOT: &[Loot] = &[
     ("clay_ball", 1, 1, 1),
     ("green_dye", 1, 1, 1),
@@ -625,6 +673,7 @@ const DESERT_LOOT: &[Loot] = &[
     ("dead_bush", 2, 1, 3),
     ("emerald", 1, 1, 3),
 ];
+#[cfg(test)]
 const SAVANNA_LOOT: &[Loot] = &[
     ("gold_nugget", 1, 1, 3),
     ("short_grass", 5, 1, 1),
@@ -637,6 +686,7 @@ const SAVANNA_LOOT: &[Loot] = &[
     ("torch", 1, 1, 2),
     ("bucket", 1, 1, 1),
 ];
+#[cfg(test)]
 const TAIGA_LOOT: &[Loot] = &[
     ("iron_nugget", 1, 1, 5),
     ("fern", 2, 1, 1),
@@ -651,6 +701,7 @@ const TAIGA_LOOT: &[Loot] = &[
     ("spruce_sign", 1, 1, 1),
     ("spruce_log", 10, 1, 5),
 ];
+#[cfg(test)]
 const SNOWY_LOOT: &[Loot] = &[
     ("blue_ice", 1, 1, 1),
     ("snow_block", 4, 1, 1),
@@ -664,6 +715,21 @@ const SNOWY_LOOT: &[Loot] = &[
     ("coal", 5, 1, 4),
 ];
 pub fn loot(seed: u64, style: Style) -> super::chest::Chest {
+    super::loot::table(
+        seed,
+        match style {
+            Style::Plains => "village/village_plains_house",
+            Style::Desert => "village/village_desert_house",
+            Style::Savanna => "village/village_savanna_house",
+            Style::Taiga => "village/village_taiga_house",
+            Style::Snowy => "village/village_snowy_house",
+        },
+    )
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+fn legacy_loot(seed: u64, style: Style) -> super::chest::Chest {
     let table = match style {
         Style::Plains => PLAINS_LOOT,
         Style::Desert => DESERT_LOOT,
@@ -671,8 +737,8 @@ pub fn loot(seed: u64, style: Style) -> super::chest::Chest {
         Style::Taiga => TAIGA_LOOT,
         Style::Snowy => SNOWY_LOOT,
     };
-    let mut chest = super::chest::Chest::default();
-    let mut rng = Rng(seed);
+    let mut chest = super::loot::LootItems::default();
+    let mut rng = super::loot::LootRandom::new(seed);
     let total = table.iter().map(|e| e.1).sum();
     for _ in 0..rng.range(3, 8) {
         let mut roll = rng.below(total);
@@ -688,16 +754,12 @@ pub fn loot(seed: u64, style: Style) -> super::chest::Chest {
                 _ => name,
             };
             if let Some(item) = crate::item::Item::from_name(name) {
-                let mut slot = rng.below(super::chest::SLOTS as u32) as usize;
-                while chest.slots[slot].is_some() {
-                    slot = (slot + 1) % super::chest::SLOTS;
-                }
-                chest.slots[slot] = Some(crate::inventory::Stack::new(item, count));
+                chest.push(crate::inventory::Stack::new(item, count));
             }
             break;
         }
     }
-    chest
+    chest.finish(&mut rng, 27)
 }
 
 #[cfg(test)]

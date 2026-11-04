@@ -1818,6 +1818,559 @@
         ],
         "modifier": null
       }
+    ],
+    "ruined_portal": [
+      {
+        "rolls": [
+          4,
+          8
+        ],
+        "entries": [
+          {
+            "name": "minecraft:obsidian",
+            "weight": 40,
+            "count": [
+              1,
+              2
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:flint",
+            "weight": 40,
+            "count": [
+              1,
+              4
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:iron_nugget",
+            "weight": 40,
+            "count": [
+              9,
+              18
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:flint_and_steel",
+            "weight": 40,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:fire_charge",
+            "weight": 40,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:golden_apple",
+            "weight": 15,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:gold_nugget",
+            "weight": 15,
+            "count": [
+              4,
+              24
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:golden_sword",
+            "weight": 15,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:enchant_randomly"
+            ]
+          },
+          {
+            "name": "minecraft:golden_axe",
+            "weight": 15,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:enchant_randomly"
+            ]
+          },
+          {
+            "name": "minecraft:golden_hoe",
+            "weight": 15,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:enchant_randomly"
+            ]
+          },
+          {
+            "name": "minecraft:golden_shovel",
+            "weight": 15,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:enchant_randomly"
+            ]
+          },
+          {
+            "name": "minecraft:golden_pickaxe",
+            "weight": 15,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:enchant_randomly"
+            ]
+          },
+          {
+            "name": "minecraft:golden_boots",
+            "weight": 15,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:enchant_randomly"
+            ]
+          },
+          {
+            "name": "minecraft:golden_chestplate",
+            "weight": 15,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:enchant_randomly"
+            ]
+          },
+          {
+            "name": "minecraft:golden_helmet",
+            "weight": 15,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:enchant_randomly"
+            ]
+          },
+          {
+            "name": "minecraft:golden_leggings",
+            "weight": 15,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:enchant_randomly"
+            ]
+          },
+          {
+            "name": "minecraft:glistering_melon_slice",
+            "weight": 5,
+            "count": [
+              4,
+              12
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:golden_horse_armor",
+            "weight": 5,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:light_weighted_pressure_plate",
+            "weight": 5,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:golden_carrot",
+            "weight": 5,
+            "count": [
+              4,
+              12
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:clock",
+            "weight": 5,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:gold_ingot",
+            "weight": 5,
+            "count": [
+              2,
+              8
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:bell",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:enchanted_golden_apple",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:gold_block",
+            "weight": 1,
+            "count": [
+              1,
+              2
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          1,
+          1
+        ],
+        "entries": [
+          {
+            "name": null,
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:lodestone",
+            "weight": 2,
+            "count": [
+              1,
+              2
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      }
+    ],
+    "buried_treasure": [
+      {
+        "rolls": [
+          1,
+          1
+        ],
+        "entries": [
+          {
+            "name": "minecraft:heart_of_the_sea",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          5,
+          8
+        ],
+        "entries": [
+          {
+            "name": "minecraft:iron_ingot",
+            "weight": 20,
+            "count": [
+              1,
+              4
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:gold_ingot",
+            "weight": 10,
+            "count": [
+              1,
+              4
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:tnt",
+            "weight": 5,
+            "count": [
+              1,
+              2
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          1,
+          3
+        ],
+        "entries": [
+          {
+            "name": "minecraft:emerald",
+            "weight": 5,
+            "count": [
+              4,
+              8
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:diamond",
+            "weight": 5,
+            "count": [
+              1,
+              2
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:prismarine_crystals",
+            "weight": 5,
+            "count": [
+              1,
+              5
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          0,
+          1
+        ],
+        "entries": [
+          {
+            "name": "minecraft:leather_chestplate",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:iron_sword",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:iron_spear",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          2,
+          2
+        ],
+        "entries": [
+          {
+            "name": "minecraft:cooked_cod",
+            "weight": 1,
+            "count": [
+              2,
+              4
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:cooked_salmon",
+            "weight": 1,
+            "count": [
+              2,
+              4
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          0,
+          2
+        ],
+        "entries": [
+          {
+            "name": "minecraft:potion",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          }
+        ],
+        "modifier": {
+          "type": "minecraft:set_potion",
+          "id": "minecraft:water_breathing"
+        }
+      },
+      {
+        "rolls": [
+          1,
+          1
+        ],
+        "entries": [
+          {
+            "name": null,
+            "weight": 148,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:copper_nautilus_armor",
+            "weight": 20,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:iron_nautilus_armor",
+            "weight": 10,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:golden_nautilus_armor",
+            "weight": 5,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:diamond_nautilus_armor",
+            "weight": 2,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      }
     ]
   },
   "regular_goat_horns": [

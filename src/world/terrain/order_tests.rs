@@ -9,7 +9,8 @@
 //! - in row order with caches emptied along the way: every few chunks the
 //!   generator is replaced (dropping every cache, including ones structure
 //!   code adds later), and in between only the terrain column cache, or
-//!   only the temple, mineshaft and dungeon caches, are emptied, so a chunk
+//!   only the temple, mineshaft, dungeon, relic and trail-ruin caches, are
+//!   emptied, so a chunk
 //!   can meet a structure rebuilt from scratch next to cached terrain and
 //!   the reverse.
 //!
@@ -47,7 +48,9 @@ fn around(p: IVec3, r: i32) -> impl Iterator<Item = IVec3> {
 /// Chunk borders around the origin (x and z from -2 to 1, every row: deep
 /// dungeons, caves and the surface), the nearest village whole, every
 /// temple-family structure within 1200 blocks and the nearest mineshaft, in
-/// row order. Located on a throwaway generator so the runs start cold.
+/// row order. Generation 3 adds a buried trail ruin and both fossils plus
+/// a well near desert terrain. Located on a throwaway generator so the runs
+/// start cold.
 fn corpus(generation: Generation) -> Vec<IVec3> {
     let g = fresh(generation);
     let rows = Dimension::Overworld.chunk_rows();
@@ -61,7 +64,33 @@ fn corpus(generation: Generation) -> Vec<IVec3> {
             chunks.extend(around(at, 1));
         }
     }
+    if generation >= Generation::V3 {
+        let outpost = g.temples.nearest(&g, Kind::Outpost, IVec2::ZERO, 20_000).expect("an outpost");
+        chunks.extend(around(outpost, 2));
+        chunks.extend(around(g.ruined_portals.nearest(&g, IVec3::ZERO, 2).expect("a ruined portal"), 1));
+        let treasure = g.buried_treasure.nearest_buried_treasure(&g, IVec3::ZERO, 400).expect("buried treasure");
+        let treasure = g
+            .buried_treasure
+            .blocks(&g, IVec2::new(treasure.x.div_euclid(16), treasure.z.div_euclid(16)))
+            .last()
+            .unwrap()
+            .0;
+        chunks.extend(around(treasure, 0));
+    }
     chunks.extend(around(g.mineshafts.nearest(IVec3::ZERO).expect("a mineshaft"), 1));
+    if generation >= Generation::V3 {
+        let ruins = g.trail_ruins.nearest(&g, IVec2::ZERO, 6400).expect("trail ruins");
+        chunks.extend(around(ruins, 3));
+        let desert = g.nearest_biome(IVec2::ZERO, super::Biome::Desert, 16000).expect("desert");
+        for kind in [
+            crate::world::relics::Kind::FossilUpper,
+            crate::world::relics::Kind::FossilLower,
+            crate::world::relics::Kind::Well,
+        ] {
+            let at = g.relics.find(&g, kind, IVec2::new(desert.x, desert.z), 160).expect("desert relic");
+            chunks.extend(around(at, 1));
+        }
+    }
     chunks.retain(|p| rows.contains(&p.y));
     chunks.sort_by_key(|p| (p.z, p.x, p.y));
     chunks.dedup();
@@ -92,11 +121,15 @@ fn evict(g: &mut Generator, generation: Generation, step: usize) {
         0 => *g = fresh(generation),
         // Terrain columns only.
         2 => g.columns.lock().unwrap().clear(),
-        // Temples, mineshafts and dungeons, keeping terrain and villages.
+        // Structure caches, keeping terrain and villages.
         3 => {
             g.temples = crate::world::temples::Temples::new(SEED);
+            g.ruined_portals = crate::world::ruined_portal::RuinedPortals::new(SEED);
+            g.buried_treasure = crate::world::buried_treasure::BuriedTreasure::new(SEED);
             g.mineshafts = crate::world::mineshaft::Mineshafts::new(SEED);
             g.dungeons = crate::world::dungeon::Dungeons::new(SEED);
+            g.relics = crate::world::relics::Relics::new(SEED);
+            g.trail_ruins = crate::world::trail_ruins::TrailRuins::new(SEED);
         }
         _ => {}
     }
@@ -115,8 +148,24 @@ fn generation_ignores_order_threads_and_caches(generation: Generation) {
     let has = |f: fn(&Feature) -> bool| all.iter().any(f);
     assert!(has(|f| matches!(f, Feature::VillageHome(_) | Feature::VillageChest(..))), "{generation:?}: no village");
     assert!(has(|f| matches!(f, Feature::TempleChest(..))), "{generation:?}: no temple-family chest");
+    if generation >= Generation::V3 {
+        assert!(
+            has(|f| matches!(f, Feature::TempleChest(_, crate::world::temples::LootTable::Outpost))),
+            "generation 3: no outpost chest"
+        );
+    }
     assert!(has(|f| matches!(f, Feature::DungeonChest(_))), "{generation:?}: no dungeon");
     assert!(has(|f| matches!(f, Feature::MineshaftChest(_))), "{generation:?}: no mineshaft chest");
+    if generation >= Generation::V3 {
+        assert!(
+            has(|f| matches!(f, Feature::TempleChest(_, crate::world::temples::LootTable::RuinedPortal))),
+            "no ruined portal chest"
+        );
+        assert!(
+            has(|f| matches!(f, Feature::TempleChest(_, crate::world::temples::LootTable::BuriedTreasure))),
+            "no buried treasure"
+        );
+    }
     let mut failures = Vec::new();
 
     // (b) Shuffled, on another fresh generator.
@@ -183,4 +232,127 @@ fn generation_2_ignores_order_threads_and_caches() {
 #[test]
 fn generation_3_ignores_order_threads_and_caches() {
     generation_ignores_order_threads_and_caches(Generation::V3);
+}
+
+/// GEN-07's Nether counterpart includes every chunk intersecting a treasure
+/// bastion, including its magma-cube spawner and a negative region border.
+#[test]
+fn generation_3_bastion_ignores_order_threads_and_caches() {
+    let bastions = crate::world::bastion::Bastions::with_generation(SEED, Generation::V3);
+    let bastion = (-4..=0)
+        .flat_map(|z| (-4..=0).map(move |x| IVec2::new(x, z)))
+        .filter_map(|r| bastions.get(r))
+        .find(|b| b.kind == crate::world::bastion::Kind::Treasure)
+        .expect("treasure bastion");
+    let lo = crate::world::chunk::chunk_of(bastion.bounds.min);
+    let hi = crate::world::chunk::chunk_of(bastion.bounds.max);
+    let chunks: Vec<_> = (lo.x..=hi.x)
+        .flat_map(|x| (lo.z..=hi.z).flat_map(move |z| (lo.y..=hi.y).map(move |y| IVec3::new(x, y, z))))
+        .collect();
+    let fresh = || Generator::with_generation(SEED, Dimension::Nether, Generation::V3);
+    let g = fresh();
+    let reference: Vec<_> = chunks.iter().map(|&p| (g.generate(p), g.structure_features(p))).collect();
+    assert!(
+        reference
+            .iter()
+            .any(|(_, fs)| fs.iter().any(|(_, f)| matches!(f, Feature::Spawner(crate::entity::MobKind::MagmaCube))))
+    );
+    let g = fresh();
+    for i in (0..chunks.len()).rev() {
+        assert_eq!(differs(&g, chunks[i], &reference[i], "reverse"), None);
+    }
+    let g = fresh();
+    std::thread::scope(|s| {
+        let handles: Vec<_> = (0..THREADS)
+            .map(|t| {
+                let (g, chunks, reference) = (&g, &chunks, &reference);
+                s.spawn(move || {
+                    for i in (t..chunks.len()).step_by(THREADS) {
+                        assert_eq!(differs(g, chunks[i], &reference[i], "parallel"), None);
+                    }
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap();
+        }
+    });
+    for (&p, want) in chunks.iter().zip(&reference) {
+        assert_eq!(differs(&fresh(), p, want, "fresh caches"), None);
+    }
+}
+
+#[test]
+fn generation_3_nether_fossils_ignore_order_threads_and_caches() {
+    let probe = crate::world::nether::NetherGen::new(SEED);
+    let valley = probe
+        .biomes
+        .nearest(IVec3::ZERO, crate::world::nether_biome::NetherBiome::SoulSandValley, 20000)
+        .expect("soul sand valley");
+    let region = IVec2::new(valley.x, valley.z).div_euclid(IVec2::splat(32));
+    let mut starts = Vec::new();
+    'search: for z in -20..=20 {
+        for x in -20..=20 {
+            if let Some(r) = probe.fossils.get(&probe, region + IVec2::new(x, z)) {
+                starts.push(r.origin);
+                if starts.len() == 3 {
+                    break 'search;
+                }
+            }
+        }
+    }
+    assert_eq!(starts.len(), 3);
+    let mut chunks: Vec<_> = starts.into_iter().flat_map(|p| around(p, 1)).filter(|p| (0..4).contains(&p.y)).collect();
+    chunks.sort_by_key(|p| (p.z, p.x, p.y));
+    chunks.dedup();
+    let fresh = || Generator::with_generation(SEED, Dimension::Nether, Generation::V3);
+    let g = fresh();
+    let reference: Vec<_> = chunks.iter().map(|&p| (g.generate(p), g.structure_features(p))).collect();
+    assert!(reference.iter().any(|(c, _)| blocks(c).contains(&crate::world::nether_biome_blocks::BONE_BLOCK)));
+    let g = fresh();
+    for (i, &p) in chunks.iter().enumerate().rev() {
+        assert!(differs(&g, p, &reference[i], "nether reversed").is_none());
+    }
+    let g = fresh();
+    std::thread::scope(|s| {
+        for t in 0..THREADS {
+            let (chunks, reference, g) = (&chunks, &reference, &g);
+            s.spawn(move || {
+                for i in (t..chunks.len()).step_by(THREADS) {
+                    assert!(differs(g, chunks[i], &reference[i], "nether parallel").is_none());
+                }
+            });
+        }
+    });
+    for (i, &p) in chunks.iter().enumerate() {
+        assert!(differs(&fresh(), p, &reference[i], "nether cold").is_none());
+    }
+}
+
+/// Nether portals cross both horizontal and vertical chunk borders; their base
+/// columns and processor decisions must remain pure alongside Nether caches.
+#[test]
+fn generation_3_nether_portals_ignore_order_threads_and_caches() {
+    let fresh = || Generator::with_generation(SEED, Dimension::Nether, Generation::V3);
+    let g = fresh();
+    let at = g.ruined_portals.nearest(&g, IVec3::ZERO, 1).unwrap();
+    let chunks: Vec<_> = around(at, 1).filter(|p| Dimension::Nether.chunk_rows().contains(&p.y)).collect();
+    let reference: Vec<_> = chunks.iter().map(|&p| (g.generate(p), g.structure_features(p))).collect();
+    let g = fresh();
+    for (p, r) in chunks.iter().zip(&reference).rev() {
+        assert_eq!(differs(&g, *p, r, "reverse"), None);
+    }
+    std::thread::scope(|s| {
+        for t in 0..THREADS {
+            let (g, chunks, reference) = (&g, &chunks, &reference);
+            s.spawn(move || {
+                for i in (t..chunks.len()).step_by(THREADS) {
+                    assert_eq!(differs(g, chunks[i], &reference[i], "parallel Nether"), None);
+                }
+            });
+        }
+    });
+    for (p, r) in chunks.iter().zip(&reference) {
+        assert_eq!(differs(&fresh(), *p, r, "cold Nether"), None);
+    }
 }

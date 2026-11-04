@@ -233,6 +233,16 @@ impl Game {
             Command::LocateStructure(name) => {
                 let key = name.strip_prefix("minecraft:").unwrap_or(&name);
                 let at = match key {
+                    "ruined_portal" => self.world.generator.ruined_portals.nearest(
+                        &self.world.generator,
+                        self.session.player.pos.floor().as_ivec3(),
+                        10,
+                    ),
+                    "buried_treasure" => self.world.generator.buried_treasure.nearest_buried_treasure(
+                        &self.world.generator,
+                        self.session.player.pos.floor().as_ivec3(),
+                        400,
+                    ),
                     "village" => self
                         .world
                         .generator
@@ -246,12 +256,25 @@ impl Game {
                         self.session.player.pos.z.floor() as i32,
                     )),
                     "bastion_remnant" | "bastion" if self.dimension == Dimension::Nether => {
-                        crate::world::bastion::Bastions::new(self.world.generator.seed).nearest(IVec2::new(
+                        crate::world::bastion::Bastions::with_generation(
+                            self.world.generator.seed,
+                            self.world.generator.generation,
+                        )
+                        .nearest(IVec2::new(
                             self.session.player.pos.x.floor() as i32,
                             self.session.player.pos.z.floor() as i32,
                         ))
                     }
                     "bastion_remnant" | "bastion" => None,
+                    "nether_fossil" => self.world.generator.nearest_nether_fossil(
+                        IVec2::new(self.session.player.pos.x.floor() as i32, self.session.player.pos.z.floor() as i32),
+                        6400,
+                    ),
+                    "trail_ruins" => self.world.generator.trail_ruins.nearest(
+                        &self.world.generator,
+                        IVec2::new(self.session.player.pos.x.floor() as i32, self.session.player.pos.z.floor() as i32),
+                        6400,
+                    ),
                     "mineshaft" | "abandoned_mineshaft" => {
                         self.world.generator.mineshafts.nearest(self.session.player.pos.floor().as_ivec3())
                     }

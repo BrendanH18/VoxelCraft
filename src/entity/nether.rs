@@ -1058,12 +1058,34 @@ impl Entities {
                 let loaded = [lo, hi, mid, IVec3::new(lo.x, mid.y, hi.z), IVec3::new(hi.x, mid.y, lo.z)]
                     .into_iter()
                     .all(|c| world.loaded(c));
+                let loaded = loaded
+                    && b.template_residents.as_ref().is_none_or(|residents| {
+                        residents.iter().all(|r| world.loaded(r.at - IVec3::Y) && world.loaded(r.at + IVec3::Y))
+                    });
                 if !loaded || !self.bastions_populated.insert(key) {
                     continue;
                 }
                 // Each bastion rolls its own residents, whoever finds it.
                 let seed = crate::world::noise::hash3(key.x, key.y, key.z, world.seed() ^ 0xB1_6110);
                 let mut rng = Rng::new(seed);
+                if let Some(residents) = &b.template_residents {
+                    for resident in residents {
+                        let at = resident.at;
+                        let Some(pos) = floor_in(world, resident.kind, at.x, at.z, at.y - 1, at.y - 1) else {
+                            continue;
+                        };
+                        let mut mob = Mob::new(resident.kind, pos, rng.range(0.0, TAU));
+                        mob.persistent = true;
+                        if let Some(n) = mob.nether.as_mut() {
+                            n.home = Some(pos);
+                            n.weapon = resident.weapon;
+                            n.hunt_cooldown = rng.range(30.0, 120.0);
+                            n.cannot_hunt = resident.kind == MobKind::Hoglin;
+                        }
+                        self.mobs.push(mob);
+                    }
+                    continue;
+                }
                 for piece in &b.pieces {
                     for &kind in residents(piece.kind) {
                         self.place_resident(world, kind, &piece.bounds, &mut rng);
@@ -2312,6 +2334,57 @@ mod tests {
         e.update(0.05, &world, &overworld);
         e.update_difficulty(0.05, &world, &ctx, crate::simulation::difficulty::Difficulty::Peaceful);
         assert!(e.mobs.is_empty());
+    }
+
+    #[test]
+    fn template_residents_spawn_at_markers_with_selected_weapons_and_persist_once() {
+        use crate::world::{
+            bastion::Bastions,
+            chunk::{CHUNK_VOLUME, chunk_of, index},
+        };
+        let bastions = Bastions::new(42);
+        let b =
+            (-2..=2).flat_map(|z| (-2..=2).map(move |x| glam::IVec2::new(x, z))).find_map(|r| bastions.get(r)).unwrap();
+        let mut grid = Grid::flat(-64);
+        let lo = chunk_of(b.bounds.min);
+        let hi = chunk_of(b.bounds.max);
+        for x in lo.x..=hi.x {
+            for z in lo.z..=hi.z {
+                for y in lo.y..=hi.y {
+                    let base = IVec3::new(x, y, z) * 32;
+                    let mut blocks = Box::new([Block::AIR; CHUNK_VOLUME]);
+                    bastions.paint(&mut blocks, base);
+                    for x in 0..32 {
+                        for z in 0..32 {
+                            for y in 0..32 {
+                                grid.set(base + IVec3::new(x, y, z), blocks[index(x as usize, y as usize, z as usize)]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let world = Remnant(grid, b.clone());
+        let ctx = nether(vec![player(((b.bounds.min + b.bounds.max) / 2).as_dvec3())]);
+        let mut e = Entities::new(8);
+        e.populate_bastions(1.0, &world, &ctx);
+        let residents = b.template_residents.as_ref().unwrap();
+        assert!(!residents.is_empty());
+        assert_eq!(e.mobs.len(), residents.len());
+        for r in residents {
+            let m = e.mobs.iter().find(|m| m.pos.floor().as_ivec3() == r.at).unwrap();
+            assert_eq!(m.kind, r.kind);
+            assert_eq!(m.nether.as_ref().unwrap().weapon, r.weapon);
+            assert!(m.persistent);
+        }
+        let saved = e.nether_mobs_to_string();
+        let mut loaded = Entities::new(9);
+        loaded.load_nether_mobs(&saved);
+        loaded.populate_bastions(2.0, &world, &ctx);
+        assert_eq!(loaded.mobs.len(), residents.len());
+        loaded.mobs.clear();
+        loaded.populate_bastions(2.0, &world, &ctx);
+        assert!(loaded.mobs.is_empty(), "dead residents do not regenerate");
     }
 
     #[test]

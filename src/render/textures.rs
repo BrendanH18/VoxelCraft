@@ -101,6 +101,16 @@ const DIRT: [u8; 3] = [134, 96, 67];
 const GRASS: [u8; 3] = [95, 159, 53];
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
+    if (2956..=2959).contains(&layer) {
+        return super::item_sprites::map_decoration_pixel(layer - 2956, x, y);
+    }
+    if layer == 2955 {
+        let color = (y * 16 + x) as u8;
+        return if color / 4 == 0 { [229, 213, 164, 255] } else { crate::world::maps::rgba(color) };
+    }
+    if (2944..=2954).contains(&layer) {
+        return super::item_sprites::pixel(crate::item::Sprite::Map(layer > 2945), x, y);
+    }
     if let Some(pixel) = voxelcraft::assets::texture_pixel(layer, x, y) {
         return pixel;
     }

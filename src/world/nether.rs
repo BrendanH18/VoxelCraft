@@ -138,11 +138,13 @@ struct ExposureCache {
 
 pub struct NetherGen {
     seed: u64,
+    pub(super) generation: super::terrain::Generation,
     shape: Perlin,
     detail: Perlin,
     patches: Perlin,
     glow: Perlin,
     pub fortresses: Fortresses,
+    pub fossils: super::nether_fossil::NetherFossils,
     /// Java's multi-noise Nether biomes (see `world::nether_biome`).
     pub biomes: NetherBiomeSource,
     columns: Mutex<FxHashMap<IVec2, Arc<GridColumn>>>,
@@ -168,15 +170,24 @@ fn interpolate(c: [[[f32; 2]; 2]; 2], t: [f32; 3]) -> f32 {
 }
 
 impl NetherGen {
+    /// The Nether of the [latest](super::terrain::Generation::LATEST) world generation.
     pub fn new(seed: u64) -> Self {
+        Self::with_generation(seed, super::terrain::Generation::LATEST)
+    }
+
+    /// The Nether of a world made with `generation` (its structures differ
+    /// from generation 3 on; the terrain is the same in every generation).
+    pub fn with_generation(seed: u64, generation: super::terrain::Generation) -> Self {
         let p = |salt: u64| Perlin::new(seed ^ salt.wrapping_mul(0x9E37_79B9_7F4A_7C15));
         Self {
             seed: seed ^ 0x4E45_5448,
+            generation,
             shape: p(21),
             detail: p(22),
             patches: p(23),
             glow: p(24),
-            fortresses: Fortresses::new(seed),
+            fortresses: Fortresses::with_generation(seed, generation),
+            fossils: super::nether_fossil::NetherFossils::new(seed, generation),
             biomes: NetherBiomeSource::new(seed),
             columns: Mutex::new(FxHashMap::default()),
         }
@@ -314,7 +325,8 @@ impl NetherGen {
             let densities = RefCell::new(&mut cache.densities);
             let open = |x, z, top, bottom| self.column_open(x, z, top, bottom, &mut densities.borrow_mut());
             let terrain = self.fortresses.column_at(key.x, key.z, key.y, terrain, &open);
-            self.fortresses.bastions.column_at(key, terrain)
+            let terrain = self.fortresses.bastions.column_at(key, terrain);
+            self.fossils.column_at(self, key, terrain)
         });
         column[(p.y - key.y) as usize] == Block::AIR
     }
@@ -492,6 +504,45 @@ impl NetherGen {
         }
     }
 
+    /// Pristine terrain for structure validation, without recursive decoration.
+    pub(super) fn base_block_at(&self, p: IVec3) -> Block {
+        if !(0..=ROOF).contains(&p.y) {
+            return Block::AIR;
+        }
+        let g = IVec2::new(p.x.div_euclid(STEP as i32), p.z.div_euclid(STEP as i32));
+        let c = [
+            self.grid_column(g),
+            self.grid_column(g + IVec2::X),
+            self.grid_column(g + IVec2::Y),
+            self.grid_column(g + IVec2::ONE),
+        ];
+        let corners = Corners {
+            c: [&c[0], &c[1], &c[2], &c[3]],
+            t: [p.x.rem_euclid(STEP as i32) as f32 / STEP as f32, p.z.rem_euclid(STEP as i32) as f32 / STEP as f32],
+        };
+        self.classify(p.x, p.y, p.z, corners.cached_bits(), &corners)
+    }
+
+    /// One pristine terrain column, for ruined portal height scans.
+    pub(super) fn structure_column(&self, x: i32, z: i32) -> super::terrain::StructureColumn {
+        let g = IVec2::new(x.div_euclid(STEP as i32), z.div_euclid(STEP as i32));
+        let c = [
+            self.grid_column(g),
+            self.grid_column(g + IVec2::X),
+            self.grid_column(g + IVec2::Y),
+            self.grid_column(g + IVec2::ONE),
+        ];
+        let corners = Corners {
+            c: [&c[0], &c[1], &c[2], &c[3]],
+            t: [x.rem_euclid(STEP as i32) as f32 / STEP as f32, z.rem_euclid(STEP as i32) as f32 / STEP as f32],
+        };
+        let bits = corners.cached_bits();
+        super::terrain::StructureColumn {
+            min_y: 0,
+            blocks: (0..=ROOF).map(|y| self.classify(x, y, z, bits, &corners)).collect(),
+        }
+    }
+
     pub fn generate(&self, cpos: IVec3) -> ChunkData {
         let base = cpos * CHUNK_SIZE_I;
         if base.y > ROOF || base.y + CHUNK_SIZE_I <= 0 {
@@ -527,6 +578,7 @@ impl NetherGen {
         let open = |x, z, top, bottom| self.column_open(x, z, top, bottom, &mut cache.borrow_mut());
         self.fortresses.paint(&mut blocks, base, &open);
         self.fortresses.bastions.paint(&mut blocks, base);
+        self.fossils.paint(self, &mut blocks, base);
         self.paint_ancient_debris(&mut blocks, base);
         ChunkData::from_dense(blocks)
     }

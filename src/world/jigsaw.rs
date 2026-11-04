@@ -24,6 +24,17 @@
 //! so seeds can't match anyway), the "expansion hack" that grows a start's
 //! box, processors other than the bridge rule, and Java's beardifier, which
 //! is approximated by foundations below rigid pieces and clearing above.
+//!
+//! Besides the format documented in `jigsaw/village.txt`, templates take
+//! `fill x0 y0 z0 x1 y1 z1 <spec>` (an inclusive box of a block, role or
+//! crop, painted before the layers so layer cells override it),
+//! `chest:<table>@dir` (a chest filled from a named loot table),
+//! `spawner:<mob>` (a mob spawner), `mob x y z <name>` (a resident placed
+//! with the structure, see [`markers`]) and connectors facing `up` or
+//! `down`: a vertical connector meets one facing the other way, at any
+//! rotation. [`Palette::process`] is the structure-processor hook and
+//! [`Palette::clear_above`] turns clearing off for buried structures;
+//! [`paint_canvas`] paints into a chunk or a single column.
 
 use std::sync::OnceLock;
 
@@ -58,6 +69,10 @@ pub enum Base {
     /// The piece's job site, chosen by the palette.
     Job,
     Chest,
+    /// A chest filled from a named loot table ([`Library::loot`]).
+    Loot(u16),
+    /// A mob spawner of a named mob ([`Library::mobs`]).
+    Spawner(u16),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -80,8 +95,11 @@ pub struct Cell {
 #[derive(Clone, Debug)]
 pub struct Jigsaw {
     pub pos: IVec3,
-    /// The way the connector faces, out of its template.
+    /// The way the connector faces, out of its template (unused when
+    /// [`Jigsaw::vertical`] is set).
     pub facing: Facing,
+    /// `1` for a connector facing up, `-1` facing down, `0` horizontal.
+    pub vertical: i8,
     pub name: String,
     pub target: String,
     /// The pool children come from (`empty` for none).
@@ -97,6 +115,10 @@ pub struct Template {
     pub jigsaws: Vec<Jigsaw>,
     /// Beds (head cell) and where their villager spawns.
     pub homes: Vec<(IVec3, IVec3)>,
+    /// Boxes painted before the cells: inclusive corners and what fills them.
+    pub fills: Vec<(IVec3, IVec3, Spec)>,
+    /// Resident mobs placed with the structure, by name.
+    pub mobs: Vec<(IVec3, String)>,
 }
 
 #[derive(Clone, Debug)]
@@ -113,6 +135,20 @@ pub struct Library {
     pub pools: FxHashMap<String, Pool>,
     /// Role names used by `$role` specs, indexed by [`Base::Role`].
     pub roles: Vec<String>,
+    /// Loot table names used by `chest:<table>` specs ([`Base::Loot`]).
+    pub loot: Vec<String>,
+    /// Mob names used by `spawner:<mob>` specs ([`Base::Spawner`]).
+    pub mobs: Vec<String>,
+}
+
+fn intern(names: &mut Vec<String>, name: &str) -> u16 {
+    match names.iter().position(|r| r == name) {
+        Some(i) => i as u16,
+        None => {
+            names.push(name.to_string());
+            names.len() as u16 - 1
+        }
+    }
 }
 
 fn parse_facing(s: &str) -> Result<Facing, String> {
@@ -227,17 +263,9 @@ impl Library {
             "crop" => Base::Crop,
             "job" => Base::Job,
             "chest" => Base::Chest,
-            role if role.starts_with('$') => {
-                let role = &role[1..];
-                let i = match self.roles.iter().position(|r| r == role) {
-                    Some(i) => i,
-                    None => {
-                        self.roles.push(role.to_string());
-                        self.roles.len() - 1
-                    }
-                };
-                Base::Role(i as u16)
-            }
+            role if role.starts_with('$') => Base::Role(intern(&mut self.roles, &role[1..])),
+            loot if loot.starts_with("chest:") => Base::Loot(intern(&mut self.loot, &loot[6..])),
+            mob if mob.starts_with("spawner:") => Base::Spawner(intern(&mut self.mobs, &mob[8..])),
             block => Base::Block(Block::from_name(block).ok_or_else(|| format!("unknown block {block:?}"))?),
         };
         Ok(Spec { base, facing, climb, upper })
@@ -256,6 +284,8 @@ impl Library {
         let mut cells = Vec::new();
         let mut jigsaws = Vec::new();
         let mut homes = Vec::new();
+        let mut fills = Vec::new();
+        let mut mobs = Vec::new();
         let mut layer: Option<(i32, i32)> = None;
         let mut layers_seen = Vec::new();
         loop {
@@ -293,14 +323,31 @@ impl Library {
                     layers_seen.push(y);
                     layer = Some((y, 0));
                 }
-                "jigsaw" if words.len() == 8 => jigsaws.push(Jigsaw {
-                    pos: vec3(&words[1..4])?,
-                    facing: parse_facing(words[4]).map_err(err)?,
-                    name: words[5].to_string(),
-                    target: words[6].to_string(),
-                    pool: words[7].to_string(),
-                }),
+                "jigsaw" if words.len() == 8 => {
+                    let (facing, vertical) = match words[4] {
+                        "up" => (Facing::North, 1),
+                        "down" => (Facing::North, -1),
+                        f => (parse_facing(f).map_err(err)?, 0),
+                    };
+                    jigsaws.push(Jigsaw {
+                        pos: vec3(&words[1..4])?,
+                        facing,
+                        vertical,
+                        name: words[5].to_string(),
+                        target: words[6].to_string(),
+                        pool: words[7].to_string(),
+                    })
+                }
                 "home" if words.len() == 7 => homes.push((vec3(&words[1..4])?, vec3(&words[4..7])?)),
+                "fill" if words.len() == 8 => {
+                    let (a, b) = (vec3(&words[1..4])?, vec3(&words[4..7])?);
+                    let spec = self.spec(words[7]).map_err(err)?;
+                    if !matches!(spec.base, Base::Block(_) | Base::Role(_) | Base::Crop) {
+                        return Err(err("fills take blocks, roles or crops".into()));
+                    }
+                    fills.push((a.min(b), a.max(b), spec));
+                }
+                "mob" if words.len() == 5 => mobs.push((vec3(&words[1..4])?, words[4].to_string())),
                 _ if layer.is_some() && words.len() == 1 => {
                     let size = size.ok_or_else(|| err("`size` must come first".into()))?;
                     let (y, z) = layer.unwrap();
@@ -330,10 +377,16 @@ impl Library {
                 return Err(format!("{name}: home outside the template"));
             }
         }
+        if fills.iter().any(|&(a, b, _)| !inside(a) || !inside(b)) {
+            return Err(format!("{name}: fill outside the template"));
+        }
+        if mobs.iter().any(|(p, _)| !inside(*p)) {
+            return Err(format!("{name}: mob outside the template"));
+        }
         if layers_seen.iter().any(|&y| y < 0 || y >= size.y) {
             return Err(format!("{name}: layer outside the size"));
         }
-        Ok(Template { name, size, projection, cells, jigsaws, homes })
+        Ok(Template { name, size, projection, cells, jigsaws, homes, fills, mobs })
     }
 
     pub fn template(&self, name: &str) -> Option<&Template> {
@@ -345,6 +398,49 @@ impl Library {
 pub fn villages() -> &'static Library {
     static LIB: OnceLock<Library> = OnceLock::new();
     LIB.get_or_init(|| Library::parse(include_str!("jigsaw/village.txt")).expect("village templates"))
+}
+
+/// Pillager outpost templates and pools (v0.14).
+pub fn outposts() -> &'static Library {
+    static LIB: OnceLock<Library> = OnceLock::new();
+    LIB.get_or_init(|| Library::parse(include_str!("jigsaw/outpost.txt")).expect("outpost templates"))
+}
+
+/// Bastion remnant templates and pools (v0.14).
+pub fn bastions() -> &'static Library {
+    static LIB: OnceLock<Library> = OnceLock::new();
+    LIB.get_or_init(|| Library::parse(include_str!("jigsaw/bastion.txt")).expect("bastion templates"))
+}
+
+/// Trail ruin templates and pools (v0.14).
+pub fn trail_ruins() -> &'static Library {
+    static LIB: OnceLock<Library> = OnceLock::new();
+    LIB.get_or_init(|| Library::parse(include_str!("jigsaw/trail_ruins.txt")).expect("trail ruin templates"))
+}
+
+/// Single templates placed without connectors: fossils, Nether fossils
+/// and desert wells (v0.14).
+pub fn relics() -> &'static Library {
+    static LIB: OnceLock<Library> = OnceLock::new();
+    LIB.get_or_init(|| Library::parse(include_str!("jigsaw/relics.txt")).expect("relic templates"))
+}
+
+/// Ruined portal templates, placed without connectors (v0.14).
+pub fn ruined_portals() -> &'static Library {
+    static LIB: OnceLock<Library> = OnceLock::new();
+    LIB.get_or_init(|| Library::parse(include_str!("jigsaw/ruined_portals.txt")).expect("ruined portal templates"))
+}
+
+/// Every template library, for tests that check them all.
+pub fn all() -> [(&'static str, &'static Library); 6] {
+    [
+        ("village", villages()),
+        ("outpost", outposts()),
+        ("bastion", bastions()),
+        ("trail_ruins", trail_ruins()),
+        ("relics", relics()),
+        ("ruined_portals", ruined_portals()),
+    ]
 }
 
 /// `v` turned `r` quarter turns clockwise seen from above, like Java's
@@ -469,7 +565,7 @@ pub fn assemble(
             let Some(pool) = lib.pools.get(&jig.pool) else { continue };
             let p = piece.world(jig.pos);
             let facing = rotate_facing(jig.facing, piece.rotation);
-            let target = p + facing.offset();
+            let target = p + jig_offset(jig, piece.rotation);
             let free = if piece.bounds.contains(target) {
                 *inner[i].get_or_insert_with(|| {
                     frees.push(Free { container: piece.bounds, taken: Vec::new() });
@@ -493,13 +589,20 @@ pub fn assemble(
                     shuffle(&mut joints, &mut rng);
                     for k in joints {
                         let cj = &ct.jigsaws[k];
-                        if rotate_facing(cj.facing, r) != facing.opposite() || cj.name != jig.target {
+                        let faces_back = match jig.vertical {
+                            0 => cj.vertical == 0 && rotate_facing(cj.facing, r) == facing.opposite(),
+                            v => cj.vertical == -v,
+                        };
+                        if !faces_back || cj.name != jig.target {
                             continue;
                         }
                         let local = rotate(cj.pos, r);
                         let mut origin = target - local;
-                        let y = if rigid && ct.projection == Projection::Rigid {
-                            p.y - local.y
+                        // A vertical join sits on/below its parent, including
+                        // terrain-projected plates. Projecting again would move
+                        // the child into the parent's already occupied box.
+                        let y = if jig.vertical != 0 || rigid && ct.projection == Projection::Rigid {
+                            target.y - local.y
                         } else {
                             *ground_at.get_or_insert_with(|| surface(p.x, p.z) + 1) - local.y
                         };
@@ -525,6 +628,27 @@ pub fn assemble(
     pieces
 }
 
+/// Where a connector of a piece turned `rotation` times leads, from its cell.
+pub fn jig_offset(j: &Jigsaw, rotation: u8) -> IVec3 {
+    match j.vertical {
+        0 => rotate_facing(j.facing, rotation).offset(),
+        v => IVec3::Y * v as i32,
+    }
+}
+
+/// One template placed on its own (ruined portals, fossils, wells): turned
+/// `rotation` times about its origin corner at `origin`.
+pub fn single(lib: &Library, name: &str, origin: IVec3, rotation: u8, seed: u64) -> Placed {
+    let template = lib.templates.iter().position(|t| t.name == name).unwrap_or_else(|| panic!("no template {name}"));
+    let bounds = bounds_of(&lib.templates[template], origin, rotation);
+    Placed { template: template as u16, origin, rotation, bounds, depth: 0, seed }
+}
+
+/// The world box a template would take at `origin`, turned `rotation` times.
+pub fn bounds_at(t: &Template, origin: IVec3, rotation: u8) -> Bounds {
+    bounds_of(t, origin, rotation)
+}
+
 /// A weighted pick from `pool` (the start piece).
 fn pick(pool: &Pool, rng: &mut Rng) -> Option<u16> {
     let total: u32 = pool.elements.iter().map(|e| e.1).sum();
@@ -543,12 +667,26 @@ pub trait Palette {
     /// The block for a `$role` (`None` leaves the world as it is).
     fn role(&self, role: &str) -> Option<Block>;
     /// The job site of a piece.
-    fn job(&self, piece: &Placed) -> Block;
+    fn job(&self, _piece: &Placed) -> Block {
+        Block::AIR
+    }
     /// A crop for a cell, from a per-cell hash.
-    fn crop(&self, hash: u64) -> Block;
+    fn crop(&self, _hash: u64) -> Block {
+        Block::AIR
+    }
     /// A terrain-following block placed on water (Java's bridge processor).
     fn on_water(&self, block: Block) -> Block {
         block
+    }
+    /// A structure processor: the block placed at `at` (`None` keeps the
+    /// world's block), after the template and roles chose `block`.
+    fn process(&self, block: Block, _at: IVec3, _piece: &Placed) -> Option<Block> {
+        Some(block)
+    }
+    /// How far above a rigid piece's floor terrain is cleared (0: buried
+    /// structures keep the ground around them).
+    fn clear_above(&self) -> i32 {
+        CLEAR_ABOVE
     }
 }
 
@@ -563,7 +701,13 @@ pub struct Ground<'a> {
 /// How far above a rigid piece terrain and leaves are cleared.
 const CLEAR_ABOVE: i32 = 30;
 
-fn resolve(spec: &Spec, roles: &[Option<Block>], palette: &dyn Palette, piece: &Placed, pos: IVec3) -> Option<Block> {
+pub fn resolve(
+    spec: &Spec,
+    roles: &[Option<Block>],
+    palette: &dyn Palette,
+    piece: &Placed,
+    pos: IVec3,
+) -> Option<Block> {
     let face = |f: Facing| rotate_facing(f, piece.rotation);
     let block = match spec.base {
         Base::Block(b) => b,
@@ -573,7 +717,8 @@ fn resolve(spec: &Spec, roles: &[Option<Block>], palette: &dyn Palette, piece: &
         Base::BedHead => Block::BED_HEAD,
         Base::Crop => palette.crop(hash3(pos.x, pos.y, pos.z, piece.seed)),
         Base::Job => palette.job(piece),
-        Base::Chest => Block::CHEST,
+        Base::Chest | Base::Loot(_) => Block::CHEST,
+        Base::Spawner(_) => Block::SPAWNER,
     };
     Some(match spec.facing {
         Some(f) if spec.climb => block.with_facing(face(f).opposite()),
@@ -582,14 +727,38 @@ fn resolve(spec: &Spec, roles: &[Option<Block>], palette: &dyn Palette, piece: &
     })
 }
 
-fn chunk_index(p: IVec3, base: IVec3) -> Option<usize> {
-    let l = p - base;
-    (l.cmpge(IVec3::ZERO).all() && l.cmplt(IVec3::splat(CHUNK_SIZE_I)).all())
-        .then(|| index(l.x as usize, l.y as usize, l.z as usize))
+/// Java's position-seeded random used by structure rule/rot processors
+/// (`Mth.getSeed` and `StructurePlaceSettings.getRandom`).
+pub fn processor_random(at: IVec3) -> crate::enchant::JavaRandom {
+    let seed = i64::from(at.x.wrapping_mul(3_129_871)) ^ i64::from(at.z).wrapping_mul(116_129_781) ^ i64::from(at.y);
+    let seed = seed.wrapping_mul(seed).wrapping_mul(42_317_861).wrapping_add(seed.wrapping_mul(11)) >> 16;
+    crate::enchant::JavaRandom::new(seed)
 }
 
-fn meets_columns(b: &Bounds, base: IVec3) -> bool {
-    b.min.x < base.x + CHUNK_SIZE_I && b.max.x >= base.x && b.min.z < base.z + CHUNK_SIZE_I && b.max.z >= base.z
+/// A box of the world being generated: a chunk, or one column of a chunk
+/// (the Nether's exposure checks).
+pub struct Canvas<'a> {
+    pub blocks: &'a mut [Block],
+    pub base: IVec3,
+    pub top: IVec3,
+}
+
+impl Canvas<'_> {
+    fn index(&self, p: IVec3) -> Option<usize> {
+        if p.cmplt(self.base).any() || p.cmpgt(self.top).any() {
+            return None;
+        }
+        let l = p - self.base;
+        Some(if self.blocks.len() == CHUNK_VOLUME {
+            index(l.x as usize, l.y as usize, l.z as usize)
+        } else {
+            l.y as usize
+        })
+    }
+}
+
+fn meets_columns(b: &Bounds, base: IVec3, top: IVec3) -> bool {
+    b.min.x <= top.x && b.max.x >= base.x && b.min.z <= top.z && b.max.z >= base.z
 }
 
 /// Paints the part of `pieces` inside the chunk at `base`. Every chunk
@@ -603,20 +772,28 @@ pub fn paint(
     blocks: &mut [Block; CHUNK_VOLUME],
     base: IVec3,
 ) {
-    let roles: Vec<Option<Block>> = lib.roles.iter().map(|r| palette.role(r)).collect();
     let top = base + IVec3::splat(CHUNK_SIZE_I - 1);
-    let near: Vec<&Placed> = pieces.iter().filter(|p| meets_columns(&p.bounds, base)).collect();
+    paint_canvas(lib, pieces, palette, ground, &mut Canvas { blocks, base, top });
+}
+
+/// [`paint`] into any [`Canvas`].
+pub fn paint_canvas(lib: &Library, pieces: &[Placed], palette: &dyn Palette, ground: &Ground, canvas: &mut Canvas) {
+    let (base, top) = (canvas.base, canvas.top);
+    let roles: Vec<Option<Block>> = lib.roles.iter().map(|r| palette.role(r)).collect();
+    let near: Vec<&Placed> = pieces.iter().filter(|p| meets_columns(&p.bounds, base, top)).collect();
+    let clear = palette.clear_above();
     // Clear above rigid pieces first so later pieces aren't cut away.
     for p in &near {
-        if lib.templates[p.template as usize].projection != Projection::Rigid {
+        if clear == 0 || lib.templates[p.template as usize].projection != Projection::Rigid {
             continue;
         }
         let lo = (p.bounds.max.y + 1).max(base.y);
-        let hi = (p.bounds.min.y + CLEAR_ABOVE).min(top.y);
+        let hi = (p.bounds.min.y + clear).min(top.y);
         for x in p.bounds.min.x.max(base.x)..=p.bounds.max.x.min(top.x) {
             for z in p.bounds.min.z.max(base.z)..=p.bounds.max.z.min(top.z) {
                 for y in lo..=hi {
-                    blocks[chunk_index(IVec3::new(x, y, z), base).unwrap()] = Block::AIR;
+                    let i = canvas.index(IVec3::new(x, y, z)).unwrap();
+                    canvas.blocks[i] = Block::AIR;
                 }
             }
         }
@@ -628,24 +805,47 @@ pub fn paint(
     let rigid = near.iter().filter(|p| lib.templates[p.template as usize].projection == Projection::Rigid);
     for p in terrain_first.chain(rigid) {
         let t = &lib.templates[p.template as usize];
-        for cell in &t.cells {
-            let mut at = p.world(cell.pos);
+        let terrain = t.projection == Projection::Terrain;
+        let put = |canvas: &mut Canvas, cell: IVec3, spec: &Spec| {
+            let mut at = p.world(cell);
             if at.x < base.x || at.x > top.x || at.z < base.z || at.z > top.z {
-                continue;
+                return;
             }
             let mut wet = false;
-            if t.projection == Projection::Terrain {
+            if terrain {
                 let surface = (ground.surface)(at.x, at.z);
-                wet = cell.pos.y == 0 && (ground.solid)(at.x, at.z) < surface;
-                at.y = surface + cell.pos.y;
+                wet = cell.y == 0 && (ground.solid)(at.x, at.z) < surface;
+                at.y = surface + cell.y;
             }
-            let Some(i) = chunk_index(at, base) else { continue };
-            if let Some(mut b) = resolve(&cell.spec, &roles, palette, p, cell.pos) {
+            let Some(i) = canvas.index(at) else { return };
+            if let Some(mut b) = resolve(spec, &roles, palette, p, cell) {
                 if wet {
                     b = palette.on_water(b);
                 }
-                blocks[i] = b;
+                if let Some(b) = palette.process(b, at, p) {
+                    canvas.blocks[i] = b;
+                }
             }
+        };
+        for (a, b, spec) in &t.fills {
+            // Only the part of the box in this canvas, in template cells.
+            let (wa, wb) = (p.world(*a), p.world(*b));
+            let (lo, hi) = (wa.min(wb), wa.max(wb));
+            let (lo_y, hi_y) = if terrain { (lo.y, hi.y) } else { (lo.y.max(base.y), hi.y.min(top.y)) };
+            if lo_y > hi_y || hi.x < base.x || lo.x > top.x || hi.z < base.z || lo.z > top.z {
+                continue;
+            }
+            for x in lo.x.max(base.x)..=hi.x.min(top.x) {
+                for z in lo.z.max(base.z)..=hi.z.min(top.z) {
+                    for y in lo_y..=hi_y {
+                        let cell = unrotate(IVec3::new(x, y, z) - p.origin, p.rotation);
+                        put(canvas, cell, spec);
+                    }
+                }
+            }
+        }
+        for cell in &t.cells {
+            put(canvas, cell.pos, &cell.spec);
         }
     }
     // Foundations: pillars under a rigid piece's bottom layer, down
@@ -657,12 +857,16 @@ pub fn paint(
         if t.projection != Projection::Rigid {
             continue;
         }
-        for cell in t.cells.iter().filter(|c| c.pos.y == 0) {
-            let block = resolve(&cell.spec, &roles, palette, p, cell.pos);
+        let bottom = t.cells.iter().filter(|c| c.pos.y == 0).map(|c| (c.pos, c.spec));
+        let filled = t.fills.iter().filter(|f| f.0.y == 0).flat_map(|&(a, b, spec)| {
+            (a.x..=b.x).flat_map(move |x| (a.z..=b.z).map(move |z| (IVec3::new(x, 0, z), spec)))
+        });
+        for (cell, spec) in filled.chain(bottom) {
+            let block = resolve(&spec, &roles, palette, p, cell);
             if !block.is_some_and(|b| b != Block::AIR && !b.is_fluid()) {
                 continue;
             }
-            let at = p.world(cell.pos);
+            let at = p.world(cell);
             if at.x < base.x || at.x > top.x || at.z < base.z || at.z > top.z || at.y - 1 < base.y {
                 continue;
             }
@@ -675,15 +879,60 @@ pub fn paint(
                 y = top.y;
             }
             while y > 1 && y >= base.y {
-                let i = chunk_index(IVec3::new(at.x, y, at.z), base).unwrap();
-                if blocks[i] != Block::AIR && !blocks[i].is_fluid() {
+                let i = canvas.index(IVec3::new(at.x, y, at.z)).unwrap();
+                if canvas.blocks[i] != Block::AIR && !canvas.blocks[i].is_fluid() {
                     break;
                 }
-                blocks[i] = foundation;
+                canvas.blocks[i] = foundation;
                 y -= 1;
             }
         }
     }
+}
+
+/// The template cell at offset `v` from a piece's origin (the inverse of
+/// [`rotate`]).
+fn unrotate(v: IVec3, r: u8) -> IVec3 {
+    rotate(v, (4 - (r & 3)) & 3)
+}
+
+/// A chest, spawner or resident of a placed template, in the world.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Marker<'a> {
+    /// A chest and the name of its loot table; the seed is per chest.
+    Loot(IVec3, &'a str, u64),
+    Spawner(IVec3, &'a str),
+    Mob(IVec3, &'a str),
+}
+
+/// Every [`Marker`] of `pieces`. Terrain pieces' markers sit on the
+/// surface given by `surface`.
+pub fn markers<'a>(lib: &'a Library, pieces: &'a [Placed], surface: &dyn Fn(i32, i32) -> i32) -> Vec<Marker<'a>> {
+    let mut out = Vec::new();
+    for p in pieces {
+        let t = &lib.templates[p.template as usize];
+        let at = |c: IVec3| {
+            let mut w = p.world(c);
+            if t.projection == Projection::Terrain {
+                w.y = surface(w.x, w.z) + c.y;
+            }
+            w
+        };
+        for c in &t.cells {
+            match c.spec.base {
+                Base::Loot(i) => {
+                    let w = at(c.pos);
+                    out.push(Marker::Loot(w, &lib.loot[i as usize], hash3(w.x, w.y, w.z, p.seed)));
+                }
+                Base::Spawner(i) => out.push(Marker::Spawner(at(c.pos), &lib.mobs[i as usize])),
+                _ => {}
+            }
+        }
+        for (c, name) in &t.mobs {
+            out.push(Marker::Mob(at(*c), name));
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -707,14 +956,19 @@ mod tests {
 
     #[test]
     fn the_village_file_parses_and_every_connector_can_attach() {
-        let lib = villages();
-        assert!(lib.templates.len() >= 12);
+        assert!(villages().templates.len() >= 12);
+        for (file, lib) in all() {
+            every_connector_can_attach(file, lib);
+        }
+    }
+
+    fn every_connector_can_attach(file: &str, lib: &Library) {
         for t in &lib.templates {
             for j in &t.jigsaws {
                 // A connector must sit on the template's edge facing out.
-                let out = j.pos + j.facing.offset();
+                let out = j.pos + jig_offset(j, 0);
                 let inside = out.cmpge(IVec3::ZERO).all() && out.cmplt(t.size).all();
-                assert!(!inside, "{}: connector {} faces into the template", t.name, j.pos);
+                assert!(!inside, "{file} {}: connector {} faces into the template", t.name, j.pos);
                 if j.pool == "empty" {
                     continue;
                 }
@@ -725,7 +979,7 @@ mod tests {
                         .iter()
                         .filter_map(|e| e.0)
                         .any(|c| { lib.templates[c as usize].jigsaws.iter().any(|cj| cj.name == j.target) }),
-                    "{}: nothing in {} answers {}",
+                    "{file} {}: nothing in {} answers {}",
                     t.name,
                     j.pool,
                     j.target
@@ -811,5 +1065,157 @@ mod tests {
                 assert!(name == "village/street_end", "seed {seed}: {name} past the last depth");
             }
         }
+    }
+
+    const TOWER: &str = "
+template t/base
+size 5 1 5
+projection rigid
+fill 0 0 0 4 0 4 cobblestone
+key c chest:test_loot@south
+layer 0
+.....
+.....
+..c..
+.....
+.....
+jigsaw 2 0 2 up up up t/tops
+mob 1 0 1 pillager
+end
+template t/top
+size 3 4 3
+projection rigid
+fill 0 0 0 2 3 2 stone
+key s spawner:zombie
+layer 3
+...
+.s.
+...
+jigsaw 1 0 1 down up up empty
+end
+pool t/starts
+1 t/base
+end
+pool t/tops
+1 t/top
+end
+";
+
+    #[test]
+    fn fills_vertical_connectors_and_markers() {
+        // An up connector joins a down one directly above it.
+        let lib = Library::parse(TOWER).unwrap();
+        let settings = Settings { start_pool: "t/starts", max_depth: 2, max_distance: 40 };
+        for seed in 0..8 {
+            let pieces = assemble(&lib, &settings, IVec2::new(37, -21), &flat, seed);
+            assert_eq!(pieces.len(), 2, "seed {seed}");
+            let (base, top) = (pieces[0], pieces[1]);
+            // The top stands on the base: its down connector is one above the
+            // base's up connector, whatever the rotations.
+            let up = base.world(IVec3::new(2, 0, 2));
+            assert_eq!(top.world(IVec3::new(1, 0, 1)), up + IVec3::Y);
+            let markers = markers(&lib, &pieces, &flat);
+            assert!(markers.contains(&Marker::Mob(base.world(IVec3::new(1, 0, 1)), "pillager")));
+            assert!(markers.iter().any(|m| matches!(m, Marker::Loot(p, "test_loot", _) if *p == up)));
+            assert!(markers.contains(&Marker::Spawner(top.world(IVec3::new(1, 3, 1)), "zombie")));
+            // Painting a chunk and painting each column alone agree, and the
+            // fill sits under the layer's chest.
+            struct Plain;
+            impl Palette for Plain {
+                fn role(&self, _: &str) -> Option<Block> {
+                    None
+                }
+            }
+            let ground = Ground { surface: &flat, solid: &flat };
+            let base_corner = IVec3::new(32, 64, -32);
+            let mut chunk = Box::new([Block::AIR; CHUNK_VOLUME]);
+            paint(&lib, &pieces, &Plain, &ground, &mut chunk, base_corner);
+            assert_eq!(
+                chunk[index((up.x - base_corner.x) as usize, 0, (up.z - base_corner.z) as usize)],
+                Block::CHEST.with_facing(rotate_facing(Facing::South, base.rotation))
+            );
+            let corner = base.world(IVec3::ZERO);
+            assert_eq!(
+                chunk[index((corner.x - base_corner.x) as usize, 0, (corner.z - base_corner.z) as usize)],
+                Block::COBBLESTONE
+            );
+            for x in 0..CHUNK_SIZE_I {
+                for z in 0..CHUNK_SIZE_I {
+                    let col_base = base_corner + IVec3::new(x, 0, z);
+                    let mut column = [Block::AIR; CHUNK_SIZE_I as usize];
+                    paint_canvas(
+                        &lib,
+                        &pieces,
+                        &Plain,
+                        &ground,
+                        &mut Canvas {
+                            blocks: &mut column,
+                            base: col_base,
+                            top: col_base + IVec3::Y * (CHUNK_SIZE_I - 1),
+                        },
+                    );
+                    for y in 0..CHUNK_SIZE_I {
+                        assert_eq!(
+                            column[y as usize],
+                            chunk[index(x as usize, y as usize, z as usize)],
+                            "seed {seed} at {x} {y} {z}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_vertical_child_sits_above_its_terrain_projected_plate() {
+        let lib = Library::parse(
+            r#"
+template base
+size 1 1 1
+jigsaw 0 0 0 east base plate plates
+end
+template plate
+size 1 1 1
+projection terrain
+jigsaw 0 0 0 west plate base empty
+jigsaw 0 0 0 up plate top tops
+end
+template top
+size 1 1 1
+jigsaw 0 0 0 down top plate empty
+end
+pool starts
+1 base
+end
+pool plates
+1 plate
+end
+pool tops
+1 top
+end
+"#,
+        )
+        .unwrap();
+        for seed in 0..16 {
+            let pieces = assemble(
+                &lib,
+                &Settings { start_pool: "starts", max_depth: 7, max_distance: 80 },
+                IVec2::ZERO,
+                &|_, _| 70,
+                seed,
+            );
+            assert_eq!(pieces.len(), 3);
+            assert_eq!(pieces[1].origin.y, 71);
+            assert_eq!(pieces[2].origin.y, 72);
+            assert!(!pieces[1].bounds.intersects(&pieces[2].bounds));
+        }
+    }
+
+    #[test]
+    fn fills_must_fit_and_take_plain_blocks() {
+        let e = Library::parse("template a\nsize 2 1 2\nfill 0 0 0 2 0 0 stone\nend\n").unwrap_err();
+        assert!(e.contains("fill outside"), "{e}");
+        let e = Library::parse("template a\nsize 2 1 2\nfill 0 0 0 1 0 0 chest\nend\n").unwrap_err();
+        assert!(e.contains("fills take"), "{e}");
     }
 }

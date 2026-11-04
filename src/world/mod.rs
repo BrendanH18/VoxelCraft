@@ -22,6 +22,7 @@ pub mod biome_zoom;
 pub mod block;
 pub mod brewing;
 pub mod bubble;
+pub mod buried_treasure;
 pub mod cave_blocks;
 pub mod caves;
 pub mod chest;
@@ -52,6 +53,8 @@ mod honey;
 pub mod jigsaw;
 mod light_shape;
 pub(crate) mod lighting;
+pub mod loot;
+pub mod maps;
 pub mod mineshaft;
 pub mod mount_states;
 mod navigation;
@@ -63,6 +66,7 @@ pub mod nether_complexes;
 mod nether_decoration;
 pub mod nether_features;
 mod nether_flora;
+pub mod nether_fossil;
 pub mod noise;
 pub mod ore;
 pub mod overworld_blocks;
@@ -73,6 +77,8 @@ pub mod rails;
 pub mod redstone;
 pub mod redstone_blocks;
 mod redstone_contacts;
+pub mod relics;
+pub mod ruined_portal;
 #[cfg(test)]
 mod rule_tests;
 pub mod scaffolding;
@@ -87,6 +93,7 @@ pub mod stronghold;
 pub mod structure;
 pub mod temples;
 pub mod terrain;
+pub mod trail_ruins;
 pub mod trees;
 pub mod underground;
 pub mod utilities;
@@ -210,6 +217,8 @@ impl Default for WorldRules {
 
 pub struct World {
     pub generator: Arc<Generator>,
+    pub maps: maps::MapStorage,
+    pub loot_sequences: loot::RandomSequences,
     workers: Workers,
     chunks: FxHashMap<IVec3, ChunkSlot>,
     columns: FxHashMap<IVec2, Column>,
@@ -497,8 +506,11 @@ impl World {
         // Build the per-state explosion tables while the world loads, not
         // in the frame of the first blast.
         explosion::prepare();
+        loot::prepare();
         let rng = generator.seed ^ 0x6772_6f77;
         Self {
+            maps: Default::default(),
+            loot_sequences: Default::default(),
             workers: Workers::new(generator.clone()),
             generator,
             chunks: FxHashMap::default(),
@@ -1760,7 +1772,7 @@ mod tests {
             if check == 0 {
                 assert!(super::chest::is_chest(world.get_block(at).unwrap()));
                 let filled = world.chest(at).unwrap().slots.iter().flatten().count();
-                assert!((2..=4).contains(&filled), "{filled} stacks");
+                assert!((1..=super::chest::SLOTS).contains(&filled), "{filled} stacks after Java splitting");
                 // A looted chest stays empty when its chunk generates again.
                 world.chest_mut(at).unwrap().slots = [None; super::chest::SLOTS];
                 let data = world.chunks[&chunk_of(at)].data.clone();

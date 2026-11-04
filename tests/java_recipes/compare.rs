@@ -37,6 +37,10 @@ pub const JAVA_ALLOWED: &[(&str, &str)] = &[
         "crafting_special_repairitem/repair_item",
         "grid repair of two damaged items isn't implemented; anvils and grindstones repair",
     ),
+    (
+        "crafting_special_mapextending/map_extending",
+        "map scale data exists, but crafting/cartography scaling is not wired; see the v0.14 maps record",
+    ),
 ];
 
 /// Banner duplication copies a patterned banner's layers onto a blank one;

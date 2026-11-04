@@ -216,11 +216,15 @@ impl Game {
         let (chunks, props) = load_dimension(&self.storage, to, &self.overworld_props);
         let (seed, generation) = (self.world.generator.seed, self.world.generator.generation);
         log::info!("travelling to the {} ({} modified chunks)", to.name(), chunks.len());
+        let loot_sequences = std::mem::take(&mut self.world.loot_sequences);
+        let maps = std::mem::take(&mut self.world.maps);
         self.world = World::new(
             Arc::new(Generator::with_generation(seed, to, generation)),
             chunks,
             self.settings.render_distance,
         );
+        self.world.maps = maps;
+        self.world.loot_sequences = loot_sequences;
         self.world.set_simulation_distance(self.settings.simulation_distance);
         self.mobs.entities = crate::entity::Entities::new(seed);
         self.renderer.clear_world();

@@ -34,6 +34,7 @@ pub fn run(seed: u64, rd: i32) {
     );
 
     generations(seed, r);
+    structure_generations(seed, r);
 
     // The Nether: caverns, biome surfaces and features, fortresses and bastions.
     let nether = Generator::for_dimension(seed, crate::world::terrain::Dimension::Nether);
@@ -139,7 +140,20 @@ fn generations(seed: u64, r: i32) {
     let peaks = latest.nearest_biome(glam::IVec2::ZERO, Biome::JaggedPeaks, 20_000);
     let peaks = peaks.map(|p| glam::IVec2::new(p.x >> 5, p.z >> 5));
     let village = latest.villages.nearest(&latest, IVec3::ZERO).map(|p| glam::IVec2::new(p.x >> 5, p.z >> 5));
-    for (place, centre) in [("origin", Some(glam::IVec2::ZERO)), ("mountains", peaks), ("village", village)] {
+    let desert = latest.nearest_biome(glam::IVec2::ZERO, Biome::Desert, 20_000);
+    let swamp = latest.nearest_biome(glam::IVec2::ZERO, Biome::Swamp, 20_000);
+    let ruins = latest.trail_ruins.nearest(&latest, glam::IVec2::ZERO, 6400);
+    let portal = latest.ruined_portals.nearest(&latest, IVec3::ZERO, 2);
+    let chunk = |p: IVec3| glam::IVec2::new(p.x.div_euclid(32), p.z.div_euclid(32));
+    for (place, centre) in [
+        ("origin", Some(glam::IVec2::ZERO)),
+        ("mountains", peaks),
+        ("village", village),
+        ("desert", desert.map(chunk)),
+        ("swamp", swamp.map(chunk)),
+        ("trail ruins", ruins.map(chunk)),
+        ("ruined portal", portal.map(chunk)),
+    ] {
         let Some(centre) = centre else { continue };
         for generation in [Generation::V1, Generation::V2, Generation::V3] {
             let generator = Generator::with_generation(seed, Dimension::Overworld, generation);
@@ -243,5 +257,39 @@ fn storage_profiles<'a>(chunks: impl Iterator<Item = &'a ChunkData>) {
             copy.as_secs_f64() * 1e6 / (stored.len() * 4) as f64,
             edit.as_secs_f64() * 1e6 / stored.len() as f64
         );
+    }
+}
+
+/// Like-for-like generation timing at the template structures changed by v0.14.
+fn structure_generations(seed: u64, r: i32) {
+    use crate::world::{
+        temples::Kind,
+        terrain::{Dimension, Generation},
+    };
+    let g = Generator::new(seed);
+    let outpost = g.temples.nearest(&g, Kind::Outpost, glam::IVec2::ZERO, 20_000);
+    let bastion = crate::world::bastion::Bastions::new(seed).nearest(glam::IVec2::ZERO);
+    for (name, dimension, at) in [("outpost", Dimension::Overworld, outpost), ("bastion", Dimension::Nether, bastion)] {
+        let Some(at) = at else { continue };
+        println!("structure benchmark {name} seed {seed} at {at}");
+        let centre = crate::world::chunk::chunk_of(at);
+        for generation in [Generation::V2, Generation::V3] {
+            let g = Generator::with_generation(seed, dimension, generation);
+            let t = Instant::now();
+            let mut n = 0;
+            for x in -r..=r {
+                for z in -r..=r {
+                    for y in dimension.chunk_rows() {
+                        std::hint::black_box(g.generate(IVec3::new(centre.x + x, y, centre.z + z)));
+                        n += 1;
+                    }
+                }
+            }
+            println!(
+                "generate {name} generation {} (1 thread): {n} chunks -> {:.3} ms/chunk",
+                generation.number(),
+                t.elapsed().as_secs_f64() * 1e3 / n as f64
+            );
+        }
     }
 }

@@ -51,6 +51,11 @@ impl Grid {
 
     /// What the grid crafts right now.
     pub fn result(&self) -> Option<Stack> {
+        let occupied: Vec<_> = self.cells.iter().take(self.size * self.size).flatten().copied().collect();
+        let maps: Vec<_> = occupied.iter().filter(|s| s.item.is_map() && s.item != Item::MAP).collect();
+        if maps.len() == 1 && occupied.len() > 1 && occupied.iter().all(|s| s.item == Item::MAP || s == maps[0]) {
+            return Some(Stack { count: occupied.len() as u8, ..*maps[0] });
+        }
         let (w, h, items) = self.trimmed()?;
         recipes().iter().find(|r| r.matches(w, h, &items)).map(|r| r.result)
     }
@@ -339,6 +344,7 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["##", "##"], &[('#', DIORITE)], b(Block::POLISHED_DIORITE), 4),
             shaped(&["##", "##"], &[('#', ANDESITE)], b(Block::POLISHED_ANDESITE), 4),
             shaped(&["##", "##"], &[('#', COBBLED_DEEPSLATE)], b(Block::POLISHED_DEEPSLATE), 4),
+            shaped(&["PPP", "PCP", "PPP"], &[('P', &[Item::PAPER]), ('C', &[Item::COMPASS])], Item::MAP, 1),
             // Java 26.3: diorite is shaped, granite and andesite shapeless.
             shaped(&["CQ", "QC"], &[('C', COBBLESTONE), ('Q', QUARTZ)], b(Block::DIORITE), 2),
             shapeless(&[DIORITE, QUARTZ], b(Block::GRANITE), 1),

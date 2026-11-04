@@ -1,0 +1,227 @@
+# Original VoxelCraft outpost designs; Java 26.3 pool names and weights.
+
+template pillager_outpost/base_plate
+size 11 1 11
+projection rigid
+fill 0 0 0 10 0 10 cobblestone
+jigsaw 5 0 5 up base tower pillager_outpost/towers
+jigsaw 5 0 0 north base plate pillager_outpost/feature_plates
+jigsaw 5 0 10 south base plate pillager_outpost/feature_plates
+jigsaw 0 0 5 west base plate pillager_outpost/feature_plates
+jigsaw 10 0 5 east base plate pillager_outpost/feature_plates
+end
+
+template pillager_outpost/watchtower
+size 11 25 11
+projection rigid
+fill 0 0 0 10 24 10 air
+fill 1 0 1 9 0 9 dark_oak_planks
+fill 1 0 1 1 22 1 dark_oak_log
+fill 9 0 1 9 22 1 dark_oak_log
+fill 1 0 9 1 22 9 dark_oak_log
+fill 9 0 9 9 22 9 dark_oak_log
+fill 1 7 1 9 7 9 dark_oak_planks
+fill 1 14 1 9 14 9 dark_oak_planks
+fill 1 21 1 9 21 9 dark_oak_planks
+fill 1 15 1 9 19 1 birch_planks
+fill 1 15 9 9 19 9 birch_planks
+fill 1 15 2 1 19 8 birch_planks
+fill 9 15 2 9 19 8 birch_planks
+fill 1 15 1 1 20 1 dark_oak_log
+fill 9 15 1 9 20 1 dark_oak_log
+fill 1 15 9 1 20 9 dark_oak_log
+fill 9 15 9 9 20 9 dark_oak_log
+fill 3 17 1 4 18 1 air
+fill 3 17 9 4 18 9 air
+fill 6 17 1 7 18 1 air
+fill 6 17 9 7 18 9 air
+fill 1 17 3 1 18 4 air
+fill 9 17 3 9 18 4 air
+fill 1 17 6 1 18 7 air
+fill 9 17 6 9 18 7 air
+fill 0 22 0 10 22 0 dark_oak_fence
+fill 0 22 10 10 22 10 dark_oak_fence
+fill 0 22 1 0 22 9 dark_oak_fence
+fill 10 22 1 10 22 9 dark_oak_fence
+fill 0 24 0 10 24 10 dark_oak_slab
+fill 4 15 1 6 17 1 air
+fill 5 1 2 5 22 2 ladder@south
+fill 5 1 1 5 22 1 dark_oak_planks
+# Original overgrown overlay; outpost_rot retains 5% without replacing its underlay.
+fill 0 1 0 10 20 0 dark_oak_leaves
+fill 0 1 10 10 20 10 dark_oak_leaves
+fill 0 1 1 0 20 9 dark_oak_leaves
+fill 10 1 1 10 20 9 dark_oak_leaves
+mob 3 1 5 pillager
+mob 7 8 5 pillager
+mob 3 22 5 pillager
+jigsaw 5 0 5 down tower base empty
+key A chest:pillager_outpost@west
+layer 22
+...........
+...........
+...........
+...........
+...........
+...........
+...........
+...........
+........A..
+...........
+...........
+end
+
+template pillager_outpost/feature_plate
+size 9 1 9
+projection terrain
+jigsaw 4 0 0 north plate base empty
+jigsaw 4 0 4 up plate feature pillager_outpost/features
+end
+
+template pillager_outpost/feature_cage1
+size 9 8 9
+projection rigid
+fill 0 0 0 8 7 8 air
+fill 1 0 1 7 0 7 coarse_dirt
+jigsaw 4 0 4 down feature plate empty
+fill 1 1 1 7 4 1 iron_bars
+fill 1 1 7 7 4 7 iron_bars
+fill 1 1 2 1 4 6 iron_bars
+fill 7 1 2 7 4 6 iron_bars
+fill 1 5 1 7 5 7 dark_oak_slab
+mob 4 1 4 iron_golem
+end
+
+template pillager_outpost/feature_cage2
+size 9 8 9
+projection rigid
+fill 0 0 0 8 7 8 air
+fill 1 0 1 7 0 7 coarse_dirt
+jigsaw 4 0 4 down feature plate empty
+fill 1 1 1 7 4 1 iron_bars
+fill 1 1 7 7 4 7 iron_bars
+fill 1 1 2 1 4 6 iron_bars
+fill 7 1 2 7 4 6 iron_bars
+fill 1 5 1 7 5 7 dark_oak_slab
+mob 4 1 4 iron_golem
+end
+
+template pillager_outpost/feature_cage_with_allays
+size 9 8 9
+projection rigid
+fill 0 0 0 8 7 8 air
+fill 1 0 1 7 0 7 coarse_dirt
+jigsaw 4 0 4 down feature plate empty
+fill 1 1 1 7 4 1 iron_bars
+fill 1 1 7 7 4 7 iron_bars
+fill 1 1 2 1 4 6 iron_bars
+fill 7 1 2 7 4 6 iron_bars
+fill 1 5 1 7 5 7 dark_oak_slab
+end
+
+template pillager_outpost/feature_logs
+size 9 8 9
+projection rigid
+fill 0 0 0 8 7 8 air
+fill 1 0 1 7 0 7 coarse_dirt
+jigsaw 4 0 4 down feature plate empty
+fill 2 1 2 6 1 6 dark_oak_log
+fill 3 2 2 5 2 6 dark_oak_log
+fill 4 3 2 4 3 6 dark_oak_log
+end
+
+template pillager_outpost/feature_tent1
+size 9 8 9
+projection rigid
+fill 0 0 0 8 7 8 air
+fill 1 0 1 7 0 7 coarse_dirt
+jigsaw 4 0 4 down feature plate empty
+fill 1 2 1 1 2 7 white_wool
+fill 2 3 1 2 3 7 white_wool
+fill 3 4 1 3 4 7 white_wool
+fill 4 5 1 4 5 7 white_wool
+fill 5 4 1 5 4 7 white_wool
+fill 6 3 1 6 3 7 white_wool
+fill 7 2 1 7 2 7 white_wool
+fill 4 1 1 4 4 1 dark_oak_fence
+fill 4 1 7 4 4 7 dark_oak_fence
+fill 2 1 5 3 1 6 hay_bale
+end
+
+template pillager_outpost/feature_tent2
+size 9 8 9
+projection rigid
+fill 0 0 0 8 7 8 air
+fill 1 0 1 7 0 7 coarse_dirt
+jigsaw 4 0 4 down feature plate empty
+fill 1 2 1 1 2 7 white_wool
+fill 2 3 1 2 3 7 white_wool
+fill 3 4 1 3 4 7 white_wool
+fill 4 5 1 4 5 7 white_wool
+fill 5 4 1 5 4 7 white_wool
+fill 6 3 1 6 3 7 white_wool
+fill 7 2 1 7 2 7 white_wool
+fill 4 1 1 4 4 1 dark_oak_fence
+fill 4 1 7 4 4 7 dark_oak_fence
+fill 2 1 5 3 1 6 hay_bale
+fill 6 1 3 6 1 5 pumpkin
+end
+
+template pillager_outpost/feature_targets
+size 9 8 9
+projection rigid
+fill 0 0 0 8 7 8 air
+fill 1 0 1 7 0 7 coarse_dirt
+jigsaw 4 0 4 down feature plate empty
+fill 2 1 4 2 2 4 dark_oak_fence
+fill 6 1 4 6 2 4 dark_oak_fence
+key A target
+key B carved_pumpkin
+layer 3
+.........
+.........
+.........
+.........
+..A...A..
+.........
+.........
+.........
+.........
+layer 4
+.........
+.........
+.........
+.........
+..B...B..
+.........
+.........
+.........
+.........
+end
+
+pool pillager_outpost/base_plates fallback empty
+1 pillager_outpost/base_plate
+end
+
+pool pillager_outpost/towers fallback empty
+1 pillager_outpost/watchtower
+end
+
+pool pillager_outpost/feature_plates fallback empty
+1 pillager_outpost/feature_plate
+end
+
+pool pillager_outpost/features fallback empty
+1 pillager_outpost/feature_cage1
+1 pillager_outpost/feature_cage2
+1 pillager_outpost/feature_cage_with_allays
+1 pillager_outpost/feature_logs
+1 pillager_outpost/feature_tent1
+1 pillager_outpost/feature_tent2
+1 pillager_outpost/feature_targets
+6 empty
+end
+
+pool empty
+1 empty
+end
