@@ -1095,7 +1095,8 @@ Decisions, proposed on 2026-10-23 and approved by the owner on 2026-10-25:
 - **Lightning rods without lightning.** Rods are crafted, placed in every
   facing and waterlogged in v0.12. Lightning strikes don't exist yet
   (ENV-03, v0.15), so attracting a strike, the redstone pulse it gives and
-  stripping oxidation come with them.
+  stripping oxidation come with them. *Implemented, unverified (2026-11-04):*
+  these lightning behaviors now exist in [v0.15 track 1](verification/2026-11-04-v0.15-lightning.md).
 - **Jukeboxes and music discs** are unassigned; propose v0.20 with the
   music review, since every disc needs an original track.
 
@@ -1162,7 +1163,8 @@ Work items (all Missing unless noted):
    `ChangeOverTimeBlock` odds, scraping, bulb toggling and comparator
    output, recipes and stonecutting data; see the
    [record](verification/2026-10-25-v0.12-copper.md). Not done: copper
-   sounds, lightning (v0.15). Double copper chests: *implemented, unverified
+   sounds. Lightning: *implemented, unverified (2026-11-04)* in
+   [v0.15 track 1](verification/2026-11-04-v0.15-lightning.md). Double copper chests: *implemented, unverified
    (2026-10-28)* with the other double chests, the pair taking the younger
    stage and aging together ([record](verification/2026-10-28-v0.12-double-chests.md)).
 4. **Colour (BLD-01d).** Plain banners, standing and on walls, in 16
