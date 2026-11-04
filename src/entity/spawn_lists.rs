@@ -6,7 +6,7 @@ use super::monster_spawns::{JavaMonster as J, MonsterSpawn, e};
 use crate::world::terrain::Biome;
 
 const LIST_0: [MonsterSpawn; 1] = [e(J::Missing("polar_bear"), 1, 1, 2)];
-const LIST_1: [MonsterSpawn; 1] = [e(J::Missing("bat"), 10, 8, 8)];
+const LIST_1: [MonsterSpawn; 1] = [e(J::Known(MobKind::Bat), 10, 8, 8)];
 const LIST_2: [MonsterSpawn; 1] = [e(J::Known(MobKind::GlowSquid), 10, 4, 6)];
 const LIST_3: [MonsterSpawn; 2] = [e(J::Known(MobKind::Squid), 1, 1, 4), e(J::Missing("nautilus"), 2, 1, 1)];
 const LIST_4: [MonsterSpawn; 1] = [e(J::Known(MobKind::Salmon), 15, 1, 5)];
@@ -414,9 +414,10 @@ pub(super) fn end_list(category: MobCategory) -> &'static [MonsterSpawn] {
 mod tests {
     use super::*;
     #[test]
-    fn ambient_lists_hold_no_existing_mob_so_the_pass_can_be_skipped() {
+    fn ambient_lists_resolve_bats_and_leave_deep_dark_empty() {
         for b in Biome::ALL {
-            assert!(biome_list(b, MobCategory::Ambient).iter().all(|s| s.mob.kind().is_none()), "{b:?}");
+            assert!(biome_list(b, MobCategory::Ambient).iter().all(|s| s.mob.kind() == Some(MobKind::Bat)), "{b:?}");
+            assert_eq!(biome_list(b, MobCategory::Ambient).is_empty(), b == Biome::DeepDark);
         }
     }
     #[test]

@@ -100,6 +100,7 @@ impl MobKind {
             | K::Mule
             | K::Llama
             | K::Camel => MobCategory::Creature,
+            K::Bat => MobCategory::Ambient,
             K::Villager | K::IronGolem | K::SnowGolem => MobCategory::Misc,
             K::Cod | K::Salmon | K::TropicalFish | K::Pufferfish => MobCategory::WaterAmbient,
             K::Squid | K::Dolphin => MobCategory::WaterCreature,

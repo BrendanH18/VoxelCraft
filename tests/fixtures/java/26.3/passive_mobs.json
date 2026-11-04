@@ -6,6 +6,11 @@
         "minecraft:mycelium"
       ]
     },
+    "tags/block/bats_spawnable_on": {
+      "values": [
+        "#minecraft:base_stone_overworld"
+      ]
+    },
     "loot_table/entities/mooshroom": {
       "type": "minecraft:entity",
       "pools": [
@@ -101,6 +106,10 @@
         }
       ],
       "random_sequence": "minecraft:entities/mooshroom"
+    },
+    "loot_table/entities/bat": {
+      "type": "minecraft:entity",
+      "random_sequence": "minecraft:entities/bat"
     },
     "loot_table/shearing/mooshroom/red": {
       "type": "minecraft:shearing",

@@ -584,6 +584,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
             part(PIG_HEAD, [0.0, 12.0, 8.0], head),
         ],
         MobKind::Mooshroom => passive::mooshroom(m),
+        MobKind::Bat => passive::bat(m, time),
         MobKind::Cow => parts![
             part(COW_BODY, [0.0; 3], Quat::IDENTITY),
             part(COW_LEG, [-4.0, 12.0, 6.0], rx(swing)),
@@ -1477,13 +1478,13 @@ mod tests {
                 (lo.min(p), hi.max(p))
             });
             // Swimming bodies and animated tentacles need not rest on a floor.
-            let floats = kind == MobKind::Blaze || kind.is_aquatic();
+            let floats = matches!(kind, MobKind::Blaze | MobKind::Bat) || kind.is_aquatic();
             assert!(lo.y.abs() < 1e-4 || floats && lo.y.abs() < 0.25, "{kind:?} feet at {}", lo.y);
             // The mooshroom cap layer extends above its cow collision box.
             let h = kind.shape().height as f32 + if kind == MobKind::Mooshroom { 0.4 } else { 0.0 };
             assert!((hi.y - h).abs() < 0.15, "{kind:?} top {} vs box {h}", hi.y);
             assert!(
-                hi.x > if kind.is_aquatic() { 10.05 } else { 10.25 },
+                hi.x > if kind.is_aquatic() || kind == MobKind::Bat { 10.05 } else { 10.25 },
                 "{kind:?} should extend forward along +X"
             );
             // Behind the camera: culled.

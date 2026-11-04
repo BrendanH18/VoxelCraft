@@ -964,7 +964,10 @@ impl Entities {
             .filter(|m| {
                 // Breedable mobs (natural axolotls and hoglins too) keep being saved
                 // although natural ones no longer require persistence.
-                (m.persistent || m.kind.never_distance_despawns() || m.kind.has_animal_state())
+                (m.persistent
+                    || m.kind == MobKind::Bat
+                    || m.kind.never_distance_despawns()
+                    || m.kind.has_animal_state())
                     && m.alive()
                     && m.villager.is_none()
                     && !matches!(m.kind, MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama)
@@ -1496,6 +1499,7 @@ fn save_mob(m: &Mob) -> Value {
         "age": m.age,
         "egg_timer": m.egg_timer,
         "sheared": m.sheared,
+        "bat_resting": m.bat.as_ref().map(|s| s.resting),
         "mooshroom": m.mooshroom.as_deref().map(super::mooshroom::State::save),
         "animal": m.animal.as_deref().map(super::animals::save),
         "identity": super::leash::save(m),
@@ -1557,6 +1561,9 @@ fn load_mob(v: &Value) -> Option<Mob> {
                 as f32;
     }
     m.sheared = v["sheared"].as_bool().unwrap_or(false);
+    if let Some(s) = &mut m.bat {
+        s.resting = v["bat_resting"].as_bool().unwrap_or(true);
+    }
     if let Some(s) = m.mooshroom.as_mut() {
         s.load(&v["mooshroom"]);
     }

@@ -15,6 +15,7 @@
 pub mod animals;
 pub mod aquatic;
 pub mod armor;
+pub mod bat;
 mod bell;
 mod bobber;
 pub mod category;

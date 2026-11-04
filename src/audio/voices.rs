@@ -42,6 +42,7 @@ pub enum Voice {
     Rabbit,
     Goat,
     Horse,
+    Bat,
 }
 
 /// What kind of sound a voice makes.
@@ -54,7 +55,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 30] = [
+    pub const ALL: [Voice; 31] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -85,6 +86,7 @@ impl Voice {
         Voice::Rabbit,
         Voice::Goat,
         Voice::Horse,
+        Voice::Bat,
     ];
 
     /// The category the creature plays in: `Monster`, `Ghast`, `Hoglin` and
@@ -105,6 +107,7 @@ impl Voice {
             | Voice::Hoglin
             | Voice::Guardian
             | Voice::Pillager => SoundSource::Hostile,
+            Voice::Bat => SoundSource::Neutral,
             Voice::Pig
             | Voice::Cow
             | Voice::Sheep
@@ -129,6 +132,7 @@ impl Voice {
         match self {
             Voice::Pig => "pig",
             Voice::Horse => "horse",
+            Voice::Bat => "bat",
             Voice::Cow => "cow",
             Voice::Sheep => "sheep",
             Voice::Chicken => "chicken",
@@ -237,6 +241,7 @@ const FLAT: &dyn Fn(f32) -> f32 = &|_| 1.0;
 
 pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
     match voice {
+        Voice::Bat => bat(call, rng),
         Voice::Pig => pig(call, rng),
         Voice::Horse => horse(call, rng),
         Voice::Cow => cow(call, rng),
@@ -872,4 +877,13 @@ fn horse(call: Call, rng: &mut Rng) -> Vec<f32> {
             breath: 0.12,
         },
     )
+}
+
+fn bat(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let len = if call == Call::Death { 0.32 } else { 0.18 };
+    let mut out = vec![0.0; samples(len)];
+    let pitch = rng.range(2100.0, 2700.0);
+    add_mode(&mut out, 0, Mode { freq: pitch, amp: 0.6, tau: 0.045, glide: -0.35, glide_tau: 0.09 });
+    add_mode(&mut out, samples(0.07), Mode { freq: pitch * 1.2, amp: 0.45, tau: 0.035, glide: -0.4, glide_tau: 0.06 });
+    dsp::finish(out, 0.5)
 }

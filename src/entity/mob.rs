@@ -170,6 +170,7 @@ pub enum MobKind {
     /// Desert-village mount: two seats, dashes, sits down now and then.
     Camel,
     Mooshroom,
+    Bat,
 }
 
 impl MobKind {
@@ -196,7 +197,7 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 55] = [
+    pub const ALL: [MobKind; 56] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -252,6 +253,7 @@ impl MobKind {
         MobKind::Llama,
         MobKind::Camel,
         MobKind::Mooshroom,
+        MobKind::Bat,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -312,6 +314,7 @@ impl MobKind {
             MobKind::Llama => "llama",
             MobKind::Camel => "camel",
             MobKind::Mooshroom => "mooshroom",
+            MobKind::Bat => "bat",
         }
     }
 
@@ -324,6 +327,7 @@ impl MobKind {
     /// Collision box dimensions for movement and spawn-space checks.
     pub fn shape(self) -> Shape {
         match self {
+            MobKind::Bat => Shape::new(0.25, 0.9),
             MobKind::Pig => Shape::new(0.45, 0.9),
             MobKind::Cow | MobKind::Mooshroom => Shape::new(0.45, 1.4),
             MobKind::Sheep => Shape::new(0.45, 1.3),
@@ -416,7 +420,7 @@ impl MobKind {
             MobKind::Turtle => 30.0,
             MobKind::Wolf => 8.0,
             MobKind::Fox | MobKind::Goat => 10.0,
-            MobKind::Parrot => 6.0,
+            MobKind::Parrot | MobKind::Bat => 6.0,
             MobKind::Rabbit => 3.0,
             MobKind::Horse | MobKind::Donkey | MobKind::Mule | MobKind::Llama => 30.0,
             MobKind::Camel => 32.0,
@@ -738,6 +742,7 @@ impl MobKind {
         const POPPY: Item = Item::from_block(Block::POPPY);
         match self {
             MobKind::Pig => &[(Item::RAW_PORKCHOP, 1, 3)],
+            MobKind::Bat => &[],
             MobKind::Cow => &[(Item::RAW_BEEF, 1, 3), (Item::LEATHER, 0, 2)],
             MobKind::Mooshroom => &[(Item::LEATHER, 0, 2), (Item::RAW_BEEF, 1, 3)],
             MobKind::Sheep => &[(WOOL, 1, 1), (Item::RAW_MUTTON, 1, 2)],
@@ -852,7 +857,7 @@ impl MobKind {
     /// Experience for killing one (Java's: 5 for monsters, 1-3 for animals).
     pub fn xp(self, rng: &mut Rng) -> u32 {
         match self {
-            MobKind::Villager | MobKind::IronGolem | MobKind::SnowGolem | MobKind::WanderingTrader => 0,
+            MobKind::Bat | MobKind::Villager | MobKind::IronGolem | MobKind::SnowGolem | MobKind::WanderingTrader => 0,
             MobKind::Blaze | MobKind::Guardian | MobKind::ElderGuardian => 10,
             k if k.is_hostile() => 5,
             _ => 1 + (rng.next_f32() * 3.0) as u32,
@@ -898,6 +903,7 @@ pub struct Mob {
     pub wool_color: crate::color::DyeColor,
     pub sheared: bool,
     pub mooshroom: Option<Box<super::mooshroom::State>>,
+    pub bat: Option<Box<super::bat::State>>,
     /// Witch: seconds left drinking, and the potion it is drinking.
     drink_left: f32,
     drinking: &'static str,
@@ -957,7 +963,7 @@ pub struct Mob {
     pub(super) player_hit_left: f32,
     light_timer: f32,
     /// Blocked horizontally on the last physics step.
-    blocked: bool,
+    pub(super) blocked: bool,
     /// Seconds left sidestepping around an obstacle while chasing, and
     /// which side (+1 / -1).
     detour: f32,
@@ -1070,6 +1076,7 @@ impl Mob {
             wool_color: crate::color::DyeColor::White,
             sheared: false,
             mooshroom: (kind == MobKind::Mooshroom).then(Box::default),
+            bat: (kind == MobKind::Bat).then(Box::default),
             drink_left: 0.0,
             drinking: "",
             age: 0,
@@ -1352,6 +1359,9 @@ impl Mob {
             self.aquatic.as_mut().unwrap().play_dead = 10.0;
         }
         self.hurt = HURT_TIME;
+        if let Some(s) = &mut self.bat {
+            s.resting = false;
+        }
         self.idle = 0.0;
         // Java's panic goals react to any `PANIC_CAUSES` damage, except wolves
         // (`PANIC_ENVIRONMENTAL_CAUSES` only: an attack doesn't scare them)
@@ -1436,7 +1446,10 @@ impl Mob {
         self.ambient_timer -= dtf;
         if self.ambient_timer <= 0.0 {
             self.ambient_timer = rng.range(7.0, 18.0);
-            if self.alive() && self.kind != MobKind::Creeper {
+            if self.alive()
+                && self.kind != MobKind::Creeper
+                && (self.bat.as_ref().is_none_or(|s| !s.resting) || rng.next_int(4) == 0)
+            {
                 let sound = MobSound::Ambient(self.kind);
                 events.push(EntityEvent::Sound { sound, pos: self.pos + DVec3::Y * (self.shape().height * 0.8) });
             }
@@ -1626,6 +1639,10 @@ impl Mob {
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> (Option<DVec3>, f64) {
+        if self.kind == MobKind::Bat {
+            self.bat_sense(world, ctx);
+            return (None, 0.0);
+        }
         if let Some(wish) = self.leash_think(dt, world, rng) {
             return wish;
         }

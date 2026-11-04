@@ -179,7 +179,7 @@ impl Mob {
         match self.kind {
             k if k.water_bound() => true,
             MobKind::Axolotl | MobKind::Turtle => self.touching_water(world),
-            MobKind::Ghast => true,
+            MobKind::Ghast | MobKind::Bat => true,
             MobKind::Blaze => self.alive() && (!self.on_ground || self.lift),
             _ => false,
         }
@@ -220,7 +220,7 @@ impl Mob {
     }
 
     /// `LivingEntity.travelInAir` with `input` and the mob's `getSpeed()`.
-    fn travel_in_air<W: BlockSource + ?Sized>(&mut self, world: &W, dm: &mut DVec3, input: DVec3) {
+    pub(crate) fn travel_in_air<W: BlockSource + ?Sized>(&mut self, world: &W, dm: &mut DVec3, input: DVec3) {
         let below = (self.pos - DVec3::Y * 0.5).floor().as_ivec3();
         let f = if self.on_ground { friction(world.block(below)) } else { 1.0 };
         // `getFrictionInfluencedSpeed`.
@@ -246,6 +246,10 @@ impl Mob {
         speed: f64,
         rng: &mut Rng,
     ) {
+        if self.kind == MobKind::Bat {
+            self.bat_tick(world, rng);
+            return;
+        }
         let mut dm = self.vel * TICK;
         let in_water = self.touching_water(world);
         self.in_water = in_water;

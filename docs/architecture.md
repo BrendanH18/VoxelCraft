@@ -492,11 +492,13 @@ Texture layers start at 2960, after v0.14's map sprites.
 | 11200–11263 | 1350–1359 | 3296–3327 | Integrator spare |
 
 Track 3 allocations (2026-11-04, passive-mobs): item **1300** is suspicious
-stew. No block states or block texture layers are consumed; the remaining
-track reservations stay unregistered. `MobKind::Mooshroom` (`mooshroom`)
-appends after Camel. Stew effect codes 1–11 in `Stack::entity_data` and
+stew. No block states or block texture layers are consumed; 11008–11135,
+1301–1329 and 3136–3263 remain reserved and unregistered. Original mooshroom
+and bat models use the procedural entity shader; stew reuses the existing
+mushroom-stew icon. Saturation appends to the dynamic effect-icon array.
+`MobKind::Mooshroom` (`mooshroom`) and `MobKind::Bat` (`bat`) append after
+Camel, in that order. Stew effect codes 1–11 in `Stack::entity_data` and
 `mooshroom.stew` are append-only component values; zero means no effect.
-The original procedural model and mushroom-stew icon use existing rendering.
 See [track evidence](verification/2026-11-04-v0.15-passive-mobs.md).
 
 New `MobKind` variants append after `Camel`; mob kinds are saved by name,

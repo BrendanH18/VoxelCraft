@@ -881,7 +881,14 @@ mod tests {
         for _ in 0..(seconds * 20.0) as u32 {
             let before = entities.mobs.len();
             entities.update_difficulty(0.05, world, ctx, crate::simulation::difficulty::Difficulty::Normal);
-            out.extend(entities.mobs.iter().skip(before).map(|m| (m.kind, m.pos.floor().as_ivec3())));
+            out.extend(
+                entities
+                    .mobs
+                    .iter()
+                    .skip(before)
+                    .filter(|m| m.kind.category() == MobCategory::Monster)
+                    .map(|m| (m.kind, m.pos.floor().as_ivec3())),
+            );
             // Keep caps open: count the spawns, then clear them away.
             entities.mobs.clear();
         }

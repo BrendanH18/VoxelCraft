@@ -31,6 +31,9 @@ pub(super) fn spot_ok<W: MobWorld + ?Sized>(
     let Some(at) = world.block(cell) else { return false };
     let Some(below) = world.block(cell - IVec3::Y) else { return false };
     let Some(above) = world.block(cell + IVec3::Y) else { return false };
+    if kind == MobKind::Bat {
+        return super::bat::spawn_ok(world, cell, rules.light, rng);
+    }
     if kind == MobKind::Strider {
         if !at.is_lava() {
             return false;

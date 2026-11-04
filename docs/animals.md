@@ -80,7 +80,7 @@ stop it despawning. Name tags come from dungeon chests and fishing
 treasure. Sources: [Lead](https://minecraft.wiki/w/Lead),
 [Name Tag](https://minecraft.wiki/w/Name_Tag).
 
-## Mooshrooms (v0.15, Java 26.3)
+## Mooshrooms and bats (v0.15, Java 26.3)
 
 Implemented, unverified: mooshrooms generate in mushroom fields on mycelium
 (weight 8, herds 4–8), share cow movement/goals and wheat breeding, and
@@ -97,4 +97,11 @@ colour and a supported small flower. It restores 6 hunger/7.2 saturation,
 can be eaten at full hunger, takes 32 ticks, returns a bowl and applies the
 flower effect. Components survive inventory/drop/network serialization.
 
-See the [verification record](verification/2026-11-04-v0.15-passive-mobs.md) for sources and remaining differences.
+Ambient bats have six health, no loot or XP, fly, and hang upside down on
+conducting ceilings. Nearby living players (within four blocks with line
+of sight), damage or removal of the ceiling wakes them. The pinned 26.3
+spawn predicate uses world-surface height, base stone below, a 1/2 gate,
+and raw brightness no higher than a random 0–3; it has no Halloween branch.
+
+See the [verification record](verification/2026-11-04-v0.15-passive-mobs.md)
+for sources, testing, missing flower inputs and presentation differences.

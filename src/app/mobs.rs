@@ -376,9 +376,9 @@ impl Game {
                         ),
                         MobSound::Fuse => (Sound::Fuse, 1.0),
                         MobSound::Bow => (Sound::Bow, 1.0),
-                        MobSound::Ambient(kind) => (Sound::Mob(voice(kind), Call::Ambient), 0.7),
-                        MobSound::Hurt(kind) => (Sound::Mob(voice(kind), Call::Hurt), 0.9),
-                        MobSound::Death(kind) => (Sound::Mob(voice(kind), Call::Death), 0.9),
+                        MobSound::Ambient(kind) => (Sound::Mob(voice(kind), Call::Ambient), 0.7 * mob_volume(kind)),
+                        MobSound::Hurt(kind) => (Sound::Mob(voice(kind), Call::Hurt), 0.9 * mob_volume(kind)),
+                        MobSound::Death(kind) => (Sound::Mob(voice(kind), Call::Death), 0.9 * mob_volume(kind)),
                         MobSound::Scream => (Sound::Scream, 1.0),
                         MobSound::Teleport => (Sound::Teleport, 0.8),
                         MobSound::Fireball => (Sound::Fireball, 0.9),
@@ -521,10 +521,16 @@ fn mob_sound_source(sound: MobSound) -> Option<SoundSource> {
     }
 }
 
+// Java Bat.getSoundVolume; samples stay normalized like the other voices.
+fn mob_volume(kind: MobKind) -> f32 {
+    if kind == MobKind::Bat { 0.1 } else { 1.0 }
+}
+
 fn voice(kind: MobKind) -> Voice {
     match kind {
         MobKind::Pig => Voice::Pig,
         MobKind::Cow | MobKind::Mooshroom => Voice::Cow,
+        MobKind::Bat => Voice::Bat,
         MobKind::Sheep => Voice::Sheep,
         MobKind::Chicken => Voice::Chicken,
         MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombieVillager => Voice::Zombie,

@@ -30,13 +30,10 @@ impl Entities {
             world.world_surface(c.x * 16 + 8, c.y * 16 + 8).is_some()
         });
         let enabled = MobCategory::SPAWNING.map(|c| {
-            // Bats are the whole ambient list and aren't in VoxelCraft yet; the
-            // pass would only spend biome lookups (see `spawn_lists` tests).
-            c != MobCategory::Ambient
-                // `spawnEnemies` is spawn_mobs && spawn_monsters; Peaceful monsters
-                // fail their own spawn rules.
-                && (c.friendly()
-                    || (self.monster_spawning && difficulty != crate::simulation::difficulty::Difficulty::Peaceful))
+            // `spawnEnemies` is spawn_mobs && spawn_monsters; Peaceful
+            // monsters fail their own spawn rules. Ambient bats also run here.
+            (c.friendly()
+                || (self.monster_spawning && difficulty != crate::simulation::difficulty::Difficulty::Peaceful))
                 && (!c.persistent() || self.spawn_ticks.is_multiple_of(400))
                 && state.global_room(c)
         });
