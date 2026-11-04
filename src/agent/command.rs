@@ -320,6 +320,8 @@ pub fn tab_complete(input: &str) -> Option<String> {
                 "monument",
                 "trail_ruins",
                 "nether_fossil",
+                "ruined_portal",
+                "buried_treasure",
             ],
             partial,
         )?,
@@ -524,6 +526,8 @@ impl Command {
             ["locate", "village"] => Self::LocateStructure("village".into()),
             ["locate", "trail_ruins"] => Self::LocateStructure("trail_ruins".into()),
             ["locate", "nether_fossil"] => Self::LocateStructure("nether_fossil".into()),
+            ["locate", "ruined_portal"] => Self::LocateStructure("ruined_portal".into()),
+            ["locate", "buried_treasure"] => Self::LocateStructure("buried_treasure".into()),
             ["locate", "structure", name] => Self::LocateStructure(name.to_string()),
             ["locate", "biome", name] => match crate::world::nether_biome::NetherBiome::from_name(name) {
                 Some(nether) => Self::LocateNetherBiome(nether),

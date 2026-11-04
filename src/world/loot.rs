@@ -362,6 +362,8 @@ fn uniform_float(v: &serde_json::Value, rng: &mut impl Random) -> f32 {
 fn enchant_options(v: &serde_json::Value) -> Vec<&str> {
     if let Some(options) = v.as_array() {
         options.iter().filter_map(|e| e.as_str().map(|s| s.trim_start_matches("minecraft:"))).collect()
+    } else if let Some(single) = v.as_str().filter(|s| !s.starts_with('#')) {
+        vec![single.trim_start_matches("minecraft:")]
     } else {
         facts()["enchantment_order"].as_array().unwrap().iter().map(|s| s.as_str().unwrap()).collect()
     }
@@ -369,11 +371,13 @@ fn enchant_options(v: &serde_json::Value) -> Vec<&str> {
 fn contains(v: &serde_json::Value, name: &str) -> bool {
     v.as_array().is_some_and(|a| a.iter().any(|s| s.as_str() == Some(name)))
 }
+/// Enchantments the game lacks (Soul Speed) leave the item as it was, so a
+/// book stays a plain book rather than an empty enchanted one.
 fn apply_enchantment(stack: &mut Stack, name: &str, level: u8) {
-    if stack.item == crate::item::Item::BOOK {
-        stack.item = crate::item::Item::ENCHANTED_BOOK;
-    }
     if let Some(e) = crate::enchant::Enchantment::from_name(name) {
+        if stack.item == crate::item::Item::BOOK {
+            stack.item = crate::item::Item::ENCHANTED_BOOK;
+        }
         stack.enchants.set(e, level);
     }
 }
@@ -701,5 +705,13 @@ mod pool_modifier_tests {
         let potion = crate::potion::Potion::from_id("water_breathing").unwrap();
         let chest = table(42, "buried_treasure");
         assert!(chest.slots.iter().flatten().any(|s| s.item == crate::item::Item::potion(potion)));
+    }
+    #[test]
+    fn a_single_enchantment_option_is_not_the_random_loot_tag() {
+        assert_eq!(enchant_options(&serde_json::json!("minecraft:soul_speed")), ["soul_speed"]);
+        assert!(enchant_options(&serde_json::json!("#minecraft:on_random_loot")).len() > 1);
+        let mut book = Stack::new(crate::item::Item::BOOK, 1);
+        apply_enchantment(&mut book, "soul_speed", 1);
+        assert_eq!(book.item, crate::item::Item::BOOK);
     }
 }
