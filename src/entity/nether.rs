@@ -1490,9 +1490,6 @@ fn save_mob(m: &Mob) -> Value {
         "uid": m.uid,
         "riding": m.riding,
         "mount": m.mount.as_ref().map(|s|s.save()),
-        "water_conversion": m.water_conversion.save(),
-        "lightning_charged": m.lightning_charged,
-        "undead_mount": m.undead_mount.save(),
         "variant": m.aquatic.as_ref().map(|a| a.variant),
         "color": m.wool_color as u8,
         "kind": m.kind.name(),
@@ -1508,8 +1505,6 @@ fn save_mob(m: &Mob) -> Value {
         "animal": m.animal.as_deref().map(super::animals::save),
         "identity": super::leash::save(m),
         "armor": armor,
-        "armor_glint": m.armor_glint,
-        "armor_materials": m.armor.map(|a| a.map(|k| k as u8)),
         "weapon": n.map_or("none", |n| n.weapon.name()),
         "held": m.held.map(Weapon::name),
         "offhand": n.and_then(|n| n.offhand).map(|s| crate::inventory::stack_to_string(Some(s))),
@@ -1523,6 +1518,23 @@ fn save_mob(m: &Mob) -> Value {
         "home": n.and_then(|n| n.home).map(|h| h.to_array()),
         "celebrate": n.filter(|n| n.celebrate_left > 0.0).map(|n| json!([n.celebrate_left, n.celebrate_at.to_array(), n.dancing])),
     });
+    // Optional additions preserve legacy records byte-for-byte when absent.
+    if m.water_conversion != super::lightning::WaterConversion::default() {
+        v["water_conversion"] = m.water_conversion.save();
+    }
+    if m.lightning_charged {
+        v["lightning_charged"] = json!(true);
+    }
+    if m.undead_mount != super::undead_mounts::State::default() {
+        v["undead_mount"] = m.undead_mount.save();
+    }
+    if m.armor_glint != 0 {
+        v["armor_glint"] = json!(m.armor_glint);
+    }
+    // Legacy true already means gold. Only other materials need new data.
+    if m.armor.iter().flatten().any(|k| *k != super::armor::ArmorKind::Gold) {
+        v["armor_materials"] = json!(m.armor.map(|a| a.map(|k| k as u8)));
+    }
     // Written only when set, so other mobs save as before: `Mob.homePosition`
     // and `homeRadius`, and the dolphin's `GotFish` and main hand.
     if let Some((p, r)) = m.restrict {
