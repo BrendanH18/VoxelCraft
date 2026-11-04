@@ -147,10 +147,15 @@ impl super::Entities {
                             ctx.players
                                 .iter()
                                 .filter(|p| {
-                                    world.sky_exposed(p.pos.floor().as_ivec3())
-                                        && (p.pos.x - x as f64).abs() < 4.
-                                        && (p.pos.z - z as f64).abs() < 4.
-                                        && p.pos.y + 1.8 > (h - 2) as f64
+                                    let (lo, hi) = p.shape.aabb(p.pos);
+                                    p.alive
+                                        && !p.spectator
+                                        && world.sky_exposed(p.pos.floor().as_ivec3())
+                                        && hi.x > (x - 3) as f64
+                                        && lo.x < (x + 4) as f64
+                                        && hi.z > (z - 3) as f64
+                                        && lo.z < (z + 4) as f64
+                                        && hi.y > (h - 2) as f64
                                 })
                                 .map(|p| p.pos.floor().as_ivec3()),
                         );
@@ -216,6 +221,17 @@ impl super::Entities {
                         {
                             continue;
                         }
+                        if m.kind == MobKind::Villager
+                            && world.rules.difficulty != 0
+                            && let Some(v) = &m.villager
+                        {
+                            if let Some(p) = v.home {
+                                self.claimed_beds.remove(&p);
+                            }
+                            if let Some(p) = v.job {
+                                self.claimed_jobs.remove(&p);
+                            }
+                        }
                         if m.thunder_transform(bolt.id, world.rules.difficulty) {
                             continue;
                         }
@@ -226,7 +242,7 @@ impl super::Entities {
                                     kind: m.kind,
                                     pos: m.pos,
                                     burning: false,
-                                    player_kill: false,
+                                    player_kill: m.player_hit_left > 0.,
                                     looting: 0,
                                 });
                             }
@@ -237,7 +253,7 @@ impl super::Entities {
                                     kind: m.kind,
                                     pos: m.pos,
                                     burning: m.burning,
-                                    player_kill: false,
+                                    player_kill: m.player_hit_left > 0.,
                                     looting: 0,
                                 });
                             }
@@ -249,9 +265,11 @@ impl super::Entities {
                         }
                     }
                     for p in &ctx.players {
+                        let (lo, hi) = p.shape.aabb(p.pos);
                         if p.targetable
-                            && (p.pos + DVec3::new(0.3, 1.8, 0.3)).cmpgt(bolt.pos - DVec3::splat(3.)).all()
-                            && (p.pos - DVec3::new(0.3, 0., 0.3)).cmplt(bolt.pos + DVec3::new(3., 9., 3.)).all()
+                            && p.alive
+                            && hi.cmpgt(bolt.pos - DVec3::splat(3.)).all()
+                            && lo.cmplt(bolt.pos + DVec3::new(3., 9., 3.)).all()
                         {
                             self.pending_sounds.push(EntityEvent::PlayerLightning { player: p.id });
                             self.pending_sounds.push(EntityEvent::Ignite { player: p.id, secs: 8. });
@@ -342,12 +360,19 @@ mod bolt_tests {
             e.spawn(kind, p);
         }
         e.mobs[2].name = crate::inventory::StackName::new("Storm witness").unwrap();
+        let home = IVec3::new(1, 140, 1);
+        let job = home + IVec3::X;
+        e.mobs[2].villager.as_mut().unwrap().home = Some(home);
+        e.mobs[2].villager.as_mut().unwrap().job = Some(job);
+        e.claimed_beds.insert(home);
+        e.claimed_jobs.insert(job);
         e.summon_lightning(p, false);
         e.tick_lightning(0.05, &mut w, &ctx(), false);
         assert!(e.mobs[0].lightning_charged);
         assert_eq!(e.mobs[0].health, 15.);
         assert_eq!(e.mobs[1].kind, MobKind::ZombifiedPiglin);
         assert_eq!(e.mobs[2].kind, MobKind::Witch);
+        assert!(!e.claimed_beds.contains(&home) && !e.claimed_jobs.contains(&job));
         assert!(!e.mobs[3].alive());
         assert_eq!(e.items.iter().filter(|i| i.stack.item == crate::item::Item::BOWL).count(), 1);
         let mut restored = Entities::new(264);

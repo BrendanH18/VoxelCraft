@@ -661,7 +661,10 @@ impl MobKind {
     }
 
     pub(super) fn burns_in_sun(self) -> bool {
-        matches!(self, MobKind::Zombie | MobKind::Drowned | MobKind::ZombieVillager | MobKind::Skeleton)
+        matches!(
+            self,
+            MobKind::Zombie | MobKind::Drowned | MobKind::ZombieVillager | MobKind::Skeleton | MobKind::ZombieHorse
+        )
     }
 
     fn wander_speed(self) -> f64 {
@@ -2715,7 +2718,10 @@ impl Mob {
         let head = (self.pos + DVec3::new(0.0, self.shape().height - 0.1, 0.0)).floor().as_ivec3();
         let in_lava = physics::touches_block(world, self.pos, self.shape(), Block::is_lava);
         let in_fire = physics::touches_block(world, self.pos, self.shape(), Block::is_fire);
+        let body_protected =
+            self.kind == MobKind::ZombieHorse && self.mount.as_ref().is_some_and(|s| s.slots[1].is_some());
         let sunburn = self.kind.burns_in_sun()
+            && !body_protected
             && ctx.daylight > BURN_DAYLIGHT
             && !ctx.raining
             && !self.in_water

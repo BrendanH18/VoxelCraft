@@ -266,4 +266,19 @@ mod tests {
             Some((3., 3, 0))
         );
     }
+    #[test]
+    fn zombie_horse_body_armor_protects_against_daylight() {
+        for protected in [false, true] {
+            let mut m = Mob::new(MobKind::ZombieHorse, DVec3::new(5., 140., 5.), 0.);
+            if protected {
+                m.mount.as_mut().unwrap().slots[1] =
+                    Some(crate::inventory::Stack::new(crate::item::Item::IRON_HORSE_ARMOR, 1));
+            }
+            let mut c = ctx(DVec3::ZERO);
+            c.daylight = 1.;
+            c.raining = false;
+            m.update(0.05, &Grid::flat(140), &c, &mut super::super::Rng::new(263), &mut Vec::new());
+            assert_eq!(m.burning, !protected, "body protection: {protected}");
+        }
+    }
 }
