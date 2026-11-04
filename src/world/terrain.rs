@@ -237,6 +237,24 @@ impl ChunkColumns {
     }
 }
 
+/// Deterministic base terrain used by generation 3 structure placement.
+/// Heights are top block coordinates, as Java's getBaseHeight minus one.
+pub(super) struct StructureColumn {
+    pub min_y: i32,
+    pub blocks: Vec<Block>,
+}
+impl StructureColumn {
+    pub fn get(&self, y: i32) -> Block {
+        usize::try_from(y - self.min_y).ok().and_then(|i| self.blocks.get(i)).copied().unwrap_or(Block::AIR)
+    }
+    pub fn top(&self, ocean_floor: bool) -> i32 {
+        self.blocks
+            .iter()
+            .rposition(|b| *b != Block::AIR && (!ocean_floor || b.is_solid()))
+            .map_or(self.min_y - 1, |i| self.min_y + i as i32)
+    }
+}
+
 pub struct Generator {
     pub seed: u64,
     pub dimension: Dimension,
@@ -256,6 +274,8 @@ pub struct Generator {
     pub villages: super::village::Villages,
     /// Temples, huts, igloos, outposts, shipwrecks, ruins and monuments.
     pub temples: super::temples::Temples,
+    pub ruined_portals: super::ruined_portal::RuinedPortals,
+    pub buried_treasure: super::buried_treasure::BuriedTreasure,
     columns: Mutex<FxHashMap<IVec2, Arc<ChunkColumns>>>,
     climate: ClimateNoise,
     caves: Caves,
@@ -307,12 +327,18 @@ impl Generator {
             mineshafts: super::mineshaft::Mineshafts::new(seed),
             villages: super::village::Villages::new(seed),
             temples: super::temples::Temples::new(seed),
+            ruined_portals: super::ruined_portal::RuinedPortals::new(seed),
+            buried_treasure: super::buried_treasure::BuriedTreasure::new(seed),
             columns: Mutex::new(FxHashMap::default()),
             climate: ClimateNoise::new(seed),
             caves: Caves::new(seed),
             patch: p(31),
             feature: p(32),
         }
+    }
+
+    pub(super) fn structure_column(&self, x: i32, z: i32) -> StructureColumn {
+        if let Some(n) = &self.nether { n.structure_column(x, z) } else { self.structure_column_v2(x, z) }
     }
 
     /// The End's layout (pillars, exit portal), in the End only.
@@ -661,7 +687,7 @@ impl Generator {
     /// Block entities generated structures put in the chunk at `cpos`
     /// (fortress spawners and loot chests).
     pub fn structure_features(&self, cpos: IVec3) -> Vec<(IVec3, super::fortress::Feature)> {
-        match (&self.nether, self.dimension) {
+        let mut features = match (&self.nether, self.dimension) {
             (Some(n), _) => n.fortresses.features(cpos),
             (None, Dimension::Overworld) => {
                 let mut features = self.strongholds.features(cpos);
@@ -672,7 +698,12 @@ impl Generator {
                 features
             }
             _ => Vec::new(),
+        };
+        if self.generation >= Generation::V3 {
+            features.extend(self.ruined_portals.features(self, cpos));
+            features.extend(self.buried_treasure.features(self, cpos));
         }
+        features
     }
 
     /// Whether `p` lies inside a generated structure where its own mobs
@@ -723,11 +754,32 @@ impl Generator {
     }
 
     pub fn generate(&self, cpos: IVec3) -> ChunkData {
+        self.generate_terrain(cpos, true, true)
+    }
+
+    /// A pure terrain snapshot before buried treasure. Recomputed locally,
+    /// never read from loaded chunks; treasure's scan sees caves and ores too.
+    pub(super) fn treasure_terrain(&self, cpos: IVec3) -> ChunkData {
+        self.generate_terrain(cpos, true, false)
+    }
+
+    /// Terrain before generation 3 portals and treasure, for processors that
+    /// inspect existing blocks without depending on loaded neighbouring chunks.
+    pub(super) fn portal_terrain(&self, cpos: IVec3) -> ChunkData {
+        self.generate_terrain(cpos, false, false)
+    }
+
+    fn generate_terrain(&self, cpos: IVec3, portals: bool, treasure: bool) -> ChunkData {
         if let Some(end) = &self.end {
             return end.generate(cpos);
         }
         if let Some(nether) = &self.nether {
-            return nether.generate(cpos);
+            let chunk = nether.generate(cpos);
+            return if self.generation >= Generation::V3 && portals {
+                self.ruined_portals.paint_generated(self, chunk, cpos)
+            } else {
+                chunk
+            };
         }
         let base = cpos * CHUNK_SIZE_I;
         let columns = self.chunk_columns(IVec2::new(cpos.x, cpos.z));
@@ -798,6 +850,14 @@ impl Generator {
         self.mineshafts.paint(&mut blocks, base);
         self.villages.paint(self, &mut blocks, base);
         self.temples.paint(self, &mut blocks, base);
+        if self.generation >= Generation::V3 {
+            if portals {
+                self.ruined_portals.paint(self, &mut blocks, base);
+            }
+            if treasure {
+                self.buried_treasure.paint(self, &mut blocks, base);
+            }
+        }
         // GEN-02 (generation 2): deep dark, glow lichen and springs, after
         // the structures like Java's decoration steps.
         if self.generation >= Generation::V2 {

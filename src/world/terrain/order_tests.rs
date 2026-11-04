@@ -61,6 +61,17 @@ fn corpus(generation: Generation) -> Vec<IVec3> {
             chunks.extend(around(at, 1));
         }
     }
+    if generation >= Generation::V3 {
+        chunks.extend(around(g.ruined_portals.nearest(&g, IVec3::ZERO, 2).expect("a ruined portal"), 1));
+        let treasure = g.buried_treasure.nearest_buried_treasure(&g, IVec3::ZERO, 400).expect("buried treasure");
+        let treasure = g
+            .buried_treasure
+            .blocks(&g, IVec2::new(treasure.x.div_euclid(16), treasure.z.div_euclid(16)))
+            .last()
+            .unwrap()
+            .0;
+        chunks.extend(around(treasure, 0));
+    }
     chunks.extend(around(g.mineshafts.nearest(IVec3::ZERO).expect("a mineshaft"), 1));
     chunks.retain(|p| rows.contains(&p.y));
     chunks.sort_by_key(|p| (p.z, p.x, p.y));
@@ -95,6 +106,8 @@ fn evict(g: &mut Generator, generation: Generation, step: usize) {
         // Temples, mineshafts and dungeons, keeping terrain and villages.
         3 => {
             g.temples = crate::world::temples::Temples::new(SEED);
+            g.ruined_portals = crate::world::ruined_portal::RuinedPortals::new(SEED);
+            g.buried_treasure = crate::world::buried_treasure::BuriedTreasure::new(SEED);
             g.mineshafts = crate::world::mineshaft::Mineshafts::new(SEED);
             g.dungeons = crate::world::dungeon::Dungeons::new(SEED);
         }
@@ -117,6 +130,16 @@ fn generation_ignores_order_threads_and_caches(generation: Generation) {
     assert!(has(|f| matches!(f, Feature::TempleChest(..))), "{generation:?}: no temple-family chest");
     assert!(has(|f| matches!(f, Feature::DungeonChest(_))), "{generation:?}: no dungeon");
     assert!(has(|f| matches!(f, Feature::MineshaftChest(_))), "{generation:?}: no mineshaft chest");
+    if generation >= Generation::V3 {
+        assert!(
+            has(|f| matches!(f, Feature::TempleChest(_, crate::world::temples::LootTable::RuinedPortal))),
+            "no ruined portal chest"
+        );
+        assert!(
+            has(|f| matches!(f, Feature::TempleChest(_, crate::world::temples::LootTable::BuriedTreasure))),
+            "no buried treasure"
+        );
+    }
     let mut failures = Vec::new();
 
     // (b) Shuffled, on another fresh generator.
@@ -183,4 +206,32 @@ fn generation_2_ignores_order_threads_and_caches() {
 #[test]
 fn generation_3_ignores_order_threads_and_caches() {
     generation_ignores_order_threads_and_caches(Generation::V3);
+}
+
+/// Nether portals cross both horizontal and vertical chunk borders; their base
+/// columns and processor decisions must remain pure alongside Nether caches.
+#[test]
+fn generation_3_nether_portals_ignore_order_threads_and_caches() {
+    let fresh = || Generator::with_generation(SEED, Dimension::Nether, Generation::V3);
+    let g = fresh();
+    let at = g.ruined_portals.nearest(&g, IVec3::ZERO, 1).unwrap();
+    let chunks: Vec<_> = around(at, 1).filter(|p| Dimension::Nether.chunk_rows().contains(&p.y)).collect();
+    let reference: Vec<_> = chunks.iter().map(|&p| (g.generate(p), g.structure_features(p))).collect();
+    let g = fresh();
+    for (p, r) in chunks.iter().zip(&reference).rev() {
+        assert_eq!(differs(&g, *p, r, "reverse"), None);
+    }
+    std::thread::scope(|s| {
+        for t in 0..THREADS {
+            let (g, chunks, reference) = (&g, &chunks, &reference);
+            s.spawn(move || {
+                for i in (t..chunks.len()).step_by(THREADS) {
+                    assert_eq!(differs(g, chunks[i], &reference[i], "parallel Nether"), None);
+                }
+            });
+        }
+    });
+    for (p, r) in chunks.iter().zip(&reference) {
+        assert_eq!(differs(&fresh(), *p, r, "cold Nether"), None);
+    }
 }

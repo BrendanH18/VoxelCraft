@@ -22,6 +22,7 @@ pub mod biome_zoom;
 pub mod block;
 pub mod brewing;
 pub mod bubble;
+pub mod buried_treasure;
 pub mod cave_blocks;
 pub mod caves;
 pub mod chest;
@@ -73,6 +74,7 @@ pub mod rails;
 pub mod redstone;
 pub mod redstone_blocks;
 mod redstone_contacts;
+pub mod ruined_portal;
 #[cfg(test)]
 mod rule_tests;
 pub mod scaffolding;

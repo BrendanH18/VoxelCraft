@@ -139,7 +139,10 @@ fn generations(seed: u64, r: i32) {
     let peaks = latest.nearest_biome(glam::IVec2::ZERO, Biome::JaggedPeaks, 20_000);
     let peaks = peaks.map(|p| glam::IVec2::new(p.x >> 5, p.z >> 5));
     let village = latest.villages.nearest(&latest, IVec3::ZERO).map(|p| glam::IVec2::new(p.x >> 5, p.z >> 5));
-    for (place, centre) in [("origin", Some(glam::IVec2::ZERO)), ("mountains", peaks), ("village", village)] {
+    let portal = latest.ruined_portals.nearest(&latest, IVec3::ZERO, 2).map(|p| glam::IVec2::new(p.x >> 5, p.z >> 5));
+    for (place, centre) in
+        [("origin", Some(glam::IVec2::ZERO)), ("mountains", peaks), ("village", village), ("ruined portal", portal)]
+    {
         let Some(centre) = centre else { continue };
         for generation in [Generation::V1, Generation::V2, Generation::V3] {
             let generator = Generator::with_generation(seed, Dimension::Overworld, generation);

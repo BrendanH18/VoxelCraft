@@ -15,7 +15,7 @@ from extract_java_item_fixtures import SERVER_SHA1
 
 TABLES = ('desert_pyramid', 'jungle_temple', 'igloo_chest', 'pillager_outpost',
           'shipwreck_supply', 'shipwreck_treasure', 'shipwreck_map',
-          'underwater_ruin_small', 'underwater_ruin_big')
+          'underwater_ruin_small', 'underwater_ruin_big', 'ruined_portal', 'buried_treasure')
 
 
 def bounds(value):

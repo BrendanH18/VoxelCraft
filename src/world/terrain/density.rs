@@ -529,6 +529,39 @@ impl Generator {
         }
     }
 
+    /// Base terrain before carvers, decorations or structures. Uses the same
+    /// masks and surface rules as `fill_v2`, independent of generated chunks.
+    pub(in crate::world) fn structure_column_v2(&self, x: i32, z: i32) -> super::StructureColumn {
+        let columns = self.chunk_columns(IVec2::new(x.div_euclid(CHUNK_SIZE_I), z.div_euclid(CHUNK_SIZE_I)));
+        let relief = columns.relief.as_deref().expect("generation 3 columns");
+        let (lx, lz) = (x.rem_euclid(CHUNK_SIZE_I), z.rem_euclid(CHUNK_SIZE_I));
+        let col = *columns.at(lx as usize, lz as usize);
+        let mut blocks = Vec::with_capacity((WORLD_MAX_Y - WORLD_MIN_Y) as usize);
+        for base_y in (WORLD_MIN_Y..WORLD_MAX_Y).step_by(CHUNK_SIZE) {
+            let mask = relief.mask(lx, lz, base_y - MASK_BELOW);
+            for dy in 0..CHUNK_SIZE_I {
+                let y = base_y + dy;
+                let bit = MASK_BELOW as u32 + dy as u32;
+                let p = IVec3::new(x, y, z);
+                let b = if mask >> bit & 1 == 0 {
+                    if y >= SEA_LEVEL {
+                        Block::AIR
+                    } else if y == SEA_LEVEL - 1 && col.frozen && self.ice_sheet(x, z, col.biome) {
+                        Block::ICE
+                    } else {
+                        Block::WATER
+                    }
+                } else if self.bedrock_at(p) {
+                    Block::BEDROCK
+                } else {
+                    self.solid_block(relief, col, (lx, lz), p, open_above(mask, bit), mask >> (bit - 1) & 1 == 0)
+                };
+                blocks.push(b);
+            }
+        }
+        super::StructureColumn { min_y: WORLD_MIN_Y, blocks }
+    }
+
     /// Generation 2's [`Generator::natural_block`].
     pub(super) fn natural_block_v2(&self, p: IVec3, nodes: &mut FxHashMap<IVec3, [f32; 7]>) -> Block {
         let columns = self.chunk_columns(IVec2::new(p.x.div_euclid(CHUNK_SIZE_I), p.z.div_euclid(CHUNK_SIZE_I)));
@@ -562,6 +595,30 @@ mod tests {
 
     fn v2(seed: u64) -> Generator {
         Generator::with_generation(seed, Dimension::Overworld, Generation::V2)
+    }
+
+    #[test]
+    fn structure_columns_match_base_fill_including_surface_rules() {
+        let g = Generator::new(42);
+        for (x, z) in [(0, 0), (-33, 31), (200, -400), (1000, 1000)] {
+            let col = g.structure_column_v2(x, z);
+            let columns = g.chunk_columns(IVec2::new(x.div_euclid(CHUNK_SIZE_I), z.div_euclid(CHUNK_SIZE_I)));
+            for cy in Dimension::Overworld.chunk_rows() {
+                let mut blocks = Box::new([Block::AIR; CHUNK_VOLUME]);
+                let base = IVec3::new(x.div_euclid(CHUNK_SIZE_I), cy, z.div_euclid(CHUNK_SIZE_I)) * CHUNK_SIZE_I;
+                g.fill_v2(&mut blocks, base, &columns);
+                for dy in 0..CHUNK_SIZE_I {
+                    assert_eq!(
+                        col.get(base.y + dy),
+                        blocks[index(
+                            x.rem_euclid(CHUNK_SIZE_I) as usize,
+                            dy as usize,
+                            z.rem_euclid(CHUNK_SIZE_I) as usize
+                        )]
+                    );
+                }
+            }
+        }
     }
 
     /// A mountainous chunk column for `g`, near the origin.
