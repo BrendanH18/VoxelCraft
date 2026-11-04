@@ -1499,8 +1499,6 @@ fn save_mob(m: &Mob) -> Value {
         "age": m.age,
         "egg_timer": m.egg_timer,
         "sheared": m.sheared,
-        "bat_resting": m.bat.as_ref().map(|s| s.resting),
-        "mooshroom": m.mooshroom.as_deref().map(super::mooshroom::State::save),
         "animal": m.animal.as_deref().map(super::animals::save),
         "identity": super::leash::save(m),
         "armor": armor,
@@ -1517,6 +1515,12 @@ fn save_mob(m: &Mob) -> Value {
         "home": n.and_then(|n| n.home).map(|h| h.to_array()),
         "celebrate": n.filter(|n| n.celebrate_left > 0.0).map(|n| json!([n.celebrate_left, n.celebrate_at.to_array(), n.dancing])),
     });
+    if let Some(s) = &m.bat {
+        v["bat_resting"] = json!(s.resting);
+    }
+    if let Some(s) = &m.mooshroom {
+        v["mooshroom"] = s.save();
+    }
     // Written only when set, so other mobs save as before: `Mob.homePosition`
     // and `homeRadius`, and the dolphin's `GotFish` and main hand.
     if let Some((p, r)) = m.restrict {

@@ -25,7 +25,6 @@ impl Mob {
         let mut v = json!({
             "wool": DyeColor::ALL.iter().position(|c| *c == self.wool_color).unwrap_or(0),
             "sheared": self.sheared,
-            "bat_resting": self.bat.as_ref().map(|s| s.resting),
             "armor": armor,
             "glint": self.armor_glint,
             "charged": self.charged,
@@ -33,6 +32,9 @@ impl Mob {
             "burning": self.burning,
             "attack": self.attack_anim,
         });
+        if let Some(s) = &self.bat {
+            v["bat_resting"] = json!(s.resting);
+        }
         if let Some(s) = &self.mooshroom {
             v["mooshroom_brown"] = json!(s.brown);
         }
