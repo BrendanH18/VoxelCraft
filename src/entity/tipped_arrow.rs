@@ -6,13 +6,29 @@ use glam::DVec3;
 
 /// Adapter transaction state for physical arrow damage and its potion effects.
 /// Feed actual damage accepted by the player, then the matching event markers.
-pub struct ArrowEffectGate { last:Option<(PlayerId,bool)>, allowed:bool }
-impl Default for ArrowEffectGate { fn default()->Self {Self{last:None,allowed:true}} }
+pub struct ArrowEffectGate {
+    last: Option<(PlayerId, bool)>,
+    allowed: bool,
+}
+impl Default for ArrowEffectGate {
+    fn default() -> Self {
+        Self { last: None, allowed: true }
+    }
+}
 impl ArrowEffectGate {
-    pub fn record_hit(&mut self,player:PlayerId,accepted:f32){self.last=Some((player,accepted>0.));}
-    pub fn begin(&mut self,player:PlayerId){self.allowed=self.last==Some((player,true));}
-    pub fn end(&mut self){self.allowed=true;self.last=None;}
-    pub fn allows(&self)->bool{self.allowed}
+    pub fn record_hit(&mut self, player: PlayerId, accepted: f32) {
+        self.last = Some((player, accepted > 0.));
+    }
+    pub fn begin(&mut self, player: PlayerId) {
+        self.allowed = self.last == Some((player, true));
+    }
+    pub fn end(&mut self) {
+        self.allowed = true;
+        self.last = None;
+    }
+    pub fn allows(&self) -> bool {
+        self.allowed
+    }
 }
 
 impl Stack {
@@ -189,28 +205,54 @@ mod tests {
         assert_eq!(m.health, 4.);
     }
     #[test]
-    fn a_shield_blocks_the_tipped_effect_with_the_arrow(){
-        for shield in [false,true] {
-            let mut victim=crate::agent::Agent::new(DVec3::ZERO);victim.session.id=PlayerId(7);
+    fn a_shield_blocks_the_tipped_effect_with_the_arrow() {
+        for shield in [false, true] {
+            let mut victim = crate::agent::Agent::new(DVec3::ZERO);
+            victim.session.id = PlayerId(7);
             if shield {
-                victim.session.inventory.offhand=Some(Stack::new(Item::SHIELD,1));
-                assert!(victim.session.start_blocking(0));for _ in 0..5{victim.session.tick_blocking(0,true);}
+                victim.session.inventory.offhand = Some(Stack::new(Item::SHIELD, 1));
+                assert!(victim.session.start_blocking(0));
+                for _ in 0..5 {
+                    victim.session.tick_blocking(0, true);
+                }
             }
-            let mut arrow=Arrow::aimed(DVec3::new(3.,1.2,0.),DVec3::new(0.,1.2,0.),"was shot by a bogged",&mut Rng::new(9));
-            arrow.custom_effect=MobKind::Bogged.arrow_effect();
-            let mut c=ctx();c.players=vec![Target::new(PlayerId(7),DVec3::ZERO,true)];
-            let mut events=Vec::new();for _ in 0..40 {if !arrow.update(0.05,&Grid::flat(0),&c,&mut [],&[],None,&mut Rng::new(7),&mut events){break;}}
-            let mut gate=ArrowEffectGate::default();let mut entities=Entities::new(1);
-            for event in events {match event {
-                EntityEvent::PlayerHit{player,damage,java:Some(hit),cause,..}=>gate.record_hit(player,victim.hurt_knocked(damage,cause,&hit,&mut entities)),
-                EntityEvent::ArrowEffectsStart{player}=>gate.begin(player),
-                EntityEvent::ArrowEffectsEnd=>gate.end(),
-                EntityEvent::PlayerEffect{effect,amplifier,ticks,..} if gate.allows()=>{victim.session.vitals.apply_effect(effect,amplifier,ticks);},
-                _=>{}
-            }}
-            assert_eq!(victim.session.vitals.effects.has(Effect::Poison),!shield);
-            if shield {assert_eq!(victim.session.vitals.health,20.);assert!(victim.session.inventory.offhand.unwrap().damage>0);}else{assert!(victim.session.vitals.health<20.);}
+            let mut arrow = Arrow::aimed(
+                DVec3::new(3., 1.2, 0.),
+                DVec3::new(0., 1.2, 0.),
+                "was shot by a bogged",
+                &mut Rng::new(9),
+            );
+            arrow.custom_effect = MobKind::Bogged.arrow_effect();
+            let mut c = ctx();
+            c.players = vec![Target::new(PlayerId(7), DVec3::ZERO, true)];
+            let mut events = Vec::new();
+            for _ in 0..40 {
+                if !arrow.update(0.05, &Grid::flat(0), &c, &mut [], &[], None, &mut Rng::new(7), &mut events) {
+                    break;
+                }
+            }
+            let mut gate = ArrowEffectGate::default();
+            let mut entities = Entities::new(1);
+            for event in events {
+                match event {
+                    EntityEvent::PlayerHit { player, damage, java: Some(hit), cause, .. } => {
+                        gate.record_hit(player, victim.hurt_knocked(damage, cause, &hit, &mut entities))
+                    }
+                    EntityEvent::ArrowEffectsStart { player } => gate.begin(player),
+                    EntityEvent::ArrowEffectsEnd => gate.end(),
+                    EntityEvent::PlayerEffect { effect, amplifier, ticks, .. } if gate.allows() => {
+                        victim.session.vitals.apply_effect(effect, amplifier, ticks);
+                    }
+                    _ => {}
+                }
+            }
+            assert_eq!(victim.session.vitals.effects.has(Effect::Poison), !shield);
+            if shield {
+                assert_eq!(victim.session.vitals.health, 20.);
+                assert!(victim.session.inventory.offhand.unwrap().damage > 0);
+            } else {
+                assert!(victim.session.vitals.health < 20.);
+            }
         }
     }
-
 }

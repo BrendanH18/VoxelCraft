@@ -201,11 +201,11 @@ impl Game {
             dimension: self.dimension,
         };
         let mut smashed = Vec::new();
-        let mut arrow_effects=crate::entity::ArrowEffectGate::default();
+        let mut arrow_effects = crate::entity::ArrowEffectGate::default();
         for event in self.mobs.entities.update_difficulty(dt, &self.world, &ctx, self.difficulty) {
             match event {
-                EntityEvent::ArrowEffectsStart {player}=>arrow_effects.begin(player),
-                EntityEvent::ArrowEffectsEnd=>arrow_effects.end(),
+                EntityEvent::ArrowEffectsStart { player } => arrow_effects.begin(player),
+                EntityEvent::ArrowEffectsEnd => arrow_effects.end(),
                 EntityEvent::ProjectileBlockHit { cell, pos, normal, arrow, burning } => {
                     self.world.hit_redstone_target(cell, pos, normal, arrow);
                     self.world.touch_redstone_ore(cell);
@@ -220,9 +220,9 @@ impl Game {
                         Some(away) => Some(-away),
                         None => Some(-knockback.as_dvec3()),
                     };
-                    let accepted=self.damage_player_from(self.difficulty.mob_damage(damage), cause, toward);
-                    arrow_effects.record_hit(PlayerId::HOST,if self.session.vitals.is_dead(){0.}else{accepted});
-                    if accepted>0. {
+                    let accepted = self.damage_player_from(self.difficulty.mob_damage(damage), cause, toward);
+                    arrow_effects.record_hit(PlayerId::HOST, if self.session.vitals.is_dead() { 0. } else { accepted });
+                    if accepted > 0. {
                         if let Some(hit) = java {
                             let entities = &mut self.mobs.entities;
                             self.session.knocked_back(&hit, &mut || f64::from(entities.roll_range(0.0, 1.0)));
@@ -235,14 +235,15 @@ impl Game {
                     }
                 }
                 EntityEvent::PlayerHit { player, damage, knockback, java, cause } => {
-                    arrow_effects.record_hit(player,0.);
+                    arrow_effects.record_hit(player, 0.);
                     if let Some(bot) = self.agents.by_id_mut(player) {
                         let damage = self.difficulty.mob_damage(damage);
-                        let accepted=match java {
+                        let accepted = match java {
                             Some(hit) => bot.agent.hurt_knocked(damage, cause, &hit, &mut self.mobs.entities),
                             None => bot.agent.hurt(damage, cause, knockback.as_dvec3(), &mut self.mobs.entities),
                         };
-                        arrow_effects.record_hit(player,if bot.agent.session.vitals.is_dead(){0.}else{accepted});
+                        arrow_effects
+                            .record_hit(player, if bot.agent.session.vitals.is_dead() { 0. } else { accepted });
                     }
                 }
                 EntityEvent::PlayerFall { player, damage } => {
@@ -291,7 +292,8 @@ impl Game {
                     }
                 }
                 EntityEvent::PlayerEffect { player, effect, amplifier, ticks } => {
-                    if arrow_effects.allows() && let Some(bot) = self.agents.by_id_mut(player)
+                    if arrow_effects.allows()
+                        && let Some(bot) = self.agents.by_id_mut(player)
                         && bot.agent.session.mode.is_survival()
                     {
                         let damage = bot.agent.session.vitals.apply_effect(effect, amplifier, ticks);
@@ -322,7 +324,8 @@ impl Game {
                     }
                 }
                 EntityEvent::PlayerMagic { player, amount } => {
-                    if arrow_effects.allows() && let Some(bot) = self.agents.by_id_mut(player)
+                    if arrow_effects.allows()
+                        && let Some(bot) = self.agents.by_id_mut(player)
                         && bot.agent.session.mode.is_survival()
                     {
                         if amount > 0.0 {

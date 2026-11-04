@@ -415,7 +415,7 @@ impl Arrow {
                     cause: if self.from_player { "was shot by a player" } else { self.cause },
                 });
                 if self.potion.is_some() || self.custom_effect.is_some() {
-                    events.push(EntityEvent::ArrowEffectsStart{player:hit.id});
+                    events.push(EntityEvent::ArrowEffectsStart { player: hit.id });
                     self.effects_on_player(hit.id, events);
                     events.push(EntityEvent::ArrowEffectsEnd);
                 }

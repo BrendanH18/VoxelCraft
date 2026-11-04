@@ -178,7 +178,9 @@ pub enum EntityEvent {
     },
     /// Tipped status events between these markers require the immediately
     /// preceding physical hit to have landed (including shield/hurt immunity).
-    ArrowEffectsStart { player: PlayerId },
+    ArrowEffectsStart {
+        player: PlayerId,
+    },
     ArrowEffectsEnd,
     /// A mob or splash potion applied a status effect to this player.
     PlayerEffect {

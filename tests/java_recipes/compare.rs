@@ -297,6 +297,18 @@ impl Reference {
                 }
                 shapeless(list)
             }
+            "crafting_imbue" => {
+                // ImbueRecipe requires nine occupied cells, with the potion
+                // source at the centre; component copying is tested separately.
+                match (self.ingredient(&recipe["source"]), self.ingredient(&recipe["material"])) {
+                    (Some(source), Some(material)) => shaped(
+                        3,
+                        3,
+                        (0..9).map(|i| Some(if i == 4 { source.clone() } else { material.clone() })).collect(),
+                    ),
+                    _ => return unregistered(),
+                }
+            }
             "crafting_transmute" if recipe.get("material_count").is_none() => {
                 // Java keeps the input's components; VoxelCraft items carry
                 // none that these recipes change, so a shapeless pair matches.

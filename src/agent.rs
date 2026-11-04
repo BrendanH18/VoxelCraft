@@ -649,7 +649,7 @@ impl Agent {
 
     fn craft(&mut self, item: Item, world: &World, entities: &mut Entities) -> Result<(), String> {
         let at_table = self.at_crafting_table(world);
-        let (inventory, remainders) = crafting::recipes()
+        let (inventory, remainders, _) = crafting::recipes()
             .iter()
             .filter(|r| r.result.item == item)
             .find_map(|r| self.crafted(r, at_table))
@@ -667,8 +667,8 @@ impl Agent {
 
     /// The inventory after crafting `recipe` once, if the ingredients and
     /// room are there (3x3 recipes need a targeted crafting table).
-    fn crafted(&self, recipe: &crafting::Recipe, at_table: bool) -> Option<(Inventory, Vec<Stack>)> {
-        let grid = recipe.preview();
+    fn crafted(&self, recipe: &crafting::Recipe, at_table: bool) -> Option<(Inventory, Vec<Stack>, Stack)> {
+        let mut grid = recipe.preview();
         if grid.size == 3 && !at_table {
             return None;
         }
@@ -680,20 +680,22 @@ impl Agent {
             }
             let options = recipe.alternatives(i).unwrap();
             let slot = inventory.slots.iter().position(|s| s.is_some_and(|s| options.contains(&s.item)))?;
-            let used = inventory.get(slot)?.item;
+            let used = inventory.get(slot)?;
+            grid.cells[i] = Some(Stack { count: 1, ..used });
             inventory.take_one(slot);
-            if let Some(rest) = used.remainder() {
+            if let Some(rest) = used.item.remainder() {
                 remainders.push(Stack::new(rest, 1));
             }
         }
-        if inventory.add_stack(recipe.result) != 0 {
+        let result = grid.result()?;
+        if inventory.add_stack(result) != 0 {
             return None;
         }
         remainders.retain_mut(|stack| {
             stack.count = inventory.add_stack(*stack);
             stack.count != 0
         });
-        Some((inventory, remainders))
+        Some((inventory, remainders, result))
     }
 
     /// Every result that `craft` would make right now, once each, in recipe
@@ -702,8 +704,10 @@ impl Agent {
         let at_table = self.at_crafting_table(world);
         let mut out: Vec<Stack> = Vec::new();
         for recipe in crafting::recipes() {
-            if !out.iter().any(|s| s.item == recipe.result.item) && self.crafted(recipe, at_table).is_some() {
-                out.push(recipe.result);
+            if !out.iter().any(|s| s.item == recipe.result.item)
+                && let Some((_, _, result)) = self.crafted(recipe, at_table)
+            {
+                out.push(result);
             }
         }
         out
@@ -1815,6 +1819,23 @@ mod tests {
         assert!(a.player.pos.x > 7.0, "{}", a.player.pos.x);
         assert_eq!(a.remaining, 0);
         assert_eq!(b.player.pos.x, 4.5);
+    }
+    #[test]
+    fn tipped_arrow_inventory_crafting_keeps_potion_and_requires_table() {
+        let mut a = Agent::new(DVec3::ZERO);
+        let recipe = crafting::recipes().iter().find(|r| r.result.item == Item::TIPPED_ARROW).unwrap();
+        let potion = crate::potion::Potion::from_id("poison").unwrap();
+        a.inventory.slots[0] = Some(Stack::lingering_potion(potion));
+        a.inventory.slots[1] = Some(Stack::new(Item::ARROW, 7));
+        let before = a.inventory.clone();
+        assert!(a.crafted(recipe, true).is_none());
+        assert_eq!(a.inventory, before);
+        a.inventory.slots[2] = Some(Stack::new(Item::ARROW, 1));
+        assert!(a.crafted(recipe, false).is_none());
+        let (inventory, remainders, result) = a.crafted(recipe, true).unwrap();
+        assert!(remainders.is_empty());
+        assert_eq!(result, Stack::tipped_arrow(potion, 8));
+        assert_eq!(inventory.slots.iter().flatten().copied().collect::<Vec<_>>(), vec![result]);
     }
     #[test]
     fn death_drops_work_inputs_and_destroys_vanishing_gear() {
