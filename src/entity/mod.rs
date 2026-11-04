@@ -27,6 +27,7 @@ mod dragon_model;
 pub mod eye;
 pub mod fireball;
 pub mod golem;
+pub mod hostiles;
 pub mod item;
 pub mod leash;
 mod lifecycle;
@@ -50,6 +51,7 @@ mod spawn_lists;
 mod spawn_rules;
 mod spawning;
 mod thrown;
+mod tipped_arrow;
 pub mod tnt;
 pub mod villager;
 mod villager_breeding;
@@ -935,7 +937,7 @@ impl Entities {
             0,
             self.moon_brightness,
         ));
-        if kind.is_zombie() || kind == MobKind::Skeleton {
+        if kind.is_zombie() || kind.is_bow_skeleton() {
             let (armor, glint) = armor::roll_monster_armor(
                 &mut self.rng,
                 self.difficulty == crate::simulation::difficulty::Difficulty::Hard,
@@ -1123,6 +1125,13 @@ impl Entities {
                 .find(|m| m.kind == kind && m.pos == pos && !m.alive())
                 .map_or((crate::color::DyeColor::White, false), |m| (m.wool_color, m.sheared))
         });
+        if player_kill && let Some(potion) = kind.arrow_potion() {
+            let base = self.rng.next_int(2);
+            let extra = (f32::from(looting) * self.rng.next_f32()).round() as u32;
+            if base + extra > 0 {
+                self.scatter(crate::inventory::Stack::tipped_arrow(potion, 1), pos);
+            }
+        }
         let mut drops = kind.drops(&mut self.rng, looting);
         if kind == MobKind::Rabbit && player_kill && self.rng.chance(0.1 + looting as f32 * 0.03) {
             drops.push((crate::item::Item::RABBIT_FOOT, 1));
@@ -1676,7 +1685,7 @@ impl Entities {
         let mut taken: u8 = 0;
         self.arrows.retain(|a| {
             let near = (a.pos - (feet + DVec3::Y * 0.9)).abs().cmple(DVec3::new(1.3, 1.5, 1.3)).all();
-            let take = a.pickup && a.is_stuck() && near && taken < u8::MAX;
+            let take = !a.tipped && a.potion.is_none() && a.pickup && a.is_stuck() && near && taken < u8::MAX;
             taken += take as u8;
             !take
         });

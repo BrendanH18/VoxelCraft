@@ -1327,7 +1327,7 @@ impl Game {
                 .map(|m| m.serialize())
                 .collect::<Vec<_>>()
                 .join(";");
-            let arrows:Vec<_>=self.mobs.entities.arrows.iter().filter(|a|a.pos.distance_squared(bot.agent.session.player.pos)<160.0*160.0).take(256).map(|a|json!({"pos":a.pos.to_array(),"previous":a.previous_pos.to_array(),"dir":a.dir.to_array(),"player":a.from_player,"critical":a.critical})).collect();
+            let arrows:Vec<_>=self.mobs.entities.arrows.iter().filter(|a|a.pos.distance_squared(bot.agent.session.player.pos)<160.0*160.0).take(256).map(|a|json!({"pos":a.pos.to_array(),"previous":a.previous_pos.to_array(),"dir":a.dir.to_array(),"player":a.from_player,"critical":a.critical,"tipped":a.tipped,"potion":a.potion.map(|p|p.0)})).collect();
             let decor = self.mobs.entities.decor_near(bot.agent.session.player.pos, 160.0, 256);
             // Signs, shelves and chiseled bookshelves near the player, when
             // they changed or the player moved 16 blocks since the last send.
@@ -1825,6 +1825,11 @@ impl Game {
                 arrow.previous_pos = vector(&a["previous"]).unwrap_or(pos);
                 arrow.from_player = a["player"] == true;
                 arrow.critical = a["critical"] == true;
+                arrow.tipped = a["tipped"] == true;
+                arrow.potion = a["potion"]
+                    .as_u64()
+                    .filter(|i| *i < voxelcraft::potion::Potion::COUNT as u64)
+                    .map(|i| voxelcraft::potion::Potion(i as u8));
                 self.mobs.entities.arrows.push(arrow);
             }
         }

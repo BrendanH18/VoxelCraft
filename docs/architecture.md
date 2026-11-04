@@ -495,6 +495,12 @@ New `MobKind` variants append after `Camel`; mob kinds are saved by name,
 but `MobKind::ALL` order is the LAN index, so the integrator appends the
 tracks' kinds in track order. Each track records what it used here.
 
+Track 4 allocation (2026-11-04, implemented, unverified): item **1330** is
+`tipped_arrow`; appended MobKinds are `Stray`, `Bogged`. No block states or
+reserved texture layers consumed (models use procedural vertex colour/noise).
+Items 1331–1349 and layers 3264–3295 remain reserved, unused.
+See [hostiles evidence](verification/2026-11-04-v0.15-hostiles.md).
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

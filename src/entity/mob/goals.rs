@@ -229,7 +229,7 @@ pub(crate) fn table(kind: MobKind) -> &'static [Entry] {
         K::Guardian | K::ElderGuardian => GUARDIAN,
         K::Hoglin => HOGLIN,
         K::Creeper => CREEPER,
-        K::Skeleton | K::WitherSkeleton => SKELETON,
+        K::Skeleton | K::Stray | K::Bogged | K::WitherSkeleton => SKELETON,
         K::WanderingTrader => WANDERING_TRADER,
         _ => &[],
     }
@@ -241,7 +241,7 @@ pub(crate) fn movement_speed(kind: MobKind) -> f64 {
     use MobKind as K;
     match kind {
         K::Cow | K::Parrot | K::Goat => 0.2,
-        K::Pig | K::Chicken | K::Turtle | K::Creeper | K::Skeleton | K::WitherSkeleton => 0.25,
+        K::Pig | K::Chicken | K::Turtle | K::Creeper | K::Skeleton | K::Stray | K::Bogged | K::WitherSkeleton => 0.25,
         K::Sheep | K::Zombie => 0.23,
         K::Wolf | K::Cat | K::Fox | K::Rabbit | K::Hoglin => 0.3,
         K::Strider | K::Donkey | K::Mule | K::Llama | K::TraderLlama => 0.175,

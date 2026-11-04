@@ -20,6 +20,10 @@ const MAX_FLIGHT: f32 = 10.0;
 const STEP: f64 = 0.2;
 
 pub struct Arrow {
+    /// True even for an empty tipped arrow (no potion component).
+    pub tipped: bool,
+    pub potion: Option<crate::potion::Potion>,
+    pub custom_effect: Option<(crate::simulation::effects::Effect, u8, u32)>,
     pub pos: DVec3,
     /// Position at the start of the last simulation step, for rendering.
     pub previous_pos: DVec3,
@@ -83,6 +87,9 @@ impl Arrow {
         let spread = DVec3::new(rng.range(-1.0, 1.0) as f64, rng.range(-1.0, 1.0) as f64, rng.range(-1.0, 1.0) as f64);
         let vel = (aim.normalize_or(DVec3::X) + spread * 0.03) * SPEED;
         Self {
+            tipped: false,
+            potion: None,
+            custom_effect: None,
             pos: from,
             previous_pos: from,
             vel,
@@ -108,6 +115,9 @@ impl Arrow {
         let dir = dir.normalize_or(DVec3::X);
         let vel = dir * BOW_SPEED * power as f64;
         Self {
+            tipped: false,
+            potion: None,
+            custom_effect: None,
             pos: eye + dir * 0.3,
             previous_pos: eye + dir * 0.3,
             vel,
@@ -294,6 +304,7 @@ impl Arrow {
                                 mob.player_hit();
                             }
                             if let Some(attacker) = self.shooter {
+                                self.effects_on_mob(mob, rng);
                                 // Resolve through the shared mob-on-mob path so
                                 // retaliation and loot attribution retain the shooter.
                                 events.push(EntityEvent::MobHit {
@@ -307,6 +318,10 @@ impl Arrow {
                             // `hurtServer`'s 0.4 push along the arrow, then Punch's shove (`doKnockback`).
                             let motion = self.vel / crate::knockback::TICK_RATE;
                             let killed = mob.damage_pushed(damage, &[crate::knockback::Push::projectile(motion)], rng);
+                            if !killed {
+                                self.effects_on_mob(mob, rng);
+                            }
+                            let killed = !mob.alive();
                             mob.shove_punch(u32::from(self.enchants.level(Enchantment::Punch)), motion);
                             events.push(EntityEvent::MobShot {
                                 kind: mob.kind,
@@ -394,6 +409,7 @@ impl Arrow {
                     knockback: push.as_vec3(),
                     cause: if self.from_player { "was shot by a player" } else { self.cause },
                 });
+                self.effects_on_player(hit.id, events);
                 if let Some(attacker) = self.shooter {
                     events.push(EntityEvent::OwnerHurt { player: hit.id, attacker });
                 }

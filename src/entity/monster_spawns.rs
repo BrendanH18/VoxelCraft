@@ -19,8 +19,7 @@
 //!
 //! Remaining VoxelCraft limits, recorded in the lighting/spawning report:
 //! structure spawn overrides (swamp huts, monuments, outposts) are not
-//! applied, and list entries for mobs VoxelCraft lacks (strays, bogged,
-//! parched, zombie horses, ocelots) end their pack.
+//! applied, and list entries for mobs VoxelCraft lacks (parched, zombie horses, ocelots) end their pack.
 
 use super::category::{self, MobCategory};
 use super::*;
@@ -73,8 +72,8 @@ impl JavaMonster {
         }
     }
 
-    /// The kind this cycle spawns for the entry; zombie horses, strays,
-    /// bogged, parched and ocelots are not in VoxelCraft yet.
+    /// The kind this cycle spawns for the entry; zombie horses,
+    /// parched and ocelots are not in VoxelCraft yet.
     pub(super) fn kind(self) -> Option<MobKind> {
         Some(match self {
             JavaMonster::Known(k) => k,
@@ -82,6 +81,8 @@ impl JavaMonster {
             JavaMonster::Zombie => MobKind::Zombie,
             JavaMonster::ZombieVillager => MobKind::ZombieVillager,
             JavaMonster::Skeleton => MobKind::Skeleton,
+            JavaMonster::Stray => MobKind::Stray,
+            JavaMonster::Bogged => MobKind::Bogged,
             JavaMonster::Creeper => MobKind::Creeper,
             JavaMonster::Enderman => MobKind::Enderman,
             JavaMonster::Witch => MobKind::Witch,
@@ -452,6 +453,17 @@ pub(super) fn monster_spot_ok<W: MobWorld + ?Sized>(
     } else if !dark_enough(world, cell, rules.light.monster_darken, rng) {
         return false;
     }
+    if kind == MobKind::Stray {
+        let mut sky_cell = cell;
+        while sky_cell.y < rules.dimension.max_y()
+            && world.block(sky_cell + IVec3::Y) == Some(crate::world::scaffolding::POWDER_SNOW)
+        {
+            sky_cell.y += 1;
+        }
+        if world.sky_light_level(sky_cell) != Some(15) {
+            return false;
+        }
+    }
     // Husks use `checkSurfaceMonstersSpawnRules`: they also need to see the sky.
     if kind == MobKind::Husk && world.sky_light_level(cell) != Some(15) {
         return false;
@@ -469,6 +481,8 @@ pub(super) fn cycle_kind(kind: MobKind) -> bool {
             | MobKind::ZombieVillager
             | MobKind::Husk
             | MobKind::Skeleton
+            | MobKind::Stray
+            | MobKind::Bogged
             | MobKind::Creeper
             | MobKind::Spider
             | MobKind::Enderman
@@ -1146,7 +1160,9 @@ mod tests {
         assert!(cycle_kind(MobKind::Slime) && cycle_kind(MobKind::Drowned));
         assert_eq!(J::Slime.kind(), Some(MobKind::Slime));
         assert_eq!(J::Drowned.kind(), Some(MobKind::Drowned));
-        assert!(J::ZombieHorse.kind().is_none() && J::Stray.kind().is_none() && J::Ocelot.kind().is_none());
+        assert!(
+            J::ZombieHorse.kind().is_none() && J::Stray.kind() == Some(MobKind::Stray) && J::Ocelot.kind().is_none()
+        );
     }
 
     #[test]

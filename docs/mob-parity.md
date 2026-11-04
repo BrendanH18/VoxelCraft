@@ -127,3 +127,19 @@ neither rare pool. `undead_loot.json` is extracted from the pinned 26.3 server
 loot tables; tests cover exclusivity, probabilities, credit and smelting.
 Tridents, drowned trident equipment and projectile behavior require new content
 and remain outside this defect-only change. Java loot RNG sequence parity remains open.
+
+## Stray and bogged (v0.15, implemented, unverified)
+
+The Java 26.3 biome entries now spawn strays in snowy plains/ice spikes
+(weight 80, skeletons 20) and bogged in swamp/mangrove swamp (weight 30,
+skeletons 70), packs of four. Strays require sky visibility. Skeletons convert
+in powder snow with the reference exposure/countdown and cancellation rules.
+Bogged have 16 health and shear once for two independent mushroom rolls.
+Both use original procedural skeleton-variant models, burn in daylight, drop
+bones/arrows and can drop their potion-bearing tipped arrow on a player kill.
+Natural variants and conversion/shearing state save through the mob store.
+
+Mob-fired stray arrows apply 600 ticks of Slowness I; bogged apply 100 ticks
+of Poison I. Player loot arrows use the registered potion at one-eighth
+duration. Skeleton AI/equipment gaps, phantoms and the remaining potion work
+are listed in [track evidence](verification/2026-11-04-v0.15-hostiles.md).

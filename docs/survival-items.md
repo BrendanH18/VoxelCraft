@@ -6,7 +6,9 @@ Shears use Java's 238 durability, 15x leaves/cobweb speed and 5x wool speed.
 Shearing a living sheep drops 1–3 wool and removes its fleece; a sheared
 sheep cannot be sheared again and no longer drops wool on death.
 Sheep drop wool in their current colour (see [colors](colors.md)). Grass-eating fleece regrowth is deferred.
-Mobs currently do not persist across saves (the existing engine boundary).
+Animal persistence is described in [animals](animals.md); v0.15 also saves
+strays, bogged and skeleton conversion clocks. Other natural hostile saves
+retain their existing limits.
 
 Recipes are transcribed from the vanilla 1.21 JSON fixtures in
 `docs/vanilla-recipes/`, fetched from
@@ -118,3 +120,16 @@ attackers are not pushed back by the block.
 The totem of undying (item 1231, creative palette only until evokers exist)
 cancels a lethal hit from either hand: 1 half heart, Regeneration II 45 s,
 Absorption II 5 s and Fire Resistance 40 s; void damage bypasses it.
+
+## Tipped arrows (v0.15, implemented, unverified)
+
+Stray and bogged player kills can drop Slowness and Poison tipped arrows
+(item 1330). Their potion contents are a saved stack component, including
+while loaded in a crossbow. Bows and crossbows prefer arrows held in the
+offhand; tipped arrows are consumed even with Infinity. Ordinary-arrow
+Infinity behavior is unchanged. These are offhand **ammunition**, not offhand
+bow drawing. Pickup retains potion contents for the host, controllers and CLI.
+Player-fired potion arrows use one-eighth effect duration; mob-fired custom
+effects retain their Java durations. Lingering potions, clouds and crafting
+remain missing. See [hostiles evidence](verification/2026-11-04-v0.15-hostiles.md)
+for the tested slice and remaining parity gaps.

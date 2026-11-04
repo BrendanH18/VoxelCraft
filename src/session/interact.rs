@@ -380,7 +380,8 @@ impl PlayerSession {
         }
         if let Some(index) = self.mob_target(world, entities)
             && let Some(item) = self.inventory.get(slot).map(|s| s.item)
-            && let Some(sheared) = entities.use_on_sheep(index, item)
+            && let Some(sheared) =
+                entities.use_on_sheep(index, item).or_else(|| entities.shear_bogged(index, item).then_some(true))
         {
             if self.mode.is_survival() {
                 if sheared {

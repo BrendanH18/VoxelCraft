@@ -883,6 +883,14 @@ impl Agent {
             item.stack.count = self.session.inventory.add_stack(item.stack);
             item.stack.count > 0
         });
+        for stack in entities.collect_arrow_stacks(self.session.player.pos) {
+            let left = self.session.inventory.add_stack(stack);
+            if left > 0 {
+                let mut stack = stack;
+                stack.count = left;
+                entities.scatter(stack, self.session.player.pos);
+            }
+        }
         if let Some(chime) = crate::entity::orb::absorb(
             &mut entities.orbs,
             self.session.player.pos,

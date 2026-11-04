@@ -549,6 +549,7 @@ macro_rules! parts {($($p:expr),* $(,)?) => {{let mut out=Parts::new();$(out.pus
 
 mod animals;
 mod aquatic;
+mod hostiles;
 mod mounts;
 
 /// Animated parts for a mob, in model space (pixels).
@@ -611,6 +612,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
                 part(CHICKEN_HEAD, [0.0, 8.0, 2.0], head),
             ]
         }
+        MobKind::Stray | MobKind::Bogged => hostiles::pose(m, swing, head),
         MobKind::Skeleton => {
             // Bow raised toward the target while hunting, arms swinging otherwise.
             let aiming = m.ai == Ai::Chase;
@@ -952,6 +954,9 @@ pub fn build(
                 let mut cuboid = *c;
                 animals::colour(m, &mut cuboid);
                 mounts::colour(m, &mut cuboid);
+                if matches!(m.kind, MobKind::Stray | MobKind::Bogged) {
+                    hostiles::colour(m, &mut cuboid);
+                }
                 if m.kind == MobKind::GlowSquid && c.color == [49, 71, 80] {
                     cuboid.color = [44, 161, 151];
                 }
@@ -992,7 +997,7 @@ pub fn build(
         }
         // Zombie villagers use the villager mesh, which is not the six-limb armor rig.
         if (m.kind.is_zombie() && m.kind != MobKind::ZombieVillager)
-            || m.kind == MobKind::Skeleton
+            || m.kind.is_bow_skeleton()
             || m.kind == MobKind::Piglin
         {
             let limbs = humanoid_armor(&posed);
@@ -1042,7 +1047,15 @@ pub fn build_arrows(arrows: &[Arrow], camera: DVec3, alpha: f64, out: &mut Vec<E
         // Stuck arrows sit with the tip buried.
         let origin = if a.is_stuck() { rel - a.dir * 0.2 } else { rel };
         for (i, c) in ARROW.iter().enumerate() {
-            push_cuboid(out, c, &|v: Vec3| origin + rot * v / 16.0, rot, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
+            let mut c = *c;
+            if i == 1 {
+                if let Some(p) = a.potion {
+                    c.color = p.colour();
+                } else if a.custom_effect.is_some() || a.tipped {
+                    c.color = [162, 99, 181];
+                }
+            }
+            push_cuboid(out, &c, &|v: Vec3| origin + rot * v / 16.0, rot, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
         }
     }
 }

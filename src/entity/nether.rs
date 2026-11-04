@@ -964,7 +964,11 @@ impl Entities {
             .filter(|m| {
                 // Breedable mobs (natural axolotls and hoglins too) keep being saved
                 // although natural ones no longer require persistence.
-                (m.persistent || m.kind.never_distance_despawns() || m.kind.has_animal_state())
+                (m.persistent
+                    || m.kind.never_distance_despawns()
+                    || m.kind.has_animal_state()
+                    || matches!(m.kind, MobKind::Stray | MobKind::Bogged)
+                    || m.freezing.is_some())
                     && m.alive()
                     && m.villager.is_none()
                     && !matches!(m.kind, MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama)
@@ -1496,6 +1500,7 @@ fn save_mob(m: &Mob) -> Value {
         "age": m.age,
         "egg_timer": m.egg_timer,
         "sheared": m.sheared,
+        "freezing": m.freezing.as_ref().map(super::hostiles::Freezing::save),
         "animal": m.animal.as_deref().map(super::animals::save),
         "identity": super::leash::save(m),
         "armor": armor,
@@ -1556,6 +1561,9 @@ fn load_mob(v: &Value) -> Option<Mob> {
                 as f32;
     }
     m.sheared = v["sheared"].as_bool().unwrap_or(false);
+    if kind == MobKind::Skeleton && v["freezing"].is_object() {
+        m.freezing = Some(super::hostiles::Freezing::load(&v["freezing"]));
+    }
     if let Some(a) = m.animal.as_mut() {
         super::animals::load(a, &v["animal"]);
     }

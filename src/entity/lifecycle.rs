@@ -220,6 +220,9 @@ impl Entities {
                 EntityEvent::Shoot { from, target, cause, shooter } => {
                     let mut arrow = Arrow::aimed(from, target, cause, &mut self.rng);
                     arrow.shooter = Some(shooter);
+                    arrow.custom_effect =
+                        self.mobs.iter().find(|m| m.uid == shooter).and_then(|m| m.kind.arrow_effect());
+                    arrow.tipped = arrow.custom_effect.is_some();
                     self.arrows.push(arrow);
                 }
                 EntityEvent::ThrowPotion { from, vel, potion } => {

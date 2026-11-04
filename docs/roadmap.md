@@ -1455,7 +1455,12 @@ in the [architecture reservations](architecture.md#v015-track-reservations):
    spawner in villages and swamp huts.
 4. **Hostiles** (MOB-04, PRO-02). Strays, bogged and phantoms (insomnia,
    `spawn_phantoms`, membranes), and the tipped arrows strays and bogged
-   shoot.
+   shoot. *Implemented, unverified, partial (2026-11-04): strays/bogged resolve
+   in Java biome packs, convert/shear, render, save and drop potion-bearing
+   arrows; shared bows/crossbows retain and apply registered potion contents.
+   Phantoms/insomnia/the rule, lingering clouds and crafting remain missing;
+   skeleton AI/equipment parity and visual evidence remain open. See
+   [track evidence](verification/2026-11-04-v0.15-hostiles.md).*
 5. **Integration and checks.** Cross-track pieces (lightning turning
    mooshrooms), spawn tables together, save/reload of every new mob and
    block, and per-track verification records.
