@@ -82,6 +82,15 @@ water in rivers (1 in 15 attempts) and oceans (1 in 40, deeper than 5 below sea 
 and still burn on land. All three have a 5% baby chance (half size, +50% speed, 12 xp).
 No trident drowned (rare iron/carrot/potato and copper pools are implemented; see below).
 
+V0.15 track 1 adds eye-submerged conversion (implemented/unverified): 600
+ticks of exposure, then 300 ticks counting down through zero with shaking;
+husks become zombies and zombies become drowned. Java 26.3 cancels the
+countdown on leaving the water. Timers, name, identity, persistence, age,
+effects, equipment and rider links survive saves. See [lightning and undead
+mount evidence](verification/2026-11-04-v0.15-lightning.md), which also records
+charged creepers, lightning transformations and the new horsemen.
+
+
 ## Witch and splash potions
 
 26 health, spawns at night (weight 5/100, boosted in swamps). Throws a splash potion

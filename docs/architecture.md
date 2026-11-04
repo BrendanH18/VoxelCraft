@@ -495,6 +495,15 @@ New `MobKind` variants append after `Camel`; mob kinds are saved by name,
 but `MobKind::ALL` order is the LAN index, so the integrator appends the
 tracks' kinds in track order. Each track records what it used here.
 
+Track 1 allocation (2026-11-04, implemented/unverified): no new states,
+items or texture layers from its reserved ranges. Registered the 48 previously
+reserved copper powered-rod states 23284–23295, 23308–23319, 23332–23343 and
+23356–23367, without changing the copper encoding. Appended MobKinds
+`SkeletonHorse` / `ZombieHorse`, saved as `skeleton_horse` / `zombie_horse`.
+Procedural entity geometry and synthesized thunder need no texture IDs.
+See [track evidence and gaps](verification/2026-11-04-v0.15-lightning.md).
+
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

@@ -311,10 +311,17 @@ impl World {
     /// `LightningBolt.spawnFire`: on Normal or Hard (with fire ticking
     /// allowed) a strike at `p` lights that cell if it is empty and a fire
     /// can stand there, then tries `extra` more cells within one block of it.
-    /// Returns how many fires were lit. Nothing in the game strikes lightning
-    /// yet; this is the rule it will call.
+    /// Returns how many fires were lit. Called by the initial bolt flash.
     pub fn lightning_fire(&mut self, p: IVec3, extra: u32) -> u32 {
-        if self.rules.difficulty < 2 || self.rules.fire_spread_radius == 0 {
+        if self.rules.difficulty < 2 {
+            return 0;
+        }
+        self.lightning_flash_fire(p, extra)
+    }
+
+    /// Later flashes may ignite even on Easy (`LightningBolt.tick`).
+    pub fn lightning_flash_fire(&mut self, p: IVec3, extra: u32) -> u32 {
+        if !self.fire_may_spread(p) {
             return 0;
         }
         let mut lit = 0;

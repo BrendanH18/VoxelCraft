@@ -53,6 +53,7 @@ mod honey;
 pub mod jigsaw;
 mod light_shape;
 pub(crate) mod lighting;
+pub mod lightning;
 pub mod loot;
 pub mod maps;
 pub mod mineshaft;
@@ -72,6 +73,7 @@ pub mod ore;
 pub mod overworld_blocks;
 mod overworld_flora;
 mod portal;
+pub mod precipitation;
 pub mod pumpkin_blocks;
 pub mod rails;
 pub mod redstone;
@@ -201,6 +203,7 @@ pub struct WorldRules {
     /// The world difficulty's id (Java's `Difficulty.getId`), which fire
     /// spreading reads.
     pub difficulty: u8,
+    pub max_snow_accumulation_height: u8,
 }
 
 impl Default for WorldRules {
@@ -211,6 +214,7 @@ impl Default for WorldRules {
             lava_source_conversion: false,
             fire_spread_radius: 128,
             difficulty: 2,
+            max_snow_accumulation_height: 1,
         }
     }
 }
@@ -258,6 +262,8 @@ pub struct World {
     sky_updates: lighting::LightUpdates,
     fluids: fluid::FluidState,
     fire: fire::FireState,
+    lightning: lightning::State,
+    snow_pushes: Vec<(IVec3, f64)>,
     redstone: redstone::RedstoneState,
     automation: automation::AutomationState,
     falling: Vec<falling::FallingBlock>,
@@ -540,6 +546,8 @@ impl World {
             sky_updates: Default::default(),
             fluids: Default::default(),
             fire: Default::default(),
+            lightning: Default::default(),
+            snow_pushes: Vec::new(),
             redstone: Default::default(),
             automation: Default::default(),
             falling: Vec::new(),
@@ -885,6 +893,7 @@ impl World {
         self.light_block_changed(p, old, block, old_light);
         self.track_fire(p, old, block);
         self.track_redstone(p, old, block);
+        self.track_lightning_rod(p, old, block);
         if old != block {
             self.scaffolding_changed(p);
         }

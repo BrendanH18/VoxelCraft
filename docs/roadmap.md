@@ -1444,6 +1444,14 @@ in the [architecture reservations](architecture.md#v015-track-reservations):
    rod's redstone pulse; skeleton-horse traps, skeleton and zombie
    horses; snow piling up in snowfall with `max_snow_accumulation_height`;
    zombies turning into drowned underwater and husks into zombies.
+   **Implemented, unverified (2026-11-04)** in track 1: strikes, flashes,
+   original thunder, conversions, charged creepers, unwaxed copper cleaning,
+   powered rods, skeleton traps, saved rideable undead horses and natural
+   zombie-horse riders, snow gamerule and underwater conversion timers.
+   [Evidence and parity gaps](verification/2026-11-04-v0.15-lightning.md):
+   integrator mooshroom/waxed-root hooks, jockey spears, trap enchantments,
+   exact underwater horse travel and visual/ordinary-play evidence remain.
+
 2. **Crops and bees** (FOO-01, FOO-02, BLD-01c). Melon and pumpkin stems
    and attached stems, beetroots; bees, bee nests and hives, pollination
    and crop boosts, honey bottles and honeycomb, honeycomb blocks;

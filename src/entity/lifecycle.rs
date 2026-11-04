@@ -72,6 +72,7 @@ impl Entities {
         self.tick_animals(dt as f32, world, ctx, &mut events);
         self.tick_leashes(dt as f32, world, ctx);
         self.tick_llamas(ctx);
+        self.tick_undead_mounts(dt, world, ctx);
         self.sense_goals(world);
         self.sense_schools();
         self.sense_dolphins(world, &moved);
@@ -190,6 +191,7 @@ impl Entities {
         self.watch_doors(dt as f32, &mut events);
         self.resolve_strikes(ctx, &mut events);
         self.separate(dt);
+        self.position_undead_riders();
         self.nether_upkeep(ctx, &mut events);
         self.dolphin_items();
         // `TurtleLayEggGoal` places its clutch (`setBlockAndUpdate`) in the

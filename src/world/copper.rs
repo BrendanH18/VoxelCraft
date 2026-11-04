@@ -22,7 +22,7 @@
 //! | chain | 6 | `wet * 3 + axis` (Y, X, Z) |
 //! | lantern | 4 | `hanging * 2 + wet` |
 //! | chest | 24 | `type * 8 + wet * 4 + facing` (type single, left, right; `double_chest`) |
-//! | lightning rod | 24 | `powered * 12 + wet * 6 + direction` (up, down, then [`Facing::ALL`]); only unpowered is registered |
+//! | lightning rod | 24 | `powered * 12 + wet * 6 + direction` (up, down, then [`Facing::ALL`]); powered states registered by v0.15 |
 //! | torch | 5, one stage | standing, then wall states facing [`Facing::ALL`] |
 //!
 //! Doors store their hinge on the lower half and powered in the saved
@@ -133,13 +133,9 @@ impl Family {
         }
     }
 
-    /// How many of a stage's locals are registered: lightning rods have no
-    /// powered state yet (no lightning).
+    /// How many local states are registered.
     pub const fn registered(self) -> u16 {
-        match self {
-            Family::Rod => 12,
-            f => f.stride(),
-        }
+        self.stride()
     }
 
     pub const fn stages(self) -> u16 {
@@ -653,7 +649,7 @@ fn lantern(stage: Stage, hanging: bool) -> Block {
 }
 
 /// Lightning rod direction index: up, down, then [`Facing::ALL`].
-fn rod_direction(local: u16) -> IVec3 {
+pub(crate) fn rod_direction(local: u16) -> IVec3 {
     match local % 6 {
         0 => IVec3::Y,
         1 => IVec3::NEG_Y,
@@ -882,7 +878,7 @@ impl World {
 
     /// Moves the copper at `p` to `stage`, keeping its properties, with a
     /// door's other half. `player` edits (scraping) update light at once.
-    fn restage_copper(&mut self, p: IVec3, c: Copper, stage: Stage, player: bool) {
+    pub(super) fn restage_copper(&mut self, p: IVec3, c: Copper, stage: Stage, player: bool) {
         let mut cells = vec![(p, Copper { stage, ..c })];
         if c.family == Family::Door {
             let other = if c.local >= 16 { p - IVec3::Y } else { p + IVec3::Y };

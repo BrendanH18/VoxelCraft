@@ -964,7 +964,13 @@ impl Entities {
             .filter(|m| {
                 // Breedable mobs (natural axolotls and hoglins too) keep being saved
                 // although natural ones no longer require persistence.
-                (m.persistent || m.kind.never_distance_despawns() || m.kind.has_animal_state())
+                (m.persistent
+                    || m.lightning_charged
+                    || m.kind.never_distance_despawns()
+                    || m.kind.has_animal_state()
+                    || super::undead_mounts::undead(m.kind)
+                    || m.riding.is_some()
+                    || matches!(m.kind, MobKind::Zombie | MobKind::Husk | MobKind::Drowned))
                     && m.alive()
                     && m.villager.is_none()
                     && !matches!(m.kind, MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama)
@@ -1484,6 +1490,9 @@ fn save_mob(m: &Mob) -> Value {
         "uid": m.uid,
         "riding": m.riding,
         "mount": m.mount.as_ref().map(|s|s.save()),
+        "water_conversion": m.water_conversion.save(),
+        "lightning_charged": m.lightning_charged,
+        "undead_mount": m.undead_mount.save(),
         "variant": m.aquatic.as_ref().map(|a| a.variant),
         "color": m.wool_color as u8,
         "kind": m.kind.name(),
@@ -1499,6 +1508,8 @@ fn save_mob(m: &Mob) -> Value {
         "animal": m.animal.as_deref().map(super::animals::save),
         "identity": super::leash::save(m),
         "armor": armor,
+        "armor_glint": m.armor_glint,
+        "armor_materials": m.armor.map(|a| a.map(|k| k as u8)),
         "weapon": n.map_or("none", |n| n.weapon.name()),
         "held": m.held.map(Weapon::name),
         "offhand": n.and_then(|n| n.offhand).map(|s| crate::inventory::stack_to_string(Some(s))),
@@ -1547,6 +1558,9 @@ fn load_mob(v: &Value) -> Option<Mob> {
     if let Some(a) = &mut m.aquatic {
         a.variant = v["variant"].as_u64().unwrap_or(0).min(255) as u8;
     }
+    m.undead_mount = super::undead_mounts::State::load(&v["undead_mount"]);
+    m.lightning_charged = v["lightning_charged"] == true;
+    m.water_conversion = super::lightning::WaterConversion::load(&v["water_conversion"]);
     m.baby = v["baby"].as_bool().unwrap_or(false);
     m.age =
         v["age"].as_i64().unwrap_or(if m.baby && kind.is_breedable() { -24000 } else { 0 }).clamp(-24000, 6000) as i32;
@@ -1570,9 +1584,13 @@ fn load_mob(v: &Value) -> Option<Mob> {
             *slot = worn.as_bool().unwrap_or(false).then_some(super::armor::ArmorKind::Gold);
         }
     }
-    if kind == MobKind::ZombifiedPiglin {
-        m.held = v["held"].as_str().map(Weapon::from_name);
+    if let Some(armor) = v["armor_materials"].as_array() {
+        for (slot, material) in m.armor.iter_mut().zip(armor) {
+            *slot = material.as_u64().and_then(|i| super::armor::ArmorKind::ALL.get(i as usize).copied());
+        }
     }
+    m.held = v["held"].as_str().map(Weapon::from_name);
+    m.armor_glint = v["armor_glint"].as_u64().unwrap_or(0).min(15) as u8;
     m.restrict = v["restrict"].as_array().filter(|a| a.len() == 4).and_then(|a| {
         let n = |i: usize| a[i].as_i64().and_then(|n| i32::try_from(n).ok());
         Some((IVec3::new(n(0)?, n(1)?, n(2)?), n(3)?.max(0)))
@@ -2168,7 +2186,9 @@ mod tests {
         let text = e.nether_mobs_to_string();
         let mut loaded = Entities::new(4);
         loaded.load_nether_mobs(&text);
-        assert_eq!(loaded.mobs.len(), 1, "only persistent nether mobs are saved");
+        assert_eq!(loaded.mobs.len(), 2, "persistent piglins and conversion-capable natural zombies save");
+        assert_eq!(loaded.mobs.iter().filter(|m| m.kind == MobKind::Piglin).count(), 1);
+        assert!(loaded.mobs.iter().any(|m| m.kind == MobKind::Zombie && !m.persistent));
         let (a, b) = (&e.mobs[0], &loaded.mobs[0]);
         assert_eq!((a.kind, a.pos, a.health, a.baby, a.armor), (b.kind, b.pos, b.health, b.baby, b.armor));
         let (na, nb) = (a.nether.as_ref().unwrap(), b.nether.as_ref().unwrap());

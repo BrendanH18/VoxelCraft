@@ -2,12 +2,21 @@
 use super::{Cuboid, Mob, MobKind, Parts, cube, part};
 use crate::item::Item;
 use glam::Quat;
-const COLORS: [[u8; 3]; 7] =
-    [[236, 232, 218], [208, 177, 126], [159, 104, 57], [108, 66, 38], [40, 35, 31], [132, 126, 116], [72, 55, 43]];
-const fn bodies() -> [[Cuboid; 3]; 7] {
-    let mut out = [[cube([0.; 3], [0.; 3], [0; 3], 0); 3]; 7];
+const COLORS: [[u8; 3]; 9] = [
+    [236, 232, 218],
+    [208, 177, 126],
+    [159, 104, 57],
+    [108, 66, 38],
+    [40, 35, 31],
+    [132, 126, 116],
+    [72, 55, 43],
+    [222, 218, 200],
+    [94, 124, 68],
+];
+const fn bodies() -> [[Cuboid; 3]; 9] {
+    let mut out = [[cube([0.; 3], [0.; 3], [0; 3], 0); 3]; 9];
     let mut i = 0;
-    while i < 7 {
+    while i < 9 {
         out[i] = [
             cube([-5., 11., -10.], [5., 21., 9.], COLORS[i], 22),
             cube([-1.5, 14., -16.], [1.5, 21., -9.], [48, 38, 28], 20),
@@ -17,11 +26,11 @@ const fn bodies() -> [[Cuboid; 3]; 7] {
     }
     out
 }
-const BODIES: [[Cuboid; 3]; 7] = bodies();
-const fn heads() -> [[Cuboid; 5]; 7] {
-    let mut out = [[cube([0.; 3], [0.; 3], [0; 3], 0); 5]; 7];
+const BODIES: [[Cuboid; 3]; 9] = bodies();
+const fn heads() -> [[Cuboid; 5]; 9] {
+    let mut out = [[cube([0.; 3], [0.; 3], [0; 3], 0); 5]; 9];
     let mut i = 0;
-    while i < 7 {
+    while i < 9 {
         out[i] = [
             cube([-2.5, -1., -1.], [2.5, 7., 4.], COLORS[i], 18),
             cube([-2.5, 4., 2.], [2.5, 9., 9.], COLORS[i], 18),
@@ -33,11 +42,11 @@ const fn heads() -> [[Cuboid; 5]; 7] {
     }
     out
 }
-const HEADS: [[Cuboid; 5]; 7] = heads();
-const fn legs() -> [[Cuboid; 2]; 7] {
-    let mut out = [[cube([0.; 3], [0.; 3], [0; 3], 0); 2]; 7];
+const HEADS: [[Cuboid; 5]; 9] = heads();
+const fn legs() -> [[Cuboid; 2]; 9] {
+    let mut out = [[cube([0.; 3], [0.; 3], [0; 3], 0); 2]; 9];
     let mut i = 0;
-    while i < 7 {
+    while i < 9 {
         out[i] = [
             cube([-1.6, -11., -1.6], [1.6, 0., 1.6], COLORS[i], 18),
             cube([-1.8, -12., -1.8], [1.8, -9., 1.8], [50, 44, 38], 12),
@@ -46,7 +55,7 @@ const fn legs() -> [[Cuboid; 2]; 7] {
     }
     out
 }
-const LEGS: [[Cuboid; 2]; 7] = legs();
+const LEGS: [[Cuboid; 2]; 9] = legs();
 const EARS: &[Cuboid] =
     &[cube([-2., 10., 1.], [-1., 13., 3.], [110, 100, 86], 16), cube([1., 10., 1.], [2., 13., 3.], [110, 100, 86], 16)];
 const CHESTS: &[Cuboid] =
@@ -90,7 +99,12 @@ const fn armors() -> [[Cuboid; 3]; 4] {
 const ARMOR: [[Cuboid; 3]; 4] = armors();
 pub(super) fn pose(m: &Mob) -> Parts {
     let s = m.mount.as_ref().unwrap();
-    let color = if m.kind == MobKind::Horse { s.variant as usize } else { 5 };
+    let color = match m.kind {
+        MobKind::SkeletonHorse => 7,
+        MobKind::ZombieHorse => 8,
+        MobKind::Horse => s.variant as usize,
+        _ => 5,
+    };
     let stride = m.limb_phase.sin() * m.limb_amp * 0.8;
     let head_y = match m.kind {
         MobKind::Donkey => 13.,
@@ -99,12 +113,16 @@ pub(super) fn pose(m: &Mob) -> Parts {
     };
     let head = Quat::from_rotation_y(-m.head_yaw) * Quat::from_rotation_x(-0.35 - m.head_pitch);
     let mut p = Parts::new();
-    p.push(part(&BODIES[color], [0.; 3], Quat::IDENTITY));
+    p.push(part(
+        if m.kind == MobKind::SkeletonHorse { SKELETON_BODY } else { &BODIES[color] },
+        [0.; 3],
+        Quat::IDENTITY,
+    ));
     for (x, z, phase) in [(-3.5, 7., stride), (3.5, 7., -stride), (-3.5, -8., -stride), (3.5, -8., stride)] {
         p.push(part(&LEGS[color], [x, 12., z], Quat::from_rotation_x(phase)));
     }
     p.push(part(&HEADS[color], [0., head_y, 6.], head));
-    if m.kind != MobKind::Horse {
+    if matches!(m.kind, MobKind::Donkey | MobKind::Mule) {
         p.push(part(EARS, [0., head_y, 6.], head));
     }
     if s.marking > 0 && m.kind == MobKind::Horse {
@@ -240,6 +258,19 @@ pub(super) fn colour(m: &Mob, c: &mut Cuboid) {
             .map_or([200, 200, 200], |d| d.sheep_rgb());
     }
 }
+
+/// Original exposed spine and ribs, in the same horse-shaped rig.
+const SKELETON_BODY: &[Cuboid] = &[
+    cube([-1., 19., -10.], [1., 21., 9.], [222, 218, 200], 12),
+    cube([-4., 12., -8.], [-3., 20., -7.], [222, 218, 200], 12),
+    cube([3., 12., -8.], [4., 20., -7.], [222, 218, 200], 12),
+    cube([-4., 12., -3.], [-3., 20., -2.], [222, 218, 200], 12),
+    cube([3., 12., -3.], [4., 20., -2.], [222, 218, 200], 12),
+    cube([-4., 12., 2.], [-3., 20., 3.], [222, 218, 200], 12),
+    cube([3., 12., 2.], [4., 20., 3.], [222, 218, 200], 12),
+    cube([-4., 12., 7.], [4., 14., 8.], [222, 218, 200], 12),
+    cube([-1., 14., -16.], [1., 20., -9.], [222, 218, 200], 12),
+];
 
 #[cfg(test)]
 mod tests {

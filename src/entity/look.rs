@@ -28,6 +28,8 @@ impl Mob {
             "armor": armor,
             "glint": self.armor_glint,
             "charged": self.charged,
+            "lightning_charged": self.lightning_charged,
+            "water_conversion": self.water_conversion.save(),
             "fuse": self.fuse,
             "burning": self.burning,
             "attack": self.attack_anim,
@@ -91,6 +93,8 @@ impl Mob {
         }
         self.armor_glint = small(&v["glint"]).unwrap_or(0);
         self.charged = v["charged"] == true;
+        self.lightning_charged = v["lightning_charged"] == true;
+        self.water_conversion = super::lightning::WaterConversion::load(&v["water_conversion"]);
         self.fuse = v["fuse"].as_f64().unwrap_or(0.0) as f32;
         self.burning = v["burning"] == true;
         self.attack_anim = v["attack"].as_f64().unwrap_or(0.0) as f32;

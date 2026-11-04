@@ -218,6 +218,7 @@ impl Agent {
                     | Command::Teleport(..)
                     | Command::SpawnPoint(..)
                     | Command::Summon(..)
+                    | Command::SummonLightning(..)
                     | Command::Clear
                     | Command::Kill
                     | Command::Say(..)
@@ -346,6 +347,7 @@ impl Agent {
                     self.remaining = 0;
                 }
             }
+            Command::SummonLightning(pos) => entities.summon_lightning(pos.resolve(self.session.player.pos)?, false),
             Command::Summon(kind, pos) => {
                 entities.spawn(kind, pos.resolve(self.session.player.pos)?);
             }
