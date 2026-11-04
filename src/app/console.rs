@@ -256,6 +256,15 @@ impl Game {
                         ))
                     }
                     "bastion_remnant" | "bastion" => None,
+                    "nether_fossil" => self.world.generator.nearest_nether_fossil(
+                        IVec2::new(self.session.player.pos.x.floor() as i32, self.session.player.pos.z.floor() as i32),
+                        6400,
+                    ),
+                    "trail_ruins" => self.world.generator.trail_ruins.nearest(
+                        &self.world.generator,
+                        IVec2::new(self.session.player.pos.x.floor() as i32, self.session.player.pos.z.floor() as i32),
+                        6400,
+                    ),
                     "mineshaft" | "abandoned_mineshaft" => {
                         self.world.generator.mineshafts.nearest(self.session.player.pos.floor().as_ivec3())
                     }

@@ -256,6 +256,8 @@ pub struct Generator {
     pub villages: super::village::Villages,
     /// Temples, huts, igloos, outposts, shipwrecks, ruins and monuments.
     pub temples: super::temples::Temples,
+    pub relics: super::relics::Relics,
+    pub trail_ruins: super::trail_ruins::TrailRuins,
     columns: Mutex<FxHashMap<IVec2, Arc<ChunkColumns>>>,
     climate: ClimateNoise,
     caves: Caves,
@@ -307,6 +309,8 @@ impl Generator {
             mineshafts: super::mineshaft::Mineshafts::new(seed),
             villages: super::village::Villages::new(seed),
             temples: super::temples::Temples::new(seed),
+            relics: super::relics::Relics::new(seed),
+            trail_ruins: super::trail_ruins::TrailRuins::new(seed),
             columns: Mutex::new(FxHashMap::default()),
             climate: ClimateNoise::new(seed),
             caves: Caves::new(seed),
@@ -344,6 +348,12 @@ impl Generator {
     /// Nearest Nether fortress, when this is a Nether generator.
     pub fn nearest_fortress(&self, p: glam::IVec2) -> Option<IVec3> {
         self.nether.as_ref()?.fortresses.nearest(p)
+    }
+
+    /// Nearest generation-3 Nether fossil, absent in other dimensions.
+    pub fn nearest_nether_fossil(&self, p: IVec2, max_blocks: i32) -> Option<IVec3> {
+        let nether = self.nether.as_ref()?;
+        nether.fossils.nearest(nether, p, max_blocks)
     }
 
     /// The biome at a block: a cave biome underground where one grows,
@@ -735,6 +745,14 @@ impl Generator {
         let top = base.y + CHUNK_SIZE_I - 1;
         // Open sky: nothing (not even tree canopies or ice spikes) reaches this chunk.
         if base.y > (max_h + TREE_TOP).max(SEA_LEVEL + 40) {
+            if self.generation >= Generation::V3 {
+                // A rigid piece rooted in a higher neighbouring column can
+                // reach above this column's terrain. Keep clipping it here.
+                let mut blocks = ChunkData::new_dense(Block::AIR);
+                self.trail_ruins.paint(self, &mut blocks, base);
+                self.relics.paint(self, &mut blocks, base);
+                return ChunkData::from_dense(blocks);
+            }
             return ChunkData::Uniform(Block::AIR);
         }
         let mut blocks = ChunkData::new_dense(Block::AIR);
@@ -798,6 +816,10 @@ impl Generator {
         self.mineshafts.paint(&mut blocks, base);
         self.villages.paint(self, &mut blocks, base);
         self.temples.paint(self, &mut blocks, base);
+        if self.generation >= Generation::V3 {
+            self.trail_ruins.paint(self, &mut blocks, base);
+            self.relics.paint(self, &mut blocks, base);
+        }
         // GEN-02 (generation 2): deep dark, glow lichen and springs, after
         // the structures like Java's decoration steps.
         if self.generation >= Generation::V2 {

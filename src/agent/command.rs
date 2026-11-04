@@ -318,6 +318,8 @@ pub fn tab_complete(input: &str) -> Option<String> {
                 "shipwreck",
                 "ocean_ruin",
                 "monument",
+                "trail_ruins",
+                "nether_fossil",
             ],
             partial,
         )?,
@@ -520,6 +522,8 @@ impl Command {
             ["gamerule", name] => Self::GameRule { name: name.to_string(), value: None },
             ["gamerule", name, value] => Self::GameRule { name: name.to_string(), value: Some(value.to_string()) },
             ["locate", "village"] => Self::LocateStructure("village".into()),
+            ["locate", "trail_ruins"] => Self::LocateStructure("trail_ruins".into()),
+            ["locate", "nether_fossil"] => Self::LocateStructure("nether_fossil".into()),
             ["locate", "structure", name] => Self::LocateStructure(name.to_string()),
             ["locate", "biome", name] => match crate::world::nether_biome::NetherBiome::from_name(name) {
                 Some(nether) => Self::LocateNetherBiome(nether),
