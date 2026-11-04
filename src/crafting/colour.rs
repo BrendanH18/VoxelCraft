@@ -1,8 +1,7 @@
 //! v0.12 colour track recipes (Java 26.3 `data/minecraft/recipe`): wool and
 //! concrete stairs and slabs, banners, dyed candles and the straw bed.
 //!
-//! The plain candle's recipe (string over honeycomb) waits for honeycomb,
-//! which has no survival source until bees (v0.15).
+//! v0.15 bees supply honeycomb for the plain candle recipe.
 
 use super::{Ingredient, Recipe, STICK, b, shaped, shapeless};
 use crate::color::DyeColor;
@@ -22,6 +21,7 @@ pub(super) fn add(r: &mut Vec<Recipe>) {
     };
     static DYES: [[Item; 1]; 16] = super::color_ingredients(0);
     const PLAIN_CANDLE: Ingredient = &[Item::from_block(candle::candle(0, 1, false, false))];
+    r.push(shaped(&["S", "H"], &[('S', &[Item::STRING]), ('H', &[Item::HONEYCOMB])], PLAIN_CANDLE[0], 1));
     for (i, base) in BASES.iter().enumerate() {
         // `white_wool_stairs.json`, `white_concrete_slab.json`, ...
         r.push(shaped(&["#  ", "## ", "###"], &[('#', base)], b(cb::family_stairs(i)), 4));

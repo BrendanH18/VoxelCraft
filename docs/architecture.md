@@ -518,7 +518,21 @@ Silk Touch items append an optional hex-encoded component to inventory
 strings. Immutable item payloads are interned, keeping `Stack` Copy and
 its optional hive component pointer-sized. They live until process exit.
 States 10893–11007, items 1282–1299 and layers 3017–3135 remain unused;
-29696–30719 still await waxed copper.
+The waxed copper allocation follows below.
+
+Track 2 waxed copper continuation (implemented, unverified):
+`copper::WAXED_FIRST = 29696`, with the same family/stage/local offsets as
+22528–23367 (the unwaxed torch has no waxed form). The unaffected block
+of copper retains 231 and maps to 29696. The mirror ends at 30536 exclusive:
+792 registered states, with 48 powered-rod locals reserved as in the
+current unwaxed layout. Remaining 30536–30719 stay unused. Stair/slab
+families 89–92 append after the existing colours; no earlier family or
+saved ID changes. All 56 default block items reuse their unwaxed textures;
+no additional item IDs, layers or MobKinds. Sign waxing uses the existing
+saved sign `waxed` flag. See [track evidence](verification/2026-11-04-v0.15-crops-bees.md).
+
+The plain candle recipe adds no IDs or layers; it uses the existing plain
+candle (27296), string and honeycomb.
 
 ## Assessment branch ID reservations
 
@@ -578,14 +592,3 @@ The retained v0.7 animal reservation 1000–1039 remains untouched. Potion indic
 1041–1043 and splash items 1044–1046, because the old ranges are full. Existing potion/item meanings
 stay unchanged. The [turtle equipment report](verification/2026-10-12-turtle-equipment.md)
 records the accompanying implementation and acceptance evidence.
-
-Track 2 waxed copper continuation (implemented, unverified):
-`copper::WAXED_FIRST = 29696`, with the same family/stage/local offsets as
-22528–23367 (the unwaxed torch has no waxed form). The unaffected block
-of copper retains 231 and maps to 29696. The mirror ends at 30536 exclusive:
-792 registered states, with 48 powered-rod locals reserved as in the
-current unwaxed layout. Remaining 30536–30719 stay unused. Stair/slab
-families 89–92 append after the existing colours; no earlier family or
-saved ID changes. All 56 default block items reuse their unwaxed textures;
-no additional item IDs, layers or MobKinds. Sign waxing uses the existing
-saved sign `waxed` flag. See [track evidence](verification/2026-11-04-v0.15-crops-bees.md).

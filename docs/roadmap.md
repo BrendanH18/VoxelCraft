@@ -1180,11 +1180,11 @@ Work items (all Missing unless noted):
    respawn point, falls apart on waking and instead of exploding outside
    the Overworld), and the 16 cushions as stationary seats on the vehicle
    system, crafted from three wool slabs
-   ([record](verification/2026-10-25-v0.12-colour.md)). Owed: owner play;
-   a survival source for candles (the plain candle needs honeycomb, which
-   comes with bees in v0.15, so candles and candle cakes are creative-only
-   until then; integrator's decision, 2026-10-26: keep the finished blocks
-   rather than hold them for bees, as with waxing); banner patterns (loom,
+   ([record](verification/2026-10-25-v0.12-colour.md)). The plain candle's
+   survival recipe was deferred here in 2026-10-26 to retain the finished
+   blocks while waiting for honeycomb. It is now implemented, unverified,
+   with bees (2026-11-04, [record](verification/2026-11-04-v0.15-crops-bees.md)).
+   Owed: owner play and banner patterns (loom,
    v0.17). Arrows hitting cushions, boats, minecarts and decorations:
    *implemented, unverified (2026-10-29,
    [record](verification/2026-10-29-v0.12-finish.md))*.
@@ -1459,7 +1459,9 @@ in the [architecture reservations](architecture.md#v015-track-reservations):
    breeding, anger/stinging, smoke-aware harvesting, honeycomb and Silk Touch
    transport. **Waxing implemented, unverified:** 56 copper blocks, wax/unwax
    transactions and recipes, oxidation protection and sign edit protection.
-   Candle acquisition remains pending ([evidence](verification/2026-11-04-v0.15-crops-bees.md)).
+   **Candles obtainable, unverified:** string above honeycomb crafts the
+   existing plain candle; dyeing and candle-cake uses supply the remaining
+   survival variants ([evidence](verification/2026-11-04-v0.15-crops-bees.md)).
 3. **Passive mobs** (MOB-03). Bats; frogs, tadpoles, frogspawn and the
    three froglights; pandas with their genes; polar bears; armadillos,
    scutes and wolf armor; mooshrooms and suspicious stew; ocelots; the cat

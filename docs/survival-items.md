@@ -134,3 +134,7 @@ properties. An axe removes wax on its first use, then scrapes oxidation on
 later uses. Waxed copper never oxidizes. Wax a sign to preserve its text
 and ink; its existing saved flag prevents further editing. The 56 waxed
 copper items have comb recipes, with matching waxed construction recipes.
+
+String above honeycomb crafts one plain candle. Existing dye recipes make
+all sixteen dyed candles; those candles can be placed on an uneaten cake.
+This completes their survival acquisition path (implemented, unverified).

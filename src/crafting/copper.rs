@@ -39,6 +39,16 @@ pub(super) fn add_recipes(r: &mut Vec<Recipe>) {
             ));
         }
     }
+    r.push(shapeless(
+        &[ingredient(b(copper::encode(Copper {
+            family: Family::Block,
+            stage: Stage::Unaffected,
+            local: 0,
+            waxed: true,
+        })))],
+        Item::COPPER_INGOT,
+        9,
+    ));
     let u = Stage::Unaffected;
     let ingot: super::Ingredient = &[Item::COPPER_INGOT];
     let nugget: super::Ingredient = &[Item::COPPER_NUGGET];
