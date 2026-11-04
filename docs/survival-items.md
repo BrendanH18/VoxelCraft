@@ -128,3 +128,9 @@ anger. Six planks above/below three honeycomb craft a beehive; four
 honeycomb craft a honeycomb block. Silk Touch preserves bees and honey in
 an acquired nest/hive. Hive item components survive inventory serialization,
 stack splitting, dropping and re-placement. See [the track record](verification/2026-11-04-v0.15-crops-bees.md).
+
+Honeycomb also waxes copper, preserving its oxidation stage and other
+properties. An axe removes wax on its first use, then scrapes oxidation on
+later uses. Waxed copper never oxidizes. Wax a sign to preserve its text
+and ink; its existing saved flag prevents further editing. The 56 waxed
+copper items have comb recipes, with matching waxed construction recipes.

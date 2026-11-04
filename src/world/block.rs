@@ -2390,6 +2390,9 @@ impl Block {
     /// Looks a block up by name (spaces or underscores).
     pub fn from_name(name: &str) -> Option<Block> {
         let name = name.replace('_', " ");
+        if name == "waxed copper block" {
+            return Some(Block(super::copper::WAXED_FIRST));
+        }
         if name == "scaffolding" {
             return Some(super::scaffolding::SCAFFOLDING);
         }
@@ -2845,7 +2848,8 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         },
         super::bees::FIRST..=super::bees::LAST => super::bees::registry(id),
         super::crops::FIRST..=super::crops::LAST => super::crops::registry(id),
-        super::copper::FIRST..=super::copper::RESERVED_LAST => match super::copper::registry(id) {
+        super::copper::FIRST..=super::copper::RESERVED_LAST
+        | super::copper::WAXED_FIRST..=super::copper::WAXED_RESERVED_LAST => match super::copper::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },

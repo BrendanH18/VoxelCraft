@@ -39,7 +39,8 @@ pub const LEGACY_COUNT: usize = 39;
 /// their own module's range; see [`super::stone_blocks`] (families 39–52),
 /// [`super::copper`] (from [`super::copper::STAIR_FAMILY`]) and
 /// [`colour_blocks`] (from [`COLOUR_FIRST`]).
-pub const FAMILY_COUNT: usize = COLOUR_FIRST + colour_blocks::SHAPE_FAMILIES;
+pub const WAXED_FIRST: usize = COLOUR_FIRST + colour_blocks::SHAPE_FAMILIES;
+pub const FAMILY_COUNT: usize = WAXED_FIRST + super::copper::STAIR_FAMILIES;
 /// The first wool and concrete family, after copper's.
 pub const COLOUR_FIRST: usize = super::copper::STAIR_FAMILY + super::copper::STAIR_FAMILIES;
 /// Ids per appended copper family (see the module docs).
@@ -107,6 +108,7 @@ pub const FAMILIES: [Family; FAMILY_COUNT] = {
             }
             _ if i < super::copper::STAIR_FAMILY => super::stone_blocks::SHAPES[i - LEGACY_COUNT],
             _ if i < COLOUR_FIRST => super::copper::stair_family(i - super::copper::STAIR_FAMILY),
+            _ if i >= WAXED_FIRST => super::copper::waxed_stair_family(i - WAXED_FIRST),
             _ => {
                 let index = i - COLOUR_FIRST;
                 Family {
@@ -218,7 +220,11 @@ const fn extended(id: u16, slab: bool) -> Option<(u8, u16)> {
         return None;
     }
     let mut f = super::copper::STAIR_FAMILY;
-    while f < COLOUR_FIRST {
+    while f < FAMILY_COUNT {
+        if f == COLOUR_FIRST {
+            f = WAXED_FIRST;
+            continue;
+        }
         let (first, stride) =
             if slab { (FAMILIES[f].slab.0, EXTENDED_SLABS) } else { (FAMILIES[f].stairs.0, EXTENDED_STAIRS) };
         if id >= first && id < first + stride {
@@ -233,7 +239,11 @@ const fn extended(id: u16, slab: bool) -> Option<(u8, u16)> {
 const EXTENDED_BOUNDS: (u16, u16) = {
     let (mut lo, mut hi) = (u16::MAX, 0);
     let mut f = super::copper::STAIR_FAMILY;
-    while f < COLOUR_FIRST {
+    while f < FAMILY_COUNT {
+        if f == COLOUR_FIRST {
+            f = WAXED_FIRST;
+            continue;
+        }
         let (stairs, slab) = (FAMILIES[f].stairs.0, FAMILIES[f].slab.0);
         lo = if stairs < lo { stairs } else { lo };
         lo = if slab < lo { slab } else { lo };

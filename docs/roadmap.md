@@ -1156,7 +1156,8 @@ Work items (all Missing unless noted):
    cut copper and its stairs and slab, chiseled copper, grate, bulb, door,
    trapdoor, bars, chain, lantern, chest and lightning rod, plus the copper
    torch. Random-tick oxidation and axe scraping. The waxed forms and
-   honeycomb waxing follow with bees in v0.15. *Implemented, unverified
+   honeycomb waxing are implemented, unverified, with bees in v0.15
+   ([2026-11-04 record](verification/2026-11-04-v0.15-crops-bees.md)). *Implemented, unverified
    (2026-10-25; checks rerun on the merge with stone 2026-10-26):* all 57
    blocks (732 registered states laid out in 22528–23372), with Java's
    `ChangeOverTimeBlock` odds, scraping, bulb toggling and comparator
@@ -1456,7 +1457,9 @@ in the [architecture reservations](architecture.md#v015-track-reservations):
    **Bee slice implemented, unverified:** nests/hives with saved occupants,
    natural and flower-adjacent sapling nests, nectar/pollination/crop boosts,
    breeding, anger/stinging, smoke-aware harvesting, honeycomb and Silk Touch
-   transport. Waxing and candle acquisition remain pending ([evidence](verification/2026-11-04-v0.15-crops-bees.md)).
+   transport. **Waxing implemented, unverified:** 56 copper blocks, wax/unwax
+   transactions and recipes, oxidation protection and sign edit protection.
+   Candle acquisition remains pending ([evidence](verification/2026-11-04-v0.15-crops-bees.md)).
 3. **Passive mobs** (MOB-03). Bats; frogs, tadpoles, frogspawn and the
    three froglights; pandas with their genes; polar bears; armadillos,
    scutes and wolf armor; mooshrooms and suspicious stew; ocelots; the cat

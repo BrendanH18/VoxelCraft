@@ -47,7 +47,10 @@ fn layout_fits_the_reservation_and_round_trips() {
     // stage for the others (2 + 4 + 80 + 5 + 24 + 32 + 2 + 6 + 4 + 24 + 12)
     // and five torch states.
     assert_eq!(count, 3 + 8 + 4 * 195 + 5);
-    assert_eq!(state(Block::COPPER_BLOCK), Some(Copper { family: Family::Block, stage: Stage::Unaffected, local: 0 }));
+    assert_eq!(
+        state(Block::COPPER_BLOCK),
+        Some(Copper { family: Family::Block, stage: Stage::Unaffected, local: 0, waxed: false })
+    );
     assert_eq!(block(Family::Block, Stage::Unaffected, 0), Block::COPPER_BLOCK);
     for id in (0..STATE_CAPACITY as u16).filter(|&id| !owns(id) && id != 231) {
         assert!(state(Block(id)).is_none(), "{id}");
@@ -659,7 +662,8 @@ fn recipes_match_the_java_data() {
     assert_eq!(craft(3, &(0..9).map(|i| (i, exposed)).collect::<Vec<_>>()), None);
     // Stonecutting data: eight recipes per stage, as in Java's files.
     let cutting = crate::crafting::copper_stonecutting();
-    assert_eq!(cutting.len(), 32);
+    assert_eq!(cutting.len(), 64);
+    assert!(cutting.contains(&(Item::from_block(Block(29699)), Item::from_block(Block(30067)), 8)));
     assert!(cutting.contains(&(item(Family::Block, Stage::Oxidized), item(Family::Slab, Stage::Oxidized), 8)));
     assert!(cutting.contains(&(item(Family::Cut, Stage::Exposed), item(Family::Stairs, Stage::Exposed), 1)));
 }

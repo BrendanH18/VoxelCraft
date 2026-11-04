@@ -80,6 +80,12 @@ impl PlayerSession {
                 _ => {}
             }
         }
+        if held == Some(Item::HONEYCOMB) && self.mode.can_build() && world.wax_sign(pos) {
+            if !self.mode.is_creative() {
+                self.inventory.take_one(slot);
+            }
+            return Some(Used::Waxed { cell: pos });
+        }
         let front = sign.faces_front(pos, self.player.pos);
         let (_, entity) = world.sign_at(pos)?;
         let waxed = entity.waxed;
