@@ -1,5 +1,8 @@
 //! Bastion remnants: four hand-authored layouts and Java chest pools.
-//! Cached layouts use shared Java Nether-complex placement; no jigsaw assets.
+//! Legacy layouts and generation 3 templates share Java Nether-complex placement.
+
+mod templates;
+pub use templates::Resident;
 
 use crate::item::Item;
 
@@ -118,6 +121,9 @@ pub struct Bastion {
     pub kind: Kind,
     pub bounds: Bounds,
     pub pieces: Vec<Piece>,
+    placed: Vec<super::jigsaw::Placed>,
+    /// Present only for generation 3, including an empty selected mob pool.
+    pub template_residents: Option<Vec<Resident>>,
 }
 impl Bastion {
     pub fn generate(seed: u64, start: IVec2, kind: Kind, facing: Facing) -> Self {
@@ -194,7 +200,7 @@ impl Bastion {
             .map(|p| p.bounds)
             .reduce(|a, b| Bounds { min: a.min.min(b.min), max: a.max.max(b.max) })
             .unwrap();
-        Self { kind, bounds, pieces }
+        Self { kind, bounds, pieces, placed: Vec::new(), template_residents: None }
     }
 }
 
@@ -235,7 +241,11 @@ impl Bastions {
         let seed = hash3(region.x, 0, region.y, self.seed ^ 0xBA5710);
         let mut rng = Rng(seed);
         let kind = [Kind::Housing, Kind::Stables, Kind::Treasure, Kind::Bridge][rng.below(4) as usize];
-        let b = Arc::new(Bastion::generate(seed, start, kind, Facing::ALL[rng.below(4) as usize]));
+        let b = Arc::new(if self.generation >= super::terrain::Generation::V3 {
+            templates::generate(seed, start)
+        } else {
+            Bastion::generate(seed, start, kind, Facing::ALL[rng.below(4) as usize])
+        });
         let mut cache = self.cache.lock().unwrap();
         if cache.len() >= 256 {
             cache.clear();
@@ -243,16 +253,17 @@ impl Bastions {
         Some(cache.entry(region).or_insert(b).clone())
     }
     fn near(&self, min: IVec2, max: IVec2) -> Vec<Arc<Bastion>> {
-        let lo = (min - START_MAX - 65).div_euclid(IVec2::splat(REGION));
-        let hi = (max + 65).div_euclid(IVec2::splat(REGION));
+        let reach = if self.generation >= super::terrain::Generation::V3 { 100 } else { 65 };
+        let lo = (min - START_MAX - reach).div_euclid(IVec2::splat(REGION));
+        let hi = (max + reach).div_euclid(IVec2::splat(REGION));
         let mut out = Vec::new();
         for z in lo.y..=hi.y {
             for x in lo.x..=hi.x {
                 let region = IVec2::new(x, z);
                 let (p, k) = nether_complexes::placement(self.seed, region);
                 if k != Complex::Bastion
-                    || (p - 65).cmpgt(max).any()
-                    || (p + 65).cmplt(min).any()
+                    || (p - reach).cmpgt(max).any()
+                    || (p + reach).cmplt(min).any()
                     || !self.biome_allows(p)
                 {
                     continue;
@@ -290,6 +301,10 @@ impl Bastions {
         }
         let chunk = Bounds { min: base, max: top };
         for b in self.near(IVec2::new(base.x, base.z), IVec2::new(top.x, top.z)) {
+            if !b.placed.is_empty() {
+                templates::paint(&b, blocks, base, top);
+                continue;
+            }
             for piece in &b.pieces {
                 if piece.bounds.intersects(&chunk) {
                     Paint { blocks, base, top, piece, open: &|_, _, _, _| false, pillar: Block::BLACKSTONE }
@@ -313,6 +328,10 @@ impl Bastions {
             return out;
         }
         for b in self.near(IVec2::new(base.x, base.z), IVec2::new(chunk.max.x, chunk.max.z)) {
+            if !b.placed.is_empty() {
+                out.extend(templates::features(&b).filter(|(p, _)| chunk.contains(*p)));
+                continue;
+            }
             for piece in &b.pieces {
                 for &(local, kind) in &piece.chests {
                     let p = piece.world(local.x, local.y, local.z);
@@ -1164,15 +1183,20 @@ mod generation_tests {
     #[test]
     fn generated_bastion_chests_register_and_saved_loot_wins() {
         let seed = (0..100)
-            .find(|&seed| Bastions::new(seed).get(IVec2::ZERO).is_some_and(|b| b.kind == Kind::Treasure))
+            .find(|&seed| {
+                Bastions::with_generation(seed, super::super::terrain::Generation::V2)
+                    .get(IVec2::ZERO)
+                    .is_some_and(|b| b.kind == Kind::Treasure)
+            })
             .unwrap();
-        let bastions = Bastions::new(seed);
+        let bastions = Bastions::with_generation(seed, super::super::terrain::Generation::V2);
         let b = bastions.get(IVec2::ZERO).unwrap();
         let piece = &b.pieces[0];
         let local = piece.chests[0].0;
         let p = piece.world(local.x, local.y, local.z);
         let cpos = chunk_of(p);
-        let generator = Arc::new(Generator::for_dimension(seed, Dimension::Nether));
+        let generator =
+            Arc::new(Generator::with_generation(seed, Dimension::Nether, super::super::terrain::Generation::V2));
         let data = generator.generate(cpos);
         let mut world = World::new_headless(generator, Default::default(), 2);
         world.register_structure_features(cpos, &data);

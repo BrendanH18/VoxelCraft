@@ -61,6 +61,10 @@ fn corpus(generation: Generation) -> Vec<IVec3> {
             chunks.extend(around(at, 1));
         }
     }
+    if generation >= Generation::V3 {
+        let outpost = g.temples.nearest(&g, Kind::Outpost, IVec2::ZERO, 20_000).expect("an outpost");
+        chunks.extend(around(outpost, 2));
+    }
     chunks.extend(around(g.mineshafts.nearest(IVec3::ZERO).expect("a mineshaft"), 1));
     chunks.retain(|p| rows.contains(&p.y));
     chunks.sort_by_key(|p| (p.z, p.x, p.y));
@@ -115,6 +119,12 @@ fn generation_ignores_order_threads_and_caches(generation: Generation) {
     let has = |f: fn(&Feature) -> bool| all.iter().any(f);
     assert!(has(|f| matches!(f, Feature::VillageHome(_) | Feature::VillageChest(..))), "{generation:?}: no village");
     assert!(has(|f| matches!(f, Feature::TempleChest(..))), "{generation:?}: no temple-family chest");
+    if generation >= Generation::V3 {
+        assert!(
+            has(|f| matches!(f, Feature::TempleChest(_, crate::world::temples::LootTable::Outpost))),
+            "generation 3: no outpost chest"
+        );
+    }
     assert!(has(|f| matches!(f, Feature::DungeonChest(_))), "{generation:?}: no dungeon");
     assert!(has(|f| matches!(f, Feature::MineshaftChest(_))), "{generation:?}: no mineshaft chest");
     let mut failures = Vec::new();
@@ -183,4 +193,52 @@ fn generation_2_ignores_order_threads_and_caches() {
 #[test]
 fn generation_3_ignores_order_threads_and_caches() {
     generation_ignores_order_threads_and_caches(Generation::V3);
+}
+
+/// GEN-07's Nether counterpart includes every chunk intersecting a treasure
+/// bastion, including its magma-cube spawner and a negative region border.
+#[test]
+fn generation_3_bastion_ignores_order_threads_and_caches() {
+    let bastions = crate::world::bastion::Bastions::with_generation(SEED, Generation::V3);
+    let bastion = (-4..=0)
+        .flat_map(|z| (-4..=0).map(move |x| IVec2::new(x, z)))
+        .filter_map(|r| bastions.get(r))
+        .find(|b| b.kind == crate::world::bastion::Kind::Treasure)
+        .expect("treasure bastion");
+    let lo = crate::world::chunk::chunk_of(bastion.bounds.min);
+    let hi = crate::world::chunk::chunk_of(bastion.bounds.max);
+    let chunks: Vec<_> = (lo.x..=hi.x)
+        .flat_map(|x| (lo.z..=hi.z).flat_map(move |z| (lo.y..=hi.y).map(move |y| IVec3::new(x, y, z))))
+        .collect();
+    let fresh = || Generator::with_generation(SEED, Dimension::Nether, Generation::V3);
+    let g = fresh();
+    let reference: Vec<_> = chunks.iter().map(|&p| (g.generate(p), g.structure_features(p))).collect();
+    assert!(
+        reference
+            .iter()
+            .any(|(_, fs)| fs.iter().any(|(_, f)| matches!(f, Feature::Spawner(crate::entity::MobKind::MagmaCube))))
+    );
+    let g = fresh();
+    for i in (0..chunks.len()).rev() {
+        assert_eq!(differs(&g, chunks[i], &reference[i], "reverse"), None);
+    }
+    let g = fresh();
+    std::thread::scope(|s| {
+        let handles: Vec<_> = (0..THREADS)
+            .map(|t| {
+                let (g, chunks, reference) = (&g, &chunks, &reference);
+                s.spawn(move || {
+                    for i in (t..chunks.len()).step_by(THREADS) {
+                        assert_eq!(differs(g, chunks[i], &reference[i], "parallel"), None);
+                    }
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap();
+        }
+    });
+    for (&p, want) in chunks.iter().zip(&reference) {
+        assert_eq!(differs(&fresh(), p, want, "fresh caches"), None);
+    }
 }

@@ -10,6 +10,8 @@
 //! builds in the shape and materials of Java's, built once per start,
 //! cached, and painted clipped into every chunk they cross.
 
+mod outpost_templates;
+
 use std::sync::{Arc, Mutex};
 
 use glam::{IVec2, IVec3};
@@ -158,6 +160,8 @@ pub struct Built {
     /// Where the structure's own mobs spawn (witches, pillagers, guardians).
     pub spawns: Bounds,
     pub residents: Vec<(crate::entity::MobKind, IVec3)>,
+    /// Generation 3 outposts; legacy structures keep their sparse block list.
+    placed: Vec<super::jigsaw::Placed>,
 }
 
 /// Lays out a build in a rotated local frame: x across, z away from the
@@ -412,7 +416,7 @@ impl Builder {
         blocks.sort_unstable_by_key(|(p, _)| (p.y, p.z, p.x));
         let bounds = Bounds { min, max };
         let spawns = Bounds { min, max: max + IVec3::Y * spawns_up };
-        Built { kind, bounds, blocks, features: self.features, spawns, residents: self.residents }
+        Built { kind, bounds, blocks, features: self.features, spawns, residents: self.residents, placed: Vec::new() }
     }
 }
 
@@ -583,7 +587,8 @@ impl Temples {
         let mut out = Vec::new();
         for kind in Kind::ALL {
             let (spacing, _, _) = kind.placement();
-            let r = kind.reach();
+            let r =
+                if kind == Kind::Outpost && g.generation >= super::terrain::Generation::V3 { 96 } else { kind.reach() };
             let span = spacing * 16;
             let (rlo, rhi) = (
                 (lo - IVec2::splat(r + 16)).div_euclid(IVec2::splat(span)),
@@ -610,7 +615,11 @@ impl Temples {
         let top = base + IVec3::splat(CHUNK_SIZE_I - 1);
         let chunk = Bounds { min: base, max: top };
         for b in self.around(g, IVec2::new(base.x, base.z), IVec2::new(top.x, top.z)) {
-            if !b.bounds.intersects(&chunk) {
+            if b.placed.is_empty() && !b.bounds.intersects(&chunk) {
+                continue;
+            }
+            if !b.placed.is_empty() {
+                outpost_templates::paint(g, &b, blocks, base);
                 continue;
             }
             let start = b.blocks.partition_point(|(p, _)| p.y < base.y);
@@ -695,6 +704,9 @@ impl Temples {
             Kind::JungleTemple => jungle_temple(g, centre, ground, rot, seed, rng),
             Kind::SwampHut => swamp_hut(g, centre, ground, rot),
             Kind::Igloo => igloo(g, centre, ground, rot, seed, rng),
+            Kind::Outpost if g.generation >= super::terrain::Generation::V3 => {
+                outpost_templates::build(g, centre, seed)
+            }
             Kind::Outpost => outpost(g, centre, ground, rot, seed),
             Kind::Shipwreck => shipwreck(g, centre, ground, rot, seed, rng),
             Kind::OceanRuin => ocean_ruin(g, centre, ground, rot, seed, rng),
@@ -2128,7 +2140,9 @@ mod tests {
 
     #[test]
     fn every_structure_paints_its_blocks_across_chunk_boundaries() {
-        let g = Generator::new(1);
+        // This legacy sparse-block fixture predates template painting; the
+        // generation 3 outpost has dedicated chunk/marker/order regressions.
+        let g = Generator::with_generation(1, Dimension::Overworld, super::super::terrain::Generation::V2);
         let mut found = 0;
         for kind in Kind::ALL {
             let at =
