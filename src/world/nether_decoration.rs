@@ -307,6 +307,9 @@ fn decorate_within(nether: &NetherGen, blocks: &mut [Block; CHUNK_VOLUME], base:
                 }
             }
             for kind in Kind::ALL {
+                if kind == Kind::Fossil && nether.generation >= super::terrain::Generation::V3 {
+                    continue;
+                }
                 if present[kind.biome() as usize] {
                     painter.cell(nether.seed(), cell, kind);
                 }

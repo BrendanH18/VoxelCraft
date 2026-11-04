@@ -395,7 +395,7 @@ impl Generator {
 
     /// The block on top of world column `(x, z)` (for trees decided
     /// outside their chunk).
-    pub(super) fn top_block_at_v2(&self, x: i32, z: i32) -> Block {
+    pub(in crate::world) fn top_block_at_v2(&self, x: i32, z: i32) -> Block {
         let columns = self.chunk_columns(IVec2::new(x.div_euclid(CHUNK_SIZE_I), z.div_euclid(CHUNK_SIZE_I)));
         self.top_block_v2(&columns, x.rem_euclid(CHUNK_SIZE_I) as usize, z.rem_euclid(CHUNK_SIZE_I) as usize, x, z)
     }
