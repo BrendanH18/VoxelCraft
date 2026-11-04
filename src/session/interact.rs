@@ -804,6 +804,8 @@ pub fn picked_item(block: Block) -> Item {
         Block::LIT_SMOKER => Block::SMOKER.into(),
         Block::LIT_BLAST_FURNACE => Block::BLAST_FURNACE.into(),
         Block::FARMLAND | Block::WET_FARMLAND => Block::DIRT.into(),
+        b if crate::world::crops::stem(b).is_some() => crate::world::crops::stem(b).unwrap().0.seed(),
+        b if matches!(b.as_crop(), Some((crate::world::block::Crop::Beetroot, _))) => Item::BEETROOT_SEEDS,
         b if matches!(b.as_crop(), Some((crate::world::block::Crop::Wheat, _))) => Item::WHEAT_SEEDS,
         b if matches!(b.as_crop(), Some((crate::world::block::Crop::Carrot, _))) => Item::CARROT,
         b if matches!(b.as_crop(), Some((crate::world::block::Crop::Potato, _))) => Item::POTATO,

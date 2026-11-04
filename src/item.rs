@@ -835,6 +835,8 @@ impl Item {
     pub const TURTLE_SCUTE: Item = Item(907);
     /// Standalone append-only audit gear ID; v0.7 reserves 1000..1039.
     pub const TURTLE_HELMET: Item = Item(1040);
+    /// v0.15 crops track: soup; the seeds and root retain their older IDs.
+    pub const BEETROOT_SOUP: Item = Item(1280);
     /// Explicit honey item reservations, including the block placing item.
     pub const HONEY_BLOCK: Item = Item(1072);
     pub const HONEY_BOTTLE: Item = Item(1073);
@@ -939,6 +941,9 @@ impl Item {
         match self {
             Item::REDSTONE => Some(crate::world::redstone_blocks::WIRE),
             Item::STRING => Some(crate::world::gadgets::TRIPWIRE),
+            Item::MELON_SEEDS => Some(crate::world::crops::stem_block(crate::world::crops::Fruit::Melon, 0)),
+            Item::PUMPKIN_SEEDS => Some(crate::world::crops::stem_block(crate::world::crops::Fruit::Pumpkin, 0)),
+            Item::BEETROOT_SEEDS => Some(Block::crop(crate::world::block::Crop::Beetroot, 0)),
             Item::WHEAT_SEEDS => Some(Block::wheat(0)),
             Item::CARROT => Some(Block::crop(crate::world::block::Crop::Carrot, 0)),
             Item::POTATO => Some(Block::crop(crate::world::block::Crop::Potato, 0)),
@@ -1003,6 +1008,14 @@ impl Item {
     }
 
     pub fn info(self) -> ItemInfo {
+        if self == Self::BEETROOT_SOUP {
+            return ItemInfo {
+                name: "beetroot soup",
+                kind: ItemKind::Food { hunger: 6, saturation: 7.2 },
+                max_stack: 1,
+                sprite: Sprite::Lump([152, 34, 54]),
+            };
+        }
         if self.is_map() {
             const NAMES: [&str; 11] = [
                 "map",
@@ -1332,7 +1345,7 @@ impl Item {
         match self {
             Self::MILK_BUCKET => Some(Self::BUCKET),
             Self::HONEY_BOTTLE => Some(Self::GLASS_BOTTLE),
-            Self::MUSHROOM_STEW | Self::RABBIT_STEW => Some(Self::BOWL),
+            Self::MUSHROOM_STEW | Self::RABBIT_STEW | Self::BEETROOT_SOUP => Some(Self::BOWL),
             _ => None,
         }
     }
@@ -1417,6 +1430,7 @@ impl Item {
             .chain((0..DECOR_ITEMS).map(|i| Item(DECOR_ITEM + i)))
             .chain((0..HAND_ITEMS).map(|i| Item(HAND_ITEM + i)))
             .chain((1255..=1265).map(Item))
+            .chain([Self::BEETROOT_SOUP])
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1453,6 +1467,7 @@ fn splash_names() -> &'static [&'static str] {
 fn sprite_index(item: Item) -> Option<u16> {
     let materials = ITEMS.len() as u16;
     match item.0 {
+        1280 => Some(icon_count() as u16 - 1),
         1040 => Some(turtle_icon()),
         1073 => Some(turtle_icon() + 2 + COPPER_ITEMS.len() as u16),
         1047 => Some(turtle_icon() + 1 + COPPER_ITEMS.len() as u16),
@@ -1547,7 +1562,7 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    turtle_icon() as u32 + 1 + COPPER_ITEMS.len() as u32 + 3 + 16 + DECOR_ITEMS as u32 + HAND_ITEMS as u32
+    turtle_icon() as u32 + 1 + COPPER_ITEMS.len() as u32 + 3 + 16 + DECOR_ITEMS as u32 + HAND_ITEMS as u32 + 1
 }
 
 /// The turtle helmet's icon follows the animal items; copper equipment follows it,

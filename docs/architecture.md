@@ -495,6 +495,19 @@ New `MobKind` variants append after `Camel`; mob kinds are saved by name,
 but `MobKind::ALL` order is the LAN index, so the integrator appends the
 tracks' kinds in track order. Each track records what it used here.
 
+Track 2 crop slice (2026-11-04, implemented, unverified):
+`world::crops` uses 10816–10823 for melon stem ages 0–7, 10824–10827
+for its attached facings (`Facing::ALL`: S, N, E, W), 10828–10835 for
+pumpkin stem ages 0–7, 10836–10839 for its attached facings, and
+10840–10843 for beetroot ages 0–3. Item 1280 is beetroot soup; pumpkin
+seeds (680), beetroot (682), melon seeds (1016), beetroot seeds (1017),
+melon slices (283) and honey bottle (1073) retain their existing IDs.
+Original crop textures use 2992–3007, offsets from `crops::t::BASE`:
+eight stem ages, four attached silhouettes and four beetroot ages.
+No MobKinds are appended. States 10844–11007 and 29696–30719, items
+1281–1299 and layers 3008–3135 remain reserved and unused. Bees and
+waxing are pending; see [track evidence](verification/2026-11-04-v0.15-crops-bees.md).
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

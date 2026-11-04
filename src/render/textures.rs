@@ -11,6 +11,8 @@ mod cave;
 mod colour;
 #[path = "copper_textures.rs"]
 mod copper;
+#[path = "crop_textures.rs"]
+mod crops;
 #[path = "nether_textures.rs"]
 mod nether;
 #[path = "overworld_textures.rs"]
@@ -233,6 +235,9 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     }
     if (crate::world::utilities::TEX..crate::world::utilities::TEX_END).contains(&layer) {
         return utility::pixel(layer, x, y);
+    }
+    if (crate::world::crops::t::BASE..crate::world::crops::t::END).contains(&layer) {
+        return crops::pixel(layer, x, y);
     }
     if (crate::world::biome_plants::TEX..crate::world::biome_plants::TEX_END).contains(&layer) {
         return plants::pixel(layer, x, y);

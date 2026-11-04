@@ -427,7 +427,8 @@ impl Game {
                 }
                 EntityEvent::VillagerHarvest { cell } => {
                     if let Some(block) = self.world.get_block(cell)
-                        && let Some((crop, 7)) = block.as_crop()
+                        && let Some((crop, age)) = block.as_crop()
+                        && age == crop.max_age()
                     {
                         self.world.spill_block(cell, block);
                         self.world.set_block(cell, crate::world::block::Block::crop(crop, 0));

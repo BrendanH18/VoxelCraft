@@ -1448,7 +1448,13 @@ in the [architecture reservations](architecture.md#v015-track-reservations):
    and attached stems, beetroots; bees, bee nests and hives, pollination
    and crop boosts, honey bottles and honeycomb, honeycomb blocks;
    honeycomb waxing of the 56 waxed copper blocks and of signs, and
-   candles in survival.
+   candles in survival. **Crop slice implemented, unverified (2026-11-04):**
+   the 28 crop states, soil/spacing growth formula, beetroot's Java 2/3
+   tick gate and divided bone-meal gain, fruit attachment/release, seed
+   planting and drops, melon yields, seed/soup recipes, beetroot in the
+   existing village palette and farmer harvest/replant recognition.
+   Bees, hives, pollination, honeycomb, waxing and candle acquisition
+   remain pending ([evidence](verification/2026-11-04-v0.15-crops-bees.md)).
 3. **Passive mobs** (MOB-03). Bats; frogs, tadpoles, frogspawn and the
    three froglights; pandas with their genes; polar bears; armadillos,
    scutes and wolf armor; mooshrooms and suspicious stew; ocelots; the cat

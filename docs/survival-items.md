@@ -18,8 +18,9 @@ Java references:
 Milk can be collected from cows with a bucket, including stacked empty
 buckets. Creative keeps the bucket and gains one milk bucket. Drinking takes
 32 ticks, works at full hunger, clears every effect, and returns the bucket. Mushroom stew restores 6 hunger/7.2 saturation and
-returns its bowl. Beetroot and rabbit stews are deferred because their
-ingredients are absent.
+returns its bowl. Beetroot soup now also restores 6 hunger/7.2 saturation,
+uses six beetroots and a bowl, and returns the bowl after 32 ticks
+([v0.15 crop evidence](verification/2026-11-04-v0.15-crops-bees.md)).
 
 Brown/red mushrooms generate in caves, covered ground and swamps via an
 isolated decoration pass. Random ticks spread with Java's 1/25 chance,

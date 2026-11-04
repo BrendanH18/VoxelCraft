@@ -144,9 +144,9 @@ cost.
 
 | ID | Requirement | State | Release | Evidence | Acceptance | Gaps / next action |
 |---|---|---|---|---|---|---|
-| FOO-01a | Crops and foods present | Partial | v0.15 | [survival items](survival-items.md) | 26.3 food values and effects | Melon, pumpkin and beetroot crops missing |
+| FOO-01a | Crops and foods present | Partial | v0.15 | [survival items](survival-items.md) | 26.3 food values and effects | 2026-11-04 [crop slice](verification/2026-11-04-v0.15-crops-bees.md): melon/pumpkin stems and attached stems, beetroot, melon yields, seeds and beetroot soup implemented, unverified; bees and honeycomb acquisition remain missing |
 | FOO-01b | Bees, honey and related acquisition | Missing | v0.15 | — | Hives, pollination, honey bottles and combs | Not registered |
-| FOO-02 | Growth, bone meal, soil, trees and propagules, yields | Partial | v0.15 | [content](verification/2026-10-12-content-and-assets.md) | Java growth chances and conditions per plant | Mega trees and sapling stage gaps |
+| FOO-02 | Growth, bone meal, soil, trees and propagules, yields | Partial | v0.15 | [content](verification/2026-10-12-content-and-assets.md) | Java growth chances and conditions per plant | 2026-11-04 [crop slice](verification/2026-11-04-v0.15-crops-bees.md): Java soil/spacing growth speed, stem fruiting and attachment, beetroot 2/3 random-tick gate and divided bone-meal gain implemented, unverified; mega trees and sapling stage gaps remain |
 | FOO-03 | Fishing: open water, loot, enchantments, wear, XP | Implemented, unverified | v0.15 | [roadmap §3.1](roadmap.md#31-confirmed-06-audit-follow-ups) | 26.3 loot fixtures (pass); player | Java random sequences; luck attribute |
 | FOO-04a | Boats, chest boats and rafts | Partial | v0.15 | [mounts](mounts.md) | Boat physics against Java; storage; P/S | Unassessed tick by tick |
 | FOO-04b | Minecarts and rails | Partial | v0.19 | [redstone](redstone.md#rails-and-minecarts-round-2) | Speed and powered rail fixtures | — |

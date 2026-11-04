@@ -32,6 +32,7 @@ pub mod colors;
 pub mod colour_blocks;
 pub mod composter;
 pub mod copper;
+pub mod crops;
 pub mod deep_dark;
 pub mod dismount;
 pub mod double_chest;
@@ -910,6 +911,7 @@ impl World {
         self.extinguish_unsupported_fire(p);
         self.reheight_and_remesh(p, old, block, sync);
         self.reshape_stairs_beside(p, old, block, sync);
+        self.detach_stems_beside(p, old, block, sync);
         self.reshape_chests_beside(p, old, block, sync);
         if update_walls {
             self.reshape_walls_beside(p, old, block, sync);

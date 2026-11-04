@@ -550,6 +550,9 @@ pub fn outline_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bl
     let block = block.canonical();
     let neighbour = |f: Facing| neighbour(f).canonical();
     let below = below.canonical();
+    if let Some(boxes) = super::crops::outline(block) {
+        return boxes;
+    }
     if let Some(boxes) = super::wood::outline(block) {
         return boxes;
     }

@@ -19,9 +19,6 @@ const TICKS_PER_SECTION: f64 = 60.0;
 /// Leaves farther than this (in steps through leaves) from a log decay.
 const LEAF_REACH: i32 = 6;
 
-/// One in this many random ticks grows a crop on wet farmland (twice as
-/// many on dry), roughly Minecraft's rate for a lone crop.
-const CROP_GROWTH: u64 = 7;
 /// One in this many random ticks ages nether wart (Java's rate).
 const WART_GROWTH: u64 = 10;
 /// One in this many random ticks grows a sapling into a tree.
@@ -132,6 +129,7 @@ impl World {
             double_slab_count(block) * super::colour_blocks::drop_count(block) * super::biome_plants::drop_count(block);
         out.extend(block.drop().map(|item| Stack::new(item, count)));
         out.extend(super::utilities::extra_drops(block));
+        self.crop_drops(block, fortune, &mut out);
         if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&block.0)
             || super::overworld_blocks::snow_layers(block).is_some()
             || super::overworld_blocks::bud_facing(block).is_some()
@@ -236,11 +234,6 @@ impl World {
             }
             Block::GRAVEL if self.one_in([10, 7, 4, 1][fortune.min(3) as usize]) => {
                 out = vec![Stack::new(Item::FLINT, 1)]
-            }
-            // 3-7 slices in all, plus 0..fortune, at most 9.
-            Block::MELON => {
-                let n = (3 + self.roll() % 5 + self.up_to(fortune)).min(9) - 1;
-                out.push(Stack::new(Item::MELON_SLICE, n as u8));
             }
             // The Overworld module's leaves roll their own drops above.
             b if b.is_leaves() && !(super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&b.0) => {
@@ -381,13 +374,8 @@ impl World {
                 self.utilities_random_tick(p, b);
                 self.tick_overworld_flora(p, b);
             }
-            b if b.crop_stage().is_some_and(|s| s < 7) => {
-                let wet = self.get_block(p - IVec3::Y) == Some(Block::WET_FARMLAND);
-                if self.grows_here(p) && self.one_in(if wet { CROP_GROWTH } else { 2 * CROP_GROWTH }) {
-                    let (crop, stage) = b.as_crop().unwrap();
-                    self.edit(p, Block::crop(crop, stage + 1), false);
-                }
-            }
+            b if b.as_crop().is_some() => self.tick_crop(p, b),
+            b if super::crops::stem(b).is_some() => self.tick_stem(p, b),
             // Java: one in ten random ticks, whatever the light.
             b if b.wart_age().is_some_and(|a| a < 3) && self.one_in(WART_GROWTH) => {
                 self.edit(p, Block::nether_wart(b.wart_age().unwrap() + 1), false);
@@ -472,7 +460,7 @@ impl World {
                     (0..=1).any(|dy| self.get_block(p + IVec3::new(dx, dy, dz)).is_some_and(|w| w.holds_water()))
                 })
             });
-        let crop = above.is_some_and(|a| a.crop_stage().is_some());
+        let crop = above.is_some_and(|a| a.crop_stage().is_some() || super::crops::stem(a).is_some());
         match (wet, b) {
             (true, Block::FARMLAND) => {
                 self.edit(p, Block::WET_FARMLAND, false);
@@ -576,6 +564,9 @@ impl World {
     /// Returns whether the bone meal was used.
     pub fn apply_bone_meal(&mut self, p: IVec3) -> bool {
         let Some(b) = self.get_block(p) else { return false };
+        if let Some(used) = self.stem_bone_meal(p, b) {
+            return used;
+        }
         if let Some(used) = self.nether_bone_meal(p, b) {
             return used;
         }
@@ -589,9 +580,11 @@ impl World {
             return used;
         }
         match b {
-            b if b.crop_stage().is_some_and(|s| s < 7) => {
+            b if b.as_crop().is_some_and(|(crop, age)| age < crop.max_age()) => {
                 let (crop, stage) = b.as_crop().unwrap();
-                let stage = (stage + 2 + (self.roll() % 4) as u8).min(7);
+                let increase = 2 + (self.roll() % 4) as u8;
+                let increase = if crop == super::block::Crop::Beetroot { increase / 3 } else { increase };
+                let stage = (stage + increase).min(crop.max_age());
                 self.edit(p, Block::crop(crop, stage), true);
                 true
             }
