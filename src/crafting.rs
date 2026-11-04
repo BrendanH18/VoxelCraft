@@ -6,6 +6,7 @@
 //! left to right, like Minecraft. Shapeless recipes match any arrangement
 //! of exactly their ingredients.
 
+mod passive;
 mod utilities;
 
 use crate::inventory::Stack;
@@ -55,9 +56,6 @@ impl Grid {
         let maps: Vec<_> = occupied.iter().filter(|s| s.item.is_map() && s.item != Item::MAP).collect();
         if maps.len() == 1 && occupied.len() > 1 && occupied.iter().all(|s| s.item == Item::MAP || s == maps[0]) {
             return Some(Stack { count: occupied.len() as u8, ..*maps[0] });
-        }
-        if let Some(stew) = crate::entity::mooshroom::craft_stew(&occupied) {
-            return Some(stew);
         }
         let (w, h, items) = self.trimmed()?;
         recipes().iter().find(|r| r.matches(w, h, &items)).map(|r| r.result)
@@ -614,6 +612,7 @@ pub fn recipes() -> &'static [Recipe] {
         wood::add(&mut r);
         colour::add(&mut r);
         utilities::add(&mut r);
+        passive::add(&mut r);
         r
     })
 }

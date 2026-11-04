@@ -94,17 +94,6 @@ pub fn consume_stew(stack: Stack, vitals: &mut Vitals) -> f32 {
         0.0
     }
 }
-pub fn craft_stew(stacks: &[Stack]) -> Option<Stack> {
-    if stacks.len() != 4 {
-        return None;
-    }
-    let mut items: Vec<_> = stacks.iter().map(|s| s.item).collect();
-    for required in [Item::BOWL, Item::from(Block::BROWN_MUSHROOM), Item::from(Block::RED_MUSHROOM)] {
-        let i = items.iter().position(|&i| i == required)?;
-        items.swap_remove(i);
-    }
-    Some(stew(flower_effect(items[0])?))
-}
 
 /// Inventory consequences are applied by the shared player action adapter.
 pub enum Use {
@@ -288,6 +277,11 @@ mod tests {
         }
         let result = grid.result().unwrap();
         assert_eq!((result.item, result.entity_data), (Item::SUSPICIOUS_STEW, 1));
+        for mushroom in [Block::RED_MUSHROOM, Block::BROWN_MUSHROOM] {
+            grid.cells[1] = Some(Stack::new(mushroom, 2));
+            grid.cells[2] = Some(Stack::new(mushroom, 2));
+            assert_eq!(grid.result(), Some(result), "26.3 permits two mushrooms of the same colour");
+        }
         grid.consume();
         assert!(grid.cells[..4].iter().all(|s| s.unwrap().count == 1));
         let mut inv = crate::inventory::Inventory::default();

@@ -92,8 +92,7 @@ Shears turn an adult into a cow and drop five matching mushrooms. The
 invoke it only once per bolt. State, age and stored effects save with the
 animal. Adult death drops beef/leather; babies give no loot/XP.
 
-Suspicious stew (1300) crafts shapelessly from a bowl, one mushroom of each
-colour and a supported small flower. It restores 6 hunger/7.2 saturation,
+Suspicious stew (1300) crafts shapelessly from a bowl, any two mushrooms and a supported small flower. It restores 6 hunger/7.2 saturation,
 can be eaten at full hunger, takes 32 ticks, returns a bowl and applies the
 flower effect. Components survive inventory/drop/network serialization.
 
