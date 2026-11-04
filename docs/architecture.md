@@ -257,10 +257,15 @@ src/
     nether_decoration.rs  per-chunk feature placement across chunk borders
     nether_flora.rs  nylium, vine growth and Nether bone meal
     fortress.rs      Nether fortress layouts (Java's pieces), painted per chunk
-    bastion.rs       reserved bastion-remnant loot data
+    bastion.rs       bastion remnants: Java pieces (generations 1-2), templates (3)
+    nether_fossil.rs Nether fossils in soul sand valleys (generation 3)
     stronghold.rs    stronghold rings and layouts (Java's pieces), painted per chunk
     structure.rs     shared structure-piece frames, chunk painting and chest loot
     jigsaw.rs        structure templates, pools and the jigsaw assembler (jigsaw/*.txt)
+    relics.rs        fossils and desert wells, laid out once and clipped per chunk
+    trail_ruins.rs   buried trail ruins on jigsaw templates
+    loot.rs          Java loot tables (loot_tables.json), LootTable.fill, random sequences
+    maps.rs          map items' saved data, MapItem.update, explorer maps
     brewing.rs       brewing stand contents and Java's brewing mixes
     spawner.rs       spawner table, structure spawners and chests on chunk load
     noise.rs         Perlin noise and hashing
@@ -458,6 +463,17 @@ texture layers after the bubble columns (2864–2895).
 Track 5 was split in two on 2026-11-03 so four agents can run at once;
 items 1255–1259 moved from track 5 to track 6, which needs an item for
 each 26.3 explorer map type.
+
+Used so far: tracks 4 and 5b allocated nothing. Track 6 used items
+1255–1265 (map, filled map and the nine explorer maps) and texture
+layers 2944–2959 (item sprites, the map colour palette and four
+destination icons); 1266–1269 and
+its block states stay free. Track 6 also appended enchantment save
+indices 33–39 after Quick Charge (32): Loyalty, Impaling, Riptide,
+Channeling, Density, Breach and Lunge, as book and loot metadata for
+weapons the game doesn't have yet. They fit the `u128` three-bit
+encoding (120 of 128 bits)
+([maps record](verification/2026-11-03-v0.14-maps.md#allocations)).
 
 ## Assessment branch ID reservations
 
