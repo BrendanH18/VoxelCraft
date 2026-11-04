@@ -44,6 +44,7 @@ pub(super) fn spawn_ok<W: MobWorld + ?Sized>(
     stone
         && monster_spawns::valid_spawn_floor(floor, super::MobKind::Bat)
         && world.block(cell).is_some_and(|b| monster_spawns::valid_empty_cell(b, super::MobKind::Bat))
+        && world.block(cell + IVec3::Y).is_some_and(|b| monster_spawns::valid_empty_cell(b, super::MobKind::Bat))
         && !physics::overlaps_solid(world, pos, super::MobKind::Bat.shape())
         && !physics::touches_block(world, pos, super::MobKind::Bat.shape(), |b| b.is_fluid() || b.is_waterlogged())
 }
@@ -187,6 +188,12 @@ mod tests {
         w.light = 4;
         assert!(!(0..100).any(|_| spawn_ok(&w, cell, SpawnLight::NIGHT, &mut rng)));
         w.light = 0;
+        w.grid.set(cell + IVec3::Y, Block::STONE);
+        assert!(
+            !(0..100).any(|_| spawn_ok(&w, cell, SpawnLight::DAY, &mut rng)),
+            "ON_GROUND needs the head cell empty even for a short bat"
+        );
+        w.grid.set(cell + IVec3::Y, Block::AIR);
         w.grid.set(cell - IVec3::Y, Block::GRASS);
         assert!(!(0..100).any(|_| spawn_ok(&w, cell, SpawnLight::DAY, &mut rng)));
         w.grid.set(IVec3::new(0, 80, 0), Block::STONE);
