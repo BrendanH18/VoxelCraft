@@ -149,6 +149,11 @@
       "ticks": 7
     },
     {
+      "flower": "golden_dandelion",
+      "effect": "saturation",
+      "ticks": 7
+    },
+    {
       "flower": "blue_orchid",
       "effect": "saturation",
       "ticks": 7

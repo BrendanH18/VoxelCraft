@@ -68,7 +68,7 @@ fn effect(code: u32) -> Option<(Effect, u32)> {
 
 pub fn flower_effect(flower: Item) -> Option<u32> {
     Some(match flower.block()?.name() {
-        "dandelion" | "blue orchid" => 1,
+        "dandelion" | "golden dandelion" | "blue orchid" => 1,
         "poppy" | "torchflower" => 2,
         "allium" => 3,
         "azure bluet" => 4,
