@@ -35,10 +35,11 @@ pub enum Effect {
     BadLuck,
     /// Appended: adds `4 * (amplifier + 1)` to the max-absorption attribute.
     Absorption,
+    Saturation,
 }
 
 impl Effect {
-    pub const ALL: [Effect; 24] = [
+    pub const ALL: [Effect; 25] = [
         Effect::Speed,
         Effect::Slowness,
         Effect::Strength,
@@ -63,6 +64,7 @@ impl Effect {
         Effect::Luck,
         Effect::BadLuck,
         Effect::Absorption,
+        Effect::Saturation,
     ];
 
     /// Java's id, as `/effect` and saves use it.
@@ -92,6 +94,7 @@ impl Effect {
             Effect::Luck => "luck",
             Effect::BadLuck => "unluck",
             Effect::Absorption => "absorption",
+            Effect::Saturation => "saturation",
         }
     }
 
@@ -127,6 +130,7 @@ impl Effect {
             Effect::Luck => "Luck",
             Effect::BadLuck => "Bad Luck",
             Effect::Absorption => "Absorption",
+            Effect::Saturation => "Saturation",
         }
     }
 
@@ -157,6 +161,7 @@ impl Effect {
             Effect::Luck => 0x59C106,
             Effect::BadLuck => 0xC0A44D,
             Effect::Absorption => 0x2552A5,
+            Effect::Saturation => 0xF82423,
         };
         [(c >> 16) as u8, (c >> 8) as u8, c as u8]
     }
@@ -217,6 +222,8 @@ pub struct Outcome {
     pub wither: f32,
     /// Hunger exhaustion (0.005 per level per tick).
     pub exhaustion: f32,
+    /// Saturation replenishes one food and two saturation per level each tick.
+    pub food: u32,
 }
 
 /// Java's `MobEffectInstance.update` on the chain `[active, hidden...]` of one
@@ -386,6 +393,10 @@ impl Effects {
                     Effect::Regeneration => 50u32 >> a.amplifier.min(31),
                     Effect::Poison => 25u32 >> a.amplifier.min(31),
                     Effect::Wither => 40u32 >> a.amplifier.min(31),
+                    Effect::Saturation => {
+                        out.food += u32::from(a.amplifier) + 1;
+                        continue;
+                    }
                     Effect::Hunger => {
                         out.exhaustion += 0.005 * (a.amplifier as f32 + 1.0);
                         continue;

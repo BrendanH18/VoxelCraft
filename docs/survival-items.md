@@ -6,7 +6,7 @@ Shears use Java's 238 durability, 15x leaves/cobweb speed and 5x wool speed.
 Shearing a living sheep drops 1–3 wool and removes its fleece; a sheared
 sheep cannot be sheared again and no longer drops wool on death.
 Sheep drop wool in their current colour (see [colors](colors.md)). Grass-eating fleece regrowth is deferred.
-Mobs currently do not persist across saves (the existing engine boundary).
+Animals persist across saves, including per-animal state and age (see [animals](animals.md)).
 
 Recipes are transcribed from the vanilla 1.21 JSON fixtures in
 `docs/vanilla-recipes/`, fetched from
@@ -118,3 +118,9 @@ attackers are not pushed back by the block.
 The totem of undying (item 1231, creative palette only until evokers exist)
 cancels a lethal hit from either hand: 1 half heart, Regeneration II 45 s,
 Absorption II 5 s and Fire Resistance 40 s; void damage bypasses it.
+
+Suspicious stew (v0.15 item 1300) comes from a flower-fed brown mooshroom or
+shapeless crafting with a bowl, red and brown mushrooms and a supported
+small flower. It takes 32 ticks to eat, works at full hunger, restores
+6 hunger/7.2 saturation and returns a bowl. Effects are carried by the
+stack; see [passive mob evidence](verification/2026-11-04-v0.15-passive-mobs.md).

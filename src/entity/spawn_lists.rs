@@ -33,7 +33,7 @@ const LIST_13: [MonsterSpawn; 3] =
     [e(J::Missing("nautilus"), 5, 1, 1), e(J::Known(MobKind::Squid), 10, 4, 4), e(J::Known(MobKind::Dolphin), 2, 1, 2)];
 const LIST_14: [MonsterSpawn; 2] =
     [e(J::Known(MobKind::Pufferfish), 15, 1, 3), e(J::Known(MobKind::TropicalFish), 25, 8, 8)];
-const LIST_15: [MonsterSpawn; 1] = [e(J::Missing("mooshroom"), 8, 4, 8)];
+const LIST_15: [MonsterSpawn; 1] = [e(J::Known(MobKind::Mooshroom), 8, 4, 8)];
 const LIST_16: [MonsterSpawn; 1] = [e(J::Known(MobKind::Squid), 2, 1, 4)];
 const LIST_17: [MonsterSpawn; 1] = [e(J::Known(MobKind::Salmon), 5, 1, 5)];
 const LIST_18: [MonsterSpawn; 1] = [e(J::Known(MobKind::Turtle), 5, 2, 5)];

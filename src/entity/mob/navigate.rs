@@ -42,6 +42,7 @@ impl MobKind {
             self,
             MobKind::Pig
                 | MobKind::Cow
+                | MobKind::Mooshroom
                 | MobKind::Sheep
                 | MobKind::Chicken
                 | MobKind::Cat
@@ -100,6 +101,7 @@ impl MobKind {
             self,
             K::Pig
                 | K::Cow
+                | K::Mooshroom
                 | K::Sheep
                 | K::Chicken
                 | K::Horse
@@ -364,7 +366,15 @@ impl Mob {
         // `Guardian.getWalkTargetValue`: water scores 10 plus the light cost.
         let guardian_water = matches!(self.kind, MobKind::Guardian | MobKind::ElderGuardian)
             && world.block(p).is_some_and(|b| b.holds_water());
-        if animal && self.kind != MobKind::Turtle && world.block(p - IVec3::Y) == Some(Block::GRASS) {
+        if animal
+            && self.kind != MobKind::Turtle
+            && world.block(p - IVec3::Y)
+                == Some(if self.kind == MobKind::Mooshroom {
+                    crate::world::overworld_blocks::MYCELIUM
+                } else {
+                    Block::GRASS
+                })
+        {
             return 10.0;
         }
         // `getPathfindingCostFromLightLevels`: brightness - 0.5 over the raw light.

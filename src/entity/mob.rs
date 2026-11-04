@@ -169,6 +169,7 @@ pub enum MobKind {
     Llama,
     /// Desert-village mount: two seats, dashes, sits down now and then.
     Camel,
+    Mooshroom,
 }
 
 impl MobKind {
@@ -195,7 +196,7 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 54] = [
+    pub const ALL: [MobKind; 55] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -250,6 +251,7 @@ impl MobKind {
         MobKind::Mule,
         MobKind::Llama,
         MobKind::Camel,
+        MobKind::Mooshroom,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -309,6 +311,7 @@ impl MobKind {
             MobKind::Mule => "mule",
             MobKind::Llama => "llama",
             MobKind::Camel => "camel",
+            MobKind::Mooshroom => "mooshroom",
         }
     }
 
@@ -322,7 +325,7 @@ impl MobKind {
     pub fn shape(self) -> Shape {
         match self {
             MobKind::Pig => Shape::new(0.45, 0.9),
-            MobKind::Cow => Shape::new(0.45, 1.4),
+            MobKind::Cow | MobKind::Mooshroom => Shape::new(0.45, 1.4),
             MobKind::Sheep => Shape::new(0.45, 1.3),
             MobKind::Chicken => Shape::new(0.2, 0.7),
             MobKind::Zombie
@@ -377,7 +380,7 @@ impl MobKind {
     /// Starting health in damage points, with two points per heart.
     pub fn max_health(self) -> f32 {
         match self {
-            MobKind::Pig | MobKind::Cow => 10.0,
+            MobKind::Pig | MobKind::Cow | MobKind::Mooshroom => 10.0,
             MobKind::Sheep | MobKind::Silverfish => 8.0,
             MobKind::Chicken => 4.0,
             MobKind::Zombie
@@ -658,6 +661,7 @@ impl MobKind {
         match self {
             MobKind::Pig => 1.3,
             MobKind::Cow
+            | MobKind::Mooshroom
             | MobKind::Witch
             | MobKind::Villager
             | MobKind::WanderingTrader
@@ -735,6 +739,7 @@ impl MobKind {
         match self {
             MobKind::Pig => &[(Item::RAW_PORKCHOP, 1, 3)],
             MobKind::Cow => &[(Item::RAW_BEEF, 1, 3), (Item::LEATHER, 0, 2)],
+            MobKind::Mooshroom => &[(Item::LEATHER, 0, 2), (Item::RAW_BEEF, 1, 3)],
             MobKind::Sheep => &[(WOOL, 1, 1), (Item::RAW_MUTTON, 1, 2)],
             MobKind::Chicken => &[(Item::RAW_CHICKEN, 1, 1), (Item::FEATHER, 0, 2)],
             MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombieVillager => {
@@ -892,6 +897,7 @@ pub struct Mob {
     pub grow: f32,
     pub wool_color: crate::color::DyeColor,
     pub sheared: bool,
+    pub mooshroom: Option<Box<super::mooshroom::State>>,
     /// Witch: seconds left drinking, and the potion it is drinking.
     drink_left: f32,
     drinking: &'static str,
@@ -1063,6 +1069,7 @@ impl Mob {
             grow: 0.0,
             wool_color: crate::color::DyeColor::White,
             sheared: false,
+            mooshroom: (kind == MobKind::Mooshroom).then(Box::default),
             drink_left: 0.0,
             drinking: "",
             age: 0,

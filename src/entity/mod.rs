@@ -36,6 +36,7 @@ mod mob;
 mod mob_index;
 pub mod model;
 mod monster_spawns;
+pub mod mooshroom;
 pub mod mounts;
 pub mod nether;
 pub mod orb;

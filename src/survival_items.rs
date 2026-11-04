@@ -2,7 +2,7 @@
 pub mod bucket;
 use crate::{
     entity::{Entities, PlayerId},
-    inventory::Inventory,
+    inventory::{Inventory, Stack},
     item::Item,
     player::Player,
     world::World,
@@ -79,6 +79,29 @@ pub fn use_animal_target(
         return true;
     }
     let Some((index, _)) = entities.raycast(eye, dir, range) else { return false };
+    if let Some(action) = held.and_then(|s| entities.use_mooshroom(index, s.item)) {
+        match action {
+            crate::entity::mooshroom::Use::Exchange(stack) => {
+                // Java's bowl overload disables Creative duplicate suppression,
+                // while ItemStack.consume still keeps the bowl in Creative.
+                if creative && held.is_some_and(|s| s.item == Item::BOWL) {
+                    if inventory.add_stack(stack) != 0 {
+                        entities.throw(stack, player.eye(), player.forward().as_dvec3());
+                    }
+                } else {
+                    exchange_stack(inventory, slot, stack, creative, entities, player);
+                }
+            }
+            crate::entity::mooshroom::Use::Shear if !creative => {
+                inventory.wear(slot, 1);
+            }
+            crate::entity::mooshroom::Use::Feed { consume: true } if !creative => {
+                inventory.take_one(slot);
+            }
+            _ => {}
+        }
+        return true;
+    }
     let Some(result) = entities.use_animal(index, held, owner) else { return false };
     if result && !creative {
         if held.is_some_and(|s| s.item == Item::TROPICAL_FISH_BUCKET) {
@@ -221,17 +244,28 @@ pub fn exchange(
     entities: &mut Entities,
     player: &Player,
 ) {
+    exchange_stack(inventory, slot, Stack::new(result, 1), creative, entities, player);
+}
+
+pub fn exchange_stack(
+    inventory: &mut Inventory,
+    slot: usize,
+    result: Stack,
+    creative: bool,
+    entities: &mut Entities,
+    player: &Player,
+) {
     if creative {
-        if !inventory.slots.iter().flatten().any(|stack| stack.item == result) {
-            let _ = inventory.add(result, 1);
+        if !inventory.slots.iter().flatten().any(|stack| stack.stacks_with(&result)) {
+            let _ = inventory.add_stack(result);
         }
         return;
     }
     inventory.take_one(slot);
     if inventory.get(slot).is_none() {
-        inventory.slots[slot] = Some(crate::inventory::Stack::new(result, 1));
-    } else if inventory.add(result, 1) != 0 {
-        entities.throw(crate::inventory::Stack::new(result, 1), player.eye(), player.forward().as_dvec3());
+        inventory.slots[slot] = Some(result);
+    } else if inventory.add_stack(result) != 0 {
+        entities.throw(result, player.eye(), player.forward().as_dvec3());
     }
 }
 

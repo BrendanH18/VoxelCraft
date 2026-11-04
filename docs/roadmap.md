@@ -1453,6 +1453,12 @@ in the [architecture reservations](architecture.md#v015-track-reservations):
    three froglights; pandas with their genes; polar bears; armadillos,
    scutes and wolf armor; mooshrooms and suspicious stew; ocelots; the cat
    spawner in villages and swamp huts.
+   *Implemented, unverified (track 3, 2026-11-04):* mooshrooms (red/brown,
+   cow goals and wheat breeding, variant mutation, milk/stew, stored flower
+   effects, shearing and the lightning conversion hook). Suspicious stew
+   is craftable and edible with flower effects, including Saturation.
+   See [track evidence](verification/2026-11-04-v0.15-passive-mobs.md).
+   Other track-3 mobs remain in progress.
 4. **Hostiles** (MOB-04, PRO-02). Strays, bogged and phantoms (insomnia,
    `spawn_phantoms`, membranes), and the tipped arrows strays and bogged
    shoot.

@@ -82,6 +82,7 @@ impl MobKind {
         match self {
             K::Pig
             | K::Cow
+            | K::Mooshroom
             | K::Sheep
             | K::Chicken
             | K::WanderingTrader

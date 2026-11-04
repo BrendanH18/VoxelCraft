@@ -79,3 +79,22 @@ Name an anvil-renamed name tag onto any mob to give it a nameplate and
 stop it despawning. Name tags come from dungeon chests and fishing
 treasure. Sources: [Lead](https://minecraft.wiki/w/Lead),
 [Name Tag](https://minecraft.wiki/w/Name_Tag).
+
+## Mooshrooms (v0.15, Java 26.3)
+
+Implemented, unverified: mooshrooms generate in mushroom fields on mycelium
+(weight 8, herds 4–8), share cow movement/goals and wheat breeding, and
+inherit red/brown variants (1/1024 mutation when the parents match). Adult
+mooshrooms give milk from buckets and mushroom stew from bowls; a brown
+adult stores one flower's effect for its next bowl of suspicious stew.
+Shears turn an adult into a cow and drop five matching mushrooms. The
+`Mob::lightning_swap` hook changes red/brown; a lightning caller must
+invoke it only once per bolt. State, age and stored effects save with the
+animal. Adult death drops beef/leather; babies give no loot/XP.
+
+Suspicious stew (1300) crafts shapelessly from a bowl, one mushroom of each
+colour and a supported small flower. It restores 6 hunger/7.2 saturation,
+can be eaten at full hunger, takes 32 ticks, returns a bowl and applies the
+flower effect. Components survive inventory/drop/network serialization.
+
+See the [verification record](verification/2026-11-04-v0.15-passive-mobs.md) for sources and remaining differences.

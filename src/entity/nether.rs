@@ -1496,6 +1496,7 @@ fn save_mob(m: &Mob) -> Value {
         "age": m.age,
         "egg_timer": m.egg_timer,
         "sheared": m.sheared,
+        "mooshroom": m.mooshroom.as_deref().map(super::mooshroom::State::save),
         "animal": m.animal.as_deref().map(super::animals::save),
         "identity": super::leash::save(m),
         "armor": armor,
@@ -1556,6 +1557,9 @@ fn load_mob(v: &Value) -> Option<Mob> {
                 as f32;
     }
     m.sheared = v["sheared"].as_bool().unwrap_or(false);
+    if let Some(s) = m.mooshroom.as_mut() {
+        s.load(&v["mooshroom"]);
+    }
     if let Some(a) = m.animal.as_mut() {
         super::animals::load(a, &v["animal"]);
     }

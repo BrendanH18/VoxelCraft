@@ -550,6 +550,7 @@ macro_rules! parts {($($p:expr),* $(,)?) => {{let mut out=Parts::new();$(out.pus
 mod animals;
 mod aquatic;
 mod mounts;
+mod passive;
 
 /// Animated parts for a mob, in model space (pixels).
 fn pose(m: &Mob, time: f32) -> Parts {
@@ -582,6 +583,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
             part(PIG_LEG_BOX, [3.0, 6.0, -5.0], rx(swing)),
             part(PIG_HEAD, [0.0, 12.0, 8.0], head),
         ],
+        MobKind::Mooshroom => passive::mooshroom(m),
         MobKind::Cow => parts![
             part(COW_BODY, [0.0; 3], Quat::IDENTITY),
             part(COW_LEG, [-4.0, 12.0, 6.0], rx(swing)),
@@ -952,6 +954,7 @@ pub fn build(
                 let mut cuboid = *c;
                 animals::colour(m, &mut cuboid);
                 mounts::colour(m, &mut cuboid);
+                passive::colour(m, &mut cuboid);
                 if m.kind == MobKind::GlowSquid && c.color == [49, 71, 80] {
                     cuboid.color = [44, 161, 151];
                 }
@@ -1476,9 +1479,13 @@ mod tests {
             // Swimming bodies and animated tentacles need not rest on a floor.
             let floats = kind == MobKind::Blaze || kind.is_aquatic();
             assert!(lo.y.abs() < 1e-4 || floats && lo.y.abs() < 0.25, "{kind:?} feet at {}", lo.y);
-            let h = kind.shape().height as f32;
+            // The mooshroom cap layer extends above its cow collision box.
+            let h = kind.shape().height as f32 + if kind == MobKind::Mooshroom { 0.4 } else { 0.0 };
             assert!((hi.y - h).abs() < 0.15, "{kind:?} top {} vs box {h}", hi.y);
-            assert!(hi.x > if kind.is_aquatic() { 10.05 } else { 10.25 }, "{kind:?} should extend forward along +X");
+            assert!(
+                hi.x > if kind.is_aquatic() { 10.05 } else { 10.25 },
+                "{kind:?} should extend forward along +X"
+            );
             // Behind the camera: culled.
             out.clear();
             assert_eq!(

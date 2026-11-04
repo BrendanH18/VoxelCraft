@@ -208,7 +208,7 @@ const SKELETON: &[Entry] = &[avoid(3, Avoided::Wolf, 6.0, 1.0, 1.2)];
 pub(crate) fn table(kind: MobKind) -> &'static [Entry] {
     use MobKind as K;
     match kind {
-        K::Cow => COW,
+        K::Cow | K::Mooshroom => COW,
         K::Pig => PIG,
         K::Sheep => SHEEP,
         K::Chicken => CHICKEN,
@@ -240,7 +240,7 @@ pub(crate) fn table(kind: MobKind) -> &'static [Entry] {
 pub(crate) fn movement_speed(kind: MobKind) -> f64 {
     use MobKind as K;
     match kind {
-        K::Cow | K::Parrot | K::Goat => 0.2,
+        K::Cow | K::Mooshroom | K::Parrot | K::Goat => 0.2,
         K::Pig | K::Chicken | K::Turtle | K::Creeper | K::Skeleton | K::WitherSkeleton => 0.25,
         K::Sheep | K::Zombie => 0.23,
         K::Wolf | K::Cat | K::Fox | K::Rabbit | K::Hoglin => 0.3,

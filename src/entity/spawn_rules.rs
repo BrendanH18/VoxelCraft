@@ -90,6 +90,7 @@ pub(super) fn spot_ok<W: MobWorld + ?Sized>(
     let bright = world.sky_light_level(cell).is_some_and(|sky| sky.max(world.block_light(cell)) > 8);
     let name = below.name();
     let ground = match kind {
+        MobKind::Mooshroom => below == crate::world::overworld_blocks::MYCELIUM,
         MobKind::Wolf | MobKind::Fox => {
             below == Block::GRASS || matches!(name, "snow" | "snow block" | "podzol" | "coarse dirt")
         }
@@ -192,6 +193,23 @@ mod tests {
         w.floor = Block::SAND;
         assert!(ok(&w, MobKind::Rabbit));
         assert!(!ok(&w, MobKind::Wolf));
+    }
+    #[test]
+    fn mooshrooms_require_mycelium_but_share_animal_brightness_rules() {
+        let mut w = Habitat {
+            y: 64,
+            floor: crate::world::overworld_blocks::MYCELIUM,
+            at: Block::AIR,
+            above: Block::AIR,
+            light: 9,
+            biome: Biome::MushroomFields,
+        };
+        assert!(ok(&w, MobKind::Mooshroom));
+        w.light = 8;
+        assert!(!ok(&w, MobKind::Mooshroom));
+        w.light = 15;
+        w.floor = Block::GRASS;
+        assert!(!ok(&w, MobKind::Mooshroom));
     }
     #[test]
     fn water_placements_and_species_height_light_and_clay_rules() {

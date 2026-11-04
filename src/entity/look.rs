@@ -32,6 +32,9 @@ impl Mob {
             "burning": self.burning,
             "attack": self.attack_anim,
         });
+        if let Some(s) = &self.mooshroom {
+            v["mooshroom_brown"] = json!(s.brown);
+        }
         if let Some(name) = self.name.as_str() {
             v["name"] = json!(name);
         }
@@ -84,6 +87,9 @@ impl Mob {
             self.wool_color = c;
         }
         self.sheared = v["sheared"] == true;
+        if let Some(s) = &mut self.mooshroom {
+            s.brown = v["mooshroom_brown"] == true;
+        }
         if let Some(armor) = v["armor"].as_array() {
             for (slot, a) in self.armor.iter_mut().zip(armor) {
                 *slot = a.as_u64().and_then(|i| ArmorKind::ALL.get(i as usize).copied());

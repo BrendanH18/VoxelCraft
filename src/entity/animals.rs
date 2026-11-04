@@ -95,7 +95,7 @@ impl MobKind {
     /// the only registration needed for the generic mating/baby pipeline.
     pub fn breeding_food(self, food: Item) -> bool {
         match self {
-            Self::Cow | Self::Sheep => food == Item::WHEAT,
+            Self::Cow | Self::Mooshroom | Self::Sheep => food == Item::WHEAT,
             Self::Pig => matches!(food, Item::CARROT | Item::POTATO | Item::BEETROOT),
             Self::Chicken => seeds(food),
             Self::Wolf => wolf_food(food),
@@ -130,6 +130,7 @@ impl MobKind {
                 | Self::Rabbit
                 | Self::Goat
                 | Self::Cow
+                | Self::Mooshroom
                 | Self::Sheep
                 | Self::Pig
                 | Self::Chicken
@@ -333,6 +334,7 @@ impl Entities {
                 b.aquatic.as_ref().unwrap().variant
             };
         }
+        super::mooshroom::inherit(&mut child, a, b, &mut self.rng);
         child
     }
     /// Love timers and hearts, then `BreedGoal`'s partner: an animal not yet

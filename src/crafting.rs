@@ -56,6 +56,9 @@ impl Grid {
         if maps.len() == 1 && occupied.len() > 1 && occupied.iter().all(|s| s.item == Item::MAP || s == maps[0]) {
             return Some(Stack { count: occupied.len() as u8, ..*maps[0] });
         }
+        if let Some(stew) = crate::entity::mooshroom::craft_stew(&occupied) {
+            return Some(stew);
+        }
         let (w, h, items) = self.trimmed()?;
         recipes().iter().find(|r| r.matches(w, h, &items)).map(|r| r.result)
     }

@@ -951,7 +951,7 @@ fn effect_glyph(effect: Effect) -> [&'static str; 8] {
             ["...###..", "..###...", ".#######", "######..", "...##...", "..##....", ".##.....", "##......"]
         }
         // A heart with a highlight cut out of its upper left lobe, like the golden hearts.
-        Effect::Absorption => {
+        Effect::Absorption | Effect::Saturation => {
             [".##..##.", "#.######", "########", "########", ".######.", "..####..", "...##...", "........"]
         }
     }

@@ -1,0 +1,218 @@
+{
+  "source": "client-26.3.jar data/minecraft; javap server-26.3-classes.jar MushroomCow, AbstractCow, Bat, FlowerBlock, Blocks, EyeblossomBlock",
+  "data": {
+    "tags/block/mooshrooms_spawnable_on": {
+      "values": [
+        "minecraft:mycelium"
+      ]
+    },
+    "loot_table/entities/mooshroom": {
+      "type": "minecraft:entity",
+      "pools": [
+        {
+          "entries": [
+            {
+              "type": "minecraft:item",
+              "modifier": [
+                {
+                  "type": "minecraft:set_count",
+                  "count": {
+                    "type": "minecraft:uniform",
+                    "max": 2,
+                    "min": 0
+                  }
+                },
+                {
+                  "type": "minecraft:enchanted_count_increase",
+                  "count": {
+                    "type": "minecraft:uniform",
+                    "max": 1.0,
+                    "min": 0.0
+                  },
+                  "enchantment": "minecraft:looting"
+                }
+              ],
+              "name": "minecraft:leather"
+            }
+          ],
+          "rolls": 1
+        },
+        {
+          "entries": [
+            {
+              "type": "minecraft:item",
+              "modifier": [
+                {
+                  "type": "minecraft:set_count",
+                  "count": {
+                    "type": "minecraft:uniform",
+                    "max": 3,
+                    "min": 1
+                  }
+                },
+                {
+                  "type": "minecraft:furnace_smelt",
+                  "condition": {
+                    "type": "minecraft:any_of",
+                    "terms": [
+                      {
+                        "type": "minecraft:entity_properties",
+                        "entity": "this",
+                        "predicate": {
+                          "minecraft:flags": {
+                            "is_on_fire": true
+                          }
+                        }
+                      },
+                      {
+                        "type": "minecraft:entity_properties",
+                        "entity": "direct_attacker",
+                        "predicate": {
+                          "minecraft:equipment": {
+                            "mainhand": {
+                              "predicates": {
+                                "minecraft:enchantments": [
+                                  {
+                                    "enchantments": "#minecraft:smelts_loot"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "minecraft:enchanted_count_increase",
+                  "count": {
+                    "type": "minecraft:uniform",
+                    "max": 1.0,
+                    "min": 0.0
+                  },
+                  "enchantment": "minecraft:looting"
+                }
+              ],
+              "name": "minecraft:beef"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "random_sequence": "minecraft:entities/mooshroom"
+    },
+    "loot_table/shearing/mooshroom/red": {
+      "type": "minecraft:shearing",
+      "pools": [
+        {
+          "entries": [
+            {
+              "type": "minecraft:item",
+              "name": "minecraft:red_mushroom"
+            }
+          ],
+          "rolls": 5
+        }
+      ],
+      "random_sequence": "minecraft:shearing/mooshroom/red"
+    },
+    "loot_table/shearing/mooshroom/brown": {
+      "type": "minecraft:shearing",
+      "pools": [
+        {
+          "entries": [
+            {
+              "type": "minecraft:item",
+              "name": "minecraft:brown_mushroom"
+            }
+          ],
+          "rolls": 5
+        }
+      ],
+      "random_sequence": "minecraft:shearing/mooshroom/brown"
+    }
+  },
+  "flowers": [
+    {
+      "flower": "dandelion",
+      "effect": "saturation",
+      "ticks": 7
+    },
+    {
+      "flower": "blue_orchid",
+      "effect": "saturation",
+      "ticks": 7
+    },
+    {
+      "flower": "poppy",
+      "effect": "night_vision",
+      "ticks": 100
+    },
+    {
+      "flower": "torchflower",
+      "effect": "night_vision",
+      "ticks": 100
+    },
+    {
+      "flower": "allium",
+      "effect": "fire_resistance",
+      "ticks": 60
+    },
+    {
+      "flower": "azure_bluet",
+      "effect": "blindness",
+      "ticks": 220
+    },
+    {
+      "flower": "red_tulip",
+      "effect": "weakness",
+      "ticks": 140
+    },
+    {
+      "flower": "orange_tulip",
+      "effect": "weakness",
+      "ticks": 140
+    },
+    {
+      "flower": "white_tulip",
+      "effect": "weakness",
+      "ticks": 140
+    },
+    {
+      "flower": "pink_tulip",
+      "effect": "weakness",
+      "ticks": 140
+    },
+    {
+      "flower": "oxeye_daisy",
+      "effect": "regeneration",
+      "ticks": 140
+    },
+    {
+      "flower": "cornflower",
+      "effect": "jump_boost",
+      "ticks": 100
+    },
+    {
+      "flower": "wither_rose",
+      "effect": "wither",
+      "ticks": 140
+    },
+    {
+      "flower": "lily_of_the_valley",
+      "effect": "poison",
+      "ticks": 220
+    },
+    {
+      "flower": "closed_eyeblossom",
+      "effect": "nausea",
+      "ticks": 140
+    },
+    {
+      "flower": "open_eyeblossom",
+      "effect": "blindness",
+      "ticks": 220
+    }
+  ]
+}

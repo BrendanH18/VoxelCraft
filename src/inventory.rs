@@ -83,7 +83,8 @@ pub struct Stack {
     pub repair_cost: u16,
     /// A plain custom display name (Java uses a styled text component).
     pub name: StackName,
-    /// Captured water creature variant and health; zero means an ordinary item.
+    /// Item-specific payload: bucket creature variant/health, or suspicious
+    /// stew effect code (see entity::mooshroom). Zero means no component.
     pub entity_data: u32,
     /// A lodestone compass's `lodestone_tracker`; `None` on everything else.
     pub lodestone: Option<Lodestone>,

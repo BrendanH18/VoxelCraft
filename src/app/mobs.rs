@@ -524,7 +524,7 @@ fn mob_sound_source(sound: MobSound) -> Option<SoundSource> {
 fn voice(kind: MobKind) -> Voice {
     match kind {
         MobKind::Pig => Voice::Pig,
-        MobKind::Cow => Voice::Cow,
+        MobKind::Cow | MobKind::Mooshroom => Voice::Cow,
         MobKind::Sheep => Voice::Sheep,
         MobKind::Chicken => Voice::Chicken,
         MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombieVillager => Voice::Zombie,

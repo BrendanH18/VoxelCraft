@@ -491,6 +491,14 @@ Texture layers start at 2960, after v0.14's map sprites.
 | 11136–11199 | 1330–1349 | 3264–3295 | 4. Hostiles and tipped arrows |
 | 11200–11263 | 1350–1359 | 3296–3327 | Integrator spare |
 
+Track 3 allocations (2026-11-04, passive-mobs): item **1300** is suspicious
+stew. No block states or block texture layers are consumed; the remaining
+track reservations stay unregistered. `MobKind::Mooshroom` (`mooshroom`)
+appends after Camel. Stew effect codes 1–11 in `Stack::entity_data` and
+`mooshroom.stew` are append-only component values; zero means no effect.
+The original procedural model and mushroom-stew icon use existing rendering.
+See [track evidence](verification/2026-11-04-v0.15-passive-mobs.md).
+
 New `MobKind` variants append after `Camel`; mob kinds are saved by name,
 but `MobKind::ALL` order is the LAN index, so the integrator appends the
 tracks' kinds in track order. Each track records what it used here.

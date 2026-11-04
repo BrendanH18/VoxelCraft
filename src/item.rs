@@ -694,6 +694,7 @@ impl Item {
     pub const MILK_BUCKET: Item = Item(513);
     pub const BOWL: Item = Item(514);
     pub const MUSHROOM_STEW: Item = Item(515);
+    pub const SUSPICIOUS_STEW: Item = Item(1300);
     pub const SNOWBALL: Item = Item(516);
     pub const EGG: Item = Item(517);
     pub const LEAD: Item = Item(1000);
@@ -1048,6 +1049,14 @@ impl Item {
             return ItemInfo { name, kind: ItemKind::Material, max_stack: 16, sprite: Sprite::Cushion(c.rgb()) };
         }
         match self {
+            Self::SUSPICIOUS_STEW => {
+                return ItemInfo {
+                    name: "suspicious stew",
+                    kind: ItemKind::Food { hunger: 6, saturation: 7.2 },
+                    max_stack: 1,
+                    sprite: SURVIVAL_ITEMS[3].sprite,
+                };
+            }
             Self::HONEY_BOTTLE => {
                 return ItemInfo {
                     name: "honey bottle",
@@ -1312,9 +1321,9 @@ impl Item {
     }
 
     /// Java's `FoodProperties.canAlwaysEat`: edible even when full. The
-    /// reference also lists chorus fruit and suspicious stew, not yet registered.
+    /// reference also lists chorus fruit, which is not yet registered.
     pub fn always_edible(self) -> bool {
-        matches!(self, Item::GOLDEN_APPLE | Item::ENCHANTED_GOLDEN_APPLE | Item::HONEY_BOTTLE)
+        matches!(self, Item::GOLDEN_APPLE | Item::ENCHANTED_GOLDEN_APPLE | Item::HONEY_BOTTLE | Item::SUSPICIOUS_STEW)
     }
 
     /// Java's `Rarity.RARE` for items registered with it (aqua names).
@@ -1332,7 +1341,7 @@ impl Item {
         match self {
             Self::MILK_BUCKET => Some(Self::BUCKET),
             Self::HONEY_BOTTLE => Some(Self::GLASS_BOTTLE),
-            Self::MUSHROOM_STEW | Self::RABBIT_STEW => Some(Self::BOWL),
+            Self::MUSHROOM_STEW | Self::RABBIT_STEW | Self::SUSPICIOUS_STEW => Some(Self::BOWL),
             _ => None,
         }
     }
@@ -1354,6 +1363,9 @@ impl Item {
     pub fn icon_layer(self) -> Option<u16> {
         if self.is_map() {
             return Some(2944 + self.0 - 1255);
+        }
+        if self == Self::SUSPICIOUS_STEW {
+            return Self::MUSHROOM_STEW.icon_layer();
         }
         sprite_index(self).map(tex::item_layer)
     }
@@ -1417,6 +1429,7 @@ impl Item {
             .chain((0..DECOR_ITEMS).map(|i| Item(DECOR_ITEM + i)))
             .chain((0..HAND_ITEMS).map(|i| Item(HAND_ITEM + i)))
             .chain((1255..=1265).map(Item))
+            .chain([Self::SUSPICIOUS_STEW])
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1891,9 +1904,14 @@ mod tests {
         for i in Item::all_items().filter(|i| !i.is_map()) {
             let index = tex::item_index(i.icon_layer().unwrap()).unwrap();
             assert!((index as u32) < icon_count());
-            assert_eq!(Item::all_items().filter(|i| !i.is_map()).count() as u32, icon_count());
+
             assert_eq!(sprite_for_layer(index), Some(i.info().sprite));
         }
+        // Every atlas slot is covered; visually identical items can share one.
+        let layers: std::collections::HashSet<_> =
+            Item::all_items().filter(|i| !i.is_map()).map(|i| i.icon_layer().unwrap()).collect();
+        assert_eq!(layers.len() as u32, icon_count());
+        assert_eq!(Item::SUSPICIOUS_STEW.icon_layer(), Item::MUSHROOM_STEW.icon_layer());
         // Icons stay addressable by the UI's and models' 16-bit layers.
         assert!(tex::ITEM_BASE as u32 + icon_count() + animated_icons() + 32 <= u16::MAX as u32);
         assert_eq!(Item::from(Block::STONE).icon_layer(), None);
