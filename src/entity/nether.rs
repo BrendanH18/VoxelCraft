@@ -2205,7 +2205,7 @@ mod tests {
         // Old levels without the key, and junk, load nothing.
         loaded.load_nether_mobs("");
         loaded.load_nether_mobs("{\"mobs\":[{\"kind\":\"dragon\"},{\"kind\":\"piglin\",\"pos\":[1,\"x\",2]}]}");
-        assert_eq!(loaded.mobs.len(), 1);
+        assert_eq!(loaded.mobs.len(), 2, "malformed entries do not add to the restored piglin and zombie");
     }
 
     #[test]
