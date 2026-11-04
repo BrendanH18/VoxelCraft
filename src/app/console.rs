@@ -233,6 +233,16 @@ impl Game {
             Command::LocateStructure(name) => {
                 let key = name.strip_prefix("minecraft:").unwrap_or(&name);
                 let at = match key {
+                    "ruined_portal" => self.world.generator.ruined_portals.nearest(
+                        &self.world.generator,
+                        self.session.player.pos.floor().as_ivec3(),
+                        10,
+                    ),
+                    "buried_treasure" => self.world.generator.buried_treasure.nearest_buried_treasure(
+                        &self.world.generator,
+                        self.session.player.pos.floor().as_ivec3(),
+                        400,
+                    ),
                     "village" => self
                         .world
                         .generator

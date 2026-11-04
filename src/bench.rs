@@ -143,6 +143,7 @@ fn generations(seed: u64, r: i32) {
     let desert = latest.nearest_biome(glam::IVec2::ZERO, Biome::Desert, 20_000);
     let swamp = latest.nearest_biome(glam::IVec2::ZERO, Biome::Swamp, 20_000);
     let ruins = latest.trail_ruins.nearest(&latest, glam::IVec2::ZERO, 6400);
+    let portal = latest.ruined_portals.nearest(&latest, IVec3::ZERO, 2);
     let chunk = |p: IVec3| glam::IVec2::new(p.x.div_euclid(32), p.z.div_euclid(32));
     for (place, centre) in [
         ("origin", Some(glam::IVec2::ZERO)),
@@ -151,6 +152,7 @@ fn generations(seed: u64, r: i32) {
         ("desert", desert.map(chunk)),
         ("swamp", swamp.map(chunk)),
         ("trail ruins", ruins.map(chunk)),
+        ("ruined portal", portal.map(chunk)),
     ] {
         let Some(centre) = centre else { continue };
         for generation in [Generation::V1, Generation::V2, Generation::V3] {

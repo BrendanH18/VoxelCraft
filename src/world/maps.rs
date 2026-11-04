@@ -315,9 +315,10 @@ impl MapStorage {
         Some(out)
     }
 }
-fn buried_treasure(_g: &Generator, _from: IVec3, _radius: i32) -> Option<IVec3> {
-    // v0.14 integration: buried treasure locate
-    None
+/// Buried treasure is a spacing-1 random spread, so Java's ring search counts
+/// 16-block chunks: `radius` rings is `radius` chunks.
+fn buried_treasure(g: &Generator, from: IVec3, radius: i32) -> Option<IVec3> {
+    g.buried_treasure.nearest_buried_treasure(g, from, radius)
 }
 pub fn locate(g: &Generator, from: IVec3, item: Item, radius: i32) -> Option<IVec3> {
     match item {
@@ -622,7 +623,13 @@ mod tests {
         assert_eq!(m.scale, 2);
         assert_eq!((m.decorations[0].x, m.decorations[0].z), (expected.x as f64, expected.z as f64));
         assert_eq!(m.center, MapData::fresh(expected.x, expected.z, 2, Dimension::Overworld, true, true).center);
-        assert!(storage.explorer(&g, IVec3::ZERO, Item::BURIED_TREASURE_MAP, 50).is_none());
+        let treasure = g.buried_treasure.nearest_buried_treasure(&g, IVec3::ZERO, 50).unwrap();
+        let stack = storage.explorer(&g, IVec3::ZERO, Item::BURIED_TREASURE_MAP, 50).unwrap();
+        let m = &storage.maps[&stack.map_id.unwrap()];
+        assert_eq!(m.scale, 1);
+        assert_eq!((m.decorations[0].x, m.decorations[0].z), (treasure.x as f64, treasure.z as f64));
+        let legacy = Generator::with_generation(42, Dimension::Overworld, super::super::terrain::Generation::V2);
+        assert!(storage.explorer(&legacy, IVec3::ZERO, Item::BURIED_TREASURE_MAP, 50).is_none());
     }
     #[test]
     fn map_recipe_and_cloning_keep_the_id_and_name() {

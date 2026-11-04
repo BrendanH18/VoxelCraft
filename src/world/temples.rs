@@ -152,6 +152,8 @@ pub enum LootTable {
     ShipMap,
     RuinSmall,
     RuinBig,
+    RuinedPortal,
+    BuriedTreasure,
 }
 
 /// One built structure: its blocks, chests and where its mobs live.
@@ -1606,6 +1608,135 @@ const RUINBIG_2: &[L] = &[
 ];
 
 #[cfg(test)]
+const RUINEDPORTAL_0: &[L] = &[
+    L { item: Some(Item::from_block(Block::OBSIDIAN)), weight: 40, lo: 1, hi: 2, enchanted: false, damage: None }, // obsidian
+    L { item: Some(Item::FLINT), weight: 40, lo: 1, hi: 4, enchanted: false, damage: None }, // flint
+    L { item: Some(Item::IRON_NUGGET), weight: 40, lo: 9, hi: 18, enchanted: false, damage: None }, // iron_nugget
+    L { item: Some(Item::FLINT_AND_STEEL), weight: 40, lo: 1, hi: 1, enchanted: false, damage: None }, // flint_and_steel
+    L { item: Some(Item::FIRE_CHARGE), weight: 40, lo: 1, hi: 1, enchanted: false, damage: None },     // fire_charge
+    L { item: Some(Item::GOLDEN_APPLE), weight: 15, lo: 1, hi: 1, enchanted: false, damage: None },    // golden_apple
+    L { item: Some(Item::GOLD_NUGGET), weight: 15, lo: 4, hi: 24, enchanted: false, damage: None },    // gold_nugget
+    L { item: Some(Item::tool(ToolKind::Sword, Tier::Gold)), weight: 15, lo: 1, hi: 1, enchanted: true, damage: None }, // golden_sword
+    L { item: Some(Item::tool(ToolKind::Axe, Tier::Gold)), weight: 15, lo: 1, hi: 1, enchanted: true, damage: None }, // golden_axe
+    L { item: Some(Item::tool(ToolKind::Hoe, Tier::Gold)), weight: 15, lo: 1, hi: 1, enchanted: true, damage: None }, // golden_hoe
+    L { item: Some(Item::tool(ToolKind::Shovel, Tier::Gold)), weight: 15, lo: 1, hi: 1, enchanted: true, damage: None }, // golden_shovel
+    L {
+        item: Some(Item::tool(ToolKind::Pickaxe, Tier::Gold)),
+        weight: 15,
+        lo: 1,
+        hi: 1,
+        enchanted: true,
+        damage: None,
+    }, // golden_pickaxe
+    L {
+        item: Some(Item::armor(ArmorPiece::Boots, ArmorMaterial::Gold)),
+        weight: 15,
+        lo: 1,
+        hi: 1,
+        enchanted: true,
+        damage: None,
+    }, // golden_boots
+    L {
+        item: Some(Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Gold)),
+        weight: 15,
+        lo: 1,
+        hi: 1,
+        enchanted: true,
+        damage: None,
+    }, // golden_chestplate
+    L {
+        item: Some(Item::armor(ArmorPiece::Helmet, ArmorMaterial::Gold)),
+        weight: 15,
+        lo: 1,
+        hi: 1,
+        enchanted: true,
+        damage: None,
+    }, // golden_helmet
+    L {
+        item: Some(Item::armor(ArmorPiece::Leggings, ArmorMaterial::Gold)),
+        weight: 15,
+        lo: 1,
+        hi: 1,
+        enchanted: true,
+        damage: None,
+    }, // golden_leggings
+    L { item: Some(Item::GLISTERING_MELON_SLICE), weight: 5, lo: 4, hi: 12, enchanted: false, damage: None }, // glistering_melon_slice
+    L { item: Some(Item::GOLDEN_HORSE_ARMOR), weight: 5, lo: 1, hi: 1, enchanted: false, damage: None }, // golden_horse_armor
+    L {
+        item: Some(Item::from_block(super::redstone_blocks::plate(2, 0))),
+        weight: 5,
+        lo: 1,
+        hi: 1,
+        enchanted: false,
+        damage: None,
+    }, // light_weighted_pressure_plate
+    L { item: Some(Item::GOLDEN_CARROT), weight: 5, lo: 4, hi: 12, enchanted: false, damage: None }, // golden_carrot
+    L { item: Some(Item::CLOCK), weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },          // clock
+    L { item: Some(Item::GOLD_INGOT), weight: 5, lo: 2, hi: 8, enchanted: false, damage: None },     // gold_ingot
+    L { item: Some(Item::from_block(Block::BELL)), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // bell
+    L { item: Some(Item::ENCHANTED_GOLDEN_APPLE), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // enchanted_golden_apple
+    L { item: Some(Item::from_block(Block::GOLD_BLOCK)), weight: 1, lo: 1, hi: 2, enchanted: false, damage: None }, // gold_block
+];
+#[cfg(test)]
+const RUINEDPORTAL_1: &[L] = &[
+    L { item: None, weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // None
+    L {
+        item: Some(Item::from_block(super::utilities::LODESTONE)),
+        weight: 2,
+        lo: 1,
+        hi: 2,
+        enchanted: false,
+        damage: None,
+    }, // lodestone
+];
+#[cfg(test)]
+const BURIEDTREASURE_0: &[L] = &[
+    L { item: Some(Item::HEART_OF_THE_SEA), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // heart_of_the_sea
+];
+#[cfg(test)]
+const BURIEDTREASURE_1: &[L] = &[
+    L { item: Some(Item::IRON_INGOT), weight: 20, lo: 1, hi: 4, enchanted: false, damage: None }, // iron_ingot
+    L { item: Some(Item::GOLD_INGOT), weight: 10, lo: 1, hi: 4, enchanted: false, damage: None }, // gold_ingot
+    L { item: Some(Item::from_block(Block::TNT)), weight: 5, lo: 1, hi: 2, enchanted: false, damage: None }, // tnt
+];
+#[cfg(test)]
+const BURIEDTREASURE_2: &[L] = &[
+    L { item: Some(Item::EMERALD), weight: 5, lo: 4, hi: 8, enchanted: false, damage: None }, // emerald
+    L { item: Some(Item::DIAMOND), weight: 5, lo: 1, hi: 2, enchanted: false, damage: None }, // diamond
+    L { item: Some(Item::PRISMARINE_CRYSTALS), weight: 5, lo: 1, hi: 5, enchanted: false, damage: None }, // prismarine_crystals
+];
+#[cfg(test)]
+const BURIEDTREASURE_3: &[L] = &[
+    L {
+        item: Some(Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Leather)),
+        weight: 1,
+        lo: 1,
+        hi: 1,
+        enchanted: false,
+        damage: None,
+    }, // leather_chestplate
+    L { item: Some(Item::tool(ToolKind::Sword, Tier::Iron)), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // iron_sword
+    L { item: None, weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // iron_spear
+];
+#[cfg(test)]
+const BURIEDTREASURE_4: &[L] = &[
+    L { item: Some(Item::COOKED_COD), weight: 1, lo: 2, hi: 4, enchanted: false, damage: None }, // cooked_cod
+    L { item: Some(Item::COOKED_SALMON), weight: 1, lo: 2, hi: 4, enchanted: false, damage: None }, // cooked_salmon
+];
+#[cfg(test)]
+const BURIEDTREASURE_5: &[L] = &[
+    L { item: Some(Item::potion(crate::potion::Potion(14))), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // potion
+];
+#[cfg(test)]
+const BURIEDTREASURE_6: &[L] = &[
+    L { item: None, weight: 148, lo: 1, hi: 1, enchanted: false, damage: None }, // None
+    L { item: None, weight: 20, lo: 1, hi: 1, enchanted: false, damage: None },  // copper_nautilus_armor
+    L { item: None, weight: 10, lo: 1, hi: 1, enchanted: false, damage: None },  // iron_nautilus_armor
+    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },   // golden_nautilus_armor
+    L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },   // diamond_nautilus_armor
+];
+
+#[cfg(test)]
 const REGULAR_GOAT_HORNS: u32 = 4;
 
 /// Fills a structure's chest from its loot table.
@@ -1631,6 +1762,8 @@ impl LootTable {
             Self::ShipMap => "shipwreck_map",
             Self::RuinSmall => "underwater_ruin_small",
             Self::RuinBig => "underwater_ruin_big",
+            Self::RuinedPortal => "ruined_portal",
+            Self::BuriedTreasure => "buried_treasure",
         }
     }
 }
@@ -1761,7 +1894,7 @@ mod tests {
         let facts: serde_json::Value =
             serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/world_defects.json")).unwrap();
         let loot = &facts["structure_loot"];
-        let tables: [(&str, &[&[L]]); 9] = [
+        let tables: [(&str, &[&[L]]); 11] = [
             ("desert_pyramid", &[DESERTPYRAMID_0, DESERTPYRAMID_1, DESERTPYRAMID_2]),
             ("jungle_temple", &[JUNGLETEMPLE_0, JUNGLETEMPLE_1]),
             ("igloo_chest", &[IGLOO_0, IGLOO_1]),
@@ -1771,6 +1904,19 @@ mod tests {
             ("shipwreck_map", &[SHIPMAP_0, SHIPMAP_1, SHIPMAP_2, SHIPMAP_3]),
             ("underwater_ruin_small", &[RUINSMALL_0, RUINSMALL_1, RUINSMALL_2]),
             ("underwater_ruin_big", &[RUINBIG_0, RUINBIG_1, RUINBIG_2]),
+            ("ruined_portal", &[RUINEDPORTAL_0, RUINEDPORTAL_1]),
+            (
+                "buried_treasure",
+                &[
+                    BURIEDTREASURE_0,
+                    BURIEDTREASURE_1,
+                    BURIEDTREASURE_2,
+                    BURIEDTREASURE_3,
+                    BURIEDTREASURE_4,
+                    BURIEDTREASURE_5,
+                    BURIEDTREASURE_6,
+                ],
+            ),
         ];
         // Java items the game does not have yet; their entries stay empty.
         let absent = [
@@ -1786,6 +1932,7 @@ mod tests {
             "experience_bottle",
             "suspicious_stew",
             "stone_spear",
+            "iron_spear",
         ];
         for (name, ours) in tables {
             let pools = loot[name].as_array().unwrap();
@@ -1821,7 +1968,15 @@ mod tests {
                                 || (id == "goat_horn" && ours.starts_with("goat_horn"))
                                 || matches!(
                                     (id, ours.as_str()),
-                                    ("bamboo", _)
+                                    (
+                                        "bamboo"
+                                            | "obsidian"
+                                            | "gold_block"
+                                            | "bell"
+                                            | "light_weighted_pressure_plate"
+                                            | "lodestone",
+                                        _
+                                    ) | ("potion", "potion_of_water_breathing")
                                         | (
                                             "sand"
                                                 | "tnt"
@@ -1839,6 +1994,16 @@ mod tests {
                 }
             }
         }
+        for (table, rolls) in [
+            ("ruined_portal", vec![(4, 8), (1, 1)]),
+            ("buried_treasure", vec![(1, 1), (5, 8), (1, 3), (0, 1), (2, 2), (0, 2), (1, 1)]),
+        ] {
+            for (pool, (lo, hi)) in loot[table].as_array().unwrap().iter().zip(rolls) {
+                assert_eq!(pool["rolls"], serde_json::json!([lo, hi]));
+            }
+        }
+        assert_eq!(loot["buried_treasure"][5]["modifier"]["id"], "minecraft:water_breathing");
+        assert_eq!(BURIEDTREASURE_5[0].item.unwrap().as_potion().unwrap().info().id, "water_breathing");
         assert_eq!(facts["regular_goat_horns"].as_array().unwrap().len() as u32, REGULAR_GOAT_HORNS);
     }
 

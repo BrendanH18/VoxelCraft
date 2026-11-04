@@ -177,6 +177,14 @@ roadmap and recorded checks to assess completeness against the current target.
 - [v0.14 jigsaw villages](verification/2026-11-03-v0.14-jigsaw-villages.md):
   world generation 3, the jigsaw engine, template-built villages, the
   GEN-07 cross-order corpus and the generation 2 golden hash.
+- [v0.14 outposts and bastions](verification/2026-11-03-v0.14-outposts-bastions.md):
+  template-built pillager outposts and bastion remnants.
+- [v0.14 ruined portals and buried treasure](verification/2026-11-03-v0.14-portals-treasure.md):
+  Overworld and Nether ruined portals, beach treasure and their loot.
+- [v0.14 fossils, wells and trail ruins](verification/2026-11-03-v0.14-fossils-wells-trail-ruins.md):
+  Overworld and Nether fossils, desert wells and buried trail ruins.
+- [v0.14 maps and loot](verification/2026-11-03-v0.14-maps.md): maps,
+  explorer maps, cartographer trades and Java loot random sequences.
 - [Game rules and difficulty](verification/2026-10-17-game-rules-difficulty.md):
   the 26.3 rule registry, damage-type rules, Peaceful regeneration and the
   difficulty effects checked against the reference.

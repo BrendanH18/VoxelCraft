@@ -523,6 +523,26 @@ impl NetherGen {
         self.classify(p.x, p.y, p.z, corners.cached_bits(), &corners)
     }
 
+    /// One pristine terrain column, for ruined portal height scans.
+    pub(super) fn structure_column(&self, x: i32, z: i32) -> super::terrain::StructureColumn {
+        let g = IVec2::new(x.div_euclid(STEP as i32), z.div_euclid(STEP as i32));
+        let c = [
+            self.grid_column(g),
+            self.grid_column(g + IVec2::X),
+            self.grid_column(g + IVec2::Y),
+            self.grid_column(g + IVec2::ONE),
+        ];
+        let corners = Corners {
+            c: [&c[0], &c[1], &c[2], &c[3]],
+            t: [x.rem_euclid(STEP as i32) as f32 / STEP as f32, z.rem_euclid(STEP as i32) as f32 / STEP as f32],
+        };
+        let bits = corners.cached_bits();
+        super::terrain::StructureColumn {
+            min_y: 0,
+            blocks: (0..=ROOF).map(|y| self.classify(x, y, z, bits, &corners)).collect(),
+        }
+    }
+
     pub fn generate(&self, cpos: IVec3) -> ChunkData {
         let base = cpos * CHUNK_SIZE_I;
         if base.y > ROOF || base.y + CHUNK_SIZE_I <= 0 {
