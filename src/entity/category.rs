@@ -98,7 +98,8 @@ impl MobKind {
             | K::Donkey
             | K::Mule
             | K::Llama
-            | K::Camel => MobCategory::Creature,
+            | K::Camel
+            | K::Bee => MobCategory::Creature,
             K::Villager | K::IronGolem | K::SnowGolem => MobCategory::Misc,
             K::Cod | K::Salmon | K::TropicalFish | K::Pufferfish => MobCategory::WaterAmbient,
             K::Squid | K::Dolphin => MobCategory::WaterCreature,

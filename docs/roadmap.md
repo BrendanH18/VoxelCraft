@@ -1453,8 +1453,10 @@ in the [architecture reservations](architecture.md#v015-track-reservations):
    tick gate and divided bone-meal gain, fruit attachment/release, seed
    planting and drops, melon yields, seed/soup recipes, beetroot in the
    existing village palette and farmer harvest/replant recognition.
-   Bees, hives, pollination, honeycomb, waxing and candle acquisition
-   remain pending ([evidence](verification/2026-11-04-v0.15-crops-bees.md)).
+   **Bee slice implemented, unverified:** nests/hives with saved occupants,
+   natural and flower-adjacent sapling nests, nectar/pollination/crop boosts,
+   breeding, anger/stinging, smoke-aware harvesting, honeycomb and Silk Touch
+   transport. Waxing and candle acquisition remain pending ([evidence](verification/2026-11-04-v0.15-crops-bees.md)).
 3. **Passive mobs** (MOB-03). Bats; frogs, tadpoles, frogspawn and the
    three froglights; pandas with their genes; polar bears; armadillos,
    scutes and wolf armor; mooshrooms and suspicious stew; ocelots; the cat

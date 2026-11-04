@@ -15,6 +15,7 @@
 pub mod activity;
 mod automation;
 pub mod bastion;
+pub mod bees;
 pub mod bell;
 pub mod biome;
 pub mod biome_plants;
@@ -276,6 +277,7 @@ pub struct World {
     /// Brewing stand contents by position (see [`brewing`]).
     brewing_stands: FxHashMap<IVec3, brewing::BrewingStand>,
     /// Sign text, shelf items and chiseled bookshelf books (see [`wood::entities`]).
+    pub(crate) beehives: bees::State,
     wood: wood::entities::WoodEntities,
     /// Campfire, decorated pot and cauldron-drip state (see [`utilities`]).
     utilities: utilities::State,
@@ -442,6 +444,7 @@ impl World {
         self.register_banners(pos, &data);
         self.forget_campfires(pos);
         self.register_campfires(pos, &data);
+        self.register_beehives(pos, &data, true);
         self.chunks.insert(
             pos,
             ChunkSlot {
@@ -549,6 +552,7 @@ impl World {
             furnaces: FxHashMap::default(),
             chests: FxHashMap::default(),
             brewing_stands: FxHashMap::default(),
+            beehives: Default::default(),
             wood: Default::default(),
             utilities: Default::default(),
             spawners: FxHashMap::default(),
@@ -896,6 +900,7 @@ impl World {
         self.track_banner(p, old, block);
         self.track_brewing_stand(p, old, block);
         self.track_wood(p, old, block);
+        self.track_beehives(p, old, block);
         self.track_utilities(p, old, block);
         self.track_spawner(p, old, block);
         self.track_village_poi(p, block);
@@ -1302,6 +1307,7 @@ impl World {
         self.register_village_life(pos, &data);
         self.register_banners(pos, &data);
         self.register_campfires(pos, &data);
+        self.register_beehives(pos, &data, modified);
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
         let workers = &self.workers;
         let col = self.columns.entry(column_of(pos)).or_insert_with(|| {
@@ -1352,6 +1358,7 @@ impl World {
     fn remove_chunk(&mut self, pos: IVec3) {
         self.unlight_sky_column(column_of(pos));
         self.unload_redstone_chunk(pos);
+        self.unload_beehives(pos);
         let slot = self.chunks.remove(&pos).unwrap();
         self.entity_loads.remove(&pos);
         // A LAN replica's falling blocks come from the host's snapshots.

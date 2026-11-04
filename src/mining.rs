@@ -253,6 +253,9 @@ pub fn mined_xp(block: Block, tool: Enchants, rng: &mut crate::entity::Rng) -> u
 /// Whether a block mined with silk touch drops itself (Java's
 /// silk-touchable blocks among ours).
 pub fn silk_drop(block: Block) -> Option<Item> {
+    if let Some((nest, _, _)) = crate::world::bees::hive(block) {
+        return Some(Item::from_block(if nest { crate::world::bees::NEST } else { crate::world::bees::HIVE }));
+    }
     if let Some(item) =
         crate::world::utilities::silk_drop(block).or_else(|| crate::world::biome_plants::sheared_drop(block))
     {

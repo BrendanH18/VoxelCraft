@@ -89,6 +89,8 @@ pub struct Stack {
     pub lodestone: Option<Lodestone>,
     /// Saved map component. Clones share the same world map.
     pub map_id: Option<u32>,
+    /// Immutable bounded bee occupant and honey payload, only on hive items.
+    pub hive: Option<&'static crate::world::bees::HiveItem>,
 }
 
 /// Java's `LodestoneTracker` (always `tracked`, as a lodestone makes it):
@@ -131,6 +133,7 @@ impl Stack {
             entity_data: 0,
             lodestone: None,
             map_id: None,
+            hive: None,
         }
     }
 
@@ -145,6 +148,7 @@ impl Stack {
             && self.entity_data == other.entity_data
             && self.lodestone == other.lodestone
             && self.map_id == other.map_id
+            && self.hive == other.hive
     }
 
     /// The enchantments that take effect when held or worn: a book's are
@@ -504,7 +508,8 @@ pub fn stack_to_string(stack: Option<Stack>) -> String {
                 || s.name.as_str().is_some()
                 || s.entity_data > 0
                 || s.lodestone.is_some()
-                || s.map_id.is_some() =>
+                || s.map_id.is_some()
+                || s.hive.is_some() =>
         {
             let mut text = format!(
                 "{}:{}:{}:{}:{}:{}:{}",
@@ -516,12 +521,15 @@ pub fn stack_to_string(stack: Option<Stack>) -> String {
                 s.name.to_hex(),
                 s.entity_data
             );
-            if s.lodestone.is_some() || s.map_id.is_some() {
+            if s.lodestone.is_some() || s.map_id.is_some() || s.hive.is_some() {
                 text.push(':');
                 text.push_str(&s.lodestone.map_or_else(|| "~".into(), Lodestone::to_field));
             }
-            if let Some(id) = s.map_id {
-                text.push_str(&format!(":{id}"));
+            if s.map_id.is_some() || s.hive.is_some() {
+                text.push_str(&format!(":{}", s.map_id.map_or_else(|| "~".into(), |id| id.to_string())));
+            }
+            if let Some(h) = s.hive {
+                text.push_str(&format!(":{}", h.to_hex()));
             }
             text
         }
@@ -549,7 +557,14 @@ pub fn stack_from_str(text: &str) -> Option<Option<Stack>> {
         Some(text) => Some(Lodestone::from_field(text)?),
         None => None,
     };
-    let map_id = fields.next().map(|id| id.parse::<u32>()).transpose().ok()?;
+    let map_id = match fields.next() {
+        Some("~") | None => None,
+        Some(s) => Some(s.parse::<u32>().ok()?),
+    };
+    let hive = match fields.next() {
+        None => None,
+        Some(s) => Some(crate::world::bees::HiveItem::from_hex(s)?.intern()),
+    };
     if fields.next().is_some() {
         return None;
     }
@@ -568,6 +583,7 @@ pub fn stack_from_str(text: &str) -> Option<Option<Stack>> {
         entity_data,
         lodestone,
         map_id,
+        hive,
     }))
 }
 

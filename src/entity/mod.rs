@@ -15,6 +15,7 @@
 pub mod animals;
 pub mod aquatic;
 pub mod armor;
+pub mod bee;
 mod bell;
 mod bobber;
 pub mod category;
@@ -165,6 +166,11 @@ pub enum EntityEvent {
     /// Fixed, armored contact damage (guardian spikes and pufferfish).
     /// `poison` ticks of Poison follow only when the sting hurts, as in
     /// `Pufferfish.playerTouch`, which gates the effect on `hurtServer`.
+    BeeSting {
+        uid: u32,
+        player: PlayerId,
+        poison: u32,
+    },
     PlayerSting {
         player: PlayerId,
         damage: f32,
@@ -417,6 +423,13 @@ pub trait MobWorld: BlockSource {
     /// Synthetic worlds opt in explicitly rather than inventing new chunks every tick.
     fn generation_columns(&self, _visit: &mut dyn FnMut(glam::IVec2)) {}
     /// Loaded spawner cages and the mob each makes.
+    fn bee_night(&self, daylight: f32) -> bool {
+        daylight < 0.35
+    }
+    fn bee_hive_full(&self, _p: IVec3) -> bool {
+        false
+    }
+    fn bee_hives(&self, _center: IVec3, _visit: &mut dyn FnMut(IVec3, bool)) {}
     fn spawners(&self) -> Vec<(IVec3, MobKind)> {
         Vec::new()
     }
@@ -466,6 +479,24 @@ pub trait MobWorld: BlockSource {
 }
 
 impl MobWorld for World {
+    fn bee_night(&self, daylight: f32) -> bool {
+        self.beehives.night.unwrap_or(daylight < 0.35)
+    }
+    fn bee_hive_full(&self, p: IVec3) -> bool {
+        self.beehive(p).is_some_and(|h| h.bees.iter().all(Option::is_some))
+    }
+    fn bee_hives(&self, center: IVec3, visit: &mut dyn FnMut(IVec3, bool)) {
+        // At most 41*41 short ordered ranges; distant saved nests are not scanned.
+        for x in center.x - 20..=center.x + 20 {
+            for y in center.y - 20..=center.y + 20 {
+                for p in self.beehives.active.range([x, y, center.z - 20]..=[x, y, center.z + 20]) {
+                    if let Some(h) = self.beehives.hives.get(p) {
+                        visit(IVec3::from_array(*p), h.bees.iter().all(Option::is_some));
+                    }
+                }
+            }
+        }
+    }
     fn generation_columns(&self, visit: &mut dyn FnMut(glam::IVec2)) {
         self.visit_spawn_columns(visit);
     }

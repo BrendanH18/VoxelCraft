@@ -366,7 +366,7 @@ pub mod tex {
     pub const BUBBLE_BASE: u16 = 2864;
     pub const BUBBLE_UP: u16 = BUBBLE_BASE;
     pub const BUBBLE_DOWN: u16 = BUBBLE_BASE + 1;
-    pub const COUNT: u32 = super::super::crops::t::END as u32; // v0.15 original crop layers 2992–3007.
+    pub const COUNT: u32 = super::super::bees::t::END as u32; // v0.15 original crop layers 2992–3007.
     const _: () = assert!(super::super::biome_plants::TEX_END <= BUBBLE_BASE);
     const _: () = assert!(super::super::utilities::TEX_END <= super::super::cave_blocks::TEX);
     const _: () = assert!(super::super::cave_blocks::TEX_END <= super::super::biome_plants::TEX);
@@ -718,6 +718,9 @@ impl Block {
     /// Minecraft's (encouragement, consumption) fire odds. Wooden doors,
     /// ladders and containers can kindle lava fires but aren't consumed.
     pub fn fire_odds(self) -> (u8, u8) {
+        if let Some((nest, _, _)) = super::bees::hive(self) {
+            return (if nest { 30 } else { 5 }, 20);
+        }
         // `FireBlock.getBurnOdds`/`getIgniteOdds`: waterlogged states never burn.
         if super::waterlog::wet(self.0) {
             return (0, 0);
@@ -1253,6 +1256,9 @@ impl Block {
 
     /// This block without its orientation (itself if it has none).
     pub fn base(self) -> Block {
+        if let Some((nest, _, _)) = super::bees::hive(self) {
+            return if nest { super::bees::NEST } else { super::bees::HIVE };
+        }
         if let Some(b) = super::biome_plants::base(self.0) {
             return b;
         }
@@ -1315,6 +1321,9 @@ impl Block {
 
     /// The same block facing `facing` (unchanged if it has no front).
     pub fn with_facing(self, facing: Facing) -> Block {
+        if let Some((nest, _, honey)) = super::bees::hive(self) {
+            return super::bees::block(nest, facing, honey);
+        }
         if super::scaffolding::is_scaffolding(self) || super::stone_blocks::is_pillar(self) {
             return self;
         }
@@ -1544,6 +1553,9 @@ impl Block {
 
     /// What breaking this block yields in survival.
     pub fn drop(self) -> Option<Item> {
+        if let Some((nest, _, _)) = super::bees::hive(self) {
+            return (!nest).then(|| super::bees::HIVE.into());
+        }
         if let Some(drop) = super::cave_blocks::drop(self) {
             return drop;
         }
@@ -1680,6 +1692,12 @@ impl Block {
         }
         if let Some((hardness, ..)) = super::utilities::mining(self) {
             return hardness;
+        }
+        if let Some((nest, _, _)) = super::bees::hive(self) {
+            return if nest { 0.3 } else { 0.6 };
+        }
+        if self == super::bees::HONEYCOMB_BLOCK {
+            return 0.6;
         }
         if super::crops::owns(self.0) {
             return 0.0;
@@ -1874,6 +1892,9 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
+        if super::bees::hive(self).is_some() {
+            return Some(ToolKind::Axe);
+        }
         if let Some((_, tool, _)) = super::cave_blocks::mining(self) {
             return tool;
         }
@@ -2193,6 +2214,7 @@ impl Block {
             .chain([Self::HONEY_BLOCK.0, super::scaffolding::SCAFFOLDING.0])
             .chain(super::stone_blocks::palette_ids())
             .chain(super::copper::palette_ids())
+            .chain([super::bees::NEST.0, super::bees::HIVE.0, super::bees::HONEYCOMB_BLOCK.0])
             .chain(super::wood::palette_ids())
             .chain(super::colour_blocks::palette_ids())
             .chain(super::utilities::palette_ids())
@@ -2821,6 +2843,7 @@ pub(super) const fn make(id: u16) -> BlockInfo {
             Some((name, kind, super::stone_blocks::Tex::Like(b))) => (name, kind, make(b.0).tex),
             None => ("unknown", Invisible, all(0)),
         },
+        super::bees::FIRST..=super::bees::LAST => super::bees::registry(id),
         super::crops::FIRST..=super::crops::LAST => super::crops::registry(id),
         super::copper::FIRST..=super::copper::RESERVED_LAST => match super::copper::registry(id) {
             Some(info) => info,

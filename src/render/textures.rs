@@ -5,6 +5,8 @@
 use crate::world::block::tex;
 use crate::world::noise::hash_f;
 
+#[path = "bee_textures.rs"]
+mod bees;
 #[path = "cave_textures.rs"]
 mod cave;
 #[path = "colour_textures.rs"]
@@ -235,6 +237,9 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     }
     if (crate::world::utilities::TEX..crate::world::utilities::TEX_END).contains(&layer) {
         return utility::pixel(layer, x, y);
+    }
+    if (crate::world::bees::t::BASE..crate::world::bees::t::END).contains(&layer) {
+        return bees::pixel(layer, x, y);
     }
     if (crate::world::crops::t::BASE..crate::world::crops::t::END).contains(&layer) {
         return crops::pixel(layer, x, y);

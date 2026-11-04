@@ -523,11 +523,31 @@ impl World {
         if !room {
             return false;
         }
+        // TreeGrower chooses the 5% bee feature only with a flower in its
+        // 5 x 3 x 5 search, for oak, birch and cherry saplings.
+        let bee_nest = if matches!(wood, Wood::Oak | Wood::Birch | Wood::Cherry)
+            && (-1..=1).any(|dy| {
+                (-2..=2).any(|dx| {
+                    (-2..=2)
+                        .any(|dz| self.get_block(p + IVec3::new(dx, dy, dz)).is_some_and(super::bees::sapling_flower))
+                })
+            }) {
+            super::bees::decorate_tree_with_chance(&blocks, self.roll(), 0.05)
+        } else {
+            None
+        };
         for (q, b) in blocks {
             let free = self.get_block(q).is_some_and(|cur| cur == Block::AIR || (b.is_log() && !cur.is_log()));
             if free {
                 self.edit(q, b, false);
             }
+        }
+        if let Some((q, b)) = bee_nest
+            && self.get_block(q) == Some(Block::AIR)
+            && self.get_block(q + IVec3::Z) == Some(Block::AIR)
+        {
+            self.edit(q, b, false);
+            self.populate_bee_nest(q);
         }
         let trunk: &[(i32, i32)] =
             if giant || needs_two_by_two(sapling) { &[(0, 0), (1, 0), (0, 1), (1, 1)] } else { &[(0, 0)] };

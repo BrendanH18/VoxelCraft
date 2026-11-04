@@ -504,9 +504,21 @@ seeds (680), beetroot (682), melon seeds (1016), beetroot seeds (1017),
 melon slices (283) and honey bottle (1073) retain their existing IDs.
 Original crop textures use 2992–3007, offsets from `crops::t::BASE`:
 eight stem ages, four attached silhouettes and four beetroot ages.
-No MobKinds are appended. States 10844–11007 and 29696–30719, items
-1281–1299 and layers 3008–3135 remain reserved and unused. Bees and
-waxing are pending; see [track evidence](verification/2026-11-04-v0.15-crops-bees.md).
+That initial slice appended no MobKinds. The continuation below allocates
+bee content from the same reservation; waxing is pending; see [track evidence](verification/2026-11-04-v0.15-crops-bees.md).
+
+Track 2 bee continuation: 10844–10867 bee nest, 10868–10891 beehive
+(`honey_level * 4 + facing`, S/N/E/W), 10892 honeycomb block. Item 1281
+is honeycomb. Original hive/nest/comb layers 3008–3016 are offsets from
+`bees::t::BASE`; the original bee model uses procedural entity colours,
+and its original voice appends `Voice::Bee`. `MobKind::Bee` appends after
+Camel (LAN index 54 in this track, subject to integration order). Hive
+occupants use normal saved bee payloads in dimension property `beehives`;
+Silk Touch items append an optional hex-encoded component to inventory
+strings. Immutable item payloads are interned, keeping `Stack` Copy and
+its optional hive component pointer-sized. They live until process exit.
+States 10893–11007, items 1282–1299 and layers 3017–3135 remain unused;
+29696–30719 still await waxed copper.
 
 ## Assessment branch ID reservations
 

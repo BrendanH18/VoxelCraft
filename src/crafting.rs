@@ -12,6 +12,7 @@ use crate::inventory::Stack;
 use crate::item::{ArmorMaterial, ArmorPiece, Item, Tier, ToolKind};
 use crate::world::block::Block;
 
+mod bees;
 mod copper;
 mod crops;
 pub use copper::stonecutting as copper_stonecutting;
@@ -610,6 +611,7 @@ pub fn recipes() -> &'static [Recipe] {
         stone::add_recipes(&mut r);
         copper::add_recipes(&mut r);
         crops::add_recipes(&mut r);
+        bees::add(&mut r);
         wood::add(&mut r);
         colour::add(&mut r);
         utilities::add(&mut r);

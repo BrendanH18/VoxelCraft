@@ -175,6 +175,7 @@ const STRIDER: &[Entry] = &[
     e(5, G::FollowParent, 1.0),
     e(7, G::Stroll, 1.0),
 ];
+const BEE: &[Entry] = &[e(2, G::Breed, 1.0), e(3, G::Tempt, 1.25), e(5, G::FollowParent, 1.25)];
 const PARROT: &[Entry] = &[e(0, G::Panic, 1.25), owner(2, 5.0, 1.0)];
 // Brain animals: core `AnimalPanic`, then the idle activity's
 // `AnimalMakeLove`, `FollowTemptation`, `BabyFollowAdult` and stroll.
@@ -224,6 +225,7 @@ pub(crate) fn table(kind: MobKind) -> &'static [Entry] {
         K::Parrot => PARROT,
         K::Goat => GOAT,
         K::Camel => CAMEL,
+        K::Bee => BEE,
         K::Axolotl => AXOLOTL,
         K::Cod | K::Salmon | K::TropicalFish | K::Pufferfish => FISH,
         K::Guardian | K::ElderGuardian => GUARDIAN,
@@ -243,7 +245,7 @@ pub(crate) fn movement_speed(kind: MobKind) -> f64 {
         K::Cow | K::Parrot | K::Goat => 0.2,
         K::Pig | K::Chicken | K::Turtle | K::Creeper | K::Skeleton | K::WitherSkeleton => 0.25,
         K::Sheep | K::Zombie => 0.23,
-        K::Wolf | K::Cat | K::Fox | K::Rabbit | K::Hoglin => 0.3,
+        K::Bee | K::Wolf | K::Cat | K::Fox | K::Rabbit | K::Hoglin => 0.3,
         K::Strider | K::Donkey | K::Mule | K::Llama | K::TraderLlama => 0.175,
         K::Camel => 0.09,
         K::Axolotl => 1.0,
@@ -353,6 +355,9 @@ impl Mob {
     /// `TurtleMoveControl` holds a turtle near 0.06 eased an eighth of the
     /// way toward its speed.
     pub(crate) fn goal_speed(&self, modifier: f64) -> f64 {
+        if self.kind == MobKind::Bee {
+            return modifier;
+        }
         let raw = self.attribute_speed() * modifier;
         let raw = match self.kind {
             MobKind::Axolotl if !self.in_water => {

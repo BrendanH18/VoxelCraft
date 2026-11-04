@@ -6,7 +6,7 @@
 //! three parallel formant band-passes (the vowel). Skeletons and spiders
 //! are made of clicks and hisses instead.
 
-use super::dsp::{self, Biquad, Mode, Rng, add_mode, crackle, mix_into, noise, samples};
+use super::dsp::{self, Biquad, Mode, RATE, Rng, add_mode, crackle, mix_into, noise, samples};
 use super::source::SoundSource;
 
 /// Who is making the sound.
@@ -42,6 +42,7 @@ pub enum Voice {
     Rabbit,
     Goat,
     Horse,
+    Bee,
 }
 
 /// What kind of sound a voice makes.
@@ -54,7 +55,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 30] = [
+    pub const ALL: [Voice; 31] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -85,6 +86,7 @@ impl Voice {
         Voice::Rabbit,
         Voice::Goat,
         Voice::Horse,
+        Voice::Bee,
     ];
 
     /// The category the creature plays in: `Monster`, `Ghast`, `Hoglin` and
@@ -121,7 +123,8 @@ impl Voice {
             | Voice::Parrot
             | Voice::Rabbit
             | Voice::Goat
-            | Voice::Horse => SoundSource::Neutral,
+            | Voice::Horse
+            | Voice::Bee => SoundSource::Neutral,
         }
     }
 
@@ -155,6 +158,7 @@ impl Voice {
             Voice::Wolf => "wolf",
             Voice::Fox => "fox",
             Voice::Parrot => "parrot",
+            Voice::Bee => "bee",
             Voice::Rabbit => "rabbit",
             Voice::Goat => "goat",
         }
@@ -237,6 +241,7 @@ const FLAT: &dyn Fn(f32) -> f32 = &|_| 1.0;
 
 pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
     match voice {
+        Voice::Bee => bee(call, rng),
         Voice::Pig => pig(call, rng),
         Voice::Horse => horse(call, rng),
         Voice::Cow => cow(call, rng),
@@ -872,4 +877,26 @@ fn horse(call: Call, rng: &mut Rng) -> Vec<f32> {
             breath: 0.12,
         },
     )
+}
+
+/// Original harmonic wing buzz with a slow amplitude beat and noisy edges.
+fn bee(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let duration = match call {
+        Call::Ambient => 0.9,
+        Call::Hurt => 0.3,
+        Call::Death => 0.55,
+    };
+    let hz = rng.range(180., 210.);
+    let n = samples(duration);
+    let v = (0..n)
+        .map(|i| {
+            let t = i as f32 / RATE;
+            let phase = t * hz * std::f32::consts::TAU;
+            let envelope = (t / 0.03).min(1.) * ((duration - t) / 0.08).min(1.);
+            (phase.sin() * 0.55 + (phase * 2.).sin() * 0.25 + (phase * 3.).sin() * 0.1)
+                * envelope
+                * (0.65 + 0.2 * (t * std::f32::consts::TAU * 13.).sin())
+        })
+        .collect();
+    dsp::finish(v, 0.35)
 }

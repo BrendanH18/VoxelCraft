@@ -837,6 +837,7 @@ impl Item {
     pub const TURTLE_HELMET: Item = Item(1040);
     /// v0.15 crops track: soup; the seeds and root retain their older IDs.
     pub const BEETROOT_SOUP: Item = Item(1280);
+    pub const HONEYCOMB: Item = Item(1281);
     /// Explicit honey item reservations, including the block placing item.
     pub const HONEY_BLOCK: Item = Item(1072);
     pub const HONEY_BOTTLE: Item = Item(1073);
@@ -1008,6 +1009,9 @@ impl Item {
     }
 
     pub fn info(self) -> ItemInfo {
+        if self == Self::HONEYCOMB {
+            return item("honeycomb", Sprite::Lump([233, 163, 40]));
+        }
         if self == Self::BEETROOT_SOUP {
             return ItemInfo {
                 name: "beetroot soup",
@@ -1430,7 +1434,7 @@ impl Item {
             .chain((0..DECOR_ITEMS).map(|i| Item(DECOR_ITEM + i)))
             .chain((0..HAND_ITEMS).map(|i| Item(HAND_ITEM + i)))
             .chain((1255..=1265).map(Item))
-            .chain([Self::BEETROOT_SOUP])
+            .chain([Self::BEETROOT_SOUP, Self::HONEYCOMB])
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1467,7 +1471,7 @@ fn splash_names() -> &'static [&'static str] {
 fn sprite_index(item: Item) -> Option<u16> {
     let materials = ITEMS.len() as u16;
     match item.0 {
-        1280 => Some(icon_count() as u16 - 1),
+        1280..=1281 => Some(icon_count() as u16 - 2 + item.0 - 1280),
         1040 => Some(turtle_icon()),
         1073 => Some(turtle_icon() + 2 + COPPER_ITEMS.len() as u16),
         1047 => Some(turtle_icon() + 1 + COPPER_ITEMS.len() as u16),
@@ -1562,7 +1566,7 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    turtle_icon() as u32 + 1 + COPPER_ITEMS.len() as u32 + 3 + 16 + DECOR_ITEMS as u32 + HAND_ITEMS as u32 + 1
+    turtle_icon() as u32 + 1 + COPPER_ITEMS.len() as u32 + 3 + 16 + DECOR_ITEMS as u32 + HAND_ITEMS as u32 + 2
 }
 
 /// The turtle helmet's icon follows the animal items; copper equipment follows it,

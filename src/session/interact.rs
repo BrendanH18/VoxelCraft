@@ -499,6 +499,23 @@ impl PlayerSession {
         let survival = self.mode.is_survival();
         let creative = self.mode.is_creative();
         let can_build = self.mode.can_build();
+        if can_build
+            && !ctx.sneaking
+            && matches!(held, Some(Item::SHEARS | Item::GLASS_BOTTLE))
+            && world.get_block(pos).and_then(crate::world::bees::hive).is_some_and(|(_, _, h)| h == 5)
+            && world.harvest_beehive(entities, pos, self.id)
+        {
+            if held == Some(Item::SHEARS) {
+                world.drop_honeycomb(pos);
+                if survival && self.inventory.wear(slot, 1) {
+                    *tool_broken = Some(Item::SHEARS);
+                }
+            } else {
+                // BeehiveBlock shrinks bottles even for creative players.
+                survival_items::exchange(&mut self.inventory, slot, Item::HONEY_BOTTLE, false, entities, &self.player);
+            }
+            return Ok(Some(Used::Harvested { cell: pos }));
+        }
         if held == Some(Item::EYE_OF_ENDER) && world.get_block(pos).is_some_and(|b| b.base() == Block::END_PORTAL_FRAME)
         {
             let opened = world.insert_eye(pos).ok_or("that frame already holds an eye, or its ring isn't loaded")?;

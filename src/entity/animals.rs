@@ -95,6 +95,7 @@ impl MobKind {
     /// the only registration needed for the generic mating/baby pipeline.
     pub fn breeding_food(self, food: Item) -> bool {
         match self {
+            Self::Bee => food.block().is_some_and(super::bee::flower),
             Self::Cow | Self::Sheep => food == Item::WHEAT,
             Self::Pig => matches!(food, Item::CARROT | Item::POTATO | Item::BEETROOT),
             Self::Chicken => seeds(food),
@@ -125,7 +126,8 @@ impl MobKind {
     pub fn is_breedable(self) -> bool {
         matches!(
             self,
-            Self::Wolf
+            Self::Bee
+                | Self::Wolf
                 | Self::Fox
                 | Self::Rabbit
                 | Self::Goat

@@ -75,7 +75,7 @@ impl MobKind {
             }
             K::Dolphin => Evaluator::Swim { breaching: true },
             K::Drowned | K::Axolotl | K::Turtle => Evaluator::Amphibious { shallow: false },
-            K::Parrot => Evaluator::Fly,
+            K::Parrot | K::Bee => Evaluator::Fly,
             _ => Evaluator::Walk,
         };
         if matches!(caps.evaluator, Evaluator::Swim { .. }) {

@@ -549,6 +549,7 @@ macro_rules! parts {($($p:expr),* $(,)?) => {{let mut out=Parts::new();$(out.pus
 
 mod animals;
 mod aquatic;
+mod bee;
 mod mounts;
 
 /// Animated parts for a mob, in model space (pixels).
@@ -557,6 +558,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
     let head = Quat::from_rotation_y(-m.head_yaw) * Quat::from_rotation_x(-m.head_pitch);
     let rx = Quat::from_rotation_x;
     match m.kind {
+        MobKind::Bee => bee::pose(m, time),
         MobKind::Horse | MobKind::Donkey | MobKind::Mule => mounts::pose(m),
         MobKind::Llama => mounts::llama(m),
         MobKind::Camel => mounts::camel(m),

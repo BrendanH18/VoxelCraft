@@ -169,6 +169,7 @@ pub enum MobKind {
     Llama,
     /// Desert-village mount: two seats, dashes, sits down now and then.
     Camel,
+    Bee,
 }
 
 impl MobKind {
@@ -195,7 +196,7 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 54] = [
+    pub const ALL: [MobKind; 55] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -250,6 +251,7 @@ impl MobKind {
         MobKind::Mule,
         MobKind::Llama,
         MobKind::Camel,
+        MobKind::Bee,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -309,6 +311,7 @@ impl MobKind {
             MobKind::Mule => "mule",
             MobKind::Llama => "llama",
             MobKind::Camel => "camel",
+            MobKind::Bee => "bee",
         }
     }
 
@@ -371,6 +374,7 @@ impl MobKind {
             MobKind::Mule => Shape::new(0.698, 1.6),
             MobKind::Llama => Shape::new(0.45, 1.87),
             MobKind::Camel => Shape::new(0.85, 2.375),
+            MobKind::Bee => Shape::new(0.35, 0.6),
         }
     }
 
@@ -417,6 +421,7 @@ impl MobKind {
             MobKind::Rabbit => 3.0,
             MobKind::Horse | MobKind::Donkey | MobKind::Mule | MobKind::Llama => 30.0,
             MobKind::Camel => 32.0,
+            MobKind::Bee => 10.0,
         }
     }
 
@@ -482,7 +487,7 @@ impl MobKind {
     pub fn spawns_in(self, dimension: Dimension) -> bool {
         match self {
             MobKind::Enderman => true,
-            MobKind::Mule => false,
+            MobKind::Mule | MobKind::Bee => false,
             // Only from spawners and inside fortresses (`fortress_spawn`).
             MobKind::Blaze
             | MobKind::WitherSkeleton
@@ -752,7 +757,8 @@ impl MobKind {
             | MobKind::WanderingTrader
             | MobKind::Piglin
             | MobKind::PiglinBrute
-            | MobKind::Camel => &[],
+            | MobKind::Camel
+            | MobKind::Bee => &[],
             MobKind::TraderLlama | MobKind::Horse | MobKind::Donkey | MobKind::Mule | MobKind::Llama => {
                 &[(Item::LEATHER, 0, 2)]
             }
@@ -875,6 +881,7 @@ pub struct Mob {
     pub leash: Option<super::leash::Leash>,
     pub leash_pos: Option<DVec3>,
     pub animal: Option<Box<super::animals::State>>,
+    pub bee: Option<super::bee::State>,
     pub villager: Option<Box<super::villager::Villager>>,
     /// Piglin gear, gold, anger and zombification (see `entity::nether`).
     pub mount: Option<Box<super::mounts::State>>,
@@ -1101,6 +1108,7 @@ impl Mob {
             player_hit_left: 0.0,
             light_timer: 0.0,
             fuse: 0.0,
+            bee: (kind == MobKind::Bee).then(super::bee::State::default),
             provoked: 0.0,
             blocked: false,
             detour: 0.0,
@@ -1259,7 +1267,7 @@ impl Mob {
 
     /// Whether a neutral mob is currently hostile (hit, or angered by a neighbour's hit).
     pub fn is_provoked(&self) -> bool {
-        self.provoked > 0.0
+        self.provoked > 0.0 || self.bee.is_some_and(|s| s.anger > 0)
     }
 
     /// Turns a neutral mob hostile for `secs`.
@@ -1475,6 +1483,7 @@ impl Mob {
             self.age = (self.age + ticks).min(0);
             self.baby = self.age < 0;
         }
+        super::bee::upkeep(self, dtf, rng, events);
         self.pathing = false;
         let (wish, speed) = if let Some(t) = &mut self.dying {
             *t += dtf;
@@ -1505,7 +1514,7 @@ impl Mob {
         // time with their own move controls (`swim`).
         let java = !controlled && self.riding.is_none() && self.java_moves(world);
         // Turn the body toward the direction of travel.
-        if let Some(dir) = wish.filter(|_| !controlled && !java) {
+        if let Some(dir) = wish.filter(|_| !controlled && !java && self.kind != MobKind::Bee) {
             let target = (dir.z as f32).atan2(dir.x as f32);
             self.yaw = turn_toward(self.yaw, target, 8.0 * dtf);
         }
@@ -1518,6 +1527,8 @@ impl Mob {
         if self.riding.is_some() || self.animal.as_ref().is_some_and(|a| a.perched.is_some()) {
             self.vel = DVec3::ZERO;
             self.on_ground = true;
+        } else if self.kind == MobKind::Bee {
+            super::bee::travel(self, dt, world, wish, speed);
         } else if java {
             // Whole Java ticks of simulated time; the fixed 20 Hz step runs one.
             // The move controls apply Speed and Slowness to the raw speed.
@@ -1634,8 +1645,14 @@ impl Mob {
             self.stop_goal(world);
             return (None, 0.0);
         }
+        if self.kind == MobKind::Bee && self.bee.is_some_and(|s| s.anger > 0) {
+            return super::bee::steer(self, dt, world, ctx, rng, events);
+        }
         if let Some(wish) = self.run_goals(world, ctx, rng) {
             return wish;
+        }
+        if self.kind == MobKind::Bee {
+            return super::bee::steer(self, dt, world, ctx, rng, events);
         }
         if self.kind == MobKind::Turtle {
             return self.turtle_steer(dt, world, ctx, rng);
@@ -3053,7 +3070,7 @@ impl super::Entities {
     /// update, as Java's does on the next selector update, about the latest
     /// attacker only (`getLastHurtByMob`).
     pub(super) fn hurt_by_player_target(&mut self, index: usize, player: super::PlayerId) {
-        if self.mobs.get(index).is_some_and(|m| matches!(m.kind, MobKind::Dolphin | MobKind::Blaze)) {
+        if self.mobs.get(index).is_some_and(|m| matches!(m.kind, MobKind::Dolphin | MobKind::Blaze | MobKind::Bee)) {
             self.ensure_mob_ids();
             let uid = self.mobs[index].uid;
             match self.hurt_by.iter_mut().find(|(u, _)| *u == uid) {
@@ -3073,6 +3090,7 @@ impl super::Entities {
             }
             let Some(index) = self.mobs.iter().position(|m| m.uid == uid) else { continue };
             match self.mobs[index].kind {
+                MobKind::Bee => self.anger_bees(self.mobs[index].pos.floor().as_ivec3(), player),
                 MobKind::Dolphin => self.dolphin_hurt_by(index, player),
                 MobKind::Blaze => self.blaze_hurt_by(index, player),
                 _ => {}

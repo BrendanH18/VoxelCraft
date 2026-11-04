@@ -1,7 +1,7 @@
 //! Compact render state for replicated mobs (LAN clients draw what the host simulates).
 //! Only fields models read are sent; gameplay state stays on the host.
 use super::nether::Weapon;
-use super::{Mob, armor::ArmorKind, villager::Profession};
+use super::{Mob, MobKind, armor::ArmorKind, villager::Profession};
 use crate::{color::DyeColor, inventory::StackName, item::Item};
 use glam::DVec3;
 use serde_json::{Value, json};
@@ -38,6 +38,9 @@ impl Mob {
         if let Some(p) = self.leash_pos {
             v["leash"] = json!(p.to_array());
             v["knot"] = json!(matches!(self.leash, Some(super::leash::Leash::Fence(_))));
+        }
+        if let Some(s) = self.bee {
+            v["bee"] = s.save();
         }
         if let Some(a) = &self.animal {
             v["animal"] = json!({
@@ -106,6 +109,9 @@ impl Mob {
                 super::leash::Leash::Player(super::PlayerId::HOST)
             }
         });
+        if self.kind == MobKind::Bee {
+            self.bee = Some(super::bee::State::load(&v["bee"]));
+        }
         if let (Some(a), w) = (self.animal.as_mut(), &v["animal"])
             && w.is_object()
         {

@@ -119,3 +119,12 @@ attackers are not pushed back by the block.
 The totem of undying (item 1231, creative palette only until evokers exist)
 cancels a lethal hit from either hand: 1 half heart, Regeneration II 45 s,
 Absorption II 5 s and Fire Resistance 40 s; void damage bypasses it.
+
+## Honeycomb and hives (v0.15, implemented, unverified)
+
+Shear a honey-level-5 nest or hive for three honeycomb (one shears use),
+or use a glass bottle for a honey bottle. A lit campfire's smoke prevents
+anger. Six planks above/below three honeycomb craft a beehive; four
+honeycomb craft a honeycomb block. Silk Touch preserves bees and honey in
+an acquired nest/hive. Hive item components survive inventory serialization,
+stack splitting, dropping and re-placement. See [the track record](verification/2026-11-04-v0.15-crops-bees.md).

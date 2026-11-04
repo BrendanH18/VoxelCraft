@@ -79,3 +79,22 @@ Name an anvil-renamed name tag onto any mob to give it a nameplate and
 stop it despawning. Name tags come from dungeon chests and fishing
 treasure. Sources: [Lead](https://minecraft.wiki/w/Lead),
 [Name Tag](https://minecraft.wiki/w/Name_Tag).
+
+## Bees (v0.15, implemented, unverified)
+
+Bees originate as 2–3 saved occupants in naturally decorated tree nests.
+Oak, birch and cherry saplings near flowers can also grow a nest (5%).
+Flowers tempt and breed bees through the shared animal interaction. Bees
+pollinate, carry nectar home and boost young crops below their flight path.
+Hives hold three occupants and honey levels 0–5; bees wait inside at night,
+in rain or behind a blocked exit. At honey 5, shears give three honeycomb,
+and bottles give honey bottles. Campfire smoke prevents harvest anger.
+Silk Touch transports the occupants and honey with the hive item. Mining without Silk Touch alerts nearby bees even with smoke; harvesting
+an occupied hive alerts them without smoke. Successful stings poison
+on Normal/Hard, remove the stinger and lead to the bee's death.
+
+The app advances this with `Entities::update_world`, which commits hive
+entry and crop changes in addition to the existing entity events. Hive
+occupants live in the dimension's `beehives` property; free bees use normal
+mob saves and LAN appearance data. Sources, allocations, checks and parity
+gaps are in [the track record](verification/2026-11-04-v0.15-crops-bees.md).
