@@ -283,7 +283,7 @@ fn state(agent: &Agent, name: &str) -> Value {
     json!({"id":agent.session.id.0,"name":name,"pos":agent.session.player.pos.to_array(),"vel":agent.session.player.vel.to_array(),
         "yaw":agent.session.player.yaw,"pitch":agent.session.player.pitch,"ground":agent.session.player.on_ground,"flying":agent.session.player.flying,
         "sprint":agent.session.player.sprinting,"motion":agent.session.player.carried_motion(),"stuck":agent.session.player.carried_stuck().to_array(),"mode":agent.session.mode.name(),"selected":agent.selected,"inventory":agent.session.inventory.serialize(),
-        "cursor":stack_to_string(agent.session.inventory.cursor),"ticks_frozen":agent.session.vitals.ticks_frozen,"health":agent.session.vitals.health,"air":agent.session.vitals.air,
+        "cursor":stack_to_string(agent.session.inventory.cursor),"time_since_rest":agent.session.vitals.time_since_rest,"ticks_frozen":agent.session.vitals.ticks_frozen,"health":agent.session.vitals.health,"air":agent.session.vitals.air,
         "food":agent.session.vitals.hunger.food,"saturation":agent.session.vitals.hunger.saturation,"exhaustion":agent.session.vitals.hunger.exhaustion,
         "death":agent.session.vitals.death,"xp":agent.session.vitals.xp.serialize(),"effects":agent.session.vitals.effects.serialize(),"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle,
         "respawns":agent.session.respawns,"drawing":agent.session.drawing_slot()})
@@ -301,7 +301,7 @@ fn state_lite(agent: &Agent, name: &str, swing: Option<f32>, eating: f32) -> Val
         "held":stack_to_string(agent.session.inventory.get(agent.selected)),
         "armor":agent.session.inventory.armor.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),
         "offhand":stack_to_string(agent.session.inventory.offhand),
-        "ticks_frozen":agent.session.vitals.ticks_frozen,"health":agent.session.vitals.health,"death":agent.session.vitals.death,"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle})
+        "time_since_rest":agent.session.vitals.time_since_rest,"ticks_frozen":agent.session.vitals.ticks_frozen,"health":agent.session.vitals.health,"death":agent.session.vitals.death,"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle})
 }
 fn apply(agent: &mut Agent, v: &Value) {
     if let Some(pos) = vector(&v["pos"]) {
@@ -355,6 +355,7 @@ fn apply(agent: &mut Agent, v: &Value) {
     if let Some(xp) = v["xp"].as_str().and_then(crate::simulation::experience::Experience::parse) {
         agent.session.vitals.xp = xp;
     }
+    agent.session.vitals.time_since_rest = v["time_since_rest"].as_u64().unwrap_or(0).min(i32::MAX as u64) as u32;
     agent.session.vitals.ticks_frozen = v["ticks_frozen"].as_u64().unwrap_or(0).min(140) as u16;
     if let Some(effects) = v["effects"].as_str() {
         agent.session.vitals.effects = crate::simulation::effects::Effects::deserialize(effects);

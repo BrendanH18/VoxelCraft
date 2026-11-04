@@ -84,6 +84,7 @@ impl Agents {
             effects: b.agent.session.vitals.effects.mask(),
             in_water: b.agent.session.player.in_water,
             swimming: b.agent.session.player.swimming,
+            time_since_rest: b.agent.session.vitals.time_since_rest,
             ..Target::new(b.id, b.agent.session.player.pos, b.agent.targetable())
         })
     }
@@ -99,7 +100,7 @@ impl Agents {
             let mut inventory = b.agent.session.inventory.clone();
             inventory.return_stacks(b.agent.session.work.into_iter().flatten());
             let mode = if b.agent.creative { voxelcraft::rules::GameMode::Creative } else { b.agent.session.mode };
-            json!({"name":name,"id":b.id.0,"position":b.agent.session.player.pos.to_array(),"yaw":b.agent.session.player.yaw,"pitch":b.agent.session.player.pitch,"mode":mode.name(),"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.session.player.flying,"ticks_frozen":b.agent.session.vitals.ticks_frozen,"health":b.agent.session.vitals.health,"air":b.agent.session.vitals.air,"food":b.agent.session.vitals.hunger.food,"saturation":b.agent.session.vitals.hunger.saturation,"exhaustion":b.agent.session.vitals.hunger.exhaustion,"xp":b.agent.session.vitals.xp.serialize(),"effects":b.agent.session.vitals.effects.serialize(),"inventory":inventory.serialize(),"ender_chest":b.agent.session.ender.serialize(),"bed":b.agent.session.spawn_bed.map(|p|p.to_array()),"spawn_point":b.agent.session.spawn_point.map(|p|p.to_array()),"dimension":dimension})
+            json!({"name":name,"id":b.id.0,"position":b.agent.session.player.pos.to_array(),"yaw":b.agent.session.player.yaw,"pitch":b.agent.session.player.pitch,"mode":mode.name(),"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.session.player.flying,"time_since_rest":b.agent.session.vitals.time_since_rest,"ticks_frozen":b.agent.session.vitals.ticks_frozen,"health":b.agent.session.vitals.health,"air":b.agent.session.vitals.air,"food":b.agent.session.vitals.hunger.food,"saturation":b.agent.session.vitals.hunger.saturation,"exhaustion":b.agent.session.vitals.hunger.exhaustion,"xp":b.agent.session.vitals.xp.serialize(),"effects":b.agent.session.vitals.effects.serialize(),"inventory":inventory.serialize(),"ender_chest":b.agent.session.ender.serialize(),"bed":b.agent.session.spawn_bed.map(|p|p.to_array()),"spawn_point":b.agent.session.spawn_point.map(|p|p.to_array()),"dimension":dimension})
         }).collect();
         json!(profiles).to_string()
     }
@@ -158,6 +159,8 @@ impl Agents {
             if let Some(xp) = p["xp"].as_str().and_then(crate::simulation::experience::Experience::parse) {
                 agent.session.vitals.xp = xp;
             }
+            agent.session.vitals.time_since_rest =
+                p["time_since_rest"].as_u64().unwrap_or(0).min(i32::MAX as u64) as u32;
             agent.session.vitals.ticks_frozen = p["ticks_frozen"].as_u64().unwrap_or(0).min(140) as u16;
             if let Some(text) = p["effects"].as_str() {
                 agent.session.vitals.effects = crate::simulation::effects::Effects::deserialize(text);
@@ -411,6 +414,7 @@ mod tests {
         agent.session.player.flying = true;
         agent.session.vitals.hunger = crate::simulation::survival::Hunger::restore(8.0, 2.0, 1.0);
         agent.session.vitals.xp = crate::simulation::experience::Experience::restore(7, 4, 90);
+        agent.session.vitals.time_since_rest=123456;
         agents.insert("builder".into(), agent);
         agents.players.get_mut("builder").unwrap().active = true;
         let text = agents.serialize("overworld");
@@ -424,6 +428,7 @@ mod tests {
         assert_eq!(bot.agent.session.player.pos, DVec3::new(300.0, 100.0, -250.0));
         assert_eq!(bot.agent.session.inventory.get(0).unwrap().count, 3);
         assert_eq!(bot.agent.session.vitals.hunger.food, 8.0);
+        assert_eq!(bot.agent.session.vitals.time_since_rest,123456);
         assert_eq!(bot.agent.session.vitals.xp, crate::simulation::experience::Experience::restore(7, 4, 90));
         assert_eq!(bot.agent.session.spawn_bed, Some(IVec3::new(4, 70, -2)));
         restored.restore(&text, "nether", spawn);

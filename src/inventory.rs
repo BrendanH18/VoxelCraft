@@ -171,6 +171,11 @@ impl Stack {
         {
             return crate::item::tipped_arrow_name(p);
         }
+        if self.name.as_str().is_none()
+            && let Some(p) = self.lingering_contents()
+        {
+            return crate::item::lingering_name(p);
+        }
         // `CompassItem.getName`.
         self.name
             .as_str()

@@ -967,7 +967,7 @@ impl Entities {
                 (m.persistent
                     || m.kind.never_distance_despawns()
                     || m.kind.has_animal_state()
-                    || matches!(m.kind, MobKind::Stray | MobKind::Bogged)
+                    || matches!(m.kind, MobKind::Stray | MobKind::Bogged | MobKind::Phantom)
                     || m.freezing.is_some())
                     && m.alive()
                     && m.villager.is_none()
@@ -1500,6 +1500,8 @@ fn save_mob(m: &Mob) -> Value {
         "age": m.age,
         "egg_timer": m.egg_timer,
         "sheared": m.sheared,
+        "skeleton_bow":m.skeleton_bow.as_ref().map(|s|crate::inventory::stack_to_string(Some(**s))),
+        "phantom": m.phantom.as_ref().map(|p| p.save()),
         "freezing": m.freezing.as_ref().map(super::hostiles::Freezing::save),
         "animal": m.animal.as_deref().map(super::animals::save),
         "identity": super::leash::save(m),
@@ -1559,6 +1561,14 @@ fn load_mob(v: &Value) -> Option<Mob> {
         m.egg_timer =
             v["egg_timer"].as_f64().filter(|t| t.is_finite() && *t >= 0.0).unwrap_or(m.egg_timer as f64).min(600.0)
                 as f32;
+    }
+    if let Some(p) = &mut m.phantom {
+        p.load(&v["phantom"]);
+    }
+    if kind.is_bow_skeleton()
+        && let Some(t) = v["skeleton_bow"].as_str()
+    {
+        m.skeleton_bow = crate::inventory::stack_from_str(t).flatten().filter(|s| s.item == Item::BOW).map(Box::new);
     }
     m.sheared = v["sheared"].as_bool().unwrap_or(false);
     if kind == MobKind::Skeleton && v["freezing"].is_object() {

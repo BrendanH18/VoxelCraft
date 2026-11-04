@@ -820,6 +820,9 @@ impl Agent {
             difficulty,
             rules.bool("natural_health_regeneration"),
         );
+        if self.session.sleeping.is_some() {
+            self.session.vitals.time_since_rest = 0;
+        }
         // Wither damage lands inside the rule tick, not through `damage`.
         if was_alive && self.session.vitals.is_dead() {
             self.session.totem_saves(self.selected);

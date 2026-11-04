@@ -31,6 +31,7 @@ pub mod hostiles;
 pub mod item;
 pub mod leash;
 mod lifecycle;
+pub mod lingering;
 mod look;
 pub mod minecart;
 mod mob;
@@ -41,6 +42,7 @@ pub mod mounts;
 pub mod nether;
 pub mod orb;
 pub mod pearl;
+pub mod phantom;
 pub mod player_model;
 mod player_pose;
 pub mod potion;
@@ -186,6 +188,11 @@ pub enum EntityEvent {
         from: DVec3,
         vel: DVec3,
         potion: crate::potion::Potion,
+    },
+    LingeringCloud {
+        pos: DVec3,
+        potion: crate::potion::Potion,
+        owner: Option<PlayerId>,
     },
     /// A splash potion shattered: glass sound and coloured particles.
     PotionSplashed {
@@ -585,6 +592,7 @@ pub struct Target {
     pub health: f32,
     /// Bit set of the target's active [`crate::simulation::effects::Effect`]s.
     pub effects: u32,
+    pub time_since_rest: u32,
 }
 
 impl Target {
@@ -612,6 +620,7 @@ impl Target {
             swimming: false,
             health: crate::simulation::survival::MAX_HEALTH,
             effects: 0,
+            time_since_rest: 0,
         }
     }
 
@@ -707,11 +716,15 @@ impl Rng {
 
 pub struct Entities {
     pub mobs: Vec<Mob>,
+    pub phantom_spawning: bool,
+    pub(super) phantom_next: i32,
+    pub(super) phantom_clock: f64,
     /// Visual requests shared by local, controller and agent combat.
     pub particles: crate::particles::Requests,
     pub arrows: Vec<Arrow>,
     pub pearls: Vec<pearl::Pearl>,
     pub potions: Vec<potion::ThrownPotion>,
+    pub clouds: Vec<lingering::Cloud>,
     pub thrown: Vec<thrown::Thrown>,
     pub bobbers: Vec<bobber::Bobber>,
     pub eyes: Vec<eye::EnderEye>,
@@ -809,10 +822,14 @@ impl Entities {
     pub fn new(seed: u64) -> Self {
         Self {
             mobs: Vec::new(),
+            phantom_spawning: true,
+            phantom_next: 0,
+            phantom_clock: 0.,
             particles: Default::default(),
             arrows: Vec::new(),
             pearls: Vec::new(),
             potions: Vec::new(),
+            clouds: Vec::new(),
             thrown: Vec::new(),
             bobbers: Vec::new(),
             eyes: Vec::new(),
@@ -945,6 +962,11 @@ impl Entities {
             );
             mob.armor = armor;
             mob.armor_glint = glint;
+            if kind.is_bow_skeleton() && self.rng.chance(0.25 * special) {
+                let mut random = crate::enchant::JavaRandom::new(i64::from(self.rng.next_int(i32::MAX as u32)));
+                mob.skeleton_bow.as_mut().unwrap().enchants =
+                    crate::enchant::enchant_mob_equipment(&mut random, crate::item::Item::BOW, special);
+            }
         }
         if kind.is_cube() {
             // `AbstractCubeMob.setSpawnSize`: sizes 1, 2 and 4 from nextInt(3),
@@ -955,6 +977,9 @@ impl Entities {
                 exponent += 1;
             }
             mob.set_size(1 << exponent);
+        }
+        if let Some(p) = &mut mob.phantom {
+            p.start_circle(&mut self.rng);
         }
         nether::on_spawn(&mut mob, &mut self.rng);
         aquatic::on_spawn(&mut mob, &mut self.rng);
@@ -1112,6 +1137,7 @@ impl Entities {
             self.spawn_xp(pos, xp);
         }
         self.equipment_drops(kind, pos, looting, player_kill);
+        self.skeleton_equipment_drops(kind, pos, looting, player_kill);
         if baby && nether::babies_drop_nothing(kind) {
             return;
         }
@@ -1187,6 +1213,7 @@ impl Entities {
                         | crate::item::Item::BLAZE_ROD
                         | crate::item::Item::GHAST_TEAR
                         | crate::item::Item::WITHER_SKULL
+                        | crate::item::Item::PHANTOM_MEMBRANE
                 )
             {
                 continue;
@@ -1321,6 +1348,7 @@ impl Entities {
     /// Writes this dimension's entity properties (`items`, `orbs`, `minecarts`,
     /// `decor`, `villagers` and `nether_mobs`), including entities stored in unloaded chunks.
     pub fn save_props(&self, props: &mut std::collections::BTreeMap<String, String>) {
+        props.insert("potion_clouds".into(), self.cloud_json());
         props.insert("items".to_string(), self.items_to_string());
         props.insert("orbs".to_string(), self.orbs_to_string());
         props.insert("minecarts".to_string(), self.minecarts_to_string());
@@ -1333,6 +1361,9 @@ impl Entities {
     /// the next [`Entities::sync_chunk_entities`] stores those whose chunk
     /// hasn't loaded, so saves from before per-chunk storage load unchanged.
     pub fn load_props(&mut self, props: &std::collections::BTreeMap<String, String>) {
+        if let Some(clouds) = props.get("potion_clouds") {
+            self.load_cloud_json(clouds);
+        }
         if let Some(items) = props.get("items") {
             self.load_items(items);
         }
@@ -1423,6 +1454,7 @@ impl Entities {
         model::build_arrows(&self.arrows, camera, alpha, &mut self.verts);
         model::build_pearls(&self.pearls, camera, alpha, &mut self.verts);
         model::build_potions(&self.potions, camera, alpha, &mut self.verts);
+        model::build_clouds(&self.clouds, camera, &mut self.verts);
         model::build_thrown(&self.thrown, camera, alpha, &mut self.verts);
         model::build_bobbers(&self.bobbers, camera, alpha, &mut self.verts);
         model::build_eyes(&self.eyes, camera, time, alpha, &mut self.verts);

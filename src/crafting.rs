@@ -51,6 +51,17 @@ impl Grid {
 
     /// What the grid crafts right now.
     pub fn result(&self) -> Option<Stack> {
+        if self.size == 3
+            && self.cells.iter().enumerate().all(|(i, s)| {
+                if i == 4 {
+                    s.is_some_and(|s| s.item == Item::LINGERING_POTION)
+                } else {
+                    s.is_some_and(|s| s.item == Item::ARROW)
+                }
+            })
+        {
+            return self.cells[4].and_then(|s| s.lingering_contents()).map(|p| Stack::tipped_arrow(p, 8));
+        }
         let occupied: Vec<_> = self.cells.iter().take(self.size * self.size).flatten().copied().collect();
         let maps: Vec<_> = occupied.iter().filter(|s| s.item.is_map() && s.item != Item::MAP).collect();
         if maps.len() == 1 && occupied.len() > 1 && occupied.iter().all(|s| s.item == Item::MAP || s == maps[0]) {

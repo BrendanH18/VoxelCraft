@@ -171,6 +171,7 @@ pub enum MobKind {
     Camel,
     Stray,
     Bogged,
+    Phantom,
 }
 
 impl MobKind {
@@ -197,7 +198,7 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 56] = [
+    pub const ALL: [MobKind; 57] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -254,6 +255,7 @@ impl MobKind {
         MobKind::Camel,
         MobKind::Stray,
         MobKind::Bogged,
+        MobKind::Phantom,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -315,6 +317,7 @@ impl MobKind {
             MobKind::Camel => "camel",
             MobKind::Stray => "stray",
             MobKind::Bogged => "bogged",
+            MobKind::Phantom => "phantom",
         }
     }
 
@@ -376,6 +379,7 @@ impl MobKind {
             MobKind::Donkey => Shape::new(0.698, 1.5),
             MobKind::Mule => Shape::new(0.698, 1.6),
             MobKind::Llama => Shape::new(0.45, 1.87),
+            MobKind::Phantom => Shape::new(0.45, 0.5),
             MobKind::Camel => Shape::new(0.85, 2.375),
         }
     }
@@ -424,6 +428,7 @@ impl MobKind {
             MobKind::Rabbit => 3.0,
             MobKind::Horse | MobKind::Donkey | MobKind::Mule | MobKind::Llama => 30.0,
             MobKind::Camel => 32.0,
+            MobKind::Phantom => 20.0,
         }
     }
 
@@ -438,6 +443,7 @@ impl MobKind {
                 | MobKind::Skeleton
                 | MobKind::Stray
                 | MobKind::Bogged
+                | MobKind::Phantom
                 | MobKind::Creeper
                 | MobKind::Spider
                 | MobKind::ZombifiedPiglin
@@ -491,7 +497,7 @@ impl MobKind {
     pub fn spawns_in(self, dimension: Dimension) -> bool {
         match self {
             MobKind::Enderman => true,
-            MobKind::Mule => false,
+            MobKind::Mule | MobKind::Phantom => false,
             // Only from spawners and inside fortresses (`fortress_spawn`).
             MobKind::Blaze
             | MobKind::WitherSkeleton
@@ -655,7 +661,8 @@ impl MobKind {
             | MobKind::ZombifiedPiglin
             | MobKind::Zoglin
             | MobKind::Stray
-            | MobKind::Bogged => Creature::Undead,
+            | MobKind::Bogged
+            | MobKind::Phantom => Creature::Undead,
             MobKind::Spider | MobKind::CaveSpider | MobKind::Silverfish => Creature::Arthropod,
             _ => Creature::Other,
         }
@@ -670,6 +677,7 @@ impl MobKind {
                 | MobKind::Skeleton
                 | MobKind::Stray
                 | MobKind::Bogged
+                | MobKind::Phantom
         )
     }
 
@@ -805,6 +813,7 @@ impl MobKind {
             // The skull is rolled in `drops`.
             MobKind::WitherSkeleton => &[(Item::COAL, 0, 1), (Item::BONE, 0, 2)],
             // Java rolls a few of these; each is rolled on its own here.
+            MobKind::Phantom => &[(Item::PHANTOM_MEMBRANE, 0, 1)],
             MobKind::Witch => &[
                 (Item::GLASS_BOTTLE, 0, 2),
                 (Item::GLOWSTONE_DUST, 0, 2),
@@ -916,6 +925,8 @@ pub struct Mob {
     pub grow: f32,
     pub wool_color: crate::color::DyeColor,
     pub sheared: bool,
+    pub skeleton_bow: Option<Box<crate::inventory::Stack>>,
+    pub phantom: Option<Box<super::phantom::State>>,
     pub freezing: Option<super::hostiles::Freezing>,
     /// Witch: seconds left drinking, and the potion it is drinking.
     drink_left: f32,
@@ -1089,6 +1100,8 @@ impl Mob {
             wool_color: crate::color::DyeColor::White,
             sheared: false,
             freezing: None,
+            skeleton_bow: kind.is_bow_skeleton().then(|| Box::new(crate::inventory::Stack::new(Item::BOW, 1))),
+            phantom: (kind == MobKind::Phantom).then(|| Box::new(super::phantom::State::new(pos))),
             drink_left: 0.0,
             drinking: "",
             age: 0,
@@ -1249,7 +1262,10 @@ impl Mob {
     }
 
     pub fn shape(&self) -> Shape {
-        if self.kind.is_cube() {
+        if let Some(p) = &self.phantom {
+            let s = 1. + f64::from(p.size) * 0.15;
+            Shape::new(0.45 * s, 0.5 * s)
+        } else if self.kind.is_cube() {
             Shape::new(0.255 * self.size as f64, 0.51 * self.size as f64)
         } else if self.baby || self.age < 0 {
             let s = self.kind.shape();
@@ -1506,6 +1522,11 @@ impl Mob {
         let (wish, speed) = if let Some(t) = &mut self.dying {
             *t += dtf;
             (None, 0.0)
+        } else if self.kind == MobKind::Phantom {
+            if self.riding.is_none() {
+                self.phantom_flight(dt, world, ctx, rng, events);
+            }
+            (None, 0.)
         } else {
             super::mounts::control(self, dt, rng).unwrap_or_else(|| self.think(dtf, world, ctx, rng, events))
         };
@@ -1545,6 +1566,8 @@ impl Mob {
         if self.riding.is_some() || self.animal.as_ref().is_some_and(|a| a.perched.is_some()) {
             self.vel = DVec3::ZERO;
             self.on_ground = true;
+        } else if self.kind == MobKind::Phantom {
+            // PhantomMoveControl already moved this flying body.
         } else if java {
             // Whole Java ticks of simulated time; the fixed 20 Hz step runs one.
             // The move controls apply Speed and Slowness to the raw speed.
@@ -2910,7 +2933,7 @@ pub fn yaw_dir(yaw: f32) -> DVec3 {
 }
 
 /// Angle wrapped to [-PI, PI).
-fn wrap(a: f32) -> f32 {
+pub(super) fn wrap(a: f32) -> f32 {
     (a + PI).rem_euclid(TAU) - PI
 }
 

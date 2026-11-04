@@ -94,7 +94,7 @@ enforced.
 | `spawn_mobs` | `doMobSpawning` | boolean | `true` | Implemented | - | Natural spawning and custom spawners; chunk-generation herds are not gated, as in Java. |
 | `spawn_monsters` | `spawnMonsters` | boolean | `true` | Implemented | - | Hostile spawn categories only; animals and water creatures still spawn. |
 | `spawn_patrols` | `doPatrolSpawning` | boolean | `true` | Missing | v0.17 | Pillager patrols arrive with illagers. |
-| `spawn_phantoms` | `doInsomnia` | boolean | `true` | Missing | v0.15 | Phantoms do not exist yet. |
+| `spawn_phantoms` | `doInsomnia` | boolean | `true` | Implemented | - | Saved rest statistic and Java PhantomSpawner gate; see the v0.15 hostiles record. |
 | `spawn_wandering_traders` | `doTraderSpawning` | boolean | `true` | Implemented | - | Gates the trader spawner. Like Java it also needs `spawn_mobs`. |
 | `spawn_wardens` | `doWardenSpawning` | boolean | `true` | Missing | v0.16 | Wardens and sculk shriekers arrive with the deep dark. |
 | `spectators_generate_chunks` | `spectatorsGenerateChunks` | boolean | `true` | Missing | v0.13 | VoxelCraft streams around the spectator like any player; ungenerated-chunk limits come with the terrain rewrite. |

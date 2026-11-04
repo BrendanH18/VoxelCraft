@@ -45,7 +45,7 @@ impl Arrow {
     pub(super) fn effects_on_mob(&self, mob: &mut Mob, rng: &mut Rng) {
         for (effect, amplifier, ticks) in self.effects() {
             let undead = mob.kind.creature() == crate::enchant::Creature::Undead;
-            if undead && matches!(effect, Effect::Poison | Effect::Regeneration) {
+            if !mob.kind.accepts_potion_effect(effect) {
                 continue;
             }
             if !effect.is_instant() {

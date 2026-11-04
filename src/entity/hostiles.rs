@@ -121,6 +121,44 @@ impl Entities {
     }
 }
 
+impl Entities {
+    pub(super) fn skeleton_equipment_drops(&mut self, kind: MobKind, pos: glam::DVec3, looting: u8, player_kill: bool) {
+        if !kind.is_bow_skeleton() || !player_kill {
+            return;
+        }
+        let Some(m) = self.mobs.iter_mut().find(|m| m.kind == kind && !m.alive() && m.pos.distance_squared(pos) < 0.01)
+        else {
+            return;
+        };
+        let bow = m.skeleton_bow.take();
+        let mut equipment: Vec<Stack> = bow.into_iter().map(|s| *s).collect();
+        for (i, piece) in crate::item::ArmorPiece::ALL.into_iter().enumerate() {
+            use super::armor::ArmorKind as A;
+            use crate::item::ArmorMaterial as M;
+            let material = match m.armor[i] {
+                Some(A::Leather) => Some(M::Leather),
+                Some(A::Gold) => Some(M::Gold),
+                Some(A::Iron) => Some(M::Iron),
+                Some(A::Diamond) => Some(M::Diamond),
+                Some(A::Copper) => Some(M::Copper),
+                _ => None,
+            };
+            if let Some(material) = material {
+                equipment.push(Stack::new(Item::armor(piece, material), 1));
+            }
+        }
+        for mut stack in equipment {
+            if self.rng.chance(0.085 + 0.01 * f32::from(looting)) {
+                if let Some(max) = stack.item.durability() {
+                    let inner = self.rng.next_int(u32::from(max.saturating_sub(3).max(1)));
+                    stack.damage = max - self.rng.next_int(inner + 1) as u16;
+                }
+                self.scatter(stack, pos);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -251,5 +289,15 @@ mod tests {
                 assert_eq!(tipped > 0, player_kill);
             }
         }
+    }
+    #[test]
+    fn bow_enchantments_survive_conversion_and_reload() {
+        let mut e = Entities::new(7);
+        e.spawn(MobKind::Stray, DVec3::ZERO);
+        e.mobs[0].skeleton_bow.as_mut().unwrap().enchants =
+            crate::enchant::Enchants::NONE.with(crate::enchant::Enchantment::Power, 3);
+        let mut copy = Entities::new(8);
+        copy.load_nether_mobs(&e.nether_mobs_to_string());
+        assert_eq!(copy.mobs[0].skeleton_bow.as_ref().unwrap().enchants.level(crate::enchant::Enchantment::Power), 3);
     }
 }

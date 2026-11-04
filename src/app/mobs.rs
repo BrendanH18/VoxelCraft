@@ -108,6 +108,7 @@ impl Game {
             (self.dimension == crate::world::terrain::Dimension::Overworld).then_some(self.world_spawn);
         self.mobs.entities.trader_spawning =
             self.gamerules.bool("spawn_wandering_traders") && self.gamerules.bool("spawn_mobs");
+        self.mobs.entities.phantom_spawning = self.gamerules.bool("spawn_phantoms");
         self.mobs.entities.monster_spawning = self.gamerules.bool("spawn_monsters");
         self.mobs.entities.spawner_blocks = self.gamerules.bool("spawner_blocks_work");
         self.mobs.entities.villager_griefing = self.gamerules.bool("mob_griefing");
@@ -170,6 +171,7 @@ impl Game {
             effects: self.session.vitals.effects.mask(),
             in_water: self.session.player.in_water,
             swimming: self.session.player.swimming,
+            time_since_rest: self.session.vitals.time_since_rest,
             ..Target::new(
                 PlayerId::HOST,
                 self.session.player.pos,
@@ -407,6 +409,7 @@ impl Game {
                     self.audio.play_in(SoundSource::Neutral, Sound::Hit, Some(pos + DVec3::Y * 0.5), 0.8, (0.9, 1.1))
                 }
                 EntityEvent::Shoot { .. }
+                | EntityEvent::LingeringCloud { .. }
                 | EntityEvent::MobHit { .. }
                 | EntityEvent::OwnerHurt { .. }
                 | EntityEvent::DragonXp { .. }
@@ -528,7 +531,9 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Sheep => Voice::Sheep,
         MobKind::Chicken => Voice::Chicken,
         MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombieVillager => Voice::Zombie,
-        MobKind::Skeleton | MobKind::Stray | MobKind::Bogged | MobKind::WitherSkeleton => Voice::Skeleton,
+        MobKind::Phantom | MobKind::Skeleton | MobKind::Stray | MobKind::Bogged | MobKind::WitherSkeleton => {
+            Voice::Skeleton
+        }
         MobKind::Creeper => Voice::Creeper,
         MobKind::Spider | MobKind::CaveSpider => Voice::Spider,
         MobKind::ZombifiedPiglin => Voice::Zombie,

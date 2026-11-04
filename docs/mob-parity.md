@@ -141,5 +141,18 @@ Natural variants and conversion/shearing state save through the mob store.
 
 Mob-fired stray arrows apply 600 ticks of Slowness I; bogged apply 100 ticks
 of Poison I. Player loot arrows use the registered potion at one-eighth
-duration. Skeleton AI/equipment gaps, phantoms and the remaining potion work
+duration. Skeleton AI/equipment gaps and remaining verification
 are listed in [track evidence](verification/2026-11-04-v0.15-hostiles.md).
+
+## Phantom (v0.15, implemented, unverified)
+
+Phantoms use a custom insomnia spawner, saved rest ticks per player, and the
+`spawn_phantoms` rule. The pinned Java random rest predicate first becomes
+possible at 72,001 ticks. Attempts require sky darkness, sea level/sky
+visibility and a local-difficulty roll; groups contain 1 through difficulty
+id + 1 mobs. They circle an anchor, swoop at players, retreat from cats/hurt,
+burn in daylight, and drop the existing phantom membrane item on player kills.
+Membranes now brew Slow Falling. Natural size is zero; size/anchor persist.
+Original blue ray geometry has animated wings. See the
+[hostiles record](verification/2026-11-04-v0.15-hostiles.md) for source classes,
+AI scheduling/equipment differences, checks and missing graphical evidence.

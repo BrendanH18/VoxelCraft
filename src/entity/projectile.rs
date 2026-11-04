@@ -310,7 +310,7 @@ impl Arrow {
                                 events.push(EntityEvent::MobHit {
                                     target: mob.uid,
                                     attacker,
-                                    damage: (speed / SPEED * 3.0).ceil() as f32,
+                                    damage: (speed / SPEED * 3.0 * self.power_factor()).ceil() as f32,
                                     knockback: push,
                                 });
                                 return false;
@@ -392,16 +392,15 @@ impl Arrow {
                     }
                     (damage, DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 3.0 * punch + DVec3::Y * 3.0)
                 } else {
+                    if self.enchants.has(crate::enchant::Enchantment::Flame) {
+                        events.push(EntityEvent::Ignite { player: hit.id, secs: 5. });
+                    }
                     (
-                        (self.vel.length() / SPEED * 3.0).ceil() as f32,
+                        (self.vel.length() / SPEED * 3.0 * self.power_factor()).ceil() as f32,
                         DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 3.0 + DVec3::Y * 3.0,
                     )
                 };
-                let punch = if self.from_player {
-                    u32::from(self.enchants.level(crate::enchant::Enchantment::Punch))
-                } else {
-                    0
-                };
+                let punch = u32::from(self.enchants.level(crate::enchant::Enchantment::Punch));
                 events.push(EntityEvent::PlayerHit {
                     java: Some(crate::knockback::Hit::arrow(self.vel / crate::knockback::TICK_RATE, punch)),
                     player: hit.id,

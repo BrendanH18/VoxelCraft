@@ -551,6 +551,7 @@ mod animals;
 mod aquatic;
 mod hostiles;
 mod mounts;
+mod phantom;
 
 /// Animated parts for a mob, in model space (pixels).
 fn pose(m: &Mob, time: f32) -> Parts {
@@ -558,6 +559,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
     let head = Quat::from_rotation_y(-m.head_yaw) * Quat::from_rotation_x(-m.head_pitch);
     let rx = Quat::from_rotation_x;
     match m.kind {
+        MobKind::Phantom => phantom::pose(time),
         MobKind::Horse | MobKind::Donkey | MobKind::Mule => mounts::pose(m),
         MobKind::Llama => mounts::llama(m),
         MobKind::Camel => mounts::camel(m),
@@ -909,6 +911,8 @@ pub fn build(
                 m.size as f32
             } else if m.kind == MobKind::WitherSkeleton {
                 1.2
+            } else if m.kind == MobKind::Phantom {
+                1. + m.phantom.as_ref().map_or(0., |p| f32::from(p.size) * 0.15)
             } else if m.kind == MobKind::ElderGuardian {
                 2.35
             } else if m.kind == MobKind::Pufferfish {
@@ -1417,6 +1421,21 @@ pub fn build_player_name(
     labels::label(name, rel + Vec3::Y * 2.1, toward, out);
 }
 pub use super::player_pose::{PlayerPose, fits_at, fits_player, resolve_pose};
+
+/// Deterministic original motes for lingering area-effect clouds.
+pub fn build_clouds(clouds: &[super::lingering::Cloud], camera: DVec3, out: &mut Vec<EntityVertex>) {
+    for c in clouds {
+        let colour = c.potion.colour();
+        for i in 0..24 {
+            let angle = i as f32 * 2.399963 + c.age as f32 * 0.045;
+            let r = c.radius * ((i as f32 + 0.5) / 24.).sqrt();
+            let p =
+                (c.pos - camera).as_vec3() + Vec3::new(angle.cos() * r, 0.08 + (i % 4) as f32 * 0.08, angle.sin() * r);
+            let b = glass([-0.035; 3], [0.035; 3], colour, 0);
+            push_cuboid(out, &b, &|v| p + v, Quat::IDENTITY, ([230, 0, 0, 0], 0), (FIRE, 0.), i as f32);
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

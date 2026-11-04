@@ -885,6 +885,8 @@ impl Item {
 
     /// v0.15 hostiles: potion contents use Stack::entity_data, not extra item IDs.
     pub const TIPPED_ARROW: Item = Item(1330);
+    pub const LINGERING_POTION: Item = Item(1332);
+    pub const DRAGON_BREATH: Item = Item(1333);
 
     pub const fn potion(potion: crate::potion::Potion) -> Item {
         let index = potion.0 as u16;
@@ -1007,6 +1009,12 @@ impl Item {
     }
 
     pub fn info(self) -> ItemInfo {
+        if self == Self::LINGERING_POTION {
+            return single("lingering potion", Sprite::SplashBottle([152, 83, 193]));
+        }
+        if self == Self::DRAGON_BREATH {
+            return item("dragon breath", Sprite::Bottle(Some([189, 94, 201])));
+        }
         if self == Self::TIPPED_ARROW {
             return item("tipped arrow", Sprite::TippedArrow);
         }
@@ -1336,6 +1344,9 @@ impl Item {
     }
 
     pub fn remainder(self) -> Option<Item> {
+        if self == Self::DRAGON_BREATH {
+            return Some(Self::GLASS_BOTTLE);
+        }
         match self {
             Self::MILK_BUCKET => Some(Self::BUCKET),
             Self::HONEY_BOTTLE => Some(Self::GLASS_BOTTLE),
@@ -1424,7 +1435,7 @@ impl Item {
             .chain((0..DECOR_ITEMS).map(|i| Item(DECOR_ITEM + i)))
             .chain((0..HAND_ITEMS).map(|i| Item(HAND_ITEM + i)))
             .chain((1255..=1265).map(Item))
-            .chain([Self::TIPPED_ARROW])
+            .chain([Self::TIPPED_ARROW, Self::LINGERING_POTION, Self::DRAGON_BREATH])
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1440,6 +1451,12 @@ impl From<Block> for Item {
     fn from(b: Block) -> Self {
         Item::from_block(b)
     }
+}
+
+pub(crate) fn lingering_name(p: crate::potion::Potion) -> &'static str {
+    static N: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    &N.get_or_init(|| crate::potion::Potion::all().map(|p| format!("lingering {}", p.info().name)).collect())
+        [p.0 as usize]
 }
 
 /// Stack-specific tipped-arrow names, kept out of the item ID table.
@@ -1477,7 +1494,9 @@ fn splash_names() -> &'static [&'static str] {
 fn sprite_index(item: Item) -> Option<u16> {
     let materials = ITEMS.len() as u16;
     match item.0 {
-        1330 => Some(icon_count() as u16 - 1),
+        1330 => Some(icon_count() as u16 - 3),
+        1332 => Some(icon_count() as u16 - 2),
+        1333 => Some(icon_count() as u16 - 1),
         1040 => Some(turtle_icon()),
         1073 => Some(turtle_icon() + 2 + COPPER_ITEMS.len() as u16),
         1047 => Some(turtle_icon() + 1 + COPPER_ITEMS.len() as u16),
@@ -1572,7 +1591,7 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    turtle_icon() as u32 + 1 + COPPER_ITEMS.len() as u32 + 3 + 16 + DECOR_ITEMS as u32 + HAND_ITEMS as u32 + 1
+    turtle_icon() as u32 + 1 + COPPER_ITEMS.len() as u32 + 3 + 16 + DECOR_ITEMS as u32 + HAND_ITEMS as u32 + 3
 }
 
 /// The turtle helmet's icon follows the animal items; copper equipment follows it,
