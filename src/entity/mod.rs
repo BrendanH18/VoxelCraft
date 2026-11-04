@@ -3240,13 +3240,17 @@ mod tests {
     #[test]
     fn creeper_hisses_then_explodes_unless_you_run() {
         let world = Grid::flat(10);
+        for (charged, power) in [(false, 3.), (true, 6.)] {
+            let mut e = Entities::new(3);
+            e.spawn(MobKind::Creeper, DVec3::new(0.5, 10.0, 0.5));
+            e.mobs[0].lightning_charged = charged;
+            let events = run(&mut e, &world, &night(DVec3::new(2.5, 10.0, 0.5)), 2.0);
+            let fuse = events.iter().position(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Fuse, .. }));
+            let boom = events.iter().position(|ev| matches!(ev, EntityEvent::Explosion { power:p, .. } if *p == power));
+            assert!(fuse.unwrap() < boom.unwrap(), "{events:?}");
+            assert!(e.mobs.is_empty(), "the creeper is gone");
+        }
         let mut e = Entities::new(3);
-        e.spawn(MobKind::Creeper, DVec3::new(0.5, 10.0, 0.5));
-        let events = run(&mut e, &world, &night(DVec3::new(2.5, 10.0, 0.5)), 2.0);
-        let fuse = events.iter().position(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Fuse, .. }));
-        let boom = events.iter().position(|ev| matches!(ev, EntityEvent::Explosion { .. }));
-        assert!(fuse.unwrap() < boom.unwrap(), "{events:?}");
-        assert!(e.mobs.is_empty(), "the creeper is gone");
 
         // Running out of range puts the fuse out.
         e.spawn(MobKind::Creeper, DVec3::new(0.5, 10.0, 0.5));
