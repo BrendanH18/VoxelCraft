@@ -208,11 +208,9 @@ pub(super) fn vertices(
 
     for (map, small, left) in [(&hand.map, hand.map_small, false), (&hand.off_map, true, true)] {
         let Some(map) = map else { continue };
-        let size = if small { 0.52 } else { 1.05 };
-        let m = bob
-            * translate(if small { if left { -0.45 } else { 0.45 } } else { 0.0 }, -0.42 - hand.equip * 0.6, -1.05)
-            * rot_x(-18.0)
-            * Mat4::from_scale(Vec3::splat(size));
+        let size = (if small { 0.52 } else { 1.05 }) * (aspect / 0.95).clamp(0.25, 1.0);
+        let offset = if small { (0.45 - inward).max(0.1) * if left { -1.0 } else { 1.0 } } else { 0.0 };
+        let m = translate(offset, -0.42 - hand.equip * 0.6, -1.05) * rot_x(-18.0) * Mat4::from_scale(Vec3::splat(size));
         let palette = |color: u8| [[((color % 16) as f32 + 0.5) / 16.0, ((color / 16) as f32 + 0.5) / 16.0]; 4];
         let point = |x: f32, y: f32, z: f32| m.transform_point3(Vec3::new(x / 128.0 - 0.5, 0.5 - y / 128.0, z));
         let mut rect = |x: f32, y: f32, w: f32, h: f32, c: u8, depth: f32| {
@@ -480,6 +478,11 @@ mod map_tests {
             vertices(&hand, Vec3::NEG_Z, 70.0f32.to_radians(), 16.0 / 9.0, Mat4::IDENTITY, &mut SpriteMasks::default());
         assert!(geometry.len() < 1000, "uniform colours coalesce into one run per row");
         assert!(geometry.iter().all(|v| v.layer == 2955 && v.pos.iter().all(|p| p.is_finite())));
+        let narrow =
+            vertices(&hand, Vec3::NEG_Z, 70.0f32.to_radians(), 0.8, Mat4::IDENTITY, &mut SpriteMasks::default());
+        let lo = narrow.iter().map(|v| v.pos[0]).fold(f32::INFINITY, f32::min);
+        let hi = narrow.iter().map(|v| v.pos[0]).fold(f32::NEG_INFINITY, f32::max);
+        assert!((lo + hi).abs() < 1e-5, "two-handed maps stay centred in narrow views");
         let mut small = hand.clone();
         small.map_small = true;
         let small_vertices = vertices(
