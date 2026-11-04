@@ -292,8 +292,9 @@ pub struct Vitals {
     pub death: Option<String>,
     peaceful_timer: f32,
     peaceful_food_timer: f32,
-    /// Java Entity.TicksFrozen; additive save field, 0 for older saves.
+    /// Java TIME_SINCE_REST statistic, in entity ticks; zero for older saves.
     pub time_since_rest: u32,
+    /// Java Entity.TicksFrozen; additive save field, 0 for older saves.
     pub ticks_frozen: u16,
     freeze_clock: f32,
     freeze_tick: u64,

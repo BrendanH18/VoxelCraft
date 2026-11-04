@@ -18,11 +18,10 @@ impl Stack {
         s
     }
     pub fn lingering_contents(self) -> Option<Potion> {
-        (self.item == Item::LINGERING_POTION)
-            .then(|| self.entity_data.checked_sub(1))
-            .flatten()
-            .filter(|i| *i < Potion::COUNT as u32)
-            .map(|i| Potion(i as u8))
+        if self.item != Item::LINGERING_POTION {
+            return None;
+        }
+        self.entity_data.checked_sub(1).filter(|i| *i < Potion::COUNT as u32).map(|i| Potion(i as u8))
     }
 }
 #[derive(Clone, Debug)]
