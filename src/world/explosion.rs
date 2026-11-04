@@ -562,6 +562,7 @@ const DECAY: &[&str] = &[
     "yellow wool slab",
 ];
 const KEEP: &[&str] = &[
+    "beehive",
     "bush",
     "short dry grass",
     "tall dry grass",
@@ -628,7 +629,12 @@ static TABLES: LazyLock<Tables> = LazyLock::new(|| {
     };
     for i in 0..STATE_CAPACITY {
         let b = Block(i as u16);
-        let name = b.name();
+        // Waxing changes neither resistance nor the loot table's explosion
+        // policy. Reuse the mirrored unwaxed family's named rules.
+        let reference = super::copper::state(b)
+            .filter(|c| c.waxed)
+            .map_or(b, |c| super::copper::encode(super::copper::Copper { waxed: false, ..c }));
+        let name = reference.name();
         tables.resistance[i] = resistance.get(name).copied().unwrap_or_else(|| b.hardness());
         tables.loot[i] = match loot.get(name) {
             Some(&kind) => kind,
