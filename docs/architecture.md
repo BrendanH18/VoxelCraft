@@ -475,6 +475,26 @@ weapons the game doesn't have yet. They fit the `u128` three-bit
 encoding (120 of 128 bits)
 ([maps record](verification/2026-11-03-v0.14-maps.md#allocations)).
 
+### v0.15 track reservations
+
+Reserved on 2026-11-04 for the [v0.15 tracks](roadmap.md#v015-scope-wildlife).
+Block states use v0.15's range 10752–11263, plus the start of the
+unassigned reserve for the waxed copper blocks, which mirror the
+unwaxed copper layout (22528–23372). Items continue after v0.14's.
+Texture layers start at 2960, after v0.14's map sprites.
+
+| Block states | Item IDs | Texture layers | Track |
+| --- | --- | --- | --- |
+| 10752–10815 | 1270–1279 | 2960–2991 | 1. Lightning and undead mounts |
+| 10816–11007, 29696–30719 | 1280–1299 | 2992–3135 | 2. Crops, bees and waxing |
+| 11008–11135 | 1300–1329 | 3136–3263 | 3. Passive mobs |
+| 11136–11199 | 1330–1349 | 3264–3295 | 4. Hostiles and tipped arrows |
+| 11200–11263 | 1350–1359 | 3296–3327 | Integrator spare |
+
+New `MobKind` variants append after `Camel`; mob kinds are saved by name,
+but `MobKind::ALL` order is the LAN index, so the integrator appends the
+tracks' kinds in track order. Each track records what it used here.
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating
