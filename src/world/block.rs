@@ -366,7 +366,7 @@ pub mod tex {
     pub const BUBBLE_BASE: u16 = 2864;
     pub const BUBBLE_UP: u16 = BUBBLE_BASE;
     pub const BUBBLE_DOWN: u16 = BUBBLE_BASE + 1;
-    pub const COUNT: u32 = BUBBLE_DOWN as u32 + 1;
+    pub const COUNT: u32 = 2960; // v0.14 map sprites, palette and original destination icons (2944–2959).
     const _: () = assert!(super::super::biome_plants::TEX_END <= BUBBLE_BASE);
     const _: () = assert!(super::super::utilities::TEX_END <= super::super::cave_blocks::TEX);
     const _: () = assert!(super::super::cave_blocks::TEX_END <= super::super::biome_plants::TEX);

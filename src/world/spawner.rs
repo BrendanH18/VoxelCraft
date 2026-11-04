@@ -10,7 +10,7 @@ use super::World;
 use super::block::Block;
 use super::chest::is_chest;
 use super::chunk::{ChunkData, local_of};
-use super::fortress::{self, Feature};
+use super::fortress::Feature;
 use super::terrain::Dimension;
 use crate::entity::MobKind;
 
@@ -78,25 +78,72 @@ impl World {
                     self.spawners.entry(p).or_insert(kind);
                 }
                 Feature::Chest(seed) if is_chest(block) => {
-                    self.chests.entry(p).or_insert_with(|| fortress::loot(seed));
+                    if !self.chests.contains_key(&p) {
+                        let name = "nether_bridge";
+                        let chest = self.structure_loot(name, Some(seed), p);
+                        self.chests.insert(p, chest);
+                    }
                 }
                 Feature::StrongholdChest(seed) if is_chest(block) => {
-                    self.chests.entry(p).or_insert_with(|| super::stronghold::loot(seed));
+                    if !self.chests.contains_key(&p) {
+                        let name = match seed & 3 {
+                            2 => "stronghold_crossing",
+                            3 => "stronghold_library",
+                            _ => "stronghold_corridor",
+                        };
+                        let chest = self.structure_loot(name, Some(seed), p);
+                        self.chests.insert(p, chest);
+                    }
                 }
                 Feature::DungeonChest(seed) if is_chest(block) => {
-                    self.chests.entry(p).or_insert_with(|| super::dungeon::loot(seed));
+                    if !self.chests.contains_key(&p) {
+                        let name = "simple_dungeon";
+                        let chest = self.structure_loot(name, Some(seed), p);
+                        self.chests.insert(p, chest);
+                    }
                 }
                 Feature::BastionChest(seed, kind) if is_chest(block) => {
-                    self.chests.entry(p).or_insert_with(|| super::bastion::loot(seed, kind));
+                    if !self.chests.contains_key(&p) {
+                        let name = match kind {
+                            super::bastion::ChestKind::Treasure => "bastion_treasure",
+                            super::bastion::ChestKind::Bridge => "bastion_bridge",
+                            super::bastion::ChestKind::HoglinStable => "bastion_hoglin_stable",
+                            super::bastion::ChestKind::Other => "bastion_other",
+                        };
+                        let chest = self.structure_loot(name, Some(seed), p);
+                        self.chests.insert(p, chest);
+                    }
                 }
                 Feature::MineshaftChest(seed) if is_chest(block) => {
-                    self.chests.entry(p).or_insert_with(|| super::mineshaft::loot(seed));
+                    if !self.chests.contains_key(&p) {
+                        let name = "abandoned_mineshaft";
+                        let chest = self.structure_loot(name, Some(seed), p);
+                        self.chests.insert(p, chest);
+                    }
                 }
                 Feature::TempleChest(seed, table) if is_chest(block) => {
-                    self.chests.entry(p).or_insert_with(|| super::temples::loot(seed, table));
+                    if !self.chests.contains_key(&p) {
+                        let name = table.name();
+                        let chest = self.structure_loot(name, Some(seed), p);
+                        self.chests.insert(p, chest);
+                    }
                 }
                 Feature::VillageChest(seed, style) if is_chest(block) => {
-                    self.chests.entry(p).or_insert_with(|| super::village::loot(seed, style));
+                    if !self.chests.contains_key(&p) {
+                        let name = if self.generator.villages.cartographer_chest(&self.generator, p) {
+                            "village/village_cartographer"
+                        } else {
+                            match style {
+                                super::village::Style::Plains => "village/village_plains_house",
+                                super::village::Style::Desert => "village/village_desert_house",
+                                super::village::Style::Savanna => "village/village_savanna_house",
+                                super::village::Style::Taiga => "village/village_taiga_house",
+                                super::village::Style::Snowy => "village/village_snowy_house",
+                            }
+                        };
+                        let chest = self.structure_loot(name, Some(seed), p);
+                        self.chests.insert(p, chest);
+                    }
                 }
                 Feature::IglooBrewing if block == Block::BREWING_STAND => {
                     self.brewing_stands.entry(p).or_insert_with(|| {

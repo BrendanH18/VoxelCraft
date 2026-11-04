@@ -87,6 +87,8 @@ pub struct Stack {
     pub entity_data: u32,
     /// A lodestone compass's `lodestone_tracker`; `None` on everything else.
     pub lodestone: Option<Lodestone>,
+    /// Saved map component. Clones share the same world map.
+    pub map_id: Option<u32>,
 }
 
 /// Java's `LodestoneTracker` (always `tracked`, as a lodestone makes it):
@@ -128,6 +130,7 @@ impl Stack {
             name: StackName::default(),
             entity_data: 0,
             lodestone: None,
+            map_id: None,
         }
     }
 
@@ -141,6 +144,7 @@ impl Stack {
             && self.name == other.name
             && self.entity_data == other.entity_data
             && self.lodestone == other.lodestone
+            && self.map_id == other.map_id
     }
 
     /// The enchantments that take effect when held or worn: a book's are
@@ -499,7 +503,8 @@ pub fn stack_to_string(stack: Option<Stack>) -> String {
                 || s.repair_cost > 0
                 || s.name.as_str().is_some()
                 || s.entity_data > 0
-                || s.lodestone.is_some() =>
+                || s.lodestone.is_some()
+                || s.map_id.is_some() =>
         {
             let mut text = format!(
                 "{}:{}:{}:{}:{}:{}:{}",
@@ -511,9 +516,12 @@ pub fn stack_to_string(stack: Option<Stack>) -> String {
                 s.name.to_hex(),
                 s.entity_data
             );
-            if let Some(tracker) = s.lodestone {
+            if s.lodestone.is_some() || s.map_id.is_some() {
                 text.push(':');
-                text.push_str(&tracker.to_field());
+                text.push_str(&s.lodestone.map_or_else(|| "~".into(), Lodestone::to_field));
+            }
+            if let Some(id) = s.map_id {
+                text.push_str(&format!(":{id}"));
             }
             text
         }
@@ -537,9 +545,11 @@ pub fn stack_from_str(text: &str) -> Option<Option<Stack>> {
     let name = fields.next().map_or(Some(StackName::default()), StackName::from_hex)?;
     let entity_data = fields.next().map_or(Some(0), |d| d.parse().ok())?;
     let lodestone = match fields.next() {
+        Some("~") => None,
         Some(text) => Some(Lodestone::from_field(text)?),
         None => None,
     };
+    let map_id = fields.next().map(|id| id.parse::<u32>()).transpose().ok()?;
     if fields.next().is_some() {
         return None;
     }
@@ -557,6 +567,7 @@ pub fn stack_from_str(text: &str) -> Option<Option<Stack>> {
         name,
         entity_data,
         lodestone,
+        map_id,
     }))
 }
 

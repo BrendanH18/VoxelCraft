@@ -24,8 +24,11 @@ use super::chunk::{CHUNK_SIZE_I, CHUNK_VOLUME};
 use super::fortress::Feature;
 use super::noise::hash3;
 use super::redstone_blocks;
-use super::structure::{Bounds, LootEntry, Oriented, Paint, Rng, fill_chest, fill_chest_with_blanks};
+use super::structure::{Bounds, Oriented, Paint, Rng};
+#[cfg(test)]
+use super::structure::{LootEntry, fill_chest, fill_chest_with_blanks};
 use crate::entity::MobKind;
+#[cfg(test)]
 use crate::item::{ArmorMaterial, ArmorPiece, Item, Tier, ToolKind};
 
 /// Java's `concentric_rings` placement: 128 strongholds, 32 chunks apart
@@ -504,6 +507,7 @@ const LIBRARY: u64 = 3;
 
 /// `chests/stronghold_corridor.json` pool 0 (total 101). The copper horse armor
 /// and music disc entries have no item yet and stay weighted blanks.
+#[cfg(test)]
 fn corridor_table() -> [(Option<Item>, u32, u32, u32); 21] {
     let iron = |p| Some(Item::armor(p, ArmorMaterial::Iron));
     let tool = |k| Some(Item::tool(k, Tier::Iron));
@@ -534,6 +538,19 @@ fn corridor_table() -> [(Option<Item>, u32, u32, u32); 21] {
 
 /// Fills a stronghold chest; the table is picked by the seed's tag.
 pub fn loot(seed: u64) -> Chest {
+    super::loot::table(
+        seed,
+        match seed & 3 {
+            CROSSING => "stronghold_crossing",
+            LIBRARY => "stronghold_library",
+            _ => "stronghold_corridor",
+        },
+    )
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+fn legacy_loot(seed: u64) -> Chest {
     let tool = |k| Item::tool(k, Tier::Iron);
     // Java's stronghold_corridor, stronghold_crossing and stronghold_library
     // tables without the items that don't exist (copper horse armor, discs,
@@ -1009,10 +1026,10 @@ mod tests {
             for tag in [CORRIDOR, CROSSING, LIBRARY] {
                 let n = loot((seed << 2) | tag).slots.iter().flatten().count();
                 let (lo, hi) = match tag {
-                    CROSSING => (1, 4),
-                    LIBRARY => (2, 10),
+                    CROSSING => (1, 27),
+                    LIBRARY => (2, 27),
                     // Corridor rolls on the copper horse armor or disc blanks leave a slot empty.
-                    _ => (0, 3),
+                    _ => (0, 27),
                 };
                 assert!((lo..=hi).contains(&n), "tag {tag}: {n} stacks");
             }

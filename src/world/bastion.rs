@@ -494,10 +494,9 @@ impl Paint<'_, Piece> {
 // Java 1.21.1 loot pools. Unsupported item entries retain their weights
 // as empty rolls; supported gear keeps random enchantments and durability.
 use super::chest::Chest;
-use crate::{
-    inventory::Stack,
-    item::{ArmorMaterial, ArmorPiece, Tier, ToolKind},
-};
+use crate::inventory::Stack;
+#[cfg(test)]
+use crate::item::{ArmorMaterial, ArmorPiece, Tier, ToolKind};
 pub(super) struct Loot {
     pub(super) item: Option<Item>,
     pub(super) weight: u32,
@@ -506,6 +505,7 @@ pub(super) struct Loot {
     pub(super) enchanted: bool,
     pub(super) damage: Option<(f32, f32)>,
 }
+#[cfg(test)]
 const TREASURE_0: &[Loot] = &[
     Loot { item: Some(Item::NETHERITE_INGOT), weight: 15, lo: 1, hi: 1, enchanted: false, damage: None }, // netherite_ingot
     Loot {
@@ -611,6 +611,7 @@ const TREASURE_0: &[Loot] = &[
     Loot { item: None, weight: 6, lo: 1, hi: 1, enchanted: false, damage: None },
     Loot { item: Some(Item::ENCHANTED_GOLDEN_APPLE), weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },
 ];
+#[cfg(test)]
 const TREASURE_1: &[Loot] = &[
     Loot { item: None, weight: 1, lo: 12, hi: 25, enchanted: false, damage: None }, // spectral_arrow
     Loot { item: Some(Item::from_block(Block::GOLD_BLOCK)), weight: 1, lo: 2, hi: 5, enchanted: false, damage: None }, // gold_block
@@ -636,9 +637,11 @@ const TREASURE_1: &[Loot] = &[
     }, // gilded_blackstone
     Loot { item: Some(Item::MAGMA_CREAM), weight: 1, lo: 3, hi: 8, enchanted: false, damage: None }, // magma_cream
 ];
+#[cfg(test)]
 const BRIDGE_0: &[Loot] = &[
     Loot { item: None, weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // lodestone
 ];
+#[cfg(test)]
 const BRIDGE_1: &[Loot] = &[
     Loot { item: Some(Item::CROSSBOW), weight: 1, lo: 1, hi: 1, enchanted: true, damage: Some((0.10, 0.50)) }, // crossbow
     Loot { item: None, weight: 1, lo: 10, hi: 28, enchanted: false, damage: None }, // spectral_arrow
@@ -703,6 +706,7 @@ const BRIDGE_1: &[Loot] = &[
     }, // golden_boots
     Loot { item: Some(Item::tool(ToolKind::Axe, Tier::Gold)), weight: 1, lo: 1, hi: 1, enchanted: true, damage: None }, // golden_axe
 ];
+#[cfg(test)]
 const BRIDGE_2: &[Loot] = &[
     Loot { item: Some(Item::STRING), weight: 1, lo: 1, hi: 6, enchanted: false, damage: None }, // string
     Loot { item: Some(Item::LEATHER), weight: 1, lo: 1, hi: 3, enchanted: false, damage: None }, // leather
@@ -710,6 +714,7 @@ const BRIDGE_2: &[Loot] = &[
     Loot { item: Some(Item::IRON_NUGGET), weight: 1, lo: 2, hi: 6, enchanted: false, damage: None }, // iron_nugget
     Loot { item: Some(Item::GOLD_NUGGET), weight: 1, lo: 2, hi: 6, enchanted: false, damage: None }, // gold_nugget
 ];
+#[cfg(test)]
 const HOGLIN_STABLE_0: &[Loot] = &[
     Loot {
         item: Some(Item::tool(ToolKind::Shovel, Tier::Diamond)),
@@ -749,6 +754,7 @@ const HOGLIN_STABLE_0: &[Loot] = &[
     Loot { item: Some(Item::GOLDEN_CARROT), weight: 10, lo: 8, hi: 17, enchanted: false, damage: None }, // golden_carrot
     Loot { item: Some(Item::GOLDEN_APPLE), weight: 10, lo: 1, hi: 1, enchanted: false, damage: None },   // golden_apple
 ];
+#[cfg(test)]
 const HOGLIN_STABLE_1: &[Loot] = &[
     Loot { item: Some(Item::tool(ToolKind::Axe, Tier::Gold)), weight: 1, lo: 1, hi: 1, enchanted: true, damage: None }, // golden_axe
     Loot {
@@ -800,6 +806,7 @@ const HOGLIN_STABLE_1: &[Loot] = &[
         damage: None,
     }, // crimson_roots
 ];
+#[cfg(test)]
 const OTHER_0: &[Loot] = &[
     Loot {
         item: Some(Item::tool(ToolKind::Pickaxe, Tier::Diamond)),
@@ -834,6 +841,7 @@ const OTHER_0: &[Loot] = &[
     Loot { item: Some(Item::GOLDEN_APPLE), weight: 9, lo: 1, hi: 1, enchanted: false, damage: None },    // golden_apple
     Loot { item: Some(Item::BOOK), weight: 10, lo: 1, hi: 1, enchanted: true, damage: None },            // book
 ];
+#[cfg(test)]
 const OTHER_1: &[Loot] = &[
     Loot {
         item: Some(Item::tool(ToolKind::Sword, Tier::Iron)),
@@ -906,6 +914,7 @@ const OTHER_1: &[Loot] = &[
         damage: None,
     }, // crying_obsidian
 ];
+#[cfg(test)]
 const OTHER_2: &[Loot] = &[
     Loot {
         item: Some(Item::from_block(Block::GILDED_BLACKSTONE)),
@@ -933,6 +942,9 @@ const OTHER_2: &[Loot] = &[
     Loot { item: Some(Item::COOKED_PORKCHOP), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // cooked_porkchop
 ];
 
+// Compatibility helpers retained for parallel structure tracks. New tables
+// should use world::loot::table / World::structure_loot for Java fill ordering.
+#[allow(dead_code)]
 pub(super) fn put(chest: &mut Chest, stack: Stack, rng: &mut Rng) {
     let n = chest.slots.iter().filter(|s| s.is_none()).count();
     if n == 0 {
@@ -942,12 +954,14 @@ pub(super) fn put(chest: &mut Chest, stack: Stack, rng: &mut Rng) {
     let slot = chest.slots.iter_mut().filter(|s| s.is_none()).nth(pick).unwrap();
     *slot = Some(stack);
 }
+#[allow(dead_code)]
 pub(super) fn pool(chest: &mut Chest, rng: &mut Rng, table: &[Loot], rolls: (u32, u32)) {
     pool_with(chest, rng, table, rolls, None);
 }
 
 /// [`pool`] where `enchanted` entries use `enchant_with_levels` at `levels`
 /// when given, rather than `enchant_randomly`.
+#[allow(dead_code)]
 pub(super) fn pool_with(chest: &mut Chest, rng: &mut Rng, table: &[Loot], rolls: (u32, u32), levels: Option<u32>) {
     let weight: u32 = table.iter().map(|e| e.weight).sum();
     for _ in 0..rng.range(rolls.0, rolls.1) {
@@ -992,6 +1006,20 @@ pub(super) fn pool_with(chest: &mut Chest, rng: &mut Rng, table: &[Loot], rolls:
     }
 }
 pub fn loot(seed: u64, kind: ChestKind) -> Chest {
+    super::loot::table(
+        seed,
+        match kind {
+            ChestKind::Treasure => "bastion_treasure",
+            ChestKind::Bridge => "bastion_bridge",
+            ChestKind::HoglinStable => "bastion_hoglin_stable",
+            ChestKind::Other => "bastion_other",
+        },
+    )
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+fn legacy_loot(seed: u64, kind: ChestKind) -> Chest {
     let mut rng = Rng(seed ^ 0xBA57_1007);
     let mut chest = Chest::default();
     let upgrade = netherite_upgrade(kind);

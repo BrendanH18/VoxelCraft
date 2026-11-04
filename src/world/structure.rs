@@ -5,7 +5,7 @@
 use glam::IVec3;
 
 use super::block::{Block, Facing};
-use super::chest::{Chest, SLOTS};
+use super::chest::Chest;
 use super::noise::splitmix64;
 use crate::inventory::Stack;
 use crate::item::Item;
@@ -248,8 +248,8 @@ pub fn fill_chest(seed: u64, rolls: (u32, u32), table: &[LootEntry]) -> Chest {
 /// nothing (Java items the game lacks), so every present item keeps Java's odds.
 pub fn fill_chest_with_blanks(seed: u64, rolls: (u32, u32), table: &[(Option<Item>, u32, u32, u32)]) -> Chest {
     let total: u32 = table.iter().map(|e| e.1).sum();
-    let mut rng = Rng(seed ^ 0x6C6F_6F74);
-    let mut chest = Chest::default();
+    let mut rng = super::loot::LootRandom::new(seed);
+    let mut chest = super::loot::LootItems::default();
     for _ in 0..rng.range(rolls.0, rolls.1) {
         let mut r = rng.below(total);
         let &(item, _, lo, hi) = table
@@ -260,13 +260,9 @@ pub fn fill_chest_with_blanks(seed: u64, rolls: (u32, u32), table: &[(Option<Ite
                 hit
             })
             .unwrap();
-        let Some(item) = item else { continue };
         let count = rng.range(lo, hi) as u8;
-        // Java scatters loot into random empty slots.
-        let empty: Vec<usize> = (0..SLOTS).filter(|&i| chest.slots[i].is_none()).collect();
-        if let Some(&slot) = empty.get(rng.below(empty.len() as u32) as usize) {
-            chest.slots[slot] = Some(Stack::new(item, count));
-        }
+        let Some(item) = item else { continue };
+        chest.push(Stack::new(item, count));
     }
-    chest
+    chest.finish(&mut rng, 27)
 }

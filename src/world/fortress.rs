@@ -22,8 +22,11 @@ use super::block::{Block, Facing};
 use super::chest::Chest;
 use super::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, CHUNK_VOLUME};
 use super::noise::hash3;
-use super::structure::{Bounds, LootEntry, Oriented, Paint, Rng, fill_chest};
+use super::structure::{Bounds, Oriented, Paint, Rng};
+#[cfg(test)]
+use super::structure::{LootEntry, fill_chest};
 use crate::entity::MobKind;
+#[cfg(test)]
 use crate::item::{ArmorMaterial, ArmorPiece, Item, Tier, ToolKind};
 
 /// Region size in blocks: Java's 27 chunks of 16.
@@ -500,6 +503,12 @@ fn has_pillars(kind: Kind) -> bool {
 
 /// Java's nether bridge chest loot (2-4 rolls), including saddles and horse armor.
 pub fn loot(seed: u64) -> Chest {
+    super::loot::table(seed, "nether_bridge")
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+fn legacy_loot(seed: u64) -> Chest {
     let gold = |kind| Item::tool(kind, Tier::Gold);
     let table: [LootEntry; 12] = [
         (Item::SADDLE, 10, 1, 1),
@@ -922,20 +931,24 @@ mod tests {
 
     #[test]
     fn loot_follows_the_table() {
+        let mut seen = std::collections::HashSet::new();
         for seed in 0..200u64 {
             let chest = loot(seed);
             let stacks: Vec<_> = chest.slots.iter().flatten().collect();
-            assert!((2..=4).contains(&stacks.len()), "{stacks:?}");
+            assert!(stacks.len() <= 27, "{stacks:?}");
+            assert!(stacks.iter().map(|s| s.count as u32).sum::<u32>() <= 28);
             for s in stacks {
+                seen.insert(s.item);
                 let ok = match s.item {
                     Item::DIAMOND | Item::GOLD_INGOT => (1..=3).contains(&s.count),
                     Item::IRON_INGOT => (1..=5).contains(&s.count),
-                    Item::NETHER_WART => (3..=7).contains(&s.count),
-                    i if i == Item::from_block(Block::OBSIDIAN) => (2..=4).contains(&s.count),
+                    Item::NETHER_WART => (1..=7).contains(&s.count),
+                    i if i == Item::from_block(Block::OBSIDIAN) => (1..=4).contains(&s.count),
                     _ => s.count == 1,
                 };
                 assert!(ok, "{s:?}");
             }
         }
+        assert!(seen.contains(&Item::DIAMOND) && seen.contains(&Item::NETHER_WART));
     }
 }

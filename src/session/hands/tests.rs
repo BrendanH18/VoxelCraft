@@ -336,3 +336,46 @@ fn swapping_hands_ends_a_draw() {
     assert!(s.swap_hands(0));
     assert!(!s.drawing(), "the incoming bow starts undrawn");
 }
+
+#[test]
+fn empty_maps_transform_or_split_in_both_hands_and_creative_keeps_the_blank() {
+    for off in [false, true] {
+        for (count, creative) in [(1, false), (3, false), (1, true)] {
+            let mut w = world();
+            let mut e = Entities::new(7);
+            let mut s = session();
+            if creative {
+                s.mode = GameMode::Creative;
+            }
+            if off {
+                s.inventory.offhand = Some(Stack::new(Item::MAP, count));
+            } else {
+                s.inventory.slots[0] = Some(Stack::new(Item::MAP, count));
+            }
+            let result = s.use_held(0, &mut w, &mut e, &UseContext { sneaking: false, others: &[] }).unwrap().unwrap();
+            assert_eq!(result.used, Used::MapCreated);
+            assert_eq!(result.off_hand, off);
+            let blanks = s
+                .inventory
+                .slots
+                .iter()
+                .chain(std::iter::once(&s.inventory.offhand))
+                .flatten()
+                .filter(|s| s.item == Item::MAP)
+                .map(|s| s.count as u32)
+                .sum::<u32>();
+            assert_eq!(blanks, if creative { count as u32 } else { count as u32 - 1 });
+            assert_eq!(w.maps.maps.len(), 1);
+            let filled = s
+                .inventory
+                .slots
+                .iter()
+                .chain(std::iter::once(&s.inventory.offhand))
+                .flatten()
+                .find(|s| s.item == Item::FILLED_MAP)
+                .unwrap();
+            assert_eq!(filled.map_id, Some(0));
+            assert_eq!(w.maps.maps[&0].center, glam::IVec2::ZERO);
+        }
+    }
+}

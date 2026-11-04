@@ -8,6 +8,8 @@ impl Game {
             return;
         }
         let mut props = std::collections::BTreeMap::new();
+        props.insert("loot_sequences".into(), self.world.loot_sequences.serialize());
+        props.insert("maps".into(), self.world.maps.serialize());
         props.insert("agents".into(), self.serialize_lan_profiles());
         props.insert("pads".into(), self.pads.serialize());
         props.insert("mode".to_string(), self.session.mode.name().to_string());
