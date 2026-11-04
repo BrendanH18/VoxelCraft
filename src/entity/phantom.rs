@@ -110,7 +110,7 @@ impl Entities {
                 }
                 let count = 1 + self.rng.next_int(u32::from(self.difficulty.id()) + 1);
                 for _ in 0..count {
-                    self.spawn(MobKind::Phantom, p.as_dvec3()+DVec3::new(0.5,0.,0.5));
+                    self.spawn(MobKind::Phantom, p.as_dvec3() + DVec3::new(0.5, 0., 0.5));
                 }
             }
         }
@@ -185,14 +185,14 @@ impl Mob {
             }
             if let Some(t) = target.filter(|_| s.swooping) {
                 s.point = t.pos + DVec3::Y * t.shape.height * 0.5;
-                let scale=1.+f64::from(s.size)*0.15;
-                let (a,b)=physics::Shape::new(0.45*scale,0.5*scale).aabb(self.pos);
+                let scale = 1. + f64::from(s.size) * 0.15;
+                let (a, b) = physics::Shape::new(0.45 * scale, 0.5 * scale).aabb(self.pos);
                 let (p, q) = t.shape.aabb(t.pos);
                 if (b + DVec3::splat(0.2)).cmpgt(p).all() && (a - DVec3::splat(0.2)).cmplt(q).all() {
                     events.push(EntityEvent::PlayerHit {
                         java: None,
                         player: t.id,
-                        damage: 6. + f32::from(s.size),
+                        damage: (6. + f32::from(s.size) + self.effects.attack_bonus()).max(0.),
                         knockback: (t.pos - self.pos).normalize_or_zero().as_vec3() * 4.,
                         cause: "was slain by a phantom",
                     });

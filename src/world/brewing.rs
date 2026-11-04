@@ -79,13 +79,14 @@ pub fn brew_item(item: Item, ingredient: Item) -> Option<Item> {
 
 /// Brewing preserves the potion component when the container has one.
 pub fn brew_stack(stack: Stack, ingredient: Item) -> Option<Stack> {
-    if ingredient == Item::DRAGON_BREATH {
-        return stack.item.as_splash_potion().map(Stack::lingering_potion);
-    }
-    if let Some(p) = stack.lingering_contents() {
-        return brew(p, ingredient).map(Stack::lingering_potion);
-    }
-    brew_item(stack.item, ingredient).map(|i| Stack::new(i, 1))
+    let output = if ingredient == Item::DRAGON_BREATH {
+        stack.item.as_splash_potion().map(Stack::lingering_potion)
+    } else if let Some(p) = stack.lingering_contents() {
+        brew(p, ingredient).map(Stack::lingering_potion)
+    } else {
+        brew_item(stack.item, ingredient).map(|i| Stack::new(i, 1))
+    };
+    output.map(|out| Stack { item: out.item, entity_data: out.entity_data, count: 1, ..stack })
 }
 
 /// The bottle slots hold potions (and water bottles) and glass bottles.

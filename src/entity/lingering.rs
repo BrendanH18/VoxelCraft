@@ -5,10 +5,10 @@ use glam::DVec3;
 use serde_json::{Value, json};
 
 impl MobKind {
-    pub fn accepts_potion_effect(self,e:Effect)->bool {
-        !(self.creature()==crate::enchant::Creature::Undead && matches!(e,Effect::Poison|Effect::Regeneration)
-          || matches!(self,Self::Spider|Self::CaveSpider) && e==Effect::Poison
-          || self==Self::WitherSkeleton && e==Effect::Wither)
+    pub fn accepts_potion_effect(self, e: Effect) -> bool {
+        !(self.creature() == crate::enchant::Creature::Undead && matches!(e, Effect::Poison | Effect::Regeneration)
+            || matches!(self, Self::Spider | Self::CaveSpider) && e == Effect::Poison
+            || self == Self::WitherSkeleton && e == Effect::Wither)
     }
 }
 impl Stack {
@@ -107,7 +107,9 @@ impl Cloud {
                 }
             }
             for m in mobs.iter_mut().filter(|m| m.alive()) {
-                if !self.potion.effects().any(|(e,_,_)|m.kind.accepts_potion_effect(e)){continue;}
+                if !self.potion.effects().any(|(e, _, _)| m.kind.accepts_potion_effect(e)) {
+                    continue;
+                }
                 let (min, max) = m.aabb();
                 if !self.contains(m.pos, min, max) || !self.dose((1u64 << 32) | u64::from(m.uid)) {
                     continue;
@@ -309,12 +311,25 @@ mod tests {
         assert_eq!(e.fight.as_ref().unwrap().clouds[0].radius, 2.5);
     }
     #[test]
-    fn immune_mobs_do_not_use_up_a_poison_cloud(){
-        let mut c=Cloud::new(DVec3::ZERO,Potion::from_id("poison").unwrap(),None);
-        let mut ctx=context();ctx.players.clear();
-        let mut mobs=[Mob::new(MobKind::Stray,DVec3::ZERO,0.),Mob::new(MobKind::Spider,DVec3::ZERO,0.)];
-        for _ in 0..10{c.tick(0.05,&ctx,&mut mobs,&mut Rng::new(4),&mut Vec::new());}
-        assert!((c.radius-2.995).abs()<1e-5);assert!(mobs.iter().all(|m|!m.effects.has(Effect::Poison)));
+    fn immune_mobs_do_not_use_up_a_poison_cloud() {
+        let mut c = Cloud::new(DVec3::ZERO, Potion::from_id("poison").unwrap(), None);
+        let mut ctx = context();
+        ctx.players.clear();
+        let mut mobs = [Mob::new(MobKind::Stray, DVec3::ZERO, 0.), Mob::new(MobKind::Spider, DVec3::ZERO, 0.)];
+        for _ in 0..10 {
+            c.tick(0.05, &ctx, &mut mobs, &mut Rng::new(4), &mut Vec::new());
+        }
+        assert!((c.radius - 2.995).abs() < 1e-5);
+        assert!(mobs.iter().all(|m| !m.effects.has(Effect::Poison)));
     }
 
+    #[test]
+    fn brewing_preserves_custom_components_while_changing_potion_contents() {
+        let p = Potion::from_id("poison").unwrap();
+        let s = Stack::new(Item::splash_potion(p), 1).with_name("Night mist").unwrap();
+        let lingering = brew_stack(s, Item::DRAGON_BREATH).unwrap();
+        let long = brew_stack(lingering, Item::REDSTONE).unwrap();
+        assert_eq!(long.name.as_str(), Some("Night mist"));
+        assert_eq!(long.lingering_contents(), Potion::from_id("long_poison"));
+    }
 }

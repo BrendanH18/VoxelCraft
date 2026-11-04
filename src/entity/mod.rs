@@ -76,6 +76,7 @@ pub use item::ItemEntity;
 pub use mob::{Mob, MobKind, sky_light};
 pub use orb::XpOrb;
 pub use projectile::Arrow;
+pub use tipped_arrow::ArrowEffectGate;
 
 /// Spawns happen this far from the player (blocks).
 pub const SPAWN_MIN_DIST: f64 = 24.0;
@@ -175,6 +176,10 @@ pub enum EntityEvent {
         cause: &'static str,
         poison: u32,
     },
+    /// Tipped status events between these markers require the immediately
+    /// preceding physical hit to have landed (including shield/hurt immunity).
+    ArrowEffectsStart { player: PlayerId },
+    ArrowEffectsEnd,
     /// A mob or splash potion applied a status effect to this player.
     PlayerEffect {
         player: PlayerId,

@@ -1500,9 +1500,6 @@ fn save_mob(m: &Mob) -> Value {
         "age": m.age,
         "egg_timer": m.egg_timer,
         "sheared": m.sheared,
-        "skeleton_bow":m.skeleton_bow.as_ref().map(|s|crate::inventory::stack_to_string(Some(**s))),
-        "phantom": m.phantom.as_ref().map(|p| p.save()),
-        "freezing": m.freezing.as_ref().map(super::hostiles::Freezing::save),
         "animal": m.animal.as_deref().map(super::animals::save),
         "identity": super::leash::save(m),
         "armor": armor,
@@ -1519,6 +1516,15 @@ fn save_mob(m: &Mob) -> Value {
         "home": n.and_then(|n| n.home).map(|h| h.to_array()),
         "celebrate": n.filter(|n| n.celebrate_left > 0.0).map(|n| json!([n.celebrate_left, n.celebrate_at.to_array(), n.dancing])),
     });
+    if let Some(bow) = &m.skeleton_bow {
+        v["skeleton_bow"] = json!(crate::inventory::stack_to_string(Some(**bow)));
+    }
+    if let Some(p) = &m.phantom {
+        v["phantom"] = p.save();
+    }
+    if let Some(f) = &m.freezing {
+        v["freezing"] = f.save();
+    }
     // Written only when set, so other mobs save as before: `Mob.homePosition`
     // and `homeRadius`, and the dolphin's `GotFish` and main hand.
     if let Some((p, r)) = m.restrict {

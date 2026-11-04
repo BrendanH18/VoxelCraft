@@ -177,6 +177,12 @@ impl Arrow {
                 self.vel = DVec3::ZERO;
                 return true;
             }
+            // Arrow.tick clears potion contents at 600 in-ground ticks.
+            if self.age >= 30.0 - 1e-3 && (self.potion.is_some() || self.custom_effect.is_some()) {
+                self.potion = None;
+                self.custom_effect = None;
+                self.tipped = false;
+            }
             return self.age < if self.from_player || self.pickup { PLAYER_STUCK_TIME } else { STUCK_TIME };
         }
         self.vel.y -= GRAVITY * dt;
@@ -408,7 +414,11 @@ impl Arrow {
                     knockback: push.as_vec3(),
                     cause: if self.from_player { "was shot by a player" } else { self.cause },
                 });
-                self.effects_on_player(hit.id, events);
+                if self.potion.is_some() || self.custom_effect.is_some() {
+                    events.push(EntityEvent::ArrowEffectsStart{player:hit.id});
+                    self.effects_on_player(hit.id, events);
+                    events.push(EntityEvent::ArrowEffectsEnd);
+                }
                 if let Some(attacker) = self.shooter {
                     events.push(EntityEvent::OwnerHurt { player: hit.id, attacker });
                 }
@@ -620,5 +630,29 @@ mod tests {
                 assert!(mobs[0].health < MobKind::Cow.max_health());
             }
         }
+    }
+    #[test]
+    fn embedded_potion_contents_expire_after_six_hundred_ticks() {
+        let mut a = Arrow::shot(DVec3::new(0.5, 9.5, 0.5), DVec3::X, 1., true);
+        a.stuck = true;
+        a.age = 29.9;
+        a.potion = crate::potion::Potion::from_id("poison");
+        a.tipped = true;
+        let ctx = Ctx {
+            players: Vec::new(),
+            spawning: false,
+            daylight: 0.,
+            raining: false,
+            dimension: crate::world::terrain::Dimension::Overworld,
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
+        };
+        let w = Grid::flat(10);
+        let mut rng = Rng::new(5);
+        let mut events = Vec::new();
+        a.update(0.05, &w, &ctx, &mut [], &[], None, &mut rng, &mut events);
+        assert!(a.potion.is_some());
+        a.update(0.05, &w, &ctx, &mut [], &[], None, &mut rng, &mut events);
+        assert!(a.potion.is_none());
+        assert_eq!(a.pickup_stack().item, crate::item::Item::ARROW);
     }
 }

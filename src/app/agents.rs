@@ -414,7 +414,7 @@ mod tests {
         agent.session.player.flying = true;
         agent.session.vitals.hunger = crate::simulation::survival::Hunger::restore(8.0, 2.0, 1.0);
         agent.session.vitals.xp = crate::simulation::experience::Experience::restore(7, 4, 90);
-        agent.session.vitals.time_since_rest=123456;
+        agent.session.vitals.time_since_rest = 123456;
         agents.insert("builder".into(), agent);
         agents.players.get_mut("builder").unwrap().active = true;
         let text = agents.serialize("overworld");
@@ -428,7 +428,7 @@ mod tests {
         assert_eq!(bot.agent.session.player.pos, DVec3::new(300.0, 100.0, -250.0));
         assert_eq!(bot.agent.session.inventory.get(0).unwrap().count, 3);
         assert_eq!(bot.agent.session.vitals.hunger.food, 8.0);
-        assert_eq!(bot.agent.session.vitals.time_since_rest,123456);
+        assert_eq!(bot.agent.session.vitals.time_since_rest, 123456);
         assert_eq!(bot.agent.session.vitals.xp, crate::simulation::experience::Experience::restore(7, 4, 90));
         assert_eq!(bot.agent.session.spawn_bed, Some(IVec3::new(4, 70, -2)));
         restored.restore(&text, "nether", spawn);
