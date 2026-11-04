@@ -583,6 +583,7 @@ impl Agent {
                         self.session.entity_reach(),
                     )
                     .ok_or("no villager within reach")?;
+                entities.prepare_merchant_maps(world, id);
                 if let Some(i) = index {
                     let xp = entities.trade_for(id, i, &mut self.session.inventory, self.session.id)?;
                     entities.spawn_xp(self.session.player.pos, xp);

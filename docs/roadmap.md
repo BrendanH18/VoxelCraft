@@ -1409,6 +1409,13 @@ record:
   Java's `LootTable.fill` with per-world random sequences for structure
   chests.
 
+Loot isn't terrain, so it isn't held to the generation number: chests
+generated from now on in worlds of any generation fill with Java's
+`LootTable.fill`, including the cartographer table for village
+cartographer chests and explorer maps. Chests already saved keep their
+contents, and the blocks of generations 1 and 2 stay pinned by their
+golden hashes.
+
 Gaps found: Java 26.3's abandoned camp (already a recorded gap) isn't
 in this scope, so the explorer maps only it gives stay absent, as do the
 mansion, trial chamber and ancient city maps until those structures
