@@ -1423,7 +1423,11 @@ impl Mob {
         self.damage_typed(amount, knockback, true, rng)
     }
     fn damage_typed(&mut self, amount: f32, knockback: Option<DVec3>, bypass_wolf_armor: bool, rng: &mut Rng) -> bool {
-        if !self.alive() || self.armadillo.as_ref().is_some_and(|s| s.scared() && amount <= 1.0) {
+        // `isInvulnerableTo` refuses the hit before any knockback.
+        if !self.alive()
+            || self.undead_mount.protection > 0.
+            || self.armadillo.as_ref().is_some_and(|s| s.scared() && amount <= 1.0)
+        {
             return false;
         }
         // Full resistance (iron golems) cancels the push and leaves the motion alone, as `knockback` returns early.
@@ -1452,7 +1456,11 @@ impl Mob {
     /// default push, then the attacker's extra one), each halving the motion
     /// left by the previous. Returns `true` if this killed the mob.
     pub fn damage_pushed(&mut self, amount: f32, pushes: &[crate::knockback::Push], rng: &mut Rng) -> bool {
-        if !self.alive() || self.armadillo.as_ref().is_some_and(|s| s.scared() && amount <= 1.0) {
+        // `isInvulnerableTo` refuses the hit before any knockback.
+        if !self.alive()
+            || self.undead_mount.protection > 0.
+            || self.armadillo.as_ref().is_some_and(|s| s.scared() && amount <= 1.0)
+        {
             return false;
         }
         for &push in pushes {
@@ -1479,17 +1487,12 @@ impl Mob {
         }
     }
 
-    fn take_damage(&mut self, mut amount: f32, attacked: bool, bypass_wolf_armor: bool, rng: &mut Rng) -> bool {
-        // `LivingEntity.hurtServer` while more than 10 ticks of a trap's
-        // `setInvulnerableTime(60)` remain: only the part of a hit above the
-        // largest one taken so far lands.
-        if self.undead_mount.protection > 0.5 {
-            let last = self.undead_mount.last_hurt;
-            if amount <= last {
-                return false;
-            }
-            self.undead_mount.last_hurt = amount;
-            amount -= last;
+    fn take_damage(&mut self, amount: f32, attacked: bool, bypass_wolf_armor: bool, rng: &mut Rng) -> bool {
+        // A trap's `setInvulnerableTime(60)` sets `Entity.invulnerableTime`
+        // (not the hurt cooldown): `isInvulnerableToBase` refuses ordinary
+        // damage until it runs out.
+        if self.undead_mount.protection > 0. {
+            return false;
         }
         let amount =
             if self.armadillo.as_ref().is_some_and(|s| s.scared()) { ((amount - 1.0) / 2.0).max(0.0) } else { amount };

@@ -10,15 +10,14 @@ pub fn undead(kind: MobKind) -> bool {
 pub struct State {
     /// -1 is an ordinary horse; >=0 is SkeletonTrapTime in game ticks.
     pub trap_age: i32,
-    /// Seconds left of the trap horsemen's `setInvulnerableTime(60)`.
+    /// Seconds left of the trap horsemen's `setInvulnerableTime(60)`, during
+    /// which they ignore ordinary damage.
     pub protection: f64,
     remainder: f64,
-    /// `LivingEntity.lastHurt` during that window (not saved, as in Java).
-    pub last_hurt: f32,
 }
 impl Default for State {
     fn default() -> Self {
-        Self { trap_age: -1, protection: 0., remainder: 0., last_hurt: 0. }
+        Self { trap_age: -1, protection: 0., remainder: 0. }
     }
 }
 impl State {
@@ -30,7 +29,6 @@ impl State {
             trap_age: v[0].as_i64().unwrap_or(-1).clamp(-1, 18001) as i32,
             protection: v[1].as_f64().filter(|x| x.is_finite()).unwrap_or(0.).clamp(0., 3.),
             remainder: v[2].as_f64().filter(|x| x.is_finite()).unwrap_or(0.).clamp(0., 0.999999),
-            last_hurt: 0.,
         }
     }
 }
@@ -237,6 +235,10 @@ mod tests {
         e.spawn_zombie_horse_rider();
         assert_eq!(e.mobs.last().unwrap().kind, MobKind::Zombie);
         assert!(e.mobs.last().unwrap().riding.unwrap() & super::super::mounts::MOB_VEHICLE != 0);
+        let mut m = Mob::new(MobKind::SkeletonHorse, DVec3::ZERO, 0.);
+        m.undead_mount.protection = 3.;
+        assert!(!m.damage(100., Some(DVec3::new(4., 2., 0.)), &mut e.rng));
+        assert_eq!((m.health, m.vel), (15., DVec3::ZERO), "no damage and no knockback");
     }
     #[test]
     fn ordinary_use_equips_saddle_and_mounts_only_a_tamed_skeleton_horse() {
@@ -264,19 +266,6 @@ mod tests {
             ),
             Some((3., 3, 0))
         );
-    }
-    #[test]
-    fn trap_invulnerability_only_blocks_hits_no_larger_than_the_last() {
-        let mut m = Mob::new(MobKind::SkeletonHorse, DVec3::ZERO, 0.);
-        m.undead_mount.protection = 3.;
-        let mut rng = super::super::Rng::new(1);
-        let full = m.health;
-        m.damage(4., None, &mut rng);
-        assert_eq!(m.health, full - 4., "the first hit lands in full (lastHurt is 0)");
-        m.damage(3., None, &mut rng);
-        assert_eq!(m.health, full - 4., "no larger than the last: ignored");
-        m.damage(6., None, &mut rng);
-        assert_eq!(m.health, full - 6., "only the excess over the last lands");
     }
     #[test]
     fn zombie_horse_body_armor_protects_against_daylight() {
