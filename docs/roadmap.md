@@ -2,7 +2,7 @@
 
 [← Back to VoxelCraft](../README.md) · [Documentation index](README.md) · [Contributing](../CONTRIBUTING.md) · [Architecture](architecture.md) · [Development](development.md)
 
-## Current plan — updated 2026-10-22
+## Current plan — updated 2026-11-05
 
 Build a faithful recreation of modern Minecraft Java single-player gameplay
 in Rust. Version 1.0 must deliver complete core survival, building,
@@ -874,7 +874,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.17 | Villages and raids | Close M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M4 exit checks | Planned |
 | v0.18 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough | Planned |
 | v0.19 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload | Planned |
-| v0.20 | Polish and performance | M7: UX, §6 | Subtitles, recipe discovery, asset and sound review in play (including the v0.12 blocks' own sounds), and menu fixes found since v0.11; the 240 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, v0.11's menu and title frame-time run and v0.12's `materials` runs, which moved here unverified ([v0.12 profile](verification/2026-10-29-v0.12-finish.md#frame-time): per-frame entity model rebuilds) | Planned |
+| v0.20 | Polish and performance | M7: UX, §6 | Typography/contrast, material and mob art, inventory/recipe navigation, HUD/workstations, title/world identity, atmosphere and accessibility ([scope](#v020-scope-presentation-and-performance)); subtitles, asset and sound review in play (including the v0.12 blocks' own sounds), and menu fixes found since v0.11; the 240 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, v0.11's menu and title frame-time run and v0.12's `materials` runs, which moved here unverified ([v0.12 profile](verification/2026-10-29-v0.12-finish.md#frame-time): per-frame entity model rebuilds) | Planned; presentation scope expanded by the owner on 2026-11-05 |
 | v1.0 | Acceptance | M7 exit, §8 | Every mandatory row Verified; fresh-world and long-session playthroughs; save-compatibility policy; installer and update checks; current stable Java scope reconciled | Planned |
 
 Notes:
@@ -1560,6 +1560,12 @@ lighting, simulation and rendering without weakening the parity contract.
 The updater comes first, in v0.10, then menus and settings in v0.11 (owner,
 2026-10-22); the rest of M7 follows the content releases.
 
+The owner added the graphics and UI review to this plan on 2026-11-05.
+Its eight work areas are part of the [v0.20 scope](#v020-scope-presentation-and-performance)
+below, with their existing requirement owners. This plans presentation work;
+it does not mark it implemented, reopen shipped releases or change the
+earliest-unreleased-version rule.
+
 #### v0.10 scope: updates
 
 v0.10 is the stepping stone (owner, 2026-10-22): every player installs it by
@@ -1708,7 +1714,214 @@ Exit: every menu item above works through mouse, keyboard and controller
 (controller through the adapter tests) and its settings survive a restart;
 title and menu frame time stays within the M5 budget.
 
-Exit: all mandatory core rows are Verified; every remaining exception/
+#### v0.20 scope: presentation and performance
+
+**Planned; added by the owner on 2026-11-05.** Complete the graphics and UI
+work below alongside the existing sound review, subtitles, recipe discovery,
+menu fixes and carried performance work. Preserve familiar Java layouts,
+block and mob silhouettes, pixel art and distinct biome/dimension palettes.
+Use original or appropriately licensed assets. FE-01's original Overworld
+terrain remains in scope as approved; this review does not authorize a
+generator replacement, different gameplay rules or unrelated graphics modes.
+
+The [2026-11-05 visual review](verification/2026-11-05-graphics-ui-review.md)
+records the observations, source evidence and limits behind this scope.
+Scripted captures establish appearance, not ordinary-play or performance
+acceptance. No requirement is promoted by this plan addition.
+
+Start with a short tracked guide at `docs/art-and-ui.md` and reproducible
+comparison scenes; the guide is a planned deliverable, not yet written.
+The guide should define pixel density, palette/contrast ranges, natural versus
+manufactured material patterns, glyph metrics, spacing, borders, slots,
+focus/selection/disabled states and progress icons. Reuse the existing
+[asset pipeline](restructuring.md#str-04--original-asset-pipeline),
+[menu toolkit](../src/app/gui/mod.rs), item rendering and animation systems.
+This is focused improvement of working components, not an engine or UI rewrite.
+
+Use Java 26.3 reference fixtures for observable layouts, visual behavior and
+settings; original artwork does not waive that contract. As each visual lands,
+add its functioning Java option instead of leaving the corresponding v0.11
+omission in place. Cover Entity Shadows, Clouds, Mipmap Levels, menu-background
+blur, panorama speed, text-background opacity and sky-flash suppression under
+UX-03f, checking exact labels, ranges and defaults against the selected client.
+Assess the loading-screen Monochrome Logo option where original branding has
+an applicable loading screen; it is not a title-wordmark color switch. Do not
+add inert controls. Record any remaining in-scope omission explicitly.
+
+Work items, with priority within v0.20:
+
+1. **Typography, contrast and label fit — highest priority (UX-01,
+   UX-03f).** Adopt a cleaner original or appropriately licensed pixel font
+   with measured glyph widths and consistent baselines. Make ordinary labels and values
+   readable at rest through sensible metrics, wording and layout; retain
+   overflow handling for genuinely long content. Distinguish panel, text,
+   active, focused and disabled colors. Audit the intended palette and the
+   flat-color path in [the UI shader](../src/render/shaders/overlay.wgsl)
+   against the sRGB render target before retuning colors; the review identified
+   a question to investigate, not a proved color-conversion defect. Coordinate
+   this work with item 8 so larger scales and accented text are supported by
+   the same font/layout system.
+
+2. **Core material art — highest priority (UX-01, BLD-05c).** Redraw natural
+   stone and its ore backgrounds first, then dirt, grass, leaves, sand and
+   common woods. Use
+   deliberate pixel clusters, recognizable material patterns and controlled
+   contrast; reduce overpowering greens while preserving biome differences.
+   Keep 16 × 16 block textures and useful procedural generation. Review
+   tiling over large walls, cave ceilings and hillsides as well as individual
+   tiles, inventory icons and held/dropped models. Existing mipmaps and
+   shape-aware icons are foundations to retain, not missing systems to rebuild.
+   Record provenance and runtime/memory costs through the asset manifest.
+
+3. **Inventory and recipe discovery — high priority (UX-03c).** Match Java
+   26.3's creative tabs, item ordering, grid dimensions and scrolling behavior,
+   recorded in layout fixtures at supported GUI scales; keep search readily
+   available. Build the already-planned Java recipe discovery flow: unlocking, searchable
+   categories/results, craftable filtering, ingredient availability and recipe
+   selection into the crafting grid with Java's transaction rules. Use the
+   shared recipe/action data; do not duplicate recipes in the UI or create
+   items through a presentation shortcut. Clarify equipment grouping and
+   silhouettes, add a default-player preview and make the recipe control
+   discoverable in survival. Custom skin selection remains deferred. Functional
+   workstation/container work stays with AUT-04 and its owning releases;
+   v0.20 improves and verifies those screens after their behavior is present.
+   Add backward-compatible per-player storage for known/highlighted recipes
+   and book/filter state, keyed by stable recipe identifiers rather than list
+   indices. New players follow Java's initial state. Legacy players lacking
+   recipe data start from that state and re-evaluate Java's unlock criteria
+   using their saved inventory and any supported persisted progression evidence.
+   Do not invent unrecorded historical unlocks or grant every recipe. Preserve
+   explicitly saved world rules, use Java's default book/filter settings where
+   absent, and test normal discovery after migration, including worlds with
+   limited crafting enabled; old players must retain a playable acquisition path.
+   Implement `limited_crafting` (`doLimitedCrafting`) with the same shared
+   transaction rules, as already assigned to UX-03c in [game rules](game-rules.md).
+   Save/restart and legacy-player migration are explicit parts of this row.
+
+4. **Mob artwork, grounding and motion — high priority (MOB-06, UX-01,
+   BLD-05c).** Preserve cuboid construction and improve original faces,
+   markings, fur/wool patterns and
+   material contrast. Add inexpensive ground shadows for mobs and dropped
+   items using Java's per-entity radius, height fading and visibility rules,
+   controlled by Entity Shadows (UX-03f). Respect supporting terrain without
+   changing hitboxes or simulation light. Use the existing model/animation
+   systems and review motion separately for readable poses, interpolation and Java action
+   timing. The screenshots did not establish an animation defect. Asset format
+   support must grow with any new resource type: the existing static box-model
+   format is not an animated-entity skin pipeline. Profile entity submission
+   and resolve the recorded per-frame model rebuild bottleneck before adding
+   per-frame detail/shadow cost, or record measurements showing it no longer
+   applies. Preserve simulation correctness while reducing that render cost.
+
+5. **HUD, workstations and secondary screens — high priority (UX-01,
+   UX-03c/g).** Apply the shared style to menus, inventory/recipe panels,
+   HUD and death/pause/error screens: consistent borders, spacing, text
+   hierarchy, focus, selection and disabled states. Improve slot separation
+   and pixel icons for flames, progress arrows, equipment hints and status
+   effects. Match Java's background darkening and menu-blur behavior, with the
+   working blur control under UX-03f. Default the FPS counter off only when
+   no saved preference exists; keep existing saved true/false values and the
+   debug tools. Use Java's death actions: Respawn/Title Screen normally and
+   Spectate World/Title Screen in Hardcore, including the reference button
+   delay and quit confirmation. Preserve immediate-respawn, pause and session
+   ownership rules (PLY-01c), including existing split-screen/LAN behavior.
+   Apply shared component fixes to updater and error dialogs without altering their
+   confirmations, recovery guidance or signed-update behavior.
+
+6. **Title identity and world recognition — medium priority (UX-01,
+   UX-03e).** Create an original pixel-art wordmark and a composed, pre-rendered
+   cubemap panorama of VoxelCraft terrain and structures with Java's panorama
+   behavior. Preserve the familiar menu arrangement, version and update status. Add real world
+   thumbnails and a useful empty-list message; match the reference icon size,
+   first-join capture/refresh behavior and Edit World's Reset Icon action.
+   Record those details in fixtures rather than requiring vanilla save-format
+   compatibility. Thumbnail creation/loading needs bounded cost and a safe
+   fallback for old saves or missing images;
+   it must not block loading a valid world or change its gameplay data.
+
+7. **Atmosphere and visibility — medium to high priority (UX-01/02).** Match
+   Java 26.3's fog ranges, shape, colors and transitions by dimension, biome,
+   weather, fluid and status effect using reference fixtures; do not assume a
+   historical render-distance fraction or adopt snapshot fog changes. Compare
+   ground-level and elevated views, reduce rain's near-camera
+   visual weight, and refine water's surface pattern and clarity using its
+   existing waves, Fresnel response and sky reflection. Match Java's flat and
+   volumetric block-shaped cloud modes and underside shading, with the
+   corresponding Clouds control (UX-03f). Refine ambient darkness,
+   warm torchlight and contact shading in interiors. Preserve biome/weather/
+   dimension distinctions, underwater readability and authoritative gameplay
+   light levels; spawning, detection and other mechanics must not change with
+   visual settings. Retain the Nether's strong palette as a useful reference
+   and evaluate the End separately. Measure changes within existing graphics
+   modes before adopting them; no photorealistic rendering overhaul is implied.
+
+8. **Accessibility throughout the visual work — required before 1.0
+   (UX-03d/f, UX-02).** Retain GUI scaling and motion controls. Complete the
+   planned directional subtitles from sound events, with readable text
+   backgrounds. Improve keyboard/controller focus and selection cues without
+   relying on color alone. Replace the font renderer's `?` substitution for
+   ordinary accented characters in world names, signs, name tags and other
+   user-entered text, including text shown with maps or held items where
+   supported. Audit UI, sign and entity-label renderers and text entry together;
+   make measurement, cursor movement, selection, clipping and saved text agree.
+   Existing sign text must load unchanged and must not be silently truncated
+   when font metrics change; retain Java's line-width rules for new edits.
+   This is text support, not a new commitment to a full translated-language
+   catalogue or resource packs. Large GUI scales must keep routine labels
+   and actions usable. Apply these requirements from the first typography/
+   component changes, not as a separate final reskin.
+
+**Sequence and dependencies.** Establish the guide and comparison scenes,
+then typography/shared UI contrast and core materials. Inventory/recipe and
+workstation presentation follows its shared layout and gameplay dependencies.
+New per-frame mob/shadow work follows resolution of the measured entity cost.
+Title identity and atmospheric refinement follow the material/style decisions.
+Accessibility is part of each step. Existing sound/music/particle review,
+the v0.12 blocks' own sounds and carried visual gaps (including container
+opening/lid animation) remain in this release; these graphics findings do
+not replace them. Keep all carried performance work from v0.8/v0.9, v0.11
+menus/title, v0.12 materials and later unverified content, including PERF-03.
+
+**Evidence for implementation.** First extend the capture harness with an
+explicit GUI-scale override (scripted runs currently ignore saved options)
+and deterministic recipe-book and Hardcore-death setup. Reuse existing menu,
+inventory and `--open-block` workstation capture; add only missing states.
+Use the existing [scripted-scene tools](development.md#screenshots-and-scripted-scenes) for
+repeatable before/after material, mob/item shadow, inventory/workstation,
+title/world-list and dimension-appropriate day/dusk/night/weather scenes
+covering all three dimensions.
+Record commit, seed/generation, pose, placements, entities, time/weather,
+resolution and GUI/graphics settings; include 1920 × 1080 and 1280 × 720
+layouts with automatic and large supported scales. Keep artifacts under
+ignored `target/` and record methods/results in tracked verification notes.
+Inspect ground contact on uneven terrain and check visibility underwater and
+in torch-lit interiors. Rendered scenes establish appearance only. Interactive
+changes need the existing automated controller/CLI adapter coverage and
+relevant save/restart checks; the owner's ordinary play supplies player
+evidence, without a new formal acceptance checklist or physical-controller
+session. Agent observations remain separate from that evidence.
+
+Measure renderer, asset and UI changes in the relevant existing M5 scenes,
+including entities, menus/title and materials. Add reproducible weather,
+underwater and Nether benchmark fixtures under §6.2 before atmospheric tuning;
+those scenes are not in the current runner. Update the title scene for the
+panorama and compare its cost against the old sky-only baseline. Record
+startup, memory and cache costs where applicable. The unchanged
+[§6 gate](#6-performance-acceptance) requires 1% low at least 240 FPS and p99
+at most 4.17 ms at 1920 × 1080 physical pixels and 256-block view range, plus
+the separate streaming budget. FPS displayed in a screenshot, an offscreen
+capture or a passing build does not satisfy it. Update the existing
+[requirement rows](requirements.md#ux--presentation-usability-and-distribution)
+as work lands; none is promoted by this plan addition.
+
+**v0.20 exit:** UX-01/02, UX-03c–g, MOB-06 and BLD-05c meet their recorded
+scope, with the owner's ordinary-play evidence and applicable reference,
+adapter and persistence checks. Close the carried v0.11 menu/title checks for
+UX-03a/b and all carried performance runs, including PERF-03, with the final
+visuals enabled. Rows reach Verified; any unfinished work requires an explicit
+owner-approved move under the release policy, not a silent deferral past 1.0.
+
+**M7 exit:** all mandatory core rows are Verified; every remaining exception/
 deferral is explicit; current stable Java scope has been reconciled;
 fresh-world and long-session acceptance passes are recorded; save migration/
 stability and distribution are checked; the reference M5 performance gate
