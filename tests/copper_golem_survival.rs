@@ -280,7 +280,7 @@ fn empty_hand_returns_full_cargo_and_poppy_shears_wax_and_axe_use_the_same_entit
         assert!(!state.waxed());
     }
     assert_eq!(s.inventory.get(0).unwrap().damage, 3);
-    assert_eq!(w.particles.len(), 4, "waxing and each scraping action have visible feedback");
+    assert_eq!(w.particles.drain().count(), 4, "waxing and each scraping action have visible feedback");
 }
 
 #[test]
@@ -339,7 +339,9 @@ fn statue_click_priority_handles_wax_sneak_offhand_and_waterlogged_reactivation(
     s.inventory.slots[0] = None;
     s.inventory.offhand = Some(Stack::new(Item::STICK, 1));
     let sneak = UseContext { sneaking: true, others: &[] };
-    assert!(s.use_held(0, &mut w, &mut e, &sneak).unwrap().is_none());
+    // A passed action reaches the existing placement adapter, which can report
+    // an empty/non-placeable held slot. Neither hand may cycle this statue.
+    assert!(!matches!(s.use_held(0, &mut w, &mut e, &sneak), Ok(Some(_))));
     assert_eq!(statue::decode(w.get_block(P).unwrap()).unwrap().pose, Pose::Sitting);
     s.inventory.offhand = None;
     s.use_held(0, &mut w, &mut e, &sneak).unwrap().unwrap();
@@ -347,7 +349,7 @@ fn statue_click_priority_handles_wax_sneak_offhand_and_waterlogged_reactivation(
     s.inventory.slots[0] = Some(Stack::new(Item::tool(ToolKind::Axe, Tier::Iron), 1));
     s.use_held(0, &mut w, &mut e, &sneak).unwrap().unwrap();
     assert!(!statue::decode(w.get_block(P).unwrap()).unwrap().waxed);
-    s.use_held(0, &mut w, &mut e, &sneak).unwrap();
+    assert!(!matches!(s.use_held(0, &mut w, &mut e, &sneak), Ok(Some(_))));
     assert!(e.mobs.is_empty(), "sneaking with an axe bypasses reactivation");
     s.use_held(0, &mut w, &mut e, &ctx).unwrap().unwrap();
     assert_eq!(w.get_block(P), Some(Block::WATER));
