@@ -1536,8 +1536,9 @@ wear a shearable poppy, and become named pose-bearing statues. Statues preserve
 name and pose through placement, mining, saves and held-item rendering; axe
 reactivation creates a fresh named golem after all oxidation/wax is removed.
 Original models, textures and synthesized golem action sounds are included.
-Three council rounds approved the result; documented navigation, pattern and
-LAN edge cases remain follow-ups.
+Four council rounds approved the result; mounted item use at statues is covered
+by the shared-action regression. Documented navigation, pattern, generic
+mounted-block and LAN edge cases remain follow-ups.
 See the [integration evidence and remaining gaps](verification/2026-11-05-v0.15-copper-golems.md)
 and [identifier allocations](architecture.md#v015-copper-golem-reservations).
 This does not close the remaining wildlife scope or establish owner play.

@@ -109,7 +109,7 @@
     {
       "id": "double_chests_and_interaction_distance",
       "observations": ["queue_expansion", "interaction_expansion", "finished_path_expansion", "continuation_expansion", "vertical_expansion"],
-      "source": ["TransportItemsBetweenContainers.getConnectedTargets, onTravelToTarget, onReachedTarget, getStartInteractionDistance and isWithinTargetDistance", "CopperGolemAi.shouldQueueForTarget"],
+      "source": ["TransportItemsBetweenContainers.getConnectedTargets, onTravelToTarget, onReachedTarget, getInteractionRange and isWithinTargetDistance", "CopperGolemAi.shouldQueueForTarget"],
       "setup": "Target a double chest and repeat from each half, first with another container user holding it open, then after that user closes it. Trace the golem's tested point just inside/outside the expanded chest collision box during travelling, at a finished path and during interaction.",
       "expected": "The two halves share one compound inventory; either half counts as visited or occupied. Queue reach expands the collision box by 3 horizontally, interaction start by 0.5 or 1 after a finished path, and continuation by 2. Each distance check expands vertically by 0.5."
     },
