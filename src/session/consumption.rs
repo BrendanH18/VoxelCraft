@@ -134,6 +134,9 @@ impl PlayerSession {
                 }
             }
             self.vitals.hunger.eat(food, saturation);
+            if held.item == Item::SUSPICIOUS_STEW {
+                magic_damage += crate::entity::mooshroom::consume_stew(held, &mut self.vitals);
+            }
             if held.item == Item::HONEY_BOTTLE {
                 self.vitals.effects.remove(crate::simulation::effects::Effect::Poison);
             }

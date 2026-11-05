@@ -490,6 +490,9 @@ impl Vitals {
             self.effects.add(Effect::WaterBreathing, 0, 200);
         }
         self.health = (self.health + effect.heal).min(MAX_HEALTH);
+        if effect.food > 0 {
+            self.hunger.eat(effect.food.min(255) as u8, effect.food as f32 * 2.0);
+        }
         // Poison never takes the last half heart, and armor doesn't help.
         if effect.poison > 0.0 && self.health > 1.0 && !creative {
             // Poison is magic damage through `hurtServer`: Resistance cuts it and

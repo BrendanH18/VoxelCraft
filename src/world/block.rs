@@ -366,7 +366,7 @@ pub mod tex {
     pub const BUBBLE_BASE: u16 = 2864;
     pub const BUBBLE_UP: u16 = BUBBLE_BASE;
     pub const BUBBLE_DOWN: u16 = BUBBLE_BASE + 1;
-    pub const COUNT: u32 = super::super::bees::t::END as u32; // v0.15 original crop layers 2992–3007.
+    pub const COUNT: u32 = super::super::frog_blocks::tex::END as u32; // Through track 3 frogspawn/froglights (3136–3145); track 2 crop/bee layers end below.
     const _: () = assert!(super::super::biome_plants::TEX_END <= BUBBLE_BASE);
     const _: () = assert!(super::super::utilities::TEX_END <= super::super::cave_blocks::TEX);
     const _: () = assert!(super::super::cave_blocks::TEX_END <= super::super::biome_plants::TEX);
@@ -908,6 +908,9 @@ impl Block {
 
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
+        if self == super::frog_blocks::FROGSPAWN {
+            return Some(Shaped::Custom);
+        }
         if super::cave_blocks::is_custom(self) {
             return Some(Shaped::Custom);
         }
@@ -1259,6 +1262,9 @@ impl Block {
         if let Some((nest, _, _)) = super::bees::hive(self) {
             return if nest { super::bees::NEST } else { super::bees::HIVE };
         }
+        if let Some(b) = super::frog_blocks::base(self) {
+            return b;
+        }
         if let Some(b) = super::biome_plants::base(self.0) {
             return b;
         }
@@ -1543,6 +1549,9 @@ impl Block {
 
     /// Height of the block's collision box.
     pub fn height(self) -> f64 {
+        if self == super::frog_blocks::FROGSPAWN {
+            return 0.0;
+        }
         // Soul sand and mud look like full blocks, but you sink into them: Java
         // collides with a 14/16 column.
         let sink = if self == Block::SOUL_SAND || self == super::overworld_blocks::MUD { 2.0 } else { 0.0 };
@@ -1555,6 +1564,12 @@ impl Block {
     pub fn drop(self) -> Option<Item> {
         if let Some((nest, _, _)) = super::bees::hive(self) {
             return (!nest).then(|| super::bees::HIVE.into());
+        }
+        if self == super::frog_blocks::FROGSPAWN {
+            return None;
+        }
+        if let Some(b) = super::frog_blocks::base(self) {
+            return Some(b.into());
         }
         if let Some(drop) = super::cave_blocks::drop(self) {
             return drop;
@@ -1684,6 +1699,9 @@ impl Block {
     /// held item can harvest the block and 5x when it can't, divided by the
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
     pub fn hardness(self) -> f32 {
+        if super::frog_blocks::owns(self.0) {
+            return if self == super::frog_blocks::FROGSPAWN { 0.0 } else { 0.3 };
+        }
         if super::bubble::is_column(self) {
             return 0.0;
         }
@@ -1894,6 +1912,9 @@ impl Block {
     pub fn best_tool(self) -> Option<ToolKind> {
         if super::bees::hive(self).is_some() {
             return Some(ToolKind::Axe);
+        }
+        if super::frog_blocks::owns(self.0) {
+            return super::frog_blocks::base(self).map(|_| ToolKind::Hoe);
         }
         if let Some((_, tool, _)) = super::cave_blocks::mining(self) {
             return tool;
@@ -2220,6 +2241,7 @@ impl Block {
             .chain(super::utilities::palette_ids())
             .chain(super::biome_plants::palette_ids())
             .chain(super::cave_blocks::palette_ids())
+            .chain(super::frog_blocks::palette_ids())
             .map(Block)
     }
 
@@ -2286,6 +2308,9 @@ impl Block {
     /// Whether this block can rest on `below`. Plants need soil and torches
     /// a full block; everything else stays put.
     pub fn can_stay_on(self, below: Block) -> bool {
+        if self == super::frog_blocks::FROGSPAWN {
+            return super::frog_blocks::supports(below);
+        }
         if let Some(ok) = super::wood::can_stay_on(self, below) {
             return ok;
         }
@@ -2828,6 +2853,10 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         return info;
     }
     let (name, kind, tex) = match id {
+        id if super::frog_blocks::owns(id) => match super::frog_blocks::registry(id) {
+            Some(info) => info,
+            None => ("unknown", Invisible, all(0)),
+        },
         id if super::cave_blocks::owns(id) => match super::cave_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
@@ -3191,7 +3220,7 @@ pub(super) const fn make(id: u16) -> BlockInfo {
     BlockInfo {
         name,
         kind,
-        solid: solid && !(id >= 7936 && id <= 7968),
+        solid: solid && !(id >= 7936 && id <= 7968) && id != super::frog_blocks::FROGSPAWN.0,
         self_cull: matches!(id, 5 | 10 | 97 | 104 | 7968 | 8128)
             || stained_glass
             || super::stone_blocks::self_cull(id)
@@ -3292,6 +3321,7 @@ const fn emission_of(i: usize) -> u8 {
     }
     {
         match i {
+            _ if super::frog_blocks::owns(i as u16) => super::frog_blocks::emission(i as u16),
             22 | 37..=41 | 165..=180 | 208 | 210 => 15, // glowstone, lava, fire, portals
             36 => 14,                                   // torch
             46 | 50..=52 | 913..=916 | 921..=924 => 13, // lit furnace, every facing
@@ -3466,6 +3496,9 @@ mod tests {
                 }
             }
             match block.base() {
+                super::super::frog_blocks::OCHRE
+                | super::super::frog_blocks::VERDANT
+                | super::super::frog_blocks::PEARLESCENT => 15,
                 super::super::mount_states::LANTERN => 15,
                 super::super::mount_states::SOUL_LANTERN => 10,
                 Block::MAGMA => 3,

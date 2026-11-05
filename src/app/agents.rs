@@ -85,6 +85,8 @@ impl Agents {
             in_water: b.agent.session.player.in_water,
             swimming: b.agent.session.player.swimming,
             time_since_rest: b.agent.session.vitals.time_since_rest,
+            sprinting: b.agent.session.player.sprinting,
+            passenger: b.agent.session.player.vehicle.is_some(),
             ..Target::new(b.id, b.agent.session.player.pos, b.agent.targetable())
         })
     }

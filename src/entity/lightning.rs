@@ -283,11 +283,18 @@ impl super::Entities {
     }
 }
 impl Mob {
-    /// Species conversion hook for the v0.15 integrator: add mooshroom's
-    /// once-per-bolt colour swap here and return true to suppress base damage.
+    /// Species `thunderHit` overrides; true suppresses the base damage and fire.
     /// `bolt_id` stays constant through a bolt's repeated flashes.
-    pub fn thunder_transform(&mut self, _bolt_id: u64, difficulty: u8) -> bool {
+    pub fn thunder_transform(&mut self, bolt_id: u64, difficulty: u8) -> bool {
         match self.kind {
+            // `MushroomCow.thunderHit` never calls super: no damage, and one
+            // swap per bolt UUID however many ticks the bolt touches it.
+            MobKind::Mooshroom => {
+                if self.mooshroom.as_mut().is_some_and(|s| s.last_bolt.replace(bolt_id) != Some(bolt_id)) {
+                    self.lightning_swap();
+                }
+                true
+            }
             MobKind::Creeper => {
                 self.lightning_charged = true;
                 false
@@ -356,7 +363,7 @@ mod bolt_tests {
         let mut w = world();
         let mut e = Entities::new(263);
         let p = DVec3::new(8., 140., 8.);
-        for kind in [MobKind::Creeper, MobKind::Pig, MobKind::Villager, MobKind::Turtle] {
+        for kind in [MobKind::Creeper, MobKind::Pig, MobKind::Villager, MobKind::Turtle, MobKind::Mooshroom] {
             e.spawn(kind, p);
         }
         e.mobs[2].name = crate::inventory::StackName::new("Storm witness").unwrap();
@@ -383,6 +390,26 @@ mod bolt_tests {
             crate::agent::command::Command::parse("summon lightning_bolt ~ ~ ~"),
             Ok(crate::agent::command::Command::SummonLightning(_))
         ));
+    }
+    #[test]
+    fn mooshroom_swaps_once_per_bolt_without_damage() {
+        let mut w = world();
+        let mut e = Entities::new(263);
+        let p = DVec3::new(8., 140., 8.);
+        e.spawn(MobKind::Mooshroom, p);
+        let brown = |e: &Entities| e.mobs[0].mooshroom.as_ref().unwrap().brown;
+        assert!(!brown(&e));
+        e.summon_lightning(p, false);
+        // Every flash and tick of one bolt touches it; it swaps only once.
+        for _ in 0..40 {
+            e.tick_lightning(0.05, &mut w, &ctx(), false);
+        }
+        assert!(e.lightning.is_empty());
+        assert!(brown(&e));
+        assert_eq!(e.mobs[0].health, MobKind::Mooshroom.max_health());
+        e.summon_lightning(p, false);
+        e.tick_lightning(0.05, &mut w, &ctx(), false);
+        assert!(!brown(&e), "a new bolt swaps it back");
     }
     #[test]
     fn visual_trap_bolt_does_no_damage_or_fire_and_eventually_expires() {

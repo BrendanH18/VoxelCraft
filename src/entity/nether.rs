@@ -629,6 +629,9 @@ impl Entities {
                 let (kind, pos, burning) = (self.mobs[i].kind, self.mobs[i].pos, self.mobs[i].burning);
                 let killed = self.mobs[i].damage(damage, Some(knockback), &mut self.rng);
                 self.nether_hurt(i, Foe::Mob(attacker));
+                self.polar_hurt(i, Foe::Mob(attacker));
+                self.panda_hurt(i, Foe::Mob(attacker));
+                self.armadillo_hurt(i, Foe::Mob(attacker));
                 if let Some(owner) = self.mobs[i].animal.as_ref().and_then(|a| a.owner) {
                     self.animals_defend_owner(attacker, owner);
                 }
@@ -972,6 +975,7 @@ impl Entities {
                     || m.riding.is_some()
                     || matches!(m.kind, MobKind::Zombie | MobKind::Husk | MobKind::Drowned)
                     || matches!(m.kind, MobKind::Stray | MobKind::Bogged | MobKind::Phantom)
+                    || m.kind == MobKind::Bat
                     || m.freezing.is_some())
                     && m.alive()
                     && m.villager.is_none()
@@ -1549,6 +1553,30 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if let Some(f) = &m.freezing {
         v["freezing"] = f.save();
     }
+    if let Some(stack) = m.wolf_armor.as_ref().and_then(|s| s.armor) {
+        v["wolf_armor"] = json!(crate::inventory::stack_to_string(Some(stack)));
+    }
+    if let Some(s) = &m.ocelot {
+        v["ocelot"] = json!({"trusting":s.trusting});
+    }
+    if let Some(s) = &m.armadillo {
+        v["armadillo"] = s.save();
+    }
+    if let Some(s) = &m.panda {
+        v["panda"] = s.save();
+    }
+    if let Some(s) = &m.polar_bear {
+        v["polar_bear"] = s.save();
+    }
+    if let Some(s) = &m.frog {
+        v["frog"] = s.save();
+    }
+    if let Some(s) = &m.bat {
+        v["bat_resting"] = json!(s.resting);
+    }
+    if let Some(s) = &m.mooshroom {
+        v["mooshroom"] = s.save();
+    }
     // Written only when set, so other mobs save as before: `Mob.homePosition`
     // and `homeRadius`, and the dolphin's `GotFish` and main hand.
     if let Some((p, r)) = m.restrict {
@@ -1593,6 +1621,10 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     m.baby = v["baby"].as_bool().unwrap_or(false);
     m.age =
         v["age"].as_i64().unwrap_or(if m.baby && kind.is_breedable() { -24000 } else { 0 }).clamp(-24000, 6000) as i32;
+    if matches!(kind, MobKind::Frog | MobKind::Tadpole) {
+        m.baby = false;
+        m.age = m.age.max(0);
+    }
     if kind == MobKind::Chicken {
         m.egg_timer =
             v["egg_timer"].as_f64().filter(|t| t.is_finite() && *t >= 0.0).unwrap_or(m.egg_timer as f64).min(600.0)
@@ -1610,8 +1642,35 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     if kind == MobKind::Skeleton && v["freezing"].is_object() {
         m.freezing = Some(super::hostiles::Freezing::load(&v["freezing"]));
     }
+    if let Some(s) = &mut m.wolf_armor {
+        s.load(v["wolf_armor"].as_str());
+    }
+    if let Some(s) = &mut m.ocelot {
+        s.trusting = v["ocelot"]["trusting"].as_bool().unwrap_or(false);
+    }
+    if let Some(s) = &mut m.armadillo {
+        s.load(&v["armadillo"]);
+    }
+    if let Some(s) = &mut m.panda {
+        s.load(&v["panda"]);
+    }
+    if let Some(s) = &mut m.polar_bear {
+        s.load(&v["polar_bear"]);
+    }
+    if let Some(s) = &mut m.frog {
+        s.load(&v["frog"]);
+    }
+    if let Some(s) = &mut m.bat {
+        s.resting = v["bat_resting"].as_bool().unwrap_or(true);
+    }
+    if let Some(s) = m.mooshroom.as_mut() {
+        s.load(&v["mooshroom"]);
+    }
     if let Some(a) = m.animal.as_mut() {
         super::animals::load(a, &v["animal"]);
+        if kind == MobKind::Cat {
+            a.variant = v["animal"]["variant"].as_u64().unwrap_or(0).min(10) as u8;
+        }
     }
     m.effects = crate::simulation::effects::Effects::deserialize(v["effects"].as_str().unwrap_or(""));
     m.grow = v["grow"].as_f64().filter(|g| g.is_finite() && *g >= 0.0).unwrap_or(0.0) as f32;

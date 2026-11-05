@@ -58,7 +58,7 @@ enforced.
 | `fall_damage` | `fallDamage` | boolean | `true` | Implemented | - | Player-only, as `Player.isInvulnerableTo` with the `is_fall` tag (fall, ender pearl, stalagmite); mobs still take fall damage. |
 | `fire_damage` | `fireDamage` | boolean | `true` | Implemented | - | Player-only, `is_fire` tag: fire, burning, lava, magma, campfire and blaze fireballs. A ghast fireball's blast is explosion damage and is not blocked (its direct 6-damage hit, which is fire-tagged, is not modelled). |
 | `fire_spread_radius_around_player` | `fireSpreadRadiusAroundPlayer` | integer -1..2147483647 | `128` | Implemented | - | Replaces `doFireTick` and `allowFireTicksAwayFromPlayer` (0: no fire ticks, -1: everywhere, else within the radius of a player). VoxelCraft saves it as `fireSpreadRadiusAroundPlayer` and still reads and accepts both older booleans. |
-| `forgive_dead_players` | `forgiveDeadPlayers` | boolean | `true` | Missing | v0.17 | Neutral-mob anger after the target dies is not modelled (the Java default, forgiving, is what happens). |
+| `forgive_dead_players` | `forgiveDeadPlayers` | boolean | `true` | Partial | - | Polar bears preserve or forgive a dead player's anger reference (v0.15, implemented, unverified); other neutral mobs still need the rule. |
 | `freeze_damage` | `freezeDamage` | boolean | `true` | Implemented | - | Powder snow freezing damage to players; off makes them immune to it (PLY-02c). |
 | `global_sound_events` | `globalSoundEvents` | boolean | `true` | Not applicable | n/a | Only chooses whether dragon, wither and similar sounds reach players in other dimensions or far away. |
 | `immediate_respawn` | `doImmediateRespawn` | boolean | `false` | Implemented | - | Skips the death screen (`GameRules::respawns_immediately`); Hardcore still becomes Spectator. |
@@ -101,7 +101,7 @@ enforced.
 | `spread_vines` | `doVinesSpread` | boolean | `true` | Missing | v0.13 | Overworld vines do not spread at all yet. |
 | `tnt_explodes` | `tntExplodes` | boolean | `true` | Implemented | - | Without it TNT cannot be primed by fire, redstone, flint and steel, explosions or dispensers, and primed TNT and TNT minecarts fizzle. |
 | `tnt_explosion_drop_decay` | `tntExplosionDropDecay` | boolean | `false` | Implemented | - | TNT blasts drop every destroyed block by default (decay is off). |
-| `universal_anger` | `universalAnger` | boolean | `false` | Missing | v1.x | Needs more than one player to matter; LAN is a maintenance path until v1.x. |
+| `universal_anger` | `universalAnger` | boolean | `false` | Partial | - | Polar bears can select another eligible player after universal provocation (v0.15, implemented, unverified); other neutral mobs still need the rule. |
 | `water_source_conversion` | `waterSourceConversion` | boolean | `true` | Implemented | - | Two water sources beside flowing water over a solid floor make a source. |
 
 ## Difficulty

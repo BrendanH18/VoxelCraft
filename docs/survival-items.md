@@ -6,9 +6,10 @@ Shears use Java's 238 durability, 15x leaves/cobweb speed and 5x wool speed.
 Shearing a living sheep drops 1–3 wool and removes its fleece; a sheared
 sheep cannot be sheared again and no longer drops wool on death.
 Sheep drop wool in their current colour (see [colors](colors.md)). Grass-eating fleece regrowth is deferred.
-Animal persistence is described in [animals](animals.md); v0.15 also saves
-strays, bogged, phantoms, potion clouds and skeleton conversion clocks. Other natural hostile saves
-retain their existing limits.
+Animals persist across saves, including per-animal state and age (see
+[animals](animals.md)); v0.15 also saves strays, bogged, phantoms, potion
+clouds and skeleton conversion clocks. Other natural hostile saves retain
+their existing limits.
 
 Recipes are transcribed from the vanilla 1.21 JSON fixtures in
 `docs/vanilla-recipes/`, fetched from
@@ -158,3 +159,24 @@ clouds with a ten-tick wait, 600-tick duration and quarter-length effects.
 Phantom membranes (existing item 1020) brew Slow Falling. Cloud cooldowns and
 potion components persist; dragon breath is new item 1333. See [hostiles evidence](verification/2026-11-04-v0.15-hostiles.md)
 for the tested slice and remaining parity gaps.
+
+Suspicious stew (v0.15 item 1300) comes from a flower-fed brown mooshroom or
+shapeless crafting with a bowl, any two mushrooms and a supported
+small flower. It takes 32 ticks to eat, works at full hunger, restores
+6 hunger/7.2 saturation and returns a bowl. Effects are carried by the
+stack; see [passive mob evidence](verification/2026-11-04-v0.15-passive-mobs.md).
+
+Tadpole buckets (v0.15 item 1301) capture a tadpole with a water bucket,
+retain age, health and name through inventory saves, and release both water
+and a persistent tadpole. Slimeballs feed tadpoles and breed frogs; magma
+cubes eaten by frogs supply the three axis-oriented froglight blocks. See
+[passive mob evidence](verification/2026-11-04-v0.15-passive-mobs.md).
+
+Armadillo scutes (1302) come from adult shedding or brushing. A brush (1303)
+is crafted vertically from feather, copper ingot and stick, has 64 durability,
+and currently supports armadillos only. Six scutes in `X  /XXX/X X` craft
+wolf armor (1304), with 64 durability. It accepts mixed dyes in a crafting
+grid, washes in a water cauldron, repairs with scutes in an anvil or by
+feeding an armored sitting wolf, and supports paired-grid repair. Owner-only
+equipment actions and survival consumption use the shared authoritative
+adapter. See [passive mob evidence](verification/2026-11-04-v0.15-passive-mobs.md).

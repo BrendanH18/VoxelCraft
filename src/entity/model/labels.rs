@@ -43,7 +43,7 @@ fn nameplate(m: &Mob, forward: Vec3, rel: Vec3, out: &mut Vec<EntityVertex>) {
     if rel.length_squared() > 32.0 * 32.0 || !m.alive() {
         return;
     }
-    label(text, rel + Vec3::Y * (m.shape().height as f32 + 0.3), forward, out);
+    label(text, rel + Vec3::Y * (m.selection_shape().height as f32 + 0.3), forward, out);
 }
 
 /// Draws `text` centred above `bottom` (camera-relative), facing a camera looking along `forward`,

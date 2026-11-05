@@ -491,6 +491,46 @@ Texture layers start at 2960, after v0.14's map sprites.
 | 11136–11199 | 1330–1349 | 3264–3295 | 4. Hostiles and tipped arrows |
 | 11200–11263 | 1350–1359 | 3296–3327 | Integrator spare |
 
+Track 3 allocations (2026-11-04, passive-mobs): item **1300** is suspicious
+stew, **1301** the tadpole bucket, **1302** armadillo scute, **1303** brush
+(armadillo use only) and **1304** wolf armor. State **11008** is frogspawn;
+**11009–11011**, **11012–11014**, **11015–11017** are respectively ochre,
+verdant and pearlescent froglight, each with axis order Y, X, Z. Procedural
+block layers **3136–3145** contain frogspawn and three layers per froglight
+(side, end, rotated side). States 11018–11135, items 1305–1329 and layers
+3146–3263 remain reserved and unregistered. Original entity cuboids use the
+procedural entity shader. Stew reuses the mushroom-stew icon; the tadpole
+bucket appends an original item sprite. Saturation appends to the dynamic
+effect-icon array. `Mooshroom`, `Bat`, `Frog`, `Tadpole`, `PolarBear`, `Panda`, `Armadillo`,
+`Ocelot` append after Camel in that order, saved as `mooshroom`, `bat`,
+`frog`, `tadpole`, `polar_bear`, `panda`, `armadillo`, `ocelot`. Stew effect
+codes 1–11 in `Stack::entity_data` and `mooshroom.stew` remain stable;
+tadpole buckets use an item-specific age/health/age-lock bit payload.
+Polar bear anger uses the existing saved simulation tick counter and stable
+player/mob references. Its standing client selection box is distinct from
+the ordinary server collision box; transient pose values replicate in look
+snapshots. `forgive_dead_players` and `universal_anger` are Partial, with
+polar-bear coverage. No identifiers are allocated for these hooks.
+Wolf armor stores a dyed-colour flag at bit 24 and RGB in the lower 24
+bits of its item-specific stack data. The complete equipped stack persists
+and replicates; armadillo shell state, danger memory and scute timer save.
+The brush, scute and armor append original dynamic item sprites; no
+additional block layers or states are allocated.
+Panda main/hidden genes save by Java names, and held food uses the existing
+animal stack component; action poses replicate but restart on load.
+Ocelot trust saves/replicates as a Boolean; its 2,400-tick loaded lifetime
+restarts on load as Java tickCount does. Ocelots use the creature category
+while remaining in the pinned jungle monster spawn lists.
+CatSpawner adds no IDs. Cat appearance code zero retains the old all-black
+coat; 1–10 use the remaining named variants, with the existing animal
+component carrying save/replication/inheritance. The spawner countdown is
+transient, as in Java; hut resident markers use the existing saved structure
+set, with migration for earlier partial hut cat markers.
+Frogspawn hatch timers reuse the saved scheduled-block tick queue. Detail
+mesh coordinate code 31 encodes frogspawn's fractional 1.5/16 height;
+ordinary integer coordinates and the quad format are unchanged. See
+[track evidence](verification/2026-11-04-v0.15-passive-mobs.md).
+
 New `MobKind` variants append after `Camel`; mob kinds are saved by name,
 but `MobKind::ALL` order is the LAN index, so the integrator appends the
 tracks' kinds in track order. Each track records what it used here.

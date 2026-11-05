@@ -552,6 +552,7 @@ mod aquatic;
 mod bee;
 mod hostiles;
 mod mounts;
+mod passive;
 mod phantom;
 
 /// Animated parts for a mob, in model space (pixels).
@@ -589,6 +590,14 @@ fn pose(m: &Mob, time: f32) -> Parts {
             part(PIG_LEG_BOX, [3.0, 6.0, -5.0], rx(swing)),
             part(PIG_HEAD, [0.0, 12.0, 8.0], head),
         ],
+        MobKind::Mooshroom => passive::mooshroom(m),
+        MobKind::Bat => passive::bat(m, time),
+        MobKind::Frog => passive::frog(m, time),
+        MobKind::PolarBear => passive::polar_bear(m),
+        MobKind::Panda => passive::panda(m, time),
+        MobKind::Armadillo => passive::armadillo(m),
+        MobKind::Ocelot => passive::ocelot(m),
+        MobKind::Tadpole => passive::tadpole(m, time),
         MobKind::Cow => parts![
             part(COW_BODY, [0.0; 3], Quat::IDENTITY),
             part(COW_LEG, [-4.0, 12.0, 6.0], rx(swing)),
@@ -890,8 +899,12 @@ pub fn build(
             continue;
         }
         let rel = (m.previous_pos.lerp(m.pos, alpha) - camera).as_vec3();
-        let center = rel + Vec3::Y * m.shape().height as f32 * 0.5;
-        let radius = 1.5;
+        let center = rel + Vec3::Y * m.selection_shape().height as f32 * 0.5;
+        let radius = if m.polar_bear.is_some() {
+            (m.selection_shape().height as f32 * 0.5 + m.shape().half_width as f32).max(1.5)
+        } else {
+            1.5
+        };
         if center.length() > max_dist + radius || center.dot(forward) < -radius {
             continue;
         }
@@ -923,7 +936,13 @@ pub fn build(
             } else if m.kind == MobKind::Pufferfish {
                 0.8 + m.aquatic.as_ref().map_or(0.0, |a| a.puff as f32 * 0.4)
             } else if m.baby || m.age < 0 {
-                if super::undead_mounts::undead(m.kind) { 0.7 } else { 0.5 }
+                if super::undead_mounts::undead(m.kind) {
+                    0.7
+                } else if m.kind == MobKind::Armadillo {
+                    0.6
+                } else {
+                    0.5
+                }
             } else {
                 1.0
             };
@@ -950,6 +969,7 @@ pub fn build(
         if m.kind == MobKind::Creeper && m.lightning_charged {
             charged_aura(m, rel, time, out);
         }
+        passive::tongue(m, camera, out, (light, torch));
         let mut posed = pose(m, time);
         if matches!(m.kind, MobKind::Pig | MobKind::Strider) {
             mounts::equipment(m, &mut posed);
@@ -969,6 +989,7 @@ pub fn build(
                 if matches!(m.kind, MobKind::Stray | MobKind::Bogged) {
                     hostiles::colour(m, &mut cuboid);
                 }
+                passive::colour(m, &mut cuboid);
                 if m.kind == MobKind::GlowSquid && c.color == [49, 71, 80] {
                     cuboid.color = [44, 161, 151];
                 }
@@ -1551,11 +1572,15 @@ mod tests {
                 (lo.min(p), hi.max(p))
             });
             // Swimming bodies and animated tentacles need not rest on a floor.
-            let floats = kind == MobKind::Blaze || kind.is_aquatic();
+            let floats = matches!(kind, MobKind::Blaze | MobKind::Bat) || kind.is_aquatic();
             assert!(lo.y.abs() < 1e-4 || floats && lo.y.abs() < 0.25, "{kind:?} feet at {}", lo.y);
-            let h = kind.shape().height as f32;
+            // The mooshroom cap layer extends above its cow collision box.
+            let h = kind.shape().height as f32 + if kind == MobKind::Mooshroom { 0.4 } else { 0.0 };
             assert!((hi.y - h).abs() < 0.15, "{kind:?} top {} vs box {h}", hi.y);
-            assert!(hi.x > if kind.is_aquatic() { 10.05 } else { 10.25 }, "{kind:?} should extend forward along +X");
+            assert!(
+                hi.x > if kind.is_aquatic() || kind == MobKind::Bat { 10.05 } else { 10.25 },
+                "{kind:?} should extend forward along +X"
+            );
             // Behind the camera: culled.
             out.clear();
             assert_eq!(

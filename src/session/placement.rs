@@ -109,7 +109,15 @@ impl PlayerSession {
         if held.count == 0 || held.count > held.item.max_stack() {
             return Err("invalid held stack");
         }
-        let target = if held.item == Item::SCAFFOLDING {
+        let target = if held.item.places() == Some(crate::world::frog_blocks::FROGSPAWN) {
+            let (cell, normal) = world
+                .raycast_sources(self.player.eye(), self.player.forward().as_dvec3(), self.block_reach())
+                .ok_or("no water within reach")?;
+            if !world.get_block(cell).is_some_and(Block::holds_water) {
+                return Err("frogspawn needs water");
+            }
+            Some(crate::world::BlockHit { cell, normal, point: cell.as_dvec3() + DVec3::new(0.5, 1.0, 0.5) })
+        } else if held.item == Item::SCAFFOLDING {
             world.raycast_scaffolding(self.player.eye(), self.player.forward().as_dvec3(), self.block_reach())
         } else {
             self.block_hit(world)
@@ -121,7 +129,9 @@ impl PlayerSession {
         // block of fewer than eight layers, from its top face or in the cell
         // beside it; another face of a snow block places next to it.
         let snow = ob::snow_layers(clicked).filter(|_| held.item.places() == Some(ob::SNOW_LAYER));
-        let at = if snow.is_some() {
+        let at = if held.item.places() == Some(crate::world::frog_blocks::FROGSPAWN) {
+            hit + IVec3::Y
+        } else if snow.is_some() {
             if normal == IVec3::Y && snow < Some(8) { hit } else { hit + normal }
         } else if held.item.places().is_some_and(|b| crate::world::biome_plants::stacked(b, clicked).is_some()) {
             // Another leaf litter or wildflower segment goes into the same cell.
@@ -290,6 +300,7 @@ impl PlayerSession {
                     {
                         mounted.ok_or("block cannot survive here")?
                     } else {
+                        let raw = crate::world::frog_blocks::placed(raw, normal);
                         let block = ob::placed(raw, normal).unwrap_or(raw);
                         let block = crate::world::village_blocks::placed(
                             crate::world::nether_blocks::placed(block, normal),

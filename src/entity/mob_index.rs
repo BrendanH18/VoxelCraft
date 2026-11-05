@@ -104,7 +104,7 @@ impl Separation {
         for m in mobs.iter() {
             let shape = m.shape();
             let asleep = m.villager.as_ref().is_some_and(|v| !v.active || v.sleeping);
-            let pushes = m.simulation_active && m.alive();
+            let pushes = m.simulation_active && m.alive() && m.kind != super::MobKind::Bat;
             let vehicle = m.mount.as_ref().is_some_and(|s| s.rider.is_some());
             widest = widest.max(shape.half_width);
             self.parts.push(Part {

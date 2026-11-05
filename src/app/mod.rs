@@ -2067,6 +2067,7 @@ impl Game {
                 yaw: 0.0,
                 icon: None,
                 orient: None,
+                tint: [255; 4],
             })
             .chain(self.mobs.entities.tnt.iter().map(|t| {
                 let s = t.size();
@@ -2081,6 +2082,7 @@ impl Game {
                     yaw: 0.0,
                     icon: None,
                     orient: None,
+                    tint: [255; 4],
                 }
             }))
             .chain(self.world.moving_piston_blocks(alpha).map(|(block, min)| crate::render::BlockModel {
@@ -2092,6 +2094,7 @@ impl Game {
                 yaw: 0.0,
                 icon: None,
                 orient: None,
+                tint: [255; 4],
             }))
             .chain(self.item_models(alpha))
             .chain(self.banner_models(camera))

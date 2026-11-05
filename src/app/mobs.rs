@@ -113,6 +113,9 @@ impl Game {
         self.mobs.entities.spawner_blocks = self.gamerules.bool("spawner_blocks_work");
         self.mobs.entities.villager_griefing = self.gamerules.bool("mob_griefing");
         self.mobs.entities.mob_loot = self.gamerules.bool("mob_drops");
+        self.mobs.entities.neutral_forgive_dead_players = self.gamerules.bool("forgive_dead_players");
+        self.mobs.entities.thundering = self.dimension.has_sky() && self.weather.thunder_level() > 0.9;
+        self.mobs.entities.neutral_universal_anger = self.gamerules.bool("universal_anger");
         self.mobs.entities.village_time = self.day_time;
         self.mobs.entities.village_day = self.day_count;
         for m in &mut self.mobs.entities.mobs {
@@ -150,6 +153,7 @@ impl Game {
             self.audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05));
         }
         crate::entity::golem::finish_golems(&mut self.world, &mut self.mobs.entities);
+        crate::entity::frog::finish_hatches(&mut self.world, &mut self.mobs.entities);
         for (cell, count) in std::mem::take(&mut self.world.hatched_turtles) {
             self.mobs.entities.hatch_turtles(cell, count);
         }
@@ -172,6 +176,8 @@ impl Game {
             in_water: self.session.player.in_water,
             swimming: self.session.player.swimming,
             time_since_rest: self.session.vitals.time_since_rest,
+            sprinting: self.session.player.sprinting,
+            passenger: self.session.player.vehicle.is_some(),
             ..Target::new(
                 PlayerId::HOST,
                 self.session.player.pos,
@@ -416,6 +422,18 @@ impl Game {
                             self.audio.play_in(SoundSource::Weather, Sound::Thunder, None, 1., (0.8, 1.));
                             continue;
                         }
+                        MobSound::FrogAction(action) => {
+                            use voxelcraft::entity::frog::FrogSound as F;
+                            match action {
+                                F::Tongue => (Sound::Bow, 2.0),
+                                F::Eat => (Sound::Pop, 2.0),
+                                F::Jump => (Sound::Swim, 1.0),
+                                F::Land => (Sound::Swim, 2.0),
+                                F::Lay => (Sound::Swim, 1.0),
+                                F::Hatch => (Sound::Pop, 1.0),
+                                F::Grow => (Sound::Pop, 0.15),
+                            }
+                        }
                         MobSound::Bell => (Sound::Bell, 1.0),
                         // Procedural stand-ins for Java's `wandering_trader.disappeared`/`reappeared`.
                         MobSound::TraderDrink(true) => (Sound::Teleport, 0.5),
@@ -430,9 +448,9 @@ impl Game {
                         ),
                         MobSound::Fuse => (Sound::Fuse, 1.0),
                         MobSound::Bow => (Sound::Bow, 1.0),
-                        MobSound::Ambient(kind) => (Sound::Mob(voice(kind), Call::Ambient), 0.7),
-                        MobSound::Hurt(kind) => (Sound::Mob(voice(kind), Call::Hurt), 0.9),
-                        MobSound::Death(kind) => (Sound::Mob(voice(kind), Call::Death), 0.9),
+                        MobSound::Ambient(kind) => (Sound::Mob(voice(kind), Call::Ambient), 0.7 * mob_volume(kind)),
+                        MobSound::Hurt(kind) => (Sound::Mob(voice(kind), Call::Hurt), 0.9 * mob_volume(kind)),
+                        MobSound::Death(kind) => (Sound::Mob(voice(kind), Call::Death), 0.9 * mob_volume(kind)),
                         MobSound::Scream => (Sound::Scream, 1.0),
                         MobSound::Teleport => (Sound::Teleport, 0.8),
                         MobSound::Fireball => (Sound::Fireball, 0.9),
@@ -564,6 +582,10 @@ fn shove(vel: &mut DVec3, push: DVec3) {
 /// and these are the exceptions.
 fn mob_sound_source(sound: MobSound) -> Option<SoundSource> {
     match sound {
+        MobSound::FrogAction(voxelcraft::entity::frog::FrogSound::Lay | voxelcraft::entity::frog::FrogSound::Hatch) => {
+            Some(SoundSource::Blocks)
+        }
+        MobSound::FrogAction(_) => Some(SoundSource::Neutral),
         // `AbstractVillager`, boats and the dragon's smashing: `NEUTRAL`, `NEUTRAL`, `HOSTILE`.
         MobSound::TraderDrink(_) | MobSound::BoatPaddle(_) => Some(SoundSource::Neutral),
         MobSound::Thunder => Some(SoundSource::Weather),
@@ -578,10 +600,22 @@ fn mob_sound_source(sound: MobSound) -> Option<SoundSource> {
     }
 }
 
+// Java Bat.getSoundVolume; samples stay normalized like the other voices.
+fn mob_volume(kind: MobKind) -> f32 {
+    if kind == MobKind::Bat { 0.1 } else { 1.0 }
+}
+
 fn voice(kind: MobKind) -> Voice {
     match kind {
         MobKind::Pig => Voice::Pig,
-        MobKind::Cow => Voice::Cow,
+        MobKind::Cow | MobKind::Mooshroom => Voice::Cow,
+        MobKind::Bat => Voice::Bat,
+        MobKind::Frog => Voice::Frog,
+        MobKind::PolarBear => Voice::PolarBear,
+        MobKind::Panda => Voice::Panda,
+        MobKind::Armadillo => Voice::Armadillo,
+        MobKind::Ocelot => Voice::Ocelot,
+        MobKind::Tadpole => Voice::Fish,
         MobKind::Sheep => Voice::Sheep,
         MobKind::Chicken => Voice::Chicken,
         MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombieVillager => Voice::Zombie,

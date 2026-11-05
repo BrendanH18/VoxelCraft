@@ -1,0 +1,438 @@
+{
+  "data/minecraft/loot_table/entities/panda.json": {
+    "type": "minecraft:entity",
+    "pools": [
+      {
+        "entries": [
+          {
+            "type": "minecraft:item",
+            "modifier": {
+              "type": "minecraft:set_count",
+              "count": 1
+            },
+            "name": "minecraft:bamboo"
+          }
+        ],
+        "rolls": 1
+      }
+    ],
+    "random_sequence": "minecraft:entities/panda"
+  },
+  "data/minecraft/loot_table/gameplay/panda_sneeze.json": {
+    "type": "minecraft:gift",
+    "pools": [
+      {
+        "entries": [
+          {
+            "type": "minecraft:item",
+            "name": "minecraft:slime_ball"
+          },
+          {
+            "type": "minecraft:empty",
+            "weight": 699
+          }
+        ],
+        "rolls": 1
+      }
+    ],
+    "random_sequence": "minecraft:gameplay/panda_sneeze"
+  },
+  "data/minecraft/tags/item/panda_food.json": {
+    "values": [
+      "minecraft:bamboo"
+    ]
+  },
+  "data/minecraft/tags/item/panda_eats_from_ground.json": {
+    "values": [
+      "#minecraft:panda_food",
+      "minecraft:cake"
+    ]
+  },
+  "jungle": {
+    "argument": {
+      "spawn_costs": {},
+      "spawns_by_category": {
+        "ambient": [
+          {
+            "type": "minecraft:bat",
+            "count": 8,
+            "weight": 10
+          }
+        ],
+        "creature": [
+          {
+            "type": "minecraft:sheep",
+            "count": 4,
+            "weight": 12
+          },
+          {
+            "type": "minecraft:pig",
+            "count": 4,
+            "weight": 10
+          },
+          {
+            "type": "minecraft:chicken",
+            "count": 4,
+            "weight": 10
+          },
+          {
+            "type": "minecraft:cow",
+            "count": 4,
+            "weight": 8
+          },
+          {
+            "type": "minecraft:chicken",
+            "count": 4,
+            "weight": 10
+          },
+          {
+            "type": "minecraft:parrot",
+            "count": {
+              "type": "minecraft:uniform",
+              "max_inclusive": 2,
+              "min_inclusive": 1
+            },
+            "weight": 40
+          },
+          {
+            "type": "minecraft:panda",
+            "count": {
+              "type": "minecraft:uniform",
+              "max_inclusive": 2,
+              "min_inclusive": 1
+            },
+            "weight": 1
+          }
+        ],
+        "monster": [
+          {
+            "type": "minecraft:spider",
+            "count": 4,
+            "weight": 100
+          },
+          {
+            "type": "minecraft:zombie",
+            "count": 4,
+            "weight": 95
+          },
+          {
+            "type": "minecraft:zombie_villager",
+            "count": 1,
+            "weight": 5
+          },
+          {
+            "type": "minecraft:skeleton",
+            "count": 4,
+            "weight": 100
+          },
+          {
+            "type": "minecraft:creeper",
+            "count": 4,
+            "weight": 100
+          },
+          {
+            "type": "minecraft:slime",
+            "count": 4,
+            "weight": 100
+          },
+          {
+            "type": "minecraft:enderman",
+            "count": {
+              "type": "minecraft:uniform",
+              "max_inclusive": 4,
+              "min_inclusive": 1
+            },
+            "weight": 10
+          },
+          {
+            "type": "minecraft:witch",
+            "count": 1,
+            "weight": 5
+          },
+          {
+            "type": "minecraft:ocelot",
+            "count": {
+              "type": "minecraft:uniform",
+              "max_inclusive": 3,
+              "min_inclusive": 1
+            },
+            "weight": 2
+          }
+        ],
+        "underground_water_creature": [
+          {
+            "type": "minecraft:glow_squid",
+            "count": {
+              "type": "minecraft:uniform",
+              "max_inclusive": 6,
+              "min_inclusive": 4
+            },
+            "weight": 10
+          }
+        ]
+      }
+    },
+    "modifier": "overlay"
+  },
+  "bamboo_jungle": {
+    "argument": {
+      "spawn_costs": {},
+      "spawns_by_category": {
+        "ambient": [
+          {
+            "type": "minecraft:bat",
+            "count": 8,
+            "weight": 10
+          }
+        ],
+        "creature": [
+          {
+            "type": "minecraft:sheep",
+            "count": 4,
+            "weight": 12
+          },
+          {
+            "type": "minecraft:pig",
+            "count": 4,
+            "weight": 10
+          },
+          {
+            "type": "minecraft:chicken",
+            "count": 4,
+            "weight": 10
+          },
+          {
+            "type": "minecraft:cow",
+            "count": 4,
+            "weight": 8
+          },
+          {
+            "type": "minecraft:chicken",
+            "count": 4,
+            "weight": 10
+          },
+          {
+            "type": "minecraft:parrot",
+            "count": {
+              "type": "minecraft:uniform",
+              "max_inclusive": 2,
+              "min_inclusive": 1
+            },
+            "weight": 40
+          },
+          {
+            "type": "minecraft:panda",
+            "count": {
+              "type": "minecraft:uniform",
+              "max_inclusive": 2,
+              "min_inclusive": 1
+            },
+            "weight": 80
+          }
+        ],
+        "monster": [
+          {
+            "type": "minecraft:spider",
+            "count": 4,
+            "weight": 100
+          },
+          {
+            "type": "minecraft:zombie",
+            "count": 4,
+            "weight": 95
+          },
+          {
+            "type": "minecraft:zombie_villager",
+            "count": 1,
+            "weight": 5
+          },
+          {
+            "type": "minecraft:skeleton",
+            "count": 4,
+            "weight": 100
+          },
+          {
+            "type": "minecraft:creeper",
+            "count": 4,
+            "weight": 100
+          },
+          {
+            "type": "minecraft:slime",
+            "count": 4,
+            "weight": 100
+          },
+          {
+            "type": "minecraft:enderman",
+            "count": {
+              "type": "minecraft:uniform",
+              "max_inclusive": 4,
+              "min_inclusive": 1
+            },
+            "weight": 10
+          },
+          {
+            "type": "minecraft:witch",
+            "count": 1,
+            "weight": 5
+          },
+          {
+            "type": "minecraft:ocelot",
+            "count": 1,
+            "weight": 2
+          }
+        ],
+        "underground_water_creature": [
+          {
+            "type": "minecraft:glow_squid",
+            "count": {
+              "type": "minecraft:uniform",
+              "max_inclusive": 6,
+              "min_inclusive": 4
+            },
+            "weight": 10
+          }
+        ]
+      }
+    },
+    "modifier": "overlay"
+  },
+  "sparse_jungle": {
+    "argument": {
+      "spawn_costs": {},
+      "spawns_by_category": {
+        "ambient": [
+          {
+            "type": "minecraft:bat",
+            "count": 8,
+            "weight": 10
+          }
+        ],
+        "creature": [
+          {
+            "type": "minecraft:sheep",
+            "count": 4,
+            "weight": 12
+          },
+          {
+            "type": "minecraft:pig",
+            "count": 4,
+            "weight": 10
+          },
+          {
+            "type": "minecraft:chicken",
+            "count": 4,
+            "weight": 10
+          },
+          {
+            "type": "minecraft:cow",
+            "count": 4,
+            "weight": 8
+          },
+          {
+            "type": "minecraft:chicken",
+            "count": 4,
+            "weight": 10
+          },
+          {
+            "type": "minecraft:wolf",
+            "count": {
+              "type": "minecraft:uniform",
+              "max_inclusive": 4,
+              "min_inclusive": 2
+            },
+            "weight": 8
+          }
+        ],
+        "monster": [
+          {
+            "type": "minecraft:spider",
+            "count": 4,
+            "weight": 100
+          },
+          {
+            "type": "minecraft:zombie",
+            "count": 4,
+            "weight": 95
+          },
+          {
+            "type": "minecraft:zombie_villager",
+            "count": 1,
+            "weight": 5
+          },
+          {
+            "type": "minecraft:skeleton",
+            "count": 4,
+            "weight": 100
+          },
+          {
+            "type": "minecraft:creeper",
+            "count": 4,
+            "weight": 100
+          },
+          {
+            "type": "minecraft:slime",
+            "count": 4,
+            "weight": 100
+          },
+          {
+            "type": "minecraft:enderman",
+            "count": {
+              "type": "minecraft:uniform",
+              "max_inclusive": 4,
+              "min_inclusive": 1
+            },
+            "weight": 10
+          },
+          {
+            "type": "minecraft:witch",
+            "count": 1,
+            "weight": 5
+          }
+        ],
+        "underground_water_creature": [
+          {
+            "type": "minecraft:glow_squid",
+            "count": {
+              "type": "minecraft:uniform",
+              "max_inclusive": 6,
+              "min_inclusive": 4
+            },
+            "weight": 10
+          }
+        ]
+      }
+    },
+    "modifier": "overlay"
+  },
+  "constants": {
+    "source": "Panda and nested Gene/goals, javap of pinned 26.3 server classes",
+    "health": 20,
+    "weak_health": 10,
+    "movement_speed": 0.15000000596046448,
+    "lazy_speed": 0.07000000029802322,
+    "attack": 6,
+    "size": [
+      1.3,
+      1.25
+    ],
+    "baby_chance_after_first": 0.2,
+    "gene_weights": {
+      "normal": 5,
+      "lazy": 1,
+      "worried": 1,
+      "playful": 1,
+      "brown": 2,
+      "weak": 5,
+      "aggressive": 1
+    },
+    "mutation_denominator": 32,
+    "breeding_bamboo_count": 1,
+    "breeding_bamboo_xz": 7,
+    "breeding_bamboo_y": [
+      0,
+      2
+    ],
+    "sneeze_ticks": 21,
+    "roll_ticks": 32
+  }
+}

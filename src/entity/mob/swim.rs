@@ -97,6 +97,8 @@ impl MobKind {
                 | MobKind::GlowSquid
                 | MobKind::Dolphin
                 | MobKind::Axolotl
+                | MobKind::Frog
+                | MobKind::Tadpole
                 | MobKind::Guardian
                 | MobKind::ElderGuardian
                 | MobKind::Turtle
@@ -105,7 +107,7 @@ impl MobKind {
 
     /// Swimmers that never walk: Java's travel moves them on land as well.
     fn water_bound(self) -> bool {
-        self.java_swimmer() && !matches!(self, MobKind::Axolotl | MobKind::Turtle)
+        self.java_swimmer() && !matches!(self, MobKind::Axolotl | MobKind::Turtle | MobKind::Frog)
     }
 
     pub(crate) fn is_fish(self) -> bool {
@@ -178,8 +180,9 @@ impl Mob {
     pub(super) fn java_moves<W: BlockSource + ?Sized>(&self, world: &W) -> bool {
         match self.kind {
             k if k.water_bound() => true,
-            MobKind::Axolotl | MobKind::Turtle => self.touching_water(world),
-            MobKind::Ghast => true,
+            MobKind::Axolotl | MobKind::Turtle | MobKind::PolarBear => self.touching_water(world),
+            MobKind::Panda | MobKind::Ocelot => !self.touching_water(world),
+            MobKind::Ghast | MobKind::Bat | MobKind::Frog => true,
             MobKind::Blaze => self.alive() && (!self.on_ground || self.lift),
             _ => false,
         }
@@ -216,11 +219,11 @@ impl Mob {
 
     /// `maxUpStep` (the `STEP_HEIGHT` attribute).
     fn step_height(&self) -> f64 {
-        if matches!(self.kind, MobKind::Turtle | MobKind::Axolotl) { 1.0 } else { 0.6 }
+        if matches!(self.kind, MobKind::Turtle | MobKind::Axolotl | MobKind::Frog) { 1.0 } else { 0.6 }
     }
 
     /// `LivingEntity.travelInAir` with `input` and the mob's `getSpeed()`.
-    fn travel_in_air<W: BlockSource + ?Sized>(&mut self, world: &W, dm: &mut DVec3, input: DVec3) {
+    pub(crate) fn travel_in_air<W: BlockSource + ?Sized>(&mut self, world: &W, dm: &mut DVec3, input: DVec3) {
         let below = (self.pos - DVec3::Y * 0.5).floor().as_ivec3();
         let f = if self.on_ground { friction(world.block(below)) } else { 1.0 };
         // `getFrictionInfluencedSpeed`.
@@ -246,15 +249,35 @@ impl Mob {
         speed: f64,
         rng: &mut Rng,
     ) {
+        if self.kind == MobKind::Bat {
+            self.bat_tick(world, rng);
+            return;
+        }
+        if self.kind == MobKind::Ocelot {
+            self.ocelot_land_tick(world, wish, speed, rng);
+            return;
+        }
+        if self.kind == MobKind::Panda {
+            self.panda_land_tick(world, wish, speed, rng);
+            return;
+        }
+        let from_y = self.pos.y;
         let mut dm = self.vel * TICK;
         let in_water = self.touching_water(world);
         self.in_water = in_water;
+        if in_water && self.polar_water_tick(world, wish, speed, rng) {
+            return;
+        }
+        if self.frog_long_jump_tick(world, rng) {
+            self.frog_fall(from_y, world, rng);
+            return;
+        }
         self.move_ctl.ticks = self.move_ctl.ticks.wrapping_add(1);
         let alive = self.alive();
         // Land flops come before `LivingEntity.aiStep`.
         if alive && !in_water && self.on_ground {
             let (h, up) = match self.kind {
-                k if k.is_fish() => (0.05, 0.4),
+                k if k.is_fish() || k == MobKind::Tadpole => (0.05, 0.4),
                 MobKind::Guardian | MobKind::ElderGuardian => (0.4, 0.5),
                 _ => (0.0, 0.0),
             };
@@ -277,7 +300,9 @@ impl Mob {
         }
         match self.kind {
             k if k.is_fish() => self.fish_tick(world, &mut dm, in_water, alive),
-            MobKind::Dolphin | MobKind::Axolotl => self.smooth_swim_tick(world, &mut dm, in_water, alive),
+            MobKind::Dolphin | MobKind::Axolotl | MobKind::Frog | MobKind::Tadpole => {
+                self.smooth_swim_tick(world, &mut dm, in_water, alive)
+            }
             MobKind::Guardian | MobKind::ElderGuardian => self.guardian_tick(world, &mut dm, in_water, alive),
             MobKind::Turtle => self.turtle_tick(world, &mut dm, alive),
             MobKind::Squid | MobKind::GlowSquid => self.squid_tick(world, &mut dm, in_water, alive, rng),
@@ -292,6 +317,7 @@ impl Mob {
             self.on_ground = false;
         }
         self.vel = dm / TICK;
+        self.frog_fall(from_y, world, rng);
     }
 
     fn block_pos(&self) -> glam::IVec3 {
@@ -337,8 +363,9 @@ impl Mob {
     /// `travelInWater`.
     fn smooth_swim_tick<W: MobWorld + ?Sized>(&mut self, world: &W, dm: &mut DVec3, in_water: bool, alive: bool) {
         let dolphin = self.kind == MobKind::Dolphin;
-        let (in_factor, out_factor) = if dolphin { (0.02, 0.1) } else { (0.1, 0.5) };
-        if dolphin && in_water {
+        let buoyant = dolphin || matches!(self.kind, MobKind::Frog | MobKind::Tadpole);
+        let (in_factor, out_factor) = if buoyant { (0.02, 0.1) } else { (0.1, 0.5) };
+        if buoyant && in_water {
             dm.y += 0.005;
         }
         // The goals' extra strokes on last tick's inputs.
@@ -384,11 +411,11 @@ impl Mob {
         }
         let input = DVec3::new(0.0, self.move_ctl.yya, self.move_ctl.zza);
         if in_water {
-            move_relative(dm, self.move_ctl.cur, input, self.yrot());
+            move_relative(dm, if self.kind == MobKind::Tadpole { 0.01 } else { self.move_ctl.cur }, input, self.yrot());
             self.java_move(world, dm, self.step_height());
             *dm *= 0.9;
             // Dolphins sink without an attack target; axolotls drift.
-            if dolphin && !self.dolphin_has_target() {
+            if self.kind == MobKind::Tadpole || dolphin && !self.dolphin_has_target() {
                 dm.y -= 0.005;
             }
         } else {

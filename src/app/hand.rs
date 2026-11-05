@@ -116,6 +116,7 @@ impl HandAnim {
             sky_light,
             block_light,
             icon: None,
+            tint: None,
             map: None,
             off_map: None,
             map_small: false,

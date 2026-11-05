@@ -43,6 +43,12 @@ pub enum Voice {
     Goat,
     Horse,
     Bee,
+    Bat,
+    Frog,
+    PolarBear,
+    Panda,
+    Armadillo,
+    Ocelot,
 }
 
 /// What kind of sound a voice makes.
@@ -55,7 +61,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 31] = [
+    pub const ALL: [Voice; 37] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -87,6 +93,12 @@ impl Voice {
         Voice::Goat,
         Voice::Horse,
         Voice::Bee,
+        Voice::Bat,
+        Voice::Frog,
+        Voice::PolarBear,
+        Voice::Panda,
+        Voice::Armadillo,
+        Voice::Ocelot,
     ];
 
     /// The category the creature plays in: `Monster`, `Ghast`, `Hoglin` and
@@ -107,6 +119,9 @@ impl Voice {
             | Voice::Hoglin
             | Voice::Guardian
             | Voice::Pillager => SoundSource::Hostile,
+            Voice::Bat | Voice::Frog | Voice::PolarBear | Voice::Panda | Voice::Armadillo | Voice::Ocelot => {
+                SoundSource::Neutral
+            }
             Voice::Pig
             | Voice::Cow
             | Voice::Sheep
@@ -132,6 +147,12 @@ impl Voice {
         match self {
             Voice::Pig => "pig",
             Voice::Horse => "horse",
+            Voice::Bat => "bat",
+            Voice::Frog => "frog",
+            Voice::PolarBear => "polar_bear",
+            Voice::Panda => "panda",
+            Voice::Armadillo => "armadillo",
+            Voice::Ocelot => "ocelot",
             Voice::Cow => "cow",
             Voice::Sheep => "sheep",
             Voice::Chicken => "chicken",
@@ -242,6 +263,12 @@ const FLAT: &dyn Fn(f32) -> f32 = &|_| 1.0;
 pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
     match voice {
         Voice::Bee => bee(call, rng),
+        Voice::Bat => bat(call, rng),
+        Voice::Frog => frog(call, rng),
+        Voice::PolarBear => polar_bear(call, rng),
+        Voice::Panda => panda(call, rng),
+        Voice::Armadillo => armadillo(call, rng),
+        Voice::Ocelot => ocelot(call, rng),
         Voice::Pig => pig(call, rng),
         Voice::Horse => horse(call, rng),
         Voice::Cow => cow(call, rng),
@@ -899,4 +926,80 @@ fn bee(call: Call, rng: &mut Rng) -> Vec<f32> {
         })
         .collect();
     dsp::finish(v, 0.35)
+}
+
+// Original high squeak pair; no sampled reference audio.
+fn bat(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let len = if call == Call::Death { 0.32 } else { 0.18 };
+    let mut out = vec![0.0; samples(len)];
+    let pitch = rng.range(2100.0, 2700.0);
+    add_mode(&mut out, 0, Mode { freq: pitch, amp: 0.6, tau: 0.045, glide: -0.35, glide_tau: 0.09 });
+    add_mode(&mut out, samples(0.07), Mode { freq: pitch * 1.2, amp: 0.45, tau: 0.035, glide: -0.4, glide_tau: 0.06 });
+    dsp::finish(out, 0.5)
+}
+
+// Original hollow two-pulse croak; no sampled reference audio.
+fn frog(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let len = if call == Call::Death { 0.55 } else { 0.4 };
+    let mut out = vec![0.0; samples(len)];
+    let pitch = rng.range(110.0, 155.0) * if call == Call::Hurt { 1.7 } else { 1.0 };
+    for (at, amp) in [(0.0, 0.7), (0.14, 0.55)] {
+        add_mode(&mut out, samples(at), Mode { freq: pitch, amp, tau: 0.075, glide: -0.18, glide_tau: 0.1 });
+        add_mode(
+            &mut out,
+            samples(at),
+            Mode { freq: pitch * 3.7, amp: amp * 0.3, tau: 0.045, glide: -0.1, glide_tau: 0.08 },
+        );
+    }
+    dsp::finish(out, 0.5)
+}
+
+// Original low, breathy growl, assembled from synthesized resonances.
+fn polar_bear(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let mut out = vec![0.0; samples(if call == Call::Death { 0.7 } else { 0.45 })];
+    let freq = rng.range(65.0, 95.0) * if call == Call::Hurt { 1.4 } else { 1.0 };
+    for (harm, amp) in [(1.0, 0.65), (2.7, 0.3), (5.3, 0.15)] {
+        add_mode(&mut out, 0, Mode { freq: freq * harm, amp, tau: 0.2, glide: -0.15, glide_tau: 0.2 });
+    }
+    dsp::finish(out, 0.5)
+}
+
+// Original rounded, nasal chatter, distinct from the bear growl.
+fn panda(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let mut out = vec![0.0; samples(if call == Call::Death { 0.65 } else { 0.42 })];
+    let pitch = rng.range(155.0, 205.0) * if call == Call::Hurt { 1.4 } else { 1.0 };
+    for (at, amp) in [(0.0, 0.6), (0.12, 0.35)] {
+        for (harm, gain) in [(1.0, 1.0), (3.4, 0.35), (6.1, 0.1)] {
+            add_mode(
+                &mut out,
+                samples(at),
+                Mode { freq: pitch * harm, amp: amp * gain, tau: 0.11, glide: -0.2, glide_tau: 0.15 },
+            );
+        }
+    }
+    dsp::finish(out, 0.5)
+}
+
+// Original soft shell rattle and small chirp.
+fn armadillo(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let mut out = vec![0.0; samples(if call == Call::Death { 0.4 } else { 0.25 })];
+    for n in 0..5 {
+        add_mode(
+            &mut out,
+            samples(n as f32 * 0.025),
+            Mode { freq: rng.range(650.0, 1100.0), amp: 0.35, tau: 0.018, glide: -0.2, glide_tau: 0.04 },
+        );
+    }
+    add_mode(&mut out, 0, Mode { freq: rng.range(280.0, 370.0), amp: 0.4, tau: 0.09, glide: 0.2, glide_tau: 0.07 });
+    dsp::finish(out, 0.5)
+}
+
+// Original short, breathy wild-feline chirr, independent of the cat bank.
+fn ocelot(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let mut out = vec![0.0; samples(if call == Call::Death { 0.55 } else { 0.32 })];
+    let pitch = rng.range(330.0, 430.0) * if call == Call::Hurt { 1.4 } else { 1.0 };
+    for (harm, gain) in [(1.0, 0.65), (2.03, 0.25), (4.2, 0.1)] {
+        add_mode(&mut out, 0, Mode { freq: pitch * harm, amp: gain, tau: 0.12, glide: 0.3, glide_tau: 0.09 });
+    }
+    dsp::finish(out, 0.5)
 }

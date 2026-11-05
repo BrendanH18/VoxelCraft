@@ -12,9 +12,12 @@ use crate::world::terrain::Dimension;
 use super::{Ctx, EntityEvent, MobSound, MobWorld, Rng, path};
 
 pub(crate) mod dolphin;
+mod frog;
 pub(crate) mod goals;
 mod navigate;
 mod nether_ai;
+mod ocelot;
+mod polar_bear;
 pub(crate) mod selector;
 mod swim;
 pub(crate) mod turtle;
@@ -175,6 +178,14 @@ pub enum MobKind {
     Stray,
     Bogged,
     Phantom,
+    Mooshroom,
+    Bat,
+    Frog,
+    Tadpole,
+    PolarBear,
+    Panda,
+    Armadillo,
+    Ocelot,
 }
 
 impl MobKind {
@@ -182,6 +193,7 @@ impl MobKind {
         matches!(
             self,
             Self::Cod
+                | Self::Tadpole
                 | Self::Salmon
                 | Self::TropicalFish
                 | Self::Pufferfish
@@ -201,7 +213,7 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 60] = [
+    pub const ALL: [MobKind; 68] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -262,6 +274,14 @@ impl MobKind {
         MobKind::Stray,
         MobKind::Bogged,
         MobKind::Phantom,
+        MobKind::Mooshroom,
+        MobKind::Bat,
+        MobKind::Frog,
+        MobKind::Tadpole,
+        MobKind::PolarBear,
+        MobKind::Panda,
+        MobKind::Armadillo,
+        MobKind::Ocelot,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -327,6 +347,14 @@ impl MobKind {
             MobKind::Stray => "stray",
             MobKind::Bogged => "bogged",
             MobKind::Phantom => "phantom",
+            MobKind::Mooshroom => "mooshroom",
+            MobKind::Bat => "bat",
+            MobKind::Frog => "frog",
+            MobKind::Tadpole => "tadpole",
+            MobKind::PolarBear => "polar_bear",
+            MobKind::Panda => "panda",
+            MobKind::Armadillo => "armadillo",
+            MobKind::Ocelot => "ocelot",
         }
     }
 
@@ -339,8 +367,14 @@ impl MobKind {
     /// Collision box dimensions for movement and spawn-space checks.
     pub fn shape(self) -> Shape {
         match self {
+            MobKind::Bat => Shape::new(0.25, 0.9),
+            MobKind::Frog => Shape::new(0.25, 0.5),
+            MobKind::Tadpole => Shape::new(0.2, 0.3),
+            MobKind::PolarBear => Shape::new(0.7, 1.4),
+            MobKind::Panda => Shape::new(0.65, 1.25),
+            MobKind::Armadillo => Shape::new(0.35, 0.65),
             MobKind::Pig => Shape::new(0.45, 0.9),
-            MobKind::Cow => Shape::new(0.45, 1.4),
+            MobKind::Cow | MobKind::Mooshroom => Shape::new(0.45, 1.4),
             MobKind::Sheep => Shape::new(0.45, 1.3),
             MobKind::Chicken => Shape::new(0.2, 0.7),
             MobKind::Zombie
@@ -376,7 +410,7 @@ impl MobKind {
             MobKind::Axolotl => Shape::new(0.375, 0.42),
             MobKind::Guardian => Shape::new(0.425, 0.85),
             MobKind::ElderGuardian => Shape::new(0.99875, 1.9975),
-            MobKind::Cat => Shape::new(0.3, 0.7),
+            MobKind::Cat | MobKind::Ocelot => Shape::new(0.3, 0.7),
             MobKind::Pillager => Shape::new(0.3, 1.95),
             MobKind::Turtle => Shape::new(0.6, 0.4),
             MobKind::Wolf => Shape::new(0.3, 0.85),
@@ -397,7 +431,7 @@ impl MobKind {
     /// Starting health in damage points, with two points per heart.
     pub fn max_health(self) -> f32 {
         match self {
-            MobKind::Pig | MobKind::Cow => 10.0,
+            MobKind::Pig | MobKind::Cow | MobKind::Mooshroom | MobKind::Frog => 10.0,
             MobKind::Sheep | MobKind::Silverfish => 8.0,
             MobKind::Chicken => 4.0,
             MobKind::Zombie
@@ -412,7 +446,8 @@ impl MobKind {
             | MobKind::Villager
             | MobKind::WanderingTrader
             | MobKind::ZombieVillager
-            | MobKind::Strider => 20.0,
+            | MobKind::Strider
+            | MobKind::Panda => 20.0,
             MobKind::IronGolem => 100.0,
             MobKind::SnowGolem => 4.0,
             MobKind::TraderLlama => 30.0,
@@ -426,15 +461,16 @@ impl MobKind {
             MobKind::PiglinBrute => 50.0,
             MobKind::Hoglin | MobKind::Zoglin => 40.0,
             MobKind::Cod | MobKind::Salmon | MobKind::TropicalFish | MobKind::Pufferfish => 3.0,
-            MobKind::Squid | MobKind::GlowSquid | MobKind::Dolphin | MobKind::Cat => 10.0,
+            MobKind::Squid | MobKind::GlowSquid | MobKind::Dolphin | MobKind::Cat | MobKind::Ocelot => 10.0,
             MobKind::Axolotl => 14.0,
             MobKind::Guardian => 30.0,
             MobKind::ElderGuardian => 80.0,
             MobKind::Pillager => 24.0,
-            MobKind::Turtle => 30.0,
+            MobKind::Turtle | MobKind::PolarBear => 30.0,
+            MobKind::Armadillo => 12.0,
             MobKind::Wolf => 8.0,
             MobKind::Fox | MobKind::Goat => 10.0,
-            MobKind::Parrot => 6.0,
+            MobKind::Parrot | MobKind::Bat | MobKind::Tadpole => 6.0,
             MobKind::Rabbit => 3.0,
             MobKind::Horse | MobKind::Donkey | MobKind::Mule | MobKind::Llama => 30.0,
             MobKind::Camel => 32.0,
@@ -701,6 +737,7 @@ impl MobKind {
         match self {
             MobKind::Pig => 1.3,
             MobKind::Cow
+            | MobKind::Mooshroom
             | MobKind::Witch
             | MobKind::Villager
             | MobKind::WanderingTrader
@@ -762,6 +799,9 @@ impl MobKind {
             MobKind::Husk => (3.0, "was slain by a husk"),
             MobKind::Drowned => (3.0, "was slain by a drowned"),
             MobKind::Silverfish => (1.0, "was slain by a silverfish"),
+            MobKind::PolarBear => (6.0, "was slain by a polar bear"),
+            MobKind::Panda => (6.0, "was slain by a panda"),
+            MobKind::Ocelot => (3.0, "was slain by an ocelot"),
             MobKind::IronGolem => (15.0, "was slain by an iron golem"),
             MobKind::SnowGolem => (0.0, "was slain by a snow golem"),
             MobKind::ZombieVillager => (3.0, "was slain by a zombie villager"),
@@ -780,9 +820,13 @@ impl MobKind {
         const SPONGE: Item = Item::from_block(crate::world::overworld_blocks::WET_SPONGE);
         const SEAGRASS: Item = Item::from_block(crate::world::overworld_blocks::SEAGRASS);
         const POPPY: Item = Item::from_block(Block::POPPY);
+        const BAMBOO: Item = Item::from_block(crate::world::overworld_blocks::BAMBOO);
         match self {
             MobKind::Pig => &[(Item::RAW_PORKCHOP, 1, 3)],
+            MobKind::Bat | MobKind::Frog | MobKind::Tadpole | MobKind::PolarBear | MobKind::Armadillo => &[],
+            MobKind::Panda => &[(BAMBOO, 1, 1)],
             MobKind::Cow => &[(Item::RAW_BEEF, 1, 3), (Item::LEATHER, 0, 2)],
+            MobKind::Mooshroom => &[(Item::LEATHER, 0, 2), (Item::RAW_BEEF, 1, 3)],
             MobKind::Sheep => &[(WOOL, 1, 1), (Item::RAW_MUTTON, 1, 2)],
             MobKind::Chicken => &[(Item::RAW_CHICKEN, 1, 1), (Item::FEATHER, 0, 2)],
             MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombieVillager => {
@@ -824,7 +868,7 @@ impl MobKind {
             MobKind::GlowSquid => &[(Item::GLOW_INK_SAC, 1, 3)],
             MobKind::Guardian => &[(Item::PRISMARINE_SHARD, 0, 2)],
             MobKind::ElderGuardian => &[(Item::PRISMARINE_SHARD, 0, 2), (SPONGE, 1, 1)],
-            MobKind::Axolotl | MobKind::Cat | MobKind::Pillager => &[],
+            MobKind::Axolotl | MobKind::Cat | MobKind::Ocelot | MobKind::Pillager => &[],
             MobKind::Turtle => &[(SEAGRASS, 0, 2)],
             MobKind::Wolf | MobKind::Fox | MobKind::Goat => &[],
             MobKind::Parrot => &[(Item::FEATHER, 1, 2)],
@@ -849,6 +893,14 @@ impl MobKind {
     /// `round(looting * uniform(0, 1))` to each (Java's
     /// `enchanted_count_increase`).
     pub fn drops(self, rng: &mut Rng, looting: u8) -> Vec<(Item, u8)> {
+        if self == MobKind::Panda {
+            return vec![(Item::from_block(crate::world::overworld_blocks::BAMBOO), 1)];
+        }
+        if self == MobKind::PolarBear {
+            let item = if rng.next_int(4) < 3 { Item::COD } else { Item::SALMON };
+            let count = rng.next_int(3) + (f32::from(looting) * rng.next_f32()).round() as u32;
+            return if count == 0 { Vec::new() } else { vec![(item, count.min(u8::MAX as u32) as u8)] };
+        }
         let mut out: Vec<(Item, u8)> = self
             .loot()
             .iter()
@@ -899,7 +951,7 @@ impl MobKind {
     /// Experience for killing one (Java's: 5 for monsters, 1-3 for animals).
     pub fn xp(self, rng: &mut Rng) -> u32 {
         match self {
-            MobKind::Villager | MobKind::IronGolem | MobKind::SnowGolem | MobKind::WanderingTrader => 0,
+            MobKind::Bat | MobKind::Villager | MobKind::IronGolem | MobKind::SnowGolem | MobKind::WanderingTrader => 0,
             MobKind::Blaze | MobKind::Guardian | MobKind::ElderGuardian => 10,
             k if k.is_hostile() => 5,
             _ => 1 + (rng.next_f32() * 3.0) as u32,
@@ -948,6 +1000,14 @@ pub struct Mob {
     pub skeleton_bow: Option<Box<crate::inventory::Stack>>,
     pub phantom: Option<Box<super::phantom::State>>,
     pub freezing: Option<super::hostiles::Freezing>,
+    pub mooshroom: Option<Box<super::mooshroom::State>>,
+    pub bat: Option<Box<super::bat::State>>,
+    pub frog: Option<Box<super::frog::State>>,
+    pub polar_bear: Option<Box<super::polar_bear::State>>,
+    pub panda: Option<Box<super::panda::State>>,
+    pub armadillo: Option<Box<super::armadillo::State>>,
+    pub ocelot: Option<Box<super::ocelot::State>>,
+    pub wolf_armor: Option<Box<super::wolf_armor::State>>,
     /// Witch: seconds left drinking, and the potion it is drinking.
     drink_left: f32,
     drinking: &'static str,
@@ -1007,7 +1067,7 @@ pub struct Mob {
     pub(super) player_hit_left: f32,
     light_timer: f32,
     /// Blocked horizontally on the last physics step.
-    blocked: bool,
+    pub(super) blocked: bool,
     /// Seconds left sidestepping around an obstacle while chasing, and
     /// which side (+1 / -1).
     detour: f32,
@@ -1117,7 +1177,7 @@ impl Mob {
             nether: super::nether::NetherMob::for_kind(kind),
             aquatic: kind.is_aquatic().then(|| Box::new(super::aquatic::State::new())),
             uid: 0,
-            persistent: super::mounts::equine(kind),
+            persistent: super::mounts::equine(kind) || kind == MobKind::Tadpole,
             size: 1,
             baby: false,
             grow: 0.0,
@@ -1126,6 +1186,14 @@ impl Mob {
             freezing: None,
             skeleton_bow: kind.is_bow_skeleton().then(|| Box::new(crate::inventory::Stack::new(Item::BOW, 1))),
             phantom: (kind == MobKind::Phantom).then(|| Box::new(super::phantom::State::new(pos))),
+            mooshroom: (kind == MobKind::Mooshroom).then(Box::default),
+            bat: (kind == MobKind::Bat).then(Box::default),
+            frog: matches!(kind, MobKind::Frog | MobKind::Tadpole).then(Box::default),
+            polar_bear: (kind == MobKind::PolarBear).then(Box::default),
+            panda: (kind == MobKind::Panda).then(Box::default),
+            armadillo: (kind == MobKind::Armadillo).then(Box::default),
+            ocelot: (kind == MobKind::Ocelot).then(Box::default),
+            wolf_armor: (kind == MobKind::Wolf).then(Box::default),
             drink_left: 0.0,
             drinking: "",
             age: 0,
@@ -1243,7 +1311,7 @@ impl Mob {
             if rng.chance(0.15 * level as f32) {
                 let back = rng.range(1.0, 5.0);
                 self.player_hit();
-                if self.damage(back, Some(-knockback * 0.5 + DVec3::Y * 3.0), rng) {
+                if self.damage_bypassing_wolf_armor(back, Some(-knockback * 0.5 + DVec3::Y * 3.0), rng) {
                     events.push(EntityEvent::MobKilled {
                         kind: self.kind,
                         pos: self.pos,
@@ -1297,7 +1365,13 @@ impl Mob {
             Shape::new(0.255 * self.size as f64, 0.51 * self.size as f64)
         } else if self.baby || self.age < 0 {
             let s = self.kind.shape();
-            let scale = if super::undead_mounts::undead(self.kind) { 0.7 } else { 0.5 };
+            let scale = if super::undead_mounts::undead(self.kind) {
+                0.7
+            } else if self.kind == MobKind::Armadillo {
+                0.6
+            } else {
+                0.5
+            };
             Shape::new(s.half_width * scale, s.height * scale)
         } else {
             self.kind.shape()
@@ -1341,7 +1415,15 @@ impl Mob {
     /// Takes a hit. `knockback` replaces the horizontal velocity (its y is
     /// the upward pop). Returns `true` if this killed the mob.
     pub fn damage(&mut self, amount: f32, knockback: Option<DVec3>, rng: &mut Rng) -> bool {
-        if !self.alive() {
+        self.damage_typed(amount, knockback, false, rng)
+    }
+    /// Damage tagged #bypasses_wolf_armor (magic, wither, drowning, freezing,
+    /// suffocation, cramming, starvation, world border and invulnerability bypass).
+    pub fn damage_bypassing_wolf_armor(&mut self, amount: f32, knockback: Option<DVec3>, rng: &mut Rng) -> bool {
+        self.damage_typed(amount, knockback, true, rng)
+    }
+    fn damage_typed(&mut self, amount: f32, knockback: Option<DVec3>, bypass_wolf_armor: bool, rng: &mut Rng) -> bool {
+        if !self.alive() || self.armadillo.as_ref().is_some_and(|s| s.scared() && amount <= 1.0) {
             return false;
         }
         // Full resistance (iron golems) cancels the push and leaves the motion alone, as `knockback` returns early.
@@ -1351,7 +1433,7 @@ impl Mob {
             self.vel.z = kb.z;
             self.vel.y = self.vel.y.max(kb.y);
         }
-        self.take_damage(amount, knockback.is_some(), rng)
+        self.take_damage(amount, knockback.is_some(), bypass_wolf_armor, rng)
     }
 
     /// Explosion damage, which carries no hit knockback (`#no_knockback`),
@@ -1361,7 +1443,7 @@ impl Mob {
         if !self.alive() {
             return false;
         }
-        let killed = self.take_damage(amount, true, rng);
+        let killed = self.take_damage(amount, true, false, rng);
         self.vel += push * crate::knockback::TICK_RATE;
         killed
     }
@@ -1370,13 +1452,13 @@ impl Mob {
     /// default push, then the attacker's extra one), each halving the motion
     /// left by the previous. Returns `true` if this killed the mob.
     pub fn damage_pushed(&mut self, amount: f32, pushes: &[crate::knockback::Push], rng: &mut Rng) -> bool {
-        if !self.alive() {
+        if !self.alive() || self.armadillo.as_ref().is_some_and(|s| s.scared() && amount <= 1.0) {
             return false;
         }
         for &push in pushes {
             self.knock_back(push, rng);
         }
-        self.take_damage(amount, true, rng)
+        self.take_damage(amount, true, false, rng)
     }
 
     /// Punch's shove of an arrow with `motion` (blocks per tick), added to the mob's velocity.
@@ -1397,8 +1479,13 @@ impl Mob {
         }
     }
 
-    fn take_damage(&mut self, amount: f32, attacked: bool, rng: &mut Rng) -> bool {
+    fn take_damage(&mut self, amount: f32, attacked: bool, bypass_wolf_armor: bool, rng: &mut Rng) -> bool {
         if self.undead_mount.protection > 0. {
+            return false;
+        }
+        let amount =
+            if self.armadillo.as_ref().is_some_and(|s| s.scared()) { ((amount - 1.0) / 2.0).max(0.0) } else { amount };
+        if self.armadillo.is_some() && amount <= 0.0 {
             return false;
         }
         let amount = if self.kind == MobKind::MagmaCube {
@@ -1409,7 +1496,11 @@ impl Mob {
         if let Some(a) = &mut self.animal {
             a.love = 0.0;
             a.courtship = 0.0;
+            if self.kind == MobKind::Wolf {
+                a.sitting = false;
+            }
         }
+        let amount = if bypass_wolf_armor { amount } else { self.absorb_wolf_armor(amount, rng) };
         let armor = self.mount.as_ref().and_then(|s| s.slots[1]).map_or(0, |s| super::mounts::armor_points(s.item));
         let amount = if armor > 0 { crate::simulation::survival::armor_reduce(amount, armor, 0.) } else { amount };
         let amount = amount * self.effects.resistance_factor();
@@ -1419,10 +1510,16 @@ impl Mob {
             self.aquatic.as_mut().unwrap().play_dead = 10.0;
         }
         self.hurt = HURT_TIME;
+        if let Some(s) = &mut self.bat {
+            s.resting = false;
+        }
         self.idle = 0.0;
         // Java's panic goals react to any `PANIC_CAUSES` damage, except wolves
         // (`PANIC_ENVIRONMENTAL_CAUSES` only: an attack doesn't scare them)
         // and golems, which have none.
+        if let Some(s) = &mut self.panda {
+            s.sitting = false;
+        }
         let scared = match self.kind {
             // Squid flee their attacker instead; dolphins and axolotls
             // have no panic goal.
@@ -1432,10 +1529,19 @@ impl Mob {
             | MobKind::GlowSquid
             | MobKind::Dolphin
             | MobKind::Axolotl => false,
+            MobKind::Ocelot => false,
             MobKind::Wolf => !attacked,
+            MobKind::PolarBear => self.baby || !attacked,
+            MobKind::Panda | MobKind::Armadillo => !attacked,
             k => !k.is_hostile(),
         };
         if scared {
+            if let Some(s) = &mut self.frog {
+                s.tongue = None;
+                s.pose = 0;
+                s.jump_prepare = 0;
+                s.jump_velocity = None;
+            }
             // `PanicGoal.shouldPanic` reads `getLastDamageSource`, which
             // forgets the damage after 40 ticks; the run then ends once its
             // path is done.
@@ -1491,7 +1597,7 @@ impl Mob {
             }
             let damage = outcome.damage + outcome.wither + outcome.poison.min((self.health - 1.0).max(0.0));
             if damage > 0.0 {
-                self.damage(damage, None, rng);
+                self.damage_bypassing_wolf_armor(damage, None, rng);
             }
         }
         self.hop_left -= dtf;
@@ -1503,8 +1609,14 @@ impl Mob {
         }
         self.ambient_timer -= dtf;
         if self.ambient_timer <= 0.0 {
-            self.ambient_timer = rng.range(7.0, 18.0);
-            if self.alive() && self.kind != MobKind::Creeper {
+            self.ambient_timer =
+                if self.kind == MobKind::Ocelot { rng.range(45.0, 56.0) } else { rng.range(7.0, 18.0) };
+            if self.alive()
+                && self.armadillo.as_ref().is_none_or(|s| !s.scared())
+                && self.kind != MobKind::Tadpole
+                && self.kind != MobKind::Creeper
+                && (self.bat.as_ref().is_none_or(|s| !s.resting) || rng.next_int(4) == 0)
+            {
                 let sound = MobSound::Ambient(self.kind);
                 events.push(EntityEvent::Sound { sound, pos: self.pos + DVec3::Y * (self.shape().height * 0.8) });
             }
@@ -1602,6 +1714,7 @@ impl Mob {
         }
         let steps = (dt / MAX_STEP).ceil().max(1.0) as u32;
         let h = dt / steps as f64;
+        let alive_before_move = self.alive();
         if self.riding.is_some() || self.animal.as_ref().is_some_and(|a| a.perched.is_some()) {
             self.vel = DVec3::ZERO;
             self.on_ground = true;
@@ -1623,6 +1736,10 @@ impl Mob {
                 self.physics_step(h, world, wish, speed * if controlled { 1. } else { self.speed_factor() });
             }
         }
+        let wolf_fall = self.wolf_armor.as_mut().map_or(0.0, |s| std::mem::take(&mut s.pending_fall));
+        if wolf_fall > 0.0 {
+            self.damage(wolf_fall, None, rng);
+        }
         if let Some(s) = &mut self.mount {
             let damage = std::mem::take(&mut s.rider_fall);
             if damage > 0.
@@ -1631,7 +1748,7 @@ impl Mob {
                 events.push(EntityEvent::PlayerFall { player, damage });
             }
         }
-        if self.health <= 0.0 && self.dying.is_none() {
+        if self.health <= 0.0 && (self.dying.is_none() || alive_before_move) {
             self.dying = Some(0.0);
             self.cry = Some(MobSound::Death(self.kind));
             events.push(EntityEvent::MobKilled {
@@ -1710,7 +1827,44 @@ impl Mob {
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> (Option<DVec3>, f64) {
+        if self.kind == MobKind::Bat {
+            self.bat_sense(world, ctx);
+            return (None, 0.0);
+        }
         if let Some(wish) = self.leash_think(dt, world, rng) {
+            return wish;
+        }
+        if self.armadillo.as_ref().is_some_and(|s| s.scared()) {
+            self.stop_goal(world);
+            return (None, 0.0);
+        }
+        if self.ocelot.is_some() {
+            let base = self.run_goals(world, ctx, rng);
+            if let Some(wish) = self.ocelot_think(world, rng, events) {
+                return wish;
+            }
+            if let Some(wish) = base {
+                let s = self.ocelot.as_mut().unwrap();
+                s.crouching = wish.0.is_some()
+                    && self
+                        .goals
+                        .running
+                        .is_some_and(|i| matches!(goals::table(self.kind)[i as usize].goal, goals::Goal::Tempt));
+                s.sprinting =
+                    wish.0.is_some() && self.goals.avoiding.is_some_and(|(_, at)| at.distance_squared(self.pos) < 49.0);
+                return wish;
+            }
+        }
+        if self.panda.is_some() {
+            let base = self.run_goals(world, ctx, rng);
+            if let Some(wish) = self.panda_think(world, rng, events) {
+                return wish;
+            }
+            if let Some(wish) = base {
+                return wish;
+            }
+        }
+        if let Some(wish) = self.polar_think(world, rng, events) {
             return wish;
         }
         if let Some(wish) = self.companion_think(dt, world, ctx, rng, events) {
@@ -1728,7 +1882,13 @@ impl Mob {
         if self.kind == MobKind::Bee && self.bee.is_some_and(|s| s.anger > 0) {
             return super::bee::steer(self, dt, world, ctx, rng, events);
         }
-        if let Some(wish) = self.run_goals(world, ctx, rng) {
+        if self.frog_priority() {
+            return self.frog_steer(dt, world, ctx, rng);
+        }
+        if self.panda.is_none()
+            && self.ocelot.is_none()
+            && let Some(wish) = self.run_goals(world, ctx, rng)
+        {
             return wish;
         }
         if self.kind == MobKind::Bee {
@@ -1736,6 +1896,9 @@ impl Mob {
         }
         if self.kind == MobKind::Turtle {
             return self.turtle_steer(dt, world, ctx, rng);
+        }
+        if self.frog.is_some() {
+            return self.frog_steer(dt, world, ctx, rng);
         }
         if self.kind.is_aquatic() {
             return super::aquatic::steer(self, dt, world, ctx, rng, events);
@@ -2589,7 +2752,7 @@ impl Mob {
             return;
         }
         let shape = self.shape();
-        self.in_water = if self.kind.is_aquatic() {
+        self.in_water = if self.kind.is_aquatic() || self.kind == MobKind::Frog {
             world.block((self.pos + DVec3::Y * 0.2).floor().as_ivec3()).is_some_and(Block::holds_water)
         } else {
             physics::is_fluid_at(world, self.pos + DVec3::new(0.0, 0.3, 0.0))
@@ -2745,6 +2908,7 @@ impl Mob {
         // throw a falling mob back up, once it falls faster than one tick of
         // gravity (0.08 a tick).
         let below = world.block(super::item::below_pos(self.pos));
+        self.wolf_fall(from_y, hit.on_ground, below);
         let bounce = crate::player::bounciness(below);
         if hit.on_ground && bounce > 0.0 && -falling > 0.08 * 20.0 {
             self.vel.y = -falling * bounce * BOUNCE_DRAG;
@@ -3167,7 +3331,17 @@ impl super::Entities {
     /// update, as Java's does on the next selector update, about the latest
     /// attacker only (`getLastHurtByMob`).
     pub(super) fn hurt_by_player_target(&mut self, index: usize, player: super::PlayerId) {
-        if self.mobs.get(index).is_some_and(|m| matches!(m.kind, MobKind::Dolphin | MobKind::Blaze | MobKind::Bee)) {
+        if self.mobs.get(index).is_some_and(|m| {
+            matches!(
+                m.kind,
+                MobKind::Dolphin
+                    | MobKind::Blaze
+                    | MobKind::Bee
+                    | MobKind::PolarBear
+                    | MobKind::Panda
+                    | MobKind::Armadillo
+            )
+        }) {
             self.ensure_mob_ids();
             let uid = self.mobs[index].uid;
             match self.hurt_by.iter_mut().find(|(u, _)| *u == uid) {
@@ -3182,14 +3356,22 @@ impl super::Entities {
     /// hits change no target and alert nobody.
     pub(super) fn resolve_hurt_by(&mut self, ctx: &super::Ctx) {
         for (uid, player) in std::mem::take(&mut self.hurt_by) {
-            if !ctx.players.iter().any(|t| t.id == player && t.targetable) {
+            let Some(index) = self.mobs.iter().position(|m| m.uid == uid) else { continue };
+            let defensive = self.mobs[index].kind == MobKind::Armadillo;
+            if !ctx
+                .players
+                .iter()
+                .any(|t| t.id == player && if defensive { t.alive && !t.spectator } else { t.targetable })
+            {
                 continue;
             }
-            let Some(index) = self.mobs.iter().position(|m| m.uid == uid) else { continue };
             match self.mobs[index].kind {
                 MobKind::Bee => self.anger_bees(self.mobs[index].pos.floor().as_ivec3(), player),
                 MobKind::Dolphin => self.dolphin_hurt_by(index, player),
                 MobKind::Blaze => self.blaze_hurt_by(index, player),
+                MobKind::PolarBear => self.polar_hurt(index, super::nether::Foe::Player(player)),
+                MobKind::Panda => self.panda_hurt(index, super::nether::Foe::Player(player)),
+                MobKind::Armadillo => self.armadillo_hurt(index, super::nether::Foe::Player(player)),
                 _ => {}
             }
         }

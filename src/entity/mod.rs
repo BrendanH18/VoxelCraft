@@ -15,18 +15,22 @@
 pub mod animals;
 pub mod aquatic;
 pub mod armor;
+pub mod bat;
 pub mod bee;
 mod bell;
 mod bobber;
+mod cat_spawner;
 pub mod category;
 mod chunk_storage;
 pub mod decor;
 pub mod path;
 pub use bobber::{CatchContext, roll_catch, set_damage};
+pub mod armadillo;
 pub mod dragon;
 mod dragon_model;
 pub mod eye;
 pub mod fireball;
+pub mod frog;
 pub mod golem;
 pub mod hostiles;
 pub mod item;
@@ -40,13 +44,17 @@ mod mob;
 mod mob_index;
 pub mod model;
 mod monster_spawns;
+pub mod mooshroom;
 pub mod mounts;
 pub mod nether;
+pub mod ocelot;
 pub mod orb;
+pub mod panda;
 pub mod pearl;
 pub mod phantom;
 pub mod player_model;
 mod player_pose;
+pub mod polar_bear;
 pub mod potion;
 mod projectile;
 mod replica;
@@ -62,6 +70,7 @@ pub mod villager;
 mod villager_breeding;
 mod villager_gossip;
 pub mod wandering_trader;
+pub mod wolf_armor;
 mod zombie_villager;
 
 use std::f32::consts::TAU;
@@ -105,6 +114,7 @@ pub const ATTACK_COOLDOWN: f64 = 0.5;
 /// Sounds entities make (the game maps them to audio).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MobSound {
+    FrogAction(frog::FrogSound),
     Bell,
     Thunder,
     /// A wandering trader finished its Invisibility potion (true) or milk (false).
@@ -633,6 +643,8 @@ pub struct Target {
     pub in_water: bool,
     /// `Player.isSwimming`: sprint-swimming (dolphins swim along).
     pub swimming: bool,
+    pub sprinting: bool,
+    pub passenger: bool,
     /// Current health in half hearts (witches choose potions from it).
     pub health: f32,
     /// Bit set of the target's active [`crate::simulation::effects::Effect`]s.
@@ -663,6 +675,8 @@ impl Target {
             on_ground: true,
             in_water: false,
             swimming: false,
+            sprinting: false,
+            passenger: false,
             health: crate::simulation::survival::MAX_HEALTH,
             effects: 0,
             time_since_rest: 0,
@@ -795,6 +809,10 @@ pub struct Entities {
     pub fight: Option<dragon::Fight>,
     /// Java `doMobLoot`; set by the world before each update.
     pub mob_loot: bool,
+    pub neutral_forgive_dead_players: bool,
+    pub neutral_universal_anger: bool,
+    /// Global thunder state, independent of local rain precipitation.
+    pub thundering: bool,
     pub moon_brightness: f32,
     /// The overworld clock in ticks (Java's `getOverworldClockTime`), for local difficulty.
     pub clock_time: i64,
@@ -806,6 +824,7 @@ pub struct Entities {
     next_villager_id: u64,
     villager_births: rustc_hash::FxHashSet<IVec3>,
     village_timer: f32,
+    cat_spawner: cat_spawner::Spawner,
     mob_index: mob_index::MobIndex,
     separation: mob_index::Separation,
     claimed_beds: rustc_hash::FxHashSet<IVec3>,
@@ -894,6 +913,9 @@ impl Entities {
             storage: Default::default(),
             fight: None,
             mob_loot: true,
+            neutral_forgive_dead_players: true,
+            neutral_universal_anger: false,
+            thundering: false,
             moon_brightness: 1.0,
             clock_time: 0,
             difficulty: Default::default(),
@@ -902,6 +924,7 @@ impl Entities {
             next_villager_id: 1,
             villager_births: Default::default(),
             village_timer: 0.0,
+            cat_spawner: Default::default(),
             mob_index: Default::default(),
             separation: Default::default(),
             claimed_beds: Default::default(),
@@ -969,7 +992,7 @@ impl Entities {
     pub fn spawn(&mut self, kind: MobKind, pos: DVec3) {
         let yaw = self.rng.range(0.0, TAU);
         let mut mob = Mob::new(kind, pos, yaw);
-        mob.persistent = kind.has_animal_state();
+        mob.persistent = kind.has_animal_state() || kind == MobKind::Tadpole;
         if let Some(s) = &mut mob.mount {
             **s = mounts::State::new(kind, &mut self.rng);
             mob.health = s.max_health;
@@ -1169,7 +1192,7 @@ impl Entities {
             .find(|m| m.kind == kind && !m.alive() && m.pos.distance_squared(pos) < 0.01)
             .map_or((1, false), |m| (m.size, m.baby));
         let (size, baby) = size;
-        if baby && kind.is_breedable() && kind != MobKind::Hoglin {
+        if baby && (kind.is_breedable() || kind == MobKind::PolarBear) && kind != MobKind::Hoglin {
             return;
         }
         if player_kill {
@@ -1527,7 +1550,7 @@ impl Entities {
             .enumerate()
             .filter(|(_, m)| m.alive())
             .filter_map(|(i, m)| {
-                let (min, max) = m.aabb();
+                let (min, max) = m.selection_shape().aabb(m.pos);
                 physics::ray_aabb(origin, dir, min, max).map(|t| (i, t))
             })
             .filter(|&(_, t)| t <= max_dist)
@@ -1677,9 +1700,9 @@ impl Entities {
     pub fn spawn_baby(&mut self, kind: MobKind, pos: DVec3) {
         let yaw = self.rng.range(0.0, TAU);
         let mut mob = Mob::new(kind, pos, yaw);
-        mob.age = -24000;
-        mob.baby = true;
-        mob.persistent = kind.is_breedable();
+        mob.age = if matches!(kind, MobKind::Frog | MobKind::Tadpole) { 0 } else { -24000 };
+        mob.baby = !matches!(kind, MobKind::Frog | MobKind::Tadpole);
+        mob.persistent = kind.is_breedable() || kind == MobKind::Tadpole;
         self.mobs.push(mob);
     }
 

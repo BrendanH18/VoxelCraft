@@ -54,6 +54,7 @@ impl Entities {
         self.trader_tick(dt as f32, world, ctx);
         self.tick_decor(world);
         self.village_upkeep(dt as f32, world);
+        self.cat_spawner_tick(dt, world, ctx);
         self.assign_hunts(ctx);
         self.trader_upkeep();
         // `Entity.hasMovedHorizontallyRecently`, from last update's positions.
@@ -71,6 +72,11 @@ impl Entities {
         self.nether_sense(dt as f32, world, ctx);
         self.aquatic_sense(dt as f32, world);
         self.grow_loaded_turtles(dt as f32, world, ctx);
+        self.frog_upkeep(dt, world, ctx);
+        self.polar_sense(dt, world, ctx);
+        self.panda_upkeep(dt, world, ctx, &mut events);
+        self.armadillo_upkeep(dt, world, ctx, &mut events);
+        self.ocelot_upkeep(dt, ctx);
         self.tick_animals(dt as f32, world, ctx, &mut events);
         self.tick_leashes(dt as f32, world, ctx);
         self.tick_llamas(ctx);
@@ -93,6 +99,7 @@ impl Entities {
                     | MobKind::WanderingTrader
                     | MobKind::TraderLlama
             ) || m.kind.never_distance_despawns()
+                || m.ocelot.as_ref().is_some_and(|s| s.trusting || s.ticks <= 2400)
                 || m.persistent
                 || m.built
                 || m.convert_left > 0.0
@@ -128,6 +135,15 @@ impl Entities {
                     self.particles.push(crate::particles::Request::Burst(burst));
                 }
                 let dead = self.mobs.swap_remove(i);
+                if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
+                    && let Some(stack) = dead
+                        .wolf_armor
+                        .as_ref()
+                        .and_then(|s| s.armor)
+                        .filter(|s| !s.enchants.has(crate::enchant::Enchantment::VanishingCurse))
+                {
+                    self.items.push(ItemEntity::new(stack, dead.pos, DVec3::ZERO, 0.5, &mut self.rng));
+                }
                 // Whatever a fox carries in its mouth or a dolphin plays with
                 // (`setGuaranteedDrop`) drops, enchantments and names intact.
                 if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
@@ -213,6 +229,35 @@ impl Entities {
                 from: Block::AIR,
                 to: crate::world::overworld_blocks::turtle_eggs(eggs),
             });
+        }
+        let mut frog_clutches = std::collections::HashSet::new();
+        for m in &mut self.mobs {
+            if let Some(cell) = m.frog.as_mut().and_then(|s| s.laid.take())
+                && frog_clutches.insert(cell)
+            {
+                m.animal.as_mut().unwrap().pregnant = false;
+                m.frog.as_mut().unwrap().sounds |= 1 << super::frog::FrogSound::Lay as u8;
+                events.push(EntityEvent::AnimalBlock {
+                    cell,
+                    from: Block::AIR,
+                    to: crate::world::frog_blocks::FROGSPAWN,
+                });
+            }
+        }
+        for m in &mut self.mobs {
+            if let Some(s) = &mut m.frog {
+                let sounds = std::mem::take(&mut s.sounds);
+                for sound in super::frog::FrogSound::ALL {
+                    if sounds & (1 << sound as u8) != 0 {
+                        events.push(EntityEvent::Sound { sound: MobSound::FrogAction(sound), pos: m.pos });
+                    }
+                }
+            }
+        }
+        for m in &mut self.mobs {
+            if let Some(stack) = m.panda.as_mut().and_then(|s| s.spit.take()) {
+                self.items.push(ItemEntity::new(stack, m.pos, DVec3::ZERO, 0.5, &mut self.rng));
+            }
         }
         if let Some(fight) = &mut self.fight {
             fight.update(dt, world, ctx, &mut self.rng, &mut events);
@@ -331,7 +376,14 @@ impl Entities {
                     // `HurtByTargetGoal`: projectiles credit their shooter too.
                     if let Some(owner) = owner
                         && !killed
-                        && matches!(kind, MobKind::Dolphin | MobKind::Blaze)
+                        && matches!(
+                            kind,
+                            MobKind::Dolphin
+                                | MobKind::Blaze
+                                | MobKind::PolarBear
+                                | MobKind::Panda
+                                | MobKind::Armadillo
+                        )
                         && let Some(i) = self.mobs.iter().position(|m| m.kind == kind && m.pos == pos && m.alive())
                     {
                         self.hurt_by_player_target(i, owner);

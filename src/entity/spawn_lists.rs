@@ -5,8 +5,8 @@ use super::category::MobCategory;
 use super::monster_spawns::{JavaMonster as J, MonsterSpawn, e};
 use crate::world::terrain::Biome;
 
-const LIST_0: [MonsterSpawn; 1] = [e(J::Missing("polar_bear"), 1, 1, 2)];
-const LIST_1: [MonsterSpawn; 1] = [e(J::Missing("bat"), 10, 8, 8)];
+const LIST_0: [MonsterSpawn; 1] = [e(J::Known(MobKind::PolarBear), 1, 1, 2)];
+const LIST_1: [MonsterSpawn; 1] = [e(J::Known(MobKind::Bat), 10, 8, 8)];
 const LIST_2: [MonsterSpawn; 1] = [e(J::Known(MobKind::GlowSquid), 10, 4, 6)];
 const LIST_3: [MonsterSpawn; 2] = [e(J::Known(MobKind::Squid), 1, 1, 4), e(J::Missing("nautilus"), 2, 1, 1)];
 const LIST_4: [MonsterSpawn; 1] = [e(J::Known(MobKind::Salmon), 15, 1, 5)];
@@ -33,7 +33,7 @@ const LIST_13: [MonsterSpawn; 3] =
     [e(J::Missing("nautilus"), 5, 1, 1), e(J::Known(MobKind::Squid), 10, 4, 4), e(J::Known(MobKind::Dolphin), 2, 1, 2)];
 const LIST_14: [MonsterSpawn; 2] =
     [e(J::Known(MobKind::Pufferfish), 15, 1, 3), e(J::Known(MobKind::TropicalFish), 25, 8, 8)];
-const LIST_15: [MonsterSpawn; 1] = [e(J::Missing("mooshroom"), 8, 4, 8)];
+const LIST_15: [MonsterSpawn; 1] = [e(J::Known(MobKind::Mooshroom), 8, 4, 8)];
 const LIST_16: [MonsterSpawn; 1] = [e(J::Known(MobKind::Squid), 2, 1, 4)];
 const LIST_17: [MonsterSpawn; 1] = [e(J::Known(MobKind::Salmon), 5, 1, 5)];
 const LIST_18: [MonsterSpawn; 1] = [e(J::Known(MobKind::Turtle), 5, 2, 5)];
@@ -45,7 +45,7 @@ const LIST_19: [MonsterSpawn; 6] = [
     e(J::Known(MobKind::Horse), 5, 2, 6),
     e(J::Known(MobKind::Donkey), 1, 1, 3),
 ];
-const LIST_20: [MonsterSpawn; 2] = [e(J::Known(MobKind::Rabbit), 10, 2, 3), e(J::Missing("polar_bear"), 1, 1, 2)];
+const LIST_20: [MonsterSpawn; 2] = [e(J::Known(MobKind::Rabbit), 10, 2, 3), e(J::Known(MobKind::PolarBear), 1, 1, 2)];
 const LIST_21: [MonsterSpawn; 5] = [
     e(J::Known(MobKind::Sheep), 12, 4, 4),
     e(J::Known(MobKind::Pig), 10, 4, 4),
@@ -80,9 +80,9 @@ const LIST_25: [MonsterSpawn; 5] = [
     e(J::Known(MobKind::Pig), 10, 4, 4),
     e(J::Known(MobKind::Chicken), 10, 4, 4),
     e(J::Known(MobKind::Cow), 8, 4, 4),
-    e(J::Missing("frog"), 10, 2, 5),
+    e(J::Known(MobKind::Frog), 10, 2, 5),
 ];
-const LIST_26: [MonsterSpawn; 1] = [e(J::Missing("frog"), 10, 2, 5)];
+const LIST_26: [MonsterSpawn; 1] = [e(J::Known(MobKind::Frog), 10, 2, 5)];
 const LIST_27: [MonsterSpawn; 1] = [e(J::Known(MobKind::TropicalFish), 25, 8, 8)];
 const LIST_28: [MonsterSpawn; 2] = [e(J::Known(MobKind::Rabbit), 12, 2, 3), e(J::Known(MobKind::Camel), 1, 1, 1)];
 const LIST_29: [MonsterSpawn; 7] = [
@@ -92,7 +92,7 @@ const LIST_29: [MonsterSpawn; 7] = [
     e(J::Known(MobKind::Cow), 8, 4, 4),
     e(J::Known(MobKind::Horse), 1, 2, 6),
     e(J::Known(MobKind::Donkey), 1, 1, 1),
-    e(J::Missing("armadillo"), 10, 2, 3),
+    e(J::Known(MobKind::Armadillo), 10, 2, 3),
 ];
 const LIST_30: [MonsterSpawn; 9] = [
     e(J::Known(MobKind::Sheep), 12, 4, 4),
@@ -101,7 +101,7 @@ const LIST_30: [MonsterSpawn; 9] = [
     e(J::Known(MobKind::Cow), 8, 4, 4),
     e(J::Known(MobKind::Horse), 1, 2, 6),
     e(J::Known(MobKind::Donkey), 1, 1, 1),
-    e(J::Missing("armadillo"), 10, 2, 3),
+    e(J::Known(MobKind::Armadillo), 10, 2, 3),
     e(J::Known(MobKind::Llama), 8, 4, 4),
     e(J::Known(MobKind::Wolf), 8, 4, 8),
 ];
@@ -112,7 +112,7 @@ const LIST_31: [MonsterSpawn; 7] = [
     e(J::Known(MobKind::Cow), 8, 4, 4),
     e(J::Known(MobKind::Chicken), 10, 4, 4),
     e(J::Known(MobKind::Parrot), 40, 1, 2),
-    e(J::Missing("panda"), 1, 1, 2),
+    e(J::Known(MobKind::Panda), 1, 1, 2),
 ];
 const LIST_32: [MonsterSpawn; 6] = [
     e(J::Known(MobKind::Sheep), 12, 4, 4),
@@ -129,21 +129,21 @@ const LIST_33: [MonsterSpawn; 7] = [
     e(J::Known(MobKind::Cow), 8, 4, 4),
     e(J::Known(MobKind::Chicken), 10, 4, 4),
     e(J::Known(MobKind::Parrot), 40, 1, 2),
-    e(J::Missing("panda"), 80, 1, 2),
+    e(J::Known(MobKind::Panda), 80, 1, 2),
 ];
 const LIST_34: [MonsterSpawn; 5] = [
     e(J::Known(MobKind::Sheep), 12, 4, 4),
     e(J::Known(MobKind::Pig), 10, 4, 4),
     e(J::Known(MobKind::Chicken), 10, 4, 4),
     e(J::Known(MobKind::Cow), 8, 4, 4),
-    e(J::Missing("armadillo"), 6, 1, 2),
+    e(J::Known(MobKind::Armadillo), 6, 1, 2),
 ];
 const LIST_35: [MonsterSpawn; 6] = [
     e(J::Known(MobKind::Sheep), 12, 4, 4),
     e(J::Known(MobKind::Pig), 10, 4, 4),
     e(J::Known(MobKind::Chicken), 10, 4, 4),
     e(J::Known(MobKind::Cow), 8, 4, 4),
-    e(J::Missing("armadillo"), 6, 1, 2),
+    e(J::Known(MobKind::Armadillo), 6, 1, 2),
     e(J::Known(MobKind::Wolf), 2, 4, 8),
 ];
 const LIST_36: [MonsterSpawn; 3] = [
@@ -414,9 +414,10 @@ pub(super) fn end_list(category: MobCategory) -> &'static [MonsterSpawn] {
 mod tests {
     use super::*;
     #[test]
-    fn ambient_lists_hold_no_existing_mob_so_the_pass_can_be_skipped() {
+    fn ambient_lists_resolve_bats_and_leave_deep_dark_empty() {
         for b in Biome::ALL {
-            assert!(biome_list(b, MobCategory::Ambient).iter().all(|s| s.mob.kind().is_none()), "{b:?}");
+            assert!(biome_list(b, MobCategory::Ambient).iter().all(|s| s.mob.kind() == Some(MobKind::Bat)), "{b:?}");
+            assert_eq!(biome_list(b, MobCategory::Ambient).is_empty(), b == Biome::DeepDark);
         }
     }
     #[test]

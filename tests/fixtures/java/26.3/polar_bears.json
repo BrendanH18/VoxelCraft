@@ -1,0 +1,217 @@
+{
+  "source": "Pinned Java 26.3 PolarBear, its three target/melee goals, NeutralMob and natural_mob_spawns biome attributes",
+  "data": {
+    "data/minecraft/loot_table/entities/polar_bear.json": {
+      "type": "minecraft:entity",
+      "pools": [
+        {
+          "entries": [
+            {
+              "type": "minecraft:item",
+              "modifier": [
+                {
+                  "type": "minecraft:furnace_smelt",
+                  "condition": {
+                    "type": "minecraft:any_of",
+                    "terms": [
+                      {
+                        "type": "minecraft:entity_properties",
+                        "entity": "this",
+                        "predicate": {
+                          "minecraft:flags": {
+                            "is_on_fire": true
+                          }
+                        }
+                      },
+                      {
+                        "type": "minecraft:entity_properties",
+                        "entity": "direct_attacker",
+                        "predicate": {
+                          "minecraft:equipment": {
+                            "mainhand": {
+                              "predicates": {
+                                "minecraft:enchantments": [
+                                  {
+                                    "enchantments": "#minecraft:smelts_loot"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "minecraft:set_count",
+                  "count": {
+                    "type": "minecraft:uniform",
+                    "max": 2,
+                    "min": 0
+                  }
+                },
+                {
+                  "type": "minecraft:enchanted_count_increase",
+                  "count": {
+                    "type": "minecraft:uniform",
+                    "max": 1.0,
+                    "min": 0.0
+                  },
+                  "enchantment": "minecraft:looting"
+                }
+              ],
+              "name": "minecraft:cod",
+              "weight": 3
+            },
+            {
+              "type": "minecraft:item",
+              "modifier": [
+                {
+                  "type": "minecraft:furnace_smelt",
+                  "condition": {
+                    "type": "minecraft:any_of",
+                    "terms": [
+                      {
+                        "type": "minecraft:entity_properties",
+                        "entity": "this",
+                        "predicate": {
+                          "minecraft:flags": {
+                            "is_on_fire": true
+                          }
+                        }
+                      },
+                      {
+                        "type": "minecraft:entity_properties",
+                        "entity": "direct_attacker",
+                        "predicate": {
+                          "minecraft:equipment": {
+                            "mainhand": {
+                              "predicates": {
+                                "minecraft:enchantments": [
+                                  {
+                                    "enchantments": "#minecraft:smelts_loot"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "minecraft:set_count",
+                  "count": {
+                    "type": "minecraft:uniform",
+                    "max": 2,
+                    "min": 0
+                  }
+                },
+                {
+                  "type": "minecraft:enchanted_count_increase",
+                  "count": {
+                    "type": "minecraft:uniform",
+                    "max": 1.0,
+                    "min": 0.0
+                  },
+                  "enchantment": "minecraft:looting"
+                }
+              ],
+              "name": "minecraft:salmon"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "random_sequence": "minecraft:entities/polar_bear"
+    },
+    "data/minecraft/tags/block/polar_bear_immune_to.json": {
+      "values": [
+        "minecraft:powder_snow"
+      ]
+    },
+    "data/minecraft/tags/block/polar_bears_spawnable_on_alternate.json": {
+      "values": [
+        "minecraft:ice"
+      ]
+    },
+    "data/minecraft/tags/worldgen/biome/polar_bears_spawn_on_alternate_blocks.json": {
+      "values": [
+        "minecraft:frozen_ocean",
+        "minecraft:deep_frozen_ocean"
+      ]
+    },
+    "data/minecraft/worldgen/biome/deep_frozen_ocean.json": [
+      [
+        "creature",
+        {
+          "type": "minecraft:polar_bear",
+          "count": {
+            "type": "minecraft:uniform",
+            "max_inclusive": 2,
+            "min_inclusive": 1
+          },
+          "weight": 1
+        }
+      ]
+    ],
+    "data/minecraft/worldgen/biome/frozen_ocean.json": [
+      [
+        "creature",
+        {
+          "type": "minecraft:polar_bear",
+          "count": {
+            "type": "minecraft:uniform",
+            "max_inclusive": 2,
+            "min_inclusive": 1
+          },
+          "weight": 1
+        }
+      ]
+    ],
+    "data/minecraft/worldgen/biome/ice_spikes.json": [
+      [
+        "creature",
+        {
+          "type": "minecraft:polar_bear",
+          "count": {
+            "type": "minecraft:uniform",
+            "max_inclusive": 2,
+            "min_inclusive": 1
+          },
+          "weight": 1
+        }
+      ]
+    ],
+    "data/minecraft/worldgen/biome/snowy_plains.json": [
+      [
+        "creature",
+        {
+          "type": "minecraft:polar_bear",
+          "count": {
+            "type": "minecraft:uniform",
+            "max_inclusive": 2,
+            "min_inclusive": 1
+          },
+          "weight": 1
+        }
+      ]
+    ]
+  },
+  "attributes": {
+    "max_health": 30,
+    "movement_speed": 0.25,
+    "attack_damage": 6,
+    "follow_range": 20,
+    "water_slow_down": 0.98
+  },
+  "anger_ticks": [
+    400,
+    780
+  ],
+  "warning_ticks": 40,
+  "attack_ticks": 20,
+  "cub_group_chance_after_first": 1.0
+}

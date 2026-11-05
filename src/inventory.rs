@@ -83,9 +83,10 @@ pub struct Stack {
     pub repair_cost: u16,
     /// A plain custom display name (Java uses a styled text component).
     pub name: StackName,
-    /// Item-specific component payload: captured creature data, or potion index + 1
-    /// on tipped arrows and the bolt in a charged crossbow (u32::MAX = empty tipped
-    /// bolt). Zero is the default.
+    /// Item-specific component payload: captured creature data (bucket variant/
+    /// health), suspicious stew effect code (see entity::mooshroom), or potion
+    /// index + 1 on tipped arrows and the bolt in a charged crossbow
+    /// (u32::MAX = empty tipped bolt). Zero means no component.
     pub entity_data: u32,
     /// A lodestone compass's `lodestone_tracker`; `None` on everything else.
     pub lodestone: Option<Lodestone>,

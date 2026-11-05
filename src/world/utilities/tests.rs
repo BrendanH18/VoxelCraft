@@ -672,3 +672,35 @@ fn a_burning_player_puts_out_in_water_and_powder_snow_cauldrons_with_a_level() {
     w.set_block(p, LAVA_CAULDRON);
     assert!(!w.douse_in_cauldron(feet, top));
 }
+
+#[test]
+fn wolf_armor_washing_uses_water_in_creative_and_preserves_the_stack() {
+    use crate::{
+        color::DyeColor,
+        entity::{Entities, wolf_armor},
+        inventory::{Inventory, Stack},
+        item::Item,
+        player::Player,
+        rules::GameMode,
+    };
+    let mut w = world();
+    let at = IVec3::new(8, 110, 8);
+    w.set_block(at, cauldron(Contents::Water(2)));
+    let mut stack =
+        wolf_armor::dye(Stack::new(Item::WOLF_ARMOR, 1), &[DyeColor::Red]).unwrap().with_name("Rose").unwrap();
+    stack.damage = 19;
+    let mut inv = Inventory::default();
+    inv.slots[0] = Some(stack);
+    let player = Player::new(at.as_dvec3() + glam::DVec3::X * 2.0);
+    let mut entities = Entities::new(1);
+    assert!(interact::takes_use(&w, at, Some(Item::WOLF_ARMOR)));
+    assert!(
+        interact::use_block(&mut w, &mut entities, &player, &mut inv, 0, GameMode::Creative, at, IVec3::Y).is_some()
+    );
+    assert_eq!(w.get_block(at), Some(cauldron(Contents::Water(1))));
+    assert_eq!(inv.get(0), wolf_armor::washed(stack));
+    assert!(
+        interact::use_block(&mut w, &mut entities, &player, &mut inv, 0, GameMode::Creative, at, IVec3::Y).is_none()
+    );
+    assert_eq!(w.get_block(at), Some(cauldron(Contents::Water(1))));
+}

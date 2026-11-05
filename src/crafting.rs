@@ -6,7 +6,9 @@
 //! left to right, like Minecraft. Shapeless recipes match any arrangement
 //! of exactly their ingredients.
 
+mod passive;
 mod utilities;
+mod wolf_armor;
 
 use crate::inventory::Stack;
 use crate::item::{ArmorMaterial, ArmorPiece, Item, Tier, ToolKind};
@@ -72,6 +74,9 @@ impl Grid {
         let maps: Vec<_> = occupied.iter().filter(|s| s.item.is_map() && s.item != Item::MAP).collect();
         if maps.len() == 1 && occupied.len() > 1 && occupied.iter().all(|s| s.item == Item::MAP || s == maps[0]) {
             return Some(Stack { count: occupied.len() as u8, ..*maps[0] });
+        }
+        if let Some(result) = wolf_armor::dynamic(&occupied) {
+            return Some(result);
         }
         let (w, h, items) = self.trimmed()?;
         recipes().iter().find(|r| r.matches(w, h, &items)).map(|r| r.result)
@@ -636,6 +641,8 @@ pub fn recipes() -> &'static [Recipe] {
         wood::add(&mut r);
         colour::add(&mut r);
         utilities::add(&mut r);
+        passive::add(&mut r);
+        wolf_armor::add(&mut r);
         r
     })
 }

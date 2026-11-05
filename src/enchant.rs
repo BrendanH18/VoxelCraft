@@ -91,7 +91,7 @@ impl Fits {
             (Fits::Bow, ItemKind::Bow) => true,
             (Fits::Crossbow, _) => matches!(item, Item::CROSSBOW | Item::CHARGED_CROSSBOW),
             (Fits::FishingRod, ItemKind::FishingRod) => true,
-            (Fits::Durable, _) => item.durability().is_some(),
+            (Fits::Durable, _) => item != Item::WOLF_ARMOR && item.durability().is_some(),
             _ => false,
         }
     }
@@ -734,6 +734,9 @@ pub fn wear_anvil(world: &mut crate::world::World, pos: glam::IVec3) -> Option<b
 
 /// Whether `material` repairs `item` on an anvil (Java's repair tags).
 pub fn repairs(item: Item, material: Item) -> bool {
+    if item == Item::WOLF_ARMOR {
+        return material == Item::ARMADILLO_SCUTE;
+    }
     use crate::item::{ArmorMaterial, Tier};
     if item == Item::SHIELD {
         // `#wooden_planks`, as for wooden tools.

@@ -114,6 +114,11 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
                 [0.0, if wolf { 10.0 } else { 7.0 } + y, -6.0],
                 rx(tail_pitch) * Quat::from_rotation_y((time * 3.0).sin() * 0.08),
             ));
+            if wolf {
+                for armor in super::passive::wolf_armor(m, [0.0, y, 0.0], body_rot).iter().copied() {
+                    p.push(armor);
+                }
+            }
             if wolf && a.is_some_and(|a| a.owner.is_some()) {
                 p.push(part(WOLF_COLLAR, [0.0; 3], Quat::IDENTITY));
             }

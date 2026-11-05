@@ -98,3 +98,121 @@ entry and crop changes in addition to the existing entity events. Hive
 occupants live in the dimension's `beehives` property; free bees use normal
 mob saves and LAN appearance data. Sources, allocations, checks and parity
 gaps are in [the track record](verification/2026-11-04-v0.15-crops-bees.md).
+## Mooshrooms and bats (v0.15, Java 26.3)
+
+Implemented, unverified: mooshrooms generate in mushroom fields on mycelium
+(weight 8, herds 4–8), share cow movement/goals and wheat breeding, and
+inherit red/brown variants (1/1024 mutation when the parents match). Adult
+mooshrooms give milk from buckets and mushroom stew from bowls; a brown
+adult stores one flower's effect for its next bowl of suspicious stew.
+Shears turn an adult into a cow and drop five matching mushrooms. The
+`Mob::lightning_swap` hook changes red/brown; a lightning caller must
+invoke it only once per bolt. State, age and stored effects save with the
+animal. Adult death drops beef/leather; babies give no loot/XP.
+
+Suspicious stew (1300) crafts shapelessly from a bowl, any two mushrooms and a supported small flower. It restores 6 hunger/7.2 saturation,
+can be eaten at full hunger, takes 32 ticks, returns a bowl and applies the
+flower effect. Components survive inventory/drop/network serialization.
+
+Ambient bats have six health, no loot or XP, fly, and hang upside down on
+conducting ceilings. Nearby living players (within four blocks with line
+of sight), damage or removal of the ceiling wakes them. The pinned 26.3
+spawn predicate uses world-surface height, base stone below, a 1/2 gate,
+and raw brightness no higher than a random 0–3; it has no Halloween branch.
+
+See the [verification record](verification/2026-11-04-v0.15-passive-mobs.md)
+for sources, testing, missing flower inputs and presentation differences.
+
+## Frogs and tadpoles (v0.15, Java 26.3)
+
+Implemented, unverified: swamp and mangrove-swamp frogs use slimeballs for
+temptation and breeding. One parent becomes pregnant and lays frogspawn on
+water beside land; no baby frog is created. Frogspawn hatches after
+3,600–11,999 loaded ticks into 2–5 persistent tadpoles. Tadpoles grow after
+24,000 loaded ticks; slimeballs accelerate the remaining growth by ten
+percent, rounded down to seconds. Water buckets retain age, health, name
+and age lock. The growth location's Java cold/warm biome tags choose the
+adult variant; biome temperature alone does not determine it.
+
+Frogs walk, jump, swim, croak and catch size-one slimes or magma cubes with
+their tongue. Slimes give slimeballs; magma cubes give ochre (temperate),
+verdant (cold) or pearlescent (warm) froglights. All three lights emit 15,
+place along the clicked face's axis and drop their unoriented item. See
+[the record](verification/2026-11-04-v0.15-passive-mobs.md) for the bounded
+brain implementation and remaining differences.
+
+## Village and hut cats (v0.15, Java 26.3)
+
+Implemented, unverified: CatSpawner attempts every 1,200 loaded ticks near a
+living player. At least five occupied beds and fewer than five nearby cats
+allow a village stray; the reference uses a fixed cat cap, rather than one
+cat per five beds. Huts get one persistent black resident and can receive
+periodic replacements after cats leave. Ten ordinary coats are eligible,
+with all-black added at full moon. Original palettes, saved appearance and
+existing fish taming/breeding are shared by these cats. See the
+[record](verification/2026-11-04-v0.15-passive-mobs.md) for the pinned code's
+periodic-hut variant ordering and POI/structure differences.
+
+## Polar bears (v0.15, Java 26.3)
+
+Implemented, unverified: snowy plains, ice spikes and the two frozen oceans
+spawn groups of 1–2, with an adult followed by cubs. Frozen oceans require
+ice; other entries use bright grass. Adults retaliate, defend nearby cubs,
+hunt foxes, rear and warn before attacks, and swim with high water inertia.
+Cubs panic, alert adults and age over 24,000 loaded ticks. Bears do not take
+breeding food. Adults drop cod or salmon (cooked when burned); cubs drop
+nothing. Anger references and their simulation-clock end survive saves;
+standing poses replicate. See [the source and evidence record](verification/2026-11-04-v0.15-passive-mobs.md)
+for exact constants, partial anger-rule coverage and remaining engine gaps.
+
+## Pandas (v0.15, Java 26.3)
+
+Implemented, unverified: jungle and bamboo-jungle spawning, two inherited
+genes with independent mutation, recessive brown/weak expression and
+trait-specific health, speed and actions. Bamboo tempts, breeds and ages
+cubs; one nearby bamboo stalk permits breeding. Pandas sit and snack on
+bamboo or dropped cake, cubs sneeze with rare slimeball gifts, playful
+pandas roll and lazy ones lie on their backs. Worried pandas fear thunder
+and avoid players/monsters; ordinary pandas retaliate once, aggressive ones
+keep fighting, and bamboo calms them. Genes, age and carried food persist;
+actions replicate with original cuboid models. See the
+[record](verification/2026-11-04-v0.15-passive-mobs.md) for the exact gene
+pool, timers, source data, focused checks and shared-engine differences.
+
+## Armadillos and wolf armor (v0.15, Java 26.3)
+
+Implemented, unverified: savanna and badlands armadillos eat spider eyes,
+breed and age. Nearby sprinting/riding players, undead and recent attackers
+create danger memory; armadillos roll, hide, peek and unroll. Their shells
+reduce damage. Spiders avoid them. Adults shed scutes after 6,000–11,999
+loaded ticks; brushing an adult gives another scute and costs 16 brush
+durability, independently of shedding and mob drops. Archaeology is deferred.
+
+Six scutes craft wolf armor. Only the owner equips an adult tamed wolf or
+removes armor with shears; Binding blocks removal except in Creative.
+Armor absorbs eligible hits in full, including its breaking hit, and wears
+by the ceiling of the incoming damage. The owner repairs a sitting wolf's
+armor eight points per scute, including scute consumption in Creative.
+Dye mixing, water-cauldron washing, anvil and paired-grid repairs preserve
+or clear components according to the native recipes. Equipped armor, color,
+name and damage persist and replicate. Original plates show dye and cracks;
+item icons also show dye in inventory, the hand, drops and frames. See the
+[record](verification/2026-11-04-v0.15-passive-mobs.md) for source details,
+damage-type coverage and remaining navigation/presentation differences.
+
+## Ocelots (v0.15, Java 26.3)
+
+Implemented, unverified: jungle and bamboo-jungle ocelots spawn on grass or
+leaves at sea level and above, with a two-thirds predicate independent of
+brightness. The native data places them in monster spawn lists even though
+their entity category is creature. Later natural pack members are kittens.
+Untrusting ocelots flee players and can be scared away during fish temptation
+by small movements/turns. Feeding raw cod/salmon within three blocks while
+temptation runs has a one-third chance to establish global trust. It assigns
+no owner or sitting command. Fish also breed ocelots and grow kittens;
+offspring start untrusting. Ocelots stalk, sprint/leap at chickens and baby
+land turtles, and repel creepers. Trust survives save/reload and replication;
+untrusting ocelots become eligible for distance despawning only after 2,400
+loaded ticks. Original spotted pelt, head and ringed tail render crouching
+and sprint poses. See the [record](verification/2026-11-04-v0.15-passive-mobs.md)
+for source details and remaining shared-engine/presentation differences.

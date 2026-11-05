@@ -73,8 +73,8 @@ impl JavaMonster {
         }
     }
 
-    /// The kind this cycle spawns for the entry; parched and ocelots are
-    /// not in VoxelCraft yet.
+    /// The kind this cycle spawns for the entry; parched are not in
+    /// VoxelCraft yet.
     pub(super) fn kind(self) -> Option<MobKind> {
         Some(match self {
             JavaMonster::Known(k) => k,
@@ -91,6 +91,7 @@ impl JavaMonster {
             JavaMonster::Husk => MobKind::Husk,
             JavaMonster::Slime => MobKind::Slime,
             JavaMonster::Drowned => MobKind::Drowned,
+            JavaMonster::Ocelot => MobKind::Ocelot,
             _ => return None,
         })
     }
@@ -314,7 +315,7 @@ pub(super) fn valid_spawn_floor(b: Block, kind: MobKind) -> bool {
     }
     match b {
         // Ice is for polar bears; magma for the fire immune.
-        Block::ICE => return false,
+        Block::ICE => return kind == MobKind::PolarBear,
         Block::MAGMA => return kind.fire_immune(),
         _ => {}
     }
@@ -323,7 +324,7 @@ pub(super) fn valid_spawn_floor(b: Block, kind: MobKind) -> bool {
     if b == Block::BEDROCK
         || b == Block::GLASS
         || b == redstone_blocks::MOVING
-        || (b.is_leaves() && kind != MobKind::Parrot)
+        || (b.is_leaves() && !matches!(kind, MobKind::Parrot | MobKind::Ocelot))
         || name.ends_with("stained glass")
         || matches!(name, "tinted glass" | "barrier" | "scaffolding" | "chorus flower" | "frosted ice")
         || name.contains("trapdoor")
@@ -591,7 +592,7 @@ impl Entities {
                     continue;
                 }
                 self.spawn_natural(kind, pos, world.cave_biome(cell), &mut group);
-                state.add(category, pos);
+                state.add(kind.category(), pos);
                 spawned += 1;
                 // Java's default `getMaxSpawnClusterSize` is 4 for these monsters.
                 if spawned
@@ -905,7 +906,7 @@ mod tests {
                     .mobs
                     .iter()
                     .skip(before)
-                    .filter(|m| m.riding.is_none())
+                    .filter(|m| m.riding.is_none() && m.kind.category() == MobCategory::Monster)
                     .map(|m| (m.kind, m.pos.floor().as_ivec3())),
             );
             // Keep caps open: count the spawns, then clear them away.
@@ -1173,7 +1174,9 @@ mod tests {
         assert_eq!(J::Slime.kind(), Some(MobKind::Slime));
         assert_eq!(J::Drowned.kind(), Some(MobKind::Drowned));
         assert!(
-            J::ZombieHorse.kind().is_some() && J::Stray.kind() == Some(MobKind::Stray) && J::Ocelot.kind().is_none()
+            J::ZombieHorse.kind().is_some()
+                && J::Stray.kind() == Some(MobKind::Stray)
+                && J::Ocelot.kind() == Some(MobKind::Ocelot)
         );
     }
 

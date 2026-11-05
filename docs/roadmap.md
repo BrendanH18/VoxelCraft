@@ -1476,6 +1476,27 @@ in the [architecture reservations](architecture.md#v015-track-reservations):
    three froglights; pandas with their genes; polar bears; armadillos,
    scutes and wolf armor; mooshrooms and suspicious stew; ocelots; the cat
    spawner in villages and swamp huts.
+   *Implemented, unverified (track 3, 2026-11-04):* mooshrooms (red/brown,
+   cow goals and wheat breeding, variant mutation, milk/stew, stored flower
+   effects, shearing, lightning conversion hook) and ambient bats (26.3
+   spawning, ceiling resting, flight). Suspicious stew is craftable and
+   edible with flower-specific effects, including Saturation. Original
+   models, save/reload and shared player actions are covered by focused
+   tests; see the [record](verification/2026-11-04-v0.15-passive-mobs.md)
+   for source discrepancies and remaining parity gaps. Frogs/tadpoles,
+   pregnancy and frogspawn hatching, biome-tag variants, tongue predation,
+   axis-oriented froglights and tadpole buckets are also implemented,
+   unverified. CatSpawner now implements the five-occupied-bed/five-cat
+   village rule, periodic hut attempts and the once-only black hut resident,
+   also unverified. Polar bears now have cub groups/defence, neutral anger,
+   standing attacks, swimming and fish loot (implemented, unverified).
+   Pandas now have inherited genes and mutations, bamboo breeding, snacks,
+   sneezes, rolls, thunder fear and retaliation (implemented, unverified).
+   Armadillos now roll around threats, shed scutes and can be brushed;
+   owner-equipped wolf armor absorbs damage, repairs, dyes and washes
+   (implemented, unverified). Jungle ocelots now flee, trust fish-feeding
+   players, breed, hunt chickens/baby land turtles and persist trust
+   (implemented, unverified).
 4. **Hostiles** (MOB-04, PRO-02). Strays, bogged and phantoms (insomnia,
    `spawn_phantoms`, membranes), and tipped arrows. *Implemented, unverified
    (2026-11-04): natural variants, conversion/shearing, original models, loot,

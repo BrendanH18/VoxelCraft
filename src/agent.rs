@@ -1791,6 +1791,25 @@ mod tests {
     }
 
     #[test]
+    fn agent_wolf_armor_dye_crafting_uses_real_components_and_reports_the_actual_result() {
+        use crate::{color::DyeColor, entity::wolf_armor};
+        let mut world = world();
+        let mut entities = Entities::new(91);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        let mut armor =
+            wolf_armor::dye(Stack::new(Item::WOLF_ARMOR, 1), &[DyeColor::Red]).unwrap().with_name("Cedar").unwrap();
+        armor.damage = 17;
+        armor.repair_cost = 3;
+        a.inventory.slots[0] = Some(armor);
+        a.inventory.slots[1] = Some(Stack::new(DyeColor::Blue.dye(), 5));
+        let expected = wolf_armor::dye(armor, &[DyeColor::Blue]).unwrap();
+        assert_eq!(a.craftable(&world).iter().find(|s| s.item == Item::WOLF_ARMOR).copied(), Some(expected));
+        a.execute(Command::Craft(Item::WOLF_ARMOR), &mut world, &mut entities, &[]).unwrap();
+        assert_eq!(a.inventory.get(0), Some(expected));
+        assert_eq!(a.inventory.get(1).unwrap().count, 4);
+    }
+
+    #[test]
     fn independent_players_and_atomic_crafting() {
         let mut world = world();
         let mut entities = Entities::new(1);
