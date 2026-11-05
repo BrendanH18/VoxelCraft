@@ -1516,6 +1516,19 @@ in the [architecture reservations](architecture.md#v015-track-reservations):
 Moved to a later v0.15 change (owner, 2026-11-04): the creaking and
 resin, the copper golem and its statues, allays and sniffers.
 
+**Copper golems and statues — approved 2026-11-05.** The next v0.15
+slice completes their survival loop against the pinned Java 26.3 reference:
+player construction, item transport from copper chests, oxidation,
+waxing and axe scraping, conversion to statues and reactivation, original
+models and sounds, and persistent mob, carried-item and statue state.
+Shared player actions cover the existing input adapters. Automated
+reference, save/reload and performance checks accompany an agent hands-on
+run; the owner's ordinary play remains separate evidence. This work may
+proceed while v0.14 awaits that play. Creaking/resin, allays and sniffers
+remain subsequent slices. Status: planned; approval is not implementation
+or verification evidence. Identifier reservations are recorded in the
+[architecture](architecture.md#v015-copper-golem-reservations).
+
 ### M4 — A complete living world
 
 Close MOB, FOO and relevant ENV rules: animals and companions, villagers/
