@@ -254,7 +254,7 @@ impl Mob {
             return;
         }
         if self.kind == MobKind::Ocelot {
-            self.ocelot_land_tick(world, wish, speed, rng);
+            self.ocelot_land_tick(world, wish, speed);
             return;
         }
         if self.kind == MobKind::Panda {

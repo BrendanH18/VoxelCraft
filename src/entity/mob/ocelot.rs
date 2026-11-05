@@ -57,14 +57,7 @@ impl Mob {
 }
 
 impl Mob {
-    pub(super) fn ocelot_land_tick<W: MobWorld + ?Sized>(
-        &mut self,
-        w: &W,
-        wish: Option<DVec3>,
-        speed: f64,
-        rng: &mut Rng,
-    ) {
-        let from = self.pos.y;
+    pub(super) fn ocelot_land_tick<W: MobWorld + ?Sized>(&mut self, w: &W, wish: Option<DVec3>, speed: f64) {
         let mut dm = self.vel * 0.05;
         for v in [&mut dm.x, &mut dm.y, &mut dm.z] {
             if v.abs() < 0.003 {
@@ -82,16 +75,7 @@ impl Mob {
         };
         self.travel_in_air(w, &mut dm, input);
         self.vel = dm * 20.0;
-        let s = self.ocelot.as_mut().unwrap();
-        s.fall_distance += (from - self.pos.y).max(0.0);
-        if self.on_ground {
-            let distance = std::mem::take(&mut s.fall_distance);
-            let below = w.block((self.pos - DVec3::Y * 0.05).floor().as_ivec3());
-            let damage = (distance - 3.0 - f64::from(self.effects.jump_boost())).ceil().max(0.0) as f32;
-            if damage > 0.0 && below != Some(crate::world::stone_blocks::SLIME_BLOCK) {
-                self.damage(damage, None, rng);
-            }
-        }
+        // No fall damage: ocelots are in Java's `fall_damage_immune` tag.
     }
 }
 
@@ -123,6 +107,16 @@ mod tests {
         }
     }
     #[test]
+    fn ocelots_take_no_fall_damage() {
+        let w = Flat(Grid::flat(1));
+        let mut m = Mob::new(MobKind::Ocelot, DVec3::new(0.5, 30.0, 0.5), 0.0);
+        for _ in 0..200 {
+            m.ocelot_land_tick(&w, None, 0.0);
+        }
+        assert!(m.on_ground && m.pos.y < 2.0, "landed at {}", m.pos.y);
+        assert_eq!(m.health, MobKind::Ocelot.max_health());
+    }
+    #[test]
     fn pandas_and_ocelots_walk_at_java_speed_squared_after_input_scaling() {
         let w = Flat(Grid::flat(1));
         let mut rng = Rng::new(74);
@@ -137,7 +131,7 @@ mod tests {
                     if kind == MobKind::Panda {
                         m.panda_land_tick(&w, Some(DVec3::X), speed, &mut rng);
                     } else {
-                        m.ocelot_land_tick(&w, Some(DVec3::X), speed, &mut rng);
+                        m.ocelot_land_tick(&w, Some(DVec3::X), speed);
                     }
                     actual = (m.pos.x - from) * 20.0;
                 }

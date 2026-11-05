@@ -14,7 +14,6 @@ pub struct State {
     pub(super) prey: Option<(u32, DVec3)>,
     pub(super) tempt_anchor: Option<(PlayerId, DVec3, DVec3)>,
     pub(super) leaping: bool,
-    pub(super) fall_distance: f64,
     sense: u8,
     carry: f64,
 }

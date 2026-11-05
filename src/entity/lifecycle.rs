@@ -380,6 +380,7 @@ impl Entities {
                             kind,
                             MobKind::Dolphin
                                 | MobKind::Blaze
+                                | MobKind::Bee
                                 | MobKind::PolarBear
                                 | MobKind::Panda
                                 | MobKind::Armadillo

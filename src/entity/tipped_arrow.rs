@@ -87,7 +87,8 @@ impl Arrow {
             let amount = base * (1u32 << amplifier.min(20)) as f32;
             if harms {
                 let amount = if mob.kind == super::MobKind::Witch { amount * 0.15 } else { amount };
-                mob.damage(amount, None, rng);
+                // Magic bypasses wolf armor (`BYPASSES_WOLF_ARMOR`).
+                mob.damage_bypassing_wolf_armor(amount, None, rng);
             } else {
                 mob.health = (mob.health + amount).min(mob.max_health());
             }
@@ -131,6 +132,31 @@ mod tests {
             dimension: crate::world::terrain::Dimension::Overworld,
             spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
         }
+    }
+    #[test]
+    fn harming_arrows_bypass_wolf_armor() {
+        let mut wolf = Mob::new(MobKind::Wolf, DVec3::ZERO, 0.);
+        wolf.wolf_armor.as_mut().unwrap().armor = Some(Stack::new(Item::WOLF_ARMOR, 1));
+        let full = wolf.health;
+        let mut arrow = Arrow::shot(DVec3::ZERO, DVec3::X, 1., true);
+        arrow.potion = Potion::from_id("harming");
+        arrow.effects_on_mob(&mut wolf, &mut Rng::new(1));
+        // `BYPASSES_WOLF_ARMOR` includes magic: the wolf takes it, not the armor.
+        assert_eq!(wolf.health, full - 6.);
+        assert_eq!(wolf.wolf_armor.as_ref().unwrap().armor.unwrap().damage, 0);
+    }
+    #[test]
+    fn player_arrows_anger_the_bee_they_hit() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Bee, DVec3::new(2.5, 10.0, 0.5));
+        e.shoot_enchanted_for(DVec3::new(0.5, 10.5, 0.5), DVec3::X, 0.5, false, Default::default(), PlayerId::HOST);
+        for _ in 0..20 {
+            e.update(0.05, &world, &ctx());
+        }
+        let bee = &e.mobs[0];
+        assert!(bee.health < bee.max_health() && bee.alive(), "the arrow must hit without killing");
+        assert!(bee.bee.is_some_and(|s| s.anger > 0), "BeeHurtByOtherGoal targets the shooter");
     }
     #[test]
     fn potion_components_round_trip_without_merging_different_potions() {

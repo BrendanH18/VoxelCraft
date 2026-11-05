@@ -132,7 +132,12 @@ impl Cloud {
                         if self.owner.is_some() {
                             m.player_hit();
                         }
-                        let killed = m.damage(if m.kind == MobKind::Witch { amount * 0.15 } else { amount }, None, rng);
+                        // Magic bypasses wolf armor (`BYPASSES_WOLF_ARMOR`).
+                        let killed = m.damage_bypassing_wolf_armor(
+                            if m.kind == MobKind::Witch { amount * 0.15 } else { amount },
+                            None,
+                            rng,
+                        );
                         events.push(EntityEvent::MobShot {
                             kind: m.kind,
                             pos: m.pos,

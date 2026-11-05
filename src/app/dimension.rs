@@ -24,7 +24,7 @@ use crate::world::terrain::{Dimension, Generator, SEA_LEVEL};
 use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 17] = [
+pub(super) const DIMENSION_KEYS: [&str; 18] = [
     "furnaces",
     "chests",
     "items",
@@ -42,6 +42,7 @@ pub(super) const DIMENSION_KEYS: [&str; 17] = [
     "wood",
     "utilities",
     "beehives",
+    "potion_clouds",
 ];
 /// How far around the arrival point to look for an existing portal.
 const SEARCH_RADIUS: i32 = 16;
@@ -500,6 +501,15 @@ impl Game {
 mod tests {
     use super::*;
     use crate::world::storage::LevelInfo;
+
+    #[test]
+    fn every_entity_save_key_stays_with_its_dimension() {
+        let mut props = BTreeMap::new();
+        crate::entity::Entities::new(1).save_props(&mut props);
+        for key in props.keys() {
+            assert!(DIMENSION_KEYS.contains(&key.as_str()), "{key} would be dropped on reload");
+        }
+    }
 
     #[test]
     fn each_dimension_keeps_its_own_save() {
