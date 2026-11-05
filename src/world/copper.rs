@@ -288,6 +288,14 @@ fn of(b: Block, family: Family) -> Option<Copper> {
     state(b).filter(|c| c.family == family)
 }
 
+/// WeatheringCopper age, including terminal oxidation stages, excluding wax.
+pub(super) fn weathering_stage(b: Block) -> Option<Stage> {
+    state(b)
+        .filter(|c| !c.waxed && c.family.weathers())
+        .map(|c| c.stage)
+        .or_else(|| super::copper_golem_statue::decode(b).filter(|s| !s.waxed).map(|s| s.stage))
+}
+
 // ---- Textures -----------------------------------------------------------
 
 /// Texture layers: per stage [`t::PER_STAGE`] layers from [`t::BASE`],
@@ -942,8 +950,15 @@ impl World {
     /// (`DoorBlock.updateShape`).
     pub(super) fn tick_copper(&mut self, p: IVec3, b: Block) {
         let Some(c) = state(b) else { return };
-        if !ages(b) || !chest_ticks(self, p, b) || self.next_float() >= AGE_CHANCE {
-            return;
+        if ages(b) && chest_ticks(self, p, b) && self.copper_oxidizes(p, c.stage) {
+            self.restage_copper(p, c, c.stage.next().unwrap(), false);
+        }
+    }
+
+    /// The same WeatherState neighborhood includes statues and ordinary copper.
+    pub(super) fn copper_oxidizes(&mut self, p: IVec3, stage: Stage) -> bool {
+        if self.next_float() >= AGE_CHANCE {
+            return false;
         }
         let (mut same, mut older) = (0u32, 0u32);
         for dx in -SCAN..=SCAN {
@@ -953,12 +968,11 @@ impl World {
                     if d == IVec3::ZERO || dx.abs() + dy.abs() + dz.abs() > SCAN {
                         continue;
                     }
-                    let Some(n) = self.get_block(p + d).and_then(state).filter(|n| !n.waxed && n.family.weathers())
-                    else {
+                    let Some(n) = self.get_block(p + d).and_then(weathering_stage) else {
                         continue;
                     };
-                    match n.stage.cmp(&c.stage) {
-                        std::cmp::Ordering::Less => return,
+                    match n.cmp(&stage) {
+                        std::cmp::Ordering::Less => return false,
                         std::cmp::Ordering::Greater => older += 1,
                         std::cmp::Ordering::Equal => same += 1,
                     }
@@ -966,11 +980,8 @@ impl World {
             }
         }
         let chance = (older + 1) as f32 / (older + same + 1) as f32;
-        let modifier = if c.stage == Stage::Unaffected { 0.75 } else { 1.0 };
-        if self.next_float() < chance * chance * modifier {
-            let next = c.stage.next().unwrap();
-            self.restage_copper(p, c, next, false);
-        }
+        let modifier = if stage == Stage::Unaffected { 0.75 } else { 1.0 };
+        self.next_float() < chance * chance * modifier
     }
 
     /// Moves the copper at `p` to `stage`, keeping its properties, with a

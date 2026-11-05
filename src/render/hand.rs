@@ -23,6 +23,8 @@ use crate::world::shape;
 pub struct Hand {
     /// What's held (`None`: the bare arm).
     pub item: Option<Item>,
+    /// Optional component-aware block model (statue pose).
+    pub block: Option<crate::world::block::Block>,
     /// Swing progress, 0..1 (0 when not swinging).
     pub swing: f32,
     /// 0 when raised, 1 when lowered out of view (switching items).
@@ -355,7 +357,7 @@ pub(super) fn vertices(
         * rot_x((root * PI).sin() * -80.0)
         * rot_y(-45.0);
 
-    let block = item.block().filter(|b| !b.flat_icon());
+    let block = hand.block.or_else(|| item.block()).filter(|b| !b.flat_icon());
     match block {
         Some(block) => {
             // Block models: turned 45 degrees and shrunk to 0.4, centred.

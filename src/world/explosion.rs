@@ -635,7 +635,11 @@ static TABLES: LazyLock<Tables> = LazyLock::new(|| {
             .filter(|c| c.waxed)
             .map_or(b, |c| super::copper::encode(super::copper::Copper { waxed: false, ..c }));
         let name = reference.name();
-        tables.resistance[i] = resistance.get(name).copied().unwrap_or_else(|| b.hardness());
+        tables.resistance[i] = if super::copper_golem_statue::owns(b.0) {
+            6.0
+        } else {
+            resistance.get(name).copied().unwrap_or_else(|| b.hardness())
+        };
         tables.loot[i] = match loot.get(name) {
             Some(&kind) => kind,
             None if b.is_leaves() => Loot::Leaves,

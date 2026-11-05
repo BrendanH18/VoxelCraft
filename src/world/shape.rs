@@ -492,6 +492,9 @@ pub fn shape_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bloc
         Some(Shaped::Custom) if super::wood::owns(block.0) => return super::wood::mesh_boxes(block).unwrap_or(out),
         Some(Shaped::Custom) if let Some(boxes) = super::colour_blocks::boxes(block) => return boxes,
         Some(Shaped::Custom) if super::mount_states::is_lantern(block.0) => lantern_boxes(block, &mut out),
+        Some(Shaped::Custom) if let Some(s) = super::copper_golem_statue::decode(block) => {
+            return super::copper_golem_statue::mesh(s);
+        }
         Some(Shaped::Custom) if super::copper::owns(block.0) => super::copper::boxes(block, &mut out),
         Some(Shaped::Custom) => super::overworld_blocks::boxes(block).unwrap_or(&[]).iter().for_each(|&b| out.push(b)),
         Some(Shaped::Hook { facing }) => out.push_turned(
@@ -577,6 +580,9 @@ pub fn outline_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bl
     }
     if let Some(Shaped::Ladder(facing)) = block.shaped() {
         return Boxes::from_box(LADDER_COLLISION[0].turned(facing));
+    }
+    if super::copper_golem_statue::owns(block.0) {
+        return super::copper_golem_statue::collision();
     }
     if let Some(boxes) = super::copper::outline(block) {
         return boxes;
@@ -805,6 +811,9 @@ pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: 
         Some(Shaped::BrewingStand) => out.push_turned(&BREWING_STAND_COLLISION, Facing::South),
         Some(Shaped::EndPortal) => {}
         Some(Shaped::Custom) if super::mount_states::is_lantern(block.0) => lantern_boxes(block, &mut out),
+        Some(Shaped::Custom) if super::copper_golem_statue::owns(block.0) => {
+            return super::copper_golem_statue::collision();
+        }
         Some(Shaped::Custom) if super::copper::owns(block.0) => super::copper::collision(block, &mut out),
         Some(Shaped::Custom) if super::wood::owns(block.0) => return super::wood::collision(block).unwrap_or(out),
         Some(Shaped::Custom) if let Some(boxes) = super::colour_blocks::collision(block) => return boxes,

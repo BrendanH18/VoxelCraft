@@ -13,6 +13,8 @@ mod cave;
 mod colour;
 #[path = "copper_textures.rs"]
 mod copper;
+#[path = "copper_golem_statue_textures.rs"]
+mod copper_golem_statue;
 #[path = "crop_textures.rs"]
 mod crops;
 #[path = "nether_textures.rs"]
@@ -234,6 +236,11 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     }
     if (crate::world::stone_blocks::t::TEX..crate::world::stone_blocks::t::END).contains(&layer) {
         return stone::pixel(layer, x, y);
+    }
+    if (crate::world::copper_golem_statue::TEXTURE_FIRST..crate::world::copper_golem_statue::TEXTURE_END)
+        .contains(&layer)
+    {
+        return copper_golem_statue::pixel(layer, x, y);
     }
     if (crate::world::copper::t::BASE..crate::world::copper::t::END).contains(&layer) {
         return copper::pixel(layer, x, y);

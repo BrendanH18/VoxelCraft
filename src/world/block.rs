@@ -366,7 +366,7 @@ pub mod tex {
     pub const BUBBLE_BASE: u16 = 2864;
     pub const BUBBLE_UP: u16 = BUBBLE_BASE;
     pub const BUBBLE_DOWN: u16 = BUBBLE_BASE + 1;
-    pub const COUNT: u32 = super::super::frog_blocks::tex::END as u32; // Through track 3 frogspawn/froglights (3136–3145); track 2 crop/bee layers end below.
+    pub const COUNT: u32 = super::super::copper_golem_statue::TEXTURE_END as u32; // Through v0.15 statue layers 3328–3339; unused layers stay reserved.
     const _: () = assert!(super::super::biome_plants::TEX_END <= BUBBLE_BASE);
     const _: () = assert!(super::super::utilities::TEX_END <= super::super::cave_blocks::TEX);
     const _: () = assert!(super::super::cave_blocks::TEX_END <= super::super::biome_plants::TEX);
@@ -908,6 +908,9 @@ impl Block {
 
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
+        if super::copper_golem_statue::owns(self.0) {
+            return Some(Shaped::Custom);
+        }
         if self == super::frog_blocks::FROGSPAWN {
             return Some(Shaped::Custom);
         }
@@ -1196,6 +1199,9 @@ impl Block {
     /// The block items, recipes and rules use for an oriented block (a
     /// furnace or chest facing any way), and the way it faces.
     pub fn oriented(self) -> Option<(Block, Facing)> {
+        if let Some(s) = super::copper_golem_statue::decode(self) {
+            return Some((super::copper_golem_statue::item_block(s.stage, s.waxed), s.facing));
+        }
         if super::copper::owns(self.0) {
             return super::copper::oriented(self);
         }
@@ -1259,6 +1265,9 @@ impl Block {
 
     /// This block without its orientation (itself if it has none).
     pub fn base(self) -> Block {
+        if let Some(s) = super::copper_golem_statue::decode(self) {
+            return super::copper_golem_statue::item_block(s.stage, s.waxed);
+        }
         if let Some((nest, _, _)) = super::bees::hive(self) {
             return if nest { super::bees::NEST } else { super::bees::HIVE };
         }
@@ -1327,6 +1336,9 @@ impl Block {
 
     /// The same block facing `facing` (unchanged if it has no front).
     pub fn with_facing(self, facing: Facing) -> Block {
+        if let Some(s) = super::copper_golem_statue::decode(self) {
+            return super::copper_golem_statue::block(super::copper_golem_statue::Statue { facing, ..s });
+        }
         if let Some((nest, _, honey)) = super::bees::hive(self) {
             return super::bees::block(nest, facing, honey);
         }
@@ -1562,6 +1574,9 @@ impl Block {
 
     /// What breaking this block yields in survival.
     pub fn drop(self) -> Option<Item> {
+        if super::copper_golem_statue::owns(self.0) {
+            return Some(Item::from_block(self.base()));
+        }
         if let Some((nest, _, _)) = super::bees::hive(self) {
             return (!nest).then(|| super::bees::HIVE.into());
         }
@@ -1699,6 +1714,9 @@ impl Block {
     /// held item can harvest the block and 5x when it can't, divided by the
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
     pub fn hardness(self) -> f32 {
+        if super::copper_golem_statue::owns(self.0) {
+            return 3.0;
+        }
         if super::frog_blocks::owns(self.0) {
             return if self == super::frog_blocks::FROGSPAWN { 0.0 } else { 0.3 };
         }
@@ -1910,6 +1928,9 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
+        if super::copper_golem_statue::owns(self.0) {
+            return Some(ToolKind::Pickaxe);
+        }
         if super::bees::hive(self).is_some() {
             return Some(ToolKind::Axe);
         }
@@ -2235,6 +2256,7 @@ impl Block {
             .chain([Self::HONEY_BLOCK.0, super::scaffolding::SCAFFOLDING.0])
             .chain(super::stone_blocks::palette_ids())
             .chain(super::copper::palette_ids())
+            .chain(super::copper_golem_statue::palette_ids())
             .chain([super::bees::NEST.0, super::bees::HIVE.0, super::bees::HONEYCOMB_BLOCK.0])
             .chain(super::wood::palette_ids())
             .chain(super::colour_blocks::palette_ids())
@@ -2427,6 +2449,7 @@ impl Block {
         (0..STATE_CAPACITY as u16)
             .map(Block)
             .find(|b| b.kind() != RenderKind::Invisible && b.name() == name)
+            .map(|b| if super::copper_golem_statue::owns(b.0) { b.base() } else { b })
             .or((name == "air").then_some(Block::AIR))
     }
 
@@ -2853,6 +2876,10 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         return info;
     }
     let (name, kind, tex) = match id {
+        id if super::copper_golem_statue::owns(id) => match super::copper_golem_statue::registry(id) {
+            Some(info) => info,
+            None => ("unknown", Invisible, all(0)),
+        },
         id if super::frog_blocks::owns(id) => match super::frog_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),

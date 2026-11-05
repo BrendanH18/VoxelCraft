@@ -110,6 +110,7 @@ impl HandAnim {
     pub(super) fn view(&self, eating: f32, sky_light: f32, block_light: f32) -> Hand {
         Hand {
             item: self.shown,
+            block: None,
             swing: self.swing.map_or(0.0, |t| t / SWING_TIME),
             equip: self.equip(),
             eating,

@@ -79,9 +79,23 @@ impl World {
     /// its stage but still starts the walks; the walks skip waxed blocks,
     /// which aren't `WeatheringCopper`.
     pub fn clean_lightning_copper(&mut self, p: IVec3) {
-        let Some(c) = self.get_block(p).and_then(copper::state).filter(|c| c.family.weathers()) else { return };
-        if !c.waxed {
-            self.restage_copper(p, c, Stage::Unaffected, true);
+        let Some(b) = self.get_block(p) else { return };
+        if let Some(s) = super::copper_golem_statue::decode(b) {
+            if !s.waxed {
+                self.set_block(
+                    p,
+                    super::copper_golem_statue::block(super::copper_golem_statue::Statue {
+                        stage: Stage::Unaffected,
+                        ..s
+                    }),
+                );
+            }
+        } else if let Some(c) = copper::state(b).filter(|c| c.family.weathers()) {
+            if !c.waxed {
+                self.restage_copper(p, c, Stage::Unaffected, true);
+            }
+        } else {
+            return;
         }
         let walks = 3 + self.roll() % 3;
         for _ in 0..walks {
@@ -96,11 +110,19 @@ impl World {
                             (self.roll() % 3) as i32 - 1,
                             (self.roll() % 3) as i32 - 1,
                         );
-                    if let Some(c) =
-                        self.get_block(q).and_then(copper::state).filter(|c| c.family.weathers() && !c.waxed)
-                    {
-                        if let Some(stage) = c.stage.previous() {
-                            self.restage_copper(q, c, stage, true);
+                    if let Some(b) = self.get_block(q).filter(|&b| copper::weathering_stage(b).is_some()) {
+                        if let Some(stage) = copper::weathering_stage(b).and_then(Stage::previous) {
+                            if let Some(s) = super::copper_golem_statue::decode(b) {
+                                self.set_block(
+                                    q,
+                                    super::copper_golem_statue::block(super::copper_golem_statue::Statue {
+                                        stage,
+                                        ..s
+                                    }),
+                                );
+                            } else if let Some(c) = copper::state(b) {
+                                self.restage_copper(q, c, stage, true);
+                            }
                         }
                         next = Some(q);
                         break;

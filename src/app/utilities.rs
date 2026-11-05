@@ -64,7 +64,9 @@ impl Game {
     /// or the item's icon flat in the frame.
     pub(super) fn decor_models(&self) -> impl Iterator<Item = crate::render::BlockModel> + '_ {
         decor::framed_items(&self.mobs.entities.decor).map(|(centre, orient, stack, sky, torch)| {
-            let block = stack.item.block().filter(|b| !b.flat_icon());
+            let block = crate::world::copper_golem_statue::item_model(stack)
+                .or_else(|| stack.item.block())
+                .filter(|b| !b.flat_icon());
             let size = if block.is_some() { 0.375 } else { 0.5 };
             let icon = match block {
                 Some(_) => None,

@@ -423,6 +423,8 @@ impl Game {
     ) -> crate::render::hand::Hand {
         let main = session.inventory.get(selected);
         hand.tint = main.map(voxelcraft::entity::wolf_armor::item_tint_bytes);
+        hand.block =
+            main.filter(|s| Some(s.item) == hand.item).and_then(voxelcraft::world::copper_golem_statue::item_model);
         let image = |stack: Option<Stack>| {
             let stack = stack.filter(|s| s.item.is_map() && s.item != Item::MAP)?;
             let mut map = self.world.maps.maps.get(&stack.map_id?)?.clone();
@@ -619,7 +621,7 @@ fn shield_veil(ui: &mut Ui, stack: Stack, cooldown: f32, x: f32, y: f32) {
 
 pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool, dial: crate::item::Dial) {
     let layer = stack.item.dial_layer(dial.for_stack(&stack)).or_else(|| stack.item.icon_layer());
-    match (stack.item.block(), layer) {
+    match (voxelcraft::world::copper_golem_statue::item_model(stack).or_else(|| stack.item.block()), layer) {
         (Some(block), _) => ui.block_icon(x + 2.0, y + 2.0, 14.0, block),
         (None, Some(layer)) => {
             ui.icon(x + 1.0, y + 1.0, 16.0, layer, crate::entity::wolf_armor::item_tint(stack));

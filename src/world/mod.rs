@@ -33,6 +33,7 @@ pub mod colors;
 pub mod colour_blocks;
 pub mod composter;
 pub mod copper;
+pub mod copper_golem_statue;
 pub mod crops;
 pub mod deep_dark;
 pub mod dismount;

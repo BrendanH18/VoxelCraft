@@ -199,7 +199,9 @@ impl Game {
             if item.pos.distance_squared(self.session.player.pos) > DRAW_DIST * DRAW_DIST {
                 continue;
             }
-            let block = item.stack.item.block().filter(|b| !b.flat_icon());
+            let block = crate::world::copper_golem_statue::item_model(item.stack)
+                .or_else(|| item.stack.item.block())
+                .filter(|b| !b.flat_icon());
             let icon = match block {
                 Some(_) => None,
                 None => item

@@ -104,6 +104,10 @@ impl World {
         if !self.tile_drops {
             return;
         }
+        if let Some(statue) = super::copper_golem_statue::decode(block) {
+            self.drops.push((p, statue.item_stack(Default::default())));
+            return;
+        }
         // A waterlogged block drops what its dry original does.
         let block = block.canonical();
         use crate::enchant::Enchantment;
@@ -306,7 +310,12 @@ impl World {
         chunks.dedup();
         for cpos in chunks {
             if self.chunks.get(&cpos).is_none_or(|s| {
-                s.data.uniform().is_some_and(|b| !b.is_lava() && b.fire_age().is_none() && !super::copper::ages(b))
+                s.data.uniform().is_some_and(|b| {
+                    !b.is_lava()
+                        && b.fire_age().is_none()
+                        && !super::copper::ages(b)
+                        && !super::copper_golem_statue::ages(b)
+                })
             }) {
                 continue;
             }
@@ -365,6 +374,7 @@ impl World {
             }
             Block::SUGAR_CANE => self.tick_cane(p),
             b if super::copper::ages(b) => self.tick_copper(p, b),
+            b if super::copper_golem_statue::ages(b) => self.tick_copper_golem_statue(p, b),
             b if b.is_mushroom() => self.tick_mushroom(p, b),
             b if (1600..=1687).contains(&b.0) => self.tick_nether_flora(p, b),
             b if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&b.canonical().0)
