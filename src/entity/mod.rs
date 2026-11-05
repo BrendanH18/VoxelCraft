@@ -1185,6 +1185,7 @@ impl Entities {
     }
 
     fn drop_loot_with_fire(&mut self, kind: MobKind, pos: DVec3, looting: u8, burning: bool, player_kill: bool) {
+        self.copper_equipment_drops(kind, pos);
         if !self.mob_loot {
             return;
         }
@@ -1210,7 +1211,6 @@ impl Entities {
             };
             self.spawn_xp(pos, xp);
         }
-        self.copper_equipment_drops(kind, pos);
         self.equipment_drops(kind, pos, looting, player_kill);
         self.skeleton_equipment_drops(kind, pos, looting, player_kill);
         if baby && nether::babies_drop_nothing(kind) {

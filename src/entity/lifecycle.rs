@@ -146,15 +146,10 @@ impl Entities {
                 {
                     self.items.push(ItemEntity::new(stack, dead.pos, DVec3::ZERO, 0.5, &mut self.rng));
                 }
-                if self.mob_loot
-                    && dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
+                if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
                     && let Some(s) = &dead.copper_golem
                 {
-                    for stack in [s.cargo, s.antenna]
-                        .into_iter()
-                        .flatten()
-                        .filter(|s| !s.enchants.has(crate::enchant::Enchantment::VanishingCurse))
-                    {
+                    for stack in [s.cargo, s.antenna].into_iter().flatten() {
                         self.items.push(ItemEntity::new(stack, dead.pos, DVec3::ZERO, 0.5, &mut self.rng));
                     }
                 }

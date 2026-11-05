@@ -126,9 +126,10 @@ impl State {
         self.interrupt();
         item
     }
-    /// Equippable poppy; return the old stack to the caller, which owns consumption.
+    /// Equippable poppy, only in an empty antenna slot (Java Equippable.equipOnTarget).
+    /// Outer None rejects; Some(None) equips. Caller owns held-item consumption.
     pub fn equip_antenna(&mut self, stack: Stack) -> Option<Option<Stack>> {
-        if stack.item != crate::item::Item::from(Block::POPPY) || stack.count != 1 {
+        if stack.item != crate::item::Item::from(Block::POPPY) || stack.count != 1 || self.antenna.is_some() {
             return None;
         }
         Some(self.antenna.replace(stack))
@@ -379,11 +380,9 @@ impl Entities {
         else {
             return;
         };
-        for stack in [s.cargo.take(), s.antenna.take()]
-            .into_iter()
-            .flatten()
-            .filter(|s| !s.enchants.has(crate::enchant::Enchantment::VanishingCurse))
-        {
+        // Java CopperGolem.dropEquipment calls dropPreservedEquipment after
+        // ordinary loot: guaranteed slots ignore Vanishing and MOB_DROPS.
+        for stack in [s.cargo.take(), s.antenna.take()].into_iter().flatten() {
             self.items.push(super::ItemEntity::new(stack, pos, DVec3::ZERO, 0.5, &mut self.rng));
         }
         s.interrupt();

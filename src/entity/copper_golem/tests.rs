@@ -251,6 +251,7 @@ fn weather_wax_scrape_lightning_and_readiness_do_not_discard_state() {
     assert!(s.statue_ready && s.cargo.is_some());
     let flower = Stack::new(Block::POPPY, 1);
     assert_eq!(s.equip_antenna(flower), Some(None));
+    assert_eq!(s.equip_antenna(flower), None);
     assert_eq!(s.shear(), Some(flower));
 }
 #[test]
@@ -337,6 +338,8 @@ fn death_drops_cargo_before_save_and_exactly_once() {
     golem(&mut e, DVec3::new(2.5, 64., 2.5));
     let mut stack = Stack::new(Item::DIAMOND, 11);
     stack.entity_data = 456;
+    stack.enchants = crate::enchant::Enchants::NONE.with(crate::enchant::Enchantment::VanishingCurse, 1);
+    e.mob_loot = false;
     e.mobs[0].copper_golem.as_mut().unwrap().cargo = Some(stack);
     e.mobs[0].copper_golem.as_mut().unwrap().antenna = Some(Stack::new(Block::POPPY, 1));
     assert!(e.mobs[0].damage(20., None, &mut e.rng));
