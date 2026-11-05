@@ -166,6 +166,12 @@ impl World {
                     IVec3::new(i % CHUNK_SIZE_I, i / (CHUNK_SIZE_I * CHUNK_SIZE_I), i / CHUNK_SIZE_I % CHUNK_SIZE_I);
                 self.redstone_changed(c * CHUNK_SIZE_I + local);
             }
+            if super::sniffer_egg::owns(b.0) {
+                let p = c * CHUNK_SIZE_I + local;
+                if !self.redstone.pending.contains_key(&p) {
+                    self.track_sniffer_egg(p, Block::AIR, b);
+                }
+            }
             if b == super::frog_blocks::FROGSPAWN {
                 let local =
                     IVec3::new(i % CHUNK_SIZE_I, i / (CHUNK_SIZE_I * CHUNK_SIZE_I), i / CHUNK_SIZE_I % CHUNK_SIZE_I);
@@ -630,6 +636,9 @@ impl World {
 
     fn redstone_scheduled_tick(&mut self, p: IVec3) {
         let Some(b) = self.get_block(p) else { return };
+        if super::sniffer_egg::owns(b.0) {
+            return self.hatch_sniffer_egg(p);
+        }
         if super::lightning::rod(b).is_some() {
             return self.reset_lightning_rod(p, b);
         }

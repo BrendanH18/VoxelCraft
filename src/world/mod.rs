@@ -90,6 +90,8 @@ mod rule_tests;
 pub mod scaffolding;
 pub mod shape;
 pub mod slab_stair_states;
+pub mod sniffer_egg;
+pub mod sniffer_plants;
 pub mod spawn_finder;
 mod spawner;
 mod sponge;
@@ -336,6 +338,7 @@ pub struct World {
     /// Turtle eggs that hatched: cell and how many babies; the game spawns them.
     pub hatched_turtles: Vec<(IVec3, u8)>,
     pub hatched_tadpoles: Vec<(IVec3, u8)>,
+    pub hatched_sniffers: Vec<IVec3>,
     compost_sequence: u64,
     bell_rings: Vec<IVec3>,
     /// Whether it's raining (set by the game each frame).
@@ -595,6 +598,7 @@ impl World {
             golem_heads: Vec::new(),
             hatched_turtles: Vec::new(),
             hatched_tadpoles: Vec::new(),
+            hatched_sniffers: Vec::new(),
             compost_sequence: 0,
             bell_rings: Vec::new(),
             raining: false,
@@ -912,6 +916,7 @@ impl World {
         self.track_redstone(p, old, block);
         self.track_lightning_rod(p, old, block);
         self.track_frog_blocks(p, old, block);
+        self.track_sniffer_egg(p, old, block);
         if old != block {
             self.scaffolding_changed(p);
         }

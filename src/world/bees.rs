@@ -405,7 +405,9 @@ impl World {
         let Some(b) = self.get_block(p) else {
             return false;
         };
-        let next = if let Some((crop, age)) = b.as_crop() {
+        let next = if let Some(age) = super::sniffer_plants::torch_age(b) {
+            Some(if age == 0 { Block(b.0 + 1) } else { super::sniffer_plants::TORCHFLOWER })
+        } else if let Some((crop, age)) = b.as_crop() {
             (age < crop.max_age()).then(|| Block::crop(crop, age + 1))
         } else if let Some((f, age, None)) = super::crops::stem(b) {
             (age < 7).then(|| super::crops::stem_block(f, age + 1))

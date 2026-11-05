@@ -203,7 +203,11 @@ fn property(b: Block, java: &str, prop: &str) -> String {
             if head { "head" } else { "foot" }.to_owned()
         }
         "half" => {
-            let upper = if b.is_door() {
+            let upper = if let Some((_, upper)) = voxelcraft::world::sniffer_plants::pitcher_state(b) {
+                upper
+            } else if let Some((_, upper)) = voxelcraft::world::sniffer_plants::double(b) {
+                upper
+            } else if b.is_door() {
                 b.is_door_upper()
             } else {
                 ob::double_of(b).map_or(b.name().ends_with(" top"), |(_, upper)| upper)
@@ -214,6 +218,8 @@ fn property(b: Block, java: &str, prop: &str) -> String {
             .as_crop()
             .map(|(_, age)| age)
             .or(voxelcraft::world::crops::stem(b).map(|(_, age, _)| age))
+            .or(voxelcraft::world::sniffer_plants::torch_age(b))
+            .or(voxelcraft::world::sniffer_plants::pitcher_state(b).map(|(age, _)| age))
             .or(b.wart_age())
             .or(ob::cocoa_of(b).map(|(age, _)| age))
             .or(ob::berry_age(b))

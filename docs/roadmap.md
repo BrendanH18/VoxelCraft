@@ -1560,6 +1560,11 @@ sounds and templates, IDs in the
 - **C. Sniffers.** Sniffer eggs and hatching (faster on moss), sniffing and
   digging up torchflower seeds and pitcher pods, breeding, and the
   torchflower and pitcher crops, plants and recipes.
+  Implemented, unverified (2026-11-05): crop/flower states, growth, bone meal,
+  pots, dyes, compost and stew; saved sniffers, digging gifts and explored memory,
+  seed breeding/temptation, egg laying and scheduled moss-boosted hatching.
+  Search/navigation and presentation remain partial; survival egg acquisition
+  requires Track D. [Track C evidence](verification/2026-11-05-v0.15-sniffers.md).
 - **D. Ocean ruins and suspicious blocks.** Warm and cold ocean ruins (the
   remaining v0.14 GEN-05 structure) with Java's placement, variants and
   chest loot, drowned residents, and their suspicious sand and gravel.

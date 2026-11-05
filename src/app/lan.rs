@@ -1280,7 +1280,7 @@ impl Game {
                 .take(256)
                 .map(|m| {
                     // Compact pose: uid, kind, position, yaws/pitch, health, hurt, dying (-1 alive), size, baby.
-                    let kind = crate::entity::MobKind::ALL.iter().position(|k| *k == m.kind).unwrap_or(0);
+                    let kind = m.kind.lan_index();
                     let mut v = json!({"m":[m.uid, kind, r3(m.pos.x), r3(m.pos.y), r3(m.pos.z), r3(m.yaw as f64),
                         r3(m.head_yaw as f64), r3(m.head_pitch as f64), r3(m.health as f64), r3(m.hurt as f64),
                         m.dying.map_or(-1.0, |d| r3(d as f64)), m.size, u8::from(m.baby)]});
@@ -1720,9 +1720,11 @@ impl Game {
                 std::mem::take(&mut self.mobs.entities.mobs).into_iter().map(|m| (m.uid, m)).collect();
             for m in mobs.iter().take(256) {
                 let f = |i: usize| m["m"].get(i).and_then(Value::as_f64);
-                let kind =
-                    m["m"].get(1).and_then(Value::as_u64).and_then(|k| crate::entity::MobKind::ALL.get(k as usize));
-                let (Some(&kind), Some(x), Some(y), Some(z)) = (kind, f(2), f(3), f(4)) else { continue };
+                let kind = m["m"]
+                    .get(1)
+                    .and_then(Value::as_u64)
+                    .and_then(|k| crate::entity::MobKind::from_lan_index(k as usize));
+                let (Some(kind), Some(x), Some(y), Some(z)) = (kind, f(2), f(3), f(4)) else { continue };
                 let pos = DVec3::new(x, y, z);
                 if !pos.is_finite() {
                     continue;

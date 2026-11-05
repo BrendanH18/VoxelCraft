@@ -1,7 +1,8 @@
 //! Java 26.3 suspicious-stew recipes and their per-flower result components.
 use super::*;
 use crate::world::overworld_blocks as flowers;
-const FLOWERS: [Ingredient; 12] = [
+const FLOWERS: [Ingredient; 13] = [
+    &[b(crate::world::sniffer_plants::TORCHFLOWER)],
     &[b(Block::DANDELION)],
     &[b(Block::POPPY)],
     &[b(Block::BLUE_ORCHID)],

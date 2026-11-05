@@ -112,6 +112,12 @@ pub fn supports_fruit(b: Block) -> bool {
         )
 }
 fn same_plant(a: Block, b: Block) -> bool {
+    if super::sniffer_plants::torch_age(a).is_some() {
+        return super::sniffer_plants::torch_age(b).is_some();
+    }
+    if super::sniffer_plants::pitcher_state(a).is_some() {
+        return super::sniffer_plants::pitcher_state(b).is_some();
+    }
     if let Some((fruit, _, None)) = stem(a) {
         return matches!(stem(b), Some((f, _, None)) if f == fruit);
     }

@@ -366,7 +366,7 @@ pub mod tex {
     pub const BUBBLE_BASE: u16 = 2864;
     pub const BUBBLE_UP: u16 = BUBBLE_BASE;
     pub const BUBBLE_DOWN: u16 = BUBBLE_BASE + 1;
-    pub const COUNT: u32 = super::super::copper_golem_statue::TEXTURE_END as u32; // Through v0.15 statue layers 3328–3339; unused layers stay reserved.
+    pub const COUNT: u32 = super::super::sniffer_egg::TEXTURE_END as u32; // Through Track C original egg art.
     const _: () = assert!(super::super::biome_plants::TEX_END <= BUBBLE_BASE);
     const _: () = assert!(super::super::utilities::TEX_END <= super::super::cave_blocks::TEX);
     const _: () = assert!(super::super::cave_blocks::TEX_END <= super::super::biome_plants::TEX);
@@ -908,6 +908,9 @@ impl Block {
 
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
+        if super::sniffer_egg::owns(self.0) {
+            return Some(Shaped::Custom);
+        }
         if super::copper_golem_statue::owns(self.0) {
             return Some(Shaped::Custom);
         }
@@ -1265,6 +1268,13 @@ impl Block {
 
     /// This block without its orientation (itself if it has none).
     pub fn base(self) -> Block {
+        if super::sniffer_egg::owns(self.0) {
+            return super::sniffer_egg::EGG;
+        }
+        if self.0 == super::sniffer_plants::PITCHER_PLANT.0 + 1 {
+            return super::sniffer_plants::PITCHER_PLANT;
+        }
+
         if let Some(s) = super::copper_golem_statue::decode(self) {
             return super::copper_golem_statue::item_block(s.stage, s.waxed);
         }
@@ -1574,6 +1584,15 @@ impl Block {
 
     /// What breaking this block yields in survival.
     pub fn drop(self) -> Option<Item> {
+        if super::sniffer_egg::owns(self.0) {
+            return Some(Item::SNIFFER_EGG);
+        }
+        if self == super::sniffer_plants::POTTED_TORCHFLOWER {
+            return Some(super::utilities::FLOWER_POT.into());
+        }
+        if let Some(drop) = super::sniffer_plants::drop(self) {
+            return drop;
+        }
         if super::copper_golem_statue::owns(self.0) {
             return Some(Item::from_block(self.base()));
         }
@@ -1714,6 +1733,9 @@ impl Block {
     /// held item can harvest the block and 5x when it can't, divided by the
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
     pub fn hardness(self) -> f32 {
+        if super::sniffer_egg::owns(self.0) {
+            return 0.5;
+        }
         if super::copper_golem_statue::owns(self.0) {
             return 3.0;
         }
@@ -1734,6 +1756,9 @@ impl Block {
         }
         if self == super::bees::HONEYCOMB_BLOCK {
             return 0.6;
+        }
+        if super::sniffer_plants::owns(self.0) {
+            return 0.0;
         }
         if super::crops::owns(self.0) {
             return 0.0;
@@ -2241,6 +2266,11 @@ impl Block {
             ])
             .chain([520, 521, 522, 530])
             .chain(225..=252)
+            .chain([
+                super::sniffer_plants::TORCHFLOWER.0,
+                super::sniffer_plants::PITCHER_PLANT.0,
+                super::sniffer_egg::EGG.0,
+            ])
             .chain(super::forms::palette_ids())
             .chain(super::nether_blocks::palette_ids())
             .chain(super::village_blocks::palette_ids())
@@ -2330,6 +2360,9 @@ impl Block {
     /// Whether this block can rest on `below`. Plants need soil and torches
     /// a full block; everything else stays put.
     pub fn can_stay_on(self, below: Block) -> bool {
+        if let Some(ok) = super::sniffer_plants::can_stay(self, below) {
+            return ok;
+        }
         if self == super::frog_blocks::FROGSPAWN {
             return super::frog_blocks::supports(below);
         }
@@ -2904,6 +2937,8 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         },
         super::bees::FIRST..=super::bees::LAST => super::bees::registry(id),
         super::crops::FIRST..=super::crops::LAST => super::crops::registry(id),
+        super::sniffer_plants::FIRST..=super::sniffer_plants::LAST => super::sniffer_plants::registry(id),
+        15120..=super::sniffer_egg::LAST => super::sniffer_egg::registry(id),
         super::copper::FIRST..=super::copper::RESERVED_LAST
         | super::copper::WAXED_FIRST..=super::copper::WAXED_RESERVED_LAST => match super::copper::registry(id) {
             Some(info) => info,

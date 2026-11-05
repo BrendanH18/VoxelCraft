@@ -40,7 +40,8 @@ impl MobKind {
     fn is_animal(self) -> bool {
         matches!(
             self,
-            MobKind::Pig
+            MobKind::Sniffer
+                | MobKind::Pig
                 | MobKind::Cow
                 | MobKind::Mooshroom
                 | MobKind::Frog
@@ -90,6 +91,7 @@ impl MobKind {
         }
         caps.cut_water_border = self != K::Frog;
         caps.step = match self {
+            K::Sniffer => 1.0,
             K::Camel => 1.5,
             K::Horse
             | K::Donkey

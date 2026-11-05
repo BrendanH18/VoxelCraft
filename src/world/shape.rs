@@ -385,6 +385,9 @@ pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) ->
 
 /// [`shape`] with what is above the cell (walls read it).
 pub fn shape_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block, above: Above) -> Boxes {
+    if super::sniffer_egg::owns(block.0) {
+        return super::sniffer_egg::boxes();
+    }
     if super::cave_blocks::is_custom(block) {
         return super::cave_blocks::boxes(block);
     }
@@ -545,6 +548,9 @@ pub fn outline(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) 
 
 /// [`outline`] with what is above the cell (walls read it).
 pub fn outline_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block, above: Above) -> Boxes {
+    if super::sniffer_egg::owns(block.0) {
+        return super::sniffer_egg::boxes();
+    }
     if super::cave_blocks::is_custom(block) {
         return super::cave_blocks::outline(block);
     }
@@ -554,6 +560,9 @@ pub fn outline_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bl
     let block = block.canonical();
     let neighbour = |f: Facing| neighbour(f).canonical();
     let below = below.canonical();
+    if let Some(boxes) = super::sniffer_plants::outline(block) {
+        return boxes;
+    }
     if let Some(boxes) = super::crops::outline(block) {
         return boxes;
     }
@@ -760,6 +769,10 @@ pub fn collision(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block
 /// by [`collision_with`]; this is for rules that compare whole shapes.
 pub fn collision_or_cube(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block, above: Above) -> Boxes {
     let block = block.canonical();
+    if let Some((age, false)) = super::sniffer_plants::pitcher_state(block) {
+        let (lo, hi, h) = if age == 0 { (5, 11, 3) } else { (3, 13, 5) };
+        return Boxes::from_box(b([lo, 0, lo], [hi, h, hi]));
+    }
     if block.kind() == super::block::RenderKind::Shaped {
         return collision_with(block, neighbour, below, above);
     }
@@ -778,6 +791,13 @@ pub fn collision_or_cube(block: Block, neighbour: impl Fn(Facing) -> Block, belo
 
 /// [`collision`] with what is above the cell (a wall's raised post).
 pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block, above: Above) -> Boxes {
+    if let Some((age, false)) = super::sniffer_plants::pitcher_state(block) {
+        let (lo, hi, h) = if age == 0 { (5, 11, 3) } else { (3, 13, 5) };
+        return Boxes::from_box(b([lo, 0, lo], [hi, h, hi]));
+    }
+    if super::sniffer_egg::owns(block.0) {
+        return super::sniffer_egg::boxes();
+    }
     if super::cave_blocks::is_custom(block) {
         return super::cave_blocks::collision(block);
     }
@@ -811,6 +831,9 @@ pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: 
         Some(Shaped::BrewingStand) => out.push_turned(&BREWING_STAND_COLLISION, Facing::South),
         Some(Shaped::EndPortal) => {}
         Some(Shaped::Custom) if super::mount_states::is_lantern(block.0) => lantern_boxes(block, &mut out),
+        Some(Shaped::Custom) if super::sniffer_egg::owns(block.0) => {
+            return super::sniffer_egg::boxes();
+        }
         Some(Shaped::Custom) if super::copper_golem_statue::owns(block.0) => {
             return super::copper_golem_statue::collision();
         }

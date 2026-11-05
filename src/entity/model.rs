@@ -555,6 +555,7 @@ mod hostiles;
 mod mounts;
 mod passive;
 mod phantom;
+mod sniffer;
 
 /// Animated parts for a mob, in model space (pixels).
 fn pose(m: &Mob, time: f32) -> Parts {
@@ -599,6 +600,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
         MobKind::Armadillo => passive::armadillo(m),
         MobKind::Ocelot => passive::ocelot(m),
         MobKind::CopperGolem => copper_golem::pose(m, time),
+        MobKind::Sniffer => sniffer::pose(m, time),
         MobKind::Tadpole => passive::tadpole(m, time),
         MobKind::Cow => parts![
             part(COW_BODY, [0.0; 3], Quat::IDENTITY),
