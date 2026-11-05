@@ -85,6 +85,7 @@ impl MobKind {
             | K::Mooshroom
             | K::Frog
             | K::Tadpole
+            | K::PolarBear
             | K::Sheep
             | K::Chicken
             | K::WanderingTrader

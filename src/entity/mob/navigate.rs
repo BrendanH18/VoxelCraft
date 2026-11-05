@@ -44,6 +44,7 @@ impl MobKind {
                 | MobKind::Cow
                 | MobKind::Mooshroom
                 | MobKind::Frog
+                | MobKind::PolarBear
                 | MobKind::Sheep
                 | MobKind::Chicken
                 | MobKind::Cat
@@ -115,6 +116,7 @@ impl MobKind {
                 | K::TraderLlama
                 | K::Cat
                 | K::Wolf
+                | K::PolarBear
                 | K::Fox
                 | K::Parrot
                 | K::Rabbit
@@ -142,6 +144,7 @@ impl MobKind {
             K::Fox | K::Pillager => 32.0,
             K::Llama | K::TraderLlama => 40.0,
             K::PiglinBrute => 12.0,
+            K::PolarBear => 20.0,
             _ => 16.0,
         });
         let mut m = Malus::default();

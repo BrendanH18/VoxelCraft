@@ -203,7 +203,7 @@ pub const JAVA_RULES: [RuleDef; 59] = [
     boolean("fall_damage", "fallDamage", true, I),
     boolean("fire_damage", "fireDamage", true, I),
     integer("fire_spread_radius_around_player", "fireSpreadRadiusAroundPlayer", 128, -1, i32::MAX, I),
-    boolean("forgive_dead_players", "forgiveDeadPlayers", true, M("v0.17")),
+    boolean("forgive_dead_players", "forgiveDeadPlayers", true, P),
     boolean("freeze_damage", "freezeDamage", true, I),
     boolean("global_sound_events", "globalSoundEvents", true, N("broadcast range only")),
     boolean("immediate_respawn", "doImmediateRespawn", false, I),
@@ -246,7 +246,7 @@ pub const JAVA_RULES: [RuleDef; 59] = [
     boolean("spread_vines", "doVinesSpread", true, M("v0.13")),
     boolean("tnt_explodes", "tntExplodes", true, I),
     boolean("tnt_explosion_drop_decay", "tntExplosionDropDecay", false, I),
-    boolean("universal_anger", "universalAnger", false, M("v1.x")),
+    boolean("universal_anger", "universalAnger", false, P),
     boolean("water_source_conversion", "waterSourceConversion", true, I),
 ];
 

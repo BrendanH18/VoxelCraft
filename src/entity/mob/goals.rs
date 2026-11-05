@@ -203,6 +203,7 @@ const WANDERING_TRADER: &[Entry] = &[
 ];
 const CREEPER: &[Entry] = &[avoid(3, Avoided::Cat, 6.0, 1.0, 1.2)];
 const FROG: &[Entry] = &[e(0, G::Panic, 2.0), e(1, G::Breed, 1.0), e(2, G::Tempt, 1.25), e(3, G::Stroll, 1.0)];
+const POLAR_BEAR: &[Entry] = &[e(1, G::Panic, 2.0), e(4, G::FollowParent, 1.25), e(5, G::Stroll, 1.0)];
 const TADPOLE: &[Entry] = &[e(0, G::Panic, 2.0), e(1, G::Tempt, 1.25), e(2, G::Stroll, 0.5)];
 const SKELETON: &[Entry] = &[avoid(3, Avoided::Wolf, 6.0, 1.0, 1.2)];
 
@@ -212,6 +213,7 @@ pub(crate) fn table(kind: MobKind) -> &'static [Entry] {
     match kind {
         K::Cow | K::Mooshroom => COW,
         K::Frog => FROG,
+        K::PolarBear => POLAR_BEAR,
         K::Tadpole => TADPOLE,
         K::Pig => PIG,
         K::Sheep => SHEEP,

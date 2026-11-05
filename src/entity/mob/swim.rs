@@ -180,7 +180,7 @@ impl Mob {
     pub(super) fn java_moves<W: BlockSource + ?Sized>(&self, world: &W) -> bool {
         match self.kind {
             k if k.water_bound() => true,
-            MobKind::Axolotl | MobKind::Turtle => self.touching_water(world),
+            MobKind::Axolotl | MobKind::Turtle | MobKind::PolarBear => self.touching_water(world),
             MobKind::Ghast | MobKind::Bat | MobKind::Frog => true,
             MobKind::Blaze => self.alive() && (!self.on_ground || self.lift),
             _ => false,
@@ -256,6 +256,9 @@ impl Mob {
         let mut dm = self.vel * TICK;
         let in_water = self.touching_water(world);
         self.in_water = in_water;
+        if in_water && self.polar_water_tick(world, wish, speed, rng) {
+            return;
+        }
         if self.frog_long_jump_tick(world, rng) {
             self.frog_fall(from_y, world, rng);
             return;

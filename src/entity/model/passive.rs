@@ -170,3 +170,38 @@ pub(super) fn bat(m: &Mob, time: f32) -> Parts {
     }
     p
 }
+
+const BEAR_FUR: Rgb = [227, 225, 208];
+const BEAR_BODY: &[Cuboid] = &[cube([-7.0, -1.0, -4.0], [7.0, 11.0, 18.0], BEAR_FUR, 20)];
+const BEAR_HEAD: &[Cuboid] = &[
+    cube([-5.5, -3.0, -1.0], [5.5, 4.4, 10.0], BEAR_FUR, 18),
+    cube([-5.2, 4.4, 1.0], [-2.6, 6.4, 4.0], BEAR_FUR, 18),
+    cube([2.6, 4.4, 1.0], [5.2, 6.4, 4.0], BEAR_FUR, 18),
+    cube([-3.7, -3.0, 8.0], [3.7, 0.5, 14.0], [189, 186, 168], 16),
+    cube([-2.1, -0.5, 13.7], [2.1, 1.0, 14.1], [43, 44, 39], 0),
+    cube([-4.8, 1.4, 9.8], [-3.2, 2.6, 10.1], [31, 33, 28], 0),
+    cube([3.2, 1.4, 9.8], [4.8, 2.6, 10.1], [31, 33, 28], 0),
+];
+const BEAR_LEG: &[Cuboid] = &[
+    cube([-2.3, -8.0, -2.3], [2.3, 0.0, 2.3], BEAR_FUR, 18),
+    cube([-2.2, -8.0, 1.9], [2.2, -7.2, 2.4], [87, 81, 66], 12),
+];
+pub(super) fn polar_bear(m: &Mob) -> Parts {
+    let stand = m.polar_bear.as_ref().map_or(0.0, |s| s.animation / 6.0);
+    let rot = Quat::from_rotation_x(-1.2 * stand);
+    let hip = Vec3::new(0.0, 9.0, -8.0);
+    let at = |v: [f32; 3]| (hip + rot * (Vec3::from_array(v) - hip)).to_array();
+    let swing = m.limb_phase.sin() * m.limb_amp * (1.0 - stand) * 0.7;
+    parts![
+        part(BEAR_BODY, hip.to_array(), rot),
+        part(
+            BEAR_HEAD,
+            at([0.0, 16.0, 11.0]),
+            rot * Quat::from_rotation_y(-m.head_yaw) * Quat::from_rotation_x(-m.head_pitch)
+        ),
+        part(BEAR_LEG, [-5.0, 8.0, -8.0], Quat::from_rotation_x(swing)),
+        part(BEAR_LEG, [5.0, 8.0, -8.0], Quat::from_rotation_x(-swing)),
+        part(BEAR_LEG, at([-5.0, 8.0, 8.0]), rot * Quat::from_rotation_x(-swing)),
+        part(BEAR_LEG, at([5.0, 8.0, 8.0]), rot * Quat::from_rotation_x(swing))
+    ]
+}

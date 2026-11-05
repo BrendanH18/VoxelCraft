@@ -586,6 +586,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
         MobKind::Mooshroom => passive::mooshroom(m),
         MobKind::Bat => passive::bat(m, time),
         MobKind::Frog => passive::frog(m, time),
+        MobKind::PolarBear => passive::polar_bear(m),
         MobKind::Tadpole => passive::tadpole(m, time),
         MobKind::Cow => parts![
             part(COW_BODY, [0.0; 3], Quat::IDENTITY),
@@ -887,8 +888,12 @@ pub fn build(
             continue;
         }
         let rel = (m.previous_pos.lerp(m.pos, alpha) - camera).as_vec3();
-        let center = rel + Vec3::Y * m.shape().height as f32 * 0.5;
-        let radius = 1.5;
+        let center = rel + Vec3::Y * m.selection_shape().height as f32 * 0.5;
+        let radius = if m.polar_bear.is_some() {
+            (m.selection_shape().height as f32 * 0.5 + m.shape().half_width as f32).max(1.5)
+        } else {
+            1.5
+        };
         if center.length() > max_dist + radius || center.dot(forward) < -radius {
             continue;
         }

@@ -121,7 +121,7 @@ impl MobKind {
         }
     }
     pub fn has_animal_state(self) -> bool {
-        self.is_breedable() || self == Self::Parrot
+        self.is_breedable() || matches!(self, Self::Parrot | Self::PolarBear)
     }
     pub fn is_breedable(self) -> bool {
         matches!(
@@ -796,14 +796,14 @@ impl Entities {
                 _ => 0,
             };
         }
-        if m.kind.is_breedable() && m.kind != MobKind::Hoglin {
+        if (m.kind.is_breedable() || m.kind == MobKind::PolarBear) && m.kind != MobKind::Hoglin {
             let baby = match m.kind {
                 // FoxGroupData never rolls babies; the third fox on is one.
                 MobKind::Fox => pack_size >= 2,
                 // The first member of a pack is always an adult.
                 _ if pack_size == 0 => false,
                 // RabbitGroupData's baby chance is 1.
-                MobKind::Rabbit => true,
+                MobKind::Rabbit | MobKind::PolarBear => true,
                 _ => self.rng.chance(0.05),
             };
             if baby {

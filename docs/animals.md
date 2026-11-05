@@ -134,3 +134,15 @@ with all-black added at full moon. Original palettes, saved appearance and
 existing fish taming/breeding are shared by these cats. See the
 [record](verification/2026-11-04-v0.15-passive-mobs.md) for the pinned code's
 periodic-hut variant ordering and POI/structure differences.
+
+## Polar bears (v0.15, Java 26.3)
+
+Implemented, unverified: snowy plains, ice spikes and the two frozen oceans
+spawn groups of 1–2, with an adult followed by cubs. Frozen oceans require
+ice; other entries use bright grass. Adults retaliate, defend nearby cubs,
+hunt foxes, rear and warn before attacks, and swim with high water inertia.
+Cubs panic, alert adults and age over 24,000 loaded ticks. Bears do not take
+breeding food. Adults drop cod or salmon (cooked when burned); cubs drop
+nothing. Anger references and their simulation-clock end survive saves;
+standing poses replicate. See [the source and evidence record](verification/2026-11-04-v0.15-passive-mobs.md)
+for exact constants, partial anger-rule coverage and remaining engine gaps.

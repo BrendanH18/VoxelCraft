@@ -16,6 +16,7 @@ mod frog;
 pub(crate) mod goals;
 mod navigate;
 mod nether_ai;
+mod polar_bear;
 pub(crate) mod selector;
 mod swim;
 pub(crate) mod turtle;
@@ -174,6 +175,7 @@ pub enum MobKind {
     Bat,
     Frog,
     Tadpole,
+    PolarBear,
 }
 
 impl MobKind {
@@ -201,7 +203,7 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 58] = [
+    pub const ALL: [MobKind; 59] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -260,6 +262,7 @@ impl MobKind {
         MobKind::Bat,
         MobKind::Frog,
         MobKind::Tadpole,
+        MobKind::PolarBear,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -323,13 +326,14 @@ impl MobKind {
             MobKind::Bat => "bat",
             MobKind::Frog => "frog",
             MobKind::Tadpole => "tadpole",
+            MobKind::PolarBear => "polar_bear",
         }
     }
 
     /// Looks a mob up by name (spaces or underscores).
     pub fn from_name(name: &str) -> Option<MobKind> {
         let name = name.strip_prefix("minecraft:").unwrap_or(name).replace('_', " ");
-        Self::ALL.into_iter().find(|k| k.name() == name)
+        Self::ALL.into_iter().find(|k| k.name().replace('_', " ") == name)
     }
 
     /// Collision box dimensions for movement and spawn-space checks.
@@ -338,6 +342,7 @@ impl MobKind {
             MobKind::Bat => Shape::new(0.25, 0.9),
             MobKind::Frog => Shape::new(0.25, 0.5),
             MobKind::Tadpole => Shape::new(0.2, 0.3),
+            MobKind::PolarBear => Shape::new(0.7, 1.4),
             MobKind::Pig => Shape::new(0.45, 0.9),
             MobKind::Cow | MobKind::Mooshroom => Shape::new(0.45, 1.4),
             MobKind::Sheep => Shape::new(0.45, 1.3),
@@ -427,7 +432,7 @@ impl MobKind {
             MobKind::Guardian => 30.0,
             MobKind::ElderGuardian => 80.0,
             MobKind::Pillager => 24.0,
-            MobKind::Turtle => 30.0,
+            MobKind::Turtle | MobKind::PolarBear => 30.0,
             MobKind::Wolf => 8.0,
             MobKind::Fox | MobKind::Goat => 10.0,
             MobKind::Parrot | MobKind::Bat | MobKind::Tadpole => 6.0,
@@ -732,6 +737,7 @@ impl MobKind {
             MobKind::Husk => (3.0, "was slain by a husk"),
             MobKind::Drowned => (3.0, "was slain by a drowned"),
             MobKind::Silverfish => (1.0, "was slain by a silverfish"),
+            MobKind::PolarBear => (6.0, "was slain by a polar bear"),
             MobKind::IronGolem => (15.0, "was slain by an iron golem"),
             MobKind::SnowGolem => (0.0, "was slain by a snow golem"),
             MobKind::ZombieVillager => (3.0, "was slain by a zombie villager"),
@@ -752,7 +758,7 @@ impl MobKind {
         const POPPY: Item = Item::from_block(Block::POPPY);
         match self {
             MobKind::Pig => &[(Item::RAW_PORKCHOP, 1, 3)],
-            MobKind::Bat | MobKind::Frog | MobKind::Tadpole => &[],
+            MobKind::Bat | MobKind::Frog | MobKind::Tadpole | MobKind::PolarBear => &[],
             MobKind::Cow => &[(Item::RAW_BEEF, 1, 3), (Item::LEATHER, 0, 2)],
             MobKind::Mooshroom => &[(Item::LEATHER, 0, 2), (Item::RAW_BEEF, 1, 3)],
             MobKind::Sheep => &[(WOOL, 1, 1), (Item::RAW_MUTTON, 1, 2)],
@@ -817,6 +823,11 @@ impl MobKind {
     /// `round(looting * uniform(0, 1))` to each (Java's
     /// `enchanted_count_increase`).
     pub fn drops(self, rng: &mut Rng, looting: u8) -> Vec<(Item, u8)> {
+        if self == MobKind::PolarBear {
+            let item = if rng.next_int(4) < 3 { Item::COD } else { Item::SALMON };
+            let count = rng.next_int(3) + (f32::from(looting) * rng.next_f32()).round() as u32;
+            return if count == 0 { Vec::new() } else { vec![(item, count.min(u8::MAX as u32) as u8)] };
+        }
         let mut out: Vec<(Item, u8)> = self
             .loot()
             .iter()
@@ -915,6 +926,7 @@ pub struct Mob {
     pub mooshroom: Option<Box<super::mooshroom::State>>,
     pub bat: Option<Box<super::bat::State>>,
     pub frog: Option<Box<super::frog::State>>,
+    pub polar_bear: Option<Box<super::polar_bear::State>>,
     /// Witch: seconds left drinking, and the potion it is drinking.
     drink_left: f32,
     drinking: &'static str,
@@ -1089,6 +1101,7 @@ impl Mob {
             mooshroom: (kind == MobKind::Mooshroom).then(Box::default),
             bat: (kind == MobKind::Bat).then(Box::default),
             frog: matches!(kind, MobKind::Frog | MobKind::Tadpole).then(Box::default),
+            polar_bear: (kind == MobKind::PolarBear).then(Box::default),
             drink_left: 0.0,
             drinking: "",
             age: 0,
@@ -1388,6 +1401,7 @@ impl Mob {
             | MobKind::Dolphin
             | MobKind::Axolotl => false,
             MobKind::Wolf => !attacked,
+            MobKind::PolarBear => self.baby || !attacked,
             k => !k.is_hostile(),
         };
         if scared {
@@ -1663,6 +1677,9 @@ impl Mob {
             return (None, 0.0);
         }
         if let Some(wish) = self.leash_think(dt, world, rng) {
+            return wish;
+        }
+        if let Some(wish) = self.polar_think(world, rng, events) {
             return wish;
         }
         if let Some(wish) = self.companion_think(dt, world, ctx, rng, events) {
@@ -3102,7 +3119,11 @@ impl super::Entities {
     /// update, as Java's does on the next selector update, about the latest
     /// attacker only (`getLastHurtByMob`).
     pub(super) fn hurt_by_player_target(&mut self, index: usize, player: super::PlayerId) {
-        if self.mobs.get(index).is_some_and(|m| matches!(m.kind, MobKind::Dolphin | MobKind::Blaze)) {
+        if self
+            .mobs
+            .get(index)
+            .is_some_and(|m| matches!(m.kind, MobKind::Dolphin | MobKind::Blaze | MobKind::PolarBear))
+        {
             self.ensure_mob_ids();
             let uid = self.mobs[index].uid;
             match self.hurt_by.iter_mut().find(|(u, _)| *u == uid) {
@@ -3124,6 +3145,7 @@ impl super::Entities {
             match self.mobs[index].kind {
                 MobKind::Dolphin => self.dolphin_hurt_by(index, player),
                 MobKind::Blaze => self.blaze_hurt_by(index, player),
+                MobKind::PolarBear => self.polar_hurt(index, super::nether::Foe::Player(player)),
                 _ => {}
             }
         }

@@ -5,7 +5,7 @@ use super::category::MobCategory;
 use super::monster_spawns::{JavaMonster as J, MonsterSpawn, e};
 use crate::world::terrain::Biome;
 
-const LIST_0: [MonsterSpawn; 1] = [e(J::Missing("polar_bear"), 1, 1, 2)];
+const LIST_0: [MonsterSpawn; 1] = [e(J::Known(MobKind::PolarBear), 1, 1, 2)];
 const LIST_1: [MonsterSpawn; 1] = [e(J::Known(MobKind::Bat), 10, 8, 8)];
 const LIST_2: [MonsterSpawn; 1] = [e(J::Known(MobKind::GlowSquid), 10, 4, 6)];
 const LIST_3: [MonsterSpawn; 2] = [e(J::Known(MobKind::Squid), 1, 1, 4), e(J::Missing("nautilus"), 2, 1, 1)];
@@ -45,7 +45,7 @@ const LIST_19: [MonsterSpawn; 6] = [
     e(J::Known(MobKind::Horse), 5, 2, 6),
     e(J::Known(MobKind::Donkey), 1, 1, 3),
 ];
-const LIST_20: [MonsterSpawn; 2] = [e(J::Known(MobKind::Rabbit), 10, 2, 3), e(J::Missing("polar_bear"), 1, 1, 2)];
+const LIST_20: [MonsterSpawn; 2] = [e(J::Known(MobKind::Rabbit), 10, 2, 3), e(J::Known(MobKind::PolarBear), 1, 1, 2)];
 const LIST_21: [MonsterSpawn; 5] = [
     e(J::Known(MobKind::Sheep), 12, 4, 4),
     e(J::Known(MobKind::Pig), 10, 4, 4),

@@ -71,6 +71,7 @@ impl Entities {
         self.aquatic_sense(dt as f32, world);
         self.grow_loaded_turtles(dt as f32, world, ctx);
         self.frog_upkeep(dt, world, ctx);
+        self.polar_sense(dt, world, ctx);
         self.tick_animals(dt as f32, world, ctx, &mut events);
         self.tick_leashes(dt as f32, world, ctx);
         self.tick_llamas(ctx);
@@ -336,7 +337,7 @@ impl Entities {
                     // `HurtByTargetGoal`: projectiles credit their shooter too.
                     if let Some(owner) = owner
                         && !killed
-                        && matches!(kind, MobKind::Dolphin | MobKind::Blaze)
+                        && matches!(kind, MobKind::Dolphin | MobKind::Blaze | MobKind::PolarBear)
                         && let Some(i) = self.mobs.iter().position(|m| m.kind == kind && m.pos == pos && m.alive())
                     {
                         self.hurt_by_player_target(i, owner);

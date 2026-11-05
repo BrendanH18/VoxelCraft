@@ -311,7 +311,7 @@ pub(super) fn valid_spawn_floor(b: Block, kind: MobKind) -> bool {
     }
     match b {
         // Ice is for polar bears; magma for the fire immune.
-        Block::ICE => return false,
+        Block::ICE => return kind == MobKind::PolarBear,
         Block::MAGMA => return kind.fire_immune(),
         _ => {}
     }

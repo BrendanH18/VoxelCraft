@@ -44,6 +44,7 @@ pub enum Voice {
     Horse,
     Bat,
     Frog,
+    PolarBear,
 }
 
 /// What kind of sound a voice makes.
@@ -56,7 +57,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 32] = [
+    pub const ALL: [Voice; 33] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -89,6 +90,7 @@ impl Voice {
         Voice::Horse,
         Voice::Bat,
         Voice::Frog,
+        Voice::PolarBear,
     ];
 
     /// The category the creature plays in: `Monster`, `Ghast`, `Hoglin` and
@@ -109,7 +111,7 @@ impl Voice {
             | Voice::Hoglin
             | Voice::Guardian
             | Voice::Pillager => SoundSource::Hostile,
-            Voice::Bat | Voice::Frog => SoundSource::Neutral,
+            Voice::Bat | Voice::Frog | Voice::PolarBear => SoundSource::Neutral,
             Voice::Pig
             | Voice::Cow
             | Voice::Sheep
@@ -136,6 +138,7 @@ impl Voice {
             Voice::Horse => "horse",
             Voice::Bat => "bat",
             Voice::Frog => "frog",
+            Voice::PolarBear => "polar_bear",
             Voice::Cow => "cow",
             Voice::Sheep => "sheep",
             Voice::Chicken => "chicken",
@@ -246,6 +249,7 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
     match voice {
         Voice::Bat => bat(call, rng),
         Voice::Frog => frog(call, rng),
+        Voice::PolarBear => polar_bear(call, rng),
         Voice::Pig => pig(call, rng),
         Voice::Horse => horse(call, rng),
         Voice::Cow => cow(call, rng),
@@ -904,6 +908,16 @@ fn frog(call: Call, rng: &mut Rng) -> Vec<f32> {
             samples(at),
             Mode { freq: pitch * 3.7, amp: amp * 0.3, tau: 0.045, glide: -0.1, glide_tau: 0.08 },
         );
+    }
+    dsp::finish(out, 0.5)
+}
+
+// Original low, breathy growl, assembled from synthesized resonances.
+fn polar_bear(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let mut out = vec![0.0; samples(if call == Call::Death { 0.7 } else { 0.45 })];
+    let freq = rng.range(65.0, 95.0) * if call == Call::Hurt { 1.4 } else { 1.0 };
+    for (harm, amp) in [(1.0, 0.65), (2.7, 0.3), (5.3, 0.15)] {
+        add_mode(&mut out, 0, Mode { freq: freq * harm, amp, tau: 0.2, glide: -0.15, glide_tau: 0.2 });
     }
     dsp::finish(out, 0.5)
 }

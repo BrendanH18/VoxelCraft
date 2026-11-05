@@ -93,6 +93,13 @@ pub(super) fn spot_ok<W: MobWorld + ?Sized>(
     let bright = world.sky_light_level(cell).is_some_and(|sky| sky.max(world.block_light(cell)) > 8);
     let name = below.name();
     let ground = match kind {
+        MobKind::PolarBear => {
+            if matches!(world.cave_biome(cell), Biome::FrozenOcean | Biome::DeepFrozenOcean) {
+                below == Block::ICE
+            } else {
+                below == Block::GRASS
+            }
+        }
         MobKind::Mooshroom => below == crate::world::overworld_blocks::MYCELIUM,
         MobKind::Frog => below == Block::GRASS || matches!(name, "mud" | "mangrove roots" | "muddy mangrove roots"),
         MobKind::Wolf | MobKind::Fox => {

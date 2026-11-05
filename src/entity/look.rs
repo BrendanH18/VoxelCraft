@@ -32,6 +32,9 @@ impl Mob {
             "burning": self.burning,
             "attack": self.attack_anim,
         });
+        if let Some(s) = &self.polar_bear {
+            v["polar_bear"] = json!({"standing":s.standing,"animation":s.animation});
+        }
         if let Some(s) = &self.frog {
             v["frog"] = json!({"variant":s.variant,"pose":s.pose,"tongue_ticks":s.tongue_ticks,"tongue":s.tongue.map(|(_,p)|p.to_array())});
         }
@@ -93,6 +96,11 @@ impl Mob {
             self.wool_color = c;
         }
         self.sheared = v["sheared"] == true;
+        if let Some(s) = &mut self.polar_bear {
+            s.standing = v["polar_bear"]["standing"] == true;
+            s.animation =
+                v["polar_bear"]["animation"].as_f64().filter(|n| n.is_finite()).unwrap_or(0.0).clamp(0.0, 6.0) as f32;
+        }
         if let Some(s) = &mut self.frog {
             if let Some(n) = v["frog"]["variant"].as_u64() {
                 s.variant = n.min(2) as u8;
