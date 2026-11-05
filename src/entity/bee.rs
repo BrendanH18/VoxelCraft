@@ -123,6 +123,9 @@ impl State {
 /// ticks in hive. Names, effects and breeding data survive transport too.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Occupant {
+    /// The bee's saved mob record, or null for a natural nest bee that has
+    /// never left (a fresh bee), so unvisited nests stay small in memory
+    /// and in the `beehives` save.
     pub data: serde_json::Value,
     pub nectar: bool,
     pub ticks: u32,
@@ -135,15 +138,17 @@ impl Occupant {
         Self { data, nectar: m.bee.is_some_and(|s| s.nectar), ticks: 0 }
     }
     pub fn natural(ticks: u32) -> Self {
-        Self { ticks, ..Self::from_mob(&Mob::new(MobKind::Bee, DVec3::ZERO, 0.)) }
+        Self { data: serde_json::Value::Null, nectar: false, ticks }
     }
     pub fn save(&self) -> serde_json::Value {
         serde_json::json!({"data":self.data,"nectar":self.nectar,"ticks":self.ticks})
     }
     pub fn load(v: &serde_json::Value) -> Option<Self> {
-        let m = super::nether::load_mob(&v["data"])?;
-        if m.kind != MobKind::Bee || !m.alive() {
-            return None;
+        if !v["data"].is_null() {
+            let m = super::nether::load_mob(&v["data"])?;
+            if m.kind != MobKind::Bee || !m.alive() {
+                return None;
+            }
         }
         Some(Self {
             data: v["data"].clone(),
@@ -152,6 +157,9 @@ impl Occupant {
         })
     }
     pub(crate) fn mob(&self) -> Option<Mob> {
+        if self.data.is_null() {
+            return Some(Mob::new(MobKind::Bee, DVec3::ZERO, 0.));
+        }
         super::nether::load_mob(&self.data)
     }
 }

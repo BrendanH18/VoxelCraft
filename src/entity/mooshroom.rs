@@ -122,9 +122,11 @@ impl Entities {
         if item == Item::SHEARS {
             let mushroom = if s.brown { Block::BROWN_MUSHROOM } else { Block::RED_MUSHROOM };
             let pos = m.pos;
-            // SINGLE conversion: preserve health, age, name, persistence, leash
-            // and motion; clear species state and goals before the cow ticks.
+            // SINGLE conversion: a new entity at full health that keeps age,
+            // name, persistence, leash and motion; clear species state and
+            // goals before the cow ticks.
             m.kind = MobKind::Cow;
+            m.health = m.kind.max_health();
             m.mooshroom = None;
             m.goals = Default::default();
             for _ in 0..5 {
@@ -259,7 +261,10 @@ mod tests {
         e.mobs[0].age = 5000;
         assert!(matches!(e.use_mooshroom(0, Item::SHEARS), Some(Use::Shear)));
         assert_eq!(e.mobs[0].kind, MobKind::Cow);
-        assert_eq!((e.mobs[0].health, e.mobs[0].age, e.mobs[0].name.as_str()), (7.0, 5000, Some("Mushie")));
+        assert_eq!(
+            (e.mobs[0].health, e.mobs[0].age, e.mobs[0].name.as_str()),
+            (MobKind::Cow.max_health(), 5000, Some("Mushie"))
+        );
         assert_eq!(e.items.iter().map(|i| i.stack.count as u32).sum::<u32>(), 5);
         assert!(e.items.iter().all(|i| i.stack.item == Item::from(Block::BROWN_MUSHROOM)));
         assert!(e.use_mooshroom(0, Item::SHEARS).is_none());

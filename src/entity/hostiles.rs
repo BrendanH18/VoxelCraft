@@ -93,8 +93,9 @@ impl Mob {
         if self.freezing.get_or_insert_with(Default::default).tick(dt, snow) {
             self.kind = MobKind::Stray;
             self.freezing = None;
-            // Same dimensions and max health. Retain identity, equipment, health,
-            // effects and persistence, as ConversionParams.SINGLE does.
+            // `Mob.convertTo` makes a new entity: full health. SINGLE keeps
+            // identity, equipment, effects and persistence.
+            self.health = self.kind.max_health();
         }
     }
 }
@@ -194,7 +195,7 @@ mod tests {
         assert_eq!(Freezing::load(&saved), f);
     }
     #[test]
-    fn conversion_retains_identity_equipment_and_health() {
+    fn conversion_retains_identity_and_equipment_at_full_health() {
         let mut world = Grid::flat(10);
         world.set(IVec3::new(0, 10, 0), crate::world::scaffolding::POWDER_SNOW);
         let mut mob = Mob::new(MobKind::Skeleton, DVec3::new(0.5, 10., 0.5), 0.);
@@ -205,7 +206,7 @@ mod tests {
             mob.freeze_in_powder_snow(0.05, &world);
         }
         assert_eq!(mob.kind, MobKind::Stray);
-        assert_eq!((mob.uid, mob.health), (71, 7.));
+        assert_eq!((mob.uid, mob.health), (71, MobKind::Stray.max_health()));
         assert_eq!(mob.armor[0], Some(super::super::armor::ArmorKind::Iron));
     }
     #[test]

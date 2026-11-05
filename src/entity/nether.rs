@@ -976,7 +976,7 @@ impl Entities {
                     || matches!(m.kind, MobKind::Zombie | MobKind::Husk | MobKind::Drowned)
                     || matches!(m.kind, MobKind::Stray | MobKind::Bogged | MobKind::Phantom)
                     || m.kind == MobKind::Bat
-                    || m.freezing.is_some())
+                    || m.freezing.as_ref().is_some_and(|f| f.exposure > 0 || f.conversion.is_some()))
                     && m.alive()
                     && m.villager.is_none()
                     && !matches!(m.kind, MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama)

@@ -102,6 +102,7 @@ impl Entities {
                 || m.ocelot.as_ref().is_some_and(|s| s.trusting || s.ticks <= 2400)
                 || m.persistent
                 || m.built
+                || m.riding.is_some()
                 || m.convert_left > 0.0
                 || m.villager.as_ref().is_some_and(|v| v.xp > 0);
             // Java's `Mob.checkDespawn`: a despawnable mob goes at once beyond

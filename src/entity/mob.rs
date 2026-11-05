@@ -1479,9 +1479,17 @@ impl Mob {
         }
     }
 
-    fn take_damage(&mut self, amount: f32, attacked: bool, bypass_wolf_armor: bool, rng: &mut Rng) -> bool {
-        if self.undead_mount.protection > 0. {
-            return false;
+    fn take_damage(&mut self, mut amount: f32, attacked: bool, bypass_wolf_armor: bool, rng: &mut Rng) -> bool {
+        // `LivingEntity.hurtServer` while more than 10 ticks of a trap's
+        // `setInvulnerableTime(60)` remain: only the part of a hit above the
+        // largest one taken so far lands.
+        if self.undead_mount.protection > 0.5 {
+            let last = self.undead_mount.last_hurt;
+            if amount <= last {
+                return false;
+            }
+            self.undead_mount.last_hurt = amount;
+            amount -= last;
         }
         let amount =
             if self.armadillo.as_ref().is_some_and(|s| s.scared()) { ((amount - 1.0) / 2.0).max(0.0) } else { amount };

@@ -413,3 +413,16 @@ fn current_generated_tree_nests_supply_occupants_without_commands() {
     }
     panic!("current generation must supply populated nests in the bounded reference scene");
 }
+
+#[test]
+fn natural_nest_bees_stay_compact_until_they_leave() {
+    let o = Occupant::natural(42);
+    let saved = o.save();
+    assert!(saved["data"].is_null() && saved.to_string().len() < 64, "{saved}");
+    let back = Occupant::load(&saved).unwrap();
+    assert_eq!((back.ticks, back.nectar), (42, false));
+    let bee = back.mob().unwrap();
+    assert_eq!((bee.kind, bee.health), (MobKind::Bee, MobKind::Bee.max_health()));
+    // Full records from bees that have flown still load.
+    assert!(Occupant::load(&occupant(true, 7).save()).unwrap().mob().is_some());
+}
