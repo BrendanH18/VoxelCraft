@@ -1081,10 +1081,10 @@ Decisions, proposed on 2026-10-23 and approved by the owner on 2026-10-25:
   (bees, v0.15), heads and skulls (their mobs), purpur, end rods and shulker
   boxes (v0.18), and potted plants with their plants. The audit lists each
   block's release.
-- **Waxing waits for bees.** Honeycomb has no survival source until bees
-  (v0.15), so the 56 waxed copper blocks, copper waxing and sign waxing
-  ship with them. Unwaxed copper oxidises in v0.12 and an axe scrapes it
-  back.
+- **Waxing was deferred to bees.** Honeycomb acquisition, the 56 waxed
+  copper blocks, copper waxing and sign waxing are implemented, unverified,
+  with bees in v0.15 ([2026-11-04 record](verification/2026-11-04-v0.15-crops-bees.md)).
+  Unwaxed copper oxidises in v0.12 and an axe scrapes it back.
 - **Banners are plain in v0.12.** Patterns are applied at the loom, which
   arrives in v0.17, so banner patterns and their items come with it.
 - **Retire the 11 invented blocks.** Calcite stairs, slab and wall,
