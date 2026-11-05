@@ -328,7 +328,8 @@ content and took its release's new number.
 | 12288–12799 | v0.18 | End and Wither states |
 | 12800–14335 | v0.19 | Redstone and automation states |
 | 14336–14591 | v0.15 | Copper golem statue states (2026-11-05 reservation) |
-| 14592–16383 | — | Unassigned reserve |
+| 14592–15487 | v0.15 | Creaking, sniffer, ocean ruin and spare states (2026-11-05 reservation) |
+| 15488–16383 | — | Unassigned reserve |
 | 16384–32767 | v0.12 and later | Added by the 32,768 raise (2026-10-25); see the v0.12 tracks below |
 
 ### v0.12 track reservations
@@ -629,6 +630,26 @@ already carried by `MapStorage.game_ticks`, which travels across dimensions
 and is independent of the day clock. Container search uses a bounded BTree
 position index and transient identities that change on replacement.
 See the [integration evidence](verification/2026-11-05-v0.15-copper-golems.md).
+
+### v0.15 final slice reservations
+
+Reserved on 2026-11-05 for the [creaking, allay, sniffer and ocean ruin
+tracks](roadmap.md#v015-scope-wildlife), from the start of the unassigned
+state reserve (after the copper golem statues), the items after the copper
+golem's reserved 1360–1367, and the texture layers after its reserved
+3340–3359. Unused IDs stay unregistered and keep their track.
+
+| Block states | Item IDs | Texture layers | Track |
+| --- | --- | --- | --- |
+| 14592–15103 | 1368–1379 | 3360–3423 | A. Creaking, resin and eyeblossoms |
+| — | 1380–1384 | 3424–3439 | B. Allays |
+| 15104–15231 | 1385–1394 | 3440–3503 | C. Sniffers, torchflowers and pitcher plants |
+| 15232–15359 | 1395–1414 | 3504–3567 | D. Ocean ruins, suspicious sand and gravel, sherds |
+| 15360–15487 | 1415–1419 | 3568–3599 | Integrator spare |
+
+New `MobKind`s append after `CopperGolem` in the order Creaking, Allay,
+Sniffer, taking LAN indices 69, 70 and 71; existing names and indices
+keep their meanings. The unassigned reserve becomes 15488–16383.
 
 ## Assessment branch ID reservations
 

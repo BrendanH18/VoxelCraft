@@ -165,7 +165,7 @@ in the right-hand column stays mandatory for 1.0.
 | Side feature | Deferred past 1.0 | Stays in 1.0 core |
 |---|---|---|
 | Advancements and statistics | The advancement and statistics screens, toasts and criteria | Recipe unlocking and the recipe book (UX, v0.20); the dragon/Wither progression itself (v0.18) |
-| Archaeology | Brushes, suspicious sand and gravel, pottery sherds and decorated-pot patterns | Trail ruins, desert wells and warm ocean ruins as explorable structures with their non-archaeology loot (v0.14); sniffers obtainable some other Java way, or recorded as a fidelity exception when v0.15 plans them |
+| Archaeology | Brushes, suspicious sand and gravel, pottery sherds and decorated-pot patterns | Trail ruins, desert wells and warm ocean ruins as explorable structures with their non-archaeology loot (v0.14); sniffers obtainable some other Java way, or recorded as a fidelity exception when v0.15 plans them. Narrowed by the owner on 2026-11-05: suspicious sand and gravel, brushing them, and the sherds their loot names (as items) moved into 1.0 with v0.15's ocean ruins; decorated pots and patterns stay deferred |
 | Commands | The full command and selector language | The cheat console's testing commands (game mode, rules, time, weather, teleport, give, kill, difficulty, spawn point) |
 | Custom skins | Skin selection and loading | The default player models |
 | Resource and data packs | Loading packs | The built-in Java 26.3 recipes, loot tables and tags they would replace |
@@ -1542,6 +1542,35 @@ mounted-block and LAN edge cases remain follow-ups.
 See the [integration evidence and remaining gaps](verification/2026-11-05-v0.15-copper-golems.md)
 and [identifier allocations](architecture.md#v015-copper-golem-reservations).
 This does not close the remaining wildlife scope or establish owner play.
+
+**Creaking, allays, sniffers and ocean ruins — approved 2026-11-05.** The
+owner approved the last three wildlife slices as four parallel tracks
+against the pinned Java 26.3 reference, with original models, textures,
+sounds and templates, IDs in the
+[architecture reservations](architecture.md#v015-final-slice-reservations):
+
+- **A. Creaking and resin.** Creaking hearts (axis, uprooted/dormant/awake,
+  natural) in generated pale oak trees, the creaking (frozen while watched,
+  bound to and protected by its heart, damaged only through it), resin
+  clumps, the resin block, resin bricks with stairs, slab, wall and
+  chiseled bricks, and eyeblossoms that open at night and close by day.
+- **B. Allays.** Item gifting, liking and collection, note-block
+  preference, jukebox dancing and amethyst duplication, and allays in the
+  outpost allay cage.
+- **C. Sniffers.** Sniffer eggs and hatching (faster on moss), sniffing and
+  digging up torchflower seeds and pitcher pods, breeding, and the
+  torchflower and pitcher crops, plants and recipes.
+- **D. Ocean ruins and suspicious blocks.** Warm and cold ocean ruins (the
+  remaining v0.14 GEN-05 structure) with Java's placement, variants and
+  chest loot, drowned residents, and their suspicious sand and gravel.
+  This narrows DEF-02 (owner, 2026-11-05): suspicious sand and gravel and
+  brushing them are now core, so sniffer eggs come from warm ocean ruins
+  the Java way. The pottery sherds those loot tables name exist only as
+  items; decorated pots and their patterns stay deferred.
+
+New generation (creaking hearts, eyeblossoms, ocean ruins, outpost
+allays) applies to generation 3 only, which hasn't been tagged; the
+golden hashes of generations 1 and 2 stay unchanged.
 
 ### M4 — A complete living world
 
