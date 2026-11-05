@@ -186,6 +186,7 @@ pub enum MobKind {
     Panda,
     Armadillo,
     Ocelot,
+    CopperGolem,
 }
 
 impl MobKind {
@@ -213,7 +214,7 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 68] = [
+    pub const ALL: [MobKind; 69] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -282,6 +283,7 @@ impl MobKind {
         MobKind::Panda,
         MobKind::Armadillo,
         MobKind::Ocelot,
+        MobKind::CopperGolem,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -355,6 +357,7 @@ impl MobKind {
             MobKind::Panda => "panda",
             MobKind::Armadillo => "armadillo",
             MobKind::Ocelot => "ocelot",
+            MobKind::CopperGolem => "copper_golem",
         }
     }
 
@@ -387,6 +390,7 @@ impl MobKind {
             | MobKind::ZombieVillager
             | MobKind::Piglin
             | MobKind::PiglinBrute => Shape::new(0.3, 1.95),
+            MobKind::CopperGolem => Shape::new(0.245, 0.98),
             MobKind::IronGolem => Shape::new(0.7, 2.7),
             MobKind::SnowGolem => Shape::new(0.35, 1.9),
             MobKind::TraderLlama => Shape::new(0.45, 1.87),
@@ -448,6 +452,7 @@ impl MobKind {
             | MobKind::ZombieVillager
             | MobKind::Strider
             | MobKind::Panda => 20.0,
+            MobKind::CopperGolem => 12.0,
             MobKind::IronGolem => 100.0,
             MobKind::SnowGolem => 4.0,
             MobKind::TraderLlama => 30.0,
@@ -546,7 +551,7 @@ impl MobKind {
     pub fn spawns_in(self, dimension: Dimension) -> bool {
         match self {
             MobKind::Enderman => true,
-            MobKind::Mule | MobKind::Bee | MobKind::Phantom => false,
+            MobKind::Mule | MobKind::Bee | MobKind::Phantom | MobKind::CopperGolem => false,
             // Only from spawners and inside fortresses (`fortress_spawn`).
             MobKind::Blaze
             | MobKind::WitherSkeleton
@@ -851,6 +856,7 @@ impl MobKind {
             MobKind::TraderLlama | MobKind::Horse | MobKind::Donkey | MobKind::Mule | MobKind::Llama => {
                 &[(Item::LEATHER, 0, 2)]
             }
+            MobKind::CopperGolem => &[(Item::COPPER_INGOT, 1, 3)],
             MobKind::IronGolem => &[(Item::IRON_INGOT, 3, 5), (POPPY, 0, 2)],
             MobKind::SnowGolem => &[(Item::SNOWBALL, 0, 15)],
             MobKind::Slime => &[(Item::SLIME_BALL, 0, 2)],
@@ -951,7 +957,12 @@ impl MobKind {
     /// Experience for killing one (Java's: 5 for monsters, 1-3 for animals).
     pub fn xp(self, rng: &mut Rng) -> u32 {
         match self {
-            MobKind::Bat | MobKind::Villager | MobKind::IronGolem | MobKind::SnowGolem | MobKind::WanderingTrader => 0,
+            MobKind::CopperGolem
+            | MobKind::Bat
+            | MobKind::Villager
+            | MobKind::IronGolem
+            | MobKind::SnowGolem
+            | MobKind::WanderingTrader => 0,
             MobKind::Blaze | MobKind::Guardian | MobKind::ElderGuardian => 10,
             k if k.is_hostile() => 5,
             _ => 1 + (rng.next_f32() * 3.0) as u32,
@@ -1007,6 +1018,7 @@ pub struct Mob {
     pub panda: Option<Box<super::panda::State>>,
     pub armadillo: Option<Box<super::armadillo::State>>,
     pub ocelot: Option<Box<super::ocelot::State>>,
+    pub copper_golem: Option<Box<super::copper_golem::State>>,
     pub wolf_armor: Option<Box<super::wolf_armor::State>>,
     /// Witch: seconds left drinking, and the potion it is drinking.
     drink_left: f32,
@@ -1177,7 +1189,7 @@ impl Mob {
             nether: super::nether::NetherMob::for_kind(kind),
             aquatic: kind.is_aquatic().then(|| Box::new(super::aquatic::State::new())),
             uid: 0,
-            persistent: super::mounts::equine(kind) || kind == MobKind::Tadpole,
+            persistent: super::mounts::equine(kind) || matches!(kind, MobKind::Tadpole | MobKind::CopperGolem),
             size: 1,
             baby: false,
             grow: 0.0,
@@ -1193,6 +1205,7 @@ impl Mob {
             panda: (kind == MobKind::Panda).then(Box::default),
             armadillo: (kind == MobKind::Armadillo).then(Box::default),
             ocelot: (kind == MobKind::Ocelot).then(Box::default),
+            copper_golem: (kind == MobKind::CopperGolem).then(Box::default),
             wolf_armor: (kind == MobKind::Wolf).then(Box::default),
             drink_left: 0.0,
             drinking: "",
@@ -1523,6 +1536,9 @@ impl Mob {
         {
             self.aquatic.as_mut().unwrap().play_dead = 10.0;
         }
+        if let Some(s) = &mut self.copper_golem {
+            s.interrupt();
+        }
         self.hurt = HURT_TIME;
         if let Some(s) = &mut self.bat {
             s.resting = false;
@@ -1572,10 +1588,18 @@ impl Mob {
             self.provoked.max(if self.kind == MobKind::Enderman { ENDERMAN_ANGER_TIME } else { PROVOKED_TIME });
         if self.health <= 0.0 {
             self.dying = Some(0.0);
-            self.cry = Some(MobSound::Death(self.kind));
+            self.cry = Some(if let Some(s) = &self.copper_golem {
+                MobSound::CopperGolem(super::copper_golem::Sound::Death, s.stage as u8)
+            } else {
+                MobSound::Death(self.kind)
+            });
             return true;
         }
-        self.cry = Some(MobSound::Hurt(self.kind));
+        self.cry = Some(if let Some(s) = &self.copper_golem {
+            MobSound::CopperGolem(super::copper_golem::Sound::Hurt, s.stage as u8)
+        } else {
+            MobSound::Hurt(self.kind)
+        });
         false
     }
 
@@ -1627,6 +1651,7 @@ impl Mob {
                 if self.kind == MobKind::Ocelot { rng.range(45.0, 56.0) } else { rng.range(7.0, 18.0) };
             if self.alive()
                 && self.armadillo.as_ref().is_none_or(|s| !s.scared())
+                && self.kind != MobKind::CopperGolem
                 && self.kind != MobKind::Tadpole
                 && self.kind != MobKind::Creeper
                 && (self.bat.as_ref().is_none_or(|s| !s.resting) || rng.next_int(4) == 0)
@@ -1764,7 +1789,11 @@ impl Mob {
         }
         if self.health <= 0.0 && (self.dying.is_none() || alive_before_move) {
             self.dying = Some(0.0);
-            self.cry = Some(MobSound::Death(self.kind));
+            self.cry = Some(if let Some(s) = &self.copper_golem {
+                MobSound::CopperGolem(super::copper_golem::Sound::Death, s.stage as u8)
+            } else {
+                MobSound::Death(self.kind)
+            });
             events.push(EntityEvent::MobKilled {
                 kind: self.kind,
                 pos: self.pos,
@@ -1847,6 +1876,9 @@ impl Mob {
         }
         if let Some(wish) = self.leash_think(dt, world, rng) {
             return wish;
+        }
+        if self.copper_golem.is_some() {
+            return self.copper_steer(dt, world, ctx, rng);
         }
         if self.armadillo.as_ref().is_some_and(|s| s.scared()) {
             self.stop_goal(world);
@@ -2908,7 +2940,10 @@ impl Mob {
         let falling = self.vel.y;
         let step_height = if self.kind == MobKind::Camel {
             1.5
-        } else if super::mounts::equine(self.kind) || self.mount.as_ref().is_some_and(|s| s.controlled()) {
+        } else if self.kind == MobKind::CopperGolem
+            || super::mounts::equine(self.kind)
+            || self.mount.as_ref().is_some_and(|s| s.controlled())
+        {
             1.
         } else {
             crate::player::STEP_HEIGHT

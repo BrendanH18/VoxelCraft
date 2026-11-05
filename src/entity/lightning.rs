@@ -287,6 +287,10 @@ impl Mob {
     /// `bolt_id` stays constant through a bolt's repeated flashes.
     pub fn thunder_transform(&mut self, bolt_id: u64, difficulty: u8) -> bool {
         match self.kind {
+            MobKind::CopperGolem => {
+                self.copper_golem.as_mut().unwrap().lightning(bolt_id);
+                false
+            }
             // `MushroomCow.thunderHit` never calls super: no damage, and one
             // swap per bolt UUID however many ticks the bolt touches it.
             MobKind::Mooshroom => {

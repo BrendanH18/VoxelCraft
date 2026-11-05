@@ -96,6 +96,7 @@ impl MobKind {
             | K::Mule
             | K::Llama
             | K::TraderLlama
+            | K::CopperGolem
             | K::IronGolem
             | K::Enderman
             | K::Drowned
@@ -104,7 +105,8 @@ impl MobKind {
             | K::Frog => 1.0,
             _ => 0.6,
         };
-        caps.can_open_doors = matches!(self, K::Villager | K::WanderingTrader | K::Piglin | K::PiglinBrute);
+        caps.can_open_doors =
+            matches!(self, K::CopperGolem | K::Villager | K::WanderingTrader | K::Piglin | K::PiglinBrute);
         caps.can_float = matches!(
             self,
             K::Pig
@@ -145,7 +147,7 @@ impl MobKind {
         caps = caps.follow_range(match self {
             K::Zombie | K::Husk | K::Drowned | K::ZombieVillager | K::ZombifiedPiglin => 35.0,
             K::Enderman => 64.0,
-            K::Blaze => 48.0,
+            K::Blaze | K::CopperGolem => 48.0,
             K::Ghast => 100.0,
             K::Fox | K::Pillager => 32.0,
             K::Llama | K::TraderLlama => 40.0,
@@ -154,10 +156,13 @@ impl MobKind {
             _ => 16.0,
         });
         let mut m = Malus::default();
-        if self.is_animal() || matches!(self, K::Villager | K::WanderingTrader | K::Piglin | K::PiglinBrute) {
+        if self.is_animal()
+            || matches!(self, K::CopperGolem | K::Villager | K::WanderingTrader | K::Piglin | K::PiglinBrute)
+        {
             m = m.with(T::FireInNeighbor, 16.0).with(T::Fire, -1.0);
         }
         m = match self {
+            K::CopperGolem => m.with(T::FireInNeighbor, 16.0).with(T::DamagingInNeighbor, 16.0).with(T::Fire, -1.0),
             K::Chicken => m.with(T::Water, 0.0),
             K::Frog => m.with(T::Water, 4.0).with(T::Trapdoor, -1.0),
             K::Turtle => m
@@ -407,7 +412,7 @@ impl Mob {
     }
 
     /// `RandomPos.generateRandomPos`: the best-valued of ten candidates.
-    fn random_pos<W: MobWorld + ?Sized>(
+    pub(crate) fn random_pos<W: MobWorld + ?Sized>(
         &self,
         world: &W,
         ctx: &Ctx,

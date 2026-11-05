@@ -26,6 +26,7 @@ pub mod decor;
 pub mod path;
 pub use bobber::{CatchContext, roll_catch, set_damage};
 pub mod armadillo;
+pub mod copper_golem;
 pub mod dragon;
 mod dragon_model;
 pub mod eye;
@@ -143,6 +144,7 @@ pub enum MobSound {
     /// The dragon crashing through blocks.
     DragonSmash,
     DragonDeath,
+    CopperGolem(copper_golem::Sound, u8),
 }
 
 /// Something an entity did that the game needs to react to.
@@ -992,7 +994,7 @@ impl Entities {
     pub fn spawn(&mut self, kind: MobKind, pos: DVec3) {
         let yaw = self.rng.range(0.0, TAU);
         let mut mob = Mob::new(kind, pos, yaw);
-        mob.persistent = kind.has_animal_state() || kind == MobKind::Tadpole;
+        mob.persistent = kind.has_animal_state() || matches!(kind, MobKind::Tadpole | MobKind::CopperGolem);
         if let Some(s) = &mut mob.mount {
             **s = mounts::State::new(kind, &mut self.rng);
             mob.health = s.max_health;
@@ -1208,6 +1210,7 @@ impl Entities {
             };
             self.spawn_xp(pos, xp);
         }
+        self.copper_equipment_drops(kind, pos);
         self.equipment_drops(kind, pos, looting, player_kill);
         self.skeleton_equipment_drops(kind, pos, looting, player_kill);
         if baby && nether::babies_drop_nothing(kind) {

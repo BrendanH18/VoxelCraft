@@ -213,22 +213,26 @@ pub enum Sound {
     /// The Ender Dragon's long dying roar.
     DragonDeath,
     Bell,
+    CopperGolem(crate::entity::copper_golem::Sound, u8),
 }
 
 const M: usize = Material::ALL.len();
 const CALLS: usize = Call::ALL.len();
 
 impl Sound {
-    pub const COUNT: usize = 3 * M + 27 + Voice::ALL.len() * CALLS + 16 + 4;
+    const BASE_COUNT: usize = 3 * M + 27 + Voice::ALL.len() * CALLS + 16 + 4;
+
+    pub const COUNT: usize = Self::BASE_COUNT + 44;
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
         match self {
+            Sound::CopperGolem(action, stage) => Self::BASE_COUNT + action as usize * 4 + usize::from(stage.min(3)),
             Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
-            Sound::Thunder => Self::COUNT - 1,
-            Sound::Bell => Self::COUNT - 4,
-            Sound::HoneySlide => Self::COUNT - 3,
-            Sound::HoneyDrink => Self::COUNT - 2,
+            Sound::Thunder => Self::BASE_COUNT - 1,
+            Sound::Bell => Self::BASE_COUNT - 4,
+            Sound::HoneySlide => Self::BASE_COUNT - 3,
+            Sound::HoneyDrink => Self::BASE_COUNT - 2,
             Sound::Break(m) => m as usize,
             Sound::Place(m) => M + m as usize,
             Sound::Step(m) => 2 * M + m as usize,
@@ -311,11 +315,30 @@ impl Sound {
             .chain(Voice::ALL.into_iter().flat_map(|v| Call::ALL.map(|c| Sound::Mob(v, c))))
             .chain(Instrument::ALL.map(Sound::Note))
             .chain([Sound::Bell, Sound::HoneySlide, Sound::HoneyDrink, Sound::Thunder])
+            .chain({
+                use crate::entity::copper_golem::Sound as C;
+                [
+                    C::Spawn,
+                    C::Spin,
+                    C::Step,
+                    C::Get,
+                    C::NoGet,
+                    C::Drop,
+                    C::NoDrop,
+                    C::Shear,
+                    C::Statue,
+                    C::Hurt,
+                    C::Death,
+                ]
+                .into_iter()
+                .flat_map(|a| (0..4).map(move |s| Sound::CopperGolem(a, s)))
+            })
     }
 
     /// Stable sound name used when exporting or identifying samples.
     pub fn name(self) -> String {
         match self {
+            Sound::CopperGolem(a, s) => format!("copper_golem_{a:?}_{s}").to_lowercase(),
             Sound::Thunder => "lightning_thunder".into(),
             Sound::HoneySlide => "honey_block_slide".into(),
             Sound::HoneyDrink => "honey_drink".into(),
@@ -397,7 +420,7 @@ impl Sound {
             | Sound::DragonGrowl
             | Sound::DragonDeath => SoundSource::Hostile,
             // `EyeOfEnder` is a plain entity, whose source is `NEUTRAL`.
-            Sound::EyeDeath => SoundSource::Neutral,
+            Sound::CopperGolem(..) | Sound::EyeDeath => SoundSource::Neutral,
             Sound::Mob(voice, _) => voice.source(),
         }
     }
@@ -409,7 +432,7 @@ impl Sound {
     /// Number of synthesized variations playback can choose from.
     pub fn variants(self) -> u32 {
         match self {
-            Sound::Note(_) => 1,
+            Sound::CopperGolem(..) | Sound::Note(_) => 1,
             Sound::Step(_) => 4,
             Sound::Break(_) | Sound::Place(_) | Sound::Swim | Sound::Drip => 3,
             Sound::Land | Sound::Splash | Sound::Explosion | Sound::Bow | Sound::Hurt | Sound::Hit | Sound::Door(_) => {
@@ -441,6 +464,7 @@ impl Sound {
     pub fn render(self, variant: u32) -> Vec<f32> {
         let mut rng = Rng::new((self.key() as u64) << 8 | variant as u64);
         match self {
+            Sound::CopperGolem(a, s) => copper_golem(a, s),
             Sound::Thunder => thunder(&mut rng),
             Sound::HoneySlide => honey_sound(&mut rng, 0.35),
             Sound::HoneyDrink => honey_sound(&mut rng, 0.22),
@@ -1348,4 +1372,39 @@ fn thunder(rng: &mut Rng) -> Vec<f32> {
     let crack = noise(rng, samples(0.45), |t| dsp::ad(t, 0.001, 0.08));
     mix_into(&mut rumble, &crack, 0.25, 0);
     dsp::finish(rumble, 0.9)
+}
+
+/// Original metal resonator synthesis. Weathering damps the high modes; no samples.
+fn copper_golem(action: crate::entity::copper_golem::Sound, stage: u8) -> Vec<f32> {
+    use crate::entity::copper_golem::Sound as C;
+    let (freq, decay, taps) = match action {
+        C::Spawn => (430., 0.13, 3),
+        C::Spin => (710., 0.07, 4),
+        C::Step => (180., 0.035, 1),
+        C::Get => (590., 0.06, 2),
+        C::NoGet => (280., 0.05, 2),
+        C::Drop => (480., 0.08, 2),
+        C::NoDrop => (240., 0.05, 2),
+        C::Shear => (1050., 0.025, 2),
+        C::Statue => (150., 0.17, 3),
+        C::Hurt => (320., 0.06, 1),
+        C::Death => (120., 0.15, 3),
+    };
+    let mut out = vec![0.; (super::dsp::RATE * 0.7) as usize];
+    for tap in 0..taps {
+        for mode in 0..3 {
+            super::dsp::add_mode(
+                &mut out,
+                (tap as f32 * 0.055 * super::dsp::RATE) as usize,
+                super::dsp::Mode {
+                    freq: freq * (1. + mode as f32 * 1.43) * (1. - f32::from(stage.min(3)) * 0.055),
+                    amp: 0.28 / (1. + mode as f32),
+                    tau: decay / (1. + f32::from(stage.min(3)) * 0.3),
+                    glide: 0.87,
+                    glide_tau: 0.07,
+                },
+            );
+        }
+    }
+    out
 }

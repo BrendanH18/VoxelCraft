@@ -285,6 +285,8 @@ pub struct World {
     /// Only named copper golem statues need block-entity data; unnamed ones
     /// are represented entirely by their block state. Retained across unload.
     copper_golem_names: FxHashMap<IVec3, crate::inventory::StackName>,
+    chest_positions: std::collections::BTreeMap<[i32; 3], u64>,
+    next_chest_identity: u64,
     /// Brewing stand contents by position (see [`brewing`]).
     brewing_stands: FxHashMap<IVec3, brewing::BrewingStand>,
     /// Sign text, shelf items and chiseled bookshelf books (see [`wood::entities`]).
@@ -565,6 +567,8 @@ impl World {
             entity_loads: FxHashSet::default(),
             furnaces: FxHashMap::default(),
             chests: FxHashMap::default(),
+            chest_positions: Default::default(),
+            next_chest_identity: 0,
             brewing_stands: FxHashMap::default(),
             beehives: Default::default(),
             copper_golem_names: Default::default(),

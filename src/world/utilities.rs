@@ -42,6 +42,7 @@ pub struct State {
     drips: Vec<(IVec3, u16)>,
     /// Players looking into each trapped chest.
     viewers: FxHashMap<IVec3, u8>,
+    golem_viewers: FxHashMap<IVec3, u8>,
     /// Tilting big dripleaves, with ticks to their next tilt.
     tilts: Vec<(IVec3, u16)>,
     /// Cells where a falling stalactite landed this tick, with its damage.

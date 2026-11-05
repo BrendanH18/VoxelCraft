@@ -90,9 +90,33 @@ impl World {
         }
     }
 
-    /// How many players look into the chest at `p`.
-    pub fn chest_viewers(&self, p: IVec3) -> u8 {
+    /// Golem viewers are independent of player screen reconciliation.
+    pub fn set_golem_chest_viewers(&mut self, open: impl IntoIterator<Item = IVec3>) {
+        let mut viewers: rustc_hash::FxHashMap<IVec3, u8> = Default::default();
+        for p in open {
+            let (first, second) = self.chest_halves(p);
+            for q in std::iter::once(first).chain(second) {
+                if self.get_block(q).is_some_and(|b| crate::world::double_chest::state(b).is_some()) {
+                    let n = viewers.entry(q).or_default();
+                    *n = n.saturating_add(1);
+                }
+            }
+        }
+        if viewers != self.utilities.golem_viewers {
+            let old = std::mem::replace(&mut self.utilities.golem_viewers, viewers);
+            let changed: Vec<_> = old.keys().chain(self.utilities.golem_viewers.keys()).copied().collect();
+            for p in changed {
+                self.redstone_changed(p);
+            }
+        }
+    }
+    /// Player-only viewers for the transport queue (the current golem excludes itself).
+    pub fn player_chest_viewers(&self, p: IVec3) -> u8 {
         self.utilities.viewers.get(&p).copied().unwrap_or(0)
+    }
+    /// Players and golems looking into the chest at `p`.
+    pub fn chest_viewers(&self, p: IVec3) -> u8 {
+        self.player_chest_viewers(p).saturating_add(self.utilities.golem_viewers.get(&p).copied().unwrap_or(0))
     }
 
     /// `TrappedChestBlock.getSignal` and `getDirectSignal`: the viewer

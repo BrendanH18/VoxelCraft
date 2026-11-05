@@ -18,7 +18,8 @@ pub(super) fn attachments(m: &Mob, camera: DVec3, forward: Vec3, rel: Vec3, out:
     let light = [(m.sky_light.clamp(0.0, 1.0) * 255.0) as u8, 255, 0, 0];
     let torch = (m.block_light.clamp(0.0, 1.0) * 255.0) as u8;
     if let Some(anchor) = m.leash_pos {
-        let a = rel + Vec3::Y * m.shape().height as f32 * 0.6;
+        let height = if m.kind == MobKind::CopperGolem { 0.75 * 0.8125 } else { m.shape().height as f32 * 0.6 };
+        let a = rel + Vec3::Y * height;
         let b = (anchor - camera).as_vec3();
         let delta = b - a;
         let sag = (delta.length() * 0.08).min(0.7);
