@@ -2116,6 +2116,12 @@ mod tests {
         fn exposed(&self, p: IVec3) -> bool {
             p.y >= self.floor_y
         }
+        /// WORLD_SURFACE counts explicit non-air blocks such as glass roofs.
+        fn world_surface(&self, x: i32, z: i32) -> Option<i32> {
+            let placed =
+                self.blocks.iter().filter(|(p, b)| p.x == x && p.z == z && **b != Block::AIR).map(|(p, _)| p.y);
+            Some(placed.fold(self.floor_y - 1, i32::max))
+        }
     }
 
     /// Hostile kinds that fill their cap on the flat plains test grid.

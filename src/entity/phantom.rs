@@ -87,7 +87,9 @@ impl Entities {
             }
             for t in c.players.iter().filter(|t| !t.spectator) {
                 let cell = t.pos.floor().as_ivec3();
-                if cell.y < SEA_LEVEL || w.sky_light_level(cell) != Some(15) {
+                // `Level.canSeeSky`: above the WORLD_SURFACE heightmap, so glass
+                // roofs block phantoms although they pass full skylight.
+                if cell.y < SEA_LEVEL || !w.world_surface(cell.x, cell.z).is_some_and(|top| cell.y > top) {
                     continue;
                 }
                 let local = self.difficulty.effective(self.clock_time, 0, self.moon_brightness);
@@ -322,6 +324,15 @@ mod tests {
             e.mobs.clear();
         }
         assert_eq!(max, 4);
+        // `canSeeSky` uses WORLD_SURFACE: a glass roof passes skylight but
+        // still keeps phantoms away.
+        let mut roofed = Grid::flat(64);
+        roofed.set(glam::IVec3::new(0, 90, 0), crate::world::block::Block::GLASS);
+        for _ in 0..100 {
+            e.phantom_next = 0;
+            e.spawn_phantoms(0.05, &roofed, &context(i32::MAX as u32));
+        }
+        assert!(e.mobs.is_empty(), "no phantoms under a glass roof");
         e.phantom_spawning = false;
         e.phantom_next = 300;
         for _ in 0..40 {
