@@ -49,6 +49,39 @@ pub(super) fn colour(m: &Mob, c: &mut Cuboid) {
 }
 pub(super) fn cargo(m: &Mob, origin: Vec3, body: Quat, light: ([u8; 4], u8), out: &mut Vec<EntityVertex>) {
     let Some(stack) = m.copper_golem.as_ref().and_then(|s| s.cargo) else { return };
+    if let Some(block) = crate::world::copper_golem_statue::item_model(stack) {
+        let statue = crate::world::copper_golem_statue::decode(block).unwrap();
+        for bounds in crate::world::copper_golem_statue::mesh(statue).as_slice() {
+            let held = super::super::player_model::Limb {
+                pivot: Vec3::new(0., 6.5, 5.),
+                min: bounds.min.map(|v| (v as f32 - 8.0) * 0.35),
+                max: bounds.max.map(|v| (v as f32 - 8.0) * 0.35),
+                uv: [0.; 2],
+                rot: Quat::IDENTITY,
+            };
+            super::super::player_model::textured_box(
+                out,
+                &held,
+                0.,
+                origin,
+                body,
+                light,
+                2,
+                block.info().tex[0],
+                1.,
+                [255; 4],
+            );
+            let start = out.len() - 36;
+            for (i, face) in out[start..].as_chunks_mut::<6>().0.iter_mut().enumerate() {
+                let tex = block.info().tex[i ^ 1];
+                for vertex in face {
+                    vertex.torch[2] = tex as u8;
+                    vertex.torch[3] = (tex >> 8) as u8;
+                }
+            }
+        }
+        return;
+    }
     let block = stack.item.block().filter(|b| !b.flat_icon());
     let layer = block
         .map_or_else(|| stack.item.icon_layer().unwrap_or(crate::world::block::tex::ITEM_BASE), |b| b.info().tex[0]);

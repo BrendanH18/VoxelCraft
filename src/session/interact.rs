@@ -46,6 +46,10 @@ pub enum Used {
     },
     /// Another held-item interaction with a mob (bucketing, milking, ...).
     Mob,
+    /// A statue changed pose or became a golem; its sound is an entity event.
+    Statue {
+        cell: IVec3,
+    },
     Bucket(bucket::Effect),
     PearlThrown {
         from: DVec3,
@@ -193,6 +197,9 @@ impl PlayerSession {
     pub fn block_takes_use(&self, slot: usize, world: &World, sneaking: bool) -> bool {
         let held = self.inventory.get(slot).map(|s| s.item);
         let Some((pos, _)) = self.block_target(world) else { return false };
+        if world.get_block(pos).and_then(crate::world::copper_golem_statue::decode).is_some() {
+            return !(sneaking && (held.is_some() || self.inventory.offhand.is_some()));
+        }
         crate::content::interaction::block_use_precedes_item(
             world,
             pos,
@@ -342,6 +349,9 @@ impl PlayerSession {
                 return Ok(Some(Used::Mounted(id)));
             }
             return Ok(Some(Used::Animal));
+        }
+        if let Some(used) = self.use_copper_golem(slot, world, entities, tool_broken) {
+            return Ok(Some(used));
         }
         // `Cushion.interact` passes while sneaking.
         let sneaking_at_cushion = ctx.sneaking
@@ -524,6 +534,9 @@ impl PlayerSession {
         let survival = self.mode.is_survival();
         let creative = self.mode.is_creative();
         let can_build = self.mode.can_build();
+        if let Some(used) = self.use_copper_statue(slot, world, entities, pos, ctx, tool_broken) {
+            return Ok(Some(used));
+        }
         if can_build
             && !ctx.sneaking
             && matches!(held, Some(Item::SHEARS | Item::GLASS_BOTTLE))

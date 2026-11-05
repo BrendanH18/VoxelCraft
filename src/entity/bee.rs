@@ -174,6 +174,7 @@ impl Entities {
         difficulty: crate::simulation::difficulty::Difficulty,
     ) -> Vec<EntityEvent> {
         self.tick_copper_golems(dt, world);
+        self.finish_copper_statues(world);
         world.tick_beehives(self, dt, ctx);
         let events = self.update_difficulty(dt, world, ctx, difficulty);
         let mut i = 0;

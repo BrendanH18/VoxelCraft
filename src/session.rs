@@ -4,6 +4,7 @@
 //! Camera, hand animation and screen navigation belong to their adapters.
 pub mod combat;
 pub mod consumption;
+mod copper_golem;
 pub mod hands;
 pub mod interact;
 mod lodestone;

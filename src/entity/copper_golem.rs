@@ -8,6 +8,8 @@ use crate::{
 use glam::{DVec3, IVec3};
 use serde_json::{Value, json};
 
+mod interaction;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Sound {
     Spawn,
@@ -382,10 +384,11 @@ impl Entities {
         };
         // Java CopperGolem.dropEquipment calls dropPreservedEquipment after
         // ordinary loot: guaranteed slots ignore Vanishing and MOB_DROPS.
-        for stack in [s.cargo.take(), s.antenna.take()].into_iter().flatten() {
-            self.items.push(super::ItemEntity::new(stack, pos, DVec3::ZERO, 0.5, &mut self.rng));
-        }
+        let drops = [s.cargo.take(), s.antenna.take()];
         s.interrupt();
+        for stack in drops.into_iter().flatten() {
+            self.drop_copper_golem_equipment(stack, pos);
+        }
     }
     /// Construction/reactivation helper. Parent commits its block mutation before
     /// invoking this; this method allocates no block/item IDs and edits no blocks.
