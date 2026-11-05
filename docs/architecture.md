@@ -502,7 +502,7 @@ block layers **3136–3145** contain frogspawn and three layers per froglight
 procedural entity shader. Stew reuses the mushroom-stew icon; the tadpole
 bucket appends an original item sprite. Saturation appends to the dynamic
 effect-icon array. `Mooshroom`, `Bat`, `Frog`, `Tadpole`, `PolarBear`, `Panda`, `Armadillo`,
-`Ocelot` append after Camel in that order, saved as `mooshroom`, `bat`,
+`Ocelot` append after the other tracks' kinds (after `Phantom`) in that order, saved as `mooshroom`, `bat`,
 `frog`, `tadpole`, `polar_bear`, `panda`, `armadillo`, `ocelot`. Stew effect
 codes 1–11 in `Stack::entity_data` and `mooshroom.stew` remain stable;
 tadpole buckets use an item-specific age/health/age-lock bit payload.
@@ -533,7 +533,9 @@ ordinary integer coordinates and the quad format are unchanged. See
 
 New `MobKind` variants append after `Camel`; mob kinds are saved by name,
 but `MobKind::ALL` order is the LAN index, so the integrator appends the
-tracks' kinds in track order. Each track records what it used here.
+tracks' kinds in merge order: tracks 1, 2, 4, then 3 (`SkeletonHorse`,
+`ZombieHorse`, `Bee`, `Stray`, `Bogged`, `Phantom`, then track 3's eight).
+Each track records what it used here.
 
 Track 1 allocation (2026-11-04, implemented/unverified): no new states,
 items or texture layers from its reserved ranges. Registered the 48 previously
@@ -572,8 +574,8 @@ Track 2 waxed copper continuation (implemented, unverified):
 `copper::WAXED_FIRST = 29696`, with the same family/stage/local offsets as
 22528–23367 (the unwaxed torch has no waxed form). The unaffected block
 of copper retains 231 and maps to 29696. The mirror ends at 30536 exclusive:
-792 registered states, with 48 powered-rod locals reserved as in the
-current unwaxed layout. Remaining 30536–30719 stay unused. Stair/slab
+840 registered states, including the 48 powered-rod locals that track 1
+registered in the unwaxed layout. Remaining 30536–30719 stay unused. Stair/slab
 families 89–92 append after the existing colours; no earlier family or
 saved ID changes. All 56 default block items reuse their unwaxed textures;
 no additional item IDs, layers or MobKinds. Sign waxing uses the existing

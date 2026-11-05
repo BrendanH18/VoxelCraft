@@ -38,7 +38,7 @@ fn use_held(w: &mut World, s: &mut PlayerSession, e: &mut Entities, sneaking: bo
     s.use_held(0, w, e, &UseContext { sneaking, others: &[] }).unwrap().map(|x| x.used)
 }
 #[test]
-fn all_56_families_and_792_registered_states_mirror_without_losing_properties() {
+fn all_56_families_and_840_registered_states_mirror_without_losing_properties() {
     let mut states = 0;
     for id in copper::WAXED_FIRST..=copper::WAXED_RESERVED_LAST {
         let b = Block(id);
@@ -69,8 +69,8 @@ fn all_56_families_and_792_registered_states_mirror_without_losing_properties() 
             }
         }
     }
-    let powered_rods = copper::decode(copper::Family::Rod.origin() + 12).is_some();
-    assert_eq!(states, if powered_rods { 840 } else { 792 });
+    // 792 plus the 48 powered lightning-rod locals.
+    assert_eq!(states, 840);
     let palette: Vec<_> = Block::creative_palette().collect();
     for family in Family::ALL.into_iter().filter(|f| f.weathers()) {
         for stage in Stage::ALL {

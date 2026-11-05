@@ -169,11 +169,11 @@ pub enum EntityEvent {
         java: Option<crate::knockback::Hit>,
         cause: &'static str,
     },
-    /// An equine's landing applies the same fall damage to its rider.
     /// Lightning deals five armored points, unaffected by difficulty.
     PlayerLightning {
         player: PlayerId,
     },
+    /// An equine's landing applies the same fall damage to its rider.
     PlayerFall {
         player: PlayerId,
         damage: f32,
