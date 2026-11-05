@@ -1,0 +1,100 @@
+{
+  "source": "Pinned Java 26.3 CatSpawner, SwampHutPiece, ServerLevel.getRandomPlayer and cat variant data",
+  "interval_ticks": 1200,
+  "offset_min": 8,
+  "offset_max_inclusive": 31,
+  "loaded_radius": 10,
+  "minimum_occupied_homes": 5,
+  "village_cat_cap": 5,
+  "village_poi_radius": 48,
+  "village_cat_radius": [
+    48,
+    8,
+    48
+  ],
+  "hut_cat_radius": [
+    16,
+    8,
+    16
+  ],
+  "variants": {
+    "all_black": [
+      {
+        "condition": {
+          "type": "minecraft:structure",
+          "structures": "#minecraft:cats_spawn_as_black"
+        },
+        "priority": 1
+      },
+      {
+        "condition": {
+          "type": "minecraft:moon_brightness",
+          "range": {
+            "min": 0.9
+          }
+        },
+        "priority": 0
+      }
+    ],
+    "black": [
+      {
+        "priority": 0
+      }
+    ],
+    "british_shorthair": [
+      {
+        "priority": 0
+      }
+    ],
+    "calico": [
+      {
+        "priority": 0
+      }
+    ],
+    "jellie": [
+      {
+        "priority": 0
+      }
+    ],
+    "persian": [
+      {
+        "priority": 0
+      }
+    ],
+    "ragdoll": [
+      {
+        "priority": 0
+      }
+    ],
+    "red": [
+      {
+        "priority": 0
+      }
+    ],
+    "siamese": [
+      {
+        "priority": 0
+      }
+    ],
+    "tabby": [
+      {
+        "priority": 0
+      }
+    ],
+    "white": [
+      {
+        "priority": 0
+      }
+    ]
+  },
+  "cats_spawn_as_black": {
+    "values": [
+      "minecraft:swamp_hut"
+    ]
+  },
+  "cats_spawn_in": {
+    "values": [
+      "minecraft:swamp_hut"
+    ]
+  }
+}

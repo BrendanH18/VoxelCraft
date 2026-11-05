@@ -20,6 +20,10 @@ const MAX_FLIGHT: f32 = 10.0;
 const STEP: f64 = 0.2;
 
 pub struct Arrow {
+    /// True even for an empty tipped arrow (no potion component).
+    pub tipped: bool,
+    pub potion: Option<crate::potion::Potion>,
+    pub custom_effect: Option<(crate::simulation::effects::Effect, u8, u32)>,
     pub pos: DVec3,
     /// Position at the start of the last simulation step, for rendering.
     pub previous_pos: DVec3,
@@ -83,6 +87,9 @@ impl Arrow {
         let spread = DVec3::new(rng.range(-1.0, 1.0) as f64, rng.range(-1.0, 1.0) as f64, rng.range(-1.0, 1.0) as f64);
         let vel = (aim.normalize_or(DVec3::X) + spread * 0.03) * SPEED;
         Self {
+            tipped: false,
+            potion: None,
+            custom_effect: None,
             pos: from,
             previous_pos: from,
             vel,
@@ -108,6 +115,9 @@ impl Arrow {
         let dir = dir.normalize_or(DVec3::X);
         let vel = dir * BOW_SPEED * power as f64;
         Self {
+            tipped: false,
+            potion: None,
+            custom_effect: None,
             pos: eye + dir * 0.3,
             previous_pos: eye + dir * 0.3,
             vel,
@@ -166,6 +176,12 @@ impl Arrow {
                 self.stuck = false;
                 self.vel = DVec3::ZERO;
                 return true;
+            }
+            // Arrow.tick clears potion contents at 600 in-ground ticks.
+            if self.age >= 30.0 - 1e-3 && (self.potion.is_some() || self.custom_effect.is_some()) {
+                self.potion = None;
+                self.custom_effect = None;
+                self.tipped = false;
             }
             return self.age < if self.from_player || self.pickup { PLAYER_STUCK_TIME } else { STUCK_TIME };
         }
@@ -287,19 +303,25 @@ impl Arrow {
                             let punch = 1.0 + 3.0 * self.enchants.level(Enchantment::Punch) as f64;
                             let push = DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 4.0 * punch
                                 + DVec3::Y * 4.0;
-                            if self.enchants.has(Enchantment::Flame) {
+                            // `onHitEntity` undoes Flame and skips `doPostHurtEffects`
+                            // (the potion) when `hurtOrSimulate` refuses the hit.
+                            let refused = mob.refuses_hit(damage);
+                            if self.enchants.has(Enchantment::Flame) && !refused {
                                 mob.ignite(5.0);
                             }
                             if self.from_player {
                                 mob.player_hit();
                             }
                             if let Some(attacker) = self.shooter {
+                                if !refused {
+                                    self.effects_on_mob(mob, rng);
+                                }
                                 // Resolve through the shared mob-on-mob path so
                                 // retaliation and loot attribution retain the shooter.
                                 events.push(EntityEvent::MobHit {
                                     target: mob.uid,
                                     attacker,
-                                    damage: (speed / SPEED * 3.0).ceil() as f32,
+                                    damage: (speed / SPEED * 3.0 * self.power_factor()).ceil() as f32,
                                     knockback: push,
                                 });
                                 return false;
@@ -307,6 +329,10 @@ impl Arrow {
                             // `hurtServer`'s 0.4 push along the arrow, then Punch's shove (`doKnockback`).
                             let motion = self.vel / crate::knockback::TICK_RATE;
                             let killed = mob.damage_pushed(damage, &[crate::knockback::Push::projectile(motion)], rng);
+                            if !killed && !refused {
+                                self.effects_on_mob(mob, rng);
+                            }
+                            let killed = !mob.alive();
                             mob.shove_punch(u32::from(self.enchants.level(Enchantment::Punch)), motion);
                             events.push(EntityEvent::MobShot {
                                 kind: mob.kind,
@@ -377,16 +403,15 @@ impl Arrow {
                     }
                     (damage, DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 3.0 * punch + DVec3::Y * 3.0)
                 } else {
+                    if self.enchants.has(crate::enchant::Enchantment::Flame) {
+                        events.push(EntityEvent::Ignite { player: hit.id, secs: 5. });
+                    }
                     (
-                        (self.vel.length() / SPEED * 3.0).ceil() as f32,
+                        (self.vel.length() / SPEED * 3.0 * self.power_factor()).ceil() as f32,
                         DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 3.0 + DVec3::Y * 3.0,
                     )
                 };
-                let punch = if self.from_player {
-                    u32::from(self.enchants.level(crate::enchant::Enchantment::Punch))
-                } else {
-                    0
-                };
+                let punch = u32::from(self.enchants.level(crate::enchant::Enchantment::Punch));
                 events.push(EntityEvent::PlayerHit {
                     java: Some(crate::knockback::Hit::arrow(self.vel / crate::knockback::TICK_RATE, punch)),
                     player: hit.id,
@@ -394,6 +419,11 @@ impl Arrow {
                     knockback: push.as_vec3(),
                     cause: if self.from_player { "was shot by a player" } else { self.cause },
                 });
+                if self.potion.is_some() || self.custom_effect.is_some() {
+                    events.push(EntityEvent::ArrowEffectsStart { player: hit.id });
+                    self.effects_on_player(hit.id, events);
+                    events.push(EntityEvent::ArrowEffectsEnd);
+                }
                 if let Some(attacker) = self.shooter {
                     events.push(EntityEvent::OwnerHurt { player: hit.id, attacker });
                 }
@@ -605,5 +635,29 @@ mod tests {
                 assert!(mobs[0].health < MobKind::Cow.max_health());
             }
         }
+    }
+    #[test]
+    fn embedded_potion_contents_expire_after_six_hundred_ticks() {
+        let mut a = Arrow::shot(DVec3::new(0.5, 9.5, 0.5), DVec3::X, 1., true);
+        a.stuck = true;
+        a.age = 29.9;
+        a.potion = crate::potion::Potion::from_id("poison");
+        a.tipped = true;
+        let ctx = Ctx {
+            players: Vec::new(),
+            spawning: false,
+            daylight: 0.,
+            raining: false,
+            dimension: crate::world::terrain::Dimension::Overworld,
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
+        };
+        let w = Grid::flat(10);
+        let mut rng = Rng::new(5);
+        let mut events = Vec::new();
+        a.update(0.05, &w, &ctx, &mut [], &[], None, &mut rng, &mut events);
+        assert!(a.potion.is_some());
+        a.update(0.05, &w, &ctx, &mut [], &[], None, &mut rng, &mut events);
+        assert!(a.potion.is_none());
+        assert_eq!(a.pickup_stack().item, crate::item::Item::ARROW);
     }
 }

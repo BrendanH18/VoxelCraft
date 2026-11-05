@@ -25,8 +25,9 @@ impl Entities {
         const MAX: usize = 128;
         json!({
             "pearls": self.pearls.iter().filter(|p| near(p.pos)).take(MAX).map(|p| pair(p.pos, p.previous_pos)).collect::<Vec<_>>(),
+            "potion_clouds": self.clouds.iter().filter(|c|near(c.pos)).take(MAX).map(super::lingering::Cloud::save).collect::<Vec<_>>(),
             "potions": self.potions.iter().filter(|p| near(p.pos)).take(MAX)
-                .map(|p| json!({"at": pair(p.pos, p.previous_pos), "potion": p.potion.0})).collect::<Vec<_>>(),
+                .map(|p| json!({"at": pair(p.pos, p.previous_pos), "potion": p.potion.0,"lingering":p.lingering})).collect::<Vec<_>>(),
             "thrown": self.thrown.iter().filter(|t| near(t.pos)).take(MAX)
                 .map(|t| json!({"at": pair(t.pos, t.previous_pos), "kind": t.kind as u8})).collect::<Vec<_>>(),
             "bobbers": self.bobbers.iter().filter(|b| near(b.pos)).take(MAX)
@@ -40,6 +41,7 @@ impl Entities {
                 .map(|o| json!({"at": pair(o.pos, o.previous_pos), "value": o.value, "count": o.count, "phase": o.phase, "age": o.age})).collect::<Vec<_>>(),
             "tnt": self.tnt.iter().filter(|t| near(t.pos)).take(MAX)
                 .map(|t| json!({"at": pair(t.pos, t.previous_pos), "fuse": t.fuse})).collect::<Vec<_>>(),
+            "lightning": self.lightning.iter().filter(|b| near(b.pos)).take(MAX).map(|b| json!([b.pos.to_array(),b.seed,b.life])).collect::<Vec<_>>(),
             "fight": self.fight.as_ref().map(|f| f.replica_json()),
         })
     }
@@ -47,7 +49,22 @@ impl Entities {
     /// Replaces this client's copies with the host's latest [`Entities::replica_extras`].
     pub fn apply_replica_extras(&mut self, v: &Value) {
         let list = |key: &str| v[key].as_array().map(|a| a.iter().take(128).collect::<Vec<_>>()).unwrap_or_default();
+        self.lightning = list("lightning")
+            .into_iter()
+            .filter_map(|v| {
+                let a = v[0].as_array()?;
+                let p = DVec3::new(a.first()?.as_f64()?, a.get(1)?.as_f64()?, a.get(2)?.as_f64()?);
+                p.is_finite().then(|| {
+                    super::lightning::Bolt::replica(
+                        p,
+                        v[1].as_u64().unwrap_or(0),
+                        v[2].as_i64().unwrap_or(-1).clamp(-20, 2) as i32,
+                    )
+                })
+            })
+            .collect();
         self.pearls = list("pearls").into_iter().filter_map(unpair).map(|(p, q)| Pearl::replica(p, q)).collect();
+        self.clouds = list("potion_clouds").into_iter().filter_map(super::lingering::Cloud::load).collect();
         self.potions = list("potions")
             .into_iter()
             .filter_map(|e| {
@@ -55,7 +72,9 @@ impl Entities {
                 // Untrusted host data: only registered potions index the table.
                 let index = e["potion"].as_u64().filter(|&i| (i as usize) < crate::potion::Potion::COUNT)?;
                 let potion = crate::potion::Potion(index as u8);
-                Some(ThrownPotion::replica(potion, p, q))
+                let mut thrown = ThrownPotion::replica(potion, p, q);
+                thrown.lingering = e["lingering"] == true;
+                Some(thrown)
             })
             .collect();
         self.thrown = list("thrown")

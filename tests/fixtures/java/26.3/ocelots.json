@@ -1,0 +1,54 @@
+{
+  "tags/item/ocelot_food": {
+    "values": [
+      "minecraft:cod",
+      "minecraft:salmon"
+    ]
+  },
+  "loot_table/entities/ocelot": {
+    "type": "minecraft:entity",
+    "random_sequence": "minecraft:entities/ocelot"
+  },
+  "worldgen/biome/jungle": {
+    "monster": [
+      {
+        "type": "minecraft:ocelot",
+        "count": {
+          "type": "minecraft:uniform",
+          "max_inclusive": 3,
+          "min_inclusive": 1
+        },
+        "weight": 2
+      }
+    ]
+  },
+  "worldgen/biome/bamboo_jungle": {
+    "monster": [
+      {
+        "type": "minecraft:ocelot",
+        "count": 1,
+        "weight": 2
+      }
+    ]
+  },
+  "constants": {
+    "health": 10,
+    "movement_speed": 0.30000001192092896,
+    "attack_damage": 3,
+    "adult_width": 0.6,
+    "adult_height": 0.7,
+    "baby_width": 0.3,
+    "baby_height": 0.35,
+    "baby_eye_height": 0.34375,
+    "trust_success_denominator": 3,
+    "trust_distance_squared_exclusive": 9,
+    "tempt_speed": 0.6,
+    "avoid_range": 16,
+    "avoid_walk": 0.8,
+    "avoid_sprint": 1.33,
+    "breed_speed": 0.8,
+    "spawn_rejection_denominator": 3,
+    "natural_later_members_baby": 1.0,
+    "despawn_age_exclusive": 2400
+  }
+}

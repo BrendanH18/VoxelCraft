@@ -31,6 +31,7 @@ pub(crate) enum Avoided {
     Wolf,
     Llama,
     Cat,
+    Armadillo,
     /// Java's `Monster` class.
     Monster,
     /// `Zombie` and its subclasses (husks, drowned, zombie villagers and
@@ -120,6 +121,8 @@ const WOLF: &[Entry] = &[
 ];
 // `CatTemptGoal` is registered first at 4, then `reassessTameGoals` adds the
 // untamed cat's player avoidance at 4.
+const OCELOT: &[Entry] =
+    &[e(3, G::Tempt, 0.6), avoid(4, Avoided::Player, 16.0, 0.8, 1.33), e(9, G::Breed, 0.8), e(10, G::Stroll, 0.8)];
 const CAT: &[Entry] = &[
     e(1, G::Panic, 1.5),
     e(4, G::Tempt, 0.6),
@@ -175,6 +178,7 @@ const STRIDER: &[Entry] = &[
     e(5, G::FollowParent, 1.0),
     e(7, G::Stroll, 1.0),
 ];
+const BEE: &[Entry] = &[e(2, G::Breed, 1.0), e(3, G::Tempt, 1.25), e(5, G::FollowParent, 1.25)];
 const PARROT: &[Entry] = &[e(0, G::Panic, 1.25), owner(2, 5.0, 1.0)];
 // Brain animals: core `AnimalPanic`, then the idle activity's
 // `AnimalMakeLove`, `FollowTemptation`, `BabyFollowAdult` and stroll.
@@ -202,18 +206,40 @@ const WANDERING_TRADER: &[Entry] = &[
     avoid(1, Avoided::Zoglin, 10.0, 0.5, 0.5),
 ];
 const CREEPER: &[Entry] = &[avoid(3, Avoided::Cat, 6.0, 1.0, 1.2)];
+const FROG: &[Entry] = &[e(0, G::Panic, 2.0), e(1, G::Breed, 1.0), e(2, G::Tempt, 1.25), e(3, G::Stroll, 1.0)];
+const ARMADILLO: &[Entry] =
+    &[e(0, G::Panic, 2.0), e(1, G::Breed, 1.0), e(2, G::Tempt, 1.25), e(2, G::FollowAdult, 1.25), e(4, G::Stroll, 1.0)];
+const SPIDER: &[Entry] = &[avoid(2, Avoided::Armadillo, 6.0, 1.0, 1.2)];
+const PANDA: &[Entry] = &[
+    e(2, G::Panic, 2.0),
+    e(2, G::Breed, 1.0),
+    e(4, G::Tempt, 1.0),
+    avoid(6, Avoided::Player, 8.0, 2.0, 2.0),
+    avoid(6, Avoided::Monster, 4.0, 2.0, 2.0),
+    e(13, G::FollowParent, 1.25),
+    e(14, G::Stroll, 1.0),
+];
+const POLAR_BEAR: &[Entry] = &[e(1, G::Panic, 2.0), e(4, G::FollowParent, 1.25), e(5, G::Stroll, 1.0)];
+const TADPOLE: &[Entry] = &[e(0, G::Panic, 2.0), e(1, G::Tempt, 1.25), e(2, G::Stroll, 0.5)];
 const SKELETON: &[Entry] = &[avoid(3, Avoided::Wolf, 6.0, 1.0, 1.2)];
 
 /// The movement goals `kind` registers, in registration order.
 pub(crate) fn table(kind: MobKind) -> &'static [Entry] {
     use MobKind as K;
     match kind {
-        K::Cow => COW,
+        K::Cow | K::Mooshroom => COW,
+        K::Frog => FROG,
+        K::PolarBear => POLAR_BEAR,
+        K::Panda => PANDA,
+        K::Armadillo => ARMADILLO,
+        K::Spider | K::CaveSpider => SPIDER,
+        K::Tadpole => TADPOLE,
         K::Pig => PIG,
         K::Sheep => SHEEP,
         K::Chicken => CHICKEN,
         K::Wolf => WOLF,
         K::Cat => CAT,
+        K::Ocelot => OCELOT,
         K::Fox => FOX,
         K::Rabbit => RABBIT,
         K::Horse | K::Donkey | K::Mule => HORSE,
@@ -224,12 +250,13 @@ pub(crate) fn table(kind: MobKind) -> &'static [Entry] {
         K::Parrot => PARROT,
         K::Goat => GOAT,
         K::Camel => CAMEL,
+        K::Bee => BEE,
         K::Axolotl => AXOLOTL,
         K::Cod | K::Salmon | K::TropicalFish | K::Pufferfish => FISH,
         K::Guardian | K::ElderGuardian => GUARDIAN,
         K::Hoglin => HOGLIN,
         K::Creeper => CREEPER,
-        K::Skeleton | K::WitherSkeleton => SKELETON,
+        K::Skeleton | K::Stray | K::Bogged | K::WitherSkeleton => SKELETON,
         K::WanderingTrader => WANDERING_TRADER,
         _ => &[],
     }
@@ -240,13 +267,16 @@ pub(crate) fn table(kind: MobKind) -> &'static [Entry] {
 pub(crate) fn movement_speed(kind: MobKind) -> f64 {
     use MobKind as K;
     match kind {
-        K::Cow | K::Parrot | K::Goat => 0.2,
-        K::Pig | K::Chicken | K::Turtle | K::Creeper | K::Skeleton | K::WitherSkeleton => 0.25,
+        K::Cow | K::Mooshroom | K::Parrot | K::Goat => 0.2,
+        K::Pig | K::Chicken | K::Turtle | K::Creeper | K::Skeleton | K::Stray | K::Bogged | K::WitherSkeleton => 0.25,
         K::Sheep | K::Zombie => 0.23,
-        K::Wolf | K::Cat | K::Fox | K::Rabbit | K::Hoglin => 0.3,
+        K::Bee | K::Wolf | K::Cat | K::Fox | K::Rabbit | K::Hoglin => 0.3,
         K::Strider | K::Donkey | K::Mule | K::Llama | K::TraderLlama => 0.175,
         K::Camel => 0.09,
-        K::Axolotl => 1.0,
+        K::Panda => f64::from(0.15_f32),
+        K::Armadillo => 0.14,
+        K::Ocelot => f64::from(0.3_f32),
+        K::Axolotl | K::Frog | K::Tadpole => 1.0,
         K::Dolphin => 1.2,
         K::Guardian => 0.5,
         K::ElderGuardian => 0.3,
@@ -282,7 +312,8 @@ pub(crate) fn avoided_kind(what: Avoided, kind: MobKind) -> bool {
         Avoided::Player => false,
         Avoided::Wolf => kind == MobKind::Wolf,
         Avoided::Llama => matches!(kind, MobKind::Llama | MobKind::TraderLlama),
-        Avoided::Cat => kind == MobKind::Cat,
+        Avoided::Cat => matches!(kind, MobKind::Cat | MobKind::Ocelot),
+        Avoided::Armadillo => kind == MobKind::Armadillo,
         Avoided::Monster => is_monster(kind),
         Avoided::Zombie => kind.is_zombie() || kind == MobKind::ZombifiedPiglin,
         Avoided::Pillager => kind == MobKind::Pillager,
@@ -339,6 +370,9 @@ impl Mob {
 
     /// Movement speed attribute (`mounts::State::speed` for horses).
     fn attribute_speed(&self) -> f64 {
+        if self.panda.as_ref().is_some_and(|s| s.variant() == crate::entity::panda::Gene::Lazy) {
+            return f64::from(0.07_f32);
+        }
         match &self.mount {
             Some(s) if super::super::mounts::equine(self.kind) && s.speed > 0.0 => s.speed,
             _ => movement_speed(self.kind),
@@ -353,6 +387,9 @@ impl Mob {
     /// `TurtleMoveControl` holds a turtle near 0.06 eased an eighth of the
     /// way toward its speed.
     pub(crate) fn goal_speed(&self, modifier: f64) -> f64 {
+        if self.kind == MobKind::Bee {
+            return modifier;
+        }
         let raw = self.attribute_speed() * modifier;
         let raw = match self.kind {
             MobKind::Axolotl if !self.in_water => {
@@ -517,6 +554,9 @@ impl Mob {
             }
             G::Tempt => {
                 self.goals.tempt_player = None;
+                if let Some(s) = &mut self.ocelot {
+                    s.tempt_anchor = None;
+                }
                 self.nav.stop();
                 // `reducedTickDelay(100)`.
                 self.goals.calm_down = 50;
@@ -569,13 +609,18 @@ impl Mob {
             })
             .min_by(|a, b| a.pos.distance_squared(self.pos).total_cmp(&b.pos.distance_squared(self.pos)))
             .map(|t| t.id);
-        self.goals.tempt_player.is_some()
+        if let Some(t) = self.goals.tempt_player.and_then(|id| ctx.players.iter().find(|t| t.id == id)) {
+            return self.ocelot_tempt_allowed(t);
+        }
+        false
     }
 
     fn can_use<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, rng: &mut Rng, entry: Entry) -> bool {
         match entry.goal {
             G::Breed => {
-                self.animal.as_ref().is_some_and(|a| a.love > 0.0 && a.partner.is_some()) && self.ready_to_breed()
+                self.animal.as_ref().is_some_and(|a| a.love > 0.0 && a.partner.is_some())
+                    && self.ready_to_breed()
+                    && self.panda_breed_allowed(world)
             }
             G::Tempt => self.find_tempter(ctx),
             G::FollowParent => {
@@ -678,7 +723,8 @@ impl Mob {
                 };
                 let at = t.pos;
                 self.look_at(at, 1.2);
-                if at.distance_squared(self.pos) < 2.5 * 2.5 {
+                let close = if self.kind == MobKind::Armadillo { if self.baby { 1.0 } else { 2.0 } } else { 2.5 };
+                if at.distance_squared(self.pos) < close * close {
                     self.nav.stop();
                 } else {
                     self.walk_to(world, at.floor().as_ivec3(), 1, speed, false);
@@ -818,8 +864,12 @@ impl Mob {
     fn avoid_allowed(&self, a: Avoid) -> bool {
         let tame = self.animal.as_ref().is_some_and(|s| s.owner.is_some());
         match (self.kind, a.what) {
+            (MobKind::Panda, _) => {
+                self.panda.as_ref().is_some_and(|s| s.variant() == crate::entity::panda::Gene::Worried && s.can_act())
+            }
             // `CatAvoidEntityGoal` and `WolfAvoidEntityGoal`: untamed only.
             (MobKind::Cat | MobKind::Wolf, _) => !tame,
+            (MobKind::Ocelot, _) => !self.ocelot.as_ref().is_some_and(|s| s.trusting),
             // Foxes asleep don't flee.
             (MobKind::Fox, _) => !self.animal.as_ref().is_some_and(|s| s.sleeping),
             // `TradeWithPlayerGoal` shares priority 1 and was registered first.
@@ -897,7 +947,11 @@ impl crate::entity::Entities {
                     let mut best: Option<(f64, usize)> = None;
                     self.mob_index.visit(m.pos, a.dist + 3.0, |j| {
                         let b = &self.mobs[j];
-                        if j == i || !b.alive() || !avoided_kind(a.what, b.kind) {
+                        if j == i
+                            || !b.alive()
+                            || !avoided_kind(a.what, b.kind)
+                            || (a.what == Avoided::Armadillo && b.armadillo.as_ref().is_some_and(|s| s.scared()))
+                        {
                             return;
                         }
                         let d = b.pos - m.pos;

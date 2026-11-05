@@ -869,7 +869,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.12 | Building materials | Close M2 | Missing wood, stone, copper and colour family members, the unregistered reference fuel items, signs, banners, item frames, cauldrons and campfires; coral wall fans; falling and dripping dripstone, tilting dripleaf. See [v0.12 scope](#v012-scope-building-materials) | Done (owner, 2026-10-29): merged in [#55](https://github.com/BrendanH18/VoxelCraft/pull/55) at `ec7e18b`; tag `v0.12` from it. The owner's own play is the player evidence (no problems found). Release prepared (2026-10-29): Cargo 0.12.0 and release notes. Items 0–6 implemented, unverified (capacity raise; wood, stone, copper, colour and utilities tracks; data pass, explosions, double chests; `registry_audit`: 669 → 247 missing blocks, the rest belonging to later releases). The remaining gaps of v0.12's own blocks were closed on 2026-10-29 ([record](verification/2026-10-29-v0.12-finish.md)): sign editing for CLI, LAN and controller players, lodestone compasses, slime blocks for mobs and items, arrows hitting vehicles, cushions and decorations, cauldrons putting out fires, and a hidden-window memory leak. Frame time: one valid `materials` run (539 FPS average, 137.8 FPS 1% low) and a profile showing the per-frame mob-model rebuild, not texture paging, as the cost; the three-run gate moved to v0.20 as for v0.8, v0.9 and v0.11. Rows that weren't ready moved out under the 2026-10-25 policy (see the [scope](#v012-scope-building-materials)). Rows stay Implemented, unverified until the frame-time check in v0.20 |
 | v0.13 | Terrain | M3: GEN-01..03 | Density terrain with overhangs from the climate noise (original noise, FE-01); caves and aquifers fitted to it, springs, glow lichen and an ore pass; deep-dark terrain with sculk; giant spruce and jungle trees and the remaining biome features; bubble columns, fire spread, offhand and shields carried from v0.12. See [v0.13 scope](#v013-scope-terrain) | Done (owner, 2026-10-31): merged in [#57](https://github.com/BrendanH18/VoxelCraft/pull/57) at `a8c3172`; the owner's own play is the player evidence. Release prepared (2026-10-31): Cargo 0.13.0 and release notes; tag `v0.13` from the merge that carries them. Items 0–6 implemented, unverified and integrated ([integration record](verification/2026-10-30-v0.13-integration.md)): generation 2 for new worlds only, density terrain, underground and deep dark, giant trees and biome features, bubble columns, fire odds, off-hand, shields and totems. Known gaps: floating rocks above some peaks, hand-tuned densities, inert sculk until v0.16, fire odds unchecked against the 26.3 artifact. Rows stay Implemented, unverified until the frame-time check in v0.20 |
 | v0.14 | Structures | M3: GEN-05..07 | A Java structure-template (jigsaw) system; villages, outposts, bastions, fossils, shipwrecks, ocean ruins and monuments built from it; buried treasure and explorer maps; Java loot random sequences. See [v0.14 scope](#v014-scope-structures) | In progress (2026-11-03): scope approved with original templates (no fidelity exception yet); all of items 0–7 implemented, unverified: world generation 3, the jigsaw engine and villages ([record](verification/2026-11-03-v0.14-jigsaw-villages.md)), outposts and bastions ([record](verification/2026-11-03-v0.14-outposts-bastions.md)), ruined portals and buried treasure ([record](verification/2026-11-03-v0.14-portals-treasure.md)), fossils, desert wells and trail ruins ([record](verification/2026-11-03-v0.14-fossils-wells-trail-ruins.md)), maps, explorer maps and Java loot sequences ([record](verification/2026-11-03-v0.14-maps.md)); owner play pending |
-| v0.15 | Wildlife | M4: MOB-03/04, FOO, ENV-03 | Bats, frogs, pandas, polar bears, armadillos, mooshrooms, strays, bogged, phantoms and zombie horses (with lightning); drowned conversion and the cat spawner; melon, pumpkin and beetroot crops; animal and mount acceptance | Planned |
+| v0.15 | Wildlife | M4: MOB-03/04, FOO, ENV-03 | Bats, frogs, pandas, polar bears, armadillos, mooshrooms, strays, bogged, phantoms and zombie horses (with lightning); drowned conversion and the cat spawner; melon, pumpkin and beetroot crops; animal and mount acceptance. See [v0.15 scope](#v015-scope-wildlife) | Implemented, unverified (2026-11-04): started early while v0.14 waits for the owner's play; four tracks (lightning and undead mounts, crops and bees, passive mobs, hostiles) merged and council-reviewed ([integration](verification/2026-11-04-v0.15-integration.md)); awaits the owner's play |
 | v0.16 | Deep dark and trials | M3 + M4 + PRO-07 | Ancient cities with sculk and the warden; trial chambers with breezes, trial spawners, vaults and the mace; tridents, spears and the other modern weapon families | Planned |
 | v0.17 | Villages and raids | Close M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M4 exit checks | Planned |
 | v0.18 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough | Planned |
@@ -1081,10 +1081,10 @@ Decisions, proposed on 2026-10-23 and approved by the owner on 2026-10-25:
   (bees, v0.15), heads and skulls (their mobs), purpur, end rods and shulker
   boxes (v0.18), and potted plants with their plants. The audit lists each
   block's release.
-- **Waxing waits for bees.** Honeycomb has no survival source until bees
-  (v0.15), so the 56 waxed copper blocks, copper waxing and sign waxing
-  ship with them. Unwaxed copper oxidises in v0.12 and an axe scrapes it
-  back.
+- **Waxing was deferred to bees.** Honeycomb acquisition, the 56 waxed
+  copper blocks, copper waxing and sign waxing are implemented, unverified,
+  with bees in v0.15 ([2026-11-04 record](verification/2026-11-04-v0.15-crops-bees.md)).
+  Unwaxed copper oxidises in v0.12 and an axe scrapes it back.
 - **Banners are plain in v0.12.** Patterns are applied at the loom, which
   arrives in v0.17, so banner patterns and their items come with it.
 - **Retire the 11 invented blocks.** Calcite stairs, slab and wall,
@@ -1095,7 +1095,8 @@ Decisions, proposed on 2026-10-23 and approved by the owner on 2026-10-25:
 - **Lightning rods without lightning.** Rods are crafted, placed in every
   facing and waterlogged in v0.12. Lightning strikes don't exist yet
   (ENV-03, v0.15), so attracting a strike, the redstone pulse it gives and
-  stripping oxidation come with them.
+  stripping oxidation come with them. *Implemented, unverified (2026-11-04):*
+  these lightning behaviors now exist in [v0.15 track 1](verification/2026-11-04-v0.15-lightning.md).
 - **Jukeboxes and music discs** are unassigned; propose v0.20 with the
   music review, since every disc needs an original track.
 
@@ -1156,13 +1157,15 @@ Work items (all Missing unless noted):
    cut copper and its stairs and slab, chiseled copper, grate, bulb, door,
    trapdoor, bars, chain, lantern, chest and lightning rod, plus the copper
    torch. Random-tick oxidation and axe scraping. The waxed forms and
-   honeycomb waxing follow with bees in v0.15. *Implemented, unverified
+   honeycomb waxing are implemented, unverified, with bees in v0.15
+   ([2026-11-04 record](verification/2026-11-04-v0.15-crops-bees.md)). *Implemented, unverified
    (2026-10-25; checks rerun on the merge with stone 2026-10-26):* all 57
    blocks (732 registered states laid out in 22528–23372), with Java's
    `ChangeOverTimeBlock` odds, scraping, bulb toggling and comparator
    output, recipes and stonecutting data; see the
    [record](verification/2026-10-25-v0.12-copper.md). Not done: copper
-   sounds, lightning (v0.15). Double copper chests: *implemented, unverified
+   sounds. Lightning: *implemented, unverified (2026-11-04)* in
+   [v0.15 track 1](verification/2026-11-04-v0.15-lightning.md). Double copper chests: *implemented, unverified
    (2026-10-28)* with the other double chests, the pair taking the younger
    stage and aging together ([record](verification/2026-10-28-v0.12-double-chests.md)).
 4. **Colour (BLD-01d).** Plain banners, standing and on walls, in 16
@@ -1179,11 +1182,11 @@ Work items (all Missing unless noted):
    respawn point, falls apart on waking and instead of exploding outside
    the Overworld), and the 16 cushions as stationary seats on the vehicle
    system, crafted from three wool slabs
-   ([record](verification/2026-10-25-v0.12-colour.md)). Owed: owner play;
-   a survival source for candles (the plain candle needs honeycomb, which
-   comes with bees in v0.15, so candles and candle cakes are creative-only
-   until then; integrator's decision, 2026-10-26: keep the finished blocks
-   rather than hold them for bees, as with waxing); banner patterns (loom,
+   ([record](verification/2026-10-25-v0.12-colour.md)). The plain candle's
+   survival recipe was deferred here in 2026-10-26 to retain the finished
+   blocks while waiting for honeycomb. It is now implemented, unverified,
+   with bees (2026-11-04, [record](verification/2026-11-04-v0.15-crops-bees.md)).
+   Owed: owner play and banner patterns (loom,
    v0.17). Arrows hitting cushions, boats, minecarts and decorations:
    *implemented, unverified (2026-10-29,
    [record](verification/2026-10-29-v0.12-finish.md))*.
@@ -1427,6 +1430,91 @@ foundations; decoration randomness uses VoxelCraft streams, not Java's.
 Generation 3 chunk generation measured within 1% of generation 2 near
 outposts, bastions, deserts, swamps and trail ruins, and 8% slower next
 to a ruined portal (0.626 against 0.579 ms per chunk).
+
+#### v0.15 scope: wildlife
+
+Approved by the owner on 2026-11-04, started before v0.14's play because
+it doesn't touch structure generation. Mobs, blocks and items follow Java
+26.3's behaviour, drops, spawn rules and timers; models, textures and
+sounds are original. Four tracks run in parallel, each with its own IDs
+in the [architecture reservations](architecture.md#v015-track-reservations):
+
+0. **Decision and IDs.** This scope and the per-track ranges.
+1. **Lightning and undead mounts** (ENV-03, FOO-04c). Lightning in
+   thunderstorms with Java's per-chunk odds and lightning-rod attraction;
+   fire (the existing `lightning_fire`), charged creepers, pigs to
+   zombified piglins, villagers to witches, copper de-oxidation, the
+   rod's redstone pulse; skeleton-horse traps, skeleton and zombie
+   horses; snow piling up in snowfall with `max_snow_accumulation_height`;
+   zombies turning into drowned underwater and husks into zombies.
+   **Implemented, unverified (2026-11-04)** in track 1: strikes, flashes,
+   original thunder, conversions, charged creepers, unwaxed copper cleaning,
+   powered rods, skeleton traps, saved rideable undead horses and natural
+   zombie-horse riders, snow gamerule and underwater conversion timers.
+   [Evidence and parity gaps](verification/2026-11-04-v0.15-lightning.md):
+   integrator mooshroom/waxed-root hooks, jockey spears, trap enchantments,
+   exact underwater horse travel and visual/ordinary-play evidence remain.
+
+2. **Crops and bees** (FOO-01, FOO-02, BLD-01c). Melon and pumpkin stems
+   and attached stems, beetroots; bees, bee nests and hives, pollination
+   and crop boosts, honey bottles and honeycomb, honeycomb blocks;
+   honeycomb waxing of the 56 waxed copper blocks and of signs, and
+   candles in survival. **Crop slice implemented, unverified (2026-11-04):**
+   the 28 crop states, soil/spacing growth formula, beetroot's Java 2/3
+   tick gate and divided bone-meal gain, fruit attachment/release, seed
+   planting and drops, melon yields, seed/soup recipes, beetroot in the
+   existing village palette and farmer harvest/replant recognition.
+   **Bee slice implemented, unverified:** nests/hives with saved occupants,
+   natural and flower-adjacent sapling nests, nectar/pollination/crop boosts,
+   breeding, anger/stinging, smoke-aware harvesting, honeycomb and Silk Touch
+   transport. **Waxing implemented, unverified:** 56 copper blocks, wax/unwax
+   transactions and recipes, oxidation protection and sign edit protection.
+   **Candles obtainable, unverified:** string above honeycomb crafts the
+   existing plain candle; dyeing and candle-cake uses supply the remaining
+   survival variants ([evidence](verification/2026-11-04-v0.15-crops-bees.md)).
+3. **Passive mobs** (MOB-03). Bats; frogs, tadpoles, frogspawn and the
+   three froglights; pandas with their genes; polar bears; armadillos,
+   scutes and wolf armor; mooshrooms and suspicious stew; ocelots; the cat
+   spawner in villages and swamp huts.
+   *Implemented, unverified (track 3, 2026-11-04):* mooshrooms (red/brown,
+   cow goals and wheat breeding, variant mutation, milk/stew, stored flower
+   effects, shearing, lightning conversion hook) and ambient bats (26.3
+   spawning, ceiling resting, flight). Suspicious stew is craftable and
+   edible with flower-specific effects, including Saturation. Original
+   models, save/reload and shared player actions are covered by focused
+   tests; see the [record](verification/2026-11-04-v0.15-passive-mobs.md)
+   for source discrepancies and remaining parity gaps. Frogs/tadpoles,
+   pregnancy and frogspawn hatching, biome-tag variants, tongue predation,
+   axis-oriented froglights and tadpole buckets are also implemented,
+   unverified. CatSpawner now implements the five-occupied-bed/five-cat
+   village rule, periodic hut attempts and the once-only black hut resident,
+   also unverified. Polar bears now have cub groups/defence, neutral anger,
+   standing attacks, swimming and fish loot (implemented, unverified).
+   Pandas now have inherited genes and mutations, bamboo breeding, snacks,
+   sneezes, rolls, thunder fear and retaliation (implemented, unverified).
+   Armadillos now roll around threats, shed scutes and can be brushed;
+   owner-equipped wolf armor absorbs damage, repairs, dyes and washes
+   (implemented, unverified). Jungle ocelots now flee, trust fish-feeding
+   players, breed, hunt chickens/baby land turtles and persist trust
+   (implemented, unverified).
+4. **Hostiles** (MOB-04, PRO-02). Strays, bogged and phantoms (insomnia,
+   `spawn_phantoms`, membranes), and tipped arrows. *Implemented, unverified
+   (2026-11-04): natural variants, conversion/shearing, original models, loot,
+   saved rest and phantom state, phantom custom spawning/circle/swoop flight,
+   Slow Falling brewing, breath collection, lingering clouds and tipped-arrow
+   crafting; shared bows/crossbows retain potion components. Skeleton and
+   phantom AI scheduling, armor/chainmail parity, graphical evidence and
+   performance acceptance remain open. See
+   [track evidence](verification/2026-11-04-v0.15-hostiles.md).*
+5. **Integration and checks.** Cross-track pieces (lightning turning
+   mooshrooms), spawn tables together, save/reload of every new mob and
+   block, and per-track verification records. *Implemented, unverified
+   (2026-11-04): all four tracks merged, a three-provider council review
+   (three rounds) fixed nine bugs, and checks and the headless benchmark pass; ordinary
+   play remains. See the [integration record](verification/2026-11-04-v0.15-integration.md).*
+
+Moved to a later v0.15 change (owner, 2026-11-04): the creaking and
+resin, the copper golem and its statues, allays and sniffers.
 
 ### M4 — A complete living world
 

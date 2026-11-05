@@ -151,6 +151,7 @@ fn colour_material(block: Block) -> Option<Material> {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Sound {
+    Thunder,
     HoneySlide,
     HoneyDrink,
     Note(Instrument),
@@ -218,15 +219,16 @@ const M: usize = Material::ALL.len();
 const CALLS: usize = Call::ALL.len();
 
 impl Sound {
-    pub const COUNT: usize = 3 * M + 27 + Voice::ALL.len() * CALLS + 16 + 3;
+    pub const COUNT: usize = 3 * M + 27 + Voice::ALL.len() * CALLS + 16 + 4;
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
         match self {
             Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
-            Sound::Bell => Self::COUNT - 3,
-            Sound::HoneySlide => Self::COUNT - 2,
-            Sound::HoneyDrink => Self::COUNT - 1,
+            Sound::Thunder => Self::COUNT - 1,
+            Sound::Bell => Self::COUNT - 4,
+            Sound::HoneySlide => Self::COUNT - 3,
+            Sound::HoneyDrink => Self::COUNT - 2,
             Sound::Break(m) => m as usize,
             Sound::Place(m) => M + m as usize,
             Sound::Step(m) => 2 * M + m as usize,
@@ -308,12 +310,13 @@ impl Sound {
             ])
             .chain(Voice::ALL.into_iter().flat_map(|v| Call::ALL.map(|c| Sound::Mob(v, c))))
             .chain(Instrument::ALL.map(Sound::Note))
-            .chain([Sound::Bell, Sound::HoneySlide, Sound::HoneyDrink])
+            .chain([Sound::Bell, Sound::HoneySlide, Sound::HoneyDrink, Sound::Thunder])
     }
 
     /// Stable sound name used when exporting or identifying samples.
     pub fn name(self) -> String {
         match self {
+            Sound::Thunder => "lightning_thunder".into(),
             Sound::HoneySlide => "honey_block_slide".into(),
             Sound::HoneyDrink => "honey_drink".into(),
             Sound::Note(i) => format!("note_{i:?}").to_ascii_lowercase(),
@@ -378,7 +381,7 @@ impl Sound {
             | Sound::HoneyDrink
             | Sound::HoneySlide => SoundSource::Players,
             Sound::Note(_) => SoundSource::Records,
-            Sound::Rain => SoundSource::Weather,
+            Sound::Rain | Sound::Thunder => SoundSource::Weather,
             // No Java counterpart for VoxelCraft's synthesized wind, cave
             // room tone and random cave drips; `ambient.cave` is the closest.
             Sound::Wind | Sound::Cave | Sound::Drip => SoundSource::Ambient,
@@ -414,7 +417,8 @@ impl Sound {
             }
             Sound::Mob(_, Call::Death) => 1,
             Sound::Mob(..) => 2,
-            Sound::HoneyDrink
+            Sound::Thunder
+            | Sound::HoneyDrink
             | Sound::HoneySlide
             | Sound::Bell
             | Sound::Click
@@ -437,6 +441,7 @@ impl Sound {
     pub fn render(self, variant: u32) -> Vec<f32> {
         let mut rng = Rng::new((self.key() as u64) << 8 | variant as u64);
         match self {
+            Sound::Thunder => thunder(&mut rng),
             Sound::HoneySlide => honey_sound(&mut rng, 0.35),
             Sound::HoneyDrink => honey_sound(&mut rng, 0.22),
             Sound::Note(i) => note_sound(i, &mut rng),
@@ -1334,4 +1339,13 @@ fn note_sound(instrument: Instrument, rng: &mut Rng) -> Vec<f32> {
         *sample = tone * attack * (-t * decay).exp();
     }
     dsp::finish(out, 0.65)
+}
+
+/// Original broadband crack over a low, rolling rumble; no sampled assets.
+fn thunder(rng: &mut Rng) -> Vec<f32> {
+    let mut rumble = noise(rng, samples(3.2), |t| dsp::ad(t, 0.025, 0.8) * (0.75 + 0.25 * (t * 17.).sin()));
+    Biquad::lowpass(280., 0.7).run(&mut rumble);
+    let crack = noise(rng, samples(0.45), |t| dsp::ad(t, 0.001, 0.08));
+    mix_into(&mut rumble, &crack, 0.25, 0);
+    dsp::finish(rumble, 0.9)
 }

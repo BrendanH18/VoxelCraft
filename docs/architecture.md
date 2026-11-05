@@ -412,7 +412,7 @@ Allocations so far:
 | 20512–21471 | Stairs for 12 v0.12 families, 80 states each (`slab_stair_states` local order, local 0 is the item); `slab_stair_states` families 39–50 | [stone and minerals](verification/2026-10-25-v0.12-stone.md) |
 | 21472–21541 | Slabs for those 12 families plus cut and cut red sandstone, 5 states each: bottom, bottom wet, top, top wet, double; families 39–52 | [stone and minerals](verification/2026-10-25-v0.12-stone.md) |
 | 21552–21595 | 11 v0.12 walls, 4 states each: UP, UP wet, no UP, no UP wet (`wall_states` families 20–30); 21542–21551 and 21596–22527 stay unused; items 1100–1109 unused | [stone and minerals](verification/2026-10-25-v0.12-stone.md) |
-| 22528–23372 (23373–24575 reserved, unused) | v0.12 copper (BLD-01c), `world::copper`: per family, `stride` ids per oxidation stage (unaffected, exposed, weathered, oxidized) from its origin: block 22528 (stride 1; 22528 unused, the unaffected block stays 231), cut 22532, chiseled 22536, grate 22540 (2), bulb 22548 (4), stairs 22564 (80; `slab_stair_states` families 53–56), slab 22884 (5), door 22904 (24), trapdoor 23000 (32), bars 23128 (2), chain 23136 (6), lantern 23160 (4), chest 23176 (24: `type*8 + wet*4 + facing`, all registered since double chests, 2026-10-28), lightning rod 23272 (24; only the 12 unpowered states registered), torch 23368–23372 (standing, then wall facing south, north, east, west). No item IDs (all are block items). Texture layers 2128–2200: 18 per stage from 2128, then the torch | [copper](verification/2026-10-25-v0.12-copper.md) |
+| 22528–23372 (23373–24575 reserved, unused) | v0.12 copper (BLD-01c), `world::copper`: per family, `stride` ids per oxidation stage (unaffected, exposed, weathered, oxidized) from its origin: block 22528 (stride 1; 22528 unused, the unaffected block stays 231), cut 22532, chiseled 22536, grate 22540 (2), bulb 22548 (4), stairs 22564 (80; `slab_stair_states` families 53–56), slab 22884 (5), door 22904 (24), trapdoor 23000 (32), bars 23128 (2), chain 23136 (6), lantern 23160 (4), chest 23176 (24: `type*8 + wet*4 + facing`, all registered since double chests, 2026-10-28), lightning rod 23272 (24 per stage; all registered since v0.15 track 1, including the 12 powered states per stage), torch 23368–23372 (standing, then wall facing south, north, east, west). No item IDs (all are block items). Texture layers 2128–2200: 18 per stage from 2128, then the torch | [copper](verification/2026-10-25-v0.12-copper.md) |
 | 24576–27135 | v0.12 wool then concrete stairs, 16 colours each in `DyeColor` order, 80 states per family (`slab_stair_states` local order, local 0 is the item); `slab_stair_states` families 57–88 (the family field widened from 6 to 7 bits in memory only) | [colour](verification/2026-10-25-v0.12-colour.md) |
 | 27136–27295 | Slabs for those 32 families, 5 states each: bottom, bottom wet, top, top wet, double | [colour](verification/2026-10-25-v0.12-colour.md) |
 | 27296–27567 | Candles, plain then the 16 dyes, 16 states each: `(candles - 1) * 4 + lit * 2 + wet` | [colour](verification/2026-10-25-v0.12-colour.md) |
@@ -474,6 +474,123 @@ Channeling, Density, Breach and Lunge, as book and loot metadata for
 weapons the game doesn't have yet. They fit the `u128` three-bit
 encoding (120 of 128 bits)
 ([maps record](verification/2026-11-03-v0.14-maps.md#allocations)).
+
+### v0.15 track reservations
+
+Reserved on 2026-11-04 for the [v0.15 tracks](roadmap.md#v015-scope-wildlife).
+Block states use v0.15's range 10752–11263, plus the start of the
+unassigned reserve for the waxed copper blocks, which mirror the
+unwaxed copper layout (22528–23372). Items continue after v0.14's.
+Texture layers start at 2960, after v0.14's map sprites.
+
+| Block states | Item IDs | Texture layers | Track |
+| --- | --- | --- | --- |
+| 10752–10815 | 1270–1279 | 2960–2991 | 1. Lightning and undead mounts |
+| 10816–11007, 29696–30719 | 1280–1299 | 2992–3135 | 2. Crops, bees and waxing |
+| 11008–11135 | 1300–1329 | 3136–3263 | 3. Passive mobs |
+| 11136–11199 | 1330–1349 | 3264–3295 | 4. Hostiles and tipped arrows |
+| 11200–11263 | 1350–1359 | 3296–3327 | Integrator spare |
+
+Track 3 allocations (2026-11-04, passive-mobs): item **1300** is suspicious
+stew, **1301** the tadpole bucket, **1302** armadillo scute, **1303** brush
+(armadillo use only) and **1304** wolf armor. State **11008** is frogspawn;
+**11009–11011**, **11012–11014**, **11015–11017** are respectively ochre,
+verdant and pearlescent froglight, each with axis order Y, X, Z. Procedural
+block layers **3136–3145** contain frogspawn and three layers per froglight
+(side, end, rotated side). States 11018–11135, items 1305–1329 and layers
+3146–3263 remain reserved and unregistered. Original entity cuboids use the
+procedural entity shader. Stew reuses the mushroom-stew icon; the tadpole
+bucket appends an original item sprite. Saturation appends to the dynamic
+effect-icon array. `Mooshroom`, `Bat`, `Frog`, `Tadpole`, `PolarBear`, `Panda`, `Armadillo`,
+`Ocelot` append after the other tracks' kinds (after `Phantom`) in that order, saved as `mooshroom`, `bat`,
+`frog`, `tadpole`, `polar_bear`, `panda`, `armadillo`, `ocelot`. Stew effect
+codes 1–11 in `Stack::entity_data` and `mooshroom.stew` remain stable;
+tadpole buckets use an item-specific age/health/age-lock bit payload.
+Polar bear anger uses the existing saved simulation tick counter and stable
+player/mob references. Its standing client selection box is distinct from
+the ordinary server collision box; transient pose values replicate in look
+snapshots. `forgive_dead_players` and `universal_anger` are Partial, with
+polar-bear coverage. No identifiers are allocated for these hooks.
+Wolf armor stores a dyed-colour flag at bit 24 and RGB in the lower 24
+bits of its item-specific stack data. The complete equipped stack persists
+and replicates; armadillo shell state, danger memory and scute timer save.
+The brush, scute and armor append original dynamic item sprites; no
+additional block layers or states are allocated.
+Panda main/hidden genes save by Java names, and held food uses the existing
+animal stack component; action poses replicate but restart on load.
+Ocelot trust saves/replicates as a Boolean; its 2,400-tick loaded lifetime
+restarts on load as Java tickCount does. Ocelots use the creature category
+while remaining in the pinned jungle monster spawn lists.
+CatSpawner adds no IDs. Cat appearance code zero retains the old all-black
+coat; 1–10 use the remaining named variants, with the existing animal
+component carrying save/replication/inheritance. The spawner countdown is
+transient, as in Java; hut resident markers use the existing saved structure
+set, with migration for earlier partial hut cat markers.
+Frogspawn hatch timers reuse the saved scheduled-block tick queue. Detail
+mesh coordinate code 31 encodes frogspawn's fractional 1.5/16 height;
+ordinary integer coordinates and the quad format are unchanged. See
+[track evidence](verification/2026-11-04-v0.15-passive-mobs.md).
+
+New `MobKind` variants append after `Camel`; mob kinds are saved by name,
+but `MobKind::ALL` order is the LAN index, so the integrator appends the
+tracks' kinds in merge order: tracks 1, 2, 4, then 3 (`SkeletonHorse`,
+`ZombieHorse`, `Bee`, `Stray`, `Bogged`, `Phantom`, then track 3's eight).
+Each track records what it used here.
+
+Track 1 allocation (2026-11-04, implemented/unverified): no new states,
+items or texture layers from its reserved ranges. Registered the 48 previously
+reserved copper powered-rod states 23284–23295, 23308–23319, 23332–23343 and
+23356–23367, without changing the copper encoding. Appended MobKinds
+`SkeletonHorse` / `ZombieHorse`, saved as `skeleton_horse` / `zombie_horse`.
+Procedural entity geometry and synthesized thunder need no texture IDs.
+See [track evidence and gaps](verification/2026-11-04-v0.15-lightning.md).
+
+Track 2 crop slice (2026-11-04, implemented, unverified):
+`world::crops` uses 10816–10823 for melon stem ages 0–7, 10824–10827
+for its attached facings (`Facing::ALL`: S, N, E, W), 10828–10835 for
+pumpkin stem ages 0–7, 10836–10839 for its attached facings, and
+10840–10843 for beetroot ages 0–3. Item 1280 is beetroot soup; pumpkin
+seeds (680), beetroot (682), melon seeds (1016), beetroot seeds (1017),
+melon slices (283) and honey bottle (1073) retain their existing IDs.
+Original crop textures use 2992–3007, offsets from `crops::t::BASE`:
+eight stem ages, four attached silhouettes and four beetroot ages.
+That initial slice appended no MobKinds. The continuation below allocates
+bee and waxed content from the same reservation; see [track evidence](verification/2026-11-04-v0.15-crops-bees.md).
+
+Track 2 bee continuation: 10844–10867 bee nest, 10868–10891 beehive
+(`honey_level * 4 + facing`, S/N/E/W), 10892 honeycomb block. Item 1281
+is honeycomb. Original hive/nest/comb layers 3008–3016 are offsets from
+`bees::t::BASE`; the original bee model uses procedural entity colours,
+and its original voice appends `Voice::Bee`. `MobKind::Bee` appends after
+Camel (LAN index 54 in this track, subject to integration order). Hive
+occupants use normal saved bee payloads in dimension property `beehives`;
+Silk Touch items append an optional hex-encoded component to inventory
+strings. Immutable item payloads are interned, keeping `Stack` Copy and
+its optional hive component pointer-sized. They live until process exit.
+States 10893–11007, items 1282–1299 and layers 3017–3135 remain unused.
+The waxed copper allocation follows below.
+
+Track 2 waxed copper continuation (implemented, unverified):
+`copper::WAXED_FIRST = 29696`, with the same family/stage/local offsets as
+22528–23367 (the unwaxed torch has no waxed form). The unaffected block
+of copper retains 231 and maps to 29696. The mirror ends at 30536 exclusive:
+840 registered states, including the 48 powered-rod locals that track 1
+registered in the unwaxed layout. Remaining 30536–30719 stay unused. Stair/slab
+families 89–92 append after the existing colours; no earlier family or
+saved ID changes. All 56 default block items reuse their unwaxed textures;
+no additional item IDs, layers or MobKinds. Sign waxing uses the existing
+saved sign `waxed` flag. See [track evidence](verification/2026-11-04-v0.15-crops-bees.md).
+
+The plain candle recipe adds no IDs or layers; it uses the existing plain
+candle (27296), string and honeycomb.
+
+Track 4 allocation (2026-11-04, implemented, unverified): **1330**
+`tipped_arrow`, **1332** `lingering_potion`, **1333** `dragon_breath`.
+Existing **1020** `phantom_membrane` is retained. Appended MobKinds are
+`Stray`, `Bogged`, `Phantom`. No block states or reserved texture layers
+consumed (models use procedural vertex colour/noise). Item 1331, 1334–1349,
+block states 11136–11199 and layers 3264–3295 remain reserved, unused.
+See [hostiles evidence](verification/2026-11-04-v0.15-hostiles.md).
 
 ## Assessment branch ID reservations
 

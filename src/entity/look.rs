@@ -1,7 +1,7 @@
 //! Compact render state for replicated mobs (LAN clients draw what the host simulates).
 //! Only fields models read are sent; gameplay state stays on the host.
 use super::nether::Weapon;
-use super::{Mob, armor::ArmorKind, villager::Profession};
+use super::{Mob, MobKind, armor::ArmorKind, villager::Profession};
 use crate::{color::DyeColor, inventory::StackName, item::Item};
 use glam::DVec3;
 use serde_json::{Value, json};
@@ -28,16 +28,48 @@ impl Mob {
             "armor": armor,
             "glint": self.armor_glint,
             "charged": self.charged,
+            "lightning_charged": self.lightning_charged,
+            "water_conversion": self.water_conversion.save(),
             "fuse": self.fuse,
             "burning": self.burning,
             "attack": self.attack_anim,
         });
+        if let Some(p) = &self.phantom {
+            v["phantom_size"] = json!(p.size);
+        }
+        if let Some(stack) = self.wolf_armor.as_ref().and_then(|s| s.armor) {
+            v["wolf_armor"] = json!(crate::inventory::stack_to_string(Some(stack)));
+        }
+        if let Some(s) = &self.ocelot {
+            v["ocelot"] = serde_json::json!({"trusting":s.trusting,"crouching":s.crouching,"sprinting":s.sprinting});
+        }
+        if let Some(s) = &self.armadillo {
+            v["armadillo"] = s.look();
+        }
+        if let Some(s) = &self.panda {
+            v["panda"] = s.look();
+        }
+        if let Some(s) = &self.polar_bear {
+            v["polar_bear"] = json!({"standing":s.standing,"animation":s.animation});
+        }
+        if let Some(s) = &self.frog {
+            v["frog"] = json!({"variant":s.variant,"pose":s.pose,"tongue_ticks":s.tongue_ticks,"tongue":s.tongue.map(|(_,p)|p.to_array())});
+        }
+        if let Some(s) = &self.bat {
+            v["bat_resting"] = json!(s.resting);
+        }
+        if let Some(s) = &self.mooshroom {
+            v["mooshroom_brown"] = json!(s.brown);
+        }
         if let Some(name) = self.name.as_str() {
             v["name"] = json!(name);
         }
         if let Some(p) = self.leash_pos {
             v["leash"] = json!(p.to_array());
             v["knot"] = json!(matches!(self.leash, Some(super::leash::Leash::Fence(_))));
+        }
+        if let Some(s) = self.bee {
+            v["bee"] = s.save();
         }
         if let Some(a) = &self.animal {
             v["animal"] = json!({
@@ -83,7 +115,46 @@ impl Mob {
         if let Some(c) = dye(&v["wool"]) {
             self.wool_color = c;
         }
+        if let Some(p) = &mut self.phantom {
+            p.size = v["phantom_size"].as_u64().unwrap_or(0).min(64) as u8;
+        }
         self.sheared = v["sheared"] == true;
+        if let Some(s) = &mut self.wolf_armor {
+            s.load(v["wolf_armor"].as_str());
+        }
+        if let Some(s) = &mut self.ocelot {
+            s.trusting = v["ocelot"]["trusting"].as_bool().unwrap_or(false);
+            s.crouching = v["ocelot"]["crouching"].as_bool().unwrap_or(false);
+            s.sprinting = v["ocelot"]["sprinting"].as_bool().unwrap_or(false);
+        }
+        if let Some(s) = &mut self.armadillo {
+            s.apply_look(&v["armadillo"]);
+        }
+        if let Some(s) = &mut self.panda {
+            s.apply_look(&v["panda"]);
+        }
+        if let Some(s) = &mut self.polar_bear {
+            s.standing = v["polar_bear"]["standing"] == true;
+            s.animation =
+                v["polar_bear"]["animation"].as_f64().filter(|n| n.is_finite()).unwrap_or(0.0).clamp(0.0, 6.0) as f32;
+        }
+        if let Some(s) = &mut self.frog {
+            if let Some(n) = v["frog"]["variant"].as_u64() {
+                s.variant = n.min(2) as u8;
+            }
+            s.pose = v["frog"]["pose"].as_u64().unwrap_or(0).min(4) as u8;
+            s.tongue_ticks = v["frog"]["tongue_ticks"].as_u64().unwrap_or(0).min(11) as u16;
+            s.tongue = v["frog"]["tongue"]
+                .as_array()
+                .filter(|p| p.len() == 3)
+                .and_then(|p| Some((0, glam::DVec3::new(p[0].as_f64()?, p[1].as_f64()?, p[2].as_f64()?))));
+        }
+        if let Some(s) = &mut self.bat {
+            s.resting = v["bat_resting"].as_bool().unwrap_or(s.resting);
+        }
+        if let Some(s) = &mut self.mooshroom {
+            s.brown = v["mooshroom_brown"] == true;
+        }
         if let Some(armor) = v["armor"].as_array() {
             for (slot, a) in self.armor.iter_mut().zip(armor) {
                 *slot = a.as_u64().and_then(|i| ArmorKind::ALL.get(i as usize).copied());
@@ -91,6 +162,8 @@ impl Mob {
         }
         self.armor_glint = small(&v["glint"]).unwrap_or(0);
         self.charged = v["charged"] == true;
+        self.lightning_charged = v["lightning_charged"] == true;
+        self.water_conversion = super::lightning::WaterConversion::load(&v["water_conversion"]);
         self.fuse = v["fuse"].as_f64().unwrap_or(0.0) as f32;
         self.burning = v["burning"] == true;
         self.attack_anim = v["attack"].as_f64().unwrap_or(0.0) as f32;
@@ -106,6 +179,9 @@ impl Mob {
                 super::leash::Leash::Player(super::PlayerId::HOST)
             }
         });
+        if self.kind == MobKind::Bee {
+            self.bee = Some(super::bee::State::load(&v["bee"]));
+        }
         if let (Some(a), w) = (self.animal.as_mut(), &v["animal"])
             && w.is_object()
         {

@@ -33,6 +33,7 @@ pub struct Hand {
     pub block_light: f32,
     /// Compass or clock frame. Absent for every other item.
     pub icon: Option<u16>,
+    pub tint: Option<[u8; 4]>,
     pub map: Option<Box<crate::world::maps::MapData>>,
     pub off_map: Option<Box<crate::world::maps::MapData>>,
     pub map_small: bool,
@@ -95,6 +96,7 @@ struct Builder<'a> {
     /// View frame -> camera-relative world.
     to_world: Mat4,
     light: (f32, f32),
+    tint: [u8; 4],
 }
 
 impl Builder<'_> {
@@ -108,6 +110,7 @@ impl Builder<'_> {
                 uv: uv[i],
                 layer: layer as u32,
                 light: [self.light.0, s, self.light.1],
+                tint: self.tint,
             });
         }
     }
@@ -198,7 +201,7 @@ pub(super) fn vertices(
         * view_effect.inverse()
         * Mat4::from_scale(Vec3::new(k, k, 1.0))
         * view_effect;
-    let mut b = Builder { out: &mut out, to_world, light: (hand.sky_light, hand.block_light) };
+    let mut b = Builder { out: &mut out, to_world, light: (hand.sky_light, hand.block_light), tint: [255; 4] };
 
     let s = hand.swing;
     let root = s.sqrt();
@@ -381,6 +384,7 @@ pub(super) fn vertices(
                 * Mat4::from_quat(Quat::from_euler(EulerRot::XYZ, 0.0, deg(-90.0), deg(25.0)))
                 * Mat4::from_scale(Vec3::splat(0.68))
                 * translate(-0.5, -0.5, -0.5 / 16.0);
+            b.tint = hand.tint.unwrap_or([255; 4]);
             b.sprite(arm * display, layer, masks.get(layer));
         }
     }

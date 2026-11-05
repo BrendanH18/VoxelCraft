@@ -15,6 +15,7 @@
 pub mod activity;
 mod automation;
 pub mod bastion;
+pub mod bees;
 pub mod bell;
 pub mod biome;
 pub mod biome_plants;
@@ -32,6 +33,7 @@ pub mod colors;
 pub mod colour_blocks;
 pub mod composter;
 pub mod copper;
+pub mod crops;
 pub mod deep_dark;
 pub mod dismount;
 pub mod double_chest;
@@ -45,6 +47,7 @@ mod fluid;
 mod foraging;
 pub mod forms;
 pub mod fortress;
+pub mod frog_blocks;
 pub mod furnace;
 pub mod gadgets;
 pub mod geode;
@@ -53,6 +56,7 @@ mod honey;
 pub mod jigsaw;
 mod light_shape;
 pub(crate) mod lighting;
+pub mod lightning;
 pub mod loot;
 pub mod maps;
 pub mod mineshaft;
@@ -72,6 +76,7 @@ pub mod ore;
 pub mod overworld_blocks;
 mod overworld_flora;
 mod portal;
+pub mod precipitation;
 pub mod pumpkin_blocks;
 pub mod rails;
 pub mod redstone;
@@ -201,6 +206,7 @@ pub struct WorldRules {
     /// The world difficulty's id (Java's `Difficulty.getId`), which fire
     /// spreading reads.
     pub difficulty: u8,
+    pub max_snow_accumulation_height: u8,
 }
 
 impl Default for WorldRules {
@@ -211,6 +217,7 @@ impl Default for WorldRules {
             lava_source_conversion: false,
             fire_spread_radius: 128,
             difficulty: 2,
+            max_snow_accumulation_height: 1,
         }
     }
 }
@@ -258,6 +265,8 @@ pub struct World {
     sky_updates: lighting::LightUpdates,
     fluids: fluid::FluidState,
     fire: fire::FireState,
+    lightning: lightning::State,
+    snow_pushes: Vec<(IVec3, f64)>,
     redstone: redstone::RedstoneState,
     automation: automation::AutomationState,
     falling: Vec<falling::FallingBlock>,
@@ -275,6 +284,7 @@ pub struct World {
     /// Brewing stand contents by position (see [`brewing`]).
     brewing_stands: FxHashMap<IVec3, brewing::BrewingStand>,
     /// Sign text, shelf items and chiseled bookshelf books (see [`wood::entities`]).
+    pub(crate) beehives: bees::State,
     wood: wood::entities::WoodEntities,
     /// Campfire, decorated pot and cauldron-drip state (see [`utilities`]).
     utilities: utilities::State,
@@ -319,6 +329,7 @@ pub struct World {
     pub golem_heads: Vec<IVec3>,
     /// Turtle eggs that hatched: cell and how many babies; the game spawns them.
     pub hatched_turtles: Vec<(IVec3, u8)>,
+    pub hatched_tadpoles: Vec<(IVec3, u8)>,
     compost_sequence: u64,
     bell_rings: Vec<IVec3>,
     /// Whether it's raining (set by the game each frame).
@@ -441,6 +452,7 @@ impl World {
         self.register_banners(pos, &data);
         self.forget_campfires(pos);
         self.register_campfires(pos, &data);
+        self.register_beehives(pos, &data, true);
         self.chunks.insert(
             pos,
             ChunkSlot {
@@ -540,6 +552,8 @@ impl World {
             sky_updates: Default::default(),
             fluids: Default::default(),
             fire: Default::default(),
+            lightning: Default::default(),
+            snow_pushes: Vec::new(),
             redstone: Default::default(),
             automation: Default::default(),
             falling: Vec::new(),
@@ -548,6 +562,7 @@ impl World {
             furnaces: FxHashMap::default(),
             chests: FxHashMap::default(),
             brewing_stands: FxHashMap::default(),
+            beehives: Default::default(),
             wood: Default::default(),
             utilities: Default::default(),
             spawners: FxHashMap::default(),
@@ -570,6 +585,7 @@ impl World {
             trip_sounds: Vec::new(),
             golem_heads: Vec::new(),
             hatched_turtles: Vec::new(),
+            hatched_tadpoles: Vec::new(),
             compost_sequence: 0,
             bell_rings: Vec::new(),
             raining: false,
@@ -885,6 +901,8 @@ impl World {
         self.light_block_changed(p, old, block, old_light);
         self.track_fire(p, old, block);
         self.track_redstone(p, old, block);
+        self.track_lightning_rod(p, old, block);
+        self.track_frog_blocks(p, old, block);
         if old != block {
             self.scaffolding_changed(p);
         }
@@ -895,6 +913,7 @@ impl World {
         self.track_banner(p, old, block);
         self.track_brewing_stand(p, old, block);
         self.track_wood(p, old, block);
+        self.track_beehives(p, old, block);
         self.track_utilities(p, old, block);
         self.track_spawner(p, old, block);
         self.track_village_poi(p, block);
@@ -910,6 +929,7 @@ impl World {
         self.extinguish_unsupported_fire(p);
         self.reheight_and_remesh(p, old, block, sync);
         self.reshape_stairs_beside(p, old, block, sync);
+        self.detach_stems_beside(p, old, block, sync);
         self.reshape_chests_beside(p, old, block, sync);
         if update_walls {
             self.reshape_walls_beside(p, old, block, sync);
@@ -1300,6 +1320,7 @@ impl World {
         self.register_village_life(pos, &data);
         self.register_banners(pos, &data);
         self.register_campfires(pos, &data);
+        self.register_beehives(pos, &data, modified);
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
         let workers = &self.workers;
         let col = self.columns.entry(column_of(pos)).or_insert_with(|| {
@@ -1350,6 +1371,7 @@ impl World {
     fn remove_chunk(&mut self, pos: IVec3) {
         self.unlight_sky_column(column_of(pos));
         self.unload_redstone_chunk(pos);
+        self.unload_beehives(pos);
         let slot = self.chunks.remove(&pos).unwrap();
         self.entity_loads.remove(&pos);
         // A LAN replica's falling blocks come from the host's snapshots.
@@ -1521,6 +1543,9 @@ impl World {
     /// relative to the cell (low blocks and shaped blocks are smaller).
     pub fn outline(&self, p: IVec3) -> ([f32; 3], [f32; 3]) {
         let Some(b) = self.get_block(p) else { return ([0.0; 3], [1.0; 3]) };
+        if b == frog_blocks::FROGSPAWN {
+            return ([0.0; 3], [1.0, frog_blocks::HEIGHT as f32, 1.0]);
+        }
         let neighbour = |f: block::Facing| self.get_block(p + f.offset()).unwrap_or(Block::AIR);
         let below = self.get_block(p - IVec3::Y).unwrap_or(Block::AIR);
         let above = shape::Above::read(b, |d| self.get_block(p + d).unwrap_or(Block::AIR));

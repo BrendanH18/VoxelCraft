@@ -1,9 +1,11 @@
-//! v0.12 copper (BLD-01c): the unwaxed oxidation stages of Java 26.3's
-//! copper families, ids 22528–24575 (docs/architecture.md, "v0.12 track
+//! v0.12/v0.15 copper (BLD-01c): unwaxed and waxed stages of Java 26.3's
+//! copper families, ids 22528–24575 and waxed mirror 29696–30719
+//! (docs/architecture.md, "v0.12 track
 //! reservations"). Java classes: `WeatheringCopper`, `ChangeOverTimeBlock`,
 //! the `WeatheringCopper*Block`s, `CopperBulbBlock`, `LightningRodBlock`,
 //! `ChainBlock`, `IronBarsBlock`, `LanternBlock`, `TorchBlock` and
-//! `WallTorchBlock`; see docs/verification/2026-10-25-v0.12-copper.md.
+//! `WallTorchBlock`; see docs/verification/2026-10-25-v0.12-copper.md and
+//! docs/verification/2026-11-04-v0.15-crops-bees.md.
 //!
 //! Each family takes `stride` ids per stage (unaffected, exposed, weathered,
 //! oxidized) from its origin, in [`Family::ALL`] order, so a stage change
@@ -22,7 +24,7 @@
 //! | chain | 6 | `wet * 3 + axis` (Y, X, Z) |
 //! | lantern | 4 | `hanging * 2 + wet` |
 //! | chest | 24 | `type * 8 + wet * 4 + facing` (type single, left, right; `double_chest`) |
-//! | lightning rod | 24 | `powered * 12 + wet * 6 + direction` (up, down, then [`Facing::ALL`]); only unpowered is registered |
+//! | lightning rod | 24 | `powered * 12 + wet * 6 + direction` (up, down, then [`Facing::ALL`]); powered states registered by v0.15 |
 //! | torch | 5, one stage | standing, then wall states facing [`Facing::ALL`] |
 //!
 //! Doors store their hinge on the lower half and powered in the saved
@@ -44,6 +46,12 @@ use crate::session::placement::PlaceContext;
 pub const FIRST: u16 = 22528;
 /// Last id of the reservation (docs/architecture.md).
 pub const RESERVED_LAST: u16 = 24575;
+/// v0.15 waxed mirror; the torch has no waxed form. Unused rod locals
+/// remain reserved in both layouts. The original block 231 maps to FIRST.
+pub const WAXED_FIRST: u16 = 29696;
+pub const WAXED_END: u16 = WAXED_FIRST + Family::Torch.origin() - FIRST;
+pub const WAXED_RESERVED_LAST: u16 = 30719;
+const _: () = assert!(WAXED_END - 1 <= WAXED_RESERVED_LAST);
 /// The unaffected block of copper, registered long before this module.
 const COPPER_BLOCK: u16 = 231;
 
@@ -133,13 +141,9 @@ impl Family {
         }
     }
 
-    /// How many of a stage's locals are registered: lightning rods have no
-    /// powered state yet (no lightning).
+    /// How many local states are registered.
     pub const fn registered(self) -> u16 {
-        match self {
-            Family::Rod => 12,
-            f => f.stride(),
-        }
+        self.stride()
     }
 
     pub const fn stages(self) -> u16 {
@@ -182,12 +186,25 @@ pub struct Copper {
     pub family: Family,
     pub stage: Stage,
     pub local: u16,
+    pub waxed: bool,
 }
 
 /// Decodes a registered copper state (the block of copper, 231, included).
 pub const fn decode(id: u16) -> Option<Copper> {
+    if id >= WAXED_FIRST && id < WAXED_END {
+        let original = FIRST + id - WAXED_FIRST;
+        let c = if original == FIRST {
+            Copper { family: Family::Block, stage: Stage::Unaffected, local: 0, waxed: false }
+        } else {
+            match decode(original) {
+                Some(c) => c,
+                None => return None,
+            }
+        };
+        return Some(Copper { waxed: true, ..c });
+    }
     if id == COPPER_BLOCK {
-        return Some(Copper { family: Family::Block, stage: Stage::Unaffected, local: 0 });
+        return Some(Copper { family: Family::Block, stage: Stage::Unaffected, local: 0, waxed: false });
     }
     if id < FIRST || id >= END {
         return None;
@@ -205,7 +222,7 @@ pub const fn decode(id: u16) -> Option<Copper> {
             if local >= family.registered() || (matches!(family, Family::Block) && rel == 0) {
                 return None;
             }
-            return Some(Copper { family, stage, local });
+            return Some(Copper { family, stage, local, waxed: false });
         }
     }
     None
@@ -213,6 +230,9 @@ pub const fn decode(id: u16) -> Option<Copper> {
 
 /// The id of a copper state.
 pub const fn encode(c: Copper) -> Block {
+    if c.waxed {
+        return Block(WAXED_FIRST + c.family.origin() - FIRST + c.stage as u16 * c.family.stride() + c.local);
+    }
     if matches!(c.family, Family::Block) && matches!(c.stage, Stage::Unaffected) {
         return Block(COPPER_BLOCK);
     }
@@ -221,7 +241,7 @@ pub const fn encode(c: Copper) -> Block {
 
 /// The block of `family` at `stage` with `local` state.
 pub const fn block(family: Family, stage: Stage, local: u16) -> Block {
-    encode(Copper { family, stage, local })
+    encode(Copper { family, stage, local, waxed: false })
 }
 
 /// Per-id decode for runtime lookups: bit 15 set for registered states,
@@ -241,20 +261,26 @@ static PACKED: [u16; COUNT] = {
 /// Whether `id` is in this module's laid-out range (registered or not).
 #[inline(always)]
 pub const fn owns(id: u16) -> bool {
-    id >= FIRST && id < END
+    (id >= FIRST && id < END) || (id >= WAXED_FIRST && id < WAXED_END)
 }
 
 /// The copper state of `b`, if it is copper (231 included).
 #[inline]
 pub fn state(b: Block) -> Option<Copper> {
     if b.0 == COPPER_BLOCK {
-        return decode(COPPER_BLOCK);
+        return decode(b.0);
     }
-    let p = *PACKED.get(b.0.checked_sub(FIRST)? as usize)?;
+    let waxed = (WAXED_FIRST..WAXED_END).contains(&b.0);
+    let id = if waxed { FIRST + b.0 - WAXED_FIRST } else { b.0 };
+    if waxed && id == FIRST {
+        return Some(Copper { waxed: true, ..decode(COPPER_BLOCK).unwrap() });
+    }
+    let p = *PACKED.get(id.checked_sub(FIRST)? as usize)?;
     (p & 1 << 15 != 0).then(|| Copper {
         family: Family::ALL[(p >> 9 & 15) as usize],
         stage: Stage::ALL[(p >> 7 & 3) as usize],
         local: p & 127,
+        waxed,
     })
 }
 
@@ -320,12 +346,60 @@ const NAMES: [[&str; 4]; 14] = [
     ["lightning rod", "exposed lightning rod", "weathered lightning rod", "oxidized lightning rod"],
 ];
 
+const WAXED_NAMES: [[&str; 4]; 14] = [
+    ["waxed block of copper", "waxed exposed copper", "waxed weathered copper", "waxed oxidized copper"],
+    ["waxed cut copper", "waxed exposed cut copper", "waxed weathered cut copper", "waxed oxidized cut copper"],
+    [
+        "waxed chiseled copper",
+        "waxed exposed chiseled copper",
+        "waxed weathered chiseled copper",
+        "waxed oxidized chiseled copper",
+    ],
+    ["waxed copper grate", "waxed exposed copper grate", "waxed weathered copper grate", "waxed oxidized copper grate"],
+    ["waxed copper bulb", "waxed exposed copper bulb", "waxed weathered copper bulb", "waxed oxidized copper bulb"],
+    [
+        "waxed cut copper stairs",
+        "waxed exposed cut copper stairs",
+        "waxed weathered cut copper stairs",
+        "waxed oxidized cut copper stairs",
+    ],
+    [
+        "waxed cut copper slab",
+        "waxed exposed cut copper slab",
+        "waxed weathered cut copper slab",
+        "waxed oxidized cut copper slab",
+    ],
+    ["waxed copper door", "waxed exposed copper door", "waxed weathered copper door", "waxed oxidized copper door"],
+    [
+        "waxed copper trapdoor",
+        "waxed exposed copper trapdoor",
+        "waxed weathered copper trapdoor",
+        "waxed oxidized copper trapdoor",
+    ],
+    ["waxed copper bars", "waxed exposed copper bars", "waxed weathered copper bars", "waxed oxidized copper bars"],
+    ["waxed copper chain", "waxed exposed copper chain", "waxed weathered copper chain", "waxed oxidized copper chain"],
+    [
+        "waxed copper lantern",
+        "waxed exposed copper lantern",
+        "waxed weathered copper lantern",
+        "waxed oxidized copper lantern",
+    ],
+    ["waxed copper chest", "waxed exposed copper chest", "waxed weathered copper chest", "waxed oxidized copper chest"],
+    [
+        "waxed lightning rod",
+        "waxed exposed lightning rod",
+        "waxed weathered lightning rod",
+        "waxed oxidized lightning rod",
+    ],
+];
+
 /// Java's name of the copper state. The wall torch has Java's block id
 /// name; its item and pick block are the torch.
 pub const fn name(c: Copper) -> &'static str {
     match c.family {
         Family::Torch if c.local > 0 => "copper wall torch",
         Family::Torch => "copper torch",
+        f if c.waxed => WAXED_NAMES[f as usize][c.stage as usize],
         f => NAMES[f as usize][c.stage as usize],
     }
 }
@@ -336,7 +410,10 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
     let Some(c) = decode(id) else { return None };
     let s = c.stage;
     let (kind, tex) = match c.family {
-        Family::Block => (Opaque, [t::layer(s, t::BLOCK); 6]),
+        Family::Block => (
+            Opaque,
+            [if matches!(s, Stage::Unaffected) { super::block::tex::COPPER_BLOCK } else { t::layer(s, t::BLOCK) }; 6],
+        ),
         Family::Cut => (Opaque, [t::layer(s, t::CUT); 6]),
         Family::Chiseled => (Opaque, [t::layer(s, t::CHISELED); 6]),
         Family::Grate => (Cutout, [t::layer(s, t::GRATE); 6]),
@@ -369,7 +446,7 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
 /// lanterns 15 and torches 14.
 pub const fn emission(id: u16) -> u8 {
     match decode(id) {
-        Some(Copper { family: Family::Bulb, stage, local }) if local & 1 == 1 => [15, 12, 8, 4][stage as usize],
+        Some(Copper { family: Family::Bulb, stage, local, .. }) if local & 1 == 1 => [15, 12, 8, 4][stage as usize],
         Some(Copper { family: Family::Lantern, .. }) => 15,
         Some(Copper { family: Family::Torch, .. }) => 14,
         _ => 0,
@@ -516,7 +593,7 @@ pub fn is_standing_torch(b: Block) -> bool {
 /// bookkeeping treats oxidising or scraping as the same block (Java copies
 /// every property across `changeOverTime`, POWERED included).
 pub fn unstaged(b: Block) -> Option<Block> {
-    state(b).map(|c| encode(Copper { local: 0, stage: Stage::Unaffected, ..c }))
+    state(b).map(|c| encode(Copper { local: 0, stage: Stage::Unaffected, waxed: false, ..c }))
 }
 
 /// `PushReaction.POPPED`: copper lanterns and torches break when pushed.
@@ -563,6 +640,11 @@ pub fn palette_ids() -> impl Iterator<Item = u16> {
         // The block of copper is already in the palette.
         .filter(|&id| id != COPPER_BLOCK)
         .chain([block(Family::Torch, Stage::Unaffected, 0).0])
+        .chain(
+            families.into_iter().flat_map(|family| {
+                Stage::ALL.map(move |stage| encode(Copper { family, stage, local: 0, waxed: true }).0)
+            }),
+        )
 }
 
 // ---- Families -----------------------------------------------------------
@@ -571,6 +653,15 @@ pub fn palette_ids() -> impl Iterator<Item = u16> {
 pub const fn stair_family(stage: usize) -> ss::Family {
     let s = Stage::ALL[stage];
     ss::Family { base: block(Family::Cut, s, 0), stairs: block(Family::Stairs, s, 0), slab: block(Family::Slab, s, 0) }
+}
+
+pub const fn waxed_stair_family(stage: usize) -> ss::Family {
+    let s = Stage::ALL[stage];
+    ss::Family {
+        base: encode(Copper { family: Family::Cut, stage: s, local: 0, waxed: true }),
+        stairs: encode(Copper { family: Family::Stairs, stage: s, local: 0, waxed: true }),
+        slab: encode(Copper { family: Family::Slab, stage: s, local: 0, waxed: true }),
+    }
 }
 
 /// Stage, `lit` and `powered` of a copper bulb.
@@ -614,16 +705,16 @@ fn door(c: Copper) -> (Facing, bool, bool, bool) {
     (Facing::ALL[(local % 4) as usize], local >= 4, (8..16).contains(&c.local), c.local >= 16)
 }
 
-fn door_block(stage: Stage, facing: Facing, open: bool, right: bool, upper: bool) -> Block {
+fn door_block(c: Copper, facing: Facing, open: bool, right: bool, upper: bool) -> Block {
     let local = if upper { 16 } else { 8 * right as u16 } + open as u16 * 4 + facing as u16;
-    block(Family::Door, stage, local)
+    encode(Copper { local, ..c })
 }
 
 /// The two halves a copper door item places, closed and hinged left
 /// (`content::placement::door_halves`).
 pub fn door_halves(item_block: Block, facing: Facing) -> Option<[Block; 2]> {
     let c = of(item_block, Family::Door)?;
-    Some([door_block(c.stage, facing, false, false, false), door_block(c.stage, facing, false, false, true)])
+    Some([door_block(c, facing, false, false, false), door_block(c, facing, false, false, true)])
 }
 
 /// `DoorBlock.HINGE == RIGHT` for copper lower halves.
@@ -644,16 +735,16 @@ pub const fn right_of(left: Block) -> Option<Block> {
 pub fn toggled(b: Block, facing: Facing) -> Option<Block> {
     let c = of(b, Family::Door).filter(|_| owns(b.0))?;
     let (_, open, right, upper) = door(c);
-    Some(door_block(c.stage, facing, !open, right, upper))
+    Some(door_block(c, facing, !open, right, upper))
 }
 
 /// A dry copper lantern, standing or hanging.
-fn lantern(stage: Stage, hanging: bool) -> Block {
-    block(Family::Lantern, stage, hanging as u16 * 2)
+fn lantern(c: Copper, hanging: bool) -> Block {
+    encode(Copper { local: hanging as u16 * 2, ..c })
 }
 
 /// Lightning rod direction index: up, down, then [`Facing::ALL`].
-fn rod_direction(local: u16) -> IVec3 {
+pub(crate) fn rod_direction(local: u16) -> IVec3 {
     match local % 6 {
         0 => IVec3::Y,
         1 => IVec3::NEG_Y,
@@ -680,11 +771,12 @@ pub fn placed(raw: Block, ctx: &PlaceContext, get: impl Fn(IVec3) -> Option<Bloc
     match c.family {
         // `LanternBlock.getStateForPlacement`: the nearest vertical look
         // direction whose block supports the lantern's centre.
-        Family::Lantern => {
-            Some(nearest.iter().filter(|d| d.y != 0).find_map(|&d| {
-                get(at + d).is_some_and(|b| ms::supports_center(b, -d)).then(|| lantern(c.stage, d.y > 0))
-            }))
-        }
+        Family::Lantern => Some(
+            nearest
+                .iter()
+                .filter(|d| d.y != 0)
+                .find_map(|&d| get(at + d).is_some_and(|b| ms::supports_center(b, -d)).then(|| lantern(c, d.y > 0))),
+        ),
         // `StandingAndWallBlockItem.getPlacementState`: the first look
         // direction (never up) whose state survives; the wall state is the
         // first horizontal direction whose wall is sturdy.
@@ -821,7 +913,7 @@ const SCAN: i32 = 4;
 /// oxidized; only a door's lower half (`WeatheringCopperDoorBlock`).
 pub fn ages(b: Block) -> bool {
     state(b).is_some_and(|c| {
-        c.family.weathers() && c.stage.next().is_some() && !(c.family == Family::Door && c.local >= 16)
+        !c.waxed && c.family.weathers() && c.stage.next().is_some() && !(c.family == Family::Door && c.local >= 16)
     })
 }
 
@@ -861,7 +953,8 @@ impl World {
                     if d == IVec3::ZERO || dx.abs() + dy.abs() + dz.abs() > SCAN {
                         continue;
                     }
-                    let Some(n) = self.get_block(p + d).and_then(state).filter(|n| n.family.weathers()) else {
+                    let Some(n) = self.get_block(p + d).and_then(state).filter(|n| !n.waxed && n.family.weathers())
+                    else {
                         continue;
                     };
                     match n.stage.cmp(&c.stage) {
@@ -882,7 +975,7 @@ impl World {
 
     /// Moves the copper at `p` to `stage`, keeping its properties, with a
     /// door's other half. `player` edits (scraping) update light at once.
-    fn restage_copper(&mut self, p: IVec3, c: Copper, stage: Stage, player: bool) {
+    pub(super) fn restage_copper(&mut self, p: IVec3, c: Copper, stage: Stage, player: bool) {
         let mut cells = vec![(p, Copper { stage, ..c })];
         if c.family == Family::Door {
             let other = if c.local >= 16 { p - IVec3::Y } else { p + IVec3::Y };
@@ -899,18 +992,48 @@ impl World {
         }
     }
 
+    fn set_copper_wax(&mut self, p: IVec3, c: Copper, waxed: bool) {
+        let mut cells = vec![(p, Copper { waxed, ..c })];
+        if c.family == Family::Door {
+            let other = if c.local >= 16 { p - IVec3::Y } else { p + IVec3::Y };
+            if let Some(o) = self.get_block(other).and_then(state).filter(|o| o.family == Family::Door) {
+                cells.push((other, Copper { waxed, ..o }));
+            }
+        }
+        for (q, c) in cells {
+            self.set_block(q, encode(c));
+        }
+    }
+
+    pub fn wax_copper(&mut self, p: IVec3) -> bool {
+        let Some(c) = self.get_block(p).and_then(state).filter(|c| !c.waxed && c.family.weathers()) else {
+            return false;
+        };
+        self.set_copper_wax(p, c, true);
+        let mut burst =
+            crate::particles::Burst::new(crate::particles::Kind::Effect, p.as_dvec3() + DVec3::splat(0.5), 12);
+        burst.spread = DVec3::splat(0.45);
+        burst.color = Some([1., 0.7, 0.2, 1.]);
+        self.particles.push(crate::particles::Request::Burst(burst));
+        true
+    }
+
     /// The axe's `scrape` block transformer (`block_transformer/axe.json`):
     /// copper one stage back, keeping its properties (both door halves).
     /// Returns whether it scraped.
     pub fn scrape_copper(&mut self, p: IVec3) -> bool {
         let Some(c) = self.get_block(p).and_then(state).filter(|c| c.family.weathers()) else { return false };
-        let Some(previous) = c.stage.previous() else { return false };
-        self.restage_copper(p, c, previous, true);
+        if c.waxed {
+            self.set_copper_wax(p, c, false);
+        } else {
+            let Some(previous) = c.stage.previous() else { return false };
+            self.restage_copper(p, c, previous, true);
+        }
         // `ParticleUtils.spawnParticlesOnBlockFaces(.., SCRAPE, 3..5)`.
         let mut burst =
             crate::particles::Burst::new(crate::particles::Kind::Effect, p.as_dvec3() + DVec3::splat(0.5), 12);
         burst.spread = DVec3::splat(0.45);
-        burst.color = Some([0.42, 0.82, 0.74, 1.0]);
+        burst.color = Some(if c.waxed { [1., 0.8, 0.3, 1.] } else { [0.42, 0.82, 0.74, 1.] });
         self.particles.push(crate::particles::Request::Burst(burst));
         true
     }
@@ -918,11 +1041,12 @@ impl World {
     /// `CopperBulbBlock.checkAndFlip`: on a change of neighbour signal the
     /// bulb stores it as POWERED, and a rising edge toggles LIT.
     pub(super) fn copper_bulb_update(&mut self, p: IVec3, b: Block) {
-        let Some((stage, lit, powered)) = bulb(b) else { return };
+        let Some((_, lit, powered)) = bulb(b) else { return };
+        let c = state(b).unwrap();
         let signal = self.redstone_power(p) > 0;
         if signal != powered {
             let lit = if powered { lit } else { !lit };
-            self.edit(p, bulb_block(stage, lit, signal), false);
+            self.edit(p, encode(Copper { local: lit as u16 + 2 * signal as u16, ..c }), false);
         }
     }
 
@@ -953,3 +1077,6 @@ impl World {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod wax_tests;

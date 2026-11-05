@@ -58,7 +58,7 @@ enforced.
 | `fall_damage` | `fallDamage` | boolean | `true` | Implemented | - | Player-only, as `Player.isInvulnerableTo` with the `is_fall` tag (fall, ender pearl, stalagmite); mobs still take fall damage. |
 | `fire_damage` | `fireDamage` | boolean | `true` | Implemented | - | Player-only, `is_fire` tag: fire, burning, lava, magma, campfire and blaze fireballs. A ghast fireball's blast is explosion damage and is not blocked (its direct 6-damage hit, which is fire-tagged, is not modelled). |
 | `fire_spread_radius_around_player` | `fireSpreadRadiusAroundPlayer` | integer -1..2147483647 | `128` | Implemented | - | Replaces `doFireTick` and `allowFireTicksAwayFromPlayer` (0: no fire ticks, -1: everywhere, else within the radius of a player). VoxelCraft saves it as `fireSpreadRadiusAroundPlayer` and still reads and accepts both older booleans. |
-| `forgive_dead_players` | `forgiveDeadPlayers` | boolean | `true` | Missing | v0.17 | Neutral-mob anger after the target dies is not modelled (the Java default, forgiving, is what happens). |
+| `forgive_dead_players` | `forgiveDeadPlayers` | boolean | `true` | Partial | - | Polar bears preserve or forgive a dead player's anger reference (v0.15, implemented, unverified); other neutral mobs still need the rule. |
 | `freeze_damage` | `freezeDamage` | boolean | `true` | Implemented | - | Powder snow freezing damage to players; off makes them immune to it (PLY-02c). |
 | `global_sound_events` | `globalSoundEvents` | boolean | `true` | Not applicable | n/a | Only chooses whether dragon, wither and similar sounds reach players in other dimensions or far away. |
 | `immediate_respawn` | `doImmediateRespawn` | boolean | `false` | Implemented | - | Skips the death screen (`GameRules::respawns_immediately`); Hardcore still becomes Spectator. |
@@ -72,7 +72,7 @@ enforced.
 | `max_command_sequence_length` | `maxCommandChainLength` | integer 0..2147483647 | `65536` | Not applicable | n/a | There are no functions. |
 | `max_entity_cramming` | `maxEntityCramming` | integer 0..2147483647 | `24` | Missing | v0.19 | No cramming damage; farm designs rely on it (reference farms, v0.19). |
 | `max_minecart_speed` | `minecartMaxSpeed` | integer 1..1000 | `8` | Not applicable | n/a | Registered behind Java's experimental minecart feature flag; VoxelCraft keeps the stable minecart speed. |
-| `max_snow_accumulation_height` | `snowAccumulationHeight` | integer 0..8 | `1` | Missing | v0.15 | Snow does not pile up during snowfall (ENV-03). |
+| `max_snow_accumulation_height` | `snowAccumulationHeight` | integer 0..8 | `1` | Implemented | - | Caps snowfall accumulation at 0–8 layers; Java 26.3 random-tick attempts (ENV-03). |
 | `mob_drops` | `doMobLoot` | boolean | `true` | Implemented | - | Gates the loot and experience of mobs that die (`LivingEntity.dropAllDeathLoot`). |
 | `mob_explosion_drop_decay` | `mobExplosionDropDecay` | boolean | `true` | Implemented | - | Creeper and ghast blasts: drops survive with chance 1/power. |
 | `mob_griefing` | `mobGriefing` | boolean | `true` | Partial | - | Gates creeper and ghast block damage, fireball fires, the dragon's smashing, and villager and piglin item pickup. Enderman block carrying, zombie door breaking, silverfish, mob farmland and turtle-egg trampling and snow golem trails are not modelled. |
@@ -94,14 +94,14 @@ enforced.
 | `spawn_mobs` | `doMobSpawning` | boolean | `true` | Implemented | - | Natural spawning and custom spawners; chunk-generation herds are not gated, as in Java. |
 | `spawn_monsters` | `spawnMonsters` | boolean | `true` | Implemented | - | Hostile spawn categories only; animals and water creatures still spawn. |
 | `spawn_patrols` | `doPatrolSpawning` | boolean | `true` | Missing | v0.17 | Pillager patrols arrive with illagers. |
-| `spawn_phantoms` | `doInsomnia` | boolean | `true` | Missing | v0.15 | Phantoms do not exist yet. |
+| `spawn_phantoms` | `doInsomnia` | boolean | `true` | Implemented | - | Saved rest statistic and Java PhantomSpawner gate; see the v0.15 hostiles record. |
 | `spawn_wandering_traders` | `doTraderSpawning` | boolean | `true` | Implemented | - | Gates the trader spawner. Like Java it also needs `spawn_mobs`. |
 | `spawn_wardens` | `doWardenSpawning` | boolean | `true` | Missing | v0.16 | Wardens and sculk shriekers arrive with the deep dark. |
 | `spectators_generate_chunks` | `spectatorsGenerateChunks` | boolean | `true` | Missing | v0.13 | VoxelCraft streams around the spectator like any player; ungenerated-chunk limits come with the terrain rewrite. |
 | `spread_vines` | `doVinesSpread` | boolean | `true` | Missing | v0.13 | Overworld vines do not spread at all yet. |
 | `tnt_explodes` | `tntExplodes` | boolean | `true` | Implemented | - | Without it TNT cannot be primed by fire, redstone, flint and steel, explosions or dispensers, and primed TNT and TNT minecarts fizzle. |
 | `tnt_explosion_drop_decay` | `tntExplosionDropDecay` | boolean | `false` | Implemented | - | TNT blasts drop every destroyed block by default (decay is off). |
-| `universal_anger` | `universalAnger` | boolean | `false` | Missing | v1.x | Needs more than one player to matter; LAN is a maintenance path until v1.x. |
+| `universal_anger` | `universalAnger` | boolean | `false` | Partial | - | Polar bears can select another eligible player after universal provocation (v0.15, implemented, unverified); other neutral mobs still need the rule. |
 | `water_source_conversion` | `waterSourceConversion` | boolean | `true` | Implemented | - | Two water sources beside flowing water over a solid floor make a source. |
 
 ## Difficulty

@@ -95,7 +95,12 @@ impl MobKind {
     /// the only registration needed for the generic mating/baby pipeline.
     pub fn breeding_food(self, food: Item) -> bool {
         match self {
-            Self::Cow | Self::Sheep => food == Item::WHEAT,
+            Self::Bee => food.block().is_some_and(super::bee::flower),
+            Self::Cow | Self::Mooshroom | Self::Sheep => food == Item::WHEAT,
+            Self::Frog | Self::Tadpole => food == Item::SLIME_BALL,
+            Self::Panda => food == Item::from_block(crate::world::overworld_blocks::BAMBOO),
+            Self::Armadillo => food == Item::SPIDER_EYE,
+            Self::Ocelot => matches!(food, Item::COD | Item::SALMON),
             Self::Pig => matches!(food, Item::CARROT | Item::POTATO | Item::BEETROOT),
             Self::Chicken => seeds(food),
             Self::Wolf => wolf_food(food),
@@ -120,16 +125,22 @@ impl MobKind {
         }
     }
     pub fn has_animal_state(self) -> bool {
-        self.is_breedable() || self == Self::Parrot
+        self.is_breedable() || matches!(self, Self::Parrot | Self::PolarBear)
     }
     pub fn is_breedable(self) -> bool {
         matches!(
             self,
-            Self::Wolf
+            Self::Bee
+                | Self::Wolf
                 | Self::Fox
                 | Self::Rabbit
                 | Self::Goat
                 | Self::Cow
+                | Self::Mooshroom
+                | Self::Frog
+                | Self::Panda
+                | Self::Armadillo
+                | Self::Ocelot
                 | Self::Sheep
                 | Self::Pig
                 | Self::Chicken
@@ -152,6 +163,7 @@ impl MobKind {
 impl Mob {
     pub fn ready_to_breed(&self) -> bool {
         self.alive()
+            && self.armadillo.as_ref().is_none_or(|s| !s.scared())
             && self.age == 0
             && !self.baby
             && self.animal.as_ref().is_some_and(|a| {
@@ -194,11 +206,23 @@ impl Entities {
     /// Shared action. `Some(true)` consumes food; `Some(false)` uses an
     /// empty hand/owner command; `None` permits ordinary item actions.
     pub fn use_animal(&mut self, index: usize, held: Option<Stack>, player: PlayerId) -> Option<bool> {
+        self.use_animal_with_materials(index, held, player, false)
+    }
+    pub fn use_animal_with_materials(
+        &mut self,
+        index: usize,
+        held: Option<Stack>,
+        player: PlayerId,
+        infinite: bool,
+    ) -> Option<bool> {
         if let Some(result) = self.use_lead_or_name(index, held, player) {
             return Some(result);
         }
         if let Some(result) = self.feed_dolphin(index, held) {
             return Some(result);
+        }
+        if self.mobs.get(index).is_some_and(|m| m.kind == MobKind::Panda) {
+            return self.use_panda(index, held, player, infinite);
         }
         let m = self.mobs.get_mut(index)?;
         if !m.alive() {
@@ -273,7 +297,7 @@ impl Entities {
             m.feed_growth();
         } else {
             let a = m.animal.as_mut()?;
-            if m.age != 0 || a.love > 0.0 || a.pregnant {
+            if m.age != 0 || a.love > 0.0 || a.pregnant || m.armadillo.as_ref().is_some_and(|s| s.scared()) {
                 return None;
             }
             a.love = LOVE_SECONDS;
@@ -286,7 +310,7 @@ impl Entities {
         self.animal_hearts(index);
         Some(true)
     }
-    fn animal_hearts(&mut self, index: usize) {
+    pub(super) fn animal_hearts(&mut self, index: usize) {
         let m = &self.mobs[index];
         let mut b = particles::Burst::new(particles::Kind::Heart, m.pos + DVec3::Y * (m.shape().height + 0.25), 7);
         b.spread = DVec3::new(m.shape().half_width, 0.3, m.shape().half_width);
@@ -333,6 +357,9 @@ impl Entities {
                 b.aquatic.as_ref().unwrap().variant
             };
         }
+        super::mooshroom::inherit(&mut child, a, b, &mut self.rng);
+        super::panda::inherit(&mut child, a, b, &mut self.rng);
+        super::armadillo::fresh(&mut child, &mut self.rng);
         child
     }
     /// Love timers and hearts, then `BreedGoal`'s partner: an animal not yet
@@ -397,7 +424,7 @@ impl Entities {
             if i == j || !self.mobs[i].ready_to_breed() || !self.mobs[j].ready_to_breed() {
                 continue;
             }
-            let turtle = self.mobs[i].kind == MobKind::Turtle;
+            let turtle = matches!(self.mobs[i].kind, MobKind::Turtle | MobKind::Frog);
             let child = (!turtle).then(|| self.animal_child(i, j));
             for k in [i, j] {
                 self.mobs[k].age = BREEDING_COOLDOWN;
@@ -500,6 +527,7 @@ pub fn wolf_food(food: Item) -> bool {
     )
 }
 pub(super) fn on_spawn(m: &mut Mob, rng: &mut Rng) {
+    super::armadillo::fresh(m, rng);
     let Some(a) = m.animal.as_mut() else { return };
     a.variant = if m.kind == MobKind::Parrot {
         rng.next_int(5) as u8
@@ -517,7 +545,9 @@ pub(super) fn on_spawn(m: &mut Mob, rng: &mut Rng) {
 impl Mob {
     /// Java 1.21 tamed wolves have 40 health; wild wolves have eight.
     pub fn max_health(&self) -> f32 {
-        if self.kind == MobKind::Wolf && self.animal.as_ref().is_some_and(|a| a.owner.is_some()) {
+        if self.panda.as_ref().is_some_and(|s| s.variant() == super::panda::Gene::Weak) {
+            10.0
+        } else if self.kind == MobKind::Wolf && self.animal.as_ref().is_some_and(|a| a.owner.is_some()) {
             40.0
         } else {
             self.kind.max_health()
@@ -766,7 +796,15 @@ impl Entities {
     pub(super) fn natural_animal(&mut self, biome: crate::world::terrain::Biome, pack_size: u32) {
         use crate::world::terrain::Biome::*;
         let m = self.mobs.last_mut().unwrap();
-        let Some(a) = m.animal.as_mut() else { return };
+        if m.animal.is_none() {
+            return;
+        }
+        if let Some(s) = &mut m.panda {
+            s.main = super::panda::Gene::random(&mut self.rng);
+            s.hidden = super::panda::Gene::random(&mut self.rng);
+            m.health = m.max_health();
+        }
+        let a = m.animal.as_mut().unwrap();
         if m.kind == MobKind::Fox {
             a.variant = matches!(biome, SnowyTaiga | Grove) as u8;
         }
@@ -792,14 +830,15 @@ impl Entities {
                 _ => 0,
             };
         }
-        if m.kind.is_breedable() && m.kind != MobKind::Hoglin {
+        if (m.kind.is_breedable() || m.kind == MobKind::PolarBear) && m.kind != MobKind::Hoglin {
             let baby = match m.kind {
                 // FoxGroupData never rolls babies; the third fox on is one.
                 MobKind::Fox => pack_size >= 2,
                 // The first member of a pack is always an adult.
                 _ if pack_size == 0 => false,
                 // RabbitGroupData's baby chance is 1.
-                MobKind::Rabbit => true,
+                MobKind::Rabbit | MobKind::PolarBear | MobKind::Ocelot => true,
+                MobKind::Panda => self.rng.chance(0.2),
                 _ => self.rng.chance(0.05),
             };
             if baby {

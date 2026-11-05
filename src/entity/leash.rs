@@ -18,6 +18,11 @@ impl MobKind {
         matches!(
             self,
             Self::Cow
+                | Self::Mooshroom
+                | Self::Frog
+                | Self::PolarBear
+                | Self::Armadillo
+                | Self::Ocelot
                 | Self::Sheep
                 | Self::Pig
                 | Self::Chicken

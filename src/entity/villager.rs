@@ -503,14 +503,15 @@ impl Villager {
 const HARVEST_REACH: f64 = 1.5;
 /// Farmers look for ripe crops this far from their job site.
 const HARVEST_RADIUS: i32 = 5;
-/// The ripe crop closest to `from` around a farmer's job site (wheat, carrots, potatoes; stage 7).
+/// The ripe crop closest to `from` around a farmer's job site (wheat, carrots, potatoes and beetroot at their maximum age).
 fn ripe_crop<W: MobWorld + ?Sized>(world: &W, job: IVec3, from: DVec3) -> Option<IVec3> {
     let mut best: Option<(f64, IVec3)> = None;
     for dy in -1..=1 {
         for dz in -HARVEST_RADIUS..=HARVEST_RADIUS {
             for dx in -HARVEST_RADIUS..=HARVEST_RADIUS {
                 let cell = job + IVec3::new(dx, dy, dz);
-                let ripe = world.block(cell).is_some_and(|b| b.as_crop().is_some_and(|(_, stage)| stage == 7));
+                let ripe =
+                    world.block(cell).is_some_and(|b| b.as_crop().is_some_and(|(crop, stage)| stage == crop.max_age()));
                 if ripe && world.block(cell - IVec3::Y).is_some_and(|b| b.is_farmland()) {
                     let d = (cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)).distance_squared(from);
                     if best.is_none_or(|(bd, _)| d < bd) {
@@ -1196,6 +1197,20 @@ mod tests {
         e.village_time = 0.2;
         e.villager_griefing = false;
         assert!(events(&mut e).is_empty());
+    }
+    #[test]
+    fn farmers_recognize_beetroot_age_three_but_do_not_harvest_stems() {
+        let mut w = grid();
+        let job = IVec3::new(0, 1, 0);
+        let young = IVec3::new(1, 1, 0);
+        let ripe = IVec3::new(3, 1, 0);
+        w.blocks.insert(young - IVec3::Y, Block::FARMLAND);
+        w.blocks.insert(young, Block::crop(crate::world::block::Crop::Beetroot, 2));
+        w.blocks.insert(ripe - IVec3::Y, Block::FARMLAND);
+        w.blocks.insert(ripe, Block::crop(crate::world::block::Crop::Beetroot, 3));
+        assert_eq!(ripe_crop(&w, job, job.as_dvec3()), Some(ripe));
+        w.blocks.insert(ripe, crate::world::crops::stem_block(crate::world::crops::Fruit::Melon, 7));
+        assert_eq!(ripe_crop(&w, job, job.as_dvec3()), None);
     }
     #[test]
     fn sleeping_villagers_lie_on_the_head_half_with_their_head_on_the_pillow() {

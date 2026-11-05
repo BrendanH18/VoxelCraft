@@ -12,14 +12,31 @@ pub const MOB_VEHICLE: u32 = 1 << 31;
 
 /// Java's `AbstractHorse` family: temper taming, mount health and inventory, horse fall damage.
 pub fn equine(kind: MobKind) -> bool {
-    matches!(kind, MobKind::Horse | MobKind::Donkey | MobKind::Mule | MobKind::Llama | MobKind::Camel)
+    matches!(
+        kind,
+        MobKind::SkeletonHorse
+            | MobKind::ZombieHorse
+            | MobKind::Horse
+            | MobKind::Donkey
+            | MobKind::Mule
+            | MobKind::Llama
+            | MobKind::Camel
+    )
 }
 pub fn rideable(kind: MobKind) -> bool {
     equine(kind) || matches!(kind, MobKind::Pig | MobKind::Strider)
 }
 /// Mounts with a charged jump (a camel's charge is its dash).
 pub fn jumps(kind: MobKind) -> bool {
-    matches!(kind, MobKind::Horse | MobKind::Donkey | MobKind::Mule | MobKind::Camel)
+    matches!(
+        kind,
+        MobKind::SkeletonHorse
+            | MobKind::ZombieHorse
+            | MobKind::Horse
+            | MobKind::Donkey
+            | MobKind::Mule
+            | MobKind::Camel
+    )
 }
 /// Donkeys, mules and llamas can carry a chest.
 pub fn chested(kind: MobKind) -> bool {
@@ -130,9 +147,16 @@ impl State {
     pub fn new(kind: MobKind, rng: &mut Rng) -> Self {
         let horse = kind == MobKind::Horse;
         let camel = kind == MobKind::Camel;
-        let max_health =
-            if equine(kind) && !camel { (15 + rng.next_int(8) + rng.next_int(9)) as f32 } else { kind.max_health() };
-        let speed = if horse {
+        let max_health = if equine(kind) && !camel && !super::undead_mounts::undead(kind) {
+            (15 + rng.next_int(8) + rng.next_int(9)) as f32
+        } else {
+            kind.max_health()
+        };
+        let speed = if kind == MobKind::SkeletonHorse {
+            f64::from(0.2_f32)
+        } else if kind == MobKind::ZombieHorse {
+            (9. + rng.next_f32() as f64 + rng.next_f32() as f64 + rng.next_f32() as f64) / f64::from(42.16_f32)
+        } else if horse {
             (0.45 + rng.next_f32() as f64 * 0.3 + rng.next_f32() as f64 * 0.3 + rng.next_f32() as f64 * 0.3) * 0.25
         } else if camel {
             0.09
@@ -146,7 +170,9 @@ impl State {
         } else {
             3
         };
-        let jump = if horse {
+        let jump = if kind == MobKind::ZombieHorse {
+            0.5 + (rng.next_f32() as f64 + rng.next_f32() as f64 + rng.next_f32() as f64) / 15.
+        } else if horse || kind == MobKind::SkeletonHorse {
             0.4 + rng.next_f32() as f64 * 0.2 + rng.next_f32() as f64 * 0.2 + rng.next_f32() as f64 * 0.2
         } else {
             0.5
@@ -200,7 +226,7 @@ impl State {
         match kind {
             MobKind::Llama if self.chest => 2 + 3 * self.strength as usize,
             _ if self.chest => 17,
-            MobKind::Horse | MobKind::Llama => 2,
+            MobKind::SkeletonHorse | MobKind::ZombieHorse | MobKind::Horse | MobKind::Llama => 2,
             _ => 1,
         }
     }
@@ -210,7 +236,10 @@ impl State {
         }
         match slot {
             0 => item == Item::SADDLE && kind != MobKind::Llama,
-            1 => kind == MobKind::Horse && armor_points(item) > 0 || kind == MobKind::Llama && is_carpet(item),
+            1 => {
+                matches!(kind, MobKind::Horse | MobKind::SkeletonHorse | MobKind::ZombieHorse) && armor_points(item) > 0
+                    || kind == MobKind::Llama && is_carpet(item)
+            }
             2..=16 => self.chest && slot < self.slot_count(kind),
             _ => false,
         }
@@ -336,6 +365,12 @@ pub fn launch_speed(v: f64) -> f64 {
 
 /// Java `handleEating`: health healed, temper gained and baby growth in ticks.
 pub fn food(kind: MobKind, item: Item) -> Option<(f32, u8, i32)> {
+    if kind == MobKind::SkeletonHorse {
+        return None;
+    }
+    if kind == MobKind::ZombieHorse {
+        return (item == Item::from_block(crate::world::block::Block::RED_MUSHROOM)).then_some((3., 3, 0));
+    }
     let hay = Item::from_block(crate::world::block::Block::HAY_BALE);
     if kind == MobKind::Llama {
         return match item {
@@ -655,8 +690,13 @@ impl Entities {
     ) -> bool {
         let Some((i, _)) = self.raycast(eye, dir, reach) else { return false };
         self.ensure_mob_ids();
+        let occupied = self.mobs.iter().any(|r| r.riding == Some(MOB_VEHICLE | self.mobs[i].uid) && r.alive());
         let m = &mut self.mobs[i];
-        if !rideable(m.kind) || m.riding.is_some() {
+        if occupied
+            || m.kind == MobKind::SkeletonHorse && m.mount.as_ref().is_some_and(|s| !s.tame)
+            || !rideable(m.kind)
+            || m.riding.is_some()
+        {
             return false;
         }
         let s = m.mount.as_mut().unwrap();
@@ -667,7 +707,7 @@ impl Entities {
             s.slots[0] = Some(Stack::new(Item::SADDLE, 1));
             consume = true;
         } else if let Some(item) = held
-            && matches!(kind, MobKind::Horse | MobKind::Llama)
+            && matches!(kind, MobKind::SkeletonHorse | MobKind::ZombieHorse | MobKind::Horse | MobKind::Llama)
             && !m.baby
             && s.accepts(kind, 1, item)
         {
@@ -696,7 +736,7 @@ impl Entities {
         } else if let Some((heal, temper, growth)) = held.and_then(|i| food(kind, i))
             && equine(kind)
         {
-            if m.baby {
+            if m.baby && !super::undead_mounts::undead(kind) {
                 m.age = (m.age + growth).min(0);
                 m.baby = m.age < 0;
                 consume = true;

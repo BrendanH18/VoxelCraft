@@ -45,6 +45,8 @@ pub fn block_use_precedes_item(
     }
     let Some(b) = world.get_block(pos) else { return false };
     blocks_item_use(b)
+        || crate::world::bees::hive(b)
+            .is_some_and(|(_, _, h)| h == 5 && matches!(held, Some(Item::SHEARS | Item::GLASS_BOTTLE)))
         || crate::world::utilities::interact::takes_use(world, pos, held)
         || b == Block::DRAGON_EGG
         || crate::world::wood::signs::sign(b).is_some()

@@ -6,13 +6,17 @@
 //! left to right, like Minecraft. Shapeless recipes match any arrangement
 //! of exactly their ingredients.
 
+mod passive;
 mod utilities;
+mod wolf_armor;
 
 use crate::inventory::Stack;
 use crate::item::{ArmorMaterial, ArmorPiece, Item, Tier, ToolKind};
 use crate::world::block::Block;
 
+mod bees;
 mod copper;
+mod crops;
 pub use copper::stonecutting as copper_stonecutting;
 pub mod colour;
 pub mod stonecutting;
@@ -51,10 +55,28 @@ impl Grid {
 
     /// What the grid crafts right now.
     pub fn result(&self) -> Option<Stack> {
+        if self.size == 3
+            && self.cells.iter().enumerate().all(|(i, s)| {
+                if i == 4 {
+                    s.is_some_and(|s| s.item == Item::LINGERING_POTION)
+                } else {
+                    s.is_some_and(|s| s.item == Item::ARROW)
+                }
+            })
+        {
+            return Some(
+                self.cells[4]
+                    .and_then(|s| s.lingering_contents())
+                    .map_or_else(|| Stack::new(Item::TIPPED_ARROW, 8), |p| Stack::tipped_arrow(p, 8)),
+            );
+        }
         let occupied: Vec<_> = self.cells.iter().take(self.size * self.size).flatten().copied().collect();
         let maps: Vec<_> = occupied.iter().filter(|s| s.item.is_map() && s.item != Item::MAP).collect();
         if maps.len() == 1 && occupied.len() > 1 && occupied.iter().all(|s| s.item == Item::MAP || s == maps[0]) {
             return Some(Stack { count: occupied.len() as u8, ..*maps[0] });
+        }
+        if let Some(result) = wolf_armor::dynamic(&occupied) {
+            return Some(result);
         }
         let (w, h, items) = self.trimmed()?;
         recipes().iter().find(|r| r.matches(w, h, &items)).map(|r| r.result)
@@ -445,6 +467,12 @@ pub fn recipes() -> &'static [Recipe] {
             ),
             shaped(&[" #s", "# s", " #s"], &[('#', STICK), ('s', &[Item::STRING])], Item::BOW, 1),
             shaped(&["f", "#", "e"], &[('f', &[Item::FLINT]), ('#', STICK), ('e', &[Item::FEATHER])], Item::ARROW, 4),
+            shaped(
+                &["aaa", "apa", "aaa"],
+                &[('a', &[Item::ARROW]), ('p', &[Item::LINGERING_POTION])],
+                Item::TIPPED_ARROW,
+                8,
+            ),
         ];
         // Java's `#oak_logs` and the rest: log, wood and both stripped forms.
         const LOGS: [(Ingredient, Block); 5] = [
@@ -608,9 +636,13 @@ pub fn recipes() -> &'static [Recipe] {
         add_mount_recipes(&mut r);
         stone::add_recipes(&mut r);
         copper::add_recipes(&mut r);
+        crops::add_recipes(&mut r);
+        bees::add(&mut r);
         wood::add(&mut r);
         colour::add(&mut r);
         utilities::add(&mut r);
+        passive::add(&mut r);
+        wolf_armor::add(&mut r);
         r
     })
 }

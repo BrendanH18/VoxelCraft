@@ -369,6 +369,7 @@ impl Actor<'_> {
                 audio.play_in(SoundSource::Players, Sound::Place(Material::Stone), Some(centre(cell)), 1.0, (1.4, 1.6))
             }
             // Nearest shared sound for `item.axe.scrape`: a high, scratchy stone step.
+            Used::Waxed { cell } => audio.play(Sound::Place(Material::Snow), Some(centre(cell)), 1.0, (0.9, 1.1)),
             Used::Scraped { cell } => audio.play(Sound::Step(Material::Stone), Some(centre(cell)), 1.0, (1.5, 1.8)),
             // `CANDLE_EXTINGUISH` and `CAKE_ADD_CANDLE`, from the shared sound set.
             Used::CandleExtinguished { cell } => {

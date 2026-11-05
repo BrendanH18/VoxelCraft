@@ -203,7 +203,7 @@ pub const JAVA_RULES: [RuleDef; 59] = [
     boolean("fall_damage", "fallDamage", true, I),
     boolean("fire_damage", "fireDamage", true, I),
     integer("fire_spread_radius_around_player", "fireSpreadRadiusAroundPlayer", 128, -1, i32::MAX, I),
-    boolean("forgive_dead_players", "forgiveDeadPlayers", true, M("v0.17")),
+    boolean("forgive_dead_players", "forgiveDeadPlayers", true, P),
     boolean("freeze_damage", "freezeDamage", true, I),
     boolean("global_sound_events", "globalSoundEvents", true, N("broadcast range only")),
     boolean("immediate_respawn", "doImmediateRespawn", false, I),
@@ -217,7 +217,7 @@ pub const JAVA_RULES: [RuleDef; 59] = [
     integer("max_command_sequence_length", "maxCommandChainLength", 65536, 0, i32::MAX, N("no functions")),
     integer("max_entity_cramming", "maxEntityCramming", 24, 0, i32::MAX, M("v0.19")),
     integer("max_minecart_speed", "minecartMaxSpeed", 8, 1, 1000, N("experimental minecart rewrite")),
-    integer("max_snow_accumulation_height", "snowAccumulationHeight", 1, 0, 8, M("v0.15")),
+    integer("max_snow_accumulation_height", "snowAccumulationHeight", 1, 0, 8, I),
     boolean("mob_drops", "doMobLoot", true, I),
     boolean("mob_explosion_drop_decay", "mobExplosionDropDecay", true, I),
     boolean("mob_griefing", "mobGriefing", true, P),
@@ -239,14 +239,14 @@ pub const JAVA_RULES: [RuleDef; 59] = [
     boolean("spawn_mobs", "doMobSpawning", true, I),
     boolean("spawn_monsters", "spawnMonsters", true, I),
     boolean("spawn_patrols", "doPatrolSpawning", true, M("v0.17")),
-    boolean("spawn_phantoms", "doInsomnia", true, M("v0.15")),
+    boolean("spawn_phantoms", "doInsomnia", true, I),
     boolean("spawn_wandering_traders", "doTraderSpawning", true, I),
     boolean("spawn_wardens", "doWardenSpawning", true, M("v0.16")),
     boolean("spectators_generate_chunks", "spectatorsGenerateChunks", true, M("v0.13")),
     boolean("spread_vines", "doVinesSpread", true, M("v0.13")),
     boolean("tnt_explodes", "tntExplodes", true, I),
     boolean("tnt_explosion_drop_decay", "tntExplosionDropDecay", false, I),
-    boolean("universal_anger", "universalAnger", false, M("v1.x")),
+    boolean("universal_anger", "universalAnger", false, P),
     boolean("water_source_conversion", "waterSourceConversion", true, I),
 ];
 
@@ -473,6 +473,7 @@ impl GameRules {
             lava_source_conversion: self.bool("lava_source_conversion"),
             fire_spread_radius: self.int("fire_spread_radius_around_player"),
             difficulty: crate::world::WorldRules::default().difficulty,
+            max_snow_accumulation_height: self.int("max_snow_accumulation_height") as u8,
         }
     }
 
@@ -994,6 +995,7 @@ mod tests {
                 lava_source_conversion: true,
                 fire_spread_radius: 16,
                 difficulty: 2,
+                max_snow_accumulation_height: 1,
             }
         );
     }

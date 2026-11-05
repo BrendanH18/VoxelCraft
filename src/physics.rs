@@ -488,6 +488,14 @@ pub fn ray_collision<W: BlockSource + ?Sized>(world: &W, cell: IVec3, origin: DV
 /// distance (in units of `dir`) and the face normal.
 pub fn ray_shape<W: BlockSource + ?Sized>(world: &W, cell: IVec3, origin: DVec3, dir: DVec3) -> Option<(f64, IVec3)> {
     let b = world.block(cell)?;
+    if b == crate::world::frog_blocks::FROGSPAWN {
+        return ray_aabb_face(
+            origin,
+            dir,
+            cell.as_dvec3(),
+            cell.as_dvec3() + DVec3::new(1.0, crate::world::frog_blocks::HEIGHT, 1.0),
+        );
+    }
     let neighbour = |side: Facing| world.block(cell + side.offset()).unwrap_or(Block::AIR);
     let lo = cell.as_dvec3();
     let v = |c: [u8; 3]| DVec3::new(c[0] as f64, c[1] as f64, c[2] as f64) / 16.0;

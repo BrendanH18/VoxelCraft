@@ -42,6 +42,12 @@ impl MobKind {
             self,
             MobKind::Pig
                 | MobKind::Cow
+                | MobKind::Mooshroom
+                | MobKind::Frog
+                | MobKind::PolarBear
+                | MobKind::Panda
+                | MobKind::Armadillo
+                | MobKind::Ocelot
                 | MobKind::Sheep
                 | MobKind::Chicken
                 | MobKind::Cat
@@ -70,17 +76,19 @@ impl MobKind {
         use PathType as T;
         let mut caps = Caps::new(width, height);
         caps.evaluator = match self {
-            K::Cod | K::Salmon | K::TropicalFish | K::Pufferfish | K::Guardian | K::ElderGuardian => {
+            K::Cod | K::Salmon | K::TropicalFish | K::Pufferfish | K::Tadpole | K::Guardian | K::ElderGuardian => {
                 Evaluator::Swim { breaching: false }
             }
             K::Dolphin => Evaluator::Swim { breaching: true },
             K::Drowned | K::Axolotl | K::Turtle => Evaluator::Amphibious { shallow: false },
-            K::Parrot => Evaluator::Fly,
+            K::Frog => Evaluator::Amphibious { shallow: true },
+            K::Parrot | K::Bee => Evaluator::Fly,
             _ => Evaluator::Walk,
         };
         if matches!(caps.evaluator, Evaluator::Swim { .. }) {
             caps.can_pass_doors = false;
         }
+        caps.cut_water_border = self != K::Frog;
         caps.step = match self {
             K::Camel => 1.5,
             K::Horse
@@ -92,7 +100,8 @@ impl MobKind {
             | K::Enderman
             | K::Drowned
             | K::Turtle
-            | K::Axolotl => 1.0,
+            | K::Axolotl
+            | K::Frog => 1.0,
             _ => 0.6,
         };
         caps.can_open_doors = matches!(self, K::Villager | K::WanderingTrader | K::Piglin | K::PiglinBrute);
@@ -100,6 +109,7 @@ impl MobKind {
             self,
             K::Pig
                 | K::Cow
+                | K::Mooshroom
                 | K::Sheep
                 | K::Chicken
                 | K::Horse
@@ -109,6 +119,10 @@ impl MobKind {
                 | K::TraderLlama
                 | K::Cat
                 | K::Wolf
+                | K::PolarBear
+                | K::Panda
+                | K::Armadillo
+                | K::Ocelot
                 | K::Fox
                 | K::Parrot
                 | K::Rabbit
@@ -136,6 +150,7 @@ impl MobKind {
             K::Fox | K::Pillager => 32.0,
             K::Llama | K::TraderLlama => 40.0,
             K::PiglinBrute => 12.0,
+            K::PolarBear => 20.0,
             _ => 16.0,
         });
         let mut m = Malus::default();
@@ -144,6 +159,7 @@ impl MobKind {
         }
         m = match self {
             K::Chicken => m.with(T::Water, 0.0),
+            K::Frog => m.with(T::Water, 4.0).with(T::Trapdoor, -1.0),
             K::Turtle => m
                 .with(T::Water, 0.0)
                 .with(T::DoorIronClosed, -1.0)
@@ -364,7 +380,15 @@ impl Mob {
         // `Guardian.getWalkTargetValue`: water scores 10 plus the light cost.
         let guardian_water = matches!(self.kind, MobKind::Guardian | MobKind::ElderGuardian)
             && world.block(p).is_some_and(|b| b.holds_water());
-        if animal && self.kind != MobKind::Turtle && world.block(p - IVec3::Y) == Some(Block::GRASS) {
+        if animal
+            && self.kind != MobKind::Turtle
+            && world.block(p - IVec3::Y)
+                == Some(if self.kind == MobKind::Mooshroom {
+                    crate::world::overworld_blocks::MYCELIUM
+                } else {
+                    Block::GRASS
+                })
+        {
             return 10.0;
         }
         // `getPathfindingCostFromLightLevels`: brightness - 0.5 over the raw light.

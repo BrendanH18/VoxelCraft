@@ -119,6 +119,11 @@ pub fn use_block(
         return Some(Effect::Consumed);
     }
     if let Some(contents) = cauldron_of(b) {
+        if let Some((next, stack)) = inventory.get(slot).and_then(|s| super::cauldron::wash_wolf_armor(contents, s)) {
+            world.set_block(pos, cauldron(next));
+            inventory.slots[slot] = Some(stack);
+            return Some(Effect::Cauldron { fill: false, lava: false, snow: false, bottle: false });
+        }
         let item = held?;
         let (next, result) = super::cauldron::exchange(contents, item)?;
         world.set_block(pos, cauldron(next));

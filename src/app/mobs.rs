@@ -108,10 +108,14 @@ impl Game {
             (self.dimension == crate::world::terrain::Dimension::Overworld).then_some(self.world_spawn);
         self.mobs.entities.trader_spawning =
             self.gamerules.bool("spawn_wandering_traders") && self.gamerules.bool("spawn_mobs");
+        self.mobs.entities.phantom_spawning = self.gamerules.bool("spawn_phantoms");
         self.mobs.entities.monster_spawning = self.gamerules.bool("spawn_monsters");
         self.mobs.entities.spawner_blocks = self.gamerules.bool("spawner_blocks_work");
         self.mobs.entities.villager_griefing = self.gamerules.bool("mob_griefing");
         self.mobs.entities.mob_loot = self.gamerules.bool("mob_drops");
+        self.mobs.entities.neutral_forgive_dead_players = self.gamerules.bool("forgive_dead_players");
+        self.mobs.entities.thundering = self.dimension.has_sky() && self.weather.thunder_level() > 0.9;
+        self.mobs.entities.neutral_universal_anger = self.gamerules.bool("universal_anger");
         self.mobs.entities.village_time = self.day_time;
         self.mobs.entities.village_day = self.day_count;
         for m in &mut self.mobs.entities.mobs {
@@ -149,6 +153,7 @@ impl Game {
             self.audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05));
         }
         crate::entity::golem::finish_golems(&mut self.world, &mut self.mobs.entities);
+        crate::entity::frog::finish_hatches(&mut self.world, &mut self.mobs.entities);
         for (cell, count) in std::mem::take(&mut self.world.hatched_turtles) {
             self.mobs.entities.hatch_turtles(cell, count);
         }
@@ -170,6 +175,9 @@ impl Game {
             effects: self.session.vitals.effects.mask(),
             in_water: self.session.player.in_water,
             swimming: self.session.player.swimming,
+            time_since_rest: self.session.vitals.time_since_rest,
+            sprinting: self.session.player.sprinting,
+            passenger: self.session.player.vehicle.is_some(),
             ..Target::new(
                 PlayerId::HOST,
                 self.session.player.pos,
@@ -198,9 +206,14 @@ impl Game {
             spawning: self.gamerules.bool("spawn_mobs"),
             dimension: self.dimension,
         };
+        self.world.set_bee_clock(self.dimension, (self.day_time.rem_euclid(1.) * 24000.).floor() as u32);
+        self.mobs.entities.tick_lightning(dt, &mut self.world, &ctx, self.weather.is_thundering());
         let mut smashed = Vec::new();
-        for event in self.mobs.entities.update_difficulty(dt, &self.world, &ctx, self.difficulty) {
+        let mut arrow_effects = crate::entity::ArrowEffectGate::default();
+        for event in self.mobs.entities.update_world(dt, &mut self.world, &ctx, self.difficulty) {
             match event {
+                EntityEvent::ArrowEffectsStart { player } => arrow_effects.begin(player),
+                EntityEvent::ArrowEffectsEnd => arrow_effects.end(),
                 EntityEvent::ProjectileBlockHit { cell, pos, normal, arrow, burning } => {
                     self.world.hit_redstone_target(cell, pos, normal, arrow);
                     self.world.touch_redstone_ore(cell);
@@ -215,7 +228,9 @@ impl Game {
                         Some(away) => Some(-away),
                         None => Some(-knockback.as_dvec3()),
                     };
-                    if self.damage_player_from(self.difficulty.mob_damage(damage), cause, toward) > 0.0 {
+                    let accepted = self.damage_player_from(self.difficulty.mob_damage(damage), cause, toward);
+                    arrow_effects.record_hit(PlayerId::HOST, if self.session.vitals.is_dead() { 0. } else { accepted });
+                    if accepted > 0. {
                         if let Some(hit) = java {
                             let entities = &mut self.mobs.entities;
                             self.session.knocked_back(&hit, &mut || f64::from(entities.roll_range(0.0, 1.0)));
@@ -228,12 +243,22 @@ impl Game {
                     }
                 }
                 EntityEvent::PlayerHit { player, damage, knockback, java, cause } => {
+                    arrow_effects.record_hit(player, 0.);
                     if let Some(bot) = self.agents.by_id_mut(player) {
                         let damage = self.difficulty.mob_damage(damage);
-                        match java {
+                        let accepted = match java {
                             Some(hit) => bot.agent.hurt_knocked(damage, cause, &hit, &mut self.mobs.entities),
                             None => bot.agent.hurt(damage, cause, knockback.as_dvec3(), &mut self.mobs.entities),
                         };
+                        arrow_effects
+                            .record_hit(player, if bot.agent.session.vitals.is_dead() { 0. } else { accepted });
+                    }
+                }
+                EntityEvent::PlayerLightning { player } => {
+                    if player == PlayerId::HOST {
+                        self.damage_player_armored(5., "was struck by lightning");
+                    } else if let Some(bot) = self.agents.by_id_mut(player) {
+                        bot.agent.hurt(5., "was struck by lightning", DVec3::ZERO, &mut self.mobs.entities);
                     }
                 }
                 EntityEvent::PlayerFall { player, damage } => {
@@ -258,6 +283,35 @@ impl Game {
                         bot.agent.hurt_beam(physical, magic, &mut self.mobs.entities);
                     }
                 }
+                EntityEvent::BeeSting { uid, player, poison } => {
+                    let source = self.mobs.entities.mobs.iter().find(|m| m.uid == uid).map(|m| m.pos);
+                    let damage = self.difficulty.mob_damage(2.);
+                    let applied = if player == PlayerId::HOST {
+                        let toward = source.map(|p| p - self.session.player.pos);
+                        let hit = self.damage_player_from(damage, "was stung by a bee", toward) > 0.;
+                        if hit && poison > 0 {
+                            self.session.vitals.apply_effect(crate::simulation::effects::Effect::Poison, 0, poison);
+                        }
+                        hit
+                    } else if let Some(bot) = self.agents.by_id_mut(player) {
+                        let toward = source.map(|p| p - bot.agent.session.player.pos);
+                        let blocked = toward
+                            .is_some_and(|d| bot.agent.session.shield_intercept(bot.agent.selected, damage, d).blocked);
+                        let hit = !blocked
+                            && bot.agent.hurt(damage, "was stung by a bee", DVec3::ZERO, &mut self.mobs.entities) > 0.;
+                        if hit && poison > 0 {
+                            bot.agent.session.vitals.apply_effect(
+                                crate::simulation::effects::Effect::Poison,
+                                0,
+                                poison,
+                            );
+                        }
+                        hit
+                    } else {
+                        false
+                    };
+                    self.mobs.entities.confirm_bee_sting(uid, applied);
+                }
                 EntityEvent::PlayerSting { player, damage, cause, poison } => {
                     // Pufferfish contact (`mobAttack`) and guardian thorns both
                     // have a living, non-player cause, so difficulty scales them.
@@ -274,7 +328,7 @@ impl Game {
                     }
                 }
                 EntityEvent::PlayerEffect { player: PlayerId::HOST, effect, amplifier, ticks } => {
-                    if self.session.mode.is_survival() {
+                    if arrow_effects.allows() && self.session.mode.is_survival() {
                         let damage = self.session.vitals.apply_effect(effect, amplifier, ticks);
                         if damage > 0.0 {
                             self.damage_player(damage, "was killed by magic");
@@ -282,7 +336,8 @@ impl Game {
                     }
                 }
                 EntityEvent::PlayerEffect { player, effect, amplifier, ticks } => {
-                    if let Some(bot) = self.agents.by_id_mut(player)
+                    if arrow_effects.allows()
+                        && let Some(bot) = self.agents.by_id_mut(player)
                         && bot.agent.session.mode.is_survival()
                     {
                         let damage = bot.agent.session.vitals.apply_effect(effect, amplifier, ticks);
@@ -303,7 +358,7 @@ impl Game {
                     self.audio.play_in(SoundSource::Neutral, glass, Some(pos), 1.0, (0.9, 1.1));
                 }
                 EntityEvent::PlayerMagic { player: PlayerId::HOST, amount } => {
-                    if self.session.mode.is_survival() {
+                    if arrow_effects.allows() && self.session.mode.is_survival() {
                         if amount > 0.0 {
                             self.damage_player(amount, "was killed by magic");
                         } else {
@@ -313,11 +368,12 @@ impl Game {
                     }
                 }
                 EntityEvent::PlayerMagic { player, amount } => {
-                    if let Some(bot) = self.agents.by_id_mut(player)
+                    if arrow_effects.allows()
+                        && let Some(bot) = self.agents.by_id_mut(player)
                         && bot.agent.session.mode.is_survival()
                     {
                         if amount > 0.0 {
-                            bot.agent.hurt(amount, "was killed by magic", DVec3::ZERO, &mut self.mobs.entities);
+                            bot.agent.hurt_magic(amount, &mut self.mobs.entities);
                         } else {
                             bot.agent.session.vitals.health =
                                 (bot.agent.session.vitals.health - amount).min(crate::simulation::survival::MAX_HEALTH);
@@ -362,6 +418,22 @@ impl Game {
                     );
                     let source = mob_sound_source(sound);
                     let (sound, gain) = match sound {
+                        MobSound::Thunder => {
+                            self.audio.play_in(SoundSource::Weather, Sound::Thunder, None, 1., (0.8, 1.));
+                            continue;
+                        }
+                        MobSound::FrogAction(action) => {
+                            use voxelcraft::entity::frog::FrogSound as F;
+                            match action {
+                                F::Tongue => (Sound::Bow, 2.0),
+                                F::Eat => (Sound::Pop, 2.0),
+                                F::Jump => (Sound::Swim, 1.0),
+                                F::Land => (Sound::Swim, 2.0),
+                                F::Lay => (Sound::Swim, 1.0),
+                                F::Hatch => (Sound::Pop, 1.0),
+                                F::Grow => (Sound::Pop, 0.15),
+                            }
+                        }
                         MobSound::Bell => (Sound::Bell, 1.0),
                         // Procedural stand-ins for Java's `wandering_trader.disappeared`/`reappeared`.
                         MobSound::TraderDrink(true) => (Sound::Teleport, 0.5),
@@ -376,9 +448,9 @@ impl Game {
                         ),
                         MobSound::Fuse => (Sound::Fuse, 1.0),
                         MobSound::Bow => (Sound::Bow, 1.0),
-                        MobSound::Ambient(kind) => (Sound::Mob(voice(kind), Call::Ambient), 0.7),
-                        MobSound::Hurt(kind) => (Sound::Mob(voice(kind), Call::Hurt), 0.9),
-                        MobSound::Death(kind) => (Sound::Mob(voice(kind), Call::Death), 0.9),
+                        MobSound::Ambient(kind) => (Sound::Mob(voice(kind), Call::Ambient), 0.7 * mob_volume(kind)),
+                        MobSound::Hurt(kind) => (Sound::Mob(voice(kind), Call::Hurt), 0.9 * mob_volume(kind)),
+                        MobSound::Death(kind) => (Sound::Mob(voice(kind), Call::Death), 0.9 * mob_volume(kind)),
                         MobSound::Scream => (Sound::Scream, 1.0),
                         MobSound::Teleport => (Sound::Teleport, 0.8),
                         MobSound::Fireball => (Sound::Fireball, 0.9),
@@ -407,6 +479,7 @@ impl Game {
                     self.audio.play_in(SoundSource::Neutral, Sound::Hit, Some(pos + DVec3::Y * 0.5), 0.8, (0.9, 1.1))
                 }
                 EntityEvent::Shoot { .. }
+                | EntityEvent::LingeringCloud { .. }
                 | EntityEvent::MobHit { .. }
                 | EntityEvent::OwnerHurt { .. }
                 | EntityEvent::DragonXp { .. }
@@ -427,7 +500,8 @@ impl Game {
                 }
                 EntityEvent::VillagerHarvest { cell } => {
                     if let Some(block) = self.world.get_block(cell)
-                        && let Some((crop, 7)) = block.as_crop()
+                        && let Some((crop, age)) = block.as_crop()
+                        && age == crop.max_age()
                     {
                         self.world.spill_block(cell, block);
                         self.world.set_block(cell, crate::world::block::Block::crop(crop, 0));
@@ -508,8 +582,13 @@ fn shove(vel: &mut DVec3, push: DVec3) {
 /// and these are the exceptions.
 fn mob_sound_source(sound: MobSound) -> Option<SoundSource> {
     match sound {
+        MobSound::FrogAction(voxelcraft::entity::frog::FrogSound::Lay | voxelcraft::entity::frog::FrogSound::Hatch) => {
+            Some(SoundSource::Blocks)
+        }
+        MobSound::FrogAction(_) => Some(SoundSource::Neutral),
         // `AbstractVillager`, boats and the dragon's smashing: `NEUTRAL`, `NEUTRAL`, `HOSTILE`.
         MobSound::TraderDrink(_) | MobSound::BoatPaddle(_) => Some(SoundSource::Neutral),
+        MobSound::Thunder => Some(SoundSource::Weather),
         MobSound::DragonSmash => Some(SoundSource::Hostile),
         // Skeletons and pillagers shoot as hostile mobs, not as the player.
         MobSound::Bow => Some(SoundSource::Hostile),
@@ -521,14 +600,28 @@ fn mob_sound_source(sound: MobSound) -> Option<SoundSource> {
     }
 }
 
+// Java Bat.getSoundVolume; samples stay normalized like the other voices.
+fn mob_volume(kind: MobKind) -> f32 {
+    if kind == MobKind::Bat { 0.1 } else { 1.0 }
+}
+
 fn voice(kind: MobKind) -> Voice {
     match kind {
         MobKind::Pig => Voice::Pig,
-        MobKind::Cow => Voice::Cow,
+        MobKind::Cow | MobKind::Mooshroom => Voice::Cow,
+        MobKind::Bat => Voice::Bat,
+        MobKind::Frog => Voice::Frog,
+        MobKind::PolarBear => Voice::PolarBear,
+        MobKind::Panda => Voice::Panda,
+        MobKind::Armadillo => Voice::Armadillo,
+        MobKind::Ocelot => Voice::Ocelot,
+        MobKind::Tadpole => Voice::Fish,
         MobKind::Sheep => Voice::Sheep,
         MobKind::Chicken => Voice::Chicken,
         MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombieVillager => Voice::Zombie,
-        MobKind::Skeleton | MobKind::WitherSkeleton => Voice::Skeleton,
+        MobKind::Phantom | MobKind::Skeleton | MobKind::Stray | MobKind::Bogged | MobKind::WitherSkeleton => {
+            Voice::Skeleton
+        }
         MobKind::Creeper => Voice::Creeper,
         MobKind::Spider | MobKind::CaveSpider => Voice::Spider,
         MobKind::ZombifiedPiglin => Voice::Zombie,
@@ -540,7 +633,9 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Witch => Voice::Witch,
         MobKind::Villager | MobKind::WanderingTrader => Voice::Villager,
         MobKind::TraderLlama | MobKind::Llama | MobKind::Camel => Voice::Cow,
-        MobKind::Horse | MobKind::Donkey | MobKind::Mule => Voice::Horse,
+        MobKind::SkeletonHorse | MobKind::ZombieHorse | MobKind::Horse | MobKind::Donkey | MobKind::Mule => {
+            Voice::Horse
+        }
         MobKind::IronGolem => Voice::Cow,
         MobKind::SnowGolem => Voice::Slime,
         MobKind::Piglin | MobKind::PiglinBrute => Voice::Piglin,
@@ -556,6 +651,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Wolf => Voice::Wolf,
         MobKind::Fox => Voice::Fox,
         MobKind::Parrot => Voice::Parrot,
+        MobKind::Bee => Voice::Bee,
         MobKind::Rabbit => Voice::Rabbit,
         MobKind::Goat => Voice::Goat,
     }

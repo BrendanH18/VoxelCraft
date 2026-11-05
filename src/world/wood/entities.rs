@@ -327,6 +327,19 @@ impl World {
         Some((s, self.wood.signs.get(&p)?))
     }
 
+    pub fn wax_sign(&mut self, p: IVec3) -> bool {
+        if self.get_block(p).and_then(signs::sign).is_none() {
+            return false;
+        }
+        let entity = self.wood.signs.entry(p).or_default();
+        if entity.waxed {
+            return false;
+        }
+        entity.waxed = true;
+        self.wood.version += 1;
+        true
+    }
+
     /// Java's `SignBlockEntity.updateSignText`: replaces one side's lines,
     /// keeping its colour and glow. Unprintable characters are dropped and
     /// lines are cut to [`MAX_LINE_CHARS`]. Waxed signs refuse.
@@ -350,6 +363,9 @@ impl World {
     /// changed (Java's `SignBlockEntity.updateText`).
     pub fn update_sign(&mut self, p: IVec3, front: bool, f: impl FnOnce(&mut SignText)) -> bool {
         let Some(entity) = self.wood.signs.get_mut(&p) else { return false };
+        if entity.waxed {
+            return false;
+        }
         let side = entity.side_mut(front);
         let before = side.clone();
         f(side);

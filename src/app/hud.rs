@@ -422,6 +422,7 @@ impl Game {
         mut hand: crate::render::hand::Hand,
     ) -> crate::render::hand::Hand {
         let main = session.inventory.get(selected);
+        hand.tint = main.map(voxelcraft::entity::wolf_armor::item_tint_bytes);
         let image = |stack: Option<Stack>| {
             let stack = stack.filter(|s| s.item.is_map() && s.item != Item::MAP)?;
             let mut map = self.world.maps.maps.get(&stack.map_id?)?.clone();
@@ -621,7 +622,7 @@ pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool
     match (stack.item.block(), layer) {
         (Some(block), _) => ui.block_icon(x + 2.0, y + 2.0, 14.0, block),
         (None, Some(layer)) => {
-            ui.icon(x + 1.0, y + 1.0, 16.0, layer, WHITE);
+            ui.icon(x + 1.0, y + 1.0, 16.0, layer, crate::entity::wolf_armor::item_tint(stack));
             if !stack.enchants.is_empty() || stack.item.has_glint() || stack.lodestone.is_some() {
                 glint(ui, x + 1.0, y + 1.0, 16.0, layer);
             }
@@ -1082,7 +1083,13 @@ impl Game {
         } else if let Some(SlotRef::EnchantOffer(i)) = hovered {
             self.offer_tooltip(ui, i);
         } else if let Some(stack) = hovered_stack {
-            match stack.item.as_potion().or(stack.item.as_splash_potion()) {
+            match stack
+                .item
+                .as_potion()
+                .or(stack.item.as_splash_potion())
+                .or(stack.lingering_contents())
+                .or(stack.arrow_potion())
+            {
                 Some(potion) => self.potion_tooltip(ui, stack.display_name(), potion),
                 None if !stack.enchants.is_empty() => self.enchant_tooltip(ui, stack),
                 // Java's `Rarity.RARE` names are aqua.

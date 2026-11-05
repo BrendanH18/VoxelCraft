@@ -15,33 +15,46 @@
 pub mod animals;
 pub mod aquatic;
 pub mod armor;
+pub mod bat;
+pub mod bee;
 mod bell;
 mod bobber;
+mod cat_spawner;
 pub mod category;
 mod chunk_storage;
 pub mod decor;
 pub mod path;
 pub use bobber::{CatchContext, roll_catch, set_damage};
+pub mod armadillo;
 pub mod dragon;
 mod dragon_model;
 pub mod eye;
 pub mod fireball;
+pub mod frog;
 pub mod golem;
+pub mod hostiles;
 pub mod item;
 pub mod leash;
 mod lifecycle;
+pub mod lightning;
+pub mod lingering;
 mod look;
 pub mod minecart;
 mod mob;
 mod mob_index;
 pub mod model;
 mod monster_spawns;
+pub mod mooshroom;
 pub mod mounts;
 pub mod nether;
+pub mod ocelot;
 pub mod orb;
+pub mod panda;
 pub mod pearl;
+pub mod phantom;
 pub mod player_model;
 mod player_pose;
+pub mod polar_bear;
 pub mod potion;
 mod projectile;
 mod replica;
@@ -50,11 +63,14 @@ mod spawn_lists;
 mod spawn_rules;
 mod spawning;
 mod thrown;
+mod tipped_arrow;
 pub mod tnt;
+pub mod undead_mounts;
 pub mod villager;
 mod villager_breeding;
 mod villager_gossip;
 pub mod wandering_trader;
+pub mod wolf_armor;
 mod zombie_villager;
 
 use std::f32::consts::TAU;
@@ -72,6 +88,7 @@ pub use item::ItemEntity;
 pub use mob::{Mob, MobKind, sky_light};
 pub use orb::XpOrb;
 pub use projectile::Arrow;
+pub use tipped_arrow::ArrowEffectGate;
 
 /// Spawns happen this far from the player (blocks).
 pub const SPAWN_MIN_DIST: f64 = 24.0;
@@ -97,7 +114,9 @@ pub const ATTACK_COOLDOWN: f64 = 0.5;
 /// Sounds entities make (the game maps them to audio).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MobSound {
+    FrogAction(frog::FrogSound),
     Bell,
+    Thunder,
     /// A wandering trader finished its Invisibility potion (true) or milk (false).
     TraderDrink(bool),
     BoatPaddle(bool),
@@ -150,6 +169,10 @@ pub enum EntityEvent {
         java: Option<crate::knockback::Hit>,
         cause: &'static str,
     },
+    /// Lightning deals five armored points, unaffected by difficulty.
+    PlayerLightning {
+        player: PlayerId,
+    },
     /// An equine's landing applies the same fall damage to its rider.
     PlayerFall {
         player: PlayerId,
@@ -165,12 +188,23 @@ pub enum EntityEvent {
     /// Fixed, armored contact damage (guardian spikes and pufferfish).
     /// `poison` ticks of Poison follow only when the sting hurts, as in
     /// `Pufferfish.playerTouch`, which gates the effect on `hurtServer`.
+    BeeSting {
+        uid: u32,
+        player: PlayerId,
+        poison: u32,
+    },
     PlayerSting {
         player: PlayerId,
         damage: f32,
         cause: &'static str,
         poison: u32,
     },
+    /// Tipped status events between these markers require the immediately
+    /// preceding physical hit to have landed (including shield/hurt immunity).
+    ArrowEffectsStart {
+        player: PlayerId,
+    },
+    ArrowEffectsEnd,
     /// A mob or splash potion applied a status effect to this player.
     PlayerEffect {
         player: PlayerId,
@@ -184,6 +218,11 @@ pub enum EntityEvent {
         from: DVec3,
         vel: DVec3,
         potion: crate::potion::Potion,
+    },
+    LingeringCloud {
+        pos: DVec3,
+        potion: crate::potion::Potion,
+        owner: Option<PlayerId>,
     },
     /// A splash potion shattered: glass sound and coloured particles.
     PotionSplashed {
@@ -417,6 +456,13 @@ pub trait MobWorld: BlockSource {
     /// Synthetic worlds opt in explicitly rather than inventing new chunks every tick.
     fn generation_columns(&self, _visit: &mut dyn FnMut(glam::IVec2)) {}
     /// Loaded spawner cages and the mob each makes.
+    fn bee_night(&self, daylight: f32) -> bool {
+        daylight < 0.35
+    }
+    fn bee_hive_full(&self, _p: IVec3) -> bool {
+        false
+    }
+    fn bee_hives(&self, _center: IVec3, _visit: &mut dyn FnMut(IVec3, bool)) {}
     fn spawners(&self) -> Vec<(IVec3, MobKind)> {
         Vec::new()
     }
@@ -466,6 +512,24 @@ pub trait MobWorld: BlockSource {
 }
 
 impl MobWorld for World {
+    fn bee_night(&self, daylight: f32) -> bool {
+        self.beehives.night.unwrap_or(daylight < 0.35)
+    }
+    fn bee_hive_full(&self, p: IVec3) -> bool {
+        self.beehive(p).is_some_and(|h| h.bees.iter().all(Option::is_some))
+    }
+    fn bee_hives(&self, center: IVec3, visit: &mut dyn FnMut(IVec3, bool)) {
+        // At most 41*41 short ordered ranges; distant saved nests are not scanned.
+        for x in center.x - 20..=center.x + 20 {
+            for y in center.y - 20..=center.y + 20 {
+                for p in self.beehives.active.range([x, y, center.z - 20]..=[x, y, center.z + 20]) {
+                    if let Some(h) = self.beehives.hives.get(p) {
+                        visit(IVec3::from_array(*p), h.bees.iter().all(Option::is_some));
+                    }
+                }
+            }
+        }
+    }
     fn generation_columns(&self, visit: &mut dyn FnMut(glam::IVec2)) {
         self.visit_spawn_columns(visit);
     }
@@ -579,10 +643,13 @@ pub struct Target {
     pub in_water: bool,
     /// `Player.isSwimming`: sprint-swimming (dolphins swim along).
     pub swimming: bool,
+    pub sprinting: bool,
+    pub passenger: bool,
     /// Current health in half hearts (witches choose potions from it).
     pub health: f32,
     /// Bit set of the target's active [`crate::simulation::effects::Effect`]s.
     pub effects: u32,
+    pub time_since_rest: u32,
 }
 
 impl Target {
@@ -608,8 +675,11 @@ impl Target {
             on_ground: true,
             in_water: false,
             swimming: false,
+            sprinting: false,
+            passenger: false,
             health: crate::simulation::survival::MAX_HEALTH,
             effects: 0,
+            time_since_rest: 0,
         }
     }
 
@@ -705,16 +775,22 @@ impl Rng {
 
 pub struct Entities {
     pub mobs: Vec<Mob>,
+    pub phantom_spawning: bool,
+    pub(super) phantom_next: i32,
+    pub(super) phantom_clock: f64,
     /// Visual requests shared by local, controller and agent combat.
     pub particles: crate::particles::Requests,
     pub arrows: Vec<Arrow>,
     pub pearls: Vec<pearl::Pearl>,
     pub potions: Vec<potion::ThrownPotion>,
+    pub clouds: Vec<lingering::Cloud>,
     pub thrown: Vec<thrown::Thrown>,
     pub bobbers: Vec<bobber::Bobber>,
     pub eyes: Vec<eye::EnderEye>,
     pub fireballs: Vec<fireball::Fireball>,
     pub puffs: Vec<Puff>,
+    pub lightning: Vec<lightning::Bolt>,
+    lightning_remainder: f64,
     pub tnt: Vec<tnt::PrimedTnt>,
     /// Dropped items. They stay put (and don't age) while their chunk is
     /// unloaded, and are saved with the world.
@@ -733,6 +809,10 @@ pub struct Entities {
     pub fight: Option<dragon::Fight>,
     /// Java `doMobLoot`; set by the world before each update.
     pub mob_loot: bool,
+    pub neutral_forgive_dead_players: bool,
+    pub neutral_universal_anger: bool,
+    /// Global thunder state, independent of local rain precipitation.
+    pub thundering: bool,
     pub moon_brightness: f32,
     /// The overworld clock in ticks (Java's `getOverworldClockTime`), for local difficulty.
     pub clock_time: i64,
@@ -744,6 +824,7 @@ pub struct Entities {
     next_villager_id: u64,
     villager_births: rustc_hash::FxHashSet<IVec3>,
     village_timer: f32,
+    cat_spawner: cat_spawner::Spawner,
     mob_index: mob_index::MobIndex,
     separation: mob_index::Separation,
     claimed_beds: rustc_hash::FxHashSet<IVec3>,
@@ -807,15 +888,21 @@ impl Entities {
     pub fn new(seed: u64) -> Self {
         Self {
             mobs: Vec::new(),
+            phantom_spawning: true,
+            phantom_next: 0,
+            phantom_clock: 0.,
             particles: Default::default(),
             arrows: Vec::new(),
             pearls: Vec::new(),
             potions: Vec::new(),
+            clouds: Vec::new(),
             thrown: Vec::new(),
             bobbers: Vec::new(),
             eyes: Vec::new(),
             fireballs: Vec::new(),
             puffs: Vec::new(),
+            lightning: Vec::new(),
+            lightning_remainder: 0.,
             tnt: Vec::new(),
             items: Vec::new(),
             orbs: Vec::new(),
@@ -826,6 +913,9 @@ impl Entities {
             storage: Default::default(),
             fight: None,
             mob_loot: true,
+            neutral_forgive_dead_players: true,
+            neutral_universal_anger: false,
+            thundering: false,
             moon_brightness: 1.0,
             clock_time: 0,
             difficulty: Default::default(),
@@ -834,6 +924,7 @@ impl Entities {
             next_villager_id: 1,
             villager_births: Default::default(),
             village_timer: 0.0,
+            cat_spawner: Default::default(),
             mob_index: Default::default(),
             separation: Default::default(),
             claimed_beds: Default::default(),
@@ -901,7 +992,7 @@ impl Entities {
     pub fn spawn(&mut self, kind: MobKind, pos: DVec3) {
         let yaw = self.rng.range(0.0, TAU);
         let mut mob = Mob::new(kind, pos, yaw);
-        mob.persistent = kind.has_animal_state();
+        mob.persistent = kind.has_animal_state() || kind == MobKind::Tadpole;
         if let Some(s) = &mut mob.mount {
             **s = mounts::State::new(kind, &mut self.rng);
             mob.health = s.max_health;
@@ -935,7 +1026,7 @@ impl Entities {
             0,
             self.moon_brightness,
         ));
-        if kind.is_zombie() || kind == MobKind::Skeleton {
+        if kind.is_zombie() || kind.is_bow_skeleton() {
             let (armor, glint) = armor::roll_monster_armor(
                 &mut self.rng,
                 self.difficulty == crate::simulation::difficulty::Difficulty::Hard,
@@ -943,6 +1034,11 @@ impl Entities {
             );
             mob.armor = armor;
             mob.armor_glint = glint;
+            if kind.is_bow_skeleton() && self.rng.chance(0.25 * special) {
+                let mut random = crate::enchant::JavaRandom::new(i64::from(self.rng.next_int(i32::MAX as u32)));
+                mob.skeleton_bow.as_mut().unwrap().enchants =
+                    crate::enchant::enchant_mob_equipment(&mut random, crate::item::Item::BOW, special);
+            }
         }
         if kind.is_cube() {
             // `AbstractCubeMob.setSpawnSize`: sizes 1, 2 and 4 from nextInt(3),
@@ -953,6 +1049,9 @@ impl Entities {
                 exponent += 1;
             }
             mob.set_size(1 << exponent);
+        }
+        if let Some(p) = &mut mob.phantom {
+            p.start_circle(&mut self.rng);
         }
         nether::on_spawn(&mut mob, &mut self.rng);
         aquatic::on_spawn(&mut mob, &mut self.rng);
@@ -1093,7 +1192,7 @@ impl Entities {
             .find(|m| m.kind == kind && !m.alive() && m.pos.distance_squared(pos) < 0.01)
             .map_or((1, false), |m| (m.size, m.baby));
         let (size, baby) = size;
-        if baby && kind.is_breedable() && kind != MobKind::Hoglin {
+        if baby && (kind.is_breedable() || kind == MobKind::PolarBear) && kind != MobKind::Hoglin {
             return;
         }
         if player_kill {
@@ -1110,6 +1209,7 @@ impl Entities {
             self.spawn_xp(pos, xp);
         }
         self.equipment_drops(kind, pos, looting, player_kill);
+        self.skeleton_equipment_drops(kind, pos, looting, player_kill);
         if baby && nether::babies_drop_nothing(kind) {
             return;
         }
@@ -1123,6 +1223,13 @@ impl Entities {
                 .find(|m| m.kind == kind && m.pos == pos && !m.alive())
                 .map_or((crate::color::DyeColor::White, false), |m| (m.wool_color, m.sheared))
         });
+        if player_kill && let Some(potion) = kind.arrow_potion() {
+            let base = self.rng.next_int(2);
+            let extra = (f32::from(looting) * self.rng.next_f32()).round() as u32;
+            if base + extra > 0 {
+                self.scatter(crate::inventory::Stack::tipped_arrow(potion, 1), pos);
+            }
+        }
         let mut drops = kind.drops(&mut self.rng, looting);
         if kind == MobKind::Rabbit && player_kill && self.rng.chance(0.1 + looting as f32 * 0.03) {
             drops.push((crate::item::Item::RABBIT_FOOT, 1));
@@ -1178,6 +1285,7 @@ impl Entities {
                         | crate::item::Item::BLAZE_ROD
                         | crate::item::Item::GHAST_TEAR
                         | crate::item::Item::WITHER_SKULL
+                        | crate::item::Item::PHANTOM_MEMBRANE
                 )
             {
                 continue;
@@ -1312,6 +1420,7 @@ impl Entities {
     /// Writes this dimension's entity properties (`items`, `orbs`, `minecarts`,
     /// `decor`, `villagers` and `nether_mobs`), including entities stored in unloaded chunks.
     pub fn save_props(&self, props: &mut std::collections::BTreeMap<String, String>) {
+        props.insert("potion_clouds".into(), self.cloud_json());
         props.insert("items".to_string(), self.items_to_string());
         props.insert("orbs".to_string(), self.orbs_to_string());
         props.insert("minecarts".to_string(), self.minecarts_to_string());
@@ -1324,6 +1433,9 @@ impl Entities {
     /// the next [`Entities::sync_chunk_entities`] stores those whose chunk
     /// hasn't loaded, so saves from before per-chunk storage load unchanged.
     pub fn load_props(&mut self, props: &std::collections::BTreeMap<String, String>) {
+        if let Some(clouds) = props.get("potion_clouds") {
+            self.load_cloud_json(clouds);
+        }
         if let Some(items) = props.get("items") {
             self.load_items(items);
         }
@@ -1414,10 +1526,12 @@ impl Entities {
         model::build_arrows(&self.arrows, camera, alpha, &mut self.verts);
         model::build_pearls(&self.pearls, camera, alpha, &mut self.verts);
         model::build_potions(&self.potions, camera, alpha, &mut self.verts);
+        model::build_clouds(&self.clouds, camera, &mut self.verts);
         model::build_thrown(&self.thrown, camera, alpha, &mut self.verts);
         model::build_bobbers(&self.bobbers, camera, alpha, &mut self.verts);
         model::build_eyes(&self.eyes, camera, time, alpha, &mut self.verts);
         model::build_fireballs(&self.fireballs, camera, time, alpha, &mut self.verts);
+        model::build_lightning(&self.lightning, camera, &mut self.verts);
         model::build_puffs(&self.puffs, camera, alpha, &mut self.verts);
         model::build_orbs(&self.orbs, camera, max_dist, time, alpha, &mut self.verts);
         model::build_minecarts(&self.minecarts, camera, alpha, &mut self.verts);
@@ -1436,7 +1550,7 @@ impl Entities {
             .enumerate()
             .filter(|(_, m)| m.alive())
             .filter_map(|(i, m)| {
-                let (min, max) = m.aabb();
+                let (min, max) = m.selection_shape().aabb(m.pos);
                 physics::ray_aabb(origin, dir, min, max).map(|t| (i, t))
             })
             .filter(|&(_, t)| t <= max_dist)
@@ -1586,9 +1700,9 @@ impl Entities {
     pub fn spawn_baby(&mut self, kind: MobKind, pos: DVec3) {
         let yaw = self.rng.range(0.0, TAU);
         let mut mob = Mob::new(kind, pos, yaw);
-        mob.age = -24000;
-        mob.baby = true;
-        mob.persistent = kind.is_breedable();
+        mob.age = if matches!(kind, MobKind::Frog | MobKind::Tadpole) { 0 } else { -24000 };
+        mob.baby = !matches!(kind, MobKind::Frog | MobKind::Tadpole);
+        mob.persistent = kind.is_breedable() || kind == MobKind::Tadpole;
         self.mobs.push(mob);
     }
 
@@ -1676,7 +1790,7 @@ impl Entities {
         let mut taken: u8 = 0;
         self.arrows.retain(|a| {
             let near = (a.pos - (feet + DVec3::Y * 0.9)).abs().cmple(DVec3::new(1.3, 1.5, 1.3)).all();
-            let take = a.pickup && a.is_stuck() && near && taken < u8::MAX;
+            let take = !a.tipped && a.potion.is_none() && a.pickup && a.is_stuck() && near && taken < u8::MAX;
             taken += take as u8;
             !take
         });
@@ -2024,6 +2138,12 @@ mod tests {
         }
         fn exposed(&self, p: IVec3) -> bool {
             p.y >= self.floor_y
+        }
+        /// WORLD_SURFACE counts explicit non-air blocks such as glass roofs.
+        fn world_surface(&self, x: i32, z: i32) -> Option<i32> {
+            let placed =
+                self.blocks.iter().filter(|(p, b)| p.x == x && p.z == z && **b != Block::AIR).map(|(p, _)| p.y);
+            Some(placed.fold(self.floor_y - 1, i32::max))
         }
     }
 
@@ -3228,13 +3348,17 @@ mod tests {
     #[test]
     fn creeper_hisses_then_explodes_unless_you_run() {
         let world = Grid::flat(10);
+        for (charged, power) in [(false, 3.), (true, 6.)] {
+            let mut e = Entities::new(3);
+            e.spawn(MobKind::Creeper, DVec3::new(0.5, 10.0, 0.5));
+            e.mobs[0].lightning_charged = charged;
+            let events = run(&mut e, &world, &night(DVec3::new(2.5, 10.0, 0.5)), 2.0);
+            let fuse = events.iter().position(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Fuse, .. }));
+            let boom = events.iter().position(|ev| matches!(ev, EntityEvent::Explosion { power:p, .. } if *p == power));
+            assert!(fuse.unwrap() < boom.unwrap(), "{events:?}");
+            assert!(e.mobs.is_empty(), "the creeper is gone");
+        }
         let mut e = Entities::new(3);
-        e.spawn(MobKind::Creeper, DVec3::new(0.5, 10.0, 0.5));
-        let events = run(&mut e, &world, &night(DVec3::new(2.5, 10.0, 0.5)), 2.0);
-        let fuse = events.iter().position(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Fuse, .. }));
-        let boom = events.iter().position(|ev| matches!(ev, EntityEvent::Explosion { .. }));
-        assert!(fuse.unwrap() < boom.unwrap(), "{events:?}");
-        assert!(e.mobs.is_empty(), "the creeper is gone");
 
         // Running out of range puts the fuse out.
         e.spawn(MobKind::Creeper, DVec3::new(0.5, 10.0, 0.5));

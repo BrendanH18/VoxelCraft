@@ -1872,6 +1872,11 @@ impl Game {
         sky.daylight = self.weather.dim(sky.daylight);
         sky.horizon = self.weather.overcast(sky.horizon);
         sky.zenith = self.weather.overcast(sky.zenith);
+        if self.mobs.entities.lightning.iter().any(|b| b.visible()) {
+            sky.horizon = [0.7, 0.72, 0.85];
+            sky.zenith = [0.6, 0.63, 0.8];
+            sky.daylight = 1.;
+        }
         let nether = !self.dimension.has_sky();
         if nether {
             // No sun, no weather. Both dimension types set `visual/sky_light_factor`
@@ -2062,6 +2067,7 @@ impl Game {
                 yaw: 0.0,
                 icon: None,
                 orient: None,
+                tint: [255; 4],
             })
             .chain(self.mobs.entities.tnt.iter().map(|t| {
                 let s = t.size();
@@ -2076,6 +2082,7 @@ impl Game {
                     yaw: 0.0,
                     icon: None,
                     orient: None,
+                    tint: [255; 4],
                 }
             }))
             .chain(self.world.moving_piston_blocks(alpha).map(|(block, min)| crate::render::BlockModel {
@@ -2087,6 +2094,7 @@ impl Game {
                 yaw: 0.0,
                 icon: None,
                 orient: None,
+                tint: [255; 4],
             }))
             .chain(self.item_models(alpha))
             .chain(self.banner_models(camera))

@@ -549,7 +549,11 @@ macro_rules! parts {($($p:expr),* $(,)?) => {{let mut out=Parts::new();$(out.pus
 
 mod animals;
 mod aquatic;
+mod bee;
+mod hostiles;
 mod mounts;
+mod passive;
+mod phantom;
 
 /// Animated parts for a mob, in model space (pixels).
 fn pose(m: &Mob, time: f32) -> Parts {
@@ -557,7 +561,11 @@ fn pose(m: &Mob, time: f32) -> Parts {
     let head = Quat::from_rotation_y(-m.head_yaw) * Quat::from_rotation_x(-m.head_pitch);
     let rx = Quat::from_rotation_x;
     match m.kind {
-        MobKind::Horse | MobKind::Donkey | MobKind::Mule => mounts::pose(m),
+        MobKind::Bee => bee::pose(m, time),
+        MobKind::Phantom => phantom::pose(time),
+        MobKind::SkeletonHorse | MobKind::ZombieHorse | MobKind::Horse | MobKind::Donkey | MobKind::Mule => {
+            mounts::pose(m)
+        }
         MobKind::Llama => mounts::llama(m),
         MobKind::Camel => mounts::camel(m),
         MobKind::Cod
@@ -582,6 +590,14 @@ fn pose(m: &Mob, time: f32) -> Parts {
             part(PIG_LEG_BOX, [3.0, 6.0, -5.0], rx(swing)),
             part(PIG_HEAD, [0.0, 12.0, 8.0], head),
         ],
+        MobKind::Mooshroom => passive::mooshroom(m),
+        MobKind::Bat => passive::bat(m, time),
+        MobKind::Frog => passive::frog(m, time),
+        MobKind::PolarBear => passive::polar_bear(m),
+        MobKind::Panda => passive::panda(m, time),
+        MobKind::Armadillo => passive::armadillo(m),
+        MobKind::Ocelot => passive::ocelot(m),
+        MobKind::Tadpole => passive::tadpole(m, time),
         MobKind::Cow => parts![
             part(COW_BODY, [0.0; 3], Quat::IDENTITY),
             part(COW_LEG, [-4.0, 12.0, 6.0], rx(swing)),
@@ -611,6 +627,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
                 part(CHICKEN_HEAD, [0.0, 8.0, 2.0], head),
             ]
         }
+        MobKind::Stray | MobKind::Bogged => hostiles::pose(m, swing, head),
         MobKind::Skeleton => {
             // Bow raised toward the target while hunting, arms swinging otherwise.
             let aiming = m.ai == Ai::Chase;
@@ -882,8 +899,12 @@ pub fn build(
             continue;
         }
         let rel = (m.previous_pos.lerp(m.pos, alpha) - camera).as_vec3();
-        let center = rel + Vec3::Y * m.shape().height as f32 * 0.5;
-        let radius = 1.5;
+        let center = rel + Vec3::Y * m.selection_shape().height as f32 * 0.5;
+        let radius = if m.polar_bear.is_some() {
+            (m.selection_shape().height as f32 * 0.5 + m.shape().half_width as f32).max(1.5)
+        } else {
+            1.5
+        };
         if center.length() > max_dist + radius || center.dot(forward) < -radius {
             continue;
         }
@@ -893,7 +914,8 @@ pub fn build(
         // ground.
         let asleep = m.villager.as_ref().is_some_and(|v| v.sleeping);
         let death = if asleep { 1.0 } else { m.death_progress() };
-        let body = Quat::from_rotation_y(FRAC_PI_2 - m.yaw) * Quat::from_rotation_z(death * FRAC_PI_2);
+        let shake = if m.water_conversion.shaking() { (time * 65.).cos() * 0.02 } else { 0. };
+        let body = Quat::from_rotation_y(FRAC_PI_2 - m.yaw + shake) * Quat::from_rotation_z(death * FRAC_PI_2);
         let origin = rel + Vec3::Y * (m.shape().half_width as f32 * death);
         let hurt = if m.dying.is_some() { 1.0 } else { m.hurt / HURT_TIME };
         let light = [(m.sky_light.clamp(0.0, 1.0) * 255.0) as u8, 0, (hurt.clamp(0.0, 1.0) * 255.0) as u8, 0];
@@ -907,12 +929,20 @@ pub fn build(
                 m.size as f32
             } else if m.kind == MobKind::WitherSkeleton {
                 1.2
+            } else if m.kind == MobKind::Phantom {
+                1. + m.phantom.as_ref().map_or(0., |p| f32::from(p.size) * 0.15)
             } else if m.kind == MobKind::ElderGuardian {
                 2.35
             } else if m.kind == MobKind::Pufferfish {
                 0.8 + m.aquatic.as_ref().map_or(0.0, |a| a.puff as f32 * 0.4)
             } else if m.baby || m.age < 0 {
-                0.5
+                if super::undead_mounts::undead(m.kind) {
+                    0.7
+                } else if m.kind == MobKind::Armadillo {
+                    0.6
+                } else {
+                    0.5
+                }
             } else {
                 1.0
             };
@@ -936,6 +966,10 @@ pub fn build(
         };
         labels::attachments(m, camera, forward, rel, out);
         aquatic::beam(m, camera, out);
+        if m.kind == MobKind::Creeper && m.lightning_charged {
+            charged_aura(m, rel, time, out);
+        }
+        passive::tongue(m, camera, out, (light, torch));
         let mut posed = pose(m, time);
         if matches!(m.kind, MobKind::Pig | MobKind::Strider) {
             mounts::equipment(m, &mut posed);
@@ -952,6 +986,10 @@ pub fn build(
                 let mut cuboid = *c;
                 animals::colour(m, &mut cuboid);
                 mounts::colour(m, &mut cuboid);
+                if matches!(m.kind, MobKind::Stray | MobKind::Bogged) {
+                    hostiles::colour(m, &mut cuboid);
+                }
+                passive::colour(m, &mut cuboid);
                 if m.kind == MobKind::GlowSquid && c.color == [49, 71, 80] {
                     cuboid.color = [44, 161, 151];
                 }
@@ -992,7 +1030,7 @@ pub fn build(
         }
         // Zombie villagers use the villager mesh, which is not the six-limb armor rig.
         if (m.kind.is_zombie() && m.kind != MobKind::ZombieVillager)
-            || m.kind == MobKind::Skeleton
+            || m.kind.is_bow_skeleton()
             || m.kind == MobKind::Piglin
         {
             let limbs = humanoid_armor(&posed);
@@ -1042,7 +1080,15 @@ pub fn build_arrows(arrows: &[Arrow], camera: DVec3, alpha: f64, out: &mut Vec<E
         // Stuck arrows sit with the tip buried.
         let origin = if a.is_stuck() { rel - a.dir * 0.2 } else { rel };
         for (i, c) in ARROW.iter().enumerate() {
-            push_cuboid(out, c, &|v: Vec3| origin + rot * v / 16.0, rot, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
+            let mut c = *c;
+            if i == 1 {
+                if let Some(p) = a.potion {
+                    c.color = p.colour();
+                } else if a.custom_effect.is_some() || a.tipped {
+                    c.color = [162, 99, 181];
+                }
+            }
+            push_cuboid(out, &c, &|v: Vec3| origin + rot * v / 16.0, rot, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
         }
     }
 }
@@ -1405,6 +1451,58 @@ pub fn build_player_name(
 }
 pub use super::player_pose::{PlayerPose, fits_at, fits_player, resolve_pose};
 
+/// Original segmented bolt with a bright core and blue outer branches.
+pub fn build_lightning(bolts: &[super::lightning::Bolt], camera: DVec3, out: &mut Vec<EntityVertex>) {
+    for b in bolts.iter().filter(|b| b.visible()) {
+        let mut seed = b.seed;
+        let base = (b.pos - camera).as_vec3();
+        let mut at = Vec3::ZERO;
+        for i in 0..16 {
+            let r = crate::world::noise::splitmix64(&mut seed);
+            let to = Vec3::new((r & 255) as f32 / 32. - 4., (i + 1) as f32 * 8., (r >> 8 & 255) as f32 / 32. - 4.);
+            let delta = to - at;
+            let rot = Quat::from_rotation_arc(Vec3::Y, delta.normalize());
+            for (w, color) in [(0.23, [95, 125, 255]), (0.07, [250, 250, 255])] {
+                let c = cube([-w, 0., -w], [w, delta.length(), w], color, 0);
+                push_cuboid(
+                    out,
+                    &c,
+                    &|p| base + at + rot * p,
+                    rot,
+                    ([255, 255, 0, 255], 255),
+                    ([255.; 3], 0.),
+                    i as f32,
+                );
+            }
+            at = to;
+        }
+    }
+}
+fn charged_aura(m: &Mob, rel: Vec3, time: f32, out: &mut Vec<EntityVertex>) {
+    // Moving electric ribs keep the original creeper model visible.
+    for i in 0..8 {
+        let angle = time * 2. + i as f32 * std::f32::consts::TAU / 8.;
+        let (s, c) = angle.sin_cos();
+        let rib = glass([-0.025, 0., -0.025], [0.025, m.shape().height as f32 + 0.1, 0.025], [80, 155, 255], 0);
+        let at = rel + Vec3::new(c * 0.5, -0.05, s * 0.5);
+        push_cuboid(out, &rib, &|p| at + p, Quat::IDENTITY, ([255, 255, 0, 255], 255), ([255.; 3], 0.), i as f32);
+    }
+}
+/// Deterministic original motes for lingering area-effect clouds.
+pub fn build_clouds(clouds: &[super::lingering::Cloud], camera: DVec3, out: &mut Vec<EntityVertex>) {
+    for c in clouds {
+        let colour = c.potion.colour();
+        for i in 0..24 {
+            let angle = i as f32 * 2.399963 + c.age as f32 * 0.045;
+            let r = c.radius * ((i as f32 + 0.5) / 24.).sqrt();
+            let p =
+                (c.pos - camera).as_vec3() + Vec3::new(angle.cos() * r, 0.08 + (i % 4) as f32 * 0.08, angle.sin() * r);
+            let b = glass([-0.035; 3], [0.035; 3], colour, 0);
+            push_cuboid(out, &b, &|v| p + v, Quat::IDENTITY, ([230, 0, 0, 0], 0), (FIRE, 0.), i as f32);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1474,11 +1572,15 @@ mod tests {
                 (lo.min(p), hi.max(p))
             });
             // Swimming bodies and animated tentacles need not rest on a floor.
-            let floats = kind == MobKind::Blaze || kind.is_aquatic();
+            let floats = matches!(kind, MobKind::Blaze | MobKind::Bat) || kind.is_aquatic();
             assert!(lo.y.abs() < 1e-4 || floats && lo.y.abs() < 0.25, "{kind:?} feet at {}", lo.y);
-            let h = kind.shape().height as f32;
+            // The mooshroom cap layer extends above its cow collision box.
+            let h = kind.shape().height as f32 + if kind == MobKind::Mooshroom { 0.4 } else { 0.0 };
             assert!((hi.y - h).abs() < 0.15, "{kind:?} top {} vs box {h}", hi.y);
-            assert!(hi.x > if kind.is_aquatic() { 10.05 } else { 10.25 }, "{kind:?} should extend forward along +X");
+            assert!(
+                hi.x > if kind.is_aquatic() || kind == MobKind::Bat { 10.05 } else { 10.25 },
+                "{kind:?} should extend forward along +X"
+            );
             // Behind the camera: culled.
             out.clear();
             assert_eq!(

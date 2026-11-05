@@ -244,6 +244,7 @@ pub enum Sprite {
     Powder([u8; 3]),
     Leather,
     Arrow,
+    TippedArrow,
     Seeds,
     Wheat,
     MelonSlice,
@@ -254,6 +255,10 @@ pub enum Sprite {
     Nugget([u8; 3]),
     /// An iron bucket, empty or holding this colour of fluid.
     Bucket(Option<[u8; 3]>),
+    TadpoleBucket,
+    ArmadilloScute,
+    Brush,
+    WolfArmor,
     Door,
     /// A blaze rod: a glowing yellow stick.
     Rod([u8; 3]),
@@ -694,6 +699,11 @@ impl Item {
     pub const MILK_BUCKET: Item = Item(513);
     pub const BOWL: Item = Item(514);
     pub const MUSHROOM_STEW: Item = Item(515);
+    pub const SUSPICIOUS_STEW: Item = Item(1300);
+    pub const TADPOLE_BUCKET: Item = Item(1301);
+    pub const ARMADILLO_SCUTE: Item = Item(1302);
+    pub const BRUSH: Item = Item(1303);
+    pub const WOLF_ARMOR: Item = Item(1304);
     pub const SNOWBALL: Item = Item(516);
     pub const EGG: Item = Item(517);
     pub const LEAD: Item = Item(1000);
@@ -835,6 +845,9 @@ impl Item {
     pub const TURTLE_SCUTE: Item = Item(907);
     /// Standalone append-only audit gear ID; v0.7 reserves 1000..1039.
     pub const TURTLE_HELMET: Item = Item(1040);
+    /// v0.15 crops track: soup; the seeds and root retain their older IDs.
+    pub const BEETROOT_SOUP: Item = Item(1280);
+    pub const HONEYCOMB: Item = Item(1281);
     /// Explicit honey item reservations, including the block placing item.
     pub const HONEY_BLOCK: Item = Item(1072);
     pub const HONEY_BOTTLE: Item = Item(1073);
@@ -881,6 +894,11 @@ impl Item {
             _ => Item(FIRST_ARMOR + material as u16 * 4 + piece as u16),
         }
     }
+
+    /// v0.15 hostiles: potion contents use Stack::entity_data, not extra item IDs.
+    pub const TIPPED_ARROW: Item = Item(1330);
+    pub const LINGERING_POTION: Item = Item(1332);
+    pub const DRAGON_BREATH: Item = Item(1333);
 
     pub const fn potion(potion: crate::potion::Potion) -> Item {
         let index = potion.0 as u16;
@@ -939,6 +957,9 @@ impl Item {
         match self {
             Item::REDSTONE => Some(crate::world::redstone_blocks::WIRE),
             Item::STRING => Some(crate::world::gadgets::TRIPWIRE),
+            Item::MELON_SEEDS => Some(crate::world::crops::stem_block(crate::world::crops::Fruit::Melon, 0)),
+            Item::PUMPKIN_SEEDS => Some(crate::world::crops::stem_block(crate::world::crops::Fruit::Pumpkin, 0)),
+            Item::BEETROOT_SEEDS => Some(Block::crop(crate::world::block::Crop::Beetroot, 0)),
             Item::WHEAT_SEEDS => Some(Block::wheat(0)),
             Item::CARROT => Some(Block::crop(crate::world::block::Crop::Carrot, 0)),
             Item::POTATO => Some(Block::crop(crate::world::block::Crop::Potato, 0)),
@@ -1003,6 +1024,26 @@ impl Item {
     }
 
     pub fn info(self) -> ItemInfo {
+        if self == Self::HONEYCOMB {
+            return item("honeycomb", Sprite::Lump([233, 163, 40]));
+        }
+        if self == Self::BEETROOT_SOUP {
+            return ItemInfo {
+                name: "beetroot soup",
+                kind: ItemKind::Food { hunger: 6, saturation: 7.2 },
+                max_stack: 1,
+                sprite: Sprite::Lump([152, 34, 54]),
+            };
+        }
+        if self == Self::LINGERING_POTION {
+            return single("lingering potion", Sprite::SplashBottle([152, 83, 193]));
+        }
+        if self == Self::DRAGON_BREATH {
+            return item("dragon breath", Sprite::Bottle(Some([189, 94, 201])));
+        }
+        if self == Self::TIPPED_ARROW {
+            return item("tipped arrow", Sprite::TippedArrow);
+        }
         if self.is_map() {
             const NAMES: [&str; 11] = [
                 "map",
@@ -1048,6 +1089,18 @@ impl Item {
             return ItemInfo { name, kind: ItemKind::Material, max_stack: 16, sprite: Sprite::Cushion(c.rgb()) };
         }
         match self {
+            Self::TADPOLE_BUCKET => return single("tadpole bucket", Sprite::TadpoleBucket),
+            Self::ARMADILLO_SCUTE => return item("armadillo scute", Sprite::ArmadilloScute),
+            Self::BRUSH => return single("brush", Sprite::Brush),
+            Self::WOLF_ARMOR => return single("wolf armor", Sprite::WolfArmor),
+            Self::SUSPICIOUS_STEW => {
+                return ItemInfo {
+                    name: "suspicious stew",
+                    kind: ItemKind::Food { hunger: 6, saturation: 7.2 },
+                    max_stack: 1,
+                    sprite: SURVIVAL_ITEMS[3].sprite,
+                };
+            }
             Self::HONEY_BOTTLE => {
                 return ItemInfo {
                     name: "honey bottle",
@@ -1251,6 +1304,9 @@ impl Item {
 
     /// Uses before breaking, for tools and armor.
     pub fn durability(self) -> Option<u16> {
+        if matches!(self, Self::BRUSH | Self::WOLF_ARMOR) {
+            return Some(64);
+        }
         if self == Self::CARROT_ON_A_STICK {
             return Some(25);
         }
@@ -1312,9 +1368,9 @@ impl Item {
     }
 
     /// Java's `FoodProperties.canAlwaysEat`: edible even when full. The
-    /// reference also lists chorus fruit and suspicious stew, not yet registered.
+    /// reference also lists chorus fruit, which is not yet registered.
     pub fn always_edible(self) -> bool {
-        matches!(self, Item::GOLDEN_APPLE | Item::ENCHANTED_GOLDEN_APPLE | Item::HONEY_BOTTLE)
+        matches!(self, Item::GOLDEN_APPLE | Item::ENCHANTED_GOLDEN_APPLE | Item::HONEY_BOTTLE | Item::SUSPICIOUS_STEW)
     }
 
     /// Java's `Rarity.RARE` for items registered with it (aqua names).
@@ -1329,10 +1385,13 @@ impl Item {
     }
 
     pub fn remainder(self) -> Option<Item> {
+        if self == Self::DRAGON_BREATH {
+            return Some(Self::GLASS_BOTTLE);
+        }
         match self {
             Self::MILK_BUCKET => Some(Self::BUCKET),
             Self::HONEY_BOTTLE => Some(Self::GLASS_BOTTLE),
-            Self::MUSHROOM_STEW | Self::RABBIT_STEW => Some(Self::BOWL),
+            Self::MUSHROOM_STEW | Self::RABBIT_STEW | Self::BEETROOT_SOUP | Self::SUSPICIOUS_STEW => Some(Self::BOWL),
             _ => None,
         }
     }
@@ -1354,6 +1413,9 @@ impl Item {
     pub fn icon_layer(self) -> Option<u16> {
         if self.is_map() {
             return Some(2944 + self.0 - 1255);
+        }
+        if self == Self::SUSPICIOUS_STEW {
+            return Self::MUSHROOM_STEW.icon_layer();
         }
         sprite_index(self).map(tex::item_layer)
     }
@@ -1417,6 +1479,11 @@ impl Item {
             .chain((0..DECOR_ITEMS).map(|i| Item(DECOR_ITEM + i)))
             .chain((0..HAND_ITEMS).map(|i| Item(HAND_ITEM + i)))
             .chain((1255..=1265).map(Item))
+            // Icon order: track 3's four icons, then the five that
+            // `icon_count` places last (tracks 2 and 4).
+            .chain([Self::SUSPICIOUS_STEW, Self::TADPOLE_BUCKET, Self::ARMADILLO_SCUTE, Self::BRUSH, Self::WOLF_ARMOR])
+            .chain([Self::BEETROOT_SOUP, Self::HONEYCOMB])
+            .chain([Self::TIPPED_ARROW, Self::LINGERING_POTION, Self::DRAGON_BREATH])
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1432,6 +1499,28 @@ impl From<Block> for Item {
     fn from(b: Block) -> Self {
         Item::from_block(b)
     }
+}
+
+pub(crate) fn lingering_name(p: crate::potion::Potion) -> &'static str {
+    static N: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    &N.get_or_init(|| crate::potion::Potion::all().map(|p| format!("lingering {}", p.info().name)).collect())
+        [p.0 as usize]
+}
+
+/// Stack-specific tipped-arrow names, kept out of the item ID table.
+pub(crate) fn tipped_arrow_name(potion: crate::potion::Potion) -> &'static str {
+    static NAMES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    &NAMES.get_or_init(|| {
+        crate::potion::Potion::all()
+            .map(|p| {
+                if p.effects().next().is_none() {
+                    format!("tipped arrow ({})", p.info().id)
+                } else {
+                    p.info().name.replace("potion", "arrow")
+                }
+            })
+            .collect()
+    })[potion.0 as usize]
 }
 
 /// "splash potion of x" for each potion, built once.
@@ -1453,6 +1542,11 @@ fn splash_names() -> &'static [&'static str] {
 fn sprite_index(item: Item) -> Option<u16> {
     let materials = ITEMS.len() as u16;
     match item.0 {
+        1280..=1281 => Some(icon_count() as u16 - 5 + item.0 - 1280),
+        1330 => Some(icon_count() as u16 - 3),
+        1332 => Some(icon_count() as u16 - 2),
+        1333 => Some(icon_count() as u16 - 1),
+        1301..=1304 => Some(passive_icon_base() + item.0 - 1301),
         1040 => Some(turtle_icon()),
         1073 => Some(turtle_icon() + 2 + COPPER_ITEMS.len() as u16),
         1047 => Some(turtle_icon() + 1 + COPPER_ITEMS.len() as u16),
@@ -1547,7 +1641,11 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    turtle_icon() as u32 + 1 + COPPER_ITEMS.len() as u32 + 3 + 16 + DECOR_ITEMS as u32 + HAND_ITEMS as u32
+    passive_icon_base() as u32 + 4 + 5
+}
+
+const fn passive_icon_base() -> u16 {
+    turtle_icon() + 1 + COPPER_ITEMS.len() as u16 + 3 + 16 + DECOR_ITEMS + HAND_ITEMS
 }
 
 /// The turtle helmet's icon follows the animal items; copper equipment follows it,
@@ -1701,7 +1799,10 @@ pub fn effect_icon_layer(effect: crate::simulation::effects::Effect) -> u16 {
 
 /// The sprite drawn on item icon `index` (see `tex::item_layer`).
 pub fn sprite_for_layer(index: u16) -> Option<Sprite> {
-    Item::all_items().filter(|i| !i.is_map()).nth(index as usize).map(|i| i.info().sprite)
+    Item::all_items()
+        .filter(|i| !i.is_map() && *i != Item::SUSPICIOUS_STEW)
+        .nth(index as usize)
+        .map(|i| i.info().sprite)
 }
 
 fn tool_name(kind: ToolKind, tier: Tier) -> &'static str {
@@ -1891,9 +1992,14 @@ mod tests {
         for i in Item::all_items().filter(|i| !i.is_map()) {
             let index = tex::item_index(i.icon_layer().unwrap()).unwrap();
             assert!((index as u32) < icon_count());
-            assert_eq!(Item::all_items().filter(|i| !i.is_map()).count() as u32, icon_count());
+
             assert_eq!(sprite_for_layer(index), Some(i.info().sprite));
         }
+        // Every atlas slot is covered; visually identical items can share one.
+        let layers: std::collections::HashSet<_> =
+            Item::all_items().filter(|i| !i.is_map()).map(|i| i.icon_layer().unwrap()).collect();
+        assert_eq!(layers.len() as u32, icon_count());
+        assert_eq!(Item::SUSPICIOUS_STEW.icon_layer(), Item::MUSHROOM_STEW.icon_layer());
         // Icons stay addressable by the UI's and models' 16-bit layers.
         assert!(tex::ITEM_BASE as u32 + icon_count() + animated_icons() + 32 <= u16::MAX as u32);
         assert_eq!(Item::from(Block::STONE).icon_layer(), None);

@@ -91,7 +91,7 @@ impl Fits {
             (Fits::Bow, ItemKind::Bow) => true,
             (Fits::Crossbow, _) => matches!(item, Item::CROSSBOW | Item::CHARGED_CROSSBOW),
             (Fits::FishingRod, ItemKind::FishingRod) => true,
-            (Fits::Durable, _) => item.durability().is_some(),
+            (Fits::Durable, _) => item != Item::WOLF_ARMOR && item.durability().is_some(),
             _ => false,
         }
     }
@@ -582,6 +582,17 @@ pub fn enchant_with_levels(rng: &mut JavaRandom, item: Item, levels: u32) -> (It
     (if item == Item::BOOK { Item::ENCHANTED_BOOK } else { item }, enchants)
 }
 
+/// Java mob_spawn_equipment provider: non-treasure, inclusive cost
+/// 5..=5+floor(17*special_multiplier).
+pub fn enchant_mob_equipment(rng: &mut JavaRandom, item: Item, special: f32) -> Enchants {
+    let cost = 5 + rng.next_bounded((17. * special.clamp(0., 1.)) as i32 + 1) as u32;
+    let mut out = Enchants::NONE;
+    for (e, level) in select(rng, item, cost, Options::Table) {
+        out.set(e, level);
+    }
+    out
+}
+
 /// The table's three offers: level cost (0 = none) and the one
 /// enchantment it shows as a clue.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -723,6 +734,9 @@ pub fn wear_anvil(world: &mut crate::world::World, pos: glam::IVec3) -> Option<b
 
 /// Whether `material` repairs `item` on an anvil (Java's repair tags).
 pub fn repairs(item: Item, material: Item) -> bool {
+    if item == Item::WOLF_ARMOR {
+        return material == Item::ARMADILLO_SCUTE;
+    }
     use crate::item::{ArmorMaterial, Tier};
     if item == Item::SHIELD {
         // `#wooden_planks`, as for wooden tools.

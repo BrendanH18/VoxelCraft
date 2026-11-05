@@ -35,7 +35,7 @@ pub const JAVA_ALLOWED: &[(&str, &str)] = &[
     ),
     (
         "crafting_special_repairitem/repair_item",
-        "grid repair of two damaged items isn't implemented; anvils and grindstones repair",
+        "general grid repair remains deferred; wolf armor supports paired repair, and anvils/grindstones repair",
     ),
     (
         "crafting_special_mapextending/map_extending",
@@ -239,12 +239,43 @@ pub struct Crafting {
     pub form: Form,
     pub result: u16,
     pub count: u8,
+    pub stew_effects: Vec<(String, u8, u32)>,
+}
+
+/// Compare the effect actually delivered on consumption, independently of
+/// VoxelCraft's saved stew component codes.
+fn stew_effects(stack: Stack) -> Vec<(String, u8, u32)> {
+    if stack.item != Item::SUSPICIOUS_STEW {
+        return Vec::new();
+    }
+    let mut vitals = voxelcraft::simulation::survival::Vitals::default();
+    voxelcraft::entity::mooshroom::consume_stew(stack, &mut vitals);
+    let mut effects: Vec<_> =
+        vitals.effects.iter().map(|e| (e.effect.id().to_string(), e.amplifier, e.ticks)).collect();
+    effects.sort();
+    effects
 }
 
 fn shaped(w: usize, h: usize, cells: Vec<Option<Alternatives>>) -> Form {
     let mirrored: Vec<_> =
         (0..h).flat_map(|y| (0..w).rev().map(move |x| (x, y))).map(|(x, y)| cells[y * w + x].clone()).collect();
     Form::Shaped(w, h, cells.min(mirrored))
+}
+
+/// ShapedRecipePattern.shrink removes empty outer rows/columns before
+/// Java stores dimensions, including the padded waxed-chiseled recipes.
+fn java_shaped(w: usize, h: usize, cells: Vec<Option<Alternatives>>) -> Form {
+    let occupied: Vec<_> = cells.iter().enumerate().filter_map(|(i, c)| c.as_ref().map(|_| (i % w, i / w))).collect();
+    if occupied.is_empty() {
+        return shaped(w, h, cells);
+    }
+    let x0 = occupied.iter().map(|p| p.0).min().unwrap();
+    let x1 = occupied.iter().map(|p| p.0).max().unwrap();
+    let y0 = occupied.iter().map(|p| p.1).min().unwrap();
+    let y1 = occupied.iter().map(|p| p.1).max().unwrap();
+    let trimmed =
+        (y0..=y1).flat_map(|y| (x0..=x1).map(move |x| (x, y))).map(|(x, y)| cells[y * w + x].clone()).collect();
+    shaped(x1 - x0 + 1, y1 - y0 + 1, trimmed)
 }
 
 fn shapeless(mut list: Vec<Alternatives>) -> Form {
@@ -285,7 +316,7 @@ impl Reference {
                         }
                     }
                 }
-                shaped(rows[0].len(), rows.len(), cells)
+                java_shaped(rows[0].len(), rows.len(), cells)
             }
             "crafting_shapeless" => {
                 let mut list = Vec::new();
@@ -296,6 +327,24 @@ impl Reference {
                     }
                 }
                 shapeless(list)
+            }
+            "crafting_imbue" => {
+                // ImbueRecipe requires nine occupied cells, with the potion
+                // source at the centre; component copying is tested separately.
+                match (self.ingredient(&recipe["source"]), self.ingredient(&recipe["material"])) {
+                    (Some(source), Some(material)) => shaped(
+                        3,
+                        3,
+                        (0..9).map(|i| Some(if i == 4 { source.clone() } else { material.clone() })).collect(),
+                    ),
+                    _ => return unregistered(),
+                }
+            }
+            "crafting_dye" if recipe["result"] == "wolf_armor" => {
+                match (self.ingredient(&recipe["target"]), self.ingredient(&recipe["dye"])) {
+                    (Some(target), Some(dyes)) => shapeless(vec![target, dyes]),
+                    _ => return unregistered(),
+                }
             }
             "crafting_transmute" if recipe.get("material_count").is_none() => {
                 // Java keeps the input's components; VoxelCraft items carry
@@ -322,7 +371,20 @@ impl Reference {
                 return JavaCrafting::Special;
             }
         };
-        JavaCrafting::Compared(Crafting { form, result: result.0, count })
+        let mut stew_effects: Vec<_> = recipe["components"]["minecraft:suspicious_stew_effects"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|e| {
+                (
+                    e["id"].as_str().unwrap().trim_start_matches("minecraft:").to_string(),
+                    0,
+                    e["duration"].as_u64().unwrap() as u32,
+                )
+            })
+            .collect();
+        stew_effects.sort();
+        JavaCrafting::Compared(Crafting { form, result: result.0, count, stew_effects })
     }
 }
 
@@ -337,7 +399,7 @@ pub fn voxelcraft_crafting() -> Vec<(usize, Crafting)> {
                 Layout::Shaped(w, h, cells) => shaped(w, h, cells.into_iter().map(|c| c.map(set)).collect()),
                 Layout::Shapeless(list) => shapeless(list.iter().map(|o| set(o)).collect()),
             };
-            (i, Crafting { form, result: r.result.item.0, count: r.result.count })
+            (i, Crafting { form, result: r.result.item.0, count: r.result.count, stew_effects: stew_effects(r.result) })
         })
         .collect()
 }
@@ -385,7 +447,8 @@ pub fn describe(names: &Names, c: &Crafting) -> String {
         }
         Form::Shapeless(list) => format!("shapeless {}", list.iter().map(alt).collect::<Vec<_>>().join(" + ")),
     };
-    format!("{} x{} <- {body}", names.name(Item(c.result)), c.count)
+    let effects = if c.stew_effects.is_empty() { String::new() } else { format!(" {:?}", c.stew_effects) };
+    format!("{} x{}{effects} <- {body}", names.name(Item(c.result)), c.count)
 }
 
 /// Every item VoxelCraft can hold: non-block items, the creative palette
@@ -483,7 +546,14 @@ pub fn compare_crafting(r: &Reference) -> Section {
             let mut ok = true;
             for grid in grids(&c) {
                 let got = grid.result();
-                if got != Some(Stack::new(Item(c.result), c.count)) {
+                let matches = got.is_some_and(|mut stack| {
+                    let effects = stew_effects(stack);
+                    if matches!(stack.item, Item::SUSPICIOUS_STEW | Item::WOLF_ARMOR) {
+                        stack.entity_data = 0;
+                    }
+                    stack == Stack::new(Item(c.result), c.count) && effects == c.stew_effects
+                });
+                if !matches {
                     let cells: Vec<String> = grid.cells[..grid.size * grid.size]
                         .iter()
                         .map(|c| c.map_or("_".into(), |s| r.names.name(s.item)))
@@ -491,7 +561,7 @@ pub fn compare_crafting(r: &Reference) -> Section {
                     s.failures.push(format!(
                         "{key}: grid {} crafts {:?} instead",
                         cells.join(" "),
-                        got.map(|s| (r.names.name(s.item), s.count))
+                        got.map(|s| (r.names.name(s.item), s.count, stew_effects(s)))
                     ));
                     ok = false;
                     break;

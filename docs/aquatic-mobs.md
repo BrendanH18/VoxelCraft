@@ -83,3 +83,12 @@ list every remaining difference.
 - [Guardian loot data](https://raw.githubusercontent.com/misode/mcmeta/1.21.5-data/data/minecraft/loot_table/entities/guardian.json).
 - [Elder guardian loot data](https://raw.githubusercontent.com/misode/mcmeta/1.21.5-data/data/minecraft/loot_table/entities/elder_guardian.json).
 - [Mojang’s elder guardian overview](https://www.minecraft.net/en-us/article/meet-elder-guardian).
+
+## Tadpoles and frogs (v0.15)
+
+Implemented, unverified: tadpoles hatch from frogspawn, swim and flop on
+land, suffocate out of water, take slimeballs and retain age in water
+buckets. Their adult frog variant follows Java 26.3 biome tag selectors at
+growth. Frogs use amphibious movement and lay spawn beside water after
+breeding. See [animals](animals.md#frogs-and-tadpoles-v015-java-263) and
+[the passive track record](verification/2026-11-04-v0.15-passive-mobs.md).

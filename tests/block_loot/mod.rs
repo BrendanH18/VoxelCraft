@@ -213,6 +213,7 @@ fn property(b: Block, java: &str, prop: &str) -> String {
         "age" => b
             .as_crop()
             .map(|(_, age)| age)
+            .or(voxelcraft::world::crops::stem(b).map(|(_, age, _)| age))
             .or(b.wart_age())
             .or(ob::cocoa_of(b).map(|(age, _)| age))
             .or(ob::berry_age(b))

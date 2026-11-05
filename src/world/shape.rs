@@ -487,6 +487,7 @@ pub fn shape_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bloc
             out.push(b(min, max));
         }
         Some(Shaped::Rail) => out.push(RAIL),
+        Some(Shaped::Custom) if block == super::frog_blocks::FROGSPAWN => return super::frog_blocks::spawn_boxes(),
         Some(Shaped::Custom) if super::scaffolding::is_scaffolding(block) => return super::scaffolding::outline(block),
         Some(Shaped::Custom) if super::wood::owns(block.0) => return super::wood::mesh_boxes(block).unwrap_or(out),
         Some(Shaped::Custom) if let Some(boxes) = super::colour_blocks::boxes(block) => return boxes,
@@ -550,6 +551,9 @@ pub fn outline_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bl
     let block = block.canonical();
     let neighbour = |f: Facing| neighbour(f).canonical();
     let below = below.canonical();
+    if let Some(boxes) = super::crops::outline(block) {
+        return boxes;
+    }
     if let Some(boxes) = super::wood::outline(block) {
         return boxes;
     }

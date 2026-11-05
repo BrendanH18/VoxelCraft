@@ -36,7 +36,9 @@
 //! so their three unused coordinate bits in word 0 (5, 11, 17) store
 //! layer bits 8-10 instead. A face with area has a lower v bound of at most
 //! 15, so the top bit of that bound (word 0 bit 30) stores layer bit 11.
-//! All passes address 4096 texture layers.
+//! All passes address 4096 texture layers. Detail upper/plane coordinate
+//! code 31 represents 1.5/16 (frogspawn); ordinary shape coordinates remain
+//! integer sixteenths. The code is decoded only in the detail vertex path.
 //!
 //! Faces 6 and 7 are the two diagonal planes of a cross-shaped block
 //! (plants, torches) at the cell `(x, y, z)`: face 6 runs from (0, 0) to
@@ -512,6 +514,7 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                 || b.is_ladder()
                 || b.is_door()
                 || b.is_rail()
+                || b == crate::world::frog_blocks::FROGSPAWN
                 || matches!(b, Block::IRON_BARS | Block::BREWING_STAND)
                 || crate::world::copper::see_through(b)
                 || crate::world::overworld_blocks::bud_facing(b).is_some()
@@ -564,7 +567,15 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                 }
                 let (ao, light) = shade_corners(blocks, sky, blk, front, su, sv, true);
                 let (ao, light) = (ao as u32, light as u32);
-                let r = r.map(u32::from);
+                let coord = |value: u8, axis: usize| {
+                    if b == crate::world::frog_blocks::FROGSPAWN && axis == 1 && value == 2 {
+                        31
+                    } else {
+                        u32::from(value)
+                    }
+                };
+                let r = [coord(r[0], u), coord(r[1], u), coord(r[2], v), coord(r[3], v)];
+                let depth = coord(depth, d);
                 out[pass].push([
                     (x | y << 6 | z << 12) as u32
                         | (layer >> 8 & 1) << 5
@@ -575,7 +586,7 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                         | r[2] << 26
                         | (layer >> 11 & 1) << 30
                         | flip_diagonal(ao, light) << 31,
-                    (layer & 255) | ao << 8 | r[1] << 16 | r[3] << 21 | (depth as u32) << 26 | DETAIL,
+                    (layer & 255) | ao << 8 | r[1] << 16 | r[3] << 21 | depth << 26 | DETAIL,
                     light,
                 ]);
             }
@@ -670,7 +681,10 @@ mod tests {
             let coord_mask = if detail { 31 } else { 63 };
             let base = [q[0] & coord_mask, q[0] >> 6 & coord_mask, q[0] >> 12 & coord_mask].map(|x| x as f32);
             let pos = if detail {
-                let sixteenths = |shift: u32, word: u32| (word >> shift & 31) as f32 / 16.0;
+                let sixteenths = |shift: u32, word: u32| {
+                    let value = word >> shift & 31;
+                    if value == 31 { 1.5 / 16.0 } else { value as f32 / 16.0 }
+                };
                 let mut p = base;
                 p[d] += sixteenths(26, q[1]);
                 p[u] += if c == 1 || c == 2 { sixteenths(16, q[1]) } else { sixteenths(21, q[0]) };
@@ -1010,6 +1024,17 @@ mod tests {
                 assert!(expected.contains(&c.pos[1]), "{c:?}");
             }
         }
+    }
+
+    #[test]
+    fn frogspawn_cutout_mesh_uses_the_exact_half_sixteenth_top() {
+        let m = mesh_blocks(&[([5, 4, 5], Block::WATER), ([5, 5, 5], crate::world::frog_blocks::FROGSPAWN)]);
+        let pass = m.quads_of(CUTOUT);
+        assert_eq!(pass.quads.len(), 6);
+        assert!(m.quads_of(OPAQUE).quads.is_empty());
+        let ys: Vec<_> = all_corners(&pass).map(|c| c.pos[1]).collect();
+        assert!(ys.iter().all(|y| *y == 5.0 || *y == 5.09375));
+        assert!(ys.contains(&5.09375));
     }
 
     #[test]

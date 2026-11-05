@@ -38,6 +38,7 @@ pub fn exchange(contents: Contents, held: Item) -> Option<(Contents, Item)> {
 /// precedes the item's own use, as Java's `useItemOn` does).
 pub fn takes(b: Block, held: Option<Item>) -> bool {
     match (cauldron_of(b), held) {
+        (Some(Contents::Water(level)), Some(Item::WOLF_ARMOR)) if level > 0 => true,
         (Some(contents), Some(item)) => exchange(contents, item).is_some(),
         _ => false,
     }
@@ -293,4 +294,16 @@ impl World {
     pub fn is_empty_cauldron(&self, p: IVec3) -> bool {
         self.get_block(p) == Some(CAULDRON)
     }
+}
+
+/// DyedItemColor washing preserves the rest of the stack and lowers water once.
+pub fn wash_wolf_armor(
+    contents: Contents,
+    stack: crate::inventory::Stack,
+) -> Option<(Contents, crate::inventory::Stack)> {
+    let Contents::Water(level) = contents else { return None };
+    if level == 0 {
+        return None;
+    }
+    Some((Contents::Water(level - 1), crate::entity::wolf_armor::washed(stack)?))
 }

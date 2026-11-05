@@ -323,6 +323,7 @@ impl PlayerSession {
         if held.is_some_and(|s| s.item == Item::SHEARS) {
             world.disarm_tripwire(pos);
         }
+        let hive_handled = world.mine_beehive(entities, pos, block, held, self.id, drops && harvest);
         world.set_block(pos, if melts { Block::WATER } else { Block::AIR });
         if melts {
             world.particles.push(Request::Break { cell: pos, block });
@@ -338,7 +339,7 @@ impl PlayerSession {
                 world.spill_with_item(below, lower, held);
             }
         }
-        if drops && harvest {
+        if drops && harvest && !hive_handled {
             world.spill_with_item(pos, block, held);
             entities.drop_mined_xp(block, pos, tool);
         }

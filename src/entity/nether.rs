@@ -629,6 +629,9 @@ impl Entities {
                 let (kind, pos, burning) = (self.mobs[i].kind, self.mobs[i].pos, self.mobs[i].burning);
                 let killed = self.mobs[i].damage(damage, Some(knockback), &mut self.rng);
                 self.nether_hurt(i, Foe::Mob(attacker));
+                self.polar_hurt(i, Foe::Mob(attacker));
+                self.panda_hurt(i, Foe::Mob(attacker));
+                self.armadillo_hurt(i, Foe::Mob(attacker));
                 if let Some(owner) = self.mobs[i].animal.as_ref().and_then(|a| a.owner) {
                     self.animals_defend_owner(attacker, owner);
                 }
@@ -964,7 +967,16 @@ impl Entities {
             .filter(|m| {
                 // Breedable mobs (natural axolotls and hoglins too) keep being saved
                 // although natural ones no longer require persistence.
-                (m.persistent || m.kind.never_distance_despawns() || m.kind.has_animal_state())
+                (m.persistent
+                    || m.lightning_charged
+                    || m.kind.never_distance_despawns()
+                    || m.kind.has_animal_state()
+                    || super::undead_mounts::undead(m.kind)
+                    || m.riding.is_some()
+                    || matches!(m.kind, MobKind::Zombie | MobKind::Husk | MobKind::Drowned)
+                    || matches!(m.kind, MobKind::Stray | MobKind::Bogged | MobKind::Phantom)
+                    || m.kind == MobKind::Bat
+                    || m.freezing.as_ref().is_some_and(|f| f.exposure > 0 || f.conversion.is_some()))
                     && m.alive()
                     && m.villager.is_none()
                     && !matches!(m.kind, MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama)
@@ -1476,7 +1488,7 @@ fn sense_zoglin<W: MobWorld + ?Sized>(m: &mut Mob, view: &[Seen], world: &W, ctx
     };
 }
 
-fn save_mob(m: &Mob) -> Value {
+pub(crate) fn save_mob(m: &Mob) -> Value {
     let n = m.nether.as_deref();
     let armor: Vec<bool> = m.armor.iter().map(|a| a.is_some()).collect();
     let mut v = json!({
@@ -1512,6 +1524,59 @@ fn save_mob(m: &Mob) -> Value {
         "home": n.and_then(|n| n.home).map(|h| h.to_array()),
         "celebrate": n.filter(|n| n.celebrate_left > 0.0).map(|n| json!([n.celebrate_left, n.celebrate_at.to_array(), n.dancing])),
     });
+    // Optional additions preserve legacy records byte-for-byte when absent.
+    if m.water_conversion != super::lightning::WaterConversion::default() {
+        v["water_conversion"] = m.water_conversion.save();
+    }
+    if m.lightning_charged {
+        v["lightning_charged"] = json!(true);
+    }
+    if m.undead_mount != super::undead_mounts::State::default() {
+        v["undead_mount"] = m.undead_mount.save();
+    }
+    if m.armor_glint != 0 {
+        v["armor_glint"] = json!(m.armor_glint);
+    }
+    // Legacy true already means gold. Only other materials need new data.
+    if m.armor.iter().flatten().any(|k| *k != super::armor::ArmorKind::Gold) {
+        v["armor_materials"] = json!(m.armor.map(|a| a.map(|k| k as u8)));
+    }
+    if let Some(s) = m.bee {
+        v["bee"] = s.save();
+    }
+    if let Some(bow) = &m.skeleton_bow {
+        v["skeleton_bow"] = json!(crate::inventory::stack_to_string(Some(**bow)));
+    }
+    if let Some(p) = &m.phantom {
+        v["phantom"] = p.save();
+    }
+    if let Some(f) = &m.freezing {
+        v["freezing"] = f.save();
+    }
+    if let Some(stack) = m.wolf_armor.as_ref().and_then(|s| s.armor) {
+        v["wolf_armor"] = json!(crate::inventory::stack_to_string(Some(stack)));
+    }
+    if let Some(s) = &m.ocelot {
+        v["ocelot"] = json!({"trusting":s.trusting});
+    }
+    if let Some(s) = &m.armadillo {
+        v["armadillo"] = s.save();
+    }
+    if let Some(s) = &m.panda {
+        v["panda"] = s.save();
+    }
+    if let Some(s) = &m.polar_bear {
+        v["polar_bear"] = s.save();
+    }
+    if let Some(s) = &m.frog {
+        v["frog"] = s.save();
+    }
+    if let Some(s) = &m.bat {
+        v["bat_resting"] = json!(s.resting);
+    }
+    if let Some(s) = &m.mooshroom {
+        v["mooshroom"] = s.save();
+    }
     // Written only when set, so other mobs save as before: `Mob.homePosition`
     // and `homeRadius`, and the dolphin's `GotFish` and main hand.
     if let Some((p, r)) = m.restrict {
@@ -1528,7 +1593,7 @@ fn save_mob(m: &Mob) -> Value {
     v
 }
 
-fn load_mob(v: &Value) -> Option<Mob> {
+pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     let kind = MobKind::from_name(v["kind"].as_str()?)?;
     let p = v["pos"].as_array()?;
     let pos = DVec3::new(p.first()?.as_f64()?, p.get(1)?.as_f64()?, p.get(2)?.as_f64()?);
@@ -1541,23 +1606,71 @@ fn load_mob(v: &Value) -> Option<Mob> {
     m.uid =
         v["uid"].as_u64().and_then(|u| u32::try_from(u).ok()).filter(|u| *u < super::mounts::MOB_VEHICLE).unwrap_or(0);
     m.riding = v["riding"].as_u64().and_then(|u| u32::try_from(u).ok());
+    if kind == MobKind::Bee {
+        m.bee = Some(super::bee::State::load(&v["bee"]));
+    }
     if v["mount"].is_object() && super::mounts::rideable(kind) {
         m.mount = Some(Box::new(super::mounts::State::load(kind, &v["mount"])?));
     }
     if let Some(a) = &mut m.aquatic {
         a.variant = v["variant"].as_u64().unwrap_or(0).min(255) as u8;
     }
+    m.undead_mount = super::undead_mounts::State::load(&v["undead_mount"]);
+    m.lightning_charged = v["lightning_charged"] == true;
+    m.water_conversion = super::lightning::WaterConversion::load(&v["water_conversion"]);
     m.baby = v["baby"].as_bool().unwrap_or(false);
     m.age =
         v["age"].as_i64().unwrap_or(if m.baby && kind.is_breedable() { -24000 } else { 0 }).clamp(-24000, 6000) as i32;
+    if matches!(kind, MobKind::Frog | MobKind::Tadpole) {
+        m.baby = false;
+        m.age = m.age.max(0);
+    }
     if kind == MobKind::Chicken {
         m.egg_timer =
             v["egg_timer"].as_f64().filter(|t| t.is_finite() && *t >= 0.0).unwrap_or(m.egg_timer as f64).min(600.0)
                 as f32;
     }
+    if let Some(p) = &mut m.phantom {
+        p.load(&v["phantom"]);
+    }
+    if kind.is_bow_skeleton()
+        && let Some(t) = v["skeleton_bow"].as_str()
+    {
+        m.skeleton_bow = crate::inventory::stack_from_str(t).flatten().filter(|s| s.item == Item::BOW).map(Box::new);
+    }
     m.sheared = v["sheared"].as_bool().unwrap_or(false);
+    if kind == MobKind::Skeleton && v["freezing"].is_object() {
+        m.freezing = Some(super::hostiles::Freezing::load(&v["freezing"]));
+    }
+    if let Some(s) = &mut m.wolf_armor {
+        s.load(v["wolf_armor"].as_str());
+    }
+    if let Some(s) = &mut m.ocelot {
+        s.trusting = v["ocelot"]["trusting"].as_bool().unwrap_or(false);
+    }
+    if let Some(s) = &mut m.armadillo {
+        s.load(&v["armadillo"]);
+    }
+    if let Some(s) = &mut m.panda {
+        s.load(&v["panda"]);
+    }
+    if let Some(s) = &mut m.polar_bear {
+        s.load(&v["polar_bear"]);
+    }
+    if let Some(s) = &mut m.frog {
+        s.load(&v["frog"]);
+    }
+    if let Some(s) = &mut m.bat {
+        s.resting = v["bat_resting"].as_bool().unwrap_or(true);
+    }
+    if let Some(s) = m.mooshroom.as_mut() {
+        s.load(&v["mooshroom"]);
+    }
     if let Some(a) = m.animal.as_mut() {
         super::animals::load(a, &v["animal"]);
+        if kind == MobKind::Cat {
+            a.variant = v["animal"]["variant"].as_u64().unwrap_or(0).min(10) as u8;
+        }
     }
     m.effects = crate::simulation::effects::Effects::deserialize(v["effects"].as_str().unwrap_or(""));
     m.grow = v["grow"].as_f64().filter(|g| g.is_finite() && *g >= 0.0).unwrap_or(0.0) as f32;
@@ -1570,9 +1683,13 @@ fn load_mob(v: &Value) -> Option<Mob> {
             *slot = worn.as_bool().unwrap_or(false).then_some(super::armor::ArmorKind::Gold);
         }
     }
-    if kind == MobKind::ZombifiedPiglin {
-        m.held = v["held"].as_str().map(Weapon::from_name);
+    if let Some(armor) = v["armor_materials"].as_array() {
+        for (slot, material) in m.armor.iter_mut().zip(armor) {
+            *slot = material.as_u64().and_then(|i| super::armor::ArmorKind::ALL.get(i as usize).copied());
+        }
     }
+    m.held = v["held"].as_str().map(Weapon::from_name);
+    m.armor_glint = v["armor_glint"].as_u64().unwrap_or(0).min(15) as u8;
     m.restrict = v["restrict"].as_array().filter(|a| a.len() == 4).and_then(|a| {
         let n = |i: usize| a[i].as_i64().and_then(|n| i32::try_from(n).ok());
         Some((IVec3::new(n(0)?, n(1)?, n(2)?), n(3)?.max(0)))
@@ -2168,7 +2285,9 @@ mod tests {
         let text = e.nether_mobs_to_string();
         let mut loaded = Entities::new(4);
         loaded.load_nether_mobs(&text);
-        assert_eq!(loaded.mobs.len(), 1, "only persistent nether mobs are saved");
+        assert_eq!(loaded.mobs.len(), 2, "persistent piglins and conversion-capable natural zombies save");
+        assert_eq!(loaded.mobs.iter().filter(|m| m.kind == MobKind::Piglin).count(), 1);
+        assert!(loaded.mobs.iter().any(|m| m.kind == MobKind::Zombie && !m.persistent));
         let (a, b) = (&e.mobs[0], &loaded.mobs[0]);
         assert_eq!((a.kind, a.pos, a.health, a.baby, a.armor), (b.kind, b.pos, b.health, b.baby, b.armor));
         let (na, nb) = (a.nether.as_ref().unwrap(), b.nether.as_ref().unwrap());
@@ -2185,7 +2304,7 @@ mod tests {
         // Old levels without the key, and junk, load nothing.
         loaded.load_nether_mobs("");
         loaded.load_nether_mobs("{\"mobs\":[{\"kind\":\"dragon\"},{\"kind\":\"piglin\",\"pos\":[1,\"x\",2]}]}");
-        assert_eq!(loaded.mobs.len(), 1);
+        assert_eq!(loaded.mobs.len(), 2, "malformed entries do not add to the restored piglin and zombie");
     }
 
     #[test]

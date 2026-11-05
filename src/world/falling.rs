@@ -34,7 +34,7 @@ impl FallingBlock {
 
 /// Whether a falling block passes through (and lands over) this block.
 pub fn can_fall_into(b: Block) -> bool {
-    b == Block::AIR || b.is_fluid() || b.kind() == RenderKind::Cross
+    b == Block::AIR || b.is_fluid() || b.kind() == RenderKind::Cross || b == super::frog_blocks::FROGSPAWN
 }
 
 impl World {
@@ -254,6 +254,9 @@ impl World {
             while y as f64 + 1.0 > target {
                 match self.get_block(IVec3::new(cell.x, y, cell.z)) {
                     Some(b) if can_fall_into(b) && y >= self.min_y() => {
+                        if b == super::frog_blocks::FROGSPAWN {
+                            self.edit(IVec3::new(cell.x, y, cell.z), Block::AIR, false);
+                        }
                         if f.block.concrete_powder_color().is_some() && b.is_water() {
                             landed.push((IVec3::new(cell.x, y, cell.z), *f));
                             return false;

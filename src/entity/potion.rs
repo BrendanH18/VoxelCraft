@@ -29,6 +29,7 @@ const MAX_FLIGHT: f32 = 30.0;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ThrownPotion {
     pub potion: Potion,
+    pub lingering: bool,
     /// The throwing player; witches throw with `None`.
     pub owner: Option<PlayerId>,
     pub pos: DVec3,
@@ -49,11 +50,11 @@ pub fn aim_up(dir: DVec3) -> DVec3 {
 impl ThrownPotion {
     /// A LAN client's copy: drawn only, never simulated.
     pub(super) fn replica(potion: Potion, pos: DVec3, previous_pos: DVec3) -> Self {
-        Self { potion, owner: None, pos, previous_pos, vel: DVec3::ZERO, age: 0.0 }
+        Self { potion, lingering: false, owner: None, pos, previous_pos, vel: DVec3::ZERO, age: 0.0 }
     }
 
     pub fn new(potion: Potion, owner: Option<PlayerId>, pos: DVec3, vel: DVec3) -> Self {
-        Self { potion, owner, pos, previous_pos: pos, vel, age: 0.0 }
+        Self { potion, lingering: false, owner, pos, previous_pos: pos, vel, age: 0.0 }
     }
 
     /// A player's throw from `eye` along their look direction `dir`, adding
@@ -92,6 +93,15 @@ impl ThrownPotion {
                 m.alive() && next.cmpge(min).all() && next.cmple(max).all()
             });
             if hit_player || hit_mob.is_some() {
+                if self.lingering {
+                    if let Some(i) = hit_mob {
+                        self.pos = mobs[i].pos;
+                    } else if let Some(t) =
+                        ctx.players.iter().find(|t| t.alive && t.contains(next) && self.owner != Some(t.id))
+                    {
+                        self.pos = t.pos;
+                    }
+                }
                 self.shatter(ctx, mobs, rng, events);
                 return false;
             }
@@ -104,7 +114,11 @@ impl ThrownPotion {
 
     fn shatter(&self, ctx: &Ctx, mobs: &mut [Mob], rng: &mut Rng, events: &mut Vec<EntityEvent>) {
         events.push(EntityEvent::PotionSplashed { pos: self.pos, colour: self.potion.colour() });
-        splash(self.potion, self.owner, self.pos, self.age, ctx, mobs, rng, events);
+        if self.lingering {
+            events.push(EntityEvent::LingeringCloud { pos: self.pos, potion: self.potion, owner: self.owner });
+        } else {
+            splash(self.potion, self.owner, self.pos, self.age, ctx, mobs, rng, events);
+        }
     }
 }
 
@@ -171,8 +185,7 @@ pub(super) fn splash(
             // Java's `ThrownSplashPotion` adds every other effect to each
             // living recipient; the undead ignore Poison and Regeneration.
             for mob in mobs.iter_mut() {
-                let undead = mob.kind.creature() == crate::enchant::Creature::Undead;
-                if !mob.alive() || (undead && matches!(effect, Effect::Poison | Effect::Regeneration)) {
+                if !mob.alive() || !mob.kind.accepts_potion_effect(effect) {
                     continue;
                 }
                 let (min, max) = mob.aabb();
@@ -218,12 +231,12 @@ pub(super) fn splash(
                     mob.player_hit();
                 }
                 let (kind, burning, at) = (mob.kind, mob.burning, mob.pos);
-                let killed = mob.damage(amount, None, rng);
+                let killed = mob.damage_bypassing_wolf_armor(amount, None, rng);
                 if owner.is_some() {
                     events.push(EntityEvent::MobShot { kind, pos: at, killed, burning, player_kill: true, owner });
                 }
             } else {
-                mob.health = (mob.health + amount).min(mob.kind.max_health());
+                mob.health = (mob.health + amount).min(mob.max_health());
             }
         }
     }
@@ -352,6 +365,26 @@ mod tests {
         assert!(mobs[0].health < MobKind::Zombie.max_health(), "healing hurts the undead");
     }
 
+    #[test]
+    fn panda_splash_healing_respects_the_expressed_weak_gene_health() {
+        use crate::entity::panda::Gene;
+        let mut mobs = [Mob::new(MobKind::Panda, DVec3::new(0.5, 10.0, 0.0), 0.0)];
+        let s = mobs[0].panda.as_mut().unwrap();
+        s.main = Gene::Weak;
+        s.hidden = Gene::Weak;
+        mobs[0].health = 9.0;
+        splash(
+            Potion::from_id("healing").unwrap(),
+            None,
+            DVec3::new(0.5, 10.0, 0.0),
+            0.0,
+            &ctx(vec![]),
+            &mut mobs,
+            &mut Rng::new(3),
+            &mut Vec::new(),
+        );
+        assert_eq!(mobs[0].health, 10.0);
+    }
     #[test]
     fn mobs_take_every_splash_effect_except_undead_poison_and_regeneration() {
         let c = ctx(vec![]);

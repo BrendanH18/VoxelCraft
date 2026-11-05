@@ -76,14 +76,16 @@ struct VsOut {
     @location(2) light: vec3<f32>,
     @location(3) dist: f32,
     @location(4) rel: vec3<f32>,
+    @location(5) tint: vec3<f32>,
 };
 
-fn transform(pos: vec3<f32>, uv: vec2<f32>, layer: u32, light: vec3<f32>) -> VsOut {
+fn transform(pos: vec3<f32>, uv: vec2<f32>, layer: u32, light: vec3<f32>, tint: vec4<f32>) -> VsOut {
     var out: VsOut;
     out.clip = g.view_proj * vec4<f32>(pos, 1.0);
     out.uv = uv;
     out.layer = layer;
     out.light = light;
+    out.tint = tint.rgb;
     out.dist = length(pos);
     out.rel = pos;
     return out;
@@ -95,8 +97,9 @@ fn vs_main(
     @location(1) uv: vec2<f32>,
     @location(2) layer: u32,
     @location(3) light: vec3<f32>,
+    @location(4) tint: vec4<f32>,
 ) -> VsOut {
-    return transform(pos, uv, layer, light);
+    return transform(pos, uv, layer, light, tint);
 }
 
 // The first-person hand: like `vs_main`, but with depth pulled into the
@@ -108,8 +111,9 @@ fn vs_hand(
     @location(1) uv: vec2<f32>,
     @location(2) layer: u32,
     @location(3) light: vec3<f32>,
+    @location(4) tint: vec4<f32>,
 ) -> VsOut {
-    var out = transform(pos, uv, layer, light);
+    var out = transform(pos, uv, layer, light, tint);
     let depth = out.clip.z / out.clip.w;
     out.clip.z = out.clip.w * (0.75 + 0.25 * clamp(depth * 4.0, 0.0, 1.0));
     out.dist = 0.0;
@@ -161,6 +165,6 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let torch = l.y * vec3<f32>(1.0, 0.86, 0.66);
     let lit = night_vision(dimension_light(l.x * g.params.z * daylight_tint(normal), torch)) * in.light.y;
     let f = clamp((in.dist - g.params.x) / (g.params.y - g.params.x), 0.0, 1.0);
-    let c = mix(tex.rgb * lit, g.fog_color.rgb, f * f * (3.0 - 2.0 * f));
+    let c = mix(tex.rgb * in.tint * lit, g.fog_color.rgb, f * f * (3.0 - 2.0 * f));
     return vec4<f32>(c, 1.0);
 }

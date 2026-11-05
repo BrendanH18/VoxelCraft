@@ -82,6 +82,15 @@ water in rivers (1 in 15 attempts) and oceans (1 in 40, deeper than 5 below sea 
 and still burn on land. All three have a 5% baby chance (half size, +50% speed, 12 xp).
 No trident drowned (rare iron/carrot/potato and copper pools are implemented; see below).
 
+V0.15 track 1 adds eye-submerged conversion (implemented/unverified): 600
+ticks of exposure, then 300 ticks counting down through zero with shaking;
+husks become zombies and zombies become drowned. Java 26.3 cancels the
+countdown on leaving the water. Timers, name, identity, persistence, age,
+effects, equipment and rider links survive saves. See [lightning and undead
+mount evidence](verification/2026-11-04-v0.15-lightning.md), which also records
+charged creepers, lightning transformations and the new horsemen.
+
+
 ## Witch and splash potions
 
 26 health, spawns at night (weight 5/100, boosted in swamps). Throws a splash potion
@@ -127,3 +136,32 @@ neither rare pool. `undead_loot.json` is extracted from the pinned 26.3 server
 loot tables; tests cover exclusivity, probabilities, credit and smelting.
 Tridents, drowned trident equipment and projectile behavior require new content
 and remain outside this defect-only change. Java loot RNG sequence parity remains open.
+
+## Stray and bogged (v0.15, implemented, unverified)
+
+The Java 26.3 biome entries now spawn strays in snowy plains/ice spikes
+(weight 80, skeletons 20) and bogged in swamp/mangrove swamp (weight 30,
+skeletons 70), packs of four. Strays require sky visibility. Skeletons convert
+in powder snow with the reference exposure/countdown and cancellation rules.
+Bogged have 16 health and shear once for two independent mushroom rolls.
+Both use original procedural skeleton-variant models, burn in daylight, drop
+bones/arrows and can drop their potion-bearing tipped arrow on a player kill.
+Natural variants and conversion/shearing state save through the mob store.
+
+Mob-fired stray arrows apply 600 ticks of Slowness I; bogged apply 100 ticks
+of Poison I. Player loot arrows use the registered potion at one-eighth
+duration. Skeleton AI/equipment gaps and remaining verification
+are listed in [track evidence](verification/2026-11-04-v0.15-hostiles.md).
+
+## Phantom (v0.15, implemented, unverified)
+
+Phantoms use a custom insomnia spawner, saved rest ticks per player, and the
+`spawn_phantoms` rule. The pinned Java random rest predicate first becomes
+possible at 72,001 ticks. Attempts require sky darkness, sea level/sky
+visibility and a local-difficulty roll; groups contain 1 through difficulty
+id + 1 mobs. They circle an anchor, swoop at players, retreat from cats/hurt,
+burn in daylight, and drop the existing phantom membrane item on player kills.
+Membranes now brew Slow Falling. Natural size is zero; size/anchor persist.
+Original blue ray geometry has animated wings. See the
+[hostiles record](verification/2026-11-04-v0.15-hostiles.md) for source classes,
+AI scheduling/equipment differences, checks and missing graphical evidence.

@@ -270,6 +270,7 @@ impl PlayerSession {
         self.player.vel = DVec3::ZERO;
         self.player.flying = false;
         self.sleeping = Some(0.0);
+        self.vitals.time_since_rest = 0;
         self.sleep_spot = bed.map(|(head, facing)| SleepSpot { head, facing, lie: at });
     }
 

@@ -19,8 +19,8 @@
 //!
 //! Remaining VoxelCraft limits, recorded in the lighting/spawning report:
 //! structure spawn overrides (swamp huts, monuments, outposts) are not
-//! applied, and list entries for mobs VoxelCraft lacks (strays, bogged,
-//! parched, zombie horses, ocelots) end their pack.
+//! applied, and list entries for mobs VoxelCraft lacks (parched, ocelots)
+//! end their pack.
 
 use super::category::{self, MobCategory};
 use super::*;
@@ -73,21 +73,25 @@ impl JavaMonster {
         }
     }
 
-    /// The kind this cycle spawns for the entry; zombie horses, strays,
-    /// bogged, parched and ocelots are not in VoxelCraft yet.
+    /// The kind this cycle spawns for the entry; parched are not in
+    /// VoxelCraft yet.
     pub(super) fn kind(self) -> Option<MobKind> {
         Some(match self {
             JavaMonster::Known(k) => k,
             JavaMonster::Spider => MobKind::Spider,
             JavaMonster::Zombie => MobKind::Zombie,
+            JavaMonster::ZombieHorse => MobKind::ZombieHorse,
             JavaMonster::ZombieVillager => MobKind::ZombieVillager,
             JavaMonster::Skeleton => MobKind::Skeleton,
+            JavaMonster::Stray => MobKind::Stray,
+            JavaMonster::Bogged => MobKind::Bogged,
             JavaMonster::Creeper => MobKind::Creeper,
             JavaMonster::Enderman => MobKind::Enderman,
             JavaMonster::Witch => MobKind::Witch,
             JavaMonster::Husk => MobKind::Husk,
             JavaMonster::Slime => MobKind::Slime,
             JavaMonster::Drowned => MobKind::Drowned,
+            JavaMonster::Ocelot => MobKind::Ocelot,
             _ => return None,
         })
     }
@@ -311,7 +315,7 @@ pub(super) fn valid_spawn_floor(b: Block, kind: MobKind) -> bool {
     }
     match b {
         // Ice is for polar bears; magma for the fire immune.
-        Block::ICE => return false,
+        Block::ICE => return kind == MobKind::PolarBear,
         Block::MAGMA => return kind.fire_immune(),
         _ => {}
     }
@@ -320,7 +324,7 @@ pub(super) fn valid_spawn_floor(b: Block, kind: MobKind) -> bool {
     if b == Block::BEDROCK
         || b == Block::GLASS
         || b == redstone_blocks::MOVING
-        || (b.is_leaves() && kind != MobKind::Parrot)
+        || (b.is_leaves() && !matches!(kind, MobKind::Parrot | MobKind::Ocelot))
         || name.ends_with("stained glass")
         || matches!(name, "tinted glass" | "barrier" | "scaffolding" | "chorus flower" | "frosted ice")
         || name.contains("trapdoor")
@@ -452,6 +456,17 @@ pub(super) fn monster_spot_ok<W: MobWorld + ?Sized>(
     } else if !dark_enough(world, cell, rules.light.monster_darken, rng) {
         return false;
     }
+    if kind == MobKind::Stray {
+        let mut sky_cell = cell;
+        while sky_cell.y < rules.dimension.max_y()
+            && world.block(sky_cell + IVec3::Y) == Some(crate::world::scaffolding::POWDER_SNOW)
+        {
+            sky_cell.y += 1;
+        }
+        if world.sky_light_level(sky_cell) != Some(15) {
+            return false;
+        }
+    }
     // Husks use `checkSurfaceMonstersSpawnRules`: they also need to see the sky.
     if kind == MobKind::Husk && world.sky_light_level(cell) != Some(15) {
         return false;
@@ -469,6 +484,8 @@ pub(super) fn cycle_kind(kind: MobKind) -> bool {
             | MobKind::ZombieVillager
             | MobKind::Husk
             | MobKind::Skeleton
+            | MobKind::Stray
+            | MobKind::Bogged
             | MobKind::Creeper
             | MobKind::Spider
             | MobKind::Enderman
@@ -575,7 +592,7 @@ impl Entities {
                     continue;
                 }
                 self.spawn_natural(kind, pos, world.cave_biome(cell), &mut group);
-                state.add(category, pos);
+                state.add(kind.category(), pos);
                 spawned += 1;
                 // Java's default `getMaxSpawnClusterSize` is 4 for these monsters.
                 if spawned
@@ -615,6 +632,9 @@ impl Entities {
         if let Some(variant) = variant {
             *variant = *group.variant.get_or_insert(*variant);
         }
+        if kind == MobKind::ZombieHorse {
+            self.spawn_zombie_horse_rider();
+        }
     }
 }
 
@@ -646,8 +666,8 @@ mod tests {
         let kinds: Vec<_> = restored.mobs.iter().map(|m| (m.kind, m.persistent)).collect();
         assert_eq!(
             kinds,
-            [(MobKind::Axolotl, false), (MobKind::Hoglin, false), (MobKind::Cow, false)],
-            "breedable natural mobs still save; natural zombies never did"
+            [(MobKind::Axolotl, false), (MobKind::Hoglin, false), (MobKind::Cow, false), (MobKind::Zombie, false)],
+            "natural undead now save conversion state without becoming persistence-required"
         );
     }
 
@@ -881,7 +901,14 @@ mod tests {
         for _ in 0..(seconds * 20.0) as u32 {
             let before = entities.mobs.len();
             entities.update_difficulty(0.05, world, ctx, crate::simulation::difficulty::Difficulty::Normal);
-            out.extend(entities.mobs.iter().skip(before).map(|m| (m.kind, m.pos.floor().as_ivec3())));
+            out.extend(
+                entities
+                    .mobs
+                    .iter()
+                    .skip(before)
+                    .filter(|m| m.riding.is_none() && m.kind.category() == MobCategory::Monster)
+                    .map(|m| (m.kind, m.pos.floor().as_ivec3())),
+            );
             // Keep caps open: count the spawns, then clear them away.
             entities.mobs.clear();
         }
@@ -1146,7 +1173,11 @@ mod tests {
         assert!(cycle_kind(MobKind::Slime) && cycle_kind(MobKind::Drowned));
         assert_eq!(J::Slime.kind(), Some(MobKind::Slime));
         assert_eq!(J::Drowned.kind(), Some(MobKind::Drowned));
-        assert!(J::ZombieHorse.kind().is_none() && J::Stray.kind().is_none() && J::Ocelot.kind().is_none());
+        assert!(
+            J::ZombieHorse.kind().is_some()
+                && J::Stray.kind() == Some(MobKind::Stray)
+                && J::Ocelot.kind() == Some(MobKind::Ocelot)
+        );
     }
 
     #[test]

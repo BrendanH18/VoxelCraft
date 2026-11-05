@@ -36,6 +36,7 @@ pub(super) struct ChunkEntities {
     pub(super) orbs: Vec<XpOrb>,
     pub(super) minecarts: Vec<minecart::Minecart>,
     pub(super) arrows: Vec<Arrow>,
+    pub(super) clouds: Vec<super::lingering::Cloud>,
     pub(super) potions: Vec<potion::ThrownPotion>,
     pub(super) thrown: Vec<thrown::Thrown>,
     pub(super) eyes: Vec<eye::EnderEye>,
@@ -51,6 +52,7 @@ impl ChunkEntities {
             + self.orbs.len()
             + self.minecarts.len()
             + self.arrows.len()
+            + self.clouds.len()
             + self.potions.len()
             + self.thrown.len()
             + self.eyes.len()
@@ -184,6 +186,7 @@ impl Entities {
         self.minecarts.extend(c.minecarts);
         self.arrows.extend(c.arrows);
         self.potions.extend(c.potions);
+        self.clouds.extend(c.clouds);
         self.thrown.extend(c.thrown);
         self.eyes.extend(c.eyes);
         self.fireballs.extend(c.fireballs);
@@ -207,9 +210,28 @@ impl Entities {
                 storage.entry(chunk).minecarts.push(c);
             },
         );
+        let horse_chunks: FxHashMap<_, _> = self
+            .mobs
+            .iter()
+            .filter(|m| super::undead_mounts::undead(m.kind))
+            .map(|m| {
+                (
+                    super::mounts::MOB_VEHICLE | m.uid,
+                    (
+                        crate::world::chunk::chunk_of(m.pos.floor().as_ivec3()),
+                        m.mount.as_ref().is_some_and(|s| s.rider.is_some()),
+                    ),
+                )
+            })
+            .collect();
         unload(
             &mut self.mobs,
             |m| {
+                if let Some(vehicle) = m.riding
+                    && let Some(&(chunk, ridden)) = horse_chunks.get(&vehicle)
+                {
+                    return if ridden || world.chunk_loaded(chunk) { None } else { Some(chunk) };
+                }
                 if let Some(cart) = m.riding {
                     // Passengers go with their vehicle, wherever they stand.
                     if let Some(&chunk) = stored_carts.get(&cart) {
@@ -228,6 +250,7 @@ impl Entities {
         unload(&mut self.items, |e| away(e.pos), |chunk, e| storage.entry(chunk).items.push(e));
         unload(&mut self.orbs, |e| away(e.pos), |chunk, e| storage.entry(chunk).orbs.push(e));
         unload(&mut self.arrows, |e| away(e.pos), |chunk, e| storage.entry(chunk).arrows.push(e));
+        unload(&mut self.clouds, |e| away(e.pos), |chunk, e| storage.entry(chunk).clouds.push(e));
         unload(&mut self.potions, |e| away(e.pos), |chunk, e| storage.entry(chunk).potions.push(e));
         unload(&mut self.thrown, |e| away(e.pos), |chunk, e| storage.entry(chunk).thrown.push(e));
         unload(&mut self.eyes, |e| away(e.pos), |chunk, e| storage.entry(chunk).eyes.push(e));

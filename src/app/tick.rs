@@ -113,6 +113,9 @@ impl Game {
                 self.gamerules.bool("natural_health_regeneration"),
             )
         };
+        if self.session.sleeping.is_some() {
+            self.session.vitals.time_since_rest = 0;
+        }
         // Wither damage lands inside the rule tick, not through `damage_player`.
         if was_alive && self.session.vitals.is_dead() && self.session.totem_saves(self.body.actions.selected) {
             self.show_popup("Totem of Undying");
@@ -196,6 +199,19 @@ impl Game {
             self.gamerules.int("fire_spread_radius_around_player") != 0,
             self.gamerules.int("random_tick_speed") as u32,
         );
+        let snow_pushes = self.world.take_snow_pushes();
+        for &(cell, height) in &snow_pushes {
+            let shape = self.session.player.collision_shape();
+            crate::world::precipitation::push_entity(&mut self.session.player.pos, shape, cell, height);
+            for bot in self.agents.players.values_mut().filter(|b| b.active) {
+                let shape = bot.agent.session.player.collision_shape();
+                crate::world::precipitation::push_entity(&mut bot.agent.session.player.pos, shape, cell, height);
+            }
+            for m in &mut self.mobs.entities.mobs {
+                let shape = m.shape();
+                crate::world::precipitation::push_entity(&mut m.pos, shape, cell, height);
+            }
+        }
         self.play_notes();
         self.mobs.entities.stalactite_hits(self.world.stalactite_hits());
         // Players in a stalactite's cell as it lands are hit too, wherever
