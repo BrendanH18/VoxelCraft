@@ -1,0 +1,395 @@
+{
+  "source": "Official client-26.3.jar data; attributes/timers transcribed from pinned server classes Frog, Tadpole, FrogAi, FrogspawnBlock, ShootTongue",
+  "data": {
+    "tags/entity_type/frog_food": {
+      "values": [
+        "minecraft:slime",
+        "minecraft:magma_cube"
+      ]
+    },
+    "tags/item/frog_food": {
+      "values": [
+        "minecraft:slime_ball"
+      ]
+    },
+    "tags/block/frogs_spawnable_on": {
+      "values": [
+        "minecraft:grass_block",
+        "minecraft:mud",
+        "minecraft:mangrove_roots",
+        "minecraft:muddy_mangrove_roots"
+      ]
+    },
+    "tags/block/supports_frogspawn": {
+      "values": []
+    },
+    "tags/fluid/supports_frogspawn": {
+      "values": [
+        "minecraft:water"
+      ]
+    },
+    "tags/block/frog_prefer_jump_to": {
+      "values": [
+        "minecraft:lily_pad",
+        "minecraft:big_dripleaf"
+      ]
+    },
+    "loot_table/entities/frog": {
+      "type": "minecraft:entity",
+      "random_sequence": "minecraft:entities/frog"
+    },
+    "loot_table/entities/tadpole": {
+      "type": "minecraft:entity",
+      "random_sequence": "minecraft:entities/tadpole"
+    },
+    "loot_table/entities/slime": {
+      "type": "minecraft:entity",
+      "pools": [
+        {
+          "condition": {
+            "type": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "minecraft:type_specific/cube_mob": {
+                "size": 1
+              }
+            }
+          },
+          "entries": [
+            {
+              "type": "minecraft:item",
+              "condition": {
+                "type": "minecraft:inverted",
+                "term": {
+                  "type": "minecraft:damage_source_properties",
+                  "predicate": {
+                    "source_entity": {
+                      "minecraft:entity_type": "minecraft:frog"
+                    }
+                  }
+                }
+              },
+              "modifier": [
+                {
+                  "type": "minecraft:set_count",
+                  "count": {
+                    "type": "minecraft:uniform",
+                    "max": 2,
+                    "min": 0
+                  }
+                },
+                {
+                  "type": "minecraft:enchanted_count_increase",
+                  "count": {
+                    "type": "minecraft:uniform",
+                    "max": 1.0,
+                    "min": 0.0
+                  },
+                  "enchantment": "minecraft:looting"
+                }
+              ],
+              "name": "minecraft:slime_ball"
+            },
+            {
+              "type": "minecraft:item",
+              "condition": {
+                "type": "minecraft:damage_source_properties",
+                "predicate": {
+                  "source_entity": {
+                    "minecraft:entity_type": "minecraft:frog"
+                  }
+                }
+              },
+              "modifier": {
+                "type": "minecraft:set_count",
+                "count": 1
+              },
+              "name": "minecraft:slime_ball"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "random_sequence": "minecraft:entities/slime"
+    },
+    "loot_table/entities/magma_cube": {
+      "type": "minecraft:entity",
+      "pools": [
+        {
+          "entries": [
+            {
+              "type": "minecraft:item",
+              "condition": {
+                "type": "minecraft:all_of",
+                "terms": [
+                  {
+                    "type": "minecraft:inverted",
+                    "term": {
+                      "type": "minecraft:damage_source_properties",
+                      "predicate": {
+                        "source_entity": {
+                          "minecraft:entity_type": "minecraft:frog"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "minecraft:entity_properties",
+                    "entity": "this",
+                    "predicate": {
+                      "minecraft:type_specific/cube_mob": {
+                        "size": {
+                          "min": 2
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              "modifier": [
+                {
+                  "type": "minecraft:set_count",
+                  "count": {
+                    "type": "minecraft:uniform",
+                    "max": 1,
+                    "min": -2
+                  }
+                },
+                {
+                  "type": "minecraft:enchanted_count_increase",
+                  "count": {
+                    "type": "minecraft:uniform",
+                    "max": 1.0,
+                    "min": 0.0
+                  },
+                  "enchantment": "minecraft:looting"
+                }
+              ],
+              "name": "minecraft:magma_cream"
+            },
+            {
+              "type": "minecraft:item",
+              "condition": {
+                "type": "minecraft:damage_source_properties",
+                "predicate": {
+                  "source_entity": {
+                    "minecraft:components": {
+                      "minecraft:frog/variant": "minecraft:warm"
+                    },
+                    "minecraft:entity_type": "minecraft:frog"
+                  }
+                }
+              },
+              "modifier": {
+                "type": "minecraft:set_count",
+                "count": 1
+              },
+              "name": "minecraft:pearlescent_froglight"
+            },
+            {
+              "type": "minecraft:item",
+              "condition": {
+                "type": "minecraft:damage_source_properties",
+                "predicate": {
+                  "source_entity": {
+                    "minecraft:components": {
+                      "minecraft:frog/variant": "minecraft:cold"
+                    },
+                    "minecraft:entity_type": "minecraft:frog"
+                  }
+                }
+              },
+              "modifier": {
+                "type": "minecraft:set_count",
+                "count": 1
+              },
+              "name": "minecraft:verdant_froglight"
+            },
+            {
+              "type": "minecraft:item",
+              "condition": {
+                "type": "minecraft:damage_source_properties",
+                "predicate": {
+                  "source_entity": {
+                    "minecraft:components": {
+                      "minecraft:frog/variant": "minecraft:temperate"
+                    },
+                    "minecraft:entity_type": "minecraft:frog"
+                  }
+                }
+              },
+              "modifier": {
+                "type": "minecraft:set_count",
+                "count": 1
+              },
+              "name": "minecraft:ochre_froglight"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "random_sequence": "minecraft:entities/magma_cube"
+    },
+    "loot_table/blocks/frogspawn": {
+      "type": "minecraft:block",
+      "random_sequence": "minecraft:blocks/frogspawn"
+    },
+    "loot_table/blocks/ochre_froglight": {
+      "type": "minecraft:block",
+      "pools": [
+        {
+          "condition": {
+            "type": "minecraft:survives_explosion"
+          },
+          "entries": [
+            {
+              "type": "minecraft:item",
+              "name": "minecraft:ochre_froglight"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "random_sequence": "minecraft:blocks/ochre_froglight"
+    },
+    "loot_table/blocks/verdant_froglight": {
+      "type": "minecraft:block",
+      "pools": [
+        {
+          "condition": {
+            "type": "minecraft:survives_explosion"
+          },
+          "entries": [
+            {
+              "type": "minecraft:item",
+              "name": "minecraft:verdant_froglight"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "random_sequence": "minecraft:blocks/verdant_froglight"
+    },
+    "loot_table/blocks/pearlescent_froglight": {
+      "type": "minecraft:block",
+      "pools": [
+        {
+          "condition": {
+            "type": "minecraft:survives_explosion"
+          },
+          "entries": [
+            {
+              "type": "minecraft:item",
+              "name": "minecraft:pearlescent_froglight"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "random_sequence": "minecraft:blocks/pearlescent_froglight"
+    }
+  },
+  "variants": {
+    "temperate": {
+      "asset_id": "minecraft:entity/frog/frog_temperate",
+      "spawn_conditions": [
+        {
+          "priority": 0
+        }
+      ]
+    },
+    "cold": {
+      "asset_id": "minecraft:entity/frog/frog_cold",
+      "spawn_conditions": [
+        {
+          "condition": {
+            "type": "minecraft:biome",
+            "biomes": "#minecraft:spawns_cold_variant_frogs"
+          },
+          "priority": 1
+        }
+      ]
+    },
+    "warm": {
+      "asset_id": "minecraft:entity/frog/frog_warm",
+      "spawn_conditions": [
+        {
+          "condition": {
+            "type": "minecraft:biome",
+            "biomes": "#minecraft:spawns_warm_variant_frogs"
+          },
+          "priority": 1
+        }
+      ]
+    }
+  },
+  "cold_biomes": [
+    "deep_dark",
+    "deep_frozen_ocean",
+    "end_barrens",
+    "end_highlands",
+    "end_midlands",
+    "frozen_ocean",
+    "frozen_peaks",
+    "frozen_river",
+    "grove",
+    "ice_spikes",
+    "jagged_peaks",
+    "small_end_islands",
+    "snowy_beach",
+    "snowy_plains",
+    "snowy_slopes",
+    "snowy_taiga",
+    "the_end"
+  ],
+  "warm_biomes": [
+    "badlands",
+    "bamboo_jungle",
+    "basalt_deltas",
+    "crimson_forest",
+    "desert",
+    "eroded_badlands",
+    "jungle",
+    "mangrove_swamp",
+    "nether_wastes",
+    "savanna",
+    "savanna_plateau",
+    "soul_sand_valley",
+    "sparse_jungle",
+    "warm_ocean",
+    "warped_forest",
+    "windswept_savanna",
+    "wooded_badlands"
+  ],
+  "frog": {
+    "health": 10,
+    "movement_speed": 1,
+    "attack_damage": 10,
+    "step_height": 1,
+    "width": 0.5,
+    "height": 0.5,
+    "fall_damage_reduction": 5
+  },
+  "tadpole": {
+    "health": 6,
+    "movement_speed": 1,
+    "width": 0.4,
+    "height": 0.3,
+    "grow_ticks": 24000
+  },
+  "frogspawn": {
+    "height": 0.09375,
+    "hatch_min": 3600,
+    "hatch_max_exclusive": 12000,
+    "tadpoles_min": 2,
+    "tadpoles_max_exclusive": 6
+  },
+  "tongue": {
+    "damage": 10,
+    "catch_ticks": 7,
+    "total_animation_ticks": 11,
+    "distance": 1.75,
+    "pull_speed_per_tick": 0.75,
+    "timeout_ticks": 100
+  }
+}

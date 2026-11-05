@@ -32,6 +32,9 @@ impl Mob {
             "burning": self.burning,
             "attack": self.attack_anim,
         });
+        if let Some(s) = &self.frog {
+            v["frog"] = json!({"variant":s.variant,"pose":s.pose,"tongue_ticks":s.tongue_ticks,"tongue":s.tongue.map(|(_,p)|p.to_array())});
+        }
         if let Some(s) = &self.bat {
             v["bat_resting"] = json!(s.resting);
         }
@@ -90,6 +93,17 @@ impl Mob {
             self.wool_color = c;
         }
         self.sheared = v["sheared"] == true;
+        if let Some(s) = &mut self.frog {
+            if let Some(n) = v["frog"]["variant"].as_u64() {
+                s.variant = n.min(2) as u8;
+            }
+            s.pose = v["frog"]["pose"].as_u64().unwrap_or(0).min(4) as u8;
+            s.tongue_ticks = v["frog"]["tongue_ticks"].as_u64().unwrap_or(0).min(11) as u16;
+            s.tongue = v["frog"]["tongue"]
+                .as_array()
+                .filter(|p| p.len() == 3)
+                .and_then(|p| Some((0, glam::DVec3::new(p[0].as_f64()?, p[1].as_f64()?, p[2].as_f64()?))));
+        }
         if let Some(s) = &mut self.bat {
             s.resting = v["bat_resting"].as_bool().unwrap_or(s.resting);
         }

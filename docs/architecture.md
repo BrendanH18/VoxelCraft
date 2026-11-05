@@ -492,14 +492,22 @@ Texture layers start at 2960, after v0.14's map sprites.
 | 11200–11263 | 1350–1359 | 3296–3327 | Integrator spare |
 
 Track 3 allocations (2026-11-04, passive-mobs): item **1300** is suspicious
-stew. No block states or block texture layers are consumed; 11008–11135,
-1301–1329 and 3136–3263 remain reserved and unregistered. Original mooshroom
-and bat models use the procedural entity shader; stew reuses the existing
-mushroom-stew icon. Saturation appends to the dynamic effect-icon array.
-`MobKind::Mooshroom` (`mooshroom`) and `MobKind::Bat` (`bat`) append after
-Camel, in that order. Stew effect codes 1–11 in `Stack::entity_data` and
-`mooshroom.stew` are append-only component values; zero means no effect.
-See [track evidence](verification/2026-11-04-v0.15-passive-mobs.md).
+stew and **1301** is the tadpole bucket. State **11008** is frogspawn;
+**11009–11011**, **11012–11014**, **11015–11017** are respectively ochre,
+verdant and pearlescent froglight, each with axis order Y, X, Z. Procedural
+block layers **3136–3145** contain frogspawn and three layers per froglight
+(side, end, rotated side). States 11018–11135, items 1302–1329 and layers
+3146–3263 remain reserved and unregistered. Original entity cuboids use the
+procedural entity shader. Stew reuses the mushroom-stew icon; the tadpole
+bucket appends an original item sprite. Saturation appends to the dynamic
+effect-icon array. `Mooshroom`, `Bat`, `Frog`, `Tadpole` append after Camel
+in that order, saved as `mooshroom`, `bat`, `frog`, `tadpole`. Stew effect
+codes 1–11 in `Stack::entity_data` and `mooshroom.stew` remain stable;
+tadpole buckets use an item-specific age/health/age-lock bit payload.
+Frogspawn hatch timers reuse the saved scheduled-block tick queue. Detail
+mesh coordinate code 31 encodes frogspawn's fractional 1.5/16 height;
+ordinary integer coordinates and the quad format are unchanged. See
+[track evidence](verification/2026-11-04-v0.15-passive-mobs.md).
 
 New `MobKind` variants append after `Camel`; mob kinds are saved by name,
 but `MobKind::ALL` order is the LAN index, so the integrator appends the

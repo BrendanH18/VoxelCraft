@@ -583,6 +583,7 @@ pub fn bucket_kind(item: Item) -> Option<MobKind> {
         Item::TROPICAL_FISH_BUCKET => MobKind::TropicalFish,
         Item::PUFFERFISH_BUCKET => MobKind::Pufferfish,
         Item::AXOLOTL_BUCKET => MobKind::Axolotl,
+        Item::TADPOLE_BUCKET => MobKind::Tadpole,
         _ => return None,
     })
 }
@@ -593,6 +594,7 @@ fn bucket_item(kind: MobKind) -> Option<Item> {
         MobKind::TropicalFish => Item::TROPICAL_FISH_BUCKET,
         MobKind::Pufferfish => Item::PUFFERFISH_BUCKET,
         MobKind::Axolotl => Item::AXOLOTL_BUCKET,
+        MobKind::Tadpole => Item::TADPOLE_BUCKET,
         _ => return None,
     })
 }
@@ -666,6 +668,10 @@ impl Entities {
         filled.entity_data = 1
             | ((m.aquatic.as_ref().unwrap().variant as u32) << 1)
             | (((m.health.clamp(0.0, 255.0) * 100.0).round() as u32) << 9);
+        if let Some(s) = &m.frog {
+            filled.entity_data = s.bucket(m.health);
+            filled.name = m.name;
+        }
         self.mobs.swap_remove(i);
         if !creative {
             inventory.slots[slot] = Some(filled);
@@ -680,6 +686,13 @@ impl Entities {
         self.spawn(kind, pos);
         let m = self.mobs.last_mut().unwrap();
         m.persistent = true;
+        if kind == MobKind::Tadpole {
+            if let Some(health) = m.frog.as_mut().unwrap().from_bucket(stack.entity_data) {
+                m.health = health;
+            }
+            m.name = stack.name;
+            return true;
+        }
         if stack.entity_data & 1 != 0 {
             m.aquatic.as_mut().unwrap().variant = ((stack.entity_data >> 1) & 255) as u8;
             m.health = ((stack.entity_data >> 9) as f32 / 100.0).clamp(0.01, kind.max_health());

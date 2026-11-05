@@ -585,6 +585,8 @@ fn pose(m: &Mob, time: f32) -> Parts {
         ],
         MobKind::Mooshroom => passive::mooshroom(m),
         MobKind::Bat => passive::bat(m, time),
+        MobKind::Frog => passive::frog(m, time),
+        MobKind::Tadpole => passive::tadpole(m, time),
         MobKind::Cow => parts![
             part(COW_BODY, [0.0; 3], Quat::IDENTITY),
             part(COW_LEG, [-4.0, 12.0, 6.0], rx(swing)),
@@ -939,6 +941,7 @@ pub fn build(
         };
         labels::attachments(m, camera, forward, rel, out);
         aquatic::beam(m, camera, out);
+        passive::tongue(m, camera, out, (light, torch));
         let mut posed = pose(m, time);
         if matches!(m.kind, MobKind::Pig | MobKind::Strider) {
             mounts::equipment(m, &mut posed);

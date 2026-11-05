@@ -1515,6 +1515,9 @@ fn save_mob(m: &Mob) -> Value {
         "home": n.and_then(|n| n.home).map(|h| h.to_array()),
         "celebrate": n.filter(|n| n.celebrate_left > 0.0).map(|n| json!([n.celebrate_left, n.celebrate_at.to_array(), n.dancing])),
     });
+    if let Some(s) = &m.frog {
+        v["frog"] = s.save();
+    }
     if let Some(s) = &m.bat {
         v["bat_resting"] = json!(s.resting);
     }
@@ -1559,12 +1562,19 @@ fn load_mob(v: &Value) -> Option<Mob> {
     m.baby = v["baby"].as_bool().unwrap_or(false);
     m.age =
         v["age"].as_i64().unwrap_or(if m.baby && kind.is_breedable() { -24000 } else { 0 }).clamp(-24000, 6000) as i32;
+    if matches!(kind, MobKind::Frog | MobKind::Tadpole) {
+        m.baby = false;
+        m.age = m.age.max(0);
+    }
     if kind == MobKind::Chicken {
         m.egg_timer =
             v["egg_timer"].as_f64().filter(|t| t.is_finite() && *t >= 0.0).unwrap_or(m.egg_timer as f64).min(600.0)
                 as f32;
     }
     m.sheared = v["sheared"].as_bool().unwrap_or(false);
+    if let Some(s) = &mut m.frog {
+        s.load(&v["frog"]);
+    }
     if let Some(s) = &mut m.bat {
         s.resting = v["bat_resting"].as_bool().unwrap_or(true);
     }

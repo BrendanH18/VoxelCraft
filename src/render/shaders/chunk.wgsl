@@ -82,6 +82,11 @@ struct VsOut {
     @location(6) @interpolate(flat) normal: vec3<f32>,
 };
 
+// Reserved detail coordinate 31 is the half-sixteenth frogspawn height.
+fn detail_coord(value:u32)->f32 {
+    return select(f32(value),1.5,value==31u)/16.0;
+}
+
 @vertex
 fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> VsOut {
     let q = (vi >> 2u) * 3u;
@@ -127,9 +132,9 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> Vs
             let lo = vec2<u32>(select(tag, 0u, slope), (w0 >> 26u) & 15u);
             let hi = vec2<u32>((w1 >> 16u) & 31u, (w1 >> 21u) & 31u);
             var p = vec3<f32>(base);
-            p[d] += f32((w1 >> 26u) & 31u) / 16.0;
-            p[u] += f32(select(lo.x, hi.x, c == 1u || c == 2u)) / 16.0;
-            p[v] += f32(select(lo.y, hi.y, c >= 2u)) / 16.0;
+            p[d] += detail_coord((w1 >> 26u) & 31u);
+            p[u] += detail_coord(select(lo.x, hi.x, c == 1u || c == 2u));
+            p[v] += detail_coord(select(lo.y, hi.y, c >= 2u));
             if slope {
                 switch tag {
                     case 17u: { p.y += p.x - f32(base.x); }

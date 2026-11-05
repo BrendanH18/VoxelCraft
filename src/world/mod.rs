@@ -45,6 +45,7 @@ mod fluid;
 mod foraging;
 pub mod forms;
 pub mod fortress;
+pub mod frog_blocks;
 pub mod furnace;
 pub mod gadgets;
 pub mod geode;
@@ -319,6 +320,7 @@ pub struct World {
     pub golem_heads: Vec<IVec3>,
     /// Turtle eggs that hatched: cell and how many babies; the game spawns them.
     pub hatched_turtles: Vec<(IVec3, u8)>,
+    pub hatched_tadpoles: Vec<(IVec3, u8)>,
     compost_sequence: u64,
     bell_rings: Vec<IVec3>,
     /// Whether it's raining (set by the game each frame).
@@ -570,6 +572,7 @@ impl World {
             trip_sounds: Vec::new(),
             golem_heads: Vec::new(),
             hatched_turtles: Vec::new(),
+            hatched_tadpoles: Vec::new(),
             compost_sequence: 0,
             bell_rings: Vec::new(),
             raining: false,
@@ -885,6 +888,7 @@ impl World {
         self.light_block_changed(p, old, block, old_light);
         self.track_fire(p, old, block);
         self.track_redstone(p, old, block);
+        self.track_frog_blocks(p, old, block);
         if old != block {
             self.scaffolding_changed(p);
         }
@@ -1521,6 +1525,9 @@ impl World {
     /// relative to the cell (low blocks and shaped blocks are smaller).
     pub fn outline(&self, p: IVec3) -> ([f32; 3], [f32; 3]) {
         let Some(b) = self.get_block(p) else { return ([0.0; 3], [1.0; 3]) };
+        if b == frog_blocks::FROGSPAWN {
+            return ([0.0; 3], [1.0, frog_blocks::HEIGHT as f32, 1.0]);
+        }
         let neighbour = |f: block::Facing| self.get_block(p + f.offset()).unwrap_or(Block::AIR);
         let below = self.get_block(p - IVec3::Y).unwrap_or(Block::AIR);
         let above = shape::Above::read(b, |d| self.get_block(p + d).unwrap_or(Block::AIR));

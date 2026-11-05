@@ -191,6 +191,8 @@ pub struct Caps {
     pub can_walk_over_fences: bool,
     /// Striders treat lava as floor (`canStandOnFluid`).
     pub stand_on_lava: bool,
+    /// FrogPathNavigation refuses diagonal shortcuts across water borders.
+    pub cut_water_border: bool,
     /// `Mob.getMaxFallDistance`.
     pub max_fall: i32,
     /// `max(FOLLOW_RANGE, requiredPathLength)`: the walked-distance limit.
@@ -213,6 +215,7 @@ impl Caps {
             can_float: false,
             can_walk_over_fences: false,
             stand_on_lava: false,
+            cut_water_border: true,
             max_fall: 3,
             max_path_length: 16.0,
             max_visited: 256,
@@ -1661,7 +1664,11 @@ impl Navigation {
             Evaluator::Amphibious { .. } => mover.in_water,
             Evaluator::Walk => false,
         };
-        if close || can_cut_corner(node.ty) && next_in_direction(world, path, at, caps, direct) {
+        if close
+            || can_cut_corner(node.ty)
+                && (caps.cut_water_border || node.ty != PathType::WaterBorder)
+                && next_in_direction(world, path, at, caps, direct)
+        {
             path.next += 1;
         }
         self.stuck_detection(at);

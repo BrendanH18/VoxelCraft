@@ -149,6 +149,7 @@ impl Game {
             self.audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05));
         }
         crate::entity::golem::finish_golems(&mut self.world, &mut self.mobs.entities);
+        crate::entity::frog::finish_hatches(&mut self.world, &mut self.mobs.entities);
         for (cell, count) in std::mem::take(&mut self.world.hatched_turtles) {
             self.mobs.entities.hatch_turtles(cell, count);
         }
@@ -362,6 +363,18 @@ impl Game {
                     );
                     let source = mob_sound_source(sound);
                     let (sound, gain) = match sound {
+                        MobSound::FrogAction(action) => {
+                            use voxelcraft::entity::frog::FrogSound as F;
+                            match action {
+                                F::Tongue => (Sound::Bow, 2.0),
+                                F::Eat => (Sound::Pop, 2.0),
+                                F::Jump => (Sound::Swim, 1.0),
+                                F::Land => (Sound::Swim, 2.0),
+                                F::Lay => (Sound::Swim, 1.0),
+                                F::Hatch => (Sound::Pop, 1.0),
+                                F::Grow => (Sound::Pop, 0.15),
+                            }
+                        }
                         MobSound::Bell => (Sound::Bell, 1.0),
                         // Procedural stand-ins for Java's `wandering_trader.disappeared`/`reappeared`.
                         MobSound::TraderDrink(true) => (Sound::Teleport, 0.5),
@@ -508,6 +521,10 @@ fn shove(vel: &mut DVec3, push: DVec3) {
 /// and these are the exceptions.
 fn mob_sound_source(sound: MobSound) -> Option<SoundSource> {
     match sound {
+        MobSound::FrogAction(voxelcraft::entity::frog::FrogSound::Lay | voxelcraft::entity::frog::FrogSound::Hatch) => {
+            Some(SoundSource::Blocks)
+        }
+        MobSound::FrogAction(_) => Some(SoundSource::Neutral),
         // `AbstractVillager`, boats and the dragon's smashing: `NEUTRAL`, `NEUTRAL`, `HOSTILE`.
         MobSound::TraderDrink(_) | MobSound::BoatPaddle(_) => Some(SoundSource::Neutral),
         MobSound::DragonSmash => Some(SoundSource::Hostile),
@@ -531,6 +548,8 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Pig => Voice::Pig,
         MobKind::Cow | MobKind::Mooshroom => Voice::Cow,
         MobKind::Bat => Voice::Bat,
+        MobKind::Frog => Voice::Frog,
+        MobKind::Tadpole => Voice::Fish,
         MobKind::Sheep => Voice::Sheep,
         MobKind::Chicken => Voice::Chicken,
         MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombieVillager => Voice::Zombie,

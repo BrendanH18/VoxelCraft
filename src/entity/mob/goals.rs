@@ -202,6 +202,8 @@ const WANDERING_TRADER: &[Entry] = &[
     avoid(1, Avoided::Zoglin, 10.0, 0.5, 0.5),
 ];
 const CREEPER: &[Entry] = &[avoid(3, Avoided::Cat, 6.0, 1.0, 1.2)];
+const FROG: &[Entry] = &[e(0, G::Panic, 2.0), e(1, G::Breed, 1.0), e(2, G::Tempt, 1.25), e(3, G::Stroll, 1.0)];
+const TADPOLE: &[Entry] = &[e(0, G::Panic, 2.0), e(1, G::Tempt, 1.25), e(2, G::Stroll, 0.5)];
 const SKELETON: &[Entry] = &[avoid(3, Avoided::Wolf, 6.0, 1.0, 1.2)];
 
 /// The movement goals `kind` registers, in registration order.
@@ -209,6 +211,8 @@ pub(crate) fn table(kind: MobKind) -> &'static [Entry] {
     use MobKind as K;
     match kind {
         K::Cow | K::Mooshroom => COW,
+        K::Frog => FROG,
+        K::Tadpole => TADPOLE,
         K::Pig => PIG,
         K::Sheep => SHEEP,
         K::Chicken => CHICKEN,
@@ -246,7 +250,7 @@ pub(crate) fn movement_speed(kind: MobKind) -> f64 {
         K::Wolf | K::Cat | K::Fox | K::Rabbit | K::Hoglin => 0.3,
         K::Strider | K::Donkey | K::Mule | K::Llama | K::TraderLlama => 0.175,
         K::Camel => 0.09,
-        K::Axolotl => 1.0,
+        K::Axolotl | K::Frog | K::Tadpole => 1.0,
         K::Dolphin => 1.2,
         K::Guardian => 0.5,
         K::ElderGuardian => 0.3,

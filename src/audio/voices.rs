@@ -43,6 +43,7 @@ pub enum Voice {
     Goat,
     Horse,
     Bat,
+    Frog,
 }
 
 /// What kind of sound a voice makes.
@@ -55,7 +56,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 31] = [
+    pub const ALL: [Voice; 32] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -87,6 +88,7 @@ impl Voice {
         Voice::Goat,
         Voice::Horse,
         Voice::Bat,
+        Voice::Frog,
     ];
 
     /// The category the creature plays in: `Monster`, `Ghast`, `Hoglin` and
@@ -107,7 +109,7 @@ impl Voice {
             | Voice::Hoglin
             | Voice::Guardian
             | Voice::Pillager => SoundSource::Hostile,
-            Voice::Bat => SoundSource::Neutral,
+            Voice::Bat | Voice::Frog => SoundSource::Neutral,
             Voice::Pig
             | Voice::Cow
             | Voice::Sheep
@@ -133,6 +135,7 @@ impl Voice {
             Voice::Pig => "pig",
             Voice::Horse => "horse",
             Voice::Bat => "bat",
+            Voice::Frog => "frog",
             Voice::Cow => "cow",
             Voice::Sheep => "sheep",
             Voice::Chicken => "chicken",
@@ -242,6 +245,7 @@ const FLAT: &dyn Fn(f32) -> f32 = &|_| 1.0;
 pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
     match voice {
         Voice::Bat => bat(call, rng),
+        Voice::Frog => frog(call, rng),
         Voice::Pig => pig(call, rng),
         Voice::Horse => horse(call, rng),
         Voice::Cow => cow(call, rng),
@@ -885,5 +889,21 @@ fn bat(call: Call, rng: &mut Rng) -> Vec<f32> {
     let pitch = rng.range(2100.0, 2700.0);
     add_mode(&mut out, 0, Mode { freq: pitch, amp: 0.6, tau: 0.045, glide: -0.35, glide_tau: 0.09 });
     add_mode(&mut out, samples(0.07), Mode { freq: pitch * 1.2, amp: 0.45, tau: 0.035, glide: -0.4, glide_tau: 0.06 });
+    dsp::finish(out, 0.5)
+}
+
+// Original hollow two-pulse croak; no sampled reference audio.
+fn frog(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let len = if call == Call::Death { 0.55 } else { 0.4 };
+    let mut out = vec![0.0; samples(len)];
+    let pitch = rng.range(110.0, 155.0) * if call == Call::Hurt { 1.7 } else { 1.0 };
+    for (at, amp) in [(0.0, 0.7), (0.14, 0.55)] {
+        add_mode(&mut out, samples(at), Mode { freq: pitch, amp, tau: 0.075, glide: -0.18, glide_tau: 0.1 });
+        add_mode(
+            &mut out,
+            samples(at),
+            Mode { freq: pitch * 3.7, amp: amp * 0.3, tau: 0.045, glide: -0.1, glide_tau: 0.08 },
+        );
+    }
     dsp::finish(out, 0.5)
 }

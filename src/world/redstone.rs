@@ -161,6 +161,16 @@ impl World {
                     IVec3::new(i % CHUNK_SIZE_I, i / (CHUNK_SIZE_I * CHUNK_SIZE_I), i / CHUNK_SIZE_I % CHUNK_SIZE_I);
                 self.redstone_changed(c * CHUNK_SIZE_I + local);
             }
+            if b == super::frog_blocks::FROGSPAWN {
+                let local =
+                    IVec3::new(i % CHUNK_SIZE_I, i / (CHUNK_SIZE_I * CHUNK_SIZE_I), i / CHUNK_SIZE_I % CHUNK_SIZE_I);
+                let p = c * CHUNK_SIZE_I + local;
+                if !self.redstone.pending.contains_key(&p) {
+                    let delay = super::frog_blocks::HATCH_MIN
+                        + self.roll() % (super::frog_blocks::HATCH_MAX - super::frog_blocks::HATCH_MIN);
+                    self.schedule_redstone(p, delay, 0);
+                }
+            }
             if super::composter::level(b) == Some(7) {
                 let local =
                     IVec3::new(i % CHUNK_SIZE_I, i / (CHUNK_SIZE_I * CHUNK_SIZE_I), i / CHUNK_SIZE_I % CHUNK_SIZE_I);
@@ -606,6 +616,9 @@ impl World {
 
     fn redstone_scheduled_tick(&mut self, p: IVec3) {
         let Some(b) = self.get_block(p) else { return };
+        if b == super::frog_blocks::FROGSPAWN {
+            return self.hatch_frogspawn(p);
+        }
         if super::scaffolding::is_scaffolding(b) {
             return self.tick_scaffolding(p);
         }
@@ -1097,6 +1110,7 @@ impl World {
                         && seq >= 0
                         && ((1100..=1599).contains(&family)
                             || matches!(family, 226 | 249 | 904)
+                            || family == i64::from(super::frog_blocks::FROGSPAWN.0)
                             || family == i64::from(super::scaffolding::SCAFFOLDING.0)
                             // A pending coral death (`CoralPlantBlock.tryScheduleDieTick`).
                             || u16::try_from(family)

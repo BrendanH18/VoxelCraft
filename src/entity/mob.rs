@@ -12,6 +12,7 @@ use crate::world::terrain::Dimension;
 use super::{Ctx, EntityEvent, MobSound, MobWorld, Rng, path};
 
 pub(crate) mod dolphin;
+mod frog;
 pub(crate) mod goals;
 mod navigate;
 mod nether_ai;
@@ -171,6 +172,8 @@ pub enum MobKind {
     Camel,
     Mooshroom,
     Bat,
+    Frog,
+    Tadpole,
 }
 
 impl MobKind {
@@ -178,6 +181,7 @@ impl MobKind {
         matches!(
             self,
             Self::Cod
+                | Self::Tadpole
                 | Self::Salmon
                 | Self::TropicalFish
                 | Self::Pufferfish
@@ -197,7 +201,7 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 56] = [
+    pub const ALL: [MobKind; 58] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -254,6 +258,8 @@ impl MobKind {
         MobKind::Camel,
         MobKind::Mooshroom,
         MobKind::Bat,
+        MobKind::Frog,
+        MobKind::Tadpole,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -315,6 +321,8 @@ impl MobKind {
             MobKind::Camel => "camel",
             MobKind::Mooshroom => "mooshroom",
             MobKind::Bat => "bat",
+            MobKind::Frog => "frog",
+            MobKind::Tadpole => "tadpole",
         }
     }
 
@@ -328,6 +336,8 @@ impl MobKind {
     pub fn shape(self) -> Shape {
         match self {
             MobKind::Bat => Shape::new(0.25, 0.9),
+            MobKind::Frog => Shape::new(0.25, 0.5),
+            MobKind::Tadpole => Shape::new(0.2, 0.3),
             MobKind::Pig => Shape::new(0.45, 0.9),
             MobKind::Cow | MobKind::Mooshroom => Shape::new(0.45, 1.4),
             MobKind::Sheep => Shape::new(0.45, 1.3),
@@ -384,7 +394,7 @@ impl MobKind {
     /// Starting health in damage points, with two points per heart.
     pub fn max_health(self) -> f32 {
         match self {
-            MobKind::Pig | MobKind::Cow | MobKind::Mooshroom => 10.0,
+            MobKind::Pig | MobKind::Cow | MobKind::Mooshroom | MobKind::Frog => 10.0,
             MobKind::Sheep | MobKind::Silverfish => 8.0,
             MobKind::Chicken => 4.0,
             MobKind::Zombie
@@ -420,7 +430,7 @@ impl MobKind {
             MobKind::Turtle => 30.0,
             MobKind::Wolf => 8.0,
             MobKind::Fox | MobKind::Goat => 10.0,
-            MobKind::Parrot | MobKind::Bat => 6.0,
+            MobKind::Parrot | MobKind::Bat | MobKind::Tadpole => 6.0,
             MobKind::Rabbit => 3.0,
             MobKind::Horse | MobKind::Donkey | MobKind::Mule | MobKind::Llama => 30.0,
             MobKind::Camel => 32.0,
@@ -742,7 +752,7 @@ impl MobKind {
         const POPPY: Item = Item::from_block(Block::POPPY);
         match self {
             MobKind::Pig => &[(Item::RAW_PORKCHOP, 1, 3)],
-            MobKind::Bat => &[],
+            MobKind::Bat | MobKind::Frog | MobKind::Tadpole => &[],
             MobKind::Cow => &[(Item::RAW_BEEF, 1, 3), (Item::LEATHER, 0, 2)],
             MobKind::Mooshroom => &[(Item::LEATHER, 0, 2), (Item::RAW_BEEF, 1, 3)],
             MobKind::Sheep => &[(WOOL, 1, 1), (Item::RAW_MUTTON, 1, 2)],
@@ -904,6 +914,7 @@ pub struct Mob {
     pub sheared: bool,
     pub mooshroom: Option<Box<super::mooshroom::State>>,
     pub bat: Option<Box<super::bat::State>>,
+    pub frog: Option<Box<super::frog::State>>,
     /// Witch: seconds left drinking, and the potion it is drinking.
     drink_left: f32,
     drinking: &'static str,
@@ -1069,7 +1080,7 @@ impl Mob {
             nether: super::nether::NetherMob::for_kind(kind),
             aquatic: kind.is_aquatic().then(|| Box::new(super::aquatic::State::new())),
             uid: 0,
-            persistent: super::mounts::equine(kind),
+            persistent: super::mounts::equine(kind) || kind == MobKind::Tadpole,
             size: 1,
             baby: false,
             grow: 0.0,
@@ -1077,6 +1088,7 @@ impl Mob {
             sheared: false,
             mooshroom: (kind == MobKind::Mooshroom).then(Box::default),
             bat: (kind == MobKind::Bat).then(Box::default),
+            frog: matches!(kind, MobKind::Frog | MobKind::Tadpole).then(Box::default),
             drink_left: 0.0,
             drinking: "",
             age: 0,
@@ -1379,6 +1391,12 @@ impl Mob {
             k => !k.is_hostile(),
         };
         if scared {
+            if let Some(s) = &mut self.frog {
+                s.tongue = None;
+                s.pose = 0;
+                s.jump_prepare = 0;
+                s.jump_velocity = None;
+            }
             // `PanicGoal.shouldPanic` reads `getLastDamageSource`, which
             // forgets the damage after 40 ticks; the run then ends once its
             // path is done.
@@ -1447,6 +1465,7 @@ impl Mob {
         if self.ambient_timer <= 0.0 {
             self.ambient_timer = rng.range(7.0, 18.0);
             if self.alive()
+                && self.kind != MobKind::Tadpole
                 && self.kind != MobKind::Creeper
                 && (self.bat.as_ref().is_none_or(|s| !s.resting) || rng.next_int(4) == 0)
             {
@@ -1658,11 +1677,17 @@ impl Mob {
             self.stop_goal(world);
             return (None, 0.0);
         }
+        if self.frog_priority() {
+            return self.frog_steer(dt, world, ctx, rng);
+        }
         if let Some(wish) = self.run_goals(world, ctx, rng) {
             return wish;
         }
         if self.kind == MobKind::Turtle {
             return self.turtle_steer(dt, world, ctx, rng);
+        }
+        if self.frog.is_some() {
+            return self.frog_steer(dt, world, ctx, rng);
         }
         if self.kind.is_aquatic() {
             return super::aquatic::steer(self, dt, world, ctx, rng, events);
@@ -2502,7 +2527,7 @@ impl Mob {
             return;
         }
         let shape = self.shape();
-        self.in_water = if self.kind.is_aquatic() {
+        self.in_water = if self.kind.is_aquatic() || self.kind == MobKind::Frog {
             world.block((self.pos + DVec3::Y * 0.2).floor().as_ivec3()).is_some_and(Block::holds_water)
         } else {
             physics::is_fluid_at(world, self.pos + DVec3::new(0.0, 0.3, 0.0))

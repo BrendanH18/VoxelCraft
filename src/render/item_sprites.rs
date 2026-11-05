@@ -685,6 +685,13 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             let (layer, ty) = if y < 8 { (tex::DOOR_TOP, y * 2) } else { (tex::DOOR_BOTTOM, (y - 8) * 2) };
             (4..12).contains(&x).then(|| super::textures::pixel(layer, ((x - 4) * 2) as usize, ty as usize))
         }
+        Sprite::TadpoleBucket => {
+            if (6..=10).contains(&x) && (7..=9).contains(&y) || (4..=6).contains(&x) && y == 9 {
+                Some(tint(if x == 9 && y == 7 { [231, 218, 166] } else { [78, 65, 43] }, 1.0))
+            } else {
+                Some(pixel(Sprite::Bucket(Some([56, 109, 184])), x as usize, y as usize))
+            }
+        }
         Sprite::Bucket(fluid) => {
             // A tapered pail seen from slightly above: rim, inside, handle.
             let pail = |x: i32, y: i32| {

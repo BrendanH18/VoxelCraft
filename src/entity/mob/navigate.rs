@@ -43,6 +43,7 @@ impl MobKind {
             MobKind::Pig
                 | MobKind::Cow
                 | MobKind::Mooshroom
+                | MobKind::Frog
                 | MobKind::Sheep
                 | MobKind::Chicken
                 | MobKind::Cat
@@ -71,17 +72,19 @@ impl MobKind {
         use PathType as T;
         let mut caps = Caps::new(width, height);
         caps.evaluator = match self {
-            K::Cod | K::Salmon | K::TropicalFish | K::Pufferfish | K::Guardian | K::ElderGuardian => {
+            K::Cod | K::Salmon | K::TropicalFish | K::Pufferfish | K::Tadpole | K::Guardian | K::ElderGuardian => {
                 Evaluator::Swim { breaching: false }
             }
             K::Dolphin => Evaluator::Swim { breaching: true },
             K::Drowned | K::Axolotl | K::Turtle => Evaluator::Amphibious { shallow: false },
+            K::Frog => Evaluator::Amphibious { shallow: true },
             K::Parrot => Evaluator::Fly,
             _ => Evaluator::Walk,
         };
         if matches!(caps.evaluator, Evaluator::Swim { .. }) {
             caps.can_pass_doors = false;
         }
+        caps.cut_water_border = self != K::Frog;
         caps.step = match self {
             K::Camel => 1.5,
             K::Horse
@@ -93,7 +96,8 @@ impl MobKind {
             | K::Enderman
             | K::Drowned
             | K::Turtle
-            | K::Axolotl => 1.0,
+            | K::Axolotl
+            | K::Frog => 1.0,
             _ => 0.6,
         };
         caps.can_open_doors = matches!(self, K::Villager | K::WanderingTrader | K::Piglin | K::PiglinBrute);
@@ -146,6 +150,7 @@ impl MobKind {
         }
         m = match self {
             K::Chicken => m.with(T::Water, 0.0),
+            K::Frog => m.with(T::Water, 4.0).with(T::Trapdoor, -1.0),
             K::Turtle => m
                 .with(T::Water, 0.0)
                 .with(T::DoorIronClosed, -1.0)

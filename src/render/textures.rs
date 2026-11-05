@@ -101,6 +101,9 @@ const DIRT: [u8; 3] = [134, 96, 67];
 const GRASS: [u8; 3] = [95, 159, 53];
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
+    if (crate::world::frog_blocks::tex::BASE..crate::world::frog_blocks::tex::END).contains(&layer) {
+        return crate::world::frog_blocks::pixel(layer, x, y);
+    }
     if (2956..=2959).contains(&layer) {
         return super::item_sprites::map_decoration_pixel(layer - 2956, x, y);
     }

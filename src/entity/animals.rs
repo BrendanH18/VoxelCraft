@@ -96,6 +96,7 @@ impl MobKind {
     pub fn breeding_food(self, food: Item) -> bool {
         match self {
             Self::Cow | Self::Mooshroom | Self::Sheep => food == Item::WHEAT,
+            Self::Frog | Self::Tadpole => food == Item::SLIME_BALL,
             Self::Pig => matches!(food, Item::CARROT | Item::POTATO | Item::BEETROOT),
             Self::Chicken => seeds(food),
             Self::Wolf => wolf_food(food),
@@ -131,6 +132,7 @@ impl MobKind {
                 | Self::Goat
                 | Self::Cow
                 | Self::Mooshroom
+                | Self::Frog
                 | Self::Sheep
                 | Self::Pig
                 | Self::Chicken
@@ -399,7 +401,7 @@ impl Entities {
             if i == j || !self.mobs[i].ready_to_breed() || !self.mobs[j].ready_to_breed() {
                 continue;
             }
-            let turtle = self.mobs[i].kind == MobKind::Turtle;
+            let turtle = matches!(self.mobs[i].kind, MobKind::Turtle | MobKind::Frog);
             let child = (!turtle).then(|| self.animal_child(i, j));
             for k in [i, j] {
                 self.mobs[k].age = BREEDING_COOLDOWN;

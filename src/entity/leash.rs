@@ -19,6 +19,7 @@ impl MobKind {
             self,
             Self::Cow
                 | Self::Mooshroom
+                | Self::Frog
                 | Self::Sheep
                 | Self::Pig
                 | Self::Chicken

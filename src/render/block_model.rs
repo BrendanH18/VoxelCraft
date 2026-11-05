@@ -101,7 +101,10 @@ pub fn vertices(models: &[BlockModel], camera: DVec3, ticks: f64) -> Vec<BlockVe
             boxes = shape::Boxes::from_box(shape::Box16::FULL);
         }
         for bx in boxes.as_slice() {
-            let (lo, hi) = (bx.min.map(|c| c as f32 / 16.0), bx.max.map(|c| c as f32 / 16.0));
+            let (lo, mut hi) = (bx.min.map(|c| c as f32 / 16.0), bx.max.map(|c| c as f32 / 16.0));
+            if m.block == crate::world::frog_blocks::FROGSPAWN {
+                hi[1] = crate::world::frog_blocks::HEIGHT as f32;
+            }
             for (face, (&layer, &shade)) in tex.iter().zip(&FACE_SHADE).enumerate() {
                 let (d, positive) = (face / 2, face % 2 == 0);
                 let (u, v) = ((d + 1) % 3, (d + 2) % 3);

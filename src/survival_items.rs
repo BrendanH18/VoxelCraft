@@ -79,6 +79,12 @@ pub fn use_animal_target(
         return true;
     }
     let Some((index, _)) = entities.raycast(eye, dir, range) else { return false };
+    if held.is_some_and(|s| entities.feed_tadpole(index, s.item, world)) {
+        if !creative {
+            inventory.take_one(slot);
+        }
+        return true;
+    }
     if let Some(action) = held.and_then(|s| entities.use_mooshroom(index, s.item)) {
         match action {
             crate::entity::mooshroom::Use::Exchange(stack) => {

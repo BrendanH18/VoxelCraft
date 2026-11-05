@@ -69,6 +69,7 @@ impl Entities {
         self.nether_sense(dt as f32, world, ctx);
         self.aquatic_sense(dt as f32, world);
         self.grow_loaded_turtles(dt as f32, world, ctx);
+        self.frog_upkeep(dt, world, ctx);
         self.tick_animals(dt as f32, world, ctx, &mut events);
         self.tick_leashes(dt as f32, world, ctx);
         self.tick_llamas(ctx);
@@ -209,6 +210,30 @@ impl Entities {
                 from: Block::AIR,
                 to: crate::world::overworld_blocks::turtle_eggs(eggs),
             });
+        }
+        let mut frog_clutches = std::collections::HashSet::new();
+        for m in &mut self.mobs {
+            if let Some(cell) = m.frog.as_mut().and_then(|s| s.laid.take())
+                && frog_clutches.insert(cell)
+            {
+                m.animal.as_mut().unwrap().pregnant = false;
+                m.frog.as_mut().unwrap().sounds |= 1 << super::frog::FrogSound::Lay as u8;
+                events.push(EntityEvent::AnimalBlock {
+                    cell,
+                    from: Block::AIR,
+                    to: crate::world::frog_blocks::FROGSPAWN,
+                });
+            }
+        }
+        for m in &mut self.mobs {
+            if let Some(s) = &mut m.frog {
+                let sounds = std::mem::take(&mut s.sounds);
+                for sound in super::frog::FrogSound::ALL {
+                    if sounds & (1 << sound as u8) != 0 {
+                        events.push(EntityEvent::Sound { sound: MobSound::FrogAction(sound), pos: m.pos });
+                    }
+                }
+            }
         }
         if let Some(fight) = &mut self.fight {
             fight.update(dt, world, ctx, &mut self.rng, &mut events);

@@ -1461,8 +1461,10 @@ in the [architecture reservations](architecture.md#v015-track-reservations):
    models, save/reload and shared player actions are covered by focused
    tests; see the [record](verification/2026-11-04-v0.15-passive-mobs.md)
    for source discrepancies and remaining parity gaps. Frogs/tadpoles,
-   cat spawner, polar bears, pandas, armadillos/wolf armor and ocelots
-   remain unimplemented by this track.
+   pregnancy and frogspawn hatching, biome-tag variants, tongue predation,
+   axis-oriented froglights and tadpole buckets are also implemented,
+   unverified. Cat spawner, polar bears, pandas, armadillos/wolf armor and
+   ocelots remain unimplemented by this track.
 4. **Hostiles** (MOB-04, PRO-02). Strays, bogged and phantoms (insomnia,
    `spawn_phantoms`, membranes), and the tipped arrows strays and bogged
    shoot.

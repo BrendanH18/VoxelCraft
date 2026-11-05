@@ -80,9 +80,9 @@ const LIST_25: [MonsterSpawn; 5] = [
     e(J::Known(MobKind::Pig), 10, 4, 4),
     e(J::Known(MobKind::Chicken), 10, 4, 4),
     e(J::Known(MobKind::Cow), 8, 4, 4),
-    e(J::Missing("frog"), 10, 2, 5),
+    e(J::Known(MobKind::Frog), 10, 2, 5),
 ];
-const LIST_26: [MonsterSpawn; 1] = [e(J::Missing("frog"), 10, 2, 5)];
+const LIST_26: [MonsterSpawn; 1] = [e(J::Known(MobKind::Frog), 10, 2, 5)];
 const LIST_27: [MonsterSpawn; 1] = [e(J::Known(MobKind::TropicalFish), 25, 8, 8)];
 const LIST_28: [MonsterSpawn; 2] = [e(J::Known(MobKind::Rabbit), 12, 2, 3), e(J::Known(MobKind::Camel), 1, 1, 1)];
 const LIST_29: [MonsterSpawn; 7] = [

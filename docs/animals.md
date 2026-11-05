@@ -104,3 +104,21 @@ and raw brightness no higher than a random 0–3; it has no Halloween branch.
 
 See the [verification record](verification/2026-11-04-v0.15-passive-mobs.md)
 for sources, testing, missing flower inputs and presentation differences.
+
+## Frogs and tadpoles (v0.15, Java 26.3)
+
+Implemented, unverified: swamp and mangrove-swamp frogs use slimeballs for
+temptation and breeding. One parent becomes pregnant and lays frogspawn on
+water beside land; no baby frog is created. Frogspawn hatches after
+3,600–11,999 loaded ticks into 2–5 persistent tadpoles. Tadpoles grow after
+24,000 loaded ticks; slimeballs accelerate the remaining growth by ten
+percent, rounded down to seconds. Water buckets retain age, health, name
+and age lock. The growth location's Java cold/warm biome tags choose the
+adult variant; biome temperature alone does not determine it.
+
+Frogs walk, jump, swim, croak and catch size-one slimes or magma cubes with
+their tongue. Slimes give slimeballs; magma cubes give ochre (temperate),
+verdant (cold) or pearlescent (warm) froglights. All three lights emit 15,
+place along the clicked face's axis and drop their unoriented item. See
+[the record](verification/2026-11-04-v0.15-passive-mobs.md) for the bounded
+brain implementation and remaining differences.

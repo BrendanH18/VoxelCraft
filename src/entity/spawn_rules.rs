@@ -94,6 +94,7 @@ pub(super) fn spot_ok<W: MobWorld + ?Sized>(
     let name = below.name();
     let ground = match kind {
         MobKind::Mooshroom => below == crate::world::overworld_blocks::MYCELIUM,
+        MobKind::Frog => below == Block::GRASS || matches!(name, "mud" | "mangrove roots" | "muddy mangrove roots"),
         MobKind::Wolf | MobKind::Fox => {
             below == Block::GRASS || matches!(name, "snow" | "snow block" | "podzol" | "coarse dirt")
         }

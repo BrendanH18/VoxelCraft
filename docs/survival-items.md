@@ -124,3 +124,9 @@ shapeless crafting with a bowl, any two mushrooms and a supported
 small flower. It takes 32 ticks to eat, works at full hunger, restores
 6 hunger/7.2 saturation and returns a bowl. Effects are carried by the
 stack; see [passive mob evidence](verification/2026-11-04-v0.15-passive-mobs.md).
+
+Tadpole buckets (v0.15 item 1301) capture a tadpole with a water bucket,
+retain age, health and name through inventory saves, and release both water
+and a persistent tadpole. Slimeballs feed tadpoles and breed frogs; magma
+cubes eaten by frogs supply the three axis-oriented froglight blocks. See
+[passive mob evidence](verification/2026-11-04-v0.15-passive-mobs.md).

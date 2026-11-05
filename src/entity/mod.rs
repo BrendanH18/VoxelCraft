@@ -27,6 +27,7 @@ pub mod dragon;
 mod dragon_model;
 pub mod eye;
 pub mod fireball;
+pub mod frog;
 pub mod golem;
 pub mod item;
 pub mod leash;
@@ -99,6 +100,7 @@ pub const ATTACK_COOLDOWN: f64 = 0.5;
 /// Sounds entities make (the game maps them to audio).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MobSound {
+    FrogAction(frog::FrogSound),
     Bell,
     /// A wandering trader finished its Invisibility potion (true) or milk (false).
     TraderDrink(bool),
@@ -903,7 +905,7 @@ impl Entities {
     pub fn spawn(&mut self, kind: MobKind, pos: DVec3) {
         let yaw = self.rng.range(0.0, TAU);
         let mut mob = Mob::new(kind, pos, yaw);
-        mob.persistent = kind.has_animal_state();
+        mob.persistent = kind.has_animal_state() || kind == MobKind::Tadpole;
         if let Some(s) = &mut mob.mount {
             **s = mounts::State::new(kind, &mut self.rng);
             mob.health = s.max_health;
@@ -1588,9 +1590,9 @@ impl Entities {
     pub fn spawn_baby(&mut self, kind: MobKind, pos: DVec3) {
         let yaw = self.rng.range(0.0, TAU);
         let mut mob = Mob::new(kind, pos, yaw);
-        mob.age = -24000;
-        mob.baby = true;
-        mob.persistent = kind.is_breedable();
+        mob.age = if matches!(kind, MobKind::Frog | MobKind::Tadpole) { 0 } else { -24000 };
+        mob.baby = !matches!(kind, MobKind::Frog | MobKind::Tadpole);
+        mob.persistent = kind.is_breedable() || kind == MobKind::Tadpole;
         self.mobs.push(mob);
     }
 

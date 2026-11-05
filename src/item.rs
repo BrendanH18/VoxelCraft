@@ -254,6 +254,7 @@ pub enum Sprite {
     Nugget([u8; 3]),
     /// An iron bucket, empty or holding this colour of fluid.
     Bucket(Option<[u8; 3]>),
+    TadpoleBucket,
     Door,
     /// A blaze rod: a glowing yellow stick.
     Rod([u8; 3]),
@@ -695,6 +696,7 @@ impl Item {
     pub const BOWL: Item = Item(514);
     pub const MUSHROOM_STEW: Item = Item(515);
     pub const SUSPICIOUS_STEW: Item = Item(1300);
+    pub const TADPOLE_BUCKET: Item = Item(1301);
     pub const SNOWBALL: Item = Item(516);
     pub const EGG: Item = Item(517);
     pub const LEAD: Item = Item(1000);
@@ -1049,6 +1051,7 @@ impl Item {
             return ItemInfo { name, kind: ItemKind::Material, max_stack: 16, sprite: Sprite::Cushion(c.rgb()) };
         }
         match self {
+            Self::TADPOLE_BUCKET => return single("tadpole bucket", Sprite::TadpoleBucket),
             Self::SUSPICIOUS_STEW => {
                 return ItemInfo {
                     name: "suspicious stew",
@@ -1429,7 +1432,7 @@ impl Item {
             .chain((0..DECOR_ITEMS).map(|i| Item(DECOR_ITEM + i)))
             .chain((0..HAND_ITEMS).map(|i| Item(HAND_ITEM + i)))
             .chain((1255..=1265).map(Item))
-            .chain([Self::SUSPICIOUS_STEW])
+            .chain([Self::SUSPICIOUS_STEW, Self::TADPOLE_BUCKET])
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1466,6 +1469,7 @@ fn splash_names() -> &'static [&'static str] {
 fn sprite_index(item: Item) -> Option<u16> {
     let materials = ITEMS.len() as u16;
     match item.0 {
+        1301 => Some(icon_count() as u16 - 1),
         1040 => Some(turtle_icon()),
         1073 => Some(turtle_icon() + 2 + COPPER_ITEMS.len() as u16),
         1047 => Some(turtle_icon() + 1 + COPPER_ITEMS.len() as u16),
@@ -1560,7 +1564,7 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    turtle_icon() as u32 + 1 + COPPER_ITEMS.len() as u32 + 3 + 16 + DECOR_ITEMS as u32 + HAND_ITEMS as u32
+    turtle_icon() as u32 + 1 + COPPER_ITEMS.len() as u32 + 3 + 16 + DECOR_ITEMS as u32 + HAND_ITEMS as u32 + 1
 }
 
 /// The turtle helmet's icon follows the animal items; copper equipment follows it,
@@ -1714,7 +1718,10 @@ pub fn effect_icon_layer(effect: crate::simulation::effects::Effect) -> u16 {
 
 /// The sprite drawn on item icon `index` (see `tex::item_layer`).
 pub fn sprite_for_layer(index: u16) -> Option<Sprite> {
-    Item::all_items().filter(|i| !i.is_map()).nth(index as usize).map(|i| i.info().sprite)
+    Item::all_items()
+        .filter(|i| !i.is_map() && *i != Item::SUSPICIOUS_STEW)
+        .nth(index as usize)
+        .map(|i| i.info().sprite)
 }
 
 fn tool_name(kind: ToolKind, tier: Tier) -> &'static str {
