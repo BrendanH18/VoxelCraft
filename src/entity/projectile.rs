@@ -303,14 +303,19 @@ impl Arrow {
                             let punch = 1.0 + 3.0 * self.enchants.level(Enchantment::Punch) as f64;
                             let push = DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 4.0 * punch
                                 + DVec3::Y * 4.0;
-                            if self.enchants.has(Enchantment::Flame) {
+                            // `onHitEntity` undoes Flame and skips `doPostHurtEffects`
+                            // (the potion) when `hurtOrSimulate` refuses the hit.
+                            let refused = mob.refuses_hit(damage);
+                            if self.enchants.has(Enchantment::Flame) && !refused {
                                 mob.ignite(5.0);
                             }
                             if self.from_player {
                                 mob.player_hit();
                             }
                             if let Some(attacker) = self.shooter {
-                                self.effects_on_mob(mob, rng);
+                                if !refused {
+                                    self.effects_on_mob(mob, rng);
+                                }
                                 // Resolve through the shared mob-on-mob path so
                                 // retaliation and loot attribution retain the shooter.
                                 events.push(EntityEvent::MobHit {
@@ -324,7 +329,7 @@ impl Arrow {
                             // `hurtServer`'s 0.4 push along the arrow, then Punch's shove (`doKnockback`).
                             let motion = self.vel / crate::knockback::TICK_RATE;
                             let killed = mob.damage_pushed(damage, &[crate::knockback::Push::projectile(motion)], rng);
-                            if !killed {
+                            if !killed && !refused {
                                 self.effects_on_mob(mob, rng);
                             }
                             let killed = !mob.alive();

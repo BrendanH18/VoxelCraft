@@ -1422,12 +1422,18 @@ impl Mob {
     pub fn damage_bypassing_wolf_armor(&mut self, amount: f32, knockback: Option<DVec3>, rng: &mut Rng) -> bool {
         self.damage_typed(amount, knockback, true, rng)
     }
-    fn damage_typed(&mut self, amount: f32, knockback: Option<DVec3>, bypass_wolf_armor: bool, rng: &mut Rng) -> bool {
-        // `isInvulnerableTo` refuses the hit before any knockback.
-        if !self.alive()
+    /// Whether an ordinary hit of `amount` is refused outright: the mob is
+    /// dead, a skeleton trap's `invulnerableTime` is running, or a rolled-up
+    /// armadillo shrugs off a hit of 1 or less. Arrows apply their potion
+    /// and Flame only to hits `hurtOrSimulate` accepts.
+    pub fn refuses_hit(&self, amount: f32) -> bool {
+        !self.alive()
             || self.undead_mount.protection > 0.
             || self.armadillo.as_ref().is_some_and(|s| s.scared() && amount <= 1.0)
-        {
+    }
+    fn damage_typed(&mut self, amount: f32, knockback: Option<DVec3>, bypass_wolf_armor: bool, rng: &mut Rng) -> bool {
+        // `isInvulnerableTo` refuses the hit before any knockback.
+        if self.refuses_hit(amount) {
             return false;
         }
         // Full resistance (iron golems) cancels the push and leaves the motion alone, as `knockback` returns early.
@@ -1457,10 +1463,7 @@ impl Mob {
     /// left by the previous. Returns `true` if this killed the mob.
     pub fn damage_pushed(&mut self, amount: f32, pushes: &[crate::knockback::Push], rng: &mut Rng) -> bool {
         // `isInvulnerableTo` refuses the hit before any knockback.
-        if !self.alive()
-            || self.undead_mount.protection > 0.
-            || self.armadillo.as_ref().is_some_and(|s| s.scared() && amount <= 1.0)
-        {
+        if self.refuses_hit(amount) {
             return false;
         }
         for &push in pushes {

@@ -159,6 +159,25 @@ mod tests {
         assert!(bee.bee.is_some_and(|s| s.anger > 0), "BeeHurtByOtherGoal targets the shooter");
     }
     #[test]
+    fn trap_protection_refuses_the_arrow_and_its_payload() {
+        for protected in [true, false] {
+            let world = Grid::flat(10);
+            let mut e = Entities::new(5);
+            e.spawn(MobKind::SkeletonHorse, DVec3::new(2.5, 10.0, 0.5));
+            e.mobs[0].undead_mount.protection = if protected { 3. } else { 0. };
+            let flame = crate::enchant::Enchants::NONE.with(crate::enchant::Enchantment::Flame, 1);
+            e.shoot_enchanted_for(DVec3::new(0.5, 10.5, 0.5), DVec3::X, 0.5, false, flame, PlayerId::HOST);
+            e.arrows.last_mut().unwrap().potion = Potion::from_id("slowness");
+            for _ in 0..20 {
+                e.update(0.05, &world, &ctx());
+            }
+            let horse = &e.mobs[0];
+            assert_eq!(horse.health < horse.max_health(), !protected);
+            assert_eq!(horse.effects.has(Effect::Slowness), !protected, "no potion on a refused hit");
+            assert_eq!(horse.burning, !protected, "Flame is undone on a refused hit");
+        }
+    }
+    #[test]
     fn potion_components_round_trip_without_merging_different_potions() {
         for p in Potion::all() {
             let s = Stack::tipped_arrow(p, 8);
