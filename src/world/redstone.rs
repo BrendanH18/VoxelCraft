@@ -630,6 +630,9 @@ impl World {
 
     fn redstone_scheduled_tick(&mut self, p: IVec3) {
         let Some(b) = self.get_block(p) else { return };
+        if super::archaeology::owns(b.0) {
+            return self.archaeology_tick(p);
+        }
         if super::lightning::rod(b).is_some() {
             return self.reset_lightning_rod(p, b);
         }

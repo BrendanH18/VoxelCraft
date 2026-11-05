@@ -61,7 +61,7 @@ pub struct ShieldHit {
 
 /// Items whose right-click starts a held use, which the off-hand never overrides.
 fn claims_use(item: Item, can_eat: bool) -> bool {
-    item == Item::SHIELD
+    matches!(item, Item::SHIELD | Item::BRUSH)
         || item.is_drink()
         || (item.food().is_some() && can_eat)
         || matches!(item, Item::BOW | Item::CROSSBOW | Item::CHARGED_CROSSBOW)

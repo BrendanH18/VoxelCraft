@@ -77,6 +77,9 @@ impl World {
                 self.register_transport_chest(p);
             }
             match feature {
+                Feature::Archaeology(seed, table) if super::archaeology::owns(block.0) => {
+                    self.archaeology.entry(p).or_insert(super::archaeology::Brushable::with_loot(table, seed));
+                }
                 Feature::Spawner(kind) if block == Block::SPAWNER => {
                     self.spawners.entry(p).or_insert(kind);
                 }

@@ -329,6 +329,7 @@ pub enum Feature {
     /// Functional furnace or brewing stand in a non-village structure.
     UtilityBlock(Block),
     IglooBrewing,
+    Archaeology(u64, super::archaeology::Table),
 }
 
 /// Fortress layouts for one Nether, cached by region.
