@@ -1482,7 +1482,7 @@ fn sense_zoglin<W: MobWorld + ?Sized>(m: &mut Mob, view: &[Seen], world: &W, ctx
     };
 }
 
-fn save_mob(m: &Mob) -> Value {
+pub(crate) fn save_mob(m: &Mob) -> Value {
     let n = m.nether.as_deref();
     let armor: Vec<bool> = m.armor.iter().map(|a| a.is_some()).collect();
     let mut v = json!({
@@ -1535,6 +1535,9 @@ fn save_mob(m: &Mob) -> Value {
     if m.armor.iter().flatten().any(|k| *k != super::armor::ArmorKind::Gold) {
         v["armor_materials"] = json!(m.armor.map(|a| a.map(|k| k as u8)));
     }
+    if let Some(s) = m.bee {
+        v["bee"] = s.save();
+    }
     // Written only when set, so other mobs save as before: `Mob.homePosition`
     // and `homeRadius`, and the dolphin's `GotFish` and main hand.
     if let Some((p, r)) = m.restrict {
@@ -1551,7 +1554,7 @@ fn save_mob(m: &Mob) -> Value {
     v
 }
 
-fn load_mob(v: &Value) -> Option<Mob> {
+pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     let kind = MobKind::from_name(v["kind"].as_str()?)?;
     let p = v["pos"].as_array()?;
     let pos = DVec3::new(p.first()?.as_f64()?, p.get(1)?.as_f64()?, p.get(2)?.as_f64()?);
@@ -1564,6 +1567,9 @@ fn load_mob(v: &Value) -> Option<Mob> {
     m.uid =
         v["uid"].as_u64().and_then(|u| u32::try_from(u).ok()).filter(|u| *u < super::mounts::MOB_VEHICLE).unwrap_or(0);
     m.riding = v["riding"].as_u64().and_then(|u| u32::try_from(u).ok());
+    if kind == MobKind::Bee {
+        m.bee = Some(super::bee::State::load(&v["bee"]));
+    }
     if v["mount"].is_object() && super::mounts::rideable(kind) {
         m.mount = Some(Box::new(super::mounts::State::load(kind, &v["mount"])?));
     }

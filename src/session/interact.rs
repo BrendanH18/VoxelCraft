@@ -124,7 +124,10 @@ pub enum Used {
     CompassLocked {
         cell: IVec3,
     },
-    /// An axe scraped copper back one oxidation stage.
+    Waxed {
+        cell: IVec3,
+    },
+    /// An axe removed wax or scraped copper back one oxidation stage.
     Scraped {
         cell: IVec3,
     },
@@ -499,6 +502,23 @@ impl PlayerSession {
         let survival = self.mode.is_survival();
         let creative = self.mode.is_creative();
         let can_build = self.mode.can_build();
+        if can_build
+            && !ctx.sneaking
+            && matches!(held, Some(Item::SHEARS | Item::GLASS_BOTTLE))
+            && world.get_block(pos).and_then(crate::world::bees::hive).is_some_and(|(_, _, h)| h == 5)
+            && world.harvest_beehive(entities, pos, self.id)
+        {
+            if held == Some(Item::SHEARS) {
+                world.drop_honeycomb(pos);
+                if survival && self.inventory.wear(slot, 1) {
+                    *tool_broken = Some(Item::SHEARS);
+                }
+            } else {
+                // BeehiveBlock shrinks bottles even for creative players.
+                survival_items::exchange(&mut self.inventory, slot, Item::HONEY_BOTTLE, false, entities, &self.player);
+            }
+            return Ok(Some(Used::Harvested { cell: pos }));
+        }
         if held == Some(Item::EYE_OF_ENDER) && world.get_block(pos).is_some_and(|b| b.base() == Block::END_PORTAL_FRAME)
         {
             let opened = world.insert_eye(pos).ok_or("that frame already holds an eye, or its ring isn't loaded")?;
@@ -730,6 +750,12 @@ impl PlayerSession {
         if self.lock_compass(world, entities, slot, pos) {
             return Some(Used::CompassLocked { cell: pos });
         }
+        if item == Item::HONEYCOMB && world.wax_copper(pos) {
+            if survival {
+                self.inventory.take_one(slot);
+            }
+            return Some(Used::Waxed { cell: pos });
+        }
         let tool = item.as_tool().map(|(kind, _)| kind);
         let mut wear = |s: &mut Self| {
             if survival && s.inventory.wear(slot, crate::mining::wear(item, false)) {
@@ -804,6 +830,8 @@ pub fn picked_item(block: Block) -> Item {
         Block::LIT_SMOKER => Block::SMOKER.into(),
         Block::LIT_BLAST_FURNACE => Block::BLAST_FURNACE.into(),
         Block::FARMLAND | Block::WET_FARMLAND => Block::DIRT.into(),
+        b if crate::world::crops::stem(b).is_some() => crate::world::crops::stem(b).unwrap().0.seed(),
+        b if matches!(b.as_crop(), Some((crate::world::block::Crop::Beetroot, _))) => Item::BEETROOT_SEEDS,
         b if matches!(b.as_crop(), Some((crate::world::block::Crop::Wheat, _))) => Item::WHEAT_SEEDS,
         b if matches!(b.as_crop(), Some((crate::world::block::Crop::Carrot, _))) => Item::CARROT,
         b if matches!(b.as_crop(), Some((crate::world::block::Crop::Potato, _))) => Item::POTATO,

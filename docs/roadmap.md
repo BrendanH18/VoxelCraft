@@ -1081,10 +1081,10 @@ Decisions, proposed on 2026-10-23 and approved by the owner on 2026-10-25:
   (bees, v0.15), heads and skulls (their mobs), purpur, end rods and shulker
   boxes (v0.18), and potted plants with their plants. The audit lists each
   block's release.
-- **Waxing waits for bees.** Honeycomb has no survival source until bees
-  (v0.15), so the 56 waxed copper blocks, copper waxing and sign waxing
-  ship with them. Unwaxed copper oxidises in v0.12 and an axe scrapes it
-  back.
+- **Waxing was deferred to bees.** Honeycomb acquisition, the 56 waxed
+  copper blocks, copper waxing and sign waxing are implemented, unverified,
+  with bees in v0.15 ([2026-11-04 record](verification/2026-11-04-v0.15-crops-bees.md)).
+  Unwaxed copper oxidises in v0.12 and an axe scrapes it back.
 - **Banners are plain in v0.12.** Patterns are applied at the loom, which
   arrives in v0.17, so banner patterns and their items come with it.
 - **Retire the 11 invented blocks.** Calcite stairs, slab and wall,
@@ -1157,7 +1157,8 @@ Work items (all Missing unless noted):
    cut copper and its stairs and slab, chiseled copper, grate, bulb, door,
    trapdoor, bars, chain, lantern, chest and lightning rod, plus the copper
    torch. Random-tick oxidation and axe scraping. The waxed forms and
-   honeycomb waxing follow with bees in v0.15. *Implemented, unverified
+   honeycomb waxing are implemented, unverified, with bees in v0.15
+   ([2026-11-04 record](verification/2026-11-04-v0.15-crops-bees.md)). *Implemented, unverified
    (2026-10-25; checks rerun on the merge with stone 2026-10-26):* all 57
    blocks (732 registered states laid out in 22528–23372), with Java's
    `ChangeOverTimeBlock` odds, scraping, bulb toggling and comparator
@@ -1181,11 +1182,11 @@ Work items (all Missing unless noted):
    respawn point, falls apart on waking and instead of exploding outside
    the Overworld), and the 16 cushions as stationary seats on the vehicle
    system, crafted from three wool slabs
-   ([record](verification/2026-10-25-v0.12-colour.md)). Owed: owner play;
-   a survival source for candles (the plain candle needs honeycomb, which
-   comes with bees in v0.15, so candles and candle cakes are creative-only
-   until then; integrator's decision, 2026-10-26: keep the finished blocks
-   rather than hold them for bees, as with waxing); banner patterns (loom,
+   ([record](verification/2026-10-25-v0.12-colour.md)). The plain candle's
+   survival recipe was deferred here in 2026-10-26 to retain the finished
+   blocks while waiting for honeycomb. It is now implemented, unverified,
+   with bees (2026-11-04, [record](verification/2026-11-04-v0.15-crops-bees.md)).
+   Owed: owner play and banner patterns (loom,
    v0.17). Arrows hitting cushions, boats, minecarts and decorations:
    *implemented, unverified (2026-10-29,
    [record](verification/2026-10-29-v0.12-finish.md))*.
@@ -1458,7 +1459,19 @@ in the [architecture reservations](architecture.md#v015-track-reservations):
    and attached stems, beetroots; bees, bee nests and hives, pollination
    and crop boosts, honey bottles and honeycomb, honeycomb blocks;
    honeycomb waxing of the 56 waxed copper blocks and of signs, and
-   candles in survival.
+   candles in survival. **Crop slice implemented, unverified (2026-11-04):**
+   the 28 crop states, soil/spacing growth formula, beetroot's Java 2/3
+   tick gate and divided bone-meal gain, fruit attachment/release, seed
+   planting and drops, melon yields, seed/soup recipes, beetroot in the
+   existing village palette and farmer harvest/replant recognition.
+   **Bee slice implemented, unverified:** nests/hives with saved occupants,
+   natural and flower-adjacent sapling nests, nectar/pollination/crop boosts,
+   breeding, anger/stinging, smoke-aware harvesting, honeycomb and Silk Touch
+   transport. **Waxing implemented, unverified:** 56 copper blocks, wax/unwax
+   transactions and recipes, oxidation protection and sign edit protection.
+   **Candles obtainable, unverified:** string above honeycomb crafts the
+   existing plain candle; dyeing and candle-cake uses supply the remaining
+   survival variants ([evidence](verification/2026-11-04-v0.15-crops-bees.md)).
 3. **Passive mobs** (MOB-03). Bats; frogs, tadpoles, frogspawn and the
    three froglights; pandas with their genes; polar bears; armadillos,
    scutes and wolf armor; mooshrooms and suspicious stew; ocelots; the cat

@@ -269,10 +269,11 @@ impl jigsaw::Palette for Style {
     }
     fn crop(&self, hash: u64) -> Block {
         let age = (hash % 8) as u8;
-        match (hash >> 8) % 3 {
+        match (hash >> 8) % 4 {
             0 => Block::wheat(age),
             1 => Block::crop(super::block::Crop::Carrot, age),
-            _ => Block::crop(super::block::Crop::Potato, age),
+            2 => Block::crop(super::block::Crop::Potato, age),
+            _ => Block::crop(super::block::Crop::Beetroot, age % 4),
         }
     }
     /// Streets cross water on planks, like Java's street processors.

@@ -1,17 +1,20 @@
 //! Java 26.3's copper crafting and stonecutting recipes (`data/minecraft/recipe`,
 //! the unwaxed `*copper*` and `lightning_rod` files) for `world::copper`.
-//! Waxed recipes come with honeycomb in v0.15.
+//! v0.15 includes honeycomb waxing and waxed construction recipes.
 
-use super::{Recipe, b, ingredient, shaped};
+use super::{Recipe, b, ingredient, shaped, shapeless};
 use crate::item::Item;
-use crate::world::copper::{Family, Stage, block};
+use crate::world::copper::{self, Copper, Family, Stage, block};
 
 /// Every stage's cut copper, its stairs, slab and chiseled form, grate and
 /// bulb, then the unaffected-only door, trapdoor, bars, chain, lantern,
 /// chest, lightning rod and torch.
 pub(super) fn add_recipes(r: &mut Vec<Recipe>) {
     let item = |f: Family, s: Stage| b(block(f, s, 0));
-    for s in Stage::ALL {
+    for (s, waxed) in [false, true].into_iter().flat_map(|waxed| Stage::ALL.map(move |s| (s, waxed))) {
+        let item = |family, stage| {
+            if waxed { b(copper::encode(Copper { family, stage, local: 0, waxed: true })) } else { item(family, stage) }
+        };
         let copper = ingredient(item(Family::Block, s));
         let cut = ingredient(item(Family::Cut, s));
         let slab = ingredient(item(Family::Slab, s));
@@ -27,6 +30,25 @@ pub(super) fn add_recipes(r: &mut Vec<Recipe>) {
             4,
         ));
     }
+    for family in Family::ALL.into_iter().filter(|f| f.weathers()) {
+        for stage in Stage::ALL {
+            r.push(shapeless(
+                &[ingredient(item(family, stage)), &[Item::HONEYCOMB]],
+                b(copper::encode(Copper { family, stage, local: 0, waxed: true })),
+                1,
+            ));
+        }
+    }
+    r.push(shapeless(
+        &[ingredient(b(copper::encode(Copper {
+            family: Family::Block,
+            stage: Stage::Unaffected,
+            local: 0,
+            waxed: true,
+        })))],
+        Item::COPPER_INGOT,
+        9,
+    ));
     let u = Stage::Unaffected;
     let ingot: super::Ingredient = &[Item::COPPER_INGOT];
     let nugget: super::Ingredient = &[Item::COPPER_NUGGET];
@@ -53,9 +75,17 @@ pub(super) fn add_recipes(r: &mut Vec<Recipe>) {
 /// slab, stairs and chiseled copper.
 pub fn stonecutting() -> Vec<(Item, Item, u8)> {
     let item = |f: Family, s: Stage| b(block(f, s, 0));
-    Stage::ALL
+    [false, true]
         .into_iter()
-        .flat_map(|s| {
+        .flat_map(|waxed| Stage::ALL.map(move |s| (s, waxed)))
+        .flat_map(|(s, waxed)| {
+            let item = |family, stage| {
+                if waxed {
+                    b(copper::encode(Copper { family, stage, local: 0, waxed: true }))
+                } else {
+                    item(family, stage)
+                }
+            };
             let (copper, cut) = (item(Family::Block, s), item(Family::Cut, s));
             [
                 (copper, cut, 4),

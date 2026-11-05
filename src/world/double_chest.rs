@@ -55,17 +55,27 @@ impl ChestType {
 pub enum Kind {
     Plain,
     Trapped,
-    /// A copper chest at its oxidation stage (waxed chests come with bees).
+    /// A copper chest at its oxidation stage.
     Copper(Stage),
+    WaxedCopper(Stage),
 }
 
 impl Kind {
+    pub const fn copper(self) -> Option<(Stage, bool)> {
+        match self {
+            Self::Copper(s) => Some((s, false)),
+            Self::WaxedCopper(s) => Some((s, true)),
+            _ => None,
+        }
+    }
     /// `chestCanConnectTo`: a chest joins its own block, a copper chest
     /// any copper chest (`BlockTags.COPPER_CHESTS`).
     pub const fn connects(self, other: Kind) -> bool {
         matches!(
             (self, other),
-            (Kind::Plain, Kind::Plain) | (Kind::Trapped, Kind::Trapped) | (Kind::Copper(_), Kind::Copper(_))
+            (Kind::Plain, Kind::Plain)
+                | (Kind::Trapped, Kind::Trapped)
+                | (Kind::Copper(_) | Kind::WaxedCopper(_), Kind::Copper(_) | Kind::WaxedCopper(_))
         )
     }
 }
@@ -136,7 +146,7 @@ pub const fn state(b: Block) -> Option<ChestState> {
     if copper::owns(id) {
         return match copper::decode(id) {
             Some(c) if matches!(c.family, copper::Family::Chest) => Some(ChestState {
-                kind: Kind::Copper(c.stage),
+                kind: if c.waxed { Kind::WaxedCopper(c.stage) } else { Kind::Copper(c.stage) },
                 facing: Facing::ALL[(c.local % 4) as usize],
                 ty: ChestType::ALL[(c.local / 8) as usize],
                 wet: (c.local / 4) % 2 == 1,
@@ -171,9 +181,12 @@ pub const fn block(s: ChestState) -> Block {
             ty => Block(PLAIN_DOUBLE + s.wet as u16 * 8 + (type_index(ty) - 1) * 4 + nesw(f)),
         },
         Kind::Trapped => Block(TRAPPED_FIRST + s.wet as u16 * 12 + type_index(s.ty) * 4 + nesw(f)),
-        Kind::Copper(stage) => {
-            copper::block(copper::Family::Chest, stage, type_index(s.ty) * 8 + s.wet as u16 * 4 + f as u16)
-        }
+        Kind::Copper(stage) | Kind::WaxedCopper(stage) => copper::encode(copper::Copper {
+            family: copper::Family::Chest,
+            stage,
+            local: type_index(s.ty) * 8 + s.wet as u16 * 4 + f as u16,
+            waxed: matches!(s.kind, Kind::WaxedCopper(_)),
+        }),
     }
 }
 
@@ -224,11 +237,12 @@ pub fn placed(raw: Block, ctx: &PlaceContext, get: impl Fn(IVec3) -> Option<Bloc
     let mut kind = s.kind;
     // `getLeastOxidizedChestOfConnectedBlocks`.
     if ty != ChestType::Single
-        && let Kind::Copper(mine) = kind
-        && let Some(Kind::Copper(theirs)) = get(ctx.at + connected(facing, ty).offset()).and_then(state).map(|p| p.kind)
-        && theirs < mine
+        && let Some((mine, mine_wax)) = kind.copper()
+        && let Some((theirs, their_wax)) =
+            get(ctx.at + connected(facing, ty).offset()).and_then(state).and_then(|p| p.kind.copper())
     {
-        kind = Kind::Copper(theirs);
+        let stage = mine.min(theirs);
+        kind = if mine_wax && their_wax { Kind::WaxedCopper(stage) } else { Kind::Copper(stage) };
     }
     Some(block(ChestState { kind, facing, ty, wet: s.wet }))
 }
@@ -255,7 +269,8 @@ pub fn reshaped(here: Block, dir: Facing, neighbour: Block) -> Option<Block> {
         None => {}
     }
     // `CopperChestBlock.updateShape`: a half facing a copper chest takes its block.
-    if let (Some(n), Kind::Copper(_)) = (n, s.kind)
+    if let Some(n) = n
+        && s.kind.copper().is_some()
         && s.ty != ChestType::Single
         && connected(s.facing, s.ty) == dir
     {
@@ -308,7 +323,7 @@ pub mod tex {
 const fn material(kind: Kind) -> u16 {
     match kind {
         Kind::Plain | Kind::Trapped => 0,
-        Kind::Copper(s) => 1 + s as u16,
+        Kind::Copper(s) | Kind::WaxedCopper(s) => 1 + s as u16,
     }
 }
 
@@ -316,7 +331,7 @@ const fn front_kind(kind: Kind) -> u16 {
     match kind {
         Kind::Plain => 0,
         Kind::Trapped => 1,
-        Kind::Copper(s) => 2 + s as u16,
+        Kind::Copper(s) | Kind::WaxedCopper(s) => 2 + s as u16,
     }
 }
 
@@ -326,7 +341,7 @@ const fn singles(kind: Kind) -> (u16, u16, u16) {
     match kind {
         Kind::Plain => (b::CHEST_FRONT, b::CHEST_SIDE, b::CHEST_TOP),
         Kind::Trapped => (super::utilities::t::TRAPPED_FRONT, b::CHEST_SIDE, b::CHEST_TOP),
-        Kind::Copper(s) => (
+        Kind::Copper(s) | Kind::WaxedCopper(s) => (
             copper::t::layer(s, copper::t::CHEST_FRONT),
             copper::t::layer(s, copper::t::CHEST_SIDE),
             copper::t::layer(s, copper::t::CHEST_TOP),

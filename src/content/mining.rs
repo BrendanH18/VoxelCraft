@@ -24,6 +24,7 @@ pub(crate) fn reference_name(base: Block) -> &'static str {
         "block of amethyst" => "amethyst block",
         "block of bamboo" => "bamboo block",
         "block of copper" => "copper block",
+        "waxed block of copper" => "waxed copper block",
         "block of emerald" => "emerald block",
         "block of gold" => "gold block",
         "block of iron" => "iron block",

@@ -503,6 +503,44 @@ reserved copper powered-rod states 23284–23295, 23308–23319, 23332–23343 a
 Procedural entity geometry and synthesized thunder need no texture IDs.
 See [track evidence and gaps](verification/2026-11-04-v0.15-lightning.md).
 
+Track 2 crop slice (2026-11-04, implemented, unverified):
+`world::crops` uses 10816–10823 for melon stem ages 0–7, 10824–10827
+for its attached facings (`Facing::ALL`: S, N, E, W), 10828–10835 for
+pumpkin stem ages 0–7, 10836–10839 for its attached facings, and
+10840–10843 for beetroot ages 0–3. Item 1280 is beetroot soup; pumpkin
+seeds (680), beetroot (682), melon seeds (1016), beetroot seeds (1017),
+melon slices (283) and honey bottle (1073) retain their existing IDs.
+Original crop textures use 2992–3007, offsets from `crops::t::BASE`:
+eight stem ages, four attached silhouettes and four beetroot ages.
+That initial slice appended no MobKinds. The continuation below allocates
+bee and waxed content from the same reservation; see [track evidence](verification/2026-11-04-v0.15-crops-bees.md).
+
+Track 2 bee continuation: 10844–10867 bee nest, 10868–10891 beehive
+(`honey_level * 4 + facing`, S/N/E/W), 10892 honeycomb block. Item 1281
+is honeycomb. Original hive/nest/comb layers 3008–3016 are offsets from
+`bees::t::BASE`; the original bee model uses procedural entity colours,
+and its original voice appends `Voice::Bee`. `MobKind::Bee` appends after
+Camel (LAN index 54 in this track, subject to integration order). Hive
+occupants use normal saved bee payloads in dimension property `beehives`;
+Silk Touch items append an optional hex-encoded component to inventory
+strings. Immutable item payloads are interned, keeping `Stack` Copy and
+its optional hive component pointer-sized. They live until process exit.
+States 10893–11007, items 1282–1299 and layers 3017–3135 remain unused.
+The waxed copper allocation follows below.
+
+Track 2 waxed copper continuation (implemented, unverified):
+`copper::WAXED_FIRST = 29696`, with the same family/stage/local offsets as
+22528–23367 (the unwaxed torch has no waxed form). The unaffected block
+of copper retains 231 and maps to 29696. The mirror ends at 30536 exclusive:
+792 registered states, with 48 powered-rod locals reserved as in the
+current unwaxed layout. Remaining 30536–30719 stay unused. Stair/slab
+families 89–92 append after the existing colours; no earlier family or
+saved ID changes. All 56 default block items reuse their unwaxed textures;
+no additional item IDs, layers or MobKinds. Sign waxing uses the existing
+saved sign `waxed` flag. See [track evidence](verification/2026-11-04-v0.15-crops-bees.md).
+
+The plain candle recipe adds no IDs or layers; it uses the existing plain
+candle (27296), string and honeycomb.
 
 ## Assessment branch ID reservations
 

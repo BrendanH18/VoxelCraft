@@ -366,7 +366,7 @@ pub mod tex {
     pub const BUBBLE_BASE: u16 = 2864;
     pub const BUBBLE_UP: u16 = BUBBLE_BASE;
     pub const BUBBLE_DOWN: u16 = BUBBLE_BASE + 1;
-    pub const COUNT: u32 = 2960; // v0.14 map sprites, palette and original destination icons (2944–2959).
+    pub const COUNT: u32 = super::super::bees::t::END as u32; // v0.15 original crop layers 2992–3007.
     const _: () = assert!(super::super::biome_plants::TEX_END <= BUBBLE_BASE);
     const _: () = assert!(super::super::utilities::TEX_END <= super::super::cave_blocks::TEX);
     const _: () = assert!(super::super::cave_blocks::TEX_END <= super::super::biome_plants::TEX);
@@ -718,6 +718,9 @@ impl Block {
     /// Minecraft's (encouragement, consumption) fire odds. Wooden doors,
     /// ladders and containers can kindle lava fires but aren't consumed.
     pub fn fire_odds(self) -> (u8, u8) {
+        if let Some((nest, _, _)) = super::bees::hive(self) {
+            return (if nest { 30 } else { 5 }, 20);
+        }
         // `FireBlock.getBurnOdds`/`getIgniteOdds`: waterlogged states never burn.
         if super::waterlog::wet(self.0) {
             return (0, 0);
@@ -804,18 +807,19 @@ impl Block {
         Block(59 + stage as u16)
     }
 
-    /// Growth stage of wheat, carrots or potatoes.
+    /// Growth stage of a farm crop (beetroot matures at 3, others at 7).
     pub fn crop_stage(self) -> Option<u8> {
         self.as_crop().map(|(_, stage)| stage)
     }
 
-    /// Wheat, carrots or potatoes at `stage` 0..=7.
+    /// A farm crop at `stage`, clamped to its maximum age.
     pub const fn crop(kind: Crop, stage: u8) -> Block {
         let stage = if stage > 7 { 7 } else { stage } as u16;
         match kind {
             Crop::Wheat => Block(59 + stage),
             Crop::Carrot => Block(522 + stage),
             Crop::Potato => Block(530 + stage),
+            Crop::Beetroot => Block(super::crops::BEETROOT + if stage > 3 { 3 } else { stage }),
         }
     }
 
@@ -824,6 +828,9 @@ impl Block {
             59..=66 => Some((Crop::Wheat, (self.0 - 59) as u8)),
             522..=529 => Some((Crop::Carrot, (self.0 - 522) as u8)),
             530..=537 => Some((Crop::Potato, (self.0 - 530) as u8)),
+            super::crops::BEETROOT..=super::crops::LAST => {
+                Some((Crop::Beetroot, (self.0 - super::crops::BEETROOT) as u8))
+            }
             _ => None,
         }
     }
@@ -1249,6 +1256,9 @@ impl Block {
 
     /// This block without its orientation (itself if it has none).
     pub fn base(self) -> Block {
+        if let Some((nest, _, _)) = super::bees::hive(self) {
+            return if nest { super::bees::NEST } else { super::bees::HIVE };
+        }
         if let Some(b) = super::biome_plants::base(self.0) {
             return b;
         }
@@ -1311,6 +1321,9 @@ impl Block {
 
     /// The same block facing `facing` (unchanged if it has no front).
     pub fn with_facing(self, facing: Facing) -> Block {
+        if let Some((nest, _, honey)) = super::bees::hive(self) {
+            return super::bees::block(nest, facing, honey);
+        }
         if super::scaffolding::is_scaffolding(self) || super::stone_blocks::is_pillar(self) {
             return self;
         }
@@ -1540,6 +1553,9 @@ impl Block {
 
     /// What breaking this block yields in survival.
     pub fn drop(self) -> Option<Item> {
+        if let Some((nest, _, _)) = super::bees::hive(self) {
+            return (!nest).then(|| super::bees::HIVE.into());
+        }
         if let Some(drop) = super::cave_blocks::drop(self) {
             return drop;
         }
@@ -1620,6 +1636,9 @@ impl Block {
             b if b.cake_bites().is_some() => None,
             Block::LIT_FURNACE => Some(Block::FURNACE.into()),
             Block::FARMLAND | Block::WET_FARMLAND => Some(Block::DIRT.into()),
+            b if b.as_crop() == Some((Crop::Beetroot, 3)) => Some(Item::BEETROOT),
+            b if matches!(b.as_crop(), Some((Crop::Beetroot, _))) => Some(Item::BEETROOT_SEEDS),
+            b if super::crops::stem(b).is_some() => None,
             b if b.as_crop() == Some((Crop::Wheat, 7)) => Some(Item::WHEAT),
             b if matches!(b.as_crop(), Some((Crop::Wheat, _))) => Some(Item::WHEAT_SEEDS),
             b if matches!(b.as_crop(), Some((Crop::Carrot, _))) => Some(Item::CARROT),
@@ -1673,6 +1692,15 @@ impl Block {
         }
         if let Some((hardness, ..)) = super::utilities::mining(self) {
             return hardness;
+        }
+        if let Some((nest, _, _)) = super::bees::hive(self) {
+            return if nest { 0.3 } else { 0.6 };
+        }
+        if self == super::bees::HONEYCOMB_BLOCK {
+            return 0.6;
+        }
+        if super::crops::owns(self.0) {
+            return 0.0;
         }
         if self == Self::HONEY_BLOCK || super::biome_plants::owns(self.0) {
             return 0.0;
@@ -1864,6 +1892,9 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
+        if super::bees::hive(self).is_some() {
+            return Some(ToolKind::Axe);
+        }
         if let Some((_, tool, _)) = super::cave_blocks::mining(self) {
             return tool;
         }
@@ -2183,6 +2214,7 @@ impl Block {
             .chain([Self::HONEY_BLOCK.0, super::scaffolding::SCAFFOLDING.0])
             .chain(super::stone_blocks::palette_ids())
             .chain(super::copper::palette_ids())
+            .chain([super::bees::NEST.0, super::bees::HIVE.0, super::bees::HONEYCOMB_BLOCK.0])
             .chain(super::wood::palette_ids())
             .chain(super::colour_blocks::palette_ids())
             .chain(super::utilities::palette_ids())
@@ -2336,7 +2368,7 @@ impl Block {
             b if b.is_sapling() => {
                 matches!(below, Block::GRASS | Block::DIRT | Block::SNOWY_GRASS) || below.is_farmland()
             }
-            b if b.crop_stage().is_some() => below.is_farmland(),
+            b if b.crop_stage().is_some() || super::crops::stem(b).is_some() => below.is_farmland(),
             b if b.cake_bites().is_some() => below.is_opaque(),
             b if b.wart_age().is_some() => below == Block::SOUL_SAND,
             _ => true,
@@ -2358,6 +2390,9 @@ impl Block {
     /// Looks a block up by name (spaces or underscores).
     pub fn from_name(name: &str) -> Option<Block> {
         let name = name.replace('_', " ");
+        if name == "waxed copper block" {
+            return Some(Block(super::copper::WAXED_FIRST));
+        }
         if name == "scaffolding" {
             return Some(super::scaffolding::SCAFFOLDING);
         }
@@ -2606,12 +2641,19 @@ impl Facing {
     }
 }
 
-/// A farm crop that grows through eight stages.
+/// A farm crop: four ages for beetroot, eight for the other crops.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Crop {
     Wheat,
     Carrot,
     Potato,
+    Beetroot,
+}
+
+impl Crop {
+    pub const fn max_age(self) -> u8 {
+        if matches!(self, Self::Beetroot) { 3 } else { 7 }
+    }
 }
 
 /// The state of a [`RenderKind::Shaped`] block (see `world::shape`).
@@ -2804,7 +2846,10 @@ pub(super) const fn make(id: u16) -> BlockInfo {
             Some((name, kind, super::stone_blocks::Tex::Like(b))) => (name, kind, make(b.0).tex),
             None => ("unknown", Invisible, all(0)),
         },
-        super::copper::FIRST..=super::copper::RESERVED_LAST => match super::copper::registry(id) {
+        super::bees::FIRST..=super::bees::LAST => super::bees::registry(id),
+        super::crops::FIRST..=super::crops::LAST => super::crops::registry(id),
+        super::copper::FIRST..=super::copper::RESERVED_LAST
+        | super::copper::WAXED_FIRST..=super::copper::WAXED_RESERVED_LAST => match super::copper::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },

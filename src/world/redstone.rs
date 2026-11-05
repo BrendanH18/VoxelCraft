@@ -406,6 +406,9 @@ impl World {
     }
 
     pub fn container_signal(&self, p: IVec3) -> Option<u8> {
+        if let Some((_, _, honey)) = self.get_block(p).and_then(super::bees::hive) {
+            return Some(honey);
+        }
         // Comparators read nothing from an ender chest (no `hasAnalogOutputSignal`).
         if self.lent_chest() == Some(p)
             || self.get_block(p).is_some_and(|b| super::utilities::ender_chest_of(b).is_some())

@@ -378,6 +378,7 @@ impl PlayerSession {
         }
         let placed = world.set_block(cell, block);
         debug_assert!(placed, "validated loaded placement must succeed");
+        world.restore_hive_item(cell, held.hive);
         if kind != Kind::Block
             && let Some((pos, partner)) = partner
         {

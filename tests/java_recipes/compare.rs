@@ -247,6 +247,22 @@ fn shaped(w: usize, h: usize, cells: Vec<Option<Alternatives>>) -> Form {
     Form::Shaped(w, h, cells.min(mirrored))
 }
 
+/// ShapedRecipePattern.shrink removes empty outer rows/columns before
+/// Java stores dimensions, including the padded waxed-chiseled recipes.
+fn java_shaped(w: usize, h: usize, cells: Vec<Option<Alternatives>>) -> Form {
+    let occupied: Vec<_> = cells.iter().enumerate().filter_map(|(i, c)| c.as_ref().map(|_| (i % w, i / w))).collect();
+    if occupied.is_empty() {
+        return shaped(w, h, cells);
+    }
+    let x0 = occupied.iter().map(|p| p.0).min().unwrap();
+    let x1 = occupied.iter().map(|p| p.0).max().unwrap();
+    let y0 = occupied.iter().map(|p| p.1).min().unwrap();
+    let y1 = occupied.iter().map(|p| p.1).max().unwrap();
+    let trimmed =
+        (y0..=y1).flat_map(|y| (x0..=x1).map(move |x| (x, y))).map(|(x, y)| cells[y * w + x].clone()).collect();
+    shaped(x1 - x0 + 1, y1 - y0 + 1, trimmed)
+}
+
 fn shapeless(mut list: Vec<Alternatives>) -> Form {
     list.sort();
     Form::Shapeless(list)
@@ -285,7 +301,7 @@ impl Reference {
                         }
                     }
                 }
-                shaped(rows[0].len(), rows.len(), cells)
+                java_shaped(rows[0].len(), rows.len(), cells)
             }
             "crafting_shapeless" => {
                 let mut list = Vec::new();

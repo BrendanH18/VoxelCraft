@@ -198,9 +198,10 @@ impl Game {
             spawning: self.gamerules.bool("spawn_mobs"),
             dimension: self.dimension,
         };
+        self.world.set_bee_clock(self.dimension, (self.day_time.rem_euclid(1.) * 24000.).floor() as u32);
         self.mobs.entities.tick_lightning(dt, &mut self.world, &ctx, self.weather.is_thundering());
         let mut smashed = Vec::new();
-        for event in self.mobs.entities.update_difficulty(dt, &self.world, &ctx, self.difficulty) {
+        for event in self.mobs.entities.update_world(dt, &mut self.world, &ctx, self.difficulty) {
             match event {
                 EntityEvent::ProjectileBlockHit { cell, pos, normal, arrow, burning } => {
                     self.world.hit_redstone_target(cell, pos, normal, arrow);
@@ -265,6 +266,35 @@ impl Game {
                     } else if let Some(bot) = self.agents.by_id_mut(player) {
                         bot.agent.hurt_beam(physical, magic, &mut self.mobs.entities);
                     }
+                }
+                EntityEvent::BeeSting { uid, player, poison } => {
+                    let source = self.mobs.entities.mobs.iter().find(|m| m.uid == uid).map(|m| m.pos);
+                    let damage = self.difficulty.mob_damage(2.);
+                    let applied = if player == PlayerId::HOST {
+                        let toward = source.map(|p| p - self.session.player.pos);
+                        let hit = self.damage_player_from(damage, "was stung by a bee", toward) > 0.;
+                        if hit && poison > 0 {
+                            self.session.vitals.apply_effect(crate::simulation::effects::Effect::Poison, 0, poison);
+                        }
+                        hit
+                    } else if let Some(bot) = self.agents.by_id_mut(player) {
+                        let toward = source.map(|p| p - bot.agent.session.player.pos);
+                        let blocked = toward
+                            .is_some_and(|d| bot.agent.session.shield_intercept(bot.agent.selected, damage, d).blocked);
+                        let hit = !blocked
+                            && bot.agent.hurt(damage, "was stung by a bee", DVec3::ZERO, &mut self.mobs.entities) > 0.;
+                        if hit && poison > 0 {
+                            bot.agent.session.vitals.apply_effect(
+                                crate::simulation::effects::Effect::Poison,
+                                0,
+                                poison,
+                            );
+                        }
+                        hit
+                    } else {
+                        false
+                    };
+                    self.mobs.entities.confirm_bee_sting(uid, applied);
                 }
                 EntityEvent::PlayerSting { player, damage, cause, poison } => {
                     // Pufferfish contact (`mobAttack`) and guardian thorns both
@@ -439,7 +469,8 @@ impl Game {
                 }
                 EntityEvent::VillagerHarvest { cell } => {
                     if let Some(block) = self.world.get_block(cell)
-                        && let Some((crop, 7)) = block.as_crop()
+                        && let Some((crop, age)) = block.as_crop()
+                        && age == crop.max_age()
                     {
                         self.world.spill_block(cell, block);
                         self.world.set_block(cell, crate::world::block::Block::crop(crop, 0));
@@ -571,6 +602,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Wolf => Voice::Wolf,
         MobKind::Fox => Voice::Fox,
         MobKind::Parrot => Voice::Parrot,
+        MobKind::Bee => Voice::Bee,
         MobKind::Rabbit => Voice::Rabbit,
         MobKind::Goat => Voice::Goat,
     }
