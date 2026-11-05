@@ -5,6 +5,8 @@
 ## Goals, status and planned changes
 
 - [Roadmap](roadmap.md): authoritative scope, dependencies and completion criteria.
+- [v0.20 presentation and performance scope](roadmap.md#v020-scope-presentation-and-performance):
+  the graphics/UI review, work order and validation needs within M7.
 - [Requirement inventory](requirements.md): every core requirement as its own row,
   with state, owning release, evidence and acceptance cases.
 - [Restructuring plan](restructuring.md): planned verification, content, gameplay,
@@ -35,6 +37,8 @@ roadmap and recorded checks to assess completeness against the current target.
   [hosted agents/commands](agents.md).
 - [Release guide](releases.md).
 - [Dated performance investigation](performance-2026-10-07.md).
+- [Graphics and UI review](verification/2026-11-05-graphics-ui-review.md):
+  source/scripted-scene observations, evidence limits and the v0.20 plan review.
 - [Initial v0.7 assessment and first correctness fixes](verification/2026-10-12-v0.7-assessment.md):
   tested commits, reference failures, regression/save checks and remaining acceptance work.
 - [Content and original asset integrations](verification/2026-10-12-content-and-assets.md):
