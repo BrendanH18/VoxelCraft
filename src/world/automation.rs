@@ -200,6 +200,7 @@ impl World {
             // `PushReaction.POPPED`.
             || super::mount_states::is_lantern(b.0)
             || super::copper::pops_when_pushed(b)
+            || super::copper_golem_statue::owns(b.0)
             || b==super::frog_blocks::FROGSPAWN
             // `PushReaction.DESTROY` for flower pots and decorated pots.
             || b == super::utilities::FLOWER_POT

@@ -287,6 +287,7 @@ impl Game {
                             (self.body.actions.eat_timer / super::EAT_TIME) as f32,
                             scene.alpha,
                             self.session.inventory.armor,
+                            self.session.inventory.get(self.body.actions.selected),
                         ),
                     ),
                     self.lan.profile.as_str(),
@@ -308,6 +309,7 @@ impl Game {
                                 b.agent.eating(),
                                 scene.alpha,
                                 b.agent.session.inventory.armor,
+                                b.agent.session.inventory.get(b.agent.selected),
                             ),
                         ),
                         other.as_str(),
@@ -329,7 +331,13 @@ impl Game {
                     scene.time,
                     Self::stamp_look(
                         host_dial.at(a.player.yaw, a.player.pos.x, a.player.pos.z),
-                        bot.hand.appearance(&a.vitals, pad.map_or(a.eating(), |p| p.1), scene.alpha, a.inventory.armor),
+                        bot.hand.appearance(
+                            &a.vitals,
+                            pad.map_or(a.eating(), |p| p.1),
+                            scene.alpha,
+                            a.inventory.armor,
+                            a.inventory.get(bot.agent.selected),
+                        ),
                     ),
                     verts,
                 );

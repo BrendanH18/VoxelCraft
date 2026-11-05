@@ -17,7 +17,8 @@ impl MobKind {
     pub fn leashable(self) -> bool {
         matches!(
             self,
-            Self::Cow
+            Self::CopperGolem
+                | Self::Cow
                 | Self::Mooshroom
                 | Self::Frog
                 | Self::PolarBear

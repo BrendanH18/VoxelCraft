@@ -73,6 +73,9 @@ impl World {
         for (p, feature) in features {
             let l = local_of(p);
             let block = data.get(l.x as usize, l.y as usize, l.z as usize);
+            if is_chest(block) {
+                self.register_transport_chest(p);
+            }
             match feature {
                 Feature::Spawner(kind) if block == Block::SPAWNER => {
                     self.spawners.entry(p).or_insert(kind);

@@ -361,6 +361,7 @@ impl PlayerSession {
                     let shaped_half = ss::stairs(block).is_some()
                         || ss::slab(block).is_some()
                         || crate::world::wood::owns(block.0)
+                        || crate::world::copper_golem_statue::owns(block.0)
                         || cb::owns(block.0);
                     if (block.is_solid() && if shaped_half { obstructed(world, at, block) } else { blocked(at) })
                         || partner.is_some_and(|(p, b)| !free(world, p) || (b.is_solid() && blocked(p)))
@@ -376,6 +377,12 @@ impl PlayerSession {
         };
         // Every `SimpleWaterloggedBlock.getStateForPlacement`: waterlogged
         // exactly when the final cell holds a water source.
+        if let Some(statue) = crate::world::copper_golem_statue::decode(block) {
+            block = crate::world::copper_golem_statue::block(crate::world::copper_golem_statue::Statue {
+                pose: crate::world::copper_golem_statue::Pose::from_id(held.entity_data),
+                ..statue
+            });
+        }
         let watered =
             |world: &World, at: IVec3, b: Block| b.with_water(world.get_block(at).is_some_and(waterlog::holds_source));
         block = watered(world, cell, block);
@@ -390,6 +397,7 @@ impl PlayerSession {
         let placed = world.set_block(cell, block);
         debug_assert!(placed, "validated loaded placement must succeed");
         world.restore_hive_item(cell, held.hive);
+        world.name_copper_golem_statue(cell, held.name);
         if kind != Kind::Block
             && let Some((pos, partner)) = partner
         {

@@ -434,6 +434,13 @@ impl Game {
                                 F::Grow => (Sound::Pop, 0.15),
                             }
                         }
+                        MobSound::CopperGolem(action, stage) => (Sound::CopperGolem(action, stage), 0.7),
+                        MobSound::Hurt(MobKind::CopperGolem) => {
+                            (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Hurt, 0), 0.9)
+                        }
+                        MobSound::Death(MobKind::CopperGolem) => {
+                            (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Death, 0), 0.9)
+                        }
                         MobSound::Bell => (Sound::Bell, 1.0),
                         // Procedural stand-ins for Java's `wandering_trader.disappeared`/`reappeared`.
                         MobSound::TraderDrink(true) => (Sound::Teleport, 0.5),
@@ -615,6 +622,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Panda => Voice::Panda,
         MobKind::Armadillo => Voice::Armadillo,
         MobKind::Ocelot => Voice::Ocelot,
+        MobKind::CopperGolem => Voice::Skeleton,
         MobKind::Tadpole => Voice::Fish,
         MobKind::Sheep => Voice::Sheep,
         MobKind::Chicken => Voice::Chicken,

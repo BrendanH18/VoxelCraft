@@ -437,6 +437,9 @@ impl World {
         if let Some(level) = self.get_block(p).and_then(super::composter::level) {
             return Some(level);
         }
+        if let Some(signal) = self.get_block(p).and_then(super::copper_golem_statue::comparator_output) {
+            return Some(signal);
+        }
         if let Some(signal) = self.get_block(p).and_then(super::copper::bulb_signal) {
             return Some(signal);
         }

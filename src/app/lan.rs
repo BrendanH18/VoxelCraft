@@ -128,13 +128,16 @@ pub(super) struct Lan {
     /// drawn: started when use could start a draw, kept while use stays held
     /// on it (the host's `tick_draw` doesn't recheck what is targeted).
     predicted_draw: Option<usize>,
+    /// Ongoing consumption predicted for the selected slot, reconciled with
+    /// host snapshots even after every queued input has been acknowledged.
+    predicted_eating: Option<usize>,
     /// Whether the use button was held on the last client tick.
     use_was_held: bool,
     /// Use was pressed since the last client tick (it may also have been
     /// released and pressed again in between).
     use_pressed: bool,
     /// The input sequence of the latest use press or release: a snapshot
-    /// acknowledging it settles the predicted draw.
+    /// acknowledging it settles predicted item use.
     use_edge_sequence: u32,
     ready: bool,
     messages: VecDeque<String>,
@@ -144,6 +147,34 @@ pub(super) struct Lan {
     sign_serial: u32,
 }
 impl Lan {
+    /// What the use button was doing when `input` was sampled: eating or
+    /// drinking (as `Hands::eat`), or drawing. Statue use blocks a new bite,
+    /// while a bite already in progress continues until the host ends it.
+    fn sample_use(
+        &mut self,
+        session: &voxelcraft::session::PlayerSession,
+        world: &World,
+        input: &Input,
+        pressed: bool,
+    ) -> LanUse {
+        let slot = usize::from(input.selected).min(8);
+        let drink = session.inventory.get(slot).is_some_and(|s| s.item.is_drink());
+        let targeted = session.block_target(world).and_then(|(pos, _)| world.get_block(pos));
+        let composting =
+            input.buttons & 2 == 0 && targeted.is_some_and(|b| voxelcraft::world::composter::level(b).is_some());
+        let continuing = !pressed && self.predicted_eating == Some(slot);
+        let statue_use = !continuing
+            && session.player.vehicle.is_none()
+            && input.buttons & 2 == 0
+            && targeted.and_then(voxelcraft::world::copper_golem_statue::decode).is_some();
+        let eating = input.buttons & 16 != 0
+            && session.consumption_duration(slot).is_ok()
+            && !statue_use
+            && (drink || !composting);
+        self.predicted_eating = eating.then_some(slot);
+        LanUse { eating, drawing: self.predicted_draw == Some(slot) }
+    }
+
     /// The world's remembered session rules, `cheats,pvp` as `0` or `1`.
     pub(super) fn rules_text(&self) -> String {
         format!("{},{}", u8::from(self.cheats), u8::from(self.pvp))
@@ -244,7 +275,7 @@ const WOOD_BYTES: usize = voxelcraft::lan::MAX_FRAME / 4;
 fn fit_state(mut v: Value) -> (Option<Value>, bool) {
     let fits = |v: &Value| serde_json::to_vec(v).is_ok_and(|b| b.len() < voxelcraft::lan::MAX_FRAME - 16);
     let mut shed_looks = false;
-    for shed in ["extras", "wood", "decor", "items", "looks", "mobs"] {
+    for shed in ["extras", "copper_golem_statues", "wood", "decor", "items", "looks", "mobs"] {
         if fits(&v) {
             return (Some(v), shed_looks);
         }
@@ -286,7 +317,7 @@ fn state(agent: &Agent, name: &str) -> Value {
         "cursor":stack_to_string(agent.session.inventory.cursor),"time_since_rest":agent.session.vitals.time_since_rest,"ticks_frozen":agent.session.vitals.ticks_frozen,"health":agent.session.vitals.health,"air":agent.session.vitals.air,
         "food":agent.session.vitals.hunger.food,"saturation":agent.session.vitals.hunger.saturation,"exhaustion":agent.session.vitals.hunger.exhaustion,
         "death":agent.session.vitals.death,"xp":agent.session.vitals.xp.serialize(),"effects":agent.session.vitals.effects.serialize(),"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle,
-        "respawns":agent.session.respawns,"drawing":agent.session.drawing_slot()})
+        "respawns":agent.session.respawns,"drawing":agent.session.drawing_slot(),"consuming":agent.session.consuming()})
 }
 /// What clients need of *other* players: pose, held item, armor and health, not their inventory.
 /// Rounds to a millimetre (or a thousandth of a radian): plenty for drawing, far fewer bytes.
@@ -1343,6 +1374,8 @@ impl Game {
             // Everyone but this client itself (it has its own full state).
             let others: Vec<&Value> = players.iter().filter(|p| p["id"] != bot.id.0).collect();
             let snapshot = json!({"sequence":peer.applied,"self":state(&bot.agent,name),"players":others,"time":self.day_time,"rain":self.weather.raining,"rain_strength":self.weather.strength,"thunder":self.weather.thundering,"dimension":self.dimension.name(),"seed":self.world.generator.seed,"view":view,"open":peer.open,"container":container,"grid":peer.grid.cells.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),"grid_size":peer.grid.size,"mobs":mobs,"carts":carts,"items":items,"decor":decor,"arrows":arrows,"extras":extras,"falling":falling,"sounds":sounds,"effects":effects,"cracks":cracks,"wood":wood,"sign_edit":sign_edit});
+            let mut snapshot = snapshot;
+            snapshot["copper_golem_statues"] = json!(self.world.copper_golem_statues_near(here));
             let (snapshot, shed_looks) = fit_state(snapshot);
             if snapshot.as_ref().is_some_and(|v| v["wood"].is_string()) {
                 peer.wood_sent = Some((wood_version, here));
@@ -1369,6 +1402,7 @@ impl Game {
             self.settings.render_distance,
         );
         self.lan.predictions.clear();
+        self.lan.predicted_eating = None;
         self.lan.ready = false;
         self.mobs.entities = crate::entity::Entities::new(seed);
     }
@@ -1417,23 +1451,6 @@ impl Game {
         }
     }
 
-    /// What the use button was doing when `input` was sampled: eating or
-    /// drinking (as `Hands::eat`: food, not drink, aimed at a composter
-    /// without sneaking fills the composter instead), or drawing.
-    fn lan_use(&self, input: &Input) -> LanUse {
-        let slot = usize::from(input.selected).min(8);
-        let drink = self.session.inventory.get(slot).is_some_and(|s| s.item.is_drink());
-        let composting = input.buttons & 2 == 0
-            && self
-                .session
-                .block_target(&self.world)
-                .and_then(|(pos, _)| self.world.get_block(pos))
-                .is_some_and(|b| voxelcraft::world::composter::level(b).is_some());
-        LanUse {
-            eating: self.session.consumption_duration(slot).is_ok() && (drink || !composting),
-            drawing: self.lan.predicted_draw == Some(slot),
-        }
-    }
     pub(super) fn tick_lan_client(&mut self) {
         let input = self.sample_lan_input();
         let slot = usize::from(input.selected).min(8);
@@ -1459,7 +1476,7 @@ impl Game {
             _ if pressed && self.session.can_draw(slot, &self.world) => Some(slot),
             _ => None,
         };
-        let use_state = self.lan_use(&input);
+        let use_state = self.lan.sample_use(&self.session, &self.world, &input, pressed);
         let movement = self.lan_movement(&input, use_state);
         self.lan_send(Packet::Input(input));
         self.previous_eye = self.session.player.eye();
@@ -1516,6 +1533,7 @@ impl Game {
         let settled = sequence >= self.lan.use_edge_sequence;
         if settled {
             self.lan.predicted_draw = snapshot["self"]["drawing"].as_u64().map(|slot| slot as usize);
+            self.lan.predicted_eating = (snapshot["self"]["consuming"] == true).then_some(own.selected);
         }
         // The client owns its look, except that a respawn faces the host's
         // respawn angle (Java's respawn transition sets the rotation).
@@ -1547,7 +1565,9 @@ impl Game {
         // acknowledged, a queued input can only end it (use released or
         // another slot selected), never start one.
         let mut running = self.lan.predicted_draw;
-        for &(input, sampled) in self.lan.predictions.iter().filter(|_| !seated) {
+        let mut predictions = std::mem::take(&mut self.lan.predictions);
+        for (input, sampled) in predictions.iter_mut().filter(|_| !seated) {
+            let input = *input;
             self.session.player.yaw = input.yaw;
             self.session.player.pitch = input.pitch;
             self.session.player.apply_effects(&self.session.vitals.effects);
@@ -1559,9 +1579,17 @@ impl Game {
                 running = None;
             }
             let drawing = if settled { running == Some(slot) } else { sampled.drawing };
-            let movement = self.lan_movement(&input, LanUse { drawing, ..sampled });
+            if settled {
+                // Food can start again during the same hold after looking
+                // away from a statue. Recheck each replayed view from the
+                // host's consumption state, rather than copying one snapshot
+                // over newer inputs or retaining a completed bite forever.
+                sampled.eating = self.lan.sample_use(&self.session, &self.world, &input, false).eating;
+            }
+            let movement = self.lan_movement(&input, LanUse { drawing, ..*sampled });
             self.session.player.tick(movement, &self.world);
         }
+        self.lan.predictions = predictions;
         if settled && !seated {
             self.lan.predicted_draw = running;
         }
@@ -1592,6 +1620,9 @@ impl Game {
         }
         if let Some(text) = snapshot["wood"].as_str() {
             self.world.replace_wood(text);
+        }
+        if let Some(text) = snapshot["copper_golem_statues"].as_str() {
+            self.world.replace_copper_golem_statues(text);
         }
         let edit = &snapshot["sign_edit"];
         if let (Some(serial), Some(p)) = (edit["serial"].as_u64(), vector(&edit["pos"]))
@@ -2236,6 +2267,78 @@ fn button_transitions(mut previous: u8, edges: &[(u8, bool)], latest: u8) -> Vec
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn statue_prediction_matches_block_use_priority() {
+        use voxelcraft::{
+            entity::PlayerId,
+            inventory::Stack,
+            item::Item,
+            player::EYE_HEIGHT,
+            session::PlayerSession,
+            world::{copper::Stage, copper_golem_statue as statue},
+        };
+        let p = IVec3::new(10, 140, 10);
+        let mut world = World::new_remote(Arc::new(Generator::new(263)), 2);
+        world.receive_chunk(IVec3::new(0, 4, 0), Arc::new(ChunkData::Uniform(Block::AIR)));
+        world.set_block(p, statue::item_block(Stage::Unaffected, false));
+        let eye = DVec3::new(10.5, 141., 13.);
+        let direction = (p.as_dvec3() + DVec3::splat(0.5) - eye).normalize();
+        let mut session = PlayerSession::new(PlayerId::HOST, eye - DVec3::Y * EYE_HEIGHT);
+        session.player.yaw = direction.z.atan2(direction.x) as f32;
+        session.player.pitch = direction.y.asin() as f32;
+        session.vitals.hunger.food = 8.;
+        let input = Input { buttons: 16, yaw: session.player.yaw, pitch: session.player.pitch, ..Input::default() };
+        for item in [Item::APPLE, Item::HONEY_BOTTLE] {
+            let mut lan = Lan::default();
+            session.player.yaw = input.yaw;
+            session.player.pitch = input.pitch;
+            session.inventory.slots[0] = Some(Stack::new(item, 2));
+            assert!(
+                !lan.sample_use(&session, &world, &input, true).eating,
+                "statue use must not predict eating slowdown"
+            );
+            assert!(lan.sample_use(&session, &world, &Input { buttons: 18, ..input }, true).eating);
+            session.player.vehicle = Some(1);
+            assert!(lan.sample_use(&session, &world, &input, true).eating, "riders skip statue block use");
+            session.player.vehicle = None;
+            world.set_block(p, Block::AIR);
+            assert!(lan.sample_use(&session, &world, &input, true).eating);
+            world.set_block(p, statue::item_block(Stage::Unaffected, false));
+            assert!(lan.sample_use(&session, &world, &input, false).eating, "an existing bite continues");
+            lan.predictions.push_back((input, LanUse { eating: true, drawing: false }));
+            lan.predictions.clear();
+            assert!(lan.sample_use(&session, &world, &input, false).eating, "acknowledging inputs preserves a bite");
+            assert!(!lan.sample_use(&session, &world, &Input { buttons: 0, ..input }, false).eating);
+            assert!(!lan.sample_use(&session, &world, &input, true).eating, "a new press uses the statue");
+            lan.predicted_eating = Some(0);
+            assert!(lan.sample_use(&session, &world, &input, false).eating);
+            assert!(
+                !lan.sample_use(&session, &world, &input, true).eating,
+                "a release/repress between ticks starts anew"
+            );
+            lan.predicted_eating = Some(0);
+            session.inventory.slots[1] = Some(Stack::new(item, 2));
+            assert!(!lan.sample_use(&session, &world, &Input { selected: 1, ..input }, false).eating);
+            lan.predicted_eating = None;
+            assert!(
+                !lan.sample_use(&session, &world, &input, false).eating,
+                "host completion ends the bite at a statue"
+            );
+            let away = Input { yaw: 0., pitch: 0., ..input };
+            session.player.yaw = away.yaw;
+            session.player.pitch = away.pitch;
+            assert!(lan.sample_use(&session, &world, &away, false).eating, "a newer look-away input can begin eating");
+        }
+        let mut agent = Agent::new(eye);
+        agent.session.inventory.slots[0] = Some(Stack::new(Item::APPLE, 1));
+        agent.session.vitals.hunger.food = 8.;
+        agent.session.tick_consumption(0, true, &mut crate::entity::Entities::new(263)).unwrap();
+        assert_eq!(state(&agent, "test")["consuming"], true);
+        agent.session.cancel_consumption();
+        assert_eq!(state(&agent, "test")["consuming"], false);
+    }
+
     /// A respawned peer faces the respawn angle while its client's queued
     /// inputs still carry the pre-death look, then follows the client again
     /// once its input reports the angle (or the hold times out).

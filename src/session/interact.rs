@@ -46,6 +46,10 @@ pub enum Used {
     },
     /// Another held-item interaction with a mob (bucketing, milking, ...).
     Mob,
+    /// A statue changed pose or became a golem; its sound is an entity event.
+    Statue {
+        cell: IVec3,
+    },
     Bucket(bucket::Effect),
     PearlThrown {
         from: DVec3,
@@ -193,6 +197,10 @@ impl PlayerSession {
     pub fn block_takes_use(&self, slot: usize, world: &World, sneaking: bool) -> bool {
         let held = self.inventory.get(slot).map(|s| s.item);
         let Some((pos, _)) = self.block_target(world) else { return false };
+        if world.get_block(pos).and_then(crate::world::copper_golem_statue::decode).is_some() {
+            return self.player.vehicle.is_none()
+                && !(sneaking && (held.is_some() || self.inventory.offhand.is_some()));
+        }
         crate::content::interaction::block_use_precedes_item(
             world,
             pos,
@@ -236,21 +244,33 @@ impl PlayerSession {
         }
         let mut tool_broken = None;
         let mut off_hand = false;
-        // An empty main hand has nothing to use; the off-hand may.
+        // Try the main hand first, including its empty-hand entity uses.
         let main = self.use_chain(slot, world, entities, ctx, &mut tool_broken);
         let (mut used, main_error) = match main {
             Ok(used) => (used, None),
-            Err(e) if self.inventory.offhand.is_some() => (None, Some(e)),
-            Err(e) => return Err(e),
+            Err(e) => (None, Some(e)),
         };
         // Java tries the off-hand when the main hand's use passes; a held use
         // the main hand starts (eating, a bow, a shield) is not passed over.
+        let main_holds_use = self.shield_hand(slot) == Some(super::hands::Hand::Main)
+            || self.inventory.get(slot).is_some_and(|s| {
+                s.item.is_drink() || s.item.food().is_some() && self.can_eat(s.item) || self.starts_draw(s.item)
+            });
+        // An empty off-hand can still interact with a copper golem. Preserve
+        // ordinary item/block errors if that entity use also passes.
+        if used.is_none()
+            && !main_holds_use
+            && self.inventory.offhand.is_none()
+            && self.player.vehicle.is_none()
+            && let Some(index) = self.mob_target(world, entities)
+            && entities.return_copper_golem_cargo(index, self.player.pos)
+        {
+            used = Some(Used::Mob);
+            off_hand = true;
+        }
         if used.is_none()
             && let Some(off) = self.inventory.offhand
-            && self.shield_hand(slot) != Some(super::hands::Hand::Main)
-            && !self.inventory.get(slot).is_some_and(|s| {
-                s.item.is_drink() || s.item.food().is_some() && self.can_eat(s.item) || self.starts_draw(s.item)
-            })
+            && !main_holds_use
             && off.item != Item::SHIELD
         {
             self.inventory.swap_offhand(slot);
@@ -263,7 +283,9 @@ impl PlayerSession {
                 }
                 Err(e) => return Err(main_error.unwrap_or(e)),
             }
-        } else if let Some(e) = main_error {
+        } else if used.is_none()
+            && let Some(e) = main_error
+        {
             return Err(e);
         }
         if let Some(Used::Rod { broke: true, .. }) = used {
@@ -342,6 +364,9 @@ impl PlayerSession {
                 return Ok(Some(Used::Mounted(id)));
             }
             return Ok(Some(Used::Animal));
+        }
+        if let Some(used) = self.use_copper_golem(slot, world, entities, tool_broken) {
+            return Ok(Some(used));
         }
         // `Cushion.interact` passes while sneaking.
         let sneaking_at_cushion = ctx.sneaking
@@ -524,6 +549,9 @@ impl PlayerSession {
         let survival = self.mode.is_survival();
         let creative = self.mode.is_creative();
         let can_build = self.mode.can_build();
+        if let Some(used) = self.use_copper_statue(slot, world, entities, pos, ctx, tool_broken) {
+            return Ok(Some(used));
+        }
         if can_build
             && !ctx.sneaking
             && matches!(held, Some(Item::SHEARS | Item::GLASS_BOTTLE))
@@ -887,22 +915,35 @@ impl PlayerSession {
     /// part of pick-block that only changes the selection. Read-only, so a LAN
     /// client can select locally while the host performs any swap.
     pub fn pick_hotbar_slot(&self, world: &World) -> Option<usize> {
-        let b = self.block_target(world).and_then(|(pos, _)| world.get_block(pos))?;
+        let (pos, _) = self.block_target(world)?;
+        let b = world.get_block(pos)?;
         if b.is_fire() {
             return None;
         }
-        self.inventory.find(picked_item(b)).filter(|&i| i < HOTBAR_SLOTS)
+        let found = if let Some(stack) = world.copper_golem_statue_item(pos) {
+            self.inventory.slots.iter().position(|s| s.is_some_and(|s| s.stacks_with(&stack)))
+        } else {
+            self.inventory.find(picked_item(b))
+        };
+        found.filter(|&i| i < HOTBAR_SLOTS)
     }
 
     /// Middle click on the targeted block: find its item in the inventory,
     /// or conjure a stack in Creative.
     pub fn pick_block(&mut self, selected: usize, world: &World) -> Option<Pick> {
-        let b = self.block_target(world).and_then(|(pos, _)| world.get_block(pos))?;
+        let (pos, _) = self.block_target(world)?;
+        let b = world.get_block(pos)?;
         if b.is_fire() || selected >= HOTBAR_SLOTS {
             return None;
         }
         let item = picked_item(b);
-        match self.inventory.find(item) {
+        let statue = world.copper_golem_statue_item(pos);
+        let found = if let Some(stack) = statue {
+            self.inventory.slots.iter().position(|s| s.is_some_and(|s| s.stacks_with(&stack)))
+        } else {
+            self.inventory.find(item)
+        };
+        match found {
             Some(i) if i < HOTBAR_SLOTS => Some(Pick::Select(i)),
             Some(i) => {
                 self.cancel_consumption();
@@ -911,7 +952,8 @@ impl PlayerSession {
             }
             None if self.mode == crate::rules::GameMode::Creative => {
                 self.cancel_consumption();
-                self.inventory.slots[selected] = Some(crate::inventory::Stack::new(item, item.max_stack()));
+                self.inventory.slots[selected] =
+                    Some(statue.unwrap_or_else(|| crate::inventory::Stack::new(item, item.max_stack())));
                 Some(Pick::Replaced)
             }
             None => None,

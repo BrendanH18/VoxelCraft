@@ -63,6 +63,31 @@ impl World {
             _ => SLOTS,
         }
     }
+    /// An ephemeral block-entity identity, stable through rotation/weathering and
+    /// different after destruction/replacement; not a saved identifier.
+    pub fn transport_chest_identity(&self, p: IVec3) -> Option<u64> {
+        self.chest_positions.get(&p.to_array()).copied()
+    }
+    pub(super) fn register_transport_chest(&mut self, p: IVec3) {
+        if !self.chest_positions.contains_key(&p.to_array()) {
+            self.next_chest_identity = self.next_chest_identity.wrapping_add(1);
+            self.chest_positions.insert(p.to_array(), self.next_chest_identity);
+        }
+    }
+    /// Bounded spatial lookup, independent of distant saved container count.
+    pub fn visit_transport_chests(&self, center: IVec3, horizontal: i32, vertical: i32, visit: &mut impl FnMut(IVec3)) {
+        for x in center.x - horizontal..=center.x + horizontal {
+            for y in center.y - vertical..=center.y + vertical {
+                for (p, _) in self.chest_positions.range([x, y, center.z - horizontal]..=[x, y, center.z + horizontal])
+                {
+                    let p = IVec3::from_array(*p);
+                    if self.get_block(p).is_some_and(|b| super::double_chest::state(b).is_some()) {
+                        visit(p);
+                    }
+                }
+            }
+        }
+    }
     pub fn chest(&self, p: IVec3) -> Option<&Chest> {
         self.chests.get(&p)
     }
@@ -75,15 +100,20 @@ impl World {
     /// Keeps the chest table in step with a block change at `p` (turning a
     /// chest keeps its contents).
     pub(super) fn track_chest(&mut self, p: IVec3, old: Block, new: Block) {
+        if !is_chest(new) || (is_chest(old) && old.base() != new.base() && !super::copper::same_chest(old, new)) {
+            self.chest_positions.remove(&p.to_array());
+        }
         if is_chest(old)
             && old.base() != new.base()
             && !super::copper::same_chest(old, new)
             && let Some(chest) = self.chests.remove(&p)
             && self.tile_drops
         {
+            self.chest_positions.remove(&p.to_array());
             self.drops.extend(chest.slots.into_iter().flatten().map(|s| (p, s)));
         }
         if is_chest(new) {
+            self.register_transport_chest(p);
             self.chests.entry(p).or_default();
         }
     }
@@ -113,6 +143,7 @@ impl World {
                 let p = IVec3::new(x, y, z);
                 // An ender chest's entry was only ever a lent screen.
                 if !self.get_block(p).is_some_and(|b| super::utilities::ender_chest_of(b).is_some()) {
+                    self.register_transport_chest(p);
                     self.chests.insert(p, chest);
                 }
             }

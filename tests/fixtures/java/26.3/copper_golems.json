@@ -1,0 +1,154 @@
+{
+  "reference": "Java 26.3",
+  "artifacts": {
+    "server-26.3-classes.jar": "a362163eec5d1612d520772bc16e5b39c09e3b234fdc045f56bf544284ee8ae6",
+    "client-26.3.jar": "4508d006323f24fa02876310c192d739af56516eb259000ac50f0909a68c9a2d"
+  },
+  "classes": [
+    "net.minecraft.world.entity.animal.golem.CopperGolem",
+    "net.minecraft.world.entity.animal.golem.CopperGolemAi",
+    "net.minecraft.world.entity.ai.behavior.TransportItemsBetweenContainers",
+    "net.minecraft.world.entity.EntityTypes"
+  ],
+  "observations": {
+    "health": 12,
+    "movement_speed": 0.20000000298023224,
+    "step_height": 1,
+    "width": 0.49,
+    "height": 0.98,
+    "eye_height": 0.8125,
+    "required_path_length": 48,
+    "horizontal_search": 32,
+    "vertical_search": 8,
+    "passenger_search": 1,
+    "initial_cooldown_min": 60,
+    "initial_cooldown_exclusive_max": 100,
+    "retry_cooldown": 140,
+    "interaction_ticks": 60,
+    "interaction_sound_tick": 9,
+    "pickup_limit": 16,
+    "visited_limit": 10,
+    "unreachable_limit": 50,
+    "memory_ticks": 6000,
+    "weather_interval_inclusive": [
+      504000,
+      552000
+    ],
+    "statue_chance": 0.0058,
+    "waxed_weather_age": -2,
+    "unset_weather_age": -1,
+    "queue_expansion": 3,
+    "interaction_expansion": 0.5,
+    "finished_path_expansion": 1,
+    "continuation_expansion": 2,
+    "vertical_expansion": 0.5
+  },
+  "data": {
+    "loot": "1\u20133 copper ingots, enchanted_count_increase for Looting",
+    "shearable_from_copper_golem": [
+      "minecraft:poppy"
+    ],
+    "source": "#minecraft:copper_chests",
+    "destination": [
+      "minecraft:chest",
+      "minecraft:trapped_chest"
+    ],
+    "entity_tags": {
+      "fall_damage_immune": true,
+      "can_breathe_under_water": true
+    }
+  },
+  "verification": {
+    "method": "Inspection of the pinned Java 26.3 bytecode and bundled data; these are reproduction setups and derived expectations, not recorded live Java runs.",
+    "bytecode_command": "javap -classpath <server-26.3-classes.jar> -c -p <fully-qualified class from classes>",
+    "setup": "Verify the artifact SHA-256 above, disassemble the listed classes, and trace the source methods for each case with the stated initial conditions. All tick counts are simulation ticks; chest cases use a loaded golem that is not leashed or panicking, with an unobstructed route unless stated otherwise."
+  },
+  "cases": [
+    {
+      "id": "entity_defaults",
+      "observations": ["health", "movement_speed", "step_height", "width", "height", "eye_height", "required_path_length"],
+      "source": ["CopperGolem constructor and createAttributes", "EntityTypes copper_golem registration"],
+      "setup": "Inspect a newly constructed copper golem, its attribute builder and entity-type dimensions before equipment or effects modify it.",
+      "expected": "Health is 12, movement speed 0.20000000298023224, step height 1, width 0.49, height 0.98, eye height 0.8125 and required navigation path length 48."
+    },
+    {
+      "id": "search_and_container_selection",
+      "observations": ["horizontal_search", "vertical_search", "passenger_search"],
+      "source": ["CopperGolemAi.initIdleActivity and source/destination predicates", "TransportItemsBetweenContainers target search and getHorizontalSearchDistance/getVerticalSearchDistance"],
+      "setup": "Clear cooldown and position memories. For an empty-handed golem, put an empty copper chest nearer than a filled copper chest, with both inside the search box. Repeat with cargo and a nearer ineligible ordinary chest. Inspect candidate positions at the search-box boundary and one block beyond, then repeat with the golem as a passenger.",
+      "expected": "Search expands the block-position box by 32 horizontally and 8 vertically, or 1 in each direction for a passenger. Sources match the copper_chests tag; destinations are ordinary or trapped chests. The nearest candidate is selected before checking contents; an empty source or ineligible destination is still inspected."
+    },
+    {
+      "id": "initial_transport_cooldown",
+      "observations": ["initial_cooldown_min", "initial_cooldown_exclusive_max"],
+      "source": ["CopperGolem constructor", "CopperGolemAi.initCoreActivity"],
+      "setup": "Trace construction of a new golem and its first transport-cooldown memory before any chest search.",
+      "expected": "The constructor calls nextInt(60, 100), setting a cooldown from 60 through 99 ticks; the core activity registers its countdown."
+    },
+    {
+      "id": "retry_cooldown_and_memory_limits",
+      "observations": ["retry_cooldown", "visited_limit", "unreachable_limit", "memory_ticks"],
+      "source": ["TransportItemsBetweenContainers.enterCooldownAfterNoMatchingTargetFound", "TransportItemsBetweenContainers visited/unreachable position updates and clearMemoriesAfterMatchingTargetFound"],
+      "setup": "Trace a search with no target passing the block-type, range and position-memory filters. Separately add distinct visited positions until the set exceeds 10, and unreachable positions until that set exceeds 50. Below those thresholds, trace a memory update, a successful pickup, a complete delivery and a partial delivery.",
+      "expected": "No matching target, more than 10 visited positions, or more than 50 unreachable positions stops targeting, sets cooldown to 140 and clears both position sets. Stored position memories expire after 6000 ticks. Successful pickup and complete delivery clear both sets; partial delivery retains remaining cargo and memories while stopping the current target."
+    },
+    {
+      "id": "interaction_timing_and_pickup",
+      "observations": ["interaction_ticks", "interaction_sound_tick", "pickup_limit"],
+      "source": ["CopperGolemAi.getTargetReachedInteractions", "TransportItemsBetweenContainers.onReachedTarget and pickupItemFromContainer"],
+      "setup": "Let an empty-handed golem reach an unoccupied copper chest whose first nonempty slot contains 20 items and whose later slot contains another item. Trace interaction ticks from arrival. Repeat with an empty source, then with cargo and an ineligible destination.",
+      "expected": "The interaction opens the chest and sets the pose on tick 1, plays the corresponding sound on tick 9, and transfers/closes on tick 60. Pickup takes 16 from the first nonempty slot with components preserved. Empty sources and ineligible destinations still take the full 60-tick interaction."
+    },
+    {
+      "id": "delivery_components_and_slot_order",
+      "observations": [],
+      "source": ["TransportItemsBetweenContainers.matchesLeavingItemsRequirement, hasItemMatchingHandItem and addItemsToContainer"],
+      "setup": "Give the golem cargo and compare an empty destination, one containing only a different item, and one containing the same item with different components. In an eligible chest, leave an early slot empty and a later slot partially filled with an exact-component match.",
+      "expected": "An empty chest or one containing the same item type qualifies. Merging additionally requires equal components. Insertion visits slots once in order, so the early empty slot receives cargo before the later matching partial stack. A full destination retains undelivered cargo."
+    },
+    {
+      "id": "double_chests_and_interaction_distance",
+      "observations": ["queue_expansion", "interaction_expansion", "finished_path_expansion", "continuation_expansion", "vertical_expansion"],
+      "source": ["TransportItemsBetweenContainers.getConnectedTargets, onTravelToTarget, onReachedTarget, getInteractionRange and isWithinTargetDistance", "CopperGolemAi.shouldQueueForTarget"],
+      "setup": "Target a double chest and repeat from each half, first with another container user holding it open, then after that user closes it. Trace the golem's tested point just inside/outside the expanded chest collision box during travelling, at a finished path and during interaction.",
+      "expected": "The two halves share one compound inventory; either half counts as visited or occupied. Queue reach expands the collision box by 3 horizontally, interaction start by 0.5 or 1 after a finished path, and continuation by 2. Each distance check expands vertically by 0.5."
+    },
+    {
+      "id": "weather_deadlines_and_wax",
+      "observations": ["weather_interval_inclusive", "waxed_weather_age", "unset_weather_age"],
+      "source": ["CopperGolem.updateWeathering and mobInteract"],
+      "setup": "Trace an unwaxed, non-oxidized golem with nextWeatheringTick=-1 at a known world tick; then reach its assigned deadline. Compare a golem with nextWeatheringTick=-2 and axe use on waxed versus unwaxed aged golems.",
+      "expected": "Unset -1 schedules now plus a random 504000–552000 ticks inclusive. At a due deadline, one stage advances and another interval is added to the old deadline, except reaching oxidized sets it to 0. Waxed -2 skips weathering. An axe removes wax first; otherwise it removes one stage, resetting the deadline to -1."
+    },
+    {
+      "id": "statue_conversion",
+      "observations": ["statue_chance"],
+      "source": ["CopperGolem.updateWeathering, canTurnToStatue and turnToStatue", "CopperGolemAi activities"],
+      "setup": "Trace a fully oxidized, unwaxed golem on a later weathering tick. Compare air and non-air at its feet, and random nextFloat results at and above 0.0058. Inspect its activities while conversion has not succeeded.",
+      "expected": "An air feet cell and random value <= 0.0058 permit conversion. A blocked cell or larger value leaves the golem active; oxidized golems continue their normal AI until conversion succeeds."
+    },
+    {
+      "id": "lightning_cleaning",
+      "observations": [],
+      "source": ["CopperGolem.thunderHit"],
+      "setup": "Trace repeated hits with one bolt UUID, then a different UUID, for aged waxed/unwaxed golems and an unaffected waxed golem.",
+      "expected": "Base lightning damage runs first. Cleaning removes one stage only once per bolt UUID and resets an aged golem's weather deadline to -1, removing wax as well. An unaffected waxed golem retains wax."
+    },
+    {
+      "id": "bundled_loot_and_tags",
+      "observations": [],
+      "source": ["data/minecraft/loot_table/entities/copper_golem.json", "data/minecraft/tags/item/shearable_from_copper_golem.json", "data/minecraft/tags/entity_type/fall_damage_immune.json", "data/minecraft/tags/entity_type/can_breathe_under_water.json"],
+      "setup": "Read these entries from the pinned server jar and check the copper_golem loot pool and membership in the item/entity tags.",
+      "expected": "The loot table specifies 1–3 copper ingots with enchanted_count_increase for Looting. The shearable item tag contains poppy; copper_golem belongs to fall_damage_immune and can_breathe_under_water."
+    }
+  ],
+  "notes": [
+    "Target search picks the nearest candidate without examining contents first.",
+    "Empty sources and ineligible destinations still use the full interaction.",
+    "Destination eligibility is same item, merging is same item AND components.",
+    "Insertion iterates slots once; an early empty slot precedes a later matching slot.",
+    "A double chest is one compound inventory; either half counts as visited/occupied.",
+    "Lightning calls base damage, then removes one stage once per bolt UUID. Aged waxed golems lose wax; unaffected waxed golems retain it.",
+    "Oxidized golems continue normal AI until successful statue conversion."
+  ]
+}

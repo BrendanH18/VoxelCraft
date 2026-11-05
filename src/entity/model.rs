@@ -550,6 +550,7 @@ macro_rules! parts {($($p:expr),* $(,)?) => {{let mut out=Parts::new();$(out.pus
 mod animals;
 mod aquatic;
 mod bee;
+mod copper_golem;
 mod hostiles;
 mod mounts;
 mod passive;
@@ -597,6 +598,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
         MobKind::Panda => passive::panda(m, time),
         MobKind::Armadillo => passive::armadillo(m),
         MobKind::Ocelot => passive::ocelot(m),
+        MobKind::CopperGolem => copper_golem::pose(m, time),
         MobKind::Tadpole => passive::tadpole(m, time),
         MobKind::Cow => parts![
             part(COW_BODY, [0.0; 3], Quat::IDENTITY),
@@ -970,6 +972,7 @@ pub fn build(
             charged_aura(m, rel, time, out);
         }
         passive::tongue(m, camera, out, (light, torch));
+        copper_golem::cargo(m, origin, body, (light, torch), out);
         let mut posed = pose(m, time);
         if matches!(m.kind, MobKind::Pig | MobKind::Strider) {
             mounts::equipment(m, &mut posed);
@@ -990,6 +993,7 @@ pub fn build(
                     hostiles::colour(m, &mut cuboid);
                 }
                 passive::colour(m, &mut cuboid);
+                copper_golem::colour(m, &mut cuboid);
                 if m.kind == MobKind::GlowSquid && c.color == [49, 71, 80] {
                     cuboid.color = [44, 161, 151];
                 }

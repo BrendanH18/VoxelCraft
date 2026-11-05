@@ -49,6 +49,13 @@ pub(super) fn add_recipes(r: &mut Vec<Recipe>) {
         Item::COPPER_INGOT,
         9,
     ));
+    for stage in Stage::ALL {
+        r.push(shapeless(
+            &[ingredient(b(crate::world::copper_golem_statue::item_block(stage, false))), &[Item::HONEYCOMB]],
+            b(crate::world::copper_golem_statue::item_block(stage, true)),
+            1,
+        ));
+    }
     let u = Stage::Unaffected;
     let ingot: super::Ingredient = &[Item::COPPER_INGOT];
     let nugget: super::Ingredient = &[Item::COPPER_NUGGET];

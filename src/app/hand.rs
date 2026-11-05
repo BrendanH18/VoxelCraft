@@ -78,6 +78,7 @@ impl HandAnim {
         eating: f32,
         alpha: f64,
         worn: [Option<crate::inventory::Stack>; 4],
+        held: Option<crate::inventory::Stack>,
     ) -> crate::entity::model::PlayerAppearance {
         crate::entity::model::PlayerAppearance {
             held: self.shown,
@@ -88,6 +89,9 @@ impl HandAnim {
             alpha: alpha as f32,
             armor: crate::entity::armor::from_stacks(&worn),
             held_icon: None,
+            held_statue: held
+                .filter(|s| Some(s.item) == self.shown)
+                .and_then(crate::world::copper_golem_statue::item_model),
             aim: self.aim(),
         }
     }
@@ -110,6 +114,7 @@ impl HandAnim {
     pub(super) fn view(&self, eating: f32, sky_light: f32, block_light: f32) -> Hand {
         Hand {
             item: self.shown,
+            block: None,
             swing: self.swing.map_or(0.0, |t| t / SWING_TIME),
             equip: self.equip(),
             eating,

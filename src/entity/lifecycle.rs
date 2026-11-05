@@ -93,7 +93,8 @@ impl Entities {
             }
             let resident = matches!(
                 m.kind,
-                MobKind::Villager
+                MobKind::CopperGolem
+                    | MobKind::Villager
                     | MobKind::IronGolem
                     | MobKind::SnowGolem
                     | MobKind::WanderingTrader
@@ -144,6 +145,13 @@ impl Entities {
                         .filter(|s| !s.enchants.has(crate::enchant::Enchantment::VanishingCurse))
                 {
                     self.items.push(ItemEntity::new(stack, dead.pos, DVec3::ZERO, 0.5, &mut self.rng));
+                }
+                if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
+                    && let Some(s) = &dead.copper_golem
+                {
+                    for stack in [s.cargo, s.antenna].into_iter().flatten() {
+                        self.items.push(ItemEntity::new(stack, dead.pos, DVec3::ZERO, 0.5, &mut self.rng));
+                    }
                 }
                 // Whatever a fox carries in its mouth or a dolphin plays with
                 // (`setGuaranteedDrop`) drops, enchantments and names intact.
@@ -354,7 +362,7 @@ impl Entities {
         for e in &events {
             match *e {
                 EntityEvent::MobShot { kind, pos, killed, burning, player_kill, owner } => {
-                    if killed && self.mob_loot {
+                    if killed {
                         self.drop_loot_with_fire(kind, pos, 0, burning, player_kill);
                     }
                     if kind == MobKind::ZombifiedPiglin {

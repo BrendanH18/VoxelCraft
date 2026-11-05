@@ -86,7 +86,10 @@ const HOSTILE_REPUTATION: i16 = -100;
 /// Remove a finished pumpkin pattern and spawn the golem that was built.
 pub fn finish_golems(world: &mut crate::world::World, entities: &mut Entities) {
     for pos in std::mem::take(&mut world.golem_heads) {
-        let Some(pattern) = pattern_at(world, pos) else { continue };
+        let Some(pattern) = pattern_at(world, pos) else {
+            finish_copper_pattern(world, entities, pos);
+            continue;
+        };
         let (kind, yaw, feet) = spawn_feet(&pattern);
         let (cells, n) = match pattern {
             Pattern::Iron { cells, .. } => (cells, 5),
@@ -101,6 +104,51 @@ pub fn finish_golems(world: &mut crate::world::World, entities: &mut Entities) {
             mob.built = true;
         }
     }
+}
+
+/// The two-cell Java copper pattern accepts any of the eight full copper
+/// blocks. BlockPattern permits vertical, sideways and inverted arrangements.
+fn finish_copper_pattern(world: &mut crate::world::World, entities: &mut Entities, head: IVec3) {
+    use crate::world::{
+        copper::{self, Copper, Family},
+        double_chest,
+    };
+    let Some(pumpkin) = world.get_block(head).filter(|b| pumpkin_blocks::is_head(*b)) else { return };
+    let facing = pumpkin.oriented().map_or(Facing::South, |(_, facing)| facing);
+    let Some((at, source)) =
+        // BlockPattern.find tries forward/up in Direction.values order;
+        // the copper row is -up and parallel pairs are skipped.
+        [IVec3::Z, IVec3::NEG_Z, IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y].into_iter().find_map(|offset| {
+            let at = head + offset;
+            world.get_block(at).and_then(copper::state).filter(|c| c.family == Family::Block).map(|c| (at, c))
+        })
+    else {
+        return;
+    };
+    let chest = copper::encode(Copper {
+        family: Family::Chest,
+        stage: source.stage,
+        local: facing as u16,
+        waxed: source.waxed,
+    });
+    let ctx = crate::session::placement::PlaceContext {
+        clicked: at,
+        clicked_block: copper::encode(source),
+        face: IVec3::Y,
+        click: DVec3::splat(0.5),
+        at,
+        facing: facing.opposite(),
+        look: facing.offset().as_vec3(),
+        sneaking: false,
+    };
+    let chest = double_chest::placed(chest, &ctx, |p| world.get_block(p)).unwrap_or(chest);
+    // Java replaces the copper with a chest; it never drops the construction
+    // blocks. The golem appears at the pumpkin with Java's initial south yaw.
+    world.set_block(head, Block::AIR);
+    world.set_block(at, chest);
+    let i = entities.spawn_copper_golem(head.as_dvec3() + DVec3::new(0.5, 0.05, 0.5), source.stage, false);
+    entities.mobs[i].yaw = std::f32::consts::FRAC_PI_2;
+    entities.mobs[i].built = true;
 }
 
 impl Entities {

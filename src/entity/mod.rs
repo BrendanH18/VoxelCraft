@@ -26,6 +26,7 @@ pub mod decor;
 pub mod path;
 pub use bobber::{CatchContext, roll_catch, set_damage};
 pub mod armadillo;
+pub mod copper_golem;
 pub mod dragon;
 mod dragon_model;
 pub mod eye;
@@ -143,6 +144,7 @@ pub enum MobSound {
     /// The dragon crashing through blocks.
     DragonSmash,
     DragonDeath,
+    CopperGolem(copper_golem::Sound, u8),
 }
 
 /// Something an entity did that the game needs to react to.
@@ -992,7 +994,7 @@ impl Entities {
     pub fn spawn(&mut self, kind: MobKind, pos: DVec3) {
         let yaw = self.rng.range(0.0, TAU);
         let mut mob = Mob::new(kind, pos, yaw);
-        mob.persistent = kind.has_animal_state() || kind == MobKind::Tadpole;
+        mob.persistent = kind.has_animal_state() || matches!(kind, MobKind::Tadpole | MobKind::CopperGolem);
         if let Some(s) = &mut mob.mount {
             **s = mounts::State::new(kind, &mut self.rng);
             mob.health = s.max_health;
@@ -1127,13 +1129,17 @@ impl Entities {
             if credit_player {
                 m.player_hit();
             }
-            if m.blast(damage, push, &mut self.rng) && credit_player {
+            if m.blast(damage, push, &mut self.rng) {
                 killed.push((m.kind, m.pos, m.burning));
             }
         }
         self.particles.push(crate::particles::Request::Explosion { pos: center, large: power >= 2.0 });
         for (kind, pos, burning) in killed {
-            self.drop_loot_with_fire(kind, pos, 0, burning, true);
+            if credit_player {
+                self.drop_loot_with_fire(kind, pos, 0, burning, true);
+            } else {
+                self.copper_equipment_drops(kind, pos);
+            }
         }
     }
 
@@ -1183,6 +1189,7 @@ impl Entities {
     }
 
     fn drop_loot_with_fire(&mut self, kind: MobKind, pos: DVec3, looting: u8, burning: bool, player_kill: bool) {
+        self.copper_equipment_drops(kind, pos);
         if !self.mob_loot {
             return;
         }

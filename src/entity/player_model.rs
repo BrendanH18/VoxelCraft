@@ -91,6 +91,8 @@ pub struct PlayerAppearance {
     pub armor: [Option<super::armor::Worn>; 4],
     /// Animated compass or clock layer, when `held` is one of those.
     pub held_icon: Option<u16>,
+    /// Pose-bearing statue block model from the complete held stack.
+    pub held_statue: Option<crate::world::block::Block>,
     pub aim: Aim,
 }
 
@@ -349,7 +351,22 @@ pub fn build_player(
         let mut held = limb([0.; 3], [-4., -4., -0.5], [4., 4., 0.5], [0., 0.], Quat::IDENTITY);
         held.pivot = arm.pivot + arm.rot * Vec3::new(-1.0, -9.0, 1.0);
         held.rot = arm.rot * Quat::from_rotation_x(-FRAC_PI_2) * Quat::from_rotation_y(PI);
-        if let Some(block) = item.block().filter(|b| !b.flat_icon()) {
+        if let Some(statue) = appearance.held_statue.and_then(crate::world::copper_golem_statue::decode) {
+            let block = crate::world::copper_golem_statue::block(statue);
+            for bounds in crate::world::copper_golem_statue::mesh(statue).as_slice() {
+                held.min = bounds.min.map(|v| (v as f32 - 8.0) * 0.4);
+                held.max = bounds.max.map(|v| (v as f32 - 8.0) * 0.4);
+                textured_box(out, &held, 0.0, origin, body, light, 2, block.info().tex[0], PLAYER_SCALE, UNTINTED);
+                let start = out.len() - 36;
+                for (i, face) in out[start..].as_chunks_mut::<6>().0.iter_mut().enumerate() {
+                    let tex = block.info().tex[i ^ 1];
+                    for vertex in face {
+                        vertex.torch[2] = tex as u8;
+                        vertex.torch[3] = (tex >> 8) as u8;
+                    }
+                }
+            }
+        } else if let Some(block) = item.block().filter(|b| !b.flat_icon()) {
             held.min = [-3.2; 3];
             held.max = [3.2; 3];
             textured_box(out, &held, 0.0, origin, body, light, 2, block.info().tex[0], PLAYER_SCALE, UNTINTED);

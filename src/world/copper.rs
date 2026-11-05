@@ -288,6 +288,14 @@ fn of(b: Block, family: Family) -> Option<Copper> {
     state(b).filter(|c| c.family == family)
 }
 
+/// WeatheringCopper age, including terminal oxidation stages, excluding wax.
+pub(super) fn weathering_stage(b: Block) -> Option<Stage> {
+    state(b)
+        .filter(|c| !c.waxed && c.family.weathers())
+        .map(|c| c.stage)
+        .or_else(|| super::copper_golem_statue::decode(b).filter(|s| !s.waxed).map(|s| s.stage))
+}
+
 // ---- Textures -----------------------------------------------------------
 
 /// Texture layers: per stage [`t::PER_STAGE`] layers from [`t::BASE`],
@@ -942,8 +950,15 @@ impl World {
     /// (`DoorBlock.updateShape`).
     pub(super) fn tick_copper(&mut self, p: IVec3, b: Block) {
         let Some(c) = state(b) else { return };
-        if !ages(b) || !chest_ticks(self, p, b) || self.next_float() >= AGE_CHANCE {
-            return;
+        if ages(b) && chest_ticks(self, p, b) && self.copper_oxidizes(p, c.stage) {
+            self.restage_copper(p, c, c.stage.next().unwrap(), false);
+        }
+    }
+
+    /// The same WeatherState neighborhood includes statues and ordinary copper.
+    pub(super) fn copper_oxidizes(&mut self, p: IVec3, stage: Stage) -> bool {
+        if self.next_float() >= AGE_CHANCE {
+            return false;
         }
         let (mut same, mut older) = (0u32, 0u32);
         for dx in -SCAN..=SCAN {
@@ -953,12 +968,11 @@ impl World {
                     if d == IVec3::ZERO || dx.abs() + dy.abs() + dz.abs() > SCAN {
                         continue;
                     }
-                    let Some(n) = self.get_block(p + d).and_then(state).filter(|n| !n.waxed && n.family.weathers())
-                    else {
+                    let Some(n) = self.get_block(p + d).and_then(weathering_stage) else {
                         continue;
                     };
-                    match n.stage.cmp(&c.stage) {
-                        std::cmp::Ordering::Less => return,
+                    match n.cmp(&stage) {
+                        std::cmp::Ordering::Less => return false,
                         std::cmp::Ordering::Greater => older += 1,
                         std::cmp::Ordering::Equal => same += 1,
                     }
@@ -966,11 +980,8 @@ impl World {
             }
         }
         let chance = (older + 1) as f32 / (older + same + 1) as f32;
-        let modifier = if c.stage == Stage::Unaffected { 0.75 } else { 1.0 };
-        if self.next_float() < chance * chance * modifier {
-            let next = c.stage.next().unwrap();
-            self.restage_copper(p, c, next, false);
-        }
+        let modifier = if stage == Stage::Unaffected { 0.75 } else { 1.0 };
+        self.next_float() < chance * chance * modifier
     }
 
     /// Moves the copper at `p` to `stage`, keeping its properties, with a
@@ -1006,15 +1017,16 @@ impl World {
     }
 
     pub fn wax_copper(&mut self, p: IVec3) -> bool {
-        let Some(c) = self.get_block(p).and_then(state).filter(|c| !c.waxed && c.family.weathers()) else {
-            return false;
-        };
-        self.set_copper_wax(p, c, true);
-        let mut burst =
-            crate::particles::Burst::new(crate::particles::Kind::Effect, p.as_dvec3() + DVec3::splat(0.5), 12);
-        burst.spread = DVec3::splat(0.45);
-        burst.color = Some([1., 0.7, 0.2, 1.]);
-        self.particles.push(crate::particles::Request::Burst(burst));
+        if let Some(statue) = self.get_block(p).and_then(super::copper_golem_statue::decode) {
+            let Some(waxed) = statue.wax() else { return false };
+            self.set_block(p, super::copper_golem_statue::block(waxed));
+        } else {
+            let Some(c) = self.get_block(p).and_then(state).filter(|c| !c.waxed && c.family.weathers()) else {
+                return false;
+            };
+            self.set_copper_wax(p, c, true);
+        }
+        self.copper_interaction_particles(p, [1., 0.7, 0.2, 1.]);
         true
     }
 
@@ -1022,20 +1034,32 @@ impl World {
     /// copper one stage back, keeping its properties (both door halves).
     /// Returns whether it scraped.
     pub fn scrape_copper(&mut self, p: IVec3) -> bool {
-        let Some(c) = self.get_block(p).and_then(state).filter(|c| c.family.weathers()) else { return false };
-        if c.waxed {
-            self.set_copper_wax(p, c, false);
+        let waxed = if let Some(statue) = self.get_block(p).and_then(super::copper_golem_statue::decode) {
+            let Some(scraped) = statue.scrape() else { return false };
+            self.set_block(p, super::copper_golem_statue::block(scraped));
+            statue.waxed
         } else {
-            let Some(previous) = c.stage.previous() else { return false };
-            self.restage_copper(p, c, previous, true);
-        }
+            let Some(c) = self.get_block(p).and_then(state).filter(|c| c.family.weathers()) else { return false };
+            if c.waxed {
+                self.set_copper_wax(p, c, false);
+            } else {
+                let Some(previous) = c.stage.previous() else { return false };
+                self.restage_copper(p, c, previous, true);
+            }
+            c.waxed
+        };
+        self.copper_interaction_particles(p, if waxed { [1., 0.8, 0.3, 1.] } else { [0.42, 0.82, 0.74, 1.] });
+        true
+    }
+
+    /// Shared visible feedback for block and living-golem wax/scrape actions.
+    pub fn copper_interaction_particles(&mut self, p: IVec3, color: [f32; 4]) {
         // `ParticleUtils.spawnParticlesOnBlockFaces(.., SCRAPE, 3..5)`.
         let mut burst =
             crate::particles::Burst::new(crate::particles::Kind::Effect, p.as_dvec3() + DVec3::splat(0.5), 12);
         burst.spread = DVec3::splat(0.45);
-        burst.color = Some(if c.waxed { [1., 0.8, 0.3, 1.] } else { [0.42, 0.82, 0.74, 1.] });
+        burst.color = Some(color);
         self.particles.push(crate::particles::Request::Burst(burst));
-        true
     }
 
     /// `CopperBulbBlock.checkAndFlip`: on a change of neighbour signal the

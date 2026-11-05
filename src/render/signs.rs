@@ -359,7 +359,9 @@ pub fn shelf_items(world: &World, camera: DVec3, out: &mut Vec<BlockModel>) {
         for (slot, stack) in items.iter().enumerate() {
             let Some(stack) = stack else { continue };
             let (anchor, yaw) = shelves::item_anchor(shelf, slot);
-            let block = stack.item.block().filter(|b| !b.flat_icon());
+            let block = crate::world::copper_golem_statue::item_model(*stack)
+                .or_else(|| stack.item.block())
+                .filter(|b| !b.flat_icon());
             let icon = match block {
                 Some(_) => None,
                 None => stack.item.block().map(|b| b.info().tex[0]).or_else(|| stack.item.icon_layer()),
