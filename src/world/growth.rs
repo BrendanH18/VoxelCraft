@@ -105,7 +105,7 @@ impl World {
             return;
         }
         if let Some(statue) = super::copper_golem_statue::decode(block) {
-            self.drops.push((p, statue.item_stack(Default::default())));
+            self.drops.push((p, statue.item_stack(self.copper_golem_statue_name(p))));
             return;
         }
         // A waterlogged block drops what its dry original does.

@@ -324,6 +324,7 @@ impl PlayerSession {
             world.disarm_tripwire(pos);
         }
         let hive_handled = world.mine_beehive(entities, pos, block, held, self.id, drops && harvest);
+        let statue_handled = world.mine_copper_golem_statue(pos, drops && harvest);
         world.set_block(pos, if melts { Block::WATER } else { Block::AIR });
         if melts {
             world.particles.push(Request::Break { cell: pos, block });
@@ -339,7 +340,7 @@ impl PlayerSession {
                 world.spill_with_item(below, lower, held);
             }
         }
-        if drops && harvest && !hive_handled {
+        if drops && harvest && !hive_handled && !statue_handled {
             world.spill_with_item(pos, block, held);
             entities.drop_mined_xp(block, pos, tool);
         }

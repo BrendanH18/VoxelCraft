@@ -244,7 +244,7 @@ const WOOD_BYTES: usize = voxelcraft::lan::MAX_FRAME / 4;
 fn fit_state(mut v: Value) -> (Option<Value>, bool) {
     let fits = |v: &Value| serde_json::to_vec(v).is_ok_and(|b| b.len() < voxelcraft::lan::MAX_FRAME - 16);
     let mut shed_looks = false;
-    for shed in ["extras", "wood", "decor", "items", "looks", "mobs"] {
+    for shed in ["extras", "copper_golem_statues", "wood", "decor", "items", "looks", "mobs"] {
         if fits(&v) {
             return (Some(v), shed_looks);
         }
@@ -1343,6 +1343,8 @@ impl Game {
             // Everyone but this client itself (it has its own full state).
             let others: Vec<&Value> = players.iter().filter(|p| p["id"] != bot.id.0).collect();
             let snapshot = json!({"sequence":peer.applied,"self":state(&bot.agent,name),"players":others,"time":self.day_time,"rain":self.weather.raining,"rain_strength":self.weather.strength,"thunder":self.weather.thundering,"dimension":self.dimension.name(),"seed":self.world.generator.seed,"view":view,"open":peer.open,"container":container,"grid":peer.grid.cells.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),"grid_size":peer.grid.size,"mobs":mobs,"carts":carts,"items":items,"decor":decor,"arrows":arrows,"extras":extras,"falling":falling,"sounds":sounds,"effects":effects,"cracks":cracks,"wood":wood,"sign_edit":sign_edit});
+            let mut snapshot = snapshot;
+            snapshot["copper_golem_statues"] = json!(self.world.copper_golem_statues_near(here));
             let (snapshot, shed_looks) = fit_state(snapshot);
             if snapshot.as_ref().is_some_and(|v| v["wood"].is_string()) {
                 peer.wood_sent = Some((wood_version, here));
@@ -1592,6 +1594,9 @@ impl Game {
         }
         if let Some(text) = snapshot["wood"].as_str() {
             self.world.replace_wood(text);
+        }
+        if let Some(text) = snapshot["copper_golem_statues"].as_str() {
+            self.world.replace_copper_golem_statues(text);
         }
         let edit = &snapshot["sign_edit"];
         if let (Some(serial), Some(p)) = (edit["serial"].as_u64(), vector(&edit["pos"]))

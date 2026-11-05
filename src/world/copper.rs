@@ -1017,10 +1017,15 @@ impl World {
     }
 
     pub fn wax_copper(&mut self, p: IVec3) -> bool {
-        let Some(c) = self.get_block(p).and_then(state).filter(|c| !c.waxed && c.family.weathers()) else {
-            return false;
-        };
-        self.set_copper_wax(p, c, true);
+        if let Some(statue) = self.get_block(p).and_then(super::copper_golem_statue::decode) {
+            let Some(waxed) = statue.wax() else { return false };
+            self.set_block(p, super::copper_golem_statue::block(waxed));
+        } else {
+            let Some(c) = self.get_block(p).and_then(state).filter(|c| !c.waxed && c.family.weathers()) else {
+                return false;
+            };
+            self.set_copper_wax(p, c, true);
+        }
         let mut burst =
             crate::particles::Burst::new(crate::particles::Kind::Effect, p.as_dvec3() + DVec3::splat(0.5), 12);
         burst.spread = DVec3::splat(0.45);
@@ -1033,18 +1038,25 @@ impl World {
     /// copper one stage back, keeping its properties (both door halves).
     /// Returns whether it scraped.
     pub fn scrape_copper(&mut self, p: IVec3) -> bool {
-        let Some(c) = self.get_block(p).and_then(state).filter(|c| c.family.weathers()) else { return false };
-        if c.waxed {
-            self.set_copper_wax(p, c, false);
+        let waxed = if let Some(statue) = self.get_block(p).and_then(super::copper_golem_statue::decode) {
+            let Some(scraped) = statue.scrape() else { return false };
+            self.set_block(p, super::copper_golem_statue::block(scraped));
+            statue.waxed
         } else {
-            let Some(previous) = c.stage.previous() else { return false };
-            self.restage_copper(p, c, previous, true);
-        }
+            let Some(c) = self.get_block(p).and_then(state).filter(|c| c.family.weathers()) else { return false };
+            if c.waxed {
+                self.set_copper_wax(p, c, false);
+            } else {
+                let Some(previous) = c.stage.previous() else { return false };
+                self.restage_copper(p, c, previous, true);
+            }
+            c.waxed
+        };
         // `ParticleUtils.spawnParticlesOnBlockFaces(.., SCRAPE, 3..5)`.
         let mut burst =
             crate::particles::Burst::new(crate::particles::Kind::Effect, p.as_dvec3() + DVec3::splat(0.5), 12);
         burst.spread = DVec3::splat(0.45);
-        burst.color = Some(if c.waxed { [1., 0.8, 0.3, 1.] } else { [0.42, 0.82, 0.74, 1.] });
+        burst.color = Some(if waxed { [1., 0.8, 0.3, 1.] } else { [0.42, 0.82, 0.74, 1.] });
         self.particles.push(crate::particles::Request::Burst(burst));
         true
     }

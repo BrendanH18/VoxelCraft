@@ -887,22 +887,35 @@ impl PlayerSession {
     /// part of pick-block that only changes the selection. Read-only, so a LAN
     /// client can select locally while the host performs any swap.
     pub fn pick_hotbar_slot(&self, world: &World) -> Option<usize> {
-        let b = self.block_target(world).and_then(|(pos, _)| world.get_block(pos))?;
+        let (pos, _) = self.block_target(world)?;
+        let b = world.get_block(pos)?;
         if b.is_fire() {
             return None;
         }
-        self.inventory.find(picked_item(b)).filter(|&i| i < HOTBAR_SLOTS)
+        let found = if let Some(stack) = world.copper_golem_statue_item(pos) {
+            self.inventory.slots.iter().position(|s| s.is_some_and(|s| s.stacks_with(&stack)))
+        } else {
+            self.inventory.find(picked_item(b))
+        };
+        found.filter(|&i| i < HOTBAR_SLOTS)
     }
 
     /// Middle click on the targeted block: find its item in the inventory,
     /// or conjure a stack in Creative.
     pub fn pick_block(&mut self, selected: usize, world: &World) -> Option<Pick> {
-        let b = self.block_target(world).and_then(|(pos, _)| world.get_block(pos))?;
+        let (pos, _) = self.block_target(world)?;
+        let b = world.get_block(pos)?;
         if b.is_fire() || selected >= HOTBAR_SLOTS {
             return None;
         }
         let item = picked_item(b);
-        match self.inventory.find(item) {
+        let statue = world.copper_golem_statue_item(pos);
+        let found = if let Some(stack) = statue {
+            self.inventory.slots.iter().position(|s| s.is_some_and(|s| s.stacks_with(&stack)))
+        } else {
+            self.inventory.find(item)
+        };
+        match found {
             Some(i) if i < HOTBAR_SLOTS => Some(Pick::Select(i)),
             Some(i) => {
                 self.cancel_consumption();
@@ -911,7 +924,8 @@ impl PlayerSession {
             }
             None if self.mode == crate::rules::GameMode::Creative => {
                 self.cancel_consumption();
-                self.inventory.slots[selected] = Some(crate::inventory::Stack::new(item, item.max_stack()));
+                self.inventory.slots[selected] =
+                    Some(statue.unwrap_or_else(|| crate::inventory::Stack::new(item, item.max_stack())));
                 Some(Pick::Replaced)
             }
             None => None,

@@ -24,7 +24,7 @@ use crate::world::terrain::{Dimension, Generator, SEA_LEVEL};
 use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 18] = [
+pub(super) const DIMENSION_KEYS: [&str; 19] = [
     "furnaces",
     "chests",
     "items",
@@ -43,6 +43,7 @@ pub(super) const DIMENSION_KEYS: [&str; 18] = [
     "utilities",
     "beehives",
     "potion_clouds",
+    "copper_golem_statues",
 ];
 /// How far around the arrival point to look for an existing portal.
 const SEARCH_RADIUS: i32 = 16;
@@ -127,6 +128,7 @@ impl Game {
         props.insert("chests".to_string(), self.world.chests_to_string());
         props.insert("wood".to_string(), self.world.wood_to_string());
         props.insert("beehives".into(), self.world.beehives_to_string());
+        props.insert("copper_golem_statues".into(), self.world.copper_golem_statues_to_string());
         props.insert("spawners".to_string(), self.world.spawners_to_string());
         props.insert("utilities".to_string(), self.world.utilities_to_string());
         self.mobs.entities.save_props(&mut props);
@@ -162,6 +164,9 @@ impl Game {
         }
         if let Some(h) = props.get("beehives") {
             self.world.load_beehives(h);
+        }
+        if let Some(s) = props.get("copper_golem_statues") {
+            self.world.load_copper_golem_statues(s);
         }
         if let Some(w) = props.get("wood") {
             self.world.load_wood(w);
@@ -509,6 +514,12 @@ mod tests {
         for key in props.keys() {
             assert!(DIMENSION_KEYS.contains(&key.as_str()), "{key} would be dropped on reload");
         }
+    }
+
+    #[test]
+    fn copper_statue_names_stay_with_their_dimension() {
+        let props = [("copper_golem_statues".into(), "[[[10,140,10],\"Friend\"]]".into())].into_iter().collect();
+        assert_eq!(dimension_props(&props), props);
     }
 
     #[test]

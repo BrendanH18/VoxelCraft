@@ -207,6 +207,81 @@ pub fn mesh(s: Statue) -> Boxes {
 }
 
 impl World {
+    pub fn copper_golem_statue_name(&self, p: IVec3) -> StackName {
+        self.copper_golem_names.get(&p).copied().unwrap_or_default()
+    }
+
+    /// `CopperGolemStatueBlockEntity` copies CUSTOM_NAME, not mob inventory.
+    pub fn name_copper_golem_statue(&mut self, p: IVec3, name: StackName) {
+        if self.get_block(p).and_then(decode).is_some() && name.as_str().is_some() {
+            self.copper_golem_names.insert(p, name);
+        } else {
+            self.copper_golem_names.remove(&p);
+        }
+    }
+
+    pub fn copper_golem_statue_item(&self, p: IVec3) -> Option<Stack> {
+        Some(decode(self.get_block(p)?)?.item_stack(self.copper_golem_statue_name(p)))
+    }
+
+    pub(super) fn track_copper_golem_statue(&mut self, p: IVec3, new: Block) {
+        // All eight statue blocks share the same block entity in Java.
+        if !owns(new.0) {
+            self.copper_golem_names.remove(&p);
+        }
+    }
+
+    pub fn copper_golem_statues_to_string(&self) -> String {
+        let mut names: Vec<_> =
+            self.copper_golem_names.iter().filter_map(|(p, n)| n.as_str().map(|n| (p.to_array(), n))).collect();
+        names.sort_unstable_by_key(|(p, _)| *p);
+        serde_json::to_string(&names).expect("statue names serialize")
+    }
+
+    pub fn load_copper_golem_statues(&mut self, text: &str) {
+        let Ok(names) = serde_json::from_str::<Vec<([i32; 3], String)>>(text) else { return };
+        for (p, text) in names {
+            let p = IVec3::from_array(p);
+            if self.contains_y(p.y)
+                && let Some(name) = StackName::new(&text).filter(|n| n.as_str().is_some())
+            {
+                // Level data is restored before every saved chunk is loaded.
+                self.copper_golem_names.insert(p, name);
+            }
+        }
+    }
+
+    /// Small component snapshot for a LAN client's local pick-block selection.
+    /// Block geometry already travels in the regular chunk stream.
+    pub fn copper_golem_statues_near(&self, at: glam::DVec3) -> String {
+        let mut near: Vec<_> = self
+            .copper_golem_names
+            .iter()
+            .filter_map(|(p, name)| {
+                let distance = p.as_dvec3().distance_squared(at);
+                (distance <= 160.0 * 160.0).then(|| name.as_str().map(|n| (distance, p.to_array(), n))).flatten()
+            })
+            .collect();
+        near.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
+        let names: Vec<_> = near.into_iter().take(128).map(|(_, p, name)| (p, name)).collect();
+        serde_json::to_string(&names).expect("statue names serialize")
+    }
+
+    pub fn replace_copper_golem_statues(&mut self, text: &str) {
+        self.copper_golem_names.clear();
+        self.load_copper_golem_statues(text);
+    }
+
+    /// Mining removes the block before generic loot runs. Capture its name
+    /// first, just as Java keeps the block entity for playerDestroy.
+    pub fn mine_copper_golem_statue(&mut self, p: IVec3, drops: bool) -> bool {
+        let Some(stack) = self.copper_golem_statue_item(p) else { return false };
+        if drops && self.tile_drops {
+            self.drops.push((p, stack));
+        }
+        true
+    }
+
     pub(super) fn tick_copper_golem_statue(&mut self, p: IVec3, b: Block) {
         let Some(s) = decode(b) else { return };
         if ages(b) && self.copper_oxidizes(p, s.stage) {
