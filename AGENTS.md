@@ -9,9 +9,7 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
   from the earliest unreleased version in its [release plan](docs/roadmap.md#release-plan).
   Build a faithful modern Minecraft Java single-player game; multiplayer follows 1.0.
 - Match the selected Java reference behavior, including generation and structure
-  layouts. When a task brief disagrees with the pinned Java 26.3 code, follow
-  the pinned code without asking and record the disagreement in verification
-  evidence (owner, 2026-11-04). Record sources and differences; do not substitute approximate behavior
+  layouts. Record sources and differences; do not substitute approximate behavior
   without an explicit scope decision.
 - Retain useful existing and pending work. Do not delete branches, discard
   uncommitted changes, or rewrite working features because the plan changed.
