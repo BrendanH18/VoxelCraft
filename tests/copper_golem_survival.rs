@@ -222,7 +222,7 @@ fn both_heads_construct_all_copper_variants_in_each_two_cell_orientation() {
                     w.set_block(P, head.with_facing(Facing::East));
                     finish_golems(&mut w, &mut e);
                     assert_eq!(e.mobs.len(), 1, "{stage:?} {waxed} {offset}");
-                    let chest = double_chest::decode(w.get_block(at).unwrap()).unwrap();
+                    let chest = double_chest::state(w.get_block(at).unwrap()).unwrap();
                     assert_eq!(chest.kind.copper(), Some((stage, waxed)));
                     assert_eq!(chest.facing, Facing::East);
                 }
@@ -247,6 +247,13 @@ fn empty_hand_returns_full_cargo_and_poppy_shears_wax_and_axe_use_the_same_entit
     assert!((e.items[0].pos.y - (pos.y + 0.8125 - f64::from(0.3f32))).abs() < 1e-9);
     assert!((e.items[0].vel - (s.player.pos - pos).normalize() * (f64::from(0.3f32) * 20.0)).length() < 1e-9);
     assert_eq!(e.items[0].pickup_delay, 0.5);
+    e.mobs[0].copper_golem.as_mut().unwrap().interaction_ticks = 12;
+    assert!(s.use_held(0, &mut w, &mut e, &ctx).unwrap().is_none());
+    assert_eq!(
+        e.mobs[0].copper_golem.as_ref().unwrap().interaction_ticks,
+        12,
+        "an empty-hand click on an empty golem passes without interrupting its inspection"
+    );
 
     let mut poppy = Stack::new(Block::POPPY, 2);
     poppy.name = StackName::new("A flower").unwrap();
@@ -273,6 +280,7 @@ fn empty_hand_returns_full_cargo_and_poppy_shears_wax_and_axe_use_the_same_entit
         assert!(!state.waxed());
     }
     assert_eq!(s.inventory.get(0).unwrap().damage, 3);
+    assert_eq!(w.particles.len(), 4, "waxing and each scraping action have visible feedback");
 }
 
 #[test]
@@ -364,4 +372,22 @@ fn a_golem_carries_each_statue_pose_as_original_geometry() {
     for (i, pose) in poses.iter().enumerate() {
         assert!(poses[i + 1..].iter().all(|other| other != pose));
     }
+}
+
+#[test]
+fn weathering_uses_saved_simulation_age_even_when_day_time_is_changed_or_frozen() {
+    let (mut w, _, mut e) = scene(Block::AIR);
+    e.spawn_copper_golem(P.as_dvec3() + DVec3::new(0.5, 0.0, 0.5), Stage::Unaffected, false);
+    e.mobs[0].copper_golem.as_mut().unwrap().next_weather_age = 600_000;
+    w.maps.game_ticks = 599_999;
+    e.clock_time = i64::MAX;
+    e.tick_copper_golems(0.05, &mut w);
+    assert_eq!(e.mobs[0].copper_golem.as_ref().unwrap().stage, Stage::Unaffected);
+    let saved_age = w.maps.serialize();
+    w.maps = voxelcraft::world::maps::MapStorage::load(&saved_age).unwrap();
+    e.clock_time = 0;
+    w.maps.game_ticks += 1;
+    e.tick_copper_golems(0.05, &mut w);
+    assert_eq!(e.mobs[0].copper_golem.as_ref().unwrap().stage, Stage::Exposed);
+    assert!((1_104_000..=1_152_000).contains(&e.mobs[0].copper_golem.as_ref().unwrap().next_weather_age));
 }

@@ -238,7 +238,8 @@ impl MapData {
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct MapStorage {
     pub next_id: u32,
-    /// Global simulation age for Java's Nether decoration rotation.
+    /// Saved global simulation age for Nether decoration rotation and copper
+    /// golem weathering; transferred with maps between dimensions.
     pub game_ticks: u64,
     pub maps: BTreeMap<u32, MapData>,
     steps: BTreeMap<(u32, u64), u32>,

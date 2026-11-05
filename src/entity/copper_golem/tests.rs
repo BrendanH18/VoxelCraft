@@ -62,6 +62,7 @@ fn golem(e: &mut Entities, pos: DVec3) {
 fn step(e: &mut Entities, w: &mut World, n: usize) {
     for _ in 0..n {
         e.clock_time += 1;
+        w.maps.game_ticks += 1;
         e.update_world(0.05, w, &ctx(), Difficulty::Normal);
     }
 }

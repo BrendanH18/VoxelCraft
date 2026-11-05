@@ -1026,11 +1026,7 @@ impl World {
             };
             self.set_copper_wax(p, c, true);
         }
-        let mut burst =
-            crate::particles::Burst::new(crate::particles::Kind::Effect, p.as_dvec3() + DVec3::splat(0.5), 12);
-        burst.spread = DVec3::splat(0.45);
-        burst.color = Some([1., 0.7, 0.2, 1.]);
-        self.particles.push(crate::particles::Request::Burst(burst));
+        self.copper_interaction_particles(p, [1., 0.7, 0.2, 1.]);
         true
     }
 
@@ -1052,13 +1048,18 @@ impl World {
             }
             c.waxed
         };
+        self.copper_interaction_particles(p, if waxed { [1., 0.8, 0.3, 1.] } else { [0.42, 0.82, 0.74, 1.] });
+        true
+    }
+
+    /// Shared visible feedback for block and living-golem wax/scrape actions.
+    pub fn copper_interaction_particles(&mut self, p: IVec3, color: [f32; 4]) {
         // `ParticleUtils.spawnParticlesOnBlockFaces(.., SCRAPE, 3..5)`.
         let mut burst =
             crate::particles::Burst::new(crate::particles::Kind::Effect, p.as_dvec3() + DVec3::splat(0.5), 12);
         burst.spread = DVec3::splat(0.45);
-        burst.color = Some(if waxed { [1., 0.8, 0.3, 1.] } else { [0.42, 0.82, 0.74, 1.] });
+        burst.color = Some(color);
         self.particles.push(crate::particles::Request::Burst(burst));
-        true
     }
 
     /// `CopperBulbBlock.checkAndFlip`: on a change of neighbour signal the

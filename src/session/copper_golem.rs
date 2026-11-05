@@ -32,15 +32,22 @@ impl PlayerSession {
         }
         let held = held?;
         let stage = state.stage;
+        let was_waxed = state.waxed();
+        let cell = pos.floor().as_ivec3();
         let mut wear = false;
         let used = if held.item == Item::HONEYCOMB && state.wax() {
             if self.mode.is_survival() {
                 self.inventory.take_one(slot);
             }
-            Used::Waxed { cell: pos.floor().as_ivec3() }
+            world.copper_interaction_particles(cell, [1., 0.7, 0.2, 1.]);
+            Used::Waxed { cell }
         } else if held.item.as_tool().is_some_and(|(kind, _)| kind == ToolKind::Axe) && state.scrape() {
             wear = true;
-            Used::Scraped { cell: pos.floor().as_ivec3() }
+            world.copper_interaction_particles(
+                cell,
+                if was_waxed { [1., 0.8, 0.3, 1.] } else { [0.42, 0.82, 0.74, 1.] },
+            );
+            Used::Scraped { cell }
         } else if held.item == Item::SHEARS {
             let flower = state.shear()?;
             entities.drop_copper_golem_equipment(flower, pos + DVec3::Y * 1.5);

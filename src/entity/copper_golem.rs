@@ -124,9 +124,9 @@ impl State {
     }
     /// Parent throws this stack toward the empty-handed player; no reconstruction.
     pub fn take_cargo(&mut self) -> Option<Stack> {
-        let item = self.cargo.take();
+        let item = self.cargo.take()?;
         self.interrupt();
-        item
+        Some(item)
     }
     /// Equippable poppy, only in an empty antenna slot (Java Equippable.equipOnTarget).
     /// Outer None rejects; Some(None) equips. Caller owns held-item consumption.
@@ -406,8 +406,8 @@ impl Entities {
         index
     }
     /// Atomic mutable-world transport tick, called by update_world before physics.
-    /// `clock_time` is the saved world's absolute Java game tick. No statue module
-    /// dependency: integrator must accept readiness and preserve/drop state itself.
+    /// Weathering uses the saved global simulation age, independent of the day
+    /// clock, time-setting commands and the advance_time gamerule.
     pub fn tick_copper_golems(&mut self, dt: f64, world: &mut World) {
         if !self.mobs.iter().any(|m| m.copper_golem.is_some()) {
             world.set_golem_chest_viewers([]);
@@ -457,7 +457,7 @@ impl Entities {
                     s.spin = 210 + self.rng.next_int(40) as u16;
                 }
                 s.weather(
-                    self.clock_time,
+                    world.maps.game_ticks.min(i64::MAX as u64) as i64,
                     world.get_block(m.pos.floor().as_ivec3()) == Some(Block::AIR),
                     &mut self.rng,
                 );

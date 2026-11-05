@@ -1168,6 +1168,9 @@ Work items (all Missing unless noted):
    [v0.15 track 1](verification/2026-11-04-v0.15-lightning.md). Double copper chests: *implemented, unverified
    (2026-10-28)* with the other double chests, the pair taking the younger
    stage and aging together ([record](verification/2026-10-28-v0.12-double-chests.md)).
+   Copper golem statues and their construction, sorting and revival loop:
+   *implemented, unverified (2026-11-05)*; see the
+   [integration evidence](verification/2026-11-05-v0.15-copper-golems.md).
 4. **Colour (BLD-01d).** Plain banners, standing and on walls, in 16
    colours; candles in 17 colours (one to four per block, lit, waterlogged)
    and candle cakes; 26.3's wool and concrete stairs and slabs; cushions and
@@ -1513,8 +1516,9 @@ in the [architecture reservations](architecture.md#v015-track-reservations):
    (three rounds) fixed nine bugs, and checks and the headless benchmark pass; ordinary
    play remains. See the [integration record](verification/2026-11-04-v0.15-integration.md).*
 
-Moved to a later v0.15 change (owner, 2026-11-04): the creaking and
-resin, the copper golem and its statues, allays and sniffers.
+Moved to later v0.15 changes (owner, 2026-11-04): the creaking and
+resin, allays and sniffers. Copper golems and statues were approved next
+on 2026-11-05, as recorded below.
 
 **Copper golems and statues — approved 2026-11-05.** The next v0.15
 slice completes their survival loop against the pinned Java 26.3 reference:
@@ -1525,9 +1529,16 @@ Shared player actions cover the existing input adapters. Automated
 reference, save/reload and performance checks accompany an agent hands-on
 run; the owner's ordinary play remains separate evidence. This work may
 proceed while v0.14 awaits that play. Creaking/resin, allays and sniffers
-remain subsequent slices. Status: planned; approval is not implementation
-or verification evidence. Identifier reservations are recorded in the
-[architecture](architecture.md#v015-copper-golem-reservations).
+remain subsequent slices. *Implemented, unverified (2026-11-05):* construction
+replaces the source copper block with a matching copper chest; golems transport
+component-bearing stacks, weather independently of day-time commands, wax/scrape,
+wear a shearable poppy, and become named pose-bearing statues. Statues preserve
+name and pose through placement, mining, saves and held-item rendering; axe
+reactivation creates a fresh named golem after all oxidation/wax is removed.
+Original models, textures and synthesized golem action sounds are included.
+See the [integration evidence and remaining gaps](verification/2026-11-05-v0.15-copper-golems.md)
+and [identifier allocations](architecture.md#v015-copper-golem-reservations).
+This does not close the remaining wildlife scope or establish owner play.
 
 ### M4 — A complete living world
 

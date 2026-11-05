@@ -602,7 +602,7 @@ of unused slots belonging to previous tracks.
 
 | Block states | Item IDs | Texture layers | Use |
 | --- | --- | --- | --- |
-| 14336–14591 | 1360–1367, if needed | 3328–3359 | Copper golem statues: four oxidation stages, waxed/unwaxed, facing, pose and waterlogging; original block art |
+| 14336–14591 | 1360–1367 reserved, unused | 3328–3339 used; 3340–3359 reserved | Copper golem statues: four oxidation stages, waxed/unwaxed, facing, pose and waterlogging; original block art |
 
 Statues use block items; the separate item slots stay unregistered unless
 the reference requires another item. `MobKind::CopperGolem` appends after
@@ -614,6 +614,21 @@ sound; the statue implementation owns block state registration, geometry,
 recipes, loot and block-level oxidation. The integrator owns construction,
 player interactions and the mob/statue transition with its persistence.
 No other new identifiers are authorized by this reservation.
+
+Implemented 2026-11-05: state encoding is
+`14336 + (((waxed*4 + stage)*4 + pose)*2 + waterlogged)*4 + facing`,
+using existing copper stage and `Facing::ALL` orders. Poses are standing,
+sitting, running and star. Statue items store the pose ordinal in their
+family-specific `Stack.entity_data`; `Stack.name` stores the custom name.
+Sparse named statue block entities use the per-dimension `copper_golem_statues`
+level property; absent old-save properties remain empty. All existing block,
+item and mob identifiers retain their meanings; CopperGolem's LAN index is 68.
+Mob cargo and antenna preserve complete stacks in the existing entity save
+and replica envelopes. Weather deadlines read the saved global simulation age
+already carried by `MapStorage.game_ticks`, which travels across dimensions
+and is independent of the day clock. Container search uses a bounded BTree
+position index and transient identities that change on replacement.
+See the [integration evidence](verification/2026-11-05-v0.15-copper-golems.md).
 
 ## Assessment branch ID reservations
 
