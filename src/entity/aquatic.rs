@@ -877,6 +877,12 @@ impl Entities {
                 // structure counts as populated only when all have spawned.
                 let mut complete = true;
                 for &(kind, p) in &b.residents {
+                    if kind == MobKind::Cat
+                        && let Some(old) = super::cat_spawner::legacy_hut_marker(&b, p)
+                        && self.structures_populated.remove(&old)
+                    {
+                        self.structures_populated.insert(p);
+                    }
                     if self.structures_populated.contains(&p) {
                         continue;
                     }
@@ -890,6 +896,7 @@ impl Entities {
                     m.persistent = kind != MobKind::Pillager;
                     if kind == MobKind::Cat {
                         m.wool_color = crate::color::DyeColor::Black;
+                        m.animal.as_mut().unwrap().variant = 0;
                     }
                 }
                 if complete {

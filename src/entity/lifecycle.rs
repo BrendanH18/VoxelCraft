@@ -52,6 +52,7 @@ impl Entities {
         self.trader_tick(dt as f32, world, ctx);
         self.tick_decor(world);
         self.village_upkeep(dt as f32, world);
+        self.cat_spawner_tick(dt, world, ctx);
         self.assign_hunts(ctx);
         self.trader_upkeep();
         // `Entity.hasMovedHorizontallyRecently`, from last update's positions.

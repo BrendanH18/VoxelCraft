@@ -998,7 +998,7 @@ fn swamp_hut(g: &Generator, centre: IVec2, ground: i32, rot: u8) -> Built {
     b.set(4, 1, 6, Block::CRAFTING_TABLE);
     b.set(2, 1, 6, Block::BROWN_MUSHROOM);
     b.residents.push((crate::entity::MobKind::Witch, b.world(3, 1, 5)));
-    b.residents.push((crate::entity::MobKind::Cat, b.world(2, 1, 4)));
+    b.residents.push((crate::entity::MobKind::Cat, b.world(2, 1, 5)));
     b.finish(Kind::SwampHut, 2)
 }
 
@@ -1766,6 +1766,12 @@ impl LootTable {
             Self::BuriedTreasure => "buried_treasure",
         }
     }
+}
+
+// The native hut frame starts at its floor (Java's floor is local y=1).
+#[cfg(test)]
+pub(crate) fn test_swamp_hut(rot: u8) -> Built {
+    swamp_hut(&Generator::new(42), IVec2::ZERO, 70, rot)
 }
 
 #[cfg(test)]

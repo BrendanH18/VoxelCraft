@@ -18,6 +18,7 @@ pub mod armor;
 pub mod bat;
 mod bell;
 mod bobber;
+mod cat_spawner;
 pub mod category;
 mod chunk_storage;
 pub mod decor;
@@ -748,6 +749,7 @@ pub struct Entities {
     next_villager_id: u64,
     villager_births: rustc_hash::FxHashSet<IVec3>,
     village_timer: f32,
+    cat_spawner: cat_spawner::Spawner,
     mob_index: mob_index::MobIndex,
     separation: mob_index::Separation,
     claimed_beds: rustc_hash::FxHashSet<IVec3>,
@@ -838,6 +840,7 @@ impl Entities {
             next_villager_id: 1,
             villager_births: Default::default(),
             village_timer: 0.0,
+            cat_spawner: Default::default(),
             mob_index: Default::default(),
             separation: Default::default(),
             claimed_beds: Default::default(),

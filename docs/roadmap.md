@@ -1463,8 +1463,10 @@ in the [architecture reservations](architecture.md#v015-track-reservations):
    for source discrepancies and remaining parity gaps. Frogs/tadpoles,
    pregnancy and frogspawn hatching, biome-tag variants, tongue predation,
    axis-oriented froglights and tadpole buckets are also implemented,
-   unverified. Cat spawner, polar bears, pandas, armadillos/wolf armor and
-   ocelots remain unimplemented by this track.
+   unverified. CatSpawner now implements the five-occupied-bed/five-cat
+   village rule, periodic hut attempts and the once-only black hut resident,
+   also unverified. Polar bears, pandas, armadillos/wolf armor and ocelots
+   remain unimplemented by this track.
 4. **Hostiles** (MOB-04, PRO-02). Strays, bogged and phantoms (insomnia,
    `spawn_phantoms`, membranes), and the tipped arrows strays and bogged
    shoot.

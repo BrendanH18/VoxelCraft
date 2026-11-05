@@ -504,6 +504,11 @@ effect-icon array. `Mooshroom`, `Bat`, `Frog`, `Tadpole` append after Camel
 in that order, saved as `mooshroom`, `bat`, `frog`, `tadpole`. Stew effect
 codes 1–11 in `Stack::entity_data` and `mooshroom.stew` remain stable;
 tadpole buckets use an item-specific age/health/age-lock bit payload.
+CatSpawner adds no IDs. Cat appearance code zero retains the old all-black
+coat; 1–10 use the remaining named variants, with the existing animal
+component carrying save/replication/inheritance. The spawner countdown is
+transient, as in Java; hut resident markers use the existing saved structure
+set, with migration for earlier partial hut cat markers.
 Frogspawn hatch timers reuse the saved scheduled-block tick queue. Detail
 mesh coordinate code 31 encodes frogspawn's fractional 1.5/16 height;
 ordinary integer coordinates and the quad format are unchanged. See

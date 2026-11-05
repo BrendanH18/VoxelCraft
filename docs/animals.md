@@ -122,3 +122,15 @@ verdant (cold) or pearlescent (warm) froglights. All three lights emit 15,
 place along the clicked face's axis and drop their unoriented item. See
 [the record](verification/2026-11-04-v0.15-passive-mobs.md) for the bounded
 brain implementation and remaining differences.
+
+## Village and hut cats (v0.15, Java 26.3)
+
+Implemented, unverified: CatSpawner attempts every 1,200 loaded ticks near a
+living player. At least five occupied beds and fewer than five nearby cats
+allow a village stray; the reference uses a fixed cat cap, rather than one
+cat per five beds. Huts get one persistent black resident and can receive
+periodic replacements after cats leave. Ten ordinary coats are eligible,
+with all-black added at full moon. Original palettes, saved appearance and
+existing fish taming/breeding are shared by these cats. See the
+[record](verification/2026-11-04-v0.15-passive-mobs.md) for the pinned code's
+periodic-hut variant ordering and POI/structure differences.

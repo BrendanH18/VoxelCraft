@@ -28,6 +28,34 @@ pub(super) fn mooshroom(m: &Mob) -> Parts {
     p
 }
 pub(super) fn colour(m: &Mob, c: &mut Cuboid) {
+    if m.kind == MobKind::Cat {
+        let variant = m.animal.as_ref().map_or(0, |a| a.variant) as usize % 11;
+        // Original palette over the established cuboids; old all-black stays zero.
+        if variant > 0 && matches!(c.color, [30, 29, 31] | [27, 27, 29] | [24, 24, 26]) {
+            let palette: [[u8; 3]; 11] = [
+                [27, 27, 29],
+                [150, 120, 83],
+                [27, 27, 29],
+                [201, 116, 48],
+                [190, 172, 145],
+                [112, 125, 139],
+                [219, 198, 159],
+                [222, 203, 170],
+                [202, 185, 159],
+                [231, 230, 221],
+                [154, 154, 148],
+            ];
+            let mut color = palette[variant];
+            if matches!(variant, 2 | 6 | 10) && c.color == [30, 29, 31] {
+                color = [223, 218, 204];
+            }
+            if matches!(variant, 4 | 8) && c.color != [30, 29, 31] {
+                color = [85, 69, 59];
+            }
+            let shade = i16::from(c.color[0]) - 27;
+            c.color = color.map(|v| (i16::from(v) + shade).clamp(0, 255) as u8);
+        }
+    }
     if m.kind == MobKind::Frog && c.color == FROG_SKIN {
         c.color = match m.frog.as_ref().map_or(0, |s| s.variant) {
             1 => [83, 143, 69],

@@ -1583,6 +1583,9 @@ fn load_mob(v: &Value) -> Option<Mob> {
     }
     if let Some(a) = m.animal.as_mut() {
         super::animals::load(a, &v["animal"]);
+        if kind == MobKind::Cat {
+            a.variant = v["animal"]["variant"].as_u64().unwrap_or(0).min(10) as u8;
+        }
     }
     m.effects = crate::simulation::effects::Effects::deserialize(v["effects"].as_str().unwrap_or(""));
     m.grow = v["grow"].as_f64().filter(|g| g.is_finite() && *g >= 0.0).unwrap_or(0.0) as f32;
