@@ -267,7 +267,7 @@ impl Entities {
             let pos = self.mobs[j].pos;
             self.mobs[i].frog.as_mut().unwrap().sounds |= 1 << FrogSound::Eat as u8;
             let attacker = self.mobs[i].pos;
-            self.mobs[j].damage(10.0, Some(attacker), &mut self.rng);
+            self.mobs[j].damage_pushed(10.0, &[crate::knockback::Push::hurt(attacker, pos)], &mut self.rng);
             if self.mobs[j].alive() {
                 continue;
             }

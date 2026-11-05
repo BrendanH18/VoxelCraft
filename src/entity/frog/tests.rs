@@ -245,3 +245,22 @@ fn frog_slime_loot_is_exactly_one_and_respects_mob_loot() {
         assert_eq!(e.items.iter().map(|i| i.stack.count).sum::<u8>(), if mob_loot { count } else { 0 });
     }
 }
+
+#[test]
+fn a_shielded_tongue_target_receives_a_knockback_not_the_frogs_world_position() {
+    let w = habitat();
+    let ctx = context();
+    let mut e = Entities::new(58);
+    e.spawn(MobKind::Frog, DVec3::new(1000.5, 1.0, 1000.5));
+    e.spawn(MobKind::Slime, DVec3::new(1001.5, 1.0, 1000.5));
+    e.mobs[1].set_size(1);
+    e.mobs[1].effects.add(crate::simulation::effects::Effect::Absorption, 3, 200);
+    for _ in 0..8 {
+        e.frog_upkeep(0.05, &w, &ctx);
+    }
+    assert_eq!(e.mobs.len(), 2);
+    assert_eq!(e.mobs[1].health, 1.0);
+    assert!((e.mobs[1].vel.x - 0.5).abs() < 1e-6);
+    assert_eq!(e.mobs[1].vel.z, 0.0);
+    assert!(e.items.is_empty());
+}
