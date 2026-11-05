@@ -30,6 +30,8 @@ pub struct BlockModel {
     pub icon: Option<u16>,
     /// A full turn about the centre instead of `yaw` (an item in a frame).
     pub orient: Option<glam::Quat>,
+    /// Per-stack item colour (white for blocks and untinted items).
+    pub tint: [u8; 4],
 }
 
 #[repr(C)]
@@ -41,6 +43,7 @@ pub struct BlockVertex {
     pub(super) layer: u32,
     /// x: sky light, y: face shade, z: torch light.
     pub(super) light: [f32; 3],
+    pub(super) tint: [u8; 4],
 }
 
 /// Face shading, ordered +X, -X, +Y, -Y, +Z, -Z (as in `chunk.wgsl`).
@@ -81,6 +84,7 @@ pub fn vertices(models: &[BlockModel], camera: DVec3, ticks: f64) -> Vec<BlockVe
                     uv,
                     layer: layer as u32,
                     light: [m.sky_light, shade, m.block_light],
+                    tint: m.tint,
                 });
             }
         };
@@ -151,6 +155,7 @@ fn banner_vertices(
                 uv: q.uv[i],
                 layer: q.layer as u32,
                 light: [m.sky_light, shade, m.block_light],
+                tint: m.tint,
             });
         }
     }
@@ -191,7 +196,7 @@ impl BlockModelPass {
                         array_stride: std::mem::size_of::<BlockVertex>() as u64,
                         step_mode: wgpu::VertexStepMode::Vertex,
                         attributes: &wgpu::vertex_attr_array![
-                            0 => Float32x3, 1 => Float32x2, 2 => Uint32, 3 => Float32x3
+                            0 => Float32x3, 1 => Float32x2, 2 => Uint32, 3 => Float32x3, 4 => Unorm8x4
                         ],
                     })],
                 },
@@ -298,6 +303,7 @@ mod tests {
             yaw: 0.0,
             icon: None,
             orient: None,
+            tint: [255; 4],
         };
         let icon = BlockModel { icon: Some(crate::world::block::tex::ITEM_BASE), yaw: 1.0, ..at(Block::AIR) };
         let v = vertices(&[at(Block::SAND), at(Block::POPPY), icon], DVec3::new(10.0, 64.0, 5.0), 0.0);

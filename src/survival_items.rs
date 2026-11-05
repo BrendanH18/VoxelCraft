@@ -108,6 +108,28 @@ pub fn use_animal_target(
         }
         return true;
     }
+    if let Some(action) = entities.use_wolf_armor(index, held, owner, creative) {
+        use crate::entity::wolf_armor::Use;
+        match action {
+            Use::Repair => {
+                inventory.take_one(slot);
+            }
+            Use::Equip if !creative => {
+                inventory.take_one(slot);
+            }
+            Use::Remove if !creative => {
+                inventory.wear(slot, 1);
+            }
+            _ => {}
+        }
+        return true;
+    }
+    if held.is_some_and(|s| s.item == Item::BRUSH) && entities.brush_armadillo(index) {
+        if !creative {
+            inventory.wear(slot, 16);
+        }
+        return true;
+    }
     let Some(result) = entities.use_animal_with_materials(index, held, owner, creative) else { return false };
     if result && !creative {
         if held.is_some_and(|s| s.item == Item::TROPICAL_FISH_BUCKET) {

@@ -46,6 +46,7 @@ pub enum Voice {
     Frog,
     PolarBear,
     Panda,
+    Armadillo,
 }
 
 /// What kind of sound a voice makes.
@@ -58,7 +59,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 34] = [
+    pub const ALL: [Voice; 35] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -93,6 +94,7 @@ impl Voice {
         Voice::Frog,
         Voice::PolarBear,
         Voice::Panda,
+        Voice::Armadillo,
     ];
 
     /// The category the creature plays in: `Monster`, `Ghast`, `Hoglin` and
@@ -113,7 +115,7 @@ impl Voice {
             | Voice::Hoglin
             | Voice::Guardian
             | Voice::Pillager => SoundSource::Hostile,
-            Voice::Bat | Voice::Frog | Voice::PolarBear | Voice::Panda => SoundSource::Neutral,
+            Voice::Bat | Voice::Frog | Voice::PolarBear | Voice::Panda | Voice::Armadillo => SoundSource::Neutral,
             Voice::Pig
             | Voice::Cow
             | Voice::Sheep
@@ -142,6 +144,7 @@ impl Voice {
             Voice::Frog => "frog",
             Voice::PolarBear => "polar_bear",
             Voice::Panda => "panda",
+            Voice::Armadillo => "armadillo",
             Voice::Cow => "cow",
             Voice::Sheep => "sheep",
             Voice::Chicken => "chicken",
@@ -254,6 +257,7 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::Frog => frog(call, rng),
         Voice::PolarBear => polar_bear(call, rng),
         Voice::Panda => panda(call, rng),
+        Voice::Armadillo => armadillo(call, rng),
         Voice::Pig => pig(call, rng),
         Voice::Horse => horse(call, rng),
         Voice::Cow => cow(call, rng),
@@ -939,5 +943,19 @@ fn panda(call: Call, rng: &mut Rng) -> Vec<f32> {
             );
         }
     }
+    dsp::finish(out, 0.5)
+}
+
+// Original soft shell rattle and small chirp.
+fn armadillo(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let mut out = vec![0.0; samples(if call == Call::Death { 0.4 } else { 0.25 })];
+    for n in 0..5 {
+        add_mode(
+            &mut out,
+            samples(n as f32 * 0.025),
+            Mode { freq: rng.range(650.0, 1100.0), amp: 0.35, tau: 0.018, glide: -0.2, glide_tau: 0.04 },
+        );
+    }
+    add_mode(&mut out, 0, Mode { freq: rng.range(280.0, 370.0), amp: 0.4, tau: 0.09, glide: 0.2, glide_tau: 0.07 });
     dsp::finish(out, 0.5)
 }

@@ -145,6 +145,7 @@ pub fn vertices(models: &[SignModel], camera: DVec3, out: &mut Vec<BlockVertex>)
                         uv,
                         layer: part.layer as u32,
                         light: [m.sky_light, shade, m.block_light],
+                        tint: [255; 4],
                     });
                 }
             }
@@ -373,6 +374,7 @@ pub fn shelf_items(world: &World, camera: DVec3, out: &mut Vec<BlockModel>) {
                 yaw: yaw.to_radians(),
                 icon,
                 orient: None,
+                tint: [255; 4],
             });
         }
     }

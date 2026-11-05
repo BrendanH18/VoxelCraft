@@ -98,6 +98,7 @@ impl MobKind {
             Self::Cow | Self::Mooshroom | Self::Sheep => food == Item::WHEAT,
             Self::Frog | Self::Tadpole => food == Item::SLIME_BALL,
             Self::Panda => food == Item::from_block(crate::world::overworld_blocks::BAMBOO),
+            Self::Armadillo => food == Item::SPIDER_EYE,
             Self::Pig => matches!(food, Item::CARROT | Item::POTATO | Item::BEETROOT),
             Self::Chicken => seeds(food),
             Self::Wolf => wolf_food(food),
@@ -135,6 +136,7 @@ impl MobKind {
                 | Self::Mooshroom
                 | Self::Frog
                 | Self::Panda
+                | Self::Armadillo
                 | Self::Sheep
                 | Self::Pig
                 | Self::Chicken
@@ -157,6 +159,7 @@ impl MobKind {
 impl Mob {
     pub fn ready_to_breed(&self) -> bool {
         self.alive()
+            && self.armadillo.as_ref().is_none_or(|s| !s.scared())
             && self.age == 0
             && !self.baby
             && self.animal.as_ref().is_some_and(|a| {
@@ -290,7 +293,7 @@ impl Entities {
             m.feed_growth();
         } else {
             let a = m.animal.as_mut()?;
-            if m.age != 0 || a.love > 0.0 || a.pregnant {
+            if m.age != 0 || a.love > 0.0 || a.pregnant || m.armadillo.as_ref().is_some_and(|s| s.scared()) {
                 return None;
             }
             a.love = LOVE_SECONDS;
@@ -352,6 +355,7 @@ impl Entities {
         }
         super::mooshroom::inherit(&mut child, a, b, &mut self.rng);
         super::panda::inherit(&mut child, a, b, &mut self.rng);
+        super::armadillo::fresh(&mut child, &mut self.rng);
         child
     }
     /// Love timers and hearts, then `BreedGoal`'s partner: an animal not yet
@@ -519,6 +523,7 @@ pub fn wolf_food(food: Item) -> bool {
     )
 }
 pub(super) fn on_spawn(m: &mut Mob, rng: &mut Rng) {
+    super::armadillo::fresh(m, rng);
     let Some(a) = m.animal.as_mut() else { return };
     a.variant = if m.kind == MobKind::Parrot {
         rng.next_int(5) as u8

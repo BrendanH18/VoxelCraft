@@ -236,6 +236,7 @@ impl Game {
                     yaw: spin,
                     icon,
                     orient: None,
+                    tint: voxelcraft::entity::wolf_armor::item_tint_bytes(item.stack),
                 });
             }
         }

@@ -24,6 +24,7 @@ mod chunk_storage;
 pub mod decor;
 pub mod path;
 pub use bobber::{CatchContext, roll_catch, set_damage};
+pub mod armadillo;
 pub mod dragon;
 mod dragon_model;
 pub mod eye;
@@ -61,6 +62,7 @@ pub mod villager;
 mod villager_breeding;
 mod villager_gossip;
 pub mod wandering_trader;
+pub mod wolf_armor;
 mod zombie_villager;
 
 use std::f32::consts::TAU;
@@ -586,6 +588,8 @@ pub struct Target {
     pub in_water: bool,
     /// `Player.isSwimming`: sprint-swimming (dolphins swim along).
     pub swimming: bool,
+    pub sprinting: bool,
+    pub passenger: bool,
     /// Current health in half hearts (witches choose potions from it).
     pub health: f32,
     /// Bit set of the target's active [`crate::simulation::effects::Effect`]s.
@@ -615,6 +619,8 @@ impl Target {
             on_ground: true,
             in_water: false,
             swimming: false,
+            sprinting: false,
+            passenger: false,
             health: crate::simulation::survival::MAX_HEALTH,
             effects: 0,
         }

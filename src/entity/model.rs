@@ -588,6 +588,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
         MobKind::Frog => passive::frog(m, time),
         MobKind::PolarBear => passive::polar_bear(m),
         MobKind::Panda => passive::panda(m, time),
+        MobKind::Armadillo => passive::armadillo(m),
         MobKind::Tadpole => passive::tadpole(m, time),
         MobKind::Cow => parts![
             part(COW_BODY, [0.0; 3], Quat::IDENTITY),
@@ -923,7 +924,7 @@ pub fn build(
             } else if m.kind == MobKind::Pufferfish {
                 0.8 + m.aquatic.as_ref().map_or(0.0, |a| a.puff as f32 * 0.4)
             } else if m.baby || m.age < 0 {
-                0.5
+                if m.kind == MobKind::Armadillo { 0.6 } else { 0.5 }
             } else {
                 1.0
             };

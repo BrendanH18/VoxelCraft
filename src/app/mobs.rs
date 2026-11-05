@@ -174,6 +174,8 @@ impl Game {
             effects: self.session.vitals.effects.mask(),
             in_water: self.session.player.in_water,
             swimming: self.session.player.swimming,
+            sprinting: self.session.player.sprinting,
+            passenger: self.session.player.vehicle.is_some(),
             ..Target::new(
                 PlayerId::HOST,
                 self.session.player.pos,
@@ -554,6 +556,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Frog => Voice::Frog,
         MobKind::PolarBear => Voice::PolarBear,
         MobKind::Panda => Voice::Panda,
+        MobKind::Armadillo => Voice::Armadillo,
         MobKind::Tadpole => Voice::Fish,
         MobKind::Sheep => Voice::Sheep,
         MobKind::Chicken => Voice::Chicken,

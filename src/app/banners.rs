@@ -28,6 +28,7 @@ impl Game {
                     yaw: 0.0,
                     icon: None,
                     orient: None,
+                    tint: [255; 4],
                 }
             })
             .collect()

@@ -35,7 +35,7 @@ pub const JAVA_ALLOWED: &[(&str, &str)] = &[
     ),
     (
         "crafting_special_repairitem/repair_item",
-        "grid repair of two damaged items isn't implemented; anvils and grindstones repair",
+        "general grid repair remains deferred; wolf armor supports paired repair, and anvils/grindstones repair",
     ),
     (
         "crafting_special_mapextending/map_extending",
@@ -312,6 +312,12 @@ impl Reference {
                 }
                 shapeless(list)
             }
+            "crafting_dye" if recipe["result"] == "wolf_armor" => {
+                match (self.ingredient(&recipe["target"]), self.ingredient(&recipe["dye"])) {
+                    (Some(target), Some(dyes)) => shapeless(vec![target, dyes]),
+                    _ => return unregistered(),
+                }
+            }
             "crafting_transmute" if recipe.get("material_count").is_none() => {
                 // Java keeps the input's components; VoxelCraft items carry
                 // none that these recipes change, so a shapeless pair matches.
@@ -514,7 +520,7 @@ pub fn compare_crafting(r: &Reference) -> Section {
                 let got = grid.result();
                 let matches = got.is_some_and(|mut stack| {
                     let effects = stew_effects(stack);
-                    if stack.item == Item::SUSPICIOUS_STEW {
+                    if matches!(stack.item, Item::SUSPICIOUS_STEW | Item::WOLF_ARMOR) {
                         stack.entity_data = 0;
                     }
                     stack == Stack::new(Item(c.result), c.count) && effects == c.stew_effects

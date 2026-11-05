@@ -255,6 +255,9 @@ pub enum Sprite {
     /// An iron bucket, empty or holding this colour of fluid.
     Bucket(Option<[u8; 3]>),
     TadpoleBucket,
+    ArmadilloScute,
+    Brush,
+    WolfArmor,
     Door,
     /// A blaze rod: a glowing yellow stick.
     Rod([u8; 3]),
@@ -697,6 +700,9 @@ impl Item {
     pub const MUSHROOM_STEW: Item = Item(515);
     pub const SUSPICIOUS_STEW: Item = Item(1300);
     pub const TADPOLE_BUCKET: Item = Item(1301);
+    pub const ARMADILLO_SCUTE: Item = Item(1302);
+    pub const BRUSH: Item = Item(1303);
+    pub const WOLF_ARMOR: Item = Item(1304);
     pub const SNOWBALL: Item = Item(516);
     pub const EGG: Item = Item(517);
     pub const LEAD: Item = Item(1000);
@@ -1052,6 +1058,9 @@ impl Item {
         }
         match self {
             Self::TADPOLE_BUCKET => return single("tadpole bucket", Sprite::TadpoleBucket),
+            Self::ARMADILLO_SCUTE => return item("armadillo scute", Sprite::ArmadilloScute),
+            Self::BRUSH => return single("brush", Sprite::Brush),
+            Self::WOLF_ARMOR => return single("wolf armor", Sprite::WolfArmor),
             Self::SUSPICIOUS_STEW => {
                 return ItemInfo {
                     name: "suspicious stew",
@@ -1263,6 +1272,9 @@ impl Item {
 
     /// Uses before breaking, for tools and armor.
     pub fn durability(self) -> Option<u16> {
+        if matches!(self, Self::BRUSH | Self::WOLF_ARMOR) {
+            return Some(64);
+        }
         if self == Self::CARROT_ON_A_STICK {
             return Some(25);
         }
@@ -1432,7 +1444,7 @@ impl Item {
             .chain((0..DECOR_ITEMS).map(|i| Item(DECOR_ITEM + i)))
             .chain((0..HAND_ITEMS).map(|i| Item(HAND_ITEM + i)))
             .chain((1255..=1265).map(Item))
-            .chain([Self::SUSPICIOUS_STEW, Self::TADPOLE_BUCKET])
+            .chain([Self::SUSPICIOUS_STEW, Self::TADPOLE_BUCKET, Self::ARMADILLO_SCUTE, Self::BRUSH, Self::WOLF_ARMOR])
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1469,7 +1481,7 @@ fn splash_names() -> &'static [&'static str] {
 fn sprite_index(item: Item) -> Option<u16> {
     let materials = ITEMS.len() as u16;
     match item.0 {
-        1301 => Some(icon_count() as u16 - 1),
+        1301..=1304 => Some(passive_icon_base() + item.0 - 1301),
         1040 => Some(turtle_icon()),
         1073 => Some(turtle_icon() + 2 + COPPER_ITEMS.len() as u16),
         1047 => Some(turtle_icon() + 1 + COPPER_ITEMS.len() as u16),
@@ -1564,7 +1576,11 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    turtle_icon() as u32 + 1 + COPPER_ITEMS.len() as u32 + 3 + 16 + DECOR_ITEMS as u32 + HAND_ITEMS as u32 + 1
+    passive_icon_base() as u32 + 4
+}
+
+const fn passive_icon_base() -> u16 {
+    turtle_icon() + 1 + COPPER_ITEMS.len() as u16 + 3 + 16 + DECOR_ITEMS + HAND_ITEMS
 }
 
 /// The turtle helmet's icon follows the animal items; copper equipment follows it,

@@ -160,3 +160,24 @@ keep fighting, and bamboo calms them. Genes, age and carried food persist;
 actions replicate with original cuboid models. See the
 [record](verification/2026-11-04-v0.15-passive-mobs.md) for the exact gene
 pool, timers, source data, focused checks and shared-engine differences.
+
+## Armadillos and wolf armor (v0.15, Java 26.3)
+
+Implemented, unverified: savanna and badlands armadillos eat spider eyes,
+breed and age. Nearby sprinting/riding players, undead and recent attackers
+create danger memory; armadillos roll, hide, peek and unroll. Their shells
+reduce damage. Spiders avoid them. Adults shed scutes after 6,000–11,999
+loaded ticks; brushing an adult gives another scute and costs 16 brush
+durability, independently of shedding and mob drops. Archaeology is deferred.
+
+Six scutes craft wolf armor. Only the owner equips an adult tamed wolf or
+removes armor with shears; Binding blocks removal except in Creative.
+Armor absorbs eligible hits in full, including its breaking hit, and wears
+by the ceiling of the incoming damage. The owner repairs a sitting wolf's
+armor eight points per scute, including scute consumption in Creative.
+Dye mixing, water-cauldron washing, anvil and paired-grid repairs preserve
+or clear components according to the native recipes. Equipped armor, color,
+name and damage persist and replicate. Original plates show dye and cracks;
+item icons also show dye in inventory, the hand, drops and frames. See the
+[record](verification/2026-11-04-v0.15-passive-mobs.md) for source details,
+damage-type coverage and remaining navigation/presentation differences.

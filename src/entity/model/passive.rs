@@ -28,6 +28,12 @@ pub(super) fn mooshroom(m: &Mob) -> Parts {
     p
 }
 pub(super) fn colour(m: &Mob, c: &mut Cuboid) {
+    if c.color == WOLF_PLATE
+        && let Some(color) = m.wolf_armor.as_ref().and_then(|s| s.armor).and_then(crate::entity::wolf_armor::color)
+    {
+        c.color = color;
+    }
+
     if m.panda.as_ref().is_some_and(|s| s.variant() == crate::entity::panda::Gene::Brown) && c.color == [35, 33, 32] {
         c.color = [111, 75, 45];
     }
@@ -277,6 +283,78 @@ pub(super) fn panda(m: &Mob, time: f32) -> Parts {
             at([0.0, 6.0, 9.0]),
             rot * Quat::from_rotation_z(0.65),
         ));
+    }
+    p
+}
+
+const ARMADILLO_SHELL: &[Cuboid] = &[
+    cube([-4.7, 3.0, -5.3], [4.7, 8.3, 3.5], [181, 132, 117], 20),
+    cube([-3.8, 8.3, -4.6], [3.8, 10.1, 2.8], [195, 145, 126], 18),
+    cube([-5.0, 3.2, -3.2], [5.0, 8.4, -2.5], [136, 94, 84], 15),
+    cube([-5.0, 3.2, -0.8], [5.0, 8.4, -0.1], [136, 94, 84], 15),
+    cube([-4.8, 3.2, 1.6], [4.8, 8.4, 2.3], [136, 94, 84], 15),
+];
+const ARMADILLO_HEAD: &[Cuboid] = &[
+    cube([-2.6, 0.0, -1.0], [2.6, 4.6, 3.4], [190, 140, 119], 18),
+    cube([-1.8, 0.5, 3.4], [1.8, 2.8, 6.0], [169, 116, 99], 15),
+    cube([-1.8, 4.6, -0.3], [-0.5, 7.0, 0.6], [176, 126, 108], 16),
+    cube([0.5, 4.6, -0.3], [1.8, 7.0, 0.6], [176, 126, 108], 16),
+    cube([-2.7, 2.6, 2.0], [-2.5, 3.5, 3.0], [27, 24, 21], 0),
+    cube([2.5, 2.6, 2.0], [2.7, 3.5, 3.0], [27, 24, 21], 0),
+];
+const ARMADILLO_LEG: &[Cuboid] = &[
+    cube([-1.1, -3.0, -1.1], [1.1, 0.0, 1.1], [152, 102, 89], 16),
+    cube([-1.2, -3.0, 0.5], [1.2, -2.4, 1.7], [210, 186, 153], 10),
+];
+const ARMADILLO_TAIL: &[Cuboid] = &[cube([-0.7, 0.0, -6.5], [0.7, 1.0, 0.0], [167, 113, 97], 18)];
+const ARMADILLO_BALL: &[Cuboid] = &[
+    cube([-4.8, 1.0, -4.8], [4.8, 9.0, 4.8], [174, 122, 108], 18),
+    cube([-3.4, 0.0, -3.4], [3.4, 10.3, 3.4], [190, 139, 120], 18),
+    cube([-4.9, 1.3, -2.4], [4.9, 9.2, -1.8], [135, 91, 81], 12),
+    cube([-4.9, 1.3, 0.4], [4.9, 9.2, 1.0], [135, 91, 81], 12),
+    cube([-4.9, 1.3, 3.2], [4.9, 9.2, 3.8], [135, 91, 81], 12),
+];
+pub(super) fn armadillo(m: &Mob) -> Parts {
+    let s = m.armadillo.as_ref().unwrap();
+    if s.hide() {
+        return parts![part(ARMADILLO_BALL, [0.0; 3], Quat::IDENTITY)];
+    }
+    let swing = m.limb_phase.sin() * m.limb_amp * 0.7;
+    let mut p = parts![
+        part(ARMADILLO_SHELL, [0.0; 3], Quat::IDENTITY),
+        part(
+            ARMADILLO_HEAD,
+            [0.0, 1.0, 3.4],
+            Quat::from_rotation_y(-m.head_yaw) * Quat::from_rotation_x(-m.head_pitch)
+        ),
+        part(ARMADILLO_TAIL, [0.0, 3.0, -5.0], Quat::from_rotation_x(-0.15))
+    ];
+    for (x, z, phase) in [(-3.2, -3.0, swing), (3.2, -3.0, -swing), (-3.2, 2.2, -swing), (3.2, 2.2, swing)] {
+        p.push(part(ARMADILLO_LEG, [x, 3.0, z], Quat::from_rotation_x(phase)));
+    }
+    p
+}
+
+const WOLF_PLATE: Rgb = [210, 170, 153];
+const WOLF_BODY_ARMOR: &[Cuboid] = &[
+    cube([-3.5, 7.0, -5.8], [3.5, 12.6, 4.0], WOLF_PLATE, 16),
+    cube([-3.8, 6.0, 1.0], [3.8, 13.6, 5.5], WOLF_PLATE, 16),
+    cube([-3.6, 7.0, -3.6], [3.6, 13.0, -2.7], [138, 98, 87], 8),
+    cube([-3.9, 7.0, 2.4], [3.9, 14.0, 3.1], [138, 98, 87], 8),
+];
+const WOLF_ARMOR_CRACKS: &[Cuboid] = &[
+    cube([-3.65, 8.0, -4.8], [-3.55, 11.6, -4.3], [67, 44, 40], 0),
+    cube([3.55, 8.0, -1.0], [3.65, 12.3, -0.5], [67, 44, 40], 0),
+    cube([-1.6, 12.7, -5.0], [-1.0, 12.8, 0.0], [67, 44, 40], 0),
+];
+pub(super) fn wolf_armor(m: &Mob, at: [f32; 3], rot: Quat) -> Parts {
+    let Some(a) = m.wolf_armor.as_ref().and_then(|s| s.armor) else {
+        return Parts::new();
+    };
+    let mut p = parts![part(WOLF_BODY_ARMOR, at, rot)];
+    let cracks = crate::entity::wolf_armor::cracks(a.damage) as usize;
+    if cracks > 0 {
+        p.push(part(&WOLF_ARMOR_CRACKS[..cracks], at, rot));
     }
     p
 }

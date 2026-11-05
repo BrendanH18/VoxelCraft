@@ -73,6 +73,7 @@ impl Entities {
         self.frog_upkeep(dt, world, ctx);
         self.polar_sense(dt, world, ctx);
         self.panda_upkeep(dt, world, ctx, &mut events);
+        self.armadillo_upkeep(dt, world, ctx, &mut events);
         self.tick_animals(dt as f32, world, ctx, &mut events);
         self.tick_leashes(dt as f32, world, ctx);
         self.tick_llamas(ctx);
@@ -129,6 +130,15 @@ impl Entities {
                     self.particles.push(crate::particles::Request::Burst(burst));
                 }
                 let dead = self.mobs.swap_remove(i);
+                if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
+                    && let Some(stack) = dead
+                        .wolf_armor
+                        .as_ref()
+                        .and_then(|s| s.armor)
+                        .filter(|s| !s.enchants.has(crate::enchant::Enchantment::VanishingCurse))
+                {
+                    self.items.push(ItemEntity::new(stack, dead.pos, DVec3::ZERO, 0.5, &mut self.rng));
+                }
                 // Whatever a fox carries in its mouth or a dolphin plays with
                 // (`setGuaranteedDrop`) drops, enchantments and names intact.
                 if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
@@ -343,7 +353,14 @@ impl Entities {
                     // `HurtByTargetGoal`: projectiles credit their shooter too.
                     if let Some(owner) = owner
                         && !killed
-                        && matches!(kind, MobKind::Dolphin | MobKind::Blaze | MobKind::PolarBear | MobKind::Panda)
+                        && matches!(
+                            kind,
+                            MobKind::Dolphin
+                                | MobKind::Blaze
+                                | MobKind::PolarBear
+                                | MobKind::Panda
+                                | MobKind::Armadillo
+                        )
                         && let Some(i) = self.mobs.iter().position(|m| m.kind == kind && m.pos == pos && m.alive())
                     {
                         self.hurt_by_player_target(i, owner);

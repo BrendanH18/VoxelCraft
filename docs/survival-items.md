@@ -130,3 +130,12 @@ retain age, health and name through inventory saves, and release both water
 and a persistent tadpole. Slimeballs feed tadpoles and breed frogs; magma
 cubes eaten by frogs supply the three axis-oriented froglight blocks. See
 [passive mob evidence](verification/2026-11-04-v0.15-passive-mobs.md).
+
+Armadillo scutes (1302) come from adult shedding or brushing. A brush (1303)
+is crafted vertically from feather, copper ingot and stick, has 64 durability,
+and currently supports armadillos only. Six scutes in `X  /XXX/X X` craft
+wolf armor (1304), with 64 durability. It accepts mixed dyes in a crafting
+grid, washes in a water cauldron, repairs with scutes in an anvil or by
+feeding an armored sitting wolf, and supports paired-grid repair. Owner-only
+equipment actions and survival consumption use the shared authoritative
+adapter. See [passive mob evidence](verification/2026-11-04-v0.15-passive-mobs.md).

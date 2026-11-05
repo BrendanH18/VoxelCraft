@@ -1,0 +1,286 @@
+{
+  "minecraft:armadillo": [
+    {
+      "biome": "badlands",
+      "category": "creature",
+      "type": "minecraft:armadillo",
+      "count": {
+        "type": "minecraft:uniform",
+        "max_inclusive": 2,
+        "min_inclusive": 1
+      },
+      "weight": 6
+    },
+    {
+      "biome": "eroded_badlands",
+      "category": "creature",
+      "type": "minecraft:armadillo",
+      "count": {
+        "type": "minecraft:uniform",
+        "max_inclusive": 2,
+        "min_inclusive": 1
+      },
+      "weight": 6
+    },
+    {
+      "biome": "savanna",
+      "category": "creature",
+      "type": "minecraft:armadillo",
+      "count": {
+        "type": "minecraft:uniform",
+        "max_inclusive": 3,
+        "min_inclusive": 2
+      },
+      "weight": 10
+    },
+    {
+      "biome": "savanna_plateau",
+      "category": "creature",
+      "type": "minecraft:armadillo",
+      "count": {
+        "type": "minecraft:uniform",
+        "max_inclusive": 3,
+        "min_inclusive": 2
+      },
+      "weight": 10
+    },
+    {
+      "biome": "windswept_savanna",
+      "category": "creature",
+      "type": "minecraft:armadillo",
+      "count": {
+        "type": "minecraft:uniform",
+        "max_inclusive": 3,
+        "min_inclusive": 2
+      },
+      "weight": 10
+    },
+    {
+      "biome": "wooded_badlands",
+      "category": "creature",
+      "type": "minecraft:armadillo",
+      "count": {
+        "type": "minecraft:uniform",
+        "max_inclusive": 2,
+        "min_inclusive": 1
+      },
+      "weight": 6
+    }
+  ],
+  "minecraft:ocelot": [
+    {
+      "biome": "bamboo_jungle",
+      "category": "monster",
+      "type": "minecraft:ocelot",
+      "count": 1,
+      "weight": 2
+    },
+    {
+      "biome": "jungle",
+      "category": "monster",
+      "type": "minecraft:ocelot",
+      "count": {
+        "type": "minecraft:uniform",
+        "max_inclusive": 3,
+        "min_inclusive": 1
+      },
+      "weight": 2
+    }
+  ],
+  "data/minecraft/loot_table/entities/armadillo.json": {
+    "type": "minecraft:entity",
+    "random_sequence": "minecraft:entities/armadillo"
+  },
+  "data/minecraft/loot_table/brush/armadillo.json": {
+    "type": "minecraft:entity_interact",
+    "pools": [
+      {
+        "entries": [
+          {
+            "type": "minecraft:item",
+            "name": "minecraft:armadillo_scute"
+          }
+        ],
+        "rolls": 1
+      }
+    ],
+    "random_sequence": "minecraft:brush/armadillo"
+  },
+  "data/minecraft/loot_table/gameplay/armadillo_shed.json": {
+    "type": "minecraft:gift",
+    "pools": [
+      {
+        "entries": [
+          {
+            "type": "minecraft:item",
+            "name": "minecraft:armadillo_scute"
+          }
+        ],
+        "rolls": 1
+      }
+    ],
+    "random_sequence": "minecraft:gameplay/armadillo_shed"
+  },
+  "data/minecraft/tags/item/armadillo_food.json": {
+    "values": [
+      "minecraft:spider_eye"
+    ]
+  },
+  "data/minecraft/tags/item/repairs_wolf_armor.json": {
+    "values": [
+      "minecraft:armadillo_scute"
+    ]
+  },
+  "data/minecraft/tags/damage_type/bypasses_wolf_armor.json": {
+    "values": [
+      "#minecraft:bypasses_invulnerability",
+      "minecraft:cramming",
+      "minecraft:drown",
+      "minecraft:dry_out",
+      "minecraft:freeze",
+      "minecraft:in_wall",
+      "minecraft:indirect_magic",
+      "minecraft:magic",
+      "minecraft:outside_border",
+      "minecraft:starve",
+      "minecraft:thorns",
+      "minecraft:wither"
+    ]
+  },
+  "data/minecraft/tags/damage_type/bypasses_invulnerability.json": {
+    "values": [
+      "minecraft:out_of_world",
+      "minecraft:generic_kill"
+    ]
+  },
+  "data/minecraft/recipe/wolf_armor.json": {
+    "type": "minecraft:crafting_shaped",
+    "category": "equipment",
+    "key": {
+      "X": "minecraft:armadillo_scute"
+    },
+    "pattern": [
+      "X  ",
+      "XXX",
+      "X X"
+    ],
+    "result": {
+      "id": "minecraft:wolf_armor"
+    }
+  },
+  "data/minecraft/recipe/brush.json": {
+    "type": "minecraft:crafting_shaped",
+    "category": "equipment",
+    "key": {
+      "#": "minecraft:copper_ingot",
+      "I": "minecraft:stick",
+      "X": "minecraft:feather"
+    },
+    "pattern": [
+      "X",
+      "#",
+      "I"
+    ],
+    "result": {
+      "id": "minecraft:brush"
+    }
+  },
+  "data/minecraft/recipe/wolf_armor_dyed.json": {
+    "type": "minecraft:crafting_dye",
+    "dye": "#minecraft:dyes",
+    "group": "dyed_armor",
+    "result": {
+      "id": "minecraft:wolf_armor"
+    },
+    "target": "minecraft:wolf_armor"
+  },
+  "data/minecraft/tags/block/armadillo_spawnable_on.json": {
+    "values": [
+      "#minecraft:animals_spawnable_on",
+      "#minecraft:badlands_terracotta",
+      "minecraft:red_sand",
+      "minecraft:coarse_dirt"
+    ]
+  },
+  "data/minecraft/tags/block/badlands_terracotta.json": {
+    "values": [
+      "minecraft:terracotta",
+      "minecraft:white_terracotta",
+      "minecraft:yellow_terracotta",
+      "minecraft:orange_terracotta",
+      "minecraft:red_terracotta",
+      "minecraft:brown_terracotta",
+      "minecraft:light_gray_terracotta"
+    ]
+  },
+  "data/minecraft/tags/item/enchantable/durability.json": {
+    "values": [
+      "#minecraft:foot_armor",
+      "#minecraft:leg_armor",
+      "#minecraft:chest_armor",
+      "#minecraft:head_armor",
+      "minecraft:elytra",
+      "minecraft:shield",
+      "#minecraft:swords",
+      "#minecraft:axes",
+      "#minecraft:pickaxes",
+      "#minecraft:shovels",
+      "#minecraft:hoes",
+      "minecraft:bow",
+      "minecraft:crossbow",
+      "minecraft:trident",
+      "minecraft:flint_and_steel",
+      "minecraft:shears",
+      "minecraft:brush",
+      "minecraft:fishing_rod",
+      "minecraft:carrot_on_a_stick",
+      "minecraft:warped_fungus_on_a_stick",
+      "minecraft:mace",
+      "#minecraft:spears"
+    ]
+  },
+  "data/minecraft/tags/entity_type/undead.json": {
+    "values": [
+      "#minecraft:skeletons",
+      "#minecraft:zombies",
+      "minecraft:wither",
+      "minecraft:phantom"
+    ]
+  },
+  "constants": {
+    "source": "26.3 Armadillo, ArmadilloAi, SensorType, Wolf, Mob equipment shearing, ArmorMaterials/ArmorType, DyedItemColor and CauldronInteractions",
+    "armadillo_health": 12,
+    "armadillo_speed": 0.14,
+    "armadillo_size": [
+      0.7,
+      0.65
+    ],
+    "baby_scale": 0.6,
+    "threat_xz": 7,
+    "threat_y": 2,
+    "sensor_ticks": 5,
+    "danger_ticks": 80,
+    "rolling_ticks": 10,
+    "unrolling_ticks": 30,
+    "peek_ticks": 50,
+    "peek_delay_min": 150,
+    "peek_delay_max": 450,
+    "scute_time_min": 6000,
+    "scute_time_max": 11999,
+    "brush_durability": 64,
+    "brush_cost": 16,
+    "wolf_armor_durability": 64,
+    "wolf_armor_defense": 11,
+    "wolf_armor_repair_fraction": 0.125,
+    "wolf_armor_cracks": [
+      0.95,
+      0.69,
+      0.32
+    ],
+    "red_plus_blue_dye_rgb": [
+      173,
+      83,
+      152
+    ]
+  }
+}

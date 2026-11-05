@@ -101,6 +101,21 @@ pub(super) fn spot_ok<W: MobWorld + ?Sized>(
             }
         }
         MobKind::Mooshroom => below == crate::world::overworld_blocks::MYCELIUM,
+        MobKind::Armadillo => {
+            below == Block::GRASS
+                || matches!(
+                    name,
+                    "red sand"
+                        | "coarse dirt"
+                        | "terracotta"
+                        | "red terracotta"
+                        | "orange terracotta"
+                        | "yellow terracotta"
+                        | "brown terracotta"
+                        | "white terracotta"
+                        | "light gray terracotta"
+                )
+        }
         MobKind::Frog => below == Block::GRASS || matches!(name, "mud" | "mangrove roots" | "muddy mangrove roots"),
         MobKind::Wolf | MobKind::Fox => {
             below == Block::GRASS || matches!(name, "snow" | "snow block" | "podzol" | "coarse dirt")

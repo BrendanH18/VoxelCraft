@@ -31,6 +31,7 @@ pub(crate) enum Avoided {
     Wolf,
     Llama,
     Cat,
+    Armadillo,
     /// Java's `Monster` class.
     Monster,
     /// `Zombie` and its subclasses (husks, drowned, zombie villagers and
@@ -203,6 +204,9 @@ const WANDERING_TRADER: &[Entry] = &[
 ];
 const CREEPER: &[Entry] = &[avoid(3, Avoided::Cat, 6.0, 1.0, 1.2)];
 const FROG: &[Entry] = &[e(0, G::Panic, 2.0), e(1, G::Breed, 1.0), e(2, G::Tempt, 1.25), e(3, G::Stroll, 1.0)];
+const ARMADILLO: &[Entry] =
+    &[e(0, G::Panic, 2.0), e(1, G::Breed, 1.0), e(2, G::Tempt, 1.25), e(2, G::FollowAdult, 1.25), e(4, G::Stroll, 1.0)];
+const SPIDER: &[Entry] = &[avoid(3, Avoided::Armadillo, 6.0, 1.0, 1.2)];
 const PANDA: &[Entry] = &[
     e(2, G::Panic, 2.0),
     e(2, G::Breed, 1.0),
@@ -224,6 +228,8 @@ pub(crate) fn table(kind: MobKind) -> &'static [Entry] {
         K::Frog => FROG,
         K::PolarBear => POLAR_BEAR,
         K::Panda => PANDA,
+        K::Armadillo => ARMADILLO,
+        K::Spider | K::CaveSpider => SPIDER,
         K::Tadpole => TADPOLE,
         K::Pig => PIG,
         K::Sheep => SHEEP,
@@ -263,6 +269,7 @@ pub(crate) fn movement_speed(kind: MobKind) -> f64 {
         K::Strider | K::Donkey | K::Mule | K::Llama | K::TraderLlama => 0.175,
         K::Camel => 0.09,
         K::Panda => f64::from(0.15_f32),
+        K::Armadillo => 0.14,
         K::Axolotl | K::Frog | K::Tadpole => 1.0,
         K::Dolphin => 1.2,
         K::Guardian => 0.5,
@@ -300,6 +307,7 @@ pub(crate) fn avoided_kind(what: Avoided, kind: MobKind) -> bool {
         Avoided::Wolf => kind == MobKind::Wolf,
         Avoided::Llama => matches!(kind, MobKind::Llama | MobKind::TraderLlama),
         Avoided::Cat => kind == MobKind::Cat,
+        Avoided::Armadillo => kind == MobKind::Armadillo,
         Avoided::Monster => is_monster(kind),
         Avoided::Zombie => kind.is_zombie() || kind == MobKind::ZombifiedPiglin,
         Avoided::Pillager => kind == MobKind::Pillager,
@@ -700,7 +708,8 @@ impl Mob {
                 };
                 let at = t.pos;
                 self.look_at(at, 1.2);
-                if at.distance_squared(self.pos) < 2.5 * 2.5 {
+                let close = if self.kind == MobKind::Armadillo { if self.baby { 1.0 } else { 2.0 } } else { 2.5 };
+                if at.distance_squared(self.pos) < close * close {
                     self.nav.stop();
                 } else {
                     self.walk_to(world, at.floor().as_ivec3(), 1, speed, false);

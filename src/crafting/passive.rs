@@ -16,6 +16,12 @@ const FLOWERS: [Ingredient; 12] = [
     &[b(flowers::LILY_OF_THE_VALLEY)],
 ];
 pub(super) fn add(recipes: &mut Vec<Recipe>) {
+    recipes.push(shaped(
+        &["f", "c", "s"],
+        &[('f', &[Item::FEATHER]), ('c', &[Item::COPPER_INGOT]), ('s', &[Item::STICK])],
+        Item::BRUSH,
+        1,
+    ));
     for flower in FLOWERS {
         // The 26.3 recipes specify #mushrooms twice, permitting the same colour.
         let mut recipe = shapeless(&[BOWL, MUSHROOMS, MUSHROOMS, flower], Item::SUSPICIOUS_STEW, 1);

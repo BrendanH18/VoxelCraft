@@ -685,6 +685,31 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             let (layer, ty) = if y < 8 { (tex::DOOR_TOP, y * 2) } else { (tex::DOOR_BOTTOM, (y - 8) * 2) };
             (4..12).contains(&x).then(|| super::textures::pixel(layer, ((x - 4) * 2) as usize, ty as usize))
         }
+        Sprite::ArmadilloScute => {
+            let (dx, dy) = (x - 8, y - 8);
+            (dx * dx * 2 + dy * dy < 58).then(|| {
+                tint(if (y - 3) % 4 == 0 { [132, 87, 78] } else { [190, 137, 118] }, 0.9 + noise(x, y, 503) * 0.2)
+            })
+        }
+        Sprite::WolfArmor => {
+            let panel = (3..=12).contains(&x) && (4..=10).contains(&y)
+                || (2..=5).contains(&x) && (9..=14).contains(&y)
+                || (10..=13).contains(&x) && (9..=14).contains(&y);
+            panel.then(|| {
+                tint(if y == 6 || y == 9 { [144, 103, 94] } else { [215, 185, 164] }, 0.94 + noise(x, y, 507) * 0.12)
+            })
+        }
+        Sprite::Brush => {
+            if (x - y).abs() <= 1 && (5..=14).contains(&y) {
+                Some(tint([132, 92, 51], 1.0))
+            } else if (x - y).abs() <= 3 && (3..=6).contains(&y) {
+                Some(tint([179, 105, 68], 1.0))
+            } else if (x - y).abs() <= 3 && (0..=3).contains(&y) {
+                Some(tint(if x % 2 == 0 { [232, 220, 185] } else { [189, 174, 139] }, 1.0))
+            } else {
+                None
+            }
+        }
         Sprite::TadpoleBucket => {
             if (6..=10).contains(&x) && (7..=9).contains(&y) || (4..=6).contains(&x) && y == 9 {
                 Some(tint(if x == 9 && y == 7 { [231, 218, 166] } else { [78, 65, 43] }, 1.0))

@@ -92,7 +92,7 @@ const LIST_29: [MonsterSpawn; 7] = [
     e(J::Known(MobKind::Cow), 8, 4, 4),
     e(J::Known(MobKind::Horse), 1, 2, 6),
     e(J::Known(MobKind::Donkey), 1, 1, 1),
-    e(J::Missing("armadillo"), 10, 2, 3),
+    e(J::Known(MobKind::Armadillo), 10, 2, 3),
 ];
 const LIST_30: [MonsterSpawn; 9] = [
     e(J::Known(MobKind::Sheep), 12, 4, 4),
@@ -101,7 +101,7 @@ const LIST_30: [MonsterSpawn; 9] = [
     e(J::Known(MobKind::Cow), 8, 4, 4),
     e(J::Known(MobKind::Horse), 1, 2, 6),
     e(J::Known(MobKind::Donkey), 1, 1, 1),
-    e(J::Missing("armadillo"), 10, 2, 3),
+    e(J::Known(MobKind::Armadillo), 10, 2, 3),
     e(J::Known(MobKind::Llama), 8, 4, 4),
     e(J::Known(MobKind::Wolf), 8, 4, 8),
 ];
@@ -136,14 +136,14 @@ const LIST_34: [MonsterSpawn; 5] = [
     e(J::Known(MobKind::Pig), 10, 4, 4),
     e(J::Known(MobKind::Chicken), 10, 4, 4),
     e(J::Known(MobKind::Cow), 8, 4, 4),
-    e(J::Missing("armadillo"), 6, 1, 2),
+    e(J::Known(MobKind::Armadillo), 6, 1, 2),
 ];
 const LIST_35: [MonsterSpawn; 6] = [
     e(J::Known(MobKind::Sheep), 12, 4, 4),
     e(J::Known(MobKind::Pig), 10, 4, 4),
     e(J::Known(MobKind::Chicken), 10, 4, 4),
     e(J::Known(MobKind::Cow), 8, 4, 4),
-    e(J::Missing("armadillo"), 6, 1, 2),
+    e(J::Known(MobKind::Armadillo), 6, 1, 2),
     e(J::Known(MobKind::Wolf), 2, 4, 8),
 ];
 const LIST_36: [MonsterSpawn; 3] = [

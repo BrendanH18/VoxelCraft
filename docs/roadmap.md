@@ -1469,7 +1469,9 @@ in the [architecture reservations](architecture.md#v015-track-reservations):
    standing attacks, swimming and fish loot (implemented, unverified).
    Pandas now have inherited genes and mutations, bamboo breeding, snacks,
    sneezes, rolls, thunder fear and retaliation (implemented, unverified).
-   Armadillos/wolf armor and ocelots remain unimplemented by this track.
+   Armadillos now roll around threats, shed scutes and can be brushed;
+   owner-equipped wolf armor absorbs damage, repairs, dyes and washes
+   (implemented, unverified). Ocelots remain unimplemented by this track.
 4. **Hostiles** (MOB-04, PRO-02). Strays, bogged and phantoms (insomnia,
    `spawn_phantoms`, membranes), and the tipped arrows strays and bogged
    shoot.
