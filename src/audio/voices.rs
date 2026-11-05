@@ -45,6 +45,7 @@ pub enum Voice {
     Bat,
     Frog,
     PolarBear,
+    Panda,
 }
 
 /// What kind of sound a voice makes.
@@ -57,7 +58,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 33] = [
+    pub const ALL: [Voice; 34] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -91,6 +92,7 @@ impl Voice {
         Voice::Bat,
         Voice::Frog,
         Voice::PolarBear,
+        Voice::Panda,
     ];
 
     /// The category the creature plays in: `Monster`, `Ghast`, `Hoglin` and
@@ -111,7 +113,7 @@ impl Voice {
             | Voice::Hoglin
             | Voice::Guardian
             | Voice::Pillager => SoundSource::Hostile,
-            Voice::Bat | Voice::Frog | Voice::PolarBear => SoundSource::Neutral,
+            Voice::Bat | Voice::Frog | Voice::PolarBear | Voice::Panda => SoundSource::Neutral,
             Voice::Pig
             | Voice::Cow
             | Voice::Sheep
@@ -139,6 +141,7 @@ impl Voice {
             Voice::Bat => "bat",
             Voice::Frog => "frog",
             Voice::PolarBear => "polar_bear",
+            Voice::Panda => "panda",
             Voice::Cow => "cow",
             Voice::Sheep => "sheep",
             Voice::Chicken => "chicken",
@@ -250,6 +253,7 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::Bat => bat(call, rng),
         Voice::Frog => frog(call, rng),
         Voice::PolarBear => polar_bear(call, rng),
+        Voice::Panda => panda(call, rng),
         Voice::Pig => pig(call, rng),
         Voice::Horse => horse(call, rng),
         Voice::Cow => cow(call, rng),
@@ -918,6 +922,22 @@ fn polar_bear(call: Call, rng: &mut Rng) -> Vec<f32> {
     let freq = rng.range(65.0, 95.0) * if call == Call::Hurt { 1.4 } else { 1.0 };
     for (harm, amp) in [(1.0, 0.65), (2.7, 0.3), (5.3, 0.15)] {
         add_mode(&mut out, 0, Mode { freq: freq * harm, amp, tau: 0.2, glide: -0.15, glide_tau: 0.2 });
+    }
+    dsp::finish(out, 0.5)
+}
+
+// Original rounded, nasal chatter, distinct from the bear growl.
+fn panda(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let mut out = vec![0.0; samples(if call == Call::Death { 0.65 } else { 0.42 })];
+    let pitch = rng.range(155.0, 205.0) * if call == Call::Hurt { 1.4 } else { 1.0 };
+    for (at, amp) in [(0.0, 0.6), (0.12, 0.35)] {
+        for (harm, gain) in [(1.0, 1.0), (3.4, 0.35), (6.1, 0.1)] {
+            add_mode(
+                &mut out,
+                samples(at),
+                Mode { freq: pitch * harm, amp: amp * gain, tau: 0.11, glide: -0.2, glide_tau: 0.15 },
+            );
+        }
     }
     dsp::finish(out, 0.5)
 }

@@ -1467,7 +1467,9 @@ in the [architecture reservations](architecture.md#v015-track-reservations):
    village rule, periodic hut attempts and the once-only black hut resident,
    also unverified. Polar bears now have cub groups/defence, neutral anger,
    standing attacks, swimming and fish loot (implemented, unverified).
-   Pandas, armadillos/wolf armor and ocelots remain unimplemented by this track.
+   Pandas now have inherited genes and mutations, bamboo breeding, snacks,
+   sneezes, rolls, thunder fear and retaliation (implemented, unverified).
+   Armadillos/wolf armor and ocelots remain unimplemented by this track.
 4. **Hostiles** (MOB-04, PRO-02). Strays, bogged and phantoms (insomnia,
    `spawn_phantoms`, membranes), and the tipped arrows strays and bogged
    shoot.

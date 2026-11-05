@@ -45,6 +45,7 @@ impl MobKind {
                 | MobKind::Mooshroom
                 | MobKind::Frog
                 | MobKind::PolarBear
+                | MobKind::Panda
                 | MobKind::Sheep
                 | MobKind::Chicken
                 | MobKind::Cat
@@ -117,6 +118,7 @@ impl MobKind {
                 | K::Cat
                 | K::Wolf
                 | K::PolarBear
+                | K::Panda
                 | K::Fox
                 | K::Parrot
                 | K::Rabbit

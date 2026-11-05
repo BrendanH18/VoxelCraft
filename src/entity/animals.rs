@@ -97,6 +97,7 @@ impl MobKind {
         match self {
             Self::Cow | Self::Mooshroom | Self::Sheep => food == Item::WHEAT,
             Self::Frog | Self::Tadpole => food == Item::SLIME_BALL,
+            Self::Panda => food == Item::from_block(crate::world::overworld_blocks::BAMBOO),
             Self::Pig => matches!(food, Item::CARROT | Item::POTATO | Item::BEETROOT),
             Self::Chicken => seeds(food),
             Self::Wolf => wolf_food(food),
@@ -133,6 +134,7 @@ impl MobKind {
                 | Self::Cow
                 | Self::Mooshroom
                 | Self::Frog
+                | Self::Panda
                 | Self::Sheep
                 | Self::Pig
                 | Self::Chicken
@@ -197,11 +199,23 @@ impl Entities {
     /// Shared action. `Some(true)` consumes food; `Some(false)` uses an
     /// empty hand/owner command; `None` permits ordinary item actions.
     pub fn use_animal(&mut self, index: usize, held: Option<Stack>, player: PlayerId) -> Option<bool> {
+        self.use_animal_with_materials(index, held, player, false)
+    }
+    pub fn use_animal_with_materials(
+        &mut self,
+        index: usize,
+        held: Option<Stack>,
+        player: PlayerId,
+        infinite: bool,
+    ) -> Option<bool> {
         if let Some(result) = self.use_lead_or_name(index, held, player) {
             return Some(result);
         }
         if let Some(result) = self.feed_dolphin(index, held) {
             return Some(result);
+        }
+        if self.mobs.get(index).is_some_and(|m| m.kind == MobKind::Panda) {
+            return self.use_panda(index, held, player, infinite);
         }
         let m = self.mobs.get_mut(index)?;
         if !m.alive() {
@@ -289,7 +303,7 @@ impl Entities {
         self.animal_hearts(index);
         Some(true)
     }
-    fn animal_hearts(&mut self, index: usize) {
+    pub(super) fn animal_hearts(&mut self, index: usize) {
         let m = &self.mobs[index];
         let mut b = particles::Burst::new(particles::Kind::Heart, m.pos + DVec3::Y * (m.shape().height + 0.25), 7);
         b.spread = DVec3::new(m.shape().half_width, 0.3, m.shape().half_width);
@@ -337,6 +351,7 @@ impl Entities {
             };
         }
         super::mooshroom::inherit(&mut child, a, b, &mut self.rng);
+        super::panda::inherit(&mut child, a, b, &mut self.rng);
         child
     }
     /// Love timers and hearts, then `BreedGoal`'s partner: an animal not yet
@@ -521,7 +536,9 @@ pub(super) fn on_spawn(m: &mut Mob, rng: &mut Rng) {
 impl Mob {
     /// Java 1.21 tamed wolves have 40 health; wild wolves have eight.
     pub fn max_health(&self) -> f32 {
-        if self.kind == MobKind::Wolf && self.animal.as_ref().is_some_and(|a| a.owner.is_some()) {
+        if self.panda.as_ref().is_some_and(|s| s.variant() == super::panda::Gene::Weak) {
+            10.0
+        } else if self.kind == MobKind::Wolf && self.animal.as_ref().is_some_and(|a| a.owner.is_some()) {
             40.0
         } else {
             self.kind.max_health()
@@ -770,7 +787,15 @@ impl Entities {
     pub(super) fn natural_animal(&mut self, biome: crate::world::terrain::Biome, pack_size: u32) {
         use crate::world::terrain::Biome::*;
         let m = self.mobs.last_mut().unwrap();
-        let Some(a) = m.animal.as_mut() else { return };
+        if m.animal.is_none() {
+            return;
+        }
+        if let Some(s) = &mut m.panda {
+            s.main = super::panda::Gene::random(&mut self.rng);
+            s.hidden = super::panda::Gene::random(&mut self.rng);
+            m.health = m.max_health();
+        }
+        let a = m.animal.as_mut().unwrap();
         if m.kind == MobKind::Fox {
             a.variant = matches!(biome, SnowyTaiga | Grove) as u8;
         }
@@ -804,6 +829,7 @@ impl Entities {
                 _ if pack_size == 0 => false,
                 // RabbitGroupData's baby chance is 1.
                 MobKind::Rabbit | MobKind::PolarBear => true,
+                MobKind::Panda => self.rng.chance(0.2),
                 _ => self.rng.chance(0.05),
             };
             if baby {

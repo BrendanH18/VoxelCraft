@@ -630,6 +630,7 @@ impl Entities {
                 let killed = self.mobs[i].damage(damage, Some(knockback), &mut self.rng);
                 self.nether_hurt(i, Foe::Mob(attacker));
                 self.polar_hurt(i, Foe::Mob(attacker));
+                self.panda_hurt(i, Foe::Mob(attacker));
                 if let Some(owner) = self.mobs[i].animal.as_ref().and_then(|a| a.owner) {
                     self.animals_defend_owner(attacker, owner);
                 }
@@ -1516,6 +1517,9 @@ fn save_mob(m: &Mob) -> Value {
         "home": n.and_then(|n| n.home).map(|h| h.to_array()),
         "celebrate": n.filter(|n| n.celebrate_left > 0.0).map(|n| json!([n.celebrate_left, n.celebrate_at.to_array(), n.dancing])),
     });
+    if let Some(s) = &m.panda {
+        v["panda"] = s.save();
+    }
     if let Some(s) = &m.polar_bear {
         v["polar_bear"] = s.save();
     }
@@ -1576,6 +1580,9 @@ fn load_mob(v: &Value) -> Option<Mob> {
                 as f32;
     }
     m.sheared = v["sheared"].as_bool().unwrap_or(false);
+    if let Some(s) = &mut m.panda {
+        s.load(&v["panda"]);
+    }
     if let Some(s) = &mut m.polar_bear {
         s.load(&v["polar_bear"]);
     }

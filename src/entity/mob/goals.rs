@@ -203,6 +203,15 @@ const WANDERING_TRADER: &[Entry] = &[
 ];
 const CREEPER: &[Entry] = &[avoid(3, Avoided::Cat, 6.0, 1.0, 1.2)];
 const FROG: &[Entry] = &[e(0, G::Panic, 2.0), e(1, G::Breed, 1.0), e(2, G::Tempt, 1.25), e(3, G::Stroll, 1.0)];
+const PANDA: &[Entry] = &[
+    e(2, G::Panic, 2.0),
+    e(2, G::Breed, 1.0),
+    e(4, G::Tempt, 1.0),
+    avoid(6, Avoided::Player, 8.0, 2.0, 2.0),
+    avoid(6, Avoided::Monster, 4.0, 2.0, 2.0),
+    e(13, G::FollowParent, 1.25),
+    e(14, G::Stroll, 1.0),
+];
 const POLAR_BEAR: &[Entry] = &[e(1, G::Panic, 2.0), e(4, G::FollowParent, 1.25), e(5, G::Stroll, 1.0)];
 const TADPOLE: &[Entry] = &[e(0, G::Panic, 2.0), e(1, G::Tempt, 1.25), e(2, G::Stroll, 0.5)];
 const SKELETON: &[Entry] = &[avoid(3, Avoided::Wolf, 6.0, 1.0, 1.2)];
@@ -214,6 +223,7 @@ pub(crate) fn table(kind: MobKind) -> &'static [Entry] {
         K::Cow | K::Mooshroom => COW,
         K::Frog => FROG,
         K::PolarBear => POLAR_BEAR,
+        K::Panda => PANDA,
         K::Tadpole => TADPOLE,
         K::Pig => PIG,
         K::Sheep => SHEEP,
@@ -252,6 +262,7 @@ pub(crate) fn movement_speed(kind: MobKind) -> f64 {
         K::Wolf | K::Cat | K::Fox | K::Rabbit | K::Hoglin => 0.3,
         K::Strider | K::Donkey | K::Mule | K::Llama | K::TraderLlama => 0.175,
         K::Camel => 0.09,
+        K::Panda => f64::from(0.15_f32),
         K::Axolotl | K::Frog | K::Tadpole => 1.0,
         K::Dolphin => 1.2,
         K::Guardian => 0.5,
@@ -345,6 +356,9 @@ impl Mob {
 
     /// Movement speed attribute (`mounts::State::speed` for horses).
     fn attribute_speed(&self) -> f64 {
+        if self.panda.as_ref().is_some_and(|s| s.variant() == crate::entity::panda::Gene::Lazy) {
+            return f64::from(0.07_f32);
+        }
         match &self.mount {
             Some(s) if super::super::mounts::equine(self.kind) && s.speed > 0.0 => s.speed,
             _ => movement_speed(self.kind),
@@ -581,7 +595,9 @@ impl Mob {
     fn can_use<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, rng: &mut Rng, entry: Entry) -> bool {
         match entry.goal {
             G::Breed => {
-                self.animal.as_ref().is_some_and(|a| a.love > 0.0 && a.partner.is_some()) && self.ready_to_breed()
+                self.animal.as_ref().is_some_and(|a| a.love > 0.0 && a.partner.is_some())
+                    && self.ready_to_breed()
+                    && self.panda_breed_allowed(world)
             }
             G::Tempt => self.find_tempter(ctx),
             G::FollowParent => {
@@ -824,6 +840,9 @@ impl Mob {
     fn avoid_allowed(&self, a: Avoid) -> bool {
         let tame = self.animal.as_ref().is_some_and(|s| s.owner.is_some());
         match (self.kind, a.what) {
+            (MobKind::Panda, _) => {
+                self.panda.as_ref().is_some_and(|s| s.variant() == crate::entity::panda::Gene::Worried && s.can_act())
+            }
             // `CatAvoidEntityGoal` and `WolfAvoidEntityGoal`: untamed only.
             (MobKind::Cat | MobKind::Wolf, _) => !tame,
             // Foxes asleep don't flee.

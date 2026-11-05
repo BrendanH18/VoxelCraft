@@ -32,6 +32,9 @@ impl Mob {
             "burning": self.burning,
             "attack": self.attack_anim,
         });
+        if let Some(s) = &self.panda {
+            v["panda"] = s.look();
+        }
         if let Some(s) = &self.polar_bear {
             v["polar_bear"] = json!({"standing":s.standing,"animation":s.animation});
         }
@@ -96,6 +99,9 @@ impl Mob {
             self.wool_color = c;
         }
         self.sheared = v["sheared"] == true;
+        if let Some(s) = &mut self.panda {
+            s.apply_look(&v["panda"]);
+        }
         if let Some(s) = &mut self.polar_bear {
             s.standing = v["polar_bear"]["standing"] == true;
             s.animation =

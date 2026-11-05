@@ -72,6 +72,7 @@ impl Entities {
         self.grow_loaded_turtles(dt as f32, world, ctx);
         self.frog_upkeep(dt, world, ctx);
         self.polar_sense(dt, world, ctx);
+        self.panda_upkeep(dt, world, ctx, &mut events);
         self.tick_animals(dt as f32, world, ctx, &mut events);
         self.tick_leashes(dt as f32, world, ctx);
         self.tick_llamas(ctx);
@@ -237,6 +238,11 @@ impl Entities {
                 }
             }
         }
+        for m in &mut self.mobs {
+            if let Some(stack) = m.panda.as_mut().and_then(|s| s.spit.take()) {
+                self.items.push(ItemEntity::new(stack, m.pos, DVec3::ZERO, 0.5, &mut self.rng));
+            }
+        }
         if let Some(fight) = &mut self.fight {
             fight.update(dt, world, ctx, &mut self.rng, &mut events);
         }
@@ -337,7 +343,7 @@ impl Entities {
                     // `HurtByTargetGoal`: projectiles credit their shooter too.
                     if let Some(owner) = owner
                         && !killed
-                        && matches!(kind, MobKind::Dolphin | MobKind::Blaze | MobKind::PolarBear)
+                        && matches!(kind, MobKind::Dolphin | MobKind::Blaze | MobKind::PolarBear | MobKind::Panda)
                         && let Some(i) = self.mobs.iter().position(|m| m.kind == kind && m.pos == pos && m.alive())
                     {
                         self.hurt_by_player_target(i, owner);

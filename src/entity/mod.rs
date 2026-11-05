@@ -43,6 +43,7 @@ pub mod mooshroom;
 pub mod mounts;
 pub mod nether;
 pub mod orb;
+pub mod panda;
 pub mod pearl;
 pub mod player_model;
 mod player_pose;
@@ -741,6 +742,8 @@ pub struct Entities {
     pub mob_loot: bool,
     pub neutral_forgive_dead_players: bool,
     pub neutral_universal_anger: bool,
+    /// Global thunder state, independent of local rain precipitation.
+    pub thundering: bool,
     pub moon_brightness: f32,
     /// The overworld clock in ticks (Java's `getOverworldClockTime`), for local difficulty.
     pub clock_time: i64,
@@ -837,6 +840,7 @@ impl Entities {
             mob_loot: true,
             neutral_forgive_dead_players: true,
             neutral_universal_anger: false,
+            thundering: false,
             moon_brightness: 1.0,
             clock_time: 0,
             difficulty: Default::default(),

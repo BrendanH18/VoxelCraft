@@ -146,3 +146,17 @@ breeding food. Adults drop cod or salmon (cooked when burned); cubs drop
 nothing. Anger references and their simulation-clock end survive saves;
 standing poses replicate. See [the source and evidence record](verification/2026-11-04-v0.15-passive-mobs.md)
 for exact constants, partial anger-rule coverage and remaining engine gaps.
+
+## Pandas (v0.15, Java 26.3)
+
+Implemented, unverified: jungle and bamboo-jungle spawning, two inherited
+genes with independent mutation, recessive brown/weak expression and
+trait-specific health, speed and actions. Bamboo tempts, breeds and ages
+cubs; one nearby bamboo stalk permits breeding. Pandas sit and snack on
+bamboo or dropped cake, cubs sneeze with rare slimeball gifts, playful
+pandas roll and lazy ones lie on their backs. Worried pandas fear thunder
+and avoid players/monsters; ordinary pandas retaliate once, aggressive ones
+keep fighting, and bamboo calms them. Genes, age and carried food persist;
+actions replicate with original cuboid models. See the
+[record](verification/2026-11-04-v0.15-passive-mobs.md) for the exact gene
+pool, timers, source data, focused checks and shared-engine differences.

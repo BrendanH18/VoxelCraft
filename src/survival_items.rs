@@ -108,7 +108,7 @@ pub fn use_animal_target(
         }
         return true;
     }
-    let Some(result) = entities.use_animal(index, held, owner) else { return false };
+    let Some(result) = entities.use_animal_with_materials(index, held, owner, creative) else { return false };
     if result && !creative {
         if held.is_some_and(|s| s.item == Item::TROPICAL_FISH_BUCKET) {
             exchange(inventory, slot, Item::WATER_BUCKET, false, entities, player);

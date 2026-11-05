@@ -176,6 +176,7 @@ pub enum MobKind {
     Frog,
     Tadpole,
     PolarBear,
+    Panda,
 }
 
 impl MobKind {
@@ -203,7 +204,7 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 59] = [
+    pub const ALL: [MobKind; 60] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -263,6 +264,7 @@ impl MobKind {
         MobKind::Frog,
         MobKind::Tadpole,
         MobKind::PolarBear,
+        MobKind::Panda,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -327,6 +329,7 @@ impl MobKind {
             MobKind::Frog => "frog",
             MobKind::Tadpole => "tadpole",
             MobKind::PolarBear => "polar_bear",
+            MobKind::Panda => "panda",
         }
     }
 
@@ -343,6 +346,7 @@ impl MobKind {
             MobKind::Frog => Shape::new(0.25, 0.5),
             MobKind::Tadpole => Shape::new(0.2, 0.3),
             MobKind::PolarBear => Shape::new(0.7, 1.4),
+            MobKind::Panda => Shape::new(0.65, 1.25),
             MobKind::Pig => Shape::new(0.45, 0.9),
             MobKind::Cow | MobKind::Mooshroom => Shape::new(0.45, 1.4),
             MobKind::Sheep => Shape::new(0.45, 1.3),
@@ -413,7 +417,8 @@ impl MobKind {
             | MobKind::Villager
             | MobKind::WanderingTrader
             | MobKind::ZombieVillager
-            | MobKind::Strider => 20.0,
+            | MobKind::Strider
+            | MobKind::Panda => 20.0,
             MobKind::IronGolem => 100.0,
             MobKind::SnowGolem => 4.0,
             MobKind::TraderLlama => 30.0,
@@ -738,6 +743,7 @@ impl MobKind {
             MobKind::Drowned => (3.0, "was slain by a drowned"),
             MobKind::Silverfish => (1.0, "was slain by a silverfish"),
             MobKind::PolarBear => (6.0, "was slain by a polar bear"),
+            MobKind::Panda => (6.0, "was slain by a panda"),
             MobKind::IronGolem => (15.0, "was slain by an iron golem"),
             MobKind::SnowGolem => (0.0, "was slain by a snow golem"),
             MobKind::ZombieVillager => (3.0, "was slain by a zombie villager"),
@@ -756,9 +762,11 @@ impl MobKind {
         const SPONGE: Item = Item::from_block(crate::world::overworld_blocks::WET_SPONGE);
         const SEAGRASS: Item = Item::from_block(crate::world::overworld_blocks::SEAGRASS);
         const POPPY: Item = Item::from_block(Block::POPPY);
+        const BAMBOO: Item = Item::from_block(crate::world::overworld_blocks::BAMBOO);
         match self {
             MobKind::Pig => &[(Item::RAW_PORKCHOP, 1, 3)],
             MobKind::Bat | MobKind::Frog | MobKind::Tadpole | MobKind::PolarBear => &[],
+            MobKind::Panda => &[(BAMBOO, 1, 1)],
             MobKind::Cow => &[(Item::RAW_BEEF, 1, 3), (Item::LEATHER, 0, 2)],
             MobKind::Mooshroom => &[(Item::LEATHER, 0, 2), (Item::RAW_BEEF, 1, 3)],
             MobKind::Sheep => &[(WOOL, 1, 1), (Item::RAW_MUTTON, 1, 2)],
@@ -823,6 +831,9 @@ impl MobKind {
     /// `round(looting * uniform(0, 1))` to each (Java's
     /// `enchanted_count_increase`).
     pub fn drops(self, rng: &mut Rng, looting: u8) -> Vec<(Item, u8)> {
+        if self == MobKind::Panda {
+            return vec![(Item::from_block(crate::world::overworld_blocks::BAMBOO), 1)];
+        }
         if self == MobKind::PolarBear {
             let item = if rng.next_int(4) < 3 { Item::COD } else { Item::SALMON };
             let count = rng.next_int(3) + (f32::from(looting) * rng.next_f32()).round() as u32;
@@ -927,6 +938,7 @@ pub struct Mob {
     pub bat: Option<Box<super::bat::State>>,
     pub frog: Option<Box<super::frog::State>>,
     pub polar_bear: Option<Box<super::polar_bear::State>>,
+    pub panda: Option<Box<super::panda::State>>,
     /// Witch: seconds left drinking, and the potion it is drinking.
     drink_left: f32,
     drinking: &'static str,
@@ -1102,6 +1114,7 @@ impl Mob {
             bat: (kind == MobKind::Bat).then(Box::default),
             frog: matches!(kind, MobKind::Frog | MobKind::Tadpole).then(Box::default),
             polar_bear: (kind == MobKind::PolarBear).then(Box::default),
+            panda: (kind == MobKind::Panda).then(Box::default),
             drink_left: 0.0,
             drinking: "",
             age: 0,
@@ -1391,6 +1404,9 @@ impl Mob {
         // Java's panic goals react to any `PANIC_CAUSES` damage, except wolves
         // (`PANIC_ENVIRONMENTAL_CAUSES` only: an attack doesn't scare them)
         // and golems, which have none.
+        if let Some(s) = &mut self.panda {
+            s.sitting = false;
+        }
         let scared = match self.kind {
             // Squid flee their attacker instead; dolphins and axolotls
             // have no panic goal.
@@ -1402,6 +1418,7 @@ impl Mob {
             | MobKind::Axolotl => false,
             MobKind::Wolf => !attacked,
             MobKind::PolarBear => self.baby || !attacked,
+            MobKind::Panda => !attacked,
             k => !k.is_hostile(),
         };
         if scared {
@@ -1568,6 +1585,7 @@ impl Mob {
         }
         let steps = (dt / MAX_STEP).ceil().max(1.0) as u32;
         let h = dt / steps as f64;
+        let alive_before_move = self.alive();
         if self.riding.is_some() || self.animal.as_ref().is_some_and(|a| a.perched.is_some()) {
             self.vel = DVec3::ZERO;
             self.on_ground = true;
@@ -1593,7 +1611,7 @@ impl Mob {
                 events.push(EntityEvent::PlayerFall { player, damage });
             }
         }
-        if self.health <= 0.0 && self.dying.is_none() {
+        if self.health <= 0.0 && (self.dying.is_none() || alive_before_move) {
             self.dying = Some(0.0);
             self.cry = Some(MobSound::Death(self.kind));
             events.push(EntityEvent::MobKilled {
@@ -1679,6 +1697,15 @@ impl Mob {
         if let Some(wish) = self.leash_think(dt, world, rng) {
             return wish;
         }
+        if self.panda.is_some() {
+            let base = self.run_goals(world, ctx, rng);
+            if let Some(wish) = self.panda_think(world, rng, events) {
+                return wish;
+            }
+            if let Some(wish) = base {
+                return wish;
+            }
+        }
         if let Some(wish) = self.polar_think(world, rng, events) {
             return wish;
         }
@@ -1697,7 +1724,9 @@ impl Mob {
         if self.frog_priority() {
             return self.frog_steer(dt, world, ctx, rng);
         }
-        if let Some(wish) = self.run_goals(world, ctx, rng) {
+        if self.panda.is_none()
+            && let Some(wish) = self.run_goals(world, ctx, rng)
+        {
             return wish;
         }
         if self.kind == MobKind::Turtle {
@@ -3122,7 +3151,7 @@ impl super::Entities {
         if self
             .mobs
             .get(index)
-            .is_some_and(|m| matches!(m.kind, MobKind::Dolphin | MobKind::Blaze | MobKind::PolarBear))
+            .is_some_and(|m| matches!(m.kind, MobKind::Dolphin | MobKind::Blaze | MobKind::PolarBear | MobKind::Panda))
         {
             self.ensure_mob_ids();
             let uid = self.mobs[index].uid;
@@ -3146,6 +3175,7 @@ impl super::Entities {
                 MobKind::Dolphin => self.dolphin_hurt_by(index, player),
                 MobKind::Blaze => self.blaze_hurt_by(index, player),
                 MobKind::PolarBear => self.polar_hurt(index, super::nether::Foe::Player(player)),
+                MobKind::Panda => self.panda_hurt(index, super::nether::Foe::Player(player)),
                 _ => {}
             }
         }

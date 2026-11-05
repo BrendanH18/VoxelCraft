@@ -223,7 +223,7 @@ pub(super) fn splash(
                     events.push(EntityEvent::MobShot { kind, pos: at, killed, burning, player_kill: true, owner });
                 }
             } else {
-                mob.health = (mob.health + amount).min(mob.kind.max_health());
+                mob.health = (mob.health + amount).min(mob.max_health());
             }
         }
     }
@@ -352,6 +352,26 @@ mod tests {
         assert!(mobs[0].health < MobKind::Zombie.max_health(), "healing hurts the undead");
     }
 
+    #[test]
+    fn panda_splash_healing_respects_the_expressed_weak_gene_health() {
+        use crate::entity::panda::Gene;
+        let mut mobs = [Mob::new(MobKind::Panda, DVec3::new(0.5, 10.0, 0.0), 0.0)];
+        let s = mobs[0].panda.as_mut().unwrap();
+        s.main = Gene::Weak;
+        s.hidden = Gene::Weak;
+        mobs[0].health = 9.0;
+        splash(
+            Potion::from_id("healing").unwrap(),
+            None,
+            DVec3::new(0.5, 10.0, 0.0),
+            0.0,
+            &ctx(vec![]),
+            &mut mobs,
+            &mut Rng::new(3),
+            &mut Vec::new(),
+        );
+        assert_eq!(mobs[0].health, 10.0);
+    }
     #[test]
     fn mobs_take_every_splash_effect_except_undead_poison_and_regeneration() {
         let c = ctx(vec![]);

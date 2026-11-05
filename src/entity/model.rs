@@ -587,6 +587,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
         MobKind::Bat => passive::bat(m, time),
         MobKind::Frog => passive::frog(m, time),
         MobKind::PolarBear => passive::polar_bear(m),
+        MobKind::Panda => passive::panda(m, time),
         MobKind::Tadpole => passive::tadpole(m, time),
         MobKind::Cow => parts![
             part(COW_BODY, [0.0; 3], Quat::IDENTITY),

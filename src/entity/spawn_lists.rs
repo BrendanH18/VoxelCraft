@@ -112,7 +112,7 @@ const LIST_31: [MonsterSpawn; 7] = [
     e(J::Known(MobKind::Cow), 8, 4, 4),
     e(J::Known(MobKind::Chicken), 10, 4, 4),
     e(J::Known(MobKind::Parrot), 40, 1, 2),
-    e(J::Missing("panda"), 1, 1, 2),
+    e(J::Known(MobKind::Panda), 1, 1, 2),
 ];
 const LIST_32: [MonsterSpawn; 6] = [
     e(J::Known(MobKind::Sheep), 12, 4, 4),
@@ -129,7 +129,7 @@ const LIST_33: [MonsterSpawn; 7] = [
     e(J::Known(MobKind::Cow), 8, 4, 4),
     e(J::Known(MobKind::Chicken), 10, 4, 4),
     e(J::Known(MobKind::Parrot), 40, 1, 2),
-    e(J::Missing("panda"), 80, 1, 2),
+    e(J::Known(MobKind::Panda), 80, 1, 2),
 ];
 const LIST_34: [MonsterSpawn; 5] = [
     e(J::Known(MobKind::Sheep), 12, 4, 4),

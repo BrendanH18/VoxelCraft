@@ -28,6 +28,9 @@ pub(super) fn mooshroom(m: &Mob) -> Parts {
     p
 }
 pub(super) fn colour(m: &Mob, c: &mut Cuboid) {
+    if m.panda.as_ref().is_some_and(|s| s.variant() == crate::entity::panda::Gene::Brown) && c.color == [35, 33, 32] {
+        c.color = [111, 75, 45];
+    }
     if m.kind == MobKind::Cat {
         let variant = m.animal.as_ref().map_or(0, |a| a.variant) as usize % 11;
         // Original palette over the established cuboids; old all-black stays zero.
@@ -204,4 +207,76 @@ pub(super) fn polar_bear(m: &Mob) -> Parts {
         part(BEAR_LEG, at([-5.0, 8.0, 8.0]), rot * Quat::from_rotation_x(-swing)),
         part(BEAR_LEG, at([5.0, 8.0, 8.0]), rot * Quat::from_rotation_x(swing))
     ]
+}
+
+const PANDA_BODY: &[Cuboid] = &[
+    cube([-7.0, 0.0, -9.0], [7.0, 13.0, 8.0], [235, 232, 219], 14),
+    cube([-7.2, 0.0, 1.5], [7.2, 13.0, 7.0], [35, 33, 32], 15),
+    cube([-1.5, 3.0, -10.5], [1.5, 6.0, -9.0], [235, 232, 219], 12),
+];
+const PANDA_HEAD: &[Cuboid] = &[
+    cube([-6.0, -3.0, -2.0], [6.0, 6.0, 7.0], [235, 232, 219], 12),
+    cube([-6.0, 5.0, -0.5], [-3.0, 8.0, 2.5], [35, 33, 32], 12),
+    cube([3.0, 5.0, -0.5], [6.0, 8.0, 2.5], [35, 33, 32], 12),
+    cube([-5.2, 0.0, 7.0], [-1.7, 3.8, 7.3], [35, 33, 32], 4),
+    cube([1.7, 0.0, 7.0], [5.2, 3.8, 7.3], [35, 33, 32], 4),
+    cube([-3.2, 1.5, 7.3], [-2.1, 2.5, 7.5], [219, 216, 198], 0),
+    cube([2.1, 1.5, 7.3], [3.2, 2.5, 7.5], [219, 216, 198], 0),
+    cube([-2.8, -2.8, 6.5], [2.8, -0.3, 9.0], [211, 207, 189], 12),
+    cube([-1.5, -1.0, 8.8], [1.5, 0.2, 9.2], [35, 33, 32], 0),
+];
+const PANDA_LEG: &[Cuboid] = &[cube([-2.7, -7.0, -2.7], [2.7, 0.0, 2.7], [35, 33, 32], 14)];
+const PANDA_CAKE: &[Cuboid] = &[
+    cube([-3.0, -2.0, -3.0], [3.0, 0.0, 3.0], [147, 101, 61], 12),
+    cube([-3.0, 0.0, -3.0], [3.0, 0.7, 3.0], [237, 228, 207], 10),
+    cube([-1.0, 0.7, -1.0], [0.0, 1.0, 0.0], [159, 43, 37], 0),
+];
+const PANDA_BAMBOO: &[Cuboid] = &[
+    cube([-0.6, -5.0, -0.6], [0.6, 5.0, 0.6], [112, 146, 51], 16),
+    cube([-0.8, 0.0, -0.8], [0.8, 0.6, 0.8], [69, 105, 34], 8),
+];
+pub(super) fn panda(m: &Mob, time: f32) -> Parts {
+    let s = m.panda.as_ref().unwrap();
+    let sit = if s.sitting { 1.0 } else { 0.0 };
+    let rot = if s.rolling > 0 {
+        Quat::from_rotation_x(-f32::from(s.rolling) * std::f32::consts::TAU / 32.0)
+    } else {
+        Quat::from_rotation_x(if s.on_back { PI } else { -1.15 * sit })
+    };
+    let center = Vec3::new(0.0, 10.0, 0.0);
+    let at = |p: [f32; 3]| (center + rot * (Vec3::from_array(p) - center)).to_array();
+    let swing = m.limb_phase.sin() * m.limb_amp * 0.65;
+    let head = Quat::from_rotation_y(-m.head_yaw)
+        * Quat::from_rotation_x(
+            -m.head_pitch
+                + if s.eating > 0 {
+                    (time * 12.0).sin() * 0.1
+                } else if s.scared {
+                    (time * 21.0).sin() * 0.04
+                } else if s.sneezing > 0 {
+                    -f32::from(s.sneezing) / 100.0
+                } else {
+                    0.0
+                },
+        );
+    let mut p = parts![part(PANDA_BODY, at([0.0, 7.0, 0.0]), rot), part(PANDA_HEAD, at([0.0, 13.0, 8.0]), rot * head)];
+    for (x, z, phase) in [(-5.0, -6.0, swing), (5.0, -6.0, -swing), (-5.0, 5.0, -swing), (5.0, 5.0, swing)] {
+        p.push(part(
+            PANDA_LEG,
+            at([x, 7.0, z]),
+            rot * Quat::from_rotation_x(if s.sitting && z > 0.0 { -1.0 } else { phase }),
+        ));
+    }
+    if m.animal.as_ref().is_some_and(|a| a.mouth.is_some()) {
+        p.push(part(
+            if m.animal.as_ref().and_then(|a| a.mouth).is_some_and(|h| h.item == crate::item::Item::CAKE) {
+                PANDA_CAKE
+            } else {
+                PANDA_BAMBOO
+            },
+            at([0.0, 6.0, 9.0]),
+            rot * Quat::from_rotation_z(0.65),
+        ));
+    }
+    p
 }

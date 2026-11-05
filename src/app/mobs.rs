@@ -113,6 +113,7 @@ impl Game {
         self.mobs.entities.villager_griefing = self.gamerules.bool("mob_griefing");
         self.mobs.entities.mob_loot = self.gamerules.bool("mob_drops");
         self.mobs.entities.neutral_forgive_dead_players = self.gamerules.bool("forgive_dead_players");
+        self.mobs.entities.thundering = self.dimension.has_sky() && self.weather.thunder_level() > 0.9;
         self.mobs.entities.neutral_universal_anger = self.gamerules.bool("universal_anger");
         self.mobs.entities.village_time = self.day_time;
         self.mobs.entities.village_day = self.day_count;
@@ -552,6 +553,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Bat => Voice::Bat,
         MobKind::Frog => Voice::Frog,
         MobKind::PolarBear => Voice::PolarBear,
+        MobKind::Panda => Voice::Panda,
         MobKind::Tadpole => Voice::Fish,
         MobKind::Sheep => Voice::Sheep,
         MobKind::Chicken => Voice::Chicken,
