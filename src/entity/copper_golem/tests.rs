@@ -342,17 +342,23 @@ fn death_drops_cargo_before_save_and_exactly_once() {
     e.mob_loot = false;
     e.mobs[0].copper_golem.as_mut().unwrap().cargo = Some(stack);
     e.mobs[0].copper_golem.as_mut().unwrap().antenna = Some(Stack::new(Block::POPPY, 1));
+    golem(&mut e, DVec3::new(2.5, 64., 2.5));
+    let second = Stack { count: 7, entity_data: 457, ..stack };
+    e.mobs[1].copper_golem.as_mut().unwrap().cargo = Some(second);
     assert!(e.mobs[0].damage(20., None, &mut e.rng));
+    assert!(e.mobs[1].damage(20., None, &mut e.rng));
     e.drop_loot(MobKind::CopperGolem, e.mobs[0].pos);
+    e.drop_loot(MobKind::CopperGolem, e.mobs[1].pos);
     assert!(e.mobs[0].copper_golem.as_ref().unwrap().cargo.is_none());
     assert!(e.items.iter().any(|i| i.stack == stack));
     let mut reload = Entities::new(9);
     reload.load_items(&e.items_to_string());
     assert!(reload.items.iter().any(|i| i.stack == stack));
+    assert!(reload.items.iter().any(|i| i.stack == second));
     step(&mut e, &mut w, 30);
     assert_eq!(
         e.items.iter().filter(|i| i.stack.item == Item::DIAMOND).map(|i| u32::from(i.stack.count)).sum::<u32>(),
-        11
+        18
     );
 }
 

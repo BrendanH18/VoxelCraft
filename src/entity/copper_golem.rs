@@ -377,7 +377,12 @@ impl Entities {
         let Some(s) = self
             .mobs
             .iter_mut()
-            .find(|m| m.kind == kind && !m.alive() && m.pos.distance_squared(pos) < 0.01)
+            .find(|m| {
+                m.kind == kind
+                    && !m.alive()
+                    && m.pos.distance_squared(pos) < 0.01
+                    && m.copper_golem.as_ref().is_some_and(|s| s.cargo.is_some() || s.antenna.is_some())
+            })
             .and_then(|m| m.copper_golem.as_mut())
         else {
             return;
