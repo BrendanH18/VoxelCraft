@@ -1521,6 +1521,9 @@ fn save_mob(m: &Mob) -> Value {
     if let Some(stack) = m.wolf_armor.as_ref().and_then(|s| s.armor) {
         v["wolf_armor"] = json!(crate::inventory::stack_to_string(Some(stack)));
     }
+    if let Some(s) = &m.ocelot {
+        v["ocelot"] = json!({"trusting":s.trusting});
+    }
     if let Some(s) = &m.armadillo {
         v["armadillo"] = s.save();
     }
@@ -1589,6 +1592,9 @@ fn load_mob(v: &Value) -> Option<Mob> {
     m.sheared = v["sheared"].as_bool().unwrap_or(false);
     if let Some(s) = &mut m.wolf_armor {
         s.load(v["wolf_armor"].as_str());
+    }
+    if let Some(s) = &mut m.ocelot {
+        s.trusting = v["ocelot"]["trusting"].as_bool().unwrap_or(false);
     }
     if let Some(s) = &mut m.armadillo {
         s.load(&v["armadillo"]);

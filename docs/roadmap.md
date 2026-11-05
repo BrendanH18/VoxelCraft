@@ -1471,7 +1471,9 @@ in the [architecture reservations](architecture.md#v015-track-reservations):
    sneezes, rolls, thunder fear and retaliation (implemented, unverified).
    Armadillos now roll around threats, shed scutes and can be brushed;
    owner-equipped wolf armor absorbs damage, repairs, dyes and washes
-   (implemented, unverified). Ocelots remain unimplemented by this track.
+   (implemented, unverified). Jungle ocelots now flee, trust fish-feeding
+   players, breed, hunt chickens/baby land turtles and persist trust
+   (implemented, unverified).
 4. **Hostiles** (MOB-04, PRO-02). Strays, bogged and phantoms (insomnia,
    `spawn_phantoms`, membranes), and the tipped arrows strays and bogged
    shoot.

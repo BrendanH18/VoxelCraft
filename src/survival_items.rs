@@ -108,6 +108,12 @@ pub fn use_animal_target(
         }
         return true;
     }
+    if entities.try_trust_ocelot(index, held, player.pos) {
+        if !creative {
+            inventory.take_one(slot);
+        }
+        return true;
+    }
     if let Some(action) = entities.use_wolf_armor(index, held, owner, creative) {
         use crate::entity::wolf_armor::Use;
         match action {

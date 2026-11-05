@@ -74,6 +74,7 @@ impl Entities {
         self.polar_sense(dt, world, ctx);
         self.panda_upkeep(dt, world, ctx, &mut events);
         self.armadillo_upkeep(dt, world, ctx, &mut events);
+        self.ocelot_upkeep(dt, ctx);
         self.tick_animals(dt as f32, world, ctx, &mut events);
         self.tick_leashes(dt as f32, world, ctx);
         self.tick_llamas(ctx);
@@ -95,6 +96,7 @@ impl Entities {
                     | MobKind::WanderingTrader
                     | MobKind::TraderLlama
             ) || m.kind.never_distance_despawns()
+                || m.ocelot.as_ref().is_some_and(|s| s.trusting || s.ticks <= 2400)
                 || m.persistent
                 || m.built
                 || m.convert_left > 0.0

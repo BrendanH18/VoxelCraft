@@ -35,6 +35,9 @@ impl Mob {
         if let Some(stack) = self.wolf_armor.as_ref().and_then(|s| s.armor) {
             v["wolf_armor"] = json!(crate::inventory::stack_to_string(Some(stack)));
         }
+        if let Some(s) = &self.ocelot {
+            v["ocelot"] = serde_json::json!({"trusting":s.trusting,"crouching":s.crouching,"sprinting":s.sprinting});
+        }
         if let Some(s) = &self.armadillo {
             v["armadillo"] = s.look();
         }
@@ -107,6 +110,11 @@ impl Mob {
         self.sheared = v["sheared"] == true;
         if let Some(s) = &mut self.wolf_armor {
             s.load(v["wolf_armor"].as_str());
+        }
+        if let Some(s) = &mut self.ocelot {
+            s.trusting = v["ocelot"]["trusting"].as_bool().unwrap_or(false);
+            s.crouching = v["ocelot"]["crouching"].as_bool().unwrap_or(false);
+            s.sprinting = v["ocelot"]["sprinting"].as_bool().unwrap_or(false);
         }
         if let Some(s) = &mut self.armadillo {
             s.apply_look(&v["armadillo"]);

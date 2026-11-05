@@ -16,6 +16,7 @@ mod frog;
 pub(crate) mod goals;
 mod navigate;
 mod nether_ai;
+mod ocelot;
 mod polar_bear;
 pub(crate) mod selector;
 mod swim;
@@ -178,6 +179,7 @@ pub enum MobKind {
     PolarBear,
     Panda,
     Armadillo,
+    Ocelot,
 }
 
 impl MobKind {
@@ -205,7 +207,7 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 61] = [
+    pub const ALL: [MobKind; 62] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -267,6 +269,7 @@ impl MobKind {
         MobKind::PolarBear,
         MobKind::Panda,
         MobKind::Armadillo,
+        MobKind::Ocelot,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -333,6 +336,7 @@ impl MobKind {
             MobKind::PolarBear => "polar_bear",
             MobKind::Panda => "panda",
             MobKind::Armadillo => "armadillo",
+            MobKind::Ocelot => "ocelot",
         }
     }
 
@@ -388,7 +392,7 @@ impl MobKind {
             MobKind::Axolotl => Shape::new(0.375, 0.42),
             MobKind::Guardian => Shape::new(0.425, 0.85),
             MobKind::ElderGuardian => Shape::new(0.99875, 1.9975),
-            MobKind::Cat => Shape::new(0.3, 0.7),
+            MobKind::Cat | MobKind::Ocelot => Shape::new(0.3, 0.7),
             MobKind::Pillager => Shape::new(0.3, 1.95),
             MobKind::Turtle => Shape::new(0.6, 0.4),
             MobKind::Wolf => Shape::new(0.3, 0.85),
@@ -436,7 +440,7 @@ impl MobKind {
             MobKind::PiglinBrute => 50.0,
             MobKind::Hoglin | MobKind::Zoglin => 40.0,
             MobKind::Cod | MobKind::Salmon | MobKind::TropicalFish | MobKind::Pufferfish => 3.0,
-            MobKind::Squid | MobKind::GlowSquid | MobKind::Dolphin | MobKind::Cat => 10.0,
+            MobKind::Squid | MobKind::GlowSquid | MobKind::Dolphin | MobKind::Cat | MobKind::Ocelot => 10.0,
             MobKind::Axolotl => 14.0,
             MobKind::Guardian => 30.0,
             MobKind::ElderGuardian => 80.0,
@@ -749,6 +753,7 @@ impl MobKind {
             MobKind::Silverfish => (1.0, "was slain by a silverfish"),
             MobKind::PolarBear => (6.0, "was slain by a polar bear"),
             MobKind::Panda => (6.0, "was slain by a panda"),
+            MobKind::Ocelot => (3.0, "was slain by an ocelot"),
             MobKind::IronGolem => (15.0, "was slain by an iron golem"),
             MobKind::SnowGolem => (0.0, "was slain by a snow golem"),
             MobKind::ZombieVillager => (3.0, "was slain by a zombie villager"),
@@ -812,7 +817,7 @@ impl MobKind {
             MobKind::GlowSquid => &[(Item::GLOW_INK_SAC, 1, 3)],
             MobKind::Guardian => &[(Item::PRISMARINE_SHARD, 0, 2)],
             MobKind::ElderGuardian => &[(Item::PRISMARINE_SHARD, 0, 2), (SPONGE, 1, 1)],
-            MobKind::Axolotl | MobKind::Cat | MobKind::Pillager => &[],
+            MobKind::Axolotl | MobKind::Cat | MobKind::Ocelot | MobKind::Pillager => &[],
             MobKind::Turtle => &[(SEAGRASS, 0, 2)],
             MobKind::Wolf | MobKind::Fox | MobKind::Goat => &[],
             MobKind::Parrot => &[(Item::FEATHER, 1, 2)],
@@ -945,6 +950,7 @@ pub struct Mob {
     pub polar_bear: Option<Box<super::polar_bear::State>>,
     pub panda: Option<Box<super::panda::State>>,
     pub armadillo: Option<Box<super::armadillo::State>>,
+    pub ocelot: Option<Box<super::ocelot::State>>,
     pub wolf_armor: Option<Box<super::wolf_armor::State>>,
     /// Witch: seconds left drinking, and the potion it is drinking.
     drink_left: f32,
@@ -1123,6 +1129,7 @@ impl Mob {
             polar_bear: (kind == MobKind::PolarBear).then(Box::default),
             panda: (kind == MobKind::Panda).then(Box::default),
             armadillo: (kind == MobKind::Armadillo).then(Box::default),
+            ocelot: (kind == MobKind::Ocelot).then(Box::default),
             wolf_armor: (kind == MobKind::Wolf).then(Box::default),
             drink_left: 0.0,
             drinking: "",
@@ -1443,6 +1450,7 @@ impl Mob {
             | MobKind::GlowSquid
             | MobKind::Dolphin
             | MobKind::Axolotl => false,
+            MobKind::Ocelot => false,
             MobKind::Wolf => !attacked,
             MobKind::PolarBear => self.baby || !attacked,
             MobKind::Panda | MobKind::Armadillo => !attacked,
@@ -1521,7 +1529,8 @@ impl Mob {
         }
         self.ambient_timer -= dtf;
         if self.ambient_timer <= 0.0 {
-            self.ambient_timer = rng.range(7.0, 18.0);
+            self.ambient_timer =
+                if self.kind == MobKind::Ocelot { rng.range(45.0, 56.0) } else { rng.range(7.0, 18.0) };
             if self.alive()
                 && self.armadillo.as_ref().is_none_or(|s| !s.scared())
                 && self.kind != MobKind::Tadpole
@@ -1733,6 +1742,23 @@ impl Mob {
             self.stop_goal(world);
             return (None, 0.0);
         }
+        if self.ocelot.is_some() {
+            let base = self.run_goals(world, ctx, rng);
+            if let Some(wish) = self.ocelot_think(world, rng, events) {
+                return wish;
+            }
+            if let Some(wish) = base {
+                let s = self.ocelot.as_mut().unwrap();
+                s.crouching = wish.0.is_some()
+                    && self
+                        .goals
+                        .running
+                        .is_some_and(|i| matches!(goals::table(self.kind)[i as usize].goal, goals::Goal::Tempt));
+                s.sprinting =
+                    wish.0.is_some() && self.goals.avoiding.is_some_and(|(_, at)| at.distance_squared(self.pos) < 49.0);
+                return wish;
+            }
+        }
         if self.panda.is_some() {
             let base = self.run_goals(world, ctx, rng);
             if let Some(wish) = self.panda_think(world, rng, events) {
@@ -1761,6 +1787,7 @@ impl Mob {
             return self.frog_steer(dt, world, ctx, rng);
         }
         if self.panda.is_none()
+            && self.ocelot.is_none()
             && let Some(wish) = self.run_goals(world, ctx, rng)
         {
             return wish;

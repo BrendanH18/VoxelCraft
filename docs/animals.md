@@ -181,3 +181,20 @@ name and damage persist and replicate. Original plates show dye and cracks;
 item icons also show dye in inventory, the hand, drops and frames. See the
 [record](verification/2026-11-04-v0.15-passive-mobs.md) for source details,
 damage-type coverage and remaining navigation/presentation differences.
+
+## Ocelots (v0.15, Java 26.3)
+
+Implemented, unverified: jungle and bamboo-jungle ocelots spawn on grass or
+leaves at sea level and above, with a two-thirds predicate independent of
+brightness. The native data places them in monster spawn lists even though
+their entity category is creature. Later natural pack members are kittens.
+Untrusting ocelots flee players and can be scared away during fish temptation
+by small movements/turns. Feeding raw cod/salmon within three blocks while
+temptation runs has a one-third chance to establish global trust. It assigns
+no owner or sitting command. Fish also breed ocelots and grow kittens;
+offspring start untrusting. Ocelots stalk, sprint/leap at chickens and baby
+land turtles, and repel creepers. Trust survives save/reload and replication;
+untrusting ocelots become eligible for distance despawning only after 2,400
+loaded ticks. Original spotted pelt, head and ringed tail render crouching
+and sprint poses. See the [record](verification/2026-11-04-v0.15-passive-mobs.md)
+for source details and remaining shared-engine/presentation differences.

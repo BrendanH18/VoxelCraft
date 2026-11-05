@@ -121,6 +121,8 @@ const WOLF: &[Entry] = &[
 ];
 // `CatTemptGoal` is registered first at 4, then `reassessTameGoals` adds the
 // untamed cat's player avoidance at 4.
+const OCELOT: &[Entry] =
+    &[e(3, G::Tempt, 0.6), avoid(4, Avoided::Player, 16.0, 0.8, 1.33), e(9, G::Breed, 0.8), e(10, G::Stroll, 0.8)];
 const CAT: &[Entry] = &[
     e(1, G::Panic, 1.5),
     e(4, G::Tempt, 0.6),
@@ -236,6 +238,7 @@ pub(crate) fn table(kind: MobKind) -> &'static [Entry] {
         K::Chicken => CHICKEN,
         K::Wolf => WOLF,
         K::Cat => CAT,
+        K::Ocelot => OCELOT,
         K::Fox => FOX,
         K::Rabbit => RABBIT,
         K::Horse | K::Donkey | K::Mule => HORSE,
@@ -270,6 +273,7 @@ pub(crate) fn movement_speed(kind: MobKind) -> f64 {
         K::Camel => 0.09,
         K::Panda => f64::from(0.15_f32),
         K::Armadillo => 0.14,
+        K::Ocelot => f64::from(0.3_f32),
         K::Axolotl | K::Frog | K::Tadpole => 1.0,
         K::Dolphin => 1.2,
         K::Guardian => 0.5,
@@ -306,7 +310,7 @@ pub(crate) fn avoided_kind(what: Avoided, kind: MobKind) -> bool {
         Avoided::Player => false,
         Avoided::Wolf => kind == MobKind::Wolf,
         Avoided::Llama => matches!(kind, MobKind::Llama | MobKind::TraderLlama),
-        Avoided::Cat => kind == MobKind::Cat,
+        Avoided::Cat => matches!(kind, MobKind::Cat | MobKind::Ocelot),
         Avoided::Armadillo => kind == MobKind::Armadillo,
         Avoided::Monster => is_monster(kind),
         Avoided::Zombie => kind.is_zombie() || kind == MobKind::ZombifiedPiglin,
@@ -545,6 +549,9 @@ impl Mob {
             }
             G::Tempt => {
                 self.goals.tempt_player = None;
+                if let Some(s) = &mut self.ocelot {
+                    s.tempt_anchor = None;
+                }
                 self.nav.stop();
                 // `reducedTickDelay(100)`.
                 self.goals.calm_down = 50;
@@ -597,7 +604,10 @@ impl Mob {
             })
             .min_by(|a, b| a.pos.distance_squared(self.pos).total_cmp(&b.pos.distance_squared(self.pos)))
             .map(|t| t.id);
-        self.goals.tempt_player.is_some()
+        if let Some(t) = self.goals.tempt_player.and_then(|id| ctx.players.iter().find(|t| t.id == id)) {
+            return self.ocelot_tempt_allowed(t);
+        }
+        false
     }
 
     fn can_use<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, rng: &mut Rng, entry: Entry) -> bool {
@@ -854,6 +864,7 @@ impl Mob {
             }
             // `CatAvoidEntityGoal` and `WolfAvoidEntityGoal`: untamed only.
             (MobKind::Cat | MobKind::Wolf, _) => !tame,
+            (MobKind::Ocelot, _) => !self.ocelot.as_ref().is_some_and(|s| s.trusting),
             // Foxes asleep don't flee.
             (MobKind::Fox, _) => !self.animal.as_ref().is_some_and(|s| s.sleeping),
             // `TradeWithPlayerGoal` shares priority 1 and was registered first.

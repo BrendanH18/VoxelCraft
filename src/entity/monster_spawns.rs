@@ -74,7 +74,7 @@ impl JavaMonster {
     }
 
     /// The kind this cycle spawns for the entry; zombie horses, strays,
-    /// bogged, parched and ocelots are not in VoxelCraft yet.
+    /// bogged and parched are not in VoxelCraft yet.
     pub(super) fn kind(self) -> Option<MobKind> {
         Some(match self {
             JavaMonster::Known(k) => k,
@@ -88,6 +88,7 @@ impl JavaMonster {
             JavaMonster::Husk => MobKind::Husk,
             JavaMonster::Slime => MobKind::Slime,
             JavaMonster::Drowned => MobKind::Drowned,
+            JavaMonster::Ocelot => MobKind::Ocelot,
             _ => return None,
         })
     }
@@ -320,7 +321,7 @@ pub(super) fn valid_spawn_floor(b: Block, kind: MobKind) -> bool {
     if b == Block::BEDROCK
         || b == Block::GLASS
         || b == redstone_blocks::MOVING
-        || (b.is_leaves() && kind != MobKind::Parrot)
+        || (b.is_leaves() && !matches!(kind, MobKind::Parrot | MobKind::Ocelot))
         || name.ends_with("stained glass")
         || matches!(name, "tinted glass" | "barrier" | "scaffolding" | "chorus flower" | "frosted ice")
         || name.contains("trapdoor")
@@ -575,7 +576,7 @@ impl Entities {
                     continue;
                 }
                 self.spawn_natural(kind, pos, world.cave_biome(cell), &mut group);
-                state.add(category, pos);
+                state.add(kind.category(), pos);
                 spawned += 1;
                 // Java's default `getMaxSpawnClusterSize` is 4 for these monsters.
                 if spawned
@@ -1153,7 +1154,7 @@ mod tests {
         assert!(cycle_kind(MobKind::Slime) && cycle_kind(MobKind::Drowned));
         assert_eq!(J::Slime.kind(), Some(MobKind::Slime));
         assert_eq!(J::Drowned.kind(), Some(MobKind::Drowned));
-        assert!(J::ZombieHorse.kind().is_none() && J::Stray.kind().is_none() && J::Ocelot.kind().is_none());
+        assert!(J::ZombieHorse.kind().is_none() && J::Stray.kind().is_none());
     }
 
     #[test]

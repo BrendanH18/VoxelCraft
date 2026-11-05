@@ -501,8 +501,8 @@ block layers **3136–3145** contain frogspawn and three layers per froglight
 3146–3263 remain reserved and unregistered. Original entity cuboids use the
 procedural entity shader. Stew reuses the mushroom-stew icon; the tadpole
 bucket appends an original item sprite. Saturation appends to the dynamic
-effect-icon array. `Mooshroom`, `Bat`, `Frog`, `Tadpole`, `PolarBear`, `Panda`, `Armadillo` append after Camel
-in that order, saved as `mooshroom`, `bat`, `frog`, `tadpole`, `polar_bear`, `panda`, `armadillo`. Stew effect
+effect-icon array. `Mooshroom`, `Bat`, `Frog`, `Tadpole`, `PolarBear`, `Panda`, `Armadillo`, `Ocelot` append after Camel
+in that order, saved as `mooshroom`, `bat`, `frog`, `tadpole`, `polar_bear`, `panda`, `armadillo`, `ocelot`. Stew effect
 codes 1–11 in `Stack::entity_data` and `mooshroom.stew` remain stable;
 tadpole buckets use an item-specific age/health/age-lock bit payload.
 Polar bear anger uses the existing saved simulation tick counter and stable
@@ -517,6 +517,9 @@ The brush, scute and armor append original dynamic item sprites; no
 additional block layers or states are allocated.
 Panda main/hidden genes save by Java names, and held food uses the existing
 animal stack component; action poses replicate but restart on load.
+Ocelot trust saves/replicates as a Boolean; its 2,400-tick loaded lifetime
+restarts on load as Java tickCount does. Ocelots use the creature category
+while remaining in the pinned jungle monster spawn lists.
 CatSpawner adds no IDs. Cat appearance code zero retains the old all-black
 coat; 1–10 use the remaining named variants, with the existing animal
 component carrying save/replication/inheritance. The spawner countdown is

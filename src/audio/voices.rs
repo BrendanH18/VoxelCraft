@@ -47,6 +47,7 @@ pub enum Voice {
     PolarBear,
     Panda,
     Armadillo,
+    Ocelot,
 }
 
 /// What kind of sound a voice makes.
@@ -59,7 +60,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 35] = [
+    pub const ALL: [Voice; 36] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -95,6 +96,7 @@ impl Voice {
         Voice::PolarBear,
         Voice::Panda,
         Voice::Armadillo,
+        Voice::Ocelot,
     ];
 
     /// The category the creature plays in: `Monster`, `Ghast`, `Hoglin` and
@@ -115,7 +117,9 @@ impl Voice {
             | Voice::Hoglin
             | Voice::Guardian
             | Voice::Pillager => SoundSource::Hostile,
-            Voice::Bat | Voice::Frog | Voice::PolarBear | Voice::Panda | Voice::Armadillo => SoundSource::Neutral,
+            Voice::Bat | Voice::Frog | Voice::PolarBear | Voice::Panda | Voice::Armadillo | Voice::Ocelot => {
+                SoundSource::Neutral
+            }
             Voice::Pig
             | Voice::Cow
             | Voice::Sheep
@@ -145,6 +149,7 @@ impl Voice {
             Voice::PolarBear => "polar_bear",
             Voice::Panda => "panda",
             Voice::Armadillo => "armadillo",
+            Voice::Ocelot => "ocelot",
             Voice::Cow => "cow",
             Voice::Sheep => "sheep",
             Voice::Chicken => "chicken",
@@ -258,6 +263,7 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::PolarBear => polar_bear(call, rng),
         Voice::Panda => panda(call, rng),
         Voice::Armadillo => armadillo(call, rng),
+        Voice::Ocelot => ocelot(call, rng),
         Voice::Pig => pig(call, rng),
         Voice::Horse => horse(call, rng),
         Voice::Cow => cow(call, rng),
@@ -957,5 +963,15 @@ fn armadillo(call: Call, rng: &mut Rng) -> Vec<f32> {
         );
     }
     add_mode(&mut out, 0, Mode { freq: rng.range(280.0, 370.0), amp: 0.4, tau: 0.09, glide: 0.2, glide_tau: 0.07 });
+    dsp::finish(out, 0.5)
+}
+
+// Original short, breathy wild-feline chirr, independent of the cat bank.
+fn ocelot(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let mut out = vec![0.0; samples(if call == Call::Death { 0.55 } else { 0.32 })];
+    let pitch = rng.range(330.0, 430.0) * if call == Call::Hurt { 1.4 } else { 1.0 };
+    for (harm, gain) in [(1.0, 0.65), (2.03, 0.25), (4.2, 0.1)] {
+        add_mode(&mut out, 0, Mode { freq: pitch * harm, amp: gain, tau: 0.12, glide: 0.3, glide_tau: 0.09 });
+    }
     dsp::finish(out, 0.5)
 }

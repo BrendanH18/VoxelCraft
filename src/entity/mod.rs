@@ -43,6 +43,7 @@ mod monster_spawns;
 pub mod mooshroom;
 pub mod mounts;
 pub mod nether;
+pub mod ocelot;
 pub mod orb;
 pub mod panda;
 pub mod pearl;

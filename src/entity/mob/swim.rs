@@ -181,7 +181,7 @@ impl Mob {
         match self.kind {
             k if k.water_bound() => true,
             MobKind::Axolotl | MobKind::Turtle | MobKind::PolarBear => self.touching_water(world),
-            MobKind::Panda => !self.touching_water(world),
+            MobKind::Panda | MobKind::Ocelot => !self.touching_water(world),
             MobKind::Ghast | MobKind::Bat | MobKind::Frog => true,
             MobKind::Blaze => self.alive() && (!self.on_ground || self.lift),
             _ => false,
@@ -251,6 +251,10 @@ impl Mob {
     ) {
         if self.kind == MobKind::Bat {
             self.bat_tick(world, rng);
+            return;
+        }
+        if self.kind == MobKind::Ocelot {
+            self.ocelot_land_tick(world, wish, speed, rng);
             return;
         }
         if self.kind == MobKind::Panda {

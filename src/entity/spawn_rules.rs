@@ -13,7 +13,7 @@ use glam::{DVec3, IVec3};
 impl MobKind {
     /// Animal.removeWhenFarAway, independently of Mob.PersistenceRequired.
     pub(super) fn never_distance_despawns(self) -> bool {
-        self.category() == MobCategory::Creature
+        self.category() == MobCategory::Creature && self != MobKind::Ocelot
     }
 }
 
@@ -69,6 +69,12 @@ pub(super) fn spot_ok<W: MobWorld + ?Sized>(
             }
         };
         return rules_ok && !physics::overlaps_solid(world, pos, kind.shape());
+    }
+    if kind == MobKind::Ocelot {
+        return cell.y >= SEA_LEVEL
+            && (below == Block::GRASS || below.is_leaves())
+            && ground_ok(world, kind, cell)
+            && rng.next_int(3) != 0;
     }
     if kind.category() == MobCategory::Monster {
         if rules.dimension != Dimension::Overworld {

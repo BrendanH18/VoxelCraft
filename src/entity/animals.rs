@@ -99,6 +99,7 @@ impl MobKind {
             Self::Frog | Self::Tadpole => food == Item::SLIME_BALL,
             Self::Panda => food == Item::from_block(crate::world::overworld_blocks::BAMBOO),
             Self::Armadillo => food == Item::SPIDER_EYE,
+            Self::Ocelot => matches!(food, Item::COD | Item::SALMON),
             Self::Pig => matches!(food, Item::CARROT | Item::POTATO | Item::BEETROOT),
             Self::Chicken => seeds(food),
             Self::Wolf => wolf_food(food),
@@ -137,6 +138,7 @@ impl MobKind {
                 | Self::Frog
                 | Self::Panda
                 | Self::Armadillo
+                | Self::Ocelot
                 | Self::Sheep
                 | Self::Pig
                 | Self::Chicken
@@ -833,7 +835,7 @@ impl Entities {
                 // The first member of a pack is always an adult.
                 _ if pack_size == 0 => false,
                 // RabbitGroupData's baby chance is 1.
-                MobKind::Rabbit | MobKind::PolarBear => true,
+                MobKind::Rabbit | MobKind::PolarBear | MobKind::Ocelot => true,
                 MobKind::Panda => self.rng.chance(0.2),
                 _ => self.rng.chance(0.05),
             };
