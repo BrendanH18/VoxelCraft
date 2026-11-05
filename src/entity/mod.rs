@@ -1129,13 +1129,17 @@ impl Entities {
             if credit_player {
                 m.player_hit();
             }
-            if m.blast(damage, push, &mut self.rng) && credit_player {
+            if m.blast(damage, push, &mut self.rng) {
                 killed.push((m.kind, m.pos, m.burning));
             }
         }
         self.particles.push(crate::particles::Request::Explosion { pos: center, large: power >= 2.0 });
         for (kind, pos, burning) in killed {
-            self.drop_loot_with_fire(kind, pos, 0, burning, true);
+            if credit_player {
+                self.drop_loot_with_fire(kind, pos, 0, burning, true);
+            } else {
+                self.copper_equipment_drops(kind, pos);
+            }
         }
     }
 

@@ -116,7 +116,9 @@ fn finish_copper_pattern(world: &mut crate::world::World, entities: &mut Entitie
     let Some(pumpkin) = world.get_block(head).filter(|b| pumpkin_blocks::is_head(*b)) else { return };
     let facing = pumpkin.oriented().map_or(Facing::South, |(_, facing)| facing);
     let Some((at, source)) =
-        [IVec3::NEG_Y, IVec3::Y, IVec3::NEG_Z, IVec3::Z, IVec3::NEG_X, IVec3::X].into_iter().find_map(|offset| {
+        // BlockPattern.find tries forward/up in Direction.values order;
+        // the copper row is -up and parallel pairs are skipped.
+        [IVec3::Z, IVec3::NEG_Z, IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y].into_iter().find_map(|offset| {
             let at = head + offset;
             world.get_block(at).and_then(copper::state).filter(|c| c.family == Family::Block).map(|c| (at, c))
         })

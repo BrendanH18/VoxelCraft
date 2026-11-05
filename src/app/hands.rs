@@ -26,6 +26,9 @@ use super::gamepad::Body;
 use super::hand::HandAnim;
 use super::{ACTION_REPEAT, EAT_TIME, bucket, capitalize, items};
 
+#[cfg(test)]
+mod tests;
+
 /// Something the acting player's adapter must handle.
 #[derive(Debug, PartialEq)]
 pub(super) enum Request {
@@ -233,14 +236,16 @@ impl Actor<'_> {
         let drink = held.is_some_and(Item::is_drink);
         let food = held.and_then(|i| i.food());
         let hungry = held.is_some_and(|item| self.session.can_eat(item));
-        // Right-clicking a composter fills it instead, as in Java.
-        let composting = !self.sneaking
-            && self
-                .session
-                .block_target(self.world)
-                .and_then(|(pos, _)| self.world.get_block(pos))
-                .is_some_and(|b| crate::world::composter::level(b).is_some());
-        let using = acting && self.body.right_held && (drink || (food.is_some() && hungry && !composting));
+        let targeted = self.session.block_target(self.world).and_then(|(pos, _)| self.world.get_block(pos));
+        // Right-clicking a composter fills it instead, as in Java. A statue
+        // consumes block use before food or drink, except when sneaking.
+        // Looking at a statue during an existing bite does not interrupt it.
+        let composting = !self.sneaking && targeted.is_some_and(|b| crate::world::composter::level(b).is_some());
+        let statue_use = !self.session.consuming()
+            && !self.sneaking
+            && targeted.and_then(crate::world::copper_golem_statue::decode).is_some();
+        let using =
+            acting && self.body.right_held && !statue_use && (drink || (food.is_some() && hungry && !composting));
         if !using {
             self.session.cancel_consumption();
             self.body.actions.eat_timer = 0.0;

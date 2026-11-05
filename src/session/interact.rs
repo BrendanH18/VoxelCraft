@@ -243,21 +243,33 @@ impl PlayerSession {
         }
         let mut tool_broken = None;
         let mut off_hand = false;
-        // An empty main hand has nothing to use; the off-hand may.
+        // Try the main hand first, including its empty-hand entity uses.
         let main = self.use_chain(slot, world, entities, ctx, &mut tool_broken);
         let (mut used, main_error) = match main {
             Ok(used) => (used, None),
-            Err(e) if self.inventory.offhand.is_some() => (None, Some(e)),
-            Err(e) => return Err(e),
+            Err(e) => (None, Some(e)),
         };
         // Java tries the off-hand when the main hand's use passes; a held use
         // the main hand starts (eating, a bow, a shield) is not passed over.
+        let main_holds_use = self.shield_hand(slot) == Some(super::hands::Hand::Main)
+            || self.inventory.get(slot).is_some_and(|s| {
+                s.item.is_drink() || s.item.food().is_some() && self.can_eat(s.item) || self.starts_draw(s.item)
+            });
+        // An empty off-hand can still interact with a copper golem. Preserve
+        // ordinary item/block errors if that entity use also passes.
+        if used.is_none()
+            && !main_holds_use
+            && self.inventory.offhand.is_none()
+            && self.player.vehicle.is_none()
+            && let Some(index) = self.mob_target(world, entities)
+            && entities.return_copper_golem_cargo(index, self.player.pos)
+        {
+            used = Some(Used::Mob);
+            off_hand = true;
+        }
         if used.is_none()
             && let Some(off) = self.inventory.offhand
-            && self.shield_hand(slot) != Some(super::hands::Hand::Main)
-            && !self.inventory.get(slot).is_some_and(|s| {
-                s.item.is_drink() || s.item.food().is_some() && self.can_eat(s.item) || self.starts_draw(s.item)
-            })
+            && !main_holds_use
             && off.item != Item::SHIELD
         {
             self.inventory.swap_offhand(slot);
@@ -270,7 +282,9 @@ impl PlayerSession {
                 }
                 Err(e) => return Err(main_error.unwrap_or(e)),
             }
-        } else if let Some(e) = main_error {
+        } else if used.is_none()
+            && let Some(e) = main_error
+        {
             return Err(e);
         }
         if let Some(Used::Rod { broke: true, .. }) = used {

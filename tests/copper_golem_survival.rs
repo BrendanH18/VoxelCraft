@@ -232,6 +232,63 @@ fn both_heads_construct_all_copper_variants_in_each_two_cell_orientation() {
 }
 
 #[test]
+fn competing_copper_blocks_follow_java_pattern_direction_priority() {
+    use voxelcraft::{
+        entity::golem::finish_golems,
+        world::{copper, pumpkin_blocks},
+    };
+    // BlockPattern.find visits forward/up in Direction.values order; the
+    // copper row is at -up, with parallel forward/up pairs excluded.
+    let priority = [IVec3::Z, IVec3::NEG_Z, IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y];
+    for (index, first) in priority.into_iter().enumerate() {
+        for second in priority.into_iter().skip(index + 1) {
+            let (mut w, _, mut e) = scene(Block::AIR);
+            let copper =
+                copper::Copper { family: copper::Family::Block, stage: Stage::Weathered, local: 0, waxed: true };
+            let later = copper::encode(copper::Copper { stage: Stage::Exposed, waxed: false, ..copper });
+            w.set_block(P + first, copper::encode(copper));
+            w.set_block(P + second, later);
+            w.set_block(P, pumpkin_blocks::CARVED);
+            finish_golems(&mut w, &mut e);
+            assert_eq!(w.get_block(P + second), Some(later), "{first} precedes {second}");
+            let chest = copper::state(w.get_block(P + first).unwrap()).unwrap();
+            assert_eq!((chest.family, chest.stage, chest.waxed), (copper::Family::Chest, Stage::Weathered, true));
+            assert_eq!(e.mobs[0].copper_golem.as_ref().unwrap().stage, Stage::Weathered);
+        }
+    }
+}
+
+#[test]
+fn empty_offhand_returns_cargo_only_after_the_main_hand_passes() {
+    for held in
+        [Item::tool(ToolKind::Sword, Tier::Iron), Item::tool(ToolKind::Axe, Tier::Iron), Item::from(Block::STONE)]
+    {
+        let (mut w, mut s, mut e) = scene(Block::AIR);
+        e.spawn_copper_golem(P.as_dvec3() + DVec3::new(0.5, 0., 0.5), Stage::Unaffected, false);
+        s.inventory.slots[0] = Some(Stack::new(held, 1));
+        let cargo = Stack { name: StackName::new("Return intact").unwrap(), ..Stack::new(Item::DIAMOND, 7) };
+        e.mobs[0].copper_golem.as_mut().unwrap().cargo = Some(cargo);
+        let used = s.use_held(0, &mut w, &mut e, &UseContext { sneaking: false, others: &[] }).unwrap().unwrap();
+        assert_eq!(used.used, Used::Mob);
+        assert!(used.off_hand);
+        assert_eq!(e.items[0].stack, cargo);
+        assert_eq!(s.inventory.get(0), Some(Stack::new(held, 1)));
+        assert!(s.inventory.offhand.is_none());
+    }
+    for held in [Item::APPLE, Item::HONEY_BOTTLE, Item::SHIELD, Item::BOW, Item::HONEYCOMB] {
+        let (mut w, mut s, mut e) = scene(Block::AIR);
+        e.spawn_copper_golem(P.as_dvec3() + DVec3::new(0.5, 0., 0.5), Stage::Unaffected, false);
+        let cargo = Stack::new(Item::DIAMOND, 7);
+        e.mobs[0].copper_golem.as_mut().unwrap().cargo = Some(cargo);
+        s.vitals.hunger.food = 8.;
+        s.inventory.slots[0] = Some(Stack::new(held, 1));
+        let _ = s.use_held(0, &mut w, &mut e, &UseContext { sneaking: false, others: &[] });
+        assert_eq!(e.mobs[0].copper_golem.as_ref().unwrap().cargo, Some(cargo), "{} takes priority", held.name());
+        assert!(e.items.is_empty());
+    }
+}
+
+#[test]
 fn empty_hand_returns_full_cargo_and_poppy_shears_wax_and_axe_use_the_same_entity() {
     let (mut w, mut s, mut e) = scene(Block::AIR);
     let pos = P.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);

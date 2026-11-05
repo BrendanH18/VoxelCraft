@@ -364,6 +364,51 @@ fn death_drops_cargo_before_save_and_exactly_once() {
 }
 
 #[test]
+fn lethal_projectiles_and_uncredited_blasts_preserve_equipment_in_immediate_saves() {
+    for projectile in [true, false] {
+        let mut w = world();
+        let mut e = Entities::new(5);
+        e.mob_loot = false;
+        let pos = DVec3::new(2.5, 64., 2.5);
+        golem(&mut e, pos);
+        let cargo = Stack {
+            entity_data: 456,
+            name: crate::inventory::StackName::new("Preserved parcel").unwrap(),
+            enchants: crate::enchant::Enchants::NONE.with(crate::enchant::Enchantment::VanishingCurse, 1),
+            ..Stack::new(Item::DIAMOND, 11)
+        };
+        let antenna = Stack { entity_data: 789, ..Stack::new(Block::POPPY, 1) };
+        let state = e.mobs[0].copper_golem.as_mut().unwrap();
+        state.cargo = Some(cargo);
+        state.antenna = Some(antenna);
+        if projectile {
+            e.mobs[0].health = 1.;
+            e.arrows.push(super::super::Arrow::shot(pos + DVec3::new(-1., 0.5, 0.), DVec3::X, 1., false));
+            let events = e.update_world(0.05, &mut w, &ctx(), Difficulty::Normal);
+            assert!(events.iter().any(|event| matches!(
+                event,
+                super::super::EntityEvent::MobShot { kind: MobKind::CopperGolem, killed: true, .. }
+            )));
+        } else {
+            e.explode(&w, pos, 3.);
+        }
+        assert!(!e.mobs[0].alive());
+        let mut props = Default::default();
+        e.save_props(&mut props);
+        let mut reloaded = Entities::new(9);
+        reloaded.load_props(&props);
+        assert!(reloaded.mobs.is_empty(), "dead mobs are omitted from saves");
+        assert_eq!(reloaded.items.len(), 2, "projectile={projectile}: equipment must already be dropped");
+        for stack in [cargo, antenna] {
+            assert_eq!(reloaded.items.iter().filter(|item| item.stack == stack).count(), 1);
+        }
+        assert!(reloaded.orbs.is_empty());
+        step(&mut e, &mut w, 30);
+        assert_eq!(e.items.len(), 2, "corpse cleanup must not duplicate either stack");
+    }
+}
+
+#[test]
 fn obstructed_and_removed_destination_keep_hand_then_retry_after_reopening() {
     let mut w = world();
     let mut e = Entities::new(91);

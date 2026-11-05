@@ -362,7 +362,7 @@ impl Entities {
         for e in &events {
             match *e {
                 EntityEvent::MobShot { kind, pos, killed, burning, player_kill, owner } => {
-                    if killed && self.mob_loot {
+                    if killed {
                         self.drop_loot_with_fire(kind, pos, 0, burning, player_kill);
                     }
                     if kind == MobKind::ZombifiedPiglin {
