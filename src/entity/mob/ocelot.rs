@@ -75,7 +75,7 @@ impl Mob {
             let target = dir.z.atan2(dir.x) as f32;
             self.yaw = turn_toward(self.yaw, target, std::f32::consts::FRAC_PI_2);
             self.move_ctl.cur = crate::entity::path::java_speed(speed) * self.effects.speed_factor();
-            DVec3::Z * 0.98
+            DVec3::Z * (self.move_ctl.cur * 0.98)
         } else {
             self.move_ctl.cur = 0.0;
             DVec3::ZERO
@@ -90,6 +90,62 @@ impl Mob {
             let damage = (distance - 3.0 - f64::from(self.effects.jump_boost())).ceil().max(0.0) as f32;
             if damage > 0.0 && below != Some(crate::world::stone_blocks::SLIME_BLOCK) {
                 self.damage(damage, None, rng);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        physics::{BlockSource, test_util::Grid},
+        world::{block::Block, terrain::Biome},
+    };
+    struct Flat(Grid);
+    impl BlockSource for Flat {
+        fn block(&self, p: IVec3) -> Option<Block> {
+            self.0.block(p)
+        }
+    }
+    impl MobWorld for Flat {
+        fn loaded(&self, _: IVec3) -> bool {
+            true
+        }
+        fn exposed(&self, _: IVec3) -> bool {
+            true
+        }
+        fn surface(&self, _: i32, _: i32) -> Option<i32> {
+            Some(0)
+        }
+        fn biome(&self, _: i32, _: i32) -> Biome {
+            Biome::Forest
+        }
+    }
+    #[test]
+    fn pandas_and_ocelots_walk_at_java_speed_squared_after_input_scaling() {
+        let w = Flat(Grid::flat(1));
+        let mut rng = Rng::new(74);
+        for kind in [MobKind::Panda, MobKind::Ocelot] {
+            for modifier in [0.6, 0.8, 1.0, 1.25, 1.33] {
+                let mut m = Mob::new(kind, DVec3::new(0.5, 1.0, 0.5), 0.0);
+                m.on_ground = true;
+                let speed = m.goal_speed(modifier);
+                let mut actual = 0.0;
+                for _ in 0..160 {
+                    let from = m.pos.x;
+                    if kind == MobKind::Panda {
+                        m.panda_land_tick(&w, Some(DVec3::X), speed, &mut rng);
+                    } else {
+                        m.ocelot_land_tick(&w, Some(DVec3::X), speed, &mut rng);
+                    }
+                    actual = (m.pos.x - from) * 20.0;
+                }
+                assert!(
+                    (actual - speed * 0.98).abs() < 1e-6,
+                    "{kind:?} modifier {modifier}: {actual} vs {}",
+                    speed * 0.98
+                );
             }
         }
     }

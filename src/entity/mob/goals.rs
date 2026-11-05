@@ -208,7 +208,7 @@ const CREEPER: &[Entry] = &[avoid(3, Avoided::Cat, 6.0, 1.0, 1.2)];
 const FROG: &[Entry] = &[e(0, G::Panic, 2.0), e(1, G::Breed, 1.0), e(2, G::Tempt, 1.25), e(3, G::Stroll, 1.0)];
 const ARMADILLO: &[Entry] =
     &[e(0, G::Panic, 2.0), e(1, G::Breed, 1.0), e(2, G::Tempt, 1.25), e(2, G::FollowAdult, 1.25), e(4, G::Stroll, 1.0)];
-const SPIDER: &[Entry] = &[avoid(3, Avoided::Armadillo, 6.0, 1.0, 1.2)];
+const SPIDER: &[Entry] = &[avoid(2, Avoided::Armadillo, 6.0, 1.0, 1.2)];
 const PANDA: &[Entry] = &[
     e(2, G::Panic, 2.0),
     e(2, G::Breed, 1.0),
@@ -942,7 +942,11 @@ impl crate::entity::Entities {
                     let mut best: Option<(f64, usize)> = None;
                     self.mob_index.visit(m.pos, a.dist + 3.0, |j| {
                         let b = &self.mobs[j];
-                        if j == i || !b.alive() || !avoided_kind(a.what, b.kind) {
+                        if j == i
+                            || !b.alive()
+                            || !avoided_kind(a.what, b.kind)
+                            || (a.what == Avoided::Armadillo && b.armadillo.as_ref().is_some_and(|s| s.scared()))
+                        {
                             return;
                         }
                         let d = b.pos - m.pos;

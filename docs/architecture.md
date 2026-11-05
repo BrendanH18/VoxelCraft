@@ -501,8 +501,9 @@ block layers **3136–3145** contain frogspawn and three layers per froglight
 3146–3263 remain reserved and unregistered. Original entity cuboids use the
 procedural entity shader. Stew reuses the mushroom-stew icon; the tadpole
 bucket appends an original item sprite. Saturation appends to the dynamic
-effect-icon array. `Mooshroom`, `Bat`, `Frog`, `Tadpole`, `PolarBear`, `Panda`, `Armadillo`, `Ocelot` append after Camel
-in that order, saved as `mooshroom`, `bat`, `frog`, `tadpole`, `polar_bear`, `panda`, `armadillo`, `ocelot`. Stew effect
+effect-icon array. `Mooshroom`, `Bat`, `Frog`, `Tadpole`, `PolarBear`, `Panda`, `Armadillo`,
+`Ocelot` append after Camel in that order, saved as `mooshroom`, `bat`,
+`frog`, `tadpole`, `polar_bear`, `panda`, `armadillo`, `ocelot`. Stew effect
 codes 1–11 in `Stack::entity_data` and `mooshroom.stew` remain stable;
 tadpole buckets use an item-specific age/health/age-lock bit payload.
 Polar bear anger uses the existing saved simulation tick counter and stable

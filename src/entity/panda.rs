@@ -518,7 +518,7 @@ impl Mob {
                     (target - self.yaw + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
                 self.yaw += delta.clamp(-std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_2);
                 self.move_ctl.cur = crate::entity::path::java_speed(speed) * self.effects.speed_factor();
-                DVec3::Z * 0.98
+                DVec3::Z * (self.move_ctl.cur * 0.98)
             } else {
                 self.move_ctl.cur = 0.0;
                 DVec3::ZERO

@@ -649,7 +649,7 @@ impl Agent {
 
     fn craft(&mut self, item: Item, world: &World, entities: &mut Entities) -> Result<(), String> {
         let at_table = self.at_crafting_table(world);
-        let (inventory, remainders) = crafting::recipes()
+        let (inventory, remainders, _) = crafting::recipes()
             .iter()
             .filter(|r| r.result.item == item)
             .find_map(|r| self.crafted(r, at_table))
@@ -667,8 +667,8 @@ impl Agent {
 
     /// The inventory after crafting `recipe` once, if the ingredients and
     /// room are there (3x3 recipes need a targeted crafting table).
-    fn crafted(&self, recipe: &crafting::Recipe, at_table: bool) -> Option<(Inventory, Vec<Stack>)> {
-        let grid = recipe.preview();
+    fn crafted(&self, recipe: &crafting::Recipe, at_table: bool) -> Option<(Inventory, Vec<Stack>, Stack)> {
+        let mut grid = recipe.preview();
         if grid.size == 3 && !at_table {
             return None;
         }
@@ -680,20 +680,22 @@ impl Agent {
             }
             let options = recipe.alternatives(i).unwrap();
             let slot = inventory.slots.iter().position(|s| s.is_some_and(|s| options.contains(&s.item)))?;
-            let used = inventory.get(slot)?.item;
+            let used = inventory.get(slot)?;
+            grid.cells[i] = Some(Stack { count: 1, ..used });
             inventory.take_one(slot);
-            if let Some(rest) = used.remainder() {
+            if let Some(rest) = used.item.remainder() {
                 remainders.push(Stack::new(rest, 1));
             }
         }
-        if inventory.add_stack(recipe.result) != 0 {
+        let result = grid.result()?;
+        if inventory.add_stack(result) != 0 {
             return None;
         }
         remainders.retain_mut(|stack| {
             stack.count = inventory.add_stack(*stack);
             stack.count != 0
         });
-        Some((inventory, remainders))
+        Some((inventory, remainders, result))
     }
 
     /// Every result that `craft` would make right now, once each, in recipe
@@ -702,8 +704,10 @@ impl Agent {
         let at_table = self.at_crafting_table(world);
         let mut out: Vec<Stack> = Vec::new();
         for recipe in crafting::recipes() {
-            if !out.iter().any(|s| s.item == recipe.result.item) && self.crafted(recipe, at_table).is_some() {
-                out.push(recipe.result);
+            if !out.iter().any(|s| s.item == recipe.result.item)
+                && let Some((_, _, result)) = self.crafted(recipe, at_table)
+            {
+                out.push(result);
             }
         }
         out
@@ -1771,6 +1775,25 @@ mod tests {
         a.hardcore_spectate();
         assert!(!a.vitals.is_dead());
         assert_eq!(a.mode, GameMode::Spectator);
+    }
+
+    #[test]
+    fn agent_wolf_armor_dye_crafting_uses_real_components_and_reports_the_actual_result() {
+        use crate::{color::DyeColor, entity::wolf_armor};
+        let mut world = world();
+        let mut entities = Entities::new(91);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        let mut armor =
+            wolf_armor::dye(Stack::new(Item::WOLF_ARMOR, 1), &[DyeColor::Red]).unwrap().with_name("Cedar").unwrap();
+        armor.damage = 17;
+        armor.repair_cost = 3;
+        a.inventory.slots[0] = Some(armor);
+        a.inventory.slots[1] = Some(Stack::new(DyeColor::Blue.dye(), 5));
+        let expected = wolf_armor::dye(armor, &[DyeColor::Blue]).unwrap();
+        assert_eq!(a.craftable(&world).iter().find(|s| s.item == Item::WOLF_ARMOR).copied(), Some(expected));
+        a.execute(Command::Craft(Item::WOLF_ARMOR), &mut world, &mut entities, &[]).unwrap();
+        assert_eq!(a.inventory.get(0), Some(expected));
+        assert_eq!(a.inventory.get(1).unwrap().count, 4);
     }
 
     #[test]

@@ -21,7 +21,9 @@ pub(super) fn add(recipes: &mut Vec<Recipe>) {
         Item(590),
         Item(591),
     ];
-    recipes.push(shapeless(&[&[Item::WOLF_ARMOR], DYES], Item::WOLF_ARMOR, 1));
+    let mut dyed = shapeless(&[&[Item::WOLF_ARMOR], DYES], Item::WOLF_ARMOR, 1);
+    dyed.result = wolf_armor::dye(dyed.result, &[DyeColor::White]).expect("wolf armor dye preview");
+    recipes.push(dyed);
 }
 pub(super) fn dynamic(stacks: &[Stack]) -> Option<Stack> {
     if let [a, b] = stacks

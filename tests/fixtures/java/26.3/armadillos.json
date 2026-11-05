@@ -281,6 +281,8 @@
       173,
       83,
       152
-    ]
+    ],
+    "spider_avoid_priority": 2,
+    "spider_avoids_only_idle": true
   }
 }

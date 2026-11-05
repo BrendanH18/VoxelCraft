@@ -320,3 +320,24 @@ fn armadillo_brush_recipe_and_authoritative_use_wear_four_times_and_do_not_add_a
     assert!(crate::survival_items::use_animal_target(&player, &mut inv, 0, true, &w, &mut e, PlayerId::HOST, reach));
     assert_eq!(inv.get(0).unwrap().damage, 0);
 }
+
+#[test]
+fn armadillo_spider_avoidance_only_selects_idle_shells_at_priority_two() {
+    for kind in [MobKind::Spider, MobKind::CaveSpider] {
+        assert_eq!(goals::table(kind)[0].priority, 2);
+        for pose in [IDLE, ROLLING, SCARED, UNROLLING] {
+            let mut e = Entities::new(64);
+            e.spawn(kind, DVec3::new(3.5, 1.0, 0.5));
+            arm(&mut e);
+            e.mobs[1].armadillo.as_mut().unwrap().pose = pose;
+            arm(&mut e);
+            e.mobs[2].pos.x = 7.5;
+            let expected = if pose == IDLE { e.mobs[1].uid } else { e.mobs[2].uid };
+            e.sense_goals(&world());
+            assert_eq!(e.mobs[0].goals.seen[0].map(|(id, _)| id), Some(expected));
+            e.mobs.pop();
+            e.sense_goals(&world());
+            assert_eq!(e.mobs[0].goals.seen[0].is_some(), pose == IDLE);
+        }
+    }
+}
