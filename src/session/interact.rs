@@ -198,7 +198,8 @@ impl PlayerSession {
         let held = self.inventory.get(slot).map(|s| s.item);
         let Some((pos, _)) = self.block_target(world) else { return false };
         if world.get_block(pos).and_then(crate::world::copper_golem_statue::decode).is_some() {
-            return !(sneaking && (held.is_some() || self.inventory.offhand.is_some()));
+            return self.player.vehicle.is_none()
+                && !(sneaking && (held.is_some() || self.inventory.offhand.is_some()));
         }
         crate::content::interaction::block_use_precedes_item(
             world,

@@ -289,6 +289,48 @@ fn empty_offhand_returns_cargo_only_after_the_main_hand_passes() {
 }
 
 #[test]
+fn mounted_item_uses_bypass_statue_priority_in_either_hand() {
+    use voxelcraft::{entity::minecart::CartKind, potion::Potion};
+    for mount in [None, Some(CartKind::Rideable), Some(CartKind::Boat { wood: 0, chest: false })] {
+        for item in [Item::SNOWBALL, Item::EGG, Item::ENDER_PEARL, Item::splash_potion(Potion(0))] {
+            for offhand in [false, true] {
+                let block = statue::item_block(Stage::Exposed, false);
+                let (mut w, mut s, mut e) = scene(block);
+                if let Some(kind) = mount {
+                    let id = e.spawn_cart(kind, s.player.pos);
+                    e.cart_mut(id).unwrap().rider = Some(s.id);
+                    s.player.vehicle = Some(id);
+                }
+                let stack = Stack::new(item, 1);
+                if offhand {
+                    s.inventory.offhand = Some(stack);
+                } else {
+                    s.inventory.slots[0] = Some(stack);
+                }
+                let used =
+                    s.use_held(0, &mut w, &mut e, &UseContext { sneaking: false, others: &[] }).unwrap().unwrap();
+                if mount.is_some() {
+                    assert!(
+                        matches!(
+                            used.used,
+                            Used::ProjectileThrown { .. } | Used::PearlThrown { .. } | Used::PotionThrown { .. }
+                        ),
+                        "{mount:?}, {item:?}, offhand={offhand}: {used:?}"
+                    );
+                    assert_eq!(used.off_hand, offhand);
+                    assert_eq!(w.get_block(P), Some(block));
+                    assert!(s.inventory.get(0).is_none() && s.inventory.offhand.is_none());
+                } else {
+                    assert!(matches!(used.used, Used::Statue { .. }));
+                    assert_ne!(w.get_block(P), Some(block));
+                    assert_eq!(if offhand { s.inventory.offhand } else { s.inventory.get(0) }, Some(stack));
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn empty_hand_returns_full_cargo_and_poppy_shears_wax_and_axe_use_the_same_entity() {
     let (mut w, mut s, mut e) = scene(Block::AIR);
     let pos = P.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
