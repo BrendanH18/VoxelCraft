@@ -72,7 +72,7 @@ enforced.
 | `max_command_sequence_length` | `maxCommandChainLength` | integer 0..2147483647 | `65536` | Not applicable | n/a | There are no functions. |
 | `max_entity_cramming` | `maxEntityCramming` | integer 0..2147483647 | `24` | Missing | v0.19 | No cramming damage; farm designs rely on it (reference farms, v0.19). |
 | `max_minecart_speed` | `minecartMaxSpeed` | integer 1..1000 | `8` | Not applicable | n/a | Registered behind Java's experimental minecart feature flag; VoxelCraft keeps the stable minecart speed. |
-| `max_snow_accumulation_height` | `snowAccumulationHeight` | integer 0..8 | `1` | Missing | v0.15 | Snow does not pile up during snowfall (ENV-03). |
+| `max_snow_accumulation_height` | `snowAccumulationHeight` | integer 0..8 | `1` | Implemented | - | Caps snowfall accumulation at 0–8 layers; Java 26.3 random-tick attempts (ENV-03). |
 | `mob_drops` | `doMobLoot` | boolean | `true` | Implemented | - | Gates the loot and experience of mobs that die (`LivingEntity.dropAllDeathLoot`). |
 | `mob_explosion_drop_decay` | `mobExplosionDropDecay` | boolean | `true` | Implemented | - | Creeper and ghast blasts: drops survive with chance 1/power. |
 | `mob_griefing` | `mobGriefing` | boolean | `true` | Partial | - | Gates creeper and ghast block damage, fireball fires, the dragon's smashing, and villager and piglin item pickup. Enderman block carrying, zombie door breaking, silverfish, mob farmland and turtle-egg trampling and snow golem trails are not modelled. |

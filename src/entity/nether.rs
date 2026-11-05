@@ -964,7 +964,13 @@ impl Entities {
             .filter(|m| {
                 // Breedable mobs (natural axolotls and hoglins too) keep being saved
                 // although natural ones no longer require persistence.
-                (m.persistent || m.kind.never_distance_despawns() || m.kind.has_animal_state())
+                (m.persistent
+                    || m.lightning_charged
+                    || m.kind.never_distance_despawns()
+                    || m.kind.has_animal_state()
+                    || super::undead_mounts::undead(m.kind)
+                    || m.riding.is_some()
+                    || matches!(m.kind, MobKind::Zombie | MobKind::Husk | MobKind::Drowned))
                     && m.alive()
                     && m.villager.is_none()
                     && !matches!(m.kind, MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama)
@@ -1512,6 +1518,23 @@ fn save_mob(m: &Mob) -> Value {
         "home": n.and_then(|n| n.home).map(|h| h.to_array()),
         "celebrate": n.filter(|n| n.celebrate_left > 0.0).map(|n| json!([n.celebrate_left, n.celebrate_at.to_array(), n.dancing])),
     });
+    // Optional additions preserve legacy records byte-for-byte when absent.
+    if m.water_conversion != super::lightning::WaterConversion::default() {
+        v["water_conversion"] = m.water_conversion.save();
+    }
+    if m.lightning_charged {
+        v["lightning_charged"] = json!(true);
+    }
+    if m.undead_mount != super::undead_mounts::State::default() {
+        v["undead_mount"] = m.undead_mount.save();
+    }
+    if m.armor_glint != 0 {
+        v["armor_glint"] = json!(m.armor_glint);
+    }
+    // Legacy true already means gold. Only other materials need new data.
+    if m.armor.iter().flatten().any(|k| *k != super::armor::ArmorKind::Gold) {
+        v["armor_materials"] = json!(m.armor.map(|a| a.map(|k| k as u8)));
+    }
     // Written only when set, so other mobs save as before: `Mob.homePosition`
     // and `homeRadius`, and the dolphin's `GotFish` and main hand.
     if let Some((p, r)) = m.restrict {
@@ -1547,6 +1570,9 @@ fn load_mob(v: &Value) -> Option<Mob> {
     if let Some(a) = &mut m.aquatic {
         a.variant = v["variant"].as_u64().unwrap_or(0).min(255) as u8;
     }
+    m.undead_mount = super::undead_mounts::State::load(&v["undead_mount"]);
+    m.lightning_charged = v["lightning_charged"] == true;
+    m.water_conversion = super::lightning::WaterConversion::load(&v["water_conversion"]);
     m.baby = v["baby"].as_bool().unwrap_or(false);
     m.age =
         v["age"].as_i64().unwrap_or(if m.baby && kind.is_breedable() { -24000 } else { 0 }).clamp(-24000, 6000) as i32;
@@ -1570,9 +1596,13 @@ fn load_mob(v: &Value) -> Option<Mob> {
             *slot = worn.as_bool().unwrap_or(false).then_some(super::armor::ArmorKind::Gold);
         }
     }
-    if kind == MobKind::ZombifiedPiglin {
-        m.held = v["held"].as_str().map(Weapon::from_name);
+    if let Some(armor) = v["armor_materials"].as_array() {
+        for (slot, material) in m.armor.iter_mut().zip(armor) {
+            *slot = material.as_u64().and_then(|i| super::armor::ArmorKind::ALL.get(i as usize).copied());
+        }
     }
+    m.held = v["held"].as_str().map(Weapon::from_name);
+    m.armor_glint = v["armor_glint"].as_u64().unwrap_or(0).min(15) as u8;
     m.restrict = v["restrict"].as_array().filter(|a| a.len() == 4).and_then(|a| {
         let n = |i: usize| a[i].as_i64().and_then(|n| i32::try_from(n).ok());
         Some((IVec3::new(n(0)?, n(1)?, n(2)?), n(3)?.max(0)))
@@ -2168,7 +2198,9 @@ mod tests {
         let text = e.nether_mobs_to_string();
         let mut loaded = Entities::new(4);
         loaded.load_nether_mobs(&text);
-        assert_eq!(loaded.mobs.len(), 1, "only persistent nether mobs are saved");
+        assert_eq!(loaded.mobs.len(), 2, "persistent piglins and conversion-capable natural zombies save");
+        assert_eq!(loaded.mobs.iter().filter(|m| m.kind == MobKind::Piglin).count(), 1);
+        assert!(loaded.mobs.iter().any(|m| m.kind == MobKind::Zombie && !m.persistent));
         let (a, b) = (&e.mobs[0], &loaded.mobs[0]);
         assert_eq!((a.kind, a.pos, a.health, a.baby, a.armor), (b.kind, b.pos, b.health, b.baby, b.armor));
         let (na, nb) = (a.nether.as_ref().unwrap(), b.nether.as_ref().unwrap());
@@ -2185,7 +2217,7 @@ mod tests {
         // Old levels without the key, and junk, load nothing.
         loaded.load_nether_mobs("");
         loaded.load_nether_mobs("{\"mobs\":[{\"kind\":\"dragon\"},{\"kind\":\"piglin\",\"pos\":[1,\"x\",2]}]}");
-        assert_eq!(loaded.mobs.len(), 1);
+        assert_eq!(loaded.mobs.len(), 2, "malformed entries do not add to the restored piglin and zombie");
     }
 
     #[test]

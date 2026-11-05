@@ -20,7 +20,7 @@
 //! Remaining VoxelCraft limits, recorded in the lighting/spawning report:
 //! structure spawn overrides (swamp huts, monuments, outposts) are not
 //! applied, and list entries for mobs VoxelCraft lacks (strays, bogged,
-//! parched, zombie horses, ocelots) end their pack.
+//! parched, ocelots) end their pack.
 
 use super::category::{self, MobCategory};
 use super::*;
@@ -73,13 +73,14 @@ impl JavaMonster {
         }
     }
 
-    /// The kind this cycle spawns for the entry; zombie horses, strays,
+    /// The kind this cycle spawns for the entry; strays,
     /// bogged, parched and ocelots are not in VoxelCraft yet.
     pub(super) fn kind(self) -> Option<MobKind> {
         Some(match self {
             JavaMonster::Known(k) => k,
             JavaMonster::Spider => MobKind::Spider,
             JavaMonster::Zombie => MobKind::Zombie,
+            JavaMonster::ZombieHorse => MobKind::ZombieHorse,
             JavaMonster::ZombieVillager => MobKind::ZombieVillager,
             JavaMonster::Skeleton => MobKind::Skeleton,
             JavaMonster::Creeper => MobKind::Creeper,
@@ -615,6 +616,9 @@ impl Entities {
         if let Some(variant) = variant {
             *variant = *group.variant.get_or_insert(*variant);
         }
+        if kind == MobKind::ZombieHorse {
+            self.spawn_zombie_horse_rider();
+        }
     }
 }
 
@@ -646,8 +650,8 @@ mod tests {
         let kinds: Vec<_> = restored.mobs.iter().map(|m| (m.kind, m.persistent)).collect();
         assert_eq!(
             kinds,
-            [(MobKind::Axolotl, false), (MobKind::Hoglin, false), (MobKind::Cow, false)],
-            "breedable natural mobs still save; natural zombies never did"
+            [(MobKind::Axolotl, false), (MobKind::Hoglin, false), (MobKind::Cow, false), (MobKind::Zombie, false)],
+            "natural undead now save conversion state without becoming persistence-required"
         );
     }
 
@@ -881,7 +885,14 @@ mod tests {
         for _ in 0..(seconds * 20.0) as u32 {
             let before = entities.mobs.len();
             entities.update_difficulty(0.05, world, ctx, crate::simulation::difficulty::Difficulty::Normal);
-            out.extend(entities.mobs.iter().skip(before).map(|m| (m.kind, m.pos.floor().as_ivec3())));
+            out.extend(
+                entities
+                    .mobs
+                    .iter()
+                    .skip(before)
+                    .filter(|m| m.riding.is_none())
+                    .map(|m| (m.kind, m.pos.floor().as_ivec3())),
+            );
             // Keep caps open: count the spawns, then clear them away.
             entities.mobs.clear();
         }
@@ -1146,7 +1157,7 @@ mod tests {
         assert!(cycle_kind(MobKind::Slime) && cycle_kind(MobKind::Drowned));
         assert_eq!(J::Slime.kind(), Some(MobKind::Slime));
         assert_eq!(J::Drowned.kind(), Some(MobKind::Drowned));
-        assert!(J::ZombieHorse.kind().is_none() && J::Stray.kind().is_none() && J::Ocelot.kind().is_none());
+        assert!(J::ZombieHorse.kind().is_some() && J::Stray.kind().is_none() && J::Ocelot.kind().is_none());
     }
 
     #[test]

@@ -412,7 +412,7 @@ Allocations so far:
 | 20512–21471 | Stairs for 12 v0.12 families, 80 states each (`slab_stair_states` local order, local 0 is the item); `slab_stair_states` families 39–50 | [stone and minerals](verification/2026-10-25-v0.12-stone.md) |
 | 21472–21541 | Slabs for those 12 families plus cut and cut red sandstone, 5 states each: bottom, bottom wet, top, top wet, double; families 39–52 | [stone and minerals](verification/2026-10-25-v0.12-stone.md) |
 | 21552–21595 | 11 v0.12 walls, 4 states each: UP, UP wet, no UP, no UP wet (`wall_states` families 20–30); 21542–21551 and 21596–22527 stay unused; items 1100–1109 unused | [stone and minerals](verification/2026-10-25-v0.12-stone.md) |
-| 22528–23372 (23373–24575 reserved, unused) | v0.12 copper (BLD-01c), `world::copper`: per family, `stride` ids per oxidation stage (unaffected, exposed, weathered, oxidized) from its origin: block 22528 (stride 1; 22528 unused, the unaffected block stays 231), cut 22532, chiseled 22536, grate 22540 (2), bulb 22548 (4), stairs 22564 (80; `slab_stair_states` families 53–56), slab 22884 (5), door 22904 (24), trapdoor 23000 (32), bars 23128 (2), chain 23136 (6), lantern 23160 (4), chest 23176 (24: `type*8 + wet*4 + facing`, all registered since double chests, 2026-10-28), lightning rod 23272 (24; only the 12 unpowered states registered), torch 23368–23372 (standing, then wall facing south, north, east, west). No item IDs (all are block items). Texture layers 2128–2200: 18 per stage from 2128, then the torch | [copper](verification/2026-10-25-v0.12-copper.md) |
+| 22528–23372 (23373–24575 reserved, unused) | v0.12 copper (BLD-01c), `world::copper`: per family, `stride` ids per oxidation stage (unaffected, exposed, weathered, oxidized) from its origin: block 22528 (stride 1; 22528 unused, the unaffected block stays 231), cut 22532, chiseled 22536, grate 22540 (2), bulb 22548 (4), stairs 22564 (80; `slab_stair_states` families 53–56), slab 22884 (5), door 22904 (24), trapdoor 23000 (32), bars 23128 (2), chain 23136 (6), lantern 23160 (4), chest 23176 (24: `type*8 + wet*4 + facing`, all registered since double chests, 2026-10-28), lightning rod 23272 (24 per stage; all registered since v0.15 track 1, including the 12 powered states per stage), torch 23368–23372 (standing, then wall facing south, north, east, west). No item IDs (all are block items). Texture layers 2128–2200: 18 per stage from 2128, then the torch | [copper](verification/2026-10-25-v0.12-copper.md) |
 | 24576–27135 | v0.12 wool then concrete stairs, 16 colours each in `DyeColor` order, 80 states per family (`slab_stair_states` local order, local 0 is the item); `slab_stair_states` families 57–88 (the family field widened from 6 to 7 bits in memory only) | [colour](verification/2026-10-25-v0.12-colour.md) |
 | 27136–27295 | Slabs for those 32 families, 5 states each: bottom, bottom wet, top, top wet, double | [colour](verification/2026-10-25-v0.12-colour.md) |
 | 27296–27567 | Candles, plain then the 16 dyes, 16 states each: `(candles - 1) * 4 + lit * 2 + wet` | [colour](verification/2026-10-25-v0.12-colour.md) |
@@ -494,6 +494,15 @@ Texture layers start at 2960, after v0.14's map sprites.
 New `MobKind` variants append after `Camel`; mob kinds are saved by name,
 but `MobKind::ALL` order is the LAN index, so the integrator appends the
 tracks' kinds in track order. Each track records what it used here.
+
+Track 1 allocation (2026-11-04, implemented/unverified): no new states,
+items or texture layers from its reserved ranges. Registered the 48 previously
+reserved copper powered-rod states 23284–23295, 23308–23319, 23332–23343 and
+23356–23367, without changing the copper encoding. Appended MobKinds
+`SkeletonHorse` / `ZombieHorse`, saved as `skeleton_horse` / `zombie_horse`.
+Procedural entity geometry and synthesized thunder need no texture IDs.
+See [track evidence and gaps](verification/2026-11-04-v0.15-lightning.md).
+
 
 ## Assessment branch ID reservations
 

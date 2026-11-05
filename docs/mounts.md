@@ -91,8 +91,20 @@ standing timers survive mount save/reload; old saves default to standing.
 Random sitting still uses the retained simplified idle schedule, and exact
 pose-transition animation, collision height and input acceptance remain open.
 
-Current parity gaps: undead horses are not
-implemented (skeleton horses come from lightning traps, and there is no lightning yet);
+## Undead horses (v0.15, implemented/unverified)
+
+Skeleton horses come from thunderstorm traps: approach within ten blocks to
+trigger four tamed horses with skeleton riders. Once their riders are gone,
+use a saddle and ride through the ordinary horse controls. Summoned untamed
+skeleton horses cannot be tamed by mounting. Zombie horses spawn in their
+Java 26.3 biome monster lists with zombie riders, tame like horses and eat
+red mushrooms. Both accept horse armor, never breed, and keep their saddles,
+attributes, riders and trap timers through saves. Skeleton horses drop bones;
+zombie horses drop rotten flesh. Original skeleton and green horse models use
+the shared horse rig. See [evidence and differences](verification/2026-11-04-v0.15-lightning.md),
+including missing jockey spears, trap enchantments and exact underwater travel.
+
+Current parity gaps:
 horse coats/armor and sounds are procedural approximations; horse herds now share the first
 member's coat while keeping independent markings, as Java 26.3
 `Horse.finalizeSpawn`/`HorseGroupData` do. Saved coat/marking IDs are unchanged. Water-current steering/bubble columns and exact

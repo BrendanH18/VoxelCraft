@@ -198,6 +198,7 @@ impl Game {
             spawning: self.gamerules.bool("spawn_mobs"),
             dimension: self.dimension,
         };
+        self.mobs.entities.tick_lightning(dt, &mut self.world, &ctx, self.weather.is_thundering());
         let mut smashed = Vec::new();
         for event in self.mobs.entities.update_difficulty(dt, &self.world, &ctx, self.difficulty) {
             match event {
@@ -234,6 +235,13 @@ impl Game {
                             Some(hit) => bot.agent.hurt_knocked(damage, cause, &hit, &mut self.mobs.entities),
                             None => bot.agent.hurt(damage, cause, knockback.as_dvec3(), &mut self.mobs.entities),
                         };
+                    }
+                }
+                EntityEvent::PlayerLightning { player } => {
+                    if player == PlayerId::HOST {
+                        self.damage_player_armored(5., "was struck by lightning");
+                    } else if let Some(bot) = self.agents.by_id_mut(player) {
+                        bot.agent.hurt(5., "was struck by lightning", DVec3::ZERO, &mut self.mobs.entities);
                     }
                 }
                 EntityEvent::PlayerFall { player, damage } => {
@@ -362,6 +370,10 @@ impl Game {
                     );
                     let source = mob_sound_source(sound);
                     let (sound, gain) = match sound {
+                        MobSound::Thunder => {
+                            self.audio.play_in(SoundSource::Weather, Sound::Thunder, None, 1., (0.8, 1.));
+                            continue;
+                        }
                         MobSound::Bell => (Sound::Bell, 1.0),
                         // Procedural stand-ins for Java's `wandering_trader.disappeared`/`reappeared`.
                         MobSound::TraderDrink(true) => (Sound::Teleport, 0.5),
@@ -510,6 +522,7 @@ fn mob_sound_source(sound: MobSound) -> Option<SoundSource> {
     match sound {
         // `AbstractVillager`, boats and the dragon's smashing: `NEUTRAL`, `NEUTRAL`, `HOSTILE`.
         MobSound::TraderDrink(_) | MobSound::BoatPaddle(_) => Some(SoundSource::Neutral),
+        MobSound::Thunder => Some(SoundSource::Weather),
         MobSound::DragonSmash => Some(SoundSource::Hostile),
         // Skeletons and pillagers shoot as hostile mobs, not as the player.
         MobSound::Bow => Some(SoundSource::Hostile),
@@ -540,7 +553,9 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Witch => Voice::Witch,
         MobKind::Villager | MobKind::WanderingTrader => Voice::Villager,
         MobKind::TraderLlama | MobKind::Llama | MobKind::Camel => Voice::Cow,
-        MobKind::Horse | MobKind::Donkey | MobKind::Mule => Voice::Horse,
+        MobKind::SkeletonHorse | MobKind::ZombieHorse | MobKind::Horse | MobKind::Donkey | MobKind::Mule => {
+            Voice::Horse
+        }
         MobKind::IronGolem => Voice::Cow,
         MobKind::SnowGolem => Voice::Slime,
         MobKind::Piglin | MobKind::PiglinBrute => Voice::Piglin,

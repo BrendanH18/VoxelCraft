@@ -43,6 +43,7 @@ pub enum Command {
     Clear,
     Kill,
     Summon(crate::entity::MobKind, PositionSpec),
+    SummonLightning(PositionSpec),
     Mode(GameMode),
     Teleport(PositionSpec),
     SpawnPoint(PositionSpec),
@@ -340,7 +341,9 @@ pub fn tab_complete(input: &str) -> Option<String> {
             None => return None,
         },
         "summon" if stem.len() <= 1 => {
-            let names: Vec<String> = crate::entity::MobKind::ALL.iter().map(|k| k.name().replace(' ', "_")).collect();
+            let mut names: Vec<String> =
+                crate::entity::MobKind::ALL.iter().map(|k| k.name().replace(' ', "_")).collect();
+            names.push("lightning_bolt".into());
             let refs: Vec<&str> = names.iter().map(String::as_str).collect();
             complete_options(&refs, partial)?
         }
@@ -476,6 +479,12 @@ impl Command {
             ["give", name, n] => Self::Give(item(name)?, n.parse::<u8>().ok().filter(|n| *n > 0).ok_or_else(bad)?),
             ["clear"] | ["clear", "@s" | "@p"] => Self::Clear,
             ["kill"] | ["kill", "@s" | "@p"] => Self::Kill,
+            ["summon", "lightning_bolt" | "minecraft:lightning_bolt"] => {
+                Self::SummonLightning(PositionSpec([Coordinate::Relative(0.0); 3]))
+            }
+            ["summon", "lightning_bolt" | "minecraft:lightning_bolt", x, y, z] => {
+                Self::SummonLightning(PositionSpec::parse(x, y, z)?)
+            }
             ["summon", name] => Self::Summon(
                 crate::entity::MobKind::from_name(name).ok_or_else(bad)?,
                 PositionSpec([Coordinate::Relative(0.0), Coordinate::Relative(0.0), Coordinate::Relative(0.0)]),
@@ -592,6 +601,7 @@ impl Command {
                 | Self::Clear
                 | Self::Kill
                 | Self::Summon(..)
+                | Self::SummonLightning(..)
                 | Self::Mode(..)
                 | Self::Teleport(..)
                 | Self::SpawnPoint(..)

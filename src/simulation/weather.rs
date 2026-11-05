@@ -28,8 +28,7 @@ pub const RAINING_ABOVE: f64 = 0.2;
 
 pub struct Weather {
     pub raining: bool,
-    /// Thunderstorms currently share rain rendering; retained for command
-    /// state, saving, and future lightning.
+    /// Thunder target state; faded levels gate lightning and spawn light.
     pub thundering: bool,
     /// Seconds until rain starts or stops.
     pub timer: f64,
@@ -153,8 +152,7 @@ impl Weather {
         }
     }
 
-    /// Starts a thunderstorm; rendering and precipitation match rain until
-    /// lightning is implemented.
+    /// Starts a thunderstorm; faded levels gate the per-chunk bolt rolls.
     pub fn set_thunder(&mut self, now: bool) {
         self.set(true, now);
         self.thundering = true;

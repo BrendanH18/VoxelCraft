@@ -43,10 +43,10 @@ fn layout_fits_the_reservation_and_round_trips() {
             None => assert_eq!(b.name(), "unknown", "{id} stays unregistered"),
         }
     }
-    // Three new blocks of copper, four cut and chiseled, 195 states per
-    // stage for the others (2 + 4 + 80 + 5 + 24 + 32 + 2 + 6 + 4 + 24 + 12)
+    // Three new blocks of copper, four cut and chiseled, 207 states per
+    // stage for the others (2 + 4 + 80 + 5 + 24 + 32 + 2 + 6 + 4 + 24 + 24)
     // and five torch states.
-    assert_eq!(count, 3 + 8 + 4 * 195 + 5);
+    assert_eq!(count, 3 + 8 + 4 * 207 + 5);
     assert_eq!(state(Block::COPPER_BLOCK), Some(Copper { family: Family::Block, stage: Stage::Unaffected, local: 0 }));
     assert_eq!(block(Family::Block, Stage::Unaffected, 0), Block::COPPER_BLOCK);
     for id in (0..STATE_CAPACITY as u16).filter(|&id| !owns(id) && id != 231) {
@@ -60,9 +60,9 @@ fn layout_fits_the_reservation_and_round_trips() {
     assert_eq!(Family::Chest.origin(), 23176);
     assert_eq!(Family::Rod.origin(), 23272);
     assert_eq!(Family::Torch.origin(), 23368);
-    // Chests register their double halves; powered rods stay free.
+    // Chests register their double halves; powered rods are registered.
     assert_eq!(Block(Family::Chest.origin() + 8).name(), "copper chest");
-    assert_eq!(Block(Family::Rod.origin() + 12).name(), "unknown");
+    assert_eq!(Block(Family::Rod.origin() + 12).name(), "lightning rod");
     // Texture layers stay inside the track's 2128–2383.
     assert_eq!((t::BASE, t::END), (2128, 2201));
 }

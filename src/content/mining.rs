@@ -7,7 +7,7 @@ include!(concat!(env!("OUT_DIR"), "/mining_tags.rs"));
 /// The reference name of an existing block, where VoxelCraft's display label
 /// differs. Unlisted names are already the reference name or have no
 /// reference counterpart.
-fn reference_name(base: Block) -> &'static str {
+pub(crate) fn reference_name(base: Block) -> &'static str {
     match base.name() {
         "grass" | "snowy grass" => "grass block",
         "snow" => "snow block",

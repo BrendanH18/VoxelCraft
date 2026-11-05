@@ -207,9 +207,28 @@ impl Entities {
                 storage.entry(chunk).minecarts.push(c);
             },
         );
+        let horse_chunks: FxHashMap<_, _> = self
+            .mobs
+            .iter()
+            .filter(|m| super::undead_mounts::undead(m.kind))
+            .map(|m| {
+                (
+                    super::mounts::MOB_VEHICLE | m.uid,
+                    (
+                        crate::world::chunk::chunk_of(m.pos.floor().as_ivec3()),
+                        m.mount.as_ref().is_some_and(|s| s.rider.is_some()),
+                    ),
+                )
+            })
+            .collect();
         unload(
             &mut self.mobs,
             |m| {
+                if let Some(vehicle) = m.riding
+                    && let Some(&(chunk, ridden)) = horse_chunks.get(&vehicle)
+                {
+                    return if ridden || world.chunk_loaded(chunk) { None } else { Some(chunk) };
+                }
                 if let Some(cart) = m.riding {
                     // Passengers go with their vehicle, wherever they stand.
                     if let Some(&chunk) = stored_carts.get(&cart) {

@@ -30,6 +30,7 @@ pub mod golem;
 pub mod item;
 pub mod leash;
 mod lifecycle;
+pub mod lightning;
 mod look;
 pub mod minecart;
 mod mob;
@@ -51,6 +52,7 @@ mod spawn_rules;
 mod spawning;
 mod thrown;
 pub mod tnt;
+pub mod undead_mounts;
 pub mod villager;
 mod villager_breeding;
 mod villager_gossip;
@@ -98,6 +100,7 @@ pub const ATTACK_COOLDOWN: f64 = 0.5;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MobSound {
     Bell,
+    Thunder,
     /// A wandering trader finished its Invisibility potion (true) or milk (false).
     TraderDrink(bool),
     BoatPaddle(bool),
@@ -151,6 +154,10 @@ pub enum EntityEvent {
         cause: &'static str,
     },
     /// An equine's landing applies the same fall damage to its rider.
+    /// Lightning deals five armored points, unaffected by difficulty.
+    PlayerLightning {
+        player: PlayerId,
+    },
     PlayerFall {
         player: PlayerId,
         damage: f32,
@@ -715,6 +722,8 @@ pub struct Entities {
     pub eyes: Vec<eye::EnderEye>,
     pub fireballs: Vec<fireball::Fireball>,
     pub puffs: Vec<Puff>,
+    pub lightning: Vec<lightning::Bolt>,
+    lightning_remainder: f64,
     pub tnt: Vec<tnt::PrimedTnt>,
     /// Dropped items. They stay put (and don't age) while their chunk is
     /// unloaded, and are saved with the world.
@@ -816,6 +825,8 @@ impl Entities {
             eyes: Vec::new(),
             fireballs: Vec::new(),
             puffs: Vec::new(),
+            lightning: Vec::new(),
+            lightning_remainder: 0.,
             tnt: Vec::new(),
             items: Vec::new(),
             orbs: Vec::new(),
@@ -1418,6 +1429,7 @@ impl Entities {
         model::build_bobbers(&self.bobbers, camera, alpha, &mut self.verts);
         model::build_eyes(&self.eyes, camera, time, alpha, &mut self.verts);
         model::build_fireballs(&self.fireballs, camera, time, alpha, &mut self.verts);
+        model::build_lightning(&self.lightning, camera, &mut self.verts);
         model::build_puffs(&self.puffs, camera, alpha, &mut self.verts);
         model::build_orbs(&self.orbs, camera, max_dist, time, alpha, &mut self.verts);
         model::build_minecarts(&self.minecarts, camera, alpha, &mut self.verts);
@@ -3228,13 +3240,17 @@ mod tests {
     #[test]
     fn creeper_hisses_then_explodes_unless_you_run() {
         let world = Grid::flat(10);
+        for (charged, power) in [(false, 3.), (true, 6.)] {
+            let mut e = Entities::new(3);
+            e.spawn(MobKind::Creeper, DVec3::new(0.5, 10.0, 0.5));
+            e.mobs[0].lightning_charged = charged;
+            let events = run(&mut e, &world, &night(DVec3::new(2.5, 10.0, 0.5)), 2.0);
+            let fuse = events.iter().position(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Fuse, .. }));
+            let boom = events.iter().position(|ev| matches!(ev, EntityEvent::Explosion { power:p, .. } if *p == power));
+            assert!(fuse.unwrap() < boom.unwrap(), "{events:?}");
+            assert!(e.mobs.is_empty(), "the creeper is gone");
+        }
         let mut e = Entities::new(3);
-        e.spawn(MobKind::Creeper, DVec3::new(0.5, 10.0, 0.5));
-        let events = run(&mut e, &world, &night(DVec3::new(2.5, 10.0, 0.5)), 2.0);
-        let fuse = events.iter().position(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Fuse, .. }));
-        let boom = events.iter().position(|ev| matches!(ev, EntityEvent::Explosion { .. }));
-        assert!(fuse.unwrap() < boom.unwrap(), "{events:?}");
-        assert!(e.mobs.is_empty(), "the creeper is gone");
 
         // Running out of range puts the fuse out.
         e.spawn(MobKind::Creeper, DVec3::new(0.5, 10.0, 0.5));

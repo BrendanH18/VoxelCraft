@@ -109,6 +109,7 @@ pub fn tick_world_rules(world: &mut World, player: DVec3, fire_tick: bool, rando
         world.tick_fire(TICK_SECONDS, player);
     }
     world.update_block_light_within(LIGHT_TICK_BUDGET);
+    world.tick_precipitation(random_tick_speed);
     world.tick_random_rules(TICK_SECONDS, player, random_tick_speed, fire_tick);
     world.tick_leaf_decay(TICK_SECONDS);
     world.update_block_light_within(LIGHT_TICK_BUDGET);

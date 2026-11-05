@@ -169,6 +169,8 @@ pub enum MobKind {
     Llama,
     /// Desert-village mount: two seats, dashes, sits down now and then.
     Camel,
+    SkeletonHorse,
+    ZombieHorse,
 }
 
 impl MobKind {
@@ -195,7 +197,7 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 54] = [
+    pub const ALL: [MobKind; 56] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -250,6 +252,8 @@ impl MobKind {
         MobKind::Mule,
         MobKind::Llama,
         MobKind::Camel,
+        MobKind::SkeletonHorse,
+        MobKind::ZombieHorse,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -309,13 +313,15 @@ impl MobKind {
             MobKind::Mule => "mule",
             MobKind::Llama => "llama",
             MobKind::Camel => "camel",
+            MobKind::SkeletonHorse => "skeleton_horse",
+            MobKind::ZombieHorse => "zombie_horse",
         }
     }
 
     /// Looks a mob up by name (spaces or underscores).
     pub fn from_name(name: &str) -> Option<MobKind> {
         let name = name.strip_prefix("minecraft:").unwrap_or(name).replace('_', " ");
-        Self::ALL.into_iter().find(|k| k.name() == name)
+        Self::ALL.into_iter().find(|k| k.name().replace('_', " ") == name)
     }
 
     /// Collision box dimensions for movement and spawn-space checks.
@@ -366,7 +372,7 @@ impl MobKind {
             MobKind::Parrot => Shape::new(0.25, 0.9),
             MobKind::Rabbit => Shape::new(0.2, 0.5),
             MobKind::Goat => Shape::new(0.45, 1.3),
-            MobKind::Horse => Shape::new(0.698, 1.6),
+            MobKind::SkeletonHorse | MobKind::ZombieHorse | MobKind::Horse => Shape::new(0.698, 1.6),
             MobKind::Donkey => Shape::new(0.698, 1.5),
             MobKind::Mule => Shape::new(0.698, 1.6),
             MobKind::Llama => Shape::new(0.45, 1.87),
@@ -417,6 +423,8 @@ impl MobKind {
             MobKind::Rabbit => 3.0,
             MobKind::Horse | MobKind::Donkey | MobKind::Mule | MobKind::Llama => 30.0,
             MobKind::Camel => 32.0,
+            MobKind::SkeletonHorse => 15.,
+            MobKind::ZombieHorse => 25.,
         }
     }
 
@@ -644,14 +652,19 @@ impl MobKind {
             | MobKind::Skeleton
             | MobKind::WitherSkeleton
             | MobKind::ZombifiedPiglin
-            | MobKind::Zoglin => Creature::Undead,
+            | MobKind::Zoglin
+            | MobKind::SkeletonHorse
+            | MobKind::ZombieHorse => Creature::Undead,
             MobKind::Spider | MobKind::CaveSpider | MobKind::Silverfish => Creature::Arthropod,
             _ => Creature::Other,
         }
     }
 
     pub(super) fn burns_in_sun(self) -> bool {
-        matches!(self, MobKind::Zombie | MobKind::Drowned | MobKind::ZombieVillager | MobKind::Skeleton)
+        matches!(
+            self,
+            MobKind::Zombie | MobKind::Drowned | MobKind::ZombieVillager | MobKind::Skeleton | MobKind::ZombieHorse
+        )
     }
 
     fn wander_speed(self) -> f64 {
@@ -741,6 +754,8 @@ impl MobKind {
                 &[(Item::ROTTEN_FLESH, 0, 2)]
             }
             MobKind::Skeleton => &[(Item::BONE, 0, 2), (Item::ARROW, 0, 2)],
+            MobKind::SkeletonHorse => &[(Item::BONE, 0, 2)],
+            MobKind::ZombieHorse => &[(Item::ROTTEN_FLESH, 2, 3)],
             MobKind::Creeper => &[(Item::GUNPOWDER, 0, 2)],
             MobKind::Spider | MobKind::CaveSpider => &[(Item::STRING, 0, 2), (Item::SPIDER_EYE, -1, 1)],
             MobKind::ZombifiedPiglin => &[(Item::ROTTEN_FLESH, 0, 1), (Item::GOLD_NUGGET, 0, 1)],
@@ -975,6 +990,10 @@ pub struct Mob {
     /// Blazes: glowing while charging a burst; which shot of the burst is
     /// next; rising to stay `height_offset` above the target's eyes.
     pub charged: bool,
+    pub lightning_charged: bool,
+    pub undead_mount: super::undead_mounts::State,
+    /// Java ConversionTracker water exposure and conversion countdown, in ticks.
+    pub water_conversion: super::lightning::WaterConversion,
     attack_step: u8,
     lift: bool,
     height_offset: f32,
@@ -1114,6 +1133,9 @@ impl Mob {
             teleport_timer: 0.0,
             since_anger: 1e3,
             charged: false,
+            lightning_charged: false,
+            undead_mount: Default::default(),
+            water_conversion: Default::default(),
             attack_step: 0,
             lift: false,
             height_offset: 0.5,
@@ -1227,7 +1249,8 @@ impl Mob {
             Shape::new(0.255 * self.size as f64, 0.51 * self.size as f64)
         } else if self.baby || self.age < 0 {
             let s = self.kind.shape();
-            Shape::new(s.half_width * 0.5, s.height * 0.5)
+            let scale = if super::undead_mounts::undead(self.kind) { 0.7 } else { 0.5 };
+            Shape::new(s.half_width * scale, s.height * scale)
         } else {
             self.kind.shape()
         }
@@ -1327,6 +1350,9 @@ impl Mob {
     }
 
     fn take_damage(&mut self, amount: f32, attacked: bool, rng: &mut Rng) -> bool {
+        if self.undead_mount.protection > 0. {
+            return false;
+        }
         let amount = if self.kind == MobKind::MagmaCube {
             crate::simulation::survival::armor_reduce(amount, self.size as u32 * 3, 0.0)
         } else {
@@ -1407,6 +1433,7 @@ impl Mob {
         events: &mut Vec<EntityEvent>,
     ) {
         let event_start = events.len();
+        self.tick_water_conversion(dt, world);
         let dtf = dt as f32;
         self.idle += dtf;
         if self.alive() {
@@ -1468,7 +1495,12 @@ impl Mob {
 
         super::aquatic::environment(self, dtf, world);
         // Bred horses and donkeys age with the shared animal clock; mules only here.
-        if super::mounts::equine(self.kind) && self.animal.is_none() && self.baby && self.age < 0 {
+        if super::mounts::equine(self.kind)
+            && !super::undead_mounts::undead(self.kind)
+            && self.animal.is_none()
+            && self.baby
+            && self.age < 0
+        {
             self.grow += dtf * 20.;
             let ticks = self.grow.floor() as i32;
             self.grow -= ticks as f32;
@@ -1714,7 +1746,13 @@ impl Mob {
                 if dist <= 0.9 {
                     return (None, 0.0);
                 }
-                let speed = if self.kind == MobKind::IronGolem { 1.5 } else { self.kind.chase_speed() };
+                let speed = if super::undead_mounts::undead(self.kind) {
+                    self.mount.as_ref().map_or(2.2, |s| s.speed * 43.17)
+                } else if self.kind == MobKind::IronGolem {
+                    1.5
+                } else {
+                    self.kind.chase_speed()
+                };
                 let sees = line_of_sight(world, self.pos + DVec3::Y * (self.shape().height * 0.85), goal + DVec3::Y);
                 return (self.pursue(world, goal, speed, sees, true, rng), speed);
             }
@@ -2454,7 +2492,7 @@ impl Mob {
             let center = self.pos + DVec3::Y * (self.shape().height * 0.5);
             events.push(EntityEvent::Explosion {
                 center,
-                power: CREEPER_POWER,
+                power: CREEPER_POWER * if self.lightning_charged { 2. } else { 1. },
                 cause: "was blown up by a creeper",
                 credit_player: false,
             });
@@ -2680,7 +2718,10 @@ impl Mob {
         let head = (self.pos + DVec3::new(0.0, self.shape().height - 0.1, 0.0)).floor().as_ivec3();
         let in_lava = physics::touches_block(world, self.pos, self.shape(), Block::is_lava);
         let in_fire = physics::touches_block(world, self.pos, self.shape(), Block::is_fire);
+        let body_protected =
+            self.kind == MobKind::ZombieHorse && self.mount.as_ref().is_some_and(|s| s.slots[1].is_some());
         let sunburn = self.kind.burns_in_sun()
+            && !body_protected
             && ctx.daylight > BURN_DAYLIGHT
             && !ctx.raining
             && !self.in_water

@@ -217,7 +217,7 @@ pub const JAVA_RULES: [RuleDef; 59] = [
     integer("max_command_sequence_length", "maxCommandChainLength", 65536, 0, i32::MAX, N("no functions")),
     integer("max_entity_cramming", "maxEntityCramming", 24, 0, i32::MAX, M("v0.19")),
     integer("max_minecart_speed", "minecartMaxSpeed", 8, 1, 1000, N("experimental minecart rewrite")),
-    integer("max_snow_accumulation_height", "snowAccumulationHeight", 1, 0, 8, M("v0.15")),
+    integer("max_snow_accumulation_height", "snowAccumulationHeight", 1, 0, 8, I),
     boolean("mob_drops", "doMobLoot", true, I),
     boolean("mob_explosion_drop_decay", "mobExplosionDropDecay", true, I),
     boolean("mob_griefing", "mobGriefing", true, P),
@@ -473,6 +473,7 @@ impl GameRules {
             lava_source_conversion: self.bool("lava_source_conversion"),
             fire_spread_radius: self.int("fire_spread_radius_around_player"),
             difficulty: crate::world::WorldRules::default().difficulty,
+            max_snow_accumulation_height: self.int("max_snow_accumulation_height") as u8,
         }
     }
 
@@ -994,6 +995,7 @@ mod tests {
                 lava_source_conversion: true,
                 fire_spread_radius: 16,
                 difficulty: 2,
+                max_snow_accumulation_height: 1,
             }
         );
     }

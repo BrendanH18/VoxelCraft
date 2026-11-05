@@ -165,6 +165,10 @@ impl Game {
                     self.on_death();
                 }
             }
+            Command::SummonLightning(pos) => {
+                self.mobs.entities.summon_lightning(pos.resolve(self.session.player.pos)?, false);
+                return Ok("Summoned lightning bolt".into());
+            }
             Command::Summon(kind, pos) => {
                 let at = pos.resolve(self.session.player.pos)?;
                 self.mobs.entities.spawn(kind, at);

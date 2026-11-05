@@ -40,6 +40,7 @@ impl Entities {
                 .map(|o| json!({"at": pair(o.pos, o.previous_pos), "value": o.value, "count": o.count, "phase": o.phase, "age": o.age})).collect::<Vec<_>>(),
             "tnt": self.tnt.iter().filter(|t| near(t.pos)).take(MAX)
                 .map(|t| json!({"at": pair(t.pos, t.previous_pos), "fuse": t.fuse})).collect::<Vec<_>>(),
+            "lightning": self.lightning.iter().filter(|b| near(b.pos)).take(MAX).map(|b| json!([b.pos.to_array(),b.seed,b.life])).collect::<Vec<_>>(),
             "fight": self.fight.as_ref().map(|f| f.replica_json()),
         })
     }
@@ -47,6 +48,20 @@ impl Entities {
     /// Replaces this client's copies with the host's latest [`Entities::replica_extras`].
     pub fn apply_replica_extras(&mut self, v: &Value) {
         let list = |key: &str| v[key].as_array().map(|a| a.iter().take(128).collect::<Vec<_>>()).unwrap_or_default();
+        self.lightning = list("lightning")
+            .into_iter()
+            .filter_map(|v| {
+                let a = v[0].as_array()?;
+                let p = DVec3::new(a.first()?.as_f64()?, a.get(1)?.as_f64()?, a.get(2)?.as_f64()?);
+                p.is_finite().then(|| {
+                    super::lightning::Bolt::replica(
+                        p,
+                        v[1].as_u64().unwrap_or(0),
+                        v[2].as_i64().unwrap_or(-1).clamp(-20, 2) as i32,
+                    )
+                })
+            })
+            .collect();
         self.pearls = list("pearls").into_iter().filter_map(unpair).map(|(p, q)| Pearl::replica(p, q)).collect();
         self.potions = list("potions")
             .into_iter()

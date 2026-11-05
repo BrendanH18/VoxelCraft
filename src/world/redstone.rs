@@ -149,6 +149,11 @@ impl World {
         let data = slot.data.clone();
         let mut i = 0;
         data.for_each_block(|b| {
+            let local =
+                IVec3::new(i % CHUNK_SIZE_I, i / (CHUNK_SIZE_I * CHUNK_SIZE_I), i / CHUNK_SIZE_I % CHUNK_SIZE_I);
+            if super::lightning::rod(b).is_some() {
+                self.track_lightning_rod(c * CHUNK_SIZE_I + local, Block::AIR, b);
+            }
             if r::component(b).is_some()
                 || b.is_door()
                 || b.is_gate()
@@ -186,6 +191,9 @@ impl World {
     /// Strong output energizes a conductor; weak output activates devices only.
     fn emitted_signal(&self, p: IVec3, direction: IVec3, strong: bool, wires: bool) -> u8 {
         let Some(b) = self.get_block(p) else { return 0 };
+        if let Some(power) = super::lightning::rod_signal(b, direction, strong) {
+            return power;
+        }
         if let Some(power) = self.trapped_signal(p, b, direction, strong) {
             return power;
         }
@@ -606,6 +614,9 @@ impl World {
 
     fn redstone_scheduled_tick(&mut self, p: IVec3) {
         let Some(b) = self.get_block(p) else { return };
+        if super::lightning::rod(b).is_some() {
+            return self.reset_lightning_rod(p, b);
+        }
         if super::scaffolding::is_scaffolding(b) {
             return self.tick_scaffolding(p);
         }
@@ -710,6 +721,7 @@ impl World {
     }
 
     pub(super) fn unload_redstone_chunk(&mut self, c: IVec3) {
+        self.unload_lightning_chunk(c);
         if self.redstone.pending.keys().any(|&p| super::chunk::chunk_of(p) == c) {
             self.redstone.unloaded_at.entry(c).or_insert(self.redstone.tick);
         }
@@ -1097,6 +1109,7 @@ impl World {
                         && seq >= 0
                         && ((1100..=1599).contains(&family)
                             || matches!(family, 226 | 249 | 904)
+                            || u16::try_from(family).is_ok_and(|f| super::lightning::rod(Block(f)).is_some())
                             || family == i64::from(super::scaffolding::SCAFFOLDING.0)
                             // A pending coral death (`CoralPlantBlock.tryScheduleDieTick`).
                             || u16::try_from(family)
