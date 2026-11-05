@@ -89,7 +89,20 @@ fn loopback_handshake_chunk_edit_and_clean_disconnect() {
         }
     }
     assert!(closed, "server must send the shutdown reason before EOF");
-    assert!(client.poll().is_err());
+    // Nonblocking TCP can deliver the disconnect frame before its FIN.
+    // Keep checking the clean EOF contract after the final packet arrives.
+    let eof_deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        match client.poll() {
+            Err(error) => {
+                assert_eq!(error.kind(), std::io::ErrorKind::UnexpectedEof);
+                break;
+            }
+            Ok(packets) => assert!(packets.is_empty(), "packets after the shutdown reason"),
+        }
+        assert!(Instant::now() < eof_deadline, "shutdown EOF did not arrive");
+        std::thread::sleep(Duration::from_millis(1));
+    }
     eprintln!(
         "LAN loopback: first chunk {:.2} ms / {} bytes, edit {:.2} ms, total {} bytes received / {} sent",
         join.as_secs_f64() * 1000.0,
