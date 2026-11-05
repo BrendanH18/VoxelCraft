@@ -83,7 +83,9 @@ pub struct Stack {
     pub repair_cost: u16,
     /// A plain custom display name (Java uses a styled text component).
     pub name: StackName,
-    /// Captured water creature variant and health; zero means an ordinary item.
+    /// Item-specific component payload: captured creature data, or potion index + 1
+    /// on tipped arrows and the bolt in a charged crossbow (u32::MAX = empty tipped
+    /// bolt). Zero is the default.
     pub entity_data: u32,
     /// A lodestone compass's `lodestone_tracker`; `None` on everything else.
     pub lodestone: Option<Lodestone>,
@@ -167,6 +169,17 @@ impl Stack {
     }
 
     pub fn display_name(&self) -> &str {
+        if self.name.as_str().is_none()
+            && self.item == Item::TIPPED_ARROW
+            && let Some(p) = self.arrow_potion()
+        {
+            return crate::item::tipped_arrow_name(p);
+        }
+        if self.name.as_str().is_none()
+            && let Some(p) = self.lingering_contents()
+        {
+            return crate::item::lingering_name(p);
+        }
         // `CompassItem.getName`.
         self.name
             .as_str()

@@ -65,18 +65,24 @@ impl World {
     pub fn lightning_strike_blocks(&mut self, pos: glam::DVec3) {
         let p = (pos - glam::DVec3::Y * 1e-6).floor().as_ivec3();
         if let Some(c) = self.get_block(p).and_then(rod) {
-            self.set_block(p, copper::block(Family::Rod, c.stage, c.local % 12 + 12));
+            // Waxed rods power too and stay waxed.
+            self.set_block(p, copper::encode(Copper { local: c.local % 12 + 12, ..c }));
         }
         self.clean_lightning_copper(p);
     }
     pub(super) fn reset_lightning_rod(&mut self, p: IVec3, b: Block) {
         if let Some(c) = rod(b).filter(|c| c.local >= 12) {
-            self.set_block(p, copper::block(Family::Rod, c.stage, c.local % 12));
+            self.set_block(p, copper::encode(Copper { local: c.local % 12, ..c }));
         }
     }
+    /// `LightningBolt.clearCopperOnLightningStrike`: struck waxed copper keeps
+    /// its stage but still starts the walks; the walks skip waxed blocks,
+    /// which aren't `WeatheringCopper`.
     pub fn clean_lightning_copper(&mut self, p: IVec3) {
         let Some(c) = self.get_block(p).and_then(copper::state).filter(|c| c.family.weathers()) else { return };
-        self.restage_copper(p, c, Stage::Unaffected, true);
+        if !c.waxed {
+            self.restage_copper(p, c, Stage::Unaffected, true);
+        }
         let walks = 3 + self.roll() % 3;
         for _ in 0..walks {
             let mut at = p;
@@ -90,7 +96,9 @@ impl World {
                             (self.roll() % 3) as i32 - 1,
                             (self.roll() % 3) as i32 - 1,
                         );
-                    if let Some(c) = self.get_block(q).and_then(copper::state).filter(|c| c.family.weathers()) {
+                    if let Some(c) =
+                        self.get_block(q).and_then(copper::state).filter(|c| c.family.weathers() && !c.waxed)
+                    {
                         if let Some(stage) = c.stage.previous() {
                             self.restage_copper(q, c, stage, true);
                         }
@@ -144,7 +152,7 @@ mod tests {
                     let b = w.get_block(p).unwrap();
                     assert_eq!(
                         rod(b),
-                        Some(Copper { family: Family::Rod, stage: Stage::Unaffected, local: local + 12 })
+                        Some(Copper { family: Family::Rod, stage: Stage::Unaffected, local: local + 12, waxed: false })
                     );
                     assert_eq!(rod_signal(b, IVec3::X, false), Some(15));
                     let back = -copper::rod_direction(local);
@@ -160,6 +168,45 @@ mod tests {
                     assert_eq!(rod(w.get_block(p).unwrap()).unwrap().local, local);
                 }
             }
+        }
+    }
+    #[test]
+    fn waxed_copper_stays_waxed_and_unoxidised_neighbours_still_clean() {
+        let mut w = world();
+        let p = IVec3::new(8, 140, 8);
+        let waxed_rod = copper::encode(Copper { family: Family::Rod, stage: Stage::Oxidized, local: 0, waxed: true });
+        w.set_block(p, waxed_rod);
+        w.lightning_strike_blocks(p.as_dvec3() + glam::DVec3::new(0.5, 1., 0.5));
+        let struck = rod(w.get_block(p).unwrap()).unwrap();
+        assert!(struck.waxed && struck.local >= 12 && struck.stage == Stage::Oxidized, "{struck:?}");
+        w.reset_lightning_rod(p, w.get_block(p).unwrap());
+        assert_eq!(w.get_block(p), Some(waxed_rod));
+        // A struck waxed block walks to unwaxed neighbours but never rolls back waxed ones.
+        let waxed = copper::encode(Copper { family: Family::Block, stage: Stage::Oxidized, local: 0, waxed: true });
+        let plain = copper::block(Family::Block, Stage::Oxidized, 0);
+        for x in -1..=1 {
+            for y in -1..=1 {
+                for z in -1..=1 {
+                    w.set_block(p + IVec3::new(x, y, z), if (x, y, z) == (0, 0, 0) { waxed } else { plain });
+                }
+            }
+        }
+        w.clean_lightning_copper(p);
+        assert_eq!(w.get_block(p), Some(waxed));
+        let cleaned = (0..27)
+            .map(|i| p + IVec3::new(i % 3 - 1, i / 3 % 3 - 1, i / 9 - 1))
+            .filter(|&q| copper::state(w.get_block(q).unwrap()).is_some_and(|c| c.stage < Stage::Oxidized))
+            .count();
+        assert!(cleaned > 0, "walks from waxed copper still clean unwaxed neighbours");
+        for x in [-2, 2] {
+            w.set_block(p + IVec3::new(x, 0, 0), waxed);
+        }
+        w.set_block(p, plain);
+        for _ in 0..20 {
+            w.clean_lightning_copper(p);
+        }
+        for x in [-2, 2] {
+            assert_eq!(w.get_block(p + IVec3::new(x, 0, 0)), Some(waxed));
         }
     }
     #[test]

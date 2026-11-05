@@ -970,7 +970,9 @@ impl Entities {
                     || m.kind.has_animal_state()
                     || super::undead_mounts::undead(m.kind)
                     || m.riding.is_some()
-                    || matches!(m.kind, MobKind::Zombie | MobKind::Husk | MobKind::Drowned))
+                    || matches!(m.kind, MobKind::Zombie | MobKind::Husk | MobKind::Drowned)
+                    || matches!(m.kind, MobKind::Stray | MobKind::Bogged | MobKind::Phantom)
+                    || m.freezing.is_some())
                     && m.alive()
                     && m.villager.is_none()
                     && !matches!(m.kind, MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama)
@@ -1538,6 +1540,15 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if let Some(s) = m.bee {
         v["bee"] = s.save();
     }
+    if let Some(bow) = &m.skeleton_bow {
+        v["skeleton_bow"] = json!(crate::inventory::stack_to_string(Some(**bow)));
+    }
+    if let Some(p) = &m.phantom {
+        v["phantom"] = p.save();
+    }
+    if let Some(f) = &m.freezing {
+        v["freezing"] = f.save();
+    }
     // Written only when set, so other mobs save as before: `Mob.homePosition`
     // and `homeRadius`, and the dolphin's `GotFish` and main hand.
     if let Some((p, r)) = m.restrict {
@@ -1587,7 +1598,18 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
             v["egg_timer"].as_f64().filter(|t| t.is_finite() && *t >= 0.0).unwrap_or(m.egg_timer as f64).min(600.0)
                 as f32;
     }
+    if let Some(p) = &mut m.phantom {
+        p.load(&v["phantom"]);
+    }
+    if kind.is_bow_skeleton()
+        && let Some(t) = v["skeleton_bow"].as_str()
+    {
+        m.skeleton_bow = crate::inventory::stack_from_str(t).flatten().filter(|s| s.item == Item::BOW).map(Box::new);
+    }
     m.sheared = v["sheared"].as_bool().unwrap_or(false);
+    if kind == MobKind::Skeleton && v["freezing"].is_object() {
+        m.freezing = Some(super::hostiles::Freezing::load(&v["freezing"]));
+    }
     if let Some(a) = m.animal.as_mut() {
         super::animals::load(a, &v["animal"]);
     }

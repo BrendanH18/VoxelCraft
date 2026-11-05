@@ -542,6 +542,14 @@ saved sign `waxed` flag. See [track evidence](verification/2026-11-04-v0.15-crop
 The plain candle recipe adds no IDs or layers; it uses the existing plain
 candle (27296), string and honeycomb.
 
+Track 4 allocation (2026-11-04, implemented, unverified): **1330**
+`tipped_arrow`, **1332** `lingering_potion`, **1333** `dragon_breath`.
+Existing **1020** `phantom_membrane` is retained. Appended MobKinds are
+`Stray`, `Bogged`, `Phantom`. No block states or reserved texture layers
+consumed (models use procedural vertex colour/noise). Item 1331, 1334–1349,
+block states 11136–11199 and layers 3264–3295 remain reserved, unused.
+See [hostiles evidence](verification/2026-11-04-v0.15-hostiles.md).
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

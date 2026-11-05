@@ -1336,7 +1336,7 @@ impl DragonFireball {
 }
 
 impl BreathCloud {
-    fn new(pos: DVec3, radius: f32, grow: f32, duration: u32, damage: f32) -> Self {
+    pub(super) fn new(pos: DVec3, radius: f32, grow: f32, duration: u32, damage: f32) -> Self {
         Self { pos, radius, grow, age: 0, duration, damage, cooldowns: Vec::new() }
     }
 

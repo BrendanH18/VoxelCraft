@@ -48,6 +48,8 @@ pub fn brew(potion: Potion, ingredient: Item) -> Option<Potion> {
         ("awkward", Item::MAGMA_CREAM) => to("fire_resistance"),
         ("awkward", Item::GHAST_TEAR) => to("regeneration"),
         ("awkward", Item::PUFFERFISH) => to("water_breathing"),
+        ("awkward", Item::PHANTOM_MEMBRANE) => to("slow_falling"),
+        ("water", Item::PHANTOM_MEMBRANE) => to("mundane"),
         ("awkward", Item::TURTLE_HELMET) => to("turtle_master"),
         ("water", Item::MAGMA_CREAM | Item::REDSTONE | Item::GHAST_TEAR) => to("mundane"),
         (id, Item::REDSTONE) if to(&format!("long_{id}")).is_some() => to(&format!("long_{id}")),
@@ -60,7 +62,7 @@ pub fn brew(potion: Potion, ingredient: Item) -> Option<Potion> {
 /// Whether `item` is used by any brewing mix (the ingredient slot takes
 /// only these).
 pub fn is_ingredient(item: Item) -> bool {
-    item == Item::GUNPOWDER || Potion::all().any(|p| brew(p, item).is_some())
+    item == Item::DRAGON_BREATH || item == Item::GUNPOWDER || Potion::all().any(|p| brew(p, item).is_some())
 }
 
 /// What `ingredient` turns the bottle `item` into: gunpowder makes a potion
@@ -75,8 +77,23 @@ pub fn brew_item(item: Item, ingredient: Item) -> Option<Item> {
     item.as_potion().and_then(|p| brew(p, ingredient)).map(Item::potion)
 }
 
+/// Brewing preserves the potion component when the container has one.
+pub fn brew_stack(stack: Stack, ingredient: Item) -> Option<Stack> {
+    let output = if ingredient == Item::DRAGON_BREATH {
+        stack.item.as_splash_potion().map(Stack::lingering_potion)
+    } else if let Some(p) = stack.lingering_contents() {
+        brew(p, ingredient).map(Stack::lingering_potion)
+    } else {
+        brew_item(stack.item, ingredient).map(|i| Stack::new(i, 1))
+    };
+    output.map(|out| Stack { item: out.item, entity_data: out.entity_data, count: 1, ..stack })
+}
+
 /// The bottle slots hold potions (and water bottles) and glass bottles.
 pub fn fits_bottle_slot(item: Item) -> bool {
+    if item == Item::LINGERING_POTION {
+        return true;
+    }
     item.as_potion().is_some() || item.as_splash_potion().is_some() || item == Item::GLASS_BOTTLE
 }
 
@@ -84,7 +101,7 @@ impl BrewingStand {
     /// Whether the ingredient would change at least one bottle.
     fn can_brew(&self) -> bool {
         let Some(ingredient) = self.ingredient else { return false };
-        self.bottles.iter().flatten().any(|b| brew_item(b.item, ingredient.item).is_some())
+        self.bottles.iter().flatten().any(|b| brew_stack(*b, ingredient.item).is_some())
     }
 
     pub fn is_brewing(&self) -> bool {
@@ -123,11 +140,15 @@ impl BrewingStand {
     fn finish(&mut self) {
         let Some(ingredient) = self.ingredient else { return };
         for bottle in self.bottles.iter_mut().flatten() {
-            if let Some(out) = brew_item(bottle.item, ingredient.item) {
-                *bottle = Stack::new(out, 1);
+            if let Some(out) = brew_stack(*bottle, ingredient.item) {
+                *bottle = out;
             }
         }
-        self.ingredient = take_one(self.ingredient);
+        self.ingredient = if ingredient.count == 1 {
+            ingredient.item.remainder().map(|i| Stack::new(i, 1))
+        } else {
+            take_one(self.ingredient)
+        };
     }
 
     /// Everything inside, for when the stand is broken.
@@ -204,6 +225,9 @@ impl World {
                 && stand.tick(dt as f32)
             {
                 self.brews_done.push(p);
+                if stand.ingredient.is_some_and(|s| s.item == Item::DRAGON_BREATH) {
+                    self.drops.push((p, Stack::new(Item::GLASS_BOTTLE, 1)));
+                }
             }
         }
         for i in before..self.brews_done.len() {

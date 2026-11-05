@@ -550,7 +550,9 @@ macro_rules! parts {($($p:expr),* $(,)?) => {{let mut out=Parts::new();$(out.pus
 mod animals;
 mod aquatic;
 mod bee;
+mod hostiles;
 mod mounts;
+mod phantom;
 
 /// Animated parts for a mob, in model space (pixels).
 fn pose(m: &Mob, time: f32) -> Parts {
@@ -559,6 +561,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
     let rx = Quat::from_rotation_x;
     match m.kind {
         MobKind::Bee => bee::pose(m, time),
+        MobKind::Phantom => phantom::pose(time),
         MobKind::SkeletonHorse | MobKind::ZombieHorse | MobKind::Horse | MobKind::Donkey | MobKind::Mule => {
             mounts::pose(m)
         }
@@ -615,6 +618,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
                 part(CHICKEN_HEAD, [0.0, 8.0, 2.0], head),
             ]
         }
+        MobKind::Stray | MobKind::Bogged => hostiles::pose(m, swing, head),
         MobKind::Skeleton => {
             // Bow raised toward the target while hunting, arms swinging otherwise.
             let aiming = m.ai == Ai::Chase;
@@ -912,6 +916,8 @@ pub fn build(
                 m.size as f32
             } else if m.kind == MobKind::WitherSkeleton {
                 1.2
+            } else if m.kind == MobKind::Phantom {
+                1. + m.phantom.as_ref().map_or(0., |p| f32::from(p.size) * 0.15)
             } else if m.kind == MobKind::ElderGuardian {
                 2.35
             } else if m.kind == MobKind::Pufferfish {
@@ -960,6 +966,9 @@ pub fn build(
                 let mut cuboid = *c;
                 animals::colour(m, &mut cuboid);
                 mounts::colour(m, &mut cuboid);
+                if matches!(m.kind, MobKind::Stray | MobKind::Bogged) {
+                    hostiles::colour(m, &mut cuboid);
+                }
                 if m.kind == MobKind::GlowSquid && c.color == [49, 71, 80] {
                     cuboid.color = [44, 161, 151];
                 }
@@ -1000,7 +1009,7 @@ pub fn build(
         }
         // Zombie villagers use the villager mesh, which is not the six-limb armor rig.
         if (m.kind.is_zombie() && m.kind != MobKind::ZombieVillager)
-            || m.kind == MobKind::Skeleton
+            || m.kind.is_bow_skeleton()
             || m.kind == MobKind::Piglin
         {
             let limbs = humanoid_armor(&posed);
@@ -1050,7 +1059,15 @@ pub fn build_arrows(arrows: &[Arrow], camera: DVec3, alpha: f64, out: &mut Vec<E
         // Stuck arrows sit with the tip buried.
         let origin = if a.is_stuck() { rel - a.dir * 0.2 } else { rel };
         for (i, c) in ARROW.iter().enumerate() {
-            push_cuboid(out, c, &|v: Vec3| origin + rot * v / 16.0, rot, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
+            let mut c = *c;
+            if i == 1 {
+                if let Some(p) = a.potion {
+                    c.color = p.colour();
+                } else if a.custom_effect.is_some() || a.tipped {
+                    c.color = [162, 99, 181];
+                }
+            }
+            push_cuboid(out, &c, &|v: Vec3| origin + rot * v / 16.0, rot, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
         }
     }
 }
@@ -1448,6 +1465,20 @@ fn charged_aura(m: &Mob, rel: Vec3, time: f32, out: &mut Vec<EntityVertex>) {
         let rib = glass([-0.025, 0., -0.025], [0.025, m.shape().height as f32 + 0.1, 0.025], [80, 155, 255], 0);
         let at = rel + Vec3::new(c * 0.5, -0.05, s * 0.5);
         push_cuboid(out, &rib, &|p| at + p, Quat::IDENTITY, ([255, 255, 0, 255], 255), ([255.; 3], 0.), i as f32);
+    }
+}
+/// Deterministic original motes for lingering area-effect clouds.
+pub fn build_clouds(clouds: &[super::lingering::Cloud], camera: DVec3, out: &mut Vec<EntityVertex>) {
+    for c in clouds {
+        let colour = c.potion.colour();
+        for i in 0..24 {
+            let angle = i as f32 * 2.399963 + c.age as f32 * 0.045;
+            let r = c.radius * ((i as f32 + 0.5) / 24.).sqrt();
+            let p =
+                (c.pos - camera).as_vec3() + Vec3::new(angle.cos() * r, 0.08 + (i % 4) as f32 * 0.08, angle.sin() * r);
+            let b = glass([-0.035; 3], [0.035; 3], colour, 0);
+            push_cuboid(out, &b, &|v| p + v, Quat::IDENTITY, ([230, 0, 0, 0], 0), (FIRE, 0.), i as f32);
+        }
     }
 }
 

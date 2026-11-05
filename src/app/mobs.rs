@@ -108,6 +108,7 @@ impl Game {
             (self.dimension == crate::world::terrain::Dimension::Overworld).then_some(self.world_spawn);
         self.mobs.entities.trader_spawning =
             self.gamerules.bool("spawn_wandering_traders") && self.gamerules.bool("spawn_mobs");
+        self.mobs.entities.phantom_spawning = self.gamerules.bool("spawn_phantoms");
         self.mobs.entities.monster_spawning = self.gamerules.bool("spawn_monsters");
         self.mobs.entities.spawner_blocks = self.gamerules.bool("spawner_blocks_work");
         self.mobs.entities.villager_griefing = self.gamerules.bool("mob_griefing");
@@ -170,6 +171,7 @@ impl Game {
             effects: self.session.vitals.effects.mask(),
             in_water: self.session.player.in_water,
             swimming: self.session.player.swimming,
+            time_since_rest: self.session.vitals.time_since_rest,
             ..Target::new(
                 PlayerId::HOST,
                 self.session.player.pos,
@@ -201,8 +203,11 @@ impl Game {
         self.world.set_bee_clock(self.dimension, (self.day_time.rem_euclid(1.) * 24000.).floor() as u32);
         self.mobs.entities.tick_lightning(dt, &mut self.world, &ctx, self.weather.is_thundering());
         let mut smashed = Vec::new();
+        let mut arrow_effects = crate::entity::ArrowEffectGate::default();
         for event in self.mobs.entities.update_world(dt, &mut self.world, &ctx, self.difficulty) {
             match event {
+                EntityEvent::ArrowEffectsStart { player } => arrow_effects.begin(player),
+                EntityEvent::ArrowEffectsEnd => arrow_effects.end(),
                 EntityEvent::ProjectileBlockHit { cell, pos, normal, arrow, burning } => {
                     self.world.hit_redstone_target(cell, pos, normal, arrow);
                     self.world.touch_redstone_ore(cell);
@@ -217,7 +222,9 @@ impl Game {
                         Some(away) => Some(-away),
                         None => Some(-knockback.as_dvec3()),
                     };
-                    if self.damage_player_from(self.difficulty.mob_damage(damage), cause, toward) > 0.0 {
+                    let accepted = self.damage_player_from(self.difficulty.mob_damage(damage), cause, toward);
+                    arrow_effects.record_hit(PlayerId::HOST, if self.session.vitals.is_dead() { 0. } else { accepted });
+                    if accepted > 0. {
                         if let Some(hit) = java {
                             let entities = &mut self.mobs.entities;
                             self.session.knocked_back(&hit, &mut || f64::from(entities.roll_range(0.0, 1.0)));
@@ -230,12 +237,15 @@ impl Game {
                     }
                 }
                 EntityEvent::PlayerHit { player, damage, knockback, java, cause } => {
+                    arrow_effects.record_hit(player, 0.);
                     if let Some(bot) = self.agents.by_id_mut(player) {
                         let damage = self.difficulty.mob_damage(damage);
-                        match java {
+                        let accepted = match java {
                             Some(hit) => bot.agent.hurt_knocked(damage, cause, &hit, &mut self.mobs.entities),
                             None => bot.agent.hurt(damage, cause, knockback.as_dvec3(), &mut self.mobs.entities),
                         };
+                        arrow_effects
+                            .record_hit(player, if bot.agent.session.vitals.is_dead() { 0. } else { accepted });
                     }
                 }
                 EntityEvent::PlayerLightning { player } => {
@@ -312,7 +322,7 @@ impl Game {
                     }
                 }
                 EntityEvent::PlayerEffect { player: PlayerId::HOST, effect, amplifier, ticks } => {
-                    if self.session.mode.is_survival() {
+                    if arrow_effects.allows() && self.session.mode.is_survival() {
                         let damage = self.session.vitals.apply_effect(effect, amplifier, ticks);
                         if damage > 0.0 {
                             self.damage_player(damage, "was killed by magic");
@@ -320,7 +330,8 @@ impl Game {
                     }
                 }
                 EntityEvent::PlayerEffect { player, effect, amplifier, ticks } => {
-                    if let Some(bot) = self.agents.by_id_mut(player)
+                    if arrow_effects.allows()
+                        && let Some(bot) = self.agents.by_id_mut(player)
                         && bot.agent.session.mode.is_survival()
                     {
                         let damage = bot.agent.session.vitals.apply_effect(effect, amplifier, ticks);
@@ -341,7 +352,7 @@ impl Game {
                     self.audio.play_in(SoundSource::Neutral, glass, Some(pos), 1.0, (0.9, 1.1));
                 }
                 EntityEvent::PlayerMagic { player: PlayerId::HOST, amount } => {
-                    if self.session.mode.is_survival() {
+                    if arrow_effects.allows() && self.session.mode.is_survival() {
                         if amount > 0.0 {
                             self.damage_player(amount, "was killed by magic");
                         } else {
@@ -351,11 +362,12 @@ impl Game {
                     }
                 }
                 EntityEvent::PlayerMagic { player, amount } => {
-                    if let Some(bot) = self.agents.by_id_mut(player)
+                    if arrow_effects.allows()
+                        && let Some(bot) = self.agents.by_id_mut(player)
                         && bot.agent.session.mode.is_survival()
                     {
                         if amount > 0.0 {
-                            bot.agent.hurt(amount, "was killed by magic", DVec3::ZERO, &mut self.mobs.entities);
+                            bot.agent.hurt_magic(amount, &mut self.mobs.entities);
                         } else {
                             bot.agent.session.vitals.health =
                                 (bot.agent.session.vitals.health - amount).min(crate::simulation::survival::MAX_HEALTH);
@@ -449,6 +461,7 @@ impl Game {
                     self.audio.play_in(SoundSource::Neutral, Sound::Hit, Some(pos + DVec3::Y * 0.5), 0.8, (0.9, 1.1))
                 }
                 EntityEvent::Shoot { .. }
+                | EntityEvent::LingeringCloud { .. }
                 | EntityEvent::MobHit { .. }
                 | EntityEvent::OwnerHurt { .. }
                 | EntityEvent::DragonXp { .. }
@@ -572,7 +585,9 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Sheep => Voice::Sheep,
         MobKind::Chicken => Voice::Chicken,
         MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombieVillager => Voice::Zombie,
-        MobKind::Skeleton | MobKind::WitherSkeleton => Voice::Skeleton,
+        MobKind::Phantom | MobKind::Skeleton | MobKind::Stray | MobKind::Bogged | MobKind::WitherSkeleton => {
+            Voice::Skeleton
+        }
         MobKind::Creeper => Voice::Creeper,
         MobKind::Spider | MobKind::CaveSpider => Voice::Spider,
         MobKind::ZombifiedPiglin => Voice::Zombie,

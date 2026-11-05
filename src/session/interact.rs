@@ -383,7 +383,8 @@ impl PlayerSession {
         }
         if let Some(index) = self.mob_target(world, entities)
             && let Some(item) = self.inventory.get(slot).map(|s| s.item)
-            && let Some(sheared) = entities.use_on_sheep(index, item)
+            && let Some(sheared) =
+                entities.use_on_sheep(index, item).or_else(|| entities.shear_bogged(index, item).then_some(true))
         {
             if self.mode.is_survival() {
                 if sheared {
@@ -455,6 +456,27 @@ impl PlayerSession {
                 self.inventory.take_one(slot);
             }
             return Ok(Some(Used::PearlThrown { from: eye }));
+        }
+        if held == Item::GLASS_BOTTLE && entities.collect_dragon_breath(p.pos, p.collision_shape()) {
+            if survival {
+                self.inventory.take_one(slot);
+            }
+            let bottle = crate::inventory::Stack::new(Item::DRAGON_BREATH, 1);
+            if (!creative || self.inventory.find(Item::DRAGON_BREATH).is_none()) && self.inventory.add_stack(bottle) > 0
+            {
+                entities.throw(bottle, eye, dir);
+            }
+            return Ok(Some(Used::Bucket(bucket::Effect::BottleFilled { at: p.pos.floor().as_ivec3() })));
+        }
+        if held == Item::LINGERING_POTION {
+            let potion =
+                self.inventory.get(slot).and_then(|s| s.lingering_contents()).unwrap_or(crate::potion::Potion(0));
+            entities.throw_potion(self.id, potion, eye, dir, carry);
+            entities.potions.last_mut().unwrap().lingering = true;
+            if survival {
+                self.inventory.take_one(slot);
+            }
+            return Ok(Some(Used::PotionThrown { from: eye }));
         }
         if let Some(potion) = held.as_splash_potion() {
             entities.throw_potion(self.id, potion, eye, dir, carry);

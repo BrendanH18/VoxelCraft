@@ -801,7 +801,7 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             }
         }
         Sprite::Clock => compass_face(0, 64, x, y, [236, 214, 150], [250, 196, 48]),
-        Sprite::Arrow => {
+        Sprite::Arrow | Sprite::TippedArrow => {
             let head = |x: i32, y: i32| {
                 let (u, v) = (x + y, x - y);
                 (6..=11).contains(&v) && (u - 15).abs() <= (12 - v) / 2
@@ -810,9 +810,15 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 let (u, v) = (x + y, x - y);
                 (-12..=-7).contains(&v) && (13..=17).contains(&u) && u != 15
             };
-            shaded(&head, x, y, [160, 160, 160], 0.02)
-                .or_else(|| (x + y == 15 && (1..=10).contains(&x)).then_some(tint(HANDLE, 1.0)))
-                .or_else(|| fletch(x, y).then_some(tint([235, 235, 235], if (x + y) % 2 == 0 { 1.0 } else { 0.8 })))
+            shaded(
+                &head,
+                x,
+                y,
+                if matches!(sprite, Sprite::TippedArrow) { [162, 99, 181] } else { [160, 160, 160] },
+                0.02,
+            )
+            .or_else(|| (x + y == 15 && (1..=10).contains(&x)).then_some(tint(HANDLE, 1.0)))
+            .or_else(|| fletch(x, y).then_some(tint([235, 235, 235], if (x + y) % 2 == 0 { 1.0 } else { 0.8 })))
         }
     };
     out.unwrap_or(CLEAR)

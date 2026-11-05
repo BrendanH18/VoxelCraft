@@ -53,6 +53,21 @@ impl Grid {
 
     /// What the grid crafts right now.
     pub fn result(&self) -> Option<Stack> {
+        if self.size == 3
+            && self.cells.iter().enumerate().all(|(i, s)| {
+                if i == 4 {
+                    s.is_some_and(|s| s.item == Item::LINGERING_POTION)
+                } else {
+                    s.is_some_and(|s| s.item == Item::ARROW)
+                }
+            })
+        {
+            return Some(
+                self.cells[4]
+                    .and_then(|s| s.lingering_contents())
+                    .map_or_else(|| Stack::new(Item::TIPPED_ARROW, 8), |p| Stack::tipped_arrow(p, 8)),
+            );
+        }
         let occupied: Vec<_> = self.cells.iter().take(self.size * self.size).flatten().copied().collect();
         let maps: Vec<_> = occupied.iter().filter(|s| s.item.is_map() && s.item != Item::MAP).collect();
         if maps.len() == 1 && occupied.len() > 1 && occupied.iter().all(|s| s.item == Item::MAP || s == maps[0]) {
@@ -447,6 +462,12 @@ pub fn recipes() -> &'static [Recipe] {
             ),
             shaped(&[" #s", "# s", " #s"], &[('#', STICK), ('s', &[Item::STRING])], Item::BOW, 1),
             shaped(&["f", "#", "e"], &[('f', &[Item::FLINT]), ('#', STICK), ('e', &[Item::FEATHER])], Item::ARROW, 4),
+            shaped(
+                &["aaa", "apa", "aaa"],
+                &[('a', &[Item::ARROW]), ('p', &[Item::LINGERING_POTION])],
+                Item::TIPPED_ARROW,
+                8,
+            ),
         ];
         // Java's `#oak_logs` and the rest: log, wood and both stripped forms.
         const LOGS: [(Ingredient, Block); 5] = [

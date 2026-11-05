@@ -239,7 +239,7 @@ pub const JAVA_RULES: [RuleDef; 59] = [
     boolean("spawn_mobs", "doMobSpawning", true, I),
     boolean("spawn_monsters", "spawnMonsters", true, I),
     boolean("spawn_patrols", "doPatrolSpawning", true, M("v0.17")),
-    boolean("spawn_phantoms", "doInsomnia", true, M("v0.15")),
+    boolean("spawn_phantoms", "doInsomnia", true, I),
     boolean("spawn_wandering_traders", "doTraderSpawning", true, I),
     boolean("spawn_wardens", "doWardenSpawning", true, M("v0.16")),
     boolean("spectators_generate_chunks", "spectatorsGenerateChunks", true, M("v0.13")),

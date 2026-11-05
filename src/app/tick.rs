@@ -113,6 +113,9 @@ impl Game {
                 self.gamerules.bool("natural_health_regeneration"),
             )
         };
+        if self.session.sleeping.is_some() {
+            self.session.vitals.time_since_rest = 0;
+        }
         // Wither damage lands inside the rule tick, not through `damage_player`.
         if was_alive && self.session.vitals.is_dead() && self.session.totem_saves(self.body.actions.selected) {
             self.show_popup("Totem of Undying");

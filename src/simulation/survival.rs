@@ -292,6 +292,8 @@ pub struct Vitals {
     pub death: Option<String>,
     peaceful_timer: f32,
     peaceful_food_timer: f32,
+    /// Java TIME_SINCE_REST statistic, in entity ticks; zero for older saves.
+    pub time_since_rest: u32,
     /// Java Entity.TicksFrozen; additive save field, 0 for older saves.
     pub ticks_frozen: u16,
     freeze_clock: f32,
@@ -321,6 +323,7 @@ impl Default for Vitals {
             peaceful_timer: 0.0,
             peaceful_food_timer: 0.0,
             ticks_frozen: 0,
+            time_since_rest: 0,
             freeze_clock: 0.0,
             freeze_tick: 0,
         }
@@ -427,6 +430,7 @@ impl Vitals {
         }
         if self.health <= 0.0 {
             self.death = Some(cause.to_string());
+            self.time_since_rest = 0;
         }
         taken
     }
@@ -458,6 +462,7 @@ impl Vitals {
         self.xp.tick(dt);
         self.pearl_cooldown = (self.pearl_cooldown - dt).max(0.0);
         if self.is_dead() {
+            self.time_since_rest = 0;
             // `LivingEntity.baseTick` keeps counting effects down on the death
             // screen; a dead body takes none of their healing or harm.
             let _ = self.effects.tick(dt);
@@ -469,6 +474,7 @@ impl Vitals {
         while self.freeze_clock >= 0.05 - 1.0e-6 {
             self.freeze_clock = (self.freeze_clock - 0.05).max(0.0);
             self.freeze_tick = self.freeze_tick.wrapping_add(1);
+            self.time_since_rest = self.time_since_rest.saturating_add(1).min(i32::MAX as u32);
             if env.in_powder_snow && !env.freeze_immune {
                 self.ticks_frozen = self.ticks_frozen.saturating_add(1).min(140);
             } else {

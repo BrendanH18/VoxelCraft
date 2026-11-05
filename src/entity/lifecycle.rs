@@ -48,6 +48,8 @@ impl Entities {
             self.populate_bastions(dt as f32, world, ctx);
         }
 
+        self.spawn_phantoms(dt, world, ctx);
+        self.sense_phantoms();
         self.populate_structures(dt as f32, world, ctx, difficulty);
         self.trader_tick(dt as f32, world, ctx);
         self.tick_decor(world);
@@ -222,6 +224,12 @@ impl Entities {
                 EntityEvent::Shoot { from, target, cause, shooter } => {
                     let mut arrow = Arrow::aimed(from, target, cause, &mut self.rng);
                     arrow.shooter = Some(shooter);
+                    arrow.custom_effect =
+                        self.mobs.iter().find(|m| m.uid == shooter).and_then(|m| m.kind.arrow_effect());
+                    if let Some(m) = self.mobs.iter().find(|m| m.uid == shooter) {
+                        arrow.enchants = m.skeleton_bow.as_ref().map_or(Default::default(), |s| s.enchants);
+                    }
+                    arrow.tipped = arrow.custom_effect.is_some();
                     self.arrows.push(arrow);
                 }
                 EntityEvent::ThrowPotion { from, vel, potion } => {
@@ -283,6 +291,17 @@ impl Entities {
                 }
             }
         }
+        for e in &events {
+            if let EntityEvent::LingeringCloud { pos, potion, owner } = *e {
+                self.clouds.push(super::lingering::Cloud::new(pos, potion, owner));
+            }
+        }
+        events.retain(|e| !matches!(e, EntityEvent::LingeringCloud { .. }));
+        self.ensure_mob_ids();
+        self.clouds.retain_mut(|cloud| {
+            !world.entity_ticking(cloud.pos.floor().as_ivec3())
+                || cloud.tick(dt, ctx, &mut self.mobs, &mut self.rng, &mut events)
+        });
         self.update_eyes(dt, world, &mut events);
         self.apply_entity_shots(&events, ctx);
         self.resolve_mob_hits(&mut events);

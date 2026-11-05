@@ -85,6 +85,25 @@ pub struct Shot {
 }
 
 impl PlayerSession {
+    /// Java prefers projectiles held in the offhand, then inventory order.
+    fn arrow_ammo(&self) -> Option<(Option<usize>, crate::inventory::Stack)> {
+        let is_arrow = |s: crate::inventory::Stack| matches!(s.item, Item::ARROW | Item::TIPPED_ARROW);
+        if let Some(s) = self.inventory.offhand.filter(|s| is_arrow(*s)) {
+            return Some((None, s));
+        }
+        self.inventory.slots.iter().enumerate().find_map(|(i, s)| s.filter(|s| is_arrow(*s)).map(|s| (Some(i), s)))
+    }
+    fn take_arrow(&mut self) -> Option<crate::inventory::Stack> {
+        let (slot, stack) = self.arrow_ammo()?;
+        if let Some(i) = slot {
+            self.inventory.take_one(i);
+        } else {
+            let mut s = stack;
+            s.count -= 1;
+            self.inventory.offhand = (s.count > 0).then_some(s);
+        }
+        Some(stack)
+    }
     /// Start drawing a held bow or crossbow, or fire a charged crossbow.
     /// Aiming at a block that takes right-clicks defers to it.
     /// Whether using `slot` would start drawing a bow or loading a
@@ -92,7 +111,7 @@ impl PlayerSession {
     /// targeted block takes the use first.
     pub fn can_draw(&self, slot: usize, world: &World) -> bool {
         let held = self.inventory.get(slot).map(|s| s.item);
-        let has_arrow = self.mode.is_creative() || self.inventory.find(Item::ARROW).is_some();
+        let has_arrow = self.mode.is_creative() || self.arrow_ammo().is_some();
         self.mode.can_interact()
             && !self.vitals.is_dead()
             && self.sleeping.is_none()
@@ -149,12 +168,14 @@ impl PlayerSession {
         let enchants = self.inventory.get(slot).map_or(Default::default(), |s| s.enchants);
         // Infinity needs one arrow but never uses it up (the shot can't be
         // picked up, like Creative's).
-        let infinite = enchants.has(Enchantment::Infinity);
+        let ammo = self.arrow_ammo().map(|(_, s)| s);
+        let potion = ammo.and_then(|s| s.arrow_potion());
+        let infinite = enchants.has(Enchantment::Infinity) && ammo.is_some_and(|s| s.item == Item::ARROW);
         let mut broken = None;
         if survival {
-            let arrow = self.inventory.find(Item::ARROW)?;
+            self.arrow_ammo()?;
             if !infinite {
-                self.inventory.take_one(arrow);
+                self.take_arrow()?;
             }
             if self.inventory.wear(slot, 1) {
                 broken = Some(Item::BOW);
@@ -162,6 +183,8 @@ impl PlayerSession {
         }
         let (eye, dir) = (self.player.eye(), self.player.forward().as_dvec3());
         entities.shoot_enchanted_for(eye, dir, power, survival && !infinite, enchants, self.id);
+        entities.arrows.last_mut().unwrap().potion = potion;
+        entities.arrows.last_mut().unwrap().tipped = ammo.is_some_and(|s| s.item == Item::TIPPED_ARROW);
         if survival {
             self.vitals.hunger.exhaust(survival::EXHAUST_ATTACK);
         }
@@ -196,12 +219,17 @@ impl PlayerSession {
     /// A loaded crossbow holds its bolt: the held item becomes the charged
     /// crossbow (keeping wear and enchantments) and an arrow is used up.
     fn load_crossbow(&mut self, slot: usize) -> Option<Shot> {
+        let ammo = self.arrow_ammo().map(|(_, s)| s);
+        let potion = ammo.and_then(|s| s.arrow_potion());
         if self.mode.is_survival() {
-            let arrow = self.inventory.find(Item::ARROW)?;
-            self.inventory.take_one(arrow);
+            self.take_arrow()?;
         }
         if let Some(stack) = &mut self.inventory.slots[slot] {
             stack.item = Item::CHARGED_CROSSBOW;
+            stack.entity_data = potion.map_or_else(
+                || if ammo.is_some_and(|s| s.item == Item::TIPPED_ARROW) { u32::MAX } else { 0 },
+                |p| u32::from(p.0) + 1,
+            );
         }
         Some(self.shot(Ranged::CrossbowLoaded { from: self.player.eye() }, None))
     }
@@ -213,13 +241,18 @@ impl PlayerSession {
         let survival = self.mode.is_survival();
         let (eye, forward) = (self.player.eye(), self.player.forward().as_dvec3());
         let held = self.inventory.get(slot).map_or(Enchants::NONE, |s| s.active_enchants());
+        let tipped = self.inventory.get(slot).is_some_and(|s| s.entity_data != 0);
+        let potion = self.inventory.get(slot).and_then(|s| s.arrow_potion());
         let piercing = Enchants::NONE.with(Enchantment::Piercing, held.level(Enchantment::Piercing));
         if let Some(stack) = &mut self.inventory.slots[slot] {
             stack.item = Item::CROSSBOW;
+            stack.entity_data = 0;
         }
         let mut broken = None;
         for (dir, real) in crossbow_volley(held, forward) {
             entities.shoot_enchanted_for(eye, dir, CROSSBOW_POWER, survival && real, piercing, self.id);
+            entities.arrows.last_mut().unwrap().potion = potion;
+            entities.arrows.last_mut().unwrap().tipped = tipped;
             if survival && self.inventory.wear(slot, 1) {
                 broken = Some(Item::CROSSBOW);
                 break;
@@ -283,5 +316,63 @@ mod tests {
         assert_eq!(Item::from_name("crossbow"), Some(Item::CROSSBOW));
         assert_ne!(Item::CROSSBOW.icon_layer(), Item::CHARGED_CROSSBOW.icon_layer());
         const { assert!(CROSSBOW_POWER > 1.0 && CROSSBOW_CHARGE_TICKS == 25) };
+    }
+    #[test]
+    fn tipped_bow_ammo_is_consumed_with_infinity_and_keeps_its_potion() {
+        use crate::{inventory::Stack, potion::Potion};
+        let mut s = PlayerSession::new(PlayerId(12), DVec3::new(0., 140., 0.));
+        let mut bow = Stack::new(Item::BOW, 1);
+        bow.enchants = Enchants::NONE.with(Enchantment::Infinity, 1);
+        s.inventory.slots[0] = Some(bow);
+        let p = Potion::from_id("long_poison").unwrap();
+        s.inventory.slots[1] = Some(Stack::tipped_arrow(p, 2));
+        s.ranged.draw = Some((0, 20));
+        let mut e = Entities::new(8);
+        assert!(s.release_draw(0, &mut e).is_some());
+        assert_eq!(s.inventory.get(1).unwrap().count, 1);
+        assert_eq!(e.arrows[0].potion, Some(p));
+        assert!(e.arrows[0].pickup);
+        assert_eq!(e.arrows[0].owner, Some(PlayerId(12)));
+    }
+    #[test]
+    fn charged_multishot_crossbow_saves_its_tipped_bolt_and_clears_it_when_fired() {
+        use crate::{
+            inventory::{Inventory, Stack},
+            potion::Potion,
+        };
+        let mut s = PlayerSession::new(PlayerId(13), DVec3::new(0., 140., 0.));
+        let mut bow = Stack::new(Item::CROSSBOW, 1);
+        bow.enchants = Enchants::NONE.with(Enchantment::Multishot, 1);
+        bow.damage = 17;
+        s.inventory.slots[0] = Some(bow);
+        let p = Potion::from_id("slowness").unwrap();
+        s.inventory.slots[1] = Some(Stack::tipped_arrow(p, 2));
+        s.ranged.draw = Some((0, 24));
+        assert!(s.tick_draw(0, true).is_some());
+        assert_eq!(s.inventory.get(1).unwrap().count, 1);
+        s.inventory = Inventory::deserialize(&s.inventory.serialize()).unwrap();
+        assert_eq!(s.inventory.get(0).unwrap().arrow_potion(), Some(p));
+        let mut e = Entities::new(8);
+        s.fire_crossbow(0, &mut e);
+        assert_eq!(e.arrows.len(), 3);
+        assert!(e.arrows.iter().all(|a| a.potion == Some(p)));
+        assert_eq!(e.arrows.iter().filter(|a| a.pickup).count(), 1);
+        assert_eq!(s.inventory.get(0).unwrap().entity_data, 0);
+        assert_eq!(s.inventory.get(0).unwrap().damage, 20);
+    }
+    #[test]
+    fn offhand_tipped_ammunition_has_priority_over_inventory_arrows() {
+        use crate::{inventory::Stack, potion::Potion};
+        let mut s = PlayerSession::new(PlayerId::HOST, DVec3::new(0., 140., 0.));
+        s.inventory.slots[0] = Some(Stack::new(Item::BOW, 1));
+        s.inventory.slots[1] = Some(Stack::new(Item::ARROW, 8));
+        let p = Potion::from_id("poison").unwrap();
+        s.inventory.offhand = Some(Stack::tipped_arrow(p, 1));
+        s.ranged.draw = Some((0, 20));
+        let mut e = Entities::new(8);
+        assert!(s.release_draw(0, &mut e).is_some());
+        assert!(s.inventory.offhand.is_none());
+        assert_eq!(s.inventory.get(1).unwrap().count, 8);
+        assert_eq!(e.arrows[0].potion, Some(p));
     }
 }

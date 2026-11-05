@@ -88,12 +88,13 @@ impl Game {
             item.stack.count = left;
             left > 0
         });
-        let arrows = self.mobs.entities.collect_arrows(player);
-        if arrows > 0 {
+        for stack in self.mobs.entities.collect_arrow_stacks(player) {
             picked = true;
-            let left = self.session.inventory.add(crate::item::Item::ARROW, arrows);
+            let left = self.session.inventory.add_stack(stack);
             if left > 0 {
-                self.mobs.entities.scatter(Stack::new(crate::item::Item::ARROW, left), player);
+                let mut stack = stack;
+                stack.count = left;
+                self.mobs.entities.scatter(stack, player);
             }
         }
         if picked {

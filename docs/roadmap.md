@@ -1477,8 +1477,14 @@ in the [architecture reservations](architecture.md#v015-track-reservations):
    scutes and wolf armor; mooshrooms and suspicious stew; ocelots; the cat
    spawner in villages and swamp huts.
 4. **Hostiles** (MOB-04, PRO-02). Strays, bogged and phantoms (insomnia,
-   `spawn_phantoms`, membranes), and the tipped arrows strays and bogged
-   shoot.
+   `spawn_phantoms`, membranes), and tipped arrows. *Implemented, unverified
+   (2026-11-04): natural variants, conversion/shearing, original models, loot,
+   saved rest and phantom state, phantom custom spawning/circle/swoop flight,
+   Slow Falling brewing, breath collection, lingering clouds and tipped-arrow
+   crafting; shared bows/crossbows retain potion components. Skeleton and
+   phantom AI scheduling, armor/chainmail parity, graphical evidence and
+   performance acceptance remain open. See
+   [track evidence](verification/2026-11-04-v0.15-hostiles.md).*
 5. **Integration and checks.** Cross-track pieces (lightning turning
    mooshrooms), spawn tables together, save/reload of every new mob and
    block, and per-track verification records.

@@ -172,6 +172,9 @@ pub enum MobKind {
     SkeletonHorse,
     ZombieHorse,
     Bee,
+    Stray,
+    Bogged,
+    Phantom,
 }
 
 impl MobKind {
@@ -198,7 +201,7 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 57] = [
+    pub const ALL: [MobKind; 60] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -256,6 +259,9 @@ impl MobKind {
         MobKind::SkeletonHorse,
         MobKind::ZombieHorse,
         MobKind::Bee,
+        MobKind::Stray,
+        MobKind::Bogged,
+        MobKind::Phantom,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -318,6 +324,9 @@ impl MobKind {
             MobKind::SkeletonHorse => "skeleton_horse",
             MobKind::ZombieHorse => "zombie_horse",
             MobKind::Bee => "bee",
+            MobKind::Stray => "stray",
+            MobKind::Bogged => "bogged",
+            MobKind::Phantom => "phantom",
         }
     }
 
@@ -347,7 +356,7 @@ impl MobKind {
             MobKind::IronGolem => Shape::new(0.7, 2.7),
             MobKind::SnowGolem => Shape::new(0.35, 1.9),
             MobKind::TraderLlama => Shape::new(0.45, 1.87),
-            MobKind::Skeleton => Shape::new(0.3, 1.99),
+            MobKind::Skeleton | MobKind::Stray | MobKind::Bogged => Shape::new(0.3, 1.99),
             MobKind::Creeper => Shape::new(0.3, 1.7),
             MobKind::Spider => Shape::new(0.7, 0.9),
             MobKind::CaveSpider => Shape::new(0.35, 0.5),
@@ -379,6 +388,7 @@ impl MobKind {
             MobKind::Donkey => Shape::new(0.698, 1.5),
             MobKind::Mule => Shape::new(0.698, 1.6),
             MobKind::Llama => Shape::new(0.45, 1.87),
+            MobKind::Phantom => Shape::new(0.45, 0.5),
             MobKind::Camel => Shape::new(0.85, 2.375),
             MobKind::Bee => Shape::new(0.35, 0.6),
         }
@@ -394,6 +404,7 @@ impl MobKind {
             | MobKind::Husk
             | MobKind::Drowned
             | MobKind::Skeleton
+            | MobKind::Stray
             | MobKind::WitherSkeleton
             | MobKind::Creeper
             | MobKind::ZombifiedPiglin
@@ -405,7 +416,7 @@ impl MobKind {
             MobKind::IronGolem => 100.0,
             MobKind::SnowGolem => 4.0,
             MobKind::TraderLlama => 30.0,
-            MobKind::Spider => 16.0,
+            MobKind::Spider | MobKind::Bogged => 16.0,
             MobKind::CaveSpider => 12.0,
             MobKind::Witch => 26.0,
             MobKind::Slime | MobKind::MagmaCube => 1.0,
@@ -430,6 +441,7 @@ impl MobKind {
             MobKind::SkeletonHorse => 15.,
             MobKind::ZombieHorse => 25.,
             MobKind::Bee => 10.0,
+            MobKind::Phantom => 20.0,
         }
     }
 
@@ -442,6 +454,9 @@ impl MobKind {
                 | MobKind::Drowned
                 | MobKind::ZombieVillager
                 | MobKind::Skeleton
+                | MobKind::Stray
+                | MobKind::Bogged
+                | MobKind::Phantom
                 | MobKind::Creeper
                 | MobKind::Spider
                 | MobKind::ZombifiedPiglin
@@ -495,7 +510,7 @@ impl MobKind {
     pub fn spawns_in(self, dimension: Dimension) -> bool {
         match self {
             MobKind::Enderman => true,
-            MobKind::Mule | MobKind::Bee => false,
+            MobKind::Mule | MobKind::Bee | MobKind::Phantom => false,
             // Only from spawners and inside fortresses (`fortress_spawn`).
             MobKind::Blaze
             | MobKind::WitherSkeleton
@@ -659,7 +674,10 @@ impl MobKind {
             | MobKind::ZombifiedPiglin
             | MobKind::Zoglin
             | MobKind::SkeletonHorse
-            | MobKind::ZombieHorse => Creature::Undead,
+            | MobKind::ZombieHorse
+            | MobKind::Stray
+            | MobKind::Bogged
+            | MobKind::Phantom => Creature::Undead,
             MobKind::Spider | MobKind::CaveSpider | MobKind::Silverfish => Creature::Arthropod,
             _ => Creature::Other,
         }
@@ -668,7 +686,14 @@ impl MobKind {
     pub(super) fn burns_in_sun(self) -> bool {
         matches!(
             self,
-            MobKind::Zombie | MobKind::Drowned | MobKind::ZombieVillager | MobKind::Skeleton | MobKind::ZombieHorse
+            MobKind::Zombie
+                | MobKind::ZombieHorse
+                | MobKind::Drowned
+                | MobKind::ZombieVillager
+                | MobKind::Skeleton
+                | MobKind::Stray
+                | MobKind::Bogged
+                | MobKind::Phantom
         )
     }
 
@@ -694,7 +719,12 @@ impl MobKind {
             MobKind::Hoglin | MobKind::Zoglin => 0.6,
             // Java's 0.175 speed.
             MobKind::Strider => 0.84,
-            MobKind::Sheep | MobKind::Skeleton | MobKind::WitherSkeleton | MobKind::Blaze => 1.2,
+            MobKind::Sheep
+            | MobKind::Skeleton
+            | MobKind::Stray
+            | MobKind::Bogged
+            | MobKind::WitherSkeleton
+            | MobKind::Blaze => 1.2,
             MobKind::Chicken | MobKind::Slime | MobKind::MagmaCube => 1.0,
             MobKind::Ghast => 4.0,
             MobKind::Spider | MobKind::CaveSpider | MobKind::Enderman | MobKind::Silverfish => 1.4,
@@ -714,7 +744,7 @@ impl MobKind {
             MobKind::Spider | MobKind::CaveSpider => 3.0,
             MobKind::ZombifiedPiglin | MobKind::Silverfish => 2.8,
             MobKind::WitherSkeleton => 2.4,
-            MobKind::Skeleton => 2.2,
+            MobKind::Skeleton | MobKind::Stray | MobKind::Bogged => 2.2,
             MobKind::Creeper => 2.0,
             _ => 2.4,
         }
@@ -758,9 +788,9 @@ impl MobKind {
             MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombieVillager => {
                 &[(Item::ROTTEN_FLESH, 0, 2)]
             }
-            MobKind::Skeleton => &[(Item::BONE, 0, 2), (Item::ARROW, 0, 2)],
             MobKind::SkeletonHorse => &[(Item::BONE, 0, 2)],
             MobKind::ZombieHorse => &[(Item::ROTTEN_FLESH, 2, 3)],
+            MobKind::Skeleton | MobKind::Stray | MobKind::Bogged => &[(Item::BONE, 0, 2), (Item::ARROW, 0, 2)],
             MobKind::Creeper => &[(Item::GUNPOWDER, 0, 2)],
             MobKind::Spider | MobKind::CaveSpider => &[(Item::STRING, 0, 2), (Item::SPIDER_EYE, -1, 1)],
             MobKind::ZombifiedPiglin => &[(Item::ROTTEN_FLESH, 0, 1), (Item::GOLD_NUGGET, 0, 1)],
@@ -802,6 +832,7 @@ impl MobKind {
             // The skull is rolled in `drops`.
             MobKind::WitherSkeleton => &[(Item::COAL, 0, 1), (Item::BONE, 0, 2)],
             // Java rolls a few of these; each is rolled on its own here.
+            MobKind::Phantom => &[(Item::PHANTOM_MEMBRANE, 0, 1)],
             MobKind::Witch => &[
                 (Item::GLASS_BOTTLE, 0, 2),
                 (Item::GLOWSTONE_DUST, 0, 2),
@@ -914,6 +945,9 @@ pub struct Mob {
     pub grow: f32,
     pub wool_color: crate::color::DyeColor,
     pub sheared: bool,
+    pub skeleton_bow: Option<Box<crate::inventory::Stack>>,
+    pub phantom: Option<Box<super::phantom::State>>,
+    pub freezing: Option<super::hostiles::Freezing>,
     /// Witch: seconds left drinking, and the potion it is drinking.
     drink_left: f32,
     drinking: &'static str,
@@ -1089,6 +1123,9 @@ impl Mob {
             grow: 0.0,
             wool_color: crate::color::DyeColor::White,
             sheared: false,
+            freezing: None,
+            skeleton_bow: kind.is_bow_skeleton().then(|| Box::new(crate::inventory::Stack::new(Item::BOW, 1))),
+            phantom: (kind == MobKind::Phantom).then(|| Box::new(super::phantom::State::new(pos))),
             drink_left: 0.0,
             drinking: "",
             age: 0,
@@ -1253,7 +1290,10 @@ impl Mob {
     }
 
     pub fn shape(&self) -> Shape {
-        if self.kind.is_cube() {
+        if let Some(p) = &self.phantom {
+            let s = 1. + f64::from(p.size) * 0.15;
+            Shape::new(0.45 * s, 0.5 * s)
+        } else if self.kind.is_cube() {
             Shape::new(0.255 * self.size as f64, 0.51 * self.size as f64)
         } else if self.baby || self.age < 0 {
             let s = self.kind.shape();
@@ -1483,6 +1523,7 @@ impl Mob {
         self.player_hit_left = (self.player_hit_left - dtf).max(0.0);
         self.weakness_left = (self.weakness_left - dtf).max(0.0);
         self.advance_cure(dtf, world, rng);
+        self.freeze_in_powder_snow(dtf, world);
         if let Some(v) = &mut self.villager {
             v.bell_hide = (v.bell_hide - dtf).max(0.0);
         }
@@ -1520,6 +1561,11 @@ impl Mob {
         let (wish, speed) = if let Some(t) = &mut self.dying {
             *t += dtf;
             (None, 0.0)
+        } else if self.kind == MobKind::Phantom {
+            if self.riding.is_none() {
+                self.phantom_flight(dt, world, ctx, rng, events);
+            }
+            (None, 0.)
         } else {
             super::mounts::control(self, dt, rng).unwrap_or_else(|| self.think(dtf, world, ctx, rng, events))
         };
@@ -1561,6 +1607,8 @@ impl Mob {
             self.on_ground = true;
         } else if self.kind == MobKind::Bee {
             super::bee::travel(self, dt, world, wish, speed);
+        } else if self.kind == MobKind::Phantom {
+            // PhantomMoveControl already moved this flying body.
         } else if java {
             // Whole Java ticks of simulated time; the fixed 20 Hz step runs one.
             // The move controls apply Speed and Slowness to the raw speed.
@@ -1835,7 +1883,7 @@ impl Mob {
                     return (None, 0.0);
                 }
                 match self.kind {
-                    MobKind::Skeleton => {
+                    MobKind::Skeleton | MobKind::Stray | MobKind::Bogged => {
                         return self.skeleton_tactics(dt, world, target.pos, dir, hdist, rng, events);
                     }
                     MobKind::Witch => return self.witch_tactics(world, &target, dir, hdist, rng, events),
@@ -2384,12 +2432,20 @@ impl Mob {
         let eye = self.pos + DVec3::Y * (self.shape().height * 0.9);
         let target = player + DVec3::Y * 1.2;
         if self.attack_cooldown <= 0.0 && hdist < SHOOT_RANGE && line_of_sight(world, eye, target) {
-            self.attack_cooldown = rng.range(1.6, 2.4);
+            self.attack_cooldown = if self.kind == MobKind::Skeleton {
+                rng.range(1.6, 2.4)
+            } else {
+                self.kind.bow_interval(self.difficulty == crate::simulation::difficulty::Difficulty::Hard)
+            };
             self.attack_anim = 0.35;
             events.push(EntityEvent::Shoot {
                 from: eye + dir * 0.5,
                 target,
-                cause: "was shot by a skeleton",
+                cause: match self.kind {
+                    MobKind::Stray => "was shot by a stray",
+                    MobKind::Bogged => "was shot by a bogged",
+                    _ => "was shot by a skeleton",
+                },
                 shooter: self.uid,
             });
             events.push(EntityEvent::Sound { sound: MobSound::Bow, pos: eye });
@@ -2933,7 +2989,7 @@ pub fn yaw_dir(yaw: f32) -> DVec3 {
 }
 
 /// Angle wrapped to [-PI, PI).
-fn wrap(a: f32) -> f32 {
+pub(super) fn wrap(a: f32) -> f32 {
     (a + PI).rem_euclid(TAU) - PI
 }
 

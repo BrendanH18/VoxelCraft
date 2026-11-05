@@ -34,6 +34,9 @@ impl Mob {
             "burning": self.burning,
             "attack": self.attack_anim,
         });
+        if let Some(p) = &self.phantom {
+            v["phantom_size"] = json!(p.size);
+        }
         if let Some(name) = self.name.as_str() {
             v["name"] = json!(name);
         }
@@ -87,6 +90,9 @@ impl Mob {
     pub fn apply_look(&mut self, v: &Value) {
         if let Some(c) = dye(&v["wool"]) {
             self.wool_color = c;
+        }
+        if let Some(p) = &mut self.phantom {
+            p.size = v["phantom_size"].as_u64().unwrap_or(0).min(64) as u8;
         }
         self.sheared = v["sheared"] == true;
         if let Some(armor) = v["armor"].as_array() {
