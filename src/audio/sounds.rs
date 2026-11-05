@@ -1406,5 +1406,5 @@ fn copper_golem(action: crate::entity::copper_golem::Sound, stage: u8) -> Vec<f3
             );
         }
     }
-    out
+    dsp::finish(out, 0.65)
 }
