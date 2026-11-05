@@ -242,6 +242,7 @@ impl Actor<'_> {
         // Looking at a statue during an existing bite does not interrupt it.
         let composting = !self.sneaking && targeted.is_some_and(|b| crate::world::composter::level(b).is_some());
         let statue_use = !self.session.consuming()
+            && self.session.player.vehicle.is_none()
             && !self.sneaking
             && targeted.and_then(crate::world::copper_golem_statue::decode).is_some();
         let using =
