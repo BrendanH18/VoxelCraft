@@ -89,7 +89,9 @@ use the [per-user data folder](releases.md#player-data-and-old-saves); add
 `--data-dir target/screenshots` to isolate a scripted run. In `--place` and
 `--spawn`, `~` for the y coordinate means the terrain surface; `--place` also
 takes a raw block id instead of a name, for oriented states such as stairs
-facing east. `--sign x,y,z,line|line|line|line` writes the front text of a
+facing east. Placing the lower half of a double plant (tall flowers, tall
+seagrass, pitcher plants and mature pitcher crops) also places its upper half,
+as item placement does. `--sign x,y,z,line|line|line|line` writes the front text of a
 sign placed there (y must be a number).
 `--decor x,y,z,face,item[,held]` hangs an item frame or painting
 on, or stands an armor stand against, a face (`up`, `down`, `north`, `south`,

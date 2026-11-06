@@ -73,7 +73,11 @@ pub(super) fn render(cue: Cue, rng: &mut Rng) -> Vec<f32> {
         // A seed popping out of the soil.
         Cue::DropSeed => {
             let mut out = vec![0.; samples(0.3)];
-            add_mode(&mut out, 0, Mode { freq: rng.range(300.0, 360.0), amp: 1.0, tau: 0.03, glide: 1.6, glide_tau: 0.02 });
+            add_mode(
+                &mut out,
+                0,
+                Mode { freq: rng.range(300.0, 360.0), amp: 1.0, tau: 0.03, glide: 1.6, glide_tau: 0.02 },
+            );
             scrape(&mut out, rng, 0.0, 0.12, 120.0);
             dsp::finish(out, 0.4)
         }
@@ -89,7 +93,11 @@ pub(super) fn render(cue: Cue, rng: &mut Rng) -> Vec<f32> {
         Cue::EggCrack => {
             let mut out = crackle(rng, samples(0.25), (0.6, 2.5), |t| 900.0 * (-t / 0.05).exp());
             Biquad::highpass(1400.0, 0.7).run(&mut out);
-            add_mode(&mut out, 0, Mode { freq: rng.range(1700.0, 2100.0), amp: 0.3, tau: 0.02, glide: 1.0, glide_tau: 1.0 });
+            add_mode(
+                &mut out,
+                0,
+                Mode { freq: rng.range(1700.0, 2100.0), amp: 0.3, tau: 0.02, glide: 1.0, glide_tau: 1.0 },
+            );
             dsp::finish(out, 0.45)
         }
         // The shell giving way, then a soft landing.
@@ -104,7 +112,11 @@ pub(super) fn render(cue: Cue, rng: &mut Rng) -> Vec<f32> {
         // A heavy egg dropping onto the ground.
         Cue::EggPlop => {
             let mut out = vec![0.; samples(0.35)];
-            add_mode(&mut out, 0, Mode { freq: rng.range(140.0, 170.0), amp: 1.0, tau: 0.05, glide: 0.55, glide_tau: 0.03 });
+            add_mode(
+                &mut out,
+                0,
+                Mode { freq: rng.range(140.0, 170.0), amp: 1.0, tau: 0.05, glide: 0.55, glide_tau: 0.03 },
+            );
             let mut n = noise(rng, samples(0.08), |t| dsp::ad(t, 0.002, 0.02));
             Biquad::lowpass(700.0, 0.7).run(&mut n);
             mix_into(&mut out, &n, 0.5, 0);

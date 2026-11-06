@@ -144,7 +144,8 @@ fn saved_scheduled_cracking_resumes_and_replacement_cancels_hatch() {
     loaded.set_block(P, Block::STONE);
     loaded.load_redstone("v1,0,1|t,12,145,12,1,0,0,15120");
     loaded.tick_redstone();
-    assert!(loaded.sniffer_egg_events.is_empty());
+    // Only the earlier crack: the replaced egg's stale tick adds nothing.
+    assert_eq!(loaded.sniffer_egg_events, vec![(P, false)]);
     assert_eq!(loaded.get_block(P), Some(Block::STONE));
 }
 fn cues(e: &mut Entities) -> Vec<MobSound> {

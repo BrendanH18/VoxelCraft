@@ -169,7 +169,7 @@ fn effects(w: &mut World, s: &State, pos: DVec3, sounds: &mut Vec<EntityEvent>) 
     for _ in 0..2 {
         w.particles.push(crate::particles::Request::Hit { cell, block, face: IVec3::Y });
     }
-    if s.elapsed % 10 == 0 {
+    if s.elapsed.is_multiple_of(10) {
         cue(MobSound::SnifferDigHit(block));
     }
 }

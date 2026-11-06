@@ -1562,8 +1562,9 @@ sounds and templates, IDs in the
   torchflower and pitcher crops, plants and recipes.
   Implemented, unverified (2026-11-05): crop/flower states, growth, bone meal,
   pots, dyes, compost and stew; saved sniffers, digging gifts and explored memory,
-  seed breeding/temptation, egg laying and scheduled moss-boosted hatching.
-  Search/navigation and presentation remain partial; survival egg acquisition
+  seed breeding/temptation, egg laying and scheduled moss-boosted hatching,
+  with original sniff, search, dig, egg crack/hatch/plop cues and digging and
+  egg particles. Search/navigation and animation remain partial; survival egg acquisition
   requires Track D. [Track C evidence](verification/2026-11-05-v0.15-sniffers.md).
 - **D. Ocean ruins and suspicious blocks.** Warm and cold ocean ruins (the
   remaining v0.14 GEN-05 structure) with Java's placement, variants and

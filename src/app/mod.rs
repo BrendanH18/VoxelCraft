@@ -1479,6 +1479,8 @@ impl Game {
             if pos.y == i32::MIN {
                 pos.y = self.world.generator.column(pos.x, pos.z).height + 1;
             }
+            // A double plant's lower half brings its upper half, as item placement does.
+            self.world.before_overworld_place(pos, block);
             if !self.world.set_block(pos, block) {
                 failed_placements += 1;
                 log::warn!("--place {pos} {}: chunk not loaded", block.name());
