@@ -223,9 +223,10 @@ for source details and remaining shared-engine/presentation differences.
 Implemented, unverified: flying allays have 20 health, regenerate one point
 every ten loaded ticks and do not spawn naturally or despawn by distance.
 Use any item on an empty-handed allay to give one and link that actor;
-empty-hand use takes it back and drops the collection slot. Matching
-component-bearing drops fill one stack, with item-entity pickup delays and
-`mob_griefing` respected. Allays follow their liked player, retrieve nearby
+empty-hand use takes it back and drops the collection slot. Drops of the
+same item (and, for tipped arrows and lingering potions, the same potion;
+names, wear and enchantments are ignored, as in Java) fill one stack, with
+item-entity pickup delays and `mob_griefing` respected. Allays follow their liked player, retrieve nearby
 items and throw collected items one at a time. Notes within sixteen blocks
 select a delivery position for 600 ticks; repeat plays refresh the same
 note. Wool blocks obstruct the vibration. Player and redstone notes share

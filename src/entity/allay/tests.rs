@@ -94,26 +94,54 @@ fn java_attributes_regeneration_flight_and_no_loot_or_natural_spawn() {
     assert_eq!(m.health, 8., "no fall damage");
 }
 #[test]
-fn pickup_is_component_sensitive_respects_delays_capacity_and_griefing() {
+fn pickup_matches_java_item_equality_respects_delays_capacity_and_griefing() {
     let world = Grid::flat(-64);
     let mut e = collector();
     let pos = e.mobs[0].pos;
-    let mut wrong = Stack::new(Item::DIAMOND, 20);
-    wrong.name = crate::inventory::StackName::new("different").unwrap();
-    e.items.push(ItemEntity::new(wrong, pos, DVec3::ZERO, 0., &mut e.rng));
+    // The liked sample is a plain diamond: Java's allayConsidersItemEqual
+    // ignores names, so renamed diamonds are wanted too.
+    let mut renamed = Stack::new(Item::DIAMOND, 20);
+    renamed.name = crate::inventory::StackName::new("different").unwrap();
+    e.items.push(ItemEntity::new(renamed, pos, DVec3::ZERO, 0., &mut e.rng));
     e.items.push(ItemEntity::new(Stack::new(Item::DIAMOND, 64), pos, DVec3::ZERO, 2., &mut e.rng));
-    ticks(&mut e, &world, &ctx(), 1);
-    assert!(e.mobs[0].allay.as_ref().unwrap().cargo.is_none());
-    e.items[1].pickup_delay = 0.;
+    e.items.push(ItemEntity::new(Stack::new(Item::EMERALD, 5), pos, DVec3::ZERO, 0., &mut e.rng));
     e.villager_griefing = false;
     ticks(&mut e, &world, &ctx(), 1);
-    assert!(e.mobs[0].allay.as_ref().unwrap().cargo.is_none());
+    assert!(e.mobs[0].allay.as_ref().unwrap().cargo.is_none(), "mob griefing gates pickup");
     e.villager_griefing = true;
+    // Plain cargo cannot accept the renamed stack (SimpleContainer compares
+    // components), and the delayed plain stack is not collectible yet.
     e.mobs[0].allay.as_mut().unwrap().cargo = Some(Stack::new(Item::DIAMOND, 60));
+    ticks(&mut e, &world, &ctx(), 1);
+    assert_eq!(e.mobs[0].allay.as_ref().unwrap().cargo.unwrap().count, 60);
+    assert_eq!(e.items[0].stack, renamed);
+    e.items[1].pickup_delay = 0.;
     ticks(&mut e, &world, &ctx(), 1);
     assert_eq!(e.mobs[0].allay.as_ref().unwrap().cargo.unwrap().count, 64);
     assert_eq!(e.items[1].stack.count, 60);
-    assert_eq!(e.items[0].stack, wrong);
+    assert_eq!(e.items[2].stack.count, 5, "unliked items stay");
+    // An empty slot takes the renamed stack whole.
+    e.mobs[0].allay.as_mut().unwrap().cargo = None;
+    ticks(&mut e, &world, &ctx(), 1);
+    assert_eq!(e.mobs[0].allay.as_ref().unwrap().cargo.unwrap(), renamed);
+}
+#[test]
+fn item_equality_ignores_components_except_potion_contents() {
+    use super::considers_equal;
+    let sword = |t| Item::tool(crate::item::ToolKind::Sword, t);
+    let mut named = Stack::new(sword(crate::item::Tier::Diamond), 1);
+    named.name = crate::inventory::StackName::new("x").unwrap();
+    named.damage = 7;
+    assert!(considers_equal(Stack::new(sword(crate::item::Tier::Diamond), 1), named));
+    assert!(!considers_equal(named, Stack::new(sword(crate::item::Tier::Iron), 1)));
+    let arrow = |p| Stack { entity_data: p, ..Stack::new(Item::TIPPED_ARROW, 1) };
+    assert!(considers_equal(arrow(3), arrow(3)));
+    assert!(!considers_equal(arrow(3), arrow(4)));
+    let lingering = |p| Stack { entity_data: p, ..Stack::new(Item::LINGERING_POTION, 1) };
+    assert!(!considers_equal(lingering(1), lingering(2)));
+    let p = crate::potion::Potion(1);
+    assert!(considers_equal(Stack::new(Item::potion(p), 1), Stack::new(Item::potion(p), 1)));
+    assert!(!considers_equal(Stack::new(Item::potion(p), 1), Stack::new(Item::splash_potion(p), 1)));
 }
 #[test]
 fn sensor_range_player_range_and_throw_cooldown_match_reference() {

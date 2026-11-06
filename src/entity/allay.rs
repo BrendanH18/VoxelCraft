@@ -60,10 +60,12 @@ impl State {
             ..Self::default()
         }
     }
+    /// `Allay.wantsToPickUp`: `allayConsidersItemEqual` (same item and equal
+    /// potion contents, every other component ignored) against the liked item,
+    /// then `SimpleContainer.canAddItem` (empty slot, or same item and
+    /// components below the stack maximum) for the single inventory slot.
     fn accepts(&self, stack: Stack) -> bool {
-        // Requested component-sensitive collection. Java itself compares item +
-        // potion contents; our stronger comparison is recorded in the track doc.
-        self.liked.is_some_and(|s| s.stacks_with(&stack))
+        self.liked.is_some_and(|s| considers_equal(s, stack))
             && self.cargo.is_none_or(|s| s.stacks_with(&stack) && s.count < s.max())
     }
     pub fn hear_note(&mut self, note: IVec3) {
@@ -83,6 +85,15 @@ impl State {
             self.dancing = false;
         }
     }
+}
+/// `Allay.allayConsidersItemEqual`: `ItemStack.isSameItem` and no
+/// mismatching `potion_contents`. Plain, splash and lingering-free potions are
+/// distinct item IDs here; tipped arrows and lingering potions carry their
+/// potion in `entity_data`.
+pub fn considers_equal(a: Stack, b: Stack) -> bool {
+    a.item == b.item
+        && (!matches!(a.item, crate::item::Item::TIPPED_ARROW | crate::item::Item::LINGERING_POTION)
+            || a.entity_data == b.entity_data)
 }
 fn bucket(pos: DVec3) -> IVec3 {
     (pos / 8.).floor().as_ivec3()

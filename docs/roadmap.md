@@ -1557,7 +1557,7 @@ sounds and templates, IDs in the
 - **B. Allays.** Item gifting, liking and collection, note-block
   preference, jukebox dancing and amethyst duplication, and allays in the
   outpost allay cage. *Implemented, unverified (2026-11-05):* flying allays,
-  shared gifting/return and component-sensitive collection/delivery, saved
+  shared gifting/return and Java-equality collection/delivery, saved
   player/note memories, note vibrations and two persistent generation-3
   cage residents. Original model, procedural skin and synthesized sounds;
   summon and LAN index 70. Dancing state and duplication callback are
