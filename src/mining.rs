@@ -230,6 +230,9 @@ pub fn charge_refuses_attack(minimum: f32, ticker: u32, lead: u32, delay: f32) -
 /// Experience a harvested block drops (Java's ore ranges; silk touch
 /// skips it: see [`mined_xp`]).
 pub fn ore_xp(block: Block, rng: &mut crate::entity::Rng) -> u32 {
+    if let Some((_, _, natural)) = crate::world::creaking::heart(block) {
+        return if natural { 20 + rng.next_int(5) } else { 0 };
+    }
     if let Some(xp) = crate::world::cave_blocks::xp(block) {
         return xp;
     }
@@ -247,6 +250,10 @@ pub fn ore_xp(block: Block, rng: &mut crate::entity::Rng) -> u32 {
 /// Silk Touch suppresses XP only when it actually harvests the block
 /// itself. Spawners cannot be collected, and still award XP with it.
 pub fn mined_xp(block: Block, tool: Enchants, rng: &mut crate::entity::Rng) -> u32 {
+    // CreakingHeartBlock.playerWillDestroy awards natural-heart XP even with Silk Touch.
+    if crate::world::creaking::heart(block).is_some() {
+        return ore_xp(block, rng);
+    }
     if tool.has(Enchantment::SilkTouch) && silk_drop(block).is_some() { 0 } else { ore_xp(block, rng) }
 }
 

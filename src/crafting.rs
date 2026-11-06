@@ -16,6 +16,7 @@ use crate::world::block::Block;
 
 mod bees;
 mod copper;
+mod creaking;
 mod crops;
 pub use copper::stonecutting as copper_stonecutting;
 pub mod colour;
@@ -638,6 +639,7 @@ pub fn recipes() -> &'static [Recipe] {
         copper::add_recipes(&mut r);
         crops::add_recipes(&mut r);
         bees::add(&mut r);
+        creaking::add(&mut r);
         wood::add(&mut r);
         colour::add(&mut r);
         utilities::add(&mut r);

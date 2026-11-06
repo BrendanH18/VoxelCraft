@@ -623,6 +623,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Armadillo => Voice::Armadillo,
         MobKind::Ocelot => Voice::Ocelot,
         MobKind::CopperGolem => Voice::Skeleton,
+        MobKind::Creaking => Voice::Creaking,
         MobKind::Tadpole => Voice::Fish,
         MobKind::Sheep => Voice::Sheep,
         MobKind::Chicken => Voice::Chicken,

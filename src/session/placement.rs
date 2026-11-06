@@ -300,6 +300,7 @@ impl PlayerSession {
                     {
                         mounted.ok_or("block cannot survive here")?
                     } else {
+                        let raw = crate::world::creaking::placed(raw, normal);
                         let raw = crate::world::frog_blocks::placed(raw, normal);
                         let block = ob::placed(raw, normal).unwrap_or(raw);
                         let block = crate::world::village_blocks::placed(
