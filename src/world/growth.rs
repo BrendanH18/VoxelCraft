@@ -389,6 +389,9 @@ impl World {
                 self.extinguish_ore(p, b);
             }
             Block::SUGAR_CANE => self.tick_cane(p),
+            super::eyeblossom::OPEN | super::eyeblossom::CLOSED => {
+                self.tick_eyeblossom(p, b);
+            }
             b if super::copper::ages(b) => self.tick_copper(p, b),
             b if super::copper_golem_statue::ages(b) => self.tick_copper_golem_statue(p, b),
             b if b.is_mushroom() => self.tick_mushroom(p, b),

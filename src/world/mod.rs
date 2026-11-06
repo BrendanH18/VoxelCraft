@@ -35,6 +35,8 @@ pub mod composter;
 pub mod copper;
 pub mod copper_golem_statue;
 pub mod creaking;
+pub mod eyeblossom;
+pub mod pale_garden;
 pub mod crops;
 pub mod deep_dark;
 pub mod dismount;
@@ -293,6 +295,8 @@ pub struct World {
     /// Sign text, shelf items and chiseled bookshelf books (see [`wood::entities`]).
     pub(crate) beehives: bees::State,
     pub(crate) creaking_night: Option<bool>,
+    /// Java's `gameplay/eyeblossom_open` attribute here (`None`: undefined).
+    pub(crate) eyeblossom_open: Option<bool>,
     pub(crate) creaking_active: std::collections::BTreeSet<[i32; 3]>,
     pub(crate) creaking_hearts: std::collections::BTreeMap<[i32; 3], creaking::Heart>,
     wood: wood::entities::WoodEntities,
@@ -579,6 +583,7 @@ impl World {
             creaking_hearts: Default::default(),
             creaking_active: Default::default(),
             creaking_night: None,
+            eyeblossom_open: None,
             copper_golem_names: Default::default(),
             wood: Default::default(),
             utilities: Default::default(),

@@ -1146,7 +1146,7 @@ fn add_overworld_recipes(r: &mut Vec<Recipe>) {
         1,
     ));
     // Dyes from cocoa, ink and the new flowers.
-    let dyes: [(Item, DyeColor, u8); 19] = [
+    let dyes: [(Item, DyeColor, u8); 21] = [
         (Item::COCOA_BEANS, DyeColor::Brown, 1),
         (Item::INK_SAC, DyeColor::Black, 1),
         (one(ob::CORNFLOWER), DyeColor::Blue, 1),
@@ -1165,6 +1165,8 @@ fn add_overworld_recipes(r: &mut Vec<Recipe>) {
         (one(ob::PINK_PETALS), DyeColor::Pink, 1),
         (one(crate::world::biome_plants::CACTUS_FLOWER), DyeColor::Pink, 1),
         (one(crate::world::biome_plants::WILDFLOWERS), DyeColor::Yellow, 1),
+        (one(crate::world::eyeblossom::OPEN), DyeColor::Orange, 1),
+        (one(crate::world::eyeblossom::CLOSED), DyeColor::Gray, 1),
         (Item::BEETROOT, DyeColor::Red, 1),
     ];
     for (source, colour, count) in dyes {

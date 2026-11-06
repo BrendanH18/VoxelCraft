@@ -639,6 +639,10 @@ impl World {
         if b == super::frog_blocks::FROGSPAWN {
             return self.hatch_frogspawn(p);
         }
+        if matches!(b, super::eyeblossom::OPEN | super::eyeblossom::CLOSED) {
+            self.tick_eyeblossom(p, b);
+            return;
+        }
         if super::scaffolding::is_scaffolding(b) {
             return self.tick_scaffolding(p);
         }

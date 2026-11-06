@@ -366,7 +366,7 @@ pub mod tex {
     pub const BUBBLE_BASE: u16 = 2864;
     pub const BUBBLE_UP: u16 = BUBBLE_BASE;
     pub const BUBBLE_DOWN: u16 = BUBBLE_BASE + 1;
-    pub const COUNT: u32 = super::super::creaking::TEX_END as u32; // Through Track A layers 3360–3372; unused layers stay reserved.
+    pub const COUNT: u32 = super::super::eyeblossom::TEX_END as u32; // Through Track A layers 3360–3376; unused layers stay reserved.
     const _: () = assert!(super::super::biome_plants::TEX_END <= BUBBLE_BASE);
     const _: () = assert!(super::super::utilities::TEX_END <= super::super::cave_blocks::TEX);
     const _: () = assert!(super::super::cave_blocks::TEX_END <= super::super::biome_plants::TEX);
@@ -1762,7 +1762,7 @@ impl Block {
         if super::crops::owns(self.0) {
             return 0.0;
         }
-        if self == Self::HONEY_BLOCK || super::biome_plants::owns(self.0) {
+        if self == Self::HONEY_BLOCK || super::biome_plants::owns(self.0) || super::eyeblossom::owns(self.0) {
             return 0.0;
         }
         if let Some((hardness, ..)) = super::copper::mining(self) {
@@ -2302,6 +2302,7 @@ impl Block {
             .chain(super::utilities::palette_ids())
             .chain(super::biome_plants::palette_ids())
             .chain(super::creaking::palette_ids())
+            .chain(super::eyeblossom::palette_ids())
             .chain(super::cave_blocks::palette_ids())
             .chain(super::frog_blocks::palette_ids())
             .map(Block)
@@ -2377,6 +2378,9 @@ impl Block {
             return ok;
         }
         if let Some(ok) = super::utilities::can_stay_on(self, below) {
+            return ok;
+        }
+        if let Some(ok) = super::eyeblossom::can_stay_on(self, below) {
             return ok;
         }
         if self.alias().is_some() || below.alias().is_some() {
@@ -2925,6 +2929,7 @@ pub(super) const fn make(id: u16) -> BlockInfo {
             None => ("unknown", Invisible, all(0)),
         },
         id if super::creaking::owns(id) => super::creaking::registry(id),
+        id if super::eyeblossom::owns(id) => super::eyeblossom::registry(id),
         id if super::cave_blocks::owns(id) => match super::cave_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),

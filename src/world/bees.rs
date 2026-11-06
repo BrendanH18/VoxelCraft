@@ -126,6 +126,8 @@ impl World {
         self.beehives.night = Some(rest_time(dimension, ticks));
         self.creaking_night =
             Some(dimension == super::terrain::Dimension::Overworld && (12600..23401).contains(&(ticks % 24000)));
+        self.eyeblossom_open =
+            (dimension == super::terrain::Dimension::Overworld).then(|| super::eyeblossom::open_at(ticks));
     }
     pub fn beehives_to_string(&self) -> String {
         let values: Vec<_> = self.beehives.hives.iter().map(|(p, h)| json!([p, h.save()])).collect();

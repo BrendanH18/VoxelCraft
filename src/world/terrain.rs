@@ -862,6 +862,9 @@ impl Generator {
             if self.generation >= Generation::V2 {
                 self.place_biome_plants(&mut blocks, base, &columns);
             }
+            if self.generation >= Generation::V3 {
+                self.place_eyeblossoms(&mut blocks, base);
+            }
             self.freeze(&mut blocks, base, &columns);
         }
         if base.y < SEA_LEVEL {
@@ -1336,8 +1339,22 @@ impl Generator {
                 let surface = self.ground_block(col, tx, tz);
                 let mut tree_blocks: Vec<(IVec3, Block)> = Vec::new();
                 let collect = &mut |p, b| tree_blocks.push((p, b));
-                if !grow_tree_for(col.biome, surface, ground, variant, pick, self.generation >= Generation::V2, collect)
+                // Generation 3 pale gardens grow Java's pale oak and its creaking variant.
+                if self.generation >= Generation::V3
+                    && col.biome == Biome::PaleGarden
+                    && pick < 90
+                    && ob::dirt_like(surface)
                 {
+                    super::pale_garden::pale_oak(ground, h, super::pale_garden::creaking_tree(h), collect);
+                } else if !grow_tree_for(
+                    col.biome,
+                    surface,
+                    ground,
+                    variant,
+                    pick,
+                    self.generation >= Generation::V2,
+                    collect,
+                ) {
                     continue;
                 }
                 let put = &mut |p, b| Self::put(blocks, base, p, b);
@@ -1569,6 +1586,32 @@ impl Generator {
         }
     }
 
+    /// Generation 3 closed eyeblossoms (`pale_garden_flowers`,
+    /// `flower_pale_garden`; see [`super::pale_garden::eyeblossom_attempts`]).
+    fn place_eyeblossoms(&self, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3) {
+        let mut attempts = Vec::new();
+        let mut surface = |x: i32, z: i32| {
+            if self.climate_biome(x, z) != Biome::PaleGarden {
+                return None;
+            }
+            let c = self.column(x, z);
+            (c.biome == Biome::PaleGarden && c.height >= SEA_LEVEL).then_some(c.height)
+        };
+        super::pale_garden::eyeblossom_attempts(self.seed, base.x, base.z, &mut surface, &mut attempts);
+        for p in attempts {
+            let l = p - base;
+            if !(1..CHUNK_SIZE_I).contains(&l.y) {
+                continue;
+            }
+            let (x, y, z) = (l.x as usize, l.y as usize, l.z as usize);
+            if blocks[index(x, y, z)] == Block::AIR
+                && super::eyeblossom::CLOSED.can_stay_on(blocks[index(x, y - 1, z)])
+            {
+                blocks[index(x, y, z)] = super::eyeblossom::CLOSED;
+            }
+        }
+    }
+
     /// Which flower a patch grows in a biome (Java's per-biome flower lists).
     fn flower(&self, biome: Biome, patch: u64, x: i32, z: i32) -> Block {
         use Biome::*;
@@ -1643,6 +1686,7 @@ impl Generator {
             || (!b.is_leaves() && slot.is_leaves())
             || (mangrove && (*slot == Block::WATER || *slot == ob::MUD || slot.is_replaceable()))
             || (b.is_log() && slot.kind() == super::block::RenderKind::Cross)
+            || (super::creaking::heart(b).is_some() && *slot == ob::PALE_OAK_LOG)
         {
             *slot = b;
         }
