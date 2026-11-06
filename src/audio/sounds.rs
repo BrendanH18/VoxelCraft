@@ -232,7 +232,7 @@ impl Sound {
         match self {
             Sound::Allay(action) => Self::BASE_COUNT + 44 + action as usize,
             Sound::CopperGolem(action, stage) => Self::BASE_COUNT + action as usize * 4 + usize::from(stage.min(3)),
-            Sound::Sniffer(cue) => Self::BASE_COUNT + 44 + cue as usize,
+            Sound::Sniffer(cue) => Self::BASE_COUNT + 48 + cue as usize,
             Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
             Sound::Thunder => Self::BASE_COUNT - 1,
             Sound::Bell => Self::BASE_COUNT - 4,
