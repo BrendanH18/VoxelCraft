@@ -28,11 +28,12 @@ jobs:
       matrix:
         include:
           - platform: windows-x64
+            # The Namespace plan doesn't allow Windows instances (checked 2026-11-06).
             runner: windows-2022
             target: x86_64-pc-windows-msvc
             rustflags: '-C target-feature=+crt-static'
           - platform: macos-apple-silicon
-            runner: macos-15
+            runner: [nscloud-macos-tahoe-arm64-6x14-with-cache, nscloud-cache-tag-voxelcraft-release-macos]
             target: aarch64-apple-darwin
             rustflags: ''
     env:
@@ -44,7 +45,12 @@ jobs:
           toolchain: '1.98.1'
           targets: ${{ matrix.target }}
           components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
+      - if: runner.os != 'Windows'
+        uses: namespacelabs/nscloud-cache-action@v1
+        with:
+          cache: rust
+      - if: runner.os == 'Windows'
+        uses: Swatinem/rust-cache@v2
         with:
           key: release-${{ matrix.platform }}
           cache-on-failure: true
@@ -99,7 +105,7 @@ jobs:
     name: Create draft release
     needs: package
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-gitrunner
     permissions:
       contents: write
     steps:

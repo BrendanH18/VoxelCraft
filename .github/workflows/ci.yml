@@ -11,6 +11,11 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
 
+# A newer push to a pull request cancels its older run; runs on main always finish.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # Jobs run on Namespace runners (https://namespace.so): Linux on the owner's
 # `gitrunner` profile (amd64, with a cache volume) and macOS on an inline
 # label with a cache volume, which `nscloud-cache-action` fills. Windows
@@ -20,6 +25,7 @@ jobs:
   fmt:
     name: rustfmt
     runs-on: namespace-profile-gitrunner
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -30,6 +36,8 @@ jobs:
   test:
     name: clippy + test (${{ matrix.os }})
     runs-on: ${{ matrix.runner }}
+    # Windows on GitHub's runner has taken up to 39 minutes.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -55,14 +63,22 @@ jobs:
           cache: rust
       - if: runner.os == 'Windows'
         uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --release --all-targets -- -D warnings
-      - run: cargo test --release
+      - run: cargo clippy --release --all-targets --locked -- -D warnings
+      - run: cargo test --release --locked
       - name: Headless generation/meshing benchmark
-        run: cargo run --release -- --bench --rd 4
+        run: cargo run --release --locked -- --bench --rd 4
+      # The release binary from the benchmark step checks its embedded asset manifest.
+      - name: Validate assets
+        if: runner.os == 'Linux'
+        run: python3 tools/validate_assets.py --executable target/release/voxelcraft
+      - name: Benchmark gate tool tests
+        if: runner.os == 'Linux'
+        run: python3 -m unittest tools/test_benchmark_scenes.py
 
   headless:
     name: simulation without client dependencies
     runs-on: namespace-profile-gitrunner
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -71,6 +87,6 @@ jobs:
       - uses: namespacelabs/nscloud-cache-action@v1
         with:
           cache: rust
-      - run: cargo clippy --release --no-default-features --all-targets -- -D warnings
-      - run: cargo test --release --no-default-features
-      - run: cargo run --release --no-default-features --example headless
+      - run: cargo clippy --release --no-default-features --all-targets --locked -- -D warnings
+      - run: cargo test --release --no-default-features --locked
+      - run: cargo run --release --no-default-features --locked --example headless
