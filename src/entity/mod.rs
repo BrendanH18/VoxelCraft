@@ -60,6 +60,7 @@ pub mod potion;
 mod projectile;
 mod replica;
 mod slime;
+pub mod sniffer;
 mod spawn_lists;
 mod spawn_rules;
 mod spawning;

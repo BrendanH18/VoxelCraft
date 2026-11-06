@@ -540,6 +540,9 @@ impl World {
     /// Prepares placing one of this module's blocks at `at`: the upper half
     /// of a double plant goes on top first, so the lower half finds it.
     pub fn before_overworld_place(&mut self, at: IVec3, block: Block) {
+        if let Some((lower, false)) = super::sniffer_plants::double(block) {
+            self.edit(at + IVec3::Y, super::sniffer_plants::partner(lower), true);
+        }
         if let Some((lower, false)) = ob::double_of(block.canonical()) {
             self.edit(at + IVec3::Y, Block(lower.0 + 1), true);
         }

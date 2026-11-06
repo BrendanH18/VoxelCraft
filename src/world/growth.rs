@@ -384,6 +384,7 @@ impl World {
                 self.utilities_random_tick(p, b);
                 self.tick_overworld_flora(p, b);
             }
+            b if super::sniffer_plants::owns(b.0) => self.tick_sniffer_crop(p, b),
             b if b.as_crop().is_some() => self.tick_crop(p, b),
             b if super::crops::stem(b).is_some() => self.tick_stem(p, b),
             // Java: one in ten random ticks, whatever the light.
@@ -470,7 +471,12 @@ impl World {
                     (0..=1).any(|dy| self.get_block(p + IVec3::new(dx, dy, dz)).is_some_and(|w| w.holds_water()))
                 })
             });
-        let crop = above.is_some_and(|a| a.crop_stage().is_some() || super::crops::stem(a).is_some());
+        let crop = above.is_some_and(|a| {
+            a.crop_stage().is_some()
+                || super::crops::stem(a).is_some()
+                || super::sniffer_plants::torch_age(a).is_some()
+                || super::sniffer_plants::pitcher_state(a).is_some()
+        });
         match (wet, b) {
             (true, Block::FARMLAND) => {
                 self.edit(p, Block::WET_FARMLAND, false);
@@ -594,6 +600,9 @@ impl World {
     /// Returns whether the bone meal was used.
     pub fn apply_bone_meal(&mut self, p: IVec3) -> bool {
         let Some(b) = self.get_block(p) else { return false };
+        if let Some(used) = self.sniffer_bone_meal(p, b) {
+            return used;
+        }
         if let Some(used) = self.stem_bone_meal(p, b) {
             return used;
         }

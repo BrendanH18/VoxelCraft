@@ -651,6 +651,27 @@ New `MobKind`s append after `CopperGolem` in the order Creaking, Allay,
 Sniffer, taking LAN indices 69, 70 and 71; existing names and indices
 keep their meanings. The unassigned reserve becomes 15488–16383.
 
+Track C allocation (2026-11-05, implemented, unverified):
+
+| States / IDs | Meaning |
+| --- | --- |
+| 15104–15105 | Torchflower crop ages 0–1 |
+| 15106, 15107 | Torchflower, potted torchflower |
+| 15108–15117 | Pitcher crop: `15108 + age + 5*upper`, all ten Java states |
+| 15118–15119 | Pitcher plant lower, upper |
+| 15120–15122 | Sniffer egg hatch levels 0–2 |
+| Items 1385–1386 | Torchflower seeds, pitcher pod |
+| Block item 47888 | `Item::SNIFFER_EGG = Item::from_block(sniffer_egg::EGG)`; Track D resolves `archaeology/ocean_ruin_warm` through this constant |
+| Layers 3440–3458 | Original crops/plants (16), egg cracks (3); offsets from `sniffer_plants::t::BASE` |
+| MobKind `Sniffer` | Saved Java id `sniffer`, LAN 71; explicit wire mapping preserves 69–70 for the other tracks before integration |
+
+15123–15231, 1387–1394 and 3459–3503 stay reserved and unregistered.
+Sniffer activity, its loot-emitted latch, cooldown and up to 21
+(dimension, position) explored memories save in the mob's `sniffer` object.
+Eggs use the existing saved scheduled-tick queue; crops need no block entity.
+See [Track C evidence](verification/2026-11-05-v0.15-sniffers.md), including
+remaining navigation/presentation differences and checks.
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

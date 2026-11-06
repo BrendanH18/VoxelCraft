@@ -147,6 +147,7 @@ impl World {
         self.solidify_nearby_powder(p);
         self.update_nether_vines(p);
         self.update_overworld_plants(p);
+        self.update_sniffer_plants(p);
         self.update_utilities(p);
         self.update_multiface(p);
         loop {

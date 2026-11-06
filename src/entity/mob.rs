@@ -187,6 +187,7 @@ pub enum MobKind {
     Armadillo,
     Ocelot,
     CopperGolem,
+    Sniffer,
 }
 
 impl MobKind {
@@ -214,7 +215,13 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 69] = [
+    pub fn lan_index(self) -> usize {
+        if self == Self::Sniffer { 71 } else { Self::ALL.iter().position(|&k| k == self).unwrap() }
+    }
+    pub fn from_lan_index(index: usize) -> Option<Self> {
+        if index == 71 { Some(Self::Sniffer) } else { Self::ALL.get(index).copied().filter(|&k| k != Self::Sniffer) }
+    }
+    pub const ALL: [MobKind; 70] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -284,6 +291,7 @@ impl MobKind {
         MobKind::Armadillo,
         MobKind::Ocelot,
         MobKind::CopperGolem,
+        MobKind::Sniffer,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -358,6 +366,7 @@ impl MobKind {
             MobKind::Armadillo => "armadillo",
             MobKind::Ocelot => "ocelot",
             MobKind::CopperGolem => "copper_golem",
+            MobKind::Sniffer => "sniffer",
         }
     }
 
@@ -370,6 +379,7 @@ impl MobKind {
     /// Collision box dimensions for movement and spawn-space checks.
     pub fn shape(self) -> Shape {
         match self {
+            MobKind::Sniffer => Shape::new(0.95, 1.75),
             MobKind::Bat => Shape::new(0.25, 0.9),
             MobKind::Frog => Shape::new(0.25, 0.5),
             MobKind::Tadpole => Shape::new(0.2, 0.3),
@@ -452,6 +462,7 @@ impl MobKind {
             | MobKind::ZombieVillager
             | MobKind::Strider
             | MobKind::Panda => 20.0,
+            MobKind::Sniffer => 14.0,
             MobKind::CopperGolem => 12.0,
             MobKind::IronGolem => 100.0,
             MobKind::SnowGolem => 4.0,
@@ -551,7 +562,7 @@ impl MobKind {
     pub fn spawns_in(self, dimension: Dimension) -> bool {
         match self {
             MobKind::Enderman => true,
-            MobKind::Mule | MobKind::Bee | MobKind::Phantom | MobKind::CopperGolem => false,
+            MobKind::Sniffer | MobKind::Mule | MobKind::Bee | MobKind::Phantom | MobKind::CopperGolem => false,
             // Only from spawners and inside fortresses (`fortress_spawn`).
             MobKind::Blaze
             | MobKind::WitherSkeleton
@@ -874,7 +885,7 @@ impl MobKind {
             MobKind::GlowSquid => &[(Item::GLOW_INK_SAC, 1, 3)],
             MobKind::Guardian => &[(Item::PRISMARINE_SHARD, 0, 2)],
             MobKind::ElderGuardian => &[(Item::PRISMARINE_SHARD, 0, 2), (SPONGE, 1, 1)],
-            MobKind::Axolotl | MobKind::Cat | MobKind::Ocelot | MobKind::Pillager => &[],
+            MobKind::Sniffer | MobKind::Axolotl | MobKind::Cat | MobKind::Ocelot | MobKind::Pillager => &[],
             MobKind::Turtle => &[(SEAGRASS, 0, 2)],
             MobKind::Wolf | MobKind::Fox | MobKind::Goat => &[],
             MobKind::Parrot => &[(Item::FEATHER, 1, 2)],
@@ -1019,6 +1030,7 @@ pub struct Mob {
     pub armadillo: Option<Box<super::armadillo::State>>,
     pub ocelot: Option<Box<super::ocelot::State>>,
     pub copper_golem: Option<Box<super::copper_golem::State>>,
+    pub sniffer: Option<Box<super::sniffer::State>>,
     pub wolf_armor: Option<Box<super::wolf_armor::State>>,
     /// Witch: seconds left drinking, and the potion it is drinking.
     drink_left: f32,
@@ -1206,6 +1218,7 @@ impl Mob {
             armadillo: (kind == MobKind::Armadillo).then(Box::default),
             ocelot: (kind == MobKind::Ocelot).then(Box::default),
             copper_golem: (kind == MobKind::CopperGolem).then(Box::default),
+            sniffer: (kind == MobKind::Sniffer).then(Box::default),
             wolf_armor: (kind == MobKind::Wolf).then(Box::default),
             drink_left: 0.0,
             drinking: "",
@@ -1371,6 +1384,10 @@ impl Mob {
     }
 
     pub fn shape(&self) -> Shape {
+        if self.sniffer.as_ref().is_some_and(|s| s.pose == super::sniffer::DIGGING) {
+            let scale = if self.baby || self.age < 0 { 0.5 } else { 1.0 };
+            return Shape::new(0.95 * scale, f64::from(1.75_f32 - 0.4_f32) * scale);
+        }
         if let Some(p) = &self.phantom {
             let s = 1. + f64::from(p.size) * 0.15;
             Shape::new(0.45 * s, 0.5 * s)
@@ -1652,6 +1669,10 @@ impl Mob {
             if self.alive()
                 && self.armadillo.as_ref().is_none_or(|s| !s.scared())
                 && self.kind != MobKind::CopperGolem
+                && self
+                    .sniffer
+                    .as_ref()
+                    .is_none_or(|s| !matches!(s.pose, super::sniffer::SEARCHING | super::sniffer::DIGGING))
                 && self.kind != MobKind::Tadpole
                 && self.kind != MobKind::Creeper
                 && (self.bat.as_ref().is_none_or(|s| !s.resting) || rng.next_int(4) == 0)
@@ -1875,6 +1896,11 @@ impl Mob {
             return (None, 0.0);
         }
         if let Some(wish) = self.leash_think(dt, world, rng) {
+            return wish;
+        }
+        if self.sniffer.is_some()
+            && let Some(wish) = self.sniffer_steer(dt, world, ctx, rng)
+        {
             return wish;
         }
         if self.copper_golem.is_some() {

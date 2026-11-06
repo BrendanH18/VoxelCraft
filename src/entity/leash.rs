@@ -22,6 +22,7 @@ impl MobKind {
                 | Self::Mooshroom
                 | Self::Frog
                 | Self::PolarBear
+                | Self::Sniffer
                 | Self::Armadillo
                 | Self::Ocelot
                 | Self::Sheep

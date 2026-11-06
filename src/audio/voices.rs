@@ -49,6 +49,7 @@ pub enum Voice {
     Panda,
     Armadillo,
     Ocelot,
+    Sniffer,
 }
 
 /// What kind of sound a voice makes.
@@ -61,7 +62,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 37] = [
+    pub const ALL: [Voice; 38] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -99,6 +100,7 @@ impl Voice {
         Voice::Panda,
         Voice::Armadillo,
         Voice::Ocelot,
+        Voice::Sniffer,
     ];
 
     /// The category the creature plays in: `Monster`, `Ghast`, `Hoglin` and
@@ -119,9 +121,13 @@ impl Voice {
             | Voice::Hoglin
             | Voice::Guardian
             | Voice::Pillager => SoundSource::Hostile,
-            Voice::Bat | Voice::Frog | Voice::PolarBear | Voice::Panda | Voice::Armadillo | Voice::Ocelot => {
-                SoundSource::Neutral
-            }
+            Voice::Sniffer
+            | Voice::Bat
+            | Voice::Frog
+            | Voice::PolarBear
+            | Voice::Panda
+            | Voice::Armadillo
+            | Voice::Ocelot => SoundSource::Neutral,
             Voice::Pig
             | Voice::Cow
             | Voice::Sheep
@@ -153,6 +159,7 @@ impl Voice {
             Voice::Panda => "panda",
             Voice::Armadillo => "armadillo",
             Voice::Ocelot => "ocelot",
+            Voice::Sniffer => "sniffer",
             Voice::Cow => "cow",
             Voice::Sheep => "sheep",
             Voice::Chicken => "chicken",
@@ -269,6 +276,7 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::Panda => panda(call, rng),
         Voice::Armadillo => armadillo(call, rng),
         Voice::Ocelot => ocelot(call, rng),
+        Voice::Sniffer => sniffer(call, rng),
         Voice::Pig => pig(call, rng),
         Voice::Horse => horse(call, rng),
         Voice::Cow => cow(call, rng),
@@ -1002,4 +1010,14 @@ fn ocelot(call: Call, rng: &mut Rng) -> Vec<f32> {
         add_mode(&mut out, 0, Mode { freq: pitch * harm, amp: gain, tau: 0.12, glide: 0.3, glide_tau: 0.09 });
     }
     dsp::finish(out, 0.5)
+}
+
+// Original low nasal breath and resonant snort, authored from oscillators.
+fn sniffer(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let mut out = vec![0.; samples(if call == Call::Death { 0.9 } else { 0.65 })];
+    let freq = rng.range(46., 63.) * if call == Call::Hurt { 1.5 } else { 1. };
+    for (harm, amp) in [(1., 0.6), (2.2, 0.25), (5.1, 0.08)] {
+        add_mode(&mut out, 0, Mode { freq: freq * harm, amp, tau: 0.3, glide: -0.12, glide_tau: 0.2 });
+    }
+    dsp::finish(out, 0.48)
 }

@@ -24,6 +24,8 @@ impl CompostClass {
     }
 }
 const CHANCE_30: &[Item] = &[
+    Item::TORCHFLOWER_SEEDS,
+    Item::PITCHER_POD,
     Item::MELON_SEEDS,
     Item::BEETROOT_SEEDS,
     Item::WHEAT_SEEDS,
@@ -128,6 +130,8 @@ const CHANCE_65: &[Item] = &[
     Item::from_block(nb::WARPED_ROOTS),
 ];
 const CHANCE_85: &[Item] = &[
+    Item::from_block(crate::world::sniffer_plants::TORCHFLOWER),
+    Item::from_block(crate::world::sniffer_plants::PITCHER_PLANT),
     Item::COOKIE,
     Item::BAKED_POTATO,
     Item::BREAD,

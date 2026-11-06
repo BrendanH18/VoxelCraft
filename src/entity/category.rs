@@ -80,7 +80,8 @@ impl MobKind {
     pub const fn category(self) -> MobCategory {
         use MobKind as K;
         match self {
-            K::SkeletonHorse
+            K::Sniffer
+            | K::SkeletonHorse
             | K::Pig
             | K::Cow
             | K::Mooshroom

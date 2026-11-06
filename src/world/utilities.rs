@@ -278,17 +278,23 @@ pub const fn cauldron(contents: Contents) -> Block {
 
 /// The potted form of `plant`, if a pot can hold it.
 pub fn potted(plant: Block) -> Option<Block> {
+    if plant == super::sniffer_plants::TORCHFLOWER {
+        return Some(super::sniffer_plants::POTTED_TORCHFLOWER);
+    }
     POTTED.iter().position(|(p, _)| *p == plant).map(|i| Block(POTTED_FIRST + i as u16))
 }
 
 /// The plant in a potted block.
 pub const fn potted_plant(b: Block) -> Option<Block> {
+    if b.0 == super::sniffer_plants::POTTED_TORCHFLOWER.0 {
+        return Some(super::sniffer_plants::TORCHFLOWER);
+    }
     if b.0 >= POTTED_FIRST && b.0 < POTTED_END { Some(POTTED[(b.0 - POTTED_FIRST) as usize].0) } else { None }
 }
 
 /// A flower pot, empty or potted.
 pub const fn is_pot(b: Block) -> bool {
-    b.0 >= FLOWER_POT.0 && b.0 < POTTED_END
+    b.0 == super::sniffer_plants::POTTED_TORCHFLOWER.0 || (b.0 >= FLOWER_POT.0 && b.0 < POTTED_END)
 }
 
 /// A respawn anchor with `charges` 0..=4.
@@ -583,7 +589,7 @@ pub const fn emission(id: u16) -> u8 {
 /// Shaped states drawn from [`boxes`] (`Shaped::Custom`).
 #[inline]
 pub fn is_custom(b: Block) -> bool {
-    owns(b.0) && b.kind() == RenderKind::Shaped
+    (owns(b.0) || b == super::sniffer_plants::POTTED_TORCHFLOWER) && b.kind() == RenderKind::Shaped
 }
 
 /// Shaped states with see-through texels (plants, flames, fans): drawn in
@@ -890,7 +896,7 @@ pub fn boxes(b: Block) -> Boxes {
         }
     } else if is_pot(b) {
         POT_BOXES.iter().for_each(|&x| out.push(x));
-        match potted_plant(b).map(|_| (b.0 - POTTED_FIRST) as usize) {
+        match potted_plant(b).map(|_| b.0.wrapping_sub(POTTED_FIRST) as usize) {
             Some(POTTED_CACTUS) => out.push(bx([6, 4, 6], [10, 16, 10])),
             Some(POTTED_BAMBOO) => out.push(bx([7, 4, 7], [9, 16, 9])),
             Some(_) => {

@@ -23,6 +23,8 @@ mod nether;
 mod overworld;
 #[path = "plant_textures.rs"]
 mod plants;
+#[path = "sniffer_plant_textures.rs"]
+mod sniffer_plants;
 #[path = "stone_textures.rs"]
 mod stone;
 #[path = "utility_textures.rs"]
@@ -250,6 +252,12 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     }
     if (crate::world::bees::t::BASE..crate::world::bees::t::END).contains(&layer) {
         return bees::pixel(layer, x, y);
+    }
+    if (crate::world::sniffer_egg::TEX..crate::world::sniffer_egg::TEXTURE_END).contains(&layer) {
+        return crate::world::sniffer_egg::pixel(layer, x, y);
+    }
+    if (crate::world::sniffer_plants::t::BASE..crate::world::sniffer_plants::t::END).contains(&layer) {
+        return sniffer_plants::pixel(layer, x, y);
     }
     if (crate::world::crops::t::BASE..crate::world::crops::t::END).contains(&layer) {
         return crops::pixel(layer, x, y);

@@ -349,7 +349,9 @@ impl PlayerSession {
                     if !support || !world.redstone_supported(at, block) {
                         return Err("block cannot survive here");
                     }
-                    let partner = if let Some((lower, false)) = ob::double_of(block) {
+                    let partner = if block == crate::world::sniffer_plants::PITCHER_PLANT {
+                        Some((at + IVec3::Y, crate::world::sniffer_plants::partner(block)))
+                    } else if let Some((lower, false)) = ob::double_of(block) {
                         Some((at + IVec3::Y, Block(lower.0 + 1)))
                     } else if block == ob::TALL_SEAGRASS {
                         Some((at + IVec3::Y, ob::TALL_SEAGRASS_TOP))

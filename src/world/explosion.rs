@@ -407,6 +407,9 @@ const RESISTANCE: &[(f32, &[&str])] = &[
     (3_600_000.0, &["bedrock", "end gateway", "end portal", "end portal frame"]),
 ];
 const DECAY: &[&str] = &[
+    "pitcher crop",
+    "pitcher plant",
+    "torchflower crop",
     "melon stem",
     "attached melon stem",
     "pumpkin stem",
