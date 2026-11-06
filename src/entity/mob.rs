@@ -223,7 +223,7 @@ impl MobKind {
     pub fn from_lan_index(index: usize) -> Option<Self> {
         if index == 71 { Some(Self::Sniffer) } else { Self::ALL.get(index).copied().filter(|&k| k != Self::Sniffer) }
     }
-    pub const ALL: [MobKind; 70] = [
+    pub const ALL: [MobKind; 71] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -569,7 +569,12 @@ impl MobKind {
     pub fn spawns_in(self, dimension: Dimension) -> bool {
         match self {
             MobKind::Enderman => true,
-            MobKind::Sniffer | MobKind::Mule | MobKind::Bee | MobKind::Phantom | MobKind::CopperGolem | MobKind::Creaking => false,
+            MobKind::Sniffer
+            | MobKind::Mule
+            | MobKind::Bee
+            | MobKind::Phantom
+            | MobKind::CopperGolem
+            | MobKind::Creaking => false,
             // Only from spawners and inside fortresses (`fortress_spawn`).
             MobKind::Blaze
             | MobKind::WitherSkeleton
