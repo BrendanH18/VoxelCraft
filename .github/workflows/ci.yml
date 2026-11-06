@@ -11,10 +11,15 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
 
+# Jobs run on Namespace runners (https://namespace.so): Linux on the owner's
+# `gitrunner` profile (amd64, with a cache volume), macOS and Windows on
+# inline labels with a per-platform cache volume. `nscloud-cache-action`
+# keeps the cargo registry and build output on those volumes.
+
 jobs:
   fmt:
     name: rustfmt
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-gitrunner
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -24,11 +29,17 @@ jobs:
 
   test:
     name: clippy + test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: linux
+            runner: namespace-profile-gitrunner
+          - os: macos
+            runner: [nscloud-macos-tahoe-arm64-6x14-with-cache, nscloud-cache-tag-voxelcraft-ci-macos]
+          - os: windows
+            runner: [nscloud-windows-2022-amd64-8x16-with-cache, nscloud-cache-tag-voxelcraft-ci-windows]
     steps:
       - uses: actions/checkout@v4
       - name: Install Linux audio/windowing headers
@@ -37,7 +48,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: namespacelabs/nscloud-cache-action@v1
+        with:
+          cache: rust
       - run: cargo clippy --release --all-targets -- -D warnings
       - run: cargo test --release
       - name: Headless generation/meshing benchmark
@@ -45,13 +58,15 @@ jobs:
 
   headless:
     name: simulation without client dependencies
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-gitrunner
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: namespacelabs/nscloud-cache-action@v1
+        with:
+          cache: rust
       - run: cargo clippy --release --no-default-features --all-targets -- -D warnings
       - run: cargo test --release --no-default-features
       - run: cargo run --release --no-default-features --example headless

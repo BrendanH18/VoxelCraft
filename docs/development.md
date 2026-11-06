@@ -14,6 +14,46 @@ cargo clippy --release --all-targets -- -D warnings
 cargo test --release
 ```
 
+## Remote checks
+
+`scripts/remote-check.sh` runs the checks on a [Namespace](https://namespace.so)
+cloud instance instead of this machine, so several agents can check their
+work at once without competing for the Mac's memory or cargo's build lock.
+It needs the `nsc` command-line tool, installed and logged in
+(`nsc login`).
+
+```sh
+scripts/remote-check.sh            # cargo fmt here, then clippy and tests remotely
+scripts/remote-check.sh --full     # also the --no-default-features clippy and tests
+scripts/remote-check.sh -- cargo test --release some_test   # any command
+```
+
+Each run creates a bare Linux instance (8 vCPU, 16 GB by default,
+`VC_REMOTE_SHAPE` to change it), uploads the working tree with uncommitted
+edits and untracked, non-ignored files, runs the command and destroys the
+instance. The Rust toolchain, cargo registry and target directory live on
+the 20 GB `voxelcraft-check` cache volume (`VC_REMOTE_CACHE_TAG`), so
+dependencies build once and later runs start warm. On the current Namespace
+plan (checked 2026-11-05), instances with a cache volume are limited to
+8 vCPU and 16 GB with a volume of at most 20 GB; larger shapes or volumes
+fail with "not supported". Uploaded files get the
+upload time as their modification time, so the `voxelcraft` crate and its
+build script always rebuild for the uploaded tree. `VC_REMOTE_KEEP=1`
+leaves the instance running for inspection (`nsc ssh <id>`, then
+`nsc destroy <id> --force`).
+
+The instance runs Linux, like the Linux CI job: it checks the code and
+tests but not macOS- or Windows-only code, the GPU, or performance. Run
+the game, screenshots, scripted scenes and benchmarks locally; frame-time
+gates are measured on the reference M5 MacBook Pro. CI runs the same checks
+on Namespace runners for every pull request: Linux on the owner's
+`namespace-profile-gitrunner` profile, macOS and Windows on inline
+`nscloud-*` labels with cache volumes. Timing on 8 vCPU with dependencies cached (2026-11-05): clippy about
+1 minute, compiling the release test binaries about 8 minutes, the tests
+under a minute, so a default run takes about 11 minutes and `--full`
+about 21. That is slower than the M5, but runs don't share a machine or
+wait on each other.
+
 ## Headless simulation foundation
 
 The `voxelcraft` library contains world simulation, collision, players,
