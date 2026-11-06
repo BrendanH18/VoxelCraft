@@ -24,7 +24,7 @@ impl PlayerSession {
             && (self.inventory.offhand.map(|s| s.item) != Some(Item::BRUSH)
                 || main.is_some_and(|i| {
                     i == Item::SHIELD
-                        || i.food().is_some()
+                        || i.food().is_some() && self.can_eat(i)
                         || i.is_drink()
                         || matches!(i, Item::BOW | Item::CROSSBOW | Item::CHARGED_CROSSBOW)
                 }))
@@ -151,5 +151,16 @@ mod tests {
         assert_eq!(cli.session.inventory.get(0).unwrap().damage, 1);
         assert_eq!(w.drops.len(), 1);
         assert_eq!(cli.session.vitals.hunger.food, 20.);
+    }
+    #[test]
+    fn brush_in_air_passes_to_offhand_shield() {
+        let mut w = World::new_remote(Arc::new(Generator::new(42)), 2);
+        w.receive_chunk(IVec3::new(0, 4, 0), Arc::new(ChunkData::Uniform(Block::AIR)));
+        let mut s = PlayerSession::new(PlayerId(1), DVec3::new(6.5, 144., 8.5));
+        s.inventory.slots[0] = Some(Stack::new(Item::BRUSH, 1));
+        s.inventory.offhand = Some(Stack::new(Item::SHIELD, 1));
+        assert!(!s.start_brushing(0, &w));
+        assert!(s.start_blocking(0));
+        assert_eq!(s.shield_hand(0), Some(crate::session::hands::Hand::Off));
     }
 }
