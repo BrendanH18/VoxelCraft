@@ -47,13 +47,6 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
   worktree, explicit scope and reserved IDs; delegated agents do not delegate further.
 - Run at most four agents at once (owner, 2026-10-17): the owner's machine has
   16 GB of RAM. Queue further work until a slot frees.
-- Delegated implementation agents run on Codex with GPT-6.1 Sol
-  (`gpt-6.1-sol`) at `xhigh` reasoning effort (owner, 2026-11-04; Claude
-  models before that, from 2026-10-22). Reviews always run on Codex
-  (GPT-6.1-Sol). While Codex is at its usage limit, reviews run on DeepSeek
-  V4.1 Flash only (`openrouter/deepseek/deepseek-v4.1-flash-1017`) through
-  OpenCode until Codex resets (owner, 2026-10-30; Reflection Beam is no longer
-  used). Use other providers only when the owner asks.
 - Extra hands-on tests (running the game, playing it and looking at the
   result through computer use) run on Codex with GPT-6.1 Terra
   (`gpt-6.1-terra`), never Sol, at whatever reasoning effort fits the task
