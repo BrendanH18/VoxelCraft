@@ -237,6 +237,18 @@ impl Game {
             Command::LocateStructure(name) => {
                 let key = name.strip_prefix("minecraft:").unwrap_or(&name);
                 let at = match key {
+                    "ocean_ruin_warm" | "ocean_ruin_cold" if self.dimension == Dimension::Overworld => {
+                        self.world.generator.temples.nearest_ocean_ruin(
+                            &self.world.generator,
+                            IVec2::new(
+                                self.session.player.pos.x.floor() as i32,
+                                self.session.player.pos.z.floor() as i32,
+                            ),
+                            6400,
+                            key == "ocean_ruin_warm",
+                        )
+                    }
+                    "ocean_ruin_warm" | "ocean_ruin_cold" => None,
                     "ruined_portal" => self.world.generator.ruined_portals.nearest(
                         &self.world.generator,
                         self.session.player.pos.floor().as_ivec3(),

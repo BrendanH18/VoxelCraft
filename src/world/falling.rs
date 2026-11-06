@@ -152,7 +152,10 @@ impl World {
         loop {
             self.wake_fluids(p);
             let Some(b) = self.get_block(p) else { return };
-            if b.has_gravity() && self.get_block(p - IVec3::Y).is_some_and(can_fall_into) {
+            if b.has_gravity()
+                && !super::archaeology::owns(b.0)
+                && self.get_block(p - IVec3::Y).is_some_and(can_fall_into)
+            {
                 self.edit(p, Block::AIR, true);
                 self.falling.push(FallingBlock::new(b, p.as_dvec3(), 0.0));
                 continue; // `p` is air now: look at what was on top of it
@@ -165,6 +168,10 @@ impl World {
                     self.edit(above, if a.is_waterlogged() { Block::WATER } else { Block::AIR }, true);
                     self.spill_block(above, a);
                     p = above;
+                }
+                Some(a) if super::archaeology::owns(a.0) && can_fall_into(b) => {
+                    self.schedule_redstone(above, 2, 0);
+                    return;
                 }
                 Some(a) if a.has_gravity() && can_fall_into(b) => p = above,
                 _ => return,
@@ -278,6 +285,10 @@ impl World {
         self.clear_stalactite_hits();
         for (p, fell) in landed {
             let block = fell.block;
+            // BrushableBlock disables placement and drops after falling.
+            if super::archaeology::owns(block.0) {
+                continue;
+            }
             // Pointed dripstone breaks where it lands (`onBrokenAfterFall`).
             if self.stalactite_landed(p, &fell) {
                 continue;

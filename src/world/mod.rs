@@ -13,6 +13,7 @@
 //! light-blocking block, which seeds skylight in mesh jobs.
 
 pub mod activity;
+pub mod archaeology;
 mod automation;
 pub mod bastion;
 pub mod bees;
@@ -291,6 +292,7 @@ pub struct World {
     brewing_stands: FxHashMap<IVec3, brewing::BrewingStand>,
     /// Sign text, shelf items and chiseled bookshelf books (see [`wood::entities`]).
     pub(crate) beehives: bees::State,
+    pub(crate) archaeology: archaeology::State,
     wood: wood::entities::WoodEntities,
     /// Campfire, decorated pot and cauldron-drip state (see [`utilities`]).
     utilities: utilities::State,
@@ -571,6 +573,7 @@ impl World {
             next_chest_identity: 0,
             brewing_stands: FxHashMap::default(),
             beehives: Default::default(),
+            archaeology: Default::default(),
             copper_golem_names: Default::default(),
             wood: Default::default(),
             utilities: Default::default(),
@@ -923,6 +926,7 @@ impl World {
         self.track_brewing_stand(p, old, block);
         self.track_wood(p, old, block);
         self.track_beehives(p, old, block);
+        self.track_archaeology(p, old, block);
         self.track_copper_golem_statue(p, block);
         self.track_utilities(p, old, block);
         self.track_spawner(p, old, block);
@@ -1367,6 +1371,7 @@ impl World {
         self.load_block_light(pos);
         self.light_sky_column(column_of(pos));
         self.load_redstone_chunk(pos);
+        self.register_archaeology_ticks(pos);
         self.entity_loads.insert(pos);
         if let Some(blocks) = self.stored_falling.remove(&pos) {
             self.falling.extend(blocks);

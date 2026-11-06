@@ -183,6 +183,7 @@ impl Actor<'_> {
             && !self.session.drawing()
             && !self.session.shield_raised()
             && !self.session.consuming()
+            && !self.session.brushing()
             // Buckets, snowballs, eggs and rods act once per click, in either hand.
             && !self.held().is_some_and(once_per_click)
             && !self.body.used_once
@@ -194,6 +195,12 @@ impl Actor<'_> {
         if !self.body.left_held {
             self.body.actions.breaking = None;
             self.session.cancel_mining();
+        }
+        if let Some(p) =
+            self.session.tick_brushing(self.body.actions.selected, acting && self.body.right_held, self.world)
+        {
+            self.hand.swing();
+            self.audio.block_hit(self.world.get_block(p).unwrap_or(Block::SAND), p, dt);
         }
         self.session.tick_blocking(self.body.actions.selected, acting && self.body.right_held);
         self.eat(acting, dt);
@@ -377,7 +384,7 @@ impl Actor<'_> {
             // Nearest shared sound for `item.axe.scrape`: a high, scratchy stone step.
             Used::Waxed { cell } => audio.play(Sound::Place(Material::Snow), Some(centre(cell)), 1.0, (0.9, 1.1)),
             Used::Scraped { cell } => audio.play(Sound::Step(Material::Stone), Some(centre(cell)), 1.0, (1.5, 1.8)),
-            Used::Statue { .. } => {}
+            Used::Statue { .. } | Used::BrushStarted => {}
             // `CANDLE_EXTINGUISH` and `CAKE_ADD_CANDLE`, from the shared sound set.
             Used::CandleExtinguished { cell } => {
                 audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(centre(cell)), 0.3, (1.8, 2.0))

@@ -294,6 +294,7 @@ pub enum Sprite {
     /// A shield; the totem of undying follows it.
     Shield,
     Totem,
+    PotterySherd(u8),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1024,6 +1025,9 @@ impl Item {
     }
 
     pub fn info(self) -> ItemInfo {
+        if let Some(info) = crate::world::archaeology::item_info(self) {
+            return info;
+        }
         if self == Self::HONEYCOMB {
             return item("honeycomb", Sprite::Lump([233, 163, 40]));
         }
@@ -1484,6 +1488,7 @@ impl Item {
             .chain([Self::SUSPICIOUS_STEW, Self::TADPOLE_BUCKET, Self::ARMADILLO_SCUTE, Self::BRUSH, Self::WOLF_ARMOR])
             .chain([Self::BEETROOT_SOUP, Self::HONEYCOMB])
             .chain([Self::TIPPED_ARROW, Self::LINGERING_POTION, Self::DRAGON_BREATH])
+            .chain((crate::world::archaeology::ITEM_FIRST..crate::world::archaeology::ITEM_END).map(Item))
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1542,10 +1547,11 @@ fn splash_names() -> &'static [&'static str] {
 fn sprite_index(item: Item) -> Option<u16> {
     let materials = ITEMS.len() as u16;
     match item.0 {
-        1280..=1281 => Some(icon_count() as u16 - 5 + item.0 - 1280),
-        1330 => Some(icon_count() as u16 - 3),
-        1332 => Some(icon_count() as u16 - 2),
-        1333 => Some(icon_count() as u16 - 1),
+        1395..=1401 => Some(passive_icon_base() + 9 + item.0 - 1395),
+        1280..=1281 => Some(passive_icon_base() + 4 + item.0 - 1280),
+        1330 => Some(passive_icon_base() + 6),
+        1332 => Some(passive_icon_base() + 7),
+        1333 => Some(passive_icon_base() + 8),
         1301..=1304 => Some(passive_icon_base() + item.0 - 1301),
         1040 => Some(turtle_icon()),
         1073 => Some(turtle_icon() + 2 + COPPER_ITEMS.len() as u16),
@@ -1641,7 +1647,7 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    passive_icon_base() as u32 + 4 + 5
+    passive_icon_base() as u32 + 4 + 5 + 7
 }
 
 const fn passive_icon_base() -> u16 {
