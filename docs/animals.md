@@ -216,3 +216,26 @@ untrusting ocelots become eligible for distance despawning only after 2,400
 loaded ticks. Original spotted pelt, head and ringed tail render crouching
 and sprint poses. See the [record](verification/2026-11-04-v0.15-passive-mobs.md)
 for source details and remaining shared-engine/presentation differences.
+
+
+## Allays (v0.15, Java 26.3)
+
+Implemented, unverified: flying allays have 20 health, regenerate one point
+every ten loaded ticks and do not spawn naturally or despawn by distance.
+Use any item on an empty-handed allay to give one and link that actor;
+empty-hand use takes it back and drops the collection slot. Matching
+component-bearing drops fill one stack, with item-entity pickup delays and
+`mob_griefing` respected. Allays follow their liked player, retrieve nearby
+items and throw collected items one at a time. Notes within sixteen blocks
+select a delivery position for 600 ticks; repeat plays refresh the same
+note. Wool blocks obstruct the vibration. Player and redstone notes share
+the same event producer.
+
+Generation-3 outpost allay cages hold two saved persistent residents. The
+original cyan sprite has animated wings and a held-item model; voice and
+action audio are synthesized. Liked/carried items, player and note memories,
+pickup/duplication timers, pending vibration and dance state persist; LAN
+replicates the model state. Shared actor use covers controller and CLI-agent
+paths. Jukebox playback/music discs and woodland mansions do not exist;
+survival dancing/duplication and mansion allays remain gaps. Sources and
+remaining differences are in the [allay record](verification/2026-11-05-v0.15-allays.md).

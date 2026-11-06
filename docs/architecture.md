@@ -651,6 +651,18 @@ New `MobKind`s append after `CopperGolem` in the order Creaking, Allay,
 Sniffer, taking LAN indices 69, 70 and 71; existing names and indices
 keep their meanings. The unassigned reserve becomes 15488–16383.
 
+Track B allocation (2026-11-05, implemented, unverified): `MobKind::Allay`,
+save/command name `allay`, LAN index **70** (69 stays reserved for Creaking).
+No block states or items are allocated: allays use existing stacks and
+amethyst shards. Layers 3424–3439 remain unused/reserved; the original
+cuboid skin and wings use the existing entity shader's procedural per-texel
+colour/noise material, and the held item uses its existing icon/block layer.
+The new state/AI lives in `entity/allay.rs`, model in `entity/model/allay.rs`
+and shared actor use in `session/allay.rs`. Two generation-3 cage resident
+markers use existing structure-population persistence. See the
+[allay record](verification/2026-11-05-v0.15-allays.md).
+
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

@@ -1556,6 +1556,9 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if let Some(stack) = m.wolf_armor.as_ref().and_then(|s| s.armor) {
         v["wolf_armor"] = json!(crate::inventory::stack_to_string(Some(stack)));
     }
+    if let Some(s) = &m.allay {
+        v["allay"] = s.save();
+    }
     if let Some(s) = &m.copper_golem {
         v["copper_golem"] = s.save();
     }
@@ -1647,6 +1650,9 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     }
     if let Some(s) = &mut m.wolf_armor {
         s.load(v["wolf_armor"].as_str());
+    }
+    if let Some(s) = &mut m.allay {
+        **s = super::allay::State::load(&v["allay"]);
     }
     if let Some(s) = &mut m.copper_golem {
         s.load(&v["copper_golem"]);

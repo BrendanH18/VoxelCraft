@@ -173,6 +173,7 @@ impl Entities {
         ctx: &Ctx,
         difficulty: crate::simulation::difficulty::Difficulty,
     ) -> Vec<EntityEvent> {
+        self.hear_allay_notes(world);
         self.tick_copper_golems(dt, world);
         self.finish_copper_statues(world);
         world.tick_beehives(self, dt, ctx);

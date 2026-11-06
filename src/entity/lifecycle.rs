@@ -77,6 +77,7 @@ impl Entities {
         self.panda_upkeep(dt, world, ctx, &mut events);
         self.armadillo_upkeep(dt, world, ctx, &mut events);
         self.ocelot_upkeep(dt, ctx);
+        self.tick_allays(dt, world, ctx, &mut events);
         self.tick_animals(dt as f32, world, ctx, &mut events);
         self.tick_leashes(dt as f32, world, ctx);
         self.tick_llamas(ctx);
@@ -93,7 +94,8 @@ impl Entities {
             }
             let resident = matches!(
                 m.kind,
-                MobKind::CopperGolem
+                MobKind::Allay
+                    | MobKind::CopperGolem
                     | MobKind::Villager
                     | MobKind::IronGolem
                     | MobKind::SnowGolem
@@ -150,6 +152,17 @@ impl Entities {
                     && let Some(s) = &dead.copper_golem
                 {
                     for stack in [s.cargo, s.antenna].into_iter().flatten() {
+                        self.items.push(ItemEntity::new(stack, dead.pos, DVec3::ZERO, 0.5, &mut self.rng));
+                    }
+                }
+                if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
+                    && let Some(s) = &dead.allay
+                {
+                    for stack in
+                        [s.cargo, s.liked.filter(|s| !s.enchants.has(crate::enchant::Enchantment::VanishingCurse))]
+                            .into_iter()
+                            .flatten()
+                    {
                         self.items.push(ItemEntity::new(stack, dead.pos, DVec3::ZERO, 0.5, &mut self.rng));
                     }
                 }

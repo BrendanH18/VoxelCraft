@@ -187,6 +187,7 @@ pub enum MobKind {
     Armadillo,
     Ocelot,
     CopperGolem,
+    Allay,
 }
 
 impl MobKind {
@@ -214,7 +215,7 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 69] = [
+    pub const ALL: [MobKind; 70] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -284,6 +285,7 @@ impl MobKind {
         MobKind::Armadillo,
         MobKind::Ocelot,
         MobKind::CopperGolem,
+        MobKind::Allay,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -358,7 +360,15 @@ impl MobKind {
             MobKind::Armadillo => "armadillo",
             MobKind::Ocelot => "ocelot",
             MobKind::CopperGolem => "copper_golem",
+            MobKind::Allay => "allay",
         }
+    }
+
+    pub fn lan_index(self) -> usize {
+        if self == Self::Allay { 70 } else { Self::ALL.iter().position(|k| *k == self).unwrap() }
+    }
+    pub fn from_lan_index(index: usize) -> Option<Self> {
+        if index == 70 { Some(Self::Allay) } else { Self::ALL.get(index).copied().filter(|k| *k != Self::Allay) }
     }
 
     /// Looks a mob up by name (spaces or underscores).
@@ -390,6 +400,7 @@ impl MobKind {
             | MobKind::ZombieVillager
             | MobKind::Piglin
             | MobKind::PiglinBrute => Shape::new(0.3, 1.95),
+            MobKind::Allay => Shape::new(0.175, 0.6),
             MobKind::CopperGolem => Shape::new(0.245, 0.98),
             MobKind::IronGolem => Shape::new(0.7, 2.7),
             MobKind::SnowGolem => Shape::new(0.35, 1.9),
@@ -452,6 +463,7 @@ impl MobKind {
             | MobKind::ZombieVillager
             | MobKind::Strider
             | MobKind::Panda => 20.0,
+            MobKind::Allay => 20.0,
             MobKind::CopperGolem => 12.0,
             MobKind::IronGolem => 100.0,
             MobKind::SnowGolem => 4.0,
@@ -551,7 +563,7 @@ impl MobKind {
     pub fn spawns_in(self, dimension: Dimension) -> bool {
         match self {
             MobKind::Enderman => true,
-            MobKind::Mule | MobKind::Bee | MobKind::Phantom | MobKind::CopperGolem => false,
+            MobKind::Mule | MobKind::Bee | MobKind::Phantom | MobKind::CopperGolem | MobKind::Allay => false,
             // Only from spawners and inside fortresses (`fortress_spawn`).
             MobKind::Blaze
             | MobKind::WitherSkeleton
@@ -852,7 +864,8 @@ impl MobKind {
             | MobKind::Piglin
             | MobKind::PiglinBrute
             | MobKind::Camel
-            | MobKind::Bee => &[],
+            | MobKind::Bee
+            | MobKind::Allay => &[],
             MobKind::TraderLlama | MobKind::Horse | MobKind::Donkey | MobKind::Mule | MobKind::Llama => {
                 &[(Item::LEATHER, 0, 2)]
             }
@@ -957,7 +970,8 @@ impl MobKind {
     /// Experience for killing one (Java's: 5 for monsters, 1-3 for animals).
     pub fn xp(self, rng: &mut Rng) -> u32 {
         match self {
-            MobKind::CopperGolem
+            MobKind::Allay
+            | MobKind::CopperGolem
             | MobKind::Bat
             | MobKind::Villager
             | MobKind::IronGolem
@@ -1019,6 +1033,7 @@ pub struct Mob {
     pub armadillo: Option<Box<super::armadillo::State>>,
     pub ocelot: Option<Box<super::ocelot::State>>,
     pub copper_golem: Option<Box<super::copper_golem::State>>,
+    pub allay: Option<Box<super::allay::State>>,
     pub wolf_armor: Option<Box<super::wolf_armor::State>>,
     /// Witch: seconds left drinking, and the potion it is drinking.
     drink_left: f32,
@@ -1189,7 +1204,8 @@ impl Mob {
             nether: super::nether::NetherMob::for_kind(kind),
             aquatic: kind.is_aquatic().then(|| Box::new(super::aquatic::State::new())),
             uid: 0,
-            persistent: super::mounts::equine(kind) || matches!(kind, MobKind::Tadpole | MobKind::CopperGolem),
+            persistent: super::mounts::equine(kind)
+                || matches!(kind, MobKind::Tadpole | MobKind::CopperGolem | MobKind::Allay),
             size: 1,
             baby: false,
             grow: 0.0,
@@ -1206,6 +1222,7 @@ impl Mob {
             armadillo: (kind == MobKind::Armadillo).then(Box::default),
             ocelot: (kind == MobKind::Ocelot).then(Box::default),
             copper_golem: (kind == MobKind::CopperGolem).then(Box::default),
+            allay: (kind == MobKind::Allay).then(Box::default),
             wolf_armor: (kind == MobKind::Wolf).then(Box::default),
             drink_left: 0.0,
             drinking: "",
@@ -1743,7 +1760,8 @@ impl Mob {
         // time with their own move controls (`swim`).
         let java = !controlled && self.riding.is_none() && self.java_moves(world);
         // Turn the body toward the direction of travel.
-        if let Some(dir) = wish.filter(|_| !controlled && !java && self.kind != MobKind::Bee) {
+        if let Some(dir) = wish.filter(|_| !controlled && !java && !matches!(self.kind, MobKind::Bee | MobKind::Allay))
+        {
             let target = (dir.z as f32).atan2(dir.x as f32);
             self.yaw = turn_toward(self.yaw, target, 8.0 * dtf);
         }
@@ -1757,6 +1775,8 @@ impl Mob {
         if self.riding.is_some() || self.animal.as_ref().is_some_and(|a| a.perched.is_some()) {
             self.vel = DVec3::ZERO;
             self.on_ground = true;
+        } else if self.kind == MobKind::Allay {
+            super::allay::travel(self, dt, world, wish, speed);
         } else if self.kind == MobKind::Bee {
             super::bee::travel(self, dt, world, wish, speed);
         } else if self.kind == MobKind::Phantom {
@@ -1876,6 +1896,9 @@ impl Mob {
         }
         if let Some(wish) = self.leash_think(dt, world, rng) {
             return wish;
+        }
+        if self.allay.is_some() {
+            return self.allay_steer(dt, world, ctx, rng);
         }
         if self.copper_golem.is_some() {
             return self.copper_steer(dt, world, ctx, rng);

@@ -82,7 +82,7 @@ impl MobKind {
             K::Dolphin => Evaluator::Swim { breaching: true },
             K::Drowned | K::Axolotl | K::Turtle => Evaluator::Amphibious { shallow: false },
             K::Frog => Evaluator::Amphibious { shallow: true },
-            K::Parrot | K::Bee => Evaluator::Fly,
+            K::Parrot | K::Bee | K::Allay => Evaluator::Fly,
             _ => Evaluator::Walk,
         };
         if matches!(caps.evaluator, Evaluator::Swim { .. }) {
@@ -127,6 +127,7 @@ impl MobKind {
                 | K::Ocelot
                 | K::Fox
                 | K::Parrot
+                | K::Allay
                 | K::Rabbit
                 | K::Goat
                 | K::Camel
@@ -147,7 +148,7 @@ impl MobKind {
         caps = caps.follow_range(match self {
             K::Zombie | K::Husk | K::Drowned | K::ZombieVillager | K::ZombifiedPiglin => 35.0,
             K::Enderman => 64.0,
-            K::Blaze | K::CopperGolem => 48.0,
+            K::Blaze | K::CopperGolem | K::Allay => 48.0,
             K::Ghast => 100.0,
             K::Fox | K::Pillager => 32.0,
             K::Llama | K::TraderLlama => 40.0,

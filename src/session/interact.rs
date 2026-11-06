@@ -365,6 +365,9 @@ impl PlayerSession {
             }
             return Ok(Some(Used::Animal));
         }
+        if let Some(used) = self.use_allay(slot, world, entities) {
+            return Ok(Some(used));
+        }
         if let Some(used) = self.use_copper_golem(slot, world, entities, tool_broken) {
             return Ok(Some(used));
         }
