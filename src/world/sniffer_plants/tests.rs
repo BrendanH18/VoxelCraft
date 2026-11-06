@@ -128,3 +128,15 @@ fn pitcher_collision_and_potted_drops_use_shared_paths() {
     w.spill_block(P, POTTED_TORCHFLOWER);
     assert_eq!(w.drops, vec![(P, Stack::new(super::super::utilities::FLOWER_POT, 1)), (P, Stack::new(TORCHFLOWER, 1))]);
 }
+
+#[test]
+fn pitcher_growth_requires_upper_cell_inside_build_height_at_every_age() {
+    let mut w = world();
+    let p = IVec3::new(12, w.max_y() - 1, 12);
+    w.insert_chunk(IVec3::new(0, p.y.div_euclid(32), 0), Arc::new(ChunkData::Uniform(Block::AIR)), false);
+    w.set_block(p - IVec3::Y, Block::WET_FARMLAND);
+    w.set_block(p + IVec3::X, Block::GLOWSTONE);
+    w.set_block(p, pitcher(0, false));
+    assert!(!w.apply_bone_meal(p));
+    assert_eq!(w.get_block(p), Some(pitcher(0, false)));
+}

@@ -117,6 +117,7 @@ pub fn outline(b: Block) -> Option<Boxes> {
 impl World {
     fn pitcher_can_grow(&mut self, p: IVec3, age: u8) -> bool {
         age < 4
+            && self.contains_y(p.y + 1)
             && self.growth_light(p, false) >= 8
             && (age + 1 < 3
                 || self.get_block(p + IVec3::Y).is_some_and(|b| b == Block::AIR || pitcher_state(b).is_some()))
