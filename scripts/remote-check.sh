@@ -17,6 +17,9 @@
 # Environment overrides: VC_REMOTE_SHAPE (default 8x16), VC_REMOTE_DURATION
 # (default 90m, the instance's maximum life), VC_REMOTE_CACHE_TAG (default
 # voxelcraft-check), VC_REMOTE_KEEP=1 to leave the instance running.
+# The body is one function, so bash reads the whole file before running any
+# of it and an edit to this file can't break a run already in progress.
+main() {
 set -euo pipefail
 
 shape=${VC_REMOTE_SHAPE:-8x16}
@@ -133,3 +136,5 @@ else
     echo "remote-check: FAILED (exit $status)" >&2
 fi
 exit "$status"
+}
+main "$@"; exit
