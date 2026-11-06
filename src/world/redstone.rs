@@ -1150,6 +1150,9 @@ impl World {
                             || u16::try_from(family).is_ok_and(|f| super::lightning::rod(Block(f)).is_some())
                             || family == i64::from(super::frog_blocks::FROGSPAWN.0)
                             || family == i64::from(super::sniffer_egg::EGG.0)
+                            || family == i64::from(super::eyeblossom::OPEN.0)
+                            || family == i64::from(super::eyeblossom::CLOSED.0)
+                            || u16::try_from(family).is_ok_and(super::archaeology::owns)
                             || family == i64::from(super::scaffolding::SCAFFOLDING.0)
                             // A pending coral death (`CoralPlantBlock.tryScheduleDieTick`).
                             || u16::try_from(family)

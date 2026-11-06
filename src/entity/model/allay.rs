@@ -31,8 +31,13 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
 pub(super) fn held(m: &Mob, origin: Vec3, body: Quat, light: ([u8; 4], u8), out: &mut Vec<EntityVertex>) {
     let Some(stack) = m.allay.as_ref().and_then(|s| s.liked) else { return };
     let block = stack.item.block().filter(|b| !b.flat_icon());
-    let layer = block
-        .map_or_else(|| stack.item.icon_layer().unwrap_or(crate::world::block::tex::ITEM_BASE), |b| b.info().tex[0]);
+    // A flat-icon block (a flower) has no item icon: draw its block texture flat.
+    let layer = stack
+        .item
+        .block()
+        .map(|b| b.info().tex[0])
+        .or_else(|| stack.item.icon_layer())
+        .unwrap_or(crate::world::block::tex::ITEM_BASE);
     let limb = super::super::player_model::Limb {
         pivot: Vec3::new(0., 2.7, 2.4),
         min: if block.is_some() { [-1.2; 3] } else { [-1.7, -1.7, -0.15] },

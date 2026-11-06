@@ -261,6 +261,8 @@ impl World {
             let block = self.get_block(p).unwrap();
             self.edit(p, Block::AIR, true);
             self.falling.push(super::falling::FallingBlock::new(block, p.as_dvec3(), 0.0));
+            // Sand or gravel resting on it loses its support too.
+            self.settle(p);
         }
     }
     pub fn archaeology_to_string(&self) -> String {
@@ -395,6 +397,18 @@ mod tests {
             assert_eq!(loaded.get_block(AT), Some(Block::SAND));
             assert_eq!(loaded.archaeology_to_string(), "[]");
         }
+    }
+    #[test]
+    fn sand_on_a_falling_suspicious_block_falls_with_it() {
+        let mut w = world();
+        w.set_block(AT + IVec3::Y, Block::SAND);
+        w.set_block(AT - IVec3::Y, Block::AIR);
+        w.set_block(AT - IVec3::Y * 3, Block::STONE);
+        tick(&mut w);
+        tick(&mut w);
+        assert_eq!(w.get_block(AT), Some(Block::AIR));
+        assert_eq!(w.get_block(AT + IVec3::Y), Some(Block::AIR), "the sand above lost its support");
+        assert_eq!(w.falling.len(), 2);
     }
     #[test]
     fn unsupported_blocks_wait_two_ticks_then_fall_and_break_with_no_loot() {

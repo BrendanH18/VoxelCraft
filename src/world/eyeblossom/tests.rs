@@ -96,3 +96,18 @@ fn eyeblossoms_follow_the_overworld_clock_and_ripple_through_patches() {
     }
     assert!(flowers.iter().all(|&p| w.get_block(p) == Some(CLOSED)));
 }
+
+#[test]
+fn scheduled_eyeblossom_and_suspicious_ticks_survive_a_reload() {
+    let mut w = world();
+    let flower = IVec3::new(3, FLOOR + 1, 3);
+    let sand = IVec3::new(6, FLOOR + 1, 6);
+    w.set_block(flower, OPEN);
+    w.schedule_redstone(flower, 30, 0);
+    w.set_block(sand, crate::world::archaeology::state(false, 1));
+    w.schedule_redstone(sand, 2, 0);
+    let saved = w.redstone_to_string();
+    assert_eq!(saved.matches("|t,").count(), 2, "{saved}");
+    w.load_redstone(&saved);
+    assert_eq!(w.redstone_to_string(), saved);
+}

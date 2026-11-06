@@ -165,7 +165,7 @@ in the right-hand column stays mandatory for 1.0.
 | Side feature | Deferred past 1.0 | Stays in 1.0 core |
 |---|---|---|
 | Advancements and statistics | The advancement and statistics screens, toasts and criteria | Recipe unlocking and the recipe book (UX, v0.20); the dragon/Wither progression itself (v0.18) |
-| Archaeology | Brushes, suspicious sand and gravel, pottery sherds and decorated-pot patterns | Trail ruins, desert wells and warm ocean ruins as explorable structures with their non-archaeology loot (v0.14); sniffers obtainable some other Java way, or recorded as a fidelity exception when v0.15 plans them. Narrowed by the owner on 2026-11-05: suspicious sand and gravel, brushing them, and the sherds their loot names (as items) moved into 1.0 with v0.15's ocean ruins; decorated pots and patterns stay deferred |
+| Archaeology | Decorated pots and sherd patterns, and archaeology in structures other than ocean ruins (narrowed by the owner on 2026-11-05) | Trail ruins, desert wells and ocean ruins as explorable structures with their loot (v0.14, v0.15); suspicious sand and gravel, brushing them, and the sherds the ocean-ruin tables name, as plain items (v0.15), so warm ocean ruins give sniffer eggs the Java way |
 | Commands | The full command and selector language | The cheat console's testing commands (game mode, rules, time, weather, teleport, give, kill, difficulty, spawn point) |
 | Custom skins | Skin selection and loading | The default player models |
 | Resource and data packs | Loading packs | The built-in Java 26.3 recipes, loot tables and tags they would replace |

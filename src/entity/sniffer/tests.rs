@@ -231,3 +231,13 @@ fn egg_crack_hatch_and_plop_cues_with_boost_particles() {
     e.resolve_breeding();
     assert!(cues(&mut e).contains(&MobSound::Sniffer(Cue::EggPlop)));
 }
+
+#[test]
+fn sniffers_float_and_keep_out_of_water_like_java() {
+    use crate::entity::path::PathType;
+    assert!(MobKind::Sniffer.floats());
+    let caps = MobKind::Sniffer.nav_caps(1.9, 1.75);
+    for t in [PathType::Water, PathType::OnTopOfPowderSnow, PathType::DamageCautious] {
+        assert_eq!(caps.malus.get(t), -1.0, "{t:?}");
+    }
+}

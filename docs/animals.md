@@ -227,8 +227,10 @@ Player-built hearts also spawn non-persistent protectors. Resin clumps reuse
 the multiface support, placement, waterlogging and shape paths; the masonry
 family includes the standard stairs/slab and four stored wall states.
 
-Generation 3 pale gardens grow Java's pale oak shape; one tree in ten holds
-a natural heart inside its trunk, the survival source of resin. Open and
+Generation 3 pale gardens grow Java's pale oak shape; one tree in ten is a
+creaking tree, which holds a natural heart in its trunk when it has a log
+enclosed by six others (roughly a third of them do), the survival source of
+resin. Open and
 closed eyeblossoms (also potted) follow the Overworld clock: random ticks
 open them from tick 12600 and close them from 23401, and each change ripples
 through the flowers within three blocks. Generation 3 places closed

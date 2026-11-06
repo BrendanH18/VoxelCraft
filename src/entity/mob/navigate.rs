@@ -131,6 +131,7 @@ impl MobKind {
                 | K::Fox
                 | K::Parrot
                 | K::Allay
+                | K::Sniffer
                 | K::Rabbit
                 | K::Goat
                 | K::Camel
@@ -180,6 +181,7 @@ impl MobKind {
             K::Blaze => m.with(T::Water, -1.0).with(T::Lava, 8.0).with(T::FireInNeighbor, 0.0).with(T::Fire, 0.0),
             K::Strider => m.with(T::Water, -1.0).with(T::Lava, 0.0).with(T::FireInNeighbor, 0.0).with(T::Fire, 0.0),
             K::Enderman => m.with(T::Water, -1.0),
+            K::Sniffer => m.with(T::Water, -1.0).with(T::OnTopOfPowderSnow, -1.0).with(T::DamageCautious, -1.0),
             K::WitherSkeleton | K::ZombifiedPiglin => m.with(T::Lava, 8.0),
             K::Drowned
             | K::Axolotl
