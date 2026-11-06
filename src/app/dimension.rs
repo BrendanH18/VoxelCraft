@@ -24,7 +24,7 @@ use crate::world::terrain::{Dimension, Generator, SEA_LEVEL};
 use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 20] = [
+pub(super) const DIMENSION_KEYS: [&str; 21] = [
     "furnaces",
     "chests",
     "items",
