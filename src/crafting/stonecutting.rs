@@ -152,7 +152,17 @@ pub fn all() -> Vec<(Item, Item, u8)> {
     let b = Item::from_block;
     let legacy = LEGACY.iter().map(|&(input, cut, n)| (b(input), b(cut.block()), n));
     let stone = super::stone::STONECUTTING.iter().map(|r| (b(r.1), b(r.3), r.4));
-    legacy.chain(stone).chain(super::copper::stonecutting()).chain(super::colour::stonecutting()).collect()
+    let resin = [
+        crate::world::creaking::CHISELED,
+        crate::world::creaking::STAIRS,
+        crate::world::creaking::SLAB,
+        crate::world::creaking::WALL,
+    ]
+    .into_iter()
+    .map(|out| {
+        (b(crate::world::creaking::RESIN_BRICKS), b(out), if out == crate::world::creaking::SLAB { 2 } else { 1 })
+    });
+    legacy.chain(resin).chain(stone).chain(super::copper::stonecutting()).chain(super::colour::stonecutting()).collect()
 }
 
 /// What the stonecutter makes from `input`, in recipe order.

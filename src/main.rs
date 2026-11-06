@@ -83,9 +83,13 @@ pub struct Args {
     pub carts: Vec<(entity::minecart::CartKind, glam::IVec3)>,
     /// `--decor`: a decoration placed against a block face, with what it holds.
     pub decor: Vec<(glam::IVec3, glam::IVec3, item::Item, Option<item::Item>)>,
+    /// `--brush`: accepted brush strokes on a suspicious block's face.
+    pub brush: Vec<(glam::IVec3, glam::IVec3, u8)>,
     /// Mobs to spawn once the world has loaded (y = i32::MIN: surface).
     /// The optional armor material forces a full set on a zombie or skeleton.
     pub spawn: Vec<(entity::MobKind, glam::IVec3, Option<entity::armor::Equipped>)>,
+    /// `--spawn allay,x,y,z,item`: the item a spawned allay holds (by index).
+    pub spawn_held: Vec<(usize, item::Item)>,
     /// Seconds to keep running after loading before `--screenshot`.
     pub wait: f64,
     /// x,y,z,yaw_deg,pitch_deg
@@ -187,13 +191,17 @@ voxelcraft [options]
                     hang an item frame or painting on, or stand an armor stand
                     against, face up|down|north|south|east|west of block x,y,z;
                     a frame holds `held`, a stand wears it (repeatable)
+  --brush x,y,z,face,strokes
+                    brush a suspicious block from that face (1-9 strokes,
+                    loot added if it has none; repeatable, screenshots)
   --ride name      ride a scripted boat or saddled/tamed animal (screenshots)
   --spawn kind,x,y,z[,material[,glint]]
                     spawn a mob once loaded (repeatable; any mob name, such as
                     zombie or magma_cube; y may be ~
                     for the terrain surface, e.g. zombie,4,~,10). material
                     (leather, chainmail, iron, gold, diamond, netherite) and
-                    glint equip a zombie or skeleton
+                    glint equip a zombie or skeleton; allay,x,y,z,item gives
+                    an allay an item to hold
   --wait <secs>     with --screenshot: keep simulating this long first
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
   --weather <w>     start with clear skies or rain (clear, rain)
@@ -260,7 +268,9 @@ fn parse_args() -> Result<Args, String> {
         open_block: None,
         carts: Vec::new(),
         decor: Vec::new(),
+        brush: Vec::new(),
         spawn: Vec::new(),
+        spawn_held: Vec::new(),
         wait: 0.0,
         pose: None,
         health: None,
@@ -463,6 +473,26 @@ fn parse_args() -> Result<Args, String> {
                 let held = parts.get(5).map(|h| item::Item::from_name(h).ok_or_else(bad)).transpose()?;
                 args.decor.push((glam::IVec3::new(n[0], n[1], n[2]), face, item, held));
             }
+            "--brush" => {
+                let v = value("--brush")?;
+                let parts: Vec<&str> = v.split(',').map(str::trim).collect();
+                let bad = || format!("--brush needs x,y,z,face,strokes (got {v})");
+                if parts.len() != 5 {
+                    return Err(bad());
+                }
+                let n: Vec<i32> = parts[..3].iter().map(|s| s.parse().map_err(|_| bad())).collect::<Result<_, _>>()?;
+                let face = match parts[3] {
+                    "up" => glam::IVec3::Y,
+                    "down" => glam::IVec3::NEG_Y,
+                    "north" => glam::IVec3::NEG_Z,
+                    "south" => glam::IVec3::Z,
+                    "east" => glam::IVec3::X,
+                    "west" => glam::IVec3::NEG_X,
+                    _ => return Err(bad()),
+                };
+                let strokes = parts[4].parse().ok().filter(|s| (1..=9).contains(s)).ok_or_else(bad)?;
+                args.brush.push((glam::IVec3::new(n[0], n[1], n[2]), face, strokes));
+            }
             "--cart" => {
                 let v = value("--cart")?;
                 let parts: Vec<_> = v.split(',').collect();
@@ -497,7 +527,12 @@ fn parse_args() -> Result<Args, String> {
                     .iter()
                     .map(|s| if *s == "~" { Ok(i32::MIN) } else { s.parse().map_err(|_| bad()) })
                     .collect::<Result<_, _>>()?;
-                let armor = if parts.len() >= 5 {
+                let armor = if parts.len() == 5 && kind == entity::MobKind::Allay {
+                    let held =
+                        item::Item::from_name(parts[4]).ok_or_else(|| format!("--spawn: unknown item {}", parts[4]))?;
+                    args.spawn_held.push((args.spawn.len(), held));
+                    None
+                } else if parts.len() >= 5 {
                     if !(kind.is_zombie() || kind == entity::MobKind::Skeleton) {
                         return Err("--spawn armor is only for zombies and skeletons".into());
                     }
@@ -617,8 +652,10 @@ impl Args {
         self.carts.clear();
         self.signs.clear();
         self.decor.clear();
+        self.brush.clear();
         self.open_block = None;
         self.spawn.clear();
+        self.spawn_held.clear();
         self.pose = None;
         self.health = None;
         self.air = None;

@@ -34,6 +34,8 @@ fn seeds_plant_only_on_farmland_and_spend_one_through_shared_placement() {
         (Item::MELON_SEEDS, crops::stem_block(Fruit::Melon, 0)),
         (Item::PUMPKIN_SEEDS, crops::stem_block(Fruit::Pumpkin, 0)),
         (Item::BEETROOT_SEEDS, Block::crop(Crop::Beetroot, 0)),
+        (Item::TORCHFLOWER_SEEDS, voxelcraft::world::sniffer_plants::TORCH_CROP),
+        (Item::PITCHER_POD, voxelcraft::world::sniffer_plants::PITCHER_CROP),
     ] {
         let (mut w, mut s) = scene();
         let floor = IVec3::new(10, 139, 10);
@@ -80,4 +82,22 @@ fn existing_java_loot_tables_supply_every_seed_and_snowy_soup() {
             item.name()
         );
     }
+}
+
+#[test]
+fn pitcher_flower_shared_placement_checks_both_cells_and_spends_one() {
+    use voxelcraft::world::sniffer_plants as sp;
+    let (mut w, mut s) = scene();
+    let floor = IVec3::new(10, 139, 10);
+    w.set_block(floor, Block::DIRT);
+    w.set_block(floor + IVec3::Y * 2, Block::STONE);
+    s.inventory.slots[0] = Some(Stack::new(sp::PITCHER_PLANT, 2));
+    aim(&mut s, DVec3::new(10.5, 141.6, 13.), DVec3::new(10.5, 140., 10.5));
+    assert!(s.place_held(0, &mut w, &[]).is_err());
+    assert_eq!(s.inventory.slots[0].unwrap().count, 2);
+    w.set_block(floor + IVec3::Y * 2, Block::AIR);
+    assert!(s.place_held(0, &mut w, &[]).is_ok());
+    assert_eq!(w.get_block(floor + IVec3::Y), Some(sp::PITCHER_PLANT));
+    assert_eq!(w.get_block(floor + IVec3::Y * 2), Some(sp::partner(sp::PITCHER_PLANT)));
+    assert_eq!(s.inventory.slots[0].unwrap().count, 1);
 }

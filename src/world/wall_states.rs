@@ -40,6 +40,9 @@ pub const fn original(id: u16) -> Option<Block> {
     if id >= FIRST && id < END {
         return Some(FAMILIES[((id - FIRST) / 2) as usize]);
     }
+    if let Some(local) = super::creaking::wall_local(id) {
+        return if local >= 2 { Some(super::creaking::WALL) } else { None };
+    }
     match super::stone_blocks::wall_local(id) {
         Some((w, 2 | 3)) => Some(super::stone_blocks::wall(w)),
         _ => None,
@@ -49,6 +52,9 @@ pub const fn original(id: u16) -> Option<Block> {
 pub const fn water_pair(id: u16) -> Option<(u16, bool)> {
     if id >= FIRST && id < END {
         return Some((FIRST + ((id - FIRST) ^ 1), (id - FIRST) % 2 == 1));
+    }
+    if let Some(local) = super::creaking::wall_local(id) {
+        return Some((super::creaking::WALL.0 + (local ^ 1), local % 2 == 1));
     }
     super::stone_blocks::wall_water_pair(id)
 }
@@ -78,6 +84,12 @@ static STATES: [u8; super::block::STATE_CAPACITY] = {
         states[first + 3] = family | 128;
         w += 1;
     }
+    let family = (FAMILIES.len() + super::stone_blocks::WALL_COUNT as usize + 1) as u8;
+    let first = super::creaking::WALL.0 as usize;
+    states[first] = family;
+    states[first + 1] = family;
+    states[first + 2] = family | 128;
+    states[first + 3] = family | 128;
     states
 };
 const _: () = assert!(FAMILIES.len() + (super::stone_blocks::WALL_COUNT as usize) < 128);
@@ -96,6 +108,9 @@ pub fn with_up(block: Block, up: bool) -> Block {
     }
     let i = (state & 127) as usize - 1;
     let wet = block.is_waterlogged();
+    if super::creaking::wall_local(block.0).is_some() {
+        return Block(super::creaking::WALL.0 + (!up as u16) * 2 + wet as u16);
+    }
     if i >= FAMILIES.len() {
         let first = super::stone_blocks::wall((i - FAMILIES.len()) as u16).0;
         return Block(first + (!up as u16) * 2 + wet as u16);

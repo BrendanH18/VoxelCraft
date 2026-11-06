@@ -29,6 +29,7 @@ pub enum Used {
     OpenVehicle(u32),
     /// A lead, name tag, food or taming item was used on an animal.
     Animal,
+    BrushStarted,
     /// The player now rides this vehicle.
     Mounted(u32),
     CartPlaced,
@@ -276,6 +277,9 @@ impl PlayerSession {
             self.inventory.swap_offhand(slot);
             let result = self.use_chain(slot, world, entities, ctx, &mut tool_broken);
             self.inventory.swap_offhand(slot);
+            if result.as_ref().is_ok_and(|u| *u == Some(Used::BrushStarted)) {
+                self.brushing.off = true;
+            }
             match result {
                 Ok(u) => {
                     off_hand = u.is_some();
@@ -304,6 +308,12 @@ impl PlayerSession {
         tool_broken: &mut Option<Item>,
     ) -> Result<Option<Used>, &'static str> {
         let mut used = self.use_entity(slot, world, entities, ctx, tool_broken)?;
+        if used.is_none()
+            && self.inventory.get(slot).is_some_and(|s| s.item == Item::BRUSH)
+            && self.start_brushing(slot, world)
+        {
+            used = Some(Used::BrushStarted);
+        }
         if used.is_none() {
             used = self.use_item(slot, world, entities, ctx)?;
         }
@@ -364,6 +374,9 @@ impl PlayerSession {
                 return Ok(Some(Used::Mounted(id)));
             }
             return Ok(Some(Used::Animal));
+        }
+        if let Some(used) = self.use_allay(slot, world, entities) {
+            return Ok(Some(used));
         }
         if let Some(used) = self.use_copper_golem(slot, world, entities, tool_broken) {
             return Ok(Some(used));
@@ -880,6 +893,7 @@ pub fn picked_item(block: Block) -> Item {
         Block::LIT_SMOKER => Block::SMOKER.into(),
         Block::LIT_BLAST_FURNACE => Block::BLAST_FURNACE.into(),
         Block::FARMLAND | Block::WET_FARMLAND => Block::DIRT.into(),
+        b if crate::world::sniffer_plants::picked(b).is_some() => crate::world::sniffer_plants::picked(b).unwrap(),
         b if crate::world::crops::stem(b).is_some() => crate::world::crops::stem(b).unwrap().0.seed(),
         b if matches!(b.as_crop(), Some((crate::world::block::Crop::Beetroot, _))) => Item::BEETROOT_SEEDS,
         b if matches!(b.as_crop(), Some((crate::world::block::Crop::Wheat, _))) => Item::WHEAT_SEEDS,

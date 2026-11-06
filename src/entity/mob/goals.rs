@@ -227,6 +227,7 @@ const SKELETON: &[Entry] = &[avoid(3, Avoided::Wolf, 6.0, 1.0, 1.2)];
 pub(crate) fn table(kind: MobKind) -> &'static [Entry] {
     use MobKind as K;
     match kind {
+        K::Sniffer => COW,
         K::Cow | K::Mooshroom => COW,
         K::Frog => FROG,
         K::PolarBear => POLAR_BEAR,
@@ -267,11 +268,13 @@ pub(crate) fn table(kind: MobKind) -> &'static [Entry] {
 pub(crate) fn movement_speed(kind: MobKind) -> f64 {
     use MobKind as K;
     match kind {
+        K::Allay => f64::from(0.1_f32),
         K::Cow | K::Mooshroom | K::Parrot | K::Goat | K::CopperGolem => 0.2,
         K::Pig | K::Chicken | K::Turtle | K::Creeper | K::Skeleton | K::Stray | K::Bogged | K::WitherSkeleton => 0.25,
         K::Sheep | K::Zombie => 0.23,
         K::Bee | K::Wolf | K::Cat | K::Fox | K::Rabbit | K::Hoglin => 0.3,
         K::Strider | K::Donkey | K::Mule | K::Llama | K::TraderLlama => 0.175,
+        K::Sniffer => f64::from(0.1_f32),
         K::Camel => 0.09,
         K::Panda => f64::from(0.15_f32),
         K::Armadillo => 0.14,
@@ -387,7 +390,7 @@ impl Mob {
     /// `TurtleMoveControl` holds a turtle near 0.06 eased an eighth of the
     /// way toward its speed.
     pub(crate) fn goal_speed(&self, modifier: f64) -> f64 {
-        if self.kind == MobKind::Bee {
+        if matches!(self.kind, MobKind::Bee | MobKind::Allay) {
             return modifier;
         }
         let raw = self.attribute_speed() * modifier;

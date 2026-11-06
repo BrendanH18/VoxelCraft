@@ -119,6 +119,14 @@ fn cell_boxes_context<W: BlockSource + ?Sized>(
             return;
         }
     }
+    if let Some((age, false)) = b.and_then(crate::world::sniffer_plants::pitcher_state) {
+        let (width, height) = if age == 0 { (6., 3.) } else { (10., 5.) };
+        f(
+            lo + DVec3::new((8. - width / 2.) / 16., -1. / 16., (8. - width / 2.) / 16.),
+            lo + DVec3::new((8. + width / 2.) / 16., height / 16., (8. + width / 2.) / 16.),
+        );
+        return;
+    }
     match b {
         None => f(lo, lo + DVec3::ONE),
         Some(b) if !b.is_solid() => {}

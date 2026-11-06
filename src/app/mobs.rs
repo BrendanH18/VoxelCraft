@@ -18,6 +18,8 @@ pub(super) struct Mobs {
     /// until it's released.
     /// `--spawn` requests, applied once the world has loaded.
     pending: Vec<(MobKind, IVec3, Option<crate::entity::armor::Equipped>)>,
+    /// `--spawn allay,x,y,z,item`: liked items by index into `pending`.
+    held: Vec<(usize, crate::item::Item)>,
     /// `--wait`: seconds to keep simulating before a `--screenshot`.
     wait: f64,
     wait_start: Option<Instant>,
@@ -25,7 +27,11 @@ pub(super) struct Mobs {
 
 impl Mobs {
     pub fn new(seed: u64, spawn: Vec<(MobKind, IVec3, Option<crate::entity::armor::Equipped>)>, wait: f64) -> Self {
-        Self { entities: Entities::new(seed), pending: spawn, wait, wait_start: None }
+        Self { entities: Entities::new(seed), pending: spawn, held: Vec::new(), wait, wait_start: None }
+    }
+
+    pub fn holding(self, held: Vec<(usize, crate::item::Item)>) -> Self {
+        Self { held, ..self }
     }
 
     /// For `--screenshot`: true once `--wait` seconds have passed since the
@@ -82,7 +88,8 @@ impl Game {
 
     /// Applies `--spawn` requests (with the other `--place` edits).
     pub(super) fn spawn_pending_mobs(&mut self) {
-        for (kind, mut pos, armor) in std::mem::take(&mut self.mobs.pending) {
+        let held = std::mem::take(&mut self.mobs.held);
+        for (i, (kind, mut pos, armor)) in std::mem::take(&mut self.mobs.pending).into_iter().enumerate() {
             if pos.y == i32::MIN {
                 pos.y = self.world.generator.column(pos.x, pos.z).height + 1;
             }
@@ -92,6 +99,11 @@ impl Game {
             {
                 mob.armor = [Some(equipped.kind); 4];
                 mob.armor_glint = if equipped.glint { 0b1111 } else { 0 };
+            }
+            if let Some(&(_, item)) = held.iter().find(|(at, _)| *at == i)
+                && let Some(allay) = self.mobs.entities.mobs.last_mut().and_then(|m| m.allay.as_mut())
+            {
+                allay.liked = Some(crate::inventory::Stack::new(item, 1));
             }
         }
     }
@@ -434,12 +446,23 @@ impl Game {
                                 F::Grow => (Sound::Pop, 0.15),
                             }
                         }
+                        MobSound::Allay(action) => (Sound::Allay(action), 0.8),
                         MobSound::CopperGolem(action, stage) => (Sound::CopperGolem(action, stage), 0.7),
                         MobSound::Hurt(MobKind::CopperGolem) => {
                             (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Hurt, 0), 0.9)
                         }
                         MobSound::Death(MobKind::CopperGolem) => {
                             (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Death, 0), 0.9)
+                        }
+                        MobSound::Sniffer(cue) => {
+                            use voxelcraft::entity::sniffer::Cue;
+                            (Sound::Sniffer(cue), if matches!(cue, Cue::EggCrack | Cue::EggHatch) { 0.7 } else { 1.0 })
+                        }
+                        // `emitDiggingParticles`: the block's hit sound at volume and pitch 0.5.
+                        MobSound::SnifferDigHit(block) => {
+                            let sound = Sound::Step(crate::audio::sounds::material(block));
+                            self.audio.play_in(SoundSource::Neutral, sound, Some(pos), 0.5, (0.5, 0.5));
+                            continue;
                         }
                         MobSound::Bell => (Sound::Bell, 1.0),
                         // Procedural stand-ins for Java's `wandering_trader.disappeared`/`reappeared`.
@@ -622,7 +645,10 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Panda => Voice::Panda,
         MobKind::Armadillo => Voice::Armadillo,
         MobKind::Ocelot => Voice::Ocelot,
+        MobKind::Sniffer => Voice::Sniffer,
+        MobKind::Allay => Voice::Allay,
         MobKind::CopperGolem => Voice::Skeleton,
+        MobKind::Creaking => Voice::Creaking,
         MobKind::Tadpole => Voice::Fish,
         MobKind::Sheep => Voice::Sheep,
         MobKind::Chicken => Voice::Chicken,

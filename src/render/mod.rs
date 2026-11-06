@@ -11,6 +11,7 @@
 
 pub mod arena;
 pub mod block_model;
+pub mod brushable;
 pub mod entity;
 pub mod hand;
 mod item_sprites;

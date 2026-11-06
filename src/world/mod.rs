@@ -13,6 +13,7 @@
 //! light-blocking block, which seeds skylight in mesh jobs.
 
 pub mod activity;
+pub mod archaeology;
 mod automation;
 pub mod bastion;
 pub mod bees;
@@ -34,6 +35,7 @@ pub mod colour_blocks;
 pub mod composter;
 pub mod copper;
 pub mod copper_golem_statue;
+pub mod creaking;
 pub mod crops;
 pub mod deep_dark;
 pub mod dismount;
@@ -42,6 +44,7 @@ pub mod dungeon;
 pub mod end;
 pub mod end_portal;
 pub mod explosion;
+pub mod eyeblossom;
 pub mod falling;
 mod fire;
 mod fluid;
@@ -76,6 +79,7 @@ pub mod noise;
 pub mod ore;
 pub mod overworld_blocks;
 mod overworld_flora;
+pub mod pale_garden;
 mod portal;
 pub mod precipitation;
 pub mod pumpkin_blocks;
@@ -90,6 +94,8 @@ mod rule_tests;
 pub mod scaffolding;
 pub mod shape;
 pub mod slab_stair_states;
+pub mod sniffer_egg;
+pub mod sniffer_plants;
 pub mod spawn_finder;
 mod spawner;
 mod sponge;
@@ -291,6 +297,12 @@ pub struct World {
     brewing_stands: FxHashMap<IVec3, brewing::BrewingStand>,
     /// Sign text, shelf items and chiseled bookshelf books (see [`wood::entities`]).
     pub(crate) beehives: bees::State,
+    pub(crate) archaeology: archaeology::State,
+    pub(crate) creaking_night: Option<bool>,
+    /// Java's `gameplay/eyeblossom_open` attribute here (`None`: undefined).
+    pub(crate) eyeblossom_open: Option<bool>,
+    pub(crate) creaking_active: std::collections::BTreeSet<[i32; 3]>,
+    pub(crate) creaking_hearts: std::collections::BTreeMap<[i32; 3], creaking::Heart>,
     wood: wood::entities::WoodEntities,
     /// Campfire, decorated pot and cauldron-drip state (see [`utilities`]).
     utilities: utilities::State,
@@ -329,6 +341,7 @@ pub struct World {
     pub primed_tnt: Vec<(IVec3, bool)>,
     /// Note blocks that played this tick: position, pitch 0..=24, instrument.
     pub notes: Vec<(IVec3, u8, u8)>,
+    pub(crate) allay_notes: Vec<IVec3>,
     /// Tripwire hook clicks and attach sounds since the last frame.
     pub trip_sounds: Vec<(IVec3, gadgets::TripSound)>,
     /// Freshly placed carved pumpkins and jack o'lanterns, checked for golem patterns by the game.
@@ -336,6 +349,8 @@ pub struct World {
     /// Turtle eggs that hatched: cell and how many babies; the game spawns them.
     pub hatched_turtles: Vec<(IVec3, u8)>,
     pub hatched_tadpoles: Vec<(IVec3, u8)>,
+    /// Sniffer eggs that cracked (false) or hatched (true); entities spawn and play them.
+    pub sniffer_egg_events: Vec<(IVec3, bool)>,
     compost_sequence: u64,
     bell_rings: Vec<IVec3>,
     /// Whether it's raining (set by the game each frame).
@@ -459,6 +474,7 @@ impl World {
         self.forget_campfires(pos);
         self.register_campfires(pos, &data);
         self.register_beehives(pos, &data, true);
+        self.register_creaking_hearts(pos, &data);
         self.chunks.insert(
             pos,
             ChunkSlot {
@@ -571,6 +587,11 @@ impl World {
             next_chest_identity: 0,
             brewing_stands: FxHashMap::default(),
             beehives: Default::default(),
+            archaeology: Default::default(),
+            creaking_hearts: Default::default(),
+            creaking_active: Default::default(),
+            creaking_night: None,
+            eyeblossom_open: None,
             copper_golem_names: Default::default(),
             wood: Default::default(),
             utilities: Default::default(),
@@ -591,10 +612,12 @@ impl World {
             brews_done: Vec::new(),
             primed_tnt: Vec::new(),
             notes: Vec::new(),
+            allay_notes: Vec::new(),
             trip_sounds: Vec::new(),
             golem_heads: Vec::new(),
             hatched_turtles: Vec::new(),
             hatched_tadpoles: Vec::new(),
+            sniffer_egg_events: Vec::new(),
             compost_sequence: 0,
             bell_rings: Vec::new(),
             raining: false,
@@ -912,6 +935,7 @@ impl World {
         self.track_redstone(p, old, block);
         self.track_lightning_rod(p, old, block);
         self.track_frog_blocks(p, old, block);
+        self.track_sniffer_egg(p, old, block);
         if old != block {
             self.scaffolding_changed(p);
         }
@@ -923,6 +947,8 @@ impl World {
         self.track_brewing_stand(p, old, block);
         self.track_wood(p, old, block);
         self.track_beehives(p, old, block);
+        self.track_archaeology(p, old, block);
+        self.track_creaking_heart(p, block);
         self.track_copper_golem_statue(p, block);
         self.track_utilities(p, old, block);
         self.track_spawner(p, old, block);
@@ -1331,6 +1357,7 @@ impl World {
         self.register_banners(pos, &data);
         self.register_campfires(pos, &data);
         self.register_beehives(pos, &data, modified);
+        self.register_creaking_hearts(pos, &data);
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
         let workers = &self.workers;
         let col = self.columns.entry(column_of(pos)).or_insert_with(|| {
@@ -1367,6 +1394,7 @@ impl World {
         self.load_block_light(pos);
         self.light_sky_column(column_of(pos));
         self.load_redstone_chunk(pos);
+        self.register_archaeology_ticks(pos);
         self.entity_loads.insert(pos);
         if let Some(blocks) = self.stored_falling.remove(&pos) {
             self.falling.extend(blocks);
@@ -1382,6 +1410,7 @@ impl World {
         self.unlight_sky_column(column_of(pos));
         self.unload_redstone_chunk(pos);
         self.unload_beehives(pos);
+        self.creaking_active.retain(|p| chunk::chunk_of(IVec3::from_array(*p)) != pos);
         let slot = self.chunks.remove(&pos).unwrap();
         self.entity_loads.remove(&pos);
         // A LAN replica's falling blocks come from the host's snapshots.

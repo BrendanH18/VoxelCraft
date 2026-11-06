@@ -95,6 +95,7 @@ impl MobKind {
     /// the only registration needed for the generic mating/baby pipeline.
     pub fn breeding_food(self, food: Item) -> bool {
         match self {
+            Self::Sniffer => food == Item::TORCHFLOWER_SEEDS,
             Self::Bee => food.block().is_some_and(super::bee::flower),
             Self::Cow | Self::Mooshroom | Self::Sheep => food == Item::WHEAT,
             Self::Frog | Self::Tadpole => food == Item::SLIME_BALL,
@@ -130,7 +131,8 @@ impl MobKind {
     pub fn is_breedable(self) -> bool {
         matches!(
             self,
-            Self::Bee
+            Self::Sniffer
+                | Self::Bee
                 | Self::Wolf
                 | Self::Fox
                 | Self::Rabbit
@@ -191,7 +193,7 @@ impl Mob {
             return;
         }
         if self.baby && self.age == 0 {
-            self.age = BABY_AGE;
+            self.age = if self.kind == MobKind::Sniffer { -48000 } else { BABY_AGE };
         }
         if let Some(a) = &mut self.animal {
             a.growth += dt * 20.0;
@@ -416,7 +418,8 @@ impl Entities {
     /// `BreedGoal.breed` / `Animal.spawnChildFromBreeding` for the pairs whose
     /// goal finished courting this tick: both parents cool down for 6000
     /// ticks and lose their love, a baby appears (turtles get pregnant
-    /// instead), and 1–7 experience drops.
+    /// instead; sniffers drop an egg item with `SNIFFER_EGG_PLOP`), and 1–7
+    /// experience drops.
     pub(super) fn resolve_breeding(&mut self) {
         for i in 0..self.mobs.len() {
             let Some(uid) = self.mobs[i].animal.as_mut().and_then(|a| a.breed_now.take()) else { continue };
@@ -425,7 +428,20 @@ impl Entities {
                 continue;
             }
             let turtle = matches!(self.mobs[i].kind, MobKind::Turtle | MobKind::Frog);
-            let child = (!turtle).then(|| self.animal_child(i, j));
+            let sniffer = self.mobs[i].kind == MobKind::Sniffer;
+            let child = (!turtle && !sniffer).then(|| self.animal_child(i, j));
+            if sniffer {
+                self.items.push(super::ItemEntity::new(
+                    Stack::new(Item::SNIFFER_EGG, 1),
+                    self.mobs[i].pos,
+                    DVec3::ZERO,
+                    0.5,
+                    &mut self.rng,
+                ));
+                let pos = self.mobs[i].pos;
+                let sound = super::MobSound::Sniffer(super::sniffer::Cue::EggPlop);
+                self.pending_sounds.push(EntityEvent::Sound { sound, pos });
+            }
             for k in [i, j] {
                 self.mobs[k].age = BREEDING_COOLDOWN;
                 let a = self.mobs[k].animal.as_mut().unwrap();
@@ -501,7 +517,15 @@ pub(super) fn load(a: &mut State, v: &Value) {
 }
 
 pub fn seeds(food: Item) -> bool {
-    matches!(food, Item::WHEAT_SEEDS | Item::PUMPKIN_SEEDS | Item::MELON_SEEDS | Item::BEETROOT_SEEDS)
+    matches!(
+        food,
+        Item::WHEAT_SEEDS
+            | Item::PUMPKIN_SEEDS
+            | Item::MELON_SEEDS
+            | Item::BEETROOT_SEEDS
+            | Item::TORCHFLOWER_SEEDS
+            | Item::PITCHER_POD
+    )
 }
 pub fn wolf_food(food: Item) -> bool {
     matches!(

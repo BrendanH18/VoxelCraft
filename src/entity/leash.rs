@@ -17,11 +17,13 @@ impl MobKind {
     pub fn leashable(self) -> bool {
         matches!(
             self,
-            Self::CopperGolem
+            Self::Allay
+                | Self::CopperGolem
                 | Self::Cow
                 | Self::Mooshroom
                 | Self::Frog
                 | Self::PolarBear
+                | Self::Sniffer
                 | Self::Armadillo
                 | Self::Ocelot
                 | Self::Sheep

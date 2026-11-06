@@ -165,7 +165,7 @@ in the right-hand column stays mandatory for 1.0.
 | Side feature | Deferred past 1.0 | Stays in 1.0 core |
 |---|---|---|
 | Advancements and statistics | The advancement and statistics screens, toasts and criteria | Recipe unlocking and the recipe book (UX, v0.20); the dragon/Wither progression itself (v0.18) |
-| Archaeology | Brushes, suspicious sand and gravel, pottery sherds and decorated-pot patterns | Trail ruins, desert wells and warm ocean ruins as explorable structures with their non-archaeology loot (v0.14); sniffers obtainable some other Java way, or recorded as a fidelity exception when v0.15 plans them |
+| Archaeology | Decorated pots and sherd patterns, and archaeology in structures other than ocean ruins (narrowed by the owner on 2026-11-05) | Trail ruins, desert wells and ocean ruins as explorable structures with their loot (v0.14, v0.15); suspicious sand and gravel, brushing them, and the sherds the ocean-ruin tables name, as plain items (v0.15), so warm ocean ruins give sniffer eggs the Java way |
 | Commands | The full command and selector language | The cheat console's testing commands (game mode, rules, time, weather, teleport, give, kill, difficulty, spawn point) |
 | Custom skins | Skin selection and loading | The default player models |
 | Resource and data packs | Loading packs | The built-in Java 26.3 recipes, loot tables and tags they would replace |
@@ -869,7 +869,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.12 | Building materials | Close M2 | Missing wood, stone, copper and colour family members, the unregistered reference fuel items, signs, banners, item frames, cauldrons and campfires; coral wall fans; falling and dripping dripstone, tilting dripleaf. See [v0.12 scope](#v012-scope-building-materials) | Done (owner, 2026-10-29): merged in [#55](https://github.com/BrendanH18/VoxelCraft/pull/55) at `ec7e18b`; tag `v0.12` from it. The owner's own play is the player evidence (no problems found). Release prepared (2026-10-29): Cargo 0.12.0 and release notes. Items 0–6 implemented, unverified (capacity raise; wood, stone, copper, colour and utilities tracks; data pass, explosions, double chests; `registry_audit`: 669 → 247 missing blocks, the rest belonging to later releases). The remaining gaps of v0.12's own blocks were closed on 2026-10-29 ([record](verification/2026-10-29-v0.12-finish.md)): sign editing for CLI, LAN and controller players, lodestone compasses, slime blocks for mobs and items, arrows hitting vehicles, cushions and decorations, cauldrons putting out fires, and a hidden-window memory leak. Frame time: one valid `materials` run (539 FPS average, 137.8 FPS 1% low) and a profile showing the per-frame mob-model rebuild, not texture paging, as the cost; the three-run gate moved to v0.20 as for v0.8, v0.9 and v0.11. Rows that weren't ready moved out under the 2026-10-25 policy (see the [scope](#v012-scope-building-materials)). Rows stay Implemented, unverified until the frame-time check in v0.20 |
 | v0.13 | Terrain | M3: GEN-01..03 | Density terrain with overhangs from the climate noise (original noise, FE-01); caves and aquifers fitted to it, springs, glow lichen and an ore pass; deep-dark terrain with sculk; giant spruce and jungle trees and the remaining biome features; bubble columns, fire spread, offhand and shields carried from v0.12. See [v0.13 scope](#v013-scope-terrain) | Done (owner, 2026-10-31): merged in [#57](https://github.com/BrendanH18/VoxelCraft/pull/57) at `a8c3172`; the owner's own play is the player evidence. Release prepared (2026-10-31): Cargo 0.13.0 and release notes; tag `v0.13` from the merge that carries them. Items 0–6 implemented, unverified and integrated ([integration record](verification/2026-10-30-v0.13-integration.md)): generation 2 for new worlds only, density terrain, underground and deep dark, giant trees and biome features, bubble columns, fire odds, off-hand, shields and totems. Known gaps: floating rocks above some peaks, hand-tuned densities, inert sculk until v0.16, fire odds unchecked against the 26.3 artifact. Rows stay Implemented, unverified until the frame-time check in v0.20 |
 | v0.14 | Structures | M3: GEN-05..07 | A Java structure-template (jigsaw) system; villages, outposts, bastions, fossils, shipwrecks, ocean ruins and monuments built from it; buried treasure and explorer maps; Java loot random sequences. See [v0.14 scope](#v014-scope-structures) | In progress (2026-11-03): scope approved with original templates (no fidelity exception yet); all of items 0–7 implemented, unverified: world generation 3, the jigsaw engine and villages ([record](verification/2026-11-03-v0.14-jigsaw-villages.md)), outposts and bastions ([record](verification/2026-11-03-v0.14-outposts-bastions.md)), ruined portals and buried treasure ([record](verification/2026-11-03-v0.14-portals-treasure.md)), fossils, desert wells and trail ruins ([record](verification/2026-11-03-v0.14-fossils-wells-trail-ruins.md)), maps, explorer maps and Java loot sequences ([record](verification/2026-11-03-v0.14-maps.md)); owner play pending |
-| v0.15 | Wildlife | M4: MOB-03/04, FOO, ENV-03 | Bats, frogs, pandas, polar bears, armadillos, mooshrooms, strays, bogged, phantoms and zombie horses (with lightning); drowned conversion and the cat spawner; melon, pumpkin and beetroot crops; animal and mount acceptance. See [v0.15 scope](#v015-scope-wildlife) | Implemented, unverified (2026-11-04): started early while v0.14 waits for the owner's play; four tracks (lightning and undead mounts, crops and bees, passive mobs, hostiles) merged and council-reviewed ([integration](verification/2026-11-04-v0.15-integration.md)); awaits the owner's play |
+| v0.15 | Wildlife | M4: MOB-03/04, FOO, ENV-03 | Bats, frogs, pandas, polar bears, armadillos, mooshrooms, strays, bogged, phantoms and zombie horses (with lightning); drowned conversion and the cat spawner; melon, pumpkin and beetroot crops; animal and mount acceptance. See [v0.15 scope](#v015-scope-wildlife) | Implemented, unverified (2026-11-04): started early while v0.14 waits for the owner's play; four tracks (lightning and undead mounts, crops and bees, passive mobs, hostiles) merged and council-reviewed ([integration](verification/2026-11-04-v0.15-integration.md)); copper golems (2026-11-05), then creaking and resin, allays, sniffers and ocean ruins with suspicious blocks (2026-11-06, [integration](verification/2026-11-06-v0.15-final-integration.md)) complete the scope; awaits the owner's play |
 | v0.16 | Deep dark and trials | M3 + M4 + PRO-07 | Ancient cities with sculk and the warden; trial chambers with breezes, trial spawners, vaults and the mace; tridents, spears and the other modern weapon families | Planned |
 | v0.17 | Villages and raids | Close M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M4 exit checks | Planned |
 | v0.18 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough | Planned |
@@ -1542,6 +1542,69 @@ mounted-block and LAN edge cases remain follow-ups.
 See the [integration evidence and remaining gaps](verification/2026-11-05-v0.15-copper-golems.md)
 and [identifier allocations](architecture.md#v015-copper-golem-reservations).
 This does not close the remaining wildlife scope or establish owner play.
+
+**Creaking, allays, sniffers and ocean ruins — approved 2026-11-05.** The
+owner approved the last three wildlife slices as four parallel tracks
+against the pinned Java 26.3 reference, with original models, textures,
+sounds and templates, IDs in the
+[architecture reservations](architecture.md#v015-final-slice-reservations):
+
+- **A. Creaking and resin.** Creaking hearts (axis, uprooted/dormant/awake,
+  natural) in generated pale oak trees, the creaking (frozen while watched,
+  bound to and protected by its heart, damaged only through it), resin
+  clumps, the resin block, resin bricks with stairs, slab, wall and
+  chiseled bricks, and eyeblossoms that open at night and close by day.
+  Track A (2026-11-05/06): hearts and protectors, the resin family,
+  eyeblossoms (with pots, dyes and stew) and generation 3 pale garden hearts
+  and eyeblossom patches are **Implemented, unverified**. See
+  [the implementation record](verification/2026-11-05-v0.15-creaking.md) for
+  checks and the remaining brain, presentation and lifecycle differences.
+- **B. Allays.** Item gifting, liking and collection, note-block
+  preference, jukebox dancing and amethyst duplication, and allays in the
+  outpost allay cage. *Implemented, unverified (2026-11-05):* flying allays,
+  shared gifting/return and Java-equality collection/delivery, saved
+  player/note memories, note vibrations and two persistent generation-3
+  cage residents. Original model, procedural skin and synthesized sounds;
+  summon and LAN index 70. Dancing state and duplication callback are
+  present, but survival dancing/duplication remains a gap because this
+  checkout has no jukebox/music-disc playback. Mansion allays remain a gap.
+  See the [sources, checks and differences](verification/2026-11-05-v0.15-allays.md).
+- **C. Sniffers.** Sniffer eggs and hatching (faster on moss), sniffing and
+  digging up torchflower seeds and pitcher pods, breeding, and the
+  torchflower and pitcher crops, plants and recipes.
+  Implemented, unverified (2026-11-05): crop/flower states, growth, bone meal,
+  pots, dyes, compost and stew; saved sniffers, digging gifts and explored memory,
+  seed breeding/temptation, egg laying and scheduled moss-boosted hatching,
+  with original sniff, search, dig, egg crack/hatch/plop cues and digging and
+  egg particles. Search/navigation and animation remain partial; survival egg acquisition
+  requires Track D. [Track C evidence](verification/2026-11-05-v0.15-sniffers.md).
+- **D. Ocean ruins and suspicious blocks.** Warm and cold ocean ruins (the
+  remaining v0.14 GEN-05 structure) with Java's placement, variants and
+  chest loot, drowned residents, and their suspicious sand and gravel.
+  This narrows DEF-02 (owner, 2026-11-05): suspicious sand and gravel and
+  brushing them are now core, so sniffer eggs come from warm ocean ruins
+  the Java way. The pottery sherds those loot tables name exist only as
+  items; decorated pots and their patterns stay deferred.
+  Track D status (2026-11-05): **Implemented, unverified** suspicious blocks,
+  shared brushing, seven plain sherds and generation-3 original-template
+  warm/cold clustered ruins with chest loot and drowned. Since integration
+  (2026-11-06) the warm table's 1-in-15 slot yields `Item::SNIFFER_EGG`, so
+  sniffers are obtainable in survival. Brushing shows Java's dust particles and
+  emerging reward (2026-11-06); dedicated brush sounds, LAN replication of
+  the emerging reward and full reference random-stream/layout fidelity
+  remain gaps. See [evidence](verification/2026-11-05-v0.15-ocean-ruins.md).
+
+
+New generation (creaking hearts, eyeblossoms, ocean ruins, outpost
+allays) applies to generation 3 only, which hasn't been tagged; the
+golden hashes of generations 1 and 2 stay unchanged.
+
+*Integrated, implemented, unverified (2026-11-06):* the four tracks merged
+in order A, C, D, B with the cross-track pieces wired (sniffer eggs in warm
+ruins; mob, icon, sound and texture orderings reconciled). Codex reached its
+usage limit mid-round, so Claude Opus 5.5 finished every track, and builds ran
+on Namespace instances. The owner's play remains. See the
+[integration record](verification/2026-11-06-v0.15-final-integration.md).
 
 ### M4 — A complete living world
 

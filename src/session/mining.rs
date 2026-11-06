@@ -303,6 +303,7 @@ impl PlayerSession {
         let lower = world.get_block(below);
         let door_lower = lower.filter(|b| block.is_door_upper() && b.is_door() && !b.is_door_upper());
         let plant_lower = overworld_blocks::double_of(block)
+            .or_else(|| crate::world::sniffer_plants::double(block))
             .filter(|&(base, upper)| upper && lower == Some(base))
             .map(|(base, _)| base);
         let silent_lower = (door_lower.is_some() && (!survival || !harvest)) || (plant_lower.is_some() && !survival);

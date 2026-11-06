@@ -9,6 +9,7 @@
 mod dsp;
 mod export;
 pub mod mixer;
+mod sniffer;
 pub mod sounds;
 mod source;
 mod voices;

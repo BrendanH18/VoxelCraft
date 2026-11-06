@@ -294,6 +294,7 @@ pub enum Sprite {
     /// A shield; the totem of undying follows it.
     Shield,
     Totem,
+    PotterySherd(u8),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -846,7 +847,12 @@ impl Item {
     /// Standalone append-only audit gear ID; v0.7 reserves 1000..1039.
     pub const TURTLE_HELMET: Item = Item(1040);
     /// v0.15 crops track: soup; the seeds and root retain their older IDs.
+    pub const TORCHFLOWER_SEEDS: Item = Item(1385);
+    pub const PITCHER_POD: Item = Item(1386);
+    /// Shared with Track D archaeology/ocean_ruin_warm.
+    pub const SNIFFER_EGG: Item = Item::from_block(crate::world::sniffer_egg::EGG);
     pub const BEETROOT_SOUP: Item = Item(1280);
+    pub const RESIN_BRICK: Item = Item(1368);
     pub const HONEYCOMB: Item = Item(1281);
     /// Explicit honey item reservations, including the block placing item.
     pub const HONEY_BLOCK: Item = Item(1072);
@@ -955,6 +961,8 @@ impl Item {
     /// non-block item plants (seeds sow wheat).
     pub fn places(self) -> Option<Block> {
         match self {
+            Item::TORCHFLOWER_SEEDS => Some(crate::world::sniffer_plants::TORCH_CROP),
+            Item::PITCHER_POD => Some(crate::world::sniffer_plants::PITCHER_CROP),
             Item::REDSTONE => Some(crate::world::redstone_blocks::WIRE),
             Item::STRING => Some(crate::world::gadgets::TRIPWIRE),
             Item::MELON_SEEDS => Some(crate::world::crops::stem_block(crate::world::crops::Fruit::Melon, 0)),
@@ -1024,6 +1032,18 @@ impl Item {
     }
 
     pub fn info(self) -> ItemInfo {
+        if self == Self::TORCHFLOWER_SEEDS {
+            return item("torchflower seeds", Sprite::Lump([126, 82, 42]));
+        }
+        if self == Self::PITCHER_POD {
+            return item("pitcher pod", Sprite::Lump([163, 84, 75]));
+        }
+        if let Some(info) = crate::world::archaeology::item_info(self) {
+            return info;
+        }
+        if self == Self::RESIN_BRICK {
+            return item("resin brick", Sprite::Lump([211, 99, 29]));
+        }
         if self == Self::HONEYCOMB {
             return item("honeycomb", Sprite::Lump([233, 163, 40]));
         }
@@ -1484,6 +1504,9 @@ impl Item {
             .chain([Self::SUSPICIOUS_STEW, Self::TADPOLE_BUCKET, Self::ARMADILLO_SCUTE, Self::BRUSH, Self::WOLF_ARMOR])
             .chain([Self::BEETROOT_SOUP, Self::HONEYCOMB])
             .chain([Self::TIPPED_ARROW, Self::LINGERING_POTION, Self::DRAGON_BREATH])
+            .chain([Self::TORCHFLOWER_SEEDS, Self::PITCHER_POD])
+            .chain((crate::world::archaeology::ITEM_FIRST..crate::world::archaeology::ITEM_END).map(Item))
+            .chain([Self::RESIN_BRICK])
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1542,10 +1565,13 @@ fn splash_names() -> &'static [&'static str] {
 fn sprite_index(item: Item) -> Option<u16> {
     let materials = ITEMS.len() as u16;
     match item.0 {
-        1280..=1281 => Some(icon_count() as u16 - 5 + item.0 - 1280),
-        1330 => Some(icon_count() as u16 - 3),
-        1332 => Some(icon_count() as u16 - 2),
-        1333 => Some(icon_count() as u16 - 1),
+        1280..=1281 => Some(passive_icon_base() + 4 + item.0 - 1280),
+        1385..=1386 => Some(passive_icon_base() + 9 + item.0 - 1385),
+        1395..=1401 => Some(passive_icon_base() + 11 + item.0 - 1395),
+        1330 => Some(passive_icon_base() + 6),
+        1332 => Some(passive_icon_base() + 7),
+        1333 => Some(passive_icon_base() + 8),
+        1368 => Some(passive_icon_base() + 18),
         1301..=1304 => Some(passive_icon_base() + item.0 - 1301),
         1040 => Some(turtle_icon()),
         1073 => Some(turtle_icon() + 2 + COPPER_ITEMS.len() as u16),
@@ -1641,7 +1667,7 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    passive_icon_base() as u32 + 4 + 5
+    passive_icon_base() as u32 + 4 + 5 + 2 + 7 + 1
 }
 
 const fn passive_icon_base() -> u16 {

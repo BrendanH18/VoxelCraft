@@ -166,6 +166,12 @@ impl World {
                     IVec3::new(i % CHUNK_SIZE_I, i / (CHUNK_SIZE_I * CHUNK_SIZE_I), i / CHUNK_SIZE_I % CHUNK_SIZE_I);
                 self.redstone_changed(c * CHUNK_SIZE_I + local);
             }
+            if super::sniffer_egg::owns(b.0) {
+                let p = c * CHUNK_SIZE_I + local;
+                if !self.redstone.pending.contains_key(&p) {
+                    self.schedule_sniffer_egg(p);
+                }
+            }
             if b == super::frog_blocks::FROGSPAWN {
                 let local =
                     IVec3::new(i % CHUNK_SIZE_I, i / (CHUNK_SIZE_I * CHUNK_SIZE_I), i / CHUNK_SIZE_I % CHUNK_SIZE_I);
@@ -416,6 +422,9 @@ impl World {
     }
 
     pub fn container_signal(&self, p: IVec3) -> Option<u8> {
+        if self.get_block(p).is_some_and(|b| super::creaking::heart(b).is_some()) {
+            return Some(self.creaking_hearts.get(&p.to_array()).map_or(0, |h| h.signal));
+        }
         if let Some((_, _, honey)) = self.get_block(p).and_then(super::bees::hive) {
             return Some(honey);
         }
@@ -630,11 +639,21 @@ impl World {
 
     fn redstone_scheduled_tick(&mut self, p: IVec3) {
         let Some(b) = self.get_block(p) else { return };
+        if super::sniffer_egg::owns(b.0) {
+            return self.hatch_sniffer_egg(p);
+        }
+        if super::archaeology::owns(b.0) {
+            return self.archaeology_tick(p);
+        }
         if super::lightning::rod(b).is_some() {
             return self.reset_lightning_rod(p, b);
         }
         if b == super::frog_blocks::FROGSPAWN {
             return self.hatch_frogspawn(p);
+        }
+        if matches!(b, super::eyeblossom::OPEN | super::eyeblossom::CLOSED) {
+            self.tick_eyeblossom(p, b);
+            return;
         }
         if super::scaffolding::is_scaffolding(b) {
             return self.tick_scaffolding(p);
@@ -1130,6 +1149,10 @@ impl World {
                             || matches!(family, 226 | 249 | 904)
                             || u16::try_from(family).is_ok_and(|f| super::lightning::rod(Block(f)).is_some())
                             || family == i64::from(super::frog_blocks::FROGSPAWN.0)
+                            || family == i64::from(super::sniffer_egg::EGG.0)
+                            || family == i64::from(super::eyeblossom::OPEN.0)
+                            || family == i64::from(super::eyeblossom::CLOSED.0)
+                            || u16::try_from(family).is_ok_and(super::archaeology::owns)
                             || family == i64::from(super::scaffolding::SCAFFOLDING.0)
                             // A pending coral death (`CoralPlantBlock.tryScheduleDieTick`).
                             || u16::try_from(family)

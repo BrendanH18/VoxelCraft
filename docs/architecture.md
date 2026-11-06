@@ -328,7 +328,8 @@ content and took its release's new number.
 | 12288–12799 | v0.18 | End and Wither states |
 | 12800–14335 | v0.19 | Redstone and automation states |
 | 14336–14591 | v0.15 | Copper golem statue states (2026-11-05 reservation) |
-| 14592–16383 | — | Unassigned reserve |
+| 14592–15487 | v0.15 | Creaking, sniffer, ocean ruin and spare states (2026-11-05 reservation) |
+| 15488–16383 | — | Unassigned reserve |
 | 16384–32767 | v0.12 and later | Added by the 32,768 raise (2026-10-25); see the v0.12 tracks below |
 
 ### v0.12 track reservations
@@ -629,6 +630,93 @@ already carried by `MapStorage.game_ticks`, which travels across dimensions
 and is independent of the day clock. Container search uses a bounded BTree
 position index and transient identities that change on replacement.
 See the [integration evidence](verification/2026-11-05-v0.15-copper-golems.md).
+
+### v0.15 final slice reservations
+
+Reserved on 2026-11-05 for the [creaking, allay, sniffer and ocean ruin
+tracks](roadmap.md#v015-scope-wildlife), from the start of the unassigned
+state reserve (after the copper golem statues), the items after the copper
+golem's reserved 1360–1367, and the texture layers after its reserved
+3340–3359. Unused IDs stay unregistered and keep their track.
+
+| Block states | Item IDs | Texture layers | Track |
+| --- | --- | --- | --- |
+| 14592–15103 | 1368–1379 | 3360–3423 | A. Creaking, resin and eyeblossoms |
+| — | 1380–1384 | 3424–3439 | B. Allays |
+| 15104–15231 | 1385–1394 | 3440–3503 | C. Sniffers, torchflowers and pitcher plants |
+| 15232–15359 | 1395–1414 | 3504–3567 | D. Ocean ruins, suspicious sand and gravel, sherds |
+| 15360–15487 | 1415–1419 | 3568–3599 | Integrator spare |
+
+Track D allocation (2026-11-05, implemented, unverified): suspicious sand
+15232–15235 and gravel 15236–15239 encode dusted 0–3. Item IDs 1395–1401
+are angler, shelter, snort, blade, explorer, mourner and plenty pottery
+sherds. Original sediment layers 3504–3511 are offsets from
+`archaeology::t::BASE`; seven sherd icons append to the separate item atlas.
+No MobKind is allocated. States 15240–15359, items 1402–1414 and layers
+3512–3567 remain reserved, unused. The dimension `archaeology` property
+stores brushable loot/progress. Track C's egg is resolved by Java name,
+without assuming its item ID. See [Track D evidence](verification/2026-11-05-v0.15-ocean-ruins.md).
+
+
+New `MobKind`s append after `CopperGolem` in the order Creaking, Allay,
+Sniffer, taking LAN indices 69, 70 and 71; existing names and indices
+keep their meanings. The unassigned reserve becomes 15488–16383.
+
+Track A allocation (2026-11-05/06, implemented, unverified):
+
+| Block states | Meaning |
+| --- | --- |
+| 14592–14609 | Creaking heart: `14592 + 6*axis + 2*activity + natural`; axes Y/X/Z, activities uprooted/dormant/awake |
+| 14657–14719, 14721–14783 | Resin clump: `14656 + 64*waterlogged + faces`, faces 1–63 in `cave_blocks::DIRS` order; zero-face slots 14656/14720 stay unregistered |
+| 14784–14786 | Resin block, resin bricks, chiseled resin bricks |
+| 14792–14871 | Resin brick stairs: 80 states in the standard `slab_stair_states` local order |
+| 14872–14876 | Resin brick slab: bottom dry/wet, top dry/wet, double |
+| 14880–14883 | Resin brick wall: UP dry/wet, no-UP dry/wet; sides inferred as for existing walls |
+| 14888–14889 | Open eyeblossom, closed eyeblossom (`world::eyeblossom`) |
+| 14890–14891 | Potted open eyeblossom, potted closed eyeblossom |
+
+Item **1368** is the resin brick. Original procedural block layers
+**3360–3376**, offsets from `world::creaking::TEX`, contain three layers
+per heart activity (side, end, turned side), resin clump, resin block,
+resin bricks and chiseled resin bricks (3360–3372), then the open and closed
+eyeblossoms and their two potted sides (3373–3376, `world::eyeblossom::TEX`). All remaining Track A IDs stay
+reserved and unregistered. `MobKind::Creaking` appends at LAN index **69**,
+saved as `creaking`; its component stores the heart position and animation
+state, and the dimension's `creaking_hearts` property stores protector UIDs.
+Unloaded hearts remain saved but only the loaded active set ticks.
+See [Track A evidence and unfinished work](verification/2026-11-05-v0.15-creaking.md).
+
+Track B allocation (2026-11-05, implemented, unverified): `MobKind::Allay`,
+save/command name `allay`, LAN index **70** (69 stays reserved for Creaking).
+No block states or items are allocated: allays use existing stacks and
+amethyst shards. Layers 3424–3439 remain unused/reserved; the original
+cuboid skin and wings use the existing entity shader's procedural per-texel
+colour/noise material, and the held item uses its existing icon/block layer.
+The new state/AI lives in `entity/allay.rs`, model in `entity/model/allay.rs`
+and shared actor use in `session/allay.rs`. Two generation-3 cage resident
+markers use existing structure-population persistence. See the
+[allay record](verification/2026-11-05-v0.15-allays.md).
+
+Track C allocation (2026-11-05, implemented, unverified):
+
+| States / IDs | Meaning |
+| --- | --- |
+| 15104–15105 | Torchflower crop ages 0–1 |
+| 15106, 15107 | Torchflower, potted torchflower |
+| 15108–15117 | Pitcher crop: `15108 + age + 5*upper`, all ten Java states |
+| 15118–15119 | Pitcher plant lower, upper |
+| 15120–15122 | Sniffer egg hatch levels 0–2 |
+| Items 1385–1386 | Torchflower seeds, pitcher pod |
+| Block item 47888 | `Item::SNIFFER_EGG = Item::from_block(sniffer_egg::EGG)`; Track D resolves `archaeology/ocean_ruin_warm` through this constant |
+| Layers 3440–3458 | Original crops/plants (16), egg cracks (3); offsets from `sniffer_plants::t::BASE` |
+| MobKind `Sniffer` | Saved Java id `sniffer`, LAN 71; explicit wire mapping preserves 69–70 for the other tracks before integration |
+
+15123–15231, 1387–1394 and 3459–3503 stay reserved and unregistered.
+Sniffer activity, its loot-emitted latch, cooldown and up to 21
+(dimension, position) explored memories save in the mob's `sniffer` object.
+Eggs use the existing saved scheduled-tick queue; crops need no block entity.
+See [Track C evidence](verification/2026-11-05-v0.15-sniffers.md), including
+remaining navigation/presentation differences and checks.
 
 ## Assessment branch ID reservations
 

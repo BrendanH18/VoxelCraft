@@ -1,7 +1,8 @@
 //! Java 26.3 suspicious-stew recipes and their per-flower result components.
 use super::*;
 use crate::world::overworld_blocks as flowers;
-const FLOWERS: [Ingredient; 12] = [
+const FLOWERS: [Ingredient; 15] = [
+    &[b(crate::world::sniffer_plants::TORCHFLOWER)],
     &[b(Block::DANDELION)],
     &[b(Block::POPPY)],
     &[b(Block::BLUE_ORCHID)],
@@ -14,6 +15,8 @@ const FLOWERS: [Ingredient; 12] = [
     &[b(flowers::OXEYE_DAISY)],
     &[b(flowers::CORNFLOWER)],
     &[b(flowers::LILY_OF_THE_VALLEY)],
+    &[b(crate::world::eyeblossom::OPEN)],
+    &[b(crate::world::eyeblossom::CLOSED)],
 ];
 pub(super) fn add(recipes: &mut Vec<Recipe>) {
     recipes.push(shaped(

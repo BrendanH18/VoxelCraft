@@ -1,0 +1,324 @@
+{
+  "source": "Java 26.3 server javap and bundled data; original logic, no assets copied",
+  "server_sha256": "a362163eec5d1612d520772bc16e5b39c09e3b234fdc045f56bf544284ee8ae6",
+  "constants": {
+    "sniffer_health": 14,
+    "movement_speed": 0.10000000149011612,
+    "baby_start_age": -48000,
+    "drop_tick": 120,
+    "dig_ticks": [
+      160,
+      180
+    ],
+    "rise_ticks": 40,
+    "sniff_cooldown": 9600,
+    "explored_max": 21,
+    "regular_hatch_interval": 8000,
+    "boosted_hatch_interval": 4000,
+    "hatch_random_bound": 300
+  },
+  "data": {
+    "loot_table/gameplay/sniffer_digging": {
+      "type": "minecraft:gift",
+      "pools": [
+        {
+          "entries": [
+            {
+              "type": "minecraft:item",
+              "name": "minecraft:torchflower_seeds"
+            },
+            {
+              "type": "minecraft:item",
+              "name": "minecraft:pitcher_pod"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "random_sequence": "minecraft:gameplay/sniffer_digging"
+    },
+    "loot_table/blocks/torchflower_crop": {
+      "type": "minecraft:block",
+      "modifier": {
+        "type": "minecraft:explosion_decay"
+      },
+      "pools": [
+        {
+          "entries": [
+            {
+              "type": "minecraft:item",
+              "name": "minecraft:torchflower_seeds"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "random_sequence": "minecraft:blocks/torchflower_crop"
+    },
+    "loot_table/blocks/pitcher_crop": {
+      "type": "minecraft:block",
+      "modifier": {
+        "type": "minecraft:explosion_decay"
+      },
+      "pools": [
+        {
+          "entries": [
+            {
+              "type": "minecraft:alternatives",
+              "children": [
+                {
+                  "type": "minecraft:item",
+                  "condition": {
+                    "type": "minecraft:all_of",
+                    "terms": [
+                      {
+                        "type": "minecraft:match_block",
+                        "blocks": "minecraft:pitcher_crop",
+                        "state": {
+                          "age": "0"
+                        }
+                      },
+                      {
+                        "type": "minecraft:match_block",
+                        "blocks": "minecraft:pitcher_crop",
+                        "state": {
+                          "half": "lower"
+                        }
+                      }
+                    ]
+                  },
+                  "modifier": {
+                    "type": "minecraft:set_count",
+                    "count": 1
+                  },
+                  "name": "minecraft:pitcher_pod"
+                },
+                {
+                  "type": "minecraft:item",
+                  "condition": {
+                    "type": "minecraft:all_of",
+                    "terms": [
+                      {
+                        "type": "minecraft:match_block",
+                        "blocks": "minecraft:pitcher_crop",
+                        "state": {
+                          "age": "1"
+                        }
+                      },
+                      {
+                        "type": "minecraft:match_block",
+                        "blocks": "minecraft:pitcher_crop",
+                        "state": {
+                          "half": "lower"
+                        }
+                      }
+                    ]
+                  },
+                  "modifier": {
+                    "type": "minecraft:set_count",
+                    "count": 1
+                  },
+                  "name": "minecraft:pitcher_pod"
+                },
+                {
+                  "type": "minecraft:item",
+                  "condition": {
+                    "type": "minecraft:all_of",
+                    "terms": [
+                      {
+                        "type": "minecraft:match_block",
+                        "blocks": "minecraft:pitcher_crop",
+                        "state": {
+                          "age": "2"
+                        }
+                      },
+                      {
+                        "type": "minecraft:match_block",
+                        "blocks": "minecraft:pitcher_crop",
+                        "state": {
+                          "half": "lower"
+                        }
+                      }
+                    ]
+                  },
+                  "modifier": {
+                    "type": "minecraft:set_count",
+                    "count": 1
+                  },
+                  "name": "minecraft:pitcher_pod"
+                },
+                {
+                  "type": "minecraft:item",
+                  "condition": {
+                    "type": "minecraft:all_of",
+                    "terms": [
+                      {
+                        "type": "minecraft:match_block",
+                        "blocks": "minecraft:pitcher_crop",
+                        "state": {
+                          "age": "3"
+                        }
+                      },
+                      {
+                        "type": "minecraft:match_block",
+                        "blocks": "minecraft:pitcher_crop",
+                        "state": {
+                          "half": "lower"
+                        }
+                      }
+                    ]
+                  },
+                  "modifier": {
+                    "type": "minecraft:set_count",
+                    "count": 1
+                  },
+                  "name": "minecraft:pitcher_pod"
+                },
+                {
+                  "type": "minecraft:item",
+                  "condition": {
+                    "type": "minecraft:all_of",
+                    "terms": [
+                      {
+                        "type": "minecraft:match_block",
+                        "blocks": "minecraft:pitcher_crop",
+                        "state": {
+                          "age": "4"
+                        }
+                      },
+                      {
+                        "type": "minecraft:match_block",
+                        "blocks": "minecraft:pitcher_crop",
+                        "state": {
+                          "half": "lower"
+                        }
+                      }
+                    ]
+                  },
+                  "modifier": {
+                    "type": "minecraft:set_count",
+                    "count": 1
+                  },
+                  "name": "minecraft:pitcher_plant"
+                }
+              ]
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "random_sequence": "minecraft:blocks/pitcher_crop"
+    },
+    "loot_table/blocks/sniffer_egg": {
+      "type": "minecraft:block",
+      "pools": [
+        {
+          "condition": {
+            "type": "minecraft:survives_explosion"
+          },
+          "entries": [
+            {
+              "type": "minecraft:item",
+              "name": "minecraft:sniffer_egg"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "random_sequence": "minecraft:blocks/sniffer_egg"
+    },
+    "tags/block/sniffer_diggable_block": {
+      "values": [
+        "#minecraft:dirt",
+        "#minecraft:mud",
+        "#minecraft:moss_blocks",
+        "minecraft:grass_block",
+        "minecraft:podzol"
+      ]
+    },
+    "tags/block/sniffer_egg_hatch_boost": {
+      "values": [
+        "minecraft:moss_block"
+      ]
+    },
+    "tags/item/sniffer_food": {
+      "values": [
+        "minecraft:torchflower_seeds"
+      ]
+    },
+    "recipe/orange_dye_from_torchflower": {
+      "type": "minecraft:crafting_shapeless",
+      "group": "orange_dye",
+      "ingredients": [
+        "minecraft:torchflower"
+      ],
+      "result": {
+        "id": "minecraft:orange_dye"
+      }
+    },
+    "recipe/cyan_dye_from_pitcher_plant": {
+      "type": "minecraft:crafting_shapeless",
+      "group": "cyan_dye",
+      "ingredients": [
+        "minecraft:pitcher_plant"
+      ],
+      "result": {
+        "count": 2,
+        "id": "minecraft:cyan_dye"
+      }
+    },
+    "tags/item/chicken_food": {
+      "values": [
+        "minecraft:wheat_seeds",
+        "minecraft:melon_seeds",
+        "minecraft:pumpkin_seeds",
+        "minecraft:beetroot_seeds",
+        "minecraft:torchflower_seeds",
+        "minecraft:pitcher_pod"
+      ]
+    },
+    "tags/item/parrot_food": {
+      "values": [
+        "minecraft:wheat_seeds",
+        "minecraft:melon_seeds",
+        "minecraft:pumpkin_seeds",
+        "minecraft:beetroot_seeds",
+        "minecraft:torchflower_seeds",
+        "minecraft:pitcher_pod"
+      ]
+    }
+  },
+  "blockstate_keys": {
+    "torchflower_crop": [
+      "age=0",
+      "age=1"
+    ],
+    "torchflower": [
+      ""
+    ],
+    "potted_torchflower": [
+      ""
+    ],
+    "pitcher_crop": [
+      "age=0,half=lower",
+      "age=0,half=upper",
+      "age=1,half=lower",
+      "age=1,half=upper",
+      "age=2,half=lower",
+      "age=2,half=upper",
+      "age=3,half=lower",
+      "age=3,half=upper",
+      "age=4,half=lower",
+      "age=4,half=upper"
+    ],
+    "pitcher_plant": [
+      "half=lower",
+      "half=upper"
+    ],
+    "sniffer_egg": [
+      "hatch=0",
+      "hatch=1",
+      "hatch=2"
+    ]
+  }
+}

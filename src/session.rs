@@ -2,6 +2,9 @@
 //!
 //! Desktop, controller, LAN and CLI adapters own one of these for each player.
 //! Camera, hand animation and screen navigation belong to their adapters.
+mod archaeology;
+pub use archaeology::Stroke;
+mod allay;
 pub mod combat;
 pub mod consumption;
 mod copper_golem;
@@ -52,6 +55,7 @@ pub struct PlayerSession {
     combat: combat::State,
     ranged: ranged::State,
     consumption: consumption::State,
+    brushing: archaeology::State,
     hands: hands::State,
     mining: mining::State,
 }
@@ -160,6 +164,7 @@ impl PlayerSession {
             combat: Default::default(),
             ranged: Default::default(),
             consumption: Default::default(),
+            brushing: Default::default(),
             hands: Default::default(),
             mining: Default::default(),
         }
@@ -184,6 +189,7 @@ impl PlayerSession {
             combat: Default::default(),
             ranged: Default::default(),
             consumption: Default::default(),
+            brushing: Default::default(),
             hands: Default::default(),
             mining: Default::default(),
         }

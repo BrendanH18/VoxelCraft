@@ -11,7 +11,12 @@ use crate::world::terrain::Generator;
 
 /// Every registered state of this module.
 fn states() -> Vec<Block> {
-    (0..STATE_CAPACITY as u16).filter(|&id| owns(id) && registry(id).is_some()).map(Block).collect()
+    (0..STATE_CAPACITY as u16)
+        .filter(|&id| {
+            owns(id) && registry(id).is_some() && !matches!(multiface_of(Block(id)), Some((Multiface::ResinClump, ..)))
+        })
+        .map(Block)
+        .collect()
 }
 
 /// A headless world whose chunk (0, 4, 0) is air: cells 0..32 by 128..160.

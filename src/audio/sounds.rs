@@ -67,6 +67,7 @@ pub fn material(block: Block) -> Material {
     }
     match block.base() {
         Block::HONEY_BLOCK => Material::Honey,
+        b if crate::world::creaking::heart(b).is_some() => Material::Wood,
         // Nearest shared materials for `SoundType.GLOW_LICHEN` and the sculk sounds.
         b if crate::world::cave_blocks::sheared(b).is_some() => Material::Grass,
         b if crate::world::cave_blocks::owns(b.0) => Material::Dirt,
@@ -214,6 +215,8 @@ pub enum Sound {
     DragonDeath,
     Bell,
     CopperGolem(crate::entity::copper_golem::Sound, u8),
+    Sniffer(crate::entity::sniffer::Cue),
+    Allay(crate::entity::allay::Sound),
 }
 
 const M: usize = Material::ALL.len();
@@ -222,12 +225,14 @@ const CALLS: usize = Call::ALL.len();
 impl Sound {
     const BASE_COUNT: usize = 3 * M + 27 + Voice::ALL.len() * CALLS + 16 + 4;
 
-    pub const COUNT: usize = Self::BASE_COUNT + 44;
+    pub const COUNT: usize = Self::BASE_COUNT + 48 + crate::entity::sniffer::Cue::ALL.len();
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
         match self {
+            Sound::Allay(action) => Self::BASE_COUNT + 44 + action as usize,
             Sound::CopperGolem(action, stage) => Self::BASE_COUNT + action as usize * 4 + usize::from(stage.min(3)),
+            Sound::Sniffer(cue) => Self::BASE_COUNT + 48 + cue as usize,
             Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
             Sound::Thunder => Self::BASE_COUNT - 1,
             Sound::Bell => Self::BASE_COUNT - 4,
@@ -313,6 +318,15 @@ impl Sound {
                 Sound::DragonDeath,
             ])
             .chain(Voice::ALL.into_iter().flat_map(|v| Call::ALL.map(|c| Sound::Mob(v, c))))
+            .chain(
+                [
+                    crate::entity::allay::Sound::Give,
+                    crate::entity::allay::Sound::Take,
+                    crate::entity::allay::Sound::Throw,
+                    crate::entity::allay::Sound::Duplicate,
+                ]
+                .map(Sound::Allay),
+            )
             .chain(Instrument::ALL.map(Sound::Note))
             .chain([Sound::Bell, Sound::HoneySlide, Sound::HoneyDrink, Sound::Thunder])
             .chain({
@@ -333,12 +347,15 @@ impl Sound {
                 .into_iter()
                 .flat_map(|a| (0..4).map(move |s| Sound::CopperGolem(a, s)))
             })
+            .chain(crate::entity::sniffer::Cue::ALL.map(Sound::Sniffer))
     }
 
     /// Stable sound name used when exporting or identifying samples.
     pub fn name(self) -> String {
         match self {
+            Sound::Allay(a) => format!("allay_{a:?}").to_lowercase(),
             Sound::CopperGolem(a, s) => format!("copper_golem_{a:?}_{s}").to_lowercase(),
+            Sound::Sniffer(c) => format!("sniffer_{c:?}").to_lowercase(),
             Sound::Thunder => "lightning_thunder".into(),
             Sound::HoneySlide => "honey_block_slide".into(),
             Sound::HoneyDrink => "honey_drink".into(),
@@ -420,7 +437,12 @@ impl Sound {
             | Sound::DragonGrowl
             | Sound::DragonDeath => SoundSource::Hostile,
             // `EyeOfEnder` is a plain entity, whose source is `NEUTRAL`.
-            Sound::CopperGolem(..) | Sound::EyeDeath => SoundSource::Neutral,
+            // `SnifferEggBlock.tick` plays its crack and hatch in `BLOCKS`;
+            // the sniffer's own sounds (and its egg plop) are `NEUTRAL`.
+            Sound::Sniffer(crate::entity::sniffer::Cue::EggCrack | crate::entity::sniffer::Cue::EggHatch) => {
+                SoundSource::Blocks
+            }
+            Sound::Sniffer(_) | Sound::Allay(..) | Sound::CopperGolem(..) | Sound::EyeDeath => SoundSource::Neutral,
             Sound::Mob(voice, _) => voice.source(),
         }
     }
@@ -432,7 +454,8 @@ impl Sound {
     /// Number of synthesized variations playback can choose from.
     pub fn variants(self) -> u32 {
         match self {
-            Sound::CopperGolem(..) | Sound::Note(_) => 1,
+            Sound::Allay(..) | Sound::CopperGolem(..) | Sound::Note(_) => 1,
+            Sound::Sniffer(_) => 2,
             Sound::Step(_) => 4,
             Sound::Break(_) | Sound::Place(_) | Sound::Swim | Sound::Drip => 3,
             Sound::Land | Sound::Splash | Sound::Explosion | Sound::Bow | Sound::Hurt | Sound::Hit | Sound::Door(_) => {
@@ -464,7 +487,15 @@ impl Sound {
     pub fn render(self, variant: u32) -> Vec<f32> {
         let mut rng = Rng::new((self.key() as u64) << 8 | variant as u64);
         match self {
+            Sound::Allay(a) => {
+                let call = match a {
+                    crate::entity::allay::Sound::Take => Call::Hurt,
+                    _ => Call::Ambient,
+                };
+                super::voices::render(Voice::Allay, call, &mut rng)
+            }
             Sound::CopperGolem(a, s) => copper_golem(a, s),
+            Sound::Sniffer(c) => super::sniffer::render(c, &mut rng),
             Sound::Thunder => thunder(&mut rng),
             Sound::HoneySlide => honey_sound(&mut rng, 0.35),
             Sound::HoneyDrink => honey_sound(&mut rng, 0.22),

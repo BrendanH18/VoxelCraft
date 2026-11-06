@@ -183,6 +183,7 @@ impl Actor<'_> {
             && !self.session.drawing()
             && !self.session.shield_raised()
             && !self.session.consuming()
+            && !self.session.brushing()
             // Buckets, snowballs, eggs and rods act once per click, in either hand.
             && !self.held().is_some_and(once_per_click)
             && !self.body.used_once
@@ -194,6 +195,12 @@ impl Actor<'_> {
         if !self.body.left_held {
             self.body.actions.breaking = None;
             self.session.cancel_mining();
+        }
+        if let Some(stroke) =
+            self.session.tick_brushing(self.body.actions.selected, acting && self.body.right_held, self.world)
+        {
+            self.hand.swing();
+            brush_sound(self.audio, stroke);
         }
         self.session.tick_blocking(self.body.actions.selected, acting && self.body.right_held);
         self.eat(acting, dt);
@@ -377,7 +384,7 @@ impl Actor<'_> {
             // Nearest shared sound for `item.axe.scrape`: a high, scratchy stone step.
             Used::Waxed { cell } => audio.play(Sound::Place(Material::Snow), Some(centre(cell)), 1.0, (0.9, 1.1)),
             Used::Scraped { cell } => audio.play(Sound::Step(Material::Stone), Some(centre(cell)), 1.0, (1.5, 1.8)),
-            Used::Statue { .. } => {}
+            Used::Statue { .. } | Used::BrushStarted => {}
             // `CANDLE_EXTINGUISH` and `CAKE_ADD_CANDLE`, from the shared sound set.
             Used::CandleExtinguished { cell } => {
                 audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(centre(cell)), 0.3, (1.8, 2.0))
@@ -437,6 +444,18 @@ impl Actor<'_> {
 
 /// Buckets, snowballs, eggs and rods act once per click, not again while
 /// the button is held.
+/// Java `BrushItem` plays the block's brush sound each stroke and level
+/// event 3008 the completion sound. These are the nearest original shared
+/// sounds: a light, high scrape of the block's material, then its break.
+fn brush_sound(audio: &mut Audio, stroke: voxelcraft::session::Stroke) {
+    let material = crate::audio::sounds::material(stroke.block);
+    let at = Some(stroke.pos.as_dvec3() + DVec3::splat(0.5));
+    audio.play_in(SoundSource::Blocks, Sound::Step(material), at, 0.6, (1.4, 1.6));
+    if stroke.completed {
+        audio.play_in(SoundSource::Blocks, Sound::Break(material), at, 1.0, (0.85, 1.0));
+    }
+}
+
 fn once_per_click(i: Item) -> bool {
     (i != Item::GLASS_BOTTLE && voxelcraft::survival_items::bucket::handles(i))
         || matches!(i, Item::SNOWBALL | Item::EGG | Item::FISHING_ROD)

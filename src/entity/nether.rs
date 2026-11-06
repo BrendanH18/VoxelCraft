@@ -976,6 +976,8 @@ impl Entities {
                     || matches!(m.kind, MobKind::Zombie | MobKind::Husk | MobKind::Drowned)
                     || matches!(m.kind, MobKind::Stray | MobKind::Bogged | MobKind::Phantom)
                     || m.kind == MobKind::Bat
+                    // A heart's protector keeps its binding across a restart.
+                    || m.creaking.as_ref().is_some_and(|s| s.home.is_some())
                     || m.freezing.as_ref().is_some_and(|f| f.exposure > 0 || f.conversion.is_some()))
                     && m.alive()
                     && m.villager.is_none()
@@ -1556,6 +1558,15 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if let Some(stack) = m.wolf_armor.as_ref().and_then(|s| s.armor) {
         v["wolf_armor"] = json!(crate::inventory::stack_to_string(Some(stack)));
     }
+    if let Some(s) = &m.sniffer {
+        v["sniffer"] = s.save();
+    }
+    if let Some(s) = &m.creaking {
+        v["creaking"] = s.save();
+    }
+    if let Some(s) = &m.allay {
+        v["allay"] = s.save();
+    }
     if let Some(s) = &m.copper_golem {
         v["copper_golem"] = s.save();
     }
@@ -1622,8 +1633,10 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     m.lightning_charged = v["lightning_charged"] == true;
     m.water_conversion = super::lightning::WaterConversion::load(&v["water_conversion"]);
     m.baby = v["baby"].as_bool().unwrap_or(false);
-    m.age =
-        v["age"].as_i64().unwrap_or(if m.baby && kind.is_breedable() { -24000 } else { 0 }).clamp(-24000, 6000) as i32;
+    // Snifflets take twice as long as other babies to grow up.
+    let youngest = if kind == MobKind::Sniffer { -48000 } else { -24000 };
+    m.age = v["age"].as_i64().unwrap_or(if m.baby && kind.is_breedable() { -24000 } else { 0 }).clamp(youngest, 6000)
+        as i32;
     if matches!(kind, MobKind::Frog | MobKind::Tadpole) {
         m.baby = false;
         m.age = m.age.max(0);
@@ -1647,6 +1660,15 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     }
     if let Some(s) = &mut m.wolf_armor {
         s.load(v["wolf_armor"].as_str());
+    }
+    if let Some(s) = &mut m.sniffer {
+        s.load(&v["sniffer"]);
+    }
+    if let Some(s) = &mut m.creaking {
+        s.load(&v["creaking"]);
+    }
+    if let Some(s) = &mut m.allay {
+        **s = super::allay::State::load(&v["allay"]);
     }
     if let Some(s) = &mut m.copper_golem {
         s.load(&v["copper_golem"]);

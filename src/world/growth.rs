@@ -108,6 +108,22 @@ impl World {
             self.drops.push((p, statue.item_stack(self.copper_golem_statue_name(p))));
             return;
         }
+        if super::creaking::heart(block).is_some() {
+            let silk = tool.has(crate::enchant::Enchantment::SilkTouch);
+            let item = if silk { super::creaking::HEART } else { super::creaking::RESIN_CLUMP };
+            let count = if silk {
+                1
+            } else {
+                (1 + self.roll() % 3 + self.roll() % (u64::from(tool.level(crate::enchant::Enchantment::Fortune)) + 1))
+                    .min(9) as u8
+            };
+            self.drops.push((p, Stack::new(item, count)));
+            return;
+        }
+        if let Some((super::cave_blocks::Multiface::ResinClump, faces, _)) = super::cave_blocks::multiface_of(block) {
+            self.drops.push((p, Stack::new(super::creaking::RESIN_CLUMP, faces.count_ones() as u8)));
+            return;
+        }
         // A waterlogged block drops what its dry original does.
         let block = block.canonical();
         use crate::enchant::Enchantment;
@@ -373,6 +389,9 @@ impl World {
                 self.extinguish_ore(p, b);
             }
             Block::SUGAR_CANE => self.tick_cane(p),
+            super::eyeblossom::OPEN | super::eyeblossom::CLOSED => {
+                self.tick_eyeblossom(p, b);
+            }
             b if super::copper::ages(b) => self.tick_copper(p, b),
             b if super::copper_golem_statue::ages(b) => self.tick_copper_golem_statue(p, b),
             b if b.is_mushroom() => self.tick_mushroom(p, b),
@@ -384,6 +403,7 @@ impl World {
                 self.utilities_random_tick(p, b);
                 self.tick_overworld_flora(p, b);
             }
+            b if super::sniffer_plants::owns(b.0) => self.tick_sniffer_crop(p, b),
             b if b.as_crop().is_some() => self.tick_crop(p, b),
             b if super::crops::stem(b).is_some() => self.tick_stem(p, b),
             // Java: one in ten random ticks, whatever the light.
@@ -470,7 +490,12 @@ impl World {
                     (0..=1).any(|dy| self.get_block(p + IVec3::new(dx, dy, dz)).is_some_and(|w| w.holds_water()))
                 })
             });
-        let crop = above.is_some_and(|a| a.crop_stage().is_some() || super::crops::stem(a).is_some());
+        let crop = above.is_some_and(|a| {
+            a.crop_stage().is_some()
+                || super::crops::stem(a).is_some()
+                || super::sniffer_plants::torch_age(a).is_some()
+                || super::sniffer_plants::pitcher_state(a).is_some()
+        });
         match (wet, b) {
             (true, Block::FARMLAND) => {
                 self.edit(p, Block::WET_FARMLAND, false);
@@ -594,6 +619,9 @@ impl World {
     /// Returns whether the bone meal was used.
     pub fn apply_bone_meal(&mut self, p: IVec3) -> bool {
         let Some(b) = self.get_block(p) else { return false };
+        if let Some(used) = self.sniffer_bone_meal(p, b) {
+            return used;
+        }
         if let Some(used) = self.stem_bone_meal(p, b) {
             return used;
         }

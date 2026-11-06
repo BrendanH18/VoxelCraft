@@ -281,6 +281,11 @@ impl Arrow {
                     }
                     if let Some((i, _)) = mob {
                         let mob = &mut mobs[i];
+                        if self.from_player
+                            && mob.allay.as_ref().is_some_and(|s| s.player == self.owner && self.owner.is_some())
+                        {
+                            return false;
+                        }
                         // Endermen dodge arrows by teleporting; the arrow flies on.
                         if mob.kind == super::MobKind::Enderman {
                             mob.teleport_pending = true;

@@ -464,7 +464,7 @@ mod tests {
             "tall grass" | "fern" | "dead bush" | "large fern" | "sweet berry bush" | "dandelion" | "poppy"
             | "blue orchid" | "allium" | "azure bluet" | "red tulip" | "orange tulip" | "white tulip"
             | "pink tulip" | "oxeye daisy" | "cornflower" | "lily of the valley" | "sunflower" | "lilac"
-            | "rose bush" | "peony" => (60, 100),
+            | "rose bush" | "peony" | "open eyeblossom" | "closed eyeblossom" => (60, 100),
             _ => return None,
         })
     }

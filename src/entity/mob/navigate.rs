@@ -40,7 +40,8 @@ impl MobKind {
     fn is_animal(self) -> bool {
         matches!(
             self,
-            MobKind::Pig
+            MobKind::Sniffer
+                | MobKind::Pig
                 | MobKind::Cow
                 | MobKind::Mooshroom
                 | MobKind::Frog
@@ -82,7 +83,7 @@ impl MobKind {
             K::Dolphin => Evaluator::Swim { breaching: true },
             K::Drowned | K::Axolotl | K::Turtle => Evaluator::Amphibious { shallow: false },
             K::Frog => Evaluator::Amphibious { shallow: true },
-            K::Parrot | K::Bee => Evaluator::Fly,
+            K::Parrot | K::Bee | K::Allay => Evaluator::Fly,
             _ => Evaluator::Walk,
         };
         if matches!(caps.evaluator, Evaluator::Swim { .. }) {
@@ -90,6 +91,8 @@ impl MobKind {
         }
         caps.cut_water_border = self != K::Frog;
         caps.step = match self {
+            K::Sniffer => 1.0,
+            K::Creaking => 1.0625,
             K::Camel => 1.5,
             K::Horse
             | K::Donkey
@@ -127,6 +130,8 @@ impl MobKind {
                 | K::Ocelot
                 | K::Fox
                 | K::Parrot
+                | K::Allay
+                | K::Sniffer
                 | K::Rabbit
                 | K::Goat
                 | K::Camel
@@ -147,7 +152,7 @@ impl MobKind {
         caps = caps.follow_range(match self {
             K::Zombie | K::Husk | K::Drowned | K::ZombieVillager | K::ZombifiedPiglin => 35.0,
             K::Enderman => 64.0,
-            K::Blaze | K::CopperGolem => 48.0,
+            K::Blaze | K::CopperGolem | K::Allay => 48.0,
             K::Ghast => 100.0,
             K::Fox | K::Pillager => 32.0,
             K::Llama | K::TraderLlama => 40.0,
@@ -176,6 +181,7 @@ impl MobKind {
             K::Blaze => m.with(T::Water, -1.0).with(T::Lava, 8.0).with(T::FireInNeighbor, 0.0).with(T::Fire, 0.0),
             K::Strider => m.with(T::Water, -1.0).with(T::Lava, 0.0).with(T::FireInNeighbor, 0.0).with(T::Fire, 0.0),
             K::Enderman => m.with(T::Water, -1.0),
+            K::Sniffer => m.with(T::Water, -1.0).with(T::OnTopOfPowderSnow, -1.0).with(T::DamageCautious, -1.0),
             K::WitherSkeleton | K::ZombifiedPiglin => m.with(T::Lava, 8.0),
             K::Drowned
             | K::Axolotl

@@ -216,3 +216,46 @@ untrusting ocelots become eligible for distance despawning only after 2,400
 loaded ticks. Original spotted pelt, head and ringed tail render crouching
 and sprint poses. See the [record](verification/2026-11-04-v0.15-passive-mobs.md)
 for source details and remaining shared-engine/presentation differences.
+
+## Creaking hearts, resin and eyeblossoms (v0.15)
+
+Implemented, unverified: creaking heart axes, activity and natural states,
+protector binding, watching/freezing, invulnerability, resin emission and
+construction recipes use the shared simulation, placement, mining and mob
+save/replication paths. Heart state and protector identity persist by dimension.
+Player-built hearts also spawn non-persistent protectors. Resin clumps reuse
+the multiface support, placement, waterlogging and shape paths; the masonry
+family includes the standard stairs/slab and four stored wall states.
+
+Generation 3 pale gardens grow Java's pale oak shape; one tree in ten is a
+creaking tree, which holds a natural heart in its trunk when it has a log
+enclosed by six others (roughly a third of them do), the survival source of
+resin. Open and
+closed eyeblossoms (also potted) follow the Overworld clock: random ticks
+open them from tick 12600 and close them from 23401, and each change ripples
+through the flowers within three blocks. Generation 3 places closed
+eyeblossom patches in pale gardens. See [the source and verification record](verification/2026-11-05-v0.15-creaking.md)
+for exact coverage and differences from Java 26.3.
+
+## Allays (v0.15, Java 26.3)
+
+Implemented, unverified: flying allays have 20 health, regenerate one point
+every ten loaded ticks and do not spawn naturally or despawn by distance.
+Use any item on an empty-handed allay to give one and link that actor;
+empty-hand use takes it back and drops the collection slot. Drops of the
+same item (and, for tipped arrows and lingering potions, the same potion;
+names, wear and enchantments are ignored, as in Java) fill one stack, with
+item-entity pickup delays and `mob_griefing` respected. Allays follow their liked player, retrieve nearby
+items and throw collected items one at a time. Notes within sixteen blocks
+select a delivery position for 600 ticks; repeat plays refresh the same
+note. Wool blocks obstruct the vibration. Player and redstone notes share
+the same event producer.
+
+Generation-3 outpost allay cages hold two saved persistent residents. The
+original cyan sprite has animated wings and a held-item model; voice and
+action audio are synthesized. Liked/carried items, player and note memories,
+pickup/duplication timers, pending vibration and dance state persist; LAN
+replicates the model state. Shared actor use covers controller and CLI-agent
+paths. Jukebox playback/music discs and woodland mansions do not exist;
+survival dancing/duplication and mansion allays remain gaps. Sources and
+remaining differences are in the [allay record](verification/2026-11-05-v0.15-allays.md).

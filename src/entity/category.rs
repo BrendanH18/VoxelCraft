@@ -80,7 +80,8 @@ impl MobKind {
     pub const fn category(self) -> MobCategory {
         use MobKind as K;
         match self {
-            K::SkeletonHorse
+            K::Sniffer
+            | K::SkeletonHorse
             | K::Pig
             | K::Cow
             | K::Mooshroom
@@ -107,7 +108,8 @@ impl MobKind {
             | K::Mule
             | K::Llama
             | K::Camel
-            | K::Bee => MobCategory::Creature,
+            | K::Bee
+            | K::Allay => MobCategory::Creature,
             K::Bat => MobCategory::Ambient,
             K::CopperGolem | K::Villager | K::IronGolem | K::SnowGolem => MobCategory::Misc,
             K::Cod | K::Salmon | K::TropicalFish | K::Pufferfish => MobCategory::WaterAmbient,

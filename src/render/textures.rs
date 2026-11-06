@@ -5,6 +5,8 @@
 use crate::world::block::tex;
 use crate::world::noise::hash_f;
 
+#[path = "archaeology_textures.rs"]
+mod archaeology;
 #[path = "bee_textures.rs"]
 mod bees;
 #[path = "cave_textures.rs"]
@@ -23,6 +25,8 @@ mod nether;
 mod overworld;
 #[path = "plant_textures.rs"]
 mod plants;
+#[path = "sniffer_plant_textures.rs"]
+mod sniffer_plants;
 #[path = "stone_textures.rs"]
 mod stone;
 #[path = "utility_textures.rs"]
@@ -107,6 +111,15 @@ const DIRT: [u8; 3] = [134, 96, 67];
 const GRASS: [u8; 3] = [95, 159, 53];
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
+    if (crate::world::eyeblossom::TEX..crate::world::eyeblossom::TEX_END).contains(&layer) {
+        return match crate::world::eyeblossom::pot_layer_plant(layer) {
+            Some(plant) => utility::potted_side(layer, plant, x, y),
+            None => crate::world::eyeblossom::pixel(layer, x, y),
+        };
+    }
+    if (crate::world::creaking::TEX..crate::world::creaking::TEX_END).contains(&layer) {
+        return crate::world::creaking::pixel(layer, x, y);
+    }
     if (crate::world::frog_blocks::tex::BASE..crate::world::frog_blocks::tex::END).contains(&layer) {
         return crate::world::frog_blocks::pixel(layer, x, y);
     }
@@ -237,6 +250,9 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     if (crate::world::stone_blocks::t::TEX..crate::world::stone_blocks::t::END).contains(&layer) {
         return stone::pixel(layer, x, y);
     }
+    if (crate::world::archaeology::t::BASE..crate::world::archaeology::t::END).contains(&layer) {
+        return archaeology::pixel(layer, x, y);
+    }
     if (crate::world::copper_golem_statue::TEXTURE_FIRST..crate::world::copper_golem_statue::TEXTURE_END)
         .contains(&layer)
     {
@@ -250,6 +266,12 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     }
     if (crate::world::bees::t::BASE..crate::world::bees::t::END).contains(&layer) {
         return bees::pixel(layer, x, y);
+    }
+    if (crate::world::sniffer_egg::TEX..crate::world::sniffer_egg::TEXTURE_END).contains(&layer) {
+        return crate::world::sniffer_egg::pixel(layer, x, y);
+    }
+    if (crate::world::sniffer_plants::t::BASE..crate::world::sniffer_plants::t::END).contains(&layer) {
+        return sniffer_plants::pixel(layer, x, y);
     }
     if (crate::world::crops::t::BASE..crate::world::crops::t::END).contains(&layer) {
         return crops::pixel(layer, x, y);
