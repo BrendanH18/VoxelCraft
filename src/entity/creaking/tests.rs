@@ -117,6 +117,20 @@ fn creaking_player_heart_spawns_once_binds_emits_and_dies() {
     assert!(!e.mobs.iter().any(|m| m.kind == MobKind::Creaking && m.alive()));
 }
 #[test]
+fn creaking_heart_keeps_a_protector_waiting_in_chunk_storage() {
+    let mut w = world();
+    let mut e = Entities::new(263);
+    let c = ctx();
+    step(&mut e, &mut w, &c, 100);
+    let i = e.mobs.iter().position(|m| m.kind == MobKind::Creaking).unwrap();
+    let m = e.mobs.swap_remove(i);
+    let id = m.uid;
+    e.storage.store_mob(IVec3::new(5, 4, 5), m);
+    step(&mut e, &mut w, &c, 100);
+    assert_eq!(w.creaking_hearts[&P.to_array()].protector, Some(id));
+    assert!(!e.mobs.iter().any(|m| m.kind == MobKind::Creaking), "no replacement protector");
+}
+#[test]
 fn creaking_day_and_reload_binding() {
     let mut w = world();
     let mut e = Entities::new(18);

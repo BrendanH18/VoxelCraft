@@ -99,7 +99,7 @@ impl EntityStorage {
         self.chunks.entry(chunk).or_default()
     }
 
-    fn store_mob(&mut self, chunk: IVec3, m: Mob) {
+    pub(super) fn store_mob(&mut self, chunk: IVec3, m: Mob) {
         if let Some((home, job)) = villager_claims(&m) {
             for (map, p) in [(&mut self.beds, home), (&mut self.jobs, job)] {
                 if let Some(p) = p {

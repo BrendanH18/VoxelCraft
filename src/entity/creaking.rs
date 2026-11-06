@@ -106,7 +106,9 @@ impl Entities {
                     .iter()
                     .position(|m| m.uid == id && m.alive() && m.creaking.as_ref().is_some_and(|s| s.home == Some(p)))
             });
-            if h.protector.is_some() && protector.is_none() && h.grace <= 1e-9 {
+            // A protector in an unloaded chunk is waiting in storage, not gone.
+            let stored = || h.protector.is_some_and(|id| self.storage.mobs().any(|m| m.uid == id));
+            if h.protector.is_some() && protector.is_none() && h.grace <= 1e-9 && !stored() {
                 h.protector = None;
             }
             let activity = if !heart::required_logs(b, p, |q| w.get_block(q)) && h.protector.is_none() {
