@@ -27,7 +27,7 @@ jobs:
     runs-on: namespace-profile-gitrunner
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -50,7 +50,7 @@ jobs:
             # The Namespace plan doesn't allow Windows instances (checked 2026-11-06).
             runner: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Linux audio/windowing headers
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev pkg-config
@@ -80,7 +80,7 @@ jobs:
     runs-on: namespace-profile-gitrunner
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
