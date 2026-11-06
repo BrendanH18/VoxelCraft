@@ -90,7 +90,7 @@ echo "remote-check: instance $id" >&2
 # Upload the working tree. Remote files get the upload time as their mtime,
 # so cargo always rebuilds this crate and build.rs regenerates its paths.
 git ls-files -z --cached --others --exclude-standard |
-    while IFS= read -r -d '' f; do if [ -e "$f" ]; then printf '%s\0' "$f"; fi; done |
+    while IFS= read -r -d '' f; do if [ -e "$f" ] || [ -L "$f" ]; then printf '%s\0' "$f"; fi; done |
     COPYFILE_DISABLE=1 tar --null -T - --no-xattrs -czf - |
     nsc ssh -T "$id" 'rm -rf /work && mkdir -p /work && tar -xzmf - -C /work'
 
