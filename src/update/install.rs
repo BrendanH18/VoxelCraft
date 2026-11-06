@@ -476,7 +476,17 @@ mod tests {
         assert!(super::super::lock_file(&path).is_err(), "the watcher still holds it");
         watcher.kill().unwrap();
         watcher.wait().unwrap();
-        assert!(super::super::lock_file(&path).is_ok(), "released when the watcher ends");
+        // Other tests start short-lived children at the same time, and one
+        // started while the descriptor was inheritable holds it until it
+        // exits, so allow a moment for those to finish.
+        let released = (0..50).any(|_| {
+            let free = super::super::lock_file(&path).is_ok();
+            if !free {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            free
+        });
+        assert!(released, "released when the watcher ends");
         std::fs::remove_dir_all(dir).unwrap();
     }
 

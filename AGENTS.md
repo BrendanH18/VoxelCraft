@@ -47,17 +47,20 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
   worktree, explicit scope and reserved IDs; delegated agents do not delegate further.
 - Run at most four agents at once (owner, 2026-10-17): the owner's machine has
   16 GB of RAM. Queue further work until a slot frees.
-- Delegated implementation agents run on Codex with GPT-6.1 Sol
-  (`gpt-6.1-sol`) at `xhigh` reasoning effort (owner, 2026-11-04; Claude
-  models before that, from 2026-10-22). Reviews always run on Codex
-  (GPT-6.1-Sol). While Codex is at its usage limit, reviews run on DeepSeek
-  V4.1 Flash only (`openrouter/deepseek/deepseek-v4.1-flash-1017`) through
-  OpenCode until Codex resets (owner, 2026-10-30; Reflection Beam is no longer
-  used). Use other providers only when the owner asks.
 - Extra hands-on tests (running the game, playing it and looking at the
   result through computer use) run on Codex with GPT-6.1 Terra
   (`gpt-6.1-terra`), never Sol, at whatever reasoning effort fits the task
   (owner, 2026-10-31). These runs are agent evidence, not the owner's play.
+- Build in the cloud, not on the owner's Mac (owner, 2026-11-05).
+  `scripts/remote-check.sh` copies the worktree, uncommitted edits included,
+  to a fresh Namespace Linux instance and runs clippy and the tests there
+  (`--full` adds the `--no-default-features` checks; `-- CMD` runs any
+  command), with dependencies cached on a shared Namespace volume. Every run
+  has its own instance, so agents don't wait on each other. Build locally
+  only to run the game: screenshots, scripted scenes, hands-on tests and
+  benchmarks, whose frame-time gates are measured on the M5. When `nsc`
+  isn't installed or logged in, fall back to the local rules below. See
+  [remote checks](docs/development.md#remote-checks).
 - Agents must not each build the project (owner, 2026-10-17). Agent worktrees
   share one cargo target directory, so dependencies build once and builds take
   turns under cargo's lock: put the worktrees under one folder whose
@@ -86,6 +89,10 @@ Run this exact chain so a failure stops at the first broken step:
 ```sh
 cargo fmt && cargo clippy --release --all-targets -- -D warnings && cargo test --release
 ```
+
+`scripts/remote-check.sh --full` runs the same chain (formatting here, the
+rest on a Namespace instance) plus the headless-build checks, and is the
+preferred way to run it.
 
 Documentation-only changes skip this chain (owner, 2026-10-26); check their
 links and rendering instead.
