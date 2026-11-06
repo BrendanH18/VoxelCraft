@@ -124,6 +124,10 @@ impl World {
     /// Adapters with an authoritative clock supply it before entity updates.
     pub fn set_bee_clock(&mut self, dimension: super::terrain::Dimension, ticks: u32) {
         self.beehives.night = Some(rest_time(dimension, ticks));
+        self.creaking_night =
+            Some(dimension == super::terrain::Dimension::Overworld && (12600..23401).contains(&(ticks % 24000)));
+        self.eyeblossom_open =
+            (dimension == super::terrain::Dimension::Overworld).then(|| super::eyeblossom::open_at(ticks));
     }
     pub fn beehives_to_string(&self) -> String {
         let values: Vec<_> = self.beehives.hives.iter().map(|(p, h)| json!([p, h.save()])).collect();

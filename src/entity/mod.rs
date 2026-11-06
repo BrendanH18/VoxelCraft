@@ -27,6 +27,7 @@ pub mod path;
 pub use bobber::{CatchContext, roll_catch, set_damage};
 pub mod armadillo;
 pub mod copper_golem;
+pub mod creaking;
 pub mod dragon;
 mod dragon_model;
 pub mod eye;

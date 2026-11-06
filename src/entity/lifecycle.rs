@@ -102,6 +102,7 @@ impl Entities {
             ) || m.kind.never_distance_despawns()
                 || m.ocelot.as_ref().is_some_and(|s| s.trusting || s.ticks <= 2400)
                 || m.persistent
+                || m.creaking.as_ref().is_some_and(|s| s.home.is_some())
                 || m.built
                 || m.riding.is_some()
                 || m.convert_left > 0.0

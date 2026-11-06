@@ -368,8 +368,13 @@ pub mod tex {
     pub const BUBBLE_DOWN: u16 = BUBBLE_BASE + 1;
     pub const COUNT: u32 = {
         // Through the highest layer any v0.15 track uses; unused layers stay reserved.
-        let (egg, sediment) = (super::super::sniffer_egg::TEXTURE_END as u32, super::super::archaeology::t::END as u32);
-        if egg > sediment { egg } else { sediment }
+        const fn max(a: u32, b: u32) -> u32 {
+            if a > b { a } else { b }
+        }
+        max(
+            super::super::eyeblossom::TEX_END as u32,
+            max(super::super::sniffer_egg::TEXTURE_END as u32, super::super::archaeology::t::END as u32),
+        )
     };
     const _: () = assert!(super::super::biome_plants::TEX_END <= BUBBLE_BASE);
     const _: () = assert!(super::super::utilities::TEX_END <= super::super::cave_blocks::TEX);
@@ -750,6 +755,9 @@ impl Block {
         if let Some(odds) = super::overworld_blocks::fire_odds(self).or_else(|| super::biome_plants::fire_odds(self)) {
             return odds;
         }
+        if matches!(self, super::eyeblossom::OPEN | super::eyeblossom::CLOSED) {
+            return (60, 100);
+        }
         // `FireBlock.bootStrap` lists no doors: the wooden ones only burn from lava.
         if self.is_door() || matches!(super::forms::wood_form(self.0), Some(super::forms::WoodForm::Door { .. })) {
             return (0, 0);
@@ -914,6 +922,9 @@ impl Block {
     pub fn shaped(self) -> Option<Shaped> {
         if super::sniffer_egg::owns(self.0) {
             return Some(Shaped::Custom);
+        }
+        if super::creaking::wall_local(self.0).is_some() {
+            return Some(Shaped::Wall);
         }
         if super::copper_golem_statue::owns(self.0) {
             return Some(Shaped::Custom);
@@ -1282,6 +1293,12 @@ impl Block {
         if super::archaeology::owns(self.0) {
             return Block(super::archaeology::FIRST + (self.0 - super::archaeology::FIRST) / 4 * 4);
         }
+        if super::creaking::wall_local(self.0).is_some() {
+            return super::creaking::WALL;
+        }
+        if super::creaking::heart(self).is_some() {
+            return super::creaking::HEART;
+        }
         if let Some(s) = super::copper_golem_statue::decode(self) {
             return super::copper_golem_statue::item_block(s.stage, s.waxed);
         }
@@ -1603,6 +1620,9 @@ impl Block {
         if super::archaeology::owns(self.0) {
             return None;
         }
+        if super::creaking::heart(self).is_some() {
+            return Some(super::creaking::RESIN_CLUMP.into());
+        }
         if super::copper_golem_statue::owns(self.0) {
             return Some(Item::from_block(self.base()));
         }
@@ -1749,6 +1769,18 @@ impl Block {
         if super::archaeology::owns(self.0) {
             return 0.25;
         }
+        if super::creaking::heart(self).is_some() {
+            return 10.0;
+        }
+        if self == super::creaking::RESIN_BLOCK {
+            return 0.0;
+        }
+        if super::creaking::owns(self.0)
+            && super::creaking::heart(self).is_none()
+            && self != super::creaking::RESIN_BLOCK
+        {
+            return 1.5;
+        }
         if super::copper_golem_statue::owns(self.0) {
             return 3.0;
         }
@@ -1776,7 +1808,7 @@ impl Block {
         if super::crops::owns(self.0) {
             return 0.0;
         }
-        if self == Self::HONEY_BLOCK || super::biome_plants::owns(self.0) {
+        if self == Self::HONEY_BLOCK || super::biome_plants::owns(self.0) || super::eyeblossom::owns(self.0) {
             return 0.0;
         }
         if let Some((hardness, ..)) = super::copper::mining(self) {
@@ -1969,6 +2001,15 @@ impl Block {
         if super::archaeology::owns(self.0) {
             return Some(ToolKind::Shovel);
         }
+        if super::creaking::heart(self).is_some() {
+            return Some(ToolKind::Axe);
+        }
+        if super::creaking::owns(self.0)
+            && super::creaking::heart(self).is_none()
+            && self != super::creaking::RESIN_BLOCK
+        {
+            return Some(ToolKind::Pickaxe);
+        }
         if super::copper_golem_statue::owns(self.0) {
             return Some(ToolKind::Pickaxe);
         }
@@ -2143,6 +2184,12 @@ impl Block {
     /// Pickaxe harvest level needed for any drop (0 wood or gold, 1 stone,
     /// 2 iron, 3 diamond); `None` if a bare hand will do.
     pub fn harvest_level(self) -> Option<u8> {
+        if super::creaking::owns(self.0)
+            && super::creaking::heart(self).is_none()
+            && self != super::creaking::RESIN_BLOCK
+        {
+            return Some(0);
+        }
         if let Some((.., level)) = super::cave_blocks::mining(self) {
             return level;
         }
@@ -2309,6 +2356,8 @@ impl Block {
             .chain(super::colour_blocks::palette_ids())
             .chain(super::utilities::palette_ids())
             .chain(super::biome_plants::palette_ids())
+            .chain(super::creaking::palette_ids())
+            .chain(super::eyeblossom::palette_ids())
             .chain(super::cave_blocks::palette_ids())
             .chain(super::frog_blocks::palette_ids())
             .map(Block)
@@ -2388,6 +2437,9 @@ impl Block {
             return ok;
         }
         if let Some(ok) = super::utilities::can_stay_on(self, below) {
+            return ok;
+        }
+        if let Some(ok) = super::eyeblossom::can_stay_on(self, below) {
             return ok;
         }
         if self.alias().is_some() || below.alias().is_some() {
@@ -2935,6 +2987,8 @@ pub(super) const fn make(id: u16) -> BlockInfo {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },
+        id if super::creaking::owns(id) => super::creaking::registry(id),
+        id if super::eyeblossom::owns(id) => super::eyeblossom::registry(id),
         id if super::cave_blocks::owns(id) => match super::cave_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),

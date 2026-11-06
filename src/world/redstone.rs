@@ -422,6 +422,9 @@ impl World {
     }
 
     pub fn container_signal(&self, p: IVec3) -> Option<u8> {
+        if self.get_block(p).is_some_and(|b| super::creaking::heart(b).is_some()) {
+            return Some(self.creaking_hearts.get(&p.to_array()).map_or(0, |h| h.signal));
+        }
         if let Some((_, _, honey)) = self.get_block(p).and_then(super::bees::hive) {
             return Some(honey);
         }
@@ -647,6 +650,10 @@ impl World {
         }
         if b == super::frog_blocks::FROGSPAWN {
             return self.hatch_frogspawn(p);
+        }
+        if matches!(b, super::eyeblossom::OPEN | super::eyeblossom::CLOSED) {
+            self.tick_eyeblossom(p, b);
+            return;
         }
         if super::scaffolding::is_scaffolding(b) {
             return self.tick_scaffolding(p);

@@ -84,6 +84,8 @@ const CHANCE_50: &[Item] = &[
     Item::from_block(nb::TWISTING_VINES),
 ];
 const CHANCE_65: &[Item] = &[
+    Item::from_block(crate::world::eyeblossom::OPEN),
+    Item::from_block(crate::world::eyeblossom::CLOSED),
     Item::CARROT,
     Item::POTATO,
     Item::APPLE,

@@ -50,6 +50,7 @@ pub enum Voice {
     Armadillo,
     Ocelot,
     Sniffer,
+    Creaking,
 }
 
 /// What kind of sound a voice makes.
@@ -101,6 +102,7 @@ impl Voice {
         Voice::Armadillo,
         Voice::Ocelot,
         Voice::Sniffer,
+        Voice::Creaking,
     ];
 
     /// The category the creature plays in: `Monster`, `Ghast`, `Hoglin` and
@@ -108,7 +110,8 @@ impl Voice {
     /// mob uses the default `NEUTRAL`.
     pub fn source(self) -> SoundSource {
         match self {
-            Voice::Zombie
+            Voice::Creaking
+            | Voice::Zombie
             | Voice::Skeleton
             | Voice::Creeper
             | Voice::Spider
@@ -160,6 +163,7 @@ impl Voice {
             Voice::Armadillo => "armadillo",
             Voice::Ocelot => "ocelot",
             Voice::Sniffer => "sniffer",
+            Voice::Creaking => "creaking",
             Voice::Cow => "cow",
             Voice::Sheep => "sheep",
             Voice::Chicken => "chicken",
@@ -277,6 +281,7 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::Armadillo => armadillo(call, rng),
         Voice::Ocelot => ocelot(call, rng),
         Voice::Sniffer => sniffer(call, rng),
+        Voice::Creaking => creaking(call, rng),
         Voice::Pig => pig(call, rng),
         Voice::Horse => horse(call, rng),
         Voice::Cow => cow(call, rng),
@@ -1020,4 +1025,19 @@ fn sniffer(call: Call, rng: &mut Rng) -> Vec<f32> {
         add_mode(&mut out, 0, Mode { freq: freq * harm, amp, tau: 0.3, glide: -0.12, glide_tau: 0.2 });
     }
     dsp::finish(out, 0.48)
+}
+
+// Original strained wood resonance with dry crackling transients.
+fn creaking(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let duration = match call {
+        Call::Ambient => 0.9,
+        Call::Hurt => 0.35,
+        Call::Death => 1.2,
+    };
+    let mut out = crackle(rng, samples(duration), (0.7, 3.0), |t| 160.0 * (-t / duration).exp());
+    Biquad::bandpass(640.0, 1.2).run(&mut out);
+    for f in [93., 151., 237.] {
+        add_mode(&mut out, 0, Mode { freq: f, amp: 0.24, tau: duration * 0.6, glide: 0.6, glide_tau: duration });
+    }
+    dsp::finish(out, 0.65)
 }

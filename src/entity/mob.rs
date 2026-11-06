@@ -11,6 +11,7 @@ use crate::world::terrain::Dimension;
 
 use super::{Ctx, EntityEvent, MobSound, MobWorld, Rng, path};
 
+mod creaking;
 pub(crate) mod dolphin;
 mod frog;
 pub(crate) mod goals;
@@ -187,6 +188,7 @@ pub enum MobKind {
     Armadillo,
     Ocelot,
     CopperGolem,
+    Creaking,
     Sniffer,
 }
 
@@ -291,6 +293,7 @@ impl MobKind {
         MobKind::Armadillo,
         MobKind::Ocelot,
         MobKind::CopperGolem,
+        MobKind::Creaking,
         MobKind::Sniffer,
     ];
 
@@ -366,6 +369,7 @@ impl MobKind {
             MobKind::Armadillo => "armadillo",
             MobKind::Ocelot => "ocelot",
             MobKind::CopperGolem => "copper_golem",
+            MobKind::Creaking => "creaking",
             MobKind::Sniffer => "sniffer",
         }
     }
@@ -401,6 +405,7 @@ impl MobKind {
             | MobKind::Piglin
             | MobKind::PiglinBrute => Shape::new(0.3, 1.95),
             MobKind::CopperGolem => Shape::new(0.245, 0.98),
+            MobKind::Creaking => Shape::new(0.45, 2.7),
             MobKind::IronGolem => Shape::new(0.7, 2.7),
             MobKind::SnowGolem => Shape::new(0.35, 1.9),
             MobKind::TraderLlama => Shape::new(0.45, 1.87),
@@ -464,6 +469,7 @@ impl MobKind {
             | MobKind::Panda => 20.0,
             MobKind::Sniffer => 14.0,
             MobKind::CopperGolem => 12.0,
+            MobKind::Creaking => 1.0,
             MobKind::IronGolem => 100.0,
             MobKind::SnowGolem => 4.0,
             MobKind::TraderLlama => 30.0,
@@ -509,6 +515,7 @@ impl MobKind {
                 | MobKind::Stray
                 | MobKind::Bogged
                 | MobKind::Phantom
+                | MobKind::Creaking
                 | MobKind::Creeper
                 | MobKind::Spider
                 | MobKind::ZombifiedPiglin
@@ -562,7 +569,7 @@ impl MobKind {
     pub fn spawns_in(self, dimension: Dimension) -> bool {
         match self {
             MobKind::Enderman => true,
-            MobKind::Sniffer | MobKind::Mule | MobKind::Bee | MobKind::Phantom | MobKind::CopperGolem => false,
+            MobKind::Sniffer | MobKind::Mule | MobKind::Bee | MobKind::Phantom | MobKind::CopperGolem | MobKind::Creaking => false,
             // Only from spawners and inside fortresses (`fortress_spawn`).
             MobKind::Blaze
             | MobKind::WitherSkeleton
@@ -868,6 +875,7 @@ impl MobKind {
                 &[(Item::LEATHER, 0, 2)]
             }
             MobKind::CopperGolem => &[(Item::COPPER_INGOT, 1, 3)],
+            MobKind::Creaking => &[],
             MobKind::IronGolem => &[(Item::IRON_INGOT, 3, 5), (POPPY, 0, 2)],
             MobKind::SnowGolem => &[(Item::SNOWBALL, 0, 15)],
             MobKind::Slime => &[(Item::SLIME_BALL, 0, 2)],
@@ -969,6 +977,7 @@ impl MobKind {
     pub fn xp(self, rng: &mut Rng) -> u32 {
         match self {
             MobKind::CopperGolem
+            | MobKind::Creaking
             | MobKind::Bat
             | MobKind::Villager
             | MobKind::IronGolem
@@ -1030,6 +1039,7 @@ pub struct Mob {
     pub armadillo: Option<Box<super::armadillo::State>>,
     pub ocelot: Option<Box<super::ocelot::State>>,
     pub copper_golem: Option<Box<super::copper_golem::State>>,
+    pub creaking: Option<Box<super::creaking::State>>,
     pub sniffer: Option<Box<super::sniffer::State>>,
     pub wolf_armor: Option<Box<super::wolf_armor::State>>,
     /// Witch: seconds left drinking, and the potion it is drinking.
@@ -1218,6 +1228,7 @@ impl Mob {
             armadillo: (kind == MobKind::Armadillo).then(Box::default),
             ocelot: (kind == MobKind::Ocelot).then(Box::default),
             copper_golem: (kind == MobKind::CopperGolem).then(Box::default),
+            creaking: (kind == MobKind::Creaking).then(Box::default),
             sniffer: (kind == MobKind::Sniffer).then(Box::default),
             wolf_armor: (kind == MobKind::Wolf).then(Box::default),
             drink_left: 0.0,
@@ -1467,7 +1478,11 @@ impl Mob {
             return false;
         }
         // Full resistance (iron golems) cancels the push and leaves the motion alone, as `knockback` returns early.
-        let taken = 1.0 - self.knockback_resistance();
+        let taken = if self.creaking.as_ref().is_some_and(|s| s.home.is_some() || !s.can_move) {
+            0.0
+        } else {
+            1.0 - self.knockback_resistance()
+        };
         if let Some(kb) = knockback.filter(|_| taken > 0.0).map(|kb| kb * taken) {
             self.vel.x = kb.x;
             self.vel.z = kb.z;
@@ -1511,6 +1526,9 @@ impl Mob {
 
     /// Java's `LivingEntity.knockback`, applied to this mob's velocity in blocks per second.
     pub fn knock_back(&mut self, push: crate::knockback::Push, rng: &mut Rng) {
+        if self.creaking.as_ref().is_some_and(|s| s.home.is_some() || !s.can_move) {
+            return;
+        }
         use crate::knockback::{TICK_RATE, apply};
         let mut jitter = || f64::from(rng.next_f32());
         if let Some(motion) =
@@ -1524,6 +1542,16 @@ impl Mob {
         // A trap's `setInvulnerableTime(60)` sets `Entity.invulnerableTime`
         // (not the hurt cooldown): `isInvulnerableToBase` refuses ordinary
         // damage until it runs out.
+        if let Some(s) = self.creaking.as_mut().filter(|s| s.home.is_some()) {
+            if attacked && s.hit_cooldown <= 0.0 {
+                s.hit = self.player_hit_left > 0.0;
+                s.hit_cooldown = 0.4;
+                self.hurt = 0.4;
+                self.cry = Some(MobSound::Hurt(self.kind));
+                return false;
+            }
+            return false;
+        }
         if self.undead_mount.protection > 0. {
             return false;
         }
@@ -1622,6 +1650,9 @@ impl Mob {
 
     /// Sets it alight for at least `secs` (fire aspect, flame arrows).
     pub fn ignite(&mut self, secs: f32) {
+        if self.creaking.as_ref().is_some_and(|s| s.home.is_some()) {
+            return;
+        }
         if !self.kind.fire_immune() && !self.in_water {
             self.fire_left = self.fire_left.max(secs);
             self.burning = self.alive() && self.fire_left > 0.0;
@@ -1645,6 +1676,9 @@ impl Mob {
         self.tick_water_conversion(dt, world);
         let dtf = dt as f32;
         self.idle += dtf;
+        if let Some(s) = &mut self.creaking {
+            s.hit_cooldown = (s.hit_cooldown - dtf).max(0.0);
+        }
         if self.alive() {
             let outcome = self.effects.tick(dtf);
             if outcome.heal > 0.0 {
@@ -1775,7 +1809,9 @@ impl Mob {
         let steps = (dt / MAX_STEP).ceil().max(1.0) as u32;
         let h = dt / steps as f64;
         let alive_before_move = self.alive();
-        if self.riding.is_some() || self.animal.as_ref().is_some_and(|a| a.perched.is_some()) {
+        if self.creaking.as_ref().is_some_and(|s| !s.can_move || s.teardown > 0.0) {
+            self.vel = DVec3::ZERO;
+        } else if self.riding.is_some() || self.animal.as_ref().is_some_and(|a| a.perched.is_some()) {
             self.vel = DVec3::ZERO;
             self.on_ground = true;
         } else if self.kind == MobKind::Bee {
@@ -1891,6 +1927,9 @@ impl Mob {
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> (Option<DVec3>, f64) {
+        if self.creaking.is_some() {
+            return self.creaking_think(world, ctx, rng, events);
+        }
         if self.kind == MobKind::Bat {
             self.bat_sense(world, ctx);
             return (None, 0.0);

@@ -16,6 +16,7 @@ use crate::world::block::Block;
 
 mod bees;
 mod copper;
+mod creaking;
 mod crops;
 pub use copper::stonecutting as copper_stonecutting;
 pub mod colour;
@@ -638,6 +639,7 @@ pub fn recipes() -> &'static [Recipe] {
         copper::add_recipes(&mut r);
         crops::add_recipes(&mut r);
         bees::add(&mut r);
+        creaking::add(&mut r);
         wood::add(&mut r);
         colour::add(&mut r);
         utilities::add(&mut r);
@@ -1144,7 +1146,7 @@ fn add_overworld_recipes(r: &mut Vec<Recipe>) {
         1,
     ));
     // Dyes from cocoa, ink and the new flowers.
-    let dyes: [(Item, DyeColor, u8); 19] = [
+    let dyes: [(Item, DyeColor, u8); 21] = [
         (Item::COCOA_BEANS, DyeColor::Brown, 1),
         (Item::INK_SAC, DyeColor::Black, 1),
         (one(ob::CORNFLOWER), DyeColor::Blue, 1),
@@ -1163,6 +1165,8 @@ fn add_overworld_recipes(r: &mut Vec<Recipe>) {
         (one(ob::PINK_PETALS), DyeColor::Pink, 1),
         (one(crate::world::biome_plants::CACTUS_FLOWER), DyeColor::Pink, 1),
         (one(crate::world::biome_plants::WILDFLOWERS), DyeColor::Yellow, 1),
+        (one(crate::world::eyeblossom::OPEN), DyeColor::Orange, 1),
+        (one(crate::world::eyeblossom::CLOSED), DyeColor::Gray, 1),
         (Item::BEETROOT, DyeColor::Red, 1),
     ];
     for (source, colour, count) in dyes {

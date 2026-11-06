@@ -111,6 +111,15 @@ const DIRT: [u8; 3] = [134, 96, 67];
 const GRASS: [u8; 3] = [95, 159, 53];
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
+    if (crate::world::eyeblossom::TEX..crate::world::eyeblossom::TEX_END).contains(&layer) {
+        return match crate::world::eyeblossom::pot_layer_plant(layer) {
+            Some(plant) => utility::potted_side(layer, plant, x, y),
+            None => crate::world::eyeblossom::pixel(layer, x, y),
+        };
+    }
+    if (crate::world::creaking::TEX..crate::world::creaking::TEX_END).contains(&layer) {
+        return crate::world::creaking::pixel(layer, x, y);
+    }
     if (crate::world::frog_blocks::tex::BASE..crate::world::frog_blocks::tex::END).contains(&layer) {
         return crate::world::frog_blocks::pixel(layer, x, y);
     }

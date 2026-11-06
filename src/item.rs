@@ -852,6 +852,7 @@ impl Item {
     /// Shared with Track D archaeology/ocean_ruin_warm.
     pub const SNIFFER_EGG: Item = Item::from_block(crate::world::sniffer_egg::EGG);
     pub const BEETROOT_SOUP: Item = Item(1280);
+    pub const RESIN_BRICK: Item = Item(1368);
     pub const HONEYCOMB: Item = Item(1281);
     /// Explicit honey item reservations, including the block placing item.
     pub const HONEY_BLOCK: Item = Item(1072);
@@ -1039,6 +1040,9 @@ impl Item {
         }
         if let Some(info) = crate::world::archaeology::item_info(self) {
             return info;
+        }
+        if self == Self::RESIN_BRICK {
+            return item("resin brick", Sprite::Lump([211, 99, 29]));
         }
         if self == Self::HONEYCOMB {
             return item("honeycomb", Sprite::Lump([233, 163, 40]));
@@ -1502,6 +1506,7 @@ impl Item {
             .chain([Self::TIPPED_ARROW, Self::LINGERING_POTION, Self::DRAGON_BREATH])
             .chain([Self::TORCHFLOWER_SEEDS, Self::PITCHER_POD])
             .chain((crate::world::archaeology::ITEM_FIRST..crate::world::archaeology::ITEM_END).map(Item))
+            .chain([Self::RESIN_BRICK])
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1566,6 +1571,7 @@ fn sprite_index(item: Item) -> Option<u16> {
         1330 => Some(passive_icon_base() + 6),
         1332 => Some(passive_icon_base() + 7),
         1333 => Some(passive_icon_base() + 8),
+        1368 => Some(passive_icon_base() + 18),
         1301..=1304 => Some(passive_icon_base() + item.0 - 1301),
         1040 => Some(turtle_icon()),
         1073 => Some(turtle_icon() + 2 + COPPER_ITEMS.len() as u16),
@@ -1661,7 +1667,7 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    passive_icon_base() as u32 + 4 + 5 + 2 + 7
+    passive_icon_base() as u32 + 4 + 5 + 2 + 7 + 1
 }
 
 const fn passive_icon_base() -> u16 {

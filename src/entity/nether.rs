@@ -1559,6 +1559,9 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if let Some(s) = &m.sniffer {
         v["sniffer"] = s.save();
     }
+    if let Some(s) = &m.creaking {
+        v["creaking"] = s.save();
+    }
     if let Some(s) = &m.copper_golem {
         v["copper_golem"] = s.save();
     }
@@ -1653,6 +1656,9 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     }
     if let Some(s) = &mut m.sniffer {
         s.load(&v["sniffer"]);
+    }
+    if let Some(s) = &mut m.creaking {
+        s.load(&v["creaking"]);
     }
     if let Some(s) = &mut m.copper_golem {
         s.load(&v["copper_golem"]);

@@ -108,6 +108,22 @@ impl World {
             self.drops.push((p, statue.item_stack(self.copper_golem_statue_name(p))));
             return;
         }
+        if super::creaking::heart(block).is_some() {
+            let silk = tool.has(crate::enchant::Enchantment::SilkTouch);
+            let item = if silk { super::creaking::HEART } else { super::creaking::RESIN_CLUMP };
+            let count = if silk {
+                1
+            } else {
+                (1 + self.roll() % 3 + self.roll() % (u64::from(tool.level(crate::enchant::Enchantment::Fortune)) + 1))
+                    .min(9) as u8
+            };
+            self.drops.push((p, Stack::new(item, count)));
+            return;
+        }
+        if let Some((super::cave_blocks::Multiface::ResinClump, faces, _)) = super::cave_blocks::multiface_of(block) {
+            self.drops.push((p, Stack::new(super::creaking::RESIN_CLUMP, faces.count_ones() as u8)));
+            return;
+        }
         // A waterlogged block drops what its dry original does.
         let block = block.canonical();
         use crate::enchant::Enchantment;
@@ -373,6 +389,9 @@ impl World {
                 self.extinguish_ore(p, b);
             }
             Block::SUGAR_CANE => self.tick_cane(p),
+            super::eyeblossom::OPEN | super::eyeblossom::CLOSED => {
+                self.tick_eyeblossom(p, b);
+            }
             b if super::copper::ages(b) => self.tick_copper(p, b),
             b if super::copper_golem_statue::ages(b) => self.tick_copper_golem_statue(p, b),
             b if b.is_mushroom() => self.tick_mushroom(p, b),

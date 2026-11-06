@@ -193,13 +193,28 @@ fn potted(layer: u16, i: usize, x: usize, y: usize, r: f32) -> Rgba {
         }
         _ => {}
     }
+    let _ = layer;
+    plant_above_pot(plant, x, y)
+}
+
+/// The plant's own sprite squeezed onto a pot's cross planes (shared with
+/// the Track A potted eyeblossoms).
+fn plant_above_pot(plant: crate::world::block::Block, x: usize, y: usize) -> Rgba {
     if !(3..13).contains(&x) {
         return CLEAR;
     }
     let sx = ((x - 3) * 16 / 10).min(15);
     let sy = (y * 16 / 12).min(15);
-    let _ = layer;
     base_pixel(plant.info().tex[0], sx, sy)
+}
+
+/// A potted plant's side for a pot outside [`u::POTTED`]: the pot, then `plant`.
+pub(super) fn potted_side(layer: u16, plant: crate::world::block::Block, x: usize, y: usize) -> Rgba {
+    let r = rnd(layer, x, y, 0);
+    if (y >= 10 && (5..11).contains(&x)) || y >= 12 {
+        return pot(t::POT_BOTTOM, y, r);
+    }
+    plant_above_pot(plant, x, y)
 }
 
 fn obsidian(layer: u16, x: usize, y: usize, r: f32) -> Rgba {

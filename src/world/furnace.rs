@@ -141,6 +141,7 @@ pub fn smelt(item: Item) -> Option<Item> {
         return Some(out);
     }
     Some(match item {
+        i if i == b(super::creaking::RESIN_CLUMP) => Item::RESIN_BRICK,
         i if ore_of(i) == Some(Block::IRON_ORE) || i == Item::RAW_IRON => Item::IRON_INGOT,
         i if ore_of(i) == Some(Block::GOLD_ORE) || i == Item::RAW_GOLD => Item::GOLD_INGOT,
         i if ore_of(i) == Some(Block::COPPER_ORE) || i == Item::RAW_COPPER => Item::COPPER_INGOT,
@@ -202,6 +203,8 @@ pub fn smelt_xp(out: Item) -> f32 {
         Item::BRICK => 0.3,
         Item::NETHER_QUARTZ | Item::LAPIS_LAZULI => 0.2,
         Item::CHARCOAL => 0.15,
+        // `smelting/resin_brick`: 0.1.
+        Item::RESIN_BRICK => 0.1,
         i if i == b(crate::world::overworld_blocks::SPONGE) => 0.15,
         _ => 0.1,
     }
