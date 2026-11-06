@@ -146,6 +146,9 @@ pub enum MobSound {
     DragonSmash,
     DragonDeath,
     CopperGolem(copper_golem::Sound, u8),
+    Sniffer(sniffer::Cue),
+    /// The dug block's hit sound while a sniffer digs (`emitDiggingParticles`).
+    SnifferDigHit(crate::world::block::Block),
 }
 
 /// Something an entity did that the game needs to react to.

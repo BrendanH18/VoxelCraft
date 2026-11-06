@@ -418,7 +418,8 @@ impl Entities {
     /// `BreedGoal.breed` / `Animal.spawnChildFromBreeding` for the pairs whose
     /// goal finished courting this tick: both parents cool down for 6000
     /// ticks and lose their love, a baby appears (turtles get pregnant
-    /// instead), and 1–7 experience drops.
+    /// instead; sniffers drop an egg item with `SNIFFER_EGG_PLOP`), and 1–7
+    /// experience drops.
     pub(super) fn resolve_breeding(&mut self) {
         for i in 0..self.mobs.len() {
             let Some(uid) = self.mobs[i].animal.as_mut().and_then(|a| a.breed_now.take()) else { continue };
@@ -437,6 +438,9 @@ impl Entities {
                     0.5,
                     &mut self.rng,
                 ));
+                let pos = self.mobs[i].pos;
+                let sound = super::MobSound::Sniffer(super::sniffer::Cue::EggPlop);
+                self.pending_sounds.push(EntityEvent::Sound { sound, pos });
             }
             for k in [i, j] {
                 self.mobs[k].age = BREEDING_COOLDOWN;

@@ -441,6 +441,16 @@ impl Game {
                         MobSound::Death(MobKind::CopperGolem) => {
                             (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Death, 0), 0.9)
                         }
+                        MobSound::Sniffer(cue) => {
+                            use voxelcraft::entity::sniffer::Cue;
+                            (Sound::Sniffer(cue), if matches!(cue, Cue::EggCrack | Cue::EggHatch) { 0.7 } else { 1.0 })
+                        }
+                        // `emitDiggingParticles`: the block's hit sound at volume and pitch 0.5.
+                        MobSound::SnifferDigHit(block) => {
+                            let sound = Sound::Step(crate::audio::sounds::material(block));
+                            self.audio.play_in(SoundSource::Neutral, sound, Some(pos), 0.5, (0.5, 0.5));
+                            continue;
+                        }
                         MobSound::Bell => (Sound::Bell, 1.0),
                         // Procedural stand-ins for Java's `wandering_trader.disappeared`/`reappeared`.
                         MobSound::TraderDrink(true) => (Sound::Teleport, 0.5),

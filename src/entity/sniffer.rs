@@ -1,6 +1,6 @@
 //! Java 26.3 ancient-seed digging. The bounded activity scheduler uses shared
 //! ground navigation and animal interaction adapters; see the verification record.
-use super::{Ctx, Entities, Mob, MobKind, MobWorld, Rng};
+use super::{Ctx, Entities, EntityEvent, Mob, MobKind, MobSound, MobWorld, Rng};
 use crate::{
     inventory::Stack,
     item::Item,
@@ -15,6 +15,34 @@ pub const SNIFFING: u8 = 3;
 pub const SEARCHING: u8 = 4;
 pub const DIGGING: u8 = 5;
 pub const RISING: u8 = 6;
+/// Sniffer and sniffer egg sound events (`entity.sniffer.*`, `block.sniffer_egg.*`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Cue {
+    Scenting,
+    Sniffing,
+    Searching,
+    Digging,
+    DiggingStop,
+    DropSeed,
+    Happy,
+    EggCrack,
+    EggHatch,
+    EggPlop,
+}
+impl Cue {
+    pub const ALL: [Cue; 10] = [
+        Cue::Scenting,
+        Cue::Sniffing,
+        Cue::Searching,
+        Cue::Digging,
+        Cue::DiggingStop,
+        Cue::DropSeed,
+        Cue::Happy,
+        Cue::EggCrack,
+        Cue::EggHatch,
+        Cue::EggPlop,
+    ];
+}
 #[derive(Clone, Debug)]
 pub struct State {
     pub pose: u8,
@@ -25,6 +53,8 @@ pub struct State {
     pub explored: Vec<(u8, IVec3)>,
     pub dropped: bool,
     carry: f64,
+    /// The cue `Sniffer.transitionTo` plays for the state just entered.
+    entered: Option<Cue>,
 }
 impl Default for State {
     fn default() -> Self {
@@ -37,6 +67,7 @@ impl Default for State {
             explored: Vec::new(),
             dropped: false,
             carry: 0.0,
+            entered: None,
         }
     }
 }
@@ -68,6 +99,13 @@ impl State {
             .collect();
     }
     fn switch(&mut self, pose: u8, duration: u16) {
+        self.entered = match pose {
+            SCENTING => Some(Cue::Scenting),
+            SNIFFING => Some(Cue::Sniffing),
+            RISING => Some(Cue::DiggingStop),
+            HAPPY => Some(Cue::Happy),
+            _ => None,
+        };
         self.pose = pose;
         self.elapsed = 0;
         self.duration = duration;
@@ -108,6 +146,32 @@ fn valid(w: &World, s: &State, p: IVec3, d: u8) -> bool {
     w.get_block(p).is_some_and(diggable)
         && w.get_block(p + IVec3::Y) == Some(Block::AIR)
         && !s.explored.contains(&(d, p))
+}
+/// Per-tick effects of the current state. `SnifferSoundInstance` loops
+/// `SNIFFER_DIGGING` while searching or digging (an original one-second cue
+/// every 20 ticks here); `playSearchingSound` adds `SNIFFER_SEARCHING` every
+/// 20 ticks; `emitDiggingParticles` sprays the dug block between 1.7 s and
+/// 6 s of the dig with its hit sound every 10 ticks. Java spawns 30 terrain
+/// particles a tick; two crack particles a tick keep the request queue bounded.
+fn effects(w: &mut World, s: &State, pos: DVec3, sounds: &mut Vec<EntityEvent>) {
+    let mut cue = |sound| sounds.push(EntityEvent::Sound { sound, pos });
+    if matches!(s.pose, SEARCHING | DIGGING) && s.elapsed % 20 == 1 {
+        cue(MobSound::Sniffer(Cue::Digging));
+    }
+    if s.pose == SEARCHING && s.elapsed % 20 == 11 {
+        cue(MobSound::Sniffer(Cue::Searching));
+    }
+    if s.pose != DIGGING || !(35..120).contains(&s.elapsed) {
+        return;
+    }
+    let Some(cell) = s.target else { return };
+    let Some(block) = w.get_block(cell).filter(|&b| b != Block::AIR) else { return };
+    for _ in 0..2 {
+        w.particles.push(crate::particles::Request::Hit { cell, block, face: IVec3::Y });
+    }
+    if s.elapsed % 10 == 0 {
+        cue(MobSound::SnifferDigHit(block));
+    }
 }
 impl Mob {
     pub(super) fn sniffer_steer<W: MobWorld + ?Sized>(
@@ -152,11 +216,16 @@ impl Mob {
 impl Entities {
     /// Called from the same authoritative update_world transaction as bees and golems.
     pub fn tick_sniffers(&mut self, dt: f64, w: &mut World, ctx: &Ctx) {
-        for p in std::mem::take(&mut w.hatched_sniffers) {
-            self.spawn(MobKind::Sniffer, p.as_dvec3() + DVec3::splat(0.5));
-            let m = self.mobs.last_mut().unwrap();
-            m.age = -48000;
-            m.baby = true;
+        for (p, hatched) in std::mem::take(&mut w.sniffer_egg_events) {
+            let pos = p.as_dvec3() + DVec3::splat(0.5);
+            let cue = if hatched { Cue::EggHatch } else { Cue::EggCrack };
+            self.pending_sounds.push(EntityEvent::Sound { sound: MobSound::Sniffer(cue), pos });
+            if hatched {
+                self.spawn(MobKind::Sniffer, pos);
+                let m = self.mobs.last_mut().unwrap();
+                m.age = -48000;
+                m.baby = true;
+            }
         }
         let d = dimension(ctx.dimension);
         for i in 0..self.mobs.len() {
@@ -172,8 +241,12 @@ impl Entities {
             let ticks = s.carry.floor() as u16;
             s.carry -= ticks as f64;
             for _ in 0..ticks {
+                if let Some(cue) = s.entered.take() {
+                    self.pending_sounds.push(EntityEvent::Sound { sound: MobSound::Sniffer(cue), pos: m.pos });
+                }
                 s.cooldown = s.cooldown.saturating_sub(1);
                 s.elapsed = s.elapsed.saturating_add(1);
+                effects(w, &s, m.pos, &mut self.pending_sounds);
                 if m.baby
                     || m.in_water
                     || m.hurt > 0.0
@@ -209,6 +282,8 @@ impl Entities {
                         0.5,
                         &mut self.rng,
                     ));
+                    let sound = MobSound::Sniffer(Cue::DropSeed);
+                    self.pending_sounds.push(EntityEvent::Sound { sound, pos: m.pos });
                 }
                 if s.pose == SEARCHING {
                     if let Some(p) = s.target.filter(|&p| valid(w, &s, p, d)) {
@@ -273,6 +348,9 @@ impl Entities {
                     }
                     _ => s.switch(IDLE, 100),
                 }
+            }
+            if let Some(cue) = s.entered.take() {
+                self.pending_sounds.push(EntityEvent::Sound { sound: MobSound::Sniffer(cue), pos: m.pos });
             }
             m.sniffer = Some(s);
         }

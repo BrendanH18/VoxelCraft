@@ -169,7 +169,7 @@ impl World {
             if super::sniffer_egg::owns(b.0) {
                 let p = c * CHUNK_SIZE_I + local;
                 if !self.redstone.pending.contains_key(&p) {
-                    self.track_sniffer_egg(p, Block::AIR, b);
+                    self.schedule_sniffer_egg(p);
                 }
             }
             if b == super::frog_blocks::FROGSPAWN {

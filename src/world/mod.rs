@@ -338,7 +338,8 @@ pub struct World {
     /// Turtle eggs that hatched: cell and how many babies; the game spawns them.
     pub hatched_turtles: Vec<(IVec3, u8)>,
     pub hatched_tadpoles: Vec<(IVec3, u8)>,
-    pub hatched_sniffers: Vec<IVec3>,
+    /// Sniffer eggs that cracked (false) or hatched (true); entities spawn and play them.
+    pub sniffer_egg_events: Vec<(IVec3, bool)>,
     compost_sequence: u64,
     bell_rings: Vec<IVec3>,
     /// Whether it's raining (set by the game each frame).
@@ -598,7 +599,7 @@ impl World {
             golem_heads: Vec::new(),
             hatched_turtles: Vec::new(),
             hatched_tadpoles: Vec::new(),
-            hatched_sniffers: Vec::new(),
+            sniffer_egg_events: Vec::new(),
             compost_sequence: 0,
             bell_rings: Vec::new(),
             raining: false,

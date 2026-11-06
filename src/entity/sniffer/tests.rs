@@ -144,6 +144,86 @@ fn saved_scheduled_cracking_resumes_and_replacement_cancels_hatch() {
     loaded.set_block(P, Block::STONE);
     loaded.load_redstone("v1,0,1|t,12,145,12,1,0,0,15120");
     loaded.tick_redstone();
-    assert!(loaded.hatched_sniffers.is_empty());
+    assert!(loaded.sniffer_egg_events.is_empty());
     assert_eq!(loaded.get_block(P), Some(Block::STONE));
+}
+fn cues(e: &mut Entities) -> Vec<MobSound> {
+    e.pending_sounds
+        .drain(..)
+        .filter_map(|ev| match ev {
+            EntityEvent::Sound { sound, .. } => Some(sound),
+            _ => None,
+        })
+        .collect()
+}
+#[test]
+fn digging_cycle_plays_java_cues_and_sprays_the_dug_block() {
+    use crate::particles::Request;
+    let mut w = world();
+    let mut e = Entities::new(7);
+    e.spawn(MobKind::Sniffer, P.as_dvec3());
+    let c = ctx();
+    let s = e.mobs[0].sniffer.as_mut().unwrap();
+    s.switch(DIGGING, 160);
+    s.target = Some(P - IVec3::Y);
+    w.particles.drain().for_each(drop);
+    for _ in 0..159 {
+        e.tick_sniffers(0.05, &mut w, &c);
+    }
+    let heard = cues(&mut e);
+    let count = |want: MobSound| heard.iter().filter(|&&s| s == want).count();
+    assert_eq!(count(MobSound::Sniffer(Cue::DropSeed)), 1);
+    assert_eq!(count(MobSound::Sniffer(Cue::Digging)), 8, "{heard:?}");
+    // Hit sounds every 10 ticks inside the 1.7 s – 6 s particle window.
+    assert_eq!(count(MobSound::SnifferDigHit(Block::DIRT)), 8);
+    let hits = w.particles.drain().filter(|r| matches!(r, Request::Hit { block: Block::DIRT, .. })).count();
+    assert_eq!(hits, 2 * 85);
+    for _ in 0..42 {
+        e.tick_sniffers(0.05, &mut w, &c);
+    }
+    let heard = cues(&mut e);
+    assert_eq!(heard.first(), Some(&MobSound::Sniffer(Cue::DiggingStop)), "{heard:?}");
+    assert!(heard.contains(&MobSound::Sniffer(Cue::Happy)), "{heard:?}");
+    // Interruptions return to idle silently.
+    let s = e.mobs[0].sniffer.as_mut().unwrap();
+    s.switch(SNIFFING, 60);
+    s.entered = None;
+    e.mobs[0].hurt = 0.5;
+    e.tick_sniffers(0.05, &mut w, &c);
+    assert!(cues(&mut e).is_empty());
+}
+#[test]
+fn egg_crack_hatch_and_plop_cues_with_boost_particles() {
+    use crate::{particles::Request, world::sniffer_egg as egg};
+    let mut w = world();
+    let mut e = Entities::new(7);
+    w.set_block(P - IVec3::Y, crate::world::overworld_blocks::MOSS_BLOCK);
+    w.particles.drain().for_each(drop);
+    w.set_block(P, egg::EGG);
+    let specks = w.particles.drain().filter(|r| matches!(r, Request::Hit { block: egg::EGG, .. })).count();
+    assert!((18..=36).contains(&specks), "{specks}");
+    for _ in 0..3 {
+        w.load_redstone("v1,0,1|t,12,145,12,1,0,0,15120");
+        w.tick_redstone();
+    }
+    assert!(w.particles.drain().any(|r| matches!(r, Request::Break { block: Block(egg::LAST), .. })));
+    e.tick_sniffers(0.05, &mut w, &ctx());
+    let crack = MobSound::Sniffer(Cue::EggCrack);
+    assert_eq!(cues(&mut e), vec![crack, crack, MobSound::Sniffer(Cue::EggHatch)]);
+    // Without moss, placement is silent and speckless.
+    let mut plain = world();
+    plain.particles.drain().for_each(drop);
+    plain.set_block(P, egg::EGG);
+    assert_eq!(plain.particles.drain().filter(|r| matches!(r, Request::Hit { .. })).count(), 0);
+    let mut e = Entities::new(7);
+    e.spawn(MobKind::Sniffer, P.as_dvec3());
+    e.spawn(MobKind::Sniffer, P.as_dvec3() + DVec3::X);
+    for i in 0..2 {
+        e.use_animal(i, Some(Stack::new(Item::TORCHFLOWER_SEEDS, 1)), PlayerId::HOST);
+    }
+    e.ensure_mob_ids();
+    e.mobs[0].animal.as_mut().unwrap().breed_now = Some(e.mobs[1].uid);
+    cues(&mut e);
+    e.resolve_breeding();
+    assert!(cues(&mut e).contains(&MobSound::Sniffer(Cue::EggPlop)));
 }
