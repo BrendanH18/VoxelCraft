@@ -57,6 +57,8 @@ fi
 work=$(mktemp -d "${TMPDIR:-/tmp}/remote-check.XXXXXX")
 id=""
 cleanup() {
+    # An interrupt can land after `nsc create` wrote the ID but before we read it.
+    if [ -z "$id" ] && [ -s "$work/cid" ]; then id=$(tr -cd 'a-z0-9' <"$work/cid"); fi
     if [ -n "$id" ] && [ "${VC_REMOTE_KEEP:-0}" != 1 ]; then
         nsc destroy "$id" --force >/dev/null 2>&1 || echo "remote-check: could not destroy instance $id; run: nsc destroy $id --force" >&2
     elif [ -n "$id" ]; then
@@ -120,7 +122,9 @@ EOS
 status=0
 {
     printf '%s\n' "$setup_script"
-    printf "cat > /home/builder/check.sh <<'VC_REMOTE_CHECK_EOF'\n%s\n%s\nVC_REMOTE_CHECK_EOF\n" "$user_script" "$cmd"
+    # Sent as base64, so no line of the command can end the transfer early.
+    printf 'printf %%s %s | base64 -d > /home/builder/check.sh\n' \
+        "$(printf '%s\n%s\n' "$user_script" "$cmd" | base64 | tr -d '\n')"
     printf 'exec su builder -s /bin/bash -c "bash /home/builder/check.sh"\n'
 } | nsc ssh -T "$id" 'bash -s' || status=$?
 if [ "$status" = 0 ]; then
