@@ -746,6 +746,9 @@ impl Block {
         if let Some(odds) = super::overworld_blocks::fire_odds(self).or_else(|| super::biome_plants::fire_odds(self)) {
             return odds;
         }
+        if matches!(self, super::eyeblossom::OPEN | super::eyeblossom::CLOSED) {
+            return (60, 100);
+        }
         // `FireBlock.bootStrap` lists no doors: the wooden ones only burn from lava.
         if self.is_door() || matches!(super::forms::wood_form(self.0), Some(super::forms::WoodForm::Door { .. })) {
             return (0, 0);

@@ -1604,8 +1604,7 @@ impl Generator {
                 continue;
             }
             let (x, y, z) = (l.x as usize, l.y as usize, l.z as usize);
-            if blocks[index(x, y, z)] == Block::AIR
-                && super::eyeblossom::CLOSED.can_stay_on(blocks[index(x, y - 1, z)])
+            if blocks[index(x, y, z)] == Block::AIR && super::eyeblossom::CLOSED.can_stay_on(blocks[index(x, y - 1, z)])
             {
                 blocks[index(x, y, z)] = super::eyeblossom::CLOSED;
             }

@@ -651,7 +651,7 @@ New `MobKind`s append after `CopperGolem` in the order Creaking, Allay,
 Sniffer, taking LAN indices 69, 70 and 71; existing names and indices
 keep their meanings. The unassigned reserve becomes 15488–16383.
 
-Track A allocation (2026-11-05, implemented, unverified, partial):
+Track A allocation (2026-11-05/06, implemented, unverified):
 
 | Block states | Meaning |
 | --- | --- |
@@ -661,11 +661,14 @@ Track A allocation (2026-11-05, implemented, unverified, partial):
 | 14792–14871 | Resin brick stairs: 80 states in the standard `slab_stair_states` local order |
 | 14872–14876 | Resin brick slab: bottom dry/wet, top dry/wet, double |
 | 14880–14883 | Resin brick wall: UP dry/wet, no-UP dry/wet; sides inferred as for existing walls |
+| 14888–14889 | Open eyeblossom, closed eyeblossom (`world::eyeblossom`) |
+| 14890–14891 | Potted open eyeblossom, potted closed eyeblossom |
 
 Item **1368** is the resin brick. Original procedural block layers
-**3360–3372**, offsets from `world::creaking::TEX`, contain three layers
+**3360–3376**, offsets from `world::creaking::TEX`, contain three layers
 per heart activity (side, end, turned side), resin clump, resin block,
-resin bricks and chiseled resin bricks. All remaining Track A IDs stay
+resin bricks and chiseled resin bricks (3360–3372), then the open and closed
+eyeblossoms and their two potted sides (3373–3376, `world::eyeblossom::TEX`). All remaining Track A IDs stay
 reserved and unregistered. `MobKind::Creaking` appends at LAN index **69**,
 saved as `creaking`; its component stores the heart position and animation
 state, and the dimension's `creaking_hearts` property stores protector UIDs.

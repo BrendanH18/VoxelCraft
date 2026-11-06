@@ -6,8 +6,9 @@ use crate::{
     world::{
         block::Block,
         chunk::ChunkData,
-        overworld_blocks as ob, shape, utilities,
+        overworld_blocks as ob, shape,
         terrain::{Dimension, Generator},
+        utilities,
     },
 };
 use std::sync::Arc;
@@ -18,7 +19,7 @@ fn world() -> World {
     let mut w = World::new_headless(Arc::new(Generator::new(5)), Default::default(), 2);
     for x in -1..=1 {
         for z in -1..=1 {
-            w.insert_chunk(IVec3::new(x, 8, z), Arc::new(ChunkData::Uniform(Block::AIR)), false);
+            w.insert_chunk(IVec3::new(x, 4, z), Arc::new(ChunkData::Uniform(Block::AIR)), false);
         }
     }
     for x in 0..16 {

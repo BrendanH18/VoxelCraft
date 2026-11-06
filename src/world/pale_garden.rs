@@ -9,7 +9,6 @@
 //! Java's worldgen random sequence; counts, ranges, odds and shapes follow
 //! the reference. Sources and differences: the 2026-11-05 creaking record.
 use super::{
-    block::Block,
     creaking,
     noise::{hash3, splitmix64},
     overworld_blocks as ob,
@@ -159,11 +158,8 @@ fn skip_signed(dx: i32, y: i32, dz: i32, range: i32, large: bool) -> bool {
     if y == 0 && large && (dx == -range || dx >= range) && (dz == -range || dz >= range) {
         return true;
     }
-    let (x, z) = if large {
-        (dx.abs().min((dx - 1).abs()), dz.abs().min((dz - 1).abs()))
-    } else {
-        (dx.abs(), dz.abs())
-    };
+    let (x, z) =
+        if large { (dx.abs().min((dx - 1).abs()), dz.abs().min((dz - 1).abs())) } else { (dx.abs(), dz.abs()) };
     match y {
         -1 if !large => x == range && z == range,
         1 => x + z > range * 2 - 2,
@@ -225,6 +221,7 @@ pub fn eyeblossom_attempts(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::world::block::Block;
 
     fn grow(seed: u64, creaking: bool) -> Vec<(IVec3, Block)> {
         let mut out = Vec::new();
@@ -256,8 +253,7 @@ mod tests {
         let mut hearts = 0;
         for seed in 0..400 {
             let tree = grow(seed, true);
-            let logs: FxHashSet<_> =
-                tree.iter().filter(|(_, b)| *b == ob::PALE_OAK_LOG).map(|(p, _)| *p).collect();
+            let logs: FxHashSet<_> = tree.iter().filter(|(_, b)| *b == ob::PALE_OAK_LOG).map(|(p, _)| *p).collect();
             for (p, b) in &tree {
                 if let Some((axis, activity, natural)) = creaking::heart(*b) {
                     hearts += 1;
@@ -289,5 +285,56 @@ mod tests {
             total += a.len();
         }
         assert!(total > 0);
+    }
+    /// A generation 3 pale garden holds natural creaking hearts and closed
+    /// eyeblossoms; generation 2 at the same place holds neither.
+    fn pale_garden_chunks(generation: crate::world::terrain::Generation) -> (usize, usize, f64) {
+        use crate::world::terrain::{Biome, Dimension, Generator};
+        let g = Generator::with_generation(42, Dimension::Overworld, generation);
+        let centre = (0..400)
+            .flat_map(|i| (0..400).map(move |j| (i * 64 - 12800, j * 64 - 12800)))
+            .find(|&(x, z)| g.column(x, z).biome == Biome::PaleGarden)
+            .expect("seed 42 has a pale garden");
+        let (cx, cz) = (centre.0 >> 5, centre.1 >> 5);
+        let cy = g.column(centre.0, centre.1).height >> 5;
+        let (mut hearts, mut flowers) = (0, 0);
+        let start = std::time::Instant::now();
+        let mut n = 0;
+        for x in cx - 3..=cx + 3 {
+            for z in cz - 3..=cz + 3 {
+                for y in cy - 1..=cy + 1 {
+                    n += 1;
+                    let data = g.generate(IVec3::new(x, y, z));
+                    for i in 0..super::super::chunk::CHUNK_VOLUME {
+                        let s = super::super::chunk::CHUNK_SIZE;
+                        let b = data.get(i % s, i / (s * s), i / s % s);
+                        hearts += usize::from(creaking::heart(b).is_some());
+                        flowers += usize::from(b == super::super::eyeblossom::CLOSED);
+                    }
+                }
+            }
+        }
+        (hearts, flowers, start.elapsed().as_secs_f64() * 1000. / n as f64)
+    }
+
+    #[test]
+    fn generation_3_pale_gardens_grow_hearts_and_eyeblossoms() {
+        let (hearts, flowers, _) = pale_garden_chunks(crate::world::terrain::Generation::V3);
+        assert!(hearts > 0 && flowers > 0, "{hearts} hearts, {flowers} eyeblossoms");
+        let (hearts, flowers, _) = pale_garden_chunks(crate::world::terrain::Generation::V2);
+        assert_eq!((hearts, flowers), (0, 0));
+    }
+
+    /// `cargo test --release pale_garden_generation_cost -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn pale_garden_generation_cost() {
+        use crate::world::terrain::Generation;
+        for _ in 0..2 {
+            for generation in [Generation::V2, Generation::V3] {
+                let (h, f, ms) = pale_garden_chunks(generation);
+                println!("pale garden {generation:?}: {ms:.3} ms/chunk, {h} hearts, {f} eyeblossoms");
+            }
+        }
     }
 }

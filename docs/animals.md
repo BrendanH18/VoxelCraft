@@ -217,7 +217,7 @@ loaded ticks. Original spotted pelt, head and ringed tail render crouching
 and sprint poses. See the [record](verification/2026-11-04-v0.15-passive-mobs.md)
 for source details and remaining shared-engine/presentation differences.
 
-## Creaking hearts and resin (v0.15, partial)
+## Creaking hearts, resin and eyeblossoms (v0.15)
 
 Implemented, unverified: creaking heart axes, activity and natural states,
 protector binding, watching/freezing, invulnerability, resin emission and
@@ -227,7 +227,10 @@ Player-built hearts also spawn non-persistent protectors. Resin clumps reuse
 the multiface support, placement, waterlogging and shape paths; the masonry
 family includes the standard stairs/slab and four stored wall states.
 
-This slice does not yet add natural hearts, eyeblossoms or their generation.
-The survival acquisition loop therefore still needs its natural source.
-See [the source and verification record](verification/2026-11-05-v0.15-creaking.md)
+Generation 3 pale gardens grow Java's pale oak shape; one tree in ten holds
+a natural heart inside its trunk, the survival source of resin. Open and
+closed eyeblossoms (also potted) follow the Overworld clock: random ticks
+open them from tick 12600 and close them from 23401, and each change ripples
+through the flowers within three blocks. Generation 3 places closed
+eyeblossom patches in pale gardens. See [the source and verification record](verification/2026-11-05-v0.15-creaking.md)
 for exact coverage and differences from Java 26.3.

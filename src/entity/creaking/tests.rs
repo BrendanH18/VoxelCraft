@@ -74,7 +74,7 @@ fn creaking_reserved_states_shapes_and_items() {
         assert!(Item::from_block(b).is_valid());
     }
     assert_eq!(crate::world::furnace::smelt(c::RESIN_CLUMP.into()), Some(Item::RESIN_BRICK));
-    assert_eq!(crate::world::furnace::smelt_xp(Item::RESIN_BRICK), 0.3);
+    assert_eq!(crate::world::furnace::smelt_xp(Item::RESIN_BRICK), 0.1);
     assert!(!MobKind::Creaking.spawns_in(Dimension::Overworld));
     assert_eq!(MobKind::Creaking.max_health(), 1.);
 }

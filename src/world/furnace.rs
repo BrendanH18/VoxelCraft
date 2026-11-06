@@ -200,9 +200,11 @@ pub fn smelt_xp(out: Item) -> f32 {
         | Item::COOKED_COD
         | Item::COOKED_SALMON => 0.35,
         i if i == b(Block::TERRACOTTA) => 0.35,
-        Item::BRICK | Item::RESIN_BRICK => 0.3,
+        Item::BRICK => 0.3,
         Item::NETHER_QUARTZ | Item::LAPIS_LAZULI => 0.2,
         Item::CHARCOAL => 0.15,
+        // `smelting/resin_brick`: 0.1.
+        Item::RESIN_BRICK => 0.1,
         i if i == b(crate::world::overworld_blocks::SPONGE) => 0.15,
         _ => 0.1,
     }
