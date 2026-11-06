@@ -91,8 +91,8 @@ fn egg_hatching_boost_timing_scheduled_save_and_snifflet_age() {
     let entry = schedule.split('|').find(|s| s.starts_with("t,12,145,12,")).unwrap();
     let delay = entry.split(',').nth(4).unwrap().parse::<u64>().unwrap();
     assert!((4000..4300).contains(&delay));
-    for hatch in 0..3 {
-        w.load_redstone(&format!("v1,0,1|t,12,145,12,1,0,0,{}", 15120 + hatch));
+    for _ in 0..3 {
+        w.load_redstone("v1,0,1|t,12,145,12,1,0,0,15120");
         w.tick_redstone();
     }
     e.tick_sniffers(0.05, &mut w, &ctx());
