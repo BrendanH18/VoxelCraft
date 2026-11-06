@@ -218,6 +218,23 @@ pub fn eyeblossom_attempts(
     }
 }
 
+/// [`eyeblossom_attempts`] for a `size`-block square storage chunk at
+/// `(x0, z0)`, one 16-block Java chunk at a time (`size` is a multiple of 16).
+pub fn eyeblossom_attempts_square(
+    seed: u64,
+    x0: i32,
+    z0: i32,
+    size: i32,
+    surface: &mut dyn FnMut(i32, i32) -> Option<i32>,
+    out: &mut Vec<IVec3>,
+) {
+    for dz in (0..size).step_by(16) {
+        for dx in (0..size).step_by(16) {
+            eyeblossom_attempts(seed, x0 + dx, z0 + dz, surface, out);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -227,6 +244,25 @@ mod tests {
         let mut out = Vec::new();
         pale_oak(IVec3::new(0, 64, 0), seed, creaking, &mut |p, b| out.push((p, b)));
         out
+    }
+
+    #[test]
+    fn eyeblossoms_cover_the_whole_storage_chunk() {
+        let (mut far_x, mut far_z) = (false, false);
+        for cx in -8..8 {
+            for cz in -8..8 {
+                let (x0, z0) = (cx * 32, cz * 32);
+                let mut out = Vec::new();
+                eyeblossom_attempts_square(263, x0, z0, 32, &mut |_, _| Some(64), &mut out);
+                for p in out {
+                    let (lx, lz) = (p.x - x0, p.z - z0);
+                    assert!((0..32).contains(&lx) && (0..32).contains(&lz), "{p} outside chunk {x0},{z0}");
+                    far_x |= lx >= 16;
+                    far_z |= lz >= 16;
+                }
+            }
+        }
+        assert!(far_x && far_z, "attempts reach every quarter of a 32-block chunk");
     }
 
     #[test]

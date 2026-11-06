@@ -99,6 +99,9 @@ fn egg_hatching_boost_timing_scheduled_save_and_snifflet_age() {
     assert_eq!(e.mobs.len(), 1);
     assert!(e.mobs[0].baby);
     assert_eq!(e.mobs[0].age, -48000);
+    let mut restored = Entities::new(7);
+    restored.load_nether_mobs(&e.nether_mobs_to_string());
+    assert_eq!(restored.mobs.iter().find(|m| m.kind == MobKind::Sniffer).unwrap().age, -48000);
     for hatch in 0..=2 {
         assert_eq!(Block(egg::EGG.0 + hatch).drop(), Some(Item::SNIFFER_EGG));
     }

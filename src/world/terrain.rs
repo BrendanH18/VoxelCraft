@@ -1597,7 +1597,14 @@ impl Generator {
             let c = self.column(x, z);
             (c.biome == Biome::PaleGarden && c.height >= SEA_LEVEL).then_some(c.height)
         };
-        super::pale_garden::eyeblossom_attempts(self.seed, base.x, base.z, &mut surface, &mut attempts);
+        super::pale_garden::eyeblossom_attempts_square(
+            self.seed,
+            base.x,
+            base.z,
+            CHUNK_SIZE_I,
+            &mut surface,
+            &mut attempts,
+        );
         for p in attempts {
             let l = p - base;
             if !(1..CHUNK_SIZE_I).contains(&l.y) {

@@ -124,8 +124,10 @@ fn creaking_day_and_reload_binding() {
     step(&mut e, &mut w, &c, 1);
     let m = e.mobs.iter().find(|m| m.kind == MobKind::Creaking).unwrap();
     let id = m.uid;
-    let saved = super::super::nether::save_mob(m);
-    let loaded = super::super::nether::load_mob(&saved).unwrap();
+    let mut restored = Entities::new(18);
+    restored.load_nether_mobs(&e.nether_mobs_to_string());
+    let at = restored.mobs.iter().position(|m| m.kind == MobKind::Creaking).unwrap();
+    let loaded = restored.mobs.swap_remove(at);
     assert_eq!(loaded.creaking.as_ref().unwrap().home, Some(P));
     assert_eq!(loaded.uid, id);
     let h = w.creaking_hearts_to_string();
