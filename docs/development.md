@@ -26,6 +26,7 @@ It needs the `nsc` command-line tool, installed and logged in
 scripts/remote-check.sh            # cargo fmt here, then clippy and tests remotely
 scripts/remote-check.sh --full     # also the --no-default-features clippy and tests
 scripts/remote-check.sh -- cargo test --release some_test   # any command
+scripts/remote-check.sh -- 'cargo build --release && ls target'  # one argument: a shell line
 ```
 
 Each run creates a bare Linux instance (8 vCPU, 16 GB by default,

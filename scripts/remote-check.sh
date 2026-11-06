@@ -3,7 +3,8 @@
 #
 #   scripts/remote-check.sh            cargo fmt here, then clippy + tests remotely
 #   scripts/remote-check.sh --full     also the --no-default-features clippy + tests
-#   scripts/remote-check.sh -- CMD     run CMD remotely in the synced checkout
+#   scripts/remote-check.sh -- CMD...  run CMD remotely in the synced checkout
+#                                      (one quoted argument runs as a shell line)
 #
 # The current working tree (tracked files plus untracked, non-ignored ones,
 # uncommitted edits included) is copied to a fresh Linux instance. Its
@@ -29,7 +30,12 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --full) full=1 ;;
         --no-fmt) fmt=0 ;;
-        --) shift; cmd="$*"; break ;;
+        --)
+            shift
+            # One argument is a shell command line (`-- 'a && b'`); several
+            # are one command whose arguments keep their boundaries.
+            if [ $# -eq 1 ]; then cmd=$1; else cmd=$(printf '%q ' "$@"); fi
+            break ;;
         -h|--help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "remote-check: unknown option $1 (try --help)" >&2; exit 2 ;;
     esac
@@ -82,7 +88,7 @@ echo "remote-check: instance $id" >&2
 # Upload the working tree. Remote files get the upload time as their mtime,
 # so cargo always rebuilds this crate and build.rs regenerates its paths.
 git ls-files -z --cached --others --exclude-standard |
-    while IFS= read -r -d '' f; do [ -e "$f" ] && printf '%s\0' "$f"; done |
+    while IFS= read -r -d '' f; do if [ -e "$f" ]; then printf '%s\0' "$f"; fi; done |
     COPYFILE_DISABLE=1 tar --null -T - --no-xattrs -czf - |
     nsc ssh -T "$id" 'rm -rf /work && mkdir -p /work && tar -xzmf - -C /work'
 
