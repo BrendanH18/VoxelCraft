@@ -34,6 +34,7 @@ pub mod colour_blocks;
 pub mod composter;
 pub mod copper;
 pub mod copper_golem_statue;
+pub mod creaking;
 pub mod crops;
 pub mod deep_dark;
 pub mod dismount;
@@ -291,6 +292,9 @@ pub struct World {
     brewing_stands: FxHashMap<IVec3, brewing::BrewingStand>,
     /// Sign text, shelf items and chiseled bookshelf books (see [`wood::entities`]).
     pub(crate) beehives: bees::State,
+    pub(crate) creaking_night: Option<bool>,
+    pub(crate) creaking_active: std::collections::BTreeSet<[i32; 3]>,
+    pub(crate) creaking_hearts: std::collections::BTreeMap<[i32; 3], creaking::Heart>,
     wood: wood::entities::WoodEntities,
     /// Campfire, decorated pot and cauldron-drip state (see [`utilities`]).
     utilities: utilities::State,
@@ -459,6 +463,7 @@ impl World {
         self.forget_campfires(pos);
         self.register_campfires(pos, &data);
         self.register_beehives(pos, &data, true);
+        self.register_creaking_hearts(pos, &data);
         self.chunks.insert(
             pos,
             ChunkSlot {
@@ -571,6 +576,9 @@ impl World {
             next_chest_identity: 0,
             brewing_stands: FxHashMap::default(),
             beehives: Default::default(),
+            creaking_hearts: Default::default(),
+            creaking_active: Default::default(),
+            creaking_night: None,
             copper_golem_names: Default::default(),
             wood: Default::default(),
             utilities: Default::default(),
@@ -923,6 +931,7 @@ impl World {
         self.track_brewing_stand(p, old, block);
         self.track_wood(p, old, block);
         self.track_beehives(p, old, block);
+        self.track_creaking_heart(p, block);
         self.track_copper_golem_statue(p, block);
         self.track_utilities(p, old, block);
         self.track_spawner(p, old, block);
@@ -1331,6 +1340,7 @@ impl World {
         self.register_banners(pos, &data);
         self.register_campfires(pos, &data);
         self.register_beehives(pos, &data, modified);
+        self.register_creaking_hearts(pos, &data);
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
         let workers = &self.workers;
         let col = self.columns.entry(column_of(pos)).or_insert_with(|| {
@@ -1382,6 +1392,7 @@ impl World {
         self.unlight_sky_column(column_of(pos));
         self.unload_redstone_chunk(pos);
         self.unload_beehives(pos);
+        self.creaking_active.retain(|p| chunk::chunk_of(IVec3::from_array(*p)) != pos);
         let slot = self.chunks.remove(&pos).unwrap();
         self.entity_loads.remove(&pos);
         // A LAN replica's falling blocks come from the host's snapshots.

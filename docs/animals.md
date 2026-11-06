@@ -216,3 +216,18 @@ untrusting ocelots become eligible for distance despawning only after 2,400
 loaded ticks. Original spotted pelt, head and ringed tail render crouching
 and sprint poses. See the [record](verification/2026-11-04-v0.15-passive-mobs.md)
 for source details and remaining shared-engine/presentation differences.
+
+## Creaking hearts and resin (v0.15, partial)
+
+Implemented, unverified: creaking heart axes, activity and natural states,
+protector binding, watching/freezing, invulnerability, resin emission and
+construction recipes use the shared simulation, placement, mining and mob
+save/replication paths. Heart state and protector identity persist by dimension.
+Player-built hearts also spawn non-persistent protectors. Resin clumps reuse
+the multiface support, placement, waterlogging and shape paths; the masonry
+family includes the standard stairs/slab and four stored wall states.
+
+This slice does not yet add natural hearts, eyeblossoms or their generation.
+The survival acquisition loop therefore still needs its natural source.
+See [the source and verification record](verification/2026-11-05-v0.15-creaking.md)
+for exact coverage and differences from Java 26.3.

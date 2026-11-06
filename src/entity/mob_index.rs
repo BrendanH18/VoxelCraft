@@ -112,7 +112,11 @@ impl Separation {
                 half_width: shape.half_width,
                 height: shape.height,
                 pushes,
-                pushable: pushes && !asleep && !vehicle && m.riding.is_none(),
+                pushable: pushes
+                    && !asleep
+                    && !vehicle
+                    && m.riding.is_none()
+                    && m.creaking.as_ref().is_none_or(|s| s.can_move),
             });
         }
         self.next.resize(mobs.len(), NONE);

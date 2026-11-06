@@ -847,6 +847,7 @@ impl Item {
     pub const TURTLE_HELMET: Item = Item(1040);
     /// v0.15 crops track: soup; the seeds and root retain their older IDs.
     pub const BEETROOT_SOUP: Item = Item(1280);
+    pub const RESIN_BRICK: Item = Item(1368);
     pub const HONEYCOMB: Item = Item(1281);
     /// Explicit honey item reservations, including the block placing item.
     pub const HONEY_BLOCK: Item = Item(1072);
@@ -1024,6 +1025,9 @@ impl Item {
     }
 
     pub fn info(self) -> ItemInfo {
+        if self == Self::RESIN_BRICK {
+            return item("resin brick", Sprite::Lump([211, 99, 29]));
+        }
         if self == Self::HONEYCOMB {
             return item("honeycomb", Sprite::Lump([233, 163, 40]));
         }
@@ -1484,6 +1488,7 @@ impl Item {
             .chain([Self::SUSPICIOUS_STEW, Self::TADPOLE_BUCKET, Self::ARMADILLO_SCUTE, Self::BRUSH, Self::WOLF_ARMOR])
             .chain([Self::BEETROOT_SOUP, Self::HONEYCOMB])
             .chain([Self::TIPPED_ARROW, Self::LINGERING_POTION, Self::DRAGON_BREATH])
+            .chain([Self::RESIN_BRICK])
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1542,10 +1547,11 @@ fn splash_names() -> &'static [&'static str] {
 fn sprite_index(item: Item) -> Option<u16> {
     let materials = ITEMS.len() as u16;
     match item.0 {
-        1280..=1281 => Some(icon_count() as u16 - 5 + item.0 - 1280),
-        1330 => Some(icon_count() as u16 - 3),
-        1332 => Some(icon_count() as u16 - 2),
-        1333 => Some(icon_count() as u16 - 1),
+        1280..=1281 => Some(icon_count() as u16 - 6 + item.0 - 1280),
+        1330 => Some(icon_count() as u16 - 4),
+        1332 => Some(icon_count() as u16 - 3),
+        1333 => Some(icon_count() as u16 - 2),
+        1368 => Some(icon_count() as u16 - 1),
         1301..=1304 => Some(passive_icon_base() + item.0 - 1301),
         1040 => Some(turtle_icon()),
         1073 => Some(turtle_icon() + 2 + COPPER_ITEMS.len() as u16),
@@ -1641,7 +1647,7 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    passive_icon_base() as u32 + 4 + 5
+    passive_icon_base() as u32 + 4 + 6
 }
 
 const fn passive_icon_base() -> u16 {

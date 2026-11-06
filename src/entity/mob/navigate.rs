@@ -90,6 +90,7 @@ impl MobKind {
         }
         caps.cut_water_border = self != K::Frog;
         caps.step = match self {
+            K::Creaking => 1.0625,
             K::Camel => 1.5,
             K::Horse
             | K::Donkey

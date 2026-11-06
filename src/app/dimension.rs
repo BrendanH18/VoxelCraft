@@ -24,7 +24,7 @@ use crate::world::terrain::{Dimension, Generator, SEA_LEVEL};
 use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 19] = [
+pub(super) const DIMENSION_KEYS: [&str; 20] = [
     "furnaces",
     "chests",
     "items",
@@ -42,6 +42,7 @@ pub(super) const DIMENSION_KEYS: [&str; 19] = [
     "wood",
     "utilities",
     "beehives",
+    "creaking_hearts",
     "potion_clouds",
     "copper_golem_statues",
 ];
@@ -128,6 +129,7 @@ impl Game {
         props.insert("chests".to_string(), self.world.chests_to_string());
         props.insert("wood".to_string(), self.world.wood_to_string());
         props.insert("beehives".into(), self.world.beehives_to_string());
+        props.insert("creaking_hearts".into(), self.world.creaking_hearts_to_string());
         props.insert("copper_golem_statues".into(), self.world.copper_golem_statues_to_string());
         props.insert("spawners".to_string(), self.world.spawners_to_string());
         props.insert("utilities".to_string(), self.world.utilities_to_string());
@@ -164,6 +166,9 @@ impl Game {
         }
         if let Some(h) = props.get("beehives") {
             self.world.load_beehives(h);
+        }
+        if let Some(s) = props.get("creaking_hearts") {
+            self.world.load_creaking_hearts(s);
         }
         if let Some(s) = props.get("copper_golem_statues") {
             self.world.load_copper_golem_statues(s);

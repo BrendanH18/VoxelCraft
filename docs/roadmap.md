@@ -1554,6 +1554,11 @@ sounds and templates, IDs in the
   bound to and protected by its heart, damaged only through it), resin
   clumps, the resin block, resin bricks with stairs, slab, wall and
   chiseled bricks, and eyeblossoms that open at night and close by day.
+  Track A (2026-11-05): heart/protector binding and resin construction are
+  **Implemented, unverified (partial)**; eyeblossoms and generation remain
+  missing, so there is no new survival source of natural hearts yet. See
+  [the implementation record](verification/2026-11-05-v0.15-creaking.md) for
+  checks and the remaining AI, presentation and lifecycle differences.
 - **B. Allays.** Item gifting, liking and collection, note-block
   preference, jukebox dancing and amethyst duplication, and allays in the
   outpost allay cage.

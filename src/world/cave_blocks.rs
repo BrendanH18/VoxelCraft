@@ -61,6 +61,7 @@ pub const ALL_FACES: u8 = 63;
 pub enum Multiface {
     GlowLichen,
     SculkVein,
+    ResinClump,
 }
 
 impl Multiface {
@@ -68,6 +69,7 @@ impl Multiface {
         match self {
             Multiface::GlowLichen => LICHEN_FIRST,
             Multiface::SculkVein => VEIN_FIRST,
+            Multiface::ResinClump => super::creaking::CLUMP_FIRST,
         }
     }
 }
@@ -85,6 +87,8 @@ pub const fn multiface_of(b: Block) -> Option<(Multiface, u8, bool)> {
         (Multiface::GlowLichen, b.0 - LICHEN_FIRST)
     } else if b.0 >= VEIN_FIRST && b.0 < MULTIFACE_END {
         (Multiface::SculkVein, b.0 - VEIN_FIRST)
+    } else if b.0 >= super::creaking::CLUMP_FIRST && b.0 < super::creaking::CLUMP_FIRST + 128 {
+        (Multiface::ResinClump, b.0 - super::creaking::CLUMP_FIRST)
     } else {
         return None;
     };
@@ -163,7 +167,9 @@ pub const fn catalyst_bloom(b: Block) -> Option<bool> {
 /// Whether `id` is in this module's reservations (registered or not).
 #[inline]
 pub const fn owns(id: u16) -> bool {
-    (id >= LICHEN_FIRST && id < MULTIFACE_END) || (id >= SECOND_FIRST && id < SECOND_END)
+    (id >= super::creaking::CLUMP_FIRST && id < super::creaking::CLUMP_FIRST + 128)
+        || (id >= LICHEN_FIRST && id < MULTIFACE_END)
+        || (id >= SECOND_FIRST && id < SECOND_END)
 }
 
 /// Texture layers, offsets from one base so the integrator can repack them
@@ -211,6 +217,7 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
         return Some(match kind {
             Multiface::GlowLichen => ("glow lichen", Shaped, all(t::GLOW_LICHEN)),
             Multiface::SculkVein => ("sculk vein", Shaped, all(t::SCULK_VEIN)),
+            Multiface::ResinClump => ("resin clump", Shaped, all(super::creaking::TEX + 9)),
         });
     }
     if id == SCULK.0 {
@@ -316,6 +323,7 @@ pub fn mining(b: Block) -> Option<(f32, Option<ToolKind>, Option<u8>)> {
     Some(match multiface_of(b) {
         Some((Multiface::GlowLichen, ..)) => (0.2, Some(ToolKind::Axe), None),
         Some((Multiface::SculkVein, ..)) => (0.2, Some(ToolKind::Hoe), None),
+        Some((Multiface::ResinClump, ..)) => (0.0, None, None),
         None if b == SCULK => (0.2, Some(ToolKind::Hoe), None),
         None if sensor_of(b).is_some() => (1.5, Some(ToolKind::Hoe), None),
         None => (3.0, Some(ToolKind::Hoe), None),
@@ -326,6 +334,9 @@ pub fn mining(b: Block) -> Option<(f32, Option<ToolKind>, Option<u8>)> {
 /// Glow lichen needs shears ([`sheared`]); the sculk blocks need silk touch
 /// ([`silk_drop`]) and otherwise give experience ([`xp`]).
 pub fn drop(b: Block) -> Option<Option<Item>> {
+    if matches!(multiface_of(b), Some((Multiface::ResinClump, ..))) {
+        return Some(Some(super::creaking::RESIN_CLUMP.into()));
+    }
     registered(b.0).then_some(None)
 }
 

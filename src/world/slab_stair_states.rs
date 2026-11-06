@@ -40,7 +40,8 @@ pub const LEGACY_COUNT: usize = 39;
 /// [`super::copper`] (from [`super::copper::STAIR_FAMILY`]) and
 /// [`colour_blocks`] (from [`COLOUR_FIRST`]).
 pub const WAXED_FIRST: usize = COLOUR_FIRST + colour_blocks::SHAPE_FAMILIES;
-pub const FAMILY_COUNT: usize = WAXED_FIRST + super::copper::STAIR_FAMILIES;
+pub const RESIN_FAMILY: usize = WAXED_FIRST + super::copper::STAIR_FAMILIES;
+pub const FAMILY_COUNT: usize = RESIN_FAMILY + 1;
 /// The first wool and concrete family, after copper's.
 pub const COLOUR_FIRST: usize = super::copper::STAIR_FAMILY + super::copper::STAIR_FAMILIES;
 /// Ids per appended copper family (see the module docs).
@@ -108,6 +109,7 @@ pub const FAMILIES: [Family; FAMILY_COUNT] = {
             }
             _ if i < super::copper::STAIR_FAMILY => super::stone_blocks::SHAPES[i - LEGACY_COUNT],
             _ if i < COLOUR_FIRST => super::copper::stair_family(i - super::copper::STAIR_FAMILY),
+            RESIN_FAMILY => super::creaking::SHAPES,
             _ if i >= WAXED_FIRST => super::copper::waxed_stair_family(i - WAXED_FIRST),
             _ => {
                 let index = i - COLOUR_FIRST;
@@ -216,11 +218,16 @@ const fn legacy_slab(id: u16) -> Option<u8> {
 /// The appended copper family whose `stride` ids from `first(family)` hold `id`,
 /// and `id`'s local index in it.
 const fn extended(id: u16, slab: bool) -> Option<(u8, u16)> {
+    let first = if slab { super::creaking::SLAB.0 } else { super::creaking::STAIRS.0 };
+    let stride = if slab { EXTENDED_SLABS } else { EXTENDED_STAIRS };
+    if id >= first && id < first + stride {
+        return Some((RESIN_FAMILY as u8, id - first));
+    }
     if id < EXTENDED_BOUNDS.0 || id >= EXTENDED_BOUNDS.1 {
         return None;
     }
     let mut f = super::copper::STAIR_FAMILY;
-    while f < FAMILY_COUNT {
+    while f < RESIN_FAMILY {
         if f == COLOUR_FIRST {
             f = WAXED_FIRST;
             continue;
@@ -239,7 +246,7 @@ const fn extended(id: u16, slab: bool) -> Option<(u8, u16)> {
 const EXTENDED_BOUNDS: (u16, u16) = {
     let (mut lo, mut hi) = (u16::MAX, 0);
     let mut f = super::copper::STAIR_FAMILY;
-    while f < FAMILY_COUNT {
+    while f < RESIN_FAMILY {
         if f == COLOUR_FIRST {
             f = WAXED_FIRST;
             continue;
@@ -461,7 +468,11 @@ pub const fn registry(id: u16) -> Option<(u16, RenderKind)> {
 /// of the v0.12 families' states.
 #[inline(always)]
 pub const fn owns(id: u16) -> bool {
-    (id >= STAIRS_ORIGIN && id <= RESERVED_LAST) || super::stone_blocks::owns_shape(id) || colour_blocks::owns_shape(id)
+    (id >= STAIRS_ORIGIN && id <= RESERVED_LAST)
+        || (id >= super::creaking::STAIRS.0 && id < super::creaking::STAIRS.0 + EXTENDED_STAIRS)
+        || (id >= super::creaking::SLAB.0 && id < super::creaking::SLAB.0 + EXTENDED_SLABS)
+        || super::stone_blocks::owns_shape(id)
+        || colour_blocks::owns_shape(id)
 }
 
 /// `Block::shaped` for this module's ids.
@@ -487,7 +498,7 @@ pub const fn uses_shape_for_light(id: u16) -> bool {
 /// The block a new state's item is (the family's existing stairs or slab);
 /// `None` for existing ids and other blocks.
 pub fn item_block(id: u16) -> Option<Block> {
-    if !(STAIRS_ORIGIN..END).contains(&id) && !super::stone_blocks::owns_shape(id) && !colour_blocks::owns_shape(id) {
+    if !owns(id) {
         return None;
     }
     if let Some(s) = stairs(Block(id)) {

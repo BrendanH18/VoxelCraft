@@ -651,6 +651,27 @@ New `MobKind`s append after `CopperGolem` in the order Creaking, Allay,
 Sniffer, taking LAN indices 69, 70 and 71; existing names and indices
 keep their meanings. The unassigned reserve becomes 15488–16383.
 
+Track A allocation (2026-11-05, implemented, unverified, partial):
+
+| Block states | Meaning |
+| --- | --- |
+| 14592–14609 | Creaking heart: `14592 + 6*axis + 2*activity + natural`; axes Y/X/Z, activities uprooted/dormant/awake |
+| 14657–14719, 14721–14783 | Resin clump: `14656 + 64*waterlogged + faces`, faces 1–63 in `cave_blocks::DIRS` order; zero-face slots 14656/14720 stay unregistered |
+| 14784–14786 | Resin block, resin bricks, chiseled resin bricks |
+| 14792–14871 | Resin brick stairs: 80 states in the standard `slab_stair_states` local order |
+| 14872–14876 | Resin brick slab: bottom dry/wet, top dry/wet, double |
+| 14880–14883 | Resin brick wall: UP dry/wet, no-UP dry/wet; sides inferred as for existing walls |
+
+Item **1368** is the resin brick. Original procedural block layers
+**3360–3372**, offsets from `world::creaking::TEX`, contain three layers
+per heart activity (side, end, turned side), resin clump, resin block,
+resin bricks and chiseled resin bricks. All remaining Track A IDs stay
+reserved and unregistered. `MobKind::Creaking` appends at LAN index **69**,
+saved as `creaking`; its component stores the heart position and animation
+state, and the dimension's `creaking_hearts` property stores protector UIDs.
+Unloaded hearts remain saved but only the loaded active set ticks.
+See [Track A evidence and unfinished work](verification/2026-11-05-v0.15-creaking.md).
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

@@ -146,6 +146,7 @@ fn attachments_rest_on_real_support() {
                     assert!(col.height - p.y >= LICHEN_DEPTH, "lichen at {p} under {}", col.height);
                 }
                 cb::Multiface::SculkVein => veins += 1,
+                cb::Multiface::ResinClump => panic!("resin is not an underground feature"),
             }
             assert_eq!(wet, area.get(p).is_some_and(|b| b.is_waterlogged()));
         }

@@ -366,7 +366,7 @@ pub mod tex {
     pub const BUBBLE_BASE: u16 = 2864;
     pub const BUBBLE_UP: u16 = BUBBLE_BASE;
     pub const BUBBLE_DOWN: u16 = BUBBLE_BASE + 1;
-    pub const COUNT: u32 = super::super::copper_golem_statue::TEXTURE_END as u32; // Through v0.15 statue layers 3328–3339; unused layers stay reserved.
+    pub const COUNT: u32 = super::super::creaking::TEX_END as u32; // Through Track A layers 3360–3372; unused layers stay reserved.
     const _: () = assert!(super::super::biome_plants::TEX_END <= BUBBLE_BASE);
     const _: () = assert!(super::super::utilities::TEX_END <= super::super::cave_blocks::TEX);
     const _: () = assert!(super::super::cave_blocks::TEX_END <= super::super::biome_plants::TEX);
@@ -908,6 +908,9 @@ impl Block {
 
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
+        if super::creaking::wall_local(self.0).is_some() {
+            return Some(Shaped::Wall);
+        }
         if super::copper_golem_statue::owns(self.0) {
             return Some(Shaped::Custom);
         }
@@ -1265,6 +1268,12 @@ impl Block {
 
     /// This block without its orientation (itself if it has none).
     pub fn base(self) -> Block {
+        if super::creaking::wall_local(self.0).is_some() {
+            return super::creaking::WALL;
+        }
+        if super::creaking::heart(self).is_some() {
+            return super::creaking::HEART;
+        }
         if let Some(s) = super::copper_golem_statue::decode(self) {
             return super::copper_golem_statue::item_block(s.stage, s.waxed);
         }
@@ -1574,6 +1583,9 @@ impl Block {
 
     /// What breaking this block yields in survival.
     pub fn drop(self) -> Option<Item> {
+        if super::creaking::heart(self).is_some() {
+            return Some(super::creaking::RESIN_CLUMP.into());
+        }
         if super::copper_golem_statue::owns(self.0) {
             return Some(Item::from_block(self.base()));
         }
@@ -1714,6 +1726,18 @@ impl Block {
     /// held item can harvest the block and 5x when it can't, divided by the
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
     pub fn hardness(self) -> f32 {
+        if super::creaking::heart(self).is_some() {
+            return 10.0;
+        }
+        if self == super::creaking::RESIN_BLOCK {
+            return 0.0;
+        }
+        if super::creaking::owns(self.0)
+            && super::creaking::heart(self).is_none()
+            && self != super::creaking::RESIN_BLOCK
+        {
+            return 1.5;
+        }
         if super::copper_golem_statue::owns(self.0) {
             return 3.0;
         }
@@ -1928,6 +1952,15 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
+        if super::creaking::heart(self).is_some() {
+            return Some(ToolKind::Axe);
+        }
+        if super::creaking::owns(self.0)
+            && super::creaking::heart(self).is_none()
+            && self != super::creaking::RESIN_BLOCK
+        {
+            return Some(ToolKind::Pickaxe);
+        }
         if super::copper_golem_statue::owns(self.0) {
             return Some(ToolKind::Pickaxe);
         }
@@ -2102,6 +2135,12 @@ impl Block {
     /// Pickaxe harvest level needed for any drop (0 wood or gold, 1 stone,
     /// 2 iron, 3 diamond); `None` if a bare hand will do.
     pub fn harvest_level(self) -> Option<u8> {
+        if super::creaking::owns(self.0)
+            && super::creaking::heart(self).is_none()
+            && self != super::creaking::RESIN_BLOCK
+        {
+            return Some(0);
+        }
         if let Some((.., level)) = super::cave_blocks::mining(self) {
             return level;
         }
@@ -2262,6 +2301,7 @@ impl Block {
             .chain(super::colour_blocks::palette_ids())
             .chain(super::utilities::palette_ids())
             .chain(super::biome_plants::palette_ids())
+            .chain(super::creaking::palette_ids())
             .chain(super::cave_blocks::palette_ids())
             .chain(super::frog_blocks::palette_ids())
             .map(Block)
@@ -2884,6 +2924,7 @@ pub(super) const fn make(id: u16) -> BlockInfo {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },
+        id if super::creaking::owns(id) => super::creaking::registry(id),
         id if super::cave_blocks::owns(id) => match super::cave_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
