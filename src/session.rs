@@ -4,6 +4,7 @@
 //! Camera, hand animation and screen navigation belong to their adapters.
 mod archaeology;
 pub use archaeology::Stroke;
+mod allay;
 pub mod combat;
 pub mod consumption;
 mod copper_golem;

@@ -12,6 +12,7 @@
 //! Rendering: [`model`] turns mobs, arrows and smoke into camera-relative
 //! box-model vertices.
 
+pub mod allay;
 pub mod animals;
 pub mod aquatic;
 pub mod armor;
@@ -150,6 +151,7 @@ pub enum MobSound {
     Sniffer(sniffer::Cue),
     /// The dug block's hit sound while a sniffer digs (`emitDiggingParticles`).
     SnifferDigHit(crate::world::block::Block),
+    Allay(allay::Sound),
 }
 
 /// Something an entity did that the game needs to react to.
@@ -855,7 +857,7 @@ pub struct Entities {
     /// `ServerLevel.getRespawnData`); natural spawns keep 24 blocks clear of
     /// its block centre. Set by the world before each update.
     pub world_spawn: Option<IVec3>,
-    /// The mobGriefing gamerule, shared by villager and piglin item pickup.
+    /// The mobGriefing gamerule, shared by villager, piglin and allay item pickup.
     pub villager_griefing: bool,
     /// Seconds until another iron golem may be summoned.
     /// Seconds until the next gossip summon roll.
@@ -999,7 +1001,8 @@ impl Entities {
     pub fn spawn(&mut self, kind: MobKind, pos: DVec3) {
         let yaw = self.rng.range(0.0, TAU);
         let mut mob = Mob::new(kind, pos, yaw);
-        mob.persistent = kind.has_animal_state() || matches!(kind, MobKind::Tadpole | MobKind::CopperGolem);
+        mob.persistent =
+            kind.has_animal_state() || matches!(kind, MobKind::Tadpole | MobKind::CopperGolem | MobKind::Allay);
         if let Some(s) = &mut mob.mount {
             **s = mounts::State::new(kind, &mut self.rng);
             mob.health = s.max_health;
@@ -1143,6 +1146,7 @@ impl Entities {
             if credit_player {
                 self.drop_loot_with_fire(kind, pos, 0, burning, true);
             } else {
+                self.allay_equipment_drops(kind, pos);
                 self.copper_equipment_drops(kind, pos);
             }
         }
@@ -1194,6 +1198,7 @@ impl Entities {
     }
 
     fn drop_loot_with_fire(&mut self, kind: MobKind, pos: DVec3, looting: u8, burning: bool, player_kill: bool) {
+        self.allay_equipment_drops(kind, pos);
         self.copper_equipment_drops(kind, pos);
         if !self.mob_loot {
             return;
@@ -1844,6 +1849,9 @@ impl Entities {
         owner: PlayerId,
     ) -> Option<MobKind> {
         let mob = self.mobs.get_mut(index)?;
+        if mob.allay.as_ref().is_some_and(|s| s.player == Some(owner)) {
+            return None;
+        }
         let (kind, pos) = (mob.kind, mob.pos);
         mob.player_hit();
         if kind == MobKind::IronGolem {
@@ -1915,6 +1923,9 @@ impl Entities {
         use crate::enchant::Enchantment;
         let PlayerMelee { held, bonus, strength, critical, sprint_knockback, origin, yaw, sweep, owner } = hit;
         let target = self.mobs.get(index).filter(|m| m.alive())?;
+        if target.allay.as_ref().is_some_and(|s| s.player == Some(owner)) {
+            return None;
+        }
         let spiked = matches!(target.kind, MobKind::Guardian | MobKind::ElderGuardian)
             && target.aquatic.as_ref().is_some_and(|a| a.beam.is_some() || target.vel.length_squared() < 0.1);
         let (kind, pos, shape) = (target.kind, target.pos, target.shape());
@@ -1976,6 +1987,7 @@ impl Entities {
                 .filter(|&i| {
                     let m = &self.mobs[i];
                     i != index
+                        && m.allay.as_ref().is_none_or(|s| s.player != Some(owner))
                         && m.alive()
                         && in_sweep_box(target_box, m.aabb())
                         && m.pos.distance_squared(origin) < SWEEP_RANGE_SQR

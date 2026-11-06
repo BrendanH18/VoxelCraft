@@ -51,6 +51,7 @@ pub enum Voice {
     Ocelot,
     Sniffer,
     Creaking,
+    Allay,
 }
 
 /// What kind of sound a voice makes.
@@ -63,7 +64,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 39] = [
+    pub const ALL: [Voice; 40] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -103,6 +104,7 @@ impl Voice {
         Voice::Ocelot,
         Voice::Sniffer,
         Voice::Creaking,
+        Voice::Allay,
     ];
 
     /// The category the creature plays in: `Monster`, `Ghast`, `Hoglin` and
@@ -125,6 +127,7 @@ impl Voice {
             | Voice::Guardian
             | Voice::Pillager => SoundSource::Hostile,
             Voice::Sniffer
+            | Voice::Allay
             | Voice::Bat
             | Voice::Frog
             | Voice::PolarBear
@@ -164,6 +167,7 @@ impl Voice {
             Voice::Ocelot => "ocelot",
             Voice::Sniffer => "sniffer",
             Voice::Creaking => "creaking",
+            Voice::Allay => "allay",
             Voice::Cow => "cow",
             Voice::Sheep => "sheep",
             Voice::Chicken => "chicken",
@@ -273,6 +277,7 @@ const FLAT: &dyn Fn(f32) -> f32 = &|_| 1.0;
 
 pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
     match voice {
+        Voice::Allay => allay(call),
         Voice::Bee => bee(call, rng),
         Voice::Bat => bat(call, rng),
         Voice::Frog => frog(call, rng),
@@ -1040,4 +1045,23 @@ fn creaking(call: Call, rng: &mut Rng) -> Vec<f32> {
         add_mode(&mut out, 0, Mode { freq: f, amp: 0.24, tau: duration * 0.6, glide: 0.6, glide_tau: duration });
     }
     dsp::finish(out, 0.65)
+}
+
+// Original airy bell voice, synthesized without sampled game assets.
+fn allay(call: Call) -> Vec<f32> {
+    let (secs, base, end) = match call {
+        Call::Ambient => (0.65, 780., 1130.),
+        Call::Hurt => (0.3, 1370., 620.),
+        Call::Death => (0.9, 960., 240.),
+    };
+    let mut phase = 0.;
+    (0..samples(secs))
+        .map(|i| {
+            let t = i as f32 / RATE;
+            let u = t / secs;
+            phase += std::f32::consts::TAU * (base + (end - base) * u) / RATE;
+            (phase.sin() * 0.45 + (phase * 1.503).sin() * 0.2 + (phase * 2.01).sin() * 0.1)
+                * (std::f32::consts::PI * u).sin().powi(2)
+        })
+        .collect()
 }

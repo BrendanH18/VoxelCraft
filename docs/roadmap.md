@@ -1561,7 +1561,14 @@ sounds and templates, IDs in the
   checks and the remaining brain, presentation and lifecycle differences.
 - **B. Allays.** Item gifting, liking and collection, note-block
   preference, jukebox dancing and amethyst duplication, and allays in the
-  outpost allay cage.
+  outpost allay cage. *Implemented, unverified (2026-11-05):* flying allays,
+  shared gifting/return and Java-equality collection/delivery, saved
+  player/note memories, note vibrations and two persistent generation-3
+  cage residents. Original model, procedural skin and synthesized sounds;
+  summon and LAN index 70. Dancing state and duplication callback are
+  present, but survival dancing/duplication remains a gap because this
+  checkout has no jukebox/music-disc playback. Mansion allays remain a gap.
+  See the [sources, checks and differences](verification/2026-11-05-v0.15-allays.md).
 - **C. Sniffers.** Sniffer eggs and hatching (faster on moss), sniffing and
   digging up torchflower seeds and pitcher pods, breeding, and the
   torchflower and pitcher crops, plants and recipes.

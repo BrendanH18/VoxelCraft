@@ -87,7 +87,8 @@ Use `--wait` to let the scene simulate before capture. Scripted runs
 (`--screenshot`, `--bench-render`) ignore saved options. Saves and logs normally
 use the [per-user data folder](releases.md#player-data-and-old-saves); add
 `--data-dir target/screenshots` to isolate a scripted run. In `--place` and
-`--spawn`, `~` for the y coordinate means the terrain surface; `--place` also
+`--spawn`, `~` for the y coordinate means the terrain surface
+(`--spawn allay,x,y,z,item` also gives the allay an item to hold); `--place` also
 takes a raw block id instead of a name, for oriented states such as stairs
 facing east. Placing the lower half of a double plant (tall flowers, tall
 seagrass, pitcher plants and mature pitcher crops) also places its upper half,

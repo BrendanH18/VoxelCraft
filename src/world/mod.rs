@@ -341,6 +341,7 @@ pub struct World {
     pub primed_tnt: Vec<(IVec3, bool)>,
     /// Note blocks that played this tick: position, pitch 0..=24, instrument.
     pub notes: Vec<(IVec3, u8, u8)>,
+    pub(crate) allay_notes: Vec<IVec3>,
     /// Tripwire hook clicks and attach sounds since the last frame.
     pub trip_sounds: Vec<(IVec3, gadgets::TripSound)>,
     /// Freshly placed carved pumpkins and jack o'lanterns, checked for golem patterns by the game.
@@ -611,6 +612,7 @@ impl World {
             brews_done: Vec::new(),
             primed_tnt: Vec::new(),
             notes: Vec::new(),
+            allay_notes: Vec::new(),
             trip_sounds: Vec::new(),
             golem_heads: Vec::new(),
             hatched_turtles: Vec::new(),

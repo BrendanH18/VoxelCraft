@@ -46,6 +46,9 @@ impl Mob {
         if let Some(s) = &self.creaking {
             v["creaking"] = s.save();
         }
+        if let Some(s) = &self.allay {
+            v["allay"] = s.save();
+        }
         if let Some(s) = &self.copper_golem {
             v["copper_golem"] = s.look();
         }
@@ -136,6 +139,9 @@ impl Mob {
         }
         if let Some(s) = &mut self.creaking {
             s.load(&v["creaking"]);
+        }
+        if let Some(s) = &mut self.allay {
+            **s = super::allay::State::load(&v["allay"]);
         }
         if let Some(s) = &mut self.copper_golem {
             s.load_look(&v["copper_golem"]);

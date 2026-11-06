@@ -894,6 +894,11 @@ impl Entities {
                     self.spawn(kind, p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
                     let m = self.mobs.last_mut().unwrap();
                     m.persistent = kind != MobKind::Pillager;
+                    if let Some(s) = &mut m.allay {
+                        // Pinned cage NBT: Health 10 and movement_speed .3.
+                        m.health = 10.;
+                        s.ground_speed = Some(f64::from(0.3_f32));
+                    }
                     if kind == MobKind::Cat {
                         m.wool_color = crate::color::DyeColor::Black;
                         m.animal.as_mut().unwrap().variant = 0;

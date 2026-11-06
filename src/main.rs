@@ -88,6 +88,8 @@ pub struct Args {
     /// Mobs to spawn once the world has loaded (y = i32::MIN: surface).
     /// The optional armor material forces a full set on a zombie or skeleton.
     pub spawn: Vec<(entity::MobKind, glam::IVec3, Option<entity::armor::Equipped>)>,
+    /// `--spawn allay,x,y,z,item`: the item a spawned allay holds (by index).
+    pub spawn_held: Vec<(usize, item::Item)>,
     /// Seconds to keep running after loading before `--screenshot`.
     pub wait: f64,
     /// x,y,z,yaw_deg,pitch_deg
@@ -198,7 +200,8 @@ voxelcraft [options]
                     zombie or magma_cube; y may be ~
                     for the terrain surface, e.g. zombie,4,~,10). material
                     (leather, chainmail, iron, gold, diamond, netherite) and
-                    glint equip a zombie or skeleton
+                    glint equip a zombie or skeleton; allay,x,y,z,item gives
+                    an allay an item to hold
   --wait <secs>     with --screenshot: keep simulating this long first
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
   --weather <w>     start with clear skies or rain (clear, rain)
@@ -267,6 +270,7 @@ fn parse_args() -> Result<Args, String> {
         decor: Vec::new(),
         brush: Vec::new(),
         spawn: Vec::new(),
+        spawn_held: Vec::new(),
         wait: 0.0,
         pose: None,
         health: None,
@@ -523,7 +527,12 @@ fn parse_args() -> Result<Args, String> {
                     .iter()
                     .map(|s| if *s == "~" { Ok(i32::MIN) } else { s.parse().map_err(|_| bad()) })
                     .collect::<Result<_, _>>()?;
-                let armor = if parts.len() >= 5 {
+                let armor = if parts.len() == 5 && kind == entity::MobKind::Allay {
+                    let held =
+                        item::Item::from_name(parts[4]).ok_or_else(|| format!("--spawn: unknown item {}", parts[4]))?;
+                    args.spawn_held.push((args.spawn.len(), held));
+                    None
+                } else if parts.len() >= 5 {
                     if !(kind.is_zombie() || kind == entity::MobKind::Skeleton) {
                         return Err("--spawn armor is only for zombies and skeletons".into());
                     }
@@ -646,6 +655,7 @@ impl Args {
         self.brush.clear();
         self.open_block = None;
         self.spawn.clear();
+        self.spawn_held.clear();
         self.pose = None;
         self.health = None;
         self.air = None;
