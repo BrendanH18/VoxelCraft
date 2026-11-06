@@ -151,6 +151,9 @@ mod tests {
         assert_eq!(cli.session.inventory.get(0).unwrap().damage, 1);
         assert_eq!(w.drops.len(), 1);
         assert_eq!(cli.session.vitals.hunger.food, 20.);
+        cli.execute(Command::Run(Default::default(), 1, false), &mut w, &mut e, &[]).unwrap();
+        assert!(!cli.session.brushing(), "a replacement movement/wait command releases the brush");
+        assert!(!cli.session.using_item(), "cancelled brushing must not keep movement slowed");
     }
     #[test]
     fn brush_in_air_passes_to_offhand_shield() {

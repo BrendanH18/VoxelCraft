@@ -249,6 +249,7 @@ impl Agent {
                 self.remaining = n;
                 self.mining = mine;
                 self.eating = false;
+                self.session.cancel_brushing();
                 self.session.cancel_consumption();
                 self.session.cancel_mining();
             }
@@ -258,6 +259,7 @@ impl Agent {
                 }
                 self.bite = 0;
                 self.eating = false;
+                self.session.cancel_brushing();
             }
             Command::Block(duration) => {
                 if self.session.shield_cooldown() > 0 {
@@ -292,6 +294,7 @@ impl Agent {
                 if self.cooldown > 0.0 {
                     return Err("action cooling down".into());
                 }
+                self.session.cancel_brushing();
                 let Some(shot) = self.session.start_draw(self.selected, world, entities) else {
                     return Err("hold a bow or crossbow with an arrow, away from a block that takes use".into());
                 };
