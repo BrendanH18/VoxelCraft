@@ -377,13 +377,6 @@ impl MobKind {
         }
     }
 
-    pub fn lan_index(self) -> usize {
-        if self == Self::Allay { 70 } else { Self::ALL.iter().position(|k| *k == self).unwrap() }
-    }
-    pub fn from_lan_index(index: usize) -> Option<Self> {
-        if index == 70 { Some(Self::Allay) } else { Self::ALL.get(index).copied().filter(|k| *k != Self::Allay) }
-    }
-
     /// Looks a mob up by name (spaces or underscores).
     pub fn from_name(name: &str) -> Option<MobKind> {
         let name = name.strip_prefix("minecraft:").unwrap_or(name).replace('_', " ");
