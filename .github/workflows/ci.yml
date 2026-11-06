@@ -12,9 +12,9 @@ env:
   CARGO_TERM_COLOR: always
 
 # Jobs run on Namespace runners (https://namespace.so): Linux on the owner's
-# `gitrunner` profile (amd64, with a cache volume), macOS and Windows on
-# inline labels with a per-platform cache volume. `nscloud-cache-action`
-# keeps the cargo registry and build output on those volumes.
+# `gitrunner` profile (amd64, with a cache volume) and macOS on an inline
+# label with a cache volume, which `nscloud-cache-action` fills. Windows
+# stays on GitHub's runner because the Namespace plan has no Windows.
 
 jobs:
   fmt:
@@ -39,7 +39,8 @@ jobs:
           - os: macos
             runner: [nscloud-macos-tahoe-arm64-6x14-with-cache, nscloud-cache-tag-voxelcraft-ci-macos]
           - os: windows
-            runner: [nscloud-windows-2022-amd64-8x16-with-cache, nscloud-cache-tag-voxelcraft-ci-windows]
+            # The Namespace plan doesn't allow Windows instances (checked 2026-11-06).
+            runner: windows-latest
     steps:
       - uses: actions/checkout@v4
       - name: Install Linux audio/windowing headers
@@ -48,9 +49,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - uses: namespacelabs/nscloud-cache-action@v1
+      - if: runner.os != 'Windows'
+        uses: namespacelabs/nscloud-cache-action@v1
         with:
           cache: rust
+      - if: runner.os == 'Windows'
+        uses: Swatinem/rust-cache@v2
       - run: cargo clippy --release --all-targets -- -D warnings
       - run: cargo test --release
       - name: Headless generation/meshing benchmark

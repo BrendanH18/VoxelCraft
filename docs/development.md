@@ -47,9 +47,10 @@ The instance runs Linux, like the Linux CI job: it checks the code and
 tests but not macOS- or Windows-only code, the GPU, or performance. Run
 the game, screenshots, scripted scenes and benchmarks locally; frame-time
 gates are measured on the reference M5 MacBook Pro. CI runs the same checks
-on Namespace runners for every pull request: Linux on the owner's
-`namespace-profile-gitrunner` profile, macOS and Windows on inline
-`nscloud-*` labels with cache volumes. Timing on 8 vCPU with dependencies cached (2026-11-05): clippy about
+on every pull request: Linux on the owner's `namespace-profile-gitrunner`
+Namespace profile, macOS on an inline `nscloud-*` label with a cache volume,
+and Windows on GitHub's `windows-latest`, since the Namespace plan doesn't
+allow Windows instances. Timing on 8 vCPU with dependencies cached (2026-11-05): clippy about
 1 minute, compiling the release test binaries about 8 minutes, the tests
 under a minute, so a default run takes about 11 minutes and `--full`
 about 21. That is slower than the M5, but runs don't share a machine or
