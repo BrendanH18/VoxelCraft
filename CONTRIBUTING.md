@@ -60,7 +60,11 @@ cargo fmt --check
 cargo clippy --release --all-targets -- -D warnings
 cargo test --release
 cargo run --release -- --bench --rd 4
+python3 tools/validate_assets.py --executable target/release/voxelcraft
+python3 -m unittest tools/test_benchmark_scenes.py
 ```
+
+On Windows, pass `target/release/voxelcraft.exe` to `--executable`.
 
 Use `cargo fmt` to apply formatting. The headless benchmark checks generation and
 meshing without opening a window. For rendering or performance changes, also

@@ -14,6 +14,14 @@ cargo clippy --release --all-targets -- -D warnings
 cargo test --release
 ```
 
+The Linux CI job also checks the release binary's embedded assets with
+`python3 tools/validate_assets.py --executable target/release/voxelcraft` and
+runs the benchmark-gate tool tests. CI runs Cargo with `--locked`, so commit
+`Cargo.lock` changes with the code that needs them. The **Security** workflow
+runs `cargo audit` weekly and on pull requests that change `Cargo.toml`,
+`Cargo.lock` or `.github/workflows/security.yml`. Dependabot proposes weekly
+crate and GitHub Actions updates.
+
 ## Remote checks
 
 `scripts/remote-check.sh` runs the checks on a [Namespace](https://namespace.so)
