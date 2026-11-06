@@ -91,6 +91,9 @@ use the [per-user data folder](releases.md#player-data-and-old-saves); add
 takes a raw block id instead of a name, for oriented states such as stairs
 facing east. `--sign x,y,z,line|line|line|line` writes the front text of a
 sign placed there (y must be a number).
+`--brush x,y,z,face,strokes` brushes the suspicious block at x,y,z from
+that face (1–9 strokes, adding ocean-ruin loot if it has none) and holds
+its dust stage for the capture.
 `--decor x,y,z,face,item[,held]` hangs an item frame or painting
 on, or stands an armor stand against, a face (`up`, `down`, `north`, `south`,
 `east`, `west`) of the block at x,y,z, as the item would; a frame holds `held`

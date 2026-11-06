@@ -215,6 +215,8 @@ impl World {
     }
     /// Scripted scenes (`--brush`): `strokes` accepted strokes from `face`,
     /// as if ten ticks apart. A block without loot gets its ocean-ruin table.
+    /// The dust stage is held (no 40-tick reset) so a capture taken after
+    /// the scene settles still shows it.
     pub fn brush_scripted(&mut self, p: IVec3, face: IVec3, strokes: u8) -> bool {
         let Some((gravel, _)) = self.get_block(p).and_then(decode) else {
             return false;
@@ -229,8 +231,11 @@ impl World {
                 b.cooldown = 0;
             }
             if self.brush_block(p, face) {
-                break;
+                return true;
             }
+        }
+        if let Some(b) = self.archaeology.get_mut(&p) {
+            b.reset_at = u64::MAX;
         }
         true
     }
@@ -417,6 +422,20 @@ mod tests {
             assert_eq!(b.drop(), None);
             assert_eq!(crate::mining::silk_drop(b), None);
         }
+    }
+    #[test]
+    fn scripted_brushing_holds_its_dust_stage_and_resolves_loot() {
+        let mut w = world();
+        w.set_block(AT + IVec3::X * 2 - IVec3::Y, Block::STONE);
+        let bare = AT + IVec3::X * 2;
+        w.set_block(bare, GRAVEL);
+        assert!(w.brush_scripted(bare, IVec3::Z, 6));
+        assert!(!w.brush_scripted(AT - IVec3::Y, IVec3::Z, 1), "only suspicious blocks");
+        for _ in 0..100 {
+            tick(&mut w);
+        }
+        assert_eq!(decode(w.get_block(bare).unwrap()), Some((true, 3)));
+        assert_eq!(w.emerging_items().filter(|(p, ..)| *p == bare).count(), 1, "cold-table reward");
     }
     struct Choice(u32);
     impl Random for Choice {

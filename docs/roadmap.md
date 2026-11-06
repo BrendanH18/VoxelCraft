@@ -1570,8 +1570,10 @@ sounds and templates, IDs in the
   Track D status (2026-11-05): **Implemented, unverified** suspicious blocks,
   shared brushing, seven plain sherds and generation-3 original-template
   warm/cold clustered ruins with chest loot and drowned. The sniffer-egg
-  Java-name hook awaits Track C; brush presentation and full reference
-  random-stream/layout fidelity remain gaps. See [evidence](verification/2026-11-05-v0.15-ocean-ruins.md).
+  Java-name hook awaits Track C. Brushing shows Java's dust particles and
+  emerging reward (2026-11-06); dedicated brush sounds, LAN replication of
+  the emerging reward and full reference random-stream/layout fidelity
+  remain gaps. See [evidence](verification/2026-11-05-v0.15-ocean-ruins.md).
 
 
 New generation (creaking hearts, eyeblossoms, ocean ruins, outpost

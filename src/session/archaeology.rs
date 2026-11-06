@@ -134,6 +134,14 @@ mod tests {
                 w.maps.game_ticks = tick;
                 let stroke = s.tick_brushing(0, true, &mut w);
                 assert_eq!(stroke.is_some(), tick % 10 == 5);
+                if tick == 5 {
+                    let dust = w.particles.drain().filter(|r| matches!(r, crate::particles::Request::Hit { .. }));
+                    assert_eq!(dust.count(), DUST_PARTICLES, "each stroke dusts the brushed face");
+                }
+                if tick == 95 {
+                    assert_eq!(stroke.map(|s| (s.pos, s.completed)), Some((at, true)));
+                    assert!(w.particles.drain().any(|r| matches!(r, crate::particles::Request::Break { .. })));
+                }
                 if tick < 95 {
                     assert!(crate::world::archaeology::decode(w.get_block(at).unwrap()).is_some());
                 }
