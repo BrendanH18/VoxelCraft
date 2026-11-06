@@ -30,7 +30,8 @@ fn identity_and_payload_round_trip() {
     assert_eq!(replica.allay, e.mobs[0].allay);
     assert_eq!(MobKind::Allay.lan_index(), 70);
     assert_eq!(MobKind::from_lan_index(70), Some(MobKind::Allay));
-    assert_eq!(MobKind::from_lan_index(69), None);
+    assert_eq!(MobKind::from_lan_index(69), Some(MobKind::Creaking));
+    assert_eq!(MobKind::from_lan_index(71), Some(MobKind::Sniffer));
     assert_eq!(MobKind::from_lan_index(68), Some(MobKind::CopperGolem));
     assert_eq!(MobKind::from_name("minecraft:allay"), Some(MobKind::Allay));
 }
