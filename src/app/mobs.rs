@@ -18,6 +18,8 @@ pub(super) struct Mobs {
     /// until it's released.
     /// `--spawn` requests, applied once the world has loaded.
     pending: Vec<(MobKind, IVec3, Option<crate::entity::armor::Equipped>)>,
+    /// `--spawn allay,x,y,z,item`: liked items by index into `pending`.
+    held: Vec<(usize, crate::item::Item)>,
     /// `--wait`: seconds to keep simulating before a `--screenshot`.
     wait: f64,
     wait_start: Option<Instant>,
@@ -25,7 +27,11 @@ pub(super) struct Mobs {
 
 impl Mobs {
     pub fn new(seed: u64, spawn: Vec<(MobKind, IVec3, Option<crate::entity::armor::Equipped>)>, wait: f64) -> Self {
-        Self { entities: Entities::new(seed), pending: spawn, wait, wait_start: None }
+        Self { entities: Entities::new(seed), pending: spawn, held: Vec::new(), wait, wait_start: None }
+    }
+
+    pub fn holding(self, held: Vec<(usize, crate::item::Item)>) -> Self {
+        Self { held, ..self }
     }
 
     /// For `--screenshot`: true once `--wait` seconds have passed since the
@@ -82,7 +88,8 @@ impl Game {
 
     /// Applies `--spawn` requests (with the other `--place` edits).
     pub(super) fn spawn_pending_mobs(&mut self) {
-        for (kind, mut pos, armor) in std::mem::take(&mut self.mobs.pending) {
+        let held = std::mem::take(&mut self.mobs.held);
+        for (i, (kind, mut pos, armor)) in std::mem::take(&mut self.mobs.pending).into_iter().enumerate() {
             if pos.y == i32::MIN {
                 pos.y = self.world.generator.column(pos.x, pos.z).height + 1;
             }
@@ -92,6 +99,11 @@ impl Game {
             {
                 mob.armor = [Some(equipped.kind); 4];
                 mob.armor_glint = if equipped.glint { 0b1111 } else { 0 };
+            }
+            if let Some(&(_, item)) = held.iter().find(|(at, _)| *at == i)
+                && let Some(allay) = self.mobs.entities.mobs.last_mut().and_then(|m| m.allay.as_mut())
+            {
+                allay.liked = Some(crate::inventory::Stack::new(item, 1));
             }
         }
     }
