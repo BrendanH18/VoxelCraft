@@ -234,6 +234,8 @@ struct Game {
     signs: Vec<(glam::IVec3, [String; 4])>,
     carts: Vec<(crate::entity::minecart::CartKind, glam::IVec3)>,
     decor_scene: Vec<(IVec3, IVec3, Item, Option<Item>)>,
+    /// `--brush`: strokes on suspicious blocks, after `--place`.
+    brush_scene: Vec<(IVec3, IVec3, u8)>,
     /// `--open-block`: a container to open once placements are done.
     open_block: Option<IVec3>,
     /// `--drop`: thrown once the world has loaded.
@@ -1508,6 +1510,11 @@ impl Game {
         for (pos, face, item, held) in std::mem::take(&mut self.decor_scene) {
             self.place_scripted_decor(pos, face, item, held);
         }
+        for (pos, face, strokes) in std::mem::take(&mut self.brush_scene) {
+            if !self.world.brush_scripted(pos, face, strokes) {
+                log::warn!("--brush {pos}: not a suspicious block");
+            }
+        }
         // Fanned out so each one can be seen.
         let drops = std::mem::take(&mut self.drop);
         for (i, &(item, count)) in drops.iter().enumerate() {
@@ -1989,6 +1996,7 @@ impl Game {
             block_models: {
                 let mut models = self.block_models(alpha, camera);
                 crate::render::signs::shelf_items(&self.world, camera, &mut models);
+                crate::render::brushable::emerging_items(&self.world, camera, crate::render::signs::RANGE, &mut models);
                 models
             },
             signs: crate::render::signs::models(&self.world, camera),

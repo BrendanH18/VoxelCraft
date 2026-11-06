@@ -196,11 +196,11 @@ impl Actor<'_> {
             self.body.actions.breaking = None;
             self.session.cancel_mining();
         }
-        if let Some(p) =
+        if let Some(stroke) =
             self.session.tick_brushing(self.body.actions.selected, acting && self.body.right_held, self.world)
         {
             self.hand.swing();
-            self.audio.block_hit(self.world.get_block(p).unwrap_or(Block::SAND), p, dt);
+            brush_sound(self.audio, stroke);
         }
         self.session.tick_blocking(self.body.actions.selected, acting && self.body.right_held);
         self.eat(acting, dt);
@@ -444,6 +444,18 @@ impl Actor<'_> {
 
 /// Buckets, snowballs, eggs and rods act once per click, not again while
 /// the button is held.
+/// Java `BrushItem` plays the block's brush sound each stroke and level
+/// event 3008 the completion sound. These are the nearest original shared
+/// sounds: a light, high scrape of the block's material, then its break.
+fn brush_sound(audio: &mut Audio, stroke: voxelcraft::session::Stroke) {
+    let material = crate::audio::sounds::material(stroke.block);
+    let at = Some(stroke.pos.as_dvec3() + DVec3::splat(0.5));
+    audio.play_in(SoundSource::Blocks, Sound::Step(material), at, 0.6, (1.4, 1.6));
+    if stroke.completed {
+        audio.play_in(SoundSource::Blocks, Sound::Break(material), at, 1.0, (0.85, 1.0));
+    }
+}
+
 fn once_per_click(i: Item) -> bool {
     (i != Item::GLASS_BOTTLE && voxelcraft::survival_items::bucket::handles(i))
         || matches!(i, Item::SNOWBALL | Item::EGG | Item::FISHING_ROD)

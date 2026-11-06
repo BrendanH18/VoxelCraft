@@ -3,6 +3,7 @@
 //! Desktop, controller, LAN and CLI adapters own one of these for each player.
 //! Camera, hand animation and screen navigation belong to their adapters.
 mod archaeology;
+pub use archaeology::Stroke;
 pub mod combat;
 pub mod consumption;
 mod copper_golem;

@@ -1,6 +1,17 @@
 //! Actor-owned continuous brushing, used by desktop/controller/LAN/CLI.
 use super::PlayerSession;
 use crate::{inventory::HOTBAR_SLOTS, item::Item, world::World};
+/// One brush stroke (Java `BrushItem.onUseTick` at use ticks 5, 15, ...):
+/// the targeted cell, its block before the stroke, and whether the stroke
+/// finished extracting a suspicious block (level event 3008).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Stroke {
+    pub pos: glam::IVec3,
+    pub block: crate::world::block::Block,
+    pub completed: bool,
+}
+/// Java spawns `nextInt(7, 12)` dust particles per stroke; this is its mean.
+const DUST_PARTICLES: usize = 9;
 #[derive(Default)]
 pub(super) struct State {
     slot: Option<usize>,
@@ -41,8 +52,8 @@ impl PlayerSession {
         self.brushing = State::default();
     }
     /// Java BrushItem strokes at use ticks 5,15,...; block cooldown also
-    /// prevents two players accelerating extraction. Return stroke position.
-    pub fn tick_brushing(&mut self, slot: usize, using: bool, world: &mut World) -> Option<glam::IVec3> {
+    /// prevents two players accelerating extraction. Returns the stroke.
+    pub fn tick_brushing(&mut self, slot: usize, using: bool, world: &mut World) -> Option<Stroke> {
         let held = if self.brushing.off { self.inventory.offhand } else { self.inventory.get(slot) };
         if !using
             || self.brushing.slot != Some(slot)
@@ -66,7 +77,13 @@ impl PlayerSession {
         if self.brushing.ticks % 10 != 5 {
             return None;
         }
-        if world.brush_block(pos, face) && !self.mode.is_creative() {
+        let block = world.get_block(pos).unwrap_or(crate::world::block::Block::AIR);
+        // Dust off the brushed face for any block (`spawnDustParticles`).
+        for _ in 0..DUST_PARTICLES {
+            world.particles.push(crate::particles::Request::Hit { cell: pos, block, face });
+        }
+        let completed = world.brush_block(pos, face);
+        if completed && !self.mode.is_creative() {
             if self.brushing.off {
                 self.inventory.swap_offhand(slot);
                 self.inventory.wear(slot, 1);
@@ -75,7 +92,7 @@ impl PlayerSession {
                 self.inventory.wear(slot, 1);
             }
         }
-        Some(pos)
+        Some(Stroke { pos, block, completed })
     }
 }
 

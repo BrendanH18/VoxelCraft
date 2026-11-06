@@ -114,7 +114,17 @@ impl World {
         let Some(slot) = self.chunks.get(&chunk) else {
             return;
         };
-        if slot.data.uniform().is_some_and(|b| !owns(b.0)) {
+        // Palette fast path, as `register_beehives`: byte chunks can't hold
+        // these IDs, so most loads never scan their blocks.
+        let any = match &*slot.data {
+            super::chunk::ChunkData::Uniform(b) => owns(b.0),
+            super::chunk::ChunkData::Bytes(_) => false,
+            super::chunk::ChunkData::Paletted { palette, len, .. } => {
+                palette[..*len as usize].iter().any(|b| owns(b.0))
+            }
+            super::chunk::ChunkData::Dense(v) => v.iter().any(|b| owns(b.0)),
+        };
+        if !any {
             return;
         }
         let data = slot.data.clone();
@@ -181,6 +191,10 @@ impl World {
             if let Some(stack) = item {
                 self.drops.push((p + face, stack));
             }
+            // Level event 3008: the suspicious block's destroy particles.
+            if let Some(block) = self.get_block(p) {
+                self.particles.push(crate::particles::Request::Break { cell: p, block });
+            }
             self.set_block(p, if gravel { Block::GRAVEL } else { Block::SAND });
             true
         } else {
@@ -189,6 +203,36 @@ impl World {
             self.schedule_redstone(p, 2, 0);
             false
         }
+    }
+    /// Partly brushed blocks with a resolved reward: cell, reward and first
+    /// face, for Java's `BrushableBlockRenderer` (the block's dust stage sets
+    /// how far the reward emerges).
+    pub fn emerging_items(&self) -> impl Iterator<Item = (IVec3, Stack, IVec3)> + '_ {
+        self.archaeology.iter().filter_map(|(p, b)| {
+            let face = IVec3::from_array(b.face?);
+            Some((*p, stack_from_str(&b.item).flatten()?, face))
+        })
+    }
+    /// Scripted scenes (`--brush`): `strokes` accepted strokes from `face`,
+    /// as if ten ticks apart. A block without loot gets its ocean-ruin table.
+    pub fn brush_scripted(&mut self, p: IVec3, face: IVec3, strokes: u8) -> bool {
+        let Some((gravel, _)) = self.get_block(p).and_then(decode) else {
+            return false;
+        };
+        let b = self.archaeology.entry(p).or_default();
+        if b.table.is_none() && b.item.is_empty() {
+            b.table = Some(if gravel { Table::Cold } else { Table::Warm });
+            b.seed = super::noise::hash3(p.x, p.y, p.z, 0x5EED) | 1;
+        }
+        for _ in 0..strokes {
+            if let Some(b) = self.archaeology.get_mut(&p) {
+                b.cooldown = 0;
+            }
+            if self.brush_block(p, face) {
+                break;
+            }
+        }
+        true
     }
     pub(super) fn archaeology_tick(&mut self, p: IVec3) {
         let Some((gravel, _)) = self.get_block(p).and_then(decode) else {

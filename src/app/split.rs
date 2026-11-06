@@ -371,6 +371,12 @@ impl Game {
                 block_models: {
                     let mut models = models;
                     crate::render::signs::shelf_items(&self.world, camera, &mut models);
+                    crate::render::brushable::emerging_items(
+                        &self.world,
+                        camera,
+                        crate::render::signs::RANGE,
+                        &mut models,
+                    );
                     models
                 },
                 signs: crate::render::signs::models(&self.world, camera),
