@@ -329,7 +329,8 @@ content and took its release's new number.
 | 12800–14335 | v0.19 | Redstone and automation states |
 | 14336–14591 | v0.15 | Copper golem statue states (2026-11-05 reservation) |
 | 14592–15487 | v0.15 | Creaking, sniffer, ocean ruin and spare states (2026-11-05 reservation) |
-| 15488–16383 | — | Unassigned reserve |
+| 15488–15999 | v0.16 | Trial chamber, weapon and spare states (2026-11-06 reservation) |
+| 16000–16383 | — | Unassigned reserve |
 | 16384–32767 | v0.12 and later | Added by the 32,768 raise (2026-10-25); see the v0.12 tracks below |
 
 ### v0.12 track reservations
@@ -717,6 +718,30 @@ Sniffer activity, its loot-emitted latch, cooldown and up to 21
 Eggs use the existing saved scheduled-tick queue; crops need no block entity.
 See [Track C evidence](verification/2026-11-05-v0.15-sniffers.md), including
 remaining navigation/presentation differences and checks.
+
+### v0.16 track reservations
+
+Reserved on 2026-11-06 for the [v0.16 tracks](roadmap.md#v016-scope-deep-dark-and-trials):
+v0.16's own remaining states 11520–11775 (v0.13 used 11264–11283 for sculk;
+11284–11519 stay with the v0.13 underground track), then the start of the
+unassigned reserve, the items after v0.15's integrator spare 1415–1419 and
+the texture layers after its 3568–3599. Unused IDs stay unregistered and
+keep their track. The unassigned state reserve becomes 16000–16383.
+
+| Block states | Item IDs | Texture layers | Track |
+| --- | --- | --- | --- |
+| 11520–11647 | 1420–1429 | 3600–3663 | A. Sculk and the warden |
+| 11648–11775 | 1430–1469 | 3664–3759 | B. Ancient cities, loot and music |
+| 15488–15743 | 1470–1494 | 3760–3855 | C. Trial chambers |
+| 15744–15807 | 1495–1529 | 3856–3951 | D. Weapons |
+| 15808–15999 | 1530–1549 | 3952–4031 | Integrator spare |
+
+New `MobKind`s append after `Sniffer` in the order Warden (Track A, LAN
+index 72), Breeze (Track C, 73); existing names and indices keep their
+meanings. New `Enchantment`s append after `Lunge` in the order SwiftSneak
+(Track B, save bit 40), WindBurst (Track D, 41). Each track records its
+allocations below; projectile kinds, sound lists, icons and other append-only
+orderings are reconciled by the integrator in the order A, B, C, D.
 
 ## Assessment branch ID reservations
 
