@@ -226,6 +226,9 @@ pub(super) fn splash(
             let base = if effect == Effect::InstantDamage { 6.0 } else { 4.0 };
             let amount = instant_amount(base, amplifier, scale);
             if harms {
+                if owner.is_some() && mob.allay.as_ref().is_some_and(|s| s.player == owner) {
+                    continue;
+                }
                 let amount = if mob.kind == MobKind::Witch { amount * 0.15 } else { amount };
                 if owner.is_some() {
                     mob.player_hit();

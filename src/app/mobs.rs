@@ -434,6 +434,7 @@ impl Game {
                                 F::Grow => (Sound::Pop, 0.15),
                             }
                         }
+                        MobSound::Allay(action) => (Sound::Allay(action), 0.8),
                         MobSound::CopperGolem(action, stage) => (Sound::CopperGolem(action, stage), 0.7),
                         MobSound::Hurt(MobKind::CopperGolem) => {
                             (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Hurt, 0), 0.9)
@@ -622,6 +623,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Panda => Voice::Panda,
         MobKind::Armadillo => Voice::Armadillo,
         MobKind::Ocelot => Voice::Ocelot,
+        MobKind::Allay => Voice::Allay,
         MobKind::CopperGolem => Voice::Skeleton,
         MobKind::Tadpole => Voice::Fish,
         MobKind::Sheep => Voice::Sheep,

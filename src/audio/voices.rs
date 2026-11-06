@@ -49,6 +49,7 @@ pub enum Voice {
     Panda,
     Armadillo,
     Ocelot,
+    Allay,
 }
 
 /// What kind of sound a voice makes.
@@ -61,7 +62,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 37] = [
+    pub const ALL: [Voice; 38] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -99,6 +100,7 @@ impl Voice {
         Voice::Panda,
         Voice::Armadillo,
         Voice::Ocelot,
+        Voice::Allay,
     ];
 
     /// The category the creature plays in: `Monster`, `Ghast`, `Hoglin` and
@@ -119,9 +121,13 @@ impl Voice {
             | Voice::Hoglin
             | Voice::Guardian
             | Voice::Pillager => SoundSource::Hostile,
-            Voice::Bat | Voice::Frog | Voice::PolarBear | Voice::Panda | Voice::Armadillo | Voice::Ocelot => {
-                SoundSource::Neutral
-            }
+            Voice::Allay
+            | Voice::Bat
+            | Voice::Frog
+            | Voice::PolarBear
+            | Voice::Panda
+            | Voice::Armadillo
+            | Voice::Ocelot => SoundSource::Neutral,
             Voice::Pig
             | Voice::Cow
             | Voice::Sheep
@@ -153,6 +159,7 @@ impl Voice {
             Voice::Panda => "panda",
             Voice::Armadillo => "armadillo",
             Voice::Ocelot => "ocelot",
+            Voice::Allay => "allay",
             Voice::Cow => "cow",
             Voice::Sheep => "sheep",
             Voice::Chicken => "chicken",
@@ -262,6 +269,7 @@ const FLAT: &dyn Fn(f32) -> f32 = &|_| 1.0;
 
 pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
     match voice {
+        Voice::Allay => allay(call),
         Voice::Bee => bee(call, rng),
         Voice::Bat => bat(call, rng),
         Voice::Frog => frog(call, rng),
@@ -1002,4 +1010,23 @@ fn ocelot(call: Call, rng: &mut Rng) -> Vec<f32> {
         add_mode(&mut out, 0, Mode { freq: pitch * harm, amp: gain, tau: 0.12, glide: 0.3, glide_tau: 0.09 });
     }
     dsp::finish(out, 0.5)
+}
+
+// Original airy bell voice, synthesized without sampled game assets.
+fn allay(call: Call) -> Vec<f32> {
+    let (secs, base, end) = match call {
+        Call::Ambient => (0.65, 780., 1130.),
+        Call::Hurt => (0.3, 1370., 620.),
+        Call::Death => (0.9, 960., 240.),
+    };
+    let mut phase = 0.;
+    (0..samples(secs))
+        .map(|i| {
+            let t = i as f32 / RATE;
+            let u = t / secs;
+            phase += std::f32::consts::TAU * (base + (end - base) * u) / RATE;
+            (phase.sin() * 0.45 + (phase * 1.503).sin() * 0.2 + (phase * 2.01).sin() * 0.1)
+                * (std::f32::consts::PI * u).sin().powi(2)
+        })
+        .collect()
 }

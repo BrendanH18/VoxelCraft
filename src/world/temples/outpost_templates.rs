@@ -157,12 +157,36 @@ mod tests {
                     c[index(p.x as usize, p.y as usize, p.z as usize)]
                 };
                 assert_eq!(at_block(at).base(), block);
-                if block == Block::AIR {
+                if block == Block::AIR && !matches!(marker, Marker::Mob(_, "allay")) {
                     assert_eq!(at_block(at + IVec3::Y), Block::AIR);
                     let l = (at - IVec3::Y) - base;
                     assert!(b[index(l.x as usize, l.y as usize, l.z as usize)].is_solid());
                 }
             }
+        }
+    }
+
+    #[test]
+    fn allay_cage_has_two_unique_rotated_resident_markers_only_in_v3_templates() {
+        let lib = jigsaw::outposts();
+        for rot in 0..4 {
+            let p = jigsaw::single(lib, "pillager_outpost/feature_cage_with_allays", IVec3::new(32, 70, -32), rot, 0);
+            let pieces = [p];
+            let markers = jigsaw::markers(lib, &pieces, &|_, _| 70);
+            let allays: Vec<_> = markers
+                .into_iter()
+                .filter_map(|m| match m {
+                    Marker::Mob(at, "allay") => Some(at),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(allays.len(), 2);
+            assert_ne!(allays[0], allays[1], "resident save keys must differ");
+        }
+        for generation in [Generation::V1, Generation::V2] {
+            let g = Generator::with_generation(42, Dimension::Overworld, generation);
+            let legacy = super::super::outpost(&g, IVec2::ZERO, 70, 0, 1);
+            assert!(!legacy.residents.iter().any(|r| r.0 == crate::entity::MobKind::Allay));
         }
     }
 

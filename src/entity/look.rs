@@ -40,6 +40,9 @@ impl Mob {
         if let Some(stack) = self.wolf_armor.as_ref().and_then(|s| s.armor) {
             v["wolf_armor"] = json!(crate::inventory::stack_to_string(Some(stack)));
         }
+        if let Some(s) = &self.allay {
+            v["allay"] = s.save();
+        }
         if let Some(s) = &self.copper_golem {
             v["copper_golem"] = s.look();
         }
@@ -124,6 +127,9 @@ impl Mob {
         self.sheared = v["sheared"] == true;
         if let Some(s) = &mut self.wolf_armor {
             s.load(v["wolf_armor"].as_str());
+        }
+        if let Some(s) = &mut self.allay {
+            **s = super::allay::State::load(&v["allay"]);
         }
         if let Some(s) = &mut self.copper_golem {
             s.load_look(&v["copper_golem"]);

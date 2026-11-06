@@ -317,6 +317,7 @@ impl World {
         }
         let instrument = instrument(below) as u8;
         self.notes.push((p, pitch, instrument));
+        self.allay_notes.push(p);
         // Java `NoteBlock.triggerEvent`: a note particle 1.2 blocks up, tinted by `note / 24`.
         let mut burst = Burst::new(Kind::Note, p.as_dvec3() + DVec3::new(0.5, 1.2, 0.5), 1);
         burst.color = Some(note_color(pitch));
