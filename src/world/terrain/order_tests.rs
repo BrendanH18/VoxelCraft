@@ -65,6 +65,8 @@ fn corpus(generation: Generation) -> Vec<IVec3> {
         }
     }
     if generation >= Generation::V3 {
+        let ocean = g.temples.nearest(&g, Kind::OceanRuin, IVec2::ZERO, 6400).expect("ocean ruin");
+        chunks.extend(around(ocean, 2));
         let outpost = g.temples.nearest(&g, Kind::Outpost, IVec2::ZERO, 20_000).expect("an outpost");
         chunks.extend(around(outpost, 2));
         chunks.extend(around(g.ruined_portals.nearest(&g, IVec3::ZERO, 2).expect("a ruined portal"), 1));
@@ -149,6 +151,7 @@ fn generation_ignores_order_threads_and_caches(generation: Generation) {
     assert!(has(|f| matches!(f, Feature::VillageHome(_) | Feature::VillageChest(..))), "{generation:?}: no village");
     assert!(has(|f| matches!(f, Feature::TempleChest(..))), "{generation:?}: no temple-family chest");
     if generation >= Generation::V3 {
+        assert!(has(|f| matches!(f, Feature::Archaeology(..))), "no ocean ruin archaeology");
         assert!(
             has(|f| matches!(f, Feature::TempleChest(_, crate::world::temples::LootTable::Outpost))),
             "generation 3: no outpost chest"

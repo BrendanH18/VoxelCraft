@@ -174,7 +174,7 @@ cubes eaten by frogs supply the three axis-oriented froglight blocks. See
 
 Armadillo scutes (1302) come from adult shedding or brushing. A brush (1303)
 is crafted vertically from feather, copper ingot and stick, has 64 durability,
-and currently supports armadillos only. Six scutes in `X  /XXX/X X` craft
+and supports armadillos and continuous suspicious-sand/gravel brushing. Ocean-ruin sherds are plain items; see [archaeology evidence](verification/2026-11-05-v0.15-ocean-ruins.md). Six scutes in `X  /XXX/X X` craft
 wolf armor (1304), with 64 durability. It accepts mixed dyes in a crafting
 grid, washes in a water cauldron, repairs with scutes in an anvil or by
 feeding an armored sitting wolf, and supports paired-grid repair. Owner-only

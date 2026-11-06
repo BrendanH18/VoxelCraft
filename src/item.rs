@@ -294,6 +294,7 @@ pub enum Sprite {
     /// A shield; the totem of undying follows it.
     Shield,
     Totem,
+    PotterySherd(u8),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1036,6 +1037,9 @@ impl Item {
         if self == Self::PITCHER_POD {
             return item("pitcher pod", Sprite::Lump([163, 84, 75]));
         }
+        if let Some(info) = crate::world::archaeology::item_info(self) {
+            return info;
+        }
         if self == Self::HONEYCOMB {
             return item("honeycomb", Sprite::Lump([233, 163, 40]));
         }
@@ -1497,6 +1501,7 @@ impl Item {
             .chain([Self::BEETROOT_SOUP, Self::HONEYCOMB])
             .chain([Self::TIPPED_ARROW, Self::LINGERING_POTION, Self::DRAGON_BREATH])
             .chain([Self::TORCHFLOWER_SEEDS, Self::PITCHER_POD])
+            .chain((crate::world::archaeology::ITEM_FIRST..crate::world::archaeology::ITEM_END).map(Item))
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1557,6 +1562,7 @@ fn sprite_index(item: Item) -> Option<u16> {
     match item.0 {
         1280..=1281 => Some(passive_icon_base() + 4 + item.0 - 1280),
         1385..=1386 => Some(passive_icon_base() + 9 + item.0 - 1385),
+        1395..=1401 => Some(passive_icon_base() + 11 + item.0 - 1395),
         1330 => Some(passive_icon_base() + 6),
         1332 => Some(passive_icon_base() + 7),
         1333 => Some(passive_icon_base() + 8),
@@ -1655,7 +1661,7 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    passive_icon_base() as u32 + 4 + 5 + 2
+    passive_icon_base() as u32 + 4 + 5 + 2 + 7
 }
 
 const fn passive_icon_base() -> u16 {

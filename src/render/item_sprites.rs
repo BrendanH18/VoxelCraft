@@ -699,6 +699,19 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 tint(if y == 6 || y == 9 { [144, 103, 94] } else { [215, 185, 164] }, 0.94 + noise(x, y, 507) * 0.12)
             })
         }
+        Sprite::PotterySherd(i) => {
+            let shape =
+                |x: i32, y: i32| (3..=12).contains(&y) && x >= 2 + (y - 7).abs() / 3 && x <= 13 - (y - 6).abs() / 2;
+            if !shape(x, y) {
+                None
+            } else {
+                let etched = (x + 2 * y + i as i32 * 3).rem_euclid(7) == 0 && (5..=10).contains(&y);
+                Some(tint(
+                    if etched { [85, 48, 30] } else { [181, 108 + i * 6, 62] },
+                    0.85 + noise(x, y, 187 + i as u64) * 0.25,
+                ))
+            }
+        }
         Sprite::Brush => {
             if (x - y).abs() <= 1 && (5..=14).contains(&y) {
                 Some(tint([132, 92, 51], 1.0))

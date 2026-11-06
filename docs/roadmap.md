@@ -1573,6 +1573,14 @@ sounds and templates, IDs in the
   brushing them are now core, so sniffer eggs come from warm ocean ruins
   the Java way. The pottery sherds those loot tables name exist only as
   items; decorated pots and their patterns stay deferred.
+  Track D status (2026-11-05): **Implemented, unverified** suspicious blocks,
+  shared brushing, seven plain sherds and generation-3 original-template
+  warm/cold clustered ruins with chest loot and drowned. The sniffer-egg
+  Java-name hook awaits Track C. Brushing shows Java's dust particles and
+  emerging reward (2026-11-06); dedicated brush sounds, LAN replication of
+  the emerging reward and full reference random-stream/layout fidelity
+  remain gaps. See [evidence](verification/2026-11-05-v0.15-ocean-ruins.md).
+
 
 New generation (creaking hearts, eyeblossoms, ocean ruins, outpost
 allays) applies to generation 3 only, which hasn't been tagged; the

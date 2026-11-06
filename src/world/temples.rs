@@ -10,6 +10,7 @@
 //! builds in the shape and materials of Java's, built once per start,
 //! cached, and painted clipped into every chunk they cross.
 
+mod ocean_ruins;
 mod outpost_templates;
 
 use std::sync::{Arc, Mutex};
@@ -498,6 +499,7 @@ impl Temples {
             && (kind != Kind::Outpost
                 || (self.outpost_frequency(start) && col.height > SEA_LEVEL && !self.near_village(g, centre)))
             && match kind {
+                Kind::OceanRuin if g.generation >= super::terrain::Generation::V3 => true,
                 Kind::Shipwreck | Kind::OceanRuin => col.height < SEA_LEVEL - 4 || col.biome.is_beach(),
                 Kind::Monument => col.height < SEA_LEVEL - 18 && self.monument_biomes(g, centre),
                 _ => col.height >= SEA_LEVEL - 1,
@@ -592,8 +594,12 @@ impl Temples {
         let mut out = Vec::new();
         for kind in Kind::ALL {
             let (spacing, _, _) = kind.placement();
-            let r =
-                if kind == Kind::Outpost && g.generation >= super::terrain::Generation::V3 { 96 } else { kind.reach() };
+            let r = if g.generation >= super::terrain::Generation::V3 && matches!(kind, Kind::Outpost | Kind::OceanRuin)
+            {
+                96
+            } else {
+                kind.reach()
+            };
             let span = spacing * 16;
             let (rlo, rhi) = (
                 (lo - IVec2::splat(r + 16)).div_euclid(IVec2::splat(span)),
@@ -659,6 +665,20 @@ impl Temples {
     /// Nearest start of `kind` (`/locate structure`), searching regions
     /// outward from `origin` up to `max_blocks` away.
     pub fn nearest(&self, g: &Generator, kind: Kind, origin: IVec2, max_blocks: i32) -> Option<IVec3> {
+        self.nearest_filtered(g, kind, origin, max_blocks, None)
+    }
+    /// Java's separate warm/cold IDs share one placement set.
+    pub fn nearest_ocean_ruin(&self, g: &Generator, origin: IVec2, max_blocks: i32, warm: bool) -> Option<IVec3> {
+        self.nearest_filtered(g, Kind::OceanRuin, origin, max_blocks, Some(warm))
+    }
+    fn nearest_filtered(
+        &self,
+        g: &Generator,
+        kind: Kind,
+        origin: IVec2,
+        max_blocks: i32,
+        ocean_warm: Option<bool>,
+    ) -> Option<IVec3> {
         if g.dimension != Dimension::Overworld || max_blocks < 0 {
             return None;
         }
@@ -679,6 +699,9 @@ impl Temples {
                     let d =
                         (i64::from(c.x) - i64::from(origin.x)).pow(2) + (i64::from(c.y) - i64::from(origin.y)).pow(2);
                     if d > radius_squared || best.is_some_and(|(bd, _)| d >= bd) {
+                        continue;
+                    }
+                    if ocean_warm.is_some_and(|want| ocean_ruins::warm(g.column(c.x, c.y).biome) != want) {
                         continue;
                     }
                     if let Some(b) = self.get(g, kind, region) {
@@ -714,6 +737,9 @@ impl Temples {
             }
             Kind::Outpost => outpost(g, centre, ground, rot, seed),
             Kind::Shipwreck => shipwreck(g, centre, ground, rot, seed, rng),
+            Kind::OceanRuin if g.generation >= super::terrain::Generation::V3 => {
+                ocean_ruins::build(g, centre, ocean_ruins::structure_seed(g, centre))
+            }
             Kind::OceanRuin => ocean_ruin(g, centre, ground, rot, seed, rng),
             Kind::Monument => monument(g, centre, rot, rng),
         }

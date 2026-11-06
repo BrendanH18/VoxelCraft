@@ -639,6 +639,9 @@ impl World {
         if super::sniffer_egg::owns(b.0) {
             return self.hatch_sniffer_egg(p);
         }
+        if super::archaeology::owns(b.0) {
+            return self.archaeology_tick(p);
+        }
         if super::lightning::rod(b).is_some() {
             return self.reset_lightning_rod(p, b);
         }

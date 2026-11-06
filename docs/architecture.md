@@ -647,6 +647,17 @@ golem's reserved 1360–1367, and the texture layers after its reserved
 | 15232–15359 | 1395–1414 | 3504–3567 | D. Ocean ruins, suspicious sand and gravel, sherds |
 | 15360–15487 | 1415–1419 | 3568–3599 | Integrator spare |
 
+Track D allocation (2026-11-05, implemented, unverified): suspicious sand
+15232–15235 and gravel 15236–15239 encode dusted 0–3. Item IDs 1395–1401
+are angler, shelter, snort, blade, explorer, mourner and plenty pottery
+sherds. Original sediment layers 3504–3511 are offsets from
+`archaeology::t::BASE`; seven sherd icons append to the separate item atlas.
+No MobKind is allocated. States 15240–15359, items 1402–1414 and layers
+3512–3567 remain reserved, unused. The dimension `archaeology` property
+stores brushable loot/progress. Track C's egg is resolved by Java name,
+without assuming its item ID. See [Track D evidence](verification/2026-11-05-v0.15-ocean-ruins.md).
+
+
 New `MobKind`s append after `CopperGolem` in the order Creaking, Allay,
 Sniffer, taking LAN indices 69, 70 and 71; existing names and indices
 keep their meanings. The unassigned reserve becomes 15488–16383.

@@ -24,6 +24,10 @@ const REGISTRY: &str = include_str!("../fixtures/java/26.3/registry_names.json")
 /// Reference recipes that are registered but intentionally absent or
 /// different in VoxelCraft, each with the decision behind it.
 pub const JAVA_ALLOWED: &[(&str, &str)] = &[
+    (
+        "crafting_decorated_pot/decorated_pot",
+        "DEF-02, owner 2026-11-05: ocean-ruin sherds are plain items only; decorated-pot patterns stay deferred",
+    ),
     ("crafting_dye/leather_helmet_dyed", "dyed leather colours (a data component) don't exist yet"),
     ("crafting_dye/leather_chestplate_dyed", "dyed leather colours (a data component) don't exist yet"),
     ("crafting_dye/leather_leggings_dyed", "dyed leather colours (a data component) don't exist yet"),

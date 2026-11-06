@@ -366,7 +366,11 @@ pub mod tex {
     pub const BUBBLE_BASE: u16 = 2864;
     pub const BUBBLE_UP: u16 = BUBBLE_BASE;
     pub const BUBBLE_DOWN: u16 = BUBBLE_BASE + 1;
-    pub const COUNT: u32 = super::super::sniffer_egg::TEXTURE_END as u32; // Through Track C original egg art.
+    pub const COUNT: u32 = {
+        // Through the highest layer any v0.15 track uses; unused layers stay reserved.
+        let (egg, sediment) = (super::super::sniffer_egg::TEXTURE_END as u32, super::super::archaeology::t::END as u32);
+        if egg > sediment { egg } else { sediment }
+    };
     const _: () = assert!(super::super::biome_plants::TEX_END <= BUBBLE_BASE);
     const _: () = assert!(super::super::utilities::TEX_END <= super::super::cave_blocks::TEX);
     const _: () = assert!(super::super::cave_blocks::TEX_END <= super::super::biome_plants::TEX);
@@ -1275,6 +1279,9 @@ impl Block {
             return super::sniffer_plants::PITCHER_PLANT;
         }
 
+        if super::archaeology::owns(self.0) {
+            return Block(super::archaeology::FIRST + (self.0 - super::archaeology::FIRST) / 4 * 4);
+        }
         if let Some(s) = super::copper_golem_statue::decode(self) {
             return super::copper_golem_statue::item_block(s.stage, s.waxed);
         }
@@ -1593,6 +1600,9 @@ impl Block {
         if let Some(drop) = super::sniffer_plants::drop(self) {
             return drop;
         }
+        if super::archaeology::owns(self.0) {
+            return None;
+        }
         if super::copper_golem_statue::owns(self.0) {
             return Some(Item::from_block(self.base()));
         }
@@ -1735,6 +1745,9 @@ impl Block {
     pub fn hardness(self) -> f32 {
         if super::sniffer_egg::owns(self.0) {
             return 0.5;
+        }
+        if super::archaeology::owns(self.0) {
+            return 0.25;
         }
         if super::copper_golem_statue::owns(self.0) {
             return 3.0;
@@ -1953,6 +1966,9 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
+        if super::archaeology::owns(self.0) {
+            return Some(ToolKind::Shovel);
+        }
         if super::copper_golem_statue::owns(self.0) {
             return Some(ToolKind::Pickaxe);
         }
@@ -2287,6 +2303,7 @@ impl Block {
             .chain(super::stone_blocks::palette_ids())
             .chain(super::copper::palette_ids())
             .chain(super::copper_golem_statue::palette_ids())
+            .chain([super::archaeology::SAND.0, super::archaeology::GRAVEL.0])
             .chain([super::bees::NEST.0, super::bees::HIVE.0, super::bees::HONEYCOMB_BLOCK.0])
             .chain(super::wood::palette_ids())
             .chain(super::colour_blocks::palette_ids())
@@ -2352,7 +2369,8 @@ impl Block {
         if let Some(c) = self.alias() {
             return c.has_gravity();
         }
-        matches!(self, Block::SAND | Block::RED_SAND | Block::GRAVEL | Block::DRAGON_EGG)
+        super::archaeology::owns(self.0)
+            || matches!(self, Block::SAND | Block::RED_SAND | Block::GRAVEL | Block::DRAGON_EGG)
             || self.is_anvil()
             || self.concrete_powder_color().is_some()
     }
@@ -2939,6 +2957,7 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         super::crops::FIRST..=super::crops::LAST => super::crops::registry(id),
         super::sniffer_plants::FIRST..=super::sniffer_plants::LAST => super::sniffer_plants::registry(id),
         15120..=super::sniffer_egg::LAST => super::sniffer_egg::registry(id),
+        super::archaeology::FIRST..=super::archaeology::LAST => super::archaeology::registry(id),
         super::copper::FIRST..=super::copper::RESERVED_LAST
         | super::copper::WAXED_FIRST..=super::copper::WAXED_RESERVED_LAST => match super::copper::registry(id) {
             Some(info) => info,
