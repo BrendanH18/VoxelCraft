@@ -36,10 +36,12 @@ pub enum Effect {
     /// Appended: adds `4 * (amplifier + 1)` to the max-absorption attribute.
     Absorption,
     Saturation,
+    /// Appended (v0.16): the warden's and shriekers' pulsing gloom.
+    Darkness,
 }
 
 impl Effect {
-    pub const ALL: [Effect; 25] = [
+    pub const ALL: [Effect; 26] = [
         Effect::Speed,
         Effect::Slowness,
         Effect::Strength,
@@ -65,6 +67,7 @@ impl Effect {
         Effect::BadLuck,
         Effect::Absorption,
         Effect::Saturation,
+        Effect::Darkness,
     ];
 
     /// Java's id, as `/effect` and saves use it.
@@ -95,6 +98,7 @@ impl Effect {
             Effect::BadLuck => "unluck",
             Effect::Absorption => "absorption",
             Effect::Saturation => "saturation",
+            Effect::Darkness => "darkness",
         }
     }
 
@@ -131,6 +135,7 @@ impl Effect {
             Effect::BadLuck => "Bad Luck",
             Effect::Absorption => "Absorption",
             Effect::Saturation => "Saturation",
+            Effect::Darkness => "Darkness",
         }
     }
 
@@ -162,6 +167,7 @@ impl Effect {
             Effect::BadLuck => 0xC0A44D,
             Effect::Absorption => 0x2552A5,
             Effect::Saturation => 0xF82423,
+            Effect::Darkness => 0x292721,
         };
         [(c >> 16) as u8, (c >> 8) as u8, c as u8]
     }
@@ -185,6 +191,7 @@ impl Effect {
                 | Effect::Blindness
                 | Effect::Nausea
                 | Effect::BadLuck
+                | Effect::Darkness
         )
     }
 }

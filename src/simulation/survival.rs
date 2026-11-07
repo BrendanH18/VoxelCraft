@@ -296,6 +296,9 @@ pub struct Vitals {
     pub time_since_rest: u32,
     /// Java Entity.TicksFrozen; additive save field, 0 for older saves.
     pub ticks_frozen: u16,
+    /// Java `ServerPlayer.wardenSpawnTracker` (v0.16): sculk shrieker
+    /// warnings. Additive save field.
+    pub warden: crate::world::sculk::WardenSpawnTracker,
     freeze_clock: f32,
     freeze_tick: u64,
 }
@@ -324,6 +327,7 @@ impl Default for Vitals {
             peaceful_food_timer: 0.0,
             ticks_frozen: 0,
             time_since_rest: 0,
+            warden: Default::default(),
             freeze_clock: 0.0,
             freeze_tick: 0,
         }
@@ -475,6 +479,7 @@ impl Vitals {
             self.freeze_clock = (self.freeze_clock - 0.05).max(0.0);
             self.freeze_tick = self.freeze_tick.wrapping_add(1);
             self.time_since_rest = self.time_since_rest.saturating_add(1).min(i32::MAX as u32);
+            self.warden.tick();
             if env.in_powder_snow && !env.freeze_immune {
                 self.ticks_frozen = self.ticks_frozen.saturating_add(1).min(140);
             } else {

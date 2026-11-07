@@ -217,6 +217,10 @@ pub enum Sound {
     CopperGolem(crate::entity::copper_golem::Sound, u8),
     Sniffer(crate::entity::sniffer::Cue),
     Allay(crate::entity::allay::Sound),
+    /// v0.16: the warden's calls.
+    Warden(crate::entity::warden::Cue),
+    /// v0.16: sculk sensors, shriekers and catalysts.
+    Sculk(crate::world::sculk::SculkCue),
 }
 
 const M: usize = Material::ALL.len();
@@ -225,7 +229,9 @@ const CALLS: usize = Call::ALL.len();
 impl Sound {
     const BASE_COUNT: usize = 3 * M + 27 + Voice::ALL.len() * CALLS + 16 + 4;
 
-    pub const COUNT: usize = Self::BASE_COUNT + 48 + crate::entity::sniffer::Cue::ALL.len();
+    const SNIFFER_END: usize = Self::BASE_COUNT + 48 + crate::entity::sniffer::Cue::ALL.len();
+    const WARDEN_END: usize = Self::SNIFFER_END + crate::entity::warden::Cue::ALL.len();
+    pub const COUNT: usize = Self::WARDEN_END + crate::world::sculk::SculkCue::ALL.len();
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -233,6 +239,8 @@ impl Sound {
             Sound::Allay(action) => Self::BASE_COUNT + 44 + action as usize,
             Sound::CopperGolem(action, stage) => Self::BASE_COUNT + action as usize * 4 + usize::from(stage.min(3)),
             Sound::Sniffer(cue) => Self::BASE_COUNT + 48 + cue as usize,
+            Sound::Warden(cue) => Self::SNIFFER_END + cue as usize,
+            Sound::Sculk(cue) => Self::WARDEN_END + cue as usize,
             Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
             Sound::Thunder => Self::BASE_COUNT - 1,
             Sound::Bell => Self::BASE_COUNT - 4,
@@ -348,6 +356,8 @@ impl Sound {
                 .flat_map(|a| (0..4).map(move |s| Sound::CopperGolem(a, s)))
             })
             .chain(crate::entity::sniffer::Cue::ALL.map(Sound::Sniffer))
+            .chain(crate::entity::warden::Cue::ALL.map(Sound::Warden))
+            .chain(crate::world::sculk::SculkCue::ALL.map(Sound::Sculk))
     }
 
     /// Stable sound name used when exporting or identifying samples.
@@ -356,6 +366,8 @@ impl Sound {
             Sound::Allay(a) => format!("allay_{a:?}").to_lowercase(),
             Sound::CopperGolem(a, s) => format!("copper_golem_{a:?}_{s}").to_lowercase(),
             Sound::Sniffer(c) => format!("sniffer_{c:?}").to_lowercase(),
+            Sound::Warden(c) => format!("warden_{c:?}").to_lowercase(),
+            Sound::Sculk(c) => format!("sculk_{c:?}").to_lowercase(),
             Sound::Thunder => "lightning_thunder".into(),
             Sound::HoneySlide => "honey_block_slide".into(),
             Sound::HoneyDrink => "honey_drink".into(),
@@ -443,6 +455,9 @@ impl Sound {
                 SoundSource::Blocks
             }
             Sound::Sniffer(_) | Sound::Allay(..) | Sound::CopperGolem(..) | Sound::EyeDeath => SoundSource::Neutral,
+            // The warden's sounds are `HOSTILE`; the sculk blocks' `BLOCKS`.
+            Sound::Warden(_) => SoundSource::Hostile,
+            Sound::Sculk(_) => SoundSource::Blocks,
             Sound::Mob(voice, _) => voice.source(),
         }
     }
@@ -455,6 +470,7 @@ impl Sound {
     pub fn variants(self) -> u32 {
         match self {
             Sound::Allay(..) | Sound::CopperGolem(..) | Sound::Note(_) => 1,
+            Sound::Warden(_) | Sound::Sculk(_) => 2,
             Sound::Sniffer(_) => 2,
             Sound::Step(_) => 4,
             Sound::Break(_) | Sound::Place(_) | Sound::Swim | Sound::Drip => 3,
@@ -496,6 +512,8 @@ impl Sound {
             }
             Sound::CopperGolem(a, s) => copper_golem(a, s),
             Sound::Sniffer(c) => super::sniffer::render(c, &mut rng),
+            Sound::Warden(c) => super::warden::render(c, &mut rng),
+            Sound::Sculk(c) => super::warden::render_sculk(c, &mut rng),
             Sound::Thunder => thunder(&mut rng),
             Sound::HoneySlide => honey_sound(&mut rng, 0.35),
             Sound::HoneyDrink => honey_sound(&mut rng, 0.22),

@@ -102,6 +102,7 @@ impl Entities {
                     | MobKind::WanderingTrader
                     | MobKind::TraderLlama
             ) || m.kind.never_distance_despawns()
+                || m.kind == MobKind::Warden
                 || m.ocelot.as_ref().is_some_and(|s| s.trusting || s.ticks <= 2400)
                 || m.persistent
                 || m.creaking.as_ref().is_some_and(|s| s.home.is_some())
@@ -298,6 +299,9 @@ impl Entities {
                         arrow.enchants = m.skeleton_bow.as_ref().map_or(Default::default(), |s| s.enchants);
                     }
                     arrow.tipped = arrow.custom_effect.is_some();
+                    // `Projectile.tick`'s first tick: `projectile_shoot` from its owner.
+                    let source = crate::world::vibration::EventSource::mob(shooter);
+                    self.sculk.post(from, crate::world::vibration::GameEvent::ProjectileShoot, source, None);
                     self.arrows.push(arrow);
                 }
                 EntityEvent::ThrowPotion { from, vel, potion } => {
@@ -330,10 +334,19 @@ impl Entities {
         }
         let targets = if self.arrows.is_empty() { Vec::new() } else { self.arrow_targets() };
         {
-            let (mobs, rng, fight) = (&mut self.mobs, &mut self.rng, &mut self.fight);
+            let (mobs, rng, fight, sculk) = (&mut self.mobs, &mut self.rng, &mut self.fight, &mut self.sculk);
             self.arrows.retain_mut(|a| {
-                !world.entity_ticking(a.pos.floor().as_ivec3())
-                    || a.update(dt, world, ctx, mobs, &targets, fight.as_mut(), rng, &mut events)
+                if !world.entity_ticking(a.pos.floor().as_ivec3()) {
+                    return true;
+                }
+                let was_stuck = a.is_stuck();
+                let keep = a.update(dt, world, ctx, mobs, &targets, fight.as_mut(), rng, &mut events);
+                // `Projectile.onHit`: `projectile_land` where it stuck.
+                if !was_stuck && a.is_stuck() {
+                    let source = sculk_events::Sculk::projectile_source(a.owner, a.shooter);
+                    sculk.post(a.pos, crate::world::vibration::GameEvent::ProjectileLand, source, None);
+                }
+                keep
             });
             self.pearls.retain_mut(|p| {
                 !world.entity_ticking(p.pos.floor().as_ivec3()) || p.update(dt, world, mobs, rng, &mut events)
@@ -378,6 +391,13 @@ impl Entities {
                 EntityEvent::MobShot { kind, pos, killed, burning, player_kill, owner } => {
                     if killed {
                         self.drop_loot_with_fire(kind, pos, 0, burning, player_kill);
+                    }
+                    if kind == MobKind::Warden
+                        && !killed
+                        && let Some(owner) = owner
+                        && let Some(i) = self.mobs.iter().position(|m| m.kind == kind && m.pos == pos && m.alive())
+                    {
+                        self.warden_hurt(i, crate::world::vibration::EntityRef::Player(owner), false);
                     }
                     if kind == MobKind::ZombifiedPiglin {
                         self.anger_piglins(pos);

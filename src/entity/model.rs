@@ -558,6 +558,7 @@ mod mounts;
 mod passive;
 mod phantom;
 mod sniffer;
+mod warden;
 
 /// Animated parts for a mob, in model space (pixels).
 fn pose(m: &Mob, time: f32) -> Parts {
@@ -603,6 +604,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
         MobKind::Ocelot => passive::ocelot(m),
         MobKind::CopperGolem => copper_golem::pose(m, time),
         MobKind::Sniffer => sniffer::pose(m, time),
+        MobKind::Warden => warden::pose(m, time),
         MobKind::Creaking => creaking::pose(m, time),
         MobKind::Allay => allay::pose(m, time),
         MobKind::Tadpole => passive::tadpole(m, time),

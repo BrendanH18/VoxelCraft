@@ -49,6 +49,9 @@ impl Mob {
         if let Some(s) = &self.allay {
             v["allay"] = s.save();
         }
+        if let Some(s) = &self.warden {
+            v["warden"] = s.look_state();
+        }
         if let Some(s) = &self.copper_golem {
             v["copper_golem"] = s.look();
         }
@@ -142,6 +145,9 @@ impl Mob {
         }
         if let Some(s) = &mut self.allay {
             **s = super::allay::State::load(&v["allay"]);
+        }
+        if let Some(s) = &mut self.warden {
+            s.apply_look(&v["warden"]);
         }
         if let Some(s) = &mut self.copper_golem {
             s.load_look(&v["copper_golem"]);

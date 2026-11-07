@@ -191,6 +191,8 @@ pub enum MobKind {
     Creaking,
     Allay,
     Sniffer,
+    /// v0.16 (LAN index 72): the deep dark's blind guardian.
+    Warden,
 }
 
 impl MobKind {
@@ -224,7 +226,7 @@ impl MobKind {
     pub fn from_lan_index(index: usize) -> Option<Self> {
         Self::ALL.get(index).copied()
     }
-    pub const ALL: [MobKind; 72] = [
+    pub const ALL: [MobKind; 73] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -297,6 +299,7 @@ impl MobKind {
         MobKind::Creaking,
         MobKind::Allay,
         MobKind::Sniffer,
+        MobKind::Warden,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -374,6 +377,7 @@ impl MobKind {
             MobKind::Creaking => "creaking",
             MobKind::Allay => "allay",
             MobKind::Sniffer => "sniffer",
+            MobKind::Warden => "warden",
         }
     }
 
@@ -387,6 +391,7 @@ impl MobKind {
     pub fn shape(self) -> Shape {
         match self {
             MobKind::Sniffer => Shape::new(0.95, 1.75),
+            MobKind::Warden => Shape::new(0.45, 2.9),
             MobKind::Bat => Shape::new(0.25, 0.9),
             MobKind::Frog => Shape::new(0.25, 0.5),
             MobKind::Tadpole => Shape::new(0.2, 0.3),
@@ -472,6 +477,7 @@ impl MobKind {
             | MobKind::Strider
             | MobKind::Panda => 20.0,
             MobKind::Sniffer => 14.0,
+            MobKind::Warden => 500.0,
             MobKind::Allay => 20.0,
             MobKind::CopperGolem => 12.0,
             MobKind::Creaking => 1.0,
@@ -521,6 +527,7 @@ impl MobKind {
                 | MobKind::Bogged
                 | MobKind::Phantom
                 | MobKind::Creaking
+                | MobKind::Warden
                 | MobKind::Creeper
                 | MobKind::Spider
                 | MobKind::ZombifiedPiglin
@@ -562,6 +569,7 @@ impl MobKind {
                 | MobKind::WitherSkeleton
                 | MobKind::Zoglin
                 | MobKind::Strider
+                | MobKind::Warden
         )
     }
 
@@ -575,6 +583,7 @@ impl MobKind {
         match self {
             MobKind::Enderman => true,
             MobKind::Sniffer
+            | MobKind::Warden
             | MobKind::Mule
             | MobKind::Bee
             | MobKind::Phantom
@@ -843,6 +852,7 @@ impl MobKind {
             MobKind::PiglinBrute => (7.0, "was slain by a piglin brute"),
             MobKind::Hoglin => (6.0, "was slain by a hoglin"),
             MobKind::Zoglin => (6.0, "was slain by a zoglin"),
+            MobKind::Warden => (super::warden::MELEE_DAMAGE, super::warden::CAUSE_MELEE),
             _ => (3.0, "was slain by a zombie"),
         }
     }
@@ -855,6 +865,7 @@ impl MobKind {
         const SEAGRASS: Item = Item::from_block(crate::world::overworld_blocks::SEAGRASS);
         const POPPY: Item = Item::from_block(Block::POPPY);
         const BAMBOO: Item = Item::from_block(crate::world::overworld_blocks::BAMBOO);
+        const CATALYST: Item = Item::from_block(crate::world::cave_blocks::SCULK_CATALYST);
         match self {
             MobKind::Pig => &[(Item::RAW_PORKCHOP, 1, 3)],
             MobKind::Bat | MobKind::Frog | MobKind::Tadpole | MobKind::PolarBear | MobKind::Armadillo => &[],
@@ -888,6 +899,8 @@ impl MobKind {
             }
             MobKind::CopperGolem => &[(Item::COPPER_INGOT, 1, 3)],
             MobKind::Creaking => &[],
+            // `entities/warden`: one sculk catalyst, unconditionally.
+            MobKind::Warden => &[(CATALYST, 1, 1)],
             MobKind::IronGolem => &[(Item::IRON_INGOT, 3, 5), (POPPY, 0, 2)],
             MobKind::SnowGolem => &[(Item::SNOWBALL, 0, 15)],
             MobKind::Slime => &[(Item::SLIME_BALL, 0, 2)],
@@ -1055,6 +1068,7 @@ pub struct Mob {
     pub creaking: Option<Box<super::creaking::State>>,
     pub sniffer: Option<Box<super::sniffer::State>>,
     pub allay: Option<Box<super::allay::State>>,
+    pub warden: Option<Box<super::warden::State>>,
     pub wolf_armor: Option<Box<super::wolf_armor::State>>,
     /// Witch: seconds left drinking, and the potion it is drinking.
     drink_left: f32,
@@ -1246,6 +1260,7 @@ impl Mob {
             creaking: (kind == MobKind::Creaking).then(Box::default),
             sniffer: (kind == MobKind::Sniffer).then(Box::default),
             allay: (kind == MobKind::Allay).then(Box::default),
+            warden: (kind == MobKind::Warden).then(Box::default),
             wolf_armor: (kind == MobKind::Wolf).then(Box::default),
             drink_left: 0.0,
             drinking: "",
@@ -1411,6 +1426,10 @@ impl Mob {
     }
 
     pub fn shape(&self) -> Shape {
+        // `Warden.getDefaultDimensions`: one block tall while digging or emerging.
+        if self.warden.as_ref().is_some_and(|s| s.digging_or_emerging()) {
+            return Shape::new(0.45, 1.0);
+        }
         if self.sniffer.as_ref().is_some_and(|s| s.pose == super::sniffer::DIGGING) {
             let scale = if self.baby || self.age < 0 { 0.5 } else { 1.0 };
             return Shape::new(0.95 * scale, f64::from(1.75_f32 - 0.4_f32) * scale);
@@ -1485,6 +1504,7 @@ impl Mob {
     /// and Flame only to hits `hurtOrSimulate` accepts.
     pub fn refuses_hit(&self, amount: f32) -> bool {
         !self.alive()
+            || self.warden.as_ref().is_some_and(|s| s.digging_or_emerging())
             || self.undead_mount.protection > 0.
             || self.armadillo.as_ref().is_some_and(|s| s.scared() && amount <= 1.0)
     }
@@ -1511,7 +1531,8 @@ impl Mob {
     /// then `Entity.pushFromExplosion` adds `push` (blocks per tick) to the
     /// motion. Returns `true` if this killed the mob.
     pub fn blast(&mut self, amount: f32, push: DVec3, rng: &mut Rng) -> bool {
-        if !self.alive() {
+        // `Warden.ignoreExplosion` while digging or emerging.
+        if !self.alive() || self.warden.as_ref().is_some_and(|s| s.digging_or_emerging()) {
             return false;
         }
         let killed = self.take_damage(amount, true, false, rng);
@@ -1725,6 +1746,7 @@ impl Mob {
                     .is_none_or(|s| !matches!(s.pose, super::sniffer::SEARCHING | super::sniffer::DIGGING))
                 && self.kind != MobKind::Tadpole
                 && self.kind != MobKind::Creeper
+                && self.kind != MobKind::Warden
                 && (self.bat.as_ref().is_none_or(|s| !s.resting) || rng.next_int(4) == 0)
             {
                 let sound = MobSound::Ambient(self.kind);
@@ -1948,6 +1970,9 @@ impl Mob {
     ) -> (Option<DVec3>, f64) {
         if self.creaking.is_some() {
             return self.creaking_think(world, ctx, rng, events);
+        }
+        if self.warden.is_some() {
+            return self.warden_steer(world, rng);
         }
         if self.kind == MobKind::Bat {
             self.bat_sense(world, ctx);
@@ -3293,7 +3318,7 @@ pub(super) fn wrap(a: f32) -> f32 {
     (a + PI).rem_euclid(TAU) - PI
 }
 
-fn turn_toward(from: f32, to: f32, max: f32) -> f32 {
+pub(super) fn turn_toward(from: f32, to: f32, max: f32) -> f32 {
     let d = wrap(to - from);
     wrap(from + d.clamp(-max, max))
 }

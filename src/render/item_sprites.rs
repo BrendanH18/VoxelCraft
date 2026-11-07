@@ -1005,6 +1005,10 @@ fn effect_glyph(effect: Effect) -> [&'static str; 8] {
         Effect::Absorption | Effect::Saturation => {
             [".##..##.", "#.######", "########", "########", ".######.", "..####..", "...##...", "........"]
         }
+        // An eye closing behind a dark veil.
+        Effect::Darkness => {
+            ["########", "#......#", "#.####.#", "##.##.##", "#.####.#", "#......#", "#.#..#.#", "########"]
+        }
     }
 }
 

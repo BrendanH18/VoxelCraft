@@ -879,6 +879,10 @@ pub fn protection_factor(armor: &[Option<Stack>; 4], kind: DamageKind) -> u32 {
 
 /// Damage left after enchantment protection (capped at 80%).
 pub fn protect(amount: f32, armor: &[Option<Stack>; 4], cause: &str) -> f32 {
+    // `#bypasses_enchantments`: the warden's sonic boom.
+    if cause == crate::entity::warden::CAUSE_SONIC_BOOM {
+        return amount;
+    }
     let epf = protection_factor(armor, DamageKind::of_cause(cause)).min(20);
     amount * (1.0 - epf as f32 / 25.0)
 }

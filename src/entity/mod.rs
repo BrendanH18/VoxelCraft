@@ -61,6 +61,7 @@ pub mod polar_bear;
 pub mod potion;
 mod projectile;
 mod replica;
+pub mod sculk_events;
 mod slime;
 pub mod sniffer;
 mod spawn_lists;
@@ -74,6 +75,7 @@ pub mod villager;
 mod villager_breeding;
 mod villager_gossip;
 pub mod wandering_trader;
+pub mod warden;
 pub mod wolf_armor;
 mod zombie_villager;
 
@@ -152,6 +154,7 @@ pub enum MobSound {
     /// The dug block's hit sound while a sniffer digs (`emitDiggingParticles`).
     SnifferDigHit(crate::world::block::Block),
     Allay(allay::Sound),
+    Warden(warden::Cue),
 }
 
 /// Something an entity did that the game needs to react to.
@@ -177,6 +180,16 @@ pub enum EntityEvent {
         knockback: Vec3,
         java: Option<crate::knockback::Hit>,
         cause: &'static str,
+    },
+    /// A warden's sonic boom hit `player`: `damage` that armor and
+    /// enchantments don't reduce (difficulty scales it), then the boom's
+    /// `push` (blocks per tick, before knockback resistance) away from the
+    /// warden at `from`.
+    PlayerSonicBoom {
+        player: PlayerId,
+        damage: f32,
+        push: Vec3,
+        from: DVec3,
     },
     /// Lightning deals five armored points, unaffected by difficulty.
     PlayerLightning {
@@ -659,6 +672,9 @@ pub struct Target {
     /// Bit set of the target's active [`crate::simulation::effects::Effect`]s.
     pub effects: u32,
     pub time_since_rest: u32,
+    /// Ticks of Darkness left (0 without it): wardens and shriekers only
+    /// renew it once under 200.
+    pub darkness_ticks: u32,
 }
 
 impl Target {
@@ -689,6 +705,7 @@ impl Target {
             health: crate::simulation::survival::MAX_HEALTH,
             effects: 0,
             time_since_rest: 0,
+            darkness_ticks: 0,
         }
     }
 
@@ -881,6 +898,9 @@ pub struct Entities {
     /// Player hits waiting for the hurt mob's `HurtByTargetGoal.canUse`
     /// (mob uid, attacker), resolved against the next update's players.
     hurt_by: Vec<(u32, PlayerId)>,
+    /// Sculk bookkeeping: loaded catalysts, deaths whose experience a
+    /// catalyst takes, and what each mob last did (see `sculk_events`).
+    pub(crate) sculk: sculk_events::Sculk,
     /// Bastion remnants (by their bounds' low corner) whose residents have
     /// spawned; saved with the nether mobs.
     bastions_populated: rustc_hash::FxHashSet<IVec3>,
@@ -961,6 +981,7 @@ impl Entities {
             nether_view: Vec::new(),
             player_spots: Vec::new(),
             hurt_by: Vec::new(),
+            sculk: Default::default(),
             bastions_populated: Default::default(),
             bastion_timer: 0.0,
             structures_populated: Default::default(),
@@ -1200,7 +1221,14 @@ impl Entities {
     fn drop_loot_with_fire(&mut self, kind: MobKind, pos: DVec3, looting: u8, burning: bool, player_kill: bool) {
         self.allay_equipment_drops(kind, pos);
         self.copper_equipment_drops(kind, pos);
+        // `CatalystListener.handleGameEvent` hears the death before the loot
+        // drops: a catalyst within 8 blocks takes the experience (none when
+        // nothing would drop) and blooms.
+        let catalyst = self.sculk.catalyst_near(pos);
         if !self.mob_loot {
+            if catalyst {
+                self.sculk.deaths.push((pos, 0));
+            }
             return;
         }
         let size = self
@@ -1210,7 +1238,13 @@ impl Entities {
             .map_or((1, false), |m| (m.size, m.baby));
         let (size, baby) = size;
         if baby && (kind.is_breedable() || kind == MobKind::PolarBear) && kind != MobKind::Hoglin {
+            if catalyst {
+                self.sculk.deaths.push((pos, 0));
+            }
             return;
+        }
+        if !player_kill && catalyst {
+            self.sculk.deaths.push((pos, 0));
         }
         if player_kill {
             let xp = if kind.is_cube() {
@@ -1223,7 +1257,11 @@ impl Entities {
             } else {
                 kind.xp(&mut self.rng)
             };
-            self.spawn_xp(pos, xp);
+            if catalyst {
+                self.sculk.deaths.push((pos, xp));
+            } else {
+                self.spawn_xp(pos, xp);
+            }
         }
         self.equipment_drops(kind, pos, looting, player_kill);
         self.skeleton_equipment_drops(kind, pos, looting, player_kill);
@@ -1788,6 +1826,9 @@ impl Entities {
         arrow.enchants = enchants;
         arrow.owner = Some(owner);
         arrow.pvp = self.pvp;
+        // `Projectile.tick`'s first tick: `projectile_shoot` from its owner.
+        let source = crate::world::vibration::EventSource::player(owner, false);
+        self.sculk.post(eye, crate::world::vibration::GameEvent::ProjectileShoot, source, None);
         self.arrows.push(arrow);
     }
 
@@ -1862,6 +1903,7 @@ impl Entities {
         if kind == MobKind::ZombifiedPiglin {
             self.anger_piglins(pos);
         }
+        self.warden_hurt(index, crate::world::vibration::EntityRef::Player(owner), true);
         self.nether_hurt(index, nether::Foe::Player(owner));
         self.hurt_by_player_target(index, owner);
         killed.then_some(kind)

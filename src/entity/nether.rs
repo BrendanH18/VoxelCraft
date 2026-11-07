@@ -628,6 +628,7 @@ impl Entities {
                 let Some(i) = self.mobs.iter().position(|m| m.uid == target && m.alive()) else { continue };
                 let (kind, pos, burning) = (self.mobs[i].kind, self.mobs[i].pos, self.mobs[i].burning);
                 let killed = self.mobs[i].damage(damage, Some(knockback), &mut self.rng);
+                self.warden_hurt(i, crate::world::vibration::EntityRef::Mob(attacker), true);
                 self.nether_hurt(i, Foe::Mob(attacker));
                 self.polar_hurt(i, Foe::Mob(attacker));
                 self.panda_hurt(i, Foe::Mob(attacker));
@@ -1567,6 +1568,9 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if let Some(s) = &m.allay {
         v["allay"] = s.save();
     }
+    if let Some(s) = &m.warden {
+        v["warden"] = s.save();
+    }
     if let Some(s) = &m.copper_golem {
         v["copper_golem"] = s.save();
     }
@@ -1669,6 +1673,9 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     }
     if let Some(s) = &mut m.allay {
         **s = super::allay::State::load(&v["allay"]);
+    }
+    if let Some(s) = &mut m.warden {
+        **s = super::warden::State::load(&v["warden"]);
     }
     if let Some(s) = &mut m.copper_golem {
         s.load(&v["copper_golem"]);
