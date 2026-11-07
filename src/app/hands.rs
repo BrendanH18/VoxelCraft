@@ -357,6 +357,23 @@ impl Actor<'_> {
                 audio.play_in(SoundSource::Neutral, Sound::Bow, Some(from), throw.0, throw.1)
             }
             Used::PotionThrown { from } => audio.play(Sound::Bow, Some(from), throw.0, throw.1),
+            Used::WindChargeThrown { from } => {
+                let cue = Sound::Breeze(voxelcraft::entity::breeze::Cue::Throw);
+                audio.play_in(SoundSource::Neutral, cue, Some(from), 0.5, throw.1)
+            }
+            Used::Vault { cell, unlocked, rewarded, sound } => {
+                use voxelcraft::entity::breeze::Cue;
+                let cue = if unlocked {
+                    Cue::VaultInsert
+                } else if rewarded {
+                    Cue::VaultReject
+                } else {
+                    Cue::VaultFail
+                };
+                if sound {
+                    audio.play_in(SoundSource::Blocks, Sound::Breeze(cue), Some(centre(cell)), 1.0, (0.9, 1.1));
+                }
+            }
             Used::EyeReleased { from } => items::eye_thrown_sound(audio, from),
             Used::EyeInserted { cell, opened } => items::frame_filled_sounds(audio, cell, opened),
             Used::EggTeleported { destination: Some(to) } => {

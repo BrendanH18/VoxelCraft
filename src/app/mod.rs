@@ -43,6 +43,7 @@ mod split;
 mod startup;
 mod tick;
 mod trading;
+mod trial;
 mod utilities;
 pub use crate::simulation::survival;
 pub use voxelcraft::rules::GameMode;

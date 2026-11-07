@@ -111,6 +111,17 @@ impl PlayerSession {
                 entities,
                 &self.player,
             );
+        } else if let Some(amplifier) = crate::world::trial::ominous_amplifier(held.item) {
+            // `OminousBottleAmplifier.onConsume`: Bad Omen for 120000 ticks;
+            // the bottle is used up (Creative keeps it).
+            if !self.mode.is_creative() {
+                self.inventory.take_one(slot);
+            }
+            self.vitals.apply_effect(
+                crate::simulation::effects::Effect::BadOmen,
+                amplifier,
+                crate::world::trial::BAD_OMEN_TICKS,
+            );
         } else if let Some(potion) = held.item.as_potion() {
             if self.mode.is_survival() {
                 self.inventory.slots[slot] = Some(Stack::new(Item::GLASS_BOTTLE, 1));
