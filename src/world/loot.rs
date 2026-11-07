@@ -291,13 +291,28 @@ pub fn java_item(name: &str) -> Option<crate::item::Item> {
     static ITEMS: std::sync::OnceLock<BTreeMap<String, Option<Item>>> = std::sync::OnceLock::new();
     let items = ITEMS.get_or_init(|| {
         let mut out = BTreeMap::new();
-        for table in facts()["tables"].as_object().unwrap().values() {
-            for pool in table["pools"].as_array().unwrap() {
-                for entry in pool["entries"].as_array().unwrap() {
-                    let Some(name) = entry["name"].as_str().map(|s| s.trim_start_matches("minecraft:")) else {
-                        continue;
-                    };
+        // Every entry name, including those of inline nested tables.
+        fn names<'a>(v: &'a serde_json::Value, found: &mut Vec<&'a str>) {
+            match v {
+                serde_json::Value::Object(o) => {
+                    if let Some(entries) = o.get("entries").and_then(|e| e.as_array()) {
+                        found.extend(entries.iter().filter_map(|e| e["name"].as_str()));
+                    }
+                    o.values().for_each(|v| names(v, found));
+                }
+                serde_json::Value::Array(a) => a.iter().for_each(|v| names(v, found)),
+                _ => {}
+            }
+        }
+        let mut found = Vec::new();
+        names(&facts()["tables"], &mut found);
+        {
+            for name in found.into_iter().map(|s| s.trim_start_matches("minecraft:")) {
+                {
                     out.entry(name.into()).or_insert_with(|| {
+                        if let Some(item) = super::trial::java_item(name) {
+                            return Some(item);
+                        }
                         let block = match name {
                             "gold_block" => Some(Block::GOLD_BLOCK),
                             "iron_block" => Some(Block::IRON_BLOCK),
@@ -322,6 +337,9 @@ pub fn java_item(name: &str) -> Option<crate::item::Item> {
                             "leather_helmet" => Some(Item::armor(ArmorPiece::Helmet, ArmorMaterial::Leather)),
                             "leather_chestplate" => Some(Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Leather)),
                             "leather_leggings" => Some(Item::armor(ArmorPiece::Leggings, ArmorMaterial::Leather)),
+                            "splash_potion" => Some(Item::splash_potion(crate::potion::Potion::WATER)),
+                            "lingering_potion" => Some(Item::LINGERING_POTION),
+                            "tipped_arrow" => Some(Item::TIPPED_ARROW),
                             _ => Item::from_name(name),
                         })
                     });
@@ -467,10 +485,48 @@ fn enchant_levels(stack: &mut Stack, name: &str, modifier: &serde_json::Value, r
 /// Roll the normalized Java pools in declaration order. The resolver runs
 /// exploration modifiers before the fill shuffles, so discarded maps do not
 /// consume a slot or a stack-splitting draw.
-pub fn table_with_random(name: &str, rng: &mut impl Random, mut resolve: impl FnMut(Stack) -> Option<Stack>) -> Chest {
-    let table = &facts()["tables"][name];
+pub fn table_with_random(name: &str, rng: &mut impl Random, resolve: impl FnMut(Stack) -> Option<Stack>) -> Chest {
+    let items = roll_items(name, rng, resolve);
+    let mut chest = Chest::default();
+    let size = if name == "jungle_temple_dispenser" || name.starts_with("dispensers/") { 9 } else { 27 };
+    fill(&mut chest, items, rng, size);
+    chest
+}
+
+/// `LootTable.getRandomItems`: every stack a named table yields, in roll
+/// order, before any container fill. Unknown tables yield nothing.
+pub fn roll_items(name: &str, rng: &mut impl Random, mut resolve: impl FnMut(Stack) -> Option<Stack>) -> Vec<Stack> {
     let mut items = Vec::new();
-    for pool in table["pools"].as_array().expect("known structure table") {
+    let table = &facts()["tables"][name];
+    if table.is_object() {
+        roll_table(table, rng, &mut resolve, &mut items, 0);
+    }
+    items
+}
+
+/// One table's pools; `loot_table` entries recurse with the same random,
+/// as a nested `NestedLootTable` shares its parent's context.
+fn roll_table(
+    table: &serde_json::Value,
+    rng: &mut impl Random,
+    resolve: &mut impl FnMut(Stack) -> Option<Stack>,
+    items: &mut Vec<Stack>,
+    depth: u32,
+) {
+    for pool in table["pools"].as_array().into_iter().flatten() {
+        // Pool conditions this corpus uses: `random_chance` draws a float;
+        // `killed_by_player` holds for the callers that roll entity tables.
+        if let Some(c) = pool.get("condition") {
+            match c["type"].as_str().unwrap_or("").trim_start_matches("minecraft:") {
+                "random_chance" => {
+                    if rng.float() >= c["chance"].as_f64().unwrap_or(1.0) as f32 {
+                        continue;
+                    }
+                }
+                "killed_by_player" => {}
+                _ => {}
+            }
+        }
         // The only conditional entry in this corpus requires sulfur_caves,
         // a biome this generator cannot produce. Java excludes it before
         // summing weights, rather than rolling it as an empty item.
@@ -494,6 +550,22 @@ pub fn table_with_random(name: &str, rng: &mut impl Random, mut resolve: impl Fn
                     }
                 })
                 .unwrap();
+            if entry["type"].as_str() == Some("minecraft:loot_table") {
+                if depth < 4 {
+                    match &entry["value"] {
+                        serde_json::Value::String(n) => {
+                            let n = n.trim_start_matches("minecraft:");
+                            let nested = &facts()["tables"][n.strip_prefix("chests/").unwrap_or(n)];
+                            if nested.is_object() {
+                                roll_table(nested, rng, resolve, items, depth + 1);
+                            }
+                        }
+                        inline @ serde_json::Value::Object(_) => roll_table(inline, rng, resolve, items, depth + 1),
+                        _ => {}
+                    }
+                }
+                continue;
+            }
             let Some(name) = entry["name"].as_str().map(|s| s.trim_start_matches("minecraft:")) else { continue };
             // Unsupported entries execute their modifiers and retain RNG draws,
             // then discard their result. Names supply compatibility even when
@@ -523,10 +595,33 @@ pub fn table_with_random(name: &str, rng: &mut impl Random, mut resolve: impl Fn
                     }
                     "enchant_randomly" => enchant_random(&mut stack, name, m, rng),
                     "enchant_with_levels" => enchant_levels(&mut stack, name, m, rng),
+                    // Fixed levels; an enchantment another track has not
+                    // added yet leaves this entry blank (integration hook).
+                    "set_enchantments" => {
+                        for (e, level) in m["enchantments"].as_object().into_iter().flatten() {
+                            let e = e.trim_start_matches("minecraft:");
+                            if crate::enchant::Enchantment::from_name(e).is_none() {
+                                discard = true;
+                            }
+                            apply_enchantment(&mut stack, e, level.as_u64().unwrap_or(1).min(255) as u8);
+                        }
+                    }
                     "set_potion" => {
                         if let Some(potion) = m["id"].as_str().and_then(crate::potion::Potion::from_id) {
-                            stack.item = crate::item::Item::potion(potion);
+                            match name {
+                                "lingering_potion" | "tipped_arrow" => stack.entity_data = u32::from(potion.0) + 1,
+                                "splash_potion" => stack.item = crate::item::Item::splash_potion(potion),
+                                _ => stack.item = crate::item::Item::potion(potion),
+                            }
+                        } else if matches!(name, "potion" | "splash_potion" | "lingering_potion" | "tipped_arrow") {
+                            // A potion this build lacks (wind charged, oozing,
+                            // weaving, infested) stays blank.
+                            discard = true;
                         }
+                    }
+                    "set_ominous_bottle_amplifier" => {
+                        let amplifier = uniform(&m["amplifier"], rng).min(4) as u8;
+                        stack.item = super::trial::ominous_bottle(amplifier);
                     }
                     "set_instrument" => {
                         stack.item = crate::item::Item(crate::item::Item::GOAT_HORN.0 + rng.bounded(4) as u16);
@@ -563,9 +658,6 @@ pub fn table_with_random(name: &str, rng: &mut impl Random, mut resolve: impl Fn
             }
         }
     }
-    let mut chest = Chest::default();
-    fill(&mut chest, items, rng, if name == "jungle_temple_dispenser" { 9 } else { 27 });
-    chest
 }
 pub fn table(seed: u64, name: &str) -> Chest {
     table_with_random(name, &mut LootRandom::new(seed), |_| None)
@@ -580,13 +672,34 @@ impl super::World {
                 self.maps.explorer(&self.generator, origin, s.item, 50)
             })
         } else {
-            let key = format!("minecraft:chests/{name}");
+            let key = sequence_key(name);
             let mut sequence = *self.loot_sequences.get(self.generator.seed, &key);
             let chest =
                 table_with_random(name, &mut sequence, |s| self.maps.explorer(&self.generator, origin, s.item, 50));
             *self.loot_sequences.get(self.generator.seed, &key) = sequence;
             chest
         }
+    }
+
+    /// `LootTable.getRandomItems` with the table's persistent named random
+    /// sequence (vault rewards, trial spawner ejections).
+    pub fn loot_stacks(&mut self, name: &str, origin: glam::IVec3) -> Vec<Stack> {
+        let key = sequence_key(name);
+        let mut sequence = *self.loot_sequences.get(self.generator.seed, &key);
+        let items = roll_items(name, &mut sequence, |s| self.maps.explorer(&self.generator, origin, s.item, 50));
+        *self.loot_sequences.get(self.generator.seed, &key) = sequence;
+        items
+    }
+}
+
+/// A table's `random_sequence`: chest tables are named without their
+/// `chests/` folder here; spawner, dispenser, equipment and entity tables
+/// keep theirs.
+pub fn sequence_key(name: &str) -> String {
+    if ["spawners/", "dispensers/", "equipment/", "entities/"].iter().any(|f| name.starts_with(f)) {
+        format!("minecraft:{name}")
+    } else {
+        format!("minecraft:chests/{name}")
     }
 }
 
@@ -661,7 +774,7 @@ mod reference_tests {
     #[test]
     fn data_tables_have_supported_modifiers_and_ordered_pools() {
         for (name, t) in facts()["tables"].as_object().unwrap() {
-            assert_eq!(t["random_sequence"], format!("minecraft:chests/{name}"));
+            assert_eq!(t["random_sequence"], sequence_key(name));
             for p in t["pools"].as_array().unwrap() {
                 for e in p["entries"].as_array().unwrap() {
                     let mut modifiers = Vec::new();
@@ -684,6 +797,8 @@ mod reference_tests {
                                 | "minecraft:set_instrument"
                                 | "minecraft:set_potion"
                                 | "minecraft:set_stew_effect"
+                                | "minecraft:set_ominous_bottle_amplifier"
+                                | "minecraft:set_enchantments"
                         ));
                     }
                 }

@@ -712,6 +712,53 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 ))
             }
         }
+        // v0.16 Track C: original key, rod, gust and bottle icons.
+        Sprite::TrialKey(ominous) => {
+            let c = if ominous { [54, 168, 176] } else { [214, 138, 70] };
+            let ring = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                let d = ((px - 5.0).powi(2) + (py - 5.0).powi(2)).sqrt();
+                (1.6..=3.4).contains(&d)
+            };
+            let shaft = |x: i32, y: i32| (x - y).abs() <= 0 && (7..=13).contains(&x);
+            let teeth = |x: i32, y: i32| (x == 11 && y == 13) || (x == 13 && y == 11) || (x == 12 && y == 13);
+            let key = |x: i32, y: i32| ring(x, y) || shaft(x, y) || teeth(x, y);
+            shaded(&key, x, y, c, 0.06)
+        }
+        Sprite::BreezeRod => {
+            // A pale, twisting rod with a cyan core.
+            let on = (x + y - 15).abs() <= 1 && (2..=13).contains(&x);
+            on.then(|| {
+                if (x + y) == 15 && x % 3 != 0 {
+                    tint([150, 230, 240], 1.0)
+                } else {
+                    tint([206, 214, 232], 0.9 + noise(x, y, 77) * 0.15)
+                }
+            })
+        }
+        Sprite::WindCharge => {
+            // A swirling ball of air.
+            let (px, py) = centre(x, y);
+            let r = ((px - 8.0).powi(2) + (py - 8.0).powi(2)).sqrt();
+            let a = (py - 8.0).atan2(px - 8.0);
+            let swirl = ((a * 2.0 + r * 0.9).sin() > 0.2) as u8;
+            (r <= 5.8).then(|| if swirl == 1 { tint([196, 222, 236], 1.0) } else { tint([150, 176, 210], 0.95) })
+        }
+        Sprite::OminousBottle(level) => {
+            let flask = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                ((px - 8.0) / 4.6).powi(2) + ((py - 10.0) / 4.4).powi(2) <= 1.0
+                    || ((6..=9).contains(&x) && (2..=6).contains(&y))
+            };
+            let pip = y == 11 && (5..5 + 2 * (level as i32 + 1)).contains(&x) && x % 2 == 1;
+            if pip {
+                Some(tint([230, 230, 230], 1.0))
+            } else if (6..=9).contains(&x) && y == 2 {
+                Some(tint([80, 70, 60], 1.0))
+            } else {
+                shaded(&flask, x, y, [38, 120, 92], 0.07)
+            }
+        }
         Sprite::Brush => {
             if (x - y).abs() <= 1 && (5..=14).contains(&y) {
                 Some(tint([132, 92, 51], 1.0))
@@ -1004,6 +1051,10 @@ fn effect_glyph(effect: Effect) -> [&'static str; 8] {
         // A heart with a highlight cut out of its upper left lobe, like the golden hearts.
         Effect::Absorption | Effect::Saturation => {
             [".##..##.", "#.######", "########", "########", ".######.", "..####..", "...##...", "........"]
+        }
+        // An original banner-like pennant for both omens.
+        Effect::BadOmen | Effect::TrialOmen => {
+            ["########", "#.####.#", "##.##.##", "###..###", "###..###", "##.##.##", ".######.", "...##..."]
         }
     }
 }

@@ -495,6 +495,8 @@ pub fn recipes() -> &'static [Recipe] {
         r.push(shaped(&["##", "##"], &[('#', BASALT)], b(Block::POLISHED_BASALT), 4));
         r.push(shaped(&["##", "##"], &[('#', &[Item::MAGMA_CREAM])], b(Block::MAGMA), 1));
         r.push(shapeless(&[&[Item::SLIME_BALL], &[Item::BLAZE_POWDER]], Item::MAGMA_CREAM, 1));
+        // v0.16 Track C: `recipe/wind_charge`.
+        r.push(shapeless(&[&[crate::world::trial::BREEZE_ROD]], crate::world::trial::WIND_CHARGE, 4));
         r.push(shaped(&["N", "I", "N"], &[('N', &[Item::IRON_NUGGET]), ('I', IRON)], b(Block::CHAIN), 1));
         r.push(shaped(&["###", "###", "###"], &[('#', GOLD)], b(Block::GOLD_BLOCK), 1));
         r.push(shapeless(&[GOLD_BLOCK], Item::GOLD_INGOT, 9));

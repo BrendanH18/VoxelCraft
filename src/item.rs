@@ -295,6 +295,12 @@ pub enum Sprite {
     Shield,
     Totem,
     PotterySherd(u8),
+    /// v0.16 Track C: a trial key (`true`: ominous).
+    TrialKey(bool),
+    BreezeRod,
+    WindCharge,
+    /// An ominous bottle; the amplifier adds pips.
+    OminousBottle(u8),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1028,10 +1034,13 @@ impl Item {
     }
 
     pub fn is_map(self) -> bool {
-        (1255..=1265).contains(&self.0)
+        (1255..=1265).contains(&self.0) || self == crate::world::trial::TRIAL_CHAMBERS_MAP
     }
 
     pub fn info(self) -> ItemInfo {
+        if let Some(info) = crate::world::trial::item_info(self) {
+            return info;
+        }
         if self == Self::TORCHFLOWER_SEEDS {
             return item("torchflower seeds", Sprite::Lump([126, 82, 42]));
         }
@@ -1417,7 +1426,9 @@ impl Item {
     }
 
     pub fn is_drink(self) -> bool {
-        self.as_potion().is_some() || matches!(self, Self::MILK_BUCKET | Self::HONEY_BOTTLE)
+        self.as_potion().is_some()
+            || matches!(self, Self::MILK_BUCKET | Self::HONEY_BOTTLE)
+            || crate::world::trial::ominous_amplifier(self).is_some()
     }
 
     /// Hunger and saturation restored, for food.
@@ -1431,6 +1442,9 @@ impl Item {
     /// Texture layer of the flat inventory icon (non-block items only), in
     /// the item icon range from `tex::ITEM_BASE`.
     pub fn icon_layer(self) -> Option<u16> {
+        if self == crate::world::trial::TRIAL_CHAMBERS_MAP {
+            return Some(crate::world::trial::MAP_TEX);
+        }
         if self.is_map() {
             return Some(2944 + self.0 - 1255);
         }
@@ -1507,6 +1521,10 @@ impl Item {
             .chain([Self::TORCHFLOWER_SEEDS, Self::PITCHER_POD])
             .chain((crate::world::archaeology::ITEM_FIRST..crate::world::archaeology::ITEM_END).map(Item))
             .chain([Self::RESIN_BRICK])
+            // v0.16 Track C: keys, breeze rod, wind charge and ominous
+            // bottles take icons after the resin brick; the explorer map
+            // draws its own layer.
+            .chain((crate::world::trial::ITEM_FIRST..crate::world::trial::ITEM_END).map(Item))
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1572,6 +1590,7 @@ fn sprite_index(item: Item) -> Option<u16> {
         1332 => Some(passive_icon_base() + 7),
         1333 => Some(passive_icon_base() + 8),
         1368 => Some(passive_icon_base() + 18),
+        1470..=1478 => Some(passive_icon_base() + 19 + item.0 - 1470),
         1301..=1304 => Some(passive_icon_base() + item.0 - 1301),
         1040 => Some(turtle_icon()),
         1073 => Some(turtle_icon() + 2 + COPPER_ITEMS.len() as u16),
@@ -1667,7 +1686,7 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    passive_icon_base() as u32 + 4 + 5 + 2 + 7 + 1
+    passive_icon_base() as u32 + 4 + 5 + 2 + 7 + 1 + 9
 }
 
 const fn passive_icon_base() -> u16 {
