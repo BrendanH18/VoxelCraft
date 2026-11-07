@@ -551,6 +551,7 @@ mod allay;
 mod animals;
 mod aquatic;
 mod bee;
+mod breeze;
 mod copper_golem;
 mod creaking;
 mod hostiles;
@@ -558,6 +559,7 @@ mod mounts;
 mod passive;
 mod phantom;
 mod sniffer;
+mod warden;
 
 /// Animated parts for a mob, in model space (pixels).
 fn pose(m: &Mob, time: f32) -> Parts {
@@ -603,8 +605,10 @@ fn pose(m: &Mob, time: f32) -> Parts {
         MobKind::Ocelot => passive::ocelot(m),
         MobKind::CopperGolem => copper_golem::pose(m, time),
         MobKind::Sniffer => sniffer::pose(m, time),
+        MobKind::Warden => warden::pose(m, time),
         MobKind::Creaking => creaking::pose(m, time),
         MobKind::Allay => allay::pose(m, time),
+        MobKind::Breeze => breeze::pose(m, time),
         MobKind::Tadpole => passive::tadpole(m, time),
         MobKind::Cow => parts![
             part(COW_BODY, [0.0; 3], Quat::IDENTITY),
@@ -1104,6 +1108,33 @@ pub fn build_arrows(arrows: &[Arrow], camera: DVec3, alpha: f64, out: &mut Vec<E
     }
 }
 
+/// Original thrown-trident model, pointing along +Z: a teal shaft, a
+/// crossbar and three prongs; a glinting (enchanted) trident is brighter.
+const TRIDENT: &[Cuboid] = &[
+    cube([-0.5, -0.5, -12.0], [0.5, 0.5, 6.0], [58, 116, 108], 10),
+    cube([-2.5, -0.5, 6.0], [2.5, 0.5, 7.0], [96, 182, 168], 6),
+    cube([-0.5, -0.5, 7.0], [0.5, 0.5, 12.0], [110, 200, 186], 6),
+    cube([-2.5, -0.5, 7.0], [-1.5, 0.5, 10.5], [110, 200, 186], 6),
+    cube([1.5, -0.5, 7.0], [2.5, 0.5, 10.5], [110, 200, 186], 6),
+];
+
+/// Thrown tridents (v0.16): stuck ones sit with their prongs buried.
+pub fn build_tridents(tridents: &[super::trident::Trident], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
+    for t in tridents {
+        let rel = (t.previous_pos.lerp(t.pos, alpha) - camera).as_vec3();
+        let dir = t.dir.normalize_or(Vec3::Z);
+        let rot = Quat::from_rotation_arc(Vec3::Z, dir);
+        let origin = if t.in_ground { rel - dir * 0.45 } else { rel + Vec3::Y * 0.25 };
+        for (i, c) in TRIDENT.iter().enumerate() {
+            let mut c = *c;
+            if t.foil() {
+                c.color = c.color.map(|v| v.saturating_add(40));
+            }
+            push_cuboid(out, &c, &|v: Vec3| origin + rot * v / 16.0, rot, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
+        }
+    }
+}
+
 /// Thrown snowballs and eggs: small cubes that tumble with no facing.
 pub fn build_thrown(thrown: &[super::thrown::Thrown], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
     for t in thrown {
@@ -1112,6 +1143,8 @@ pub fn build_thrown(thrown: &[super::thrown::Thrown], camera: DVec3, alpha: f64,
             super::thrown::Kind::Snowball => ([245, 245, 250], 2.0),
             super::thrown::Kind::Egg => ([236, 224, 196], 2.2),
             super::thrown::Kind::LlamaSpit => ([235, 238, 228], 1.5),
+            super::thrown::Kind::WindCharge => ([200, 224, 240], 2.4),
+            super::thrown::Kind::BreezeWindCharge => ([170, 200, 236], 3.0),
         };
         let c = cube([-size, -size, -size], [size, size, size], color, 16);
         push_cuboid(out, &c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([230, 0, 0, 0], 0), (FIRE, 0.0), 0.0);

@@ -6,6 +6,7 @@
 //! Synthesis and device setup happen on a background thread, so startup is
 //! never blocked. Without an output device the game runs silently.
 
+mod breeze;
 mod dsp;
 mod export;
 pub mod mixer;
@@ -13,6 +14,8 @@ mod sniffer;
 pub mod sounds;
 mod source;
 mod voices;
+mod warden;
+mod weapons;
 
 use std::sync::Arc;
 use std::time::Instant;

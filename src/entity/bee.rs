@@ -173,13 +173,19 @@ impl Entities {
         ctx: &Ctx,
         difficulty: crate::simulation::difficulty::Difficulty,
     ) -> Vec<EntityEvent> {
+        self.sculk_before(world);
+        self.tick_wardens(dt, world, ctx);
         self.tick_sniffers(dt, world, ctx);
         self.tick_creaking_hearts(dt, world, ctx, difficulty);
         self.hear_allay_notes(world);
+        self.hear_jukeboxes(world);
         self.tick_copper_golems(dt, world);
         self.finish_copper_statues(world);
         world.tick_beehives(self, dt, ctx);
         let events = self.update_difficulty(dt, world, ctx, difficulty);
+        self.mob_game_events(world);
+        self.settle_sculk_deaths(world);
+        self.flush_sculk_events(world);
         let mut i = 0;
         while i < self.mobs.len() {
             let m = &mut self.mobs[i];

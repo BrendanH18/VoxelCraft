@@ -66,6 +66,13 @@ impl Game {
                 // `BigDripleafBlock.entityInside`: a leaf stood on starts to tilt.
                 self.world.dripleaf_step(self.session.player.pos, self.session.player.on_ground);
                 crate::particles::movement_effects(&self.session.player, before, &mut self.world);
+                self.world.player_moved(
+                    self.session.id,
+                    &self.session.player,
+                    before,
+                    self.session.mode == GameMode::Spectator,
+                    self.session.mode.is_creative(),
+                );
                 self.update_portal(dt);
             } else {
                 self.session.player.vel = DVec3::ZERO;
@@ -199,6 +206,31 @@ impl Game {
             self.gamerules.int("fire_spread_radius_around_player") != 0,
             self.gamerules.int("random_tick_speed") as u32,
         );
+        // Shriekers that heard a player check everyone's warning levels.
+        {
+            let host = &mut self.session;
+            let mut players = vec![crate::world::sculk::ShriekPlayer {
+                id: host.id,
+                pos: host.player.pos,
+                alive: !host.vitals.is_dead(),
+                spectator: host.mode == GameMode::Spectator,
+                untargetable: host.mode.is_creative(),
+                tracker: &mut host.vitals.warden,
+            }];
+            for bot in self.agents.players.values_mut().filter(|b| b.active) {
+                let s = &mut bot.agent.session;
+                players.push(crate::world::sculk::ShriekPlayer {
+                    id: s.id,
+                    pos: s.player.pos,
+                    alive: !s.vitals.is_dead(),
+                    spectator: s.mode == GameMode::Spectator,
+                    untargetable: s.mode.is_creative(),
+                    tracker: &mut s.vitals.warden,
+                });
+            }
+            let entities = &self.mobs.entities;
+            self.world.resolve_shrieks(&mut players, |at| entities.warden_near(at));
+        }
         let snow_pushes = self.world.take_snow_pushes();
         for &(cell, height) in &snow_pushes {
             let shape = self.session.player.collision_shape();
@@ -225,6 +257,7 @@ impl Game {
             landed(&self.world, &mut bot.agent.session);
         }
         self.world.tick_automation_entities(&mut self.mobs.entities);
+        self.tick_trial();
         self.update_mobs(dt);
         self.update_items();
         self.tick_particles();

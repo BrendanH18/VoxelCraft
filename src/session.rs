@@ -10,10 +10,13 @@ pub mod consumption;
 mod copper_golem;
 pub mod hands;
 pub mod interact;
+mod jukebox;
 mod lodestone;
 pub mod mining;
 pub mod placement;
 pub mod ranged;
+mod recovery;
+mod weapons;
 mod wood;
 use glam::{DVec3, IVec3};
 
@@ -42,6 +45,11 @@ pub struct PlayerSession {
     /// The Nether respawn anchor last set as the respawn point (it replaces
     /// a bed, and a bed replaces it).
     pub spawn_anchor: Option<IVec3>,
+    /// Where and in which dimension this player last died
+    /// (`Player.lastDeathLocation`), which recovery compasses point to.
+    pub last_death: Option<(IVec3, crate::world::terrain::Dimension)>,
+    /// Whether the current death has been recorded in `last_death`.
+    death_recorded: bool,
     /// Damage of a stalactite that landed in this player's box during the
     /// last world tick, taken as it landed (as mobs are hit) and applied by
     /// the next vitals tick.
@@ -58,6 +66,7 @@ pub struct PlayerSession {
     brushing: archaeology::State,
     hands: hands::State,
     mining: mining::State,
+    weapons: weapons::State,
 }
 
 /// Where a sleeper lay down: the bed's head block and the spot on it.
@@ -158,6 +167,8 @@ impl PlayerSession {
             spawn_bed: None,
             spawn_point: None,
             spawn_anchor: None,
+            last_death: None,
+            death_recorded: false,
             stalactite: 0.0,
             ender: Default::default(),
             respawns: 0,
@@ -167,6 +178,7 @@ impl PlayerSession {
             brushing: Default::default(),
             hands: Default::default(),
             mining: Default::default(),
+            weapons: Default::default(),
         }
     }
 
@@ -183,6 +195,8 @@ impl PlayerSession {
             spawn_bed: None,
             spawn_point: None,
             spawn_anchor: None,
+            last_death: None,
+            death_recorded: false,
             stalactite: 0.0,
             ender: Default::default(),
             respawns: 0,
@@ -192,6 +206,7 @@ impl PlayerSession {
             brushing: Default::default(),
             hands: Default::default(),
             mining: Default::default(),
+            weapons: Default::default(),
         }
     }
 

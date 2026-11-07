@@ -275,6 +275,7 @@ pub(crate) fn movement_speed(kind: MobKind) -> f64 {
         K::Bee | K::Wolf | K::Cat | K::Fox | K::Rabbit | K::Hoglin => 0.3,
         K::Strider | K::Donkey | K::Mule | K::Llama | K::TraderLlama => 0.175,
         K::Sniffer => f64::from(0.1_f32),
+        K::Warden => super::super::warden::MOVEMENT_SPEED,
         K::Camel => 0.09,
         K::Panda => f64::from(0.15_f32),
         K::Armadillo => 0.14,

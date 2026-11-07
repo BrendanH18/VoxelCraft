@@ -126,6 +126,9 @@ impl Game {
         vitals.time_since_rest =
             prop("time_since_rest").and_then(|s| s.parse::<u32>().ok()).unwrap_or(0).min(i32::MAX as u32);
         vitals.ticks_frozen = prop("ticks_frozen").and_then(|s| s.parse::<u16>().ok()).unwrap_or(0).min(140);
+        if let Some(v) = prop("warden_spawn_tracker").and_then(|t| serde_json::from_str(t).ok()) {
+            vitals.warden = crate::world::sculk::WardenSpawnTracker::load(&v);
+        }
         if let Some(text) = prop("effects") {
             vitals.effects = crate::simulation::effects::Effects::deserialize(text);
         }
@@ -205,6 +208,9 @@ impl Game {
             let n: Vec<i32> = text.split(',').filter_map(|value| value.parse().ok()).collect();
             (n.len() == 3).then(|| IVec3::new(n[0], n[1], n[2]))
         });
+        if let Some(text) = existing.as_ref().and_then(|l| l.props.get("last_death")) {
+            session.load_last_death(text);
+        }
         session.spawn_anchor = existing.as_ref().and_then(|l| l.props.get("spawn_anchor")).and_then(|text| {
             let n: Vec<i32> = text.split(',').filter_map(|value| value.parse().ok()).collect();
             (n.len() == 3).then(|| IVec3::new(n[0], n[1], n[2]))

@@ -58,6 +58,8 @@ pub fn class(item: Item) -> Option<FuelClass> {
         Item::BOW | Item::FISHING_ROD | Item::CROSSBOW | Item::CHARGED_CROSSBOW => return Some(Wood),
         Item::OAK_DOOR => return Some(Large),
         i if i.as_tool().is_some_and(|(_, tier)| tier == Tier::Wood) => return Some(Large),
+        // `Items.WOODEN_SPEAR`: `cookingFuel(COOKING_TIME_WOOD_ITEMS_LARGE)`.
+        i if i == crate::weapons::spear(Tier::Wood) => return Some(Large),
         // Append-only v0.7 boat/raft and chest-boat item range. Minecarts do not burn.
         Item(960..=979) => return Some(Boat),
         _ => {}
@@ -134,7 +136,9 @@ pub fn class(item: Item) -> Option<FuelClass> {
         | rb::WOOD_TRAPDOOR
         | rb::WOOD_PLATE
         | rb::DAYLIGHT
-        | gadgets::NOTE => Some(Wood),
+        | gadgets::NOTE
+        // `FuelValues`: the jukebox is in `#wooden` blocks' 300 ticks.
+        | crate::world::jukebox::JUKEBOX => Some(Wood),
         b if b.slab_base() == Some(Block::PLANKS) => Some(Slab),
         b if b.stairs_base() == Some(Block::PLANKS) => Some(Wood),
         _ => None,

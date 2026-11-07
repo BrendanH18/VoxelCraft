@@ -13,6 +13,7 @@
 //! light-blocking block, which seeds skylight in mesh jobs.
 
 pub mod activity;
+pub mod ancient_city;
 pub mod archaeology;
 mod automation;
 pub mod bastion;
@@ -56,8 +57,10 @@ pub mod furnace;
 pub mod gadgets;
 pub mod geode;
 mod growth;
+pub mod heavy_core;
 mod honey;
 pub mod jigsaw;
+pub mod jukebox;
 mod light_shape;
 pub(crate) mod lighting;
 pub mod lightning;
@@ -92,6 +95,8 @@ pub mod ruined_portal;
 #[cfg(test)]
 mod rule_tests;
 pub mod scaffolding;
+pub mod sculk;
+pub mod sculk_spread;
 pub mod shape;
 pub mod slab_stair_states;
 pub mod sniffer_egg;
@@ -107,8 +112,11 @@ pub mod temples;
 pub mod terrain;
 pub mod trail_ruins;
 pub mod trees;
+pub mod trial;
+pub mod trial_chambers;
 pub mod underground;
 pub mod utilities;
+pub mod vibration;
 pub mod village;
 pub mod village_blocks;
 mod village_life;
@@ -214,6 +222,8 @@ pub struct WorldRules {
     /// spreading reads.
     pub difficulty: u8,
     pub max_snow_accumulation_height: u8,
+    /// `spawn_wardens`: summoning shriekers answer with a warden.
+    pub spawn_wardens: bool,
 }
 
 impl Default for WorldRules {
@@ -225,6 +235,7 @@ impl Default for WorldRules {
             fire_spread_radius: 128,
             difficulty: 2,
             max_snow_accumulation_height: 1,
+            spawn_wardens: true,
         }
     }
 }
@@ -303,6 +314,10 @@ pub struct World {
     pub(crate) eyeblossom_open: Option<bool>,
     pub(crate) creaking_active: std::collections::BTreeSet<[i32; 3]>,
     pub(crate) creaking_hearts: std::collections::BTreeMap<[i32; 3], creaking::Heart>,
+    /// Sculk listeners and game events (see [`sculk`] and [`vibration`]).
+    pub(crate) sculk: sculk::SculkState,
+    /// Trial spawners and vaults (v0.16 Track C, see [`trial`]).
+    pub(crate) trial: trial::State,
     wood: wood::entities::WoodEntities,
     /// Campfire, decorated pot and cauldron-drip state (see [`utilities`]).
     utilities: utilities::State,
@@ -351,6 +366,15 @@ pub struct World {
     pub hatched_tadpoles: Vec<(IVec3, u8)>,
     /// Sniffer eggs that cracked (false) or hatched (true); entities spawn and play them.
     pub sniffer_egg_events: Vec<(IVec3, bool)>,
+    /// Jukeboxes and their records (see [`jukebox`]).
+    pub(crate) jukeboxes: jukebox::State,
+    /// Jukebox game events since the entity pass last drained them
+    /// (allays dance; track A's vibrations hook in there).
+    pub jukebox_events: Vec<(IVec3, jukebox::JukeboxEvent)>,
+    /// Notes the playing records sounded this tick; audio adapters play them.
+    pub records: Vec<jukebox::RecordNote>,
+    /// Songs that started (level event 1010): jukebox and song index.
+    pub records_started: Vec<(IVec3, usize)>,
     compost_sequence: u64,
     bell_rings: Vec<IVec3>,
     /// Whether it's raining (set by the game each frame).
@@ -589,6 +613,8 @@ impl World {
             beehives: Default::default(),
             archaeology: Default::default(),
             creaking_hearts: Default::default(),
+            sculk: Default::default(),
+            trial: Default::default(),
             creaking_active: Default::default(),
             creaking_night: None,
             eyeblossom_open: None,
@@ -618,6 +644,10 @@ impl World {
             hatched_turtles: Vec::new(),
             hatched_tadpoles: Vec::new(),
             sniffer_egg_events: Vec::new(),
+            jukeboxes: Default::default(),
+            jukebox_events: Vec::new(),
+            records: Vec::new(),
+            records_started: Vec::new(),
             compost_sequence: 0,
             bell_rings: Vec::new(),
             raining: false,
@@ -936,6 +966,7 @@ impl World {
         self.track_lightning_rod(p, old, block);
         self.track_frog_blocks(p, old, block);
         self.track_sniffer_egg(p, old, block);
+        self.track_jukebox(p, old, block);
         if old != block {
             self.scaffolding_changed(p);
         }
@@ -949,6 +980,8 @@ impl World {
         self.track_beehives(p, old, block);
         self.track_archaeology(p, old, block);
         self.track_creaking_heart(p, block);
+        self.track_sculk(p, old, block);
+        self.track_trial(p, old, block);
         self.track_copper_golem_statue(p, block);
         self.track_utilities(p, old, block);
         self.track_spawner(p, old, block);
@@ -1358,6 +1391,7 @@ impl World {
         self.register_campfires(pos, &data);
         self.register_beehives(pos, &data, modified);
         self.register_creaking_hearts(pos, &data);
+        self.register_sculk(pos, &data);
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
         let workers = &self.workers;
         let col = self.columns.entry(column_of(pos)).or_insert_with(|| {
@@ -1411,6 +1445,7 @@ impl World {
         self.unload_redstone_chunk(pos);
         self.unload_beehives(pos);
         self.creaking_active.retain(|p| chunk::chunk_of(IVec3::from_array(*p)) != pos);
+        self.unload_sculk(pos);
         let slot = self.chunks.remove(&pos).unwrap();
         self.entity_loads.remove(&pos);
         // A LAN replica's falling blocks come from the host's snapshots.

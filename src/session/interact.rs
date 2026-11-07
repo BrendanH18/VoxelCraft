@@ -64,6 +64,19 @@ pub enum Used {
     ProjectileThrown {
         from: DVec3,
     },
+    /// A wind charge left the hand (`WIND_CHARGE_THROW`).
+    WindChargeThrown {
+        from: DVec3,
+    },
+    /// An item was used on an active vault: `unlocked` with a key, else
+    /// refused (`rewarded`: this player already had the reward); `sound`
+    /// is false inside the fail sound's 15-tick buffer.
+    Vault {
+        cell: IVec3,
+        unlocked: bool,
+        rewarded: bool,
+        sound: bool,
+    },
     Rod {
         from: DVec3,
         broke: bool,
@@ -167,6 +180,11 @@ pub enum Used {
     SignInked {
         cell: IVec3,
         item: Item,
+    },
+    /// A disc went into a jukebox (`inserted`) or popped out of one.
+    Jukebox {
+        cell: IVec3,
+        inserted: bool,
     },
     /// A shelf or chiseled bookshelf traded items with the player.
     Shelf {
@@ -317,11 +335,36 @@ impl PlayerSession {
         if used.is_none() {
             used = self.use_item(slot, world, entities, ctx)?;
         }
+        if let Some(u) = used {
+            self.item_use_event(world, u);
+        }
         // Riders use items (Java `Item.use` has no vehicle check) but not blocks.
         if used.is_none() && self.player.vehicle.is_none() {
             used = self.use_block(slot, world, entities, ctx, tool_broken)?;
         }
         Ok(used)
+    }
+
+    /// The game events Java posts for entity and item uses: buckets and
+    /// bottles (`fluid_pickup`, `fluid_place`), thrown projectiles
+    /// (`projectile_shoot` from their owner) and mounting.
+    fn item_use_event(&self, world: &mut World, used: Used) {
+        use crate::world::vibration::{EventSource, GameEvent as E};
+        use survival_items::bucket::Effect as B;
+        let (pos, event) = match used {
+            Used::Bucket(B::Filled { at, .. } | B::BottleFilled { at }) => {
+                (at.as_dvec3() + DVec3::splat(0.5), E::FluidPickup)
+            }
+            Used::Bucket(B::Poured { at, .. } | B::Released { at }) => {
+                (at.as_dvec3() + DVec3::splat(0.5), E::FluidPlace)
+            }
+            Used::ProjectileThrown { from } | Used::PearlThrown { from } | Used::PotionThrown { from } => {
+                (from, E::ProjectileShoot)
+            }
+            Used::Mounted(_) => (self.player.pos, E::EntityMount),
+            _ => return,
+        };
+        world.emit_game_event(pos, event, EventSource::player(self.id, self.player.sneaking), None);
     }
 
     /// Items whose right-click starts drawing (bows and crossbows).
@@ -537,6 +580,20 @@ impl PlayerSession {
             }
             return Ok(Some(Used::EyeReleased { from }));
         }
+        // `WindChargeItem.use`: throw at 1.5 (inaccuracy 1), then a
+        // 10-tick cooldown for every wind charge.
+        if held == crate::world::trial::WIND_CHARGE {
+            if self.vitals.wind_charge_cooldown > 0.0 {
+                return Err("wind charge cooling down");
+            }
+            self.vitals.wind_charge_cooldown =
+                crate::entity::wind::COOLDOWN_TICKS as f32 * crate::simulation::TICK_SECONDS as f32;
+            entities.throw_projectile(held, self.id, eye, dir, carry);
+            if !creative {
+                self.inventory.take_one(slot);
+            }
+            return Ok(Some(Used::WindChargeThrown { from: eye }));
+        }
         if survival_items::throw_held(&self.player, &mut self.inventory, slot, creative, self.id, entities) {
             return Ok(Some(Used::ProjectileThrown { from: eye }));
         }
@@ -549,7 +606,67 @@ impl PlayerSession {
         Ok(None)
     }
 
+    /// [`Self::use_block_inner`], then the game event Java's block posts
+    /// for what the use did (doors, levers, buttons, trapdoors, note blocks,
+    /// TNT, cake, containers, composters, harvests and fire).
     fn use_block(
+        &mut self,
+        slot: usize,
+        world: &mut World,
+        entities: &mut Entities,
+        ctx: &UseContext,
+        tool_broken: &mut Option<Item>,
+    ) -> Result<Option<Used>, &'static str> {
+        let used = self.use_block_inner(slot, world, entities, ctx, tool_broken)?;
+        if let Some(used) = used {
+            self.block_use_event(world, used);
+        }
+        Ok(used)
+    }
+
+    fn block_use_event(&self, world: &mut World, used: Used) {
+        use crate::world::redstone_blocks::{self as r, Component};
+        use crate::world::vibration::{EventSource, GameEvent as E};
+        let (cell, event) = match used {
+            Used::Door { cell, open: Some(open) } => (cell, if open { E::BlockOpen } else { E::BlockClose }),
+            Used::Redstone { cell } => {
+                let Some(b) = world.get_block(cell) else { return };
+                let event = match r::component(b) {
+                    Some(Component::Lever { on, .. }) => {
+                        if on {
+                            E::BlockActivate
+                        } else {
+                            E::BlockDeactivate
+                        }
+                    }
+                    Some(Component::Button { .. }) => E::BlockActivate,
+                    Some(Component::Trapdoor { open, .. }) => {
+                        if open {
+                            E::BlockOpen
+                        } else {
+                            E::BlockClose
+                        }
+                    }
+                    Some(Component::Repeater { .. } | Component::Comparator { .. }) => E::BlockChange,
+                    // Note blocks post `note_block_play` themselves.
+                    _ => return,
+                };
+                (cell, event)
+            }
+            Used::TntPrimed { cell } => (cell, E::PrimeFuse),
+            Used::CakeBitten { cell } => (cell, E::Eat),
+            Used::Screen { cell, block } if crate::world::chest::is_chest(block) => (cell, E::ContainerOpen),
+            Used::Composter { cell } | Used::Harvested { cell } | Used::EyeInserted { cell, .. } => {
+                (cell, E::BlockChange)
+            }
+            Used::Ignited { cell, .. } => (cell, E::BlockPlace),
+            _ => return,
+        };
+        let source = EventSource::player(self.id, self.player.sneaking);
+        world.emit_game_event(cell.as_dvec3() + DVec3::splat(0.5), event, source, None);
+    }
+
+    fn use_block_inner(
         &mut self,
         slot: usize,
         world: &mut World,
@@ -564,6 +681,24 @@ impl PlayerSession {
         let can_build = self.mode.can_build();
         if let Some(used) = self.use_copper_statue(slot, world, entities, pos, ctx, tool_broken) {
             return Ok(Some(used));
+        }
+        // `VaultBlock.useItemOn`: a held item on an active vault.
+        if let Some(stack) = self.inventory.get(slot).filter(|_| self.mode.can_interact()) {
+            use crate::world::trial::vault::VaultUse;
+            match world.use_vault(pos, self.id.0, Some(stack)) {
+                VaultUse::Pass => {}
+                VaultUse::Rejected { rewarded, sound } => {
+                    return Ok(Some(Used::Vault { cell: pos, unlocked: false, rewarded, sound }));
+                }
+                VaultUse::Unlocked { consumed } => {
+                    if !creative {
+                        for _ in 0..consumed {
+                            self.inventory.take_one(slot);
+                        }
+                    }
+                    return Ok(Some(Used::Vault { cell: pos, unlocked: true, rewarded: false, sound: true }));
+                }
+            }
         }
         if can_build
             && !ctx.sneaking
@@ -625,6 +760,12 @@ impl PlayerSession {
                 other => other,
             };
             return Ok(Some(Used::Utility { cell: pos, effect }));
+        }
+        // Java skips block use only when sneaking with something in hand.
+        if !(ctx.sneaking && held.is_some())
+            && let Some(used) = self.use_jukebox(slot, world, pos)
+        {
+            return Ok(Some(used));
         }
         if !ctx.sneaking && survival_items::use_composter(world, entities, pos, &mut self.inventory, slot, creative) {
             return Ok(Some(Used::Composter { cell: pos }));

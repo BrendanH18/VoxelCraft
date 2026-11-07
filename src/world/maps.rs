@@ -327,6 +327,10 @@ pub fn locate(g: &Generator, from: IVec3, item: Item, radius: i32) -> Option<IVe
         Item::JUNGLE_PYRAMID_MAP => g.temples.locate_rings(g, &[Kind::JungleTemple], from, radius),
         Item::SWAMP_HUT_MAP => g.temples.locate_rings(g, &[Kind::SwampHut], from, radius),
         Item::BURIED_TREASURE_MAP => buried_treasure(g, from, radius),
+        // `on_buried_trial_chambers_maps`; `search_radius` is in chunks.
+        super::trial::TRIAL_CHAMBERS_MAP => {
+            g.trial_chambers.nearest(g, glam::IVec2::new(from.x, from.z), radius.saturating_mul(16))
+        }
         Item::DESERT_VILLAGE_MAP
         | Item::PLAINS_VILLAGE_MAP
         | Item::SAVANNA_VILLAGE_MAP

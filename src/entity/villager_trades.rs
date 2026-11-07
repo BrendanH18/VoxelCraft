@@ -148,6 +148,8 @@ pub(super) const TRADES: &[(Profession, u8, TradeDef)] = &[
     (Profession::Cartographer, 3, TradeDef::explorer("ocean_monument_map", 13, 10)),
     (Profession::Cartographer, 2, TradeDef::buy("glass pane", 11, 16, 10)),
     (Profession::Cartographer, 3, TradeDef::buy("compass", 1, 12, 20)),
+    // v0.16 Track C: `emerald_and_compass_buried_trial_chambers_map`.
+    (Profession::Cartographer, 3, TradeDef::explorer("trial explorer map", 12, 10)),
     (Profession::Cartographer, 4, TradeDef::sell("item frame", 7, 1, 12, 15, 0.05)),
     (Profession::Cartographer, 4, TradeDef::sell("white banner", 3, 1, 12, 15, 0.05)),
     (Profession::Cartographer, 4, TradeDef::sell("blue banner", 3, 1, 12, 15, 0.05)),

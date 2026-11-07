@@ -1,0 +1,1020 @@
+# Original VoxelCraft ancient cities (v0.16 track B). Pool names, pool
+# weights and fallbacks follow Java 26.3's `worldgen/template_pool/
+# ancient_city`; every layout here is original. Java's list elements (the
+# three camps, the ice box) are single templates. All pieces are rigid.
+#
+# Layer y 0 is a piece's floor course. The start's floor sits at y -52
+# (walk level -51): Java's `city_anchor` jigsaw at y -27 places it there.
+# `ancient_city.rs` clears each piece's box above its floor (Java's
+# `beard_box`), applies the processors and grows the sculk patches.
+#
+# Roles: $shrieker (a sculk shrieker that can summon), $candle2..$candle4
+# (plain candles, unlit), $hanging_lantern (a hanging soul lantern).
+#
+# Connector names: a parent's `target` is the child's connector `name`.
+#   wall_socket -> wall        city centre to its walls
+#   path        -> path        city centre and paths to paths
+#   wall_end    -> wall_end    wall to wall
+#   plot        -> structure   walls and paths to buildings
+#   sculk       -> sculk       buildings to sculk patches
+
+pool ancient_city/city_center
+1 ancient_city/city_center/city_center_1
+1 ancient_city/city_center/city_center_2
+1 ancient_city/city_center/city_center_3
+end
+
+pool ancient_city/city_center/walls
+1 ancient_city/city_center/walls/bottom_1
+1 ancient_city/city_center/walls/bottom_2
+1 ancient_city/city_center/walls/bottom_left_corner
+1 ancient_city/city_center/walls/bottom_right_corner_1
+1 ancient_city/city_center/walls/bottom_right_corner_2
+1 ancient_city/city_center/walls/left
+1 ancient_city/city_center/walls/right
+1 ancient_city/city_center/walls/top
+1 ancient_city/city_center/walls/top_right_corner
+1 ancient_city/city_center/walls/top_left_corner
+end
+
+pool ancient_city/city/entrance
+1 ancient_city/city/entrance/entrance_connector
+1 ancient_city/city/entrance/entrance_path_1
+1 ancient_city/city/entrance/entrance_path_2
+1 ancient_city/city/entrance/entrance_path_3
+1 ancient_city/city/entrance/entrance_path_4
+1 ancient_city/city/entrance/entrance_path_5
+end
+
+pool ancient_city/walls
+1 ancient_city/walls/intact_corner_wall_1
+1 ancient_city/walls/intact_intersection_wall_1
+1 ancient_city/walls/intact_lshape_wall_1
+1 ancient_city/walls/intact_horizontal_wall_1
+1 ancient_city/walls/intact_horizontal_wall_2
+1 ancient_city/walls/intact_horizontal_wall_stairs_1
+1 ancient_city/walls/intact_horizontal_wall_stairs_2
+1 ancient_city/walls/intact_horizontal_wall_stairs_3
+4 ancient_city/walls/intact_horizontal_wall_stairs_4
+3 ancient_city/walls/intact_horizontal_wall_passage_1
+1 ancient_city/walls/ruined_corner_wall_1
+1 ancient_city/walls/ruined_corner_wall_2
+2 ancient_city/walls/ruined_horizontal_wall_stairs_1
+2 ancient_city/walls/ruined_horizontal_wall_stairs_2
+3 ancient_city/walls/ruined_horizontal_wall_stairs_3
+3 ancient_city/walls/ruined_horizontal_wall_stairs_4
+end
+
+pool ancient_city/structures
+7 empty
+4 ancient_city/structures/barracks
+4 ancient_city/structures/chamber_1
+4 ancient_city/structures/chamber_2
+4 ancient_city/structures/chamber_3
+4 ancient_city/structures/sauna_1
+4 ancient_city/structures/small_statue
+1 ancient_city/structures/large_ruin_1
+1 ancient_city/structures/tall_ruin_1
+1 ancient_city/structures/tall_ruin_2
+2 ancient_city/structures/tall_ruin_3
+2 ancient_city/structures/tall_ruin_4
+1 ancient_city/structures/camp
+1 ancient_city/structures/medium_ruin_1
+1 ancient_city/structures/medium_ruin_2
+1 ancient_city/structures/small_ruin_1
+1 ancient_city/structures/small_ruin_2
+1 ancient_city/structures/large_pillar_1
+1 ancient_city/structures/medium_pillar_1
+1 ancient_city/structures/ice_box_1
+end
+
+# Java's `sculk_patch_ancient_city` feature element (weight 6) and an empty
+# element (1). The patch template only marks where the feature grows.
+pool ancient_city/sculk
+6 ancient_city/sculk_patch
+1 empty
+end
+
+template ancient_city/sculk_patch
+size 1 1 1
+projection rigid
+jigsaw 0 0 0 north sculk sculk empty
+end
+
+# --- City centre: a plaza round the portal frame of reinforced deepslate.
+
+template ancient_city/city_center/city_center_1
+size 43 24 43
+projection rigid
+fill 0 0 0 42 0 42 deepslate_tiles
+fill 3 0 3 39 0 39 polished_deepslate
+fill 6 0 6 36 0 36 deepslate_tiles
+fill 0 1 0 42 1 0 deepslate_brick_wall
+fill 0 1 42 42 1 42 deepslate_brick_wall
+fill 0 1 0 0 1 42 deepslate_brick_wall
+fill 42 1 0 42 1 42 deepslate_brick_wall
+fill 18 1 0 24 1 0 air
+fill 18 1 42 24 1 42 air
+fill 0 1 18 0 1 24 air
+fill 42 1 18 42 1 24 air
+fill 8 1 14 34 1 28 deepslate_bricks
+fill 10 2 16 32 2 26 deepslate_tiles
+fill 11 3 17 31 3 25 polished_deepslate
+fill 12 4 19 14 17 23 reinforced_deepslate
+fill 28 4 19 30 17 23 reinforced_deepslate
+fill 12 18 19 30 19 23 reinforced_deepslate
+fill 19 20 20 23 20 22 reinforced_deepslate
+fill 14 20 21 15 22 21 reinforced_deepslate
+fill 27 20 21 28 22 21 reinforced_deepslate
+fill 15 4 20 15 17 22 deepslate_tile_wall
+fill 27 4 20 27 17 22 deepslate_tile_wall
+fill 16 17 20 26 17 22 chiseled_deepslate
+fill 16 4 21 26 4 21 sculk
+fill 2 0 30 7 0 36 sculk
+fill 34 0 4 39 0 9 sculk
+fill 4 0 4 6 0 6 sculk
+cell 9 2 15 soul_sand
+cell 9 3 15 soul_fire
+cell 33 2 15 soul_sand
+cell 33 3 15 soul_fire
+cell 9 2 27 soul_sand
+cell 9 3 27 soul_fire
+cell 33 2 27 soul_sand
+cell 33 3 27 soul_fire
+cell 11 4 17 $candle3
+cell 31 4 25 $candle2
+cell 11 4 25 $candle4
+cell 31 4 17 candle
+cell 17 4 24 chest:ancient_city@south
+cell 25 4 18 chest:ancient_city@north
+cell 21 4 18 sculk_sensor
+cell 5 1 31 sculk_sensor
+cell 36 1 6 $shrieker
+cell 21 18 18 $hanging_lantern
+cell 21 18 24 $hanging_lantern
+jigsaw 21 1 0 north path path ancient_city/city/entrance
+jigsaw 21 1 42 south path path ancient_city/city/entrance
+jigsaw 0 1 21 west path path ancient_city/city/entrance
+jigsaw 42 1 21 east path path ancient_city/city/entrance
+jigsaw 8 1 0 north wall_socket wall ancient_city/city_center/walls
+jigsaw 34 1 0 north wall_socket wall ancient_city/city_center/walls
+jigsaw 8 1 42 south wall_socket wall ancient_city/city_center/walls
+jigsaw 34 1 42 south wall_socket wall ancient_city/city_center/walls
+jigsaw 0 1 8 west wall_socket wall ancient_city/city_center/walls
+jigsaw 0 1 34 west wall_socket wall ancient_city/city_center/walls
+jigsaw 42 1 8 east wall_socket wall ancient_city/city_center/walls
+jigsaw 42 1 34 east wall_socket wall ancient_city/city_center/walls
+end
+
+template ancient_city/city_center/city_center_2
+size 43 24 43
+projection rigid
+fill 0 0 0 42 0 42 deepslate_tiles
+fill 2 0 2 40 0 40 cobbled_deepslate
+fill 5 0 5 37 0 37 deepslate_bricks
+fill 0 1 0 42 2 0 deepslate_bricks
+fill 0 1 42 42 2 42 deepslate_bricks
+fill 0 1 0 0 2 42 deepslate_bricks
+fill 42 1 0 42 2 42 deepslate_bricks
+fill 17 1 0 25 2 0 air
+fill 17 1 42 25 2 42 air
+fill 0 1 17 0 2 25 air
+fill 42 1 17 42 2 25 air
+fill 9 1 15 33 1 27 deepslate_tiles
+fill 11 2 17 31 2 25 polished_deepslate
+fill 12 3 19 14 16 23 reinforced_deepslate
+fill 28 3 19 30 16 23 reinforced_deepslate
+fill 12 17 19 30 18 23 reinforced_deepslate
+fill 16 19 21 26 19 21 reinforced_deepslate
+fill 13 19 21 13 21 21 reinforced_deepslate
+fill 29 19 21 29 21 21 reinforced_deepslate
+fill 15 3 21 27 3 21 sculk
+fill 15 16 20 27 16 22 deepslate_tiles
+fill 6 1 6 8 4 8 polished_basalt
+fill 34 1 6 36 4 8 polished_basalt
+fill 6 1 34 8 4 36 polished_basalt
+fill 34 1 34 36 4 36 polished_basalt
+fill 3 0 26 9 0 33 sculk
+fill 30 0 30 37 0 36 sculk
+cell 7 5 7 soul_lantern
+cell 35 5 7 soul_lantern
+cell 7 5 35 soul_lantern
+cell 35 5 35 soul_lantern
+cell 21 3 17 chest:ancient_city@south
+cell 21 3 25 chest:ancient_city@north
+cell 13 3 17 $candle3
+cell 29 3 25 $candle4
+cell 6 1 28 sculk_sensor
+cell 32 1 33 $shrieker
+cell 21 16 21 $hanging_lantern
+jigsaw 21 1 0 north path path ancient_city/city/entrance
+jigsaw 21 1 42 south path path ancient_city/city/entrance
+jigsaw 0 1 21 west path path ancient_city/city/entrance
+jigsaw 42 1 21 east path path ancient_city/city/entrance
+jigsaw 8 1 0 north wall_socket wall ancient_city/city_center/walls
+jigsaw 34 1 0 north wall_socket wall ancient_city/city_center/walls
+jigsaw 8 1 42 south wall_socket wall ancient_city/city_center/walls
+jigsaw 34 1 42 south wall_socket wall ancient_city/city_center/walls
+jigsaw 0 1 8 west wall_socket wall ancient_city/city_center/walls
+jigsaw 0 1 34 west wall_socket wall ancient_city/city_center/walls
+jigsaw 42 1 8 east wall_socket wall ancient_city/city_center/walls
+jigsaw 42 1 34 east wall_socket wall ancient_city/city_center/walls
+end
+
+template ancient_city/city_center/city_center_3
+size 43 24 43
+projection rigid
+fill 0 0 0 42 0 42 deepslate_bricks
+fill 4 0 4 38 0 38 deepslate_tiles
+fill 0 1 0 42 1 0 deepslate_tile_wall
+fill 0 1 42 42 1 42 deepslate_tile_wall
+fill 0 1 0 0 1 42 deepslate_tile_wall
+fill 42 1 0 42 1 42 deepslate_tile_wall
+fill 19 1 0 23 1 0 air
+fill 19 1 42 23 1 42 air
+fill 0 1 19 0 1 23 air
+fill 42 1 19 42 1 23 air
+fill 7 1 13 35 1 29 deepslate_bricks
+fill 9 2 15 33 2 27 deepslate_bricks
+fill 10 3 17 32 3 25 deepslate_tiles
+fill 12 4 19 14 18 23 reinforced_deepslate
+fill 28 4 19 30 18 23 reinforced_deepslate
+fill 12 19 19 30 20 23 reinforced_deepslate
+fill 17 21 21 25 21 21 reinforced_deepslate
+fill 15 4 21 27 4 21 sculk
+fill 15 18 21 27 18 21 deepslate_tile_slab
+fill 8 1 30 10 6 32 smooth_basalt
+fill 32 1 10 34 6 12 smooth_basalt
+fill 2 0 2 9 0 8 sculk
+fill 33 0 33 40 0 40 sculk
+cell 9 7 31 soul_lantern
+cell 33 7 11 soul_lantern
+cell 16 4 18 chest:ancient_city@north
+cell 26 4 24 chest:ancient_city@south
+cell 10 4 17 $candle2
+cell 32 4 25 $candle3
+cell 21 4 18 sculk_sensor
+cell 4 1 6 $shrieker
+cell 37 1 36 sculk_sensor
+cell 21 19 18 $hanging_lantern
+jigsaw 21 1 0 north path path ancient_city/city/entrance
+jigsaw 21 1 42 south path path ancient_city/city/entrance
+jigsaw 0 1 21 west path path ancient_city/city/entrance
+jigsaw 42 1 21 east path path ancient_city/city/entrance
+jigsaw 8 1 0 north wall_socket wall ancient_city/city_center/walls
+jigsaw 34 1 0 north wall_socket wall ancient_city/city_center/walls
+jigsaw 8 1 42 south wall_socket wall ancient_city/city_center/walls
+jigsaw 34 1 42 south wall_socket wall ancient_city/city_center/walls
+jigsaw 0 1 8 west wall_socket wall ancient_city/city_center/walls
+jigsaw 0 1 34 west wall_socket wall ancient_city/city_center/walls
+jigsaw 42 1 8 east wall_socket wall ancient_city/city_center/walls
+jigsaw 42 1 34 east wall_socket wall ancient_city/city_center/walls
+end
+
+# --- The centre's own walls: 15 long, 6 deep, the plaza side at z 0.
+
+template ancient_city/city_center/walls/bottom_1
+size 15 12 6
+projection rigid
+fill 0 0 0 14 0 5 deepslate_tiles
+fill 0 1 2 14 8 3 deepslate_bricks
+fill 0 9 2 14 9 3 deepslate_tile_slab
+fill 6 1 2 8 4 3 air
+fill 2 5 1 2 5 1 soul_lantern
+fill 12 5 1 12 5 1 soul_lantern
+jigsaw 7 1 0 north wall wall_socket empty
+jigsaw 7 1 5 south plot structure ancient_city/structures
+jigsaw 0 1 4 west wall_end wall_end ancient_city/walls
+jigsaw 14 1 4 east wall_end wall_end ancient_city/walls
+end
+
+template ancient_city/city_center/walls/bottom_2
+size 15 12 6
+projection rigid
+fill 0 0 0 14 0 5 deepslate_tiles
+fill 0 1 2 14 7 3 deepslate_bricks
+fill 0 8 2 14 8 3 deepslate_brick_wall
+fill 3 1 2 4 3 3 cracked_deepslate_bricks
+fill 10 6 2 13 7 3 air
+fill 0 0 4 4 0 5 sculk
+jigsaw 7 1 0 north wall wall_socket empty
+jigsaw 7 1 5 south plot structure ancient_city/structures
+jigsaw 14 1 4 east wall_end wall_end ancient_city/walls
+end
+
+template ancient_city/city_center/walls/bottom_left_corner
+size 15 12 6
+projection rigid
+fill 0 0 0 14 0 5 deepslate_tiles
+fill 0 1 2 14 8 3 deepslate_bricks
+fill 0 1 2 1 10 5 deepslate_bricks
+fill 0 11 2 1 11 5 chiseled_deepslate
+cell 3 9 2 soul_lantern
+jigsaw 7 1 0 north wall wall_socket empty
+jigsaw 7 1 5 south plot structure ancient_city/structures
+jigsaw 14 1 4 east wall_end wall_end ancient_city/walls
+end
+
+template ancient_city/city_center/walls/bottom_right_corner_1
+size 15 12 6
+projection rigid
+fill 0 0 0 14 0 5 deepslate_tiles
+fill 0 1 2 14 8 3 deepslate_bricks
+fill 13 1 2 14 10 5 deepslate_bricks
+fill 13 11 2 14 11 5 chiseled_deepslate
+cell 11 9 2 soul_lantern
+jigsaw 7 1 0 north wall wall_socket empty
+jigsaw 7 1 5 south plot structure ancient_city/structures
+jigsaw 0 1 4 west wall_end wall_end ancient_city/walls
+end
+
+template ancient_city/city_center/walls/bottom_right_corner_2
+size 15 12 6
+projection rigid
+fill 0 0 0 14 0 5 deepslate_tiles
+fill 0 1 2 14 6 3 deepslate_bricks
+fill 12 1 1 14 9 4 polished_basalt
+fill 4 4 2 9 6 3 air
+fill 5 0 4 9 0 5 sculk
+jigsaw 7 1 0 north wall wall_socket empty
+jigsaw 7 1 5 south plot structure ancient_city/structures
+jigsaw 0 1 4 west wall_end wall_end ancient_city/walls
+end
+
+template ancient_city/city_center/walls/left
+size 15 12 6
+projection rigid
+fill 0 0 0 14 0 5 deepslate_tiles
+fill 0 1 2 14 9 3 deepslate_bricks
+fill 0 10 2 14 10 3 deepslate_brick_wall
+fill 1 3 2 13 3 3 deepslate_tiles
+fill 7 1 2 7 2 3 air
+jigsaw 7 1 0 north wall wall_socket empty
+jigsaw 3 1 5 south plot structure ancient_city/structures
+jigsaw 11 1 5 south plot structure ancient_city/structures
+jigsaw 0 1 4 west wall_end wall_end ancient_city/walls
+end
+
+template ancient_city/city_center/walls/right
+size 15 12 6
+projection rigid
+fill 0 0 0 14 0 5 deepslate_tiles
+fill 0 1 2 14 9 3 deepslate_bricks
+fill 0 10 2 14 10 3 deepslate_brick_wall
+fill 1 6 2 13 6 3 deepslate_tiles
+fill 6 1 2 8 2 3 air
+jigsaw 7 1 0 north wall wall_socket empty
+jigsaw 7 1 5 south plot structure ancient_city/structures
+jigsaw 14 1 4 east wall_end wall_end ancient_city/walls
+end
+
+template ancient_city/city_center/walls/top
+size 15 12 6
+projection rigid
+fill 0 0 0 14 0 5 deepslate_tiles
+fill 0 1 1 14 10 4 deepslate_bricks
+fill 0 11 1 14 11 4 deepslate_tile_slab
+fill 5 1 1 9 5 4 air
+fill 5 6 1 9 6 4 chiseled_deepslate
+cell 7 5 2 $hanging_lantern
+jigsaw 7 1 0 north wall wall_socket empty
+jigsaw 7 1 5 south path path ancient_city/city/entrance
+jigsaw 0 1 4 west wall_end wall_end ancient_city/walls
+jigsaw 14 1 4 east wall_end wall_end ancient_city/walls
+end
+
+template ancient_city/city_center/walls/top_right_corner
+size 15 12 6
+projection rigid
+fill 0 0 0 14 0 5 deepslate_tiles
+fill 0 1 2 14 8 3 deepslate_bricks
+fill 11 1 1 14 11 5 deepslate_bricks
+fill 12 9 1 13 11 5 cracked_deepslate_bricks
+jigsaw 7 1 0 north wall wall_socket empty
+jigsaw 5 1 5 south plot structure ancient_city/structures
+jigsaw 0 1 4 west wall_end wall_end ancient_city/walls
+end
+
+template ancient_city/city_center/walls/top_left_corner
+size 15 12 6
+projection rigid
+fill 0 0 0 14 0 5 deepslate_tiles
+fill 0 1 2 14 8 3 deepslate_bricks
+fill 0 1 1 3 11 5 deepslate_bricks
+fill 1 9 1 2 11 5 cracked_deepslate_bricks
+jigsaw 7 1 0 north wall wall_socket empty
+jigsaw 9 1 5 south plot structure ancient_city/structures
+jigsaw 14 1 4 east wall_end wall_end ancient_city/walls
+end
+
+# --- Paths out of the centre: 7 wide, with plots beside them.
+
+template ancient_city/city/entrance/entrance_connector
+size 11 8 11
+projection rigid
+fill 0 0 0 10 0 10 deepslate_tiles
+fill 2 0 2 8 0 8 polished_deepslate
+fill 0 1 0 1 3 1 deepslate_bricks
+fill 9 1 0 10 3 1 deepslate_bricks
+fill 0 1 9 1 3 10 deepslate_bricks
+fill 9 1 9 10 3 10 deepslate_bricks
+cell 0 4 0 soul_lantern
+cell 10 4 10 soul_lantern
+cell 5 1 5 $candle3
+jigsaw 5 1 0 north path path ancient_city/city/entrance
+jigsaw 5 1 10 south path path ancient_city/city/entrance
+jigsaw 0 1 5 west path path ancient_city/city/entrance
+jigsaw 10 1 5 east path path ancient_city/city/entrance
+end
+
+template ancient_city/city/entrance/entrance_path_1
+size 7 8 15
+projection rigid
+fill 0 0 0 6 0 14 deepslate_tiles
+fill 1 0 1 5 0 13 deepslate_bricks
+fill 0 1 0 0 1 14 deepslate_brick_wall
+fill 6 1 0 6 1 14 deepslate_brick_wall
+fill 0 1 6 0 1 8 air
+fill 6 1 6 6 1 8 air
+cell 0 2 2 soul_lantern
+cell 6 2 12 soul_lantern
+jigsaw 3 1 0 north path path ancient_city/city/entrance
+jigsaw 3 1 14 south path path ancient_city/city/entrance
+jigsaw 0 1 7 west plot structure ancient_city/structures
+jigsaw 6 1 7 east plot structure ancient_city/structures
+end
+
+template ancient_city/city/entrance/entrance_path_2
+size 7 8 15
+projection rigid
+fill 0 0 0 6 0 14 cobbled_deepslate
+fill 2 0 0 4 0 14 deepslate_tiles
+fill 0 1 3 0 3 3 polished_basalt
+fill 6 1 3 6 3 3 polished_basalt
+fill 0 1 11 0 3 11 polished_basalt
+fill 6 1 11 6 3 11 polished_basalt
+fill 0 0 9 2 0 13 sculk
+cell 0 4 3 soul_lantern
+cell 6 4 11 soul_lantern
+jigsaw 3 1 0 north path path ancient_city/city/entrance
+jigsaw 3 1 14 south path path ancient_city/city/entrance
+jigsaw 0 1 7 west plot structure ancient_city/structures
+jigsaw 6 1 7 east plot structure ancient_city/structures
+end
+
+template ancient_city/city/entrance/entrance_path_3
+size 7 8 15
+projection rigid
+fill 0 0 0 6 0 14 deepslate_tiles
+fill 0 1 0 6 1 0 deepslate_tile_slab
+fill 0 1 14 6 1 14 deepslate_tile_slab
+fill 2 1 0 4 1 0 air
+fill 2 1 14 4 1 14 air
+fill 4 0 4 6 0 9 sculk
+cell 5 1 6 sculk_sensor
+jigsaw 3 1 0 north path path ancient_city/city/entrance
+jigsaw 3 1 14 south path path ancient_city/city/entrance
+jigsaw 0 1 4 west plot structure ancient_city/structures
+jigsaw 6 1 10 east plot structure ancient_city/structures
+end
+
+template ancient_city/city/entrance/entrance_path_4
+size 7 10 15
+projection rigid
+fill 0 0 0 6 0 14 deepslate_bricks
+fill 0 1 0 0 6 14 deepslate_bricks
+fill 6 1 0 6 6 14 deepslate_bricks
+fill 0 7 0 6 7 14 deepslate_tiles
+fill 0 1 5 0 3 9 air
+fill 1 0 1 5 0 13 deepslate_tiles
+cell 3 6 4 $hanging_lantern
+cell 3 6 10 $hanging_lantern
+jigsaw 3 1 0 north path path ancient_city/city/entrance
+jigsaw 3 1 14 south path path ancient_city/city/entrance
+jigsaw 0 1 7 west plot structure ancient_city/structures
+end
+
+template ancient_city/city/entrance/entrance_path_5
+size 7 8 15
+projection rigid
+fill 0 0 0 6 0 14 deepslate_tiles
+fill 1 0 0 5 0 14 polished_deepslate
+fill 0 1 0 0 2 1 cracked_deepslate_bricks
+fill 6 1 13 6 2 14 cracked_deepslate_bricks
+fill 1 0 10 3 0 14 sculk
+cell 2 1 12 $shrieker
+jigsaw 3 1 0 north path path ancient_city/city/entrance
+jigsaw 3 1 14 south path path ancient_city/city/entrance
+jigsaw 6 1 7 east plot structure ancient_city/structures
+end
+
+# --- Walls between districts: 15 long, 6 deep; both ends join walls.
+
+template ancient_city/walls/intact_horizontal_wall_1
+size 15 12 6
+projection rigid
+fill 0 0 0 14 0 5 deepslate_tiles
+fill 0 1 2 14 9 3 deepslate_bricks
+fill 0 10 2 14 10 3 deepslate_brick_wall
+fill 4 4 2 4 6 3 polished_basalt
+fill 10 4 2 10 6 3 polished_basalt
+cell 7 7 1 soul_lantern
+jigsaw 0 1 4 west wall_end wall_end ancient_city/walls
+jigsaw 14 1 4 east wall_end wall_end ancient_city/walls
+jigsaw 7 1 5 south plot structure ancient_city/structures
+jigsaw 7 1 0 north plot structure ancient_city/structures
+end
+
+template ancient_city/walls/intact_horizontal_wall_2
+size 15 12 6
+projection rigid
+fill 0 0 0 14 0 5 deepslate_tiles
+fill 0 1 2 14 8 3 deepslate_bricks
+fill 0 9 2 14 9 3 deepslate_tile_slab
+fill 6 1 2 8 3 3 air
+fill 6 4 2 8 4 3 chiseled_deepslate
+jigsaw 0 1 4 west wall_end wall_end ancient_city/walls
+jigsaw 14 1 4 east wall_end wall_end ancient_city/walls
+jigsaw 3 1 5 south plot structure ancient_city/structures
+end
+
+template ancient_city/walls/intact_horizontal_wall_stairs_1
+size 15 12 6
+projection rigid
+fill 0 0 0 14 0 5 deepslate_tiles
+fill 0 1 3 14 8 4 deepslate_bricks
+fill 1 1 1 1 1 2 deepslate_bricks
+fill 2 1 1 2 2 2 deepslate_bricks
+fill 3 1 1 3 3 2 deepslate_bricks
+fill 4 1 1 4 4 2 deepslate_bricks
+fill 5 1 1 13 5 2 deepslate_bricks
+jigsaw 0 1 5 west wall_end wall_end ancient_city/walls
+jigsaw 14 1 5 east wall_end wall_end ancient_city/walls
+jigsaw 7 1 0 north plot structure ancient_city/structures
+end
+
+template ancient_city/walls/intact_horizontal_wall_stairs_2
+size 15 12 6
+projection rigid
+fill 0 0 0 14 0 5 deepslate_tiles
+fill 0 1 1 14 8 2 deepslate_bricks
+fill 13 1 3 13 1 4 deepslate_bricks
+fill 12 1 3 12 2 4 deepslate_bricks
+fill 11 1 3 11 3 4 deepslate_bricks
+fill 1 1 3 10 4 4 deepslate_bricks
+cell 4 9 1 soul_lantern
+jigsaw 0 1 0 west wall_end wall_end ancient_city/walls
+jigsaw 14 1 0 east wall_end wall_end ancient_city/walls
+jigsaw 7 1 5 south plot structure ancient_city/structures
+end
+
+template ancient_city/walls/intact_horizontal_wall_stairs_3
+size 15 12 6
+projection rigid
+fill 0 0 0 14 0 5 deepslate_bricks
+fill 0 1 2 14 9 3 deepslate_bricks
+fill 3 1 4 11 1 5 deepslate_tile_slab
+fill 0 10 2 14 10 3 deepslate_tile_wall
+jigsaw 0 1 1 west wall_end wall_end ancient_city/walls
+jigsaw 14 1 1 east wall_end wall_end ancient_city/walls
+jigsaw 7 1 5 south plot structure ancient_city/structures
+jigsaw 7 1 0 north plot structure ancient_city/structures
+end
+
+template ancient_city/walls/intact_horizontal_wall_stairs_4
+size 15 12 6
+projection rigid
+fill 0 0 0 14 0 5 deepslate_tiles
+fill 0 1 2 14 7 3 deepslate_bricks
+fill 2 1 4 4 3 5 deepslate_bricks
+fill 10 1 4 12 3 5 deepslate_bricks
+fill 0 8 2 14 8 3 deepslate_brick_wall
+cell 7 1 4 $candle2
+jigsaw 0 1 1 west wall_end wall_end ancient_city/walls
+jigsaw 14 1 1 east wall_end wall_end ancient_city/walls
+jigsaw 7 1 0 north plot structure ancient_city/structures
+end
+
+template ancient_city/walls/intact_horizontal_wall_passage_1
+size 15 12 6
+projection rigid
+fill 0 0 0 14 0 5 deepslate_tiles
+fill 0 1 1 14 10 4 deepslate_bricks
+fill 5 1 1 9 6 4 air
+fill 4 7 1 10 7 4 chiseled_deepslate
+fill 5 0 1 9 0 4 polished_deepslate
+cell 7 6 2 $hanging_lantern
+jigsaw 0 1 0 west wall_end wall_end ancient_city/walls
+jigsaw 14 1 0 east wall_end wall_end ancient_city/walls
+jigsaw 7 1 5 south path path ancient_city/city/entrance
+jigsaw 7 1 0 north plot structure ancient_city/structures
+end
+
+template ancient_city/walls/intact_corner_wall_1
+size 15 12 15
+projection rigid
+fill 0 0 0 14 0 14 deepslate_tiles
+fill 0 1 2 14 9 3 deepslate_bricks
+fill 2 1 4 3 9 14 deepslate_bricks
+fill 0 10 2 14 10 3 deepslate_brick_wall
+fill 2 10 4 3 10 14 deepslate_brick_wall
+cell 1 7 1 soul_lantern
+jigsaw 14 1 4 east wall_end wall_end ancient_city/walls
+jigsaw 1 1 14 south wall_end wall_end ancient_city/walls
+jigsaw 9 1 14 south plot structure ancient_city/structures
+end
+
+template ancient_city/walls/intact_intersection_wall_1
+size 15 12 15
+projection rigid
+fill 0 0 0 14 0 14 deepslate_tiles
+fill 0 1 6 14 9 8 deepslate_bricks
+fill 6 1 0 8 9 14 deepslate_bricks
+fill 6 10 6 8 11 8 chiseled_deepslate
+cell 7 10 4 soul_lantern
+jigsaw 0 1 3 west wall_end wall_end ancient_city/walls
+jigsaw 14 1 11 east wall_end wall_end ancient_city/walls
+jigsaw 3 1 0 north wall_end wall_end ancient_city/walls
+jigsaw 11 1 14 south wall_end wall_end ancient_city/walls
+end
+
+template ancient_city/walls/intact_lshape_wall_1
+size 15 12 15
+projection rigid
+fill 0 0 0 14 0 14 deepslate_tiles
+fill 0 1 11 14 8 12 deepslate_bricks
+fill 11 1 0 12 8 12 deepslate_bricks
+fill 0 9 11 14 9 12 deepslate_tile_slab
+fill 11 9 0 12 9 10 deepslate_tile_slab
+jigsaw 0 1 13 west wall_end wall_end ancient_city/walls
+jigsaw 13 1 0 north wall_end wall_end ancient_city/walls
+jigsaw 5 1 0 north plot structure ancient_city/structures
+end
+
+template ancient_city/walls/ruined_corner_wall_1
+size 15 10 15
+projection rigid
+fill 0 0 0 14 0 14 deepslate_tiles
+fill 0 1 2 14 6 3 deepslate_bricks
+fill 2 1 4 3 5 14 deepslate_bricks
+fill 8 4 2 14 6 3 air
+fill 2 3 10 3 5 14 air
+fill 9 1 2 11 2 3 cracked_deepslate_bricks
+fill 4 0 5 9 0 10 sculk
+jigsaw 14 1 4 east wall_end wall_end ancient_city/walls
+jigsaw 1 1 14 south wall_end wall_end ancient_city/walls
+end
+
+template ancient_city/walls/ruined_corner_wall_2
+size 15 10 15
+projection rigid
+fill 0 0 0 14 0 14 cobbled_deepslate
+fill 0 1 2 14 4 3 deepslate_bricks
+fill 2 1 4 3 7 14 deepslate_bricks
+fill 5 3 2 9 4 3 air
+fill 5 1 2 6 2 3 cracked_deepslate_bricks
+cell 9 1 9 sculk_sensor
+jigsaw 14 1 4 east wall_end wall_end ancient_city/walls
+jigsaw 1 1 14 south wall_end wall_end ancient_city/walls
+jigsaw 9 1 14 south plot structure ancient_city/structures
+end
+
+template ancient_city/walls/ruined_horizontal_wall_stairs_1
+size 15 10 6
+projection rigid
+fill 0 0 0 14 0 5 deepslate_tiles
+fill 0 1 2 14 5 3 deepslate_bricks
+fill 9 3 2 14 5 3 air
+fill 1 1 4 3 2 5 cobbled_deepslate
+fill 10 0 3 14 0 5 sculk
+jigsaw 0 1 1 west wall_end wall_end ancient_city/walls
+jigsaw 14 1 1 east wall_end wall_end ancient_city/walls
+jigsaw 7 1 0 north plot structure ancient_city/structures
+end
+
+template ancient_city/walls/ruined_horizontal_wall_stairs_2
+size 15 10 6
+projection rigid
+fill 0 0 0 14 0 5 deepslate_tiles
+fill 0 1 2 14 6 3 deepslate_bricks
+fill 0 4 2 5 6 3 air
+fill 6 1 2 8 2 3 cracked_deepslate_bricks
+cell 12 1 4 $candle3
+jigsaw 0 1 1 west wall_end wall_end ancient_city/walls
+jigsaw 14 1 1 east wall_end wall_end ancient_city/walls
+jigsaw 7 1 5 south plot structure ancient_city/structures
+end
+
+template ancient_city/walls/ruined_horizontal_wall_stairs_3
+size 15 10 6
+projection rigid
+fill 0 0 0 14 0 5 cobbled_deepslate
+fill 0 1 2 14 4 3 deepslate_bricks
+fill 4 3 2 10 4 3 air
+fill 3 0 0 11 0 1 sculk
+cell 7 1 1 sculk_sensor
+jigsaw 0 1 4 west wall_end wall_end ancient_city/walls
+jigsaw 14 1 4 east wall_end wall_end ancient_city/walls
+jigsaw 7 1 5 south plot structure ancient_city/structures
+end
+
+template ancient_city/walls/ruined_horizontal_wall_stairs_4
+size 15 10 6
+projection rigid
+fill 0 0 0 14 0 5 deepslate_tiles
+fill 0 1 2 14 5 3 deepslate_bricks
+fill 0 1 2 1 5 3 air
+fill 12 4 2 14 5 3 air
+fill 4 1 4 5 2 5 deepslate_bricks
+jigsaw 0 1 0 west wall_end wall_end ancient_city/walls
+jigsaw 14 1 0 east wall_end wall_end ancient_city/walls
+jigsaw 7 1 5 south plot structure ancient_city/structures
+jigsaw 9 1 0 north plot structure ancient_city/structures
+end
+
+# --- Buildings. Each faces its plot connector at z 0.
+
+template ancient_city/structures/barracks
+size 13 9 11
+projection rigid
+fill 0 0 0 12 0 10 deepslate_tiles
+fill 0 1 0 12 6 10 deepslate_bricks
+fill 1 1 1 11 5 9 air
+fill 1 0 1 11 0 9 dark_oak_planks
+fill 5 1 0 7 3 0 air
+fill 0 7 0 12 7 10 deepslate_tile_slab
+fill 1 1 7 3 1 9 gray_wool
+fill 9 1 7 11 1 9 gray_wool
+fill 1 1 1 2 1 2 dark_oak_planks
+cell 2 1 5 chest:ancient_city@east
+cell 10 1 5 chest:ancient_city@west
+cell 6 1 9 $candle4
+cell 6 5 5 $hanging_lantern
+cell 1 2 1 candle
+jigsaw 6 1 0 north structure plot empty
+jigsaw 0 1 5 west sculk sculk ancient_city/sculk
+jigsaw 12 1 5 east sculk sculk ancient_city/sculk
+end
+
+template ancient_city/structures/chamber_1
+size 9 7 9
+projection rigid
+fill 0 0 0 8 0 8 deepslate_tiles
+fill 0 1 0 8 5 8 deepslate_bricks
+fill 1 1 1 7 4 7 air
+fill 3 1 0 5 3 0 air
+fill 0 6 0 8 6 8 deepslate_tiles
+fill 2 0 2 6 0 6 sculk
+cell 4 1 7 chest:ancient_city@north
+cell 1 1 7 $candle3
+cell 7 1 7 sculk_sensor
+cell 4 4 4 $hanging_lantern
+jigsaw 4 1 0 north structure plot empty
+jigsaw 8 1 4 east sculk sculk ancient_city/sculk
+end
+
+template ancient_city/structures/chamber_2
+size 9 7 9
+projection rigid
+fill 0 0 0 8 0 8 polished_deepslate
+fill 0 1 0 8 4 8 deepslate_tiles
+fill 1 1 1 7 4 7 air
+fill 3 1 0 5 2 0 air
+fill 0 5 0 8 5 8 deepslate_tile_slab
+fill 1 1 1 1 3 7 gray_wool
+cell 7 1 4 chest:ancient_city@west
+cell 7 1 1 $candle2
+cell 4 1 6 $shrieker
+jigsaw 4 1 0 north structure plot empty
+jigsaw 0 1 4 west sculk sculk ancient_city/sculk
+end
+
+template ancient_city/structures/chamber_3
+size 9 7 9
+projection rigid
+fill 0 0 0 8 0 8 deepslate_tiles
+fill 0 1 0 8 5 8 cobbled_deepslate
+fill 1 1 1 7 5 7 air
+fill 3 1 0 5 3 0 air
+fill 2 4 0 6 5 8 air
+fill 1 0 5 7 0 7 sculk
+cell 1 1 7 chest:ancient_city@east
+cell 7 1 7 sculk_sensor
+cell 4 1 7 $candle4
+jigsaw 4 1 0 north structure plot empty
+jigsaw 8 1 4 east sculk sculk ancient_city/sculk
+end
+
+template ancient_city/structures/sauna_1
+size 11 6 9
+projection rigid
+fill 0 0 0 10 0 8 deepslate_tiles
+fill 0 1 0 10 4 8 deepslate_bricks
+fill 1 1 1 9 3 7 air
+fill 4 1 0 6 2 0 air
+fill 0 5 0 10 5 8 deepslate_tile_slab
+fill 2 0 3 3 0 5 soul_sand
+fill 7 0 3 8 0 5 soul_sand
+fill 2 1 3 3 1 5 soul_fire
+fill 7 1 3 8 1 5 soul_fire
+fill 1 1 7 9 1 7 polished_basalt
+cell 5 1 7 $candle3
+jigsaw 5 1 0 north structure plot empty
+jigsaw 10 1 4 east sculk sculk ancient_city/sculk
+end
+
+template ancient_city/structures/small_statue
+size 5 9 5
+projection rigid
+fill 0 0 0 4 0 4 deepslate_tiles
+fill 1 1 1 3 1 3 polished_deepslate
+fill 2 2 2 2 4 2 polished_basalt
+fill 1 5 1 3 7 3 deepslate_bricks
+fill 1 8 2 3 8 2 chiseled_deepslate
+fill 0 6 2 0 7 2 deepslate_brick_wall
+fill 4 6 2 4 7 2 deepslate_brick_wall
+cell 2 6 0 sculk
+jigsaw 2 1 0 north structure plot empty
+end
+
+template ancient_city/structures/large_ruin_1
+size 15 10 15
+projection rigid
+fill 0 0 0 14 0 14 cobbled_deepslate
+fill 0 1 0 14 7 1 deepslate_bricks
+fill 0 1 0 1 7 14 deepslate_bricks
+fill 13 1 0 14 4 14 deepslate_bricks
+fill 4 3 0 9 7 1 air
+fill 0 5 6 1 7 12 air
+fill 6 1 0 8 2 1 air
+fill 3 0 5 10 0 12 sculk
+cell 7 1 12 chest:ancient_city@north
+cell 11 1 11 $shrieker
+cell 3 1 10 sculk_sensor
+jigsaw 7 1 0 north structure plot empty
+jigsaw 14 1 7 east sculk sculk ancient_city/sculk
+jigsaw 0 1 3 west sculk sculk ancient_city/sculk
+end
+
+template ancient_city/structures/tall_ruin_1
+size 7 16 7
+projection rigid
+fill 0 0 0 6 0 6 deepslate_tiles
+fill 0 1 0 6 13 6 deepslate_bricks
+fill 1 1 1 5 13 5 air
+fill 2 1 0 4 3 0 air
+fill 0 10 3 0 15 6 air
+fill 1 0 1 5 0 5 polished_deepslate
+cell 3 1 5 chest:ancient_city@north
+cell 3 12 3 $hanging_lantern
+jigsaw 3 1 0 north structure plot empty
+end
+
+template ancient_city/structures/tall_ruin_2
+size 7 16 7
+projection rigid
+fill 0 0 0 6 0 6 deepslate_tiles
+fill 0 1 0 1 14 1 polished_basalt
+fill 5 1 0 6 11 1 polished_basalt
+fill 0 1 5 1 9 6 polished_basalt
+fill 5 1 5 6 15 6 polished_basalt
+fill 2 0 2 4 0 4 sculk
+cell 3 1 3 sculk_sensor
+jigsaw 3 1 0 north structure plot empty
+end
+
+template ancient_city/structures/tall_ruin_3
+size 7 16 7
+projection rigid
+fill 0 0 0 6 0 6 cobbled_deepslate
+fill 0 1 1 6 12 5 deepslate_bricks
+fill 1 1 2 5 11 4 air
+fill 2 1 1 4 3 1 air
+fill 0 9 1 2 12 5 air
+fill 1 0 2 5 0 4 sculk
+cell 5 1 4 $candle2
+jigsaw 3 1 0 north structure plot empty
+jigsaw 6 1 3 east sculk sculk ancient_city/sculk
+end
+
+template ancient_city/structures/tall_ruin_4
+size 7 16 7
+projection rigid
+fill 0 0 0 6 0 6 deepslate_tiles
+fill 1 1 1 5 15 5 deepslate_tiles
+fill 2 1 2 4 14 4 air
+fill 3 1 1 3 2 1 air
+fill 1 11 1 5 15 2 air
+fill 2 0 2 4 0 4 polished_deepslate
+cell 3 1 4 chest:ancient_city@north
+cell 3 13 3 soul_lantern
+jigsaw 3 1 0 north structure plot empty
+end
+
+template ancient_city/structures/camp
+size 11 5 11
+projection rigid
+fill 0 0 0 10 0 10 cobbled_deepslate
+fill 1 1 6 3 2 9 gray_wool
+fill 7 1 6 9 2 9 cyan_wool
+fill 2 3 7 2 3 8 gray_wool
+fill 8 3 7 8 3 8 cyan_wool
+fill 4 0 4 6 0 6 soul_sand
+cell 5 1 5 soul_fire
+cell 5 1 9 chest:ancient_city@north
+cell 1 1 2 dark_oak_fence
+cell 9 1 2 dark_oak_fence
+cell 1 2 2 soul_lantern
+cell 9 2 2 soul_lantern
+jigsaw 5 1 0 north structure plot empty
+jigsaw 10 1 5 east sculk sculk ancient_city/sculk
+jigsaw 0 1 5 west sculk sculk ancient_city/sculk
+end
+
+template ancient_city/structures/medium_ruin_1
+size 11 7 11
+projection rigid
+fill 0 0 0 10 0 10 deepslate_tiles
+fill 0 1 0 10 4 1 deepslate_bricks
+fill 9 1 0 10 5 10 deepslate_bricks
+fill 3 1 0 6 2 1 air
+fill 2 3 0 7 4 1 cracked_deepslate_bricks
+fill 2 0 3 7 0 8 sculk
+cell 5 1 8 $shrieker
+cell 7 1 4 sculk_sensor
+jigsaw 5 1 0 north structure plot empty
+jigsaw 0 1 5 west sculk sculk ancient_city/sculk
+end
+
+template ancient_city/structures/medium_ruin_2
+size 11 7 11
+projection rigid
+fill 0 0 0 10 0 10 cobbled_deepslate
+fill 0 1 9 10 5 10 deepslate_bricks
+fill 0 1 0 1 3 10 deepslate_bricks
+fill 4 3 9 7 5 10 air
+fill 3 0 2 8 0 7 sculk
+cell 8 1 8 chest:ancient_city@north
+cell 3 1 7 $candle2
+jigsaw 5 1 0 north structure plot empty
+jigsaw 10 1 5 east sculk sculk ancient_city/sculk
+end
+
+template ancient_city/structures/small_ruin_1
+size 7 5 7
+projection rigid
+fill 0 0 0 6 0 6 deepslate_tiles
+fill 0 1 5 6 3 6 deepslate_bricks
+fill 0 1 0 1 2 6 deepslate_bricks
+fill 2 3 5 4 3 6 air
+fill 2 0 1 5 0 4 sculk
+cell 4 1 3 sculk_sensor
+jigsaw 3 1 0 north structure plot empty
+end
+
+template ancient_city/structures/small_ruin_2
+size 7 5 7
+projection rigid
+fill 0 0 0 6 0 6 cobbled_deepslate
+fill 5 1 0 6 3 6 deepslate_bricks
+fill 0 1 5 4 2 6 cracked_deepslate_bricks
+cell 2 1 2 $candle4
+jigsaw 3 1 0 north structure plot empty
+jigsaw 0 1 3 west sculk sculk ancient_city/sculk
+end
+
+template ancient_city/structures/large_pillar_1
+size 5 18 5
+projection rigid
+fill 0 0 0 4 0 4 deepslate_tiles
+fill 1 1 1 3 15 3 polished_basalt
+fill 0 16 0 4 16 4 deepslate_bricks
+fill 1 17 1 3 17 3 chiseled_deepslate
+cell 2 2 0 soul_lantern
+jigsaw 2 1 0 north structure plot empty
+end
+
+template ancient_city/structures/medium_pillar_1
+size 3 12 3
+projection rigid
+fill 0 0 0 2 0 2 deepslate_tiles
+fill 1 1 1 1 10 1 polished_basalt
+fill 0 11 0 2 11 2 deepslate_tile_slab
+jigsaw 1 1 0 north structure plot empty
+end
+
+template ancient_city/structures/ice_box_1
+size 7 6 7
+projection rigid
+fill 0 0 0 6 0 6 deepslate_tiles
+fill 0 1 0 6 4 6 deepslate_bricks
+fill 1 1 1 5 3 5 packed_ice
+fill 2 1 2 4 3 4 air
+fill 3 1 0 3 2 1 air
+fill 0 5 0 6 5 6 deepslate_tile_slab
+fill 2 0 2 4 0 4 blue_ice
+cell 3 1 4 chest:ancient_city_ice_box@north
+cell 2 1 3 snow
+cell 4 1 3 snow
+jigsaw 3 1 0 north structure plot empty
+end

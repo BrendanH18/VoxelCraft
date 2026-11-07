@@ -185,6 +185,12 @@ impl Game {
             on_ground: self.session.player.on_ground,
             health: self.session.vitals.health,
             effects: self.session.vitals.effects.mask(),
+            darkness_ticks: self
+                .session
+                .vitals
+                .effects
+                .get(voxelcraft::simulation::effects::Effect::Darkness)
+                .map_or(0, |e| e.ticks),
             in_water: self.session.player.in_water,
             swimming: self.session.player.swimming,
             time_since_rest: self.session.vitals.time_since_rest,
@@ -264,6 +270,28 @@ impl Game {
                         };
                         arrow_effects
                             .record_hit(player, if bot.agent.session.vitals.is_dead() { 0. } else { accepted });
+                    }
+                }
+                EntityEvent::PlayerSonicBoom { player: PlayerId::HOST, damage, push, from } => {
+                    // `SonicBoom.tick`: unarmoured, unenchanted damage that a
+                    // raised shield facing the warden still stops, then the push.
+                    let damage = self.difficulty.mob_damage(damage);
+                    let toward = from - self.session.player.pos;
+                    let slot = self.body.actions.selected;
+                    if !self.session.shield_intercept(slot, damage, toward).blocked
+                        && self.damage_player(damage, voxelcraft::entity::warden::CAUSE_SONIC_BOOM) > 0.0
+                    {
+                        let resistance = self.session.inventory.knockback_resistance();
+                        self.session.player.vel += crate::simulation::survival::knockback_taken(
+                            push.as_dvec3() * crate::knockback::TICK_RATE,
+                            resistance,
+                        );
+                    }
+                }
+                EntityEvent::PlayerSonicBoom { player, damage, push, from } => {
+                    if let Some(bot) = self.agents.by_id_mut(player) {
+                        let damage = self.difficulty.mob_damage(damage);
+                        bot.agent.hurt_sonic_boom(damage, push.as_dvec3(), from, &mut self.mobs.entities);
                     }
                 }
                 EntityEvent::PlayerLightning { player } => {
@@ -393,8 +421,16 @@ impl Game {
                     }
                 }
                 EntityEvent::Explosion { center, power, cause, credit_player } => {
+                    // `ServerExplosion.explode` posts `explode` at its centre.
+                    self.world.emit_game_event(
+                        center,
+                        crate::world::vibration::GameEvent::Explode,
+                        crate::world::vibration::EventSource::NONE,
+                        None,
+                    );
                     self.explode(center, power, cause, credit_player)
                 }
+                EntityEvent::WindBurst(burst) => self.wind_burst(&burst),
                 EntityEvent::PearlLanded { owner, pos } => {
                     let mut burst = crate::particles::Burst::new(crate::particles::Kind::Portal, pos + DVec3::Y, 32);
                     burst.spread = DVec3::Y;
@@ -419,7 +455,18 @@ impl Game {
                         self.world.ignite(cell);
                     }
                 }
-                EntityEvent::Fireball { .. } | EntityEvent::ThrowPotion { .. } => {}
+                EntityEvent::Fireball { .. }
+                | EntityEvent::ThrowPotion { .. }
+                | EntityEvent::ThrowTrident { .. }
+                | EntityEvent::ShootWindCharge { .. } => {}
+                EntityEvent::TridentBrokeDripstone { cell, mob_owned } => {
+                    // `Projectile.mayInteract` (a mob's needs `mobGriefing`) and `mayBreak`.
+                    let may = self.gamerules.bool("projectiles_can_break_blocks")
+                        && (!mob_owned || self.gamerules.bool("mob_griefing"));
+                    if may && let Some(block) = self.world.trident_breaks_dripstone(cell) {
+                        self.audio.block_break(block, cell);
+                    }
+                }
                 EntityEvent::Sound { sound, pos } => {
                     // Brutes and zoglins are deeper takes on piglin and hoglin voices.
                     let deep = matches!(
@@ -447,6 +494,16 @@ impl Game {
                             }
                         }
                         MobSound::Allay(action) => (Sound::Allay(action), 0.8),
+                        MobSound::Warden(cue) => (Sound::Warden(cue), warden_volume(cue)),
+                        MobSound::Hurt(MobKind::Warden) => (Sound::Warden(voxelcraft::entity::warden::Cue::Hurt), 1.0),
+                        MobSound::Death(MobKind::Warden) => {
+                            (Sound::Warden(voxelcraft::entity::warden::Cue::Death), 1.0)
+                        }
+                        MobSound::Weapon(cue) => {
+                            super::items::weapon_sound(&mut self.audio, cue, pos);
+                            continue;
+                        }
+                        MobSound::Breeze(cue) => (Sound::Breeze(cue), 1.0),
                         MobSound::CopperGolem(action, stage) => (Sound::CopperGolem(action, stage), 0.7),
                         MobSound::Hurt(MobKind::CopperGolem) => {
                             (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Hurt, 0), 0.9)
@@ -630,6 +687,18 @@ fn mob_sound_source(sound: MobSound) -> Option<SoundSource> {
     }
 }
 
+/// Relative loudness of the warden's calls: Java plays most at volume 5
+/// (10 for listening, steps and attacks, 3 for roars and booms); the mixer's
+/// gain stays within 1 and the distance falloff does the rest.
+fn warden_volume(cue: voxelcraft::entity::warden::Cue) -> f32 {
+    use voxelcraft::entity::warden::Cue;
+    match cue {
+        Cue::Heartbeat | Cue::TendrilClicks => 0.8,
+        Cue::Step => 0.7,
+        _ => 1.0,
+    }
+}
+
 // Java Bat.getSoundVolume; samples stay normalized like the other voices.
 fn mob_volume(kind: MobKind) -> f32 {
     if kind == MobKind::Bat { 0.1 } else { 1.0 }
@@ -646,6 +715,9 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Armadillo => Voice::Armadillo,
         MobKind::Ocelot => Voice::Ocelot,
         MobKind::Sniffer => Voice::Sniffer,
+        // The warden's own calls are `Sound::Warden`; this voice is unused.
+        MobKind::Warden => Voice::Creaking,
+        MobKind::Breeze => Voice::Breeze,
         MobKind::Allay => Voice::Allay,
         MobKind::CopperGolem => Voice::Skeleton,
         MobKind::Creaking => Voice::Creaking,
@@ -692,6 +764,24 @@ fn voice(kind: MobKind) -> Voice {
 }
 
 impl Game {
+    /// A wind burst ([`voxelcraft::entity::wind::wind_burst`]) over every
+    /// player in this world: wind charges, and the shared entry point the
+    /// mace's Wind Burst can call.
+    pub(super) fn wind_burst(&mut self, burst: &voxelcraft::entity::wind::WindBurst) {
+        let mut sessions: Vec<&mut voxelcraft::session::PlayerSession> = vec![&mut self.session];
+        if self.arrival.is_none() {
+            sessions.extend(self.agents.players.values_mut().filter(|b| b.active).map(|b| &mut b.agent.session));
+        }
+        voxelcraft::entity::wind::wind_burst(&mut self.world, &mut self.mobs.entities, &mut sessions, burst);
+        self.audio.play_in(
+            SoundSource::Neutral,
+            Sound::Breeze(voxelcraft::entity::breeze::Cue::Burst),
+            Some(burst.center),
+            1.0,
+            (0.9, 1.1),
+        );
+    }
+
     /// Blows a hole in the world and hurts everything around `center`.
     /// `cause` completes the death message, as for [`Game::damage_player`].
     pub(super) fn explode(&mut self, center: DVec3, power: f32, cause: &str, credit_player: bool) {

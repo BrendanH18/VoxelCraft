@@ -72,6 +72,55 @@ fn handle(x: i32, y: i32, from: i32, top: i32) -> Option<Rgba> {
     }
 }
 
+/// Original v0.16 weapon icons on the same diagonal as the tools: `u`
+/// across the shaft (15–16 on it), `v` along it (towards the top right).
+fn weapon(i: u8, x: i32, y: i32) -> Option<Rgba> {
+    let (u, v) = (x + y, x - y);
+    match i {
+        // Trident: a teal shaft, a crossbar and three prongs.
+        0 => {
+            let fork = |x: i32, y: i32| {
+                let (u, v) = (x + y, x - y);
+                (15..=16).contains(&u) && (5..=14).contains(&v)
+                    || ((11..=12).contains(&u) || (19..=20).contains(&u)) && (5..=11).contains(&v)
+                    || (5..=6).contains(&v) && (11..=20).contains(&u)
+            };
+            shaded(&fork, x, y, [96, 190, 176], 0.06).or_else(|| {
+                ((15..=16).contains(&u) && (-15..=4).contains(&v))
+                    .then(|| tint(if u == 15 { [66, 132, 124] } else { [38, 82, 78] }, 0.95 + noise(x, y, 41) * 0.1))
+            })
+        }
+        // Mace: a heavy, ridged iron head on a short pale grip.
+        1 => {
+            let head = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                let r = (px - 11.0).powi(2) + (py - 5.0).powi(2);
+                r <= 12.5 || (r <= 20.0 && ((x - 11).abs() <= 0 || (y - 5).abs() <= 0))
+            };
+            if let Some(p) = shaded(&head, x, y, [86, 86, 96], 0.08) {
+                let ridge = (x + y - 16).abs() <= 0 && head(x - 1, y) && head(x + 1, y);
+                return Some(if ridge { tint([150, 150, 162], 1.0) } else { p });
+            }
+            ((1..=8).contains(&x) && (15..=16).contains(&u))
+                .then(|| tint(if u == 15 { [176, 190, 214] } else { [104, 112, 140] }, 0.95 + noise(x, y, 43) * 0.1))
+        }
+        // Spears: a long shaft with a leaf-shaped head in the tier's colour.
+        n => {
+            let tier = crate::weapons::SPEAR_TIERS[usize::from(n - 2).min(6)];
+            let c = tier_colour(tier);
+            let blade = |x: i32, y: i32| {
+                let (u, v) = (x + y, x - y);
+                let half = if v >= 11 { (14 - v) as f32 * 0.5 + 0.5 } else { (v - 6) as f32 * 0.55 + 0.5 };
+                (7..=14).contains(&v) && ((u as f32) - 15.5).abs() <= half
+            };
+            if let Some(p) = shaded(&blade, x, y, c, 0.05) {
+                return Some(if u == 15 && (8..=13).contains(&v) { tint(c, 1.25) } else { p });
+            }
+            handle(x, y, 0, 8)
+        }
+    }
+}
+
 fn tool(kind: ToolKind, tier: Tier, x: i32, y: i32) -> Option<Rgba> {
     let c = tier_colour(tier);
     // Coordinates along the handle: `u` across it (15..16 on the handle,
@@ -205,6 +254,7 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
         }
         Sprite::Stick => handle(x, y, 2, 13),
         Sprite::Tool(kind, tier) => tool(kind, tier, x, y),
+        Sprite::Weapon(i) => weapon(i, x, y),
         Sprite::Armor(piece, material) => armor(piece, material, x, y),
         Sprite::Minecart(c) => {
             let body = |x: i32, y: i32| (2..=13).contains(&x) && (6..=11).contains(&y);
@@ -712,6 +762,53 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 ))
             }
         }
+        // v0.16 Track C: original key, rod, gust and bottle icons.
+        Sprite::TrialKey(ominous) => {
+            let c = if ominous { [54, 168, 176] } else { [214, 138, 70] };
+            let ring = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                let d = ((px - 5.0).powi(2) + (py - 5.0).powi(2)).sqrt();
+                (1.6..=3.4).contains(&d)
+            };
+            let shaft = |x: i32, y: i32| (x - y).abs() <= 0 && (7..=13).contains(&x);
+            let teeth = |x: i32, y: i32| (x == 11 && y == 13) || (x == 13 && y == 11) || (x == 12 && y == 13);
+            let key = |x: i32, y: i32| ring(x, y) || shaft(x, y) || teeth(x, y);
+            shaded(&key, x, y, c, 0.06)
+        }
+        Sprite::BreezeRod => {
+            // A pale, twisting rod with a cyan core.
+            let on = (x + y - 15).abs() <= 1 && (2..=13).contains(&x);
+            on.then(|| {
+                if (x + y) == 15 && x % 3 != 0 {
+                    tint([150, 230, 240], 1.0)
+                } else {
+                    tint([206, 214, 232], 0.9 + noise(x, y, 77) * 0.15)
+                }
+            })
+        }
+        Sprite::WindCharge => {
+            // A swirling ball of air.
+            let (px, py) = centre(x, y);
+            let r = ((px - 8.0).powi(2) + (py - 8.0).powi(2)).sqrt();
+            let a = (py - 8.0).atan2(px - 8.0);
+            let swirl = ((a * 2.0 + r * 0.9).sin() > 0.2) as u8;
+            (r <= 5.8).then(|| if swirl == 1 { tint([196, 222, 236], 1.0) } else { tint([150, 176, 210], 0.95) })
+        }
+        Sprite::OminousBottle(level) => {
+            let flask = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                ((px - 8.0) / 4.6).powi(2) + ((py - 10.0) / 4.4).powi(2) <= 1.0
+                    || ((6..=9).contains(&x) && (2..=6).contains(&y))
+            };
+            let pip = y == 11 && (5..5 + 2 * (level as i32 + 1)).contains(&x) && x % 2 == 1;
+            if pip {
+                Some(tint([230, 230, 230], 1.0))
+            } else if (6..=9).contains(&x) && y == 2 {
+                Some(tint([80, 70, 60], 1.0))
+            } else {
+                shaded(&flask, x, y, [38, 120, 92], 0.07)
+            }
+        }
         Sprite::Brush => {
             if (x - y).abs() <= 1 && (5..=14).contains(&y) {
                 Some(tint([132, 92, 51], 1.0))
@@ -829,6 +926,41 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             shaded(&body, x, y, colour, 0.06)
         }
         Sprite::Compass => compass_face(0, 32, x, y, [62, 86, 112], [176, 40, 36]),
+        Sprite::RecoveryCompass => compass_face(0, 32, x, y, [38, 52, 58], [78, 214, 196]),
+        // Original record: a dark grooved platter with a coloured label.
+        Sprite::MusicDisc(i) => {
+            let (dx, dy) = (px - 8.0, py - 8.0);
+            let r = dx.hypot(dy);
+            if r > 7.0 {
+                None
+            } else if r < 0.9 {
+                Some(tint([20, 20, 22], 1.0))
+            } else if r < 2.6 {
+                let h = i as f32 * 0.618_034;
+                let hue = |o: f32| ((((h + o).fract() * std::f32::consts::TAU).sin() * 0.5 + 0.5) * 200.0 + 40.0) as u8;
+                Some(tint([hue(0.0), hue(0.33), hue(0.67)], 1.0))
+            } else {
+                let groove = (r * 2.0) as i32 % 2 == 0;
+                let shine = dx - dy > 3.0 && dx - dy < 5.0;
+                Some(tint(if shine { [92, 92, 100] } else { [34, 32, 38] }, if groove { 0.85 } else { 1.0 }))
+            }
+        }
+        // A broken wedge of a record.
+        Sprite::DiscFragment => {
+            let (dx, dy) = (px - 4.0, py - 12.0);
+            let r = dx.hypot(dy);
+            let wedge = r < 10.0 && dx > 0.0 && dy < 0.0 && dx + (y % 3) as f32 > -dy * 0.4;
+            wedge.then(|| tint([40, 38, 44], if (r * 2.0) as i32 % 2 == 0 { 0.85 } else { 1.05 }))
+        }
+        // A glinting dark crystal shard.
+        Sprite::EchoShard => {
+            let shard = |x: i32, y: i32| {
+                let (u, v) = (x + y, x - y);
+                (8..=22).contains(&u) && v.abs() <= 3 - (u - 15).abs() / 3
+            };
+            shaded(&shard, x, y, [22, 74, 88], 0.08)
+                .map(|p| if (x + 2 * y) % 7 == 0 { tint([108, 230, 220], 1.0) } else { p })
+        }
         Sprite::Map(explorer) => {
             if (2..14).contains(&x) && (2..14).contains(&y) {
                 let rgb = if x == 2 || x == 13 || y == 2 || y == 13 {
@@ -1004,6 +1136,14 @@ fn effect_glyph(effect: Effect) -> [&'static str; 8] {
         // A heart with a highlight cut out of its upper left lobe, like the golden hearts.
         Effect::Absorption | Effect::Saturation => {
             [".##..##.", "#.######", "########", "########", ".######.", "..####..", "...##...", "........"]
+        }
+        // An eye closing behind a dark veil.
+        Effect::Darkness => {
+            ["########", "#......#", "#.####.#", "##.##.##", "#.####.#", "#......#", "#.#..#.#", "########"]
+        }
+        // An original banner-like pennant for both omens.
+        Effect::BadOmen | Effect::TrialOmen => {
+            ["########", "#.####.#", "##.##.##", "###..###", "###..###", "##.##.##", ".######.", "...##..."]
         }
     }
 }

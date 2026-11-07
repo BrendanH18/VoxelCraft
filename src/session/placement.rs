@@ -336,7 +336,14 @@ impl PlayerSession {
                             None => block,
                         };
                         // Chests pair with a neighbour (`ChestBlock.getStateForPlacement`).
-                        crate::world::double_chest::placed(block, &ctx, |c| world.get_block(c)).unwrap_or(block)
+                        let block =
+                            crate::world::double_chest::placed(block, &ctx, |c| world.get_block(c)).unwrap_or(block);
+                        // `CalibratedSculkSensorBlock.getStateForPlacement`: facing where the player looks.
+                        if crate::world::cave_blocks::calibrated_of(block).is_some() {
+                            block.with_facing(ctx.facing)
+                        } else {
+                            block
+                        }
                     };
                     if !free(world, at) {
                         return Err("destination occupied or unloaded");
@@ -413,6 +420,13 @@ impl PlayerSession {
         if self.mode.is_survival() {
             self.inventory.take_one(slot);
         }
+        // `BlockItem.place`: `block_place` names the placed state.
+        world.emit_game_event(
+            cell.as_dvec3() + glam::DVec3::splat(0.5),
+            crate::world::vibration::GameEvent::BlockPlace,
+            crate::world::vibration::EventSource::player(self.id, self.player.sneaking),
+            Some(block),
+        );
         Ok(Outcome::Placed { player: self.id, cell, block, kind })
     }
 }

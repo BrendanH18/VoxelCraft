@@ -22,13 +22,23 @@ pub enum Kind {
     Egg,
     /// A llama's spit (Java's LlamaSpit): 1 damage to whatever it hits.
     LlamaSpit,
+    /// v0.16 Track C: a player's wind charge and a breeze's. They fly
+    /// straight (no gravity or drag), hurt what they hit by 1 and burst
+    /// (see `wind`).
+    WindCharge,
+    BreezeWindCharge,
 }
 
 impl Kind {
+    pub fn is_wind(self) -> bool {
+        matches!(self, Kind::WindCharge | Kind::BreezeWindCharge)
+    }
+
     pub fn from_item(item: Item) -> Option<Self> {
         match item {
             Item::SNOWBALL => Some(Self::Snowball),
             Item::EGG => Some(Self::Egg),
+            crate::world::trial::WIND_CHARGE => Some(Self::WindCharge),
             _ => None,
         }
     }
@@ -72,6 +82,29 @@ impl Thrown {
         }
     }
 
+    /// A breeze's wind charge from `from` along `dir` (`Shoot.tick`:
+    /// 0.7 blocks a tick, Java's `shoot` gaussian spread of
+    /// `0.0075 * inaccuracy`).
+    pub fn breeze_charge(from: DVec3, dir: DVec3, inaccuracy: f64, shooter: u32, rng: &mut Rng) -> Self {
+        let mut gauss = || {
+            let u1 = f64::from(rng.next_f32()).max(1e-7);
+            let u2 = f64::from(rng.next_f32());
+            (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
+        };
+        let d = dir.normalize_or(DVec3::X);
+        let aim = d + DVec3::new(gauss(), gauss(), gauss()) * 0.0075 * inaccuracy;
+        Self {
+            kind: Kind::BreezeWindCharge,
+            owner: None,
+            shooter: Some(shooter),
+            pos: from,
+            previous_pos: from,
+            vel: aim * super::wind::BREEZE_SPEED,
+            age: 0.0,
+            origin: from,
+        }
+    }
+
     /// Thrown from `eye` along `dir`, carrying the thrower's velocity.
     pub fn launch(kind: Kind, owner: PlayerId, eye: DVec3, dir: DVec3, carry: DVec3, rng: &mut Rng) -> Self {
         let mut wobble = || rng.range(-0.017, 0.017) as f64;
@@ -103,9 +136,18 @@ impl Thrown {
         self.age += dt as f32;
         let ticks = dt * 20.0;
         let water = world.block(self.pos.floor().as_ivec3()).is_some_and(|b| b.holds_water());
-        self.vel *= if water { 0.8f64 } else { 0.99 }.powf(ticks);
-        // Java: thrown items fall 0.03 blocks/tick², llama spit 0.06.
-        self.vel.y -= if self.kind == Kind::LlamaSpit { GRAVITY * 2.0 } else { GRAVITY } * dt;
+        if self.kind.is_wind() {
+            // `AbstractHurtingProjectile` with no acceleration and inertia
+            // 1: straight on; Java bursts it 30 blocks above the build limit.
+            if self.pos.y > 350.0 {
+                self.burst(self.pos, events);
+                return false;
+            }
+        } else {
+            self.vel *= if water { 0.8f64 } else { 0.99 }.powf(ticks);
+            // Java: thrown items fall 0.03 blocks/tick², llama spit 0.06.
+            self.vel.y -= if self.kind == Kind::LlamaSpit { GRAVITY * 2.0 } else { GRAVITY } * dt;
+        }
         let delta = self.vel * dt;
         let steps = (delta.length() / STEP).ceil().max(1.0) as u32;
         for _ in 0..steps {
@@ -115,6 +157,29 @@ impl Thrown {
                 return false;
             }
             self.pos = next;
+            // Wind charges hit players too: a breeze's any player, a
+            // player's anyone but its thrower.
+            if self.kind.is_wind()
+                && let Some(t) = players
+                    .iter()
+                    .find(|t| t.targetable && t.contains(next) && (self.owner != Some(t.id) || self.age >= 0.25))
+            {
+                if self.kind == Kind::BreezeWindCharge || self.owner != Some(t.id) {
+                    events.push(EntityEvent::PlayerHit {
+                        java: None,
+                        player: t.id,
+                        damage: super::wind::HIT_DAMAGE,
+                        knockback: (DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 0.5).as_vec3(),
+                        cause: if self.kind == Kind::BreezeWindCharge {
+                            "was slain by a breeze"
+                        } else {
+                            "was blasted by a wind charge"
+                        },
+                    });
+                }
+                self.burst(self.pos, events);
+                return false;
+            }
             if self.kind == Kind::LlamaSpit
                 && let Some(t) = players.iter().find(|t| t.targetable && t.contains(next))
             {
@@ -150,10 +215,25 @@ impl Thrown {
             });
             if let Some(i) = hit {
                 let mob = &mut mobs[i];
+                // `Breeze.deflection`: every projectile but wind charges
+                // turns back (`ProjectileDeflection.REVERSE`).
+                if mob.kind == MobKind::Breeze && !self.kind.is_wind() {
+                    self.vel *= -0.5;
+                    self.shooter = Some(mob.uid);
+                    self.origin = self.pos;
+                    events.push(EntityEvent::Sound {
+                        sound: super::MobSound::Breeze(super::breeze::Cue::Deflect),
+                        pos: mob.pos,
+                    });
+                    return true;
+                }
                 let push = DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 2.0 + DVec3::Y * 2.0;
                 let damage = match self.kind {
                     Kind::Snowball if mob.kind == MobKind::Blaze => 3.0,
                     Kind::LlamaSpit => 1.0,
+                    // `Breeze.isInvulnerableTo` a breeze's own damage.
+                    Kind::BreezeWindCharge if mob.kind == MobKind::Breeze => 0.0,
+                    Kind::WindCharge | Kind::BreezeWindCharge => super::wind::HIT_DAMAGE,
                     _ => 0.0,
                 };
                 let kind = mob.kind;
@@ -175,7 +255,20 @@ impl Thrown {
         self.age < MAX_FLIGHT && self.pos.y > -128.0
     }
 
+    fn burst(&self, pos: DVec3, events: &mut Vec<EntityEvent>) {
+        let burst = if self.kind == Kind::BreezeWindCharge {
+            super::wind::WindBurst::breeze(pos)
+        } else {
+            super::wind::WindBurst::charge(pos, self.owner)
+        };
+        events.push(EntityEvent::WindBurst(burst));
+    }
+
     fn impact(&self, pos: DVec3, rng: &mut Rng, events: &mut Vec<EntityEvent>) {
+        if self.kind.is_wind() {
+            self.burst(pos, events);
+            return;
+        }
         if self.kind == Kind::Egg
             && let count = hatch_count(rng)
             && count > 0
@@ -258,6 +351,71 @@ mod tests {
             events.iter().any(|e| matches!(e, EntityEvent::MobKilled { kind: MobKind::Blaze, player_kill: false, .. }))
         );
     }
+    #[test]
+    fn wind_charges_fly_straight_and_burst() {
+        let world = Grid::flat(0);
+        let mut rng = Rng::new(3);
+        let mut t = Thrown::launch(
+            Kind::WindCharge,
+            PlayerId::HOST,
+            DVec3::new(0.5, 3.0, 0.5),
+            DVec3::new(1.0, -0.2, 0.0),
+            DVec3::ZERO,
+            &mut rng,
+        );
+        let index = super::super::mob_index::MobIndex::default();
+        let mut events = Vec::new();
+        let mut steps = 0;
+        while t.update(0.05, &world, &mut [], &index, &[], &mut rng, &mut events) {
+            steps += 1;
+            assert!(steps < 40);
+        }
+        let Some(EntityEvent::WindBurst(b)) = events.last() else { panic!("{events:?}") };
+        assert_eq!((b.radius, b.owner), (super::super::wind::CHARGE_RADIUS, Some(PlayerId::HOST)));
+        assert!(b.center.y < 0.3 && b.center.x > 10.0, "a straight line at -0.2 slope: {}", b.center);
+    }
+
+    #[test]
+    fn breezes_deflect_snowballs_but_not_wind_charges() {
+        let world = Grid::flat(0);
+        let mut rng = Rng::new(8);
+        let index_for = |m: &Mob| {
+            let mut i = super::super::mob_index::MobIndex::default();
+            i.rebuild(std::slice::from_ref(m));
+            i
+        };
+        let mut breeze = Mob::new(MobKind::Breeze, DVec3::new(2.5, 0.0, 0.5), 0.0);
+        breeze.uid = 9;
+        let mut t =
+            Thrown::launch(Kind::Snowball, PlayerId::HOST, DVec3::new(0.2, 1.0, 0.5), DVec3::X, DVec3::ZERO, &mut rng);
+        let mut events = Vec::new();
+        for _ in 0..4 {
+            let index = index_for(&breeze);
+            if !t.update(0.05, &world, std::slice::from_mut(&mut breeze), &index, &[], &mut rng, &mut events) {
+                break;
+            }
+        }
+        assert!(t.vel.x < 0.0, "the snowball turned back");
+        assert!(events.iter().any(|e| matches!(e, EntityEvent::Sound { .. })));
+        let mut w = Thrown::launch(
+            Kind::WindCharge,
+            PlayerId::HOST,
+            DVec3::new(0.2, 1.0, 0.5),
+            DVec3::X,
+            DVec3::ZERO,
+            &mut rng,
+        );
+        let mut events = Vec::new();
+        for _ in 0..4 {
+            let index = index_for(&breeze);
+            if !w.update(0.05, &world, std::slice::from_mut(&mut breeze), &index, &[], &mut rng, &mut events) {
+                break;
+            }
+        }
+        assert!(events.iter().any(|e| matches!(e, EntityEvent::WindBurst(_))));
+        assert_eq!(breeze.health, MobKind::Breeze.max_health() - super::super::wind::HIT_DAMAGE);
+    }
+
     #[test]
     fn eggs_hatch_about_one_chick_in_eight() {
         let mut rng = Rng::new(9);

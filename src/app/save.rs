@@ -34,6 +34,7 @@ impl Game {
         props.insert("effects".to_string(), self.session.vitals.effects.serialize());
         props.insert("time_since_rest".into(), self.session.vitals.time_since_rest.to_string());
         props.insert("ticks_frozen".to_string(), self.session.vitals.ticks_frozen.to_string());
+        props.insert("warden_spawn_tracker".into(), self.session.vitals.warden.save().to_string());
         let h = self.session.vitals.hunger;
         props.insert("hunger".to_string(), format!("{:.2},{:.2},{:.3}", h.food, h.saturation, h.exhaustion));
         if let Some(cause) = &self.session.vitals.death {
@@ -52,6 +53,9 @@ impl Game {
         props.insert("ender_chest".to_string(), self.ender_for_save().serialize());
         if let Some(a) = self.session.spawn_anchor {
             props.insert("spawn_anchor".to_string(), format!("{},{},{}", a.x, a.y, a.z));
+        }
+        if let Some(text) = self.session.last_death_to_string() {
+            props.insert("last_death".to_string(), text);
         }
         if let Some(p) = self.session.spawn_point {
             props.insert("spawn_point".to_string(), format!("{},{},{}", p.x, p.y, p.z));

@@ -639,14 +639,19 @@ static TABLES: LazyLock<Tables> = LazyLock::new(|| {
             .filter(|c| c.waxed)
             .map_or(b, |c| super::copper::encode(super::copper::Copper { waxed: false, ..c }));
         let name = reference.name();
-        tables.resistance[i] =
-            if (super::creaking::owns(b.0) && super::creaking::heart(b).is_none() && b != super::creaking::RESIN_BLOCK)
-                || super::copper_golem_statue::owns(b.0)
-            {
-                6.0
-            } else {
-                resistance.get(name).copied().unwrap_or_else(|| b.hardness())
-            };
+        tables.resistance[i] = if let Some(r) = super::jukebox::resistance(b) {
+            r
+        } else if (super::creaking::owns(b.0)
+            && super::creaking::heart(b).is_none()
+            && b != super::creaking::RESIN_BLOCK)
+            || super::copper_golem_statue::owns(b.0)
+        {
+            6.0
+        } else if super::heavy_core::owns(b.0) {
+            super::heavy_core::BLAST_RESISTANCE
+        } else {
+            resistance.get(name).copied().unwrap_or_else(|| b.hardness())
+        };
         tables.loot[i] = match loot.get(name) {
             Some(&kind) => kind,
             None if super::creaking::heart(b).is_some()
@@ -688,6 +693,23 @@ impl World {
     /// `interactWithBlocks` breaks them. Rays stop at the world's top and
     /// bottom and at unloaded chunks. Exploded cells may be air.
     pub fn exploded_cells(&mut self, center: DVec3, radius: f32) -> Vec<IVec3> {
+        self.exploded_cells_with(center, radius, resistance_against)
+    }
+
+    /// [`World::exploded_cells`] with a wind charge's calculator
+    /// (`SimpleExplosionDamageCalculator` with `immuneBlocks`
+    /// `#blocks_wind_charge_explosions`): only those blocks (bedrock; the
+    /// barrier isn't registered) stop its rays, every other block costs nothing.
+    pub fn wind_exploded_cells(&mut self, center: DVec3, radius: f32) -> Vec<IVec3> {
+        self.exploded_cells_with(center, radius, |b| (b == Block::BEDROCK).then_some(3_600_000.0))
+    }
+
+    fn exploded_cells_with(
+        &mut self,
+        center: DVec3,
+        radius: f32,
+        resistance_against: impl Fn(Block) -> Option<f32>,
+    ) -> Vec<IVec3> {
         let mut cells = FxHashSet::default();
         let edge = |i: i32| i == 0 || i == 15;
         let axis = |i: i32| f64::from(i as f32 / 15.0 * 2.0 - 1.0);

@@ -351,7 +351,7 @@ impl Mob {
     /// 0.6 (`0.6f`) for hoglins and zoglins.
     pub(crate) fn knockback_resistance(&self) -> f64 {
         match self.kind {
-            MobKind::IronGolem => 1.0,
+            MobKind::IronGolem | MobKind::Warden => 1.0,
             MobKind::Hoglin | MobKind::Zoglin => 0.6000000238418579,
             _ => 0.0,
         }

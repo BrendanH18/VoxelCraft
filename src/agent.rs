@@ -299,7 +299,10 @@ impl Agent {
                     return Err("hold a bow or crossbow with an arrow, away from a block that takes use".into());
                 };
                 self.emit(Event::Shot(shot));
-                if shot.ranged == crate::session::ranged::Ranged::Drawing {
+                if matches!(
+                    shot.ranged,
+                    crate::session::ranged::Ranged::Drawing | crate::session::ranged::Ranged::Charging { .. }
+                ) {
                     self.input = MoveInput::default();
                     self.remaining = duration;
                     self.mining = false;
@@ -467,6 +470,12 @@ impl Agent {
                 // Java has no attack cooldown; damage scales with the charge instead.
                 self.cooldown = TICK_SECONDS;
                 self.swings += 1;
+                // Wind Burst's block interaction, as the desktop hands apply it.
+                if let crate::session::combat::Outcome::Hit { smash: Some(smash), .. } = &outcome
+                    && let Some(center) = smash.wind_burst
+                {
+                    crate::weapons::mace::wind_burst_blocks(world, center);
+                }
                 match outcome {
                     crate::session::combat::Outcome::Missed { .. } => {
                         return Err("nothing to attack within reach".into());
@@ -762,6 +771,9 @@ impl Agent {
         }
         // Every agent (CLI, controller and LAN hands) charges here once per tick.
         self.session.tick_attack_strength(self.selected);
+        if let Some(shot) = self.session.tick_weapons(entities) {
+            self.emit(Event::Shot(shot));
+        }
         // Java keeps the hook while a rod is in either hand.
         let holding_rod = [self.session.inventory.get(self.selected), self.session.inventory.offhand]
             .iter()
@@ -805,6 +817,13 @@ impl Agent {
             world.powder_snow_fire(&self.session.player, self.session.vitals.burning());
             world.dripleaf_step(self.session.player.pos, self.session.player.on_ground);
             crate::particles::movement_effects(&self.session.player, before, world);
+            world.player_moved(
+                self.session.id,
+                &self.session.player,
+                before,
+                self.session.mode == crate::rules::GameMode::Spectator,
+                self.creative || self.session.mode.is_creative(),
+            );
         } else {
             entities.mount_input(self.session.id, &self.session.player, input, &self.session.inventory, self.selected);
             entities.seat_player(&mut self.session.player, self.session.id);
@@ -882,7 +901,7 @@ impl Agent {
                 Err(_) => {}
             }
         }
-        self.draw(entities);
+        self.draw(world, entities);
         self.session.tick_blocking_unless_ticked(self.selected, self.eating && self.remaining > 0);
         if self.session.brushing() && self.eating && self.remaining > 0 {
             self.session.tick_brushing(self.selected, true, world);
@@ -906,6 +925,10 @@ impl Agent {
             item.stack.count = self.session.inventory.add_stack(item.stack);
             item.stack.count > 0
         });
+        let (id, feet, shape) = (self.session.id, self.session.player.pos, self.session.player.collision_shape());
+        let creative = self.session.mode.is_creative();
+        let inventory = &mut self.session.inventory;
+        entities.collect_tridents(id, feet, shape, creative, |stack| inventory.add_stack(stack) == 0);
         for stack in entities.collect_arrow_stacks(self.session.player.pos) {
             let left = self.session.inventory.add_stack(stack);
             if left > 0 {
@@ -990,7 +1013,7 @@ impl Agent {
 
     /// One tick of holding use with a bow or crossbow: a crossbow loads when
     /// its charge completes; a bow shoots when the requested ticks have passed.
-    fn draw(&mut self, entities: &mut Entities) {
+    fn draw(&mut self, world: &World, entities: &mut Entities) {
         if !self.drawing {
             return;
         }
@@ -999,7 +1022,7 @@ impl Agent {
             self.session.cancel_draw();
             return;
         }
-        if let Some(shot) = self.session.tick_draw(self.selected, true) {
+        if let Some(shot) = self.session.tick_draw(self.selected, true, world, entities) {
             self.emit(Event::Shot(shot));
         }
         if !self.session.drawing() {
@@ -1007,7 +1030,7 @@ impl Agent {
             self.drawing = false;
         } else if self.remaining <= 1 {
             self.drawing = false;
-            if let Some(shot) = self.session.release_draw(self.selected, entities) {
+            if let Some(shot) = self.session.release_draw(self.selected, world, entities) {
                 self.emit(Event::Shot(shot));
                 self.swings += 1;
             }
@@ -1164,6 +1187,17 @@ impl Agent {
         if self.session.vitals.is_dead() {
             self.drop_everything(entities);
         }
+    }
+
+    /// A warden's sonic boom (`SonicBoom.tick`): armor and enchantments don't
+    /// reduce it, a shield raised toward the warden at `from` stops it, and it
+    /// pushes by `push` (blocks per tick, before knockback resistance).
+    pub fn hurt_sonic_boom(&mut self, damage: f32, push: DVec3, from: DVec3, entities: &mut Entities) -> f32 {
+        if self.shielded(damage, from - self.session.player.pos) {
+            return 0.0;
+        }
+        let cause = crate::entity::warden::CAUSE_SONIC_BOOM;
+        self.hurt_after_armor(damage, 0.0, cause, push * crate::knockback::TICK_RATE, None, entities)
     }
 
     pub fn hurt_beam(&mut self, physical: f32, magic: f32, entities: &mut Entities) -> f32 {

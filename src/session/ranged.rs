@@ -71,9 +71,27 @@ pub(super) struct State {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Ranged {
     Drawing,
-    CrossbowLoaded { from: DVec3 },
-    CrossbowFired { from: DVec3 },
-    ArrowShot { from: DVec3, power: f32 },
+    CrossbowLoaded {
+        from: DVec3,
+    },
+    CrossbowFired {
+        from: DVec3,
+    },
+    ArrowShot {
+        from: DVec3,
+        power: f32,
+    },
+    /// A trident or spear started charging (a spear plays its use sound).
+    Charging {
+        from: DVec3,
+        cue: Option<crate::weapons::Cue>,
+    },
+    /// A v0.16 weapon action with a sound: a throw, a Riptide launch, a
+    /// spear contact or a spin hit.
+    WeaponCue {
+        from: DVec3,
+        cue: Option<crate::weapons::Cue>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -112,11 +130,11 @@ impl PlayerSession {
     pub fn can_draw(&self, slot: usize, world: &World) -> bool {
         let held = self.inventory.get(slot).map(|s| s.item);
         let has_arrow = self.mode.is_creative() || self.arrow_ammo().is_some();
+        let bow = matches!(held, Some(Item::BOW | Item::CROSSBOW)) && has_arrow;
         self.mode.can_interact()
             && !self.vitals.is_dead()
             && self.sleeping.is_none()
-            && matches!(held, Some(Item::BOW | Item::CROSSBOW))
-            && has_arrow
+            && (bow || self.can_charge_weapon(slot, world))
             && !self.block_takes_use(slot, world, self.player.sneaking)
     }
 
@@ -131,6 +149,9 @@ impl PlayerSession {
         if held == Some(Item::CHARGED_CROSSBOW) {
             return Some(self.fire_crossbow(slot, entities));
         }
+        if self.can_charge_weapon(slot, world) {
+            return Some(self.start_weapon_charge(slot));
+        }
         if !self.can_draw(slot, world) {
             return None;
         }
@@ -140,7 +161,10 @@ impl PlayerSession {
 
     /// One fixed tick of holding use. Switching away from the bow lets the
     /// string go without shooting; a crossbow loads when fully drawn.
-    pub fn tick_draw(&mut self, slot: usize, using: bool) -> Option<Shot> {
+    pub fn tick_draw(&mut self, slot: usize, using: bool, world: &World, entities: &mut Entities) -> Option<Shot> {
+        if self.charging_weapon() {
+            return self.tick_weapon_charge(slot, using, world, entities);
+        }
         let (drawn_slot, ticks) = self.ranged.draw?;
         let held = self.inventory.get(slot).map(|s| s.item);
         if !using || drawn_slot != slot || !matches!(held, Some(Item::BOW | Item::CROSSBOW)) {
@@ -158,7 +182,10 @@ impl PlayerSession {
 
     /// Releasing use looses an arrow if the bow was drawn enough. Letting go
     /// of a crossbow before it loads just lowers it.
-    pub fn release_draw(&mut self, slot: usize, entities: &mut Entities) -> Option<Shot> {
+    pub fn release_draw(&mut self, slot: usize, world: &World, entities: &mut Entities) -> Option<Shot> {
+        if self.charging_weapon() {
+            return self.release_weapon(slot, world, entities);
+        }
         let (drawn_slot, ticks) = self.ranged.draw.take()?;
         let power = power(ticks);
         if drawn_slot != slot || power < MIN_POWER || self.inventory.get(slot).map(|s| s.item) != Some(Item::BOW) {
@@ -196,17 +223,19 @@ impl PlayerSession {
         self.ranged.draw.map(|(slot, _)| slot)
     }
 
-    /// Ticks the held bow or crossbow has been drawn, while drawing.
+    /// Ticks the held bow, crossbow, trident or spear has been drawn or charged.
     pub fn draw_ticks(&self) -> Option<u32> {
-        self.ranged.draw.map(|(_, ticks)| ticks)
+        self.ranged.draw.map(|(_, ticks)| ticks).or(self.weapon_charge_ticks())
     }
 
+    /// Drawing a bow or crossbow, or charging a trident or spear.
     pub fn drawing(&self) -> bool {
-        self.ranged.draw.is_some()
+        self.ranged.draw.is_some() || self.charging_weapon()
     }
 
     pub fn cancel_draw(&mut self) {
         self.ranged.draw = None;
+        self.cancel_weapon_charge();
     }
 
     /// Current bow draw strength for the HUD and field of view. Loading a
@@ -268,6 +297,11 @@ impl PlayerSession {
 
 #[cfg(test)]
 mod tests {
+    fn test_world() -> crate::world::World {
+        let generator = std::sync::Arc::new(crate::world::terrain::Generator::new(7));
+        crate::world::World::new_headless(generator, Default::default(), 2)
+    }
+
     use super::*;
 
     #[test]
@@ -328,7 +362,7 @@ mod tests {
         s.inventory.slots[1] = Some(Stack::tipped_arrow(p, 2));
         s.ranged.draw = Some((0, 20));
         let mut e = Entities::new(8);
-        assert!(s.release_draw(0, &mut e).is_some());
+        assert!(s.release_draw(0, &test_world(), &mut e).is_some());
         assert_eq!(s.inventory.get(1).unwrap().count, 1);
         assert_eq!(e.arrows[0].potion, Some(p));
         assert!(e.arrows[0].pickup);
@@ -348,7 +382,7 @@ mod tests {
         let p = Potion::from_id("slowness").unwrap();
         s.inventory.slots[1] = Some(Stack::tipped_arrow(p, 2));
         s.ranged.draw = Some((0, 24));
-        assert!(s.tick_draw(0, true).is_some());
+        assert!(s.tick_draw(0, true, &test_world(), &mut Entities::new(8)).is_some());
         assert_eq!(s.inventory.get(1).unwrap().count, 1);
         s.inventory = Inventory::deserialize(&s.inventory.serialize()).unwrap();
         assert_eq!(s.inventory.get(0).unwrap().arrow_potion(), Some(p));
@@ -370,7 +404,7 @@ mod tests {
         s.inventory.offhand = Some(Stack::tipped_arrow(p, 1));
         s.ranged.draw = Some((0, 20));
         let mut e = Entities::new(8);
-        assert!(s.release_draw(0, &mut e).is_some());
+        assert!(s.release_draw(0, &test_world(), &mut e).is_some());
         assert!(s.inventory.offhand.is_none());
         assert_eq!(s.inventory.get(1).unwrap().count, 8);
         assert_eq!(e.arrows[0].potion, Some(p));

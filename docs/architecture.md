@@ -329,7 +329,8 @@ content and took its release's new number.
 | 12800–14335 | v0.19 | Redstone and automation states |
 | 14336–14591 | v0.15 | Copper golem statue states (2026-11-05 reservation) |
 | 14592–15487 | v0.15 | Creaking, sniffer, ocean ruin and spare states (2026-11-05 reservation) |
-| 15488–16383 | — | Unassigned reserve |
+| 15488–15999 | v0.16 | Trial chamber, weapon and spare states (2026-11-06 reservation) |
+| 16000–16383 | — | Unassigned reserve |
 | 16384–32767 | v0.12 and later | Added by the 32,768 raise (2026-10-25); see the v0.12 tracks below |
 
 ### v0.12 track reservations
@@ -717,6 +718,102 @@ Sniffer activity, its loot-emitted latch, cooldown and up to 21
 Eggs use the existing saved scheduled-tick queue; crops need no block entity.
 See [Track C evidence](verification/2026-11-05-v0.15-sniffers.md), including
 remaining navigation/presentation differences and checks.
+
+### v0.16 track reservations
+
+Reserved on 2026-11-06 for the [v0.16 tracks](roadmap.md#v016-scope-deep-dark-and-trials):
+v0.16's own remaining states 11520–11775 (v0.13 used 11264–11283 for sculk;
+11284–11519 stay with the v0.13 underground track), then the start of the
+unassigned reserve, the items after v0.15's integrator spare 1415–1419 and
+the texture layers after its 3568–3599. Unused IDs stay unregistered and
+keep their track. The unassigned state reserve becomes 16000–16383.
+
+| Block states | Item IDs | Texture layers | Track |
+| --- | --- | --- | --- |
+| 11520–11647 | 1420–1429 | 3600–3663 | A. Sculk and the warden |
+| 11648–11775 | 1430–1469 | 3664–3759 | B. Ancient cities, loot and music |
+| 15488–15743 | 1470–1494 | 3760–3855 | C. Trial chambers |
+| 15744–15807 | 1495–1529 | 3856–3951 | D. Weapons |
+| 15808–15999 | 1530–1549 | 3952–4031 | Integrator spare |
+
+New `MobKind`s append after `Sniffer` in the order Warden (Track A, LAN
+index 72), Breeze (Track C, 73); existing names and indices keep their
+meanings. New `Enchantment`s append after `Lunge` in the order SwiftSneak
+(Track B, save bit 40), WindBurst (Track D, 41). Each track records its
+allocations below; projectile kinds, sound lists, icons and other append-only
+orderings are reconciled by the integrator in the order A, B, C, D.
+
+Track A allocation (2026-11-06, implemented, unverified): the calibrated
+sculk sensor uses states **11520–11543** (`11520 + 12 * wet + 3 * facing +
+phase`, `world::cave_blocks::calibrated_sensor`) and texture layers
+**3600–3605** (`cave_blocks::ct`); 11544–11647, items 1420–1429 and layers
+3606–3663 stay unused with the track. `MobKind::Warden` is LAN index **72**
+(`warden`). Appended orderings: `Effect::Darkness` after `Saturation`
+(saved by its Java id), `Sound::Warden` and `Sound::Sculk` after the
+sniffer cues, the dimension key `sculk` and the player field
+`warden_spawn_tracker`. Listener block entities (sensor power and last
+frequency, shrieker warning level, catalyst cursors, vibration listeners)
+live in `world::sculk`; game events in `world::vibration`
+([record](verification/2026-11-06-v0.16-sculk-warden.md)).
+**Track D allocation** (2026-11-06, [record](verification/2026-11-06-v0.16-weapons.md)):
+
+| Kind | Used | Meaning |
+| --- | --- | --- |
+| Block states | 15744–15745 | Heavy core, dry and waterlogged (`world::heavy_core`) |
+| Items | 1495, 1496 | Trident, mace (`crate::weapons`) |
+| Items | 1497–1503 | Wooden, stone, copper, iron, golden, diamond, netherite spear |
+| Texture layers | 3856–3858 | Heavy core top, side, bottom |
+| Enchantment bit | 41 | `WindBurst` (explicit discriminant; bit 40 kept for Swift Sneak) |
+
+States 15746–15807, items 1504–1529 and layers 3859–3951 stay unregistered.
+The heavy core's item is block item `0x8000 + 15744`. Item icons append at
+`passive_icon_base() + 19..=27`; `Sound::Weapon`, `MobSound::Weapon`, the
+`tridents` entity property and `Mob.weapon` (saved as `main_hand`) are new
+append-only orderings and keys for the integrator to sequence.
+Track B allocation (2026-11-06, implemented, unverified;
+[record](verification/2026-11-06-v0.16-ancient-cities.md)):
+
+| Kind | Used | Meaning |
+| --- | --- | --- |
+| Block states | 11648, 11649 | jukebox, `has_record` false/true (`world::jukebox`) |
+| Block states | 11650 | reinforced deepslate; 11651–11775 stay reserved, unregistered |
+| Items | 1430, 1431, 1432 | echo shard, recovery compass, disc fragment 5 |
+| Items | 1433–1454 | music discs in Java `Items` order: 13, cat, blocks, bounce, chirp, creator, creator_music_box, far, lava_chicken, mall, mellohi, stal, strad, ward, 11, wait, otherside, relic, 5, pigstep, precipice, tears; 1455–1469 stay reserved |
+| Texture layers | 3664–3668 | jukebox side/top, reinforced deepslate side/top/bottom; 3669–3759 stay reserved |
+| Enchantment | save bit 40 | `Enchantment::SwiftSneak` |
+| Item icons | `passive_icon_base() + 19..+44` | the 25 track B items, after resin brick |
+| Animated icons | after the clock frames | 32 recovery compass needle frames (`RECOVERY_FRAMES`); effect icons follow them |
+
+No `MobKind`, LAN index or projectile kind. New `Feature::AncientCityChest`,
+`Used::Jukebox`, the `jukeboxes` dimension save key and the player
+`last_death` save key (`agents` profiles carry it too).
+Track C allocation (2026-11-06, implemented, unverified):
+
+| States / IDs | Meaning |
+| --- | --- |
+| 15488–15499 | Trial spawner: `15488 + trial_spawner_state + 6*ominous`, Java's state order (inactive, waiting for players, active, waiting for reward ejection, ejecting reward, cooldown) |
+| 15504–15535 | Vault: `15504 + facing + 4*vault_state + 16*ominous`, facing in `Facing` order (south, north, east, west), states inactive, active, unlocking, ejecting |
+| Items 1470–1473 | Trial key, ominous trial key, breeze rod, wind charge |
+| Items 1474–1478 | Ominous bottle, amplifier 0–4 |
+| Item 1479 | Trial explorer map (Java `buried_trial_chambers_map`) |
+| Layers 3760–3786 | Spawner faces (12), vault faces (14), explorer map icon; `world::trial::TEX` offsets |
+| MobKind `Breeze` | Saved `breeze`, appended after `Sniffer`; wire index **73** by explicit mapping, 72 left for Track A's warden |
+
+States 15500–15503 and 15536–15743, and layers 3787–3855, stay reserved and
+unregistered. Appended orderings for the integrator: `Effect::BadOmen` and
+`Effect::TrialOmen` after `Saturation`; `thrown::Kind::WindCharge` (LAN 3)
+and `BreezeWindCharge` (LAN 4) after `LlamaSpit`; `Voice::Breeze`;
+`Sound::Breeze(breeze::Cue)` after the sniffer cues; nine item icons after
+the resin brick. Block entities save in the dimension's `trial` property
+and ominous item spawners in `ominous_item_spawners`. See
+[Track C evidence](verification/2026-11-06-v0.16-trial-chambers.md).
+
+Integration (2026-11-07): the orderings are now contiguous. `MobKind`
+ends `Warden` (72), `Breeze` (73); `Enchantment` ends `SwiftSneak` (40),
+`WindBurst` (41), with no reserved gaps or explicit mappings. Item icons
+after the resin brick run Track B, D, C; sounds Warden, Sculk, Weapon,
+Breeze; effects Darkness, BadOmen, TrialOmen
+([integration record](verification/2026-11-07-v0.16-integration.md)).
 
 ## Assessment branch ID reservations
 

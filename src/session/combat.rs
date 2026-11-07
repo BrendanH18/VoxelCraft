@@ -65,9 +65,36 @@ pub enum Outcome {
         sprint_cancelled: bool,
         killed: Option<MobKind>,
         tool_broken: Option<Item>,
+        /// A mace smash: its sound and, with Wind Burst, the blast's centre.
+        smash: Option<Smash>,
+    },
+    /// A spear's jab (`PiercingWeapon.attack`), which always swings: what it
+    /// struck along its reach and whether Lunge carried the player on.
+    Jab {
+        player: PlayerId,
+        /// Mobs struck.
+        hits: u8,
+        killed: Option<MobKind>,
+        tool_broken: Option<Item>,
+        /// The jab's sound, and the hit sound when something was struck.
+        attack: crate::weapons::Cue,
+        hit: Option<crate::weapons::Cue>,
+        /// Lunge's level when it fired.
+        lunge: Option<u8>,
+        from: DVec3,
     },
     /// Nothing attackable within reach; the charge restarts as in Java.
     Missed { player: PlayerId },
+}
+
+/// What a mace smash did beyond the hit (`MaceItem.hurtEnemy`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Smash {
+    pub cue: crate::weapons::Cue,
+    pub at: DVec3,
+    /// Wind Burst's blast centre; block interaction is Track C's wind charge
+    /// explosion (`crate::weapons::mace::wind_burst_blocks` is the hook).
+    pub wind_burst: Option<DVec3>,
 }
 
 impl Outcome {
@@ -77,7 +104,7 @@ impl Outcome {
             Outcome::Hit { critical, strong, sprint_knockback, sweep, .. } => {
                 crate::knockback::attack_sounds(strong, sprint_knockback, critical, sweep, true)
             }
-            Outcome::Missed { .. } => Vec::new(),
+            Outcome::Jab { .. } | Outcome::Missed { .. } => Vec::new(),
         }
     }
 }
@@ -204,6 +231,10 @@ impl PlayerSession {
             return Err("the held item is not charged enough to attack");
         }
         let held = stack.map(|s| s.item);
+        // A spear's attack key always jabs along its own reach (`Minecraft.startAttack`).
+        if held.is_some_and(crate::weapons::is_spear) {
+            return Ok(self.jab(slot, world, entities));
+        }
         let (eye, dir) = (self.player.eye(), self.player.forward().as_dvec3());
         // Entities behind the targeted block are out of reach.
         let block = self
@@ -255,6 +286,12 @@ impl PlayerSession {
         // `getKnockback`: Knockback level over two, plus half a level for a sprint hit.
         let extra = knockback::attack_strength(0.0, u32::from(mining::weapon_extras(stack).0), sprint_knockback);
         let (origin, yaw) = (p.pos, knockback::java_yaw_degrees(p.yaw));
+        // `MaceItem`: the smash bonus from the fall so far, and Breach.
+        let mace = held == Some(crate::weapons::MACE);
+        let fall = self.vitals.fall_distance(p.pos.y);
+        let smash_bonus = if mace { crate::weapons::mace::smash_bonus(fall, false, enchants) } else { 0.0 };
+        let armor_effectiveness = if mace { crate::weapons::mace::breach_effectiveness(enchants) } else { 0.0 };
+        let mut smash = None;
         self.reset_attack_strength();
 
         let mut killed = None;
@@ -304,6 +341,7 @@ impl PlayerSession {
             Target::Mob(i) => {
                 let at = entities.mobs[i].pos + DVec3::Y * 0.5;
                 landed = entities.mobs[i].alive();
+                let before = entities.mobs[i].health;
                 let hit = PlayerMelee {
                     held: stack,
                     bonus,
@@ -314,10 +352,16 @@ impl PlayerSession {
                     yaw,
                     sweep,
                     owner: self.id,
+                    smash: smash_bonus,
+                    armor_effectiveness,
                 };
                 killed = entities.player_melee(i, hit);
                 living_hit = true;
                 swept = landed && sweep;
+                let hurt = killed.is_some() || entities.mobs.get(i).is_some_and(|m| m.health < before);
+                if mace && hurt {
+                    smash = self.after_mace_hit(i, fall, enchants, world, entities);
+                }
                 at
             }
         };
@@ -364,6 +408,130 @@ impl PlayerSession {
             sprint_cancelled,
             killed,
             tool_broken,
+            smash,
         })
+    }
+
+    /// `MaceItem.hurtEnemy`, Wind Burst's `post_attack` and `postHurtEnemy`
+    /// after a mace hit on mob `i` that hurt, with `fall` fallen.
+    fn after_mace_hit(
+        &mut self,
+        i: usize,
+        fall: f64,
+        enchants: crate::enchant::Enchants,
+        world: &World,
+        entities: &mut Entities,
+    ) -> Option<Smash> {
+        use crate::weapons::mace;
+        let smashing = mace::can_smash(fall, false);
+        let wind = mace::wind_burst_applies(enchants, fall, self.player.flying);
+        if !smashing && !wind {
+            return None;
+        }
+        let target = entities.mobs.get(i)?;
+        let (target_pos, target_on_ground) = (target.pos, target.on_ground);
+        let mut cue = crate::weapons::Cue::SmashAir;
+        if smashing {
+            self.player.vel.y = mace::BOUNCE * knockback::TICK_RATE;
+            cue = crate::weapons::Cue::smash(mace::SmashSound::of(target_on_ground, fall));
+            entities.smash_knockback(i, self.id, fall > mace::HEAVY_THRESHOLD);
+            // Level event 2013: dust of the block under the target.
+            let below = (target_pos - DVec3::Y * 0.2).floor().as_ivec3();
+            if let Some(block) = world.get_block(below).filter(|b| *b != crate::world::block::Block::AIR) {
+                for _ in 0..4 {
+                    entities.particles.push(crate::particles::Request::Break { cell: below, block });
+                }
+            }
+            self.vitals.smash_impulse(self.player.pos.y);
+        }
+        let mut wind_burst = None;
+        if wind {
+            let level = enchants.level(crate::enchant::Enchantment::WindBurst);
+            let multiplier = mace::wind_burst_multiplier(level);
+            let center = self.player.pos;
+            let (min, max) = self.player.collision_shape().aabb(self.player.pos);
+            let seen = crate::world::explosion::seen_percent(world, center, min, max);
+            let resistance = self.inventory.explosion_knockback_resistance();
+            let pushed =
+                !(self.mode.is_creative() && self.player.flying) && self.mode != crate::rules::GameMode::Spectator;
+            if pushed
+                && let Some(push) =
+                    mace::wind_burst_push(center, self.player.pos, self.player.eye(), seen, multiplier, resistance)
+            {
+                self.player.vel += push * knockback::TICK_RATE;
+            }
+            entities.wind_burst_mobs(center, multiplier, |min, max| {
+                crate::world::explosion::seen_percent(world, center, min, max)
+            });
+            self.vitals.end_impulse_grace();
+            wind_burst = Some(center);
+        }
+        if !smashing {
+            cue = crate::weapons::Cue::WindBurst;
+        }
+        Some(Smash { cue, at: self.player.pos, wind_burst })
+    }
+
+    /// `PiercingWeapon.attack` with the spear in `slot`: a stab on every mob
+    /// along the spear's reach, then Lunge, then the charge restarts.
+    fn jab(&mut self, slot: usize, world: &World, entities: &mut Entities) -> Outcome {
+        let stack = self.inventory.get(slot).expect("held spear");
+        let strength = self.attack_strength(slot, 0.5);
+        let (eye, look) = (self.player.eye(), self.player.forward().as_dvec3());
+        let range = crate::weapons::spear::player_range(self.mode.is_creative());
+        let along = look.dot(self.player.vel / knockback::TICK_RATE);
+        let block = self.spear_block_distance(world, eye, look, range.max + along.max(0.0));
+        let targets = entities.spear_targets(eye, look, range, along, block, None);
+        // `getAttributeValue(ATTACK_DAMAGE)` scaled by the charge, as an attack
+        // with the hand not in use.
+        let base = (mining::attack_damage(Some(stack.item)) + self.vitals.effects.attack_bonus()).max(0.0)
+            * (0.2 + strength * strength * 0.8);
+        let yaw = knockback::java_yaw_degrees(self.player.yaw);
+        let (mut hits, mut killed, mut tool_broken) = (0u8, None, None);
+        for i in targets {
+            if self.inventory.get(slot).is_none() {
+                break;
+            }
+            let stab = crate::entity::weapon_hits::Stab {
+                held: self.inventory.get(slot).unwrap_or(stack),
+                damage: Some(base),
+                knockback: true,
+                dismount: false,
+                origin: self.player.pos,
+                yaw,
+                strength,
+                owner: self.id,
+            };
+            let out = entities.stab_mob(i, stab);
+            if out.affected {
+                hits = hits.saturating_add(1);
+                killed = killed.or(out.killed);
+                if out.knocked {
+                    self.player.vel = knockback::slow_attacker(self.player.vel);
+                    self.player.sprinting = false;
+                }
+                if self.mode.is_survival() {
+                    self.vitals.hunger.exhaust(survival::EXHAUST_ATTACK);
+                    if self.inventory.wear(slot, mining::wear(stack.item, true)) {
+                        tool_broken = Some(stack.item);
+                    }
+                }
+            }
+        }
+        let lunge = if self.inventory.get(slot).is_some() { self.lunge(slot) } else { None };
+        if lunge.is_some() && self.inventory.get(slot).is_none() {
+            tool_broken = Some(stack.item);
+        }
+        self.reset_attack_strength();
+        Outcome::Jab {
+            player: self.id,
+            hits,
+            killed,
+            tool_broken,
+            attack: crate::weapons::Cue::spear(stack.item, false, false),
+            hit: (hits > 0).then(|| crate::weapons::Cue::spear(stack.item, false, true)),
+            lunge,
+            from: eye,
+        }
     }
 }

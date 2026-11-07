@@ -43,6 +43,7 @@ mod split;
 mod startup;
 mod tick;
 mod trading;
+mod trial;
 mod utilities;
 pub use crate::simulation::survival;
 pub use voxelcraft::rules::GameMode;
@@ -1106,6 +1107,9 @@ impl Game {
         if self.session.player.vehicle.take().is_some() {
             self.mobs.entities.dismount(&self.world, crate::entity::PlayerId::HOST);
         }
+        // `ServerPlayer.die` stores `lastDeathLocation` before an immediate
+        // or hardcore respawn can clear the dead state.
+        self.session.record_death(&self.world);
         let grid = self.craft.take_all();
         self.session.die(&mut self.mobs.entities, self.gamerules.bool("keep_inventory"), grid);
         // `ThrownEnderpearl.tick` sees the dead owner before any respawn.
@@ -1401,6 +1405,38 @@ impl Game {
             let sound = crate::audio::sounds::Sound::Note(crate::world::gadgets::Instrument::from_u8(instrument));
             let hz = crate::world::gadgets::pitch_hz(pitch);
             self.audio.play(sound, Some(pos.as_dvec3() + glam::DVec3::splat(0.5)), 1.0, (hz, hz));
+        }
+        for (pos, sound) in self.world.take_sculk_sounds() {
+            use crate::audio::sounds::Sound;
+            use crate::world::sculk::{SculkCue as C, SculkSound as S};
+            let (sound, gain, pitch) = match sound {
+                S::Clicking => (Sound::Sculk(C::Clicking), 1.0, (0.8, 1.0)),
+                S::ClickingStop => (Sound::Sculk(C::ClickingStop), 1.0, (0.8, 1.0)),
+                S::Resonate(p) => (Sound::Sculk(C::Resonate), 1.0, (p, p)),
+                S::Bloom => (Sound::Sculk(C::Bloom), 1.0, (0.6, 1.0)),
+                S::Spread => (Sound::Sculk(C::Spread), 1.0, (1.0, 1.0)),
+                S::Grow => (Sound::Sculk(C::Grow), 1.0, (1.0, 1.0)),
+                // Level event 3007: volume 2, pitch 0.6–1.0.
+                S::Shriek => (Sound::Sculk(C::Shriek), 1.0, (0.6, 1.0)),
+                S::WardenReply(level) => match voxelcraft::entity::warden::Cue::reply(level) {
+                    Some(cue) => (Sound::Warden(cue), 1.0, (1.0, 1.0)),
+                    None => continue,
+                },
+            };
+            self.audio.play(sound, Some(pos), gain, pitch);
+        }
+        // Playing records: original tunes through the note voices
+        // (`SoundSource::Records`), heard like any positioned sound.
+        for note in std::mem::take(&mut self.world.records) {
+            let sound = crate::audio::sounds::Sound::Note(crate::world::gadgets::Instrument::from_u8(note.instrument));
+            let hz = crate::world::gadgets::pitch_hz(note.pitch);
+            self.audio.play(sound, Some(note.pos.as_dvec3() + glam::DVec3::splat(0.5)), note.gain, (hz, hz));
+        }
+        // Level event 1010: "Now Playing" for players within 64 blocks.
+        for (pos, song) in std::mem::take(&mut self.world.records_started) {
+            if self.session.player.pos.distance_squared(pos.as_dvec3()) <= 64.0 * 64.0 {
+                self.show_popup(&format!("Now Playing: {}", crate::world::jukebox::song_title(song)));
+            }
         }
         for (pos, sound) in std::mem::take(&mut self.world.trip_sounds) {
             // The existing click, at Java's volume 0.4 and the hook's pitch.
@@ -1742,6 +1778,9 @@ impl Game {
     fn act(&mut self, acting: bool, dt: f64) {
         // Agents (controller/LAN hands) charge in their own tick; this is the host's.
         self.session.tick_attack_strength(self.body.actions.selected);
+        if let Some(shot) = self.session.tick_weapons(&mut self.mobs.entities) {
+            items::shot_sound(&mut self.audio, shot.ranged);
+        }
         let aiming = self.attacking();
         self.with_hands(|hands| hands.act(acting, dt, aiming));
     }
@@ -1903,8 +1942,14 @@ impl Game {
             alpha,
             now,
         };
-        let split::Fog { color: fog_color, zenith, start: fog_start, end: fog_end, .. } =
-            self.fog(&scene, 0, camera).blinded(
+        let split::Fog { color: fog_color, zenith, start: fog_start, end: fog_end, .. } = self
+            .fog(&scene, 0, camera)
+            .darkened(
+                self.session.vitals.effects.get(voxelcraft::simulation::effects::Effect::Darkness).map(|e| e.ticks),
+                self.settings.render_distance as f32 * 32.0,
+                scene.time,
+            )
+            .blinded(
                 self.session.vitals.effects.get(voxelcraft::simulation::effects::Effect::Blindness).map(|e| e.ticks),
                 self.settings.render_distance as f32 * 32.0,
             );

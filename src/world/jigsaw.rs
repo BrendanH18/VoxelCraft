@@ -28,6 +28,7 @@
 //! Besides the format documented in `jigsaw/village.txt`, templates take
 //! `fill x0 y0 z0 x1 y1 z1 <spec>` (an inclusive box of a block, role or
 //! crop, painted before the layers so layer cells override it),
+//! `cell x y z <spec>` or `put x y z <spec>` (one cell of any spec, painted with the layers),
 //! `chest:<table>@dir` (a chest filled from a named loot table),
 //! `spawner:<mob>` (a mob spawner), `mob x y z <name>` (a resident placed
 //! with the structure, see [`markers`]) and connectors facing `up` or
@@ -348,6 +349,11 @@ impl Library {
                     fills.push((a.min(b), a.max(b), spec));
                 }
                 "mob" if words.len() == 5 => mobs.push((vec3(&words[1..4])?, words[4].to_string())),
+                // One cell of any spec (chests and spawners included), without a layer grid.
+                "cell" | "put" if words.len() == 5 => {
+                    let spec = self.spec(words[4]).map_err(err)?;
+                    cells.push(Cell { pos: vec3(&words[1..4])?, spec });
+                }
                 _ if layer.is_some() && words.len() == 1 => {
                     let size = size.ok_or_else(|| err("`size` must come first".into()))?;
                     let (y, z) = layer.unwrap();
@@ -382,6 +388,9 @@ impl Library {
         }
         if mobs.iter().any(|(p, _)| !inside(*p)) {
             return Err(format!("{name}: mob outside the template"));
+        }
+        if cells.iter().any(|c| !inside(c.pos)) {
+            return Err(format!("{name}: cell outside the template"));
         }
         if layers_seen.iter().any(|&y| y < 0 || y >= size.y) {
             return Err(format!("{name}: layer outside the size"));
@@ -431,15 +440,29 @@ pub fn ruined_portals() -> &'static Library {
     LIB.get_or_init(|| Library::parse(include_str!("jigsaw/ruined_portals.txt")).expect("ruined portal templates"))
 }
 
+/// Ancient city templates and pools (v0.16).
+pub fn ancient_cities() -> &'static Library {
+    static LIB: OnceLock<Library> = OnceLock::new();
+    LIB.get_or_init(|| Library::parse(include_str!("jigsaw/ancient_city.txt")).expect("ancient city templates"))
+}
+
+/// Trial chamber templates and pools (v0.16 Track C).
+pub fn trial_chambers() -> &'static Library {
+    static LIB: OnceLock<Library> = OnceLock::new();
+    LIB.get_or_init(|| Library::parse(include_str!("jigsaw/trial_chambers.txt")).expect("trial chamber templates"))
+}
+
 /// Every template library, for tests that check them all.
-pub fn all() -> [(&'static str, &'static Library); 6] {
+pub fn all() -> [(&'static str, &'static Library); 8] {
     [
+        ("ancient_city", ancient_cities()),
         ("village", villages()),
         ("outpost", outposts()),
         ("bastion", bastions()),
         ("trail_ruins", trail_ruins()),
         ("relics", relics()),
         ("ruined_portals", ruined_portals()),
+        ("trial_chambers", trial_chambers()),
     ]
 }
 
@@ -529,19 +552,38 @@ pub fn assemble(
     surface: &dyn Fn(i32, i32) -> i32,
     seed: u64,
 ) -> Vec<Placed> {
+    let place = |t: &Template, rotation: u8| {
+        let mut origin = IVec3::new(at.x, 0, at.y);
+        let b = bounds_of(t, origin, rotation);
+        let centre = (b.min + b.max) / 2;
+        // Layer 0 replaces the top block, like Java's ground-level delta of 1.
+        origin.y = surface(centre.x, centre.z);
+        origin
+    };
+    assemble_with(lib, settings, &place, surface, seed)
+}
+
+/// [`assemble`] with the start piece's origin chosen by `place` from the
+/// picked start template and rotation (Java's `start_jigsaw_name` puts a
+/// named point of the start at the structure's start position; see
+/// `ancient_city`). The random draws are those of [`assemble`].
+pub fn assemble_with(
+    lib: &Library,
+    settings: &Settings,
+    place: &dyn Fn(&Template, u8) -> IVec3,
+    surface: &dyn Fn(i32, i32) -> i32,
+    seed: u64,
+) -> Vec<Placed> {
     let mut rng = Rng(seed);
     let Some(start_pool) = lib.pools.get(settings.start_pool) else { return Vec::new() };
     let start = pick(start_pool, &mut rng);
     let Some(start) = start else { return Vec::new() };
     let rotation = rng.below(4) as u8;
     let t = &lib.templates[start as usize];
-    let mut origin = IVec3::new(at.x, 0, at.y);
-    let b = bounds_of(t, origin, rotation);
-    let centre = (b.min + b.max) / 2;
-    // Layer 0 replaces the top block, like Java's ground-level delta of 1.
-    let ground = surface(centre.x, centre.z);
-    origin.y = ground;
+    let origin = place(t, rotation);
     let bounds = bounds_of(t, origin, rotation);
+    let centre = (bounds.min + bounds.max) / 2;
+    let ground = origin.y;
     let d = settings.max_distance;
     let container = Bounds {
         min: IVec3::new(centre.x - d, ground - d, centre.z - d),

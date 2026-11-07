@@ -628,6 +628,7 @@ impl Entities {
                 let Some(i) = self.mobs.iter().position(|m| m.uid == target && m.alive()) else { continue };
                 let (kind, pos, burning) = (self.mobs[i].kind, self.mobs[i].pos, self.mobs[i].burning);
                 let killed = self.mobs[i].damage(damage, Some(knockback), &mut self.rng);
+                self.warden_hurt(i, crate::world::vibration::EntityRef::Mob(attacker), true);
                 self.nether_hurt(i, Foe::Mob(attacker));
                 self.polar_hurt(i, Foe::Mob(attacker));
                 self.panda_hurt(i, Foe::Mob(attacker));
@@ -640,6 +641,7 @@ impl Entities {
                 });
                 if killed {
                     self.drop_loot_with_fire(kind, pos, 0, burning, wolf_kill);
+                    self.creeper_disc(kind, pos, attacker);
                 }
             }
         }
@@ -1549,6 +1551,9 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if let Some(bow) = &m.skeleton_bow {
         v["skeleton_bow"] = json!(crate::inventory::stack_to_string(Some(**bow)));
     }
+    if let Some(weapon) = &m.weapon {
+        v["main_hand"] = json!(crate::inventory::stack_to_string(Some(**weapon)));
+    }
     if let Some(p) = &m.phantom {
         v["phantom"] = p.save();
     }
@@ -1561,11 +1566,20 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if let Some(s) = &m.sniffer {
         v["sniffer"] = s.save();
     }
+    if let Some(s) = &m.breeze {
+        v["breeze"] = s.save();
+    }
+    if m.keeps_equipment {
+        v["keeps_equipment"] = json!(true);
+    }
     if let Some(s) = &m.creaking {
         v["creaking"] = s.save();
     }
     if let Some(s) = &m.allay {
         v["allay"] = s.save();
+    }
+    if let Some(s) = &m.warden {
+        v["warden"] = s.save();
     }
     if let Some(s) = &m.copper_golem {
         v["copper_golem"] = s.save();
@@ -1654,6 +1668,11 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     {
         m.skeleton_bow = crate::inventory::stack_from_str(t).flatten().filter(|s| s.item == Item::BOW).map(Box::new);
     }
+    if kind == MobKind::Drowned
+        && let Some(t) = v["main_hand"].as_str()
+    {
+        m.weapon = crate::inventory::stack_from_str(t).flatten().map(Box::new);
+    }
     m.sheared = v["sheared"].as_bool().unwrap_or(false);
     if kind == MobKind::Skeleton && v["freezing"].is_object() {
         m.freezing = Some(super::hostiles::Freezing::load(&v["freezing"]));
@@ -1664,11 +1683,18 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     if let Some(s) = &mut m.sniffer {
         s.load(&v["sniffer"]);
     }
+    if let Some(s) = &mut m.breeze {
+        **s = super::breeze::State::load(&v["breeze"]);
+    }
+    m.keeps_equipment = v["keeps_equipment"] == true;
     if let Some(s) = &mut m.creaking {
         s.load(&v["creaking"]);
     }
     if let Some(s) = &mut m.allay {
         **s = super::allay::State::load(&v["allay"]);
+    }
+    if let Some(s) = &mut m.warden {
+        **s = super::warden::State::load(&v["warden"]);
     }
     if let Some(s) = &mut m.copper_golem {
         s.load(&v["copper_golem"]);

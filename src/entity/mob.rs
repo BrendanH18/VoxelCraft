@@ -11,8 +11,10 @@ use crate::world::terrain::Dimension;
 
 use super::{Ctx, EntityEvent, MobSound, MobWorld, Rng, path};
 
+mod breeze;
 mod creaking;
 pub(crate) mod dolphin;
+mod drowned;
 mod frog;
 pub(crate) mod goals;
 mod navigate;
@@ -191,6 +193,11 @@ pub enum MobKind {
     Creaking,
     Allay,
     Sniffer,
+    /// v0.16 (LAN index 72): the deep dark's blind guardian.
+    Warden,
+    /// v0.16 Track C. Saved as `breeze`; LAN index 73 (72 stays reserved
+    /// for Track A's warden until integration).
+    Breeze,
 }
 
 impl MobKind {
@@ -218,13 +225,14 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
+    /// Wire index: the position in [`MobKind::ALL`] (warden 72, breeze 73).
     pub fn lan_index(self) -> usize {
         Self::ALL.iter().position(|&k| k == self).unwrap()
     }
     pub fn from_lan_index(index: usize) -> Option<Self> {
         Self::ALL.get(index).copied()
     }
-    pub const ALL: [MobKind; 72] = [
+    pub const ALL: [MobKind; 74] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -297,6 +305,8 @@ impl MobKind {
         MobKind::Creaking,
         MobKind::Allay,
         MobKind::Sniffer,
+        MobKind::Warden,
+        MobKind::Breeze,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -374,6 +384,8 @@ impl MobKind {
             MobKind::Creaking => "creaking",
             MobKind::Allay => "allay",
             MobKind::Sniffer => "sniffer",
+            MobKind::Warden => "warden",
+            MobKind::Breeze => "breeze",
         }
     }
 
@@ -387,6 +399,9 @@ impl MobKind {
     pub fn shape(self) -> Shape {
         match self {
             MobKind::Sniffer => Shape::new(0.95, 1.75),
+            MobKind::Warden => Shape::new(0.45, 2.9),
+            // `EntityType.BREEZE`: 0.6 x 1.77.
+            MobKind::Breeze => Shape::new(0.3, 1.77),
             MobKind::Bat => Shape::new(0.25, 0.9),
             MobKind::Frog => Shape::new(0.25, 0.5),
             MobKind::Tadpole => Shape::new(0.2, 0.3),
@@ -472,6 +487,8 @@ impl MobKind {
             | MobKind::Strider
             | MobKind::Panda => 20.0,
             MobKind::Sniffer => 14.0,
+            MobKind::Warden => 500.0,
+            MobKind::Breeze => 30.0,
             MobKind::Allay => 20.0,
             MobKind::CopperGolem => 12.0,
             MobKind::Creaking => 1.0,
@@ -521,6 +538,7 @@ impl MobKind {
                 | MobKind::Bogged
                 | MobKind::Phantom
                 | MobKind::Creaking
+                | MobKind::Warden
                 | MobKind::Creeper
                 | MobKind::Spider
                 | MobKind::ZombifiedPiglin
@@ -540,6 +558,7 @@ impl MobKind {
                 | MobKind::Guardian
                 | MobKind::ElderGuardian
                 | MobKind::Pillager
+                | MobKind::Breeze
         )
     }
 
@@ -562,6 +581,7 @@ impl MobKind {
                 | MobKind::WitherSkeleton
                 | MobKind::Zoglin
                 | MobKind::Strider
+                | MobKind::Warden
         )
     }
 
@@ -575,12 +595,15 @@ impl MobKind {
         match self {
             MobKind::Enderman => true,
             MobKind::Sniffer
+            | MobKind::Warden
             | MobKind::Mule
             | MobKind::Bee
             | MobKind::Phantom
             | MobKind::CopperGolem
             | MobKind::Creaking
-            | MobKind::Allay => false,
+            | MobKind::Allay
+            // Only from trial spawners.
+            | MobKind::Breeze => false,
             // Only from spawners and inside fortresses (`fortress_spawn`).
             MobKind::Blaze
             | MobKind::WitherSkeleton
@@ -843,6 +866,7 @@ impl MobKind {
             MobKind::PiglinBrute => (7.0, "was slain by a piglin brute"),
             MobKind::Hoglin => (6.0, "was slain by a hoglin"),
             MobKind::Zoglin => (6.0, "was slain by a zoglin"),
+            MobKind::Warden => (super::warden::MELEE_DAMAGE, super::warden::CAUSE_MELEE),
             _ => (3.0, "was slain by a zombie"),
         }
     }
@@ -855,6 +879,7 @@ impl MobKind {
         const SEAGRASS: Item = Item::from_block(crate::world::overworld_blocks::SEAGRASS);
         const POPPY: Item = Item::from_block(Block::POPPY);
         const BAMBOO: Item = Item::from_block(crate::world::overworld_blocks::BAMBOO);
+        const CATALYST: Item = Item::from_block(crate::world::cave_blocks::SCULK_CATALYST);
         match self {
             MobKind::Pig => &[(Item::RAW_PORKCHOP, 1, 3)],
             MobKind::Bat | MobKind::Frog | MobKind::Tadpole | MobKind::PolarBear | MobKind::Armadillo => &[],
@@ -874,6 +899,8 @@ impl MobKind {
             MobKind::ZombifiedPiglin => &[(Item::ROTTEN_FLESH, 0, 1), (Item::GOLD_NUGGET, 0, 1)],
             MobKind::Enderman => &[(Item::ENDER_PEARL, 0, 1)],
             MobKind::Blaze => &[(Item::BLAZE_ROD, 0, 1)],
+            // `entities/breeze`: 1-2 rods, killed by a player (rolled in `drops`).
+            MobKind::Breeze => &[],
             // Piglins drop only what they carry (`nether::equipment_drops`).
             MobKind::Silverfish
             | MobKind::Villager
@@ -888,6 +915,8 @@ impl MobKind {
             }
             MobKind::CopperGolem => &[(Item::COPPER_INGOT, 1, 3)],
             MobKind::Creaking => &[],
+            // `entities/warden`: one sculk catalyst, unconditionally.
+            MobKind::Warden => &[(CATALYST, 1, 1)],
             MobKind::IronGolem => &[(Item::IRON_INGOT, 3, 5), (POPPY, 0, 2)],
             MobKind::SnowGolem => &[(Item::SNOWBALL, 0, 15)],
             MobKind::Slime => &[(Item::SLIME_BALL, 0, 2)],
@@ -996,7 +1025,7 @@ impl MobKind {
             | MobKind::IronGolem
             | MobKind::SnowGolem
             | MobKind::WanderingTrader => 0,
-            MobKind::Blaze | MobKind::Guardian | MobKind::ElderGuardian => 10,
+            MobKind::Blaze | MobKind::Guardian | MobKind::ElderGuardian | MobKind::Breeze => 10,
             k if k.is_hostile() => 5,
             _ => 1 + (rng.next_f32() * 3.0) as u32,
         }
@@ -1042,6 +1071,12 @@ pub struct Mob {
     pub wool_color: crate::color::DyeColor,
     pub sheared: bool,
     pub skeleton_bow: Option<Box<crate::inventory::Stack>>,
+    /// v0.16: a drowned's main hand (`Drowned.populateDefaultEquipmentSlots`:
+    /// a trident or a fishing rod), saved, thrown and dropped like Java's.
+    pub weapon: Option<Box<crate::inventory::Stack>>,
+    /// Breach's armor-effectiveness change for the hit being applied (0
+    /// outside a player's mace hit); never saved.
+    pub(super) armor_effectiveness: f32,
     pub phantom: Option<Box<super::phantom::State>>,
     pub freezing: Option<super::hostiles::Freezing>,
     pub mooshroom: Option<Box<super::mooshroom::State>>,
@@ -1054,7 +1089,12 @@ pub struct Mob {
     pub copper_golem: Option<Box<super::copper_golem::State>>,
     pub creaking: Option<Box<super::creaking::State>>,
     pub sniffer: Option<Box<super::sniffer::State>>,
+    pub breeze: Option<Box<super::breeze::State>>,
+    /// A trial spawner's equipment table set every slot's drop chance to 0
+    /// (ominous spawners); also the spawner that made it, for saves.
+    pub(crate) keeps_equipment: bool,
     pub allay: Option<Box<super::allay::State>>,
+    pub warden: Option<Box<super::warden::State>>,
     pub wolf_armor: Option<Box<super::wolf_armor::State>>,
     /// Witch: seconds left drinking, and the potion it is drinking.
     drink_left: f32,
@@ -1234,6 +1274,8 @@ impl Mob {
             sheared: false,
             freezing: None,
             skeleton_bow: kind.is_bow_skeleton().then(|| Box::new(crate::inventory::Stack::new(Item::BOW, 1))),
+            weapon: None,
+            armor_effectiveness: 0.0,
             phantom: (kind == MobKind::Phantom).then(|| Box::new(super::phantom::State::new(pos))),
             mooshroom: (kind == MobKind::Mooshroom).then(Box::default),
             bat: (kind == MobKind::Bat).then(Box::default),
@@ -1245,7 +1287,11 @@ impl Mob {
             copper_golem: (kind == MobKind::CopperGolem).then(Box::default),
             creaking: (kind == MobKind::Creaking).then(Box::default),
             sniffer: (kind == MobKind::Sniffer).then(Box::default),
+            keeps_equipment: false,
+            breeze: (kind == MobKind::Breeze)
+                .then(|| Box::new(super::breeze::State { since_hurt: 1000, ..Default::default() })),
             allay: (kind == MobKind::Allay).then(Box::default),
+            warden: (kind == MobKind::Warden).then(Box::default),
             wolf_armor: (kind == MobKind::Wolf).then(Box::default),
             drink_left: 0.0,
             drinking: "",
@@ -1411,6 +1457,10 @@ impl Mob {
     }
 
     pub fn shape(&self) -> Shape {
+        // `Warden.getDefaultDimensions`: one block tall while digging or emerging.
+        if self.warden.as_ref().is_some_and(|s| s.digging_or_emerging()) {
+            return Shape::new(0.45, 1.0);
+        }
         if self.sniffer.as_ref().is_some_and(|s| s.pose == super::sniffer::DIGGING) {
             let scale = if self.baby || self.age < 0 { 0.5 } else { 1.0 };
             return Shape::new(0.95 * scale, f64::from(1.75_f32 - 0.4_f32) * scale);
@@ -1485,6 +1535,7 @@ impl Mob {
     /// and Flame only to hits `hurtOrSimulate` accepts.
     pub fn refuses_hit(&self, amount: f32) -> bool {
         !self.alive()
+            || self.warden.as_ref().is_some_and(|s| s.digging_or_emerging())
             || self.undead_mount.protection > 0.
             || self.armadillo.as_ref().is_some_and(|s| s.scared() && amount <= 1.0)
     }
@@ -1511,7 +1562,8 @@ impl Mob {
     /// then `Entity.pushFromExplosion` adds `push` (blocks per tick) to the
     /// motion. Returns `true` if this killed the mob.
     pub fn blast(&mut self, amount: f32, push: DVec3, rng: &mut Rng) -> bool {
-        if !self.alive() {
+        // `Warden.ignoreExplosion` while digging or emerging.
+        if !self.alive() || self.warden.as_ref().is_some_and(|s| s.digging_or_emerging()) {
             return false;
         }
         let killed = self.take_damage(amount, true, false, rng);
@@ -1577,7 +1629,7 @@ impl Mob {
             return false;
         }
         let amount = if self.kind == MobKind::MagmaCube {
-            crate::simulation::survival::armor_reduce(amount, self.size as u32 * 3, 0.0)
+            crate::simulation::survival::armor_reduce_with(amount, self.size as u32 * 3, 0.0, self.armor_effectiveness)
         } else {
             amount
         };
@@ -1590,7 +1642,11 @@ impl Mob {
         }
         let amount = if bypass_wolf_armor { amount } else { self.absorb_wolf_armor(amount, rng) };
         let armor = self.mount.as_ref().and_then(|s| s.slots[1]).map_or(0, |s| super::mounts::armor_points(s.item));
-        let amount = if armor > 0 { crate::simulation::survival::armor_reduce(amount, armor, 0.) } else { amount };
+        let amount = if armor > 0 {
+            crate::simulation::survival::armor_reduce_with(amount, armor, 0., self.armor_effectiveness)
+        } else {
+            amount
+        };
         let amount = amount * self.effects.resistance_factor();
         self.health -= self.effects.absorb(amount);
         if self.kind == MobKind::Axolotl && self.in_water && self.health > 0.0 && self.health < 7.0 && rng.chance(0.33)
@@ -1725,6 +1781,7 @@ impl Mob {
                     .is_none_or(|s| !matches!(s.pose, super::sniffer::SEARCHING | super::sniffer::DIGGING))
                 && self.kind != MobKind::Tadpole
                 && self.kind != MobKind::Creeper
+                && self.kind != MobKind::Warden
                 && (self.bat.as_ref().is_none_or(|s| !s.resting) || rng.next_int(4) == 0)
             {
                 let sound = MobSound::Ambient(self.kind);
@@ -1948,6 +2005,12 @@ impl Mob {
     ) -> (Option<DVec3>, f64) {
         if self.creaking.is_some() {
             return self.creaking_think(world, ctx, rng, events);
+        }
+        if self.warden.is_some() {
+            return self.warden_steer(world, rng);
+        }
+        if self.breeze.is_some() {
+            return self.breeze_think(dt, world, ctx, rng, events);
         }
         if self.kind == MobKind::Bat {
             self.bat_sense(world, ctx);
@@ -2181,6 +2244,9 @@ impl Mob {
                 match self.kind {
                     MobKind::Skeleton | MobKind::Stray | MobKind::Bogged => {
                         return self.skeleton_tactics(dt, world, target.pos, dir, hdist, rng, events);
+                    }
+                    MobKind::Drowned if self.holds_trident() => {
+                        return self.drowned_trident_tactics(dt, world, &target, rng, events);
                     }
                     MobKind::Witch => return self.witch_tactics(world, &target, dir, hdist, rng, events),
                     MobKind::Creeper => {
@@ -3293,7 +3359,7 @@ pub(super) fn wrap(a: f32) -> f32 {
     (a + PI).rem_euclid(TAU) - PI
 }
 
-fn turn_toward(from: f32, to: f32, max: f32) -> f32 {
+pub(super) fn turn_toward(from: f32, to: f32, max: f32) -> f32 {
     let d = wrap(to - from);
     wrap(from + d.clamp(-max, max))
 }

@@ -182,6 +182,9 @@ impl World {
             || super::wood::has_entity(b)
             // So do ender chests and campfires.
             || super::utilities::ender_chest_of(b).is_some()
+            // Jukeboxes (a block entity) and reinforced deepslate
+            // (`PushReaction.IMMOVEABLE`).
+            || super::jukebox::piston_immovable(b)
             || super::utilities::campfire_of(b).is_some()
             || matches!(
                 r::component(b),
@@ -471,6 +474,9 @@ impl World {
         if self.get_block(p).and_then(super::composter::level).is_some() {
             return 1;
         }
+        if self.get_block(p).is_some_and(super::jukebox::is_jukebox) {
+            return 1;
+        }
         if self.chest(p).is_some() {
             self.container_slots(p)
         } else if self.furnace(p).is_some() {
@@ -486,6 +492,9 @@ impl World {
         if self.get_block(p).and_then(super::composter::level) == Some(8) {
             return Some(Stack::new(Item::BONE_MEAL, 1));
         }
+        if self.get_block(p).is_some_and(super::jukebox::is_jukebox) {
+            return self.jukebox(p).and_then(|j| j.record);
+        }
         if self.chest(p).is_some() {
             return self.chest_slot(p, slot);
         }
@@ -498,6 +507,9 @@ impl World {
 
     fn set_container_stack(&mut self, p: IVec3, slot: usize, stack: Option<Stack>) {
         if stack.is_none() && self.take_compost(p).is_some() {
+            return;
+        }
+        if self.set_jukebox_record(p, stack) {
             return;
         }
         if self.set_chest_slot(p, slot, stack) {
@@ -524,6 +536,10 @@ impl World {
     }
 
     fn can_insert(&self, p: IVec3, slot: usize, item: Item, side: IVec3) -> bool {
+        // `JukeboxBlockEntity.canPlaceItem`: a playable disc into an empty slot.
+        if self.get_block(p).is_some_and(super::jukebox::is_jukebox) {
+            return slot == 0 && super::jukebox::song_of(item).is_some() && self.container_stack(p, 0).is_none();
+        }
         if self.chest(p).is_some() {
             return true;
         }
@@ -551,6 +567,11 @@ impl World {
     fn can_extract(&self, p: IVec3, slot: usize, side: IVec3) -> bool {
         if self.get_block(p).and_then(super::composter::level).is_some() {
             return side == IVec3::NEG_Y;
+        }
+        // `canTakeItem` needs an empty slot in the taker, which a one-item
+        // disc can only go into anyway.
+        if self.get_block(p).is_some_and(super::jukebox::is_jukebox) {
+            return true;
         }
         if self.chest(p).is_some() {
             return true;

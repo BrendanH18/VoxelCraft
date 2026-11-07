@@ -82,6 +82,13 @@ impl Agents {
             on_ground: b.agent.session.player.on_ground,
             health: b.agent.session.vitals.health,
             effects: b.agent.session.vitals.effects.mask(),
+            darkness_ticks: b
+                .agent
+                .session
+                .vitals
+                .effects
+                .get(voxelcraft::simulation::effects::Effect::Darkness)
+                .map_or(0, |e| e.ticks),
             in_water: b.agent.session.player.in_water,
             swimming: b.agent.session.player.swimming,
             time_since_rest: b.agent.session.vitals.time_since_rest,
@@ -102,7 +109,7 @@ impl Agents {
             let mut inventory = b.agent.session.inventory.clone();
             inventory.return_stacks(b.agent.session.work.into_iter().flatten());
             let mode = if b.agent.creative { voxelcraft::rules::GameMode::Creative } else { b.agent.session.mode };
-            json!({"name":name,"id":b.id.0,"position":b.agent.session.player.pos.to_array(),"yaw":b.agent.session.player.yaw,"pitch":b.agent.session.player.pitch,"mode":mode.name(),"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.session.player.flying,"time_since_rest":b.agent.session.vitals.time_since_rest,"ticks_frozen":b.agent.session.vitals.ticks_frozen,"health":b.agent.session.vitals.health,"air":b.agent.session.vitals.air,"food":b.agent.session.vitals.hunger.food,"saturation":b.agent.session.vitals.hunger.saturation,"exhaustion":b.agent.session.vitals.hunger.exhaustion,"xp":b.agent.session.vitals.xp.serialize(),"effects":b.agent.session.vitals.effects.serialize(),"inventory":inventory.serialize(),"ender_chest":b.agent.session.ender.serialize(),"bed":b.agent.session.spawn_bed.map(|p|p.to_array()),"spawn_point":b.agent.session.spawn_point.map(|p|p.to_array()),"dimension":dimension})
+            json!({"name":name,"id":b.id.0,"position":b.agent.session.player.pos.to_array(),"yaw":b.agent.session.player.yaw,"pitch":b.agent.session.player.pitch,"mode":mode.name(),"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.session.player.flying,"time_since_rest":b.agent.session.vitals.time_since_rest,"ticks_frozen":b.agent.session.vitals.ticks_frozen,"warden_spawn_tracker":b.agent.session.vitals.warden.save(),"health":b.agent.session.vitals.health,"air":b.agent.session.vitals.air,"food":b.agent.session.vitals.hunger.food,"saturation":b.agent.session.vitals.hunger.saturation,"exhaustion":b.agent.session.vitals.hunger.exhaustion,"xp":b.agent.session.vitals.xp.serialize(),"effects":b.agent.session.vitals.effects.serialize(),"inventory":inventory.serialize(),"ender_chest":b.agent.session.ender.serialize(),"bed":b.agent.session.spawn_bed.map(|p|p.to_array()),"spawn_point":b.agent.session.spawn_point.map(|p|p.to_array()),"last_death":b.agent.session.last_death_to_string(),"dimension":dimension})
         }).collect();
         json!(profiles).to_string()
     }
@@ -145,6 +152,9 @@ impl Agents {
                 .as_array()
                 .filter(|v| v.len() == 3)
                 .and_then(|v| Some(IVec3::new(v[0].as_i64()? as i32, v[1].as_i64()? as i32, v[2].as_i64()? as i32)));
+            if let Some(text) = p["last_death"].as_str() {
+                agent.session.load_last_death(text);
+            }
             agent.selected = p["selected"].as_u64().filter(|n| *n < 9).unwrap_or(0) as usize;
             agent.session.player.yaw = p["yaw"].as_f64().unwrap_or(0.0) as f32;
             agent.session.player.pitch = p["pitch"].as_f64().unwrap_or(0.0) as f32;
@@ -164,6 +174,7 @@ impl Agents {
             agent.session.vitals.time_since_rest =
                 p["time_since_rest"].as_u64().unwrap_or(0).min(i32::MAX as u64) as u32;
             agent.session.vitals.ticks_frozen = p["ticks_frozen"].as_u64().unwrap_or(0).min(140) as u16;
+            agent.session.vitals.warden = crate::world::sculk::WardenSpawnTracker::load(&p["warden_spawn_tracker"]);
             if let Some(text) = p["effects"].as_str() {
                 agent.session.vitals.effects = crate::simulation::effects::Effects::deserialize(text);
             }
@@ -221,6 +232,13 @@ impl Game {
                     json!({"spawn":[self.world_spawn.x, self.world_spawn.y, self.world_spawn.z],"spinning":false})
                 } else {
                     json!({"spinning":true})
+                };
+            }
+            if stack.item == crate::item::Item::RECOVERY_COMPASS {
+                // `CompassAngleState` with the `RECOVERY` target.
+                state["recovery_compass"] = match agent.session.last_death.filter(|&(_, d)| d == self.dimension) {
+                    Some((p, _)) => json!({"death":[p.x, p.y, p.z],"spinning":false}),
+                    None => json!({"spinning":true}),
                 };
             }
             if stack.item == crate::item::Item::CLOCK {
@@ -346,6 +364,9 @@ impl Game {
             if !was_dead && bot.agent.session.vitals.is_dead() && self.gamerules.bool("show_death_messages") {
                 log::info!("{name} {}", bot.agent.session.vitals.death.as_deref().unwrap_or("died"));
             }
+            // `ServerPlayer.die` stores `lastDeathLocation` before an
+            // immediate or hardcore respawn can clear the dead state.
+            bot.agent.session.record_death(&self.world);
             if self.hardcore {
                 bot.agent.hardcore_spectate();
             } else if self.gamerules.respawns_immediately(false) && bot.agent.session.vitals.is_dead() {

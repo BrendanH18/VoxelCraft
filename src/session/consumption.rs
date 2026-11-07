@@ -39,7 +39,8 @@ impl PlayerSession {
     /// Java's `isUsingItem` for the movement slow-down: eating, drinking, or
     /// drawing a bow or crossbow.
     pub fn using_item(&self) -> bool {
-        self.consuming() || self.drawing() || self.shield_raised() || self.brushing()
+        // A spear's charge keeps full speed and the sprint (`UseEffects(true, false, 1.0)`).
+        self.consuming() || (self.drawing() && !self.charging_spear()) || self.shield_raised() || self.brushing()
     }
     pub fn consumption_progress(&self) -> f32 {
         if self.consumption.duration == 0 {
@@ -111,6 +112,17 @@ impl PlayerSession {
                 entities,
                 &self.player,
             );
+        } else if let Some(amplifier) = crate::world::trial::ominous_amplifier(held.item) {
+            // `OminousBottleAmplifier.onConsume`: Bad Omen for 120000 ticks;
+            // the bottle is used up (Creative keeps it).
+            if !self.mode.is_creative() {
+                self.inventory.take_one(slot);
+            }
+            self.vitals.apply_effect(
+                crate::simulation::effects::Effect::BadOmen,
+                amplifier,
+                crate::world::trial::BAD_OMEN_TICKS,
+            );
         } else if let Some(potion) = held.item.as_potion() {
             if self.mode.is_survival() {
                 self.inventory.slots[slot] = Some(Stack::new(Item::GLASS_BOTTLE, 1));
@@ -144,6 +156,14 @@ impl PlayerSession {
                 magic_damage += self.vitals.apply_effect(effect, amplifier, ticks);
             }
         }
+        // `Consumable.onConsume` and `LivingEntity.completeUsingItem`.
+        let drink =
+            held.item == Item::MILK_BUCKET || held.item.as_potion().is_some() || held.item == Item::HONEY_BOTTLE;
+        let source = crate::world::vibration::EventSource::player(self.id, self.player.sneaking);
+        use crate::world::vibration::GameEvent;
+        let event = if drink { GameEvent::Drink } else { GameEvent::Eat };
+        entities.sculk.post(self.player.pos, event, source, None);
+        entities.sculk.post(self.player.pos, GameEvent::ItemInteractFinish, source, None);
         Ok(Step { progress: 0., completed: Some(Consumed { player: self.id, item: held.item, magic_damage }) })
     }
 }

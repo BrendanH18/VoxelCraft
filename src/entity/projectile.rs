@@ -38,6 +38,8 @@ pub struct Arrow {
     pub owner: Option<PlayerId>,
     /// The mob that shot it (`uid`), if any.
     pub shooter: Option<u32>,
+    /// The breeze that turned it back, which it can't hit again; not saved.
+    pub deflector: Option<u32>,
     /// A player's arrow in a world with PvP on: it can hit other players.
     pub pvp: bool,
     /// Death message for players hit by this projectile.
@@ -99,6 +101,7 @@ impl Arrow {
             from_player: false,
             owner: None,
             shooter: None,
+            deflector: None,
             pvp: false,
             cause,
             pickup: false,
@@ -127,6 +130,7 @@ impl Arrow {
             from_player: true,
             owner: Some(PlayerId::HOST),
             shooter: None,
+            deflector: None,
             pvp: false,
             cause: "was shot by an arrow",
             pickup,
@@ -202,7 +206,12 @@ impl Arrow {
                 let mob = mobs
                     .iter()
                     .enumerate()
-                    .filter(|(_, m)| m.alive() && self.shooter != Some(m.uid) && !self.pierced.contains(&m.uid))
+                    .filter(|(_, m)| {
+                        m.alive()
+                            && self.shooter != Some(m.uid)
+                            && self.deflector != Some(m.uid)
+                            && !self.pierced.contains(&m.uid)
+                    })
                     .filter_map(|(i, m)| {
                         let (min, max) = m.aabb();
                         crate::physics::ray_aabb(from, step, min, max).filter(|&t| t <= reach).map(|t| (i, t))
@@ -285,6 +294,16 @@ impl Arrow {
                             && mob.allay.as_ref().is_some_and(|s| s.player == self.owner && self.owner.is_some())
                         {
                             return false;
+                        }
+                        // `Breeze.deflection`: `ProjectileDeflection.REVERSE` before any damage.
+                        if mob.kind == super::MobKind::Breeze {
+                            self.vel *= -0.5;
+                            self.deflector = Some(mob.uid);
+                            events.push(EntityEvent::Sound {
+                                sound: super::MobSound::Breeze(super::breeze::Cue::Deflect),
+                                pos: mob.pos,
+                            });
+                            return true;
                         }
                         // Endermen dodge arrows by teleporting; the arrow flies on.
                         if mob.kind == super::MobKind::Enderman {

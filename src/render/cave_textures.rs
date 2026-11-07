@@ -3,7 +3,7 @@
 //! family in the palette of Java's deep dark.
 
 use super::{Rgba, SIZE, noisy, rnd, shade};
-use crate::world::cave_blocks::t;
+use crate::world::cave_blocks::{ct, t};
 
 const CLEAR: Rgba = [0, 0, 0, 0];
 /// Sculk's near-black teal and its glowing cyan specks.
@@ -133,6 +133,52 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
                 noisy(layer, x, y, SCULK_DEEP, 0.2)
             }
         }
+        _ => calibrated(layer, x, y),
+    }
+}
+
+/// Amethyst's violet, for the calibrated sensor's crystals.
+const AMETHYST: [u8; 3] = [154, 92, 198];
+
+/// The calibrated sculk sensor (v0.16, layers from `cave_blocks::CAL_TEX`):
+/// the sensor's body and tendrils with amethyst set into its rim, and an
+/// input side studded with crystals.
+fn calibrated(layer: u16, x: usize, y: usize) -> Rgba {
+    let r = rnd(layer, x, y, 0);
+    let (fx, fy) = (x as f32 - 7.5, y as f32 - 7.5);
+    match layer {
+        ct::SIDE | ct::SIDE_ACTIVE => {
+            if y < 8 {
+                tendrils(layer, x, y, layer == ct::SIDE_ACTIVE)
+            } else if y == 8 {
+                shade(AMETHYST, 0.75 + r * 0.25)
+            } else {
+                sculk(layer, x, y)
+            }
+        }
+        ct::TOP | ct::TOP_ACTIVE => {
+            let d = (fx * fx + fy * fy).sqrt();
+            if (5.0..6.5).contains(&d) {
+                let c = if layer == ct::TOP_ACTIVE { [200, 150, 250] } else { AMETHYST };
+                shade(c, 0.8 + r * 0.3)
+            } else if d < 2.0 {
+                shade(GLOW, 0.8 + r * 0.25)
+            } else {
+                sculk(layer, x, y)
+            }
+        }
+        ct::INPUT => {
+            // Crystal shards over the sculk body: the side that reads redstone.
+            if y < 8 {
+                let shard = (x + 2 * (7 - y.min(7))).is_multiple_of(5) && y > 2;
+                if shard { shade(AMETHYST, 0.8 + r * 0.3) } else { CLEAR }
+            } else if y == 8 || (x + y).is_multiple_of(7) {
+                shade(AMETHYST, 0.7 + r * 0.25)
+            } else {
+                sculk(layer, x, y)
+            }
+        }
+        ct::BOTTOM => sculk(layer, x, y),
         _ => [255, 0, 255, 255],
     }
 }

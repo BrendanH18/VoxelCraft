@@ -30,8 +30,9 @@ fn world() -> World {
 fn every_state_is_registered_once_with_its_java_name() {
     let all = states();
     // 63 face sets, dry and wet, for each multiface block; sculk; two
-    // catalysts; three sensor phases and four shrieker states, dry and wet.
-    assert_eq!(all.len(), 2 * 2 * 63 + 1 + 2 + 2 * 3 + 2 * 4);
+    // catalysts; three sensor phases and four shrieker states, dry and wet;
+    // the calibrated sensor's four facings and three phases, dry and wet (v0.16).
+    assert_eq!(all.len(), 2 * 2 * 63 + 1 + 2 + 2 * 3 + 2 * 4 + 2 * 4 * 3);
     for b in &all {
         assert_ne!(b.name(), "unknown", "#{}", b.0);
         assert_eq!(Block::from_name(b.name()), Some(b.base()), "{} names its default state", b.name());
@@ -98,7 +99,7 @@ fn light_collision_and_rendering_follow_java() {
             7
         } else if catalyst_bloom(b).is_some() {
             6
-        } else if sensor_of(b).is_some() {
+        } else if any_sensor(b).is_some() {
             1
         } else {
             0

@@ -9,7 +9,8 @@ TABLES = ['bastion_treasure', 'bastion_bridge', 'bastion_hoglin_stable', 'bastio
           'pillager_outpost', 'shipwreck_supply', 'shipwreck_treasure', 'shipwreck_map',
           'underwater_ruin_small', 'underwater_ruin_big', 'ruined_portal', 'buried_treasure', 'nether_bridge',
           'abandoned_mineshaft', 'simple_dungeon', 'stronghold_corridor',
-          'stronghold_crossing', 'stronghold_library', 'village/village_cartographer',
+          'stronghold_crossing', 'stronghold_library', 'ancient_city', 'ancient_city_ice_box',
+          'village/village_cartographer',
           *['village/village_' + s + '_house' for s in ['plains', 'desert', 'savanna', 'taiga', 'snowy']]]
 
 

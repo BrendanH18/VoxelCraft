@@ -265,7 +265,7 @@ fn eating_works_from_the_offhand_and_leaves_the_main_hand_alone() {
 
 #[test]
 fn a_main_hand_shield_or_bow_keeps_the_use_from_offhand_food() {
-    for main in [Item::SHIELD, Item::BOW] {
+    for main in [Item::SHIELD, Item::BOW, crate::weapons::TRIDENT, crate::weapons::spear(crate::item::Tier::Iron)] {
         let mut s = session();
         s.vitals.hunger.food = 5.0;
         s.inventory.slots[0] = Some(Stack::new(main, 1));

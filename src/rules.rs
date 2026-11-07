@@ -241,7 +241,7 @@ pub const JAVA_RULES: [RuleDef; 59] = [
     boolean("spawn_patrols", "doPatrolSpawning", true, M("v0.17")),
     boolean("spawn_phantoms", "doInsomnia", true, I),
     boolean("spawn_wandering_traders", "doTraderSpawning", true, I),
-    boolean("spawn_wardens", "doWardenSpawning", true, M("v0.16")),
+    boolean("spawn_wardens", "doWardenSpawning", true, I),
     boolean("spectators_generate_chunks", "spectatorsGenerateChunks", true, M("v0.13")),
     boolean("spread_vines", "doVinesSpread", true, M("v0.13")),
     boolean("tnt_explodes", "tntExplodes", true, I),
@@ -474,6 +474,7 @@ impl GameRules {
             fire_spread_radius: self.int("fire_spread_radius_around_player"),
             difficulty: crate::world::WorldRules::default().difficulty,
             max_snow_accumulation_height: self.int("max_snow_accumulation_height") as u8,
+            spawn_wardens: self.bool("spawn_wardens"),
         }
     }
 
@@ -996,6 +997,7 @@ mod tests {
                 fire_spread_radius: 16,
                 difficulty: 2,
                 max_snow_accumulation_height: 1,
+                spawn_wardens: true,
             }
         );
     }

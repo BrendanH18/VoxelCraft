@@ -65,6 +65,8 @@ fn claims_use(item: Item, can_eat: bool) -> bool {
         || item.is_drink()
         || (item.food().is_some() && can_eat)
         || matches!(item, Item::BOW | Item::CROSSBOW | Item::CHARGED_CROSSBOW)
+        || item == crate::weapons::TRIDENT
+        || crate::weapons::is_spear(item)
 }
 
 impl PlayerSession {

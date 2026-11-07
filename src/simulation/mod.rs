@@ -100,11 +100,13 @@ pub fn tick_world_rules(world: &mut World, player: DVec3, fire_tick: bool, rando
     world.maps.game_ticks = world.maps.game_ticks.wrapping_add(1);
     world.simulation_player(player);
     world.tick_redstone();
+    world.tick_sculk();
     world.tick_fluids(TICK_SECONDS);
     world.tick_falling(TICK_SECONDS);
     world.tick_furnaces(TICK_SECONDS);
     world.tick_brewing(TICK_SECONDS);
     world.tick_utilities();
+    world.tick_jukeboxes();
     if fire_tick {
         world.tick_fire(TICK_SECONDS, player);
     }

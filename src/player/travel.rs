@@ -23,6 +23,7 @@ const GRAVITY: f64 = 0.08;
 /// `Attributes.JUMP_STRENGTH`, read as a float by `getJumpPower`.
 const JUMP_STRENGTH: f32 = 0.42;
 /// `Attributes.SNEAKING_SPEED`.
+#[cfg(test)]
 const SNEAKING_SPEED: f32 = 0.3;
 /// `UseEffects.DEFAULT.speedMultiplier`.
 const ITEM_USE_SPEED: f32 = 0.2;
@@ -100,7 +101,13 @@ fn expand_towards(min: DVec3, max: DVec3, v: DVec3) -> (DVec3, DVec3) {
 
 /// Java's `LocalPlayer.modifyInput`: the 0.98 key scale, item use and
 /// sneaking slow-downs, then `modifyInputSpeedForSquareMovement`.
+#[cfg(test)]
 fn modify_input(x: f32, y: f32, using_item: bool, slow: bool) -> (f32, f32) {
+    modify_input_with(x, y, using_item, slow.then_some(SNEAKING_SPEED))
+}
+
+/// [`modify_input`] with the player's own sneaking speed (`None`: not slow).
+fn modify_input_with(x: f32, y: f32, using_item: bool, slow: Option<f32>) -> (f32, f32) {
     if x * x + y * y == 0.0 {
         return (x, y);
     }
@@ -108,8 +115,8 @@ fn modify_input(x: f32, y: f32, using_item: bool, slow: bool) -> (f32, f32) {
     if using_item {
         (x, y) = (x * ITEM_USE_SPEED, y * ITEM_USE_SPEED);
     }
-    if slow {
-        (x, y) = (x * SNEAKING_SPEED, y * SNEAKING_SPEED);
+    if let Some(speed) = slow {
+        (x, y) = (x * speed, y * speed);
     }
     let length = (x * x + y * y).sqrt();
     if length <= 0.0 {
@@ -308,7 +315,8 @@ impl Player {
         if dm.y.abs() < 0.003 {
             dm.y = 0.0;
         }
-        let (xxa, zza) = modify_input(left, forward, slow_using, moving_slowly);
+        let sneaking_speed = self.sneaking_speed();
+        let (xxa, zza) = modify_input_with(left, forward, slow_using, moving_slowly.then_some(sneaking_speed));
         (self.motion.xxa, self.motion.zza) = (xxa, zza);
         let jumping = input.jump;
         if jumping && !self.flying {

@@ -367,14 +367,25 @@ pub mod tex {
     pub const BUBBLE_UP: u16 = BUBBLE_BASE;
     pub const BUBBLE_DOWN: u16 = BUBBLE_BASE + 1;
     pub const COUNT: u32 = {
-        // Through the highest layer any v0.15 track uses; unused layers stay reserved.
-        const fn max(a: u32, b: u32) -> u32 {
-            if a > b { a } else { b }
-        }
-        max(
+        // Through the highest layer any v0.15 or v0.16 track uses; unused layers stay reserved.
+        const ENDS: [u32; 7] = [
+            super::super::cave_blocks::CAL_TEX_END as u32,
             super::super::eyeblossom::TEX_END as u32,
-            max(super::super::sniffer_egg::TEXTURE_END as u32, super::super::archaeology::t::END as u32),
-        )
+            super::super::sniffer_egg::TEXTURE_END as u32,
+            super::super::archaeology::t::END as u32,
+            super::super::heavy_core::TEX_END as u32,
+            super::super::jukebox::t::END as u32,
+            super::super::trial::TEX_END as u32,
+        ];
+        let mut max = 0;
+        let mut i = 0;
+        while i < ENDS.len() {
+            if ENDS[i] > max {
+                max = ENDS[i];
+            }
+            i += 1;
+        }
+        max
     };
     const _: () = assert!(super::super::biome_plants::TEX_END <= BUBBLE_BASE);
     const _: () = assert!(super::super::utilities::TEX_END <= super::super::cave_blocks::TEX);
@@ -782,6 +793,10 @@ impl Block {
     }
 
     pub fn ignited_by_lava(self) -> bool {
+        // `Blocks.JUKEBOX`: `ignitedByLava()`.
+        if super::jukebox::is_jukebox(self) {
+            return true;
+        }
         if let Some(p) = super::wood::props(self) {
             return p.lava;
         }
@@ -920,7 +935,7 @@ impl Block {
 
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
-        if super::sniffer_egg::owns(self.0) {
+        if super::sniffer_egg::owns(self.0) || super::heavy_core::owns(self.0) {
             return Some(Shaped::Custom);
         }
         if super::creaking::wall_local(self.0).is_some() {
@@ -1283,8 +1298,14 @@ impl Block {
 
     /// This block without its orientation (itself if it has none).
     pub fn base(self) -> Block {
+        if let Some(b) = super::trial::base(self) {
+            return b;
+        }
         if super::sniffer_egg::owns(self.0) {
             return super::sniffer_egg::EGG;
+        }
+        if super::heavy_core::owns(self.0) {
+            return super::heavy_core::HEAVY_CORE;
         }
         if self.0 == super::sniffer_plants::PITCHER_PLANT.0 + 1 {
             return super::sniffer_plants::PITCHER_PLANT;
@@ -1370,6 +1391,15 @@ impl Block {
 
     /// The same block facing `facing` (unchanged if it has no front).
     pub fn with_facing(self, facing: Facing) -> Block {
+        if let Some((_, phase, wet)) = super::cave_blocks::calibrated_of(self) {
+            return super::cave_blocks::calibrated_sensor(facing, phase, wet);
+        }
+        if let Some(b) = super::trial::with_facing(self, facing) {
+            return b;
+        }
+        if super::trial::spawner(self).is_some() {
+            return self;
+        }
         if let Some(s) = super::copper_golem_statue::decode(self) {
             return super::copper_golem_statue::block(super::copper_golem_statue::Statue { facing, ..s });
         }
@@ -1608,8 +1638,18 @@ impl Block {
 
     /// What breaking this block yields in survival.
     pub fn drop(self) -> Option<Item> {
+        if let Some(drop) = super::jukebox::drop(self) {
+            return drop;
+        }
+        // `blocks/trial_spawner` and `blocks/vault` are empty tables.
+        if super::trial::owns(self.0) {
+            return None;
+        }
         if super::sniffer_egg::owns(self.0) {
             return Some(Item::SNIFFER_EGG);
+        }
+        if super::heavy_core::owns(self.0) {
+            return Some(Item::from_block(super::heavy_core::HEAVY_CORE));
         }
         if self == super::sniffer_plants::POTTED_TORCHFLOWER {
             return Some(super::utilities::FLOWER_POT.into());
@@ -1763,8 +1803,18 @@ impl Block {
     /// held item can harvest the block and 5x when it can't, divided by the
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
     pub fn hardness(self) -> f32 {
+        if let Some(h) = super::jukebox::hardness(self) {
+            return h;
+        }
+        // `strength(50.0F)` for both the trial spawner and the vault.
+        if super::trial::owns(self.0) {
+            return 50.0;
+        }
         if super::sniffer_egg::owns(self.0) {
             return 0.5;
+        }
+        if super::heavy_core::owns(self.0) {
+            return super::heavy_core::HARDNESS;
         }
         if super::archaeology::owns(self.0) {
             return 0.25;
@@ -1998,8 +2048,20 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
+        if super::jukebox::is_jukebox(self) {
+            return Some(ToolKind::Axe);
+        }
+        if self == super::jukebox::REINFORCED_DEEPSLATE {
+            return None;
+        }
+        if super::trial::owns(self.0) {
+            return Some(ToolKind::Pickaxe);
+        }
         if super::archaeology::owns(self.0) {
             return Some(ToolKind::Shovel);
+        }
+        if super::heavy_core::owns(self.0) {
+            return Some(ToolKind::Pickaxe);
         }
         if super::creaking::heart(self).is_some() {
             return Some(ToolKind::Axe);
@@ -2184,6 +2246,9 @@ impl Block {
     /// Pickaxe harvest level needed for any drop (0 wood or gold, 1 stone,
     /// 2 iron, 3 diamond); `None` if a bare hand will do.
     pub fn harvest_level(self) -> Option<u8> {
+        if super::jukebox::owns(self.0) {
+            return None;
+        }
         if super::creaking::owns(self.0)
             && super::creaking::heart(self).is_none()
             && self != super::creaking::RESIN_BLOCK
@@ -2333,6 +2398,7 @@ impl Block {
                 super::sniffer_plants::TORCHFLOWER.0,
                 super::sniffer_plants::PITCHER_PLANT.0,
                 super::sniffer_egg::EGG.0,
+                super::heavy_core::HEAVY_CORE.0,
             ])
             .chain(super::forms::palette_ids())
             .chain(super::nether_blocks::palette_ids())
@@ -2360,6 +2426,8 @@ impl Block {
             .chain(super::eyeblossom::palette_ids())
             .chain(super::cave_blocks::palette_ids())
             .chain(super::frog_blocks::palette_ids())
+            .chain(super::jukebox::palette_ids())
+            .chain(super::trial::palette_ids())
             .map(Block)
     }
 
@@ -2545,6 +2613,9 @@ impl Block {
         }
         if name == "scaffolding" {
             return Some(super::scaffolding::SCAFFOLDING);
+        }
+        if name == "ominous vault" {
+            return Some(super::trial::OMINOUS_VAULT);
         }
         if name == "white wool" {
             return Some(Block::WOOL);
@@ -2979,6 +3050,7 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         return info;
     }
     let (name, kind, tex) = match id {
+        id if super::trial::owns(id) => super::trial::registry(id),
         id if super::copper_golem_statue::owns(id) => match super::copper_golem_statue::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
@@ -3011,6 +3083,8 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         super::crops::FIRST..=super::crops::LAST => super::crops::registry(id),
         super::sniffer_plants::FIRST..=super::sniffer_plants::LAST => super::sniffer_plants::registry(id),
         15120..=super::sniffer_egg::LAST => super::sniffer_egg::registry(id),
+        super::heavy_core::FIRST..=super::heavy_core::LAST => super::heavy_core::registry(id),
+        super::jukebox::FIRST..=super::jukebox::LAST => super::jukebox::registry(id),
         super::archaeology::FIRST..=super::archaeology::LAST => super::archaeology::registry(id),
         super::copper::FIRST..=super::copper::RESERVED_LAST
         | super::copper::WAXED_FIRST..=super::copper::WAXED_RESERVED_LAST => match super::copper::registry(id) {
@@ -3457,6 +3531,7 @@ const fn emission_of(i: usize) -> u8 {
     {
         match i {
             _ if super::frog_blocks::owns(i as u16) => super::frog_blocks::emission(i as u16),
+            _ if super::trial::owns(i as u16) => super::trial::emission(i as u16),
             22 | 37..=41 | 165..=180 | 208 | 210 => 15, // glowstone, lava, fire, portals
             36 => 14,                                   // torch
             46 | 50..=52 | 913..=916 | 921..=924 => 13, // lit furnace, every facing
@@ -3610,6 +3685,13 @@ mod tests {
                 if let Some((_, lit)) = candle::decode_cake(block.0) {
                     return if lit { 3 } else { 0 };
                 }
+            }
+            // `TrialSpawnerState.lightLevel` and `VaultState.LightLevel`.
+            if let Some((state, _)) = super::super::trial::spawner(block) {
+                return state.light();
+            }
+            if let Some((_, state, _)) = super::super::trial::vault(block) {
+                return state.light();
             }
             // Checked against Java in `cave_blocks::tests`.
             if super::super::cave_blocks::owns(block.0) {

@@ -93,8 +93,9 @@ fn every_registered_enchantment_is_in_on_random_loot() {
         .iter()
         .filter_map(|n| Enchantment::from_name(n.as_str().unwrap().trim_start_matches("minecraft:")))
         .collect();
+    // Swift Sneak and Wind Burst are the registered enchantments outside the tag.
     for e in Enchantment::ALL {
-        assert!(names.contains(&e), "{e:?} is in #on_random_loot");
+        assert_eq!(names.contains(&e), e.on_random_loot(), "{e:?} in #on_random_loot");
     }
 }
 

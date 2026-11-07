@@ -295,6 +295,21 @@ pub enum Sprite {
     Shield,
     Totem,
     PotterySherd(u8),
+    /// v0.16: a music disc (its song index tints the label).
+    MusicDisc(u8),
+    EchoShard,
+    DiscFragment,
+    /// The recovery compass's face; its needle is a separate frame.
+    RecoveryCompass,
+    /// v0.16 weapons (`crate::weapons`): 0 trident, 1 mace, 2–8 spears from
+    /// wood to netherite.
+    Weapon(u8),
+    /// v0.16 Track C: a trial key (`true`: ominous).
+    TrialKey(bool),
+    BreezeRod,
+    WindCharge,
+    /// An ominous bottle; the amplifier adds pips.
+    OminousBottle(u8),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -853,6 +868,10 @@ impl Item {
     pub const SNIFFER_EGG: Item = Item::from_block(crate::world::sniffer_egg::EGG);
     pub const BEETROOT_SOUP: Item = Item(1280);
     pub const RESIN_BRICK: Item = Item(1368);
+    /// v0.16 track B (`world::jukebox`): 1430..=1454.
+    pub const ECHO_SHARD: Item = crate::world::jukebox::ECHO_SHARD;
+    pub const RECOVERY_COMPASS: Item = crate::world::jukebox::RECOVERY_COMPASS;
+    pub const DISC_FRAGMENT_5: Item = crate::world::jukebox::DISC_FRAGMENT_5;
     pub const HONEYCOMB: Item = Item(1281);
     /// Explicit honey item reservations, including the block placing item.
     pub const HONEY_BLOCK: Item = Item(1072);
@@ -1028,10 +1047,13 @@ impl Item {
     }
 
     pub fn is_map(self) -> bool {
-        (1255..=1265).contains(&self.0)
+        (1255..=1265).contains(&self.0) || self == crate::world::trial::TRIAL_CHAMBERS_MAP
     }
 
     pub fn info(self) -> ItemInfo {
+        if let Some(info) = crate::world::trial::item_info(self) {
+            return info;
+        }
         if self == Self::TORCHFLOWER_SEEDS {
             return item("torchflower seeds", Sprite::Lump([126, 82, 42]));
         }
@@ -1039,6 +1061,12 @@ impl Item {
             return item("pitcher pod", Sprite::Lump([163, 84, 75]));
         }
         if let Some(info) = crate::world::archaeology::item_info(self) {
+            return info;
+        }
+        if let Some(info) = crate::weapons::item_info(self) {
+            return info;
+        }
+        if let Some(info) = crate::world::jukebox::item_info(self) {
             return info;
         }
         if self == Self::RESIN_BRICK {
@@ -1302,6 +1330,7 @@ impl Item {
             || matches!(self.block(), Some(Block::ANCIENT_DEBRIS | Block::NETHERITE_BLOCK))
             || matches!(self.as_tool(), Some((_, Tier::Netherite)))
             || matches!(self.as_armor(), Some((_, ArmorMaterial::Netherite)))
+            || crate::weapons::fire_resistant(self)
     }
 
     pub fn max_stack(self) -> u8 {
@@ -1324,6 +1353,9 @@ impl Item {
 
     /// Uses before breaking, for tools and armor.
     pub fn durability(self) -> Option<u16> {
+        if let Some(durability) = crate::weapons::durability(self) {
+            return Some(durability);
+        }
         if matches!(self, Self::BRUSH | Self::WOLF_ARMOR) {
             return Some(64);
         }
@@ -1395,7 +1427,7 @@ impl Item {
 
     /// Java's `Rarity.RARE` for items registered with it (aqua names).
     pub fn is_rare(self) -> bool {
-        self == Item::ENCHANTED_GOLDEN_APPLE
+        self == Item::ENCHANTED_GOLDEN_APPLE || crate::world::jukebox::is_rare(self) || crate::weapons::is_rare(self)
     }
 
     /// Java's `DataComponents.ENCHANTMENT_GLINT_OVERRIDE`: drawn with the
@@ -1417,7 +1449,9 @@ impl Item {
     }
 
     pub fn is_drink(self) -> bool {
-        self.as_potion().is_some() || matches!(self, Self::MILK_BUCKET | Self::HONEY_BOTTLE)
+        self.as_potion().is_some()
+            || matches!(self, Self::MILK_BUCKET | Self::HONEY_BOTTLE)
+            || crate::world::trial::ominous_amplifier(self).is_some()
     }
 
     /// Hunger and saturation restored, for food.
@@ -1431,6 +1465,9 @@ impl Item {
     /// Texture layer of the flat inventory icon (non-block items only), in
     /// the item icon range from `tex::ITEM_BASE`.
     pub fn icon_layer(self) -> Option<u16> {
+        if self == crate::world::trial::TRIAL_CHAMBERS_MAP {
+            return Some(crate::world::trial::MAP_TEX);
+        }
         if self.is_map() {
             return Some(2944 + self.0 - 1255);
         }
@@ -1507,6 +1544,12 @@ impl Item {
             .chain([Self::TORCHFLOWER_SEEDS, Self::PITCHER_POD])
             .chain((crate::world::archaeology::ITEM_FIRST..crate::world::archaeology::ITEM_END).map(Item))
             .chain([Self::RESIN_BRICK])
+            .chain(crate::world::jukebox::items())
+            .chain(crate::weapons::all())
+            // v0.16 Track C: keys, breeze rod, wind charge and ominous
+            // bottles take icons after the resin brick; the explorer map
+            // draws its own layer.
+            .chain((crate::world::trial::ITEM_FIRST..crate::world::trial::ITEM_END).map(Item))
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1572,6 +1615,23 @@ fn sprite_index(item: Item) -> Option<u16> {
         1332 => Some(passive_icon_base() + 7),
         1333 => Some(passive_icon_base() + 8),
         1368 => Some(passive_icon_base() + 18),
+        // v0.16 track B: echo shard, recovery compass, disc fragment, discs.
+        i if (crate::world::jukebox::ITEM_FIRST..crate::world::jukebox::ITEM_END).contains(&i) => {
+            Some(passive_icon_base() + 19 + i - crate::world::jukebox::ITEM_FIRST)
+        }
+        i if (crate::weapons::ITEM_FIRST..crate::weapons::ITEM_END).contains(&i) => Some(
+            passive_icon_base() + 19 + (crate::world::jukebox::ITEM_END - crate::world::jukebox::ITEM_FIRST) + i
+                - crate::weapons::ITEM_FIRST,
+        ),
+        // v0.16 track C: trial keys, breeze rod, wind charge, ominous bottles.
+        1470..=1478 => Some(
+            passive_icon_base()
+                + 19
+                + (crate::world::jukebox::ITEM_END - crate::world::jukebox::ITEM_FIRST)
+                + (crate::weapons::ITEM_END - crate::weapons::ITEM_FIRST)
+                + item.0
+                - 1470,
+        ),
         1301..=1304 => Some(passive_icon_base() + item.0 - 1301),
         1040 => Some(turtle_icon()),
         1073 => Some(turtle_icon() + 2 + COPPER_ITEMS.len() as u16),
@@ -1667,7 +1727,15 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    passive_icon_base() as u32 + 4 + 5 + 2 + 7 + 1
+    passive_icon_base() as u32
+        + 4
+        + 5
+        + 2
+        + 7
+        + 1
+        + (crate::world::jukebox::ITEM_END - crate::world::jukebox::ITEM_FIRST) as u32
+        + (crate::weapons::ITEM_END - crate::weapons::ITEM_FIRST) as u32
+        + 9
 }
 
 const fn passive_icon_base() -> u16 {
@@ -1699,9 +1767,12 @@ pub const COMPASS_FRAMES: u16 = 32;
 /// Clock frames, after the compass. Frame 0 is noon.
 pub const CLOCK_FRAMES: u16 = 64;
 
-/// Extra icon layers for the compass and clock animations.
+/// Recovery compass needle frames, after the clock. Frame 0 points up.
+pub const RECOVERY_FRAMES: u16 = 32;
+
+/// Extra icon layers for the compass, clock and recovery compass animations.
 pub const fn animated_icons() -> u32 {
-    COMPASS_FRAMES as u32 + CLOCK_FRAMES as u32
+    COMPASS_FRAMES as u32 + CLOCK_FRAMES as u32 + RECOVERY_FRAMES as u32
 }
 
 /// Where the player is facing, where the world spawn is, and what time it is.
@@ -1723,6 +1794,9 @@ pub struct Dial {
     pub spin: f32,
     /// Wobbling dial turn (0..1) a clock shows outside natural dimensions.
     pub clock_spin: f32,
+    /// The holder's last death (`Player.getLastDeathLocation`), which a
+    /// recovery compass points to in that dimension.
+    pub death: Option<(glam::IVec3, crate::world::terrain::Dimension)>,
 }
 
 /// The client's `NeedleDirectionHelper.Wobbler`: eases a needle toward a target turn once
@@ -1788,6 +1862,18 @@ impl Dial {
         ((relative / std::f32::consts::TAU) * COMPASS_FRAMES as f32).round() as u16 % COMPASS_FRAMES
     }
 
+    /// `CompassAngleState` with the `RECOVERY` target: the needle points to
+    /// the last death in this dimension, and wobbles at random otherwise.
+    pub fn recovery_frame(self) -> u16 {
+        let Some((at, _)) = self.death.filter(|&(_, d)| d == self.dimension) else {
+            return (self.spin.rem_euclid(1.0) * RECOVERY_FRAMES as f32).round() as u16 % RECOVERY_FRAMES;
+        };
+        let (tx, tz) = (at.x as f64 + 0.5, at.z as f64 + 0.5);
+        let bearing = (tz - self.z).atan2(tx - self.x) as f32;
+        let relative = (self.yaw - bearing).rem_euclid(std::f32::consts::TAU);
+        ((relative / std::f32::consts::TAU) * RECOVERY_FRAMES as f32).round() as u16 % RECOVERY_FRAMES
+    }
+
     /// Java's celestial angle: frame 0 is noon. Outside the overworld it wobbles at random.
     pub fn clock_frame(self) -> u16 {
         if !self.overworld() {
@@ -1811,6 +1897,8 @@ impl Item {
             Some(tex::item_layer(base + dial.compass_frame()))
         } else if self == Self::CLOCK {
             Some(tex::item_layer(base + COMPASS_FRAMES + dial.clock_frame()))
+        } else if self == Self::RECOVERY_COMPASS {
+            Some(tex::item_layer(base + COMPASS_FRAMES + CLOCK_FRAMES + dial.recovery_frame()))
         } else {
             None
         }
@@ -2048,6 +2136,7 @@ mod tests {
             dimension: crate::world::terrain::Dimension::Overworld,
             lodestone: None,
             day_time: 0.25,
+            death: None,
             spin: 0.0,
             clock_spin: 0.0,
         };

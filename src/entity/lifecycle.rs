@@ -102,6 +102,7 @@ impl Entities {
                     | MobKind::WanderingTrader
                     | MobKind::TraderLlama
             ) || m.kind.never_distance_despawns()
+                || m.kind == MobKind::Warden
                 || m.ocelot.as_ref().is_some_and(|s| s.trusting || s.ticks <= 2400)
                 || m.persistent
                 || m.creaking.as_ref().is_some_and(|s| s.home.is_some())
@@ -147,6 +148,22 @@ impl Entities {
                         .and_then(|s| s.armor)
                         .filter(|s| !s.enchants.has(crate::enchant::Enchantment::VanishingCurse))
                 {
+                    self.items.push(ItemEntity::new(stack, dead.pos, DVec3::ZERO, 0.5, &mut self.rng));
+                }
+                // `Mob.dropCustomDeathLoot`: a hand item drops on 8.5% of player kills
+                // (`DEFAULT_EQUIPMENT_DROP_CHANCE`), its wear rerolled.
+                if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
+                    && dead.player_hit_left > 0.0
+                    && let Some(stack) = dead.weapon.as_deref().copied()
+                    && !stack.enchants.has(crate::enchant::Enchantment::VanishingCurse)
+                    && self.rng.next_f32() < crate::weapons::trident::EQUIPMENT_DROP_CHANCE
+                {
+                    let mut stack = stack;
+                    if let Some(max) = stack.item.durability() {
+                        let inner = 1 + self.rng.next_int(u32::from(max.saturating_sub(3).max(1)));
+                        stack.damage = max - self.rng.next_int(inner) as u16;
+                        stack.damage = stack.damage.min(max - 1);
+                    }
                     self.items.push(ItemEntity::new(stack, dead.pos, DVec3::ZERO, 0.5, &mut self.rng));
                 }
                 if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
@@ -298,10 +315,32 @@ impl Entities {
                         arrow.enchants = m.skeleton_bow.as_ref().map_or(Default::default(), |s| s.enchants);
                     }
                     arrow.tipped = arrow.custom_effect.is_some();
+                    // `Projectile.tick`'s first tick: `projectile_shoot` from its owner.
+                    let source = crate::world::vibration::EventSource::mob(shooter);
+                    self.sculk.post(from, crate::world::vibration::GameEvent::ProjectileShoot, source, None);
                     self.arrows.push(arrow);
+                }
+                EntityEvent::ThrowTrident { from, target, shooter } => {
+                    let stack = self
+                        .mobs
+                        .iter()
+                        .find(|m| m.uid == shooter)
+                        .and_then(|m| m.weapon.as_deref().copied())
+                        .filter(|s| s.item == crate::weapons::TRIDENT)
+                        .unwrap_or(crate::inventory::Stack::new(crate::weapons::TRIDENT, 1));
+                    let uncertainty = crate::weapons::trident::mob_uncertainty(self.difficulty as u8);
+                    let eye = from + DVec3::Y * f64::from(0.1f32);
+                    let t =
+                        super::trident::Trident::from_drowned(stack, shooter, eye, target, uncertainty, &mut self.rng);
+                    let source = t.event_source();
+                    self.sculk.post(t.pos, crate::world::vibration::GameEvent::ProjectileShoot, source, None);
+                    self.tridents.push(t);
                 }
                 EntityEvent::ThrowPotion { from, vel, potion } => {
                     self.potions.push(potion::ThrownPotion::new(potion, None, from, vel));
+                }
+                EntityEvent::ShootWindCharge { from, dir, inaccuracy, shooter } => {
+                    self.thrown.push(thrown::Thrown::breeze_charge(from, dir, inaccuracy, shooter, &mut self.rng));
                 }
                 EntityEvent::Fireball { from, dir, large } => {
                     let ball =
@@ -317,7 +356,14 @@ impl Entities {
             }
         }
         events.retain(|e| {
-            !matches!(e, EntityEvent::Shoot { .. } | EntityEvent::Fireball { .. } | EntityEvent::ThrowPotion { .. })
+            !matches!(
+                e,
+                EntityEvent::Shoot { .. }
+                    | EntityEvent::Fireball { .. }
+                    | EntityEvent::ThrowPotion { .. }
+                    | EntityEvent::ThrowTrident { .. }
+                    | EntityEvent::ShootWindCharge { .. }
+            )
         });
         {
             let mobs = &self.mobs;
@@ -330,10 +376,19 @@ impl Entities {
         }
         let targets = if self.arrows.is_empty() { Vec::new() } else { self.arrow_targets() };
         {
-            let (mobs, rng, fight) = (&mut self.mobs, &mut self.rng, &mut self.fight);
+            let (mobs, rng, fight, sculk) = (&mut self.mobs, &mut self.rng, &mut self.fight, &mut self.sculk);
             self.arrows.retain_mut(|a| {
-                !world.entity_ticking(a.pos.floor().as_ivec3())
-                    || a.update(dt, world, ctx, mobs, &targets, fight.as_mut(), rng, &mut events)
+                if !world.entity_ticking(a.pos.floor().as_ivec3()) {
+                    return true;
+                }
+                let was_stuck = a.is_stuck();
+                let keep = a.update(dt, world, ctx, mobs, &targets, fight.as_mut(), rng, &mut events);
+                // `Projectile.onHit`: `projectile_land` where it stuck.
+                if !was_stuck && a.is_stuck() {
+                    let source = sculk_events::Sculk::projectile_source(a.owner, a.shooter);
+                    sculk.post(a.pos, crate::world::vibration::GameEvent::ProjectileLand, source, None);
+                }
+                keep
             });
             self.pearls.retain_mut(|p| {
                 !world.entity_ticking(p.pos.floor().as_ivec3()) || p.update(dt, world, mobs, rng, &mut events)
@@ -346,6 +401,7 @@ impl Entities {
                     || t.update(dt, world, mobs, &self.mob_index, &ctx.players, rng, &mut events)
             });
         }
+        self.update_tridents(dt, world, ctx, &mut events);
         {
             let (rng, mobs, index) = (&mut self.rng, &self.mobs, &self.mob_index);
             let mut i = 0;
@@ -378,6 +434,13 @@ impl Entities {
                 EntityEvent::MobShot { kind, pos, killed, burning, player_kill, owner } => {
                     if killed {
                         self.drop_loot_with_fire(kind, pos, 0, burning, player_kill);
+                    }
+                    if kind == MobKind::Warden
+                        && !killed
+                        && let Some(owner) = owner
+                        && let Some(i) = self.mobs.iter().position(|m| m.kind == kind && m.pos == pos && m.alive())
+                    {
+                        self.warden_hurt(i, crate::world::vibration::EntityRef::Player(owner), false);
                     }
                     if kind == MobKind::ZombifiedPiglin {
                         self.anger_piglins(pos);

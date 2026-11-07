@@ -192,6 +192,13 @@ impl super::Entities {
                 bolt.remainder = (bolt.remainder - 1.).max(0.);
                 if bolt.life == 2 {
                     world.lightning_strike_blocks(bolt.pos);
+                    // `LightningBolt.tick`.
+                    world.emit_game_event(
+                        bolt.pos,
+                        crate::world::vibration::GameEvent::LightningStrike,
+                        crate::world::vibration::EventSource::NONE,
+                        None,
+                    );
                     if !bolt.visual_only {
                         world.lightning_fire(bolt.pos.floor().as_ivec3(), 4);
                     }

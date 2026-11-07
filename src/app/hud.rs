@@ -259,8 +259,12 @@ impl Game {
             if let Some(stack) = hud.inventory.get(i) {
                 draw_stack(ui, sx + 1.0, y0 + 2.0, stack, hud.survival, hud.dial);
                 // Java's item cooldown: a pale veil that drains downward.
-                let cooling = hud.vitals.pearl_cooldown / crate::entity::pearl::COOLDOWN;
-                if stack.item == Item::ENDER_PEARL && cooling > 0.0 {
+                let cooling = if stack.item == crate::world::trial::WIND_CHARGE {
+                    hud.vitals.wind_charge_cooldown / (voxelcraft::entity::wind::COOLDOWN_TICKS as f32 * 0.05)
+                } else {
+                    hud.vitals.pearl_cooldown / crate::entity::pearl::COOLDOWN
+                };
+                if matches!(stack.item, Item::ENDER_PEARL | crate::world::trial::WIND_CHARGE) && cooling > 0.0 {
                     let h = (16.0 * cooling).ceil();
                     ui.rect(sx + 2.0, y0 + 3.0 + 16.0 - h, 16.0, h, [1.0, 1.0, 1.0, 0.5]);
                 }
@@ -388,7 +392,18 @@ impl Game {
 
     /// Facing, spawn and time for compass and clock icons.
     pub(super) fn dial_of(&self, player: &crate::player::Player) -> crate::item::Dial {
+        // The recovery compass reads its holder's own last death.
+        let death = if std::ptr::eq(player, &self.session.player) {
+            self.session.last_death
+        } else {
+            self.agents
+                .players
+                .values()
+                .find(|b| std::ptr::eq(&b.agent.session.player, player))
+                .and_then(|b| b.agent.session.last_death)
+        };
         crate::item::Dial {
+            death,
             yaw: player.yaw,
             x: player.pos.x,
             z: player.pos.z,

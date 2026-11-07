@@ -68,6 +68,22 @@ impl Fog {
         let end = view_distance + (5.0 - view_distance) * strength;
         Self { color: self.color.map(|c| c * (1.0 - strength).powi(2)), start: end * 0.25, end, ..self }
     }
+
+    /// Java's darkness fog (`DarknessFogEnvironment`): the fog closes in to
+    /// 15 blocks, start at three quarters of the end, blending out over the
+    /// effect's last 22 ticks; the colour darkens with the effect's pulse
+    /// (`LightTexture.calculateDarknessScale`, `0.45 * cos(ticks * pi / 40)`).
+    /// The lightmap darkening itself is approximated by this colour pulse.
+    pub(super) fn darkened(self, ticks: Option<u32>, view_distance: f32, time: f32) -> Self {
+        let Some(ticks) = ticks else { return self };
+        if self.end <= 15.0 {
+            return self;
+        }
+        let blend = (ticks as f32 / 22.0).min(1.0);
+        let end = view_distance + (15.0 - view_distance) * blend;
+        let pulse = 0.45 * (time * 20.0 * std::f32::consts::PI * 0.025).cos().max(0.0) * blend;
+        Self { color: self.color.map(|c| c * (1.0 - pulse)), start: end * 0.75, end: end.min(self.end), ..self }
+    }
 }
 
 impl Game {
@@ -257,10 +273,17 @@ impl Game {
             let feet = a.previous_pos.lerp(a.player.pos, scene.alpha);
             let eye = feet + (a.player.eye() - a.player.pos);
             let (camera, forward) = bot.camera.view(&self.world, eye, a.player.forward());
-            let fog = self.fog(scene, view + 1, camera).blinded(
-                a.vitals.effects.get(voxelcraft::simulation::effects::Effect::Blindness).map(|e| e.ticks),
-                self.settings.render_distance as f32 * 32.0,
-            );
+            let fog = self
+                .fog(scene, view + 1, camera)
+                .darkened(
+                    a.vitals.effects.get(voxelcraft::simulation::effects::Effect::Darkness).map(|e| e.ticks),
+                    self.settings.render_distance as f32 * 32.0,
+                    scene.time,
+                )
+                .blinded(
+                    a.vitals.effects.get(voxelcraft::simulation::effects::Effect::Blindness).map(|e| e.ticks),
+                    self.settings.render_distance as f32 * 32.0,
+                );
             let models = self.block_models(scene.alpha, camera);
             let highlight = a.target(&self.world).map(|(p, _)| {
                 let (min, max) = self.world.outline(p);

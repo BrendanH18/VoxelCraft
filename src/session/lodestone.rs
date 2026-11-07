@@ -41,6 +41,8 @@ impl PlayerSession {
     /// Lodestones in unloaded chunks are kept, since Java's check reads the
     /// saved points of interest and nothing here can remove one unloaded.
     pub fn tick_lodestones(&mut self, world: &World) {
+        // The recovery compass's death mark is kept on the same tick path.
+        self.record_death(world);
         let dimension = world.generator.dimension;
         let inventory = &mut self.inventory;
         for stack in inventory.slots.iter_mut().chain(inventory.armor.iter_mut()).flatten() {

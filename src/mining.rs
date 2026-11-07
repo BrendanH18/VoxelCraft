@@ -73,10 +73,13 @@ pub fn dig_time(block: Block, digger: Digger) -> f32 {
     block.hardness() * harvest_factor(block, held) / speed
 }
 
-/// Java `Item.canDestroyBlock` in Creative: swords' tool component sets
-/// `can_destroy_blocks_in_creative` false. Trident and mace do too, but are
-/// not registered; spears have no tool component and may break blocks.
+/// Java `Item.canDestroyBlock` in Creative: the sword's, trident's and mace's
+/// tool components set `can_destroy_blocks_in_creative` false. Spears have
+/// no tool component, but their attack key always jabs (`Minecraft.startAttack`).
 pub fn can_destroy_in_creative(held: Item) -> bool {
+    if let Some(can) = crate::weapons::can_destroy_in_creative(held) {
+        return can;
+    }
     !matches!(held.as_tool(), Some((ToolKind::Sword, _)))
 }
 
@@ -116,6 +119,9 @@ pub fn dig_progress_with(block: Block, digger: Digger, haste: f32, effect_factor
 /// Durability a tool loses for breaking a block (swords wear faster, as
 /// they're not meant for it) or for hitting a mob (the reverse).
 pub fn wear(held: Item, hitting_mob: bool) -> u16 {
+    if let Some(wear) = crate::weapons::wear(held, hitting_mob) {
+        return wear;
+    }
     if held == Item::SHEARS {
         return (!hitting_mob) as u16;
     }
@@ -143,6 +149,9 @@ pub fn hit_damage(held: Option<Stack>, target: enchant::Creature) -> f32 {
 /// Melee damage of a fully charged hit with `held`: the player's base 1 plus
 /// the item's Java 26.3 attack-damage modifier and tool-material bonus.
 pub fn attack_damage(held: Option<Item>) -> f32 {
+    if let Some(damage) = held.and_then(crate::weapons::attack_damage) {
+        return damage;
+    }
     let Some((kind, tier)) = held.and_then(Item::as_tool) else { return 1.0 };
     let bonus = match tier {
         Tier::Wood | Tier::Gold => 0.0,
@@ -174,6 +183,9 @@ pub fn attack_damage(held: Option<Item>) -> f32 {
 /// Attack speed attribute (fully charged attacks per second): the player's
 /// base 4 plus the item's Java 26.3 attack-speed modifier.
 pub fn attack_speed(held: Option<Item>) -> f64 {
+    if let Some(speed) = held.and_then(crate::weapons::attack_speed) {
+        return speed;
+    }
     let Some((kind, tier)) = held.and_then(Item::as_tool) else { return 4.0 };
     let modifier = match kind {
         ToolKind::Sword => -2.4,
@@ -215,10 +227,9 @@ pub fn attack_strength_delay_with(held: Option<Item>, effects: &crate::simulatio
 
 /// Java's `minimum_attack_charge` item component: the charge an attack with
 /// the item needs before the server accepts it at all
-/// (`Player.cannotAttackWithItem`). In 26.3 only spears carry it (1.0), and
-/// spears are not registered, so every registered item accepts any charge.
-pub fn minimum_attack_charge(_held: Option<Item>) -> f32 {
-    0.0
+/// (`Player.cannotAttackWithItem`). In 26.3 only spears carry it (1.0).
+pub fn minimum_attack_charge(held: Option<Item>) -> f32 {
+    held.and_then(crate::weapons::minimum_attack_charge).unwrap_or(0.0)
 }
 
 /// Java's `Player.cannotAttackWithItem` arithmetic: a positive `minimum`

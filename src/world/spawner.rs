@@ -80,6 +80,16 @@ impl World {
                 Feature::Archaeology(seed, table) if super::archaeology::owns(block.0) => {
                     self.archaeology.entry(p).or_insert(super::archaeology::Brushable::with_loot(table, seed));
                 }
+                Feature::TrialSpawner(config) if super::trial::spawner(block).is_some() => {
+                    self.register_trial_spawner(p, config);
+                }
+                Feature::TrialVault if super::trial::vault(block).is_some() => self.register_trial_vault(p),
+                Feature::TrialLoot(seed, table) if is_chest(block) => {
+                    if !self.chests.contains_key(&p) {
+                        let chest = self.structure_loot(table.name(), Some(seed), p);
+                        self.chests.insert(p, chest);
+                    }
+                }
                 Feature::Spawner(kind) if block == Block::SPAWNER => {
                     self.spawners.entry(p).or_insert(kind);
                 }
@@ -116,6 +126,13 @@ impl World {
                             super::bastion::ChestKind::HoglinStable => "bastion_hoglin_stable",
                             super::bastion::ChestKind::Other => "bastion_other",
                         };
+                        let chest = self.structure_loot(name, Some(seed), p);
+                        self.chests.insert(p, chest);
+                    }
+                }
+                Feature::AncientCityChest(seed, ice_box) if is_chest(block) => {
+                    if !self.chests.contains_key(&p) {
+                        let name = if ice_box { "ancient_city_ice_box" } else { "ancient_city" };
                         let chest = self.structure_loot(name, Some(seed), p);
                         self.chests.insert(p, chest);
                     }

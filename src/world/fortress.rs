@@ -330,6 +330,16 @@ pub enum Feature {
     UtilityBlock(Block),
     IglooBrewing,
     Archaeology(u64, super::archaeology::Table),
+    /// An ancient city chest (`chests/ancient_city`, or the ice box's
+    /// `chests/ancient_city_ice_box` when true).
+    AncientCityChest(u64, bool),
+    /// v0.16 Track C: a trial spawner of this configuration
+    /// (`trial::spawner::CONFIGS` index).
+    TrialSpawner(u8),
+    /// A vault (its ominous flag is the block state's).
+    TrialVault,
+    /// A chest, barrel or dispenser filled from a trial chamber table.
+    TrialLoot(u64, super::trial_chambers::Table),
 }
 
 /// Fortress layouts for one Nether, cached by region.

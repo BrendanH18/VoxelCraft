@@ -18,9 +18,12 @@ mod bees;
 mod copper;
 mod creaking;
 mod crops;
+mod music;
+mod sculk;
 pub use copper::stonecutting as copper_stonecutting;
 pub mod colour;
 pub mod stonecutting;
+mod weapons;
 mod wood;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -495,6 +498,8 @@ pub fn recipes() -> &'static [Recipe] {
         r.push(shaped(&["##", "##"], &[('#', BASALT)], b(Block::POLISHED_BASALT), 4));
         r.push(shaped(&["##", "##"], &[('#', &[Item::MAGMA_CREAM])], b(Block::MAGMA), 1));
         r.push(shapeless(&[&[Item::SLIME_BALL], &[Item::BLAZE_POWDER]], Item::MAGMA_CREAM, 1));
+        // v0.16 Track C: `recipe/wind_charge`.
+        r.push(shapeless(&[&[crate::world::trial::BREEZE_ROD]], crate::world::trial::WIND_CHARGE, 4));
         r.push(shaped(&["N", "I", "N"], &[('N', &[Item::IRON_NUGGET]), ('I', IRON)], b(Block::CHAIN), 1));
         r.push(shaped(&["###", "###", "###"], &[('#', GOLD)], b(Block::GOLD_BLOCK), 1));
         r.push(shapeless(&[GOLD_BLOCK], Item::GOLD_INGOT, 9));
@@ -640,11 +645,14 @@ pub fn recipes() -> &'static [Recipe] {
         crops::add_recipes(&mut r);
         bees::add(&mut r);
         creaking::add(&mut r);
+        sculk::add(&mut r);
+        music::add(&mut r);
         wood::add(&mut r);
         colour::add(&mut r);
         utilities::add(&mut r);
         passive::add(&mut r);
         wolf_armor::add(&mut r);
+        weapons::add(&mut r);
         r
     })
 }

@@ -74,8 +74,7 @@ impl State {
             self.note_ticks = 600;
         }
     }
-    /// Playback callback for a future jukebox implementation. No jukebox block or
-    /// music-disc playback state is registered in this checkout.
+    /// `Allay.setJukeboxPlaying`, called by [`Entities::hear_jukeboxes`].
     pub fn set_jukebox_playing(&mut self, at: IVec3, playing: bool) {
         if playing && !self.dancing {
             self.jukebox = Some(at);
@@ -99,6 +98,27 @@ fn bucket(pos: DVec3) -> IVec3 {
     (pos / 8.).floor().as_ivec3()
 }
 impl Entities {
+    /// `Allay.JukeboxListener`: `jukebox_play` within the event's 10-block
+    /// notification radius of an allay's eye sets it dancing by that
+    /// jukebox; `jukebox_stop_play` stops it. Each event is also offered to
+    /// the vibration system ([`crate::world::jukebox::vibration_hook`]).
+    pub(super) fn hear_jukeboxes(&mut self, world: &mut World) {
+        use crate::world::jukebox::JukeboxEvent;
+        for (p, event) in std::mem::take(&mut world.jukebox_events) {
+            crate::world::jukebox::vibration_hook(world, p, event);
+            let source = p.as_dvec3() + DVec3::splat(0.5);
+            for m in &mut self.mobs {
+                if !m.alive() {
+                    continue;
+                }
+                let Some(s) = &mut m.allay else { continue };
+                if (m.pos + DVec3::Y * 0.36).distance_squared(source) <= 100. {
+                    s.set_jukebox_playing(p, event == JukeboxEvent::Play);
+                }
+            }
+        }
+    }
+
     pub(super) fn hear_allay_notes(&mut self, world: &mut World) {
         if world.allay_notes.is_empty() {
             return;
@@ -182,7 +202,12 @@ impl Entities {
                 let panic = m.ai == super::mob::Ai::Panic && m.ai_timer > 0.;
                 if panic
                     || s.ticks.is_multiple_of(20)
-                        && s.jukebox.is_none_or(|p| p.as_dvec3().distance_squared(m.pos) > 100.)
+                        && s.dancing
+                        && s.jukebox.is_none_or(|p| {
+                            // `shouldStopDancing`: out of range, or no longer a jukebox.
+                            (p.as_dvec3() + DVec3::splat(0.5)).distance_squared(m.pos) >= 100.
+                                || !world.block(p).is_some_and(crate::world::jukebox::is_jukebox)
+                        })
                 {
                     s.dancing = false;
                     s.jukebox = None;

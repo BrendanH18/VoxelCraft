@@ -146,6 +146,7 @@ impl MobKind {
                 | K::Pillager
                 | K::Slime
                 | K::MagmaCube
+                | K::Warden
         );
         caps.can_walk_over_fences = self == K::Camel;
         caps.stand_on_lava = self == K::Strider;
@@ -158,6 +159,7 @@ impl MobKind {
             K::Llama | K::TraderLlama => 40.0,
             K::PiglinBrute => 12.0,
             K::PolarBear => 20.0,
+            K::Warden => 24.0,
             _ => 16.0,
         });
         let mut m = Malus::default();
@@ -183,6 +185,14 @@ impl MobKind {
             K::Enderman => m.with(T::Water, -1.0),
             K::Sniffer => m.with(T::Water, -1.0).with(T::OnTopOfPowderSnow, -1.0).with(T::DamageCautious, -1.0),
             K::WitherSkeleton | K::ZombifiedPiglin => m.with(T::Lava, 8.0),
+            // `Warden`'s constructor.
+            K::Warden => m
+                .with(T::UnpassableRail, 0.0)
+                .with(T::Damaging, 8.0)
+                .with(T::PowderSnow, 8.0)
+                .with(T::Lava, 8.0)
+                .with(T::Fire, 0.0)
+                .with(T::FireInNeighbor, 0.0),
             K::Drowned
             | K::Axolotl
             | K::Guardian
@@ -385,7 +395,8 @@ impl Mob {
             }
         }
         let animal = self.kind.is_animal();
-        if !animal && !self.kind.is_hostile() {
+        // `Warden.getWalkTargetValue` is 0 everywhere.
+        if !animal && !self.kind.is_hostile() || self.kind == MobKind::Warden {
             return 0.0;
         }
         // `Guardian.getWalkTargetValue`: water scores 10 plus the light cost.
