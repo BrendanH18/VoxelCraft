@@ -388,6 +388,9 @@ pub fn shape_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bloc
     if super::sniffer_egg::owns(block.0) {
         return super::sniffer_egg::boxes();
     }
+    if super::heavy_core::owns(block.0) {
+        return super::heavy_core::boxes();
+    }
     if super::cave_blocks::is_custom(block) {
         return super::cave_blocks::boxes(block);
     }
@@ -550,6 +553,9 @@ pub fn outline(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) 
 pub fn outline_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block, above: Above) -> Boxes {
     if super::sniffer_egg::owns(block.0) {
         return super::sniffer_egg::boxes();
+    }
+    if super::heavy_core::owns(block.0) {
+        return super::heavy_core::boxes();
     }
     if super::cave_blocks::is_custom(block) {
         return super::cave_blocks::outline(block);
@@ -798,6 +804,9 @@ pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: 
     if super::sniffer_egg::owns(block.0) {
         return super::sniffer_egg::boxes();
     }
+    if super::heavy_core::owns(block.0) {
+        return super::heavy_core::boxes();
+    }
     if super::cave_blocks::is_custom(block) {
         return super::cave_blocks::collision(block);
     }
@@ -833,6 +842,9 @@ pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: 
         Some(Shaped::Custom) if super::mount_states::is_lantern(block.0) => lantern_boxes(block, &mut out),
         Some(Shaped::Custom) if super::sniffer_egg::owns(block.0) => {
             return super::sniffer_egg::boxes();
+        }
+        Some(Shaped::Custom) if super::heavy_core::owns(block.0) => {
+            return super::heavy_core::boxes();
         }
         Some(Shaped::Custom) if super::copper_golem_statue::owns(block.0) => {
             return super::copper_golem_statue::collision();

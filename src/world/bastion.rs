@@ -606,9 +606,16 @@ const TREASURE_0: &[Loot] = &[
         damage: None,
     }, // diamond_leggings
     Loot { item: Some(Item::DIAMOND), weight: 5, lo: 2, hi: 6, enchanted: false, damage: None },         // diamond
-    // Two diamond_spear entries (6 each) have no item yet and stay weighted blanks.
-    Loot { item: None, weight: 6, lo: 1, hi: 1, enchanted: false, damage: None },
-    Loot { item: None, weight: 6, lo: 1, hi: 1, enchanted: false, damage: None },
+    // Two diamond_spear entries (6 each): a worn, randomly enchanted one and a plain one.
+    Loot {
+        item: Some(crate::weapons::spear(Tier::Diamond)),
+        weight: 6,
+        lo: 1,
+        hi: 1,
+        enchanted: true,
+        damage: Some((0.80, 1.00)),
+    }, // diamond_spear
+    Loot { item: Some(crate::weapons::spear(Tier::Diamond)), weight: 6, lo: 1, hi: 1, enchanted: false, damage: None }, // diamond_spear
     Loot { item: Some(Item::ENCHANTED_GOLDEN_APPLE), weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },
 ];
 #[cfg(test)]
@@ -994,7 +1001,7 @@ pub(super) fn pool_with(chest: &mut Chest, rng: &mut Rng, table: &[Loot], rolls:
             stack.enchants = enchants;
         } else if e.enchanted {
             use crate::enchant::Enchantment;
-            let choices: Vec<_> = Enchantment::ALL.into_iter().filter(|e| e.fits(item)).collect();
+            let choices: Vec<_> = Enchantment::ALL.into_iter().filter(|e| e.on_random_loot() && e.fits(item)).collect();
             if let Some(e) = choices.get(rng.below(choices.len() as u32) as usize) {
                 stack.enchants = stack.enchants.with(*e, rng.range(1, e.def().max_level as u32) as u8);
                 if item == Item::BOOK {

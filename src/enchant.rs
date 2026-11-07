@@ -46,8 +46,8 @@ pub enum Enchantment {
     Multishot,
     Piercing,
     QuickCharge,
-    // v0.14 loot metadata; append-only save bits 33–39. Their weapon
-    // families are not implemented, but books must preserve Java's choices.
+    // v0.14 loot metadata, append-only save bits 33–39; v0.16 Track D gave
+    // them their behaviour (`crate::weapons`).
     Loyalty,
     Impaling,
     Riptide,
@@ -55,6 +55,9 @@ pub enum Enchantment {
     Density,
     Breach,
     Lunge,
+    // Save bit 40 belongs to Track B's Swift Sneak (not in this checkout);
+    // Wind Burst keeps bit 41 explicitly so the two never collide.
+    WindBurst = 41,
 }
 
 /// Which items an enchantment goes on (Java's item tags).
@@ -65,8 +68,6 @@ enum Fits {
     Chest,
     Feet,
     Sword,
-    /// Swords and axes (sharpness, smite, bane of arthropods).
-    Weapon,
     /// Pickaxes, shovels, axes and hoes.
     Mining,
     Bow,
@@ -74,19 +75,43 @@ enum Fits {
     FishingRod,
     /// Anything that wears out.
     Durable,
-    /// Metadata for loot books whose weapon family is not implemented.
-    UnsupportedWeapon,
+    /// Swords and spears (`#enchantable/melee_weapon`).
+    MeleeWeapon,
+    /// Swords, spears and axes (`#enchantable/sharp_weapon`).
+    SharpWeapon,
+    /// Sharp weapons and the mace (`#enchantable/weapon`).
+    AnyWeapon,
+    /// Melee weapons and the mace (`#enchantable/fire_aspect`).
+    FireAspect,
+    /// `#enchantable/trident`.
+    Trident,
+    /// `#enchantable/mace`.
+    Mace,
+    /// `#enchantable/lunge` (= `#spears`).
+    Spear,
 }
 
 impl Fits {
     fn accepts(self, item: Item) -> bool {
+        use crate::weapons::{MACE, TRIDENT, is_spear};
+        let sword = matches!(item.info().kind, ItemKind::Tool(ToolKind::Sword, _));
+        let axe = matches!(item.info().kind, ItemKind::Tool(ToolKind::Axe, _));
+        match self {
+            Fits::MeleeWeapon => return sword || is_spear(item),
+            Fits::SharpWeapon => return sword || axe || is_spear(item),
+            Fits::AnyWeapon => return sword || axe || is_spear(item) || item == MACE,
+            Fits::FireAspect => return sword || is_spear(item) || item == MACE,
+            Fits::Trident => return item == TRIDENT,
+            Fits::Mace => return item == MACE,
+            Fits::Spear => return is_spear(item),
+            _ => {}
+        }
         match (self, item.info().kind) {
             (Fits::Armor, ItemKind::Armor(..)) => true,
             (Fits::Head, ItemKind::Armor(p, _)) => p == ArmorPiece::Helmet,
             (Fits::Chest, ItemKind::Armor(p, _)) => p == ArmorPiece::Chestplate,
             (Fits::Feet, ItemKind::Armor(p, _)) => p == ArmorPiece::Boots,
             (Fits::Sword, ItemKind::Tool(k, _)) => k == ToolKind::Sword,
-            (Fits::Weapon, ItemKind::Tool(k, _)) => matches!(k, ToolKind::Sword | ToolKind::Axe),
             (Fits::Mining, ItemKind::Tool(k, _)) => k != ToolKind::Sword,
             (Fits::Bow, ItemKind::Bow) => true,
             (Fits::Crossbow, _) => matches!(item, Item::CROSSBOW | Item::CHARGED_CROSSBOW),
@@ -181,12 +206,20 @@ static DEFS: [Def; Enchantment::COUNT] = [
     def("aqua affinity", 1, 2, (1, 0), (41, 0), 4, Fits::Head),
     primary(def("thorns", 3, 1, (10, 20), (60, 20), 8, Fits::Armor), Fits::Chest),
     def("depth strider", 3, 2, (10, 10), (25, 10), 4, Fits::Feet),
-    in_group(primary(def("sharpness", 5, 10, (1, 11), (21, 11), 1, Fits::Weapon), Fits::Sword), Group::Damage),
-    in_group(primary(def("smite", 5, 5, (5, 8), (25, 8), 2, Fits::Weapon), Fits::Sword), Group::Damage),
-    in_group(primary(def("bane of arthropods", 5, 5, (5, 8), (25, 8), 2, Fits::Weapon), Fits::Sword), Group::Damage),
-    def("knockback", 2, 5, (5, 20), (55, 20), 2, Fits::Sword),
-    def("fire aspect", 2, 2, (10, 20), (60, 20), 4, Fits::Sword),
-    def("looting", 3, 2, (15, 9), (65, 9), 4, Fits::Sword),
+    // Java 26.3 `supported_items`/`primary_items`: spears joined the sword's
+    // tags, and the mace takes the `#enchantable/weapon` and fire aspect sets.
+    in_group(
+        primary(def("sharpness", 5, 10, (1, 11), (21, 11), 1, Fits::SharpWeapon), Fits::MeleeWeapon),
+        Group::Damage,
+    ),
+    in_group(primary(def("smite", 5, 5, (5, 8), (25, 8), 2, Fits::AnyWeapon), Fits::MeleeWeapon), Group::Damage),
+    in_group(
+        primary(def("bane of arthropods", 5, 5, (5, 8), (25, 8), 2, Fits::AnyWeapon), Fits::MeleeWeapon),
+        Group::Damage,
+    ),
+    def("knockback", 2, 5, (5, 20), (55, 20), 2, Fits::MeleeWeapon),
+    primary(def("fire aspect", 2, 2, (10, 20), (60, 20), 4, Fits::FireAspect), Fits::MeleeWeapon),
+    def("looting", 3, 2, (15, 9), (65, 9), 4, Fits::MeleeWeapon),
     def("sweeping edge", 3, 2, (5, 9), (20, 9), 4, Fits::Sword),
     def("efficiency", 5, 10, (1, 10), (51, 10), 1, Fits::Mining),
     in_group(def("silk touch", 1, 1, (15, 0), (65, 0), 8, Fits::Mining), Group::Mining),
@@ -206,30 +239,57 @@ static DEFS: [Def; Enchantment::COUNT] = [
     in_group(def("multishot", 1, 2, (20, 0), (50, 0), 4, Fits::Crossbow), Group::Crossbow),
     in_group(def("piercing", 4, 10, (1, 10), (50, 0), 1, Fits::Crossbow), Group::Crossbow),
     def("quick charge", 3, 5, (12, 20), (50, 0), 2, Fits::Crossbow),
-    def("loyalty", 3, 5, (12, 7), (50, 0), 2, Fits::UnsupportedWeapon),
-    in_group(def("impaling", 5, 2, (1, 8), (21, 8), 4, Fits::UnsupportedWeapon), Group::Damage),
-    def("riptide", 3, 2, (17, 7), (50, 0), 4, Fits::UnsupportedWeapon),
-    def("channeling", 1, 1, (25, 0), (50, 0), 8, Fits::UnsupportedWeapon),
-    in_group(def("density", 5, 5, (5, 8), (25, 8), 2, Fits::UnsupportedWeapon), Group::Damage),
-    in_group(def("breach", 4, 2, (15, 9), (65, 9), 4, Fits::UnsupportedWeapon), Group::Damage),
-    def("lunge", 3, 5, (5, 8), (25, 8), 2, Fits::UnsupportedWeapon),
+    def("loyalty", 3, 5, (12, 7), (50, 0), 2, Fits::Trident),
+    in_group(def("impaling", 5, 2, (1, 8), (21, 8), 4, Fits::Trident), Group::Damage),
+    def("riptide", 3, 2, (17, 7), (50, 0), 4, Fits::Trident),
+    def("channeling", 1, 1, (25, 0), (50, 0), 8, Fits::Trident),
+    in_group(def("density", 5, 5, (5, 8), (25, 8), 2, Fits::Mace), Group::Damage),
+    in_group(def("breach", 4, 2, (15, 9), (65, 9), 4, Fits::Mace), Group::Damage),
+    def("lunge", 3, 5, (5, 8), (25, 8), 2, Fits::Spear),
+    // `data/minecraft/enchantment/wind_burst.json`; in `#treasure`, not `#on_random_loot`.
+    treasure(def("wind burst", 3, 2, (15, 9), (65, 9), 4, Fits::Mace)),
 ];
 
 impl Enchantment {
-    pub const COUNT: usize = 40;
+    /// Registered enchantments (not save bits: bit 40 is reserved).
+    pub const COUNT: usize = 41;
+    /// Save bits in use, including the reserved bit 40 (Track B's Swift Sneak).
+    pub const SAVE_SLOTS: u32 = 42;
     pub const ALL: [Enchantment; Enchantment::COUNT] = {
         let mut all = [Enchantment::Protection; Enchantment::COUNT];
         let mut i = 0;
-        while i < Enchantment::COUNT {
-            // SAFETY: `Enchantment` is `repr(u8)` with variants 0..COUNT.
+        while i < 40 {
+            // SAFETY: `Enchantment` is `repr(u8)` with variants 0..40 contiguous.
             all[i] = unsafe { std::mem::transmute::<u8, Enchantment>(i as u8) };
             i += 1;
         }
+        all[40] = Enchantment::WindBurst;
         all
     };
 
+    /// Position in [`Enchantment::ALL`] and its definition table: the save
+    /// bit, except past the reserved bit 40.
+    const fn index(self) -> usize {
+        match self {
+            Enchantment::WindBurst => 40,
+            e => e as usize,
+        }
+    }
+
     pub fn def(self) -> &'static Def {
-        &DEFS[self as usize]
+        &DEFS[self.index()]
+    }
+
+    /// Java's `#tradeable`: everything but Wind Burst (and Swift Sneak and
+    /// Soul Speed, which this checkout doesn't register).
+    pub fn tradeable() -> &'static [Enchantment] {
+        &Enchantment::ALL[..40]
+    }
+
+    /// Java's `#on_random_loot`: the non-treasure set, both curses, frost
+    /// walker and mending — not Wind Burst.
+    pub fn on_random_loot(self) -> bool {
+        self != Enchantment::WindBurst
     }
 
     pub fn from_name(name: &str) -> Option<Enchantment> {
@@ -343,7 +403,7 @@ impl Enchants {
             return Some(Self::NONE);
         }
         // Bits past the last known enchantment (a newer save) are dropped.
-        let known = (1u128 << (Enchantment::COUNT as u32 * BITS)) - 1;
+        let known = (1u128 << (Enchantment::SAVE_SLOTS * BITS)) - 1;
         u128::from_str_radix(text, 16).ok().map(|v| Enchants(v & known))
     }
 
@@ -413,6 +473,9 @@ pub fn roll() -> f32 {
 /// `enchantable` values); 0 means it can't be enchanted there.
 pub fn enchantability(item: Item) -> u32 {
     use crate::item::{ArmorMaterial, Tier};
+    if let Some(value) = crate::weapons::enchantability(item) {
+        return value;
+    }
     match item.info().kind {
         ItemKind::Tool(_, tier) => match tier {
             Tier::Wood => 15,
@@ -499,7 +562,10 @@ fn available(power: u32, item: Item, options: Options) -> Vec<(Enchantment, u8)>
     let mut out = Vec::new();
     for e in Enchantment::ALL {
         let d = e.def();
-        if (d.treasure && options == Options::Table) || !(book || d.primary.accepts(item)) {
+        if (d.treasure && options == Options::Table)
+            || (options == Options::RandomLoot && !e.on_random_loot())
+            || !(book || d.primary.accepts(item))
+        {
             continue;
         }
         if let Some(level) = (1..=d.max_level).rev().find(|&l| {
@@ -734,6 +800,9 @@ pub fn wear_anvil(world: &mut crate::world::World, pos: glam::IVec3) -> Option<b
 
 /// Whether `material` repairs `item` on an anvil (Java's repair tags).
 pub fn repairs(item: Item, material: Item) -> bool {
+    if let Some(repairs) = crate::weapons::repairs(item, material) {
+        return repairs;
+    }
     if item == Item::WOLF_ARMOR {
         return material == Item::ARMADILLO_SCUTE;
     }

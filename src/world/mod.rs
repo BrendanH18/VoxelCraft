@@ -56,6 +56,7 @@ pub mod furnace;
 pub mod gadgets;
 pub mod geode;
 mod growth;
+pub mod heavy_core;
 mod honey;
 pub mod jigsaw;
 mod light_shape;

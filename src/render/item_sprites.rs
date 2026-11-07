@@ -72,6 +72,55 @@ fn handle(x: i32, y: i32, from: i32, top: i32) -> Option<Rgba> {
     }
 }
 
+/// Original v0.16 weapon icons on the same diagonal as the tools: `u`
+/// across the shaft (15–16 on it), `v` along it (towards the top right).
+fn weapon(i: u8, x: i32, y: i32) -> Option<Rgba> {
+    let (u, v) = (x + y, x - y);
+    match i {
+        // Trident: a teal shaft, a crossbar and three prongs.
+        0 => {
+            let fork = |x: i32, y: i32| {
+                let (u, v) = (x + y, x - y);
+                (15..=16).contains(&u) && (5..=14).contains(&v)
+                    || ((11..=12).contains(&u) || (19..=20).contains(&u)) && (5..=11).contains(&v)
+                    || (5..=6).contains(&v) && (11..=20).contains(&u)
+            };
+            shaded(&fork, x, y, [96, 190, 176], 0.06).or_else(|| {
+                ((15..=16).contains(&u) && (-15..=4).contains(&v))
+                    .then(|| tint(if u == 15 { [66, 132, 124] } else { [38, 82, 78] }, 0.95 + noise(x, y, 41) * 0.1))
+            })
+        }
+        // Mace: a heavy, ridged iron head on a short pale grip.
+        1 => {
+            let head = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                let r = (px - 11.0).powi(2) + (py - 5.0).powi(2);
+                r <= 12.5 || (r <= 20.0 && ((x - 11).abs() <= 0 || (y - 5).abs() <= 0))
+            };
+            if let Some(p) = shaded(&head, x, y, [86, 86, 96], 0.08) {
+                let ridge = (x + y - 16).abs() <= 0 && head(x - 1, y) && head(x + 1, y);
+                return Some(if ridge { tint([150, 150, 162], 1.0) } else { p });
+            }
+            ((1..=8).contains(&x) && (15..=16).contains(&u))
+                .then(|| tint(if u == 15 { [176, 190, 214] } else { [104, 112, 140] }, 0.95 + noise(x, y, 43) * 0.1))
+        }
+        // Spears: a long shaft with a leaf-shaped head in the tier's colour.
+        n => {
+            let tier = crate::weapons::SPEAR_TIERS[usize::from(n - 2).min(6)];
+            let c = tier_colour(tier);
+            let blade = |x: i32, y: i32| {
+                let (u, v) = (x + y, x - y);
+                let half = if v >= 11 { (14 - v) as f32 * 0.5 + 0.5 } else { (v - 6) as f32 * 0.55 + 0.5 };
+                (7..=14).contains(&v) && ((u as f32) - 15.5).abs() <= half
+            };
+            if let Some(p) = shaded(&blade, x, y, c, 0.05) {
+                return Some(if u == 15 && (8..=13).contains(&v) { tint(c, 1.25) } else { p });
+            }
+            handle(x, y, 0, 8)
+        }
+    }
+}
+
 fn tool(kind: ToolKind, tier: Tier, x: i32, y: i32) -> Option<Rgba> {
     let c = tier_colour(tier);
     // Coordinates along the handle: `u` across it (15..16 on the handle,
@@ -205,6 +254,7 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
         }
         Sprite::Stick => handle(x, y, 2, 13),
         Sprite::Tool(kind, tier) => tool(kind, tier, x, y),
+        Sprite::Weapon(i) => weapon(i, x, y),
         Sprite::Armor(piece, material) => armor(piece, material, x, y),
         Sprite::Minecart(c) => {
             let body = |x: i32, y: i32| (2..=13).contains(&x) && (6..=11).contains(&y);
