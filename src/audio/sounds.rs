@@ -225,6 +225,8 @@ pub enum Sound {
     Sculk(crate::world::sculk::SculkCue),
     /// v0.16 weapons (`crate::weapons::Cue`).
     Weapon(crate::weapons::Cue),
+    /// v0.16 Track C cues (breeze, wind charges, trial spawners, vaults).
+    Breeze(crate::entity::breeze::Cue),
 }
 
 const M: usize = Material::ALL.len();
@@ -236,7 +238,8 @@ impl Sound {
     const SNIFFER_END: usize = Self::BASE_COUNT + 48 + crate::entity::sniffer::Cue::ALL.len();
     const WARDEN_END: usize = Self::SNIFFER_END + crate::entity::warden::Cue::ALL.len();
     const SCULK_END: usize = Self::WARDEN_END + crate::world::sculk::SculkCue::ALL.len();
-    pub const COUNT: usize = Self::SCULK_END + crate::weapons::Cue::ALL.len();
+    const WEAPON_END: usize = Self::SCULK_END + crate::weapons::Cue::ALL.len();
+    pub const COUNT: usize = Self::WEAPON_END + crate::entity::breeze::Cue::ALL.len();
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -247,6 +250,7 @@ impl Sound {
             Sound::Warden(cue) => Self::SNIFFER_END + cue as usize,
             Sound::Sculk(cue) => Self::WARDEN_END + cue as usize,
             Sound::Weapon(cue) => Self::SCULK_END + cue as usize,
+            Sound::Breeze(cue) => Self::WEAPON_END + cue as usize,
             Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
             Sound::Thunder => Self::BASE_COUNT - 1,
             Sound::Bell => Self::BASE_COUNT - 4,
@@ -365,6 +369,7 @@ impl Sound {
             .chain(crate::entity::warden::Cue::ALL.map(Sound::Warden))
             .chain(crate::world::sculk::SculkCue::ALL.map(Sound::Sculk))
             .chain(crate::weapons::Cue::ALL.map(Sound::Weapon))
+            .chain(crate::entity::breeze::Cue::ALL.map(Sound::Breeze))
     }
 
     /// Stable sound name used when exporting or identifying samples.
@@ -376,6 +381,7 @@ impl Sound {
             Sound::Warden(c) => format!("warden_{c:?}").to_lowercase(),
             Sound::Sculk(c) => format!("sculk_{c:?}").to_lowercase(),
             Sound::Weapon(c) => format!("weapon_{c:?}").to_lowercase(),
+            Sound::Breeze(c) => format!("trial_{c:?}").to_lowercase(),
             Sound::Thunder => "lightning_thunder".into(),
             Sound::HoneySlide => "honey_block_slide".into(),
             Sound::HoneyDrink => "honey_drink".into(),
@@ -478,6 +484,19 @@ impl Sound {
                     _ => SoundSource::Players,
                 }
             }
+            // The breeze's own sounds are `HOSTILE`; wind charges `NEUTRAL`;
+            // trial spawners, vaults and the bottle `BLOCKS`/`PLAYERS`.
+            Sound::Breeze(c) => {
+                use crate::entity::breeze::Cue;
+                match c {
+                    Cue::Whirl | Cue::Shoot | Cue::Inhale | Cue::Charge | Cue::Jump | Cue::Land | Cue::Deflect => {
+                        SoundSource::Hostile
+                    }
+                    Cue::Burst | Cue::Throw => SoundSource::Neutral,
+                    Cue::OminousBottle | Cue::TrialOmen => SoundSource::Players,
+                    _ => SoundSource::Blocks,
+                }
+            }
             Sound::Mob(voice, _) => voice.source(),
         }
     }
@@ -489,7 +508,7 @@ impl Sound {
     /// Number of synthesized variations playback can choose from.
     pub fn variants(self) -> u32 {
         match self {
-            Sound::Allay(..) | Sound::CopperGolem(..) | Sound::Note(_) => 1,
+            Sound::Allay(..) | Sound::CopperGolem(..) | Sound::Note(_) | Sound::Breeze(_) => 1,
             Sound::Warden(_) | Sound::Sculk(_) => 2,
             Sound::Sniffer(_) | Sound::Weapon(_) => 2,
             Sound::Step(_) => 4,
@@ -535,6 +554,7 @@ impl Sound {
             Sound::Warden(c) => super::warden::render(c, &mut rng),
             Sound::Sculk(c) => super::warden::render_sculk(c, &mut rng),
             Sound::Weapon(c) => super::weapons::render(c, &mut rng),
+            Sound::Breeze(c) => super::breeze::render(c, &mut rng),
             Sound::Thunder => thunder(&mut rng),
             Sound::HoneySlide => honey_sound(&mut rng, 0.35),
             Sound::HoneyDrink => honey_sound(&mut rng, 0.22),

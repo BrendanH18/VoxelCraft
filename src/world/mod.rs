@@ -112,6 +112,8 @@ pub mod temples;
 pub mod terrain;
 pub mod trail_ruins;
 pub mod trees;
+pub mod trial;
+pub mod trial_chambers;
 pub mod underground;
 pub mod utilities;
 pub mod vibration;
@@ -314,6 +316,8 @@ pub struct World {
     pub(crate) creaking_hearts: std::collections::BTreeMap<[i32; 3], creaking::Heart>,
     /// Sculk listeners and game events (see [`sculk`] and [`vibration`]).
     pub(crate) sculk: sculk::SculkState,
+    /// Trial spawners and vaults (v0.16 Track C, see [`trial`]).
+    pub(crate) trial: trial::State,
     wood: wood::entities::WoodEntities,
     /// Campfire, decorated pot and cauldron-drip state (see [`utilities`]).
     utilities: utilities::State,
@@ -610,6 +614,7 @@ impl World {
             archaeology: Default::default(),
             creaking_hearts: Default::default(),
             sculk: Default::default(),
+            trial: Default::default(),
             creaking_active: Default::default(),
             creaking_night: None,
             eyeblossom_open: None,
@@ -976,6 +981,7 @@ impl World {
         self.track_archaeology(p, old, block);
         self.track_creaking_heart(p, block);
         self.track_sculk(p, old, block);
+        self.track_trial(p, old, block);
         self.track_copper_golem_statue(p, block);
         self.track_utilities(p, old, block);
         self.track_spawner(p, old, block);

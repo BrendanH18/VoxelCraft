@@ -131,6 +131,10 @@ impl Entities {
         else {
             return;
         };
+        // Trial spawner equipment (`slot_drop_chances: 0`) never drops.
+        if m.keeps_equipment {
+            return;
+        }
         let bow = m.skeleton_bow.take();
         let mut equipment: Vec<Stack> = bow.into_iter().map(|s| *s).collect();
         for (i, piece) in crate::item::ArmorPiece::ALL.into_iter().enumerate() {

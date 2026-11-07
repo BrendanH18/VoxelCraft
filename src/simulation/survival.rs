@@ -279,6 +279,8 @@ pub struct Vitals {
     pub xp: super::experience::Experience,
     /// Seconds before this player can throw another ender pearl.
     pub pearl_cooldown: f32,
+    /// Seconds until another wind charge can be thrown (10 ticks).
+    pub wind_charge_cooldown: f32,
     /// Potion and other status effects.
     pub effects: super::effects::Effects,
     /// Seconds since the last damage (drives the hurt flash).
@@ -301,10 +303,11 @@ pub struct Vitals {
     critical_fall_distance: f64,
     previous_fall_y: Option<f64>,
     /// `LivingEntity.currentImpulseImpactPos` (its height): a mace smash's
-    /// impact, below which a later landing's fall damage is measured. Not saved.
+    /// or a player's own wind charge's impact, below which a later landing's
+    /// fall damage is measured. Not saved.
     impulse_impact_y: Option<f64>,
     /// `currentImpulseContextResetGraceTime`, in ticks.
-    impulse_grace: u32,
+    pub impulse_grace: u32,
     /// Set while dead: what killed the player.
     pub death: Option<String>,
     peaceful_timer: f32,
@@ -328,6 +331,7 @@ impl Default for Vitals {
             hunger: Hunger::default(),
             xp: Default::default(),
             pearl_cooldown: 0.0,
+            wind_charge_cooldown: 0.0,
             effects: Default::default(),
             since_damage: 1e3,
             death_time: 0.0,
@@ -364,6 +368,13 @@ impl Vitals {
     }
 
     /// Whether a death cause has been recorded; damage and survival ticks respect this state.
+    /// `setIgnoreFallDamageFromCurrentImpulse(true, position)`: a player's
+    /// wind charge hit at feet height `y`.
+    pub fn wind_impulse(&mut self, y: f64, grace: u32) {
+        self.impulse_impact_y = Some(y);
+        self.impulse_grace = self.impulse_grace.max(grace);
+    }
+
     pub fn is_dead(&self) -> bool {
         self.death.is_some()
     }
@@ -486,6 +497,7 @@ impl Vitals {
         self.death_time = if self.is_dead() { (self.death_time + dt).min(1e3) } else { 0.0 };
         self.xp.tick(dt);
         self.pearl_cooldown = (self.pearl_cooldown - dt).max(0.0);
+        self.wind_charge_cooldown = (self.wind_charge_cooldown - dt).max(0.0);
         if self.is_dead() {
             self.time_since_rest = 0;
             // `LivingEntity.baseTick` keeps counting effects down on the death

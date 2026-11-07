@@ -98,6 +98,8 @@ impl Entities {
                 let kind = match e["kind"].as_u64()? {
                     0 => thrown::Kind::Snowball,
                     1 => thrown::Kind::Egg,
+                    3 => thrown::Kind::WindCharge,
+                    4 => thrown::Kind::BreezeWindCharge,
                     _ => thrown::Kind::LlamaSpit,
                 };
                 Some(thrown::Thrown::replica(kind, p, q))

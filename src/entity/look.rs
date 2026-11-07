@@ -46,6 +46,9 @@ impl Mob {
         if let Some(s) = &self.creaking {
             v["creaking"] = s.save();
         }
+        if let Some(s) = &self.breeze {
+            v["breeze_pose"] = json!(s.pose.index());
+        }
         if let Some(s) = &self.allay {
             v["allay"] = s.save();
         }
@@ -142,6 +145,9 @@ impl Mob {
         }
         if let Some(s) = &mut self.creaking {
             s.load(&v["creaking"]);
+        }
+        if let Some(s) = &mut self.breeze {
+            s.pose = super::breeze::Pose::from_index(v["breeze_pose"].as_u64().unwrap_or(0));
         }
         if let Some(s) = &mut self.allay {
             **s = super::allay::State::load(&v["allay"]);

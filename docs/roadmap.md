@@ -870,7 +870,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.13 | Terrain | M3: GEN-01..03 | Density terrain with overhangs from the climate noise (original noise, FE-01); caves and aquifers fitted to it, springs, glow lichen and an ore pass; deep-dark terrain with sculk; giant spruce and jungle trees and the remaining biome features; bubble columns, fire spread, offhand and shields carried from v0.12. See [v0.13 scope](#v013-scope-terrain) | Done (owner, 2026-10-31): merged in [#57](https://github.com/BrendanH18/VoxelCraft/pull/57) at `a8c3172`; the owner's own play is the player evidence. Release prepared (2026-10-31): Cargo 0.13.0 and release notes; tag `v0.13` from the merge that carries them. Items 0–6 implemented, unverified and integrated ([integration record](verification/2026-10-30-v0.13-integration.md)): generation 2 for new worlds only, density terrain, underground and deep dark, giant trees and biome features, bubble columns, fire odds, off-hand, shields and totems. Known gaps: floating rocks above some peaks, hand-tuned densities, inert sculk until v0.16, fire odds unchecked against the 26.3 artifact. Rows stay Implemented, unverified until the frame-time check in v0.20 |
 | v0.14 | Structures | M3: GEN-05..07 | A Java structure-template (jigsaw) system; villages, outposts, bastions, fossils, shipwrecks, ocean ruins and monuments built from it; buried treasure and explorer maps; Java loot random sequences. See [v0.14 scope](#v014-scope-structures) | In progress (2026-11-03): scope approved with original templates (no fidelity exception yet); all of items 0–7 implemented, unverified: world generation 3, the jigsaw engine and villages ([record](verification/2026-11-03-v0.14-jigsaw-villages.md)), outposts and bastions ([record](verification/2026-11-03-v0.14-outposts-bastions.md)), ruined portals and buried treasure ([record](verification/2026-11-03-v0.14-portals-treasure.md)), fossils, desert wells and trail ruins ([record](verification/2026-11-03-v0.14-fossils-wells-trail-ruins.md)), maps, explorer maps and Java loot sequences ([record](verification/2026-11-03-v0.14-maps.md)); owner play pending |
 | v0.15 | Wildlife | M4: MOB-03/04, FOO, ENV-03 | Bats, frogs, pandas, polar bears, armadillos, mooshrooms, strays, bogged, phantoms and zombie horses (with lightning); drowned conversion and the cat spawner; melon, pumpkin and beetroot crops; animal and mount acceptance. See [v0.15 scope](#v015-scope-wildlife) | Implemented, unverified (2026-11-04): started early while v0.14 waits for the owner's play; four tracks (lightning and undead mounts, crops and bees, passive mobs, hostiles) merged and council-reviewed ([integration](verification/2026-11-04-v0.15-integration.md)); copper golems (2026-11-05), then creaking and resin, allays, sniffers and ocean ruins with suspicious blocks (2026-11-06, [integration](verification/2026-11-06-v0.15-final-integration.md)) complete the scope; awaits the owner's play |
-| v0.16 | Deep dark and trials | M3 + M4 + PRO-07 | Ancient cities with sculk and the warden; trial chambers with breezes, trial spawners, vaults and the mace; tridents, spears and the other modern weapon families; a jukebox with music discs. See [v0.16 scope](#v016-scope-deep-dark-and-trials) | In progress (2026-11-06): scope approved by the owner; four tracks (sculk and the warden, ancient cities and music, trial chambers, weapons) |
+| v0.16 | Deep dark and trials | M3 + M4 + PRO-07 | Ancient cities with sculk and the warden; trial chambers with breezes, trial spawners, vaults and the mace; tridents, spears and the other modern weapon families; a jukebox with music discs. See [v0.16 scope](#v016-scope-deep-dark-and-trials) | Implemented, unverified (2026-11-07): scope approved by the owner on 2026-11-06; four tracks (sculk and the warden, ancient cities and music, trial chambers, weapons) merged and integrated ([integration](verification/2026-11-07-v0.16-integration.md)); awaits the owner's play |
 | v0.17 | Villages and raids | Close M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M4 exit checks | Planned |
 | v0.18 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough | Planned |
 | v0.19 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload | Planned |
@@ -1660,6 +1660,17 @@ in parallel, each with its own IDs in the
    with trial keys and their reward tables; Bad Omen to Trial Omen and
    ominous bottles; the breeze, breeze rods and wind charges; bogged and
    other chamber spawner residents; trial chamber maps.
+   *Implemented, unverified (2026-11-06):* generation 3 trial chambers
+   with Java's placement and pool topology on an original, reduced template
+   catalogue; trial spawners (all six states, per-player scaling and
+   detection, 30-minute cooldown, Java's 14 configurations and reward
+   tables, ominous conversion and ominous item spawners); vaults and ominous
+   vaults with per-player rewards; trial keys, ominous bottles, Bad Omen to
+   Trial Omen; the breeze with its jump/shoot/slide brain, deflection and rod
+   drops; wind charges and the shared `entity::wind::wind_burst`; the
+   cartographer's trial explorer map. Gaps (decorated pots, the potions the
+   ominous drop table names, swords on ominous zombies, presentation) are in
+   the [Track C record](verification/2026-11-06-v0.16-trial-chambers.md).
 4. **D. Weapons** (PRO-07, ENV-04). The heavy core and the mace (smash
    attack, fall-damage reset, Density, Breach, Wind Burst); tridents
    (throwing, Loyalty, Riptide, Channeling, Impaling, drowned drops,
@@ -1681,6 +1692,12 @@ in parallel, each with its own IDs in the
    spawn tables together, save/reload of every new mob, block and item,
    a council review, the Namespace checks and per-track verification
    records.
+   *Integrated, implemented, unverified (2026-11-07):* the four tracks
+   merged, their append-only orderings made contiguous (warden 72, breeze
+   73; Swift Sneak 40, Wind Burst 41), the duplicated impulse fall rule
+   reconciled, and the jukebox, trident, Wind Burst, breeze rod and trial
+   loot links wired. The owner's play remains. See the
+   [integration record](verification/2026-11-07-v0.16-integration.md).
 
 ### M4 — A complete living world
 

@@ -257,6 +257,7 @@ impl Game {
             landed(&self.world, &mut bot.agent.session);
         }
         self.world.tick_automation_entities(&mut self.mobs.entities);
+        self.tick_trial();
         self.update_mobs(dt);
         self.update_items();
         self.tick_particles();

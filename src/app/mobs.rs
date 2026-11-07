@@ -430,6 +430,7 @@ impl Game {
                     );
                     self.explode(center, power, cause, credit_player)
                 }
+                EntityEvent::WindBurst(burst) => self.wind_burst(&burst),
                 EntityEvent::PearlLanded { owner, pos } => {
                     let mut burst = crate::particles::Burst::new(crate::particles::Kind::Portal, pos + DVec3::Y, 32);
                     burst.spread = DVec3::Y;
@@ -454,7 +455,10 @@ impl Game {
                         self.world.ignite(cell);
                     }
                 }
-                EntityEvent::Fireball { .. } | EntityEvent::ThrowPotion { .. } | EntityEvent::ThrowTrident { .. } => {}
+                EntityEvent::Fireball { .. }
+                | EntityEvent::ThrowPotion { .. }
+                | EntityEvent::ThrowTrident { .. }
+                | EntityEvent::ShootWindCharge { .. } => {}
                 EntityEvent::TridentBrokeDripstone { cell, mob_owned } => {
                     // `Projectile.mayInteract` (a mob's needs `mobGriefing`) and `mayBreak`.
                     let may = self.gamerules.bool("projectiles_can_break_blocks")
@@ -499,6 +503,7 @@ impl Game {
                             super::items::weapon_sound(&mut self.audio, cue, pos);
                             continue;
                         }
+                        MobSound::Breeze(cue) => (Sound::Breeze(cue), 1.0),
                         MobSound::CopperGolem(action, stage) => (Sound::CopperGolem(action, stage), 0.7),
                         MobSound::Hurt(MobKind::CopperGolem) => {
                             (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Hurt, 0), 0.9)
@@ -712,6 +717,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Sniffer => Voice::Sniffer,
         // The warden's own calls are `Sound::Warden`; this voice is unused.
         MobKind::Warden => Voice::Creaking,
+        MobKind::Breeze => Voice::Breeze,
         MobKind::Allay => Voice::Allay,
         MobKind::CopperGolem => Voice::Skeleton,
         MobKind::Creaking => Voice::Creaking,
@@ -758,6 +764,24 @@ fn voice(kind: MobKind) -> Voice {
 }
 
 impl Game {
+    /// A wind burst ([`voxelcraft::entity::wind::wind_burst`]) over every
+    /// player in this world: wind charges, and the shared entry point the
+    /// mace's Wind Burst can call.
+    pub(super) fn wind_burst(&mut self, burst: &voxelcraft::entity::wind::WindBurst) {
+        let mut sessions: Vec<&mut voxelcraft::session::PlayerSession> = vec![&mut self.session];
+        if self.arrival.is_none() {
+            sessions.extend(self.agents.players.values_mut().filter(|b| b.active).map(|b| &mut b.agent.session));
+        }
+        voxelcraft::entity::wind::wind_burst(&mut self.world, &mut self.mobs.entities, &mut sessions, burst);
+        self.audio.play_in(
+            SoundSource::Neutral,
+            Sound::Breeze(voxelcraft::entity::breeze::Cue::Burst),
+            Some(burst.center),
+            1.0,
+            (0.9, 1.1),
+        );
+    }
+
     /// Blows a hole in the world and hurts everything around `center`.
     /// `cause` completes the death message, as for [`Game::damage_player`].
     pub(super) fn explode(&mut self, center: DVec3, power: f32, cause: &str, credit_player: bool) {

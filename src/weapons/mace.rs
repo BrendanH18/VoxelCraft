@@ -133,10 +133,11 @@ impl SmashSound {
     }
 }
 
-/// Integration hook (Track C owns wind charges): Wind Burst's
-/// `block_interaction: trigger` and its gust particles, applied to blocks
-/// around `center` like a wind charge's burst (doors, trapdoors, buttons,
-/// bells; `#blocks_wind_charge_explosions` immune). The push on players
-/// and mobs is this track's and already done; the integrator routes this
-/// to Track C's wind-charge explosion.
-pub fn wind_burst_blocks(_world: &mut crate::world::World, _center: DVec3) {}
+/// Wind Burst's `block_interaction: trigger` around `center`, through the
+/// wind charge's block pass (doors, trapdoors, gates, buttons, levers,
+/// bells and candles; nothing breaks). The push on players and mobs is
+/// [`wind_burst_push`]'s; the gust particles are not drawn yet.
+pub fn wind_burst_blocks(world: &mut crate::world::World, center: DVec3) {
+    let burst = crate::entity::wind::WindBurst::new(center, WIND_BURST_RADIUS, 0.0, false, None);
+    world.wind_trigger(&burst);
+}

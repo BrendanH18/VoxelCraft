@@ -64,6 +64,19 @@ pub enum Used {
     ProjectileThrown {
         from: DVec3,
     },
+    /// A wind charge left the hand (`WIND_CHARGE_THROW`).
+    WindChargeThrown {
+        from: DVec3,
+    },
+    /// An item was used on an active vault: `unlocked` with a key, else
+    /// refused (`rewarded`: this player already had the reward); `sound`
+    /// is false inside the fail sound's 15-tick buffer.
+    Vault {
+        cell: IVec3,
+        unlocked: bool,
+        rewarded: bool,
+        sound: bool,
+    },
     Rod {
         from: DVec3,
         broke: bool,
@@ -567,6 +580,20 @@ impl PlayerSession {
             }
             return Ok(Some(Used::EyeReleased { from }));
         }
+        // `WindChargeItem.use`: throw at 1.5 (inaccuracy 1), then a
+        // 10-tick cooldown for every wind charge.
+        if held == crate::world::trial::WIND_CHARGE {
+            if self.vitals.wind_charge_cooldown > 0.0 {
+                return Err("wind charge cooling down");
+            }
+            self.vitals.wind_charge_cooldown =
+                crate::entity::wind::COOLDOWN_TICKS as f32 * crate::simulation::TICK_SECONDS as f32;
+            entities.throw_projectile(held, self.id, eye, dir, carry);
+            if !creative {
+                self.inventory.take_one(slot);
+            }
+            return Ok(Some(Used::WindChargeThrown { from: eye }));
+        }
         if survival_items::throw_held(&self.player, &mut self.inventory, slot, creative, self.id, entities) {
             return Ok(Some(Used::ProjectileThrown { from: eye }));
         }
@@ -654,6 +681,24 @@ impl PlayerSession {
         let can_build = self.mode.can_build();
         if let Some(used) = self.use_copper_statue(slot, world, entities, pos, ctx, tool_broken) {
             return Ok(Some(used));
+        }
+        // `VaultBlock.useItemOn`: a held item on an active vault.
+        if let Some(stack) = self.inventory.get(slot).filter(|_| self.mode.can_interact()) {
+            use crate::world::trial::vault::VaultUse;
+            match world.use_vault(pos, self.id.0, Some(stack)) {
+                VaultUse::Pass => {}
+                VaultUse::Rejected { rewarded, sound } => {
+                    return Ok(Some(Used::Vault { cell: pos, unlocked: false, rewarded, sound }));
+                }
+                VaultUse::Unlocked { consumed } => {
+                    if !creative {
+                        for _ in 0..consumed {
+                            self.inventory.take_one(slot);
+                        }
+                    }
+                    return Ok(Some(Used::Vault { cell: pos, unlocked: true, rewarded: false, sound: true }));
+                }
+            }
         }
         if can_build
             && !ctx.sneaking

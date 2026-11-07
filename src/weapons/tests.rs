@@ -182,16 +182,18 @@ fn enchantments_fit_the_java_26_3_tags() {
 }
 
 #[test]
-fn wind_burst_saves_at_bit_41_and_keeps_bit_40_for_swift_sneak() {
+fn wind_burst_saves_at_bit_41_next_to_swift_sneak() {
     assert_eq!(Enchantment::WindBurst as u32, 41);
-    assert_eq!(Enchantment::ALL[40], Enchantment::WindBurst);
+    assert_eq!(Enchantment::ALL[40], Enchantment::SwiftSneak);
+    assert_eq!(Enchantment::ALL[41], Enchantment::WindBurst);
     assert_eq!(Enchantment::from_name("wind_burst"), Some(Enchantment::WindBurst));
     let e = Enchants::NONE.with(Enchantment::WindBurst, 3).with(Enchantment::Lunge, 2);
     assert_eq!(e.0 >> (41 * 3) & 7, 3);
     let saved = e.to_hex();
     assert_eq!(Enchants::from_hex(&saved), Some(e));
-    // A save from a build with Swift Sneak (bit 40) keeps it through this one.
-    let swift = Enchants(e.0 | (2u128 << (40 * 3)));
+    // Swift Sneak at bit 40 and Wind Burst at 41 save side by side.
+    let swift = e.with(Enchantment::SwiftSneak, 2);
+    assert_eq!(swift.0 >> (40 * 3) & 7, 2);
     assert_eq!(Enchants::from_hex(&swift.to_hex()), Some(swift));
     assert_eq!(e.iter().count(), 2);
     assert_eq!(Enchantment::WindBurst.describe(2), "Wind Burst II");

@@ -24,7 +24,7 @@ use crate::world::terrain::{Dimension, Generator, SEA_LEVEL};
 use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 24] = [
+pub(super) const DIMENSION_KEYS: [&str; 26] = [
     "furnaces",
     "chests",
     "items",
@@ -49,6 +49,8 @@ pub(super) const DIMENSION_KEYS: [&str; 24] = [
     "copper_golem_statues",
     "sculk",
     "tridents",
+    "trial",
+    "ominous_item_spawners",
 ];
 /// How far around the arrival point to look for an existing portal.
 const SEARCH_RADIUS: i32 = 16;
@@ -138,6 +140,7 @@ impl Game {
         props.insert("creaking_hearts".into(), self.world.creaking_hearts_to_string());
         props.insert("sculk".into(), self.world.sculk_to_string());
         props.insert("copper_golem_statues".into(), self.world.copper_golem_statues_to_string());
+        props.insert("trial".into(), self.world.trial_to_string());
         props.insert("spawners".to_string(), self.world.spawners_to_string());
         props.insert("utilities".to_string(), self.world.utilities_to_string());
         self.mobs.entities.save_props(&mut props);
@@ -188,6 +191,9 @@ impl Game {
         }
         if let Some(s) = props.get("copper_golem_statues") {
             self.world.load_copper_golem_statues(s);
+        }
+        if let Some(s) = props.get("trial") {
+            self.world.load_trial(s);
         }
         if let Some(w) = props.get("wood") {
             self.world.load_wood(w);

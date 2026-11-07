@@ -368,13 +368,14 @@ pub mod tex {
     pub const BUBBLE_DOWN: u16 = BUBBLE_BASE + 1;
     pub const COUNT: u32 = {
         // Through the highest layer any v0.15 or v0.16 track uses; unused layers stay reserved.
-        const ENDS: [u32; 6] = [
+        const ENDS: [u32; 7] = [
             super::super::cave_blocks::CAL_TEX_END as u32,
             super::super::eyeblossom::TEX_END as u32,
             super::super::sniffer_egg::TEXTURE_END as u32,
             super::super::archaeology::t::END as u32,
             super::super::heavy_core::TEX_END as u32,
             super::super::jukebox::t::END as u32,
+            super::super::trial::TEX_END as u32,
         ];
         let mut max = 0;
         let mut i = 0;
@@ -1297,6 +1298,9 @@ impl Block {
 
     /// This block without its orientation (itself if it has none).
     pub fn base(self) -> Block {
+        if let Some(b) = super::trial::base(self) {
+            return b;
+        }
         if super::sniffer_egg::owns(self.0) {
             return super::sniffer_egg::EGG;
         }
@@ -1389,6 +1393,12 @@ impl Block {
     pub fn with_facing(self, facing: Facing) -> Block {
         if let Some((_, phase, wet)) = super::cave_blocks::calibrated_of(self) {
             return super::cave_blocks::calibrated_sensor(facing, phase, wet);
+        }
+        if let Some(b) = super::trial::with_facing(self, facing) {
+            return b;
+        }
+        if super::trial::spawner(self).is_some() {
+            return self;
         }
         if let Some(s) = super::copper_golem_statue::decode(self) {
             return super::copper_golem_statue::block(super::copper_golem_statue::Statue { facing, ..s });
@@ -1631,6 +1641,10 @@ impl Block {
         if let Some(drop) = super::jukebox::drop(self) {
             return drop;
         }
+        // `blocks/trial_spawner` and `blocks/vault` are empty tables.
+        if super::trial::owns(self.0) {
+            return None;
+        }
         if super::sniffer_egg::owns(self.0) {
             return Some(Item::SNIFFER_EGG);
         }
@@ -1791,6 +1805,10 @@ impl Block {
     pub fn hardness(self) -> f32 {
         if let Some(h) = super::jukebox::hardness(self) {
             return h;
+        }
+        // `strength(50.0F)` for both the trial spawner and the vault.
+        if super::trial::owns(self.0) {
+            return 50.0;
         }
         if super::sniffer_egg::owns(self.0) {
             return 0.5;
@@ -2035,6 +2053,9 @@ impl Block {
         }
         if self == super::jukebox::REINFORCED_DEEPSLATE {
             return None;
+        }
+        if super::trial::owns(self.0) {
+            return Some(ToolKind::Pickaxe);
         }
         if super::archaeology::owns(self.0) {
             return Some(ToolKind::Shovel);
@@ -2406,6 +2427,7 @@ impl Block {
             .chain(super::cave_blocks::palette_ids())
             .chain(super::frog_blocks::palette_ids())
             .chain(super::jukebox::palette_ids())
+            .chain(super::trial::palette_ids())
             .map(Block)
     }
 
@@ -2591,6 +2613,9 @@ impl Block {
         }
         if name == "scaffolding" {
             return Some(super::scaffolding::SCAFFOLDING);
+        }
+        if name == "ominous vault" {
+            return Some(super::trial::OMINOUS_VAULT);
         }
         if name == "white wool" {
             return Some(Block::WOOL);
@@ -3025,6 +3050,7 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         return info;
     }
     let (name, kind, tex) = match id {
+        id if super::trial::owns(id) => super::trial::registry(id),
         id if super::copper_golem_statue::owns(id) => match super::copper_golem_statue::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
@@ -3505,6 +3531,7 @@ const fn emission_of(i: usize) -> u8 {
     {
         match i {
             _ if super::frog_blocks::owns(i as u16) => super::frog_blocks::emission(i as u16),
+            _ if super::trial::owns(i as u16) => super::trial::emission(i as u16),
             22 | 37..=41 | 165..=180 | 208 | 210 => 15, // glowstone, lava, fire, portals
             36 => 14,                                   // torch
             46 | 50..=52 | 913..=916 | 921..=924 => 13, // lit furnace, every facing
@@ -3658,6 +3685,13 @@ mod tests {
                 if let Some((_, lit)) = candle::decode_cake(block.0) {
                     return if lit { 3 } else { 0 };
                 }
+            }
+            // `TrialSpawnerState.lightLevel` and `VaultState.LightLevel`.
+            if let Some((state, _)) = super::super::trial::spawner(block) {
+                return state.light();
+            }
+            if let Some((_, state, _)) = super::super::trial::vault(block) {
+                return state.light();
             }
             // Checked against Java in `cave_blocks::tests`.
             if super::super::cave_blocks::owns(block.0) {

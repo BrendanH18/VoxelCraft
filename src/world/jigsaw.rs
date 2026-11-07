@@ -28,7 +28,7 @@
 //! Besides the format documented in `jigsaw/village.txt`, templates take
 //! `fill x0 y0 z0 x1 y1 z1 <spec>` (an inclusive box of a block, role or
 //! crop, painted before the layers so layer cells override it),
-//! `cell x y z <spec>` (one cell of any spec, painted after the fills),
+//! `cell x y z <spec>` or `put x y z <spec>` (one cell of any spec, painted with the layers),
 //! `chest:<table>@dir` (a chest filled from a named loot table),
 //! `spawner:<mob>` (a mob spawner), `mob x y z <name>` (a resident placed
 //! with the structure, see [`markers`]) and connectors facing `up` or
@@ -349,8 +349,8 @@ impl Library {
                     fills.push((a.min(b), a.max(b), spec));
                 }
                 "mob" if words.len() == 5 => mobs.push((vec3(&words[1..4])?, words[4].to_string())),
-                // One cell of any spec, without a layer grid.
-                "cell" if words.len() == 5 => {
+                // One cell of any spec (chests and spawners included), without a layer grid.
+                "cell" | "put" if words.len() == 5 => {
                     let spec = self.spec(words[4]).map_err(err)?;
                     cells.push(Cell { pos: vec3(&words[1..4])?, spec });
                 }
@@ -446,8 +446,14 @@ pub fn ancient_cities() -> &'static Library {
     LIB.get_or_init(|| Library::parse(include_str!("jigsaw/ancient_city.txt")).expect("ancient city templates"))
 }
 
+/// Trial chamber templates and pools (v0.16 Track C).
+pub fn trial_chambers() -> &'static Library {
+    static LIB: OnceLock<Library> = OnceLock::new();
+    LIB.get_or_init(|| Library::parse(include_str!("jigsaw/trial_chambers.txt")).expect("trial chamber templates"))
+}
+
 /// Every template library, for tests that check them all.
-pub fn all() -> [(&'static str, &'static Library); 7] {
+pub fn all() -> [(&'static str, &'static Library); 8] {
     [
         ("ancient_city", ancient_cities()),
         ("village", villages()),
@@ -456,6 +462,7 @@ pub fn all() -> [(&'static str, &'static Library); 7] {
         ("trail_ruins", trail_ruins()),
         ("relics", relics()),
         ("ruined_portals", ruined_portals()),
+        ("trial_chambers", trial_chambers()),
     ]
 }
 

@@ -271,6 +271,10 @@ pub(super) fn spawn_list<W: MobWorld + ?Sized>(
     if world.in_ancient_city(cell) {
         return &[];
     }
+    // Trial chambers' `spawn_overrides` empty every category inside a piece.
+    if world.in_trial_chamber(cell) {
+        return &[];
+    }
     for b in structures {
         if !b.spawns.contains(cell) {
             continue;

@@ -1566,6 +1566,12 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if let Some(s) = &m.sniffer {
         v["sniffer"] = s.save();
     }
+    if let Some(s) = &m.breeze {
+        v["breeze"] = s.save();
+    }
+    if m.keeps_equipment {
+        v["keeps_equipment"] = json!(true);
+    }
     if let Some(s) = &m.creaking {
         v["creaking"] = s.save();
     }
@@ -1677,6 +1683,10 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     if let Some(s) = &mut m.sniffer {
         s.load(&v["sniffer"]);
     }
+    if let Some(s) = &mut m.breeze {
+        **s = super::breeze::State::load(&v["breeze"]);
+    }
+    m.keeps_equipment = v["keeps_equipment"] == true;
     if let Some(s) = &mut m.creaking {
         s.load(&v["creaking"]);
     }

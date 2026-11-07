@@ -787,6 +787,33 @@ Track B allocation (2026-11-06, implemented, unverified;
 No `MobKind`, LAN index or projectile kind. New `Feature::AncientCityChest`,
 `Used::Jukebox`, the `jukeboxes` dimension save key and the player
 `last_death` save key (`agents` profiles carry it too).
+Track C allocation (2026-11-06, implemented, unverified):
+
+| States / IDs | Meaning |
+| --- | --- |
+| 15488–15499 | Trial spawner: `15488 + trial_spawner_state + 6*ominous`, Java's state order (inactive, waiting for players, active, waiting for reward ejection, ejecting reward, cooldown) |
+| 15504–15535 | Vault: `15504 + facing + 4*vault_state + 16*ominous`, facing in `Facing` order (south, north, east, west), states inactive, active, unlocking, ejecting |
+| Items 1470–1473 | Trial key, ominous trial key, breeze rod, wind charge |
+| Items 1474–1478 | Ominous bottle, amplifier 0–4 |
+| Item 1479 | Trial explorer map (Java `buried_trial_chambers_map`) |
+| Layers 3760–3786 | Spawner faces (12), vault faces (14), explorer map icon; `world::trial::TEX` offsets |
+| MobKind `Breeze` | Saved `breeze`, appended after `Sniffer`; wire index **73** by explicit mapping, 72 left for Track A's warden |
+
+States 15500–15503 and 15536–15743, and layers 3787–3855, stay reserved and
+unregistered. Appended orderings for the integrator: `Effect::BadOmen` and
+`Effect::TrialOmen` after `Saturation`; `thrown::Kind::WindCharge` (LAN 3)
+and `BreezeWindCharge` (LAN 4) after `LlamaSpit`; `Voice::Breeze`;
+`Sound::Breeze(breeze::Cue)` after the sniffer cues; nine item icons after
+the resin brick. Block entities save in the dimension's `trial` property
+and ominous item spawners in `ominous_item_spawners`. See
+[Track C evidence](verification/2026-11-06-v0.16-trial-chambers.md).
+
+Integration (2026-11-07): the orderings are now contiguous. `MobKind`
+ends `Warden` (72), `Breeze` (73); `Enchantment` ends `SwiftSneak` (40),
+`WindBurst` (41), with no reserved gaps or explicit mappings. Item icons
+after the resin brick run Track B, D, C; sounds Warden, Sculk, Weapon,
+Breeze; effects Darkness, BadOmen, TrialOmen
+([integration record](verification/2026-11-07-v0.16-integration.md)).
 
 ## Assessment branch ID reservations
 
