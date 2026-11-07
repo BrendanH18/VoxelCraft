@@ -22,6 +22,15 @@ runs `cargo audit` weekly and on pull requests that change `Cargo.toml`,
 `Cargo.lock` or `.github/workflows/security.yml`. Dependabot proposes weekly
 crate and GitHub Actions updates.
 
+Dependency review (2026-11-07): `ttf-parser` 0.25.1 remains an
+[unmaintained transitive dependency](https://rustsec.org/advisories/RUSTSEC-2026-0192.html)
+through `winit` → `sctk-adwaita` → `ab_glyph` → `owned_ttf_parser` on Linux.
+There is no patched version. Track the upstream font-parser migration rather
+than removing Linux window decorations to silence the warning. The lockfile's
+Tokio dependency comes through `wasm-bindgen-futures` only for its experimental
+Emscripten configuration; keep it patched even though desktop builds do not
+use that path.
+
 ## Remote checks
 
 `scripts/remote-check.sh` runs the checks on a [Namespace](https://namespace.so)
