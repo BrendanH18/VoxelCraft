@@ -7,7 +7,7 @@ No verified publisher signing certificates or notarization are used.
 ## Automated builds
 
 `.github/workflows/release.yml` builds on native Windows (GitHub-hosted) and Mac
-(Namespace) runners using Rust 1.98.1 and the committed Cargo.lock. It checks
+(Namespace) runners using Rust 1.99.1 and the committed Cargo.lock. It checks
 formatting, runs Clippy and tests, generates dependency license notices, then
 packages and smoke-tests the downloads. Windows uses a static C runtime so users
 do not need a separate Visual C++ redistributable installation.
@@ -58,7 +58,7 @@ Install the desired Rust target(s), then build with the deployment target set:
 ```sh
 rustup target add aarch64-apple-darwin x86_64-apple-darwin
 MACOSX_DEPLOYMENT_TARGET=13.0 cargo build --release --locked --target aarch64-apple-darwin
-cargo install cargo-about --locked --features cli --version 0.9.2
+cargo install cargo-about --locked --features cli --version 0.9.3
 cargo about generate --locked --fail --target aarch64-apple-darwin \
   --output-file packaging/THIRD-PARTY-LICENSES.html packaging/licenses.hbs
 bash packaging/macos/package.sh aarch64-apple-darwin
@@ -80,7 +80,7 @@ Use Windows with Rust's MSVC toolchain, Visual Studio C++ build tools, and
 ```powershell
 $env:RUSTFLAGS = "-C target-feature=+crt-static"
 cargo build --release --locked --target x86_64-pc-windows-msvc
-cargo install cargo-about --locked --features cli --version 0.9.2
+cargo install cargo-about --locked --features cli --version 0.9.3
 cargo about generate --locked --fail --target x86_64-pc-windows-msvc `
   --output-file packaging/THIRD-PARTY-LICENSES.html packaging/licenses.hbs
 ./packaging/windows/package.ps1
