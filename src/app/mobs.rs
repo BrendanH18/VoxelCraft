@@ -419,7 +419,15 @@ impl Game {
                         self.world.ignite(cell);
                     }
                 }
-                EntityEvent::Fireball { .. } | EntityEvent::ThrowPotion { .. } => {}
+                EntityEvent::Fireball { .. } | EntityEvent::ThrowPotion { .. } | EntityEvent::ThrowTrident { .. } => {}
+                EntityEvent::TridentBrokeDripstone { cell, mob_owned } => {
+                    // `Projectile.mayInteract` (a mob's needs `mobGriefing`) and `mayBreak`.
+                    let may = self.gamerules.bool("projectiles_can_break_blocks")
+                        && (!mob_owned || self.gamerules.bool("mob_griefing"));
+                    if may && let Some(block) = self.world.trident_breaks_dripstone(cell) {
+                        self.audio.block_break(block, cell);
+                    }
+                }
                 EntityEvent::Sound { sound, pos } => {
                     // Brutes and zoglins are deeper takes on piglin and hoglin voices.
                     let deep = matches!(
@@ -447,6 +455,10 @@ impl Game {
                             }
                         }
                         MobSound::Allay(action) => (Sound::Allay(action), 0.8),
+                        MobSound::Weapon(cue) => {
+                            super::items::weapon_sound(&mut self.audio, cue, pos);
+                            continue;
+                        }
                         MobSound::CopperGolem(action, stage) => (Sound::CopperGolem(action, stage), 0.7),
                         MobSound::Hurt(MobKind::CopperGolem) => {
                             (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Hurt, 0), 0.9)

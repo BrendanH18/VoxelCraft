@@ -104,8 +104,37 @@ impl Actor<'_> {
     fn attack(&mut self) -> bool {
         use voxelcraft::session::combat::{Outcome, Target as Hit};
         let slot = self.body.actions.selected;
+        let spear = self.held().is_some_and(voxelcraft::weapons::is_spear);
         let result = self.session.attack(slot, self.world, self.entities, self.sprinting);
-        let Ok(Outcome::Hit { target, at, critical, tool_broken, sprint_cancelled, .. }) = result else { return false };
+        if let Ok(Outcome::Jab { tool_broken, attack, hit, lunge, from, .. }) = result {
+            super::items::weapon_sound(self.audio, attack, from);
+            if let Some(hit) = hit {
+                super::items::weapon_sound(self.audio, hit, from);
+            }
+            if let Some(level) = lunge {
+                super::items::weapon_sound(self.audio, voxelcraft::weapons::Cue::lunge(level), from);
+            }
+            if let Some(item) = tool_broken {
+                self.tool_broke(item);
+            }
+            return true;
+        }
+        // A spear never starts mining (`Minecraft.continueAttack` skips piercing weapons).
+        if spear {
+            return true;
+        }
+        let Ok(Outcome::Hit { target, at, critical, tool_broken, sprint_cancelled, smash, .. }) = result else {
+            return false;
+        };
+        if let Some(smash) = smash {
+            super::items::weapon_sound(self.audio, smash.cue, smash.at);
+            if let Some(center) = smash.wind_burst {
+                if smash.cue != voxelcraft::weapons::Cue::WindBurst {
+                    super::items::weapon_sound(self.audio, voxelcraft::weapons::Cue::WindBurst, center);
+                }
+                voxelcraft::weapons::mace::wind_burst_blocks(self.world, center);
+            }
+        }
         if sprint_cancelled {
             self.requests.push(Request::StopSprint);
         }
@@ -154,7 +183,7 @@ impl Actor<'_> {
             self.session.stop_blocking();
             self.session.cancel_consumption();
             self.body.actions.eat_timer = 0.0;
-            if let Some(shot) = self.session.release_draw(self.body.actions.selected, self.entities) {
+            if let Some(shot) = self.session.release_draw(self.body.actions.selected, self.world, self.entities) {
                 self.present_shot(shot);
             }
         }
@@ -204,7 +233,7 @@ impl Actor<'_> {
         }
         self.session.tick_blocking(self.body.actions.selected, acting && self.body.right_held);
         self.eat(acting, dt);
-        if let Some(shot) = self.session.tick_draw(self.body.actions.selected, acting) {
+        if let Some(shot) = self.session.tick_draw(self.body.actions.selected, acting, self.world, self.entities) {
             self.present_shot(shot);
         }
     }

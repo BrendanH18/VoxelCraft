@@ -39,7 +39,8 @@ impl PlayerSession {
     /// Java's `isUsingItem` for the movement slow-down: eating, drinking, or
     /// drawing a bow or crossbow.
     pub fn using_item(&self) -> bool {
-        self.consuming() || self.drawing() || self.shield_raised() || self.brushing()
+        // A spear's charge keeps full speed and the sprint (`UseEffects(true, false, 1.0)`).
+        self.consuming() || (self.drawing() && !self.charging_spear()) || self.shield_raised() || self.brushing()
     }
     pub fn consumption_progress(&self) -> f32 {
         if self.consumption.duration == 0 {

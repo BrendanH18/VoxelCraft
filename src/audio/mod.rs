@@ -13,6 +13,7 @@ mod sniffer;
 pub mod sounds;
 mod source;
 mod voices;
+mod weapons;
 
 use std::sync::Arc;
 use std::time::Instant;
