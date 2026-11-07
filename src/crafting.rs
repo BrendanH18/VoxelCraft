@@ -22,6 +22,7 @@ mod sculk;
 pub use copper::stonecutting as copper_stonecutting;
 pub mod colour;
 pub mod stonecutting;
+mod weapons;
 mod wood;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -647,6 +648,7 @@ pub fn recipes() -> &'static [Recipe] {
         utilities::add(&mut r);
         passive::add(&mut r);
         wolf_armor::add(&mut r);
+        weapons::add(&mut r);
         r
     })
 }

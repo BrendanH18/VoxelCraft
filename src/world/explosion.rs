@@ -644,6 +644,8 @@ static TABLES: LazyLock<Tables> = LazyLock::new(|| {
                 || super::copper_golem_statue::owns(b.0)
             {
                 6.0
+            } else if super::heavy_core::owns(b.0) {
+                super::heavy_core::BLAST_RESISTANCE
             } else {
                 resistance.get(name).copied().unwrap_or_else(|| b.hardness())
             };

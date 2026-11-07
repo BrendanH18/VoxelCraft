@@ -28,6 +28,8 @@ impl Entities {
             "potion_clouds": self.clouds.iter().filter(|c|near(c.pos)).take(MAX).map(super::lingering::Cloud::save).collect::<Vec<_>>(),
             "potions": self.potions.iter().filter(|p| near(p.pos)).take(MAX)
                 .map(|p| json!({"at": pair(p.pos, p.previous_pos), "potion": p.potion.0,"lingering":p.lingering})).collect::<Vec<_>>(),
+            "tridents": self.tridents.iter().filter(|t| near(t.pos)).take(MAX)
+                .map(|t| json!({"at": pair(t.pos, t.previous_pos), "dir": t.dir.to_array(), "foil": t.foil(), "stuck": t.in_ground})).collect::<Vec<_>>(),
             "thrown": self.thrown.iter().filter(|t| near(t.pos)).take(MAX)
                 .map(|t| json!({"at": pair(t.pos, t.previous_pos), "kind": t.kind as u8})).collect::<Vec<_>>(),
             "bobbers": self.bobbers.iter().filter(|b| near(b.pos)).take(MAX)
@@ -75,6 +77,18 @@ impl Entities {
                 let mut thrown = ThrownPotion::replica(potion, p, q);
                 thrown.lingering = e["lingering"] == true;
                 Some(thrown)
+            })
+            .collect();
+        self.tridents = list("tridents")
+            .into_iter()
+            .filter_map(|e| {
+                let (p, q) = unpair(&e["at"])?;
+                let d = e["dir"].as_array()?;
+                let f = |i: usize| d.get(i).and_then(Value::as_f64).map(|v| v as f32);
+                let dir = glam::Vec3::new(f(0)?, f(1)?, f(2)?);
+                let mut t = super::trident::Trident::replica(p, q, dir.normalize_or(glam::Vec3::Z), e["foil"] == true);
+                t.in_ground = e["stuck"] == true;
+                Some(t)
             })
             .collect();
         self.thrown = list("thrown")

@@ -1347,7 +1347,7 @@ fn monument(g: &Generator, centre: IVec2, rot: u8, rng: &mut Rng) -> Built {
 // `tests/fixtures/java/26.3/world_defects.json` and checked against it by
 // `loot_tables_match_the_java_26_3_fixture`. Entries whose item does not exist
 // yet (trim templates, nautilus and copper horse armor, experience bottles,
-// stews and spears) stay empty at their
+// and stews) stay empty at their
 // original weight rather than redistributing their probability.
 #[cfg(test)]
 const DESERTPYRAMID_0: &[L] = &[
@@ -1559,7 +1559,7 @@ const SHIPMAP_3: &[L] = &[
 const RUINSMALL_0: &[L] = &[
     L { item: Some(Item::COAL), weight: 10, lo: 1, hi: 4, enchanted: false, damage: None },
     L { item: Some(Item::tool(ToolKind::Axe, Tier::Stone)), weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },
-    L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None }, // stone_spear
+    L { item: Some(crate::weapons::spear(Tier::Stone)), weight: 2, lo: 1, hi: 1, enchanted: false, damage: None }, // stone_spear
     L { item: Some(Item::ROTTEN_FLESH), weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },
     L { item: Some(Item::EMERALD), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None },
     L { item: Some(Item::WHEAT), weight: 10, lo: 2, hi: 3, enchanted: false, damage: None },
@@ -1598,7 +1598,7 @@ const RUINBIG_0: &[L] = &[
     L { item: Some(Item::COAL), weight: 10, lo: 1, hi: 4, enchanted: false, damage: None },
     L { item: Some(Item::GOLD_NUGGET), weight: 10, lo: 1, hi: 3, enchanted: false, damage: None },
     L { item: Some(Item::EMERALD), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None },
-    L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None }, // stone_spear
+    L { item: Some(crate::weapons::spear(Tier::Stone)), weight: 2, lo: 1, hi: 1, enchanted: false, damage: None }, // stone_spear
     L { item: Some(Item::WHEAT), weight: 10, lo: 2, hi: 3, enchanted: false, damage: None },
 ];
 #[cfg(test)]
@@ -1742,7 +1742,7 @@ const BURIEDTREASURE_3: &[L] = &[
         damage: None,
     }, // leather_chestplate
     L { item: Some(Item::tool(ToolKind::Sword, Tier::Iron)), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // iron_sword
-    L { item: None, weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // iron_spear
+    L { item: Some(crate::weapons::spear(Tier::Iron)), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // iron_spear
 ];
 #[cfg(test)]
 const BURIEDTREASURE_4: &[L] = &[
@@ -1963,8 +1963,6 @@ mod tests {
             "diamond_nautilus_armor",
             "experience_bottle",
             "suspicious_stew",
-            "stone_spear",
-            "iron_spear",
         ];
         for (name, ours) in tables {
             let pools = loot[name].as_array().unwrap();

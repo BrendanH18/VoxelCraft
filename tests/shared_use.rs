@@ -132,10 +132,10 @@ fn bows_draw_in_ticks_shoot_on_release_and_let_go_when_the_slot_changes() {
     s.inventory.slots[2] = Some(Stack::new(Item::BOW, 1));
     assert!(matches!(s.start_draw(0, &w, &mut e), Some(shot) if shot.ranged == Ranged::Drawing));
     for _ in 0..FULL_DRAW_TICKS {
-        assert_eq!(s.tick_draw(0, true), None);
+        assert_eq!(s.tick_draw(0, true, &w, &mut e), None);
     }
     assert_eq!(s.draw_power(0), Some(1.0));
-    let shot = s.release_draw(0, &mut e).unwrap();
+    let shot = s.release_draw(0, &w, &mut e).unwrap();
     assert!(matches!(shot.ranged, Ranged::ArrowShot { power, .. } if power == 1.0));
     assert_eq!(s.inventory.get(1).unwrap().count, 1, "one arrow spent");
     assert_eq!(s.inventory.get(0).unwrap().damage, 1, "the bow wears");
@@ -144,11 +144,11 @@ fn bows_draw_in_ticks_shoot_on_release_and_let_go_when_the_slot_changes() {
     // Selecting another bow lets the string go without shooting.
     s.start_draw(0, &w, &mut e).unwrap();
     for _ in 0..FULL_DRAW_TICKS {
-        s.tick_draw(0, true);
+        s.tick_draw(0, true, &w, &mut e);
     }
-    assert_eq!(s.tick_draw(2, true), None);
+    assert_eq!(s.tick_draw(2, true, &w, &mut e), None);
     assert!(!s.drawing());
-    assert_eq!(s.release_draw(2, &mut e), None);
+    assert_eq!(s.release_draw(2, &w, &mut e), None);
     assert_eq!(e.arrows.len(), 1);
 }
 
@@ -159,9 +159,9 @@ fn crossbows_load_after_twenty_five_ticks_and_fire_on_the_next_use() {
     s.inventory.slots[1] = Some(Stack::new(Item::ARROW, 1));
     s.start_draw(0, &w, &mut e).unwrap();
     for _ in 0..CROSSBOW_CHARGE_TICKS - 1 {
-        assert_eq!(s.tick_draw(0, true), None);
+        assert_eq!(s.tick_draw(0, true, &w, &mut e), None);
     }
-    let loaded = s.tick_draw(0, true).unwrap();
+    let loaded = s.tick_draw(0, true, &w, &mut e).unwrap();
     assert!(matches!(loaded.ranged, Ranged::CrossbowLoaded { .. }));
     assert_eq!(s.inventory.get(0).unwrap().item, Item::CHARGED_CROSSBOW);
     assert_eq!(s.inventory.get(1), None, "loading spends the arrow");
@@ -353,9 +353,9 @@ fn crossbow_enchantments_change_loading_volley_wear_and_pickup() {
     assert_eq!(crossbow_charge_ticks(s.inventory.get(0).unwrap().enchants), 10);
     s.start_draw(0, &w, &mut e).unwrap();
     for _ in 0..9 {
-        assert_eq!(s.tick_draw(0, true), None);
+        assert_eq!(s.tick_draw(0, true, &w, &mut e), None);
     }
-    assert!(matches!(s.tick_draw(0, true).unwrap().ranged, Ranged::CrossbowLoaded { .. }));
+    assert!(matches!(s.tick_draw(0, true, &w, &mut e).unwrap().ranged, Ranged::CrossbowLoaded { .. }));
     assert_eq!(s.inventory.get(0).unwrap().item, Item::CHARGED_CROSSBOW);
     assert_eq!(s.inventory.get(1).unwrap().count, 3, "multishot still spends one arrow");
     // Firing looses three arrows, one recoverable, and wears the crossbow three times.
@@ -372,9 +372,9 @@ fn crossbow_enchantments_change_loading_volley_wear_and_pickup() {
     s.inventory.slots[1] = Some(Stack::new(Item::ARROW, 2));
     s.start_draw(0, &w, &mut e).unwrap();
     for _ in 0..24 {
-        assert_eq!(s.tick_draw(0, true), None);
+        assert_eq!(s.tick_draw(0, true, &w, &mut e), None);
     }
-    assert!(s.tick_draw(0, true).is_some());
+    assert!(s.tick_draw(0, true, &w, &mut e).is_some());
     s.start_draw(0, &w, &mut e).unwrap();
     assert_eq!((e.arrows.len(), s.inventory.get(0).unwrap().damage), (1, 1));
     assert!(e.arrows[0].pickup && e.arrows[0].enchants.level(Enchantment::Piercing) == 2);

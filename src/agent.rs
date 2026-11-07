@@ -299,7 +299,10 @@ impl Agent {
                     return Err("hold a bow or crossbow with an arrow, away from a block that takes use".into());
                 };
                 self.emit(Event::Shot(shot));
-                if shot.ranged == crate::session::ranged::Ranged::Drawing {
+                if matches!(
+                    shot.ranged,
+                    crate::session::ranged::Ranged::Drawing | crate::session::ranged::Ranged::Charging { .. }
+                ) {
                     self.input = MoveInput::default();
                     self.remaining = duration;
                     self.mining = false;
@@ -762,6 +765,9 @@ impl Agent {
         }
         // Every agent (CLI, controller and LAN hands) charges here once per tick.
         self.session.tick_attack_strength(self.selected);
+        if let Some(shot) = self.session.tick_weapons(entities) {
+            self.emit(Event::Shot(shot));
+        }
         // Java keeps the hook while a rod is in either hand.
         let holding_rod = [self.session.inventory.get(self.selected), self.session.inventory.offhand]
             .iter()
@@ -889,7 +895,7 @@ impl Agent {
                 Err(_) => {}
             }
         }
-        self.draw(entities);
+        self.draw(world, entities);
         self.session.tick_blocking_unless_ticked(self.selected, self.eating && self.remaining > 0);
         if self.session.brushing() && self.eating && self.remaining > 0 {
             self.session.tick_brushing(self.selected, true, world);
@@ -913,6 +919,10 @@ impl Agent {
             item.stack.count = self.session.inventory.add_stack(item.stack);
             item.stack.count > 0
         });
+        let (id, feet, shape) = (self.session.id, self.session.player.pos, self.session.player.collision_shape());
+        let creative = self.session.mode.is_creative();
+        let inventory = &mut self.session.inventory;
+        entities.collect_tridents(id, feet, shape, creative, |stack| inventory.add_stack(stack) == 0);
         for stack in entities.collect_arrow_stacks(self.session.player.pos) {
             let left = self.session.inventory.add_stack(stack);
             if left > 0 {
@@ -997,7 +1007,7 @@ impl Agent {
 
     /// One tick of holding use with a bow or crossbow: a crossbow loads when
     /// its charge completes; a bow shoots when the requested ticks have passed.
-    fn draw(&mut self, entities: &mut Entities) {
+    fn draw(&mut self, world: &World, entities: &mut Entities) {
         if !self.drawing {
             return;
         }
@@ -1006,7 +1016,7 @@ impl Agent {
             self.session.cancel_draw();
             return;
         }
-        if let Some(shot) = self.session.tick_draw(self.selected, true) {
+        if let Some(shot) = self.session.tick_draw(self.selected, true, world, entities) {
             self.emit(Event::Shot(shot));
         }
         if !self.session.drawing() {
@@ -1014,7 +1024,7 @@ impl Agent {
             self.drawing = false;
         } else if self.remaining <= 1 {
             self.drawing = false;
-            if let Some(shot) = self.session.release_draw(self.selected, entities) {
+            if let Some(shot) = self.session.release_draw(self.selected, world, entities) {
                 self.emit(Event::Shot(shot));
                 self.swings += 1;
             }

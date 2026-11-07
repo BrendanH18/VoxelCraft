@@ -234,15 +234,21 @@ fn haste_and_mining_fatigue_scale_the_attack_speed_attribute() {
 fn only_spears_carry_a_minimum_attack_charge() {
     let f = fixture();
     let minimum = f["minimum_attack_charge"]["spear_value"].as_f64().unwrap() as f32;
-    // No spear is registered, so every registered item accepts any charge.
-    for spear in f["minimum_attack_charge"]["spear_items"].as_array().unwrap() {
-        assert!(Item::from_name(spear.as_str().unwrap()).is_none(), "{spear} is now registered");
-    }
+    // Every spear needs a full charge; every other registered item accepts any.
+    let spears: Vec<Item> = f["minimum_attack_charge"]["spear_items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| Item::from_name(s.as_str().unwrap()).unwrap_or_else(|| panic!("{s} is registered")))
+        .collect();
+    assert_eq!(spears.len(), 7);
     for item in Item::all_items() {
-        assert_eq!(
-            mining::minimum_attack_charge(Some(item)),
+        let expected = if spears.contains(&item) {
+            minimum
+        } else {
             f["minimum_attack_charge"]["default"].as_f64().unwrap() as f32
-        );
+        };
+        assert_eq!(mining::minimum_attack_charge(Some(item)), expected, "{}", item.name());
     }
     // Java `cannotAttackWithItem`: with the server's five ticks of lead, a charge below the minimum refuses.
     let lead = f["minimum_attack_charge"]["server_lead_ticks"].as_u64().unwrap() as u32;

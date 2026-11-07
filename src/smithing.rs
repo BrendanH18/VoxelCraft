@@ -10,7 +10,9 @@ pub fn is_template(item: Item) -> bool {
 }
 
 pub fn is_base(item: Item) -> bool {
-    matches!(item.as_tool(), Some((_, Tier::Diamond))) || matches!(item.as_armor(), Some((_, ArmorMaterial::Diamond)))
+    matches!(item.as_tool(), Some((_, Tier::Diamond)))
+        || matches!(item.as_armor(), Some((_, ArmorMaterial::Diamond)))
+        || item == crate::weapons::spear(Tier::Diamond)
 }
 
 pub fn is_addition(item: Item) -> bool {
@@ -23,6 +25,10 @@ pub fn is_addition(item: Item) -> bool {
 pub fn upgrade(template: Stack, base: Stack, addition: Stack) -> Option<Stack> {
     if !is_template(template.item) || !is_addition(addition.item) {
         return None;
+    }
+    // `recipe/netherite_spear_smithing.json`.
+    if base.item == crate::weapons::spear(Tier::Diamond) {
+        return Some(Stack { item: crate::weapons::spear(Tier::Netherite), count: 1, ..base });
     }
     let item = match base.item.as_tool() {
         Some((kind, Tier::Diamond)) => Item::tool(kind, Tier::Netherite),

@@ -122,7 +122,8 @@ fn ore_of(item: Item) -> Option<Block> {
 /// tools, armor and horse armor melt down to one nugget.
 fn nugget_of(item: Item) -> Option<Item> {
     use crate::item::{ArmorMaterial, Tier};
-    let tier = item.as_tool().map(|(_, t)| t);
+    // Spears melt down like the tier's other tools.
+    let tier = item.as_tool().map(|(_, t)| t).or_else(|| crate::weapons::spear_tier(item));
     let material = item.as_armor().map(|(_, m)| m);
     Some(match (tier, material, item.name()) {
         (Some(Tier::Iron), ..) | (_, Some(ArmorMaterial::Iron), _) | (.., "iron horse armor") => Item::IRON_NUGGET,

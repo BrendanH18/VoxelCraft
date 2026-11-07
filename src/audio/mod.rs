@@ -14,6 +14,7 @@ pub mod sounds;
 mod source;
 mod voices;
 mod warden;
+mod weapons;
 
 use std::sync::Arc;
 use std::time::Instant;

@@ -1654,6 +1654,16 @@ in parallel, each with its own IDs in the
    breaking pointed dripstone); spears of every Java tier (charge and
    lunge attacks, the Lunge enchantment); the spear entries already
    named in bastion and temple loot.
+   Implemented, unverified (2026-11-06): the heavy core block, the mace
+   (smash, fall-damage impulse, area knockback, Density, Breach, Wind
+   Burst's launch), tridents (charge, saved thrown entity, Loyalty,
+   Riptide, Channeling, Impaling, pickup, dripstone breaking, drowned
+   that spawn with, throw and drop them), all seven spears (recipes,
+   smithing, jab, charged attack, Lunge), enchanting/anvil rules and the
+   loot entries, on every input path
+   ([record](verification/2026-11-06-v0.16-weapons.md)). Open: mob spear
+   use, Java's held-item poses, Wind Burst's block interaction (Track C
+   hook) and the mace recipe's breeze rod (Track C).
 5. **Integration and checks.** Cross-track pieces (Wind Burst on wind
    charges, summoning shriekers in ancient cities, discs in vault loot),
    spawn tables together, save/reload of every new mob, block and item,

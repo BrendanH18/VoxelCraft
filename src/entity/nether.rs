@@ -1550,6 +1550,9 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if let Some(bow) = &m.skeleton_bow {
         v["skeleton_bow"] = json!(crate::inventory::stack_to_string(Some(**bow)));
     }
+    if let Some(weapon) = &m.weapon {
+        v["main_hand"] = json!(crate::inventory::stack_to_string(Some(**weapon)));
+    }
     if let Some(p) = &m.phantom {
         v["phantom"] = p.save();
     }
@@ -1657,6 +1660,11 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
         && let Some(t) = v["skeleton_bow"].as_str()
     {
         m.skeleton_bow = crate::inventory::stack_from_str(t).flatten().filter(|s| s.item == Item::BOW).map(Box::new);
+    }
+    if kind == MobKind::Drowned
+        && let Some(t) = v["main_hand"].as_str()
+    {
+        m.weapon = crate::inventory::stack_from_str(t).flatten().map(Box::new);
     }
     m.sheared = v["sheared"].as_bool().unwrap_or(false);
     if kind == MobKind::Skeleton && v["freezing"].is_object() {

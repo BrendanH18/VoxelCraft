@@ -88,6 +88,11 @@ impl Game {
             item.stack.count = left;
             left > 0
         });
+        let (id, shape) = (self.session.id, self.session.player.collision_shape());
+        let creative = self.session.mode.is_creative();
+        let inventory = &mut self.session.inventory;
+        picked |=
+            self.mobs.entities.collect_tridents(id, player, shape, creative, |stack| inventory.add_stack(stack) == 0);
         for stack in self.mobs.entities.collect_arrow_stacks(player) {
             picked = true;
             let left = self.session.inventory.add_stack(stack);
@@ -267,7 +272,16 @@ pub(super) fn shot_sound(audio: &mut Audio, ranged: voxelcraft::session::ranged:
             let pitch = (1.0 + 0.2 * (1.0 - power), 1.1 + 0.2 * (1.0 - power));
             audio.play(Sound::Bow, Some(from), 0.8, pitch);
         }
+        Ranged::Charging { from, cue: Some(cue) } | Ranged::WeaponCue { from, cue: Some(cue) } => {
+            weapon_sound(audio, cue, from);
+        }
+        Ranged::Charging { cue: None, .. } | Ranged::WeaponCue { cue: None, .. } => {}
     }
+}
+
+/// A v0.16 weapon sound at `at`, at Java's volume 1 and pitch 1.
+pub(super) fn weapon_sound(audio: &mut Audio, cue: voxelcraft::weapons::Cue, at: DVec3) {
+    audio.play(Sound::Weapon(cue), Some(at), 1.0, (0.95, 1.05));
 }
 
 /// Java's eye launch whoosh, pitched down like a thrown pearl.

@@ -221,6 +221,8 @@ pub enum Sound {
     Warden(crate::entity::warden::Cue),
     /// v0.16: sculk sensors, shriekers and catalysts.
     Sculk(crate::world::sculk::SculkCue),
+    /// v0.16 weapons (`crate::weapons::Cue`).
+    Weapon(crate::weapons::Cue),
 }
 
 const M: usize = Material::ALL.len();
@@ -231,7 +233,8 @@ impl Sound {
 
     const SNIFFER_END: usize = Self::BASE_COUNT + 48 + crate::entity::sniffer::Cue::ALL.len();
     const WARDEN_END: usize = Self::SNIFFER_END + crate::entity::warden::Cue::ALL.len();
-    pub const COUNT: usize = Self::WARDEN_END + crate::world::sculk::SculkCue::ALL.len();
+    const SCULK_END: usize = Self::WARDEN_END + crate::world::sculk::SculkCue::ALL.len();
+    pub const COUNT: usize = Self::SCULK_END + crate::weapons::Cue::ALL.len();
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -241,6 +244,7 @@ impl Sound {
             Sound::Sniffer(cue) => Self::BASE_COUNT + 48 + cue as usize,
             Sound::Warden(cue) => Self::SNIFFER_END + cue as usize,
             Sound::Sculk(cue) => Self::WARDEN_END + cue as usize,
+            Sound::Weapon(cue) => Self::SCULK_END + cue as usize,
             Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
             Sound::Thunder => Self::BASE_COUNT - 1,
             Sound::Bell => Self::BASE_COUNT - 4,
@@ -358,6 +362,7 @@ impl Sound {
             .chain(crate::entity::sniffer::Cue::ALL.map(Sound::Sniffer))
             .chain(crate::entity::warden::Cue::ALL.map(Sound::Warden))
             .chain(crate::world::sculk::SculkCue::ALL.map(Sound::Sculk))
+            .chain(crate::weapons::Cue::ALL.map(Sound::Weapon))
     }
 
     /// Stable sound name used when exporting or identifying samples.
@@ -368,6 +373,7 @@ impl Sound {
             Sound::Sniffer(c) => format!("sniffer_{c:?}").to_lowercase(),
             Sound::Warden(c) => format!("warden_{c:?}").to_lowercase(),
             Sound::Sculk(c) => format!("sculk_{c:?}").to_lowercase(),
+            Sound::Weapon(c) => format!("weapon_{c:?}").to_lowercase(),
             Sound::Thunder => "lightning_thunder".into(),
             Sound::HoneySlide => "honey_block_slide".into(),
             Sound::HoneyDrink => "honey_drink".into(),
@@ -458,6 +464,18 @@ impl Sound {
             // The warden's sounds are `HOSTILE`; the sculk blocks' `BLOCKS`.
             Sound::Warden(_) => SoundSource::Hostile,
             Sound::Sculk(_) => SoundSource::Blocks,
+            // The attacker's (`PLAYERS`) mace, spear and trident sounds; the
+            // thrown trident's own (`NEUTRAL`); the drowned's throw (`HOSTILE`);
+            // the explosion of Wind Burst (`BLOCKS`).
+            Sound::Weapon(c) => {
+                use crate::weapons::Cue as C;
+                match c {
+                    C::TridentHit | C::TridentHitGround | C::TridentReturn | C::TridentThunder => SoundSource::Neutral,
+                    C::DrownedShoot => SoundSource::Hostile,
+                    C::WindBurst => SoundSource::Blocks,
+                    _ => SoundSource::Players,
+                }
+            }
             Sound::Mob(voice, _) => voice.source(),
         }
     }
@@ -471,7 +489,7 @@ impl Sound {
         match self {
             Sound::Allay(..) | Sound::CopperGolem(..) | Sound::Note(_) => 1,
             Sound::Warden(_) | Sound::Sculk(_) => 2,
-            Sound::Sniffer(_) => 2,
+            Sound::Sniffer(_) | Sound::Weapon(_) => 2,
             Sound::Step(_) => 4,
             Sound::Break(_) | Sound::Place(_) | Sound::Swim | Sound::Drip => 3,
             Sound::Land | Sound::Splash | Sound::Explosion | Sound::Bow | Sound::Hurt | Sound::Hit | Sound::Door(_) => {
@@ -514,6 +532,7 @@ impl Sound {
             Sound::Sniffer(c) => super::sniffer::render(c, &mut rng),
             Sound::Warden(c) => super::warden::render(c, &mut rng),
             Sound::Sculk(c) => super::warden::render_sculk(c, &mut rng),
+            Sound::Weapon(c) => super::weapons::render(c, &mut rng),
             Sound::Thunder => thunder(&mut rng),
             Sound::HoneySlide => honey_sound(&mut rng, 0.35),
             Sound::HoneyDrink => honey_sound(&mut rng, 0.22),

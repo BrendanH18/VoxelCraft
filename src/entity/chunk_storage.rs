@@ -43,6 +43,7 @@ pub(super) struct ChunkEntities {
     pub(super) fireballs: Vec<fireball::Fireball>,
     pub(super) tnt: Vec<tnt::PrimedTnt>,
     pub(super) decor: Vec<decor::Decor>,
+    pub(super) tridents: Vec<super::trident::Trident>,
 }
 
 impl ChunkEntities {
@@ -59,6 +60,7 @@ impl ChunkEntities {
             + self.fireballs.len()
             + self.tnt.len()
             + self.decor.len()
+            + self.tridents.len()
     }
 }
 
@@ -192,6 +194,7 @@ impl Entities {
         self.fireballs.extend(c.fireballs);
         self.tnt.extend(c.tnt);
         self.decor.extend(c.decor);
+        self.tridents.extend(c.tridents);
     }
 
     fn store_unloaded(&mut self, world: &World) {
@@ -256,6 +259,7 @@ impl Entities {
         unload(&mut self.eyes, |e| away(e.pos), |chunk, e| storage.entry(chunk).eyes.push(e));
         unload(&mut self.fireballs, |e| away(e.pos), |chunk, e| storage.entry(chunk).fireballs.push(e));
         unload(&mut self.tnt, |e| away(e.pos), |chunk, e| storage.entry(chunk).tnt.push(e));
+        unload(&mut self.tridents, |e| away(e.pos), |chunk, e| storage.entry(chunk).tridents.push(e));
         // Hanging decorations belong to the cell they hang in.
         unload(
             &mut self.decor,

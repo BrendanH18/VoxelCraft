@@ -1761,6 +1761,9 @@ impl Game {
     fn act(&mut self, acting: bool, dt: f64) {
         // Agents (controller/LAN hands) charge in their own tick; this is the host's.
         self.session.tick_attack_strength(self.body.actions.selected);
+        if let Some(shot) = self.session.tick_weapons(&mut self.mobs.entities) {
+            items::shot_sound(&mut self.audio, shot.ranged);
+        }
         let aiming = self.attacking();
         self.with_hands(|hands| hands.act(acting, dt, aiming));
     }

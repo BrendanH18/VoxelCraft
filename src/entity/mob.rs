@@ -13,6 +13,7 @@ use super::{Ctx, EntityEvent, MobSound, MobWorld, Rng, path};
 
 mod creaking;
 pub(crate) mod dolphin;
+mod drowned;
 mod frog;
 pub(crate) mod goals;
 mod navigate;
@@ -1055,6 +1056,12 @@ pub struct Mob {
     pub wool_color: crate::color::DyeColor,
     pub sheared: bool,
     pub skeleton_bow: Option<Box<crate::inventory::Stack>>,
+    /// v0.16: a drowned's main hand (`Drowned.populateDefaultEquipmentSlots`:
+    /// a trident or a fishing rod), saved, thrown and dropped like Java's.
+    pub weapon: Option<Box<crate::inventory::Stack>>,
+    /// Breach's armor-effectiveness change for the hit being applied (0
+    /// outside a player's mace hit); never saved.
+    pub(super) armor_effectiveness: f32,
     pub phantom: Option<Box<super::phantom::State>>,
     pub freezing: Option<super::hostiles::Freezing>,
     pub mooshroom: Option<Box<super::mooshroom::State>>,
@@ -1248,6 +1255,8 @@ impl Mob {
             sheared: false,
             freezing: None,
             skeleton_bow: kind.is_bow_skeleton().then(|| Box::new(crate::inventory::Stack::new(Item::BOW, 1))),
+            weapon: None,
+            armor_effectiveness: 0.0,
             phantom: (kind == MobKind::Phantom).then(|| Box::new(super::phantom::State::new(pos))),
             mooshroom: (kind == MobKind::Mooshroom).then(Box::default),
             bat: (kind == MobKind::Bat).then(Box::default),
@@ -1598,7 +1607,7 @@ impl Mob {
             return false;
         }
         let amount = if self.kind == MobKind::MagmaCube {
-            crate::simulation::survival::armor_reduce(amount, self.size as u32 * 3, 0.0)
+            crate::simulation::survival::armor_reduce_with(amount, self.size as u32 * 3, 0.0, self.armor_effectiveness)
         } else {
             amount
         };
@@ -1611,7 +1620,11 @@ impl Mob {
         }
         let amount = if bypass_wolf_armor { amount } else { self.absorb_wolf_armor(amount, rng) };
         let armor = self.mount.as_ref().and_then(|s| s.slots[1]).map_or(0, |s| super::mounts::armor_points(s.item));
-        let amount = if armor > 0 { crate::simulation::survival::armor_reduce(amount, armor, 0.) } else { amount };
+        let amount = if armor > 0 {
+            crate::simulation::survival::armor_reduce_with(amount, armor, 0., self.armor_effectiveness)
+        } else {
+            amount
+        };
         let amount = amount * self.effects.resistance_factor();
         self.health -= self.effects.absorb(amount);
         if self.kind == MobKind::Axolotl && self.in_water && self.health > 0.0 && self.health < 7.0 && rng.chance(0.33)
@@ -2206,6 +2219,9 @@ impl Mob {
                 match self.kind {
                     MobKind::Skeleton | MobKind::Stray | MobKind::Bogged => {
                         return self.skeleton_tactics(dt, world, target.pos, dir, hdist, rng, events);
+                    }
+                    MobKind::Drowned if self.holds_trident() => {
+                        return self.drowned_trident_tactics(dt, world, &target, rng, events);
                     }
                     MobKind::Witch => return self.witch_tactics(world, &target, dir, hdist, rng, events),
                     MobKind::Creeper => {

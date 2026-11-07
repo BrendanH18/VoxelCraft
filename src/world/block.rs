@@ -367,17 +367,23 @@ pub mod tex {
     pub const BUBBLE_UP: u16 = BUBBLE_BASE;
     pub const BUBBLE_DOWN: u16 = BUBBLE_BASE + 1;
     pub const COUNT: u32 = {
-        // Through the highest layer any v0.15 track uses; unused layers stay reserved.
-        const fn max(a: u32, b: u32) -> u32 {
-            if a > b { a } else { b }
-        }
-        max(
+        // Through the highest layer any v0.15 or v0.16 track uses; unused layers stay reserved.
+        const ENDS: [u32; 5] = [
             super::super::cave_blocks::CAL_TEX_END as u32,
-            max(
-                super::super::eyeblossom::TEX_END as u32,
-                max(super::super::sniffer_egg::TEXTURE_END as u32, super::super::archaeology::t::END as u32),
-            ),
-        )
+            super::super::eyeblossom::TEX_END as u32,
+            super::super::sniffer_egg::TEXTURE_END as u32,
+            super::super::archaeology::t::END as u32,
+            super::super::heavy_core::TEX_END as u32,
+        ];
+        let mut max = 0;
+        let mut i = 0;
+        while i < ENDS.len() {
+            if ENDS[i] > max {
+                max = ENDS[i];
+            }
+            i += 1;
+        }
+        max
     };
     const _: () = assert!(super::super::biome_plants::TEX_END <= BUBBLE_BASE);
     const _: () = assert!(super::super::utilities::TEX_END <= super::super::cave_blocks::TEX);
@@ -923,7 +929,7 @@ impl Block {
 
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
-        if super::sniffer_egg::owns(self.0) {
+        if super::sniffer_egg::owns(self.0) || super::heavy_core::owns(self.0) {
             return Some(Shaped::Custom);
         }
         if super::creaking::wall_local(self.0).is_some() {
@@ -1289,6 +1295,9 @@ impl Block {
         if super::sniffer_egg::owns(self.0) {
             return super::sniffer_egg::EGG;
         }
+        if super::heavy_core::owns(self.0) {
+            return super::heavy_core::HEAVY_CORE;
+        }
         if self.0 == super::sniffer_plants::PITCHER_PLANT.0 + 1 {
             return super::sniffer_plants::PITCHER_PLANT;
         }
@@ -1617,6 +1626,9 @@ impl Block {
         if super::sniffer_egg::owns(self.0) {
             return Some(Item::SNIFFER_EGG);
         }
+        if super::heavy_core::owns(self.0) {
+            return Some(Item::from_block(super::heavy_core::HEAVY_CORE));
+        }
         if self == super::sniffer_plants::POTTED_TORCHFLOWER {
             return Some(super::utilities::FLOWER_POT.into());
         }
@@ -1771,6 +1783,9 @@ impl Block {
     pub fn hardness(self) -> f32 {
         if super::sniffer_egg::owns(self.0) {
             return 0.5;
+        }
+        if super::heavy_core::owns(self.0) {
+            return super::heavy_core::HARDNESS;
         }
         if super::archaeology::owns(self.0) {
             return 0.25;
@@ -2006,6 +2021,9 @@ impl Block {
     pub fn best_tool(self) -> Option<ToolKind> {
         if super::archaeology::owns(self.0) {
             return Some(ToolKind::Shovel);
+        }
+        if super::heavy_core::owns(self.0) {
+            return Some(ToolKind::Pickaxe);
         }
         if super::creaking::heart(self).is_some() {
             return Some(ToolKind::Axe);
@@ -2339,6 +2357,7 @@ impl Block {
                 super::sniffer_plants::TORCHFLOWER.0,
                 super::sniffer_plants::PITCHER_PLANT.0,
                 super::sniffer_egg::EGG.0,
+                super::heavy_core::HEAVY_CORE.0,
             ])
             .chain(super::forms::palette_ids())
             .chain(super::nether_blocks::palette_ids())
@@ -3017,6 +3036,7 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         super::crops::FIRST..=super::crops::LAST => super::crops::registry(id),
         super::sniffer_plants::FIRST..=super::sniffer_plants::LAST => super::sniffer_plants::registry(id),
         15120..=super::sniffer_egg::LAST => super::sniffer_egg::registry(id),
+        super::heavy_core::FIRST..=super::heavy_core::LAST => super::heavy_core::registry(id),
         super::archaeology::FIRST..=super::archaeology::LAST => super::archaeology::registry(id),
         super::copper::FIRST..=super::copper::RESERVED_LAST
         | super::copper::WAXED_FIRST..=super::copper::WAXED_RESERVED_LAST => match super::copper::registry(id) {

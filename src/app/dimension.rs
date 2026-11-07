@@ -24,7 +24,7 @@ use crate::world::terrain::{Dimension, Generator, SEA_LEVEL};
 use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 22] = [
+pub(super) const DIMENSION_KEYS: [&str; 23] = [
     "furnaces",
     "chests",
     "items",
@@ -47,6 +47,7 @@ pub(super) const DIMENSION_KEYS: [&str; 22] = [
     "potion_clouds",
     "copper_golem_statues",
     "sculk",
+    "tridents",
 ];
 /// How far around the arrival point to look for an existing portal.
 const SEARCH_RADIUS: i32 = 16;

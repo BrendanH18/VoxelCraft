@@ -14,6 +14,7 @@ mod lodestone;
 pub mod mining;
 pub mod placement;
 pub mod ranged;
+mod weapons;
 mod wood;
 use glam::{DVec3, IVec3};
 
@@ -58,6 +59,7 @@ pub struct PlayerSession {
     brushing: archaeology::State,
     hands: hands::State,
     mining: mining::State,
+    weapons: weapons::State,
 }
 
 /// Where a sleeper lay down: the bed's head block and the spot on it.
@@ -167,6 +169,7 @@ impl PlayerSession {
             brushing: Default::default(),
             hands: Default::default(),
             mining: Default::default(),
+            weapons: Default::default(),
         }
     }
 
@@ -192,6 +195,7 @@ impl PlayerSession {
             brushing: Default::default(),
             hands: Default::default(),
             mining: Default::default(),
+            weapons: Default::default(),
         }
     }
 

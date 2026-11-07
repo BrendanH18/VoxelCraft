@@ -295,6 +295,9 @@ pub enum Sprite {
     Shield,
     Totem,
     PotterySherd(u8),
+    /// v0.16 weapons (`crate::weapons`): 0 trident, 1 mace, 2–8 spears from
+    /// wood to netherite.
+    Weapon(u8),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1041,6 +1044,9 @@ impl Item {
         if let Some(info) = crate::world::archaeology::item_info(self) {
             return info;
         }
+        if let Some(info) = crate::weapons::item_info(self) {
+            return info;
+        }
         if self == Self::RESIN_BRICK {
             return item("resin brick", Sprite::Lump([211, 99, 29]));
         }
@@ -1302,6 +1308,7 @@ impl Item {
             || matches!(self.block(), Some(Block::ANCIENT_DEBRIS | Block::NETHERITE_BLOCK))
             || matches!(self.as_tool(), Some((_, Tier::Netherite)))
             || matches!(self.as_armor(), Some((_, ArmorMaterial::Netherite)))
+            || crate::weapons::fire_resistant(self)
     }
 
     pub fn max_stack(self) -> u8 {
@@ -1324,6 +1331,9 @@ impl Item {
 
     /// Uses before breaking, for tools and armor.
     pub fn durability(self) -> Option<u16> {
+        if let Some(durability) = crate::weapons::durability(self) {
+            return Some(durability);
+        }
         if matches!(self, Self::BRUSH | Self::WOLF_ARMOR) {
             return Some(64);
         }
@@ -1395,7 +1405,7 @@ impl Item {
 
     /// Java's `Rarity.RARE` for items registered with it (aqua names).
     pub fn is_rare(self) -> bool {
-        self == Item::ENCHANTED_GOLDEN_APPLE
+        self == Item::ENCHANTED_GOLDEN_APPLE || crate::weapons::is_rare(self)
     }
 
     /// Java's `DataComponents.ENCHANTMENT_GLINT_OVERRIDE`: drawn with the
@@ -1507,6 +1517,7 @@ impl Item {
             .chain([Self::TORCHFLOWER_SEEDS, Self::PITCHER_POD])
             .chain((crate::world::archaeology::ITEM_FIRST..crate::world::archaeology::ITEM_END).map(Item))
             .chain([Self::RESIN_BRICK])
+            .chain(crate::weapons::all())
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1572,6 +1583,9 @@ fn sprite_index(item: Item) -> Option<u16> {
         1332 => Some(passive_icon_base() + 7),
         1333 => Some(passive_icon_base() + 8),
         1368 => Some(passive_icon_base() + 18),
+        i if (crate::weapons::ITEM_FIRST..crate::weapons::ITEM_END).contains(&i) => {
+            Some(passive_icon_base() + 19 + i - crate::weapons::ITEM_FIRST)
+        }
         1301..=1304 => Some(passive_icon_base() + item.0 - 1301),
         1040 => Some(turtle_icon()),
         1073 => Some(turtle_icon() + 2 + COPPER_ITEMS.len() as u16),
@@ -1667,7 +1681,7 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    passive_icon_base() as u32 + 4 + 5 + 2 + 7 + 1
+    passive_icon_base() as u32 + 4 + 5 + 2 + 7 + 1 + (crate::weapons::ITEM_END - crate::weapons::ITEM_FIRST) as u32
 }
 
 const fn passive_icon_base() -> u16 {
