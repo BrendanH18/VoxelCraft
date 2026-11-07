@@ -207,6 +207,9 @@ impl World {
     /// Strong output energizes a conductor; weak output activates devices only.
     fn emitted_signal(&self, p: IVec3, direction: IVec3, strong: bool, wires: bool) -> u8 {
         let Some(b) = self.get_block(p) else { return 0 };
+        if let Some(power) = self.sculk_signal(p, b, direction, strong) {
+            return power;
+        }
         if let Some(power) = super::lightning::rod_signal(b, direction, strong) {
             return power;
         }
@@ -422,6 +425,9 @@ impl World {
     }
 
     pub fn container_signal(&self, p: IVec3) -> Option<u8> {
+        if let Some(signal) = self.get_block(p).and_then(|b| self.sculk_comparator(p, b)) {
+            return Some(signal);
+        }
         if self.get_block(p).is_some_and(|b| super::creaking::heart(b).is_some()) {
             return Some(self.creaking_hearts.get(&p.to_array()).map_or(0, |h| h.signal));
         }
@@ -639,6 +645,9 @@ impl World {
 
     fn redstone_scheduled_tick(&mut self, p: IVec3) {
         let Some(b) = self.get_block(p) else { return };
+        if self.sculk_scheduled_tick(p, b) {
+            return;
+        }
         if super::sniffer_egg::owns(b.0) {
             return self.hatch_sniffer_egg(p);
         }

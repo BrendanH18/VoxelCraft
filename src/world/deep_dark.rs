@@ -20,7 +20,7 @@
 //! it is high, lays veins on stone faces in a band just under it (and a few
 //! elsewhere), and hashes pick catalysts in patch cores and sensors and
 //! shriekers on sculk floors. Generated shriekers can summon, like Java's
-//! world-generated ones; nothing summons until the warden (v0.16).
+//! world-generated ones (v0.16: see [`super::sculk`]).
 
 use glam::IVec3;
 

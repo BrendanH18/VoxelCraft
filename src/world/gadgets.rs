@@ -318,6 +318,14 @@ impl World {
         let instrument = instrument(below) as u8;
         self.notes.push((p, pitch, instrument));
         self.allay_notes.push(p);
+        // `NoteBlock.playNote`. The player who struck it isn't passed down,
+        // so the event has no source entity.
+        self.emit_game_event(
+            p.as_dvec3() + DVec3::splat(0.5),
+            super::vibration::GameEvent::NoteBlockPlay,
+            super::vibration::EventSource::NONE,
+            None,
+        );
         // Java `NoteBlock.triggerEvent`: a note particle 1.2 blocks up, tinted by `note / 24`.
         let mut burst = Burst::new(Kind::Note, p.as_dvec3() + DVec3::new(0.5, 1.2, 0.5), 1);
         burst.color = Some(note_color(pitch));

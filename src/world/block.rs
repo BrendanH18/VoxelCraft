@@ -372,8 +372,11 @@ pub mod tex {
             if a > b { a } else { b }
         }
         max(
-            super::super::eyeblossom::TEX_END as u32,
-            max(super::super::sniffer_egg::TEXTURE_END as u32, super::super::archaeology::t::END as u32),
+            super::super::cave_blocks::CAL_TEX_END as u32,
+            max(
+                super::super::eyeblossom::TEX_END as u32,
+                max(super::super::sniffer_egg::TEXTURE_END as u32, super::super::archaeology::t::END as u32),
+            ),
         )
     };
     const _: () = assert!(super::super::biome_plants::TEX_END <= BUBBLE_BASE);
@@ -1370,6 +1373,9 @@ impl Block {
 
     /// The same block facing `facing` (unchanged if it has no front).
     pub fn with_facing(self, facing: Facing) -> Block {
+        if let Some((_, phase, wet)) = super::cave_blocks::calibrated_of(self) {
+            return super::cave_blocks::calibrated_sensor(facing, phase, wet);
+        }
         if let Some(s) = super::copper_golem_statue::decode(self) {
             return super::copper_golem_statue::block(super::copper_golem_statue::Statue { facing, ..s });
         }

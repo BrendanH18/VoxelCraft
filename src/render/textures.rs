@@ -282,6 +282,9 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     if (crate::world::cave_blocks::TEX..crate::world::cave_blocks::TEX_END).contains(&layer) {
         return cave::pixel(layer, x, y);
     }
+    if (crate::world::cave_blocks::CAL_TEX..crate::world::cave_blocks::CAL_TEX_END).contains(&layer) {
+        return cave::pixel(layer, x, y);
+    }
     if (tex::COLORED_WOOL..tex::COLORED_WOOL + 16).contains(&layer) || layer == tex::WOOL {
         let color = if layer == tex::WOOL { 0 } else { (layer - tex::COLORED_WOOL) as usize };
         let rgb = crate::color::DyeColor::ALL[color].rgb();

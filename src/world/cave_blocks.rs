@@ -12,24 +12,25 @@
 //! | 11265, 11266 | sculk catalyst, `bloom` false then true |
 //! | `11268 + 4 * wet + phase` | sculk sensor, [`Phase`] inactive, active, cooldown |
 //! | `11276 + 4 * wet + 2 * shrieking + can_summon` | sculk shrieker |
+//! | `11520 + 12 * wet + 3 * facing + phase` | calibrated sculk sensor (v0.16, [`Facing`] order) |
 //!
 //! Face bits follow Java's `Direction` order (down, up, north, south, west,
 //! east): bit `i` set means the block lies on the face of its neighbour in
 //! direction [`DIRS`]`[i]`. A multiface state with no face doesn't exist, so
 //! ids `9728`, `9792`, `9856` and `9920` stay unregistered.
 //!
-//! The catalyst, sensor and shrieker are inert world blocks until v0.16
-//! (deep dark and the warden): no vibrations, shrieks, warden summoning or
-//! catalyst blooms on mob deaths. Their states exist so later behaviour and
-//! saved worlds need no new ids. Sources and differences:
-//! `docs/verification/2026-10-30-v0.13-underground.md`.
+//! The listeners' behaviour (vibrations, shrieks, catalyst blooms) lives in
+//! [`super::sculk`] (v0.16); the sensor's `power` is block-entity data
+//! there rather than a state. Sources and differences:
+//! `docs/verification/2026-10-30-v0.13-underground.md` and
+//! `docs/verification/2026-11-06-v0.16-sculk-warden.md`.
 
 #[cfg(test)]
 mod tests;
 
 use glam::{IVec3, Vec3};
 
-use super::block::{Block, RenderKind};
+use super::block::{Block, Facing, RenderKind};
 use super::shape::{Box16, Boxes};
 use crate::inventory::Stack;
 use crate::item::{Item, ToolKind};
@@ -49,6 +50,10 @@ const SHRIEKER_FIRST: u16 = 11276;
 /// One past the last registered state; 11284..=11519 stay free.
 const SECOND_END: u16 = 11284;
 const _: () = assert!(SECOND_END <= 11520);
+/// v0.16 track A's states (11520..=11647): the calibrated sculk sensor.
+const CALIBRATED_FIRST: u16 = 11520;
+const CALIBRATED_END: u16 = CALIBRATED_FIRST + 24;
+const _: () = assert!(CALIBRATED_END <= 11648);
 
 /// The neighbour each face bit lies on, in Java's `Direction` order.
 pub const DIRS: [IVec3; 6] = [IVec3::NEG_Y, IVec3::Y, IVec3::NEG_Z, IVec3::Z, IVec3::NEG_X, IVec3::X];
@@ -136,6 +141,59 @@ pub const fn sensor_of(b: Block) -> Option<(Phase, bool)> {
 
 pub const SCULK_SENSOR: Block = sculk_sensor(Phase::Inactive, false);
 
+/// A calibrated sculk sensor (Java `CalibratedSculkSensorBlock`): `facing`
+/// is where its placer looked; the redstone input is the opposite side.
+pub const fn calibrated_sensor(facing: Facing, phase: Phase, wet: bool) -> Block {
+    Block(CALIBRATED_FIRST + wet as u16 * 12 + facing as u16 * 3 + phase as u16)
+}
+
+/// `(facing, phase, waterlogged)` of a calibrated sculk sensor.
+pub const fn calibrated_of(b: Block) -> Option<(Facing, Phase, bool)> {
+    if b.0 < CALIBRATED_FIRST || b.0 >= CALIBRATED_END {
+        return None;
+    }
+    let i = b.0 - CALIBRATED_FIRST;
+    let facing = match i % 12 / 3 {
+        0 => Facing::South,
+        1 => Facing::North,
+        2 => Facing::East,
+        _ => Facing::West,
+    };
+    let phase = match i % 3 {
+        0 => Phase::Inactive,
+        1 => Phase::Active,
+        _ => Phase::Cooldown,
+    };
+    Some((facing, phase, i >= 12))
+}
+
+/// The item and default state: the first registered state (facing south,
+/// inactive, dry); placement turns it to where the placer looks.
+pub const CALIBRATED_SCULK_SENSOR: Block = calibrated_sensor(Facing::South, Phase::Inactive, false);
+
+/// The phase and `waterlogged` of either kind of sensor, and whether it is
+/// calibrated.
+pub const fn any_sensor(b: Block) -> Option<(Phase, bool, bool)> {
+    if let Some((phase, wet)) = sensor_of(b) {
+        return Some((phase, wet, false));
+    }
+    match calibrated_of(b) {
+        Some((_, phase, wet)) => Some((phase, wet, true)),
+        None => None,
+    }
+}
+
+/// The same sensor in another phase.
+pub const fn with_phase(b: Block, phase: Phase) -> Block {
+    if let Some((_, wet)) = sensor_of(b) {
+        return sculk_sensor(phase, wet);
+    }
+    match calibrated_of(b) {
+        Some((facing, _, wet)) => calibrated_sensor(facing, phase, wet),
+        None => b,
+    }
+}
+
 pub const fn sculk_shrieker(shrieking: bool, can_summon: bool, wet: bool) -> Block {
     Block(SHRIEKER_FIRST + wet as u16 * 4 + shrieking as u16 * 2 + can_summon as u16)
 }
@@ -170,6 +228,7 @@ pub const fn owns(id: u16) -> bool {
     (id >= super::creaking::CLUMP_FIRST && id < super::creaking::CLUMP_FIRST + 128)
         || (id >= LICHEN_FIRST && id < MULTIFACE_END)
         || (id >= SECOND_FIRST && id < SECOND_END)
+        || (id >= CALIBRATED_FIRST && id < CALIBRATED_END)
 }
 
 /// Texture layers, offsets from one base so the integrator can repack them
@@ -201,6 +260,31 @@ pub mod t {
 /// One past this module's last layer.
 pub const TEX_END: u16 = TEX + t::COUNT;
 const _: () = assert!(TEX_END <= 2832);
+
+/// v0.16 track A's texture layers (3600..=3663): the calibrated sensor.
+pub const CAL_TEX: u16 = 3600;
+pub mod ct {
+    use super::CAL_TEX;
+    pub const SIDE: u16 = CAL_TEX;
+    pub const SIDE_ACTIVE: u16 = CAL_TEX + 1;
+    pub const TOP: u16 = CAL_TEX + 2;
+    pub const TOP_ACTIVE: u16 = CAL_TEX + 3;
+    /// The amethyst-studded input side.
+    pub const INPUT: u16 = CAL_TEX + 4;
+    pub const BOTTOM: u16 = CAL_TEX + 5;
+    pub const COUNT: u16 = 6;
+}
+pub const CAL_TEX_END: u16 = CAL_TEX + ct::COUNT;
+const _: () = assert!(CAL_TEX_END <= 3664);
+
+/// Face textures (+X, -X, +Y, -Y, +Z, -Z) of a calibrated sensor.
+pub const fn calibrated_faces(facing: Facing, phase: Phase) -> [u16; 6] {
+    let side = if matches!(phase, Phase::Active) { ct::SIDE_ACTIVE } else { ct::SIDE };
+    let top = if matches!(phase, Phase::Active) { ct::TOP_ACTIVE } else { ct::TOP };
+    let mut faces = [side, side, top, ct::BOTTOM, side, side];
+    faces[facing.opposite().face()] = ct::INPUT;
+    faces
+}
 
 const fn all(t: u16) -> [u16; 6] {
     [t; 6]
@@ -242,6 +326,9 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
         let top = if can_summon { t::SHRIEKER_TOP_CAN_SUMMON } else { t::SHRIEKER_TOP };
         return Some(("sculk shrieker", Shaped, column(t::SHRIEKER_SIDE, top, t::SHRIEKER_BOTTOM)));
     }
+    if let Some((facing, phase, _)) = calibrated_of(Block(id)) {
+        return Some(("calibrated sculk sensor", Shaped, calibrated_faces(facing, phase)));
+    }
     None
 }
 
@@ -261,17 +348,20 @@ pub const fn water_pair(id: u16) -> Option<(u16, bool)> {
     if let Some((_, _, wet)) = shrieker_of(Block(id)) {
         return Some(if wet { (id - 4, true) } else { (id + 4, false) });
     }
+    if let Some((_, _, wet)) = calibrated_of(Block(id)) {
+        return Some(if wet { (id - 12, true) } else { (id + 12, false) });
+    }
     None
 }
 
 /// Light emission (Java: glow lichen 7 on any face, sculk catalyst 6,
-/// sculk sensor 1).
+/// sculk sensor and calibrated sculk sensor 1).
 pub const fn emission(id: u16) -> u8 {
     match multiface_of(Block(id)) {
         Some((Multiface::GlowLichen, ..)) => 7,
         Some(_) => 0,
         None if catalyst_bloom(Block(id)).is_some() => 6,
-        None if sensor_of(Block(id)).is_some() => 1,
+        None if any_sensor(Block(id)).is_some() => 1,
         None => 0,
     }
 }
@@ -295,6 +385,9 @@ pub fn base(b: Block) -> Option<Block> {
     }
     if sensor_of(b).is_some() {
         return Some(SCULK_SENSOR);
+    }
+    if calibrated_of(b).is_some() {
+        return Some(CALIBRATED_SCULK_SENSOR);
     }
     if shrieker_of(b).is_some() {
         return Some(SCULK_SHRIEKER);
@@ -325,7 +418,7 @@ pub fn mining(b: Block) -> Option<(f32, Option<ToolKind>, Option<u8>)> {
         Some((Multiface::SculkVein, ..)) => (0.2, Some(ToolKind::Hoe), None),
         Some((Multiface::ResinClump, ..)) => (0.0, None, None),
         None if b == SCULK => (0.2, Some(ToolKind::Hoe), None),
-        None if sensor_of(b).is_some() => (1.5, Some(ToolKind::Hoe), None),
+        None if any_sensor(b).is_some() => (1.5, Some(ToolKind::Hoe), None),
         None => (3.0, Some(ToolKind::Hoe), None),
     })
 }
@@ -369,7 +462,7 @@ pub fn xp(b: Block) -> Option<u32> {
     let b = b.canonical();
     if b == SCULK {
         Some(1)
-    } else if catalyst_bloom(b).is_some() || sensor_of(b).is_some() || shrieker_of(b).is_some() {
+    } else if catalyst_bloom(b).is_some() || any_sensor(b).is_some() || shrieker_of(b).is_some() {
         Some(5)
     } else {
         None
@@ -389,7 +482,16 @@ pub fn fire_odds(b: Block) -> Option<(u8, u8)> {
 
 /// Creative palette entries (the default state of each item).
 pub fn palette_ids() -> impl Iterator<Item = u16> {
-    [GLOW_LICHEN.0, SCULK.0, SCULK_VEIN.0, SCULK_CATALYST.0, SCULK_SENSOR.0, SCULK_SHRIEKER.0].into_iter()
+    [
+        GLOW_LICHEN.0,
+        SCULK.0,
+        SCULK_VEIN.0,
+        SCULK_CATALYST.0,
+        SCULK_SENSOR.0,
+        SCULK_SHRIEKER.0,
+        CALIBRATED_SCULK_SENSOR.0,
+    ]
+    .into_iter()
 }
 
 /// Whether the block in direction `DIRS[face]` of `at` holds a multiface
@@ -457,7 +559,7 @@ pub fn boxes(b: Block) -> Boxes {
                 out.push(plate);
             }
         }
-    } else if sensor_of(b).is_some() {
+    } else if any_sensor(b).is_some() {
         out.push(SLAB);
         out.push(bx([1, 8, 8], [15, 16, 8]));
         out.push(bx([8, 8, 1], [8, 16, 15]));

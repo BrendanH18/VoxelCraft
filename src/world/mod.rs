@@ -92,6 +92,8 @@ pub mod ruined_portal;
 #[cfg(test)]
 mod rule_tests;
 pub mod scaffolding;
+pub mod sculk;
+pub mod sculk_spread;
 pub mod shape;
 pub mod slab_stair_states;
 pub mod sniffer_egg;
@@ -109,6 +111,7 @@ pub mod trail_ruins;
 pub mod trees;
 pub mod underground;
 pub mod utilities;
+pub mod vibration;
 pub mod village;
 pub mod village_blocks;
 mod village_life;
@@ -214,6 +217,8 @@ pub struct WorldRules {
     /// spreading reads.
     pub difficulty: u8,
     pub max_snow_accumulation_height: u8,
+    /// `spawn_wardens`: summoning shriekers answer with a warden.
+    pub spawn_wardens: bool,
 }
 
 impl Default for WorldRules {
@@ -225,6 +230,7 @@ impl Default for WorldRules {
             fire_spread_radius: 128,
             difficulty: 2,
             max_snow_accumulation_height: 1,
+            spawn_wardens: true,
         }
     }
 }
@@ -303,6 +309,8 @@ pub struct World {
     pub(crate) eyeblossom_open: Option<bool>,
     pub(crate) creaking_active: std::collections::BTreeSet<[i32; 3]>,
     pub(crate) creaking_hearts: std::collections::BTreeMap<[i32; 3], creaking::Heart>,
+    /// Sculk listeners and game events (see [`sculk`] and [`vibration`]).
+    pub(crate) sculk: sculk::SculkState,
     wood: wood::entities::WoodEntities,
     /// Campfire, decorated pot and cauldron-drip state (see [`utilities`]).
     utilities: utilities::State,
@@ -589,6 +597,7 @@ impl World {
             beehives: Default::default(),
             archaeology: Default::default(),
             creaking_hearts: Default::default(),
+            sculk: Default::default(),
             creaking_active: Default::default(),
             creaking_night: None,
             eyeblossom_open: None,
@@ -949,6 +958,7 @@ impl World {
         self.track_beehives(p, old, block);
         self.track_archaeology(p, old, block);
         self.track_creaking_heart(p, block);
+        self.track_sculk(p, old, block);
         self.track_copper_golem_statue(p, block);
         self.track_utilities(p, old, block);
         self.track_spawner(p, old, block);
@@ -1358,6 +1368,7 @@ impl World {
         self.register_campfires(pos, &data);
         self.register_beehives(pos, &data, modified);
         self.register_creaking_hearts(pos, &data);
+        self.register_sculk(pos, &data);
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
         let workers = &self.workers;
         let col = self.columns.entry(column_of(pos)).or_insert_with(|| {
@@ -1411,6 +1422,7 @@ impl World {
         self.unload_redstone_chunk(pos);
         self.unload_beehives(pos);
         self.creaking_active.retain(|p| chunk::chunk_of(IVec3::from_array(*p)) != pos);
+        self.unload_sculk(pos);
         let slot = self.chunks.remove(&pos).unwrap();
         self.entity_loads.remove(&pos);
         // A LAN replica's falling blocks come from the host's snapshots.

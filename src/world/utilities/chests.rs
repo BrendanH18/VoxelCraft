@@ -87,6 +87,16 @@ impl World {
             .collect();
         for q in changed {
             self.redstone_changed(q);
+            // `ContainerOpenersCounter.decrementOpeners`: the last viewer left.
+            // (Opening is posted by the player's use, with the player.)
+            if old.contains_key(&q) && !self.utilities.viewers.contains_key(&q) {
+                self.emit_game_event(
+                    q.as_dvec3() + glam::DVec3::splat(0.5),
+                    crate::world::vibration::GameEvent::ContainerClose,
+                    crate::world::vibration::EventSource::NONE,
+                    None,
+                );
+            }
         }
     }
 
