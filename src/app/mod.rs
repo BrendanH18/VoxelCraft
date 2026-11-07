@@ -1421,6 +1421,19 @@ impl Game {
             };
             self.audio.play(sound, Some(pos), gain, pitch);
         }
+        // Playing records: original tunes through the note voices
+        // (`SoundSource::Records`), heard like any positioned sound.
+        for note in std::mem::take(&mut self.world.records) {
+            let sound = crate::audio::sounds::Sound::Note(crate::world::gadgets::Instrument::from_u8(note.instrument));
+            let hz = crate::world::gadgets::pitch_hz(note.pitch);
+            self.audio.play(sound, Some(note.pos.as_dvec3() + glam::DVec3::splat(0.5)), note.gain, (hz, hz));
+        }
+        // Level event 1010: "Now Playing" for players within 64 blocks.
+        for (pos, song) in std::mem::take(&mut self.world.records_started) {
+            if self.session.player.pos.distance_squared(pos.as_dvec3()) <= 64.0 * 64.0 {
+                self.show_popup(&format!("Now Playing: {}", crate::world::jukebox::song_title(song)));
+            }
+        }
         for (pos, sound) in std::mem::take(&mut self.world.trip_sounds) {
             // The existing click, at Java's volume 0.4 and the hook's pitch.
             self.audio.play_in(

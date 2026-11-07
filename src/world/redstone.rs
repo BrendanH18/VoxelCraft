@@ -210,6 +210,10 @@ impl World {
         if let Some(power) = self.sculk_signal(p, b, direction, strong) {
             return power;
         }
+        // `JukeboxBlock`: a weak 15 to every side while a song plays.
+        if super::jukebox::is_jukebox(b) {
+            return if strong { 0 } else { self.jukebox_signal(p) };
+        }
         if let Some(power) = super::lightning::rod_signal(b, direction, strong) {
             return power;
         }
@@ -427,6 +431,9 @@ impl World {
     pub fn container_signal(&self, p: IVec3) -> Option<u8> {
         if let Some(signal) = self.get_block(p).and_then(|b| self.sculk_comparator(p, b)) {
             return Some(signal);
+        }
+        if self.get_block(p).is_some_and(super::jukebox::is_jukebox) {
+            return Some(self.jukebox_comparator(p));
         }
         if self.get_block(p).is_some_and(|b| super::creaking::heart(b).is_some()) {
             return Some(self.creaking_hearts.get(&p.to_array()).map_or(0, |h| h.signal));

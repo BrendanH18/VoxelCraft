@@ -506,7 +506,7 @@ const CROSSING: u64 = 2;
 const LIBRARY: u64 = 3;
 
 /// `chests/stronghold_corridor.json` pool 0 (total 101). The copper horse armor
-/// and music disc entries have no item yet and stay weighted blanks.
+/// entry has no item yet and stays a weighted blank.
 #[cfg(test)]
 fn corridor_table() -> [(Option<Item>, u32, u32, u32); 21] {
     let iron = |p| Some(Item::armor(p, ArmorMaterial::Iron));
@@ -531,7 +531,7 @@ fn corridor_table() -> [(Option<Item>, u32, u32, u32); 21] {
         (Some(Item::IRON_HORSE_ARMOR), 1, 1, 1),
         (Some(Item::GOLDEN_HORSE_ARMOR), 1, 1, 1),
         (Some(Item::DIAMOND_HORSE_ARMOR), 1, 1, 1),
-        (None, 1, 1, 1), // music_disc_otherside
+        (Some(crate::world::jukebox::DISC_OTHERSIDE), 1, 1, 1),
         (Some(Item::BOOK), 1, 1, 1),
     ]
 }

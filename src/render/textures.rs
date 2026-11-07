@@ -267,6 +267,9 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     if (crate::world::bees::t::BASE..crate::world::bees::t::END).contains(&layer) {
         return bees::pixel(layer, x, y);
     }
+    if (crate::world::jukebox::t::BASE..crate::world::jukebox::t::END).contains(&layer) {
+        return crate::world::jukebox::pixel(layer, x, y);
+    }
     if (crate::world::sniffer_egg::TEX..crate::world::sniffer_egg::TEXTURE_END).contains(&layer) {
         return crate::world::sniffer_egg::pixel(layer, x, y);
     }
@@ -1960,11 +1963,21 @@ pub fn texel(layer: u16, x: usize, y: usize) -> Rgba {
     use crate::simulation::effects::Effect;
     let icons = crate::item::icon_count() as u16;
     let clock = icons + crate::item::COMPASS_FRAMES;
-    let effects = clock + crate::item::CLOCK_FRAMES;
+    let recovery = clock + crate::item::CLOCK_FRAMES;
+    let effects = recovery + crate::item::RECOVERY_FRAMES;
     match tex::item_index(layer) {
         Some(index) if index >= effects => Effect::ALL
             .get((index - effects) as usize)
             .map_or([0, 0, 0, 0], |&e| super::item_sprites::effect_pixel(e, x, y)),
+        Some(index) if index >= recovery => super::item_sprites::compass_face(
+            index - recovery,
+            crate::item::RECOVERY_FRAMES,
+            x as i32,
+            y as i32,
+            [38, 52, 58],
+            [78, 214, 196],
+        )
+        .unwrap_or([0, 0, 0, 0]),
         Some(index) if index >= clock => super::item_sprites::compass_face(
             index - clock,
             crate::item::CLOCK_FRAMES,

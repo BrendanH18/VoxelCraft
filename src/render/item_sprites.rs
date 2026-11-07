@@ -879,6 +879,41 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             shaded(&body, x, y, colour, 0.06)
         }
         Sprite::Compass => compass_face(0, 32, x, y, [62, 86, 112], [176, 40, 36]),
+        Sprite::RecoveryCompass => compass_face(0, 32, x, y, [38, 52, 58], [78, 214, 196]),
+        // Original record: a dark grooved platter with a coloured label.
+        Sprite::MusicDisc(i) => {
+            let (dx, dy) = (px - 8.0, py - 8.0);
+            let r = dx.hypot(dy);
+            if r > 7.0 {
+                None
+            } else if r < 0.9 {
+                Some(tint([20, 20, 22], 1.0))
+            } else if r < 2.6 {
+                let h = i as f32 * 0.618_034;
+                let hue = |o: f32| ((((h + o).fract() * std::f32::consts::TAU).sin() * 0.5 + 0.5) * 200.0 + 40.0) as u8;
+                Some(tint([hue(0.0), hue(0.33), hue(0.67)], 1.0))
+            } else {
+                let groove = (r * 2.0) as i32 % 2 == 0;
+                let shine = dx - dy > 3.0 && dx - dy < 5.0;
+                Some(tint(if shine { [92, 92, 100] } else { [34, 32, 38] }, if groove { 0.85 } else { 1.0 }))
+            }
+        }
+        // A broken wedge of a record.
+        Sprite::DiscFragment => {
+            let (dx, dy) = (px - 4.0, py - 12.0);
+            let r = dx.hypot(dy);
+            let wedge = r < 10.0 && dx > 0.0 && dy < 0.0 && dx + (y % 3) as f32 > -dy * 0.4;
+            wedge.then(|| tint([40, 38, 44], if (r * 2.0) as i32 % 2 == 0 { 0.85 } else { 1.05 }))
+        }
+        // A glinting dark crystal shard.
+        Sprite::EchoShard => {
+            let shard = |x: i32, y: i32| {
+                let (u, v) = (x + y, x - y);
+                (8..=22).contains(&u) && v.abs() <= 3 - (u - 15).abs() / 3
+            };
+            shaded(&shard, x, y, [22, 74, 88], 0.08)
+                .map(|p| if (x + 2 * y) % 7 == 0 { tint([108, 230, 220], 1.0) } else { p })
+        }
         Sprite::Map(explorer) => {
             if (2..14).contains(&x) && (2..14).contains(&y) {
                 let rgb = if x == 2 || x == 13 || y == 2 || y == 13 {

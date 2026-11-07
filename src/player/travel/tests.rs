@@ -510,3 +510,26 @@ fn honey_slide_thresholds_scale_horizontal_motion_and_honey_does_not_bounce() {
     }
     panic!("never landed on honey");
 }
+
+#[test]
+fn swift_sneak_raises_the_sneaking_speed_attribute() {
+    use crate::enchant::{Enchantment, Enchants};
+    use crate::inventory::Stack;
+    use crate::item::{ArmorMaterial, ArmorPiece, Item};
+    // `sneaking_speed` 0.3 + 0.15 per level, so level III sneaks at 0.75
+    // of walking input: 1.295 m/s scales to 3.2375 m/s.
+    for (level, expected) in [(0u8, 1.295), (1, 1.295 * 0.45 / 0.3), (3, 1.295 * 0.75 / 0.3)] {
+        let world = ground();
+        let mut p = standing(&world);
+        let mut legs = Stack::new(Item::armor(ArmorPiece::Leggings, ArmorMaterial::Iron), 1);
+        legs.enchants = Enchants::NONE.with(Enchantment::SwiftSneak, level);
+        p.powder_snow_equipment(&[None, None, Some(legs), None], 0);
+        let sneak = MoveInput { descend: true, ..forward() };
+        let mut top = DVec3::ZERO;
+        for _ in 0..200 {
+            p.powder_snow_equipment(&[None, None, Some(legs), None], 0);
+            top = run(&mut p, &world, sneak, 1);
+        }
+        near(top.x * 20.0, expected, 0.002, "swift sneak speed");
+    }
+}

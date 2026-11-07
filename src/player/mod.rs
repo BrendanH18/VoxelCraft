@@ -114,11 +114,17 @@ struct Modifiers {
     slow_falling: bool,
     /// Depth strider level of the worn boots (see [`Player::wear_boots`]).
     depth_strider: u8,
+    /// Swift Sneak level of the worn leggings (see
+    /// [`Player::powder_snow_equipment`]).
+    swift_sneak: u8,
 }
 
 impl Player {
+    /// Reads the worn armour every tick on every input path: leather for
+    /// powder snow, the freeze, and the leggings' Swift Sneak level.
     pub fn powder_snow_equipment(&mut self, armor: &[Option<crate::inventory::Stack>; 4], ticks_frozen: u16) {
         use crate::item::{ArmorMaterial, ArmorPiece};
+        self.modifiers.swift_sneak = crate::enchant::armor_level(armor, crate::enchant::Enchantment::SwiftSneak);
         self.leather_boots =
             armor[3].is_some_and(|s| s.item.as_armor() == Some((ArmorPiece::Boots, ArmorMaterial::Leather)));
         self.freeze_immune =
@@ -264,7 +270,14 @@ impl Player {
             jump_levels: effects.jump_boost(),
             slow_falling: effects.has(Effect::SlowFalling),
             depth_strider: self.modifiers.depth_strider,
+            swift_sneak: self.modifiers.swift_sneak,
         };
+    }
+
+    /// Java's `SNEAKING_SPEED` attribute: 0.3, plus Swift Sneak's 0.15 per
+    /// level (`add_value`), clamped to the attribute's 0..=1.
+    pub fn sneaking_speed(&self) -> f32 {
+        (0.3 + 0.15 * f32::from(self.modifiers.swift_sneak)).clamp(0.0, 1.0)
     }
 
     /// Depth Strider on the worn boots: Java's water movement efficiency of

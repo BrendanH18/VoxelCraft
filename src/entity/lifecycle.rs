@@ -332,6 +332,8 @@ impl Entities {
                     let eye = from + DVec3::Y * f64::from(0.1f32);
                     let t =
                         super::trident::Trident::from_drowned(stack, shooter, eye, target, uncertainty, &mut self.rng);
+                    let source = t.event_source();
+                    self.sculk.post(t.pos, crate::world::vibration::GameEvent::ProjectileShoot, source, None);
                     self.tridents.push(t);
                 }
                 EntityEvent::ThrowPotion { from, vel, potion } => {

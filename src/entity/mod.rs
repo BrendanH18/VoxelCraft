@@ -528,6 +528,11 @@ pub trait MobWorld: BlockSource {
     fn in_fortress(&self, _p: IVec3) -> bool {
         false
     }
+    /// Inside an ancient city's bounding box, where its empty
+    /// `spawn_overrides` stop every natural spawn.
+    fn in_ancient_city(&self, _p: IVec3) -> bool {
+        false
+    }
     fn structures_near(&self, _p: IVec3, _r: i32) -> Vec<std::sync::Arc<crate::world::temples::Built>> {
         Vec::new()
     }
@@ -640,6 +645,9 @@ impl MobWorld for World {
     }
     fn in_fortress(&self, p: IVec3) -> bool {
         self.generator.in_fortress(p)
+    }
+    fn in_ancient_city(&self, p: IVec3) -> bool {
+        self.generator.in_ancient_city(p)
     }
     fn bastions_near(&self, p: IVec3, r: i32) -> Vec<std::sync::Arc<crate::world::bastion::Bastion>> {
         self.generator.bastions_near(p, r)
@@ -1231,6 +1239,23 @@ impl Entities {
             }
             None => true,
         });
+    }
+
+    /// `entities/creeper.json`'s second pool: a creeper killed by a member
+    /// of `#skeletons` (its arrow's shooter, or its own hit) drops one of
+    /// the twelve `#creeper_drop_music_discs`, each equally likely.
+    pub(super) fn creeper_disc(&mut self, kind: MobKind, pos: DVec3, attacker: u32) {
+        use crate::world::jukebox;
+        if kind != MobKind::Creeper
+            || !self.mob_loot
+            || !self.mobs.iter().any(|m| m.uid == attacker && jukebox::is_skeleton(m.kind))
+        {
+            return;
+        }
+        let name = jukebox::CREEPER_DISCS[self.rng.next_int(jukebox::CREEPER_DISCS.len() as u32) as usize];
+        if let Some(disc) = jukebox::disc_named(&format!("music_disc_{name}")) {
+            self.scatter(crate::inventory::Stack::new(disc, 1), pos);
+        }
     }
 
     /// Drops the loot and experience of a mob of `kind` the player killed

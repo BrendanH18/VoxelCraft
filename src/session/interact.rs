@@ -168,6 +168,11 @@ pub enum Used {
         cell: IVec3,
         item: Item,
     },
+    /// A disc went into a jukebox (`inserted`) or popped out of one.
+    Jukebox {
+        cell: IVec3,
+        inserted: bool,
+    },
     /// A shelf or chiseled bookshelf traded items with the player.
     Shelf {
         cell: IVec3,
@@ -710,6 +715,12 @@ impl PlayerSession {
                 other => other,
             };
             return Ok(Some(Used::Utility { cell: pos, effect }));
+        }
+        // Java skips block use only when sneaking with something in hand.
+        if !(ctx.sneaking && held.is_some())
+            && let Some(used) = self.use_jukebox(slot, world, pos)
+        {
+            return Ok(Some(used));
         }
         if !ctx.sneaking && survival_items::use_composter(world, entities, pos, &mut self.inventory, slot, creative) {
             return Ok(Some(Used::Composter { cell: pos }));

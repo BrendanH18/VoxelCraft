@@ -388,7 +388,18 @@ impl Game {
 
     /// Facing, spawn and time for compass and clock icons.
     pub(super) fn dial_of(&self, player: &crate::player::Player) -> crate::item::Dial {
+        // The recovery compass reads its holder's own last death.
+        let death = if std::ptr::eq(player, &self.session.player) {
+            self.session.last_death
+        } else {
+            self.agents
+                .players
+                .values()
+                .find(|b| std::ptr::eq(&b.agent.session.player, player))
+                .and_then(|b| b.agent.session.last_death)
+        };
         crate::item::Dial {
+            death,
             yaw: player.yaw,
             x: player.pos.x,
             z: player.pos.z,

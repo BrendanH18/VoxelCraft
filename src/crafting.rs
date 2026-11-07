@@ -18,6 +18,7 @@ mod bees;
 mod copper;
 mod creaking;
 mod crops;
+mod music;
 mod sculk;
 pub use copper::stonecutting as copper_stonecutting;
 pub mod colour;
@@ -643,6 +644,7 @@ pub fn recipes() -> &'static [Recipe] {
         bees::add(&mut r);
         creaking::add(&mut r);
         sculk::add(&mut r);
+        music::add(&mut r);
         wood::add(&mut r);
         colour::add(&mut r);
         utilities::add(&mut r);

@@ -49,6 +49,8 @@ pub fn block_use_precedes_item(
             .is_some_and(|(_, _, h)| h == 5 && matches!(held, Some(Item::SHEARS | Item::GLASS_BOTTLE)))
         || crate::world::utilities::interact::takes_use(world, pos, held)
         || b == Block::DRAGON_EGG
+        || b == crate::world::jukebox::JUKEBOX_WITH_RECORD
+        || (b == crate::world::jukebox::JUKEBOX && held.is_some_and(|i| crate::world::jukebox::song_of(i).is_some()))
         || crate::world::wood::signs::sign(b).is_some()
         || front_face_use(world, pos, b, aim)
         || (world.redstone_usable(pos) && (b.base() != Block::BELL || world.bell_hit_rings(pos, aim.0, aim.1)))

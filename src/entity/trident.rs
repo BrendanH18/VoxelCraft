@@ -130,6 +130,16 @@ impl Trident {
     }
 
     /// Whether the trident shows the enchantment glint (`ID_FOIL`).
+    /// The vibration source for this trident's game events (its owner).
+    pub fn event_source(&self) -> crate::world::vibration::EventSource {
+        let (player, mob) = match self.owner {
+            Some(Owner::Player(id)) => (Some(id), None),
+            Some(Owner::Mob(uid)) => (None, Some(uid)),
+            None => (None, None),
+        };
+        super::sculk_events::Sculk::projectile_source(player, mob)
+    }
+
     pub fn foil(&self) -> bool {
         !self.stack.enchants.is_empty()
     }
@@ -672,10 +682,19 @@ impl super::Entities {
             return;
         }
         let mut effects = Vec::new();
-        let (mobs, rng, pvp, thundering) = (&mut self.mobs, &mut self.rng, self.pvp, self.thundering);
+        let (mobs, rng, pvp, thundering, sculk) =
+            (&mut self.mobs, &mut self.rng, self.pvp, self.thundering, &mut self.sculk);
         self.tridents.retain_mut(|t| {
-            !world.entity_ticking(t.pos.floor().as_ivec3())
-                || t.update(dt, world, mobs, &ctx.players, pvp, thundering, rng, events, &mut effects)
+            if !world.entity_ticking(t.pos.floor().as_ivec3()) {
+                return true;
+            }
+            let was_in_ground = t.in_ground;
+            let keep = t.update(dt, world, mobs, &ctx.players, pvp, thundering, rng, events, &mut effects);
+            // `Projectile.onHit`: `projectile_land` where it stuck.
+            if keep && !was_in_ground && t.in_ground {
+                sculk.post(t.pos, crate::world::vibration::GameEvent::ProjectileLand, t.event_source(), None);
+            }
+            keep
         });
         for effect in effects {
             match effect {
@@ -688,6 +707,9 @@ impl super::Entities {
     /// Throws `stack` as a player's trident.
     pub fn throw_trident(&mut self, stack: Stack, throw: Throw) {
         let trident = Trident::thrown(stack, throw, &mut self.rng);
+        // `Projectile.tick`'s first tick: `projectile_shoot` from its owner.
+        let source = trident.event_source();
+        self.sculk.post(trident.pos, crate::world::vibration::GameEvent::ProjectileShoot, source, None);
         self.tridents.push(trident);
     }
 

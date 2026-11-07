@@ -120,6 +120,13 @@ impl World {
                         self.chests.insert(p, chest);
                     }
                 }
+                Feature::AncientCityChest(seed, ice_box) if is_chest(block) => {
+                    if !self.chests.contains_key(&p) {
+                        let name = if ice_box { "ancient_city_ice_box" } else { "ancient_city" };
+                        let chest = self.structure_loot(name, Some(seed), p);
+                        self.chests.insert(p, chest);
+                    }
+                }
                 Feature::MineshaftChest(seed) if is_chest(block) => {
                     if !self.chests.contains_key(&p) {
                         let name = "abandoned_mineshaft";
