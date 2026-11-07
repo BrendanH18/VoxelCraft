@@ -1632,6 +1632,18 @@ in parallel, each with its own IDs in the
    the recovery compass; Swift Sneak; disc fragments and disc 5; a jukebox
    playing music discs (original tunes, redstone output, allay dancing and
    duplication); ancient city maps where their loot names them.
+   *Implemented, unverified (2026-11-06):* generation 3 ancient cities from
+   the jigsaw engine with Java's placement (24/8, salt 20083232, deep-dark
+   stub check, depth 7, distance 116, empty spawn overrides) and original
+   templates under Java's pool names; reinforced deepslate (55 hardness, no
+   drop, immovable), summoning shriekers and sculk patches; both chest
+   tables; echo shards, disc fragments, disc 5, the recovery compass (saved
+   per player) and Swift Sneak; the jukebox with all 22 Java 26.3 discs
+   (Java lengths and comparator outputs, original procedural tunes,
+   redstone, hoppers, allay dancing, save/reload) and creeper discs.
+   Gaps: skulls, armor trims and experience bottles in the loot, the
+   shorter record hearing range (24 blocks, Java 64), music ducking and the template geometry are
+   recorded in the [track B record](verification/2026-11-06-v0.16-ancient-cities.md).
 3. **C. Trial chambers** (GEN-05, MOB-04, PRO-07). Trial chambers from the
    jigsaw engine with Java's placement; trial spawners (normal and ominous,
    per-player scaling, detection and cooldowns); vaults and ominous vaults

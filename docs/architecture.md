@@ -743,6 +743,24 @@ meanings. New `Enchantment`s append after `Lunge` in the order SwiftSneak
 allocations below; projectile kinds, sound lists, icons and other append-only
 orderings are reconciled by the integrator in the order A, B, C, D.
 
+Track B allocation (2026-11-06, implemented, unverified;
+[record](verification/2026-11-06-v0.16-ancient-cities.md)):
+
+| Kind | Used | Meaning |
+| --- | --- | --- |
+| Block states | 11648, 11649 | jukebox, `has_record` false/true (`world::jukebox`) |
+| Block states | 11650 | reinforced deepslate; 11651–11775 stay reserved, unregistered |
+| Items | 1430, 1431, 1432 | echo shard, recovery compass, disc fragment 5 |
+| Items | 1433–1454 | music discs in Java `Items` order: 13, cat, blocks, bounce, chirp, creator, creator_music_box, far, lava_chicken, mall, mellohi, stal, strad, ward, 11, wait, otherside, relic, 5, pigstep, precipice, tears; 1455–1469 stay reserved |
+| Texture layers | 3664–3668 | jukebox side/top, reinforced deepslate side/top/bottom; 3669–3759 stay reserved |
+| Enchantment | save bit 40 | `Enchantment::SwiftSneak` |
+| Item icons | `passive_icon_base() + 19..+44` | the 25 track B items, after resin brick |
+| Animated icons | after the clock frames | 32 recovery compass needle frames (`RECOVERY_FRAMES`); effect icons follow them |
+
+No `MobKind`, LAN index or projectile kind. New `Feature::AncientCityChest`,
+`Used::Jukebox`, the `jukeboxes` dimension save key and the player
+`last_death` save key (`agents` profiles carry it too).
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating
