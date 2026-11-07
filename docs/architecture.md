@@ -743,6 +743,22 @@ meanings. New `Enchantment`s append after `Lunge` in the order SwiftSneak
 allocations below; projectile kinds, sound lists, icons and other append-only
 orderings are reconciled by the integrator in the order A, B, C, D.
 
+**Track D allocation** (2026-11-06, [record](verification/2026-11-06-v0.16-weapons.md)):
+
+| Kind | Used | Meaning |
+| --- | --- | --- |
+| Block states | 15744–15745 | Heavy core, dry and waterlogged (`world::heavy_core`) |
+| Items | 1495, 1496 | Trident, mace (`crate::weapons`) |
+| Items | 1497–1503 | Wooden, stone, copper, iron, golden, diamond, netherite spear |
+| Texture layers | 3856–3858 | Heavy core top, side, bottom |
+| Enchantment bit | 41 | `WindBurst` (explicit discriminant; bit 40 kept for Swift Sneak) |
+
+States 15746–15807, items 1504–1529 and layers 3859–3951 stay unregistered.
+The heavy core's item is block item `0x8000 + 15744`. Item icons append at
+`passive_icon_base() + 19..=27`; `Sound::Weapon`, `MobSound::Weapon`, the
+`tridents` entity property and `Mob.weapon` (saved as `main_hand`) are new
+append-only orderings and keys for the integrator to sequence.
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating
