@@ -1638,6 +1638,17 @@ in parallel, each with its own IDs in the
    with trial keys and their reward tables; Bad Omen to Trial Omen and
    ominous bottles; the breeze, breeze rods and wind charges; bogged and
    other chamber spawner residents; trial chamber maps.
+   *Implemented, unverified (2026-11-06):* generation 3 trial chambers
+   with Java's placement and pool topology on an original, reduced template
+   catalogue; trial spawners (all six states, per-player scaling and
+   detection, 30-minute cooldown, Java's 14 configurations and reward
+   tables, ominous conversion and ominous item spawners); vaults and ominous
+   vaults with per-player rewards; trial keys, ominous bottles, Bad Omen to
+   Trial Omen; the breeze with its jump/shoot/slide brain, deflection and rod
+   drops; wind charges and the shared `entity::wind::wind_burst`; the
+   cartographer's trial explorer map. Gaps (decorated pots, the potions the
+   ominous drop table names, swords on ominous zombies, presentation) are in
+   the [Track C record](verification/2026-11-06-v0.16-trial-chambers.md).
 4. **D. Weapons** (PRO-07, ENV-04). The heavy core and the mace (smash
    attack, fall-damage reset, Density, Breach, Wind Burst); tridents
    (throwing, Loyalty, Riptide, Channeling, Impaling, drowned drops,
