@@ -470,6 +470,12 @@ impl Agent {
                 // Java has no attack cooldown; damage scales with the charge instead.
                 self.cooldown = TICK_SECONDS;
                 self.swings += 1;
+                // Wind Burst's block interaction, as the desktop hands apply it.
+                if let crate::session::combat::Outcome::Hit { smash: Some(smash), .. } = &outcome
+                    && let Some(center) = smash.wind_burst
+                {
+                    crate::weapons::mace::wind_burst_blocks(world, center);
+                }
                 match outcome {
                     crate::session::combat::Outcome::Missed { .. } => {
                         return Err("nothing to attack within reach".into());

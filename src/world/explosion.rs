@@ -693,6 +693,23 @@ impl World {
     /// `interactWithBlocks` breaks them. Rays stop at the world's top and
     /// bottom and at unloaded chunks. Exploded cells may be air.
     pub fn exploded_cells(&mut self, center: DVec3, radius: f32) -> Vec<IVec3> {
+        self.exploded_cells_with(center, radius, resistance_against)
+    }
+
+    /// [`World::exploded_cells`] with a wind charge's calculator
+    /// (`SimpleExplosionDamageCalculator` with `immuneBlocks`
+    /// `#blocks_wind_charge_explosions`): only those blocks (bedrock; the
+    /// barrier isn't registered) stop its rays, every other block costs nothing.
+    pub fn wind_exploded_cells(&mut self, center: DVec3, radius: f32) -> Vec<IVec3> {
+        self.exploded_cells_with(center, radius, |b| (b == Block::BEDROCK).then_some(3_600_000.0))
+    }
+
+    fn exploded_cells_with(
+        &mut self,
+        center: DVec3,
+        radius: f32,
+        resistance_against: impl Fn(Block) -> Option<f32>,
+    ) -> Vec<IVec3> {
         let mut cells = FxHashSet::default();
         let edge = |i: i32| i == 0 || i == 15;
         let axis = |i: i32| f64::from(i as f32 / 15.0 * 2.0 - 1.0);

@@ -68,6 +68,9 @@ pub struct Trident {
     pub no_physics: bool,
     /// `clientSideReturnTridentTickCount` (the return sound plays once).
     returning: u32,
+    /// The breeze that turned it back (Java makes it the owner, so it can't
+    /// hit that breeze again); not saved.
+    deflector: Option<u32>,
     /// `lastState`: the block it is stuck in.
     last_block: Option<Block>,
     /// Pointing direction for rendering, kept once stuck.
@@ -100,6 +103,7 @@ impl Trident {
             dealt_damage: false,
             no_physics: false,
             returning: 0,
+            deflector: None,
             last_block: None,
             dir: vel.normalize_or(DVec3::X).as_vec3(),
             remainder: 0.0,
@@ -304,6 +308,18 @@ impl Trident {
             && let Some((target, t)) = self.find_hit(from, step, mobs, players, pvp)
         {
             self.pos = from + step * t;
+            // `Breeze.deflection`: `ProjectileDeflection.REVERSE` before any damage.
+            if let Hit::Mob(i) = target
+                && mobs[i].kind == MobKind::Breeze
+            {
+                self.vel *= -0.5;
+                self.deflector = Some(mobs[i].uid);
+                events.push(EntityEvent::Sound {
+                    sound: MobSound::Breeze(super::breeze::Cue::Deflect),
+                    pos: mobs[i].pos,
+                });
+                return true;
+            }
             self.hit_entity(world, target, mobs, thundering, rng, events, effects);
             return true;
         }
@@ -328,7 +344,7 @@ impl Trident {
         };
         let mut best: Option<(Hit, f64)> = None;
         for (i, m) in mobs.iter().enumerate() {
-            if !m.alive() || self.owner == Some(Owner::Mob(m.uid)) {
+            if !m.alive() || self.owner == Some(Owner::Mob(m.uid)) || self.deflector == Some(m.uid) {
                 continue;
             }
             let (min, max) = m.aabb();
@@ -778,6 +794,36 @@ mod tests {
 
     fn run(e: &mut Entities, world: &Grid, ticks: u32) -> Vec<EntityEvent> {
         (0..ticks).flat_map(|_| e.update(0.05, world, &ctx())).collect()
+    }
+
+    #[test]
+    fn a_breeze_turns_a_trident_back_unhurt() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(3);
+        e.spawn(MobKind::Breeze, DVec3::new(4.5, 10.0, 0.5));
+        e.tridents.push(flying(Stack::new(crate::weapons::TRIDENT, 1), DVec3::new(0.5, 10.6, 0.5), DVec3::X * 1.2));
+        let events = run(&mut e, &world, 4);
+        assert_eq!(e.mobs[0].health, MobKind::Breeze.max_health());
+        assert!(events.iter().any(|ev| matches!(
+            ev,
+            EntityEvent::Sound { sound: MobSound::Breeze(crate::entity::breeze::Cue::Deflect), .. }
+        )));
+        assert!(!e.tridents[0].dealt_damage && e.tridents[0].vel.x < 0.0, "deflected, not a hit");
+    }
+
+    #[test]
+    fn a_breeze_turns_an_arrow_back_unhurt() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(3);
+        e.spawn(MobKind::Breeze, DVec3::new(4.5, 10.0, 0.5));
+        e.arrows.push(crate::entity::Arrow::shot(DVec3::new(2.5, 10.6, 0.5), DVec3::X, 1.0, false));
+        let events = run(&mut e, &world, 4);
+        assert_eq!(e.mobs[0].health, MobKind::Breeze.max_health());
+        assert!(events.iter().any(|ev| matches!(
+            ev,
+            EntityEvent::Sound { sound: MobSound::Breeze(crate::entity::breeze::Cue::Deflect), .. }
+        )));
+        assert!(e.arrows[0].velocity().x < 0.0, "it flies back");
     }
 
     #[test]

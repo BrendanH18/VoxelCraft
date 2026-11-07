@@ -121,7 +121,7 @@ impl World {
     /// flip levers, ring bells and put out candles. Nothing breaks.
     pub fn wind_trigger(&mut self, burst: &WindBurst) -> usize {
         use crate::world::redstone_blocks::{self as r, Component};
-        let cells = self.exploded_cells(burst.center, burst.radius);
+        let cells = self.wind_exploded_cells(burst.center, burst.radius);
         let mut triggered = 0;
         let mut doors_done: Vec<IVec3> = Vec::new();
         for p in cells {
@@ -252,6 +252,32 @@ mod tests {
         ));
         // Nothing breaks.
         assert_eq!(w.get_block(IVec3::new(4, 63, 4)), floor);
+    }
+
+    #[test]
+    fn wind_rays_pass_through_blocks_only_bedrock_stops() {
+        // `#blocks_wind_charge_explosions` is the only resistance: a lever
+        // behind stone (resistance 6, more than a charge's whole ray) flips.
+        let g = std::sync::Arc::new(crate::world::terrain::Generator::new(4));
+        let mut w = World::new_headless(g, Default::default(), 2);
+        for x in -1..=1 {
+            for z in -1..=1 {
+                w.load_test_column(glam::IVec2::new(x, z), 63);
+            }
+        }
+        let lever = IVec3::new(6, 64, 4);
+        w.set_block(IVec3::new(5, 64, 4), crate::world::block::Block::STONE);
+        w.set_block(lever, r::lever(0, false));
+        let center = DVec3::new(4.5, 64.5, 4.5);
+        let mut flipped = false;
+        for _ in 0..8 {
+            w.wind_trigger(&WindBurst::charge(center, None));
+            flipped |= matches!(r::component(w.get_block(lever).unwrap()), Some(r::Component::Lever { on: true, .. }));
+        }
+        assert!(flipped, "a wind charge reaches the lever through stone");
+        assert!(w.wind_exploded_cells(center, CHARGE_RADIUS).contains(&IVec3::new(5, 64, 4)));
+        w.set_block(IVec3::new(5, 64, 4), crate::world::block::Block::BEDROCK);
+        assert!(!w.wind_exploded_cells(center, CHARGE_RADIUS).contains(&lever));
     }
 
     #[test]
