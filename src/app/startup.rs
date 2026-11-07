@@ -126,6 +126,9 @@ impl Game {
         vitals.time_since_rest =
             prop("time_since_rest").and_then(|s| s.parse::<u32>().ok()).unwrap_or(0).min(i32::MAX as u32);
         vitals.ticks_frozen = prop("ticks_frozen").and_then(|s| s.parse::<u16>().ok()).unwrap_or(0).min(140);
+        if let Some(v) = prop("warden_spawn_tracker").and_then(|t| serde_json::from_str(t).ok()) {
+            vitals.warden = crate::world::sculk::WardenSpawnTracker::load(&v);
+        }
         if let Some(text) = prop("effects") {
             vitals.effects = crate::simulation::effects::Effects::deserialize(text);
         }

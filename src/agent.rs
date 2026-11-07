@@ -805,6 +805,13 @@ impl Agent {
             world.powder_snow_fire(&self.session.player, self.session.vitals.burning());
             world.dripleaf_step(self.session.player.pos, self.session.player.on_ground);
             crate::particles::movement_effects(&self.session.player, before, world);
+            world.player_moved(
+                self.session.id,
+                &self.session.player,
+                before,
+                self.session.mode == crate::rules::GameMode::Spectator,
+                self.creative || self.session.mode.is_creative(),
+            );
         } else {
             entities.mount_input(self.session.id, &self.session.player, input, &self.session.inventory, self.selected);
             entities.seat_player(&mut self.session.player, self.session.id);
@@ -1164,6 +1171,17 @@ impl Agent {
         if self.session.vitals.is_dead() {
             self.drop_everything(entities);
         }
+    }
+
+    /// A warden's sonic boom (`SonicBoom.tick`): armor and enchantments don't
+    /// reduce it, a shield raised toward the warden at `from` stops it, and it
+    /// pushes by `push` (blocks per tick, before knockback resistance).
+    pub fn hurt_sonic_boom(&mut self, damage: f32, push: DVec3, from: DVec3, entities: &mut Entities) -> f32 {
+        if self.shielded(damage, from - self.session.player.pos) {
+            return 0.0;
+        }
+        let cause = crate::entity::warden::CAUSE_SONIC_BOOM;
+        self.hurt_after_armor(damage, 0.0, cause, push * crate::knockback::TICK_RATE, None, entities)
     }
 
     pub fn hurt_beam(&mut self, physical: f32, magic: f32, entities: &mut Entities) -> f32 {

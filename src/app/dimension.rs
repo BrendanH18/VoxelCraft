@@ -24,7 +24,7 @@ use crate::world::terrain::{Dimension, Generator, SEA_LEVEL};
 use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 21] = [
+pub(super) const DIMENSION_KEYS: [&str; 22] = [
     "furnaces",
     "chests",
     "items",
@@ -46,6 +46,7 @@ pub(super) const DIMENSION_KEYS: [&str; 21] = [
     "creaking_hearts",
     "potion_clouds",
     "copper_golem_statues",
+    "sculk",
 ];
 /// How far around the arrival point to look for an existing portal.
 const SEARCH_RADIUS: i32 = 16;
@@ -132,6 +133,7 @@ impl Game {
         props.insert("beehives".into(), self.world.beehives_to_string());
         props.insert("archaeology".into(), self.world.archaeology_to_string());
         props.insert("creaking_hearts".into(), self.world.creaking_hearts_to_string());
+        props.insert("sculk".into(), self.world.sculk_to_string());
         props.insert("copper_golem_statues".into(), self.world.copper_golem_statues_to_string());
         props.insert("spawners".to_string(), self.world.spawners_to_string());
         props.insert("utilities".to_string(), self.world.utilities_to_string());
@@ -174,6 +176,9 @@ impl Game {
         }
         if let Some(s) = props.get("creaking_hearts") {
             self.world.load_creaking_hearts(s);
+        }
+        if let Some(s) = props.get("sculk") {
+            self.world.load_sculk(s);
         }
         if let Some(s) = props.get("copper_golem_statues") {
             self.world.load_copper_golem_statues(s);

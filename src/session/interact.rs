@@ -317,11 +317,36 @@ impl PlayerSession {
         if used.is_none() {
             used = self.use_item(slot, world, entities, ctx)?;
         }
+        if let Some(u) = used {
+            self.item_use_event(world, u);
+        }
         // Riders use items (Java `Item.use` has no vehicle check) but not blocks.
         if used.is_none() && self.player.vehicle.is_none() {
             used = self.use_block(slot, world, entities, ctx, tool_broken)?;
         }
         Ok(used)
+    }
+
+    /// The game events Java posts for entity and item uses: buckets and
+    /// bottles (`fluid_pickup`, `fluid_place`), thrown projectiles
+    /// (`projectile_shoot` from their owner) and mounting.
+    fn item_use_event(&self, world: &mut World, used: Used) {
+        use crate::world::vibration::{EventSource, GameEvent as E};
+        use survival_items::bucket::Effect as B;
+        let (pos, event) = match used {
+            Used::Bucket(B::Filled { at, .. } | B::BottleFilled { at }) => {
+                (at.as_dvec3() + DVec3::splat(0.5), E::FluidPickup)
+            }
+            Used::Bucket(B::Poured { at, .. } | B::Released { at }) => {
+                (at.as_dvec3() + DVec3::splat(0.5), E::FluidPlace)
+            }
+            Used::ProjectileThrown { from } | Used::PearlThrown { from } | Used::PotionThrown { from } => {
+                (from, E::ProjectileShoot)
+            }
+            Used::Mounted(_) => (self.player.pos, E::EntityMount),
+            _ => return,
+        };
+        world.emit_game_event(pos, event, EventSource::player(self.id, self.player.sneaking), None);
     }
 
     /// Items whose right-click starts drawing (bows and crossbows).
@@ -549,7 +574,67 @@ impl PlayerSession {
         Ok(None)
     }
 
+    /// [`Self::use_block_inner`], then the game event Java's block posts
+    /// for what the use did (doors, levers, buttons, trapdoors, note blocks,
+    /// TNT, cake, containers, composters, harvests and fire).
     fn use_block(
+        &mut self,
+        slot: usize,
+        world: &mut World,
+        entities: &mut Entities,
+        ctx: &UseContext,
+        tool_broken: &mut Option<Item>,
+    ) -> Result<Option<Used>, &'static str> {
+        let used = self.use_block_inner(slot, world, entities, ctx, tool_broken)?;
+        if let Some(used) = used {
+            self.block_use_event(world, used);
+        }
+        Ok(used)
+    }
+
+    fn block_use_event(&self, world: &mut World, used: Used) {
+        use crate::world::redstone_blocks::{self as r, Component};
+        use crate::world::vibration::{EventSource, GameEvent as E};
+        let (cell, event) = match used {
+            Used::Door { cell, open: Some(open) } => (cell, if open { E::BlockOpen } else { E::BlockClose }),
+            Used::Redstone { cell } => {
+                let Some(b) = world.get_block(cell) else { return };
+                let event = match r::component(b) {
+                    Some(Component::Lever { on, .. }) => {
+                        if on {
+                            E::BlockActivate
+                        } else {
+                            E::BlockDeactivate
+                        }
+                    }
+                    Some(Component::Button { .. }) => E::BlockActivate,
+                    Some(Component::Trapdoor { open, .. }) => {
+                        if open {
+                            E::BlockOpen
+                        } else {
+                            E::BlockClose
+                        }
+                    }
+                    Some(Component::Repeater { .. } | Component::Comparator { .. }) => E::BlockChange,
+                    // Note blocks post `note_block_play` themselves.
+                    _ => return,
+                };
+                (cell, event)
+            }
+            Used::TntPrimed { cell } => (cell, E::PrimeFuse),
+            Used::CakeBitten { cell } => (cell, E::Eat),
+            Used::Screen { cell, block } if crate::world::chest::is_chest(block) => (cell, E::ContainerOpen),
+            Used::Composter { cell } | Used::Harvested { cell } | Used::EyeInserted { cell, .. } => {
+                (cell, E::BlockChange)
+            }
+            Used::Ignited { cell, .. } => (cell, E::BlockPlace),
+            _ => return,
+        };
+        let source = EventSource::player(self.id, self.player.sneaking);
+        world.emit_game_event(cell.as_dvec3() + DVec3::splat(0.5), event, source, None);
+    }
+
+    fn use_block_inner(
         &mut self,
         slot: usize,
         world: &mut World,

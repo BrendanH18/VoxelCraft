@@ -34,6 +34,7 @@ impl Game {
         props.insert("effects".to_string(), self.session.vitals.effects.serialize());
         props.insert("time_since_rest".into(), self.session.vitals.time_since_rest.to_string());
         props.insert("ticks_frozen".to_string(), self.session.vitals.ticks_frozen.to_string());
+        props.insert("warden_spawn_tracker".into(), self.session.vitals.warden.save().to_string());
         let h = self.session.vitals.hunger;
         props.insert("hunger".to_string(), format!("{:.2},{:.2},{:.3}", h.food, h.saturation, h.exhaustion));
         if let Some(cause) = &self.session.vitals.death {

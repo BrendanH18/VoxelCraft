@@ -324,6 +324,13 @@ impl PlayerSession {
         if held.is_some_and(|s| s.item == Item::SHEARS) {
             world.disarm_tripwire(pos);
         }
+        // `Block.playerWillDestroy`: the vibration names the broken block.
+        world.emit_game_event(
+            pos.as_dvec3() + glam::DVec3::splat(0.5),
+            crate::world::vibration::GameEvent::BlockDestroy,
+            crate::world::vibration::EventSource::player(self.id, self.player.sneaking),
+            Some(block),
+        );
         let hive_handled = world.mine_beehive(entities, pos, block, held, self.id, drops && harvest);
         let statue_handled = world.mine_copper_golem_statue(pos, drops && harvest);
         world.set_block(pos, if melts { Block::WATER } else { Block::AIR });

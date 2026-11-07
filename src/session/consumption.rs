@@ -144,6 +144,14 @@ impl PlayerSession {
                 magic_damage += self.vitals.apply_effect(effect, amplifier, ticks);
             }
         }
+        // `Consumable.onConsume` and `LivingEntity.completeUsingItem`.
+        let drink =
+            held.item == Item::MILK_BUCKET || held.item.as_potion().is_some() || held.item == Item::HONEY_BOTTLE;
+        let source = crate::world::vibration::EventSource::player(self.id, self.player.sneaking);
+        use crate::world::vibration::GameEvent;
+        let event = if drink { GameEvent::Drink } else { GameEvent::Eat };
+        entities.sculk.post(self.player.pos, event, source, None);
+        entities.sculk.post(self.player.pos, GameEvent::ItemInteractFinish, source, None);
         Ok(Step { progress: 0., completed: Some(Consumed { player: self.id, item: held.item, magic_damage }) })
     }
 }
