@@ -276,6 +276,8 @@ pub struct Generator {
     pub temples: super::temples::Temples,
     pub relics: super::relics::Relics,
     pub trail_ruins: super::trail_ruins::TrailRuins,
+    /// v0.16 Track C: generation 3 trial chambers.
+    pub trial_chambers: super::trial_chambers::TrialChambers,
     pub ruined_portals: super::ruined_portal::RuinedPortals,
     pub buried_treasure: super::buried_treasure::BuriedTreasure,
     columns: Mutex<FxHashMap<IVec2, Arc<ChunkColumns>>>,
@@ -331,6 +333,7 @@ impl Generator {
             temples: super::temples::Temples::new(seed),
             relics: super::relics::Relics::new(seed),
             trail_ruins: super::trail_ruins::TrailRuins::new(seed),
+            trial_chambers: super::trial_chambers::TrialChambers::new(seed),
             ruined_portals: super::ruined_portal::RuinedPortals::new(seed),
             buried_treasure: super::buried_treasure::BuriedTreasure::new(seed),
             columns: Mutex::new(FxHashMap::default()),
@@ -712,6 +715,7 @@ impl Generator {
         if self.generation >= Generation::V3 {
             features.extend(self.ruined_portals.features(self, cpos));
             features.extend(self.buried_treasure.features(self, cpos));
+            features.extend(self.trial_chambers.features(self, cpos));
         }
         features
     }
@@ -876,6 +880,7 @@ impl Generator {
         self.temples.paint(self, &mut blocks, base);
         if self.generation >= Generation::V3 {
             self.trail_ruins.paint(self, &mut blocks, base);
+            self.trial_chambers.paint(self, &mut blocks, base);
             self.relics.paint(self, &mut blocks, base);
             if portals {
                 self.ruined_portals.paint(self, &mut blocks, base);

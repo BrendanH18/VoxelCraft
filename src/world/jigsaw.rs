@@ -28,6 +28,7 @@
 //! Besides the format documented in `jigsaw/village.txt`, templates take
 //! `fill x0 y0 z0 x1 y1 z1 <spec>` (an inclusive box of a block, role or
 //! crop, painted before the layers so layer cells override it),
+//! `put x y z <spec>` (one cell of any spec, painted with the layers),
 //! `chest:<table>@dir` (a chest filled from a named loot table),
 //! `spawner:<mob>` (a mob spawner), `mob x y z <name>` (a resident placed
 //! with the structure, see [`markers`]) and connectors facing `up` or
@@ -348,6 +349,12 @@ impl Library {
                     fills.push((a.min(b), a.max(b), spec));
                 }
                 "mob" if words.len() == 5 => mobs.push((vec3(&words[1..4])?, words[4].to_string())),
+                // One cell of any spec, chests and spawners included (v0.16
+                // trial chambers), without writing out a whole layer.
+                "put" if words.len() == 5 => {
+                    let spec = self.spec(words[4]).map_err(err)?;
+                    cells.push(Cell { pos: vec3(&words[1..4])?, spec });
+                }
                 _ if layer.is_some() && words.len() == 1 => {
                     let size = size.ok_or_else(|| err("`size` must come first".into()))?;
                     let (y, z) = layer.unwrap();
@@ -431,8 +438,14 @@ pub fn ruined_portals() -> &'static Library {
     LIB.get_or_init(|| Library::parse(include_str!("jigsaw/ruined_portals.txt")).expect("ruined portal templates"))
 }
 
+/// Trial chamber templates and pools (v0.16 Track C).
+pub fn trial_chambers() -> &'static Library {
+    static LIB: OnceLock<Library> = OnceLock::new();
+    LIB.get_or_init(|| Library::parse(include_str!("jigsaw/trial_chambers.txt")).expect("trial chamber templates"))
+}
+
 /// Every template library, for tests that check them all.
-pub fn all() -> [(&'static str, &'static Library); 6] {
+pub fn all() -> [(&'static str, &'static Library); 7] {
     [
         ("village", villages()),
         ("outpost", outposts()),
@@ -440,6 +453,7 @@ pub fn all() -> [(&'static str, &'static Library); 6] {
         ("trail_ruins", trail_ruins()),
         ("relics", relics()),
         ("ruined_portals", ruined_portals()),
+        ("trial_chambers", trial_chambers()),
     ]
 }
 
