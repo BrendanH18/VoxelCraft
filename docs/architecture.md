@@ -743,6 +743,19 @@ meanings. New `Enchantment`s append after `Lunge` in the order SwiftSneak
 allocations below; projectile kinds, sound lists, icons and other append-only
 orderings are reconciled by the integrator in the order A, B, C, D.
 
+Track A allocation (2026-11-06, implemented, unverified): the calibrated
+sculk sensor uses states **11520–11543** (`11520 + 12 * wet + 3 * facing +
+phase`, `world::cave_blocks::calibrated_sensor`) and texture layers
+**3600–3605** (`cave_blocks::ct`); 11544–11647, items 1420–1429 and layers
+3606–3663 stay unused with the track. `MobKind::Warden` is LAN index **72**
+(`warden`). Appended orderings: `Effect::Darkness` after `Saturation`
+(saved by its Java id), `Sound::Warden` and `Sound::Sculk` after the
+sniffer cues, the dimension key `sculk` and the player field
+`warden_spawn_tracker`. Listener block entities (sensor power and last
+frequency, shrieker warning level, catalyst cursors, vibration listeners)
+live in `world::sculk`; game events in `world::vibration`
+([record](verification/2026-11-06-v0.16-sculk-warden.md)).
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

@@ -1625,6 +1625,16 @@ in parallel, each with its own IDs in the
    shrieker warning levels, Darkness and warden summoning; the warden
    (emerging, sniffing, per-entity anger, melee, sonic boom, digging back
    down, its loot); the `spawn_wardens` rule.
+   Implemented, unverified (2026-11-06): game events and vibrations with
+   Java's frequencies, radii, wool occlusion and sneaking (`world::vibration`,
+   `emit_game_event`), active sensors and calibrated sensors (power by
+   distance, comparator frequency, amethyst resonance, the crafted
+   calibrated sensor), shriekers with per-player warning levels, Darkness
+   and summoning, catalysts taking death experience and spreading sculk,
+   and the warden (brain, anger, melee, sonic boom, emerging, digging,
+   Darkness pulses, loot, saves). Gaps: Java's random sequences, some
+   event sources (mounting, buckets, shearing, teleports), lightmap
+   darkness; see the [record](verification/2026-11-06-v0.16-sculk-warden.md).
 2. **B. Ancient cities, loot and music** (GEN-05, PRO-07). Ancient cities
    from the jigsaw engine in deep-dark biomes, with summoning shriekers,
    reinforced deepslate, the portal-frame centrepiece and Java's
