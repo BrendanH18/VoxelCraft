@@ -267,22 +267,22 @@ impl Dungeons {
 // Java's simple_dungeon has three independent pools: 1-3, 1-4, and 3
 // rolls. Entries with no usable VoxelCraft counterpart remain weighted
 // blanks, preserving the relative odds of the items we can award. Omitted:
-// three music discs and copper horse armor.
+// copper horse armor (the discs arrived in v0.16).
 #[cfg(test)]
 type Entry = (Option<Item>, u32, u8, u8);
 #[cfg(test)]
 const RARE: &[Entry] = &[
     (Some(Item::LEATHER), 20, 1, 5),
-    (Some(Item::GOLDEN_APPLE), 15, 1, 1),          // golden apple
-    (Some(Item::ENCHANTED_GOLDEN_APPLE), 2, 1, 1), // enchanted golden apple
-    (None, 2, 1, 1),                               // music disc otherside
-    (None, 15, 1, 1),                              // music disc 13
-    (None, 15, 1, 1),                              // music disc cat
-    (Some(Item::NAME_TAG), 20, 1, 1),              // name tag
-    (Some(Item::GOLDEN_HORSE_ARMOR), 10, 1, 1),    // golden horse armor
-    (None, 15, 1, 1),                              // copper horse armor
-    (Some(Item::IRON_HORSE_ARMOR), 15, 1, 1),      // iron horse armor
-    (Some(Item::DIAMOND_HORSE_ARMOR), 5, 1, 1),    // diamond horse armor
+    (Some(Item::GOLDEN_APPLE), 15, 1, 1),                   // golden apple
+    (Some(Item::ENCHANTED_GOLDEN_APPLE), 2, 1, 1),          // enchanted golden apple
+    (Some(crate::world::jukebox::DISC_OTHERSIDE), 2, 1, 1), // music disc otherside
+    (Some(crate::world::jukebox::disc(0)), 15, 1, 1),       // music disc 13
+    (Some(crate::world::jukebox::disc(1)), 15, 1, 1),       // music disc cat
+    (Some(Item::NAME_TAG), 20, 1, 1),                       // name tag
+    (Some(Item::GOLDEN_HORSE_ARMOR), 10, 1, 1),             // golden horse armor
+    (None, 15, 1, 1),                                       // copper horse armor
+    (Some(Item::IRON_HORSE_ARMOR), 15, 1, 1),               // iron horse armor
+    (Some(Item::DIAMOND_HORSE_ARMOR), 5, 1, 1),             // diamond horse armor
     (Some(Item::ENCHANTED_BOOK), 10, 1, 1),
 ];
 #[cfg(test)]

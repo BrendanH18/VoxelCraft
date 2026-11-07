@@ -207,7 +207,10 @@ impl TradeDef {
                 output.enchants.set(e, l);
             }
         } else if self.ench == 2 {
-            let e = Enchantment::ALL[rng.next_bounded(Enchantment::COUNT as i32) as usize];
+            // `#tradeable` excludes Swift Sneak (save bit 40, after the
+            // 40 enchantments this pick has always drawn from).
+            let tradeable = &Enchantment::ALL[..Enchantment::SwiftSneak as usize];
+            let e = tradeable[rng.next_bounded(tradeable.len() as i32) as usize];
             let level = 1 + rng.next_bounded(e.def().max_level as i32) as u8;
             output.enchants.set(e, level);
             let price = 2 + rng.next_bounded(5 + 10 * level as i32) + 3 * level as i32;

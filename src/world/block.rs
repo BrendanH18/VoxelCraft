@@ -372,8 +372,11 @@ pub mod tex {
             if a > b { a } else { b }
         }
         max(
-            super::super::eyeblossom::TEX_END as u32,
-            max(super::super::sniffer_egg::TEXTURE_END as u32, super::super::archaeology::t::END as u32),
+            super::super::jukebox::t::END as u32,
+            max(
+                super::super::eyeblossom::TEX_END as u32,
+                max(super::super::sniffer_egg::TEXTURE_END as u32, super::super::archaeology::t::END as u32),
+            ),
         )
     };
     const _: () = assert!(super::super::biome_plants::TEX_END <= BUBBLE_BASE);
@@ -782,6 +785,10 @@ impl Block {
     }
 
     pub fn ignited_by_lava(self) -> bool {
+        // `Blocks.JUKEBOX`: `ignitedByLava()`.
+        if super::jukebox::is_jukebox(self) {
+            return true;
+        }
         if let Some(p) = super::wood::props(self) {
             return p.lava;
         }
@@ -1608,6 +1615,9 @@ impl Block {
 
     /// What breaking this block yields in survival.
     pub fn drop(self) -> Option<Item> {
+        if let Some(drop) = super::jukebox::drop(self) {
+            return drop;
+        }
         if super::sniffer_egg::owns(self.0) {
             return Some(Item::SNIFFER_EGG);
         }
@@ -1763,6 +1773,9 @@ impl Block {
     /// held item can harvest the block and 5x when it can't, divided by the
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
     pub fn hardness(self) -> f32 {
+        if let Some(h) = super::jukebox::hardness(self) {
+            return h;
+        }
         if super::sniffer_egg::owns(self.0) {
             return 0.5;
         }
@@ -1998,6 +2011,12 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
+        if super::jukebox::is_jukebox(self) {
+            return Some(ToolKind::Axe);
+        }
+        if self == super::jukebox::REINFORCED_DEEPSLATE {
+            return None;
+        }
         if super::archaeology::owns(self.0) {
             return Some(ToolKind::Shovel);
         }
@@ -2184,6 +2203,9 @@ impl Block {
     /// Pickaxe harvest level needed for any drop (0 wood or gold, 1 stone,
     /// 2 iron, 3 diamond); `None` if a bare hand will do.
     pub fn harvest_level(self) -> Option<u8> {
+        if super::jukebox::owns(self.0) {
+            return None;
+        }
         if super::creaking::owns(self.0)
             && super::creaking::heart(self).is_none()
             && self != super::creaking::RESIN_BLOCK
@@ -2360,6 +2382,7 @@ impl Block {
             .chain(super::eyeblossom::palette_ids())
             .chain(super::cave_blocks::palette_ids())
             .chain(super::frog_blocks::palette_ids())
+            .chain(super::jukebox::palette_ids())
             .map(Block)
     }
 
@@ -3011,6 +3034,7 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         super::crops::FIRST..=super::crops::LAST => super::crops::registry(id),
         super::sniffer_plants::FIRST..=super::sniffer_plants::LAST => super::sniffer_plants::registry(id),
         15120..=super::sniffer_egg::LAST => super::sniffer_egg::registry(id),
+        super::jukebox::FIRST..=super::jukebox::LAST => super::jukebox::registry(id),
         super::archaeology::FIRST..=super::archaeology::LAST => super::archaeology::registry(id),
         super::copper::FIRST..=super::copper::RESERVED_LAST
         | super::copper::WAXED_FIRST..=super::copper::WAXED_RESERVED_LAST => match super::copper::registry(id) {

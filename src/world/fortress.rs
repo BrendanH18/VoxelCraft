@@ -330,6 +330,9 @@ pub enum Feature {
     UtilityBlock(Block),
     IglooBrewing,
     Archaeology(u64, super::archaeology::Table),
+    /// An ancient city chest (`chests/ancient_city`, or the ice box's
+    /// `chests/ancient_city_ice_box` when true).
+    AncientCityChest(u64, bool),
 }
 
 /// Fortress layouts for one Nether, cached by region.

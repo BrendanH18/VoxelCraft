@@ -286,6 +286,11 @@ impl Game {
                         IVec2::new(self.session.player.pos.x.floor() as i32, self.session.player.pos.z.floor() as i32),
                         6400,
                     ),
+                    "ancient_city" => self.world.generator.ancient_cities.nearest(
+                        &self.world.generator,
+                        IVec2::new(self.session.player.pos.x.floor() as i32, self.session.player.pos.z.floor() as i32),
+                        6400,
+                    ),
                     "trail_ruins" => self.world.generator.trail_ruins.nearest(
                         &self.world.generator,
                         IVec2::new(self.session.player.pos.x.floor() as i32, self.session.player.pos.z.floor() as i32),

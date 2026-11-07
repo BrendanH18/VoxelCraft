@@ -13,6 +13,7 @@
 //! light-blocking block, which seeds skylight in mesh jobs.
 
 pub mod activity;
+pub mod ancient_city;
 pub mod archaeology;
 mod automation;
 pub mod bastion;
@@ -58,6 +59,7 @@ pub mod geode;
 mod growth;
 mod honey;
 pub mod jigsaw;
+pub mod jukebox;
 mod light_shape;
 pub(crate) mod lighting;
 pub mod lightning;
@@ -351,6 +353,15 @@ pub struct World {
     pub hatched_tadpoles: Vec<(IVec3, u8)>,
     /// Sniffer eggs that cracked (false) or hatched (true); entities spawn and play them.
     pub sniffer_egg_events: Vec<(IVec3, bool)>,
+    /// Jukeboxes and their records (see [`jukebox`]).
+    pub(crate) jukeboxes: jukebox::State,
+    /// Jukebox game events since the entity pass last drained them
+    /// (allays dance; track A's vibrations hook in there).
+    pub jukebox_events: Vec<(IVec3, jukebox::JukeboxEvent)>,
+    /// Notes the playing records sounded this tick; audio adapters play them.
+    pub records: Vec<jukebox::RecordNote>,
+    /// Songs that started (level event 1010): jukebox and song index.
+    pub records_started: Vec<(IVec3, usize)>,
     compost_sequence: u64,
     bell_rings: Vec<IVec3>,
     /// Whether it's raining (set by the game each frame).
@@ -618,6 +629,10 @@ impl World {
             hatched_turtles: Vec::new(),
             hatched_tadpoles: Vec::new(),
             sniffer_egg_events: Vec::new(),
+            jukeboxes: Default::default(),
+            jukebox_events: Vec::new(),
+            records: Vec::new(),
+            records_started: Vec::new(),
             compost_sequence: 0,
             bell_rings: Vec::new(),
             raining: false,
@@ -936,6 +951,7 @@ impl World {
         self.track_lightning_rod(p, old, block);
         self.track_frog_blocks(p, old, block);
         self.track_sniffer_egg(p, old, block);
+        self.track_jukebox(p, old, block);
         if old != block {
             self.scaffolding_changed(p);
         }

@@ -24,7 +24,7 @@ use crate::world::terrain::{Dimension, Generator, SEA_LEVEL};
 use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 21] = [
+pub(super) const DIMENSION_KEYS: [&str; 22] = [
     "furnaces",
     "chests",
     "items",
@@ -43,6 +43,7 @@ pub(super) const DIMENSION_KEYS: [&str; 21] = [
     "utilities",
     "beehives",
     "archaeology",
+    "jukeboxes",
     "creaking_hearts",
     "potion_clouds",
     "copper_golem_statues",
@@ -131,6 +132,7 @@ impl Game {
         props.insert("wood".to_string(), self.world.wood_to_string());
         props.insert("beehives".into(), self.world.beehives_to_string());
         props.insert("archaeology".into(), self.world.archaeology_to_string());
+        props.insert("jukeboxes".into(), self.world.jukeboxes_to_string());
         props.insert("creaking_hearts".into(), self.world.creaking_hearts_to_string());
         props.insert("copper_golem_statues".into(), self.world.copper_golem_statues_to_string());
         props.insert("spawners".to_string(), self.world.spawners_to_string());
@@ -168,6 +170,9 @@ impl Game {
         }
         if let Some(a) = props.get("archaeology") {
             self.world.load_archaeology(a);
+        }
+        if let Some(j) = props.get("jukeboxes") {
+            self.world.load_jukeboxes(j);
         }
         if let Some(h) = props.get("beehives") {
             self.world.load_beehives(h);

@@ -105,6 +105,7 @@ pub fn tick_world_rules(world: &mut World, player: DVec3, fire_tick: bool, rando
     world.tick_furnaces(TICK_SECONDS);
     world.tick_brewing(TICK_SECONDS);
     world.tick_utilities();
+    world.tick_jukeboxes();
     if fire_tick {
         world.tick_fire(TICK_SECONDS, player);
     }

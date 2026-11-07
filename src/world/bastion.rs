@@ -836,7 +836,7 @@ const OTHER_0: &[Loot] = &[
     Loot { item: Some(Item::NETHERITE_SCRAP), weight: 4, lo: 1, hi: 1, enchanted: false, damage: None }, // netherite_scrap
     Loot { item: None, weight: 10, lo: 10, hi: 22, enchanted: false, damage: None }, // spectral_arrow
     Loot { item: None, weight: 9, lo: 1, hi: 1, enchanted: false, damage: None },    // piglin_banner_pattern
-    Loot { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },    // music_disc_pigstep
+    Loot { item: Some(crate::world::jukebox::disc(19)), weight: 5, lo: 1, hi: 1, enchanted: false, damage: None }, // music_disc_pigstep
     Loot { item: Some(Item::GOLDEN_CARROT), weight: 12, lo: 6, hi: 17, enchanted: false, damage: None }, // golden_carrot
     Loot { item: Some(Item::GOLDEN_APPLE), weight: 9, lo: 1, hi: 1, enchanted: false, damage: None },    // golden_apple
     Loot { item: Some(Item::BOOK), weight: 10, lo: 1, hi: 1, enchanted: true, damage: None },            // book
@@ -994,7 +994,8 @@ pub(super) fn pool_with(chest: &mut Chest, rng: &mut Rng, table: &[Loot], rolls:
             stack.enchants = enchants;
         } else if e.enchanted {
             use crate::enchant::Enchantment;
-            let choices: Vec<_> = Enchantment::ALL.into_iter().filter(|e| e.fits(item)).collect();
+            let choices: Vec<_> =
+                Enchantment::ALL.into_iter().filter(|e| e.fits(item) && *e != Enchantment::SwiftSneak).collect();
             if let Some(e) = choices.get(rng.below(choices.len() as u32) as usize) {
                 stack.enchants = stack.enchants.with(*e, rng.range(1, e.def().max_level as u32) as u8);
                 if item == Item::BOOK {

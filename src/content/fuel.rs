@@ -134,7 +134,9 @@ pub fn class(item: Item) -> Option<FuelClass> {
         | rb::WOOD_TRAPDOOR
         | rb::WOOD_PLATE
         | rb::DAYLIGHT
-        | gadgets::NOTE => Some(Wood),
+        | gadgets::NOTE
+        // `FuelValues`: the jukebox is in `#wooden` blocks' 300 ticks.
+        | crate::world::jukebox::JUKEBOX => Some(Wood),
         b if b.slab_base() == Some(Block::PLANKS) => Some(Slab),
         b if b.stairs_base() == Some(Block::PLANKS) => Some(Wood),
         _ => None,

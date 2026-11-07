@@ -176,6 +176,7 @@ impl Entities {
         self.tick_sniffers(dt, world, ctx);
         self.tick_creaking_hearts(dt, world, ctx, difficulty);
         self.hear_allay_notes(world);
+        self.hear_jukeboxes(world);
         self.tick_copper_golems(dt, world);
         self.finish_copper_statues(world);
         world.tick_beehives(self, dt, ctx);

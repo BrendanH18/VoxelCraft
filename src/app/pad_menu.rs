@@ -505,6 +505,7 @@ impl Game {
         let Some(bot) = self.agents.players.get(name) else { return };
         let inv = &bot.agent.session.inventory;
         let dial = crate::item::Dial {
+            death: bot.agent.session.last_death,
             yaw: bot.agent.session.player.yaw,
             x: bot.agent.session.player.pos.x,
             z: bot.agent.session.player.pos.z,

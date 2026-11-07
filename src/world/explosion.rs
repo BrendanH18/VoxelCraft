@@ -639,14 +639,17 @@ static TABLES: LazyLock<Tables> = LazyLock::new(|| {
             .filter(|c| c.waxed)
             .map_or(b, |c| super::copper::encode(super::copper::Copper { waxed: false, ..c }));
         let name = reference.name();
-        tables.resistance[i] =
-            if (super::creaking::owns(b.0) && super::creaking::heart(b).is_none() && b != super::creaking::RESIN_BLOCK)
-                || super::copper_golem_statue::owns(b.0)
-            {
-                6.0
-            } else {
-                resistance.get(name).copied().unwrap_or_else(|| b.hardness())
-            };
+        tables.resistance[i] = if let Some(r) = super::jukebox::resistance(b) {
+            r
+        } else if (super::creaking::owns(b.0)
+            && super::creaking::heart(b).is_none()
+            && b != super::creaking::RESIN_BLOCK)
+            || super::copper_golem_statue::owns(b.0)
+        {
+            6.0
+        } else {
+            resistance.get(name).copied().unwrap_or_else(|| b.hardness())
+        };
         tables.loot[i] = match loot.get(name) {
             Some(&kind) => kind,
             None if super::creaking::heart(b).is_some()

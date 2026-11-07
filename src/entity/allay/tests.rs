@@ -248,10 +248,12 @@ fn vibration_delay_radius_wool_and_redstone_playback_share_the_hook() {
 }
 #[test]
 fn duplication_cooldown_and_newborn_ownership_are_independent() {
-    let world = Grid::flat(-64);
+    let mut world = Grid::flat(-64);
+    // `shouldStopDancing` needs the jukebox to stay a jukebox.
+    world.set(IVec3::new(0, 9, 0), crate::world::jukebox::JUKEBOX_WITH_RECORD);
     let mut e = collector();
     assert!(!e.duplicate_allay(0));
-    e.mobs[0].allay.as_mut().unwrap().set_jukebox_playing(IVec3::new(0, 10, 0), true);
+    e.mobs[0].allay.as_mut().unwrap().set_jukebox_playing(IVec3::new(0, 9, 0), true);
     e.mobs[0].allay.as_mut().unwrap().player = Some(PlayerId::HOST);
     assert!(e.duplicate_allay(0));
     assert_eq!(e.mobs.len(), 2);
@@ -435,4 +437,46 @@ fn collected_items_throw_toward_the_note_instead_of_the_linked_player() {
     assert!(e.mobs[0].allay.as_ref().unwrap().cargo.is_none());
     assert_eq!(e.items.len(), 1);
     assert!(e.items[0].vel.x > 0. && e.items[0].vel.z > 0., "note is east/south, player is west");
+}
+#[test]
+fn jukebox_game_events_start_and_stop_dancing_within_ten_blocks() {
+    use crate::world::jukebox;
+    let mut w =
+        World::new_headless(std::sync::Arc::new(crate::world::terrain::Generator::new(42)), Default::default(), 2);
+    w.load_test_column(glam::IVec2::ZERO, 0);
+    let mut e = Entities::new(1);
+    let p = IVec3::new(3, 10, 5);
+    e.spawn(MobKind::Allay, DVec3::new(9.5, 10., 5.5));
+    e.spawn(MobKind::Allay, DVec3::new(15.5, 10., 5.5));
+    w.set_block(p, jukebox::JUKEBOX);
+    assert!(w.insert_disc(p, Stack::new(jukebox::disc(0), 1)));
+    w.tick_jukeboxes();
+    e.hear_jukeboxes(&mut w);
+    let dancing = |e: &Entities, i: usize| e.mobs[i].allay.as_ref().unwrap().dancing;
+    assert!(dancing(&e, 0) && !dancing(&e, 1));
+    assert_eq!(e.mobs[0].allay.as_ref().unwrap().jukebox, Some(p));
+    assert!(w.jukebox_events.is_empty(), "the entity pass drains the events");
+    // A dancing allay can be duplicated with an amethyst shard.
+    assert!(e.duplicate_allay(0));
+    w.eject_disc(p);
+    e.hear_jukeboxes(&mut w);
+    assert!(!dancing(&e, 0));
+}
+#[test]
+fn creepers_killed_by_skeletons_drop_one_creeper_disc() {
+    use crate::world::jukebox;
+    let discs: Vec<_> =
+        jukebox::CREEPER_DISCS.iter().map(|n| jukebox::disc_named(&format!("music_disc_{n}")).unwrap()).collect();
+    for (killer, drops) in [(MobKind::Skeleton, true), (MobKind::Stray, true), (MobKind::Zombie, false)] {
+        let mut e = Entities::new(3);
+        e.spawn(MobKind::Creeper, DVec3::new(0.5, 10., 0.5));
+        e.spawn(killer, DVec3::new(6.5, 10., 0.5));
+        e.ensure_mob_ids();
+        let (target, attacker) = (e.mobs[0].uid, e.mobs[1].uid);
+        let mut events = vec![EntityEvent::MobHit { target, attacker, damage: 100., knockback: DVec3::ZERO }];
+        e.resolve_mob_hits(&mut events);
+        assert!(!e.mobs[0].alive());
+        let found: Vec<_> = e.items.iter().filter(|i| discs.contains(&i.stack.item)).collect();
+        assert_eq!(found.len(), usize::from(drops), "{killer:?}");
+    }
 }

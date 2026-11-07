@@ -68,6 +68,8 @@ pub fn material(block: Block) -> Material {
     match block.base() {
         Block::HONEY_BLOCK => Material::Honey,
         b if crate::world::creaking::heart(b).is_some() => Material::Wood,
+        // `SoundType.WOOD` for the jukebox; reinforced deepslate falls through to stone.
+        b if crate::world::jukebox::is_jukebox(b) => Material::Wood,
         // Nearest shared materials for `SoundType.GLOW_LICHEN` and the sculk sounds.
         b if crate::world::cave_blocks::sheared(b).is_some() => Material::Grass,
         b if crate::world::cave_blocks::owns(b.0) => Material::Dirt,

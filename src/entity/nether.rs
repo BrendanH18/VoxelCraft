@@ -640,6 +640,7 @@ impl Entities {
                 });
                 if killed {
                     self.drop_loot_with_fire(kind, pos, 0, burning, wolf_kill);
+                    self.creeper_disc(kind, pos, attacker);
                 }
             }
         }

@@ -55,6 +55,8 @@ pub enum Enchantment {
     Density,
     Breach,
     Lunge,
+    /// v0.16 track B, save bit 40 (track D's Wind Burst follows at 41).
+    SwiftSneak,
 }
 
 /// Which items an enchantment goes on (Java's item tags).
@@ -64,6 +66,8 @@ enum Fits {
     Head,
     Chest,
     Feet,
+    /// `#enchantable/leg_armor` (Swift Sneak).
+    Legs,
     Sword,
     /// Swords and axes (sharpness, smite, bane of arthropods).
     Weapon,
@@ -85,6 +89,7 @@ impl Fits {
             (Fits::Head, ItemKind::Armor(p, _)) => p == ArmorPiece::Helmet,
             (Fits::Chest, ItemKind::Armor(p, _)) => p == ArmorPiece::Chestplate,
             (Fits::Feet, ItemKind::Armor(p, _)) => p == ArmorPiece::Boots,
+            (Fits::Legs, ItemKind::Armor(p, _)) => p == ArmorPiece::Leggings,
             (Fits::Sword, ItemKind::Tool(k, _)) => k == ToolKind::Sword,
             (Fits::Weapon, ItemKind::Tool(k, _)) => matches!(k, ToolKind::Sword | ToolKind::Axe),
             (Fits::Mining, ItemKind::Tool(k, _)) => k != ToolKind::Sword,
@@ -213,10 +218,13 @@ static DEFS: [Def; Enchantment::COUNT] = [
     in_group(def("density", 5, 5, (5, 8), (25, 8), 2, Fits::UnsupportedWeapon), Group::Damage),
     in_group(def("breach", 4, 2, (15, 9), (65, 9), 4, Fits::UnsupportedWeapon), Group::Damage),
     def("lunge", 3, 5, (5, 8), (25, 8), 2, Fits::UnsupportedWeapon),
+    // Java 26.3 `data/minecraft/enchantment/swift_sneak.json`: `#treasure`,
+    // not in `#on_random_loot` or `#tradeable`.
+    treasure(def("swift sneak", 3, 1, (25, 25), (75, 25), 8, Fits::Legs)),
 ];
 
 impl Enchantment {
-    pub const COUNT: usize = 40;
+    pub const COUNT: usize = 41;
     pub const ALL: [Enchantment; Enchantment::COUNT] = {
         let mut all = [Enchantment::Protection; Enchantment::COUNT];
         let mut i = 0;
@@ -488,7 +496,8 @@ enum Options {
     /// `#minecraft:in_enchanting_table` (= `#non_treasure`).
     Table,
     /// `#minecraft:on_random_loot`: `#non_treasure` plus both curses, frost
-    /// walker and mending, i.e. every enchantment VoxelCraft registers.
+    /// walker and mending, i.e. every enchantment VoxelCraft registers
+    /// except Swift Sneak.
     RandomLoot,
 }
 
@@ -500,6 +509,10 @@ fn available(power: u32, item: Item, options: Options) -> Vec<(Enchantment, u8)>
     for e in Enchantment::ALL {
         let d = e.def();
         if (d.treasure && options == Options::Table) || !(book || d.primary.accepts(item)) {
+            continue;
+        }
+        // Swift Sneak is in neither `#in_enchanting_table` nor `#on_random_loot`.
+        if e == Enchantment::SwiftSneak {
             continue;
         }
         if let Some(level) = (1..=d.max_level).rev().find(|&l| {
@@ -1133,6 +1146,21 @@ mod loot_metadata_tests {
         assert_eq!(Enchantment::QuickCharge as u8, 32);
         assert_eq!(Enchantment::Loyalty as u8, 33);
         assert_eq!(Enchantment::Lunge as u8, 39);
+        assert_eq!(Enchantment::SwiftSneak as u8, 40);
+        let legs = Item::armor(ArmorPiece::Leggings, crate::item::ArmorMaterial::Iron);
+        assert!(Enchantment::SwiftSneak.fits(legs));
+        assert!(!Enchantment::SwiftSneak.fits(Item::armor(ArmorPiece::Boots, crate::item::ArmorMaterial::Iron)));
+        assert!(Enchantment::SwiftSneak.def().treasure);
+        assert_eq!(Enchantment::from_name("swift_sneak"), Some(Enchantment::SwiftSneak));
+        let sneaky = Enchants::NONE.with(Enchantment::SwiftSneak, 3).with(Enchantment::Lunge, 2);
+        assert_eq!(Enchants::from_hex(&sneaky.to_hex()), Some(sneaky));
+        // Neither the table nor random loot offers it.
+        for power in 1..=100 {
+            assert!(!available(power, legs, Options::Table).iter().any(|(e, _)| *e == Enchantment::SwiftSneak));
+            assert!(
+                !available(power, Item::BOOK, Options::RandomLoot).iter().any(|(e, _)| *e == Enchantment::SwiftSneak)
+            );
+        }
         let old = Enchants::NONE.with(Enchantment::Mending, 1).with(Enchantment::QuickCharge, 3);
         assert_eq!(Enchants::from_hex(&old.to_hex()), Some(old));
         let book = old.with(Enchantment::Density, 5).with(Enchantment::Lunge, 3);

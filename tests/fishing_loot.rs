@@ -93,8 +93,10 @@ fn every_registered_enchantment_is_in_on_random_loot() {
         .iter()
         .filter_map(|n| Enchantment::from_name(n.as_str().unwrap().trim_start_matches("minecraft:")))
         .collect();
+    // Swift Sneak (`#treasure`, ancient city loot only) is the one
+    // registered enchantment outside the tag.
     for e in Enchantment::ALL {
-        assert!(names.contains(&e), "{e:?} is in #on_random_loot");
+        assert_eq!(names.contains(&e), e != Enchantment::SwiftSneak, "{e:?} and #on_random_loot");
     }
 }
 
