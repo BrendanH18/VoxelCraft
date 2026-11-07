@@ -11,6 +11,7 @@ use crate::world::terrain::Dimension;
 
 use super::{Ctx, EntityEvent, MobSound, MobWorld, Rng, path};
 
+mod breeze;
 mod creaking;
 pub(crate) mod dolphin;
 mod frog;
@@ -96,6 +97,9 @@ const ENDERMAN_EYE: f64 = 2.55;
 const PANIC_MEMORY: f32 = 2.0;
 /// Falls deeper than this are avoided (blocks).
 const MAX_SAFE_DROP: i32 = 3;
+/// Reserved v0.16 wire indices (see [`MobKind::lan_index`]).
+const WARDEN_LAN_INDEX: usize = 72;
+const BREEZE_LAN_INDEX: usize = 73;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MobKind {
@@ -191,6 +195,9 @@ pub enum MobKind {
     Creaking,
     Allay,
     Sniffer,
+    /// v0.16 Track C. Saved as `breeze`; LAN index 73 (72 stays reserved
+    /// for Track A's warden until integration).
+    Breeze,
 }
 
 impl MobKind {
@@ -218,13 +225,22 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
+    /// Wire index. v0.16 kinds keep their reserved slots while the other
+    /// tracks' kinds are pending: 72 is Track A's warden, the breeze is 73.
     pub fn lan_index(self) -> usize {
+        if self == MobKind::Breeze {
+            return BREEZE_LAN_INDEX;
+        }
         Self::ALL.iter().position(|&k| k == self).unwrap()
     }
     pub fn from_lan_index(index: usize) -> Option<Self> {
-        Self::ALL.get(index).copied()
+        match index {
+            BREEZE_LAN_INDEX => Some(MobKind::Breeze),
+            WARDEN_LAN_INDEX => None,
+            _ => Self::ALL[..WARDEN_LAN_INDEX].get(index).copied(),
+        }
     }
-    pub const ALL: [MobKind; 72] = [
+    pub const ALL: [MobKind; 73] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -297,6 +313,7 @@ impl MobKind {
         MobKind::Creaking,
         MobKind::Allay,
         MobKind::Sniffer,
+        MobKind::Breeze,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -374,6 +391,7 @@ impl MobKind {
             MobKind::Creaking => "creaking",
             MobKind::Allay => "allay",
             MobKind::Sniffer => "sniffer",
+            MobKind::Breeze => "breeze",
         }
     }
 
@@ -387,6 +405,8 @@ impl MobKind {
     pub fn shape(self) -> Shape {
         match self {
             MobKind::Sniffer => Shape::new(0.95, 1.75),
+            // `EntityType.BREEZE`: 0.6 x 1.77.
+            MobKind::Breeze => Shape::new(0.3, 1.77),
             MobKind::Bat => Shape::new(0.25, 0.9),
             MobKind::Frog => Shape::new(0.25, 0.5),
             MobKind::Tadpole => Shape::new(0.2, 0.3),
@@ -472,6 +492,7 @@ impl MobKind {
             | MobKind::Strider
             | MobKind::Panda => 20.0,
             MobKind::Sniffer => 14.0,
+            MobKind::Breeze => 30.0,
             MobKind::Allay => 20.0,
             MobKind::CopperGolem => 12.0,
             MobKind::Creaking => 1.0,
@@ -540,6 +561,7 @@ impl MobKind {
                 | MobKind::Guardian
                 | MobKind::ElderGuardian
                 | MobKind::Pillager
+                | MobKind::Breeze
         )
     }
 
@@ -580,7 +602,9 @@ impl MobKind {
             | MobKind::Phantom
             | MobKind::CopperGolem
             | MobKind::Creaking
-            | MobKind::Allay => false,
+            | MobKind::Allay
+            // Only from trial spawners.
+            | MobKind::Breeze => false,
             // Only from spawners and inside fortresses (`fortress_spawn`).
             MobKind::Blaze
             | MobKind::WitherSkeleton
@@ -874,6 +898,8 @@ impl MobKind {
             MobKind::ZombifiedPiglin => &[(Item::ROTTEN_FLESH, 0, 1), (Item::GOLD_NUGGET, 0, 1)],
             MobKind::Enderman => &[(Item::ENDER_PEARL, 0, 1)],
             MobKind::Blaze => &[(Item::BLAZE_ROD, 0, 1)],
+            // `entities/breeze`: 1-2 rods, killed by a player (rolled in `drops`).
+            MobKind::Breeze => &[],
             // Piglins drop only what they carry (`nether::equipment_drops`).
             MobKind::Silverfish
             | MobKind::Villager
@@ -996,7 +1022,7 @@ impl MobKind {
             | MobKind::IronGolem
             | MobKind::SnowGolem
             | MobKind::WanderingTrader => 0,
-            MobKind::Blaze | MobKind::Guardian | MobKind::ElderGuardian => 10,
+            MobKind::Blaze | MobKind::Guardian | MobKind::ElderGuardian | MobKind::Breeze => 10,
             k if k.is_hostile() => 5,
             _ => 1 + (rng.next_f32() * 3.0) as u32,
         }
@@ -1054,6 +1080,10 @@ pub struct Mob {
     pub copper_golem: Option<Box<super::copper_golem::State>>,
     pub creaking: Option<Box<super::creaking::State>>,
     pub sniffer: Option<Box<super::sniffer::State>>,
+    pub breeze: Option<Box<super::breeze::State>>,
+    /// A trial spawner's equipment table set every slot's drop chance to 0
+    /// (ominous spawners); also the spawner that made it, for saves.
+    pub(crate) keeps_equipment: bool,
     pub allay: Option<Box<super::allay::State>>,
     pub wolf_armor: Option<Box<super::wolf_armor::State>>,
     /// Witch: seconds left drinking, and the potion it is drinking.
@@ -1245,6 +1275,9 @@ impl Mob {
             copper_golem: (kind == MobKind::CopperGolem).then(Box::default),
             creaking: (kind == MobKind::Creaking).then(Box::default),
             sniffer: (kind == MobKind::Sniffer).then(Box::default),
+            keeps_equipment: false,
+            breeze: (kind == MobKind::Breeze)
+                .then(|| Box::new(super::breeze::State { since_hurt: 1000, ..Default::default() })),
             allay: (kind == MobKind::Allay).then(Box::default),
             wolf_armor: (kind == MobKind::Wolf).then(Box::default),
             drink_left: 0.0,
@@ -1948,6 +1981,9 @@ impl Mob {
     ) -> (Option<DVec3>, f64) {
         if self.creaking.is_some() {
             return self.creaking_think(world, ctx, rng, events);
+        }
+        if self.breeze.is_some() {
+            return self.breeze_think(dt, world, ctx, rng, events);
         }
         if self.kind == MobKind::Bat {
             self.bat_sense(world, ctx);

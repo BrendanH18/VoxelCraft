@@ -298,6 +298,19 @@ fn long_jump<W: MobWorld + ?Sized>(m: &Mob, w: &W, rng: &mut Rng) -> Option<DVec
 /// LongJumpUtil uses an unscaled arc for swept clearance, then scales the
 /// selected launch vector by the Java float 0.95.
 fn jump_vector<W: MobWorld + ?Sized>(m: &Mob, w: &W, target: DVec3, degrees: u32) -> Option<DVec3> {
+    jump_vector_for(m, w, target, degrees, (0.42 * f64::from(3.571_428_8_f32)) as f32, true)
+}
+
+/// `LongJumpUtil.calculateJumpVectorForAngle` with its speed limit and
+/// clearance flag (breezes jump without the swept check).
+pub(super) fn jump_vector_for<W: MobWorld + ?Sized>(
+    m: &Mob,
+    w: &W,
+    target: DVec3,
+    degrees: u32,
+    max_speed: f32,
+    clearance: bool,
+) -> Option<DVec3> {
     let horizontal = DVec3::new(target.x - m.pos.x, 0.0, target.z - m.pos.z);
     let d = target - horizontal.normalize_or_zero() * 0.5 - m.pos;
     let distance = d.x.hypot(d.z);
@@ -305,7 +318,6 @@ fn jump_vector<W: MobWorld + ?Sized>(m: &Mob, w: &W, target: DVec3, degrees: u32
     let angle = f64::from(angle_f);
     let cos = angle.cos();
     let v2 = distance * distance * 0.08 / (distance * f64::from(2.0 * angle_f).sin() - 2.0 * d.y * cos * cos);
-    let max_speed = (0.42 * f64::from(3.571_428_8_f32)) as f32;
     if !v2.is_finite() || v2 < 0.0 || v2.sqrt() > f64::from(max_speed) || distance < 1e-9 {
         return None;
     }
@@ -313,7 +325,7 @@ fn jump_vector<W: MobWorld + ?Sized>(m: &Mob, w: &W, target: DVec3, degrees: u32
     let direction = DVec3::new(d.x, 0.0, d.z).normalize();
     let vx = speed * cos;
     let vy = speed * angle.sin();
-    let samples = (distance / vx).ceil() as u32 * 2;
+    let samples = if clearance { (distance / vx).ceil() as u32 * 2 } else { 0 };
     let mut previous = None;
     for step in 1..samples {
         let x = distance * f64::from(step) / f64::from(samples);

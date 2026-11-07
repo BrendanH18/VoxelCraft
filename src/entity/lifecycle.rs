@@ -303,6 +303,9 @@ impl Entities {
                 EntityEvent::ThrowPotion { from, vel, potion } => {
                     self.potions.push(potion::ThrownPotion::new(potion, None, from, vel));
                 }
+                EntityEvent::ShootWindCharge { from, dir, inaccuracy, shooter } => {
+                    self.thrown.push(thrown::Thrown::breeze_charge(from, dir, inaccuracy, shooter, &mut self.rng));
+                }
                 EntityEvent::Fireball { from, dir, large } => {
                     let ball =
                         if large { fireball::Fireball::large(from, dir) } else { fireball::Fireball::new(from, dir) };
@@ -317,7 +320,13 @@ impl Entities {
             }
         }
         events.retain(|e| {
-            !matches!(e, EntityEvent::Shoot { .. } | EntityEvent::Fireball { .. } | EntityEvent::ThrowPotion { .. })
+            !matches!(
+                e,
+                EntityEvent::Shoot { .. }
+                    | EntityEvent::Fireball { .. }
+                    | EntityEvent::ThrowPotion { .. }
+                    | EntityEvent::ShootWindCharge { .. }
+            )
         });
         {
             let mobs = &self.mobs;

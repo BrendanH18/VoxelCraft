@@ -20,6 +20,7 @@ pub mod bat;
 pub mod bee;
 mod bell;
 mod bobber;
+pub mod breeze;
 mod cat_spawner;
 pub mod category;
 mod chunk_storage;
@@ -69,11 +70,13 @@ mod spawning;
 mod thrown;
 mod tipped_arrow;
 pub mod tnt;
+pub mod trial;
 pub mod undead_mounts;
 pub mod villager;
 mod villager_breeding;
 mod villager_gossip;
 pub mod wandering_trader;
+pub mod wind;
 pub mod wolf_armor;
 mod zombie_villager;
 
@@ -152,6 +155,8 @@ pub enum MobSound {
     /// The dug block's hit sound while a sniffer digs (`emitDiggingParticles`).
     SnifferDigHit(crate::world::block::Block),
     Allay(allay::Sound),
+    /// v0.16 Track C: breeze, wind charge, trial spawner and vault cues.
+    Breeze(breeze::Cue),
 }
 
 /// Something an entity did that the game needs to react to.
@@ -377,6 +382,16 @@ pub enum EntityEvent {
         pos: DVec3,
         points: u32,
     },
+    /// A breeze shot a wind charge (turned into a projectile internally).
+    ShootWindCharge {
+        from: DVec3,
+        dir: DVec3,
+        inaccuracy: f64,
+        shooter: u32,
+    },
+    /// A wind charge burst: the game pushes players and mobs and works
+    /// blocks ([`wind::wind_burst`]).
+    WindBurst(wind::WindBurst),
     /// A mob struck the mob with uid `target` (handled internally).
     MobHit {
         target: u32,
@@ -497,6 +512,10 @@ pub trait MobWorld: BlockSource {
     fn in_fortress(&self, _p: IVec3) -> bool {
         false
     }
+    /// Inside a trial chamber piece, where nothing spawns naturally.
+    fn in_trial_chamber(&self, _p: IVec3) -> bool {
+        false
+    }
     fn structures_near(&self, _p: IVec3, _r: i32) -> Vec<std::sync::Arc<crate::world::temples::Built>> {
         Vec::new()
     }
@@ -609,6 +628,9 @@ impl MobWorld for World {
     }
     fn in_fortress(&self, p: IVec3) -> bool {
         self.generator.in_fortress(p)
+    }
+    fn in_trial_chamber(&self, p: IVec3) -> bool {
+        self.generator.trial_chambers.holds(&self.generator, p)
     }
     fn bastions_near(&self, p: IVec3, r: i32) -> Vec<std::sync::Arc<crate::world::bastion::Bastion>> {
         self.generator.bastions_near(p, r)
@@ -797,6 +819,8 @@ pub struct Entities {
     pub bobbers: Vec<bobber::Bobber>,
     pub eyes: Vec<eye::EnderEye>,
     pub fireballs: Vec<fireball::Fireball>,
+    /// Ominous item spawners over trial chamber fights (see [`trial`]).
+    pub item_spawners: Vec<trial::ItemSpawner>,
     pub puffs: Vec<Puff>,
     pub lightning: Vec<lightning::Bolt>,
     lightning_remainder: f64,
@@ -909,6 +933,7 @@ impl Entities {
             bobbers: Vec::new(),
             eyes: Vec::new(),
             fireballs: Vec::new(),
+            item_spawners: Vec::new(),
             puffs: Vec::new(),
             lightning: Vec::new(),
             lightning_remainder: 0.,
@@ -1248,6 +1273,15 @@ impl Entities {
             }
         }
         let mut drops = kind.drops(&mut self.rng, looting);
+        // `entities/breeze`: killed by a player, 1-2 rods.
+        if kind == MobKind::Breeze && player_kill {
+            // `enchanted_count_increase`: round(level * uniform(1, 2)).
+            let mut n = 1 + self.rng.next_int(2);
+            if looting > 0 {
+                n += (f32::from(looting) * (1.0 + self.rng.next_f32())).round() as u32;
+            }
+            drops.push((crate::world::trial::BREEZE_ROD, n.min(64) as u8));
+        }
         if kind == MobKind::Rabbit && player_kill && self.rng.chance(0.1 + looting as f32 * 0.03) {
             drops.push((crate::item::Item::RABBIT_FOOT, 1));
         }
@@ -1444,6 +1478,7 @@ impl Entities {
         props.insert("decor".to_string(), self.decor_to_string());
         props.insert("villagers".to_string(), self.villagers_to_string());
         props.insert("nether_mobs".to_string(), self.nether_mobs_to_string());
+        props.insert("ominous_item_spawners".to_string(), self.item_spawners_to_value().to_string());
     }
 
     /// Restores [`Entities::save_props`]. Every entity starts in the level;
@@ -1452,6 +1487,9 @@ impl Entities {
     pub fn load_props(&mut self, props: &std::collections::BTreeMap<String, String>) {
         if let Some(clouds) = props.get("potion_clouds") {
             self.load_cloud_json(clouds);
+        }
+        if let Some(v) = props.get("ominous_item_spawners").and_then(|t| serde_json::from_str(t).ok()) {
+            self.load_item_spawners(&v);
         }
         if let Some(items) = props.get("items") {
             self.load_items(items);

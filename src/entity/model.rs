@@ -551,6 +551,7 @@ mod allay;
 mod animals;
 mod aquatic;
 mod bee;
+mod breeze;
 mod copper_golem;
 mod creaking;
 mod hostiles;
@@ -605,6 +606,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
         MobKind::Sniffer => sniffer::pose(m, time),
         MobKind::Creaking => creaking::pose(m, time),
         MobKind::Allay => allay::pose(m, time),
+        MobKind::Breeze => breeze::pose(m, time),
         MobKind::Tadpole => passive::tadpole(m, time),
         MobKind::Cow => parts![
             part(COW_BODY, [0.0; 3], Quat::IDENTITY),
@@ -1112,6 +1114,8 @@ pub fn build_thrown(thrown: &[super::thrown::Thrown], camera: DVec3, alpha: f64,
             super::thrown::Kind::Snowball => ([245, 245, 250], 2.0),
             super::thrown::Kind::Egg => ([236, 224, 196], 2.2),
             super::thrown::Kind::LlamaSpit => ([235, 238, 228], 1.5),
+            super::thrown::Kind::WindCharge => ([200, 224, 240], 2.4),
+            super::thrown::Kind::BreezeWindCharge => ([170, 200, 236], 3.0),
         };
         let c = cube([-size, -size, -size], [size, size, size], color, 16);
         push_cuboid(out, &c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([230, 0, 0, 0], 0), (FIRE, 0.0), 0.0);

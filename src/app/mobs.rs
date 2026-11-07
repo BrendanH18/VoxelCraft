@@ -395,6 +395,7 @@ impl Game {
                 EntityEvent::Explosion { center, power, cause, credit_player } => {
                     self.explode(center, power, cause, credit_player)
                 }
+                EntityEvent::WindBurst(burst) => self.wind_burst(&burst),
                 EntityEvent::PearlLanded { owner, pos } => {
                     let mut burst = crate::particles::Burst::new(crate::particles::Kind::Portal, pos + DVec3::Y, 32);
                     burst.spread = DVec3::Y;
@@ -419,7 +420,9 @@ impl Game {
                         self.world.ignite(cell);
                     }
                 }
-                EntityEvent::Fireball { .. } | EntityEvent::ThrowPotion { .. } => {}
+                EntityEvent::Fireball { .. }
+                | EntityEvent::ThrowPotion { .. }
+                | EntityEvent::ShootWindCharge { .. } => {}
                 EntityEvent::Sound { sound, pos } => {
                     // Brutes and zoglins are deeper takes on piglin and hoglin voices.
                     let deep = matches!(
@@ -447,6 +450,7 @@ impl Game {
                             }
                         }
                         MobSound::Allay(action) => (Sound::Allay(action), 0.8),
+                        MobSound::Breeze(cue) => (Sound::Breeze(cue), 1.0),
                         MobSound::CopperGolem(action, stage) => (Sound::CopperGolem(action, stage), 0.7),
                         MobSound::Hurt(MobKind::CopperGolem) => {
                             (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Hurt, 0), 0.9)
@@ -646,6 +650,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Armadillo => Voice::Armadillo,
         MobKind::Ocelot => Voice::Ocelot,
         MobKind::Sniffer => Voice::Sniffer,
+        MobKind::Breeze => Voice::Breeze,
         MobKind::Allay => Voice::Allay,
         MobKind::CopperGolem => Voice::Skeleton,
         MobKind::Creaking => Voice::Creaking,
@@ -692,6 +697,24 @@ fn voice(kind: MobKind) -> Voice {
 }
 
 impl Game {
+    /// A wind burst ([`voxelcraft::entity::wind::wind_burst`]) over every
+    /// player in this world: wind charges, and the shared entry point the
+    /// mace's Wind Burst can call.
+    pub(super) fn wind_burst(&mut self, burst: &voxelcraft::entity::wind::WindBurst) {
+        let mut sessions: Vec<&mut voxelcraft::session::PlayerSession> = vec![&mut self.session];
+        if self.arrival.is_none() {
+            sessions.extend(self.agents.players.values_mut().filter(|b| b.active).map(|b| &mut b.agent.session));
+        }
+        voxelcraft::entity::wind::wind_burst(&mut self.world, &mut self.mobs.entities, &mut sessions, burst);
+        self.audio.play_in(
+            SoundSource::Neutral,
+            Sound::Breeze(voxelcraft::entity::breeze::Cue::Burst),
+            Some(burst.center),
+            1.0,
+            (0.9, 1.1),
+        );
+    }
+
     /// Blows a hole in the world and hurts everything around `center`.
     /// `cause` completes the death message, as for [`Game::damage_player`].
     pub(super) fn explode(&mut self, center: DVec3, power: f32, cause: &str, credit_player: bool) {

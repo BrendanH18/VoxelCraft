@@ -52,6 +52,8 @@ pub enum Voice {
     Sniffer,
     Creaking,
     Allay,
+    /// v0.16 Track C.
+    Breeze,
 }
 
 /// What kind of sound a voice makes.
@@ -64,7 +66,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 40] = [
+    pub const ALL: [Voice; 41] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -105,6 +107,7 @@ impl Voice {
         Voice::Sniffer,
         Voice::Creaking,
         Voice::Allay,
+        Voice::Breeze,
     ];
 
     /// The category the creature plays in: `Monster`, `Ghast`, `Hoglin` and
@@ -113,6 +116,7 @@ impl Voice {
     pub fn source(self) -> SoundSource {
         match self {
             Voice::Creaking
+            | Voice::Breeze
             | Voice::Zombie
             | Voice::Skeleton
             | Voice::Creeper
@@ -168,6 +172,7 @@ impl Voice {
             Voice::Sniffer => "sniffer",
             Voice::Creaking => "creaking",
             Voice::Allay => "allay",
+            Voice::Breeze => "breeze",
             Voice::Cow => "cow",
             Voice::Sheep => "sheep",
             Voice::Chicken => "chicken",
@@ -298,6 +303,7 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::Spider => spider(call, rng),
         Voice::Enderman => enderman(call, rng),
         Voice::Blaze => blaze(call, rng),
+        Voice::Breeze => breeze(call, rng),
         Voice::Slime => slime(call, rng),
         Voice::Ghast => ghast(call, rng),
         Voice::Witch => witch(call, rng),
@@ -702,6 +708,23 @@ fn enderman(call: Call, rng: &mut Rng) -> Vec<f32> {
 }
 
 /// Synthesizes a blaze's call using breath noise and resonant metallic tones.
+/// An original breeze voice: hollow, whistling air.
+fn breeze(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let (secs, fc) = match call {
+        Call::Ambient => (1.0, 700.0),
+        Call::Hurt => (0.3, 1300.0),
+        Call::Death => (1.2, 500.0),
+    };
+    let len = samples(secs);
+    let mut out = noise(rng, len, |t| {
+        let p = t / secs;
+        (p * std::f32::consts::PI).sin() * if call == Call::Death { 1.0 - p } else { 1.0 }
+    });
+    Biquad::bandpass(fc, 3.0).run(&mut out);
+    add_mode(&mut out, 0, Mode { freq: fc * 1.5, amp: 0.12, tau: secs * 0.5, glide: 0.85, glide_tau: secs });
+    dsp::finish(out, 0.45)
+}
+
 fn blaze(call: Call, rng: &mut Rng) -> Vec<f32> {
     // Java's blaze breathes: hollow, metallic rasps through its rods.
     let (secs, breaths, bright) = match call {
