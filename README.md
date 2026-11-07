@@ -352,7 +352,7 @@ and Windows.
 
 ```sh
 # Debian/Ubuntu only: audio and gamepad headers
-sudo apt-get install libasound2-dev libudev-dev pkg-config
+sudo apt-get install libasound2-dev libudev-dev libfontconfig1-dev libfreetype6-dev pkg-config
 
 git clone https://github.com/BrendanH18/VoxelCraft.git
 cd VoxelCraft

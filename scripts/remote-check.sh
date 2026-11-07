@@ -102,7 +102,7 @@ git ls-files -z --cached --others --exclude-standard |
 # toolchain installs once into the cache volume, owned by that user.
 setup_script=$(cat <<'EOS'
 set -euo pipefail
-apk add -q build-base alsa-lib-dev eudev-dev pkgconf >/dev/null
+apk add -q build-base alsa-lib-dev eudev-dev fontconfig-dev freetype-dev pkgconf >/dev/null
 id -u builder >/dev/null 2>&1 || adduser -D -u 1000 -s /bin/bash builder
 mkdir -p /cache/rustup /cache/cargo /cache/target
 [ "$(stat -c %u /cache/cargo)" = 1000 ] || chown -R 1000:1000 /cache

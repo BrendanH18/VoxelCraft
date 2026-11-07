@@ -26,7 +26,7 @@ Vulkan, or DirectX 12 backends.
 On Debian/Ubuntu, install the native development dependencies used in CI:
 
 ```sh
-sudo apt install libasound2-dev libudev-dev pkg-config
+sudo apt install libasound2-dev libudev-dev libfontconfig1-dev libfreetype6-dev pkg-config
 ```
 
 From your checkout:

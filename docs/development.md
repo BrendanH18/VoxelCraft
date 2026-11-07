@@ -18,18 +18,20 @@ The Linux CI job also checks the release binary's embedded assets with
 `python3 tools/validate_assets.py --executable target/release/voxelcraft` and
 runs the benchmark-gate tool tests. CI runs Cargo with `--locked`, so commit
 `Cargo.lock` changes with the code that needs them. The **Security** workflow
-runs `cargo audit` weekly and on pull requests that change `Cargo.toml`,
+runs `cargo audit --deny warnings` weekly and on pull requests that change `Cargo.toml`,
 `Cargo.lock` or `.github/workflows/security.yml`. Dependabot proposes weekly
 crate and GitHub Actions updates.
 
-Dependency review (2026-11-07): `ttf-parser` 0.25.1 remains an
-[unmaintained transitive dependency](https://rustsec.org/advisories/RUSTSEC-2026-0192.html)
-through `winit` → `sctk-adwaita` → `ab_glyph` → `owned_ttf_parser` on Linux.
-There is no patched version. Track the upstream font-parser migration rather
-than removing Linux window decorations to silence the warning. The lockfile's
-Tokio dependency comes through `wasm-bindgen-futures` only for its experimental
-Emscripten configuration; keep it patched even though desktop builds do not
-use that path.
+Linux Wayland title bars use winit's supported `wayland-csd-adwaita-crossfont`
+backend with system FreeType and Fontconfig. X11, Wayland, window titles and
+decoration controls remain enabled. This replaces the `ab_glyph` backend's
+[unmaintained ttf-parser dependency](https://rustsec.org/advisories/RUSTSEC-2026-0192.html);
+the [Linux build prerequisites](../CONTRIBUTING.md#set-up) include the native
+font development libraries. Auditing denies warnings as well as vulnerabilities,
+so unmaintained or unsound dependencies fail CI rather than silently passing.
+The lockfile's Tokio dependency comes through `wasm-bindgen-futures` only for
+its experimental Emscripten configuration; keep it patched even though desktop
+builds do not use that path.
 
 ## Remote checks
 

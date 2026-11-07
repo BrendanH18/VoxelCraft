@@ -53,7 +53,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: Install Linux audio/windowing headers
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev pkg-config
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev libfontconfig1-dev libfreetype6-dev pkg-config
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
