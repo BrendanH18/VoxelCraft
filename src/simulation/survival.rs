@@ -62,6 +62,18 @@ pub fn armor_reduce(amount: f32, points: u32, toughness: f32) -> f32 {
     amount * (1.0 - defense / 25.0)
 }
 
+/// [`armor_reduce`] with the weapon's `armor_effectiveness` change (Breach:
+/// -0.15 a level), as Java's `CombatRules.getDamageAfterAbsorb` applies it:
+/// added to the armor fraction, then clamped to 0..1.
+pub fn armor_reduce_with(amount: f32, points: u32, toughness: f32, effectiveness: f32) -> f32 {
+    if effectiveness == 0.0 {
+        return armor_reduce(amount, points, toughness);
+    }
+    let points = points as f32;
+    let defense = (points - amount / (2.0 + toughness / 4.0)).max(points / 5.0).min(20.0);
+    amount * (1.0 - (defense / 25.0 + effectiveness).clamp(0.0, 1.0))
+}
+
 /// Knockback left after Java's knockback resistance (0.1 per Netherite
 /// piece; 1 or more cancels it).
 pub fn knockback_taken(knockback: glam::DVec3, resistance: f32) -> glam::DVec3 {
@@ -288,6 +300,11 @@ pub struct Vitals {
     /// Java fallDistance accumulates every downward movement until reset.
     critical_fall_distance: f64,
     previous_fall_y: Option<f64>,
+    /// `LivingEntity.currentImpulseImpactPos` (its height): a mace smash's
+    /// impact, below which a later landing's fall damage is measured. Not saved.
+    impulse_impact_y: Option<f64>,
+    /// `currentImpulseContextResetGraceTime`, in ticks.
+    impulse_grace: u32,
     /// Set while dead: what killed the player.
     pub death: Option<String>,
     peaceful_timer: f32,
@@ -317,6 +334,8 @@ impl Default for Vitals {
             last_damage: 0.0,
             fresh_hit: true,
             fall_peak: None,
+            impulse_impact_y: None,
+            impulse_grace: 0,
             critical_fall_distance: 0.0,
             previous_fall_y: None,
             death: None,
@@ -457,6 +476,8 @@ impl Vitals {
         natural_regeneration: bool,
     ) -> Hurts {
         let mut hurts = Hurts::default();
+        // `LivingEntity.tick` counts the impulse grace down once a tick.
+        self.impulse_grace = self.impulse_grace.saturating_sub(1);
         self.since_damage = (self.since_damage + dt).min(1e3);
         self.death_time = if self.is_dead() { (self.death_time + dt).min(1e3) } else { 0.0 };
         self.xp.tick(dt);
@@ -540,7 +561,20 @@ impl Vitals {
         } else if env.on_ground {
             if let Some(peak) = self.fall_peak {
                 hurts.landed = peak - env.y;
-                let distance = peak - env.y - jump_levels;
+                // `LivingEntity.causeFallDamage` after a mace smash: the fall
+                // counts only from the impact height, and the context ends on
+                // landing above it, once its grace runs out or once it hurts.
+                let mut fallen = peak - env.y;
+                if fallen > 0.0
+                    && let Some(impact) = self.impulse_impact_y
+                {
+                    fallen = fallen.min(impact - env.y);
+                    if fallen <= 0.0 || self.impulse_grace == 0 {
+                        self.impulse_impact_y = None;
+                        self.impulse_grace = 0;
+                    }
+                }
+                let distance = fallen - jump_levels;
                 hurts.fall = if env.on_slime {
                     0.0
                 } else if env.on_hay || env.on_honey {
@@ -548,6 +582,10 @@ impl Vitals {
                 } else {
                     fall_damage(distance)
                 };
+                if hurts.fall > 0.0 {
+                    self.impulse_impact_y = None;
+                    self.impulse_grace = 0;
+                }
             }
             self.fall_peak = Some(env.y);
         } else {
@@ -681,6 +719,29 @@ impl Vitals {
     /// the last vitals tick. Rising movement does not subtract from it.
     pub fn fall_distance(&self, y: f64) -> f64 {
         self.critical_fall_distance + self.previous_fall_y.map_or(0.0, |last| f64::from((last - y).max(0.0) as f32))
+    }
+
+    /// `MaceItem.hurtEnemy` and `postHurtEnemy` for a smash at feet height
+    /// `y`: fall damage is now measured from the impact (the previous one if
+    /// it is lower), with Java's 40-tick grace, and the fall distance resets.
+    pub fn smash_impulse(&mut self, y: f64) {
+        let impact = self.impulse_impact_y.filter(|&i| i <= y).unwrap_or(y);
+        self.impulse_impact_y = Some(impact);
+        self.impulse_grace = self.impulse_grace.max(crate::weapons::mace::IMPULSE_GRACE_TICKS);
+        self.critical_fall_distance = 0.0;
+        self.previous_fall_y = Some(y);
+        self.fall_peak = Some(y);
+    }
+
+    /// `ServerPlayer.onExplosionHit` for a blast not from a wind charge (Wind
+    /// Burst's): the grace ends, but a smash's impact height stays.
+    pub fn end_impulse_grace(&mut self) {
+        self.impulse_grace = 0;
+    }
+
+    /// The smash impact height fall damage is currently measured from.
+    pub fn impulse_impact_y(&self) -> Option<f64> {
+        self.impulse_impact_y
     }
 
     /// Forgets the height a fall started from (after a teleport).

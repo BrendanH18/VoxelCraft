@@ -1104,6 +1104,33 @@ pub fn build_arrows(arrows: &[Arrow], camera: DVec3, alpha: f64, out: &mut Vec<E
     }
 }
 
+/// Original thrown-trident model, pointing along +Z: a teal shaft, a
+/// crossbar and three prongs; a glinting (enchanted) trident is brighter.
+const TRIDENT: &[Cuboid] = &[
+    cube([-0.5, -0.5, -12.0], [0.5, 0.5, 6.0], [58, 116, 108], 10),
+    cube([-2.5, -0.5, 6.0], [2.5, 0.5, 7.0], [96, 182, 168], 6),
+    cube([-0.5, -0.5, 7.0], [0.5, 0.5, 12.0], [110, 200, 186], 6),
+    cube([-2.5, -0.5, 7.0], [-1.5, 0.5, 10.5], [110, 200, 186], 6),
+    cube([1.5, -0.5, 7.0], [2.5, 0.5, 10.5], [110, 200, 186], 6),
+];
+
+/// Thrown tridents (v0.16): stuck ones sit with their prongs buried.
+pub fn build_tridents(tridents: &[super::trident::Trident], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
+    for t in tridents {
+        let rel = (t.previous_pos.lerp(t.pos, alpha) - camera).as_vec3();
+        let dir = t.dir.normalize_or(Vec3::Z);
+        let rot = Quat::from_rotation_arc(Vec3::Z, dir);
+        let origin = if t.in_ground { rel - dir * 0.45 } else { rel + Vec3::Y * 0.25 };
+        for (i, c) in TRIDENT.iter().enumerate() {
+            let mut c = *c;
+            if t.foil() {
+                c.color = c.color.map(|v| v.saturating_add(40));
+            }
+            push_cuboid(out, &c, &|v: Vec3| origin + rot * v / 16.0, rot, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
+        }
+    }
+}
+
 /// Thrown snowballs and eggs: small cubes that tumble with no facing.
 pub fn build_thrown(thrown: &[super::thrown::Thrown], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
     for t in thrown {

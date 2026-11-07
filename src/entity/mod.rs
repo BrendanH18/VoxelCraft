@@ -69,11 +69,13 @@ mod spawning;
 mod thrown;
 mod tipped_arrow;
 pub mod tnt;
+pub mod trident;
 pub mod undead_mounts;
 pub mod villager;
 mod villager_breeding;
 mod villager_gossip;
 pub mod wandering_trader;
+pub mod weapon_hits;
 pub mod wolf_armor;
 mod zombie_villager;
 
@@ -152,6 +154,8 @@ pub enum MobSound {
     /// The dug block's hit sound while a sniffer digs (`emitDiggingParticles`).
     SnifferDigHit(crate::world::block::Block),
     Allay(allay::Sound),
+    /// v0.16 weapons: tridents hitting and returning, Channeling's thunder, drowned throws.
+    Weapon(crate::weapons::Cue),
 }
 
 /// Something an entity did that the game needs to react to.
@@ -266,6 +270,12 @@ pub enum EntityEvent {
         /// The shooting mob's uid, so its target's wolves can retaliate.
         shooter: u32,
     },
+    /// A drowned threw its trident at `target` (turned into a thrown trident internally).
+    ThrowTrident {
+        from: DVec3,
+        target: DVec3,
+        shooter: u32,
+    },
     /// A blaze or ghast shot a fireball (turned into a projectile internally).
     /// `large` is a ghast fireball: slower, explosive, and punchable.
     Fireball {
@@ -323,6 +333,14 @@ pub enum EntityEvent {
     /// The Ender Dragon flew through this block: remove it, without drops.
     BreakBlock {
         cell: IVec3,
+    },
+    /// A trident faster than 0.6 blocks a tick hit pointed dripstone
+    /// (`SpeleothemBlock.onProjectileHit`): destroy it with drops, if the
+    /// thrower may (`mob_owned` needs `mobGriefing`) and projectiles may break
+    /// blocks.
+    TridentBrokeDripstone {
+        cell: IVec3,
+        mob_owned: bool,
     },
     /// A villager needs this closed wooden door opened.
     AnimalBlock {
@@ -794,6 +812,8 @@ pub struct Entities {
     pub potions: Vec<potion::ThrownPotion>,
     pub clouds: Vec<lingering::Cloud>,
     pub thrown: Vec<thrown::Thrown>,
+    /// Thrown tridents (v0.16), saved with the dimension.
+    pub tridents: Vec<trident::Trident>,
     pub bobbers: Vec<bobber::Bobber>,
     pub eyes: Vec<eye::EnderEye>,
     pub fireballs: Vec<fireball::Fireball>,
@@ -906,6 +926,7 @@ impl Entities {
             potions: Vec::new(),
             clouds: Vec::new(),
             thrown: Vec::new(),
+            tridents: Vec::new(),
             bobbers: Vec::new(),
             eyes: Vec::new(),
             fireballs: Vec::new(),
@@ -1049,6 +1070,12 @@ impl Entities {
                 mob.skeleton_bow.as_mut().unwrap().enchants =
                     crate::enchant::enchant_mob_equipment(&mut random, crate::item::Item::BOW, special);
             }
+        }
+        // `Drowned.populateDefaultEquipmentSlots`: above 0.9, 10 in 16 a trident, else a fishing rod.
+        if kind == MobKind::Drowned && self.rng.next_f32() > 0.9 {
+            let item =
+                if self.rng.next_int(16) < 10 { crate::weapons::TRIDENT } else { crate::item::Item::FISHING_ROD };
+            mob.weapon = Some(Box::new(crate::inventory::Stack::new(item, 1)));
         }
         if kind.is_cube() {
             // `AbstractCubeMob.setSpawnSize`: sizes 1, 2 and 4 from nextInt(3),
@@ -1444,6 +1471,7 @@ impl Entities {
         props.insert("decor".to_string(), self.decor_to_string());
         props.insert("villagers".to_string(), self.villagers_to_string());
         props.insert("nether_mobs".to_string(), self.nether_mobs_to_string());
+        props.insert("tridents".to_string(), self.tridents_json());
     }
 
     /// Restores [`Entities::save_props`]. Every entity starts in the level;
@@ -1471,6 +1499,9 @@ impl Entities {
         if let Some(n) = props.get("nether_mobs") {
             self.load_nether_mobs(n);
         }
+        if let Some(t) = props.get("tridents") {
+            self.load_tridents_json(t);
+        }
     }
 
     pub fn load_items(&mut self, text: &str) {
@@ -1496,6 +1527,9 @@ impl Entities {
         }
         for a in &mut self.arrows {
             a.previous_pos = a.pos;
+        }
+        for t in &mut self.tridents {
+            t.previous_pos = t.pos;
         }
         for p in &mut self.pearls {
             p.previous_pos = p.pos;
@@ -1541,6 +1575,7 @@ impl Entities {
         self.verts.clear();
         self.rendered = model::build(&self.mobs, camera, forward, max_dist, time, alpha, &mut self.verts);
         model::build_arrows(&self.arrows, camera, alpha, &mut self.verts);
+        model::build_tridents(&self.tridents, camera, alpha, &mut self.verts);
         model::build_pearls(&self.pearls, camera, alpha, &mut self.verts);
         model::build_potions(&self.potions, camera, alpha, &mut self.verts);
         model::build_clouds(&self.clouds, camera, &mut self.verts);
@@ -1911,6 +1946,8 @@ impl Entities {
             yaw,
             sweep: sweep.is_some(),
             owner,
+            smash: 0.0,
+            armor_effectiveness: 0.0,
         };
         self.player_melee(index, hit)
     }
@@ -1921,7 +1958,19 @@ impl Entities {
     /// plus half a level for a sprint hit ([`crate::knockback::attack_strength`]).
     pub fn player_melee(&mut self, index: usize, hit: PlayerMelee) -> Option<MobKind> {
         use crate::enchant::Enchantment;
-        let PlayerMelee { held, bonus, strength, critical, sprint_knockback, origin, yaw, sweep, owner } = hit;
+        let PlayerMelee {
+            held,
+            bonus,
+            strength,
+            critical,
+            sprint_knockback,
+            origin,
+            yaw,
+            sweep,
+            owner,
+            smash,
+            armor_effectiveness,
+        } = hit;
         let target = self.mobs.get(index).filter(|m| m.alive())?;
         if target.allay.as_ref().is_some_and(|s| s.player == Some(owner)) {
             return None;
@@ -1929,11 +1978,16 @@ impl Entities {
         let spiked = matches!(target.kind, MobKind::Guardian | MobKind::ElderGuardian)
             && target.aquatic.as_ref().is_some_and(|a| a.beam.is_some() || target.vel.length_squared() < 0.1);
         let (kind, pos, shape) = (target.kind, target.pos, target.shape());
-        let base = (crate::mining::attack_damage(held.map(|s| s.item)) + bonus).max(0.0)
+        // `Player.attack`: the item's `getAttackDamageBonus` (the mace's smash)
+        // joins after the charge scaling and before the critical multiplier.
+        let base = ((crate::mining::attack_damage(held.map(|s| s.item)) + bonus).max(0.0)
             * (0.2 + strength * strength * 0.8)
+            + smash)
             * if critical { 1.5 } else { 1.0 };
         let enchants = held.map_or(Default::default(), |s| s.active_enchants());
-        let damage = base + crate::enchant::damage_bonus(enchants, kind.creature()) * strength;
+        let magic =
+            crate::enchant::damage_bonus(enchants, kind.creature()) + crate::weapons::impaling_bonus(enchants, kind);
+        let damage = base + magic * strength;
         let (knockback, fire) = crate::mining::weapon_extras(held);
         let extra = crate::knockback::attack_strength(0.0, u32::from(knockback), sprint_knockback);
         if fire > 0.0 {
@@ -1950,15 +2004,16 @@ impl Entities {
         self.animals_owner_attack(index, owner);
         let old_health = self.mobs[index].health;
         let hit = crate::knockback::Hit::melee(origin, pos, yaw, extra);
+        self.mobs[index].armor_effectiveness = armor_effectiveness;
         let killed = self.hurt_by_player(index, damage, &hit.pushes, owner);
+        self.mobs[index].armor_effectiveness = 0.0;
         if self.mobs[index].health < old_health {
             self.player_hurt_mob(index, owner, killed.is_some());
         }
         if self.mobs[index].health < old_health {
             for effect in [
                 critical.then_some(crate::particles::Kind::Crit),
-                (crate::enchant::damage_bonus(enchants, kind.creature()) > 0.0)
-                    .then_some(crate::particles::Kind::MagicCrit),
+                (magic > 0.0).then_some(crate::particles::Kind::MagicCrit),
             ]
             .into_iter()
             .flatten()
@@ -2066,6 +2121,11 @@ pub struct PlayerMelee {
     /// Whether `Player.isSweepAttack` holds, for a sword.
     pub sweep: bool,
     pub owner: PlayerId,
+    /// The held item's `getAttackDamageBonus` (the mace's smash), added
+    /// after the charge scaling and before the critical multiplier.
+    pub smash: f32,
+    /// The weapon's armor-effectiveness change (Breach), applied to this hit.
+    pub armor_effectiveness: f32,
 }
 
 /// Whether `kind` may spawn standing on `ground` at this daylight level.

@@ -149,6 +149,22 @@ impl Entities {
                 {
                     self.items.push(ItemEntity::new(stack, dead.pos, DVec3::ZERO, 0.5, &mut self.rng));
                 }
+                // `Mob.dropCustomDeathLoot`: a hand item drops on 8.5% of player kills
+                // (`DEFAULT_EQUIPMENT_DROP_CHANCE`), its wear rerolled.
+                if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
+                    && dead.player_hit_left > 0.0
+                    && let Some(stack) = dead.weapon.as_deref().copied()
+                    && !stack.enchants.has(crate::enchant::Enchantment::VanishingCurse)
+                    && self.rng.next_f32() < crate::weapons::trident::EQUIPMENT_DROP_CHANCE
+                {
+                    let mut stack = stack;
+                    if let Some(max) = stack.item.durability() {
+                        let inner = 1 + self.rng.next_int(u32::from(max.saturating_sub(3).max(1)));
+                        stack.damage = max - self.rng.next_int(inner) as u16;
+                        stack.damage = stack.damage.min(max - 1);
+                    }
+                    self.items.push(ItemEntity::new(stack, dead.pos, DVec3::ZERO, 0.5, &mut self.rng));
+                }
                 if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
                     && let Some(s) = &dead.copper_golem
                 {
@@ -300,6 +316,20 @@ impl Entities {
                     arrow.tipped = arrow.custom_effect.is_some();
                     self.arrows.push(arrow);
                 }
+                EntityEvent::ThrowTrident { from, target, shooter } => {
+                    let stack = self
+                        .mobs
+                        .iter()
+                        .find(|m| m.uid == shooter)
+                        .and_then(|m| m.weapon.as_deref().copied())
+                        .filter(|s| s.item == crate::weapons::TRIDENT)
+                        .unwrap_or(crate::inventory::Stack::new(crate::weapons::TRIDENT, 1));
+                    let uncertainty = crate::weapons::trident::mob_uncertainty(self.difficulty as u8);
+                    let eye = from + DVec3::Y * f64::from(0.1f32);
+                    let t =
+                        super::trident::Trident::from_drowned(stack, shooter, eye, target, uncertainty, &mut self.rng);
+                    self.tridents.push(t);
+                }
                 EntityEvent::ThrowPotion { from, vel, potion } => {
                     self.potions.push(potion::ThrownPotion::new(potion, None, from, vel));
                 }
@@ -317,7 +347,13 @@ impl Entities {
             }
         }
         events.retain(|e| {
-            !matches!(e, EntityEvent::Shoot { .. } | EntityEvent::Fireball { .. } | EntityEvent::ThrowPotion { .. })
+            !matches!(
+                e,
+                EntityEvent::Shoot { .. }
+                    | EntityEvent::Fireball { .. }
+                    | EntityEvent::ThrowPotion { .. }
+                    | EntityEvent::ThrowTrident { .. }
+            )
         });
         {
             let mobs = &self.mobs;
@@ -346,6 +382,7 @@ impl Entities {
                     || t.update(dt, world, mobs, &self.mob_index, &ctx.players, rng, &mut events)
             });
         }
+        self.update_tridents(dt, world, ctx, &mut events);
         {
             let (rng, mobs, index) = (&mut self.rng, &self.mobs, &self.mob_index);
             let mut i = 0;

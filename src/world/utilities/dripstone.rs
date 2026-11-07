@@ -25,6 +25,20 @@ pub fn fall_damage(distance: f64, per_block: f32) -> f32 {
 }
 
 impl World {
+    /// `level.destroyBlock(pos, true)` for pointed dripstone a fast trident
+    /// hit (`SpeleothemBlock.onProjectileHit`): the block breaks with its
+    /// drops and whatever it held up falls. Returns the broken block.
+    pub fn trident_breaks_dripstone(&mut self, cell: IVec3) -> Option<Block> {
+        let block = self.get_block(cell).filter(|b| ob::dripstone_of(b.canonical()).is_some())?;
+        if !self.set_block(cell, Block::AIR) {
+            return None;
+        }
+        if self.tile_drops {
+            self.spill_block(cell, block);
+        }
+        Some(block)
+    }
+
     /// `spawnFallingStalactite`: every block from `top` down to the tip
     /// falls; the tip hurts by the stalactite's length (at least 6) per
     /// block fallen.
