@@ -1107,6 +1107,9 @@ impl Game {
         if self.session.player.vehicle.take().is_some() {
             self.mobs.entities.dismount(&self.world, crate::entity::PlayerId::HOST);
         }
+        // `ServerPlayer.die` stores `lastDeathLocation` before an immediate
+        // or hardcore respawn can clear the dead state.
+        self.session.record_death(&self.world);
         let grid = self.craft.take_all();
         self.session.die(&mut self.mobs.entities, self.gamerules.bool("keep_inventory"), grid);
         // `ThrownEnderpearl.tick` sees the dead owner before any respawn.

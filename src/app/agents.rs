@@ -364,6 +364,9 @@ impl Game {
             if !was_dead && bot.agent.session.vitals.is_dead() && self.gamerules.bool("show_death_messages") {
                 log::info!("{name} {}", bot.agent.session.vitals.death.as_deref().unwrap_or("died"));
             }
+            // `ServerPlayer.die` stores `lastDeathLocation` before an
+            // immediate or hardcore respawn can clear the dead state.
+            bot.agent.session.record_death(&self.world);
             if self.hardcore {
                 bot.agent.hardcore_spectate();
             } else if self.gamerules.respawns_immediately(false) && bot.agent.session.vitals.is_dead() {
