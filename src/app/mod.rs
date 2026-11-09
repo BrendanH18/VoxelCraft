@@ -472,7 +472,8 @@ impl ApplicationHandler for App {
         if !scripted {
             settings.fullscreen.apply(&window);
         }
-        let renderer = pollster::block_on(Renderer::new(window, settings.vsync));
+        let mut renderer = pollster::block_on(Renderer::new(window, settings.vsync));
+        renderer.force_offscreen = self.args.benchmark_scene.is_some() && self.args.benchmark_offscreen;
         let mut audio = crate::audio::Audio::new(self.args.mute, settings.volume);
         audio.set_volumes(|source| settings.sound_volume(source));
         let root = self.saves_dir.parent().unwrap_or(&self.saves_dir);
@@ -1855,6 +1856,7 @@ impl Game {
         {
             self.apply_placements();
         }
+        benchmark::mark(&mut self.benchmark, 0);
         for _ in 0..ticks {
             if self.lan.client.is_some() {
                 self.tick_lan_client();
@@ -1867,6 +1869,7 @@ impl Game {
                 self.send_lan_state();
             }
         }
+        benchmark::mark(&mut self.benchmark, 1);
         if paused {
             self.previous_eye = self.session.player.eye();
             self.mobs.entities.snapshot_positions();
@@ -1979,6 +1982,7 @@ impl Game {
                 )
             })
             .collect();
+        benchmark::mark(&mut self.benchmark, 2);
         let verts = self.mobs.entities.mesh(camera, forward, fog_end, scene.time, alpha);
         push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
         crate::render::signs::text(&self.world, camera, verts);
@@ -2006,6 +2010,7 @@ impl Game {
             );
         }
         self.renderer.set_entities(verts);
+        benchmark::mark(&mut self.benchmark, 3);
         self.renderer.set_particles(&self.particles.pool, &self.world, camera, self.session.player.forward(), alpha);
         weather::sheets(&self.world, camera, scene.rain, &mut self.weather_verts);
         self.renderer.set_weather(&self.weather_verts);
@@ -2077,12 +2082,16 @@ impl Game {
                 Vec::new()
             },
         };
+        benchmark::mark(&mut self.benchmark, 4);
         let Some(mut frame) = self.renderer.begin_frame() else {
             return; // hidden window: don't count this frame in the stats
         };
+        benchmark::mark(&mut self.benchmark, 5);
         self.renderer.draw_view(&mut frame, &params, viewports[0]);
         self.draw_followers(&mut frame, &scene, &viewports);
+        benchmark::mark(&mut self.benchmark, 6);
         self.renderer.end_frame(frame);
+        benchmark::mark(&mut self.benchmark, 7);
 
         // --- Stats ----------------------------------------------------------
         self.frames += 1;

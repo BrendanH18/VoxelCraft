@@ -64,10 +64,12 @@ def run_problems(report,specification):
     if not report.get('source_matches_runner'): out.append('executable was not built from the measured source')
     return list(dict.fromkeys(out))
 
-def reference_gate(metadata,definitions,quick,native,repeats):
+def reference_gate(metadata,definitions,quick,native,repeats,offscreen=False,seconds=None):
     """Overall reference result: protocol, hardware, scene coverage and every run's validity and thresholds."""
     problems=[]
     if quick: problems.append('quick smoke protocol')
+    if offscreen: problems.append('offscreen comparison runs present nothing')
+    if seconds: problems.append('sample period overridden')
     if native: problems.append('native-resolution runs are reported separately')
     if repeats<3: problems.append('fewer than three repeats')
     if {r['scene'] for r in metadata['runs']}!=set(definitions): problems.append('not every scene was measured')
@@ -85,6 +87,8 @@ def main():
     parser.add_argument('--repeats',type=int,default=3)
     parser.add_argument('--quick',action='store_true',help='five-second smoke only, never acceptance evidence')
     parser.add_argument('--native-resolution',help='WIDTHxHEIGHT, reported separately from the 1080p gate')
+    parser.add_argument('--offscreen',action='store_true',help='draw offscreen and present nothing, for comparing builds when the window cannot stay visible; never acceptance evidence')
+    parser.add_argument('--seconds',type=float,help='sample seconds for every scene, for comparison runs; never acceptance evidence')
     args=parser.parse_args()
     assert 1<=args.repeats<=10,'repeat count must be 1..10'
     specification=json.loads((ROOT/'benchmarks/scenes.json').read_text())
@@ -101,17 +105,18 @@ def main():
     executable=executable.resolve(strict=True)
     args.output.mkdir(parents=True,exist_ok=True)
     metadata={'schema':2,'source':revision,'hardware':hardware(),'executable_sha256':hashlib.sha256(executable.read_bytes()).hexdigest(),
-              'protocol':'quick smoke' if args.quick else 'scene baseline','resolution_class':'native' if args.native_resolution else '1080p','specification':specification,'runs':[]}
+              'protocol':'quick smoke' if args.quick else 'offscreen comparison' if args.offscreen else 'scene baseline','resolution_class':'native' if args.native_resolution else '1080p','specification':specification,'runs':[]}
     resolution=args.native_resolution or '1920x1080'
     for scene in names:
         for run in range(args.repeats):
             output=args.output/f'{scene}-{run+1}.json'
-            duration=5 if args.quick else definitions[scene].get('sample_seconds',specification['sample_seconds'])
+            duration=5 if args.quick else args.seconds or definitions[scene].get('sample_seconds',specification['sample_seconds'])
             warmup=1 if args.quick else specification['warmup_seconds']
             cmd=[str(executable),'--benchmark-scene',scene,'--benchmark-output',str(output.resolve()),'--benchmark-duration',str(duration),'--benchmark-warmup',str(warmup),
                  '--size',resolution,'--seed',str(specification['seed']),'--rd','8','--graphics',specification['graphics'],'--no-vsync',
                  '--data-dir',str((args.output/'player-data').resolve())]
             if definitions[scene].get('world',True): cmd+=['--new','--world','benchmark']
+            if args.offscreen: cmd.append('--benchmark-offscreen')
             print(f'{scene} run {run+1}/{args.repeats} at {resolution}',flush=True)
             peak_rss_kib=0;started=time.monotonic()
             with (args.output/f'{scene}-{run+1}.log').open('w') as log:
@@ -137,7 +142,7 @@ def main():
             print(f"  {report['frame_stats']['one_percent_low_fps']:.1f} FPS 1% low, {report['frame_stats']['p99_ms']:.3f} ms p99; "
                   f"{report['completed_simulation_ticks']} ticks; peak RSS {peak_rss_kib/1024:.1f} MiB; {validity}",flush=True)
             (args.output/'summary.json').write_text(json.dumps(metadata,indent=2)+'\n')
-    passed,problems=reference_gate(metadata,definitions,args.quick,args.native_resolution,args.repeats)
+    passed,problems=reference_gate(metadata,definitions,args.quick,args.native_resolution,args.repeats,args.offscreen,args.seconds)
     metadata['reference_gate_passed']=passed
     metadata['reference_gate_problems']=problems
     metadata['all_runs_valid']=all(not r['gate_problems'] for r in metadata['runs'])

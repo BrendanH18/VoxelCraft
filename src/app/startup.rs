@@ -349,7 +349,8 @@ impl Game {
         if game.console.open {
             game.set_grab(false);
         }
-        game.renderer.force_offscreen = game.bench_render.is_some();
+        game.renderer.force_offscreen =
+            game.bench_render.is_some() || (game.benchmark.is_some() && args.benchmark_offscreen);
         game.world.loot_sequences = root_props
             .get("loot_sequences")
             .and_then(|s| crate::world::loot::RandomSequences::load(s))

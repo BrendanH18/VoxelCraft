@@ -56,6 +56,8 @@ pub struct Args {
     pub benchmark_output: Option<std::path::PathBuf>,
     pub benchmark_duration: f64,
     pub benchmark_warmup: f64,
+    /// Draw benchmark frames to an offscreen image and present nothing: comparison runs only.
+    pub benchmark_offscreen: bool,
     pub physical_size: Option<(u32, u32)>,
     pub debug_overlay: bool,
     pub mode: Option<app::GameMode>,
@@ -217,6 +219,7 @@ voxelcraft [options]
   --benchmark-output <file.json>  write frame samples and statistics
   --benchmark-duration <seconds>  sample period (default 60)
   --benchmark-warmup <seconds>    warm-up after loading (default 10)
+  --benchmark-offscreen           draw the scene offscreen and present nothing (comparison only, never gate evidence)
   --size <WIDTHxHEIGHT> physical render resolution (benchmark default 1920x1080)
   --validate-assets validate embedded original resources and exit\n  --export-music    render original seeded music to target/music/*.wav with stats, and exit";
 
@@ -252,6 +255,7 @@ fn parse_args() -> Result<Args, String> {
         benchmark_output: None,
         benchmark_duration: 60.0,
         benchmark_warmup: 10.0,
+        benchmark_offscreen: false,
         physical_size: None,
         debug_overlay: false,
         mode: None,
@@ -353,6 +357,7 @@ fn parse_args() -> Result<Args, String> {
             "--benchmark-warmup" => {
                 args.benchmark_warmup = voxelcraft::performance::parse_warmup(&value("--benchmark-warmup")?)?;
             }
+            "--benchmark-offscreen" => args.benchmark_offscreen = true,
             "--size" => {
                 let value = value("--size")?;
                 let (w, h) = value.split_once('x').ok_or("--size requires WIDTHxHEIGHT in physical pixels")?;

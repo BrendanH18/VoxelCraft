@@ -38,6 +38,51 @@ impl FrameStats {
     }
 }
 
+/// Parts of a world frame, in the order they run, for [`phase_breakdown`]:
+/// streaming and polling, the due 20 Hz ticks, audio and chunk mesh uploads,
+/// entity geometry, the rest of the scene (particles, weather, block models,
+/// signs, the hand and the HUD), acquiring the surface image, drawing and
+/// submitting the views, and presenting.
+pub const FRAME_PHASES: [&str; 8] =
+    ["streaming", "ticks", "uploads", "entities", "scene", "acquire", "draw", "present"];
+/// Milliseconds one frame spent in each of [`FRAME_PHASES`].
+pub type PhaseTimes = [f32; FRAME_PHASES.len()];
+
+/// Where frame time went: mean milliseconds per phase over every frame, over
+/// the slowest 1% of frames (the 1% low's frames) and over the frames that
+/// ran a simulation tick. `other` is interval time outside the phases (the
+/// event loop and the benchmark's own bookkeeping). `None` unless every frame
+/// has its phases.
+pub fn phase_breakdown(intervals: &[f64], phases: &[PhaseTimes]) -> Option<serde_json::Value> {
+    if intervals.is_empty() || intervals.len() != phases.len() {
+        return None;
+    }
+    let mut order: Vec<usize> = (0..intervals.len()).collect();
+    order.sort_by(|&a, &b| intervals[a].total_cmp(&intervals[b]));
+    let slow = &order[intervals.len() - intervals.len().div_ceil(100)..];
+    let ticked: Vec<usize> = (0..intervals.len()).filter(|&i| phases[i][1] > 0.0).collect();
+    let mean = |frames: &[usize]| {
+        let n = frames.len().max(1) as f64;
+        let mut out = serde_json::Map::new();
+        let interval = frames.iter().map(|&i| intervals[i]).sum::<f64>() / n;
+        let mut attributed = 0.0;
+        for (p, name) in FRAME_PHASES.iter().enumerate() {
+            let ms = frames.iter().map(|&i| f64::from(phases[i][p])).sum::<f64>() / n;
+            attributed += ms;
+            out.insert((*name).into(), ms.into());
+        }
+        out.insert("other".into(), (interval - attributed).into());
+        out.insert("frame".into(), interval.into());
+        out.insert("frames".into(), frames.len().into());
+        serde_json::Value::Object(out)
+    };
+    Some(serde_json::json!({
+        "all_frames": mean(&order),
+        "slowest_one_percent": mean(slow),
+        "tick_frames": mean(&ticked),
+    }))
+}
+
 /// Live benchmark scene names accepted by `--benchmark-scene`, matching `benchmarks/scenes.json`.
 pub const SCENES: [&str; 8] =
     ["survival", "building", "entities", "automation", "materials", "streaming", "menus", "title"];
@@ -136,6 +181,8 @@ pub struct RunEvidence {
     pub enhanced_graphics: bool,
     /// The resolved present mode does not wait for display refresh.
     pub uncapped_presentation: bool,
+    /// Frames were drawn to an offscreen image and never presented (`--benchmark-offscreen`).
+    pub offscreen: bool,
     pub completed_ticks: u64,
     pub paused_ms: f64,
     /// Sample intervals in which no surface image was acquired (hidden or occluded window).
@@ -162,6 +209,9 @@ impl RunEvidence {
         }
         if !self.uncapped_presentation {
             out.push("presentation is synchronized to the display");
+        }
+        if self.offscreen {
+            out.push("frames were drawn offscreen and never presented");
         }
         out
     }
@@ -202,6 +252,7 @@ mod tests {
             sample_seconds: 60.004,
             enhanced_graphics: true,
             uncapped_presentation: true,
+            offscreen: false,
             completed_ticks: 1200,
             paused_ms: 0.0,
             unpresented_frames: 0,
@@ -249,6 +300,27 @@ mod tests {
         assert_eq!(vsync.configuration_problems().len(), 2);
         let quick = RunEvidence { requested_seconds: 5.0, warmup_seconds: 1.0, ..eligible() };
         assert_eq!(quick.configuration_problems().len(), 1);
+        let offscreen = RunEvidence { offscreen: true, ..eligible() };
+        assert_eq!(offscreen.configuration_problems(), ["frames were drawn offscreen and never presented"]);
+    }
+
+    #[test]
+    fn slow_frames_are_broken_down_by_phase() {
+        // 199 quick frames and one slow frame that ran a tick.
+        let mut intervals = vec![2.0; 199];
+        let mut phases = vec![[0.0, 0.0, 0.0, 1.0, 0.25, 0.0, 0.5, 0.0]; 199];
+        intervals.insert(50, 9.0);
+        phases.insert(50, [0.5, 6.0, 0.0, 1.0, 0.25, 0.0, 0.5, 0.25]);
+        let report = phase_breakdown(&intervals, &phases).unwrap();
+        let slow = &report["slowest_one_percent"];
+        assert_eq!((slow["frames"].as_u64(), slow["frame"].as_f64()), (Some(2), Some(5.5)));
+        assert_eq!(slow["ticks"].as_f64(), Some(3.0));
+        let ticked = &report["tick_frames"];
+        assert_eq!((ticked["frames"].as_u64(), ticked["ticks"].as_f64()), (Some(1), Some(6.0)));
+        assert_eq!(ticked["other"].as_f64(), Some(0.5));
+        assert_eq!(report["all_frames"]["entities"].as_f64(), Some(1.0));
+        assert!(phase_breakdown(&intervals, &phases[1..]).is_none(), "every frame needs its phases");
+        assert!(phase_breakdown(&[], &[]).is_none());
     }
 
     #[test]
