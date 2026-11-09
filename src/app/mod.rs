@@ -2181,7 +2181,7 @@ fn push_avatars(
     camera: DVec3,
     fog_end: f32,
     time: f32,
-    verts: &mut Vec<crate::entity::model::EntityVertex>,
+    verts: &mut crate::entity::model::EntityMesh,
 ) {
     for &(player, feet, appearance, name) in players {
         // A body around the camera (players can share a spot) would fill the view.

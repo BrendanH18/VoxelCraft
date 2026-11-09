@@ -1081,7 +1081,7 @@ impl Renderer {
         for pos in all {
             self.remove_mesh(pos);
         }
-        self.set_entities(&[]);
+        self.set_entities(&Default::default());
         self.set_weather(&[]);
     }
 

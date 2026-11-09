@@ -464,7 +464,7 @@ fn a_golem_carries_each_statue_pose_as_original_geometry() {
     for pose in Pose::ALL {
         e.mobs[0].copper_golem.as_mut().unwrap().cargo =
             Some(Statue { pose, ..Statue::new(Stage::Weathered, false) }.item_stack(StackName::default()));
-        let mut verts = Vec::new();
+        let mut verts = voxelcraft::entity::model::EntityMesh::flat();
         voxelcraft::entity::model::build(&e.mobs, DVec3::ZERO, glam::Vec3::Z, 100.0, 0.0, 1.0, &mut verts);
         let cargo: Vec<_> = verts.iter().filter(|v| v.torch[1] == 2).collect();
         assert_eq!(cargo.len(), 8 * 36);

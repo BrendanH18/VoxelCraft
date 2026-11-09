@@ -1,11 +1,19 @@
-//! Entity pass: all mobs in one draw from a per-frame vertex buffer of
-//! camera-relative box-model triangles (built by `crate::entity::model`).
+//! Entity pass: every mob's plain boxes in one instanced draw (the vertex
+//! shader expands each [`BoxInstance`] into its faces), then the textured,
+//! translucent and flat geometry from a per-frame buffer of camera-relative
+//! triangles. Both are built by `crate::entity::model`.
 
 use super::{DEPTH_FORMAT, Renderer};
 
 pub use crate::entity::model::EntityVertex;
+use crate::entity::model::{BOX_VERTICES, BoxInstance, EntityMesh};
 
 pub(super) struct EntityPass {
+    /// Opaque box instances.
+    boxes: wgpu::RenderPipeline,
+    box_buffer: wgpu::Buffer,
+    box_capacity: usize,
+    box_count: u32,
     pipeline: wgpu::RenderPipeline,
     /// Alpha-blended, depth-tested but not depth-written (slime shells).
     translucent: wgpu::RenderPipeline,
@@ -77,21 +85,30 @@ impl EntityPass {
             label: Some("entity shader"),
             source: super::block_shader(include_str!("shaders/entity.wgsl"), paged_blocks),
         });
-        let make = |label, depth_write, blend| {
+        let vertices = wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<EntityVertex>() as u64,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &wgpu::vertex_attr_array![
+                0 => Float32x3, 1 => Float32x2, 2 => Unorm8x4, 3 => Unorm8x4, 4 => Unorm8x4
+            ],
+        };
+        let instances = wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<BoxInstance>() as u64,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &wgpu::vertex_attr_array![
+                0 => Float32x4, 1 => Float32x4, 2 => Float32x4, 3 => Float32x4, 4 => Float32x4,
+                5 => Unorm8x4, 6 => Unorm8x4, 7 => Unorm8x4, 8 => Unorm8x4
+            ],
+        };
+        let make = |label, entry_point, buffer, depth_write, blend| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(label),
                 layout: Some(&layout),
                 vertex: wgpu::VertexState {
                     module: &shader,
-                    entry_point: Some("vs_main"),
+                    entry_point: Some(entry_point),
                     compilation_options: Default::default(),
-                    buffers: &[Some(wgpu::VertexBufferLayout {
-                        array_stride: std::mem::size_of::<EntityVertex>() as u64,
-                        step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: &wgpu::vertex_attr_array![
-                            0 => Float32x3, 1 => Float32x2, 2 => Unorm8x4, 3 => Unorm8x4, 4 => Unorm8x4
-                        ],
-                    })],
+                    buffers: &[Some(buffer)],
                 },
                 primitive: wgpu::PrimitiveState { cull_mode: Some(wgpu::Face::Back), ..Default::default() },
                 depth_stencil: Some(wgpu::DepthStencilState {
@@ -112,31 +129,44 @@ impl EntityPass {
                 cache: None,
             })
         };
-        let pipeline = make("entities", true, None);
-        let translucent = make("translucent entities", false, Some(wgpu::BlendState::ALPHA_BLENDING));
+        let boxes = make("entity boxes", "vs_box", instances, true, None);
+        let pipeline = make("entities", "vs_main", vertices.clone(), true, None);
+        let translucent =
+            make("translucent entities", "vs_main", vertices, false, Some(wgpu::BlendState::ALPHA_BLENDING));
         let capacity = 4096;
+        let box_capacity = 1024;
         Self {
+            boxes,
+            box_buffer: Self::create_buffer(device, "entity boxes", box_capacity * std::mem::size_of::<BoxInstance>()),
+            box_capacity,
+            box_count: 0,
             pipeline,
             translucent,
             scratch: Vec::new(),
             opaque: 0,
             skin,
-            buffer: Self::create_buffer(device, capacity),
+            buffer: Self::create_buffer(device, "entity vertices", capacity * std::mem::size_of::<EntityVertex>()),
             capacity,
             count: 0,
         }
     }
 
-    fn create_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
+    fn create_buffer(device: &wgpu::Device, label: &str, bytes: usize) -> wgpu::Buffer {
         device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("entity vertices"),
-            size: (capacity * std::mem::size_of::<EntityVertex>()) as u64,
+            label: Some(label),
+            size: bytes as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         })
     }
 
     pub(super) fn draw(&self, pass: &mut wgpu::RenderPass<'_>) {
+        if self.box_count > 0 {
+            pass.set_pipeline(&self.boxes);
+            pass.set_bind_group(2, &self.skin, &[]);
+            pass.set_vertex_buffer(0, self.box_buffer.slice(..));
+            pass.draw(0..BOX_VERTICES, 0..self.box_count);
+        }
         if self.count == 0 {
             return;
         }
@@ -152,10 +182,24 @@ impl EntityPass {
 }
 
 impl Renderer {
-    /// Sets the entity geometry for the next frame (camera-relative to the
-    /// next `FrameParams::camera`).
-    pub fn set_entities(&mut self, verts: &[EntityVertex]) {
+    /// Sets the entity geometry for the next view drawn (camera-relative to
+    /// its `FrameParams::camera`).
+    pub fn set_entities(&mut self, mesh: &EntityMesh) {
         let e = &mut self.entities;
+        let boxes = mesh.boxes();
+        if boxes.len() > e.box_capacity {
+            e.box_capacity = boxes.len().next_power_of_two();
+            e.box_buffer = EntityPass::create_buffer(
+                &self.device,
+                "entity boxes",
+                e.box_capacity * std::mem::size_of::<BoxInstance>(),
+            );
+        }
+        if !boxes.is_empty() {
+            self.queue.write_buffer(&e.box_buffer, 0, bytemuck::cast_slice(boxes));
+        }
+        e.box_count = boxes.len() as u32;
+        let verts: &[EntityVertex] = mesh;
         // Translucent faces (material 4) go last so they blend over the opaque pass.
         let verts = if verts.iter().any(|v| v.torch[1] == 4) {
             e.scratch.clear();
@@ -169,7 +213,11 @@ impl Renderer {
         };
         if verts.len() > e.capacity {
             e.capacity = verts.len().next_power_of_two();
-            e.buffer = EntityPass::create_buffer(&self.device, e.capacity);
+            e.buffer = EntityPass::create_buffer(
+                &self.device,
+                "entity vertices",
+                e.capacity * std::mem::size_of::<EntityVertex>(),
+            );
         }
         if !verts.is_empty() {
             self.queue.write_buffer(&e.buffer, 0, bytemuck::cast_slice(verts));

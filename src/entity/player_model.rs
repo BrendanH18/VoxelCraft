@@ -4,7 +4,7 @@ use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
 use glam::{DVec3, Quat, Vec3};
 
-use super::model::{EntityVertex, cube, push_cuboid};
+use super::model::{EntityVertex, cube, push_cuboid_flat};
 use crate::entity::model::PlayerPose;
 use crate::item::Item;
 use crate::player::Player;
@@ -242,7 +242,7 @@ pub(super) fn pose(player: &Player, appearance: &PlayerAppearance, time: f32) ->
     ]
 }
 
-/// One texture-mapped box, still in the single entity vertex batch.
+/// One texture-mapped box, as triangles (its faces are painted per vertex below).
 /// `material`: 1 = procedural skin atlas; 2 = existing block/item atlas.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn textured_box(
@@ -259,7 +259,7 @@ pub(crate) fn textured_box(
 ) {
     let c = cube(p.min.map(|v| v - inflation), p.max.map(|v| v + inflation), [255; 3], 0);
     let start = out.len();
-    push_cuboid(
+    push_cuboid_flat(
         out,
         &c,
         &|v| origin + body * (p.pivot + p.rot * v) * (scale / 16.0),
