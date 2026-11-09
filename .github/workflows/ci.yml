@@ -74,6 +74,11 @@ jobs:
       - name: Benchmark gate tool tests
         if: runner.os == 'Linux'
         run: python3 -m unittest tools/test_benchmark_scenes.py
+      - name: Documentation links
+        if: runner.os == 'Linux'
+        run: |
+          python3 -m unittest tools/test_check_doc_links.py
+          python3 tools/check_doc_links.py
 
   headless:
     name: simulation without client dependencies
