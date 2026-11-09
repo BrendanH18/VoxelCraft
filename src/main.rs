@@ -94,6 +94,8 @@ pub struct Args {
     pub spawn_held: Vec<(usize, item::Item)>,
     /// Seconds to keep running after loading before `--screenshot`.
     pub wait: f64,
+    /// `--animation-time`: hold the animation clock here, so captures can be compared.
+    pub animation_time: Option<f32>,
     /// x,y,z,yaw_deg,pitch_deg
     pub pose: Option<[f64; 5]>,
     /// Starting health / air overrides (debugging/screenshots).
@@ -205,6 +207,7 @@ voxelcraft [options]
                     glint equip a zombie or skeleton; allay,x,y,z,item gives
                     an allay an item to hold
   --wait <secs>     with --screenshot: keep simulating this long first
+  --animation-time <secs>  hold the animation clock (idle animations, clouds, water) at this time, for comparable captures
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
   --weather <w>     start with clear skies or rain (clear, rain)
   --dimension <d>   start in overworld, nether or end (arriving through a
@@ -276,6 +279,7 @@ fn parse_args() -> Result<Args, String> {
         spawn: Vec::new(),
         spawn_held: Vec::new(),
         wait: 0.0,
+        animation_time: None,
         pose: None,
         health: None,
         air: None,
@@ -558,6 +562,9 @@ fn parse_args() -> Result<Args, String> {
                 args.spawn.push((kind, glam::IVec3::new(n[0], n[1], n[2]), armor));
             }
             "--wait" => args.wait = value("--wait")?.parse().map_err(|_| "bad --wait")?,
+            "--animation-time" => {
+                args.animation_time = Some(value("--animation-time")?.parse().map_err(|_| "bad --animation-time")?);
+            }
             "--time" => args.time = Some(value("--time")?.parse::<f64>().map_err(|_| "bad --time")?.rem_euclid(1.0)),
             "--weather" => {
                 args.weather = Some(match value("--weather")?.as_str() {

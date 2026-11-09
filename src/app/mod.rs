@@ -211,6 +211,8 @@ struct Game {
     weather: weather::Weather,
     weather_verts: Vec<crate::render::weather::WeatherVertex>,
     started: Instant,
+    /// `--animation-time`: the animation clock stays here instead of running.
+    animation_time: Option<f32>,
     /// Compass and clock needles wobbling outside the Overworld.
     dial_wobble: std::cell::Cell<(crate::item::Wobbler, crate::item::Wobbler)>,
     last_save: Instant,
@@ -1943,7 +1945,7 @@ impl Game {
         let scene = split::Scene {
             sky,
             rain: if nether { 0.0 } else { self.weather.strength },
-            time: (now - self.started).as_secs_f32(),
+            time: self.animation_time.unwrap_or_else(|| (now - self.started).as_secs_f32()),
             alpha,
             now,
         };
