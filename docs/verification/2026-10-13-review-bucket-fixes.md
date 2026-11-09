@@ -157,5 +157,5 @@ Proposed addition under the STR-03/PLY-04 evidence: "Buckets and bottles share
 Java's entity, then block, then item priority on desktop and CLI. Fluid buckets
 fail in Adventure. Pouring targets the hit face except water into a water
 holder, and destroys replaceable blocks with drops
-([evidence](verification/2026-10-13-review-bucket-fixes.md)). Waterloggable
+([evidence](2026-10-13-review-bucket-fixes.md)). Waterloggable
 dry states, Shaped non-solid replacement and Adventure block use remain gaps."

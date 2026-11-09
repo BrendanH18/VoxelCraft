@@ -1,6 +1,6 @@
 # In-game updater — 2026-10-22
 
-[Roadmap](../roadmap.md#v010-scope-updates) · [Requirement inventory](../requirements.md#ux--presentation-usability-and-distribution) · [Updating VoxelCraft](../updates.md)
+[v0.10 scope](../delivery-records.md#v010-scope-updates) · [Requirement inventory](../requirements.md#ux--presentation-usability-and-distribution) · [Updating VoxelCraft](../updates.md)
 
 Scope: UX-04b and the v0.10 part of UX-05a, as uncommitted work on
 `t3/updater-roadmap-and-ux-polish` after `f93a9cd`. The design and its owner

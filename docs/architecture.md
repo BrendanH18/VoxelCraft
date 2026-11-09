@@ -336,7 +336,7 @@ content and took its release's new number.
 ### v0.12 track reservations
 
 Reserved on 2026-10-25 when `STATE_CAPACITY` rose to 32,768, so the
-[v0.12 tracks](roadmap.md#v012-scope-building-materials) can run in
+[v0.12 tracks](delivery-records.md#v012-scope-building-materials) can run in
 parallel. Each track allocates only inside its own rows. v0.12's older
 ranges (2525–4095 and 8704–9727) are kept for the integrator and the data
 pass; a track that outgrows its range asks for a block of them, or of the
@@ -354,7 +354,7 @@ reserve, and records it here.
 
 ### v0.13 track reservations
 
-Reserved on 2026-10-30 for the [v0.13 tracks](roadmap.md#v013-scope-terrain).
+Reserved on 2026-10-30 for the [v0.13 tracks](delivery-records.md#v013-scope-terrain).
 The deep-dark blocks take the start of v0.16's range (deep dark and trial
 chambers), since v0.13 generates them; v0.16 keeps 11520–11775.
 

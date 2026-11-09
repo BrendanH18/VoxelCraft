@@ -9,6 +9,9 @@
   the graphics/UI review, work order and validation needs within M7.
 - [Requirement inventory](requirements.md): every core requirement as its own row,
   with state, owning release, evidence and acceptance cases.
+- [Delivery records](delivery-records.md): what each shipped version delivered,
+  the 0.6 starting inventory, dated assessment follow-ups and the full scopes of
+  tagged versions, moved out of the roadmap on 2026-11-09.
 - [Restructuring plan](restructuring.md): planned verification, content, gameplay,
   asset and module changes, including how to retain pending v0.7 work.
 

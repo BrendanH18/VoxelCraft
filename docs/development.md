@@ -16,7 +16,13 @@ cargo test --release
 
 The Linux CI job also checks the release binary's embedded assets with
 `python3 tools/validate_assets.py --executable target/release/voxelcraft` and
-runs the benchmark-gate tool tests. CI runs Cargo with `--locked`, so commit
+runs the benchmark-gate tool tests. It also runs
+`python3 tools/check_doc_links.py` (and its tests,
+`python3 -m unittest tools/test_check_doc_links.py`), which checks that every
+relative link and `#anchor` in the tracked Markdown files resolves, using
+GitHub's heading-anchor rules, and prints each broken one as
+`file:line: target`. Documentation-only changes skip the Cargo chain; run
+the link check instead. CI runs Cargo with `--locked`, so commit
 `Cargo.lock` changes with the code that needs them. The **Security** workflow
 runs `cargo audit --deny warnings` weekly and on pull requests that change `Cargo.toml`,
 `Cargo.lock` or `.github/workflows/security.yml`. Dependabot proposes weekly
