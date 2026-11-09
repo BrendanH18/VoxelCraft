@@ -1857,7 +1857,7 @@ mod tests {
         build(std::slice::from_ref(&mob), camera, Vec3::X, 100.0, 0.0, 1.0, &mut current);
         assert!(!current.is_empty());
         assert_eq!(halfway.len(), current.len());
-        for (a, b) in halfway.iter().zip(&current) {
+        for (a, b) in halfway.iter().zip(current.iter()) {
             assert!((b.pos[0] - a.pos[0] - 1.0).abs() < 1e-5);
             assert_eq!(a.pos[1..], b.pos[1..]);
         }
