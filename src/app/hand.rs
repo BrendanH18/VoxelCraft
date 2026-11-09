@@ -126,6 +126,7 @@ impl HandAnim {
             map: None,
             off_map: None,
             map_small: false,
+            invisible: false,
         }
     }
 }

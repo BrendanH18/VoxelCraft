@@ -464,6 +464,7 @@ impl Game {
         hand.map = image(main);
         hand.off_map = image(session.inventory.offhand);
         hand.map_small = session.inventory.offhand.is_some();
+        hand.invisible = session.vitals.effects.has(effects::Effect::Invisibility);
         hand
     }
 
