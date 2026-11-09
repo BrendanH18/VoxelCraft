@@ -8,7 +8,7 @@ use std::f32::consts::PI;
 use glam::{DVec3, Quat, Vec3};
 
 use super::dragon::{Dragon, Fight, Phase};
-use super::model::{Cuboid, EntityVertex, Rgb, cube, push_cuboid};
+use super::model::{Cuboid, EntityMesh, Rgb, cube, push_cuboid};
 
 const SCALE: Rgb = [30, 26, 36];
 const BELLY: Rgb = [44, 38, 52];
@@ -52,7 +52,7 @@ const REAR_LEG: &[Cuboid] =
     &[cube([-7.0, -30.0, -7.0], [7.0, 4.0, 7.0], SCALE, 26), cube([-8.0, -36.0, -8.0], [8.0, -30.0, 14.0], SCALE, 26)];
 
 /// Healing beams, crystals, the dragon, its fireballs and breath.
-pub fn build_fight(fight: &Fight, camera: DVec3, time: f32, alpha: f64, out: &mut Vec<EntityVertex>) {
+pub fn build_fight(fight: &Fight, camera: DVec3, time: f32, alpha: f64, out: &mut EntityMesh) {
     for (i, c) in fight.crystals.iter().enumerate() {
         crystal(out, (crystal_center(c, alpha) - camera).as_vec3(), c.age as f32 + alpha as f32, i);
     }
@@ -116,7 +116,7 @@ fn frame(h: f32, color: Rgb) -> [Cuboid; 12] {
 }
 
 /// A pink core inside two glassy frames turning on tilted axes.
-fn crystal(out: &mut Vec<EntityVertex>, rel: Vec3, t: f32, seed: usize) {
+fn crystal(out: &mut EntityMesh, rel: Vec3, t: f32, seed: usize) {
     let spin = (t * 3.0).to_radians();
     let tilt = Vec3::new(1.0, 1.0, 0.0).normalize();
     let outer = Quat::from_rotation_y(spin) * Quat::from_axis_angle(tilt, PI / 3.0);
@@ -134,7 +134,7 @@ fn crystal(out: &mut Vec<EntityVertex>, rel: Vec3, t: f32, seed: usize) {
 }
 
 /// The healing beam from a crystal to the dragon.
-fn beam(out: &mut Vec<EntityVertex>, from: Vec3, to: Vec3, time: f32) {
+fn beam(out: &mut EntityMesh, from: Vec3, to: Vec3, time: f32) {
     let d = to - from;
     let len = d.length() * 16.0;
     let rot = Quat::from_rotation_arc(Vec3::Z, d.normalize_or(Vec3::Z)) * Quat::from_rotation_z(time * 2.0);
@@ -162,7 +162,7 @@ fn step(forward: f32, yaw: f32, pitch: f32) -> Vec3 {
     Vec3::new(yaw.sin() * pitch.cos() * forward, pitch.sin(), yaw.cos() * pitch.cos() * forward)
 }
 
-fn dragon(out: &mut Vec<EntityVertex>, d: &Dragon, rel: Vec3, alpha: f32) {
+fn dragon(out: &mut EntityMesh, d: &Dragon, rel: Vec3, alpha: f32) {
     let flap = (d.previous_flap + (d.flap - d.previous_flap) * alpha) * std::f32::consts::TAU;
     // Like Java, the whole model turns with the yaw of seven ticks ago, and
     // the neck and tail bend toward newer and older headings.
@@ -259,7 +259,7 @@ fn dragon(out: &mut Vec<EntityVertex>, d: &Dragon, rel: Vec3, alpha: f32) {
 }
 
 /// Java's death rays: more and longer as the death goes on.
-fn rays(out: &mut Vec<EntityVertex>, center: Vec3, t: f32) {
+fn rays(out: &mut EntityMesh, center: Vec3, t: f32) {
     let count = ((t + t * t) / 2.0 * 60.0) as u32;
     let fade = if t > 0.8 { (1.0 - t) / 0.2 } else { 1.0 };
     for i in 0..count {

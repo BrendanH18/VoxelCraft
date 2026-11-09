@@ -227,7 +227,7 @@ src/
     model/nether.rs  their box models
     item.rs          dropped items: physics, merging, despawning, saving
     chunk_storage.rs entities of unloaded chunks, out of the level until the chunk loads
-    model.rs         animated box models -> camera-relative triangles
+    model.rs         animated box models -> camera-relative box instances and triangles
   mesh.rs            lighting + greedy meshing (runs on workers)
   workers.rs         thread pool
   bench.rs           headless generation/meshing benchmark
@@ -273,7 +273,7 @@ src/
   render/
     mod.rs           wgpu pipelines, culling, draw submission, screenshots
     arena.rs         pooled GPU storage for chunk quads
-    entity.rs        entity pass (one dynamic vertex buffer per frame)
+    entity.rs        entity pass (boxes as GPU instances, plus one dynamic vertex buffer per frame)
     block_model.rs   free-standing textured blocks (falling sand, dropped items)
     hand.rs          first-person hand and held item (Minecraft's transforms)
     item_sprites.rs  procedural item icons (their own texture array, layers 256+)

@@ -150,7 +150,11 @@ Render distance uses **32-block chunks**: `--rd 8` spans 256 blocks,
 
 `--screenshot` waits for the world to load, writes a PNG, then exits.
 `--pose` sets `x,y,z,yaw,pitch` (angles in degrees) and starts the player flying.
-Use `--wait` to let the scene simulate before capture. Scripted runs
+Use `--wait` to let the scene simulate before capture. To compare two
+builds pixel for pixel, capture a paused scene with the animation clock held:
+`--open-menu pause --animation-time 7.3`. Idle animations, clouds and water
+follow the wall clock even while the game is paused, so without the held
+clock two captures of one build differ. Scripted runs
 (`--screenshot`, `--bench-render`) ignore saved options. Saves and logs normally
 use the [per-user data folder](releases.md#player-data-and-old-saves); add
 `--data-dir target/screenshots` to isolate a scripted run. In `--place` and
@@ -272,7 +276,12 @@ occluded are counted, and any skipped frame makes the run invalid.
 
 Reports include average FPS, the reciprocal of the mean of the slowest 1% of
 frames, p50/p95/p99/worst frame time, stalls over 50 ms, cold load and process
-RSS. They also include completed versus expected simulation ticks, paused and
+RSS. World scenes also report `frame_phases_ms`: mean milliseconds per phase
+of the frame (streaming and polling, the due ticks, uploads, entity geometry,
+the rest of the scene, acquiring the image, drawing, presenting) over all
+frames, over the slowest 1% and over the frames that ran a tick, with `other`
+for time outside the phases. At several hundred FPS the slowest 1% are the
+tick frames, so read the gate's tail there before profiling the average. They also include completed versus expected simulation ticks, paused and
 discarded simulation time, unpresented frames and entity populations at sample
 start and end. Present mode is reported as requested and as resolved from the
 surface's supported modes, along with the relevant options. GPU memory is
@@ -295,6 +304,16 @@ repeats. The fingerprint covers the files embedded by `build.rs`, including
 Neither this suite nor the older offscreen sweep alone proves 1.0 performance
 acceptance.
 
+When the window can't stay visible or the machine is on battery, compare
+builds with `--offscreen` (and `--seconds N` for a shorter sample, with
+`--executable` for each build). The scene is drawn into an offscreen image of
+the same size and nothing is presented; each frame waits for the frame two
+back to finish on the GPU, as a window's three images would make it, so the
+interval is the larger of the CPU's and the GPU's time. These runs are for
+comparison only: every report is marked ineligible and the gate never passes
+on them ([example](verification/2026-11-09-entity-frame-time.md)).
+
 The low-level flags are `--benchmark-scene`, `--benchmark-output`,
-`--benchmark-warmup`, `--benchmark-duration` and `--size WIDTHxHEIGHT`.
+`--benchmark-warmup`, `--benchmark-duration`, `--benchmark-offscreen` and
+`--size WIDTHxHEIGHT`.
 The legacy `--bench-render` remains available for historical comparisons.

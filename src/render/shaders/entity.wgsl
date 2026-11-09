@@ -1,6 +1,8 @@
-// Mob box models. Vertices are camera-relative and pre-transformed on the
-// CPU; lighting matches the terrain shader (sky light x daylight, face
-// shading, fog).
+// Mob box models, camera-relative. Plain boxes arrive as instances and
+// `vs_box` expands each into its six faces; textured, translucent and flat
+// geometry arrives as vertices already transformed on the CPU (`vs_main`).
+// Lighting matches the terrain shader (sky light x daylight, face shading,
+// fog).
 
 struct Globals {
     view_proj: mat4x4<f32>,
@@ -96,6 +98,67 @@ fn vs_main(
     out.uv = uv;
     out.color = color;
     out.light = light;
+    out.dist = length(pos);
+    out.rel = pos;
+    return out;
+}
+
+// One vertex of a box instance (`BoxInstance` in entity/model.rs, whose
+// `vertex` mirrors this): 36 per box, faces in -X, +X, -Y, +Y, -Z, +Z order,
+// each two triangles wound counter-clockwise seen from outside.
+@vertex
+fn vs_box(
+    @builtin(vertex_index) index: u32,
+    // Rows of the affine map from box space to camera-relative blocks.
+    @location(0) row0: vec4<f32>,
+    @location(1) row1: vec4<f32>,
+    @location(2) row2: vec4<f32>,
+    // Box corners; w: the face-noise offsets along a face's two axes.
+    @location(3) lo: vec4<f32>,
+    @location(4) hi: vec4<f32>,
+    @location(5) color: vec4<f32>,
+    // x: sky light, y: block light, z: hurt, w: emissive
+    @location(6) light: vec4<f32>,
+    // Face shades: -X, +X, -Y, +Y, then -Z, +Z.
+    @location(7) shade_xy: vec4<f32>,
+    @location(8) shade_z: vec4<f32>,
+) -> VsOut {
+    let face = index / 6u;
+    let corner = index % 6u;
+    let axis = face / 2u;
+    let positive = (face & 1u) == 1u;
+    // Corner parameters along the face's two in-plane axes, one bit per
+    // corner: (0,0) (1,0) (1,1) (0,0) (1,1) (0,1) on a + face and
+    // (0,0) (1,1) (1,0) (0,0) (0,1) (1,1) on a - face.
+    let a = f32((select(38u, 22u, positive) >> corner) & 1u);
+    let b = f32((select(50u, 52u, positive) >> corner) & 1u);
+    let size = hi.xyz - lo.xyz;
+    let along = select(lo.xyz, hi.xyz, positive);
+    var p: vec3<f32>;
+    var face_uv: vec2<f32>;
+    var shade: f32;
+    if axis == 0u {
+        p = vec3<f32>(along.x, lo.y + size.y * a, lo.z + size.z * b);
+        face_uv = p.yz;
+        shade = select(shade_xy.x, shade_xy.y, positive);
+    } else if axis == 1u {
+        p = vec3<f32>(lo.x + size.x * b, along.y, lo.z + size.z * a);
+        face_uv = p.zx;
+        shade = select(shade_xy.z, shade_xy.w, positive);
+    } else {
+        p = vec3<f32>(lo.x + size.x * a, lo.y + size.y * b, along.z);
+        face_uv = p.xy;
+        shade = select(shade_z.x, shade_z.y, positive);
+    }
+    let pos = vec3<f32>(dot(row0.xyz, p) + row0.w, dot(row1.xyz, p) + row1.w, dot(row2.xyz, p) + row2.w);
+    var out: VsOut;
+    out.torch = light.y;
+    out.material = 0u;
+    out.layer = 0u;
+    out.clip = g.view_proj * vec4<f32>(pos, 1.0);
+    out.uv = face_uv + vec2<f32>(lo.w + f32(axis) * 31.0 + f32(face & 1u) * 17.0, hi.w);
+    out.color = color;
+    out.light = vec4<f32>(light.x, shade, light.z, light.w);
     out.dist = length(pos);
     out.rel = pos;
     return out;

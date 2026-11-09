@@ -211,6 +211,8 @@ struct Game {
     weather: weather::Weather,
     weather_verts: Vec<crate::render::weather::WeatherVertex>,
     started: Instant,
+    /// `--animation-time`: the animation clock stays here instead of running.
+    animation_time: Option<f32>,
     /// Compass and clock needles wobbling outside the Overworld.
     dial_wobble: std::cell::Cell<(crate::item::Wobbler, crate::item::Wobbler)>,
     last_save: Instant,
@@ -472,7 +474,8 @@ impl ApplicationHandler for App {
         if !scripted {
             settings.fullscreen.apply(&window);
         }
-        let renderer = pollster::block_on(Renderer::new(window, settings.vsync));
+        let mut renderer = pollster::block_on(Renderer::new(window, settings.vsync));
+        renderer.force_offscreen = self.args.benchmark_scene.is_some() && self.args.benchmark_offscreen;
         let mut audio = crate::audio::Audio::new(self.args.mute, settings.volume);
         audio.set_volumes(|source| settings.sound_volume(source));
         let root = self.saves_dir.parent().unwrap_or(&self.saves_dir);
@@ -1855,6 +1858,7 @@ impl Game {
         {
             self.apply_placements();
         }
+        benchmark::mark(&mut self.benchmark, 0);
         for _ in 0..ticks {
             if self.lan.client.is_some() {
                 self.tick_lan_client();
@@ -1866,6 +1870,9 @@ impl Game {
                 self.lan.stats_tick_max = self.lan.stats_tick_max.max(took);
                 self.send_lan_state();
             }
+        }
+        if ticks > 0 {
+            benchmark::mark(&mut self.benchmark, 1);
         }
         if paused {
             self.previous_eye = self.session.player.eye();
@@ -1938,7 +1945,7 @@ impl Game {
         let scene = split::Scene {
             sky,
             rain: if nether { 0.0 } else { self.weather.strength },
-            time: (now - self.started).as_secs_f32(),
+            time: self.animation_time.unwrap_or_else(|| (now - self.started).as_secs_f32()),
             alpha,
             now,
         };
@@ -1979,6 +1986,7 @@ impl Game {
                 )
             })
             .collect();
+        benchmark::mark(&mut self.benchmark, 2);
         let verts = self.mobs.entities.mesh(camera, forward, fog_end, scene.time, alpha);
         push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
         crate::render::signs::text(&self.world, camera, verts);
@@ -2006,6 +2014,7 @@ impl Game {
             );
         }
         self.renderer.set_entities(verts);
+        benchmark::mark(&mut self.benchmark, 3);
         self.renderer.set_particles(&self.particles.pool, &self.world, camera, self.session.player.forward(), alpha);
         weather::sheets(&self.world, camera, scene.rain, &mut self.weather_verts);
         self.renderer.set_weather(&self.weather_verts);
@@ -2077,12 +2086,16 @@ impl Game {
                 Vec::new()
             },
         };
+        benchmark::mark(&mut self.benchmark, 4);
         let Some(mut frame) = self.renderer.begin_frame() else {
             return; // hidden window: don't count this frame in the stats
         };
+        benchmark::mark(&mut self.benchmark, 5);
         self.renderer.draw_view(&mut frame, &params, viewports[0]);
         self.draw_followers(&mut frame, &scene, &viewports);
+        benchmark::mark(&mut self.benchmark, 6);
         self.renderer.end_frame(frame);
+        benchmark::mark(&mut self.benchmark, 7);
 
         // --- Stats ----------------------------------------------------------
         self.frames += 1;
@@ -2168,7 +2181,7 @@ fn push_avatars(
     camera: DVec3,
     fog_end: f32,
     time: f32,
-    verts: &mut Vec<crate::entity::model::EntityVertex>,
+    verts: &mut crate::entity::model::EntityMesh,
 ) {
     for &(player, feet, appearance, name) in players {
         // A body around the camera (players can share a spot) would fill the view.

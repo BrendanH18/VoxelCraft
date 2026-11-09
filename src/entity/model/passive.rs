@@ -127,7 +127,7 @@ pub(super) fn tadpole(m: &Mob, time: f32) -> Parts {
         )
     ]
 }
-pub(super) fn tongue(m: &Mob, camera: DVec3, out: &mut Vec<EntityVertex>, light: ([u8; 4], u8)) {
+pub(super) fn tongue(m: &Mob, camera: DVec3, out: &mut EntityMesh, light: ([u8; 4], u8)) {
     let Some(s) = &m.frog else {
         return;
     };

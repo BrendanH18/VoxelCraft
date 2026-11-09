@@ -12,7 +12,10 @@
 
 use glam::{DVec3, IVec3, Quat, Vec3};
 
-use super::{Entities, ItemEntity, model::EntityVertex};
+use super::{
+    Entities, ItemEntity,
+    model::{EntityMesh, EntityVertex},
+};
 use crate::inventory::{Inventory, Stack, stack_from_str, stack_to_string};
 use crate::item::{ArmorMaterial, ArmorPiece, Item};
 use crate::physics::{self, BlockSource, Shape};
@@ -805,7 +808,7 @@ pub fn framed_items(decor: &[Decor]) -> impl Iterator<Item = (DVec3, Quat, Stack
 }
 
 /// Camera-relative triangles for every decoration within `max_dist`.
-pub(super) fn build(decor: &[Decor], camera: DVec3, max_dist: f32, alpha: f64, out: &mut Vec<EntityVertex>) {
+pub(super) fn build(decor: &[Decor], camera: DVec3, max_dist: f32, alpha: f64, out: &mut EntityMesh) {
     for d in decor {
         let pos =
             if d.is_hanging() { d.cell.as_dvec3() + DVec3::splat(0.5) } else { d.previous_pos.lerp(d.pos, alpha) };
@@ -835,7 +838,7 @@ fn wall_rotation(facing: IVec3) -> Quat {
     }
 }
 
-fn build_frame(d: &Decor, rel: Vec3, glow: bool, light: Light, out: &mut Vec<EntityVertex>) {
+fn build_frame(d: &Decor, rel: Vec3, glow: bool, light: Light, out: &mut EntityMesh) {
     use super::model::{cube, push_cuboid};
     let rot = wall_rotation(d.facing);
     // Model space: pixels, the wall at z = -8, the cell centre at 0.
@@ -853,7 +856,7 @@ fn build_frame(d: &Decor, rel: Vec3, glow: bool, light: Light, out: &mut Vec<Ent
     }
 }
 
-fn build_painting(d: &Decor, rel: Vec3, v: u8, light: Light, out: &mut Vec<EntityVertex>) {
+fn build_painting(d: &Decor, rel: Vec3, v: u8, light: Light, out: &mut EntityMesh) {
     use super::model::{cube, push_cuboid};
     let (_, w, h, _) = PAINTINGS[v as usize % PAINTINGS.len()];
     // Work in pixels from the cell centre, straight from the bounding box.
@@ -886,14 +889,7 @@ fn build_painting(d: &Decor, rel: Vec3, v: u8, light: Light, out: &mut Vec<Entit
 }
 
 /// One flat tile with normal `n` through four corners (in pixels).
-fn push_tile(
-    out: &mut Vec<EntityVertex>,
-    xf: &impl Fn(Vec3) -> Vec3,
-    n: Vec3,
-    quad: [Vec3; 4],
-    c: [u8; 3],
-    light: Light,
-) {
+fn push_tile(out: &mut EntityMesh, xf: &impl Fn(Vec3) -> Vec3, n: Vec3, quad: [Vec3; 4], c: [u8; 3], light: Light) {
     let shade = 0.8 * n.x * n.x + 0.68 * n.z * n.z + if n.y > 0.0 { 1.0 } else { 0.55 } * n.y * n.y;
     let mut l = light.0;
     l[1] = (shade * 255.0) as u8;
@@ -983,7 +979,7 @@ fn armor_colour(material: ArmorMaterial) -> [u8; 3] {
     }
 }
 
-fn build_stand(d: &Decor, rel: Vec3, light: Light, out: &mut Vec<EntityVertex>) {
+fn build_stand(d: &Decor, rel: Vec3, light: Light, out: &mut EntityMesh) {
     use super::model::{cube, push_cuboid};
     let wobble = if d.wobble > 0 { (d.wobble as f32 * 1.7).sin() * 0.15 } else { 0.0 };
     let rot = Quat::from_rotation_y(-d.yaw.to_radians()) * Quat::from_rotation_z(wobble);

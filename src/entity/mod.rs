@@ -93,7 +93,6 @@ use crate::world::World;
 use crate::world::block::Block;
 use crate::world::noise::splitmix64;
 use crate::world::terrain::Dimension;
-use model::EntityVertex;
 
 pub use item::ItemEntity;
 pub use mob::{Mob, MobKind, sky_light};
@@ -989,7 +988,7 @@ pub struct Entities {
     structure_timer: f32,
     /// Mobs drawn last frame (F3).
     pub rendered: usize,
-    verts: Vec<EntityVertex>,
+    mesh: model::EntityMesh,
 }
 
 impl Entities {
@@ -1069,7 +1068,7 @@ impl Entities {
             structures_populated: Default::default(),
             structure_timer: 0.0,
             rendered: 0,
-            verts: Vec::new(),
+            mesh: model::EntityMesh::default(),
         }
     }
 
@@ -1692,7 +1691,7 @@ impl Entities {
         }
     }
 
-    /// Camera-relative triangles for every visible mob.
+    /// Camera-relative geometry for every visible mob and other entity, rebuilt for this view.
     pub fn mesh(
         &mut self,
         camera: DVec3,
@@ -1700,27 +1699,27 @@ impl Entities {
         max_dist: f32,
         time: f32,
         alpha: f64,
-    ) -> &mut Vec<EntityVertex> {
-        self.verts.clear();
-        self.rendered = model::build(&self.mobs, camera, forward, max_dist, time, alpha, &mut self.verts);
-        model::build_arrows(&self.arrows, camera, alpha, &mut self.verts);
-        model::build_tridents(&self.tridents, camera, alpha, &mut self.verts);
-        model::build_pearls(&self.pearls, camera, alpha, &mut self.verts);
-        model::build_potions(&self.potions, camera, alpha, &mut self.verts);
-        model::build_clouds(&self.clouds, camera, &mut self.verts);
-        model::build_thrown(&self.thrown, camera, alpha, &mut self.verts);
-        model::build_bobbers(&self.bobbers, camera, alpha, &mut self.verts);
-        model::build_eyes(&self.eyes, camera, time, alpha, &mut self.verts);
-        model::build_fireballs(&self.fireballs, camera, time, alpha, &mut self.verts);
-        model::build_lightning(&self.lightning, camera, &mut self.verts);
-        model::build_puffs(&self.puffs, camera, alpha, &mut self.verts);
-        model::build_orbs(&self.orbs, camera, max_dist, time, alpha, &mut self.verts);
-        model::build_minecarts(&self.minecarts, camera, alpha, &mut self.verts);
-        decor::build(&self.decor, camera, max_dist, alpha, &mut self.verts);
+    ) -> &mut model::EntityMesh {
+        self.mesh.clear();
+        self.rendered = model::build(&self.mobs, camera, forward, max_dist, time, alpha, &mut self.mesh);
+        model::build_arrows(&self.arrows, camera, alpha, &mut self.mesh);
+        model::build_tridents(&self.tridents, camera, alpha, &mut self.mesh);
+        model::build_pearls(&self.pearls, camera, alpha, &mut self.mesh);
+        model::build_potions(&self.potions, camera, alpha, &mut self.mesh);
+        model::build_clouds(&self.clouds, camera, &mut self.mesh);
+        model::build_thrown(&self.thrown, camera, alpha, &mut self.mesh);
+        model::build_bobbers(&self.bobbers, camera, alpha, &mut self.mesh);
+        model::build_eyes(&self.eyes, camera, time, alpha, &mut self.mesh);
+        model::build_fireballs(&self.fireballs, camera, time, alpha, &mut self.mesh);
+        model::build_lightning(&self.lightning, camera, &mut self.mesh);
+        model::build_puffs(&self.puffs, camera, alpha, &mut self.mesh);
+        model::build_orbs(&self.orbs, camera, max_dist, time, alpha, &mut self.mesh);
+        model::build_minecarts(&self.minecarts, camera, alpha, &mut self.mesh);
+        decor::build(&self.decor, camera, max_dist, alpha, &mut self.mesh);
         if let Some(fight) = &self.fight {
-            dragon_model::build_fight(fight, camera, time, alpha, &mut self.verts);
+            dragon_model::build_fight(fight, camera, time, alpha, &mut self.mesh);
         }
-        &mut self.verts
+        &mut self.mesh
     }
 
     /// Nearest living mob hit by a ray within `max_dist` (in units of

@@ -69,6 +69,9 @@ class RunnerGate(unittest.TestCase):
         self.assertFalse(runner.reference_gate(summary(full_suite(),chip='Apple M4'),DEFINITIONS,False,None,3)[0])
         self.assertFalse(runner.reference_gate(summary(full_suite(frame_thresholds_passed=False)),DEFINITIONS,False,None,3)[0])
         self.assertFalse(runner.reference_gate(summary(full_suite()[:-3]),DEFINITIONS,False,None,3)[0])
+        # Comparison runs: drawn offscreen, or with a shortened sample period.
+        self.assertIn('offscreen comparison runs present nothing',runner.reference_gate(runs,DEFINITIONS,False,None,3,offscreen=True)[1])
+        self.assertFalse(runner.reference_gate(runs,DEFINITIONS,False,None,3,seconds=30.0)[0])
 
     def test_fingerprint_includes_build_embedded_inputs(self):
         paths={p.relative_to(runner.ROOT).as_posix() for p in runner.source_paths()}
