@@ -42,10 +42,12 @@ pub enum Effect {
     /// spawner it becomes [`Effect::TrialOmen`]. Raid Omen waits for v0.17.
     BadOmen,
     TrialOmen,
+    /// Appended: saved by Java id; existing effect mask bits stay stable.
+    Invisibility,
 }
 
 impl Effect {
-    pub const ALL: [Effect; 28] = [
+    pub const ALL: [Effect; 29] = [
         Effect::Speed,
         Effect::Slowness,
         Effect::Strength,
@@ -74,6 +76,7 @@ impl Effect {
         Effect::Darkness,
         Effect::BadOmen,
         Effect::TrialOmen,
+        Effect::Invisibility,
     ];
 
     /// Java's id, as `/effect` and saves use it.
@@ -107,6 +110,7 @@ impl Effect {
             Effect::Darkness => "darkness",
             Effect::BadOmen => "bad_omen",
             Effect::TrialOmen => "trial_omen",
+            Effect::Invisibility => "invisibility",
         }
     }
 
@@ -146,6 +150,7 @@ impl Effect {
             Effect::Darkness => "Darkness",
             Effect::BadOmen => "Bad Omen",
             Effect::TrialOmen => "Trial Omen",
+            Effect::Invisibility => "Invisibility",
         }
     }
 
@@ -181,6 +186,7 @@ impl Effect {
             // MobEffects: BAD_OMEN 0x0B6138, TRIAL_OMEN 0x16A6A6.
             Effect::BadOmen => 0x0B6138,
             Effect::TrialOmen => 0x16A6A6,
+            Effect::Invisibility => 0xF6F6F6,
         };
         [(c >> 16) as u8, (c >> 8) as u8, c as u8]
     }

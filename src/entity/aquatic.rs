@@ -163,6 +163,7 @@ pub(super) fn upkeep<W: MobWorld + ?Sized>(
                 let d = t.pos.distance_squared(m.pos);
                 // `TargetGoal.canAttack`: the target stands inside the home.
                 d < 256.0
+                    && (a.target == Some(t.id) || d <= t.detection_range(16.).powi(2))
                     && (m.kind == MobKind::ElderGuardian || d > 9.0)
                     && within_home(t.pos)
                     && super::mob::line_of_sight(w, eye, t.pos + DVec3::Y)
@@ -490,7 +491,7 @@ pub(super) fn pillager<W: MobWorld + ?Sized>(
     ctx: &Ctx,
     events: &mut Vec<EntityEvent>,
 ) -> (Option<DVec3>, f64) {
-    let Some(t) = ctx.nearest_target(m.pos) else { return (None, 0.0) };
+    let Some(t) = ctx.nearest_detectable_target(m.pos, 32.) else { return (None, 0.0) };
     let delta = t.pos - m.pos;
     if delta.length_squared() > 1024.0 {
         return (None, 0.0);

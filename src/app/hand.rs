@@ -85,6 +85,7 @@ impl HandAnim {
             swing: self.swing.map_or(0.0, |t| t / SWING_TIME),
             using: eating,
             hurt: vitals.since_damage() < 0.5,
+            invisible: vitals.effects.has(crate::simulation::effects::Effect::Invisibility),
             death: vitals.death_time(),
             alpha: alpha as f32,
             armor: crate::entity::armor::from_stacks(&worn),

@@ -28,7 +28,7 @@ const fn p(id: &'static str, name: &'static str, effect: Option<(Effect, u8, u32
 /// Java's durations (ticks): 3:00 / 8:00 for most, 1:30 / 4:00 for
 /// slowness, weakness and slow falling, 0:45 / 1:30 for poison and
 /// regeneration; strong variants are level II for half as long or less.
-pub static POTIONS: [PotionInfo; 39] = [
+pub static POTIONS: [PotionInfo; 41] = [
     p("water", "water bottle", None),
     p("mundane", "mundane potion", None),
     p("thick", "thick potion", None),
@@ -83,6 +83,8 @@ pub static POTIONS: [PotionInfo; 39] = [
         effect: Some((Effect::Slowness, 5, 400)),
         secondary_effect: Some((Effect::Resistance, 3, 400)),
     },
+    p("invisibility", "potion of invisibility", Some((Effect::Invisibility, 0, 3600))),
+    p("long_invisibility", "long potion of invisibility", Some((Effect::Invisibility, 0, 9600))),
 ];
 
 /// Java's colour of water and of the effectless bases.

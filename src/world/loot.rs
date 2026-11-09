@@ -310,7 +310,9 @@ pub fn java_item(name: &str) -> Option<crate::item::Item> {
             for name in found.into_iter().map(|s| s.trim_start_matches("minecraft:")) {
                 {
                     out.entry(name.into()).or_insert_with(|| {
-                        if let Some(item) = super::trial::java_item(name) {
+                        if let Some(item) =
+                            super::trial::java_item(name).or_else(|| crate::java_registry::item(name, ""))
+                        {
                             return Some(item);
                         }
                         let block = match name {

@@ -663,6 +663,11 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 Some(p)
             }
         }
+        Sprite::FermentedSpiderEye => {
+            let eye = disc(8.0, 8.5, 5.5);
+            let spot = (x + 2 * y) % 7 < 2;
+            shaded(&eye, x, y, if spot { [92, 43, 29] } else { [151, 82, 48] }, 0.15)
+        }
         Sprite::SpiderEye => {
             // A round red eye with darker spots and a glint.
             let eye = disc(8.0, 8.5, 5.5);
@@ -1140,6 +1145,10 @@ fn effect_glyph(effect: Effect) -> [&'static str; 8] {
         // An eye closing behind a dark veil.
         Effect::Darkness => {
             ["########", "#......#", "#.####.#", "##.##.##", "#.####.#", "#......#", "#.#..#.#", "########"]
+        }
+        // A broken outline of a person: the skin fades, equipment stays.
+        Effect::Invisibility => {
+            ["..####..", ".#....#.", ".#......", "..#..#..", "...##...", ".##..##.", "#.......", "#.#..#.#"]
         }
         // An original banner-like pennant for both omens.
         Effect::BadOmen | Effect::TrialOmen => {

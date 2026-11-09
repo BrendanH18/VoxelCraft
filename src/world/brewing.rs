@@ -41,6 +41,15 @@ pub fn brew(potion: Potion, ingredient: Item) -> Option<Potion> {
         ("water", Item::NETHER_WART) => to("awkward"),
         ("water", i) if i == glowstone => to("thick"),
         ("water", Item::SUGAR | Item::GLISTERING_MELON_SLICE | Item::SPIDER_EYE | Item::BLAZE_POWDER) => to("mundane"),
+        ("awkward", Item::GOLDEN_CARROT) => to("night_vision"),
+        ("awkward", Item::RABBIT_FOOT) => to("leaping"),
+        ("water", Item::FERMENTED_SPIDER_EYE) => to("weakness"),
+        ("night_vision", Item::FERMENTED_SPIDER_EYE) => to("invisibility"),
+        ("long_night_vision", Item::FERMENTED_SPIDER_EYE) => to("long_invisibility"),
+        ("leaping" | "swiftness", Item::FERMENTED_SPIDER_EYE) => to("slowness"),
+        ("long_leaping" | "long_swiftness", Item::FERMENTED_SPIDER_EYE) => to("long_slowness"),
+        ("healing" | "poison" | "long_poison", Item::FERMENTED_SPIDER_EYE) => to("harming"),
+        ("strong_healing" | "strong_poison", Item::FERMENTED_SPIDER_EYE) => to("strong_harming"),
         ("awkward", Item::SUGAR) => to("swiftness"),
         ("awkward", Item::GLISTERING_MELON_SLICE) => to("healing"),
         ("awkward", Item::SPIDER_EYE) => to("poison"),
@@ -49,7 +58,18 @@ pub fn brew(potion: Potion, ingredient: Item) -> Option<Potion> {
         ("awkward", Item::GHAST_TEAR) => to("regeneration"),
         ("awkward", Item::PUFFERFISH) => to("water_breathing"),
         ("awkward", Item::PHANTOM_MEMBRANE) => to("slow_falling"),
-        ("water", Item::PHANTOM_MEMBRANE) => to("mundane"),
+        ("water", Item::RABBIT_FOOT) => to("mundane"),
+        ("water", i)
+            if [
+                crate::world::trial::BREEZE_ROD,
+                Item::from_block(crate::world::stone_blocks::SLIME_BLOCK),
+                Item::from_block(Block::STONE),
+                Item::from_block(Block::COBWEB),
+            ]
+            .contains(&i) =>
+        {
+            to("mundane")
+        }
         ("awkward", Item::TURTLE_HELMET) => to("turtle_master"),
         ("water", Item::MAGMA_CREAM | Item::REDSTONE | Item::GHAST_TEAR) => to("mundane"),
         (id, Item::REDSTONE) if to(&format!("long_{id}")).is_some() => to(&format!("long_{id}")),
@@ -68,6 +88,9 @@ pub fn is_ingredient(item: Item) -> bool {
 /// What `ingredient` turns the bottle `item` into: gunpowder makes a potion
 /// splash, and the other mixes keep a splash potion splash.
 pub fn brew_item(item: Item, ingredient: Item) -> Option<Item> {
+    if ingredient == Item::DRAGON_BREATH {
+        return item.as_splash_potion().map(|_| Item::LINGERING_POTION);
+    }
     if ingredient == Item::GUNPOWDER {
         return item.as_potion().map(Item::splash_potion);
     }

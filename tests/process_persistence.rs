@@ -92,8 +92,8 @@ fn persistence_worker() {
         f.input = Some(Stack::new(Item::RAW_IRON, 1));
         f.fuel = Some(Stack::new(ob::BAMBOO_MOSAIC, 1));
         let b = w.brewing_stand_mut(B).unwrap();
-        b.bottles = [Some(Stack::new(Item::potion(Potion::from_id("awkward").unwrap()), 1)); 3];
-        b.ingredient = Some(Stack::new(Item::PUFFERFISH, 1));
+        b.bottles = [Some(Stack::new(Item::potion(Potion::from_id("night_vision").unwrap()), 1)); 3];
+        b.ingredient = Some(Stack::new(Item::FERMENTED_SPIDER_EYE, 1));
         b.fuel = Some(Stack::new(Item::BLAZE_POWDER, 1));
         let t = w.brewing_stand_mut(T).unwrap();
         t.bottles = [Some(Stack::new(Item::splash_potion(Potion::AWKWARD), 1)); 3];
@@ -122,6 +122,7 @@ fn persistence_worker() {
         session.vitals.hunger.food = 8.;
         session.spawn_point = Some(IVec3::new(15, 145, 5));
         // Absorption II with 2.5 of its 8 points spent.
+        session.vitals.apply_effect(Effect::Invisibility, 0, 9600);
         session.vitals.apply_effect(Effect::Absorption, 1, 2400);
         assert_eq!(session.vitals.damage(2.5, "test", false), 2.5);
         assert_eq!((session.vitals.health, session.vitals.effects.absorption()), (20., 5.5));
@@ -176,6 +177,8 @@ fn persistence_worker() {
         }
         w.load_furnaces(&level.props["furnaces"]);
         w.load_brewing_stands(&level.props["brewing"]);
+        assert_eq!(w.brewing_stand(B).unwrap().ingredient.unwrap().item, Item::FERMENTED_SPIDER_EYE);
+        assert!(w.brewing_stand(B).unwrap().is_brewing());
         w.load_redstone(&level.props["redstone"]);
         assert_eq!(w.get_block(P), Some(ob::hanging_propagule(2)));
         assert_eq!(w.get_block(P + IVec3::Z), Some(forms::wood_id(9, 0)));
@@ -198,6 +201,7 @@ fn persistence_worker() {
         );
         session.vitals.hunger.food = 8.;
         session.vitals.effects = voxelcraft::simulation::effects::Effects::deserialize(&level.props["effects"]);
+        assert_eq!(session.vitals.effects.get(Effect::Invisibility).unwrap().ticks, 9600);
         let absorption = session.vitals.effects.get(Effect::Absorption).unwrap();
         assert_eq!((absorption.amplifier, absorption.ticks), (1, 2400));
         assert_eq!((session.vitals.effects.absorption(), session.vitals.effects.max_absorption()), (5.5, 8.));
@@ -250,7 +254,7 @@ fn persistence_worker() {
                 .unwrap()
                 .bottles
                 .iter()
-                .all(|b| *b == Some(Stack::new(Item::potion(Potion::from_id("water_breathing").unwrap()), 1)))
+                .all(|b| *b == Some(Stack::new(Item::potion(Potion::from_id("invisibility").unwrap()), 1)))
         );
         assert!(w.brewing_stand(B).unwrap().ingredient.is_none());
         assert!(

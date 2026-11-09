@@ -2186,7 +2186,7 @@ fn push_avatars(
                 appearance,
                 verts,
             );
-            if appearance.death.is_none() {
+            if appearance.death.is_none() && !appearance.invisible {
                 crate::entity::model::build_player_name(player, feet, name, camera, verts);
             }
         }

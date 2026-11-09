@@ -8,15 +8,8 @@ use voxelcraft::{
     world::block::{Block, STATE_CAPACITY},
 };
 
-/// Blocks resolve only as blocks, so a same-named item (such as the wither skeleton skull
-/// material) doesn't hide a missing placeable block; items resolve as either.
-fn resolves(id: &str, name: &str, find: fn(&str) -> bool) -> bool {
-    let name = name.to_lowercase();
-    find(id) || (!name.is_empty() && find(&name))
-}
-
-fn missing(names: &Map<String, Value>, find: fn(&str) -> bool) -> Vec<&str> {
-    names.iter().filter(|(id, name)| !resolves(id, name.as_str().unwrap(), find)).map(|(id, _)| id.as_str()).collect()
+fn missing(names: &Map<String, Value>, find: fn(&str, &str) -> bool) -> Vec<&str> {
+    names.iter().filter(|(id, name)| !find(id, name.as_str().unwrap())).map(|(id, _)| id.as_str()).collect()
 }
 
 fn main() {
@@ -35,10 +28,8 @@ fn main() {
     let extra_items: BTreeSet<&str> =
         Item::all_items().map(|i| i.name()).filter(|n| !known.contains(*n) && !block_names.contains(n)).collect();
     // Beds register each half under its own name; the bed item places them.
-    let missing_blocks = missing(blocks, |n| {
-        Block::from_name(n).is_some() || Item::from_name(n).is_some_and(|i| i.bed_color().is_some())
-    });
-    let missing_items = missing(items, |n| Block::from_name(n).is_some() || Item::from_name(n).is_some());
+    let missing_blocks = missing(blocks, voxelcraft::java_registry::resolves_block);
+    let missing_items = missing(items, voxelcraft::java_registry::resolves_item);
     println!(
         "{}",
         serde_json::to_string_pretty(&json!({
