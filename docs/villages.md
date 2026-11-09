@@ -127,6 +127,11 @@ seed reproduces a Java village; job sites are chosen per house rather than
 fixed by profession buildings; there are no abandoned or zombie variants,
 no decoration pools, no animals or cats spawned with the pens, and no
 beardifier, so pieces on slopes stand on pillars or in cut-away hillsides.
+
+A [2026-11-09 investigation](verification/2026-11-09-structure-terrain-blending.md)
+found that a finite Java-shaped beard alone does not remove the cuts with the
+current steep-slope placements; no terrain change was shipped. The next step
+needs an explicit placement-envelope or native-terrain adaptation scope decision.
 Placement and selection priorities are all 0 and the start box isn't grown
 by Java's "expansion hack".
 
