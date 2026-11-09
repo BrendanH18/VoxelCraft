@@ -24,6 +24,81 @@ const WART_GROWTH: u64 = 10;
 /// One in this many random ticks grows a sapling into a tree.
 const SAPLING_GROWTH: u64 = 7;
 
+/// What a random tick does to a block, by the block alone (Java's
+/// `isRandomlyTicking` and the block's `randomTick`). Most random ticks land
+/// on blocks with no rule, so [`random_rule`] reads this from a table
+/// instead of testing each rule in turn 30,000 times a tick.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum RandomRule {
+    None,
+    Fire,
+    Lava,
+    Grass,
+    Farmland,
+    Sapling,
+    Snow,
+    GlowingOre,
+    Cane,
+    Eyeblossom,
+    Copper,
+    Statue,
+    Mushroom,
+    NetherFlora,
+    Flora,
+    SnifferCrop,
+    Crop,
+    Stem,
+    Wart,
+}
+
+/// The rule for `b`: fire and lava first, then the first matching growth rule.
+fn classify_random_rule(b: Block) -> RandomRule {
+    if b.fire_age().is_some() {
+        RandomRule::Fire
+    } else if b.is_lava() {
+        RandomRule::Lava
+    } else {
+        growth_rule(b)
+    }
+}
+
+/// The growth rules, in the order they are tried.
+fn growth_rule(b: Block) -> RandomRule {
+    use super::redstone_blocks::{Component, component};
+    match b {
+        Block::GRASS => RandomRule::Grass,
+        Block::FARMLAND | Block::WET_FARMLAND => RandomRule::Farmland,
+        b if b.is_sapling() => RandomRule::Sapling,
+        b if super::overworld_blocks::snow_layers(b).is_some() => RandomRule::Snow,
+        b if matches!(component(b), Some(Component::GlowingOre(_))) => RandomRule::GlowingOre,
+        Block::SUGAR_CANE => RandomRule::Cane,
+        super::eyeblossom::OPEN | super::eyeblossom::CLOSED => RandomRule::Eyeblossom,
+        b if super::copper::ages(b) => RandomRule::Copper,
+        b if super::copper_golem_statue::ages(b) => RandomRule::Statue,
+        b if b.is_mushroom() => RandomRule::Mushroom,
+        b if (1600..=1687).contains(&b.0) => RandomRule::NetherFlora,
+        b if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&b.canonical().0)
+            || (2150..=2157).contains(&b.0)
+            || (2160..=2164).contains(&b.canonical().0) =>
+        {
+            RandomRule::Flora
+        }
+        b if super::sniffer_plants::owns(b.0) => RandomRule::SnifferCrop,
+        b if b.as_crop().is_some() => RandomRule::Crop,
+        b if super::crops::stem(b).is_some() => RandomRule::Stem,
+        b if b.wart_age().is_some_and(|a| a < 3) => RandomRule::Wart,
+        _ => RandomRule::None,
+    }
+}
+
+/// [`classify_random_rule`], from a table over every state id.
+fn random_rule(b: Block) -> RandomRule {
+    static RULES: std::sync::OnceLock<Box<[RandomRule]>> = std::sync::OnceLock::new();
+    let rules = RULES
+        .get_or_init(|| (0..super::block::STATE_CAPACITY as u16).map(|id| classify_random_rule(Block(id))).collect());
+    rules.get(b.0 as usize).copied().unwrap_or_else(|| classify_random_rule(b))
+}
+
 /// Java 26.3 `TreeGrower.DARK_OAK` and `PALE_OAK` have only a 2x2 (mega)
 /// feature, so a lone sapling of either can never grow.
 fn needs_two_by_two(sapling: Block) -> bool {
@@ -359,21 +434,28 @@ impl World {
 
     fn random_tick_rules(&mut self, p: IVec3, fire_tick: bool) {
         let Some(b) = self.get_block(p) else { return };
-        match b {
-            b if fire_tick && b.fire_age().is_some() && self.fire_may_spread(p) => {
-                self.tick_fire_block(p, b.fire_age().unwrap())
+        match random_rule(b) {
+            RandomRule::None => {}
+            RandomRule::Fire => {
+                if fire_tick && self.fire_may_spread(p) {
+                    self.tick_fire_block(p, b.fire_age().unwrap())
+                }
             }
-            b if fire_tick && b.is_lava() && self.fire_may_spread(p) => self.tick_lava_fire(p),
-            Block::GRASS => self.tick_grass(p),
-            Block::FARMLAND | Block::WET_FARMLAND => self.tick_farmland(p, b),
-            b if b.is_sapling() => {
+            RandomRule::Lava => {
+                if fire_tick && self.fire_may_spread(p) {
+                    self.tick_lava_fire(p)
+                }
+            }
+            RandomRule::Grass => self.tick_grass(p),
+            RandomRule::Farmland => self.tick_farmland(p, b),
+            RandomRule::Sapling => {
                 if self.grows_here(p) && self.one_in(SAPLING_GROWTH) {
                     self.advance_tree(p);
                 }
             }
             // `SnowLayerBlock.randomTick`: block light above 11 melts it
             // (`dropResources` without an entity: no snowballs).
-            b if super::overworld_blocks::snow_layers(b).is_some() => {
+            RandomRule::Snow => {
                 self.update_block_light();
                 if self.block_light(p) > 11 {
                     self.spill_block(p, b);
@@ -381,36 +463,28 @@ impl World {
                 }
             }
             // `RedStoneOreBlock.randomTick`: a lit ore goes dark.
-            b if matches!(
-                super::redstone_blocks::component(b),
-                Some(super::redstone_blocks::Component::GlowingOre(_))
-            ) =>
-            {
-                self.extinguish_ore(p, b);
-            }
-            Block::SUGAR_CANE => self.tick_cane(p),
-            super::eyeblossom::OPEN | super::eyeblossom::CLOSED => {
+            RandomRule::GlowingOre => self.extinguish_ore(p, b),
+            RandomRule::Cane => self.tick_cane(p),
+            RandomRule::Eyeblossom => {
                 self.tick_eyeblossom(p, b);
             }
-            b if super::copper::ages(b) => self.tick_copper(p, b),
-            b if super::copper_golem_statue::ages(b) => self.tick_copper_golem_statue(p, b),
-            b if b.is_mushroom() => self.tick_mushroom(p, b),
-            b if (1600..=1687).contains(&b.0) => self.tick_nether_flora(p, b),
-            b if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&b.canonical().0)
-                || (2150..=2157).contains(&b.0)
-                || (2160..=2164).contains(&b.canonical().0) =>
-            {
+            RandomRule::Copper => self.tick_copper(p, b),
+            RandomRule::Statue => self.tick_copper_golem_statue(p, b),
+            RandomRule::Mushroom => self.tick_mushroom(p, b),
+            RandomRule::NetherFlora => self.tick_nether_flora(p, b),
+            RandomRule::Flora => {
                 self.utilities_random_tick(p, b);
                 self.tick_overworld_flora(p, b);
             }
-            b if super::sniffer_plants::owns(b.0) => self.tick_sniffer_crop(p, b),
-            b if b.as_crop().is_some() => self.tick_crop(p, b),
-            b if super::crops::stem(b).is_some() => self.tick_stem(p, b),
+            RandomRule::SnifferCrop => self.tick_sniffer_crop(p, b),
+            RandomRule::Crop => self.tick_crop(p, b),
+            RandomRule::Stem => self.tick_stem(p, b),
             // Java: one in ten random ticks, whatever the light.
-            b if b.wart_age().is_some_and(|a| a < 3) && self.one_in(WART_GROWTH) => {
-                self.edit(p, Block::nether_wart(b.wart_age().unwrap() + 1), false);
+            RandomRule::Wart => {
+                if self.one_in(WART_GROWTH) {
+                    self.edit(p, Block::nether_wart(b.wart_age().unwrap() + 1), false);
+                }
             }
-            _ => {}
         }
     }
 
@@ -794,6 +868,40 @@ mod tests {
     use crate::world::chunk::ChunkData;
     use crate::world::terrain::Generator;
     use std::sync::Arc;
+
+    #[test]
+    fn the_random_rule_table_keeps_the_order_the_rules_were_tried_in() {
+        let mut glowing = Vec::new();
+        for id in 0..crate::world::block::STATE_CAPACITY as u16 {
+            let b = Block(id);
+            assert_eq!(random_rule(b), classify_random_rule(b), "state {id}");
+            // Fire and lava were tried first and, when the fire tick was off
+            // or spreading was out of range, fell through to the growth
+            // rules. None of those may match them, or the table changed that.
+            if b.fire_age().is_some() || b.is_lava() {
+                assert_eq!(growth_rule(b), RandomRule::None, "state {id}");
+            }
+            if random_rule(b) == RandomRule::GlowingOre {
+                glowing.push(id);
+            }
+        }
+        assert_eq!(glowing, [1435, 1436], "lit redstone ore and its deepslate twin");
+        for (b, rule) in [
+            (Block::AIR, RandomRule::None),
+            (Block::STONE, RandomRule::None),
+            (Block::GRASS, RandomRule::Grass),
+            (Block::WET_FARMLAND, RandomRule::Farmland),
+            (Block::SUGAR_CANE, RandomRule::Cane),
+            (Block(165), RandomRule::Fire),
+            (Block(37), RandomRule::Lava),
+            (Block::nether_wart(0), RandomRule::Wart),
+            (Block::nether_wart(3), RandomRule::None),
+        ] {
+            assert_eq!(random_rule(b), rule, "{b:?}");
+        }
+        // Ids past the registry are classified directly.
+        assert_eq!(random_rule(Block(u16::MAX)), classify_random_rule(Block(u16::MAX)));
+    }
 
     #[test]
     fn ripe_potatoes_can_drop_a_poisonous_one() {
