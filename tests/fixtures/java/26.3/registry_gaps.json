@@ -118,8 +118,8 @@
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "frosted_ice": {
-      "release": "v0.18",
-      "reason": "Frost Walker temporary ice states are absent; terrain closure (assignment proposed)."
+      "release": "v0.17",
+      "reason": "Frost Walker temporary ice states are absent; carried enchantment gap (PRO-03)."
     },
     "golden_dandelion": {
       "release": "v0.18",
@@ -1672,8 +1672,8 @@
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "woodland_mansion_map": {
-      "release": "v0.18",
-      "reason": "Explorer-map destination/structure integration remains incomplete."
+      "release": "v0.17",
+      "reason": "Cartographer map for the woodland mansion, which is a v0.17 structure."
     },
     "writable_book": {
       "release": "v0.17",
