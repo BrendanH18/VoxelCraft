@@ -362,3 +362,46 @@ diff tests/fixtures/java/26.3/block_loot.json target/java-block-loot.json
 cargo test --release --test java_block_loot
 cargo run --release --no-default-features --example block_loot_audit > target/block-loot-audit.json
 ```
+
+## Complete brewing and registry-gap ownership
+
+`brewing.json` extracts all **279** brewing recipe JSON files, the provider's
+**41** direct potion mixes, **11** start mixes and **2** container mixes, the
+46 registered Java potion types, and Invisibility durations. Java **26.3 no
+longer contains `PotionBrewing`**: `VanillaBrewingProvider` generates the data
+consumed by `BrewingRecipe`. The extractor verifies the official bundled server
+SHA-1, rejects unknown registration opcodes/JSON keys, expands start mixes
+(water → Mundane and Awkward → effect), and requires the provider's complete
+expansion to equal the jar's recipe set. Container transformations cover the
+potions involved in mixes; Luck has no survival brewing recipe.
+
+The visibility facts come from `LivingEntity.getVisibilityPercent`,
+`getArmorCoverPercentage` and `TargetingConditions.test`: sneaking multiplies
+visibility by 0.8, Invisibility by `0.7 * max(occupied armor slots / 4, 0.1)`;
+acquisition range is at least two blocks. Complete inspected instruction forms
+are hash-checked before extracting those constants. Potion definitions come
+from `Potions`, independently of Rust.
+
+```sh
+python3 tools/extract_java_brewing_fixtures.py /path/to/server.jar --output target/java-brewing.json
+diff tests/fixtures/java/26.3/brewing.json target/java-brewing.json
+scripts/remote-check.sh -- 'cargo test --release --no-default-features --test java_brewing --test java_registry --test process_persistence -- --nocapture'
+```
+
+`tests/java_brewing.rs` checks every recipe with registered inputs/results,
+including all three containers and preserved lingering contents, then enumerates
+every registered potion/container/ingredient to reject extra mixes. Unregistered
+potions/items must be owned in `registry_gaps.json`; they are counted explicitly.
+The fermented-spider-eye crafting rule is independently covered by the existing
+bidirectional recipe comparison against `recipes.json`.
+
+`registry_gaps.json` is an authored ownership ledger, **not extracted reference
+behavior**. Its block/item keys are the exact names absent from `registry_names.json`
+after explicit identity aliases in `src/java_registry.rs`; its potion keys are
+absent types in `brewing.json`. Every entry has an allowed release and a reason.
+`tests/java_registry.rs` rejects unowned omissions, stale/unknown names and invalid
+releases, and guards the item names consumed by villager trades, wandering-trader
+stock and structure loot. `examples/registry_audit.rs` uses the same library
+resolution logic. Names resolving through an alias establish identity only, not
+state/behavior parity. No villager-trade reference fixture exists in this folder;
+trade quantities and offer-selection rules are not verified by these tests.

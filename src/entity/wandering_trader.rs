@@ -76,7 +76,7 @@ impl Spawner {
 }
 // Five common offers plus one rare, skipping families unavailable in the engine.
 const COMMON: &[(&str, u8, u8, u8)] = &[
-    ("slime ball", 4, 1, 5),
+    ("slimeball", 4, 1, 5),
     ("glowstone", 2, 1, 5),
     ("sugar cane", 1, 1, 8),
     ("pumpkin", 1, 1, 4),
@@ -309,6 +309,11 @@ impl Mob {
         drank
     }
 }
+/// Every name used by the wandering trader's stock filter.
+pub fn trade_item_names() -> impl Iterator<Item = &'static str> {
+    COMMON.iter().chain(RARE).map(|row| row.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

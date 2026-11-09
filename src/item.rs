@@ -268,6 +268,7 @@ pub enum Sprite {
     Wart,
     /// A glossy red spider eye.
     SpiderEye,
+    FermentedSpiderEye,
     /// A melon slice with a gold rind and sparkles.
     GlisteringMelon,
     Paper,
@@ -698,7 +699,7 @@ const AUDIT_SPLASH_POTION: u16 = 1044;
 /// so these start at 361.
 const EXTRA_ITEM: u16 = 361;
 const POTION_COUNT: u16 = crate::potion::Potion::COUNT as u16;
-const _: () = assert!(POTION_COUNT - LEGACY_POTION_COUNT <= 3);
+const _: () = assert!(POTION_COUNT == 41);
 
 impl Item {
     pub const MAP: Self = Self(1255);
@@ -827,6 +828,7 @@ impl Item {
     /// Brewing ingredients: swiftness, healing and poison.
     pub const SUGAR: Item = Item(300);
     pub const GLISTERING_MELON_SLICE: Item = Item(301);
+    pub const FERMENTED_SPIDER_EYE: Item = Item(1530);
     pub const SPIDER_EYE: Item = Item(302);
     pub const PAPER: Item = Item(303);
     pub const BOOK: Item = Item(304);
@@ -929,6 +931,8 @@ impl Item {
         let index = potion.0 as u16;
         Item(if index < LEGACY_POTION_COUNT {
             FIRST_POTION + index
+        } else if index >= 39 {
+            1531 + index - 39
         } else {
             AUDIT_POTION + index - LEGACY_POTION_COUNT
         })
@@ -938,6 +942,8 @@ impl Item {
         let index = potion.0 as u16;
         Item(if index < LEGACY_POTION_COUNT {
             SPLASH_POTION + index
+        } else if index >= 39 {
+            1533 + index - 39
         } else {
             AUDIT_SPLASH_POTION + index - LEGACY_POTION_COUNT
         })
@@ -945,7 +951,9 @@ impl Item {
 
     /// The potion of a throwable splash potion item.
     pub fn as_splash_potion(self) -> Option<crate::potion::Potion> {
-        let i = if (AUDIT_SPLASH_POTION..AUDIT_SPLASH_POTION + POTION_COUNT - LEGACY_POTION_COUNT).contains(&self.0) {
+        let i = if (1533..1535).contains(&self.0) {
+            39 + self.0 - 1533
+        } else if (AUDIT_SPLASH_POTION..AUDIT_SPLASH_POTION + 3).contains(&self.0) {
             LEGACY_POTION_COUNT + self.0 - AUDIT_SPLASH_POTION
         } else {
             self.0.checked_sub(SPLASH_POTION).filter(|&i| i < LEGACY_POTION_COUNT)?
@@ -955,7 +963,9 @@ impl Item {
 
     /// The potion this item is (a water bottle is one too).
     pub fn as_potion(self) -> Option<crate::potion::Potion> {
-        let i = if (AUDIT_POTION..AUDIT_POTION + POTION_COUNT - LEGACY_POTION_COUNT).contains(&self.0) {
+        let i = if (1531..1533).contains(&self.0) {
+            39 + self.0 - 1531
+        } else if (AUDIT_POTION..AUDIT_POTION + 3).contains(&self.0) {
             LEGACY_POTION_COUNT + self.0 - AUDIT_POTION
         } else {
             self.0.checked_sub(FIRST_POTION).filter(|&i| i < LEGACY_POTION_COUNT)?
@@ -1051,6 +1061,9 @@ impl Item {
     }
 
     pub fn info(self) -> ItemInfo {
+        if self == Self::FERMENTED_SPIDER_EYE {
+            return item("fermented spider eye", Sprite::FermentedSpiderEye);
+        }
         if let Some(info) = crate::world::trial::item_info(self) {
             return info;
         }
@@ -1550,6 +1563,7 @@ impl Item {
             // bottles take icons after the resin brick; the explorer map
             // draws its own layer.
             .chain((crate::world::trial::ITEM_FIRST..crate::world::trial::ITEM_END).map(Item))
+            .chain([Self::FERMENTED_SPIDER_EYE])
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1608,6 +1622,7 @@ fn splash_names() -> &'static [&'static str] {
 fn sprite_index(item: Item) -> Option<u16> {
     let materials = ITEMS.len() as u16;
     match item.0 {
+        1530 => Some(icon_count() as u16 - 1),
         1280..=1281 => Some(passive_icon_base() + 4 + item.0 - 1280),
         1385..=1386 => Some(passive_icon_base() + 9 + item.0 - 1385),
         1395..=1401 => Some(passive_icon_base() + 11 + item.0 - 1395),
@@ -1736,6 +1751,7 @@ pub const fn icon_count() -> u32 {
         + (crate::world::jukebox::ITEM_END - crate::world::jukebox::ITEM_FIRST) as u32
         + (crate::weapons::ITEM_END - crate::weapons::ITEM_FIRST) as u32
         + 9
+        + 1 // Fermented spider eye.
 }
 
 const fn passive_icon_base() -> u16 {

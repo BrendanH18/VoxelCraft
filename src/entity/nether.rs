@@ -1313,7 +1313,7 @@ fn sense<W: MobWorld + ?Sized>(
             .filter(|t| {
                 t.targetable
                     && (brute || !t.gold_armor)
-                    && t.pos.distance_squared(pos) <= ANGER_RANGE * ANGER_RANGE
+                    && t.pos.distance_squared(pos) <= t.detection_range(ANGER_RANGE).powi(2)
                     && super::mob::line_of_sight(world, eye, t.pos + DVec3::Y * 1.5)
             })
             .min_by(|a, b| a.pos.distance_squared(pos).total_cmp(&b.pos.distance_squared(pos)));
@@ -1375,7 +1375,7 @@ fn visible_player<'a, W: MobWorld + ?Sized>(
         .iter()
         .filter(|t| {
             t.targetable
-                && t.pos.distance_squared(pos) <= ANGER_RANGE * ANGER_RANGE
+                && t.pos.distance_squared(pos) <= t.detection_range(ANGER_RANGE).powi(2)
                 && super::mob::line_of_sight(world, eye, t.pos + DVec3::Y * 1.5)
         })
         .min_by(|a, b| a.pos.distance_squared(pos).total_cmp(&b.pos.distance_squared(pos)))

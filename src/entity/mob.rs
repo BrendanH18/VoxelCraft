@@ -2198,7 +2198,15 @@ impl Mob {
             return wish;
         }
         self.ai_timer -= dt;
-        let target = ctx.nearest_target(self.pos);
+        let target = if self.kind.is_hostile() && self.nether.is_none() {
+            let range = match self.kind {
+                MobKind::CaveSpider | MobKind::Slime | MobKind::MagmaCube => 16.,
+                _ => CHASE_RANGE,
+            };
+            ctx.nearest_detectable_target(self.pos, range)
+        } else {
+            ctx.nearest_target(self.pos)
+        };
         let to_player = target.map_or(DVec3::ZERO, |t| t.pos - self.pos);
         let flat = DVec3::new(to_player.x, 0.0, to_player.z);
         let hdist = flat.length();
@@ -2214,7 +2222,8 @@ impl Mob {
                 MobKind::CaveSpider | MobKind::Slime | MobKind::MagmaCube => (16.0, 4.0),
                 _ => (CHASE_RANGE, 12.0),
             };
-            let chasing = aggressive && target.is_some() && hdist < range && to_player.y.abs() < height;
+            let chasing =
+                aggressive && target.is_some_and(|t| hdist < t.detection_range(range)) && to_player.y.abs() < height;
             if chasing {
                 self.ai = Ai::Chase;
             } else if self.ai == Ai::Chase {
@@ -2452,7 +2461,12 @@ impl Mob {
         let found = ctx
             .players
             .iter()
-            .filter(|t| t.targetable && t.alive && t.pos.distance_squared(self.pos) <= range * range && accept(t))
+            .filter(|t| {
+                t.targetable
+                    && t.alive
+                    && t.pos.distance_squared(self.pos) <= t.detection_range(range).powi(2)
+                    && accept(t)
+            })
             .filter(|t| sees(t))
             .min_by(|l, r| l.pos.distance_squared(self.pos).total_cmp(&r.pos.distance_squared(self.pos)));
         let c = &mut self.move_ctl;

@@ -84,6 +84,8 @@ pub struct PlayerAppearance {
     pub swing: f32,
     pub using: f32,
     pub hurt: bool,
+    /// Skin is hidden; equipped armor and the held item remain visible.
+    pub invisible: bool,
     /// Seconds since death; absent for a living player.
     pub death: Option<f32>,
     pub alpha: f32,
@@ -338,7 +340,7 @@ pub fn build_player(
     );
     let parts = pose(player, &appearance, time);
     const OVERLAYS: [[f32; 2]; 6] = [[32., 0.], [16., 32.], [40., 32.], [48., 48.], [0., 32.], [0., 48.]];
-    for (i, p) in parts.iter().enumerate() {
+    for (i, p) in parts.iter().enumerate().filter(|_| !appearance.invisible) {
         textured_box(out, p, 0.0, origin, body, light, 1, 0, PLAYER_SCALE, UNTINTED);
         let mut overlay = *p;
         overlay.uv = OVERLAYS[i];

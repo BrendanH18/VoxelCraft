@@ -82,6 +82,8 @@ impl Agents {
             on_ground: b.agent.session.player.on_ground,
             health: b.agent.session.vitals.health,
             effects: b.agent.session.vitals.effects.mask(),
+            armor_pieces: b.agent.session.inventory.armor.iter().flatten().count() as u8,
+            sneaking: b.agent.session.player.sneaking,
             darkness_ticks: b
                 .agent
                 .session

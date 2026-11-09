@@ -815,6 +815,29 @@ after the resin brick run Track B, D, C; sounds Warden, Sculk, Weapon,
 Breeze; effects Darkness, BadOmen, TrialOmen
 ([integration record](verification/2026-11-07-v0.16-integration.md)).
 
+### 2026-11-09 audit-fix reservations
+
+The brewing/trade/registry audit repair owns item IDs **1530–1539** and
+block texture layers **3952–3967**, carved from the v0.16 integrator spare.
+Inspection found no existing registrations in either range (`weapons::RESERVED_END`
+is the exclusive bound 1530; the heavy-core texture bound is exclusive 3952).
+
+| Item IDs | Allocation |
+|---|---|
+| 1530 | Fermented spider eye |
+| 1531–1532 | Invisibility, long Invisibility drinkable potions |
+| 1533–1534 | Invisibility, long Invisibility splash potions |
+| 1535–1539 | Remain reserved for this audit repair; unallocated |
+
+All **3952–3967** block texture layers remain reserved and unallocated. These
+items use the existing procedural item-icon array above `tex::ITEM_BASE`, whose
+indices are computed at runtime; they consume no block texture layers.
+`POTIONS[39..41]` appends the new types after the three Turtle Master entries.
+Legacy drink/splash IDs 400–435 / 436–471 and Turtle Master IDs 1041–1046
+retain their mappings. Lingering/tipped-arrow components store `potion index + 1`
+and remain compatible. `Effect::Invisibility` appends after Trial Omen (bit 28);
+effect saves use Java string IDs, so existing effects and masks keep their order.
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating
