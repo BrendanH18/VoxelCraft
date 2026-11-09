@@ -291,6 +291,12 @@ pub struct Renderer {
     offscreen: Option<wgpu::Texture>,
     /// Render to `offscreen` instead of the window (benchmarks).
     pub force_offscreen: bool,
+    /// The last submissions of the two previous forced-offscreen frames.
+    /// Nothing is presented there, so nothing would hold the CPU to the
+    /// GPU's pace: each frame waits for the one two back, as a window's
+    /// three images would make it.
+    offscreen_frames: [Option<wgpu::SubmissionIndex>; 2],
+    last_submission: Option<wgpu::SubmissionIndex>,
     /// Present modes the surface reports, to resolve the `Auto*` request.
     present_modes: Vec<wgpu::PresentMode>,
     /// Frames skipped since startup because no surface image was available
@@ -845,6 +851,8 @@ impl Renderer {
             visible: Vec::new(),
             capture: None,
             offscreen: None,
+            offscreen_frames: [None, None],
+            last_submission: None,
             force_offscreen: false,
             present_modes: caps.present_modes.clone(),
             skipped_frames: 0,
@@ -1405,7 +1413,7 @@ impl Renderer {
                 pass.draw(0..hud.len() as u32, 0..1);
             }
         }
-        self.queue.submit([encoder.finish()]);
+        self.last_submission = Some(self.queue.submit([encoder.finish()]));
         frame.drawn = true;
         stats.gpu_bytes = self.arena.capacity_bytes();
         stats.gpu_used_bytes = self.arena.used_bytes();
@@ -1429,6 +1437,13 @@ impl Renderer {
         if let Some(surface) = frame.surface {
             self.window.pre_present_notify();
             self.queue.present(surface);
+        } else if self.force_offscreen {
+            let [older, newer] = std::mem::take(&mut self.offscreen_frames);
+            if let Some(submission_index) = older {
+                let _ =
+                    self.device.poll(wgpu::PollType::Wait { submission_index: Some(submission_index), timeout: None });
+            }
+            self.offscreen_frames = [newer, self.last_submission.take()];
         }
     }
 }

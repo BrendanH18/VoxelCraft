@@ -1869,7 +1869,9 @@ impl Game {
                 self.send_lan_state();
             }
         }
-        benchmark::mark(&mut self.benchmark, 1);
+        if ticks > 0 {
+            benchmark::mark(&mut self.benchmark, 1);
+        }
         if paused {
             self.previous_eye = self.session.player.eye();
             self.mobs.entities.snapshot_positions();
