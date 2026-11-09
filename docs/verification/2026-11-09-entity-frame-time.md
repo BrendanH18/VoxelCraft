@@ -256,9 +256,12 @@ Unit tests cover the rest:
 
 ## Checks
 
-`scripts/remote-check.sh --full` on the finished tree: see the commit
-message and hand-off note for the counts. The WGSL validation test covers
-the new vertex shader. Local builds were used only to run the game.
+`scripts/remote-check.sh --full` on the finished code (`e90b5d0` plus a
+one-line test fix, committed with this record) passed on a Namespace Linux
+instance: `cargo fmt`, both clippy runs with no warnings, 2,336 tests with
+default features (21 ignored) and 2,131 without (20 ignored), none failing.
+The WGSL validation test covers the new vertex shader, and the benchmark
+runner's six gate tests pass. Local builds were used only to run the game.
 
 Not checked: split-screen and LAN drawing were not run (their code path is
 the same per-view build and upload, exercised only by the single-view runs
