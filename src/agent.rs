@@ -1782,6 +1782,18 @@ mod tests {
             Command::Effect(EffectChange::Give(Effect::Regeneration, 30, 0))
         ));
         assert!(matches!(Command::parse("effect clear").unwrap(), Command::Effect(EffectChange::Clear(None))));
+        // Java's forms with a target, as players type them.
+        assert!(matches!(
+            Command::parse("/effect give @s resistance 600 4").unwrap(),
+            Command::Effect(EffectChange::Give(Effect::Resistance, 600, 4))
+        ));
+        assert!(matches!(Command::parse("effect clear @p").unwrap(), Command::Effect(EffectChange::Clear(None))));
+        assert!(matches!(
+            Command::parse("/enchant @s loyalty 3").unwrap(),
+            Command::Enchant(crate::enchant::Enchantment::Loyalty, 3)
+        ));
+        assert!(matches!(Command::parse("xp add @s 30 levels"), Ok(Command::Xp(XpChange { levels: true, .. }))));
+        assert!(Command::parse("effect give @a speed").is_err(), "other targets stay rejected");
         let mut vitals = Vitals::default();
         vitals.health = 10.0;
         assert_eq!(EffectChange::Give(Effect::InstantDamage, 1, 0).apply(&mut vitals).0, 6.0);

@@ -399,7 +399,17 @@ impl Command {
 
     /// Parse slash commands and CLI input identically, rejecting extra arguments and non-finite numbers.
     pub fn parse(text: &str) -> Result<Self, String> {
-        let words: Vec<_> = text.trim().trim_start_matches('/').split_whitespace().collect();
+        let mut words: Vec<_> = text.trim().trim_start_matches('/').split_whitespace().collect();
+        // Java's `effect give @s …`, `enchant @s …` and `xp add @s …` name a
+        // target; the only targets are the executor, so drop it.
+        let target_at = match words.as_slice() {
+            ["effect", "give" | "clear", ..] | ["xp" | "experience", "add" | "set" | "query", ..] => Some(2),
+            ["enchant", ..] => Some(1),
+            _ => None,
+        };
+        if let Some(i) = target_at.filter(|&i| matches!(words.get(i), Some(&("@s" | "@p")))) {
+            words.remove(i);
+        }
         let bad = || "unknown command or arguments; use /help".to_string();
         if words.first() == Some(&"sign") {
             return Self::parse_sign(text).ok_or_else(|| "use: sign x y z front|back [\"line\", ...]".to_string());
