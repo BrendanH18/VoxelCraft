@@ -32,6 +32,7 @@ pub use super::caves::LAVA_LEVEL;
 pub use super::climate::SEA_LEVEL;
 
 mod beard;
+pub(in crate::world) use beard::{beard_reaches, beard_thin};
 #[path = "biome_features.rs"]
 mod biome_features;
 mod density;
@@ -292,6 +293,8 @@ pub struct Generator {
     patch: Perlin,
     /// Badlands hoodoos, icebergs and other column features.
     feature: Perlin,
+    /// Generation 3's stand-in for Java's `surface_swamp` noise (FE-01).
+    swamp: Perlin,
 }
 
 #[inline]
@@ -348,6 +351,7 @@ impl Generator {
             caves: Caves::new(seed),
             patch: p(31),
             feature: p(32),
+            swamp: p(33),
         }
     }
 
@@ -560,6 +564,24 @@ impl Generator {
     }
 
     /// Whether a column under water gets a patch of clay on its floor.
+    /// Java 26.3 `SurfaceRuleData.overworld`, first floor rules: in a swamp a
+    /// floor at y 62 (`y_above` 62 and not 63), in a mangrove swamp one at y
+    /// 60 to 62 (`y_above` 60 and not 63), becomes water where the
+    /// `surface_swamp` noise is at least 0. Generation 3 only. The noise is
+    /// original (FE-01) at Java's scale: one octave at first octave -2, so
+    /// a quarter of a cycle per block, sampled in x and z, about half of it
+    /// at or above 0. The offset keeps lattice zeros off block positions.
+    pub(super) fn swamp_pool(&self, biome: Biome, y: i32, x: i32, z: i32) -> bool {
+        let lowest = match biome {
+            Biome::Swamp => SEA_LEVEL - 1,
+            Biome::MangroveSwamp => SEA_LEVEL - 3,
+            _ => return false,
+        };
+        self.generation >= Generation::V3
+            && (lowest..SEA_LEVEL).contains(&y)
+            && self.swamp.noise2(x as f32 * 0.25 + 0.513_7, z as f32 * 0.25 + 0.239_1) >= 0.0
+    }
+
     fn clay_patch(&self, x: i32, z: i32) -> bool {
         hash3(x >> 2, 0, z >> 2, self.seed ^ 0xC1A).is_multiple_of(7) && hash_f(x, 1, z, self.seed ^ 0xC1B) < 0.8
     }
@@ -573,7 +595,13 @@ impl Generator {
     fn surface_block(&self, col: Column, x: i32, z: i32, steep: i32) -> Block {
         use Biome::*;
         let y = col.height;
-        let wet = y < SEA_LEVEL;
+        if self.swamp_pool(col.biome, y, x, z) {
+            return Block::WATER;
+        }
+        // The sea fills open cells up to y 62, so ground at 62 is dry.
+        // Generation 3 gives swamp ground there the dry surface (grass),
+        // as Java's surface rule does; earlier generations keep dirt.
+        let wet = y < SEA_LEVEL - (self.generation >= Generation::V3 && col.biome == Swamp) as i32;
         let patch = self.patch_at(x, z);
         if wet && col.biome.is_watery() && y >= SEA_LEVEL - 6 && self.clay_patch(x, z) {
             return Block::CLAY;
@@ -1177,7 +1205,12 @@ impl Generator {
                 let roll = hash_f(wx, 3, wz, self.seed ^ 0x5EA);
                 let depth = SEA_LEVEL - 1 - col.height;
                 let is_water = |b: Block| b == Block::WATER;
-                if depth >= 1 && !col.frozen && (col.biome.is_ocean() || col.biome.is_river() || col.biome.is_swamp()) {
+                // Nothing grows on a generation 3 mangrove pool's water floor.
+                if depth >= 1
+                    && !col.frozen
+                    && (col.biome.is_ocean() || col.biome.is_river() || col.biome.is_swamp())
+                    && !self.swamp_pool(col.biome, col.height, wx, wz)
+                {
                     let floor = col.height;
                     let warm = matches!(col.biome, WarmOcean);
                     let reef = warm && self.feature.fbm2(wx as f32 / 14.0, wz as f32 / 14.0, 2) > 0.05;
@@ -2122,6 +2155,103 @@ mod tests {
             }
         }
         assert!(lava > 0 && deepslate > 100_000, "lava {lava}, deepslate {deepslate}");
+    }
+
+    /// Java's swamp water rule on its own: pools only at its heights, about
+    /// half of the cells, only in generation 3; the rest of a generation 3
+    /// swamp's y 62 floor is grass, where generation 2 keeps dirt.
+    #[test]
+    fn swamp_pools_follow_the_java_rule_heights_in_generation_3_only() {
+        let g = Generator::new(7);
+        let old = Generator::with_generation(7, Dimension::Overworld, Generation::V2);
+        let col = |biome, height| Column { height, biome, frozen: false, climate: Climate::default() };
+        for (biome, lowest, dry) in [(Biome::Swamp, 62, Block::GRASS), (Biome::MangroveSwamp, 60, ob::MUD)] {
+            let mut pools = 0;
+            for z in -32..32 {
+                for x in -32..32 {
+                    for y in 55..70 {
+                        let pool = (lowest..SEA_LEVEL).contains(&y) && g.swamp_pool(biome, y, x, z);
+                        assert_eq!(
+                            g.surface_block(col(biome, y), x, z, 0) == Block::WATER,
+                            pool,
+                            "{biome:?} {x},{y},{z}"
+                        );
+                        assert_ne!(old.surface_block(col(biome, y), x, z, 0), Block::WATER);
+                    }
+                    if g.swamp_pool(biome, SEA_LEVEL - 1, x, z) {
+                        pools += 1;
+                    } else {
+                        assert_eq!(g.surface_block(col(biome, SEA_LEVEL - 1), x, z, 0), dry, "{biome:?} {x},{z}");
+                    }
+                    // The noise is per column, the same at every rule height.
+                    assert_eq!(g.swamp_pool(biome, lowest, x, z), g.swamp_pool(biome, SEA_LEVEL - 1, x, z));
+                }
+            }
+            assert!((1200..2900).contains(&pools), "{biome:?}: {pools} of 4096 cells pool");
+        }
+        assert_eq!(old.surface_block(col(Biome::Swamp, SEA_LEVEL - 1), 0, 0, 0), Block::DIRT);
+        assert_eq!(old.surface_block(col(Biome::Swamp, SEA_LEVEL - 2), 0, 0, 0), Block::DIRT);
+        assert_eq!(g.surface_block(col(Biome::Swamp, SEA_LEVEL - 2), 0, 0, 0), Block::DIRT, "under water");
+    }
+
+    /// Defect 2 of the 2026-11-10 captures: the bare dirt flats at y 62 in
+    /// swamps (seed 42 at -279,-136; seed 9 at -1040,-540), in generated
+    /// chunks. Mangrove swamps pool at 60 to 62, with no seagrass on a pool.
+    #[test]
+    fn generation_3_swamp_shores_are_grass_with_scattered_pools() {
+        let block = |g: &Generator, chunks: &mut FxHashMap<IVec3, ChunkData>, p: IVec3| {
+            let c = p.div_euclid(IVec3::splat(CHUNK_SIZE_I));
+            let l = p - c * CHUNK_SIZE_I;
+            chunks.entry(c).or_insert_with(|| g.generate(c)).get(l.x as usize, l.y as usize, l.z as usize)
+        };
+        let mangrove = Generator::new(42)
+            .nearest_biome(IVec2::ZERO, Biome::MangroveSwamp, 8000)
+            .expect("a mangrove swamp near seed 42's origin");
+        for (seed, biome, near) in [
+            (42, Biome::Swamp, IVec2::new(-279, -136)),
+            (9, Biome::Swamp, IVec2::new(-1040, -540)),
+            (42, Biome::MangroveSwamp, IVec2::new(mangrove.x, mangrove.z)),
+        ] {
+            let (g, old) =
+                (Generator::new(seed), Generator::with_generation(seed, Dimension::Overworld, Generation::V2));
+            let (mut new_chunks, mut old_chunks) = (FxHashMap::default(), FxHashMap::default());
+            let (mut dry, mut pools, mut other, mut old_dirt) = (0, 0, 0, 0);
+            let lowest = if biome == Biome::Swamp { SEA_LEVEL - 1 } else { SEA_LEVEL - 3 };
+            for z in near.y - 40..near.y + 40 {
+                for x in near.x - 40..near.x + 40 {
+                    let col = g.terrain_column(x, z);
+                    if col.biome != biome || !(lowest..SEA_LEVEL).contains(&col.height) {
+                        continue;
+                    }
+                    let at = IVec3::new(x, col.height, z);
+                    let (top, above) = (block(&g, &mut new_chunks, at), block(&g, &mut new_chunks, at + IVec3::Y));
+                    let pool = g.swamp_pool(biome, col.height, x, z);
+                    match top {
+                        Block::WATER if pool => {
+                            pools += 1;
+                            // Mangrove roots may stand in a pool, as in Java; seagrass may not.
+                            assert!(
+                                above != ob::SEAGRASS && above != ob::TALL_SEAGRASS,
+                                "seagrass on the pool at {at}"
+                            );
+                        }
+                        Block::GRASS if biome == Biome::Swamp && !pool => dry += 1,
+                        b if b == ob::MUD && biome == Biome::MangroveSwamp && !pool => dry += 1,
+                        Block::DIRT if biome == Biome::Swamp => panic!("bare dirt at {at}"),
+                        _ => other += 1,
+                    }
+                    if biome == Biome::Swamp && block(&old, &mut old_chunks, at) == Block::DIRT {
+                        old_dirt += 1;
+                    }
+                }
+            }
+            let seen = dry + pools + other;
+            eprintln!(
+                "seed {seed} {biome:?} near {near}: {dry} dry, {pools} pools, {other} other; gen 2 dirt {old_dirt}"
+            );
+            assert!(seen >= 40 && dry * 5 >= seen && pools * 5 >= seen && other * 10 <= seen, "seed {seed} {biome:?}");
+            assert!(biome != Biome::Swamp || old_dirt * 2 >= seen, "generation 2 keeps its dirt flats");
+        }
     }
 
     #[test]

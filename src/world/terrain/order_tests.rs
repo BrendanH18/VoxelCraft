@@ -380,7 +380,13 @@ fn generation_3_nether_fossils_ignore_order_threads_and_caches() {
         }
     }
     assert_eq!(starts.len(), 3);
-    let mut chunks: Vec<_> = starts.into_iter().flat_map(|p| around(p, 1)).filter(|p| (0..4).contains(&p.y)).collect();
+    // Two chunk columns out: a fossil's `beard_thin` reaches up to 23 blocks
+    // from its start (a 13-block design plus the kernel's 11).
+    let mut chunks: Vec<_> = starts
+        .into_iter()
+        .flat_map(|p| around(p, 2))
+        .filter(|p| Dimension::Nether.chunk_rows().contains(&p.y))
+        .collect();
     chunks.sort_by_key(|p| (p.z, p.x, p.y));
     chunks.dedup();
     let fresh = || Generator::with_generation(SEED, Dimension::Nether, Generation::V3);

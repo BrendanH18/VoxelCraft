@@ -1,5 +1,7 @@
 //! Original Nether bone fossils, Generation 3 only. Java's random-spread
 //! grid and downward generation-point scan; four designs instead of fourteen.
+//! Like Java's (`"terrain_adaptation": "beard_thin"`), a fossil raises the
+//! ground under its box: see `NetherGen::terrain_bits`.
 use std::sync::{Arc, Mutex};
 
 use glam::{IVec2, IVec3};
@@ -12,12 +14,17 @@ use super::nether::NetherGen;
 use super::nether_biome::NetherBiome;
 use super::noise::hash3;
 use super::relics::{Relic, RelicPalette, bake};
-use super::structure::Rng;
+use super::structure::{Bounds, Rng};
 use super::terrain::Generation;
 use super::trail_ruins::spread;
 
 pub const SALT: u64 = 14_357_921;
 const CACHE_LIMIT: usize = 512;
+/// Margin that covers every region whose fossil's beard can reach a column:
+/// a start lies in its region's first chunk, a design reaches at most 12
+/// blocks from it (checked by a test) and the kernel 11 more, so a beard
+/// stays within blocks -23 to 38 of the region's 32-block span.
+const BEARD_REGION_REACH: i32 = 40;
 
 pub struct NetherFossils {
     seed: u64,
@@ -48,11 +55,16 @@ impl NetherFossils {
         // resolves to 125 (the dimension's build height is 256).
         let initial_y = rng.range(32, 125) as i32;
         let mut y = if g.biomes.biome(at.x, at.y) == NetherBiome::SoulSandValley { initial_y } else { 32 };
+        // Java scans `getBaseColumn`: the noise column alone (netherrack,
+        // lava below sea level, air), without surface rules, glowstone or
+        // any structure's beard. Above sea level 32 nothing is fluid, so
+        // `isAir` is open noise and every solid cell has a sturdy top face.
+        let bits = if y > 32 { g.base_bits(at.x, at.y) } else { 0 };
+        let solid = |y: i32| bits >> y & 1 == 1;
         while y > 32 {
-            let current = g.base_block_at(IVec3::new(at.x, y, at.y));
+            let current = solid(y);
             y -= 1;
-            let below = g.base_block_at(IVec3::new(at.x, y, at.y));
-            if current == Block::AIR && (below == Block::SOUL_SAND || (below.is_solid() && !below.is_fluid())) {
+            if !current && solid(y) {
                 break;
             }
         }
@@ -108,6 +120,30 @@ impl NetherFossils {
             }
         }
         best
+    }
+
+    /// The boxes of the fossils whose `beard_thin` reaches a column from
+    /// `min` to `max` (inclusive), in region order (z, then x), so a sum
+    /// over them adds in the same order whichever area asked. Empty before
+    /// generation 3.
+    pub(super) fn beard_boxes(&self, g: &NetherGen, min: IVec2, max: IVec2) -> Vec<Bounds> {
+        if self.generation < Generation::V3 {
+            return Vec::new();
+        }
+        let lo = (min - IVec2::splat(BEARD_REGION_REACH)).div_euclid(IVec2::splat(32));
+        let hi = (max + IVec2::splat(BEARD_REGION_REACH)).div_euclid(IVec2::splat(32));
+        let mut out = Vec::new();
+        for z in lo.y..=hi.y {
+            for x in lo.x..=hi.x {
+                let Some(r) = self.get(g, IVec2::new(x, z)) else { continue };
+                let b = r.bounds;
+                // The kernel reaches 11 blocks beyond the box.
+                if b.min.x - 11 <= max.x && b.max.x + 11 >= min.x && b.min.z - 11 <= max.y && b.max.z + 11 >= min.y {
+                    out.push(b);
+                }
+            }
+        }
+        out
     }
 
     fn nearby(&self, g: &NetherGen, base: IVec3, width: i32) -> Vec<Arc<Relic>> {
@@ -183,8 +219,10 @@ mod tests {
                 let Some(r) = g.fossils.get(&g, c) else { continue };
                 assert!(r.origin.y > 32 && r.origin.y < 126);
                 assert_eq!(g.biomes.biome(r.origin.x, r.origin.z), NetherBiome::SoulSandValley);
+                // Java's scan: open noise above a solid noise cell.
+                let bits = g.base_bits(r.origin.x, r.origin.z);
+                assert_eq!(bits >> r.origin.y & 3, 1, "solid start under open noise");
                 assert_ne!(g.base_block_at(r.origin), Block::AIR);
-                assert_eq!(g.base_block_at(r.origin + IVec3::Y), Block::AIR);
                 if seen == 0 {
                     eprintln!("nether_fossil: {}", r.origin);
                 }
@@ -215,5 +253,80 @@ mod tests {
             }
         }
         panic!("only {seen} Nether fossils");
+    }
+
+    /// Defect 1 of the 2026-11-10 captures: seed 9's fossil starts on a
+    /// soul-soil ledge over the lava lake and hung in the air. Java's
+    /// `beard_thin` raises ground under the box: the kernel just below a
+    /// footprint cell (+0.557, then +0.49) beats any squeezed density (at
+    /// most 0.458 in magnitude), so the two layers under the floor plane are
+    /// rock whatever the noise.
+    #[test]
+    fn fossil_on_a_ledge_stands_on_bearded_ground() {
+        let g = NetherGen::new(9);
+        let r = g.fossils.get(&g, IVec2::new(716, 141).div_euclid(IVec2::splat(32))).expect("seed 9 fossil");
+        assert_eq!(r.origin, IVec3::new(716, 60, 141));
+        let (b, ground) = (r.bounds, r.bounds.min.y);
+        assert_eq!(ground, r.origin.y, "ground-level delta 0");
+        let footprint: Vec<_> = (b.min.z..=b.max.z).flat_map(|z| (b.min.x..=b.max.x).map(move |x| (x, z))).collect();
+        // The unadapted noise leaves the plane unsupported: the overhang.
+        let hanging = footprint
+            .iter()
+            .filter(|&&(x, z)| {
+                let bits = g.base_bits(x, z);
+                (1..=2).any(|d| bits >> (ground - d) & 1 == 0)
+            })
+            .count();
+        eprintln!("seed 9 fossil: {hanging} of {} footprint columns unsupported before adaptation", footprint.len());
+        assert!(hanging > 0, "the start is on a ledge");
+        let mut chunks = FxHashMap::default();
+        let mut block = |p: IVec3| {
+            let c = p.div_euclid(IVec3::splat(CHUNK_SIZE_I));
+            let l = p - c * CHUNK_SIZE_I;
+            chunks.entry(c).or_insert_with(|| g.generate(c)).get(l.x as usize, l.y as usize, l.z as usize)
+        };
+        for &(x, z) in &footprint {
+            for d in 1..=2 {
+                let below = block(IVec3::new(x, ground - d, z));
+                assert!(below.is_solid() && !below.is_fluid(), "{below:?} at {x},{},{z}", ground - d);
+            }
+        }
+        // The bones are still painted, on the raised ground.
+        assert!(r.cells.iter().filter(|(p, _)| p.y == ground).all(|&(p, bone)| block(p) == bone));
+    }
+
+    #[test]
+    fn fossil_boxes_sit_on_their_start_within_the_beard_margin() {
+        let g = NetherGen::new(12345);
+        let valley = g.biomes.nearest(IVec3::ZERO, NetherBiome::SoulSandValley, 20000).expect("soul sand valley");
+        let region = IVec2::new(valley.x, valley.z).div_euclid(IVec2::splat(32));
+        let mut seen = 0;
+        for z in -12..=12 {
+            for x in -12..=12 {
+                let c = region + IVec2::new(x, z);
+                let Some(r) = g.fossils.get(&g, c) else { continue };
+                seen += 1;
+                let b = r.bounds;
+                assert_eq!(b.min.y, r.origin.y);
+                let (span_min, span_max) = (c * 32 - IVec2::splat(12), c * 32 + IVec2::splat(15 + 12));
+                assert!(
+                    b.min.x >= span_min.x && b.max.x <= span_max.x && b.min.z >= span_min.y && b.max.z <= span_max.y
+                );
+                // Every column the beard reaches finds this box.
+                for (px, pz) in
+                    [(b.min.x - 11, b.min.z - 11), (b.max.x + 11, b.max.z + 11), (b.min.x - 11, b.max.z + 11)]
+                {
+                    let p = IVec2::new(px, pz);
+                    assert!(g.beard_boxes(p, p).contains(&b), "{p} misses {b:?}");
+                }
+                let p = IVec2::new(b.min.x - 12, b.min.z);
+                assert!(!g.beard_boxes(p, p).contains(&b));
+            }
+        }
+        assert!(seen >= 5, "only {seen} fossils");
+        for generation in [Generation::V1, Generation::V2] {
+            let old = NetherGen::with_generation(9, generation);
+            assert!(old.beard_boxes(IVec2::new(700, 120), IVec2::new(740, 160)).is_empty());
+        }
     }
 }
