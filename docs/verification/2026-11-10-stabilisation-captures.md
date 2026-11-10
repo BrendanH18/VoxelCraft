@@ -278,7 +278,7 @@ on AC power, from 13:11. It started after two minutes with no input, with
 and used the machine, so the window was occluded in most runs. **This is
 not gate evidence.** Of 24 scene runs, 10 were valid: building 1, entities
 3, automation 3 and materials 2. Streaming, menus and title had none. The
-title scene was stopped at 13:52 for the owner's meeting.
+suite finished at 13:49.
 
 | Scene | Valid runs: 1% low FPS / p99 ms |
 |---|---|
