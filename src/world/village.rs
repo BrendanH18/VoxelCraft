@@ -261,6 +261,9 @@ impl Style {
 }
 
 impl jigsaw::Palette for Style {
+    fn clear_above(&self) -> i32 {
+        0
+    }
     fn role(&self, role: &str) -> Option<Block> {
         Style::role(*self, role)
     }
@@ -291,9 +294,19 @@ impl Village {
     fn generate(g: &Generator, center: IVec3, style: Style, seed: u64) -> Self {
         if g.generation >= Generation::V3 {
             let lib = jigsaw::villages();
-            let placed =
-                jigsaw::assemble(lib, &SETTINGS, IVec2::new(center.x, center.z), &|x, z| surface(g, x, z), seed);
-            let bounds = placed.iter().fold(placed[0].bounds, |a, p| a.union(&p.bounds));
+            let placed = jigsaw::assemble_enveloped(
+                lib,
+                &SETTINGS,
+                IVec2::new(center.x, center.z),
+                &|x, z| surface(g, x, z),
+                seed,
+                &|ps, p| g.beard_fit(lib, ps, p),
+            );
+            let bounds = placed
+                .iter()
+                .map(|p| p.bounds)
+                .reduce(|a, b| a.union(&b))
+                .unwrap_or(Bounds { min: center, max: center });
             return Village { center, style, pieces: Vec::new(), placed, bounds };
         }
         let bounds = Bounds { min: center - IVec3::new(4, 0, 4), max: center + IVec3::new(4, 6, 4) };
@@ -331,8 +344,8 @@ impl Village {
 
     fn paint(&self, g: &Generator, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3) {
         if !self.placed.is_empty() {
-            let surface = |x: i32, z: i32| surface(g, x, z);
-            let solid = |x: i32, z: i32| g.column(x, z).height;
+            let surface = |x: i32, z: i32| g.terrain_column(x, z).height.max(SEA_LEVEL - 1);
+            let solid = |x: i32, z: i32| g.terrain_column(x, z).height;
             let ground = jigsaw::Ground { surface: &surface, solid: &solid };
             jigsaw::paint(jigsaw::villages(), &self.placed, &self.style, &ground, blocks, base);
             return;
@@ -494,9 +507,12 @@ impl Villages {
         if let Some(v) = self.cache.lock().unwrap().get(&region) {
             return v.clone();
         }
-        let v = self.start(g, region).map(|(at, style)| {
-            Arc::new(Village::generate(g, at, style, super::noise::hash3(region.x, 0, region.y, self.seed ^ SALT)))
-        });
+        let v = self
+            .start(g, region)
+            .map(|(at, style)| {
+                Arc::new(Village::generate(g, at, style, super::noise::hash3(region.x, 0, region.y, self.seed ^ SALT)))
+            })
+            .filter(|v| g.generation < Generation::V3 || !v.placed.is_empty());
         let mut cache = self.cache.lock().unwrap();
         if cache.len() >= CACHE_LIMIT
             && let Some(key) = cache.keys().next().copied()
@@ -505,18 +521,25 @@ impl Villages {
         }
         cache.entry(region).or_insert(v).clone()
     }
-    fn visit(&self, g: &Generator, base: IVec3, mut f: impl FnMut(&Village)) {
+    pub(in crate::world) fn terrain_pieces(&self, g: &Generator, base: IVec3, mut f: impl FnMut(&[Placed])) {
+        self.visit_margin(g, base, 13, |v| f(&v.placed));
+    }
+    fn visit(&self, g: &Generator, base: IVec3, f: impl FnMut(&Village)) {
+        self.visit_margin(g, base, 0, f);
+    }
+    fn visit_margin(&self, g: &Generator, base: IVec3, margin: i32, mut f: impl FnMut(&Village)) {
+        let extent = EXTENT + margin;
         if g.dimension != Dimension::Overworld {
             return;
         }
-        for z in (base.z - EXTENT).div_euclid(REGION)..=(base.z + CHUNK_SIZE_I - 1 + EXTENT).div_euclid(REGION) {
-            for x in (base.x - EXTENT).div_euclid(REGION)..=(base.x + CHUNK_SIZE_I - 1 + EXTENT).div_euclid(REGION) {
+        for z in (base.z - extent).div_euclid(REGION)..=(base.z + CHUNK_SIZE_I - 1 + extent).div_euclid(REGION) {
+            for x in (base.x - extent).div_euclid(REGION)..=(base.x + CHUNK_SIZE_I - 1 + extent).div_euclid(REGION) {
                 let region = IVec2::new(x, z);
                 let at = self.candidate(region);
-                if at.x + EXTENT < base.x
-                    || at.x - EXTENT >= base.x + CHUNK_SIZE_I
-                    || at.y + EXTENT < base.z
-                    || at.y - EXTENT >= base.z + CHUNK_SIZE_I
+                if at.x + extent < base.x
+                    || at.x - extent >= base.x + CHUNK_SIZE_I
+                    || at.y + extent < base.z
+                    || at.y - extent >= base.z + CHUNK_SIZE_I
                 {
                     continue;
                 }
@@ -605,6 +628,7 @@ impl Villages {
                     }
                     if let Some((at, s)) = self.start(g, home + IVec2::new(x, z))
                         && s == style
+                        && (g.generation < Generation::V3 || self.get(g, home + IVec2::new(x, z)).is_some())
                     {
                         return Some(IVec3::new(at.x.div_euclid(16) * 16, 0, at.z.div_euclid(16) * 16));
                     }
@@ -626,7 +650,9 @@ impl Villages {
                     if x.abs() != ring && z.abs() != ring {
                         continue;
                     }
-                    if let Some((at, _)) = self.start(g, region + IVec2::new(x, z)) {
+                    if let Some((at, _)) = self.start(g, region + IVec2::new(x, z))
+                        && (g.generation < Generation::V3 || self.get(g, region + IVec2::new(x, z)).is_some())
+                    {
                         let dx = at.x as i64 - from.x as i64;
                         let dz = at.z as i64 - from.z as i64;
                         let d = dx * dx + dz * dz;
@@ -765,6 +791,55 @@ fn legacy_loot(seed: u64, style: Style) -> super::chest::Chest {
 
 #[cfg(test)]
 mod tests {
+    /// Fixed 45×45 placement-cell census per seed, paired with the unchanged
+    /// assembler, not a locate-biased sample. Run remotely with --ignored.
+    #[test]
+    #[ignore]
+    fn terrain_envelope_availability() {
+        for seed in [42, 12345, 2024] {
+            let g = Generator::new(seed);
+            let (mut before, mut after, mut old_pieces, mut new_pieces, mut lost, mut small) = (0, 0, 0, 0, 0, 0);
+            for z in -22..=22 {
+                for x in -22..=22 {
+                    let r = IVec2::new(x, z);
+                    let Some((at, _)) = g.villages.start(&g, r) else { continue };
+                    let old = jigsaw::assemble(
+                        jigsaw::villages(),
+                        &SETTINGS,
+                        IVec2::new(at.x, at.z),
+                        &|x, z| surface(&g, x, z),
+                        super::super::noise::hash3(x, 0, z, seed ^ SALT),
+                    );
+                    before += 1;
+                    old_pieces += old.len();
+                    if let Some(v) = g.villages.get(&g, r) {
+                        after += 1;
+                        new_pieces += v.placed.len();
+                        let houses = |ps: &[Placed]| {
+                            ps.iter()
+                                .filter(|p| !jigsaw::villages().templates[p.template as usize].homes.is_empty())
+                                .count()
+                        };
+                        if houses(&old) >= 2 && houses(&v.placed) < 2 {
+                            lost += 1;
+                        }
+                        if houses(&v.placed) < 2 {
+                            small += 1;
+                        }
+                    } else {
+                        lost += 1;
+                    }
+                }
+            }
+            println!(
+                "seed {seed}: 2025 cells; villages {before} -> {after}, pieces {old_pieces} -> {new_pieces}, mean {:.3} -> {:.3}; lost/shrunk {lost}, after below two houses {small}",
+                old_pieces as f64 / before as f64,
+                new_pieces as f64 / after as f64
+            );
+            assert!(lost * 3 <= before, "more than a third lost or shrunk: {lost}/{before}");
+        }
+    }
+
     use super::super::chunk::index;
     use super::*;
 
@@ -935,17 +1010,39 @@ mod tests {
         }
     }
 
-    /// Streets follow the ground, so one can pass through a house's box;
-    /// it must not replace the house's chest, bed or job site (seeds and
-    /// spots from the 2026-11-03 review).
+    /// Preserve the original review's overlap geometry even though the
+    /// placement envelope now rejects those steep starts, and also check
+    /// ordinary generation at the surviving nearest villages.
     #[test]
     fn generation_3_streets_never_replace_house_contents() {
-        for (seed, spot) in [(12345, IVec3::new(5230, 111, -1829)), (2024, IVec3::new(3651, 70, 818))] {
+        for (seed, review) in [
+            (12345, Some(IVec3::new(5230, 111, -1829))),
+            (2024, Some(IVec3::new(3651, 70, 818))),
+            (12345, None),
+            (2024, None),
+        ] {
             let g = Generator::with_generation(seed, Dimension::Overworld, Generation::V3);
-            let region = IVec2::new(spot.x.div_euclid(REGION), spot.z.div_euclid(REGION));
-            let v = g.villages.get(&g, region).unwrap();
+            let at = review.unwrap_or_else(|| g.villages.nearest(&g, IVec3::ZERO).unwrap());
+            let region = IVec2::new(at.x.div_euclid(REGION), at.z.div_euclid(REGION));
+            let v = if review.is_some() {
+                let (center, style) = g.villages.start(&g, region).expect("review start biome");
+                let placed = jigsaw::assemble(
+                    jigsaw::villages(),
+                    &SETTINGS,
+                    IVec2::new(center.x, center.z),
+                    &|x, z| surface(&g, x, z),
+                    super::super::noise::hash3(region.x, 0, region.y, seed ^ SALT),
+                );
+                let bounds = placed.iter().map(|p| p.bounds).reduce(|a, b| a.union(&b)).unwrap();
+                Arc::new(Village { center, style, pieces: Vec::new(), placed, bounds })
+            } else {
+                g.villages.get(&g, region).unwrap()
+            };
             let features: Vec<_> = v.features().collect();
-            assert!(features.iter().any(|(at, _)| *at == spot), "seed {seed}: {spot} is no longer a feature");
+            assert!(!features.is_empty());
+            if let Some(spot) = review {
+                assert!(features.iter().any(|(at, _)| *at == spot), "seed {seed}: review feature {spot}");
+            }
             for (at, f) in features {
                 let want = match f {
                     Feature::VillageHome(_) => Block::BED_HEAD,
@@ -953,7 +1050,14 @@ mod tests {
                     Feature::VillageWorkstation(job) => job,
                     _ => continue,
                 };
-                let data = g.generate(super::super::chunk::chunk_of(at));
+                let pos = super::super::chunk::chunk_of(at);
+                let data = if review.is_some() {
+                    let mut blocks = super::super::chunk::ChunkData::new_dense(Block::AIR);
+                    v.paint(&g, &mut blocks, pos * CHUNK_SIZE_I);
+                    super::super::chunk::ChunkData::from_dense(blocks)
+                } else {
+                    g.generate(pos)
+                };
                 let l = super::super::chunk::local_of(at);
                 assert_eq!(
                     data.get(l.x as usize, l.y as usize, l.z as usize).base(),
@@ -977,6 +1081,8 @@ mod tests {
             rotation: 0,
             bounds: Bounds { min: origin, max: origin + t.size - IVec3::ONE },
             depth: 0,
+            ground_y: origin.y,
+            junctions: None,
             seed: 1,
         };
         let surface = |_: i32, z: i32| if z < 7 { 40 } else { 45 };

@@ -86,8 +86,10 @@ Worlds created by v0.14 and later (`worldgen=3`) build villages with the
 jigsaw assembler in [`jigsaw.rs`](../src/world/jigsaw.rs) from the
 templates and pools in [`jigsaw/village.txt`](../src/world/jigsaw/village.txt).
 Worlds from v0.13 and earlier keep the layout described above, so their
-untouched chunks never change. Placement, the start biome check, `/locate`,
-loot tables and residents are the same for every generation.
+untouched chunks never change. Random-spread candidate positions, start biome
+eligibility, loot tables and resident registration retain their existing rules.
+Generation 3 may reject starts whose terrain envelope cannot fit the finite
+beard; locate skips those rejected starts.
 
 The templates are original designs (owner, 2026-11-03), drawn once and
 dressed per style through roles such as `$planks`, `$log`, `$roof_stairs`
@@ -119,19 +121,31 @@ Painting is clipped to each chunk and reads only the cached layout and the
 terrain columns, so chunks agree whatever order or thread generates them.
 Streets and other terrain-following pieces are painted before buildings,
 so a street that follows the ground through a house's box never replaces
-its chest, bed or job site. Rigid pieces get foundation pillars down to the ground and the terrain
-above their footprint is cleared, as in older generations.
+its chest, bed or job site. Generation 3 chooses rigid-piece ground planes
+from unadapted seed-only terrain over the footprint and a two-block ring.
+The plane stays as close to the centre/connector height as the envelope permits;
+rigid-to-rigid joins stay aligned. Admissible floors are tried nearest that
+preferred height first (lower height breaks ties). A combined-density check
+checks the candidate and all nearby existing rigid pieces for the 2-block
+support, 3-block first-ring and 3-block adjacent-step bounds; a candidate that
+cannot fit falls through the existing shuffled pool. Only a rejected start piece removes a whole start.
+A finite Java-shaped `beard_thin` contribution then shapes the density before
+surface rules, carvers and features. The rigid-footprint clear-above pass is
+disabled; foundations fill remaining air/water as a fallback. Trees and larger
+ground features use adapted heights and avoid building footprints. A whole tree
+is rejected when its crown intersects terrain in beard-influenced columns, so
+raised ground does not clip a crown into a half-buried remnant.
 
 Differences from Java: the templates and pools are VoxelCraft's, so no
 seed reproduces a Java village; job sites are chosen per house rather than
 fixed by profession buildings; there are no abandoned or zombie variants,
-no decoration pools, no animals or cats spawned with the pens, and no
-beardifier, so pieces on slopes stand on pillars or in cut-away hillsides.
-
-A [2026-11-09 investigation](verification/2026-11-09-structure-terrain-blending.md)
-found that a finite Java-shaped beard alone does not remove the cuts with the
-current steep-slope placements; no terrain change was shipped. The next step
-needs an explicit placement-envelope or native-terrain adaptation scope decision.
+no decoration pools, and no animals or cats spawned with the pens. The
+placement envelope is a generation-3 departure from Java: it restricts the
+unadapted ground to six blocks either side of the ground plane, can shift
+terrain-parent children, and rejects steeper candidates. The density conversion
+and exact-square-root kernel also differ from Java's noise router and fast
+inverse square root. The [terrain investigation and round 2 record](verification/2026-11-09-structure-terrain-blending.md)
+explain the scope, measurements and remaining acceptance gaps.
 Placement and selection priorities are all 0 and the start box isn't grown
 by Java's "expansion hack".
 

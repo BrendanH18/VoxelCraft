@@ -22,8 +22,9 @@
 //! surface at the connector. Not modelled: placement and selection
 //! priorities other than 0, Java's random sequence (layouts are original,
 //! so seeds can't match anyway), the "expansion hack" that grows a start's
-//! box, processors other than the bridge rule, and Java's beardifier, which
-//! is approximated by foundations below rigid pieces and clearing above.
+//! box, processors other than the bridge rule. Generation 3 villages and outposts
+//! use the terrain density beard in `terrain::beard`; foundations remain
+//! a fallback where its finite kernel cannot reach the existing ground.
 //!
 //! Besides the format documented in `jigsaw/village.txt`, templates take
 //! `fill x0 y0 z0 x1 y1 z1 <spec>` (an inclusive box of a block, role or
@@ -496,6 +497,10 @@ pub struct Placed {
     pub rotation: u8,
     pub bounds: Bounds,
     pub depth: u8,
+    /// Ground plane inherited across rigid joins (original templates use delta 0).
+    pub ground_y: i32,
+    /// Both directed junctions of the join to the parent, stored on the child.
+    pub junctions: Option<[IVec3; 2]>,
     /// Seeds the piece's random choices (job site, crops, chest loot).
     pub seed: u64,
 }
@@ -515,10 +520,10 @@ struct Free {
 }
 
 impl Free {
-    fn fits(&self, b: &Bounds) -> bool {
+    fn fits_ignoring(&self, b: &Bounds, empty_parent: Option<Bounds>) -> bool {
         b.min.cmpge(self.container.min).all()
             && b.max.cmple(self.container.max).all()
-            && !self.taken.iter().any(|t| t.intersects(b))
+            && !self.taken.iter().any(|t| Some(*t) != empty_parent && t.intersects(b))
     }
 }
 
@@ -563,6 +568,49 @@ pub fn assemble(
     assemble_with(lib, settings, &place, surface, seed)
 }
 
+type PlacementCheck<'a> = dyn Fn(&[Placed], &Placed) -> bool + 'a;
+
+/// Surface structures whose finite beard must reach the unadapted ground.
+/// The nearest admissible floor to Java's connector/centre height is used.
+/// Rigid vertical joins retain their parent's ground plane and exact join.
+pub fn assemble_enveloped(
+    lib: &Library,
+    settings: &Settings,
+    at: IVec2,
+    surface: &dyn Fn(i32, i32) -> i32,
+    seed: u64,
+    validate: &PlacementCheck<'_>,
+) -> Vec<Placed> {
+    let place = |t: &Template, r| {
+        let b = bounds_of(t, IVec3::new(at.x, 0, at.y), r);
+        let c = (b.min + b.max) / 2;
+        IVec3::new(at.x, surface(c.x, c.z), at.y)
+    };
+    assemble_impl(lib, settings, &place, surface, seed, Some(validate))
+}
+
+/// A conservative subinterval of the 24-block beard support. Ground farther
+/// than six blocks can leave an upper shelf in the native density field.
+/// Include two rings: the second supplies the adjacent-step check's far side.
+fn envelope(b: Bounds, surface: &dyn Fn(i32, i32) -> i32) -> Option<(i32, i32)> {
+    let (mut lo, mut hi) = (i32::MIN, i32::MAX);
+    for z in b.min.z - 2..=b.max.z + 2 {
+        for x in b.min.x - 2..=b.max.x + 2 {
+            let h = surface(x, z);
+            lo = lo.max(h - 6);
+            hi = hi.min(h + 6);
+        }
+    }
+    (lo <= hi).then_some((lo, hi))
+}
+
+/// Closest height first, with the lower floor breaking equal-distance ties.
+fn floors(lo: i32, hi: i32, preferred: i32) -> Vec<i32> {
+    let mut ys: Vec<_> = (lo..=hi).collect();
+    ys.sort_by_key(|y| ((y - preferred).abs(), *y));
+    ys
+}
+
 /// [`assemble`] with the start piece's origin chosen by `place` from the
 /// picked start template and rotation (Java's `start_jigsaw_name` puts a
 /// named point of the start at the structure's start position; see
@@ -574,6 +622,18 @@ pub fn assemble_with(
     surface: &dyn Fn(i32, i32) -> i32,
     seed: u64,
 ) -> Vec<Placed> {
+    assemble_impl(lib, settings, place, surface, seed, None)
+}
+
+fn assemble_impl(
+    lib: &Library,
+    settings: &Settings,
+    place: &dyn Fn(&Template, u8) -> IVec3,
+    surface: &dyn Fn(i32, i32) -> i32,
+    seed: u64,
+    validate: Option<&PlacementCheck<'_>>,
+) -> Vec<Placed> {
+    let bounded = validate.is_some();
     let mut rng = Rng(seed);
     let Some(start_pool) = lib.pools.get(settings.start_pool) else { return Vec::new() };
     let start = pick(start_pool, &mut rng);
@@ -581,7 +641,30 @@ pub fn assemble_with(
     let rotation = rng.below(4) as u8;
     let t = &lib.templates[start as usize];
     let origin = place(t, rotation);
-    let bounds = bounds_of(t, origin, rotation);
+    let mut first = Placed {
+        template: start,
+        origin,
+        rotation,
+        bounds: bounds_of(t, origin, rotation),
+        depth: 0,
+        ground_y: origin.y,
+        junctions: None,
+        seed: 0,
+    };
+    if let Some(check) = validate {
+        let Some((lo, hi)) = envelope(first.bounds, surface) else { return Vec::new() };
+        let Some(y) = floors(lo, hi, origin.y).into_iter().find(|&y| {
+            first.origin.y = y;
+            first.ground_y = y;
+            first.bounds = bounds_of(t, first.origin, rotation);
+            check(&[], &first)
+        }) else {
+            return Vec::new();
+        };
+        first.origin.y = y;
+    }
+    first.seed = rng.next_u64();
+    let (origin, bounds) = (first.origin, first.bounds);
     let centre = (bounds.min + bounds.max) / 2;
     let ground = origin.y;
     let d = settings.max_distance;
@@ -590,7 +673,7 @@ pub fn assemble_with(
         max: IVec3::new(centre.x + d, ground + d, centre.z + d),
     };
     let mut frees = vec![Free { container, taken: vec![bounds] }];
-    let mut pieces = vec![Placed { template: start, origin, rotation, bounds, depth: 0, seed: rng.next_u64() }];
+    let mut pieces = vec![first];
     // Each piece's free space, and its own interior once something is put in it.
     let mut space = vec![0usize];
     let mut inner: Vec<Option<usize>> = vec![None];
@@ -640,22 +723,97 @@ pub fn assemble_with(
                         }
                         let local = rotate(cj.pos, r);
                         let mut origin = target - local;
-                        // A vertical join sits on/below its parent, including
-                        // terrain-projected plates. Projecting again would move
-                        // the child into the parent's already occupied box.
-                        let y = if jig.vertical != 0 || rigid && ct.projection == Projection::Rigid {
+                        // Keep legacy vertical joins pinned. Adapted surface
+                        // structures instead project rigid children of terrain
+                        // parents at the connector, including outpost plates.
+                        let project = bounded && !rigid && ct.projection == Projection::Rigid;
+                        let y = if (jig.vertical != 0 && !project) || rigid && ct.projection == Projection::Rigid {
                             target.y - local.y
                         } else {
                             *ground_at.get_or_insert_with(|| surface(p.x, p.z) + 1) - local.y
                         };
                         origin.y = y;
-                        let bounds = bounds_of(ct, origin, r);
-                        if !frees[free].fits(&bounds) {
-                            continue;
-                        }
-                        frees[free].taken.push(bounds);
+                        let relative_y = jig.pos.y - cj.pos.y + i32::from(jig.vertical);
+                        let parent_delta = piece.ground_y - piece.bounds.min.y;
+                        let child_delta =
+                            if ct.projection == Projection::Rigid { parent_delta - relative_y } else { 0 };
+                        let ground = origin.y + child_delta;
+                        let options = if bounded && ct.projection == Projection::Rigid {
+                            let b = bounds_of(ct, origin, r);
+                            let Some((mut lo, mut hi)) = envelope(b, surface) else { continue };
+                            // Template air/floors replace density inside boxes.
+                            // Keep touching pieces' physical floors within one
+                            // block, so that replacement preserves their rings.
+                            for other in &pieces {
+                                if lib.templates[other.template as usize].projection != Projection::Rigid {
+                                    continue;
+                                }
+                                let dx = (b.min.x - other.bounds.max.x).max(other.bounds.min.x - b.max.x).max(0);
+                                let dz = (b.min.z - other.bounds.max.z).max(other.bounds.min.z - b.max.z).max(0);
+                                if dx <= 2 && dz <= 2 {
+                                    let physical = other.origin.y;
+                                    lo = lo.max(physical - 1 + child_delta);
+                                    hi = hi.min(physical + 1 + child_delta);
+                                }
+                            }
+                            if lo > hi {
+                                continue;
+                            }
+                            if rigid {
+                                if !(lo..=hi).contains(&ground) {
+                                    continue;
+                                }
+                                vec![ground]
+                            } else {
+                                floors(lo, hi, ground)
+                            }
+                        } else {
+                            vec![ground]
+                        };
                         let depth = piece.depth + 1;
-                        pieces.push(Placed { template: c, origin, rotation: r, bounds, depth, seed: rng.next_u64() });
+                        let mut accepted = None;
+                        for floor in options {
+                            origin.y = floor - child_delta;
+                            let bounds = bounds_of(ct, origin, r);
+                            // Original outpost feature plates are marker-only.
+                            // Their reserved box must not reject their own rigid
+                            // child after connector-heightmap projection.
+                            let empty_parent =
+                                (project && jig.vertical != 0 && t.cells.is_empty() && t.fills.is_empty())
+                                    .then_some(piece.bounds);
+                            if !frees[free].fits_ignoring(&bounds, empty_parent) {
+                                continue;
+                            }
+                            let joint_y = if rigid {
+                                p.y
+                            } else if ct.projection == Projection::Rigid {
+                                origin.y + cj.pos.y
+                            } else {
+                                *ground_at.get_or_insert_with(|| surface(p.x, p.z) + 1) + relative_y / 2
+                            };
+                            let candidate = Placed {
+                                template: c,
+                                origin,
+                                rotation: r,
+                                bounds,
+                                depth,
+                                ground_y: bounds.min.y + child_delta,
+                                junctions: Some([
+                                    IVec3::new(target.x, joint_y - jig.pos.y + parent_delta, target.z),
+                                    IVec3::new(p.x, joint_y - cj.pos.y + child_delta, p.z),
+                                ]),
+                                seed: 0,
+                            };
+                            if validate.is_some_and(|check| !check(&pieces, &candidate)) {
+                                continue;
+                            }
+                            accepted = Some(candidate);
+                            break;
+                        }
+                        let Some(mut candidate) = accepted else { continue };
+                        candidate.seed = rng.next_u64();
+                        frees[free].taken.push(candidate.bounds);
+                        pieces.push(candidate);
                         space.push(free);
                         inner.push(None);
                         if depth <= settings.max_depth {
@@ -683,7 +841,7 @@ pub fn jig_offset(j: &Jigsaw, rotation: u8) -> IVec3 {
 pub fn single(lib: &Library, name: &str, origin: IVec3, rotation: u8, seed: u64) -> Placed {
     let template = lib.templates.iter().position(|t| t.name == name).unwrap_or_else(|| panic!("no template {name}"));
     let bounds = bounds_of(&lib.templates[template], origin, rotation);
-    Placed { template: template as u16, origin, rotation, bounds, depth: 0, seed }
+    Placed { template: template as u16, origin, rotation, bounds, depth: 0, ground_y: origin.y, junctions: None, seed }
 }
 
 /// The world box a template would take at `origin`, turned `rotation` times.
@@ -890,9 +1048,9 @@ pub fn paint_canvas(lib: &Library, pieces: &[Placed], palette: &dyn Palette, gro
             put(canvas, cell.pos, &cell.spec);
         }
     }
-    // Foundations: pillars under a rigid piece's bottom layer, down
-    // through air and water to the ground (Java's beardifier fills the
-    // terrain instead).
+    // Foundations are a fallback through remaining air/water under rigid
+    // bottom cells. Adapted surface structures normally meet natural soil;
+    // deep water and terrain beyond the finite beard kernel still need support.
     let Some(foundation) = palette.role("foundation") else { return };
     for p in &near {
         let t = &lib.templates[p.template as usize];
