@@ -61,13 +61,32 @@ defect, only in the way of the capture.
 
 ## Hands-on play
 
-HANDS_ON_SECTION
+Not reached. GPT-6.1 Terra was asked twice for a 30-minute play session
+(menus, movement, a village and its trades, brewing, the new mobs, a trial
+chamber, an ancient city and the warden, save and reload) and played for
+zero minutes both times:
+
+1. **As a bare executable.** Computer use didn't list the game as an app
+   and returned `Invalid app` by path and by name. The 2026-11-05 graphics
+   review hit the same thing.
+2. **As an app bundle** (now `scripts/test-app.sh`). The bundle was listed
+   as running under its identifier, but attaching returned
+   `cgWindowNotFound`. The cause was the machine, not the game: the owner
+   was away and the screen was locked
+   (`CGSSessionScreenIsLocked` true), and a locked session has no windows
+   to attach to. The same lock is why no windowed frame-time run was valid
+   that day.
+
+So the bundle fixes the first blocker and the second needs an unlocked
+screen. The recipe is in the
+[development guide](../development.md#hands-on-runs). Hands-on play of
+v0.14 to v0.16 is still owed.
 
 ## What this did not check
 
 - Anything that needs input: menus, movement, combat, trading, brewing at
-  a stand, the warden and trial spawner encounters, save and reload
-  (see hands-on play above for what was reached).
+  a stand, the warden and trial spawner encounters, save and reload.
+  Hands-on play reached none of it.
 - Sound and music.
 - Bastions and Nether fossils (the Nether was not visited), desert wells,
   buried treasure, cold ocean ruins, and the inside of trail ruins.
@@ -84,4 +103,4 @@ HANDS_ON_SECTION
 | Villages and outposts stood on pedestals | Fixed for generation 3 by [terrain blending](2026-11-09-structure-terrain-blending.md); villages on steep ground are now smaller or absent |
 | Water falls into the ancient city from a cave beside it | Known gap of the `beard_box` approximation; stays with the ancient city catalogue work (v0.17) |
 | Blended villages lose their farms first | Farm plots are the widest rigid pieces, so they fail the floor envelope most often. Worth a look when the village catalogue is redone (v0.17): narrower or terrain-following farm pieces would survive |
-HANDS_ON_PROBLEMS
+| Computer use can't see a bare executable, or any window while the screen is locked | `scripts/test-app.sh` wraps a build in an app bundle; hands-on runs need the owner's screen unlocked |

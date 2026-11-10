@@ -624,18 +624,21 @@ v0.17 does not start until it passes. Work items:
    and trial chambers keep their older approximations of `beard_box`,
    `bury` and `encapsulate`.
 4. **An agent run of v0.14 to v0.16.** *Scripted captures done; hands-on
-   play HANDS_ON_STATUS (2026-11-09,
+   play not reached (2026-11-09,
    [record](verification/2026-11-09-stabilisation-pass.md)).* Every
    generation 3 structure (villages, an outpost, a ruined portal, trail
    ruins, a warm ocean ruin, an ancient city, a trial chamber) and every
-   v0.15 and v0.16 mob was drawn from the merged build and looked at.
+   v0.15 and v0.16 mob was drawn from the merged build and looked at. Two
+   hands-on sessions through computer use played for zero minutes: a bare
+   executable isn't visible to it (fixed by `scripts/test-app.sh`), and
+   the owner's screen was locked, which leaves no window to attach to.
 5. **Documentation.** *Done (2026-11-09).* History moved to the
    [delivery records](delivery-records.md), the
    [inventory](requirements.md) refreshed against `main` and its 26
    stranded rows given releases, and `tools/check_doc_links.py` added to
    CI.
 6. **Still owed before the tag.** The owner's play of a new generation 3
-   world. Three valid windowed runs of every scene on AC power with the
+   world. A hands-on agent session with the screen unlocked. Three valid windowed runs of every scene on AC power with the
    machine idle (PERF-02), and the streaming route's main-thread terrain
    column lookups from mob spawning (PERF-03). The owner's decision on
    [FE-02](#14-what-can-follow-10). Ancient cities and trial chambers in

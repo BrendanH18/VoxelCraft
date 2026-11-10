@@ -219,6 +219,21 @@ it off for UI captures. The
 [2026-11-09 stabilisation pass](verification/2026-11-09-stabilisation-pass.md)
 lists the poses it used.
 
+## Hands-on runs
+
+An agent that plays the game through computer use (AGENTS.md names the
+model) needs two things the scripted scenes don't. The game has to be an
+app: a bare `target/release/voxelcraft` isn't listed, so wrap the build with
+`scripts/test-app.sh BINARY`, which makes an ad-hoc signed
+`target/hands-on/VoxelCraft Test.app` with its own bundle identifier, and
+launch that with `open -n … --args --data-dir "$PWD/target/hands-on/data" --no-update-check`.
+And the screen has to be unlocked: a locked session has no windows, so
+attaching fails with `cgWindowNotFound` and windowed benchmark runs are
+rejected as occluded. Check with
+`ioreg -n Root -d1 -a | grep -A1 CGSSessionScreenIsLocked` before starting,
+and leave hands-on play and gate runs for when the owner is at the machine
+rather than working around the lock.
+
 ## Sound export
 
 ```sh
