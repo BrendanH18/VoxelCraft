@@ -1814,6 +1814,7 @@ mod tests {
         assert_eq!(xp("xp set 3 points"), Some((true, 3, false)));
         assert!(xp("xp set -1 levels").is_none() && xp("xp add 5 hearts").is_none() && xp("xp add").is_none());
         assert!(matches!(Command::parse("xp query"), Ok(Command::XpQuery)));
+        assert!(matches!(Command::parse("/xp query @s levels"), Ok(Command::XpQuery)));
         assert!(Command::parse("xp add 1").unwrap().cheat());
         assert!(matches!(Command::parse("gamerule keepInventory").unwrap(), Command::GameRule { .. }));
         assert!(matches!(Command::parse("time query daytime").unwrap(), Command::TimeQuery(TimeQuery::Daytime)));

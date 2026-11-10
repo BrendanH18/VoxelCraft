@@ -558,7 +558,7 @@ impl Command {
             },
             ["seed"] => Self::Seed,
             ["dimension", name] => Self::Dimension(Dimension::from_name(name).ok_or_else(bad)?),
-            ["xp" | "experience", "query"] => Self::XpQuery,
+            ["xp" | "experience", "query"] | ["xp" | "experience", "query", "points" | "levels"] => Self::XpQuery,
             ["xp" | "experience", op @ ("add" | "set"), n, unit @ ..] => {
                 let amount = n.parse::<i64>().ok().filter(|n| n.abs() <= 1_000_000).ok_or_else(bad)?;
                 let levels = match unit {
