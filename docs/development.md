@@ -209,9 +209,13 @@ To point a capture at a structure, find it without starting the game:
 `cargo run --release --no-default-features --example locate_structures -- 42`
 prints the nearest village, outpost, ancient city, trial chamber, trail
 ruins, ruined portal, buried treasure, ocean ruin, temple, shipwreck,
-monument, stronghold and mineshaft to the origin for that seed in the latest
-world generation (run it through `scripts/remote-check.sh -- '…'` to keep the
-build off the Mac). The camera looks along `(cos yaw, sin yaw)` in x and z,
+monument, stronghold, mineshaft and desert well to the origin for that seed
+in the latest world generation, then the buried treasure chest's depth, the
+nearest trail ruin's piece bounds (for cut-away poses), the nearest Nether
+fossil and the eight nearest bastions with their kind (run it through
+`scripts/remote-check.sh -- 'cargo run …'` to keep the build off the Mac).
+To dig into buried content with `--place x,y,z,air`, list the cells top
+down: removing a cell under sand or gravel first drops it into the hole. The camera looks along `(cos yaw, sin yaw)` in x and z,
 so a pose of `x-40,y+35,z+40,-45,-30` looks down at a structure at `x,y,z`.
 Underground structures need a camera in open air inside them and
 `--effect night_vision,600`; `--no-hud` also hides the inventory, so leave
