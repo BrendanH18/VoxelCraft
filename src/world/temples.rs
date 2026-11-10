@@ -476,7 +476,9 @@ impl Temples {
         let col = g.column(centre.x, centre.y);
         let mut rng = Rng(hash3(start.x, start.y, kind as i32, self.seed ^ 0x7E3D));
         let ok = self.valid_start(g, kind, start);
-        let built = ok.then(|| Arc::new(self.build(g, kind, centre, col.height, &mut rng)));
+        let built = ok
+            .then(|| Arc::new(self.build(g, kind, centre, col.height, &mut rng)))
+            .filter(|b| kind != Kind::Outpost || g.generation < super::terrain::Generation::V3 || !b.placed.is_empty());
         let mut cache = self.cache.lock().unwrap();
         if let Some(found) = cache.get(&(kind, region)) {
             return found.clone();
@@ -531,7 +533,11 @@ impl Temples {
                             return None;
                         }
                         let start = self.start(kind, home + IVec2::new(x, z));
-                        self.valid_start(g, kind, start).then(|| IVec3::new(start.x * 16, 0, start.y * 16))
+                        (self.valid_start(g, kind, start)
+                            && (kind != Kind::Outpost
+                                || g.generation < super::terrain::Generation::V3
+                                || self.get(g, kind, home + IVec2::new(x, z)).is_some()))
+                        .then(|| IVec3::new(start.x * 16, 0, start.y * 16))
                     })
                 });
                 if let Some(p) = found
@@ -589,6 +595,33 @@ impl Temples {
                     && b.bounds.max.z >= p.z - radius
             })
             .collect()
+    }
+    /// Only the outpost placement set, with assembler extent plus the beard's
+    /// 12-block kernel and the density column ring. No other temple lookups.
+    pub(in crate::world) fn terrain_pieces(
+        &self,
+        g: &Generator,
+        base: IVec3,
+        mut f: impl FnMut(&[super::jigsaw::Placed]),
+    ) {
+        let span = 32 * 16;
+        let reach = 96 + 13;
+        let lo = IVec2::new(base.x, base.z);
+        let hi = lo + IVec2::splat(CHUNK_SIZE_I - 1);
+        let rlo = (lo - IVec2::splat(reach)).div_euclid(IVec2::splat(span));
+        let rhi = (hi + IVec2::splat(reach)).div_euclid(IVec2::splat(span));
+        for z in rlo.y..=rhi.y {
+            for x in rlo.x..=rhi.x {
+                let region = IVec2::new(x, z);
+                let c = self.start(Kind::Outpost, region) * 16 + IVec2::splat(8);
+                if c.x + reach < lo.x || c.x - reach > hi.x || c.y + reach < lo.y || c.y - reach > hi.y {
+                    continue;
+                }
+                if let Some(b) = self.get(g, Kind::Outpost, region) {
+                    f(&b.placed);
+                }
+            }
+        }
     }
     fn around(&self, g: &Generator, lo: IVec2, hi: IVec2) -> Vec<Arc<Built>> {
         let mut out = Vec::new();
@@ -1802,6 +1835,29 @@ pub(crate) fn test_swamp_hut(rot: u8) -> Built {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    #[ignore]
+    fn terrain_envelope_outpost_availability() {
+        for seed in [42, 12345, 2024] {
+            let g = Generator::new(seed);
+            let (mut before, mut after, mut residents) = (0, 0, 0);
+            for z in -22..=22 {
+                for x in -22..=22 {
+                    let r = IVec2::new(x, z);
+                    if g.temples.valid_start(&g, Kind::Outpost, g.temples.start(Kind::Outpost, r)) {
+                        before += 1;
+                    }
+                    if let Some(b) = g.temples.get(&g, Kind::Outpost, r) {
+                        after += 1;
+                        residents += usize::from(!b.residents.is_empty());
+                    }
+                }
+            }
+            println!("seed {seed}: 2025 cells; outposts {before} -> {after}, with residents {residents}");
+            assert!(residents > 0, "no outpost residents survive placement");
+        }
+    }
+
     use super::*;
 
     #[test]

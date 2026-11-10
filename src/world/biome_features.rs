@@ -71,14 +71,17 @@ impl Generator {
                     if roll >= chance {
                         continue;
                     }
-                    let col = self.column(ox, oz);
+                    if !self.terrain_vegetation(ox, oz) {
+                        continue;
+                    }
+                    let col = self.terrain_column(ox, oz);
                     if col.height < SEA_LEVEL || col.height + 8 < base.y || col.height > base.y + CHUNK_SIZE_I {
                         continue;
                     }
                     let variant = (h >> 32) as u32;
                     let ground = IVec3::new(ox, col.height, oz);
                     let steep = {
-                        let h = |dx: i32, dz: i32| self.column(ox + dx, oz + dz).height;
+                        let h = |dx: i32, dz: i32| self.terrain_column(ox + dx, oz + dz).height;
                         (h(1, 0) - h(-1, 0)).abs().max((h(0, 1) - h(0, -1)).abs())
                     };
                     let soil = self.surface_block(col, ox, oz, steep);
@@ -95,7 +98,7 @@ impl Generator {
                         let step = if along_x { IVec3::X } else { IVec3::Z };
                         let len = 3 + (variant % 3) as i32;
                         let level = (0..len).all(|i| {
-                            let c = self.column(ox + step.x * i, oz + step.z * i);
+                            let c = self.terrain_column(ox + step.x * i, oz + step.z * i);
                             c.height == col.height && c.biome == col.biome
                         });
                         if level {
@@ -124,6 +127,12 @@ impl Generator {
                 }
                 let (wx, wz) = (base.x + x as i32, base.z + z as i32);
                 let above = index(x, (y + 1) as usize, z);
+                if y < 0
+                    && columns.relief.as_ref().is_some_and(|r| r.adaptation.is_some())
+                    && !self.terrain_surface_supported(wx, wz)
+                {
+                    continue;
+                }
                 let surface = self.surface_block(col, wx, wz, columns.steepness(x, z));
                 let ground = (y >= 0).then(|| index(x, y as usize, z));
                 let soil = ground.map_or(surface, |g| blocks[g]);

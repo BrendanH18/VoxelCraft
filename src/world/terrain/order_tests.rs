@@ -359,3 +359,58 @@ fn generation_3_nether_portals_ignore_order_threads_and_caches() {
         assert_eq!(differs(&fresh(), *p, r, "cold Nether"), None);
     }
 }
+
+/// Surface-beard footprints and their outside ring, including chunks whose
+/// only structure influence comes from across a chunk boundary.
+#[test]
+fn generation_3_sloped_structure_beards_ignore_order_threads_and_caches() {
+    let seed = 42;
+    let fresh = || Generator::with_generation(seed, Dimension::Overworld, Generation::V3);
+    let probe = fresh();
+    let mut chunks = Vec::new();
+    for (_, ps) in super::beard::tests::fixtures(&probe) {
+        for p in ps {
+            let lo = (p.bounds.min - glam::IVec3::splat(12)).div_euclid(IVec3::splat(CHUNK_SIZE_I));
+            let hi = (p.bounds.max + glam::IVec3::splat(12)).div_euclid(IVec3::splat(CHUNK_SIZE_I));
+            for z in lo.z..=hi.z {
+                for x in lo.x..=hi.x {
+                    for y in lo.y..=hi.y {
+                        chunks.push(IVec3::new(x, y, z));
+                    }
+                }
+            }
+        }
+    }
+    chunks.sort_by_key(|p| (p.z, p.x, p.y));
+    chunks.dedup();
+    let g = fresh();
+    let reference: Vec<_> = chunks.iter().map(|&p| (g.generate(p), g.structure_features(p))).collect();
+    let mut g = fresh();
+    for (i, p) in chunks.iter().enumerate().rev() {
+        assert_eq!(differs(&g, *p, &reference[i], "reverse"), None);
+        if i % 3 == 0 {
+            g.adapted_columns.lock().unwrap().clear();
+        }
+        if i % 5 == 0 {
+            g.columns.lock().unwrap().clear();
+        }
+        if i % 7 == 0 {
+            g.villages = crate::world::village::Villages::new(seed);
+            g.temples = crate::world::temples::Temples::new(seed);
+        }
+    }
+    let g = fresh();
+    std::thread::scope(|s| {
+        for t in 0..THREADS {
+            let (g, chunks, reference) = (&g, &chunks, &reference);
+            s.spawn(move || {
+                for i in (t..chunks.len()).step_by(THREADS) {
+                    assert_eq!(differs(g, chunks[i], &reference[i], "parallel"), None);
+                }
+            });
+        }
+    });
+    for (p, want) in chunks.iter().zip(reference.iter()) {
+        assert_eq!(differs(&fresh(), *p, want, "cold"), None);
+    }
+}
