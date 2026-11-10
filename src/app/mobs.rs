@@ -838,9 +838,10 @@ impl Game {
                 e.items.len()
             ),
             format!(
-                "Falling: {}, stored: {} in {} chunks",
+                "Falling: {} (+{} stored), stored: {} in {} chunks",
                 self.world.falling_blocks().len(),
-                e.stored_entities() + self.world.stored_falling_blocks(),
+                self.world.stored_falling_blocks(),
+                e.stored_entities(),
                 e.stored_chunks()
             ),
         ]

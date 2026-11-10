@@ -376,7 +376,7 @@ new giant trees.
   sherd patterns.
 - Brushing has no sounds of its own, and other LAN players don't see the
   find rising out of the block.
-- Raids, illagers, woodland mansions, happy ghasts and nautiluses aren't in
+- Raids, vindicators, evokers, ravagers, woodland mansions, happy ghasts and nautiluses aren't in
   yet; they come in 0.17. Mobs don't pick up or hold your gear, and
   chainmail armor can't be obtained. Lecterns, looms, cartography tables and
   stonecutters are decorative, so maps can't be scaled, copied or locked,

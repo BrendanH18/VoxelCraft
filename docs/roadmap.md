@@ -204,9 +204,9 @@ to Java's units where a structure's beard applies
 the audit on 2026-11-09, approved by the owner on 2026-11-10).** v0.14 to v0.16 build
 structures from original templates because Java's template files are
 Mojang's work and the project ships only original or licensed assets
-([v0.14 scope](#v014-scope-structures)). No exception was recorded, so the
-GEN-05 rows still read as if a block-for-block Java layout were coming.
-FE-02 records what is already true and says what the templates are held
+([v0.14 scope](#v014-scope-structures)). Until 2026-11-10 no exception
+was recorded, so the GEN-05 rows read as if a block-for-block Java layout
+were coming. FE-02 records what is already true and says what the templates are held
 to instead:
 
 - **Excepted:** block-for-block Java layouts. A Java seed does not
@@ -379,8 +379,10 @@ keys, not release versions or block/item ID allocations.
 - **GEN-04:** Nether and End biome/terrain/features, portal placement and
   travel, arrival safety, dimension-specific rules and separated persistence.
 - **GEN-05:** all structures needed for core exploration/progression, with
-  Java placement rules, layouts, terrain alignment, traps, block entities,
-  residents, spawners and appropriate loot.
+  Java placement rules, terrain alignment, traps, block entities,
+  residents, spawners and appropriate loot. Layouts are original templates
+  held to the [FE-02](#14-what-can-follow-10) catalogue contract (Java's
+  piece kinds at comparable sizes), not block-for-block Java layouts.
   Includes villages/dungeons/mineshafts, temples/huts/igloos/outposts,
   shipwrecks/ruins/monuments/buried treasure, strongholds, fortresses/
   bastions, End cities/ships, mansions, ancient cities and trial chambers.
@@ -791,9 +793,9 @@ from v0.12, Implemented, unverified; the frame-time check is with v0.20.
 Approved by the owner on 2026-11-03. Templates are original VoxelCraft
 designs: the jigsaw algorithm, pools, placement, loot and residents follow
 Java, but no Minecraft template file or block-for-block layout is copied.
-No fidelity exception was recorded for this (owner, 2026-11-03): the
-GEN-05 layout rows stay "not Java's templates" until the owner decides at
-release.
+No fidelity exception was recorded for this on 2026-11-03. The owner
+approved [FE-02](#14-what-can-follow-10) on 2026-11-10, so the GEN-05
+layout rows now read "original templates (FE-02)".
 
 0. **Decision and IDs.** The template decision above; v0.14's state,
    item and texture ranges split per track in the
