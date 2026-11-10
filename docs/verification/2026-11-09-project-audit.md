@@ -173,4 +173,11 @@ applies and each the owner's to change:
 - **Nothing was tagged and Cargo stays at 0.13.0.** The roadmap recommends
   one `v0.16` tag covering v0.14 to v0.16 after the owner's play.
 
-Checks on the final tree: CHECKS_PLACEHOLDER
+Checks on the final tree: `scripts/remote-check.sh --full` on a
+Namespace instance passed with 4,491 tests and none failing across the
+default and `--no-default-features` configurations (45 ignored), both
+clippy runs clean and formatting unchanged; `python3 tools/check_doc_links.py`
+reports no broken link in 149 Markdown files. The generation 1 and 2 golden
+chunk hashes are unchanged. Not checked: owner play, hands-on play (the
+screen was locked), a valid windowed frame-time run, Windows and macOS CI
+before the pull request.
