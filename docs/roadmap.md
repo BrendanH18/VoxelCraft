@@ -625,10 +625,12 @@ v0.17 does not start until it passes. Work items:
    `bury` and `encapsulate`.
 4. **An agent run of v0.14 to v0.16.** *Scripted captures done; hands-on
    play not reached (2026-11-09,
-   [record](verification/2026-11-09-stabilisation-pass.md)).* Every
-   generation 3 structure (villages, an outpost, a ruined portal, trail
-   ruins, a warm ocean ruin, an ancient city, a trial chamber) and every
-   v0.15 and v0.16 mob was drawn from the merged build and looked at. Two
+   [record](verification/2026-11-09-stabilisation-pass.md)).* Villages,
+   an outpost, a ruined portal, trail ruins, a warm ocean ruin, an ancient
+   city, a trial chamber and 17 of the v0.15 and v0.16 mob kinds were drawn
+   from the merged build and looked at. Bastions, Nether fossils, desert
+   wells, buried treasure, cold ocean ruins and the other content that
+   record lists were not captured. Two
    hands-on sessions through computer use played for zero minutes: a bare
    executable isn't visible to it (fixed by `scripts/test-app.sh`), and
    the owner's screen was locked, which leaves no window to attach to.

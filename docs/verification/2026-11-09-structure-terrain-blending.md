@@ -1,5 +1,12 @@
 # Structure terrain blending investigation — 2026-11-09
 
+**Read this first:** the text down to [Round 2](#round-2-2026-11-09) is the
+history of a first attempt that delivered no terrain change. Round 2, later
+the same day, delivers generation 3 placement and density adaptation for
+villages and outposts; its section is the current state.
+
+## Round 1
+
 **Stopped at the owner's explicit stop condition; no terrain changes delivered.**
 A Java-shaped finite beard did not satisfy the requested ground/pillar/cut
 bounds with generation 3's current placements. Shipping it would leave the

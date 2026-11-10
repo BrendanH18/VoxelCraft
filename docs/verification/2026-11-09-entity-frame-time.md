@@ -46,8 +46,10 @@ that, every simulation scene completed 600 of 600 ticks with no paused time,
 no frame took over 50 ms, and the entity scene held 160–161 mobs. The other
 world scenes carried 250–310 mobs from natural herds.
 
-Read as a comparison, the five ordinary simulation scenes moved from under
-the two thresholds to over them, the menus gained, and streaming still fails
+Read as a comparison, all five ordinary simulation scenes' 1% lows rose
+from below 240 FPS to above it and all five p99 values are under 4.17 ms
+afterwards (four already were; `materials` was not), the menus gained, and
+streaming still fails
 by a wide margin for a different reason ([what remains](#what-remains)).
 
 ## Method and machine state

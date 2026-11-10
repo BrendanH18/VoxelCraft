@@ -310,9 +310,7 @@ pub fn java_item(name: &str) -> Option<crate::item::Item> {
             for name in found.into_iter().map(|s| s.trim_start_matches("minecraft:")) {
                 {
                     out.entry(name.into()).or_insert_with(|| {
-                        if let Some(item) =
-                            super::trial::java_item(name).or_else(|| crate::java_registry::item(name, ""))
-                        {
+                        if let Some(item) = super::trial::java_item(name) {
                             return Some(item);
                         }
                         let block = match name {
@@ -330,20 +328,26 @@ pub fn java_item(name: &str) -> Option<crate::item::Item> {
                             "pumpkin" => Some(Block::PUMPKIN),
                             _ => None,
                         };
-                        block.map(Item::from_block).or_else(|| match name {
-                            "goat_horn" => Some(Item::GOAT_HORN),
-                            "potion" => Some(Item::potion(crate::potion::Potion::WATER)),
-                            "porkchop" => Some(Item::RAW_PORKCHOP),
-                            "beef" => Some(Item::RAW_BEEF),
-                            "chicken" => Some(Item::RAW_CHICKEN),
-                            "leather_helmet" => Some(Item::armor(ArmorPiece::Helmet, ArmorMaterial::Leather)),
-                            "leather_chestplate" => Some(Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Leather)),
-                            "leather_leggings" => Some(Item::armor(ArmorPiece::Leggings, ArmorMaterial::Leather)),
-                            "splash_potion" => Some(Item::splash_potion(crate::potion::Potion::WATER)),
-                            "lingering_potion" => Some(Item::LINGERING_POTION),
-                            "tipped_arrow" => Some(Item::TIPPED_ARROW),
-                            _ => Item::from_name(name),
-                        })
+                        block
+                            .map(Item::from_block)
+                            .or_else(|| match name {
+                                "goat_horn" => Some(Item::GOAT_HORN),
+                                "potion" => Some(Item::potion(crate::potion::Potion::WATER)),
+                                "porkchop" => Some(Item::RAW_PORKCHOP),
+                                "beef" => Some(Item::RAW_BEEF),
+                                "chicken" => Some(Item::RAW_CHICKEN),
+                                "leather_helmet" => Some(Item::armor(ArmorPiece::Helmet, ArmorMaterial::Leather)),
+                                "leather_chestplate" => {
+                                    Some(Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Leather))
+                                }
+                                "leather_leggings" => Some(Item::armor(ArmorPiece::Leggings, ArmorMaterial::Leather)),
+                                "splash_potion" => Some(Item::splash_potion(crate::potion::Potion::WATER)),
+                                "lingering_potion" => Some(Item::LINGERING_POTION),
+                                "tipped_arrow" => Some(Item::TIPPED_ARROW),
+                                _ => Item::from_name(name),
+                            })
+                            // Last, so a name the chain above already resolves keeps its item.
+                            .or_else(|| crate::java_registry::item(name, ""))
                     });
                 }
             }
@@ -760,6 +764,9 @@ mod reference_tests {
         assert_eq!(java_item("gold_block"), Some(Item::from_block(super::super::block::Block::GOLD_BLOCK)));
         assert_eq!(java_item("porkchop"), Some(Item::RAW_PORKCHOP));
         assert_eq!(java_item("iron_chain"), Some(Item::from_block(super::super::block::Block::CHAIN)));
+        // Java's `wheat` is both the crop block and the item; loot means the item.
+        assert_eq!(java_item("wheat"), Some(Item::WHEAT));
+        assert_eq!(crate::java_registry::item("wheat", ""), Some(Item::WHEAT));
     }
     #[test]
     fn unseeded_tables_resume_after_world_save() {
