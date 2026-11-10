@@ -643,23 +643,35 @@ v0.17 does not start until it passes. Work items:
    A later GPT-6.1 Terra session in the [streaming follow-up](verification/2026-11-09-streaming-biomes-and-gen07.md)
    created a survival world, moved along the shoreline and into the ocean,
    used inventory and pause menus, saved and reopened. It also inspected
-   city and trial-chamber captures. Spawning, encounters and the remainder
-   of the content-wide hands-on pass remain unverified.
+   city and trial-chamber captures. *Further captures and play
+   (2026-11-10, [record](verification/2026-11-10-stabilisation-captures.md)):*
+   bastions of all four kinds, Nether fossils, a desert well, buried
+   treasure dug out with its loot, a cold ocean ruin, trail ruins cut away,
+   the v0.15 and v0.16 blocks, brushing and the v0.16 items were drawn and
+   looked at. Three defects were found and fixed: Nether fossils now
+   apply Java's `beard_thin`, generation 3 swamp shores get grass and
+   Java's swamp water pools instead of bare dirt, and the F3 columns no
+   longer overlap. A Terra session reached a village, the new mobs, a
+   trident, a trial chamber and an ancient city before the screen locked.
+   It found Java's `@s` target rejected by `/effect` and `/enchant`
+   (fixed). Trading, brewing, the mace, spawner waves, vaults, shriekers,
+   lightning, the jukebox and save/reload in play remain unverified.
 5. **Documentation.** *Done (2026-11-09).* History moved to the
    [delivery records](delivery-records.md), the
    [inventory](requirements.md) refreshed against `main` and its 26
    stranded rows given releases, and `tools/check_doc_links.py` added to
    CI.
 6. **Still owed before the tag.** The owner's play of a new generation 3
-   world. The remaining content and encounters in the agent hands-on pass.
+   world. The encounters listed under item 4 in the agent hands-on pass.
+   Cargo is at 0.16.0, and `packaging/RELEASE-NOTES.md` covers v0.14 to
+   v0.16 with their known gaps (2026-11-10).
    Three valid windowed runs of every scene on AC power with the machine
    idle (PERF-02/03), including investigation of any remaining streaming
    outliers. ([FE-02](#14-what-can-follow-10) was approved by the owner on
    2026-11-10.)
    Ancient cities and trial chambers now run in the GEN-07 order corpus
    ([record](verification/2026-11-09-streaming-biomes-and-gen07.md)).
-   Then the release preparation: Cargo version,
-   release notes that list the known gaps, and the tag.
+   Then the tag.
 
 **Exit:** the owner has played a generation 3 world built from the merged
 tree and reported the result; problems found are fixed or listed in the

@@ -229,3 +229,43 @@ passed (23 ignored) with default features and 2,150 (22 ignored) with
   checked here; that is outside the reported swamp defect.
 - Nether fossil designs are still the four original ones, not Java's
   fourteen, and the dried ghast is still missing (see the v0.14 record).
+
+## Hands-on play (2026-11-10)
+
+GPT-6.1 Terra played the build from `c5dd9eaa` (the F3 fix on top of
+`277a6355`) through computer use, wrapped with `scripts/test-app.sh`, in a
+new survival world on seed 42. This is agent evidence, not the owner's
+play. Three sessions ran. The first found the screen locked and didn't
+start. The second stopped after a few minutes. The third was cut off when
+the display slept and the screen locked (`cgWindowNotFound`). The
+screenshots show the owner's desktop around the game window, so they stay
+in the ignored `target/hands-on/` folder and aren't tracked.
+
+| Item | Result |
+|---|---|
+| Village | Partial. `/locate structure village` gave -384 72 -784: a path, fenced hay bales, chickens. A summoned villager walked away from the crosshair, so no trade was made |
+| Brewing | Not reached. The stand and ingredients were given, but water potions couldn't be: `/give @s potion[potion_contents={potion:"water"}]` and plain `potion` are unknown items |
+| v0.15 and v0.16 mobs | Partial. Bee, frog, panda, armadillo, copper golem, allay, sniffer, breeze and warden were all accepted by `/summon`. The frog, panda, armadillo, bee, allay and warden were seen drawn and moving in a bamboo jungle, at 120 FPS (vsync) |
+| Weapons | Partial. A thrown trident left the hotbar, and a Loyalty III trident came back. The mace smash and the spear weren't tried |
+| Trial chamber | Partial. Located at 265 -33 105: tuff brick and copper rooms, a chest. No spawner was triggered |
+| Ancient city | Partial. Located at 144 -27 176: sculk, reinforced deepslate and a chest inside. No shrieker was set off |
+| Lightning, jukebox, save and reload | Not reached before the lock |
+| F3 | Pass. No overlap in a 1280-point window |
+
+Problems found:
+
+- **`/effect give @s …`, `/enchant @s …` rejected.** Java's forms with a
+  target were refused, and only the target-less form worked. *Fixed* in
+  `6880d5db`: `@s` and `@p` are accepted at Java's target position for
+  `effect`, `enchant` and `xp`, checked by `agent::tests::parsing_bounds`.
+- **Item components in `/give`.** `potion[potion_contents=…]` isn't parsed,
+  so water bottles can't be given by command. They can still be filled from
+  water. Recorded for the command work. VoxelCraft's commands are a
+  subset of Java's.
+- **No in-wall overlay.** With the camera inside solid deepslate after a
+  teleport, the caves around it showed through. Java draws the block's
+  darkened texture over the screen when the camera is inside a suffocating
+  block (`ScreenEffectRenderer`). This is a presentation gap for v0.20.
+  Ordinary play reaches it only through suffocation.
+
+No crash or freeze was seen.
