@@ -1873,7 +1873,7 @@ mod tests {
             positions.sort_unstable_by_key(|p| (p.x, p.z));
             positions.dedup();
             for &pos in &positions {
-                world.receive_chunk(pos, Arc::new(ChunkData::new_dense(Block::AIR)));
+                world.receive_chunk(pos, Arc::new(ChunkData::Uniform(Block::AIR)));
                 let p = pos * CHUNK_SIZE_I;
                 assert_eq!(world.cave_biome(p), g.biome_at(p), "pending worker fallback");
             }
@@ -1898,7 +1898,7 @@ mod tests {
                 }
                 // Replace the loaded surface with player/host edits. Biome depth
                 // still uses generated terrain, never this new heightmap.
-                world.receive_chunk(pos, Arc::new(ChunkData::new_dense(Block::STONE)));
+                world.receive_chunk(pos, Arc::new(ChunkData::Uniform(Block::STONE)));
             }
             g.columns.lock().unwrap().clear();
             for (p, biome) in expected {
