@@ -269,3 +269,25 @@ Problems found:
   Ordinary play reaches it only through suffocation.
 
 No crash or freeze was seen.
+
+## Frame-time attempt (2026-11-10)
+
+`python3 tools/benchmark_scenes.py` ran at `6880d5db` on the owner's M5,
+on AC power, from 13:11. It started after two minutes with no input, with
+`caffeinate` keeping the display awake. The owner returned partway through
+and used the machine, so the window was occluded in most runs. **This is
+not gate evidence.** Of 24 scene runs, 10 were valid: building 1, entities
+3, automation 3 and materials 2. Streaming, menus and title had none. The
+title scene was stopped at 13:52 for the owner's meeting.
+
+| Scene | Valid runs: 1% low FPS / p99 ms |
+|---|---|
+| building | 184.5 / 3.544 |
+| entities | 114.3 / 8.343; 158.1 / 3.680; 233.7 / 3.420 |
+| automation | 236.3 / 3.478; 156.2 / 3.691; 237.2 / 3.565 |
+| materials | 115.0 / 8.364; 149.0 / 3.857 |
+
+Even the valid runs differ by up to 2× between repeats of one scene, and
+none reaches the 240 FPS 1% low. Three valid windowed runs of every scene,
+on an idle machine, are still owed (PERF-02/03). Reports are in the ignored
+`target/benchmarks/2026-11-10-gate/`.
