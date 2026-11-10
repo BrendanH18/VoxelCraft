@@ -32,6 +32,7 @@ pub use super::caves::LAVA_LEVEL;
 pub use super::climate::SEA_LEVEL;
 
 mod beard;
+pub(in crate::world) use beard::{beard_reaches, beard_thin};
 #[path = "biome_features.rs"]
 mod biome_features;
 mod density;

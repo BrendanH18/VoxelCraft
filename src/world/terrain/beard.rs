@@ -94,6 +94,21 @@ fn kernel(x: i32, y: i32, z: i32) -> f32 {
     });
     k[((z + 12) * 24 * 24 + (x + 12) * 24 + y + 12) as usize]
 }
+/// Java `beard_thin` from one rigid box whose ground plane is `ground` (its
+/// minimum y plus the piece's ground-level delta): 0.8 times the kernel at
+/// the horizontal distance to the box and the signed height above the
+/// plane. Zero beyond the kernel's [-12, 11] support. Nether fossils use it.
+pub(in crate::world) fn beard_thin(bounds: Bounds, ground: i32, p: IVec3) -> f32 {
+    let dx = distance(p.x, bounds.min.x, bounds.max.x);
+    let dz = distance(p.z, bounds.min.z, bounds.max.z);
+    0.8 * kernel(dx, p.y - ground, dz)
+}
+
+/// Whether column `(x, z)` is within [`beard_thin`]'s horizontal reach of `bounds`.
+pub(in crate::world) fn beard_reaches(bounds: Bounds, x: i32, z: i32) -> bool {
+    distance(x, bounds.min.x, bounds.max.x) < 12 && distance(z, bounds.min.z, bounds.max.z) < 12
+}
+
 fn add(terms: &mut Vec<Term>, lib: &jigsaw::Library, pieces: &[Placed], base: IVec3, mode: Mode) {
     let near = |b: Bounds| {
         b.max.x + 12 >= base.x - 1
