@@ -193,6 +193,9 @@ struct Column {
     foliage: Option<Box<[u8; CHUNK_SIZE * CHUNK_SIZE]>>,
     /// Snow lines (see `Generator::snow_lines`), worked out with the colours.
     snow: Option<Box<[i16; CHUNK_SIZE * CHUNK_SIZE]>>,
+    /// Original terrain heights, retained independently of the generator's
+    /// evictable density cache and the player's edited surface heightmap.
+    biome_heights: Option<Box<[i16; CHUNK_SIZE * CHUNK_SIZE]>>,
     /// Gameplay skylight has been seeded from the complete heightmap.
     sky_lit: bool,
 }
@@ -520,6 +523,7 @@ impl World {
                 loaded: 0,
                 foliage: None,
                 snow: None,
+                biome_heights: None,
                 sky_lit: false,
             }
         });
@@ -840,6 +844,18 @@ impl World {
         let l = local_of(IVec3::new(x, 0, z));
         let h = col.heights[(l.x + l.z * CHUNK_SIZE_I) as usize];
         (h != NO_HEIGHT).then_some(h as i32)
+    }
+
+    /// Gameplay biome, using worker-computed terrain heights while loaded.
+    /// Before those arrive (or outside loaded columns), preserve the generator
+    /// query rather than changing a spawning decision at the frontier.
+    pub(crate) fn biome_at(&self, p: IVec3) -> terrain::Biome {
+        let key = column_of(chunk_of(p));
+        if let Some(heights) = self.columns.get(&key).and_then(|c| c.biome_heights.as_ref()) {
+            let l = local_of(p);
+            return self.generator.biome_at_height(p, heights[(l.x + l.z * CHUNK_SIZE_I) as usize] as i32);
+        }
+        self.generator.biome_at(p)
     }
 
     /// Foliage colour group of a column (see `terrain::Biome::foliage`),
@@ -1401,6 +1417,7 @@ impl World {
                 loaded: 0,
                 foliage: None,
                 snow: None,
+                biome_heights: None,
                 sky_lit: false,
             }
         });
@@ -1517,10 +1534,11 @@ impl World {
                         self.insert_generated(pos, *chunk);
                     }
                 }
-                JobResult::Foliage(key, foliage, snow) => {
-                    if let Some(col) = self.columns.get_mut(&key) {
-                        col.foliage = Some(foliage);
+                JobResult::Foliage { pos, colours, snow, biome_heights } => {
+                    if let Some(col) = self.columns.get_mut(&pos) {
+                        col.foliage = Some(colours);
                         col.snow = Some(snow);
+                        col.biome_heights = biome_heights;
                     }
                 }
                 JobResult::Meshed { pos, version, mesh } => {

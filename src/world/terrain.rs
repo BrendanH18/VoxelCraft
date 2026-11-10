@@ -399,6 +399,25 @@ impl Generator {
         super::deep_dark::cave_biome(self.generation, &col.climate, col.height, p.y).unwrap_or(col.biome)
     }
 
+    /// The same Overworld biome query with the original terrain height
+    /// retained by the loaded world, without rebuilding a density field.
+    pub(super) fn biome_at_height(&self, p: IVec3, height: i32) -> Biome {
+        let climate = self.climate.sample(p.x, p.z);
+        super::deep_dark::cave_biome(self.generation, &climate, height, p.y)
+            .unwrap_or_else(|| super::biome::pick(&climate))
+    }
+
+    /// Original, unadapted Overworld heights for gameplay biome queries.
+    /// Workers compute these alongside foliage; they live with the loaded
+    /// column, so generation-cache eviction and player edits cannot change them.
+    pub(crate) fn biome_heights(&self, pos: IVec2) -> Option<Box<[i16; CHUNK_SIZE * CHUNK_SIZE]>> {
+        if self.dimension != Dimension::Overworld {
+            return None;
+        }
+        let columns = self.chunk_columns(pos);
+        Some(Box::new(std::array::from_fn(|i| columns.at(i % CHUNK_SIZE, i / CHUNK_SIZE).height as i16)))
+    }
+
     /// Nearest column of `target`, searching outward from `origin` in 32-block
     /// steps (Java `/locate biome` uses a similar spiral; capped for speed).
     /// Cave biomes are found 40 blocks under the surface.
@@ -1832,6 +1851,82 @@ fn grow_tree_for(biome: Biome, soil: Block, ground: IVec3, v: u32, pick: u64, v2
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn loaded_biomes_survive_density_cache_eviction_and_surface_edits() {
+        use crate::entity::MobWorld;
+        use crate::world::World;
+        use std::time::{Duration, Instant};
+
+        for generation in [Generation::V1, Generation::V2, Generation::V3] {
+            let g = Arc::new(Generator::with_generation(7, Dimension::Overworld, generation));
+            let mut world = World::new_remote(g.clone(), 2);
+            // Include negative columns and both sides of storage chunk boundaries.
+            let mut positions = vec![IVec3::new(-2, 0, -1), IVec3::ZERO, IVec3::new(29, 0, 29)];
+            for biome in [Biome::LushCaves, Biome::DripstoneCaves, Biome::DeepDark] {
+                if biome == Biome::DeepDark && generation == Generation::V1 {
+                    continue;
+                }
+                let at = g.nearest_biome(IVec2::ZERO, biome, 16_000).expect("cave biome");
+                positions.push(super::super::chunk::chunk_of(at).with_y(0));
+            }
+            positions.sort_unstable_by_key(|p| (p.x, p.z));
+            positions.dedup();
+            for &pos in &positions {
+                world.receive_chunk(pos, Arc::new(ChunkData::new_dense(Block::AIR)));
+                let p = pos * CHUNK_SIZE_I;
+                assert_eq!(world.cave_biome(p), g.biome_at(p), "pending worker fallback");
+            }
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while world.columns.values().any(|c| c.biome_heights.is_none()) {
+                world.update(glam::DVec3::ZERO);
+                assert!(Instant::now() < deadline, "worker did not deliver biome heights");
+                std::thread::sleep(Duration::from_millis(1));
+            }
+
+            let mut expected = Vec::new();
+            for &pos in &positions {
+                for x in [0, 1, 15, 30, 31] {
+                    for z in [0, 1, 15, 30, 31] {
+                        let p = pos * CHUNK_SIZE_I + IVec3::new(x, 0, z);
+                        let h = g.column(p.x, p.z).height;
+                        for y in [-64, -63, -1, 0, 1, 319, h - 19, h - 20, h - 119, h - 120] {
+                            let p = p.with_y(y);
+                            expected.push((p, g.biome_at(p)));
+                        }
+                    }
+                }
+                // Replace the loaded surface with player/host edits. Biome depth
+                // still uses generated terrain, never this new heightmap.
+                world.receive_chunk(pos, Arc::new(ChunkData::new_dense(Block::STONE)));
+            }
+            g.columns.lock().unwrap().clear();
+            for (p, biome) in expected {
+                assert_eq!(world.cave_biome(p), biome, "{generation:?} at {p}");
+                assert_eq!(world.snow_golem_melts(p), biome.snow_golem_melts());
+            }
+            assert!(g.columns.lock().unwrap().is_empty(), "gameplay rebuilt evicted density columns");
+
+            for pos in positions {
+                world.remove_chunk(pos);
+            }
+            assert!(world.columns.is_empty(), "unloading releases the retained heights");
+            assert_eq!(world.cave_biome(IVec3::ZERO), g.biome_at(IVec3::ZERO), "unloaded fallback");
+        }
+    }
+
+    #[test]
+    fn biome_heights_leave_nether_and_end_queries_unchanged() {
+        use crate::entity::MobWorld;
+        for dimension in [Dimension::Nether, Dimension::End] {
+            let g = Arc::new(Generator::for_dimension(7, dimension));
+            assert!(g.biome_heights(IVec2::ZERO).is_none());
+            let world = crate::world::World::new_headless(g.clone(), Default::default(), 2);
+            for p in [IVec3::ZERO, IVec3::new(-33, 64, 31), IVec3::new(32, 128, -1)] {
+                assert_eq!(world.cave_biome(p), g.biome_at(p));
+            }
+        }
+    }
 
     /// Golden block IDs of the generator. The Overworld values were
     /// re-captured for the 1.18-style generator (v0.6) and again for amethyst
