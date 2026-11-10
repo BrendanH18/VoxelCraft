@@ -1491,9 +1491,9 @@ impl Game {
             ),
             format!("Workers: {}, jobs in flight: {}", self.world.worker_threads(), self.world.pending_jobs()),
             format!("Water: {} active, last tick {:.2} ms", self.world.active_fluids(), self.world.fluid_tick_ms()),
-            self.mobs_debug_line(),
-            format!("Seed: {}", self.world.generator.seed),
         ];
+        let [mobs, falling] = self.mobs_debug_lines();
+        let right = right.into_iter().chain([mobs, falling, format!("Seed: {}", self.world.generator.seed)]);
 
         for (i, line) in left.iter().enumerate() {
             if !line.is_empty() {
@@ -1502,10 +1502,28 @@ impl Game {
             }
         }
         let sw = ui.size().0;
-        for (i, line) in right.iter().enumerate() {
-            ui.label(sw - Ui::text_width(line) - 2.0, 2.0 + i as f32 * 10.0, line, DEBUG_TEXT);
+        let left_ends: Vec<f32> =
+            left.iter().map(|l| if l.is_empty() { 0.0 } else { 2.0 + Ui::text_width(l) }).collect();
+        let mut row = 0;
+        for line in right {
+            let x = sw - Ui::text_width(&line) - 2.0;
+            row = debug_right_row(&left_ends, row, x);
+            ui.label(x, 2.0 + row as f32 * 10.0, &line, DEBUG_TEXT);
+            row += 1;
         }
     }
+}
+
+/// The first row at or after `row` where a right-column line starting at
+/// `x` clears the left column's text (`left_ends`, the right edge of each
+/// left line, 0 for a blank one) by a small gap, so a narrow window moves
+/// the line down instead of drawing it over the left column.
+fn debug_right_row(left_ends: &[f32], mut row: usize, x: f32) -> usize {
+    const GAP: f32 = 6.0;
+    while left_ends.get(row).is_some_and(|&end| end > 0.0 && x < end + GAP) {
+        row += 1;
+    }
+    row
 }
 
 /// Small integer hash for HUD jitter.
@@ -1568,5 +1586,21 @@ pub(super) fn frozen_overlay(ui: &mut Ui, w: f32, h: f32, ticks: u16) {
         ui.rect(t * 2.0, h - (t + 1.0) * 2.0, w - t * 4.0, 2.0, color);
         ui.rect(t * 2.0, 16.0, 2.0, (h - 32.0).max(0.0), color);
         ui.rect(w - (t + 1.0) * 2.0, 16.0, 2.0, (h - 32.0).max(0.0), color);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::debug_right_row;
+
+    #[test]
+    fn f3_right_column_moves_down_past_wide_left_lines() {
+        // Rows 0 and 1 reach x 300; row 2 is blank; row 3 reaches x 100.
+        let left = [300.0, 300.0, 0.0, 100.0];
+        assert_eq!(debug_right_row(&left, 0, 400.0), 0, "room beside a left line");
+        assert_eq!(debug_right_row(&left, 0, 250.0), 2, "skips both overlapping rows");
+        assert_eq!(debug_right_row(&left, 3, 104.0), 4, "too close to row 3's text");
+        assert_eq!(debug_right_row(&left, 3, 106.0), 3, "clears row 3 by the gap");
+        assert_eq!(debug_right_row(&left, 9, 0.0), 9, "below the left column");
     }
 }

@@ -28,7 +28,7 @@ use super::nether_biome::NetherBiome;
 use super::nether_biome_blocks::NetherWood;
 use super::nether_features::{self as features, Level, Vegetation};
 use super::noise::hash3;
-use super::structure::Rng;
+use super::structure::{Bounds, Rng};
 
 const CELL: i32 = 16;
 const STEP: i32 = 4;
@@ -183,6 +183,9 @@ pub(super) struct Probe<'a> {
     g0: IVec2,
     width: i32,
     grid: Vec<OnceCell<Arc<GridColumn>>>,
+    /// Every generation 3 fossil box whose beard reaches the window: features
+    /// see the adapted terrain, as Java's run after the noise and beardifier.
+    boxes: Vec<Bounds>,
 }
 
 impl<'a> Probe<'a> {
@@ -190,7 +193,8 @@ impl<'a> Probe<'a> {
         let lo = (IVec2::new(base.x, base.z) - WINDOW).div_euclid(IVec2::splat(STEP));
         let hi = (IVec2::new(base.x, base.z) + CHUNK_SIZE_I + WINDOW).div_euclid(IVec2::splat(STEP)) + 1;
         let width = hi.x - lo.x + 1;
-        Self { nether, g0: lo, width, grid: (0..width * width).map(|_| OnceCell::new()).collect() }
+        let boxes = nether.beard_boxes(lo * STEP, (lo + width) * STEP);
+        Self { nether, g0: lo, width, grid: (0..width * width).map(|_| OnceCell::new()).collect(), boxes }
     }
 
     fn column(&self, g: IVec2) -> Option<&GridColumn> {
@@ -201,20 +205,24 @@ impl<'a> Probe<'a> {
         Some(self.grid[(l.y * self.width + l.x) as usize].get_or_init(|| self.nether.grid_column(g)))
     }
 
-    fn with_corners<T>(&self, x: i32, z: i32, f: impl FnOnce(&Corners) -> T) -> T {
+    /// Column `(x, z)`'s terrain solidity (fossil beards included) and corners.
+    fn with_corners<T>(&self, x: i32, z: i32, f: impl FnOnce(u128, &Corners) -> T) -> T {
         let g = IVec2::new(x, z).div_euclid(IVec2::splat(STEP));
         let t = [(x - g.x * STEP) as f32 / STEP as f32, (z - g.y * STEP) as f32 / STEP as f32];
         let at = [g, g + IVec2::X, g + IVec2::Y, g + IVec2::ONE];
         if let [Some(a), Some(b), Some(c), Some(d)] = at.map(|g| self.column(g)) {
-            return f(&Corners { c: [a, b, c, d], t });
+            let corners = Corners { c: [a, b, c, d], t };
+            return f(self.nether.terrain_bits(x, z, &corners, &self.boxes), &corners);
         }
         // Outside the window (never for in-reach features): fetch directly.
         let c = at.map(|g| self.nether.grid_column(g));
-        f(&Corners { c: [&c[0], &c[1], &c[2], &c[3]], t })
+        let corners = Corners { c: [&c[0], &c[1], &c[2], &c[3]], t };
+        let boxes = self.nether.beard_boxes(IVec2::new(x, z), IVec2::new(x, z));
+        f(self.nether.terrain_bits(x, z, &corners, &boxes), &corners)
     }
 
     fn bits(&self, x: i32, z: i32) -> u128 {
-        self.with_corners(x, z, |c| c.cached_bits())
+        self.with_corners(x, z, |bits, _| bits)
     }
 
     pub(super) fn biome(&self, x: i32, z: i32) -> NetherBiome {
@@ -229,7 +237,7 @@ impl<'a> Probe<'a> {
         if p.y > ROOF {
             return Block::AIR;
         }
-        self.with_corners(p.x, p.z, |c| self.nether.classify(p.x, p.y, p.z, c.cached_bits(), c))
+        self.with_corners(p.x, p.z, |bits, c| self.nether.classify(p.x, p.y, p.z, bits, c))
     }
 
     /// The `layer`-th floor from the top of column `(x, z)`: the open (air or

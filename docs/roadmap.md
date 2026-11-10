@@ -193,21 +193,21 @@ to GEN-03 are accepted on the gameplay behaviours they list (biome and
 landform variety, overhangs, cave and aquifer types, ore bands, features
 and their continuity across chunk borders), checked by VoxelCraft fixtures
 and play rather than Java seed/coordinate fixtures. Player impact: Java
-seeds and coordinates from guides don't carry over. This is the only
-approved fidelity exception. Two things lean on it without the owner having
+seeds and coordinates from guides don't carry over. FE-02 below is the
+other approved exception. Two things lean on it without the owner having
 ruled on them: the Nether's terrain also uses original noise (GEN-04a), and
 the 2026-11-09 terrain blending converts VoxelCraft's block-distance density
 to Java's units where a structure's beard applies
 ([record](verification/2026-11-09-structure-terrain-blending.md)).
 
-**Proposed fidelity exception FE-02 — original structure templates
-(audit, 2026-11-09; the owner's approval is pending).** v0.14 to v0.16 build
+**Fidelity exception FE-02 — original structure templates (proposed by
+the audit on 2026-11-09, approved by the owner on 2026-11-10).** v0.14 to v0.16 build
 structures from original templates because Java's template files are
 Mojang's work and the project ships only original or licensed assets
-([v0.14 scope](#v014-scope-structures)). No exception was recorded, so the
-GEN-05 rows still read as if a block-for-block Java layout were coming.
-The audit proposes to record what is already true, and to say what the
-templates are held to instead:
+([v0.14 scope](#v014-scope-structures)). Until 2026-11-10 no exception
+was recorded, so the GEN-05 rows read as if a block-for-block Java layout
+were coming. FE-02 records what is already true and says what the templates are held
+to instead:
 
 - **Excepted:** block-for-block Java layouts. A Java seed does not
   reproduce a Java village, outpost, bastion, ancient city or trial
@@ -223,12 +223,11 @@ templates are held to instead:
   vault and reward-room kinds; an ancient city its centre, walls,
   structures and hidden rooms.
 
-Until the owner approves or rejects FE-02, agents work to the catalogue
-contract, and the GEN-05 layout rows stay "not Java's templates". The
-catalogues that fall short of it are listed under
-[content assigned by the audit](#content-assigned-by-the-2026-11-09-audit).
-New structures (woodland mansions in v0.17, End cities in v0.18) need the
-owner's decision before their templates are drawn.
+Agents work to the catalogue contract, and the GEN-05 layout rows read
+"original templates (FE-02)". The catalogues that fall short of it are
+listed under [content assigned by the audit](#content-assigned-by-the-2026-11-09-audit).
+New structures (woodland mansions in v0.17, End cities in v0.18) are drawn
+as original templates to the same contract.
 
 Modern biomes, building materials, mobs, equipment and travel mechanics
 belong in 1.0 when they participate in the chosen core loops. Being introduced
@@ -380,8 +379,10 @@ keys, not release versions or block/item ID allocations.
 - **GEN-04:** Nether and End biome/terrain/features, portal placement and
   travel, arrival safety, dimension-specific rules and separated persistence.
 - **GEN-05:** all structures needed for core exploration/progression, with
-  Java placement rules, layouts, terrain alignment, traps, block entities,
-  residents, spawners and appropriate loot.
+  Java placement rules, terrain alignment, traps, block entities,
+  residents, spawners and appropriate loot. Layouts are original templates
+  held to the [FE-02](#14-what-can-follow-10) catalogue contract (Java's
+  piece kinds at comparable sizes), not block-for-block Java layouts.
   Includes villages/dungeons/mineshafts, temples/huts/igloos/outposts,
   shipwrecks/ruins/monuments/buried treasure, strongholds, fortresses/
   bastions, End cities/ships, mansions, ancient cities and trial chambers.
@@ -644,22 +645,35 @@ v0.17 does not start until it passes. Work items:
    A later GPT-6.1 Terra session in the [streaming follow-up](verification/2026-11-09-streaming-biomes-and-gen07.md)
    created a survival world, moved along the shoreline and into the ocean,
    used inventory and pause menus, saved and reopened. It also inspected
-   city and trial-chamber captures. Spawning, encounters and the remainder
-   of the content-wide hands-on pass remain unverified.
+   city and trial-chamber captures. *Further captures and play
+   (2026-11-10, [record](verification/2026-11-10-stabilisation-captures.md)):*
+   bastions of all four kinds, Nether fossils, a desert well, buried
+   treasure dug out with its loot, a cold ocean ruin, trail ruins cut away,
+   the v0.15 and v0.16 blocks, brushing and the v0.16 items were drawn and
+   looked at. Three defects were found and fixed: Nether fossils now
+   apply Java's `beard_thin`, generation 3 swamp shores get grass and
+   Java's swamp water pools instead of bare dirt, and the F3 columns no
+   longer overlap. A Terra session reached a village, the new mobs, a
+   trident, a trial chamber and an ancient city before the screen locked.
+   It found Java's `@s` target rejected by `/effect` and `/enchant`
+   (fixed). Trading, brewing, the mace, spawner waves, vaults, shriekers,
+   lightning, the jukebox and save/reload in play remain unverified.
 5. **Documentation.** *Done (2026-11-09).* History moved to the
    [delivery records](delivery-records.md), the
    [inventory](requirements.md) refreshed against `main` and its 26
    stranded rows given releases, and `tools/check_doc_links.py` added to
    CI.
 6. **Still owed before the tag.** The owner's play of a new generation 3
-   world. The remaining content and encounters in the agent hands-on pass.
+   world. The encounters listed under item 4 in the agent hands-on pass.
+   Cargo is at 0.16.0, and `packaging/RELEASE-NOTES.md` covers v0.14 to
+   v0.16 with their known gaps (2026-11-10).
    Three valid windowed runs of every scene on AC power with the machine
    idle (PERF-02/03), including investigation of any remaining streaming
-   outliers. The owner's decision on [FE-02](#14-what-can-follow-10).
+   outliers. ([FE-02](#14-what-can-follow-10) was approved by the owner on
+   2026-11-10.)
    Ancient cities and trial chambers now run in the GEN-07 order corpus
    ([record](verification/2026-11-09-streaming-biomes-and-gen07.md)).
-   Then the release preparation: Cargo version,
-   release notes that list the known gaps, and the tag.
+   Then the tag.
 
 **Exit:** the owner has played a generation 3 world built from the merged
 tree and reported the result; problems found are fixed or listed in the
@@ -779,9 +793,9 @@ from v0.12, Implemented, unverified; the frame-time check is with v0.20.
 Approved by the owner on 2026-11-03. Templates are original VoxelCraft
 designs: the jigsaw algorithm, pools, placement, loot and residents follow
 Java, but no Minecraft template file or block-for-block layout is copied.
-No fidelity exception was recorded for this (owner, 2026-11-03): the
-GEN-05 layout rows stay "not Java's templates" until the owner decides at
-release.
+No fidelity exception was recorded for this on 2026-11-03. The owner
+approved [FE-02](#14-what-can-follow-10) on 2026-11-10, so the GEN-05
+layout rows now read "original templates (FE-02)".
 
 0. **Decision and IDs.** The template decision above; v0.14's state,
    item and texture ranges split per track in the

@@ -14,7 +14,9 @@
 //! Full-height grid columns (density and biome) are shared between chunks
 //! in a bounded cache, so the four chunks of a column and the features that
 //! reach across chunk borders sample each one once.
-//! Fortresses (see `world::fortress`) are painted over the terrain.
+//! Fortresses (see `world::fortress`) are painted over the terrain. In
+//! generation 3, Nether fossils adapt the terrain first: their `beard_thin`
+//! kernel is added to the density, as Java's beardifier is.
 
 use std::cell::RefCell;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -28,7 +30,8 @@ use super::fortress::Fortresses;
 use super::nether_biome::{NetherBiome, NetherBiomeSource};
 use super::nether_biome_blocks as nb;
 use super::noise::{Perlin, hash_f, hash3};
-use super::structure::Rng;
+use super::structure::{Bounds, Rng};
+use super::terrain::{beard_reaches, beard_thin};
 
 /// The bedrock roof; nothing generates above it.
 pub const ROOF: i32 = 127;
@@ -61,6 +64,10 @@ pub(super) struct GridColumn {
     blob: [u8; LEVELS],
     pub(super) biome: NetherBiome,
     bits: [OnceLock<u128>; STEP * STEP],
+    /// [`GridColumn::bits`] with generation 3 fossils' beards, for the block
+    /// columns a beard reaches (see [`NetherGen::terrain_bits`]); allocated
+    /// only for the grid columns that have one.
+    adapted: OnceLock<Box<[OnceLock<u128>; STEP * STEP]>>,
 }
 
 /// The four grid columns around a block column and its position between them.
@@ -105,6 +112,18 @@ impl Corners<'_> {
         }
         // The floor and roof layers are always rock (bedrock or not).
         bits | 1 | 1 << ROOF
+    }
+
+    /// The interpolated density at height `y` (0..=ROOF), in the same order
+    /// of operations as [`Corners::solid_bits`] and [`interpolate`].
+    fn density(&self, y: i32) -> f32 {
+        let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
+        let [c00, c10, c01, c11] = self.c;
+        let [tx, tz] = self.t;
+        let (k, ty) = ((y / STEP as i32) as usize, (y % STEP as i32) as f32 / STEP as f32);
+        let a = |k: usize| lerp(c00.density[k], c10.density[k], tx);
+        let b = |k: usize| lerp(c01.density[k], c11.density[k], tx);
+        lerp(lerp(a(k), a(k + 1), ty), lerp(b(k), b(k + 1), ty), tz)
     }
 
     /// Hashed blob value at height `y`, trilinear between grid levels.
@@ -156,6 +175,38 @@ fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
+/// Java's `squeeze` density mapping: `c / 2 - c³ / 24` of `d` clamped to ±1.
+#[inline]
+fn squeeze(d: f32) -> f32 {
+    let c = d.clamp(-1.0, 1.0);
+    c / 2.0 - c * c * c / 24.0
+}
+
+/// The summed `beard_thin` of generation 3 fossil boxes at `p`. A fossil
+/// piece has ground-level delta 0, so its ground plane is the box's floor.
+#[inline]
+fn fossil_beard(boxes: &[Bounds], p: IVec3) -> f32 {
+    boxes.iter().map(|b| beard_thin(*b, b.min.y, p)).sum()
+}
+
+/// Whether the native density `d` at `p` is rock once the `beard_thin` of
+/// every fossil box in `boxes` is added (generation 3).
+///
+/// Java's Nether `final_density` is `squeeze(0.64 × interpolated noise) +
+/// beardifier`. The native field is original noise of the same kind (FE-01),
+/// so it goes through Java's own `0.64` and `squeeze` before the kernel is
+/// added. `squeeze` keeps the sign, so where the beard is zero the terrain is
+/// exactly the unadapted terrain. Boxes are summed in the order given, which
+/// `NetherFossils::beard_boxes` keeps the same for every caller.
+#[inline]
+fn adapted_solid(d: f32, boxes: &[Bounds], p: IVec3) -> bool {
+    if boxes.is_empty() || !(1..ROOF).contains(&p.y) {
+        return d > 0.0;
+    }
+    let beard = fossil_beard(boxes, p);
+    if beard == 0.0 { d > 0.0 } else { squeeze(0.64 * d) + beard > 0.0 }
+}
+
 /// Trilinear interpolation of corner densities `c[dx][dy][dz]` at the
 /// fractions `t` (x, y, z) of a grid cell. Chunks and single columns share
 /// it so both agree to the bit.
@@ -176,7 +227,8 @@ impl NetherGen {
     }
 
     /// The Nether of a world made with `generation` (its structures differ
-    /// from generation 3 on; the terrain is the same in every generation).
+    /// from generation 3 on; the terrain is the same in every generation,
+    /// except that generation 3 raises ground under Nether fossils).
     pub fn with_generation(seed: u64, generation: super::terrain::Generation) -> Self {
         let p = |salt: u64| Perlin::new(seed ^ salt.wrapping_mul(0x9E37_79B9_7F4A_7C15));
         Self {
@@ -216,6 +268,7 @@ impl NetherGen {
         let (tx, tz) = ((x - gx) as f32 / STEP as f32, (z - gz) as f32 / STEP as f32);
         let mut level = i32::MIN;
         let mut c = [[[0f32; 2]; 2]; 2];
+        let boxes = self.fossils.beard_boxes(self, IVec2::new(x, z), IVec2::new(x, z));
         for y in (bottom..=top).rev() {
             if y <= 0 || y >= ROOF || self.bedrock(x, y, z) {
                 return false;
@@ -232,7 +285,7 @@ impl NetherGen {
                     }
                 }
             }
-            if interpolate(c, [tx, (y - gy) as f32 / STEP as f32, tz]) > 0.0 {
+            if adapted_solid(interpolate(c, [tx, (y - gy) as f32 / STEP as f32, tz]), &boxes, IVec3::new(x, y, z)) {
                 return false;
             }
         }
@@ -279,7 +332,7 @@ impl NetherGen {
     }
 
     /// Air/solid/fluid terrain classification used by exposure and pillar stops.
-    fn exposure_terrain(&self, p: IVec3, cache: &mut FxHashMap<IVec3, f32>) -> Block {
+    fn exposure_terrain(&self, p: IVec3, cache: &mut FxHashMap<IVec3, f32>, boxes: &[Bounds]) -> Block {
         let IVec3 { x, y, z } = p;
         if !(0..=ROOF).contains(&y) {
             return Block::AIR;
@@ -287,7 +340,7 @@ impl NetherGen {
         if self.bedrock(x, y, z) {
             return Block::BEDROCK;
         }
-        if self.interpolated_density(x, y, z, cache) > 0.0 {
+        if adapted_solid(self.interpolated_density(x, y, z, cache), boxes, p) {
             return Block::NETHERRACK;
         }
         if y <= LAVA_SEA {
@@ -295,7 +348,7 @@ impl NetherGen {
         }
         if y > 60
             && self.glow.noise3(x as f32 / 6.0, y as f32 / 6.0, z as f32 / 6.0) > 0.5
-            && (1..=3).any(|k| self.interpolated_density(x, y + k, z, cache) > 0.0)
+            && (1..=3).any(|k| adapted_solid(self.interpolated_density(x, y + k, z, cache), boxes, p + IVec3::Y * k))
         {
             return Block::GLOWSTONE;
         }
@@ -320,8 +373,10 @@ impl NetherGen {
         }
         let key = IVec3::new(p.x, p.y.div_euclid(CHUNK_SIZE_I) * CHUNK_SIZE_I, p.z);
         let column = cache.columns.entry(key).or_insert_with(|| {
+            let column = IVec2::new(key.x, key.z);
+            let boxes = self.fossils.beard_boxes(self, column, column);
             let terrain =
-                std::array::from_fn(|y| self.exposure_terrain(key + IVec3::Y * y as i32, &mut cache.densities));
+                std::array::from_fn(|y| self.exposure_terrain(key + IVec3::Y * y as i32, &mut cache.densities, &boxes));
             let densities = RefCell::new(&mut cache.densities);
             let open = |x, z, top, bottom| self.column_open(x, z, top, bottom, &mut densities.borrow_mut());
             let terrain = self.fortresses.column_at(key.x, key.z, key.y, terrain, &open);
@@ -407,6 +462,7 @@ impl NetherGen {
             blob: std::array::from_fn(|k| (hash3(x, k as i32, z, self.seed ^ SALT_BLOB) >> 56) as u8),
             biome: self.biomes.quart(g.x, g.y),
             bits: Default::default(),
+            adapted: Default::default(),
         });
         let mut cache = self.columns.lock().unwrap();
         // Another worker may have filled this column while we sampled it.
@@ -504,7 +560,65 @@ impl NetherGen {
         }
     }
 
-    /// Pristine terrain for structure validation, without recursive decoration.
+    /// Solidity of block column `(x, z)` from the noise alone, without any
+    /// fossil's beard: Java's `getBaseColumn`, which structure starts read.
+    pub(super) fn base_bits(&self, x: i32, z: i32) -> u128 {
+        let g = IVec2::new(x.div_euclid(STEP as i32), z.div_euclid(STEP as i32));
+        let c = [
+            self.grid_column(g),
+            self.grid_column(g + IVec2::X),
+            self.grid_column(g + IVec2::Y),
+            self.grid_column(g + IVec2::ONE),
+        ];
+        let corners = Corners {
+            c: [&c[0], &c[1], &c[2], &c[3]],
+            t: [x.rem_euclid(STEP as i32) as f32 / STEP as f32, z.rem_euclid(STEP as i32) as f32 / STEP as f32],
+        };
+        corners.cached_bits()
+    }
+
+    /// The fossil boxes whose beards can reach a column from `min` to `max`.
+    pub(super) fn beard_boxes(&self, min: IVec2, max: IVec2) -> Vec<Bounds> {
+        self.fossils.beard_boxes(self, min, max)
+    }
+
+    /// Solidity of block column `(x, z)` as chunks generate it: the noise,
+    /// plus in generation 3 the `beard_thin` terrain adaptation of Nether
+    /// fossils (Java's `nether_fossil` structure, `"terrain_adaptation":
+    /// "beard_thin"`). `boxes` must hold every fossil box that reaches the
+    /// column ([`NetherGen::beard_boxes`] of any area containing it); the
+    /// result is cached on the grid column, so it never depends on the area.
+    pub(super) fn terrain_bits(&self, x: i32, z: i32, corners: &Corners, boxes: &[Bounds]) -> u128 {
+        let base = corners.cached_bits();
+        if !boxes.iter().any(|b| beard_reaches(*b, x, z)) {
+            return base;
+        }
+        let [lx, lz] = corners.t.map(|t| (t * STEP as f32) as usize);
+        *corners.c[0].adapted.get_or_init(Default::default)[lz * STEP + lx].get_or_init(|| {
+            let local: Vec<Bounds> = boxes.iter().copied().filter(|b| beard_reaches(*b, x, z)).collect();
+            // The kernel spans 12 blocks below each ground plane to 11 above.
+            let lo = local.iter().map(|b| b.min.y - 12).min().unwrap_or(ROOF).max(1);
+            let hi = local.iter().map(|b| b.min.y + 11).max().unwrap_or(0).min(ROOF - 1);
+            let mut bits = base;
+            for y in lo..=hi {
+                let beard = fossil_beard(&local, IVec3::new(x, y, z));
+                // Unreached cells keep the fast path's bit, as `adapted_solid` does.
+                if beard == 0.0 {
+                    continue;
+                }
+                if squeeze(0.64 * corners.density(y)) + beard > 0.0 {
+                    bits |= 1 << y;
+                } else {
+                    bits &= !(1 << y);
+                }
+            }
+            bits
+        })
+    }
+
+    /// Pristine terrain, without recursive decoration or fossil beards (tests
+    /// compare structure starts with it; placement reads [`NetherGen::base_bits`]).
+    #[cfg(test)]
     pub(super) fn base_block_at(&self, p: IVec3) -> Block {
         if !(0..=ROOF).contains(&p.y) {
             return Block::AIR;
@@ -551,6 +665,7 @@ impl NetherGen {
         let g0 = IVec2::new(base.x, base.z) / STEP as i32;
         let grid: [[Arc<GridColumn>; GRID]; GRID] =
             std::array::from_fn(|gz| std::array::from_fn(|gx| self.grid_column(g0 + IVec2::new(gx as i32, gz as i32))));
+        let boxes = self.beard_boxes(IVec2::new(base.x, base.z), IVec2::new(base.x, base.z) + CHUNK_SIZE_I - 1);
         let mut blocks = ChunkData::new_dense(Block::AIR);
         for z in 0..CHUNK_SIZE {
             for x in 0..CHUNK_SIZE {
@@ -560,7 +675,7 @@ impl NetherGen {
                     c: [&grid[gz][gx], &grid[gz][gx + 1], &grid[gz + 1][gx], &grid[gz + 1][gx + 1]],
                     t: [(x % STEP) as f32 / STEP as f32, (z % STEP) as f32 / STEP as f32],
                 };
-                let bits = corners.cached_bits();
+                let bits = self.terrain_bits(wx, wz, &corners, &boxes);
                 for y in 0..CHUNK_SIZE {
                     let wy = base.y + y as i32;
                     if wy > ROOF {
@@ -862,5 +977,47 @@ mod tests {
             }
         }
         assert!(found_air > 100 && found_solid > 100, "exercise carving and walls");
+    }
+
+    /// Chunks, ore exposure samples and fortress pillar scans must all see a
+    /// generation 3 fossil's beard identically (GEN-07).
+    #[test]
+    fn fossil_beards_agree_across_chunk_exposure_and_column_samples() {
+        let g = NetherGen::new(9);
+        let r = g.fossils.get(&g, IVec2::new(716, 141).div_euclid(IVec2::splat(32))).expect("seed 9 fossil");
+        let (b, ground) = (r.bounds, r.bounds.min.y);
+        let mut densities = FxHashMap::default();
+        let (mut changed, mut raised) = (0, 0);
+        for z in b.min.z - 12..=b.max.z + 12 {
+            for x in b.min.x - 12..=b.max.x + 12 {
+                let column = IVec2::new(x, z);
+                let boxes = g.beard_boxes(column, column);
+                let gp = column.div_euclid(IVec2::splat(STEP as i32));
+                let c = [
+                    g.grid_column(gp),
+                    g.grid_column(gp + IVec2::X),
+                    g.grid_column(gp + IVec2::Y),
+                    g.grid_column(gp + IVec2::ONE),
+                ];
+                let corners = Corners {
+                    c: [&c[0], &c[1], &c[2], &c[3]],
+                    t: [x.rem_euclid(STEP as i32) as f32 / STEP as f32, z.rem_euclid(STEP as i32) as f32 / STEP as f32],
+                };
+                let bits = g.terrain_bits(x, z, &corners, &boxes);
+                changed += (bits != corners.cached_bits()) as u32;
+                raised += (bits & !corners.cached_bits()).count_ones();
+                for y in ground - 14..=ground + 13 {
+                    let p = IVec3::new(x, y, z);
+                    let solid = bits >> y & 1 == 1;
+                    assert_eq!(g.exposure_terrain(p, &mut densities, &boxes) == Block::NETHERRACK, solid, "{p}");
+                    assert_eq!(g.column_open(x, z, y, y, &mut densities), !solid, "{p}");
+                }
+            }
+        }
+        assert!(changed > 0 && raised > 0, "the beard changes the terrain");
+        // Generations 1 and 2 have no fossils, so no beard.
+        let old = NetherGen::with_generation(9, crate::world::terrain::Generation::V2);
+        let column = IVec2::new(b.min.x, b.min.z);
+        assert!(old.beard_boxes(column, column).is_empty());
     }
 }

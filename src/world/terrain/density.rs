@@ -391,6 +391,8 @@ impl Generator {
             Block::GRASS | Block::SNOWY_GRASS | Block::DIRT | Block::GRAVEL => rock(),
             b if b == ob::PODZOL || b == ob::COARSE_DIRT || b == ob::MYCELIUM || b == ob::MUD => rock(),
             b if b == ob::PALE_MOSS_BLOCK => rock(),
+            // A generation 3 swamp pool never hangs over open air.
+            Block::WATER => rock(),
             b => b,
         }
     }

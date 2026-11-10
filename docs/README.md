@@ -67,6 +67,12 @@ roadmap and recorded checks to assess completeness against the current target.
   use-priority ordering, Adventure denial and Java hit-face pouring.
 - [Mining review fixes](verification/2026-10-13-review-mining-fixes.md): shared
   destroy delay, progress keys, door/plant drop rules, Creative egg/sword and Haste.
+- [Stabilisation pass](verification/2026-11-09-stabilisation-pass.md): the
+  first agent run of v0.14 to v0.16, with scripted captures of villages,
+  outposts, cities, trial chambers and the new mobs.
+- [Stabilisation captures](verification/2026-11-10-stabilisation-captures.md):
+  bastions, Nether fossils, a desert well, buried treasure, a cold ocean
+  ruin, cut-away trail ruins and the v0.16 items, with the defects they found.
 - [Streaming biome queries and GEN-07](verification/2026-11-09-streaming-biomes-and-gen07.md):
   worker-retained terrain heights, city/trial order coverage, limited Terra play
   and short M5 comparison runs; performance acceptance remains open.

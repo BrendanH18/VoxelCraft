@@ -821,22 +821,29 @@ impl Game {
     }
 
     /// F3 line with entity counts.
-    pub(super) fn mobs_debug_line(&self) -> String {
+    /// F3's entity statistics, kept to two short lines (like Java's
+    /// `E:` line) so they fit beside the left column.
+    pub(super) fn mobs_debug_lines(&self) -> [String; 2] {
         let e = &self.mobs.entities;
         let (passive, hostile): (Vec<_>, Vec<_>) = MobKind::ALL.iter().partition(|k| !k.is_hostile());
         let total = |kinds: Vec<&MobKind>| kinds.into_iter().map(|&k| e.count(k)).sum::<usize>();
-        format!(
-            "Entities: {} (passive: {}, hostile: {}, arrows: {}, items: {}), {} rendered, {} falling blocks, \
-             {} stored in {} unloaded chunks",
-            e.mobs.len(),
-            total(passive),
-            total(hostile),
-            e.arrows.len(),
-            e.items.len(),
-            e.rendered,
-            self.world.falling_blocks().len(),
-            e.stored_entities() + self.world.stored_falling_blocks(),
-            e.stored_chunks()
-        )
+        [
+            format!(
+                "Mobs: {}/{} drawn (P {}, H {}), arrows {}, items {}",
+                e.rendered,
+                e.mobs.len(),
+                total(passive),
+                total(hostile),
+                e.arrows.len(),
+                e.items.len()
+            ),
+            format!(
+                "Falling: {} (+{} stored), stored: {} in {} chunks",
+                self.world.falling_blocks().len(),
+                self.world.stored_falling_blocks(),
+                e.stored_entities(),
+                e.stored_chunks()
+            ),
+        ]
     }
 }

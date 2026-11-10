@@ -1,11 +1,14 @@
-VoxelCraft 0.13.0 reshapes the Overworld: new worlds have overhanging
-cliffs, arches and jagged peaks, caves and underground lakes fitted to them,
-a deep dark full of sculk, giant spruce and jungle trees, and glow lichen and
-springs underground. It also brings bubble columns, the off-hand slot,
-shields and the totem of undying. Worlds you already have keep their old
-terrain. If you have 0.10.0 or later, the title screen offers this update;
-choose **Update and Restart**. If you're coming from 0.9.0 or earlier,
-install it by hand once, as below, and it updates itself from then on.
+VoxelCraft 0.16.0 brings three versions at once. **Structures:** villages,
+pillager outposts, bastions, fossils, desert wells, ruined portals, trail
+ruins, buried treasure and explorer maps, all rebuilt for new worlds.
+**Wildlife:** lightning, bees, frogs, pandas, polar bears, armadillos,
+copper golems, the creaking, allays, sniffers, ocean ruins and more.
+**Deep dark and trials:** ancient cities and the warden, trial chambers
+and the breeze, the mace, tridents, spears and a jukebox with every
+music disc. If you have 0.10.0 or later, the title screen offers this
+update; choose **Update and Restart**. If you're coming from 0.9.0 or
+earlier, install it by hand once, as below, and it updates itself from
+then on.
 
 VoxelCraft is an unofficial fan project, inspired by Minecraft Java Edition. It
 is not affiliated with or endorsed by Mojang Studios or Microsoft, and it
@@ -13,10 +16,130 @@ contains no Minecraft code or assets.
 
 Choose your download:
 
-- **Windows 10/11 x64:** `VoxelCraft-0.13.0-windows-x64-Setup.exe`
-- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.13.0-macos-apple-silicon.dmg`
+- **Windows 10/11 x64:** `VoxelCraft-0.16.0-windows-x64-Setup.exe`
+- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.16.0-macos-apple-silicon.dmg`
 
-## What's new in 0.13.0
+There was no separate 0.14.0 or 0.15.0 release: their content first ships
+here.
+
+## What's new in 0.16.0
+
+### Structures (new worlds only)
+
+Worlds created in 0.16.0 use a new structure generator. Structures are
+placed where Java places them, from Java's pools, and filled with Java's
+loot, but the buildings are VoxelCraft's own designs, so a Java seed
+won't give you the same village.
+
+- **Villages** in all five styles are assembled piece by piece from town
+  centres, streets, houses, farms, pens and lamps. The ground is shaped
+  to meet them instead of leaving houses on pillars.
+- **Pillager outposts** and **bastion remnants** are rebuilt the same way,
+  with their guards, and outposts keep two allays in their cage.
+- **New structures:** Overworld and Nether fossils, desert wells, ruined
+  portals (in the Overworld and the Nether), buried trail ruins, buried
+  treasure on beaches (with the heart of the sea), warm and cold ocean
+  ruins with drowned, **ancient cities** deep in the deep dark, and
+  **trial chambers** underground.
+- **Maps:** empty and filled maps, explorer and buried treasure maps in
+  structure chests, and cartographers who sell explorer maps, including
+  ones to ocean monuments and trial chambers.
+- Newly generated chests in every world fill the way Java fills them.
+
+### Weather and lightning
+
+- Thunderstorms strike lightning. It starts fires, charges creepers, turns
+  pigs into zombified piglins, villagers into witches and mooshrooms
+  between red and brown, and cleans the age off copper. Lightning rods
+  draw strikes and give a redstone pulse.
+- Skeleton horse traps appear in storms. Skeleton and zombie horses can
+  be ridden.
+- Snow piles up in layers during snowfall.
+
+### Farming and bees
+
+- **Melons, pumpkins and beetroots** grow from seeds, with stems that
+  attach to their fruit.
+- **Bees, bee nests and beehives:** bees pollinate flowers, help crops
+  grow and make honey. Collect honey bottles and honeycomb (use a
+  campfire to calm them). Honeycomb **waxes copper** and signs, and
+  candles can now be crafted.
+- **Torchflowers and pitcher plants** grow from seeds that sniffers dig up.
+
+### Animals and mobs
+
+- **New animals:** bats, frogs (three kinds, with tadpoles, frogspawn and
+  froglights), pandas with their personalities, polar bears, armadillos
+  (brush them for scutes and make **wolf armor**), mooshrooms and
+  suspicious stew, ocelots, and village and swamp-hut cats.
+- **Copper golems:** build one from a carved pumpkin on a copper block.
+  It sorts items out of copper chests into chests nearby and turns into a
+  statue as it ages; scrape it with an axe to wake it.
+- **The creaking** guards pale oak trees at night, freezes while you look
+  at it, and can only be killed by breaking its creaking heart.
+  **Eyeblossoms** open at night, and resin makes a new brick family.
+- **Allays** collect the items you give them, follow note blocks and
+  dance to jukeboxes. A dancing allay given an amethyst shard duplicates.
+- **Sniffers** hatch from eggs found by brushing suspicious sand in warm
+  ocean ruins.
+- **New hostiles:** strays, bogged, phantoms (if you go too long without
+  sleep), the **warden** and the **breeze**. Zombies turn into drowned
+  underwater and husks into zombies.
+- **Brushes** uncover suspicious sand and gravel, which hold pottery
+  sherds and other finds.
+
+### The deep dark
+
+- **Sculk sensors** hear vibrations (wool muffles them) and give a
+  redstone signal; calibrated sensors listen for one kind.
+- **Sculk shriekers** warn you, bring Darkness and, in ancient cities,
+  summon the warden.
+- **Sculk catalysts** spread sculk where mobs die.
+- **The warden** follows sound and smell, attacks with a sonic boom, and
+  digs back down if left alone.
+- **Ancient cities** hold echo shards, the **recovery compass**, Swift
+  Sneak books, disc fragments and music discs.
+- **Jukeboxes** play all 22 music discs (with VoxelCraft's own tunes),
+  power comparators and make allays dance.
+
+### Trial chambers
+
+- **Trial spawners** call waves that grow with the number of players and
+  then cool down for half an hour. **Ominous** trials start when you
+  enter with Bad Omen, which becomes Trial Omen; drink an **ominous
+  bottle** to get it.
+- **Vaults** give each player their own reward for a **trial key**;
+  ominous vaults take ominous keys.
+- **The breeze** jumps, slides and shoots wind charges, and drops breeze
+  rods. Throw **wind charges** to launch yourself.
+
+### Weapons
+
+- **The mace** (heavy core and breeze rod): hit while falling for a smash
+  attack that resets your fall. Density, Breach and Wind Burst
+  enchantments.
+- **Tridents:** throw them, and enchant them with Loyalty, Riptide,
+  Channeling or Impaling. Drowned can carry and throw them.
+- **Spears** in every material: jab, or hold to charge, and the Lunge
+  enchantment.
+
+### Brewing and trades
+
+- Brewing now matches Java's recipes: fermented spider eyes, Weakness,
+  Night Vision from golden carrots, Leaping from rabbit's feet, every
+  corrupted potion, and **Invisibility** (mobs see an invisible player
+  only up close). Slow Falling, tipped arrows and lingering potions are in.
+- Nine villager and wandering-trader offers that named the wrong item
+  are back.
+
+### Performance
+
+- Mobs are drawn in one batch on the GPU, and crowded scenes with mobs
+  run faster.
+- Mobs looking up the biome they're in no longer rebuild terrain, which
+  cuts long frames while new land streams in.
+
+## What's new in 0.13.0 (if you're coming from 0.12.0 or earlier)
 
 ### New terrain (new worlds only)
 
@@ -238,6 +361,31 @@ new giant trees.
 
 ## Known limitations
 
+- Structures are VoxelCraft's own designs, not Java's buildings. Villages
+  don't yet have profession buildings with fixed job sites, decorations,
+  animals in pens or abandoned villages, and trial chambers and ancient
+  cities have fewer room kinds than Java's; these come in 0.17. Water from
+  a nearby cave can pour into an ancient city.
+- On steep ground some villages and outposts are smaller or don't appear,
+  because a building is left out rather than stood on a pillar.
+- Abandoned camps, woodland mansions, End cities and strongholds,
+  mineshafts and dungeons piece by piece aren't in the new generator yet,
+  and neither are the explorer maps only those give.
+- Archaeology covers suspicious sand and gravel in ocean ruins only; trail
+  ruins have no suspicious blocks yet, and decorated pots can't carry
+  sherd patterns.
+- Brushing has no sounds of its own, and other LAN players don't see the
+  find rising out of the block.
+- Raids, vindicators, evokers, ravagers, woodland mansions, happy ghasts and nautiluses aren't in
+  yet; they come in 0.17. Mobs don't pick up or hold your gear, and
+  chainmail armor can't be obtained. Lecterns, looms, cartography tables and
+  stonecutters are decorative, so maps can't be scaled, copied or locked,
+  and item frames don't show map images.
+- The Glowing, Levitation, Health Boost, Hero of the Village, Raid Omen,
+  Wind Charged, Weaving, Oozing and Infested effects aren't in, so the
+  potions that need them and some ominous-trial drops are missing.
+- Music discs can be heard 24 blocks away (Java: 64), and other music
+  doesn't fade while a disc plays.
 - Some Java options aren't in yet because nothing in the game uses them:
   clouds, biome blend, entity distance and shadows, mipmaps, menu blur,
   resource packs, language, chat and skin options, the attack indicator,
@@ -258,47 +406,22 @@ new giant trees.
   in the host's dimension; when the host travels, the others follow. It has
   been tested between processes on one computer, not yet across Windows, Mac
   and Linux machines on a real network.
-- Honey can't be collected in survival yet: bees and beehives aren't in, so
-  copper can't be waxed and candles can't be crafted. Powder snow doesn't
-  generate in the world yet.
-- Banners have no patterns, and item frames can't hold maps, until the loom
-  and cartography table work.
-- Lightning rods don't attract lightning (there's no lightning yet), and
-  tridents can't knock down stalactites.
-- Many of the new blocks borrow the nearest existing sound; their own sounds
+- Many blocks and mobs borrow the nearest existing sound; their own sounds
   come with the sound review.
 - Mobs and dropped items treat scaffolding and powder snow as plain blocks.
 - Walls built in older versions show their posts until a neighbouring block
   changes.
-- Undead horses aren't in yet (they need lightning, which isn't in yet either).
-- Bats, frogs, polar bears and some other mobs aren't in yet, so nothing spawns
-  in the ambient category.
-- The new terrain, caves, deep dark, springs, glow lichen and giant trees
-  appear only in worlds created in 0.13.0 or later. A few small rocks float
-  above some mountain peaks, and plant and feature amounts are VoxelCraft's
-  own.
-- There are no ancient cities or wardens yet, so sculk sensors, shriekers
-  and catalysts do nothing. Frozen lava springs aren't in.
 - Shields can't carry banner patterns, the off-hand item isn't drawn in your
-  hand, and bows can't be drawn from the off-hand. Bubble columns have no
-  sounds of their own.
-- Buried treasure isn't generated, so there's no way to find the heart of the
-  sea.
-- There is no Soul Speed or spears, and no wither skeleton
-  skull block or frosted ice (Frost Walker).
-- Raids aren't in yet. Lecterns, looms, cartography tables and stonecutters are
-  decorative.
+  hand, and bows can't be drawn from the off-hand.
+- There is no Soul Speed, no wither skeleton skull block and no frosted ice
+  (Frost Walker).
 - Complex redstone contraptions that depend on Java's exact update order may
   behave differently.
 - The Ender Dragon can't be respawned, and the End has no chorus trees, cities,
   shulkers or elytra. The Wither can't be summoned yet.
 - Commands accept `@s` and `@p` only.
-- Outposts, Nether fossils and bastions use VoxelCraft's own layouts, and
-  swamp-hut cats don't spawn yet.
-- Melon, pumpkin and beetroot crops aren't in yet.
 - Bells don't swing, horse armor can't be dyed, strider jockeys don't spawn,
-  boats ignore currents, and minecarts can't carry mobs
-  across a save.
+  boats ignore currents, and minecarts can't carry mobs across a save.
 - Streaming in new terrain quickly can still cause an occasional long frame,
   and a scene crowded with mobs and the new blocks can dip below the 240 FPS
   target on an Apple M5; that work is planned for 0.20.
@@ -309,14 +432,14 @@ new giant trees.
 
 Players on 0.10.0 or later get this version from the title screen. Install
 it by hand if you're on 0.9.0 or earlier; later versions then arrive in game.
-Worlds and options from 0.12.0 and earlier load in 0.13.0, and keep their
-old terrain generation. Once 0.13.0 has saved a world, don't open it in an
-older version: older versions can't read chunks holding the new blocks, and
-they drop the item in your off-hand. A world created in 0.13.0 would also
-have its unexplored land filled with the old terrain. Back up your worlds before upgrading from 0.8.0, and
-don't open a world saved by 0.9.0 or later in 0.8.0: once it uses any of the
-new block states, 0.8.0 can't read its terrain and would overwrite it. LAN
-players all need the same version.
+Worlds and options from 0.13.0 and earlier load in 0.16.0 and keep the
+terrain and structures they were created with; the new structures, creaking
+hearts and eyeblossom patches appear only in worlds created in 0.16.0. The
+new mobs, lightning, crops and blocks work in every world. Once 0.16.0 has
+saved a world, don't open it in an older version: older versions can't read
+chunks holding the new blocks and lose the new mobs and items. Back up your
+worlds before upgrading from 0.8.0, and don't open a world saved by 0.9.0
+or later in 0.8.0. LAN players all need the same version.
 
 ## Installing
 
