@@ -545,7 +545,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.17 | Villages and raids | Close M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M4 exit checks. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): the remaining Java 26.3 mobs (happy ghasts, nautiluses, camel husks, parched), mobs holding and picking up equipment, chainmail, books, bundles, spyglasses, armor trims, the remaining status effects and potions, and the village template catalogue | Planned; waits for the stabilisation gate |
 | v0.18 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): poplar, cinnabar and sulfur with their terrain and the sulfur cube, abandoned camps, mob heads, infested blocks, nether gold ore, conduits, and the reassessment of dungeons, mineshafts, strongholds, shipwrecks and monuments | Planned |
 | v0.19 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload. Added by the 2026-11-09 audit: the furnace minecart | Planned |
-| v0.20 | Polish and performance | M7: UX, §6 | Typography/contrast, material and mob art, inventory/recipe navigation, HUD/workstations, title/world identity, atmosphere and accessibility ([scope](#v020-scope-presentation-and-performance)); subtitles, asset and sound review in play (including the v0.12 blocks' own sounds), and menu fixes found since v0.11; the 240 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, v0.11's menu and title frame-time run and v0.12's `materials` runs, which moved here unverified ([v0.12 profile](verification/2026-10-29-v0.12-finish.md#frame-time)). The per-frame entity model rebuild that profile found was removed on 2026-11-09 ([record](verification/2026-11-09-entity-frame-time.md)); the leads now are the streaming route's main-thread terrain column lookups from mob spawning, the remaining 1.7–2.3 ms tick and per-frame sign text | Planned; presentation scope expanded by the owner on 2026-11-05. Each release now records its own frame-time run ([§6.1](#61-reference-configuration-and-frame-time-gate)), so what stays here is the final gate, not every release's first measurement |
+| v0.20 | Polish and performance | M7: UX, §6 | Typography/contrast, material and mob art, inventory/recipe navigation, HUD/workstations, title/world identity, atmosphere and accessibility ([scope](#v020-scope-presentation-and-performance)); subtitles, asset and sound review in play (including the v0.12 blocks' own sounds), and menu fixes found since v0.11; the 240 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, v0.11's menu and title frame-time run and v0.12's `materials` runs, which moved here unverified ([v0.12 profile](verification/2026-10-29-v0.12-finish.md#frame-time)). The per-frame entity model rebuild that profile found was removed on 2026-11-09 ([record](verification/2026-11-09-entity-frame-time.md)); the streaming route's main-thread terrain column rebuilds from mob biome queries were addressed in the [streaming follow-up](verification/2026-11-09-streaming-biomes-and-gen07.md); valid windowed gate runs, the remaining tick work and per-frame sign text are still owed | Planned; presentation scope expanded by the owner on 2026-11-05. Each release now records its own frame-time run ([§6.1](#61-reference-configuration-and-frame-time-gate)), so what stays here is the final gate, not every release's first measurement |
 | v1.0 | Acceptance | M7 exit, §8 | Every mandatory row Verified; fresh-world and long-session playthroughs; save-compatibility policy; installer and update checks; current stable Java scope reconciled | Planned |
 
 Notes:
@@ -605,8 +605,15 @@ v0.17 does not start until it passes. Work items:
    their rule up in a table. Offscreen comparison runs, one a side, moved
    the five simulation scenes' 1% low from 201–226 to 263–300 FPS and p99
    from 3.8–4.4 to 2.5–2.9 ms. They are not gate evidence: the machine was
-   on battery and in use, so no windowed run was valid. Streaming still
-   fails its budget (p99 11.5 ms against 8.33 ms).
+   on battery and in use, so no windowed run was valid. Streaming
+   failed its budget in that run (p99 11.5 ms against 8.33 ms). The
+   [streaming follow-up](verification/2026-11-09-streaming-biomes-and-gen07.md)
+   retains worker-computed original terrain heights with loaded columns so
+   gameplay biome queries no longer rebuild evicted density fields. Three
+   short offscreen comparisons per build reduced p99 to 3.635–4.157 ms and
+   the slowest 1%'s mean tick phase to 2.722–3.046 ms. These remain ineligible:
+   other desktop workloads were active, some repeats missed tick tolerance
+   and both builds had unexplained outliers. The gate remains unverified.
 3. **Terrain blending for generation 3 villages and outposts.**
    *Implemented, unverified (2026-11-09,
    [record](verification/2026-11-09-structure-terrain-blending.md)).* A
@@ -623,8 +630,8 @@ v0.17 does not start until it passes. Work items:
    pieces. Generations 1 and 2 are unchanged. Ancient cities, trail ruins
    and trial chambers keep their older approximations of `beard_box`,
    `bury` and `encapsulate`.
-4. **An agent run of v0.14 to v0.16.** *Scripted captures done; hands-on
-   play not reached (2026-11-09,
+4. **An agent run of v0.14 to v0.16.** *Scripted captures done; limited
+   hands-on play now reached (2026-11-09,
    [record](verification/2026-11-09-stabilisation-pass.md)).* Villages,
    an outpost, a ruined portal, trail ruins, a warm ocean ruin, an ancient
    city, a trial chamber and 17 of the v0.15 and v0.16 mob kinds were drawn
@@ -634,17 +641,24 @@ v0.17 does not start until it passes. Work items:
    hands-on sessions through computer use played for zero minutes: a bare
    executable isn't visible to it (fixed by `scripts/test-app.sh`), and
    the owner's screen was locked, which leaves no window to attach to.
+   A later GPT-6.1 Terra session in the [streaming follow-up](verification/2026-11-09-streaming-biomes-and-gen07.md)
+   created a survival world, moved along the shoreline and into the ocean,
+   used inventory and pause menus, saved and reopened. It also inspected
+   city and trial-chamber captures. Spawning, encounters and the remainder
+   of the content-wide hands-on pass remain unverified.
 5. **Documentation.** *Done (2026-11-09).* History moved to the
    [delivery records](delivery-records.md), the
    [inventory](requirements.md) refreshed against `main` and its 26
    stranded rows given releases, and `tools/check_doc_links.py` added to
    CI.
 6. **Still owed before the tag.** The owner's play of a new generation 3
-   world. A hands-on agent session with the screen unlocked. Three valid windowed runs of every scene on AC power with the
-   machine idle (PERF-02), and the streaming route's main-thread terrain
-   column lookups from mob spawning (PERF-03). The owner's decision on
-   [FE-02](#14-what-can-follow-10). Ancient cities and trial chambers in
-   the GEN-07 order corpus. Then the release preparation: Cargo version,
+   world. The remaining content and encounters in the agent hands-on pass.
+   Three valid windowed runs of every scene on AC power with the machine
+   idle (PERF-02/03), including investigation of any remaining streaming
+   outliers. The owner's decision on [FE-02](#14-what-can-follow-10).
+   Ancient cities and trial chambers now run in the GEN-07 order corpus
+   ([record](verification/2026-11-09-streaming-biomes-and-gen07.md)).
+   Then the release preparation: Cargo version,
    release notes that list the known gaps, and the tag.
 
 **Exit:** the owner has played a generation 3 world built from the merged

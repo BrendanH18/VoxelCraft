@@ -27,8 +27,13 @@ pub enum Job {
 
 pub enum JobResult {
     Generated(IVec3, Box<GeneratedChunk>),
-    /// Foliage colour groups and snow lines (see `Generator::snow_lines`).
-    Foliage(IVec2, Box<[u8; CHUNK_SIZE * CHUNK_SIZE]>, Box<[i16; CHUNK_SIZE * CHUNK_SIZE]>),
+    /// Colours, snow lines and original terrain heights for biome queries.
+    Foliage {
+        pos: IVec2,
+        colours: Box<[u8; CHUNK_SIZE * CHUNK_SIZE]>,
+        snow: Box<[i16; CHUNK_SIZE * CHUNK_SIZE]>,
+        biome_heights: Option<Box<[i16; CHUNK_SIZE * CHUNK_SIZE]>>,
+    },
     Meshed {
         pos: IVec3,
         version: u32,
@@ -64,11 +69,12 @@ impl Workers {
                                 pos,
                                 Box::new(GeneratedChunk::new(&generator, pos, generator.generate(pos))),
                             ),
-                            Job::Foliage(col) => JobResult::Foliage(
-                                col,
-                                generator.foliage(col.x, col.y),
-                                generator.snow_lines(col.x, col.y),
-                            ),
+                            Job::Foliage(col) => JobResult::Foliage {
+                                pos: col,
+                                colours: generator.foliage(col.x, col.y),
+                                snow: generator.snow_lines(col.x, col.y),
+                                biome_heights: generator.biome_heights(col),
+                            },
                             Job::Mesh { pos, version, input } => JobResult::Meshed {
                                 pos,
                                 version,

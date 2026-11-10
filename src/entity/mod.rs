@@ -613,7 +613,7 @@ impl MobWorld for World {
         self.generator.surface_biome(x, z)
     }
     fn snow_golem_melts(&self, p: IVec3) -> bool {
-        self.generator.dimension == Dimension::Nether || self.generator.biome_at(p).snow_golem_melts()
+        self.generator.dimension == Dimension::Nether || self.biome_at(p).snow_golem_melts()
     }
     fn nether_biome(&self, x: i32, z: i32) -> Option<crate::world::nether_biome::NetherBiome> {
         self.generator.nether_biome(x, z)
@@ -659,7 +659,7 @@ impl MobWorld for World {
         self.generator.temples.locate_rings(&self.generator, &[Kind::OceanRuin, Kind::Shipwreck], p, 50)
     }
     fn cave_biome(&self, p: IVec3) -> crate::world::terrain::Biome {
-        self.generator.biome_at(p)
+        self.biome_at(p)
     }
     fn in_fortress(&self, p: IVec3) -> bool {
         self.generator.in_fortress(p)

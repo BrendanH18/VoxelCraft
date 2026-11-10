@@ -67,6 +67,9 @@ roadmap and recorded checks to assess completeness against the current target.
   use-priority ordering, Adventure denial and Java hit-face pouring.
 - [Mining review fixes](verification/2026-10-13-review-mining-fixes.md): shared
   destroy delay, progress keys, door/plant drop rules, Creative egg/sword and Haste.
+- [Streaming biome queries and GEN-07](verification/2026-11-09-streaming-biomes-and-gen07.md):
+  worker-retained terrain heights, city/trial order coverage, limited Terra play
+  and short M5 comparison runs; performance acceptance remains open.
 - [Gameplay skylight and cave spawning](verification/2026-10-13-lighting-spawning.md):
   propagated sky light, cave/torch/reference scenarios, clock/weather inputs and
   Overworld/End process-restart checks; remaining shape and spawn differences.
