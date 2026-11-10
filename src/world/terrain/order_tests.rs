@@ -9,8 +9,8 @@
 //! - in row order with caches emptied along the way: every few chunks the
 //!   generator is replaced (dropping every cache, including ones structure
 //!   code adds later), and in between only the terrain column cache, or
-//!   only the temple, mineshaft, dungeon, relic and trail-ruin caches, are
-//!   emptied, so a chunk
+//!   only the structure caches (including ancient cities and trial chambers)
+//!   are emptied, so a chunk
 //!   can meet a structure rebuilt from scratch next to cached terrain and
 //!   the reverse.
 //!
@@ -23,6 +23,7 @@ use super::{Dimension, Generation, Generator};
 use crate::world::block::Block;
 use crate::world::chunk::{CHUNK_SIZE_I, CHUNK_VOLUME, ChunkData};
 use crate::world::fortress::Feature;
+use crate::world::structure::Bounds;
 use crate::world::temples::Kind;
 use glam::{IVec2, IVec3};
 use std::time::Instant;
@@ -45,11 +46,23 @@ fn around(p: IVec3, r: i32) -> impl Iterator<Item = IVec3> {
     (-r..=r).flat_map(move |x| (-r..=r).flat_map(move |z| (-1..=1).map(move |y| c + IVec3::new(x, y, z))))
 }
 
+/// Every chunk intersecting an inclusive structure box, including partial
+/// chunks at its edges. Both fixtures must exercise negative coordinates
+/// and horizontal/vertical chunk borders, rather than just a start chunk.
+fn underground_chunks(bounds: Bounds) -> impl Iterator<Item = IVec3> {
+    let lo = bounds.min.div_euclid(IVec3::splat(CHUNK_SIZE_I));
+    let hi = bounds.max.div_euclid(IVec3::splat(CHUNK_SIZE_I));
+    assert!(lo.x < 0 && lo.z < 0, "negative underground fixture: {bounds:?}");
+    assert!(lo.cmplt(hi).all(), "underground fixture crosses chunk borders on every axis: {bounds:?}");
+    (lo.z..=hi.z).flat_map(move |z| (lo.x..=hi.x).flat_map(move |x| (lo.y..=hi.y).map(move |y| IVec3::new(x, y, z))))
+}
+
 /// Chunk borders around the origin (x and z from -2 to 1, every row: deep
 /// dungeons, caves and the surface), the nearest village whole, every
 /// temple-family structure within 1200 blocks and the nearest mineshaft, in
 /// row order. Generation 3 adds a buried trail ruin and both fossils plus
-/// a well near desert terrain. Located on a throwaway generator so the runs
+/// a well near desert terrain, plus a whole ancient city and trial chamber
+/// at negative coordinates. Located on a throwaway generator so the runs
 /// start cold.
 fn corpus(generation: Generation) -> Vec<IVec3> {
     let g = fresh(generation);
@@ -81,6 +94,34 @@ fn corpus(generation: Generation) -> Vec<IVec3> {
     }
     chunks.extend(around(g.mineshafts.nearest(IVec3::ZERO).expect("a mineshaft"), 1));
     if generation >= Generation::V3 {
+        // Bounded, deterministic search in negative placement regions. Pick
+        // a city with both loot variants and a chamber crossing a vertical
+        // chunk border; the complete boxes cover their outlying pieces too.
+        let regions = || (1..=16).flat_map(|z| (1..=16).map(move |x| IVec2::new(-x, -z)));
+        let city = regions()
+            .filter_map(|r| g.ancient_cities.get(&g, r))
+            .find(|c| c.chests.iter().any(|&(_, _, ice)| ice) && c.chests.iter().any(|&(_, _, ice)| !ice))
+            .expect("a negative ancient city with ordinary and ice-box chests");
+        // Include the carving, foundations and sculk patches outside pieces.
+        let city_chunks: Vec<_> = underground_chunks(Bounds {
+            min: city.bounds.min - IVec3::splat(8),
+            max: city.bounds.max + IVec3::splat(8),
+        })
+        .collect();
+        let chamber = regions()
+            .filter_map(|r| g.trial_chambers.get(&g, r))
+            .find(|c| c.bounds().min.y.div_euclid(CHUNK_SIZE_I) < c.bounds().max.y.div_euclid(CHUNK_SIZE_I))
+            .expect("a negative trial chamber crossing a vertical chunk border");
+        let chamber_chunks: Vec<_> = underground_chunks(chamber.bounds()).collect();
+        eprintln!(
+            "GEN-07: city at {} ({} chunks), trial chamber at {} ({} chunks)",
+            city.at,
+            city_chunks.len(),
+            chamber.at,
+            chamber_chunks.len()
+        );
+        chunks.extend(city_chunks);
+        chunks.extend(chamber_chunks);
         let ruins = g.trail_ruins.nearest(&g, IVec2::ZERO, 6400).expect("trail ruins");
         chunks.extend(around(ruins, 3));
         let desert = g.nearest_biome(IVec2::ZERO, super::Biome::Desert, 16000).expect("desert");
@@ -132,6 +173,8 @@ fn evict(g: &mut Generator, generation: Generation, step: usize) {
             g.dungeons = crate::world::dungeon::Dungeons::new(SEED);
             g.relics = crate::world::relics::Relics::new(SEED);
             g.trail_ruins = crate::world::trail_ruins::TrailRuins::new(SEED);
+            g.ancient_cities = crate::world::ancient_city::AncientCities::new(SEED);
+            g.trial_chambers = crate::world::trial_chambers::TrialChambers::new(SEED);
         }
         _ => {}
     }
@@ -168,6 +211,38 @@ fn generation_ignores_order_threads_and_caches(generation: Generation) {
             has(|f| matches!(f, Feature::TempleChest(_, crate::world::temples::LootTable::BuriedTreasure))),
             "no buried treasure"
         );
+        for ice in [false, true] {
+            assert!(
+                all.iter().any(|f| matches!(f, Feature::AncientCityChest(_, i) if *i == ice)),
+                "generation 3: no ancient-city chest (ice box: {ice})"
+            );
+        }
+        assert!(has(|f| matches!(f, Feature::TrialLoot(..))), "generation 3: no trial loot");
+        assert!(has(|f| matches!(f, Feature::TrialSpawner(_))), "generation 3: no trial spawner");
+        assert!(has(|f| matches!(f, Feature::TrialVault)), "generation 3: no trial vault");
+
+        // Features alone could pass even if painting stopped. Check their
+        // backing blocks in the generated reference, not just layout data.
+        let mut vaults = [false; 2];
+        for (&cpos, (chunk, features)) in chunks.iter().zip(&reference) {
+            for &(at, feature) in features {
+                let p = at - cpos * CHUNK_SIZE_I;
+                let block = chunk.get(p.x as usize, p.y as usize, p.z as usize);
+                match feature {
+                    Feature::AncientCityChest(..) => assert_eq!(block.base(), Block::CHEST, "city chest at {at}"),
+                    Feature::TrialLoot(..) => assert!(crate::world::chest::is_chest(block), "trial loot at {at}"),
+                    Feature::TrialSpawner(_) => {
+                        assert!(crate::world::trial::spawner(block).is_some(), "trial spawner at {at}")
+                    }
+                    Feature::TrialVault => {
+                        let (_, _, ominous) = crate::world::trial::vault(block).expect("trial vault block");
+                        vaults[usize::from(ominous)] = true;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        assert!(vaults.into_iter().all(|covered| covered), "generation 3: normal and ominous trial vaults");
     }
     let mut failures = Vec::new();
 
