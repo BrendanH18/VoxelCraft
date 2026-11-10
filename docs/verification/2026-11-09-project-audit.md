@@ -139,4 +139,38 @@ verification.
 
 ## Response
 
-RESPONSE_PLACEHOLDER
+The owner asked for every suggested improvement to be carried out
+("full send": finish, verify and merge without waiting for review). Four
+agents worked in separate worktrees and the integrator (Claude Fable 5.2)
+checked each branch before merging it: reading the diff, re-running the
+checks on the merged tree, and looking at the game.
+
+| Suggestion | What was done | Evidence | Still open |
+|---|---|---|---|
+| 1. Freeze content for a stabilisation pass | A [stabilisation gate](../roadmap.md#stabilisation-gate-before-v017) now sits before v0.17. The merged build was run and every new structure and mob looked at | [Stabilisation pass](2026-11-09-stabilisation-pass.md) | The owner's play; the tag. No version number was bumped and nothing was tagged |
+| 2. Fix the per-frame mob rebuild and measure | Plain mob boxes are GPU instances; random block ticks use a rule table; the benchmark runner gained an offscreen comparison mode and a per-phase breakdown of slow frames. Each release must now record a run (roadmap §6.1) | [Entity frame time](2026-11-09-entity-frame-time.md) (Claude Fable 5.2) | Valid windowed runs (the machine was on battery and in use); the streaming budget |
+| 3. Decide the structure question; blend terrain | Fidelity exception FE-02 is written up as a proposal with the catalogue contract structures are held to instead; the owner has not approved it. Villages and outposts now choose floors the ground can meet and blend terrain with a Java-shaped kernel | [Terrain blending](2026-11-09-structure-terrain-blending.md) (GPT-6.1 Sol, two rounds) | The owner's decision on FE-02; `beard_box`, `bury` and `encapsulate`; the larger template catalogues (v0.17) |
+| 4. Give every missing registry name a release | `registry_gaps.json` lists all 436 missing names with a release, checked by `tests/java_registry.rs`; the roadmap has the [summary table](../roadmap.md#content-assigned-by-the-2026-11-09-audit) | [Data fixes](2026-11-09-audit-data-fixes.md) (GPT-6.1 Sol) | The assignments are the audit's; the owner may move them |
+| 5. Close the silent-skip hole | Brewing is compared both ways with a jar-derived fixture; trade and loot names must resolve or be a listed gap. Nine dropped offers and two loot names restored; fermented spider eye and Invisibility added | Same record | 20 brewing recipes wait for the four trial potions; no Java trade fixture exists yet |
+| 6. Refresh the inventory; split the roadmap | The roadmap went from 2,227 to about 1,500 lines with the history moved, unchanged, to the [delivery records](../delivery-records.md); the inventory was refreshed and its 26 stranded rows given releases; a link checker runs in CI | [Requirements](../requirements.md), `tools/check_doc_links.py` (Claude Opus 5.5) | — |
+
+Decisions the integrator made on the owner's behalf, each recorded where it
+applies and each the owner's to change:
+
+- **Terrain blending changes generation 3 layouts.** Pieces and starts that
+  the ground can't meet are rejected, so steep ground has fewer and smaller
+  villages (about a fifth fewer starts in the sample) and about a third
+  fewer outposts. Generation 3 isn't in a tagged release. The alternative,
+  a wider blend that kept every layout, moves further from Java.
+- **FE-02 is proposed, not approved.** A fidelity exception is the owner's
+  to grant, so the roadmap records the proposal and the contract agents
+  work to meanwhile.
+- **Unowned content went to v0.17 and v0.18**, which makes them the largest
+  releases in the plan.
+- **Two process rules were added to roadmap §7:** an agent runs each
+  version before the owner is asked to, and at most one version waits for
+  the owner's play while the next is built.
+- **Nothing was tagged and Cargo stays at 0.13.0.** The roadmap recommends
+  one `v0.16` tag covering v0.14 to v0.16 after the owner's play.
+
+Checks on the final tree: CHECKS_PLACEHOLDER

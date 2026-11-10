@@ -194,7 +194,11 @@ landform variety, overhangs, cave and aquifer types, ore bands, features
 and their continuity across chunk borders), checked by VoxelCraft fixtures
 and play rather than Java seed/coordinate fixtures. Player impact: Java
 seeds and coordinates from guides don't carry over. This is the only
-approved fidelity exception.
+approved fidelity exception. Two things lean on it without the owner having
+ruled on them: the Nether's terrain also uses original noise (GEN-04a), and
+the 2026-11-09 terrain blending converts VoxelCraft's block-distance density
+to Java's units where a structure's beard applies
+([record](verification/2026-11-09-structure-terrain-blending.md)).
 
 **Proposed fidelity exception FE-02 — original structure templates
 (audit, 2026-11-09; the owner's approval is pending).** v0.14 to v0.16 build
@@ -534,7 +538,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.11 | Menus and settings | M7 early: UX-03a/b, UX-05a | Java's title screen, world list and Edit World screen; Java-style options screens, key rebinding, GUI scale and per-category volume; consistent menu navigation and error screens. See [v0.11 scope](#v011-scope-menus-and-settings) | Done (owner, 2026-10-25), tagged `v0.11` from `ec74556` without its exit checks. Rows stay Implemented, unverified: the menu and title frame-time run moved to v0.20; [record](delivery-records.md#v011-scope-menus-and-settings) |
 | v0.12 | Building materials | Close M2 | Missing wood, stone, copper and colour family members, the unregistered reference fuel items, signs, banners, item frames, cauldrons and campfires; coral wall fans; falling and dripping dripstone, tilting dripleaf. See [v0.12 scope](#v012-scope-building-materials) | Done (owner, 2026-10-29), tagged `v0.12` ([#55](https://github.com/BrendanH18/VoxelCraft/pull/55)). Rows stay Implemented, unverified: the `materials` frame-time gate moved to v0.20; [record](delivery-records.md#v012-scope-building-materials) |
 | v0.13 | Terrain | M3: GEN-01..03 | Density terrain with overhangs from the climate noise (original noise, FE-01); caves and aquifers fitted to it, springs, glow lichen and an ore pass; deep-dark terrain with sculk; giant spruce and jungle trees and the remaining biome features; bubble columns, fire spread, offhand and shields carried from v0.12. See [v0.13 scope](#v013-scope-terrain) | Done (owner, 2026-10-31), tagged `v0.13` ([#57](https://github.com/BrendanH18/VoxelCraft/pull/57)). Rows stay Implemented, unverified until the frame-time check in v0.20; [record](delivery-records.md#v013-scope-terrain) |
-| v0.14 | Structures | M3: GEN-05..07 | A Java structure-template (jigsaw) system; villages, outposts, bastions, fossils, shipwrecks, ocean ruins and monuments built from it; buried treasure and explorer maps; Java loot random sequences. See [v0.14 scope](#v014-scope-structures) | In progress (2026-11-03): scope approved with original templates (no fidelity exception yet); all of items 0–7 implemented, unverified: world generation 3, the jigsaw engine and villages ([record](verification/2026-11-03-v0.14-jigsaw-villages.md)), outposts and bastions ([record](verification/2026-11-03-v0.14-outposts-bastions.md)), ruined portals and buried treasure ([record](verification/2026-11-03-v0.14-portals-treasure.md)), fossils, desert wells and trail ruins ([record](verification/2026-11-03-v0.14-fossils-wells-trail-ruins.md)), maps, explorer maps and Java loot sequences ([record](verification/2026-11-03-v0.14-maps.md)); owner play pending |
+| v0.14 | Structures | M3: GEN-05..07 | A Java structure-template (jigsaw) system; villages, outposts, bastions, fossils, shipwrecks, ocean ruins and monuments built from it; buried treasure and explorer maps; Java loot random sequences. See [v0.14 scope](#v014-scope-structures) | In progress (2026-11-03): scope approved with original templates (no fidelity exception yet); all of items 0–7 implemented, unverified: world generation 3, the jigsaw engine and villages ([record](verification/2026-11-03-v0.14-jigsaw-villages.md)), outposts and bastions ([record](verification/2026-11-03-v0.14-outposts-bastions.md)), ruined portals and buried treasure ([record](verification/2026-11-03-v0.14-portals-treasure.md)), fossils, desert wells and trail ruins ([record](verification/2026-11-03-v0.14-fossils-wells-trail-ruins.md)), maps, explorer maps and Java loot sequences ([record](verification/2026-11-03-v0.14-maps.md)); terrain blending for villages and outposts added on 2026-11-09 ([record](verification/2026-11-09-structure-terrain-blending.md)). Merged, not tagged: waits for the [stabilisation gate](#stabilisation-gate-before-v017) and the owner's play |
 | v0.15 | Wildlife | M4: MOB-03/04, FOO, ENV-03 | Bats, frogs, pandas, polar bears, armadillos, mooshrooms, strays, bogged, phantoms and zombie horses (with lightning); drowned conversion and the cat spawner; melon, pumpkin and beetroot crops; animal and mount acceptance. See [v0.15 scope](#v015-scope-wildlife) | Implemented, unverified (2026-11-04): started early while v0.14 waits for the owner's play; four tracks (lightning and undead mounts, crops and bees, passive mobs, hostiles) merged and council-reviewed ([integration](verification/2026-11-04-v0.15-integration.md)); copper golems (2026-11-05), then creaking and resin, allays, sniffers and ocean ruins with suspicious blocks (2026-11-06, [integration](verification/2026-11-06-v0.15-final-integration.md)) complete the scope; awaits the owner's play |
 | v0.16 | Deep dark and trials | M3 + M4 + PRO-07 | Ancient cities with sculk and the warden; trial chambers with breezes, trial spawners, vaults and the mace; tridents, spears and the other modern weapon families; a jukebox with music discs. See [v0.16 scope](#v016-scope-deep-dark-and-trials) | Implemented, unverified (2026-11-07): scope approved by the owner on 2026-11-06; four tracks (sculk and the warden, ancient cities and music, trial chambers, weapons) merged and integrated ([integration](verification/2026-11-07-v0.16-integration.md)); awaits the owner's play |
 | — | Stabilisation | Gate before v0.17 | No new content: an agent hands-on pass over v0.14 to v0.16, the entity frame-time fix and a full scene run, terrain blending for generation 3 structures, the audit's data fixes, the owner's play, and one tag for v0.14 to v0.16. See the [stabilisation gate](#stabilisation-gate-before-v017) | In progress (2026-11-09) |
@@ -586,7 +590,57 @@ v0.14, v0.15 and v0.16 were merged without being run, so the next release
 is a gate, not a version: it adds no blocks, items, mobs or structures, and
 v0.17 does not start until it passes. Work items:
 
-STABILISATION_ITEMS
+1. **Data fixes.** *Implemented, unverified (2026-11-09,
+   [record](verification/2026-11-09-audit-data-fixes.md)).* Brewing is
+   compared both ways with a fixture extracted from the 26.3 server jar
+   (279 recipes: 259 match, 20 wait for the four trial potions); fermented
+   spider eye, the golden carrot, rabbit's foot and corruption mixes and
+   Invisibility were added. Eight villager offers and one wandering-trader
+   offer that named items wrongly are restored. Every missing registry name
+   has a release in `registry_gaps.json` (122 blocks, 309 items, 5 potions),
+   checked by `tests/java_registry.rs`.
+2. **Entity frame time.** *Implemented; the gate run is still owed
+   (2026-11-09, [record](verification/2026-11-09-entity-frame-time.md)).*
+   Plain mob boxes are drawn as GPU instances and random block ticks look
+   their rule up in a table. Offscreen comparison runs, one a side, moved
+   the five simulation scenes' 1% low from 201–226 to 263–300 FPS and p99
+   from 3.8–4.4 to 2.5–2.9 ms. They are not gate evidence: the machine was
+   on battery and in use, so no windowed run was valid. Streaming still
+   fails its budget (p99 11.5 ms against 8.33 ms).
+3. **Terrain blending for generation 3 villages and outposts.**
+   *Implemented, unverified (2026-11-09,
+   [record](verification/2026-11-09-structure-terrain-blending.md)).* A
+   first attempt with Java's `beard_thin` kernel alone failed: pieces stood
+   up to 19 blocks from the surrounding ground and the kernel reaches 12.
+   The delivered version first chooses each rigid piece's floor so the
+   ground around it is within reach, rejecting pieces (and starts) that
+   can't fit, then applies the Java-shaped kernel before surface rules and
+   features. Pillars and hillside cuts are gone in the tested fixtures (at
+   most 1 foundation block, 3 blocks of ring error and a 3-block step,
+   against 19 before). The cost is availability on steep ground: over 2,025
+   placement cells on each of three seeds, village starts fell from 996 to
+   791 and outposts from 146 to 100, and the mean village lost about three
+   pieces. Generations 1 and 2 are unchanged. Ancient cities, trail ruins
+   and trial chambers keep their older approximations of `beard_box`,
+   `bury` and `encapsulate`.
+4. **An agent run of v0.14 to v0.16.** *Scripted captures done; hands-on
+   play HANDS_ON_STATUS (2026-11-09,
+   [record](verification/2026-11-09-stabilisation-pass.md)).* Every
+   generation 3 structure (villages, an outpost, a ruined portal, trail
+   ruins, a warm ocean ruin, an ancient city, a trial chamber) and every
+   v0.15 and v0.16 mob was drawn from the merged build and looked at.
+5. **Documentation.** *Done (2026-11-09).* History moved to the
+   [delivery records](delivery-records.md), the
+   [inventory](requirements.md) refreshed against `main` and its 26
+   stranded rows given releases, and `tools/check_doc_links.py` added to
+   CI.
+6. **Still owed before the tag.** The owner's play of a new generation 3
+   world. Three valid windowed runs of every scene on AC power with the
+   machine idle (PERF-02), and the streaming route's main-thread terrain
+   column lookups from mob spawning (PERF-03). The owner's decision on
+   [FE-02](#14-what-can-follow-10). Ancient cities and trial chambers in
+   the GEN-07 order corpus. Then the release preparation: Cargo version,
+   release notes that list the known gaps, and the tag.
 
 **Exit:** the owner has played a generation 3 world built from the merged
 tree and reported the result; problems found are fixed or listed in the
@@ -770,8 +824,11 @@ mansion, trial chamber and ancient city maps until those structures
 exist. No allays (the outpost allay cage stays empty), dried ghasts
 (Nether fossils), archaeology (DEF-02), recovery compasses, map scaling
 or locking UI, item-frame map images or LAN map image sync. The
-expansion hack and beardifier aren't modelled, so steep slopes can expose
-foundations; decoration randomness uses VoxelCraft streams, not Java's.
+expansion hack isn't modelled, and decoration randomness uses VoxelCraft
+streams, not Java's. The beardifier wasn't modelled either, so pieces stood
+on pillars and in hillside cuts; since 2026-11-09 villages and outposts
+choose floors the ground can meet and blend the terrain around them
+([record](verification/2026-11-09-structure-terrain-blending.md)).
 Generation 3 chunk generation measured within 1% of generation 2 near
 outposts, bastions, deserts, swamps and trail ruins, and 8% slower next
 to a ruined portal (0.626 against 0.579 ms per chunk).

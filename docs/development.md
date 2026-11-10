@@ -205,6 +205,20 @@ screen. `--xp 30` sets the experience level and `--orbs 40` spawns orbs worth 40
 points four blocks ahead. `cargo test --release icon_sheet -- --ignored` writes every item icon
 to `target/item_icons.png`.
 
+To point a capture at a structure, find it without starting the game:
+`cargo run --release --no-default-features --example locate_structures -- 42`
+prints the nearest village, outpost, ancient city, trial chamber, trail
+ruins, ruined portal, buried treasure, ocean ruin, temple, shipwreck,
+monument, stronghold and mineshaft to the origin for that seed in the latest
+world generation (run it through `scripts/remote-check.sh -- '…'` to keep the
+build off the Mac). The camera looks along `(cos yaw, sin yaw)` in x and z,
+so a pose of `x-40,y+35,z+40,-45,-30` looks down at a structure at `x,y,z`.
+Underground structures need a camera in open air inside them and
+`--effect night_vision,600`; `--no-hud` also hides the inventory, so leave
+it off for UI captures. The
+[2026-11-09 stabilisation pass](verification/2026-11-09-stabilisation-pass.md)
+lists the poses it used.
+
 ## Sound export
 
 ```sh
