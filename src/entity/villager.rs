@@ -990,6 +990,12 @@ impl Entities {
     }
 }
 
+/// Names consumed by the trade table, including deliberately unavailable content.
+/// Kept visible to the registry-gap guard so offer filtering cannot hide typos.
+pub fn trade_item_names() -> impl Iterator<Item = &'static str> {
+    tables::TRADES.iter().flat_map(|(_, _, t)| [t.input, t.output])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

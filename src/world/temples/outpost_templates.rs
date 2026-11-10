@@ -7,6 +7,9 @@ const SETTINGS: jigsaw::Settings =
 
 struct OutpostPalette;
 impl Palette for OutpostPalette {
+    fn clear_above(&self) -> i32 {
+        0
+    }
     fn role(&self, role: &str) -> Option<Block> {
         (role == "foundation").then_some(Block::COBBLESTONE)
     }
@@ -28,8 +31,12 @@ fn surface(g: &Generator, x: i32, z: i32) -> i32 {
 pub(super) fn build(g: &Generator, centre: IVec2, seed: u64) -> Built {
     let lib = jigsaw::outposts();
     let surface = |x, z| surface(g, x, z);
-    let placed = jigsaw::assemble(lib, &SETTINGS, centre, &surface, seed);
-    let bounds = placed.iter().map(|p| p.bounds).reduce(|a, b| a.union(&b)).expect("outpost start");
+    let placed = jigsaw::assemble_enveloped(lib, &SETTINGS, centre, &surface, seed, &|ps, p| g.beard_fit(lib, ps, p));
+    let bounds = placed
+        .iter()
+        .map(|p| p.bounds)
+        .reduce(|a, b| a.union(&b))
+        .unwrap_or(Bounds { min: IVec3::new(centre.x, 0, centre.y), max: IVec3::new(centre.x, 0, centre.y) });
     let mut features = Vec::new();
     let mut residents = Vec::new();
     for marker in jigsaw::markers(lib, &placed, &surface) {
@@ -51,7 +58,10 @@ pub(super) fn paint(g: &Generator, built: &Built, blocks: &mut [Block; CHUNK_VOL
         jigsaw::outposts(),
         &built.placed,
         &OutpostPalette,
-        &jigsaw::Ground { surface: &|x, z| surface(g, x, z), solid: &|x, z| g.column(x, z).height },
+        &jigsaw::Ground {
+            surface: &|x, z| g.terrain_column(x, z).height.max(SEA_LEVEL - 1),
+            solid: &|x, z| g.terrain_column(x, z).height,
+        },
         blocks,
         base,
     );

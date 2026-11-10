@@ -227,7 +227,7 @@ src/
     model/nether.rs  their box models
     item.rs          dropped items: physics, merging, despawning, saving
     chunk_storage.rs entities of unloaded chunks, out of the level until the chunk loads
-    model.rs         animated box models -> camera-relative triangles
+    model.rs         animated box models -> camera-relative box instances and triangles
   mesh.rs            lighting + greedy meshing (runs on workers)
   workers.rs         thread pool
   bench.rs           headless generation/meshing benchmark
@@ -273,7 +273,7 @@ src/
   render/
     mod.rs           wgpu pipelines, culling, draw submission, screenshots
     arena.rs         pooled GPU storage for chunk quads
-    entity.rs        entity pass (one dynamic vertex buffer per frame)
+    entity.rs        entity pass (boxes as GPU instances, plus one dynamic vertex buffer per frame)
     block_model.rs   free-standing textured blocks (falling sand, dropped items)
     hand.rs          first-person hand and held item (Minecraft's transforms)
     item_sprites.rs  procedural item icons (their own texture array, layers 256+)
@@ -336,7 +336,7 @@ content and took its release's new number.
 ### v0.12 track reservations
 
 Reserved on 2026-10-25 when `STATE_CAPACITY` rose to 32,768, so the
-[v0.12 tracks](roadmap.md#v012-scope-building-materials) can run in
+[v0.12 tracks](delivery-records.md#v012-scope-building-materials) can run in
 parallel. Each track allocates only inside its own rows. v0.12's older
 ranges (2525–4095 and 8704–9727) are kept for the integrator and the data
 pass; a track that outgrows its range asks for a block of them, or of the
@@ -354,7 +354,7 @@ reserve, and records it here.
 
 ### v0.13 track reservations
 
-Reserved on 2026-10-30 for the [v0.13 tracks](roadmap.md#v013-scope-terrain).
+Reserved on 2026-10-30 for the [v0.13 tracks](delivery-records.md#v013-scope-terrain).
 The deep-dark blocks take the start of v0.16's range (deep dark and trial
 chambers), since v0.13 generates them; v0.16 keeps 11520–11775.
 
@@ -814,6 +814,29 @@ ends `Warden` (72), `Breeze` (73); `Enchantment` ends `SwiftSneak` (40),
 after the resin brick run Track B, D, C; sounds Warden, Sculk, Weapon,
 Breeze; effects Darkness, BadOmen, TrialOmen
 ([integration record](verification/2026-11-07-v0.16-integration.md)).
+
+### 2026-11-09 audit-fix reservations
+
+The brewing/trade/registry audit repair owns item IDs **1530–1539** and
+block texture layers **3952–3967**, carved from the v0.16 integrator spare.
+Inspection found no existing registrations in either range (`weapons::RESERVED_END`
+is the exclusive bound 1530; the heavy-core texture bound is exclusive 3952).
+
+| Item IDs | Allocation |
+|---|---|
+| 1530 | Fermented spider eye |
+| 1531–1532 | Invisibility, long Invisibility drinkable potions |
+| 1533–1534 | Invisibility, long Invisibility splash potions |
+| 1535–1539 | Remain reserved for this audit repair; unallocated |
+
+All **3952–3967** block texture layers remain reserved and unallocated. These
+items use the existing procedural item-icon array above `tex::ITEM_BASE`, whose
+indices are computed at runtime; they consume no block texture layers.
+`POTIONS[39..41]` appends the new types after the three Turtle Master entries.
+Legacy drink/splash IDs 400–435 / 436–471 and Turtle Master IDs 1041–1046
+retain their mappings. Lingering/tipped-arrow components store `potion index + 1`
+and remain compatible. `Effect::Invisibility` appends after Trial Omen (bit 28);
+effect saves use Java string IDs, so existing effects and masks keep their order.
 
 ## Assessment branch ID reservations
 

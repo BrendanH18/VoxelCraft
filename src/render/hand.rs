@@ -39,6 +39,9 @@ pub struct Hand {
     pub map: Option<Box<crate::world::maps::MapData>>,
     pub off_map: Option<Box<crate::world::maps::MapData>>,
     pub map_small: bool,
+    /// Invisibility hides the bare arm, as Java's `renderHandsWithItems`
+    /// does; a held item still draws.
+    pub invisible: bool,
 }
 
 /// Minecraft draws the hand with this field of view, whatever the setting.
@@ -322,6 +325,9 @@ pub(super) fn vertices(
     }
 
     let Some(item) = hand.item else {
+        if hand.invisible {
+            return out;
+        }
         // The bare arm (Minecraft's `renderPlayerArm`).
         let m =
             bob * translate(
@@ -420,6 +426,12 @@ mod tests {
             assert!(hi.z < -0.1 && lo.z > -1.5, "{item:?}: {lo} {hi}");
             assert!(hi.x > 0.2 && lo.y < -0.2 && hi.y < 0.4, "{item:?}: {lo} {hi}");
         }
+        // Invisibility hides the bare arm and nothing else.
+        let unseen = |item| Hand { item, invisible: true, sky_light: 1.0, ..Default::default() };
+        let mut draw =
+            |hand: &Hand| vertices(hand, forward, 70f32.to_radians(), WIDE_ASPECT, Mat4::IDENTITY, &mut masks);
+        assert!(draw(&unseen(None)).is_empty());
+        assert!(!draw(&unseen(Some(Item::STICK))).is_empty());
         // Lowered for an item switch, it drops out of view.
         let low = Hand { item: Some(Item::STICK), equip: 1.0, ..Default::default() };
         let (_, hi) = bounds(&vertices(&low, forward, 70f32.to_radians(), WIDE_ASPECT, Mat4::IDENTITY, &mut masks));

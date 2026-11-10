@@ -2,7 +2,7 @@
 use super::*;
 use crate::entity::leash::Leash;
 
-fn quad(out: &mut Vec<EntityVertex>, points: [Vec3; 4], color: [u8; 3], light: [u8; 4], torch: u8) {
+fn quad(out: &mut EntityMesh, points: [Vec3; 4], color: [u8; 3], light: [u8; 4], torch: u8) {
     // Both windings: rope and glyphs remain visible from either side.
     for i in [0, 1, 2, 0, 2, 3, 2, 1, 0, 3, 2, 0] {
         out.push(EntityVertex {
@@ -14,7 +14,7 @@ fn quad(out: &mut Vec<EntityVertex>, points: [Vec3; 4], color: [u8; 3], light: [
         });
     }
 }
-pub(super) fn attachments(m: &Mob, camera: DVec3, forward: Vec3, rel: Vec3, out: &mut Vec<EntityVertex>) {
+pub(super) fn attachments(m: &Mob, camera: DVec3, forward: Vec3, rel: Vec3, out: &mut EntityMesh) {
     let light = [(m.sky_light.clamp(0.0, 1.0) * 255.0) as u8, 255, 0, 0];
     let torch = (m.block_light.clamp(0.0, 1.0) * 255.0) as u8;
     if let Some(anchor) = m.leash_pos {
@@ -39,7 +39,7 @@ pub(super) fn attachments(m: &Mob, camera: DVec3, forward: Vec3, rel: Vec3, out:
     }
     nameplate(m, forward, rel, out);
 }
-fn nameplate(m: &Mob, forward: Vec3, rel: Vec3, out: &mut Vec<EntityVertex>) {
+fn nameplate(m: &Mob, forward: Vec3, rel: Vec3, out: &mut EntityMesh) {
     let Some(text) = m.name.as_str() else { return };
     if rel.length_squared() > 32.0 * 32.0 || !m.alive() {
         return;
@@ -50,7 +50,7 @@ fn nameplate(m: &Mob, forward: Vec3, rel: Vec3, out: &mut Vec<EntityVertex>) {
 /// Draws `text` centred above `bottom` (camera-relative), facing a camera looking along `forward`,
 /// as Java's dark-backed white name tag.
 #[cfg(feature = "client")]
-pub(crate) fn label(text: &str, bottom: Vec3, forward: Vec3, out: &mut Vec<EntityVertex>) {
+pub(crate) fn label(text: &str, bottom: Vec3, forward: Vec3, out: &mut EntityMesh) {
     let right = forward.cross(Vec3::Y).normalize_or(Vec3::X);
     let pixel = 0.022;
     let origin = bottom - right * (text.chars().count() as f32 * 8.0 * pixel * 0.5);
@@ -90,4 +90,4 @@ pub(crate) fn label(text: &str, bottom: Vec3, forward: Vec3, out: &mut Vec<Entit
     }
 }
 #[cfg(not(feature = "client"))]
-pub(crate) fn label(_: &str, _: Vec3, _: Vec3, _: &mut Vec<EntityVertex>) {}
+pub(crate) fn label(_: &str, _: Vec3, _: Vec3, _: &mut EntityMesh) {}

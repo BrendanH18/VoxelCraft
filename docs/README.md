@@ -9,6 +9,9 @@
   the graphics/UI review, work order and validation needs within M7.
 - [Requirement inventory](requirements.md): every core requirement as its own row,
   with state, owning release, evidence and acceptance cases.
+- [Delivery records](delivery-records.md): what each shipped version delivered,
+  the 0.6 starting inventory, dated assessment follow-ups and the full scopes of
+  tagged versions, moved out of the roadmap on 2026-11-09.
 - [Restructuring plan](restructuring.md): planned verification, content, gameplay,
   asset and module changes, including how to retain pending v0.7 work.
 
@@ -167,6 +170,10 @@ roadmap and recorded checks to assess completeness against the current target.
   hitting vehicles and decorations, cauldrons putting out fires, the
   hidden-window memory fix, frame-time runs and profile, and what moved out
   of v0.12.
+- [Entity drawing and tick frame time](verification/2026-11-09-entity-frame-time.md):
+  what the slowest frames do, mob boxes drawn as GPU instances, random
+  block ticks by table, and offscreen before/after runs that are not gate
+  evidence.
 - [v0.13 density terrain](verification/2026-10-30-v0.13-density.md):
   generation 2's 3D density field, surface rules, caves and aquifers.
 - [v0.13 underground](verification/2026-10-30-v0.13-underground.md): glow

@@ -16,7 +16,13 @@ cargo test --release
 
 The Linux CI job also checks the release binary's embedded assets with
 `python3 tools/validate_assets.py --executable target/release/voxelcraft` and
-runs the benchmark-gate tool tests. CI runs Cargo with `--locked`, so commit
+runs the benchmark-gate tool tests. It also runs
+`python3 tools/check_doc_links.py` (and its tests,
+`python3 -m unittest tools/test_check_doc_links.py`), which checks that every
+relative link and `#anchor` in the tracked Markdown files resolves, using
+GitHub's heading-anchor rules, and prints each broken one as
+`file:line: target`. Documentation-only changes skip the Cargo chain; run
+the link check instead. CI runs Cargo with `--locked`, so commit
 `Cargo.lock` changes with the code that needs them. The **Security** workflow
 runs `cargo audit --deny warnings` weekly and on pull requests that change `Cargo.toml`,
 `Cargo.lock` or `.github/workflows/security.yml`. Dependabot proposes weekly
@@ -144,7 +150,11 @@ Render distance uses **32-block chunks**: `--rd 8` spans 256 blocks,
 
 `--screenshot` waits for the world to load, writes a PNG, then exits.
 `--pose` sets `x,y,z,yaw,pitch` (angles in degrees) and starts the player flying.
-Use `--wait` to let the scene simulate before capture. Scripted runs
+Use `--wait` to let the scene simulate before capture. To compare two
+builds pixel for pixel, capture a paused scene with the animation clock held:
+`--open-menu pause --animation-time 7.3`. Idle animations, clouds and water
+follow the wall clock even while the game is paused, so without the held
+clock two captures of one build differ. Scripted runs
 (`--screenshot`, `--bench-render`) ignore saved options. Saves and logs normally
 use the [per-user data folder](releases.md#player-data-and-old-saves); add
 `--data-dir target/screenshots` to isolate a scripted run. In `--place` and
@@ -194,6 +204,35 @@ survival, `--health 5 --air 6 --food 8` sets the vitals; `--health 0` opens the 
 screen. `--xp 30` sets the experience level and `--orbs 40` spawns orbs worth 40
 points four blocks ahead. `cargo test --release icon_sheet -- --ignored` writes every item icon
 to `target/item_icons.png`.
+
+To point a capture at a structure, find it without starting the game:
+`cargo run --release --no-default-features --example locate_structures -- 42`
+prints the nearest village, outpost, ancient city, trial chamber, trail
+ruins, ruined portal, buried treasure, ocean ruin, temple, shipwreck,
+monument, stronghold and mineshaft to the origin for that seed in the latest
+world generation (run it through `scripts/remote-check.sh -- '…'` to keep the
+build off the Mac). The camera looks along `(cos yaw, sin yaw)` in x and z,
+so a pose of `x-40,y+35,z+40,-45,-30` looks down at a structure at `x,y,z`.
+Underground structures need a camera in open air inside them and
+`--effect night_vision,600`; `--no-hud` also hides the inventory, so leave
+it off for UI captures. The
+[2026-11-09 stabilisation pass](verification/2026-11-09-stabilisation-pass.md)
+lists the poses it used.
+
+## Hands-on runs
+
+An agent that plays the game through computer use (AGENTS.md names the
+model) needs two things the scripted scenes don't. The game has to be an
+app: a bare `target/release/voxelcraft` isn't listed, so wrap the build with
+`scripts/test-app.sh BINARY`, which makes an ad-hoc signed
+`target/hands-on/VoxelCraft Test.app` with its own bundle identifier, and
+launch that with `open -n … --args --data-dir "$PWD/target/hands-on/data" --no-update-check`.
+And the screen has to be unlocked: a locked session has no windows, so
+attaching fails with `cgWindowNotFound` and windowed benchmark runs are
+rejected as occluded. Check with
+`ioreg -n Root -d1 -a | grep -A1 CGSSessionScreenIsLocked` before starting,
+and leave hands-on play and gate runs for when the owner is at the machine
+rather than working around the lock.
 
 ## Sound export
 
@@ -266,7 +305,12 @@ occluded are counted, and any skipped frame makes the run invalid.
 
 Reports include average FPS, the reciprocal of the mean of the slowest 1% of
 frames, p50/p95/p99/worst frame time, stalls over 50 ms, cold load and process
-RSS. They also include completed versus expected simulation ticks, paused and
+RSS. World scenes also report `frame_phases_ms`: mean milliseconds per phase
+of the frame (streaming and polling, the due ticks, uploads, entity geometry,
+the rest of the scene, acquiring the image, drawing, presenting) over all
+frames, over the slowest 1% and over the frames that ran a tick, with `other`
+for time outside the phases. At several hundred FPS the slowest 1% are the
+tick frames, so read the gate's tail there before profiling the average. They also include completed versus expected simulation ticks, paused and
 discarded simulation time, unpresented frames and entity populations at sample
 start and end. Present mode is reported as requested and as resolved from the
 surface's supported modes, along with the relevant options. GPU memory is
@@ -289,6 +333,16 @@ repeats. The fingerprint covers the files embedded by `build.rs`, including
 Neither this suite nor the older offscreen sweep alone proves 1.0 performance
 acceptance.
 
+When the window can't stay visible or the machine is on battery, compare
+builds with `--offscreen` (and `--seconds N` for a shorter sample, with
+`--executable` for each build). The scene is drawn into an offscreen image of
+the same size and nothing is presented; each frame waits for the frame two
+back to finish on the GPU, as a window's three images would make it, so the
+interval is the larger of the CPU's and the GPU's time. These runs are for
+comparison only: every report is marked ineligible and the gate never passes
+on them ([example](verification/2026-11-09-entity-frame-time.md)).
+
 The low-level flags are `--benchmark-scene`, `--benchmark-output`,
-`--benchmark-warmup`, `--benchmark-duration` and `--size WIDTHxHEIGHT`.
+`--benchmark-warmup`, `--benchmark-duration`, `--benchmark-offscreen` and
+`--size WIDTHxHEIGHT`.
 The legacy `--bench-render` remains available for historical comparisons.

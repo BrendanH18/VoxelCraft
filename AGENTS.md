@@ -117,6 +117,19 @@ Keep documentation and test evidence aligned with the delivered behavior.
   write formal acceptance checklists or ask for physical-controller sessions;
   controller and CLI paths are covered by the automated adapter tests, and the
   owner reports problems found in play.
+- Before a version is offered to the owner (2026-11-09 audit; details in
+  [roadmap §7](docs/roadmap.md#7-feature-completion-and-release-policy) and
+  [§6.1](docs/roadmap.md#61-reference-configuration-and-frame-time-gate)):
+  an agent launches the merged build and looks at every new structure, mob,
+  block and screen, a frame-time run is recorded at that commit, and the
+  [requirement inventory](docs/requirements.md) is refreshed. At most one
+  version waits for the owner's play while the next is built.
+- Every Java 26.3 block, item and potion the game lacks is listed with the
+  release that owns it in `tests/fixtures/java/26.3/registry_gaps.json`
+  (2026-11-09 audit). `cargo test` fails when that list is out of date or
+  when a trade or loot table names an item that neither resolves nor is
+  listed. Registering content removes its entry; moving content to another
+  release edits the entry and the roadmap together.
 - Use original or appropriately licensed implementation and assets. License:
   MIT OR Apache-2.0.
 - Released games trust only the update-signing keys in

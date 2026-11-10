@@ -26,7 +26,7 @@ fn main() {
         "cooking": section(&compare::compare_cooking(&r)),
         "stonecutting": section(&compare::compare_stonecutting(&r)),
         "smithing": section(&compare::compare_smithing(&r)),
-        "scope": "Brewing (recipe/brewing) is not compared. Unregistered recipes are missing content, not parity.",
+        "scope": "Brewing is checked separately by tests/java_brewing.rs against brewing.json. Unregistered recipes are missing content, not parity.",
     });
     println!("{}", serde_json::to_string_pretty(&report).unwrap());
 }

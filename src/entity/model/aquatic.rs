@@ -194,7 +194,7 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
         _ => Parts::new(),
     }
 }
-pub(super) fn beam(m: &Mob, camera: DVec3, out: &mut Vec<EntityVertex>) {
+pub(super) fn beam(m: &Mob, camera: DVec3, out: &mut EntityMesh) {
     let Some(a) = &m.aquatic else { return };
     let Some(end) = a.beam.filter(|_| a.charge > 0.0) else { return };
     let start = m.pos + DVec3::Y * m.shape().height * 0.5;

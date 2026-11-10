@@ -1,5 +1,6 @@
-//! Minecraft-style box models, animated and flattened into camera-relative
-//! triangles for the entity render pass.
+//! Minecraft-style box models, animated and placed relative to the camera
+//! for the entity render pass: plain boxes as instances the GPU expands
+//! into faces, everything else as triangles (see [`EntityMesh`]).
 //!
 //! Models are authored in 1/16-block "pixels" with the origin at the feet,
 //! +Y up and +Z forward. Each part has a pivot (in model space) that it
@@ -22,7 +23,7 @@ mod labels;
 mod nether;
 
 #[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable, Debug)]
+#[derive(Clone, Copy, Pod, Zeroable, Debug, PartialEq)]
 pub struct EntityVertex {
     /// Camera-relative position.
     pub pos: [f32; 3],
@@ -34,6 +35,117 @@ pub struct EntityVertex {
     pub light: [u8; 4],
     /// x: block light (torches); the rest is padding.
     pub torch: [u8; 4],
+}
+
+/// One plain, opaque box for the GPU to expand into its six faces (`vs_box`
+/// in `entity.wgsl`), a twelfth of the bytes of its 36 vertices. Rebuilt
+/// every frame like the vertices were; [`BoxInstance::vertex`] is the
+/// expansion the shader performs.
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable, Debug, PartialEq)]
+pub struct BoxInstance {
+    /// Rows of the affine map from box space to camera-relative blocks
+    /// (xyz: linear part, w: translation).
+    pub rows: [[f32; 4]; 3],
+    /// Low corner in box space; w: the face-noise offset along a face's first axis.
+    pub min: [f32; 4],
+    /// High corner in box space; w: the face-noise offset along its second axis.
+    pub max: [f32; 4],
+    /// rgb, a: strength of the per-texel noise.
+    pub color: [u8; 4],
+    /// x: sky light, y: block light, z: hurt tint, w: emissive.
+    pub light: [u8; 4],
+    /// Directional shade of the -X, +X, -Y, +Y, -Z and +Z faces; two spare bytes.
+    pub shade: [u8; 8],
+}
+
+/// Vertices the GPU draws per [`BoxInstance`]: six faces of two triangles.
+pub const BOX_VERTICES: u32 = 36;
+
+impl BoxInstance {
+    /// Vertex `index` (0..36) as `vs_box` computes it: faces in -X, +X, -Y,
+    /// +Y, -Z, +Z order, each wound counter-clockwise seen from outside.
+    pub fn vertex(&self, index: u32) -> EntityVertex {
+        let (face, corner) = ((index / 6) as usize, (index % 6) as usize);
+        let (axis, side) = (face / 2, face % 2 == 1);
+        let (u, v) = ((axis + 1) % 3, (axis + 2) % 3);
+        let (a, b) = corner_order(side)[corner];
+        let (min, max) = (Vec3::from_slice(&self.min), Vec3::from_slice(&self.max));
+        let mut p = Vec3::ZERO;
+        p[axis] = if side { max[axis] } else { min[axis] };
+        p[u] = min[u] + (max[u] - min[u]) * a;
+        p[v] = min[v] + (max[v] - min[v]) * b;
+        let row = |r: [f32; 4]| Vec3::new(r[0], r[1], r[2]).dot(p) + r[3];
+        EntityVertex {
+            pos: self.rows.map(row),
+            uv: [p[u] + (self.min[3] + axis as f32 * 31.0 + side as u8 as f32 * 17.0), p[v] + self.max[3]],
+            color: self.color,
+            light: [self.light[0], self.shade[face], self.light[2], self.light[3]],
+            torch: [self.light[1], 0, 0, 0],
+        }
+    }
+}
+
+/// Face corners along a face's two in-plane axes, counter-clockwise seen
+/// from outside (u x v = +axis), for the +axis (`side`) and -axis faces.
+const fn corner_order(side: bool) -> [(f32, f32); 6] {
+    if side {
+        [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+    } else {
+        [(0.0, 0.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0), (0.0, 1.0), (1.0, 1.0)]
+    }
+}
+
+/// Entity geometry for one view, relative to its camera. Plain opaque boxes,
+/// which are nearly all of it, go to the GPU as [`BoxInstance`]s. Textured,
+/// translucent and flat geometry (skins, armor, held items, slime shells,
+/// name tags, sign text) is a list of triangles, which the mesh dereferences
+/// to. The boxes draw first; nothing translucent is among them.
+#[derive(Default)]
+pub struct EntityMesh {
+    verts: Vec<EntityVertex>,
+    boxes: Vec<BoxInstance>,
+    /// Expand every box into `verts` on the CPU where it is emitted.
+    flat: bool,
+}
+
+impl EntityMesh {
+    /// A mesh whose boxes are expanded to triangles on the CPU, in emission
+    /// order: the reference the instanced path is checked against, and the
+    /// form tests read vertices from.
+    pub fn flat() -> Self {
+        Self { flat: true, ..Self::default() }
+    }
+
+    pub fn clear(&mut self) {
+        self.verts.clear();
+        self.boxes.clear();
+    }
+
+    /// The boxes the GPU expands.
+    pub fn boxes(&self) -> &[BoxInstance] {
+        &self.boxes
+    }
+
+    /// Every vertex the mesh draws, in draw order: each box expanded as the
+    /// GPU expands it, then the triangles.
+    pub fn expanded(&self) -> Vec<EntityVertex> {
+        let boxes = self.boxes.iter().flat_map(|b| (0..BOX_VERTICES).map(|i| b.vertex(i)));
+        boxes.chain(self.verts.iter().copied()).collect()
+    }
+}
+
+impl std::ops::Deref for EntityMesh {
+    type Target = Vec<EntityVertex>;
+    fn deref(&self) -> &Vec<EntityVertex> {
+        &self.verts
+    }
+}
+
+impl std::ops::DerefMut for EntityMesh {
+    fn deref_mut(&mut self) -> &mut Vec<EntityVertex> {
+        &mut self.verts
+    }
 }
 
 pub(super) type Rgb = [u8; 3];
@@ -903,7 +1015,7 @@ pub fn build(
     max_dist: f32,
     time: f32,
     alpha: f64,
-    out: &mut Vec<EntityVertex>,
+    out: &mut EntityMesh,
 ) -> usize {
     let mut drawn = 0;
     for m in mobs {
@@ -1060,7 +1172,7 @@ pub fn build(
 }
 
 /// Small glowing cubes rising around a burning mob.
-fn flames(out: &mut Vec<EntityVertex>, m: &Mob, rel: Vec3, time: f32) {
+fn flames(out: &mut EntityMesh, m: &Mob, rel: Vec3, time: f32) {
     let shape = m.shape();
     let (r, h) = (shape.half_width as f32 * 16.0 + 0.5, shape.height as f32 * 16.0);
     for i in 0..10 {
@@ -1088,7 +1200,7 @@ fn flames(out: &mut Vec<EntityVertex>, m: &Mob, rel: Vec3, time: f32) {
 }
 
 /// Arrows, pointing along their flight.
-pub fn build_arrows(arrows: &[Arrow], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
+pub fn build_arrows(arrows: &[Arrow], camera: DVec3, alpha: f64, out: &mut EntityMesh) {
     for a in arrows {
         let rel = (a.previous_pos.lerp(a.pos, alpha) - camera).as_vec3();
         let rot = Quat::from_rotation_arc(Vec3::Z, a.dir.normalize_or(Vec3::Z));
@@ -1119,7 +1231,7 @@ const TRIDENT: &[Cuboid] = &[
 ];
 
 /// Thrown tridents (v0.16): stuck ones sit with their prongs buried.
-pub fn build_tridents(tridents: &[super::trident::Trident], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
+pub fn build_tridents(tridents: &[super::trident::Trident], camera: DVec3, alpha: f64, out: &mut EntityMesh) {
     for t in tridents {
         let rel = (t.previous_pos.lerp(t.pos, alpha) - camera).as_vec3();
         let dir = t.dir.normalize_or(Vec3::Z);
@@ -1136,7 +1248,7 @@ pub fn build_tridents(tridents: &[super::trident::Trident], camera: DVec3, alpha
 }
 
 /// Thrown snowballs and eggs: small cubes that tumble with no facing.
-pub fn build_thrown(thrown: &[super::thrown::Thrown], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
+pub fn build_thrown(thrown: &[super::thrown::Thrown], camera: DVec3, alpha: f64, out: &mut EntityMesh) {
     for t in thrown {
         let rel = (t.previous_pos.lerp(t.pos, alpha) - camera).as_vec3();
         let (color, size) = match t.kind {
@@ -1152,7 +1264,7 @@ pub fn build_thrown(thrown: &[super::thrown::Thrown], camera: DVec3, alpha: f64,
 }
 
 /// A fishing bobber: a white float with a red tip. It dips while a fish bites.
-pub fn build_bobbers(bobbers: &[super::bobber::Bobber], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
+pub fn build_bobbers(bobbers: &[super::bobber::Bobber], camera: DVec3, alpha: f64, out: &mut EntityMesh) {
     for b in bobbers {
         let mut rel = (b.previous_pos.lerp(b.pos, alpha) - camera).as_vec3();
         if b.biting {
@@ -1167,7 +1279,7 @@ pub fn build_bobbers(bobbers: &[super::bobber::Bobber], camera: DVec3, alpha: f6
 }
 
 /// Thrown ender pearls: small dark teal cubes with a pale glint.
-pub fn build_pearls(pearls: &[super::pearl::Pearl], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
+pub fn build_pearls(pearls: &[super::pearl::Pearl], camera: DVec3, alpha: f64, out: &mut EntityMesh) {
     const PEARL: &[Cuboid] = &[
         cube([-1.5, -1.5, -1.5], [1.5, 1.5, 1.5], [20, 92, 80], 20),
         cube([-1.6, 0.4, -1.6], [-0.4, 1.6, -0.4], [120, 220, 190], 0),
@@ -1181,7 +1293,7 @@ pub fn build_pearls(pearls: &[super::pearl::Pearl], camera: DVec3, alpha: f64, o
 }
 
 /// Thrown splash potions: a small tumbling flask tinted like its liquid.
-pub fn build_potions(potions: &[super::potion::ThrownPotion], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
+pub fn build_potions(potions: &[super::potion::ThrownPotion], camera: DVec3, alpha: f64, out: &mut EntityMesh) {
     for p in potions {
         let rel = (p.previous_pos.lerp(p.pos, alpha) - camera).as_vec3();
         let colour = p.potion.colour();
@@ -1199,7 +1311,7 @@ pub fn build_potions(potions: &[super::potion::ThrownPotion], camera: DVec3, alp
 
 /// Thrown eyes of ender: a green pearl with a dark pupil, spinning slowly
 /// and glowing faintly so it can be followed at night.
-pub fn build_eyes(eyes: &[super::eye::EnderEye], camera: DVec3, time: f32, alpha: f64, out: &mut Vec<EntityVertex>) {
+pub fn build_eyes(eyes: &[super::eye::EnderEye], camera: DVec3, time: f32, alpha: f64, out: &mut EntityMesh) {
     const EYE: &[Cuboid] = &[
         cube([-1.5, -1.5, -1.5], [1.5, 1.5, 1.5], [70, 160, 110], 20),
         cube([-0.5, -1.0, -1.6], [0.5, 1.0, 1.6], [16, 36, 26], 0),
@@ -1219,7 +1331,7 @@ pub fn build_fireballs(
     camera: DVec3,
     time: f32,
     alpha: f64,
-    out: &mut Vec<EntityVertex>,
+    out: &mut EntityMesh,
 ) {
     const BALL: &[Cuboid] = &[
         cube([-2.5, -2.5, -2.5], [2.5, 2.5, 2.5], [250, 120, 20], 60),
@@ -1245,7 +1357,7 @@ pub fn build_fireballs(
 }
 
 /// Explosion smoke: grey cubes that swell, then shrink as they fade.
-pub fn build_puffs(puffs: &[Puff], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
+pub fn build_puffs(puffs: &[Puff], camera: DVec3, alpha: f64, out: &mut EntityMesh) {
     for (i, p) in puffs.iter().enumerate() {
         let t = p.age / p.life;
         let size = p.size * 16.0 * (t * 4.0).min(1.0) * (1.0 - t);
@@ -1268,7 +1380,7 @@ pub fn build_puffs(puffs: &[Puff], camera: DVec3, alpha: f64, out: &mut Vec<Enti
 
 /// Experience orbs: small glowing cubes, bigger for bigger values, that
 /// shimmer between yellow and green like Java's tinted sprites.
-pub fn build_orbs(orbs: &[XpOrb], camera: DVec3, max_dist: f32, time: f32, alpha: f64, out: &mut Vec<EntityVertex>) {
+pub fn build_orbs(orbs: &[XpOrb], camera: DVec3, max_dist: f32, time: f32, alpha: f64, out: &mut EntityMesh) {
     for (i, o) in orbs.iter().enumerate() {
         let pos = o.previous_pos.lerp(o.pos, alpha);
         if pos.distance_squared(camera) > (max_dist as f64).powi(2) {
@@ -1327,12 +1439,7 @@ fn humanoid_armor(parts: &[Part]) -> [super::player_model::Limb; 6] {
     ]
 }
 
-pub(super) fn build_minecarts(
-    carts: &[super::minecart::Minecart],
-    camera: DVec3,
-    alpha: f64,
-    out: &mut Vec<EntityVertex>,
-) {
+pub(super) fn build_minecarts(carts: &[super::minecart::Minecart], camera: DVec3, alpha: f64, out: &mut EntityMesh) {
     for cart in carts {
         let pos = cart.previous_pos.lerp(cart.pos, alpha);
         let rel = (pos - camera).as_vec3();
@@ -1429,7 +1536,57 @@ pub(super) fn build_minecarts(
 }
 
 /// Appends one cuboid; `tint` blends its colour toward a colour by an amount.
+/// `xf` must be affine (box space to camera-relative blocks) and `rot` its
+/// rotation, for the face shading. A plain box becomes one [`BoxInstance`];
+/// a translucent one, or any box of a flat mesh, becomes triangles.
 pub(super) fn push_cuboid(
+    out: &mut EntityMesh,
+    c: &Cuboid,
+    xf: &impl Fn(Vec3) -> Vec3,
+    rot: Quat,
+    (light, torch): ([u8; 4], u8),
+    tint: ([f32; 3], f32),
+    seed: f32,
+) {
+    if out.flat || c.translucent {
+        return push_cuboid_flat(&mut out.verts, c, xf, rot, (light, torch), tint, seed);
+    }
+    let origin = xf(Vec3::ZERO);
+    let (x, y, z) = (xf(Vec3::X) - origin, xf(Vec3::Y) - origin, xf(Vec3::Z) - origin);
+    let mut shade = [0; 8];
+    for axis in 0..3 {
+        let mut n = Vec3::ZERO;
+        n[axis] = 1.0;
+        // The -axis face's normal is exactly the negative of this one.
+        let wn = rot * n;
+        shade[axis * 2] = face_shade(-wn);
+        shade[axis * 2 + 1] = face_shade(wn);
+    }
+    out.boxes.push(BoxInstance {
+        rows: [[x.x, y.x, z.x, origin.x], [x.y, y.y, z.y, origin.y], [x.z, y.z, z.z, origin.z]],
+        min: [c.min[0], c.min[1], c.min[2], seed * 7.0],
+        max: [c.max[0], c.max[1], c.max[2], seed * 3.0],
+        color: tinted(c, tint),
+        light: [light[0], torch, light[2], light[3]],
+        shade,
+    });
+}
+
+/// A cuboid's colour blended toward `tint`, with its noise strength as alpha.
+fn tinted(c: &Cuboid, (to, amount): ([f32; 3], f32)) -> [u8; 4] {
+    let ch = |i: usize| (c.color[i] as f32 + (to[i] - c.color[i] as f32) * amount) as u8;
+    [ch(0), ch(1), ch(2), c.noise]
+}
+
+/// The same directional shading as terrain faces, for a world-space normal.
+fn face_shade(wn: Vec3) -> u8 {
+    let shade = 0.8 * wn.x * wn.x + 0.68 * wn.z * wn.z + if wn.y > 0.0 { 1.0 } else { 0.55 } * wn.y * wn.y;
+    (shade * 255.0) as u8
+}
+
+/// Appends one cuboid as 36 vertices: the form textured boxes are painted
+/// in, and what the GPU expands a [`BoxInstance`] into.
+pub(super) fn push_cuboid_flat(
     out: &mut Vec<EntityVertex>,
     c: &Cuboid,
     xf: &impl Fn(Vec3) -> Vec3,
@@ -1439,27 +1596,16 @@ pub(super) fn push_cuboid(
     seed: f32,
 ) {
     let (min, max) = (Vec3::from_array(c.min), Vec3::from_array(c.max));
-    let (to, amount) = tint;
-    let ch = |i: usize| (c.color[i] as f32 + (to[i] - c.color[i] as f32) * amount) as u8;
-    let color = [ch(0), ch(1), ch(2), c.noise];
+    let color = tinted(c, tint);
     for axis in 0..3 {
         let (u, v) = ((axis + 1) % 3, (axis + 2) % 3);
         for side in [false, true] {
             let mut n = Vec3::ZERO;
             n[axis] = if side { 1.0 } else { -1.0 };
-            let wn = rot * n;
-            // Same directional shading as terrain faces.
-            let shade = 0.8 * wn.x * wn.x + 0.68 * wn.z * wn.z + if wn.y > 0.0 { 1.0 } else { 0.55 } * wn.y * wn.y;
             let mut l = light;
-            l[1] = (shade * 255.0) as u8;
-            // Counter-clockwise seen from outside (u x v = +axis).
-            let order: [(f32, f32); 6] = if side {
-                [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
-            } else {
-                [(0.0, 0.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0), (0.0, 1.0), (1.0, 1.0)]
-            };
+            l[1] = face_shade(rot * n);
             let offset = [seed * 7.0 + axis as f32 * 31.0 + side as u8 as f32 * 17.0, seed * 3.0];
-            for (a, b) in order {
+            for (a, b) in corner_order(side) {
                 let mut p = Vec3::ZERO;
                 p[axis] = if side { max[axis] } else { min[axis] };
                 p[u] = min[u] + (max[u] - min[u]) * a;
@@ -1479,13 +1625,7 @@ pub(super) fn push_cuboid(
 pub use super::player_model::{Aim, PlayerAppearance, build_player};
 
 /// A player's name tag above their head, as Java shows within 64 blocks (hidden while sneaking).
-pub fn build_player_name(
-    player: &crate::player::Player,
-    feet: DVec3,
-    name: &str,
-    camera: DVec3,
-    out: &mut Vec<EntityVertex>,
-) {
+pub fn build_player_name(player: &crate::player::Player, feet: DVec3, name: &str, camera: DVec3, out: &mut EntityMesh) {
     let rel = (feet - camera).as_vec3();
     if player.sneaking || name.is_empty() || rel.length_squared() > 64.0 * 64.0 {
         return;
@@ -1496,7 +1636,7 @@ pub fn build_player_name(
 pub use super::player_pose::{PlayerPose, fits_at, fits_player, resolve_pose};
 
 /// Original segmented bolt with a bright core and blue outer branches.
-pub fn build_lightning(bolts: &[super::lightning::Bolt], camera: DVec3, out: &mut Vec<EntityVertex>) {
+pub fn build_lightning(bolts: &[super::lightning::Bolt], camera: DVec3, out: &mut EntityMesh) {
     for b in bolts.iter().filter(|b| b.visible()) {
         let mut seed = b.seed;
         let base = (b.pos - camera).as_vec3();
@@ -1522,7 +1662,7 @@ pub fn build_lightning(bolts: &[super::lightning::Bolt], camera: DVec3, out: &mu
         }
     }
 }
-fn charged_aura(m: &Mob, rel: Vec3, time: f32, out: &mut Vec<EntityVertex>) {
+fn charged_aura(m: &Mob, rel: Vec3, time: f32, out: &mut EntityMesh) {
     // Moving electric ribs keep the original creeper model visible.
     for i in 0..8 {
         let angle = time * 2. + i as f32 * std::f32::consts::TAU / 8.;
@@ -1533,7 +1673,7 @@ fn charged_aura(m: &Mob, rel: Vec3, time: f32, out: &mut Vec<EntityVertex>) {
     }
 }
 /// Deterministic original motes for lingering area-effect clouds.
-pub fn build_clouds(clouds: &[super::lingering::Cloud], camera: DVec3, out: &mut Vec<EntityVertex>) {
+pub fn build_clouds(clouds: &[super::lingering::Cloud], camera: DVec3, out: &mut EntityMesh) {
     for c in clouds {
         let colour = c.potion.colour();
         for i in 0..24 {
@@ -1551,18 +1691,173 @@ pub fn build_clouds(clouds: &[super::lingering::Cloud], camera: DVec3, out: &mut
 mod tests {
     use super::*;
 
+    /// The same scene as triangles built on the CPU (the reference) and as
+    /// drawn: box instances expanded as the GPU expands them, then triangles.
+    fn both_ways(build: impl Fn(&mut EntityMesh)) -> (EntityMesh, EntityMesh) {
+        let (mut flat, mut drawn) = (EntityMesh::flat(), EntityMesh::default());
+        build(&mut flat);
+        build(&mut drawn);
+        (flat, drawn)
+    }
+
+    /// Asserts the drawn mesh shows exactly the reference's triangles: for
+    /// every reference vertex, a drawn one with identical texture
+    /// coordinates, colour, light and material, at the same place to within
+    /// rounding (far below a pixel). The drawn order differs only in that
+    /// the boxes come before the loose triangles.
+    fn assert_same_picture(flat: &EntityMesh, drawn: &EntityMesh, what: &str) {
+        assert!(flat.boxes().is_empty(), "{what}: a flat mesh holds only triangles");
+        let got = drawn.expanded();
+        assert_eq!(got.len(), drawn.boxes().len() * BOX_VERTICES as usize + drawn.len(), "{what}");
+        assert_eq!(flat.len(), got.len(), "{what}: vertex count");
+        let key = |v: &EntityVertex| (v.uv.map(f32::to_bits), v.color, v.light, v.torch);
+        let mut unmatched: std::collections::HashMap<_, Vec<Vec3>> = Default::default();
+        for v in &got {
+            unmatched.entry(key(v)).or_default().push(Vec3::from_array(v.pos));
+        }
+        for v in flat.iter() {
+            let at = Vec3::from_array(v.pos);
+            let alike = unmatched.get_mut(&key(v)).unwrap_or_else(|| panic!("{what}: nothing drawn like {v:?}"));
+            let nearest = alike.iter().map(|p| p.distance(at)).enumerate().min_by(|a, b| a.1.total_cmp(&b.1));
+            let (i, apart) = nearest.unwrap_or_else(|| panic!("{what}: too few drawn like {v:?}"));
+            assert!(apart < 3e-5 * (1.0 + at.length()), "{what}: {apart} apart at {at}");
+            alike.swap_remove(i);
+        }
+    }
+
+    #[test]
+    fn box_instances_expand_to_the_triangles_they_replace() {
+        // Every mob kind in several states: walking, looking around, hurt,
+        // lit, burning, a baby, dying, and at a distance where rounding is coarser.
+        let (mut instanced, mut triangles) = (0, 0);
+        for (i, kind) in MobKind::ALL.into_iter().enumerate() {
+            for variant in 0..6 {
+                let far = if variant == 5 { 180.0 } else { 6.0 };
+                let mut mob = Mob::new(kind, DVec3::new(far, 64.0 + i as f64 * 0.25, 2.5), 0.7 + i as f32);
+                mob.previous_pos = mob.pos - DVec3::new(0.3, 0.0, 0.1);
+                mob.limb_phase = 1.3 * variant as f32;
+                mob.limb_amp = 0.8;
+                mob.head_yaw = 0.4;
+                mob.head_pitch = -0.2;
+                mob.sky_light = 0.8;
+                mob.block_light = 0.3;
+                match variant {
+                    1 => mob.hurt = HURT_TIME * 0.5,
+                    2 => mob.burning = true,
+                    3 => mob.baby = true,
+                    4 => mob.dying = Some(0.3),
+                    _ => {}
+                }
+                let time = 3.7 + variant as f32;
+                let (flat, drawn) = both_ways(|out| {
+                    build(std::slice::from_ref(&mob), DVec3::new(0.0, 65.0, 0.0), Vec3::X, 256.0, time, 0.4, out);
+                });
+                assert_same_picture(&flat, &drawn, &format!("{kind:?} variant {variant}"));
+                // Nothing translucent may be instanced: the boxes draw first, unblended.
+                assert_eq!(
+                    flat.iter().filter(|v| v.torch[1] != 0).count(),
+                    drawn.iter().filter(|v| v.torch[1] != 0).count(),
+                    "{kind:?}: textured and translucent faces stay triangles"
+                );
+                instanced += drawn.boxes().len() * BOX_VERTICES as usize;
+                triangles += drawn.len();
+            }
+        }
+        assert!(instanced > 4 * triangles, "mobs are nearly all plain boxes: {instanced} vs {triangles}");
+    }
+
+    #[test]
+    fn a_rebuilt_mesh_follows_the_mob_and_drops_the_dead() {
+        // Nothing is kept between frames, so a change to a mob shows in the
+        // next mesh: there is no cached model to go stale.
+        let camera = DVec3::new(0.0, 64.0, 0.0);
+        let mut mobs = vec![
+            Mob::new(MobKind::Sheep, DVec3::new(8.0, 64.0, 0.0), 0.0),
+            Mob::new(MobKind::Zombie, DVec3::new(8.0, 64.0, 3.0), 0.0),
+        ];
+        let mut mesh = EntityMesh::default();
+        let rebuild = |mobs: &[Mob], mesh: &mut EntityMesh| {
+            mesh.clear();
+            build(mobs, camera, Vec3::X, 100.0, 0.0, 1.0, mesh);
+            (mesh.boxes().to_vec(), mesh.to_vec())
+        };
+        let before = rebuild(&mobs, &mut mesh);
+        assert_eq!(rebuild(&mobs, &mut mesh), before, "the same state builds the same mesh");
+
+        // Pose, colour, age and equipment each change what is drawn.
+        mobs[0].limb_phase = 1.0;
+        mobs[0].limb_amp = 1.0;
+        let walking = rebuild(&mobs, &mut mesh);
+        assert_ne!(walking.0, before.0, "pose");
+        mobs[0].wool_color = crate::color::DyeColor::Red;
+        let dyed = rebuild(&mobs, &mut mesh);
+        assert_ne!(dyed.0, walking.0, "colour");
+        assert!(dyed.0.iter().any(|b| b.color[..3] == crate::color::DyeColor::Red.sheep_rgb()));
+        mobs[0].baby = true;
+        let lamb = rebuild(&mobs, &mut mesh);
+        assert_ne!(lamb.0, dyed.0, "age");
+        mobs[1].armor = [Some(crate::entity::armor::ArmorKind::Iron); 4];
+        let armored = rebuild(&mobs, &mut mesh);
+        assert_eq!(armored.0, lamb.0, "armor is textured: no new boxes");
+        assert!(armored.1.len() > lamb.1.len() && armored.1.iter().any(|v| v.torch[1] == 3), "equipment");
+
+        // A mob behind the camera isn't built; it is again once it is ahead.
+        let boxes = armored.0.len();
+        mobs[0].pos.x = -8.0;
+        mobs[0].previous_pos = mobs[0].pos;
+        let culled = rebuild(&mobs, &mut mesh);
+        assert!(culled.0.len() < boxes);
+        mobs[0].pos.x = 8.0;
+        mobs[0].previous_pos = mobs[0].pos;
+        assert_eq!(rebuild(&mobs, &mut mesh), armored, "a culled mob reappears as it was");
+
+        // A removed mob leaves nothing behind.
+        mobs.remove(0);
+        let alone = rebuild(&mobs, &mut mesh);
+        assert!(alone.0.len() < boxes && !alone.0.is_empty());
+        mobs.clear();
+        assert_eq!(rebuild(&mobs, &mut mesh), (Vec::new(), Vec::new()));
+    }
+
+    #[test]
+    fn a_box_instance_is_a_twelfth_of_its_vertices() {
+        assert_eq!(std::mem::size_of::<BoxInstance>(), 96);
+        assert_eq!(std::mem::size_of::<EntityVertex>() * BOX_VERTICES as usize, 1152);
+        // One box under a scaled, rotated and translated map, against the triangles.
+        let c = cube([-4.08, 0.0, -2.5], [4.08, 8.16, 3.0], [50, 28, 25], 80);
+        let rot = Quat::from_rotation_y(0.9) * Quat::from_rotation_x(-0.35);
+        let origin = Vec3::new(31.5, -7.25, 112.0);
+        let xf = |v: Vec3| origin + rot * (v * 1.2) / 16.0;
+        let light = ([200, 0, 90, 0], 77);
+        let (mut flat, mut drawn) = (EntityMesh::flat(), EntityMesh::default());
+        for out in [&mut flat, &mut drawn] {
+            push_cuboid(out, &c, &xf, rot, light, (FIRE, 0.3), 13.0);
+        }
+        assert_eq!((flat.len(), drawn.len(), drawn.boxes().len()), (36, 0, 1));
+        // Here the order is the same too: the GPU walks the faces as the CPU did.
+        for (i, (a, b)) in flat.iter().zip(drawn.expanded()).enumerate() {
+            assert_eq!((a.uv, a.color, a.light, a.torch), (b.uv, b.color, b.light, b.torch), "vertex {i}");
+            assert!((Vec3::from_array(a.pos) - Vec3::from_array(b.pos)).length() < 2e-4, "vertex {i}");
+        }
+        // A translucent box is never instanced.
+        drawn.clear();
+        push_cuboid(&mut drawn, &glass([0.0; 3], [1.0; 3], [9; 3], 0), &xf, rot, light, (FIRE, 0.0), 0.0);
+        assert_eq!((drawn.len(), drawn.boxes().len()), (36, 0));
+        assert!(drawn.iter().all(|v| v.torch[1] == 4));
+    }
+
     #[test]
     fn interpolated_models_leave_simulation_positions_unchanged() {
         let mut mob = Mob::new(MobKind::Pig, DVec3::new(10.0, 64.0, 0.0), 0.0);
         mob.pos.x += 2.0;
-        let mut halfway = Vec::new();
-        let mut current = Vec::new();
+        let mut halfway = EntityMesh::flat();
+        let mut current = EntityMesh::flat();
         let camera = DVec3::new(0.0, 64.0, 0.0);
         build(std::slice::from_ref(&mob), camera, Vec3::X, 100.0, 0.0, 0.5, &mut halfway);
         build(std::slice::from_ref(&mob), camera, Vec3::X, 100.0, 0.0, 1.0, &mut current);
         assert!(!current.is_empty());
         assert_eq!(halfway.len(), current.len());
-        for (a, b) in halfway.iter().zip(&current) {
+        for (a, b) in halfway.iter().zip(current.iter()) {
             assert!((b.pos[0] - a.pos[0] - 1.0).abs() < 1e-5);
             assert_eq!(a.pos[1..], b.pos[1..]);
         }
@@ -1574,7 +1869,7 @@ mod tests {
     fn slime_shells_are_the_only_translucent_entity_faces_and_follow_the_core() {
         let build_one = |kind| {
             let mob = Mob::new(kind, DVec3::new(3.0, 0.0, 0.0), 0.0);
-            let mut out = Vec::new();
+            let mut out = EntityMesh::flat();
             build(std::slice::from_ref(&mob), DVec3::ZERO, Vec3::X, 100.0, 0.0, 1.0, &mut out);
             out
         };
@@ -1591,7 +1886,7 @@ mod tests {
     fn zombies_and_skeletons_wear_inflated_armor() {
         let mut zombie = Mob::new(MobKind::Zombie, DVec3::new(3.0, 0.0, 0.0), 0.0);
         zombie.armor = [Some(crate::entity::armor::ArmorKind::Chain); 4];
-        let mut out = Vec::new();
+        let mut out = EntityMesh::flat();
         build(std::slice::from_ref(&zombie), DVec3::ZERO, Vec3::X, 100.0, 0.0, 1.0, &mut out);
         assert!(out.iter().any(|v| v.torch[1] == 3));
         let mut pig = Mob::new(MobKind::Pig, DVec3::new(3.0, 0.0, 0.0), 0.0);
@@ -1606,7 +1901,7 @@ mod tests {
         for kind in MobKind::ALL {
             // Facing +X (yaw 0): the head is the part furthest along +X.
             let mob = Mob::new(kind, DVec3::new(10.0, 64.0, 0.0), 0.0);
-            let mut out = Vec::new();
+            let mut out = EntityMesh::flat();
             assert_eq!(
                 build(std::slice::from_ref(&mob), DVec3::new(0.0, 64.0, 0.0), Vec3::X, 100.0, 0.0, 1.0, &mut out),
                 1

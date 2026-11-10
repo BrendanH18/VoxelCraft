@@ -45,6 +45,11 @@ pub(super) struct Run {
     previous: Option<Instant>,
     origin: DVec3,
     frames: Vec<f64>,
+    /// Each sampled frame's time by phase, beside `frames`.
+    phases: Vec<perf::PhaseTimes>,
+    /// The frame in progress: its phases so far and when the last one ended.
+    phase: (perf::PhaseTimes, Instant),
+    offscreen: bool,
     ticks_before: u64,
     discarded_before: Duration,
     paused_before: Duration,
@@ -63,6 +68,16 @@ pub(super) struct Run {
     prepared: bool,
     finished: bool,
 }
+/// Ends phase `index` of [`perf::FRAME_PHASES`] in the frame being drawn:
+/// the time since the previous mark counts toward it.
+pub(super) fn mark(run: &mut Option<Run>, index: usize) {
+    if let Some(run) = run {
+        let now = Instant::now();
+        run.phase.0[index] += now.duration_since(run.phase.1).as_secs_f32() * 1000.;
+        run.phase.1 = now;
+    }
+}
+
 impl Run {
     pub fn from_args(args: &Args) -> Option<Self> {
         Some(Self {
@@ -77,6 +92,9 @@ impl Run {
             previous: None,
             origin: DVec3::ZERO,
             frames: Vec::new(),
+            phases: Vec::new(),
+            phase: (Default::default(), Instant::now()),
+            offscreen: args.benchmark_offscreen,
             ticks_before: 0,
             discarded_before: Duration::ZERO,
             paused_before: Duration::ZERO,
@@ -287,12 +305,14 @@ impl Game {
                     && now > previous
                 {
                     run.frames.push(now.duration_since(previous).as_secs_f64() * 1000.);
+                    run.phases.push(run.phase.0);
                 }
                 if start.elapsed().as_secs_f64() >= run.duration {
                     self.finish_benchmark(&mut run, start);
                 }
             }
         }
+        run.phase = (Default::default(), Instant::now());
         self.benchmark = Some(run);
     }
 
@@ -373,6 +393,7 @@ impl Game {
             sample_seconds,
             enhanced_graphics: self.settings.enhanced_graphics,
             uncapped_presentation: uncapped,
+            offscreen: run.offscreen,
             completed_ticks: ticks,
             paused_ms: paused,
             unpresented_frames: unpresented,
@@ -428,6 +449,7 @@ impl Game {
             "sample_seconds": sample_seconds,
             "frame_stats": stats.json(),
             "frame_times_ms": run.frames,
+            "frame_phases_ms": perf::phase_breakdown(&run.frames, &run.phases),
             "cold_load_ms": run.cold_load_ms,
             "loaded_chunks": self.world.loaded_chunks(),
             "gpu_memory_allocated_bytes": memory.device_allocated,
@@ -435,7 +457,11 @@ impl Game {
             "chunk_arena_used_bytes": memory.chunk_arena.0,
             "chunk_arena_reserved_bytes": memory.chunk_arena.1,
             "gpu_timestamp_ms": null,
-            "presentation": "window surface; normal renderer",
+            "presentation": if run.offscreen {
+                "offscreen image, nothing presented; normal renderer"
+            } else {
+                "window surface; normal renderer"
+            },
             "present_mode_requested": format!("{requested_present:?}"),
             "present_mode_resolved": format!("{resolved_present:?}"),
             "vsync": !uncapped,
@@ -500,6 +526,7 @@ pub(super) struct TitleRun {
     frames: Vec<f64>,
     skipped_before: u64,
     screen: Option<&'static str>,
+    offscreen: bool,
 }
 
 impl TitleRun {
@@ -514,6 +541,7 @@ impl TitleRun {
             frames: Vec::new(),
             skipped_before: 0,
             screen: None,
+            offscreen: args.benchmark_offscreen,
         })
     }
 
@@ -566,6 +594,7 @@ impl TitleRun {
             sample_seconds,
             enhanced_graphics: settings.enhanced_graphics,
             uncapped_presentation: uncapped,
+            offscreen: self.offscreen,
             completed_ticks: 0,
             paused_ms: 0.,
             unpresented_frames: unpresented,
@@ -588,7 +617,11 @@ impl TitleRun {
             "frame_stats": stats.json(),
             "frame_times_ms": self.frames,
             "gpu_timestamp_ms": null,
-            "presentation": "window surface; title screen",
+            "presentation": if self.offscreen {
+                "offscreen image, nothing presented; title screen"
+            } else {
+                "window surface; title screen"
+            },
             "present_mode_requested": format!("{requested_present:?}"),
             "present_mode_resolved": format!("{resolved_present:?}"),
             "vsync": !uncapped,
@@ -641,6 +674,7 @@ mod tests {
             frames: Vec::new(),
             skipped_before: 0,
             screen: None,
+            offscreen: false,
         };
         let at = |ms: u64| created + Duration::from_millis(ms);
         assert_eq!(run.frame_at(at(0), 0), Some("title"));

@@ -93,7 +93,6 @@ use crate::world::World;
 use crate::world::block::Block;
 use crate::world::noise::splitmix64;
 use crate::world::terrain::Dimension;
-use model::EntityVertex;
 
 pub use item::ItemEntity;
 pub use mob::{Mob, MobKind, sky_light};
@@ -719,6 +718,9 @@ pub struct Target {
     pub health: f32,
     /// Bit set of the target's active [`crate::simulation::effects::Effect`]s.
     pub effects: u32,
+    /// Occupied humanoid armor slots, for Java invisibility detection.
+    pub armor_pieces: u8,
+    pub sneaking: bool,
     pub time_since_rest: u32,
     /// Ticks of Darkness left (0 without it): wardens and shriekers only
     /// renew it once under 200.
@@ -729,6 +731,21 @@ impl Target {
     /// Whether the target has `effect` active.
     pub fn has_effect(&self, effect: crate::simulation::effects::Effect) -> bool {
         self.effects & (1 << effect as u32) != 0
+    }
+
+    /// LivingEntity.getVisibilityPercent, before equipment-specific mob disguises.
+    pub fn visibility_percent(&self) -> f64 {
+        let discrete = if self.sneaking { 0.8 } else { 1.0 };
+        if self.has_effect(crate::simulation::effects::Effect::Invisibility) {
+            discrete * 0.7 * f64::from((f32::from(self.armor_pieces.min(4)) / 4.).max(0.1))
+        } else {
+            discrete
+        }
+    }
+
+    /// TargetingConditions.test has a two-block minimum acquisition range.
+    pub fn detection_range(&self, range: f64) -> f64 {
+        (range * self.visibility_percent()).max(2.)
     }
 
     /// A living player; set [`Target::alive`] for one waiting to respawn.
@@ -752,6 +769,8 @@ impl Target {
             passenger: false,
             health: crate::simulation::survival::MAX_HEALTH,
             effects: 0,
+            armor_pieces: 0,
+            sneaking: false,
             time_since_rest: 0,
             darkness_ticks: 0,
         }
@@ -793,6 +812,14 @@ impl Ctx {
     /// Squared distance from `pos` to the closest player, if there is any.
     pub fn nearest_player_dist2(&self, pos: DVec3) -> Option<f64> {
         self.players.iter().filter(|t| !t.spectator).map(|t| t.pos.distance_squared(pos)).min_by(f64::total_cmp)
+    }
+
+    /// Nearest player inside its visibility-scaled acquisition range.
+    pub fn nearest_detectable_target(&self, pos: DVec3, range: f64) -> Option<&Target> {
+        self.players
+            .iter()
+            .filter(|t| t.targetable && t.alive && t.pos.distance_squared(pos) <= t.detection_range(range).powi(2))
+            .min_by(|a, b| a.pos.distance_squared(pos).total_cmp(&b.pos.distance_squared(pos)))
     }
 
     /// The closest player hostile mobs may attack, like Minecraft's
@@ -961,7 +988,7 @@ pub struct Entities {
     structure_timer: f32,
     /// Mobs drawn last frame (F3).
     pub rendered: usize,
-    verts: Vec<EntityVertex>,
+    mesh: model::EntityMesh,
 }
 
 impl Entities {
@@ -1041,7 +1068,7 @@ impl Entities {
             structures_populated: Default::default(),
             structure_timer: 0.0,
             rendered: 0,
-            verts: Vec::new(),
+            mesh: model::EntityMesh::default(),
         }
     }
 
@@ -1664,7 +1691,7 @@ impl Entities {
         }
     }
 
-    /// Camera-relative triangles for every visible mob.
+    /// Camera-relative geometry for every visible mob and other entity, rebuilt for this view.
     pub fn mesh(
         &mut self,
         camera: DVec3,
@@ -1672,27 +1699,27 @@ impl Entities {
         max_dist: f32,
         time: f32,
         alpha: f64,
-    ) -> &mut Vec<EntityVertex> {
-        self.verts.clear();
-        self.rendered = model::build(&self.mobs, camera, forward, max_dist, time, alpha, &mut self.verts);
-        model::build_arrows(&self.arrows, camera, alpha, &mut self.verts);
-        model::build_tridents(&self.tridents, camera, alpha, &mut self.verts);
-        model::build_pearls(&self.pearls, camera, alpha, &mut self.verts);
-        model::build_potions(&self.potions, camera, alpha, &mut self.verts);
-        model::build_clouds(&self.clouds, camera, &mut self.verts);
-        model::build_thrown(&self.thrown, camera, alpha, &mut self.verts);
-        model::build_bobbers(&self.bobbers, camera, alpha, &mut self.verts);
-        model::build_eyes(&self.eyes, camera, time, alpha, &mut self.verts);
-        model::build_fireballs(&self.fireballs, camera, time, alpha, &mut self.verts);
-        model::build_lightning(&self.lightning, camera, &mut self.verts);
-        model::build_puffs(&self.puffs, camera, alpha, &mut self.verts);
-        model::build_orbs(&self.orbs, camera, max_dist, time, alpha, &mut self.verts);
-        model::build_minecarts(&self.minecarts, camera, alpha, &mut self.verts);
-        decor::build(&self.decor, camera, max_dist, alpha, &mut self.verts);
+    ) -> &mut model::EntityMesh {
+        self.mesh.clear();
+        self.rendered = model::build(&self.mobs, camera, forward, max_dist, time, alpha, &mut self.mesh);
+        model::build_arrows(&self.arrows, camera, alpha, &mut self.mesh);
+        model::build_tridents(&self.tridents, camera, alpha, &mut self.mesh);
+        model::build_pearls(&self.pearls, camera, alpha, &mut self.mesh);
+        model::build_potions(&self.potions, camera, alpha, &mut self.mesh);
+        model::build_clouds(&self.clouds, camera, &mut self.mesh);
+        model::build_thrown(&self.thrown, camera, alpha, &mut self.mesh);
+        model::build_bobbers(&self.bobbers, camera, alpha, &mut self.mesh);
+        model::build_eyes(&self.eyes, camera, time, alpha, &mut self.mesh);
+        model::build_fireballs(&self.fireballs, camera, time, alpha, &mut self.mesh);
+        model::build_lightning(&self.lightning, camera, &mut self.mesh);
+        model::build_puffs(&self.puffs, camera, alpha, &mut self.mesh);
+        model::build_orbs(&self.orbs, camera, max_dist, time, alpha, &mut self.mesh);
+        model::build_minecarts(&self.minecarts, camera, alpha, &mut self.mesh);
+        decor::build(&self.decor, camera, max_dist, alpha, &mut self.mesh);
         if let Some(fight) = &self.fight {
-            dragon_model::build_fight(fight, camera, time, alpha, &mut self.verts);
+            dragon_model::build_fight(fight, camera, time, alpha, &mut self.mesh);
         }
-        &mut self.verts
+        &mut self.mesh
     }
 
     /// Nearest living mob hit by a ray within `max_dist` (in units of

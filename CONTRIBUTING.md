@@ -62,9 +62,14 @@ cargo test --release
 cargo run --release -- --bench --rd 4
 python3 tools/validate_assets.py --executable target/release/voxelcraft
 python3 -m unittest tools/test_benchmark_scenes.py
+python3 tools/check_doc_links.py
 ```
 
 On Windows, pass `target/release/voxelcraft.exe` to `--executable`.
+
+For a documentation change, run `python3 tools/check_doc_links.py`: it checks
+that every relative link and `#anchor` in the tracked Markdown files resolves
+and prints each broken one as `file:line: target`.
 
 Use `cargo fmt` to apply formatting. The headless benchmark checks generation and
 meshing without opening a window. For rendering or performance changes, also

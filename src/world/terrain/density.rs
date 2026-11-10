@@ -74,11 +74,13 @@ fn open_below(mask: u64, bit: u32) -> u32 {
 }
 
 /// The density field of one chunk column and the ring around it.
+#[derive(Clone)]
 pub(super) struct Relief {
     /// Per column, `[z][x]` like [`ChunkColumns::cols`]: base height,
     /// relief, the eroded badlands' hoodoos added on top, and whether the
     /// column terraces.
     base: [[f32; W]; W],
+    pub(super) adaptation: Option<super::beard::Adaptation>,
     amp: [[f32; W]; W],
     extra: [[f32; W]; W],
     terraced: [[bool; W]; W],
@@ -150,13 +152,16 @@ impl Relief {
 
     /// Density in blocks: how far the surface seen at `y` lies above `y`.
     #[inline]
-    fn density(&self, lx: i32, y: i32, lz: i32) -> f32 {
+    pub(super) fn density(&self, lx: i32, y: i32, lz: i32) -> f32 {
         self.surface_at(Self::slot(lx, lz), self.noise(lx, y, lz), y as f32) - y as f32
     }
 
     /// Whether the block at local column `(lx, lz)`, height `y`, is solid
     /// (before caves). `lx` and `lz` may be -1 or 32 (the ring).
     pub(super) fn solid(&self, lx: i32, y: i32, lz: i32) -> bool {
+        if let Some(a) = &self.adaptation {
+            return a.solid(lx, y, lz);
+        }
         if y <= FLOOR {
             return true;
         }
@@ -176,7 +181,10 @@ impl Relief {
 
     /// [`Relief::solid`] for the 64 heights from `y0` up, as bits. The
     /// same arithmetic as `solid`, with each node layer interpolated once.
-    fn mask(&self, lx: i32, lz: i32, y0: i32) -> u64 {
+    pub(super) fn mask(&self, lx: i32, lz: i32, y0: i32) -> u64 {
+        if self.adaptation.is_some() {
+            return (0..64).fold(0, |m, i| m | ((self.solid(lx, y0 + i, lz) as u64) << i));
+        }
         let s = Self::slot(lx, lz);
         let (bot, top) = self.bounds[s.1][s.0];
         let (ix, iz, tx, tz) = Self::cell(lx, lz);
@@ -214,6 +222,9 @@ impl Relief {
     /// change in density over the vertical one. Faces that lean out or
     /// overhang count as very steep.
     fn steepness(&self, lx: i32, y: i32, lz: i32) -> i32 {
+        if let Some(a) = &self.adaptation {
+            return a.steepness(lx, lz);
+        }
         let d = |dx: i32, dy: i32, dz: i32| self.density(lx + dx, y + dy, lz + dz);
         let across = (d(1, 0, 0) - d(-1, 0, 0)).abs().max((d(0, 0, 1) - d(0, 0, -1)).abs());
         let up = d(0, 0, 0) - d(0, 1, 0);
@@ -254,6 +265,7 @@ impl Generator {
         let mut cols = [[blank; W]; W];
         let mut relief = Box::new(Relief {
             base: [[0.0; W]; W],
+            adaptation: None,
             amp: [[0.0; W]; W],
             extra: [[0.0; W]; W],
             terraced: [[false; W]; W],
@@ -396,7 +408,7 @@ impl Generator {
     /// The block on top of world column `(x, z)` (for trees decided
     /// outside their chunk).
     pub(in crate::world) fn top_block_at_v2(&self, x: i32, z: i32) -> Block {
-        let columns = self.chunk_columns(IVec2::new(x.div_euclid(CHUNK_SIZE_I), z.div_euclid(CHUNK_SIZE_I)));
+        let columns = self.terrain_columns(IVec2::new(x.div_euclid(CHUNK_SIZE_I), z.div_euclid(CHUNK_SIZE_I)));
         self.top_block_v2(&columns, x.rem_euclid(CHUNK_SIZE_I) as usize, z.rem_euclid(CHUNK_SIZE_I) as usize, x, z)
     }
 
@@ -504,6 +516,9 @@ impl Generator {
                     if mask >> bit & 1 == 0 || blocks[i] == Block::BEDROCK {
                         continue;
                     }
+                    if relief.adaptation.as_ref().is_some_and(|a| a.support(x as i32, wy, z as i32)) {
+                        continue;
+                    }
                     let Some(depth) = Self::cave_depth_v2(mask, bit, wy, ceiling) else { continue };
                     let ravine = ravines.as_ref().is_some_and(|m| m[i]) && wy > super::super::caves::CARVE_FLOOR;
                     if !ravine && !Caves::carved(&profile, y, wy, depth) {
@@ -564,7 +579,7 @@ impl Generator {
 
     /// Generation 2's [`Generator::natural_block`].
     pub(super) fn natural_block_v2(&self, p: IVec3, nodes: &mut FxHashMap<IVec3, [f32; 7]>) -> Block {
-        let columns = self.chunk_columns(IVec2::new(p.x.div_euclid(CHUNK_SIZE_I), p.z.div_euclid(CHUNK_SIZE_I)));
+        let columns = self.terrain_columns(IVec2::new(p.x.div_euclid(CHUNK_SIZE_I), p.z.div_euclid(CHUNK_SIZE_I)));
         let relief = columns.relief.as_deref().expect("generation 2 columns");
         let (lx, lz) = (p.x.rem_euclid(CHUNK_SIZE_I), p.z.rem_euclid(CHUNK_SIZE_I));
         let y0 = p.y - MASK_BELOW;
@@ -577,7 +592,10 @@ impl Generator {
             return Block::BEDROCK;
         }
         match Self::cave_depth_v2(mask, bit, p.y, relief.cave_ceiling(lx, lz)) {
-            Some(depth) if self.caves.carved_at(p, depth, nodes) => {
+            Some(depth)
+                if !relief.adaptation.as_ref().is_some_and(|a| a.support(lx, p.y, lz))
+                    && self.caves.carved_at(p, depth, nodes) =>
+            {
                 if p.y < LAVA_LEVEL {
                     Block::LAVA
                 } else {

@@ -154,7 +154,7 @@ impl Mob {
                             && t.targetable
                             && (t.pos - self.pos).with_y(0.).abs().max_element() < 16.
                             && (t.pos.y - self.pos.y).abs() < 64.
-                            && t.pos.distance_squared(self.pos) < 64. * 64.
+                            && t.pos.distance_squared(self.pos) < t.detection_range(64.).powi(2)
                     })
                     .max_by(|a, b| a.pos.y.total_cmp(&b.pos.y));
                 s.target = target.map(|t| t.id);

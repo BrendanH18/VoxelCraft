@@ -56,6 +56,8 @@ pub struct Args {
     pub benchmark_output: Option<std::path::PathBuf>,
     pub benchmark_duration: f64,
     pub benchmark_warmup: f64,
+    /// Draw benchmark frames to an offscreen image and present nothing: comparison runs only.
+    pub benchmark_offscreen: bool,
     pub physical_size: Option<(u32, u32)>,
     pub debug_overlay: bool,
     pub mode: Option<app::GameMode>,
@@ -92,6 +94,8 @@ pub struct Args {
     pub spawn_held: Vec<(usize, item::Item)>,
     /// Seconds to keep running after loading before `--screenshot`.
     pub wait: f64,
+    /// `--animation-time`: hold the animation clock here, so captures can be compared.
+    pub animation_time: Option<f32>,
     /// x,y,z,yaw_deg,pitch_deg
     pub pose: Option<[f64; 5]>,
     /// Starting health / air overrides (debugging/screenshots).
@@ -203,6 +207,7 @@ voxelcraft [options]
                     glint equip a zombie or skeleton; allay,x,y,z,item gives
                     an allay an item to hold
   --wait <secs>     with --screenshot: keep simulating this long first
+  --animation-time <secs>  hold the animation clock (idle animations, clouds, water) at this time, for comparable captures
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
   --weather <w>     start with clear skies or rain (clear, rain)
   --dimension <d>   start in overworld, nether or end (arriving through a
@@ -217,6 +222,7 @@ voxelcraft [options]
   --benchmark-output <file.json>  write frame samples and statistics
   --benchmark-duration <seconds>  sample period (default 60)
   --benchmark-warmup <seconds>    warm-up after loading (default 10)
+  --benchmark-offscreen           draw the scene offscreen and present nothing (comparison only, never gate evidence)
   --size <WIDTHxHEIGHT> physical render resolution (benchmark default 1920x1080)
   --validate-assets validate embedded original resources and exit\n  --export-music    render original seeded music to target/music/*.wav with stats, and exit";
 
@@ -252,6 +258,7 @@ fn parse_args() -> Result<Args, String> {
         benchmark_output: None,
         benchmark_duration: 60.0,
         benchmark_warmup: 10.0,
+        benchmark_offscreen: false,
         physical_size: None,
         debug_overlay: false,
         mode: None,
@@ -272,6 +279,7 @@ fn parse_args() -> Result<Args, String> {
         spawn: Vec::new(),
         spawn_held: Vec::new(),
         wait: 0.0,
+        animation_time: None,
         pose: None,
         health: None,
         air: None,
@@ -353,6 +361,7 @@ fn parse_args() -> Result<Args, String> {
             "--benchmark-warmup" => {
                 args.benchmark_warmup = voxelcraft::performance::parse_warmup(&value("--benchmark-warmup")?)?;
             }
+            "--benchmark-offscreen" => args.benchmark_offscreen = true,
             "--size" => {
                 let value = value("--size")?;
                 let (w, h) = value.split_once('x').ok_or("--size requires WIDTHxHEIGHT in physical pixels")?;
@@ -553,6 +562,9 @@ fn parse_args() -> Result<Args, String> {
                 args.spawn.push((kind, glam::IVec3::new(n[0], n[1], n[2]), armor));
             }
             "--wait" => args.wait = value("--wait")?.parse().map_err(|_| "bad --wait")?,
+            "--animation-time" => {
+                args.animation_time = Some(value("--animation-time")?.parse().map_err(|_| "bad --animation-time")?);
+            }
             "--time" => args.time = Some(value("--time")?.parse::<f64>().map_err(|_| "bad --time")?.rem_euclid(1.0)),
             "--weather" => {
                 args.weather = Some(match value("--weather")?.as_str() {

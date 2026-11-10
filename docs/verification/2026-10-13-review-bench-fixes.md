@@ -77,10 +77,10 @@ Record `reference_gate_problems` with the results.
 `docs/roadmap.md` was not edited. Proposed replacement for the paragraph
 beginning "The [full initial M5 baseline]":
 
-> The [first M5 scene recording](verification/2026-10-13-m5-baseline.md) is
+> The [first M5 scene recording](2026-10-13-m5-baseline.md) is
 > invalid: streaming run 3 was paused (0 ticks), 11 of 12 non-streaming runs
 > sampled an occluded window rather than rendering, and the entity scene lost
-> its undead to daylight. The [harness fixes](verification/2026-10-13-review-bench-fixes.md)
+> its undead to daylight. The [harness fixes](2026-10-13-review-bench-fixes.md)
 > reject paused, tick-short, unpresented and population-drifting runs, isolate
 > benchmark input and disable saves. The five-scene 1080p/256-block baseline
 > must be re-measured; no valid baseline or frame-time result exists yet.

@@ -1,6 +1,6 @@
 # Streaming re-run — 2026-10-20
 
-[Roadmap](../roadmap.md#v08-scope-finish-m0-and-m1) · [Requirement inventory](../requirements.md) · [Stall fix](2026-10-17-streaming-stalls.md) · [M5 baseline](2026-10-16-m5-baseline.md) · [Summary](../../benchmarks/results/2026-10-20-5e9f025-m5-streaming/summary.json) · [Compressed raw frame samples](../../benchmarks/results/2026-10-20-5e9f025-m5-streaming/frame-times.json.gz)
+[v0.8 scope](../delivery-records.md#v08-scope-finish-m0-and-m1) · [Requirement inventory](../requirements.md) · [Stall fix](2026-10-17-streaming-stalls.md) · [M5 baseline](2026-10-16-m5-baseline.md) · [Summary](../../benchmarks/results/2026-10-20-5e9f025-m5-streaming/summary.json) · [Compressed raw frame samples](../../benchmarks/results/2026-10-20-5e9f025-m5-streaming/frame-times.json.gz)
 
 Scope: the PERF-03 re-run of the streaming scene after the
 [stall fix](2026-10-17-streaming-stalls.md) moved dungeon layout and geode

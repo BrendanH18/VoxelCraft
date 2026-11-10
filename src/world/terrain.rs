@@ -31,6 +31,7 @@ pub use super::biome::{Biome, Climate};
 pub use super::caves::LAVA_LEVEL;
 pub use super::climate::SEA_LEVEL;
 
+mod beard;
 #[path = "biome_features.rs"]
 mod biome_features;
 mod density;
@@ -215,6 +216,7 @@ impl Dimension {
 /// twelve vertical chunks. Values are immutable and eviction never changes
 /// output.
 const COLUMN_CACHE_LIMIT: usize = 512;
+#[derive(Clone)]
 struct ChunkColumns {
     /// Columns of the chunk and a one-block ring around it, `[z][x]`.
     cols: [[Column; W]; W],
@@ -283,6 +285,7 @@ pub struct Generator {
     pub ruined_portals: super::ruined_portal::RuinedPortals,
     pub buried_treasure: super::buried_treasure::BuriedTreasure,
     columns: Mutex<FxHashMap<IVec2, Arc<ChunkColumns>>>,
+    adapted_columns: Mutex<FxHashMap<IVec2, Arc<ChunkColumns>>>,
     climate: ClimateNoise,
     caves: Caves,
     /// Surface patches: podzol, gravel, coarse dirt, moss.
@@ -340,6 +343,7 @@ impl Generator {
             ruined_portals: super::ruined_portal::RuinedPortals::new(seed),
             buried_treasure: super::buried_treasure::BuriedTreasure::new(seed),
             columns: Mutex::new(FxHashMap::default()),
+            adapted_columns: Mutex::new(FxHashMap::default()),
             climate: ClimateNoise::new(seed),
             caves: Caves::new(seed),
             patch: p(31),
@@ -806,7 +810,7 @@ impl Generator {
             };
         }
         let base = cpos * CHUNK_SIZE_I;
-        let columns = self.chunk_columns(IVec2::new(cpos.x, cpos.z));
+        let columns = self.terrain_columns(IVec2::new(cpos.x, cpos.z));
         let (max_h, min_h) = (columns.max_h, columns.min_h);
         let top = base.y + CHUNK_SIZE_I - 1;
         // Open sky: nothing (not even tree canopies or ice spikes) reaches this chunk.
@@ -1340,7 +1344,10 @@ impl Generator {
                 if roll >= tree_density(biome) {
                     continue;
                 }
-                let col = self.column(tx, tz);
+                if !self.terrain_vegetation(tx, tz) {
+                    continue;
+                }
+                let col = self.terrain_column(tx, tz);
                 // Nothing this chunk could hold: skip the rest of the work.
                 if col.height + TREE_TOP < base.y || col.height > base.y + CHUNK_SIZE_I {
                     continue;
@@ -1371,6 +1378,9 @@ impl Generator {
                     self.generation >= Generation::V2,
                     collect,
                 ) {
+                    continue;
+                }
+                if !self.tree_terrain_clear(ground, &tree_blocks) {
                     continue;
                 }
                 let put = &mut |p, b| Self::put(blocks, base, p, b);
@@ -1610,7 +1620,7 @@ impl Generator {
             if self.climate_biome(x, z) != Biome::PaleGarden {
                 return None;
             }
-            let c = self.column(x, z);
+            let c = self.terrain_column(x, z);
             (c.biome == Biome::PaleGarden && c.height >= SEA_LEVEL).then_some(c.height)
         };
         super::pale_garden::eyeblossom_attempts_square(
@@ -1728,13 +1738,13 @@ impl Generator {
                 if biome.is_watery() || biome.is_peak() {
                     continue;
                 }
-                let c = self.column(x, z);
+                let c = self.terrain_column(x, z);
                 if c.height > SEA_LEVEL && c.height < 120 && !c.biome.is_watery() && !c.biome.is_peak() {
                     return IVec3::new(x, c.height + 1, z);
                 }
             }
         }
-        IVec3::new(0, self.column(0, 0).height.max(SEA_LEVEL) + 1, 0)
+        IVec3::new(0, self.terrain_column(0, 0).height.max(SEA_LEVEL) + 1, 0)
     }
 }
 

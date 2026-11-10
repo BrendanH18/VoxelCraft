@@ -185,6 +185,8 @@ impl Game {
             on_ground: self.session.player.on_ground,
             health: self.session.vitals.health,
             effects: self.session.vitals.effects.mask(),
+            armor_pieces: self.session.inventory.armor.iter().flatten().count() as u8,
+            sneaking: self.session.player.sneaking,
             darkness_ticks: self
                 .session
                 .vitals
