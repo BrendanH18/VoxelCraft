@@ -661,9 +661,9 @@ v0.17 does not start until it passes. Work items:
    seed 9's Nether fossil now rests on a bearded shelf and generation 3
    swamp shores are grass with pools. A further Terra session lost the
    window to the screen lock before playing anything. Trading, brewing,
-   the mace, spawner waves, vaults, shriekers, lightning, the jukebox and
-   save/reload in play remain unverified, and wait for a session with the
-   owner at the machine.
+   the mace, spawner waves, vaults, shriekers and the warden, lightning,
+   the jukebox, a bastion, brushing by hand and save/reload in play remain
+   unverified, and wait for a session with the owner at the machine.
 5. **Documentation.** *Done (2026-11-09).* History moved to the
    [delivery records](delivery-records.md), the
    [inventory](requirements.md) refreshed against `main` and its 26
