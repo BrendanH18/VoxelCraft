@@ -73,6 +73,9 @@ roadmap and recorded checks to assess completeness against the current target.
 - [Stabilisation captures](verification/2026-11-10-stabilisation-captures.md):
   bastions, Nether fossils, a desert well, buried treasure, a cold ocean
   ruin, cut-away trail ruins and the v0.16 items, with the defects they found.
+- [Gate run, 2026-11-11](verification/2026-11-11-gate-run.md): hands-on
+  play of the jukebox and save and reload, the effect-swirl fix, and a full
+  windowed scene run that fails the 240 FPS gate on drawable waits.
 - [Streaming biome queries and GEN-07](verification/2026-11-09-streaming-biomes-and-gen07.md):
   worker-retained terrain heights, city/trial order coverage, limited Terra play
   and short M5 comparison runs; performance acceptance remains open.

@@ -322,4 +322,5 @@ then lost the window to the screen lock (`cgWindowNotFound`) before a
 world was created. It stopped as the [development guide](../development.md#hands-on-runs)
 asks. Nothing was played; those encounters stay owed for a session with
 the owner at the machine. Its report is in the ignored
-`target/hands-on/2026-11-11/terra/`.
+`target/hands-on/2026-11-11/terra/`. A later session that day, with the owner at
+the machine, is in the [2026-11-11 gate run](2026-11-11-gate-run.md).

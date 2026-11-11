@@ -615,6 +615,12 @@ v0.17 does not start until it passes. Work items:
    the slowest 1%'s mean tick phase to 2.722–3.046 ms. These remain ineligible:
    other desktop workloads were active, some repeats missed tick tolerance
    and both builds had unexplained outliers. The gate remains unverified.
+   *Full windowed run (2026-11-11,
+   [record](verification/2026-11-11-gate-run.md#scene-run)):* all 24
+   runs were valid and the gate fails. Most world-scene runs have a 1% low
+   near 110–115 FPS with p99 at one 120 Hz refresh (8.3–8.6 ms); their
+   slowest frames wait 7–8 ms to acquire a drawable while the game's own
+   work stays near 1 ms. Why the drawable is late is the open question.
 3. **Terrain blending for generation 3 villages and outposts.**
    *Implemented, unverified (2026-11-09,
    [record](verification/2026-11-09-structure-terrain-blending.md)).* A
@@ -660,10 +666,16 @@ v0.17 does not start until it passes. Work items:
    [record](verification/2026-11-10-stabilisation-captures.md#look-after-the-fixes-2026-11-11)):*
    seed 9's Nether fossil now rests on a bearded shelf and generation 3
    swamp shores are grass with pools. A further Terra session lost the
-   window to the screen lock before playing anything. Trading, brewing,
-   the mace, spawner waves, vaults, shriekers and the warden, lightning,
-   the jukebox, a bastion, brushing by hand and save/reload in play remain
-   unverified, and wait for a session with the owner at the machine.
+   window to the screen lock before playing anything. *Hands-on play
+   (2026-11-11, [record](verification/2026-11-11-gate-run.md#hands-on-play)):*
+   with the owner at the machine, Terra played the jukebox (pass) and a
+   save and reload (position, inventory, weather, time, effects and the
+   jukebox's disc survived). It couldn't turn the camera reliably, so
+   trading, brewing, the mace, the trident, spawner waves, vaults,
+   shriekers and the warden, lightning, a bastion and brushing by hand
+   were reached at most and remain unverified. Its one defect, the
+   player's own effect swirls spawning at twice Java's rate in blended
+   colours, is fixed.
 5. **Documentation.** *Done (2026-11-09).* History moved to the
    [delivery records](delivery-records.md), the
    [inventory](requirements.md) refreshed against `main` and its 26
@@ -675,7 +687,10 @@ v0.17 does not start until it passes. Work items:
    v0.16 with their known gaps (2026-11-10).
    Three valid windowed runs of every scene on AC power with the machine
    idle (PERF-02/03), including investigation of any remaining streaming
-   outliers. ([FE-02](#14-what-can-follow-10) was approved by the owner on
+   outliers. The 2026-11-11 run has three valid runs of every scene and
+   fails the 240 FPS gate ([record](verification/2026-11-11-gate-run.md#scene-run));
+   the drawable wait it found needs fixing or an owner decision before
+   the tag. ([FE-02](#14-what-can-follow-10) was approved by the owner on
    2026-11-10.)
    Ancient cities and trial chambers now run in the GEN-07 order corpus
    ([record](verification/2026-11-09-streaming-biomes-and-gen07.md)).
