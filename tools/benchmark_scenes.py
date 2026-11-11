@@ -12,6 +12,9 @@ import time
 ROOT=Path(__file__).resolve().parents[1]
 TICKS_PER_SECOND=20.0
 TICK_TOLERANCE=0.005 # matches voxelcraft::performance::TICK_TOLERANCE
+DEFAULT_FRAME_LATENCY=2 # matches voxelcraft::performance::DEFAULT_FRAME_LATENCY
+WINDOW_MODES=['windowed','borderless','exclusive'] # matches voxelcraft::performance::WINDOW_MODES
+PER_FRAME_KEYS=('frame_times_ms','frame_acquire_ms','frame_gpu_ms') # kept in each scene report, not in summary.json
 
 def command(*args):
     return subprocess.check_output(args,cwd=ROOT,text=True).strip()
@@ -43,6 +46,29 @@ def ticks_within_tolerance(ticks,seconds):
     expected=seconds*TICKS_PER_SECOND
     return abs(ticks-expected)<=max(2.0,expected*TICK_TOLERANCE)
 
+def presentation(frame_latency=None,window_mode=None,gpu_timestamps=True):
+    """Game flags and recorded options for the presentation experiment options, and how they
+    differ from the reference configuration (windowed, frame latency 2). Defaults add no flags."""
+    flags=[];differences=[]
+    if frame_latency is not None and frame_latency!=DEFAULT_FRAME_LATENCY:
+        flags+=['--benchmark-frame-latency',str(frame_latency)];differences.append(f'frame latency {frame_latency}')
+    if window_mode is not None and window_mode!='windowed':
+        flags+=['--benchmark-window-mode',window_mode];differences.append(f'window mode {window_mode}')
+    if not gpu_timestamps: flags.append('--benchmark-no-gpu-timestamps')
+    options={'frame_latency':frame_latency or DEFAULT_FRAME_LATENCY,'window_mode':window_mode or 'windowed','gpu_timestamps':gpu_timestamps}
+    return flags,options,differences
+
+def gpu_line(report):
+    """One line on GPU time against slow acquires, or None when frames weren't timed."""
+    breakdown=report.get('gpu_timestamp_ms')
+    if not breakdown: return None
+    def ms(group,key): return (breakdown[group].get('gpu_ms') or {}).get(key)
+    def fmt(v): return '-' if v is None else f'{v:.3f}'
+    slow=breakdown['slow_acquire_frames']
+    return (f"  GPU ms mean {fmt(ms('all_frames','mean'))}, p99 {fmt(ms('all_frames','p99'))}; slowest 1% of frames: GPU {fmt(ms('slowest_one_percent','mean'))} "
+            f"of {breakdown['slowest_one_percent']['frame_ms']:.3f} ms (acquire {breakdown['slowest_one_percent']['acquire_ms']:.3f}); "
+            f"{slow['frames']} frames acquired over {breakdown['slow_acquire_threshold_ms']:g} ms: GPU mean {fmt(ms('slow_acquire_frames','mean'))}, p99 {fmt(ms('slow_acquire_frames','p99'))}")
+
 def scene_definition(specification,name):
     return next((s for s in specification['scenes'] if s['name']==name),{})
 
@@ -64,9 +90,12 @@ def run_problems(report,specification):
     if not report.get('source_matches_runner'): out.append('executable was not built from the measured source')
     return list(dict.fromkeys(out))
 
-def reference_gate(metadata,definitions,quick,native,repeats,offscreen=False,seconds=None):
-    """Overall reference result: protocol, hardware, scene coverage and every run's validity and thresholds."""
+def reference_gate(metadata,definitions,quick,native,repeats,offscreen=False,seconds=None,presentation_differences=()):
+    """Overall reference result: protocol, hardware, scene coverage and every run's validity and thresholds.
+    Presentation experiments (another frame latency or window mode) never pass the gate: adopting one
+    for it is the owner's decision in roadmap section 6.1, followed by a run with the new defaults."""
     problems=[]
+    if presentation_differences: problems.append('presentation experiment: '+', '.join(presentation_differences))
     if quick: problems.append('quick smoke protocol')
     if offscreen: problems.append('offscreen comparison runs present nothing')
     if seconds: problems.append('sample period overridden')
@@ -89,7 +118,11 @@ def main():
     parser.add_argument('--native-resolution',help='WIDTHxHEIGHT, reported separately from the 1080p gate')
     parser.add_argument('--offscreen',action='store_true',help='draw offscreen and present nothing, for comparing builds when the window cannot stay visible; never acceptance evidence')
     parser.add_argument('--seconds',type=float,help='sample seconds for every scene, for comparison runs; never acceptance evidence')
+    parser.add_argument('--frame-latency',type=int,choices=[1,2,3],help='surface frame latency (default 2; on Metal 1 gives two drawables, 2 and 3 give three); other than 2 is a presentation experiment, never acceptance evidence')
+    parser.add_argument('--window-mode',choices=WINDOW_MODES,help='windowed (default), borderless (macOS native fullscreen) or exclusive (display mode switch, preferring 1920x1080); other than windowed is a presentation experiment, never acceptance evidence')
+    parser.add_argument('--no-gpu-timestamps',action='store_true',help='do not time frames on the GPU (on by default where the adapter supports it), to check the timing costs nothing')
     args=parser.parse_args()
+    presentation_flags,presentation_options,presentation_differences=presentation(args.frame_latency,args.window_mode,not args.no_gpu_timestamps)
     assert 1<=args.repeats<=10,'repeat count must be 1..10'
     specification=json.loads((ROOT/'benchmarks/scenes.json').read_text())
     definitions={s['name']:s for s in specification['scenes']}
@@ -105,7 +138,8 @@ def main():
     executable=executable.resolve(strict=True)
     args.output.mkdir(parents=True,exist_ok=True)
     metadata={'schema':2,'source':revision,'hardware':hardware(),'executable_sha256':hashlib.sha256(executable.read_bytes()).hexdigest(),
-              'protocol':'quick smoke' if args.quick else 'offscreen comparison' if args.offscreen else 'scene baseline','resolution_class':'native' if args.native_resolution else '1080p','specification':specification,'runs':[]}
+              'protocol':'quick smoke' if args.quick else 'offscreen comparison' if args.offscreen else 'presentation experiment' if presentation_differences else 'scene baseline',
+              'resolution_class':'native' if args.native_resolution else '1080p','presentation_options':presentation_options,'specification':specification,'runs':[]}
     resolution=args.native_resolution or '1920x1080'
     for scene in names:
         for run in range(args.repeats):
@@ -117,6 +151,7 @@ def main():
                  '--data-dir',str((args.output/'player-data').resolve())]
             if definitions[scene].get('world',True): cmd+=['--new','--world','benchmark']
             if args.offscreen: cmd.append('--benchmark-offscreen')
+            cmd+=presentation_flags
             print(f'{scene} run {run+1}/{args.repeats} at {resolution}',flush=True)
             peak_rss_kib=0;started=time.monotonic()
             with (args.output/f'{scene}-{run+1}.log').open('w') as log:
@@ -137,16 +172,18 @@ def main():
             report['source_matches_runner']=report['source_revision']==revision['runtime_source_sha256']
             report['gate_problems']=run_problems(report,specification)
             output.write_text(json.dumps(report,indent=2)+'\n')
-            metadata['runs'].append({k:v for k,v in report.items() if k!='frame_times_ms'})
+            metadata['runs'].append({k:v for k,v in report.items() if k not in PER_FRAME_KEYS})
             validity='valid' if not report['gate_problems'] else 'INVALID: '+'; '.join(report['gate_problems'])
-            print(f"  {report['frame_stats']['one_percent_low_fps']:.1f} FPS 1% low, {report['frame_stats']['p99_ms']:.3f} ms p99; "
+            width,height=report.get('resolution_physical',[0,0])
+            print(f"  {report['frame_stats']['one_percent_low_fps']:.1f} FPS 1% low, {report['frame_stats']['p99_ms']:.3f} ms p99 at {width}x{height}; "
                   f"{report['completed_simulation_ticks']} ticks; peak RSS {peak_rss_kib/1024:.1f} MiB; {validity}",flush=True)
+            if gpu_line(report): print(gpu_line(report),flush=True)
             (args.output/'summary.json').write_text(json.dumps(metadata,indent=2)+'\n')
-    passed,problems=reference_gate(metadata,definitions,args.quick,args.native_resolution,args.repeats,args.offscreen,args.seconds)
+    passed,problems=reference_gate(metadata,definitions,args.quick,args.native_resolution,args.repeats,args.offscreen,args.seconds,presentation_differences)
     metadata['reference_gate_passed']=passed
     metadata['reference_gate_problems']=problems
     metadata['all_runs_valid']=all(not r['gate_problems'] for r in metadata['runs'])
-    metadata['remaining_acceptance']='These scenes do not cover the full roadmap environment/encounter matrix or ordinary player testing. GPU timestamp costs and long-session memory stability remain separate checks.'
+    metadata['remaining_acceptance']='These scenes do not cover the full roadmap environment/encounter matrix or ordinary player testing. GPU pass timestamps time only the frame\'s render passes, not uploads or presentation; long-session memory stability remains a separate check.'
     (args.output/'summary.json').write_text(json.dumps(metadata,indent=2)+'\n')
 
 if __name__=='__main__':main()

@@ -58,6 +58,12 @@ pub struct Args {
     pub benchmark_warmup: f64,
     /// Draw benchmark frames to an offscreen image and present nothing: comparison runs only.
     pub benchmark_offscreen: bool,
+    /// `--benchmark-frame-latency`: the surface's maximum frame latency.
+    pub benchmark_frame_latency: u32,
+    /// `--benchmark-window-mode`: windowed, borderless or exclusive.
+    pub benchmark_window_mode: &'static str,
+    /// Time each benchmark frame on the GPU where supported (`--benchmark-no-gpu-timestamps` turns it off).
+    pub benchmark_gpu_timestamps: bool,
     pub physical_size: Option<(u32, u32)>,
     pub debug_overlay: bool,
     pub mode: Option<app::GameMode>,
@@ -223,6 +229,9 @@ voxelcraft [options]
   --benchmark-duration <seconds>  sample period (default 60)
   --benchmark-warmup <seconds>    warm-up after loading (default 10)
   --benchmark-offscreen           draw the scene offscreen and present nothing (comparison only, never gate evidence)
+  --benchmark-frame-latency <1..3>  surface frame latency (default 2; on Metal 1 means two drawables, 2 or 3 three)
+  --benchmark-window-mode <windowed|borderless|exclusive>  window mode for the run (default windowed)
+  --benchmark-no-gpu-timestamps   don't time frames on the GPU (on by default where supported)
   --size <WIDTHxHEIGHT> physical render resolution (benchmark default 1920x1080)
   --validate-assets validate embedded original resources and exit\n  --export-music    render original seeded music to target/music/*.wav with stats, and exit";
 
@@ -259,6 +268,9 @@ fn parse_args() -> Result<Args, String> {
         benchmark_duration: 60.0,
         benchmark_warmup: 10.0,
         benchmark_offscreen: false,
+        benchmark_frame_latency: voxelcraft::performance::DEFAULT_FRAME_LATENCY,
+        benchmark_window_mode: "windowed",
+        benchmark_gpu_timestamps: true,
         physical_size: None,
         debug_overlay: false,
         mode: None,
@@ -362,6 +374,15 @@ fn parse_args() -> Result<Args, String> {
                 args.benchmark_warmup = voxelcraft::performance::parse_warmup(&value("--benchmark-warmup")?)?;
             }
             "--benchmark-offscreen" => args.benchmark_offscreen = true,
+            "--benchmark-frame-latency" => {
+                args.benchmark_frame_latency =
+                    voxelcraft::performance::parse_frame_latency(&value("--benchmark-frame-latency")?)?;
+            }
+            "--benchmark-window-mode" => {
+                args.benchmark_window_mode =
+                    voxelcraft::performance::parse_window_mode(&value("--benchmark-window-mode")?)?;
+            }
+            "--benchmark-no-gpu-timestamps" => args.benchmark_gpu_timestamps = false,
             "--size" => {
                 let value = value("--size")?;
                 let (w, h) = value.split_once('x').ok_or("--size requires WIDTHxHEIGHT in physical pixels")?;
@@ -741,6 +762,16 @@ fn main() {
         eprintln!(
             "live benchmark requires --benchmark-output and cannot combine with screenshots, the legacy render \
              benchmark, menus, the console, LAN, agents or split screen"
+        );
+        std::process::exit(2);
+    }
+    if args.benchmark_scene.is_none()
+        && (args.benchmark_frame_latency != voxelcraft::performance::DEFAULT_FRAME_LATENCY
+            || args.benchmark_window_mode != "windowed"
+            || !args.benchmark_gpu_timestamps)
+    {
+        eprintln!(
+            "--benchmark-frame-latency, --benchmark-window-mode and --benchmark-no-gpu-timestamps need --benchmark-scene"
         );
         std::process::exit(2);
     }

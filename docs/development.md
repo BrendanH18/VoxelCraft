@@ -321,8 +321,15 @@ surface's supported modes, along with the relevant options. GPU memory is
 reported in two forms. The chunk quad arena's used and reserved bytes are always
 recorded. Device-allocator totals are `null` where the backend provides no
 allocator report, including Metal on macOS; `null` never means zero.
-GPU timestamp costs are currently reported as unavailable; surface intervals
-measure presented throughput.
+Where the adapter supports timestamp queries, benchmark runs time each
+frame's render passes on the GPU (`gpu_timestamps` says whether they did).
+The timestamps are read back a few frames late, so timing never stalls a
+frame; a frame whose readback slot is still busy is left untimed. Each scene
+report keeps `frame_acquire_ms` and `frame_gpu_ms` beside `frame_times_ms`,
+and `gpu_timestamp_ms` gives GPU time (mean, p50, p99, slowest 1% mean,
+worst) over all frames, the slowest 1% of frames, frames that waited more
+than 4 ms to acquire an image and the rest. The pass timestamps leave out
+uploads and presentation.
 
 Each report has `acceptance_eligible_configuration`, `run_valid` and
 `ineligible_reasons`. A run is valid only with zero paused time, completed ticks
@@ -347,6 +354,65 @@ comparison only: every report is marked ineligible and the gate never passes
 on them ([example](verification/2026-11-09-entity-frame-time.md)).
 
 The low-level flags are `--benchmark-scene`, `--benchmark-output`,
-`--benchmark-warmup`, `--benchmark-duration`, `--benchmark-offscreen` and
-`--size WIDTHxHEIGHT`.
+`--benchmark-warmup`, `--benchmark-duration`, `--benchmark-offscreen`,
+`--benchmark-frame-latency`, `--benchmark-window-mode`,
+`--benchmark-no-gpu-timestamps` and `--size WIDTHxHEIGHT`.
 The legacy `--bench-render` remains available for historical comparisons.
+
+### Presentation experiments
+
+The runner can change how frames reach the screen. Each option is recorded
+in the summary's `presentation_options` and in every run's `options`. The
+defaults are the reference configuration and add no flags.
+
+- `--frame-latency N` (1–3, default 2) sets the surface's maximum frame
+  latency. On Metal, wgpu 30 clamps it to 1–2 and gives the layer one more
+  drawable than that, so 1 means two drawables and both 2 and 3 mean three,
+  the most a `CAMetalLayer` allows. Reports record
+  `metal_maximum_drawable_count`.
+- `--window-mode borderless` uses macOS's native fullscreen Space;
+  `--window-mode exclusive` switches the display mode and asks for a
+  1920 × 1080 mode, falling back to the largest. Reports record the mode
+  the window ended up in and the display, with its modes for exclusive runs.
+- `--no-gpu-timestamps` turns GPU timing off, to check it costs nothing.
+
+The gate still needs 1920 × 1080 physical pixels. A borderless run on the
+built-in display renders at the display's own size, so the game marks it
+"resolution is not 1920x1080" and the run is invalid. Compare its acquire
+waits and GPU time, not its FPS. An exclusive run is 1920 × 1080 only if the
+display offers that mode. Even then, any frame latency or window mode other
+than the default makes the protocol a "presentation experiment" that can't
+pass the gate. Adopting one for the gate is the owner's decision in
+[roadmap §6.1](roadmap.md#61-reference-configuration-and-frame-time-gate),
+followed by a normal run with the new default.
+
+The experiment owed for PERF-02/03 runs on the idle M5 on AC power with the
+display held awake. The first command builds the executable; the rest reuse
+a copy of it, so another checkout's build can't replace it. Each takes about
+15 minutes.
+
+```sh
+out=target/benchmarks/$(date +%F)-presentation
+scenes=building,automation,materials
+caffeinate -d python3 tools/benchmark_scenes.py --scenes $scenes --output $out/reference
+cp ${CARGO_TARGET_DIR:-target}/release/voxelcraft $out/voxelcraft
+exe=$out/voxelcraft
+caffeinate -d python3 tools/benchmark_scenes.py --executable $exe --scenes $scenes --output $out/no-gpu-timestamps --no-gpu-timestamps
+caffeinate -d python3 tools/benchmark_scenes.py --executable $exe --scenes $scenes --output $out/latency-1 --frame-latency 1
+caffeinate -d python3 tools/benchmark_scenes.py --executable $exe --scenes $scenes --output $out/borderless --window-mode borderless
+caffeinate -d python3 tools/benchmark_scenes.py --executable $exe --scenes $scenes --output $out/exclusive --window-mode exclusive
+```
+
+`--frame-latency 3` isn't in the list because on Metal it is the same as the
+default. Read each run's `gpu_timestamp_ms` in `summary.json`:
+
+- If the frames that waited over 4 ms to acquire show GPU times like the
+  other frames, the GPU isn't late. The wait is for the window server to
+  release a drawable, and the window-mode runs show whether skipping the
+  compositor removes it.
+- If those frames, or the slowest 1%, show long GPU times, the GPU work is
+  the cause. Profile the GPU before changing presentation.
+- If `no-gpu-timestamps` differs from `reference` by more than run-to-run
+  noise, the timing itself costs something; say so in the record.
+- If `latency-1` makes acquire waits longer, the drawable count matters, but
+  three is already Metal's maximum.

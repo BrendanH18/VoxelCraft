@@ -412,7 +412,7 @@ impl Title {
     fn benchmark_frame(&mut self) -> bool {
         let Some(mut run) = self.benchmark.take() else { return false };
         self.frame();
-        if let Some(screen) = run.frame(self.shell.renderer.skipped_frames) {
+        if let Some(screen) = run.frame(&mut self.shell.renderer) {
             self.reset();
             match screen {
                 "title" => {}
@@ -422,7 +422,7 @@ impl Title {
         }
         let done = run.done();
         if done {
-            run.finish(&self.shell.renderer, &self.shell.settings);
+            run.finish(&mut self.shell.renderer, &self.shell.settings);
         }
         self.benchmark = Some(run);
         done

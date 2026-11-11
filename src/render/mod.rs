@@ -13,6 +13,7 @@ pub mod arena;
 pub mod block_model;
 pub mod brushable;
 pub mod entity;
+mod gpu_timer;
 pub mod hand;
 mod item_sprites;
 pub mod particles;
@@ -302,6 +303,27 @@ pub struct Renderer {
     /// Frames skipped since startup because no surface image was available
     /// (hidden, minimized or occluded window).
     pub skipped_frames: u64,
+    /// Frames begun since startup; the current frame's number.
+    frame_serial: u64,
+    /// GPU time per frame, in benchmark runs on adapters that can time passes.
+    gpu_timer: Option<gpu_timer::GpuTimer>,
+    options: Options,
+}
+
+/// Renderer settings a benchmark run can change.
+#[derive(Clone, Copy, Debug)]
+pub struct Options {
+    /// The surface's `desired_maximum_frame_latency`.
+    pub frame_latency: u32,
+    /// Time each frame's render passes on the GPU where the adapter has
+    /// `TIMESTAMP_QUERY`.
+    pub gpu_timestamps: bool,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Self { frame_latency: voxelcraft::performance::DEFAULT_FRAME_LATENCY, gpu_timestamps: false }
+    }
 }
 
 /// Concrete mode wgpu picks for an `Auto*` request, following its documented
@@ -362,7 +384,7 @@ fn block_shader(source: &'static str, page_layers: Option<u32>) -> wgpu::ShaderS
 }
 
 impl Renderer {
-    pub async fn new(window: Arc<Window>, vsync: bool) -> Self {
+    pub async fn new(window: Arc<Window>, vsync: bool, options: Options) -> Self {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let surface = instance.create_surface(window.clone()).expect("create surface");
         let adapter = instance
@@ -384,10 +406,11 @@ impl Renderer {
             max_texture_array_layers: page_layers.max(textures::item_layers()).max(256),
             ..wgpu::Limits::default()
         };
+        let timestamps = options.gpu_timestamps && adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY);
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("device"),
-                required_features: wgpu::Features::empty(),
+                required_features: if timestamps { wgpu::Features::TIMESTAMP_QUERY } else { wgpu::Features::empty() },
                 required_limits: limits,
                 ..Default::default()
             })
@@ -410,7 +433,9 @@ impl Renderer {
             width: size.width.max(1),
             height: size.height.max(1),
             present_mode: Self::present_mode(vsync),
-            desired_maximum_frame_latency: 2,
+            // On Metal this sets the layer's drawable count; see
+            // `voxelcraft::performance::metal_drawable_count`.
+            desired_maximum_frame_latency: options.frame_latency,
             alpha_mode: caps.alpha_modes[0],
             view_formats: vec![],
             color_space: Default::default(),
@@ -808,6 +833,7 @@ impl Renderer {
         });
         let ui_capacity = 256;
         let ui_buf = Self::create_ui_buffer(&device, ui_capacity);
+        let gpu_timer = timestamps.then(|| gpu_timer::GpuTimer::new(&device, &queue));
 
         Self {
             window,
@@ -856,7 +882,49 @@ impl Renderer {
             force_offscreen: false,
             present_modes: caps.present_modes.clone(),
             skipped_frames: 0,
+            frame_serial: 0,
+            gpu_timer,
+            options,
         }
+    }
+
+    pub fn options(&self) -> Options {
+        self.options
+    }
+
+    pub fn backend(&self) -> wgpu::Backend {
+        self.backend
+    }
+
+    /// The number of the frame most recently begun.
+    pub fn frame_serial(&self) -> u64 {
+        self.frame_serial
+    }
+
+    /// Whether frames are timed on the GPU: "render passes", "unsupported"
+    /// (asked for, but the adapter lacks `TIMESTAMP_QUERY`) or "off".
+    pub fn gpu_timestamps(&self) -> &'static str {
+        match (self.options.gpu_timestamps, &self.gpu_timer) {
+            (_, Some(_)) => "render passes",
+            (true, None) => "unsupported",
+            (false, None) => "off",
+        }
+    }
+
+    /// (frame serial, GPU milliseconds) of the frames timed and read back
+    /// since the last call. Call [`Renderer::wait_idle`] first to include
+    /// the frames still in flight.
+    pub fn take_gpu_times(&mut self) -> Vec<(u64, f32)> {
+        self.gpu_timer.as_mut().map_or_else(Vec::new, |timer| {
+            timer.collect();
+            timer.take_results()
+        })
+    }
+
+    /// Frames left untimed because the readback ring was full, and timed
+    /// frames whose timestamps were unusable.
+    pub fn gpu_timer_losses(&self) -> Option<(u64, u64)> {
+        self.gpu_timer.as_ref().map(|t| (t.missed, t.invalid))
     }
 
     /// The present mode requested from wgpu and the concrete mode it resolves to.
@@ -1203,6 +1271,10 @@ impl Renderer {
         };
         let view = target.create_view(&Default::default());
         self.stats = RenderStats { meshes: self.meshes.len(), acquire_ms, ..Default::default() };
+        self.frame_serial += 1;
+        if let Some(timer) = &mut self.gpu_timer {
+            timer.begin(self.frame_serial);
+        }
         Some(Frame { surface: frame, view, drawn: false })
     }
 
@@ -1306,6 +1378,7 @@ impl Renderer {
         let mut stats = std::mem::take(&mut self.stats);
         stats.visible += self.visible.len();
         let mut encoder = self.device.create_command_encoder(&Default::default());
+        let timed = self.gpu_timer.as_mut().and_then(|timer| timer.next_pass());
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("main"),
@@ -1334,7 +1407,13 @@ impl Renderer {
                     depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(0.0), store: wgpu::StoreOp::Discard }),
                     stencil_ops: None,
                 }),
-                timestamp_writes: None,
+                timestamp_writes: timed.zip(self.gpu_timer.as_ref()).map(|((start, end), timer)| {
+                    wgpu::RenderPassTimestampWrites {
+                        query_set: &timer.queries,
+                        beginning_of_pass_write_index: Some(start),
+                        end_of_pass_write_index: Some(end),
+                    }
+                }),
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
@@ -1433,6 +1512,12 @@ impl Renderer {
             }
             Some(_) => log::error!("surface doesn't support COPY_SRC; can't take screenshots"),
             None => {}
+        }
+        if let Some(timer) = &mut self.gpu_timer
+            && let Some(commands) = timer.resolve(&self.device)
+        {
+            self.queue.submit([commands]);
+            timer.submitted(self.frame_serial);
         }
         if let Some(surface) = frame.surface {
             self.window.pre_present_notify();

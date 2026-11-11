@@ -433,20 +433,17 @@ impl ApplicationHandler for App {
         if self.game.is_some() || self.title.is_some() {
             return;
         }
+        let benchmark = self.args.benchmark_scene.is_some();
+        let size = self.args.physical_size.unwrap_or(if benchmark { (1920, 1080) } else { (1600, 900) });
         let attrs = Window::default_attributes()
             .with_title("VoxelCraft")
             .with_window_icon(Some(window_icon()))
-            .with_inner_size({
-                let (w, h) = self.args.physical_size.unwrap_or(if self.args.benchmark_scene.is_some() {
-                    (1920, 1080)
-                } else {
-                    (1600, 900)
-                });
-                PhysicalSize::new(w, h)
-            });
+            .with_inner_size(PhysicalSize::new(size.0, size.1));
+        let window_mode = fullscreen::Mode::from_benchmark(self.args.benchmark_window_mode);
         // A benchmark run is invalid once its window is covered, and one
-        // started from a terminal or agent opens behind the active app.
-        let attrs = if self.args.benchmark_scene.is_some() {
+        // started from a terminal or agent opens behind the active app. A
+        // fullscreen run has the screen to itself.
+        let attrs = if benchmark && window_mode == fullscreen::Mode::Off {
             attrs.with_window_level(winit::window::WindowLevel::AlwaysOnTop).with_active(true)
         } else {
             attrs
@@ -473,8 +470,21 @@ impl ApplicationHandler for App {
 
         if !scripted {
             settings.fullscreen.apply(&window);
+        } else if benchmark {
+            // Scripted runs save no options, so this lasts for the run, and
+            // menus that reapply the option keep it.
+            settings.fullscreen = window_mode;
+            window_mode.apply_preferring(&window, Some(size));
         }
-        let mut renderer = pollster::block_on(Renderer::new(window, settings.vsync));
+        let options = if benchmark {
+            crate::render::Options {
+                frame_latency: self.args.benchmark_frame_latency,
+                gpu_timestamps: self.args.benchmark_gpu_timestamps,
+            }
+        } else {
+            Default::default()
+        };
+        let mut renderer = pollster::block_on(Renderer::new(window, settings.vsync, options));
         renderer.force_offscreen = self.args.benchmark_scene.is_some() && self.args.benchmark_offscreen;
         let mut audio = crate::audio::Audio::new(self.args.mute, settings.volume);
         audio.set_volumes(|source| settings.sound_volume(source));

@@ -49,7 +49,11 @@ pub(super) struct Run {
     phases: Vec<perf::PhaseTimes>,
     /// The frame in progress: its phases so far and when the last one ended.
     phase: (perf::PhaseTimes, Instant),
+    /// Each sample's frame serial, for its GPU time (0: no frame was drawn).
+    serials: Vec<u64>,
+    last_serial: u64,
     offscreen: bool,
+    window_mode: &'static str,
     ticks_before: u64,
     discarded_before: Duration,
     paused_before: Duration,
@@ -94,7 +98,10 @@ impl Run {
             frames: Vec::new(),
             phases: Vec::new(),
             phase: (Default::default(), Instant::now()),
+            serials: Vec::new(),
+            last_serial: 0,
             offscreen: args.benchmark_offscreen,
+            window_mode: args.benchmark_window_mode,
             ticks_before: 0,
             discarded_before: Duration::ZERO,
             paused_before: Duration::ZERO,
@@ -281,6 +288,9 @@ impl Game {
                 run.paused_before = self.clock.paused();
                 run.skipped_before = self.renderer.skipped_frames;
                 run.entities_start = self.mobs.entities.mobs.len();
+                run.last_serial = self.renderer.frame_serial();
+                // Warm-up frames' GPU times aren't sampled.
+                self.renderer.take_gpu_times();
             }
             let t = ready.elapsed().as_secs_f64();
             if run.scene == "menus" {
@@ -306,6 +316,9 @@ impl Game {
                 {
                     run.frames.push(now.duration_since(previous).as_secs_f64() * 1000.);
                     run.phases.push(run.phase.0);
+                    let serial = self.renderer.frame_serial();
+                    run.serials.push(if serial == run.last_serial { 0 } else { serial });
+                    run.last_serial = serial;
                 }
                 if start.elapsed().as_secs_f64() >= run.duration {
                     self.finish_benchmark(&mut run, start);
@@ -402,6 +415,8 @@ impl Game {
         let configuration_problems = evidence.configuration_problems();
         let run_problems = evidence.run_problems();
         let memory = self.renderer.gpu_memory();
+        let acquire: Vec<f32> = run.phases.iter().map(|p| p[5]).collect();
+        let shown = presentation(&mut self.renderer, &run.frames, &acquire, &run.serials);
         let settings = &self.settings;
         let options = serde_json::json!({
             "render_distance_chunks": settings.render_distance,
@@ -413,7 +428,10 @@ impl Game {
             "hud": self.show_hud,
             "debug_overlay": self.show_debug,
             "volume": settings.volume,
-            "fullscreen": "not applied to scripted runs",
+            "window_mode": run.window_mode,
+            "frame_latency": self.renderer.options().frame_latency,
+            "metal_maximum_drawable_count": metal_drawables(&self.renderer),
+            "display": super::fullscreen::describe(&self.renderer.window, run.window_mode == "exclusive"),
             "day_time_start": if run.scene == "entities" { Some(ENTITY_SCENE_TIME) } else { None },
             "day_cycle": self.gamerules.bool("advance_time"),
             "natural_spawning": self.gamerules.bool("spawn_mobs"),
@@ -456,7 +474,6 @@ impl Game {
             "gpu_memory_reserved_bytes": memory.device_reserved,
             "chunk_arena_used_bytes": memory.chunk_arena.0,
             "chunk_arena_reserved_bytes": memory.chunk_arena.1,
-            "gpu_timestamp_ms": null,
             "presentation": if run.offscreen {
                 "offscreen image, nothing presented; normal renderer"
             } else {
@@ -472,6 +489,7 @@ impl Game {
         });
         if let (Some(report), serde_json::Value::Object(validity)) = (report.as_object_mut(), validity) {
             report.extend(validity);
+            report.extend(shown);
         }
         if let Some(parent) = run.output.parent() {
             std::fs::create_dir_all(parent).expect("create benchmark output directory");
@@ -524,9 +542,14 @@ pub(super) struct TitleRun {
     sample_start: Option<Instant>,
     previous: Option<Instant>,
     frames: Vec<f64>,
+    /// Each sample's acquire wait and frame serial (0: no frame was drawn).
+    acquire: Vec<f32>,
+    serials: Vec<u64>,
+    last_serial: u64,
     skipped_before: u64,
     screen: Option<&'static str>,
     offscreen: bool,
+    window_mode: &'static str,
 }
 
 impl TitleRun {
@@ -539,30 +562,50 @@ impl TitleRun {
             sample_start: None,
             previous: None,
             frames: Vec::new(),
+            acquire: Vec::new(),
+            serials: Vec::new(),
+            last_serial: 0,
             skipped_before: 0,
             screen: None,
             offscreen: args.benchmark_offscreen,
+            window_mode: args.benchmark_window_mode,
         })
     }
 
     /// After a presented frame: records its interval once warm-up is over and
     /// returns the screen to show if it is time for the next one.
-    pub fn frame(&mut self, skipped_frames: u64) -> Option<&'static str> {
-        self.frame_at(Instant::now(), skipped_frames)
+    pub fn frame(&mut self, renderer: &mut crate::render::Renderer) -> Option<&'static str> {
+        let drawn = Drawn {
+            skipped: renderer.skipped_frames,
+            serial: renderer.frame_serial(),
+            acquire_ms: renderer.stats.acquire_ms as f32,
+        };
+        let sampling = self.sample_start.is_some();
+        let screen = self.frame_at(Instant::now(), drawn);
+        if !sampling && self.sample_start.is_some() {
+            // Warm-up frames' GPU times aren't sampled.
+            renderer.take_gpu_times();
+        }
+        screen
     }
 
-    fn frame_at(&mut self, now: Instant, skipped_frames: u64) -> Option<&'static str> {
+    fn frame_at(&mut self, now: Instant, drawn: Drawn) -> Option<&'static str> {
         let t = now.duration_since(self.created).as_secs_f64();
         if self.sample_start.is_none() {
             if t >= self.warmup {
                 self.sample_start = Some(now);
                 self.previous = Some(now);
-                self.skipped_before = skipped_frames;
+                self.skipped_before = drawn.skipped;
+                self.last_serial = drawn.serial;
             }
         } else if let Some(previous) = self.previous.replace(now)
             && now > previous
         {
             self.frames.push(now.duration_since(previous).as_secs_f64() * 1000.);
+            let fresh = drawn.serial != self.last_serial;
+            self.serials.push(if fresh { drawn.serial } else { 0 });
+            self.acquire.push(if fresh { drawn.acquire_ms } else { 0. });
+            self.last_serial = drawn.serial;
         }
         let screen = perf::menu_screen(&perf::TITLE_SCREENS, t);
         (self.screen.replace(screen) != Some(screen)).then_some(screen)
@@ -574,8 +617,9 @@ impl TitleRun {
     }
 
     /// Writes the report, as a world scene does, without the world's parts.
-    pub fn finish(&self, renderer: &crate::render::Renderer, settings: &super::settings::Settings) {
+    pub fn finish(&self, renderer: &mut crate::render::Renderer, settings: &super::settings::Settings) {
         renderer.wait_idle();
+        let shown = presentation(renderer, &self.frames, &self.acquire, &self.serials);
         let start = self.sample_start.expect("sampling started");
         let stats =
             perf::FrameStats::from_milliseconds(&self.frames).expect("benchmark produced no finite frame samples");
@@ -602,7 +646,7 @@ impl TitleRun {
         };
         let configuration_problems = evidence.configuration_problems();
         let run_problems = evidence.run_problems();
-        let report = serde_json::json!({
+        let mut report = serde_json::json!({
             "schema": 2,
             "scene": "title",
             "screens": perf::TITLE_SCREENS,
@@ -616,7 +660,6 @@ impl TitleRun {
             "sample_seconds": sample_seconds,
             "frame_stats": stats.json(),
             "frame_times_ms": self.frames,
-            "gpu_timestamp_ms": null,
             "presentation": if self.offscreen {
                 "offscreen image, nothing presented; title screen"
             } else {
@@ -626,7 +669,14 @@ impl TitleRun {
             "present_mode_resolved": format!("{resolved_present:?}"),
             "vsync": !uncapped,
             "graphics": if settings.enhanced_graphics { "enhanced" } else { "classic" },
-            "options": {"gui_scale": settings.gui_scale, "vsync_setting": settings.vsync},
+            "options": {
+                "gui_scale": settings.gui_scale,
+                "vsync_setting": settings.vsync,
+                "window_mode": self.window_mode,
+                "frame_latency": renderer.options().frame_latency,
+                "metal_maximum_drawable_count": metal_drawables(renderer),
+                "display": super::fullscreen::describe(&renderer.window, self.window_mode == "exclusive"),
+            },
             "source_revision": option_env!("VOXELCRAFT_BUILD_REVISION").unwrap_or("unknown"),
             "completed_simulation_ticks": 0,
             "paused_simulation_ms": null,
@@ -636,6 +686,9 @@ impl TitleRun {
             "run_valid": run_problems.is_empty(),
             "ineligible_reasons": configuration_problems.iter().chain(&run_problems).collect::<Vec<_>>(),
         });
+        if let Some(report) = report.as_object_mut() {
+            report.extend(shown);
+        }
         if let Some(parent) = self.output.parent() {
             std::fs::create_dir_all(parent).expect("create benchmark output directory");
         }
@@ -653,9 +706,52 @@ impl TitleRun {
     }
 }
 
+/// What a title frame left for its sample: the renderer's skipped-frame
+/// count, the serial of the frame last begun and its acquire wait.
+#[derive(Clone, Copy, Default)]
+struct Drawn {
+    skipped: u64,
+    serial: u64,
+    acquire_ms: f32,
+}
+
+/// The layer's drawable count on Metal for the run's frame latency.
+fn metal_drawables(renderer: &crate::render::Renderer) -> Option<u32> {
+    (renderer.backend() == wgpu::Backend::Metal).then(|| perf::metal_drawable_count(renderer.options().frame_latency))
+}
+
+/// Report fields on presentation and GPU time: the window mode the window is
+/// in (the options give the one asked for), whether frames were timed, each
+/// sample's acquire wait and GPU time beside `frame_times_ms`, and the
+/// [`perf::gpu_breakdown`].
+/// `serials` gives each sample's frame (0: none). Call after
+/// [`crate::render::Renderer::wait_idle`] so frames in flight are read back.
+fn presentation(
+    renderer: &mut crate::render::Renderer,
+    intervals: &[f64],
+    acquire: &[f32],
+    serials: &[u64],
+) -> serde_json::Map<String, serde_json::Value> {
+    let times: HashMap<u64, f32> = renderer.take_gpu_times().into_iter().collect();
+    let losses = renderer.gpu_timer_losses();
+    let gpu: Option<Vec<Option<f32>>> = losses.map(|_| serials.iter().map(|s| times.get(s).copied()).collect());
+    let mut out = serde_json::Map::new();
+    out.insert("window_mode_applied".into(), super::fullscreen::Mode::current(&renderer.window).name().into());
+    out.insert("gpu_timestamps".into(), renderer.gpu_timestamps().into());
+    out.insert(
+        "gpu_timestamp_ms".into(),
+        gpu.as_deref().and_then(|g| perf::gpu_breakdown(intervals, acquire, g)).into(),
+    );
+    out.insert("gpu_timer_ring_full_frames".into(), losses.map(|l| l.0).into());
+    out.insert("gpu_timer_invalid_frames".into(), losses.map(|l| l.1).into());
+    out.insert("frame_acquire_ms".into(), acquire.into());
+    out.insert("frame_gpu_ms".into(), gpu.into());
+    out
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{TitleRun, route};
+    use super::{Drawn, TitleRun, route};
     use std::{
         path::PathBuf,
         time::{Duration, Instant},
@@ -672,21 +768,29 @@ mod tests {
             sample_start: None,
             previous: None,
             frames: Vec::new(),
+            acquire: Vec::new(),
+            serials: Vec::new(),
+            last_serial: 0,
             skipped_before: 0,
             screen: None,
             offscreen: false,
+            window_mode: "windowed",
         };
         let at = |ms: u64| created + Duration::from_millis(ms);
-        assert_eq!(run.frame_at(at(0), 0), Some("title"));
+        let drawn = |serial, acquire_ms| Drawn { skipped: 3, serial, acquire_ms };
+        assert_eq!(run.frame_at(at(0), Drawn::default()), Some("title"));
         for ms in [100, 500, 900] {
-            run.frame_at(at(ms), 0);
+            run.frame_at(at(ms), Drawn { serial: ms, ..Drawn::default() });
         }
         assert!(run.frames.is_empty() && run.sample_start.is_none(), "warm-up frames don't count");
-        run.frame_at(at(1000), 3);
-        run.frame_at(at(1004), 3);
+        run.frame_at(at(1000), drawn(1000, 0.5));
+        run.frame_at(at(1004), drawn(1001, 0.75));
         assert_eq!(run.screen, Some("title"));
-        assert_eq!(run.frame_at(at(2500), 3), Some("select"));
+        // A hidden window drew nothing: no new serial, so no GPU time or acquire.
+        assert_eq!(run.frame_at(at(2500), drawn(1001, 0.75)), Some("select"));
         assert_eq!(run.frames, [4.0, 1496.0]);
+        assert_eq!(run.serials, [1001, 0]);
+        assert_eq!(run.acquire, [0.75, 0.0]);
         assert_eq!(run.skipped_before, 3);
     }
 
