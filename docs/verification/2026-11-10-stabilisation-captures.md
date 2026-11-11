@@ -291,3 +291,35 @@ Even the valid runs differ by up to 2× between repeats of one scene, and
 none reaches the 240 FPS 1% low. Three valid windowed runs of every scene,
 on an idle machine, are still owed (PERF-02/03). Reports are in the ignored
 `target/benchmarks/2026-11-10-gate/`.
+
+## Look after the fixes (2026-11-11)
+
+The fixes above had only automated checks. On 2026-11-11 the build of
+`9ac848f1` (the 0.16.0 gate commit on `main`) drew both places with
+`--screenshot` at 1280 × 720 (saved at 1600 × 900 on the Retina display),
+`--rd 6`, noon, `--no-hud`, each in a new creative world under ignored
+`target/hands-on/2026-11-11/`. Claude Opus 5.5 looked at each image.
+
+| Scene | Seed and pose | Seen |
+|---|---|---|
+| Nether fossil on a ledge | 9, `--dimension nether`, `704,74,153,-45,-35` | The rib cage that hung over the lava lake on 2026-11-10 now rests on a raised soul-soil and netherrack shelf above the lava, the thin beard Java builds, with no pillar down to the lava |
+| Swamp shore | 9, `-1070,110,-510,-135,-40` | Grass with scattered water pools, lily pads on the open water, no bare dirt |
+| Swamp shore | 42, `-330,150,-90,-45,-45` (the pose that found the defect) | The same: grass and pools along the shore, no dirt flats |
+
+![Seed 9 Nether fossil on its bearded shelf](../images/2026-11-11-nether-fossil-seed9-bearded.jpg)
+![Seed 9 swamp shore with pools](../images/2026-11-11-swamp-shore-seed9.jpg)
+![Seed 42 swamp shore with pools](../images/2026-11-11-swamp-shore-seed42.jpg)
+
+The new grass at y 62 is bare, as the "Not fixed" list above says. A
+second fossil pose (`730,66,141,90,-15`) put the camera inside the
+terrain and shows nothing useful.
+
+A fourth Terra session, launched the same day to play the encounters
+still owed (trading, brewing, the mace, spawner waves, vaults, shriekers
+and the warden, lightning, the jukebox, a bastion, brushing, and
+save and reload), found the screen unlocked, started the wrapped app, and
+then lost the window to the screen lock (`cgWindowNotFound`) before a
+world was created. It stopped as the [development guide](../development.md#hands-on-runs)
+asks. Nothing was played; those encounters stay owed for a session with
+the owner at the machine. Its report is in the ignored
+`target/hands-on/2026-11-11/terra/`.

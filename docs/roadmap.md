@@ -656,8 +656,14 @@ v0.17 does not start until it passes. Work items:
    longer overlap. A Terra session reached a village, the new mobs, a
    trident, a trial chamber and an ancient city before the screen locked.
    It found Java's `@s` target rejected by `/effect` and `/enchant`
-   (fixed). Trading, brewing, the mace, spawner waves, vaults, shriekers,
-   lightning, the jukebox and save/reload in play remain unverified.
+   (fixed). *Look after the fixes (2026-11-11,
+   [record](verification/2026-11-10-stabilisation-captures.md#look-after-the-fixes-2026-11-11)):*
+   seed 9's Nether fossil now rests on a bearded shelf and generation 3
+   swamp shores are grass with pools. A further Terra session lost the
+   window to the screen lock before playing anything. Trading, brewing,
+   the mace, spawner waves, vaults, shriekers, lightning, the jukebox and
+   save/reload in play remain unverified, and wait for a session with the
+   owner at the machine.
 5. **Documentation.** *Done (2026-11-09).* History moved to the
    [delivery records](delivery-records.md), the
    [inventory](requirements.md) refreshed against `main` and its 26
