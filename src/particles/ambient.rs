@@ -307,23 +307,18 @@ impl System {
         }
     }
 
+    /// Java 26.3 `LivingEntity.tickEffects` on the client: one swirl on a
+    /// 1-in-4 tick (1 in 15 while invisible), in the colour of one active
+    /// effect picked at random (`Util.getRandom` over the effect particles).
     pub fn effects(&mut self, pos: DVec3, effects: &Effects, setting: Setting) {
-        if effects.is_empty() || !self.rng.chance(0.5) {
+        let count = effects.iter().count() as u32;
+        let odds = if effects.has(crate::simulation::effects::Effect::Invisibility) { 15 } else { 4 };
+        if count == 0 || self.rng.next_int(odds) != 0 {
             return;
         }
-        let mut color = [0.0; 4];
-        let mut weight = 0.0;
-        for effect in effects.iter() {
-            let w = effect.amplifier as f32 + 1.0;
-            for (i, channel) in effect.effect.colour().iter().enumerate() {
-                color[i] += *channel as f32 / 255.0 * w;
-            }
-            weight += w;
-        }
-        for channel in &mut color[..3] {
-            *channel /= weight;
-        }
-        color[3] = 1.0;
+        let pick = effects.iter().nth(self.rng.next_int(count) as usize).expect("index below count");
+        let [r, g, b] = pick.effect.colour().map(|c| c as f32 / 255.0);
+        let color = [r, g, b, 1.0];
         let mut b = Burst::new(Kind::Effect, pos + DVec3::Y * 0.9, 1);
         b.spread = DVec3::new(0.3, 0.9, 0.3);
         b.color = Some(color);
@@ -561,6 +556,46 @@ mod tests {
         assert_eq!(system.pool.iter().count(), 0);
         system.rain(&w, DVec3::new(0.5, 80.0, 0.5), 0.0, Setting::All, true);
         assert_eq!(system.pool.iter().count(), 0);
+    }
+
+    #[test]
+    fn effect_swirls_follow_java_odds_and_take_one_effect_colour() {
+        use crate::simulation::effects::Effect;
+        let mut system = System::new(9);
+        let mut effects = Effects::default();
+        effects.add(Effect::Speed, 0, 20_000);
+        effects.add(Effect::Poison, 0, 20_000);
+        let is =
+            |rgb: [f32; 3], e: Effect| rgb.iter().zip(e.colour()).all(|(a, c)| (a - c as f32 / 255.0).abs() < 1e-5);
+        let (mut swirls, mut speed, mut poison) = (0, 0, 0);
+        for _ in 0..4000 {
+            system.clear();
+            system.effects(DVec3::Y * 80.0, &effects, Setting::All);
+            if let Some(p) = system.pool.iter().next() {
+                swirls += 1;
+                // One effect's colour, never a blend of the two.
+                let rgb = [p.color[0], p.color[1], p.color[2]];
+                if is(rgb, Effect::Speed) {
+                    speed += 1;
+                } else if is(rgb, Effect::Poison) {
+                    poison += 1;
+                } else {
+                    panic!("blended swirl colour {rgb:?}");
+                }
+            }
+        }
+        // Java: nextInt(4) == 0, so about 1,000 of 4,000 ticks.
+        assert!((850..1150).contains(&swirls), "{swirls} swirls in 4000 ticks");
+        assert!(speed > 350 && poison > 350, "speed {speed}, poison {poison}");
+        effects.add(Effect::Invisibility, 0, 20_000);
+        let mut hidden = 0;
+        for _ in 0..4000 {
+            system.clear();
+            system.effects(DVec3::Y * 80.0, &effects, Setting::All);
+            hidden += system.pool.iter().count();
+        }
+        // Invisible: nextInt(15) == 0, about 267.
+        assert!((200..340).contains(&hidden), "{hidden} swirls while invisible");
     }
 
     #[test]
