@@ -1,7 +1,7 @@
 //! Command syntax, coordinate validation and completion, separate from execution.
 use crate::{
     item::Item,
-    player::MoveInput,
+    player::{MoveInput, PITCH_LIMIT, Player},
     rules::{GameMode, GameRules, RuleValue},
     simulation::{difficulty::Difficulty, effects::Effect, survival::Vitals},
     world::{
@@ -45,7 +45,11 @@ pub enum Command {
     Summon(crate::entity::MobKind, PositionSpec),
     SummonLightning(PositionSpec),
     Mode(GameMode),
-    Teleport(PositionSpec),
+    /// Java's `/tp`: a position, then optionally a rotation or a `facing`
+    /// target.
+    Teleport(PositionSpec, Option<Turn>),
+    /// Java's `/rotate` (added in 1.21.2).
+    Rotate(Turn),
     SpawnPoint(PositionSpec),
     SetBlock(IVec3, Block),
     Time(f64),
@@ -107,6 +111,8 @@ const COMMAND_NAMES: &[&str] = &[
     "summon",
     "gamemode",
     "tp",
+    "teleport",
+    "rotate",
     "spawnpoint",
     "setworldspawn",
     "setblock",
@@ -171,6 +177,153 @@ impl PositionSpec {
         }
         Ok(pos)
     }
+
+    /// Java's `Vec3Argument`: a whole absolute x or z names the block's
+    /// centre, so it gains 0.5 (`WorldCoordinate.parseDouble` with
+    /// `centerCorrect`). Y and `~` offsets stay as typed.
+    pub fn parse_centered(x: &str, y: &str, z: &str) -> Result<Self, String> {
+        let center = |text: &str, c: Coordinate| match c {
+            Coordinate::Absolute(v) if !text.contains('.') => Coordinate::Absolute(v + 0.5),
+            c => c,
+        };
+        let Self([cx, cy, cz]) = Self::parse(x, y, z)?;
+        Ok(Self([center(x, cx), cy, center(z, cz)]))
+    }
+}
+
+/// Java's `EntityAnchorArgument`: which point of an entity to face.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Anchor {
+    Feet,
+    Eyes,
+}
+
+/// How `/tp` and `/rotate` turn the player: Java's `rotation` argument
+/// (yaw then pitch, in Java degrees) or a `facing` target (`LookAt`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Turn {
+    Rotation {
+        yaw: Coordinate,
+        pitch: Coordinate,
+    },
+    /// `facing <x y z>`. `~` counts from where the command ran, before any
+    /// teleport, because Java resolves arguments first.
+    FacingPos(PositionSpec),
+    /// `facing entity @s|@p [eyes|feet]`. The selectors the parser knows
+    /// only reach the player, so the target is the player itself.
+    FacingSelf(Anchor),
+}
+
+/// Java's `Mth.wrapDegrees`: an angle in [-180, 180).
+fn wrap_degrees(angle: f64) -> f64 {
+    let a = angle % 360.0;
+    if a >= 180.0 {
+        a - 360.0
+    } else if a < -180.0 {
+        a + 360.0
+    } else {
+        a
+    }
+}
+
+/// Java's yaw and pitch in degrees from VoxelCraft's radians. VoxelCraft yaw
+/// 0 faces +X and Java yaw 0 faces +Z (south); VoxelCraft pitch is positive
+/// looking up, Java's is negative.
+pub fn java_rotation(yaw: f32, pitch: f32) -> (f64, f64) {
+    (wrap_degrees(f64::from(yaw).to_degrees() - 90.0), -f64::from(pitch).to_degrees())
+}
+
+/// VoxelCraft's yaw and pitch in radians from Java degrees. The pitch keeps
+/// to the camera's limit.
+pub fn from_java_rotation(yaw: f64, pitch: f64) -> (f32, f32) {
+    let yaw = ((yaw + 90.0).to_radians() as f32).rem_euclid(std::f32::consts::TAU);
+    (yaw, (-pitch.to_radians() as f32).clamp(-PITCH_LIMIT, PITCH_LIMIT))
+}
+
+/// Java's `Entity.lookAt`: the yaw and pitch in degrees that look from
+/// `from` to `to`.
+pub fn java_look_at(from: DVec3, to: DVec3) -> (f64, f64) {
+    let d = to - from;
+    let pitch = wrap_degrees(-d.y.atan2(d.x.hypot(d.z)).to_degrees());
+    let yaw = wrap_degrees(d.z.atan2(d.x).to_degrees() - 90.0);
+    (yaw, pitch.clamp(-90.0, 90.0))
+}
+
+impl Turn {
+    /// The player's Java yaw and pitch after the turn, in degrees. `origin`
+    /// is where the command ran; `player` already stands where it ends up.
+    /// `/tp` wraps a rotation's change into [-180, 180) before adding it
+    /// (`TeleportCommand.performTeleport`); `/rotate` does not.
+    fn java_angles(self, origin: DVec3, player: &Player, wrap: bool) -> Result<(f64, f64), String> {
+        // Java's command source looks from its feet unless `execute
+        // anchored eyes` changes the anchor, which VoxelCraft lacks.
+        let from = player.pos;
+        match self {
+            Turn::Rotation { yaw, pitch } => {
+                let (now_yaw, now_pitch) = java_rotation(player.yaw, player.pitch);
+                let angle = |c: Coordinate, now: f64| {
+                    let (base, change) = match c {
+                        Coordinate::Absolute(v) => (0.0, v),
+                        Coordinate::Relative(v) => (now, v),
+                    };
+                    base + if wrap { wrap_degrees(change) } else { change }
+                };
+                // `Entity.setXRot` keeps the pitch within 90 degrees.
+                Ok((angle(yaw, now_yaw), (angle(pitch, now_pitch) % 360.0).clamp(-90.0, 90.0)))
+            }
+            Turn::FacingPos(spec) => Ok(java_look_at(from, spec.resolve(origin)?)),
+            Turn::FacingSelf(Anchor::Feet) => Ok(java_look_at(from, player.pos)),
+            Turn::FacingSelf(Anchor::Eyes) => Ok(java_look_at(from, player.eye())),
+        }
+    }
+}
+
+/// Java's `/tp`: moves the player to `pos`, then applies `turn`. Nothing
+/// changes when the position or the turn is invalid.
+pub fn teleport(player: &mut Player, pos: PositionSpec, turn: Option<Turn>) -> Result<(), String> {
+    let origin = player.pos;
+    let to = pos.resolve(origin)?;
+    player.pos = to;
+    if let Some(turn) = turn {
+        match turn.java_angles(origin, player, true) {
+            Ok((yaw, pitch)) => (player.yaw, player.pitch) = from_java_rotation(yaw, pitch),
+            Err(e) => {
+                player.pos = origin;
+                return Err(e);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Java's `/rotate`: turns the player where it stands.
+pub fn rotate(player: &mut Player, turn: Turn) -> Result<(), String> {
+    let (yaw, pitch) = turn.java_angles(player.pos, player, false)?;
+    (player.yaw, player.pitch) = from_java_rotation(yaw, pitch);
+    Ok(())
+}
+
+/// The rotation or `facing` words after `/tp`'s position or `/rotate`'s
+/// target.
+fn parse_turn(words: &[&str]) -> Result<Option<Turn>, String> {
+    let usage = || "use: yaw pitch | facing x y z | facing entity @s|@p [eyes|feet]".to_string();
+    Ok(Some(match words {
+        [] => return Ok(None),
+        ["facing", "entity", target, anchor @ ..] => {
+            if !matches!(*target, "@s" | "@p") {
+                return Err("facing entity accepts @s or @p".into());
+            }
+            Turn::FacingSelf(match anchor {
+                [] | ["feet"] => Anchor::Feet,
+                ["eyes"] => Anchor::Eyes,
+                _ => return Err(usage()),
+            })
+        }
+        ["facing", x, y, z] => Turn::FacingPos(PositionSpec::parse_centered(x, y, z)?),
+        ["facing", ..] => return Err(usage()),
+        [yaw, pitch] => Turn::Rotation { yaw: Coordinate::parse(yaw)?, pitch: Coordinate::parse(pitch)? },
+        _ => return Err(usage()),
+    }))
 }
 
 /// `/effect give` (with seconds and amplifier) or `/effect clear`.
@@ -351,6 +504,14 @@ pub fn tab_complete(input: &str) -> Option<String> {
         }
         "effect" if stem.len() <= 1 => complete_options(&["give", "clear"], partial)?,
         "xp" | "experience" if stem.len() <= 1 => complete_options(&["add", "set", "query"], partial)?,
+        "rotate" if stem.len() == 1 => complete_options(&["@s", "@p"], partial)?,
+        "rotate" if stem.len() == 2 => complete_options(&["facing"], partial)?,
+        "tp" | "teleport" if stem.len() == 5 && stem[1].starts_with('@') => complete_options(&["facing"], partial)?,
+        "tp" | "teleport" | "rotate" if stem.last() == Some(&"facing") => complete_options(&["entity"], partial)?,
+        "tp" | "teleport" | "rotate" if stem.last() == Some(&"entity") => complete_options(&["@s", "@p"], partial)?,
+        "tp" | "teleport" | "rotate" if stem.len() > 2 && stem[stem.len() - 2] == "entity" => {
+            complete_options(&["eyes", "feet"], partial)?
+        }
         _ if stem.is_empty() => complete_options(COMMAND_NAMES, partial)?,
         _ => return None,
     };
@@ -507,8 +668,12 @@ impl Command {
             ["gamemode", name] => Self::Mode(GameMode::from_name(name).ok_or_else(bad)?),
             ["gamemode", name, "@s" | "@p"] => Self::Mode(GameMode::from_name(name).ok_or_else(bad)?),
             ["gamemode", "@s" | "@p", name] => Self::Mode(GameMode::from_name(name).ok_or_else(bad)?),
-            ["tp", x, y, z] => Self::Teleport(PositionSpec::parse(x, y, z)?),
-            ["tp", "@s" | "@p", x, y, z] => Self::Teleport(PositionSpec::parse(x, y, z)?),
+            // Java's target-less `/tp <location>` takes no rotation.
+            ["tp" | "teleport", x, y, z] => Self::Teleport(PositionSpec::parse_centered(x, y, z)?, None),
+            ["tp" | "teleport", "@s" | "@p", x, y, z, turn @ ..] => {
+                Self::Teleport(PositionSpec::parse_centered(x, y, z)?, parse_turn(turn)?)
+            }
+            ["rotate", "@s" | "@p", turn @ ..] => Self::Rotate(parse_turn(turn)?.ok_or_else(bad)?),
             ["spawnpoint"] | ["spawnpoint", "@s" | "@p"] => Self::SpawnPoint(PositionSpec([
                 Coordinate::Relative(0.0),
                 Coordinate::Relative(0.0),
@@ -618,6 +783,7 @@ impl Command {
                 | Self::SummonLightning(..)
                 | Self::Mode(..)
                 | Self::Teleport(..)
+                | Self::Rotate(..)
                 | Self::SpawnPoint(..)
                 | Self::SetBlock(..)
                 | Self::Time(..)
@@ -631,3 +797,6 @@ impl Command {
         )
     }
 }
+
+#[cfg(test)]
+mod tests;
