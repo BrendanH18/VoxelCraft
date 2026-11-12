@@ -73,6 +73,41 @@ class RunnerGate(unittest.TestCase):
         self.assertIn('offscreen comparison runs present nothing',runner.reference_gate(runs,DEFINITIONS,False,None,3,offscreen=True)[1])
         self.assertFalse(runner.reference_gate(runs,DEFINITIONS,False,None,3,seconds=30.0)[0])
 
+    def test_presentation_experiments_are_recorded_and_never_pass(self):
+        # The defaults add no flags, so a plain run's command is unchanged.
+        self.assertEqual(runner.presentation(),([],{'frame_latency':2,'window_mode':'windowed','gpu_timestamps':True},[]))
+        self.assertEqual(runner.presentation(2,'windowed')[0],[])
+        flags,options,differences=runner.presentation(3,'borderless',False)
+        self.assertEqual(flags,['--benchmark-frame-latency','3','--benchmark-window-mode','borderless','--benchmark-no-gpu-timestamps'])
+        self.assertEqual(options,{'frame_latency':3,'window_mode':'borderless','gpu_timestamps':False})
+        self.assertEqual(differences,['frame latency 3','window mode borderless'])
+        # Turning GPU timing off is a control, not a different configuration.
+        self.assertEqual(runner.presentation(None,None,False)[2],[])
+        runs=summary(full_suite())
+        passed,problems=runner.reference_gate(runs,DEFINITIONS,False,None,3,presentation_differences=differences)
+        self.assertFalse(passed)
+        self.assertIn('presentation experiment: frame latency 3, window mode borderless',problems)
+        # A fullscreen run on a display that isn't 1920x1080 reports the
+        # game's configuration problem, so the run itself is ineligible too.
+        native=report(acceptance_eligible_configuration=False,ineligible_reasons=['resolution is not 1920x1080'])
+        self.assertIn('resolution is not 1920x1080',runner.run_problems(native,SPEC))
+
+    def test_runner_constants_match_the_game(self):
+        source=(runner.ROOT/'src/performance.rs').read_text()
+        self.assertIn(f'pub const DEFAULT_FRAME_LATENCY: u32 = {runner.DEFAULT_FRAME_LATENCY};',source)
+        modes=', '.join(f'"{m}"' for m in runner.WINDOW_MODES)
+        self.assertIn(f'pub const WINDOW_MODES: [&str; {len(runner.WINDOW_MODES)}] = [{modes}];',source)
+        self.assertIn(f'pub const TICK_TOLERANCE: f64 = {runner.TICK_TOLERANCE};',source)
+
+    def test_gpu_line_summarises_slow_acquires(self):
+        self.assertIsNone(runner.gpu_line({'gpu_timestamp_ms':None}))
+        group=lambda frame,acquire,gpu:{'frames':10,'timed_frames':10,'frame_ms':frame,'acquire_ms':acquire,'gpu_ms':gpu}
+        line=runner.gpu_line({'gpu_timestamp_ms':{'slow_acquire_threshold_ms':4.0,
+            'all_frames':group(2.0,1.3,{'mean':1.1,'p99':1.6}),'slowest_one_percent':group(8.8,7.6,{'mean':1.2,'p99':1.4}),
+            'slow_acquire_frames':group(8.6,7.4,{'mean':1.25,'p99':1.5}),'other_frames':group(1.9,1.2,None)}})
+        self.assertIn('slowest 1% of frames: GPU 1.200 of 8.800 ms (acquire 7.600)',line)
+        self.assertIn('10 frames acquired over 4 ms: GPU mean 1.250, p99 1.500',line)
+
     def test_fingerprint_includes_build_embedded_inputs(self):
         paths={p.relative_to(runner.ROOT).as_posix() for p in runner.source_paths()}
         for required in ['build.rs','packaging/icons/VoxelCraft.ico','packaging/icons/VoxelCraft.png',

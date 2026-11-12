@@ -690,7 +690,10 @@ v0.17 does not start until it passes. Work items:
    outliers. The 2026-11-11 run has three valid runs of every scene and
    fails the 240 FPS gate ([record](verification/2026-11-11-gate-run.md#scene-run));
    the drawable wait it found needs fixing or an owner decision before
-   the tag. Leaving out the display-pacing stretches doesn't rescue it, and
+   the tag. Benchmark runs now record GPU time per frame and can set the
+   frame latency and window mode; the
+   [experiment matrix](development.md#presentation-experiments) is owed on
+   the idle M5 (2026-11-11). Leaving out the display-pacing stretches doesn't rescue it, and
    its steady-state scenes are below the 2026-10-16 baseline, which needs a
    profile and a fix or a written reason. ([FE-02](#14-what-can-follow-10) was approved by the owner on
    2026-11-10.)
