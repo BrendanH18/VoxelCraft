@@ -175,13 +175,16 @@ impl Game {
                 return Ok(format!("Summoned {} at {:.1} {:.1} {:.1}", kind.name(), at.x, at.y, at.z));
             }
             Command::Mode(mode) => self.set_mode(mode),
-            Command::Teleport(pos) => {
-                let pos = pos.resolve(self.session.player.pos)?;
-                self.session.player.pos = pos;
+            Command::Teleport(pos, turn) => {
+                voxelcraft::agent::command::teleport(&mut self.session.player, pos, turn)?;
                 self.session.player.vel = glam::DVec3::ZERO;
                 self.session.vitals.reset_fall();
                 self.previous_eye = self.session.player.eye();
             }
+            // The camera reads the player's yaw and pitch each frame without
+            // interpolation, so the new facing shows at once; mouse motion
+            // turns from it.
+            Command::Rotate(turn) => voxelcraft::agent::command::rotate(&mut self.session.player, turn)?,
             Command::SpawnPoint(pos) => {
                 let p = pos.resolve(self.session.player.pos)?.floor().as_ivec3();
                 self.session.spawn_bed = None;

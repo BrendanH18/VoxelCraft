@@ -83,6 +83,105 @@ pub fn phase_breakdown(intervals: &[f64], phases: &[PhaseTimes]) -> Option<serde
     }))
 }
 
+/// Acquire waits longer than this mark a frame as a slow acquire in [`gpu_breakdown`].
+pub const SLOW_ACQUIRE_MS: f64 = 4.0;
+
+/// Mean, p50, p99, the mean of the slowest 1% and the worst of `values`
+/// (milliseconds), with the same percentile rule as [`FrameStats`]; `null`
+/// when empty.
+fn spread(values: &[f64]) -> serde_json::Value {
+    if values.is_empty() {
+        return serde_json::Value::Null;
+    }
+    let mut sorted = values.to_vec();
+    sorted.sort_by(f64::total_cmp);
+    let n = sorted.len();
+    let percentile = |percent: usize| sorted[(n * percent).div_ceil(100).saturating_sub(1).min(n - 1)];
+    let slow = n.div_ceil(100);
+    serde_json::json!({
+        "frames": n,
+        "mean": sorted.iter().sum::<f64>() / n as f64,
+        "p50": percentile(50),
+        "p99": percentile(99),
+        "slowest_one_percent_mean": sorted[n - slow..].iter().sum::<f64>() / slow as f64,
+        "worst": sorted[n - 1],
+    })
+}
+
+/// GPU time beside the frame intervals and acquire waits it might explain:
+/// its spread over every timed frame, over the slowest 1% of frames (by
+/// interval) and over the frames that waited more than [`SLOW_ACQUIRE_MS`]
+/// to acquire an image, against the other frames. Each group also gives its
+/// mean interval and acquire wait. `None` unless the three series match in
+/// length and some frame was timed.
+pub fn gpu_breakdown(intervals: &[f64], acquire: &[f32], gpu: &[Option<f32>]) -> Option<serde_json::Value> {
+    let n = intervals.len();
+    if n == 0 || acquire.len() != n || gpu.len() != n || gpu.iter().all(Option::is_none) {
+        return None;
+    }
+    let group = |frames: &[usize]| {
+        let count = frames.len().max(1) as f64;
+        let timed: Vec<f64> = frames.iter().filter_map(|&i| gpu[i].map(f64::from)).collect();
+        serde_json::json!({
+            "frames": frames.len(),
+            "timed_frames": timed.len(),
+            "frame_ms": frames.iter().map(|&i| intervals[i]).sum::<f64>() / count,
+            "acquire_ms": frames.iter().map(|&i| f64::from(acquire[i])).sum::<f64>() / count,
+            "gpu_ms": spread(&timed),
+        })
+    };
+    let mut order: Vec<usize> = (0..n).collect();
+    order.sort_by(|&a, &b| intervals[a].total_cmp(&intervals[b]));
+    let (slow_acquire, other): (Vec<usize>, Vec<usize>) =
+        (0..n).partition(|&i| f64::from(acquire[i]) > SLOW_ACQUIRE_MS);
+    Some(serde_json::json!({
+        "slow_acquire_threshold_ms": SLOW_ACQUIRE_MS,
+        "all_frames": group(&order),
+        "slowest_one_percent": group(&order[n - n.div_ceil(100)..]),
+        "slow_acquire_frames": group(&slow_acquire),
+        "other_frames": group(&other),
+    }))
+}
+
+/// The swap chain's `desired_maximum_frame_latency` when no option sets it.
+pub const DEFAULT_FRAME_LATENCY: u32 = 2;
+
+/// Whether a benchmark's frame latency or window mode differs from the
+/// reference configuration (latency 2, windowed).
+pub fn presentation_experiment(frame_latency: u32, window_mode: &str) -> bool {
+    frame_latency != DEFAULT_FRAME_LATENCY || window_mode != "windowed"
+}
+
+/// `--benchmark-frame-latency`: 1..=3 frames.
+pub fn parse_frame_latency(text: &str) -> Result<u32, String> {
+    text.parse::<u32>()
+        .ok()
+        .filter(|n| (1..=3).contains(n))
+        .ok_or_else(|| "benchmark frame latency must be 1, 2 or 3".into())
+}
+
+/// `CAMetalLayer.maximumDrawableCount` for a requested frame latency on
+/// Metal. wgpu-core clamps the request to the surface's range, which
+/// wgpu-hal 30's Metal backend reports as 1..=2 (macOS 10.13.2 and later),
+/// and wgpu-hal sets the layer's count to the clamped latency plus one.
+/// So 2 (the default) and 3 both give three drawables, the layer's
+/// maximum, and only 1 changes it, to two.
+pub fn metal_drawable_count(frame_latency: u32) -> u32 {
+    frame_latency.clamp(1, 2) + 1
+}
+
+/// Window modes `--benchmark-window-mode` accepts: the game's fullscreen
+/// options, where `borderless` is macOS's native fullscreen Space and
+/// `exclusive` switches the display mode.
+pub const WINDOW_MODES: [&str; 3] = ["windowed", "borderless", "exclusive"];
+
+pub fn parse_window_mode(text: &str) -> Result<&'static str, String> {
+    WINDOW_MODES
+        .into_iter()
+        .find(|m| *m == text)
+        .ok_or_else(|| format!("benchmark window mode must be one of {}", WINDOW_MODES.join(", ")))
+}
+
 /// Live benchmark scene names accepted by `--benchmark-scene`, matching `benchmarks/scenes.json`.
 pub const SCENES: [&str; 8] =
     ["survival", "building", "entities", "automation", "materials", "streaming", "menus", "title"];
@@ -183,6 +282,8 @@ pub struct RunEvidence {
     pub uncapped_presentation: bool,
     /// Frames were drawn to an offscreen image and never presented (`--benchmark-offscreen`).
     pub offscreen: bool,
+    /// A frame latency or window mode other than the reference's was asked for.
+    pub presentation_experiment: bool,
     pub completed_ticks: u64,
     pub paused_ms: f64,
     /// Sample intervals in which no surface image was acquired (hidden or occluded window).
@@ -212,6 +313,9 @@ impl RunEvidence {
         }
         if self.offscreen {
             out.push("frames were drawn offscreen and never presented");
+        }
+        if self.presentation_experiment {
+            out.push("frame latency or window mode differs from the reference (presentation experiment)");
         }
         out
     }
@@ -253,6 +357,7 @@ mod tests {
             enhanced_graphics: true,
             uncapped_presentation: true,
             offscreen: false,
+            presentation_experiment: false,
             completed_ticks: 1200,
             paused_ms: 0.0,
             unpresented_frames: 0,
@@ -302,6 +407,10 @@ mod tests {
         assert_eq!(quick.configuration_problems().len(), 1);
         let offscreen = RunEvidence { offscreen: true, ..eligible() };
         assert_eq!(offscreen.configuration_problems(), ["frames were drawn offscreen and never presented"]);
+        let experiment = RunEvidence { presentation_experiment: true, ..eligible() };
+        assert_eq!(experiment.configuration_problems().len(), 1);
+        assert!(!presentation_experiment(2, "windowed"));
+        assert!(presentation_experiment(1, "windowed") && presentation_experiment(2, "borderless"));
     }
 
     #[test]
@@ -382,6 +491,59 @@ mod tests {
             assert!(parse_warmup(bad).is_err(), "{bad:?}");
         }
     }
+    #[test]
+    fn gpu_time_is_split_by_slow_acquire() {
+        // 196 quick frames with 1 ms of GPU work, four that waited 7 ms to
+        // acquire (one untimed), and one slower frame without a timestamp.
+        let mut intervals = vec![2.0; 196];
+        let mut acquire = vec![0.5f32; 196];
+        let mut gpu = vec![Some(1.0f32); 196];
+        for timed in [Some(1.5), Some(1.5), Some(4.5), None] {
+            intervals.push(8.5);
+            acquire.push(7.0);
+            gpu.push(timed);
+        }
+        intervals.push(3.0);
+        acquire.push(4.0);
+        gpu.push(None);
+        let report = gpu_breakdown(&intervals, &acquire, &gpu).unwrap();
+        let slow = &report["slow_acquire_frames"];
+        assert_eq!((slow["frames"].as_u64(), slow["timed_frames"].as_u64()), (Some(4), Some(3)));
+        assert_eq!((slow["frame_ms"].as_f64(), slow["acquire_ms"].as_f64()), (Some(8.5), Some(7.0)));
+        assert_eq!(slow["gpu_ms"]["mean"].as_f64(), Some(2.5));
+        assert_eq!(slow["gpu_ms"]["worst"].as_f64(), Some(4.5));
+        assert_eq!(slow["gpu_ms"]["p50"].as_f64(), Some(1.5));
+        let other = &report["other_frames"];
+        assert_eq!((other["frames"].as_u64(), other["timed_frames"].as_u64()), (Some(197), Some(196)));
+        assert_eq!(other["gpu_ms"]["p99"].as_f64(), Some(1.0));
+        // The slowest 1% of 201 frames is three of the 8.5 ms frames.
+        assert_eq!(report["slowest_one_percent"]["frames"].as_u64(), Some(3));
+        assert_eq!(report["all_frames"]["gpu_ms"]["frames"].as_u64(), Some(199));
+        assert_eq!(report["all_frames"]["gpu_ms"]["slowest_one_percent_mean"].as_f64(), Some(3.0));
+        assert!(gpu_breakdown(&intervals, &acquire[1..], &gpu).is_none(), "series must line up");
+        assert!(gpu_breakdown(&[2.0], &[0.5], &[None]).is_none(), "nothing timed");
+        assert!(gpu_breakdown(&[], &[], &[]).is_none());
+    }
+
+    #[test]
+    fn presentation_options_parse_and_map_to_drawables() {
+        for (text, latency) in [("1", 1), ("2", 2), ("3", 3)] {
+            assert_eq!(parse_frame_latency(text), Ok(latency));
+        }
+        for bad in ["0", "4", "", "two", "-1", "2.5"] {
+            assert!(parse_frame_latency(bad).is_err(), "{bad:?}");
+        }
+        assert_eq!(DEFAULT_FRAME_LATENCY, 2);
+        // wgpu-hal 30 Metal: latency clamped to 1..=2, drawables = latency + 1.
+        assert_eq!([1, 2, 3].map(metal_drawable_count), [2, 3, 3]);
+        for mode in WINDOW_MODES {
+            assert_eq!(parse_window_mode(mode), Ok(mode));
+        }
+        for bad in ["", "Windowed", "fullscreen", "off"] {
+            assert!(parse_window_mode(bad).is_err(), "{bad:?}");
+        }
+    }
+
     #[test]
     fn slowest_one_percent_is_an_average_not_a_percentile() {
         let mut times = vec![2.; 198];

@@ -45,6 +45,10 @@ pub struct MoveInput {
     pub sprint_blocked: bool,
 }
 
+/// The camera's pitch limit in radians (89°). Java allows 90°, but the view
+/// matrix needs a forward vector that is not straight up or down.
+pub const PITCH_LIMIT: f32 = 1.5533;
+
 pub struct Player {
     /// Distance-driven render animation, shared by host, controllers and CLI players.
     pub animation: crate::entity::player_model::WalkAnimation,
@@ -191,7 +195,7 @@ impl Player {
 
     pub fn look(&mut self, dx: f32, dy: f32) {
         self.yaw = (self.yaw + dx).rem_euclid(std::f32::consts::TAU);
-        self.pitch = (self.pitch - dy).clamp(-1.5533, 1.5533); // ±89°
+        self.pitch = (self.pitch - dy).clamp(-PITCH_LIMIT, PITCH_LIMIT);
     }
 
     /// Track the source of damage for Java's directional camera tilt.
