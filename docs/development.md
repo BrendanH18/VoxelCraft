@@ -404,14 +404,16 @@ caffeinate -d python3 tools/benchmark_scenes.py --executable $exe --scenes $scen
 ```
 
 `--frame-latency 3` isn't in the list because on Metal it is the same as the
-default. Read each run's `gpu_timestamp_ms` in `summary.json`:
+default. Read each run's `gpu_timestamp_ms` in `summary.json`. A frame's
+GPU time is measured after its own acquire, and the wait can depend on
+earlier frames still in flight, so these are clues, not proof:
 
-- If the frames that waited over 4 ms to acquire show GPU times like the
-  other frames, the GPU isn't late. The wait is for the window server to
-  release a drawable, and the window-mode runs show whether skipping the
-  compositor removes it.
-- If those frames, or the slowest 1%, show long GPU times, the GPU work is
-  the cause. Profile the GPU before changing presentation.
+- If the frames that waited over 4 ms to acquire, and the frames just
+  before them, show GPU times like the rest, the GPU is probably not late.
+  The wait is then more likely the window server releasing a drawable, and
+  the window-mode runs show whether skipping the compositor removes it.
+- If the slowest 1%, or the frames before a slow acquire, show long GPU
+  times, suspect the GPU work. Profile the GPU before changing presentation.
 - If `no-gpu-timestamps` differs from `reference` by more than run-to-run
   noise, the timing itself costs something; say so in the record.
 - If `latency-1` makes acquire waits longer, the drawable count matters, but
