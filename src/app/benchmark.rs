@@ -51,6 +51,8 @@ pub(super) struct Run {
     phase: (perf::PhaseTimes, Instant),
     /// Each sample's frame serial, for its GPU time (0: no frame was drawn).
     serials: Vec<u64>,
+    /// Each sample's wait for a drawable in ms (0: no frame was drawn).
+    acquire: Vec<f32>,
     last_serial: u64,
     offscreen: bool,
     window_mode: &'static str,
@@ -99,6 +101,7 @@ impl Run {
             phases: Vec::new(),
             phase: (Default::default(), Instant::now()),
             serials: Vec::new(),
+            acquire: Vec::new(),
             last_serial: 0,
             offscreen: args.benchmark_offscreen,
             window_mode: args.benchmark_window_mode,
@@ -317,7 +320,9 @@ impl Game {
                     run.frames.push(now.duration_since(previous).as_secs_f64() * 1000.);
                     run.phases.push(run.phase.0);
                     let serial = self.renderer.frame_serial();
-                    run.serials.push(if serial == run.last_serial { 0 } else { serial });
+                    let fresh = serial != run.last_serial;
+                    run.serials.push(if fresh { serial } else { 0 });
+                    run.acquire.push(if fresh { self.renderer.stats.acquire_ms as f32 } else { 0. });
                     run.last_serial = serial;
                 }
                 if start.elapsed().as_secs_f64() >= run.duration {
@@ -407,6 +412,10 @@ impl Game {
             enhanced_graphics: self.settings.enhanced_graphics,
             uncapped_presentation: uncapped,
             offscreen: run.offscreen,
+            presentation_experiment: perf::presentation_experiment(
+                self.renderer.options().frame_latency,
+                run.window_mode,
+            ),
             completed_ticks: ticks,
             paused_ms: paused,
             unpresented_frames: unpresented,
@@ -415,8 +424,7 @@ impl Game {
         let configuration_problems = evidence.configuration_problems();
         let run_problems = evidence.run_problems();
         let memory = self.renderer.gpu_memory();
-        let acquire: Vec<f32> = run.phases.iter().map(|p| p[5]).collect();
-        let shown = presentation(&mut self.renderer, &run.frames, &acquire, &run.serials);
+        let shown = presentation(&mut self.renderer, &run.frames, &run.acquire, &run.serials);
         let settings = &self.settings;
         let options = serde_json::json!({
             "render_distance_chunks": settings.render_distance,
@@ -639,6 +647,7 @@ impl TitleRun {
             enhanced_graphics: settings.enhanced_graphics,
             uncapped_presentation: uncapped,
             offscreen: self.offscreen,
+            presentation_experiment: perf::presentation_experiment(renderer.options().frame_latency, self.window_mode),
             completed_ticks: 0,
             paused_ms: 0.,
             unpresented_frames: unpresented,

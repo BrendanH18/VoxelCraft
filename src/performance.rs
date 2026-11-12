@@ -146,6 +146,12 @@ pub fn gpu_breakdown(intervals: &[f64], acquire: &[f32], gpu: &[Option<f32>]) ->
 /// The swap chain's `desired_maximum_frame_latency` when no option sets it.
 pub const DEFAULT_FRAME_LATENCY: u32 = 2;
 
+/// Whether a benchmark's frame latency or window mode differs from the
+/// reference configuration (latency 2, windowed).
+pub fn presentation_experiment(frame_latency: u32, window_mode: &str) -> bool {
+    frame_latency != DEFAULT_FRAME_LATENCY || window_mode != "windowed"
+}
+
 /// `--benchmark-frame-latency`: 1..=3 frames.
 pub fn parse_frame_latency(text: &str) -> Result<u32, String> {
     text.parse::<u32>()
@@ -276,6 +282,8 @@ pub struct RunEvidence {
     pub uncapped_presentation: bool,
     /// Frames were drawn to an offscreen image and never presented (`--benchmark-offscreen`).
     pub offscreen: bool,
+    /// A frame latency or window mode other than the reference's was asked for.
+    pub presentation_experiment: bool,
     pub completed_ticks: u64,
     pub paused_ms: f64,
     /// Sample intervals in which no surface image was acquired (hidden or occluded window).
@@ -305,6 +313,9 @@ impl RunEvidence {
         }
         if self.offscreen {
             out.push("frames were drawn offscreen and never presented");
+        }
+        if self.presentation_experiment {
+            out.push("frame latency or window mode differs from the reference (presentation experiment)");
         }
         out
     }
@@ -346,6 +357,7 @@ mod tests {
             enhanced_graphics: true,
             uncapped_presentation: true,
             offscreen: false,
+            presentation_experiment: false,
             completed_ticks: 1200,
             paused_ms: 0.0,
             unpresented_frames: 0,
@@ -395,6 +407,10 @@ mod tests {
         assert_eq!(quick.configuration_problems().len(), 1);
         let offscreen = RunEvidence { offscreen: true, ..eligible() };
         assert_eq!(offscreen.configuration_problems(), ["frames were drawn offscreen and never presented"]);
+        let experiment = RunEvidence { presentation_experiment: true, ..eligible() };
+        assert_eq!(experiment.configuration_problems().len(), 1);
+        assert!(!presentation_experiment(2, "windowed"));
+        assert!(presentation_experiment(1, "windowed") && presentation_experiment(2, "borderless"));
     }
 
     #[test]

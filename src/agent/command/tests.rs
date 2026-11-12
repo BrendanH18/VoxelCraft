@@ -111,6 +111,9 @@ fn rotation_uses_java_angles() {
     let moved = run("tp @s 10 70 -4 180 -30", at);
     assert_eq!(moved.pos, DVec3::new(10.5, 70.0, -3.5));
     assert_angles(&moved, 180.0, -30.0);
+    // A huge finite yaw stays a valid facing instead of NaN.
+    let huge = run("rotate @s 1e308 0", at);
+    assert!(huge.yaw.is_finite() && (0.0..std::f32::consts::TAU).contains(&huge.yaw), "{}", huge.yaw);
     // A plain `/tp` keeps the facing.
     assert_angles(&run("tp @s 3 64 3", at), 0.0, 0.0);
 }

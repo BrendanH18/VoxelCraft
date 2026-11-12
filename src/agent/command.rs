@@ -236,7 +236,8 @@ pub fn java_rotation(yaw: f32, pitch: f32) -> (f64, f64) {
 /// VoxelCraft's yaw and pitch in radians from Java degrees. The pitch keeps
 /// to the camera's limit.
 pub fn from_java_rotation(yaw: f64, pitch: f64) -> (f32, f32) {
-    let yaw = ((yaw + 90.0).to_radians() as f32).rem_euclid(std::f32::consts::TAU);
+    // Wrap in f64 first: a huge finite yaw would become infinite as f32.
+    let yaw = (wrap_degrees(yaw + 90.0).to_radians() as f32).rem_euclid(std::f32::consts::TAU);
     (yaw, (-pitch.to_radians() as f32).clamp(-PITCH_LIMIT, PITCH_LIMIT))
 }
 
