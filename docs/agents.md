@@ -92,7 +92,7 @@ target/release/voxelcraft-agent --player builder give stone 64
 target/release/voxelcraft-agent --player builder fly on
 ```
 
-Cheats additionally allow `tp x y z`, `setblock x y z block`, `time noon` and
+Cheats additionally allow `tp x y z`, `rotate @s yaw pitch`, `setblock x y z block`, `time noon` and
 `weather clear`. Cheats are disabled for agents unless explicitly enabled.
 The local in-game console keeps the game's existing unrestricted debug controls.
 
@@ -104,6 +104,24 @@ Text entry consumes gameplay keys. Offline play pauses while the console is
 open; hosted play continues. Try `/help`, `/give diamond_pickaxe`,
 `/gamemode creative`, `/tp 0 150 0`, `/time night`, `/weather rain`,
 `/setblock 4 150 0 glowstone` or `/dimension nether`.
+
+Turn the camera without the mouse, as in Java:
+
+- `/rotate @s <yaw> <pitch>` sets the facing. Yaw 0 faces south (+Z), 90
+  west, 180 north and -90 east. Pitch -90 looks up and 90 looks down.
+  `~` makes a value relative, so `/rotate @s ~90 ~` turns right a quarter.
+- `/rotate @s facing <x y z>` looks at a point.
+- `/rotate @s facing entity @s [eyes|feet]` faces an entity. Only `@s` and
+  `@p` work, and both mean you.
+- `/tp @s <x y z> <yaw> <pitch>` and `/tp @s <x y z> facing …` move, then
+  turn. `/teleport` is the same command.
+
+As in Java, a whole x or z names the block's centre (`/tp @s 3 64 3` lands
+at 3.5, 64, 3.5). `facing` looks from your feet, not your eyes, and `~`
+in its point counts from where you stood before the teleport. Java's
+target-less `/tp x y z` takes no rotation. The camera stops at 89° up or
+down, where Java allows 90°. The CLI agent accepts the same commands
+with cheats on.
 `--open-console` starts with it visible for screenshots.
 The command style follows [Minecraft's slash command interface](https://www.minecraft.net/en-us/article/minecraft-commands).
 

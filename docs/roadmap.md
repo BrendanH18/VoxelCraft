@@ -675,7 +675,8 @@ v0.17 does not start until it passes. Work items:
    shriekers and the warden, lightning, a bastion and brushing by hand
    were reached at most and remain unverified. Its one defect, the
    player's own effect swirls spawning at twice Java's rate in blended
-   colours, is fixed.
+   colours, is fixed. For the next pass, Java's aiming commands were added
+   (2026-11-11): `/tp @s x y z yaw pitch`, `/tp … facing …` and `/rotate`.
 5. **Documentation.** *Done (2026-11-09).* History moved to the
    [delivery records](delivery-records.md), the
    [inventory](requirements.md) refreshed against `main` and its 26

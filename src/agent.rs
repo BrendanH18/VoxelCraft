@@ -14,7 +14,7 @@ use crate::simulation::survival;
 use crate::simulation::{self, TICK_SECONDS};
 use crate::world::{World, block::Block};
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink, or hold a brush for 200 ticks) | draw [ticks] (hold use with a bow or crossbow: a bow shoots at that draw, a crossbow loads after 25 ticks; a charged crossbow fires at once) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot (an aimed ender chest holds your own items) | sign x y z front|back [\"line\", ...] (write one side of a sign within reach) | furnace take/put input/fuel/output | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp [~] x y z, spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink, or hold a brush for 200 ticks) | draw [ticks] (hold use with a bow or crossbow: a bow shoots at that draw, a crossbow loads after 25 ticks; a charged crossbow fires at once) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot (an aimed ender chest holds your own items) | sign x y z front|back [\"line\", ...] (write one side of a sign within reach) | furnace take/put input/fuel/output | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp|teleport [@s] x y z, tp @s x y z yaw pitch|facing x y z|facing entity @s [eyes|feet], rotate @s yaw pitch|facing x y z|facing entity @s [eyes|feet] (Java degrees: yaw 0 south, 90 west; pitch -90 up; ~ is relative), spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -42,7 +42,9 @@ const MAX_EVENTS: usize = 64;
 pub const EAT_TICKS: u32 = 32;
 
 pub mod command;
-pub use command::{Command, Coordinate, EffectChange, PositionSpec, TimeQuery, WeatherKind, XpChange, tab_complete};
+pub use command::{
+    Anchor, Command, Coordinate, EffectChange, PositionSpec, TimeQuery, Turn, WeatherKind, XpChange, tab_complete,
+};
 
 pub struct Agent {
     pub session: crate::session::PlayerSession,
@@ -216,6 +218,7 @@ impl Agent {
                     | Command::Fly(..)
                     | Command::Mode(..)
                     | Command::Teleport(..)
+                    | Command::Rotate(..)
                     | Command::SpawnPoint(..)
                     | Command::Summon(..)
                     | Command::SummonLightning(..)
@@ -371,13 +374,13 @@ impl Agent {
                 self.damage(damage, survival::CAUSE_MAGIC);
             }
             Command::Mode(mode) => self.set_mode(mode),
-            Command::Teleport(pos) => {
-                let pos = pos.resolve(self.session.player.pos)?;
-                self.session.player.pos = pos;
-                self.previous_pos = pos;
+            Command::Teleport(pos, turn) => {
+                command::teleport(&mut self.session.player, pos, turn)?;
+                self.previous_pos = self.session.player.pos;
                 self.session.player.vel = DVec3::ZERO;
                 self.session.vitals.reset_fall();
             }
+            Command::Rotate(turn) => command::rotate(&mut self.session.player, turn)?,
             Command::SpawnPoint(pos) => {
                 let pos = pos.resolve(self.session.player.pos)?.floor().as_ivec3();
                 self.session.spawn_bed = None;

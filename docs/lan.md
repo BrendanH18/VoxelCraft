@@ -38,7 +38,9 @@ PvP defaults off. With it on, players fight with Java's rules: criticals while
 falling, enchantment bonuses, Knockback and sprint shoves, Fire Aspect, sword
 sweeps, Thorns, and arrows with Power, Punch and Flame. Allow Cheats enables
 supported player commands such as `/give`, `/gamemode`, `/tp`, `/xp` and
-`/effect`; world-management commands remain host-only.
+`/effect`; world-management commands remain host-only. A LAN player's
+`/rotate`, or `/tp` with a rotation or `facing`, doesn't turn their camera
+yet: their client keeps sending its own facing.
 
 Players see each other's names (within 64 blocks, hidden while sneaking), arm
 swings, eating and block-breaking cracks, and hear each other's footsteps,
