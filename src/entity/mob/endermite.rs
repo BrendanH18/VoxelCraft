@@ -103,7 +103,9 @@ impl Mob {
 impl crate::entity::Entities {
     /// `HurtByTargetGoal.start` with `setAlertOthers()`: the endermite at
     /// `index` turns on `foe`, and so does every endermite without a target
-    /// in the box `unitCubeFromLowerCorner(position).inflate(16, 10, 16)`.
+    /// whose bounding box touches `unitCubeFromLowerCorner(position)
+    /// .inflate(16, 10, 16)` (`getEntitiesOfClass` tests box overlap, so an
+    /// endermite counts once its 0.4 x 0.3 box reaches in).
     pub(in crate::entity) fn endermite_hurt(&mut self, index: usize, foe: Foe) {
         let Some(pos) = self.mobs.get(index).filter(|m| m.kind == MobKind::Endermite && m.alive()).map(|m| m.pos)
         else {
@@ -114,9 +116,16 @@ impl crate::entity::Entities {
             let Some(untargeted) = m.endermite.as_ref().map(|s| s.foe.is_none()) else { continue };
             let free = untargeted && m.move_ctl.target.is_none();
             let d = m.pos - pos;
-            let near = (-reach..reach + 1.0).contains(&d.x)
-                && (-reach..reach + 1.0).contains(&d.z)
-                && (-10.0..11.0).contains(&d.y);
+            let shape = m.shape();
+            // `AABB.intersects`: strict overlap of the search box
+            // [-16, 17) x [-10, 11) x [-16, 17) with the mob's box.
+            let hw = shape.half_width;
+            let near = d.x + hw > -reach
+                && d.x - hw < reach + 1.0
+                && d.z + hw > -reach
+                && d.z - hw < reach + 1.0
+                && d.y + shape.height > -10.0
+                && d.y < 11.0;
             if !m.alive() || !(j == index || near && free) || foe == Foe::Mob(m.uid) {
                 continue;
             }

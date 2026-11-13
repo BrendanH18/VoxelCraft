@@ -145,6 +145,26 @@ No block states, item ids or texture layers. Appended: `MobKind::Endermite`
   other path either).
 - The parrot's `entity.parrot.imitate.endermite` is not added.
 
+## Review
+
+A second agent re-ran `tools/extract_java_small_mob_fixtures.py` on the
+pinned server jar (output identical to the committed fixture), checked the
+size, eye height, attributes, experience, `MAX_LIFE`, pearl chance and
+conditions, loot table, both tags, Bane's effects and the enderman's goals
+and attributes by hand against the decompiled source and data, and saw
+`cargo test --release --lib endermite` fail with `PEARL_CHANCE` set to 0.06.
+It repaired:
+
+- `ATTACK_REACH` was `2√2 − 2` (0.828427…), not Java's
+  `Math.sqrt(2.04F) - 0.6F` (0.828285…); now the Java value, with a test
+  that computes it from the float literals.
+- The hurt-by alert compared positions with the search box; Java's
+  `getEntitiesOfClass` tests box overlap, so an endermite whose own box
+  reaches in (up to 0.2 further out horizontally, 0.3 further below) is
+  alerted too. The alert test now covers both edges.
+- The ledger's `loot:entities/endermite` row repeated the mob row (the
+  brief lists the empty loot table under `mob:endermite`) and was removed.
+
 ## Unverified
 
 No one has played it. The model, particles and voice were not looked at or

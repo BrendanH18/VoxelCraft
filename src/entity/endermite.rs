@@ -34,9 +34,10 @@ pub const ENDERMAN_FOLLOW_RANGE: f64 = 64.0;
 pub const ENDERMAN_DAMAGE: f32 = 7.0;
 /// Enderman eye height (`EntityTypes.ENDERMAN.eyeHeight(2.55F)`).
 const ENDERMAN_EYE: f64 = 2.55;
-/// `Mob.DEFAULT_ATTACK_REACH`: `sqrt(2.04) - 0.6`, the horizontal growth of
-/// the attack box (`Mob.getAttackBoundingBox`).
-pub const ATTACK_REACH: f64 = 0.828_427_124_746_190_1;
+/// `Mob.DEFAULT_ATTACK_REACH`: `Math.sqrt(2.04F) - 0.6F` (float literals
+/// widened to double), the horizontal growth of the attack box
+/// (`Mob.getAttackBoundingBox`).
+pub const ATTACK_REACH: f64 = 0.828_285_648_512_600_4;
 /// An enderman's horizontal reach to an endermite's centre: the two half
 /// widths (0.3 and 0.2) and [`ATTACK_REACH`].
 pub const ENDERMAN_REACH: f64 = 0.3 + 0.2 + ATTACK_REACH;

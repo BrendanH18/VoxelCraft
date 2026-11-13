@@ -85,6 +85,9 @@ fn endermite_registration_attributes_and_loot_match_java() {
     assert_eq!(f64::from(ENDERMAN_DAMAGE), f(&hunt["attack_damage"]));
     assert_eq!(f64::from(MobKind::Enderman.melee().0), f(&hunt["attack_damage"]));
     assert!(hunt["must_see"].as_bool().unwrap() && !hunt["must_reach"].as_bool().unwrap());
+    // `Mob.DEFAULT_ATTACK_REACH = Math.sqrt(2.04F) - 0.6F`, computed from
+    // the float literals as Java does.
+    assert_eq!(ATTACK_REACH, f64::from(2.04_f32).sqrt() - f64::from(0.6_f32));
 }
 
 #[test]
@@ -362,10 +365,17 @@ fn a_hurt_endermite_alerts_the_endermites_around_it() {
     mite(&mut e, DVec3::new(12.5, 1.0, 0.5));
     mite(&mut e, DVec3::new(0.5, 13.0, 0.5));
     mite(&mut e, DVec3::new(-20.5, 1.0, 0.5));
+    // `getEntitiesOfClass` tests box overlap: a mite standing 16.1 blocks
+    // west, or 10.2 below, still reaches into the box with its own 0.4 x 0.3
+    // box; one standing 16.3 west does not.
+    mite(&mut e, DVec3::new(-15.6, 1.0, 0.5));
+    mite(&mut e, DVec3::new(0.5, -9.2, 0.5));
+    mite(&mut e, DVec3::new(-15.8, 1.0, 0.5));
     e.hurt_by_player_target(0, PlayerId::HOST);
     e.resolve_hurt_by(&c);
     let targets: Vec<_> = e.mobs.iter().map(|m| m.move_ctl.target).collect();
-    assert_eq!(targets, [Some(PlayerId::HOST), Some(PlayerId::HOST), None, None]);
+    let host = Some(PlayerId::HOST);
+    assert_eq!(targets, [host, host, None, None, host, host, None]);
     // A creative player's hit turns nobody (`canAttack` refuses it).
     let mut e = Entities::new(32);
     mite(&mut e, DVec3::new(0.5, 1.0, 0.5));

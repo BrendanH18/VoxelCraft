@@ -1,6 +1,5 @@
 kind	name	evidence
 content	mob:endermite	src/entity/endermite/tests.rs::endermite_registration_attributes_and_loot_match_java
-content	loot:entities/endermite	src/entity/endermite/tests.rs::endermite_registration_attributes_and_loot_match_java
 behaviour	behaviour:endermite/attributes	src/entity/endermite/tests.rs::endermite_registration_attributes_and_loot_match_java
 behaviour	behaviour:endermite/pearl-spawn	src/entity/endermite/tests.rs::one_landed_pearl_in_twenty_leaves_an_endermite_where_the_thrower_stood
 behaviour	behaviour:endermite/lifetime	src/entity/endermite/tests.rs::endermites_vanish_after_two_minutes_unless_persistent
