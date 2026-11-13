@@ -531,10 +531,6 @@
       "release": "v0.20",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "black_bundle": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "black_shulker_box": {
       "release": "v0.18",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
@@ -542,10 +538,6 @@
     "blaze_spawn_egg": {
       "release": "v0.20",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "blue_bundle": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "blue_egg": {
       "release": "v0.17",
@@ -575,10 +567,6 @@
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
-    "brown_bundle": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "brown_egg": {
       "release": "v0.17",
       "reason": "Chicken climate-variant egg items are absent; carried farming gap (assignment proposed)."
@@ -586,10 +574,6 @@
     "brown_shulker_box": {
       "release": "v0.18",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "bundle": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "buried_ancient_city_map": {
       "release": "v0.17",
@@ -726,10 +710,6 @@
     "creeper_spawn_egg": {
       "release": "v0.20",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "cyan_bundle": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "cyan_shulker_box": {
       "release": "v0.18",
@@ -871,17 +851,9 @@
       "release": "v0.18",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
-    "gray_bundle": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "gray_shulker_box": {
       "release": "v0.18",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "green_bundle": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "green_shulker_box": {
       "release": "v0.18",
@@ -975,25 +947,13 @@
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
     },
-    "light_blue_bundle": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "light_blue_shulker_box": {
       "release": "v0.18",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
-    "light_gray_bundle": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "light_gray_shulker_box": {
       "release": "v0.18",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "lime_bundle": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "lime_shulker_box": {
       "release": "v0.18",
@@ -1002,10 +962,6 @@
     "llama_spawn_egg": {
       "release": "v0.20",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "magenta_bundle": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "magenta_shulker_box": {
       "release": "v0.18",
@@ -1046,10 +1002,6 @@
     "ocelot_spawn_egg": {
       "release": "v0.20",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "orange_bundle": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "orange_poplar_leaves": {
       "release": "v0.18",
@@ -1102,10 +1054,6 @@
     "pillager_spawn_egg": {
       "release": "v0.20",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "pink_bundle": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "pink_shulker_box": {
       "release": "v0.18",
@@ -1235,10 +1183,6 @@
       "release": "v0.20",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "purple_bundle": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "purple_shulker_box": {
       "release": "v0.18",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
@@ -1270,10 +1214,6 @@
     "ravager_spawn_egg": {
       "release": "v0.20",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "red_bundle": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "red_poplar_leaves": {
       "release": "v0.18",
@@ -1531,10 +1471,6 @@
       "release": "v0.17",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
-    "white_bundle": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "white_shulker_box": {
       "release": "v0.18",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
@@ -1572,10 +1508,6 @@
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "written_book": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
-    "yellow_bundle": {
       "release": "v0.17",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },

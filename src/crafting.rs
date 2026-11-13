@@ -15,6 +15,7 @@ use crate::item::{ArmorMaterial, ArmorPiece, Item, Tier, ToolKind};
 use crate::world::block::Block;
 
 mod bees;
+mod bundle;
 mod copper;
 mod creaking;
 mod crops;
@@ -82,6 +83,11 @@ impl Grid {
         }
         if let Some(result) = wolf_armor::dynamic(&occupied) {
             return Some(result);
+        }
+        // Bundle dyeing keeps the bundle's contents and other components,
+        // and the bundle's own colour is no recipe (`TransmuteRecipe`).
+        if let Some(result) = crate::content::bundle::transmute(&occupied) {
+            return result;
         }
         let (w, h, items) = self.trimmed()?;
         recipes().iter().find(|r| r.matches(w, h, &items)).map(|r| r.result)
@@ -660,6 +666,7 @@ pub fn recipes() -> &'static [Recipe] {
         wolf_armor::add(&mut r);
         weapons::add(&mut r);
         harness::add(&mut r);
+        bundle::add(&mut r);
         r
     })
 }

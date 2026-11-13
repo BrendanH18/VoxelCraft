@@ -337,6 +337,8 @@ pub enum Sprite {
     Harness([u8; 3]),
     /// The Bottle o' Enchanting: a round flask of sparkling blue-green liquid.
     ExperienceBottle,
+    /// v0.17: a bundle of this leather colour (`content::bundle`).
+    Bundle([u8; 3]),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1093,6 +1095,9 @@ impl Item {
         if let Some(info) = crate::content::harness::item_info(self) {
             return info;
         }
+        if let Some(info) = crate::content::bundle::item_info(self) {
+            return info;
+        }
         if self == Self::FERMENTED_SPIDER_EYE {
             return item("fermented spider eye", Sprite::FermentedSpiderEye);
         }
@@ -1625,6 +1630,8 @@ impl Item {
             .chain(crate::content::harness::all())
             // v0.17 build-5000 ITEM-02-EXPERIENCE-BOTTLE.
             .chain([Self::EXPERIENCE_BOTTLE])
+            // v0.17 build-5000 ITEM-08-BUNDLE-CORE: the plain and dyed bundles.
+            .chain(crate::content::bundle::all())
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1697,6 +1704,15 @@ fn sprite_index(item: Item) -> Option<u16> {
                 + 1
                 + crate::equipment::ICON_COUNT
                 + (crate::content::harness::ITEM_END - crate::content::harness::ITEM_FIRST),
+        ),
+        // v0.17 build-5000 ITEM-08: the bundles follow the experience bottle.
+        i if (crate::content::bundle::ITEM_FIRST..crate::content::bundle::ITEM_END).contains(&i) => Some(
+            late_icon_base()
+                + 1
+                + crate::equipment::ICON_COUNT
+                + (crate::content::harness::ITEM_END - crate::content::harness::ITEM_FIRST)
+                + 1
+                + (i - crate::content::bundle::ITEM_FIRST),
         ),
         1280..=1281 => Some(passive_icon_base() + 4 + item.0 - 1280),
         1385..=1386 => Some(passive_icon_base() + 9 + item.0 - 1385),
@@ -1822,6 +1838,7 @@ pub const fn icon_count() -> u32 {
         + crate::equipment::ICON_COUNT as u32
         + (crate::content::harness::ITEM_END - crate::content::harness::ITEM_FIRST) as u32
         + 1 // Experience bottle.
+        + (crate::content::bundle::ITEM_END - crate::content::bundle::ITEM_FIRST) as u32
 }
 
 /// The fermented spider eye's icon: icons appended in v0.17 follow it.

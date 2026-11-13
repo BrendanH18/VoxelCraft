@@ -789,3 +789,37 @@ scripts/remote-check.sh -- 'cargo test --release --test game_rules'
 implementer is neutral in the game and no other `MobKind` is, with the same
 alert flags, follow ranges and death box. Only bees and polar bears use
 Java's anger timer; the test names the other four as known differences.
+
+## Bundles
+
+`bundles.json` holds the `#bundles` item tag (the plain bundle, then the
+sixteen colours in `DyeColor` order), the `Items.BUNDLE` and
+`Items.DYED_BUNDLE` registrations (`stacksTo(1)` with an empty
+`BUNDLE_CONTENTS`), `BundleContents`' `BUNDLE_IN_BUNDLE_WEIGHT` (1/16) and
+`BEEHIVE_WEIGHT` (1), the maximum stack sizes of the nine items the cases
+use (read from `Items`' static initializer, with `Item.DEFAULT_MAX_STACK_SIZE`
+for the rest), `bundle.json` and the sixteen `<colour>_bundle.json`
+`crafting_transmute` recipes, and every loot table pool that names a bundle
+(ten tables). The extractor checks the bytecode shapes it relies on with
+javap and fails on anything else.
+
+It then runs its own model of `BundleContents.Mutable` (`tryInsert`,
+`tryTransfer`, `removeOne`, `getMaxAmountToAdd`) and of `BundleItem`'s two
+click overrides, written from the decompiled 26.3 classes with Python's
+exact `Fraction`, over **15** insert and remove sequences (accepted counts,
+the resulting order and the total weight after each step) and **19** clicks
+(held and clicked stack before and after, whether the bundle overrides the
+click, and the sound it would play). It reads no VoxelCraft code or
+fixture.
+
+```sh
+python3 tools/extract_java_bundle_fixtures.py /path/to/server.jar --output target/java-bundles.json
+diff tests/fixtures/java/26.3/bundles.json target/java-bundles.json
+scripts/remote-check.sh -- 'cargo test --release --test java_bundles'
+```
+
+`tests/java_bundles.rs` checks the seventeen items against the tag both
+ways, the stack sizes, the weight constants, every sequence and click
+against `content::bundle`, the recipes against the crafting grid (all 272
+bundle and dye pairs, components kept), the CLI's `craft`, the loot tables
+by rolling them, and bundles with nested contents through saves.

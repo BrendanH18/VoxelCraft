@@ -703,6 +703,10 @@ pub fn move_into(stack: Stack, slots: &mut [Option<Stack>], order: &[usize]) -> 
 /// container screen. Left click picks up, places, merges or swaps whole
 /// stacks; right click picks up half or places a single item.
 pub fn click_slot(slot: &mut Option<Stack>, cursor: &mut Option<Stack>, right: bool) {
+    // A held or clicked bundle overrides the click first, as in Java.
+    if crate::content::bundle::click(slot, cursor, right).is_some() {
+        return;
+    }
     match (*cursor, *slot, right) {
         (None, None, _) => {}
         (None, Some(st), false) => {
