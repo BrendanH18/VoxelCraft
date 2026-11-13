@@ -110,8 +110,18 @@ there is no save impact. New public tables: `ItemSet::ALL`,
 `src/enchant.rs`, `tests::rolls_walk_the_options_in_tag_order`, checks that
 the table's and random loot's available lists follow the tag order.
 
-Checks run: see the hand-off report for the remote-check results on the
-final tree.
+Checks run:
+
+- `cargo fmt`.
+- `VC_REMOTE_RETRIES=60 scripts/remote-check.sh --full` passed on the code
+  in this tree. It ran clippy with `-D warnings`, 1839 lib tests and every
+  integration test, plus the `--no-default-features` configuration.
+- The extractor was re-run against the pinned jars, and its output is
+  byte-identical to the fixture.
+- `python3 tools/campaign_ledger.py` and `python3 tools/check_doc_links.py`
+  pass.
+- An earlier filtered run caught one wrong assertion, which was fixed:
+  `#double_trade_price` includes `#treasure`, so it also lists Soul Speed.
 
 ## Differences from Java left in place
 
