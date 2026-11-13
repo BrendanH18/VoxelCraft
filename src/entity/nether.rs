@@ -2359,6 +2359,29 @@ mod tests {
         assert!((120..230).contains(&swords), "8.5%: {swords}");
     }
 
+    /// The weapon's wear is `Mob.dropCustomDeathLoot`'s reroll, `max -
+    /// nextInt(1 + nextInt(max - 3))`: for a golden sword (32) the mean wear
+    /// is 32 - 28/4 = 25 (the old `max/4 + nextInt(max/2 + 1)` averaged 16).
+    #[test]
+    fn dropped_piglin_weapons_take_the_java_wear() {
+        let mut damage = Vec::new();
+        let mut e = Entities::new(41);
+        while damage.len() < 400 {
+            let seed = e.rng.next_int(u32::MAX) as u64;
+            let mut one = Entities::new(seed);
+            swordsman(&mut one);
+            one.attack(0, DVec3::X, 100.0);
+            one.drop_loot_with(MobKind::Piglin, one.mobs[0].pos, 3);
+            damage.extend(
+                one.items.iter().filter(|i| i.stack.item.as_tool().is_some()).map(|i| f64::from(i.stack.damage)),
+            );
+        }
+        let max = f64::from(Item::tool(crate::item::ToolKind::Sword, crate::item::Tier::Gold).durability().unwrap());
+        assert!(damage.iter().all(|d| (4.0..=max).contains(d)), "{damage:?}");
+        let mean = damage.iter().sum::<f64>() / damage.len() as f64;
+        assert!((mean - (max - (max - 4.0) / 4.0)).abs() < 1.5, "{mean}");
+    }
+
     /// A flat Nether floor at y = 33 under one generated bastion.
     struct Remnant(Grid, std::sync::Arc<crate::world::bastion::Bastion>);
 

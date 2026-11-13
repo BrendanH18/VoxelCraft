@@ -333,6 +333,40 @@ fn pre_v017_zombie_villagers_keep_their_armor() {
     assert_eq!(back.mobs[0].equipment, m.equipment);
 }
 
+/// Netherite (and any other armor with an item) drops as the worn stack;
+/// before v0.17 a mob's netherite mapped to no item.
+#[test]
+fn netherite_armor_drops_its_stack() {
+    let mut plate = Stack::new(Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Netherite), 1);
+    plate.enchants = Enchants::NONE.with(Enchantment::Protection, 2);
+    let (drops, _) = kill_many(50, 0, true, |e| {
+        e.set(Slot::Chest, Some(plate));
+        e.set_drop_chance(Slot::Chest, 1.0);
+    });
+    assert_eq!(drops.len(), 50);
+    assert!(drops.iter().all(|s| s.item == plate.item && s.enchants == plate.enchants));
+}
+
+/// `populateDefaultEquipmentEnchantments`: the hand at 0.25 × special, each
+/// worn piece at 0.5 × special, with real `mob_spawn_equipment` enchantments.
+#[test]
+fn spawned_gear_gets_real_enchantments_at_java_rates() {
+    const N: u32 = 4000;
+    let special = 0.8;
+    let (mut hands, mut pieces) = (0u32, 0u32);
+    let mut rng = voxelcraft::entity::Rng::new(12);
+    for _ in 0..N {
+        let mut e = Equipment::default();
+        e.set(Slot::MainHand, Some(Stack::new(Item::BOW, 1)));
+        e.set(Slot::Head, Some(iron(ArmorPiece::Helmet)));
+        e.enchant_spawned(&mut rng, special);
+        hands += u32::from(!e.main_hand().unwrap().enchants.is_empty());
+        pieces += u32::from(!e.get(Slot::Head).unwrap().enchants.is_empty());
+    }
+    within_five_se(hands, N, equipment::MAX_ENCHANTED_WEAPON_CHANCE * special);
+    within_five_se(pieces, N, equipment::MAX_ENCHANTED_ARMOR_CHANCE * special);
+}
+
 /// LAN replicas draw what the host's slots hold.
 #[test]
 fn replicas_draw_the_slots() {
