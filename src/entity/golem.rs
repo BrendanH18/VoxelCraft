@@ -288,14 +288,7 @@ impl Entities {
         let dir = (self.mobs[victim].pos - pos).normalize_or_zero();
         let at = self.mobs[victim].pos;
         let victim_kind = self.mobs[victim].kind;
-        let killed = self.mobs[victim].damage(damage, Some(dir * 6.0 + DVec3::Y * up), &mut self.rng);
-        // `IronGolem.doHurtTarget` adds its lift with `setDeltaMovement`, which
-        // knockback resistance (a zombie's spawn bonus) does not reduce.
-        if self.mobs[attacker].kind == MobKind::IronGolem && self.mobs[victim].knockback_resistance() < 1.0 {
-            let vel = &mut self.mobs[victim].vel;
-            vel.y = vel.y.max(up);
-        }
-        if killed {
+        if self.mobs[victim].damage(damage, Some(dir * 6.0 + DVec3::Y * up), &mut self.rng) {
             events.push(EntityEvent::MobKilled {
                 kind: victim_kind,
                 pos: at,
@@ -594,7 +587,10 @@ mod tests {
         e.spawn(MobKind::Villager, DVec3::new(4.0, 1.0, 0.5));
         let events = e.update(0.05, &world, &ctx(DVec3::new(40.0, 1.0, 0.5), false));
         assert!(e.mobs[1].health < MobKind::Zombie.max_health(), "zombie health {}", e.mobs[1].health);
-        assert!(e.mobs[1].vel.y >= 8.0, "knockup {}", e.mobs[1].vel.y);
+        // `IronGolem.doHurtTarget` scales its 0.4 lift by `1 - knockback
+        // resistance`, which a zombie's spawn bonus raises by up to 0.05.
+        let lift = 8.0 * (1.0 - e.mobs[1].knockback_resistance());
+        assert!(lift < 8.0 && e.mobs[1].vel.y >= lift - 1e-9, "knockup {} for {lift}", e.mobs[1].vel.y);
         assert!(events.iter().all(|ev| !matches!(ev, EntityEvent::PlayerHit { .. })));
         let before = e.mobs[0].health;
         e.mobs[0].vel = DVec3::ZERO;

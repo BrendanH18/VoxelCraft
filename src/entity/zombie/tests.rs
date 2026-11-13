@@ -393,17 +393,38 @@ fn reinforcements_hunt_their_target_out_to_follow_range() {
 
 #[test]
 fn drowning_conversion_rerolls_without_the_spawn_bonus() {
-    let mut rng = Rng::new(8);
-    let mut m = Mob::new(MobKind::Zombie, DVec3::ZERO, 0.0);
-    finalize_spawn(&mut m, 1.0, true, &mut rng);
-    m.attrs.leader_health = 3.0;
-    m.kind = MobKind::Drowned;
-    m.attrs = Attrs::for_kind(m.kind);
-    m.handle_zombie_attributes(1.0, false, &mut rng);
-    let a = m.attributes();
-    assert_eq!(a.kind, Some(MobKind::Drowned));
-    assert_eq!(a.follow_spawn_bonus, 0.0);
-    assert!(a.reinforcement_base > 0.0 || a.knockback_bonus > 0.0);
+    // Through `Entities::update`: a zombie whose conversion ends this tick,
+    // with its eyes under water, becomes a drowned.
+    let water = Flat { floor: 40, water_top: 62, sky: 0 };
+    for (from, to) in [(MobKind::Zombie, MobKind::Drowned), (MobKind::Husk, MobKind::Zombie)] {
+        let mut e = Entities::new(8);
+        let mut m = Mob::new(from, DVec3::new(0.5, 50.0, 0.5), 0.0);
+        let mut rng = Rng::new(8);
+        finalize_spawn(&mut m, 1.0, true, &mut rng);
+        m.attrs.leader_health = 3.0;
+        m.attrs.follow_spawn_bonus = 0.1;
+        m.attrs.can_break_doors = true;
+        m.water_conversion.exposure = 600;
+        m.water_conversion.remaining = 0;
+        e.mobs.push(m);
+        let mut c = ctx(vec![Target::new(PlayerId::HOST, DVec3::new(30.5, 50.0, 0.5), true)]);
+        c.spawning = false;
+        e.update_difficulty(0.05, &water, &c, Difficulty::Hard);
+        let m = &e.mobs[0];
+        assert_eq!(m.kind, to);
+        let a = m.attributes();
+        assert_eq!(a.kind, Some(to));
+        // `handleAttributes(CONVERSION)` only: no `Mob.finalizeSpawn` bonus,
+        // the old leader bonus is gone unless re-rolled, and a re-rolled
+        // leader is not healed.
+        assert_eq!(a.follow_spawn_bonus, 0.0);
+        assert!(a.reinforcement_base > 0.0 && a.knockback_bonus > 0.0);
+        assert!((0.0..REINFORCEMENT_BASE_SCALE).contains(&a.reinforcement_base));
+        assert!(a.leader_health == 0.0 || (1.0..4.0).contains(&a.leader_health));
+        assert!(m.health <= 20.0);
+        // `ConversionType.convertCommon` keeps `CanBreakDoors`.
+        assert!(a.can_break_doors);
+    }
 }
 
 #[test]

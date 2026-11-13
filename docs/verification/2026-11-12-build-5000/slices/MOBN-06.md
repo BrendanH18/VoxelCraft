@@ -48,15 +48,17 @@
   stays within follow range.
 - Conversions: an in-place kind change makes the old rolls stale (Java's
   `convertTo` makes a fresh entity). Zombie to drowned and husk to zombie
-  re-run `handleAttributes(CONVERSION)` without the spawn follow bonus;
+  re-run `handleAttributes(CONVERSION)` without the spawn follow bonus
+  and keep `CanBreakDoors` (`ConversionType.convertCommon`);
   villager to zombie villager runs the spawn follow bonus and
   `handleAttributes(CONVERSION)`; a leader made by conversion is not healed.
   Natural zombie villagers keep the zombie rolls they spawned with.
-- Iron golem hits (`Entities::hit_mob`): the lift is no longer cut by the
-  victim's knockback resistance, as `IronGolem.doHurtTarget` adds it with
-  `setDeltaMovement`. The zombie knockback bonus exposed this in
-  `golem::tests::golem_knocks_a_zombie_up_while_a_villager_is_near`; not
-  counted in the ledger.
+- Iron golem hits (`Entities::hit_mob`) are unchanged: `IronGolem.doHurtTarget`
+  scales its 0.4 lift by `max(0, 1 - knockback resistance)`, so a zombie's
+  knockback bonus lowers it. Review: the implementation had removed that
+  scaling; it was restored and
+  `golem::tests::golem_knocks_a_zombie_up_while_a_villager_is_near` now
+  expects the scaled lift.
 - Saves: an optional `attributes` record per mob (kind, both follow bonuses,
   knockback bonus, reinforcement base, caller and callee charges, leader
   bonuses, `can_break_doors`), read before health so a leader keeps health
@@ -121,7 +123,9 @@ New optional save key `attributes` in the mob record (`nether::save_mob`).
   the reinforcement count after 20 hits at chance 0.6 against an exact model
   of the charges; follow-range targeting at 30 and 36 blocks and a
   reinforcement keeping a sneaking target it would not have noticed; the
-  drowning re-roll; save, reload, pre-v0.17 records and bad values.
+  drowning re-roll (zombie to drowned and husk to zombie through
+  `Entities::update`, `CanBreakDoors` kept); save, reload, pre-v0.17
+  records and bad values.
 
 ## Differences from Java left
 
@@ -136,7 +140,9 @@ New optional save key `attributes` in the mob record (`nether::save_mob`).
   armor stands). Husks' `canSeeSky` is skylight 15, as natural spawning uses.
 - `CanBreakDoors` is rolled and saved but the game has no door-breaking goal.
 - Zombie targeting still has no line-of-sight check and keeps the 12-block
-  height window of the existing monster chase; Java's search box is 4 high.
+  height window of the existing monster chase; Java's search box
+  (`NearestAttackableTargetGoal.getTargetSearchArea`) is the follow range on
+  every axis.
 - Curing a zombie villager does not roll the villager's spawn follow bonus
   (the cure path has no random source); its zombie rolls are dropped.
 - Inhabited time is not tracked, so the special multiplier tops out at
@@ -147,8 +153,6 @@ New optional save key `attributes` in the mob record (`nether::save_mob`).
 
 - No hands-on play: reinforcements arriving during a fight on Hard, and
   their pathing to the player, were not watched in the running game.
-- The drowning re-roll test calls the functions directly rather than
-  through `Mob::update`'s conversion path.
 - Frame time with many zombies calling at once was not measured; each call
   is at most 50 bounded tries.
 
@@ -158,3 +162,20 @@ Nothing new is visible: reinforcements and leaders look like ordinary
 zombies, as in Java, and the scripted-scene flags set no difficulty or
 damage. A zombie can be placed for a look with
 `cargo run --release -- --world screenshots --new --seed 42 --data-dir target/screenshots --spawn zombie,0,~,4 --screenshot zombie.png --pose 0,80,0,90,-20`.
+
+## Review
+
+- The ledger had four rows that restated brief items already counted:
+  the zombified piglin's zero base (part of `chance-attribute`), the
+  player-melee call (part of `trigger`), same-kind spawn rules (part of
+  `placement` and `charges`) and the attacker target (part of `charges`).
+  They were removed; the ledger has 10 rows.
+- The iron golem lift change contradicted `IronGolem.doHurtTarget` and was
+  reverted (see above).
+- Zombie-to-drowned and husk-to-zombie conversions dropped `CanBreakDoors`;
+  `ConversionType.convertCommon` copies it. Fixed, and the conversion test
+  now runs through `Entities::update`.
+- Every mob spawned through `Entities::spawn` rolls the follow-range bonus,
+  including turtles and sniffers hatched from eggs, which Java creates
+  without `finalizeSpawn` (`TurtleEggBlock`, `SnifferEggBlock`); the
+  difference is at most 11.5% of follow range. Left as is.

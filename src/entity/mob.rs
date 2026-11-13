@@ -1775,12 +1775,8 @@ impl Mob {
         let event_start = events.len();
         let before = self.kind;
         self.tick_water_conversion(dt, world);
-        if self.kind != before && super::zombie::calls_reinforcements(self.kind) {
-            // The `ConversionTracker` callback: `handleAttributes(special, CONVERSION)`
-            // on the new mob, which has no spawn follow bonus.
-            self.attrs = super::zombie::Attrs::for_kind(self.kind);
-            let special = crate::simulation::difficulty::special_multiplier(self.local_difficulty);
-            self.handle_zombie_attributes(special, false, rng);
+        if self.kind != before {
+            self.drowning_converted(before, rng);
         }
         let dtf = dt as f32;
         self.idle += dtf;

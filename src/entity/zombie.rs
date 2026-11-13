@@ -189,6 +189,22 @@ impl Mob {
         }
     }
 
+    /// A zombie or husk has just converted in water from `before`: the
+    /// `ConversionTracker` callback runs `handleAttributes(special,
+    /// CONVERSION)` on the new mob, which has no spawn follow bonus, and
+    /// `ConversionType.convertCommon` carries `CanBreakDoors` over from one
+    /// zombie to the other.
+    pub(super) fn drowning_converted(&mut self, before: MobKind, rng: &mut Rng) {
+        if !calls_reinforcements(self.kind) {
+            return;
+        }
+        let doors = self.attrs.kind == Some(before) && self.attrs.can_break_doors;
+        self.attrs = Attrs::for_kind(self.kind);
+        let special = crate::simulation::difficulty::special_multiplier(self.local_difficulty);
+        self.handle_zombie_attributes(special, false, rng);
+        self.attrs.can_break_doors |= doors;
+    }
+
     /// A leader zombie (`leader_zombie_bonus` present).
     pub fn is_leader(&self) -> bool {
         self.attributes().leader_health > 0.0
