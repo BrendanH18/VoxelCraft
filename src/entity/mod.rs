@@ -32,6 +32,7 @@ pub mod copper_golem;
 pub mod creaking;
 pub mod dragon;
 mod dragon_model;
+pub mod endermite;
 pub mod equipment;
 pub mod eye;
 pub mod fireball;
@@ -2182,6 +2183,7 @@ impl Entities {
         self.mobs[index].armor_effectiveness = 0.0;
         if self.mobs[index].health < old_health {
             self.player_hurt_mob(index, owner, killed.is_some());
+            self.bane_slowness(index, enchants);
         }
         if self.mobs[index].health < old_health {
             for effect in [
@@ -2235,6 +2237,7 @@ impl Entities {
                 // retaliate and remember it like the main target.
                 if self.mobs[i].health < old_health {
                     self.player_hurt_mob(i, owner, killed.is_some());
+                    self.bane_slowness(i, enchants);
                 }
                 if let Some(kind) = killed {
                     let at = self.mobs[i].pos;
@@ -2249,6 +2252,20 @@ impl Entities {
             }
         }
         killed
+    }
+
+    /// `bane_of_arthropods`' `post_attack` effect on a direct hit: a mob in
+    /// `#sensitive_to_bane_of_arthropods` gets Slowness IV for a uniform
+    /// 1.5 to 1.5 + 0.5 per level above I seconds (`ApplyMobEffect`).
+    fn bane_slowness(&mut self, index: usize, enchants: crate::enchant::Enchants) {
+        let level = enchants.level(crate::enchant::Enchantment::BaneOfArthropods);
+        let m = &mut self.mobs[index];
+        if level == 0 || m.kind.creature() != crate::enchant::Creature::Arthropod || !m.alive() {
+            return;
+        }
+        let max = 1.5 + 0.5 * f32::from(level - 1);
+        let seconds = self.rng.next_f32() * (max - 1.5) + 1.5;
+        m.effects.add(crate::simulation::effects::Effect::Slowness, 3, (seconds * 20.0).round() as u32);
     }
 
     /// What a player's hit that hurt mob `index` leaves behind: villager

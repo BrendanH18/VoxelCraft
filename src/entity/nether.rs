@@ -631,6 +631,7 @@ impl Entities {
                 self.polar_hurt(i, Foe::Mob(attacker));
                 self.panda_hurt(i, Foe::Mob(attacker));
                 self.armadillo_hurt(i, Foe::Mob(attacker));
+                self.endermite_hurt(i, Foe::Mob(attacker));
                 if let Some(owner) = self.mobs[i].animal.as_ref().and_then(|a| a.owner) {
                     self.animals_defend_owner(attacker, owner);
                 }
@@ -969,6 +970,8 @@ impl Entities {
                     || matches!(m.kind, MobKind::Zombie | MobKind::Husk | MobKind::Drowned)
                     || matches!(m.kind, MobKind::Stray | MobKind::Bogged | MobKind::Phantom)
                     || m.kind == MobKind::Bat
+                    // `Lifetime` keeps counting across a restart.
+                    || m.kind == MobKind::Endermite
                     // A heart's protector keeps its binding across a restart.
                     || m.creaking.as_ref().is_some_and(|s| s.home.is_some())
                     || m.freezing.as_ref().is_some_and(|f| f.exposure > 0 || f.conversion.is_some()))
@@ -1565,6 +1568,9 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if let Some(s) = &m.warden {
         v["warden"] = s.save();
     }
+    if let Some(s) = &m.endermite {
+        s.save_into(&mut v);
+    }
     if let Some(s) = &m.copper_golem {
         v["copper_golem"] = s.save();
     }
@@ -1668,6 +1674,9 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     }
     if let Some(s) = &mut m.warden {
         **s = super::warden::State::load(&v["warden"]);
+    }
+    if let Some(s) = &mut m.endermite {
+        s.load(v);
     }
     if let Some(s) = &mut m.copper_golem {
         s.load(&v["copper_golem"]);

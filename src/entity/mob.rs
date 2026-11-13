@@ -16,6 +16,7 @@ mod breeze;
 mod creaking;
 pub(crate) mod dolphin;
 mod drowned;
+mod endermite;
 mod frog;
 pub(crate) mod goals;
 mod navigate;
@@ -199,6 +200,9 @@ pub enum MobKind {
     /// v0.16 Track C. Saved as `breeze`; LAN index 73 (72 stays reserved
     /// for Track A's warden until integration).
     Breeze,
+    /// v0.17 (MOBN-26): the pearl pest. Saved as `endermite`; its LAN index
+    /// is its position in [`MobKind::ALL`].
+    Endermite,
 }
 
 impl MobKind {
@@ -233,7 +237,7 @@ impl MobKind {
     pub fn from_lan_index(index: usize) -> Option<Self> {
         Self::ALL.get(index).copied()
     }
-    pub const ALL: [MobKind; 74] = [
+    pub const ALL: [MobKind; 75] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -308,6 +312,7 @@ impl MobKind {
         MobKind::Sniffer,
         MobKind::Warden,
         MobKind::Breeze,
+        MobKind::Endermite,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -387,6 +392,7 @@ impl MobKind {
             MobKind::Sniffer => "sniffer",
             MobKind::Warden => "warden",
             MobKind::Breeze => "breeze",
+            MobKind::Endermite => "endermite",
         }
     }
 
@@ -403,6 +409,8 @@ impl MobKind {
             MobKind::Warden => Shape::new(0.45, 2.9),
             // `EntityType.BREEZE`: 0.6 x 1.77.
             MobKind::Breeze => Shape::new(0.3, 1.77),
+            // `EntityTypes.ENDERMITE`: 0.4 x 0.3.
+            MobKind::Endermite => Shape::new(0.2, 0.3),
             MobKind::Bat => Shape::new(0.25, 0.9),
             MobKind::Frog => Shape::new(0.25, 0.5),
             MobKind::Tadpole => Shape::new(0.2, 0.3),
@@ -471,7 +479,7 @@ impl MobKind {
     pub fn max_health(self) -> f32 {
         match self {
             MobKind::Pig | MobKind::Cow | MobKind::Mooshroom | MobKind::Frog => 10.0,
-            MobKind::Sheep | MobKind::Silverfish => 8.0,
+            MobKind::Sheep | MobKind::Silverfish | MobKind::Endermite => 8.0,
             MobKind::Chicken => 4.0,
             MobKind::Zombie
             | MobKind::Husk
@@ -560,6 +568,7 @@ impl MobKind {
                 | MobKind::ElderGuardian
                 | MobKind::Pillager
                 | MobKind::Breeze
+                | MobKind::Endermite
         )
     }
 
@@ -616,6 +625,8 @@ impl MobKind {
             | MobKind::TraderLlama => false,
             // Only from stronghold spawners (and infested blocks, later).
             MobKind::Silverfish | MobKind::CaveSpider => false,
+            // No biome lists it; only landed ender pearls make them.
+            MobKind::Endermite => false,
             // Only generated with bastions (`nether::populate_bastions`).
             MobKind::PiglinBrute | MobKind::Zoglin | MobKind::ElderGuardian | MobKind::Cat | MobKind::Pillager => false,
             // Picked by the Nether biome spawn lists (`world::nether_biome`).
@@ -772,7 +783,10 @@ impl MobKind {
             | MobKind::Stray
             | MobKind::Bogged
             | MobKind::Phantom => Creature::Undead,
-            MobKind::Spider | MobKind::CaveSpider | MobKind::Silverfish => Creature::Arthropod,
+            // `#sensitive_to_bane_of_arthropods` (`#arthropod`).
+            MobKind::Spider | MobKind::CaveSpider | MobKind::Silverfish | MobKind::Endermite | MobKind::Bee => {
+                Creature::Arthropod
+            }
             _ => Creature::Other,
         }
     }
@@ -823,6 +837,8 @@ impl MobKind {
             MobKind::Chicken | MobKind::Slime | MobKind::MagmaCube => 1.0,
             MobKind::Ghast => 4.0,
             MobKind::Spider | MobKind::CaveSpider | MobKind::Enderman | MobKind::Silverfish => 1.4,
+            // `WaterAvoidingRandomStrollGoal(1.0)` at movement speed 0.25.
+            MobKind::Endermite => path::ground_speed(super::endermite::MOVEMENT_SPEED),
             k if k.is_aquatic() => 1.2,
             MobKind::Cat | MobKind::Pillager => 1.2,
             _ => 1.2,
@@ -857,6 +873,7 @@ impl MobKind {
             MobKind::Husk => (3.0, Cause::mob("was slain by a husk")),
             MobKind::Drowned => (3.0, Cause::mob("was slain by a drowned")),
             MobKind::Silverfish => (1.0, Cause::mob("was slain by a silverfish")),
+            MobKind::Endermite => (super::endermite::ATTACK_DAMAGE, Cause::mob("was slain by an endermite")),
             MobKind::PolarBear => (6.0, Cause::mob("was slain by a polar bear")),
             MobKind::Panda => (6.0, Cause::mob("was slain by a panda")),
             MobKind::Ocelot => (3.0, Cause::mob("was slain by an ocelot")),
@@ -903,7 +920,9 @@ impl MobKind {
             // `entities/breeze`: 1-2 rods, killed by a player (rolled in `drops`).
             MobKind::Breeze => &[],
             // Piglins drop only what they carry (`nether::equipment_drops`).
-            MobKind::Silverfish
+            // `entities/endermite` has no pools.
+            MobKind::Endermite
+            | MobKind::Silverfish
             | MobKind::Villager
             | MobKind::WanderingTrader
             | MobKind::Piglin
@@ -1027,6 +1046,7 @@ impl MobKind {
             | MobKind::SnowGolem
             | MobKind::WanderingTrader => 0,
             MobKind::Blaze | MobKind::Guardian | MobKind::ElderGuardian | MobKind::Breeze => 10,
+            MobKind::Endermite => super::endermite::EXPERIENCE,
             k if k.is_hostile() => 5,
             _ => 1 + (rng.next_f32() * 3.0) as u32,
         }
@@ -1092,6 +1112,8 @@ pub struct Mob {
     pub breeze: Option<Box<super::breeze::State>>,
     pub allay: Option<Box<super::allay::State>>,
     pub warden: Option<Box<super::warden::State>>,
+    /// Endermites: lifetime and target (see `entity::endermite`).
+    pub endermite: Option<Box<super::endermite::State>>,
     pub wolf_armor: Option<Box<super::wolf_armor::State>>,
     /// Witch: seconds left drinking, and the potion it is drinking.
     drink_left: f32,
@@ -1290,6 +1312,7 @@ impl Mob {
                 .then(|| Box::new(super::breeze::State { since_hurt: 1000, ..Default::default() })),
             allay: (kind == MobKind::Allay).then(Box::default),
             warden: (kind == MobKind::Warden).then(Box::default),
+            endermite: (kind == MobKind::Endermite).then(Box::default),
             wolf_armor: (kind == MobKind::Wolf).then(Box::default),
             drink_left: 0.0,
             drinking: "",
@@ -2026,6 +2049,11 @@ impl Mob {
         if self.breeze.is_some() {
             return self.breeze_think(dt, world, ctx, rng, events);
         }
+        if self.endermite.is_some()
+            && let Some(wish) = self.endermite_think(dt, world, ctx, rng, events)
+        {
+            return wish;
+        }
         if self.kind == MobKind::Bat {
             self.bat_sense(world, ctx);
             return (None, 0.0);
@@ -2168,15 +2196,28 @@ impl Mob {
         if self.trader.as_ref().is_some_and(|t| t.drink > 0.0) {
             return (None, 0.0);
         }
+        // An enderman hunting an endermite still notices stares: its
+        // `EndermanLookForPlayerGoal` (target priority 1) outranks the
+        // endermite goal (3).
+        if self.kind == MobKind::Enderman && self.hunt.is_some() && self.enderman_anger(dt, world, ctx, rng, events) {
+            self.hunt = None;
+        }
         if let Some(goal) = self.hunt {
             let flat = (goal - self.pos) * DVec3::new(1.0, 0.0, 1.0);
             let dist = flat.length();
             if dist > 1e-4 {
                 let dir = flat / dist;
-                let reach = if self.kind == MobKind::IronGolem { 2.4 } else { 1.5 };
+                let reach = match self.kind {
+                    MobKind::IronGolem => 2.4,
+                    MobKind::Enderman => super::endermite::ENDERMAN_REACH,
+                    _ => 1.5,
+                };
                 self.head_target = (wrap((dir.z as f32).atan2(dir.x as f32) - self.yaw).clamp(-1.2, 1.2), 0.0);
                 let golem = self.kind == MobKind::IronGolem;
-                if dist <= reach && self.attack_cooldown <= 0.0 && (golem || self.kind.is_zombie()) {
+                if dist <= reach
+                    && self.attack_cooldown <= 0.0
+                    && (golem || self.kind.is_zombie() || self.kind == MobKind::Enderman)
+                {
                     self.attack_cooldown = if golem { 1.2 } else { ATTACK_COOLDOWN };
                     self.attack_anim = 0.4;
                     self.strike = true;
@@ -2225,7 +2266,11 @@ impl Mob {
         let flat = DVec3::new(to_player.x, 0.0, to_player.z);
         let hdist = flat.length();
 
-        if self.kind.is_hostile() && self.nether.is_none() && self.kind != MobKind::Blaze {
+        if self.kind.is_hostile()
+            && self.nether.is_none()
+            && self.kind != MobKind::Blaze
+            && self.kind != MobKind::Endermite
+        {
             let aggressive = match self.kind {
                 MobKind::Spider | MobKind::CaveSpider => ctx.daylight < SPIDER_CALM_DAYLIGHT || self.provoked > 0.0,
                 MobKind::ZombifiedPiglin => self.provoked > 0.0,
@@ -3570,6 +3615,7 @@ impl super::Entities {
                     | MobKind::PolarBear
                     | MobKind::Panda
                     | MobKind::Armadillo
+                    | MobKind::Endermite
             )
         }) {
             self.ensure_mob_ids();
@@ -3602,6 +3648,7 @@ impl super::Entities {
                 MobKind::PolarBear => self.polar_hurt(index, super::nether::Foe::Player(player)),
                 MobKind::Panda => self.panda_hurt(index, super::nether::Foe::Player(player)),
                 MobKind::Armadillo => self.armadillo_hurt(index, super::nether::Foe::Player(player)),
+                MobKind::Endermite => self.endermite_hurt(index, super::nether::Foe::Player(player)),
                 _ => {}
             }
         }

@@ -141,6 +141,7 @@ impl MobKind {
                 | K::Witch
                 | K::Enderman
                 | K::Silverfish
+                | K::Endermite
                 | K::Villager
                 | K::WanderingTrader
                 | K::Pillager
