@@ -799,6 +799,33 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             let swirl = ((a * 2.0 + r * 0.9).sin() > 0.2) as u8;
             (r <= 5.8).then(|| if swirl == 1 { tint([196, 222, 236], 1.0) } else { tint([150, 176, 210], 0.95) })
         }
+        Sprite::Harness(c) => {
+            // Original v0.17 icon: a quilted pad of the dye's colour under a
+            // leather strap carrying two round glass goggles.
+            let pad = |x: i32, y: i32| {
+                let (dx, dy) = ((2 * x - 15).abs(), (2 * y - 19).abs());
+                dx <= 13 && dy <= 9 && dx + dy <= 20
+            };
+            let lens = |x: i32, y: i32, cx: f32| {
+                let (px, py) = centre(x, y);
+                ((px - cx).powi(2) + (py - 3.5).powi(2)).sqrt()
+            };
+            let (left, right) = (lens(x, y, 4.5), lens(x, y, 11.5));
+            let near = left.min(right);
+            if near <= 1.6 {
+                let glint = (x, y) == (4, 3) || (x, y) == (11, 3);
+                Some(if glint { tint([236, 250, 255], 1.0) } else { tint([150, 206, 226], 0.95) })
+            } else if near <= 2.6 {
+                Some(tint([58, 56, 62], 1.0))
+            } else if y == 3 && (1..=14).contains(&x) {
+                Some(tint([128, 78, 44], 0.92 + noise(x, y, 811) * 0.12))
+            } else if pad(x, y) {
+                let quilt = (x - 1) % 4 == 0 && pad(x - 1, y) && pad(x + 1, y);
+                shaded(&pad, x, y, c, 0.05).map(|p| if quilt { tint(c, 0.8) } else { p })
+            } else {
+                None
+            }
+        }
         Sprite::OminousBottle(level) => {
             let flask = |x: i32, y: i32| {
                 let (px, py) = centre(x, y);

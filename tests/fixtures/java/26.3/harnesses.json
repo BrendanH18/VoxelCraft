@@ -1,0 +1,227 @@
+{
+  "colours": [
+    "white",
+    "orange",
+    "magenta",
+    "light_blue",
+    "yellow",
+    "lime",
+    "pink",
+    "gray",
+    "light_gray",
+    "cyan",
+    "purple",
+    "blue",
+    "brown",
+    "green",
+    "red",
+    "black"
+  ],
+  "equippable": {
+    "allowed_entities": [
+      "happy_ghast"
+    ],
+    "can_be_sheared": true,
+    "equip_on_interact": true,
+    "equip_sound": "entity.happy_ghast.equip",
+    "shearing_sound": "entity.happy_ghast.unequip",
+    "slot": "body"
+  },
+  "happy_ghast_tempt_items": [
+    "#minecraft:happy_ghast_food",
+    "#minecraft:harnesses"
+  ],
+  "items": [
+    "white_harness",
+    "orange_harness",
+    "magenta_harness",
+    "light_blue_harness",
+    "yellow_harness",
+    "lime_harness",
+    "pink_harness",
+    "gray_harness",
+    "light_gray_harness",
+    "cyan_harness",
+    "purple_harness",
+    "blue_harness",
+    "brown_harness",
+    "green_harness",
+    "red_harness",
+    "black_harness"
+  ],
+  "other_data_files_naming_a_harness": [],
+  "recipes": {
+    "black_harness": {
+      "category": "equipment",
+      "group": "harness",
+      "type": "crafting_shaped"
+    },
+    "blue_harness": {
+      "category": "equipment",
+      "group": "harness",
+      "type": "crafting_shaped"
+    },
+    "brown_harness": {
+      "category": "equipment",
+      "group": "harness",
+      "type": "crafting_shaped"
+    },
+    "cyan_harness": {
+      "category": "equipment",
+      "group": "harness",
+      "type": "crafting_shaped"
+    },
+    "dye_black_harness": {
+      "category": "equipment",
+      "group": "harness_dye",
+      "type": "crafting_shapeless"
+    },
+    "dye_blue_harness": {
+      "category": "equipment",
+      "group": "harness_dye",
+      "type": "crafting_shapeless"
+    },
+    "dye_brown_harness": {
+      "category": "equipment",
+      "group": "harness_dye",
+      "type": "crafting_shapeless"
+    },
+    "dye_cyan_harness": {
+      "category": "equipment",
+      "group": "harness_dye",
+      "type": "crafting_shapeless"
+    },
+    "dye_gray_harness": {
+      "category": "equipment",
+      "group": "harness_dye",
+      "type": "crafting_shapeless"
+    },
+    "dye_green_harness": {
+      "category": "equipment",
+      "group": "harness_dye",
+      "type": "crafting_shapeless"
+    },
+    "dye_light_blue_harness": {
+      "category": "equipment",
+      "group": "harness_dye",
+      "type": "crafting_shapeless"
+    },
+    "dye_light_gray_harness": {
+      "category": "equipment",
+      "group": "harness_dye",
+      "type": "crafting_shapeless"
+    },
+    "dye_lime_harness": {
+      "category": "equipment",
+      "group": "harness_dye",
+      "type": "crafting_shapeless"
+    },
+    "dye_magenta_harness": {
+      "category": "equipment",
+      "group": "harness_dye",
+      "type": "crafting_shapeless"
+    },
+    "dye_orange_harness": {
+      "category": "equipment",
+      "group": "harness_dye",
+      "type": "crafting_shapeless"
+    },
+    "dye_pink_harness": {
+      "category": "equipment",
+      "group": "harness_dye",
+      "type": "crafting_shapeless"
+    },
+    "dye_purple_harness": {
+      "category": "equipment",
+      "group": "harness_dye",
+      "type": "crafting_shapeless"
+    },
+    "dye_red_harness": {
+      "category": "equipment",
+      "group": "harness_dye",
+      "type": "crafting_shapeless"
+    },
+    "dye_white_harness": {
+      "category": "equipment",
+      "group": "harness_dye",
+      "type": "crafting_shapeless"
+    },
+    "dye_yellow_harness": {
+      "category": "equipment",
+      "group": "harness_dye",
+      "type": "crafting_shapeless"
+    },
+    "gray_harness": {
+      "category": "equipment",
+      "group": "harness",
+      "type": "crafting_shaped"
+    },
+    "green_harness": {
+      "category": "equipment",
+      "group": "harness",
+      "type": "crafting_shaped"
+    },
+    "light_blue_harness": {
+      "category": "equipment",
+      "group": "harness",
+      "type": "crafting_shaped"
+    },
+    "light_gray_harness": {
+      "category": "equipment",
+      "group": "harness",
+      "type": "crafting_shaped"
+    },
+    "lime_harness": {
+      "category": "equipment",
+      "group": "harness",
+      "type": "crafting_shaped"
+    },
+    "magenta_harness": {
+      "category": "equipment",
+      "group": "harness",
+      "type": "crafting_shaped"
+    },
+    "orange_harness": {
+      "category": "equipment",
+      "group": "harness",
+      "type": "crafting_shaped"
+    },
+    "pink_harness": {
+      "category": "equipment",
+      "group": "harness",
+      "type": "crafting_shaped"
+    },
+    "purple_harness": {
+      "category": "equipment",
+      "group": "harness",
+      "type": "crafting_shaped"
+    },
+    "red_harness": {
+      "category": "equipment",
+      "group": "harness",
+      "type": "crafting_shaped"
+    },
+    "white_harness": {
+      "category": "equipment",
+      "group": "harness",
+      "type": "crafting_shaped"
+    },
+    "yellow_harness": {
+      "category": "equipment",
+      "group": "harness",
+      "type": "crafting_shaped"
+    }
+  },
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "net.minecraft.world.item.Items HARNESS (ColorCollection.registerItems and its item lambda)",
+    "net.minecraft.world.item.equipment.Equippable.harness",
+    "net.minecraft.sounds.SoundEvents HARNESS_EQUIP, HARNESS_UNEQUIP",
+    "data/minecraft/tags/item/harnesses.json",
+    "data/minecraft/tags/entity_type/can_equip_harness.json",
+    "data/minecraft/tags/item/happy_ghast_tempt_items.json",
+    "data/minecraft/recipe/{colour}_harness.json, dye_{colour}_harness.json"
+  ],
+  "stack_size": 1
+}

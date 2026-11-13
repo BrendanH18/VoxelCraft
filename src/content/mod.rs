@@ -6,6 +6,7 @@ pub mod compost;
 pub mod consumption;
 pub mod fishing;
 pub mod fuel;
+pub mod harness;
 pub mod interaction;
 pub mod mining;
 pub mod placement;

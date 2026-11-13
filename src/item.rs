@@ -311,6 +311,8 @@ pub enum Sprite {
     WindCharge,
     /// An ominous bottle; the amplifier adds pips.
     OminousBottle(u8),
+    /// v0.17: a harness of this colour (`content::harness`).
+    Harness([u8; 3]),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1061,6 +1063,9 @@ impl Item {
     }
 
     pub fn info(self) -> ItemInfo {
+        if let Some(info) = crate::content::harness::item_info(self) {
+            return info;
+        }
         if self == Self::FERMENTED_SPIDER_EYE {
             return item("fermented spider eye", Sprite::FermentedSpiderEye);
         }
@@ -1564,6 +1569,7 @@ impl Item {
             // draws its own layer.
             .chain((crate::world::trial::ITEM_FIRST..crate::world::trial::ITEM_END).map(Item))
             .chain([Self::FERMENTED_SPIDER_EYE])
+            .chain(crate::content::harness::all())
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1622,7 +1628,10 @@ fn splash_names() -> &'static [&'static str] {
 fn sprite_index(item: Item) -> Option<u16> {
     let materials = ITEMS.len() as u16;
     match item.0 {
-        1530 => Some(icon_count() as u16 - 1),
+        1530 => Some(fermented_spider_eye_icon()),
+        i if (crate::content::harness::ITEM_FIRST..crate::content::harness::ITEM_END).contains(&i) => {
+            Some(fermented_spider_eye_icon() + 1 + i - crate::content::harness::ITEM_FIRST)
+        }
         1280..=1281 => Some(passive_icon_base() + 4 + item.0 - 1280),
         1385..=1386 => Some(passive_icon_base() + 9 + item.0 - 1385),
         1395..=1401 => Some(passive_icon_base() + 11 + item.0 - 1395),
@@ -1742,16 +1751,23 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    passive_icon_base() as u32
+    fermented_spider_eye_icon() as u32
+        + 1
+        + (crate::content::harness::ITEM_END - crate::content::harness::ITEM_FIRST) as u32
+}
+
+/// The fermented spider eye's icon, after the v0.16 track C items; the
+/// v0.17 harnesses follow it.
+const fn fermented_spider_eye_icon() -> u16 {
+    passive_icon_base()
         + 4
         + 5
         + 2
         + 7
         + 1
-        + (crate::world::jukebox::ITEM_END - crate::world::jukebox::ITEM_FIRST) as u32
-        + (crate::weapons::ITEM_END - crate::weapons::ITEM_FIRST) as u32
+        + (crate::world::jukebox::ITEM_END - crate::world::jukebox::ITEM_FIRST)
+        + (crate::weapons::ITEM_END - crate::weapons::ITEM_FIRST)
         + 9
-        + 1 // Fermented spider eye.
 }
 
 const fn passive_icon_base() -> u16 {

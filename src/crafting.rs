@@ -18,6 +18,7 @@ mod bees;
 mod copper;
 mod creaking;
 mod crops;
+mod harness;
 mod music;
 mod sculk;
 pub use copper::stonecutting as copper_stonecutting;
@@ -658,6 +659,7 @@ pub fn recipes() -> &'static [Recipe] {
         passive::add(&mut r);
         wolf_armor::add(&mut r);
         weapons::add(&mut r);
+        harness::add(&mut r);
         r
     })
 }
