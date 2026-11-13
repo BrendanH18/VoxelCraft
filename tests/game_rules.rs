@@ -134,11 +134,13 @@ fn a_dead_players_pearls_vanish_even_with_immediate_respawn() {
 }
 
 /// A zombified piglin the agent hit, given one update to take the hit in.
+/// The agent counts as far beyond follow range, so under `universal_anger`
+/// the piglin can't pick it as a target in that update.
 fn angry_piglin(world: &World, entities: &mut Entities, agent: &Agent) {
     entities.spawn(MobKind::ZombifiedPiglin, DVec3::new(3.5, 150.0, 1.5));
     entities.attack(0, DVec3::X, 0.5);
     let ctx = Ctx {
-        players: vec![Target::new(agent.session.id, agent.session.player.pos, true)],
+        players: vec![Target::new(agent.session.id, DVec3::new(200.5, 150.0, 1.5), true)],
         daylight: 0.0,
         spawning: false,
         raining: false,
@@ -190,18 +192,19 @@ fn neutral_mob_rules_match_the_java_fixture() {
         serde_json::from_str(include_str!("fixtures/java/26.3/neutral_mobs.json")).expect("fixture parses");
     let java = fixture["neutral_mobs"].as_object().unwrap();
     // Both directions: every Java implementer is neutral here, and nothing else is.
-    let mut names: Vec<&str> = neutral::KINDS.iter().map(|k| k.name()).collect();
+    let id = |k: MobKind| k.name().replace(' ', "_");
+    let mut names: Vec<String> = neutral::KINDS.iter().map(|&k| id(k)).collect();
     names.sort_unstable();
-    let mut want: Vec<&str> = java.keys().map(String::as_str).collect();
+    let mut want: Vec<String> = java.keys().cloned().collect();
     want.sort_unstable();
     assert_eq!(names, want);
     for kind in MobKind::ALL {
-        assert_eq!(neutral::is_neutral(kind), java.contains_key(kind.name()), "{kind:?}");
+        assert_eq!(neutral::is_neutral(kind), java.contains_key(&id(kind)), "{kind:?}");
     }
     // Kinds whose anger timer is still the game's own (see the EFX-RULE-21 record).
     let own_timer = [MobKind::IronGolem, MobKind::Wolf, MobKind::Enderman, MobKind::ZombifiedPiglin];
     for kind in neutral::KINDS {
-        let j = &java[kind.name()];
+        let j = &java[&id(kind)];
         assert_eq!(neutral::alerts_same_type(kind), j["alert_others_of_same_type"] == true, "{kind:?}");
         assert_eq!(neutral::follow_range(kind), j["follow_range"].as_f64(), "{kind:?}");
         let secs = j["persistent_anger_seconds"].as_array().unwrap();
