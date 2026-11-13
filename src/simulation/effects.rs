@@ -538,10 +538,10 @@ impl Active {
         }
         let remaining = self.ticks as i32;
         let used_seconds = 10 - remaining / 20;
-        let alpha = (remaining as f32 / 10.0 / 5.0 * 0.5).clamp(0.0, 0.5)
-            + (remaining as f32 * std::f32::consts::PI / 5.0).cos()
-                * (used_seconds as f32 / 10.0 * 0.25).clamp(0.0, 0.25);
-        alpha.clamp(0.0, 1.0)
+        let fade = (remaining as f32 / 10.0 / 5.0 * 0.5).clamp(0.0, 0.5);
+        // `Mth.cos` reads Java's 65536-entry sine table.
+        let blink = crate::knockback::mth_cos(f64::from(remaining as f32 * std::f32::consts::PI / 5.0));
+        (fade + blink * (used_seconds as f32 / 10.0 * 0.25).clamp(0.0, 0.25)).clamp(0.0, 1.0)
     }
 
     /// This instance's swirl colour (`MobEffect.createParticleOptions`):

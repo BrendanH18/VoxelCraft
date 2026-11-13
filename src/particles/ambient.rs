@@ -600,6 +600,35 @@ mod tests {
         assert!((200..340).contains(&hidden), "{hidden} swirls while invisible");
     }
 
+    /// `LivingEntity.tickEffects`: no swirls from an effect whose particles
+    /// are hidden; when every visible effect is ambient, `nextInt(4 * 5)`
+    /// and the faint ambient colour (alpha 38).
+    #[test]
+    fn hidden_and_ambient_effects_follow_java_swirls() {
+        use crate::simulation::effects::{AMBIENT_PARTICLE_ALPHA, Active, Effect};
+        let mut system = System::new(11);
+        let mut effects = Effects::default();
+        effects.add_instance(Active::new(Effect::Speed, 0, 20_000).with_flags(false, false, true));
+        for _ in 0..2000 {
+            system.effects(DVec3::Y * 80.0, &effects, Setting::All);
+        }
+        assert_eq!(system.pool.iter().count(), 0, "hidden particles never swirl");
+        effects.add_instance(Active::new(Effect::Haste, 0, 20_000).with_flags(true, true, true));
+        let mut swirls = 0;
+        for _ in 0..8000 {
+            system.clear();
+            system.effects(DVec3::Y * 80.0, &effects, Setting::All);
+            if let Some(p) = system.pool.iter().next() {
+                swirls += 1;
+                assert!((p.color[3] - f32::from(AMBIENT_PARTICLE_ALPHA) / 255.0).abs() < 1e-6);
+                let haste = Effect::Haste.colour();
+                assert!((p.color[0] - f32::from(haste[0]) / 255.0).abs() < 1e-6, "only the visible effect swirls");
+            }
+        }
+        // 1 in 20: about 400 of 8000.
+        assert!((320..480).contains(&swirls), "{swirls} ambient swirls in 8000 ticks");
+    }
+
     #[test]
     fn endermen_emit_two_portal_particles_near_a_camera() {
         let w = world();
