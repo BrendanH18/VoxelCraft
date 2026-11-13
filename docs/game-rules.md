@@ -64,13 +64,13 @@ enforced.
 | `immediate_respawn` | `doImmediateRespawn` | boolean | `false` | Implemented | - | Skips the death screen (`GameRules::respawns_immediately`); Hardcore still becomes Spectator. |
 | `keep_inventory` | `keepInventory` | boolean | `false` | Implemented | - | Keeps inventory, vanishing items and experience; no orbs drop (`Player.dropEquipment`, `getBaseExperienceReward`). |
 | `lava_source_conversion` | `lavaSourceConversion` | boolean | `false` | Implemented | - | Two lava sources over a solid floor make a source when on; off by default, unlike water. |
-| `limited_crafting` | `doLimitedCrafting` | boolean | `false` | Missing | v0.20 | Needs recipe unlocking (UX-03c). |
+| `limited_crafting` | `doLimitedCrafting` | boolean | `false` | Missing | v0.18 | Needs recipe unlocking (UX-03c). |
 | `locator_bar` | `locatorBar` | boolean | `true` | Missing | unscheduled | No waypoint HUD. The roadmap does not schedule it; owner decision needed. |
 | `log_admin_commands` | `logAdminCommands` | boolean | `true` | Not applicable | n/a | Server log only. |
 | `max_block_modifications` | `commandModificationBlockLimit` | integer 1..2147483647 | `32768` | Not applicable | n/a | There is no `/fill` or `/clone`. |
 | `max_command_forks` | `maxCommandForkCount` | integer 0..2147483647 | `65536` | Not applicable | n/a | There are no functions or `/execute`. |
 | `max_command_sequence_length` | `maxCommandChainLength` | integer 0..2147483647 | `65536` | Not applicable | n/a | There are no functions. |
-| `max_entity_cramming` | `maxEntityCramming` | integer 0..2147483647 | `24` | Missing | v0.19 | No cramming damage; farm designs rely on it (reference farms, v0.19). |
+| `max_entity_cramming` | `maxEntityCramming` | integer 0..2147483647 | `24` | Missing | v0.17 | No cramming damage; farm designs rely on it (reference farms, v0.17). |
 | `max_minecart_speed` | `minecartMaxSpeed` | integer 1..1000 | `8` | Not applicable | n/a | Registered behind Java's experimental minecart feature flag; VoxelCraft keeps the stable minecart speed. |
 | `max_snow_accumulation_height` | `snowAccumulationHeight` | integer 0..8 | `1` | Implemented | - | Caps snowfall accumulation at 0–8 layers; Java 26.3 random-tick attempts (ENV-03). |
 | `mob_drops` | `doMobLoot` | boolean | `true` | Implemented | - | Gates the loot and experience of mobs that die (`LivingEntity.dropAllDeathLoot`). Sniffer digging gifts and breeding eggs remain enabled (Java 26.3 `dropFromGiftLootTable` / `spawnChildFromBreeding`; implemented, unverified, [Track C](verification/2026-11-05-v0.15-sniffers.md)). |
@@ -81,11 +81,11 @@ enforced.
 | `players_nether_portal_creative_delay` | `playersNetherPortalCreativeDelay` | integer 0..2147483647 | `0` | Implemented | - | Ticks in a portal for invulnerable players (Creative and Spectator). |
 | `players_nether_portal_default_delay` | `playersNetherPortalDefaultDelay` | integer 0..2147483647 | `80` | Implemented | - | Ticks in a portal for survival and Adventure players (80 = 4 s). |
 | `players_sleeping_percentage` | `playersSleepingPercentage` | integer 0..2147483647 | `100` | Implemented | - | Share of players who must sleep, rounded up and at least one. |
-| `projectiles_can_break_blocks` | `projectilesCanBreakBlocks` | boolean | `true` | Missing | v0.12 | Governs arrows and similar hitting chorus flowers, pointed dripstone and decorated pots (v0.12, v0.18). |
+| `projectiles_can_break_blocks` | `projectilesCanBreakBlocks` | boolean | `true` | Missing | v0.12 | Governs arrows and similar hitting chorus flowers, pointed dripstone and decorated pots (v0.12, v0.16). |
 | `pvp` | `pvp` | boolean | `true` | Missing | v1.x | LAN sessions have their own player-versus-player toggle, off unless chosen; the rule joins the registry with multiplayer. |
-| `raids` | `disableRaids` | boolean | `true` | Missing | v0.17 | Raids arrive with illagers. |
+| `raids` | `disableRaids` | boolean | `true` | Missing | v0.15 | Raids arrive with illagers. |
 | `random_tick_speed` | `randomTickSpeed` | integer 0..2147483647 | `3` | Implemented | - | Random ticks per section per tick (`ServerChunkCache.tickChunks`). |
-| `reduced_debug_info` | `reducedDebugInfo` | boolean | `false` | Missing | v0.20 | Client-side F3 content; the server jar cannot confirm the exact reduced screen. |
+| `reduced_debug_info` | `reducedDebugInfo` | boolean | `false` | Missing | v0.18 | Client-side F3 content; the server jar cannot confirm the exact reduced screen. |
 | `respawn_radius` | `spawnRadius` | integer 0..2147483647 | `10` | Implemented | - | Spread of the world spawn search (`PlayerSpawnFinder`). |
 | `send_command_feedback` | `sendCommandFeedback` | boolean | `true` | Implemented | - | Quiet successful console commands; failures still print. CLI agents always receive results. |
 | `show_advancement_messages` | `announceAdvancements` | boolean | `true` | Not applicable | n/a | There are no advancements (side feature, roadmap section 1.4). |
@@ -93,10 +93,10 @@ enforced.
 | `spawner_blocks_work` | `spawnerBlocksEnabled` | boolean | `true` | Implemented | - | Stops monster cages from ticking (`BaseSpawner.serverTick`); spawn eggs on spawners are not modelled. |
 | `spawn_mobs` | `doMobSpawning` | boolean | `true` | Implemented | - | Natural spawning and custom spawners; chunk-generation herds are not gated, as in Java. |
 | `spawn_monsters` | `spawnMonsters` | boolean | `true` | Implemented | - | Hostile spawn categories only; animals and water creatures still spawn. |
-| `spawn_patrols` | `doPatrolSpawning` | boolean | `true` | Missing | v0.17 | Pillager patrols arrive with illagers. |
-| `spawn_phantoms` | `doInsomnia` | boolean | `true` | Implemented | - | Saved rest statistic and Java PhantomSpawner gate; see the v0.15 hostiles record. |
+| `spawn_patrols` | `doPatrolSpawning` | boolean | `true` | Missing | v0.15 | Pillager patrols arrive with illagers. |
+| `spawn_phantoms` | `doInsomnia` | boolean | `true` | Implemented | - | Saved rest statistic and Java PhantomSpawner gate; see the v0.14 hostiles record. |
 | `spawn_wandering_traders` | `doTraderSpawning` | boolean | `true` | Implemented | - | Gates the trader spawner. Like Java it also needs `spawn_mobs`. |
-| `spawn_wardens` | `doWardenSpawning` | boolean | `true` | Implemented | - | Summoning sculk shriekers answer a fourth warning with a warden (v0.16). |
+| `spawn_wardens` | `doWardenSpawning` | boolean | `true` | Implemented | - | Summoning sculk shriekers answer a fourth warning with a warden (v0.14). |
 | `spectators_generate_chunks` | `spectatorsGenerateChunks` | boolean | `true` | Missing | v0.13 | VoxelCraft streams around the spectator like any player; ungenerated-chunk limits come with the terrain rewrite. |
 | `spread_vines` | `doVinesSpread` | boolean | `true` | Missing | v0.13 | Overworld vines do not spread at all yet. |
 | `tnt_explodes` | `tntExplodes` | boolean | `true` | Implemented | - | Without it TNT cannot be primed by fire, redstone, flint and steel, explosions or dispensers, and primed TNT and TNT minecarts fizzle. |

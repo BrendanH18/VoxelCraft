@@ -145,7 +145,7 @@ order chunks generate in. Details and differences:
   patch edges, with a few scattered elsewhere; patch cores hold the odd
   sculk catalyst; sensors and, one time in eleven, shriekers stand on the
   sculk floor. No other plants grow there. `/locate biome deep_dark` finds
-  it. The catalyst, sensor and shrieker are inert until v0.16.
+  it. The catalyst, sensor and shrieker are inert until v0.14.
 - **Glow lichen** in clusters on cave walls and ceilings (never floors), at
   least 13 blocks under the surface, outside the deep dark, on stone,
   deepslate, granite, diorite, andesite, tuff, calcite and dripstone,
