@@ -1541,6 +1541,9 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if m.lightning_charged {
         v["lightning_charged"] = json!(true);
     }
+    if m.attributes() != super::zombie::Attrs::default() {
+        v["attributes"] = m.attrs.save();
+    }
     if m.undead_mount != super::undead_mounts::State::default() {
         v["undead_mount"] = m.undead_mount.save();
     }
@@ -1642,6 +1645,8 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     m.undead_mount = super::undead_mounts::State::load(&v["undead_mount"]);
     m.lightning_charged = v["lightning_charged"] == true;
     m.water_conversion = super::lightning::WaterConversion::load(&v["water_conversion"]);
+    // Before health, which the leader's max health bounds.
+    m.attrs = super::zombie::Attrs::load(&v["attributes"]);
     m.baby = v["baby"].as_bool().unwrap_or(false);
     // Snifflets take twice as long as other babies to grow up.
     let youngest = if kind == MobKind::Sniffer { -48000 } else { -24000 };

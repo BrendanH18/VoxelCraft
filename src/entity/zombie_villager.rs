@@ -18,6 +18,10 @@ impl Entities {
             let mob = &mut self.mobs[victim];
             mob.kind = MobKind::ZombieVillager;
             mob.health = MobKind::ZombieVillager.max_health();
+            // `finalizeSpawn(CONVERSION)` on the new zombie villager: a leader
+            // gains max health but is not healed.
+            let special = crate::simulation::difficulty::special_multiplier(mob.local_difficulty);
+            super::zombie::finalize_spawn(mob, special, false, &mut self.rng);
             mob.dying = None;
             mob.baby = mob.age < 0;
             mob.age = if mob.baby { -24000 } else { 0 };
@@ -75,6 +79,10 @@ impl Entities {
             mob.age = -24000;
         }
         mob.kind = MobKind::ZombieVillager;
+        // The zombie's spawn rolls are the zombie villager's (`Zombie.handleAttributes`).
+        if mob.attrs.kind == Some(MobKind::Zombie) {
+            mob.attrs.kind = Some(MobKind::ZombieVillager);
+        }
         let mut v = villager::Villager::new(id, seed);
         v.set_profession(prof);
         mob.villager = Some(Box::new(v));
