@@ -1039,6 +1039,14 @@ impl Entities {
                 mob.uid = self.next_uid;
             }
             self.next_uid = self.next_uid.max(mob.uid.saturating_add(1));
+            // Skeleton horses can't wear horse armor (`#can_wear_horse_armor`);
+            // armor an older build let one wear drops beside it.
+            if !super::mounts::wears_horse_armor(mob.kind)
+                && let Some(s) = mob.mount.as_mut()
+                && let Some(stack) = s.slots[1].take_if(|s| super::mounts::armor_points(s.item) > 0)
+            {
+                self.scatter(stack, mob.pos);
+            }
             if legacy && mob.kind.category() == super::category::MobCategory::Creature {
                 let c = glam::IVec2::new((mob.pos.x / 16.0).floor() as i32, (mob.pos.z / 16.0).floor() as i32);
                 for dz in -2..=2 {

@@ -13,6 +13,18 @@ pub fn is_base(item: Item) -> bool {
     matches!(item.as_tool(), Some((_, Tier::Diamond)))
         || matches!(item.as_armor(), Some((_, ArmorMaterial::Diamond)))
         || item == crate::weapons::spear(Tier::Diamond)
+        || netherite_body_armor(item).is_some()
+}
+
+/// `recipe/netherite_{horse,nautilus}_armor_smithing.json`: diamond horse or
+/// nautilus armor becomes the netherite one.
+fn netherite_body_armor(item: Item) -> Option<Item> {
+    use crate::equipment::{BodyArmor, horse_armor, nautilus_armor};
+    match item.body_armor()? {
+        (BodyArmor::Horse, ArmorMaterial::Diamond) => horse_armor(ArmorMaterial::Netherite),
+        (BodyArmor::Nautilus, ArmorMaterial::Diamond) => nautilus_armor(ArmorMaterial::Netherite),
+        _ => None,
+    }
 }
 
 pub fn is_addition(item: Item) -> bool {
@@ -29,6 +41,9 @@ pub fn upgrade(template: Stack, base: Stack, addition: Stack) -> Option<Stack> {
     // `recipe/netherite_spear_smithing.json`.
     if base.item == crate::weapons::spear(Tier::Diamond) {
         return Some(Stack { item: crate::weapons::spear(Tier::Netherite), count: 1, ..base });
+    }
+    if let Some(item) = netherite_body_armor(base.item) {
+        return Some(Stack { item, count: 1, ..base });
     }
     let item = match base.item.as_tool() {
         Some((kind, Tier::Diamond)) => Item::tool(kind, Tier::Netherite),

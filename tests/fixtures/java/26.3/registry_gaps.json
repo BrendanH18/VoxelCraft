@@ -635,22 +635,6 @@
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
     },
-    "chainmail_boots": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
-    "chainmail_chestplate": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
-    "chainmail_helmet": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
-    "chainmail_leggings": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "chicken_spawn_egg": {
       "release": "v0.20",
       "reason": "Creative spawn-egg catalogue, polish release."
@@ -731,14 +715,6 @@
       "release": "v0.20",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "copper_horse_armor": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
-    "copper_nautilus_armor": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "cow_spawn_egg": {
       "release": "v0.20",
       "reason": "Creative spawn-egg catalogue, polish release."
@@ -786,10 +762,6 @@
     "desert_pyramid_map": {
       "release": "v0.17",
       "reason": "Cartographer map item for an existing destination; carried village-trade integration."
-    },
-    "diamond_nautilus_armor": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "dolphin_spawn_egg": {
       "release": "v0.20",
@@ -919,10 +891,6 @@
       "release": "v0.18",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
-    "golden_nautilus_armor": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "gray_bundle": {
       "release": "v0.17",
       "reason": "Villages, mounts and carried core equipment/content gaps."
@@ -1023,10 +991,6 @@
       "release": "v0.20",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "iron_nautilus_armor": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "jigsaw": {
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
@@ -1122,14 +1086,6 @@
     "nether_star": {
       "release": "v0.18",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "netherite_horse_armor": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
-    "netherite_nautilus_armor": {
-      "release": "v0.17",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "ocelot_spawn_egg": {
       "release": "v0.20",

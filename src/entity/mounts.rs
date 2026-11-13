@@ -236,10 +236,7 @@ impl State {
         }
         match slot {
             0 => item == Item::SADDLE && kind != MobKind::Llama,
-            1 => {
-                matches!(kind, MobKind::Horse | MobKind::SkeletonHorse | MobKind::ZombieHorse) && armor_points(item) > 0
-                    || kind == MobKind::Llama && is_carpet(item)
-            }
+            1 => wears_horse_armor(kind) && armor_points(item) > 0 || kind == MobKind::Llama && is_carpet(item),
             2..=16 => self.chest && slot < self.slot_count(kind),
             _ => false,
         }
@@ -317,8 +314,12 @@ impl State {
         }
         for (i, piece) in v["slots"].as_array()?.iter().take(17).enumerate() {
             let stack = stack_from_str(piece.as_str()?)?;
+            // Older builds let skeleton horses wear horse armor; it loads so
+            // that `Entities::load_nether_mobs` can drop it beside the horse.
+            let legacy = i == 1 && kind == MobKind::SkeletonHorse && stack.is_some_and(|s| armor_points(s.item) > 0);
             if let Some(stack) = stack
                 && !s.accepts(kind, i, stack.item)
+                && !legacy
             {
                 return None;
             }
@@ -328,14 +329,31 @@ impl State {
     }
 }
 
+/// Java's `#can_wear_horse_armor` (horse and zombie horse): the animals horse
+/// armor's `Equippable` lets on. Skeleton horses have the body slot but no tag.
+pub fn wears_horse_armor(kind: MobKind) -> bool {
+    matches!(kind, MobKind::Horse | MobKind::ZombieHorse)
+}
+
+/// Horse armor's material, for the horse armor items only.
+fn horse_material(item: Item) -> Option<crate::item::ArmorMaterial> {
+    item.body_armor().filter(|(fits, _)| *fits == crate::equipment::BodyArmor::Horse).map(|(_, m)| m)
+}
+
+/// The armor a horse gains from wearing `item` (`ArmorType.BODY` defense);
+/// 0 for anything that is not horse armor.
 pub fn armor_points(item: Item) -> u32 {
-    match item {
-        Item::LEATHER_HORSE_ARMOR => 3,
-        Item::IRON_HORSE_ARMOR => 5,
-        Item::GOLDEN_HORSE_ARMOR => 7,
-        Item::DIAMOND_HORSE_ARMOR => 11,
-        _ => 0,
-    }
+    horse_material(item).map_or(0, |m| u32::from(m.body_defense()))
+}
+
+/// The armor toughness horse armor adds (`ArmorMaterial.toughness`).
+pub fn armor_toughness(item: Item) -> f32 {
+    horse_material(item).map_or(0.0, |m| m.toughness())
+}
+
+/// The knockback resistance horse armor adds (netherite's 0.1).
+pub fn armor_knockback_resistance(item: Item) -> f32 {
+    horse_material(item).map_or(0.0, |m| m.knockback_resistance())
 }
 /// Java charge peaks after ten ticks then drops toward 0.8 for a long hold.
 pub fn jump_charge(ticks: u32) -> f32 {

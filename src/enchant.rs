@@ -495,6 +495,7 @@ pub fn enchantability(item: Item) -> u32 {
             ArmorMaterial::Netherite => 15,
             ArmorMaterial::Turtle => 9,
             ArmorMaterial::Copper => 8,
+            ArmorMaterial::Chainmail => 12,
         },
         ItemKind::Bow | ItemKind::FishingRod => 1,
         _ if matches!(item, Item::CROSSBOW | Item::CHARGED_CROSSBOW) => 1,
@@ -835,7 +836,8 @@ pub fn repairs(item: Item, material: Item) -> bool {
         },
         ItemKind::Armor(_, m) => match m {
             ArmorMaterial::Leather => material == Item::LEATHER,
-            ArmorMaterial::Iron => material == Item::IRON_INGOT,
+            // `#repairs_iron_armor` and `#repairs_chain_armor` both hold iron ingots.
+            ArmorMaterial::Iron | ArmorMaterial::Chainmail => material == Item::IRON_INGOT,
             ArmorMaterial::Gold => material == Item::GOLD_INGOT,
             ArmorMaterial::Diamond => material == Item::DIAMOND,
             ArmorMaterial::Netherite => material == Item::NETHERITE_INGOT,

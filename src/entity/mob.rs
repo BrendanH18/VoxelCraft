@@ -1641,9 +1641,12 @@ impl Mob {
             }
         }
         let amount = if bypass_wolf_armor { amount } else { self.absorb_wolf_armor(amount, rng) };
-        let armor = self.mount.as_ref().and_then(|s| s.slots[1]).map_or(0, |s| super::mounts::armor_points(s.item));
+        // Horse armor's BODY attributes: armor points and toughness.
+        let body = self.mount.as_ref().and_then(|s| s.slots[1]).map(|s| s.item);
+        let armor = body.map_or(0, super::mounts::armor_points);
         let amount = if armor > 0 {
-            crate::simulation::survival::armor_reduce_with(amount, armor, 0., self.armor_effectiveness)
+            let toughness = body.map_or(0.0, super::mounts::armor_toughness);
+            crate::simulation::survival::armor_reduce_with(amount, armor, toughness, self.armor_effectiveness)
         } else {
             amount
         };

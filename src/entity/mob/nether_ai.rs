@@ -350,11 +350,14 @@ impl Mob {
     /// Java's `knockback_resistance` attribute (`combat.json`): 1 for iron golems,
     /// 0.6 (`0.6f`) for hoglins and zoglins.
     pub(crate) fn knockback_resistance(&self) -> f64 {
-        match self.kind {
+        let base = match self.kind {
             MobKind::IronGolem | MobKind::Warden => 1.0,
             MobKind::Hoglin | MobKind::Zoglin => 0.6000000238418579,
             _ => 0.0,
-        }
+        };
+        // Netherite horse armor's BODY modifier adds 0.1.
+        let body = self.mount.as_ref().and_then(|s| s.slots[1]);
+        base + body.map_or(0.0, |s| f64::from(crate::entity::mounts::armor_knockback_resistance(s.item)))
     }
 
     /// Movement multiplier: a strider out of lava is 34% slower (Java's

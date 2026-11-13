@@ -996,6 +996,16 @@ pub fn trade_item_names() -> impl Iterator<Item = &'static str> {
     tables::TRADES.iter().flat_map(|(_, _, t)| [t.input, t.output])
 }
 
+/// Every offer `profession` can roll at `level` whose items are registered,
+/// as a fresh villager would make it (enchanted offers use seed 0).
+pub fn level_offers(profession: Profession, level: u8) -> Vec<Offer> {
+    tables::TRADES
+        .iter()
+        .filter(|(p, l, d)| *p == profession && *l == level && d.available())
+        .filter_map(|(_, _, d)| d.offer(0))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
