@@ -336,9 +336,27 @@ impl Equipment {
         out
     }
 
+    /// `Mob.getBaseExperienceReward`'s addition for a mob with experience:
+    /// `1 + nextInt(3)` for each filled slot that can increase experience
+    /// (all but the saddle) and is not preserved.
+    pub fn experience_bonus(&self, rng: &mut Rng) -> u32 {
+        let mut bonus = 0;
+        for slot in Slot::ALL {
+            let chainmail = slot.piece().is_some_and(|p| self.chainmail & (1 << p as u8) != 0);
+            if slot.can_increase_experience()
+                && (self.get(slot).is_some() || chainmail)
+                && self.drop_chance(slot) <= PRESERVE_THRESHOLD
+            {
+                bonus += 1 + rng.next_int(3);
+            }
+        }
+        bonus
+    }
+
     /// `Mob.dropPreservedEquipment`: preserved stacks leave their slots.
     pub fn take_preserved(&mut self) -> Vec<Stack> {
-        Slot::ALL.into_iter().filter(|&s| self.is_preserved(s)).filter_map(|s| self.take(s)).collect()
+        let preserved: Vec<Slot> = Slot::ALL.into_iter().filter(|&s| self.is_preserved(s)).collect();
+        preserved.into_iter().filter_map(|s| self.take(s)).collect()
     }
 
     /// The `equipment` save value: slot name to stack, chainmail pieces as

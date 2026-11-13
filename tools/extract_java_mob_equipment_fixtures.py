@@ -148,6 +148,16 @@ def extract(server):
         # Player kill (argument 3) or preserved (local 8) gates the roll.
         if not re.search(r"iload_3\n\s+\d+: ifne\s+\d+\n\s+\d+: iload\s+8\n\s+\d+: ifeq", death):
             raise ValueError("dropCustomDeathLoot kill gate changed")
+        experience = method(mob, "protected int getBaseExperienceReward(")
+        require_sequence(experience, [
+            "Field xpReward", "ifle", "EquipmentSlot.VALUES", "EquipmentSlot.canIncreaseExperience",
+            "getItemBySlot", "ItemStack.isEmpty", "DropChances.byEquipment", "fconst_1", "fcmpg", "ifgt",
+            "iconst_1", "iconst_3", "RandomSource.nextInt", "iadd",
+        ], "Mob.getBaseExperienceReward")
+        living = inspect("LivingEntity")
+        require_sequence(method(living, "protected void dropAllDeathLoot("), [
+            "shouldDropLoot", "dropFromLootTable", "dropCustomDeathLoot", "dropEquipment", "dropExperience",
+        ], "LivingEntity.dropAllDeathLoot")
         order_block = mob.split("  static {};")[1]
         order_block = order_block[:order_block.index("// Field EQUIPMENT_POPULATION_ORDER")]
         order_block = order_block[:order_block.rindex("putstatic")]
@@ -190,8 +200,19 @@ def extract(server):
         if "populateDefaultEquipmentSlots" in "".join(ops(drowned)) or "Items.TRIDENT" not in drowned:
             raise ValueError("drowned equipment override changed")
         zombie = inspect("monster.zombie.Zombie")
-        if "Monster.populateDefaultEquipmentSlots" not in method(zombie, "protected void populateDefaultEquipmentSlots("):
-            raise ValueError("zombie equipment no longer starts from Mob's")
+        zombie_populate = method(zombie, "protected void populateDefaultEquipmentSlots(")
+        require_sequence(zombie_populate, [
+            "Monster.populateDefaultEquipmentSlots", "RandomSource.nextFloat", "Difficulty.HARD", "float 0.05f",
+            "float 0.01f", "bipush 6", "RandomSource.nextInt", "ifne", "EquipmentSlot.MAINHAND", "Items.IRON_SWORD",
+            "iconst_1", "if_icmpne", "EquipmentSlot.MAINHAND", "Items.IRON_SPEAR", "EquipmentSlot.MAINHAND",
+            "Items.IRON_SHOVEL",
+        ], "Zombie.populateDefaultEquipmentSlots")
+        zombie_weapon = {
+            "chance_hard": 0.05,
+            "chance_other": 0.01,
+            "roll": 6,
+            "by_roll": {"0": "iron_sword", "1": "iron_spear", "other": "iron_shovel"},
+        }
         conversions = {
             "zombie_to_drowned_husk_to_zombie_skeleton_to_stray": single_conversion(
                 inspect("ConversionTracker"), "private void doConversion("),
@@ -243,10 +264,12 @@ def extract(server):
         "sources": [
             "net.minecraft.world.entity.EquipmentSlot static initializer",
             "net.minecraft.world.entity.DropChances constants and isPreserved",
-            "net.minecraft.world.entity.Mob.dropCustomDeathLoot, dropPreservedEquipment",
+            "net.minecraft.world.entity.Mob.dropCustomDeathLoot, dropPreservedEquipment, getBaseExperienceReward",
+            "net.minecraft.world.entity.LivingEntity.dropAllDeathLoot",
             "net.minecraft.world.entity.Mob.populateDefaultEquipmentSlots, getEquipmentForSlot, "
             "EQUIPMENT_POPULATION_ORDER, populateDefaultEquipmentEnchantments",
             "net.minecraft.world.entity.monster.zombie.Drowned.populateDefaultEquipmentSlots",
+            "net.minecraft.world.entity.monster.zombie.Zombie.populateDefaultEquipmentSlots",
             "net.minecraft.world.entity.ConversionType.SINGLE and each ConversionParams.single call",
             "net.minecraft.world.entity.monster.zombie.ZombieVillager.finishConversion",
             "data/minecraft/enchantment/looting.json",
@@ -262,6 +285,12 @@ def extract(server):
             "prevent_drop_effect": "minecraft:prevent_equipment_drop",
             "wear_reroll": "max_damage - nextInt(1 + nextInt(max(max_damage - 3, 1)))",
             "preserved_keep_damage": True,
+            "before_experience": True,
+        },
+        "experience": {
+            "requires_base_reward": True,
+            "per_filled_slot": "1 + nextInt(3)",
+            "slot_needs_drop_chance_at_most": 1.0,
         },
         "looting_equipment_drops": {
             "effect": "add",
@@ -276,6 +305,7 @@ def extract(server):
         },
         "spawn": spawn,
         "drowned_skips_armor": True,
+        "zombie_weapon": zombie_weapon,
         "conversions": conversions,
         "cure_keeps_binding_cursed_at_slot_index": True,
         "trial_spawner_slot_drop_chances": sorted(trial_chances),

@@ -343,3 +343,75 @@ fn replicas_draw_the_slots() {
     replica.apply_look(&m.look());
     assert_eq!(replica.equipment.worn(), m.equipment.worn());
 }
+
+/// `Zombie.populateDefaultEquipmentSlots`: a main-hand weapon 5% of the
+/// time on Hard (1% otherwise), sword, spear or shovel by `nextInt(6)`.
+#[test]
+fn zombies_spawn_with_java_weapons() {
+    let f = fixture();
+    let w = &f["zombie_weapon"];
+    assert_eq!(w["by_roll"]["1"], "iron_spear");
+    for (difficulty, chance, n) in [
+        (voxelcraft::simulation::difficulty::Difficulty::Hard, num(&w["chance_hard"]), 8000u32),
+        (voxelcraft::simulation::difficulty::Difficulty::Normal, num(&w["chance_other"]), 20000),
+    ] {
+        let mut e = Entities::new(9);
+        e.difficulty = difficulty;
+        let mut held = std::collections::HashMap::new();
+        let mut zombies = 0;
+        for _ in 0..n {
+            e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
+            let m = e.mobs.pop().unwrap();
+            e.mobs.clear();
+            if m.kind != MobKind::Zombie {
+                continue;
+            }
+            zombies += 1;
+            if let Some(stack) = m.equipment.main_hand() {
+                *held.entry(stack.item).or_insert(0u32) += 1;
+            }
+        }
+        let total: u32 = held.values().sum();
+        within_five_se(total, zombies, chance);
+        let sword = Item::tool(ToolKind::Sword, Tier::Iron);
+        let spear = voxelcraft::weapons::spear(Tier::Iron);
+        let shovel = Item::tool(ToolKind::Shovel, Tier::Iron);
+        assert_eq!(held.keys().filter(|i| ![sword, spear, shovel].contains(i)).count(), 0, "{held:?}");
+        within_five_se(held.get(&shovel).copied().unwrap_or(0), total, 4.0 / 6.0);
+    }
+}
+
+/// `Mob.getBaseExperienceReward` runs after the drops: a skeleton killed by
+/// a player gives 5, plus 1–3 if its bow did not drop.
+#[test]
+fn filled_slots_add_experience_after_the_drops() {
+    let f = fixture();
+    assert_eq!(f["experience"]["per_filled_slot"], "1 + nextInt(3)");
+    assert_eq!(f["death_drop"]["before_experience"], true);
+    let mut e = Entities::new(31);
+    let mut seen = [0u32; 9];
+    for _ in 0..3000 {
+        let mut m = Mob::new(MobKind::Skeleton, DVec3::new(0.5, 10.0, 0.5), 0.0);
+        m.dying = Some(0.0);
+        e.mobs.push(m);
+        e.drop_loot_killed(MobKind::Skeleton, DVec3::new(0.5, 10.0, 0.5), 0, true);
+        let xp: u32 = e.orbs.iter().map(|o| o.value * o.count).sum();
+        let bow_dropped = e.items.iter().any(|i| i.stack.item == Item::BOW);
+        if bow_dropped {
+            assert_eq!(xp, 5);
+        } else {
+            assert!((6..=8).contains(&xp), "{xp}");
+        }
+        seen[xp as usize] += 1;
+        e.mobs.clear();
+        e.items.clear();
+        e.orbs.clear();
+    }
+    assert!(seen[5] > 0 && seen[6] > 0 && seen[7] > 0 && seen[8] > 0, "{seen:?}");
+    // A preserved slot adds nothing.
+    let mut m = Mob::new(MobKind::Skeleton, DVec3::ZERO, 0.0);
+    m.equipment.set_drop_chance(Slot::MainHand, 0.0);
+    assert!((1..=3).contains(&m.equipment.experience_bonus(&mut voxelcraft::entity::Rng::new(1))));
+    m.equipment.set_guaranteed_drop(Slot::MainHand);
+    assert_eq!(m.equipment.experience_bonus(&mut voxelcraft::entity::Rng::new(1)), 0);
+}

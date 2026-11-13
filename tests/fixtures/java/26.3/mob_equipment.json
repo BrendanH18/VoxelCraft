@@ -35,6 +35,7 @@
     ]
   },
   "death_drop": {
+    "before_experience": true,
     "preserved_keep_damage": true,
     "prevent_drop_effect": "minecraft:prevent_equipment_drop",
     "requires_player_kill_unless_preserved": true,
@@ -47,6 +48,11 @@
     "preserve_threshold": 1.0
   },
   "drowned_skips_armor": true,
+  "experience": {
+    "per_filled_slot": "1 + nextInt(3)",
+    "requires_base_reward": true,
+    "slot_needs_drop_chance_at_most": 1.0
+  },
   "looting_equipment_drops": {
     "attacker_must_be": "minecraft:player",
     "base": 0.01,
@@ -117,9 +123,11 @@
   "sources": [
     "net.minecraft.world.entity.EquipmentSlot static initializer",
     "net.minecraft.world.entity.DropChances constants and isPreserved",
-    "net.minecraft.world.entity.Mob.dropCustomDeathLoot, dropPreservedEquipment",
+    "net.minecraft.world.entity.Mob.dropCustomDeathLoot, dropPreservedEquipment, getBaseExperienceReward",
+    "net.minecraft.world.entity.LivingEntity.dropAllDeathLoot",
     "net.minecraft.world.entity.Mob.populateDefaultEquipmentSlots, getEquipmentForSlot, EQUIPMENT_POPULATION_ORDER, populateDefaultEquipmentEnchantments",
     "net.minecraft.world.entity.monster.zombie.Drowned.populateDefaultEquipmentSlots",
+    "net.minecraft.world.entity.monster.zombie.Zombie.populateDefaultEquipmentSlots",
     "net.minecraft.world.entity.ConversionType.SINGLE and each ConversionParams.single call",
     "net.minecraft.world.entity.monster.zombie.ZombieVillager.finishConversion",
     "data/minecraft/enchantment/looting.json",
@@ -152,5 +160,15 @@
   },
   "trial_spawner_slot_drop_chances": [
     0.0
-  ]
+  ],
+  "zombie_weapon": {
+    "by_roll": {
+      "0": "iron_sword",
+      "1": "iron_spear",
+      "other": "iron_shovel"
+    },
+    "chance_hard": 0.05,
+    "chance_other": 0.01,
+    "roll": 6
+  }
 }

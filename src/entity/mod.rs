@@ -1160,6 +1160,19 @@ impl Entities {
                     mob.equipment.wear(piece, kind, crate::enchant::Enchants::NONE);
                 }
             }
+            // `Zombie.populateDefaultEquipmentSlots` (husks and zombie
+            // villagers too): 5% on Hard, else 1%, an iron sword, iron
+            // spear or iron shovel (1, 1 and 4 in 6).
+            let hard = self.difficulty == crate::simulation::difficulty::Difficulty::Hard;
+            if kind.is_zombie() && self.rng.next_f32() < if hard { 0.05 } else { 0.01 } {
+                use crate::item::{Item, Tier, ToolKind};
+                let item = match self.rng.next_int(6) {
+                    0 => Item::tool(ToolKind::Sword, Tier::Iron),
+                    1 => crate::weapons::spear(Tier::Iron),
+                    _ => Item::tool(ToolKind::Shovel, Tier::Iron),
+                };
+                mob.equipment.set(equipment::Slot::MainHand, Some(crate::inventory::Stack::new(item, 1)));
+            }
         }
         if kind == MobKind::Drowned && self.rng.next_f32() > 0.9 {
             let item =
@@ -1368,16 +1381,28 @@ impl Entities {
         if !player_kill && catalyst {
             self.sculk.deaths.push((pos, 0));
         }
+        // `LivingEntity.dropAllDeathLoot`: equipment drops before the experience.
+        self.equipment_drops(kind, pos, looting, player_kill);
+        self.mob_equipment_drops(kind, pos, looting, player_kill);
         if player_kill {
             let xp = if kind.is_cube() {
                 size as u32
             } else if let Some(xp) = nether::xp(kind, baby) {
                 xp
-            } else if baby {
-                // Java gives baby zombies 2.5 times the base experience.
-                12
             } else {
-                kind.xp(&mut self.rng)
+                // Java gives baby zombies 2.5 times the base experience.
+                let base = if baby { 12 } else { kind.xp(&mut self.rng) };
+                // `Mob.getBaseExperienceReward`: 1–3 more per slot still filled.
+                let bonus = if base > 0 && kind.is_hostile() {
+                    let i = self
+                        .mobs
+                        .iter()
+                        .position(|m| m.kind == kind && !m.alive() && m.pos.distance_squared(pos) < 0.01);
+                    i.map_or(0, |i| self.mobs[i].equipment.experience_bonus(&mut self.rng))
+                } else {
+                    0
+                };
+                base + bonus
             };
             if catalyst {
                 self.sculk.deaths.push((pos, xp));
@@ -1385,8 +1410,6 @@ impl Entities {
                 self.spawn_xp(pos, xp);
             }
         }
-        self.equipment_drops(kind, pos, looting, player_kill);
-        self.mob_equipment_drops(kind, pos, looting, player_kill);
         if baby && nether::babies_drop_nothing(kind) {
             return;
         }
