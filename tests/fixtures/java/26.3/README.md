@@ -719,3 +719,43 @@ off and no target give none; reinforcements land 7–40 blocks out per axis
 on the block corner, never within 7 blocks of a player; drowned call drowned
 in water and husks need the sky; the reinforcement count after repeated hits
 matches an exact model of the -0.05 charges; and the rolls survive saving.
+
+## Effect instances
+
+`effect_instances.json` holds behaviour cases for `MobEffectInstance`, which
+is code rather than data. The official 26.3 jar needs a Java 25 runtime to
+run, so the extractor carries a line-by-line model of the methods the game
+must match, transcribed from the decompiled source: `update`,
+`isShorterDurationThan`, `tickServer` (with `tickDownDuration`,
+`mapDuration` and `downgradeToHiddenEffect`), `endsWithin` and `compareTo`;
+`LivingEntity.addEffect`; the periodic `shouldApplyEffectTickThisTick` of
+Regeneration, Poison and Wither; the HUD's icon order, `showIcon` and blink
+alpha (with `Mth.cos`'s sine table); the inventory list's order and level
+text; `MobEffectUtil.formatDuration`; and `EffectCommands`' `/effect give`
+argument tree and `computeDurationInTicks`. Before writing anything it checks
+that each of those method bodies still hashes to the text the model was
+written from, and it reads every number it uses (colours, intervals, bounds,
+the compare cut-off, the particle odds and the ambient alpha) from the source.
+The `commands.effect.*` feedback comes from the pinned client's en_us.json.
+It reads no VoxelCraft code or fixture.
+
+The cases are 300 sequences of `addEffect` calls (with each call's
+`changed` result and the final chain of the active instance and its hidden
+ones), 60 runs of `tickServer` from a given entity tick count (the ticks on
+which the effect applied and the chain left), 150 groups of effects in
+natural and reverse `compareTo` order, HUD alphas, duration texts, inventory
+level texts and 75 `/effect give` argument lists with their parse result or
+failure. An instance is `[duration, amplifier, ambient, show_particles,
+show_icon]` with -1 for an infinite duration.
+
+```sh
+python3 tools/extract_java_effect_instance_cases.py /path/to/decompiled/net/minecraft --en-us /path/to/en_us.json --output target/java-effect-instances.json
+diff tests/fixtures/java/26.3/effect_instances.json target/java-effect-instances.json
+scripts/remote-check.sh -- 'cargo test --release --test java_effect_instances'
+```
+
+`tests/java_effect_instances.rs` replays every case through `Effects`,
+`Active`, `hud_layout`, `duration_text`, `list_label` and `Command::parse`,
+compares the feedback strings and the particle constants, runs `/effect`
+through the console's and an agent's command paths, and saves and reloads
+infinite and flagged effects on a player and a mob.

@@ -385,7 +385,7 @@ impl Game {
                 return Ok(format!("Applied {} to {}", e.describe(level), stack.item.name()));
             }
             Command::Effect(change) => {
-                let (damage, text) = change.apply(&mut self.session.vitals);
+                let (damage, text) = change.apply(&mut self.session.vitals, "Host")?;
                 self.damage_player(damage, voxelcraft::simulation::damage::Cause::MAGIC);
                 return Ok(text);
             }

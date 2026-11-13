@@ -252,7 +252,10 @@ fn every_effect_can_be_given_and_cleared_by_command() {
         let line = format!("/effect give @s minecraft:{} 10 1", effect.id());
         let command = Command::parse(&line).unwrap();
         let ticks = if effect.is_instantaneous() { 10 } else { 200 };
-        assert!(matches!(command, Command::Effect(EffectChange::Give(e, t, 1)) if e == effect && t == ticks), "{line}");
+        assert!(
+            matches!(command, Command::Effect(EffectChange::Give(e, t, 1, true)) if e == effect && t == ticks),
+            "{line}"
+        );
         agent.execute(command, &mut world, &mut entities, &[]).unwrap();
         assert_eq!(agent.vitals.effects.get(effect).map(|a| (a.amplifier, a.ticks)), Some((1, ticks)), "{line}");
     }

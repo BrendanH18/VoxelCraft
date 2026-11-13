@@ -1,0 +1,14 @@
+kind	name	evidence
+behaviour	behaviour:effects/infinite-duration	tests/java_effect_instances.rs::ticking_follows_tick_server
+behaviour	behaviour:effects/instance-update-merge	tests/java_effect_instances.rs::adding_instances_follows_mob_effect_instance_update
+behaviour	behaviour:effects/ambient-flag	tests/java_effect_instances.rs::particle_flags_follow_java
+behaviour	behaviour:effects/show-particles-flag	src/particles/ambient.rs::hidden_and_ambient_effects_follow_java_swirls
+behaviour	behaviour:effects/show-icon-flag	tests/java_effect_instances.rs::hidden_icons_take_no_hud_slot
+behaviour	behaviour:effects/compare-to-order	tests/java_effect_instances.rs::effects_sort_by_compare_to
+behaviour	behaviour:command/effect-give-infinite	tests/java_effect_instances.rs::effect_give_parses_every_java_form
+behaviour	behaviour:command/effect-give-hide-particles	tests/java_effect_instances.rs::agents_give_infinite_hidden_effects_by_command
+behaviour	behaviour:command/effect-feedback	tests/java_effect_instances.rs::effect_commands_report_java_feedback
+fix	fix:effects/duration-text	tests/java_effect_instances.rs::durations_and_levels_read_as_in_java
+fix	fix:effects/hud-blink-alpha	tests/java_effect_instances.rs::hud_icons_blink_as_in_java
+fix	fix:effects/inventory-level-text	tests/java_effect_instances.rs::durations_and_levels_read_as_in_java
+fix	fix:command/effect-integer-syntax	tests/java_effect_instances.rs::effect_give_parses_every_java_form

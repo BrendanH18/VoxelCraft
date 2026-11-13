@@ -132,8 +132,8 @@ impl Game {
         if let Some(text) = prop("effects") {
             vitals.effects = crate::simulation::effects::Effects::deserialize(text);
         }
-        for &(effect, secs, amp) in &args.effects {
-            let damage = vitals.apply_effect(effect, amp, secs.saturating_mul(20).max(1));
+        for &instance in &args.effects {
+            let (damage, _) = vitals.give_effect(instance);
             vitals.damage(damage, voxelcraft::simulation::damage::Cause::MAGIC, mode.invulnerable());
         }
         if let Some(level) = args.xp {

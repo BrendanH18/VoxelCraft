@@ -170,7 +170,7 @@ mod tests {
         assert_eq!(v.effects.get(Effect::Speed).map(|a| (a.amplifier, a.ticks)), Some((1, 1800)));
         assert_eq!(Potion::from_id("minecraft:harming").unwrap().drink(&mut v), 6.0);
         assert_eq!(Potion::WATER.drink(&mut v), 0.0);
-        assert_eq!(Potion::from_id("long_poison").unwrap().describe(), "Poison I (1:30)");
+        assert_eq!(Potion::from_id("long_poison").unwrap().describe(), "Poison I (01:30)");
         assert_eq!(Potion::WATER.colour(), WATER_COLOUR);
     }
 }
