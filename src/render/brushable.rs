@@ -55,7 +55,7 @@ pub fn emerging_items(world: &World, camera: DVec3, range: f64, out: &mut Vec<Bl
             yaw: -(degrees as f32).to_radians(),
             icon,
             orient: None,
-            tint: [255; 4],
+            tint: crate::inventory::components::dye_tint_bytes(stack),
         });
     }
 }

@@ -35,10 +35,10 @@ pub fn exchange(contents: Contents, held: Item) -> Option<(Contents, Item)> {
 }
 
 /// Whether `held` does something to the cauldron `b` (so block use
-/// precedes the item's own use, as Java's `useItemOn` does).
+/// precedes the item's own use, as Java's `useItemOn` does). Washing a dyed
+/// item depends on the stack, not the item: see [`washes`].
 pub fn takes(b: Block, held: Option<Item>) -> bool {
     match (cauldron_of(b), held) {
-        (Some(Contents::Water(level)), Some(Item::WOLF_ARMOR)) if level > 0 => true,
         (Some(contents), Some(item)) => exchange(contents, item).is_some(),
         _ => false,
     }
@@ -296,8 +296,12 @@ impl World {
     }
 }
 
-/// DyedItemColor washing preserves the rest of the stack and lowers water once.
-pub fn wash_wolf_armor(
+/// `CauldronInteractions.dyedItemIteration`, registered in the `WATER` map
+/// for `#cauldron_can_remove_dye`: a dyed item loses its `dyed_color`,
+/// keeps the rest of the stack, and the water drops a level
+/// (`LayeredCauldronBlock.lowerFillLevel`: level 1 leaves an empty
+/// cauldron). `None` for an undyed item or a cauldron without water.
+pub fn wash_dyed(
     contents: Contents,
     stack: crate::inventory::Stack,
 ) -> Option<(Contents, crate::inventory::Stack)> {
@@ -305,5 +309,13 @@ pub fn wash_wolf_armor(
     if level == 0 {
         return None;
     }
-    Some((Contents::Water(level - 1), crate::entity::wolf_armor::washed(stack)?))
+    let lowered = if level == 1 { Contents::Empty } else { Contents::Water(level - 1) };
+    Some((lowered, crate::inventory::components::remove_dye(stack)?))
+}
+
+/// Whether the cauldron `b` washes the held stack. Java's interaction
+/// returns `TRY_WITH_EMPTY_HAND` for an undyed item, so only a dyed one
+/// takes the click before the item's own use (equipping leather armor).
+pub fn washes(b: Block, held: Option<crate::inventory::Stack>) -> bool {
+    matches!((cauldron_of(b), held), (Some(contents), Some(stack)) if wash_dyed(contents, stack).is_some())
 }

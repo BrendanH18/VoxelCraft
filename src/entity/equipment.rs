@@ -251,11 +251,11 @@ impl Equipment {
         std::array::from_fn(|i| {
             let piece = ArmorPiece::ALL[i];
             if self.chainmail & (1 << i) != 0 {
-                return Some(Worn { kind: ArmorKind::Chain, glint: self.chainmail & (0x10 << i) != 0 });
+                return Some(Worn { kind: ArmorKind::Chain, glint: self.chainmail & (0x10 << i) != 0, dye: None });
             }
             let stack = self.get(Slot::of_piece(piece))?;
-            let (worn_piece, material) = stack.item.as_armor()?;
-            (worn_piece == piece).then(|| Worn { kind: ArmorKind::of(material), glint: !stack.enchants.is_empty() })
+            let (worn_piece, _) = stack.item.as_armor()?;
+            if worn_piece == piece { Worn::of(&stack) } else { None }
         })
     }
 
@@ -556,7 +556,7 @@ mod tests {
         e.set_guaranteed_drop(Slot::MainHand);
         let back = Equipment::load(&e.save(), &e.save_drop_chances().unwrap());
         assert_eq!(back, e);
-        assert_eq!(back.worn()[ArmorPiece::Boots as usize], Some(Worn { kind: ArmorKind::Chain, glint: true }));
+        assert_eq!(back.worn()[ArmorPiece::Boots as usize], Some(Worn { kind: ArmorKind::Chain, glint: true, dye: None }));
         assert_eq!(Equipment::default().save_drop_chances(), None);
     }
 

@@ -93,6 +93,9 @@ impl HandAnim {
             held_statue: held
                 .filter(|s| Some(s.item) == self.shown)
                 .and_then(crate::world::copper_golem_statue::item_model),
+            held_tint: held
+                .filter(|s| Some(s.item) == self.shown)
+                .and_then(|s| voxelcraft::inventory::components::dye_tint(&s)),
             aim: self.aim(),
         }
     }

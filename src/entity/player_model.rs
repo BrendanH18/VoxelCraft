@@ -95,6 +95,9 @@ pub struct PlayerAppearance {
     pub held_icon: Option<u16>,
     /// Pose-bearing statue block model from the complete held stack.
     pub held_statue: Option<crate::world::block::Block>,
+    /// The held stack's `minecraft:dye` icon tint (a dyed or leather item);
+    /// `None` falls back to the item's undyed tint.
+    pub held_tint: Option<[u8; 3]>,
     pub aim: Aim,
 }
 
@@ -388,7 +391,11 @@ pub fn build_player(
                 || appearance.held_icon.or_else(|| item.icon_layer()).unwrap_or(crate::world::block::tex::ITEM_BASE),
                 |b| b.info().tex[0],
             );
-            textured_box(out, &held, 0.0, origin, body, light, 2, layer, PLAYER_SCALE, UNTINTED);
+            let tint = appearance
+                .held_tint
+                .or_else(|| crate::inventory::components::undyed_tint(item))
+                .map_or(UNTINTED, |[r, g, b]| [r, g, b, 0]);
+            textured_box(out, &held, 0.0, origin, body, light, 2, layer, PLAYER_SCALE, tint);
         }
     }
 }
@@ -586,8 +593,8 @@ mod tests {
         let body = limb([0.; 3], [-4., -12., -2.], [4., 0., 2.], [16., 16.], Quat::IDENTITY);
         let parts = [body; 6];
         let mut worn = [None; 4];
-        worn[1] = Some(crate::entity::armor::Worn { kind: crate::entity::armor::ArmorKind::Iron, glint: false });
-        worn[2] = Some(crate::entity::armor::Worn { kind: crate::entity::armor::ArmorKind::Iron, glint: true });
+        worn[1] = Some(crate::entity::armor::Worn { kind: crate::entity::armor::ArmorKind::Iron, glint: false, dye: None });
+        worn[2] = Some(crate::entity::armor::Worn { kind: crate::entity::armor::ArmorKind::Iron, glint: true, dye: None });
         let mut out = Vec::new();
         draw_armor(&mut out, &parts, &worn, Vec3::ZERO, Quat::IDENTITY, 1.0, ([255, 0, 0, 0], 0));
         let extent = |inner: bool| {

@@ -6,6 +6,7 @@
 //! left to right, like Minecraft. Shapeless recipes match any arrangement
 //! of exactly their ingredients.
 
+mod dyed;
 mod passive;
 mod utilities;
 mod wolf_armor;
@@ -80,7 +81,7 @@ impl Grid {
         if maps.len() == 1 && occupied.len() > 1 && occupied.iter().all(|s| s.item == Item::MAP || s == maps[0]) {
             return Some(Stack { count: occupied.len() as u8, ..*maps[0] });
         }
-        if let Some(result) = wolf_armor::dynamic(&occupied) {
+        if let Some(result) = wolf_armor::dynamic(&occupied).or_else(|| dyed::dynamic(&occupied)) {
             return Some(result);
         }
         let (w, h, items) = self.trimmed()?;
@@ -658,6 +659,7 @@ pub fn recipes() -> &'static [Recipe] {
         utilities::add(&mut r);
         passive::add(&mut r);
         wolf_armor::add(&mut r);
+        dyed::add(&mut r);
         weapons::add(&mut r);
         harness::add(&mut r);
         r

@@ -730,7 +730,9 @@ impl Entities {
             && s.accepts(kind, 1, item)
         {
             // Horse armor or llama carpet: equip, returning what was worn.
-            let previous = s.slots[1].replace(Stack::new(item, 1));
+            // The worn stack keeps its components (a dyed colour, enchantments).
+            let worn = inventory.get(selected).map_or_else(|| Stack::new(item, 1), |s| Stack { count: 1, ..s });
+            let previous = s.slots[1].replace(worn);
             if !creative {
                 inventory.take_one(selected);
             }

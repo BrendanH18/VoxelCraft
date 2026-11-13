@@ -1,27 +1,10 @@
-//! Wolf armor's shaped craft and component-preserving dye recipe.
+//! Wolf armor's shaped craft, paired repair and dye recipe entry (the dye
+//! grid itself is the shared [`super::dyed::dynamic`]).
 use super::*;
 use crate::{color::DyeColor, entity::wolf_armor};
 pub(super) fn add(recipes: &mut Vec<Recipe>) {
     recipes.push(shaped(&["X  ", "XXX", "X X"], &[('X', &[Item::ARMADILLO_SCUTE])], Item::WOLF_ARMOR, 1));
-    const DYES: Ingredient = &[
-        Item(576),
-        Item(577),
-        Item(578),
-        Item(579),
-        Item(580),
-        Item(581),
-        Item(582),
-        Item(583),
-        Item(584),
-        Item(585),
-        Item(586),
-        Item(587),
-        Item(588),
-        Item(589),
-        Item(590),
-        Item(591),
-    ];
-    let mut dyed = shapeless(&[&[Item::WOLF_ARMOR], DYES], Item::WOLF_ARMOR, 1);
+    let mut dyed = shapeless(&[&[Item::WOLF_ARMOR], super::dyed::DYES], Item::WOLF_ARMOR, 1);
     dyed.result = wolf_armor::dye(dyed.result, &[DyeColor::White]).expect("wolf armor dye preview");
     recipes.push(dyed);
 }
@@ -40,16 +23,5 @@ pub(super) fn dynamic(stacks: &[Stack]) -> Option<Stack> {
         }
         return Some(result);
     }
-    let mut armor = None;
-    let mut dyes = Vec::<DyeColor>::new();
-    for &stack in stacks {
-        if stack.item == Item::WOLF_ARMOR {
-            if armor.replace(stack).is_some() {
-                return None;
-            }
-        } else {
-            dyes.push(stack.item.dye_color()?);
-        }
-    }
-    wolf_armor::dye(armor?, &dyes)
+    None
 }

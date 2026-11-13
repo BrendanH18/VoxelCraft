@@ -174,9 +174,14 @@ fn tool(kind: ToolKind, tier: Tier, x: i32, y: i32) -> Option<Rgba> {
     handle(x, y, 1, top)
 }
 
+/// Leather is drawn pale grey: like Java's leather textures it is multiplied
+/// by the `minecraft:dye` tint (`components::dye_tint`), which is the dyed
+/// colour or `#A06540` undyed.
+const LEATHER_BASE: [u8; 3] = [236, 236, 236];
+
 fn armor_colour(material: ArmorMaterial) -> [u8; 3] {
     match material {
-        ArmorMaterial::Leather => [160, 101, 64],
+        ArmorMaterial::Leather => LEATHER_BASE,
         ArmorMaterial::Iron => [206, 206, 206],
         ArmorMaterial::Gold => [246, 208, 62],
         ArmorMaterial::Diamond => [70, 222, 210],
