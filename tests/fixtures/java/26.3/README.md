@@ -527,3 +527,36 @@ match, and every `Effect` must be a Java effect. It also covers the HUD row
 (`isBeneficial`), the `/effect` durations and saves. The particle, sound and
 blend facts are recorded but not yet compared, because the game does not
 model them per effect.
+
+## Zombie reinforcements and spawn attributes
+
+`zombie_attributes.json` records Java 26.3's `Zombie.hurtServer`
+reinforcement call (Hard only, `isSpawningMonsters`, 50 tries at per-axis
+offsets `Mth.nextInt(7, 40) * Mth.nextInt(-1, 1)`, no living player within
+7 blocks, the caller's cumulative -0.05 charge and the callee's -0.05F
+charge), `Zombie.handleAttributes` (reinforcement base `nextDouble() *
+0.1F`, knockback bonus `nextDouble() * 0.05F`, follow bonus `nextDouble() *
+1.5 * special` kept above 1, leader chance 0.05 × special with +0.5–0.75
+reinforcement and ×(2–5) max health), `ZombifiedPiglin`'s zero base,
+`Mob.finalizeSpawn`'s follow-range `triangle(0, 0.11485)`, the ranges of the
+four attributes involved, the 16 and 35 follow ranges, every entity type
+whose attribute supplier carries `spawn_reinforcements` (read from
+`DefaultAttributes` and its `createAttributes` chains) and which zombie
+classes may spawn in liquids. The extractor matches the instruction
+sequences it relies on and fails when they change. It does not read
+VoxelCraft source or the existing fixture.
+
+```sh
+python3 tools/extract_java_zombie_attribute_fixtures.py /path/to/server.jar --output target/java-zombie-attributes.json
+diff tests/fixtures/java/26.3/zombie_attributes.json target/java-zombie-attributes.json
+scripts/remote-check.sh -- 'cargo test --release --test java_zombie_attributes && cargo test --release --lib entity::zombie'
+```
+
+`tests/java_zombie_attributes.rs` compares the carriers in both directions
+with the kinds that call reinforcements, every constant, the follow ranges
+and the leader rate of zombies spawned through `Entities::spawn`.
+`src/entity/zombie/tests.rs` drives seeded calls: Normal, monster spawning
+off and no target give none; reinforcements land 7–40 blocks out per axis
+on the block corner, never within 7 blocks of a player; drowned call drowned
+in water and husks need the sky; the reinforcement count after repeated hits
+matches an exact model of the -0.05 charges; and the rolls survive saving.
