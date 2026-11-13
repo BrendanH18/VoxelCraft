@@ -135,9 +135,11 @@ fn a_dead_players_pearls_vanish_even_with_immediate_respawn() {
 
 /// A zombified piglin the agent hit, given one update to take the hit in.
 /// The agent counts as far beyond follow range, so under `universal_anger`
-/// the piglin can't pick it as a target in that update.
+/// the piglin can't pick it as a target in that update (a name tag's
+/// persistence keeps it from despawning that far from everyone).
 fn angry_piglin(world: &World, entities: &mut Entities, agent: &Agent) {
     entities.spawn(MobKind::ZombifiedPiglin, DVec3::new(3.5, 150.0, 1.5));
+    entities.mobs[0].persistent = true;
     entities.attack(0, DVec3::X, 0.5);
     let ctx = Ctx {
         players: vec![Target::new(agent.session.id, DVec3::new(200.5, 150.0, 1.5), true)],
