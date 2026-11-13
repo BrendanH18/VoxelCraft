@@ -40,6 +40,9 @@ fn experience_bottle_registers_like_java() {
     let bottle = voxelcraft::java_registry::item("experience_bottle", "Bottle o' Enchanting");
     assert_eq!(bottle, Some(Item::EXPERIENCE_BOTTLE));
     assert_eq!(Item::EXPERIENCE_BOTTLE, Item(1554));
+    // `--give experience_bottle` and the trade table's display name both resolve.
+    assert_eq!(Item::from_name("minecraft:experience_bottle"), Some(Item::EXPERIENCE_BOTTLE));
+    assert_eq!(Item::from_name("bottle o' enchanting"), Some(Item::EXPERIENCE_BOTTLE));
     assert_eq!(loot::java_item("experience_bottle"), Some(Item::EXPERIENCE_BOTTLE));
     assert_eq!(u64::from(Item::EXPERIENCE_BOTTLE.max_stack()), item["max_stack"].as_u64().unwrap());
     assert_eq!(item["glint_override"], true);

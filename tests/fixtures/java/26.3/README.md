@@ -436,3 +436,38 @@ standard errors and the wear distribution against a model built from the
 reroll formula. It also loads pre-v0.17 `nether_mobs` and `villagers`
 records. Chainmail armor has no item yet (ids 1550–1553 belong to another
 v0.17 slice), so chainmail pieces are drawn but drop nothing.
+
+## Thrown items
+
+`thrown_items.json` records the Bottle o' Enchanting: its `Items`
+registration (`Rarity.UNCOMMON`, `ENCHANTMENT_GLINT_OVERRIDE`, the default
+stack of 64), `ExperienceBottleItem.use` (the `entity.experience_bottle.throw`
+sound and `spawnProjectileFromRotation` with a -20 degree pitch offset, power
+0.7 and uncertainty 1), `createDispenseConfig` over the
+`ProjectileItem.DispenseConfig.Builder` defaults (power 1.1 × 1.25,
+uncertainty 6 × 0.5, 0.7 out and 0.1 up), `ThrownExperienceBottle` (gravity
+0.07, level events 2002 with colour -13083194 and 1053,
+`3 + nextInt(5) + nextInt(5)` points, orbs along the hit face or back along
+the motion), the shared `ThrowableProjectile` drag and tick order, the
+`Projectile.getMovementToShoot` noise scale, the `ThrowableItemProjectile`
+spawn height, the `ExperienceOrb` scatter, the cleric's
+`cleric/5/emerald_experience_bottle` offer and the three chest pools that
+name the bottle. The extractor reads constants with `javap -constants`,
+checks the instruction sequences it relies on and reads the trade and loot
+JSON from the jar. It does not read VoxelCraft source or the existing
+fixture. Other thrown items may add their own top-level keys.
+
+```sh
+python3 tools/extract_java_thrown_fixtures.py /path/to/server.jar --output target/java-thrown-items.json
+diff tests/fixtures/java/26.3/thrown_items.json target/java-thrown-items.json
+scripts/remote-check.sh -- 'cargo test --release --test java_thrown_items'
+```
+
+`tests/java_thrown_items.rs` checks the registration, throws bottles at
+fifteen look directions against `shootFromRotation`, throws through the
+session and the CLI agent, checks the orb scatter and rolls each chest table
+20,000 times against its weight share and count. Unit tests in
+`src/entity/thrown.rs` follow a flight tick by tick, burst bottles on a
+floor, a wall, a mob and a player and draw 2,000 experience totals;
+`src/world/automation.rs` checks the dispenser shot and
+`src/entity/villager.rs` the master cleric's offer.

@@ -1519,6 +1519,10 @@ impl Item {
         if name.replace('_', " ") == "red bed" {
             return Some(Item::BED);
         }
+        // The player-facing label differs from the reference ID.
+        if name == "experience_bottle" {
+            return Some(Item::EXPERIENCE_BOTTLE);
+        }
         if let Some(b) = Block::from_name(name) {
             // Doors and nether wart are placed by an item, not as a block.
             return Some(match b {
