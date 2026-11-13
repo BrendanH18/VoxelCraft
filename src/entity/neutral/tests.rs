@@ -303,8 +303,12 @@ fn universal_anger_alerts_bees_wolves_and_zombified_piglins_of_the_same_kind_in_
         let e = provoked(kind, true, true, &[near, far]);
         let alerted = alerts_same_type(kind);
         assert!(e.mobs[0].angry_at_all_players(), "{kind:?}");
-        assert_eq!(e.mobs[1].angry_at_all_players(), alerted, "{kind:?} in range");
-        assert!(!e.mobs[2].angry_at_all_players(), "{kind:?} out of range");
+        // An alerted mob's first sense tick may already have picked the
+        // nearest player it can see (the seeded roll decides), which ends
+        // its universal anger the way `NearestAttackableTargetGoal` does.
+        let woke = |m: &Mob| m.angry_at_all_players() || m.anger_target().is_some();
+        assert_eq!(woke(&e.mobs[1]), alerted, "{kind:?} in range");
+        assert!(!woke(&e.mobs[2]), "{kind:?} out of range");
     }
 }
 
