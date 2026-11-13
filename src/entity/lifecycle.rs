@@ -451,8 +451,14 @@ impl Entities {
                     // `HurtByTargetGoal`: projectiles credit their shooter too.
                     if let Some(owner) = owner
                         && !killed
-                        && (matches!(kind, MobKind::Dolphin | MobKind::Blaze | MobKind::Panda | MobKind::Armadillo)
-                            || super::neutral::is_neutral(kind))
+                        && (matches!(
+                            kind,
+                            MobKind::Dolphin
+                                | MobKind::Blaze
+                                | MobKind::Panda
+                                | MobKind::Armadillo
+                                | MobKind::Endermite
+                        ) || super::neutral::is_neutral(kind))
                         && let Some(i) = self.mobs.iter().position(|m| m.kind == kind && m.pos == pos && m.alive())
                     {
                         self.hurt_by_player_target(i, owner);

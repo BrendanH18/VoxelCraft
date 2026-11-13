@@ -143,6 +143,24 @@ mod tests {
     use super::*;
     use crate::physics::test_util::Grid;
     #[test]
+    fn golems_and_trader_llamas_keep_their_spawn_bonus_across_a_save() {
+        let mut e = Entities::new(11);
+        let mut kinds = Vec::new();
+        for (i, kind) in [MobKind::IronGolem, MobKind::SnowGolem].into_iter().enumerate() {
+            e.spawn(kind, glam::DVec3::new(i as f64 * 4.0, 0.0, 0.0));
+            let mut attrs = super::super::zombie::Attrs::for_kind(kind);
+            attrs.follow_spawn_bonus = 0.05;
+            e.mobs[i].attrs = attrs;
+            kinds.push((kind, attrs));
+        }
+        let mut copy = Entities::new(12);
+        copy.load_villagers(&e.villagers_to_string());
+        for (kind, attrs) in kinds {
+            let m = copy.mobs.iter().find(|m| m.kind == kind).expect("reloaded");
+            assert_eq!(m.attributes(), attrs, "{kind:?}");
+        }
+    }
+    #[test]
     fn a_leader_zombie_villager_keeps_its_attributes_and_health_across_a_save() {
         let mut e = Entities::new(11);
         e.spawn(MobKind::ZombieVillager, glam::DVec3::ZERO);

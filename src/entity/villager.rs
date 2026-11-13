@@ -836,6 +836,9 @@ impl Entities {
                     if m.neutral_universal {
                         saved["anger_all"] = json!(true);
                     }
+                    if m.attributes() != super::zombie::Attrs::default() {
+                        saved["attributes"] = m.attrs.save();
+                    }
                     Some(saved)
                 }
                 MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader => {
@@ -917,6 +920,7 @@ impl Entities {
                         return None;
                     }
                     let mut m = Mob::new(kind, p, yaw);
+                    m.attrs = super::zombie::Attrs::load(&a["attributes"]);
                     if kind == MobKind::TraderLlama {
                         m.trader = Some(Box::new(super::wandering_trader::Trader::load(&a["trader"], p)?));
                     }
