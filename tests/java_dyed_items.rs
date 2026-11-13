@@ -275,8 +275,10 @@ fn scene(contents: Contents, held: Stack) -> (World, PlayerSession, Entities) {
     (world, session, Entities::new(7))
 }
 
+/// What the shared use chain did; `None` also when it refused (an item
+/// that is neither washed nor placeable reports "cannot be placed").
 fn use_held(s: &mut PlayerSession, w: &mut World, e: &mut Entities, sneaking: bool) -> Option<Used> {
-    s.use_held(0, w, e, &UseContext { sneaking, others: &[] }).unwrap().map(|u| u.used)
+    s.use_held(0, w, e, &UseContext { sneaking, others: &[] }).ok().flatten().map(|u| u.used)
 }
 
 /// `CauldronInteractions.dyedItemIteration` for every dyeable item at every

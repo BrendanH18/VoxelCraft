@@ -255,7 +255,7 @@ impl Equipment {
             }
             let stack = self.get(Slot::of_piece(piece))?;
             let (worn_piece, _) = stack.item.as_armor()?;
-            if worn_piece == piece { Worn::of(&stack) } else { None }
+            if worn_piece == piece { Worn::of(stack) } else { None }
         })
     }
 
