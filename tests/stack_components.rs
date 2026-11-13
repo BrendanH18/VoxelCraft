@@ -386,7 +386,7 @@ fn saved_payload_fields_are_base64_json_with_names() {
     assert_eq!(Some(parsed), s.payload);
 }
 
-/// Stack strings from before v0.17, frozen as literals, load unchanged and
+/// Stack strings from before v0.14, frozen as literals, load unchanged and
 /// write back the same way.
 #[test]
 fn pre_v017_stack_strings_load_unchanged() {

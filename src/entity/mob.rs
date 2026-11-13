@@ -200,7 +200,7 @@ pub enum MobKind {
     /// v0.16 Track C. Saved as `breeze`; LAN index 73 (72 stays reserved
     /// for Track A's warden until integration).
     Breeze,
-    /// v0.17 (MOBN-26): the pearl pest. Saved as `endermite`; its LAN index
+    /// v0.14 (MOBN-26): the pearl pest. Saved as `endermite`; its LAN index
     /// is its position in [`MobKind::ALL`].
     Endermite,
 }

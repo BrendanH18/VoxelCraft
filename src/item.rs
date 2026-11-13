@@ -333,11 +333,11 @@ pub enum Sprite {
     HorseArmor(ArmorMaterial),
     /// Nautilus armor of this material (a spiral shell plate).
     NautilusArmor(ArmorMaterial),
-    /// v0.17: a harness of this colour (`content::harness`).
+    /// v0.14: a harness of this colour (`content::harness`).
     Harness([u8; 3]),
     /// The Bottle o' Enchanting: a round flask of sparkling blue-green liquid.
     ExperienceBottle,
-    /// v0.17: a bundle of this leather colour (`content::bundle`).
+    /// v0.14: a bundle of this leather colour (`content::bundle`).
     Bundle([u8; 3]),
 }
 
@@ -1694,7 +1694,7 @@ fn sprite_index(item: Item) -> Option<u16> {
     }
     match item.0 {
         1530 => Some(late_icon_base()),
-        // v0.17 harnesses follow the ITEM-EQUIP icons.
+        // v0.14 harnesses follow the ITEM-EQUIP icons.
         i if (crate::content::harness::ITEM_FIRST..crate::content::harness::ITEM_END).contains(&i) => {
             Some(late_icon_base() + 1 + crate::equipment::ICON_COUNT + i - crate::content::harness::ITEM_FIRST)
         }
@@ -1841,7 +1841,7 @@ pub const fn icon_count() -> u32 {
         + (crate::content::bundle::ITEM_END - crate::content::bundle::ITEM_FIRST) as u32
 }
 
-/// The fermented spider eye's icon: icons appended in v0.17 follow it.
+/// The fermented spider eye's icon: icons appended in v0.14 follow it.
 const fn late_icon_base() -> u16 {
     (passive_icon_base() as u32
         + 4

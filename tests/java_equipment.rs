@@ -1,7 +1,7 @@
 //! Java 26.3 armor equipment against `fixtures/java/26.3/equipment.json`
 //! (`tools/extract_java_equipment_fixtures.py`): every humanoid, wolf, horse
 //! and nautilus armor item's material and form both ways, the armorer's armor
-//! offers, the nugget and netherite recipes that take the v0.17 armors, and
+//! offers, the nugget and netherite recipes that take the v0.14 armors, and
 //! the chest tables that hold them.
 use glam::{DVec3, IVec3};
 use serde_json::Value;
@@ -237,8 +237,8 @@ fn ingredients(v: &Value) -> Vec<&str> {
 }
 
 /// `recipe/{iron,gold,copper}_nugget_from_{smelting,blasting}.json`: the
-/// v0.17 armors among the ingredients melt to one nugget in a furnace and a
-/// blast furnace, never in a smoker; the rest of the v0.17 armors don't melt.
+/// v0.14 armors among the ingredients melt to one nugget in a furnace and a
+/// blast furnace, never in a smoker; the rest of the v0.14 armors don't melt.
 #[test]
 fn chainmail_and_metal_body_armor_melt_to_nuggets() {
     let recipes = fixture("recipes.json");

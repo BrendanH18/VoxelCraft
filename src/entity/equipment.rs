@@ -139,7 +139,7 @@ pub struct Equipment {
     stacks: [Option<Box<Stack>>; 8],
     chances: [f32; 8],
     /// Chainmail worn without an item until the chainmail armor items are
-    /// registered (item ids 1550–1553, owned by another v0.17 slice): bit
+    /// registered (item ids 1550–1553, owned by another v0.14 slice): bit
     /// `ArmorPiece as u8` is worn, bit `4 + piece` its enchantment glint.
     /// Drawn like any armor; drops nothing.
     chainmail: u8,
@@ -424,7 +424,7 @@ impl Equipment {
     }
 }
 
-/// The equipment keys of a mob record saved before v0.17.
+/// The equipment keys of a mob record saved before v0.14.
 #[derive(Clone, Debug, Default)]
 pub struct Legacy {
     /// Helmet, chestplate, leggings, boots.
@@ -527,7 +527,7 @@ pub fn trial_armor_enchants() -> Enchants {
         .with(Enchantment::FireProtection, 4)
 }
 
-/// A mob record's equipment: the v0.17 `equipment` and `drop_chances`
+/// A mob record's equipment: the v0.14 `equipment` and `drop_chances`
 /// keys when either is present, otherwise `legacy` applied to `fresh`.
 pub fn load_mob_equipment(v: &Value, fresh: Equipment, legacy: &Legacy) -> Equipment {
     if v.get("equipment").is_some() || v.get("drop_chances").is_some() {

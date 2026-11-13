@@ -1607,7 +1607,7 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if m.undead_mount != super::undead_mounts::State::default() {
         v["undead_mount"] = m.undead_mount.save();
     }
-    // v0.17: `equipment` and `drop_chances` replace `armor`, `armor_materials`,
+    // v0.14: `equipment` and `drop_chances` replace `armor`, `armor_materials`,
     // `armor_glint`, `skeleton_bow`, `main_hand` and `keeps_equipment`.
     m.equipment.save_into(&mut v, m.kind.is_bow_skeleton());
     if let Some(s) = m.bee {

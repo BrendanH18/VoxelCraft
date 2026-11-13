@@ -54,7 +54,7 @@ fn temp_dir(tag: &str) -> std::path::PathBuf {
 /// Save properties with each entity list in a fixed order, without the
 /// keys later versions retired: `animal.nest_time` (VoxelCraft's nesting
 /// timer, replaced by Java's unsaved `TurtleLayEggGoal` counter), and a
-/// mob's `armor` and `glint` (v0.17 saves `equipment` slots instead, and
+/// mob's `armor` and `glint` (v0.14 saves `equipment` slots instead, and
 /// only when a slot is filled; these records wore nothing).
 fn normalized(props: &BTreeMap<String, String>) -> BTreeMap<String, Vec<String>> {
     let mut out = BTreeMap::new();

@@ -26,7 +26,7 @@ fn java_effects() -> Vec<Value> {
     fixture()["effects"].as_array().unwrap().clone()
 }
 
-/// The effects v0.17 registered, looked up by Java id rather than position.
+/// The effects v0.14 registered, looked up by Java id rather than position.
 const REGISTERED_IN_V0_17: [&str; 11] = [
     "health_boost",
     "glowing",
@@ -160,8 +160,8 @@ fn implemented_effect_modifiers_use_the_registered_amounts() {
     assert_eq!(f64::from(with(Effect::BadLuck, 0).luck()), amount(Effect::BadLuck));
 }
 
-/// Effects save as `id:amplifier:ticks` Java ids: a v0.16 save still loads,
-/// and every effect registered in v0.17 survives a save and reload, for
+/// Effects save as `id:amplifier:ticks` Java ids: a pre-v0.14 save still loads,
+/// and every effect registered in v0.14 survives a save and reload, for
 /// players (level props) and mobs alike.
 #[test]
 fn registered_effects_survive_a_save_and_old_saves_still_load() {

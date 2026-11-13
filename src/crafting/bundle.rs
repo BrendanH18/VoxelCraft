@@ -1,4 +1,4 @@
-//! v0.17 bundles (Java 26.3 `data/minecraft/recipe`): `bundle.json`, string
+//! v0.14 bundles (Java 26.3 `data/minecraft/recipe`): `bundle.json`, string
 //! over leather; `white_bundle.json` and the other colours, the
 //! `crafting_transmute` recipes that dye any `#bundles` item with one dye
 //! and keep its components. The grid's real result comes from

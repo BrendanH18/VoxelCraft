@@ -6,19 +6,19 @@
       "reason": "Technical or creative-only; no survival acquisition role."
     },
     "beacon": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "black_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "blue_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "brown_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "cave_air": {
@@ -30,51 +30,51 @@
       "reason": "Technical or creative-only; no survival acquisition role."
     },
     "chiseled_cinnabar": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "chiseled_sulfur": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "chorus_flower": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "chorus_plant": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "cinnabar": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "cinnabar_brick_slab": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "cinnabar_brick_stairs": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "cinnabar_brick_wall": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "cinnabar_bricks": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "cinnabar_slab": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "cinnabar_stairs": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "cinnabar_wall": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "command_block": {
@@ -82,83 +82,83 @@
       "reason": "Technical or creative-only; no survival acquisition role."
     },
     "conduit": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "crafter": {
-      "release": "v0.19",
+      "release": "v0.17",
       "reason": "Redstone and automation completion."
     },
     "creeper_head": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "creeper_wall_head": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "cyan_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "dragon_head": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "dragon_wall_head": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "dried_ghast": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "end_rod": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "frosted_ice": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Frost Walker temporary ice states are absent; carried enchantment gap (PRO-03)."
     },
     "golden_dandelion": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "gray_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "green_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "infested_chiseled_stone_bricks": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "infested_cobblestone": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "infested_cracked_stone_bricks": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "infested_deepslate": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "infested_mossy_stone_bricks": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "infested_stone": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "infested_stone_bricks": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "jigsaw": {
@@ -170,35 +170,35 @@
       "reason": "Technical or creative-only; no survival acquisition role."
     },
     "light_blue_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "light_gray_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "lime_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "magenta_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "moving_piston": {
-      "release": "v0.19",
+      "release": "v0.17",
       "reason": "Redstone and automation completion."
     },
     "nether_gold_ore": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "orange_poplar_leaves": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "orange_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "petrified_oak_slab": {
@@ -206,171 +206,171 @@
       "reason": "Technical or creative-only; no survival acquisition role."
     },
     "piglin_head": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "piglin_wall_head": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "pink_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "player_head": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "player_wall_head": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "polished_cinnabar": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "polished_cinnabar_slab": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "polished_cinnabar_stairs": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "polished_cinnabar_wall": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "polished_sulfur": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "polished_sulfur_slab": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "polished_sulfur_stairs": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "polished_sulfur_wall": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_button": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_door": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_fence": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_fence_gate": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_hanging_sign": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_log": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_planks": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_pressure_plate": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_sapling": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_shelf": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_sign": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_slab": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_stairs": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_trapdoor": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_wall_hanging_sign": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_wall_sign": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_wood": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "potent_sulfur": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "potted_golden_dandelion": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "potted_poplar_sapling": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "potted_wither_rose": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "purple_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "purpur_block": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "purpur_pillar": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "purpur_slab": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "purpur_stairs": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "red_poplar_leaves": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "red_shrub": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "red_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "repeating_command_block": {
@@ -378,27 +378,27 @@
       "reason": "Technical or creative-only; no survival acquisition role."
     },
     "shelf_mushroom": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "skeleton_skull": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "skeleton_wall_skull": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "stripped_poplar_log": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "stripped_poplar_wood": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "structure_block": {
@@ -410,39 +410,39 @@
       "reason": "Technical or creative-only; no survival acquisition role."
     },
     "sulfur": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "sulfur_brick_slab": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "sulfur_brick_stairs": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "sulfur_brick_wall": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "sulfur_bricks": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "sulfur_slab": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "sulfur_spike": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "sulfur_stairs": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "sulfur_wall": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "test_block": {
@@ -458,45 +458,45 @@
       "reason": "Technical or creative-only; no survival acquisition role."
     },
     "white_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "wither_rose": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "wither_skeleton_skull": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "wither_skeleton_wall_skull": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "yellow_poplar_leaves": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "yellow_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "zombie_head": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "zombie_wall_head": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     }
   },
   "items": {
     "abandoned_camp_map": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "Explorer-map destination/structure integration remains incomplete."
     },
     "allay_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "archer_pottery_sherd": {
@@ -504,7 +504,7 @@
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
     "armadillo_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "arms_up_pottery_sherd": {
@@ -512,7 +512,7 @@
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
     "axolotl_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "barrier": {
@@ -520,47 +520,47 @@
       "reason": "Technical or creative-only; no survival acquisition role."
     },
     "bat_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "beacon": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "bee_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "black_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "blaze_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "blue_egg": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Chicken climate-variant egg items are absent; carried farming gap (assignment proposed)."
     },
     "blue_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "bogged_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "bolt_armor_trim_smithing_template": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "bordure_indented_banner_pattern": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "breeze_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "brewer_pottery_sherd": {
@@ -568,19 +568,19 @@
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
     "brown_egg": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Chicken climate-variant egg items are absent; carried farming gap (assignment proposed)."
     },
     "brown_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "buried_ancient_city_map": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Cartographer map item for an existing destination; carried village-trade integration."
     },
     "buried_mineshaft_map": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Cartographer map item for an existing destination; carried village-trade integration."
     },
     "burn_pottery_sherd": {
@@ -588,19 +588,19 @@
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
     "camel_husk_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "camel_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "cat_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "cave_spider_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "chain_command_block": {
@@ -608,67 +608,67 @@
       "reason": "Technical or creative-only; no survival acquisition role."
     },
     "chicken_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "chiseled_cinnabar": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "chiseled_sulfur": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "chorus_flower": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "chorus_fruit": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "chorus_plant": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "cinnabar": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "cinnabar_brick_slab": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "cinnabar_brick_stairs": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "cinnabar_brick_wall": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "cinnabar_bricks": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "cinnabar_slab": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "cinnabar_stairs": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "cinnabar_wall": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "coast_armor_trim_smithing_template": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "cod_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "command_block": {
@@ -680,39 +680,39 @@
       "reason": "Technical or creative-only; no survival acquisition role."
     },
     "conduit": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "copper_golem_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "cow_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "crafter": {
-      "release": "v0.19",
+      "release": "v0.17",
       "reason": "Redstone and automation completion."
     },
     "creaking_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "creeper_banner_pattern": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "creeper_head": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "creeper_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "cyan_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "danger_pottery_sherd": {
@@ -724,87 +724,87 @@
       "reason": "Technical or creative-only; no survival acquisition role."
     },
     "desert_pyramid_map": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Cartographer map item for an existing destination; carried village-trade integration."
     },
     "dolphin_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "donkey_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "dragon_head": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "dried_ghast": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "drowned_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "dune_armor_trim_smithing_template": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "elder_guardian_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "elytra": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "end_crystal": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "end_rod": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "ender_dragon_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "enderman_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "endermite_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "evoker_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "eye_armor_trim_smithing_template": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "field_masoned_banner_pattern": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "firework_rocket": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "firework_star": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "flow_armor_trim_smithing_template": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "flow_banner_pattern": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "flow_pottery_sherd": {
@@ -812,11 +812,11 @@
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
     "flower_banner_pattern": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "fox_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "friend_pottery_sherd": {
@@ -824,47 +824,47 @@
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
     "frog_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "furnace_minecart": {
-      "release": "v0.19",
+      "release": "v0.17",
       "reason": "Redstone and automation completion."
     },
     "ghast_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "globe_banner_pattern": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "glow_squid_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "goat_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "golden_dandelion": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "gray_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "green_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "guardian_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "guster_banner_pattern": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "guster_pottery_sherd": {
@@ -872,7 +872,7 @@
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
     "happy_ghast_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "heart_pottery_sherd": {
@@ -884,15 +884,15 @@
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
     "hoglin_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "horse_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "host_armor_trim_smithing_template": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "howl_pottery_sherd": {
@@ -900,39 +900,39 @@
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
     "husk_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "infested_chiseled_stone_bricks": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "infested_cobblestone": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "infested_cracked_stone_bricks": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "infested_deepslate": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "infested_mossy_stone_bricks": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "infested_stone": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "infested_stone_bricks": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "iron_golem_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "jigsaw": {
@@ -948,27 +948,27 @@
       "reason": "Technical or creative-only; no survival acquisition role."
     },
     "light_blue_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "light_gray_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "lime_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "llama_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "magenta_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "magma_cube_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "miner_pottery_sherd": {
@@ -976,51 +976,51 @@
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
     "mojang_banner_pattern": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "mooshroom_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "mule_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "nautilus_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "nether_gold_ore": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "nether_star": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "ocelot_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "orange_poplar_leaves": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "orange_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "panda_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "parched_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "parrot_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "petrified_oak_slab": {
@@ -1028,151 +1028,151 @@
       "reason": "Technical or creative-only; no survival acquisition role."
     },
     "phantom_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "pig_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "piglin_banner_pattern": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "piglin_brute_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "piglin_head": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "piglin_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "pillager_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "pink_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "player_head": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "polar_bear_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "polished_cinnabar": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "polished_cinnabar_slab": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "polished_cinnabar_stairs": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "polished_cinnabar_wall": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "polished_sulfur": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "polished_sulfur_slab": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "polished_sulfur_stairs": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "polished_sulfur_wall": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_boat": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_button": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_chest_boat": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_door": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_fence": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_fence_gate": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_hanging_sign": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_log": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_planks": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_pressure_plate": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_sapling": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_shelf": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_sign": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_slab": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_stairs": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_trapdoor": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "poplar_wood": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "popped_chorus_fruit": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "potent_sulfur": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "prize_pottery_sherd": {
@@ -1180,51 +1180,51 @@
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
     "pufferfish_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "purple_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "purpur_block": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "purpur_pillar": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "purpur_slab": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "purpur_stairs": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "rabbit_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "raiser_armor_trim_smithing_template": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "ravager_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "red_poplar_leaves": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "red_shrub": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "red_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "repeating_command_block": {
@@ -1232,11 +1232,11 @@
       "reason": "Technical or creative-only; no survival acquisition role."
     },
     "rib_armor_trim_smithing_template": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "salmon_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "scrape_pottery_sherd": {
@@ -1244,11 +1244,11 @@
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
     "sentry_armor_trim_smithing_template": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "shaper_armor_trim_smithing_template": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "sheaf_pottery_sherd": {
@@ -1256,47 +1256,47 @@
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
     "sheep_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "shelf_mushroom": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "shulker_shell": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "shulker_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "silence_armor_trim_smithing_template": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "silverfish_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "skeleton_horse_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "skeleton_skull": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "skeleton_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "skull_banner_pattern": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "skull_pottery_sherd": {
@@ -1304,55 +1304,55 @@
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
     "slime_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "sniffer_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "snout_armor_trim_smithing_template": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "snow_golem_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "spectral_arrow": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "spider_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "spire_armor_trim_smithing_template": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "spyglass": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "squid_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "stray_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "strider_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "stripped_poplar_log": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "stripped_poplar_wood": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "structure_block": {
@@ -1364,51 +1364,51 @@
       "reason": "Technical or creative-only; no survival acquisition role."
     },
     "sulfur": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "sulfur_brick_slab": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "sulfur_brick_stairs": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "sulfur_brick_wall": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "sulfur_bricks": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "sulfur_cube_bucket": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "sulfur_cube_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "sulfur_slab": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "sulfur_spike": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "sulfur_stairs": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "sulfur_wall": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "tadpole_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "test_block": {
@@ -1420,149 +1420,149 @@
       "reason": "Technical or creative-only; no survival acquisition role."
     },
     "tide_armor_trim_smithing_template": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "trader_llama_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "tropical_fish_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "turtle_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "vex_armor_trim_smithing_template": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "vex_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "villager_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "vindicator_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "wandering_trader_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "ward_armor_trim_smithing_template": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "warden_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "warm_ocean_ruins_map": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Cartographer map item for an existing destination; carried village-trade integration."
     },
     "wayfinder_armor_trim_smithing_template": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "white_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "wild_armor_trim_smithing_template": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "witch_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "wither_rose": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "wither_skeleton_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "wither_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "wolf_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "woodland_mansion_map": {
-      "release": "v0.17",
-      "reason": "Cartographer map for the woodland mansion, which is a v0.17 structure."
+      "release": "v0.15",
+      "reason": "Cartographer map for the woodland mansion, which is a v0.15 structure."
     },
     "writable_book": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "written_book": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "yellow_poplar_leaves": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "yellow_shulker_box": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "zoglin_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "zombie_head": {
-      "release": "v0.18",
+      "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "zombie_horse_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "zombie_nautilus_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "zombie_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "zombie_villager_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "zombified_piglin_spawn_egg": {
-      "release": "v0.20",
+      "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     }
   },
   "potions": {
     "infested": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Effect-triggered entity/block systems and survival integration are not implemented."
     },
     "oozing": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Effect-triggered entity/block systems and survival integration are not implemented."
     },
     "weaving": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Effect-triggered entity/block systems and survival integration are not implemented."
     },
     "wind_charged": {
-      "release": "v0.17",
+      "release": "v0.15",
       "reason": "Effect-triggered entity/block systems and survival integration are not implemented."
     },
     "luck": {

@@ -265,7 +265,7 @@ fn conversions_keep_or_drop_equipment_as_java_says() {
     assert!(from.is_empty());
 }
 
-/// A record saved before v0.17, with its `armor`, `armor_materials`,
+/// A record saved before v0.14, with its `armor`, `armor_materials`,
 /// `armor_glint`, `skeleton_bow`, `main_hand` and `keeps_equipment` keys.
 const LEGACY_NETHER_MOBS: &str = r#"{"bastions":[],"generation":[],"mobs":[
 {"admire":0.0,"age":0,"animal":null,"armor":[false,false,false,false],"armor_materials":[1,2,null,null],"armor_glint":2,"baby":false,"cannot_hunt":false,"celebrate":null,"color":0,"effects":"","egg_timer":0.0,"grow":0.0,"health":20.0,"held":null,"home":null,"identity":{"leash":null,"name":null},"immune":false,"kind":"skeleton","mount":null,"offhand":null,"persistence_required":true,"pocket":"","pos":[10.5,70.0,0.5],"riding":null,"sheared":false,"uid":11,"variant":null,"weapon":"none","yaw":0.0,"zombify":0.0,"skeleton_bow":"BOW","keeps_equipment":true},
@@ -315,7 +315,7 @@ fn pre_v017_saves_load_into_the_new_slots_with_the_same_drop_rule() {
     }
 }
 
-/// A zombie villager record from before v0.17 (`armor` materials, `glint`).
+/// A zombie villager record from before v0.14 (`armor` materials, `glint`).
 const LEGACY_VILLAGERS: &str = r#"{"births":[],"mobs":[{"age":0,"armor":[2,null,null,4],"bell_hide":0.0,"built":false,"convert":0.0,"convert_by":null,"convert_tick":0.0,"day":-1,"effects":"","food":["-","-","-","-","-","-","-","-"],"food_level":0,"glint":8,"golem_seen":0.0,"gossip":{"day":0,"entries":[]},"health":20.0,"home":null,"id":1,"identity":{"leash":null,"name":null},"job":null,"kind":"zombie villager","last":0,"level":1,"offers":[null,null,null,null,null,null,null,null,null,null],"p":[1000.5,70.0,1000.5],"profession":3,"promote":0.0,"promote_pending":false,"reputation":0,"restocks":0,"seed":1865834515,"slept":null,"trader":null,"weakness":0.0,"xp":0,"yaw":0.0}],"next":2,"trader_spawner":[1200.0,25]}"#;
 
 #[test]
@@ -334,7 +334,7 @@ fn pre_v017_zombie_villagers_keep_their_armor() {
 }
 
 /// Netherite (and any other armor with an item) drops as the worn stack;
-/// before v0.17 a mob's netherite mapped to no item.
+/// before v0.14 a mob's netherite mapped to no item.
 #[test]
 fn netherite_armor_drops_its_stack() {
     let mut plate = Stack::new(Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Netherite), 1);

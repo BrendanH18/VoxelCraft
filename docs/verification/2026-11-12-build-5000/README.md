@@ -4,7 +4,8 @@
 
 On 2026-11-12 the owner asked for building to continue: "Build 5000 new
 features or improvements", split across agents, finished and merged without
-waiting for review. This folder is the campaign's record. It says how the
+waiting for review. On 2026-11-13 the owner dropped the 5,000 target after
+the first wave: its work ships in v0.14, and no further waves are planned. This folder is the campaign's record. It says how the
 work is cut up, how each piece is checked and how the total is counted, and
 it holds one record and one ledger fragment per slice of work.
 
@@ -68,4 +69,4 @@ commit where one could be made.
 
 | Wave | Scope | Slices landed | Ledger rows | Record |
 | --- | --- | --- | --- | --- |
-| 1 | v0.17 foundations and Java data parity | in progress | — | — |
+| 1 | v0.17 (now v0.15) foundations and Java data parity | 14 of 14 | 256 | [wave 1](wave-1.md) |

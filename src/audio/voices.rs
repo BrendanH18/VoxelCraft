@@ -54,7 +54,7 @@ pub enum Voice {
     Allay,
     /// v0.16 Track C.
     Breeze,
-    /// v0.17 (MOBN-26): `entity.endermite.ambient`, `.hurt` and `.death`.
+    /// v0.14 (MOBN-26): `entity.endermite.ambient`, `.hurt` and `.death`.
     Endermite,
 }
 

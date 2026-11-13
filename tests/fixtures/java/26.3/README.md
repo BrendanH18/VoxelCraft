@@ -435,7 +435,7 @@ Looting) and without player credit, and checks drop rates within five
 standard errors and the wear distribution against a model built from the
 reroll formula. It also loads pre-v0.17 `nether_mobs` and `villagers`
 records. Chainmail armor has no item yet (ids 1550–1553 belong to another
-v0.17 slice), so chainmail pieces are drawn but drop nothing.
+v0.14 slice), so chainmail pieces are drawn but drop nothing.
 
 ## Damage types and tags
 
@@ -495,7 +495,7 @@ scripts/remote-check.sh -- 'cargo test --release --test java_equipment && cargo 
 `tests/java_equipment.rs` compares every armor item both ways (each Java item
 is registered with its material's numbers and form's components, and the game
 has no armor Java lacks), the armorer's plain armor offers, the nugget and
-netherite smithing recipes that take the v0.17 armors (against `recipes.json`)
+netherite smithing recipes that take the v0.14 armors (against `recipes.json`)
 and the chest tables that hold them. The unit tests in `src/equipment.rs`
 check horse armor's body attributes on a horse and the wearer tag. Enchanted
 and dyed offers are listed but not compared: their prices add enchantment

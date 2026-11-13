@@ -341,7 +341,7 @@ fn flags_and_infinite_durations_survive_a_save() {
     assert_eq!(back.mobs[0].effects, effects);
     std::fs::remove_dir_all(dir).unwrap();
 
-    // A v0.16 string: no flags, finite durations, Java's defaults.
+    // A pre-v0.14 string: no flags, finite durations, Java's defaults.
     let old = Effects::deserialize("speed:1:100|speed:0:600|absorption:1:2400:5.5");
     assert_eq!(old.chain(Effect::Speed), [Active::new(Effect::Speed, 1, 100), Active::new(Effect::Speed, 0, 600)]);
     assert_eq!(old.absorption(), 5.5);

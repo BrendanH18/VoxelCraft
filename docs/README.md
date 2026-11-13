@@ -5,7 +5,7 @@
 ## Goals, status and planned changes
 
 - [Roadmap](roadmap.md): authoritative scope, dependencies and completion criteria.
-- [v0.20 presentation and performance scope](roadmap.md#v020-scope-presentation-and-performance):
+- [v0.18 presentation and performance scope](roadmap.md#v020-scope-presentation-and-performance):
   the graphics/UI review, work order and validation needs within M7.
 - [Requirement inventory](requirements.md): every core requirement as its own row,
   with state, owning release, evidence and acceptance cases.

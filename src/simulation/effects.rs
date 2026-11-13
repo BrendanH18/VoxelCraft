@@ -44,7 +44,7 @@ pub enum Effect {
     TrialOmen,
     /// Appended: saved by Java id; existing effect mask bits stay stable.
     Invisibility,
-    /// Appended (v0.17 EFX-REG-01): the eleven effects Java registers that
+    /// Appended (v0.14 EFX-REG-01): the eleven effects Java registers that
     /// the game lacked, in this order, which their icon layers follow.
     /// Registered so `/effect`, saves and the HUD know them; what each one
     /// does arrives with its own slice.
@@ -920,7 +920,7 @@ impl Effects {
 
     /// `Player.getDestroySpeed`'s Haste multiplier, `1 + (amplifier + 1) * 0.2`
     /// in single precision; exactly 1.0 without Haste. Conduit Power shares
-    /// the formula in Java; it is registered but its behaviour waits for v0.18.
+    /// the formula in Java; it is registered but its behaviour waits for v0.16.
     pub fn dig_speed_factor(&self) -> f32 {
         self.get(Effect::Haste).map_or(1.0, |a| 1.0 + (i32::from(a.amplifier) + 1) as f32 * 0.2)
     }

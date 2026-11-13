@@ -848,7 +848,7 @@ impl Entities {
                     if let Some(variant) = &v.map_variant {
                         saved["map_variant"] = json!(variant);
                     }
-                    // v0.17: `equipment` and `drop_chances` replace `armor` and `glint`.
+                    // v0.14: `equipment` and `drop_chances` replace `armor` and `glint`.
                     m.equipment.save_into(&mut saved, false);
                     Some(saved)
                 }

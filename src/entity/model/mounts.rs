@@ -85,7 +85,7 @@ const MARKINGS: [[Cuboid; 2]; 4] = [
 /// `#A06540`) before emitting vertices, as `equipment/leather.json`'s
 /// dyeable `horse_body` layer is tinted.
 const LEATHER_HORSE: [u8; 3] = [1, 2, 4];
-/// Leather, iron, gold, diamond, then copper and netherite (v0.17).
+/// Leather, iron, gold, diamond, then copper and netherite (v0.14).
 const fn armors() -> [[Cuboid; 3]; 6] {
     let colors = [LEATHER_HORSE, [210, 210, 215], [235, 194, 54], [60, 220, 210], [196, 112, 80], [80, 72, 78]];
     let mut out = [[cube([0.; 3], [0.; 3], [0; 3], 0); 3]; 6];

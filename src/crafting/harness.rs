@@ -1,4 +1,4 @@
-//! v0.17 harnesses (Java 26.3 `data/minecraft/recipe`): `white_harness.json`
+//! v0.14 harnesses (Java 26.3 `data/minecraft/recipe`): `white_harness.json`
 //! and the other colours, three leather over glass, the colour's wool and
 //! glass; `dye_white_harness.json` and the others, any other colour's
 //! harness and a dye.

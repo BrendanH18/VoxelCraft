@@ -179,7 +179,7 @@ impl Ord for Fraction {
 
 /// `BundleContents.canItemBeInBundle`: anything but a shulker box
 /// (`BlockItem.canFitInsideContainerItems`). The game registers no shulker
-/// boxes yet (v0.18), so every item fits.
+/// boxes yet (v0.16), so every item fits.
 pub fn can_fit(_stack: &Stack) -> bool {
     true
 }

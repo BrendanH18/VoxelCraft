@@ -358,7 +358,7 @@ mod tests {
 
     /// `Mob.EQUIPMENT_POPULATION_ORDER` is head, chest, legs, feet: a
     /// partial set always has its helmet (VoxelCraft started at the boots
-    /// before v0.17).
+    /// before v0.14).
     #[test]
     fn monster_rolls_match_java_slot_order() {
         let mut any = 0;

@@ -445,7 +445,7 @@ fn game_table(java: &str) -> String {
 }
 
 /// Java tables that name a bundle but that the game doesn't roll yet:
-/// villages (tannery, weaponsmith) and abandoned camps (v0.18) own them.
+/// villages (tannery, weaponsmith) and abandoned camps (v0.16) own them.
 const TABLE_GAPS: &[&str] = &[
     "barrels/abandoned_camp_barrel",
     "chests/abandoned_camp_common_chest",

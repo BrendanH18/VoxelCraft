@@ -850,7 +850,7 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             (r <= 5.8).then(|| if swirl == 1 { tint([196, 222, 236], 1.0) } else { tint([150, 176, 210], 0.95) })
         }
         Sprite::Bundle(c) => {
-            // Original v0.17 icon: a round leather pouch in the bundle's
+            // Original v0.14 icon: a round leather pouch in the bundle's
             // colour, cinched at the neck by a pale string tie, its frilled
             // mouth open at the top with the dark inside showing.
             let pouch = |x: i32, y: i32| {
@@ -884,7 +884,7 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             }
         }
         Sprite::Harness(c) => {
-            // Original v0.17 icon: a quilted pad of the dye's colour under a
+            // Original v0.14 icon: a quilted pad of the dye's colour under a
             // leather strap carrying two round glass goggles.
             let pad = |x: i32, y: i32| {
                 let (dx, dy) = ((2 * x - 15).abs(), (2 * y - 19).abs());
@@ -1385,7 +1385,7 @@ mod tests {
     }
 
     /// Every registered effect has an icon, tinted with its own colour, and
-    /// the effects registered in v0.17 each have a silhouette of their own.
+    /// the effects registered in v0.14 each have a silhouette of their own.
     #[test]
     fn every_effect_icon_draws_in_its_colour() {
         let mask = |e: Effect| {
