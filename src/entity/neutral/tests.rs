@@ -63,22 +63,54 @@ fn every_neutral_kind_holds_its_attacker_as_its_persistent_target() {
     }
 }
 
+/// `NeutralMob.playerDied`, with the rule on and off.
+fn forgives(kind: MobKind) {
+    // On: the host dies nearby and every neutral mob forgives it.
+    let mut e = provoked(kind, true, false, &[]);
+    e.player_died(HOST, DVec3::new(6.5, 1.0, 0.5));
+    assert_eq!(e.mobs[0].anger_target(), None, "{kind:?} forgives");
+    // Another player's death changes nothing.
+    let mut e = provoked(kind, true, false, &[]);
+    e.player_died(BYSTANDER, DVec3::new(-2.5, 1.0, 0.5));
+    assert_eq!(e.mobs[0].anger_target(), Some(HOST), "{kind:?} only forgives the dead");
+    // Off: the grudge outlives the death.
+    let mut e = provoked(kind, false, false, &[]);
+    e.player_died(HOST, DVec3::new(6.5, 1.0, 0.5));
+    assert_eq!(e.mobs[0].anger_target(), Some(HOST), "{kind:?} holds the grudge");
+}
+
 #[test]
-fn forgive_dead_players_clears_the_grudge_only_with_the_rule_and_inside_the_box() {
-    for kind in KINDS {
-        // On: the host dies nearby and every neutral mob forgives it.
-        let mut e = provoked(kind, true, false, &[]);
-        e.player_died(HOST, DVec3::new(6.5, 1.0, 0.5));
-        assert_eq!(e.mobs[0].anger_target(), None, "{kind:?} forgives");
-        // Another player's death changes nothing.
-        let mut e = provoked(kind, true, false, &[]);
-        e.player_died(BYSTANDER, DVec3::new(-2.5, 1.0, 0.5));
-        assert_eq!(e.mobs[0].anger_target(), Some(HOST), "{kind:?} only forgives the dead");
-        // Off: the grudge outlives the death.
-        let mut e = provoked(kind, false, false, &[]);
-        e.player_died(HOST, DVec3::new(6.5, 1.0, 0.5));
-        assert_eq!(e.mobs[0].anger_target(), Some(HOST), "{kind:?} holds the grudge");
-    }
+fn bee_forgives_a_dead_player_only_under_forgive_dead_players() {
+    forgives(MobKind::Bee);
+}
+
+#[test]
+fn iron_golem_forgives_a_dead_player_only_under_forgive_dead_players() {
+    forgives(MobKind::IronGolem);
+}
+
+#[test]
+fn wolf_forgives_a_dead_player_only_under_forgive_dead_players() {
+    forgives(MobKind::Wolf);
+}
+
+#[test]
+fn enderman_forgives_a_dead_player_only_under_forgive_dead_players() {
+    forgives(MobKind::Enderman);
+}
+
+#[test]
+fn zombified_piglin_forgives_a_dead_player_only_under_forgive_dead_players() {
+    forgives(MobKind::ZombifiedPiglin);
+}
+
+#[test]
+fn the_death_notice_reaches_polar_bears_too() {
+    forgives(MobKind::PolarBear);
+}
+
+#[test]
+fn the_death_notice_box_is_the_dead_players_block_inflated_32_10_32() {
     // The box is the dead player's block inflated by 32, 10 and 32: a mob
     // whose box reaches into it hears, one past it doesn't.
     // The mob stands at (0.5, 1, 0.5).
@@ -93,6 +125,8 @@ fn forgive_dead_players_clears_the_grudge_only_with_the_rule_and_inside_the_box(
         (DVec3::new(0.5, -10.5, 0.5), false),
     ] {
         let mut e = provoked(MobKind::ZombifiedPiglin, true, false, &[]);
+        // Back where it started: its update may have stepped it toward the host.
+        e.mobs[0].pos = DVec3::new(0.5, 1.0, 0.5);
         e.player_died(HOST, at);
         assert_eq!(e.mobs[0].anger_target().is_none(), heard, "{at}");
     }
@@ -149,31 +183,54 @@ fn angry_endermen_and_zombified_piglins_go_for_their_attacker_not_the_nearest_pl
     }
 }
 
-#[test]
-fn universal_anger_leaves_the_mob_angry_at_every_player_and_picks_the_nearest() {
-    for kind in DRIVEN {
-        // Off: the attacker is the target; the bystander never is.
-        let mut e = provoked(kind, true, false, &[]);
-        let c = ctx(dimension(kind));
-        for _ in 0..40 {
-            e.neutral_sense(&grid(), &c);
-            e.spawn_ticks += 1;
-        }
-        assert_eq!(e.mobs[0].anger_target(), Some(HOST), "{kind:?} off");
-        // On: no persistent target at first, then the nearer bystander.
-        let mut e = provoked(kind, true, true, &[]);
-        assert!(e.mobs[0].angry_at_all_players(), "{kind:?}");
-        assert_eq!(e.mobs[0].anger_target(), None, "{kind:?}");
-        for _ in 0..200 {
-            e.neutral_sense(&grid(), &c);
-            e.spawn_ticks += 1;
-            if e.mobs[0].anger_target().is_some() {
-                break;
-            }
-        }
-        assert_eq!(e.mobs[0].anger_target(), Some(BYSTANDER), "{kind:?} on");
-        assert!(!e.mobs[0].angry_at_all_players(), "{kind:?} keeps the one it picked");
+/// `ResetUniversalAngerTargetGoal` and `isAngryAtAllPlayers`, with the rule on and off.
+fn angry_at_everyone(kind: MobKind) {
+    // Off: the attacker is the target; the bystander never is.
+    let mut e = provoked(kind, true, false, &[]);
+    let c = ctx(dimension(kind));
+    for _ in 0..40 {
+        e.neutral_sense(&grid(), &c);
+        e.spawn_ticks += 1;
     }
+    assert_eq!(e.mobs[0].anger_target(), Some(HOST), "{kind:?} off");
+    // On: no persistent target at first, then the nearer bystander.
+    let mut e = provoked(kind, true, true, &[]);
+    assert!(e.mobs[0].angry_at_all_players(), "{kind:?}");
+    assert_eq!(e.mobs[0].anger_target(), None, "{kind:?}");
+    for _ in 0..200 {
+        e.neutral_sense(&grid(), &c);
+        e.spawn_ticks += 1;
+        if e.mobs[0].anger_target().is_some() {
+            break;
+        }
+    }
+    assert_eq!(e.mobs[0].anger_target(), Some(BYSTANDER), "{kind:?} on");
+    assert!(!e.mobs[0].angry_at_all_players(), "{kind:?} keeps the one it picked");
+}
+
+#[test]
+fn bee_under_universal_anger_turns_on_the_nearest_player() {
+    angry_at_everyone(MobKind::Bee);
+}
+
+#[test]
+fn iron_golem_under_universal_anger_turns_on_the_nearest_player() {
+    angry_at_everyone(MobKind::IronGolem);
+}
+
+#[test]
+fn wolf_under_universal_anger_turns_on_the_nearest_player() {
+    angry_at_everyone(MobKind::Wolf);
+}
+
+#[test]
+fn enderman_under_universal_anger_turns_on_the_nearest_player() {
+    angry_at_everyone(MobKind::Enderman);
+}
+
+#[test]
+fn zombified_piglin_under_universal_anger_turns_on_the_nearest_player() {
+    angry_at_everyone(MobKind::ZombifiedPiglin);
 }
 
 #[test]
