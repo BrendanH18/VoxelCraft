@@ -80,7 +80,13 @@ extractor `tools/extract_java_damage_fixtures.py`):
 
 Unit tests were updated in `src/simulation/survival.rs`, `src/enchant.rs`,
 `src/rules.rs`, `src/session/hands/tests.rs` and the entity tests that match
-causes. Remote runs: see the hand-off report.
+causes. Review (2026-11-13): `scripts/remote-check.sh --full` passed on
+b377529d (clippy and every test, default and `--no-default-features`); the
+extractor re-run from the pinned jars reproduces the fixture byte for byte;
+removing `fall` from `DamageType::exhaustion` and disabling the Fire
+Resistance check made `damage_types_match_the_jar_both_ways`,
+`food_exhaustion_follows_the_damage_type` and
+`fire_resistance_refuses_every_is_fire_type_at_the_entry_point` fail.
 
 ## Differences from Java left in place
 
@@ -108,6 +114,15 @@ causes. Remote runs: see the hand-off report.
   `bypasses_shield`, `damages_helmet`, `is_freezing`'s ×5 for freeze-hurts-extra
   mobs) are compared as data only. `ItemStack.canBeHurtBy` (netherite armor
   ignoring fire wear) is not modelled.
+- A blaze fireball still sets a player alight when its hit is refused
+  (Fire Resistance, a shield, the hurt-immunity window). Java's
+  `SmallFireball.onHitEntity` ignites first and restores the old fire ticks
+  when `hurtServer` returns false; VoxelCraft sends `Ignite` regardless. With
+  Fire Resistance the burning does no damage, so only the flames show.
+- Creative players now take `#bypasses_invulnerability` damage in
+  `Vitals::damage`, as in Java, but the game already matched there: `/kill`
+  passes no creative flag and nothing deals `out_of_world` damage yet, so it
+  is not counted in the ledger.
 - Host thorns (`app/lan.rs`) now goes through armor, as the agent's already
   did; the host path is in the binary crate and is compiled, not tested.
 

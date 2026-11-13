@@ -6,6 +6,5 @@ fix	fix:enchantment/ghast-fireball-blast-is-player-explosion	tests/java_damage_t
 fix	fix:enchantment/protection-skips-starvation	tests/java_damage_types.rs::protection_skips_bypasses_effects_and_bypasses_enchantments
 fix	fix:damage/food-exhaustion-per-damage-type	tests/java_damage_types.rs::food_exhaustion_follows_the_damage_type
 fix	fix:damage/bypasses-armor-ignores-and-spares-armor	tests/java_damage_types.rs::armor_reduces_and_wears_only_outside_bypasses_armor
-fix	fix:damage/creative-takes-bypasses-invulnerability	tests/java_damage_types.rs::creative_players_take_only_bypasses_invulnerability
 fix	fix:agent/environment-damage-typed-and-armored	tests/java_damage_types.rs::agent_environment_damage_is_typed_and_goes_through_armor
 fix	fix:damage/fire-magma-campfire-death-messages	tests/java_damage_types.rs::named_causes_say_their_java_types_death_message
