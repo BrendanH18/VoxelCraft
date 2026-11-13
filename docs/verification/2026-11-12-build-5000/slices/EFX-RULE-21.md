@@ -23,10 +23,13 @@
     `unitCubeFromLowerCorner(pos).inflate(range, 10, range)` box.
   - `neutral_sense`: the player `NearestAttackableTargetGoal` with
     `isAngryAt` for a mob angry at everyone: every other tick, one chance
-    in five, the nearest targetable living player within the visibility-
-    scaled follow range it can see (endermen need no sight line, tame
-    wolves skip their owner, player-made golems never pick) becomes the
-    persistent target, as `updatePersistentAnger` keeps it.
+    in five (endermen's `EndermanLookForPlayerGoal` has no roll), the
+    nearest targetable living player within the visibility-scaled follow
+    range it can see (every kind, endermen included, as
+    `TargetingConditions.forCombat()` checks the sight line; tame wolves
+    skip their owner, player-made golems never pick, nobody is picked on
+    peaceful) becomes the persistent target, as `updatePersistentAnger`
+    keeps it.
   - `neutral_hurt_by`: `HurtByTargetGoal` for wolves, iron golems,
     endermen and zombified piglins, run from the shared hurt-by queue
     (`resolve_hurt_by`), so creative players' hits change no target. The
@@ -104,7 +107,8 @@ New save keys only (`neutral_anger`, `anger_all`), written when set.
   edges, a held grudge attacking the respawned player (and a forgiven one
   not), endermen and zombified piglins attacking their attacker rather than
   a nearer bystander, valid/visible/range/owner limits, same-kind alerts,
-  built golems, timer lapse, a mid-anger save and reload per kind (rule on
+  built golems, timer lapse, no pick through walls (endermen included) or
+  on peaceful, a mid-anger save and reload per kind (rule on
   and off), and old records; piglins: universal retaliation and rally,
   the gold-armour memory, and chest anger.
 - `src/entity/polar_bear/tests.rs`: a dead player stays the target until
@@ -134,6 +138,9 @@ the hand-off report).
   the rule is off). The universal pick waits for the piglin's next look
   around (it is due at once after the hit) instead of reading the
   sensor's last `NEAREST_VISIBLE_ATTACKABLE_PLAYER`.
+- An enderman angry at everyone takes the player it picks at once; Java's
+  `EndermanLookForPlayerGoal` holds it as a pending target for its
+  `aggroTime` (about six ticks) first.
 - A zombified piglin killed by the hit still alerts the others (as the
   game did before); Java's dead piglin alerts nobody.
 
@@ -150,3 +157,25 @@ Nothing new is drawn. A scene that would show the behaviour needs a death
 and a respawn, which scripted captures do not drive; the closest is a
 zombified piglin beside the player in the Nether:
 `cargo run --release -- --data-dir target/screenshots --spawn zombified_piglin,2,~,0 --wait 2 --screenshot target/screenshots/efx-rule-21.png`.
+
+## Review
+
+Reviewed from 8fd4c2c9. The extractor re-run diffs identical with the
+fixture; the 32/10/32 box, the six alert flags and follow ranges, the
+`forgive_dead_players` gate in `ServerPlayer.die` and the 600-tick piglin
+expiries were checked by hand against the source. Repairs:
+
+- Endermen picked a player under `universal_anger` without a sight line.
+  `EndermanLookForPlayerGoal`'s start conditions are
+  `TargetingConditions.forCombat()`, which checks it, and its `canUse` has
+  no random roll; both now match.
+- Neutral mobs picked players on peaceful; `LivingEntity.canAttack` refuses
+  them there.
+- New test `universal_anger_needs_a_line_of_sight_and_a_difficulty_above_peaceful`;
+  the test helper now takes the hit on a target-selector off tick, so the
+  enderman's roll-free pick cannot land inside it.
+- Ledger: dropped `behaviour:neutral-mob/java-implementer-table` (the
+  oracle comparison, not a behaviour) and
+  `fix:neutral-mob/held-grudge-targets-respawned-player` (the same thing as
+  the zombified piglin's `forgive-dead-players` row with the rule off and
+  the attacker-not-nearest fix).

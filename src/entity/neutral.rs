@@ -227,9 +227,10 @@ impl Entities {
 
     /// Each target selector's `NearestAttackableTargetGoal<Player>` with
     /// `isAngryAt` for a mob angry at every player: every other tick, one
-    /// chance in five (`reducedTickDelay(10)`), the nearest valid player in
-    /// follow range it can see (endermen need no sight line) becomes its
-    /// persistent target.
+    /// chance in five (`reducedTickDelay(10)`; endermen's
+    /// `EndermanLookForPlayerGoal` has no such roll), the nearest valid
+    /// player in follow range it can see becomes its persistent target.
+    /// None on peaceful (`LivingEntity.canAttack`).
     pub(super) fn neutral_sense<W: MobWorld + ?Sized>(&mut self, w: &W, ctx: &Ctx) {
         if !self.mobs.iter().any(|m| m.neutral_universal) {
             return;
@@ -244,9 +245,12 @@ impl Entities {
                 self.mobs[i].neutral_universal = false;
                 continue;
             }
+            // `EndermanLookForPlayerGoal.canUse` replaces the random interval
+            // of the other kinds' `NearestAttackableTargetGoal`.
             if !self.neutral_universal_anger
+                || self.difficulty == crate::simulation::difficulty::Difficulty::Peaceful
                 || !(self.spawn_ticks + u64::from(m.uid)).is_multiple_of(2)
-                || self.rng.next_int(5) != 0
+                || m.kind != MobKind::Enderman && self.rng.next_int(5) != 0
             {
                 continue;
             }
@@ -254,6 +258,8 @@ impl Entities {
             let range = follow_range(m.kind).unwrap_or(16.0);
             let eye = m.pos + DVec3::Y * m.shape().height * 0.85;
             let owner = m.animal.as_ref().and_then(|a| a.owner);
+            // Every kind's start conditions are `TargetingConditions.forCombat()`,
+            // which checks the line of sight (the enderman's too).
             let pick = ctx
                 .players
                 .iter()
@@ -262,7 +268,7 @@ impl Entities {
                         && p.alive
                         && owner != Some(p.id)
                         && p.pos.distance_squared(m.pos) <= p.detection_range(range).powi(2)
-                        && (m.kind == MobKind::Enderman || super::mob::line_of_sight(w, eye, p.pos + DVec3::Y * 1.62))
+                        && super::mob::line_of_sight(w, eye, p.pos + DVec3::Y * 1.62)
                 })
                 .min_by(|a, b| a.pos.distance_squared(m.pos).total_cmp(&b.pos.distance_squared(m.pos)))
                 .map(|p| p.id);

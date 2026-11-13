@@ -49,6 +49,9 @@ fn provoked(kind: MobKind, forgive: bool, universal: bool, extra: &[DVec3]) -> E
         e.mobs.last_mut().unwrap().on_ground = true;
     }
     e.ensure_mob_ids();
+    // The update runs as the first mob's off tick (`spawn_ticks + uid` odd),
+    // so it takes the hit without its target selector picking a player yet.
+    e.spawn_ticks = u64::from(e.mobs[0].uid);
     e.attack(0, DVec3::X, 0.5);
     e.update(0.05, &grid(), &ctx(dimension(kind)));
     e
@@ -258,6 +261,37 @@ fn universal_anger_needs_a_valid_visible_player_in_follow_range() {
         e.spawn_ticks += 1;
     }
     assert_eq!(e.mobs[0].anger_target(), None);
+}
+
+/// `TargetingConditions.forCombat()` checks the line of sight for every
+/// kind, endermen included (`EndermanLookForPlayerGoal`'s start conditions),
+/// and `LivingEntity.canAttack` refuses players on peaceful.
+#[test]
+fn universal_anger_needs_a_line_of_sight_and_a_difficulty_above_peaceful() {
+    let mut walled = grid();
+    for x in [-1, 3] {
+        for y in 0..8 {
+            for z in -4..=4 {
+                walled.set(glam::IVec3::new(x, y, z), crate::world::block::Block::STONE);
+            }
+        }
+    }
+    for kind in DRIVEN {
+        let c = ctx(dimension(kind));
+        let mut e = provoked(kind, true, true, &[]);
+        for _ in 0..200 {
+            e.neutral_sense(&walled, &c);
+            e.spawn_ticks += 1;
+        }
+        assert_eq!(e.mobs[0].anger_target(), None, "{kind:?} sees nobody through the walls");
+        let mut e = provoked(kind, true, true, &[]);
+        e.difficulty = crate::simulation::difficulty::Difficulty::Peaceful;
+        for _ in 0..200 {
+            e.neutral_sense(&grid(), &c);
+            e.spawn_ticks += 1;
+        }
+        assert_eq!(e.mobs[0].anger_target(), None, "{kind:?} on peaceful");
+    }
 }
 
 #[test]
