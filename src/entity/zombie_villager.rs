@@ -143,6 +143,21 @@ mod tests {
     use super::*;
     use crate::physics::test_util::Grid;
     #[test]
+    fn a_leader_zombie_villager_keeps_its_attributes_and_health_across_a_save() {
+        let mut e = Entities::new(11);
+        e.spawn(MobKind::ZombieVillager, glam::DVec3::ZERO);
+        let mut attrs = super::super::zombie::Attrs::for_kind(MobKind::ZombieVillager);
+        attrs.leader_health = 2.0;
+        attrs.leader_reinforcement = 0.6;
+        e.mobs[0].attrs = attrs;
+        e.mobs[0].health = e.mobs[0].max_health();
+        assert!(e.mobs[0].health > 20.0);
+        let mut copy = Entities::new(12);
+        copy.load_villagers(&e.villagers_to_string());
+        assert_eq!(copy.mobs[0].attributes(), attrs);
+        assert_eq!(copy.mobs[0].health, e.mobs[0].health, "a leader's extra health isn't clamped away");
+    }
+    #[test]
     fn curing_strength_fraction_and_equipment_roundtrip() {
         let mut e = Entities::new(11);
         e.spawn(MobKind::ZombieVillager, glam::DVec3::ZERO);

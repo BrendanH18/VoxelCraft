@@ -850,6 +850,10 @@ impl Entities {
                     }
                     // v0.14: `equipment` and `drop_chances` replace `armor` and `glint`.
                     m.equipment.save_into(&mut saved, false);
+                    // A zombie villager's spawn attributes (leaders' health and reinforcements).
+                    if m.attributes() != super::zombie::Attrs::default() {
+                        saved["attributes"] = m.attrs.save();
+                    }
                     Some(saved)
                 }
                 _ => None,
@@ -964,7 +968,9 @@ impl Entities {
                 v.promote_left = a["promote"].as_f64().unwrap_or(0.0).clamp(0.0, 2.0) as f32;
                 v.promote_pending = a["promote_pending"].as_bool().unwrap_or(false) && v.promote_left > 0.0;
                 let mut m = Mob::new(kind, p, yaw);
-                m.health = health.min(kind.max_health());
+                // Before health, which a leader's max health bounds.
+                m.attrs = super::zombie::Attrs::load(&a["attributes"]);
+                m.health = health.min(m.max_health());
                 m.age = i32::try_from(a["age"].as_i64()?).ok()?.clamp(-24000, 6000);
                 m.baby = m.age < 0;
                 m.built = a["built"].as_bool().unwrap_or(false);

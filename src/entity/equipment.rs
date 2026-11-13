@@ -206,9 +206,8 @@ impl Equipment {
         self.drop_chance(slot) > PRESERVE_THRESHOLD
     }
 
-    /// Puts a `kind` armor piece in its slot, enchanted with `enchants`.
-    /// Chainmail (no item yet) is recorded for drawing only; a material
-    /// without that piece (turtle below the head) is skipped.
+    /// Puts a `kind` armor piece in its slot, enchanted with `enchants`; a
+    /// material without that piece (turtle below the head) is skipped.
     pub fn wear(&mut self, piece: ArmorPiece, kind: ArmorKind, enchants: Enchants) {
         let material = match kind {
             ArmorKind::Leather => ArmorMaterial::Leather,
@@ -219,7 +218,7 @@ impl Equipment {
             ArmorKind::Copper => ArmorMaterial::Copper,
             ArmorKind::Turtle if piece == ArmorPiece::Helmet => ArmorMaterial::Turtle,
             ArmorKind::Turtle => return,
-            ArmorKind::Chain => return self.wear_chainmail(piece, !enchants.is_empty()),
+            ArmorKind::Chain => ArmorMaterial::Chainmail,
         };
         let mut stack = Stack::new(Item::armor(piece, material), 1);
         stack.enchants = enchants;
@@ -235,10 +234,12 @@ impl Equipment {
         }
     }
 
-    /// A chainmail piece (drawn only; see [`Equipment`]), `glint` if enchanted.
+    /// A chainmail piece, Protection I if `glint`: how records saved while
+    /// chainmail had no item (`"chainmail"`, `"chainmail*"`) load now that
+    /// it has one.
     pub fn wear_chainmail(&mut self, piece: ArmorPiece, glint: bool) {
-        self.set(Slot::of_piece(piece), None);
-        self.chainmail |= (1 | (u8::from(glint) << 4)) << (piece as u8);
+        let enchants = if glint { Enchants::NONE.with(Enchantment::Protection, 1) } else { Enchants::NONE };
+        self.wear(piece, ArmorKind::Chain, enchants);
     }
 
     /// The armor material worn on `piece`, if any.
@@ -552,6 +553,11 @@ mod tests {
             assert_eq!(Slot::from_name(slot.name()), Some(slot));
         }
         e.wear(ArmorPiece::Boots, ArmorKind::Chain, Enchants::NONE.with(Enchantment::Protection, 1));
+        assert_eq!(
+            e.get(Slot::Feet).map(|s| s.item),
+            Some(Item::armor(ArmorPiece::Boots, ArmorMaterial::Chainmail)),
+            "chainmail is a real stack"
+        );
         e.set_drop_chance(Slot::Head, 0.0);
         e.set_guaranteed_drop(Slot::MainHand);
         let back = Equipment::load(&e.save(), &e.save_drop_chances().unwrap());

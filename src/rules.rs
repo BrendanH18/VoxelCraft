@@ -209,13 +209,13 @@ pub const JAVA_RULES: [RuleDef; 59] = [
     boolean("immediate_respawn", "doImmediateRespawn", false, I),
     boolean("keep_inventory", "keepInventory", false, I),
     boolean("lava_source_conversion", "lavaSourceConversion", false, I),
-    boolean("limited_crafting", "doLimitedCrafting", false, M("v0.20")),
+    boolean("limited_crafting", "doLimitedCrafting", false, M("v0.18")),
     boolean("locator_bar", "locatorBar", true, M("unscheduled")),
     boolean("log_admin_commands", "logAdminCommands", true, N("server log")),
     integer("max_block_modifications", "commandModificationBlockLimit", 32768, 1, i32::MAX, N("no fill or clone")),
     integer("max_command_forks", "maxCommandForkCount", 65536, 0, i32::MAX, N("no functions")),
     integer("max_command_sequence_length", "maxCommandChainLength", 65536, 0, i32::MAX, N("no functions")),
-    integer("max_entity_cramming", "maxEntityCramming", 24, 0, i32::MAX, M("v0.19")),
+    integer("max_entity_cramming", "maxEntityCramming", 24, 0, i32::MAX, M("v0.17")),
     integer("max_minecart_speed", "minecartMaxSpeed", 8, 1, 1000, N("experimental minecart rewrite")),
     integer("max_snow_accumulation_height", "snowAccumulationHeight", 1, 0, 8, I),
     boolean("mob_drops", "doMobLoot", true, I),
@@ -228,9 +228,9 @@ pub const JAVA_RULES: [RuleDef; 59] = [
     integer("players_sleeping_percentage", "playersSleepingPercentage", 100, 0, i32::MAX, I),
     boolean("projectiles_can_break_blocks", "projectilesCanBreakBlocks", true, M("v0.12")),
     boolean("pvp", "pvp", true, M("v1.x")),
-    boolean("raids", "disableRaids", true, M("v0.17")),
+    boolean("raids", "disableRaids", true, M("v0.15")),
     integer("random_tick_speed", "randomTickSpeed", 3, 0, i32::MAX, I),
-    boolean("reduced_debug_info", "reducedDebugInfo", false, M("v0.20")),
+    boolean("reduced_debug_info", "reducedDebugInfo", false, M("v0.18")),
     integer("respawn_radius", "spawnRadius", 10, 0, i32::MAX, I),
     boolean("send_command_feedback", "sendCommandFeedback", true, I),
     boolean("show_advancement_messages", "announceAdvancements", true, N("no advancements")),
@@ -238,7 +238,7 @@ pub const JAVA_RULES: [RuleDef; 59] = [
     boolean("spawner_blocks_work", "spawnerBlocksEnabled", true, I),
     boolean("spawn_mobs", "doMobSpawning", true, I),
     boolean("spawn_monsters", "spawnMonsters", true, I),
-    boolean("spawn_patrols", "doPatrolSpawning", true, M("v0.17")),
+    boolean("spawn_patrols", "doPatrolSpawning", true, M("v0.15")),
     boolean("spawn_phantoms", "doInsomnia", true, I),
     boolean("spawn_wandering_traders", "doTraderSpawning", true, I),
     boolean("spawn_wardens", "doWardenSpawning", true, I),
@@ -843,7 +843,7 @@ mod tests {
         let mut rules = GameRules::default();
         assert!(rules.get("raids").is_none() && rules.get("disableRaids").is_none());
         let error = rules.set("raids", "false").unwrap_err();
-        assert!(error.contains("not implemented") && error.contains("v0.17"), "{error}");
+        assert!(error.contains("not implemented") && error.contains("v0.15"), "{error}");
         assert!(rules.set("elytra_movement_check", "false").unwrap_err().contains("no single-player effect"));
         assert!(GameRules::unknown("nope").contains("unknown gamerule"));
         assert_eq!(rules, GameRules::default());
