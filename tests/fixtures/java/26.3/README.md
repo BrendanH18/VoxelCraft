@@ -553,3 +553,31 @@ lacks must be owned in `registry_gaps.json`), and tests
 `isSameItemSameComponents` merging, item defaults, codec limits, the save
 string, frozen pre-v0.17 stack strings and every container, including a
 save read back by a second process.
+
+## Harnesses
+
+`harnesses.json` records the sixteen harness items of Java 26.3 in the
+`harnesses` item tag's order (`DyeColor` order), the `stacksTo(1)` of the
+`Items.HARNESS` item lambda, `Equippable.harness` (body slot,
+`entity.happy_ghast.equip` and `entity.happy_ghast.unequip` sounds read
+from `SoundEvents`, the `can_equip_harness` entity tag, equip on interact,
+can be sheared), the happy ghast's tempt tag, the type, group and category
+of the 32 harness recipes, and every other data file that names a harness
+(none: crafting is the only source). The recipes' shapes stay in
+`recipes.json`. The extractor matches the bytecode sequences it relies on
+with `javap` and fails when they change. It does not read VoxelCraft source
+or the existing fixture.
+
+```sh
+python3 tools/extract_java_harness_fixtures.py /path/to/server.jar --output target/java-harnesses.json
+diff tests/fixtures/java/26.3/harnesses.json target/java-harnesses.json
+scripts/remote-check.sh -- 'cargo test --release --test java_harnesses --test java_recipes'
+```
+
+`tests/java_harnesses.rs` compares the items with the tag both ways, checks
+the stack size and equippable data, runs the recipe comparison of
+`tests/java_recipes/compare.rs` and requires every harness recipe in it to be
+registered, crafts every colour in both row positions, re-dyes every pair of
+colours (the result's own colour is not a recipe), crafts and re-dyes
+through the CLI's `craft`, and round-trips the stacks through the inventory
+save format.

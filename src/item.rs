@@ -333,6 +333,8 @@ pub enum Sprite {
     HorseArmor(ArmorMaterial),
     /// Nautilus armor of this material (a spiral shell plate).
     NautilusArmor(ArmorMaterial),
+    /// v0.17: a harness of this colour (`content::harness`).
+    Harness([u8; 3]),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1084,6 +1086,9 @@ impl Item {
     }
 
     pub fn info(self) -> ItemInfo {
+        if let Some(info) = crate::content::harness::item_info(self) {
+            return info;
+        }
         if self == Self::FERMENTED_SPIDER_EYE {
             return item("fermented spider eye", Sprite::FermentedSpiderEye);
         }
@@ -1604,6 +1609,8 @@ impl Item {
             .chain([Self::FERMENTED_SPIDER_EYE])
             // v0.17 build-5000 ITEM-EQUIP: chainmail, horse and nautilus armor.
             .chain(crate::equipment::all())
+            // v0.17 build-5000 ITEM-16-HARNESSES: the sixteen harnesses.
+            .chain(crate::content::harness::all())
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1666,6 +1673,10 @@ fn sprite_index(item: Item) -> Option<u16> {
     }
     match item.0 {
         1530 => Some(late_icon_base()),
+        // v0.17 harnesses follow the ITEM-EQUIP icons.
+        i if (crate::content::harness::ITEM_FIRST..crate::content::harness::ITEM_END).contains(&i) => {
+            Some(late_icon_base() + 1 + crate::equipment::ICON_COUNT + i - crate::content::harness::ITEM_FIRST)
+        }
         1280..=1281 => Some(passive_icon_base() + 4 + item.0 - 1280),
         1385..=1386 => Some(passive_icon_base() + 9 + item.0 - 1385),
         1395..=1401 => Some(passive_icon_base() + 11 + item.0 - 1395),
@@ -1788,6 +1799,7 @@ pub const fn icon_count() -> u32 {
     late_icon_base() as u32
         + 1 // Fermented spider eye.
         + crate::equipment::ICON_COUNT as u32
+        + (crate::content::harness::ITEM_END - crate::content::harness::ITEM_FIRST) as u32
 }
 
 /// The fermented spider eye's icon: icons appended in v0.17 follow it.
