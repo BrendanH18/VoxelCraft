@@ -16,7 +16,11 @@ ID reservations in `docs/architecture.md`; this slice took no IDs).
     is equal (one leaked entry per distinct value; the saved field is
     encoded once at interning). An item default (empty bundle, blank
     writable book, plain banner) interns to `None`.
-  - Java's codec limits as `Payload::is_valid` and constants.
+  - Java's codec limits as `Payload::is_valid` and constants. A written
+    book page's 32767 limit applies to its JSON encoding, as
+    `ComponentSerialization.flatRestrictedCodec` measures it with
+    `GsonHelper.encodesLongerThan` (`java_json_len`: the quotes and Gson's
+    escapes count), not to the raw text (corrected in review).
   - `Trim` (`TrimPattern` x 18, `TrimMaterial` x 11), `trimmable(item)`.
   - `BANNER_PATTERNS` (43 names), `BannerPattern`, `BannerLayer`.
   - The shared dyed-colour helper lifted out of `entity/wolf_armor.rs`:
@@ -48,6 +52,10 @@ ID reservations in `docs/architecture.md`; this slice took no IDs).
 - `net/minecraft/world/item/component/BundleContents.java` (`equals` uses
   the item list only; the selected index is not part of equality),
   `WritableBookContent.java`, `WrittenBookContent.java`, `DyedItemColor.java`
+- `net/minecraft/network/chat/ComponentSerialization.java`
+  (`flatRestrictedCodec`, and a plain-text component collapsing to a bare
+  string) and `net/minecraft/util/GsonHelper.java` (`encodesLongerThan`
+  counts every character Gson writes): the written-book page limit
 - `net/minecraft/world/item/ItemStackTemplate.java` (bundle stack counts
   1-99)
 - `net/minecraft/world/item/equipment/trim/ArmorTrim.java`,

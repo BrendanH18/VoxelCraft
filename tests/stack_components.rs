@@ -297,8 +297,8 @@ fn item_defaults_leave_the_payload_slot_empty() {
 }
 
 /// Java's codec limits: `WritableBookContent` (100 pages of 1024 UTF-16
-/// units), `WrittenBookContent` (a 32-unit title, generation 0-3, 32767-unit
-/// pages) and `ItemStackTemplate` counts 1-99.
+/// units), `WrittenBookContent` (a 32-unit title, generation 0-3, pages whose
+/// JSON encoding is at most 32767 units) and `ItemStackTemplate` counts 1-99.
 #[test]
 fn payload_limits_follow_java_codecs() {
     let pages = |n: usize, page: &str| Payload::WritableBook(vec![page.to_owned(); n]);
@@ -316,10 +316,19 @@ fn payload_limits_follow_java_codecs() {
             ..Default::default()
         })
     };
-    assert!(book(&"t".repeat(32), 3, 32767).is_valid());
+    // A page's limit is its JSON string's length: two quotes, then
+    // 32765 plain characters fit and 32766 do not.
+    assert!(book(&"t".repeat(32), 3, 32765).is_valid());
     assert!(!book(&"t".repeat(33), 0, 1).is_valid());
     assert!(!book("t", 4, 1).is_valid());
-    assert!(!book("t", 0, 32768).is_valid());
+    assert!(!book("t", 0, 32766).is_valid());
+    // Gson escapes count: `"` is two characters, a control character six.
+    let page = |text: String| Payload::WrittenBook(WrittenBook { pages: vec![text], ..Default::default() });
+    assert!(page("\"".repeat(16382)).is_valid());
+    assert!(!page("\"".repeat(16383)).is_valid());
+    assert!(page(format!("{}{}", "\u{1}".repeat(5000), "y".repeat(2765))).is_valid());
+    assert!(!page(format!("{}{}", "\u{1}".repeat(5000), "y".repeat(2766))).is_valid());
+    assert_eq!(c::java_json_len("a\n\u{2028}\u{1F600}"), 2 + 1 + 2 + 6 + 2);
     assert!(!Payload::Bundle(vec![Stack::new(Item::DIAMOND, 100)]).is_valid());
     assert!(Payload::Bundle(vec![Stack::new(Item::DIAMOND, 64)]).is_valid());
 }

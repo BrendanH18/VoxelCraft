@@ -36,6 +36,8 @@ pub const MODELLED: [&str; 7] = [
 pub const WRITABLE_MAX_PAGES: usize = 100;
 pub const WRITABLE_PAGE_LENGTH: usize = 1024;
 /// `WrittenBookContent.PAGE_LENGTH`, `TITLE_MAX_LENGTH` and `MAX_GENERATION`.
+/// The page limit applies to the page's JSON encoding ([`java_json_len`]),
+/// as `ComponentSerialization.flatRestrictedCodec` measures it.
 pub const WRITTEN_PAGE_LENGTH: usize = 32767;
 pub const WRITTEN_TITLE_MAX_LENGTH: usize = 32;
 pub const WRITTEN_MAX_GENERATION: u8 = 3;
@@ -312,6 +314,22 @@ fn java_len(text: &str) -> usize {
     text.encode_utf16().count()
 }
 
+/// The UTF-16 length of a plain-text page as `flatRestrictedCodec` counts
+/// it: the component collapses to a bare JSON string, which Gson's
+/// `JsonWriter` writes with quotes, two-character escapes for `"`, `\` and
+/// `\t \b \n \r \f`, and `\uXXXX` for other control characters and
+/// U+2028/U+2029.
+pub fn java_json_len(text: &str) -> usize {
+    2 + text
+        .encode_utf16()
+        .map(|c| match c {
+            0x22 | 0x5C | 0x08..=0x0A | 0x0C | 0x0D => 2,
+            0x00..=0x07 | 0x0B | 0x0E..=0x1F | 0x2028 | 0x2029 => 6,
+            _ => 1,
+        })
+        .sum::<usize>()
+}
+
 fn dye_id(color: DyeColor) -> String {
     color.adjective().replace(' ', "_")
 }
@@ -342,7 +360,7 @@ impl Payload {
             Payload::WrittenBook(b) => {
                 java_len(&b.title) <= WRITTEN_TITLE_MAX_LENGTH
                     && b.generation <= WRITTEN_MAX_GENERATION
-                    && b.pages.iter().all(|p| java_len(p) <= WRITTEN_PAGE_LENGTH)
+                    && b.pages.iter().all(|p| java_json_len(p) <= WRITTEN_PAGE_LENGTH)
             }
             Payload::Banner(_) => true,
         }
