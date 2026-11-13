@@ -300,10 +300,10 @@ fn enchantment_tags_match_and_keep_java_order() {
         assert_eq!(registered_tag(&f, tag), [Enchantment::SilkTouch], "{tag}");
     }
     assert_eq!(registered_tag(&f, "smelts_loot"), [Enchantment::FireAspect]);
-    // Soul Speed is in #treasure and #tooltip_order only.
+    // Soul Speed is in #treasure (so #double_trade_price) and #tooltip_order only.
     for (tag, ids) in f["enchantment_tags"].as_object().unwrap() {
         let has = strings(ids).contains(&UNREGISTERED[0].to_string());
-        assert_eq!(has, tag == "treasure" || tag == "tooltip_order", "{tag}");
+        assert_eq!(has, matches!(tag.as_str(), "treasure" | "double_trade_price" | "tooltip_order"), "{tag}");
     }
 }
 
