@@ -625,7 +625,13 @@ impl Entities {
             for (target, attacker, damage, knockback) in hits {
                 let Some(i) = self.mobs.iter().position(|m| m.uid == target && m.alive()) else { continue };
                 let (kind, pos, burning) = (self.mobs[i].kind, self.mobs[i].pos, self.mobs[i].burning);
+                let anger = self.mobs[i].provocation();
                 let killed = self.mobs[i].damage(damage, Some(knockback), &mut self.rng);
+                if kind == MobKind::Enderman
+                    && self.mobs.iter().any(|m| m.uid == attacker && m.kind == MobKind::Endermite)
+                {
+                    self.mobs[i].set_provocation(anger);
+                }
                 self.warden_hurt(i, crate::world::vibration::EntityRef::Mob(attacker), true);
                 self.nether_hurt(i, Foe::Mob(attacker));
                 self.polar_hurt(i, Foe::Mob(attacker));

@@ -8,6 +8,18 @@ use crate::entity::endermite::{ATTACK_INTERVAL, EYE_HEIGHT, FOLLOW_RANGE, within
 use crate::entity::nether::Foe;
 
 impl Mob {
+    /// Seconds of anger an enderman holds (any hit raises it).
+    pub(in crate::entity) fn provocation(&self) -> f32 {
+        self.provoked
+    }
+
+    /// Puts back an enderman's anger after a bite from the endermite it
+    /// hunts: its `HurtByTargetGoal` picks that endermite, which it already
+    /// targets, rather than a player.
+    pub(in crate::entity) fn set_provocation(&mut self, seconds: f32) {
+        self.provoked = seconds;
+    }
+
     pub(super) fn endermite_think<W: MobWorld + ?Sized>(
         &mut self,
         dt: f32,

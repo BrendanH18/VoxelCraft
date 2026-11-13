@@ -1,0 +1,16 @@
+kind	name	evidence
+content	mob:endermite	src/entity/endermite/tests.rs::endermite_registration_attributes_and_loot_match_java
+content	loot:entities/endermite	src/entity/endermite/tests.rs::endermite_registration_attributes_and_loot_match_java
+behaviour	behaviour:endermite/attributes	src/entity/endermite/tests.rs::endermite_registration_attributes_and_loot_match_java
+behaviour	behaviour:endermite/pearl-spawn	src/entity/endermite/tests.rs::one_landed_pearl_in_twenty_leaves_an_endermite_where_the_thrower_stood
+behaviour	behaviour:endermite/lifetime	src/entity/endermite/tests.rs::endermites_vanish_after_two_minutes_unless_persistent
+behaviour	behaviour:endermite/saved	src/entity/endermite/tests.rs::endermite_lifetime_survives_saving_and_old_records_start_at_zero
+behaviour	behaviour:endermite/goals	src/entity/endermite/tests.rs::endermites_hunt_the_nearest_visible_player_and_bite_for_two
+behaviour	behaviour:endermite/hurt-by-alerts-others	src/entity/endermite/tests.rs::a_hurt_endermite_alerts_the_endermites_around_it
+behaviour	behaviour:enderman/hunts-endermites	src/entity/endermite/tests.rs::endermen_in_sight_hunt_endermites_and_the_endermites_fight_back
+behaviour	behaviour:endermite/arthropod	src/entity/endermite/tests.rs::bane_of_arthropods_covers_exactly_the_java_tag_with_its_damage_and_slowness
+behaviour	behaviour:bane-of-arthropods/slowness	src/entity/endermite/tests.rs::bane_of_arthropods_covers_exactly_the_java_tag_with_its_damage_and_slowness
+behaviour	behaviour:endermite/particles	src/particles/ambient.rs::endermites_emit_two_portal_particles_within_their_box
+behaviour	behaviour:endermite/model	src/entity/model/hostiles.rs::the_endermite_turns_as_one_body_and_its_segments_sway
+behaviour	behaviour:endermite/sounds	src/audio/tests.rs::every_sound_plays_in_a_java_category
+fix	fix:bee/bane-of-arthropods	src/entity/endermite/tests.rs::bane_of_arthropods_covers_exactly_the_java_tag_with_its_damage_and_slowness

@@ -22,7 +22,7 @@ fn ctx(players: Vec<Target>) -> Ctx {
         players,
         // Night: endermen in daylight wander off by teleporting.
         daylight: 0.0,
-        spawning: true,
+        spawning: false,
         raining: false,
         dimension: Dimension::Overworld,
     }
@@ -220,7 +220,7 @@ fn thrown_pearls_land_and_sometimes_leave_endermites_through_the_entity_update()
         let mut e = Entities::new(seed);
         let mut t = Target::new(PlayerId::HOST, start, false);
         t.look = DVec3::X;
-        let c = ctx(vec![t]);
+        let c = Ctx { spawning: true, ..ctx(vec![t]) };
         e.throw_pearl(PlayerId::HOST, start + DVec3::Y * 1.62, DVec3::new(1.0, 0.3, 0.0), DVec3::ZERO);
         for _ in 0..200 {
             let events = e.update(0.05, &world, &c);
@@ -242,6 +242,7 @@ fn thrown_pearls_land_and_sometimes_leave_endermites_through_the_entity_update()
 #[test]
 fn endermites_vanish_after_two_minutes_unless_persistent() {
     let world = Grid::flat(1);
+    // `ctx` turns natural spawning off, so the endermites are the only mobs.
     let c = ctx(vec![bystander(DVec3::new(4.5, 1.0, 0.5))]);
     let mut e = Entities::new(17);
     mite(&mut e, DVec3::new(0.5, 1.0, 0.5));
@@ -250,7 +251,12 @@ fn endermites_vanish_after_two_minutes_unless_persistent() {
     assert_eq!(e.use_lead_or_name(named, Some(tag), PlayerId::HOST), Some(true));
     for tick in 1..MAX_LIFE {
         e.update(0.05, &world, &c);
-        assert_eq!(e.count(MobKind::Endermite), 2, "both alive at tick {tick}");
+        assert_eq!(
+            e.count(MobKind::Endermite),
+            2,
+            "both alive at tick {tick}: {:?}",
+            e.mobs.iter().map(|m| (m.kind, m.pos, m.health, m.dying, m.persistent)).collect::<Vec<_>>()
+        );
     }
     let plain = e.mobs.iter().find(|m| !m.persistent).unwrap();
     assert_eq!(plain.endermite.as_ref().unwrap().life, MAX_LIFE - 1);
@@ -260,6 +266,7 @@ fn endermites_vanish_after_two_minutes_unless_persistent() {
     for _ in 0..600 {
         e.update(0.05, &world, &c);
     }
+    assert_eq!(e.mobs.len(), 1);
     let kept = &e.mobs[0];
     assert!(kept.persistent && kept.name.as_str() == Some("Mitey"));
     assert_eq!(kept.endermite.as_ref().unwrap().life, 0, "a persistent endermite's life doesn't count");
