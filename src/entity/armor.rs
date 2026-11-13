@@ -113,8 +113,6 @@ pub fn from_stacks(armor: &[Option<Stack>; 4]) -> [Option<Worn>; 4] {
 /// the time, or 10% on Hard (Java reads `Level.getDifficulty()`).
 /// Enchanting is a separate step ([`super::equipment::Equipment::enchant_spawned`]).
 pub fn roll_monster_armor(rng: &mut super::Rng, hard: bool, special: f32) -> [Option<ArmorKind>; 4] {
-    const TIERS: [ArmorKind; 6] =
-        [ArmorKind::Leather, ArmorKind::Copper, ArmorKind::Gold, ArmorKind::Chain, ArmorKind::Iron, ArmorKind::Diamond];
     let mut armor = [None; 4];
     if !rng.chance(0.15 * special) {
         return armor;
@@ -125,7 +123,7 @@ pub fn roll_monster_armor(rng: &mut super::Rng, hard: bool, special: f32) -> [Op
             tier += 1;
         }
     }
-    let kind = TIERS[tier.min(TIERS.len() - 1)];
+    let kind = MONSTER_TIERS[tier.min(MONSTER_TIERS.len() - 1)];
     let skip = if hard { 0.1 } else { 0.25 };
     let mut first = true;
     for slot in POPULATION_ORDER {
@@ -137,6 +135,10 @@ pub fn roll_monster_armor(rng: &mut super::Rng, hard: bool, special: f32) -> [Op
     }
     armor
 }
+
+/// `Mob.getEquipmentForSlot`'s materials by armor type 0–5.
+pub const MONSTER_TIERS: [ArmorKind; 6] =
+    [ArmorKind::Leather, ArmorKind::Copper, ArmorKind::Gold, ArmorKind::Chain, ArmorKind::Iron, ArmorKind::Diamond];
 
 /// `Mob.EQUIPMENT_POPULATION_ORDER`.
 pub const POPULATION_ORDER: [ArmorPiece; 4] =

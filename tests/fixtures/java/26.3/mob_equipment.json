@@ -1,0 +1,156 @@
+{
+  "conversions": {
+    "hoglin_to_zoglin": {
+      "keep_equipment": true,
+      "preserve_can_pick_up_loot": false
+    },
+    "piglin_to_zombified_piglin": {
+      "keep_equipment": true,
+      "preserve_can_pick_up_loot": true
+    },
+    "villager_to_witch": {
+      "keep_equipment": false,
+      "preserve_can_pick_up_loot": false
+    },
+    "villager_to_zombie_villager": {
+      "keep_equipment": true,
+      "preserve_can_pick_up_loot": true
+    },
+    "zombie_to_drowned_husk_to_zombie_skeleton_to_stray": {
+      "keep_equipment": true,
+      "preserve_can_pick_up_loot": true
+    },
+    "zombie_villager_cure": {
+      "keep_equipment": false,
+      "preserve_can_pick_up_loot": false
+    }
+  },
+  "cure_keeps_binding_cursed_at_slot_index": true,
+  "curses": {
+    "binding_curse": [
+      "minecraft:prevent_armor_change"
+    ],
+    "vanishing_curse": [
+      "minecraft:prevent_equipment_drop"
+    ]
+  },
+  "death_drop": {
+    "preserved_keep_damage": true,
+    "prevent_drop_effect": "minecraft:prevent_equipment_drop",
+    "requires_player_kill_unless_preserved": true,
+    "skip_zero_chance": true,
+    "wear_reroll": "max_damage - nextInt(1 + nextInt(max(max_damage - 3, 1)))"
+  },
+  "drop_chances": {
+    "default": 0.085,
+    "guaranteed": 2.0,
+    "preserve_threshold": 1.0
+  },
+  "drowned_skips_armor": true,
+  "looting_equipment_drops": {
+    "attacker_must_be": "minecraft:player",
+    "base": 0.01,
+    "effect": "add",
+    "enchanted": "attacker",
+    "per_level_above_first": 0.01
+  },
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "slots": [
+    {
+      "count_limit": 0,
+      "id": 0,
+      "index": 0,
+      "name": "mainhand",
+      "type": "hand"
+    },
+    {
+      "count_limit": 0,
+      "id": 5,
+      "index": 1,
+      "name": "offhand",
+      "type": "hand"
+    },
+    {
+      "count_limit": 1,
+      "id": 1,
+      "index": 0,
+      "name": "feet",
+      "type": "humanoid_armor"
+    },
+    {
+      "count_limit": 1,
+      "id": 2,
+      "index": 1,
+      "name": "legs",
+      "type": "humanoid_armor"
+    },
+    {
+      "count_limit": 1,
+      "id": 3,
+      "index": 2,
+      "name": "chest",
+      "type": "humanoid_armor"
+    },
+    {
+      "count_limit": 1,
+      "id": 4,
+      "index": 3,
+      "name": "head",
+      "type": "humanoid_armor"
+    },
+    {
+      "count_limit": 1,
+      "id": 6,
+      "index": 0,
+      "name": "body",
+      "type": "animal_armor"
+    },
+    {
+      "count_limit": 1,
+      "id": 7,
+      "index": 0,
+      "name": "saddle",
+      "type": "saddle"
+    }
+  ],
+  "sources": [
+    "net.minecraft.world.entity.EquipmentSlot static initializer",
+    "net.minecraft.world.entity.DropChances constants and isPreserved",
+    "net.minecraft.world.entity.Mob.dropCustomDeathLoot, dropPreservedEquipment",
+    "net.minecraft.world.entity.Mob.populateDefaultEquipmentSlots, getEquipmentForSlot, EQUIPMENT_POPULATION_ORDER, populateDefaultEquipmentEnchantments",
+    "net.minecraft.world.entity.monster.zombie.Drowned.populateDefaultEquipmentSlots",
+    "net.minecraft.world.entity.ConversionType.SINGLE and each ConversionParams.single call",
+    "net.minecraft.world.entity.monster.zombie.ZombieVillager.finishConversion",
+    "data/minecraft/enchantment/looting.json",
+    "data/minecraft/enchantment/vanishing_curse.json",
+    "data/minecraft/enchantment/binding_curse.json",
+    "data/minecraft/trial_spawner/**"
+  ],
+  "spawn": {
+    "armor_tiers": [
+      "leather",
+      "copper",
+      "golden",
+      "chainmail",
+      "iron",
+      "diamond"
+    ],
+    "max_enchanted_armor_chance": 0.5,
+    "max_enchanted_weapon_chance": 0.25,
+    "max_wearing_armor_chance": 0.15,
+    "partial_chance_hard": 0.1,
+    "partial_chance_other": 0.25,
+    "population_order": [
+      "head",
+      "chest",
+      "legs",
+      "feet"
+    ],
+    "upgrade_material_attempts": 3.0,
+    "upgrade_material_chance": 0.1087
+  },
+  "trial_spawner_slot_drop_chances": [
+    0.0
+  ]
+}
