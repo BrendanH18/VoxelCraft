@@ -722,6 +722,7 @@ fn voice(kind: MobKind) -> Voice {
         // The warden's own calls are `Sound::Warden`; this voice is unused.
         MobKind::Warden => Voice::Creaking,
         MobKind::Breeze => Voice::Breeze,
+        MobKind::Endermite => Voice::Endermite,
         MobKind::Allay => Voice::Allay,
         MobKind::CopperGolem => Voice::Skeleton,
         MobKind::Creaking => Voice::Creaking,

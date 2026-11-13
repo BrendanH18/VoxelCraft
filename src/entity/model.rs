@@ -721,6 +721,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
         MobKind::Creaking => creaking::pose(m, time),
         MobKind::Allay => allay::pose(m, time),
         MobKind::Breeze => breeze::pose(m, time),
+        MobKind::Endermite => hostiles::endermite(time),
         MobKind::Tadpole => passive::tadpole(m, time),
         MobKind::Cow => parts![
             part(COW_BODY, [0.0; 3], Quat::IDENTITY),

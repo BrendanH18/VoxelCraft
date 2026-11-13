@@ -41,3 +41,72 @@ pub(super) fn colour(m: &Mob, c: &mut Cuboid) {
         c.noise = if m.kind == MobKind::Stray { 26 } else { 62 };
     }
 }
+
+// ---------------------------------------------------------------- endermite
+// Original colours over four segments with `EndermiteModel`'s proportions
+// (width, height, depth in pixels, head first): 4x3x2, 6x4x5, 3x3x1, 1x2x1.
+const MITE_SHELL: Rgb = [44, 32, 58];
+const MITE_GLOW: Rgb = [112, 64, 150];
+const fn mite(w: f32, h: f32, d: f32, color: Rgb, noise: u8) -> Cuboid {
+    cube([-w / 2.0, 0.0, -d / 2.0], [w / 2.0, h, d / 2.0], color, noise)
+}
+const MITE_SEGMENTS: [&[Cuboid]; 4] = [
+    &[mite(4.0, 3.0, 2.0, MITE_SHELL, 40)],
+    &[mite(6.0, 4.0, 5.0, MITE_SHELL, 52), cube([-2.0, 4.0, -1.5], [2.0, 4.01, 1.5], MITE_GLOW, 70)],
+    &[mite(3.0, 3.0, 1.0, MITE_SHELL, 44)],
+    &[mite(1.0, 2.0, 1.0, MITE_GLOW, 36)],
+];
+/// Segment centres along the body, front to back: Java places them at
+/// -3.5, 0, 3 and 4 (its models face -Z; these face +Z).
+const MITE_Z: [f32; 4] = [3.5, 0.0, -3.0, -4.0];
+
+/// The endermite's segments sway side to side (`EndermiteModel.setupAnim`:
+/// phase `ageInTicks * 0.9 + i * 0.15π`, turning `π/100 * (1 + |i - 2|)` and
+/// shifting `π/10 * |i - 2|` pixels). It has no head of its own: every
+/// segment follows the body yaw.
+pub(super) fn endermite(time: f32) -> Parts {
+    let age = time * 20.0;
+    MITE_SEGMENTS
+        .iter()
+        .zip(MITE_Z)
+        .enumerate()
+        .map(|(i, (&boxes, z))| {
+            let phase = age * 0.9 + i as f32 * 0.15 * PI;
+            let k = (i as f32 - 2.0).abs();
+            let turn = phase.cos() * PI * 0.01 * (1.0 + k);
+            part(boxes, [phase.sin() * PI * 0.1 * k, 0.0, z], Quat::from_rotation_y(turn))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mesh(m: &Mob, time: f32) -> Vec<[f32; 3]> {
+        let mut out = EntityMesh::flat();
+        build(std::slice::from_ref(m), DVec3::new(0.0, 64.0, 0.0), Vec3::X, 100.0, time, 1.0, &mut out);
+        out.iter().map(|v| v.pos).collect()
+    }
+
+    #[test]
+    fn the_endermite_turns_as_one_body_and_its_segments_sway() {
+        let mut m = Mob::new(MobKind::Endermite, DVec3::new(6.0, 64.0, 0.0), 0.4);
+        let still = mesh(&m, 1.0);
+        assert!(!still.is_empty());
+        // `Endermite.tick` keeps the body on its own rotation and the model
+        // draws no head: looking around changes nothing.
+        m.head_yaw = 1.1;
+        m.head_pitch = -0.4;
+        assert_eq!(mesh(&m, 1.0), still);
+        // Turning the body turns every segment.
+        m.yaw += 1.0;
+        assert_ne!(mesh(&m, 1.0), still);
+        // `setupAnim` sways the segments over time.
+        m.yaw -= 1.0;
+        assert_ne!(mesh(&m, 1.3), still);
+        // It sits on the ground, 4 pixels tall at the middle segment.
+        let (lo, hi) = still.iter().fold((f32::MAX, f32::MIN), |(lo, hi), p| (lo.min(p[1]), hi.max(p[1])));
+        assert!(lo.abs() < 1e-4 && (hi - 4.01 / 16.0).abs() < 1e-3, "{lo} {hi}");
+    }
+}

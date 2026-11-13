@@ -333,14 +333,17 @@ impl System {
             if !near(mob.pos) || !mob.alive() {
                 continue;
             }
-            if mob.kind == MobKind::Enderman {
+            if matches!(mob.kind, MobKind::Enderman | MobKind::Endermite) {
+                // `aiStep`: two portal particles a tick at `getRandomX(0.5)`,
+                // `getRandomY()` (the enderman's 0.25 lower) and `getRandomZ(0.5)`.
                 let shape = mob.shape();
                 let width = shape.half_width * 2.0;
+                let drop = if mob.kind == MobKind::Enderman { 0.25 } else { 0.0 };
                 for _ in 0..2 {
                     let pos = mob.pos
                         + DVec3::new(
                             (self.rng.next_f32() as f64 - 0.5) * width,
-                            self.rng.next_f32() as f64 * shape.height - 0.25,
+                            self.rng.next_f32() as f64 * shape.height - drop,
                             (self.rng.next_f32() as f64 - 0.5) * width,
                         );
                     let mut b = Burst::new(Kind::Portal, pos, 1);
@@ -596,6 +599,26 @@ mod tests {
         }
         // Invisible: nextInt(15) == 0, about 267.
         assert!((200..340).contains(&hidden), "{hidden} swirls while invisible");
+    }
+
+    #[test]
+    fn endermites_emit_two_portal_particles_within_their_box() {
+        let w = world();
+        let mut entities = Entities::new(1);
+        let pos = DVec3::new(0.5, 80.0, 0.5);
+        entities.mobs.push(crate::entity::Mob::new(MobKind::Endermite, pos, 0.0));
+        let mut system = System::new(6);
+        for _ in 0..50 {
+            system.clear();
+            system.entities(&w, &entities, &[pos], Setting::All);
+            let portals: Vec<_> = system.pool.iter().filter(|p| p.style == Kind::Portal).collect();
+            assert_eq!(portals.len(), usize::from(crate::entity::endermite::PORTAL_PARTICLES));
+            // `getRandomX(0.5)`, `getRandomY()`: within the 0.4 x 0.3 box.
+            for p in portals {
+                let d = p.pos - pos;
+                assert!(d.x.abs() <= 0.2 && d.z.abs() <= 0.2 && (0.0..=0.3).contains(&d.y), "{d}");
+            }
+        }
     }
 
     #[test]

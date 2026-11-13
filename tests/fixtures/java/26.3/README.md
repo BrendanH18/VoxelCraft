@@ -644,3 +644,45 @@ registered item against every enchantment's supported and primary items,
 `compatible` for every pair, the enchantment tags the game uses (with their
 order where it matters) and the tooltip order. The effect component names
 and slots are recorded but not compared here.
+
+## Small mobs: the endermite
+
+`small_mobs.json` (build-5000 slice MOBN-26) holds the endermite's facts:
+the `EntityTypes.ENDERMITE` builder (monster category, 0.4 x 0.3, eye height
+0.13, not allowed in Peaceful), its attributes merged from
+`Mob.createMobAttributes`, `Monster.createMonsterAttributes` and
+`Endermite.createAttributes` (max health 8, movement speed 0.25, attack
+damage 2, follow range 16), the constructor's 3 experience, `MAX_LIFE`
+2400 and the `aiStep` lifetime and portal-particle loop, the movement
+emission (`EVENTS`: step events, no step sounds), the
+`checkEndermiteSpawnRules` player distance, every `registerGoals` entry
+(selector, priority, goal class, literal arguments, `setAlertOthers`), the
+four `entity.endermite.*` sound events, the empty `entities/endermite` loot
+table, the 5% chance and conditions of `ThrownEnderpearl.onHit`, the
+enderman's `NearestAttackableTargetGoal<Endermite>` (priority, `mustSee`,
+`mustReach`) with its follow range and attack damage, the `arthropod` and
+`sensitive_to_bane_of_arthropods` tags with references expanded, and Bane of
+Arthropods' damage and Slowness effect. The extractor checks the pinned
+server hash, reads constants with `javap -constants`, checks the instruction
+sequences it relies on and fails on forms it doesn't know. It reads no
+VoxelCraft source or fixture.
+
+```sh
+python3 tools/extract_java_small_mob_fixtures.py /path/to/server.jar --output target/java-small-mobs.json
+diff tests/fixtures/java/26.3/small_mobs.json target/java-small-mobs.json
+scripts/remote-check.sh -- 'cargo test --release --lib endermite'
+```
+
+`src/entity/endermite/tests.rs` compares the registration, attributes,
+experience, empty loot, goal speeds and the enderman's numbers with the
+fixture; checks the bane tag both ways against `MobKind::creature` (every
+mob in the tag is an arthropod and no other is) with the damage and the
+Slowness duration range; rolls 20,000 pearl landings (5% within five
+standard errors, none on Peaceful or with `spawn_mobs` or `spawn_monsters`
+off) and lands real thrown pearls through the entity update; runs an
+untouched endermite to its discard at tick 2400 beside a name-tagged one
+that stays; saves and reloads `lifetime`; and drives the target goals (a
+visible player bitten for 2, none through a wall, the hurt-by alert box) and
+an enderman hunting an endermite in sight but not through a wall.
+`src/particles/ambient.rs` checks the two portal particles a tick and
+`src/entity/model/hostiles.rs` the headless, swaying model.

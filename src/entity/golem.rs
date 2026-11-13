@@ -244,6 +244,10 @@ impl Entities {
             self.mobs[i].strike = false;
             let pos = self.mobs[i].pos;
             let kind = self.mobs[i].kind;
+            if kind == MobKind::Enderman {
+                self.enderman_strike(i, events);
+                continue;
+            }
             if kind == MobKind::IronGolem
                 && let Some(player) = self.player_foe(i, ctx)
                 && player.pos.distance_squared(pos) < 9.0

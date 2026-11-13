@@ -56,6 +56,7 @@ impl Entities {
         self.village_upkeep(dt as f32, world);
         self.cat_spawner_tick(dt, world, ctx);
         self.assign_hunts(ctx);
+        self.endermite_upkeep(dt, world);
         self.trader_upkeep();
         // `Entity.hasMovedHorizontallyRecently`, from last update's positions.
         let moved: Vec<(PlayerId, bool)> = ctx
@@ -389,6 +390,7 @@ impl Entities {
                     || t.update(dt, world, mobs, &self.mob_index, &ctx.players, rng, &mut events)
             });
         }
+        self.pearl_endermites(&events, ctx);
         self.update_tridents(dt, world, ctx, &mut events);
         {
             let (rng, mobs, index) = (&mut self.rng, &self.mobs, &self.mob_index);
