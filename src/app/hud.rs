@@ -557,34 +557,44 @@ pub(super) fn enchant_offer_rect(px: f32, py: f32, i: usize) -> (f32, f32, f32, 
     (px + 60.0, py + 13.0 + 19.0 * i as f32, 108.0, 19.0)
 }
 
-/// Java's status effect icons in the top right corner: beneficial ones in
-/// the first row, harmful and neutral ones below (`isBeneficial`), blinking
-/// in their last 10 seconds.
-fn effects_ui(ui: &mut Ui, effects: &Effects) {
-    let sw = ui.size().0;
-    let (mut good, mut bad) = (0.0, 0.0);
-    for a in effects.iter() {
-        let column = if a.effect.is_beneficial() { &mut good } else { &mut bad };
-        *column += 1.0;
-        let (x, y) = (sw - 25.0 * *column, effects::hud_row(a.effect) as f32 * 26.0 + 1.0);
-        ui.rect(x, y, 24.0, 24.0, [0.1, 0.1, 0.12, 0.7]);
-        let alpha = if a.ticks > 200 { 1.0 } else { 0.6 + 0.4 * (a.ticks as f32 * std::f32::consts::PI / 5.0).cos() };
-        ui.icon(x + 3.0, y + 3.0, 18.0, crate::item::effect_icon_layer(a.effect), [1.0, 1.0, 1.0, alpha]);
+/// The background of an effect icon or panel: Java's ambient sprite (a
+/// beacon's or conduit's effect) has a pale blue frame.
+fn effect_background(ui: &mut Ui, (x, y, w, h): (f32, f32, f32, f32), ambient: bool, fill: [f32; 4]) {
+    if ambient {
+        ui.rect(x, y, w, h, [0.55, 0.7, 0.85, fill[3]]);
+        ui.rect(x + 1.0, y + 1.0, w - 2.0, h - 2.0, fill);
+    } else {
+        ui.rect(x, y, w, h, fill);
     }
 }
 
-/// Java's effect panels beside the inventory: icon, name and level, and
-/// time left; just icons when the screen is too narrow.
+/// Java's status effect icons in the top right corner
+/// ([`effects::hud_layout`]): beneficial ones in the first row, harmful and
+/// neutral ones below (`isBeneficial`), in reverse `compareTo` order,
+/// without hidden icons, blinking in their last 10 seconds unless ambient.
+fn effects_ui(ui: &mut Ui, effects: &Effects) {
+    let sw = ui.size().0;
+    for (a, column, row) in effects::hud_layout(effects) {
+        let (x, y) = (sw - 25.0 * column as f32, row as f32 * 26.0 + 1.0);
+        effect_background(ui, (x, y, 24.0, 24.0), a.ambient, [0.1, 0.1, 0.12, 0.7]);
+        ui.icon(x + 3.0, y + 3.0, 18.0, crate::item::effect_icon_layer(a.effect), [1.0, 1.0, 1.0, a.hud_alpha()]);
+    }
+}
+
+/// Java's effect panels beside the inventory (`EffectsInInventory`), in
+/// `compareTo` order: icon, name and level, and time left; just icons when
+/// the screen is too narrow.
 fn effect_list_ui(ui: &mut Ui, effects: &Effects, right: f32, top: f32) {
-    let label = |a: &effects::Active| format!("{} {}", a.effect.name(), effects::level_name(a.amplifier));
-    let text_w = effects.iter().map(|a| Ui::text_width(&label(a))).fold(0.0, f32::max);
+    let label = effects::list_label;
+    let sorted = effects.sorted();
+    let text_w = sorted.iter().map(|a| Ui::text_width(&label(a))).fold(0.0, f32::max);
     let full = (text_w + 34.0).max(120.0);
     let wide = right >= full + 4.0;
     let w = if wide { full } else { 32.0 };
     let x = (right - w - 4.0).max(0.0);
-    for (i, a) in effects.iter().enumerate() {
+    for (i, a) in sorted.iter().enumerate() {
         let y = top + i as f32 * 33.0;
-        ui.rect(x, y, w, 32.0, [0.12, 0.12, 0.14, 0.85]);
+        effect_background(ui, (x, y, w, 32.0), a.ambient, [0.12, 0.12, 0.14, 0.85]);
         ui.icon(x + 7.0, y + 7.0, 18.0, crate::item::effect_icon_layer(a.effect), WHITE);
         if wide {
             ui.text(x + 28.0, y + 7.0, &label(a), WHITE);

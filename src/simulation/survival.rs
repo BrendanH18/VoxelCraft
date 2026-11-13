@@ -746,12 +746,19 @@ impl Vitals {
     /// Gives a status effect. Instant health heals here; instant damage is
     /// returned for the caller's damage entry point (cause "magic").
     pub fn apply_effect(&mut self, effect: super::effects::Effect, amplifier: u8, ticks: u32) -> f32 {
+        self.give_effect(super::effects::Active::new(effect, amplifier, ticks)).0
+    }
+
+    /// Gives one effect instance with its flags (Java's `addEffect`):
+    /// returns the instant damage for the caller to deal and whether the
+    /// effects changed, which `/effect give` reports.
+    pub fn give_effect(&mut self, instance: super::effects::Active) -> (f32, bool) {
         if self.is_dead() {
-            return 0.0;
+            return (0.0, false);
         }
-        let out = self.effects.add(effect, amplifier, ticks);
+        let (out, changed) = self.effects.add_instance(instance);
         self.health = (self.health + out.heal).min(MAX_HEALTH);
-        out.damage
+        (out.damage, changed)
     }
 
     /// Whether the player may sprint: not Blind (Java's mobility

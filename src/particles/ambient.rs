@@ -308,17 +308,19 @@ impl System {
     }
 
     /// Java 26.3 `LivingEntity.tickEffects` on the client: one swirl on a
-    /// 1-in-4 tick (1 in 15 while invisible), in the colour of one active
-    /// effect picked at random (`Util.getRandom` over the effect particles).
+    /// 1-in-4 tick (1 in 15 while invisible, and five times rarer when every
+    /// visible effect is ambient), in the colour of one effect with
+    /// particles picked at random (`Util.getRandom` over the effect
+    /// particles); an ambient effect's colour is faint (alpha 38).
     pub fn effects(&mut self, pos: DVec3, effects: &Effects, setting: Setting) {
-        let count = effects.iter().count() as u32;
-        let odds = if effects.has(crate::simulation::effects::Effect::Invisibility) { 15 } else { 4 };
+        let count = effects.with_particles().count() as u32;
+        let bound = if effects.has(crate::simulation::effects::Effect::Invisibility) { 15 } else { 4 };
+        let odds = bound * if effects.all_ambient() { 5 } else { 1 };
         if count == 0 || self.rng.next_int(odds) != 0 {
             return;
         }
-        let pick = effects.iter().nth(self.rng.next_int(count) as usize).expect("index below count");
-        let [r, g, b] = pick.effect.colour().map(|c| c as f32 / 255.0);
-        let color = [r, g, b, 1.0];
+        let pick = effects.with_particles().nth(self.rng.next_int(count) as usize).expect("index below count");
+        let color = pick.particle_colour().map(|c| c as f32 / 255.0);
         let mut b = Burst::new(Kind::Effect, pos + DVec3::Y * 0.9, 1);
         b.spread = DVec3::new(0.3, 0.9, 0.3);
         b.color = Some(color);

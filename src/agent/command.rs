@@ -3,7 +3,11 @@ use crate::{
     item::Item,
     player::{MoveInput, PITCH_LIMIT, Player},
     rules::{GameMode, GameRules, RuleValue},
-    simulation::{difficulty::Difficulty, effects::Effect, survival::Vitals},
+    simulation::{
+        difficulty::Difficulty,
+        effects::{self, Effect},
+        survival::Vitals,
+    },
     world::{
         block::Block,
         terrain::{Biome, Dimension},
@@ -331,31 +335,78 @@ fn parse_turn(words: &[&str]) -> Result<Option<Turn>, String> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EffectChange {
     /// The effect, its duration in ticks ([`Effect::command_duration_ticks`]
-    /// of the typed number) and its amplifier.
-    Give(Effect, u32, u8),
+    /// of the typed number, or [`effects::INFINITE`] for `infinite`), its
+    /// amplifier and whether it shows particles (`hideParticles` inverted).
+    Give(Effect, u32, u8, bool),
     /// Removes one effect, or all of them.
     Clear(Option<Effect>),
 }
 
+/// en_us `commands.effect.*`, which `EffectCommands` sends for one target.
+pub mod effect_feedback {
+    pub const GIVE_SUCCESS: &str = "Applied effect %s to %s";
+    pub const GIVE_FAILED: &str =
+        "Unable to apply this effect (target is either immune to effects, or has something stronger)";
+    pub const CLEAR_EVERYTHING_SUCCESS: &str = "Removed every effect from %s";
+    pub const CLEAR_EVERYTHING_FAILED: &str = "Target has no effects to remove";
+    pub const CLEAR_SPECIFIC_SUCCESS: &str = "Removed effect %s from %s";
+    pub const CLEAR_SPECIFIC_FAILED: &str = "Target doesn't have the requested effect";
+
+    /// Fills the `%s` slots in order.
+    pub fn fill(template: &str, args: &[&str]) -> String {
+        let mut out = String::new();
+        let mut args = args.iter();
+        let mut parts = template.split("%s");
+        out.push_str(parts.next().unwrap_or_default());
+        for part in parts {
+            out.push_str(args.next().copied().unwrap_or_default());
+            out.push_str(part);
+        }
+        out
+    }
+}
+
 impl EffectChange {
-    /// Applies the change; returns instant damage for the caller to deal
-    /// and the feedback line.
-    pub fn apply(self, vitals: &mut Vitals) -> (f32, String) {
+    /// Applies the change to the player named `target`, as Java's
+    /// `EffectCommands` does: instant damage for the caller to deal and the
+    /// success line, or the failure Java throws when nothing changed.
+    pub fn apply(self, vitals: &mut Vitals, target: &str) -> Result<(f32, String), String> {
+        use effect_feedback::*;
         match self {
-            EffectChange::Give(effect, ticks, amp) => {
-                let damage = vitals.apply_effect(effect, amp, ticks.max(1));
-                (damage, format!("applied {} {}", effect.name(), crate::simulation::effects::level_name(amp)))
+            EffectChange::Give(effect, ticks, amp, particles) => {
+                let instance = effects::Active::new(effect, amp, ticks.max(1)).with_flags(false, particles, particles);
+                let (damage, changed) = vitals.give_effect(instance);
+                if !changed {
+                    return Err(GIVE_FAILED.into());
+                }
+                Ok((damage, fill(GIVE_SUCCESS, &[effect.name(), target])))
             }
             EffectChange::Clear(Some(effect)) => {
-                let had = vitals.effects.remove(effect);
-                (0.0, if had { format!("removed {}", effect.name()) } else { format!("no {}", effect.name()) })
+                if !vitals.effects.remove(effect) {
+                    return Err(CLEAR_SPECIFIC_FAILED.into());
+                }
+                Ok((0.0, fill(CLEAR_SPECIFIC_SUCCESS, &[effect.name(), target])))
             }
             EffectChange::Clear(None) => {
+                if vitals.effects.is_empty() {
+                    return Err(CLEAR_EVERYTHING_FAILED.into());
+                }
                 vitals.effects.clear();
-                (0.0, "removed every effect".into())
+                Ok((0.0, fill(CLEAR_EVERYTHING_SUCCESS, &[target])))
             }
         }
     }
+}
+
+/// Brigadier's `StringReader.readInt`: digits, `.` and `-` only (no `+`),
+/// then `Integer.parseInt`.
+fn java_int(text: &str) -> Option<i32> {
+    text.chars().all(|c| c.is_ascii_digit() || c == '.' || c == '-').then(|| text.parse().ok()).flatten()
+}
+
+/// Brigadier's `IntegerArgumentType.integer(min, max)`.
+fn java_int_in(text: &str, min: i32, max: i32) -> Option<i32> {
+    java_int(text).filter(|n| (min..=max).contains(n))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -513,6 +564,15 @@ pub fn tab_complete(input: &str) -> Option<String> {
         {
             let ids: Vec<&str> = Effect::ALL.iter().map(|e| e.id()).collect();
             complete_options(&ids, partial.strip_prefix("minecraft:").unwrap_or(partial))?
+        }
+        // `/effect give`'s `infinite` literal and `hideParticles` boolean.
+        "effect" if stem.get(1) == Some(&"give") => {
+            let target = usize::from(matches!(stem.get(2), Some(&("@s" | "@p"))));
+            match stem.len() - target {
+                3 => complete_options(&["infinite"], partial)?,
+                5 => complete_options(&["true", "false"], partial)?,
+                _ => return None,
+            }
         }
         "xp" | "experience" if stem.len() <= 1 => complete_options(&["add", "set", "query"], partial)?,
         "rotate" if stem.len() == 1 => complete_options(&["@s", "@p"], partial)?,
@@ -751,16 +811,26 @@ impl Command {
             ["effect", "clear", name] => {
                 Self::Effect(EffectChange::Clear(Some(Effect::from_id(name).ok_or_else(bad)?)))
             }
-            ["effect", "give", name, rest @ ..] if rest.len() <= 2 => {
+            // `EffectCommands`: `<seconds 1..1000000>` or `infinite`, then
+            // `<amplifier 0..255>` and `<hideParticles>`. Java's defaults: 30
+            // seconds (one tick for an instantaneous effect, whose number
+            // counts ticks), level I, particles shown.
+            ["effect", "give", name, rest @ ..] if rest.len() <= 3 => {
                 let effect = Effect::from_id(name).ok_or_else(bad)?;
-                // Java's defaults: 30 seconds (one tick for an instantaneous
-                // effect, whose number counts ticks), level I.
-                let secs = rest
-                    .first()
-                    .map(|n| n.parse::<u32>().ok().filter(|n| (1..=1_000_000).contains(n)).ok_or_else(bad))
-                    .transpose()?;
-                let amp = rest.get(1).map_or(Ok(0), |n| n.parse::<u8>().map_err(|_| bad()))?;
-                Self::Effect(EffectChange::Give(effect, effect.command_duration_ticks(secs), amp))
+                let ticks = match rest.first() {
+                    Some(&"infinite") => effects::INFINITE,
+                    Some(n) => {
+                        effect.command_duration_ticks(Some(java_int_in(n, 1, 1_000_000).ok_or_else(bad)? as u32))
+                    }
+                    None => effect.command_duration_ticks(None),
+                };
+                let amp = rest.get(1).map_or(Ok(0), |n| java_int_in(n, 0, 255).map(|n| n as u8).ok_or_else(bad))?;
+                let hide = match rest.get(2) {
+                    None | Some(&"false") => false,
+                    Some(&"true") => true,
+                    Some(_) => return Err(bad()),
+                };
+                Self::Effect(EffectChange::Give(effect, ticks, amp, !hide))
             }
             ["anvil", n] => Self::Anvil(n.parse::<usize>().ok().filter(|n| (1..=9).contains(n)).ok_or_else(bad)? - 1),
             ["trade"] => Self::Trade(None),

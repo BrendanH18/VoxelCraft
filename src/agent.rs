@@ -370,7 +370,7 @@ impl Agent {
                 }
             }
             Command::Effect(change) => {
-                let (damage, _) = change.apply(&mut self.session.vitals);
+                let (damage, _) = change.apply(&mut self.session.vitals, "Player")?;
                 self.damage(damage, Cause::MAGIC);
             }
             Command::Mode(mode) => self.set_mode(mode),
@@ -1790,27 +1790,27 @@ mod tests {
         }
         assert!(matches!(
             Command::parse("effect give minecraft:strength 90 1").unwrap(),
-            Command::Effect(EffectChange::Give(Effect::Strength, 1800, 1))
+            Command::Effect(EffectChange::Give(Effect::Strength, 1800, 1, true))
         ));
         assert!(matches!(
             Command::parse("effect give regeneration").unwrap(),
-            Command::Effect(EffectChange::Give(Effect::Regeneration, 600, 0))
+            Command::Effect(EffectChange::Give(Effect::Regeneration, 600, 0, true))
         ));
         // `EffectCommands.computeDurationInTicks`: instantaneous effects
         // count ticks and default to one.
         assert!(matches!(
             Command::parse("effect give saturation 5").unwrap(),
-            Command::Effect(EffectChange::Give(Effect::Saturation, 5, 0))
+            Command::Effect(EffectChange::Give(Effect::Saturation, 5, 0, true))
         ));
         assert!(matches!(
             Command::parse("effect give instant_health").unwrap(),
-            Command::Effect(EffectChange::Give(Effect::InstantHealth, 1, 0))
+            Command::Effect(EffectChange::Give(Effect::InstantHealth, 1, 0, true))
         ));
         assert!(matches!(Command::parse("effect clear").unwrap(), Command::Effect(EffectChange::Clear(None))));
         // Java's forms with a target, as players type them.
         assert!(matches!(
             Command::parse("/effect give @s resistance 600 4").unwrap(),
-            Command::Effect(EffectChange::Give(Effect::Resistance, 12000, 4))
+            Command::Effect(EffectChange::Give(Effect::Resistance, 12000, 4, true))
         ));
         assert!(matches!(Command::parse("effect clear @p").unwrap(), Command::Effect(EffectChange::Clear(None))));
         assert!(matches!(
@@ -1821,8 +1821,8 @@ mod tests {
         assert!(Command::parse("effect give @a speed").is_err(), "other targets stay rejected");
         let mut vitals = Vitals::default();
         vitals.health = 10.0;
-        assert_eq!(EffectChange::Give(Effect::InstantDamage, 1, 0).apply(&mut vitals).0, 6.0);
-        EffectChange::Give(Effect::InstantHealth, 1, 1).apply(&mut vitals);
+        assert_eq!(EffectChange::Give(Effect::InstantDamage, 1, 0, true).apply(&mut vitals, "Player").unwrap().0, 6.0);
+        EffectChange::Give(Effect::InstantHealth, 1, 1, true).apply(&mut vitals, "Player").unwrap();
         assert_eq!(vitals.health, 18.0);
         assert!(matches!(Command::parse("/give dirt 64").unwrap(), Command::Give(_, 64)));
         assert!(matches!(

@@ -110,8 +110,8 @@ pub struct Args {
     pub food: Option<f32>,
     /// Starting experience level (`--xp`).
     pub xp: Option<u32>,
-    /// Status effects to start with: (effect, seconds, amplifier).
-    pub effects: Vec<(voxelcraft::simulation::effects::Effect, u32, u8)>,
+    /// Status effects to start with (`--effect`).
+    pub effects: Vec<voxelcraft::simulation::effects::Active>,
     /// Experience orbs (points each) spawned in front of the player once loaded.
     pub orbs: Vec<u32>,
     /// Items added to the inventory at startup (debugging/screenshots).
@@ -185,8 +185,9 @@ voxelcraft [options]
   --air <0..15>     starting air in seconds
   --food <0..20>    starting hunger in half drumsticks (no saturation)
   --xp <level>      starting experience level
-  --effect e[,s[,a]]  start with a status effect for s seconds (default
-                    30) at amplifier a (default 0; repeatable)
+  --effect e[,s[,a[,flag...]]]  start with a status effect for s seconds
+                    (default 30, or `infinite`) at amplifier a (default 0),
+                    with flags ambient, hideparticles, hideicon (repeatable)
   --orbs <points>   spawn experience orbs worth that many points in front of
                     the player once loaded (repeatable)
   --give item[,n]   add n (default 1) of an item to the inventory at startup
@@ -604,15 +605,7 @@ fn parse_args() -> Result<Args, String> {
             "--food" => args.food = Some(value("--food")?.parse().map_err(|_| "bad --food")?),
             "--xp" => args.xp = Some(value("--xp")?.parse().map_err(|_| "bad --xp")?),
             "--effect" => {
-                let v = value("--effect")?;
-                let mut parts = v.split(',');
-                let effect = parts
-                    .next()
-                    .and_then(voxelcraft::simulation::effects::Effect::from_id)
-                    .ok_or("bad --effect name")?;
-                let secs = parts.next().map_or(Ok(30), str::parse).map_err(|_| "bad --effect seconds")?;
-                let amp = parts.next().map_or(Ok(0), str::parse).map_err(|_| "bad --effect amplifier")?;
-                args.effects.push((effect, secs, amp));
+                args.effects.push(voxelcraft::simulation::effects::Active::parse_option(&value("--effect")?)?)
             }
             "--orbs" => args.orbs.push(value("--orbs")?.parse().map_err(|_| "bad --orbs")?),
             flag @ ("--give" | "--drop") => {
