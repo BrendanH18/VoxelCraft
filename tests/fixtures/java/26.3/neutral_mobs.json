@@ -1,0 +1,88 @@
+{
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "class hierarchy of net.minecraft (NeutralMob implementers)",
+    "<implementer>.registerGoals (ResetUniversalAngerTargetGoal)",
+    "<implementer>.<clinit> (PERSISTENT_ANGER_TIME)",
+    "<implementer>.createAttributes chain",
+    "ServerPlayer.die",
+    "ServerPlayer.tellNeutralMobsThatIDied",
+    "NeutralMob.playerDied",
+    "NeutralMob.isAngryAtAllPlayers",
+    "PiglinAi.setAngerTarget",
+    "PiglinAi.maybeRetaliate",
+    "PiglinAi.angerNearbyPiglins",
+    "PiglinBruteAi.wasHurtBy"
+  ],
+  "neutral_mobs": {
+    "bee": {
+      "class": "net.minecraft.world.entity.animal.bee.Bee",
+      "alert_others_of_same_type": true,
+      "persistent_anger_seconds": [
+        20,
+        39
+      ],
+      "follow_range": 16.0
+    },
+    "iron_golem": {
+      "class": "net.minecraft.world.entity.animal.golem.IronGolem",
+      "alert_others_of_same_type": false,
+      "persistent_anger_seconds": [
+        20,
+        39
+      ],
+      "follow_range": 16.0
+    },
+    "polar_bear": {
+      "class": "net.minecraft.world.entity.animal.polarbear.PolarBear",
+      "alert_others_of_same_type": false,
+      "persistent_anger_seconds": [
+        20,
+        39
+      ],
+      "follow_range": 20.0
+    },
+    "wolf": {
+      "class": "net.minecraft.world.entity.animal.wolf.Wolf",
+      "alert_others_of_same_type": true,
+      "persistent_anger_seconds": [
+        20,
+        39
+      ],
+      "follow_range": 16.0
+    },
+    "enderman": {
+      "class": "net.minecraft.world.entity.monster.Enderman",
+      "alert_others_of_same_type": false,
+      "persistent_anger_seconds": [
+        20,
+        39
+      ],
+      "follow_range": 64.0
+    },
+    "zombified_piglin": {
+      "class": "net.minecraft.world.entity.monster.zombie.ZombifiedPiglin",
+      "alert_others_of_same_type": true,
+      "persistent_anger_seconds": [
+        20,
+        39
+      ],
+      "follow_range": 35.0
+    }
+  },
+  "death_notice": {
+    "around": "dead player block",
+    "inflate_xyz": [
+      32.0,
+      10.0,
+      32.0
+    ],
+    "only_with_forgive_dead_players": true
+  },
+  "piglin": {
+    "angry_at_ticks": 600,
+    "universal_anger_ticks": 600,
+    "brutes_retaliate_through_piglin_ai": true
+  }
+}
