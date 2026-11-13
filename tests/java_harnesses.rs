@@ -185,7 +185,8 @@ fn the_cli_crafts_and_redyes_harnesses_on_the_shared_path() {
     let table = IVec3::new(4, 140, 4);
     w.set_block(table, Block::CRAFTING_TABLE);
     let mut a = Agent::new(table.as_dvec3() + DVec3::new(0.5, 1.0, 0.5));
-    a.execute(Command::parse("look 0 90").unwrap(), &mut w, &mut e, &[]).unwrap();
+    // `look` takes VoxelCraft degrees: a negative pitch looks down at the table.
+    a.execute(Command::parse("look 0 -90").unwrap(), &mut w, &mut e, &[]).unwrap();
     a.inventory.slots[0] = Some(Stack::new(Item::LEATHER, 3));
     a.inventory.slots[1] = Some(Stack::new(Item::from_block(Block::GLASS), 2));
     a.inventory.slots[2] = Some(Stack::new(Item::from_block(Block::wool(DyeColor::Lime)), 1));
@@ -194,7 +195,7 @@ fn the_cli_crafts_and_redyes_harnesses_on_the_shared_path() {
     assert_eq!(a.inventory.slots.iter().flatten().copied().collect::<Vec<_>>(), [Stack::new(lime, 1)]);
     // Re-dyeing fits the inventory's 2x2 grid; no table needed.
     a.inventory.slots[5] = Some(Stack::new(DyeColor::Black.dye(), 2));
-    a.execute(Command::parse("look 0 -90").unwrap(), &mut w, &mut e, &[]).unwrap();
+    a.execute(Command::parse("look 0 90").unwrap(), &mut w, &mut e, &[]).unwrap();
     a.execute(Command::Craft(harness::harness(DyeColor::Black)), &mut w, &mut e, &[]).unwrap();
     let left: Vec<Stack> = a.inventory.slots.iter().flatten().copied().collect();
     assert!(left.contains(&Stack::new(harness::harness(DyeColor::Black), 1)), "{left:?}");

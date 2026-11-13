@@ -820,7 +820,7 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             } else if y == 3 && (1..=14).contains(&x) {
                 Some(tint([128, 78, 44], 0.92 + noise(x, y, 811) * 0.12))
             } else if pad(x, y) {
-                let quilt = (x - 1) % 4 == 0 && pad(x - 1, y) && pad(x + 1, y);
+                let quilt = (x == 5 || x == 10) && pad(x, y - 1) && pad(x, y + 1);
                 shaded(&pad, x, y, c, 0.05).map(|p| if quilt { tint(c, 0.8) } else { p })
             } else {
                 None
