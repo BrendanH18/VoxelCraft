@@ -98,32 +98,37 @@ pub fn bottle_experience(rng: &mut Rng) -> u32 {
     3 + rng.next_int(5) + rng.next_int(5)
 }
 
-/// Where a step from `from` to `to` enters the solid cell holding `to`, and
-/// the outward normal of the face it crosses (`BlockHitResult`'s location
-/// and direction). A step that starts inside the cell reports `from` with
-/// the reverse of the step.
-fn face_hit(from: DVec3, to: DVec3) -> (DVec3, DVec3) {
+/// Where a step from `from` to `to` (which ends in a solid cell) first
+/// enters a solid cell, and the outward normal of the face it crosses
+/// (`BlockHitResult`'s location and direction). The cell boundaries the
+/// step crosses are walked in order, so a step that clips a floor before
+/// reaching the next column hits the floor's top. A step that starts inside
+/// a solid cell reports `from` with the reverse of the step.
+fn face_hit<W: BlockSource + ?Sized>(world: &W, from: DVec3, to: DVec3) -> (DVec3, DVec3) {
     let (a, b) = (from.floor(), to.floor());
     let delta = to - from;
-    let mut best: Option<(f64, usize)> = None;
+    let mut crossings: Vec<(f64, usize)> = Vec::with_capacity(3);
     for axis in 0..3 {
         if a[axis] == b[axis] || delta[axis] == 0.0 {
             continue;
         }
         let boundary = if b[axis] > a[axis] { b[axis] } else { a[axis] };
-        let t = ((boundary - from[axis]) / delta[axis]).clamp(0.0, 1.0);
-        if best.is_none_or(|(bt, _)| t > bt) {
-            best = Some((t, axis));
+        crossings.push((((boundary - from[axis]) / delta[axis]).clamp(0.0, 1.0), axis));
+    }
+    crossings.sort_by(|x, y| x.0.total_cmp(&y.0));
+    let mut cell = a;
+    let mut last = None;
+    for &(t, axis) in &crossings {
+        let step = (b[axis] - a[axis]).signum();
+        cell[axis] += step;
+        let mut normal = DVec3::ZERO;
+        normal[axis] = -step;
+        last = Some((from + delta * t, normal));
+        if world.block(cell.as_ivec3()).is_some_and(|block| block.is_solid()) {
+            break;
         }
     }
-    match best {
-        Some((t, axis)) => {
-            let mut normal = DVec3::ZERO;
-            normal[axis] = -(b[axis] - a[axis]).signum();
-            (from + delta * t, normal)
-        }
-        None => (from, -delta.normalize_or_zero()),
-    }
+    last.unwrap_or((from, -delta.normalize_or_zero()))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -269,7 +274,7 @@ impl Thrown {
             let next = self.pos + delta / steps as f64;
             if world.block(next.floor().as_ivec3()).is_some_and(|b| b.is_solid()) {
                 if self.kind == Kind::ExperienceBottle {
-                    let (at, normal) = face_hit(self.pos, next);
+                    let (at, normal) = face_hit(world, self.pos, next);
                     self.pos = at;
                     self.bottle_burst(at, normal, rng, events);
                     return false;
@@ -279,10 +284,12 @@ impl Thrown {
             }
             self.pos = next;
             // A bottle breaks on any player but its thrower while it leaves them.
+            // `Player.isPickable` is false only for spectators: creative
+            // players stop bottles too.
             if self.kind == Kind::ExperienceBottle
-                && players
-                    .iter()
-                    .any(|t| t.targetable && t.contains(next) && (self.owner != Some(t.id) || self.age >= 0.25))
+                && players.iter().any(|t| {
+                    t.alive && !t.spectator && t.contains(next) && (self.owner != Some(t.id) || self.age >= 0.25)
+                })
             {
                 self.bottle_burst(next, -self.vel, rng, events);
                 return false;
@@ -693,6 +700,92 @@ mod tests {
         // The peak is the middle total (5 of 25 pairs).
         let middle = f64::from(counts[expected as usize]) / f64::from(N);
         assert!((middle - 0.2).abs() < 0.045, "{middle}");
+    }
+
+    /// `Projectile.canHitEntity` through `Player.isPickable`: creative
+    /// players stop a bottle, spectators and the dead do not.
+    #[test]
+    fn experience_bottles_break_on_creative_players_but_not_spectators() {
+        let floor = Grid::flat(0);
+        let mut rng = Rng::new(8);
+        let throw = |rng: &mut Rng| {
+            Thrown::dispensed(Kind::ExperienceBottle, DVec3::new(0.2, 1.0, 0.5), DVec3::X, 1.0, 0.0, rng)
+        };
+        let creative = super::super::Target::new(PlayerId(2), DVec3::new(2.5, 0.0, 0.5), false);
+        let mut t = throw(&mut rng);
+        let (pos, _, _) = burst(&fly(&mut t, &floor, &mut [], std::slice::from_ref(&creative)));
+        assert!(creative.contains(pos), "{pos}");
+        for passive in
+            [super::super::Target { spectator: true, ..creative }, super::super::Target { alive: false, ..creative }]
+        {
+            let mut t = throw(&mut rng);
+            let (pos, toward, _) = burst(&fly(&mut t, &floor, &mut [], std::slice::from_ref(&passive)));
+            assert!(!passive.contains(pos) && pos.y.abs() < 1e-9, "flew through to the floor: {pos}");
+            // A shallow landing that crosses into the next column in the
+            // same substep still hits the floor's top face.
+            assert_eq!(toward, DVec3::Y, "{pos}");
+        }
+    }
+
+    /// The burst reaches the world: `Entities::update` turns it into orbs
+    /// worth 3 to 11 points a quarter block above the floor, and passes the
+    /// splash on to the game.
+    #[test]
+    fn bursting_bottles_leave_experience_orbs_in_the_world() {
+        struct Floor(Grid);
+        impl BlockSource for Floor {
+            fn block(&self, p: glam::IVec3) -> Option<crate::world::block::Block> {
+                self.0.block(p)
+            }
+        }
+        impl super::super::MobWorld for Floor {
+            fn loaded(&self, _: glam::IVec3) -> bool {
+                true
+            }
+            fn surface(&self, _: i32, _: i32) -> Option<i32> {
+                Some(0)
+            }
+            fn exposed(&self, _: glam::IVec3) -> bool {
+                true
+            }
+        }
+        let world = Floor(Grid::flat(0));
+        let ctx = super::super::Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+            players: vec![],
+            daylight: 1.0,
+            spawning: false,
+            raining: false,
+            dimension: crate::world::terrain::Dimension::Overworld,
+        };
+        let mut totals = std::collections::BTreeSet::new();
+        for seed in 0..40 {
+            let mut e = super::super::Entities::new(seed);
+            let mut rng = Rng::new(seed);
+            e.thrown.push(Thrown::dispensed(
+                Kind::ExperienceBottle,
+                DVec3::new(0.5, 3.0, 0.5),
+                DVec3::NEG_Y,
+                0.3,
+                0.0,
+                &mut rng,
+            ));
+            let mut events = Vec::new();
+            for _ in 0..40 {
+                events = e.update(0.05, &world, &ctx);
+                if e.thrown.is_empty() {
+                    break;
+                }
+            }
+            assert!(e.thrown.is_empty(), "the bottle broke");
+            assert!(events.iter().any(|ev| matches!(ev, EntityEvent::PotionSplashed { colour: BOTTLE_COLOUR, .. })));
+            assert!(!events.iter().any(|ev| matches!(ev, EntityEvent::ExperienceBurst { .. })), "handled here");
+            let points: u32 = e.orbs.iter().map(|o| o.value * o.count).sum();
+            assert!((3..=11).contains(&points), "{points}");
+            assert!(e.orbs.iter().all(|o| (0.0..1.0).contains(&o.pos.y)), "{:?}", e.orbs);
+            totals.insert(points);
+        }
+        assert!(totals.len() > 3, "{totals:?}");
     }
 
     #[test]

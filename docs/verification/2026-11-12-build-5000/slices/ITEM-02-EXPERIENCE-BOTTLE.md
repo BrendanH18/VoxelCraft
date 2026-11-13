@@ -22,7 +22,8 @@
 - Flight: gravity 0.07 blocks a tick², applied before the 0.99 (water 0.8)
   drag, as in `ThrowableProjectile.tick` (`Kind::gravity`).
 - Burst (`ThrownExperienceBottle.onHit`): on a block, a mob or a player
-  (its thrower only after a quarter second) it emits `PotionSplashed` with
+  (its thrower only after a quarter second; creative players too, but not
+  spectators or the dead, as `Player.isPickable`) it emits `PotionSplashed` with
   colour `0x385DC6` (splash particles and the glass break sound already used
   by splash potions) and the new `EntityEvent::ExperienceBurst` with
   `3 + nextInt(5) + nextInt(5)` points. The entity layer turns it into orbs
@@ -120,6 +121,31 @@
   fixture's terms, and level 5 has the fixture's two offers.
 - `tests/java_registry.rs` passes with the gap removed.
 
+## Review (2026-11-13)
+
+A second agent checked the slice against the 26.3 source and data. The
+extractor reran to an identical fixture, and the trade, loot weights and
+rolls, registration, entity size, dispense constants, gravity, experience
+roll and colour were checked by hand. Raising the throw power to 0.75 made
+`thrown_bottles_follow_java_shoot_from_rotation` fail. Repairs:
+
+- Bottles only broke on targetable players, so creative players let them
+  pass. Java's `Projectile.canHitEntity` uses `Player.isPickable`, which
+  excludes only spectators; bottles now break on any living player who is
+  not a spectator (`experience_bottles_break_on_creative_players_but_not_spectators`).
+- A bottle landing at a shallow angle could cross a floor boundary and a
+  column boundary in the same 0.2-block substep. `face_hit` took the last
+  boundary, so it reported the next column's side face, a point just under
+  the floor and orbs thrown sideways. It now walks the crossings in order and
+  stops at the first solid cell, the floor's top face as in Java's block
+  clip (asserted in the creative-player test's passive cases).
+- New tests: `bursting_bottles_leave_experience_orbs_in_the_world` runs
+  `Entities::update` until a bottle breaks and checks the orbs and the splash
+  event; `entity/replica.rs` `every_thrown_kind_round_trips` covers the LAN
+  decoder arm.
+- Ledger: the separate `experience_roll` row was part of the burst
+  behaviour (one `onHit`) and was folded into it; 10 rows remain.
+
 ## Differences from Java left in place
 
 - The throw sound reuses the game's shared projectile throw pitch range
@@ -145,8 +171,9 @@
 
 - Not launched or played: no screenshot, hands-on run or frame-time
   measurement. Glint and yellow name were not seen on screen.
-- LAN: the replica decoder arm is not covered by a test; the host-side use
-  path is the shared session.
+- LAN: only the replica round trip is tested (`entity/replica.rs`
+  `every_thrown_kind_round_trips`); no guest was run. The host-side use path
+  is the shared session.
 - The controller and desktop paths call the same `PlayerSession::use_held`
   as the tested session; they were not driven directly.
 
