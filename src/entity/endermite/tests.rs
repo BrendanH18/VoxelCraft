@@ -241,7 +241,19 @@ fn thrown_pearls_land_and_sometimes_leave_endermites_through_the_entity_update()
 
 #[test]
 fn endermites_vanish_after_two_minutes_unless_persistent() {
-    let world = Grid::flat(1);
+    // A pen keeps them near the player, so neither wanders off into the
+    // ordinary random despawn beyond 32 blocks.
+    let mut world = Grid::flat(1);
+    for y in 1..3 {
+        for x in -5..4 {
+            world.set(IVec3::new(x, y, -3), Block::STONE);
+            world.set(IVec3::new(x, y, 3), Block::STONE);
+        }
+        for z in -3..4 {
+            world.set(IVec3::new(-5, y, z), Block::STONE);
+            world.set(IVec3::new(3, y, z), Block::STONE);
+        }
+    }
     // `ctx` turns natural spawning off, so the endermites are the only mobs.
     let c = ctx(vec![bystander(DVec3::new(4.5, 1.0, 0.5))]);
     let mut e = Entities::new(17);

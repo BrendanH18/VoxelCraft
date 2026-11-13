@@ -24,7 +24,10 @@
     `NearestAttackableTargetGoal<Endermite>(mustSee)` on the shared hunt
     path: an enderman not angry at a player walks at the nearest endermite
     within 64 blocks that it can see and hits it for 7 within its attack box.
-    A stare still angers a hunting enderman, which then drops the hunt.
+    A stare still angers a hunting enderman, which then drops the hunt. A
+    bite from an endermite no longer makes an enderman angry at players
+    (the game's enderman anger is player-only; Java's `HurtByTargetGoal`
+    would pick the endermite it already targets).
 - `src/entity/mob/endermite.rs` (new): the goals. The player target comes
   from the shared `NearestAttackableTargetGoal` helper (`java_target`, must
   see, 16 blocks); `HurtByTargetGoal().setAlertOthers()` turns the hurt
