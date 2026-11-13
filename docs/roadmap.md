@@ -2,7 +2,7 @@
 
 [← Back to VoxelCraft](../README.md) · [Documentation index](README.md) · [Contributing](../CONTRIBUTING.md) · [Architecture](architecture.md) · [Development](development.md)
 
-## Current plan — updated 2026-11-09
+## Current plan — updated 2026-11-12
 
 Build a faithful recreation of modern Minecraft Java single-player gameplay
 in Rust. Version 1.0 must deliver complete core survival, building,
@@ -40,15 +40,33 @@ Releases follow the [release plan](#release-plan): small, themed versions from
 v0.8 to v1.0, taken in order with no dates. Work on the earliest unreleased
 version; v1.0 is everything in this roadmap.
 
+**Priority (owner, 2026-11-12): building resumes.** The owner asked for
+building to continue, with a target of 5,000 new features or improvements
+split across agents and merged without waiting for review. That lifts the
+content freeze of the [stabilisation gate](#stabilisation-gate-before-v017):
+v0.17 starts now, while the gate's exit stays owed (the owner's play of a
+generation 3 world, a frame-time run that passes or an owner decision on
+the drawable wait, and the `v0.16` tag). The integrator read the size of
+the request as also lifting [§7](#7-feature-completion-and-release-policy)'s
+limit of one waiting version for this push, so work continues into later
+versions in release-plan order once v0.17's scope is implemented. That
+reading is the owner's to change. Nothing else is relaxed: each piece is
+checked against the Java 26.3 reference, an agent runs every merged batch
+before it is offered to the owner, rows stay Implemented, unverified until
+the owner has played, and nothing is tagged. The
+[campaign record](verification/2026-11-12-build-5000/README.md) says how
+the work is cut up, checked and counted.
+
 **Priority (audit, 2026-11-09): stabilise before more content.** The
 [2026-11-09 audit](verification/2026-11-09-project-audit.md) found v0.14,
 v0.15 and v0.16 merged to `main` without anyone having run them, the
 frame-time gate failing and unmeasured since 2026-10-29, Java 26.3 content
 that no release owned, and a stale requirement inventory. The owner asked
 for every finding to be fixed. Until the
-[stabilisation gate](#stabilisation-gate-before-v017) passes, no new
-content starts: v0.17 waits for the owner's play of v0.14 to v0.16 and for
-one tag that carries them. From now on every release records a frame-time
+[stabilisation gate](#stabilisation-gate-before-v017) passed, no new
+content was to start: v0.17 waited for the owner's play of v0.14 to v0.16
+and for one tag that carries them (the owner lifted that freeze on
+2026-11-12, above; the play and the tag are still owed). From now on every release records a frame-time
 run ([§6.1](#61-reference-configuration-and-frame-time-gate)), an agent runs
 each version hands-on before it is offered to the owner
 ([§7](#7-feature-completion-and-release-policy)), and every Java 26.3
@@ -542,8 +560,8 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.14 | Structures | M3: GEN-05..07 | A Java structure-template (jigsaw) system; villages, outposts, bastions, fossils, shipwrecks, ocean ruins and monuments built from it; buried treasure and explorer maps; Java loot random sequences. See [v0.14 scope](#v014-scope-structures) | In progress (2026-11-03): scope approved with original templates (no fidelity exception yet); all of items 0–7 implemented, unverified: world generation 3, the jigsaw engine and villages ([record](verification/2026-11-03-v0.14-jigsaw-villages.md)), outposts and bastions ([record](verification/2026-11-03-v0.14-outposts-bastions.md)), ruined portals and buried treasure ([record](verification/2026-11-03-v0.14-portals-treasure.md)), fossils, desert wells and trail ruins ([record](verification/2026-11-03-v0.14-fossils-wells-trail-ruins.md)), maps, explorer maps and Java loot sequences ([record](verification/2026-11-03-v0.14-maps.md)); terrain blending for villages and outposts added on 2026-11-09 ([record](verification/2026-11-09-structure-terrain-blending.md)). Merged, not tagged: waits for the [stabilisation gate](#stabilisation-gate-before-v017) and the owner's play |
 | v0.15 | Wildlife | M4: MOB-03/04, FOO, ENV-03 | Bats, frogs, pandas, polar bears, armadillos, mooshrooms, strays, bogged, phantoms and zombie horses (with lightning); drowned conversion and the cat spawner; melon, pumpkin and beetroot crops; animal and mount acceptance. See [v0.15 scope](#v015-scope-wildlife) | Implemented, unverified (2026-11-04): started early while v0.14 waits for the owner's play; four tracks (lightning and undead mounts, crops and bees, passive mobs, hostiles) merged and council-reviewed ([integration](verification/2026-11-04-v0.15-integration.md)); copper golems (2026-11-05), then creaking and resin, allays, sniffers and ocean ruins with suspicious blocks (2026-11-06, [integration](verification/2026-11-06-v0.15-final-integration.md)) complete the scope; awaits the owner's play |
 | v0.16 | Deep dark and trials | M3 + M4 + PRO-07 | Ancient cities with sculk and the warden; trial chambers with breezes, trial spawners, vaults and the mace; tridents, spears and the other modern weapon families; a jukebox with music discs. See [v0.16 scope](#v016-scope-deep-dark-and-trials) | Implemented, unverified (2026-11-07): scope approved by the owner on 2026-11-06; four tracks (sculk and the warden, ancient cities and music, trial chambers, weapons) merged and integrated ([integration](verification/2026-11-07-v0.16-integration.md)); awaits the owner's play |
-| — | Stabilisation | Gate before v0.17 | No new content: an agent hands-on pass over v0.14 to v0.16, the entity frame-time fix and a full scene run, terrain blending for generation 3 structures, the audit's data fixes, the owner's play, and one tag for v0.14 to v0.16. See the [stabilisation gate](#stabilisation-gate-before-v017) | In progress (2026-11-09) |
-| v0.17 | Villages and raids | Close M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M4 exit checks. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): the remaining Java 26.3 mobs (happy ghasts, nautiluses, camel husks, parched), mobs holding and picking up equipment, chainmail, books, bundles, spyglasses, armor trims, the remaining status effects and potions, and the village template catalogue | Planned; waits for the stabilisation gate |
+| — | Stabilisation | Gate before v0.17 | No new content: an agent hands-on pass over v0.14 to v0.16, the entity frame-time fix and a full scene run, terrain blending for generation 3 structures, the audit's data fixes, the owner's play, and one tag for v0.14 to v0.16. See the [stabilisation gate](#stabilisation-gate-before-v017) | In progress (2026-11-09). The owner lifted its content freeze on 2026-11-12; the owner's play, the frame-time gate and the tag are still owed |
+| v0.17 | Villages and raids | Close M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M4 exit checks. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): the remaining Java 26.3 mobs (happy ghasts, nautiluses, camel husks, parched), mobs holding and picking up equipment, chainmail, books, bundles, spyglasses, armor trims, the remaining status effects and potions, and the village template catalogue | In progress (2026-11-12): started on the owner's instruction while the stabilisation gate's exit is still owed; built slice by slice in the [build-5000 campaign](verification/2026-11-12-build-5000/README.md) |
 | v0.18 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): poplar, cinnabar and sulfur with their terrain and the sulfur cube, abandoned camps, mob heads, infested blocks, nether gold ore, conduits, and the reassessment of dungeons, mineshafts, strongholds, shipwrecks and monuments | Planned |
 | v0.19 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload. Added by the 2026-11-09 audit: the furnace minecart | Planned |
 | v0.20 | Polish and performance | M7: UX, §6 | Typography/contrast, material and mob art, inventory/recipe navigation, HUD/workstations, title/world identity, atmosphere and accessibility ([scope](#v020-scope-presentation-and-performance)); subtitles, asset and sound review in play (including the v0.12 blocks' own sounds), and menu fixes found since v0.11; the 240 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, v0.11's menu and title frame-time run and v0.12's `materials` runs, which moved here unverified ([v0.12 profile](verification/2026-10-29-v0.12-finish.md#frame-time)). The per-frame entity model rebuild that profile found was removed on 2026-11-09 ([record](verification/2026-11-09-entity-frame-time.md)); the streaming route's main-thread terrain column rebuilds from mob biome queries were addressed in the [streaming follow-up](verification/2026-11-09-streaming-biomes-and-gen07.md); valid windowed gate runs, the remaining tick work and per-frame sign text are still owed | Planned; presentation scope expanded by the owner on 2026-11-05. Each release now records its own frame-time run ([§6.1](#61-reference-configuration-and-frame-time-gate)), so what stays here is the final gate, not every release's first measurement |
@@ -589,7 +607,9 @@ Notes:
 Added by the [2026-11-09 audit](verification/2026-11-09-project-audit.md).
 v0.14, v0.15 and v0.16 were merged without being run, so the next release
 is a gate, not a version: it adds no blocks, items, mobs or structures, and
-v0.17 does not start until it passes. Work items:
+v0.17 was not to start until it passed; on 2026-11-12 the owner asked for
+building to continue, which lifts that freeze and leaves the exit below
+owed. Work items:
 
 1. **Data fixes.** *Implemented, unverified (2026-11-09,
    [record](verification/2026-11-09-audit-data-fixes.md)).* Brewing is
@@ -1545,7 +1565,10 @@ merged with its record saying "Not run: the game":
   for the owner's play, agents may work ahead on the next one where its
   dependencies allow, as the release plan says. They don't start a third:
   three unplayed versions is how 60,000 lines reached `main` unseen. This
-  limit is the audit's; the owner can lift it for a given release.
+  limit is the audit's; the owner can lift it for a given release. The
+  owner's 2026-11-12 request for 5,000 features is read as lifting it for
+  that push ([current plan](#current-plan--updated-2026-11-12)); the other
+  two steps still apply to everything it merges.
 
 Use the repository's required check chain for source changes:
 `cargo fmt && cargo clippy --release --all-targets -- -D warnings && cargo test --release`.
