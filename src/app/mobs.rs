@@ -97,8 +97,7 @@ impl Game {
             if let Some(equipped) = armor
                 && let Some(mob) = self.mobs.entities.mobs.last_mut()
             {
-                mob.armor = [Some(equipped.kind); 4];
-                mob.armor_glint = if equipped.glint { 0b1111 } else { 0 };
+                mob.equipment.wear_set(equipped.kind, equipped.glint);
             }
             if let Some(&(_, item)) = held.iter().find(|(at, _)| *at == i)
                 && let Some(allay) = self.mobs.entities.mobs.last_mut().and_then(|m| m.allay.as_mut())
@@ -574,7 +573,8 @@ impl Game {
                 | EntityEvent::DragonXp { .. }
                 | EntityEvent::MobKilled { .. }
                 | EntityEvent::LaidEgg { .. }
-                | EntityEvent::Hatched { .. } => {}
+                | EntityEvent::Hatched { .. }
+                | EntityEvent::DropEquipment { .. } => {}
                 EntityEvent::AnimalBlock { cell, from, to } => {
                     if self.world.get_block(cell) == Some(from) {
                         self.world.set_block(cell, to);

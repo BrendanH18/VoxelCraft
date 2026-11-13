@@ -114,11 +114,30 @@ impl Entities {
                 self.ensure_mob_ids();
                 let uid = self.mobs[h].uid;
                 self.spawn(MobKind::Skeleton, pos);
+                let special = crate::simulation::difficulty::special_multiplier(self.difficulty.effective(
+                    self.clock_time,
+                    0,
+                    self.moon_brightness,
+                ));
                 let r = self.mobs.last_mut().unwrap();
                 r.persistent = true;
                 r.riding = Some(super::mounts::MOB_VEHICLE | uid);
                 r.undead_mount.protection = 3.;
-                r.armor[0] = Some(super::armor::ArmorKind::Iron);
+                // `SkeletonTrapGoal.createSkeleton`: an iron helmet if the
+                // head is empty, then the hand and head re-enchanted from
+                // `mob_spawn_equipment`.
+                use super::equipment::Slot;
+                if r.equipment.armor_kind(crate::item::ArmorPiece::Helmet).is_none() {
+                    let helmet =
+                        crate::item::Item::armor(crate::item::ArmorPiece::Helmet, crate::item::ArmorMaterial::Iron);
+                    r.equipment.set(Slot::Head, Some(crate::inventory::Stack::new(helmet, 1)));
+                }
+                for slot in [Slot::MainHand, Slot::Head] {
+                    if let Some(stack) = r.equipment.get_mut(slot) {
+                        let mut random = crate::enchant::JavaRandom::new(i64::from(self.rng.next_int(i32::MAX as u32)));
+                        stack.enchants = crate::enchant::enchant_mob_equipment(&mut random, stack.item, special);
+                    }
+                }
             }
         }
     }

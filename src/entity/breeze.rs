@@ -236,12 +236,12 @@ mod tests {
             s.shoot = 55;
             s.jump_target = Some(DVec3::new(3.5, 70.0, 1.5));
         }
-        m.keeps_equipment = true;
+        m.equipment.set_drop_chance(crate::entity::equipment::Slot::MainHand, 0.0);
         let saved = crate::entity::nether::save_mob(&m);
         let back = crate::entity::nether::load_mob(&saved).unwrap();
         let (a, b) = (m.breeze.as_ref().unwrap(), back.breeze.as_ref().unwrap());
         assert_eq!((b.pose, b.inhaling, b.jump_cooldown, b.shoot, b.jump_target), (a.pose, 4, 7, 55, a.jump_target));
-        assert!(back.keeps_equipment);
+        assert_eq!(back.equipment.drop_chance(crate::entity::equipment::Slot::MainHand), 0.0);
     }
 
     #[test]

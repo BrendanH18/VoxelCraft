@@ -123,43 +123,17 @@ impl Entities {
 }
 
 impl Entities {
-    pub(super) fn skeleton_equipment_drops(&mut self, kind: MobKind, pos: glam::DVec3, looting: u8, player_kill: bool) {
-        if !kind.is_bow_skeleton() || !player_kill {
-            return;
-        }
-        let Some(m) = self.mobs.iter_mut().find(|m| m.kind == kind && !m.alive() && m.pos.distance_squared(pos) < 0.01)
+    /// `Mob.dropCustomDeathLoot` for the mob of `kind` that just died at
+    /// `pos`: each equipment slot drops by its drop chance (see
+    /// [`super::equipment::Equipment::death_drops`]).
+    pub(super) fn mob_equipment_drops(&mut self, kind: MobKind, pos: glam::DVec3, looting: u8, player_kill: bool) {
+        let Some(i) = self.mobs.iter().position(|m| m.kind == kind && !m.alive() && m.pos.distance_squared(pos) < 0.01)
         else {
             return;
         };
-        // Trial spawner equipment (`slot_drop_chances: 0`) never drops.
-        if m.keeps_equipment {
-            return;
-        }
-        let bow = m.skeleton_bow.take();
-        let mut equipment: Vec<Stack> = bow.into_iter().map(|s| *s).collect();
-        for (i, piece) in crate::item::ArmorPiece::ALL.into_iter().enumerate() {
-            use super::armor::ArmorKind as A;
-            use crate::item::ArmorMaterial as M;
-            let material = match m.armor[i] {
-                Some(A::Leather) => Some(M::Leather),
-                Some(A::Gold) => Some(M::Gold),
-                Some(A::Iron) => Some(M::Iron),
-                Some(A::Diamond) => Some(M::Diamond),
-                Some(A::Copper) => Some(M::Copper),
-                _ => None,
-            };
-            if let Some(material) = material {
-                equipment.push(Stack::new(Item::armor(piece, material), 1));
-            }
-        }
-        for mut stack in equipment {
-            if self.rng.chance(0.085 + 0.01 * f32::from(looting)) {
-                if let Some(max) = stack.item.durability() {
-                    let inner = self.rng.next_int(u32::from(max.saturating_sub(3).max(1)));
-                    stack.damage = max - self.rng.next_int(inner + 1) as u16;
-                }
-                self.scatter(stack, pos);
-            }
+        let drops = self.mobs[i].equipment.death_drops(player_kill, looting, &mut self.rng);
+        for stack in drops {
+            self.scatter(stack, pos);
         }
     }
 }
@@ -205,13 +179,23 @@ mod tests {
         let mut mob = Mob::new(MobKind::Skeleton, DVec3::new(0.5, 10., 0.5), 0.);
         mob.uid = 71;
         mob.health = 7.;
-        mob.armor[0] = Some(super::super::armor::ArmorKind::Iron);
+        mob.equipment.wear(
+            crate::item::ArmorPiece::Helmet,
+            super::super::armor::ArmorKind::Iron,
+            crate::enchant::Enchants::NONE,
+        );
+        mob.equipment.set_drop_chance(super::super::equipment::Slot::Head, 0.5);
         for _ in 0..441 {
             mob.freeze_in_powder_snow(0.05, &world);
         }
         assert_eq!(mob.kind, MobKind::Stray);
         assert_eq!((mob.uid, mob.health), (71, MobKind::Stray.max_health()));
-        assert_eq!(mob.armor[0], Some(super::super::armor::ArmorKind::Iron));
+        assert_eq!(
+            mob.equipment.armor_kind(crate::item::ArmorPiece::Helmet),
+            Some(super::super::armor::ArmorKind::Iron)
+        );
+        assert_eq!(mob.equipment.drop_chance(super::super::equipment::Slot::Head), 0.5);
+        assert_eq!(mob.equipment.main_hand().map(|s| s.item), Some(Item::BOW));
     }
     #[test]
     fn shearing_is_once_only_and_saved_with_natural_mobs() {
@@ -299,10 +283,10 @@ mod tests {
     fn bow_enchantments_survive_conversion_and_reload() {
         let mut e = Entities::new(7);
         e.spawn(MobKind::Stray, DVec3::ZERO);
-        e.mobs[0].skeleton_bow.as_mut().unwrap().enchants =
+        e.mobs[0].equipment.get_mut(super::super::equipment::Slot::MainHand).unwrap().enchants =
             crate::enchant::Enchants::NONE.with(crate::enchant::Enchantment::Power, 3);
         let mut copy = Entities::new(8);
         copy.load_nether_mobs(&e.nether_mobs_to_string());
-        assert_eq!(copy.mobs[0].skeleton_bow.as_ref().unwrap().enchants.level(crate::enchant::Enchantment::Power), 3);
+        assert_eq!(copy.mobs[0].equipment.main_hand().unwrap().enchants.level(crate::enchant::Enchantment::Power), 3);
     }
 }

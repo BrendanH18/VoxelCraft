@@ -324,7 +324,7 @@ mod tests {
             m.animal.as_ref().map(|a| (a.owner, a.sitting, a.collar)),
             m.mount.as_ref().map(|s| (s.tame, s.owner, s.chest, s.slots)),
             m.villager.as_ref().map(|v| (v.id, v.home, v.job, v.profession, v.xp)),
-            m.armor,
+            m.equipment,
             m.effects.serialize(),
             m.built,
         )

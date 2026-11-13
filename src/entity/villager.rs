@@ -834,13 +834,15 @@ impl Entities {
                 MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader => {
                     let v = m.villager.as_ref()?;
                     let mut saved = json!({"identity":super::leash::save(m),"trader":m.trader.as_ref().map(|t|t.save()),"kind":m.kind.name(),"id":v.id,"seed":v.seed,"p":m.pos.to_array(),"yaw":m.yaw,
-                    "health":m.health,"effects":m.effects.serialize(),"age":m.age,"built":m.built,"armor":m.armor.map(|a|a.map(|a|a as u8)),"glint":m.armor_glint,"profession":v.profession as u8,"level":v.level,"xp":v.xp,
+                    "health":m.health,"effects":m.effects.serialize(),"age":m.age,"built":m.built,"profession":v.profession as u8,"level":v.level,"xp":v.xp,
                     "job":v.job.map(|p|p.to_array()),"home":v.home.map(|p|p.to_array()),
                     "offers":v.offers.map(|o|o.map(Offer::save)),"day":v.restock_day,"restocks":v.restocks,
                     "last":v.last_restock,"slept":v.last_slept,"golem_seen":v.golem_seen,"gossip":v.gossip.save(),"food":v.food.map(stack_to_string),"food_level":v.food_level,"bell_hide":v.bell_hide,"promote":v.promote_left,"promote_pending":v.promote_pending,"reputation":v.reputation,"weakness":m.weakness_left,"convert":m.convert_left,"convert_tick":m.convert_tick,"convert_by":m.convert_by.map(|p|p.0)});
                     if let Some(variant) = &v.map_variant {
                         saved["map_variant"] = json!(variant);
                     }
+                    // v0.17: `equipment` and `drop_chances` replace `armor` and `glint`.
+                    m.equipment.save_into(&mut saved, false);
                     Some(saved)
                 }
                 _ => None,
@@ -966,12 +968,8 @@ impl Entities {
                     .and_then(|p| u32::try_from(p).ok())
                     .map(super::PlayerId)
                     .or_else(|| (m.convert_left > 0.0).then_some(super::PlayerId::HOST));
-                if let Some(armor) = a["armor"].as_array() {
-                    for (slot, value) in m.armor.iter_mut().zip(armor) {
-                        *slot = value.as_u64().and_then(|i| super::armor::ArmorKind::ALL.get(i as usize).copied());
-                    }
-                }
-                m.armor_glint = a["glint"].as_u64().unwrap_or(0).min(15) as u8;
+                let fresh = std::mem::take(&mut m.equipment);
+                m.equipment = super::equipment::load_mob_equipment(a, fresh, &super::equipment::Legacy::villager(a));
                 if kind == MobKind::WanderingTrader {
                     m.trader = Some(Box::new(super::wandering_trader::Trader::load(&a["trader"], p)?));
                 }

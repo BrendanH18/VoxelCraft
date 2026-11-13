@@ -32,6 +32,7 @@ pub mod copper_golem;
 pub mod creaking;
 pub mod dragon;
 mod dragon_model;
+pub mod equipment;
 pub mod eye;
 pub mod fireball;
 pub mod frog;
@@ -428,6 +429,12 @@ pub enum EntityEvent {
         attacker: u32,
         damage: f32,
         knockback: DVec3,
+    },
+    /// A mob's equipment drops at `pos` outside a death (`Mob.spawnAtLocation`,
+    /// e.g. preserved gear on a zombie villager's cure; handled internally).
+    DropEquipment {
+        stack: crate::inventory::Stack,
+        pos: DVec3,
     },
 }
 
@@ -1138,25 +1145,29 @@ impl Entities {
             0,
             self.moon_brightness,
         ));
-        if kind.is_zombie() || kind.is_bow_skeleton() {
-            let (armor, glint) = armor::roll_monster_armor(
+        // `Mob.populateDefaultEquipmentSlots` (zombies, husks, zombie
+        // villagers and bow skeletons, whose bow `Mob::new` gives), or the
+        // drowned's override, which skips armor: above 0.9, 10 in 16 a
+        // trident, else a fishing rod. Then `populateDefaultEquipmentEnchantments`.
+        if (kind.is_zombie() && kind != MobKind::Drowned) || kind.is_bow_skeleton() {
+            let armor = armor::roll_monster_armor(
                 &mut self.rng,
                 self.difficulty == crate::simulation::difficulty::Difficulty::Hard,
                 special,
             );
-            mob.armor = armor;
-            mob.armor_glint = glint;
-            if kind.is_bow_skeleton() && self.rng.chance(0.25 * special) {
-                let mut random = crate::enchant::JavaRandom::new(i64::from(self.rng.next_int(i32::MAX as u32)));
-                mob.skeleton_bow.as_mut().unwrap().enchants =
-                    crate::enchant::enchant_mob_equipment(&mut random, crate::item::Item::BOW, special);
+            for (piece, worn) in crate::item::ArmorPiece::ALL.into_iter().zip(armor) {
+                if let Some(kind) = worn {
+                    mob.equipment.wear(piece, kind, crate::enchant::Enchants::NONE);
+                }
             }
         }
-        // `Drowned.populateDefaultEquipmentSlots`: above 0.9, 10 in 16 a trident, else a fishing rod.
         if kind == MobKind::Drowned && self.rng.next_f32() > 0.9 {
             let item =
                 if self.rng.next_int(16) < 10 { crate::weapons::TRIDENT } else { crate::item::Item::FISHING_ROD };
-            mob.weapon = Some(Box::new(crate::inventory::Stack::new(item, 1)));
+            mob.equipment.set(equipment::Slot::MainHand, Some(crate::inventory::Stack::new(item, 1)));
+        }
+        if kind.is_zombie() || kind.is_bow_skeleton() {
+            mob.equipment.enchant_spawned(&mut self.rng, special);
         }
         if kind.is_cube() {
             // `AbstractCubeMob.setSpawnSize`: sizes 1, 2 and 4 from nextInt(3),
@@ -1322,6 +1333,13 @@ impl Entities {
         self.drop_loot_with_fire(kind, pos, looting, false, true);
     }
 
+    /// [`Entities::drop_loot_with`] for any death: `player_kill` is Java's
+    /// `lastHurtByPlayerMemoryTime > 0` (false for a death to another mob
+    /// or the environment with no player hit in the last five seconds).
+    pub fn drop_loot_killed(&mut self, kind: MobKind, pos: DVec3, looting: u8, player_kill: bool) {
+        self.drop_loot_with_fire(kind, pos, looting, false, player_kill);
+    }
+
     fn drop_loot_with_fire(&mut self, kind: MobKind, pos: DVec3, looting: u8, burning: bool, player_kill: bool) {
         self.allay_equipment_drops(kind, pos);
         self.copper_equipment_drops(kind, pos);
@@ -1368,7 +1386,7 @@ impl Entities {
             }
         }
         self.equipment_drops(kind, pos, looting, player_kill);
-        self.skeleton_equipment_drops(kind, pos, looting, player_kill);
+        self.mob_equipment_drops(kind, pos, looting, player_kill);
         if baby && nether::babies_drop_nothing(kind) {
             return;
         }
@@ -2394,7 +2412,7 @@ mod tests {
             for _ in 0..4000 {
                 e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
             }
-            e.mobs.iter().filter(|m| m.armor.iter().any(Option::is_some)).count()
+            e.mobs.iter().filter(|m| m.equipment.worn().iter().any(Option::is_some)).count()
         };
         assert_eq!(armored(Difficulty::Normal, 0), 0, "effective difficulty 1.5 is below Java's threshold");
         assert_eq!(armored(Difficulty::Peaceful, 10_000_000), 0);

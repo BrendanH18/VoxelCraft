@@ -150,22 +150,6 @@ impl Entities {
                 {
                     self.items.push(ItemEntity::new(stack, dead.pos, DVec3::ZERO, 0.5, &mut self.rng));
                 }
-                // `Mob.dropCustomDeathLoot`: a hand item drops on 8.5% of player kills
-                // (`DEFAULT_EQUIPMENT_DROP_CHANCE`), its wear rerolled.
-                if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
-                    && dead.player_hit_left > 0.0
-                    && let Some(stack) = dead.weapon.as_deref().copied()
-                    && !stack.enchants.has(crate::enchant::Enchantment::VanishingCurse)
-                    && self.rng.next_f32() < crate::weapons::trident::EQUIPMENT_DROP_CHANCE
-                {
-                    let mut stack = stack;
-                    if let Some(max) = stack.item.durability() {
-                        let inner = 1 + self.rng.next_int(u32::from(max.saturating_sub(3).max(1)));
-                        stack.damage = max - self.rng.next_int(inner) as u16;
-                        stack.damage = stack.damage.min(max - 1);
-                    }
-                    self.items.push(ItemEntity::new(stack, dead.pos, DVec3::ZERO, 0.5, &mut self.rng));
-                }
                 if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
                     && let Some(s) = &dead.copper_golem
                 {
@@ -312,7 +296,11 @@ impl Entities {
                     arrow.custom_effect =
                         self.mobs.iter().find(|m| m.uid == shooter).and_then(|m| m.kind.arrow_effect());
                     if let Some(m) = self.mobs.iter().find(|m| m.uid == shooter) {
-                        arrow.enchants = m.skeleton_bow.as_ref().map_or(Default::default(), |s| s.enchants);
+                        arrow.enchants = m
+                            .equipment
+                            .main_hand()
+                            .filter(|s| s.item == crate::item::Item::BOW)
+                            .map_or(Default::default(), |s| s.enchants);
                     }
                     arrow.tipped = arrow.custom_effect.is_some();
                     // `Projectile.tick`'s first tick: `projectile_shoot` from its owner.
@@ -325,7 +313,7 @@ impl Entities {
                         .mobs
                         .iter()
                         .find(|m| m.uid == shooter)
-                        .and_then(|m| m.weapon.as_deref().copied())
+                        .and_then(|m| m.equipment.main_hand().copied())
                         .filter(|s| s.item == crate::weapons::TRIDENT)
                         .unwrap_or(crate::inventory::Stack::new(crate::weapons::TRIDENT, 1));
                     let uncertainty = crate::weapons::trident::mob_uncertainty(self.difficulty as u8);
@@ -506,6 +494,7 @@ impl Entities {
                         self.spawn_baby(MobKind::Chicken, pos);
                     }
                 }
+                EntityEvent::DropEquipment { stack, pos } => self.scatter(stack, pos),
                 _ => {}
             }
         }
@@ -516,6 +505,7 @@ impl Entities {
                     | EntityEvent::MobKilled { .. }
                     | EntityEvent::LaidEgg { .. }
                     | EntityEvent::Hatched { .. }
+                    | EntityEvent::DropEquipment { .. }
             )
         });
         self.items.retain_mut(|item| !world.entity_ticking(item.pos.floor().as_ivec3()) || item.update(dt, world));
