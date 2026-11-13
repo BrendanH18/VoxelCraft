@@ -729,6 +729,8 @@ mod reference_tests {
             (0, vec![(26, Item::STICK, 1)]),
             (42, vec![(9, Item::PAPER, 2), (17, Item::PAPER, 2)]),
             (12345, vec![(2, Item::BREAD, 1), (13, Item::BREAD, 1), (25, Item::BREAD, 2), (26, Item::COMPASS, 1)]),
+            // The second pool's bundle (weight 1 against an empty weight 2).
+            (1, vec![(8, crate::content::bundle::BUNDLE, 1), (9, Item::BREAD, 1), (24, Item::BREAD, 1)]),
         ] {
             let c = table(seed, "village/village_cartographer");
             let observed: Vec<_> =

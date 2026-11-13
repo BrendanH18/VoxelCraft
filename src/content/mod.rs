@@ -2,6 +2,7 @@
 //! Start with planks and furnace fuels; other integrations migrate with fixtures.
 use crate::{item::Item, world::block::Block};
 
+pub mod bundle;
 pub mod compost;
 pub mod consumption;
 pub mod fishing;

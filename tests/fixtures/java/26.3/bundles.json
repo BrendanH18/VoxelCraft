@@ -1,0 +1,1945 @@
+{
+ "clicks": [
+  {
+   "button": "left",
+   "carried": {
+    "count": 1,
+    "item": "bundle"
+   },
+   "carried_after": {
+    "contents": [
+     {
+      "count": 64,
+      "item": "stone"
+     }
+    ],
+    "count": 1,
+    "item": "bundle"
+   },
+   "name": "held bundle takes a slot's stack",
+   "outcome": "inserted",
+   "overridden": true,
+   "slot": {
+    "count": 64,
+    "item": "stone"
+   },
+   "slot_after": null
+  },
+  {
+   "button": "left",
+   "carried": {
+    "contents": [
+     {
+      "count": 32,
+      "item": "stone"
+     }
+    ],
+    "count": 1,
+    "item": "bundle"
+   },
+   "carried_after": {
+    "contents": [
+     {
+      "count": 8,
+      "item": "ender_pearl"
+     },
+     {
+      "count": 32,
+      "item": "stone"
+     }
+    ],
+    "count": 1,
+    "item": "bundle"
+   },
+   "name": "held bundle takes what fits",
+   "outcome": "inserted",
+   "overridden": true,
+   "slot": {
+    "count": 16,
+    "item": "ender_pearl"
+   },
+   "slot_after": {
+    "count": 8,
+    "item": "ender_pearl"
+   }
+  },
+  {
+   "button": "left",
+   "carried": {
+    "contents": [
+     {
+      "count": 64,
+      "item": "stone"
+     }
+    ],
+    "count": 1,
+    "item": "bundle"
+   },
+   "carried_after": {
+    "contents": [
+     {
+      "count": 64,
+      "item": "stone"
+     }
+    ],
+    "count": 1,
+    "item": "bundle"
+   },
+   "name": "held full bundle takes nothing",
+   "outcome": "insert_failed",
+   "overridden": true,
+   "slot": {
+    "count": 5,
+    "item": "leather"
+   },
+   "slot_after": {
+    "count": 5,
+    "item": "leather"
+   }
+  },
+  {
+   "button": "right",
+   "carried": {
+    "contents": [
+     {
+      "count": 3,
+      "item": "leather"
+     },
+     {
+      "count": 2,
+      "item": "stone"
+     }
+    ],
+    "count": 1,
+    "item": "blue_bundle"
+   },
+   "carried_after": {
+    "contents": [
+     {
+      "count": 2,
+      "item": "stone"
+     }
+    ],
+    "count": 1,
+    "item": "blue_bundle"
+   },
+   "name": "held bundle empties its front stack into an empty slot",
+   "outcome": "removed",
+   "overridden": true,
+   "slot": null,
+   "slot_after": {
+    "count": 3,
+    "item": "leather"
+   }
+  },
+  {
+   "button": "right",
+   "carried": {
+    "count": 1,
+    "item": "bundle"
+   },
+   "carried_after": {
+    "count": 1,
+    "item": "bundle"
+   },
+   "name": "held empty bundle right-clicks an empty slot",
+   "outcome": "nothing",
+   "overridden": true,
+   "slot": null,
+   "slot_after": null
+  },
+  {
+   "button": "left",
+   "carried": {
+    "contents": [
+     {
+      "count": 2,
+      "item": "stone"
+     }
+    ],
+    "count": 1,
+    "item": "bundle"
+   },
+   "name": "held bundle left-clicks an empty slot",
+   "overridden": false,
+   "slot": null
+  },
+  {
+   "button": "right",
+   "carried": {
+    "count": 1,
+    "item": "bundle"
+   },
+   "name": "held bundle right-clicks a stack",
+   "overridden": false,
+   "slot": {
+    "count": 3,
+    "item": "stone"
+   }
+  },
+  {
+   "button": "left",
+   "carried": {
+    "count": 64,
+    "item": "stone"
+   },
+   "carried_after": null,
+   "name": "a stack goes into a clicked bundle",
+   "outcome": "inserted",
+   "overridden": true,
+   "slot": {
+    "count": 1,
+    "item": "bundle"
+   },
+   "slot_after": {
+    "contents": [
+     {
+      "count": 64,
+      "item": "stone"
+     }
+    ],
+    "count": 1,
+    "item": "bundle"
+   }
+  },
+  {
+   "button": "left",
+   "carried": {
+    "count": 10,
+    "item": "stone"
+   },
+   "carried_after": null,
+   "name": "a clicked bundle takes all that fits",
+   "outcome": "inserted",
+   "overridden": true,
+   "slot": {
+    "contents": [
+     {
+      "count": 12,
+      "item": "ender_pearl"
+     }
+    ],
+    "count": 1,
+    "item": "bundle"
+   },
+   "slot_after": {
+    "contents": [
+     {
+      "count": 10,
+      "item": "stone"
+     },
+     {
+      "count": 12,
+      "item": "ender_pearl"
+     }
+    ],
+    "count": 1,
+    "item": "bundle"
+   }
+  },
+  {
+   "button": "left",
+   "carried": {
+    "count": 40,
+    "item": "stone"
+   },
+   "carried_after": {
+    "count": 24,
+    "item": "stone"
+   },
+   "name": "a clicked bundle takes part of a stack",
+   "outcome": "inserted",
+   "overridden": true,
+   "slot": {
+    "contents": [
+     {
+      "count": 12,
+      "item": "ender_pearl"
+     }
+    ],
+    "count": 1,
+    "item": "bundle"
+   },
+   "slot_after": {
+    "contents": [
+     {
+      "count": 16,
+      "item": "stone"
+     },
+     {
+      "count": 12,
+      "item": "ender_pearl"
+     }
+    ],
+    "count": 1,
+    "item": "bundle"
+   }
+  },
+  {
+   "button": "left",
+   "carried": {
+    "count": 1,
+    "item": "leather"
+   },
+   "carried_after": {
+    "count": 1,
+    "item": "leather"
+   },
+   "name": "a full clicked bundle refuses a stack",
+   "outcome": "insert_failed",
+   "overridden": true,
+   "slot": {
+    "contents": [
+     {
+      "count": 64,
+      "item": "stone"
+     }
+    ],
+    "count": 1,
+    "item": "bundle"
+   },
+   "slot_after": {
+    "contents": [
+     {
+      "count": 64,
+      "item": "stone"
+     }
+    ],
+    "count": 1,
+    "item": "bundle"
+   }
+  },
+  {
+   "button": "right",
+   "carried": null,
+   "carried_after": {
+    "count": 3,
+    "item": "leather"
+   },
+   "name": "right-clicking a bundle with nothing held takes its front stack",
+   "outcome": "removed",
+   "overridden": true,
+   "slot": {
+    "contents": [
+     {
+      "count": 3,
+      "item": "leather"
+     },
+     {
+      "count": 2,
+      "item": "stone"
+     }
+    ],
+    "count": 1,
+    "item": "bundle"
+   },
+   "slot_after": {
+    "contents": [
+     {
+      "count": 2,
+      "item": "stone"
+     }
+    ],
+    "count": 1,
+    "item": "bundle"
+   }
+  },
+  {
+   "button": "right",
+   "carried": null,
+   "carried_after": null,
+   "name": "right-clicking an empty bundle with nothing held",
+   "outcome": "nothing",
+   "overridden": true,
+   "slot": {
+    "count": 1,
+    "item": "bundle"
+   },
+   "slot_after": {
+    "count": 1,
+    "item": "bundle"
+   }
+  },
+  {
+   "button": "left",
+   "carried": null,
+   "name": "left-clicking a bundle with nothing held picks it up",
+   "overridden": false,
+   "slot": {
+    "contents": [
+     {
+      "count": 2,
+      "item": "stone"
+     }
+    ],
+    "count": 1,
+    "item": "bundle"
+   }
+  },
+  {
+   "button": "right",
+   "carried": {
+    "count": 3,
+    "item": "stone"
+   },
+   "name": "right-clicking a bundle with a stack held swaps",
+   "overridden": false,
+   "slot": {
+    "count": 1,
+    "item": "bundle"
+   }
+  },
+  {
+   "button": "left",
+   "carried": {
+    "count": 1,
+    "item": "bundle"
+   },
+   "carried_after": {
+    "contents": [
+     {
+      "contents": [
+       {
+        "count": 16,
+        "item": "stone"
+       }
+      ],
+      "count": 1,
+      "item": "green_bundle"
+     }
+    ],
+    "count": 1,
+    "item": "bundle"
+   },
+   "name": "a held bundle takes a clicked bundle",
+   "outcome": "inserted",
+   "overridden": true,
+   "slot": {
+    "contents": [
+     {
+      "count": 16,
+      "item": "stone"
+     }
+    ],
+    "count": 1,
+    "item": "green_bundle"
+   },
+   "slot_after": null
+  },
+  {
+   "button": "left",
+   "carried": {
+    "count": 1,
+    "item": "bundle"
+   },
+   "carried_after": {
+    "contents": [
+     {
+      "bees": true,
+      "count": 1,
+      "item": "beehive"
+     }
+    ],
+    "count": 1,
+    "item": "bundle"
+   },
+   "name": "a held bundle takes a hive holding bees",
+   "outcome": "inserted",
+   "overridden": true,
+   "slot": {
+    "bees": true,
+    "count": 1,
+    "item": "beehive"
+   },
+   "slot_after": null
+  },
+  {
+   "button": "left",
+   "carried": {
+    "contents": [
+     {
+      "count": 1,
+      "item": "stone"
+     }
+    ],
+    "count": 1,
+    "item": "bundle"
+   },
+   "carried_after": {
+    "contents": [
+     {
+      "count": 1,
+      "item": "stone"
+     }
+    ],
+    "count": 1,
+    "item": "bundle"
+   },
+   "name": "a held bundle with anything in it refuses a hive holding bees",
+   "outcome": "insert_failed",
+   "overridden": true,
+   "slot": {
+    "bees": true,
+    "count": 1,
+    "item": "beehive"
+   },
+   "slot_after": {
+    "bees": true,
+    "count": 1,
+    "item": "beehive"
+   }
+  },
+  {
+   "button": "right",
+   "carried": {
+    "count": 1,
+    "item": "bundle"
+   },
+   "name": "a held bundle and a clicked bundle on right click swap",
+   "overridden": false,
+   "slot": {
+    "contents": [
+     {
+      "count": 1,
+      "item": "stone"
+     }
+    ],
+    "count": 1,
+    "item": "bundle"
+   }
+  }
+ ],
+ "colours": [
+  "white",
+  "orange",
+  "magenta",
+  "light_blue",
+  "yellow",
+  "lime",
+  "pink",
+  "gray",
+  "light_gray",
+  "cyan",
+  "purple",
+  "blue",
+  "brown",
+  "green",
+  "red",
+  "black"
+ ],
+ "items": [
+  "bundle",
+  "white_bundle",
+  "orange_bundle",
+  "magenta_bundle",
+  "light_blue_bundle",
+  "yellow_bundle",
+  "lime_bundle",
+  "pink_bundle",
+  "gray_bundle",
+  "light_gray_bundle",
+  "cyan_bundle",
+  "purple_bundle",
+  "blue_bundle",
+  "brown_bundle",
+  "green_bundle",
+  "red_bundle",
+  "black_bundle"
+ ],
+ "loot": {
+  "barrels/abandoned_camp_barrel": [
+   {
+    "entries": [
+     {
+      "count": 1,
+      "name": "bundle",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": 1,
+      "name": "wooden_axe",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": 1,
+      "name": "fishing_rod",
+      "type": "item",
+      "weight": 1
+     }
+    ],
+    "rolls": 1
+   }
+  ],
+  "chests/abandoned_camp_common_chest": [
+   {
+    "entries": [
+     {
+      "count": 4,
+      "name": "arrow",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": 1,
+      "name": "map",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": {
+       "max": 4,
+       "min": 2,
+       "type": "minecraft:uniform"
+      },
+      "name": "bone",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": 1,
+      "name": "cobweb",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": 1,
+      "name": "compass",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": {
+       "max": 2,
+       "min": 1,
+       "type": "minecraft:uniform"
+      },
+      "name": "map",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": {
+       "max": 4,
+       "min": 2,
+       "type": "minecraft:uniform"
+      },
+      "name": "gunpowder",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": 1,
+      "name": "fishing_rod",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": 1,
+      "name": "flint_and_steel",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": {
+       "max": 4,
+       "min": 1,
+       "type": "minecraft:uniform"
+      },
+      "name": "glass_bottle",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": {
+       "max": 3,
+       "min": 1,
+       "type": "minecraft:uniform"
+      },
+      "name": "lead",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": {
+       "max": 4,
+       "min": 1,
+       "type": "minecraft:uniform"
+      },
+      "name": "leather",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": 1,
+      "name": "bundle",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": {
+       "max": 4,
+       "min": 1,
+       "type": "minecraft:uniform"
+      },
+      "name": "rabbit_hide",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": 1,
+      "name": "saddle",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": {
+       "max": 3,
+       "min": 1,
+       "type": "minecraft:uniform"
+      },
+      "name": "white_candle",
+      "type": "item",
+      "weight": 1
+     }
+    ],
+    "rolls": {
+     "max": 6,
+     "min": 4,
+     "type": "minecraft:uniform"
+    }
+   }
+  ],
+  "chests/village/village_cartographer": [
+   {
+    "entries": [
+     {
+      "count": 1,
+      "name": "bundle",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": 1,
+      "name": null,
+      "type": "empty",
+      "weight": 2
+     }
+    ],
+    "rolls": 1
+   }
+  ],
+  "chests/village/village_desert_house": [
+   {
+    "entries": [
+     {
+      "count": 1,
+      "name": "bundle",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": 1,
+      "name": null,
+      "type": "empty",
+      "weight": 2
+     }
+    ],
+    "rolls": 1
+   }
+  ],
+  "chests/village/village_plains_house": [
+   {
+    "entries": [
+     {
+      "count": 1,
+      "name": "bundle",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": 1,
+      "name": null,
+      "type": "empty",
+      "weight": 2
+     }
+    ],
+    "rolls": 1
+   }
+  ],
+  "chests/village/village_savanna_house": [
+   {
+    "entries": [
+     {
+      "count": 1,
+      "name": "bundle",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": 1,
+      "name": null,
+      "type": "empty",
+      "weight": 2
+     }
+    ],
+    "rolls": 1
+   }
+  ],
+  "chests/village/village_snowy_house": [
+   {
+    "entries": [
+     {
+      "count": 1,
+      "name": "bundle",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": 1,
+      "name": null,
+      "type": "empty",
+      "weight": 2
+     }
+    ],
+    "rolls": 1
+   }
+  ],
+  "chests/village/village_taiga_house": [
+   {
+    "entries": [
+     {
+      "count": 1,
+      "name": "bundle",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": 1,
+      "name": null,
+      "type": "empty",
+      "weight": 2
+     }
+    ],
+    "rolls": 1
+   }
+  ],
+  "chests/village/village_tannery": [
+   {
+    "entries": [
+     {
+      "count": 1,
+      "name": "bundle",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": 1,
+      "name": null,
+      "type": "empty",
+      "weight": 2
+     }
+    ],
+    "rolls": 1
+   }
+  ],
+  "chests/village/village_weaponsmith": [
+   {
+    "entries": [
+     {
+      "count": 1,
+      "name": "bundle",
+      "type": "item",
+      "weight": 1
+     },
+     {
+      "count": 1,
+      "name": null,
+      "type": "empty",
+      "weight": 2
+     }
+    ],
+    "rolls": 1
+   }
+  ]
+ },
+ "max_stack": {
+  "beehive": 64,
+  "bucket": 16,
+  "bundle": 1,
+  "ender_pearl": 16,
+  "leather": 64,
+  "mushroom_stew": 1,
+  "saddle": 1,
+  "snowball": 16,
+  "stone": 64
+ },
+ "recipes": {
+  "black_bundle": {
+   "add_material_count_to_result": false,
+   "category": "equipment",
+   "group": "bundle_dye",
+   "input": "#minecraft:bundles",
+   "material": "black_dye",
+   "material_count": null,
+   "result": "black_bundle",
+   "type": "crafting_transmute"
+  },
+  "blue_bundle": {
+   "add_material_count_to_result": false,
+   "category": "equipment",
+   "group": "bundle_dye",
+   "input": "#minecraft:bundles",
+   "material": "blue_dye",
+   "material_count": null,
+   "result": "blue_bundle",
+   "type": "crafting_transmute"
+  },
+  "brown_bundle": {
+   "add_material_count_to_result": false,
+   "category": "equipment",
+   "group": "bundle_dye",
+   "input": "#minecraft:bundles",
+   "material": "brown_dye",
+   "material_count": null,
+   "result": "brown_bundle",
+   "type": "crafting_transmute"
+  },
+  "bundle": {
+   "category": "equipment",
+   "key": {
+    "#": "leather",
+    "-": "string"
+   },
+   "pattern": [
+    "-",
+    "#"
+   ],
+   "result": "bundle",
+   "type": "crafting_shaped"
+  },
+  "cyan_bundle": {
+   "add_material_count_to_result": false,
+   "category": "equipment",
+   "group": "bundle_dye",
+   "input": "#minecraft:bundles",
+   "material": "cyan_dye",
+   "material_count": null,
+   "result": "cyan_bundle",
+   "type": "crafting_transmute"
+  },
+  "gray_bundle": {
+   "add_material_count_to_result": false,
+   "category": "equipment",
+   "group": "bundle_dye",
+   "input": "#minecraft:bundles",
+   "material": "gray_dye",
+   "material_count": null,
+   "result": "gray_bundle",
+   "type": "crafting_transmute"
+  },
+  "green_bundle": {
+   "add_material_count_to_result": false,
+   "category": "equipment",
+   "group": "bundle_dye",
+   "input": "#minecraft:bundles",
+   "material": "green_dye",
+   "material_count": null,
+   "result": "green_bundle",
+   "type": "crafting_transmute"
+  },
+  "light_blue_bundle": {
+   "add_material_count_to_result": false,
+   "category": "equipment",
+   "group": "bundle_dye",
+   "input": "#minecraft:bundles",
+   "material": "light_blue_dye",
+   "material_count": null,
+   "result": "light_blue_bundle",
+   "type": "crafting_transmute"
+  },
+  "light_gray_bundle": {
+   "add_material_count_to_result": false,
+   "category": "equipment",
+   "group": "bundle_dye",
+   "input": "#minecraft:bundles",
+   "material": "light_gray_dye",
+   "material_count": null,
+   "result": "light_gray_bundle",
+   "type": "crafting_transmute"
+  },
+  "lime_bundle": {
+   "add_material_count_to_result": false,
+   "category": "equipment",
+   "group": "bundle_dye",
+   "input": "#minecraft:bundles",
+   "material": "lime_dye",
+   "material_count": null,
+   "result": "lime_bundle",
+   "type": "crafting_transmute"
+  },
+  "magenta_bundle": {
+   "add_material_count_to_result": false,
+   "category": "equipment",
+   "group": "bundle_dye",
+   "input": "#minecraft:bundles",
+   "material": "magenta_dye",
+   "material_count": null,
+   "result": "magenta_bundle",
+   "type": "crafting_transmute"
+  },
+  "orange_bundle": {
+   "add_material_count_to_result": false,
+   "category": "equipment",
+   "group": "bundle_dye",
+   "input": "#minecraft:bundles",
+   "material": "orange_dye",
+   "material_count": null,
+   "result": "orange_bundle",
+   "type": "crafting_transmute"
+  },
+  "pink_bundle": {
+   "add_material_count_to_result": false,
+   "category": "equipment",
+   "group": "bundle_dye",
+   "input": "#minecraft:bundles",
+   "material": "pink_dye",
+   "material_count": null,
+   "result": "pink_bundle",
+   "type": "crafting_transmute"
+  },
+  "purple_bundle": {
+   "add_material_count_to_result": false,
+   "category": "equipment",
+   "group": "bundle_dye",
+   "input": "#minecraft:bundles",
+   "material": "purple_dye",
+   "material_count": null,
+   "result": "purple_bundle",
+   "type": "crafting_transmute"
+  },
+  "red_bundle": {
+   "add_material_count_to_result": false,
+   "category": "equipment",
+   "group": "bundle_dye",
+   "input": "#minecraft:bundles",
+   "material": "red_dye",
+   "material_count": null,
+   "result": "red_bundle",
+   "type": "crafting_transmute"
+  },
+  "white_bundle": {
+   "add_material_count_to_result": false,
+   "category": "equipment",
+   "group": "bundle_dye",
+   "input": "#minecraft:bundles",
+   "material": "white_dye",
+   "material_count": null,
+   "result": "white_bundle",
+   "type": "crafting_transmute"
+  },
+  "yellow_bundle": {
+   "add_material_count_to_result": false,
+   "category": "equipment",
+   "group": "bundle_dye",
+   "input": "#minecraft:bundles",
+   "material": "yellow_dye",
+   "material_count": null,
+   "result": "yellow_bundle",
+   "type": "crafting_transmute"
+  }
+ },
+ "reference": "Minecraft Java Edition 26.3",
+ "sequences": [
+  {
+   "name": "a full stack of a 64-stacking item fills a bundle",
+   "start": [],
+   "steps": [
+    {
+     "accepted": 64,
+     "contents": [
+      {
+       "count": 64,
+       "item": "stone"
+      }
+     ],
+     "insert": {
+      "count": 64,
+      "item": "stone"
+     },
+     "weight": "1/1"
+    },
+    {
+     "accepted": 0,
+     "contents": [
+      {
+       "count": 64,
+       "item": "stone"
+      }
+     ],
+     "insert": {
+      "count": 1,
+      "item": "stone"
+     },
+     "weight": "1/1"
+    }
+   ]
+  },
+  {
+   "name": "partial stacks merge up to the weight limit",
+   "start": [],
+   "steps": [
+    {
+     "accepted": 40,
+     "contents": [
+      {
+       "count": 40,
+       "item": "stone"
+      }
+     ],
+     "insert": {
+      "count": 40,
+      "item": "stone"
+     },
+     "weight": "5/8"
+    },
+    {
+     "accepted": 24,
+     "contents": [
+      {
+       "count": 64,
+       "item": "stone"
+      }
+     ],
+     "insert": {
+      "count": 40,
+      "item": "stone"
+     },
+     "weight": "1/1"
+    }
+   ]
+  },
+  {
+   "name": "sixteen of a 16-stacking item fill a bundle",
+   "start": [],
+   "steps": [
+    {
+     "accepted": 16,
+     "contents": [
+      {
+       "count": 16,
+       "item": "ender_pearl"
+      }
+     ],
+     "insert": {
+      "count": 16,
+      "item": "ender_pearl"
+     },
+     "weight": "1/1"
+    },
+    {
+     "accepted": 0,
+     "contents": [
+      {
+       "count": 16,
+       "item": "ender_pearl"
+      }
+     ],
+     "insert": {
+      "count": 1,
+      "item": "leather"
+     },
+     "weight": "1/1"
+    }
+   ]
+  },
+  {
+   "name": "eight pearls and thirty-two stone fill a bundle exactly",
+   "start": [],
+   "steps": [
+    {
+     "accepted": 8,
+     "contents": [
+      {
+       "count": 8,
+       "item": "ender_pearl"
+      }
+     ],
+     "insert": {
+      "count": 8,
+      "item": "ender_pearl"
+     },
+     "weight": "1/2"
+    },
+    {
+     "accepted": 32,
+     "contents": [
+      {
+       "count": 32,
+       "item": "stone"
+      },
+      {
+       "count": 8,
+       "item": "ender_pearl"
+      }
+     ],
+     "insert": {
+      "count": 32,
+      "item": "stone"
+     },
+     "weight": "1/1"
+    },
+    {
+     "accepted": 0,
+     "contents": [
+      {
+       "count": 32,
+       "item": "stone"
+      },
+      {
+       "count": 8,
+       "item": "ender_pearl"
+      }
+     ],
+     "insert": {
+      "count": 1,
+      "item": "stone"
+     },
+     "weight": "1/1"
+    }
+   ]
+  },
+  {
+   "name": "the remaining weight is floored",
+   "start": [
+    {
+     "count": 33,
+     "item": "stone"
+    }
+   ],
+   "steps": [
+    {
+     "accepted": 7,
+     "contents": [
+      {
+       "count": 7,
+       "item": "ender_pearl"
+      },
+      {
+       "count": 33,
+       "item": "stone"
+      }
+     ],
+     "insert": {
+      "count": 16,
+      "item": "ender_pearl"
+     },
+     "weight": "61/64"
+    },
+    {
+     "accepted": 0,
+     "contents": [
+      {
+       "count": 7,
+       "item": "ender_pearl"
+      },
+      {
+       "count": 33,
+       "item": "stone"
+      }
+     ],
+     "insert": {
+      "count": 16,
+      "item": "bucket"
+     },
+     "weight": "61/64"
+    }
+   ]
+  },
+  {
+   "name": "an unstackable item weighs one",
+   "start": [],
+   "steps": [
+    {
+     "accepted": 1,
+     "contents": [
+      {
+       "count": 1,
+       "item": "mushroom_stew"
+      }
+     ],
+     "insert": {
+      "count": 1,
+      "item": "mushroom_stew"
+     },
+     "weight": "1/1"
+    },
+    {
+     "accepted": 0,
+     "contents": [
+      {
+       "count": 1,
+       "item": "mushroom_stew"
+      }
+     ],
+     "insert": {
+      "count": 1,
+      "item": "stone"
+     },
+     "weight": "1/1"
+    }
+   ]
+  },
+  {
+   "name": "an unstackable item needs an empty bundle",
+   "start": [
+    {
+     "count": 1,
+     "item": "stone"
+    }
+   ],
+   "steps": [
+    {
+     "accepted": 0,
+     "contents": [
+      {
+       "count": 1,
+       "item": "stone"
+      }
+     ],
+     "insert": {
+      "count": 1,
+      "item": "saddle"
+     },
+     "weight": "1/64"
+    }
+   ]
+  },
+  {
+   "name": "merging moves the stack to the front",
+   "start": [],
+   "steps": [
+    {
+     "accepted": 10,
+     "contents": [
+      {
+       "count": 10,
+       "item": "stone"
+      }
+     ],
+     "insert": {
+      "count": 10,
+      "item": "stone"
+     },
+     "weight": "5/32"
+    },
+    {
+     "accepted": 5,
+     "contents": [
+      {
+       "count": 5,
+       "item": "leather"
+      },
+      {
+       "count": 10,
+       "item": "stone"
+      }
+     ],
+     "insert": {
+      "count": 5,
+      "item": "leather"
+     },
+     "weight": "15/64"
+    },
+    {
+     "accepted": 3,
+     "contents": [
+      {
+       "count": 13,
+       "item": "stone"
+      },
+      {
+       "count": 5,
+       "item": "leather"
+      }
+     ],
+     "insert": {
+      "count": 3,
+      "item": "stone"
+     },
+     "weight": "9/32"
+    },
+    {
+     "accepted": 2,
+     "contents": [
+      {
+       "count": 2,
+       "item": "stone",
+       "name": "A"
+      },
+      {
+       "count": 13,
+       "item": "stone"
+      },
+      {
+       "count": 5,
+       "item": "leather"
+      }
+     ],
+     "insert": {
+      "count": 2,
+      "item": "stone",
+      "name": "A"
+     },
+     "weight": "5/16"
+    },
+    {
+     "contents": [
+      {
+       "count": 13,
+       "item": "stone"
+      },
+      {
+       "count": 5,
+       "item": "leather"
+      }
+     ],
+     "remove": true,
+     "removed": {
+      "count": 2,
+      "item": "stone",
+      "name": "A"
+     },
+     "weight": "9/32"
+    },
+    {
+     "contents": [
+      {
+       "count": 5,
+       "item": "leather"
+      }
+     ],
+     "remove": true,
+     "removed": {
+      "count": 13,
+      "item": "stone"
+     },
+     "weight": "5/64"
+    },
+    {
+     "contents": [],
+     "remove": true,
+     "removed": {
+      "count": 5,
+      "item": "leather"
+     },
+     "weight": "0/1"
+    },
+    {
+     "contents": [],
+     "remove": true,
+     "removed": null,
+     "weight": "0/1"
+    }
+   ]
+  },
+  {
+   "name": "removing takes the most recent stack first",
+   "start": [],
+   "steps": [
+    {
+     "accepted": 1,
+     "contents": [
+      {
+       "count": 1,
+       "item": "stone"
+      }
+     ],
+     "insert": {
+      "count": 1,
+      "item": "stone"
+     },
+     "weight": "1/64"
+    },
+    {
+     "accepted": 1,
+     "contents": [
+      {
+       "count": 1,
+       "item": "leather"
+      },
+      {
+       "count": 1,
+       "item": "stone"
+      }
+     ],
+     "insert": {
+      "count": 1,
+      "item": "leather"
+     },
+     "weight": "1/32"
+    },
+    {
+     "accepted": 1,
+     "contents": [
+      {
+       "count": 1,
+       "item": "snowball"
+      },
+      {
+       "count": 1,
+       "item": "leather"
+      },
+      {
+       "count": 1,
+       "item": "stone"
+      }
+     ],
+     "insert": {
+      "count": 1,
+      "item": "snowball"
+     },
+     "weight": "3/32"
+    },
+    {
+     "contents": [
+      {
+       "count": 1,
+       "item": "leather"
+      },
+      {
+       "count": 1,
+       "item": "stone"
+      }
+     ],
+     "remove": true,
+     "removed": {
+      "count": 1,
+      "item": "snowball"
+     },
+     "weight": "1/32"
+    },
+    {
+     "contents": [
+      {
+       "count": 1,
+       "item": "stone"
+      }
+     ],
+     "remove": true,
+     "removed": {
+      "count": 1,
+      "item": "leather"
+     },
+     "weight": "1/64"
+    },
+    {
+     "contents": [],
+     "remove": true,
+     "removed": {
+      "count": 1,
+      "item": "stone"
+     },
+     "weight": "0/1"
+    },
+    {
+     "contents": [],
+     "remove": true,
+     "removed": null,
+     "weight": "0/1"
+    }
+   ]
+  },
+  {
+   "name": "empty bundles are unstackable and weigh a sixteenth each",
+   "start": [],
+   "steps": [
+    {
+     "accepted": 1,
+     "contents": [
+      {
+       "count": 1,
+       "item": "bundle"
+      }
+     ],
+     "insert": {
+      "count": 1,
+      "item": "bundle"
+     },
+     "weight": "1/16"
+    },
+    {
+     "accepted": 1,
+     "contents": [
+      {
+       "count": 1,
+       "item": "white_bundle"
+      },
+      {
+       "count": 1,
+       "item": "bundle"
+      }
+     ],
+     "insert": {
+      "count": 1,
+      "item": "white_bundle"
+     },
+     "weight": "1/8"
+    },
+    {
+     "accepted": 1,
+     "contents": [
+      {
+       "count": 1,
+       "item": "bundle"
+      },
+      {
+       "count": 1,
+       "item": "white_bundle"
+      },
+      {
+       "count": 1,
+       "item": "bundle"
+      }
+     ],
+     "insert": {
+      "count": 1,
+      "item": "bundle"
+     },
+     "weight": "3/16"
+    },
+    {
+     "accepted": 52,
+     "contents": [
+      {
+       "count": 52,
+       "item": "stone"
+      },
+      {
+       "count": 1,
+       "item": "bundle"
+      },
+      {
+       "count": 1,
+       "item": "white_bundle"
+      },
+      {
+       "count": 1,
+       "item": "bundle"
+      }
+     ],
+     "insert": {
+      "count": 64,
+      "item": "stone"
+     },
+     "weight": "1/1"
+    }
+   ]
+  },
+  {
+   "name": "a nested bundle weighs a sixteenth plus its contents",
+   "start": [
+    {
+     "count": 32,
+     "item": "stone"
+    }
+   ],
+   "steps": [
+    {
+     "accepted": 0,
+     "contents": [
+      {
+       "count": 32,
+       "item": "stone"
+      }
+     ],
+     "insert": {
+      "contents": [
+       {
+        "count": 32,
+        "item": "stone"
+       }
+      ],
+      "count": 1,
+      "item": "bundle"
+     },
+     "weight": "1/2"
+    },
+    {
+     "accepted": 1,
+     "contents": [
+      {
+       "contents": [
+        {
+         "count": 16,
+         "item": "stone"
+        }
+       ],
+       "count": 1,
+       "item": "bundle"
+      },
+      {
+       "count": 32,
+       "item": "stone"
+      }
+     ],
+     "insert": {
+      "contents": [
+       {
+        "count": 16,
+        "item": "stone"
+       }
+      ],
+      "count": 1,
+      "item": "bundle"
+     },
+     "weight": "13/16"
+    },
+    {
+     "accepted": 12,
+     "contents": [
+      {
+       "count": 44,
+       "item": "stone"
+      },
+      {
+       "contents": [
+        {
+         "count": 16,
+         "item": "stone"
+        }
+       ],
+       "count": 1,
+       "item": "bundle"
+      }
+     ],
+     "insert": {
+      "count": 64,
+      "item": "stone"
+     },
+     "weight": "1/1"
+    }
+   ]
+  },
+  {
+   "name": "bundles nest three deep",
+   "start": [],
+   "steps": [
+    {
+     "accepted": 1,
+     "contents": [
+      {
+       "contents": [
+        {
+         "contents": [
+          {
+           "contents": [
+            {
+             "count": 4,
+             "item": "snowball"
+            }
+           ],
+           "count": 1,
+           "item": "bundle"
+          }
+         ],
+         "count": 1,
+         "item": "bundle"
+        }
+       ],
+       "count": 1,
+       "item": "red_bundle"
+      }
+     ],
+     "insert": {
+      "contents": [
+       {
+        "contents": [
+         {
+          "contents": [
+           {
+            "count": 4,
+            "item": "snowball"
+           }
+          ],
+          "count": 1,
+          "item": "bundle"
+         }
+        ],
+        "count": 1,
+        "item": "bundle"
+       }
+      ],
+      "count": 1,
+      "item": "red_bundle"
+     },
+     "weight": "7/16"
+    },
+    {
+     "accepted": 9,
+     "contents": [
+      {
+       "count": 9,
+       "item": "ender_pearl"
+      },
+      {
+       "contents": [
+        {
+         "contents": [
+          {
+           "contents": [
+            {
+             "count": 4,
+             "item": "snowball"
+            }
+           ],
+           "count": 1,
+           "item": "bundle"
+          }
+         ],
+         "count": 1,
+         "item": "bundle"
+        }
+       ],
+       "count": 1,
+       "item": "red_bundle"
+      }
+     ],
+     "insert": {
+      "count": 16,
+      "item": "ender_pearl"
+     },
+     "weight": "1/1"
+    }
+   ]
+  },
+  {
+   "name": "a hive holding bees weighs one",
+   "start": [],
+   "steps": [
+    {
+     "accepted": 1,
+     "contents": [
+      {
+       "bees": true,
+       "count": 1,
+       "item": "beehive"
+      }
+     ],
+     "insert": {
+      "bees": true,
+      "count": 1,
+      "item": "beehive"
+     },
+     "weight": "1/1"
+    },
+    {
+     "accepted": 0,
+     "contents": [
+      {
+       "bees": true,
+       "count": 1,
+       "item": "beehive"
+      }
+     ],
+     "insert": {
+      "count": 1,
+      "item": "stone"
+     },
+     "weight": "1/1"
+    }
+   ]
+  },
+  {
+   "name": "a hive holding bees needs an empty bundle",
+   "start": [
+    {
+     "count": 1,
+     "item": "stone"
+    }
+   ],
+   "steps": [
+    {
+     "accepted": 0,
+     "contents": [
+      {
+       "count": 1,
+       "item": "stone"
+      }
+     ],
+     "insert": {
+      "bees": true,
+      "count": 1,
+      "item": "beehive"
+     },
+     "weight": "1/64"
+    }
+   ]
+  },
+  {
+   "name": "an empty hive weighs one sixty-fourth",
+   "start": [
+    {
+     "count": 54,
+     "item": "stone"
+    }
+   ],
+   "steps": [
+    {
+     "accepted": 10,
+     "contents": [
+      {
+       "count": 10,
+       "item": "beehive"
+      },
+      {
+       "count": 54,
+       "item": "stone"
+      }
+     ],
+     "insert": {
+      "count": 16,
+      "item": "beehive"
+     },
+     "weight": "1/1"
+    },
+    {
+     "accepted": 0,
+     "contents": [
+      {
+       "count": 10,
+       "item": "beehive"
+      },
+      {
+       "count": 54,
+       "item": "stone"
+      }
+     ],
+     "insert": {
+      "bees": true,
+      "count": 1,
+      "item": "beehive"
+     },
+     "weight": "1/1"
+    }
+   ]
+  }
+ ],
+ "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+ "sources": [
+  "net.minecraft.world.item.Items BUNDLE, DYED_BUNDLE (and the case items' stacksTo)",
+  "net.minecraft.world.item.Item DEFAULT_MAX_STACK_SIZE",
+  "net.minecraft.world.item.component.BundleContents (BUNDLE_IN_BUNDLE_WEIGHT, BEEHIVE_WEIGHT; Mutable modelled)",
+  "net.minecraft.world.item.BundleItem overrideStackedOnOther, overrideOtherStackedOnMe (modelled)",
+  "data/minecraft/tags/item/bundles.json",
+  "data/minecraft/recipe/bundle.json, {colour}_bundle.json",
+  "data/minecraft/loot_table/**/*.json (pools naming a bundle)"
+ ],
+ "stack_size": 1,
+ "weights": {
+  "beehive": "1/1",
+  "bundle_in_bundle": "1/16",
+  "default_max_stack_size": 64
+ }
+}

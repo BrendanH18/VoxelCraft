@@ -351,8 +351,8 @@ impl Reference {
                 }
             }
             "crafting_transmute" if recipe.get("material_count").is_none() => {
-                // Java keeps the input's components; VoxelCraft items carry
-                // none that these recipes change, so a shapeless pair matches.
+                // A shapeless pair. Java keeps the input's components, which
+                // `tests/java_bundles.rs` checks for the bundle transmutes.
                 match (self.ingredient(&recipe["input"]), self.ingredient(&recipe["material"])) {
                     (Some(a), Some(b)) => shapeless(vec![a, b]),
                     _ => return unregistered(),
@@ -550,6 +550,16 @@ pub fn compare_crafting(r: &Reference) -> Section {
             let mut ok = true;
             for grid in grids(&c) {
                 let got = grid.result();
+                // `TransmuteRecipe.matches` refuses a one-item result equal to
+                // its input: dyeing a bundle its own colour makes nothing.
+                if kind == "crafting_transmute" && grid.cells.iter().flatten().any(|s| s.item.0 == c.result) {
+                    if let Some(stack) = got {
+                        s.failures.push(format!("{key}: the input's own colour crafts {:?}", r.names.name(stack.item)));
+                        ok = false;
+                        break;
+                    }
+                    continue;
+                }
                 let matches = got.is_some_and(|mut stack| {
                     let effects = stew_effects(stack);
                     if matches!(stack.item, Item::SUSPICIOUS_STEW | Item::WOLF_ARMOR) {

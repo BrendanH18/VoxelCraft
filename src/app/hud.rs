@@ -655,6 +655,12 @@ pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool
         ui.rect(x + 2.0, y + 14.0, 13.0, 2.0, [0.0, 0.0, 0.0, 1.0]);
         ui.rect(x + 2.0, y + 14.0, w, 1.0, color);
     }
+    if let Some(w) = voxelcraft::content::bundle::bar_width(&stack) {
+        // `BundleItem`'s fullness bar, drawn where the durability bar goes.
+        let [r, g, b] = voxelcraft::content::bundle::bar_rgb(&stack);
+        ui.rect(x + 2.0, y + 14.0, 13.0, 2.0, [0.0, 0.0, 0.0, 1.0]);
+        ui.rect(x + 2.0, y + 14.0, w as f32, 1.0, [r, g, b, 1.0]);
+    }
     if counts && stack.count > 1 {
         let digits = [b'0' + stack.count / 100, b'0' + stack.count / 10 % 10, b'0' + stack.count % 10];
         let start = if stack.count >= 100 {

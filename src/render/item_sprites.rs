@@ -844,6 +844,40 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             let swirl = ((a * 2.0 + r * 0.9).sin() > 0.2) as u8;
             (r <= 5.8).then(|| if swirl == 1 { tint([196, 222, 236], 1.0) } else { tint([150, 176, 210], 0.95) })
         }
+        Sprite::Bundle(c) => {
+            // Original v0.17 icon: a round leather pouch in the bundle's
+            // colour, cinched at the neck by a pale string tie, its frilled
+            // mouth open at the top with the dark inside showing.
+            let pouch = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                ((px - 8.0) / 6.4).powi(2) + ((py - 10.6) / 4.9).powi(2) <= 1.0
+            };
+            let neck = |x: i32, y: i32| (5..=10).contains(&x) && (4..=6).contains(&y);
+            let mouth =
+                |x: i32, y: i32| (4..=11).contains(&x) && (2..=3).contains(&y) && !(y == 2 && (x == 4 || x == 11));
+            if (y == 6 && (5..=10).contains(&x)) || (x == 11 && (6..=8).contains(&y)) || (x == 12 && y == 9) {
+                Some(tint([214, 196, 150], if x == 5 { 1.1 } else { 0.95 }))
+            } else if mouth(x, y) {
+                let inside = y == 3 && (6..=9).contains(&x);
+                Some(if inside { tint(c, 0.38) } else { tint(c, if y == 2 { 1.18 } else { 0.9 }) })
+            } else if neck(x, y) {
+                Some(tint(
+                    c,
+                    if x == 5 {
+                        1.12
+                    } else if x == 10 {
+                        0.66
+                    } else {
+                        0.9
+                    },
+                ))
+            } else if pouch(x, y) {
+                let seam = x == 8 && (9..=14).contains(&y);
+                shaded(&pouch, x, y, c, 0.06).map(|p| if seam { tint(c, 0.74) } else { p })
+            } else {
+                None
+            }
+        }
         Sprite::Harness(c) => {
             // Original v0.17 icon: a quilted pad of the dye's colour under a
             // leather strap carrying two round glass goggles.
