@@ -1,0 +1,222 @@
+{
+ "reference": "Minecraft Java Edition 26.3",
+ "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+ "sources": [
+  "data/minecraft/trim_pattern/*.json",
+  "data/minecraft/trim_material/*.json",
+  "data/minecraft/banner_pattern/*.json",
+  "data/minecraft/tags/item/cauldron_can_remove_dye.json",
+  "data/minecraft/tags/item/trimmable_armor.json (nested tags expanded)",
+  "net/minecraft/world/item/DyeColor.java (textureDiffuseColor)",
+  "net/minecraft/world/item/component/WritableBookContent.java",
+  "net/minecraft/world/item/component/WrittenBookContent.java",
+  "net/minecraft/core/component/DataComponents.java"
+ ],
+ "components": [
+  "banner_patterns",
+  "base_color",
+  "bundle_contents",
+  "dyed_color",
+  "trim",
+  "writable_book_content",
+  "written_book_content"
+ ],
+ "writable_book": {
+  "max_pages": 100,
+  "page_edit_length": 1024
+ },
+ "written_book": {
+  "page_length": 32767,
+  "title_max_length": 32,
+  "max_generation": 3
+ },
+ "dye_colors": {
+  "white": "#F9FFFE",
+  "orange": "#F9801D",
+  "magenta": "#C74EBD",
+  "light_blue": "#3AB3DA",
+  "yellow": "#FED83D",
+  "lime": "#80C71F",
+  "pink": "#F38BAA",
+  "gray": "#474F52",
+  "light_gray": "#9D9D97",
+  "cyan": "#169C9C",
+  "purple": "#8932B8",
+  "blue": "#3C44AA",
+  "brown": "#835432",
+  "green": "#5E7C16",
+  "red": "#B02E26",
+  "black": "#1D1D21"
+ },
+ "dyeable": [
+  "leather_boots",
+  "leather_chestplate",
+  "leather_helmet",
+  "leather_horse_armor",
+  "leather_leggings",
+  "wolf_armor"
+ ],
+ "trimmable_armor": [
+  "chainmail_boots",
+  "chainmail_chestplate",
+  "chainmail_helmet",
+  "chainmail_leggings",
+  "copper_boots",
+  "copper_chestplate",
+  "copper_helmet",
+  "copper_leggings",
+  "diamond_boots",
+  "diamond_chestplate",
+  "diamond_helmet",
+  "diamond_leggings",
+  "golden_boots",
+  "golden_chestplate",
+  "golden_helmet",
+  "golden_leggings",
+  "iron_boots",
+  "iron_chestplate",
+  "iron_helmet",
+  "iron_leggings",
+  "leather_boots",
+  "leather_chestplate",
+  "leather_helmet",
+  "leather_leggings",
+  "netherite_boots",
+  "netherite_chestplate",
+  "netherite_helmet",
+  "netherite_leggings",
+  "turtle_helmet"
+ ],
+ "trim_patterns": {
+  "bolt": {
+   "asset_id": "minecraft:bolt",
+   "decal": false
+  },
+  "coast": {
+   "asset_id": "minecraft:coast",
+   "decal": false
+  },
+  "dune": {
+   "asset_id": "minecraft:dune",
+   "decal": false
+  },
+  "eye": {
+   "asset_id": "minecraft:eye",
+   "decal": false
+  },
+  "flow": {
+   "asset_id": "minecraft:flow",
+   "decal": false
+  },
+  "host": {
+   "asset_id": "minecraft:host",
+   "decal": false
+  },
+  "raiser": {
+   "asset_id": "minecraft:raiser",
+   "decal": false
+  },
+  "rib": {
+   "asset_id": "minecraft:rib",
+   "decal": false
+  },
+  "sentry": {
+   "asset_id": "minecraft:sentry",
+   "decal": false
+  },
+  "shaper": {
+   "asset_id": "minecraft:shaper",
+   "decal": false
+  },
+  "silence": {
+   "asset_id": "minecraft:silence",
+   "decal": false
+  },
+  "snout": {
+   "asset_id": "minecraft:snout",
+   "decal": false
+  },
+  "spire": {
+   "asset_id": "minecraft:spire",
+   "decal": false
+  },
+  "tide": {
+   "asset_id": "minecraft:tide",
+   "decal": false
+  },
+  "vex": {
+   "asset_id": "minecraft:vex",
+   "decal": false
+  },
+  "ward": {
+   "asset_id": "minecraft:ward",
+   "decal": false
+  },
+  "wayfinder": {
+   "asset_id": "minecraft:wayfinder",
+   "decal": false
+  },
+  "wild": {
+   "asset_id": "minecraft:wild",
+   "decal": false
+  }
+ },
+ "trim_materials": [
+  "amethyst",
+  "copper",
+  "diamond",
+  "emerald",
+  "gold",
+  "iron",
+  "lapis",
+  "netherite",
+  "quartz",
+  "redstone",
+  "resin"
+ ],
+ "banner_patterns": [
+  "base",
+  "border",
+  "bricks",
+  "circle",
+  "creeper",
+  "cross",
+  "curly_border",
+  "diagonal_left",
+  "diagonal_right",
+  "diagonal_up_left",
+  "diagonal_up_right",
+  "flow",
+  "flower",
+  "globe",
+  "gradient",
+  "gradient_up",
+  "guster",
+  "half_horizontal",
+  "half_horizontal_bottom",
+  "half_vertical",
+  "half_vertical_right",
+  "mojang",
+  "piglin",
+  "rhombus",
+  "skull",
+  "small_stripes",
+  "square_bottom_left",
+  "square_bottom_right",
+  "square_top_left",
+  "square_top_right",
+  "straight_cross",
+  "stripe_bottom",
+  "stripe_center",
+  "stripe_downleft",
+  "stripe_downright",
+  "stripe_left",
+  "stripe_middle",
+  "stripe_right",
+  "stripe_top",
+  "triangle_bottom",
+  "triangle_top",
+  "triangles_bottom",
+  "triangles_top"
+ ]
+}
