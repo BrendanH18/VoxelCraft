@@ -235,7 +235,7 @@ impl Mob {
                     events.push(EntityEvent::Shoot {
                         from: eye + dir * 0.5,
                         target: aim,
-                        cause: "was shot by a piglin",
+                        cause: crate::simulation::damage::Cause::PIGLIN_ARROW,
                         shooter: self.uid,
                     });
                     events.push(EntityEvent::Sound { sound: MobSound::Bow, pos: eye });
@@ -531,7 +531,7 @@ mod tests {
             assert!(elapsed < delay + dt * 2.0, "the shot fires at its sampled threshold");
         }
         assert!(elapsed >= delay && elapsed < delay + dt);
-        assert!(matches!(events[0], EntityEvent::Shoot { cause: "was shot by a piglin", .. }));
+        assert!(matches!(events[0], EntityEvent::Shoot { cause: crate::simulation::damage::Cause::PIGLIN_ARROW, .. }));
         assert_eq!(mob.nether.as_ref().unwrap().charge, 0.0);
 
         // Movement while sight was lost may use RNG; compare from this point.

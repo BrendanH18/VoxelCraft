@@ -905,56 +905,39 @@ pub fn wears(enchants: Enchants, armor: bool, roll: f32) -> bool {
     roll < chance
 }
 
-/// The kind of damage, for the protection enchantments, read from the
-/// death message the damage carries.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum DamageKind {
-    Fall,
-    Fire,
-    Explosion,
-    Projectile,
-    /// A fireball: both fire and a projectile.
-    Fireball,
-    Other,
-}
-
-impl DamageKind {
-    pub fn of_cause(cause: &str) -> DamageKind {
-        match cause {
-            c if c.starts_with("fell") || c.starts_with("hit the ground") => DamageKind::Fall,
-            c if c.contains("fireball") => DamageKind::Fireball,
-            c if c.starts_with("burned") || c.contains("lava") => DamageKind::Fire,
-            c if c.contains("blown up") || c.contains("Intentional Game Design") => DamageKind::Explosion,
-            c if c.starts_with("was shot") => DamageKind::Projectile,
-            _ => DamageKind::Other,
-        }
-    }
-}
-
-/// Java's enchantment protection factor of the worn armor against `kind`:
-/// protection 1 per level, the specific kinds 2, feather falling 3.
-pub fn protection_factor(armor: &[Option<Stack>; 4], kind: DamageKind) -> u32 {
+/// Java's enchantment protection factor of the worn armor against `cause`
+/// (each enchantment's `minecraft:damage_protection` effect): Protection 1
+/// per level, Fire, Blast and Projectile Protection 2 against `#is_fire`,
+/// `#is_explosion` and `#is_projectile`, Feather Falling 3 against
+/// `#is_fall`; none of them against `#bypasses_invulnerability`.
+pub fn protection_factor(armor: &[Option<Stack>; 4], cause: crate::simulation::damage::Cause) -> u32 {
+    use crate::simulation::damage::DamageTag as Tag;
     use Enchantment as E;
+    if cause.is(Tag::BypassesInvulnerability) {
+        return 0;
+    }
     let mut epf = 0;
     for e in armor.iter().flatten().map(|s| s.enchants) {
         epf += e.level(E::Protection) as u32;
-        let fire = matches!(kind, DamageKind::Fire | DamageKind::Fireball);
-        let projectile = matches!(kind, DamageKind::Projectile | DamageKind::Fireball);
-        epf += 2 * e.level(E::FireProtection) as u32 * fire as u32;
-        epf += 2 * e.level(E::BlastProtection) as u32 * (kind == DamageKind::Explosion) as u32;
-        epf += 2 * e.level(E::ProjectileProtection) as u32 * projectile as u32;
-        epf += 3 * e.level(E::FeatherFalling) as u32 * (kind == DamageKind::Fall) as u32;
+        epf += 2 * e.level(E::FireProtection) as u32 * cause.is(Tag::IsFire) as u32;
+        epf += 2 * e.level(E::BlastProtection) as u32 * cause.is(Tag::IsExplosion) as u32;
+        epf += 2 * e.level(E::ProjectileProtection) as u32 * cause.is(Tag::IsProjectile) as u32;
+        epf += 3 * e.level(E::FeatherFalling) as u32 * cause.is(Tag::IsFall) as u32;
     }
     epf
 }
 
-/// Damage left after enchantment protection (capped at 80%).
-pub fn protect(amount: f32, armor: &[Option<Stack>; 4], cause: &str) -> f32 {
-    // `#bypasses_enchantments`: the warden's sonic boom.
-    if cause == crate::entity::warden::CAUSE_SONIC_BOOM {
+/// Damage left after enchantment protection, capped at 80%
+/// (`LivingEntity.getDamageAfterMagicAbsorb`'s last step and
+/// `CombatRules.getDamageAfterMagicAbsorb`): `#bypasses_effects` and
+/// `#bypasses_enchantments` damage is not reduced.
+pub fn protect(amount: f32, armor: &[Option<Stack>; 4], cause: impl Into<crate::simulation::damage::Cause>) -> f32 {
+    use crate::simulation::damage::DamageTag as Tag;
+    let cause = cause.into();
+    if cause.is(Tag::BypassesEffects) || cause.is(Tag::BypassesEnchantments) {
         return amount;
     }
-    let epf = protection_factor(armor, DamageKind::of_cause(cause)).min(20);
+    let epf = protection_factor(armor, cause).min(20);
     amount * (1.0 - epf as f32 / 25.0)
 }
 
@@ -1186,11 +1169,10 @@ mod tests {
         let prot4 = Enchants::NONE.with(Enchantment::Protection, 4);
         let boots = Item::armor(ArmorPiece::Boots, ArmorMaterial::Diamond);
         armor[3] = Some(Stack { enchants: prot4.with(Enchantment::FeatherFalling, 4), ..Stack::new(boots, 1) });
-        assert_eq!(protection_factor(&armor, DamageKind::Fall), 16);
-        assert_eq!(protection_factor(&armor, DamageKind::Other), 4);
-        assert!((protect(10.0, &armor, "fell from a high place") - 3.6).abs() < 1e-5);
-        assert_eq!(DamageKind::of_cause("was fireballed by a blaze"), DamageKind::Fireball);
-        assert_eq!(DamageKind::of_cause("was blown up by a creeper"), DamageKind::Explosion);
+        use crate::simulation::damage::Cause;
+        assert_eq!(protection_factor(&armor, Cause::FALL), 16);
+        assert_eq!(protection_factor(&armor, Cause::mob("was slain by a zombie")), 4);
+        assert!((protect(10.0, &armor, Cause::FALL) - 3.6).abs() < 1e-5);
         let held = Enchants::NONE.with(Enchantment::Sharpness, 5);
         assert_eq!(damage_bonus(held, Creature::Other), 3.0);
         assert_eq!(damage_bonus(Enchants::NONE.with(Enchantment::Smite, 5), Creature::Undead), 12.5);

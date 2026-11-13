@@ -1841,7 +1841,7 @@ mod tests {
             })
             .collect();
         assert!(!causes.is_empty(), "the crossbow hit the player");
-        assert!(causes.iter().all(|&c| c == "was shot by a piglin"), "{causes:?}");
+        assert!(causes.iter().all(|&c| c == crate::simulation::damage::Cause::PIGLIN_ARROW), "{causes:?}");
     }
 
     /// One adult piglin with a golden sword at the origin of a flat floor.

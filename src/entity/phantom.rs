@@ -196,7 +196,7 @@ impl Mob {
                         player: t.id,
                         damage: (6. + f32::from(s.size) + self.effects.attack_bonus()).max(0.),
                         knockback: (t.pos - self.pos).normalize_or_zero().as_vec3() * 4.,
-                        cause: "was slain by a phantom",
+                        cause: crate::simulation::damage::Cause::mob("was slain by a phantom"),
                     });
                     events.push(EntityEvent::OwnerHurt { player: t.id, attacker: self.uid });
                     s.swooping = false;

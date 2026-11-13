@@ -2082,7 +2082,7 @@ impl Game {
         (source, yaw, extra): (DVec3, f32, f32),
         fire: f32,
     ) -> Option<(DVec3, [u8; 4], bool)> {
-        const CAUSE: &str = "was slain by a player";
+        const CAUSE: voxelcraft::simulation::damage::Cause = voxelcraft::simulation::damage::Cause::PLAYER_ATTACK;
         let hit = knockback::Hit::melee(source, self.player(target)?.player.pos, yaw, extra);
         let landed = match target {
             PlayerRef::Host => {
@@ -2212,10 +2212,10 @@ impl Game {
         for level in thorns.into_iter().filter(|&l| l > 0) {
             if self.mobs.entities.roll_chance(0.15 * level as f32) {
                 let back = self.mobs.entities.roll_range(1.0, 5.0);
-                const THORNS: &str = "was killed trying to hurt a player";
+                const THORNS: voxelcraft::simulation::damage::Cause = voxelcraft::simulation::damage::Cause::THORNS;
                 match attacker {
                     PlayerRef::Host => {
-                        self.damage_player(back, THORNS);
+                        self.damage_player_armored(back, THORNS);
                     }
                     PlayerRef::Agent(name) => {
                         if let Some(bot) = self.agents.players.get_mut(name) {

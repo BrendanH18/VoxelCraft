@@ -220,7 +220,7 @@ fn a_hurt_llama_spits_once_and_the_spit_hits() {
     let hits = |ev: &[voxelcraft::entity::EntityEvent]| {
         ev.iter()
             .filter(|e| {
-                matches!(e, voxelcraft::entity::EntityEvent::PlayerHit { cause: "was spat on by a llama", damage, .. } if *damage == 1.0)
+                matches!(e, voxelcraft::entity::EntityEvent::PlayerHit { cause: voxelcraft::simulation::damage::Cause::LLAMA_SPIT, damage, .. } if *damage == 1.0)
             })
             .count()
     };

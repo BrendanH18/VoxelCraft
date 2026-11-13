@@ -555,7 +555,7 @@ impl Fight {
         events.push(EntityEvent::Explosion {
             center: crystal.center(),
             power: CRYSTAL_POWER,
-            cause: "was blown up by an End crystal",
+            cause: crate::simulation::damage::Cause::END_CRYSTAL,
             credit_player: false,
         });
         if let Some(d) = &mut self.dragon {
@@ -1232,7 +1232,7 @@ impl Dragon {
                     player: t.id,
                     damage: 10.0,
                     knockback: glam::Vec3::ZERO,
-                    cause: "was slain by the Ender Dragon",
+                    cause: crate::simulation::damage::Cause::ENDER_DRAGON,
                 });
             } else if wing {
                 let away = (t.pos - body).with_y(0.0);
@@ -1248,7 +1248,7 @@ impl Dragon {
                         player: t.id,
                         damage: 5.0,
                         knockback: push.as_vec3(),
-                        cause: "was slain by the Ender Dragon",
+                        cause: crate::simulation::damage::Cause::ENDER_DRAGON,
                     });
                 }
             }
@@ -1361,7 +1361,7 @@ impl BreathCloud {
                         player: t.id,
                         damage: self.damage,
                         knockback: glam::Vec3::ZERO,
-                        cause: "was killed by dragon's breath",
+                        cause: crate::simulation::damage::Cause::DRAGON_BREATH,
                     });
                 }
             }

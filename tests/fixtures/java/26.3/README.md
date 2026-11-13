@@ -436,3 +436,36 @@ standard errors and the wear distribution against a model built from the
 reroll formula. It also loads pre-v0.17 `nether_mobs` and `villagers`
 records. Chainmail armor has no item yet (ids 1550–1553 belong to another
 v0.17 slice), so chainmail pieces are drawn but drop nothing.
+
+## Damage types and tags
+
+`damage_types.json` holds all **51** damage types from
+`data/minecraft/damage_type/*.json` (the `DamageType` codec's optional
+`effects` and `death_message_type` filled with their defaults, `hurt` and
+`default`), all **36** damage type tags from
+`data/minecraft/tags/damage_type/*.json` with `#tag` references expanded,
+the `minecraft:damage_protection` requirements of the five protection
+enchantments from `data/minecraft/enchantment/*.json`, and the client's
+`death.attack.*` and `death.fell.*` English messages. The extractor checks
+both pinned artifact hashes, rejects unknown codec keys, enum values, tag
+forms and requirement forms, and never reads VoxelCraft source.
+
+```sh
+python3 tools/extract_java_damage_fixtures.py /path/to/server.jar /path/to/client.jar --output target/java-damage-types.json
+diff tests/fixtures/java/26.3/damage_types.json target/java-damage-types.json
+scripts/remote-check.sh -- 'cargo test --release --test java_damage_types'
+```
+
+`tests/java_damage_types.rs` compares `simulation::damage::DamageType` and
+`DamageTag` with the fixture in both directions (every Java type and tag is a
+variant, no variant is missing from Java, every field and membership
+matches), computes every protection enchantment's factor for every type and
+level from the fixture's requirements, and drives each tag the player damage
+path reads (`bypasses_armor`, `bypasses_effects`, `bypasses_resistance`,
+`bypasses_enchantments`, `bypasses_invulnerability`, `is_fire`,
+`is_projectile`, `is_explosion`, `is_fall`, `is_drowning`, `is_freezing`)
+through `Vitals::damage`, the agent's `hurt` and survival tick,
+`enchant::protect`, `totem_saves` and the player damage game rules. Each named
+`Cause` must say one of its type's death messages; the listed wording
+differences are checked to still differ. Mob-side tags (`no_anger`,
+`panic_causes`, `witch_resistant_to` and the rest) are compared as data only.

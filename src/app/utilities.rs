@@ -121,7 +121,12 @@ impl Game {
     /// (`RespawnAnchorBlock.explode`, power 5).
     pub(super) fn explode_anchors(&mut self) {
         for cell in self.world.take_anchor_blasts() {
-            self.explode(cell.as_dvec3() + DVec3::splat(0.5), 5.0, "was killed by [Intentional Game Design]", false);
+            self.explode(
+                cell.as_dvec3() + DVec3::splat(0.5),
+                5.0,
+                voxelcraft::simulation::damage::Cause::BAD_RESPAWN_POINT,
+                false,
+            );
         }
     }
 

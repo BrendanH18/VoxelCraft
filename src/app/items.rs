@@ -10,7 +10,7 @@ use crate::inventory::Stack;
 use crate::render::BlockModel;
 use crate::world::block::Block;
 
-use super::{Container, Game, survival};
+use super::{Container, Game};
 use crate::entity::PlayerId;
 
 /// Dropped items farther away than this aren't drawn.
@@ -135,7 +135,7 @@ impl Game {
             self.session.player.vel = DVec3::ZERO;
             self.session.vitals.reset_fall();
             self.previous_eye = self.session.player.eye();
-            self.damage_player(crate::entity::pearl::DAMAGE, survival::CAUSE_FALL);
+            self.damage_player(crate::entity::pearl::DAMAGE, voxelcraft::simulation::damage::Cause::ENDER_PEARL);
         } else if let Some(bot) = self.agents.by_id_mut(owner)
             && bot.active
         {

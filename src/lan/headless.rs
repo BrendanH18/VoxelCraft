@@ -187,7 +187,12 @@ impl HeadlessHost {
             self.entities.explode(&self.world, center, 5.0);
             for agent in self.players.values_mut() {
                 if let Some((damage, push)) = agent.session.blast(&self.world, center, 5.0) {
-                    agent.hurt(damage, "was killed by [Intentional Game Design]", DVec3::ZERO, &mut self.entities);
+                    agent.hurt(
+                        damage,
+                        crate::simulation::damage::Cause::BAD_RESPAWN_POINT,
+                        DVec3::ZERO,
+                        &mut self.entities,
+                    );
                     agent.session.player.vel += push;
                 }
             }

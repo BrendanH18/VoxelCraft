@@ -57,7 +57,7 @@ impl PrimedTnt {
                 events.push(EntityEvent::Explosion {
                     center: self.pos + DVec3::Y * SHAPE.height / 2.0,
                     power: self.power,
-                    cause: "was blown up by TNT",
+                    cause: crate::simulation::damage::Cause::TNT,
                     credit_player: false,
                 });
             }

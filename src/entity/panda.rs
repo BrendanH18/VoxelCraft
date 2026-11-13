@@ -588,7 +588,7 @@ impl Mob {
                                 (-dir.x).atan2(dir.z).to_degrees() as f32,
                                 0.0,
                             )),
-                            cause: "was slain by a panda",
+                            cause: crate::simulation::damage::Cause::mob("was slain by a panda"),
                         });
                         events.push(super::EntityEvent::OwnerHurt { player, attacker: self.uid });
                     }

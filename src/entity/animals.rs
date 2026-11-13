@@ -609,7 +609,7 @@ impl Mob {
                         player: id,
                         damage: 4.0,
                         knockback: (flat.normalize_or(DVec3::X) * 4.0 + DVec3::Y * 3.0).as_vec3(),
-                        cause: "was slain by a wolf",
+                        cause: crate::simulation::damage::Cause::mob("was slain by a wolf"),
                     });
                 }
                 return Some((self.pursue(w, t.pos, 3.0, true, true, rng), 3.0));

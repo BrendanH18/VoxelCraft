@@ -105,7 +105,7 @@ impl Entities {
                                 player: t.id,
                                 damage: 2.0,
                                 knockback: (dir * 18.0 + DVec3::Y * 4.0).as_vec3(),
-                                cause: "was rammed by a goat",
+                                cause: crate::simulation::damage::Cause::GOAT_RAM,
                             });
                             a.ramming = 0.0;
                         }
