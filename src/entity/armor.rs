@@ -56,6 +56,7 @@ impl ArmorKind {
             ArmorMaterial::Netherite => Self::Netherite,
             ArmorMaterial::Turtle => Self::Turtle,
             ArmorMaterial::Copper => Self::Copper,
+            ArmorMaterial::Chainmail => Self::Chain,
         }
     }
 }

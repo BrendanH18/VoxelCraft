@@ -1,6 +1,5 @@
 //! Procedural Java-like equine proportions, coats, markings and equipment.
 use super::{Cuboid, Mob, MobKind, Parts, cube, part};
-use crate::item::Item;
 use glam::Quat;
 const COLORS: [[u8; 3]; 9] = [
     [236, 232, 218],
@@ -82,11 +81,12 @@ const MARKINGS: [[Cuboid; 2]; 4] = [
     ],
     [cube([-5.1, 16., -5.], [-5., 19., -1.], [36, 30, 24], 30), cube([5., 12., 3.], [5.1, 15., 8.], [36, 30, 24], 30)],
 ];
-const fn armors() -> [[Cuboid; 3]; 4] {
-    let colors = [[145, 93, 55], [210, 210, 215], [235, 194, 54], [60, 220, 210]];
-    let mut out = [[cube([0.; 3], [0.; 3], [0; 3], 0); 3]; 4];
+/// Leather, iron, gold, diamond, then copper and netherite (v0.17).
+const fn armors() -> [[Cuboid; 3]; 6] {
+    let colors = [[145, 93, 55], [210, 210, 215], [235, 194, 54], [60, 220, 210], [196, 112, 80], [80, 72, 78]];
+    let mut out = [[cube([0.; 3], [0.; 3], [0; 3], 0); 3]; 6];
     let mut i = 0;
-    while i < 4 {
+    while i < 6 {
         out[i] = [
             cube([-5.2, 11., -10.2], [-5., 20., 9.2], colors[i], 8),
             cube([5., 11., -10.2], [5.2, 20., 9.2], colors[i], 8),
@@ -96,7 +96,7 @@ const fn armors() -> [[Cuboid; 3]; 4] {
     }
     out
 }
-const ARMOR: [[Cuboid; 3]; 4] = armors();
+const ARMOR: [[Cuboid; 3]; 6] = armors();
 pub(super) fn pose(m: &Mob) -> Parts {
     let s = m.mount.as_ref().unwrap();
     let color = match m.kind {
@@ -148,11 +148,17 @@ pub(super) fn equipment(m: &Mob, p: &mut Parts) {
         ));
     }
     if let Some(stack) = s.slots[1] {
-        let index = match stack.item {
-            Item::LEATHER_HORSE_ARMOR => 0,
-            Item::IRON_HORSE_ARMOR => 1,
-            Item::GOLDEN_HORSE_ARMOR => 2,
-            Item::DIAMOND_HORSE_ARMOR => 3,
+        use crate::item::ArmorMaterial;
+        let index = match stack.item.body_armor() {
+            Some((crate::equipment::BodyArmor::Horse, material)) => match material {
+                ArmorMaterial::Leather => 0,
+                ArmorMaterial::Iron => 1,
+                ArmorMaterial::Gold => 2,
+                ArmorMaterial::Diamond => 3,
+                ArmorMaterial::Copper => 4,
+                ArmorMaterial::Netherite => 5,
+                _ => return,
+            },
             _ => return,
         };
         p.push(part(&ARMOR[index], [0.; 3], Quat::IDENTITY));

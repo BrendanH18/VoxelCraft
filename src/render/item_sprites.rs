@@ -183,6 +183,7 @@ fn armor_colour(material: ArmorMaterial) -> [u8; 3] {
         ArmorMaterial::Netherite => [96, 88, 94],
         ArmorMaterial::Turtle => [58, 140, 83],
         ArmorMaterial::Copper => [200, 118, 86],
+        ArmorMaterial::Chainmail => [168, 168, 174],
     }
 }
 
@@ -206,7 +207,49 @@ fn armor(piece: ArmorPiece, material: ArmorMaterial, x: i32, y: i32) -> Option<R
             }
         }
     };
-    shaded(&shape, x, y, armor_colour(material), 0.06)
+    let p = shaded(&shape, x, y, armor_colour(material), 0.06)?;
+    // Chainmail: open links on every other pixel inside the rim.
+    if material == ArmorMaterial::Chainmail && (x + y) % 2 == 0 && shape(x + 1, y) && shape(x, y + 1) {
+        return Some(tint(armor_colour(material), 0.48));
+    }
+    Some(p)
+}
+
+/// Horse armor seen from the side: a body plate with a neck guard rising to
+/// the right and a trim along its lower edge.
+fn horse_armor(material: ArmorMaterial, x: i32, y: i32) -> Option<Rgba> {
+    let shape = |x: i32, y: i32| {
+        let body = (2..=11).contains(&x) && (7..=12).contains(&y) && !(x == 2 && (y == 7 || y == 12));
+        let neck = (9..=13).contains(&x) && (2..=7).contains(&y) && x + y >= 13 && x - y <= 8;
+        body || neck
+    };
+    let c = armor_colour(material);
+    let p = shaded(&shape, x, y, c, 0.06)?;
+    if y == 11 && (3..=10).contains(&x) {
+        return Some(tint(c, 0.7));
+    }
+    Some(p)
+}
+
+/// Nautilus armor: a curled shell plate with a spiral groove.
+fn nautilus_armor(material: ArmorMaterial, x: i32, y: i32) -> Option<Rgba> {
+    let shape = |x: i32, y: i32| {
+        let (px, py) = centre(x, y);
+        let (dx, dy) = (px - 8.0, py - 8.5);
+        dx * dx + dy * dy <= 6.2 * 6.2 && !(dy > 3.5 && dx < -2.0)
+    };
+    let c = armor_colour(material);
+    let p = shaded(&shape, x, y, c, 0.06)?;
+    let (px, py) = centre(x, y);
+    let (dx, dy) = (px - 8.0, py - 8.5);
+    let r = (dx * dx + dy * dy).sqrt();
+    let a = dy.atan2(dx).rem_euclid(std::f32::consts::TAU);
+    // Groove radius grows by 2 px a turn.
+    let groove = (r - a / std::f32::consts::PI).rem_euclid(2.0);
+    if r > 0.8 && groove < 0.55 {
+        return Some(tint(c, 0.62));
+    }
+    Some(p)
 }
 
 pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
@@ -256,6 +299,8 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
         Sprite::Tool(kind, tier) => tool(kind, tier, x, y),
         Sprite::Weapon(i) => weapon(i, x, y),
         Sprite::Armor(piece, material) => armor(piece, material, x, y),
+        Sprite::HorseArmor(material) => horse_armor(material, x, y),
+        Sprite::NautilusArmor(material) => nautilus_armor(material, x, y),
         Sprite::Minecart(c) => {
             let body = |x: i32, y: i32| (2..=13).contains(&x) && (6..=11).contains(&y);
             let wheel = |x: i32, y: i32| {

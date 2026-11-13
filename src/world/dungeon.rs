@@ -266,8 +266,7 @@ impl Dungeons {
 
 // Java's simple_dungeon has three independent pools: 1-3, 1-4, and 3
 // rolls. Entries with no usable VoxelCraft counterpart remain weighted
-// blanks, preserving the relative odds of the items we can award. Omitted:
-// copper horse armor (the discs arrived in v0.16).
+// blanks, preserving the relative odds of the items we can award.
 #[cfg(test)]
 type Entry = (Option<Item>, u32, u8, u8);
 #[cfg(test)]
@@ -280,7 +279,7 @@ const RARE: &[Entry] = &[
     (Some(crate::world::jukebox::disc(1)), 15, 1, 1),       // music disc cat
     (Some(Item::NAME_TAG), 20, 1, 1),                       // name tag
     (Some(Item::GOLDEN_HORSE_ARMOR), 10, 1, 1),             // golden horse armor
-    (None, 15, 1, 1),                                       // copper horse armor
+    (Some(crate::equipment::COPPER_HORSE_ARMOR), 15, 1, 1), // copper horse armor
     (Some(Item::IRON_HORSE_ARMOR), 15, 1, 1),               // iron horse armor
     (Some(Item::DIAMOND_HORSE_ARMOR), 5, 1, 1),             // diamond horse armor
     (Some(Item::ENCHANTED_BOOK), 10, 1, 1),

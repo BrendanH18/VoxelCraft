@@ -1112,6 +1112,10 @@ impl Game {
                 None if !stack.enchants.is_empty() => self.enchant_tooltip(ui, stack),
                 // Java's `Rarity.RARE` names are aqua.
                 None if stack.item.is_rare() => self.tooltip_coloured(ui, stack.display_name(), [0.33, 1.0, 1.0, 1.0]),
+                // `Rarity.UNCOMMON` names are yellow.
+                None if stack.item.is_uncommon() => {
+                    self.tooltip_coloured(ui, stack.display_name(), [1.0, 1.0, 0.33, 1.0])
+                }
                 None => self.tooltip(ui, stack.display_name()),
             }
         }

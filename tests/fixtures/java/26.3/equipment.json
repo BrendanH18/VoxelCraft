@@ -1,0 +1,908 @@
+{
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "net.minecraft.world.item.equipment.ArmorType",
+    "net.minecraft.world.item.equipment.ArmorMaterials (static initializer and makeDefense)",
+    "net.minecraft.world.item.Item$Properties.humanoidArmor/wolfArmor/horseArmor/nautilusArmor",
+    "net.minecraft.references.ItemIds",
+    "net.minecraft.world.item.Items (static initializer)",
+    "data/minecraft/tags/item/repairs_*.json",
+    "data/minecraft/tags/entity_type/can_wear_*_armor.json",
+    "data/minecraft/villager_trade/*/*/*.json (offers that give armor)"
+  ],
+  "armor_types": {
+    "helmet": {
+      "slot": "head",
+      "durability_unit": 11
+    },
+    "chestplate": {
+      "slot": "chest",
+      "durability_unit": 16
+    },
+    "leggings": {
+      "slot": "legs",
+      "durability_unit": 15
+    },
+    "boots": {
+      "slot": "feet",
+      "durability_unit": 13
+    },
+    "body": {
+      "slot": "body",
+      "durability_unit": 16
+    }
+  },
+  "materials": {
+    "armadillo_scute": {
+      "durability_multiplier": 4,
+      "defense": {
+        "boots": 3,
+        "leggings": 6,
+        "chestplate": 8,
+        "helmet": 3,
+        "body": 11
+      },
+      "enchantability": 10,
+      "toughness": 0.0,
+      "knockback_resistance": 0.0,
+      "repair_tag": "repairs_wolf_armor",
+      "equip_sound": "armor_equip_wolf",
+      "asset": "armadillo_scute",
+      "repair_items": [
+        "minecraft:armadillo_scute"
+      ]
+    },
+    "chainmail": {
+      "durability_multiplier": 15,
+      "defense": {
+        "boots": 1,
+        "leggings": 4,
+        "chestplate": 5,
+        "helmet": 2,
+        "body": 4
+      },
+      "enchantability": 12,
+      "toughness": 0.0,
+      "knockback_resistance": 0.0,
+      "repair_tag": "repairs_chain_armor",
+      "equip_sound": "armor_equip_chain",
+      "asset": "chainmail",
+      "repair_items": [
+        "minecraft:iron_ingot"
+      ]
+    },
+    "copper": {
+      "durability_multiplier": 11,
+      "defense": {
+        "boots": 1,
+        "leggings": 3,
+        "chestplate": 4,
+        "helmet": 2,
+        "body": 4
+      },
+      "enchantability": 8,
+      "toughness": 0.0,
+      "knockback_resistance": 0.0,
+      "repair_tag": "repairs_copper_armor",
+      "equip_sound": "armor_equip_copper",
+      "asset": "copper",
+      "repair_items": [
+        "minecraft:copper_ingot"
+      ]
+    },
+    "diamond": {
+      "durability_multiplier": 33,
+      "defense": {
+        "boots": 3,
+        "leggings": 6,
+        "chestplate": 8,
+        "helmet": 3,
+        "body": 11
+      },
+      "enchantability": 10,
+      "toughness": 2.0,
+      "knockback_resistance": 0.0,
+      "repair_tag": "repairs_diamond_armor",
+      "equip_sound": "armor_equip_diamond",
+      "asset": "diamond",
+      "repair_items": [
+        "minecraft:diamond"
+      ]
+    },
+    "gold": {
+      "durability_multiplier": 7,
+      "defense": {
+        "boots": 1,
+        "leggings": 3,
+        "chestplate": 5,
+        "helmet": 2,
+        "body": 7
+      },
+      "enchantability": 25,
+      "toughness": 0.0,
+      "knockback_resistance": 0.0,
+      "repair_tag": "repairs_gold_armor",
+      "equip_sound": "armor_equip_gold",
+      "asset": "gold",
+      "repair_items": [
+        "minecraft:gold_ingot"
+      ]
+    },
+    "iron": {
+      "durability_multiplier": 15,
+      "defense": {
+        "boots": 2,
+        "leggings": 5,
+        "chestplate": 6,
+        "helmet": 2,
+        "body": 5
+      },
+      "enchantability": 9,
+      "toughness": 0.0,
+      "knockback_resistance": 0.0,
+      "repair_tag": "repairs_iron_armor",
+      "equip_sound": "armor_equip_iron",
+      "asset": "iron",
+      "repair_items": [
+        "minecraft:iron_ingot"
+      ]
+    },
+    "leather": {
+      "durability_multiplier": 5,
+      "defense": {
+        "boots": 1,
+        "leggings": 2,
+        "chestplate": 3,
+        "helmet": 1,
+        "body": 3
+      },
+      "enchantability": 15,
+      "toughness": 0.0,
+      "knockback_resistance": 0.0,
+      "repair_tag": "repairs_leather_armor",
+      "equip_sound": "armor_equip_leather",
+      "asset": "leather",
+      "repair_items": [
+        "minecraft:leather"
+      ]
+    },
+    "netherite": {
+      "durability_multiplier": 37,
+      "defense": {
+        "boots": 3,
+        "leggings": 6,
+        "chestplate": 8,
+        "helmet": 3,
+        "body": 19
+      },
+      "enchantability": 15,
+      "toughness": 3.0,
+      "knockback_resistance": 0.1,
+      "repair_tag": "repairs_netherite_armor",
+      "equip_sound": "armor_equip_netherite",
+      "asset": "netherite",
+      "repair_items": [
+        "minecraft:netherite_ingot"
+      ]
+    },
+    "turtle_scute": {
+      "durability_multiplier": 25,
+      "defense": {
+        "boots": 2,
+        "leggings": 5,
+        "chestplate": 6,
+        "helmet": 2,
+        "body": 5
+      },
+      "enchantability": 9,
+      "toughness": 0.0,
+      "knockback_resistance": 0.0,
+      "repair_tag": "repairs_turtle_helmet",
+      "equip_sound": "armor_equip_turtle",
+      "asset": "turtle_scute",
+      "repair_items": [
+        "minecraft:turtle_scute"
+      ]
+    }
+  },
+  "forms": {
+    "humanoid": {
+      "slot": "armor_type",
+      "durability": true,
+      "enchantable": true,
+      "repairable": true,
+      "stacks_to": null,
+      "equip_sound": "material",
+      "allowed_entities": null,
+      "damage_on_hurt": true,
+      "equip_on_interact": false,
+      "can_be_sheared": false,
+      "shearing_sound": null
+    },
+    "wolf": {
+      "slot": "body",
+      "durability": true,
+      "enchantable": false,
+      "repairable": true,
+      "stacks_to": 1,
+      "equip_sound": "material",
+      "allowed_entities": [
+        "wolf"
+      ],
+      "damage_on_hurt": true,
+      "equip_on_interact": false,
+      "can_be_sheared": true,
+      "shearing_sound": "armor_unequip_wolf"
+    },
+    "horse": {
+      "slot": "body",
+      "durability": false,
+      "enchantable": false,
+      "repairable": false,
+      "stacks_to": 1,
+      "equip_sound": "horse_armor",
+      "allowed_entities": "#can_wear_horse_armor",
+      "damage_on_hurt": false,
+      "equip_on_interact": false,
+      "can_be_sheared": true,
+      "shearing_sound": "horse_armor_unequip"
+    },
+    "nautilus": {
+      "slot": "body",
+      "durability": false,
+      "enchantable": false,
+      "repairable": false,
+      "stacks_to": 1,
+      "equip_sound": "armor_equip_nautilus",
+      "allowed_entities": "#can_wear_nautilus_armor",
+      "damage_on_hurt": false,
+      "equip_on_interact": true,
+      "can_be_sheared": true,
+      "shearing_sound": "armor_unequip_nautilus"
+    }
+  },
+  "items": {
+    "chainmail_boots": {
+      "form": "humanoid",
+      "material": "chainmail",
+      "type": "boots",
+      "rarity": "uncommon",
+      "fire_resistant": false
+    },
+    "chainmail_chestplate": {
+      "form": "humanoid",
+      "material": "chainmail",
+      "type": "chestplate",
+      "rarity": "uncommon",
+      "fire_resistant": false
+    },
+    "chainmail_helmet": {
+      "form": "humanoid",
+      "material": "chainmail",
+      "type": "helmet",
+      "rarity": "uncommon",
+      "fire_resistant": false
+    },
+    "chainmail_leggings": {
+      "form": "humanoid",
+      "material": "chainmail",
+      "type": "leggings",
+      "rarity": "uncommon",
+      "fire_resistant": false
+    },
+    "copper_boots": {
+      "form": "humanoid",
+      "material": "copper",
+      "type": "boots",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "copper_chestplate": {
+      "form": "humanoid",
+      "material": "copper",
+      "type": "chestplate",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "copper_helmet": {
+      "form": "humanoid",
+      "material": "copper",
+      "type": "helmet",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "copper_horse_armor": {
+      "form": "horse",
+      "material": "copper",
+      "type": "body",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "copper_leggings": {
+      "form": "humanoid",
+      "material": "copper",
+      "type": "leggings",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "copper_nautilus_armor": {
+      "form": "nautilus",
+      "material": "copper",
+      "type": "body",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "diamond_boots": {
+      "form": "humanoid",
+      "material": "diamond",
+      "type": "boots",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "diamond_chestplate": {
+      "form": "humanoid",
+      "material": "diamond",
+      "type": "chestplate",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "diamond_helmet": {
+      "form": "humanoid",
+      "material": "diamond",
+      "type": "helmet",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "diamond_horse_armor": {
+      "form": "horse",
+      "material": "diamond",
+      "type": "body",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "diamond_leggings": {
+      "form": "humanoid",
+      "material": "diamond",
+      "type": "leggings",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "diamond_nautilus_armor": {
+      "form": "nautilus",
+      "material": "diamond",
+      "type": "body",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "golden_boots": {
+      "form": "humanoid",
+      "material": "gold",
+      "type": "boots",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "golden_chestplate": {
+      "form": "humanoid",
+      "material": "gold",
+      "type": "chestplate",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "golden_helmet": {
+      "form": "humanoid",
+      "material": "gold",
+      "type": "helmet",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "golden_horse_armor": {
+      "form": "horse",
+      "material": "gold",
+      "type": "body",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "golden_leggings": {
+      "form": "humanoid",
+      "material": "gold",
+      "type": "leggings",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "golden_nautilus_armor": {
+      "form": "nautilus",
+      "material": "gold",
+      "type": "body",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "iron_boots": {
+      "form": "humanoid",
+      "material": "iron",
+      "type": "boots",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "iron_chestplate": {
+      "form": "humanoid",
+      "material": "iron",
+      "type": "chestplate",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "iron_helmet": {
+      "form": "humanoid",
+      "material": "iron",
+      "type": "helmet",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "iron_horse_armor": {
+      "form": "horse",
+      "material": "iron",
+      "type": "body",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "iron_leggings": {
+      "form": "humanoid",
+      "material": "iron",
+      "type": "leggings",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "iron_nautilus_armor": {
+      "form": "nautilus",
+      "material": "iron",
+      "type": "body",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "leather_boots": {
+      "form": "humanoid",
+      "material": "leather",
+      "type": "boots",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "leather_chestplate": {
+      "form": "humanoid",
+      "material": "leather",
+      "type": "chestplate",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "leather_helmet": {
+      "form": "humanoid",
+      "material": "leather",
+      "type": "helmet",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "leather_horse_armor": {
+      "form": "horse",
+      "material": "leather",
+      "type": "body",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "leather_leggings": {
+      "form": "humanoid",
+      "material": "leather",
+      "type": "leggings",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "netherite_boots": {
+      "form": "humanoid",
+      "material": "netherite",
+      "type": "boots",
+      "rarity": "common",
+      "fire_resistant": true
+    },
+    "netherite_chestplate": {
+      "form": "humanoid",
+      "material": "netherite",
+      "type": "chestplate",
+      "rarity": "common",
+      "fire_resistant": true
+    },
+    "netherite_helmet": {
+      "form": "humanoid",
+      "material": "netherite",
+      "type": "helmet",
+      "rarity": "common",
+      "fire_resistant": true
+    },
+    "netherite_horse_armor": {
+      "form": "horse",
+      "material": "netherite",
+      "type": "body",
+      "rarity": "common",
+      "fire_resistant": true
+    },
+    "netherite_leggings": {
+      "form": "humanoid",
+      "material": "netherite",
+      "type": "leggings",
+      "rarity": "common",
+      "fire_resistant": true
+    },
+    "netherite_nautilus_armor": {
+      "form": "nautilus",
+      "material": "netherite",
+      "type": "body",
+      "rarity": "common",
+      "fire_resistant": true
+    },
+    "turtle_helmet": {
+      "form": "humanoid",
+      "material": "turtle_scute",
+      "type": "helmet",
+      "rarity": "common",
+      "fire_resistant": false
+    },
+    "wolf_armor": {
+      "form": "wolf",
+      "material": "armadillo_scute",
+      "type": "body",
+      "rarity": "common",
+      "fire_resistant": false
+    }
+  },
+  "entity_tags": {
+    "can_wear_horse_armor": [
+      "minecraft:horse",
+      "minecraft:zombie_horse"
+    ],
+    "can_wear_nautilus_armor": [
+      "minecraft:nautilus",
+      "minecraft:zombie_nautilus"
+    ]
+  },
+  "trades": [
+    {
+      "path": "data/minecraft/villager_trade/armorer/1/emerald_iron_boots.json",
+      "profession": "armorer",
+      "level": 1,
+      "id": "emerald_iron_boots",
+      "wants": {
+        "id": "emerald",
+        "count": 4
+      },
+      "gives": {
+        "id": "iron_boots",
+        "count": 1
+      },
+      "enchanted": false,
+      "max_uses": 12,
+      "xp": 1,
+      "reputation_discount": 0.2
+    },
+    {
+      "path": "data/minecraft/villager_trade/armorer/1/emerald_iron_chestplate.json",
+      "profession": "armorer",
+      "level": 1,
+      "id": "emerald_iron_chestplate",
+      "wants": {
+        "id": "emerald",
+        "count": 9
+      },
+      "gives": {
+        "id": "iron_chestplate",
+        "count": 1
+      },
+      "enchanted": false,
+      "max_uses": 12,
+      "xp": 1,
+      "reputation_discount": 0.2
+    },
+    {
+      "path": "data/minecraft/villager_trade/armorer/1/emerald_iron_helmet.json",
+      "profession": "armorer",
+      "level": 1,
+      "id": "emerald_iron_helmet",
+      "wants": {
+        "id": "emerald",
+        "count": 5
+      },
+      "gives": {
+        "id": "iron_helmet",
+        "count": 1
+      },
+      "enchanted": false,
+      "max_uses": 12,
+      "xp": 1,
+      "reputation_discount": 0.2
+    },
+    {
+      "path": "data/minecraft/villager_trade/armorer/1/emerald_iron_leggings.json",
+      "profession": "armorer",
+      "level": 1,
+      "id": "emerald_iron_leggings",
+      "wants": {
+        "id": "emerald",
+        "count": 7
+      },
+      "gives": {
+        "id": "iron_leggings",
+        "count": 1
+      },
+      "enchanted": false,
+      "max_uses": 12,
+      "xp": 1,
+      "reputation_discount": 0.2
+    },
+    {
+      "path": "data/minecraft/villager_trade/armorer/2/emerald_chainmail_boots.json",
+      "profession": "armorer",
+      "level": 2,
+      "id": "emerald_chainmail_boots",
+      "wants": {
+        "id": "emerald",
+        "count": 1
+      },
+      "gives": {
+        "id": "chainmail_boots",
+        "count": 1
+      },
+      "enchanted": false,
+      "max_uses": 12,
+      "xp": 5,
+      "reputation_discount": 0.2
+    },
+    {
+      "path": "data/minecraft/villager_trade/armorer/2/emerald_chainmail_leggings.json",
+      "profession": "armorer",
+      "level": 2,
+      "id": "emerald_chainmail_leggings",
+      "wants": {
+        "id": "emerald",
+        "count": 3
+      },
+      "gives": {
+        "id": "chainmail_leggings",
+        "count": 1
+      },
+      "enchanted": false,
+      "max_uses": 12,
+      "xp": 5,
+      "reputation_discount": 0.2
+    },
+    {
+      "path": "data/minecraft/villager_trade/armorer/3/emerald_chainmail_chestplate.json",
+      "profession": "armorer",
+      "level": 3,
+      "id": "emerald_chainmail_chestplate",
+      "wants": {
+        "id": "emerald",
+        "count": 4
+      },
+      "gives": {
+        "id": "chainmail_chestplate",
+        "count": 1
+      },
+      "enchanted": false,
+      "max_uses": 12,
+      "xp": 10,
+      "reputation_discount": 0.2
+    },
+    {
+      "path": "data/minecraft/villager_trade/armorer/3/emerald_chainmail_helmet.json",
+      "profession": "armorer",
+      "level": 3,
+      "id": "emerald_chainmail_helmet",
+      "wants": {
+        "id": "emerald",
+        "count": 1
+      },
+      "gives": {
+        "id": "chainmail_helmet",
+        "count": 1
+      },
+      "enchanted": false,
+      "max_uses": 12,
+      "xp": 10,
+      "reputation_discount": 0.2
+    },
+    {
+      "path": "data/minecraft/villager_trade/armorer/4/emerald_enchanted_diamond_boots.json",
+      "profession": "armorer",
+      "level": 4,
+      "id": "emerald_enchanted_diamond_boots",
+      "wants": {
+        "id": "emerald",
+        "count": 8
+      },
+      "gives": {
+        "id": "diamond_boots",
+        "count": 1
+      },
+      "enchanted": true,
+      "max_uses": 3,
+      "xp": 15,
+      "reputation_discount": 0.2
+    },
+    {
+      "path": "data/minecraft/villager_trade/armorer/4/emerald_enchanted_diamond_leggings.json",
+      "profession": "armorer",
+      "level": 4,
+      "id": "emerald_enchanted_diamond_leggings",
+      "wants": {
+        "id": "emerald",
+        "count": 14
+      },
+      "gives": {
+        "id": "diamond_leggings",
+        "count": 1
+      },
+      "enchanted": true,
+      "max_uses": 3,
+      "xp": 15,
+      "reputation_discount": 0.2
+    },
+    {
+      "path": "data/minecraft/villager_trade/armorer/5/emerald_enchanted_diamond_chestplate.json",
+      "profession": "armorer",
+      "level": 5,
+      "id": "emerald_enchanted_diamond_chestplate",
+      "wants": {
+        "id": "emerald",
+        "count": 16
+      },
+      "gives": {
+        "id": "diamond_chestplate",
+        "count": 1
+      },
+      "enchanted": true,
+      "max_uses": 3,
+      "xp": 30,
+      "reputation_discount": 0.2
+    },
+    {
+      "path": "data/minecraft/villager_trade/armorer/5/emerald_enchanted_diamond_helmet.json",
+      "profession": "armorer",
+      "level": 5,
+      "id": "emerald_enchanted_diamond_helmet",
+      "wants": {
+        "id": "emerald",
+        "count": 8
+      },
+      "gives": {
+        "id": "diamond_helmet",
+        "count": 1
+      },
+      "enchanted": true,
+      "max_uses": 3,
+      "xp": 30,
+      "reputation_discount": 0.2
+    },
+    {
+      "path": "data/minecraft/villager_trade/leatherworker/1/emerald_dyed_leather_chestplate.json",
+      "profession": "leatherworker",
+      "level": 1,
+      "id": "emerald_dyed_leather_chestplate",
+      "wants": {
+        "id": "emerald",
+        "count": 7
+      },
+      "gives": {
+        "id": "leather_chestplate",
+        "count": 1
+      },
+      "enchanted": true,
+      "max_uses": 12,
+      "xp": 1,
+      "reputation_discount": 0.2
+    },
+    {
+      "path": "data/minecraft/villager_trade/leatherworker/1/emerald_dyed_leather_leggings.json",
+      "profession": "leatherworker",
+      "level": 1,
+      "id": "emerald_dyed_leather_leggings",
+      "wants": {
+        "id": "emerald",
+        "count": 3
+      },
+      "gives": {
+        "id": "leather_leggings",
+        "count": 1
+      },
+      "enchanted": true,
+      "max_uses": 12,
+      "xp": 1,
+      "reputation_discount": 0.2
+    },
+    {
+      "path": "data/minecraft/villager_trade/leatherworker/2/emerald_dyed_leather_boots.json",
+      "profession": "leatherworker",
+      "level": 2,
+      "id": "emerald_dyed_leather_boots",
+      "wants": {
+        "id": "emerald",
+        "count": 4
+      },
+      "gives": {
+        "id": "leather_boots",
+        "count": 1
+      },
+      "enchanted": true,
+      "max_uses": 12,
+      "xp": 5,
+      "reputation_discount": 0.2
+    },
+    {
+      "path": "data/minecraft/villager_trade/leatherworker/2/emerald_dyed_leather_helmet.json",
+      "profession": "leatherworker",
+      "level": 2,
+      "id": "emerald_dyed_leather_helmet",
+      "wants": {
+        "id": "emerald",
+        "count": 5
+      },
+      "gives": {
+        "id": "leather_helmet",
+        "count": 1
+      },
+      "enchanted": true,
+      "max_uses": 12,
+      "xp": 5,
+      "reputation_discount": 0.2
+    },
+    {
+      "path": "data/minecraft/villager_trade/leatherworker/3/emerald_dyed_leather_chestplate.json",
+      "profession": "leatherworker",
+      "level": 3,
+      "id": "emerald_dyed_leather_chestplate",
+      "wants": {
+        "id": "emerald",
+        "count": 7
+      },
+      "gives": {
+        "id": "leather_chestplate",
+        "count": 1
+      },
+      "enchanted": true,
+      "max_uses": 12,
+      "xp": 1,
+      "reputation_discount": 0.2
+    },
+    {
+      "path": "data/minecraft/villager_trade/leatherworker/4/emerald_dyed_leather_horse_armor.json",
+      "profession": "leatherworker",
+      "level": 4,
+      "id": "emerald_dyed_leather_horse_armor",
+      "wants": {
+        "id": "emerald",
+        "count": 6
+      },
+      "gives": {
+        "id": "leather_horse_armor",
+        "count": 1
+      },
+      "enchanted": true,
+      "max_uses": 12,
+      "xp": 15,
+      "reputation_discount": 0.2
+    },
+    {
+      "path": "data/minecraft/villager_trade/leatherworker/5/emerald_dyed_leather_helmet.json",
+      "profession": "leatherworker",
+      "level": 5,
+      "id": "emerald_dyed_leather_helmet",
+      "wants": {
+        "id": "emerald",
+        "count": 5
+      },
+      "gives": {
+        "id": "leather_helmet",
+        "count": 1
+      },
+      "enchanted": true,
+      "max_uses": 12,
+      "xp": 5,
+      "reputation_discount": 0.2
+    }
+  ]
+}

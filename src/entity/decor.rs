@@ -976,6 +976,7 @@ fn armor_colour(material: ArmorMaterial) -> [u8; 3] {
         ArmorMaterial::Netherite => [74, 66, 70],
         ArmorMaterial::Turtle => [80, 160, 72],
         ArmorMaterial::Copper => [196, 112, 80],
+        ArmorMaterial::Chainmail => [150, 150, 156],
     }
 }
 
