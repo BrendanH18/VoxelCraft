@@ -5,6 +5,9 @@
 use crate::enchant::{self, Enchants};
 use crate::item::{ArmorPiece, Item};
 
+pub mod components;
+use components::{Payload, StackPayload, Trim};
+
 pub const HOTBAR_SLOTS: usize = 9;
 pub const SLOTS: usize = 36;
 /// Plain UTF-8 bytes kept inline so [`Stack`] remains cheap to copy.
@@ -94,6 +97,11 @@ pub struct Stack {
     pub map_id: Option<u32>,
     /// Immutable bounded bee occupant and honey payload, only on hive items.
     pub hive: Option<&'static crate::world::bees::HiveItem>,
+    /// Java's `trim` component: an armor trim's pattern and material.
+    pub trim: Option<Trim>,
+    /// The interned variable-size component: bundle contents, book content
+    /// or banner patterns (see [`components`]). `None` is the item default.
+    pub payload: Option<StackPayload>,
 }
 
 /// Java's `LodestoneTracker` (always `tracked`, as a lodestone makes it):
@@ -137,11 +145,14 @@ impl Stack {
             lodestone: None,
             map_id: None,
             hive: None,
+            trim: None,
+            payload: None,
         }
     }
 
-    /// Whether `other` can merge into this stack (same item, wear,
-    /// enchantments and custom name, like Java's component check).
+    /// Whether `other` can merge into this stack: Java's
+    /// `ItemStack.isSameItemSameComponents`, the same item with equal
+    /// components (wear, enchantments, name, trim, payload and the rest).
     pub fn stacks_with(&self, other: &Stack) -> bool {
         self.item == other.item
             && self.damage == other.damage
@@ -152,6 +163,51 @@ impl Stack {
             && self.lodestone == other.lodestone
             && self.map_id == other.map_id
             && self.hive == other.hive
+            && self.trim == other.trim
+            && self.payload == other.payload
+    }
+
+    /// This stack with `payload` interned into its payload slot (an item
+    /// default clears the slot, as Java drops it from the patch).
+    pub fn with_payload(self, payload: Payload) -> Self {
+        Stack { payload: payload.intern(), ..self }
+    }
+
+    /// The interned payload, if any.
+    pub fn payload(&self) -> Option<&'static Payload> {
+        self.payload.map(StackPayload::get)
+    }
+
+    /// `bundle_contents`: the stacks inside (none for an empty bundle).
+    pub fn bundle_contents(&self) -> &'static [Stack] {
+        match self.payload() {
+            Some(Payload::Bundle(items)) => items,
+            _ => &[],
+        }
+    }
+
+    /// `writable_book_content`'s pages (none for a blank book).
+    pub fn writable_pages(&self) -> &'static [String] {
+        match self.payload() {
+            Some(Payload::WritableBook(pages)) => pages,
+            _ => &[],
+        }
+    }
+
+    /// `written_book_content`.
+    pub fn written_book(&self) -> Option<&'static components::WrittenBook> {
+        match self.payload() {
+            Some(Payload::WrittenBook(book)) => Some(book),
+            _ => None,
+        }
+    }
+
+    /// `banner_patterns` and `base_color`.
+    pub fn banner_patterns(&self) -> Option<&'static components::BannerPatterns> {
+        match self.payload() {
+            Some(Payload::Banner(b)) => Some(b),
+            _ => None,
+        }
     }
 
     /// The enchantments that take effect when held or worn: a book's are
@@ -511,8 +567,11 @@ impl Inventory {
 /// `id:count` (or `id:count:damage` for worn tools, and
 /// `id:count:damage:enchantments:repair cost:name` for enchanted,
 /// anvil-worked or named ones; enchantments and UTF-8 name bytes are hex;
-/// then the captured-creature data and, for a lodestone compass, its
-/// target), or `-` for nothing.
+/// then the captured-creature data, and trailing optional fields: a
+/// lodestone compass's target, the map id, the hive payload, the armor trim
+/// (`pattern.material`) and the interned payload (unpadded base64 JSON),
+/// each `~` when absent before a later one), or `-` for nothing. Fields are
+/// only ever appended, so every older string still loads.
 pub fn stack_to_string(stack: Option<Stack>) -> String {
     match stack {
         None => "-".to_string(),
@@ -523,7 +582,9 @@ pub fn stack_to_string(stack: Option<Stack>) -> String {
                 || s.entity_data > 0
                 || s.lodestone.is_some()
                 || s.map_id.is_some()
-                || s.hive.is_some() =>
+                || s.hive.is_some()
+                || s.trim.is_some()
+                || s.payload.is_some() =>
         {
             let mut text = format!(
                 "{}:{}:{}:{}:{}:{}:{}",
@@ -535,15 +596,18 @@ pub fn stack_to_string(stack: Option<Stack>) -> String {
                 s.name.to_hex(),
                 s.entity_data
             );
-            if s.lodestone.is_some() || s.map_id.is_some() || s.hive.is_some() {
-                text.push(':');
-                text.push_str(&s.lodestone.map_or_else(|| "~".into(), Lodestone::to_field));
-            }
-            if s.map_id.is_some() || s.hive.is_some() {
-                text.push_str(&format!(":{}", s.map_id.map_or_else(|| "~".into(), |id| id.to_string())));
-            }
-            if let Some(h) = s.hive {
-                text.push_str(&format!(":{}", h.to_hex()));
+            let tail = [
+                s.lodestone.map(Lodestone::to_field),
+                s.map_id.map(|id| id.to_string()),
+                s.hive.map(|h| h.to_hex()),
+                s.trim.map(Trim::to_field),
+                s.payload.map(|p| p.field().to_owned()),
+            ];
+            if let Some(last) = tail.iter().rposition(Option::is_some) {
+                for field in &tail[..=last] {
+                    text.push(':');
+                    text.push_str(field.as_deref().unwrap_or("~"));
+                }
             }
             text
         }
@@ -576,8 +640,16 @@ pub fn stack_from_str(text: &str) -> Option<Option<Stack>> {
         Some(s) => Some(s.parse::<u32>().ok()?),
     };
     let hive = match fields.next() {
-        None => None,
+        Some("~") | None => None,
         Some(s) => Some(crate::world::bees::HiveItem::from_hex(s)?.intern()),
+    };
+    let trim = match fields.next() {
+        Some("~") | None => None,
+        Some(s) => Some(Trim::from_field(s)?),
+    };
+    let payload = match fields.next() {
+        Some("~") | None => None,
+        Some(s) => Payload::from_field(s)?,
     };
     if fields.next().is_some() {
         return None;
@@ -598,6 +670,8 @@ pub fn stack_from_str(text: &str) -> Option<Option<Stack>> {
         lodestone,
         map_id,
         hive,
+        trim,
+        payload,
     }))
 }
 

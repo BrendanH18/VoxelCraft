@@ -3,13 +3,13 @@ use super::{Entities, EntityEvent, Mob, MobKind, MobSound, PlayerId, Rng};
 use crate::{
     color::DyeColor,
     enchant::Enchantment,
-    inventory::{Stack, stack_from_str},
+    inventory::{Stack, components, stack_from_str},
     item::Item,
     world::block::Block,
 };
 use glam::DVec3;
 pub const DURABILITY: u16 = 64;
-pub const DYED: u32 = 1 << 24;
+pub use crate::inventory::components::DYED;
 #[derive(Clone, Debug, Default)]
 pub struct State {
     pub armor: Option<Stack>,
@@ -30,12 +30,9 @@ pub enum Use {
     Repair,
     Remove,
 }
+/// Wolf armor's `dyed_color` (the shared [`components::dyed_color`]).
 pub fn color(stack: Stack) -> Option<[u8; 3]> {
-    (stack.item == Item::WOLF_ARMOR && stack.entity_data & DYED != 0).then_some([
-        (stack.entity_data >> 16) as u8,
-        (stack.entity_data >> 8) as u8,
-        stack.entity_data as u8,
-    ])
+    if stack.item == Item::WOLF_ARMOR { components::dyed_color(&stack) } else { None }
 }
 pub fn item_tint_bytes(stack: Stack) -> [u8; 4] {
     color(stack).map_or([255; 4], |c| [c[0], c[1], c[2], 255])
@@ -43,31 +40,17 @@ pub fn item_tint_bytes(stack: Stack) -> [u8; 4] {
 pub fn item_tint(stack: Stack) -> [f32; 4] {
     color(stack).map_or([1.0; 4], |c| [f32::from(c[0]) / 255.0, f32::from(c[1]) / 255.0, f32::from(c[2]) / 255.0, 1.0])
 }
-/// DyedItemColor's integer channel averages and float brightness normalization.
-pub fn dye(mut stack: Stack, dyes: &[DyeColor]) -> Option<Stack> {
-    if stack.item != Item::WOLF_ARMOR || dyes.is_empty() {
+/// DyedItemColor's integer channel averages and float brightness
+/// normalization ([`components::apply_dyes`]), for wolf armor.
+pub fn dye(stack: Stack, dyes: &[DyeColor]) -> Option<Stack> {
+    if stack.item != Item::WOLF_ARMOR {
         return None;
     }
-    let (mut sum, mut brightness, mut count) = ([0_u32; 3], 0_u32, 0_u32);
-    for c in color(stack).into_iter().chain(dyes.iter().map(|d| d.rgb())) {
-        for i in 0..3 {
-            sum[i] += u32::from(c[i]);
-        }
-        brightness += u32::from(*c.iter().max().unwrap());
-        count += 1;
-    }
-    let avg = sum.map(|v| v / count);
-    let peak = *avg.iter().max().unwrap() as f32;
-    let light = brightness as f32 / count as f32;
-    let rgb = avg.map(|v| if peak == 0.0 { 0 } else { (v as f32 * light / peak) as u8 });
-    stack.count = 1;
-    stack.entity_data = DYED | (u32::from(rgb[0]) << 16) | (u32::from(rgb[1]) << 8) | u32::from(rgb[2]);
-    Some(stack)
+    components::apply_dyes(stack, dyes)
 }
-pub fn washed(mut stack: Stack) -> Option<Stack> {
+pub fn washed(stack: Stack) -> Option<Stack> {
     color(stack)?;
-    stack.entity_data = 0;
-    Some(stack)
+    components::remove_dye(stack)
 }
 pub fn cracks(damage: u16) -> u8 {
     let remaining = 1.0 - f32::from(damage) / f32::from(DURABILITY);
