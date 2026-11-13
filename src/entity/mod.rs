@@ -2255,10 +2255,10 @@ impl Entities {
         self.note_villager_hurt(index, owner, killed);
         let m = &mut self.mobs[index];
         let retaliates = match m.kind {
-            MobKind::Wolf => m.animal.as_ref().is_some_and(|a| a.owner != Some(owner)),
             // Under `universal_anger` these two take the hit through `neutral`.
-            MobKind::IronGolem => !m.built && !self.neutral_universal_anger,
             MobKind::Wolf if self.neutral_universal_anger => false,
+            MobKind::Wolf => m.animal.as_ref().is_some_and(|a| a.owner != Some(owner)),
+            MobKind::IronGolem => !m.built && !self.neutral_universal_anger,
             MobKind::Llama => true,
             _ => false,
         };

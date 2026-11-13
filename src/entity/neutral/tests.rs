@@ -367,7 +367,7 @@ fn piglins_under_universal_anger_turn_on_the_nearest_player_and_rally_the_others
     c.players[0].pos = DVec3::new(0.5, 1.0, 40.5);
     e.nether_hurt(0, Foe::Player(HOST));
     look(&mut e, &c);
-    assert_eq!(e.mobs[0].nether.as_deref().unwrap().universal_pick, false);
+    assert!(!e.mobs[0].nether.as_deref().unwrap().universal_pick);
     assert!(e.mobs[0].nether.as_deref().unwrap().universal > 0.0);
 }
 
