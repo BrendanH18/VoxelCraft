@@ -25,7 +25,6 @@ Free, open source and about 7 MB. No launcher, no account, no ads.
 
 <a href="#the-world">The world</a> ·
 <a href="#install">Install</a> ·
-<a href="#your-first-night">First night</a> ·
 <a href="#play-together">Play together</a> ·
 <a href="#under-the-hood">Under the hood</a> ·
 <a href="#build-from-source">Build</a> ·
@@ -169,84 +168,11 @@ Grab the latest version from
 > notes on how to continue, and the [release guide](docs/releases.md) has
 > the details.
 
-**It keeps itself up to date.** From v0.10 onward the game offers each new
-release on the title screen and installs it with **Update and Restart**,
-backing up your worlds first. If you're on v0.9 or earlier, install the
-latest version over the old one once by hand. Your worlds and settings live
-in a [separate data folder](docs/releases.md#player-data-and-old-saves) and
-come along for the ride. Older versions can't open upgraded worlds, so keep
-a backup of any world you care about. See
-[Updating VoxelCraft](docs/updates.md).
-
-<a id="your-first-night"></a>
-
-## 🌅 Your first night
-
-Choose **Singleplayer → Create New World**, give it a name, and pick a game
-mode and difficulty. The **World** tab takes a seed if you have a favourite.
-Worlds save themselves every two minutes.
-
-Click the window to grab the mouse. <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>
-moves, <kbd>Space</kbd> jumps, **left click** mines or fights, **right click**
-places or uses, and <kbd>E</kbd> opens your inventory.
-
-The sun is already moving. Here's how to see the morning:
-
-1. 🌳 **Punch a tree.** Grab a few logs and turn each one into four planks
-   in your inventory's crafting grid.
-2. 🪵 **Make a crafting table** from four planks, and sticks from two
-   planks stacked on top of each other.
-3. ⛏️ **Craft a wooden pickaxe**: three planks across the top, two sticks
-   down the middle.
-4. 🪨 **Mine some stone.** Eight cobblestone in a ring makes a furnace, and
-   a stone pickaxe unlocks iron.
-5. 🍖 **Cook dinner.** Raw meat on top of the furnace, coal or wood below.
-   Hold right-click with food to eat.
-6. 🛏️ **Hide.** Wall yourself in, light a torch, and wait for dawn, or
-   sleep it off in a bed made from wool and planks.
-
-Stuck on a recipe? Click **Recipes** in any crafting screen to browse
-layouts and drop them straight into your grid.
-
-> [!WARNING]
-> Dying drops everything you were carrying, and dropped items vanish after
-> five minutes. Run!
-
-<details>
-<summary><strong>🎮 Full controls</strong></summary>
-<br>
-
-These are the defaults. Rebind any of them except <kbd>Esc</kbd> under
-**Options → Controls → Key Binds**.
-
-| Input | Action |
-| --- | --- |
-| <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> / mouse | Move / look |
-| <kbd>Space</kbd> | Jump (double-tap to fly in creative) |
-| Left / right click | Mine or attack / place, use or eat |
-| Middle click | Pick block |
-| <kbd>E</kbd> | Inventory and 2×2 crafting |
-| <kbd>1</kbd>–<kbd>9</kbd> or scroll | Select hotbar slot |
-| <kbd>Q</kbd> / <kbd>Ctrl</kbd>+<kbd>Q</kbd> | Drop one item / the whole stack |
-| <kbd>Shift</kbd> + click | Move a stack, or craft as many as fit |
-| Left <kbd>Ctrl</kbd> | Sprint (needs more than three drumsticks of food) |
-| Left <kbd>Shift</kbd> | Sneak, so you won't walk off edges (fly down in creative) |
-| <kbd>F</kbd> | Swap the held item with your off-hand (hold right click with a shield to block) |
-| <kbd>R</kbd> | Toggle flight in creative |
-| <kbd>G</kbd> | Switch between survival and creative |
-| <kbd>F5</kbd> | First person / third person back / third person front |
-| <kbd>[</kbd> / <kbd>]</kbd> | Lower / raise render distance |
-| <kbd>T</kbd> / <kbd>/</kbd> | Chat / command console with <kbd>Tab</kbd> completion: `/give`, `/tp`, `/time`, `/weather`, `/gamemode`, `/locate` and more |
-| <kbd>Tab</kbd> | Player list |
-| <kbd>F1</kbd> / <kbd>F3</kbd> | Hide HUD / debug overlay |
-| <kbd>F11</kbd> | Fullscreen |
-| <kbd>Esc</kbd> | Pause, options, and **Save and Quit to Title** |
-
-Swim by sprinting in water; you'll crawl automatically through one-block
-gaps. The [gameplay guide](docs/gameplay.md) covers survival rules, mobs and
-every recipe.
-
-</details>
+**It keeps itself up to date.** The game offers each new release on the
+title screen and installs it with **Update and Restart**, backing up your
+worlds first. Worlds and settings live in a
+[separate data folder](docs/releases.md#player-data-and-old-saves), so they
+carry over. See [Updating VoxelCraft](docs/updates.md).
 
 <a id="play-together"></a>
 
@@ -367,33 +293,11 @@ checked and every known difference from Java.
 
 ## 📚 Documentation
 
-**Playing:**
-[gameplay guide](docs/gameplay.md) ·
-[survival items](docs/survival-items.md) ·
-[animals](docs/animals.md) ·
-[boats and riding](docs/mounts.md) ·
-[villages](docs/villages.md) ·
-[redstone](docs/redstone.md) ·
-[colours and dyes](docs/colors.md) ·
-[Nether mobs](docs/nether-mobs.md) ·
-[Nether biomes](docs/nether-biomes.md) ·
-[bastions](docs/bastions.md) ·
-[aquatic mobs](docs/aquatic-mobs.md) ·
-[overworld structures](docs/overworld-structures.md) ·
-[LAN play](docs/lan.md) ·
-[updating](docs/updates.md)
-
-**Building:**
-[architecture](docs/architecture.md) ·
-[development guide](docs/development.md) ·
-[overworld terrain](docs/overworld-terrain.md) ·
-[mob parity](docs/mob-parity.md) ·
-[player rendering](docs/player-rendering.md) ·
-[music](docs/music.md) ·
-[particles](docs/particles.md) ·
-[hosted agents](docs/agents.md) ·
-[releases](docs/releases.md) ·
-[documentation index](docs/README.md)
+The [gameplay guide](docs/gameplay.md) covers controls, survival rules, mobs
+and recipes, and the [documentation index](docs/README.md) lists everything
+else, from [LAN play](docs/lan.md) to the
+[architecture](docs/architecture.md) and
+[development guide](docs/development.md).
 
 ## 🤝 Contributing
 
