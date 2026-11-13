@@ -26,7 +26,13 @@ A row is one of:
 - **fix**: one defect corrected.
 
 Every row names the test or fixture that proves it, and a name appears
-once in the whole ledger. A fact that already matched Java is not a row: a
+once in the whole ledger. Names follow one pattern so the same thing can't
+hide under two spellings: `item:<java id>`, `block:<java id>`,
+`mob:<java id>`, `effect:<java id>`, `potion:<java id>`,
+`enchantment:<java id>`, `recipe:<java recipe id>`,
+`loot:<java table path>`, `trade:<profession>/<level>/<java offer id>`,
+`screen:<name>`, `command:<name>`, and `behaviour:<subject>/<what>` or
+`fix:<subject>/<what>` for the rest. A fact that already matched Java is not a row: a
 new fixture that proves a whole table counts once, plus one row for each
 difference it found and fixed.
 

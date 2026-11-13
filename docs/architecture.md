@@ -313,6 +313,18 @@ The ranges are unchanged by the 2026-10-22 renumbering: v0.10 (updates) and
 v0.11 (menus and settings) add no states, so each later range kept its
 content and took its release's new number.
 
+Before reserving or allocating, print what the build registers
+(2026-11-12): `cargo run --release --no-default-features --example id_map`
+([source](../examples/id_map.rs)) lists the registered and free block
+states, non-block item IDs and block texture layers, and the length of each
+append-only ordering with whether saves and LAN carry its names or its
+numbers. Range arguments such as `-- states:16000-16383 items:1540-1549`
+make the run fail when a range holds a registered ID. It sees one checkout
+only: reservations and pending branches are in these tables, and a texture
+layer no block face names can still belong to a model, an icon or the HUD.
+[`tests/id_map.rs`](../tests/id_map.rs) guards the item list, the texture
+count, the potions' item IDs and the encodings the orderings must fit.
+
 | Block states | Release | Use |
 | --- | --- | --- |
 | 2525–4095 | v0.12 | New building-material families' base states |
@@ -837,6 +849,35 @@ Legacy drink/splash IDs 400–435 / 436–471 and Turtle Master IDs 1041–1046
 retain their mappings. Lingering/tipped-arrow components store `potion index + 1`
 and remain compatible. `Effect::Invisibility` appends after Trial Omen (bit 28);
 effect saves use Java string IDs, so existing effects and masks keep their order.
+
+### v0.17 build-5000 reservations
+
+Reserved on 2026-11-12 for the [build-5000 campaign](verification/2026-11-12-build-5000/README.md),
+after `examples/id_map.rs` showed every range below unregistered at
+`b747c59`. Slices allocate only inside their own rows; unused IDs stay
+unregistered with their row. Landing order decides the position of
+appended enum variants (`MobKind`, `Effect`, `POTIONS`, thrown kinds,
+sounds, item icons), which no released build has saved.
+
+| Kind | Range | Use |
+| --- | --- | --- |
+| Item IDs | 1550–1553 | Chainmail helmet, chestplate, leggings, boots |
+| Item IDs | 1554–1556 | Experience bottle, spectral arrow, spyglass |
+| Item IDs | 1557–1558 | Writable book, written book |
+| Item IDs | 1559–1560 | Blue egg, brown egg |
+| Item IDs | 1561–1562 | Copper and netherite horse armor |
+| Item IDs | 1563–1567 | Copper, iron, golden, diamond and netherite nautilus armor |
+| Item IDs | 1568–1584 | Bundle, then the 16 dyed bundles in `DyeColor` order |
+| Item IDs | 1585–1600 | The 16 harnesses in `DyeColor` order |
+| Item IDs | 1601–1618 | The 18 armor trim smithing templates |
+| Item IDs | 1619–1628 | The ten banner pattern items |
+| Item IDs | 1629–1633 | The five missing explorer maps |
+| Item IDs | 1634–1649 | Spare for the items area |
+| Item IDs | 1650–1653, 1654–1657 | Drinkable, then splash wind charged, weaving, oozing and infested potions; 1658–1659 spare |
+| Block states | 11776–12223 | Village workstation and raid states (lectern, loom, cartography table, stonecutter and the rest of v0.17's range) |
+| Block states | 12224–12255 | Dried ghast: hydration × facing × waterlogged |
+| Block states | 12256–12259 | Frosted ice ages 0–3; 12260–12287 spare |
+| Texture layers | 3859–4095 | v0.17 and later blocks; layers are never saved, so the integrator may repack them |
 
 ## Assessment branch ID reservations
 
