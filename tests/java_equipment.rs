@@ -345,7 +345,7 @@ fn chest_loot_awards_the_new_armor_at_java_weights() {
         let mut counts = std::collections::BTreeMap::new();
         for seed in 0..ROLLS {
             for stack in loot::roll_items(table, &mut loot::LootRandom::new(seed * 7919 + 13), Some) {
-                *counts.entry(stack.item).or_insert(0u64) += u64::from(stack.count);
+                *counts.entry(stack.item.0).or_insert(0u64) += u64::from(stack.count);
             }
         }
         for (_, name) in cases.iter().filter(|(t, _)| t == table) {
@@ -353,7 +353,7 @@ fn chest_loot_awards_the_new_armor_at_java_weights() {
             assert!(new_item(item), "{name}");
             let expected = expected_per_chest(tables, table, name) * ROLLS as f64;
             assert!(expected > 0.0, "{table}: {name} not in the table");
-            let got = counts.get(&item).copied().unwrap_or(0) as f64;
+            let got = counts.get(&item.0).copied().unwrap_or(0) as f64;
             assert!((got - expected).abs() <= 5.0 * expected.sqrt() + 2.0, "{table}: {name} {got} of ~{expected:.0}");
         }
     }

@@ -1,6 +1,5 @@
 //! Procedural Java-like equine proportions, coats, markings and equipment.
 use super::{Cuboid, Mob, MobKind, Parts, cube, part};
-use crate::item::Item;
 use glam::Quat;
 const COLORS: [[u8; 3]; 9] = [
     [236, 232, 218],
