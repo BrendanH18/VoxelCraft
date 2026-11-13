@@ -1317,6 +1317,41 @@ mod tests {
         assert!(!enchanted.output.enchants.is_empty());
         assert!((18..=32).contains(&enchanted.cost.count));
     }
+    /// Java 26.3 `villager_trade/cleric/5/emerald_experience_bottle.json`:
+    /// a master cleric always offers it beside the nether wart (the level
+    /// tag has two offers, and the game picks two).
+    #[test]
+    fn master_clerics_sell_the_bottle_o_enchanting_on_java_terms() {
+        let f: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/thrown_items.json")).unwrap();
+        let t = &f["experience_bottle"]["trade"];
+        assert_eq!(t["in_level_tag"], true);
+        let level: Vec<_> =
+            tables::TRADES.iter().filter(|(p, l, d)| *p == Profession::Cleric && *l == 5 && d.available()).collect();
+        assert_eq!(level.len() as u64, t["level_offers"].as_u64().unwrap());
+        let java_item = |v: &serde_json::Value| crate::java_registry::item(v["id"].as_str().unwrap(), "").unwrap();
+        for seed in 0..50 {
+            let mut v = Villager::new(seed, seed * 31 + 7);
+            v.set_profession(Profession::Cleric);
+            for l in 2..=5 {
+                v.level = l;
+                v.unlock();
+            }
+            let offer = v.offers[8..]
+                .iter()
+                .flatten()
+                .find(|o| o.output.item == Item::EXPERIENCE_BOTTLE)
+                .copied()
+                .expect("a master cleric sells the bottle");
+            assert_eq!(offer.cost, Stack::new(java_item(&t["wants"]), t["wants"]["count"].as_u64().unwrap() as u8));
+            assert_eq!(offer.second, None);
+            assert_eq!(offer.output, Stack::new(java_item(&t["gives"]), t["gives"]["count"].as_u64().unwrap() as u8));
+            assert_eq!(u64::from(offer.max_uses), t["max_uses"].as_u64().unwrap());
+            assert_eq!(u64::from(offer.xp), t["xp"].as_u64().unwrap());
+            assert_eq!(f64::from(offer.multiplier), f64::from(t["reputation_discount"].as_f64().unwrap() as f32));
+        }
+    }
+
     #[test]
     fn master_fletcher_crossbows_have_their_enchantment() {
         let def = tables::TRADES

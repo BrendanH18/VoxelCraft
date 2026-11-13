@@ -574,6 +574,7 @@ impl Game {
                 | EntityEvent::MobKilled { .. }
                 | EntityEvent::LaidEgg { .. }
                 | EntityEvent::Hatched { .. }
+                | EntityEvent::ExperienceBurst { .. }
                 | EntityEvent::DropEquipment { .. } => {}
                 EntityEvent::AnimalBlock { cell, from, to } => {
                     if self.world.get_block(cell) == Some(from) {

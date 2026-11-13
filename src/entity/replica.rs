@@ -100,6 +100,7 @@ impl Entities {
                     1 => thrown::Kind::Egg,
                     3 => thrown::Kind::WindCharge,
                     4 => thrown::Kind::BreezeWindCharge,
+                    5 => thrown::Kind::ExperienceBottle,
                     _ => thrown::Kind::LlamaSpit,
                 };
                 Some(thrown::Thrown::replica(kind, p, q))

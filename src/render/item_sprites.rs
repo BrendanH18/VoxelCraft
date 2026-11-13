@@ -814,6 +814,16 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 shaded(&flask, x, y, [38, 120, 92], 0.07)
             }
         }
+        Sprite::ExperienceBottle => {
+            // The drinkable bottle's flask holding swirls of green and sky
+            // blue, with pale sparkles in the liquid.
+            let (px, py) = centre(x, y);
+            let swirl = ((px - 8.0) * 0.9 + (py - 10.0) * 0.6).sin() + ((py - 8.0) * 1.3).cos() * 0.5 > 0.2;
+            let liquid = if swirl { [116, 214, 92] } else { [86, 170, 226] };
+            let sparkle = [(9, 8), (6, 12), (10, 12)].contains(&(x, y));
+            let p = pixel(Sprite::Bottle(Some(liquid)), x as usize, y as usize);
+            if sparkle && p[3] == 255 { Some([236, 255, 214, 255]) } else { (p[3] > 0).then_some(p) }
+        }
         Sprite::Brush => {
             if (x - y).abs() <= 1 && (5..=14).contains(&y) {
                 Some(tint([132, 92, 51], 1.0))

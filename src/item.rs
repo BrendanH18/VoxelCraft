@@ -311,6 +311,8 @@ pub enum Sprite {
     WindCharge,
     /// An ominous bottle; the amplifier adds pips.
     OminousBottle(u8),
+    /// The Bottle o' Enchanting: a round flask of sparkling blue-green liquid.
+    ExperienceBottle,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -829,6 +831,8 @@ impl Item {
     pub const SUGAR: Item = Item(300);
     pub const GLISTERING_MELON_SLICE: Item = Item(301);
     pub const FERMENTED_SPIDER_EYE: Item = Item(1530);
+    /// v0.17 build-5000 (ITEM-02): Java's `experience_bottle`, thrown for experience.
+    pub const EXPERIENCE_BOTTLE: Item = Item(1554);
     pub const SPIDER_EYE: Item = Item(302);
     pub const PAPER: Item = Item(303);
     pub const BOOK: Item = Item(304);
@@ -1063,6 +1067,9 @@ impl Item {
     pub fn info(self) -> ItemInfo {
         if self == Self::FERMENTED_SPIDER_EYE {
             return item("fermented spider eye", Sprite::FermentedSpiderEye);
+        }
+        if self == Self::EXPERIENCE_BOTTLE {
+            return item("bottle o' enchanting", Sprite::ExperienceBottle);
         }
         if let Some(info) = crate::world::trial::item_info(self) {
             return info;
@@ -1446,7 +1453,12 @@ impl Item {
     /// Java's `DataComponents.ENCHANTMENT_GLINT_OVERRIDE`: drawn with the
     /// enchantment glint though it carries no enchantment.
     pub fn has_glint(self) -> bool {
-        self == Item::ENCHANTED_GOLDEN_APPLE
+        matches!(self, Item::ENCHANTED_GOLDEN_APPLE | Item::EXPERIENCE_BOTTLE)
+    }
+
+    /// Java's `Rarity.UNCOMMON` for items registered with it (yellow names).
+    pub fn is_uncommon(self) -> bool {
+        self == Item::EXPERIENCE_BOTTLE
     }
 
     pub fn remainder(self) -> Option<Item> {
@@ -1564,6 +1576,7 @@ impl Item {
             // draws its own layer.
             .chain((crate::world::trial::ITEM_FIRST..crate::world::trial::ITEM_END).map(Item))
             .chain([Self::FERMENTED_SPIDER_EYE])
+            .chain([Self::EXPERIENCE_BOTTLE])
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1622,7 +1635,9 @@ fn splash_names() -> &'static [&'static str] {
 fn sprite_index(item: Item) -> Option<u16> {
     let materials = ITEMS.len() as u16;
     match item.0 {
-        1530 => Some(icon_count() as u16 - 1),
+        1530 => Some(fermented_spider_eye_icon()),
+        // v0.17 build-5000 icons follow the fermented spider eye in landing order.
+        1554 => Some(fermented_spider_eye_icon() + 1),
         1280..=1281 => Some(passive_icon_base() + 4 + item.0 - 1280),
         1385..=1386 => Some(passive_icon_base() + 9 + item.0 - 1385),
         1395..=1401 => Some(passive_icon_base() + 11 + item.0 - 1395),
@@ -1742,16 +1757,22 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    passive_icon_base() as u32
+    fermented_spider_eye_icon() as u32
+        + 1 // Fermented spider eye.
+        + 1 // Experience bottle.
+}
+
+/// The fermented spider eye's icon, the last before the v0.17 build-5000 icons.
+const fn fermented_spider_eye_icon() -> u16 {
+    passive_icon_base()
         + 4
         + 5
         + 2
         + 7
         + 1
-        + (crate::world::jukebox::ITEM_END - crate::world::jukebox::ITEM_FIRST) as u32
-        + (crate::weapons::ITEM_END - crate::weapons::ITEM_FIRST) as u32
+        + (crate::world::jukebox::ITEM_END - crate::world::jukebox::ITEM_FIRST)
+        + (crate::weapons::ITEM_END - crate::weapons::ITEM_FIRST)
         + 9
-        + 1 // Fermented spider eye.
 }
 
 const fn passive_icon_base() -> u16 {
