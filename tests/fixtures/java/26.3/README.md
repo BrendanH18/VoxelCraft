@@ -405,3 +405,35 @@ stock and structure loot. `examples/registry_audit.rs` uses the same library
 resolution logic. Names resolving through an alias establish identity only, not
 state/behavior parity. No villager-trade reference fixture exists in this folder;
 trade quantities and offer-selection rules are not verified by these tests.
+
+## Armor equipment
+
+`equipment.json` (build-5000 slice ITEM-EQUIP) holds every `ArmorMaterials`
+material (durability multiplier, defense per `ArmorType` including `body`,
+enchantability, toughness, knockback resistance, repair tag and its items,
+equip sound, asset), the `ArmorType` slots and durability units, the four
+`Item$Properties` armor forms (`humanoidArmor`, `wolfArmor`, `horseArmor`,
+`nautilusArmor`: whether each sets durability, enchantability and repair,
+its stack size and its `Equippable` slot, sound, allowed entities, damage on
+hurt, equip on interact and shearing), all 41 items `Items` registers with one
+of those forms (material, type, rarity, fire resistance), the
+`can_wear_horse_armor` and `can_wear_nautilus_armor` entity tags, and the 19
+`villager_trade` offers that give armor. The extractor reads `makeDefense`'s
+parameter order from its bytecode and item ids from `ItemIds`, verifies the
+bundled server SHA-1 and fails on unknown registration forms.
+
+```sh
+python3 tools/extract_java_equipment_fixtures.py /path/to/server.jar --output target/java-equipment.json
+diff tests/fixtures/java/26.3/equipment.json target/java-equipment.json
+scripts/remote-check.sh -- 'cargo test --release --test java_equipment && cargo test --release --lib equipment::'
+```
+
+`tests/java_equipment.rs` compares every armor item both ways (each Java item
+is registered with its material's numbers and form's components, and the game
+has no armor Java lacks), the armorer's plain armor offers, the nugget and
+netherite smithing recipes that take the v0.17 armors (against `recipes.json`)
+and the chest tables that hold them. The unit tests in `src/equipment.rs`
+check horse armor's body attributes on a horse and the wearer tag. Enchanted
+and dyed offers are listed but not compared: their prices add enchantment
+levels or dyes. The nautilus and zombie nautilus are not in the game, so
+nautilus armor's equip rules are recorded but untested.
