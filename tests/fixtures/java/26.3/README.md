@@ -616,3 +616,31 @@ session and the CLI agent, checks the orb scatter and rolls each chest table
 floor, a wall, a mob and a player and draw 2,000 experience totals;
 `src/world/automation.rs` checks the dispenser shot and
 `src/entity/villager.rs` the master cleric's offer.
+
+## Enchantment definitions
+
+`enchantments.json` holds all **43** `data/minecraft/enchantment/*.json`
+definitions from the server jar: id, en_us name (client), max level, weight,
+min and max cost, anvil cost, slots, `supported_items`, `primary_items`,
+`exclusive_set` and the names of its effect components. Alongside are the
+**21** `#minecraft:enchantable/*` item tags, expanded to sorted item ids,
+and the **22** enchantment tags, expanded in the order a `HolderSet`
+iterates them (file order, nested tags inline). Tag order matters: the
+enchanting table and random loot walk `#non_treasure` and
+`#on_random_loot` in that order, and tooltips follow `#tooltip_order`.
+The extractor rejects unknown definition keys, slots, cost forms and tag
+entry forms, and reads no VoxelCraft code or fixture.
+
+```sh
+python3 tools/extract_java_enchantment_fixtures.py /path/to/server.jar --client /path/to/client.jar --output target/java-enchantments.json
+diff tests/fixtures/java/26.3/enchantments.json target/java-enchantments.json
+scripts/remote-check.sh -- 'cargo test --release --test java_enchantments'
+```
+
+`tests/java_enchantments.rs` checks every definition against `enchant::Def`
+(Soul Speed is the one Java enchantment without a variant), every
+`ItemSet` against its tag over every registered item both ways, every
+registered item against every enchantment's supported and primary items,
+`compatible` for every pair, the enchantment tags the game uses (with their
+order where it matters) and the tooltip order. The effect component names
+and slots are recorded but not compared here.

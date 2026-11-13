@@ -1,0 +1,8 @@
+kind	name	evidence
+behaviour	behaviour:enchantment/definitions-and-tags-match-java	tests/java_enchantments.rs::every_item_takes_exactly_the_enchantments_java_allows
+behaviour	behaviour:enchanting/options-walk-tag-order	src/enchant.rs::tests::rolls_walk_the_options_in_tag_order
+fix	fix:enchantment/efficiency-on-shears	tests/java_enchantments.rs::anvil_books_reach_shears_pumpkins_and_compasses
+fix	fix:enchantment/binding-curse-on-equippable-items	tests/java_enchantments.rs::item_sets_match_the_enchantable_tags_for_every_registered_item
+fix	fix:enchantment/vanishing-curse-on-compasses-pumpkins-and-skulls	tests/java_enchantments.rs::item_sets_match_the_enchantable_tags_for_every_registered_item
+fix	fix:enchantment/tooltip-order	tests/java_enchantments.rs::tooltips_list_enchantments_in_tooltip_order
+fix	fix:enchantment/luck-of-the-sea-name	tests/java_enchantments.rs::every_java_definition_is_registered_with_its_numbers_and_names
