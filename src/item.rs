@@ -1478,9 +1478,10 @@ impl Item {
     }
 
     /// Java's `Rarity.UNCOMMON` (yellow names), for the items whose
-    /// registrations are pinned so far: the chainmail pieces.
+    /// registrations are pinned so far: the chainmail pieces and the
+    /// Bottle o' Enchanting.
     pub fn is_uncommon(self) -> bool {
-        crate::equipment::is_uncommon(self)
+        self == Item::EXPERIENCE_BOTTLE || crate::equipment::is_uncommon(self)
     }
 
     /// The horse or nautilus armor this is, and its material.
@@ -1497,11 +1498,6 @@ impl Item {
     /// enchantment glint though it carries no enchantment.
     pub fn has_glint(self) -> bool {
         matches!(self, Item::ENCHANTED_GOLDEN_APPLE | Item::EXPERIENCE_BOTTLE)
-    }
-
-    /// Java's `Rarity.UNCOMMON` for items registered with it (yellow names).
-    pub fn is_uncommon(self) -> bool {
-        self == Item::EXPERIENCE_BOTTLE
     }
 
     pub fn remainder(self) -> Option<Item> {
