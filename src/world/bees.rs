@@ -182,9 +182,10 @@ impl World {
                             let mut h = HiveItem { honey, ..Default::default() };
                             if nest && !modified {
                                 let mut n = super::noise::hash3(p.x, p.y, p.z, self.generator.seed);
-                                for i in 0..2 + (n % 2) as usize {
+                                let count = 2 + (n % 2) as usize;
+                                for slot in h.bees.iter_mut().take(count) {
                                     let ticks = (super::noise::splitmix64(&mut n) % 599) as u32;
-                                    h.bees[i] = Some(Occupant::natural(ticks));
+                                    *slot = Some(Occupant::natural(ticks));
                                 }
                             }
                             h
@@ -216,8 +217,8 @@ impl World {
     pub(super) fn populate_bee_nest(&mut self, p: IVec3) {
         let count = 2 + (self.roll() % 2) as usize;
         let mut h = HiveItem::default();
-        for i in 0..count {
-            h.bees[i] = Some(Occupant::natural((self.roll() % 599) as u32));
+        for slot in h.bees.iter_mut().take(count) {
+            *slot = Some(Occupant::natural((self.roll() % 599) as u32));
         }
         self.beehives.hives.insert(p.to_array(), h);
     }

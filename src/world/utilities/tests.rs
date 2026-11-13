@@ -395,9 +395,7 @@ fn recipes_make_the_blocks() {
     g.cells[3] = stick;
     g.cells[5] = stick;
     g.cells[4] = Some(Stack::new(Item::CHARCOAL, 1));
-    for i in 6..9 {
-        g.cells[i] = Some(Stack::new(crate::world::nether_biome_blocks::CRIMSON_STEM, 1));
-    }
+    g.cells[6..9].fill(Some(Stack::new(crate::world::nether_biome_blocks::CRIMSON_STEM, 1)));
     assert_eq!(g.result().map(|s| s.item), Some(CAMPFIRE.into()));
     let mut g = Grid::new(2);
     g.cells[0] = Some(Stack::new(Block::CHEST, 1));

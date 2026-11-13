@@ -126,19 +126,17 @@ impl Entities {
         let (homes, centers) = self.occupied_pois(w);
         let section = p.div_euclid(IVec3::splat(16));
         let near_village = centers.iter().any(|h| (h.div_euclid(IVec3::splat(16)) - section).abs().max_element() <= 2);
-        let persistent = if near_village {
+        // Village cats despawn like other creatures; a swamp hut's cat persists.
+        let persistent = !near_village;
+        if near_village {
             if homes.iter().filter(|h| h.as_dvec3().distance_squared(p.as_dvec3()) <= 48.0 * 48.0).count() < MIN_BEDS
                 || self.mobs.iter().filter(|m| m.kind == MobKind::Cat && in_box(m, p, 48.0)).count() >= VILLAGE_CAP
             {
                 return false;
             }
-            false
-        } else {
-            if !hut(w, p) || self.mobs.iter().any(|m| m.kind == MobKind::Cat && in_box(m, p, 16.0)) {
-                return false;
-            }
-            true
-        };
+        } else if !hut(w, p) || self.mobs.iter().any(|m| m.kind == MobKind::Cat && in_box(m, p, 16.0)) {
+            return false;
+        }
         // The pinned CatSpawner finalizes before snapTo: its variant SpawnContext
         // is at the new entity's origin, unlike SwampHutPiece's resident cat.
         let color = variant(w, IVec3::ZERO, self.moon_brightness, &mut self.rng);

@@ -106,10 +106,7 @@ impl ThrownPotion {
                 return false;
             }
         }
-        if self.age >= MAX_FLIGHT || self.pos.y < -128.0 {
-            return false;
-        }
-        true
+        !(self.age >= MAX_FLIGHT || self.pos.y < -128.0)
     }
 
     fn shatter(&self, ctx: &Ctx, mobs: &mut [Mob], rng: &mut Rng, events: &mut Vec<EntityEvent>) {
