@@ -1790,17 +1790,27 @@ mod tests {
         }
         assert!(matches!(
             Command::parse("effect give minecraft:strength 90 1").unwrap(),
-            Command::Effect(EffectChange::Give(Effect::Strength, 90, 1))
+            Command::Effect(EffectChange::Give(Effect::Strength, 1800, 1))
         ));
         assert!(matches!(
             Command::parse("effect give regeneration").unwrap(),
-            Command::Effect(EffectChange::Give(Effect::Regeneration, 30, 0))
+            Command::Effect(EffectChange::Give(Effect::Regeneration, 600, 0))
+        ));
+        // `EffectCommands.computeDurationInTicks`: instantaneous effects
+        // count ticks and default to one.
+        assert!(matches!(
+            Command::parse("effect give saturation 5").unwrap(),
+            Command::Effect(EffectChange::Give(Effect::Saturation, 5, 0))
+        ));
+        assert!(matches!(
+            Command::parse("effect give instant_health").unwrap(),
+            Command::Effect(EffectChange::Give(Effect::InstantHealth, 1, 0))
         ));
         assert!(matches!(Command::parse("effect clear").unwrap(), Command::Effect(EffectChange::Clear(None))));
         // Java's forms with a target, as players type them.
         assert!(matches!(
             Command::parse("/effect give @s resistance 600 4").unwrap(),
-            Command::Effect(EffectChange::Give(Effect::Resistance, 600, 4))
+            Command::Effect(EffectChange::Give(Effect::Resistance, 12000, 4))
         ));
         assert!(matches!(Command::parse("effect clear @p").unwrap(), Command::Effect(EffectChange::Clear(None))));
         assert!(matches!(

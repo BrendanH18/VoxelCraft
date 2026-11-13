@@ -105,12 +105,12 @@ fn orderings() -> Vec<Value> {
             "simulation::effects::Effect::ALL",
             json!(Effect::ALL.len()),
             linked,
-            "saves and LAN player state: Java id string. In memory: bit number in the u32 Effects::mask and \
+            "saves and LAN player state: Java id string. In memory: bit number in the u64 Effects::mask and \
              Target::effects, and the icon layer after the item icons",
             format!(
-                "{} of 32 mask bits are left; widen the mask before a 33rd effect. Suspicious stew saves its own \
-                 codes (entity::mooshroom), not this order.",
-                32 - Effect::ALL.len()
+                "{} of 64 mask bits are left; widen the mask before a 65th effect. Java 26.3 has 40 effects, all \
+                 registered. Suspicious stew saves its own codes (entity::mooshroom), not this order.",
+                64 - Effect::ALL.len()
             ),
         ),
         ordering(

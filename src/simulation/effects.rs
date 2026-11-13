@@ -44,10 +44,57 @@ pub enum Effect {
     TrialOmen,
     /// Appended: saved by Java id; existing effect mask bits stay stable.
     Invisibility,
+    /// Appended (v0.17 EFX-REG-01): the eleven effects Java registers that
+    /// the game lacked, in this order, which their icon layers follow.
+    /// Registered so `/effect`, saves and the HUD know them; what each one
+    /// does arrives with its own slice.
+    HealthBoost,
+    Glowing,
+    Levitation,
+    ConduitPower,
+    HeroOfTheVillage,
+    RaidOmen,
+    WindCharged,
+    Weaving,
+    Oozing,
+    Infested,
+    BreathOfTheNautilus,
+}
+
+/// Java's `MobEffectCategory`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Category {
+    Beneficial,
+    Harmful,
+    Neutral,
+}
+
+/// Java's `AttributeModifier.Operation`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Operation {
+    AddValue,
+    AddMultipliedBase,
+    AddMultipliedTotal,
+}
+
+/// One of an effect's attribute modifiers, from `MobEffects`: per level,
+/// `amount * (amplifier + 1)` (`MobEffect.AttributeTemplate.create`).
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Modifier {
+    /// The attribute's Java id, e.g. `movement_speed`.
+    pub attribute: &'static str,
+    /// The modifier's Java id, e.g. `minecraft:effect.speed`.
+    pub id: &'static str,
+    pub amount: f64,
+    pub operation: Operation,
+}
+
+const fn modifier(attribute: &'static str, id: &'static str, amount: f64, operation: Operation) -> Modifier {
+    Modifier { attribute, id, amount, operation }
 }
 
 impl Effect {
-    pub const ALL: [Effect; 29] = [
+    pub const ALL: [Effect; 40] = [
         Effect::Speed,
         Effect::Slowness,
         Effect::Strength,
@@ -77,6 +124,17 @@ impl Effect {
         Effect::BadOmen,
         Effect::TrialOmen,
         Effect::Invisibility,
+        Effect::HealthBoost,
+        Effect::Glowing,
+        Effect::Levitation,
+        Effect::ConduitPower,
+        Effect::HeroOfTheVillage,
+        Effect::RaidOmen,
+        Effect::WindCharged,
+        Effect::Weaving,
+        Effect::Oozing,
+        Effect::Infested,
+        Effect::BreathOfTheNautilus,
     ];
 
     /// Java's id, as `/effect` and saves use it.
@@ -111,6 +169,17 @@ impl Effect {
             Effect::BadOmen => "bad_omen",
             Effect::TrialOmen => "trial_omen",
             Effect::Invisibility => "invisibility",
+            Effect::HealthBoost => "health_boost",
+            Effect::Glowing => "glowing",
+            Effect::Levitation => "levitation",
+            Effect::ConduitPower => "conduit_power",
+            Effect::HeroOfTheVillage => "hero_of_the_village",
+            Effect::RaidOmen => "raid_omen",
+            Effect::WindCharged => "wind_charged",
+            Effect::Weaving => "weaving",
+            Effect::Oozing => "oozing",
+            Effect::Infested => "infested",
+            Effect::BreathOfTheNautilus => "breath_of_the_nautilus",
         }
     }
 
@@ -119,7 +188,7 @@ impl Effect {
         Effect::ALL.into_iter().find(|e| e.id() == id)
     }
 
-    /// Display name, e.g. "Fire Resistance".
+    /// Display name, e.g. "Fire Resistance" (en_us `effect.minecraft.*`).
     pub fn name(self) -> &'static str {
         match self {
             Effect::Speed => "Speed",
@@ -138,7 +207,7 @@ impl Effect {
             Effect::Wither => "Wither",
             Effect::Hunger => "Hunger",
             Effect::MiningFatigue => "Mining Fatigue",
-            Effect::DolphinsGrace => "Dolphin’s Grace",
+            Effect::DolphinsGrace => "Dolphin's Grace",
             Effect::Resistance => "Resistance",
             Effect::Haste => "Haste",
             Effect::Blindness => "Blindness",
@@ -151,6 +220,17 @@ impl Effect {
             Effect::BadOmen => "Bad Omen",
             Effect::TrialOmen => "Trial Omen",
             Effect::Invisibility => "Invisibility",
+            Effect::HealthBoost => "Health Boost",
+            Effect::Glowing => "Glowing",
+            Effect::Levitation => "Levitation",
+            Effect::ConduitPower => "Conduit Power",
+            Effect::HeroOfTheVillage => "Hero of the Village",
+            Effect::RaidOmen => "Raid Omen",
+            Effect::WindCharged => "Wind Charged",
+            Effect::Weaving => "Weaving",
+            Effect::Oozing => "Oozing",
+            Effect::Infested => "Infested",
+            Effect::BreathOfTheNautilus => "Breath of the Nautilus",
         }
     }
 
@@ -170,7 +250,7 @@ impl Effect {
             Effect::WaterBreathing => 0x98DAC0,
             Effect::JumpBoost => 0xFDFF84,
             Effect::SlowFalling => 0xF3CFB9,
-            Effect::Wither => 0x352A27,
+            Effect::Wither => 0x736156,
             Effect::Hunger => 0x587653,
             Effect::MiningFatigue => 0x4A4217,
             Effect::DolphinsGrace => 0x88A3BE,
@@ -187,32 +267,153 @@ impl Effect {
             Effect::BadOmen => 0x0B6138,
             Effect::TrialOmen => 0x16A6A6,
             Effect::Invisibility => 0xF6F6F6,
+            Effect::HealthBoost => 0xF87D23,
+            Effect::Glowing => 0x94A061,
+            Effect::Levitation => 0xCEFFFF,
+            Effect::ConduitPower => 0x1DC2D1,
+            Effect::HeroOfTheVillage => 0x44FF44,
+            Effect::RaidOmen => 0xDE4058,
+            Effect::WindCharged => 0xBDC9FF,
+            Effect::Weaving => 0x78695A,
+            Effect::Oozing => 0x99FFA3,
+            Effect::Infested => 0x8C9B8C,
+            Effect::BreathOfTheNautilus => 0x00FFEE,
         };
         [(c >> 16) as u8, (c >> 8) as u8, c as u8]
     }
 
-    /// Applied once, when given, rather than over time.
+    /// Healed or dealt by [`Effects::add`] at once rather than kept: Java's
+    /// `HealOrHarmMobEffect`. Saturation is instantaneous in Java too (see
+    /// [`Effect::is_instantaneous`]) but is kept and applied every tick, as
+    /// Java does when a command or food gives it a duration.
     pub fn is_instant(self) -> bool {
         matches!(self, Effect::InstantHealth | Effect::InstantDamage)
     }
 
-    /// Harmful effects show red in tooltips.
-    pub fn is_harmful(self) -> bool {
-        matches!(
-            self,
-            Effect::Slowness
-                | Effect::Weakness
-                | Effect::InstantDamage
-                | Effect::Poison
-                | Effect::Wither
-                | Effect::Hunger
-                | Effect::MiningFatigue
-                | Effect::Blindness
-                | Effect::Nausea
-                | Effect::BadLuck
-                | Effect::Darkness
-        )
+    /// Java's `MobEffect.isInstantaneous`: true on `InstantaneousMobEffect`
+    /// (Instant Health, Instant Damage and Saturation). `/effect give`
+    /// reads its number as ticks for these, and defaults to one tick.
+    pub fn is_instantaneous(self) -> bool {
+        matches!(self, Effect::InstantHealth | Effect::InstantDamage | Effect::Saturation)
     }
+
+    /// Java's `MobEffectCategory`, from `MobEffects`.
+    pub fn category(self) -> Category {
+        match self {
+            Effect::Slowness
+            | Effect::Weakness
+            | Effect::InstantDamage
+            | Effect::Poison
+            | Effect::Wither
+            | Effect::Hunger
+            | Effect::MiningFatigue
+            | Effect::Blindness
+            | Effect::Nausea
+            | Effect::BadLuck
+            | Effect::Darkness
+            | Effect::Levitation
+            | Effect::WindCharged
+            | Effect::Weaving
+            | Effect::Oozing
+            | Effect::Infested => Category::Harmful,
+            Effect::BadOmen | Effect::TrialOmen | Effect::RaidOmen | Effect::Glowing => Category::Neutral,
+            Effect::Speed
+            | Effect::Strength
+            | Effect::InstantHealth
+            | Effect::Regeneration
+            | Effect::FireResistance
+            | Effect::NightVision
+            | Effect::WaterBreathing
+            | Effect::JumpBoost
+            | Effect::SlowFalling
+            | Effect::DolphinsGrace
+            | Effect::Resistance
+            | Effect::Haste
+            | Effect::Luck
+            | Effect::Absorption
+            | Effect::Saturation
+            | Effect::Invisibility
+            | Effect::HealthBoost
+            | Effect::ConduitPower
+            | Effect::HeroOfTheVillage
+            | Effect::BreathOfTheNautilus => Category::Beneficial,
+        }
+    }
+
+    /// Harmful effects show red in potion tooltips
+    /// (`MobEffectCategory.getTooltipFormatting`); neutral ones are blue,
+    /// like beneficial ones.
+    pub fn is_harmful(self) -> bool {
+        self.category() == Category::Harmful
+    }
+
+    /// Java's `MobEffect.isBeneficial`: only the beneficial category. The HUD
+    /// (`Hud.extractEffects`) puts every other effect, neutral ones
+    /// included, in its second row.
+    pub fn is_beneficial(self) -> bool {
+        self.category() == Category::Beneficial
+    }
+
+    /// The attribute modifiers `MobEffects` registers on the effect.
+    pub fn modifiers(self) -> &'static [Modifier] {
+        use Operation::*;
+        // Java writes several amounts as float literals, widened to doubles.
+        const SPEED: [Modifier; 1] =
+            [modifier("movement_speed", "minecraft:effect.speed", 0.2f32 as f64, AddMultipliedTotal)];
+        const SLOWNESS: [Modifier; 1] =
+            [modifier("movement_speed", "minecraft:effect.slowness", -0.15f32 as f64, AddMultipliedTotal)];
+        const HASTE: [Modifier; 1] =
+            [modifier("attack_speed", "minecraft:effect.haste", 0.1f32 as f64, AddMultipliedTotal)];
+        const FATIGUE: [Modifier; 1] =
+            [modifier("attack_speed", "minecraft:effect.mining_fatigue", -0.1f32 as f64, AddMultipliedTotal)];
+        const STRENGTH: [Modifier; 1] = [modifier("attack_damage", "minecraft:effect.strength", 3.0, AddValue)];
+        const WEAKNESS: [Modifier; 1] = [modifier("attack_damage", "minecraft:effect.weakness", -4.0, AddValue)];
+        const JUMP: [Modifier; 1] = [modifier("safe_fall_distance", "minecraft:effect.jump_boost", 1.0, AddValue)];
+        const INVISIBILITY: [Modifier; 1] = [modifier(
+            "waypoint_transmit_range",
+            "minecraft:effect.waypoint_transmit_range_hide",
+            -1.0,
+            AddMultipliedTotal,
+        )];
+        const HEALTH_BOOST: [Modifier; 1] = [modifier("max_health", "minecraft:effect.health_boost", 4.0, AddValue)];
+        const ABSORPTION: [Modifier; 1] =
+            [modifier("max_absorption", "minecraft:effect.absorption", ABSORPTION_PER_LEVEL as f64, AddValue)];
+        const LUCK: [Modifier; 1] = [modifier("luck", "minecraft:effect.luck", 1.0, AddValue)];
+        const UNLUCK: [Modifier; 1] = [modifier("luck", "minecraft:effect.unluck", -1.0, AddValue)];
+        match self {
+            Effect::Speed => &SPEED,
+            Effect::Slowness => &SLOWNESS,
+            Effect::Haste => &HASTE,
+            Effect::MiningFatigue => &FATIGUE,
+            Effect::Strength => &STRENGTH,
+            Effect::Weakness => &WEAKNESS,
+            Effect::JumpBoost => &JUMP,
+            Effect::Invisibility => &INVISIBILITY,
+            Effect::HealthBoost => &HEALTH_BOOST,
+            Effect::Absorption => &ABSORPTION,
+            Effect::Luck => &LUCK,
+            Effect::BadLuck => &UNLUCK,
+            _ => &[],
+        }
+    }
+
+    /// `EffectCommands.computeDurationInTicks`: `/effect give` counts
+    /// seconds, 30 by default, except for instantaneous effects, whose
+    /// number is ticks and which default to one tick.
+    pub fn command_duration_ticks(self, seconds: Option<u32>) -> u32 {
+        match (seconds, self.is_instantaneous()) {
+            (Some(ticks), true) => ticks,
+            (Some(seconds), false) => seconds.saturating_mul(20),
+            (None, true) => 1,
+            (None, false) => 600,
+        }
+    }
+}
+
+/// The row of the HUD's effect icons (`Hud.extractEffects`): 0 for
+/// beneficial effects, 1 (26 pixels lower) for harmful and neutral ones.
+pub fn hud_row(effect: Effect) -> u8 {
+    u8::from(!effect.is_beneficial())
 }
 
 /// Roman numerals for effect levels (I..X), like Java's tooltips.
@@ -310,8 +511,9 @@ impl Effects {
         self.get(effect).is_some()
     }
 
-    /// Bit set of the active effects, indexed by `Effect as u32`.
-    pub fn mask(&self) -> u32 {
+    /// Bit set of the active effects, indexed by `Effect as u32`. It stays in
+    /// memory (saves and LAN carry Java ids), so widening it changes no format.
+    pub fn mask(&self) -> u64 {
         self.active.iter().fold(0, |m, a| m | 1 << a.effect as u32)
     }
 
@@ -474,8 +676,8 @@ impl Effects {
     }
 
     /// `Player.getDestroySpeed`'s Haste multiplier, `1 + (amplifier + 1) * 0.2`
-    /// in single precision; exactly 1.0 without Haste. Conduit Power, which
-    /// shares the formula, is not registered.
+    /// in single precision; exactly 1.0 without Haste. Conduit Power shares
+    /// the formula in Java; it is registered but its behaviour waits for v0.18.
     pub fn dig_speed_factor(&self) -> f32 {
         self.get(Effect::Haste).map_or(1.0, |a| 1.0 + (i32::from(a.amplifier) + 1) as f32 * 0.2)
     }

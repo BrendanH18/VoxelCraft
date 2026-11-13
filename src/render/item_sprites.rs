@@ -1199,6 +1199,50 @@ fn effect_glyph(effect: Effect) -> [&'static str; 8] {
         Effect::BadOmen | Effect::TrialOmen => {
             ["########", "#.####.#", "##.##.##", "###..###", "###..###", "##.##.##", ".######.", "...##..."]
         }
+        // A heart with a plus cut out of it.
+        Effect::HealthBoost => {
+            [".##..##.", "###.####", "##...###", "###.####", ".######.", "..####..", "...##...", "........"]
+        }
+        // A ring with rays: an outline that shines.
+        Effect::Glowing => {
+            ["#..##..#", "..####..", ".##..##.", "##....##", "##....##", ".##..##.", "..####..", "#..##..#"]
+        }
+        // An arrow rising off a ledge.
+        Effect::Levitation => {
+            ["...##...", "..####..", ".##..##.", "##.##.##", "...##...", "...##...", "........", "########"]
+        }
+        // A frame around a lit core.
+        Effect::ConduitPower => {
+            ["#.####.#", "........", "#.#..#.#", "#..##..#", "#..##..#", "#.#..#.#", "........", "#.####.#"]
+        }
+        // A cut gem.
+        Effect::HeroOfTheVillage => {
+            ["...##...", "..####..", ".##.###.", "##.#####", "########", ".######.", "..####..", "...##..."]
+        }
+        // The omen pennant, crossed.
+        Effect::RaidOmen => {
+            ["########", "##.##.##", "###..###", "###..###", "##.##.##", "#.####.#", ".######.", "...##..."]
+        }
+        // A gust curling in on itself.
+        Effect::WindCharged => {
+            [".#####..", "#.....#.", "#.###..#", "#.#..#.#", "#.#.##.#", "#..#...#", ".#....#.", "..####.."]
+        }
+        // A web.
+        Effect::Weaving => {
+            ["#..##..#", ".#.##.#.", "..####..", "########", "########", "..####..", ".#.##.#.", "#..##..#"]
+        }
+        // A dripping cube with a face.
+        Effect::Oozing => {
+            ["########", "#......#", "#.##.#.#", "#......#", "#...##.#", "#......#", "########", "..#..#.."]
+        }
+        // A segmented crawling bug.
+        Effect::Infested => {
+            ["........", ".#.#.#..", "######..", "########", "######.#", ".#.#.#..", "........", "........"]
+        }
+        // A spiral shell trailing a bubble.
+        Effect::BreathOfTheNautilus => {
+            ["......#.", ".####...", "#....#.#", "#.##..#.", "#.#.#.#.", "#..#..#.", ".#...#..", "..###..."]
+        }
     }
 }
 
@@ -1261,6 +1305,31 @@ mod tests {
                 (0..16).flat_map(|y| (0..16).map(move |x| (x, y))).filter(|&(x, y)| pixel(sprite, x, y)[3] > 0);
             let count = opaque.clone().count();
             assert!(count > 12, "{} draws only {count} pixels", item.name());
+        }
+    }
+
+    /// Every registered effect has an icon, tinted with its own colour, and
+    /// the effects registered in v0.17 each have a silhouette of their own.
+    #[test]
+    fn every_effect_icon_draws_in_its_colour() {
+        let mask = |e: Effect| {
+            (0..16)
+                .flat_map(|y| (0..16).map(move |x| (x, y)))
+                .filter(|&(x, y)| effect_glyph(e)[y / 2].as_bytes()[x / 2] == b'#')
+                .collect::<Vec<_>>()
+        };
+        for effect in Effect::ALL {
+            let lit: Vec<_> = mask(effect);
+            assert!(lit.len() > 40, "{} draws only {} pixels", effect.id(), lit.len());
+            let top = effect_pixel(effect, lit[0].0, lit[0].1);
+            let c = effect.colour();
+            assert!(top[3] == 255 && (0..3).all(|i| top[i] >= c[i]), "{} is not lit in its colour", effect.id());
+        }
+        let first_new = Effect::HealthBoost as usize;
+        for &new in &Effect::ALL[first_new..] {
+            for &other in Effect::ALL.iter().filter(|&&o| o != new) {
+                assert_ne!(mask(new), mask(other), "{} reuses the icon of {}", new.id(), other.id());
+            }
         }
     }
 

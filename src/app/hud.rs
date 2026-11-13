@@ -558,14 +558,15 @@ pub(super) fn enchant_offer_rect(px: f32, py: f32, i: usize) -> (f32, f32, f32, 
 }
 
 /// Java's status effect icons in the top right corner: beneficial ones in
-/// the first row, harmful ones below, blinking in their last 10 seconds.
+/// the first row, harmful and neutral ones below (`isBeneficial`), blinking
+/// in their last 10 seconds.
 fn effects_ui(ui: &mut Ui, effects: &Effects) {
     let sw = ui.size().0;
     let (mut good, mut bad) = (0.0, 0.0);
     for a in effects.iter() {
-        let column = if a.effect.is_harmful() { &mut bad } else { &mut good };
+        let column = if a.effect.is_beneficial() { &mut good } else { &mut bad };
         *column += 1.0;
-        let (x, y) = (sw - 25.0 * *column, if a.effect.is_harmful() { 27.0 } else { 1.0 });
+        let (x, y) = (sw - 25.0 * *column, effects::hud_row(a.effect) as f32 * 26.0 + 1.0);
         ui.rect(x, y, 24.0, 24.0, [0.1, 0.1, 0.12, 0.7]);
         let alpha = if a.ticks > 200 { 1.0 } else { 0.6 + 0.4 * (a.ticks as f32 * std::f32::consts::PI / 5.0).cos() };
         ui.icon(x + 3.0, y + 3.0, 18.0, crate::item::effect_icon_layer(a.effect), [1.0, 1.0, 1.0, alpha]);
