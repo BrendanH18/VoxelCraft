@@ -52,6 +52,11 @@
   villager to zombie villager runs the spawn follow bonus and
   `handleAttributes(CONVERSION)`; a leader made by conversion is not healed.
   Natural zombie villagers keep the zombie rolls they spawned with.
+- Iron golem hits (`Entities::hit_mob`): the lift is no longer cut by the
+  victim's knockback resistance, as `IronGolem.doHurtTarget` adds it with
+  `setDeltaMovement`. The zombie knockback bonus exposed this in
+  `golem::tests::golem_knocks_a_zombie_up_while_a_villager_is_near`; not
+  counted in the ledger.
 - Saves: an optional `attributes` record per mob (kind, both follow bonuses,
   knockback bonus, reinforcement base, caller and callee charges, leader
   bonuses, `can_break_doors`), read before health so a leader keeps health

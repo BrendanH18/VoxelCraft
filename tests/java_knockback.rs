@@ -372,10 +372,12 @@ fn charge(s: &mut PlayerSession, ticks: u32) {
     }
 }
 
-/// A standing mob (on the ground, at rest) at `x`, `z`.
+/// A standing mob (on the ground, at rest) at `x`, `z`, with its type's base
+/// knockback resistance (a zombie's random spawn bonus is cleared).
 fn spawn(e: &mut Entities, kind: MobKind, x: f64, z: f64) -> usize {
     e.spawn(kind, DVec3::new(x, 145.0, z));
     let i = e.mobs.len() - 1;
+    e.mobs[i].attrs.knockback_bonus = 0.0;
     e.mobs[i].on_ground = true;
     e.mobs[i].vel = DVec3::ZERO;
     i
