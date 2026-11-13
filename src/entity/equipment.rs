@@ -556,7 +556,10 @@ mod tests {
         e.set_guaranteed_drop(Slot::MainHand);
         let back = Equipment::load(&e.save(), &e.save_drop_chances().unwrap());
         assert_eq!(back, e);
-        assert_eq!(back.worn()[ArmorPiece::Boots as usize], Some(Worn { kind: ArmorKind::Chain, glint: true, dye: None }));
+        assert_eq!(
+            back.worn()[ArmorPiece::Boots as usize],
+            Some(Worn { kind: ArmorKind::Chain, glint: true, dye: None })
+        );
         assert_eq!(Equipment::default().save_drop_chances(), None);
     }
 

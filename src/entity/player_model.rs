@@ -593,8 +593,10 @@ mod tests {
         let body = limb([0.; 3], [-4., -12., -2.], [4., 0., 2.], [16., 16.], Quat::IDENTITY);
         let parts = [body; 6];
         let mut worn = [None; 4];
-        worn[1] = Some(crate::entity::armor::Worn { kind: crate::entity::armor::ArmorKind::Iron, glint: false, dye: None });
-        worn[2] = Some(crate::entity::armor::Worn { kind: crate::entity::armor::ArmorKind::Iron, glint: true, dye: None });
+        worn[1] =
+            Some(crate::entity::armor::Worn { kind: crate::entity::armor::ArmorKind::Iron, glint: false, dye: None });
+        worn[2] =
+            Some(crate::entity::armor::Worn { kind: crate::entity::armor::ArmorKind::Iron, glint: true, dye: None });
         let mut out = Vec::new();
         draw_armor(&mut out, &parts, &worn, Vec3::ZERO, Quat::IDENTITY, 1.0, ([255, 0, 0, 0], 0));
         let extent = |inner: bool| {

@@ -257,9 +257,9 @@ pub(super) fn camel(m: &Mob) -> Parts {
 pub(super) fn colour(m: &Mob, c: &mut Cuboid) {
     let Some(s) = m.mount.as_ref() else { return };
     if c.color == LEATHER_HORSE {
-        c.color = s.slots[1].and_then(|stack| crate::inventory::components::dye_tint(&stack)).unwrap_or(
-            crate::inventory::components::LEATHER_COLOR,
-        );
+        c.color = s.slots[1]
+            .and_then(|stack| crate::inventory::components::dye_tint(&stack))
+            .unwrap_or(crate::inventory::components::LEATHER_COLOR);
         return;
     }
     if m.kind != MobKind::Llama {

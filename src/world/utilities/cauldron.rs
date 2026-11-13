@@ -301,10 +301,7 @@ impl World {
 /// keeps the rest of the stack, and the water drops a level
 /// (`LayeredCauldronBlock.lowerFillLevel`: level 1 leaves an empty
 /// cauldron). `None` for an undyed item or a cauldron without water.
-pub fn wash_dyed(
-    contents: Contents,
-    stack: crate::inventory::Stack,
-) -> Option<(Contents, crate::inventory::Stack)> {
+pub fn wash_dyed(contents: Contents, stack: crate::inventory::Stack) -> Option<(Contents, crate::inventory::Stack)> {
     let Contents::Water(level) = contents else { return None };
     if level == 0 {
         return None;

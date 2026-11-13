@@ -112,7 +112,8 @@ pub fn leather_overlay(inner: bool) -> u16 {
 /// layer is `dyeable` (the stack's `dyed_color`, else `color_when_undyed`);
 /// the overlay and every other material are drawn as they are.
 pub fn tint(worn: &Worn, overlay: bool) -> [u8; 4] {
-    let rgb = if worn.kind == ArmorKind::Leather && !overlay { worn.dye.unwrap_or(LEATHER_DYE) } else { [255, 255, 255] };
+    let rgb =
+        if worn.kind == ArmorKind::Leather && !overlay { worn.dye.unwrap_or(LEATHER_DYE) } else { [255, 255, 255] };
     [rgb[0], rgb[1], rgb[2], if worn.glint && !overlay { 255 } else { 0 }]
 }
 

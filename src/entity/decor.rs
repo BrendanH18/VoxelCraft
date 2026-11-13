@@ -972,7 +972,9 @@ pub fn painting_colour(v: u8, w: usize, h: usize, x: usize, y: usize) -> [u8; 3]
 /// colour, anything else (a carved pumpkin, a head) orange.
 pub fn stand_shell_colour(stack: &Stack) -> [u8; 3] {
     match stack.item.as_armor() {
-        Some((_, ArmorMaterial::Leather)) => crate::inventory::components::dye_tint(stack).unwrap_or(armor_colour(ArmorMaterial::Leather)),
+        Some((_, ArmorMaterial::Leather)) => {
+            crate::inventory::components::dye_tint(stack).unwrap_or(armor_colour(ArmorMaterial::Leather))
+        }
         Some((_, m)) => armor_colour(m),
         None => [214, 120, 32],
     }
