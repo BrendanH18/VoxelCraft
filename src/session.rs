@@ -232,6 +232,8 @@ impl PlayerSession {
         self.sleeping = None;
         self.sleep_spot = None;
         let pos = self.player.pos;
+        // `tellNeutralMobsThatIDied`, gated on `forgive_dead_players`.
+        entities.player_died(self.id, pos);
         if keep_inventory || self.mode == GameMode::Spectator {
             for stack in extra {
                 let left = self.inventory.add_stack(stack);

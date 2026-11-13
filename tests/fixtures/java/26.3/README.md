@@ -759,3 +759,33 @@ scripts/remote-check.sh -- 'cargo test --release --test java_effect_instances'
 compares the feedback strings and the particle constants, runs `/effect`
 through the console's and an agent's command paths, and saves and reloads
 infinite and flagged effects on a player and a mob.
+
+## Neutral mobs
+
+`neutral_mobs.json` records the concrete classes of Java 26.3 that implement
+`NeutralMob`, found from every class file's super class and interfaces (not
+from a list): bee, iron golem, polar bear, wolf, enderman and zombified
+piglin, each mapped to its entity id and checked against its entity loot
+table. For each it keeps the `ResetUniversalAngerTargetGoal`
+alert-others-of-same-type flag, `PERSISTENT_ANGER_TIME`
+(`TimeUtil.rangeOfSeconds`) and the follow range from its `createAttributes`
+chain. It also keeps the box `ServerPlayer.tellNeutralMobsThatIDied`
+inflates around the dead player's block, with the `forgive_dead_players`
+gates in `ServerPlayer.die` and `NeutralMob.playerDied` and the
+`universal_anger` read in `isAngryAtAllPlayers`, and the 600-tick `ANGRY_AT`
+and `UNIVERSAL_ANGER` expiries of `PiglinAi.setAngerTarget`, with the
+universal retaliation and chest-anger paths and the brute's use of
+`PiglinAi.maybeRetaliate`. The extractor matches the bytecode it relies on
+with `javap` and fails when it changes. It does not read VoxelCraft source
+or the existing fixture.
+
+```sh
+python3 tools/extract_java_neutral_mob_fixtures.py /path/to/server.jar --output target/java-neutral-mobs.json
+diff tests/fixtures/java/26.3/neutral_mobs.json target/java-neutral-mobs.json
+scripts/remote-check.sh -- 'cargo test --release --test game_rules'
+```
+
+`tests/game_rules.rs` compares `entity::neutral` with it both ways: every
+implementer is neutral in the game and no other `MobKind` is, with the same
+alert flags, follow ranges and death box. Only bees and polar bears use
+Java's anger timer; the test names the other four as known differences.

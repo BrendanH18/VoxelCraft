@@ -66,6 +66,7 @@ impl Mob {
         n.celebrate_left = (n.celebrate_left - dt).max(0.0);
         n.dancing &= n.celebrate_left > 0.0;
         n.flee_left = (n.flee_left - dt).max(0.0);
+        n.universal = (n.universal - dt).max(0.0);
         n.foe_left -= dt;
         if n.foe_left <= 0.0 {
             n.foe = None;

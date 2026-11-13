@@ -53,6 +53,7 @@ mod monster_spawns;
 pub mod mooshroom;
 pub mod mounts;
 pub mod nether;
+pub mod neutral;
 pub mod ocelot;
 pub mod orb;
 pub mod panda;
@@ -2095,9 +2096,9 @@ impl Entities {
         if mob.allay.as_ref().is_some_and(|s| s.player == Some(owner)) {
             return None;
         }
-        let (kind, pos) = (mob.kind, mob.pos);
+        let kind = mob.kind;
         mob.player_hit();
-        if kind == MobKind::IronGolem {
+        if kind == MobKind::IronGolem && !self.neutral_universal_anger {
             mob.angry_player = Some(owner);
         }
         let pushes: Vec<_> = pushes.iter().flatten().copied().collect();
@@ -2105,9 +2106,6 @@ impl Entities {
         // The hit's attacker, for `Zombie.hurtServer`'s reinforcement call.
         if mob.reinforce_call.is_some() {
             mob.reinforce_call = Some(Some(owner));
-        }
-        if kind == MobKind::ZombifiedPiglin {
-            self.anger_piglins(pos);
         }
         self.warden_hurt(index, crate::world::vibration::EntityRef::Player(owner), true);
         self.nether_hurt(index, nether::Foe::Player(owner));
@@ -2313,8 +2311,10 @@ impl Entities {
         self.note_villager_hurt(index, owner, killed);
         let m = &mut self.mobs[index];
         let retaliates = match m.kind {
+            // Under `universal_anger` these two take the hit through `neutral`.
+            MobKind::Wolf if self.neutral_universal_anger => false,
             MobKind::Wolf => m.animal.as_ref().is_some_and(|a| a.owner != Some(owner)),
-            MobKind::IronGolem => !m.built,
+            MobKind::IronGolem => !m.built && !self.neutral_universal_anger,
             MobKind::Llama => true,
             _ => false,
         };
@@ -2323,11 +2323,16 @@ impl Entities {
         }
     }
 
-    /// Hitting one zombified piglin angers every one nearby.
-    fn anger_piglins(&mut self, at: DVec3) {
+    /// Hitting one zombified piglin angers every one nearby at `player`
+    /// (`HurtByTargetGoal.alertOthers` sets only those without a target).
+    pub(super) fn anger_piglins(&mut self, at: DVec3, player: PlayerId) {
         for m in &mut self.mobs {
             if m.kind == MobKind::ZombifiedPiglin && m.pos.distance_squared(at) < 32.0 * 32.0 {
                 m.anger(mob::PIGLIN_ANGER_TIME);
+                if m.pos == at || m.angry_player.is_none() {
+                    m.angry_player = Some(player);
+                    m.neutral_universal = false;
+                }
             }
         }
     }

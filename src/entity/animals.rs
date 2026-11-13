@@ -614,7 +614,11 @@ impl Mob {
                 }
                 return Some((self.pursue(w, t.pos, 3.0, true, true, rng), 3.0));
             }
-            self.angry_player = None;
+            // `updatePersistentAnger` forgives a creative or spectating
+            // player; a dead one is left to `forgive_dead_players`.
+            if ctx.players.iter().any(|t| t.id == id && t.alive && !t.targetable) {
+                self.angry_player = None;
+            }
         }
         if let Some((target, goal)) = a.foe {
             self.stop_goal(w);
