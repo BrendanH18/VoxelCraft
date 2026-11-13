@@ -288,7 +288,14 @@ impl Entities {
         let dir = (self.mobs[victim].pos - pos).normalize_or_zero();
         let at = self.mobs[victim].pos;
         let victim_kind = self.mobs[victim].kind;
-        if self.mobs[victim].damage(damage, Some(dir * 6.0 + DVec3::Y * up), &mut self.rng) {
+        let killed = self.mobs[victim].damage(damage, Some(dir * 6.0 + DVec3::Y * up), &mut self.rng);
+        // `IronGolem.doHurtTarget` adds its lift with `setDeltaMovement`, which
+        // knockback resistance (a zombie's spawn bonus) does not reduce.
+        if self.mobs[attacker].kind == MobKind::IronGolem && self.mobs[victim].knockback_resistance() < 1.0 {
+            let vel = &mut self.mobs[victim].vel;
+            vel.y = vel.y.max(up);
+        }
+        if killed {
             events.push(EntityEvent::MobKilled {
                 kind: victim_kind,
                 pos: at,
