@@ -117,6 +117,10 @@ No block states, item ids or texture layers. Appended: `MobKind::Endermite`
   `src/audio/tests.rs` (the voice renders clean buffers and plays as Hostile).
 - `tests/id_map.rs` checks the appended `MobKind` keeps distinct positions
   and names.
+- Run: `scripts/remote-check.sh --full` (clippy and every test, default and
+  `--no-default-features`) passed on the final tree; `tools/check_doc_links.py`
+  and `tools/campaign_ledger.py` pass. The `id_map` example was not run: this
+  slice took no id ranges.
 
 ## Differences left
 
