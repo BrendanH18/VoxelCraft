@@ -26,6 +26,8 @@ use crate::world::terrain::Dimension;
 pub const ADMIRE_TIME: f32 = 119.0 / 20.0;
 /// Seconds an angered piglin holds a grudge (Java's 600 ticks).
 pub const ANGER_TIME: f32 = 30.0;
+/// Seconds of Java's `UNIVERSAL_ANGER` memory.
+pub const UNIVERSAL_ANGER_TIME: f32 = super::neutral::PIGLIN_UNIVERSAL_ANGER_TICKS as f32 / 20.0;
 /// Seconds outside the Nether before a piglin zombifies (Java's 300 ticks).
 pub const ZOMBIFY_TIME: f32 = 15.0;
 /// Piglins this close to a player opening a chest or breaking gold notice it
@@ -174,6 +176,11 @@ pub struct NetherMob {
     pub home: Option<DVec3>,
     pub(super) foe: Option<Foe>,
     pub(super) foe_left: f32,
+    /// Java's `UNIVERSAL_ANGER` memory: seconds left (600 ticks).
+    pub(super) universal: f32,
+    /// `setAngerTargetToNearestTargetablePlayerIfFound` waiting for the next
+    /// look around: the nearest visible targetable player becomes the foe.
+    pub(super) universal_pick: bool,
     pub(super) flee_from: Option<Foe>,
     pub(super) flee_left: f32,
     pub(super) goal: Goal,
@@ -227,6 +234,8 @@ impl NetherMob {
                     home: None,
                     foe: None,
                     foe_left: 0.0,
+                    universal: 0.0,
+                    universal_pick: false,
                     flee_from: None,
                     flee_left: 0.0,
                     goal: Goal::None,
@@ -658,6 +667,12 @@ impl Entities {
             if n.idle() && (!only_if_seen || super::mob::line_of_sight(world, eye, at + DVec3::Y * 1.5)) {
                 n.anger(Foe::Player(player));
                 n.sense_timer = 0.0;
+                // `angerNearbyPiglins` under `universal_anger`: the nearest
+                // visible player instead, if there is one.
+                if self.neutral_universal_anger {
+                    n.universal = UNIVERSAL_ANGER_TIME;
+                    n.universal_pick = true;
+                }
             }
         }
     }
@@ -728,17 +743,44 @@ impl Entities {
         if matches!(foe, Foe::Player(_)) {
             n.admire_disabled = ADMIRE_DISABLED_TIME;
         }
+        // `maybeRetaliate` under `universal_anger`: angry at the nearest
+        // visible player (the attacker if none), and every adult piglin
+        // around turns on the player nearest it.
+        let universal = !baby && matches!(foe, Foe::Player(_)) && self.neutral_universal_anger;
         if baby {
             n.flee_from = Some(foe);
             n.flee_left = BABY_FLEE_TIME;
         } else {
             n.anger(foe);
         }
+        if universal {
+            n.universal = UNIVERSAL_ANGER_TIME;
+            n.universal_pick = true;
+        }
         n.sense_timer = 0.0;
         if let Some(stack) = overflow {
             self.throw_from_mob(stack, pos, None);
         }
-        self.broadcast_anger(pos, foe, uid);
+        if universal {
+            self.broadcast_universal_anger(pos, uid);
+        } else {
+            self.broadcast_anger(pos, foe, uid);
+        }
+    }
+
+    /// Java's `broadcastUniversalAnger`: each adult piglin around `pos`
+    /// turns on the nearest player it can see, if any, at its next look.
+    fn broadcast_universal_anger(&mut self, pos: DVec3, except: u32) {
+        let r2 = ANGER_RANGE * ANGER_RANGE;
+        for m in &mut self.mobs {
+            if !is_piglin(m.kind) || m.baby || m.uid == except || !m.alive() || m.pos.distance_squared(pos) > r2 {
+                continue;
+            }
+            if let Some(n) = m.nether.as_mut() {
+                n.universal_pick = true;
+                n.sense_timer = 0.0;
+            }
+        }
     }
 
     /// Java's hoglin `broadcastAttackTarget`: adult hoglins around `pos`
@@ -1260,6 +1302,15 @@ fn sense<W: MobWorld + ?Sized>(
             }
         }
     }
+    // `setAngerTargetToNearestTargetablePlayerIfFound`, which also sets
+    // `UNIVERSAL_ANGER` (only `universal_anger` asks for it).
+    if std::mem::take(&mut n.universal_pick)
+        && !baby
+        && let Some(t) = visible_player(ctx, world, pos, eye)
+    {
+        n.anger(Foe::Player(t.id));
+        n.universal = UNIVERSAL_ANGER_TIME;
+    }
     // Grudges end when the foe is gone or far away.
     if let Some(foe) = n.foe
         && locate(foe).is_none_or(|p| p.distance_squared(pos) > 32.0 * 32.0)
@@ -1305,6 +1356,15 @@ fn sense<W: MobWorld + ?Sized>(
         return None;
     }
     if !baby {
+        // `findNearestValidAttackTarget`: with `UNIVERSAL_ANGER`, a piglin
+        // goes for the nearest visible player, gold or not (brutes don't).
+        if !brute
+            && n.universal > 0.0
+            && let Some(t) = visible_player(ctx, world, pos, eye)
+        {
+            n.goal = Goal::Attack { foe: Foe::Player(t.id), pos: t.pos };
+            return None;
+        }
         // Players in sight: for piglins, only those without gold armor.
         let player = ctx
             .players
@@ -1541,6 +1601,16 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if let Some(s) = m.bee {
         v["bee"] = s.save();
     }
+    // `NeutralMob`'s `anger_end_time` and `angry_at` for the kinds whose
+    // anger lives on the mob; bees and polar bears keep theirs in their state.
+    let timer = matches!(m.kind, MobKind::Wolf | MobKind::Enderman | MobKind::ZombifiedPiglin);
+    if m.neutral_universal || timer && (m.provoked > 0.0 || m.angry_player.is_some()) {
+        v["neutral_anger"] = json!({
+            "left": if timer { m.provoked } else { 0.0 },
+            "player": if timer { m.angry_player.map(|p| p.0) } else { None },
+            "all_players": m.neutral_universal,
+        });
+    }
     if let Some(p) = &m.phantom {
         v["phantom"] = p.save();
     }
@@ -1646,6 +1716,14 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     }
     if let Some(p) = &mut m.phantom {
         p.load(&v["phantom"]);
+    }
+    let anger = &v["neutral_anger"];
+    if anger.is_object() && super::neutral::is_neutral(kind) && kind != MobKind::PolarBear {
+        if matches!(kind, MobKind::Wolf | MobKind::Enderman | MobKind::ZombifiedPiglin) {
+            m.provoked = anger["left"].as_f64().filter(|t| t.is_finite()).unwrap_or(0.0).clamp(0.0, 60.0) as f32;
+            m.angry_player = anger["player"].as_u64().and_then(|p| u32::try_from(p).ok()).map(PlayerId);
+        }
+        m.neutral_universal = anger["all_players"] == true;
     }
     m.sheared = v["sheared"].as_bool().unwrap_or(false);
     if kind == MobKind::Skeleton && v["freezing"].is_object() {

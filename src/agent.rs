@@ -765,6 +765,9 @@ impl Agent {
         self.previous_pos = self.session.player.pos;
         self.keep_inventory = rules.bool("keep_inventory");
         self.pearls_vanish = rules.bool("ender_pearls_vanish_on_death");
+        // The neutral-mob rules, as the host's mob update hands them over.
+        entities.neutral_forgive_dead_players = rules.bool("forgive_dead_players");
+        entities.neutral_universal_anger = rules.bool("universal_anger");
         self.immunity = rules.damage_immunity();
         // Movement alone returning early is not enough: survival, mining,
         // pickups and timed commands must also wait for local terrain.

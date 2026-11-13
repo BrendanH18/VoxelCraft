@@ -74,6 +74,7 @@ impl Entities {
         self.grow_loaded_turtles(dt as f32, world, ctx);
         self.frog_upkeep(dt, world, ctx);
         self.polar_sense(dt, world, ctx);
+        self.neutral_sense(world, ctx);
         self.panda_upkeep(dt, world, ctx, &mut events);
         self.armadillo_upkeep(dt, world, ctx, &mut events);
         self.ocelot_upkeep(dt, ctx);
@@ -430,9 +431,6 @@ impl Entities {
                     {
                         self.warden_hurt(i, crate::world::vibration::EntityRef::Player(owner), false);
                     }
-                    if kind == MobKind::ZombifiedPiglin {
-                        self.anger_piglins(pos);
-                    }
                     // Java's `VILLAGER_HURT`/`VILLAGER_KILLED` reputation events fire for any
                     // damage a player causes, including arrows and splash potions.
                     if kind == MobKind::Villager
@@ -450,15 +448,8 @@ impl Entities {
                     // `HurtByTargetGoal`: projectiles credit their shooter too.
                     if let Some(owner) = owner
                         && !killed
-                        && matches!(
-                            kind,
-                            MobKind::Dolphin
-                                | MobKind::Blaze
-                                | MobKind::Bee
-                                | MobKind::PolarBear
-                                | MobKind::Panda
-                                | MobKind::Armadillo
-                        )
+                        && (matches!(kind, MobKind::Dolphin | MobKind::Blaze | MobKind::Panda | MobKind::Armadillo)
+                            || super::neutral::is_neutral(kind))
                         && let Some(i) = self.mobs.iter().position(|m| m.kind == kind && m.pos == pos && m.alive())
                     {
                         self.hurt_by_player_target(i, owner);

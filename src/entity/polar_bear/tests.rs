@@ -173,9 +173,12 @@ fn polar_bear_player_targeting_respects_peaceful_creative_death_and_universal_an
     e.polar_hurt(0, Foe::Player(PlayerId::HOST));
     c.players[0].alive = false;
     sense(&mut e, &w, &c, 1);
+    assert_eq!(e.mobs[0].polar_bear.as_ref().unwrap().angry_at, Some(Foe::Player(PlayerId::HOST)), "until told");
+    e.player_died(PlayerId::HOST, c.players[0].pos);
     assert!(e.mobs[0].polar_bear.as_ref().unwrap().angry_at.is_none());
     e.neutral_forgive_dead_players = false;
     e.polar_hurt(0, Foe::Player(PlayerId::HOST));
+    e.player_died(PlayerId::HOST, c.players[0].pos);
     sense(&mut e, &w, &c, 1);
     assert_eq!(e.mobs[0].polar_bear.as_ref().unwrap().angry_at, Some(Foe::Player(PlayerId::HOST)));
     e.neutral_universal_anger = true;

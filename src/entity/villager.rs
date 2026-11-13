@@ -827,10 +827,17 @@ impl Entities {
             .chain(self.storage.mobs())
             .filter(|m| m.alive())
             .filter_map(|m| match m.kind {
-                MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama => Some(json!({
+                MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama => {
+                    let mut saved = json!({
                     "identity":super::leash::save(m), "kind": m.kind.name(), "p": m.pos.to_array(), "yaw": m.yaw,
                     "health": m.health, "effects":m.effects.serialize(), "built": m.built, "anger": m.player_hit_left, "anger_player":m.angry_player.map(|p|p.0), "trader": m.trader.as_ref().map(|t|t.save()),
-                })),
+                    });
+                    // Angry at every player (`universal_anger`); written only when set.
+                    if m.neutral_universal {
+                        saved["anger_all"] = json!(true);
+                    }
+                    Some(saved)
+                }
                 MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader => {
                     let v = m.villager.as_ref()?;
                     let mut saved = json!({"identity":super::leash::save(m),"trader":m.trader.as_ref().map(|t|t.save()),"kind":m.kind.name(),"id":v.id,"seed":v.seed,"p":m.pos.to_array(),"yaw":m.yaw,
@@ -914,6 +921,7 @@ impl Entities {
                     m.angry_player =
                         a["anger_player"].as_u64().and_then(|p| u32::try_from(p).ok()).map(super::PlayerId);
                     m.player_hit_left = a["anger"].as_f64().unwrap_or(0.0).clamp(0.0, 60.0) as f32;
+                    m.neutral_universal = kind == MobKind::IronGolem && a["anger_all"] == true;
                     return Some(m);
                 }
                 let id = a["id"].as_u64()?;

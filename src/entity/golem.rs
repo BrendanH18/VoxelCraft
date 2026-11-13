@@ -71,12 +71,11 @@ pub fn iron_damage(rng: &mut super::Rng) -> f32 {
     7.5 + rng.next_int(15) as f32
 }
 
+/// `NeutralMob.isAngryAt`: only the persistent target. A golem angry at
+/// every player (`universal_anger`) has one picked in `neutral` first.
 fn anger_target<'a>(mob: &super::Mob, ctx: &'a Ctx) -> Option<&'a super::Target> {
-    if let Some(owner) = mob.angry_player {
-        ctx.players.iter().find(|p| p.id == owner && p.alive && p.targetable)
-    } else {
-        ctx.nearest_target(mob.pos)
-    }
+    let owner = mob.angry_player?;
+    ctx.players.iter().find(|p| p.id == owner && p.alive && p.targetable)
 }
 
 const GOLEM_RANGE: f64 = 16.0;

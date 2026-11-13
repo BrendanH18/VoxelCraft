@@ -56,7 +56,7 @@ const BURN_DAYLIGHT: f32 = 0.45;
 /// Spiders only hunt when it's darker than this (or after being hit).
 const SPIDER_CALM_DAYLIGHT: f32 = 0.45;
 /// Seconds a hit spider stays hostile in daylight.
-const PROVOKED_TIME: f32 = 12.0;
+pub(super) const PROVOKED_TIME: f32 = 12.0;
 /// Seconds zombified piglins stay angry after one of them is hit.
 pub const PIGLIN_ANGER_TIME: f32 = 30.0;
 /// Skeletons shoot from up to this far, and keep between these distances.
@@ -74,7 +74,7 @@ pub const FUSE_TIME: f32 = 1.5;
 pub const CREEPER_POWER: f32 = 3.0;
 /// Seconds an enderman stays angry after a stare or a hit (refreshed
 /// while its target stays near).
-const ENDERMAN_ANGER_TIME: f32 = 30.0;
+pub(super) const ENDERMAN_ANGER_TIME: f32 = 30.0;
 /// Seconds of eye contact before an enderman turns on you (Java's 5 ticks).
 const STARE_TIME: f32 = 0.25;
 /// Endermen notice stares from this far, freeze while watched within
@@ -1139,7 +1139,7 @@ pub struct Mob {
     /// Creeper fuse: seconds lit, 0 when not fusing.
     pub fuse: f32,
     /// Seconds a hit spider stays angry in daylight.
-    provoked: f32,
+    pub(super) provoked: f32,
     pub(super) ai: Ai,
     pub(super) ai_timer: f32,
     pub(super) move_yaw: f32,
@@ -1196,6 +1196,9 @@ pub struct Mob {
     pub(super) trader_night: bool,
     pub(super) convert_by: Option<super::PlayerId>,
     pub(super) angry_player: Option<super::PlayerId>,
+    /// A neutral mob angry with no persistent target after a player's hit
+    /// under `universal_anger` (Java's `isAngryAtAllPlayers`; see `neutral`).
+    pub(super) neutral_universal: bool,
     /// A zombified piglin's main hand: `None` is the spawn default (a golden
     /// sword); a converted piglin keeps its crossbow, axe or empty hand.
     pub held: Option<super::nether::Weapon>,
@@ -1357,6 +1360,7 @@ impl Mob {
             trader_night: false,
             convert_by: None,
             angry_player: None,
+            neutral_universal: false,
             held: None,
             trader: matches!(kind, MobKind::WanderingTrader | MobKind::TraderLlama)
                 .then(|| Box::new(super::wandering_trader::Trader::new(pos))),
@@ -1809,8 +1813,11 @@ impl Mob {
         }
         self.hurt = (self.hurt - dtf).max(0.0);
         self.provoked = (self.provoked - dtf).max(0.0);
-        if matches!(self.kind, MobKind::Wolf | MobKind::Llama) && self.provoked == 0.0 {
+        if matches!(self.kind, MobKind::Wolf | MobKind::Llama | MobKind::Enderman | MobKind::ZombifiedPiglin)
+            && self.provoked == 0.0
+        {
             self.angry_player = None;
+            self.neutral_universal = false;
         }
         self.attack_cooldown -= dtf;
         self.player_hit_left = (self.player_hit_left - dtf).max(0.0);
@@ -2212,7 +2219,18 @@ impl Mob {
             return wish;
         }
         self.ai_timer -= dt;
-        let target = if self.kind.is_hostile() && self.nether.is_none() {
+        let target = if matches!(self.kind, MobKind::Enderman | MobKind::ZombifiedPiglin) && self.provoked > 0.0 {
+            // `NeutralMob.isAngryAt`: an angry one goes only for its persistent
+            // target (`neutral` picks one under `universal_anger`).
+            self.angry_player.and_then(|id| {
+                ctx.players.iter().find(|t| {
+                    t.id == id
+                        && t.targetable
+                        && t.alive
+                        && t.pos.distance_squared(self.pos) <= t.detection_range(CHASE_RANGE).powi(2)
+                })
+            })
+        } else if self.kind.is_hostile() && self.nether.is_none() {
             let range = match self.kind {
                 MobKind::CaveSpider | MobKind::Slime | MobKind::MagmaCube => 16.,
                 _ => CHASE_RANGE,
@@ -2714,10 +2732,14 @@ impl Mob {
         events: &mut Vec<EntityEvent>,
     ) -> bool {
         self.since_anger += dt;
-        let staring = ctx.players.iter().any(|t| t.targetable && self.watched_by(world, t));
-        self.stare = if staring { self.stare + dt } else { 0.0 };
+        let starer = ctx.players.iter().find(|t| t.targetable && self.watched_by(world, t)).map(|t| t.id);
+        self.stare = if starer.is_some() { self.stare + dt } else { 0.0 };
         if self.stare >= STARE_TIME && self.provoked <= 0.0 {
             self.provoked = ENDERMAN_ANGER_TIME;
+            // `EndermanLookForPlayerGoal` targets the starer, and
+            // `updatePersistentAnger` makes it the persistent target.
+            self.angry_player = starer;
+            self.neutral_universal = false;
             self.since_anger = 0.0;
             events.push(EntityEvent::Sound { sound: MobSound::Scream, pos: self.eye() });
         }
@@ -3570,7 +3592,7 @@ impl super::Entities {
                     | MobKind::PolarBear
                     | MobKind::Panda
                     | MobKind::Armadillo
-            )
+            ) || super::neutral::is_neutral(m.kind)
         }) {
             self.ensure_mob_ids();
             let uid = self.mobs[index].uid;
@@ -3587,6 +3609,13 @@ impl super::Entities {
     pub(super) fn resolve_hurt_by(&mut self, ctx: &super::Ctx) {
         for (uid, player) in std::mem::take(&mut self.hurt_by) {
             let Some(index) = self.mobs.iter().position(|m| m.uid == uid) else { continue };
+            let kind = self.mobs[index].kind;
+            // `ResetUniversalAngerTargetGoal` takes a player's hit instead of
+            // `HurtByTargetGoal` under `universal_anger`, with no attack check.
+            if self.neutral_universal_anger && kind != MobKind::PolarBear && super::neutral::is_neutral(kind) {
+                self.universal_anger_hit(index);
+                continue;
+            }
             let defensive = self.mobs[index].kind == MobKind::Armadillo;
             if !ctx
                 .players
@@ -3602,6 +3631,9 @@ impl super::Entities {
                 MobKind::PolarBear => self.polar_hurt(index, super::nether::Foe::Player(player)),
                 MobKind::Panda => self.panda_hurt(index, super::nether::Foe::Player(player)),
                 MobKind::Armadillo => self.armadillo_hurt(index, super::nether::Foe::Player(player)),
+                MobKind::Wolf | MobKind::IronGolem | MobKind::Enderman | MobKind::ZombifiedPiglin => {
+                    self.neutral_hurt_by(index, player)
+                }
                 _ => {}
             }
         }
