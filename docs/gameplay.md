@@ -302,10 +302,12 @@ full performance display instead of duplicating the compact counter.
   kills), fire resistance, water breathing, night vision (fades in its last
   10 seconds), jump boost (higher jumps, a block less fall damage per
   level) and slow falling (an eighth of the gravity, no fall damage).
-  Icons show in the top right (harmful ones in a second row, blinking in
-  their last 10 seconds) and with name and time beside the inventory.
-  `/effect give <effect> [seconds] [amplifier]` and `/effect clear
-  [effect]` use Java's ids; effects are saved, and death clears them.
+  Icons show in the top right (harmful and neutral ones in a second row,
+  blinking in their last 10 seconds) and with name and time beside the
+  inventory. `/effect give <effect> [seconds] [amplifier]` and `/effect
+  clear [effect]` use Java's ids for all 40 Java effects (for Instant
+  Health, Instant Damage and Saturation the number counts ticks and
+  defaults to one); effects are saved, and death clears them.
 - Potions: three glass in a V make three glass bottles, which fill from a
   water source (right click; the water stays). Hold right click to drink
   a potion (1.6 s, like eating, even when full); it applies its effect and

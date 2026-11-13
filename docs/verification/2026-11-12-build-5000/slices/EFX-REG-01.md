@@ -88,9 +88,13 @@ array after the animated frames (`effect_icon_layer`, `item_layers` and
   other effect's glyph.
 - `src/agent.rs` command parsing tests updated to the tick durations, plus
   Saturation and Instant Health defaults.
-- Run: see the hand-off report. `scripts/remote-check.sh --full`,
-  `tools/check_doc_links.py`, `tools/campaign_ledger.py` and `id_map` were
-  run on the final tree.
+- Run: the implementer handed the slice over before its first compile
+  finished. The review re-ran the extractor (its output is identical to the
+  committed fixture), compiled and tested it (clippy clean, nothing to fix),
+  checked that `java_effects` fails when Health Boost's colour in
+  `Effect::colour` changes by one, and ran
+  `scripts/remote-check.sh --full`, `tools/check_doc_links.py` and
+  `tools/campaign_ledger.py` on the final tree.
 
 ## Differences from Java left in place
 
@@ -102,6 +106,11 @@ array after the animated frames (`effect_icon_layer`, `item_layers` and
 - The fixture's particle overrides (Trial Omen, Raid Omen), added sounds (the
   three omens) and blend durations (Nausea, Darkness) are recorded but not
   compared, because the game doesn't model them per effect.
+- `/effect give instant_health N` (or `instant_damage`) applies once,
+  whatever N is. Java keeps the instance for N ticks and
+  `InstantaneousMobEffect.shouldApplyEffectTickThisTick` applies it on each
+  of them, so Instant Health heals N times (repeat Instant Damage is held
+  back by invulnerability ticks). The default of one tick matches Java.
 - The HUD orders icons by `Effect` order, not by Java's
   `MobEffectInstance` ordering.
 - Icons are original procedural glyphs, not Java's sprites.
