@@ -78,6 +78,11 @@ source, as in Java.
   - `harness_stacks_save_and_load`.
 - `tests/java_recipes.rs` and `tests/java_registry.rs` pass with the
   harnesses registered.
+- `scripts/remote-check.sh --full` passed (clippy and every test, with and
+  without default features); `tests/java_harnesses.rs` also passed on its
+  own with default features.
+- `examples/id_map.rs -- items:1585-1600` reports exactly 1585–1600
+  registered (16) and 1535–1584 and 1601 up free.
 
 ## Differences from Java
 
