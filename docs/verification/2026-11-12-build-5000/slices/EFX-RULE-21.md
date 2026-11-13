@@ -29,7 +29,11 @@
     persistent target, as `updatePersistentAnger` keeps it.
   - `neutral_hurt_by`: `HurtByTargetGoal` for wolves, iron golems,
     endermen and zombified piglins, run from the shared hurt-by queue
-    (`resolve_hurt_by`), so creative players' hits change no target.
+    (`resolve_hurt_by`), so creative players' hits change no target. The
+    zombified piglin alert therefore lands on the next update, as Java's
+    target selector does, not inside the hit
+    (`tests/java_knockback.rs::a_sweep_angers_zombified_piglins_like_any_player_hit`
+    now runs that update and checks the alerted piglin's target).
 - Endermen and zombified piglins now hold a persistent player target
   (`Mob::angry_player`): the attacker, the starer (`EndermanLookForPlayerGoal`),
   or the alerting piglin's attacker. An angry one goes only for that

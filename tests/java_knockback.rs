@@ -730,7 +730,11 @@ fn a_sweep_angers_zombified_piglins_like_any_player_hit() {
     charge(&mut s, 20);
     s.attack(0, &w, &mut e, false).unwrap();
     assert!(lost_kind(&e, swept) > 0.0, "the piglin was swept");
+    // `HurtByTargetGoal` and its alert act on the mobs' next update.
+    let ctx = Ctx { players: vec![MobTarget::new(PlayerId(3), s.player.pos, true)], ..night(DVec3::ZERO) };
+    e.update(0.05, &w, &ctx);
     assert!(e.mobs[far].is_provoked(), "a swept zombified piglin angers its neighbours");
+    assert_eq!(e.mobs[far].anger_target(), Some(PlayerId(3)), "at the player who swept it");
 }
 
 #[test]
