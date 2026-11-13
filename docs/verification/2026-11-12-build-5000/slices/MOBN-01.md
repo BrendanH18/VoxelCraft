@@ -111,7 +111,12 @@ but no longer written. LAN look: `equipment` replaces `armor`/`glint`.
   slots only), `nether.rs` (admired armor stack, piglin weapon wear,
   round trips), `hostiles.rs`, `lightning.rs`, `breeze.rs`, `trident.rs`.
 - `tests/entity_storage.rs` normalizes the retired `armor`/`glint` keys.
-- Commands: see the slice report (`scripts/remote-check.sh --full`).
+- Run: `cargo fmt`, then `VC_REMOTE_RETRIES=60 scripts/remote-check.sh --full`
+  (clippy with `-D warnings` and every test, default and
+  `--no-default-features`), passed on commit `64c36534`;
+  `python3 tools/campaign_ledger.py` and `python3 tools/check_doc_links.py`
+  pass. The extractor was run against the pinned server jar and its output
+  is the committed fixture.
 
 ## Differences from Java left in place
 
