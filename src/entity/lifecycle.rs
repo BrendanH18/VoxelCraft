@@ -69,6 +69,7 @@ impl Entities {
         self.player_spots.clear();
         self.player_spots.extend(ctx.players.iter().map(|t| (t.id, t.pos)));
         self.resolve_hurt_by(ctx);
+        self.call_reinforcements(world, ctx);
         self.nether_sense(dt as f32, world, ctx);
         self.aquatic_sense(dt as f32, world);
         self.grow_loaded_turtles(dt as f32, world, ctx);

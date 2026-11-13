@@ -83,6 +83,7 @@ pub mod warden;
 pub mod weapon_hits;
 pub mod wind;
 pub mod wolf_armor;
+pub mod zombie;
 mod zombie_villager;
 
 use std::f32::consts::TAU;
@@ -1198,6 +1199,9 @@ impl Entities {
         nether::on_spawn(&mut mob, &mut self.rng);
         aquatic::on_spawn(&mut mob, &mut self.rng);
         animals::on_spawn(&mut mob, &mut self.rng);
+        // `Mob.finalizeSpawn`'s follow-range bonus and the zombie family's
+        // `handleAttributes`, drawn last so earlier rolls keep their order.
+        zombie::finalize_spawn(&mut mob, special, true, &mut self.rng);
         self.mobs.push(mob);
     }
 
@@ -2066,6 +2070,10 @@ impl Entities {
         }
         let pushes: Vec<_> = pushes.iter().flatten().copied().collect();
         let killed = mob.damage_pushed(damage, &pushes, &mut self.rng);
+        // The hit's attacker, for `Zombie.hurtServer`'s reinforcement call.
+        if mob.reinforce_call.is_some() {
+            mob.reinforce_call = Some(Some(owner));
+        }
         if kind == MobKind::ZombifiedPiglin {
             self.anger_piglins(pos);
         }

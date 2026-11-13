@@ -1224,6 +1224,13 @@ pub struct Mob {
     pub(crate) restrict: Option<(IVec3, i32)>,
     /// The flagged goal selector and goal state of dolphins and turtles.
     pub(crate) java_goals: Option<Box<JavaGoals>>,
+    /// Spawn-rolled attribute modifiers and reinforcement charges (see `entity::zombie`).
+    pub attrs: super::zombie::Attrs,
+    /// A hit since the last update asks for reinforcements: `Some(attacker)`
+    /// when a player's melee is known. Never saved.
+    pub(super) reinforce_call: Option<Option<super::PlayerId>>,
+    /// The player a reinforcement was sent after (`setTarget`). Never saved.
+    pub(super) reinforce_target: Option<super::PlayerId>,
 }
 
 /// Per-kind state of the mobs on the flagged goal selector. Mobs hold it
@@ -1375,6 +1382,9 @@ impl Mob {
                 MobKind::Turtle => Some(Box::new(JavaGoals::Turtle(Default::default()))),
                 _ => None,
             },
+            attrs: Default::default(),
+            reinforce_call: None,
+            reinforce_target: None,
         }
     }
 
@@ -1663,6 +1673,10 @@ impl Mob {
         };
         let amount = amount * self.effects.resistance_factor();
         self.health -= self.effects.absorb(amount);
+        // `Zombie.hurtServer` calls reinforcements after any accepted hit.
+        if super::zombie::calls_reinforcements(self.kind) && self.reinforce_call.is_none() {
+            self.reinforce_call = Some(None);
+        }
         if self.kind == MobKind::Axolotl && self.in_water && self.health > 0.0 && self.health < 7.0 && rng.chance(0.33)
         {
             self.aquatic.as_mut().unwrap().play_dead = 10.0;
@@ -1759,7 +1773,15 @@ impl Mob {
         events: &mut Vec<EntityEvent>,
     ) {
         let event_start = events.len();
+        let before = self.kind;
         self.tick_water_conversion(dt, world);
+        if self.kind != before && super::zombie::calls_reinforcements(self.kind) {
+            // The `ConversionTracker` callback: `handleAttributes(special, CONVERSION)`
+            // on the new mob, which has no spawn follow bonus.
+            self.attrs = super::zombie::Attrs::for_kind(self.kind);
+            let special = crate::simulation::difficulty::special_multiplier(self.local_difficulty);
+            self.handle_zombie_attributes(special, false, rng);
+        }
         let dtf = dt as f32;
         self.idle += dtf;
         if let Some(s) = &mut self.creaking {
@@ -2212,7 +2234,9 @@ impl Mob {
             return wish;
         }
         self.ai_timer -= dt;
-        let target = if self.kind.is_hostile() && self.nether.is_none() {
+        let target = if self.kind.is_zombie() {
+            self.zombie_target(ctx)
+        } else if self.kind.is_hostile() && self.nether.is_none() {
             let range = match self.kind {
                 MobKind::CaveSpider | MobKind::Slime | MobKind::MagmaCube => 16.,
                 _ => CHASE_RANGE,
@@ -2234,10 +2258,14 @@ impl Mob {
             };
             let (range, height) = match self.kind {
                 MobKind::CaveSpider | MobKind::Slime | MobKind::MagmaCube => (16.0, 4.0),
+                // `NearestAttackableTargetGoal` searches the follow range.
+                k if k.is_zombie() => (self.follow_range(), 12.0),
                 _ => (CHASE_RANGE, 12.0),
             };
-            let chasing =
-                aggressive && target.is_some_and(|t| hdist < t.detection_range(range)) && to_player.y.abs() < height;
+            let sent = self.reinforce_target;
+            let chasing = aggressive
+                && target.is_some_and(|t| hdist < t.detection_range(range) || sent == Some(t.id))
+                && to_player.y.abs() < height;
             if chasing {
                 self.ai = Ai::Chase;
             } else if self.ai == Ai::Chase {

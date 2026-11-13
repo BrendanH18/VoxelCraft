@@ -574,7 +574,7 @@ impl Mob {
         } else if self.kind == MobKind::Wolf && self.animal.as_ref().is_some_and(|a| a.owner.is_some()) {
             40.0
         } else {
-            self.kind.max_health()
+            self.leader_max_health(self.kind.max_health())
         }
     }
     pub(super) fn companion_think<W: MobWorld + ?Sized>(

@@ -357,7 +357,10 @@ impl Mob {
         };
         // Netherite horse armor's BODY modifier adds 0.1.
         let body = self.mount.as_ref().and_then(|s| s.slots[1]);
-        base + body.map_or(0.0, |s| f64::from(crate::entity::mounts::armor_knockback_resistance(s.item)))
+        let armor = body.map_or(0.0, |s| f64::from(crate::entity::mounts::armor_knockback_resistance(s.item)));
+        // A zombie's spawn `random_spawn_bonus`, all `ADD_VALUE`, within the attribute's range.
+        let (lo, hi) = crate::entity::zombie::KNOCKBACK_RESISTANCE_RANGE;
+        (base + armor + self.attributes().knockback_bonus).clamp(lo, hi)
     }
 
     /// Movement multiplier: a strider out of lava is 34% slower (Java's
