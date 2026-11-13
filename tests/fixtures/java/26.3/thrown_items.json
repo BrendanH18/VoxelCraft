@@ -1,0 +1,140 @@
+{
+  "dispense_default": {
+    "power": 1.1,
+    "uncertainty": 6.0
+  },
+  "experience_bottle": {
+    "dispense": {
+      "position_offset": [
+        0.0,
+        0.1,
+        0.0
+      ],
+      "position_scale": 0.7,
+      "power": 1.375,
+      "uncertainty": 3.0
+    },
+    "entity": {
+      "gravity": 0.07,
+      "size": [
+        0.25,
+        0.25
+      ],
+      "spawn_below_eye": 0.10000000149011612
+    },
+    "hit": {
+      "block_direction": "hit face normal",
+      "colour": -13083194,
+      "colour_rgb": [
+        56,
+        93,
+        198
+      ],
+      "entity_direction": "minus delta movement",
+      "particle_event": 2002,
+      "sound_event": 1053,
+      "xp_base": 3,
+      "xp_rolls": [
+        5,
+        5
+      ]
+    },
+    "item": {
+      "glint_override": true,
+      "max_stack": 64,
+      "rarity": "uncommon"
+    },
+    "loot": [
+      {
+        "count": {
+          "max": 3,
+          "min": 1
+        },
+        "pool": 0,
+        "pool_weight": 84,
+        "rolls": {
+          "max": 10,
+          "min": 5
+        },
+        "table": "chests/ancient_city",
+        "weight": 3
+      },
+      {
+        "count": {
+          "max": 1,
+          "min": 1
+        },
+        "pool": 3,
+        "pool_weight": 22,
+        "rolls": {
+          "max": 3,
+          "min": 2
+        },
+        "table": "chests/pillager_outpost",
+        "weight": 7
+      },
+      {
+        "count": {
+          "max": 1,
+          "min": 1
+        },
+        "pool": 0,
+        "pool_weight": 150,
+        "rolls": {
+          "max": 6,
+          "min": 3
+        },
+        "table": "chests/shipwreck_treasure",
+        "weight": 5
+      }
+    ],
+    "loot_tables": [
+      "chests/ancient_city",
+      "chests/pillager_outpost",
+      "chests/shipwreck_treasure"
+    ],
+    "trade": {
+      "gives": {
+        "count": 1,
+        "id": "experience_bottle"
+      },
+      "id": "cleric/5/emerald_experience_bottle",
+      "in_level_tag": true,
+      "level_offers": 2,
+      "max_uses": 12,
+      "reputation_discount": 0.05,
+      "wants": {
+        "count": 3,
+        "id": "emerald"
+      },
+      "xp": 30
+    },
+    "use": {
+      "consumes": 1,
+      "pitch": "0.4 / (nextFloat * 0.4 + 0.8)",
+      "power": 0.7,
+      "sound": "entity.experience_bottle.throw",
+      "sound_source": "neutral",
+      "uncertainty": 1.0,
+      "volume": 0.5,
+      "y_offset_degrees": -20.0
+    }
+  },
+  "experience_orb": {
+    "offset_along_direction": "box size * 0.5",
+    "scatter": {
+      "horizontal": 0.2,
+      "vertical_max": 0.4
+    },
+    "size": [
+      0.5,
+      0.5
+    ]
+  },
+  "throwable": {
+    "air_drag": 0.99,
+    "gravity_before_drag": true,
+    "shoot_noise": 0.0172275,
+    "water_drag": 0.8
+  }
+}

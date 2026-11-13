@@ -1257,6 +1257,7 @@ pub fn build_thrown(thrown: &[super::thrown::Thrown], camera: DVec3, alpha: f64,
             super::thrown::Kind::LlamaSpit => ([235, 238, 228], 1.5),
             super::thrown::Kind::WindCharge => ([200, 224, 240], 2.4),
             super::thrown::Kind::BreezeWindCharge => ([170, 200, 236], 3.0),
+            super::thrown::Kind::ExperienceBottle => ([96, 186, 168], 2.4),
         };
         let c = cube([-size, -size, -size], [size, size, size], color, 16);
         push_cuboid(out, &c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([230, 0, 0, 0], 0), (FIRE, 0.0), 0.0);

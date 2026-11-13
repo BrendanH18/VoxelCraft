@@ -69,7 +69,7 @@ pub mod sniffer;
 mod spawn_lists;
 mod spawn_rules;
 mod spawning;
-mod thrown;
+pub mod thrown;
 mod tipped_arrow;
 pub mod tnt;
 pub mod trial;
@@ -385,6 +385,13 @@ pub enum EntityEvent {
     Hatched {
         pos: DVec3,
         count: u8,
+    },
+    /// A thrown Bottle o' Enchanting broke at `pos`: `points` of experience
+    /// as orbs thrown roughly along `toward` (`ExperienceOrb.awardWithDirection`).
+    ExperienceBurst {
+        pos: DVec3,
+        toward: DVec3,
+        points: u32,
     },
     /// The dragon's death is over: open the exit portal, and on the `first`
     /// kill put the egg on top.
@@ -1589,6 +1596,30 @@ impl Entities {
         for value in crate::simulation::experience::orb_values(points) {
             self.orbs.push(XpOrb::new(value, pos, &mut self.rng));
         }
+    }
+
+    /// `ExperienceOrb.awardWithDirection`: orbs worth `points` in all,
+    /// each popping out on the side of `toward`.
+    pub fn spawn_xp_toward(&mut self, pos: DVec3, toward: DVec3, points: u32) {
+        for value in crate::simulation::experience::orb_values(points) {
+            self.orbs.push(XpOrb::toward(value, pos, toward, &mut self.rng));
+        }
+    }
+
+    /// `ProjectileDispenseBehavior` for a thrown item the dispenser at
+    /// `block` shoots along `step`: Java 26.3's experience bottle leaves
+    /// 0.7 out and 0.1 up at its dispense power and uncertainty.
+    /// Returns false for items it does not shoot.
+    pub fn dispense_thrown(&mut self, item: crate::item::Item, block: IVec3, step: IVec3) -> bool {
+        let (kind, power, uncertainty) = match thrown::Kind::from_item(item) {
+            Some(k @ thrown::Kind::ExperienceBottle) => {
+                (k, thrown::BOTTLE_DISPENSE_POWER, thrown::BOTTLE_DISPENSE_UNCERTAINTY)
+            }
+            _ => return false,
+        };
+        let pos = block.as_dvec3() + DVec3::splat(0.5) + step.as_dvec3() * 0.7 + DVec3::Y * 0.1;
+        self.thrown.push(thrown::Thrown::dispensed(kind, pos, step.as_dvec3(), power, uncertainty, &mut self.rng));
+        true
     }
 
     /// Experience for a block a player harvested at `cell` (ores).

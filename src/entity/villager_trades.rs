@@ -178,7 +178,7 @@ pub(super) const TRADES: &[(Profession, u8, TradeDef)] = &[
     (Profession::Cleric, 4, TradeDef::buy("glass bottle", 9, 12, 30)),
     (Profession::Cleric, 4, TradeDef::sell("ender pearl", 5, 1, 12, 15, 0.05)),
     (Profession::Cleric, 5, TradeDef::buy("nether wart", 22, 12, 30)),
-    (Profession::Cleric, 5, TradeDef::sell("bottle o enchanting", 3, 1, 12, 30, 0.05)),
+    (Profession::Cleric, 5, TradeDef::sell("bottle o' enchanting", 3, 1, 12, 30, 0.05)),
     (Profession::Armorer, 1, TradeDef::buy("coal", 15, 16, 2)),
     (Profession::Armorer, 1, TradeDef::sell("iron leggings", 7, 1, 12, 1, 0.2)),
     (Profession::Armorer, 1, TradeDef::sell("iron boots", 4, 1, 12, 1, 0.2)),

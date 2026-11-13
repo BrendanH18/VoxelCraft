@@ -54,6 +54,21 @@ impl XpOrb {
         Self { value, count: 1, pos, previous_pos: pos, vel, age: 0.0, phase, health: HEALTH }
     }
 
+    /// `ExperienceOrb(level, pos, roughly, value)`: a fresh orb whose random
+    /// pop is flipped onto the side of `toward`, set a quarter block (half
+    /// the box size) out along it.
+    pub fn toward(value: u32, pos: DVec3, toward: DVec3, rng: &mut Rng) -> Self {
+        let mut orb = Self::new(value, pos, rng);
+        if toward.length_squared() > 0.0 {
+            if toward.dot(orb.vel) < 0.0 {
+                orb.vel = -orb.vel;
+            }
+            orb.pos += toward.normalize() * 0.25;
+            orb.previous_pos = orb.pos;
+        }
+        orb
+    }
+
     /// Eye height of Java's 0.5 x 0.5 orb (`EntityDimensions`: 0.85 of it).
     pub const EYE: f64 = 0.5 * 0.85;
 

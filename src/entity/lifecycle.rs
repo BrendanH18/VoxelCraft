@@ -494,6 +494,7 @@ impl Entities {
                         self.spawn_baby(MobKind::Chicken, pos);
                     }
                 }
+                EntityEvent::ExperienceBurst { pos, toward, points } => self.spawn_xp_toward(pos, toward, points),
                 EntityEvent::DropEquipment { stack, pos } => self.scatter(stack, pos),
                 _ => {}
             }
@@ -505,6 +506,7 @@ impl Entities {
                     | EntityEvent::MobKilled { .. }
                     | EntityEvent::LaidEgg { .. }
                     | EntityEvent::Hatched { .. }
+                    | EntityEvent::ExperienceBurst { .. }
                     | EntityEvent::DropEquipment { .. }
             )
         });
