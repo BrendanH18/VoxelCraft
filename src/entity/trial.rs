@@ -680,37 +680,58 @@ fn update_connected(v: &mut Vault, now: i64, center: DVec3, range: f64, players:
         .collect();
 }
 
+/// Every 26.3 trial spawner config with `equipment` gives
+/// `slot_drop_chances: 0.0`.
+const TRIAL_SLOT_DROP_CHANCE: f32 = 0.0;
+
 /// `Mob.equip(EquipmentTable)` with `equipment/trial_chamber_melee` or
 /// `_ranged`, rolled as the tables are: one armor set (chainmail 4, iron 2,
 /// diamond 1) whose helmet and chestplate each come with chance 0.5,
-/// enchanted Protection, Projectile and Fire Protection IV (drawn as a
-/// glint), then the weapon pool. Swords are rolled but not yet carried by
-/// zombies here (recorded gap); bows go to skeleton-family mobs. Every
-/// slot's drop chance is 0.
+/// enchanted Protection, Projectile and Fire Protection IV, then the weapon
+/// pool into the main hand (`EquipmentUser.resolveSlot`). Only the slots
+/// the table filled get its drop chance (0); naturally rolled armor in the
+/// other slots keeps its own. Chainmail is drawn without an item until the
+/// chainmail items exist, and the copper trims are not represented.
 fn equip(m: &mut super::Mob, table: &str, rng: &mut Rng) {
     use super::armor::ArmorKind;
+    use super::equipment::{Slot, trial_armor_enchants};
+    use crate::item::{ArmorPiece, Item, Tier, ToolKind};
     let set = weighted(rng, &[(ArmorKind::Chain, 4), (ArmorKind::Iron, 2), (ArmorKind::Diamond, 1)])
         .unwrap_or(ArmorKind::Chain);
-    for slot in 0..2 {
+    for piece in [ArmorPiece::Helmet, ArmorPiece::Chestplate] {
         if rng.next_f32() < 0.5 {
-            m.armor[slot] = Some(set);
-            m.armor_glint |= 1 << slot;
+            m.equipment.wear(piece, set, trial_armor_enchants());
+            m.equipment.set_drop_chance(Slot::of_piece(piece), TRIAL_SLOT_DROP_CHANCE);
         }
     }
     use crate::enchant::Enchantment as E;
-    if table.ends_with("ranged") {
+    let weapon = if table.ends_with("ranged") {
         let enchant = weighted(rng, &[(None, 2), (Some(E::Power), 1), (Some(E::Punch), 1)]).flatten();
-        if m.kind.is_bow_skeleton() {
-            let mut bow = Stack::new(crate::item::Item::BOW, 1);
-            if let Some(e) = enchant {
-                bow.enchants.set(e, 1);
-            }
-            m.skeleton_bow = Some(Box::new(bow));
+        let mut bow = Stack::new(Item::BOW, 1);
+        if let Some(e) = enchant {
+            bow.enchants.set(e, 1);
         }
+        bow
     } else {
-        let _sword = weighted(rng, &[(0u8, 4), (1, 1), (2, 1), (3, 1)]);
-    }
-    m.keeps_equipment = true;
+        let iron = Item::tool(ToolKind::Sword, Tier::Iron);
+        let (item, enchant) = weighted(
+            rng,
+            &[
+                ((iron, None), 4),
+                ((iron, Some(E::Sharpness)), 1),
+                ((iron, Some(E::Knockback)), 1),
+                ((Item::tool(ToolKind::Sword, Tier::Diamond), None), 1),
+            ],
+        )
+        .unwrap_or((iron, None));
+        let mut sword = Stack::new(item, 1);
+        if let Some(e) = enchant {
+            sword.enchants.set(e, 1);
+        }
+        sword
+    };
+    m.equipment.set(Slot::MainHand, Some(weapon));
+    m.equipment.set_drop_chance(Slot::MainHand, TRIAL_SLOT_DROP_CHANCE);
 }
 
 /// For tests and scenes: the mobs a trial spawner currently tracks.

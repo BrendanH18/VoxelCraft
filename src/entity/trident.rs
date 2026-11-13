@@ -920,7 +920,7 @@ mod tests {
         t.dealt_damage = true;
         e.tridents.push(t);
         e.spawn(MobKind::Drowned, DVec3::new(0.5, 10.0, 0.5));
-        e.mobs[0].weapon = Some(Box::new(Stack::new(crate::weapons::TRIDENT, 1)));
+        e.mobs[0].equipment.set(super::super::equipment::Slot::MainHand, Some(Stack::new(crate::weapons::TRIDENT, 1)));
         e.mobs[0].persistent = true;
         let mut props = std::collections::BTreeMap::new();
         e.save_props(&mut props);
@@ -941,7 +941,7 @@ mod tests {
         let world = Grid::flat(10);
         let mut e = Entities::new(3);
         e.spawn(MobKind::Drowned, DVec3::new(0.5, 10.0, 0.5));
-        e.mobs[0].weapon = Some(Box::new(Stack::new(crate::weapons::TRIDENT, 1)));
+        e.mobs[0].equipment.set(super::super::equipment::Slot::MainHand, Some(Stack::new(crate::weapons::TRIDENT, 1)));
         let mut c = ctx();
         c.daylight = 0.0;
         c.spawn_light = crate::simulation::lighting::SpawnLight::NIGHT;

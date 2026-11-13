@@ -53,8 +53,6 @@ const DANCE_CHANCE: f32 = 0.1;
 const ARMOR_CHANCE: f32 = 0.1;
 const BABY_CHANCE: f32 = 0.2;
 const CROSSBOW_CHANCE: f32 = 0.5;
-/// Java's equipment drop chance (0.085, plus 0.01 per Looting level).
-const EQUIPMENT_DROP: f32 = 0.085;
 /// Bastion residents wander back once this far from home.
 const HOME_RANGE: f64 = 12.0;
 /// Seconds between checks for bastions that need their residents.
@@ -501,9 +499,9 @@ pub(super) fn on_spawn(mob: &mut Mob, rng: &mut Rng) {
         return;
     }
     n.weapon = if rng.next_f32() < CROSSBOW_CHANCE { Weapon::Crossbow } else { Weapon::GoldenSword };
-    for slot in &mut mob.armor {
+    for piece in ArmorPiece::ALL {
         if rng.chance(ARMOR_CHANCE) {
-            *slot = Some(super::armor::ArmorKind::Gold);
+            mob.equipment.wear(piece, super::armor::ArmorKind::Gold, crate::enchant::Enchants::NONE);
         }
     }
 }
@@ -792,12 +790,14 @@ impl Entities {
         let Some(stack) = n.offhand.take() else { return };
         // Java `stopHoldingOffHandItem`: an adult equips an admired item that
         // fits an empty slot (`equipItemIfPossible`) before pocketing it.
+        // `setItemSlotAndDropWhenKilled`: the slot's drop is guaranteed.
         if !baby
             && let Some((piece, ArmorMaterial::Gold)) = stack.item.as_armor()
-            && let Some(slot) = ArmorPiece::ALL.iter().position(|&p| p == piece)
-            && m.armor[slot].is_none()
+            && m.equipment.armor_kind(piece).is_none()
         {
-            m.armor[slot] = Some(super::armor::ArmorKind::Gold);
+            let slot = super::equipment::Slot::of_piece(piece);
+            m.equipment.set(slot, Some(stack));
+            m.equipment.set_guaranteed_drop(slot);
             return;
         }
         let n = m.nether.as_mut().unwrap();
@@ -904,7 +904,9 @@ impl Entities {
         mob.uid = old.uid;
         mob.vel = old.vel;
         mob.previous_pos = old.previous_pos;
-        mob.armor = old.armor;
+        // `ConversionParams.single(this, true, true)` keeps every slot.
+        let mut old_equipment = old.equipment.clone();
+        mob.equipment.carry_from(&mut old_equipment);
         // `convertTo` copies every equipment slot: a crossbow or axe stays.
         if into == MobKind::ZombifiedPiglin {
             mob.held = old.nether.as_ref().map(|n| n.weapon);
@@ -916,9 +918,10 @@ impl Entities {
         }
     }
 
-    /// Equipment and pocket drops for a nether mob that died at `pos`:
-    /// carried items always, worn gear 8.5% (+1% per Looting level) of the
-    /// time on a player kill.
+    /// Pocket, admired-item and weapon drops for a nether mob that died at
+    /// `pos`: carried items always; the weapon (a main-hand item at the
+    /// default drop chance) by `Mob.dropCustomDeathLoot`'s rule. Worn armor
+    /// is in [`Mob::equipment`] and drops with every other mob's.
     pub(super) fn equipment_drops(&mut self, kind: MobKind, pos: DVec3, looting: u8, player_kill: bool) {
         let Some(m) = self.mobs.iter_mut().find(|m| {
             m.kind == kind
@@ -932,27 +935,15 @@ impl Entities {
         n.loot_dropped = true;
         let mut out: Vec<Stack> = n.pocket.clone();
         out.extend(n.offhand);
-        let worn: Vec<Item> = n
-            .weapon
-            .item()
-            .into_iter()
-            .chain(
-                m.armor
-                    .iter()
-                    .zip(ArmorPiece::ALL)
-                    .filter(|(a, _)| **a == Some(super::armor::ArmorKind::Gold))
-                    .map(|(_, piece)| Item::armor(piece, ArmorMaterial::Gold)),
-            )
-            .collect();
-        for item in worn {
-            if player_kill && (self.rng.next_f32() - 0.01 * looting as f32) < EQUIPMENT_DROP {
-                // Java damages dropped gear by a random amount.
-                let mut stack = Stack::new(item, 1);
-                if let Some(max) = item.durability() {
-                    stack.damage = self.rng.next_int(max as u32 / 2 + 1) as u16 + max / 4;
-                }
-                out.push(stack);
+        if let Some(item) = n.weapon.item()
+            && player_kill
+            && self.rng.next_f32() < super::equipment::looting_chance(super::equipment::DEFAULT_DROP_CHANCE, looting)
+        {
+            let mut stack = Stack::new(item, 1);
+            if let Some(max) = item.durability() {
+                stack.damage = super::equipment::reroll_wear(max, &mut self.rng);
             }
+            out.push(stack);
         }
         for stack in out {
             let vel = DVec3::new(self.rng.range(-1.5, 1.5) as f64, 4.0, self.rng.range(-1.5, 1.5) as f64);
@@ -1494,7 +1485,6 @@ fn sense_zoglin<W: MobWorld + ?Sized>(m: &mut Mob, view: &[Seen], world: &W, ctx
 
 pub(crate) fn save_mob(m: &Mob) -> Value {
     let n = m.nether.as_deref();
-    let armor: Vec<bool> = m.armor.iter().map(|a| a.is_some()).collect();
     let mut v = json!({
         "persistence_required": m.persistent,
         "uid": m.uid,
@@ -1514,7 +1504,6 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
         "sheared": m.sheared,
         "animal": m.animal.as_deref().map(super::animals::save),
         "identity": super::leash::save(m),
-        "armor": armor,
         "weapon": n.map_or("none", |n| n.weapon.name()),
         "held": m.held.map(Weapon::name),
         "offhand": n.and_then(|n| n.offhand).map(|s| crate::inventory::stack_to_string(Some(s))),
@@ -1538,21 +1527,11 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if m.undead_mount != super::undead_mounts::State::default() {
         v["undead_mount"] = m.undead_mount.save();
     }
-    if m.armor_glint != 0 {
-        v["armor_glint"] = json!(m.armor_glint);
-    }
-    // Legacy true already means gold. Only other materials need new data.
-    if m.armor.iter().flatten().any(|k| *k != super::armor::ArmorKind::Gold) {
-        v["armor_materials"] = json!(m.armor.map(|a| a.map(|k| k as u8)));
-    }
+    // v0.17: `equipment` and `drop_chances` replace `armor`, `armor_materials`,
+    // `armor_glint`, `skeleton_bow`, `main_hand` and `keeps_equipment`.
+    m.equipment.save_into(&mut v, m.kind.is_bow_skeleton());
     if let Some(s) = m.bee {
         v["bee"] = s.save();
-    }
-    if let Some(bow) = &m.skeleton_bow {
-        v["skeleton_bow"] = json!(crate::inventory::stack_to_string(Some(**bow)));
-    }
-    if let Some(weapon) = &m.weapon {
-        v["main_hand"] = json!(crate::inventory::stack_to_string(Some(**weapon)));
     }
     if let Some(p) = &m.phantom {
         v["phantom"] = p.save();
@@ -1568,9 +1547,6 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     }
     if let Some(s) = &m.breeze {
         v["breeze"] = s.save();
-    }
-    if m.keeps_equipment {
-        v["keeps_equipment"] = json!(true);
     }
     if let Some(s) = &m.creaking {
         v["creaking"] = s.save();
@@ -1663,16 +1639,6 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     if let Some(p) = &mut m.phantom {
         p.load(&v["phantom"]);
     }
-    if kind.is_bow_skeleton()
-        && let Some(t) = v["skeleton_bow"].as_str()
-    {
-        m.skeleton_bow = crate::inventory::stack_from_str(t).flatten().filter(|s| s.item == Item::BOW).map(Box::new);
-    }
-    if kind == MobKind::Drowned
-        && let Some(t) = v["main_hand"].as_str()
-    {
-        m.weapon = crate::inventory::stack_from_str(t).flatten().map(Box::new);
-    }
     m.sheared = v["sheared"].as_bool().unwrap_or(false);
     if kind == MobKind::Skeleton && v["freezing"].is_object() {
         m.freezing = Some(super::hostiles::Freezing::load(&v["freezing"]));
@@ -1686,7 +1652,6 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     if let Some(s) = &mut m.breeze {
         **s = super::breeze::State::load(&v["breeze"]);
     }
-    m.keeps_equipment = v["keeps_equipment"] == true;
     if let Some(s) = &mut m.creaking {
         s.load(&v["creaking"]);
     }
@@ -1732,18 +1697,9 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     if let Some(h) = v["health"].as_f64().filter(|h| *h > 0.0) {
         m.health = (h as f32).min(m.mount.as_ref().map_or(m.max_health(), |s| s.max_health));
     }
-    if let Some(armor) = v["armor"].as_array() {
-        for (slot, worn) in m.armor.iter_mut().zip(armor) {
-            *slot = worn.as_bool().unwrap_or(false).then_some(super::armor::ArmorKind::Gold);
-        }
-    }
-    if let Some(armor) = v["armor_materials"].as_array() {
-        for (slot, material) in m.armor.iter_mut().zip(armor) {
-            *slot = material.as_u64().and_then(|i| super::armor::ArmorKind::ALL.get(i as usize).copied());
-        }
-    }
+    let fresh = std::mem::take(&mut m.equipment);
+    m.equipment = super::equipment::load_mob_equipment(v, fresh, &super::equipment::Legacy::nether(v, kind));
     m.held = v["held"].as_str().map(Weapon::from_name);
-    m.armor_glint = v["armor_glint"].as_u64().unwrap_or(0).min(15) as u8;
     m.restrict = v["restrict"].as_array().filter(|a| a.len() == 4).and_then(|a| {
         let n = |i: usize| a[i].as_i64().and_then(|n| i32::try_from(n).ok());
         Some((IVec3::new(n(0)?, n(1)?, n(2)?), n(3)?.max(0)))
@@ -2125,12 +2081,15 @@ mod tests {
     fn adults_equip_admired_gold_armor_into_empty_slots_only() {
         let mut e = Entities::new(23);
         let i = swordsman(&mut e);
-        e.mobs[i].armor = [None; 4];
-        let boots = Stack::new(Item::armor(ArmorPiece::Boots, ArmorMaterial::Gold), 1);
+        e.mobs[i].equipment = Default::default();
+        let mut boots = Stack::new(Item::armor(ArmorPiece::Boots, ArmorMaterial::Gold), 1);
+        boots.damage = 5;
         e.mobs[i].nether.as_mut().unwrap().offhand = Some(boots);
         e.finish_admiring(i, &nether(vec![]));
-        let boots_slot = ArmorPiece::ALL.iter().position(|&p| p == ArmorPiece::Boots).unwrap();
-        assert_eq!(e.mobs[i].armor[boots_slot], Some(super::super::armor::ArmorKind::Gold));
+        // The admired stack itself goes on, its drop guaranteed (`setItemSlotAndDropWhenKilled`).
+        let feet = super::super::equipment::Slot::Feet;
+        assert_eq!(e.mobs[i].equipment.get(feet), Some(&boots));
+        assert!(e.mobs[i].equipment.is_preserved(feet));
         assert!(e.mobs[i].nether.as_ref().unwrap().pocket.is_empty() && e.items.is_empty());
         // The slot is now taken: a second pair goes to the pocket.
         e.mobs[i].nether.as_mut().unwrap().offhand = Some(boots);
@@ -2139,10 +2098,10 @@ mod tests {
         // Babies never equip.
         let b = swordsman(&mut e);
         e.mobs[b].baby = true;
-        e.mobs[b].armor = [None; 4];
+        e.mobs[b].equipment = Default::default();
         e.mobs[b].nether.as_mut().unwrap().offhand = Some(boots);
         e.finish_admiring(b, &nether(vec![]));
-        assert!(e.mobs[b].armor.iter().all(Option::is_none));
+        assert!(e.mobs[b].equipment.is_empty());
     }
 
     #[test]
@@ -2325,7 +2284,7 @@ mod tests {
         let m = &mut e.mobs[0];
         m.persistent = true;
         m.health = 11.0;
-        m.armor[0] = Some(super::super::armor::ArmorKind::Gold);
+        m.equipment.wear(ArmorPiece::Helmet, super::super::armor::ArmorKind::Gold, crate::enchant::Enchants::NONE);
         let n = m.nether.as_mut().unwrap();
         n.weapon = Weapon::Crossbow;
         n.offhand = Some(Stack::new(Item::GOLD_INGOT, 1));
@@ -2343,7 +2302,7 @@ mod tests {
         assert_eq!(loaded.mobs.iter().filter(|m| m.kind == MobKind::Piglin).count(), 1);
         assert!(loaded.mobs.iter().any(|m| m.kind == MobKind::Zombie && !m.persistent));
         let (a, b) = (&e.mobs[0], &loaded.mobs[0]);
-        assert_eq!((a.kind, a.pos, a.health, a.baby, a.armor), (b.kind, b.pos, b.health, b.baby, b.armor));
+        assert_eq!((a.kind, a.pos, a.health, a.baby, &a.equipment), (b.kind, b.pos, b.health, b.baby, &b.equipment));
         let (na, nb) = (a.nether.as_ref().unwrap(), b.nether.as_ref().unwrap());
         assert_eq!(
             (na.weapon, na.offhand, na.admire_left, &na.pocket, na.zombify, na.cannot_hunt),
@@ -2375,7 +2334,7 @@ mod tests {
         assert!(e.mobs.iter().filter(|m| m.baby).all(|m| m.nether.as_ref().unwrap().weapon == Weapon::None));
         let crossbows = e.mobs.iter().filter(|m| m.nether.as_ref().unwrap().weapon == Weapon::Crossbow).count();
         assert!((700..900).contains(&crossbows), "half the adults: {crossbows}");
-        let helmets = e.mobs.iter().filter(|m| m.armor[0].is_some()).count();
+        let helmets = e.mobs.iter().filter(|m| m.equipment.armor_kind(ArmorPiece::Helmet).is_some()).count();
         assert!((120..200).contains(&helmets), "10% of adults: {helmets}");
         assert_eq!(MobKind::Piglin.max_health(), 16.0);
     }
@@ -2398,6 +2357,29 @@ mod tests {
             })
             .count();
         assert!((120..230).contains(&swords), "8.5%: {swords}");
+    }
+
+    /// The weapon's wear is `Mob.dropCustomDeathLoot`'s reroll, `max -
+    /// nextInt(1 + nextInt(max - 3))`: for a golden sword (32) the mean wear
+    /// is 32 - 28/4 = 25 (the old `max/4 + nextInt(max/2 + 1)` averaged 16).
+    #[test]
+    fn dropped_piglin_weapons_take_the_java_wear() {
+        let mut damage = Vec::new();
+        let mut e = Entities::new(41);
+        while damage.len() < 400 {
+            let seed = e.rng.next_int(u32::MAX) as u64;
+            let mut one = Entities::new(seed);
+            swordsman(&mut one);
+            one.attack(0, DVec3::X, 100.0);
+            one.drop_loot_with(MobKind::Piglin, one.mobs[0].pos, 3);
+            damage.extend(
+                one.items.iter().filter(|i| i.stack.item.as_tool().is_some()).map(|i| f64::from(i.stack.damage)),
+            );
+        }
+        let max = f64::from(Item::tool(crate::item::ToolKind::Sword, crate::item::Tier::Gold).durability().unwrap());
+        assert!(damage.iter().all(|d| (4.0..=max).contains(d)), "{damage:?}");
+        let mean = damage.iter().sum::<f64>() / damage.len() as f64;
+        assert!((mean - (max - (max - 4.0) / 4.0)).abs() < 1.5, "{mean}");
     }
 
     /// A flat Nether floor at y = 33 under one generated bastion.

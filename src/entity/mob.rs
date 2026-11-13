@@ -1070,10 +1070,9 @@ pub struct Mob {
     pub grow: f32,
     pub wool_color: crate::color::DyeColor,
     pub sheared: bool,
-    pub skeleton_bow: Option<Box<crate::inventory::Stack>>,
-    /// v0.16: a drowned's main hand (`Drowned.populateDefaultEquipmentSlots`:
-    /// a trident or a fishing rod), saved, thrown and dropped like Java's.
-    pub weapon: Option<Box<crate::inventory::Stack>>,
+    /// Java's `EntityEquipment` and `DropChances`: a stack and a drop chance
+    /// per slot (a skeleton's bow, a drowned's trident, worn armor).
+    pub equipment: super::equipment::Equipment,
     /// Breach's armor-effectiveness change for the hit being applied (0
     /// outside a player's mace hit); never saved.
     pub(super) armor_effectiveness: f32,
@@ -1090,9 +1089,6 @@ pub struct Mob {
     pub creaking: Option<Box<super::creaking::State>>,
     pub sniffer: Option<Box<super::sniffer::State>>,
     pub breeze: Option<Box<super::breeze::State>>,
-    /// A trial spawner's equipment table set every slot's drop chance to 0
-    /// (ominous spawners); also the spawner that made it, for saves.
-    pub(crate) keeps_equipment: bool,
     pub allay: Option<Box<super::allay::State>>,
     pub warden: Option<Box<super::warden::State>>,
     pub wolf_armor: Option<Box<super::wolf_armor::State>>,
@@ -1162,10 +1158,6 @@ pub struct Mob {
     detour_side: f64,
     /// Seconds until the next idle call.
     ambient_timer: f32,
-    /// Helmet, chest, leggings, boots. Zombies and skeletons roll these.
-    pub armor: [Option<super::armor::ArmorKind>; 4],
-    /// Bit per armor slot: enchantment glint.
-    pub armor_glint: u8,
     /// A hurt or death cry waiting to be reported by the next update.
     cry: Option<MobSound>,
     /// Endermen: teleport away at the next update (an arrow, water, fire).
@@ -1273,8 +1265,14 @@ impl Mob {
             wool_color: crate::color::DyeColor::White,
             sheared: false,
             freezing: None,
-            skeleton_bow: kind.is_bow_skeleton().then(|| Box::new(crate::inventory::Stack::new(Item::BOW, 1))),
-            weapon: None,
+            equipment: {
+                // `AbstractSkeleton.populateDefaultEquipmentSlots` always gives a bow.
+                let mut e = super::equipment::Equipment::default();
+                if kind.is_bow_skeleton() {
+                    e.set(super::equipment::Slot::MainHand, Some(crate::inventory::Stack::new(Item::BOW, 1)));
+                }
+                e
+            },
             armor_effectiveness: 0.0,
             phantom: (kind == MobKind::Phantom).then(|| Box::new(super::phantom::State::new(pos))),
             mooshroom: (kind == MobKind::Mooshroom).then(Box::default),
@@ -1287,7 +1285,6 @@ impl Mob {
             copper_golem: (kind == MobKind::CopperGolem).then(Box::default),
             creaking: (kind == MobKind::Creaking).then(Box::default),
             sniffer: (kind == MobKind::Sniffer).then(Box::default),
-            keeps_equipment: false,
             breeze: (kind == MobKind::Breeze)
                 .then(|| Box::new(super::breeze::State { since_hurt: 1000, ..Default::default() })),
             allay: (kind == MobKind::Allay).then(Box::default),
@@ -1337,8 +1334,6 @@ impl Mob {
             detour: 0.0,
             detour_side: 1.0,
             ambient_timer: 2.0 + (yaw * 1000.0).rem_euclid(10.0),
-            armor: [None; 4],
-            armor_glint: 0,
             cry: None,
             teleport_pending: false,
             stare: 0.0,
@@ -1429,17 +1424,31 @@ impl Mob {
     }
 
     /// The cure finished: a villager again, with Java's major_positive discount.
-    pub(super) fn finish_cure(&mut self) {
+    /// Returns the preserved equipment that drops (`ZombieVillager.finishConversion`).
+    pub(super) fn finish_cure(&mut self) -> Vec<crate::inventory::Stack> {
         self.kind = MobKind::Villager;
         self.health = MobKind::Villager.max_health();
         self.baby = self.age < 0;
         self.weakness_left = 0.0;
         self.convert_left = 0.0;
         self.convert_tick = 0.0;
-        // Naturally generated equipment is discarded by Java's conversion.
-        // Picked-up equipment and binding curses are not represented on mobs.
-        self.armor = [None; 4];
-        self.armor_glint = 0;
+        // `ConversionParams.single(this, false, false)`: equipment is not
+        // kept. `dropPreservedEquipment` drops preserved slots, except items
+        // with Curse of Binding (`prevent_armor_change`), which go to the
+        // villager's inventory at the slot's index.
+        let mut old = std::mem::take(&mut self.equipment);
+        let mut kept = Vec::new();
+        for slot in super::equipment::Slot::ALL {
+            if old.get(slot).is_some_and(|s| s.enchants.has(crate::enchant::Enchantment::BindingCurse)) {
+                kept.extend(old.take(slot).map(|s| (slot.index(), s)));
+            }
+        }
+        let dropped = old.take_preserved();
+        if let Some(v) = &mut self.villager {
+            for (index, stack) in kept {
+                v.food[index] = Some(stack);
+            }
+        }
         if let Some(v) = &mut self.villager {
             v.reputation = 0;
             if let Some(owner) = self.convert_by
@@ -1454,6 +1463,7 @@ impl Mob {
             v.fleeing = false;
             v.goal = None;
         }
+        dropped
     }
 
     pub fn shape(&self) -> Shape {
@@ -1801,7 +1811,7 @@ impl Mob {
         self.attack_cooldown -= dtf;
         self.player_hit_left = (self.player_hit_left - dtf).max(0.0);
         self.weakness_left = (self.weakness_left - dtf).max(0.0);
-        self.advance_cure(dtf, world, rng);
+        self.advance_cure(dtf, world, rng, events);
         self.freeze_in_powder_snow(dtf, world);
         if let Some(v) = &mut self.villager {
             v.bell_hide = (v.bell_hide - dtf).max(0.0);

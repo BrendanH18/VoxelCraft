@@ -10,7 +10,7 @@ use crate::weapons::{self, Cue, trident as tr};
 impl Mob {
     /// A drowned holding a trident in its main hand.
     pub fn holds_trident(&self) -> bool {
-        self.kind == MobKind::Drowned && self.weapon.as_ref().is_some_and(|s| s.item == weapons::TRIDENT)
+        self.kind == MobKind::Drowned && self.equipment.main_hand().is_some_and(|s| s.item == weapons::TRIDENT)
     }
 
     /// `RangedAttackGoal.tick` with min = max interval 40 ticks and radius

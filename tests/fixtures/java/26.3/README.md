@@ -405,3 +405,34 @@ stock and structure loot. `examples/registry_audit.rs` uses the same library
 resolution logic. Names resolving through an alias establish identity only, not
 state/behavior parity. No villager-trade reference fixture exists in this folder;
 trade quantities and offer-selection rules are not verified by these tests.
+
+## Mob equipment
+
+`mob_equipment.json` records Java 26.3's `EquipmentSlot` values (order,
+type, index, count limit, id), the `DropChances` constants (default 0.085,
+preserved above 1.0, guaranteed 2.0), the shape of
+`Mob.dropCustomDeathLoot` (zero chances skipped, Curse of Vanishing's
+`prevent_equipment_drop`, player kill unless preserved, and the wear reroll
+`maxDamage - nextInt(1 + nextInt(max(maxDamage - 3, 1)))`), Looting's
+`equipment_drops` effect from `enchantment/looting.json`, the spawn
+constants and `EQUIPMENT_POPULATION_ORDER` (head first) of
+`Mob.populateDefaultEquipmentSlots`, the armor tiers of
+`getEquipmentForSlot`, the drowned's armor-free override, the
+`keepEquipment` flag of each conversion and the trial spawners' slot drop
+chances. The extractor reads constants from `javap -constants`, matches the
+bytecode instruction sequences it relies on and fails when they change. It
+does not read VoxelCraft source or the existing fixture.
+
+```sh
+python3 tools/extract_java_mob_equipment_fixtures.py /path/to/server.jar --output target/java-mob-equipment.json
+diff tests/fixtures/java/26.3/mob_equipment.json target/java-mob-equipment.json
+scripts/remote-check.sh -- 'cargo test --release --test java_mob_equipment --test entity_storage'
+```
+
+`tests/java_mob_equipment.rs` compares the slot table in both directions,
+kills seeded zombies wearing known gear by player (with and without
+Looting) and without player credit, and checks drop rates within five
+standard errors and the wear distribution against a model built from the
+reroll formula. It also loads pre-v0.17 `nether_mobs` and `villagers`
+records. Chainmail armor has no item yet (ids 1550–1553 belong to another
+v0.17 slice), so chainmail pieces are drawn but drop nothing.

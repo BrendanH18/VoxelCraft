@@ -29,8 +29,6 @@ pub const RIPTIDE_LIFT: f64 = 1.1999999f32 as f64;
 /// Drowned throw from `DrownedTridentAttackGoal(this, 1.0, 40, 10.0F)`.
 pub const DROWNED_ATTACK_INTERVAL: u32 = 40;
 pub const DROWNED_ATTACK_RADIUS: f64 = 10.0;
-/// `Mob.DEFAULT_EQUIPMENT_DROP_CHANCE` for a drowned's hand item.
-pub const EQUIPMENT_DROP_CHANCE: f32 = 0.085;
 /// `Drowned.performRangedAttack`'s shoot power.
 pub const DROWNED_SHOOT_POWER: f32 = 1.6;
 
