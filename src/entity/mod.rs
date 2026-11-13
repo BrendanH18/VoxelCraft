@@ -717,7 +717,7 @@ pub struct Target {
     /// Current health in half hearts (witches choose potions from it).
     pub health: f32,
     /// Bit set of the target's active [`crate::simulation::effects::Effect`]s.
-    pub effects: u32,
+    pub effects: u64,
     /// Occupied humanoid armor slots, for Java invisibility detection.
     pub armor_pieces: u8,
     pub sneaking: bool,
@@ -730,7 +730,7 @@ pub struct Target {
 impl Target {
     /// Whether the target has `effect` active.
     pub fn has_effect(&self, effect: crate::simulation::effects::Effect) -> bool {
-        self.effects & (1 << effect as u32) != 0
+        self.effects & (1u64 << effect as u32) != 0
     }
 
     /// LivingEntity.getVisibilityPercent, before equipment-specific mob disguises.

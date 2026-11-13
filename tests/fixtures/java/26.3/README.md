@@ -405,3 +405,29 @@ stock and structure loot. `examples/registry_audit.rs` uses the same library
 resolution logic. Names resolving through an alias establish identity only, not
 state/behavior parity. No villager-trade reference fixture exists in this folder;
 trade quantities and offer-selection rules are not verified by these tests.
+
+## Mob effects
+
+`mob_effects.json` lists all 40 effects `MobEffects` registers, in registry
+order: id, field, effect class, category, colour, whether the class hierarchy's
+`isInstantaneous` returns true, attribute modifiers (attribute id, modifier id,
+amount as the double Java stores, operation), particle override, sound played
+when added, blend durations and any extra constructor arguments (the
+Heal/Harm flag, Infested's chance and the int providers of Weaving, Oozing and
+Infested, read from their lambdas). It also records `MobEffectCategory`'s
+tooltip formatting and each effect's en_us name from the pinned client. The
+extractor walks every instruction of the `MobEffects` static initializer and
+fails on any form it does not know. It reads no VoxelCraft code or fixture.
+
+```sh
+python3 tools/extract_java_effect_fixtures.py /path/to/server.jar --client /path/to/client.jar --output target/java-effects.json
+diff tests/fixtures/java/26.3/mob_effects.json target/java-effects.json
+scripts/remote-check.sh -- 'cargo test --release --test java_effects'
+```
+
+`tests/java_effects.rs` checks both directions. Every Java effect must be an
+`Effect` whose id, name, colour, category, instantaneous flag and modifiers
+match, and every `Effect` must be a Java effect. It also covers the HUD row
+(`isBeneficial`), the `/effect` durations and saves. The particle, sound and
+blend facts are recorded but not yet compared, because the game does not
+model them per effect.

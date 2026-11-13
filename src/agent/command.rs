@@ -327,9 +327,11 @@ fn parse_turn(words: &[&str]) -> Result<Option<Turn>, String> {
     }))
 }
 
-/// `/effect give` (with seconds and amplifier) or `/effect clear`.
+/// `/effect give` or `/effect clear`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EffectChange {
+    /// The effect, its duration in ticks ([`Effect::command_duration_ticks`]
+    /// of the typed number) and its amplifier.
     Give(Effect, u32, u8),
     /// Removes one effect, or all of them.
     Clear(Option<Effect>),
@@ -340,8 +342,8 @@ impl EffectChange {
     /// and the feedback line.
     pub fn apply(self, vitals: &mut Vitals) -> (f32, String) {
         match self {
-            EffectChange::Give(effect, secs, amp) => {
-                let damage = vitals.apply_effect(effect, amp, secs.saturating_mul(20).max(1));
+            EffectChange::Give(effect, ticks, amp) => {
+                let damage = vitals.apply_effect(effect, amp, ticks.max(1));
                 (damage, format!("applied {} {}", effect.name(), crate::simulation::effects::level_name(amp)))
             }
             EffectChange::Clear(Some(effect)) => {
@@ -504,6 +506,14 @@ pub fn tab_complete(input: &str) -> Option<String> {
             complete_options(&refs, partial)?
         }
         "effect" if stem.len() <= 1 => complete_options(&["give", "clear"], partial)?,
+        // The effect id, after an optional `@s`/`@p` target.
+        "effect"
+            if matches!(stem.get(1), Some(&("give" | "clear")))
+                && (stem.len() == 2 || stem.len() == 3 && matches!(stem[2], "@s" | "@p")) =>
+        {
+            let ids: Vec<&str> = Effect::ALL.iter().map(|e| e.id()).collect();
+            complete_options(&ids, partial.strip_prefix("minecraft:").unwrap_or(partial))?
+        }
         "xp" | "experience" if stem.len() <= 1 => complete_options(&["add", "set", "query"], partial)?,
         "rotate" if stem.len() == 1 => complete_options(&["@s", "@p"], partial)?,
         "rotate" if stem.len() == 2 => complete_options(&["facing"], partial)?,
@@ -743,12 +753,14 @@ impl Command {
             }
             ["effect", "give", name, rest @ ..] if rest.len() <= 2 => {
                 let effect = Effect::from_id(name).ok_or_else(bad)?;
-                // Java's defaults: 30 seconds, level I.
-                let secs = rest.first().map_or(Ok(30), |n| {
-                    n.parse::<u32>().ok().filter(|n| (1..=1_000_000).contains(n)).ok_or_else(bad)
-                })?;
+                // Java's defaults: 30 seconds (one tick for an instantaneous
+                // effect, whose number counts ticks), level I.
+                let secs = rest
+                    .first()
+                    .map(|n| n.parse::<u32>().ok().filter(|n| (1..=1_000_000).contains(n)).ok_or_else(bad))
+                    .transpose()?;
                 let amp = rest.get(1).map_or(Ok(0), |n| n.parse::<u8>().map_err(|_| bad()))?;
-                Self::Effect(EffectChange::Give(effect, secs, amp))
+                Self::Effect(EffectChange::Give(effect, effect.command_duration_ticks(secs), amp))
             }
             ["anvil", n] => Self::Anvil(n.parse::<usize>().ok().filter(|n| (1..=9).contains(n)).ok_or_else(bad)? - 1),
             ["trade"] => Self::Trade(None),
