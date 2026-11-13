@@ -140,9 +140,11 @@ nothing; `compare.rs` previously expected every transmute grid to craft.
   wheel pick which stack comes out (`toggleSelectedItem`); here the front
   stack always comes out, which is Java's behaviour with nothing selected.
 - Restricted slots: screens that check the held item before calling
-  `click_slot` (furnace fuel, brewing, enchanting lapis, smithing inputs)
-  ignore a held bundle, where Java would let it take that slot's items or
-  try (and fail) to put one in. Result slots (crafting, furnace, anvil,
+  `click_slot` (armor, furnace fuel, brewing, enchanting lapis, grindstone
+  and smithing inputs) ignore a held bundle, where Java would let it take
+  that slot's items (an unbound helmet or a grindstone's sword goes in, as
+  `ArmorSlot.mayPickup` and the grindstone slots allow) or try (and fail)
+  to put one in. Result slots (crafting, furnace, anvil,
   smithing) don't run the override either; in Java a held bundle can scoop
   a crafting result.
 - Two Java village tables that name a bundle (tannery, weaponsmith) and the
@@ -178,3 +180,20 @@ cargo run --release -- --world bundle-shots --new --seed 42 --creative \
     --give blue_bundle --give brown_bundle --give green_bundle --give red_bundle --give black_bundle \
     --screenshot target/screenshots/bundles.png
 ```
+
+## Review
+
+- The extractor was rerun against the pinned server jar; its output is
+  byte-identical to the committed `bundles.json`. Checked by hand against
+  the reference: `BUNDLE_IN_BUNDLE_WEIGHT` 1/16 and `BEEHIVE_WEIGHT` one
+  (`BundleContents`), bucket, snowball and saddle stack sizes (`Items`),
+  `bundle.json` and `red_bundle.json`, the ten loot tables naming a bundle,
+  the bar colours and `Mth.mulAndTruncate`.
+- The tests bite: with `BUNDLE_IN_BUNDLE_WEIGHT` changed to 1/32,
+  `java_bundles` failed three tests remotely (nested weight, the bar,
+  the weight constants); the change was then reverted.
+- The click overrides, `tryInsert`, `tryTransfer`, `removeOne`, the bar and
+  the transmute refusal were read against `BundleItem`, `BundleContents`,
+  `AbstractContainerMenu` and `TransmuteRecipe`; no defect was found. The
+  restricted-slot difference above now also names the armor and grindstone
+  slots.
