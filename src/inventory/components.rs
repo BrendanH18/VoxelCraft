@@ -624,6 +624,40 @@ pub fn remove_dye(stack: Stack) -> Option<Stack> {
     Some(with_dyed_color(stack, None))
 }
 
+/// `DyedItemColor.LEATHER_COLOR` (-6265536, `#A06540`): the colour leather
+/// armor and leather horse armor are drawn in until dyed (the `dye` tint's
+/// `default` in their item models, `color_when_undyed` in
+/// `equipment/leather.json`).
+pub const LEATHER_COLOR: [u8; 3] = [0xA0, 0x65, 0x40];
+
+/// The colour a dyeable item is drawn in when it carries no `dyed_color`:
+/// [`LEATHER_COLOR`] for the leather items, none for wolf armor (Java draws
+/// undyed wolf armor with its plain model) or any other item.
+pub fn undyed_tint(item: Item) -> Option<[u8; 3]> {
+    (dyeable(item) && item != Item::WOLF_ARMOR).then_some(LEATHER_COLOR)
+}
+
+/// The `minecraft:dye` tint a stack's icon, worn layer or body armor is
+/// multiplied by: its `dyed_color`, else [`undyed_tint`]; `None` draws the
+/// texture as it is.
+pub fn dye_tint(stack: &Stack) -> Option<[u8; 3]> {
+    dyed_color(stack).or_else(|| undyed_tint(stack.item))
+}
+
+/// [`dye_tint`] as an opaque vertex colour (white when untinted).
+pub fn dye_tint_bytes(stack: Stack) -> [u8; 4] {
+    dye_tint(&stack).map_or([255; 4], |c| [c[0], c[1], c[2], 255])
+}
+
+/// [`dye_tint`] as a UI colour (white when untinted). The overlay blends
+/// in linear space over sRGB textures, so the sRGB tint is decoded here, as
+/// the entity and item-model shaders decode their vertex tints.
+pub fn dye_tint_f32(stack: Stack) -> [f32; 4] {
+    let [r, g, b, a] = dye_tint_bytes(stack);
+    let linear = |c: u8| (f32::from(c) / 255.0).powf(2.2);
+    [linear(r), linear(g), linear(b), f32::from(a) / 255.0]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

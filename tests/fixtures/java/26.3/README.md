@@ -823,3 +823,39 @@ ways, the stack sizes, the weight constants, every sequence and click
 against `content::bundle`, the recipes against the crafting grid (all 272
 bundle and dye pairs, components kept), the CLI's `craft`, the loot tables
 by rolling them, and bundles with nested contents through saves.
+
+## Dyed items
+
+`dyed_items.json` holds the facts behind dyed leather and wolf armor: the
+`#cauldron_can_remove_dye` and `#dyes` tags in file order, the six
+`minecraft:crafting_dye` recipes (target, dye, result, group), each
+`DyeColor`'s `textureDiffuseColor`, `DyedItemColor.LEATHER_COLOR`
+(-6265536, `#A06540`), the `minecraft:dye` tint defaults of the six item
+models in the client jar (and that wolf armor's undyed model is untinted),
+the layers of `equipment/leather.json` with their `color_when_undyed`, the
+water cauldron's wash (`CauldronInteractions.dyedItemIteration` and
+`LayeredCauldronBlock.lowerFillLevel`, whose bodies the extractor matches
+statement by statement), and **1216** `applyDyes` vectors: every dye alone
+on a fresh item and on five prior colours, every pair fresh and on a mixed
+colour, every triple, and full crafting tables of eight dyes. The vectors
+come from a model of the method's integer averages and float rescale; the
+extractor checks the method body line by line first so the model fails
+rather than drifts. It reads the pinned server and client jars and the
+decompiled source of the same version, nothing else.
+
+```sh
+python3 tools/extract_java_dyed_item_fixtures.py /path/to/server.jar /path/to/client.jar /path/to/decompiled/net/minecraft --output target/java-dyed-items.json
+diff tests/fixtures/java/26.3/dyed_items.json target/java-dyed-items.json
+scripts/remote-check.sh -- 'cargo test --release --test java_dyed_items --test java_recipes'
+```
+
+`tests/java_dyed_items.rs` compares both tags and the dye recipes both ways
+with the game, crafts every vector on all six dyeable items in the 2x2 and
+3x3 grids (other components kept), checks the undyed and dyed colours of the
+icons, the worn layers (overlay untinted) and an armor stand's shells, washes
+every dyeable item at every water level in Survival and Creative through the
+shared use chain (lava, powder snow, an empty cauldron and sneaking do not
+wash), puts undyed leather on at a water cauldron through the shared equip
+path and the CLI while dyed leather is washed, equips a horse with dyed
+leather horse armor, and saves and reloads dyed stacks in the inventory, on
+an armor stand and as stack strings.

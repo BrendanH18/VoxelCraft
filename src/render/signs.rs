@@ -376,7 +376,7 @@ pub fn shelf_items(world: &World, camera: DVec3, out: &mut Vec<BlockModel>) {
                 yaw: yaw.to_radians(),
                 icon,
                 orient: None,
-                tint: [255; 4],
+                tint: crate::inventory::components::dye_tint_bytes(*stack),
             });
         }
     }

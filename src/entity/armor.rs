@@ -61,11 +61,26 @@ impl ArmorKind {
     }
 }
 
-/// One worn piece. `glint` is Java's enchantment sheen.
+/// One worn piece. `glint` is Java's enchantment sheen; `dye` is the
+/// stack's `dyed_color` (leather only: other materials have no dyeable
+/// layer in their equipment asset).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Worn {
     pub kind: ArmorKind,
     pub glint: bool,
+    pub dye: Option<[u8; 3]>,
+}
+
+impl Worn {
+    /// The piece `stack` draws as, ignoring which slot it is in.
+    pub fn of(stack: &Stack) -> Option<Self> {
+        let (_, material) = stack.item.as_armor()?;
+        Some(Worn {
+            kind: ArmorKind::of(material),
+            glint: !stack.enchants.is_empty(),
+            dye: crate::inventory::components::dyed_color(stack),
+        })
+    }
 }
 
 /// Armor forced onto a spawned zombie or skeleton (`--spawn`).
@@ -75,8 +90,8 @@ pub struct Equipped {
     pub glint: bool,
 }
 
-/// Java's undyed leather colour (`#A06540`).
-pub const LEATHER_DYE: [u8; 3] = [160, 101, 64];
+/// Java's undyed leather colour (`#A06540`, `DyedItemColor.LEATHER_COLOR`).
+pub const LEATHER_DYE: [u8; 3] = crate::inventory::components::LEATHER_COLOR;
 
 /// Skin occupies array layer 0. Two sheets per material, then leather overlays.
 pub const ARRAY_LAYERS: u32 = 19;
@@ -93,16 +108,20 @@ pub fn leather_overlay(inner: bool) -> u16 {
     13 + u16::from(inner)
 }
 
+/// The vertex colour of a worn layer: `equipment/leather.json`'s first
+/// layer is `dyeable` (the stack's `dyed_color`, else `color_when_undyed`);
+/// the overlay and every other material are drawn as they are.
 pub fn tint(worn: &Worn, overlay: bool) -> [u8; 4] {
-    let rgb = if worn.kind == ArmorKind::Leather && !overlay { LEATHER_DYE } else { [255, 255, 255] };
+    let rgb =
+        if worn.kind == ArmorKind::Leather && !overlay { worn.dye.unwrap_or(LEATHER_DYE) } else { [255, 255, 255] };
     [rgb[0], rgb[1], rgb[2], if worn.glint && !overlay { 255 } else { 0 }]
 }
 
 pub fn from_stacks(armor: &[Option<Stack>; 4]) -> [Option<Worn>; 4] {
     std::array::from_fn(|i| {
         let stack = armor[i]?;
-        let (piece, material) = stack.item.as_armor()?;
-        (piece as usize == i).then_some(Worn { kind: ArmorKind::of(material), glint: !stack.enchants.is_empty() })
+        let (piece, _) = stack.item.as_armor()?;
+        if piece as usize == i { Worn::of(&stack) } else { None }
     })
 }
 
@@ -331,9 +350,9 @@ mod tests {
         let boots = Stack::new(Item::armor(ArmorPiece::Boots, ArmorMaterial::Leather), 1);
         let plate = Stack::new(Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Netherite), 1);
         let worn = from_stacks(&[Some(helmet), Some(plate), None, Some(boots)]);
-        assert_eq!(worn[0], Some(Worn { kind: ArmorKind::Diamond, glint: true }));
-        assert_eq!(worn[1], Some(Worn { kind: ArmorKind::Netherite, glint: false }));
-        assert_eq!(worn[3], Some(Worn { kind: ArmorKind::Leather, glint: false }));
+        assert_eq!(worn[0], Some(Worn { kind: ArmorKind::Diamond, glint: true, dye: None }));
+        assert_eq!(worn[1], Some(Worn { kind: ArmorKind::Netherite, glint: false, dye: None }));
+        assert_eq!(worn[3], Some(Worn { kind: ArmorKind::Leather, glint: false, dye: None }));
         assert!(worn[2].is_none());
     }
 

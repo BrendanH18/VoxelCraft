@@ -43,6 +43,9 @@ pub enum Effect {
     /// makes Java's power-5 fiery explosion there ([`World::take_anchor_blasts`]),
     /// whoever used it.
     AnchorExploded,
+    /// A water cauldron washed the held item's `dyed_color` off
+    /// (`dyedItemIteration`, which plays no sound).
+    Washed,
 }
 
 /// `RespawnAnchorBlock.isRespawnFuel`.
@@ -119,10 +122,10 @@ pub fn use_block(
         return Some(Effect::Consumed);
     }
     if let Some(contents) = cauldron_of(b) {
-        if let Some((next, stack)) = inventory.get(slot).and_then(|s| super::cauldron::wash_wolf_armor(contents, s)) {
+        if let Some((next, stack)) = inventory.get(slot).and_then(|s| super::cauldron::wash_dyed(contents, s)) {
             world.set_block(pos, cauldron(next));
             inventory.slots[slot] = Some(stack);
-            return Some(Effect::Cauldron { fill: false, lava: false, snow: false, bottle: false });
+            return Some(Effect::Washed);
         }
         let item = held?;
         let (next, result) = super::cauldron::exchange(contents, item)?;

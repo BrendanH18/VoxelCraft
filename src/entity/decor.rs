@@ -967,9 +967,22 @@ pub fn painting_colour(v: u8, w: usize, h: usize, x: usize, y: usize) -> [u8; 3]
     })
 }
 
+/// The colour of the shell an armor stand draws for a worn stack: leather
+/// in its `dyed_color` (undyed `#A06540`), other armor in its material's
+/// colour, anything else (a carved pumpkin, a head) orange.
+pub fn stand_shell_colour(stack: &Stack) -> [u8; 3] {
+    match stack.item.as_armor() {
+        Some((_, ArmorMaterial::Leather)) => {
+            crate::inventory::components::dye_tint(stack).unwrap_or(armor_colour(ArmorMaterial::Leather))
+        }
+        Some((_, m)) => armor_colour(m),
+        None => [214, 120, 32],
+    }
+}
+
 fn armor_colour(material: ArmorMaterial) -> [u8; 3] {
     match material {
-        ArmorMaterial::Leather => [160, 101, 64],
+        ArmorMaterial::Leather => crate::inventory::components::LEATHER_COLOR,
         ArmorMaterial::Iron => [198, 198, 198],
         ArmorMaterial::Gold => [232, 196, 60],
         ArmorMaterial::Diamond => [92, 219, 213],
@@ -1002,10 +1015,7 @@ fn build_stand(d: &Decor, rel: Vec3, light: Light, out: &mut EntityMesh) {
     // Worn pieces as shells around the stand.
     for (piece, stack) in ArmorPiece::ALL.iter().zip(&d.armor) {
         let Some(stack) = stack else { continue };
-        let c = match stack.item.as_armor() {
-            Some((_, m)) => armor_colour(m),
-            None => [214, 120, 32],
-        };
+        let c = stand_shell_colour(stack);
         let (min, max) = match piece {
             ArmorPiece::Helmet => ([-4.5, 23.5, -4.5], [4.5, 32.5, 4.5]),
             ArmorPiece::Chestplate => ([-4.5, 12.5, -2.5], [4.5, 24.5, 2.5]),

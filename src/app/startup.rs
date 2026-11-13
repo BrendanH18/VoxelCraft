@@ -92,6 +92,14 @@ impl Game {
                 inventory.armor[piece as usize] = Some(Stack::new(item, 1));
             }
         }
+        if !args.dyes.is_empty() {
+            use voxelcraft::inventory::components::apply_dyes;
+            for slot in inventory.armor.iter_mut().chain(&mut inventory.slots[..1]) {
+                if let Some(dyed) = slot.and_then(|s| apply_dyes(s, &args.dyes)) {
+                    *slot = Some(dyed);
+                }
+            }
+        }
         for &(e, level) in &args.enchants {
             match crate::enchant::command(inventory.slots[0], e, level) {
                 Ok(stack) => inventory.slots[0] = Some(stack),

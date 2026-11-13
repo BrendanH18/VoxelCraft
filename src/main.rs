@@ -120,6 +120,8 @@ pub struct Args {
     pub wear: Vec<item::Item>,
     /// Enchantments put on the first stack given (`--enchant`).
     pub enchants: Vec<(enchant::Enchantment, u8)>,
+    /// Dyes mixed into the first hotbar stack and the worn armor (`--dye`).
+    pub dyes: Vec<voxelcraft::color::DyeColor>,
     /// Items thrown in front of the player once the world has loaded.
     pub drop: Vec<(item::Item, u8)>,
     /// Sound: start muted, master volume 0..1, dump WAVs and exit.
@@ -197,6 +199,8 @@ voxelcraft [options]
   --wear item       put on a piece of armor at startup (repeatable)
   --enchant e[,l]   enchant the first hotbar stack (or a book there) with
                     level l (default 1) of enchantment e (repeatable)
+  --dye c[,c...]    dye the first hotbar stack and the worn armor, when
+                    dyeable, with these dyes mixed (e.g. --dye red,blue)
   --cart x,y,z,kind spawn a cart on rails, or a named boat/raft (repeatable)
   --decor x,y,z,face,item[,held]
                     hang an item frame or painting on, or stand an armor stand
@@ -303,6 +307,7 @@ fn parse_args() -> Result<Args, String> {
         give: Vec::new(),
         wear: Vec::new(),
         enchants: Vec::new(),
+        dyes: Vec::new(),
         drop: Vec::new(),
         mute: false,
         no_hud: false,
@@ -620,6 +625,17 @@ fn parse_args() -> Result<Args, String> {
                 let (name, level) = v.split_once(',').unwrap_or((&v, "1"));
                 let e = enchant::Enchantment::from_name(name.trim()).ok_or(format!("--enchant: unknown {name}"))?;
                 args.enchants.push((e, level.trim().parse().map_err(|_| format!("--enchant: bad level in {v}"))?));
+            }
+            "--dye" => {
+                let v = value("--dye")?;
+                for name in v.split(',') {
+                    let name = name.trim().replace('_', " ");
+                    let colour = voxelcraft::color::DyeColor::ALL
+                        .into_iter()
+                        .find(|c| c.adjective() == name)
+                        .ok_or(format!("--dye: unknown colour {name}"))?;
+                    args.dyes.push(colour);
+                }
             }
             "--wear" => {
                 let v = value("--wear")?;

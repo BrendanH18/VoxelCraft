@@ -172,6 +172,9 @@ its dust stage for the capture.
 on, or stands an armor stand against, a face (`up`, `down`, `north`, `south`,
 `east`, `west`) of the block at x,y,z, as the item would; a frame holds `held`
 and a stand wears it.
+`--dye colour[,colour...]` mixes those dyes (`DyedItemColor.applyDyes`) into
+the first hotbar stack and every worn piece that is dyeable, after `--give`
+and `--wear`: leather armor, leather horse armor and wolf armor.
 `--open-menu title --screenshot <file>` captures the title screen instead;
 `select`, `create`, `multiplayer` and `direct` capture Select World, Create New
 World, Play Multiplayer and Direct Connection, and `edit`, `recreate` and

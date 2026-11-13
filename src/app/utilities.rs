@@ -15,7 +15,8 @@ use voxelcraft::world::utilities::interact::Effect;
 pub(super) fn feedback(audio: &mut Audio, cell: IVec3, effect: Effect) {
     let at = Some(cell.as_dvec3() + DVec3::splat(0.5));
     let (sound, gain, pitch) = match effect {
-        Effect::Consumed | Effect::AnchorExploded => return,
+        // `dyedItemIteration` plays no sound.
+        Effect::Consumed | Effect::AnchorExploded | Effect::Washed => return,
         Effect::PotPlanted | Effect::PotEmptied => (Sound::Place(Material::Grass), 0.8, (0.9, 1.1)),
         Effect::PotFilled => (Sound::Place(Material::Stone), 0.8, (1.2, 1.4)),
         Effect::Cauldron { fill, lava, snow, bottle } => {

@@ -34,11 +34,14 @@ pub enum Use {
 pub fn color(stack: Stack) -> Option<[u8; 3]> {
     if stack.item == Item::WOLF_ARMOR { components::dyed_color(&stack) } else { None }
 }
+/// Any stack's `minecraft:dye` icon tint ([`components::dye_tint_bytes`]):
+/// dyed wolf armor and the leather items, white for everything else.
 pub fn item_tint_bytes(stack: Stack) -> [u8; 4] {
-    color(stack).map_or([255; 4], |c| [c[0], c[1], c[2], 255])
+    components::dye_tint_bytes(stack)
 }
+/// [`item_tint_bytes`] as a UI colour.
 pub fn item_tint(stack: Stack) -> [f32; 4] {
-    color(stack).map_or([1.0; 4], |c| [f32::from(c[0]) / 255.0, f32::from(c[1]) / 255.0, f32::from(c[2]) / 255.0, 1.0])
+    components::dye_tint_f32(stack)
 }
 /// DyedItemColor's integer channel averages and float brightness
 /// normalization ([`components::apply_dyes`]), for wolf armor.
