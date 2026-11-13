@@ -649,10 +649,13 @@ pub fn dye_tint_bytes(stack: Stack) -> [u8; 4] {
     dye_tint(&stack).map_or([255; 4], |c| [c[0], c[1], c[2], 255])
 }
 
-/// [`dye_tint`] as a UI colour (white when untinted).
+/// [`dye_tint`] as a UI colour (white when untinted). The overlay blends
+/// in linear space over sRGB textures, so the sRGB tint is decoded here, as
+/// the entity and item-model shaders decode their vertex tints.
 pub fn dye_tint_f32(stack: Stack) -> [f32; 4] {
     let [r, g, b, a] = dye_tint_bytes(stack);
-    [f32::from(r) / 255.0, f32::from(g) / 255.0, f32::from(b) / 255.0, f32::from(a) / 255.0]
+    let linear = |c: u8| (f32::from(c) / 255.0).powf(2.2);
+    [linear(r), linear(g), linear(b), f32::from(a) / 255.0]
 }
 
 #[cfg(test)]

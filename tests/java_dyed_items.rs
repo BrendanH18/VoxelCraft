@@ -230,6 +230,13 @@ fn undyed_and_dyed_colours_follow_the_models_and_the_leather_equipment_asset() {
         assert_eq!(c::dye_tint_bytes(lime), [r, g, b, 255], "{id}: a dyed icon is tinted with its colour");
     }
     assert_eq!(c::dye_tint_bytes(Stack::new(Item::DIAMOND, 1)), [255; 4]);
+    // Slot icons: the overlay blends in linear space over sRGB icons, so
+    // the UI tint is the sRGB colour decoded (white stays white).
+    let helmet = Stack::new(Item::armor(ArmorPiece::Helmet, ArmorMaterial::Leather), 1);
+    for (got, srgb) in c::dye_tint_f32(helmet).into_iter().zip(default) {
+        assert!((got - (f32::from(srgb) / 255.0).powf(2.2)).abs() < 1e-6, "{got} for {srgb}");
+    }
+    assert_eq!(c::dye_tint_f32(Stack::new(Item::DIAMOND, 1)), [1.0; 4]);
     // The humanoid layers: the first is dyeable (undyed #A06540), the
     // overlay is not.
     for kind in ["humanoid", "humanoid_leggings", "horse_body"] {

@@ -151,3 +151,39 @@ cargo run --release -- --world undyed --new --seed 42 --data-dir target/screensh
     --give leather_cap --wear leather_tunic --wear leather_pants --wear leather_boots \
     --camera front --screenshot target/screenshots/undyed-leather.png --pose 0,190,0,45,-10
 ```
+
+## Review (2026-11-13)
+
+A second agent checked the slice against the 26.3 source and data. The
+extractor reran to a byte-identical fixture. The `#cauldron_can_remove_dye`
+tag, `leather_helmet_dyed.json`, `LEATHER_COLOR`, the white, black and red
+`textureDiffuseColor`s, the `dye` tint default in `items/leather_helmet.json`
+and one `applyDyes` case (red and blue: `[173, 83, 152]`) were checked by
+hand. `DyeRecipe.matches`/`assemble`, `applyDyes`, `dyedItemIteration`,
+`lowerFillLevel` and `AbstractCauldronBlock.useItemOn` were read against the
+code. Mutating `mix_dyes` to divide the intensity in integers made
+`every_reference_mix_crafts_on_every_dyeable_item` fail, and changing
+`LEATHER_COLOR` by one made the tint test fail. Leaving level 1 at
+`Water(0)` instead of `Empty` failed nothing, because `cauldron(Water(0))`
+is the empty cauldron block. Repairs:
+
+- The dye tint reached the screen in the wrong colour space, or not at
+  all. The entity shader ignored the vertex colour of held items
+  (material 2). An item held in third person, or by an allay or copper
+  golem, was never tinted, so undyed leather showed as the new pale grey
+  sprite. The item-model shader (dropped items, item frames, shelves,
+  brushable blocks, the first-person hand) and the UI slot icons multiplied
+  linear texels by an sRGB tint. Undyed leather icons came out a washed-out
+  tan (about `#BF9C7F`) instead of leather brown, and dyed colours were
+  pale. Both shaders now decode the tint with `pow(c, 2.2)` as the armor
+  sheet already did. `components::dye_tint_f32` returns the decoded colour
+  for the overlay. Every other user of these vertex colours passes white,
+  so nothing else changes. A test pins the UI tint's decoding. The shader
+  change itself is unverified until someone looks at it on screen.
+- Ledger: `behaviour:cauldron/undyed_item_passes_to_item_use` was removed.
+  Undyed leather already went on at a water cauldron before this slice,
+  and the dyed half is the wash row. 10 rows remain.
+
+Still open: dyed leather held or worn by a LAN peer is drawn from the
+peer's replicated appearance. Whether the colour crosses the wire was not
+checked.
