@@ -567,11 +567,11 @@ impl Inventory {
 /// `id:count` (or `id:count:damage` for worn tools, and
 /// `id:count:damage:enchantments:repair cost:name` for enchanted,
 /// anvil-worked or named ones; enchantments and UTF-8 name bytes are hex;
-/// then the captured-creature data, and trailing optional fields: a
-/// lodestone compass's target, the map id, the hive payload, the armor trim
-/// (`pattern.material`) and the interned payload (unpadded base64 JSON),
-/// each `~` when absent before a later one), or `-` for nothing. Fields are
-/// only ever appended, so every older string still loads.
+/// then the `entity_data` component), or `-` for nothing. Optional trailing
+/// fields follow, written up to the last one present with `~` for an absent
+/// one: a lodestone compass's target, the map id, the hive payload, the
+/// armor trim (`pattern.material`) and the interned payload (unpadded
+/// base64 JSON). Fields are only ever appended, so every older string loads.
 pub fn stack_to_string(stack: Option<Stack>) -> String {
     match stack {
         None => "-".to_string(),

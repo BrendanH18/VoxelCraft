@@ -405,3 +405,29 @@ stock and structure loot. `examples/registry_audit.rs` uses the same library
 resolution logic. Names resolving through an alias establish identity only, not
 state/behavior parity. No villager-trade reference fixture exists in this folder;
 trade quantities and offer-selection rules are not verified by these tests.
+
+## Stack components
+
+`stack_components.json` holds the facts behind `Stack`'s component slots
+(`src/inventory/components.rs`): the **18** trim patterns (with asset id and
+decal flag), **11** trim materials and **43** banner patterns from the
+server jar's registry folders; the dyeable items
+(`#cauldron_can_remove_dye`) and the expanded `#trimmable_armor` tag; each
+`DyeColor`'s `textureDiffuseColor`, which `DyedItemColor.applyDyes` mixes;
+the `WritableBookContent` and `WrittenBookContent` limits; and the seven
+component ids the slots model, each checked to be registered in
+`DataComponents`. The extractor reads the pinned server jar and the
+decompiled source of the same version, nothing else.
+
+```sh
+python3 tools/extract_java_stack_component_fixtures.py /path/to/server.jar /path/to/decompiled/net/minecraft --output target/java-stack-components.json
+diff tests/fixtures/java/26.3/stack_components.json target/java-stack-components.json
+scripts/remote-check.sh -- 'cargo test --release --test stack_components'
+```
+
+`tests/stack_components.rs` compares the registries and dye colours both
+ways, checks both tags against every registered item (Java items the game
+lacks must be owned in `registry_gaps.json`), and tests
+`isSameItemSameComponents` merging, item defaults, codec limits, the save
+string, frozen pre-v0.17 stack strings and every container, including a
+save read back by a second process.

@@ -307,7 +307,7 @@ pub enum Payload {
     Banner(BannerPatterns),
 }
 
-/// Java's Java string length (UTF-16 code units), which its codecs limit.
+/// Java's `String.length` (UTF-16 code units), which its codecs limit.
 fn java_len(text: &str) -> usize {
     text.encode_utf16().count()
 }
