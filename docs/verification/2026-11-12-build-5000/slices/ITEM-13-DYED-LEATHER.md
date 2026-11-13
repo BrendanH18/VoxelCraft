@@ -113,6 +113,11 @@ Also `src/entity/model/mounts.rs::leather_horse_armor_is_drawn_in_its_dyed_colou
 the updated `src/world/utilities/tests.rs` wolf-armor wash test and
 `tests/java_recipes.rs` with the allow-list entries gone.
 
+Checks run: `cargo fmt`, then `scripts/remote-check.sh --full` (clippy and
+every test, with and without default features) passed on the final tree;
+`tools/check_doc_links.py` and `tools/campaign_ledger.py` pass. No id
+ranges were given, so `examples/id_map` was not run.
+
 ## Differences from Java
 
 - The item icon has one tint for the whole sprite: Java tints only
