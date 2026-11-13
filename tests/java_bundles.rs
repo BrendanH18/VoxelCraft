@@ -100,8 +100,8 @@ fn the_seventeen_bundles_match_the_java_tag_both_ways() {
         assert_eq!(u64::from(item.max_stack()), f["stack_size"].as_u64().unwrap(), "{id}");
     }
     // Nothing else the game registers is a bundle.
-    let ours: BTreeSet<Item> = Item::all_items().filter(|&i| bundle::is_bundle(i)).collect();
-    assert_eq!(ours, tag.iter().copied().collect::<BTreeSet<_>>());
+    let ours: BTreeSet<u16> = Item::all_items().filter(|&i| bundle::is_bundle(i)).map(|i| i.0).collect();
+    assert_eq!(ours, tag.iter().map(|i| i.0).collect::<BTreeSet<_>>());
     // The reserved ids, plain first.
     assert_eq!(bundle::BUNDLE, Item(1568));
     assert_eq!(bundle::dyed(DyeColor::Black), Item(1584));
@@ -128,12 +128,35 @@ fn weights_follow_bundle_contents() {
     assert_eq!(bundle::weight(&honey_only), Some(Fraction::new(1, 64)));
 }
 
-#[test]
-fn insert_and_remove_sequences_match_the_java_model() {
+/// The fixture's insert and remove sequences, by the behaviour each shows.
+const CAPACITY: &[&str] = &[
+    "a full stack of a 64-stacking item fills a bundle",
+    "partial stacks merge up to the weight limit",
+    "sixteen of a 16-stacking item fill a bundle",
+    "eight pearls and thirty-two stone fill a bundle exactly",
+    "the remaining weight is floored",
+    "an unstackable item weighs one",
+    "an unstackable item needs an empty bundle",
+];
+const NESTED: &[&str] = &[
+    "empty bundles are unstackable and weigh a sixteenth each",
+    "a nested bundle weighs a sixteenth plus its contents",
+    "bundles nest three deep",
+];
+const HIVES: &[&str] = &[
+    "a hive holding bees weighs one",
+    "a hive holding bees needs an empty bundle",
+    "an empty hive weighs one sixty-fourth",
+];
+const ORDER: &[&str] = &["merging moves the stack to the front", "removing takes the most recent stack first"];
+
+/// Replays the named sequences on the bundle module and compares every step
+/// with the Java model: accepted counts, what is left of the offered stack,
+/// the contents in order and their exact weight.
+fn replay(names: &[&str]) {
     let f = fixture();
-    let sequences = f["sequences"].as_array().unwrap();
-    assert_eq!(sequences.len(), 15);
-    for case in sequences {
+    for &wanted in names {
+        let case = f["sequences"].as_array().unwrap().iter().find(|c| c["name"] == wanted).unwrap();
         let name = case["name"].as_str().unwrap();
         let mut contents = stacks(&case["start"]);
         for (i, step) in case["steps"].as_array().unwrap().iter().enumerate() {
@@ -152,6 +175,55 @@ fn insert_and_remove_sequences_match_the_java_model() {
             assert_eq!(bundle::contents_weight(&contents), Some(weight), "{name} step {i}");
         }
     }
+}
+
+#[test]
+fn every_fixture_sequence_is_replayed() {
+    let f = fixture();
+    let all: BTreeSet<&str> = f["sequences"].as_array().unwrap().iter().map(|c| c["name"].as_str().unwrap()).collect();
+    let claimed: BTreeSet<&str> = [CAPACITY, NESTED, HIVES, ORDER].concat().into_iter().collect();
+    assert_eq!(all, claimed);
+    assert_eq!(all.len(), 15);
+}
+
+#[test]
+fn bundles_hold_at_most_one_unit_of_weight() {
+    replay(CAPACITY);
+}
+
+#[test]
+fn a_nested_bundle_weighs_a_sixteenth_plus_its_contents() {
+    replay(NESTED);
+}
+
+#[test]
+fn a_hive_holding_bees_weighs_one() {
+    replay(HIVES);
+}
+
+#[test]
+fn inserting_merges_to_the_front_and_removing_takes_the_front() {
+    replay(ORDER);
+}
+
+#[test]
+fn the_fullness_bar_follows_bundle_item() {
+    let filled = |items: Vec<Stack>| Stack::new(bundle::BUNDLE, 1).with_payload(Payload::Bundle(items));
+    // `isBarVisible`: only with something inside.
+    assert_eq!(bundle::bar_width(&Stack::new(bundle::BUNDLE, 1)), None);
+    assert_eq!(bundle::bar_width(&Stack::new(Block::DIRT, 1)), None);
+    // `min(1 + mulAndTruncate(weight, 12), 13)`.
+    for (count, width) in [(1, 1), (5, 1), (6, 2), (32, 7), (63, 12), (64, 13)] {
+        let b = filled(vec![Stack::new(Block::DIRT, count)]);
+        assert_eq!(bundle::bar_width(&b), Some(width), "{count} dirt");
+        let full = count == 64;
+        assert_eq!(bundle::bar_rgb(&b), if full { [1.0, 0.33, 0.33] } else { [0.44, 0.53, 1.0] }, "{count} dirt");
+    }
+    // A dyed bundle and a nested bundle count the same way: 1/16 + 16/64.
+    let inner = filled(vec![Stack::new(Block::DIRT, 16)]);
+    let outer = Stack::new(bundle::dyed(DyeColor::Red), 1).with_payload(Payload::Bundle(vec![inner]));
+    assert_eq!(bundle::fullness(&outer), Fraction::new(5, 16));
+    assert_eq!(bundle::bar_width(&outer), Some(4));
 }
 
 #[test]
@@ -449,7 +521,7 @@ fn bundles_with_nested_contents_save_and_load() {
     let mut inv = Inventory::default();
     inv.slots[0] = Some(outer);
     inv.slots[5] = Some(with_hive);
-    inv.cursor = Some(inner);
+    inv.offhand = Some(inner);
     let loaded = Inventory::deserialize(&inv.serialize()).unwrap();
     assert_eq!(loaded, inv);
     assert_eq!(loaded.slots[0].unwrap().bundle_contents()[0].bundle_contents()[0].display_name(), "Soil");
