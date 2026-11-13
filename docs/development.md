@@ -218,8 +218,10 @@ To dig into buried content with `--place x,y,z,air`, list the cells top
 down: removing a cell under sand or gravel first drops it into the hole. The camera looks along `(cos yaw, sin yaw)` in x and z,
 so a pose of `x-40,y+35,z+40,-45,-30` looks down at a structure at `x,y,z`.
 Underground structures need a camera in open air inside them and
-`--effect night_vision,600`; `--no-hud` also hides the inventory, so leave
-it off for UI captures. The
+`--effect night_vision,600` (or `night_vision,infinite`); `--effect` also
+takes `ambient`, `hideparticles` and `hideicon` after the amplifier, as in
+`--effect conduit_power,infinite,0,ambient`. `--no-hud` also hides the
+inventory, so leave it off for UI captures. The
 [2026-11-09 stabilisation pass](verification/2026-11-09-stabilisation-pass.md)
 lists the poses it used.
 
