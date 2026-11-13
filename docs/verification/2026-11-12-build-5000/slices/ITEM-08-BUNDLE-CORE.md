@@ -118,7 +118,15 @@ nothing; `compare.rs` previously expected every transmute grid to craft.
     the inventory, a chest and a dropped item; plain bundles keep `id:count`.
 - `src/content/bundle.rs`: fraction arithmetic unit test.
 - `src/world/loot.rs`: the cartographer JDK vector for seed 1, with a bundle.
-- Run results are in the hand-off report; see "Unverified" for what wasn't.
+- `VC_REMOTE_RETRIES=60 scripts/remote-check.sh --full` passed at
+  `5c7e0d09` (clippy and every test, with and without default features;
+  `java_bundles`, `java_recipes` and `java_registry` among them).
+- `examples/id_map.rs -- items:1568-1584` reports exactly 1568–1584
+  registered (17).
+- `tools/JavaLootVectors.java` was rerun: seeds 0, 42 and 12345 are
+  unchanged by keeping the bundle; seed 1 holds one.
+- `python3 tools/campaign_ledger.py` (47 rows) and
+  `python3 tools/check_doc_links.py` pass.
 
 ## Differences from Java
 
