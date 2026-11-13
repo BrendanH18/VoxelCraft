@@ -6,6 +6,7 @@ use glam::{DVec3, IVec3};
 
 use crate::item::Item;
 use crate::physics::{self, BlockSource, Shape};
+use crate::simulation::damage::Cause;
 use crate::world::block::Block;
 use crate::world::terrain::Dimension;
 
@@ -845,29 +846,29 @@ impl MobKind {
     }
 
     /// Melee damage and the death message it gives.
-    pub(super) fn melee(self) -> (f32, &'static str) {
+    pub(super) fn melee(self) -> (f32, Cause) {
         match self {
-            MobKind::CaveSpider => (2.0, "was slain by a cave spider"),
-            MobKind::Spider => (2.0, "was slain by a spider"),
-            MobKind::ZombifiedPiglin => (5.0, "was slain by a zombified piglin"),
-            MobKind::Enderman => (7.0, "was slain by an enderman"),
-            MobKind::Blaze => (6.0, "was slain by a blaze"),
-            MobKind::WitherSkeleton => (8.0, "was slain by a wither skeleton"),
-            MobKind::Husk => (3.0, "was slain by a husk"),
-            MobKind::Drowned => (3.0, "was slain by a drowned"),
-            MobKind::Silverfish => (1.0, "was slain by a silverfish"),
-            MobKind::PolarBear => (6.0, "was slain by a polar bear"),
-            MobKind::Panda => (6.0, "was slain by a panda"),
-            MobKind::Ocelot => (3.0, "was slain by an ocelot"),
-            MobKind::IronGolem => (15.0, "was slain by an iron golem"),
-            MobKind::SnowGolem => (0.0, "was slain by a snow golem"),
-            MobKind::ZombieVillager => (3.0, "was slain by a zombie villager"),
-            MobKind::Piglin => (5.0, "was slain by a piglin"),
-            MobKind::PiglinBrute => (7.0, "was slain by a piglin brute"),
-            MobKind::Hoglin => (6.0, "was slain by a hoglin"),
-            MobKind::Zoglin => (6.0, "was slain by a zoglin"),
+            MobKind::CaveSpider => (2.0, Cause::mob("was slain by a cave spider")),
+            MobKind::Spider => (2.0, Cause::mob("was slain by a spider")),
+            MobKind::ZombifiedPiglin => (5.0, Cause::mob("was slain by a zombified piglin")),
+            MobKind::Enderman => (7.0, Cause::mob("was slain by an enderman")),
+            MobKind::Blaze => (6.0, Cause::mob("was slain by a blaze")),
+            MobKind::WitherSkeleton => (8.0, Cause::mob("was slain by a wither skeleton")),
+            MobKind::Husk => (3.0, Cause::mob("was slain by a husk")),
+            MobKind::Drowned => (3.0, Cause::mob("was slain by a drowned")),
+            MobKind::Silverfish => (1.0, Cause::mob("was slain by a silverfish")),
+            MobKind::PolarBear => (6.0, Cause::mob("was slain by a polar bear")),
+            MobKind::Panda => (6.0, Cause::mob("was slain by a panda")),
+            MobKind::Ocelot => (3.0, Cause::mob("was slain by an ocelot")),
+            MobKind::IronGolem => (15.0, Cause::mob("was slain by an iron golem")),
+            MobKind::SnowGolem => (0.0, Cause::mob("was slain by a snow golem")),
+            MobKind::ZombieVillager => (3.0, Cause::mob("was slain by a zombie villager")),
+            MobKind::Piglin => (5.0, Cause::mob("was slain by a piglin")),
+            MobKind::PiglinBrute => (7.0, Cause::mob("was slain by a piglin brute")),
+            MobKind::Hoglin => (6.0, Cause::mob("was slain by a hoglin")),
+            MobKind::Zoglin => (6.0, Cause::mob("was slain by a zoglin")),
             MobKind::Warden => (super::warden::MELEE_DAMAGE, super::warden::CAUSE_MELEE),
-            _ => (3.0, "was slain by a zombie"),
+            _ => (3.0, Cause::mob("was slain by a zombie")),
         }
     }
 
@@ -1382,7 +1383,7 @@ impl Mob {
         }
     }
 
-    pub(super) fn melee_attack(&self) -> (f32, &'static str) {
+    pub(super) fn melee_attack(&self) -> (f32, Cause) {
         let (base, cause) = self.kind.melee();
         let strength = if self.convert_left > 0.0 { 3.0 } else { 0.0 };
         let weakness = if self.weakness_left > 0.0 { 4.0 } else { 0.0 };
@@ -2273,11 +2274,11 @@ impl Mob {
                             let (damage, cause) = if self.kind.is_cube() {
                                 (
                                     self.size as f32 + if self.kind == MobKind::MagmaCube { 2.0 } else { 0.0 },
-                                    if self.kind == MobKind::MagmaCube {
+                                    Cause::mob(if self.kind == MobKind::MagmaCube {
                                         "was slain by a magma cube"
                                     } else {
                                         "was slain by a slime"
-                                    },
+                                    }),
                                 )
                             } else {
                                 self.melee_attack()
@@ -2818,9 +2819,9 @@ impl Mob {
                 from: eye + dir * 0.5,
                 target,
                 cause: match self.kind {
-                    MobKind::Stray => "was shot by a stray",
-                    MobKind::Bogged => "was shot by a bogged",
-                    _ => "was shot by a skeleton",
+                    MobKind::Stray => Cause::STRAY_ARROW,
+                    MobKind::Bogged => Cause::BOGGED_ARROW,
+                    _ => Cause::SKELETON_ARROW,
                 },
                 shooter: self.uid,
             });
@@ -2942,7 +2943,7 @@ impl Mob {
             events.push(EntityEvent::Explosion {
                 center,
                 power: CREEPER_POWER * if self.lightning_charged { 2. } else { 1. },
-                cause: "was blown up by a creeper",
+                cause: Cause::CREEPER,
                 credit_player: false,
             });
             // Gone in the blast: no death animation, no loot.

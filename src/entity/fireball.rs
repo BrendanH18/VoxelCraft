@@ -116,7 +116,7 @@ impl Fireball {
             events.push(EntityEvent::Explosion {
                 center: self.pos,
                 power: GHAST_POWER,
-                cause: "was fireballed by a ghast",
+                cause: crate::simulation::damage::Cause::GHAST_FIREBALL,
                 credit_player: self.deflected,
             });
             return;
@@ -128,7 +128,7 @@ impl Fireball {
                 player: hit.id,
                 damage: DAMAGE,
                 knockback: push.as_vec3(),
-                cause: "was fireballed by a blaze",
+                cause: crate::simulation::damage::Cause::BLAZE_FIREBALL,
             });
             events.push(EntityEvent::Ignite { player: hit.id, secs: BURN });
         }
@@ -204,7 +204,12 @@ mod tests {
         while f.update(0.05, &world, &ctx(vec![]), &[], &mut events) {}
         assert!(events.iter().any(|e| matches!(
             e,
-            EntityEvent::Explosion { credit_player: true, power: GHAST_POWER, cause: "was fireballed by a ghast", .. }
+            EntityEvent::Explosion {
+                credit_player: true,
+                power: GHAST_POWER,
+                cause: crate::simulation::damage::Cause::GHAST_FIREBALL,
+                ..
+            }
         )));
         assert!(!events.iter().any(|e| matches!(e, EntityEvent::IgniteBlock { .. } | EntityEvent::PlayerHit { .. })));
     }

@@ -157,9 +157,14 @@ pub struct Hurts {
     pub fall: f32,
     pub drown: f32,
     pub lava: f32,
+    /// Standing in a fire block (`in_fire`).
     pub fire: f32,
-    /// Lingering burning damage bypasses armor; contact fire does not.
+    /// Lingering burning damage (`on_fire`) bypasses armor; contact fire does not.
     pub burn: f32,
+    /// Standing on magma without Frost Walker (`hot_floor`).
+    pub hot_floor: f32,
+    /// Touching a lit campfire (`campfire`).
+    pub campfire: f32,
     pub starve: f32,
     pub freeze: f32,
     /// A falling stalactite (`DamageTypes.FALLING_STALACTITE`).
@@ -310,6 +315,9 @@ pub struct Vitals {
     pub impulse_grace: u32,
     /// Set while dead: what killed the player.
     pub death: Option<String>,
+    /// The damage type of the hit that killed the player, while it is known
+    /// (not saved: a restored dead player keeps only the text).
+    killed_by: Option<super::damage::DamageType>,
     peaceful_timer: f32,
     peaceful_food_timer: f32,
     /// Java TIME_SINCE_REST statistic, in entity ticks; zero for older saves.
@@ -346,6 +354,7 @@ impl Default for Vitals {
             critical_fall_distance: 0.0,
             previous_fall_y: None,
             death: None,
+            killed_by: None,
             peaceful_timer: 0.0,
             peaceful_food_timer: 0.0,
             ticks_frozen: 0,
@@ -377,6 +386,11 @@ impl Vitals {
 
     pub fn is_dead(&self) -> bool {
         self.death.is_some()
+    }
+
+    /// The damage type that killed this player, when it died this session.
+    pub fn killed_by(&self) -> Option<super::damage::DamageType> {
+        self.killed_by.filter(|_| self.is_dead())
     }
 
     /// Sets the player on fire for at least `secs` (blaze fireballs).
@@ -429,11 +443,24 @@ impl Vitals {
 
     /// Applies damage and returns how much was actually taken (0 in
     /// creative, while dead, or when absorbed by hurt immunity).
-    pub fn damage(&mut self, amount: f32, cause: &str, creative: bool) -> f32 {
+    ///
+    /// The cause's damage type decides, as in Java's `Player.hurtServer`,
+    /// `LivingEntity.hurtServer` and `getDamageAfterMagicAbsorb`: creative
+    /// (`abilities.invulnerable`) stops all but `#bypasses_invulnerability`,
+    /// Fire Resistance refuses `#is_fire`, Resistance skips
+    /// `#bypasses_effects` and `#bypasses_resistance`, and the hit costs the
+    /// type's food exhaustion.
+    pub fn damage(&mut self, amount: f32, cause: impl Into<super::damage::Cause>, creative: bool) -> f32 {
+        use super::damage::DamageTag as Tag;
+        let cause = cause.into();
+        let creative = creative && !cause.is(Tag::BypassesInvulnerability);
         if creative || self.is_dead() || amount <= 0.0 {
             return 0.0;
         }
-        let amount = if matches!(cause, CAUSE_STARVE | "fell out of the world") {
+        if cause.is(Tag::IsFire) && self.effects.has(super::effects::Effect::FireResistance) {
+            return 0.0;
+        }
+        let amount = if cause.is(Tag::BypassesEffects) || cause.is(Tag::BypassesResistance) {
             amount
         } else {
             amount * self.effects.resistance_factor()
@@ -460,10 +487,11 @@ impl Vitals {
         let lost = self.effects.absorb(taken);
         if lost > 0.0 {
             self.health = (self.health - lost).max(0.0);
-            self.hunger.exhaust(EXHAUST_DAMAGE);
+            self.hunger.exhaust(cause.kind.exhaustion());
         }
         if self.health <= 0.0 {
-            self.death = Some(cause.to_string());
+            self.death = Some(cause.text.to_string());
+            self.killed_by = Some(cause.kind);
             self.time_since_rest = 0;
         }
         taken
@@ -543,7 +571,7 @@ impl Vitals {
             self.hunger.exhaust(effect.exhaustion);
         }
         if effect.wither > 0.0 {
-            self.damage(effect.wither, "withered away", creative);
+            self.damage(effect.wither, super::damage::Cause::WITHER, creative);
         }
         let fire_proof = self.effects.has(Effect::FireResistance);
         // Slow falling cancels falls; jump boost forgives a block per level.
@@ -654,17 +682,17 @@ impl Vitals {
             self.fire_timer = 0.0;
         }
         if env.on_magma && !env.frost_walker && !creative {
-            hurts.fire = hurts.fire.max(1.0);
+            hurts.hot_floor = 1.0;
         }
         // Campfires hurt without setting anyone alight.
         if env.campfire > 0.0 && !creative {
-            hurts.fire = hurts.fire.max(env.campfire);
+            hurts.campfire = env.campfire;
         }
         if !creative {
             hurts.stalactite = env.stalactite;
         }
         if fire_proof {
-            (hurts.lava, hurts.fire, hurts.burn) = (0.0, 0.0, 0.0);
+            (hurts.lava, hurts.fire, hurts.burn, hurts.hot_floor, hurts.campfire) = (0.0, 0.0, 0.0, 0.0, 0.0);
         }
 
         if !creative {
@@ -812,10 +840,10 @@ mod tests {
     fn magma_hurts_without_igniting_and_frost_walker_protects() {
         let mut v = Vitals::default();
         let magma = Env { on_magma: true, ..Env::default() };
-        assert_eq!(v.tick(0.05, &magma, false).fire, 1.0);
+        assert_eq!(v.tick(0.05, &magma, false).hot_floor, 1.0);
         assert_eq!(v.tick(1.0, &Env::default(), false).burn, 0.0);
-        assert_eq!(v.tick(0.05, &Env { frost_walker: true, ..magma }, false).fire, 0.0);
-        assert_eq!(v.tick(0.05, &magma, true).fire, 0.0);
+        assert_eq!(v.tick(0.05, &Env { frost_walker: true, ..magma }, false).hot_floor, 0.0);
+        assert_eq!(v.tick(0.05, &magma, true).hot_floor, 0.0);
     }
 
     #[test]

@@ -132,30 +132,26 @@ impl Game {
             let top = self.session.player.collision_shape().aabb(self.session.player.pos).1.y;
             self.world.douse_in_cauldron(self.session.player.pos, top);
         }
+        use voxelcraft::simulation::damage::Cause;
         if hurts.freeze > 0.0 {
-            self.damage_player(hurts.freeze, survival::CAUSE_FREEZE);
+            self.damage_player_armored(hurts.freeze, Cause::FREEZE);
         }
         self.trample(hurts.landed);
-        if hurts.fall > 0.0 {
-            self.damage_player(hurts.fall, survival::CAUSE_FALL);
-        }
-        if hurts.drown > 0.0 {
-            self.damage_player(hurts.drown, survival::CAUSE_DROWN);
-        }
-        if hurts.lava > 0.0 {
-            self.damage_player_armored(hurts.lava, survival::CAUSE_LAVA);
-        }
-        if hurts.stalactite > 0.0 {
-            self.damage_player_armored(hurts.stalactite, survival::CAUSE_STALACTITE);
-        }
-        if hurts.fire > 0.0 {
-            self.damage_player_armored(hurts.fire, survival::CAUSE_FIRE);
-        }
-        if hurts.burn > 0.0 {
-            self.damage_player(hurts.burn, survival::CAUSE_FIRE);
-        }
-        if hurts.starve > 0.0 {
-            self.damage_player(hurts.starve, survival::CAUSE_STARVE);
+        // Armor takes its share of each type outside `#bypasses_armor`.
+        for (damage, cause) in [
+            (hurts.fall, Cause::FALL),
+            (hurts.drown, Cause::DROWN),
+            (hurts.lava, Cause::LAVA),
+            (hurts.stalactite, Cause::FALLING_STALACTITE),
+            (hurts.fire, Cause::IN_FIRE),
+            (hurts.hot_floor, Cause::HOT_FLOOR),
+            (hurts.campfire, Cause::CAMPFIRE),
+            (hurts.burn, Cause::ON_FIRE),
+            (hurts.starve, Cause::STARVE),
+        ] {
+            if damage > 0.0 {
+                self.damage_player_armored(damage, cause);
+            }
         }
 
         let acting = !self.menu.is_open() && !self.console.open && self.mouse_grabbed && !self.inventory_open;

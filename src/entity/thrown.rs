@@ -171,9 +171,9 @@ impl Thrown {
                         damage: super::wind::HIT_DAMAGE,
                         knockback: (DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 0.5).as_vec3(),
                         cause: if self.kind == Kind::BreezeWindCharge {
-                            "was slain by a breeze"
+                            crate::simulation::damage::Cause::BREEZE_WIND_CHARGE
                         } else {
-                            "was blasted by a wind charge"
+                            crate::simulation::damage::Cause::WIND_CHARGE
                         },
                     });
                 }
@@ -188,7 +188,7 @@ impl Thrown {
                     player: t.id,
                     damage: 1.0,
                     knockback: (DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 0.5).as_vec3(),
-                    cause: "was spat on by a llama",
+                    cause: crate::simulation::damage::Cause::LLAMA_SPIT,
                 });
                 return false;
             }

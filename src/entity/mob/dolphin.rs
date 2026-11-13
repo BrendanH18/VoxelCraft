@@ -554,7 +554,7 @@ impl<W: MobWorld + ?Sized> Dolphin<'_, W> {
                 player: t.id,
                 damage: 3.0,
                 knockback: (flat.normalize_or(DVec3::X) * 4.0 + DVec3::Y * 3.0).as_vec3(),
-                cause: "was slain by a dolphin",
+                cause: crate::simulation::damage::Cause::mob("was slain by a dolphin"),
             });
         }
     }

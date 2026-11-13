@@ -254,7 +254,7 @@ impl Entities {
                     player: player.id,
                     damage: iron_damage(&mut self.rng),
                     knockback: (dir * 6.0 + DVec3::Y * 8.0).as_vec3(),
-                    cause: "was slain by an iron golem",
+                    cause: crate::simulation::damage::Cause::mob("was slain by an iron golem"),
                 });
                 continue;
             }
@@ -609,9 +609,15 @@ mod tests {
         let world = Grid::flat(0);
         let hit = |e: &mut Entities, near: DVec3| {
             (0..40).any(|_| {
-                e.update(0.05, &world, &ctx(near, true))
-                    .iter()
-                    .any(|ev| matches!(ev, EntityEvent::PlayerHit { cause: "was slain by an iron golem", .. }))
+                e.update(0.05, &world, &ctx(near, true)).iter().any(|ev| {
+                    matches!(
+                        ev,
+                        EntityEvent::PlayerHit {
+                            cause: crate::simulation::damage::Cause { text: "was slain by an iron golem", .. },
+                            ..
+                        }
+                    )
+                })
             })
         };
         let mut e = Entities::new(1);

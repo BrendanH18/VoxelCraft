@@ -43,7 +43,7 @@ pub struct Arrow {
     /// A player's arrow in a world with PvP on: it can hit other players.
     pub pvp: bool,
     /// Death message for players hit by this projectile.
-    cause: &'static str,
+    cause: crate::simulation::damage::Cause,
     /// The player can collect it once stuck (not arrows shot in creative).
     pub pickup: bool,
     /// A fully drawn shot: deals a random bonus on hit.
@@ -81,7 +81,12 @@ pub struct ArrowTarget {
 
 impl Arrow {
     /// An arrow from `from` aimed to arc onto `target`, with a little spread.
-    pub fn aimed(from: DVec3, target: DVec3, cause: &'static str, rng: &mut Rng) -> Self {
+    pub fn aimed(
+        from: DVec3,
+        target: DVec3,
+        cause: impl Into<crate::simulation::damage::Cause>,
+        rng: &mut Rng,
+    ) -> Self {
         let d = target - from;
         // Lead the drop: over flight time t the arrow sinks g t² / 2.
         let t = d.length() / SPEED;
@@ -103,7 +108,7 @@ impl Arrow {
             shooter: None,
             deflector: None,
             pvp: false,
-            cause,
+            cause: cause.into(),
             pickup: false,
             critical: false,
             enchants: Default::default(),
@@ -132,7 +137,7 @@ impl Arrow {
             shooter: None,
             deflector: None,
             pvp: false,
-            cause: "was shot by an arrow",
+            cause: crate::simulation::damage::Cause::ARROW,
             pickup,
             critical: power >= 1.0,
             enchants: Default::default(),
@@ -441,7 +446,7 @@ impl Arrow {
                     player: hit.id,
                     damage,
                     knockback: push.as_vec3(),
-                    cause: if self.from_player { "was shot by a player" } else { self.cause },
+                    cause: if self.from_player { crate::simulation::damage::Cause::PLAYER_ARROW } else { self.cause },
                 });
                 if self.potion.is_some() || self.custom_effect.is_some() {
                     events.push(EntityEvent::ArrowEffectsStart { player: hit.id });
@@ -651,9 +656,10 @@ mod tests {
                 }
             }
             if player {
-                assert!(
-                    events.iter().any(|e| matches!(e, EntityEvent::PlayerHit { cause: "was shot by an arrow", .. }))
-                );
+                assert!(events.iter().any(|e| matches!(
+                    e,
+                    EntityEvent::PlayerHit { cause: crate::simulation::damage::Cause::ARROW, .. }
+                )));
             } else {
                 assert!(events.iter().any(|e| matches!(e, EntityEvent::MobShot { player_kill: false, .. })));
                 assert!(mobs[0].health < MobKind::Cow.max_health());

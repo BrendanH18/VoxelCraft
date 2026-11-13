@@ -62,7 +62,7 @@ impl Mob {
                 player: target.id,
                 damage: 3.,
                 knockback: ((to * DVec3::new(1., 0., 1.)).normalize_or_zero() * 6.).as_vec3(),
-                cause: "was slain by a creaking",
+                cause: crate::simulation::damage::Cause::mob("was slain by a creaking"),
                 java: Some(crate::knockback::Hit::melee(self.pos, target.pos, 0., 0.)),
             });
             events.push(EntityEvent::OwnerHurt { player: target.id, attacker: self.uid });

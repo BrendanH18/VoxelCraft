@@ -134,7 +134,7 @@ impl Game {
         }
         for &(effect, secs, amp) in &args.effects {
             let damage = vitals.apply_effect(effect, amp, secs.saturating_mul(20).max(1));
-            vitals.damage(damage, survival::CAUSE_MAGIC, mode.invulnerable());
+            vitals.damage(damage, voxelcraft::simulation::damage::Cause::MAGIC, mode.invulnerable());
         }
         if let Some(level) = args.xp {
             let total = (0..level.min(1000)).map(crate::simulation::experience::points_to_next).sum();

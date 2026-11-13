@@ -227,10 +227,11 @@ impl PlayerSession {
     /// player dead is undone by a totem of undying in either hand (main
     /// hand first). The totem is used up; health is 1 half heart with
     /// Regeneration II 45 s, Absorption II 5 s and Fire Resistance 40 s.
-    /// Void and `/kill` damage bypass it. Returns whether it saved the player.
+    /// `#bypasses_invulnerability` damage (the void, `/kill`) bypasses it.
+    /// Returns whether it saved the player.
     pub fn totem_saves(&mut self, slot: usize) -> bool {
-        let cause = self.vitals.death.as_deref().unwrap_or_default();
-        if !self.vitals.is_dead() || matches!(cause, "fell out of the world" | "was killed") {
+        use crate::simulation::damage::DamageTag;
+        if !self.vitals.is_dead() || self.vitals.killed_by().is_some_and(|t| t.is(DamageTag::BypassesInvulnerability)) {
             return false;
         }
         let taken: Option<Stack> = if self.inventory.get(slot).is_some_and(|s| s.item == Item::TOTEM_OF_UNDYING) {

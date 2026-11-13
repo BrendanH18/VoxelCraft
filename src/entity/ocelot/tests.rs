@@ -72,7 +72,7 @@ fn ocelot_reference_attributes_food_empty_loot_and_creature_category() {
     assert_eq!(m.health, 10.0);
     assert_eq!(m.kind.shape(), Shape::new(0.3, 0.7));
     assert_eq!(goals::movement_speed(m.kind), facts["constants"]["movement_speed"].as_f64().unwrap());
-    assert_eq!(m.kind.melee(), (3.0, "was slain by an ocelot"));
+    assert_eq!(m.kind.melee(), (3.0, crate::simulation::damage::Cause::mob("was slain by an ocelot")));
     assert_eq!(m.kind.category(), MobCategory::Creature);
     assert!(!m.kind.is_hostile());
     assert!(m.kind.leashable());

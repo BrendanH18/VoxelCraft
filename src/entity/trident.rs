@@ -424,7 +424,11 @@ impl Trident {
             }
             Hit::Player(id, pos) => {
                 let damage = tr::BASE_DAMAGE;
-                let cause = if owner_player.is_some() { "was impaled by a player" } else { "was impaled by a drowned" };
+                let cause = if owner_player.is_some() {
+                    crate::simulation::damage::Cause::PLAYER_TRIDENT
+                } else {
+                    crate::simulation::damage::Cause::DROWNED_TRIDENT
+                };
                 events.push(EntityEvent::PlayerHit {
                     player: id,
                     damage,
@@ -951,6 +955,9 @@ mod tests {
             events.iter().any(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Weapon(Cue::DrownedShoot), .. })),
             "{events:?}"
         );
-        assert!(events.iter().any(|ev| matches!(ev, EntityEvent::PlayerHit { cause: "was impaled by a drowned", .. })));
+        assert!(events.iter().any(|ev| matches!(
+            ev,
+            EntityEvent::PlayerHit { cause: crate::simulation::damage::Cause::DROWNED_TRIDENT, .. }
+        )));
     }
 }

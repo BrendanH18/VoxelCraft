@@ -264,7 +264,7 @@ mod tests {
             let mut arrow = Arrow::aimed(
                 DVec3::new(3., 1.2, 0.),
                 DVec3::new(0., 1.2, 0.),
-                "was shot by a bogged",
+                crate::simulation::damage::Cause::BOGGED_ARROW,
                 &mut Rng::new(9),
             );
             arrow.custom_effect = MobKind::Bogged.arrow_effect();

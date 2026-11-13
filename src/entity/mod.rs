@@ -187,7 +187,7 @@ pub enum EntityEvent {
         damage: f32,
         knockback: Vec3,
         java: Option<crate::knockback::Hit>,
-        cause: &'static str,
+        cause: crate::simulation::damage::Cause,
     },
     /// A warden's sonic boom hit `player`: `damage` that armor and
     /// enchantments don't reduce (difficulty scales it), then the boom's
@@ -226,7 +226,7 @@ pub enum EntityEvent {
     PlayerSting {
         player: PlayerId,
         damage: f32,
-        cause: &'static str,
+        cause: crate::simulation::damage::Cause,
         poison: u32,
     },
     /// Tipped status events between these markers require the immediately
@@ -272,7 +272,7 @@ pub enum EntityEvent {
     Explosion {
         center: DVec3,
         power: f32,
-        cause: &'static str,
+        cause: crate::simulation::damage::Cause,
         credit_player: bool,
     },
     Sound {
@@ -283,7 +283,7 @@ pub enum EntityEvent {
     Shoot {
         from: DVec3,
         target: DVec3,
-        cause: &'static str,
+        cause: crate::simulation::damage::Cause,
         /// The shooting mob's uid, so its target's wolves can retaliate.
         shooter: u32,
     },
@@ -2129,7 +2129,7 @@ impl Entities {
             self.pending_sounds.push(EntityEvent::PlayerSting {
                 player: owner,
                 damage: 2.0,
-                cause: "was pricked by a guardian",
+                cause: crate::simulation::damage::Cause::GUARDIAN_SPIKES,
                 poison: 0,
             });
         }
@@ -3256,7 +3256,7 @@ mod tests {
         let EntityEvent::PlayerHit { player: id, damage, knockback, cause, .. } = hits[0] else { panic!("{hits:?}") };
         assert_eq!(id, PlayerId::HOST);
         assert!(damage > 0.0 && knockback.x > 0.0 && knockback.y > 0.0);
-        assert_eq!(cause, "was slain by a zombie");
+        assert_eq!(cause, crate::simulation::damage::Cause::mob("was slain by a zombie"));
 
         // Creative players are ignored.
         let c = Ctx { players: vec![Target::new(PlayerId::HOST, player, false)], ..c };
@@ -3458,7 +3458,9 @@ mod tests {
         let shots: Vec<_> = events
             .iter()
             .filter_map(|ev| match ev {
-                EntityEvent::PlayerHit { player, cause: "was shot by a skeleton", .. } => Some(*player),
+                EntityEvent::PlayerHit { player, cause: crate::simulation::damage::Cause::SKELETON_ARROW, .. } => {
+                    Some(*player)
+                }
                 _ => None,
             })
             .collect();
@@ -3656,7 +3658,9 @@ mod tests {
         e.spawn(MobKind::Skeleton, DVec3::new(0.5, 10.0, 0.5));
         let events = run(&mut e, &world, &night(DVec3::new(9.5, 10.0, 0.5)), 5.0);
         assert!(events.iter().any(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Bow, .. })));
-        let shot = |ev: &EntityEvent| matches!(ev, EntityEvent::PlayerHit { cause: "was shot by a skeleton", .. });
+        let shot = |ev: &EntityEvent| {
+            matches!(ev, EntityEvent::PlayerHit { cause: crate::simulation::damage::Cause::SKELETON_ARROW, .. })
+        };
         assert!(events.iter().any(shot), "{events:?}");
 
         // Arrows that miss stick in the ground.
@@ -3797,8 +3801,15 @@ mod tests {
         assert!(!run(&mut e, &world, &c, 3.0).iter().any(is_hit), "neutral");
         e.attack(0, DVec3::X, 1.0);
         let events = run(&mut e, &world, &c, 3.0);
-        let slain =
-            |ev: &EntityEvent| matches!(ev, EntityEvent::PlayerHit { cause: "was slain by a zombified piglin", .. });
+        let slain = |ev: &EntityEvent| {
+            matches!(
+                ev,
+                EntityEvent::PlayerHit {
+                    cause: crate::simulation::damage::Cause { text: "was slain by a zombified piglin", .. },
+                    ..
+                }
+            )
+        };
         assert!(events.iter().any(slain), "{events:?}");
         assert_eq!(e.mobs[1].ai, Ai::Chase, "the whole pack is angry");
         assert_eq!(MobKind::from_name("zombified_piglin"), Some(MobKind::ZombifiedPiglin));
@@ -4321,7 +4332,7 @@ mod tests {
         assert!((e.tnt[0].pos.y - 10.0).abs() < 1e-3, "landed: {:?}", e.tnt[0].pos);
         let late = run(&mut e, &world, &c, 1.0);
         let boom = |ev: &EntityEvent| {
-            matches!(ev, EntityEvent::Explosion { power: tnt::POWER, cause: "was blown up by TNT", .. })
+            matches!(ev, EntityEvent::Explosion { power: tnt::POWER, cause: crate::simulation::damage::Cause::TNT, .. })
         };
         assert!(late.iter().any(boom), "{late:?}");
         assert!(e.tnt.is_empty());
@@ -4338,7 +4349,7 @@ mod tests {
             let events = run(&mut e, &world, &c, 5.0);
             let booms = events
                 .iter()
-                .filter(|ev| matches!(ev, EntityEvent::Explosion { cause: "was blown up by TNT", .. }))
+                .filter(|ev| matches!(ev, EntityEvent::Explosion { cause: crate::simulation::damage::Cause::TNT, .. }))
                 .count();
             assert_eq!(booms, usize::from(explodes), "tnt_explodes = {explodes}");
             assert!(e.tnt.is_empty(), "the entity is discarded either way");
