@@ -788,9 +788,10 @@ impl World {
                 return;
             }
         }
-        // The flag marks a dispenser-shot projectile (arrow or fire charge); everything
-        // else, including a dropper's fire charge, is spawned as an item.
-        let shot = !dropper && matches!(stack.item, Item::ARROW | Item::FIRE_CHARGE);
+        // The flag marks a dispenser-shot projectile (arrow, fire charge or
+        // experience bottle); everything else, including a dropper's fire
+        // charge, is spawned as an item.
+        let shot = !dropper && matches!(stack.item, Item::ARROW | Item::FIRE_CHARGE | Item::EXPERIENCE_BOTTLE);
         self.automation.output.push((p, facing, shot, one));
     }
 
@@ -811,6 +812,8 @@ impl World {
             let step = r::direction(facing);
             if arrow && stack.item == Item::FIRE_CHARGE {
                 entities.dispense_fire_charge(p, step);
+            } else if arrow && stack.item == Item::EXPERIENCE_BOTTLE {
+                entities.dispense_thrown(stack.item, p, step);
             } else if arrow {
                 entities.dispense_arrow(p, step);
             } else {
@@ -1429,5 +1432,57 @@ mod tests {
         w.automation.hopper_ticked.insert(P + IVec3::X, now);
         assert!(w.insert_container_from(P + IVec3::X, Stack::new(Item::DIAMOND, 1), IVec3::Y, None).is_none());
         assert_eq!(w.automation.cooldown.get(&(P + IVec3::X)), Some(&(now + 8)));
+    }
+    /// Java 26.3 `ExperienceBottleItem.createDispenseConfig` through
+    /// `ProjectileDispenseBehavior`: 0.7 out and 0.1 up, power 1.375 and
+    /// uncertainty 3; a dropper drops the bottle as an item.
+    #[test]
+    fn dispensers_shoot_experience_bottles_with_java_power_and_uncertainty() {
+        let f: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/thrown_items.json")).unwrap();
+        let d = &f["experience_bottle"]["dispense"];
+        let (power, uncertainty) = (d["power"].as_f64().unwrap(), d["uncertainty"].as_f64().unwrap());
+        let offset = DVec3::new(
+            d["position_offset"][0].as_f64().unwrap(),
+            d["position_offset"][1].as_f64().unwrap(),
+            d["position_offset"][2].as_f64().unwrap(),
+        );
+        let scale = d["position_scale"].as_f64().unwrap();
+        let bound = f["throwable"]["shoot_noise"].as_f64().unwrap() * uncertainty * power + 1e-9;
+        let mut w = world();
+        put(&mut w, P, r::dispenser(2, false));
+        w.chest_mut(P).unwrap().slots[0] = Some(Stack::new(Item::EXPERIENCE_BOTTLE, 2));
+        put(&mut w, P - IVec3::X, r::REDSTONE_BLOCK);
+        ticks(&mut w, 5);
+        let mut e = crate::entity::Entities::new(9);
+        w.tick_automation_entities(&mut e);
+        assert_eq!(w.chest(P).unwrap().slots[0], Some(Stack::new(Item::EXPERIENCE_BOTTLE, 1)));
+        assert!(e.items.is_empty(), "shot, not dropped");
+        assert_eq!(e.thrown.len(), 1);
+        let step = r::direction(2);
+        let centre = P.as_dvec3() + DVec3::splat(0.5);
+        for _ in 0..500 {
+            assert!(e.dispense_thrown(Item::EXPERIENCE_BOTTLE, P, step));
+        }
+        assert!(!e.dispense_thrown(Item::DIAMOND, P, step));
+        let mut spread = (0.0f64, 0.0f64);
+        for t in &e.thrown {
+            assert_eq!(t.kind, crate::entity::thrown::Kind::ExperienceBottle);
+            assert!(t.owner.is_none());
+            assert!((t.pos - (centre + step.as_dvec3() * scale + offset)).length() < 1e-12, "{}", t.pos);
+            let v = t.velocity() / 20.0 - step.as_dvec3() * power;
+            assert!(v.abs().max_element() <= bound, "{v}");
+            spread = (spread.0.min(v.y), spread.1.max(v.y));
+        }
+        assert!(spread.0 < -bound * 0.5 && spread.1 > bound * 0.5, "triangle noise both ways: {spread:?}");
+        // A dropper drops it.
+        let mut w = world();
+        put(&mut w, P, r::dispenser(2, true));
+        w.chest_mut(P).unwrap().slots[0] = Some(Stack::new(Item::EXPERIENCE_BOTTLE, 1));
+        w.dispense(P, 2, true);
+        let mut e = crate::entity::Entities::new(3);
+        w.tick_automation_entities(&mut e);
+        assert!(e.thrown.is_empty());
+        assert_eq!(e.items.len(), 1);
     }
 }

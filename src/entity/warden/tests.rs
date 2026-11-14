@@ -320,6 +320,8 @@ fn a_kill_near_a_catalyst_feeds_it_instead_of_dropping_experience() {
     e.spawn(MobKind::Skeleton, feet(18.5, 16.5));
     let pos = e.mobs.last().unwrap().pos;
     e.mobs.last_mut().unwrap().dying = Some(0.0);
+    // Empty-handed, so the experience is the base 5 (a held bow adds 1–3).
+    e.mobs.last_mut().unwrap().equipment = Default::default();
     e.drop_loot_with_fire(MobKind::Skeleton, pos, 0, false, true);
     assert!(e.orbs_to_string().len() <= 2, "no orbs");
     run(&mut e, &mut w, &c, 1);

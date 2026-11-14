@@ -10,7 +10,7 @@ use crate::inventory::{Inventory, Stack};
 use crate::item::Item;
 use crate::player::MoveInput;
 use crate::rules::GameMode;
-use crate::simulation::survival;
+use crate::simulation::damage::Cause;
 use crate::simulation::{self, TICK_SECONDS};
 use crate::world::{World, block::Block};
 
@@ -355,7 +355,7 @@ impl Agent {
             }
             Command::Kill => {
                 if !self.session.vitals.is_dead() {
-                    self.session.vitals.damage(f32::MAX, "was killed", false);
+                    self.session.vitals.damage(f32::MAX, Cause::GENERIC_KILL, false);
                     self.drop_everything(entities);
                     self.remaining = 0;
                 }
@@ -370,8 +370,8 @@ impl Agent {
                 }
             }
             Command::Effect(change) => {
-                let (damage, _) = change.apply(&mut self.session.vitals);
-                self.damage(damage, survival::CAUSE_MAGIC);
+                let (damage, _) = change.apply(&mut self.session.vitals, "Player")?;
+                self.damage(damage, Cause::MAGIC);
             }
             Command::Mode(mode) => self.set_mode(mode),
             Command::Teleport(pos, turn) => {
@@ -765,6 +765,9 @@ impl Agent {
         self.previous_pos = self.session.player.pos;
         self.keep_inventory = rules.bool("keep_inventory");
         self.pearls_vanish = rules.bool("ender_pearls_vanish_on_death");
+        // The neutral-mob rules, as the host's mob update hands them over.
+        entities.neutral_forgive_dead_players = rules.bool("forgive_dead_players");
+        entities.neutral_universal_anger = rules.bool("universal_anger");
         self.immunity = rules.damage_immunity();
         // Movement alone returning early is not enough: survival, mining,
         // pickups and timed commands must also wait for local terrain.
@@ -866,24 +869,24 @@ impl Agent {
             let top = self.session.player.collision_shape().aabb(self.session.player.pos).1.y;
             world.douse_in_cauldron(self.session.player.pos, top);
         }
+        // In the host's order (`Game::tick`); armor takes its share of the
+        // types outside `#bypasses_armor` (lava, fire, magma, campfires and
+        // stalactites), as `damage_player_armored` does for the host.
         for (damage, cause) in [
-            (hurts.fall, "hit the ground too hard"),
-            (hurts.drown, "drowned"),
-            (hurts.lava, "tried to swim in lava"),
-            (hurts.fire + hurts.burn, "burned to death"),
-            (hurts.starve, "starved to death"),
-            (hurts.freeze, simulation::survival::CAUSE_FREEZE),
+            (hurts.freeze, Cause::FREEZE),
+            (hurts.fall, Cause::FALL_HARD),
+            (hurts.drown, Cause::DROWN),
+            (hurts.lava, Cause::LAVA),
+            (hurts.stalactite, Cause::FALLING_STALACTITE),
+            (hurts.fire, Cause::IN_FIRE),
+            (hurts.hot_floor, Cause::HOT_FLOOR),
+            (hurts.campfire, Cause::CAMPFIRE),
+            (hurts.burn, Cause::ON_FIRE),
+            (hurts.starve, Cause::STARVE),
         ] {
-            if damage > 0.0 && self.damage(damage, cause) > 0.0 {
+            if damage > 0.0 && self.hurt(damage, cause, DVec3::ZERO, entities) > 0.0 {
                 self.session.sleeping = None;
             }
-        }
-        // `falling_stalactite` isn't in `bypasses_armor`: armor reduces it,
-        // as `damage_player_armored` does for the host.
-        if hurts.stalactite > 0.0
-            && self.hurt(hurts.stalactite, simulation::survival::CAUSE_STALACTITE, DVec3::ZERO, entities) > 0.0
-        {
-            self.session.sleeping = None;
         }
         if self.session.vitals.is_dead() {
             self.drop_everything(entities);
@@ -961,7 +964,7 @@ impl Agent {
         self.previous_pos = pos;
         self.session.player.vel = DVec3::ZERO;
         self.session.vitals.reset_fall();
-        self.damage(crate::entity::pearl::DAMAGE, "fell from a high place");
+        self.damage(crate::entity::pearl::DAMAGE, Cause::ENDER_PEARL);
         if self.session.vitals.is_dead() {
             self.drop_everything(entities);
             self.remaining = 0;
@@ -1007,7 +1010,7 @@ impl Agent {
             });
         }
         if let Some(consumed) = step.completed {
-            self.damage(consumed.magic_damage, survival::CAUSE_MAGIC);
+            self.damage(consumed.magic_damage, Cause::MAGIC);
             if self.remaining <= 1 {
                 self.eating = false;
             }
@@ -1119,7 +1122,8 @@ impl Agent {
     }
 
     /// Damage through protection enchantments (armor points aside).
-    fn damage(&mut self, amount: f32, cause: &str) -> f32 {
+    fn damage(&mut self, amount: f32, cause: impl Into<Cause>) -> f32 {
+        let cause = cause.into();
         if self.immunity.blocks(cause) {
             return 0.0;
         }
@@ -1135,16 +1139,24 @@ impl Agent {
         taken
     }
 
-    /// Armored damage from a mob, arrow or explosion. Knockback only lands
+    /// Damage from a mob, arrow, explosion or the world, through armor
+    /// unless its type is `#bypasses_armor`. Knockback only lands
     /// with damage (hurt immunity also stops repeated shoves), and a survival
     /// agent killed this way drops everything. Returns the damage taken.
-    pub fn hurt(&mut self, amount: f32, cause: &str, knockback: DVec3, entities: &mut Entities) -> f32 {
+    pub fn hurt(&mut self, amount: f32, cause: impl Into<Cause>, knockback: DVec3, entities: &mut Entities) -> f32 {
+        let cause = cause.into();
         if knockback.with_y(0.0).length_squared() > 0.0 && self.shielded(amount, -knockback) {
             return 0.0;
         }
+        let (reduced, wear) = self.armor_absorb(amount, cause);
+        self.hurt_after_armor(reduced, wear, cause, knockback, None, entities)
+    }
+
+    /// `getDamageAfterArmorAbsorb`: the damage left and the armor wear.
+    fn armor_absorb(&self, amount: f32, cause: Cause) -> (f32, f32) {
         let inv = &self.session.inventory;
-        let reduced = simulation::survival::armor_reduce(amount, inv.armor_points(), inv.armor_toughness());
-        self.hurt_after_armor(reduced, amount, cause, knockback, None, entities)
+        let (reduced, worn) = simulation::damage::after_armor(amount, cause, inv.armor_points(), inv.armor_toughness());
+        (reduced, if worn { amount } else { 0.0 })
     }
 
     /// A raised shield facing `toward` (horizontally, from this agent to the
@@ -1164,29 +1176,29 @@ impl Agent {
     pub fn hurt_knocked(
         &mut self,
         amount: f32,
-        cause: &str,
+        cause: impl Into<Cause>,
         hit: &crate::knockback::Hit,
         entities: &mut Entities,
     ) -> f32 {
+        let cause = cause.into();
         if let Some(away) = hit.away()
             && self.shielded(amount, -away)
         {
             return 0.0;
         }
-        let inv = &self.session.inventory;
-        let reduced = simulation::survival::armor_reduce(amount, inv.armor_points(), inv.armor_toughness());
-        self.hurt_after_armor(reduced, amount, cause, DVec3::ZERO, Some(hit), entities)
+        let (reduced, wear) = self.armor_absorb(amount, cause);
+        self.hurt_after_armor(reduced, wear, cause, DVec3::ZERO, Some(hit), entities)
     }
 
     /// Magic damage from something consumed (a harming potion): no armor or
     /// knockback, with protection and death/drop rules.
     pub fn hurt_magic(&mut self, amount: f32, entities: &mut Entities) -> f32 {
-        self.hurt_after_armor(amount, 0.0, simulation::survival::CAUSE_MAGIC, DVec3::ZERO, None, entities)
+        self.hurt_after_armor(amount, 0.0, Cause::MAGIC, DVec3::ZERO, None, entities)
     }
 
     /// Mounted falls bypass armor points, retaining protection and death/drop rules.
     pub fn hurt_fall(&mut self, amount: f32, entities: &mut Entities) {
-        self.damage(amount, simulation::survival::CAUSE_FALL);
+        self.damage(amount, Cause::FALL);
         if self.session.vitals.is_dead() {
             self.drop_everything(entities);
         }
@@ -1199,21 +1211,20 @@ impl Agent {
         if self.shielded(damage, from - self.session.player.pos) {
             return 0.0;
         }
-        let cause = crate::entity::warden::CAUSE_SONIC_BOOM;
-        self.hurt_after_armor(damage, 0.0, cause, push * crate::knockback::TICK_RATE, None, entities)
+        self.hurt_after_armor(damage, 0.0, Cause::SONIC_BOOM, push * crate::knockback::TICK_RATE, None, entities)
     }
 
     pub fn hurt_beam(&mut self, physical: f32, magic: f32, entities: &mut Entities) -> f32 {
         let inv = &self.session.inventory;
         let reduced = simulation::survival::armor_reduce(physical, inv.armor_points(), inv.armor_toughness());
-        self.hurt_after_armor(reduced + magic, physical, "was slain by a guardian", DVec3::ZERO, None, entities)
+        self.hurt_after_armor(reduced + magic, physical, Cause::GUARDIAN_BEAM, DVec3::ZERO, None, entities)
     }
 
     fn hurt_after_armor(
         &mut self,
         reduced: f32,
         wear: f32,
-        cause: &str,
+        cause: Cause,
         knockback: DVec3,
         java: Option<&crate::knockback::Hit>,
         entities: &mut Entities,
@@ -1230,7 +1241,11 @@ impl Agent {
             self.session.player.vel +=
                 simulation::survival::knockback_taken(knockback, self.session.inventory.knockback_resistance());
         }
-        self.session.inventory.wear_armor(wear);
+        // `doHurtEquipment` wears nothing for `#bypasses_armor` damage (no
+        // `hurtArmor` call) or a zero hit.
+        if wear > 0.0 {
+            self.session.inventory.wear_armor(wear);
+        }
         self.session.sleeping = None;
         if self.session.vitals.is_dead() {
             self.drop_everything(entities);
@@ -1778,17 +1793,27 @@ mod tests {
         }
         assert!(matches!(
             Command::parse("effect give minecraft:strength 90 1").unwrap(),
-            Command::Effect(EffectChange::Give(Effect::Strength, 90, 1))
+            Command::Effect(EffectChange::Give(Effect::Strength, 1800, 1, true))
         ));
         assert!(matches!(
             Command::parse("effect give regeneration").unwrap(),
-            Command::Effect(EffectChange::Give(Effect::Regeneration, 30, 0))
+            Command::Effect(EffectChange::Give(Effect::Regeneration, 600, 0, true))
+        ));
+        // `EffectCommands.computeDurationInTicks`: instantaneous effects
+        // count ticks and default to one.
+        assert!(matches!(
+            Command::parse("effect give saturation 5").unwrap(),
+            Command::Effect(EffectChange::Give(Effect::Saturation, 5, 0, true))
+        ));
+        assert!(matches!(
+            Command::parse("effect give instant_health").unwrap(),
+            Command::Effect(EffectChange::Give(Effect::InstantHealth, 1, 0, true))
         ));
         assert!(matches!(Command::parse("effect clear").unwrap(), Command::Effect(EffectChange::Clear(None))));
         // Java's forms with a target, as players type them.
         assert!(matches!(
             Command::parse("/effect give @s resistance 600 4").unwrap(),
-            Command::Effect(EffectChange::Give(Effect::Resistance, 600, 4))
+            Command::Effect(EffectChange::Give(Effect::Resistance, 12000, 4, true))
         ));
         assert!(matches!(Command::parse("effect clear @p").unwrap(), Command::Effect(EffectChange::Clear(None))));
         assert!(matches!(
@@ -1799,8 +1824,8 @@ mod tests {
         assert!(Command::parse("effect give @a speed").is_err(), "other targets stay rejected");
         let mut vitals = Vitals::default();
         vitals.health = 10.0;
-        assert_eq!(EffectChange::Give(Effect::InstantDamage, 1, 0).apply(&mut vitals).0, 6.0);
-        EffectChange::Give(Effect::InstantHealth, 1, 1).apply(&mut vitals);
+        assert_eq!(EffectChange::Give(Effect::InstantDamage, 1, 0, true).apply(&mut vitals, "Player").unwrap().0, 6.0);
+        EffectChange::Give(Effect::InstantHealth, 1, 1, true).apply(&mut vitals, "Player").unwrap();
         assert_eq!(vitals.health, 18.0);
         assert!(matches!(Command::parse("/give dirt 64").unwrap(), Command::Give(_, 64)));
         assert!(matches!(

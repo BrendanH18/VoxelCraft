@@ -22,10 +22,10 @@ pub fn equip_armor(
     // Only a block the player could actually use (Java's block interaction
     // range) takes the click instead of the armor.
     if world.raycast(player.eye(), player.forward().as_dvec3(), mode.block_reach()).is_some_and(|(pos, _)| {
-        crate::content::interaction::block_use_precedes_item(
+        crate::content::interaction::block_use_precedes_stack(
             world,
             pos,
-            inventory.get(slot).map(|s| s.item),
+            inventory.get(slot),
             player.sneaking,
             (player.eye(), player.forward().as_dvec3()),
         )
@@ -229,7 +229,7 @@ pub fn use_rod(
     Some(false)
 }
 
-/// Throws one snowball or egg. Returns whether the held item was one of those.
+/// Throws one snowball, egg or Bottle o' Enchanting. Returns whether the held item was one of those.
 pub fn throw_held(
     player: &Player,
     inventory: &mut Inventory,
@@ -239,7 +239,7 @@ pub fn throw_held(
     entities: &mut Entities,
 ) -> bool {
     let Some(held) = inventory.get(slot) else { return false };
-    if held.item != Item::SNOWBALL && held.item != Item::EGG {
+    if !matches!(held.item, Item::SNOWBALL | Item::EGG | Item::EXPERIENCE_BOTTLE) {
         return false;
     }
     let carry = if player.on_ground { player.vel.with_y(0.0) } else { player.vel };

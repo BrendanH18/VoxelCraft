@@ -18,6 +18,10 @@ impl Entities {
             let mob = &mut self.mobs[victim];
             mob.kind = MobKind::ZombieVillager;
             mob.health = MobKind::ZombieVillager.max_health();
+            // `finalizeSpawn(CONVERSION)` on the new zombie villager: a leader
+            // gains max health but is not healed.
+            let special = crate::simulation::difficulty::special_multiplier(mob.local_difficulty);
+            super::zombie::finalize_spawn(mob, special, false, &mut self.rng);
             mob.dying = None;
             mob.baby = mob.age < 0;
             mob.age = if mob.baby { -24000 } else { 0 };
@@ -75,6 +79,10 @@ impl Entities {
             mob.age = -24000;
         }
         mob.kind = MobKind::ZombieVillager;
+        // The zombie's spawn rolls are the zombie villager's (`Zombie.handleAttributes`).
+        if mob.attrs.kind == Some(MobKind::Zombie) {
+            mob.attrs.kind = Some(MobKind::ZombieVillager);
+        }
         let mut v = villager::Villager::new(id, seed);
         v.set_profession(prof);
         mob.villager = Some(Box::new(v));
@@ -82,7 +90,13 @@ impl Entities {
 }
 
 impl Mob {
-    pub(super) fn advance_cure<W: MobWorld + ?Sized>(&mut self, dt: f32, world: &W, rng: &mut Rng) {
+    pub(super) fn advance_cure<W: MobWorld + ?Sized>(
+        &mut self,
+        dt: f32,
+        world: &W,
+        rng: &mut Rng,
+        events: &mut Vec<EntityEvent>,
+    ) {
         if self.kind != MobKind::ZombieVillager || !self.alive() || self.convert_left <= 0.0 {
             return;
         }
@@ -93,7 +107,9 @@ impl Mob {
                 (self.convert_left - conversion_progress(self.pos.as_ivec3(), world, rng) as f32 / 20.0).max(0.0);
         }
         if self.convert_left == 0.0 {
-            self.finish_cure();
+            for stack in self.finish_cure() {
+                events.push(EntityEvent::DropEquipment { stack, pos: self.pos });
+            }
         }
     }
 }
@@ -127,6 +143,39 @@ mod tests {
     use super::*;
     use crate::physics::test_util::Grid;
     #[test]
+    fn golems_and_trader_llamas_keep_their_spawn_bonus_across_a_save() {
+        let mut e = Entities::new(11);
+        let mut kinds = Vec::new();
+        for (i, kind) in [MobKind::IronGolem, MobKind::SnowGolem].into_iter().enumerate() {
+            e.spawn(kind, glam::DVec3::new(i as f64 * 4.0, 0.0, 0.0));
+            let mut attrs = super::super::zombie::Attrs::for_kind(kind);
+            attrs.follow_spawn_bonus = 0.05;
+            e.mobs[i].attrs = attrs;
+            kinds.push((kind, attrs));
+        }
+        let mut copy = Entities::new(12);
+        copy.load_villagers(&e.villagers_to_string());
+        for (kind, attrs) in kinds {
+            let m = copy.mobs.iter().find(|m| m.kind == kind).expect("reloaded");
+            assert_eq!(m.attributes(), attrs, "{kind:?}");
+        }
+    }
+    #[test]
+    fn a_leader_zombie_villager_keeps_its_attributes_and_health_across_a_save() {
+        let mut e = Entities::new(11);
+        e.spawn(MobKind::ZombieVillager, glam::DVec3::ZERO);
+        let mut attrs = super::super::zombie::Attrs::for_kind(MobKind::ZombieVillager);
+        attrs.leader_health = 2.0;
+        attrs.leader_reinforcement = 0.6;
+        e.mobs[0].attrs = attrs;
+        e.mobs[0].health = e.mobs[0].max_health();
+        assert!(e.mobs[0].health > 20.0);
+        let mut copy = Entities::new(12);
+        copy.load_villagers(&e.villagers_to_string());
+        assert_eq!(copy.mobs[0].attributes(), attrs);
+        assert_eq!(copy.mobs[0].health, e.mobs[0].health, "a leader's extra health isn't clamped away");
+    }
+    #[test]
     fn curing_strength_fraction_and_equipment_roundtrip() {
         let mut e = Entities::new(11);
         e.spawn(MobKind::ZombieVillager, glam::DVec3::ZERO);
@@ -135,17 +184,37 @@ mod tests {
         assert!(e.try_cure(0));
         assert_eq!(e.mobs[0].melee_attack().0, 6.0);
         e.mobs[0].convert_tick = 0.5;
-        e.mobs[0].armor = [Some(super::super::armor::ArmorKind::Iron); 4];
-        e.mobs[0].armor_glint = 15;
+        e.mobs[0].equipment.wear_set(super::super::armor::ArmorKind::Iron, true);
+        // A preserved hand item drops on the cure; Curse of Binding stays
+        // with the villager, in its inventory at the slot's index (3, head).
+        use super::super::equipment::Slot;
+        let sword = crate::inventory::Stack::new(
+            crate::item::Item::tool(crate::item::ToolKind::Sword, crate::item::Tier::Iron),
+            1,
+        );
+        e.mobs[0].equipment.set(Slot::MainHand, Some(sword));
+        e.mobs[0].equipment.set_guaranteed_drop(Slot::MainHand);
+        e.mobs[0].equipment.get_mut(Slot::Head).unwrap().enchants.set(crate::enchant::Enchantment::BindingCurse, 1);
         let mut copy = Entities::new(12);
         copy.load_villagers(&e.villagers_to_string());
         assert_eq!(copy.mobs[0].convert_tick, 0.5);
         assert_eq!(copy.mobs[0].melee_attack().0, 6.0);
         copy.mobs[0].convert_left = 0.05;
-        copy.mobs[0].advance_cure(0.025, &Grid::flat(0), &mut Rng::new(4));
+        assert_eq!(copy.mobs[0].equipment, e.mobs[0].equipment, "equipment survives the save");
+        let mut events = Vec::new();
+        copy.mobs[0].advance_cure(0.025, &Grid::flat(0), &mut Rng::new(4), &mut events);
         assert_eq!(copy.mobs[0].kind, MobKind::Villager);
-        assert_eq!(copy.mobs[0].armor, [None; 4]);
-        assert_eq!(copy.mobs[0].armor_glint, 0);
+        assert!(copy.mobs[0].equipment.is_empty(), "keepEquipment is false");
+        let dropped: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                EntityEvent::DropEquipment { stack, .. } => Some(*stack),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(dropped, vec![sword]);
+        let helmet = copy.mobs[0].villager.as_ref().unwrap().food[Slot::Head.index()].unwrap();
+        assert!(helmet.enchants.has(crate::enchant::Enchantment::BindingCurse));
     }
     #[test]
     fn beds_and_bars_accelerate_and_only_first_fourteen_count() {

@@ -5,7 +5,7 @@
 ## Goals, status and planned changes
 
 - [Roadmap](roadmap.md): authoritative scope, dependencies and completion criteria.
-- [v0.20 presentation and performance scope](roadmap.md#v020-scope-presentation-and-performance):
+- [v0.18 presentation and performance scope](roadmap.md#v020-scope-presentation-and-performance):
   the graphics/UI review, work order and validation needs within M7.
 - [Requirement inventory](requirements.md): every core requirement as its own row,
   with state, owning release, evidence and acceptance cases.
@@ -73,6 +73,9 @@ roadmap and recorded checks to assess completeness against the current target.
 - [Stabilisation captures](verification/2026-11-10-stabilisation-captures.md):
   bastions, Nether fossils, a desert well, buried treasure, a cold ocean
   ruin, cut-away trail ruins and the v0.16 items, with the defects they found.
+- [Build-5000 campaign, from 2026-11-12](verification/2026-11-12-build-5000/README.md):
+  how the owner's request for 5,000 features is cut into slices, checked
+  against the Java reference and counted, with a record and ledger per slice.
 - [Gate run, 2026-11-11](verification/2026-11-11-gate-run.md): hands-on
   play of the jukebox and save and reload, the effect-swirl fix, and a full
   windowed scene run that fails the 240 FPS gate on drawable waits.

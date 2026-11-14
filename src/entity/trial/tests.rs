@@ -209,3 +209,39 @@ fn as_long_matches_java_block_pos_packing() {
     assert!(as_long(IVec3::new(-1, 0, 0)) < 0);
     let _ = Block::AIR;
 }
+
+/// `EquipmentUser.equip`: only the slots the table filled take its drop
+/// chance (0); a melee mob holds its rolled sword and naturally rolled
+/// boots keep the default chance.
+#[test]
+fn trial_equipment_zeroes_only_the_slots_it_fills() {
+    use crate::entity::MobKind;
+    use crate::entity::equipment::{DEFAULT_DROP_CHANCE, Slot, trial_armor_enchants};
+    use crate::item::{ArmorMaterial, ArmorPiece, Item, Tier, ToolKind};
+    let swords = [Item::tool(ToolKind::Sword, Tier::Iron), Item::tool(ToolKind::Sword, Tier::Diamond)];
+    let mut armored = 0;
+    for seed in 0..200 {
+        let mut m = crate::entity::Mob::new(MobKind::Zombie, DVec3::ZERO, 0.0);
+        let boots = Stack::new(Item::armor(ArmorPiece::Boots, ArmorMaterial::Gold), 1);
+        m.equipment.set(Slot::Feet, Some(boots));
+        equip(&mut m, "minecraft:equipment/trial_chamber_melee", &mut Rng::new(seed));
+        let hand = m.equipment.main_hand().unwrap();
+        assert!(swords.contains(&hand.item), "{hand:?}");
+        assert_eq!(m.equipment.drop_chance(Slot::MainHand), 0.0);
+        assert_eq!(m.equipment.get(Slot::Feet), Some(&boots));
+        assert_eq!(m.equipment.drop_chance(Slot::Feet), DEFAULT_DROP_CHANCE);
+        for slot in [Slot::Head, Slot::Chest] {
+            let worn = m.equipment.armor_kind(slot.piece().unwrap()).is_some();
+            armored += usize::from(worn);
+            assert_eq!(m.equipment.drop_chance(slot), if worn { 0.0 } else { DEFAULT_DROP_CHANCE });
+            if let Some(stack) = m.equipment.get(slot) {
+                assert_eq!(stack.enchants, trial_armor_enchants());
+            }
+        }
+        let mut s = crate::entity::Mob::new(MobKind::Stray, DVec3::ZERO, 0.0);
+        equip(&mut s, "minecraft:equipment/trial_chamber_ranged", &mut Rng::new(seed));
+        assert_eq!(s.equipment.main_hand().map(|b| b.item), Some(Item::BOW));
+        assert_eq!(s.equipment.drop_chance(Slot::MainHand), 0.0);
+    }
+    assert!((120..280).contains(&armored), "half of each: {armored}");
+}

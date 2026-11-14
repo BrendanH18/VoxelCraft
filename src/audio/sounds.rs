@@ -636,9 +636,7 @@ impl Bank {
             let key = entry["key"].as_str().expect("audio resource key");
             let sample = voxelcraft::assets::audio_samples(key).expect("invalid original audio resource");
             let (first, count) = bank.ranges[Sound::Pop.key()];
-            for index in usize::from(first)..usize::from(first + count) {
-                bank.buffers[index] = sample.clone();
-            }
+            bank.buffers[usize::from(first)..usize::from(first + count)].fill(sample);
         }
         bank
     }

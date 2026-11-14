@@ -204,7 +204,7 @@ pub(super) fn upkeep<W: MobWorld + ?Sized>(
                 events.push(EntityEvent::PlayerSting {
                     player: t.id,
                     damage: 1.0 + a.puff as f32,
-                    cause: "was stung by a pufferfish",
+                    cause: crate::simulation::damage::Cause::PUFFERFISH,
                     poison: 60 * a.puff as u32,
                 });
                 a.contact_timer = 1.0;
@@ -503,7 +503,7 @@ pub(super) fn pillager<W: MobWorld + ?Sized>(
         events.push(EntityEvent::Shoot {
             from,
             target: t.pos + DVec3::Y,
-            cause: "was shot by a pillager",
+            cause: crate::simulation::damage::Cause::PILLAGER_ARROW,
             shooter: m.uid,
         });
         m.attack_cooldown = 2.5;

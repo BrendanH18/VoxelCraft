@@ -237,7 +237,9 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         // Block layers are below tex::ITEM_BASE (4096); icons are at and above it.
         let tex = select(held_block, held_icon, in.layer >= 4096u);
         if tex.a < 0.5 { discard; }
-        base = tex.rgb;
+        // Vertex colour is the item's `minecraft:dye` tint (white for the
+        // rest), authored in sRGB like the armor sheet's.
+        base = tex.rgb * pow(in.color.rgb, vec3<f32>(2.2));
     }
 
     // Sky light scaled by daylight, or warm torch light, whichever is brighter.

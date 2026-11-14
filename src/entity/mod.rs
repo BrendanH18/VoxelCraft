@@ -32,6 +32,8 @@ pub mod copper_golem;
 pub mod creaking;
 pub mod dragon;
 mod dragon_model;
+pub mod endermite;
+pub mod equipment;
 pub mod eye;
 pub mod fireball;
 pub mod frog;
@@ -51,6 +53,7 @@ mod monster_spawns;
 pub mod mooshroom;
 pub mod mounts;
 pub mod nether;
+pub mod neutral;
 pub mod ocelot;
 pub mod orb;
 pub mod panda;
@@ -68,7 +71,7 @@ pub mod sniffer;
 mod spawn_lists;
 mod spawn_rules;
 mod spawning;
-mod thrown;
+pub mod thrown;
 mod tipped_arrow;
 pub mod tnt;
 pub mod trial;
@@ -82,6 +85,7 @@ pub mod warden;
 pub mod weapon_hits;
 pub mod wind;
 pub mod wolf_armor;
+pub mod zombie;
 mod zombie_villager;
 
 use std::f32::consts::TAU;
@@ -187,7 +191,7 @@ pub enum EntityEvent {
         damage: f32,
         knockback: Vec3,
         java: Option<crate::knockback::Hit>,
-        cause: &'static str,
+        cause: crate::simulation::damage::Cause,
     },
     /// A warden's sonic boom hit `player`: `damage` that armor and
     /// enchantments don't reduce (difficulty scales it), then the boom's
@@ -226,7 +230,7 @@ pub enum EntityEvent {
     PlayerSting {
         player: PlayerId,
         damage: f32,
-        cause: &'static str,
+        cause: crate::simulation::damage::Cause,
         poison: u32,
     },
     /// Tipped status events between these markers require the immediately
@@ -272,7 +276,7 @@ pub enum EntityEvent {
     Explosion {
         center: DVec3,
         power: f32,
-        cause: &'static str,
+        cause: crate::simulation::damage::Cause,
         credit_player: bool,
     },
     Sound {
@@ -283,7 +287,7 @@ pub enum EntityEvent {
     Shoot {
         from: DVec3,
         target: DVec3,
-        cause: &'static str,
+        cause: crate::simulation::damage::Cause,
         /// The shooting mob's uid, so its target's wolves can retaliate.
         shooter: u32,
     },
@@ -385,6 +389,13 @@ pub enum EntityEvent {
         pos: DVec3,
         count: u8,
     },
+    /// A thrown Bottle o' Enchanting broke at `pos`: `points` of experience
+    /// as orbs thrown roughly along `toward` (`ExperienceOrb.awardWithDirection`).
+    ExperienceBurst {
+        pos: DVec3,
+        toward: DVec3,
+        points: u32,
+    },
     /// The dragon's death is over: open the exit portal, and on the `first`
     /// kill put the egg on top.
     DragonKilled {
@@ -428,6 +439,12 @@ pub enum EntityEvent {
         attacker: u32,
         damage: f32,
         knockback: DVec3,
+    },
+    /// A mob's equipment drops at `pos` outside a death (`Mob.spawnAtLocation`,
+    /// e.g. preserved gear on a zombie villager's cure; handled internally).
+    DropEquipment {
+        stack: crate::inventory::Stack,
+        pos: DVec3,
     },
 }
 
@@ -717,7 +734,7 @@ pub struct Target {
     /// Current health in half hearts (witches choose potions from it).
     pub health: f32,
     /// Bit set of the target's active [`crate::simulation::effects::Effect`]s.
-    pub effects: u32,
+    pub effects: u64,
     /// Occupied humanoid armor slots, for Java invisibility detection.
     pub armor_pieces: u8,
     pub sneaking: bool,
@@ -730,7 +747,7 @@ pub struct Target {
 impl Target {
     /// Whether the target has `effect` active.
     pub fn has_effect(&self, effect: crate::simulation::effects::Effect) -> bool {
-        self.effects & (1 << effect as u32) != 0
+        self.effects & (1u64 << effect as u32) != 0
     }
 
     /// LivingEntity.getVisibilityPercent, before equipment-specific mob disguises.
@@ -1138,25 +1155,42 @@ impl Entities {
             0,
             self.moon_brightness,
         ));
-        if kind.is_zombie() || kind.is_bow_skeleton() {
-            let (armor, glint) = armor::roll_monster_armor(
+        // `Mob.populateDefaultEquipmentSlots` (zombies, husks, zombie
+        // villagers and bow skeletons, whose bow `Mob::new` gives), or the
+        // drowned's override, which skips armor: above 0.9, 10 in 16 a
+        // trident, else a fishing rod. Then `populateDefaultEquipmentEnchantments`.
+        if (kind.is_zombie() && kind != MobKind::Drowned) || kind.is_bow_skeleton() {
+            let armor = armor::roll_monster_armor(
                 &mut self.rng,
                 self.difficulty == crate::simulation::difficulty::Difficulty::Hard,
                 special,
             );
-            mob.armor = armor;
-            mob.armor_glint = glint;
-            if kind.is_bow_skeleton() && self.rng.chance(0.25 * special) {
-                let mut random = crate::enchant::JavaRandom::new(i64::from(self.rng.next_int(i32::MAX as u32)));
-                mob.skeleton_bow.as_mut().unwrap().enchants =
-                    crate::enchant::enchant_mob_equipment(&mut random, crate::item::Item::BOW, special);
+            for (piece, worn) in crate::item::ArmorPiece::ALL.into_iter().zip(armor) {
+                if let Some(kind) = worn {
+                    mob.equipment.wear(piece, kind, crate::enchant::Enchants::NONE);
+                }
+            }
+            // `Zombie.populateDefaultEquipmentSlots` (husks and zombie
+            // villagers too): 5% on Hard, else 1%, an iron sword, iron
+            // spear or iron shovel (1, 1 and 4 in 6).
+            let hard = self.difficulty == crate::simulation::difficulty::Difficulty::Hard;
+            if kind.is_zombie() && self.rng.next_f32() < if hard { 0.05 } else { 0.01 } {
+                use crate::item::{Item, Tier, ToolKind};
+                let item = match self.rng.next_int(6) {
+                    0 => Item::tool(ToolKind::Sword, Tier::Iron),
+                    1 => crate::weapons::spear(Tier::Iron),
+                    _ => Item::tool(ToolKind::Shovel, Tier::Iron),
+                };
+                mob.equipment.set(equipment::Slot::MainHand, Some(crate::inventory::Stack::new(item, 1)));
             }
         }
-        // `Drowned.populateDefaultEquipmentSlots`: above 0.9, 10 in 16 a trident, else a fishing rod.
         if kind == MobKind::Drowned && self.rng.next_f32() > 0.9 {
             let item =
                 if self.rng.next_int(16) < 10 { crate::weapons::TRIDENT } else { crate::item::Item::FISHING_ROD };
-            mob.weapon = Some(Box::new(crate::inventory::Stack::new(item, 1)));
+            mob.equipment.set(equipment::Slot::MainHand, Some(crate::inventory::Stack::new(item, 1)));
+        }
+        if kind.is_zombie() || kind.is_bow_skeleton() {
+            mob.equipment.enchant_spawned(&mut self.rng, special);
         }
         if kind.is_cube() {
             // `AbstractCubeMob.setSpawnSize`: sizes 1, 2 and 4 from nextInt(3),
@@ -1174,6 +1208,9 @@ impl Entities {
         nether::on_spawn(&mut mob, &mut self.rng);
         aquatic::on_spawn(&mut mob, &mut self.rng);
         animals::on_spawn(&mut mob, &mut self.rng);
+        // `Mob.finalizeSpawn`'s follow-range bonus and the zombie family's
+        // `handleAttributes`, drawn last so earlier rolls keep their order.
+        zombie::finalize_spawn(&mut mob, special, true, &mut self.rng);
         self.mobs.push(mob);
     }
 
@@ -1322,6 +1359,13 @@ impl Entities {
         self.drop_loot_with_fire(kind, pos, looting, false, true);
     }
 
+    /// [`Entities::drop_loot_with`] for any death: `player_kill` is Java's
+    /// `lastHurtByPlayerMemoryTime > 0` (false for a death to another mob
+    /// or the environment with no player hit in the last five seconds).
+    pub fn drop_loot_killed(&mut self, kind: MobKind, pos: DVec3, looting: u8, player_kill: bool) {
+        self.drop_loot_with_fire(kind, pos, looting, false, player_kill);
+    }
+
     fn drop_loot_with_fire(&mut self, kind: MobKind, pos: DVec3, looting: u8, burning: bool, player_kill: bool) {
         self.allay_equipment_drops(kind, pos);
         self.copper_equipment_drops(kind, pos);
@@ -1350,16 +1394,28 @@ impl Entities {
         if !player_kill && catalyst {
             self.sculk.deaths.push((pos, 0));
         }
+        // `LivingEntity.dropAllDeathLoot`: equipment drops before the experience.
+        self.equipment_drops(kind, pos, looting, player_kill);
+        self.mob_equipment_drops(kind, pos, looting, player_kill);
         if player_kill {
             let xp = if kind.is_cube() {
                 size as u32
             } else if let Some(xp) = nether::xp(kind, baby) {
                 xp
-            } else if baby {
-                // Java gives baby zombies 2.5 times the base experience.
-                12
             } else {
-                kind.xp(&mut self.rng)
+                // Java gives baby zombies 2.5 times the base experience.
+                let base = if baby { 12 } else { kind.xp(&mut self.rng) };
+                // `Mob.getBaseExperienceReward`: 1–3 more per slot still filled.
+                let bonus = if base > 0 && kind.is_hostile() {
+                    let i = self
+                        .mobs
+                        .iter()
+                        .position(|m| m.kind == kind && !m.alive() && m.pos.distance_squared(pos) < 0.01);
+                    i.map_or(0, |i| self.mobs[i].equipment.experience_bonus(&mut self.rng))
+                } else {
+                    0
+                };
+                base + bonus
             };
             if catalyst {
                 self.sculk.deaths.push((pos, xp));
@@ -1367,8 +1423,6 @@ impl Entities {
                 self.spawn_xp(pos, xp);
             }
         }
-        self.equipment_drops(kind, pos, looting, player_kill);
-        self.skeleton_equipment_drops(kind, pos, looting, player_kill);
         if baby && nether::babies_drop_nothing(kind) {
             return;
         }
@@ -1548,6 +1602,30 @@ impl Entities {
         for value in crate::simulation::experience::orb_values(points) {
             self.orbs.push(XpOrb::new(value, pos, &mut self.rng));
         }
+    }
+
+    /// `ExperienceOrb.awardWithDirection`: orbs worth `points` in all,
+    /// each popping out on the side of `toward`.
+    pub fn spawn_xp_toward(&mut self, pos: DVec3, toward: DVec3, points: u32) {
+        for value in crate::simulation::experience::orb_values(points) {
+            self.orbs.push(XpOrb::toward(value, pos, toward, &mut self.rng));
+        }
+    }
+
+    /// `ProjectileDispenseBehavior` for a thrown item the dispenser at
+    /// `block` shoots along `step`: Java 26.3's experience bottle leaves
+    /// 0.7 out and 0.1 up at its dispense power and uncertainty.
+    /// Returns false for items it does not shoot.
+    pub fn dispense_thrown(&mut self, item: crate::item::Item, block: IVec3, step: IVec3) -> bool {
+        let (kind, power, uncertainty) = match thrown::Kind::from_item(item) {
+            Some(k @ thrown::Kind::ExperienceBottle) => {
+                (k, thrown::BOTTLE_DISPENSE_POWER, thrown::BOTTLE_DISPENSE_UNCERTAINTY)
+            }
+            _ => return false,
+        };
+        let pos = block.as_dvec3() + DVec3::splat(0.5) + step.as_dvec3() * 0.7 + DVec3::Y * 0.1;
+        self.thrown.push(thrown::Thrown::dispensed(kind, pos, step.as_dvec3(), power, uncertainty, &mut self.rng));
+        true
     }
 
     /// Experience for a block a player harvested at `cell` (ores).
@@ -2018,15 +2096,16 @@ impl Entities {
         if mob.allay.as_ref().is_some_and(|s| s.player == Some(owner)) {
             return None;
         }
-        let (kind, pos) = (mob.kind, mob.pos);
+        let kind = mob.kind;
         mob.player_hit();
-        if kind == MobKind::IronGolem {
+        if kind == MobKind::IronGolem && !self.neutral_universal_anger {
             mob.angry_player = Some(owner);
         }
         let pushes: Vec<_> = pushes.iter().flatten().copied().collect();
         let killed = mob.damage_pushed(damage, &pushes, &mut self.rng);
-        if kind == MobKind::ZombifiedPiglin {
-            self.anger_piglins(pos);
+        // The hit's attacker, for `Zombie.hurtServer`'s reinforcement call.
+        if mob.reinforce_call.is_some() {
+            mob.reinforce_call = Some(Some(owner));
         }
         self.warden_hurt(index, crate::world::vibration::EntityRef::Player(owner), true);
         self.nether_hurt(index, nether::Foe::Player(owner));
@@ -2129,7 +2208,7 @@ impl Entities {
             self.pending_sounds.push(EntityEvent::PlayerSting {
                 player: owner,
                 damage: 2.0,
-                cause: "was pricked by a guardian",
+                cause: crate::simulation::damage::Cause::GUARDIAN_SPIKES,
                 poison: 0,
             });
         }
@@ -2141,6 +2220,7 @@ impl Entities {
         self.mobs[index].armor_effectiveness = 0.0;
         if self.mobs[index].health < old_health {
             self.player_hurt_mob(index, owner, killed.is_some());
+            self.bane_slowness(index, enchants);
         }
         if self.mobs[index].health < old_health {
             for effect in [
@@ -2194,6 +2274,7 @@ impl Entities {
                 // retaliate and remember it like the main target.
                 if self.mobs[i].health < old_health {
                     self.player_hurt_mob(i, owner, killed.is_some());
+                    self.bane_slowness(i, enchants);
                 }
                 if let Some(kind) = killed {
                     let at = self.mobs[i].pos;
@@ -2210,14 +2291,30 @@ impl Entities {
         killed
     }
 
+    /// `bane_of_arthropods`' `post_attack` effect on a direct hit: a mob in
+    /// `#sensitive_to_bane_of_arthropods` gets Slowness IV for a uniform
+    /// 1.5 to 1.5 + 0.5 per level above I seconds (`ApplyMobEffect`).
+    fn bane_slowness(&mut self, index: usize, enchants: crate::enchant::Enchants) {
+        let level = enchants.level(crate::enchant::Enchantment::BaneOfArthropods);
+        let m = &mut self.mobs[index];
+        if level == 0 || m.kind.creature() != crate::enchant::Creature::Arthropod || !m.alive() {
+            return;
+        }
+        let max = 1.5 + 0.5 * f32::from(level - 1);
+        let seconds = self.rng.next_f32() * (max - 1.5) + 1.5;
+        m.effects.add(crate::simulation::effects::Effect::Slowness, 3, (seconds * 20.0).round() as u32);
+    }
+
     /// What a player's hit that hurt mob `index` leaves behind: villager
     /// gossip, and wild wolves, unbuilt iron golems and llamas turning on them.
     fn player_hurt_mob(&mut self, index: usize, owner: PlayerId, killed: bool) {
         self.note_villager_hurt(index, owner, killed);
         let m = &mut self.mobs[index];
         let retaliates = match m.kind {
+            // Under `universal_anger` these two take the hit through `neutral`.
+            MobKind::Wolf if self.neutral_universal_anger => false,
             MobKind::Wolf => m.animal.as_ref().is_some_and(|a| a.owner != Some(owner)),
-            MobKind::IronGolem => !m.built,
+            MobKind::IronGolem => !m.built && !self.neutral_universal_anger,
             MobKind::Llama => true,
             _ => false,
         };
@@ -2226,11 +2323,16 @@ impl Entities {
         }
     }
 
-    /// Hitting one zombified piglin angers every one nearby.
-    fn anger_piglins(&mut self, at: DVec3) {
+    /// Hitting one zombified piglin angers every one nearby at `player`
+    /// (`HurtByTargetGoal.alertOthers` sets only those without a target).
+    pub(super) fn anger_piglins(&mut self, at: DVec3, player: PlayerId) {
         for m in &mut self.mobs {
             if m.kind == MobKind::ZombifiedPiglin && m.pos.distance_squared(at) < 32.0 * 32.0 {
                 m.anger(mob::PIGLIN_ANGER_TIME);
+                if m.pos == at || m.angry_player.is_none() {
+                    m.angry_player = Some(player);
+                    m.neutral_universal = false;
+                }
             }
         }
     }
@@ -2394,7 +2496,7 @@ mod tests {
             for _ in 0..4000 {
                 e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
             }
-            e.mobs.iter().filter(|m| m.armor.iter().any(Option::is_some)).count()
+            e.mobs.iter().filter(|m| m.equipment.worn().iter().any(Option::is_some)).count()
         };
         assert_eq!(armored(Difficulty::Normal, 0), 0, "effective difficulty 1.5 is below Java's threshold");
         assert_eq!(armored(Difficulty::Peaceful, 10_000_000), 0);
@@ -3256,7 +3358,7 @@ mod tests {
         let EntityEvent::PlayerHit { player: id, damage, knockback, cause, .. } = hits[0] else { panic!("{hits:?}") };
         assert_eq!(id, PlayerId::HOST);
         assert!(damage > 0.0 && knockback.x > 0.0 && knockback.y > 0.0);
-        assert_eq!(cause, "was slain by a zombie");
+        assert_eq!(cause, crate::simulation::damage::Cause::mob("was slain by a zombie"));
 
         // Creative players are ignored.
         let c = Ctx { players: vec![Target::new(PlayerId::HOST, player, false)], ..c };
@@ -3458,7 +3560,9 @@ mod tests {
         let shots: Vec<_> = events
             .iter()
             .filter_map(|ev| match ev {
-                EntityEvent::PlayerHit { player, cause: "was shot by a skeleton", .. } => Some(*player),
+                EntityEvent::PlayerHit { player, cause: crate::simulation::damage::Cause::SKELETON_ARROW, .. } => {
+                    Some(*player)
+                }
                 _ => None,
             })
             .collect();
@@ -3656,7 +3760,9 @@ mod tests {
         e.spawn(MobKind::Skeleton, DVec3::new(0.5, 10.0, 0.5));
         let events = run(&mut e, &world, &night(DVec3::new(9.5, 10.0, 0.5)), 5.0);
         assert!(events.iter().any(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Bow, .. })));
-        let shot = |ev: &EntityEvent| matches!(ev, EntityEvent::PlayerHit { cause: "was shot by a skeleton", .. });
+        let shot = |ev: &EntityEvent| {
+            matches!(ev, EntityEvent::PlayerHit { cause: crate::simulation::damage::Cause::SKELETON_ARROW, .. })
+        };
         assert!(events.iter().any(shot), "{events:?}");
 
         // Arrows that miss stick in the ground.
@@ -3797,8 +3903,15 @@ mod tests {
         assert!(!run(&mut e, &world, &c, 3.0).iter().any(is_hit), "neutral");
         e.attack(0, DVec3::X, 1.0);
         let events = run(&mut e, &world, &c, 3.0);
-        let slain =
-            |ev: &EntityEvent| matches!(ev, EntityEvent::PlayerHit { cause: "was slain by a zombified piglin", .. });
+        let slain = |ev: &EntityEvent| {
+            matches!(
+                ev,
+                EntityEvent::PlayerHit {
+                    cause: crate::simulation::damage::Cause { text: "was slain by a zombified piglin", .. },
+                    ..
+                }
+            )
+        };
         assert!(events.iter().any(slain), "{events:?}");
         assert_eq!(e.mobs[1].ai, Ai::Chase, "the whole pack is angry");
         assert_eq!(MobKind::from_name("zombified_piglin"), Some(MobKind::ZombifiedPiglin));
@@ -4321,7 +4434,7 @@ mod tests {
         assert!((e.tnt[0].pos.y - 10.0).abs() < 1e-3, "landed: {:?}", e.tnt[0].pos);
         let late = run(&mut e, &world, &c, 1.0);
         let boom = |ev: &EntityEvent| {
-            matches!(ev, EntityEvent::Explosion { power: tnt::POWER, cause: "was blown up by TNT", .. })
+            matches!(ev, EntityEvent::Explosion { power: tnt::POWER, cause: crate::simulation::damage::Cause::TNT, .. })
         };
         assert!(late.iter().any(boom), "{late:?}");
         assert!(e.tnt.is_empty());
@@ -4338,7 +4451,7 @@ mod tests {
             let events = run(&mut e, &world, &c, 5.0);
             let booms = events
                 .iter()
-                .filter(|ev| matches!(ev, EntityEvent::Explosion { cause: "was blown up by TNT", .. }))
+                .filter(|ev| matches!(ev, EntityEvent::Explosion { cause: crate::simulation::damage::Cause::TNT, .. }))
                 .count();
             assert_eq!(booms, usize::from(explodes), "tnt_explodes = {explodes}");
             assert!(e.tnt.is_empty(), "the entity is discarded either way");

@@ -1,0 +1,90 @@
+{
+ "source": "Minecraft Java Edition 26.3 server bytecode (javap); see tools/extract_java_zombie_attribute_fixtures.py",
+ "attributes": {
+  "spawn_reinforcements": {
+   "default": 0.0,
+   "min": 0.0,
+   "max": 1.0
+  },
+  "max_health": {
+   "default": 20.0,
+   "min": 1.0,
+   "max": 1024.0
+  },
+  "follow_range": {
+   "default": 32.0,
+   "min": 0.0,
+   "max": 2048.0
+  },
+  "knockback_resistance": {
+   "default": 0.0,
+   "min": -2.0,
+   "max": 1.0
+  }
+ },
+ "follow_range": {
+  "mob": 16.0,
+  "zombie": 35.0
+ },
+ "spawn_reinforcements_carriers": {
+  "drowned": 0.0,
+  "husk": 0.0,
+  "zombie": 0.0,
+  "zombie_villager": 0.0,
+  "zombified_piglin": 0.0
+ },
+ "modifier_ids": {
+  "leader_zombie_bonus_id": "leader_zombie_bonus",
+  "reinforcement_caller_charge_id": "reinforcement_caller_charge",
+  "speed_modifier_baby_id": "baby",
+  "zombie_random_spawn_bonus_id": "zombie_random_spawn_bonus"
+ },
+ "random_spawn_bonus": {
+  "id": "random_spawn_bonus",
+  "attribute": "follow_range",
+  "operation": "add_multiplied_base",
+  "triangle_mean": 0.0,
+  "triangle_spread": 0.11485000000000001,
+  "only_when_absent": true
+ },
+ "handle_attributes": {
+  "reinforcement_base_scale": 0.10000000149011612,
+  "zombified_piglin_reinforcement_base": 0.0,
+  "knockback_bonus_scale": 0.05000000074505806,
+  "knockback_operation": "add_value",
+  "follow_bonus_scale": 1.5,
+  "follow_bonus_threshold": 1.0,
+  "follow_operation": "add_multiplied_total",
+  "leader_chance": 0.05,
+  "leader_reinforcement_scale": 0.25,
+  "leader_reinforcement_offset": 0.5,
+  "leader_reinforcement_operation": "add_value",
+  "leader_health_scale": 3.0,
+  "leader_health_offset": 1.0,
+  "leader_health_operation": "add_multiplied_total",
+  "leader_heals_unless": [
+   "conversion",
+   "load",
+   "dimension_travel"
+  ],
+  "leader_breaks_doors": true,
+  "break_door_chance": 0.1
+ },
+ "reinforcements": {
+  "difficulty": "hard",
+  "needs_spawning_monsters": true,
+  "attempts": 50,
+  "range_min": 7,
+  "range_max": 40,
+  "sign_min": -1,
+  "sign_max": 1,
+  "player_clearance": 7.0,
+  "spawn_reason": "reinforcement",
+  "caller_charge": -0.05,
+  "callee_charge": -0.05000000074505806,
+  "charge_operation": "add_value",
+  "can_spawn_in_liquids": [
+   "drowned"
+  ]
+ }
+}

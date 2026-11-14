@@ -1,6 +1,5 @@
 //! Procedural Java-like equine proportions, coats, markings and equipment.
 use super::{Cuboid, Mob, MobKind, Parts, cube, part};
-use crate::item::Item;
 use glam::Quat;
 const COLORS: [[u8; 3]; 9] = [
     [236, 232, 218],
@@ -82,11 +81,16 @@ const MARKINGS: [[Cuboid; 2]; 4] = [
     ],
     [cube([-5.1, 16., -5.], [-5., 19., -1.], [36, 30, 24], 30), cube([5., 12., 3.], [5.1, 15., 8.], [36, 30, 24], 30)],
 ];
-const fn armors() -> [[Cuboid; 3]; 4] {
-    let colors = [[145, 93, 55], [210, 210, 215], [235, 194, 54], [60, 220, 210]];
-    let mut out = [[cube([0.; 3], [0.; 3], [0; 3], 0); 3]; 4];
+/// Sentinel recoloured from the leather horse armor's `dyed_color` (else
+/// `#A06540`) before emitting vertices, as `equipment/leather.json`'s
+/// dyeable `horse_body` layer is tinted.
+const LEATHER_HORSE: [u8; 3] = [1, 2, 4];
+/// Leather, iron, gold, diamond, then copper and netherite (v0.14).
+const fn armors() -> [[Cuboid; 3]; 6] {
+    let colors = [LEATHER_HORSE, [210, 210, 215], [235, 194, 54], [60, 220, 210], [196, 112, 80], [80, 72, 78]];
+    let mut out = [[cube([0.; 3], [0.; 3], [0; 3], 0); 3]; 6];
     let mut i = 0;
-    while i < 4 {
+    while i < 6 {
         out[i] = [
             cube([-5.2, 11., -10.2], [-5., 20., 9.2], colors[i], 8),
             cube([5., 11., -10.2], [5.2, 20., 9.2], colors[i], 8),
@@ -96,7 +100,7 @@ const fn armors() -> [[Cuboid; 3]; 4] {
     }
     out
 }
-const ARMOR: [[Cuboid; 3]; 4] = armors();
+const ARMOR: [[Cuboid; 3]; 6] = armors();
 pub(super) fn pose(m: &Mob) -> Parts {
     let s = m.mount.as_ref().unwrap();
     let color = match m.kind {
@@ -148,11 +152,17 @@ pub(super) fn equipment(m: &Mob, p: &mut Parts) {
         ));
     }
     if let Some(stack) = s.slots[1] {
-        let index = match stack.item {
-            Item::LEATHER_HORSE_ARMOR => 0,
-            Item::IRON_HORSE_ARMOR => 1,
-            Item::GOLDEN_HORSE_ARMOR => 2,
-            Item::DIAMOND_HORSE_ARMOR => 3,
+        use crate::item::ArmorMaterial;
+        let index = match stack.item.body_armor() {
+            Some((crate::equipment::BodyArmor::Horse, material)) => match material {
+                ArmorMaterial::Leather => 0,
+                ArmorMaterial::Iron => 1,
+                ArmorMaterial::Gold => 2,
+                ArmorMaterial::Diamond => 3,
+                ArmorMaterial::Copper => 4,
+                ArmorMaterial::Netherite => 5,
+                _ => return,
+            },
             _ => return,
         };
         p.push(part(&ARMOR[index], [0.; 3], Quat::IDENTITY));
@@ -243,12 +253,18 @@ pub(super) fn camel(m: &Mob) -> Parts {
     p
 }
 
-/// Llama coats and carpets.
+/// Llama coats and carpets, and dyed leather horse armor.
 pub(super) fn colour(m: &Mob, c: &mut Cuboid) {
+    let Some(s) = m.mount.as_ref() else { return };
+    if c.color == LEATHER_HORSE {
+        c.color = s.slots[1]
+            .and_then(|stack| crate::inventory::components::dye_tint(&stack))
+            .unwrap_or(crate::inventory::components::LEATHER_COLOR);
+        return;
+    }
     if m.kind != MobKind::Llama {
         return;
     }
-    let Some(s) = m.mount.as_ref() else { return };
     if c.color == LLAMA_FUR {
         c.color = LLAMA_COATS[s.variant as usize % 4];
     } else if c.color == CARPET {
@@ -275,7 +291,40 @@ const SKELETON_BODY: &[Cuboid] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{color::DyeColor, entity::Rng, inventory::Stack, world::block::Block};
+    use crate::{color::DyeColor, entity::Rng, inventory::Stack, item::Item, world::block::Block};
+
+    /// The leather horse armor layer is drawn in the stack's `dyed_color`,
+    /// `#A06540` undyed, and survives a save of the horse's slots.
+    #[test]
+    fn leather_horse_armor_is_drawn_in_its_dyed_colour() {
+        use crate::inventory::components::{LEATHER_COLOR, apply_dyes};
+        let mut mob = Mob::new(MobKind::Horse, glam::DVec3::ZERO, 0.);
+        mob.mount = Some(crate::entity::mounts::State::new(MobKind::Horse, &mut Rng::new(1)).into());
+        mob.mount.as_mut().unwrap().tame = true;
+        let plain = Stack::new(Item::LEATHER_HORSE_ARMOR, 1);
+        for (stack, want) in [
+            (plain, LEATHER_COLOR),
+            (apply_dyes(plain, &[DyeColor::Lime]).unwrap(), DyeColor::Lime.rgb()),
+            (apply_dyes(plain, &[DyeColor::Red, DyeColor::Blue]).unwrap(), [173, 83, 152]),
+        ] {
+            mob.mount.as_mut().unwrap().slots[1] = Some(stack);
+            mob.mount = Some(
+                crate::entity::mounts::State::load(MobKind::Horse, &mob.mount.as_ref().unwrap().save()).unwrap().into(),
+            );
+            let parts = pose(&mob);
+            assert!(parts.iter().any(|p| p.boxes.iter().any(|c| c.color == LEATHER_HORSE)));
+            for source in ARMOR[0] {
+                let mut emitted = source;
+                colour(&mob, &mut emitted);
+                assert_eq!(emitted.color, want);
+            }
+        }
+        // Other horse armor keeps its own colour.
+        mob.mount.as_mut().unwrap().slots[1] = Some(Stack::new(Item::IRON_HORSE_ARMOR, 1));
+        let mut iron = ARMOR[1][0];
+        colour(&mob, &mut iron);
+        assert_eq!(iron.color, ARMOR[1][0].color);
+    }
 
     #[test]
     fn every_llama_carpet_recolours_the_sentinel_after_equipment_reload() {

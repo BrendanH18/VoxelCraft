@@ -131,10 +131,10 @@ impl Entities {
                 self.mobs[i].polar_bear = Some(s);
                 continue;
             }
+            // A dead player is forgiven by `Entities::player_died` alone.
             if let Some(Foe::Player(id)) = s.angry_at
-                && (ctx.players.iter().find(|p| p.id == id).is_some_and(|p| {
-                    p.spectator || p.alive && !p.targetable || !p.alive && self.neutral_forgive_dead_players
-                }) || self.difficulty == Difficulty::Peaceful)
+                && (ctx.players.iter().find(|p| p.id == id).is_some_and(|p| p.spectator || p.alive && !p.targetable)
+                    || self.difficulty == Difficulty::Peaceful)
             {
                 s.calm();
             }

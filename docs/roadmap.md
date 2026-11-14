@@ -2,7 +2,7 @@
 
 [← Back to VoxelCraft](../README.md) · [Documentation index](README.md) · [Contributing](../CONTRIBUTING.md) · [Architecture](architecture.md) · [Development](development.md)
 
-## Current plan — updated 2026-11-09
+## Current plan — updated 2026-11-13
 
 Build a faithful recreation of modern Minecraft Java single-player gameplay
 in Rust. Version 1.0 must deliver complete core survival, building,
@@ -40,15 +40,46 @@ Releases follow the [release plan](#release-plan): small, themed versions from
 v0.8 to v1.0, taken in order with no dates. Work on the earliest unreleased
 version; v1.0 is everything in this roadmap.
 
+**Versions (owner, 2026-11-13): the next release is v0.14.** The owner
+asked for everything built since v0.13 to ship as one release, v0.14,
+rather than tagging v0.14, v0.15 and v0.16 one by one. v0.14 therefore
+carries the planned v0.14 (structures), v0.15 (wildlife) and v0.16 (deep
+dark and trials) scopes and the v0.17 groundwork merged by the build-5000
+campaign's first wave. Later versions move down two: villages and raids is
+now v0.15, the End and the Wither v0.16, redstone and automation v0.17, and
+polish and performance v0.18, before 1.0. Records, commits, pull requests
+and code comments written before 2026-11-13 use the old numbers: their
+v0.15 and v0.16 are parts of v0.14, and their v0.17 to v0.20 are v0.15 to
+v0.18. The owner also dropped the campaign's 5,000-item target the same
+day: its first wave is merged and no further waves are planned.
+
+**Priority (owner, 2026-11-12): building resumes.** The owner asked for
+building to continue, with a target of 5,000 new features or improvements
+(dropped on 2026-11-13) split across agents and merged without waiting for review. That lifts the
+content freeze of the [stabilisation gate](#stabilisation-gate-before-v017):
+v0.15 starts now, while the gate's exit stays owed (the owner's play of a
+generation 3 world, a frame-time run that passes or an owner decision on
+the drawable wait, and the `v0.14` tag). The integrator read the size of
+the request as also lifting [§7](#7-feature-completion-and-release-policy)'s
+limit of one waiting version for this push, so work continues into later
+versions in release-plan order once v0.15's scope is implemented. That
+reading is the owner's to change. Nothing else is relaxed: each piece is
+checked against the Java 26.3 reference, an agent runs every merged batch
+before it is offered to the owner, rows stay Implemented, unverified until
+the owner has played, and nothing is tagged. The
+[campaign record](verification/2026-11-12-build-5000/README.md) says how
+the work is cut up, checked and counted.
+
 **Priority (audit, 2026-11-09): stabilise before more content.** The
 [2026-11-09 audit](verification/2026-11-09-project-audit.md) found v0.14,
-v0.15 and v0.16 merged to `main` without anyone having run them, the
+v0.14's three parts merged to `main` without anyone having run them, the
 frame-time gate failing and unmeasured since 2026-10-29, Java 26.3 content
 that no release owned, and a stale requirement inventory. The owner asked
 for every finding to be fixed. Until the
-[stabilisation gate](#stabilisation-gate-before-v017) passes, no new
-content starts: v0.17 waits for the owner's play of v0.14 to v0.16 and for
-one tag that carries them. From now on every release records a frame-time
+[stabilisation gate](#stabilisation-gate-before-v017) passed, no new
+content was to start: v0.15 waited for the owner's play of v0.14
+and for one tag that carries them (the owner lifted that freeze on
+2026-11-12, above; the play and the tag are still owed). From now on every release records a frame-time
 run ([§6.1](#61-reference-configuration-and-frame-time-gate)), an agent runs
 each version hands-on before it is offered to the owner
 ([§7](#7-feature-completion-and-release-policy)), and every Java 26.3
@@ -67,7 +98,7 @@ release page instead and upgrade by hand ([updates](updates.md)). v0.11
 polishes the title screen, world management and options, and content
 resumes with v0.12. This pulls those parts of M7
 forward; the later releases moved up two numbers (building materials is now
-v0.12, polish and performance v0.20).
+v0.12, polish and performance v0.18).
 
 Work can overlap where dependencies permit. Bring existing working features
 up to the acceptance standard; do not rebuild them merely because this
@@ -179,8 +210,8 @@ in the right-hand column stays mandatory for 1.0.
 
 | Side feature | Deferred past 1.0 | Stays in 1.0 core |
 |---|---|---|
-| Advancements and statistics | The advancement and statistics screens, toasts and criteria | Recipe unlocking and the recipe book (UX, v0.20); the dragon/Wither progression itself (v0.18) |
-| Archaeology | Decorated pots and sherd patterns, and archaeology in structures other than ocean ruins (narrowed by the owner on 2026-11-05) | Trail ruins, desert wells and ocean ruins as explorable structures with their loot (v0.14, v0.15); suspicious sand and gravel, brushing them, and the sherds the ocean-ruin tables name, as plain items (v0.15), so warm ocean ruins give sniffer eggs the Java way |
+| Advancements and statistics | The advancement and statistics screens, toasts and criteria | Recipe unlocking and the recipe book (UX, v0.18); the dragon/Wither progression itself (v0.16) |
+| Archaeology | Decorated pots and sherd patterns, and archaeology in structures other than ocean ruins (narrowed by the owner on 2026-11-05) | Trail ruins, desert wells and ocean ruins as explorable structures with their loot (v0.14); suspicious sand and gravel, brushing them, and the sherds the ocean-ruin tables name, as plain items (v0.14), so warm ocean ruins give sniffer eggs the Java way |
 | Commands | The full command and selector language | The cheat console's testing commands (game mode, rules, time, weather, teleport, give, kill, difficulty, spawn point) |
 | Custom skins | Skin selection and loading | The default player models |
 | Resource and data packs | Loading packs | The built-in Java 26.3 recipes, loot tables and tags they would replace |
@@ -201,7 +232,7 @@ to Java's units where a structure's beard applies
 ([record](verification/2026-11-09-structure-terrain-blending.md)).
 
 **Fidelity exception FE-02 — original structure templates (proposed by
-the audit on 2026-11-09, approved by the owner on 2026-11-10).** v0.14 to v0.16 build
+the audit on 2026-11-09, approved by the owner on 2026-11-10).** v0.14 build
 structures from original templates because Java's template files are
 Mojang's work and the project ships only original or licensed assets
 ([v0.14 scope](#v014-scope-structures)). Until 2026-11-10 no exception
@@ -226,7 +257,7 @@ to instead:
 Agents work to the catalogue contract, and the GEN-05 layout rows read
 "original templates (FE-02)". The catalogues that fall short of it are
 listed under [content assigned by the audit](#content-assigned-by-the-2026-11-09-audit).
-New structures (woodland mansions in v0.17, End cities in v0.18) are drawn
+New structures (woodland mansions in v0.15, End cities in v0.16) are drawn
 as original templates to the same contract.
 
 Modern biomes, building materials, mobs, equipment and travel mechanics
@@ -274,7 +305,7 @@ that had fallen through:
 - **Every missing registry name has an owner.**
   `tests/fixtures/java/26.3/registry_gaps.json` lists each Java 26.3 block,
   item and potion the game doesn't register, with the release that owns it
-  (`v0.17` to `v0.20`, `deferred`, or `none` for technical and creative-only
+  (`v0.15` to `v0.18`, `deferred`, or `none` for technical and creative-only
   names). `tests/java_registry.rs` fails when a missing name isn't listed,
   when a listed name has been registered, or when a release isn't one of
   those values, so the list can't drift. Moving a name to another release is
@@ -311,9 +342,9 @@ assessment follow-ups are in the [delivery records](delivery-records.md)
 - **v0.12**, tagged 2026-10-29: [scope and record](delivery-records.md#v012-scope-building-materials).
 - **v0.13**, tagged 2026-10-31: [scope and record](delivery-records.md#v013-scope-terrain).
 - **v0.14**, merged, not tagged: [scope and status](#v014-scope-structures).
-- **v0.15**, merged, not tagged: [scope and status](#v015-scope-wildlife) and the
+- **v0.14, wildlife part**, merged, not tagged: [scope and status](#v015-scope-wildlife) and the
   [final integration record](verification/2026-11-06-v0.15-final-integration.md).
-- **v0.16**, merged, not tagged: [scope and status](#v016-scope-deep-dark-and-trials) and the
+- **v0.14, deep dark and trials part**, merged, not tagged: [scope and status](#v016-scope-deep-dark-and-trials) and the
   [integration record](verification/2026-11-07-v0.16-integration.md).
 
 ## 4. Core requirement catalogue
@@ -514,16 +545,16 @@ checks moved to later versions (see its status and the
 [delivery record](delivery-records.md#34-v080-delivery-record--2026-10-20)).
 Exception (owner, 2026-10-25): v0.11 is tagged without its exit checks,
 the owner's play and the idle-machine menu frame-time run. The frame-time
-run moved to v0.20 and the rows stay Implemented, unverified.
+run moved to v0.18 and the rows stay Implemented, unverified.
 Exception (owner, 2026-10-22): v0.10 is tagged once merged, before its exit
 check, because the owner wants players on the updater as soon as possible
 and the check (updating a real v0.10 install) needs a later release to update
 to. The rows stay Implemented, unverified until it passes.
 Exception (owner, 2026-10-29): v0.12 is tagged after the owner's play,
-without its frame-time gate: the three-run `materials` set moved to v0.20
+without its frame-time gate: the three-run `materials` set moved to v0.18
 with the gate, and the rows stay Implemented, unverified until it passes.
 Exception (owner, 2026-10-31): v0.13 is tagged after the owner's play,
-without a frame-time gate: the 240 FPS check stays with v0.20, and the rows
+without a frame-time gate: the 240 FPS check stays with v0.18, and the rows
 stay Implemented, unverified until it passes.
 
 Work on the earliest unreleased version. Start a later one early only where
@@ -533,20 +564,20 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 
 | Version | Theme | Milestones | Main content | Status |
 |---|---|---|---|---|
-| v0.8 | Foundations | Finish M0, M1 | Valid M5 baseline and the per-requirement inventory; mob pathfinding, Java spawn categories, shape-aware light, simulation distance; pause/death/save scenarios on every input path | Done (owner, 2026-10-20), tagged `v0.8.0` at `58b547b`. Rows stay Implemented, unverified: player acceptance moved to v0.9 and the streaming budget (PERF-03) to v0.20; [delivery record](delivery-records.md#34-v080-delivery-record--2026-10-20) |
-| v0.9 | Block states | M2: BLD-04, BLD-06 | Top and double slabs, waterlogging, door hinges, floor/ceiling buttons and levers, wall grindstones, corner-stair light; reserved state ranges for later content | Done (owner, 2026-10-22), tagged `v0.9`. Rows stay Implemented, unverified: the windowed performance check moved to v0.20; [delivery record](delivery-records.md#35-v09-delivery-record--2026-10-22) |
+| v0.8 | Foundations | Finish M0, M1 | Valid M5 baseline and the per-requirement inventory; mob pathfinding, Java spawn categories, shape-aware light, simulation distance; pause/death/save scenarios on every input path | Done (owner, 2026-10-20), tagged `v0.8.0` at `58b547b`. Rows stay Implemented, unverified: player acceptance moved to v0.9 and the streaming budget (PERF-03) to v0.18; [delivery record](delivery-records.md#34-v080-delivery-record--2026-10-20) |
+| v0.9 | Block states | M2: BLD-04, BLD-06 | Top and double slabs, waterlogging, door hinges, floor/ceiling buttons and levers, wall grindstones, corner-stair light; reserved state ranges for later content | Done (owner, 2026-10-22), tagged `v0.9`. Rows stay Implemented, unverified: the windowed performance check moved to v0.18; [delivery record](delivery-records.md#35-v09-delivery-record--2026-10-22) |
 | v0.10 | Updates | M7 early: UX-04b, part of UX-05a | In-game update check, signed download, pre-update world backup and install on Windows and Apple Silicon Macs ([design](updates.md)); worlds whose level file can't be read are no longer started fresh. See [v0.10 scope](#v010-scope-updates) | Tagged `v0.10` on 2026-10-22 before its exit check (owner exception). Rows stay Implemented, unverified until the owner updates a real v0.10 install; [record](delivery-records.md#v010-scope-updates) |
-| v0.11 | Menus and settings | M7 early: UX-03a/b, UX-05a | Java's title screen, world list and Edit World screen; Java-style options screens, key rebinding, GUI scale and per-category volume; consistent menu navigation and error screens. See [v0.11 scope](#v011-scope-menus-and-settings) | Done (owner, 2026-10-25), tagged `v0.11` from `ec74556` without its exit checks. Rows stay Implemented, unverified: the menu and title frame-time run moved to v0.20; [record](delivery-records.md#v011-scope-menus-and-settings) |
-| v0.12 | Building materials | Close M2 | Missing wood, stone, copper and colour family members, the unregistered reference fuel items, signs, banners, item frames, cauldrons and campfires; coral wall fans; falling and dripping dripstone, tilting dripleaf. See [v0.12 scope](#v012-scope-building-materials) | Done (owner, 2026-10-29), tagged `v0.12` ([#55](https://github.com/BrendanH18/VoxelCraft/pull/55)). Rows stay Implemented, unverified: the `materials` frame-time gate moved to v0.20; [record](delivery-records.md#v012-scope-building-materials) |
-| v0.13 | Terrain | M3: GEN-01..03 | Density terrain with overhangs from the climate noise (original noise, FE-01); caves and aquifers fitted to it, springs, glow lichen and an ore pass; deep-dark terrain with sculk; giant spruce and jungle trees and the remaining biome features; bubble columns, fire spread, offhand and shields carried from v0.12. See [v0.13 scope](#v013-scope-terrain) | Done (owner, 2026-10-31), tagged `v0.13` ([#57](https://github.com/BrendanH18/VoxelCraft/pull/57)). Rows stay Implemented, unverified until the frame-time check in v0.20; [record](delivery-records.md#v013-scope-terrain) |
+| v0.11 | Menus and settings | M7 early: UX-03a/b, UX-05a | Java's title screen, world list and Edit World screen; Java-style options screens, key rebinding, GUI scale and per-category volume; consistent menu navigation and error screens. See [v0.11 scope](#v011-scope-menus-and-settings) | Done (owner, 2026-10-25), tagged `v0.11` from `ec74556` without its exit checks. Rows stay Implemented, unverified: the menu and title frame-time run moved to v0.18; [record](delivery-records.md#v011-scope-menus-and-settings) |
+| v0.12 | Building materials | Close M2 | Missing wood, stone, copper and colour family members, the unregistered reference fuel items, signs, banners, item frames, cauldrons and campfires; coral wall fans; falling and dripping dripstone, tilting dripleaf. See [v0.12 scope](#v012-scope-building-materials) | Done (owner, 2026-10-29), tagged `v0.12` ([#55](https://github.com/BrendanH18/VoxelCraft/pull/55)). Rows stay Implemented, unverified: the `materials` frame-time gate moved to v0.18; [record](delivery-records.md#v012-scope-building-materials) |
+| v0.13 | Terrain | M3: GEN-01..03 | Density terrain with overhangs from the climate noise (original noise, FE-01); caves and aquifers fitted to it, springs, glow lichen and an ore pass; deep-dark terrain with sculk; giant spruce and jungle trees and the remaining biome features; bubble columns, fire spread, offhand and shields carried from v0.12. See [v0.13 scope](#v013-scope-terrain) | Done (owner, 2026-10-31), tagged `v0.13` ([#57](https://github.com/BrendanH18/VoxelCraft/pull/57)). Rows stay Implemented, unverified until the frame-time check in v0.18; [record](delivery-records.md#v013-scope-terrain) |
 | v0.14 | Structures | M3: GEN-05..07 | A Java structure-template (jigsaw) system; villages, outposts, bastions, fossils, shipwrecks, ocean ruins and monuments built from it; buried treasure and explorer maps; Java loot random sequences. See [v0.14 scope](#v014-scope-structures) | In progress (2026-11-03): scope approved with original templates (no fidelity exception yet); all of items 0–7 implemented, unverified: world generation 3, the jigsaw engine and villages ([record](verification/2026-11-03-v0.14-jigsaw-villages.md)), outposts and bastions ([record](verification/2026-11-03-v0.14-outposts-bastions.md)), ruined portals and buried treasure ([record](verification/2026-11-03-v0.14-portals-treasure.md)), fossils, desert wells and trail ruins ([record](verification/2026-11-03-v0.14-fossils-wells-trail-ruins.md)), maps, explorer maps and Java loot sequences ([record](verification/2026-11-03-v0.14-maps.md)); terrain blending for villages and outposts added on 2026-11-09 ([record](verification/2026-11-09-structure-terrain-blending.md)). Merged, not tagged: waits for the [stabilisation gate](#stabilisation-gate-before-v017) and the owner's play |
-| v0.15 | Wildlife | M4: MOB-03/04, FOO, ENV-03 | Bats, frogs, pandas, polar bears, armadillos, mooshrooms, strays, bogged, phantoms and zombie horses (with lightning); drowned conversion and the cat spawner; melon, pumpkin and beetroot crops; animal and mount acceptance. See [v0.15 scope](#v015-scope-wildlife) | Implemented, unverified (2026-11-04): started early while v0.14 waits for the owner's play; four tracks (lightning and undead mounts, crops and bees, passive mobs, hostiles) merged and council-reviewed ([integration](verification/2026-11-04-v0.15-integration.md)); copper golems (2026-11-05), then creaking and resin, allays, sniffers and ocean ruins with suspicious blocks (2026-11-06, [integration](verification/2026-11-06-v0.15-final-integration.md)) complete the scope; awaits the owner's play |
-| v0.16 | Deep dark and trials | M3 + M4 + PRO-07 | Ancient cities with sculk and the warden; trial chambers with breezes, trial spawners, vaults and the mace; tridents, spears and the other modern weapon families; a jukebox with music discs. See [v0.16 scope](#v016-scope-deep-dark-and-trials) | Implemented, unverified (2026-11-07): scope approved by the owner on 2026-11-06; four tracks (sculk and the warden, ancient cities and music, trial chambers, weapons) merged and integrated ([integration](verification/2026-11-07-v0.16-integration.md)); awaits the owner's play |
-| — | Stabilisation | Gate before v0.17 | No new content: an agent hands-on pass over v0.14 to v0.16, the entity frame-time fix and a full scene run, terrain blending for generation 3 structures, the audit's data fixes, the owner's play, and one tag for v0.14 to v0.16. See the [stabilisation gate](#stabilisation-gate-before-v017) | In progress (2026-11-09) |
-| v0.17 | Villages and raids | Close M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M4 exit checks. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): the remaining Java 26.3 mobs (happy ghasts, nautiluses, camel husks, parched), mobs holding and picking up equipment, chainmail, books, bundles, spyglasses, armor trims, the remaining status effects and potions, and the village template catalogue | Planned; waits for the stabilisation gate |
-| v0.18 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): poplar, cinnabar and sulfur with their terrain and the sulfur cube, abandoned camps, mob heads, infested blocks, nether gold ore, conduits, and the reassessment of dungeons, mineshafts, strongholds, shipwrecks and monuments | Planned |
-| v0.19 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload. Added by the 2026-11-09 audit: the furnace minecart | Planned |
-| v0.20 | Polish and performance | M7: UX, §6 | Typography/contrast, material and mob art, inventory/recipe navigation, HUD/workstations, title/world identity, atmosphere and accessibility ([scope](#v020-scope-presentation-and-performance)); subtitles, asset and sound review in play (including the v0.12 blocks' own sounds), and menu fixes found since v0.11; the 240 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, v0.11's menu and title frame-time run and v0.12's `materials` runs, which moved here unverified ([v0.12 profile](verification/2026-10-29-v0.12-finish.md#frame-time)). The per-frame entity model rebuild that profile found was removed on 2026-11-09 ([record](verification/2026-11-09-entity-frame-time.md)); the streaming route's main-thread terrain column rebuilds from mob biome queries were addressed in the [streaming follow-up](verification/2026-11-09-streaming-biomes-and-gen07.md); valid windowed gate runs, the remaining tick work and per-frame sign text are still owed | Planned; presentation scope expanded by the owner on 2026-11-05. Each release now records its own frame-time run ([§6.1](#61-reference-configuration-and-frame-time-gate)), so what stays here is the final gate, not every release's first measurement |
+| v0.14 (planned as v0.15) | Wildlife | M4: MOB-03/04, FOO, ENV-03 | Bats, frogs, pandas, polar bears, armadillos, mooshrooms, strays, bogged, phantoms and zombie horses (with lightning); drowned conversion and the cat spawner; melon, pumpkin and beetroot crops; animal and mount acceptance. See [v0.14 scope](#v015-scope-wildlife) | Implemented, unverified (2026-11-04): started early while v0.14 waits for the owner's play; four tracks (lightning and undead mounts, crops and bees, passive mobs, hostiles) merged and council-reviewed ([integration](verification/2026-11-04-v0.15-integration.md)); copper golems (2026-11-05), then creaking and resin, allays, sniffers and ocean ruins with suspicious blocks (2026-11-06, [integration](verification/2026-11-06-v0.15-final-integration.md)) complete the scope; awaits the owner's play |
+| v0.14 (planned as v0.16) | Deep dark and trials | M3 + M4 + PRO-07 | Ancient cities with sculk and the warden; trial chambers with breezes, trial spawners, vaults and the mace; tridents, spears and the other modern weapon families; a jukebox with music discs. See [v0.14 scope](#v016-scope-deep-dark-and-trials) | Implemented, unverified (2026-11-07): scope approved by the owner on 2026-11-06; four tracks (sculk and the warden, ancient cities and music, trial chambers, weapons) merged and integrated ([integration](verification/2026-11-07-v0.16-integration.md)); awaits the owner's play |
+| — | Stabilisation | Gate before the v0.14 tag | No new content: an agent hands-on pass over v0.14, the entity frame-time fix and a full scene run, terrain blending for generation 3 structures, the audit's data fixes, the owner's play, and one tag for v0.14. See the [stabilisation gate](#stabilisation-gate-before-v017) | In progress (2026-11-09). The owner lifted its content freeze on 2026-11-12; the owner's play, the frame-time gate and the tag are still owed |
+| v0.15 | Villages and raids | Close M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M4 exit checks. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): the remaining Java 26.3 mobs (happy ghasts, nautiluses, camel husks, parched), mobs holding and picking up equipment, chainmail, books, bundles, spyglasses, armor trims, the remaining status effects and potions, and the village template catalogue | Planned. Part of its list was built early by [build-5000 wave 1](verification/2026-11-12-build-5000/wave-1.md) and ships in v0.14 (see the [assigned content](#content-assigned-by-the-2026-11-09-audit)) |
+| v0.16 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): poplar, cinnabar and sulfur with their terrain and the sulfur cube, abandoned camps, mob heads, infested blocks, nether gold ore, conduits, and the reassessment of dungeons, mineshafts, strongholds, shipwrecks and monuments | Planned |
+| v0.17 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload. Added by the 2026-11-09 audit: the furnace minecart | Planned |
+| v0.18 | Polish and performance | M7: UX, §6 | Typography/contrast, material and mob art, inventory/recipe navigation, HUD/workstations, title/world identity, atmosphere and accessibility ([scope](#v020-scope-presentation-and-performance)); subtitles, asset and sound review in play (including the v0.12 blocks' own sounds), and menu fixes found since v0.11; the 240 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, v0.11's menu and title frame-time run and v0.12's `materials` runs, which moved here unverified ([v0.12 profile](verification/2026-10-29-v0.12-finish.md#frame-time)). The per-frame entity model rebuild that profile found was removed on 2026-11-09 ([record](verification/2026-11-09-entity-frame-time.md)); the streaming route's main-thread terrain column rebuilds from mob biome queries were addressed in the [streaming follow-up](verification/2026-11-09-streaming-biomes-and-gen07.md); valid windowed gate runs, the remaining tick work and per-frame sign text are still owed | Planned; presentation scope expanded by the owner on 2026-11-05. Each release now records its own frame-time run ([§6.1](#61-reference-configuration-and-frame-time-gate)), so what stays here is the final gate, not every release's first measurement |
 | v1.0 | Acceptance | M7 exit, §8 | Every mandatory row Verified; fresh-world and long-session playthroughs; save-compatibility policy; installer and update checks; current stable Java scope reconciled | Planned |
 
 Notes:
@@ -555,9 +586,9 @@ Notes:
   menus before content). Releases planned as v0.10–v0.18 before that date are
   now v0.12–v0.20, and the documents were renumbered to match; older commits
   and pull requests use the old numbers.
-- v0.15 to v0.17 interleave M3 and M4 because structures need their residents:
+- v0.14 and v0.15 interleave M3 and M4 because structures need their residents:
   ancient cities need the warden, trial chambers breezes and bogged, mansions
-  and raids the illagers. M4's exit checks run at v0.17; M3's run at v0.18,
+  and raids the illagers. M4's exit checks run at v0.15; M3's run at v0.16,
   once End cities and ships (GEN-05) exist alongside shulkers and elytra.
 - M2 comes before structures because Java templates use the full set of block
   states (waterlogged stairs, top slabs, hinged doors).
@@ -571,25 +602,30 @@ Notes:
   its unfinished members in the release notes. Moving an item to another version is an edit to this
   table, recorded with the reason.
 - The 2026-11-09 audit slotted every piece of Java 26.3 content that had no
-  release into v0.17 to v0.20 (see
+  release into v0.15 to v0.18 (see
   [content assigned by the audit](#content-assigned-by-the-2026-11-09-audit)).
   These are the audit's assignments, made on the owner's instruction to fix
-  its findings; the owner may move any of them. v0.17 and v0.18 are now the
+  its findings; the owner may move any of them. v0.15 and v0.16 are now the
   two largest releases in the plan and are the natural ones to split.
-- Performance no longer waits for v0.20. Each release records a frame-time
+- Performance no longer waits for v0.18. Each release records a frame-time
   run and may not make a scene worse without a recorded reason
-  ([§6.1](#61-reference-configuration-and-frame-time-gate)); v0.20 keeps the
+  ([§6.1](#61-reference-configuration-and-frame-time-gate)); v0.18 keeps the
   final gate and the presentation work.
 - After 1.0: multiplayer (dedicated servers, per-player LAN and split-screen
   dimensions) and the side features in [§1.4](#14-what-can-follow-10) get their
   own v1.x roadmap.
 
-#### Stabilisation gate: before v0.17
+<a id="stabilisation-gate-before-v017"></a>
+
+#### Stabilisation gate: before the v0.14 tag
 
 Added by the [2026-11-09 audit](verification/2026-11-09-project-audit.md).
-v0.14, v0.15 and v0.16 were merged without being run, so the next release
+v0.14's three parts (planned as v0.14, v0.15 and v0.16) were merged
+without being run, so the next release
 is a gate, not a version: it adds no blocks, items, mobs or structures, and
-v0.17 does not start until it passes. Work items:
+v0.15 was not to start until it passed; on 2026-11-12 the owner asked for
+building to continue, which lifts that freeze and leaves the exit below
+owed. Work items:
 
 1. **Data fixes.** *Implemented, unverified (2026-11-09,
    [record](verification/2026-11-09-audit-data-fixes.md)).* Brewing is
@@ -637,11 +673,11 @@ v0.17 does not start until it passes. Work items:
    pieces. Generations 1 and 2 are unchanged. Ancient cities, trail ruins
    and trial chambers keep their older approximations of `beard_box`,
    `bury` and `encapsulate`.
-4. **An agent run of v0.14 to v0.16.** *Scripted captures done; limited
+4. **An agent run of v0.14.** *Scripted captures done; limited
    hands-on play now reached (2026-11-09,
    [record](verification/2026-11-09-stabilisation-pass.md)).* Villages,
    an outpost, a ruined portal, trail ruins, a warm ocean ruin, an ancient
-   city, a trial chamber and 17 of the v0.15 and v0.16 mob kinds were drawn
+   city, a trial chamber and 17 of the v0.14 mob kinds were drawn
    from the merged build and looked at. Bastions, Nether fossils, desert
    wells, buried treasure, cold ocean ruins and the other content that
    record lists were not captured. Two
@@ -655,7 +691,7 @@ v0.17 does not start until it passes. Work items:
    (2026-11-10, [record](verification/2026-11-10-stabilisation-captures.md)):*
    bastions of all four kinds, Nether fossils, a desert well, buried
    treasure dug out with its loot, a cold ocean ruin, trail ruins cut away,
-   the v0.15 and v0.16 blocks, brushing and the v0.16 items were drawn and
+   the v0.14 blocks, brushing and the v0.14 items were drawn and
    looked at. Three defects were found and fixed: Nether fossils now
    apply Java's `beard_thin`, generation 3 swamp shores get grass and
    Java's swamp water pools instead of bare dirt, and the F3 columns no
@@ -684,8 +720,8 @@ v0.17 does not start until it passes. Work items:
    CI.
 6. **Still owed before the tag.** The owner's play of a new generation 3
    world. The encounters listed under item 4 in the agent hands-on pass.
-   Cargo is at 0.16.0, and `packaging/RELEASE-NOTES.md` covers v0.14 to
-   v0.16 with their known gaps (2026-11-10).
+   Cargo is at 0.14.0 (0.16.0 until the owner's renumbering on 2026-11-13),
+   and `packaging/RELEASE-NOTES.md` covers all of v0.14 with its known gaps.
    Three valid windowed runs of every scene on AC power with the machine
    idle (PERF-02/03), including investigation of any remaining streaming
    outliers. The 2026-11-11 run has three valid runs of every scene and
@@ -705,8 +741,8 @@ v0.17 does not start until it passes. Work items:
 **Exit:** the owner has played a generation 3 world built from the merged
 tree and reported the result; problems found are fixed or listed in the
 release notes; the scene suite has a valid run recorded for the tagged
-commit; `v0.16` is tagged from a commit whose Cargo version and release
-notes cover v0.14, v0.15 and v0.16 together. One tag is the audit's
+commit; `v0.14` is tagged from a commit whose Cargo version and release
+notes cover all three parts of v0.14 together. One tag is the audit's
 recommendation, because generation 3 has only ever existed with all three
 versions' structures in it; the owner may still tag them separately from
 the older merge commits.
@@ -722,21 +758,28 @@ the audit on the owner's instruction, and the owner may move it.
 
 | Content | Release | Rows | Why there |
 |---|---|---|---|
-| Happy ghasts, dried ghasts and harnesses; nautiluses, zombie nautiluses and nautilus armor; camel husks; parched; copper and netherite horse armor | v0.17 | MOB-03e, MOB-04b, FOO-04c | M4 (the living world) closes at v0.17, so every remaining mob has to exist by then |
-| Mobs holding weapons and tools, wearing and picking up equipment; jockeys; zombie reinforcements; endermites | v0.17 | MOB-02d, MOB-04a, MOB-04b | Illagers and raid captains need held weapons and banners anyway |
-| Chainmail armor, experience bottles, writable and written books, the globe and other banner patterns | v0.17 | MOB-05a, PLY-05b, AUT-04c | Each is a villager trade that is listed as a gap today; books go with the lectern, patterns with the loom |
-| Bundles, spyglasses, spectral arrows, armor trims and their templates, dyed leather armor, blue and brown eggs, frosted ice from Frost Walker | v0.17 | BLD-05b, PLY-05c, PRO-03, PRO-04 | General items with no dependency on later content; trims and dyes go with the smithing table and cauldron work in this release |
-| Glowing, Levitation, Health Boost, Hero of the Village, Raid Omen, Wind Charged, Weaving, Oozing and Infested, with the four potions that need them; Luck stays without a potion recipe, as in Java | v0.17 | PLY-03b, PRO-02 | Raids need the omen and hero effects; the trial potions were left out of v0.16 |
-| The village template catalogue (profession buildings with fixed job sites, decorations, animals in pens, abandoned villages), and the trial chamber and ancient city catalogues, to the [FE-02 contract](#14-what-can-follow-10) | v0.17 | GEN-05b, GEN-05j | Villages are v0.17's subject, and mansions use the same engine |
-| Poplar wood, leaves and saplings; shrubs; cinnabar and sulfur families, sulfur springs and caves, sulfur spikes, the sulfur cube and its bucket; golden dandelions and shelf mushrooms | v0.18 | BLD-01a, BLD-01b, GEN-03, MOB-04b | Promised for v0.13 and dropped. They change Overworld generation, so they wait for the next world generation, which v0.18 opens when M3 closes |
-| Abandoned camps with their chests and the explorer maps only they give | v0.18 | GEN-05f, GEN-06 | The last Overworld structure of 26.3; closes with M3 |
-| Dungeons, mineshafts and strongholds piece by piece (with infested blocks); shipwrecks and monuments (with conduits and Conduit Power); fortresses | v0.18 | GEN-05c, GEN-05e, GEN-05g, MOB-01c | Targeted at v0.14 and left unchanged; M3's exit checks need them |
-| Mob heads and skulls, wither roses, nether gold ore, and the End blocks already planned (purpur, chorus, end rods, shulker boxes) | v0.18 | BLD-01b, BLD-05a, PRO-06 | The Wither needs wither skeleton skulls; the rest is End or Nether terrain |
-| Explorer maps for structures that exist (desert pyramid, warm ocean ruins, buried mineshaft, buried ancient city) and the woodland mansion map | v0.17 | GEN-06 | Cartographer trades, with the cartography table |
-| Furnace minecart | v0.19 | FOO-04b | With rails and carts |
-| Spawn eggs | v0.20 | UX-03c | Creative inventory work |
+| Happy ghasts, dried ghasts and harnesses; nautiluses, zombie nautiluses and nautilus armor; camel husks; parched; copper and netherite horse armor | v0.15 | MOB-03e, MOB-04b, FOO-04c | M4 (the living world) closes at v0.15, so every remaining mob has to exist by then |
+| Mobs holding weapons and tools, wearing and picking up equipment; jockeys; zombie reinforcements; endermites | v0.15 | MOB-02d, MOB-04a, MOB-04b | Illagers and raid captains need held weapons and banners anyway |
+| Chainmail armor, experience bottles, writable and written books, the globe and other banner patterns | v0.15 | MOB-05a, PLY-05b, AUT-04c | Each is a villager trade that is listed as a gap today; books go with the lectern, patterns with the loom |
+| Bundles, spyglasses, spectral arrows, armor trims and their templates, dyed leather armor, blue and brown eggs, frosted ice from Frost Walker | v0.15 | BLD-05b, PLY-05c, PRO-03, PRO-04 | General items with no dependency on later content; trims and dyes go with the smithing table and cauldron work in this release |
+| Glowing, Levitation, Health Boost, Hero of the Village, Raid Omen, Wind Charged, Weaving, Oozing and Infested, with the four potions that need them; Luck stays without a potion recipe, as in Java | v0.15 | PLY-03b, PRO-02 | Raids need the omen and hero effects; the trial potions were left out of v0.14 |
+| The village template catalogue (profession buildings with fixed job sites, decorations, animals in pens, abandoned villages), and the trial chamber and ancient city catalogues, to the [FE-02 contract](#14-what-can-follow-10) | v0.15 | GEN-05b, GEN-05j | Villages are v0.15's subject, and mansions use the same engine |
+| Poplar wood, leaves and saplings; shrubs; cinnabar and sulfur families, sulfur springs and caves, sulfur spikes, the sulfur cube and its bucket; golden dandelions and shelf mushrooms | v0.16 | BLD-01a, BLD-01b, GEN-03, MOB-04b | Promised for v0.13 and dropped. They change Overworld generation, so they wait for the next world generation, which v0.16 opens when M3 closes |
+| Abandoned camps with their chests and the explorer maps only they give | v0.16 | GEN-05f, GEN-06 | The last Overworld structure of 26.3; closes with M3 |
+| Dungeons, mineshafts and strongholds piece by piece (with infested blocks); shipwrecks and monuments (with conduits and Conduit Power); fortresses | v0.16 | GEN-05c, GEN-05e, GEN-05g, MOB-01c | Targeted at v0.14 and left unchanged; M3's exit checks need them |
+| Mob heads and skulls, wither roses, nether gold ore, and the End blocks already planned (purpur, chorus, end rods, shulker boxes) | v0.16 | BLD-01b, BLD-05a, PRO-06 | The Wither needs wither skeleton skulls; the rest is End or Nether terrain |
+| Explorer maps for structures that exist (desert pyramid, warm ocean ruins, buried mineshaft, buried ancient city) and the woodland mansion map | v0.15 | GEN-06 | Cartographer trades, with the cartography table |
+| Furnace minecart | v0.17 | FOO-04b | With rails and carts |
+| Spawn eggs | v0.18 | UX-03c | Creative inventory work |
 | Pottery sherds beyond the seven the ocean ruins give | Deferred | DEF-02 | Archaeology, already deferred |
 | Barrier, light, command, jigsaw, structure and test blocks, debug stick, knowledge book, petrified oak slab, air variants | None | — | Technical or creative-only, with no survival role |
+
+Build-5000 wave 1 ([record](verification/2026-11-12-build-5000/wave-1.md))
+delivered part of this list early, and it ships in v0.14, Implemented,
+unverified: mob equipment slots and drops, zombie reinforcements, endermites,
+chainmail armor, experience bottles, copper and netherite horse armor,
+nautilus armor (the item), harnesses, bundles, dyed leather armor, and the
+eleven missing status effects. What remains of those rows stays with v0.15.
 
 ### M0 — Reference, inventory and verification tools
 
@@ -773,7 +816,7 @@ controller and agent regression paths remain functional.
 Done (owner, 2026-10-20), tagged `v0.8.0`: the M5 baseline, the inventory, Java
 navigation and spawning, shape-aware light, simulation distance and save
 scenarios, Implemented, unverified. Player acceptance moved to v0.9 and the
-streaming budget (PERF-03) to v0.20. [Full scope](delivery-records.md#v08-scope-finish-m0-and-m1).
+streaming budget (PERF-03) to v0.18. [Full scope](delivery-records.md#v08-scope-finish-m0-and-m1).
 
 ### M2 — Complete materials and interactions
 
@@ -792,7 +835,7 @@ states with consistent collision and lighting.
 Done (owner, 2026-10-29), tagged `v0.12`: the 32,768-state raise, the wood,
 stone, copper, colour and utilities tracks and the 26.3 data pass, Implemented,
 unverified. Unready rows moved to v0.13 and later releases; the blocks' sounds
-and `materials` frame-time runs to v0.20. [Full scope](delivery-records.md#v012-scope-building-materials).
+and `materials` frame-time runs to v0.18. [Full scope](delivery-records.md#v012-scope-building-materials).
 
 ### M3 — Java terrain and exploration
 
@@ -812,7 +855,7 @@ containers/residents stay cleared after restart.
 
 Done (owner, 2026-10-31), tagged `v0.13`: generation 2 density terrain (FE-01),
 underground and deep dark, giant trees and features, and the items carried
-from v0.12, Implemented, unverified; the frame-time check is with v0.20.
+from v0.12, Implemented, unverified; the frame-time check is with v0.18.
 [Full scope](delivery-records.md#v013-scope-terrain).
 
 #### v0.14 scope: structures
@@ -893,7 +936,9 @@ Generation 3 chunk generation measured within 1% of generation 2 near
 outposts, bastions, deserts, swamps and trail ruins, and 8% slower next
 to a ruined portal (0.626 against 0.579 ms per chunk).
 
-#### v0.15 scope: wildlife
+<a id="v015-scope-wildlife"></a>
+
+#### v0.14 scope, wildlife part (planned as v0.15)
 
 Approved by the owner on 2026-11-04, started before v0.14's play because
 it doesn't touch structure generation. Mobs, blocks and items follow Java
@@ -975,11 +1020,11 @@ in the [architecture reservations](architecture.md#v015-track-reservations):
    (three rounds) fixed nine bugs, and checks and the headless benchmark pass; ordinary
    play remains. See the [integration record](verification/2026-11-04-v0.15-integration.md).*
 
-Moved to later v0.15 changes (owner, 2026-11-04): the creaking and
+Moved to later v0.14 changes (owner, 2026-11-04): the creaking and
 resin, allays and sniffers. Copper golems and statues were approved next
 on 2026-11-05, as recorded below.
 
-**Copper golems and statues — approved 2026-11-05.** The next v0.15
+**Copper golems and statues — approved 2026-11-05.** The next v0.14
 slice completes their survival loop against the pinned Java 26.3 reference:
 player construction, item transport from copper chests, oxidation,
 waxing and axe scraping, conversion to statues and reactivation, original
@@ -1065,9 +1110,11 @@ usage limit mid-round, so Claude Opus 5.5 finished every track, and builds ran
 on Namespace instances. The owner's play remains. See the
 [integration record](verification/2026-11-06-v0.15-final-integration.md).
 
-#### v0.16 scope: deep dark and trials
+<a id="v016-scope-deep-dark-and-trials"></a>
 
-Approved by the owner on 2026-11-06, started while v0.14 and v0.15 wait
+#### v0.14 scope, deep dark and trials part (planned as v0.16)
+
+Approved by the owner on 2026-11-06, started while v0.14's structures and wildlife wait
 for the owner's play. Blocks, items, mobs and structures follow Java
 26.3's behaviour, loot tables, spawn rules and timers; models, textures,
 sounds, music and structure templates are original (no fidelity exception
@@ -1203,7 +1250,7 @@ The updater comes first, in v0.10, then menus and settings in v0.11 (owner,
 2026-10-22); the rest of M7 follows the content releases.
 
 The owner added the graphics and UI review to this plan on 2026-11-05.
-Its eight work areas are part of the [v0.20 scope](#v020-scope-presentation-and-performance)
+Its eight work areas are part of the [v0.18 scope](#v020-scope-presentation-and-performance)
 below, with their existing requirement owners. This plans presentation work;
 it does not mark it implemented, reopen shipped releases or change the
 earliest-unreleased-version rule.
@@ -1219,10 +1266,12 @@ failures, Implemented, unverified until a real v0.10 install updates.
 
 Done (owner, 2026-10-25), tagged `v0.11` without its exit checks: Java's title,
 world and options screens, key rebinding, GUI scale and sound categories,
-Implemented, unverified; the menu and title frame-time run moved to v0.20.
+Implemented, unverified; the menu and title frame-time run moved to v0.18.
 [Full scope and known gaps](delivery-records.md#v011-scope-menus-and-settings).
 
-#### v0.20 scope: presentation and performance
+<a id="v020-scope-presentation-and-performance"></a>
+
+#### v0.18 scope: presentation and performance
 
 **Planned; added by the owner on 2026-11-05.** Complete the graphics and UI
 work below alongside the existing sound review, subtitles, recipe discovery,
@@ -1256,7 +1305,7 @@ Assess the loading-screen Monochrome Logo option where original branding has
 an applicable loading screen; it is not a title-wordmark color switch. Do not
 add inert controls. Record any remaining in-scope omission explicitly.
 
-Work items, with priority within v0.20:
+Work items, with priority within v0.18:
 
 1. **Typography, contrast and label fit — highest priority (UX-01,
    UX-03f).** Adopt a cleaner original or appropriately licensed pixel font
@@ -1292,7 +1341,7 @@ Work items, with priority within v0.20:
    silhouettes, add a default-player preview and make the recipe control
    discoverable in survival. Custom skin selection remains deferred. Functional
    workstation/container work stays with AUT-04 and its owning releases;
-   v0.20 improves and verifies those screens after their behavior is present.
+   v0.18 improves and verifies those screens after their behavior is present.
    Add backward-compatible per-player storage for known/highlighted recipes
    and book/filter state, keyed by stable recipe identifiers rather than list
    indices. New players follow Java's initial state. Legacy players lacking
@@ -1425,7 +1474,7 @@ capture or a passing build does not satisfy it. Update the existing
 [requirement rows](requirements.md#ux--presentation-usability-and-distribution)
 as work lands; none is promoted by this plan addition.
 
-**v0.20 exit:** UX-01/02, UX-03c–g, MOB-06 and BLD-05c meet their recorded
+**v0.18 exit:** UX-01/02, UX-03c–g, MOB-06 and BLD-05c meet their recorded
 scope, with the owner's ordinary-play evidence and applicable reference,
 adapter and persistence checks. Close the carried v0.11 menu/title checks for
 UX-03a/b and all carried performance runs, including PERF-03, with the final
@@ -1462,7 +1511,7 @@ correctness, acquisition, persistence or release-blocking performance defects.
   them to present steady-state numbers as whole-session performance.
   Streaming budget (owner, 2026-10-17): on the streaming route, **no frame over
   50 ms and p99 at most 8.33 ms**. The full steady-state gate on streaming is a
-  v0.20 target, not a v0.8 requirement.
+  v0.18 target, not a v0.8 requirement.
 - Display pacing (owner, 2026-10-17): stretches of consecutive frames at exactly
   8.33 ms, the built-in display's 120 Hz pacing despite `Immediate`
   presentation, are not counted as game frame-time failures. The 2026-10-16
@@ -1476,7 +1525,7 @@ correctness, acquisition, persistence or release-blocking performance defects.
   profile and either a fix or a written reason in that record. The owner
   may still tag a version that misses the 240 FPS gate, as before, but not
   one that was never measured. This replaces moving each release's
-  frame-time check to v0.20: between 2026-10-16 and 2026-10-29 the
+  frame-time check to v0.18: between 2026-10-16 and 2026-10-29 the
   `building` scene's 1% low fell from 261–273 to 229 with nobody looking.
 
 Use a consistent power/thermal setup, a warm-up period, at least three
@@ -1529,7 +1578,7 @@ For every individual feature, all applicable checks must pass:
 7. **Delivery evidence:** record the commit, scope, test results, manual
    steps/captures and remaining differences; update the requirement state.
 
-Three release steps were added by the 2026-11-09 audit, after v0.16 was
+Three release steps were added by the 2026-11-09 audit, after v0.16 (now part of v0.14) was
 merged with its record saying "Not run: the game":
 
 - **An agent runs it first.** Before a version is offered to the owner, an
@@ -1545,7 +1594,10 @@ merged with its record saying "Not run: the game":
   for the owner's play, agents may work ahead on the next one where its
   dependencies allow, as the release plan says. They don't start a third:
   three unplayed versions is how 60,000 lines reached `main` unseen. This
-  limit is the audit's; the owner can lift it for a given release.
+  limit is the audit's; the owner can lift it for a given release. The
+  owner's 2026-11-12 request for 5,000 features is read as lifting it for
+  that push ([current plan](#current-plan--updated-2026-11-13)); the other
+  two steps still apply to everything it merges.
 
 Use the repository's required check chain for source changes:
 `cargo fmt && cargo clippy --release --all-targets -- -D warnings && cargo test --release`.

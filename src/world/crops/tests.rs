@@ -190,9 +190,7 @@ fn crop_recipes_match_java() {
     g.cells[3] = Some(Stack::new(Block::PUMPKIN, 1));
     assert_eq!(g.result(), Some(Stack::new(Item::PUMPKIN_SEEDS, 4)));
     let mut g = Grid::new(3);
-    for i in 0..6 {
-        g.cells[i] = Some(Stack::new(Item::BEETROOT, 1));
-    }
+    g.cells[0..6].fill(Some(Stack::new(Item::BEETROOT, 1)));
     g.cells[8] = Some(Stack::new(Item::BOWL, 1));
     assert_eq!(g.result(), Some(Stack::new(Item::BEETROOT_SOUP, 1)));
     g.cells[5] = None;

@@ -1,0 +1,11 @@
+kind	name	evidence
+behaviour	behaviour:zombie-reinforce/chance-attribute	src/entity/zombie/tests.rs::handle_attributes_rolls_java_ranges_and_rates
+behaviour	behaviour:zombie-reinforce/trigger	src/entity/zombie/tests.rs::reinforcements_need_hard_spawning_monsters_and_a_target
+behaviour	behaviour:zombie-reinforce/placement	src/entity/zombie/tests.rs::reinforcements_land_7_to_40_blocks_out_on_valid_dry_ground_away_from_players
+behaviour	behaviour:zombie-reinforce/charges	src/entity/zombie/tests.rs::caller_charges_cut_the_expected_reinforcement_count
+behaviour	behaviour:zombie-attr/leader	tests/java_zombie_attributes.rs::spawned_zombies_roll_leaders_at_javas_rate
+behaviour	behaviour:zombie-attr/follow-range-bonus	src/entity/zombie/tests.rs::computed_attributes_follow_java_operation_order
+behaviour	behaviour:zombie-attr/knockback-resistance-bonus	src/entity/zombie/tests.rs::computed_attributes_follow_java_operation_order
+behaviour	behaviour:mob-attr/random-follow-range	src/entity/zombie/tests.rs::every_spawned_mob_gets_the_follow_range_triangle
+behaviour	behaviour:zombie-attr/saved	src/entity/zombie/tests.rs::rolled_attributes_and_charges_survive_save_and_reload
+fix	fix:zombie/target-range-follow-range	src/entity/zombie/tests.rs::reinforcements_hunt_their_target_out_to_follow_range

@@ -6,6 +6,7 @@
 //! left to right, like Minecraft. Shapeless recipes match any arrangement
 //! of exactly their ingredients.
 
+mod dyed;
 mod passive;
 mod utilities;
 mod wolf_armor;
@@ -15,9 +16,11 @@ use crate::item::{ArmorMaterial, ArmorPiece, Item, Tier, ToolKind};
 use crate::world::block::Block;
 
 mod bees;
+mod bundle;
 mod copper;
 mod creaking;
 mod crops;
+mod harness;
 mod music;
 mod sculk;
 pub use copper::stonecutting as copper_stonecutting;
@@ -79,8 +82,13 @@ impl Grid {
         if maps.len() == 1 && occupied.len() > 1 && occupied.iter().all(|s| s.item == Item::MAP || s == maps[0]) {
             return Some(Stack { count: occupied.len() as u8, ..*maps[0] });
         }
-        if let Some(result) = wolf_armor::dynamic(&occupied) {
+        if let Some(result) = wolf_armor::dynamic(&occupied).or_else(|| dyed::dynamic(&occupied)) {
             return Some(result);
+        }
+        // Bundle dyeing keeps the bundle's contents and other components,
+        // and the bundle's own colour is no recipe (`TransmuteRecipe`).
+        if let Some(result) = crate::content::bundle::transmute(&occupied) {
+            return result;
         }
         let (w, h, items) = self.trimmed()?;
         recipes().iter().find(|r| r.matches(w, h, &items)).map(|r| r.result)
@@ -657,7 +665,10 @@ pub fn recipes() -> &'static [Recipe] {
         utilities::add(&mut r);
         passive::add(&mut r);
         wolf_armor::add(&mut r);
+        dyed::add(&mut r);
         weapons::add(&mut r);
+        harness::add(&mut r);
+        bundle::add(&mut r);
         r
     })
 }
@@ -1348,9 +1359,7 @@ mod wool_recipe_tests {
             g.cells[0] = Some(Stack::new(Block::wool(other), 1));
             assert_eq!(g.result(), Some(Stack::new(Block::wool(c), 1)));
             let mut g = Grid::new(3);
-            for x in 0..2 {
-                g.cells[x] = Some(Stack::new(Block::wool(c), 1));
-            }
+            g.cells[0..2].fill(Some(Stack::new(Block::wool(c), 1)));
             assert_eq!(g.result(), Some(Stack::new(Block::carpet(c), 3)));
             g.cells[2] = Some(Stack::new(Block::wool(c), 1));
             let slab = crate::world::colour_blocks::family_slab(c as usize);
@@ -1370,36 +1379,24 @@ mod glass_terracotta_recipe_tests {
     #[test]
     fn dyeing_eight_around_a_dye_and_panes_from_six_glass() {
         let mut g = Grid::new(3);
-        for i in 0..9 {
-            g.cells[i] = Some(Stack::new(Block::GLASS, 1));
-        }
+        g.cells[0..9].fill(Some(Stack::new(Block::GLASS, 1)));
         assert_eq!(g.result(), None);
         g.cells[4] = Some(Stack::new(DyeColor::Red.dye(), 1));
         assert_eq!(g.result(), Some(Stack::new(Block::stained_glass(DyeColor::Red), 8)));
         g.cells = [None; 9];
-        for i in 0..6 {
-            g.cells[i] = Some(Stack::new(Block::stained_glass(DyeColor::Blue), 1));
-        }
+        g.cells[0..6].fill(Some(Stack::new(Block::stained_glass(DyeColor::Blue), 1)));
         assert_eq!(g.result(), Some(Stack::new(Block::stained_pane(DyeColor::Blue), 16)));
         g.cells = [None; 9];
-        for i in 0..6 {
-            g.cells[i] = Some(Stack::new(Block::GLASS, 1));
-        }
+        g.cells[0..6].fill(Some(Stack::new(Block::GLASS, 1)));
         assert_eq!(g.result(), Some(Stack::new(Block::GLASS_PANE, 16)));
         g.cells = [None; 9];
-        for i in 0..9 {
-            g.cells[i] = Some(Stack::new(Block::TERRACOTTA, 1));
-        }
+        g.cells[0..9].fill(Some(Stack::new(Block::TERRACOTTA, 1)));
         g.cells[4] = Some(Stack::new(DyeColor::Black.dye(), 1));
         assert_eq!(g.result(), Some(Stack::new(Block::stained_terracotta(DyeColor::Black), 8)));
         g.cells = [None; 9];
         g.cells[0] = Some(Stack::new(DyeColor::White.dye(), 1));
-        for i in 1..5 {
-            g.cells[i] = Some(Stack::new(Block::SAND, 1));
-        }
-        for i in 5..9 {
-            g.cells[i] = Some(Stack::new(Block::GRAVEL, 1));
-        }
+        g.cells[1..5].fill(Some(Stack::new(Block::SAND, 1)));
+        g.cells[5..9].fill(Some(Stack::new(Block::GRAVEL, 1)));
         assert_eq!(g.result(), Some(Stack::new(Block::concrete_powder(DyeColor::White), 8)));
     }
 }

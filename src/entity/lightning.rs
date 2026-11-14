@@ -322,6 +322,8 @@ impl Mob {
                 true
             }
             MobKind::Villager if difficulty != 0 => {
+                // `ConversionParams.single(this, false, false)`: no equipment kept.
+                self.equipment = Default::default();
                 self.kind = MobKind::Witch;
                 self.health = self.kind.max_health();
                 self.persistent = true;
@@ -520,7 +522,12 @@ mod tests {
         m.persistent = true;
         m.baby = true;
         m.water_conversion = WaterConversion { exposure: 600, remaining: 42, remainder: 0.5 };
-        m.armor[0] = Some(crate::entity::armor::ArmorKind::Iron);
+        m.equipment.wear(
+            crate::item::ArmorPiece::Helmet,
+            crate::entity::armor::ArmorKind::Iron,
+            crate::enchant::Enchants::NONE,
+        );
+        m.equipment.set_drop_chance(crate::entity::equipment::Slot::Head, 0.25);
         let saved = e.nether_mobs_to_string();
         let mut restored = Entities::new(264);
         restored.load_nether_mobs(&saved);
@@ -531,7 +538,11 @@ mod tests {
             m.tick_water_conversion(0.05, &Water(true));
         }
         assert_eq!(m.kind, MobKind::Drowned);
-        assert_eq!(m.armor[0], Some(crate::entity::armor::ArmorKind::Iron));
+        assert_eq!(
+            m.equipment.armor_kind(crate::item::ArmorPiece::Helmet),
+            Some(crate::entity::armor::ArmorKind::Iron)
+        );
+        assert_eq!(m.equipment.drop_chance(crate::entity::equipment::Slot::Head), 0.25);
         assert!(m.persistent && m.baby);
     }
 }

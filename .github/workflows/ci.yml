@@ -43,7 +43,9 @@ jobs:
       matrix:
         include:
           - os: linux
-            runner: namespace-profile-gitrunner
+            # 16 GB: the release test build outgrew the 4x8 gitrunner profile's
+            # 8 GB (rustc was killed on 2026-11-13), so this row names its shape.
+            runner: [nscloud-ubuntu-24.04-amd64-8x16-with-cache, nscloud-cache-tag-voxelcraft-ci-linux]
           - os: macos
             runner: [nscloud-macos-tahoe-arm64-6x14-with-cache, nscloud-cache-tag-voxelcraft-ci-macos]
           - os: windows
@@ -79,6 +81,12 @@ jobs:
         run: |
           python3 -m unittest tools/test_check_doc_links.py
           python3 tools/check_doc_links.py
+      # Every feature the build-5000 campaign claims is counted once, with evidence.
+      - name: Campaign ledger
+        if: runner.os == 'Linux'
+        run: |
+          python3 -m unittest tools/test_campaign_ledger.py
+          python3 tools/campaign_ledger.py
 
   headless:
     name: simulation without client dependencies

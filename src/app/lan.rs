@@ -2082,7 +2082,7 @@ impl Game {
         (source, yaw, extra): (DVec3, f32, f32),
         fire: f32,
     ) -> Option<(DVec3, [u8; 4], bool)> {
-        const CAUSE: &str = "was slain by a player";
+        const CAUSE: voxelcraft::simulation::damage::Cause = voxelcraft::simulation::damage::Cause::PLAYER_ATTACK;
         let hit = knockback::Hit::melee(source, self.player(target)?.player.pos, yaw, extra);
         let landed = match target {
             PlayerRef::Host => {
@@ -2212,10 +2212,10 @@ impl Game {
         for level in thorns.into_iter().filter(|&l| l > 0) {
             if self.mobs.entities.roll_chance(0.15 * level as f32) {
                 let back = self.mobs.entities.roll_range(1.0, 5.0);
-                const THORNS: &str = "was killed trying to hurt a player";
+                const THORNS: voxelcraft::simulation::damage::Cause = voxelcraft::simulation::damage::Cause::THORNS;
                 match attacker {
                     PlayerRef::Host => {
-                        self.damage_player(back, THORNS);
+                        self.damage_player_armored(back, THORNS);
                     }
                     PlayerRef::Agent(name) => {
                         if let Some(bot) = self.agents.players.get_mut(name) {
@@ -2462,6 +2462,47 @@ mod tests {
         assert_eq!(restored.vitals.hunger.food, 7.0);
         assert_eq!(restored.vitals.xp.level, 9);
         assert_eq!(restored.sleeping, Some(0.75));
+    }
+    /// The LAN stack codec carries every stack component: a client's own
+    /// state, and what other players see held and worn.
+    #[test]
+    fn snapshots_carry_stack_components() {
+        use crate::inventory::{
+            Stack,
+            components::{self, Payload, Trim, TrimMaterial, TrimPattern, WrittenBook},
+        };
+        use crate::item::{ArmorMaterial, ArmorPiece, Item};
+        let helmet = Stack {
+            trim: Some(Trim { pattern: TrimPattern::Eye, material: TrimMaterial::Lapis }),
+            ..Stack::new(Item::armor(ArmorPiece::Helmet, ArmorMaterial::Diamond), 1)
+        };
+        let book = Stack::new(Item::BOOK, 1).with_payload(Payload::WrittenBook(WrittenBook {
+            title: "Log".into(),
+            author: "Host".into(),
+            pages: vec!["day one".into(), "day two".into()],
+            resolved: true,
+            ..Default::default()
+        }));
+        let bundle = Stack::new(Item::PAPER, 1).with_payload(Payload::Bundle(vec![helmet, book]));
+        let dyed = components::apply_dyes(Stack::new(Item::WOLF_ARMOR, 1), &[crate::color::DyeColor::Pink]).unwrap();
+        let mut original = Agent::new(DVec3::new(1.0, 151.0, 1.0));
+        original.selected = 1;
+        original.inventory.slots[0] = Some(bundle);
+        original.inventory.slots[1] = Some(book);
+        original.inventory.slots[2] = Some(dyed);
+        original.inventory.armor[0] = Some(helmet);
+        original.inventory.cursor = Some(bundle);
+        let frame = Packet::State(state(&original, "Scribe")).encode().unwrap();
+        let Packet::State(snapshot) = Packet::decode(&frame[4..]).unwrap() else { panic!("wrong packet") };
+        let mut restored = Agent::new(DVec3::ZERO);
+        apply(&mut restored, &snapshot);
+        assert_eq!(restored.inventory, original.inventory);
+        assert_eq!(restored.inventory.get(0).unwrap().bundle_contents(), [helmet, book]);
+        let frame = Packet::State(state_lite(&original, "Scribe", None, 0.0)).encode().unwrap();
+        let Packet::State(lite) = Packet::decode(&frame[4..]).unwrap() else { panic!("wrong packet") };
+        let mut copy = Agent::new(DVec3::ZERO);
+        apply(&mut copy, &lite);
+        assert_eq!((copy.inventory.get(1), copy.inventory.armor[0]), (Some(book), Some(helmet)));
     }
     #[test]
     fn slots_are_bounded_and_validated_against_the_authoritative_screen() {

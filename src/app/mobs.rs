@@ -9,6 +9,7 @@ use crate::audio::SoundSource;
 use crate::audio::sounds::{Call, Sound, Voice};
 use crate::entity::{self, Entities, EntityEvent, MobKind, MobSound, PlayerId, Target};
 use crate::physics;
+use crate::simulation::damage::Cause;
 
 use super::Game;
 
@@ -97,8 +98,7 @@ impl Game {
             if let Some(equipped) = armor
                 && let Some(mob) = self.mobs.entities.mobs.last_mut()
             {
-                mob.armor = [Some(equipped.kind); 4];
-                mob.armor_glint = if equipped.glint { 0b1111 } else { 0 };
+                mob.equipment.wear_set(equipped.kind, equipped.glint);
             }
             if let Some(&(_, item)) = held.iter().find(|(at, _)| *at == i)
                 && let Some(allay) = self.mobs.entities.mobs.last_mut().and_then(|m| m.allay.as_mut())
@@ -281,7 +281,7 @@ impl Game {
                     let toward = from - self.session.player.pos;
                     let slot = self.body.actions.selected;
                     if !self.session.shield_intercept(slot, damage, toward).blocked
-                        && self.damage_player(damage, voxelcraft::entity::warden::CAUSE_SONIC_BOOM) > 0.0
+                        && self.damage_player(damage, Cause::SONIC_BOOM) > 0.0
                     {
                         let resistance = self.session.inventory.knockback_resistance();
                         self.session.player.vel += crate::simulation::survival::knockback_taken(
@@ -298,14 +298,14 @@ impl Game {
                 }
                 EntityEvent::PlayerLightning { player } => {
                     if player == PlayerId::HOST {
-                        self.damage_player_armored(5., "was struck by lightning");
+                        self.damage_player_armored(5., Cause::LIGHTNING);
                     } else if let Some(bot) = self.agents.by_id_mut(player) {
-                        bot.agent.hurt(5., "was struck by lightning", DVec3::ZERO, &mut self.mobs.entities);
+                        bot.agent.hurt(5., Cause::LIGHTNING, DVec3::ZERO, &mut self.mobs.entities);
                     }
                 }
                 EntityEvent::PlayerFall { player, damage } => {
                     if player == PlayerId::HOST {
-                        self.damage_player(damage, crate::simulation::survival::CAUSE_FALL);
+                        self.damage_player(damage, Cause::FALL);
                     } else if let Some(bot) = self.agents.by_id_mut(player) {
                         bot.agent.hurt_fall(damage, &mut self.mobs.entities);
                     }
@@ -318,7 +318,7 @@ impl Game {
                             self.session.inventory.armor_points(),
                             self.session.inventory.armor_toughness(),
                         );
-                        if self.damage_player(reduced + magic, "was slain by a guardian") > 0.0 {
+                        if self.damage_player(reduced + magic, Cause::GUARDIAN_BEAM) > 0.0 {
                             self.session.inventory.wear_armor(physical);
                         }
                     } else if let Some(bot) = self.agents.by_id_mut(player) {
@@ -330,7 +330,7 @@ impl Game {
                     let damage = self.difficulty.mob_damage(2.);
                     let applied = if player == PlayerId::HOST {
                         let toward = source.map(|p| p - self.session.player.pos);
-                        let hit = self.damage_player_from(damage, "was stung by a bee", toward) > 0.;
+                        let hit = self.damage_player_from(damage, Cause::BEE_STING, toward) > 0.;
                         if hit && poison > 0 {
                             self.session.vitals.apply_effect(crate::simulation::effects::Effect::Poison, 0, poison);
                         }
@@ -340,7 +340,7 @@ impl Game {
                         let blocked = toward
                             .is_some_and(|d| bot.agent.session.shield_intercept(bot.agent.selected, damage, d).blocked);
                         let hit = !blocked
-                            && bot.agent.hurt(damage, "was stung by a bee", DVec3::ZERO, &mut self.mobs.entities) > 0.;
+                            && bot.agent.hurt(damage, Cause::BEE_STING, DVec3::ZERO, &mut self.mobs.entities) > 0.;
                         if hit && poison > 0 {
                             bot.agent.session.vitals.apply_effect(
                                 crate::simulation::effects::Effect::Poison,
@@ -373,7 +373,7 @@ impl Game {
                     if arrow_effects.allows() && self.session.mode.is_survival() {
                         let damage = self.session.vitals.apply_effect(effect, amplifier, ticks);
                         if damage > 0.0 {
-                            self.damage_player(damage, "was killed by magic");
+                            self.damage_player(damage, Cause::MAGIC);
                         }
                     }
                 }
@@ -384,7 +384,7 @@ impl Game {
                     {
                         let damage = bot.agent.session.vitals.apply_effect(effect, amplifier, ticks);
                         if damage > 0.0 {
-                            bot.agent.hurt(damage, "was killed by magic", DVec3::ZERO, &mut self.mobs.entities);
+                            bot.agent.hurt(damage, Cause::MAGIC, DVec3::ZERO, &mut self.mobs.entities);
                         }
                     }
                 }
@@ -402,7 +402,7 @@ impl Game {
                 EntityEvent::PlayerMagic { player: PlayerId::HOST, amount } => {
                     if arrow_effects.allows() && self.session.mode.is_survival() {
                         if amount > 0.0 {
-                            self.damage_player(amount, "was killed by magic");
+                            self.damage_player(amount, Cause::MAGIC);
                         } else {
                             self.session.vitals.health =
                                 (self.session.vitals.health - amount).min(crate::simulation::survival::MAX_HEALTH);
@@ -574,7 +574,9 @@ impl Game {
                 | EntityEvent::DragonXp { .. }
                 | EntityEvent::MobKilled { .. }
                 | EntityEvent::LaidEgg { .. }
-                | EntityEvent::Hatched { .. } => {}
+                | EntityEvent::Hatched { .. }
+                | EntityEvent::ExperienceBurst { .. }
+                | EntityEvent::DropEquipment { .. } => {}
                 EntityEvent::AnimalBlock { cell, from, to } => {
                     if self.world.get_block(cell) == Some(from) {
                         self.world.set_block(cell, to);
@@ -720,6 +722,7 @@ fn voice(kind: MobKind) -> Voice {
         // The warden's own calls are `Sound::Warden`; this voice is unused.
         MobKind::Warden => Voice::Creaking,
         MobKind::Breeze => Voice::Breeze,
+        MobKind::Endermite => Voice::Endermite,
         MobKind::Allay => Voice::Allay,
         MobKind::CopperGolem => Voice::Skeleton,
         MobKind::Creaking => Voice::Creaking,
@@ -786,10 +789,10 @@ impl Game {
 
     /// Blows a hole in the world and hurts everything around `center`.
     /// `cause` completes the death message, as for [`Game::damage_player`].
-    pub(super) fn explode(&mut self, center: DVec3, power: f32, cause: &str, credit_player: bool) {
+    pub(super) fn explode(&mut self, center: DVec3, power: f32, cause: Cause, credit_player: bool) {
         // `ServerLevel.explode`: the interaction decides whether blocks break
         // and whether their drops decay.
-        let blast = self.gamerules.explosion(voxelcraft::rules::ExplosionSource::of_cause(cause));
+        let blast = self.gamerules.explosion(voxelcraft::rules::ExplosionSource::of_cause(cause.text));
         // `ServerExplosion.explode`: find the cells, hurt entities while the
         // walls about to go still shield them, then break the blocks.
         let cells = if blast.destroys_blocks { self.world.exploded_cells(center, power) } else { Vec::new() };
@@ -810,7 +813,7 @@ impl Game {
             }
         }
         if blast.destroys_blocks {
-            let fire = self.gamerules.explosion_fire(cause);
+            let fire = self.gamerules.explosion_fire(cause.text);
             self.world.detonate(&cells, power, self.gamerules.bool("block_drops"), blast.drop_decay, fire);
         }
         // TNT caught in the blast goes off soon after.

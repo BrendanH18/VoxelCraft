@@ -1000,8 +1000,8 @@ pub(super) fn pool_with(chest: &mut Chest, rng: &mut Rng, table: &[Loot], rolls:
             stack.item = item;
             stack.enchants = enchants;
         } else if e.enchanted {
-            use crate::enchant::Enchantment;
-            let choices: Vec<_> = Enchantment::ALL.into_iter().filter(|e| e.on_random_loot() && e.fits(item)).collect();
+            // `#on_random_loot` in its tag order (`EnchantRandomlyFunction`).
+            let choices: Vec<_> = crate::enchant::ON_RANDOM_LOOT.into_iter().filter(|e| e.fits(item)).collect();
             if let Some(e) = choices.get(rng.below(choices.len() as u32) as usize) {
                 stack.enchants = stack.enchants.with(*e, rng.range(1, e.def().max_level as u32) as u8);
                 if item == Item::BOOK {

@@ -271,6 +271,7 @@ pub(crate) fn movement_speed(kind: MobKind) -> f64 {
         K::Allay => f64::from(0.1_f32),
         K::Cow | K::Mooshroom | K::Parrot | K::Goat | K::CopperGolem => 0.2,
         K::Pig | K::Chicken | K::Turtle | K::Creeper | K::Skeleton | K::Stray | K::Bogged | K::WitherSkeleton => 0.25,
+        K::Endermite => super::super::endermite::MOVEMENT_SPEED,
         K::Sheep | K::Zombie => 0.23,
         K::Bee | K::Wolf | K::Cat | K::Fox | K::Rabbit | K::Hoglin => 0.3,
         K::Strider | K::Donkey | K::Mule | K::Llama | K::TraderLlama => 0.175,

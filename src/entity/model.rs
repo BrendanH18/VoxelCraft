@@ -721,6 +721,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
         MobKind::Creaking => creaking::pose(m, time),
         MobKind::Allay => allay::pose(m, time),
         MobKind::Breeze => breeze::pose(m, time),
+        MobKind::Endermite => hostiles::endermite(time),
         MobKind::Tadpole => passive::tadpole(m, time),
         MobKind::Cow => parts![
             part(COW_BODY, [0.0; 3], Quat::IDENTITY),
@@ -1161,7 +1162,7 @@ pub fn build(
             || m.kind == MobKind::Piglin
         {
             let limbs = humanoid_armor(&posed);
-            let worn = super::armor::worn_pieces(m.armor, m.armor_glint);
+            let worn = m.equipment.worn();
             super::player_model::draw_armor(out, &limbs, &worn, origin, body, scale, (light, torch));
         }
         if m.burning {
@@ -1257,6 +1258,7 @@ pub fn build_thrown(thrown: &[super::thrown::Thrown], camera: DVec3, alpha: f64,
             super::thrown::Kind::LlamaSpit => ([235, 238, 228], 1.5),
             super::thrown::Kind::WindCharge => ([200, 224, 240], 2.4),
             super::thrown::Kind::BreezeWindCharge => ([170, 200, 236], 3.0),
+            super::thrown::Kind::ExperienceBottle => ([96, 186, 168], 2.4),
         };
         let c = cube([-size, -size, -size], [size, size, size], color, 16);
         push_cuboid(out, &c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([230, 0, 0, 0], 0), (FIRE, 0.0), 0.0);
@@ -1796,7 +1798,7 @@ mod tests {
         mobs[0].baby = true;
         let lamb = rebuild(&mobs, &mut mesh);
         assert_ne!(lamb.0, dyed.0, "age");
-        mobs[1].armor = [Some(crate::entity::armor::ArmorKind::Iron); 4];
+        mobs[1].equipment.wear_set(crate::entity::armor::ArmorKind::Iron, false);
         let armored = rebuild(&mobs, &mut mesh);
         assert_eq!(armored.0, lamb.0, "armor is textured: no new boxes");
         assert!(armored.1.len() > lamb.1.len() && armored.1.iter().any(|v| v.torch[1] == 3), "equipment");
@@ -1885,12 +1887,12 @@ mod tests {
     #[test]
     fn zombies_and_skeletons_wear_inflated_armor() {
         let mut zombie = Mob::new(MobKind::Zombie, DVec3::new(3.0, 0.0, 0.0), 0.0);
-        zombie.armor = [Some(crate::entity::armor::ArmorKind::Chain); 4];
+        zombie.equipment.wear_set(crate::entity::armor::ArmorKind::Chain, false);
         let mut out = EntityMesh::flat();
         build(std::slice::from_ref(&zombie), DVec3::ZERO, Vec3::X, 100.0, 0.0, 1.0, &mut out);
         assert!(out.iter().any(|v| v.torch[1] == 3));
         let mut pig = Mob::new(MobKind::Pig, DVec3::new(3.0, 0.0, 0.0), 0.0);
-        pig.armor = zombie.armor;
+        pig.equipment = zombie.equipment.clone();
         out.clear();
         build(std::slice::from_ref(&pig), DVec3::ZERO, Vec3::X, 100.0, 0.0, 1.0, &mut out);
         assert!(out.iter().all(|v| v.torch[1] == 0));

@@ -45,5 +45,6 @@ pub(super) fn held(m: &Mob, origin: Vec3, body: Quat, light: ([u8; 4], u8), out:
         uv: [0.; 2],
         rot: Quat::IDENTITY,
     };
-    super::super::player_model::textured_box(out, &limb, 0., origin, body, light, 2, layer, 1., [255; 4]);
+    let tint = crate::inventory::components::dye_tint_bytes(stack);
+    super::super::player_model::textured_box(out, &limb, 0., origin, body, light, 2, layer, 1., tint);
 }

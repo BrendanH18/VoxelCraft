@@ -119,8 +119,9 @@ fn armor_material(name: &str) -> Option<ArmorMaterial> {
         "diamond" => ArmorMaterial::Diamond,
         "netherite" => ArmorMaterial::Netherite,
         "turtle_scute" => ArmorMaterial::Turtle,
-        // Chainmail is a monster-only look here; wolf armor is not registered.
-        "chainmail" | "armadillo_scute" => return None,
+        "chainmail" => ArmorMaterial::Chainmail,
+        // Wolf armor is a single body piece, compared in `java_equipment.rs`.
+        "armadillo_scute" => return None,
         other => panic!("unknown reference armor material {other}"),
     })
 }
@@ -153,7 +154,7 @@ fn every_armor_material_matches_the_reference_material() {
         assert_eq!(material.knockback_resistance(), facts["knockback_resistance"].as_f64().unwrap() as f32, "{name}");
         checked += 1;
     }
-    assert_eq!(checked, 7);
+    assert_eq!(checked, 8);
 }
 
 #[test]

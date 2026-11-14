@@ -220,10 +220,10 @@ impl PlayerSession {
             return self.player.vehicle.is_none()
                 && !(sneaking && (held.is_some() || self.inventory.offhand.is_some()));
         }
-        crate::content::interaction::block_use_precedes_item(
+        crate::content::interaction::block_use_precedes_stack(
             world,
             pos,
-            held,
+            self.inventory.get(slot),
             sneaking,
             (self.player.eye(), self.player.forward().as_dvec3()),
         ) || (!(sneaking && held.is_some())

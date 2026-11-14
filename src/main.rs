@@ -110,8 +110,8 @@ pub struct Args {
     pub food: Option<f32>,
     /// Starting experience level (`--xp`).
     pub xp: Option<u32>,
-    /// Status effects to start with: (effect, seconds, amplifier).
-    pub effects: Vec<(voxelcraft::simulation::effects::Effect, u32, u8)>,
+    /// Status effects to start with (`--effect`).
+    pub effects: Vec<voxelcraft::simulation::effects::Active>,
     /// Experience orbs (points each) spawned in front of the player once loaded.
     pub orbs: Vec<u32>,
     /// Items added to the inventory at startup (debugging/screenshots).
@@ -120,6 +120,8 @@ pub struct Args {
     pub wear: Vec<item::Item>,
     /// Enchantments put on the first stack given (`--enchant`).
     pub enchants: Vec<(enchant::Enchantment, u8)>,
+    /// Dyes mixed into the first hotbar stack and the worn armor (`--dye`).
+    pub dyes: Vec<voxelcraft::color::DyeColor>,
     /// Items thrown in front of the player once the world has loaded.
     pub drop: Vec<(item::Item, u8)>,
     /// Sound: start muted, master volume 0..1, dump WAVs and exit.
@@ -185,8 +187,9 @@ voxelcraft [options]
   --air <0..15>     starting air in seconds
   --food <0..20>    starting hunger in half drumsticks (no saturation)
   --xp <level>      starting experience level
-  --effect e[,s[,a]]  start with a status effect for s seconds (default
-                    30) at amplifier a (default 0; repeatable)
+  --effect e[,s[,a[,flag...]]]  start with a status effect for s seconds
+                    (default 30, or `infinite`) at amplifier a (default 0),
+                    with flags ambient, hideparticles, hideicon (repeatable)
   --orbs <points>   spawn experience orbs worth that many points in front of
                     the player once loaded (repeatable)
   --give item[,n]   add n (default 1) of an item to the inventory at startup
@@ -196,6 +199,8 @@ voxelcraft [options]
   --wear item       put on a piece of armor at startup (repeatable)
   --enchant e[,l]   enchant the first hotbar stack (or a book there) with
                     level l (default 1) of enchantment e (repeatable)
+  --dye c[,c...]    dye the first hotbar stack and the worn armor, when
+                    dyeable, with these dyes mixed (e.g. --dye red,blue)
   --cart x,y,z,kind spawn a cart on rails, or a named boat/raft (repeatable)
   --decor x,y,z,face,item[,held]
                     hang an item frame or painting on, or stand an armor stand
@@ -302,6 +307,7 @@ fn parse_args() -> Result<Args, String> {
         give: Vec::new(),
         wear: Vec::new(),
         enchants: Vec::new(),
+        dyes: Vec::new(),
         drop: Vec::new(),
         mute: false,
         no_hud: false,
@@ -604,15 +610,7 @@ fn parse_args() -> Result<Args, String> {
             "--food" => args.food = Some(value("--food")?.parse().map_err(|_| "bad --food")?),
             "--xp" => args.xp = Some(value("--xp")?.parse().map_err(|_| "bad --xp")?),
             "--effect" => {
-                let v = value("--effect")?;
-                let mut parts = v.split(',');
-                let effect = parts
-                    .next()
-                    .and_then(voxelcraft::simulation::effects::Effect::from_id)
-                    .ok_or("bad --effect name")?;
-                let secs = parts.next().map_or(Ok(30), str::parse).map_err(|_| "bad --effect seconds")?;
-                let amp = parts.next().map_or(Ok(0), str::parse).map_err(|_| "bad --effect amplifier")?;
-                args.effects.push((effect, secs, amp));
+                args.effects.push(voxelcraft::simulation::effects::Active::parse_option(&value("--effect")?)?)
             }
             "--orbs" => args.orbs.push(value("--orbs")?.parse().map_err(|_| "bad --orbs")?),
             flag @ ("--give" | "--drop") => {
@@ -627,6 +625,17 @@ fn parse_args() -> Result<Args, String> {
                 let (name, level) = v.split_once(',').unwrap_or((&v, "1"));
                 let e = enchant::Enchantment::from_name(name.trim()).ok_or(format!("--enchant: unknown {name}"))?;
                 args.enchants.push((e, level.trim().parse().map_err(|_| format!("--enchant: bad level in {v}"))?));
+            }
+            "--dye" => {
+                let v = value("--dye")?;
+                for name in v.split(',') {
+                    let name = name.trim().replace('_', " ");
+                    let colour = voxelcraft::color::DyeColor::ALL
+                        .into_iter()
+                        .find(|c| c.adjective() == name)
+                        .ok_or(format!("--dye: unknown colour {name}"))?;
+                    args.dyes.push(colour);
+                }
             }
             "--wear" => {
                 let v = value("--wear")?;

@@ -56,6 +56,7 @@ impl Entities {
         self.village_upkeep(dt as f32, world);
         self.cat_spawner_tick(dt, world, ctx);
         self.assign_hunts(ctx);
+        self.endermite_upkeep(dt, world);
         self.trader_upkeep();
         // `Entity.hasMovedHorizontallyRecently`, from last update's positions.
         let moved: Vec<(PlayerId, bool)> = ctx
@@ -69,11 +70,13 @@ impl Entities {
         self.player_spots.clear();
         self.player_spots.extend(ctx.players.iter().map(|t| (t.id, t.pos)));
         self.resolve_hurt_by(ctx);
+        self.call_reinforcements(world, ctx);
         self.nether_sense(dt as f32, world, ctx);
         self.aquatic_sense(dt as f32, world);
         self.grow_loaded_turtles(dt as f32, world, ctx);
         self.frog_upkeep(dt, world, ctx);
         self.polar_sense(dt, world, ctx);
+        self.neutral_sense(world, ctx);
         self.panda_upkeep(dt, world, ctx, &mut events);
         self.armadillo_upkeep(dt, world, ctx, &mut events);
         self.ocelot_upkeep(dt, ctx);
@@ -148,22 +151,6 @@ impl Entities {
                         .and_then(|s| s.armor)
                         .filter(|s| !s.enchants.has(crate::enchant::Enchantment::VanishingCurse))
                 {
-                    self.items.push(ItemEntity::new(stack, dead.pos, DVec3::ZERO, 0.5, &mut self.rng));
-                }
-                // `Mob.dropCustomDeathLoot`: a hand item drops on 8.5% of player kills
-                // (`DEFAULT_EQUIPMENT_DROP_CHANCE`), its wear rerolled.
-                if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
-                    && dead.player_hit_left > 0.0
-                    && let Some(stack) = dead.weapon.as_deref().copied()
-                    && !stack.enchants.has(crate::enchant::Enchantment::VanishingCurse)
-                    && self.rng.next_f32() < crate::weapons::trident::EQUIPMENT_DROP_CHANCE
-                {
-                    let mut stack = stack;
-                    if let Some(max) = stack.item.durability() {
-                        let inner = 1 + self.rng.next_int(u32::from(max.saturating_sub(3).max(1)));
-                        stack.damage = max - self.rng.next_int(inner) as u16;
-                        stack.damage = stack.damage.min(max - 1);
-                    }
                     self.items.push(ItemEntity::new(stack, dead.pos, DVec3::ZERO, 0.5, &mut self.rng));
                 }
                 if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
@@ -312,7 +299,11 @@ impl Entities {
                     arrow.custom_effect =
                         self.mobs.iter().find(|m| m.uid == shooter).and_then(|m| m.kind.arrow_effect());
                     if let Some(m) = self.mobs.iter().find(|m| m.uid == shooter) {
-                        arrow.enchants = m.skeleton_bow.as_ref().map_or(Default::default(), |s| s.enchants);
+                        arrow.enchants = m
+                            .equipment
+                            .main_hand()
+                            .filter(|s| s.item == crate::item::Item::BOW)
+                            .map_or(Default::default(), |s| s.enchants);
                     }
                     arrow.tipped = arrow.custom_effect.is_some();
                     // `Projectile.tick`'s first tick: `projectile_shoot` from its owner.
@@ -325,7 +316,7 @@ impl Entities {
                         .mobs
                         .iter()
                         .find(|m| m.uid == shooter)
-                        .and_then(|m| m.weapon.as_deref().copied())
+                        .and_then(|m| m.equipment.main_hand().copied())
                         .filter(|s| s.item == crate::weapons::TRIDENT)
                         .unwrap_or(crate::inventory::Stack::new(crate::weapons::TRIDENT, 1));
                     let uncertainty = crate::weapons::trident::mob_uncertainty(self.difficulty as u8);
@@ -401,6 +392,7 @@ impl Entities {
                     || t.update(dt, world, mobs, &self.mob_index, &ctx.players, rng, &mut events)
             });
         }
+        self.pearl_endermites(&events, ctx);
         self.update_tridents(dt, world, ctx, &mut events);
         {
             let (rng, mobs, index) = (&mut self.rng, &self.mobs, &self.mob_index);
@@ -442,9 +434,6 @@ impl Entities {
                     {
                         self.warden_hurt(i, crate::world::vibration::EntityRef::Player(owner), false);
                     }
-                    if kind == MobKind::ZombifiedPiglin {
-                        self.anger_piglins(pos);
-                    }
                     // Java's `VILLAGER_HURT`/`VILLAGER_KILLED` reputation events fire for any
                     // damage a player causes, including arrows and splash potions.
                     if kind == MobKind::Villager
@@ -462,15 +451,14 @@ impl Entities {
                     // `HurtByTargetGoal`: projectiles credit their shooter too.
                     if let Some(owner) = owner
                         && !killed
-                        && matches!(
+                        && (matches!(
                             kind,
                             MobKind::Dolphin
                                 | MobKind::Blaze
-                                | MobKind::Bee
-                                | MobKind::PolarBear
                                 | MobKind::Panda
                                 | MobKind::Armadillo
-                        )
+                                | MobKind::Endermite
+                        ) || super::neutral::is_neutral(kind))
                         && let Some(i) = self.mobs.iter().position(|m| m.kind == kind && m.pos == pos && m.alive())
                     {
                         self.hurt_by_player_target(i, owner);
@@ -506,6 +494,8 @@ impl Entities {
                         self.spawn_baby(MobKind::Chicken, pos);
                     }
                 }
+                EntityEvent::ExperienceBurst { pos, toward, points } => self.spawn_xp_toward(pos, toward, points),
+                EntityEvent::DropEquipment { stack, pos } => self.scatter(stack, pos),
                 _ => {}
             }
         }
@@ -516,6 +506,8 @@ impl Entities {
                     | EntityEvent::MobKilled { .. }
                     | EntityEvent::LaidEgg { .. }
                     | EntityEvent::Hatched { .. }
+                    | EntityEvent::ExperienceBurst { .. }
+                    | EntityEvent::DropEquipment { .. }
             )
         });
         self.items.retain_mut(|item| !world.entity_ticking(item.pos.floor().as_ivec3()) || item.update(dt, world));

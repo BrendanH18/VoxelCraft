@@ -574,7 +574,7 @@ impl Mob {
         } else if self.kind == MobKind::Wolf && self.animal.as_ref().is_some_and(|a| a.owner.is_some()) {
             40.0
         } else {
-            self.kind.max_health()
+            self.leader_max_health(self.kind.max_health())
         }
     }
     pub(super) fn companion_think<W: MobWorld + ?Sized>(
@@ -609,12 +609,16 @@ impl Mob {
                         player: id,
                         damage: 4.0,
                         knockback: (flat.normalize_or(DVec3::X) * 4.0 + DVec3::Y * 3.0).as_vec3(),
-                        cause: "was slain by a wolf",
+                        cause: crate::simulation::damage::Cause::mob("was slain by a wolf"),
                     });
                 }
                 return Some((self.pursue(w, t.pos, 3.0, true, true, rng), 3.0));
             }
-            self.angry_player = None;
+            // `updatePersistentAnger` forgives a creative or spectating
+            // player; a dead one is left to `forgive_dead_players`.
+            if ctx.players.iter().any(|t| t.id == id && t.alive && !t.targetable) {
+                self.angry_player = None;
+            }
         }
         if let Some((target, goal)) = a.foe {
             self.stop_goal(w);

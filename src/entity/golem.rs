@@ -71,12 +71,11 @@ pub fn iron_damage(rng: &mut super::Rng) -> f32 {
     7.5 + rng.next_int(15) as f32
 }
 
+/// `NeutralMob.isAngryAt`: only the persistent target. A golem angry at
+/// every player (`universal_anger`) has one picked in `neutral` first.
 fn anger_target<'a>(mob: &super::Mob, ctx: &'a Ctx) -> Option<&'a super::Target> {
-    if let Some(owner) = mob.angry_player {
-        ctx.players.iter().find(|p| p.id == owner && p.alive && p.targetable)
-    } else {
-        ctx.nearest_target(mob.pos)
-    }
+    let owner = mob.angry_player?;
+    ctx.players.iter().find(|p| p.id == owner && p.alive && p.targetable)
 }
 
 const GOLEM_RANGE: f64 = 16.0;
@@ -244,6 +243,10 @@ impl Entities {
             self.mobs[i].strike = false;
             let pos = self.mobs[i].pos;
             let kind = self.mobs[i].kind;
+            if kind == MobKind::Enderman {
+                self.enderman_strike(i, events);
+                continue;
+            }
             if kind == MobKind::IronGolem
                 && let Some(player) = self.player_foe(i, ctx)
                 && player.pos.distance_squared(pos) < 9.0
@@ -254,7 +257,7 @@ impl Entities {
                     player: player.id,
                     damage: iron_damage(&mut self.rng),
                     knockback: (dir * 6.0 + DVec3::Y * 8.0).as_vec3(),
-                    cause: "was slain by an iron golem",
+                    cause: crate::simulation::damage::Cause::mob("was slain by an iron golem"),
                 });
                 continue;
             }
@@ -587,7 +590,10 @@ mod tests {
         e.spawn(MobKind::Villager, DVec3::new(4.0, 1.0, 0.5));
         let events = e.update(0.05, &world, &ctx(DVec3::new(40.0, 1.0, 0.5), false));
         assert!(e.mobs[1].health < MobKind::Zombie.max_health(), "zombie health {}", e.mobs[1].health);
-        assert!(e.mobs[1].vel.y >= 8.0, "knockup {}", e.mobs[1].vel.y);
+        // `IronGolem.doHurtTarget` scales its 0.4 lift by `1 - knockback
+        // resistance`, which a zombie's spawn bonus raises by up to 0.05.
+        let lift = 8.0 * (1.0 - e.mobs[1].knockback_resistance());
+        assert!(lift < 8.0 && e.mobs[1].vel.y >= lift - 1e-9, "knockup {} for {lift}", e.mobs[1].vel.y);
         assert!(events.iter().all(|ev| !matches!(ev, EntityEvent::PlayerHit { .. })));
         let before = e.mobs[0].health;
         e.mobs[0].vel = DVec3::ZERO;
@@ -609,9 +615,15 @@ mod tests {
         let world = Grid::flat(0);
         let hit = |e: &mut Entities, near: DVec3| {
             (0..40).any(|_| {
-                e.update(0.05, &world, &ctx(near, true))
-                    .iter()
-                    .any(|ev| matches!(ev, EntityEvent::PlayerHit { cause: "was slain by an iron golem", .. }))
+                e.update(0.05, &world, &ctx(near, true)).iter().any(|ev| {
+                    matches!(
+                        ev,
+                        EntityEvent::PlayerHit {
+                            cause: crate::simulation::damage::Cause { text: "was slain by an iron golem", .. },
+                            ..
+                        }
+                    )
+                })
             })
         };
         let mut e = Entities::new(1);

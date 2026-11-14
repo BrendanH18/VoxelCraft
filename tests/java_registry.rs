@@ -2,7 +2,7 @@
 use serde_json::Value;
 use std::collections::BTreeSet;
 use voxelcraft::{item::Item, java_registry, potion::Potion};
-const ALLOWED: &[&str] = &["v0.17", "v0.18", "v0.19", "v0.20", "deferred", "none"];
+const ALLOWED: &[&str] = &["v0.15", "v0.16", "v0.17", "v0.18", "deferred", "none"];
 fn gaps() -> Value {
     serde_json::from_str(include_str!("fixtures/java/26.3/registry_gaps.json")).unwrap()
 }
@@ -44,10 +44,7 @@ fn reference_registry_gaps_are_complete_current_and_assigned() {
 }
 fn owned_item(name: &str, g: &Value, reference: &Value) -> bool {
     let name = name.trim_start_matches("minecraft:");
-    let alias = match name {
-        "bottle o enchanting" => "experience_bottle",
-        _ => name,
-    };
+    let alias = name;
     let id = alias.replace(' ', "_");
     g["items"].get(&id).is_some()
         || reference["items"].as_object().unwrap().iter().any(|(id, english)| {

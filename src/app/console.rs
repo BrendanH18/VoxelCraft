@@ -6,7 +6,6 @@ use glam::{DVec3, IVec2, IVec3};
 use std::collections::VecDeque;
 use voxelcraft::agent::{Command, HELP, TimeQuery, WeatherKind};
 use voxelcraft::rules::GameRules;
-use voxelcraft::simulation::survival;
 use winit::event::KeyEvent;
 use winit::keyboard::{KeyCode, PhysicalKey};
 
@@ -160,7 +159,7 @@ impl Game {
             }
             Command::Kill => {
                 let was_dead = self.session.vitals.is_dead();
-                self.session.vitals.damage(f32::MAX, "was killed", false);
+                self.session.vitals.damage(f32::MAX, voxelcraft::simulation::damage::Cause::GENERIC_KILL, false);
                 if !was_dead && self.session.vitals.is_dead() {
                     self.on_death();
                 }
@@ -386,8 +385,8 @@ impl Game {
                 return Ok(format!("Applied {} to {}", e.describe(level), stack.item.name()));
             }
             Command::Effect(change) => {
-                let (damage, text) = change.apply(&mut self.session.vitals);
-                self.damage_player(damage, survival::CAUSE_MAGIC);
+                let (damage, text) = change.apply(&mut self.session.vitals, "Host")?;
+                self.damage_player(damage, voxelcraft::simulation::damage::Cause::MAGIC);
                 return Ok(text);
             }
             Command::Trade(index) => {

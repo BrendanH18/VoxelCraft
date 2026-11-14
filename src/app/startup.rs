@@ -92,6 +92,14 @@ impl Game {
                 inventory.armor[piece as usize] = Some(Stack::new(item, 1));
             }
         }
+        if !args.dyes.is_empty() {
+            use voxelcraft::inventory::components::apply_dyes;
+            for slot in inventory.armor.iter_mut().chain(&mut inventory.slots[..1]) {
+                if let Some(dyed) = slot.and_then(|s| apply_dyes(s, &args.dyes)) {
+                    *slot = Some(dyed);
+                }
+            }
+        }
         for &(e, level) in &args.enchants {
             match crate::enchant::command(inventory.slots[0], e, level) {
                 Ok(stack) => inventory.slots[0] = Some(stack),
@@ -132,9 +140,9 @@ impl Game {
         if let Some(text) = prop("effects") {
             vitals.effects = crate::simulation::effects::Effects::deserialize(text);
         }
-        for &(effect, secs, amp) in &args.effects {
-            let damage = vitals.apply_effect(effect, amp, secs.saturating_mul(20).max(1));
-            vitals.damage(damage, survival::CAUSE_MAGIC, mode.invulnerable());
+        for &instance in &args.effects {
+            let (damage, _) = vitals.give_effect(instance);
+            vitals.damage(damage, voxelcraft::simulation::damage::Cause::MAGIC, mode.invulnerable());
         }
         if let Some(level) = args.xp {
             let total = (0..level.min(1000)).map(crate::simulation::experience::points_to_next).sum();

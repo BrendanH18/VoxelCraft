@@ -28,11 +28,6 @@ pub const JAVA_ALLOWED: &[(&str, &str)] = &[
         "crafting_decorated_pot/decorated_pot",
         "DEF-02, owner 2026-11-05: ocean-ruin sherds are plain items only; decorated-pot patterns stay deferred",
     ),
-    ("crafting_dye/leather_helmet_dyed", "dyed leather colours (a data component) don't exist yet"),
-    ("crafting_dye/leather_chestplate_dyed", "dyed leather colours (a data component) don't exist yet"),
-    ("crafting_dye/leather_leggings_dyed", "dyed leather colours (a data component) don't exist yet"),
-    ("crafting_dye/leather_boots_dyed", "dyed leather colours (a data component) don't exist yet"),
-    ("crafting_dye/leather_horse_armor_dyed", "dyed leather colours (a data component) don't exist yet"),
     (
         "crafting_special_shielddecoration/shield_decoration",
         "banner patterns arrive with the loom (v0.17); a shield has no pattern to carry yet",
@@ -344,15 +339,17 @@ impl Reference {
                     _ => return unregistered(),
                 }
             }
-            "crafting_dye" if recipe["result"] == "wolf_armor" => {
+            "crafting_dye" => {
+                // `DyeRecipe`: the target and any dyes; the colour mix is
+                // compared in `tests/java_dyed_items.rs`.
                 match (self.ingredient(&recipe["target"]), self.ingredient(&recipe["dye"])) {
                     (Some(target), Some(dyes)) => shapeless(vec![target, dyes]),
                     _ => return unregistered(),
                 }
             }
             "crafting_transmute" if recipe.get("material_count").is_none() => {
-                // Java keeps the input's components; VoxelCraft items carry
-                // none that these recipes change, so a shapeless pair matches.
+                // A shapeless pair. Java keeps the input's components, which
+                // `tests/java_bundles.rs` checks for the bundle transmutes.
                 match (self.ingredient(&recipe["input"]), self.ingredient(&recipe["material"])) {
                     (Some(a), Some(b)) => shapeless(vec![a, b]),
                     _ => return unregistered(),
@@ -550,9 +547,19 @@ pub fn compare_crafting(r: &Reference) -> Section {
             let mut ok = true;
             for grid in grids(&c) {
                 let got = grid.result();
+                // `TransmuteRecipe.matches` refuses a one-item result equal to
+                // its input: dyeing a bundle its own colour makes nothing.
+                if kind == "crafting_transmute" && grid.cells.iter().flatten().any(|s| s.item.0 == c.result) {
+                    if let Some(stack) = got {
+                        s.failures.push(format!("{key}: the input's own colour crafts {:?}", r.names.name(stack.item)));
+                        ok = false;
+                        break;
+                    }
+                    continue;
+                }
                 let matches = got.is_some_and(|mut stack| {
                     let effects = stew_effects(stack);
-                    if matches!(stack.item, Item::SUSPICIOUS_STEW | Item::WOLF_ARMOR) {
+                    if stack.item == Item::SUSPICIOUS_STEW || voxelcraft::inventory::components::dyeable(stack.item) {
                         stack.entity_data = 0;
                     }
                     stack == Stack::new(Item(c.result), c.count) && effects == c.stew_effects

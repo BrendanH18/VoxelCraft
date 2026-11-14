@@ -1379,8 +1379,7 @@ fn monument(g: &Generator, centre: IVec2, rot: u8, rng: &mut Rng) -> Built {
 // Tables are the Java 26.3 chest loot tables, pinned in
 // `tests/fixtures/java/26.3/world_defects.json` and checked against it by
 // `loot_tables_match_the_java_26_3_fixture`. Entries whose item does not exist
-// yet (trim templates, nautilus and copper horse armor, experience bottles,
-// and stews) stay empty at their
+// yet (trim templates, experience bottles and stews) stay empty at their
 // original weight rather than redistributing their probability.
 #[cfg(test)]
 const DESERTPYRAMID_0: &[L] = &[
@@ -1392,7 +1391,7 @@ const DESERTPYRAMID_0: &[L] = &[
     L { item: Some(Item::SPIDER_EYE), weight: 25, lo: 1, hi: 3, enchanted: false, damage: None },
     L { item: Some(Item::ROTTEN_FLESH), weight: 25, lo: 3, hi: 7, enchanted: false, damage: None },
     L { item: Some(Item::LEATHER), weight: 20, lo: 1, hi: 5, enchanted: false, damage: None },
-    L { item: None, weight: 15, lo: 1, hi: 1, enchanted: false, damage: None }, // copper_horse_armor
+    L { item: Some(crate::equipment::COPPER_HORSE_ARMOR), weight: 15, lo: 1, hi: 1, enchanted: false, damage: None }, // copper_horse_armor
     L { item: Some(Item::IRON_HORSE_ARMOR), weight: 15, lo: 1, hi: 1, enchanted: false, damage: None },
     L { item: Some(Item::GOLDEN_HORSE_ARMOR), weight: 10, lo: 1, hi: 1, enchanted: false, damage: None },
     L { item: Some(Item::DIAMOND_HORSE_ARMOR), weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },
@@ -1424,7 +1423,7 @@ const JUNGLETEMPLE_0: &[L] = &[
     L { item: Some(Item::BONE), weight: 20, lo: 4, hi: 6, enchanted: false, damage: None },
     L { item: Some(Item::ROTTEN_FLESH), weight: 16, lo: 3, hi: 7, enchanted: false, damage: None },
     L { item: Some(Item::LEATHER), weight: 3, lo: 1, hi: 5, enchanted: false, damage: None },
-    L { item: None, weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // copper_horse_armor
+    L { item: Some(crate::equipment::COPPER_HORSE_ARMOR), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // copper_horse_armor
     L { item: Some(Item::IRON_HORSE_ARMOR), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None },
     L { item: Some(Item::GOLDEN_HORSE_ARMOR), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None },
     L { item: Some(Item::DIAMOND_HORSE_ARMOR), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None },
@@ -1530,10 +1529,10 @@ const SHIPSUPPLY_1: &[L] = &[
 #[cfg(test)]
 const SHIPSUPPLY_2: &[L] = &[
     L { item: None, weight: 148, lo: 1, hi: 1, enchanted: false, damage: None }, // None
-    L { item: None, weight: 20, lo: 1, hi: 1, enchanted: false, damage: None },  // copper_nautilus_armor
-    L { item: None, weight: 10, lo: 1, hi: 1, enchanted: false, damage: None },  // iron_nautilus_armor
-    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },   // golden_nautilus_armor
-    L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },   // diamond_nautilus_armor
+    L { item: Some(crate::equipment::COPPER_NAUTILUS_ARMOR), weight: 20, lo: 1, hi: 1, enchanted: false, damage: None }, // copper_nautilus_armor
+    L { item: Some(crate::equipment::IRON_NAUTILUS_ARMOR), weight: 10, lo: 1, hi: 1, enchanted: false, damage: None }, // iron_nautilus_armor
+    L { item: Some(crate::equipment::GOLDEN_NAUTILUS_ARMOR), weight: 5, lo: 1, hi: 1, enchanted: false, damage: None }, // golden_nautilus_armor
+    L { item: Some(crate::equipment::DIAMOND_NAUTILUS_ARMOR), weight: 2, lo: 1, hi: 1, enchanted: false, damage: None }, // diamond_nautilus_armor
 ];
 #[cfg(test)]
 const SHIPTREASURE_0: &[L] = &[
@@ -1557,10 +1556,10 @@ const SHIPTREASURE_2: &[L] = &[
 #[cfg(test)]
 const SHIPTREASURE_3: &[L] = &[
     L { item: None, weight: 148, lo: 1, hi: 1, enchanted: false, damage: None }, // None
-    L { item: None, weight: 20, lo: 1, hi: 1, enchanted: false, damage: None },  // copper_nautilus_armor
-    L { item: None, weight: 10, lo: 1, hi: 1, enchanted: false, damage: None },  // iron_nautilus_armor
-    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },   // golden_nautilus_armor
-    L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },   // diamond_nautilus_armor
+    L { item: Some(crate::equipment::COPPER_NAUTILUS_ARMOR), weight: 20, lo: 1, hi: 1, enchanted: false, damage: None }, // copper_nautilus_armor
+    L { item: Some(crate::equipment::IRON_NAUTILUS_ARMOR), weight: 10, lo: 1, hi: 1, enchanted: false, damage: None }, // iron_nautilus_armor
+    L { item: Some(crate::equipment::GOLDEN_NAUTILUS_ARMOR), weight: 5, lo: 1, hi: 1, enchanted: false, damage: None }, // golden_nautilus_armor
+    L { item: Some(crate::equipment::DIAMOND_NAUTILUS_ARMOR), weight: 2, lo: 1, hi: 1, enchanted: false, damage: None }, // diamond_nautilus_armor
 ];
 #[cfg(test)]
 const SHIPMAP_0: &[L] = &[
@@ -1583,10 +1582,10 @@ const SHIPMAP_2: &[L] = &[
 #[cfg(test)]
 const SHIPMAP_3: &[L] = &[
     L { item: None, weight: 148, lo: 1, hi: 1, enchanted: false, damage: None }, // None
-    L { item: None, weight: 20, lo: 1, hi: 1, enchanted: false, damage: None },  // copper_nautilus_armor
-    L { item: None, weight: 10, lo: 1, hi: 1, enchanted: false, damage: None },  // iron_nautilus_armor
-    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },   // golden_nautilus_armor
-    L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },   // diamond_nautilus_armor
+    L { item: Some(crate::equipment::COPPER_NAUTILUS_ARMOR), weight: 20, lo: 1, hi: 1, enchanted: false, damage: None }, // copper_nautilus_armor
+    L { item: Some(crate::equipment::IRON_NAUTILUS_ARMOR), weight: 10, lo: 1, hi: 1, enchanted: false, damage: None }, // iron_nautilus_armor
+    L { item: Some(crate::equipment::GOLDEN_NAUTILUS_ARMOR), weight: 5, lo: 1, hi: 1, enchanted: false, damage: None }, // golden_nautilus_armor
+    L { item: Some(crate::equipment::DIAMOND_NAUTILUS_ARMOR), weight: 2, lo: 1, hi: 1, enchanted: false, damage: None }, // diamond_nautilus_armor
 ];
 #[cfg(test)]
 const RUINSMALL_0: &[L] = &[
@@ -1621,10 +1620,10 @@ const RUINSMALL_1: &[L] = &[
 #[cfg(test)]
 const RUINSMALL_2: &[L] = &[
     L { item: None, weight: 148, lo: 1, hi: 1, enchanted: false, damage: None }, // None
-    L { item: None, weight: 20, lo: 1, hi: 1, enchanted: false, damage: None },  // copper_nautilus_armor
-    L { item: None, weight: 10, lo: 1, hi: 1, enchanted: false, damage: None },  // iron_nautilus_armor
-    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },   // golden_nautilus_armor
-    L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },   // diamond_nautilus_armor
+    L { item: Some(crate::equipment::COPPER_NAUTILUS_ARMOR), weight: 20, lo: 1, hi: 1, enchanted: false, damage: None }, // copper_nautilus_armor
+    L { item: Some(crate::equipment::IRON_NAUTILUS_ARMOR), weight: 10, lo: 1, hi: 1, enchanted: false, damage: None }, // iron_nautilus_armor
+    L { item: Some(crate::equipment::GOLDEN_NAUTILUS_ARMOR), weight: 5, lo: 1, hi: 1, enchanted: false, damage: None }, // golden_nautilus_armor
+    L { item: Some(crate::equipment::DIAMOND_NAUTILUS_ARMOR), weight: 2, lo: 1, hi: 1, enchanted: false, damage: None }, // diamond_nautilus_armor
 ];
 #[cfg(test)]
 const RUINBIG_0: &[L] = &[
@@ -1660,10 +1659,10 @@ const RUINBIG_1: &[L] = &[
 #[cfg(test)]
 const RUINBIG_2: &[L] = &[
     L { item: None, weight: 148, lo: 1, hi: 1, enchanted: false, damage: None }, // None
-    L { item: None, weight: 20, lo: 1, hi: 1, enchanted: false, damage: None },  // copper_nautilus_armor
-    L { item: None, weight: 10, lo: 1, hi: 1, enchanted: false, damage: None },  // iron_nautilus_armor
-    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },   // golden_nautilus_armor
-    L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },   // diamond_nautilus_armor
+    L { item: Some(crate::equipment::COPPER_NAUTILUS_ARMOR), weight: 20, lo: 1, hi: 1, enchanted: false, damage: None }, // copper_nautilus_armor
+    L { item: Some(crate::equipment::IRON_NAUTILUS_ARMOR), weight: 10, lo: 1, hi: 1, enchanted: false, damage: None }, // iron_nautilus_armor
+    L { item: Some(crate::equipment::GOLDEN_NAUTILUS_ARMOR), weight: 5, lo: 1, hi: 1, enchanted: false, damage: None }, // golden_nautilus_armor
+    L { item: Some(crate::equipment::DIAMOND_NAUTILUS_ARMOR), weight: 2, lo: 1, hi: 1, enchanted: false, damage: None }, // diamond_nautilus_armor
 ];
 
 #[cfg(test)]
@@ -1789,10 +1788,10 @@ const BURIEDTREASURE_5: &[L] = &[
 #[cfg(test)]
 const BURIEDTREASURE_6: &[L] = &[
     L { item: None, weight: 148, lo: 1, hi: 1, enchanted: false, damage: None }, // None
-    L { item: None, weight: 20, lo: 1, hi: 1, enchanted: false, damage: None },  // copper_nautilus_armor
-    L { item: None, weight: 10, lo: 1, hi: 1, enchanted: false, damage: None },  // iron_nautilus_armor
-    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },   // golden_nautilus_armor
-    L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },   // diamond_nautilus_armor
+    L { item: Some(crate::equipment::COPPER_NAUTILUS_ARMOR), weight: 20, lo: 1, hi: 1, enchanted: false, damage: None }, // copper_nautilus_armor
+    L { item: Some(crate::equipment::IRON_NAUTILUS_ARMOR), weight: 10, lo: 1, hi: 1, enchanted: false, damage: None }, // iron_nautilus_armor
+    L { item: Some(crate::equipment::GOLDEN_NAUTILUS_ARMOR), weight: 5, lo: 1, hi: 1, enchanted: false, damage: None }, // golden_nautilus_armor
+    L { item: Some(crate::equipment::DIAMOND_NAUTILUS_ARMOR), weight: 2, lo: 1, hi: 1, enchanted: false, damage: None }, // diamond_nautilus_armor
 ];
 
 #[cfg(test)]
@@ -2012,11 +2011,6 @@ mod tests {
             "dune_armor_trim_smithing_template",
             "sentry_armor_trim_smithing_template",
             "wild_armor_trim_smithing_template",
-            "copper_horse_armor",
-            "copper_nautilus_armor",
-            "iron_nautilus_armor",
-            "golden_nautilus_armor",
-            "diamond_nautilus_armor",
             "experience_bottle",
             "suspicious_stew",
         ];

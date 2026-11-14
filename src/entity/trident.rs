@@ -424,7 +424,11 @@ impl Trident {
             }
             Hit::Player(id, pos) => {
                 let damage = tr::BASE_DAMAGE;
-                let cause = if owner_player.is_some() { "was impaled by a player" } else { "was impaled by a drowned" };
+                let cause = if owner_player.is_some() {
+                    crate::simulation::damage::Cause::PLAYER_TRIDENT
+                } else {
+                    crate::simulation::damage::Cause::DROWNED_TRIDENT
+                };
                 events.push(EntityEvent::PlayerHit {
                     player: id,
                     damage,
@@ -920,7 +924,7 @@ mod tests {
         t.dealt_damage = true;
         e.tridents.push(t);
         e.spawn(MobKind::Drowned, DVec3::new(0.5, 10.0, 0.5));
-        e.mobs[0].weapon = Some(Box::new(Stack::new(crate::weapons::TRIDENT, 1)));
+        e.mobs[0].equipment.set(super::super::equipment::Slot::MainHand, Some(Stack::new(crate::weapons::TRIDENT, 1)));
         e.mobs[0].persistent = true;
         let mut props = std::collections::BTreeMap::new();
         e.save_props(&mut props);
@@ -941,7 +945,7 @@ mod tests {
         let world = Grid::flat(10);
         let mut e = Entities::new(3);
         e.spawn(MobKind::Drowned, DVec3::new(0.5, 10.0, 0.5));
-        e.mobs[0].weapon = Some(Box::new(Stack::new(crate::weapons::TRIDENT, 1)));
+        e.mobs[0].equipment.set(super::super::equipment::Slot::MainHand, Some(Stack::new(crate::weapons::TRIDENT, 1)));
         let mut c = ctx();
         c.daylight = 0.0;
         c.spawn_light = crate::simulation::lighting::SpawnLight::NIGHT;
@@ -951,6 +955,9 @@ mod tests {
             events.iter().any(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Weapon(Cue::DrownedShoot), .. })),
             "{events:?}"
         );
-        assert!(events.iter().any(|ev| matches!(ev, EntityEvent::PlayerHit { cause: "was impaled by a drowned", .. })));
+        assert!(events.iter().any(|ev| matches!(
+            ev,
+            EntityEvent::PlayerHit { cause: crate::simulation::damage::Cause::DROWNED_TRIDENT, .. }
+        )));
     }
 }

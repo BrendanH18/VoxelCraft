@@ -315,8 +315,11 @@ fn a_totem_in_either_hand_undoes_a_lethal_hit_once() {
     assert!(!s.totem_saves(0));
     assert!(s.inventory.offhand.is_some());
     // `/kill` bypasses it; magic (harming) is an ordinary lethal hit.
-    s.vitals.death = Some("was killed".into());
+    let mut s = session();
+    s.inventory.offhand = Some(Stack::new(Item::TOTEM_OF_UNDYING, 1));
+    s.vitals.damage(f32::MAX, crate::simulation::damage::Cause::GENERIC_KILL, false);
     assert!(!s.totem_saves(0));
+    assert!(s.inventory.offhand.is_some());
     let mut s = session();
     s.inventory.offhand = Some(Stack::new(Item::TOTEM_OF_UNDYING, 1));
     s.vitals.damage(100.0, crate::simulation::survival::CAUSE_MAGIC, false);

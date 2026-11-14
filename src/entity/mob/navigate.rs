@@ -69,6 +69,25 @@ impl MobKind {
         )
     }
 
+    /// The kind's `FOLLOW_RANGE` attribute base (`createAttributes`).
+    pub fn follow_range_base(self) -> f64 {
+        use MobKind as K;
+        match self {
+            K::Zombie | K::Husk | K::Drowned | K::ZombieVillager | K::ZombifiedPiglin => {
+                crate::entity::zombie::ZOMBIE_FOLLOW_RANGE
+            }
+            K::Enderman => 64.0,
+            K::Blaze | K::CopperGolem | K::Allay => 48.0,
+            K::Ghast => 100.0,
+            K::Fox | K::Pillager => 32.0,
+            K::Llama | K::TraderLlama => 40.0,
+            K::PiglinBrute => 12.0,
+            K::PolarBear => 20.0,
+            K::Warden => 24.0,
+            _ => crate::entity::zombie::MOB_FOLLOW_RANGE,
+        }
+    }
+
     /// Java's navigation setup for this kind: `maxUpStep`, door and float
     /// flags, `FOLLOW_RANGE` (and `setRequiredPathLength`) and the
     /// `setPathfindingMalus` calls in each mob's constructor.
@@ -141,6 +160,7 @@ impl MobKind {
                 | K::Witch
                 | K::Enderman
                 | K::Silverfish
+                | K::Endermite
                 | K::Villager
                 | K::WanderingTrader
                 | K::Pillager
@@ -150,18 +170,7 @@ impl MobKind {
         );
         caps.can_walk_over_fences = self == K::Camel;
         caps.stand_on_lava = self == K::Strider;
-        caps = caps.follow_range(match self {
-            K::Zombie | K::Husk | K::Drowned | K::ZombieVillager | K::ZombifiedPiglin => 35.0,
-            K::Enderman => 64.0,
-            K::Blaze | K::CopperGolem | K::Allay => 48.0,
-            K::Ghast => 100.0,
-            K::Fox | K::Pillager => 32.0,
-            K::Llama | K::TraderLlama => 40.0,
-            K::PiglinBrute => 12.0,
-            K::PolarBear => 20.0,
-            K::Warden => 24.0,
-            _ => 16.0,
-        });
+        caps = caps.follow_range(self.follow_range_base() as f32);
         let mut m = Malus::default();
         if self.is_animal()
             || matches!(self, K::CopperGolem | K::Villager | K::WanderingTrader | K::Piglin | K::PiglinBrute)
@@ -214,7 +223,10 @@ impl Mob {
     /// with a target risk the health it can spare.
     pub(crate) fn caps(&self, hunting: bool) -> Caps {
         let shape = self.shape();
-        let mut caps = self.kind.nav_caps((shape.half_width * 2.0) as f32, shape.height as f32);
+        let mut caps = self
+            .kind
+            .nav_caps((shape.half_width * 2.0) as f32, shape.height as f32)
+            .follow_range(self.follow_range() as f32);
         if hunting {
             let id = match self.difficulty {
                 crate::simulation::difficulty::Difficulty::Peaceful => 0,

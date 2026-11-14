@@ -174,7 +174,7 @@ Add validation/packaging tools for dimensions, formats, references, animations
 and complete resource inclusion. Design paths for packaged executables, not
 just execution from the repository root.
 
-The owner-added [v0.20 presentation scope](roadmap.md#v020-scope-presentation-and-performance)
+The owner-added [v0.18 presentation scope](roadmap.md#v020-scope-presentation-and-performance)
 (2026-11-05) uses this pipeline for the material, font/icon, mob-art and
 title-identity work. Keep stable gameplay IDs and useful procedural fallbacks;
 extend resource-format support only where the chosen asset requires it.

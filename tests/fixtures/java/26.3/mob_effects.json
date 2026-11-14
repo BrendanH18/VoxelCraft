@@ -1,0 +1,754 @@
+{
+ "reference": "Minecraft Java Edition 26.3",
+ "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+ "client_sha1": "e877b6a07acd633fb3bb475002175cec036e7b87",
+ "sources": [
+  "net.minecraft.world.effect.MobEffects static initializer and lambdas",
+  "net.minecraft.world.effect.MobEffectCategory tooltip formatting",
+  "isInstantaneous on each effect class hierarchy",
+  "net.minecraft.world.entity.ai.attributes.Attributes registrations",
+  "assets/minecraft/lang/en_us.json effect.minecraft.*"
+ ],
+ "category_tooltip_formatting": {
+  "beneficial": "blue",
+  "harmful": "red",
+  "neutral": "blue"
+ },
+ "effects": [
+  {
+   "registry_index": 0,
+   "id": "speed",
+   "name": "Speed",
+   "field": "SPEED",
+   "class": "MobEffect",
+   "category": "beneficial",
+   "color": 3402751,
+   "instantaneous": false,
+   "attribute_modifiers": [
+    {
+     "attribute": "movement_speed",
+     "id": "minecraft:effect.speed",
+     "amount": 0.20000000298023224,
+     "operation": "add_multiplied_total"
+    }
+   ],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 1,
+   "id": "slowness",
+   "name": "Slowness",
+   "field": "SLOWNESS",
+   "class": "MobEffect",
+   "category": "harmful",
+   "color": 9154528,
+   "instantaneous": false,
+   "attribute_modifiers": [
+    {
+     "attribute": "movement_speed",
+     "id": "minecraft:effect.slowness",
+     "amount": -0.15000000596046448,
+     "operation": "add_multiplied_total"
+    }
+   ],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 2,
+   "id": "haste",
+   "name": "Haste",
+   "field": "HASTE",
+   "class": "MobEffect",
+   "category": "beneficial",
+   "color": 14270531,
+   "instantaneous": false,
+   "attribute_modifiers": [
+    {
+     "attribute": "attack_speed",
+     "id": "minecraft:effect.haste",
+     "amount": 0.10000000149011612,
+     "operation": "add_multiplied_total"
+    }
+   ],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 3,
+   "id": "mining_fatigue",
+   "name": "Mining Fatigue",
+   "field": "MINING_FATIGUE",
+   "class": "MobEffect",
+   "category": "harmful",
+   "color": 4866583,
+   "instantaneous": false,
+   "attribute_modifiers": [
+    {
+     "attribute": "attack_speed",
+     "id": "minecraft:effect.mining_fatigue",
+     "amount": -0.10000000149011612,
+     "operation": "add_multiplied_total"
+    }
+   ],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 4,
+   "id": "strength",
+   "name": "Strength",
+   "field": "STRENGTH",
+   "class": "MobEffect",
+   "category": "beneficial",
+   "color": 16762624,
+   "instantaneous": false,
+   "attribute_modifiers": [
+    {
+     "attribute": "attack_damage",
+     "id": "minecraft:effect.strength",
+     "amount": 3.0,
+     "operation": "add_value"
+    }
+   ],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 5,
+   "id": "instant_health",
+   "name": "Instant Health",
+   "field": "INSTANT_HEALTH",
+   "class": "HealOrHarmMobEffect",
+   "category": "beneficial",
+   "color": 16262179,
+   "instantaneous": true,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": [
+    {
+     "boolean": false
+    }
+   ]
+  },
+  {
+   "registry_index": 6,
+   "id": "instant_damage",
+   "name": "Instant Damage",
+   "field": "INSTANT_DAMAGE",
+   "class": "HealOrHarmMobEffect",
+   "category": "harmful",
+   "color": 11101546,
+   "instantaneous": true,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": [
+    {
+     "boolean": true
+    }
+   ]
+  },
+  {
+   "registry_index": 7,
+   "id": "jump_boost",
+   "name": "Jump Boost",
+   "field": "JUMP_BOOST",
+   "class": "MobEffect",
+   "category": "beneficial",
+   "color": 16646020,
+   "instantaneous": false,
+   "attribute_modifiers": [
+    {
+     "attribute": "safe_fall_distance",
+     "id": "minecraft:effect.jump_boost",
+     "amount": 1.0,
+     "operation": "add_value"
+    }
+   ],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 8,
+   "id": "nausea",
+   "name": "Nausea",
+   "field": "NAUSEA",
+   "class": "MobEffect",
+   "category": "harmful",
+   "color": 5578058,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": {
+    "in": 150,
+    "out": 20,
+    "out_advance": 60
+   },
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 9,
+   "id": "regeneration",
+   "name": "Regeneration",
+   "field": "REGENERATION",
+   "class": "RegenerationMobEffect",
+   "category": "beneficial",
+   "color": 13458603,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 10,
+   "id": "resistance",
+   "name": "Resistance",
+   "field": "RESISTANCE",
+   "class": "MobEffect",
+   "category": "beneficial",
+   "color": 9520880,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 11,
+   "id": "fire_resistance",
+   "name": "Fire Resistance",
+   "field": "FIRE_RESISTANCE",
+   "class": "MobEffect",
+   "category": "beneficial",
+   "color": 16750848,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 12,
+   "id": "water_breathing",
+   "name": "Water Breathing",
+   "field": "WATER_BREATHING",
+   "class": "MobEffect",
+   "category": "beneficial",
+   "color": 10017472,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 13,
+   "id": "invisibility",
+   "name": "Invisibility",
+   "field": "INVISIBILITY",
+   "class": "MobEffect",
+   "category": "beneficial",
+   "color": 16185078,
+   "instantaneous": false,
+   "attribute_modifiers": [
+    {
+     "attribute": "waypoint_transmit_range",
+     "id": "minecraft:effect.waypoint_transmit_range_hide",
+     "amount": -1.0,
+     "operation": "add_multiplied_total"
+    }
+   ],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 14,
+   "id": "blindness",
+   "name": "Blindness",
+   "field": "BLINDNESS",
+   "class": "MobEffect",
+   "category": "harmful",
+   "color": 2039587,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 15,
+   "id": "night_vision",
+   "name": "Night Vision",
+   "field": "NIGHT_VISION",
+   "class": "MobEffect",
+   "category": "beneficial",
+   "color": 12779366,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 16,
+   "id": "hunger",
+   "name": "Hunger",
+   "field": "HUNGER",
+   "class": "HungerMobEffect",
+   "category": "harmful",
+   "color": 5797459,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 17,
+   "id": "weakness",
+   "name": "Weakness",
+   "field": "WEAKNESS",
+   "class": "MobEffect",
+   "category": "harmful",
+   "color": 4738376,
+   "instantaneous": false,
+   "attribute_modifiers": [
+    {
+     "attribute": "attack_damage",
+     "id": "minecraft:effect.weakness",
+     "amount": -4.0,
+     "operation": "add_value"
+    }
+   ],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 18,
+   "id": "poison",
+   "name": "Poison",
+   "field": "POISON",
+   "class": "PoisonMobEffect",
+   "category": "harmful",
+   "color": 8889187,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 19,
+   "id": "wither",
+   "name": "Wither",
+   "field": "WITHER",
+   "class": "WitherMobEffect",
+   "category": "harmful",
+   "color": 7561558,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 20,
+   "id": "health_boost",
+   "name": "Health Boost",
+   "field": "HEALTH_BOOST",
+   "class": "MobEffect",
+   "category": "beneficial",
+   "color": 16284963,
+   "instantaneous": false,
+   "attribute_modifiers": [
+    {
+     "attribute": "max_health",
+     "id": "minecraft:effect.health_boost",
+     "amount": 4.0,
+     "operation": "add_value"
+    }
+   ],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 21,
+   "id": "absorption",
+   "name": "Absorption",
+   "field": "ABSORPTION",
+   "class": "AbsorptionMobEffect",
+   "category": "beneficial",
+   "color": 2445989,
+   "instantaneous": false,
+   "attribute_modifiers": [
+    {
+     "attribute": "max_absorption",
+     "id": "minecraft:effect.absorption",
+     "amount": 4.0,
+     "operation": "add_value"
+    }
+   ],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 22,
+   "id": "saturation",
+   "name": "Saturation",
+   "field": "SATURATION",
+   "class": "SaturationMobEffect",
+   "category": "beneficial",
+   "color": 16262179,
+   "instantaneous": true,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 23,
+   "id": "glowing",
+   "name": "Glowing",
+   "field": "GLOWING",
+   "class": "MobEffect",
+   "category": "neutral",
+   "color": 9740385,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 24,
+   "id": "levitation",
+   "name": "Levitation",
+   "field": "LEVITATION",
+   "class": "MobEffect",
+   "category": "harmful",
+   "color": 13565951,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 25,
+   "id": "luck",
+   "name": "Luck",
+   "field": "LUCK",
+   "class": "MobEffect",
+   "category": "beneficial",
+   "color": 5882118,
+   "instantaneous": false,
+   "attribute_modifiers": [
+    {
+     "attribute": "luck",
+     "id": "minecraft:effect.luck",
+     "amount": 1.0,
+     "operation": "add_value"
+    }
+   ],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 26,
+   "id": "unluck",
+   "name": "Bad Luck",
+   "field": "UNLUCK",
+   "class": "MobEffect",
+   "category": "harmful",
+   "color": 12624973,
+   "instantaneous": false,
+   "attribute_modifiers": [
+    {
+     "attribute": "luck",
+     "id": "minecraft:effect.unluck",
+     "amount": -1.0,
+     "operation": "add_value"
+    }
+   ],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 27,
+   "id": "slow_falling",
+   "name": "Slow Falling",
+   "field": "SLOW_FALLING",
+   "class": "MobEffect",
+   "category": "beneficial",
+   "color": 15978425,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 28,
+   "id": "conduit_power",
+   "name": "Conduit Power",
+   "field": "CONDUIT_POWER",
+   "class": "MobEffect",
+   "category": "beneficial",
+   "color": 1950417,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 29,
+   "id": "dolphins_grace",
+   "name": "Dolphin's Grace",
+   "field": "DOLPHINS_GRACE",
+   "class": "MobEffect",
+   "category": "beneficial",
+   "color": 8954814,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 30,
+   "id": "bad_omen",
+   "name": "Bad Omen",
+   "field": "BAD_OMEN",
+   "class": "BadOmenMobEffect",
+   "category": "neutral",
+   "color": 745784,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": "apply_effect_bad_omen",
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 31,
+   "id": "hero_of_the_village",
+   "name": "Hero of the Village",
+   "field": "HERO_OF_THE_VILLAGE",
+   "class": "MobEffect",
+   "category": "beneficial",
+   "color": 4521796,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 32,
+   "id": "darkness",
+   "name": "Darkness",
+   "field": "DARKNESS",
+   "class": "MobEffect",
+   "category": "harmful",
+   "color": 2696993,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": {
+    "in": 22,
+    "out": 22,
+    "out_advance": 22
+   },
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 33,
+   "id": "trial_omen",
+   "name": "Trial Omen",
+   "field": "TRIAL_OMEN",
+   "class": "MobEffect",
+   "category": "neutral",
+   "color": 1484454,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": "trial_omen",
+   "sound_on_added": "apply_effect_trial_omen",
+   "blend": null,
+   "constructor_arguments": [
+    {
+     "particle": "trial_omen"
+    }
+   ]
+  },
+  {
+   "registry_index": 34,
+   "id": "raid_omen",
+   "name": "Raid Omen",
+   "field": "RAID_OMEN",
+   "class": "RaidOmenMobEffect",
+   "category": "neutral",
+   "color": 14565464,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": "raid_omen",
+   "sound_on_added": "apply_effect_raid_omen",
+   "blend": null,
+   "constructor_arguments": [
+    {
+     "particle": "raid_omen"
+    }
+   ]
+  },
+  {
+   "registry_index": 35,
+   "id": "wind_charged",
+   "name": "Wind Charged",
+   "field": "WIND_CHARGED",
+   "class": "WindChargedMobEffect",
+   "category": "harmful",
+   "color": 12438015,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  },
+  {
+   "registry_index": 36,
+   "id": "weaving",
+   "name": "Weaving",
+   "field": "WEAVING",
+   "class": "WeavingMobEffect",
+   "category": "harmful",
+   "color": 7891290,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": [
+    {
+     "int_provider": {
+      "random_between_inclusive": [
+       2,
+       3
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "registry_index": 37,
+   "id": "oozing",
+   "name": "Oozing",
+   "field": "OOZING",
+   "class": "OozingMobEffect",
+   "category": "harmful",
+   "color": 10092451,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": [
+    {
+     "int_provider": {
+      "constant": 2
+     }
+    }
+   ]
+  },
+  {
+   "registry_index": 38,
+   "id": "infested",
+   "name": "Infested",
+   "field": "INFESTED",
+   "class": "InfestedMobEffect",
+   "category": "harmful",
+   "color": 9214860,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": [
+    {
+     "float": 0.1
+    },
+    {
+     "int_provider": {
+      "random_between_inclusive": [
+       1,
+       2
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "registry_index": 39,
+   "id": "breath_of_the_nautilus",
+   "name": "Breath of the Nautilus",
+   "field": "BREATH_OF_THE_NAUTILUS",
+   "class": "MobEffect",
+   "category": "beneficial",
+   "color": 65518,
+   "instantaneous": false,
+   "attribute_modifiers": [],
+   "particle": null,
+   "sound_on_added": null,
+   "blend": null,
+   "constructor_arguments": []
+  }
+ ]
+}

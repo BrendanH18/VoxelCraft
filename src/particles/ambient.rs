@@ -308,17 +308,19 @@ impl System {
     }
 
     /// Java 26.3 `LivingEntity.tickEffects` on the client: one swirl on a
-    /// 1-in-4 tick (1 in 15 while invisible), in the colour of one active
-    /// effect picked at random (`Util.getRandom` over the effect particles).
+    /// 1-in-4 tick (1 in 15 while invisible, and five times rarer when every
+    /// visible effect is ambient), in the colour of one effect with
+    /// particles picked at random (`Util.getRandom` over the effect
+    /// particles); an ambient effect's colour is faint (alpha 38).
     pub fn effects(&mut self, pos: DVec3, effects: &Effects, setting: Setting) {
-        let count = effects.iter().count() as u32;
-        let odds = if effects.has(crate::simulation::effects::Effect::Invisibility) { 15 } else { 4 };
+        let count = effects.with_particles().count() as u32;
+        let bound = if effects.has(crate::simulation::effects::Effect::Invisibility) { 15 } else { 4 };
+        let odds = bound * if effects.all_ambient() { 5 } else { 1 };
         if count == 0 || self.rng.next_int(odds) != 0 {
             return;
         }
-        let pick = effects.iter().nth(self.rng.next_int(count) as usize).expect("index below count");
-        let [r, g, b] = pick.effect.colour().map(|c| c as f32 / 255.0);
-        let color = [r, g, b, 1.0];
+        let pick = effects.with_particles().nth(self.rng.next_int(count) as usize).expect("index below count");
+        let color = pick.particle_colour().map(|c| c as f32 / 255.0);
         let mut b = Burst::new(Kind::Effect, pos + DVec3::Y * 0.9, 1);
         b.spread = DVec3::new(0.3, 0.9, 0.3);
         b.color = Some(color);
@@ -333,14 +335,17 @@ impl System {
             if !near(mob.pos) || !mob.alive() {
                 continue;
             }
-            if mob.kind == MobKind::Enderman {
+            if matches!(mob.kind, MobKind::Enderman | MobKind::Endermite) {
+                // `aiStep`: two portal particles a tick at `getRandomX(0.5)`,
+                // `getRandomY()` (the enderman's 0.25 lower) and `getRandomZ(0.5)`.
                 let shape = mob.shape();
                 let width = shape.half_width * 2.0;
+                let drop = if mob.kind == MobKind::Enderman { 0.25 } else { 0.0 };
                 for _ in 0..2 {
                     let pos = mob.pos
                         + DVec3::new(
                             (self.rng.next_f32() as f64 - 0.5) * width,
-                            self.rng.next_f32() as f64 * shape.height - 0.25,
+                            self.rng.next_f32() as f64 * shape.height - drop,
                             (self.rng.next_f32() as f64 - 0.5) * width,
                         );
                     let mut b = Burst::new(Kind::Portal, pos, 1);
@@ -596,6 +601,55 @@ mod tests {
         }
         // Invisible: nextInt(15) == 0, about 267.
         assert!((200..340).contains(&hidden), "{hidden} swirls while invisible");
+    }
+
+    /// `LivingEntity.tickEffects`: no swirls from an effect whose particles
+    /// are hidden; when every visible effect is ambient, `nextInt(4 * 5)`
+    /// and the faint ambient colour (alpha 38).
+    #[test]
+    fn hidden_and_ambient_effects_follow_java_swirls() {
+        use crate::simulation::effects::{AMBIENT_PARTICLE_ALPHA, Active, Effect};
+        let mut system = System::new(11);
+        let mut effects = Effects::default();
+        effects.add_instance(Active::new(Effect::Speed, 0, 20_000).with_flags(false, false, true));
+        for _ in 0..2000 {
+            system.effects(DVec3::Y * 80.0, &effects, Setting::All);
+        }
+        assert_eq!(system.pool.iter().count(), 0, "hidden particles never swirl");
+        effects.add_instance(Active::new(Effect::Haste, 0, 20_000).with_flags(true, true, true));
+        let mut swirls = 0;
+        for _ in 0..8000 {
+            system.clear();
+            system.effects(DVec3::Y * 80.0, &effects, Setting::All);
+            if let Some(p) = system.pool.iter().next() {
+                swirls += 1;
+                assert!((p.color[3] - f32::from(AMBIENT_PARTICLE_ALPHA) / 255.0).abs() < 1e-6);
+                let haste = Effect::Haste.colour();
+                assert!((p.color[0] - f32::from(haste[0]) / 255.0).abs() < 1e-6, "only the visible effect swirls");
+            }
+        }
+        // 1 in 20: about 400 of 8000.
+        assert!((320..480).contains(&swirls), "{swirls} ambient swirls in 8000 ticks");
+    }
+
+    #[test]
+    fn endermites_emit_two_portal_particles_within_their_box() {
+        let w = world();
+        let mut entities = Entities::new(1);
+        let pos = DVec3::new(0.5, 80.0, 0.5);
+        entities.mobs.push(crate::entity::Mob::new(MobKind::Endermite, pos, 0.0));
+        let mut system = System::new(6);
+        for _ in 0..50 {
+            system.clear();
+            system.entities(&w, &entities, &[pos], Setting::All);
+            let portals: Vec<_> = system.pool.iter().filter(|p| p.style == Kind::Portal).collect();
+            assert_eq!(portals.len(), usize::from(crate::entity::endermite::PORTAL_PARTICLES));
+            // `getRandomX(0.5)`, `getRandomY()`: within the 0.4 x 0.3 box.
+            for p in portals {
+                let d = p.pos - pos;
+                assert!(d.x.abs() <= 0.2 && d.z.abs() <= 0.2 && (0.0..=0.3).contains(&d.y), "{d}");
+            }
+        }
     }
 
     #[test]

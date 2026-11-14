@@ -405,3 +405,457 @@ stock and structure loot. `examples/registry_audit.rs` uses the same library
 resolution logic. Names resolving through an alias establish identity only, not
 state/behavior parity. No villager-trade reference fixture exists in this folder;
 trade quantities and offer-selection rules are not verified by these tests.
+
+## Mob equipment
+
+`mob_equipment.json` records Java 26.3's `EquipmentSlot` values (order,
+type, index, count limit, id), the `DropChances` constants (default 0.085,
+preserved above 1.0, guaranteed 2.0), the shape of
+`Mob.dropCustomDeathLoot` (zero chances skipped, Curse of Vanishing's
+`prevent_equipment_drop`, player kill unless preserved, and the wear reroll
+`maxDamage - nextInt(1 + nextInt(max(maxDamage - 3, 1)))`), Looting's
+`equipment_drops` effect from `enchantment/looting.json`, the spawn
+constants and `EQUIPMENT_POPULATION_ORDER` (head first) of
+`Mob.populateDefaultEquipmentSlots`, the armor tiers of
+`getEquipmentForSlot`, the drowned's armor-free override, the
+`keepEquipment` flag of each conversion and the trial spawners' slot drop
+chances. The extractor reads constants from `javap -constants`, matches the
+bytecode instruction sequences it relies on and fails when they change. It
+does not read VoxelCraft source or the existing fixture.
+
+```sh
+python3 tools/extract_java_mob_equipment_fixtures.py /path/to/server.jar --output target/java-mob-equipment.json
+diff tests/fixtures/java/26.3/mob_equipment.json target/java-mob-equipment.json
+scripts/remote-check.sh -- 'cargo test --release --test java_mob_equipment --test entity_storage'
+```
+
+`tests/java_mob_equipment.rs` compares the slot table in both directions,
+kills seeded zombies wearing known gear by player (with and without
+Looting) and without player credit, and checks drop rates within five
+standard errors and the wear distribution against a model built from the
+reroll formula. It also loads pre-v0.17 `nether_mobs` and `villagers`
+records. Chainmail armor has no item yet (ids 1550–1553 belong to another
+v0.14 slice), so chainmail pieces are drawn but drop nothing.
+
+## Damage types and tags
+
+`damage_types.json` holds all **51** damage types from
+`data/minecraft/damage_type/*.json` (the `DamageType` codec's optional
+`effects` and `death_message_type` filled with their defaults, `hurt` and
+`default`), all **36** damage type tags from
+`data/minecraft/tags/damage_type/*.json` with `#tag` references expanded,
+the `minecraft:damage_protection` requirements of the five protection
+enchantments from `data/minecraft/enchantment/*.json`, and the client's
+`death.attack.*` and `death.fell.*` English messages. The extractor checks
+both pinned artifact hashes, rejects unknown codec keys, enum values, tag
+forms and requirement forms, and never reads VoxelCraft source.
+
+```sh
+python3 tools/extract_java_damage_fixtures.py /path/to/server.jar /path/to/client.jar --output target/java-damage-types.json
+diff tests/fixtures/java/26.3/damage_types.json target/java-damage-types.json
+scripts/remote-check.sh -- 'cargo test --release --test java_damage_types'
+```
+
+`tests/java_damage_types.rs` compares `simulation::damage::DamageType` and
+`DamageTag` with the fixture in both directions (every Java type and tag is a
+variant, no variant is missing from Java, every field and membership
+matches), computes every protection enchantment's factor for every type and
+level from the fixture's requirements, and drives each tag the player damage
+path reads (`bypasses_armor`, `bypasses_effects`, `bypasses_resistance`,
+`bypasses_enchantments`, `bypasses_invulnerability`, `is_fire`,
+`is_projectile`, `is_explosion`, `is_fall`, `is_drowning`, `is_freezing`)
+through `Vitals::damage`, the agent's `hurt` and survival tick,
+`enchant::protect`, `totem_saves` and the player damage game rules. Each named
+`Cause` must say one of its type's death messages; the listed wording
+differences are checked to still differ. Mob-side tags (`no_anger`,
+`panic_causes`, `witch_resistant_to` and the rest) are compared as data only.
+
+## Armor equipment
+
+`equipment.json` (build-5000 slice ITEM-EQUIP) holds every `ArmorMaterials`
+material (durability multiplier, defense per `ArmorType` including `body`,
+enchantability, toughness, knockback resistance, repair tag and its items,
+equip sound, asset), the `ArmorType` slots and durability units, the four
+`Item$Properties` armor forms (`humanoidArmor`, `wolfArmor`, `horseArmor`,
+`nautilusArmor`: whether each sets durability, enchantability and repair,
+its stack size and its `Equippable` slot, sound, allowed entities, damage on
+hurt, equip on interact and shearing), all 41 items `Items` registers with one
+of those forms (material, type, rarity, fire resistance), the
+`can_wear_horse_armor` and `can_wear_nautilus_armor` entity tags, and the 19
+`villager_trade` offers that give armor. The extractor reads `makeDefense`'s
+parameter order from its bytecode and item ids from `ItemIds`, verifies the
+bundled server SHA-1 and fails on unknown registration forms.
+
+```sh
+python3 tools/extract_java_equipment_fixtures.py /path/to/server.jar --output target/java-equipment.json
+diff tests/fixtures/java/26.3/equipment.json target/java-equipment.json
+scripts/remote-check.sh -- 'cargo test --release --test java_equipment && cargo test --release --lib equipment::'
+```
+
+`tests/java_equipment.rs` compares every armor item both ways (each Java item
+is registered with its material's numbers and form's components, and the game
+has no armor Java lacks), the armorer's plain armor offers, the nugget and
+netherite smithing recipes that take the v0.14 armors (against `recipes.json`)
+and the chest tables that hold them. The unit tests in `src/equipment.rs`
+check horse armor's body attributes on a horse and the wearer tag. Enchanted
+and dyed offers are listed but not compared: their prices add enchantment
+levels or dyes. The nautilus and zombie nautilus are not in the game, so
+nautilus armor's equip rules are recorded but untested.
+
+## Mob effects
+
+`mob_effects.json` lists all 40 effects `MobEffects` registers, in registry
+order: id, field, effect class, category, colour, whether the class hierarchy's
+`isInstantaneous` returns true, attribute modifiers (attribute id, modifier id,
+amount as the double Java stores, operation), particle override, sound played
+when added, blend durations and any extra constructor arguments (the
+Heal/Harm flag, Infested's chance and the int providers of Weaving, Oozing and
+Infested, read from their lambdas). It also records `MobEffectCategory`'s
+tooltip formatting and each effect's en_us name from the pinned client. The
+extractor walks every instruction of the `MobEffects` static initializer and
+fails on any form it does not know. It reads no VoxelCraft code or fixture.
+
+```sh
+python3 tools/extract_java_effect_fixtures.py /path/to/server.jar --client /path/to/client.jar --output target/java-effects.json
+diff tests/fixtures/java/26.3/mob_effects.json target/java-effects.json
+scripts/remote-check.sh -- 'cargo test --release --test java_effects'
+```
+
+`tests/java_effects.rs` checks both directions. Every Java effect must be an
+`Effect` whose id, name, colour, category, instantaneous flag and modifiers
+match, and every `Effect` must be a Java effect. It also covers the HUD row
+(`isBeneficial`), the `/effect` durations and saves. The particle, sound and
+blend facts are recorded but not yet compared, because the game does not
+model them per effect.
+
+## Stack components
+
+`stack_components.json` holds the facts behind `Stack`'s component slots
+(`src/inventory/components.rs`): the **18** trim patterns (with asset id and
+decal flag), **11** trim materials and **43** banner patterns from the
+server jar's registry folders; the dyeable items
+(`#cauldron_can_remove_dye`) and the expanded `#trimmable_armor` tag; each
+`DyeColor`'s `textureDiffuseColor`, which `DyedItemColor.applyDyes` mixes;
+the `WritableBookContent` and `WrittenBookContent` limits; and the seven
+component ids the slots model, each checked to be registered in
+`DataComponents`. The extractor reads the pinned server jar and the
+decompiled source of the same version, nothing else.
+
+```sh
+python3 tools/extract_java_stack_component_fixtures.py /path/to/server.jar /path/to/decompiled/net/minecraft --output target/java-stack-components.json
+diff tests/fixtures/java/26.3/stack_components.json target/java-stack-components.json
+scripts/remote-check.sh -- 'cargo test --release --test stack_components'
+```
+
+`tests/stack_components.rs` compares the registries and dye colours both
+ways, checks both tags against every registered item (Java items the game
+lacks must be owned in `registry_gaps.json`), and tests
+`isSameItemSameComponents` merging, item defaults, codec limits, the save
+string, frozen pre-v0.17 stack strings and every container, including a
+save read back by a second process.
+
+## Harnesses
+
+`harnesses.json` records the sixteen harness items of Java 26.3 in the
+`harnesses` item tag's order (`DyeColor` order), the `stacksTo(1)` of the
+`Items.HARNESS` item lambda, `Equippable.harness` (body slot,
+`entity.happy_ghast.equip` and `entity.happy_ghast.unequip` sounds read
+from `SoundEvents`, the `can_equip_harness` entity tag, equip on interact,
+can be sheared), the happy ghast's tempt tag, the type, group and category
+of the 32 harness recipes, and every other data file that names a harness
+(none: crafting is the only source). The recipes' shapes stay in
+`recipes.json`. The extractor matches the bytecode sequences it relies on
+with `javap` and fails when they change. It does not read VoxelCraft source
+or the existing fixture.
+
+```sh
+python3 tools/extract_java_harness_fixtures.py /path/to/server.jar --output target/java-harnesses.json
+diff tests/fixtures/java/26.3/harnesses.json target/java-harnesses.json
+scripts/remote-check.sh -- 'cargo test --release --test java_harnesses --test java_recipes'
+```
+
+`tests/java_harnesses.rs` compares the items with the tag both ways, checks
+the stack size and equippable data, runs the recipe comparison of
+`tests/java_recipes/compare.rs` and requires every harness recipe in it to be
+registered, crafts every colour in both row positions, re-dyes every pair of
+colours (the result's own colour is not a recipe), crafts and re-dyes
+through the CLI's `craft`, and round-trips the stacks through the inventory
+save format.
+
+## Thrown items
+
+`thrown_items.json` records the Bottle o' Enchanting: its `Items`
+registration (`Rarity.UNCOMMON`, `ENCHANTMENT_GLINT_OVERRIDE`, the default
+stack of 64), `ExperienceBottleItem.use` (the `entity.experience_bottle.throw`
+sound and `spawnProjectileFromRotation` with a -20 degree pitch offset, power
+0.7 and uncertainty 1), `createDispenseConfig` over the
+`ProjectileItem.DispenseConfig.Builder` defaults (power 1.1 × 1.25,
+uncertainty 6 × 0.5, 0.7 out and 0.1 up), `ThrownExperienceBottle` (gravity
+0.07, level events 2002 with colour -13083194 and 1053,
+`3 + nextInt(5) + nextInt(5)` points, orbs along the hit face or back along
+the motion), the shared `ThrowableProjectile` drag and tick order, the
+`Projectile.getMovementToShoot` noise scale, the `ThrowableItemProjectile`
+spawn height, the `ExperienceOrb` scatter, the cleric's
+`cleric/5/emerald_experience_bottle` offer and the three chest pools that
+name the bottle. The extractor reads constants with `javap -constants`,
+checks the instruction sequences it relies on and reads the trade and loot
+JSON from the jar. It does not read VoxelCraft source or the existing
+fixture. Other thrown items may add their own top-level keys.
+
+```sh
+python3 tools/extract_java_thrown_fixtures.py /path/to/server.jar --output target/java-thrown-items.json
+diff tests/fixtures/java/26.3/thrown_items.json target/java-thrown-items.json
+scripts/remote-check.sh -- 'cargo test --release --test java_thrown_items'
+```
+
+`tests/java_thrown_items.rs` checks the registration, throws bottles at
+fifteen look directions against `shootFromRotation`, throws through the
+session and the CLI agent, checks the orb scatter and rolls each chest table
+20,000 times against its weight share and count. Unit tests in
+`src/entity/thrown.rs` follow a flight tick by tick, burst bottles on a
+floor, a wall, a mob and a player and draw 2,000 experience totals;
+`src/world/automation.rs` checks the dispenser shot and
+`src/entity/villager.rs` the master cleric's offer.
+
+## Enchantment definitions
+
+`enchantments.json` holds all **43** `data/minecraft/enchantment/*.json`
+definitions from the server jar: id, en_us name (client), max level, weight,
+min and max cost, anvil cost, slots, `supported_items`, `primary_items`,
+`exclusive_set` and the names of its effect components. Alongside are the
+**21** `#minecraft:enchantable/*` item tags, expanded to sorted item ids,
+and the **22** enchantment tags, expanded in the order a `HolderSet`
+iterates them (file order, nested tags inline). Tag order matters: the
+enchanting table and random loot walk `#non_treasure` and
+`#on_random_loot` in that order, and tooltips follow `#tooltip_order`.
+The extractor rejects unknown definition keys, slots, cost forms and tag
+entry forms, and reads no VoxelCraft code or fixture.
+
+```sh
+python3 tools/extract_java_enchantment_fixtures.py /path/to/server.jar --client /path/to/client.jar --output target/java-enchantments.json
+diff tests/fixtures/java/26.3/enchantments.json target/java-enchantments.json
+scripts/remote-check.sh -- 'cargo test --release --test java_enchantments'
+```
+
+`tests/java_enchantments.rs` checks every definition against `enchant::Def`
+(Soul Speed is the one Java enchantment without a variant), every
+`ItemSet` against its tag over every registered item both ways, every
+registered item against every enchantment's supported and primary items,
+`compatible` for every pair, the enchantment tags the game uses (with their
+order where it matters) and the tooltip order. The effect component names
+and slots are recorded but not compared here.
+
+## Small mobs: the endermite
+
+`small_mobs.json` (build-5000 slice MOBN-26) holds the endermite's facts:
+the `EntityTypes.ENDERMITE` builder (monster category, 0.4 x 0.3, eye height
+0.13, not allowed in Peaceful), its attributes merged from
+`Mob.createMobAttributes`, `Monster.createMonsterAttributes` and
+`Endermite.createAttributes` (max health 8, movement speed 0.25, attack
+damage 2, follow range 16), the constructor's 3 experience, `MAX_LIFE`
+2400 and the `aiStep` lifetime and portal-particle loop, the movement
+emission (`EVENTS`: step events, no step sounds), the
+`checkEndermiteSpawnRules` player distance, every `registerGoals` entry
+(selector, priority, goal class, literal arguments, `setAlertOthers`), the
+four `entity.endermite.*` sound events, the empty `entities/endermite` loot
+table, the 5% chance and conditions of `ThrownEnderpearl.onHit`, the
+enderman's `NearestAttackableTargetGoal<Endermite>` (priority, `mustSee`,
+`mustReach`) with its follow range and attack damage, the `arthropod` and
+`sensitive_to_bane_of_arthropods` tags with references expanded, and Bane of
+Arthropods' damage and Slowness effect. The extractor checks the pinned
+server hash, reads constants with `javap -constants`, checks the instruction
+sequences it relies on and fails on forms it doesn't know. It reads no
+VoxelCraft source or fixture.
+
+```sh
+python3 tools/extract_java_small_mob_fixtures.py /path/to/server.jar --output target/java-small-mobs.json
+diff tests/fixtures/java/26.3/small_mobs.json target/java-small-mobs.json
+scripts/remote-check.sh -- 'cargo test --release --lib endermite'
+```
+
+`src/entity/endermite/tests.rs` compares the registration, attributes,
+experience, empty loot, goal speeds and the enderman's numbers with the
+fixture; checks the bane tag both ways against `MobKind::creature` (every
+mob in the tag is an arthropod and no other is) with the damage and the
+Slowness duration range; rolls 20,000 pearl landings (5% within five
+standard errors, none on Peaceful or with `spawn_mobs` or `spawn_monsters`
+off) and lands real thrown pearls through the entity update; runs an
+untouched endermite to its discard at tick 2400 beside a name-tagged one
+that stays; saves and reloads `lifetime`; and drives the target goals (a
+visible player bitten for 2, none through a wall, the hurt-by alert box) and
+an enderman hunting an endermite in sight but not through a wall.
+`src/particles/ambient.rs` checks the two portal particles a tick and
+`src/entity/model/hostiles.rs` the headless, swaying model.
+
+## Zombie reinforcements and spawn attributes
+
+`zombie_attributes.json` records Java 26.3's `Zombie.hurtServer`
+reinforcement call (Hard only, `isSpawningMonsters`, 50 tries at per-axis
+offsets `Mth.nextInt(7, 40) * Mth.nextInt(-1, 1)`, no living player within
+7 blocks, the caller's cumulative -0.05 charge and the callee's -0.05F
+charge), `Zombie.handleAttributes` (reinforcement base `nextDouble() *
+0.1F`, knockback bonus `nextDouble() * 0.05F`, follow bonus `nextDouble() *
+1.5 * special` kept above 1, leader chance 0.05 × special with +0.5–0.75
+reinforcement and ×(2–5) max health), `ZombifiedPiglin`'s zero base,
+`Mob.finalizeSpawn`'s follow-range `triangle(0, 0.11485)`, the ranges of the
+four attributes involved, the 16 and 35 follow ranges, every entity type
+whose attribute supplier carries `spawn_reinforcements` (read from
+`DefaultAttributes` and its `createAttributes` chains) and which zombie
+classes may spawn in liquids. The extractor matches the instruction
+sequences it relies on and fails when they change. It does not read
+VoxelCraft source or the existing fixture.
+
+```sh
+python3 tools/extract_java_zombie_attribute_fixtures.py /path/to/server.jar --output target/java-zombie-attributes.json
+diff tests/fixtures/java/26.3/zombie_attributes.json target/java-zombie-attributes.json
+scripts/remote-check.sh -- 'cargo test --release --test java_zombie_attributes && cargo test --release --lib entity::zombie'
+```
+
+`tests/java_zombie_attributes.rs` compares the carriers in both directions
+with the kinds that call reinforcements, every constant, the follow ranges
+and the leader rate of zombies spawned through `Entities::spawn`.
+`src/entity/zombie/tests.rs` drives seeded calls: Normal, monster spawning
+off and no target give none; reinforcements land 7–40 blocks out per axis
+on the block corner, never within 7 blocks of a player; drowned call drowned
+in water and husks need the sky; the reinforcement count after repeated hits
+matches an exact model of the -0.05 charges; and the rolls survive saving.
+
+## Effect instances
+
+`effect_instances.json` holds behaviour cases for `MobEffectInstance`, which
+is code rather than data. The official 26.3 jar needs a Java 25 runtime to
+run, so the extractor carries a line-by-line model of the methods the game
+must match, transcribed from the decompiled source: `update`,
+`isShorterDurationThan`, `tickServer` (with `tickDownDuration`,
+`mapDuration` and `downgradeToHiddenEffect`), `endsWithin` and `compareTo`;
+`LivingEntity.addEffect`; the periodic `shouldApplyEffectTickThisTick` of
+Regeneration, Poison and Wither; the HUD's icon order, `showIcon` and blink
+alpha (with `Mth.cos`'s sine table); the inventory list's order and level
+text; `MobEffectUtil.formatDuration`; and `EffectCommands`' `/effect give`
+argument tree and `computeDurationInTicks`. Before writing anything it checks
+that each of those method bodies still hashes to the text the model was
+written from, and it reads every number it uses (colours, intervals, bounds,
+the compare cut-off, the particle odds and the ambient alpha) from the source.
+The `commands.effect.*` feedback comes from the pinned client's en_us.json.
+It reads no VoxelCraft code or fixture.
+
+The cases are 300 sequences of `addEffect` calls (with each call's
+`changed` result and the final chain of the active instance and its hidden
+ones), 60 runs of `tickServer` from a given entity tick count (the ticks on
+which the effect applied and the chain left), 150 groups of effects in
+natural and reverse `compareTo` order, HUD alphas, duration texts, inventory
+level texts and 75 `/effect give` argument lists with their parse result or
+failure. An instance is `[duration, amplifier, ambient, show_particles,
+show_icon]` with -1 for an infinite duration.
+
+```sh
+python3 tools/extract_java_effect_instance_cases.py /path/to/decompiled/net/minecraft --en-us /path/to/en_us.json --output target/java-effect-instances.json
+diff tests/fixtures/java/26.3/effect_instances.json target/java-effect-instances.json
+scripts/remote-check.sh -- 'cargo test --release --test java_effect_instances'
+```
+
+`tests/java_effect_instances.rs` replays every case through `Effects`,
+`Active`, `hud_layout`, `duration_text`, `list_label` and `Command::parse`,
+compares the feedback strings and the particle constants, runs `/effect`
+through the console's and an agent's command paths, and saves and reloads
+infinite and flagged effects on a player and a mob.
+
+## Neutral mobs
+
+`neutral_mobs.json` records the concrete classes of Java 26.3 that implement
+`NeutralMob`, found from every class file's super class and interfaces (not
+from a list): bee, iron golem, polar bear, wolf, enderman and zombified
+piglin, each mapped to its entity id and checked against its entity loot
+table. For each it keeps the `ResetUniversalAngerTargetGoal`
+alert-others-of-same-type flag, `PERSISTENT_ANGER_TIME`
+(`TimeUtil.rangeOfSeconds`) and the follow range from its `createAttributes`
+chain. It also keeps the box `ServerPlayer.tellNeutralMobsThatIDied`
+inflates around the dead player's block, with the `forgive_dead_players`
+gates in `ServerPlayer.die` and `NeutralMob.playerDied` and the
+`universal_anger` read in `isAngryAtAllPlayers`, and the 600-tick `ANGRY_AT`
+and `UNIVERSAL_ANGER` expiries of `PiglinAi.setAngerTarget`, with the
+universal retaliation and chest-anger paths and the brute's use of
+`PiglinAi.maybeRetaliate`. The extractor matches the bytecode it relies on
+with `javap` and fails when it changes. It does not read VoxelCraft source
+or the existing fixture.
+
+```sh
+python3 tools/extract_java_neutral_mob_fixtures.py /path/to/server.jar --output target/java-neutral-mobs.json
+diff tests/fixtures/java/26.3/neutral_mobs.json target/java-neutral-mobs.json
+scripts/remote-check.sh -- 'cargo test --release --test game_rules'
+```
+
+`tests/game_rules.rs` compares `entity::neutral` with it both ways: every
+implementer is neutral in the game and no other `MobKind` is, with the same
+alert flags, follow ranges and death box. Only bees and polar bears use
+Java's anger timer; the test names the other four as known differences.
+
+## Bundles
+
+`bundles.json` holds the `#bundles` item tag (the plain bundle, then the
+sixteen colours in `DyeColor` order), the `Items.BUNDLE` and
+`Items.DYED_BUNDLE` registrations (`stacksTo(1)` with an empty
+`BUNDLE_CONTENTS`), `BundleContents`' `BUNDLE_IN_BUNDLE_WEIGHT` (1/16) and
+`BEEHIVE_WEIGHT` (1), the maximum stack sizes of the nine items the cases
+use (read from `Items`' static initializer, with `Item.DEFAULT_MAX_STACK_SIZE`
+for the rest), `bundle.json` and the sixteen `<colour>_bundle.json`
+`crafting_transmute` recipes, and every loot table pool that names a bundle
+(ten tables). The extractor checks the bytecode shapes it relies on with
+javap and fails on anything else.
+
+It then runs its own model of `BundleContents.Mutable` (`tryInsert`,
+`tryTransfer`, `removeOne`, `getMaxAmountToAdd`) and of `BundleItem`'s two
+click overrides, written from the decompiled 26.3 classes with Python's
+exact `Fraction`, over **15** insert and remove sequences (accepted counts,
+the resulting order and the total weight after each step) and **19** clicks
+(held and clicked stack before and after, whether the bundle overrides the
+click, and the sound it would play). It reads no VoxelCraft code or
+fixture.
+
+```sh
+python3 tools/extract_java_bundle_fixtures.py /path/to/server.jar --output target/java-bundles.json
+diff tests/fixtures/java/26.3/bundles.json target/java-bundles.json
+scripts/remote-check.sh -- 'cargo test --release --test java_bundles'
+```
+
+`tests/java_bundles.rs` checks the seventeen items against the tag both
+ways, the stack sizes, the weight constants, every sequence and click
+against `content::bundle`, the recipes against the crafting grid (all 272
+bundle and dye pairs, components kept), the CLI's `craft`, the loot tables
+by rolling them, and bundles with nested contents through saves.
+
+## Dyed items
+
+`dyed_items.json` holds the facts behind dyed leather and wolf armor: the
+`#cauldron_can_remove_dye` and `#dyes` tags in file order, the six
+`minecraft:crafting_dye` recipes (target, dye, result, group), each
+`DyeColor`'s `textureDiffuseColor`, `DyedItemColor.LEATHER_COLOR`
+(-6265536, `#A06540`), the `minecraft:dye` tint defaults of the six item
+models in the client jar (and that wolf armor's undyed model is untinted),
+the layers of `equipment/leather.json` with their `color_when_undyed`, the
+water cauldron's wash (`CauldronInteractions.dyedItemIteration` and
+`LayeredCauldronBlock.lowerFillLevel`, whose bodies the extractor matches
+statement by statement), and **1216** `applyDyes` vectors: every dye alone
+on a fresh item and on five prior colours, every pair fresh and on a mixed
+colour, every triple, and full crafting tables of eight dyes. The vectors
+come from a model of the method's integer averages and float rescale; the
+extractor checks the method body line by line first so the model fails
+rather than drifts. It reads the pinned server and client jars and the
+decompiled source of the same version, nothing else.
+
+```sh
+python3 tools/extract_java_dyed_item_fixtures.py /path/to/server.jar /path/to/client.jar /path/to/decompiled/net/minecraft --output target/java-dyed-items.json
+diff tests/fixtures/java/26.3/dyed_items.json target/java-dyed-items.json
+scripts/remote-check.sh -- 'cargo test --release --test java_dyed_items --test java_recipes'
+```
+
+`tests/java_dyed_items.rs` compares both tags and the dye recipes both ways
+with the game, crafts every vector on all six dyeable items in the 2x2 and
+3x3 grids (other components kept), checks the undyed and dyed colours of the
+icons, the worn layers (overlay untinted) and an armor stand's shells, washes
+every dyeable item at every water level in Survival and Creative through the
+shared use chain (lava, powder snow, an empty cauldron and sneaking do not
+wash), puts undyed leather on at a water cauldron through the shared equip
+path and the CLI while dyed leather is washed, equips a horse with dyed
+leather horse armor, and saves and reloads dyed stacks in the inventory, on
+an armor stand and as stack strings.

@@ -61,102 +61,237 @@ pub enum Enchantment {
     WindBurst,
 }
 
-/// Which items an enchantment goes on (Java's item tags).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Fits {
+/// The items an enchantment goes on: Java 26.3's `#minecraft:enchantable/*`
+/// item tags, expanded over the items VoxelCraft registers (pinned in
+/// `tests/fixtures/java/26.3/enchantments.json`).
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum ItemSet {
+    /// `#enchantable/armor`: the four armor-slot tags.
     Armor,
-    Head,
-    Chest,
-    Feet,
-    /// `#enchantable/leg_armor` (Swift Sneak).
-    Legs,
-    Sword,
-    /// Pickaxes, shovels, axes and hoes.
+    /// `#enchantable/head_armor` (`#head_armor`, the turtle helmet included).
+    HeadArmor,
+    ChestArmor,
+    FootArmor,
+    LegArmor,
+    /// `#enchantable/sweeping` (`#swords`).
+    Sweeping,
+    /// `#enchantable/melee_weapon`: swords and spears.
+    MeleeWeapon,
+    /// `#enchantable/sharp_weapon`: melee weapons and axes.
+    SharpWeapon,
+    /// `#enchantable/weapon`: sharp weapons and the mace.
+    Weapon,
+    /// `#enchantable/fire_aspect`: melee weapons and the mace.
+    FireAspect,
+    /// `#enchantable/mining`: axes, pickaxes, shovels, hoes and shears.
     Mining,
+    /// `#enchantable/mining_loot`: the four mining tools, without shears.
+    MiningLoot,
     Bow,
     Crossbow,
-    FishingRod,
-    /// Anything that wears out.
-    Durable,
-    /// Swords and spears (`#enchantable/melee_weapon`).
-    MeleeWeapon,
-    /// Swords, spears and axes (`#enchantable/sharp_weapon`).
-    SharpWeapon,
-    /// Sharp weapons and the mace (`#enchantable/weapon`).
-    AnyWeapon,
-    /// Melee weapons and the mace (`#enchantable/fire_aspect`).
-    FireAspect,
-    /// `#enchantable/trident`.
+    /// `#enchantable/fishing` (the fishing rod).
+    Fishing,
     Trident,
-    /// `#enchantable/mace`.
     Mace,
-    /// `#enchantable/lunge` (= `#spears`).
-    Spear,
+    /// `#enchantable/lunge` (`#spears`).
+    Lunge,
+    /// `#enchantable/durability`: everything that wears out, wolf armor aside.
+    Durability,
+    /// `#enchantable/equippable`: armor, elytra, `#skulls` and carved pumpkins.
+    Equippable,
+    /// `#enchantable/vanishing`: durability, compass, carved pumpkin and `#skulls`.
+    Vanishing,
 }
 
-impl Fits {
-    fn accepts(self, item: Item) -> bool {
-        use crate::weapons::{MACE, TRIDENT, is_spear};
-        let sword = matches!(item.info().kind, ItemKind::Tool(ToolKind::Sword, _));
-        let axe = matches!(item.info().kind, ItemKind::Tool(ToolKind::Axe, _));
+impl ItemSet {
+    pub const ALL: [ItemSet; 21] = [
+        ItemSet::Armor,
+        ItemSet::HeadArmor,
+        ItemSet::ChestArmor,
+        ItemSet::FootArmor,
+        ItemSet::LegArmor,
+        ItemSet::Sweeping,
+        ItemSet::MeleeWeapon,
+        ItemSet::SharpWeapon,
+        ItemSet::Weapon,
+        ItemSet::FireAspect,
+        ItemSet::Mining,
+        ItemSet::MiningLoot,
+        ItemSet::Bow,
+        ItemSet::Crossbow,
+        ItemSet::Fishing,
+        ItemSet::Trident,
+        ItemSet::Mace,
+        ItemSet::Lunge,
+        ItemSet::Durability,
+        ItemSet::Equippable,
+        ItemSet::Vanishing,
+    ];
+
+    /// The Java tag, without `#minecraft:`.
+    pub fn tag(self) -> &'static str {
         match self {
-            Fits::MeleeWeapon => return sword || is_spear(item),
-            Fits::SharpWeapon => return sword || axe || is_spear(item),
-            Fits::AnyWeapon => return sword || axe || is_spear(item) || item == MACE,
-            Fits::FireAspect => return sword || is_spear(item) || item == MACE,
-            Fits::Trident => return item == TRIDENT,
-            Fits::Mace => return item == MACE,
-            Fits::Spear => return is_spear(item),
-            _ => {}
+            ItemSet::Armor => "enchantable/armor",
+            ItemSet::HeadArmor => "enchantable/head_armor",
+            ItemSet::ChestArmor => "enchantable/chest_armor",
+            ItemSet::FootArmor => "enchantable/foot_armor",
+            ItemSet::LegArmor => "enchantable/leg_armor",
+            ItemSet::Sweeping => "enchantable/sweeping",
+            ItemSet::MeleeWeapon => "enchantable/melee_weapon",
+            ItemSet::SharpWeapon => "enchantable/sharp_weapon",
+            ItemSet::Weapon => "enchantable/weapon",
+            ItemSet::FireAspect => "enchantable/fire_aspect",
+            ItemSet::Mining => "enchantable/mining",
+            ItemSet::MiningLoot => "enchantable/mining_loot",
+            ItemSet::Bow => "enchantable/bow",
+            ItemSet::Crossbow => "enchantable/crossbow",
+            ItemSet::Fishing => "enchantable/fishing",
+            ItemSet::Trident => "enchantable/trident",
+            ItemSet::Mace => "enchantable/mace",
+            ItemSet::Lunge => "enchantable/lunge",
+            ItemSet::Durability => "enchantable/durability",
+            ItemSet::Equippable => "enchantable/equippable",
+            ItemSet::Vanishing => "enchantable/vanishing",
         }
-        match (self, item.info().kind) {
-            (Fits::Armor, ItemKind::Armor(..)) => true,
-            (Fits::Head, ItemKind::Armor(p, _)) => p == ArmorPiece::Helmet,
-            (Fits::Chest, ItemKind::Armor(p, _)) => p == ArmorPiece::Chestplate,
-            (Fits::Feet, ItemKind::Armor(p, _)) => p == ArmorPiece::Boots,
-            (Fits::Legs, ItemKind::Armor(p, _)) => p == ArmorPiece::Leggings,
-            (Fits::Sword, ItemKind::Tool(k, _)) => k == ToolKind::Sword,
-            (Fits::Mining, ItemKind::Tool(k, _)) => k != ToolKind::Sword,
-            (Fits::Bow, ItemKind::Bow) => true,
-            (Fits::Crossbow, _) => matches!(item, Item::CROSSBOW | Item::CHARGED_CROSSBOW),
-            (Fits::FishingRod, ItemKind::FishingRod) => true,
-            (Fits::Durable, _) => item != Item::WOLF_ARMOR && item.durability().is_some(),
-            _ => false,
+    }
+
+    /// Whether `item` is in the tag. VoxelCraft's charged crossbow is Java's
+    /// crossbow with a charged projectile, so it counts as a crossbow.
+    pub fn contains(self, item: Item) -> bool {
+        use crate::weapons::{MACE, TRIDENT, is_spear};
+        let kind = item.info().kind;
+        let piece = |p: ArmorPiece| matches!(kind, ItemKind::Armor(q, _) if q == p);
+        let tool = |k: ToolKind| matches!(kind, ItemKind::Tool(t, _) if t == k);
+        let sword = tool(ToolKind::Sword);
+        let mining_tool = matches!(kind, ItemKind::Tool(t, _) if t != ToolKind::Sword);
+        let melee = sword || is_spear(item);
+        // `#skulls`: only the wither skeleton skull is registered.
+        let skull = item == Item::WITHER_SKULL;
+        let carved_pumpkin = item == Item::from_block(crate::world::pumpkin_blocks::CARVED);
+        match self {
+            ItemSet::Armor => matches!(kind, ItemKind::Armor(..)),
+            ItemSet::HeadArmor => piece(ArmorPiece::Helmet),
+            ItemSet::ChestArmor => piece(ArmorPiece::Chestplate),
+            ItemSet::FootArmor => piece(ArmorPiece::Boots),
+            ItemSet::LegArmor => piece(ArmorPiece::Leggings),
+            ItemSet::Sweeping => sword,
+            ItemSet::MeleeWeapon => melee,
+            ItemSet::SharpWeapon => melee || tool(ToolKind::Axe),
+            ItemSet::Weapon => melee || tool(ToolKind::Axe) || item == MACE,
+            ItemSet::FireAspect => melee || item == MACE,
+            ItemSet::Mining => mining_tool || item == Item::SHEARS,
+            ItemSet::MiningLoot => mining_tool,
+            ItemSet::Bow => item == Item::BOW,
+            ItemSet::Crossbow => matches!(item, Item::CROSSBOW | Item::CHARGED_CROSSBOW),
+            ItemSet::Fishing => item == Item::FISHING_ROD,
+            ItemSet::Trident => item == TRIDENT,
+            ItemSet::Mace => item == MACE,
+            ItemSet::Lunge => is_spear(item),
+            // Armor, elytra (unregistered), shield, tools, bow, crossbow,
+            // trident, flint and steel, shears, brush, fishing rod, both
+            // sticks, mace and spears.
+            ItemSet::Durability => {
+                matches!(kind, ItemKind::Armor(..) | ItemKind::Tool(..))
+                    || matches!(
+                        item,
+                        Item::SHIELD
+                            | Item::BOW
+                            | Item::CROSSBOW
+                            | Item::CHARGED_CROSSBOW
+                            | Item::FLINT_AND_STEEL
+                            | Item::SHEARS
+                            | Item::BRUSH
+                            | Item::FISHING_ROD
+                            | Item::CARROT_ON_A_STICK
+                            | Item::WARPED_FUNGUS_ON_A_STICK
+                    )
+                    || item == TRIDENT
+                    || item == MACE
+                    || is_spear(item)
+            }
+            ItemSet::Equippable => matches!(kind, ItemKind::Armor(..)) || skull || carved_pumpkin,
+            ItemSet::Vanishing => {
+                ItemSet::Durability.contains(item) || item == Item::COMPASS || carved_pumpkin || skull
+            }
         }
     }
 }
 
-/// Enchantments that exclude each other (Java's exclusive sets).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Group {
-    None,
-    Protection,
+/// Java's `#minecraft:exclusive_set/*` enchantment tags.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum ExclusiveSet {
+    Armor,
+    Boots,
+    Bow,
+    Crossbow,
     Damage,
     Mining,
-    Bow,
-    /// Multishot and piercing (`#exclusive_set/crossbow`).
-    Crossbow,
+    Riptide,
 }
 
-/// One enchantment's definition (Java's `Enchantment.definition`).
+impl ExclusiveSet {
+    pub const ALL: [ExclusiveSet; 7] = [
+        ExclusiveSet::Armor,
+        ExclusiveSet::Boots,
+        ExclusiveSet::Bow,
+        ExclusiveSet::Crossbow,
+        ExclusiveSet::Damage,
+        ExclusiveSet::Mining,
+        ExclusiveSet::Riptide,
+    ];
+
+    /// The Java tag, without `#minecraft:`.
+    pub fn tag(self) -> &'static str {
+        match self {
+            ExclusiveSet::Armor => "exclusive_set/armor",
+            ExclusiveSet::Boots => "exclusive_set/boots",
+            ExclusiveSet::Bow => "exclusive_set/bow",
+            ExclusiveSet::Crossbow => "exclusive_set/crossbow",
+            ExclusiveSet::Damage => "exclusive_set/damage",
+            ExclusiveSet::Mining => "exclusive_set/mining",
+            ExclusiveSet::Riptide => "exclusive_set/riptide",
+        }
+    }
+
+    /// The tag's members, in its file order.
+    pub fn members(self) -> &'static [Enchantment] {
+        use Enchantment as E;
+        match self {
+            ExclusiveSet::Armor => &[E::Protection, E::BlastProtection, E::FireProtection, E::ProjectileProtection],
+            ExclusiveSet::Boots => &[E::FrostWalker, E::DepthStrider],
+            ExclusiveSet::Bow => &[E::Infinity, E::Mending],
+            ExclusiveSet::Crossbow => &[E::Multishot, E::Piercing],
+            ExclusiveSet::Damage => &[E::Sharpness, E::Smite, E::BaneOfArthropods, E::Impaling, E::Density, E::Breach],
+            ExclusiveSet::Mining => &[E::Fortune, E::SilkTouch],
+            ExclusiveSet::Riptide => &[E::Loyalty, E::Channeling],
+        }
+    }
+}
+
+/// One enchantment's definition (Java's `Enchantment.definition` and
+/// `exclusive_set`).
 pub struct Def {
     pub name: &'static str,
     pub max_level: u8,
     /// Relative chance among the enchantments an offer can roll.
-    weight: u32,
+    pub weight: u32,
     /// Lowest and highest modified enchanting level that rolls level 1,
     /// and how far both rise per extra level.
-    min_cost: (u32, u32),
-    max_cost: (u32, u32),
+    pub min_cost: (u32, u32),
+    pub max_cost: (u32, u32),
     /// Levels per enchantment level an anvil charges to add it.
     pub anvil_cost: u32,
-    /// Treasure enchantments never come from the enchanting table.
+    /// `#treasure`: never from the enchanting table.
     pub treasure: bool,
+    /// `#curse`.
     pub curse: bool,
-    supported: Fits,
-    /// What the table offers it on (books take everything).
-    primary: Fits,
-    group: Group,
+    /// `supported_items`: what an anvil or `/enchant` puts it on.
+    pub supported: ItemSet,
+    /// `primary_items`: what the table offers it on, within `supported`
+    /// (`None`: all of `supported`). Books take everything.
+    pub primary: Option<ItemSet>,
+    /// `exclusive_set`: enchantments it can't share an item with.
+    pub exclusive_set: Option<ExclusiveSet>,
 }
 
 const fn def(
@@ -166,7 +301,7 @@ const fn def(
     min_cost: (u32, u32),
     max_cost: (u32, u32),
     anvil_cost: u32,
-    supported: Fits,
+    supported: ItemSet,
 ) -> Def {
     Def {
         name,
@@ -178,17 +313,17 @@ const fn def(
         treasure: false,
         curse: false,
         supported,
-        primary: supported,
-        group: Group::None,
+        primary: None,
+        exclusive_set: None,
     }
 }
 
-const fn in_group(d: Def, group: Group) -> Def {
-    Def { group, ..d }
+const fn exclusive(d: Def, set: ExclusiveSet) -> Def {
+    Def { exclusive_set: Some(set), ..d }
 }
 
-const fn primary(d: Def, primary: Fits) -> Def {
-    Def { primary, ..d }
+const fn primary(d: Def, primary: ItemSet) -> Def {
+    Def { primary: Some(primary), ..d }
 }
 
 const fn treasure(d: Def) -> Def {
@@ -199,63 +334,171 @@ const fn curse(d: Def) -> Def {
     Def { treasure: true, curse: true, ..d }
 }
 
-/// Java 1.21's values, in [`Enchantment`] order.
-static DEFS: [Def; Enchantment::COUNT] = [
-    in_group(def("protection", 4, 10, (1, 11), (12, 11), 1, Fits::Armor), Group::Protection),
-    in_group(def("fire protection", 4, 5, (10, 8), (18, 8), 2, Fits::Armor), Group::Protection),
-    def("feather falling", 4, 5, (5, 6), (11, 6), 2, Fits::Feet),
-    in_group(def("blast protection", 4, 2, (5, 8), (13, 8), 4, Fits::Armor), Group::Protection),
-    in_group(def("projectile protection", 4, 5, (3, 6), (9, 6), 2, Fits::Armor), Group::Protection),
-    def("respiration", 3, 2, (10, 10), (40, 10), 4, Fits::Head),
-    def("aqua affinity", 1, 2, (1, 0), (41, 0), 4, Fits::Head),
-    primary(def("thorns", 3, 1, (10, 20), (60, 20), 8, Fits::Armor), Fits::Chest),
-    def("depth strider", 3, 2, (10, 10), (25, 10), 4, Fits::Feet),
-    // Java 26.3 `supported_items`/`primary_items`: spears joined the sword's
-    // tags, and the mace takes the `#enchantable/weapon` and fire aspect sets.
-    in_group(
-        primary(def("sharpness", 5, 10, (1, 11), (21, 11), 1, Fits::SharpWeapon), Fits::MeleeWeapon),
-        Group::Damage,
-    ),
-    in_group(primary(def("smite", 5, 5, (5, 8), (25, 8), 2, Fits::AnyWeapon), Fits::MeleeWeapon), Group::Damage),
-    in_group(
-        primary(def("bane of arthropods", 5, 5, (5, 8), (25, 8), 2, Fits::AnyWeapon), Fits::MeleeWeapon),
-        Group::Damage,
-    ),
-    def("knockback", 2, 5, (5, 20), (55, 20), 2, Fits::MeleeWeapon),
-    primary(def("fire aspect", 2, 2, (10, 20), (60, 20), 4, Fits::FireAspect), Fits::MeleeWeapon),
-    def("looting", 3, 2, (15, 9), (65, 9), 4, Fits::MeleeWeapon),
-    def("sweeping edge", 3, 2, (5, 9), (20, 9), 4, Fits::Sword),
-    def("efficiency", 5, 10, (1, 10), (51, 10), 1, Fits::Mining),
-    in_group(def("silk touch", 1, 1, (15, 0), (65, 0), 8, Fits::Mining), Group::Mining),
-    def("unbreaking", 3, 5, (5, 8), (55, 8), 2, Fits::Durable),
-    in_group(def("fortune", 3, 2, (15, 9), (65, 9), 4, Fits::Mining), Group::Mining),
-    def("power", 5, 10, (1, 10), (16, 10), 1, Fits::Bow),
-    def("punch", 2, 2, (12, 20), (37, 20), 4, Fits::Bow),
-    def("flame", 1, 2, (20, 0), (50, 0), 4, Fits::Bow),
-    in_group(def("infinity", 1, 1, (20, 0), (50, 0), 8, Fits::Bow), Group::Bow),
-    in_group(treasure(def("mending", 1, 2, (25, 25), (75, 25), 4, Fits::Durable)), Group::Bow),
-    curse(def("curse of binding", 1, 1, (25, 0), (50, 0), 8, Fits::Armor)),
-    curse(def("curse of vanishing", 1, 1, (25, 0), (50, 0), 8, Fits::Durable)),
-    treasure(def("frost walker", 2, 2, (10, 10), (25, 10), 4, Fits::Feet)),
-    def("lure", 3, 2, (15, 9), (65, 9), 4, Fits::FishingRod),
-    def("luck of the sea", 3, 2, (15, 9), (65, 9), 4, Fits::FishingRod),
-    // Java 26.3 `data/minecraft/enchantment/{multishot,piercing,quick_charge}.json`.
-    in_group(def("multishot", 1, 2, (20, 0), (50, 0), 4, Fits::Crossbow), Group::Crossbow),
-    in_group(def("piercing", 4, 10, (1, 10), (50, 0), 1, Fits::Crossbow), Group::Crossbow),
-    def("quick charge", 3, 5, (12, 20), (50, 0), 2, Fits::Crossbow),
-    def("loyalty", 3, 5, (12, 7), (50, 0), 2, Fits::Trident),
-    in_group(def("impaling", 5, 2, (1, 8), (21, 8), 4, Fits::Trident), Group::Damage),
-    def("riptide", 3, 2, (17, 7), (50, 0), 4, Fits::Trident),
-    def("channeling", 1, 1, (25, 0), (50, 0), 8, Fits::Trident),
-    in_group(def("density", 5, 5, (5, 8), (25, 8), 2, Fits::Mace), Group::Damage),
-    in_group(def("breach", 4, 2, (15, 9), (65, 9), 4, Fits::Mace), Group::Damage),
-    def("lunge", 3, 5, (5, 8), (25, 8), 2, Fits::Spear),
-    // Java 26.3 `data/minecraft/enchantment/swift_sneak.json`: `#treasure`,
-    // not in `#on_random_loot` or `#tradeable`.
-    treasure(def("swift sneak", 3, 1, (25, 25), (75, 25), 8, Fits::Legs)),
-    // `data/minecraft/enchantment/wind_burst.json`; in `#treasure`, not `#on_random_loot`.
-    treasure(def("wind burst", 3, 2, (15, 9), (65, 9), 4, Fits::Mace)),
-];
+/// Java 26.3's `data/minecraft/enchantment/*.json`, in [`Enchantment`] order.
+static DEFS: [Def; Enchantment::COUNT] = {
+    use ExclusiveSet as X;
+    use ItemSet as S;
+    [
+        exclusive(def("protection", 4, 10, (1, 11), (12, 11), 1, S::Armor), X::Armor),
+        exclusive(def("fire protection", 4, 5, (10, 8), (18, 8), 2, S::Armor), X::Armor),
+        def("feather falling", 4, 5, (5, 6), (11, 6), 2, S::FootArmor),
+        exclusive(def("blast protection", 4, 2, (5, 8), (13, 8), 4, S::Armor), X::Armor),
+        exclusive(def("projectile protection", 4, 5, (3, 6), (9, 6), 2, S::Armor), X::Armor),
+        def("respiration", 3, 2, (10, 10), (40, 10), 4, S::HeadArmor),
+        def("aqua affinity", 1, 2, (1, 0), (41, 0), 4, S::HeadArmor),
+        primary(def("thorns", 3, 1, (10, 20), (60, 20), 8, S::Armor), S::ChestArmor),
+        exclusive(def("depth strider", 3, 2, (10, 10), (25, 10), 4, S::FootArmor), X::Boots),
+        exclusive(primary(def("sharpness", 5, 10, (1, 11), (21, 11), 1, S::SharpWeapon), S::MeleeWeapon), X::Damage),
+        exclusive(primary(def("smite", 5, 5, (5, 8), (25, 8), 2, S::Weapon), S::MeleeWeapon), X::Damage),
+        exclusive(primary(def("bane of arthropods", 5, 5, (5, 8), (25, 8), 2, S::Weapon), S::MeleeWeapon), X::Damage),
+        def("knockback", 2, 5, (5, 20), (55, 20), 2, S::MeleeWeapon),
+        primary(def("fire aspect", 2, 2, (10, 20), (60, 20), 4, S::FireAspect), S::MeleeWeapon),
+        def("looting", 3, 2, (15, 9), (65, 9), 4, S::MeleeWeapon),
+        def("sweeping edge", 3, 2, (5, 9), (20, 9), 4, S::Sweeping),
+        def("efficiency", 5, 10, (1, 10), (51, 10), 1, S::Mining),
+        exclusive(def("silk touch", 1, 1, (15, 0), (65, 0), 8, S::MiningLoot), X::Mining),
+        def("unbreaking", 3, 5, (5, 8), (55, 8), 2, S::Durability),
+        exclusive(def("fortune", 3, 2, (15, 9), (65, 9), 4, S::MiningLoot), X::Mining),
+        def("power", 5, 10, (1, 10), (16, 10), 1, S::Bow),
+        def("punch", 2, 2, (12, 20), (37, 20), 4, S::Bow),
+        def("flame", 1, 2, (20, 0), (50, 0), 4, S::Bow),
+        exclusive(def("infinity", 1, 1, (20, 0), (50, 0), 8, S::Bow), X::Bow),
+        // Mending names no set of its own; Infinity's set holds it.
+        treasure(def("mending", 1, 2, (25, 25), (75, 25), 4, S::Durability)),
+        curse(def("curse of binding", 1, 1, (25, 0), (50, 0), 8, S::Equippable)),
+        curse(def("curse of vanishing", 1, 1, (25, 0), (50, 0), 8, S::Vanishing)),
+        exclusive(treasure(def("frost walker", 2, 2, (10, 10), (25, 10), 4, S::FootArmor)), X::Boots),
+        def("lure", 3, 2, (15, 9), (65, 9), 4, S::Fishing),
+        def("luck of the sea", 3, 2, (15, 9), (65, 9), 4, S::Fishing),
+        exclusive(def("multishot", 1, 2, (20, 0), (50, 0), 4, S::Crossbow), X::Crossbow),
+        exclusive(def("piercing", 4, 10, (1, 10), (50, 0), 1, S::Crossbow), X::Crossbow),
+        def("quick charge", 3, 5, (12, 20), (50, 0), 2, S::Crossbow),
+        // Loyalty and Channeling name no set; Riptide's set holds both.
+        def("loyalty", 3, 5, (12, 7), (50, 0), 2, S::Trident),
+        exclusive(def("impaling", 5, 2, (1, 8), (21, 8), 4, S::Trident), X::Damage),
+        exclusive(def("riptide", 3, 2, (17, 7), (50, 0), 4, S::Trident), X::Riptide),
+        def("channeling", 1, 1, (25, 0), (50, 0), 8, S::Trident),
+        exclusive(def("density", 5, 5, (5, 8), (25, 8), 2, S::Mace), X::Damage),
+        exclusive(def("breach", 4, 2, (15, 9), (65, 9), 4, S::Mace), X::Damage),
+        def("lunge", 3, 5, (5, 8), (25, 8), 2, S::Lunge),
+        treasure(def("swift sneak", 3, 1, (25, 25), (75, 25), 8, S::LegArmor)),
+        treasure(def("wind burst", 3, 2, (15, 9), (65, 9), 4, S::Mace)),
+    ]
+};
+
+/// `#minecraft:non_treasure`, in its file order: the enchanting table's
+/// options (`#in_enchanting_table`), mob spawn equipment's
+/// (`#on_mob_spawn_equipment`) and traded equipment's (`#on_traded_equipment`).
+/// Rolls walk this order, which decides what a seeded weighted pick lands on.
+pub const NON_TREASURE: [Enchantment; 36] = {
+    use Enchantment as E;
+    [
+        E::Protection,
+        E::FireProtection,
+        E::FeatherFalling,
+        E::BlastProtection,
+        E::ProjectileProtection,
+        E::Respiration,
+        E::AquaAffinity,
+        E::Thorns,
+        E::DepthStrider,
+        E::Sharpness,
+        E::Smite,
+        E::BaneOfArthropods,
+        E::Knockback,
+        E::FireAspect,
+        E::Looting,
+        E::SweepingEdge,
+        E::Efficiency,
+        E::SilkTouch,
+        E::Unbreaking,
+        E::Fortune,
+        E::Power,
+        E::Punch,
+        E::Flame,
+        E::Infinity,
+        E::LuckOfTheSea,
+        E::Lure,
+        E::Loyalty,
+        E::Impaling,
+        E::Riptide,
+        E::Channeling,
+        E::Multishot,
+        E::QuickCharge,
+        E::Piercing,
+        E::Density,
+        E::Breach,
+        E::Lunge,
+    ]
+};
+
+/// `#minecraft:on_random_loot` (and `#tradeable`, which has the same
+/// entries), in order: `#non_treasure`, then both curses, Frost Walker and
+/// Mending. Soul Speed, Swift Sneak and Wind Burst are outside it.
+pub const ON_RANDOM_LOOT: [Enchantment; 40] = {
+    let mut out = [Enchantment::Protection; 40];
+    let mut i = 0;
+    while i < NON_TREASURE.len() {
+        out[i] = NON_TREASURE[i];
+        i += 1;
+    }
+    out[36] = Enchantment::BindingCurse;
+    out[37] = Enchantment::VanishingCurse;
+    out[38] = Enchantment::FrostWalker;
+    out[39] = Enchantment::Mending;
+    out
+};
+
+/// `#minecraft:tooltip_order`: how a stack lists its enchantments (Java's
+/// `ItemEnchantments.addToTooltip`). Java's list also names Soul Speed,
+/// between Aqua Affinity and Swift Sneak.
+pub const TOOLTIP_ORDER: [Enchantment; Enchantment::COUNT] = {
+    use Enchantment as E;
+    [
+        E::BindingCurse,
+        E::VanishingCurse,
+        E::Riptide,
+        E::Channeling,
+        E::WindBurst,
+        E::FrostWalker,
+        E::Lunge,
+        E::Sharpness,
+        E::Smite,
+        E::BaneOfArthropods,
+        E::Impaling,
+        E::Power,
+        E::Density,
+        E::Breach,
+        E::Piercing,
+        E::SweepingEdge,
+        E::Multishot,
+        E::FireAspect,
+        E::Flame,
+        E::Knockback,
+        E::Punch,
+        E::Protection,
+        E::BlastProtection,
+        E::FireProtection,
+        E::ProjectileProtection,
+        E::FeatherFalling,
+        E::Fortune,
+        E::Looting,
+        E::SilkTouch,
+        E::LuckOfTheSea,
+        E::Efficiency,
+        E::QuickCharge,
+        E::Lure,
+        E::Respiration,
+        E::AquaAffinity,
+        E::SwiftSneak,
+        E::DepthStrider,
+        E::Thorns,
+        E::Loyalty,
+        E::Unbreaking,
+        E::Infinity,
+        E::Mending,
+    ]
+};
 
 impl Enchantment {
     pub const COUNT: usize = 42;
@@ -281,16 +524,17 @@ impl Enchantment {
         &DEFS[self.index()]
     }
 
-    /// Java's `#tradeable`: everything but Swift Sneak and Wind Burst (and
+    /// Java's `#tradeable`, in its order: the same entries as
+    /// [`ON_RANDOM_LOOT`] (Swift Sneak and Wind Burst are outside it, as is
     /// Soul Speed, which isn't registered).
     pub fn tradeable() -> &'static [Enchantment] {
-        &Enchantment::ALL[..40]
+        &ON_RANDOM_LOOT
     }
 
     /// Java's `#on_random_loot`: the non-treasure set, both curses, frost
     /// walker and mending — not Swift Sneak or Wind Burst.
     pub fn on_random_loot(self) -> bool {
-        !matches!(self, Enchantment::SwiftSneak | Enchantment::WindBurst)
+        ON_RANDOM_LOOT.contains(&self)
     }
 
     pub fn from_name(name: &str) -> Option<Enchantment> {
@@ -304,23 +548,28 @@ impl Enchantment {
         Enchantment::ALL.into_iter().find(|e| e.def().name == name)
     }
 
-    /// Whether this can go on `item` at all (anvils, `/enchant`).
-    pub fn fits(self, item: Item) -> bool {
-        item == Item::ENCHANTED_BOOK || item == Item::BOOK || self.def().supported.accepts(item)
+    /// Java's `isSupportedItem` (`supported_items`): what an anvil puts it on.
+    pub fn is_supported_item(self, item: Item) -> bool {
+        self.def().supported.contains(item)
     }
 
-    /// Whether `self` and `other` may share an item.
+    /// Java's `isPrimaryItem`: supported, and in `primary_items` when it
+    /// names one. The enchanting table offers it on these.
+    pub fn is_primary_item(self, item: Item) -> bool {
+        self.is_supported_item(item) && self.def().primary.is_none_or(|p| p.contains(item))
+    }
+
+    /// Whether this can go on `item` at all (anvils, `/enchant`, random
+    /// loot): its supported items, and books.
+    pub fn fits(self, item: Item) -> bool {
+        item == Item::ENCHANTED_BOOK || item == Item::BOOK || self.is_supported_item(item)
+    }
+
+    /// Java's `Enchantment.areCompatible`: different, and neither one's
+    /// exclusive set holds the other.
     pub fn compatible(self, other: Enchantment) -> bool {
-        if matches!((self, other), (Self::FrostWalker, Self::DepthStrider) | (Self::DepthStrider, Self::FrostWalker)) {
-            return false;
-        }
-        if (self == Self::Riptide && matches!(other, Self::Loyalty | Self::Channeling))
-            || (other == Self::Riptide && matches!(self, Self::Loyalty | Self::Channeling))
-        {
-            return false;
-        }
-        let (a, b) = (self.def().group, other.def().group);
-        self != other && (a == Group::None || a != b)
+        let holds = |a: Enchantment, b: Enchantment| a.def().exclusive_set.is_some_and(|s| s.members().contains(&b));
+        self != other && !holds(self, other) && !holds(other, self)
     }
 
     /// Modified enchanting level range that rolls `level` of this.
@@ -328,15 +577,21 @@ impl Enchantment {
         self.cost_range(level).0
     }
 
-    fn cost_range(self, level: u8) -> (u32, u32) {
+    /// Java's `getMinCost` and `getMaxCost` for `level`.
+    pub fn cost_range(self, level: u8) -> (u32, u32) {
         let d = self.def();
         let extra = level.saturating_sub(1) as u32;
         (d.min_cost.0 + d.min_cost.1 * extra, d.max_cost.0 + d.max_cost.1 * extra)
     }
 
+    /// The en_us name: `Bane of Arthropods`, `Luck of the Sea`.
+    pub fn display_name(self) -> String {
+        capitalize_words(self.def().name)
+    }
+
     /// `Sharpness V`, `Mending` (single-level ones drop the numeral).
     pub fn describe(self, level: u8) -> String {
-        let name = capitalize_words(self.def().name);
+        let name = self.display_name();
         if self.def().max_level == 1 && level == 1 { name } else { format!("{name} {}", roman(level)) }
     }
 }
@@ -344,7 +599,7 @@ impl Enchantment {
 fn capitalize_words(text: &str) -> String {
     text.split(' ')
         .map(|w| match w {
-            "of" => w.to_string(),
+            "of" | "the" => w.to_string(),
             _ => w[..1].to_uppercase() + &w[1..],
         })
         .collect::<Vec<_>>()
@@ -408,9 +663,16 @@ impl Enchants {
         u128::from_str_radix(text, 16).ok().map(|v| Enchants(v & known))
     }
 
-    /// Tooltip lines: `Sharpness V`, and whether each is a curse (red).
+    /// Each enchantment present and its level, in Java's `#tooltip_order`
+    /// (`ItemEnchantments.addToTooltip`; every registered enchantment is in it).
+    pub fn in_tooltip_order(self) -> impl Iterator<Item = (Enchantment, u8)> {
+        TOOLTIP_ORDER.into_iter().map(move |e| (e, self.level(e))).filter(|&(_, l)| l > 0)
+    }
+
+    /// Tooltip lines in `#tooltip_order`: `Sharpness V`, and whether each is
+    /// a curse (red).
     pub fn lines(self) -> Vec<(String, bool)> {
-        self.iter().map(|(e, l)| (e.describe(l), e.def().curse)).collect()
+        self.in_tooltip_order().map(|(e, l)| (e.describe(l), e.def().curse)).collect()
     }
 }
 
@@ -495,6 +757,7 @@ pub fn enchantability(item: Item) -> u32 {
             ArmorMaterial::Netherite => 15,
             ArmorMaterial::Turtle => 9,
             ArmorMaterial::Copper => 8,
+            ArmorMaterial::Chainmail => 12,
         },
         ItemKind::Bow | ItemKind::FishingRod => 1,
         _ if matches!(item, Item::CROSSBOW | Item::CHARGED_CROSSBOW) => 1,
@@ -552,22 +815,29 @@ enum Options {
     /// `#minecraft:in_enchanting_table` (= `#non_treasure`).
     Table,
     /// `#minecraft:on_random_loot`: `#non_treasure` plus both curses, frost
-    /// walker and mending, i.e. every enchantment VoxelCraft registers
-    /// except Swift Sneak.
+    /// walker and mending.
     RandomLoot,
 }
 
+impl Options {
+    /// The holder set in Java's iteration order (the tag's file order).
+    fn holders(self) -> &'static [Enchantment] {
+        match self {
+            Options::Table => &NON_TREASURE,
+            Options::RandomLoot => &ON_RANDOM_LOOT,
+        }
+    }
+}
+
 /// Java's `getAvailableEnchantmentResults`: the best level of each
-/// enchantment in `options` that a modified level of `power` can roll on `item`.
+/// enchantment in `options` that a modified level of `power` can roll on
+/// `item`, in the options' order.
 fn available(power: u32, item: Item, options: Options) -> Vec<(Enchantment, u8)> {
     let book = item == Item::BOOK;
     let mut out = Vec::new();
-    for e in Enchantment::ALL {
+    for &e in options.holders() {
         let d = e.def();
-        if (d.treasure && options == Options::Table)
-            || (options == Options::RandomLoot && !e.on_random_loot())
-            || !(book || d.primary.accepts(item))
-        {
+        if !(book || e.is_primary_item(item)) {
             continue;
         }
         if let Some(level) = (1..=d.max_level).rev().find(|&l| {
@@ -755,7 +1025,7 @@ pub fn anvil_any_cost(left: Stack, right: Option<Stack>, creative: bool) -> Opti
         for (e, level) in right.enchants.iter() {
             let have = out.enchants.level(e);
             let mut new = if have == level { level + 1 } else { have.max(level) };
-            let mut fits = e.def().supported.accepts(left.item) || creative || left.item == Item::ENCHANTED_BOOK;
+            let mut fits = e.is_supported_item(left.item) || creative || left.item == Item::ENCHANTED_BOOK;
             for (other, _) in out.enchants.iter() {
                 if other != e && !e.compatible(other) {
                     fits = false;
@@ -835,7 +1105,8 @@ pub fn repairs(item: Item, material: Item) -> bool {
         },
         ItemKind::Armor(_, m) => match m {
             ArmorMaterial::Leather => material == Item::LEATHER,
-            ArmorMaterial::Iron => material == Item::IRON_INGOT,
+            // `#repairs_iron_armor` and `#repairs_chain_armor` both hold iron ingots.
+            ArmorMaterial::Iron | ArmorMaterial::Chainmail => material == Item::IRON_INGOT,
             ArmorMaterial::Gold => material == Item::GOLD_INGOT,
             ArmorMaterial::Diamond => material == Item::DIAMOND,
             ArmorMaterial::Netherite => material == Item::NETHERITE_INGOT,
@@ -905,56 +1176,39 @@ pub fn wears(enchants: Enchants, armor: bool, roll: f32) -> bool {
     roll < chance
 }
 
-/// The kind of damage, for the protection enchantments, read from the
-/// death message the damage carries.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum DamageKind {
-    Fall,
-    Fire,
-    Explosion,
-    Projectile,
-    /// A fireball: both fire and a projectile.
-    Fireball,
-    Other,
-}
-
-impl DamageKind {
-    pub fn of_cause(cause: &str) -> DamageKind {
-        match cause {
-            c if c.starts_with("fell") || c.starts_with("hit the ground") => DamageKind::Fall,
-            c if c.contains("fireball") => DamageKind::Fireball,
-            c if c.starts_with("burned") || c.contains("lava") => DamageKind::Fire,
-            c if c.contains("blown up") || c.contains("Intentional Game Design") => DamageKind::Explosion,
-            c if c.starts_with("was shot") => DamageKind::Projectile,
-            _ => DamageKind::Other,
-        }
-    }
-}
-
-/// Java's enchantment protection factor of the worn armor against `kind`:
-/// protection 1 per level, the specific kinds 2, feather falling 3.
-pub fn protection_factor(armor: &[Option<Stack>; 4], kind: DamageKind) -> u32 {
+/// Java's enchantment protection factor of the worn armor against `cause`
+/// (each enchantment's `minecraft:damage_protection` effect): Protection 1
+/// per level, Fire, Blast and Projectile Protection 2 against `#is_fire`,
+/// `#is_explosion` and `#is_projectile`, Feather Falling 3 against
+/// `#is_fall`; none of them against `#bypasses_invulnerability`.
+pub fn protection_factor(armor: &[Option<Stack>; 4], cause: crate::simulation::damage::Cause) -> u32 {
+    use crate::simulation::damage::DamageTag as Tag;
     use Enchantment as E;
+    if cause.is(Tag::BypassesInvulnerability) {
+        return 0;
+    }
     let mut epf = 0;
     for e in armor.iter().flatten().map(|s| s.enchants) {
         epf += e.level(E::Protection) as u32;
-        let fire = matches!(kind, DamageKind::Fire | DamageKind::Fireball);
-        let projectile = matches!(kind, DamageKind::Projectile | DamageKind::Fireball);
-        epf += 2 * e.level(E::FireProtection) as u32 * fire as u32;
-        epf += 2 * e.level(E::BlastProtection) as u32 * (kind == DamageKind::Explosion) as u32;
-        epf += 2 * e.level(E::ProjectileProtection) as u32 * projectile as u32;
-        epf += 3 * e.level(E::FeatherFalling) as u32 * (kind == DamageKind::Fall) as u32;
+        epf += 2 * e.level(E::FireProtection) as u32 * cause.is(Tag::IsFire) as u32;
+        epf += 2 * e.level(E::BlastProtection) as u32 * cause.is(Tag::IsExplosion) as u32;
+        epf += 2 * e.level(E::ProjectileProtection) as u32 * cause.is(Tag::IsProjectile) as u32;
+        epf += 3 * e.level(E::FeatherFalling) as u32 * cause.is(Tag::IsFall) as u32;
     }
     epf
 }
 
-/// Damage left after enchantment protection (capped at 80%).
-pub fn protect(amount: f32, armor: &[Option<Stack>; 4], cause: &str) -> f32 {
-    // `#bypasses_enchantments`: the warden's sonic boom.
-    if cause == crate::entity::warden::CAUSE_SONIC_BOOM {
+/// Damage left after enchantment protection, capped at 80%
+/// (`LivingEntity.getDamageAfterMagicAbsorb`'s last step and
+/// `CombatRules.getDamageAfterMagicAbsorb`): `#bypasses_effects` and
+/// `#bypasses_enchantments` damage is not reduced.
+pub fn protect(amount: f32, armor: &[Option<Stack>; 4], cause: impl Into<crate::simulation::damage::Cause>) -> f32 {
+    use crate::simulation::damage::DamageTag as Tag;
+    let cause = cause.into();
+    if cause.is(Tag::BypassesEffects) || cause.is(Tag::BypassesEnchantments) {
         return amount;
     }
-    let epf = protection_factor(armor, DamageKind::of_cause(cause)).min(20);
+    let epf = protection_factor(armor, cause).min(20);
     amount * (1.0 - epf as f32 / 25.0)
 }
 
@@ -1018,6 +1272,30 @@ mod tests {
         assert!(!E::Sharpness.compatible(E::Sharpness));
     }
 
+    /// `getAvailableEnchantmentResults` streams the options holder set, so
+    /// the weighted pick walks `#non_treasure` (or `#on_random_loot`) in tag
+    /// order: Luck of the Sea before Lure, the trident's before the
+    /// crossbow's, and the curses, Frost Walker and Mending last.
+    #[test]
+    fn rolls_walk_the_options_in_tag_order() {
+        for (options, order) in [(Options::Table, &NON_TREASURE[..]), (Options::RandomLoot, &ON_RANDOM_LOOT[..])] {
+            for power in [1, 15, 30, 50] {
+                let got: Vec<_> = available(power, Item::BOOK, options).into_iter().map(|(e, _)| e).collect();
+                let want: Vec<_> = order.iter().copied().filter(|e| got.contains(e)).collect();
+                assert_eq!(got, want, "{options:?} at {power}");
+            }
+        }
+        let at =
+            |power| available(power, Item::BOOK, Options::RandomLoot).into_iter().map(|(e, _)| e).collect::<Vec<_>>();
+        let rod = at(30);
+        let (luck, lure) = (
+            rod.iter().position(|&e| e == Enchantment::LuckOfTheSea),
+            rod.iter().position(|&e| e == Enchantment::Lure),
+        );
+        assert!(luck.is_some() && luck < lure, "{rod:?}");
+        assert_eq!(at(50).last(), Some(&Enchantment::Mending), "Mending (25..=75) closes the list");
+    }
+
     #[test]
     fn clues_continue_the_offer_roll_and_seeds_wrap_as_java_ints() {
         use Enchantment as E;
@@ -1048,7 +1326,7 @@ mod tests {
                 assert!(!list.is_empty());
                 assert!(list.contains(&offer.clue.unwrap()), "the clue is one of them");
                 for (e, _) in &list {
-                    assert!(e.def().primary.accepts(pick) && !e.def().treasure, "{e:?}");
+                    assert!(e.is_primary_item(pick) && !e.def().treasure, "{e:?}");
                 }
                 for (i, (a, _)) in list.iter().enumerate() {
                     assert!(list[i + 1..].iter().all(|(b, _)| a.compatible(*b)));
@@ -1186,11 +1464,10 @@ mod tests {
         let prot4 = Enchants::NONE.with(Enchantment::Protection, 4);
         let boots = Item::armor(ArmorPiece::Boots, ArmorMaterial::Diamond);
         armor[3] = Some(Stack { enchants: prot4.with(Enchantment::FeatherFalling, 4), ..Stack::new(boots, 1) });
-        assert_eq!(protection_factor(&armor, DamageKind::Fall), 16);
-        assert_eq!(protection_factor(&armor, DamageKind::Other), 4);
-        assert!((protect(10.0, &armor, "fell from a high place") - 3.6).abs() < 1e-5);
-        assert_eq!(DamageKind::of_cause("was fireballed by a blaze"), DamageKind::Fireball);
-        assert_eq!(DamageKind::of_cause("was blown up by a creeper"), DamageKind::Explosion);
+        use crate::simulation::damage::Cause;
+        assert_eq!(protection_factor(&armor, Cause::FALL), 16);
+        assert_eq!(protection_factor(&armor, Cause::mob("was slain by a zombie")), 4);
+        assert!((protect(10.0, &armor, Cause::FALL) - 3.6).abs() < 1e-5);
         let held = Enchants::NONE.with(Enchantment::Sharpness, 5);
         assert_eq!(damage_bonus(held, Creature::Other), 3.0);
         assert_eq!(damage_bonus(Enchants::NONE.with(Enchantment::Smite, 5), Creature::Undead), 12.5);

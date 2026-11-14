@@ -92,7 +92,8 @@ pub(super) fn cargo(m: &Mob, origin: Vec3, body: Quat, light: ([u8; 4], u8), out
         uv: [0.; 2],
         rot: Quat::IDENTITY,
     };
-    super::super::player_model::textured_box(out, &held, 0., origin, body, light, 2, layer, 1., [255; 4]);
+    let tint = crate::inventory::components::dye_tint_bytes(stack);
+    super::super::player_model::textured_box(out, &held, 0., origin, body, light, 2, layer, 1., tint);
     if let Some(b) = block {
         let start = out.len() - 36;
         for (i, face) in out[start..].as_chunks_mut::<6>().0.iter_mut().enumerate() {

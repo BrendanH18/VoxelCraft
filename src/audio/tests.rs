@@ -368,6 +368,9 @@ fn every_sound_plays_in_a_java_category() {
         (Sound::Mob(Voice::Cow, Call::Death), Neutral),
         (Sound::Mob(Voice::Villager, Call::Ambient), Neutral),
         (Sound::Mob(Voice::Strider, Call::Ambient), Neutral),
+        // `Monster.getSoundSource`: the endermite's calls are hostile.
+        (Sound::Mob(Voice::Endermite, Call::Hurt), Hostile),
+        (Sound::Mob(Voice::Endermite, Call::Death), Hostile),
     ];
     for (sound, source) in expect {
         assert_eq!(sound.source(), source, "{}", sound.name());

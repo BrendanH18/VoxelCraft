@@ -827,19 +827,35 @@ impl Entities {
             .chain(self.storage.mobs())
             .filter(|m| m.alive())
             .filter_map(|m| match m.kind {
-                MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama => Some(json!({
+                MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama => {
+                    let mut saved = json!({
                     "identity":super::leash::save(m), "kind": m.kind.name(), "p": m.pos.to_array(), "yaw": m.yaw,
                     "health": m.health, "effects":m.effects.serialize(), "built": m.built, "anger": m.player_hit_left, "anger_player":m.angry_player.map(|p|p.0), "trader": m.trader.as_ref().map(|t|t.save()),
-                })),
+                    });
+                    // Angry at every player (`universal_anger`); written only when set.
+                    if m.neutral_universal {
+                        saved["anger_all"] = json!(true);
+                    }
+                    if m.attributes() != super::zombie::Attrs::default() {
+                        saved["attributes"] = m.attrs.save();
+                    }
+                    Some(saved)
+                }
                 MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader => {
                     let v = m.villager.as_ref()?;
                     let mut saved = json!({"identity":super::leash::save(m),"trader":m.trader.as_ref().map(|t|t.save()),"kind":m.kind.name(),"id":v.id,"seed":v.seed,"p":m.pos.to_array(),"yaw":m.yaw,
-                    "health":m.health,"effects":m.effects.serialize(),"age":m.age,"built":m.built,"armor":m.armor.map(|a|a.map(|a|a as u8)),"glint":m.armor_glint,"profession":v.profession as u8,"level":v.level,"xp":v.xp,
+                    "health":m.health,"effects":m.effects.serialize(),"age":m.age,"built":m.built,"profession":v.profession as u8,"level":v.level,"xp":v.xp,
                     "job":v.job.map(|p|p.to_array()),"home":v.home.map(|p|p.to_array()),
                     "offers":v.offers.map(|o|o.map(Offer::save)),"day":v.restock_day,"restocks":v.restocks,
                     "last":v.last_restock,"slept":v.last_slept,"golem_seen":v.golem_seen,"gossip":v.gossip.save(),"food":v.food.map(stack_to_string),"food_level":v.food_level,"bell_hide":v.bell_hide,"promote":v.promote_left,"promote_pending":v.promote_pending,"reputation":v.reputation,"weakness":m.weakness_left,"convert":m.convert_left,"convert_tick":m.convert_tick,"convert_by":m.convert_by.map(|p|p.0)});
                     if let Some(variant) = &v.map_variant {
                         saved["map_variant"] = json!(variant);
+                    }
+                    // v0.14: `equipment` and `drop_chances` replace `armor` and `glint`.
+                    m.equipment.save_into(&mut saved, false);
+                    // A zombie villager's spawn attributes (leaders' health and reinforcements).
+                    if m.attributes() != super::zombie::Attrs::default() {
+                        saved["attributes"] = m.attrs.save();
                     }
                     Some(saved)
                 }
@@ -904,6 +920,7 @@ impl Entities {
                         return None;
                     }
                     let mut m = Mob::new(kind, p, yaw);
+                    m.attrs = super::zombie::Attrs::load(&a["attributes"]);
                     if kind == MobKind::TraderLlama {
                         m.trader = Some(Box::new(super::wandering_trader::Trader::load(&a["trader"], p)?));
                     }
@@ -912,6 +929,7 @@ impl Entities {
                     m.angry_player =
                         a["anger_player"].as_u64().and_then(|p| u32::try_from(p).ok()).map(super::PlayerId);
                     m.player_hit_left = a["anger"].as_f64().unwrap_or(0.0).clamp(0.0, 60.0) as f32;
+                    m.neutral_universal = kind == MobKind::IronGolem && a["anger_all"] == true;
                     return Some(m);
                 }
                 let id = a["id"].as_u64()?;
@@ -954,7 +972,9 @@ impl Entities {
                 v.promote_left = a["promote"].as_f64().unwrap_or(0.0).clamp(0.0, 2.0) as f32;
                 v.promote_pending = a["promote_pending"].as_bool().unwrap_or(false) && v.promote_left > 0.0;
                 let mut m = Mob::new(kind, p, yaw);
-                m.health = health.min(kind.max_health());
+                // Before health, which a leader's max health bounds.
+                m.attrs = super::zombie::Attrs::load(&a["attributes"]);
+                m.health = health.min(m.max_health());
                 m.age = i32::try_from(a["age"].as_i64()?).ok()?.clamp(-24000, 6000);
                 m.baby = m.age < 0;
                 m.built = a["built"].as_bool().unwrap_or(false);
@@ -966,12 +986,8 @@ impl Entities {
                     .and_then(|p| u32::try_from(p).ok())
                     .map(super::PlayerId)
                     .or_else(|| (m.convert_left > 0.0).then_some(super::PlayerId::HOST));
-                if let Some(armor) = a["armor"].as_array() {
-                    for (slot, value) in m.armor.iter_mut().zip(armor) {
-                        *slot = value.as_u64().and_then(|i| super::armor::ArmorKind::ALL.get(i as usize).copied());
-                    }
-                }
-                m.armor_glint = a["glint"].as_u64().unwrap_or(0).min(15) as u8;
+                let fresh = std::mem::take(&mut m.equipment);
+                m.equipment = super::equipment::load_mob_equipment(a, fresh, &super::equipment::Legacy::villager(a));
                 if kind == MobKind::WanderingTrader {
                     m.trader = Some(Box::new(super::wandering_trader::Trader::load(&a["trader"], p)?));
                 }
@@ -994,6 +1010,16 @@ impl Entities {
 /// Kept visible to the registry-gap guard so offer filtering cannot hide typos.
 pub fn trade_item_names() -> impl Iterator<Item = &'static str> {
     tables::TRADES.iter().flat_map(|(_, _, t)| [t.input, t.output])
+}
+
+/// Every offer `profession` can roll at `level` whose items are registered,
+/// as a fresh villager would make it (enchanted offers use seed 0).
+pub fn level_offers(profession: Profession, level: u8) -> Vec<Offer> {
+    tables::TRADES
+        .iter()
+        .filter(|(p, l, d)| *p == profession && *l == level && d.available())
+        .filter_map(|(_, _, d)| d.offer(0))
+        .collect()
 }
 
 #[cfg(test)]
@@ -1319,6 +1345,41 @@ mod tests {
         assert!(!enchanted.output.enchants.is_empty());
         assert!((18..=32).contains(&enchanted.cost.count));
     }
+    /// Java 26.3 `villager_trade/cleric/5/emerald_experience_bottle.json`:
+    /// a master cleric always offers it beside the nether wart (the level
+    /// tag has two offers, and the game picks two).
+    #[test]
+    fn master_clerics_sell_the_bottle_o_enchanting_on_java_terms() {
+        let f: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/thrown_items.json")).unwrap();
+        let t = &f["experience_bottle"]["trade"];
+        assert_eq!(t["in_level_tag"], true);
+        let level: Vec<_> =
+            tables::TRADES.iter().filter(|(p, l, d)| *p == Profession::Cleric && *l == 5 && d.available()).collect();
+        assert_eq!(level.len() as u64, t["level_offers"].as_u64().unwrap());
+        let java_item = |v: &serde_json::Value| crate::java_registry::item(v["id"].as_str().unwrap(), "").unwrap();
+        for seed in 0..50 {
+            let mut v = Villager::new(seed, seed * 31 + 7);
+            v.set_profession(Profession::Cleric);
+            for l in 2..=5 {
+                v.level = l;
+                v.unlock();
+            }
+            let offer = v.offers[8..]
+                .iter()
+                .flatten()
+                .find(|o| o.output.item == Item::EXPERIENCE_BOTTLE)
+                .copied()
+                .expect("a master cleric sells the bottle");
+            assert_eq!(offer.cost, Stack::new(java_item(&t["wants"]), t["wants"]["count"].as_u64().unwrap() as u8));
+            assert_eq!(offer.second, None);
+            assert_eq!(offer.output, Stack::new(java_item(&t["gives"]), t["gives"]["count"].as_u64().unwrap() as u8));
+            assert_eq!(u64::from(offer.max_uses), t["max_uses"].as_u64().unwrap());
+            assert_eq!(u64::from(offer.xp), t["xp"].as_u64().unwrap());
+            assert_eq!(f64::from(offer.multiplier), f64::from(t["reputation_discount"].as_f64().unwrap() as f32));
+        }
+    }
+
     #[test]
     fn master_fletcher_crossbows_have_their_enchantment() {
         let def = tables::TRADES

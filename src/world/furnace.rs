@@ -119,16 +119,17 @@ fn ore_of(item: Item) -> Option<Block> {
 
 /// What smelting `item` produces.
 /// Java's `*_nugget_from_smelting`/`_blasting`: iron, golden and copper
-/// tools, armor and horse armor melt down to one nugget.
+/// tools, armor, horse armor and nautilus armor, and chainmail armor, melt
+/// down to one nugget.
 fn nugget_of(item: Item) -> Option<Item> {
     use crate::item::{ArmorMaterial, Tier};
     // Spears melt down like the tier's other tools.
     let tier = item.as_tool().map(|(_, t)| t).or_else(|| crate::weapons::spear_tier(item));
-    let material = item.as_armor().map(|(_, m)| m);
-    Some(match (tier, material, item.name()) {
-        (Some(Tier::Iron), ..) | (_, Some(ArmorMaterial::Iron), _) | (.., "iron horse armor") => Item::IRON_NUGGET,
-        (Some(Tier::Gold), ..) | (_, Some(ArmorMaterial::Gold), _) | (.., "golden horse armor") => Item::GOLD_NUGGET,
-        (Some(Tier::Copper), ..) | (_, Some(ArmorMaterial::Copper), _) => Item::COPPER_NUGGET,
+    let material = item.as_armor().map(|(_, m)| m).or(item.body_armor().map(|(_, m)| m));
+    Some(match (tier, material) {
+        (Some(Tier::Iron), _) | (_, Some(ArmorMaterial::Iron | ArmorMaterial::Chainmail)) => Item::IRON_NUGGET,
+        (Some(Tier::Gold), _) | (_, Some(ArmorMaterial::Gold)) => Item::GOLD_NUGGET,
+        (Some(Tier::Copper), _) | (_, Some(ArmorMaterial::Copper)) => Item::COPPER_NUGGET,
         _ => return None,
     })
 }

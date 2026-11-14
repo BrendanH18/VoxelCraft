@@ -35,13 +35,14 @@ class LootVectors {
                 w-=weights[j];
             }
         }
-        r.nextInt(3); // bundle-or-empty pool; unsupported bundle is discarded.
+        // The bundle-or-empty pool: bundle weight 1, empty weight 2.
+        if (r.nextInt(3) < 1) items.add(new S("bundle",1));
         System.out.println(seed+" "+fill(r,items,27));
     }
     static long mix(long z) { z=(z^(z>>>30))*0xbf58476d1ce4e5b9L; z=(z^(z>>>27))*0x94d049bb133111ebL; return z^(z>>>31); }
     static long be(byte[] b,int offset) { long out=0; for(int i=offset;i<offset+8;i++) out=(out<<8)|(b[i]&255L); return out; }
     public static void main(String[] args) throws Exception {
-        for (long seed: new long[]{0,42,12345}) cartographer(seed);
+        for (long seed: new long[]{0,42,12345,1}) cartographer(seed);
         System.out.println("split "+fill(new Random(42),new ArrayList<>(List.of(new S("arrow",14),new S("paper",3),new S("diamond",1))),9));
         byte[] h=MessageDigest.getInstance("MD5").digest("minecraft:chests/shipwreck_map".getBytes(StandardCharsets.UTF_8));
         long lo=42^0x6a09e667f3bcc909L,hi=lo+0x9e3779b97f4a7c15L;

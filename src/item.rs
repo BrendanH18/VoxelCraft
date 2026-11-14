@@ -110,16 +110,20 @@ pub enum ArmorMaterial {
     Turtle,
     /// Java 26.3 copper armor (appended; ids in the copper equipment range).
     Copper,
+    /// `ArmorMaterials.CHAINMAIL` (appended; ids 1550–1553, see `crate::equipment`).
+    Chainmail,
 }
 
 impl ArmorMaterial {
-    pub const ALL: [ArmorMaterial; 6] = [
+    /// Materials with all four humanoid pieces.
+    pub const ALL: [ArmorMaterial; 7] = [
         ArmorMaterial::Leather,
         ArmorMaterial::Iron,
         ArmorMaterial::Gold,
         ArmorMaterial::Diamond,
         ArmorMaterial::Netherite,
         ArmorMaterial::Copper,
+        ArmorMaterial::Chainmail,
     ];
 
     /// Armor points (half chestplates on the HUD) per piece, as in Minecraft.
@@ -127,6 +131,7 @@ impl ArmorMaterial {
         let points = match self {
             ArmorMaterial::Leather => [1, 3, 2, 1],
             ArmorMaterial::Copper => [2, 4, 3, 1],
+            ArmorMaterial::Chainmail => [2, 5, 4, 1],
             ArmorMaterial::Gold => [2, 5, 3, 1],
             ArmorMaterial::Turtle => [2, 6, 5, 2],
             ArmorMaterial::Iron => [2, 6, 5, 2],
@@ -141,7 +146,7 @@ impl ArmorMaterial {
             ArmorMaterial::Leather => 5,
             ArmorMaterial::Gold => 7,
             ArmorMaterial::Copper => 11,
-            ArmorMaterial::Iron => 15,
+            ArmorMaterial::Iron | ArmorMaterial::Chainmail => 15,
             ArmorMaterial::Diamond => 33,
             ArmorMaterial::Netherite => 37,
             ArmorMaterial::Turtle => 25,
@@ -162,6 +167,19 @@ impl ArmorMaterial {
     /// Share of knockback each piece shrugs off.
     pub fn knockback_resistance(self) -> f32 {
         if self == ArmorMaterial::Netherite { 0.1 } else { 0.0 }
+    }
+
+    /// `ArmorType.BODY` defense: the armor a horse or nautilus gains from
+    /// body armor of this material (`ArmorMaterial.createAttributes(BODY)`).
+    pub fn body_defense(self) -> u8 {
+        match self {
+            ArmorMaterial::Leather => 3,
+            ArmorMaterial::Copper | ArmorMaterial::Chainmail => 4,
+            ArmorMaterial::Iron | ArmorMaterial::Turtle => 5,
+            ArmorMaterial::Gold => 7,
+            ArmorMaterial::Diamond => 11,
+            ArmorMaterial::Netherite => 19,
+        }
     }
 }
 
@@ -311,6 +329,16 @@ pub enum Sprite {
     WindCharge,
     /// An ominous bottle; the amplifier adds pips.
     OminousBottle(u8),
+    /// Horse armor of this material (barding seen from the side).
+    HorseArmor(ArmorMaterial),
+    /// Nautilus armor of this material (a spiral shell plate).
+    NautilusArmor(ArmorMaterial),
+    /// v0.14: a harness of this colour (`content::harness`).
+    Harness([u8; 3]),
+    /// The Bottle o' Enchanting: a round flask of sparkling blue-green liquid.
+    ExperienceBottle,
+    /// v0.14: a bundle of this leather colour (`content::bundle`).
+    Bundle([u8; 3]),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -534,10 +562,10 @@ static MOUNT_ITEMS: [ItemInfo; 28] = [
     single("saddle", Sprite::Saddle),
     single("carrot on a stick", Sprite::SteeringStick([214, 112, 28])),
     single("warped fungus on a stick", Sprite::SteeringStick([30, 150, 140])),
-    single("leather horse armor", Sprite::Armor(ArmorPiece::Chestplate, ArmorMaterial::Leather)),
-    single("iron horse armor", Sprite::Armor(ArmorPiece::Chestplate, ArmorMaterial::Iron)),
-    single("golden horse armor", Sprite::Armor(ArmorPiece::Chestplate, ArmorMaterial::Gold)),
-    single("diamond horse armor", Sprite::Armor(ArmorPiece::Chestplate, ArmorMaterial::Diamond)),
+    single("leather horse armor", Sprite::HorseArmor(ArmorMaterial::Leather)),
+    single("iron horse armor", Sprite::HorseArmor(ArmorMaterial::Iron)),
+    single("golden horse armor", Sprite::HorseArmor(ArmorMaterial::Gold)),
+    single("diamond horse armor", Sprite::HorseArmor(ArmorMaterial::Diamond)),
     food("golden carrot", 6, 14.4, Sprite::Lump([235, 192, 52])),
 ];
 const _: () = assert!(MOUNT_ITEM as usize + MOUNT_ITEMS.len() <= 1000);
@@ -829,6 +857,8 @@ impl Item {
     pub const SUGAR: Item = Item(300);
     pub const GLISTERING_MELON_SLICE: Item = Item(301);
     pub const FERMENTED_SPIDER_EYE: Item = Item(1530);
+    /// v0.17 build-5000 (ITEM-02): Java's `experience_bottle`, thrown for experience.
+    pub const EXPERIENCE_BOTTLE: Item = Item(1554);
     pub const SPIDER_EYE: Item = Item(302);
     pub const PAPER: Item = Item(303);
     pub const BOOK: Item = Item(304);
@@ -914,6 +944,7 @@ impl Item {
         match material {
             ArmorMaterial::Netherite => Item(NETHERITE_ARMOR + piece as u16),
             ArmorMaterial::Copper => Item(COPPER_ITEM + 6 + piece as u16),
+            ArmorMaterial::Chainmail => crate::equipment::chainmail(piece),
             ArmorMaterial::Turtle => {
                 assert!(matches!(piece, ArmorPiece::Helmet), "turtle material has only a helmet");
                 Self::TURTLE_HELMET
@@ -1061,8 +1092,17 @@ impl Item {
     }
 
     pub fn info(self) -> ItemInfo {
+        if let Some(info) = crate::content::harness::item_info(self) {
+            return info;
+        }
+        if let Some(info) = crate::content::bundle::item_info(self) {
+            return info;
+        }
         if self == Self::FERMENTED_SPIDER_EYE {
             return item("fermented spider eye", Sprite::FermentedSpiderEye);
+        }
+        if self == Self::EXPERIENCE_BOTTLE {
+            return item("bottle o' enchanting", Sprite::ExperienceBottle);
         }
         if let Some(info) = crate::world::trial::item_info(self) {
             return info;
@@ -1077,6 +1117,9 @@ impl Item {
             return info;
         }
         if let Some(info) = crate::weapons::item_info(self) {
+            return info;
+        }
+        if let Some(info) = crate::equipment::item_info(self) {
             return info;
         }
         if let Some(info) = crate::world::jukebox::item_info(self) {
@@ -1344,6 +1387,7 @@ impl Item {
             || matches!(self.as_tool(), Some((_, Tier::Netherite)))
             || matches!(self.as_armor(), Some((_, ArmorMaterial::Netherite)))
             || crate::weapons::fire_resistant(self)
+            || crate::equipment::fire_resistant(self)
     }
 
     pub fn max_stack(self) -> u8 {
@@ -1438,6 +1482,18 @@ impl Item {
         matches!(self, Item::GOLDEN_APPLE | Item::ENCHANTED_GOLDEN_APPLE | Item::HONEY_BOTTLE | Item::SUSPICIOUS_STEW)
     }
 
+    /// Java's `Rarity.UNCOMMON` (yellow names), for the items whose
+    /// registrations are pinned so far: the chainmail pieces and the
+    /// Bottle o' Enchanting.
+    pub fn is_uncommon(self) -> bool {
+        self == Item::EXPERIENCE_BOTTLE || crate::equipment::is_uncommon(self)
+    }
+
+    /// The horse or nautilus armor this is, and its material.
+    pub fn body_armor(self) -> Option<(crate::equipment::BodyArmor, ArmorMaterial)> {
+        crate::equipment::body_armor(self)
+    }
+
     /// Java's `Rarity.RARE` for items registered with it (aqua names).
     pub fn is_rare(self) -> bool {
         self == Item::ENCHANTED_GOLDEN_APPLE || crate::world::jukebox::is_rare(self) || crate::weapons::is_rare(self)
@@ -1446,7 +1502,7 @@ impl Item {
     /// Java's `DataComponents.ENCHANTMENT_GLINT_OVERRIDE`: drawn with the
     /// enchantment glint though it carries no enchantment.
     pub fn has_glint(self) -> bool {
-        self == Item::ENCHANTED_GOLDEN_APPLE
+        matches!(self, Item::ENCHANTED_GOLDEN_APPLE | Item::EXPERIENCE_BOTTLE)
     }
 
     pub fn remainder(self) -> Option<Item> {
@@ -1507,6 +1563,10 @@ impl Item {
         if name.replace('_', " ") == "red bed" {
             return Some(Item::BED);
         }
+        // The player-facing label differs from the reference ID.
+        if name == "experience_bottle" {
+            return Some(Item::EXPERIENCE_BOTTLE);
+        }
         if let Some(b) = Block::from_name(name) {
             // Doors and nether wart are placed by an item, not as a block.
             return Some(match b {
@@ -1564,6 +1624,14 @@ impl Item {
             // draws its own layer.
             .chain((crate::world::trial::ITEM_FIRST..crate::world::trial::ITEM_END).map(Item))
             .chain([Self::FERMENTED_SPIDER_EYE])
+            // v0.17 build-5000 ITEM-EQUIP: chainmail, horse and nautilus armor.
+            .chain(crate::equipment::all())
+            // v0.17 build-5000 ITEM-16-HARNESSES: the sixteen harnesses.
+            .chain(crate::content::harness::all())
+            // v0.17 build-5000 ITEM-02-EXPERIENCE-BOTTLE.
+            .chain([Self::EXPERIENCE_BOTTLE])
+            // v0.17 build-5000 ITEM-08-BUNDLE-CORE: the plain and dyed bundles.
+            .chain(crate::content::bundle::all())
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1621,8 +1689,31 @@ fn splash_names() -> &'static [&'static str] {
 /// Index of an item's icon among the item texture layers.
 fn sprite_index(item: Item) -> Option<u16> {
     let materials = ITEMS.len() as u16;
+    if let Some(k) = crate::equipment::icon_offset(item) {
+        return Some(late_icon_base() + 1 + k);
+    }
     match item.0 {
-        1530 => Some(icon_count() as u16 - 1),
+        1530 => Some(late_icon_base()),
+        // v0.14 harnesses follow the ITEM-EQUIP icons.
+        i if (crate::content::harness::ITEM_FIRST..crate::content::harness::ITEM_END).contains(&i) => {
+            Some(late_icon_base() + 1 + crate::equipment::ICON_COUNT + i - crate::content::harness::ITEM_FIRST)
+        }
+        // v0.17 build-5000: the experience bottle follows the harnesses.
+        1554 => Some(
+            late_icon_base()
+                + 1
+                + crate::equipment::ICON_COUNT
+                + (crate::content::harness::ITEM_END - crate::content::harness::ITEM_FIRST),
+        ),
+        // v0.17 build-5000 ITEM-08: the bundles follow the experience bottle.
+        i if (crate::content::bundle::ITEM_FIRST..crate::content::bundle::ITEM_END).contains(&i) => Some(
+            late_icon_base()
+                + 1
+                + crate::equipment::ICON_COUNT
+                + (crate::content::harness::ITEM_END - crate::content::harness::ITEM_FIRST)
+                + 1
+                + (i - crate::content::bundle::ITEM_FIRST),
+        ),
         1280..=1281 => Some(passive_icon_base() + 4 + item.0 - 1280),
         1385..=1386 => Some(passive_icon_base() + 9 + item.0 - 1385),
         1395..=1401 => Some(passive_icon_base() + 11 + item.0 - 1395),
@@ -1742,7 +1833,17 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    passive_icon_base() as u32
+    late_icon_base() as u32
+        + 1 // Fermented spider eye.
+        + crate::equipment::ICON_COUNT as u32
+        + (crate::content::harness::ITEM_END - crate::content::harness::ITEM_FIRST) as u32
+        + 1 // Experience bottle.
+        + (crate::content::bundle::ITEM_END - crate::content::bundle::ITEM_FIRST) as u32
+}
+
+/// The fermented spider eye's icon: icons appended in v0.14 follow it.
+const fn late_icon_base() -> u16 {
+    (passive_icon_base() as u32
         + 4
         + 5
         + 2
@@ -1750,8 +1851,7 @@ pub const fn icon_count() -> u32 {
         + 1
         + (crate::world::jukebox::ITEM_END - crate::world::jukebox::ITEM_FIRST) as u32
         + (crate::weapons::ITEM_END - crate::weapons::ITEM_FIRST) as u32
-        + 9
-        + 1 // Fermented spider eye.
+        + 9) as u16
 }
 
 const fn passive_icon_base() -> u16 {

@@ -23,10 +23,10 @@ use crate::world::vibration::{
     EntityRef, EventSource, GameEvent, Posted, VibrationData, VibrationInfo, valid_vibration,
 };
 
-pub const CAUSE_MELEE: &str = "was slain by a warden";
+pub const CAUSE_MELEE: crate::simulation::damage::Cause = crate::simulation::damage::Cause::WARDEN;
 /// `death.attack.sonic_boom`. Armor and enchantments don't reduce it
 /// (`#bypasses_armor`, `#bypasses_enchantments`).
-pub const CAUSE_SONIC_BOOM: &str = "was obliterated by a sonically-charged shriek";
+pub const CAUSE_SONIC_BOOM: crate::simulation::damage::Cause = crate::simulation::damage::Cause::SONIC_BOOM;
 
 /// Poses (Java `Pose`), saved by number.
 pub const STANDING: u8 = 0;

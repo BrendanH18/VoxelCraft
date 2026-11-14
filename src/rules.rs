@@ -203,19 +203,19 @@ pub const JAVA_RULES: [RuleDef; 59] = [
     boolean("fall_damage", "fallDamage", true, I),
     boolean("fire_damage", "fireDamage", true, I),
     integer("fire_spread_radius_around_player", "fireSpreadRadiusAroundPlayer", 128, -1, i32::MAX, I),
-    boolean("forgive_dead_players", "forgiveDeadPlayers", true, P),
+    boolean("forgive_dead_players", "forgiveDeadPlayers", true, I),
     boolean("freeze_damage", "freezeDamage", true, I),
     boolean("global_sound_events", "globalSoundEvents", true, N("broadcast range only")),
     boolean("immediate_respawn", "doImmediateRespawn", false, I),
     boolean("keep_inventory", "keepInventory", false, I),
     boolean("lava_source_conversion", "lavaSourceConversion", false, I),
-    boolean("limited_crafting", "doLimitedCrafting", false, M("v0.20")),
+    boolean("limited_crafting", "doLimitedCrafting", false, M("v0.18")),
     boolean("locator_bar", "locatorBar", true, M("unscheduled")),
     boolean("log_admin_commands", "logAdminCommands", true, N("server log")),
     integer("max_block_modifications", "commandModificationBlockLimit", 32768, 1, i32::MAX, N("no fill or clone")),
     integer("max_command_forks", "maxCommandForkCount", 65536, 0, i32::MAX, N("no functions")),
     integer("max_command_sequence_length", "maxCommandChainLength", 65536, 0, i32::MAX, N("no functions")),
-    integer("max_entity_cramming", "maxEntityCramming", 24, 0, i32::MAX, M("v0.19")),
+    integer("max_entity_cramming", "maxEntityCramming", 24, 0, i32::MAX, M("v0.17")),
     integer("max_minecart_speed", "minecartMaxSpeed", 8, 1, 1000, N("experimental minecart rewrite")),
     integer("max_snow_accumulation_height", "snowAccumulationHeight", 1, 0, 8, I),
     boolean("mob_drops", "doMobLoot", true, I),
@@ -228,9 +228,9 @@ pub const JAVA_RULES: [RuleDef; 59] = [
     integer("players_sleeping_percentage", "playersSleepingPercentage", 100, 0, i32::MAX, I),
     boolean("projectiles_can_break_blocks", "projectilesCanBreakBlocks", true, M("v0.12")),
     boolean("pvp", "pvp", true, M("v1.x")),
-    boolean("raids", "disableRaids", true, M("v0.17")),
+    boolean("raids", "disableRaids", true, M("v0.15")),
     integer("random_tick_speed", "randomTickSpeed", 3, 0, i32::MAX, I),
-    boolean("reduced_debug_info", "reducedDebugInfo", false, M("v0.20")),
+    boolean("reduced_debug_info", "reducedDebugInfo", false, M("v0.18")),
     integer("respawn_radius", "spawnRadius", 10, 0, i32::MAX, I),
     boolean("send_command_feedback", "sendCommandFeedback", true, I),
     boolean("show_advancement_messages", "announceAdvancements", true, N("no advancements")),
@@ -238,7 +238,7 @@ pub const JAVA_RULES: [RuleDef; 59] = [
     boolean("spawner_blocks_work", "spawnerBlocksEnabled", true, I),
     boolean("spawn_mobs", "doMobSpawning", true, I),
     boolean("spawn_monsters", "spawnMonsters", true, I),
-    boolean("spawn_patrols", "doPatrolSpawning", true, M("v0.17")),
+    boolean("spawn_patrols", "doPatrolSpawning", true, M("v0.15")),
     boolean("spawn_phantoms", "doInsomnia", true, I),
     boolean("spawn_wandering_traders", "doTraderSpawning", true, I),
     boolean("spawn_wardens", "doWardenSpawning", true, I),
@@ -246,7 +246,7 @@ pub const JAVA_RULES: [RuleDef; 59] = [
     boolean("spread_vines", "doVinesSpread", true, M("v0.13")),
     boolean("tnt_explodes", "tntExplodes", true, I),
     boolean("tnt_explosion_drop_decay", "tntExplosionDropDecay", false, I),
-    boolean("universal_anger", "universalAnger", false, P),
+    boolean("universal_anger", "universalAnger", false, I),
     boolean("water_source_conversion", "waterSourceConversion", true, I),
 ];
 
@@ -431,9 +431,8 @@ pub struct ExplosionRules {
 }
 
 /// The damage the player-only rules `fall_damage`, `fire_damage`,
-/// `drowning_damage` and `freeze_damage` make a player immune to. Java checks
-/// the damage type's tag in `Player.isInvulnerableTo`; VoxelCraft damage
-/// carries its death message, so the message selects the tag.
+/// `drowning_damage` and `freeze_damage` make a player immune to, by the
+/// damage type's tag, as Java's `Player.isInvulnerableTo` checks them.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DamageImmunity {
     /// `is_fall`: fall, ender pearl, stalagmite.
@@ -448,18 +447,19 @@ pub struct DamageImmunity {
 }
 
 impl DamageImmunity {
-    /// Whether damage with this death message is ignored.
-    pub fn blocks(self, cause: &str) -> bool {
-        if cause.starts_with("fell") || cause.starts_with("hit the ground") {
-            self.fall
-        } else if cause.starts_with("burned") || cause.contains("lava") || cause.contains("fireballed by a blaze") {
-            self.fire
-        } else if cause.starts_with("drowned") {
+    /// Whether damage of this cause is ignored: `#is_drowning`, `#is_fall`,
+    /// `#is_fire` and `#is_freezing`, checked in that order.
+    pub fn blocks(self, cause: impl Into<crate::simulation::damage::Cause>) -> bool {
+        use crate::simulation::damage::DamageTag as Tag;
+        let cause = cause.into();
+        if cause.is(Tag::IsDrowning) {
             self.drowning
-        } else if cause.contains("froze") {
-            self.freezing
+        } else if cause.is(Tag::IsFall) {
+            self.fall
+        } else if cause.is(Tag::IsFire) {
+            self.fire
         } else {
-            false
+            cause.is(Tag::IsFreezing) && self.freezing
         }
     }
 }
@@ -843,7 +843,7 @@ mod tests {
         let mut rules = GameRules::default();
         assert!(rules.get("raids").is_none() && rules.get("disableRaids").is_none());
         let error = rules.set("raids", "false").unwrap_err();
-        assert!(error.contains("not implemented") && error.contains("v0.17"), "{error}");
+        assert!(error.contains("not implemented") && error.contains("v0.15"), "{error}");
         assert!(rules.set("elytra_movement_check", "false").unwrap_err().contains("no single-player effect"));
         assert!(GameRules::unknown("nope").contains("unknown gamerule"));
         assert_eq!(rules, GameRules::default());
@@ -881,38 +881,29 @@ mod tests {
 
     #[test]
     fn player_damage_rules_make_java_tags_harmless() {
+        use crate::simulation::damage::Cause;
         let mut rules = GameRules::default();
-        let all = |rules: &GameRules, causes: &[&str]| {
-            causes.iter().map(|c| rules.damage_immunity().blocks(c)).collect::<Vec<_>>()
+        let all = |rules: &GameRules, causes: &[Cause]| {
+            causes.iter().map(|&c| rules.damage_immunity().blocks(c)).collect::<Vec<_>>()
         };
-        let fall = ["fell from a high place", "hit the ground too hard"];
-        let fire = ["burned to death", "tried to swim in lava", "was fireballed by a blaze"];
+        let fall = [Cause::FALL, Cause::FALL_HARD, Cause::ENDER_PEARL];
+        let fire =
+            [Cause::ON_FIRE, Cause::IN_FIRE, Cause::HOT_FLOOR, Cause::CAMPFIRE, Cause::LAVA, Cause::BLAZE_FIREBALL];
         // Defaults: nothing is blocked.
-        assert_eq!(all(&rules, &[&fall[..], &fire[..], &["drowned"]].concat()), vec![false; 6]);
+        assert_eq!(all(&rules, &[&fall[..], &fire[..], &[Cause::DROWN]].concat()), vec![false; 10]);
         rules.set("fall_damage", "false").unwrap();
-        assert_eq!(all(&rules, &fall), [true, true]);
-        assert_eq!(all(&rules, &fire), [false; 3]);
+        assert_eq!(all(&rules, &fall), [true; 3]);
+        assert_eq!(all(&rules, &fire), [false; 6]);
         rules.set("fire_damage", "false").unwrap();
-        assert_eq!(all(&rules, &fire), [true; 3]);
+        assert_eq!(all(&rules, &fire), [true; 6]);
         // The ghast fireball's blast is explosion damage, not `is_fire`.
-        assert!(!rules.damage_immunity().blocks("was fireballed by a ghast"));
-        assert_eq!(all(&rules, &["drowned"]), [false]);
+        assert!(!rules.damage_immunity().blocks(Cause::GHAST_FIREBALL));
+        assert_eq!(all(&rules, &[Cause::DROWN]), [false]);
         rules.set("drowning_damage", "false").unwrap();
-        assert_eq!(all(&rules, &["drowned"]), [true]);
+        assert_eq!(all(&rules, &[Cause::DROWN]), [true]);
         // Other damage types are unaffected: starvation, mobs, arrows, explosions, magic.
-        assert_eq!(
-            all(
-                &rules,
-                &[
-                    "starved to death",
-                    "was slain by a zombie",
-                    "was shot by a skeleton",
-                    "was blown up by a creeper",
-                    "was killed by magic"
-                ]
-            ),
-            [false; 5]
-        );
+        let others = [Cause::STARVE, Cause::mob("was slain by a zombie"), Cause::SKELETON_ARROW, Cause::CREEPER];
+        assert_eq!(all(&rules, &[&others[..], &[Cause::MAGIC]].concat()), [false; 5]);
     }
 
     #[test]

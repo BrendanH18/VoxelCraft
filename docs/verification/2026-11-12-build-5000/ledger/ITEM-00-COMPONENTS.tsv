@@ -1,0 +1,3 @@
+kind	name	evidence
+behaviour	behaviour:stack_components/block_merging	tests/stack_components.rs::differing_components_never_stack_and_equal_ones_do
+behaviour	behaviour:stack_components/survive_every_container	tests/stack_components.rs::component_stacks_survive_every_container

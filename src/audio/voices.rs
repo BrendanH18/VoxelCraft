@@ -54,6 +54,8 @@ pub enum Voice {
     Allay,
     /// v0.16 Track C.
     Breeze,
+    /// v0.14 (MOBN-26): `entity.endermite.ambient`, `.hurt` and `.death`.
+    Endermite,
 }
 
 /// What kind of sound a voice makes.
@@ -66,7 +68,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 41] = [
+    pub const ALL: [Voice; 42] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -108,6 +110,7 @@ impl Voice {
         Voice::Creaking,
         Voice::Allay,
         Voice::Breeze,
+        Voice::Endermite,
     ];
 
     /// The category the creature plays in: `Monster`, `Ghast`, `Hoglin` and
@@ -117,6 +120,7 @@ impl Voice {
         match self {
             Voice::Creaking
             | Voice::Breeze
+            | Voice::Endermite
             | Voice::Zombie
             | Voice::Skeleton
             | Voice::Creeper
@@ -173,6 +177,7 @@ impl Voice {
             Voice::Creaking => "creaking",
             Voice::Allay => "allay",
             Voice::Breeze => "breeze",
+            Voice::Endermite => "endermite",
             Voice::Cow => "cow",
             Voice::Sheep => "sheep",
             Voice::Chicken => "chicken",
@@ -304,6 +309,7 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::Enderman => enderman(call, rng),
         Voice::Blaze => blaze(call, rng),
         Voice::Breeze => breeze(call, rng),
+        Voice::Endermite => endermite(call, rng),
         Voice::Slime => slime(call, rng),
         Voice::Ghast => ghast(call, rng),
         Voice::Witch => witch(call, rng),
@@ -678,6 +684,26 @@ fn spider(call: Call, rng: &mut Rng) -> Vec<f32> {
         Biquad::lowpass(5000.0, 0.7).run(&mut out);
     }
     dsp::finish(out, 0.45)
+}
+
+/// An endermite: a tiny, high chitter of clicks over a thin, wavering
+/// hiss, shriller when hurt and fading into a falling rattle as it dies.
+fn endermite(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let (secs, rate, bright) = match call {
+        Call::Ambient => (rng.range(0.35, 0.5), rng.range(30.0, 38.0), 5200.0),
+        Call::Hurt => (0.22, 46.0, 6400.0),
+        Call::Death => (0.7, 34.0, 5600.0),
+    };
+    let fall = if call == Call::Death { 0.45 } else { 1.0 };
+    let mut out = noise(rng, samples(secs), |t| {
+        let chop = 0.5 + 0.5 * (std::f32::consts::TAU * rate * lerp(1.0, fall, t / secs) * t).sin();
+        chop * chop * chop * swell(t, 0.02, secs * 0.35, secs)
+    });
+    Biquad::bandpass(bright, 2.5).run(&mut out);
+    let mut clicks = clatter(rng, secs * 0.9, |t| rate * 1.2 * lerp(1.0, fall, t / secs));
+    Biquad::highpass(3000.0, 0.7).run(&mut clicks);
+    mix_into(&mut out, &clicks, 0.45, 0);
+    dsp::finish(out, 0.4)
 }
 
 /// Synthesizes an Enderman's ambient, hurt or death call as a warbling murmur.

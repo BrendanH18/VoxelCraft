@@ -44,10 +44,57 @@ pub enum Effect {
     TrialOmen,
     /// Appended: saved by Java id; existing effect mask bits stay stable.
     Invisibility,
+    /// Appended (v0.14 EFX-REG-01): the eleven effects Java registers that
+    /// the game lacked, in this order, which their icon layers follow.
+    /// Registered so `/effect`, saves and the HUD know them; what each one
+    /// does arrives with its own slice.
+    HealthBoost,
+    Glowing,
+    Levitation,
+    ConduitPower,
+    HeroOfTheVillage,
+    RaidOmen,
+    WindCharged,
+    Weaving,
+    Oozing,
+    Infested,
+    BreathOfTheNautilus,
+}
+
+/// Java's `MobEffectCategory`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Category {
+    Beneficial,
+    Harmful,
+    Neutral,
+}
+
+/// Java's `AttributeModifier.Operation`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Operation {
+    AddValue,
+    AddMultipliedBase,
+    AddMultipliedTotal,
+}
+
+/// One of an effect's attribute modifiers, from `MobEffects`: per level,
+/// `amount * (amplifier + 1)` (`MobEffect.AttributeTemplate.create`).
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Modifier {
+    /// The attribute's Java id, e.g. `movement_speed`.
+    pub attribute: &'static str,
+    /// The modifier's Java id, e.g. `minecraft:effect.speed`.
+    pub id: &'static str,
+    pub amount: f64,
+    pub operation: Operation,
+}
+
+const fn modifier(attribute: &'static str, id: &'static str, amount: f64, operation: Operation) -> Modifier {
+    Modifier { attribute, id, amount, operation }
 }
 
 impl Effect {
-    pub const ALL: [Effect; 29] = [
+    pub const ALL: [Effect; 40] = [
         Effect::Speed,
         Effect::Slowness,
         Effect::Strength,
@@ -77,6 +124,17 @@ impl Effect {
         Effect::BadOmen,
         Effect::TrialOmen,
         Effect::Invisibility,
+        Effect::HealthBoost,
+        Effect::Glowing,
+        Effect::Levitation,
+        Effect::ConduitPower,
+        Effect::HeroOfTheVillage,
+        Effect::RaidOmen,
+        Effect::WindCharged,
+        Effect::Weaving,
+        Effect::Oozing,
+        Effect::Infested,
+        Effect::BreathOfTheNautilus,
     ];
 
     /// Java's id, as `/effect` and saves use it.
@@ -111,6 +169,17 @@ impl Effect {
             Effect::BadOmen => "bad_omen",
             Effect::TrialOmen => "trial_omen",
             Effect::Invisibility => "invisibility",
+            Effect::HealthBoost => "health_boost",
+            Effect::Glowing => "glowing",
+            Effect::Levitation => "levitation",
+            Effect::ConduitPower => "conduit_power",
+            Effect::HeroOfTheVillage => "hero_of_the_village",
+            Effect::RaidOmen => "raid_omen",
+            Effect::WindCharged => "wind_charged",
+            Effect::Weaving => "weaving",
+            Effect::Oozing => "oozing",
+            Effect::Infested => "infested",
+            Effect::BreathOfTheNautilus => "breath_of_the_nautilus",
         }
     }
 
@@ -119,7 +188,7 @@ impl Effect {
         Effect::ALL.into_iter().find(|e| e.id() == id)
     }
 
-    /// Display name, e.g. "Fire Resistance".
+    /// Display name, e.g. "Fire Resistance" (en_us `effect.minecraft.*`).
     pub fn name(self) -> &'static str {
         match self {
             Effect::Speed => "Speed",
@@ -138,7 +207,7 @@ impl Effect {
             Effect::Wither => "Wither",
             Effect::Hunger => "Hunger",
             Effect::MiningFatigue => "Mining Fatigue",
-            Effect::DolphinsGrace => "Dolphin’s Grace",
+            Effect::DolphinsGrace => "Dolphin's Grace",
             Effect::Resistance => "Resistance",
             Effect::Haste => "Haste",
             Effect::Blindness => "Blindness",
@@ -151,6 +220,17 @@ impl Effect {
             Effect::BadOmen => "Bad Omen",
             Effect::TrialOmen => "Trial Omen",
             Effect::Invisibility => "Invisibility",
+            Effect::HealthBoost => "Health Boost",
+            Effect::Glowing => "Glowing",
+            Effect::Levitation => "Levitation",
+            Effect::ConduitPower => "Conduit Power",
+            Effect::HeroOfTheVillage => "Hero of the Village",
+            Effect::RaidOmen => "Raid Omen",
+            Effect::WindCharged => "Wind Charged",
+            Effect::Weaving => "Weaving",
+            Effect::Oozing => "Oozing",
+            Effect::Infested => "Infested",
+            Effect::BreathOfTheNautilus => "Breath of the Nautilus",
         }
     }
 
@@ -170,7 +250,7 @@ impl Effect {
             Effect::WaterBreathing => 0x98DAC0,
             Effect::JumpBoost => 0xFDFF84,
             Effect::SlowFalling => 0xF3CFB9,
-            Effect::Wither => 0x352A27,
+            Effect::Wither => 0x736156,
             Effect::Hunger => 0x587653,
             Effect::MiningFatigue => 0x4A4217,
             Effect::DolphinsGrace => 0x88A3BE,
@@ -187,32 +267,153 @@ impl Effect {
             Effect::BadOmen => 0x0B6138,
             Effect::TrialOmen => 0x16A6A6,
             Effect::Invisibility => 0xF6F6F6,
+            Effect::HealthBoost => 0xF87D23,
+            Effect::Glowing => 0x94A061,
+            Effect::Levitation => 0xCEFFFF,
+            Effect::ConduitPower => 0x1DC2D1,
+            Effect::HeroOfTheVillage => 0x44FF44,
+            Effect::RaidOmen => 0xDE4058,
+            Effect::WindCharged => 0xBDC9FF,
+            Effect::Weaving => 0x78695A,
+            Effect::Oozing => 0x99FFA3,
+            Effect::Infested => 0x8C9B8C,
+            Effect::BreathOfTheNautilus => 0x00FFEE,
         };
         [(c >> 16) as u8, (c >> 8) as u8, c as u8]
     }
 
-    /// Applied once, when given, rather than over time.
+    /// Healed or dealt by [`Effects::add`] at once rather than kept: Java's
+    /// `HealOrHarmMobEffect`. Saturation is instantaneous in Java too (see
+    /// [`Effect::is_instantaneous`]) but is kept and applied every tick, as
+    /// Java does when a command or food gives it a duration.
     pub fn is_instant(self) -> bool {
         matches!(self, Effect::InstantHealth | Effect::InstantDamage)
     }
 
-    /// Harmful effects show red in tooltips.
-    pub fn is_harmful(self) -> bool {
-        matches!(
-            self,
-            Effect::Slowness
-                | Effect::Weakness
-                | Effect::InstantDamage
-                | Effect::Poison
-                | Effect::Wither
-                | Effect::Hunger
-                | Effect::MiningFatigue
-                | Effect::Blindness
-                | Effect::Nausea
-                | Effect::BadLuck
-                | Effect::Darkness
-        )
+    /// Java's `MobEffect.isInstantaneous`: true on `InstantaneousMobEffect`
+    /// (Instant Health, Instant Damage and Saturation). `/effect give`
+    /// reads its number as ticks for these, and defaults to one tick.
+    pub fn is_instantaneous(self) -> bool {
+        matches!(self, Effect::InstantHealth | Effect::InstantDamage | Effect::Saturation)
     }
+
+    /// Java's `MobEffectCategory`, from `MobEffects`.
+    pub fn category(self) -> Category {
+        match self {
+            Effect::Slowness
+            | Effect::Weakness
+            | Effect::InstantDamage
+            | Effect::Poison
+            | Effect::Wither
+            | Effect::Hunger
+            | Effect::MiningFatigue
+            | Effect::Blindness
+            | Effect::Nausea
+            | Effect::BadLuck
+            | Effect::Darkness
+            | Effect::Levitation
+            | Effect::WindCharged
+            | Effect::Weaving
+            | Effect::Oozing
+            | Effect::Infested => Category::Harmful,
+            Effect::BadOmen | Effect::TrialOmen | Effect::RaidOmen | Effect::Glowing => Category::Neutral,
+            Effect::Speed
+            | Effect::Strength
+            | Effect::InstantHealth
+            | Effect::Regeneration
+            | Effect::FireResistance
+            | Effect::NightVision
+            | Effect::WaterBreathing
+            | Effect::JumpBoost
+            | Effect::SlowFalling
+            | Effect::DolphinsGrace
+            | Effect::Resistance
+            | Effect::Haste
+            | Effect::Luck
+            | Effect::Absorption
+            | Effect::Saturation
+            | Effect::Invisibility
+            | Effect::HealthBoost
+            | Effect::ConduitPower
+            | Effect::HeroOfTheVillage
+            | Effect::BreathOfTheNautilus => Category::Beneficial,
+        }
+    }
+
+    /// Harmful effects show red in potion tooltips
+    /// (`MobEffectCategory.getTooltipFormatting`); neutral ones are blue,
+    /// like beneficial ones.
+    pub fn is_harmful(self) -> bool {
+        self.category() == Category::Harmful
+    }
+
+    /// Java's `MobEffect.isBeneficial`: only the beneficial category. The HUD
+    /// (`Hud.extractEffects`) puts every other effect, neutral ones
+    /// included, in its second row.
+    pub fn is_beneficial(self) -> bool {
+        self.category() == Category::Beneficial
+    }
+
+    /// The attribute modifiers `MobEffects` registers on the effect.
+    pub fn modifiers(self) -> &'static [Modifier] {
+        use Operation::*;
+        // Java writes several amounts as float literals, widened to doubles.
+        const SPEED: [Modifier; 1] =
+            [modifier("movement_speed", "minecraft:effect.speed", 0.2f32 as f64, AddMultipliedTotal)];
+        const SLOWNESS: [Modifier; 1] =
+            [modifier("movement_speed", "minecraft:effect.slowness", -0.15f32 as f64, AddMultipliedTotal)];
+        const HASTE: [Modifier; 1] =
+            [modifier("attack_speed", "minecraft:effect.haste", 0.1f32 as f64, AddMultipliedTotal)];
+        const FATIGUE: [Modifier; 1] =
+            [modifier("attack_speed", "minecraft:effect.mining_fatigue", -0.1f32 as f64, AddMultipliedTotal)];
+        const STRENGTH: [Modifier; 1] = [modifier("attack_damage", "minecraft:effect.strength", 3.0, AddValue)];
+        const WEAKNESS: [Modifier; 1] = [modifier("attack_damage", "minecraft:effect.weakness", -4.0, AddValue)];
+        const JUMP: [Modifier; 1] = [modifier("safe_fall_distance", "minecraft:effect.jump_boost", 1.0, AddValue)];
+        const INVISIBILITY: [Modifier; 1] = [modifier(
+            "waypoint_transmit_range",
+            "minecraft:effect.waypoint_transmit_range_hide",
+            -1.0,
+            AddMultipliedTotal,
+        )];
+        const HEALTH_BOOST: [Modifier; 1] = [modifier("max_health", "minecraft:effect.health_boost", 4.0, AddValue)];
+        const ABSORPTION: [Modifier; 1] =
+            [modifier("max_absorption", "minecraft:effect.absorption", ABSORPTION_PER_LEVEL as f64, AddValue)];
+        const LUCK: [Modifier; 1] = [modifier("luck", "minecraft:effect.luck", 1.0, AddValue)];
+        const UNLUCK: [Modifier; 1] = [modifier("luck", "minecraft:effect.unluck", -1.0, AddValue)];
+        match self {
+            Effect::Speed => &SPEED,
+            Effect::Slowness => &SLOWNESS,
+            Effect::Haste => &HASTE,
+            Effect::MiningFatigue => &FATIGUE,
+            Effect::Strength => &STRENGTH,
+            Effect::Weakness => &WEAKNESS,
+            Effect::JumpBoost => &JUMP,
+            Effect::Invisibility => &INVISIBILITY,
+            Effect::HealthBoost => &HEALTH_BOOST,
+            Effect::Absorption => &ABSORPTION,
+            Effect::Luck => &LUCK,
+            Effect::BadLuck => &UNLUCK,
+            _ => &[],
+        }
+    }
+
+    /// `EffectCommands.computeDurationInTicks`: `/effect give` counts
+    /// seconds, 30 by default, except for instantaneous effects, whose
+    /// number is ticks and which default to one tick.
+    pub fn command_duration_ticks(self, seconds: Option<u32>) -> u32 {
+        match (seconds, self.is_instantaneous()) {
+            (Some(ticks), true) => ticks,
+            (Some(seconds), false) => seconds.saturating_mul(20),
+            (None, true) => 1,
+            (None, false) => 600,
+        }
+    }
+}
+
+/// The row of the HUD's effect icons (`Hud.extractEffects`): 0 for
+/// beneficial effects, 1 (26 pixels lower) for harmful and neutral ones.
+pub fn hud_row(effect: Effect) -> u8 {
+    u8::from(!effect.is_beneficial())
 }
 
 /// Roman numerals for effect levels (I..X), like Java's tooltips.
@@ -221,19 +422,179 @@ pub fn level_name(amplifier: u8) -> String {
     ROMAN.get(amplifier as usize).map_or_else(|| (amplifier as u32 + 1).to_string(), |r| r.to_string())
 }
 
-/// `m:ss` for an effect's remaining ticks.
+/// Java's `MobEffectUtil.formatDuration` at 20 ticks a second: `∞`
+/// (en_us `effect.duration.infinite`) for an infinite effect, else
+/// `StringUtil.formatTickDuration`'s `mm:ss`, or `hh:mm:ss` from an hour.
 pub fn duration_text(ticks: u32) -> String {
-    let secs = ticks / 20;
-    format!("{}:{:02}", secs / 60, secs % 60)
+    if ticks == INFINITE {
+        return "\u{221e}".into();
+    }
+    let seconds = ticks / 20;
+    let (hours, minutes, seconds) = (seconds / 3600, seconds / 60 % 60, seconds % 60);
+    if hours > 0 { format!("{hours:02}:{minutes:02}:{seconds:02}") } else { format!("{minutes:02}:{seconds:02}") }
 }
 
+/// The name an effect panel beside the inventory shows
+/// (`EffectsInInventory.getEffectName`): the level only for amplifiers 1
+/// to 9 (`enchantment.level.2` to `.10`).
+pub fn list_label(a: &Active) -> String {
+    match a.amplifier {
+        1..=9 => format!("{} {}", a.effect.name(), level_name(a.amplifier)),
+        _ => a.effect.name().to_string(),
+    }
+}
+
+/// Java's `MobEffectInstance.INFINITE_DURATION` (-1 in Java). It is kept as
+/// the largest tick count so every "ticks left" check reads an infinite
+/// effect as a long one rather than one about to run out.
+pub const INFINITE: u32 = u32::MAX;
+
+/// `MobEffectInstance.compareTo`'s cut-off: two effects that both last
+/// longer than this are ordered by colour alone.
+const COMPARE_CUTOFF: i64 = 32147;
+
+/// `MobEffect.AMBIENT_ALPHA` (`Mth.floor(38.25F)`): the alpha of an ambient
+/// effect's swirl colour.
+pub const AMBIENT_PARTICLE_ALPHA: u8 = 38;
+
+/// One `MobEffectInstance`: the effect, its level and time left, and the
+/// three flags Java carries with it.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Active {
     pub effect: Effect,
     /// 0 is level I.
     pub amplifier: u8,
-    /// Game ticks left.
+    /// Game ticks left, or [`INFINITE`].
     pub ticks: u32,
+    /// Java's `ambient`: given by a beacon or conduit. Its swirls are faint
+    /// and rarer, and its HUD icon has the ambient frame and never blinks.
+    pub ambient: bool,
+    /// Java's `visible` (`show_particles`): whether it adds swirls.
+    pub particles: bool,
+    /// Java's `showIcon`: whether the HUD shows its icon.
+    pub show_icon: bool,
+}
+
+impl Active {
+    /// Java's `MobEffectInstance(effect, duration, amplifier)`: not ambient,
+    /// with particles and an icon.
+    pub fn new(effect: Effect, amplifier: u8, ticks: u32) -> Self {
+        Self { effect, amplifier, ticks, ambient: false, particles: true, show_icon: true }
+    }
+
+    /// Java's six-argument constructor's flags.
+    pub fn with_flags(self, ambient: bool, particles: bool, show_icon: bool) -> Self {
+        Self { ambient, particles, show_icon, ..self }
+    }
+
+    /// Java's `isInfiniteDuration`.
+    pub fn is_infinite(&self) -> bool {
+        self.ticks == INFINITE
+    }
+
+    /// Java's `endsWithin`: never for an infinite effect.
+    pub fn ends_within(&self, ticks: u32) -> bool {
+        !self.is_infinite() && self.ticks <= ticks
+    }
+
+    /// The duration as Java stores it: -1 for infinite.
+    pub fn java_duration(&self) -> i64 {
+        if self.is_infinite() { -1 } else { i64::from(self.ticks) }
+    }
+
+    /// Java's private `isShorterDurationThan`.
+    fn is_shorter_than(&self, other: &Active) -> bool {
+        !self.is_infinite() && (self.ticks < other.ticks || other.is_infinite())
+    }
+
+    /// Java's `MobEffectInstance.compareTo`, the order of the inventory's
+    /// effect list (the HUD uses its reverse): non-ambient before ambient,
+    /// finite before infinite, then shorter first and then by colour; two
+    /// effects that both last over 32147 ticks, or two ambient ones, go by
+    /// ambient and colour alone.
+    pub fn java_cmp(&self, other: &Active) -> std::cmp::Ordering {
+        let colour = |a: &Active| {
+            let [r, g, b] = a.effect.colour();
+            u32::from_be_bytes([0, r, g, b])
+        };
+        let (d, o) = (self.java_duration(), other.java_duration());
+        if (d <= COMPARE_CUTOFF || o <= COMPARE_CUTOFF) && (!self.ambient || !other.ambient) {
+            self.ambient
+                .cmp(&other.ambient)
+                .then(self.is_infinite().cmp(&other.is_infinite()))
+                .then(d.cmp(&o))
+                .then(colour(self).cmp(&colour(other)))
+        } else {
+            self.ambient.cmp(&other.ambient).then(colour(self).cmp(&colour(other)))
+        }
+    }
+
+    /// The HUD icon's alpha (`Hud.extractEffects`): steady for an ambient
+    /// effect or one with over 200 ticks left, then a blink that deepens
+    /// over the last ten seconds.
+    pub fn hud_alpha(&self) -> f32 {
+        if self.ambient || !self.ends_within(200) {
+            return 1.0;
+        }
+        let remaining = self.ticks as i32;
+        let used_seconds = 10 - remaining / 20;
+        let fade = (remaining as f32 / 10.0 / 5.0 * 0.5).clamp(0.0, 0.5);
+        // `Mth.cos` reads Java's 65536-entry sine table.
+        let blink = crate::knockback::mth_cos(f64::from(remaining as f32 * std::f32::consts::PI / 5.0));
+        (fade + blink * (used_seconds as f32 / 10.0 * 0.25).clamp(0.0, 0.25)).clamp(0.0, 1.0)
+    }
+
+    /// This instance's swirl colour (`MobEffect.createParticleOptions`):
+    /// the effect colour, with alpha 38 when ambient.
+    pub fn particle_colour(&self) -> [u8; 4] {
+        let [r, g, b] = self.effect.colour();
+        [r, g, b, if self.ambient { AMBIENT_PARTICLE_ALPHA } else { 255 }]
+    }
+
+    /// A `--effect` start option: `id[,seconds|infinite[,amplifier[,flag...]]]`
+    /// with flags `ambient`, `hideparticles` and `hideicon`. Seconds default
+    /// to 30.
+    pub fn parse_option(spec: &str) -> Result<Active, String> {
+        let mut parts = spec.split(',');
+        let effect = parts.next().and_then(Effect::from_id).ok_or("bad --effect name")?;
+        let ticks = match parts.next() {
+            Some("infinite") => INFINITE,
+            Some(s) => s.parse::<u32>().map_err(|_| "bad --effect seconds")?.saturating_mul(20).clamp(1, INFINITE - 1),
+            None => 600,
+        };
+        let amplifier = parts.next().map_or(Ok(0), str::parse).map_err(|_| "bad --effect amplifier")?;
+        let mut active = Active::new(effect, amplifier, ticks);
+        for flag in parts {
+            match flag {
+                "ambient" => active.ambient = true,
+                "hideparticles" => active.particles = false,
+                "hideicon" => active.show_icon = false,
+                _ => return Err(format!("bad --effect flag {flag}")),
+            }
+        }
+        Ok(active)
+    }
+}
+
+/// Where the HUD draws each effect icon (`Hud.extractEffects`): the effects
+/// in reverse [`Active::java_cmp`] order, skipping those whose icon is
+/// hidden, each with its column counted from the right edge (from 1) and
+/// its row ([`hud_row`]).
+pub fn hud_layout(effects: &Effects) -> Vec<(Active, u32, u8)> {
+    let (mut beneficial, mut other) = (0, 0);
+    let mut sorted: Vec<Active> = effects.iter().copied().collect();
+    // `Ordering.natural().reverse().sortedCopy`: a stable sort on the
+    // reversed comparator, not a reversed sort.
+    sorted.sort_by(|a, b| b.java_cmp(a));
+    sorted
+        .into_iter()
+        .filter(|a| a.show_icon)
+        .map(|a| {
+            let column = if a.effect.is_beneficial() { &mut beneficial } else { &mut other };
+            *column += 1;
+            (a, *column, hud_row(a.effect))
+        })
+        .collect()
 }
 
 /// What instant effects and one tick of the others did.
@@ -255,26 +616,47 @@ pub struct Outcome {
 /// Java's `MobEffectInstance.update` on the chain `[active, hidden...]` of one
 /// effect, starting at `at`. A stronger newcomer replaces the instance (which
 /// stays hidden if it lasts longer); a weaker, longer one is kept hidden.
-fn merge(chain: &mut Vec<Active>, at: usize, new: Active) {
+/// Infinite beats any finite duration. The instance then takes the
+/// newcomer's particle and icon flags, and its ambient flag when that clears
+/// it or anything else changed. Returns whether this instance changed (the
+/// hidden chain's own result is ignored, as in Java).
+fn merge(chain: &mut Vec<Active>, at: usize, new: Active) -> bool {
     let cur = chain[at];
+    let mut changed = false;
     if new.amplifier > cur.amplifier {
-        if new.ticks < cur.ticks {
+        if new.is_shorter_than(&cur) {
             chain.insert(at + 1, cur);
         }
         chain[at].amplifier = new.amplifier;
         chain[at].ticks = new.ticks;
-    } else if cur.ticks < new.ticks {
+        changed = true;
+    } else if cur.is_shorter_than(&new) {
         if new.amplifier == cur.amplifier {
             chain[at].ticks = new.ticks;
+            changed = true;
         } else if at + 1 == chain.len() {
             chain.push(new);
         } else {
             merge(chain, at + 1, new);
         }
     }
+    let this = &mut chain[at];
+    if !new.ambient && this.ambient || changed {
+        this.ambient = new.ambient;
+        changed = true;
+    }
+    if new.particles != this.particles {
+        this.particles = new.particles;
+        changed = true;
+    }
+    if new.show_icon != this.show_icon {
+        this.show_icon = new.show_icon;
+        changed = true;
+    }
+    changed
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default)]
 pub struct Effects {
     active: Vec<Active>,
     /// Java's `MobEffectInstance.hiddenEffect` chains: weaker or shorter
@@ -287,6 +669,20 @@ pub struct Effects {
     /// health. It lives with the effects because the only source of its cap
     /// (the max-absorption attribute) is the Absorption effect.
     absorption: f32,
+    /// Ticks run since these effects were created or loaded: the entity's
+    /// `tickCount`, which `MobEffectInstance.tickServer` reads instead of the
+    /// duration to time an infinite effect's periodic ticks. Java does not
+    /// save `tickCount`, so neither saves nor equality include it.
+    age: u32,
+}
+
+impl PartialEq for Effects {
+    fn eq(&self, other: &Self) -> bool {
+        self.active == other.active
+            && self.hidden == other.hidden
+            && self.carry == other.carry
+            && self.absorption == other.absorption
+    }
 }
 
 /// Java 26.3 `MobEffects.ABSORPTION`'s `ADD_VALUE` modifier on the
@@ -310,8 +706,9 @@ impl Effects {
         self.get(effect).is_some()
     }
 
-    /// Bit set of the active effects, indexed by `Effect as u32`.
-    pub fn mask(&self) -> u32 {
+    /// Bit set of the active effects, indexed by `Effect as u32`. It stays in
+    /// memory (saves and LAN carry Java ids), so widening it changes no format.
+    pub fn mask(&self) -> u64 {
         self.active.iter().fold(0, |m, a| m | 1 << a.effect as u32)
     }
 
@@ -345,32 +742,45 @@ impl Effects {
         self.get(effect).map_or(0, |a| a.amplifier as u32 + 1)
     }
 
-    /// Gives `effect` for `ticks`. Like Java, a stronger level replaces a
-    /// weaker one, and the same level only extends the duration. Instant
-    /// effects apply at once and return what they did.
+    /// Gives `effect` for `ticks` (or [`INFINITE`]), not ambient, with
+    /// particles and an icon: [`Effects::add_instance`].
     pub fn add(&mut self, effect: Effect, amplifier: u8, ticks: u32) -> Outcome {
+        self.add_instance(Active::new(effect, amplifier, ticks)).0
+    }
+
+    /// Java's `LivingEntity.addEffect`: a new effect is added, an existing
+    /// one merges by `MobEffectInstance.update` (a stronger level replaces a
+    /// weaker one, the same level only extends the duration, and the flags
+    /// follow the newcomer). Returns what an instant effect did, applied at
+    /// once, and whether anything changed (`/effect give` fails when not).
+    pub fn add_instance(&mut self, new: Active) -> (Outcome, bool) {
+        let Active { effect, amplifier, .. } = new;
         if effect.is_instant() {
             let amount = match effect {
                 Effect::InstantHealth => 4.0,
                 _ => 6.0,
             } * (1u32 << amplifier.min(30)) as f32;
-            return match effect {
+            let out = match effect {
                 Effect::InstantHealth => Outcome { heal: amount, ..Outcome::default() },
                 _ => Outcome { damage: amount, ..Outcome::default() },
             };
+            return (out, true);
         }
-        let new = Active { effect, amplifier, ticks };
-        match self.active.iter().position(|a| a.effect == effect) {
+        let changed = match self.active.iter().position(|a| a.effect == effect) {
             Some(head) => {
                 let mut chain = vec![self.active[head]];
                 chain.extend(self.hidden.iter().filter(|a| a.effect == effect));
-                merge(&mut chain, 0, new);
+                let changed = merge(&mut chain, 0, new);
                 self.active[head] = chain[0];
                 self.hidden.retain(|a| a.effect != effect);
                 self.hidden.extend(chain.into_iter().skip(1));
+                changed
             }
-            None => self.active.push(new),
-        }
+            None => {
+                self.active.push(new);
+                true
+            }
+        };
         self.active.sort_by_key(|a| a.effect);
         if effect == Effect::Absorption {
             // `AbsorptionMobEffect.onEffectStarted`, run for every instance
@@ -378,7 +788,32 @@ impl Effects {
             self.set_absorption(self.absorption.max(((u32::from(amplifier) + 1) * 4) as f32));
         }
         self.clamp_absorption();
-        Outcome::default()
+        (Outcome::default(), changed)
+    }
+
+    /// The active effects in Java's `MobEffectInstance.compareTo` order, as
+    /// the inventory's effect list shows them.
+    pub fn sorted(&self) -> Vec<Active> {
+        let mut sorted = self.active.clone();
+        sorted.sort_by(Active::java_cmp);
+        sorted
+    }
+
+    /// The effects that add swirls (`MobEffectInstance::isVisible`).
+    pub fn with_particles(&self) -> impl Iterator<Item = &Active> {
+        self.active.iter().filter(|a| a.particles)
+    }
+
+    /// Java's `LivingEntity.areAllEffectsAmbient`: no visible effect is
+    /// non-ambient. Swirls are then five times rarer.
+    pub fn all_ambient(&self) -> bool {
+        !self.active.iter().any(|a| a.particles && !a.ambient)
+    }
+
+    /// The whole chain of `effect`: the active instance, then its hidden
+    /// ones nearest first.
+    pub fn chain(&self, effect: Effect) -> Vec<Active> {
+        self.get(effect).into_iter().chain(self.hidden.iter().filter(|a| a.effect == effect)).copied().collect()
     }
 
     /// Java clamps the absorption amount whenever its attribute changes.
@@ -402,19 +837,26 @@ impl Effects {
 
     /// Advances `dt` seconds: regeneration heals 1 every 50 >> level ticks
     /// poison hurts 1 every 25 >> level ticks and wither 1 every 40 >> level
-    /// (Java's intervals, from the ticks left), then effects run out.
+    /// (Java's intervals, from the ticks left, or for an infinite effect from
+    /// the ticks run), then finite effects count down and run out.
     pub fn tick(&mut self, dt: f32) -> Outcome {
         let mut out = Outcome::default();
         self.carry += dt * TPS;
         let whole = self.carry.floor();
         self.carry -= whole;
         for _ in 0..whole as u32 {
+            // `Entity.commonTick` counts the tick before `tickEffects` runs.
+            self.age = self.age.wrapping_add(1);
             // `AbsorptionMobEffect.applyEffectTick` fails once the absorption
             // is spent, which ends the effect (and any hidden instance).
             if self.absorption <= 0.0 {
                 self.remove(Effect::Absorption);
             }
+            let age = self.age;
             for a in &mut self.active {
+                // `tickServer`: an infinite effect times its periodic ticks
+                // on the entity's free-running `tickCount`.
+                let clock = if a.is_infinite() { age } else { a.ticks };
                 let every = match a.effect {
                     Effect::Regeneration => 50u32 >> a.amplifier.min(31),
                     Effect::Poison => 25u32 >> a.amplifier.min(31),
@@ -429,7 +871,7 @@ impl Effects {
                     }
                     _ => continue,
                 };
-                if every == 0 || a.ticks.is_multiple_of(every) {
+                if every == 0 || clock.is_multiple_of(every) {
                     match a.effect {
                         Effect::Regeneration => out.heal += 1.0,
                         Effect::Wither => out.wither += 1.0,
@@ -437,8 +879,11 @@ impl Effects {
                     }
                 }
             }
+            // `tickDownDuration`: `mapDuration` leaves infinite and zero alone.
             for a in self.active.iter_mut().chain(&mut self.hidden) {
-                a.ticks = a.ticks.saturating_sub(1);
+                if !a.is_infinite() {
+                    a.ticks = a.ticks.saturating_sub(1);
+                }
             }
             // Java's `downgradeToHiddenEffect`: an expired effect gives way to
             // the next hidden instance of itself.
@@ -474,8 +919,8 @@ impl Effects {
     }
 
     /// `Player.getDestroySpeed`'s Haste multiplier, `1 + (amplifier + 1) * 0.2`
-    /// in single precision; exactly 1.0 without Haste. Conduit Power, which
-    /// shares the formula, is not registered.
+    /// in single precision; exactly 1.0 without Haste. Conduit Power shares
+    /// the formula in Java; it is registered but its behaviour waits for v0.16.
     pub fn dig_speed_factor(&self) -> f32 {
         self.get(Effect::Haste).map_or(1.0, |a| 1.0 + (i32::from(a.amplifier) + 1) as f32 * 0.2)
     }
@@ -525,46 +970,86 @@ impl Effects {
         }
     }
 
-    /// `effect:amplifier:ticks|...` for saves. The active Absorption entry
-    /// carries the absorption amount as a fourth field.
+    /// `effect:amplifier:ticks|...` for saves: the active instances, then
+    /// the hidden ones, each effect's nearest first. Ticks are `-1` for an
+    /// infinite effect. The active Absorption entry adds the absorption
+    /// amount as a fourth field. Flags that differ from the defaults follow:
+    /// `a` (ambient), `p0` (no particles) and `i0` (no icon).
     pub fn serialize(&self) -> String {
         let active = self.active.len();
         self.active
             .iter()
             .chain(&self.hidden)
             .enumerate()
-            .map(|(i, a)| match a.effect {
-                Effect::Absorption if i < active => {
-                    format!("{}:{}:{}:{}", a.effect.id(), a.amplifier, a.ticks, self.absorption)
+            .map(|(i, a)| {
+                let mut entry = format!("{}:{}:{}", a.effect.id(), a.amplifier, a.java_duration());
+                if a.effect == Effect::Absorption && i < active {
+                    entry += &format!(":{}", self.absorption);
                 }
-                _ => format!("{}:{}:{}", a.effect.id(), a.amplifier, a.ticks),
+                for (set, flag) in [(a.ambient, ":a"), (!a.particles, ":p0"), (!a.show_icon, ":i0")] {
+                    if set {
+                        entry += flag;
+                    }
+                }
+                entry
             })
             .collect::<Vec<_>>()
             .join("|")
     }
 
     /// Restores [`Effects::serialize`] output, skipping malformed entries.
+    /// An effect's first entry is its active instance and later ones are its
+    /// hidden chain, restored as they were rather than merged again (merging
+    /// would hand the hidden instances' flags to the active one).
     pub fn deserialize(text: &str) -> Self {
         let mut effects = Self::default();
         let mut absorption = None;
+        let mut started = 0.0f32;
         for entry in text.split('|') {
             let mut parts = entry.split(':');
-            if let (Some(e), Some(Ok(amp)), Some(Ok(ticks))) =
-                (parts.next().and_then(Effect::from_id), parts.next().map(str::parse), parts.next().map(str::parse))
-                && ticks > 0
-            {
-                effects.add(e, amp, ticks);
-                if e == Effect::Absorption
-                    && let Some(Ok(amount)) = parts.next().map(str::parse::<f32>)
-                    && amount.is_finite()
-                {
-                    absorption = Some(amount);
+            let (Some(effect), Some(Ok(amplifier)), Some(Ok(ticks))) = (
+                parts.next().and_then(Effect::from_id),
+                parts.next().map(str::parse),
+                parts.next().map(str::parse::<i64>),
+            ) else {
+                continue;
+            };
+            let hidden = effects.has(effect);
+            let ticks = match ticks {
+                -1 => INFINITE,
+                // A hidden instance under an infinite one counts down to 0
+                // and stays there, as in Java.
+                0 if hidden => 0,
+                1.. if ticks < i64::from(INFINITE) => ticks as u32,
+                _ => continue,
+            };
+            if effect.is_instant() {
+                continue;
+            }
+            let mut a = Active::new(effect, amplifier, ticks);
+            for flag in parts {
+                match flag {
+                    "a" => a.ambient = true,
+                    "p0" => a.particles = false,
+                    "i0" => a.show_icon = false,
+                    amount if effect == Effect::Absorption && !hidden => {
+                        absorption = amount.parse::<f32>().ok().filter(|v| v.is_finite()).or(absorption);
+                    }
+                    _ => {}
                 }
             }
+            if effect == Effect::Absorption {
+                // Saves without the amount restore `onEffectStarted`'s.
+                started = started.max(((u32::from(amplifier) + 1) * 4) as f32);
+            }
+            if hidden {
+                effects.hidden.push(a);
+            } else {
+                effects.active.push(a);
+            }
         }
-        if let Some(amount) = absorption {
-            effects.set_absorption(amount);
-        }
+        effects.active.sort_by_key(|a| a.effect);
+        effects.set_absorption(absorption.unwrap_or(started));
         effects
     }
 }
@@ -766,6 +1251,7 @@ mod tests {
         assert_eq!(back.active, e.active);
         assert_eq!(Effects::deserialize("bogus:1:2|speed:x:3|speed:0:0").active, []);
         assert_eq!(level_name(1), "II");
-        assert_eq!(duration_text(3 * 60 * 20 + 20 * 5), "3:05");
+        assert_eq!(duration_text(3 * 60 * 20 + 20 * 5), "03:05");
+        assert_eq!(duration_text(INFINITE), "\u{221e}");
     }
 }

@@ -159,7 +159,7 @@ fn wolf_armor_dyes_mix_native_rgb_preserve_components_and_wash_without_repairing
         (original.damage, original.repair_cost, original.name, original.enchants)
     );
     let (water, clean) =
-        crate::world::utilities::cauldron::wash_wolf_armor(crate::world::utilities::Contents::Water(2), mixed).unwrap();
+        crate::world::utilities::cauldron::wash_dyed(crate::world::utilities::Contents::Water(2), mixed).unwrap();
     assert_eq!(water, crate::world::utilities::Contents::Water(1));
     assert_eq!(clean, original);
     assert!(washed(original).is_none());

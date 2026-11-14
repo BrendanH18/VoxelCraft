@@ -56,3 +56,19 @@ pub fn block_use_precedes_item(
         || (world.redstone_usable(pos) && (b.base() != Block::BELL || world.bell_hit_rings(pos, aim.0, aim.1)))
         || composter::level(b).is_some_and(|level| level == 8 || held.is_some_and(|item| composter::chance(item) > 0.0))
 }
+
+/// [`block_use_precedes_item`] for the whole held stack, adding the uses
+/// that depend on its components: a water cauldron washing a dyed item
+/// (`CauldronInteractions.dyedItemIteration`), so a dyed leather piece is
+/// washed rather than put on.
+pub fn block_use_precedes_stack(
+    world: &World,
+    pos: IVec3,
+    held: Option<crate::inventory::Stack>,
+    sneaking: bool,
+    aim: (glam::DVec3, glam::DVec3),
+) -> bool {
+    block_use_precedes_item(world, pos, held.map(|s| s.item), sneaking, aim)
+        || (!(sneaking && held.is_some())
+            && world.get_block(pos).is_some_and(|b| crate::world::utilities::cauldron::washes(b, held)))
+}

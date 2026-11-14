@@ -6,6 +6,7 @@ use glam::{DVec3, IVec3};
 
 use crate::item::Item;
 use crate::physics::{self, BlockSource, Shape};
+use crate::simulation::damage::Cause;
 use crate::world::block::Block;
 use crate::world::terrain::Dimension;
 
@@ -15,6 +16,7 @@ mod breeze;
 mod creaking;
 pub(crate) mod dolphin;
 mod drowned;
+mod endermite;
 mod frog;
 pub(crate) mod goals;
 mod navigate;
@@ -55,7 +57,7 @@ const BURN_DAYLIGHT: f32 = 0.45;
 /// Spiders only hunt when it's darker than this (or after being hit).
 const SPIDER_CALM_DAYLIGHT: f32 = 0.45;
 /// Seconds a hit spider stays hostile in daylight.
-const PROVOKED_TIME: f32 = 12.0;
+pub(super) const PROVOKED_TIME: f32 = 12.0;
 /// Seconds zombified piglins stay angry after one of them is hit.
 pub const PIGLIN_ANGER_TIME: f32 = 30.0;
 /// Skeletons shoot from up to this far, and keep between these distances.
@@ -73,7 +75,7 @@ pub const FUSE_TIME: f32 = 1.5;
 pub const CREEPER_POWER: f32 = 3.0;
 /// Seconds an enderman stays angry after a stare or a hit (refreshed
 /// while its target stays near).
-const ENDERMAN_ANGER_TIME: f32 = 30.0;
+pub(super) const ENDERMAN_ANGER_TIME: f32 = 30.0;
 /// Seconds of eye contact before an enderman turns on you (Java's 5 ticks).
 const STARE_TIME: f32 = 0.25;
 /// Endermen notice stares from this far, freeze while watched within
@@ -198,6 +200,9 @@ pub enum MobKind {
     /// v0.16 Track C. Saved as `breeze`; LAN index 73 (72 stays reserved
     /// for Track A's warden until integration).
     Breeze,
+    /// v0.14 (MOBN-26): the pearl pest. Saved as `endermite`; its LAN index
+    /// is its position in [`MobKind::ALL`].
+    Endermite,
 }
 
 impl MobKind {
@@ -232,7 +237,7 @@ impl MobKind {
     pub fn from_lan_index(index: usize) -> Option<Self> {
         Self::ALL.get(index).copied()
     }
-    pub const ALL: [MobKind; 74] = [
+    pub const ALL: [MobKind; 75] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -307,6 +312,7 @@ impl MobKind {
         MobKind::Sniffer,
         MobKind::Warden,
         MobKind::Breeze,
+        MobKind::Endermite,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -386,6 +392,7 @@ impl MobKind {
             MobKind::Sniffer => "sniffer",
             MobKind::Warden => "warden",
             MobKind::Breeze => "breeze",
+            MobKind::Endermite => "endermite",
         }
     }
 
@@ -402,6 +409,8 @@ impl MobKind {
             MobKind::Warden => Shape::new(0.45, 2.9),
             // `EntityType.BREEZE`: 0.6 x 1.77.
             MobKind::Breeze => Shape::new(0.3, 1.77),
+            // `EntityTypes.ENDERMITE`: 0.4 x 0.3.
+            MobKind::Endermite => Shape::new(0.2, 0.3),
             MobKind::Bat => Shape::new(0.25, 0.9),
             MobKind::Frog => Shape::new(0.25, 0.5),
             MobKind::Tadpole => Shape::new(0.2, 0.3),
@@ -470,7 +479,7 @@ impl MobKind {
     pub fn max_health(self) -> f32 {
         match self {
             MobKind::Pig | MobKind::Cow | MobKind::Mooshroom | MobKind::Frog => 10.0,
-            MobKind::Sheep | MobKind::Silverfish => 8.0,
+            MobKind::Sheep | MobKind::Silverfish | MobKind::Endermite => 8.0,
             MobKind::Chicken => 4.0,
             MobKind::Zombie
             | MobKind::Husk
@@ -559,6 +568,7 @@ impl MobKind {
                 | MobKind::ElderGuardian
                 | MobKind::Pillager
                 | MobKind::Breeze
+                | MobKind::Endermite
         )
     }
 
@@ -615,6 +625,8 @@ impl MobKind {
             | MobKind::TraderLlama => false,
             // Only from stronghold spawners (and infested blocks, later).
             MobKind::Silverfish | MobKind::CaveSpider => false,
+            // No biome lists it; only landed ender pearls make them.
+            MobKind::Endermite => false,
             // Only generated with bastions (`nether::populate_bastions`).
             MobKind::PiglinBrute | MobKind::Zoglin | MobKind::ElderGuardian | MobKind::Cat | MobKind::Pillager => false,
             // Picked by the Nether biome spawn lists (`world::nether_biome`).
@@ -771,7 +783,10 @@ impl MobKind {
             | MobKind::Stray
             | MobKind::Bogged
             | MobKind::Phantom => Creature::Undead,
-            MobKind::Spider | MobKind::CaveSpider | MobKind::Silverfish => Creature::Arthropod,
+            // `#sensitive_to_bane_of_arthropods` (`#arthropod`).
+            MobKind::Spider | MobKind::CaveSpider | MobKind::Silverfish | MobKind::Endermite | MobKind::Bee => {
+                Creature::Arthropod
+            }
             _ => Creature::Other,
         }
     }
@@ -822,6 +837,8 @@ impl MobKind {
             MobKind::Chicken | MobKind::Slime | MobKind::MagmaCube => 1.0,
             MobKind::Ghast => 4.0,
             MobKind::Spider | MobKind::CaveSpider | MobKind::Enderman | MobKind::Silverfish => 1.4,
+            // `WaterAvoidingRandomStrollGoal(1.0)` at movement speed 0.25.
+            MobKind::Endermite => path::ground_speed(super::endermite::MOVEMENT_SPEED),
             k if k.is_aquatic() => 1.2,
             MobKind::Cat | MobKind::Pillager => 1.2,
             _ => 1.2,
@@ -845,29 +862,30 @@ impl MobKind {
     }
 
     /// Melee damage and the death message it gives.
-    pub(super) fn melee(self) -> (f32, &'static str) {
+    pub(super) fn melee(self) -> (f32, Cause) {
         match self {
-            MobKind::CaveSpider => (2.0, "was slain by a cave spider"),
-            MobKind::Spider => (2.0, "was slain by a spider"),
-            MobKind::ZombifiedPiglin => (5.0, "was slain by a zombified piglin"),
-            MobKind::Enderman => (7.0, "was slain by an enderman"),
-            MobKind::Blaze => (6.0, "was slain by a blaze"),
-            MobKind::WitherSkeleton => (8.0, "was slain by a wither skeleton"),
-            MobKind::Husk => (3.0, "was slain by a husk"),
-            MobKind::Drowned => (3.0, "was slain by a drowned"),
-            MobKind::Silverfish => (1.0, "was slain by a silverfish"),
-            MobKind::PolarBear => (6.0, "was slain by a polar bear"),
-            MobKind::Panda => (6.0, "was slain by a panda"),
-            MobKind::Ocelot => (3.0, "was slain by an ocelot"),
-            MobKind::IronGolem => (15.0, "was slain by an iron golem"),
-            MobKind::SnowGolem => (0.0, "was slain by a snow golem"),
-            MobKind::ZombieVillager => (3.0, "was slain by a zombie villager"),
-            MobKind::Piglin => (5.0, "was slain by a piglin"),
-            MobKind::PiglinBrute => (7.0, "was slain by a piglin brute"),
-            MobKind::Hoglin => (6.0, "was slain by a hoglin"),
-            MobKind::Zoglin => (6.0, "was slain by a zoglin"),
+            MobKind::CaveSpider => (2.0, Cause::mob("was slain by a cave spider")),
+            MobKind::Spider => (2.0, Cause::mob("was slain by a spider")),
+            MobKind::ZombifiedPiglin => (5.0, Cause::mob("was slain by a zombified piglin")),
+            MobKind::Enderman => (7.0, Cause::mob("was slain by an enderman")),
+            MobKind::Blaze => (6.0, Cause::mob("was slain by a blaze")),
+            MobKind::WitherSkeleton => (8.0, Cause::mob("was slain by a wither skeleton")),
+            MobKind::Husk => (3.0, Cause::mob("was slain by a husk")),
+            MobKind::Drowned => (3.0, Cause::mob("was slain by a drowned")),
+            MobKind::Silverfish => (1.0, Cause::mob("was slain by a silverfish")),
+            MobKind::Endermite => (super::endermite::ATTACK_DAMAGE, Cause::mob("was slain by an endermite")),
+            MobKind::PolarBear => (6.0, Cause::mob("was slain by a polar bear")),
+            MobKind::Panda => (6.0, Cause::mob("was slain by a panda")),
+            MobKind::Ocelot => (3.0, Cause::mob("was slain by an ocelot")),
+            MobKind::IronGolem => (15.0, Cause::mob("was slain by an iron golem")),
+            MobKind::SnowGolem => (0.0, Cause::mob("was slain by a snow golem")),
+            MobKind::ZombieVillager => (3.0, Cause::mob("was slain by a zombie villager")),
+            MobKind::Piglin => (5.0, Cause::mob("was slain by a piglin")),
+            MobKind::PiglinBrute => (7.0, Cause::mob("was slain by a piglin brute")),
+            MobKind::Hoglin => (6.0, Cause::mob("was slain by a hoglin")),
+            MobKind::Zoglin => (6.0, Cause::mob("was slain by a zoglin")),
             MobKind::Warden => (super::warden::MELEE_DAMAGE, super::warden::CAUSE_MELEE),
-            _ => (3.0, "was slain by a zombie"),
+            _ => (3.0, Cause::mob("was slain by a zombie")),
         }
     }
 
@@ -902,7 +920,9 @@ impl MobKind {
             // `entities/breeze`: 1-2 rods, killed by a player (rolled in `drops`).
             MobKind::Breeze => &[],
             // Piglins drop only what they carry (`nether::equipment_drops`).
-            MobKind::Silverfish
+            // `entities/endermite` has no pools.
+            MobKind::Endermite
+            | MobKind::Silverfish
             | MobKind::Villager
             | MobKind::WanderingTrader
             | MobKind::Piglin
@@ -1026,6 +1046,7 @@ impl MobKind {
             | MobKind::SnowGolem
             | MobKind::WanderingTrader => 0,
             MobKind::Blaze | MobKind::Guardian | MobKind::ElderGuardian | MobKind::Breeze => 10,
+            MobKind::Endermite => super::endermite::EXPERIENCE,
             k if k.is_hostile() => 5,
             _ => 1 + (rng.next_f32() * 3.0) as u32,
         }
@@ -1070,10 +1091,9 @@ pub struct Mob {
     pub grow: f32,
     pub wool_color: crate::color::DyeColor,
     pub sheared: bool,
-    pub skeleton_bow: Option<Box<crate::inventory::Stack>>,
-    /// v0.16: a drowned's main hand (`Drowned.populateDefaultEquipmentSlots`:
-    /// a trident or a fishing rod), saved, thrown and dropped like Java's.
-    pub weapon: Option<Box<crate::inventory::Stack>>,
+    /// Java's `EntityEquipment` and `DropChances`: a stack and a drop chance
+    /// per slot (a skeleton's bow, a drowned's trident, worn armor).
+    pub equipment: super::equipment::Equipment,
     /// Breach's armor-effectiveness change for the hit being applied (0
     /// outside a player's mace hit); never saved.
     pub(super) armor_effectiveness: f32,
@@ -1090,11 +1110,10 @@ pub struct Mob {
     pub creaking: Option<Box<super::creaking::State>>,
     pub sniffer: Option<Box<super::sniffer::State>>,
     pub breeze: Option<Box<super::breeze::State>>,
-    /// A trial spawner's equipment table set every slot's drop chance to 0
-    /// (ominous spawners); also the spawner that made it, for saves.
-    pub(crate) keeps_equipment: bool,
     pub allay: Option<Box<super::allay::State>>,
     pub warden: Option<Box<super::warden::State>>,
+    /// Endermites: lifetime and target (see `entity::endermite`).
+    pub endermite: Option<Box<super::endermite::State>>,
     pub wolf_armor: Option<Box<super::wolf_armor::State>>,
     /// Witch: seconds left drinking, and the potion it is drinking.
     drink_left: f32,
@@ -1142,7 +1161,7 @@ pub struct Mob {
     /// Creeper fuse: seconds lit, 0 when not fusing.
     pub fuse: f32,
     /// Seconds a hit spider stays angry in daylight.
-    provoked: f32,
+    pub(super) provoked: f32,
     pub(super) ai: Ai,
     pub(super) ai_timer: f32,
     pub(super) move_yaw: f32,
@@ -1162,10 +1181,6 @@ pub struct Mob {
     detour_side: f64,
     /// Seconds until the next idle call.
     ambient_timer: f32,
-    /// Helmet, chest, leggings, boots. Zombies and skeletons roll these.
-    pub armor: [Option<super::armor::ArmorKind>; 4],
-    /// Bit per armor slot: enchantment glint.
-    pub armor_glint: u8,
     /// A hurt or death cry waiting to be reported by the next update.
     cry: Option<MobSound>,
     /// Endermen: teleport away at the next update (an arrow, water, fire).
@@ -1203,6 +1218,9 @@ pub struct Mob {
     pub(super) trader_night: bool,
     pub(super) convert_by: Option<super::PlayerId>,
     pub(super) angry_player: Option<super::PlayerId>,
+    /// A neutral mob angry with no persistent target after a player's hit
+    /// under `universal_anger` (Java's `isAngryAtAllPlayers`; see `neutral`).
+    pub(super) neutral_universal: bool,
     /// A zombified piglin's main hand: `None` is the spawn default (a golden
     /// sword); a converted piglin keeps its crossbow, axe or empty hand.
     pub held: Option<super::nether::Weapon>,
@@ -1231,6 +1249,13 @@ pub struct Mob {
     pub(crate) restrict: Option<(IVec3, i32)>,
     /// The flagged goal selector and goal state of dolphins and turtles.
     pub(crate) java_goals: Option<Box<JavaGoals>>,
+    /// Spawn-rolled attribute modifiers and reinforcement charges (see `entity::zombie`).
+    pub attrs: super::zombie::Attrs,
+    /// A hit since the last update asks for reinforcements: `Some(attacker)`
+    /// when a player's melee is known. Never saved.
+    pub(super) reinforce_call: Option<Option<super::PlayerId>>,
+    /// The player a reinforcement was sent after (`setTarget`). Never saved.
+    pub(super) reinforce_target: Option<super::PlayerId>,
 }
 
 /// Per-kind state of the mobs on the flagged goal selector. Mobs hold it
@@ -1273,8 +1298,14 @@ impl Mob {
             wool_color: crate::color::DyeColor::White,
             sheared: false,
             freezing: None,
-            skeleton_bow: kind.is_bow_skeleton().then(|| Box::new(crate::inventory::Stack::new(Item::BOW, 1))),
-            weapon: None,
+            equipment: {
+                // `AbstractSkeleton.populateDefaultEquipmentSlots` always gives a bow.
+                let mut e = super::equipment::Equipment::default();
+                if kind.is_bow_skeleton() {
+                    e.set(super::equipment::Slot::MainHand, Some(crate::inventory::Stack::new(Item::BOW, 1)));
+                }
+                e
+            },
             armor_effectiveness: 0.0,
             phantom: (kind == MobKind::Phantom).then(|| Box::new(super::phantom::State::new(pos))),
             mooshroom: (kind == MobKind::Mooshroom).then(Box::default),
@@ -1287,11 +1318,11 @@ impl Mob {
             copper_golem: (kind == MobKind::CopperGolem).then(Box::default),
             creaking: (kind == MobKind::Creaking).then(Box::default),
             sniffer: (kind == MobKind::Sniffer).then(Box::default),
-            keeps_equipment: false,
             breeze: (kind == MobKind::Breeze)
                 .then(|| Box::new(super::breeze::State { since_hurt: 1000, ..Default::default() })),
             allay: (kind == MobKind::Allay).then(Box::default),
             warden: (kind == MobKind::Warden).then(Box::default),
+            endermite: (kind == MobKind::Endermite).then(Box::default),
             wolf_armor: (kind == MobKind::Wolf).then(Box::default),
             drink_left: 0.0,
             drinking: "",
@@ -1337,8 +1368,6 @@ impl Mob {
             detour: 0.0,
             detour_side: 1.0,
             ambient_timer: 2.0 + (yaw * 1000.0).rem_euclid(10.0),
-            armor: [None; 4],
-            armor_glint: 0,
             cry: None,
             teleport_pending: false,
             stare: 0.0,
@@ -1361,6 +1390,7 @@ impl Mob {
             trader_night: false,
             convert_by: None,
             angry_player: None,
+            neutral_universal: false,
             held: None,
             trader: matches!(kind, MobKind::WanderingTrader | MobKind::TraderLlama)
                 .then(|| Box::new(super::wandering_trader::Trader::new(pos))),
@@ -1379,10 +1409,13 @@ impl Mob {
                 MobKind::Turtle => Some(Box::new(JavaGoals::Turtle(Default::default()))),
                 _ => None,
             },
+            attrs: Default::default(),
+            reinforce_call: None,
+            reinforce_target: None,
         }
     }
 
-    pub(super) fn melee_attack(&self) -> (f32, &'static str) {
+    pub(super) fn melee_attack(&self) -> (f32, Cause) {
         let (base, cause) = self.kind.melee();
         let strength = if self.convert_left > 0.0 { 3.0 } else { 0.0 };
         let weakness = if self.weakness_left > 0.0 { 4.0 } else { 0.0 };
@@ -1429,17 +1462,31 @@ impl Mob {
     }
 
     /// The cure finished: a villager again, with Java's major_positive discount.
-    pub(super) fn finish_cure(&mut self) {
+    /// Returns the preserved equipment that drops (`ZombieVillager.finishConversion`).
+    pub(super) fn finish_cure(&mut self) -> Vec<crate::inventory::Stack> {
         self.kind = MobKind::Villager;
         self.health = MobKind::Villager.max_health();
         self.baby = self.age < 0;
         self.weakness_left = 0.0;
         self.convert_left = 0.0;
         self.convert_tick = 0.0;
-        // Naturally generated equipment is discarded by Java's conversion.
-        // Picked-up equipment and binding curses are not represented on mobs.
-        self.armor = [None; 4];
-        self.armor_glint = 0;
+        // `ConversionParams.single(this, false, false)`: equipment is not
+        // kept. `dropPreservedEquipment` drops preserved slots, except items
+        // with Curse of Binding (`prevent_armor_change`), which go to the
+        // villager's inventory at the slot's index.
+        let mut old = std::mem::take(&mut self.equipment);
+        let mut kept = Vec::new();
+        for slot in super::equipment::Slot::ALL {
+            if old.get(slot).is_some_and(|s| s.enchants.has(crate::enchant::Enchantment::BindingCurse)) {
+                kept.extend(old.take(slot).map(|s| (slot.index(), s)));
+            }
+        }
+        let dropped = old.take_preserved();
+        if let Some(v) = &mut self.villager {
+            for (index, stack) in kept {
+                v.food[index] = Some(stack);
+            }
+        }
         if let Some(v) = &mut self.villager {
             v.reputation = 0;
             if let Some(owner) = self.convert_by
@@ -1454,6 +1501,7 @@ impl Mob {
             v.fleeing = false;
             v.goal = None;
         }
+        dropped
     }
 
     pub fn shape(&self) -> Shape {
@@ -1641,14 +1689,21 @@ impl Mob {
             }
         }
         let amount = if bypass_wolf_armor { amount } else { self.absorb_wolf_armor(amount, rng) };
-        let armor = self.mount.as_ref().and_then(|s| s.slots[1]).map_or(0, |s| super::mounts::armor_points(s.item));
+        // Horse armor's BODY attributes: armor points and toughness.
+        let body = self.mount.as_ref().and_then(|s| s.slots[1]).map(|s| s.item);
+        let armor = body.map_or(0, super::mounts::armor_points);
         let amount = if armor > 0 {
-            crate::simulation::survival::armor_reduce_with(amount, armor, 0., self.armor_effectiveness)
+            let toughness = body.map_or(0.0, super::mounts::armor_toughness);
+            crate::simulation::survival::armor_reduce_with(amount, armor, toughness, self.armor_effectiveness)
         } else {
             amount
         };
         let amount = amount * self.effects.resistance_factor();
         self.health -= self.effects.absorb(amount);
+        // `Zombie.hurtServer` calls reinforcements after any accepted hit.
+        if super::zombie::calls_reinforcements(self.kind) && self.reinforce_call.is_none() {
+            self.reinforce_call = Some(None);
+        }
         if self.kind == MobKind::Axolotl && self.in_water && self.health > 0.0 && self.health < 7.0 && rng.chance(0.33)
         {
             self.aquatic.as_mut().unwrap().play_dead = 10.0;
@@ -1745,7 +1800,11 @@ impl Mob {
         events: &mut Vec<EntityEvent>,
     ) {
         let event_start = events.len();
+        let before = self.kind;
         self.tick_water_conversion(dt, world);
+        if self.kind != before {
+            self.drowning_converted(before, rng);
+        }
         let dtf = dt as f32;
         self.idle += dtf;
         if let Some(s) = &mut self.creaking {
@@ -1795,13 +1854,16 @@ impl Mob {
         }
         self.hurt = (self.hurt - dtf).max(0.0);
         self.provoked = (self.provoked - dtf).max(0.0);
-        if matches!(self.kind, MobKind::Wolf | MobKind::Llama) && self.provoked == 0.0 {
+        if matches!(self.kind, MobKind::Wolf | MobKind::Llama | MobKind::Enderman | MobKind::ZombifiedPiglin)
+            && self.provoked == 0.0
+        {
             self.angry_player = None;
+            self.neutral_universal = false;
         }
         self.attack_cooldown -= dtf;
         self.player_hit_left = (self.player_hit_left - dtf).max(0.0);
         self.weakness_left = (self.weakness_left - dtf).max(0.0);
-        self.advance_cure(dtf, world, rng);
+        self.advance_cure(dtf, world, rng, events);
         self.freeze_in_powder_snow(dtf, world);
         if let Some(v) = &mut self.villager {
             v.bell_hide = (v.bell_hide - dtf).max(0.0);
@@ -2012,6 +2074,11 @@ impl Mob {
         if self.breeze.is_some() {
             return self.breeze_think(dt, world, ctx, rng, events);
         }
+        if self.endermite.is_some()
+            && let Some(wish) = self.endermite_think(dt, world, ctx, rng, events)
+        {
+            return wish;
+        }
         if self.kind == MobKind::Bat {
             self.bat_sense(world, ctx);
             return (None, 0.0);
@@ -2154,15 +2221,28 @@ impl Mob {
         if self.trader.as_ref().is_some_and(|t| t.drink > 0.0) {
             return (None, 0.0);
         }
+        // An enderman hunting an endermite still notices stares: its
+        // `EndermanLookForPlayerGoal` (target priority 1) outranks the
+        // endermite goal (3).
+        if self.kind == MobKind::Enderman && self.hunt.is_some() && self.enderman_anger(dt, world, ctx, rng, events) {
+            self.hunt = None;
+        }
         if let Some(goal) = self.hunt {
             let flat = (goal - self.pos) * DVec3::new(1.0, 0.0, 1.0);
             let dist = flat.length();
             if dist > 1e-4 {
                 let dir = flat / dist;
-                let reach = if self.kind == MobKind::IronGolem { 2.4 } else { 1.5 };
+                let reach = match self.kind {
+                    MobKind::IronGolem => 2.4,
+                    MobKind::Enderman => super::endermite::ENDERMAN_REACH,
+                    _ => 1.5,
+                };
                 self.head_target = (wrap((dir.z as f32).atan2(dir.x as f32) - self.yaw).clamp(-1.2, 1.2), 0.0);
                 let golem = self.kind == MobKind::IronGolem;
-                if dist <= reach && self.attack_cooldown <= 0.0 && (golem || self.kind.is_zombie()) {
+                if dist <= reach
+                    && self.attack_cooldown <= 0.0
+                    && (golem || self.kind.is_zombie() || self.kind == MobKind::Enderman)
+                {
                     self.attack_cooldown = if golem { 1.2 } else { ATTACK_COOLDOWN };
                     self.attack_anim = 0.4;
                     self.strike = true;
@@ -2198,7 +2278,20 @@ impl Mob {
             return wish;
         }
         self.ai_timer -= dt;
-        let target = if self.kind.is_hostile() && self.nether.is_none() {
+        let target = if self.kind.is_zombie() {
+            self.zombie_target(ctx)
+        } else if matches!(self.kind, MobKind::Enderman | MobKind::ZombifiedPiglin) && self.provoked > 0.0 {
+            // `NeutralMob.isAngryAt`: an angry one goes only for its persistent
+            // target (`neutral` picks one under `universal_anger`).
+            self.angry_player.and_then(|id| {
+                ctx.players.iter().find(|t| {
+                    t.id == id
+                        && t.targetable
+                        && t.alive
+                        && t.pos.distance_squared(self.pos) <= t.detection_range(CHASE_RANGE).powi(2)
+                })
+            })
+        } else if self.kind.is_hostile() && self.nether.is_none() {
             let range = match self.kind {
                 MobKind::CaveSpider | MobKind::Slime | MobKind::MagmaCube => 16.,
                 _ => CHASE_RANGE,
@@ -2211,7 +2304,11 @@ impl Mob {
         let flat = DVec3::new(to_player.x, 0.0, to_player.z);
         let hdist = flat.length();
 
-        if self.kind.is_hostile() && self.nether.is_none() && self.kind != MobKind::Blaze {
+        if self.kind.is_hostile()
+            && self.nether.is_none()
+            && self.kind != MobKind::Blaze
+            && self.kind != MobKind::Endermite
+        {
             let aggressive = match self.kind {
                 MobKind::Spider | MobKind::CaveSpider => ctx.daylight < SPIDER_CALM_DAYLIGHT || self.provoked > 0.0,
                 MobKind::ZombifiedPiglin => self.provoked > 0.0,
@@ -2220,10 +2317,14 @@ impl Mob {
             };
             let (range, height) = match self.kind {
                 MobKind::CaveSpider | MobKind::Slime | MobKind::MagmaCube => (16.0, 4.0),
+                // `NearestAttackableTargetGoal` searches the follow range.
+                k if k.is_zombie() => (self.follow_range(), 12.0),
                 _ => (CHASE_RANGE, 12.0),
             };
-            let chasing =
-                aggressive && target.is_some_and(|t| hdist < t.detection_range(range)) && to_player.y.abs() < height;
+            let sent = self.reinforce_target;
+            let chasing = aggressive
+                && target.is_some_and(|t| hdist < t.detection_range(range) || sent == Some(t.id))
+                && to_player.y.abs() < height;
             if chasing {
                 self.ai = Ai::Chase;
             } else if self.ai == Ai::Chase {
@@ -2273,11 +2374,11 @@ impl Mob {
                             let (damage, cause) = if self.kind.is_cube() {
                                 (
                                     self.size as f32 + if self.kind == MobKind::MagmaCube { 2.0 } else { 0.0 },
-                                    if self.kind == MobKind::MagmaCube {
+                                    Cause::mob(if self.kind == MobKind::MagmaCube {
                                         "was slain by a magma cube"
                                     } else {
                                         "was slain by a slime"
-                                    },
+                                    }),
                                 )
                             } else {
                                 self.melee_attack()
@@ -2700,10 +2801,14 @@ impl Mob {
         events: &mut Vec<EntityEvent>,
     ) -> bool {
         self.since_anger += dt;
-        let staring = ctx.players.iter().any(|t| t.targetable && self.watched_by(world, t));
-        self.stare = if staring { self.stare + dt } else { 0.0 };
+        let starer = ctx.players.iter().find(|t| t.targetable && self.watched_by(world, t)).map(|t| t.id);
+        self.stare = if starer.is_some() { self.stare + dt } else { 0.0 };
         if self.stare >= STARE_TIME && self.provoked <= 0.0 {
             self.provoked = ENDERMAN_ANGER_TIME;
+            // `EndermanLookForPlayerGoal` targets the starer, and
+            // `updatePersistentAnger` makes it the persistent target.
+            self.angry_player = starer;
+            self.neutral_universal = false;
             self.since_anger = 0.0;
             events.push(EntityEvent::Sound { sound: MobSound::Scream, pos: self.eye() });
         }
@@ -2818,9 +2923,9 @@ impl Mob {
                 from: eye + dir * 0.5,
                 target,
                 cause: match self.kind {
-                    MobKind::Stray => "was shot by a stray",
-                    MobKind::Bogged => "was shot by a bogged",
-                    _ => "was shot by a skeleton",
+                    MobKind::Stray => Cause::STRAY_ARROW,
+                    MobKind::Bogged => Cause::BOGGED_ARROW,
+                    _ => Cause::SKELETON_ARROW,
                 },
                 shooter: self.uid,
             });
@@ -2942,7 +3047,7 @@ impl Mob {
             events.push(EntityEvent::Explosion {
                 center,
                 power: CREEPER_POWER * if self.lightning_charged { 2. } else { 1. },
-                cause: "was blown up by a creeper",
+                cause: Cause::CREEPER,
                 credit_player: false,
             });
             // Gone in the blast: no death animation, no loot.
@@ -3556,7 +3661,8 @@ impl super::Entities {
                     | MobKind::PolarBear
                     | MobKind::Panda
                     | MobKind::Armadillo
-            )
+                    | MobKind::Endermite
+            ) || super::neutral::is_neutral(m.kind)
         }) {
             self.ensure_mob_ids();
             let uid = self.mobs[index].uid;
@@ -3573,6 +3679,13 @@ impl super::Entities {
     pub(super) fn resolve_hurt_by(&mut self, ctx: &super::Ctx) {
         for (uid, player) in std::mem::take(&mut self.hurt_by) {
             let Some(index) = self.mobs.iter().position(|m| m.uid == uid) else { continue };
+            let kind = self.mobs[index].kind;
+            // `ResetUniversalAngerTargetGoal` takes a player's hit instead of
+            // `HurtByTargetGoal` under `universal_anger`, with no attack check.
+            if self.neutral_universal_anger && kind != MobKind::PolarBear && super::neutral::is_neutral(kind) {
+                self.universal_anger_hit(index);
+                continue;
+            }
             let defensive = self.mobs[index].kind == MobKind::Armadillo;
             if !ctx
                 .players
@@ -3588,6 +3701,10 @@ impl super::Entities {
                 MobKind::PolarBear => self.polar_hurt(index, super::nether::Foe::Player(player)),
                 MobKind::Panda => self.panda_hurt(index, super::nether::Foe::Player(player)),
                 MobKind::Armadillo => self.armadillo_hurt(index, super::nether::Foe::Player(player)),
+                MobKind::Endermite => self.endermite_hurt(index, super::nether::Foe::Player(player)),
+                MobKind::Wolf | MobKind::IronGolem | MobKind::Enderman | MobKind::ZombifiedPiglin => {
+                    self.neutral_hurt_by(index, player)
+                }
                 _ => {}
             }
         }

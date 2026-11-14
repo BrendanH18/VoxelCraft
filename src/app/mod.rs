@@ -1042,7 +1042,12 @@ impl Game {
     /// Returns the damage actually taken: zero in creative, while dead, or
     /// when absorbed by the 0.5 s hurt immunity that follows each hit (a
     /// stronger hit within it only deals the difference).
-    pub(crate) fn damage_player(&mut self, amount: f32, cause: &str) -> f32 {
+    pub(crate) fn damage_player(
+        &mut self,
+        amount: f32,
+        cause: impl Into<voxelcraft::simulation::damage::Cause>,
+    ) -> f32 {
+        let cause = cause.into();
         // Java's `Player.isInvulnerableTo` for the fall, fire and drowning rules.
         if self.gamerules.damage_immunity().blocks(cause) {
             return 0.0;
@@ -1071,7 +1076,12 @@ impl Game {
     /// [`Game::damage_player_armored`] for an attack that comes from a place,
     /// `toward` being the horizontal direction from the player to its source:
     /// a raised shield facing it stops the hit (and its knockback).
-    pub(crate) fn damage_player_from(&mut self, amount: f32, cause: &str, toward: Option<glam::DVec3>) -> f32 {
+    pub(crate) fn damage_player_from(
+        &mut self,
+        amount: f32,
+        cause: impl Into<voxelcraft::simulation::damage::Cause>,
+        toward: Option<glam::DVec3>,
+    ) -> f32 {
         if let Some(toward) = toward {
             let slot = self.body.actions.selected;
             let hit = self.session.shield_intercept(slot, amount, toward);
@@ -1089,15 +1099,22 @@ impl Game {
     }
 
     /// Hurts the player through their armor (mobs, arrows, blasts, lava),
-    /// wearing it down when the hit lands.
-    pub(crate) fn damage_player_armored(&mut self, amount: f32, cause: &str) -> f32 {
-        let reduced = survival::armor_reduce(
+    /// wearing it down when the hit lands; `#bypasses_armor` damage keeps its
+    /// full amount and wears nothing (`getDamageAfterArmorAbsorb`).
+    pub(crate) fn damage_player_armored(
+        &mut self,
+        amount: f32,
+        cause: impl Into<voxelcraft::simulation::damage::Cause>,
+    ) -> f32 {
+        let cause = cause.into();
+        let (reduced, worn) = voxelcraft::simulation::damage::after_armor(
             amount,
+            cause,
             self.session.inventory.armor_points(),
             self.session.inventory.armor_toughness(),
         );
         let taken = self.damage_player(reduced, cause);
-        if taken > 0.0 && self.session.mode.is_survival() {
+        if taken > 0.0 && worn && self.session.mode.is_survival() {
             for item in self.session.inventory.wear_armor(amount) {
                 self.show_popup(&format!("{} broke", capitalize(item.name())));
                 let sound = crate::audio::sounds::Sound::Break(crate::audio::sounds::Material::Wood);
@@ -1824,7 +1841,7 @@ impl Game {
                 hands::Request::Popup(text) => self.show_popup(&text),
                 hands::Request::Open(used) => self.present_use(used),
                 hands::Request::MagicDamage(amount) => {
-                    self.damage_player(amount, survival::CAUSE_MAGIC);
+                    self.damage_player(amount, voxelcraft::simulation::damage::Cause::MAGIC);
                 }
             }
         }

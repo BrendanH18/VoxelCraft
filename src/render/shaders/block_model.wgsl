@@ -85,7 +85,8 @@ fn transform(pos: vec3<f32>, uv: vec2<f32>, layer: u32, light: vec3<f32>, tint: 
     out.uv = uv;
     out.layer = layer;
     out.light = light;
-    out.tint = tint.rgb;
+    // Tints (an item's `minecraft:dye` colour) are authored in sRGB.
+    out.tint = pow(tint.rgb, vec3<f32>(2.2));
     out.dist = length(pos);
     out.rel = pos;
     return out;

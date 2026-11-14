@@ -1,7 +1,7 @@
 //! Compact render state for replicated mobs (LAN clients draw what the host simulates).
 //! Only fields models read are sent; gameplay state stays on the host.
 use super::nether::Weapon;
-use super::{Mob, MobKind, armor::ArmorKind, villager::Profession};
+use super::{Mob, MobKind, villager::Profession};
 use crate::{color::DyeColor, inventory::StackName, item::Item};
 use glam::DVec3;
 use serde_json::{Value, json};
@@ -17,16 +17,10 @@ fn small(v: &Value) -> Option<u8> {
 impl Mob {
     /// What a remote client needs to draw this mob, beyond its position and pose.
     pub fn look(&self) -> Value {
-        let armor: Vec<i64> = self
-            .armor
-            .iter()
-            .map(|a| a.and_then(|k| ArmorKind::ALL.iter().position(|x| *x == k)).map_or(-1, |i| i as i64))
-            .collect();
         let mut v = json!({
             "wool": DyeColor::ALL.iter().position(|c| *c == self.wool_color).unwrap_or(0),
             "sheared": self.sheared,
-            "armor": armor,
-            "glint": self.armor_glint,
+            "equipment": self.equipment.save(),
             "charged": self.charged,
             "lightning_charged": self.lightning_charged,
             "water_conversion": self.water_conversion.save(),
@@ -191,12 +185,9 @@ impl Mob {
         if let Some(s) = &mut self.mooshroom {
             s.brown = v["mooshroom_brown"] == true;
         }
-        if let Some(armor) = v["armor"].as_array() {
-            for (slot, a) in self.armor.iter_mut().zip(armor) {
-                *slot = a.as_u64().and_then(|i| ArmorKind::ALL.get(i as usize).copied());
-            }
+        if v["equipment"].is_object() {
+            self.equipment = super::equipment::Equipment::load(&v["equipment"], &Value::Null);
         }
-        self.armor_glint = small(&v["glint"]).unwrap_or(0);
         self.charged = v["charged"] == true;
         self.lightning_charged = v["lightning_charged"] == true;
         self.water_conversion = super::lightning::WaterConversion::load(&v["water_conversion"]);

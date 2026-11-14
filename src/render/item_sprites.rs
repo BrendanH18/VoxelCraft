@@ -174,15 +174,21 @@ fn tool(kind: ToolKind, tier: Tier, x: i32, y: i32) -> Option<Rgba> {
     handle(x, y, 1, top)
 }
 
+/// Leather is drawn pale grey: like Java's leather textures it is multiplied
+/// by the `minecraft:dye` tint (`components::dye_tint`), which is the dyed
+/// colour or `#A06540` undyed.
+const LEATHER_BASE: [u8; 3] = [236, 236, 236];
+
 fn armor_colour(material: ArmorMaterial) -> [u8; 3] {
     match material {
-        ArmorMaterial::Leather => [160, 101, 64],
+        ArmorMaterial::Leather => LEATHER_BASE,
         ArmorMaterial::Iron => [206, 206, 206],
         ArmorMaterial::Gold => [246, 208, 62],
         ArmorMaterial::Diamond => [70, 222, 210],
         ArmorMaterial::Netherite => [96, 88, 94],
         ArmorMaterial::Turtle => [58, 140, 83],
         ArmorMaterial::Copper => [200, 118, 86],
+        ArmorMaterial::Chainmail => [168, 168, 174],
     }
 }
 
@@ -206,7 +212,49 @@ fn armor(piece: ArmorPiece, material: ArmorMaterial, x: i32, y: i32) -> Option<R
             }
         }
     };
-    shaded(&shape, x, y, armor_colour(material), 0.06)
+    let p = shaded(&shape, x, y, armor_colour(material), 0.06)?;
+    // Chainmail: open links on every other pixel inside the rim.
+    if material == ArmorMaterial::Chainmail && (x + y) % 2 == 0 && shape(x + 1, y) && shape(x, y + 1) {
+        return Some(tint(armor_colour(material), 0.48));
+    }
+    Some(p)
+}
+
+/// Horse armor seen from the side: a body plate with a neck guard rising to
+/// the right and a trim along its lower edge.
+fn horse_armor(material: ArmorMaterial, x: i32, y: i32) -> Option<Rgba> {
+    let shape = |x: i32, y: i32| {
+        let body = (2..=11).contains(&x) && (7..=12).contains(&y) && !(x == 2 && (y == 7 || y == 12));
+        let neck = (9..=13).contains(&x) && (2..=7).contains(&y) && x + y >= 13 && x - y <= 8;
+        body || neck
+    };
+    let c = armor_colour(material);
+    let p = shaded(&shape, x, y, c, 0.06)?;
+    if y == 11 && (3..=10).contains(&x) {
+        return Some(tint(c, 0.7));
+    }
+    Some(p)
+}
+
+/// Nautilus armor: a curled shell plate with a spiral groove.
+fn nautilus_armor(material: ArmorMaterial, x: i32, y: i32) -> Option<Rgba> {
+    let shape = |x: i32, y: i32| {
+        let (px, py) = centre(x, y);
+        let (dx, dy) = (px - 8.0, py - 8.5);
+        dx * dx + dy * dy <= 6.2 * 6.2 && !(dy > 3.5 && dx < -2.0)
+    };
+    let c = armor_colour(material);
+    let p = shaded(&shape, x, y, c, 0.06)?;
+    let (px, py) = centre(x, y);
+    let (dx, dy) = (px - 8.0, py - 8.5);
+    let r = (dx * dx + dy * dy).sqrt();
+    let a = dy.atan2(dx).rem_euclid(std::f32::consts::TAU);
+    // Groove radius grows by 2 px a turn.
+    let groove = (r - a / std::f32::consts::PI).rem_euclid(2.0);
+    if r > 0.8 && groove < 0.55 {
+        return Some(tint(c, 0.62));
+    }
+    Some(p)
 }
 
 pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
@@ -256,6 +304,8 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
         Sprite::Tool(kind, tier) => tool(kind, tier, x, y),
         Sprite::Weapon(i) => weapon(i, x, y),
         Sprite::Armor(piece, material) => armor(piece, material, x, y),
+        Sprite::HorseArmor(material) => horse_armor(material, x, y),
+        Sprite::NautilusArmor(material) => nautilus_armor(material, x, y),
         Sprite::Minecart(c) => {
             let body = |x: i32, y: i32| (2..=13).contains(&x) && (6..=11).contains(&y);
             let wheel = |x: i32, y: i32| {
@@ -799,6 +849,67 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             let swirl = ((a * 2.0 + r * 0.9).sin() > 0.2) as u8;
             (r <= 5.8).then(|| if swirl == 1 { tint([196, 222, 236], 1.0) } else { tint([150, 176, 210], 0.95) })
         }
+        Sprite::Bundle(c) => {
+            // Original v0.14 icon: a round leather pouch in the bundle's
+            // colour, cinched at the neck by a pale string tie, its frilled
+            // mouth open at the top with the dark inside showing.
+            let pouch = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                ((px - 8.0) / 6.4).powi(2) + ((py - 10.6) / 4.9).powi(2) <= 1.0
+            };
+            let neck = |x: i32, y: i32| (5..=10).contains(&x) && (4..=6).contains(&y);
+            let mouth =
+                |x: i32, y: i32| (4..=11).contains(&x) && (2..=3).contains(&y) && !(y == 2 && (x == 4 || x == 11));
+            if (y == 6 && (5..=10).contains(&x)) || (x == 11 && (6..=8).contains(&y)) || (x == 12 && y == 9) {
+                Some(tint([214, 196, 150], if x == 5 { 1.1 } else { 0.95 }))
+            } else if mouth(x, y) {
+                let inside = y == 3 && (6..=9).contains(&x);
+                Some(if inside { tint(c, 0.38) } else { tint(c, if y == 2 { 1.18 } else { 0.9 }) })
+            } else if neck(x, y) {
+                Some(tint(
+                    c,
+                    if x == 5 {
+                        1.12
+                    } else if x == 10 {
+                        0.66
+                    } else {
+                        0.9
+                    },
+                ))
+            } else if pouch(x, y) {
+                let seam = x == 8 && (9..=14).contains(&y);
+                shaded(&pouch, x, y, c, 0.06).map(|p| if seam { tint(c, 0.74) } else { p })
+            } else {
+                None
+            }
+        }
+        Sprite::Harness(c) => {
+            // Original v0.14 icon: a quilted pad of the dye's colour under a
+            // leather strap carrying two round glass goggles.
+            let pad = |x: i32, y: i32| {
+                let (dx, dy) = ((2 * x - 15).abs(), (2 * y - 19).abs());
+                dx <= 13 && dy <= 9 && dx + dy <= 20
+            };
+            let lens = |x: i32, y: i32, cx: f32| {
+                let (px, py) = centre(x, y);
+                ((px - cx).powi(2) + (py - 3.5).powi(2)).sqrt()
+            };
+            let (left, right) = (lens(x, y, 4.5), lens(x, y, 11.5));
+            let near = left.min(right);
+            if near <= 1.6 {
+                let glint = (x, y) == (4, 3) || (x, y) == (11, 3);
+                Some(if glint { tint([236, 250, 255], 1.0) } else { tint([150, 206, 226], 0.95) })
+            } else if near <= 2.6 {
+                Some(tint([58, 56, 62], 1.0))
+            } else if y == 3 && (1..=14).contains(&x) {
+                Some(tint([128, 78, 44], 0.92 + noise(x, y, 811) * 0.12))
+            } else if pad(x, y) {
+                let quilt = (x == 5 || x == 10) && pad(x, y - 1) && pad(x, y + 1);
+                shaded(&pad, x, y, c, 0.05).map(|p| if quilt { tint(c, 0.8) } else { p })
+            } else {
+                None
+            }
+        }
         Sprite::OminousBottle(level) => {
             let flask = |x: i32, y: i32| {
                 let (px, py) = centre(x, y);
@@ -813,6 +924,16 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             } else {
                 shaded(&flask, x, y, [38, 120, 92], 0.07)
             }
+        }
+        Sprite::ExperienceBottle => {
+            // The drinkable bottle's flask holding swirls of green and sky
+            // blue, with pale sparkles in the liquid.
+            let (px, py) = centre(x, y);
+            let swirl = ((px - 8.0) * 0.9 + (py - 10.0) * 0.6).sin() + ((py - 8.0) * 1.3).cos() * 0.5 > 0.2;
+            let liquid = if swirl { [116, 214, 92] } else { [86, 170, 226] };
+            let sparkle = [(9, 8), (6, 12), (10, 12)].contains(&(x, y));
+            let p = pixel(Sprite::Bottle(Some(liquid)), x as usize, y as usize);
+            if sparkle && p[3] == 255 { Some([236, 255, 214, 255]) } else { (p[3] > 0).then_some(p) }
         }
         Sprite::Brush => {
             if (x - y).abs() <= 1 && (5..=14).contains(&y) {
@@ -1154,6 +1275,50 @@ fn effect_glyph(effect: Effect) -> [&'static str; 8] {
         Effect::BadOmen | Effect::TrialOmen => {
             ["########", "#.####.#", "##.##.##", "###..###", "###..###", "##.##.##", ".######.", "...##..."]
         }
+        // A heart with a plus cut out of it.
+        Effect::HealthBoost => {
+            [".##..##.", "###.####", "##...###", "###.####", ".######.", "..####..", "...##...", "........"]
+        }
+        // A ring with rays: an outline that shines.
+        Effect::Glowing => {
+            ["#..##..#", "..####..", ".##..##.", "##....##", "##....##", ".##..##.", "..####..", "#..##..#"]
+        }
+        // An arrow rising off a ledge.
+        Effect::Levitation => {
+            ["...##...", "..####..", ".##..##.", "##.##.##", "...##...", "...##...", "........", "########"]
+        }
+        // A frame around a lit core.
+        Effect::ConduitPower => {
+            ["#.####.#", "........", "#.#..#.#", "#..##..#", "#..##..#", "#.#..#.#", "........", "#.####.#"]
+        }
+        // A cut gem.
+        Effect::HeroOfTheVillage => {
+            ["...##...", "..####..", ".##.###.", "##.#####", "########", ".######.", "..####..", "...##..."]
+        }
+        // The omen pennant, crossed.
+        Effect::RaidOmen => {
+            ["########", "##.##.##", "###..###", "###..###", "##.##.##", "#.####.#", ".######.", "...##..."]
+        }
+        // A gust curling in on itself.
+        Effect::WindCharged => {
+            [".#####..", "#.....#.", "#.###..#", "#.#..#.#", "#.#.##.#", "#..#...#", ".#....#.", "..####.."]
+        }
+        // A web.
+        Effect::Weaving => {
+            ["#..##..#", ".#.##.#.", "..####..", "########", "########", "..####..", ".#.##.#.", "#..##..#"]
+        }
+        // A dripping cube with a face.
+        Effect::Oozing => {
+            ["########", "#......#", "#.##.#.#", "#......#", "#...##.#", "#......#", "########", "..#..#.."]
+        }
+        // A segmented crawling bug.
+        Effect::Infested => {
+            ["........", ".#.#.#..", "######..", "########", "######.#", ".#.#.#..", "........", "........"]
+        }
+        // A spiral shell trailing a bubble.
+        Effect::BreathOfTheNautilus => {
+            ["......#.", ".####...", "#....#.#", "#.##..#.", "#.#.#.#.", "#..#..#.", ".#...#..", "..###..."]
+        }
     }
 }
 
@@ -1216,6 +1381,31 @@ mod tests {
                 (0..16).flat_map(|y| (0..16).map(move |x| (x, y))).filter(|&(x, y)| pixel(sprite, x, y)[3] > 0);
             let count = opaque.clone().count();
             assert!(count > 12, "{} draws only {count} pixels", item.name());
+        }
+    }
+
+    /// Every registered effect has an icon, tinted with its own colour, and
+    /// the effects registered in v0.14 each have a silhouette of their own.
+    #[test]
+    fn every_effect_icon_draws_in_its_colour() {
+        let mask = |e: Effect| {
+            (0..16)
+                .flat_map(|y| (0..16).map(move |x| (x, y)))
+                .filter(|&(x, y)| effect_glyph(e)[y / 2].as_bytes()[x / 2] == b'#')
+                .collect::<Vec<_>>()
+        };
+        for effect in Effect::ALL {
+            let lit: Vec<_> = mask(effect);
+            assert!(lit.len() > 40, "{} draws only {} pixels", effect.id(), lit.len());
+            let top = effect_pixel(effect, lit[0].0, lit[0].1);
+            let c = effect.colour();
+            assert!(top[3] == 255 && (0..3).all(|i| top[i] >= c[i]), "{} is not lit in its colour", effect.id());
+        }
+        let first_new = Effect::HealthBoost as usize;
+        for &new in &Effect::ALL[first_new..] {
+            for &other in Effect::ALL.iter().filter(|&&o| o != new) {
+                assert_ne!(mask(new), mask(other), "{} reuses the icon of {}", new.id(), other.id());
+            }
         }
     }
 

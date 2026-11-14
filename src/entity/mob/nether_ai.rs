@@ -66,6 +66,7 @@ impl Mob {
         n.celebrate_left = (n.celebrate_left - dt).max(0.0);
         n.dancing &= n.celebrate_left > 0.0;
         n.flee_left = (n.flee_left - dt).max(0.0);
+        n.universal = (n.universal - dt).max(0.0);
         n.foe_left -= dt;
         if n.foe_left <= 0.0 {
             n.foe = None;
@@ -235,7 +236,7 @@ impl Mob {
                     events.push(EntityEvent::Shoot {
                         from: eye + dir * 0.5,
                         target: aim,
-                        cause: "was shot by a piglin",
+                        cause: crate::simulation::damage::Cause::PIGLIN_ARROW,
                         shooter: self.uid,
                     });
                     events.push(EntityEvent::Sound { sound: MobSound::Bow, pos: eye });
@@ -350,11 +351,17 @@ impl Mob {
     /// Java's `knockback_resistance` attribute (`combat.json`): 1 for iron golems,
     /// 0.6 (`0.6f`) for hoglins and zoglins.
     pub(crate) fn knockback_resistance(&self) -> f64 {
-        match self.kind {
+        let base = match self.kind {
             MobKind::IronGolem | MobKind::Warden => 1.0,
             MobKind::Hoglin | MobKind::Zoglin => 0.6000000238418579,
             _ => 0.0,
-        }
+        };
+        // Netherite horse armor's BODY modifier adds 0.1.
+        let body = self.mount.as_ref().and_then(|s| s.slots[1]);
+        let armor = body.map_or(0.0, |s| f64::from(crate::entity::mounts::armor_knockback_resistance(s.item)));
+        // A zombie's spawn `random_spawn_bonus`, all `ADD_VALUE`, within the attribute's range.
+        let (lo, hi) = crate::entity::zombie::KNOCKBACK_RESISTANCE_RANGE;
+        (base + armor + self.attributes().knockback_bonus).clamp(lo, hi)
     }
 
     /// Movement multiplier: a strider out of lava is 34% slower (Java's
@@ -531,7 +538,7 @@ mod tests {
             assert!(elapsed < delay + dt * 2.0, "the shot fires at its sampled threshold");
         }
         assert!(elapsed >= delay && elapsed < delay + dt);
-        assert!(matches!(events[0], EntityEvent::Shoot { cause: "was shot by a piglin", .. }));
+        assert!(matches!(events[0], EntityEvent::Shoot { cause: crate::simulation::damage::Cause::PIGLIN_ARROW, .. }));
         assert_eq!(mob.nether.as_ref().unwrap().charge, 0.0);
 
         // Movement while sight was lost may use RNG; compare from this point.

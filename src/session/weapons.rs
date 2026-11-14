@@ -471,7 +471,7 @@ mod tests {
         let mut s = session(Stack::new(weapons::MACE, 1));
         e.spawn(MobKind::Zombie, s.player.pos + DVec3::new(2.0, 0.0, 0.0));
         e.spawn(MobKind::Zombie, s.player.pos + DVec3::new(2.0, 0.0, 2.5));
-        e.mobs[0].armor = Default::default();
+        e.mobs[0].equipment = Default::default();
         charge(&mut s, 40);
         let y = s.player.pos.y;
         s.player.on_ground = false;
@@ -519,8 +519,8 @@ mod tests {
         let mut s = session(spear);
         e.spawn(MobKind::Zombie, s.player.pos + DVec3::new(1.5, 0.0, 0.0));
         e.spawn(MobKind::Zombie, s.player.pos + DVec3::new(4.0, 0.0, 0.0));
-        e.mobs[0].armor = Default::default();
-        e.mobs[1].armor = Default::default();
+        e.mobs[0].equipment = Default::default();
+        e.mobs[1].equipment = Default::default();
         // An uncharged spear refuses to attack at all.
         assert!(s.attack(0, &w, &mut e, false).is_err());
         charge(&mut s, 25);
@@ -542,7 +542,7 @@ mod tests {
         let mut e = Entities::new(5);
         let mut s = session(Stack::new(weapons::spear(Tier::Wood), 1));
         e.spawn(MobKind::Zombie, s.player.pos + DVec3::new(3.0, 0.0, 0.0));
-        e.mobs[0].armor = Default::default();
+        e.mobs[0].equipment = Default::default();
         let start = s.start_draw(0, &w, &mut e).unwrap();
         assert!(matches!(start.ranged, Ranged::Charging { cue: Some(Cue::SpearWoodUse), .. }));
         assert!(!s.using_item(), "a spear charge doesn't slow the player");

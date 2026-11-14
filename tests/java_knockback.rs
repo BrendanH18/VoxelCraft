@@ -372,10 +372,12 @@ fn charge(s: &mut PlayerSession, ticks: u32) {
     }
 }
 
-/// A standing mob (on the ground, at rest) at `x`, `z`.
+/// A standing mob (on the ground, at rest) at `x`, `z`, with its type's base
+/// knockback resistance (a zombie's random spawn bonus is cleared).
 fn spawn(e: &mut Entities, kind: MobKind, x: f64, z: f64) -> usize {
     e.spawn(kind, DVec3::new(x, 145.0, z));
     let i = e.mobs.len() - 1;
+    e.mobs[i].attrs.knockback_bonus = 0.0;
     e.mobs[i].on_ground = true;
     e.mobs[i].vel = DVec3::ZERO;
     i
@@ -730,7 +732,11 @@ fn a_sweep_angers_zombified_piglins_like_any_player_hit() {
     charge(&mut s, 20);
     s.attack(0, &w, &mut e, false).unwrap();
     assert!(lost_kind(&e, swept) > 0.0, "the piglin was swept");
+    // `HurtByTargetGoal` and its alert act on the mobs' next update.
+    let ctx = Ctx { players: vec![MobTarget::new(PlayerId(3), s.player.pos, true)], ..night(DVec3::ZERO) };
+    e.update(0.05, &w, &ctx);
     assert!(e.mobs[far].is_provoked(), "a swept zombified piglin angers its neighbours");
+    assert_eq!(e.mobs[far].anger_target(), Some(PlayerId(3)), "at the player who swept it");
 }
 
 #[test]

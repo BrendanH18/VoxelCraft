@@ -1,11 +1,13 @@
-VoxelCraft 0.16.0 brings three versions at once. **Structures:** villages,
+VoxelCraft 0.14.0 is the biggest update yet: three releases' worth of content at once. **Structures:** villages,
 pillager outposts, bastions, fossils, desert wells, ruined portals, trail
 ruins, buried treasure and explorer maps, all rebuilt for new worlds.
 **Wildlife:** lightning, bees, frogs, pandas, polar bears, armadillos,
 copper golems, the creaking, allays, sniffers, ocean ruins and more.
 **Deep dark and trials:** ancient cities and the warden, trial chambers
 and the breeze, the mace, tridents, spears and a jukebox with every
-music disc. If you have 0.10.0 or later, the title screen offers this
+music disc. **And more:** mobs that wear and drop gear, zombie
+reinforcements, endermites, chainmail, bundles, harnesses, the Bottle
+o' Enchanting, dyed leather and eleven more status effects. If you have 0.10.0 or later, the title screen offers this
 update; choose **Update and Restart**. If you're coming from 0.9.0 or
 earlier, install it by hand once, as below, and it updates itself from
 then on.
@@ -16,17 +18,17 @@ contains no Minecraft code or assets.
 
 Choose your download:
 
-- **Windows 10/11 x64:** `VoxelCraft-0.16.0-windows-x64-Setup.exe`
-- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.16.0-macos-apple-silicon.dmg`
+- **Windows 10/11 x64:** `VoxelCraft-0.14.0-windows-x64-Setup.exe`
+- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.14.0-macos-apple-silicon.dmg`
 
-There was no separate 0.14.0 or 0.15.0 release: their content first ships
-here.
+This is the first release since 0.13.0, and it carries what was planned
+as three releases.
 
-## What's new in 0.16.0
+## What's new in 0.14.0
 
 ### Structures (new worlds only)
 
-Worlds created in 0.16.0 use a new structure generator. Structures are
+Worlds created in 0.14.0 use a new structure generator. Structures are
 placed where Java places them, from Java's pools, and filled with Java's
 loot, but the buildings are VoxelCraft's own designs, so a Java seed
 won't give you the same village.
@@ -132,6 +134,43 @@ won't give you the same village.
 - Nine villager and wandering-trader offers that named the wrong item
   are back.
 
+### Mob gear and new items
+
+- **Mobs wear and drop their gear.** Every mob has Java's eight equipment
+  slots with Java's drop chances: zombies can spawn holding an iron sword,
+  spear or shovel, armor is enchanted on harder difficulties, Looting raises
+  the odds, and what a mob picked up or was given is always dropped.
+- **Zombie reinforcements.** Hurt zombies, husks, drowned and zombie
+  villagers can call others to help, and about one in twenty is a leader
+  with more health that can break doors. Every mob rolls Java's follow-range
+  bonus.
+- **Endermites** sometimes appear where an ender pearl lands, despawn after
+  two minutes, and are hunted by endermen.
+- **Chainmail armor** from armorer trades, **copper and netherite horse
+  armor**, and **nautilus armor** items (nautiluses come later).
+- **Bundles** in seventeen colours, with Java's weight rule, village loot
+  and dyeing. **Harnesses** in sixteen colours can be crafted and dyed;
+  happy ghasts to wear them come later.
+- **Bottle o' Enchanting**: throw it for experience, fire it from a
+  dispenser, buy it from clerics or find it in chests.
+- **Dyed leather armor**: mix dyes on leather armor at a crafting table and
+  wash it off in a cauldron.
+
+### Effects, damage and enchantments
+
+- **Eleven more status effects**: Health Boost, Glowing, Levitation,
+  Conduit Power, Hero of the Village, Raid Omen, Wind Charged, Weaving,
+  Oozing, Infested and Breath of the Nautilus, with `/effect` support.
+  Effects can now be infinite, ambient or hidden, and stack the way Java's
+  do. Some (such as Raid Omen) wait for the features that use them.
+- **Damage types** follow Java's 51 types and their tags, so armor,
+  protection enchantments, Fire Resistance and the damage game rules apply
+  to exactly the damage they do in Java, and death messages match.
+- All of Java's **enchantment definitions**, with their item and exclusivity
+  rules (Soul Speed still isn't in).
+- The `forgive_dead_players` and `universal_anger` game rules now work for
+  every neutral mob.
+
 ### Performance
 
 - Mobs are drawn in one batch on the GPU, and crowded scenes with mobs
@@ -199,7 +238,7 @@ new giant trees.
   the shield for five seconds.
 - **The totem of undying**, held in either hand, saves you from death,
   except in the void or from `/kill`. There's no way to get one in
-  survival yet: evokers come with raids in 0.17.
+  survival yet: evokers come with raids in 0.15.
 
 ### Fire
 
@@ -364,7 +403,7 @@ new giant trees.
 - Structures are VoxelCraft's own designs, not Java's buildings. Villages
   don't yet have profession buildings with fixed job sites, decorations,
   animals in pens or abandoned villages, and trial chambers and ancient
-  cities have fewer room kinds than Java's; these come in 0.17. Water from
+  cities have fewer room kinds than Java's; these come in 0.15. Water from
   a nearby cave can pour into an ancient city.
 - On steep ground some villages and outposts are smaller or don't appear,
   because a building is left out rather than stood on a pillar.
@@ -376,14 +415,14 @@ new giant trees.
   sherd patterns.
 - Brushing has no sounds of its own, and other LAN players don't see the
   find rising out of the block.
-- Raids, vindicators, evokers, ravagers, woodland mansions, happy ghasts and nautiluses aren't in
-  yet; they come in 0.17. Mobs don't pick up or hold your gear, and
-  chainmail armor can't be obtained. Lecterns, looms, cartography tables and
+- Raids, vindicators, evokers, ravagers, woodland mansions, happy ghasts
+  and nautiluses aren't in yet; they come in 0.15. Mobs don't pick up
+  items from the ground yet. Lecterns, looms, cartography tables and
   stonecutters are decorative, so maps can't be scaled, copied or locked,
   and item frames don't show map images.
-- The Glowing, Levitation, Health Boost, Hero of the Village, Raid Omen,
-  Wind Charged, Weaving, Oozing and Infested effects aren't in, so the
-  potions that need them and some ominous-trial drops are missing.
+- The potions of Weaving, Oozing, Infested and Wind Charging aren't in
+  yet, and some of the new effects (Raid Omen, Hero of the Village, Conduit
+  Power) wait for the raids and blocks that give them.
 - Music discs can be heard 24 blocks away (Java: 64), and other music
   doesn't fade while a disc plays.
 - Some Java options aren't in yet because nothing in the game uses them:
@@ -420,11 +459,11 @@ new giant trees.
 - The Ender Dragon can't be respawned, and the End has no chorus trees, cities,
   shulkers or elytra. The Wither can't be summoned yet.
 - Commands accept `@s` and `@p` only.
-- Bells don't swing, horse armor can't be dyed, strider jockeys don't spawn,
+- Bells don't swing, strider jockeys don't spawn,
   boats ignore currents, and minecarts can't carry mobs across a save.
 - Streaming in new terrain quickly can still cause an occasional long frame,
   and a scene crowded with mobs and the new blocks can dip below the 240 FPS
-  target on an Apple M5; that work is planned for 0.20.
+  target on an Apple M5; that work is planned for 0.18.
 - World generation is VoxelCraft's own: worlds aren't seed-compatible with
   Minecraft.
 
@@ -432,10 +471,10 @@ new giant trees.
 
 Players on 0.10.0 or later get this version from the title screen. Install
 it by hand if you're on 0.9.0 or earlier; later versions then arrive in game.
-Worlds and options from 0.13.0 and earlier load in 0.16.0 and keep the
+Worlds and options from 0.13.0 and earlier load in 0.14.0 and keep the
 terrain and structures they were created with; the new structures, creaking
-hearts and eyeblossom patches appear only in worlds created in 0.16.0. The
-new mobs, lightning, crops and blocks work in every world. Once 0.16.0 has
+hearts and eyeblossom patches appear only in worlds created in 0.14.0. The
+new mobs, lightning, crops and blocks work in every world. Once 0.14.0 has
 saved a world, don't open it in an older version: older versions can't read
 chunks holding the new blocks and lose the new mobs and items. Back up your
 worlds before upgrading from 0.8.0, and don't open a world saved by 0.9.0

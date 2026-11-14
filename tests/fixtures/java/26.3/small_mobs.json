@@ -1,0 +1,175 @@
+{
+  "bane_of_arthropods": {
+    "damage_base": 2.5,
+    "damage_per_level_above_first": 2.5,
+    "max_level": 5,
+    "requires_tag": "sensitive_to_bane_of_arthropods",
+    "slowness": {
+      "direct_only": true,
+      "effect": "slowness",
+      "max_amplifier": 3.0,
+      "max_duration_base_seconds": 1.5,
+      "max_duration_per_level_above_first": 0.5,
+      "min_amplifier": 3.0,
+      "min_duration_seconds": 1.5
+    }
+  },
+  "enderman_targets_endermites": {
+    "attack_damage": 7.0,
+    "follow_range": 64.0,
+    "must_reach": false,
+    "must_see": true,
+    "priority": 3
+  },
+  "endermite": {
+    "attributes": {
+      "attack_damage": 2.0,
+      "follow_range": 16.0,
+      "max_health": 8.0,
+      "movement_speed": 0.25
+    },
+    "entity_type": {
+      "allowed_in_peaceful": false,
+      "category": "monster",
+      "eye_height": 0.13,
+      "height": 0.3,
+      "width": 0.4
+    },
+    "experience": 3,
+    "goals": [
+      {
+        "alert_others": false,
+        "args": [],
+        "goal": "FloatGoal",
+        "priority": 1,
+        "selector": "goalSelector"
+      },
+      {
+        "alert_others": false,
+        "args": [],
+        "goal": "ClimbOnTopOfPowderSnowGoal",
+        "priority": 1,
+        "selector": "goalSelector"
+      },
+      {
+        "alert_others": false,
+        "args": [
+          1.0,
+          0
+        ],
+        "goal": "MeleeAttackGoal",
+        "priority": 2,
+        "selector": "goalSelector"
+      },
+      {
+        "alert_others": false,
+        "args": [
+          1.0
+        ],
+        "goal": "WaterAvoidingRandomStrollGoal",
+        "priority": 3,
+        "selector": "goalSelector"
+      },
+      {
+        "alert_others": false,
+        "args": [
+          "class:Player",
+          8.0
+        ],
+        "goal": "LookAtPlayerGoal",
+        "priority": 7,
+        "selector": "goalSelector"
+      },
+      {
+        "alert_others": false,
+        "args": [],
+        "goal": "RandomLookAroundGoal",
+        "priority": 8,
+        "selector": "goalSelector"
+      },
+      {
+        "alert_others": true,
+        "args": [
+          0
+        ],
+        "goal": "HurtByTargetGoal",
+        "priority": 1,
+        "selector": "targetSelector"
+      },
+      {
+        "alert_others": false,
+        "args": [
+          "class:Player",
+          1
+        ],
+        "goal": "NearestAttackableTargetGoal",
+        "priority": 2,
+        "selector": "targetSelector"
+      }
+    ],
+    "id": "endermite",
+    "life_counts_unless_persistent": true,
+    "loot_table": {
+      "pools": 0,
+      "type": "entity"
+    },
+    "max_life": 2400,
+    "movement_emission": "events",
+    "particle_spread_scale": 0.5,
+    "portal_particles_per_tick": 2,
+    "save_key": "Lifetime",
+    "sounds": {
+      "ambient": "entity.endermite.ambient",
+      "death": "entity.endermite.death",
+      "hurt": "entity.endermite.hurt",
+      "step": "entity.endermite.step"
+    },
+    "spawn_rule": {
+      "base": "check_any_light_monster_spawn_rules",
+      "no_player_within": 5.0,
+      "spawner_skips_player_check": true
+    },
+    "step_volume": 0.15
+  },
+  "entity_type_tags": {
+    "arthropod": [
+      "bee",
+      "cave_spider",
+      "endermite",
+      "silverfish",
+      "spider"
+    ],
+    "sensitive_to_bane_of_arthropods": [
+      "bee",
+      "cave_spider",
+      "endermite",
+      "silverfish",
+      "spider"
+    ]
+  },
+  "pearl_endermite": {
+    "at": "owner_position_before_teleport",
+    "before_teleport": true,
+    "chance": 0.05,
+    "excluded_difficulty": "peaceful",
+    "owner": "server_player",
+    "requires_spawning_monsters": true,
+    "rotation": "owner",
+    "spawn_reason": "triggered"
+  },
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "net.minecraft.world.entity.monster.Endermite",
+    "net.minecraft.world.entity.Mob.createMobAttributes",
+    "net.minecraft.world.entity.monster.Monster.createMonsterAttributes",
+    "net.minecraft.world.entity.EntityTypes (ENDERMITE)",
+    "net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownEnderpearl.onHit",
+    "net.minecraft.world.entity.monster.Enderman.registerGoals",
+    "net.minecraft.sounds.SoundEvents",
+    "data/minecraft/loot_table/entities/endermite.json",
+    "data/minecraft/tags/entity_type/arthropod.json",
+    "data/minecraft/tags/entity_type/sensitive_to_bane_of_arthropods.json",
+    "data/minecraft/enchantment/bane_of_arthropods.json"
+  ]
+}
