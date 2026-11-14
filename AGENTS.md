@@ -47,18 +47,16 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
   worktree, explicit scope and reserved IDs; delegated agents do not delegate further.
 - Run at most four agents at once (owner, 2026-10-17): the owner's machine has
   16 GB of RAM. Queue further work until a slot frees.
-- Extra hands-on tests (running the game, playing it and looking at the
-  result through computer use) run on Codex with GPT-6.1 Terra
-  (`gpt-6.1-terra`), never Sol, at whatever reasoning effort fits the task
-  (owner, 2026-10-31). These runs are agent evidence, not the owner's play.
+- No step requires an agent to play the game through computer use (owner,
+  2026-11-14). The owner's own play is the hands-on evidence, and nothing
+  waits for an agent's hands-on pass.
 - Build in the cloud, not on the owner's Mac (owner, 2026-11-05).
   `scripts/remote-check.sh` copies the worktree, uncommitted edits included,
   to a fresh Namespace Linux instance and runs clippy and the tests there
   (`--full` adds the `--no-default-features` checks; `-- CMD` runs any
   command), with dependencies cached on a shared Namespace volume. Every run
   has its own instance, so agents don't wait on each other. Build locally
-  only to run the game: screenshots, scripted scenes, hands-on tests and
-  benchmarks, whose frame-time gates are measured on the M5. When `nsc`
+  only to run the game: screenshots, scripted scenes and benchmarks, whose frame-time gates are measured on the M5. When `nsc`
   isn't installed or logged in, fall back to the local rules below. See
   [remote checks](docs/development.md#remote-checks).
 - Agents must not each build the project (owner, 2026-10-17). Agent worktrees
@@ -120,10 +118,10 @@ Keep documentation and test evidence aligned with the delivered behavior.
 - Before a version is offered to the owner (2026-11-09 audit; details in
   [roadmap §7](docs/roadmap.md#7-feature-completion-and-release-policy) and
   [§6.1](docs/roadmap.md#61-reference-configuration-and-frame-time-gate)):
-  an agent launches the merged build and looks at every new structure, mob,
-  block and screen, a frame-time run is recorded at that commit, and the
-  [requirement inventory](docs/requirements.md) is refreshed. At most one
-  version waits for the owner's play while the next is built.
+  a frame-time run is recorded at that commit and the
+  [requirement inventory](docs/requirements.md) is refreshed. No agent
+  play-through comes first: the owner plays it (owner, 2026-11-14). At most
+  one version waits for the owner's play while the next is built.
 - Every Java 26.3 block, item and potion the game lacks is listed with the
   release that owns it in `tests/fixtures/java/26.3/registry_gaps.json`
   (2026-11-09 audit). `cargo test` fails when that list is out of date or

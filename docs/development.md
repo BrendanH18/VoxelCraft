@@ -230,8 +230,9 @@ lists the poses it used.
 
 ## Hands-on runs
 
-An agent that plays the game through computer use (AGENTS.md names the
-model) needs two things the scripted scenes don't. The game has to be an
+No release or check requires these (owner, 2026-11-14): the owner's play is
+the hands-on evidence. If an agent is asked to play the game through
+computer use anyway, it needs two things the scripted scenes don't. The game has to be an
 app: a bare `target/release/voxelcraft` isn't listed, so wrap the build with
 `scripts/test-app.sh BINARY`, which makes an ad-hoc signed
 `target/hands-on/VoxelCraft Test.app` with its own bundle identifier, and
