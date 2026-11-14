@@ -660,7 +660,8 @@ owed. Work items:
    work stays near 1 ms. *Cause found (2026-11-14,
    [record](verification/2026-11-14-drawable-wait.md)):* with GPU timing,
    frames that wait for a drawable have about 2 ms of render-pass GPU
-   work, and offscreen frames, which wait for the GPU, stay under 3 ms, so
+   work, and the slowest 1% of offscreen frames, which wait for the GPU,
+   averaged 2.7–3.3 ms in a repeated pass, so
    the macOS compositor most likely holds the drawables. Frame latency 1
    improves but doesn't fix it and exclusive fullscreen is pinned to
    120 FPS. Offscreen, the game's own frames reach a 1% low of 307–368 FPS

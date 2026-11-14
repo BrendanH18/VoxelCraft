@@ -45,8 +45,10 @@ Cells are 1% low FPS / p99 ms (average FPS).
   the frame's own render passes, recorded after its acquire, so on their own
   they don't show when earlier frames' GPU work finished. The offscreen runs
   below do: each frame there waits for the GPU to finish the frame two back,
-  the same depth as three drawables, and their slowest 1% still take under
-  3 ms. So GPU work is not what holds a drawable for 8 ms. The window
+  the same depth as three drawables, and in the second current-build pass
+  their slowest 1% averaged 2.7–3.3 ms (the first pass had building at
+  7.7 ms and automation at 4.4 ms, outliers that didn't repeat). So GPU
+  work is not what holds a drawable for 8.4–8.6 ms on average. The window
   compositor is the likely holder, though nothing here observes it directly.
 - Frame latency 1 (two drawables instead of three) improved these single
   runs, from a 1% low of 52 FPS to 72 and 101 and from a p99 of 17.6 ms to
