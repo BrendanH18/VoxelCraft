@@ -8,6 +8,12 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
 - Read [the current roadmap](docs/roadmap.md) before choosing work, and take it
   from the earliest unreleased version in its [release plan](docs/roadmap.md#release-plan).
   Build a faithful modern Minecraft Java single-player game; multiplayer follows 1.0.
+- Releases were renumbered (owner, 2026-11-13): v0.14 carries what was
+  planned as v0.14, v0.15 and v0.16 plus build-5000 wave 1, and later
+  versions moved down two (v0.15 villages and raids through v0.18 polish and
+  performance, then 1.0). Records, commits and code comments from before that
+  date use the old numbers. The 5,000-feature target was dropped; wave 1 was
+  the only wave. The [release plan](docs/roadmap.md#release-plan) is current.
 - Match the selected Java reference behavior, including generation and structure
   layouts. Record sources and differences; do not substitute approximate behavior
   without an explicit scope decision.
@@ -56,8 +62,9 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
   (`--full` adds the `--no-default-features` checks; `-- CMD` runs any
   command), with dependencies cached on a shared Namespace volume. Every run
   has its own instance, so agents don't wait on each other. Build locally
-  only to run the game: screenshots, scripted scenes and benchmarks, whose frame-time gates are measured on the M5. When `nsc`
-  isn't installed or logged in, fall back to the local rules below. See
+  only to run the game: screenshots, scripted scenes and benchmarks, whose
+  frame-time gate is measured on the reference M5. When `nsc` isn't
+  installed or logged in, fall back to the local rules below. See
   [remote checks](docs/development.md#remote-checks).
 - Agents must not each build the project (owner, 2026-10-17). Agent worktrees
   share one cargo target directory, so dependencies build once and builds take
@@ -122,6 +129,13 @@ Keep documentation and test evidence aligned with the delivered behavior.
   [requirement inventory](docs/requirements.md) is refreshed. No agent
   play-through comes first: the owner plays it (owner, 2026-11-14). At most
   one version waits for the owner's play while the next is built.
+- The frame-time gate is 120 FPS on the game's own frames (owner,
+  2026-11-14; it was 240 FPS windowed before): a 1% low of at least 120 FPS
+  and p99 at most 8.33 ms in every scene of the offscreen suite
+  (`tools/benchmark_scenes.py --offscreen`). The windowed suite still runs
+  each release and fails only on a frame over 50 ms. Older records judge
+  runs by the old gate ([§6.1](docs/roadmap.md#61-reference-configuration-and-frame-time-gate),
+  [drawable wait](docs/verification/2026-11-14-drawable-wait.md)).
 - Every Java 26.3 block, item and potion the game lacks is listed with the
   release that owns it in `tests/fixtures/java/26.3/registry_gaps.json`
   (2026-11-09 audit). `cargo test` fails when that list is out of date or

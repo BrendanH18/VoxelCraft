@@ -461,9 +461,8 @@ new giant trees.
 - Commands accept `@s` and `@p` only.
 - Bells don't swing, strider jockeys don't spawn,
   boats ignore currents, and minecarts can't carry mobs across a save.
-- Streaming in new terrain quickly can still cause an occasional long frame,
-  and a scene crowded with mobs and the new blocks can dip below the 240 FPS
-  target on an Apple M5; that work is planned for 0.18.
+- Streaming in new terrain quickly can still cause an occasional long frame
+  on an Apple M5; that work is planned for 0.18.
 - World generation is VoxelCraft's own: worlds aren't seed-compatible with
   Minecraft.
 

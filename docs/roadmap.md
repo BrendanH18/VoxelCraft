@@ -11,8 +11,10 @@ Match Java's mechanics, terrain generation and structure layouts as exactly
 as practical. Multiplayer follows the single-player 1.0 milestone.
 
 Reference hardware is an M5 MacBook Pro. The performance requirement
-is **240 FPS minimum at 1920 x 1080 physical pixels and a 256-block view
-distance** (Java's 16 chunks; VoxelCraft's current `--rd 8`). Also measure
+is **120 FPS minimum at 1920 x 1080 physical pixels and a 256-block view
+distance** (Java's 16 chunks; VoxelCraft's current `--rd 8`), measured on
+the game's own frames (owner, 2026-11-14; it was 240 FPS before, see
+[§6.1](#61-reference-configuration-and-frame-time-gate)). Also measure
 native-resolution performance; a native-resolution numerical gate is not yet
 specified.
 
@@ -576,7 +578,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.15 | Villages and raids | Close M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M4 exit checks. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): the remaining Java 26.3 mobs (happy ghasts, nautiluses, camel husks, parched), mobs holding and picking up equipment, chainmail, books, bundles, spyglasses, armor trims, the remaining status effects and potions, and the village template catalogue | Planned. Part of its list was built early by [build-5000 wave 1](verification/2026-11-12-build-5000/wave-1.md) and ships in v0.14 (see the [assigned content](#content-assigned-by-the-2026-11-09-audit)) |
 | v0.16 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): poplar, cinnabar and sulfur with their terrain and the sulfur cube, abandoned camps, mob heads, infested blocks, nether gold ore, conduits, and the reassessment of dungeons, mineshafts, strongholds, shipwrecks and monuments | Planned |
 | v0.17 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload. Added by the 2026-11-09 audit: the furnace minecart | Planned |
-| v0.18 | Polish and performance | M7: UX, §6 | Typography/contrast, material and mob art, inventory/recipe navigation, HUD/workstations, title/world identity, atmosphere and accessibility ([scope](#v020-scope-presentation-and-performance)); subtitles, asset and sound review in play (including the v0.12 blocks' own sounds), and menu fixes found since v0.11; the 240 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, v0.11's menu and title frame-time run and v0.12's `materials` runs, which moved here unverified ([v0.12 profile](verification/2026-10-29-v0.12-finish.md#frame-time)). The per-frame entity model rebuild that profile found was removed on 2026-11-09 ([record](verification/2026-11-09-entity-frame-time.md)); the streaming route's main-thread terrain column rebuilds from mob biome queries were addressed in the [streaming follow-up](verification/2026-11-09-streaming-biomes-and-gen07.md); valid windowed gate runs, the remaining tick work and per-frame sign text are still owed | Planned; presentation scope expanded by the owner on 2026-11-05. Each release now records its own frame-time run ([§6.1](#61-reference-configuration-and-frame-time-gate)), so what stays here is the final gate, not every release's first measurement |
+| v0.18 | Polish and performance | M7: UX, §6 | Typography/contrast, material and mob art, inventory/recipe navigation, HUD/workstations, title/world identity, atmosphere and accessibility ([scope](#v020-scope-presentation-and-performance)); subtitles, asset and sound review in play (including the v0.12 blocks' own sounds), and menu fixes found since v0.11; the 120 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, v0.11's menu and title frame-time run and v0.12's `materials` runs, which moved here unverified ([v0.12 profile](verification/2026-10-29-v0.12-finish.md#frame-time)). The per-frame entity model rebuild that profile found was removed on 2026-11-09 ([record](verification/2026-11-09-entity-frame-time.md)); the streaming route's main-thread terrain column rebuilds from mob biome queries were addressed in the [streaming follow-up](verification/2026-11-09-streaming-biomes-and-gen07.md); valid windowed gate runs, the remaining tick work and per-frame sign text are still owed | Planned; presentation scope expanded by the owner on 2026-11-05. Each release now records its own frame-time run ([§6.1](#61-reference-configuration-and-frame-time-gate)), so what stays here is the final gate, not every release's first measurement |
 | v1.0 | Acceptance | M7 exit, §8 | Every mandatory row Verified; fresh-world and long-session playthroughs; save-compatibility policy; installer and update checks; current stable Java scope reconciled | Planned |
 
 Notes:
@@ -734,15 +736,17 @@ owed. Work items:
    Three valid windowed runs of every scene on AC power with the machine
    idle (PERF-02/03), including investigation of any remaining streaming
    outliers. The 2026-11-11 run has three valid runs of every scene and
-   fails the 240 FPS gate ([record](verification/2026-11-11-gate-run.md#scene-run));
+   fails what was then a 240 FPS gate ([record](verification/2026-11-11-gate-run.md#scene-run));
    the drawable wait it found needs fixing or an owner decision before
    the tag. The [2026-11-14 record](verification/2026-11-14-drawable-wait.md)
    ran the experiment matrix and profiled the steady-state drop: the wait
    is the macOS compositor's and can't be removed through wgpu, and the
-   game's own frames pass offscreen. What remains is the owner's decision
-   (tag v0.14 under §6.1's allowance for a measured miss, and whether the
-   gate should measure the game's own frame time) and a full windowed run
-   of every scene on the idle M5 at the commit to be tagged. ([FE-02](#14-what-can-follow-10) was approved by the owner on
+   game's own frames pass offscreen. The owner then set the gate to 120 FPS
+   on the game's own frames, measured offscreen, with the windowed run
+   failing only on stalls over 50 ms (2026-11-14,
+   [§6.1](#61-reference-configuration-and-frame-time-gate)). What remains is
+   both suites (offscreen and windowed, three runs of every scene) on the
+   idle M5 at the commit to be tagged. ([FE-02](#14-what-can-follow-10) was approved by the owner on
    2026-11-10.)
    Ancient cities and trial chambers now run in the GEN-07 order corpus
    ([record](verification/2026-11-09-streaming-biomes-and-gen07.md)).
@@ -806,7 +810,7 @@ adding further content.
 Exit: every core requirement has a state and acceptance cases; no unresolved
 "modern," "basic" or "done" labels hide its scope. The performance suite runs
 on the reference machine and records a reproducible baseline, whether or not
-that baseline yet reaches 240 FPS.
+that baseline yet passes the gate.
 
 ### M1 — Correct single-player foundations
 
@@ -1478,10 +1482,11 @@ underwater and Nether benchmark fixtures under §6.2 before atmospheric tuning;
 those scenes are not in the current runner. Update the title scene for the
 panorama and compare its cost against the old sky-only baseline. Record
 startup, memory and cache costs where applicable. The unchanged
-[§6 gate](#6-performance-acceptance) requires 1% low at least 240 FPS and p99
-at most 4.17 ms at 1920 × 1080 physical pixels and 256-block view range, plus
-the separate streaming budget. FPS displayed in a screenshot, an offscreen
-capture or a passing build does not satisfy it. Update the existing
+[§6 gate](#6-performance-acceptance) requires 1% low at least 120 FPS and p99
+at most 8.33 ms on the game's own frames (the offscreen scene suite) at
+1920 × 1080 physical pixels and 256-block view range, and no windowed frame
+over 50 ms (owner, 2026-11-14; it was 240 FPS and 4.17 ms when this was
+written). FPS displayed in a screenshot or a passing build does not satisfy it. Update the existing
 [requirement rows](requirements.md#ux--presentation-usability-and-distribution)
 as work lands; none is promoted by this plan addition.
 
@@ -1512,29 +1517,35 @@ correctness, acquisition, persistence or release-blocking performance defects.
   entity/particle/content removal. Record all options.
 - VSync/frame caps disabled for measurement. Native-resolution runs are
   reported separately; don't substitute logical Retina window dimensions.
-- Steady-state gate: **1% low at least 240 FPS** (the reciprocal of the
-  mean of the slowest 1% of frame times), with **p99 frame time at most
-  4.17 ms**. Also record average, p50, p95, p99, worst frame and any distinct
-  hitch. These statistics are complementary, not interchangeable. This is
-  the roadmap's measurement definition of the stated minimum target,
-  not a new measured claim.
+- Frame-time gate (owner, 2026-11-14): **the game's own frames reach a 1%
+  low of at least 120 FPS** (the reciprocal of the mean of the slowest 1% of
+  frame times) **with p99 at most 8.33 ms**, in every scene, streaming
+  included. It is measured with the offscreen suite
+  (`tools/benchmark_scenes.py --offscreen`): each frame is drawn into an
+  offscreen image of the same size and nothing is presented, so a frame
+  takes the longer of the CPU's and the GPU's time and the display plays no
+  part. Also record average, p50, p95, p99, worst frame and any distinct
+  hitch. These statistics are complementary, not interchangeable.
+- Windowed suite: the same scenes run in a normal window each release and
+  fail only on a stall, **any frame over 50 ms**. A windowed frame can't
+  beat the 120 Hz display, and the macOS compositor returns drawables once
+  per refresh, so windowed 1% lows sit near 110–115 FPS whatever the game
+  does ([record](verification/2026-11-14-drawable-wait.md)).
+- Until 2026-11-14 the gate was a 1% low of 240 FPS and p99 of 4.17 ms on
+  windowed frames, with a separate streaming budget (no frame over 50 ms,
+  p99 at most 8.33 ms; owner, 2026-10-17) and stretches of 8.33 ms display
+  pacing left uncounted (owner, 2026-10-17). The owner replaced it after the
+  drawable waits were traced to the compositor; the new gate covers the
+  streaming budget in both suites. Older records judge runs by the old gate.
 - Measure cold streaming and interaction stalls separately; don't discard
   them to present steady-state numbers as whole-session performance.
-  Streaming budget (owner, 2026-10-17): on the streaming route, **no frame over
-  50 ms and p99 at most 8.33 ms**. The full steady-state gate on streaming is a
-  v0.18 target, not a v0.8 requirement.
-- Display pacing (owner, 2026-10-17): stretches of consecutive frames at exactly
-  8.33 ms, the built-in display's 120 Hz pacing despite `Immediate`
-  presentation, are not counted as game frame-time failures. The 2026-10-16
-  baseline stands without a re-run for them; record such stretches with each
-  run.
 - Every release records a run (audit, 2026-11-09). Before a version is
   offered to the owner, the scene suite runs on the reference machine at
   the commit to be tagged, and its per-scene results go in
   `benchmarks/results/` and the version's verification record. A scene
   whose 1% low or p99 is worse than the previous recorded run needs a
   profile and either a fix or a written reason in that record. The owner
-  may still tag a version that misses the 240 FPS gate, as before, but not
+  may still tag a version that misses the gate, as before, but not
   one that was never measured. This replaces moving each release's
   frame-time check to v0.18: between 2026-10-16 and 2026-10-29 the
   `building` scene's 1% low fell from 261–273 to 229 with nobody looking.
@@ -1542,7 +1553,8 @@ correctness, acquisition, persistence or release-blocking performance defects.
 Use a consistent power/thermal setup, a warm-up period, at least three
 60-second measured runs per steady-state scene and a longer streaming route.
 Publish per-scene results, not only an average across easy and hard scenes.
-An offscreen origin sweep or meshing microbenchmark alone cannot pass the gate.
+An offscreen origin sweep or meshing microbenchmark alone cannot pass the
+gate; only the offscreen scene suite with its windowed companion can.
 
 ### 6.2 Representative scenes and systems
 
@@ -1634,7 +1646,7 @@ notes.
 - [ ] Building, exploration, farming, animals, villagers, travel and automation scenarios passed.
 - [ ] Player-facing interfaces, controls, feedback and original assets reviewed in play.
 - [ ] Save/restart/unload, migration, interruption and long-session stability passed.
-- [ ] M5 1080p/256-block 240 FPS gate passed in every required steady-state scene.
+- [ ] M5 1080p/256-block 120 FPS gate (game's own frames) passed in every required scene, with no windowed stall.
 - [ ] Streaming/hitch budgets passed; native-resolution and scaling results reported.
 - [ ] Existing supported-platform checks and installer/update smoke passed.
 - [ ] Existing controller/agent/multiplayer shared-code regressions addressed.

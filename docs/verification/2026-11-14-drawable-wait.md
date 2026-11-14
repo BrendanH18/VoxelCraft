@@ -102,5 +102,15 @@ display-pacing stretches ruled out on 2026-10-17) is the owner's decision.
 §6.1 already lets the owner tag a version that misses the gate once it has
 been measured.
 
-Still owed before the tag: a full windowed scene run (three runs of every
-scene) on the idle M5 at the commit to be tagged.
+## Owner decision (2026-11-14)
+
+The owner set the gate to 120 FPS on the game's own frames: a 1% low of at
+least 120 FPS and p99 of at most 8.33 ms in the offscreen suite, in every
+scene. The windowed suite is still run each release and fails only on a
+stall, any frame over 50 ms. `FrameStats::passes_gate` and
+`tools/benchmark_scenes.py` judge runs this way, and offscreen runs are no
+longer marked ineligible
+([§6.1](../roadmap.md#61-reference-configuration-and-frame-time-gate)).
+
+Still owed before the tag: both suites (three runs of every scene,
+offscreen and windowed) on the idle M5 at the commit to be tagged.

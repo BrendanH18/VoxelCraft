@@ -50,7 +50,7 @@ streaming without opening a GPU window. VoxelCraft uses 32-block chunks, so
 `--rd 8` corresponds to a 256-block view distance, Java's 16 chunks.
 
 Historical results live in [architecture](architecture.md#performance-design)
-and dated performance reports. They are not the roadmap's 1080p/240 FPS
+and dated performance reports. They are not the roadmap's 1080p/120 FPS
 acceptance result. Compare the same scene, seed, build, resolution, view distance
 and hardware; report frame-time distribution, streaming behavior and memory
 when relevant. The [restructuring plan](restructuring.md#str-01--reference-fixtures-and-performance-scenes)
