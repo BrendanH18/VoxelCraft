@@ -655,7 +655,16 @@ owed. Work items:
    runs were valid and the gate fails. Most world-scene runs have a 1% low
    near 110–115 FPS with p99 at one 120 Hz refresh (8.3–8.6 ms); their
    slowest frames wait 7–8 ms to acquire a drawable while the game's own
-   work stays near 1 ms. Why the drawable is late is the open question.
+   work stays near 1 ms. *Cause found (2026-11-14,
+   [record](verification/2026-11-14-drawable-wait.md)):* with GPU timing,
+   frames that wait for a drawable have about 2 ms of GPU work, so the
+   macOS compositor, not the GPU, holds the drawables. Frame latency 1
+   doesn't help and exclusive fullscreen is pinned to 120 FPS. Offscreen,
+   with no compositor, the game's own frames reach a 1% low of 307–368 FPS
+   and p99 2.1–3.0 ms in building, entities, automation and survival, and
+   texture paging measures within noise of an unpaged build, so the
+   steady-state drop from the 2026-10-16 baseline is the wait, not game
+   work. These were short runs with the machine in use, not gate evidence.
 3. **Terrain blending for generation 3 villages and outposts.**
    *Implemented, unverified (2026-11-09,
    [record](verification/2026-11-09-structure-terrain-blending.md)).* A
@@ -727,12 +736,13 @@ owed. Work items:
    outliers. The 2026-11-11 run has three valid runs of every scene and
    fails the 240 FPS gate ([record](verification/2026-11-11-gate-run.md#scene-run));
    the drawable wait it found needs fixing or an owner decision before
-   the tag. Benchmark runs now record GPU time per frame and can set the
-   frame latency and window mode; the
-   [experiment matrix](development.md#presentation-experiments) is owed on
-   the idle M5 (2026-11-11). Leaving out the display-pacing stretches doesn't rescue it, and
-   its steady-state scenes are below the 2026-10-16 baseline, which needs a
-   profile and a fix or a written reason. ([FE-02](#14-what-can-follow-10) was approved by the owner on
+   the tag. The [2026-11-14 record](verification/2026-11-14-drawable-wait.md)
+   ran the experiment matrix and profiled the steady-state drop: the wait
+   is the macOS compositor's and can't be removed through wgpu, and the
+   game's own frames pass offscreen. What remains is the owner's decision
+   (tag v0.14 under §6.1's allowance for a measured miss, and whether the
+   gate should measure the game's own frame time) and a full windowed run
+   of every scene on the idle M5 at the commit to be tagged. ([FE-02](#14-what-can-follow-10) was approved by the owner on
    2026-11-10.)
    Ancient cities and trial chambers now run in the GEN-07 order corpus
    ([record](verification/2026-11-09-streaming-biomes-and-gen07.md)).
