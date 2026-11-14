@@ -41,10 +41,17 @@ Cells are 1% low FPS / p99 ms (average FPS).
   own work in those frames (ticks, entities, streaming, draw recording) was
   under 1 ms. About 2,200 frames of 7,100 in each scene waited more than
   4 ms; they waited 8.4–8.6 ms on average while their GPU work averaged
-  1.9 ms (p99 2.7–3.4 ms, 62 frames timed). The GPU was done long before
-  the drawable came back.
-- Frame latency 1 (two drawables instead of three) doesn't help: the GPU
-  waits more and the average falls in one scene.
+  1.9 ms (p99 2.7–3.4 ms, 62 frames timed). Those timestamps cover only
+  the frame's own render passes, recorded after its acquire, so on their own
+  they don't show when earlier frames' GPU work finished. The offscreen runs
+  below do: each frame there waits for the GPU to finish the frame two back,
+  the same depth as three drawables, and their slowest 1% still take under
+  3 ms. So GPU work is not what holds a drawable for 8 ms. The window
+  compositor is the likely holder, though nothing here observes it directly.
+- Frame latency 1 (two drawables instead of three) improved these single
+  runs, from a 1% low of 52 FPS to 72 and 101 and from a p99 of 17.6 ms to
+  11.5 and 9.4, but stays far from a passing windowed run, and the
+  entities average fell from 238 to 220 FPS.
 - Exclusive fullscreen pins every frame to the 120 Hz refresh (average
   exactly 120 FPS) even though Immediate presentation was requested, and its
   display mode wasn't 1920 × 1080, so it is not a way to pass the gate.
@@ -66,8 +73,10 @@ current, no paging, current.
 | automation | 225.3 / 3.31 (604) | 346.3 / 2.59 (638) | 307.1 / 3.03 (621) |
 | survival | 358.3 / 2.21 (642) | 366.5 / 2.16 (660) | 367.5 / 2.11 (648) |
 
-- The second current-build pass is at or above the gate in every scene:
-  1% low 307–368 FPS and p99 2.1–3.0 ms, against 240 FPS and 4.17 ms. The
+- The second current-build pass is above both the old gate (240 FPS,
+  4.17 ms) and the new one (120 FPS, 8.33 ms) in all four scenes measured:
+  1% low 307–368 FPS and p99 2.1–3.0 ms. Streaming, menus and title weren't
+  run offscreen. The
   first pass's building and automation runs had long frames that didn't
   repeat; the machine was in use, so treat one-off outliers as noise until
   an idle run says otherwise.
@@ -78,18 +87,26 @@ current, no paging, current.
   (`05831cda`). It is within noise of the current build: building 343.3
   against 342.9, survival 366.5 against 367.5. GPU time per timed frame
   was 1.3–1.7 ms with paging off and 1.4–2.6 ms with it on, but few frames
-  were timed (18–211 a run), so that difference isn't established.
+  were timed (18–211 a run), so that difference isn't established. Both
+  builds were made by hand and the runner fingerprints the working tree when
+  it runs, after the shader edits were reverted, so their reports share
+  `runtime_source_sha256` and have `source_revision` `unknown`;
+  `executable_sha256` tells them apart (`497d33b8…` without paging,
+  `2be04aa9…` current).
 
 ## What this means for the gate
 
-- The game's own work fits the gate with room to spare. The windowed
-  failures are the macOS window compositor returning drawables once per
-  120 Hz refresh, which a game presenting through wgpu can't avoid: wgpu's
-  acquire blocks, Metal allows at most three drawables, and exclusive
-  fullscreen is held to the refresh rate.
-- The steady-state drop from the 2026-10-16 baseline is in that wait, not
-  in the game. The game's own work is about 0.6 ms of a 1.9 ms average
-  frame in the 11-11 runs; the rest is acquire.
+- In the four scenes measured, the game's own work fits the gate with room
+  to spare; streaming, menus and title still need an offscreen run. The
+  windowed failures most likely come from the macOS window compositor
+  returning drawables once per 120 Hz refresh. None of the options tried
+  removes the wait: wgpu's acquire blocks, frame latency 1 still left a
+  9–12 ms p99, and exclusive fullscreen is held to the refresh rate.
+- The steady-state drop from the 2026-10-16 baseline most likely lies in
+  that wait: in the 11-11 runs the game's own CPU work is about 0.6 ms of a
+  1.9 ms average frame and the rest is acquire. This isn't established
+  against the baseline build itself, which recorded no phases or GPU time;
+  the offscreen comparison only rules out texture paging.
 - In ordinary play the game is capped at the display rate already: Max
   Framerate defaults to 120, as in Java. The wait matters only to uncapped
   benchmark runs.

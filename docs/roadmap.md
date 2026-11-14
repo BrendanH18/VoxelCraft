@@ -659,14 +659,16 @@ owed. Work items:
    slowest frames wait 7–8 ms to acquire a drawable while the game's own
    work stays near 1 ms. *Cause found (2026-11-14,
    [record](verification/2026-11-14-drawable-wait.md)):* with GPU timing,
-   frames that wait for a drawable have about 2 ms of GPU work, so the
-   macOS compositor, not the GPU, holds the drawables. Frame latency 1
-   doesn't help and exclusive fullscreen is pinned to 120 FPS. Offscreen,
-   with no compositor, the game's own frames reach a 1% low of 307–368 FPS
+   frames that wait for a drawable have about 2 ms of render-pass GPU
+   work, and offscreen frames, which wait for the GPU, stay under 3 ms, so
+   the macOS compositor most likely holds the drawables. Frame latency 1
+   improves but doesn't fix it and exclusive fullscreen is pinned to
+   120 FPS. Offscreen, the game's own frames reach a 1% low of 307–368 FPS
    and p99 2.1–3.0 ms in building, entities, automation and survival, and
-   texture paging measures within noise of an unpaged build, so the
-   steady-state drop from the 2026-10-16 baseline is the wait, not game
-   work. These were short runs with the machine in use, not gate evidence.
+   texture paging measures within noise of an unpaged build; the
+   steady-state drop from the 2026-10-16 baseline most likely lies in the
+   wait, though the baseline build wasn't profiled. These were short runs
+   with the machine in use, not gate evidence.
 3. **Terrain blending for generation 3 villages and outposts.**
    *Implemented, unverified (2026-11-09,
    [record](verification/2026-11-09-structure-terrain-blending.md)).* A
@@ -740,8 +742,9 @@ owed. Work items:
    the drawable wait it found needs fixing or an owner decision before
    the tag. The [2026-11-14 record](verification/2026-11-14-drawable-wait.md)
    ran the experiment matrix and profiled the steady-state drop: the wait
-   is the macOS compositor's and can't be removed through wgpu, and the
-   game's own frames pass offscreen. The owner then set the gate to 120 FPS
+   most likely belongs to the macOS compositor, none of the presentation
+   options tried removes it, and the game's own frames pass offscreen in
+   the four scenes measured. The owner then set the gate to 120 FPS
    on the game's own frames, measured offscreen, with the windowed run
    failing only on stalls over 50 ms (2026-11-14,
    [§6.1](#61-reference-configuration-and-frame-time-gate)). What remains is
@@ -1528,9 +1531,9 @@ correctness, acquisition, persistence or release-blocking performance defects.
   hitch. These statistics are complementary, not interchangeable.
 - Windowed suite: the same scenes run in a normal window each release and
   fail only on a stall, **any frame over 50 ms**. A windowed frame can't
-  beat the 120 Hz display, and the macOS compositor returns drawables once
-  per refresh, so windowed 1% lows sit near 110–115 FPS whatever the game
-  does ([record](verification/2026-11-14-drawable-wait.md)).
+  beat the 120 Hz display, and the macOS compositor appears to return
+  drawables once per refresh, so windowed 1% lows sit near 110–115 FPS
+  whatever the game does ([record](verification/2026-11-14-drawable-wait.md)).
 - Until 2026-11-14 the gate was a 1% low of 240 FPS and p99 of 4.17 ms on
   windowed frames, with a separate streaming budget (no frame over 50 ms,
   p99 at most 8.33 ms; owner, 2026-10-17) and stretches of 8.33 ms display
