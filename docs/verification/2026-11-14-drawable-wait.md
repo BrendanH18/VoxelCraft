@@ -21,10 +21,14 @@ machine. The summaries are kept in
 `main` at `931d6a6` (source identical to the v0.14 candidate; only
 documentation changed after it), `cargo build --release` on the owner's M5
 (10-core GPU, 16 GB, macOS 27.2.1), on AC power with the display held awake.
-The no-paging build below changed only three shaders and was thrown away
-after the runs.
+The no-paging build below changed only `sample_block` in
+`src/render/shaders/chunk.wgsl`, `entity.wgsl` and `block_model.wgsl`: after
+the `if !BLOCK_PAGING` line, the paged `switch` (with its `dpdx`/`dpdy`
+gradients) was replaced by
+`return textureSample(blocks, blocks_sampler, uv, layer & ((1u << PAGE_SHIFT) - 1u));`.
+That build was thrown away after the runs; the edit above reproduces it.
 
-## Windowed: the GPU is idle while the frame waits
+## Windowed: short GPU work, long drawable waits
 
 `python3 tools/benchmark_scenes.py --scenes entities,automation --repeats 1
 --seconds 30`, plus `--frame-latency 1` and `--window-mode exclusive`.
@@ -47,13 +51,18 @@ Cells are 1% low FPS / p99 ms (average FPS).
   below do: each frame there waits for the GPU to finish the frame two back,
   the same depth as three drawables, and in the second current-build pass
   their slowest 1% averaged 2.7–3.3 ms (the first pass had building at
-  7.7 ms and automation at 4.4 ms, outliers that didn't repeat). So GPU
-  work is not what holds a drawable for 8.4–8.6 ms on average. The window
-  compositor is the likely holder, though nothing here observes it directly.
+  7.7 ms and automation at 4.4 ms, outliers that didn't repeat). Both the frame's
+  own GPU work and the GPU's offscreen throughput are well below the
+  8.4–8.6 ms average wait, which makes GPU work an unlikely cause. What held
+  each drawable isn't observed here; the window compositor is the likely
+  holder.
 - Frame latency 1 (two drawables instead of three) improved these single
   runs, from a 1% low of 52 FPS to 72 and 101 and from a p99 of 17.6 ms to
-  11.5 and 9.4, but stays far from a passing windowed run, and the
-  entities average fell from 238 to 220 FPS.
+  11.5 and 9.4, and the entities average fell from 238 to 220 FPS.
+  Neither run comes near the old 240 FPS windowed gate. Their worst frames
+  (25.7 and 11.9 ms) would meet the new windowed check of no frame over
+  50 ms, but they are short single runs on a busy machine, not gate
+  evidence.
 - Exclusive fullscreen pins every frame to the 120 Hz refresh (average
   exactly 120 FPS) even though Immediate presentation was requested, and its
   display mode wasn't 1920 × 1080, so it is not a way to pass the gate.
@@ -79,9 +88,9 @@ current, no paging, current.
   4.17 ms) and the new one (120 FPS, 8.33 ms) in all four scenes measured:
   1% low 307–368 FPS and p99 2.1–3.0 ms. Streaming, menus and title weren't
   run offscreen. The
-  first pass's building and automation runs had long frames that didn't
-  repeat; the machine was in use, so treat one-off outliers as noise until
-  an idle run says otherwise.
+  first pass's building and automation runs missed the old 240 FPS gate
+  (130.5 and 225.3 FPS) and didn't repeat in the second pass. They are
+  unexplained until an idle repeat; both still meet the new 120 FPS gate.
 - **Texture paging is not the regression.** The no-paging build samples
   every block from the first 2,048-layer page with `textureSample` (wrong
   textures, the cost of an unpaged adapter) instead of the paged
