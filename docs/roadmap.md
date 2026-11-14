@@ -1031,7 +1031,8 @@ waxing and axe scraping, conversion to statues and reactivation, original
 models and sounds, and persistent mob, carried-item and statue state.
 Shared player actions cover the existing input adapters. Automated
 reference, save/reload and performance checks accompany an agent hands-on
-run; the owner's ordinary play remains separate evidence. This work may
+run (dropped by the owner on 2026-11-14: the owner's ordinary play is the
+hands-on evidence); the owner's ordinary play remains separate evidence. This work may
 proceed while v0.14 awaits that play. Creaking/resin, allays and sniffers
 remain subsequent slices. *Implemented, unverified (2026-11-05):* construction
 replaces the source copper block with a matching copper chest; golems transport
