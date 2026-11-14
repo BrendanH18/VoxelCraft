@@ -342,7 +342,8 @@ Each report has `acceptance_eligible_configuration`, `run_valid` and
 within max(2, 0.5%) of 20 per sampled second (neither applies to the menu
 scenes), zero unpresented frames and, for
 the entity scene, start and end populations within 5% of 160. The runner's
-`reference_gate_passed` also requires enhanced graphics, an uncapped resolved
+`reference_gate_passed` also requires every run's `frame_thresholds_passed`
+(the 120 FPS gate offscreen, no frame over 50 ms windowed), enhanced graphics, an uncapped resolved
 present mode, a matching source fingerprint, M5 hardware, all scenes and three
 repeats. The fingerprint covers the files embedded by `build.rs`, including
 `packaging/icons/*`. `reference_gate_problems` lists each failure. Run
@@ -350,14 +351,17 @@ repeats. The fingerprint covers the files embedded by `build.rs`, including
 Neither this suite nor the older offscreen sweep alone proves 1.0 performance
 acceptance.
 
-When the window can't stay visible or the machine is on battery, compare
-builds with `--offscreen` (and `--seconds N` for a shorter sample, with
-`--executable` for each build). The scene is drawn into an offscreen image of
-the same size and nothing is presented; each frame waits for the frame two
-back to finish on the GPU, as a window's three images would make it, so the
-interval is the larger of the CPU's and the GPU's time. These runs are for
-comparison only: every report is marked ineligible and the gate never passes
-on them ([example](verification/2026-11-09-entity-frame-time.md)).
+The frame-time gate (owner, 2026-11-14; [roadmap §6.1](roadmap.md#61-reference-configuration-and-frame-time-gate))
+needs two full suites at the commit to be tagged. `--offscreen` runs the
+gate itself: each scene is drawn into an offscreen image of the same size and
+nothing is presented; each frame waits for the frame two back to finish on
+the GPU, as a window's three images would make it, so the interval is the
+larger of the CPU's and the GPU's time. A run passes with a 1% low of at
+least 120 FPS and p99 at most 8.33 ms. The plain windowed suite then checks
+for stalls: a run passes when no frame is over 50 ms. Offscreen runs also
+compare builds when the window can't stay visible (add `--seconds N` for a
+shorter sample, which never passes, and `--executable` for each build;
+[example](verification/2026-11-14-drawable-wait.md)).
 
 The low-level flags are `--benchmark-scene`, `--benchmark-output`,
 `--benchmark-warmup`, `--benchmark-duration`, `--benchmark-offscreen`,

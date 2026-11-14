@@ -69,8 +69,8 @@ class RunnerGate(unittest.TestCase):
         self.assertFalse(runner.reference_gate(summary(full_suite(),chip='Apple M4'),DEFINITIONS,False,None,3)[0])
         self.assertFalse(runner.reference_gate(summary(full_suite(frame_thresholds_passed=False)),DEFINITIONS,False,None,3)[0])
         self.assertFalse(runner.reference_gate(summary(full_suite()[:-3]),DEFINITIONS,False,None,3)[0])
-        # Comparison runs: drawn offscreen, or with a shortened sample period.
-        self.assertIn('offscreen comparison runs present nothing',runner.reference_gate(runs,DEFINITIONS,False,None,3,offscreen=True)[1])
+        # Offscreen runs are the gate's own protocol (owner, 2026-11-14); a shortened sample period never passes.
+        self.assertTrue(runner.reference_gate(runs,DEFINITIONS,False,None,3,offscreen=True)[0])
         self.assertFalse(runner.reference_gate(runs,DEFINITIONS,False,None,3,seconds=30.0)[0])
 
     def test_presentation_experiments_are_recorded_and_never_pass(self):

@@ -92,12 +92,13 @@ def run_problems(report,specification):
 
 def reference_gate(metadata,definitions,quick,native,repeats,offscreen=False,seconds=None,presentation_differences=()):
     """Overall reference result: protocol, hardware, scene coverage and every run's validity and thresholds.
+    Since 2026-11-14 the gate is the offscreen suite (the game's own frames: 1% low 120 FPS, p99 8.33 ms);
+    the windowed suite is still recorded and passes when no frame stalls over 50 ms.
     Presentation experiments (another frame latency or window mode) never pass the gate: adopting one
     for it is the owner's decision in roadmap section 6.1, followed by a run with the new defaults."""
     problems=[]
     if presentation_differences: problems.append('presentation experiment: '+', '.join(presentation_differences))
     if quick: problems.append('quick smoke protocol')
-    if offscreen: problems.append('offscreen comparison runs present nothing')
     if seconds: problems.append('sample period overridden')
     if native: problems.append('native-resolution runs are reported separately')
     if repeats<3: problems.append('fewer than three repeats')
@@ -116,7 +117,7 @@ def main():
     parser.add_argument('--repeats',type=int,default=3)
     parser.add_argument('--quick',action='store_true',help='five-second smoke only, never acceptance evidence')
     parser.add_argument('--native-resolution',help='WIDTHxHEIGHT, reported separately from the 1080p gate')
-    parser.add_argument('--offscreen',action='store_true',help='draw offscreen and present nothing, for comparing builds when the window cannot stay visible; never acceptance evidence')
+    parser.add_argument('--offscreen',action='store_true',help='draw offscreen and present nothing: the frame-time gate (1%% low 120 FPS, p99 8.33 ms) measures these runs; without it the windowed runs are checked for stalls over 50 ms')
     parser.add_argument('--seconds',type=float,help='sample seconds for every scene, for comparison runs; never acceptance evidence')
     parser.add_argument('--frame-latency',type=int,choices=[1,2,3],help='surface frame latency (default 2; on Metal 1 gives two drawables, 2 and 3 give three); other than 2 is a presentation experiment, never acceptance evidence')
     parser.add_argument('--window-mode',choices=WINDOW_MODES,help='windowed (default), borderless (macOS native fullscreen) or exclusive (display mode switch, preferring 1920x1080); other than windowed is a presentation experiment, never acceptance evidence')
@@ -138,7 +139,7 @@ def main():
     executable=executable.resolve(strict=True)
     args.output.mkdir(parents=True,exist_ok=True)
     metadata={'schema':2,'source':revision,'hardware':hardware(),'executable_sha256':hashlib.sha256(executable.read_bytes()).hexdigest(),
-              'protocol':'quick smoke' if args.quick else 'offscreen comparison' if args.offscreen else 'presentation experiment' if presentation_differences else 'scene baseline',
+              'protocol':'quick smoke' if args.quick else 'offscreen gate' if args.offscreen else 'presentation experiment' if presentation_differences else 'scene baseline',
               'resolution_class':'native' if args.native_resolution else '1080p','presentation_options':presentation_options,'specification':specification,'runs':[]}
     resolution=args.native_resolution or '1920x1080'
     for scene in names:

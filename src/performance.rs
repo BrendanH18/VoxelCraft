@@ -143,6 +143,27 @@ pub fn gpu_breakdown(intervals: &[f64], acquire: &[f32], gpu: &[Option<f32>]) ->
     }))
 }
 
+/// The frame-time gate (owner, 2026-11-14): the game's own frames, drawn
+/// offscreen so the display plays no part, reach a 1% low of this many FPS
+/// with p99 at most one frame of it (8.33 ms).
+pub const GATE_FPS: f64 = 120.0;
+/// Windowed runs are still recorded each release, but fail only on a stall:
+/// any frame longer than this.
+pub const STALL_MS: f64 = 50.0;
+
+impl FrameStats {
+    /// Whether these frames pass the gate: [`GATE_FPS`] for offscreen runs,
+    /// no frame over [`STALL_MS`] for windowed ones, whose frames also wait
+    /// for the display.
+    pub fn passes_gate(&self, offscreen: bool) -> bool {
+        if offscreen {
+            self.low_one_percent_fps >= GATE_FPS && self.p99_ms <= 1000. / GATE_FPS
+        } else {
+            self.worst_ms <= STALL_MS
+        }
+    }
+}
+
 /// The swap chain's `desired_maximum_frame_latency` when no option sets it.
 pub const DEFAULT_FRAME_LATENCY: u32 = 2;
 
@@ -280,7 +301,8 @@ pub struct RunEvidence {
     pub enhanced_graphics: bool,
     /// The resolved present mode does not wait for display refresh.
     pub uncapped_presentation: bool,
-    /// Frames were drawn to an offscreen image and never presented (`--benchmark-offscreen`).
+    /// Frames were drawn to an offscreen image and never presented
+    /// (`--benchmark-offscreen`): the gate's own protocol since 2026-11-14.
     pub offscreen: bool,
     /// A frame latency or window mode other than the reference's was asked for.
     pub presentation_experiment: bool,
@@ -310,9 +332,6 @@ impl RunEvidence {
         }
         if !self.uncapped_presentation {
             out.push("presentation is synchronized to the display");
-        }
-        if self.offscreen {
-            out.push("frames were drawn offscreen and never presented");
         }
         if self.presentation_experiment {
             out.push("frame latency or window mode differs from the reference (presentation experiment)");
@@ -398,6 +417,28 @@ mod tests {
     }
 
     #[test]
+    fn the_gate_is_120_fps_offscreen_and_stalls_in_a_window() {
+        let stats = |low: f64, p99: f64, worst: f64| FrameStats {
+            frames: 1000,
+            average_fps: 500.,
+            low_one_percent_fps: low,
+            p50_ms: 2.,
+            p95_ms: 3.,
+            p99_ms: p99,
+            worst_ms: worst,
+            hitches_over_50ms: 0,
+        };
+        // The 2026-11-14 offscreen building run passes; the 2026-11-11 windowed
+        // runs, held to the 120 Hz display, pass as long as nothing stalls.
+        assert!(stats(342.9, 2.64, 9.).passes_gate(true));
+        assert!(stats(120., 1000. / 120., 9.).passes_gate(true));
+        assert!(!stats(119.9, 8.0, 9.).passes_gate(true));
+        assert!(!stats(130., 8.4, 9.).passes_gate(true));
+        assert!(stats(111.1, 8.52, 21.).passes_gate(false));
+        assert!(!stats(300., 3., 50.1).passes_gate(false));
+    }
+
+    #[test]
     fn configuration_requires_reference_options() {
         let classic = RunEvidence { enhanced_graphics: false, ..eligible() };
         assert_eq!(classic.configuration_problems(), ["graphics are not enhanced"]);
@@ -406,7 +447,7 @@ mod tests {
         let quick = RunEvidence { requested_seconds: 5.0, warmup_seconds: 1.0, ..eligible() };
         assert_eq!(quick.configuration_problems().len(), 1);
         let offscreen = RunEvidence { offscreen: true, ..eligible() };
-        assert_eq!(offscreen.configuration_problems(), ["frames were drawn offscreen and never presented"]);
+        assert!(offscreen.configuration_problems().is_empty(), "offscreen runs are the gate's protocol");
         let experiment = RunEvidence { presentation_experiment: true, ..eligible() };
         assert_eq!(experiment.configuration_problems().len(), 1);
         assert!(!presentation_experiment(2, "windowed"));

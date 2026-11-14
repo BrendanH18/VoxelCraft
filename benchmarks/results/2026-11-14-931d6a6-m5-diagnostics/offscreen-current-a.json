@@ -1,0 +1,940 @@
+{
+  "schema": 2,
+  "source": {
+    "commit": "931d6a6db350fcaa1d1e165cffb2d9d6ab27c3f7",
+    "dirty": true,
+    "runtime_source_sha256": "9bce449f38742d2fd3c7dc545dfa0bc8c3f20a0027f316609acf2972af42f014"
+  },
+  "hardware": {
+    "platform": "macOS-27.2.1-arm64-arm-64bit",
+    "architecture": "arm64",
+    "logical_cpus": 10,
+    "chip": "Apple M5",
+    "ram_bytes": 17179869184,
+    "graphics": [
+      {
+        "chip": "Apple M5",
+        "cores": "10",
+        "displays": [
+          {
+            "resolution": null,
+            "native_pixels": "3024 x 1964"
+          }
+        ]
+      }
+    ]
+  },
+  "executable_sha256": "2be04aa95f6b0b39002ddb56ad039e3b3da29ef43604aeacc6d3725541e67054",
+  "protocol": "offscreen comparison",
+  "resolution_class": "1080p",
+  "presentation_options": {
+    "frame_latency": 2,
+    "window_mode": "windowed",
+    "gpu_timestamps": true
+  },
+  "specification": {
+    "schema": 2,
+    "seed": 12345,
+    "view_distance_blocks": 256,
+    "simulation_distance_blocks": 160,
+    "physical_resolution": [
+      1920,
+      1080
+    ],
+    "graphics": "enhanced",
+    "warmup_seconds": 10,
+    "sample_seconds": 60,
+    "repeats": 3,
+    "scenes": [
+      {
+        "name": "survival",
+        "description": "Seeded outdoor terrain, active simulation and a slow 12-block camera orbit facing its direction of travel",
+        "camera_clearance_blocks": 24
+      },
+      {
+        "name": "building",
+        "description": "25 x 25 platform, eight-level pale oak/glass construction and camera sweep"
+      },
+      {
+        "name": "entities",
+        "description": "160 cows, sheep, pigs, chickens, zombies, skeletons, wolves and horses, active AI and camera sweep",
+        "fixture": {
+          "day_time": 0.0,
+          "gamerules": {
+            "doDaylightCycle": false,
+            "doMobSpawning": false
+          },
+          "population": 160,
+          "population_tolerance": 0.05
+        }
+      },
+      {
+        "name": "automation",
+        "description": "85 active furnaces with loaded fuel/input, redstone sources and powered dust"
+      },
+      {
+        "name": "materials",
+        "description": "One state of every v0.12 block (states 16384-29695) cycled over a 25 x 25 grid three blocks apart, signs with text on both sides, and a 25 x 4 wall of item and glow item frames holding items, with a camera sweep"
+      },
+      {
+        "name": "streaming",
+        "description": "12-block/s route across terrain with lateral turns, facing its direction of travel, continued generation and simulation",
+        "sample_seconds": 180,
+        "camera_clearance_blocks": 24
+      },
+      {
+        "name": "menus",
+        "description": "In a world at spawn with the camera turning, the pause menu, Options and each Options sub-screen, then the inventory, each open for 2 seconds in turn; the pause screens stop the simulation, as in Java",
+        "simulation": false,
+        "screens": [
+          "pause",
+          "options",
+          "video",
+          "sound",
+          "controls",
+          "mouse",
+          "keybinds",
+          "accessibility",
+          "inventory"
+        ]
+      },
+      {
+        "name": "title",
+        "description": "The title screen's turning sky with the title menu, Select World, Create New World, Multiplayer, Direct Connection, Options and its sub-screens, each open for 2 seconds in turn; no world is open",
+        "simulation": false,
+        "world": false,
+        "screens": [
+          "title",
+          "select",
+          "create",
+          "multiplayer",
+          "direct",
+          "options",
+          "video",
+          "sound",
+          "controls",
+          "mouse",
+          "keybinds",
+          "accessibility"
+        ]
+      }
+    ],
+    "fixture_overrides": {
+      "camera_flight": true,
+      "initial_health": 10000
+    },
+    "camera_routes": "Survival and streaming cameras fly at the generator's surface height (bilinear 8-block samples, maximum from 16 blocks behind to 32 ahead, never below sea level) plus the scene's clearance.",
+    "entity_fixture": "The entity scene holds dawn (time 0.0, below the undead sunburn threshold) with no daylight cycle or natural spawning, so its specified population is not burned or diluted; start and end populations must stay within 5%.",
+    "validity": "A run counts only with zero paused simulation time (except in the menu scenes, which pause it as Java does), completed ticks within max(2, 0.5%) of 20 per sampled second (except in the menu scenes), zero unpresented (hidden or occluded window) frames, enhanced graphics, an uncapped resolved present mode and any fixed scene population held. Benchmark runs ignore keyboard, pointer, controller and focus input and never save.",
+    "limits": "Controlled benchmark cameras do not establish ordinary-player acceptance. GPU timestamps are not yet available; device-allocator GPU memory is null where the backend has no allocator report (Metal). Surface frame intervals measure throughput. Additional roadmap biomes, encounters and long-session memory scenes must be added as their implementation passes assessment."
+  },
+  "runs": [
+    {
+      "acceptance_eligible_configuration": false,
+      "chunk_arena_reserved_bytes": 50331648,
+      "chunk_arena_used_bytes": 40933452,
+      "cold_load_ms": 2344.840417,
+      "completed_simulation_ticks": 593,
+      "discarded_simulation_ms": 328.875209,
+      "entities_end": 327,
+      "entities_start": 315,
+      "expected_population": null,
+      "expected_simulation_ticks": 600.0796841599999,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.0007543839834117448,
+          "draw": 0.2144165126230006,
+          "entities": 0.07542028192816783,
+          "frame": 1.7091159132342069,
+          "frames": 17553,
+          "other": 0.05187334390410525,
+          "present": 1.215133309578513,
+          "scene": 0.008796273190700062,
+          "streaming": 0.06609581415571182,
+          "ticks": 0.059849497443799894,
+          "uploads": 0.01677649642679659
+        },
+        "slowest_one_percent": {
+          "acquire": 0.002372636371298788,
+          "draw": 0.37888160796666687,
+          "entities": 0.10691695427522063,
+          "frame": 7.663055630681819,
+          "frames": 176,
+          "other": 3.386919675807894,
+          "present": 2.7736482253160584,
+          "scene": 0.014062715879514475,
+          "streaming": 0.18437123748960652,
+          "ticks": 0.7631046514619481,
+          "uploads": 0.05277792611361127
+        },
+        "tick_frames": {
+          "acquire": 0.0014338421081714586,
+          "draw": 0.26372989397401114,
+          "entities": 0.08664019858062975,
+          "frame": 2.2850495585738537,
+          "frames": 589,
+          "other": 0.022513130577753504,
+          "present": 0.08796805270167989,
+          "scene": 0.010392125634277312,
+          "streaming": 0.021367045736465293,
+          "ticks": 1.7835963134652284,
+          "uploads": 0.007408955795637052
+        }
+      },
+      "frame_stats": {
+        "average_fps": 585.0978229485165,
+        "frames": 17553,
+        "hitches_over_50ms": 1,
+        "one_percent_low_fps": 130.49624695351784,
+        "p50_ms": 1.498209,
+        "p95_ms": 2.6666250000000002,
+        "p99_ms": 3.751375,
+        "worst_ms": 578.8735419999999
+      },
+      "frame_thresholds_passed": false,
+      "gpu_memory_allocated_bytes": 83623936,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 22013,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 2.33726997904895e-05,
+          "frame_ms": 1.7091159132342069,
+          "frames": 17553,
+          "gpu_ms": {
+            "frames": 211,
+            "mean": 2.3785748298134286,
+            "p50": 2.0855000019073486,
+            "p99": 4.418209075927734,
+            "slowest_one_percent_mean": 4.835625012715657,
+            "worst": 5.446582794189453
+          },
+          "timed_frames": 211
+        },
+        "other_frames": {
+          "acquire_ms": 2.33726997904895e-05,
+          "frame_ms": 1.7091159132342066,
+          "frames": 17553,
+          "gpu_ms": {
+            "frames": 211,
+            "mean": 2.3785748298134286,
+            "p50": 2.0855000019073486,
+            "p99": 4.418209075927734,
+            "slowest_one_percent_mean": 4.835625012715657,
+            "worst": 5.446582794189453
+          },
+          "timed_frames": 211
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 0.0001017954557689584,
+          "frame_ms": 7.663055630681819,
+          "frames": 176,
+          "gpu_ms": {
+            "frames": 25,
+            "mean": 3.754548282623291,
+            "p50": 3.8409581184387207,
+            "p99": 5.446582794189453,
+            "slowest_one_percent_mean": 5.446582794189453,
+            "worst": 5.446582794189453
+          },
+          "timed_frames": 25
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [
+        "sample or warm-up period is shorter than the protocol",
+        "frames were drawn offscreen and never presented",
+        "completed simulation ticks differ from 20 per sampled second"
+      ],
+      "loaded_chunks": 3744,
+      "options": {
+        "camera_route_clearance_blocks": null,
+        "day_cycle": true,
+        "day_time_start": null,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": true,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 0.0,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 30.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": false,
+      "sample_seconds": 30.003984208,
+      "scene": "building",
+      "schema": 2,
+      "screen_seconds": null,
+      "screens": null,
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": true,
+      "simulation_ticks_within_tolerance": false,
+      "source_revision": "unknown",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 584400896,
+      "wall_elapsed_seconds": 42.628331333,
+      "source_matches_runner": false,
+      "gate_problems": [
+        "sample or warm-up period is shorter than the protocol",
+        "frames were drawn offscreen and never presented",
+        "completed simulation ticks differ from 20 per sampled second",
+        "configuration is not the reference configuration",
+        "run reported invalid samples",
+        "executable was not built from the measured source"
+      ]
+    },
+    {
+      "acceptance_eligible_configuration": false,
+      "chunk_arena_reserved_bytes": 50331648,
+      "chunk_arena_used_bytes": 40853820,
+      "cold_load_ms": 1725.986333,
+      "completed_simulation_ticks": 600,
+      "discarded_simulation_ms": 0.0,
+      "entities_end": 161,
+      "entities_start": 160,
+      "expected_population": 160,
+      "expected_simulation_ticks": 600.1071675000001,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.00047246657610111874,
+          "draw": 0.19815651448459254,
+          "entities": 0.07169137113278477,
+          "frame": 1.6882896689364029,
+          "frames": 17770,
+          "other": 0.017272209383421888,
+          "present": 1.2731153115529,
+          "scene": 0.004358460218344276,
+          "streaming": 0.06456550293904455,
+          "ticks": 0.04355795853716239,
+          "uploads": 0.01509987411205149
+        },
+        "slowest_one_percent": {
+          "acquire": 0.0006032247226940353,
+          "draw": 0.30813038248694347,
+          "entities": 0.08615029785321669,
+          "frame": 2.8445180449438197,
+          "frames": 178,
+          "other": 0.024339682918694372,
+          "present": 1.661074429729514,
+          "scene": 0.005114904488436878,
+          "streaming": 0.24089932564666935,
+          "ticks": 0.4505601625763968,
+          "uploads": 0.06764563452125412
+        },
+        "tick_frames": {
+          "acquire": 0.0005894550040102331,
+          "draw": 0.217581395059824,
+          "entities": 0.07603409172967077,
+          "frame": 1.8732970266666684,
+          "frames": 600,
+          "other": 0.012730557941779574,
+          "present": 0.25244027310051026,
+          "scene": 0.004654360038305943,
+          "streaming": 0.015129661803366617,
+          "ticks": 1.290041538675626,
+          "uploads": 0.004095693313574884
+        }
+      },
+      "frame_stats": {
+        "average_fps": 592.3154174306977,
+        "frames": 17770,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 351.55340349396533,
+        "p50_ms": 1.558916,
+        "p95_ms": 2.450291,
+        "p99_ms": 2.6909159999999996,
+        "worst_ms": 6.132208
+      },
+      "frame_thresholds_passed": true,
+      "gpu_memory_allocated_bytes": 83623936,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 22640,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.5184693145576171e-05,
+          "frame_ms": 1.6882896689364029,
+          "frames": 17770,
+          "gpu_ms": {
+            "frames": 38,
+            "mean": 1.8663190415031032,
+            "p50": 1.8493750095367432,
+            "p99": 2.642957925796509,
+            "slowest_one_percent_mean": 2.642957925796509,
+            "worst": 2.642957925796509
+          },
+          "timed_frames": 38
+        },
+        "other_frames": {
+          "acquire_ms": 1.5184693145576171e-05,
+          "frame_ms": 1.6882896689363949,
+          "frames": 17770,
+          "gpu_ms": {
+            "frames": 38,
+            "mean": 1.8663190415031032,
+            "p50": 1.8493750095367432,
+            "p99": 2.642957925796509,
+            "slowest_one_percent_mean": 2.642957925796509,
+            "worst": 2.642957925796509
+          },
+          "timed_frames": 38
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 1.6831460526916774e-05,
+          "frame_ms": 2.8445180449438197,
+          "frames": 178,
+          "gpu_ms": null,
+          "timed_frames": 0
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [
+        "sample or warm-up period is shorter than the protocol",
+        "frames were drawn offscreen and never presented"
+      ],
+      "loaded_chunks": 3744,
+      "options": {
+        "camera_route_clearance_blocks": null,
+        "day_cycle": false,
+        "day_time_start": 0.0,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": false,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 0.0,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 30.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 30.005358375,
+      "scene": "entities",
+      "schema": 2,
+      "screen_seconds": null,
+      "screens": null,
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": true,
+      "simulation_ticks_within_tolerance": true,
+      "source_revision": "unknown",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 425443328,
+      "wall_elapsed_seconds": 42.111374792,
+      "source_matches_runner": false,
+      "gate_problems": [
+        "sample or warm-up period is shorter than the protocol",
+        "frames were drawn offscreen and never presented",
+        "configuration is not the reference configuration",
+        "executable was not built from the measured source"
+      ]
+    },
+    {
+      "acceptance_eligible_configuration": false,
+      "chunk_arena_reserved_bytes": 50331648,
+      "chunk_arena_used_bytes": 40890528,
+      "cold_load_ms": 1906.0175,
+      "completed_simulation_ticks": 600,
+      "discarded_simulation_ms": 0.0,
+      "entities_end": 317,
+      "entities_start": 308,
+      "expected_population": null,
+      "expected_simulation_ticks": 600.08318832,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.0005384802128080476,
+          "draw": 0.19383804317241934,
+          "entities": 0.06804440492322489,
+          "frame": 1.6561053017388911,
+          "frames": 18115,
+          "other": 0.026126045682735688,
+          "present": 1.2315613982983071,
+          "scene": 0.006573339143607034,
+          "streaming": 0.0613031340827366,
+          "ticks": 0.053379726929787014,
+          "uploads": 0.014740729293265253
+        },
+        "slowest_one_percent": {
+          "acquire": 0.0019849175921510804,
+          "draw": 0.22424632425491625,
+          "entities": 0.11084429629065179,
+          "frame": 4.438595917582418,
+          "frames": 182,
+          "other": 0.5871519937957745,
+          "present": 3.09692557013829,
+          "scene": 0.01250434064838503,
+          "streaming": 0.030101912235585296,
+          "ticks": 0.35926465608261443,
+          "uploads": 0.015571906544050012
+        },
+        "tick_frames": {
+          "acquire": 0.000949636667331409,
+          "draw": 0.23268595861891905,
+          "entities": 0.07652575155720115,
+          "frame": 2.067323323333333,
+          "frames": 600,
+          "other": 0.01893840388293322,
+          "present": 0.09899828199918072,
+          "scene": 0.0075725833062703415,
+          "streaming": 0.015129028427957868,
+          "ticks": 1.6116229222218195,
+          "uploads": 0.004900756651719954
+        }
+      },
+      "frame_stats": {
+        "average_fps": 603.826338186353,
+        "frames": 18115,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 225.2964718051362,
+        "p50_ms": 1.498541,
+        "p95_ms": 2.468458,
+        "p99_ms": 3.310375,
+        "worst_ms": 30.159792
+      },
+      "frame_thresholds_passed": false,
+      "gpu_memory_allocated_bytes": 83623936,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 22886,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.6551255749349217e-05,
+          "frame_ms": 1.6561053017388911,
+          "frames": 18115,
+          "gpu_ms": {
+            "frames": 199,
+            "mean": 2.597887306057628,
+            "p50": 2.168207883834839,
+            "p99": 4.501375198364258,
+            "slowest_one_percent_mean": 4.531604528427124,
+            "worst": 4.56183385848999
+          },
+          "timed_frames": 199
+        },
+        "other_frames": {
+          "acquire_ms": 1.6551255749349217e-05,
+          "frame_ms": 1.6561053017388854,
+          "frames": 18115,
+          "gpu_ms": {
+            "frames": 199,
+            "mean": 2.597887306057628,
+            "p50": 2.168207883834839,
+            "p99": 4.501375198364258,
+            "slowest_one_percent_mean": 4.531604528427124,
+            "worst": 4.56183385848999
+          },
+          "timed_frames": 199
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 7.280769276913706e-05,
+          "frame_ms": 4.438595917582418,
+          "frames": 182,
+          "gpu_ms": {
+            "frames": 21,
+            "mean": 2.6791706879933677,
+            "p50": 2.2929999828338623,
+            "p99": 4.481082916259766,
+            "slowest_one_percent_mean": 4.481082916259766,
+            "worst": 4.481082916259766
+          },
+          "timed_frames": 21
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [
+        "sample or warm-up period is shorter than the protocol",
+        "frames were drawn offscreen and never presented"
+      ],
+      "loaded_chunks": 3744,
+      "options": {
+        "camera_route_clearance_blocks": null,
+        "day_cycle": true,
+        "day_time_start": null,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": true,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 0.0,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 30.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 30.004159416,
+      "scene": "automation",
+      "schema": 2,
+      "screen_seconds": null,
+      "screens": null,
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": true,
+      "simulation_ticks_within_tolerance": true,
+      "source_revision": "unknown",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 445874176,
+      "wall_elapsed_seconds": 42.15235150000001,
+      "source_matches_runner": false,
+      "gate_problems": [
+        "sample or warm-up period is shorter than the protocol",
+        "frames were drawn offscreen and never presented",
+        "configuration is not the reference configuration",
+        "executable was not built from the measured source"
+      ]
+    },
+    {
+      "acceptance_eligible_configuration": false,
+      "chunk_arena_reserved_bytes": 50331648,
+      "chunk_arena_used_bytes": 42437388,
+      "cold_load_ms": 990.3374160000001,
+      "completed_simulation_ticks": 600,
+      "discarded_simulation_ms": 0.0,
+      "entities_end": 310,
+      "entities_start": 271,
+      "expected_population": null,
+      "expected_simulation_ticks": 600.0883575,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.0006575006004905049,
+          "draw": 0.17965539500816266,
+          "entities": 0.07469821214276495,
+          "frame": 1.55841396114488,
+          "frames": 19251,
+          "other": 0.015309433418816187,
+          "present": 1.1439936433419853,
+          "scene": 0.005343001560913198,
+          "streaming": 0.07113715792947052,
+          "ticks": 0.050850161502444396,
+          "uploads": 0.01676945563983239
+        },
+        "slowest_one_percent": {
+          "acquire": 0.001784331614478525,
+          "draw": 0.2417294760596567,
+          "entities": 0.09904534199849312,
+          "frame": 2.7907864818652834,
+          "frames": 193,
+          "other": 0.017819049235770823,
+          "present": 0.36002118552074686,
+          "scene": 0.0078851347041215,
+          "streaming": 0.5427713991526437,
+          "ticks": 1.4295280554133993,
+          "uploads": 0.09020250816597275
+        },
+        "tick_frames": {
+          "acquire": 0.001163058336727166,
+          "draw": 0.21065418456991514,
+          "entities": 0.08410336683193842,
+          "frame": 1.9974206116666684,
+          "frames": 600,
+          "other": 0.013250948236544602,
+          "present": 0.024241668269969523,
+          "scene": 0.0060536816824848455,
+          "streaming": 0.019132908632357917,
+          "ticks": 1.6315274318059285,
+          "uploads": 0.007293363300802109
+        }
+      },
+      "frame_stats": {
+        "average_fps": 641.6780296714974,
+        "frames": 19251,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 358.32193057335866,
+        "p50_ms": 1.527916,
+        "p95_ms": 1.8925420000000002,
+        "p99_ms": 2.208458,
+        "worst_ms": 13.2065
+      },
+      "frame_thresholds_passed": true,
+      "gpu_memory_allocated_bytes": 83623936,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 24880,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.8954807429843386e-05,
+          "frame_ms": 1.55841396114488,
+          "frames": 19251,
+          "gpu_ms": {
+            "frames": 77,
+            "mean": 1.4480135224082253,
+            "p50": 1.3902920484542847,
+            "p99": 3.27354097366333,
+            "slowest_one_percent_mean": 3.27354097366333,
+            "worst": 3.27354097366333
+          },
+          "timed_frames": 77
+        },
+        "other_frames": {
+          "acquire_ms": 1.8954807429843386e-05,
+          "frame_ms": 1.5584139611448717,
+          "frames": 19251,
+          "gpu_ms": {
+            "frames": 77,
+            "mean": 1.4480135224082253,
+            "p50": 1.3902920484542847,
+            "p99": 3.27354097366333,
+            "slowest_one_percent_mean": 3.27354097366333,
+            "worst": 3.27354097366333
+          },
+          "timed_frames": 77
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 6.176165824272269e-05,
+          "frame_ms": 2.7907864818652834,
+          "frames": 193,
+          "gpu_ms": {
+            "frames": 4,
+            "mean": 1.7118750214576721,
+            "p50": 1.1146670579910278,
+            "p99": 3.27354097366333,
+            "slowest_one_percent_mean": 3.27354097366333,
+            "worst": 3.27354097366333
+          },
+          "timed_frames": 4
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [
+        "sample or warm-up period is shorter than the protocol",
+        "frames were drawn offscreen and never presented"
+      ],
+      "loaded_chunks": 3912,
+      "options": {
+        "camera_route_clearance_blocks": 24.0,
+        "day_cycle": true,
+        "day_time_start": null,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": true,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 0.0,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 30.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 30.004417875,
+      "scene": "survival",
+      "schema": 2,
+      "screen_seconds": null,
+      "screens": null,
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": true,
+      "simulation_ticks_within_tolerance": true,
+      "source_revision": "unknown",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 379453440,
+      "wall_elapsed_seconds": 41.60065954199999,
+      "source_matches_runner": false,
+      "gate_problems": [
+        "sample or warm-up period is shorter than the protocol",
+        "frames were drawn offscreen and never presented",
+        "configuration is not the reference configuration",
+        "executable was not built from the measured source"
+      ]
+    }
+  ],
+  "reference_gate_passed": false,
+  "reference_gate_problems": [
+    "offscreen comparison runs present nothing",
+    "sample period overridden",
+    "fewer than three repeats",
+    "not every scene was measured",
+    "invalid runs: building-1, entities-2, automation-3, survival-4",
+    "frame-time thresholds not met"
+  ],
+  "all_runs_valid": false,
+  "remaining_acceptance": "These scenes do not cover the full roadmap environment/encounter matrix or ordinary player testing. GPU pass timestamps time only the frame's render passes, not uploads or presentation; long-session memory stability remains a separate check."
+}

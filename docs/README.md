@@ -73,6 +73,11 @@ roadmap and recorded checks to assess completeness against the current target.
 - [Stabilisation captures](verification/2026-11-10-stabilisation-captures.md):
   bastions, Nether fossils, a desert well, buried treasure, a cold ocean
   ruin, cut-away trail ruins and the v0.16 items, with the defects they found.
+- [Drawable waits, 2026-11-14](verification/2026-11-14-drawable-wait.md):
+  GPU timing shows the gate's slow frames waiting 8–9 ms for a drawable
+  with about 2 ms of GPU work, most likely on the macOS compositor;
+  offscreen, the game's own frames pass in four scenes, and texture paging
+  is not the regression.
 - [Build-5000 campaign, from 2026-11-12](verification/2026-11-12-build-5000/README.md):
   how the owner's request for 5,000 features is cut into slices, checked
   against the Java reference and counted, with a record and ledger per slice.
