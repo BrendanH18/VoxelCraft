@@ -11,7 +11,9 @@ use super::block::Block;
 use super::chest::is_chest;
 use super::chunk::{ChunkData, local_of};
 use super::fortress::Feature;
+use super::loot::RolledChest;
 use super::terrain::Dimension;
+use super::terrain::Generator;
 use crate::entity::MobKind;
 
 impl World {
@@ -64,17 +66,38 @@ impl World {
     #[cfg(test)]
     pub(super) fn register_structure_features(&mut self, pos: IVec3, data: &ChunkData) {
         let features = self.generator.structure_features(pos);
-        self.register_features(data, features);
+        self.register_features(data, features, Vec::new());
     }
 
     /// Install the block entities of a chunk's `features` (from
-    /// [`super::terrain::Generator::structure_features`]) whose blocks are present.
-    pub(super) fn register_features(&mut self, data: &ChunkData, features: Vec<(IVec3, Feature)>) {
+    /// [`super::terrain::Generator::structure_features`]) whose blocks are
+    /// present. A loot chest takes its contents from `rolled` when a worker
+    /// rolled it ([`GeneratedChunk`](super::GeneratedChunk)), and is rolled
+    /// here otherwise.
+    pub(super) fn register_features(
+        &mut self,
+        data: &ChunkData,
+        features: Vec<(IVec3, Feature)>,
+        mut rolled: Vec<(IVec3, RolledChest)>,
+    ) {
         for (p, feature) in features {
             let l = local_of(p);
             let block = data.get(l.x as usize, l.y as usize, l.z as usize);
             if is_chest(block) {
                 self.register_transport_chest(p);
+            }
+            if let Some((name, seed)) = chest_loot(&self.generator, block, p, &feature) {
+                if !self.chests.contains_key(&p) {
+                    let chest = match rolled.iter().position(|(q, _)| *q == p) {
+                        Some(i) => {
+                            let (_, chest) = rolled.swap_remove(i);
+                            self.number_maps(chest)
+                        }
+                        None => self.structure_loot(name, Some(seed), p),
+                    };
+                    self.chests.insert(p, chest);
+                }
+                continue;
             }
             match feature {
                 Feature::Archaeology(seed, table) if super::archaeology::owns(block.0) => {
@@ -84,89 +107,8 @@ impl World {
                     self.register_trial_spawner(p, config);
                 }
                 Feature::TrialVault if super::trial::vault(block).is_some() => self.register_trial_vault(p),
-                Feature::TrialLoot(seed, table) if is_chest(block) => {
-                    if !self.chests.contains_key(&p) {
-                        let chest = self.structure_loot(table.name(), Some(seed), p);
-                        self.chests.insert(p, chest);
-                    }
-                }
                 Feature::Spawner(kind) if block == Block::SPAWNER => {
                     self.spawners.entry(p).or_insert(kind);
-                }
-                Feature::Chest(seed) if is_chest(block) => {
-                    if !self.chests.contains_key(&p) {
-                        let name = "nether_bridge";
-                        let chest = self.structure_loot(name, Some(seed), p);
-                        self.chests.insert(p, chest);
-                    }
-                }
-                Feature::StrongholdChest(seed) if is_chest(block) => {
-                    if !self.chests.contains_key(&p) {
-                        let name = match seed & 3 {
-                            2 => "stronghold_crossing",
-                            3 => "stronghold_library",
-                            _ => "stronghold_corridor",
-                        };
-                        let chest = self.structure_loot(name, Some(seed), p);
-                        self.chests.insert(p, chest);
-                    }
-                }
-                Feature::DungeonChest(seed) if is_chest(block) => {
-                    if !self.chests.contains_key(&p) {
-                        let name = "simple_dungeon";
-                        let chest = self.structure_loot(name, Some(seed), p);
-                        self.chests.insert(p, chest);
-                    }
-                }
-                Feature::BastionChest(seed, kind) if is_chest(block) => {
-                    if !self.chests.contains_key(&p) {
-                        let name = match kind {
-                            super::bastion::ChestKind::Treasure => "bastion_treasure",
-                            super::bastion::ChestKind::Bridge => "bastion_bridge",
-                            super::bastion::ChestKind::HoglinStable => "bastion_hoglin_stable",
-                            super::bastion::ChestKind::Other => "bastion_other",
-                        };
-                        let chest = self.structure_loot(name, Some(seed), p);
-                        self.chests.insert(p, chest);
-                    }
-                }
-                Feature::AncientCityChest(seed, ice_box) if is_chest(block) => {
-                    if !self.chests.contains_key(&p) {
-                        let name = if ice_box { "ancient_city_ice_box" } else { "ancient_city" };
-                        let chest = self.structure_loot(name, Some(seed), p);
-                        self.chests.insert(p, chest);
-                    }
-                }
-                Feature::MineshaftChest(seed) if is_chest(block) => {
-                    if !self.chests.contains_key(&p) {
-                        let name = "abandoned_mineshaft";
-                        let chest = self.structure_loot(name, Some(seed), p);
-                        self.chests.insert(p, chest);
-                    }
-                }
-                Feature::TempleChest(seed, table) if is_chest(block) => {
-                    if !self.chests.contains_key(&p) {
-                        let name = table.name();
-                        let chest = self.structure_loot(name, Some(seed), p);
-                        self.chests.insert(p, chest);
-                    }
-                }
-                Feature::VillageChest(seed, style) if is_chest(block) => {
-                    if !self.chests.contains_key(&p) {
-                        let name = if self.generator.villages.cartographer_chest(&self.generator, p) {
-                            "village/village_cartographer"
-                        } else {
-                            match style {
-                                super::village::Style::Plains => "village/village_plains_house",
-                                super::village::Style::Desert => "village/village_desert_house",
-                                super::village::Style::Savanna => "village/village_savanna_house",
-                                super::village::Style::Taiga => "village/village_taiga_house",
-                                super::village::Style::Snowy => "village/village_snowy_house",
-                            }
-                        };
-                        let chest = self.structure_loot(name, Some(seed), p);
-                        self.chests.insert(p, chest);
-                    }
                 }
                 Feature::IglooBrewing if block == Block::BREWING_STAND => {
                     self.brewing_stands.entry(p).or_insert_with(|| {
@@ -217,4 +159,54 @@ impl World {
             }
         }
     }
+}
+
+/// The table and seed of the structure loot chest `feature` places at `p`,
+/// where the chunk holds `block`; `None` when it places no loot chest there.
+pub(super) fn chest_loot(g: &Generator, block: Block, p: IVec3, feature: &Feature) -> Option<(&'static str, u64)> {
+    if !is_chest(block) {
+        return None;
+    }
+    Some(match *feature {
+        Feature::TrialLoot(seed, table) => (table.name(), seed),
+        Feature::Chest(seed) => ("nether_bridge", seed),
+        Feature::StrongholdChest(seed) => (
+            match seed & 3 {
+                2 => "stronghold_crossing",
+                3 => "stronghold_library",
+                _ => "stronghold_corridor",
+            },
+            seed,
+        ),
+        Feature::DungeonChest(seed) => ("simple_dungeon", seed),
+        Feature::BastionChest(seed, kind) => (
+            match kind {
+                super::bastion::ChestKind::Treasure => "bastion_treasure",
+                super::bastion::ChestKind::Bridge => "bastion_bridge",
+                super::bastion::ChestKind::HoglinStable => "bastion_hoglin_stable",
+                super::bastion::ChestKind::Other => "bastion_other",
+            },
+            seed,
+        ),
+        Feature::AncientCityChest(seed, ice_box) => {
+            (if ice_box { "ancient_city_ice_box" } else { "ancient_city" }, seed)
+        }
+        Feature::MineshaftChest(seed) => ("abandoned_mineshaft", seed),
+        Feature::TempleChest(seed, table) => (table.name(), seed),
+        Feature::VillageChest(seed, style) => (
+            if g.villages.cartographer_chest(g, p) {
+                "village/village_cartographer"
+            } else {
+                match style {
+                    super::village::Style::Plains => "village/village_plains_house",
+                    super::village::Style::Desert => "village/village_desert_house",
+                    super::village::Style::Savanna => "village/village_savanna_house",
+                    super::village::Style::Taiga => "village/village_taiga_house",
+                    super::village::Style::Snowy => "village/village_snowy_house",
+                }
+            },
+            seed,
+        ),
+        _ => return None,
+    })
 }

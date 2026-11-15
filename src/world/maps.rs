@@ -252,25 +252,7 @@ impl MapStorage {
         Stack { map_id: Some(id), ..Stack::new(item, 1) }
     }
     pub fn explorer(&mut self, g: &Generator, from: IVec3, item: Item, radius: i32) -> Option<Stack> {
-        let target = locate(g, from, item, radius)?;
-        let mut data = MapData::fresh(
-            target.x,
-            target.z,
-            if item == Item::BURIED_TREASURE_MAP { 1 } else { 2 },
-            g.dimension,
-            true,
-            true,
-        );
-        data.biome_preview(|x, z| {
-            let biome = g.biome_at(IVec3::new(x, super::terrain::SEA_LEVEL, z));
-            biome.is_watery() || biome.is_swamp()
-        });
-        data.decorations.push(Decoration {
-            kind: item.name().replace(' ', "_"),
-            x: target.x as f64,
-            z: target.z as f64,
-            rotation: 180.0,
-        });
+        let data = explorer_map(g, from, item, radius)?;
         Some(self.create(data, item))
     }
     pub fn serialize(&self) -> String {
@@ -321,6 +303,33 @@ impl MapStorage {
 fn buried_treasure(g: &Generator, from: IVec3, radius: i32) -> Option<IVec3> {
     g.buried_treasure.nearest_buried_treasure(g, from, radius)
 }
+/// The unnumbered map an explorer map of `item` found from `from` shows:
+/// its target marked on a biome preview. Drawing the preview samples
+/// 16,384 biomes, so workers do it for fresh chunks' chests
+/// ([`super::loot::RolledChest`]).
+pub fn explorer_map(g: &Generator, from: IVec3, item: Item, radius: i32) -> Option<MapData> {
+    let target = locate(g, from, item, radius)?;
+    let mut data = MapData::fresh(
+        target.x,
+        target.z,
+        if item == Item::BURIED_TREASURE_MAP { 1 } else { 2 },
+        g.dimension,
+        true,
+        true,
+    );
+    data.biome_preview(|x, z| {
+        let biome = g.biome_at(IVec3::new(x, super::terrain::SEA_LEVEL, z));
+        biome.is_watery() || biome.is_swamp()
+    });
+    data.decorations.push(Decoration {
+        kind: item.name().replace(' ', "_"),
+        x: target.x as f64,
+        z: target.z as f64,
+        rotation: 180.0,
+    });
+    Some(data)
+}
+
 pub fn locate(g: &Generator, from: IVec3, item: Item, radius: i32) -> Option<IVec3> {
     match item {
         Item::OCEAN_MONUMENT_MAP => g.temples.locate_rings(g, &[Kind::Monument], from, radius),
