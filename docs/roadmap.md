@@ -748,9 +748,12 @@ owed. Work items:
    the four scenes measured. The owner then set the gate to 120 FPS
    on the game's own frames, measured offscreen, with the windowed run
    failing only on stalls over 50 ms (2026-11-14,
-   [§6.1](#61-reference-configuration-and-frame-time-gate)). What remains is
-   both suites (offscreen and windowed, three runs of every scene) on the
-   idle M5 at the commit to be tagged. ([FE-02](#14-what-can-follow-10) was approved by the owner on
+   [§6.1](#61-reference-configuration-and-frame-time-gate)). Both suites
+   ran at `1ee87eb1` on the idle M5 the same day
+   ([record](verification/2026-11-14-gate-run.md)): every scene passes in
+   both except streaming, whose two stalls per run were explorer maps rolled
+   on the main thread; workers roll them now. What remains is both suites
+   again at the commit to be tagged. ([FE-02](#14-what-can-follow-10) was approved by the owner on
    2026-11-10.)
    Ancient cities and trial chambers now run in the GEN-07 order corpus
    ([record](verification/2026-11-09-streaming-biomes-and-gen07.md)).
@@ -1533,7 +1536,7 @@ correctness, acquisition, persistence or release-blocking performance defects.
 - Windowed suite: the same scenes run in a normal window each release and
   fail only on a stall, **any frame over 50 ms**. A windowed frame can't
   beat the 120 Hz display, and the macOS compositor appears to return
-  drawables once per refresh, so windowed 1% lows sit near 110–115 FPS
+  drawables once per refresh, so windowed 1% lows sit around 80–165 FPS
   whatever the game does ([record](verification/2026-11-14-drawable-wait.md)).
 - Until 2026-11-14 the gate was a 1% low of 240 FPS and p99 of 4.17 ms on
   windowed frames, with a separate streaming budget (no frame over 50 ms,

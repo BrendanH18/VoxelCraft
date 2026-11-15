@@ -160,6 +160,9 @@ pub struct GeneratedChunk {
     fluid_ticks: Vec<IVec3>,
     /// Water above soul sand or magma: where bubble columns start.
     bubble_seeds: Vec<IVec3>,
+    /// The seeded loot chests among `features`, rolled here because an
+    /// explorer map's preview would stall the main thread.
+    rolled: Vec<(IVec3, loot::RolledChest)>,
 }
 
 impl GeneratedChunk {
@@ -180,7 +183,16 @@ impl GeneratedChunk {
         } else {
             bubble::seeds(&data, pos * CHUNK_SIZE_I)
         };
-        Self { data, features, fluid_ticks, bubble_seeds }
+        let rolled = features
+            .iter()
+            .filter_map(|(p, feature)| {
+                let l = local_of(*p);
+                let block = data.get(l.x as usize, l.y as usize, l.z as usize);
+                let (name, seed) = spawner::chest_loot(generator, block, *p, feature)?;
+                (seed != 0).then(|| (*p, loot::RolledChest::roll(generator, name, seed, *p)))
+            })
+            .collect();
+        Self { data, features, fluid_ticks, bubble_seeds, rolled }
     }
 }
 
@@ -1391,8 +1403,8 @@ impl World {
 
     /// Install a generated chunk whose generator-derived work is already done.
     fn insert_generated(&mut self, pos: IVec3, chunk: GeneratedChunk) {
-        let GeneratedChunk { data, features, fluid_ticks, bubble_seeds } = chunk;
-        self.register_features(&data, features);
+        let GeneratedChunk { data, features, fluid_ticks, bubble_seeds, rolled } = chunk;
+        self.register_features(&data, features, rolled);
         self.fluids.bubbles.extend(bubble_seeds);
         // Installed first, so `wake_fluids` sees this chunk's lava.
         self.install_chunk(pos, Arc::new(data), false);

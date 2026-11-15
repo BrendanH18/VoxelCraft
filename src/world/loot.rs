@@ -217,6 +217,32 @@ fn md5(bytes: &[u8]) -> [u8; 16] {
     out
 }
 
+/// Placeholder map ids for a [`RolledChest`]'s maps until the world numbers them.
+const UNNUMBERED_MAP: u32 = u32::MAX - 1024;
+
+/// A seeded structure chest rolled away from the world, as
+/// [`World::structure_loot`] rolls it, with its explorer maps drawn but not
+/// yet numbered. An explorer map's biome preview took 100–190 ms on the M5
+/// (2026-11-14), so workers roll fresh chunks' chests and the main thread
+/// only numbers the maps ([`World::number_maps`]).
+pub struct RolledChest {
+    chest: Chest,
+    maps: Vec<(crate::item::Item, super::maps::MapData)>,
+}
+
+impl RolledChest {
+    pub fn roll(g: &super::terrain::Generator, name: &str, seed: u64, origin: glam::IVec3) -> Self {
+        let mut maps = Vec::new();
+        let chest = table_with_random(name, &mut LootRandom::new(seed), |s| {
+            let data = super::maps::explorer_map(g, origin, s.item, 50)?;
+            let id = UNNUMBERED_MAP + maps.len() as u32;
+            maps.push((s.item, data));
+            Some(Stack { map_id: Some(id), ..Stack::new(s.item, 1) })
+        });
+        Self { chest, maps }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -687,6 +713,20 @@ impl super::World {
         }
     }
 
+    /// `rolled`'s chest with its explorer maps numbered, in roll order, as
+    /// [`World::structure_loot`] would have numbered them.
+    pub(super) fn number_maps(&mut self, rolled: RolledChest) -> Chest {
+        let RolledChest { mut chest, maps } = rolled;
+        for (i, (item, data)) in maps.into_iter().enumerate() {
+            let id = self.maps.create(data, item).map_id;
+            let unnumbered = Some(UNNUMBERED_MAP + i as u32);
+            if let Some(stack) = chest.slots.iter_mut().flatten().find(|s| s.map_id == unnumbered) {
+                stack.map_id = id;
+            }
+        }
+        chest
+    }
+
     /// `LootTable.getRandomItems` with the table's persistent named random
     /// sequence (vault rewards, trial spawner ejections).
     pub fn loot_stacks(&mut self, name: &str, origin: glam::IVec3) -> Vec<Stack> {
@@ -839,5 +879,37 @@ mod pool_modifier_tests {
         let mut book = Stack::new(crate::item::Item::BOOK, 1);
         apply_enchantment(&mut book, "soul_speed", 1);
         assert_eq!(book.item, crate::item::Item::BOOK);
+    }
+}
+
+#[cfg(test)]
+mod rolled_chest_tests {
+    use super::*;
+    use crate::item::Item;
+    use crate::world::World;
+    use crate::world::maps::MapData;
+    use crate::world::terrain::{Dimension, Generator};
+    use glam::IVec3;
+    use std::sync::Arc;
+
+    /// A shipwreck map chest rolled on a worker and numbered by the world
+    /// equals the same chest rolled on the main thread, map numbers and the
+    /// drawn map included.
+    #[test]
+    fn worker_rolled_chests_match_main_thread_rolls() {
+        let g = Arc::new(Generator::new(12345));
+        // A shipwreck chest on the benchmark route that stalled the main thread.
+        let origin = IVec3::new(1944, 35, -241);
+        let rolled = RolledChest::roll(&g, "shipwreck_map", 7, origin);
+        assert!(!rolled.maps.is_empty(), "the shipwreck map chest holds an explorer map");
+        let mut worker = World::new_headless(g.clone(), Default::default(), 1);
+        let mut main = World::new_headless(g, Default::default(), 1);
+        for w in [&mut worker, &mut main] {
+            w.maps.create(MapData::fresh(0, 0, 0, Dimension::Overworld, true, false), Item::FILLED_MAP);
+        }
+        let chest = worker.number_maps(rolled);
+        assert!(chest.slots.iter().flatten().any(|s| s.map_id == Some(1)));
+        assert_eq!(chest, main.structure_loot("shipwreck_map", Some(7), origin));
+        assert_eq!(worker.maps.serialize(), main.maps.serialize());
     }
 }
