@@ -1,0 +1,4495 @@
+{
+  "schema": 2,
+  "source": {
+    "commit": "1ee87eb1786d269accd9e264b3befca559effce8",
+    "dirty": false,
+    "runtime_source_sha256": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916"
+  },
+  "hardware": {
+    "platform": "macOS-27.2.1-arm64-arm-64bit",
+    "architecture": "arm64",
+    "logical_cpus": 10,
+    "chip": "Apple M5",
+    "ram_bytes": 17179869184,
+    "graphics": [
+      {
+        "chip": "Apple M5",
+        "cores": "10",
+        "displays": [
+          {
+            "resolution": null,
+            "native_pixels": "3024 x 1964"
+          }
+        ]
+      }
+    ]
+  },
+  "executable_sha256": "c339dec69cc28952e61ea165d6f0eec4106a709c11e09935664bc9039a65c4bb",
+  "protocol": "offscreen gate",
+  "resolution_class": "1080p",
+  "presentation_options": {
+    "frame_latency": 2,
+    "window_mode": "windowed",
+    "gpu_timestamps": true
+  },
+  "specification": {
+    "schema": 2,
+    "seed": 12345,
+    "view_distance_blocks": 256,
+    "simulation_distance_blocks": 160,
+    "physical_resolution": [
+      1920,
+      1080
+    ],
+    "graphics": "enhanced",
+    "warmup_seconds": 10,
+    "sample_seconds": 60,
+    "repeats": 3,
+    "scenes": [
+      {
+        "name": "survival",
+        "description": "Seeded outdoor terrain, active simulation and a slow 12-block camera orbit facing its direction of travel",
+        "camera_clearance_blocks": 24
+      },
+      {
+        "name": "building",
+        "description": "25 x 25 platform, eight-level pale oak/glass construction and camera sweep"
+      },
+      {
+        "name": "entities",
+        "description": "160 cows, sheep, pigs, chickens, zombies, skeletons, wolves and horses, active AI and camera sweep",
+        "fixture": {
+          "day_time": 0.0,
+          "gamerules": {
+            "doDaylightCycle": false,
+            "doMobSpawning": false
+          },
+          "population": 160,
+          "population_tolerance": 0.05
+        }
+      },
+      {
+        "name": "automation",
+        "description": "85 active furnaces with loaded fuel/input, redstone sources and powered dust"
+      },
+      {
+        "name": "materials",
+        "description": "One state of every v0.12 block (states 16384-29695) cycled over a 25 x 25 grid three blocks apart, signs with text on both sides, and a 25 x 4 wall of item and glow item frames holding items, with a camera sweep"
+      },
+      {
+        "name": "streaming",
+        "description": "12-block/s route across terrain with lateral turns, facing its direction of travel, continued generation and simulation",
+        "sample_seconds": 180,
+        "camera_clearance_blocks": 24
+      },
+      {
+        "name": "menus",
+        "description": "In a world at spawn with the camera turning, the pause menu, Options and each Options sub-screen, then the inventory, each open for 2 seconds in turn; the pause screens stop the simulation, as in Java",
+        "simulation": false,
+        "screens": [
+          "pause",
+          "options",
+          "video",
+          "sound",
+          "controls",
+          "mouse",
+          "keybinds",
+          "accessibility",
+          "inventory"
+        ]
+      },
+      {
+        "name": "title",
+        "description": "The title screen's turning sky with the title menu, Select World, Create New World, Multiplayer, Direct Connection, Options and its sub-screens, each open for 2 seconds in turn; no world is open",
+        "simulation": false,
+        "world": false,
+        "screens": [
+          "title",
+          "select",
+          "create",
+          "multiplayer",
+          "direct",
+          "options",
+          "video",
+          "sound",
+          "controls",
+          "mouse",
+          "keybinds",
+          "accessibility"
+        ]
+      }
+    ],
+    "fixture_overrides": {
+      "camera_flight": true,
+      "initial_health": 10000
+    },
+    "camera_routes": "Survival and streaming cameras fly at the generator's surface height (bilinear 8-block samples, maximum from 16 blocks behind to 32 ahead, never below sea level) plus the scene's clearance.",
+    "entity_fixture": "The entity scene holds dawn (time 0.0, below the undead sunburn threshold) with no daylight cycle or natural spawning, so its specified population is not burned or diluted; start and end populations must stay within 5%.",
+    "validity": "A run counts only with zero paused simulation time (except in the menu scenes, which pause it as Java does), completed ticks within max(2, 0.5%) of 20 per sampled second (except in the menu scenes), zero unpresented (hidden or occluded window) frames, enhanced graphics, an uncapped resolved present mode and any fixed scene population held. Benchmark runs ignore keyboard, pointer, controller and focus input and never save.",
+    "limits": "Controlled benchmark cameras do not establish ordinary-player acceptance. GPU timestamps are not yet available; device-allocator GPU memory is null where the backend has no allocator report (Metal). Surface frame intervals measure throughput. Additional roadmap biomes, encounters and long-session memory scenes must be added as their implementation passes assessment."
+  },
+  "runs": [
+    {
+      "acceptance_eligible_configuration": true,
+      "chunk_arena_reserved_bytes": 50331648,
+      "chunk_arena_used_bytes": 43547964,
+      "cold_load_ms": 910.050625,
+      "completed_simulation_ticks": 1200,
+      "discarded_simulation_ms": 0.0,
+      "entities_end": 308,
+      "entities_start": 275,
+      "expected_population": null,
+      "expected_simulation_ticks": 1200.1464866800002,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.00046931487356015376,
+          "draw": 0.18600979612664437,
+          "entities": 0.06750071041364053,
+          "frame": 1.8381917532320289,
+          "frames": 32642,
+          "other": 0.0174213211448504,
+          "present": 1.4466655143836435,
+          "scene": 0.004063408893820248,
+          "streaming": 0.05132363296952475,
+          "ticks": 0.05321315359115367,
+          "uploads": 0.011524900835191157
+        },
+        "slowest_one_percent": {
+          "acquire": 0.00048737309104834176,
+          "draw": 0.22156867307442774,
+          "entities": 0.08163556260617866,
+          "frame": 2.987364308868504,
+          "frames": 327,
+          "other": 0.03171270034638729,
+          "present": 2.2329278833628705,
+          "scene": 0.004322400641277296,
+          "streaming": 0.12269851529760008,
+          "ticks": 0.2757301301402054,
+          "uploads": 0.01628107030850882
+        },
+        "tick_frames": {
+          "acquire": 0.000625555837371697,
+          "draw": 0.2095914606253306,
+          "entities": 0.07374239327075581,
+          "frame": 2.1224990691666656,
+          "frames": 1200,
+          "other": 0.014713865906892387,
+          "present": 0.357031553851751,
+          "scene": 0.0044663650158327075,
+          "streaming": 0.01122351001560067,
+          "ticks": 1.4474864662686984,
+          "uploads": 0.003617898374432116
+        }
+      },
+      "frame_stats": {
+        "average_fps": 544.0128856207382,
+        "frames": 32642,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 334.74323738531933,
+        "p50_ms": 1.626083,
+        "p95_ms": 2.774708,
+        "p99_ms": 2.8609590000000003,
+        "worst_ms": 8.268958
+      },
+      "frame_thresholds_passed": true,
+      "gpu_memory_allocated_bytes": 83623936,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 38667,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.4252129013568419e-05,
+          "frame_ms": 1.8381917532320289,
+          "frames": 32642,
+          "gpu_ms": {
+            "frames": 3,
+            "mean": 1.5286386410395305,
+            "p50": 1.378957986831665,
+            "p99": 1.9809579849243164,
+            "slowest_one_percent_mean": 1.9809579849243164,
+            "worst": 1.9809579849243164
+          },
+          "timed_frames": 3
+        },
+        "other_frames": {
+          "acquire_ms": 1.4252129013568419e-05,
+          "frame_ms": 1.8381917532320304,
+          "frames": 32642,
+          "gpu_ms": {
+            "frames": 3,
+            "mean": 1.5286386410395305,
+            "p50": 1.378957986831665,
+            "p99": 1.9809579849243164,
+            "slowest_one_percent_mean": 1.9809579849243164,
+            "worst": 1.9809579849243164
+          },
+          "timed_frames": 3
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 1.35229356406792e-05,
+          "frame_ms": 2.987364308868504,
+          "frames": 327,
+          "gpu_ms": null,
+          "timed_frames": 0
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "loaded_chunks": 3984,
+      "options": {
+        "camera_route_clearance_blocks": 24.0,
+        "day_cycle": true,
+        "day_time_start": null,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": true,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 0.0,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 60.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 60.007324334,
+      "scene": "survival",
+      "schema": 2,
+      "screen_seconds": null,
+      "screens": null,
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": true,
+      "simulation_ticks_within_tolerance": true,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 380715008,
+      "wall_elapsed_seconds": 71.98179150000001,
+      "source_matches_runner": true,
+      "gate_problems": []
+    },
+    {
+      "acceptance_eligible_configuration": true,
+      "chunk_arena_reserved_bytes": 50331648,
+      "chunk_arena_used_bytes": 43547772,
+      "cold_load_ms": 948.946541,
+      "completed_simulation_ticks": 1201,
+      "discarded_simulation_ms": 0.0,
+      "entities_end": 313,
+      "entities_start": 274,
+      "expected_population": null,
+      "expected_simulation_ticks": 1200.14548668,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.0004585665875598667,
+          "draw": 0.1885592170466101,
+          "entities": 0.06843491515584309,
+          "frame": 1.839821707110667,
+          "frames": 32613,
+          "other": 0.01658510671822655,
+          "present": 1.4413707443279011,
+          "scene": 0.005720385206617753,
+          "streaming": 0.052744937261029766,
+          "ticks": 0.053991808585862104,
+          "uploads": 0.011956026221016668
+        },
+        "slowest_one_percent": {
+          "acquire": 0.0005001131545208303,
+          "draw": 0.22524279232965697,
+          "entities": 0.08098355356022852,
+          "frame": 3.012187801223241,
+          "frames": 327,
+          "other": 0.031752514357948236,
+          "present": 2.1579711697967183,
+          "scene": 0.005188324229524041,
+          "streaming": 0.11404565422488121,
+          "ticks": 0.3738606121926497,
+          "uploads": 0.022643067377113198
+        },
+        "tick_frames": {
+          "acquire": 0.0006288659486874665,
+          "draw": 0.21252159627897357,
+          "entities": 0.07523526069239017,
+          "frame": 2.1486302431307225,
+          "frames": 1201,
+          "other": 0.015205746164290268,
+          "present": 0.35794739322511976,
+          "scene": 0.0062736552912388294,
+          "streaming": 0.011043110683050122,
+          "ticks": 1.4661405940139225,
+          "uploads": 0.0036340208330500304
+        }
+      },
+      "frame_stats": {
+        "average_fps": 543.5309280976154,
+        "frames": 32613,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 331.9846125111797,
+        "p50_ms": 1.6303750000000001,
+        "p95_ms": 2.776,
+        "p99_ms": 2.861208,
+        "worst_ms": 12.789708000000001
+      },
+      "frame_thresholds_passed": true,
+      "gpu_memory_allocated_bytes": 83623936,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 38598,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.3982951435357868e-05,
+          "frame_ms": 1.839821707110667,
+          "frames": 32613,
+          "gpu_ms": {
+            "frames": 12,
+            "mean": 2.2211944982409477,
+            "p50": 2.358833074569702,
+            "p99": 3.723958969116211,
+            "slowest_one_percent_mean": 3.723958969116211,
+            "worst": 3.723958969116211
+          },
+          "timed_frames": 12
+        },
+        "other_frames": {
+          "acquire_ms": 1.3982951435357868e-05,
+          "frame_ms": 1.8398217071106644,
+          "frames": 32613,
+          "gpu_ms": {
+            "frames": 12,
+            "mean": 2.2211944982409477,
+            "p50": 2.358833074569702,
+            "p99": 3.723958969116211,
+            "slowest_one_percent_mean": 3.723958969116211,
+            "worst": 3.723958969116211
+          },
+          "timed_frames": 12
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 1.567584081176976e-05,
+          "frame_ms": 3.012187801223241,
+          "frames": 327,
+          "gpu_ms": {
+            "frames": 2,
+            "mean": 3.1733545064926147,
+            "p50": 2.728584051132202,
+            "p99": 3.6181249618530273,
+            "slowest_one_percent_mean": 3.6181249618530273,
+            "worst": 3.6181249618530273
+          },
+          "timed_frames": 2
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "loaded_chunks": 3984,
+      "options": {
+        "camera_route_clearance_blocks": 24.0,
+        "day_cycle": true,
+        "day_time_start": null,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": true,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 0.0,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 60.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 60.007274334,
+      "scene": "survival",
+      "schema": 2,
+      "screen_seconds": null,
+      "screens": null,
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": true,
+      "simulation_ticks_within_tolerance": true,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 381124608,
+      "wall_elapsed_seconds": 71.36806658400002,
+      "source_matches_runner": true,
+      "gate_problems": []
+    },
+    {
+      "acceptance_eligible_configuration": true,
+      "chunk_arena_reserved_bytes": 50331648,
+      "chunk_arena_used_bytes": 43547340,
+      "cold_load_ms": 949.264667,
+      "completed_simulation_ticks": 1200,
+      "discarded_simulation_ms": 0.0,
+      "entities_end": 316,
+      "entities_start": 276,
+      "expected_population": null,
+      "expected_simulation_ticks": 1200.11116584,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.0004486793050500584,
+          "draw": 0.18671767913583937,
+          "entities": 0.07006226539164534,
+          "frame": 1.8415218653551002,
+          "frames": 32582,
+          "other": 0.016558481881927545,
+          "present": 1.444202956339847,
+          "scene": 0.00514101761784392,
+          "streaming": 0.05216429162560475,
+          "ticks": 0.05457354614538687,
+          "uploads": 0.011652947911955418
+        },
+        "slowest_one_percent": {
+          "acquire": 0.00046700000297992373,
+          "draw": 0.21976165327192085,
+          "entities": 0.08464060104423506,
+          "frame": 3.009735202453986,
+          "frames": 326,
+          "other": 0.03107017283427682,
+          "present": 2.112879096861769,
+          "scene": 0.005201705572898128,
+          "streaming": 0.11806851807850316,
+          "ticks": 0.4220364119377604,
+          "uploads": 0.015610042849642744
+        },
+        "tick_frames": {
+          "acquire": 0.0005873000019952693,
+          "draw": 0.21055866103619336,
+          "entities": 0.07707837168127299,
+          "frame": 2.1575295183333356,
+          "frames": 1200,
+          "other": 0.013829482997960607,
+          "present": 0.3536805939200955,
+          "scene": 0.005637884201132692,
+          "streaming": 0.010583554895905158,
+          "ticks": 1.481762733757496,
+          "uploads": 0.0038109358412839354
+        }
+      },
+      "frame_stats": {
+        "average_fps": 543.0291210835936,
+        "frames": 32582,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 332.2551429722623,
+        "p50_ms": 1.636667,
+        "p95_ms": 2.775708,
+        "p99_ms": 2.862625,
+        "worst_ms": 13.784374999999999
+      },
+      "frame_thresholds_passed": true,
+      "gpu_memory_allocated_bytes": 83623936,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 38629,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.3958688699669133e-05,
+          "frame_ms": 1.8415218653551002,
+          "frames": 32582,
+          "gpu_ms": {
+            "frames": 77,
+            "mean": 1.274726720599385,
+            "p50": 1.3021249771118164,
+            "p99": 2.03725004196167,
+            "slowest_one_percent_mean": 2.03725004196167,
+            "worst": 2.03725004196167
+          },
+          "timed_frames": 77
+        },
+        "other_frames": {
+          "acquire_ms": 1.3958688699669133e-05,
+          "frame_ms": 1.841521865355097,
+          "frames": 32582,
+          "gpu_ms": {
+            "frames": 77,
+            "mean": 1.274726720599385,
+            "p50": 1.3021249771118164,
+            "p99": 2.03725004196167,
+            "slowest_one_percent_mean": 2.03725004196167,
+            "worst": 2.03725004196167
+          },
+          "timed_frames": 77
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 1.5073619489922286e-05,
+          "frame_ms": 3.009735202453986,
+          "frames": 326,
+          "gpu_ms": null,
+          "timed_frames": 0
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "loaded_chunks": 3984,
+      "options": {
+        "camera_route_clearance_blocks": 24.0,
+        "day_cycle": true,
+        "day_time_start": null,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": true,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 0.0,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 60.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 60.005558292,
+      "scene": "survival",
+      "schema": 2,
+      "screen_seconds": null,
+      "screens": null,
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": true,
+      "simulation_ticks_within_tolerance": true,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 378961920,
+      "wall_elapsed_seconds": 71.331893541,
+      "source_matches_runner": true,
+      "gate_problems": []
+    },
+    {
+      "acceptance_eligible_configuration": true,
+      "chunk_arena_reserved_bytes": 50331648,
+      "chunk_arena_used_bytes": 40941012,
+      "cold_load_ms": 2377.24175,
+      "completed_simulation_ticks": 1200,
+      "discarded_simulation_ms": 0.0,
+      "entities_end": 327,
+      "entities_start": 322,
+      "expected_population": null,
+      "expected_simulation_ticks": 1200.08411916,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.00044012187553237194,
+          "draw": 0.20081111052414427,
+          "entities": 0.07131904477804374,
+          "frame": 1.8934120159992496,
+          "frames": 31689,
+          "other": 0.01692451404045281,
+          "present": 1.4800109745621726,
+          "scene": 0.006095395340417316,
+          "streaming": 0.0492888909298089,
+          "ticks": 0.057537124721906655,
+          "uploads": 0.010984839226771083
+        },
+        "slowest_one_percent": {
+          "acquire": 0.00047425868079449676,
+          "draw": 0.2567574629084169,
+          "entities": 0.08365691168827213,
+          "frame": 3.0569229337539428,
+          "frames": 317,
+          "other": 0.03369604341490895,
+          "present": 2.1960132858812904,
+          "scene": 0.005903668785379606,
+          "streaming": 0.048298561275710444,
+          "ticks": 0.411731321728944,
+          "uploads": 0.02039141939022565
+        },
+        "tick_frames": {
+          "acquire": 0.0005623083367633323,
+          "draw": 0.22668542792399723,
+          "entities": 0.07787707835125426,
+          "frame": 2.1904797333333303,
+          "frames": 1200,
+          "other": 0.01411967931738678,
+          "present": 0.3310664732249764,
+          "scene": 0.006399696702137589,
+          "streaming": 0.010733897533694593,
+          "ticks": 1.51941162109375,
+          "uploads": 0.003623550849370076
+        }
+      },
+      "frame_stats": {
+        "average_fps": 528.1470654828655,
+        "frames": 31689,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 327.12633640782906,
+        "p50_ms": 1.760125,
+        "p95_ms": 2.845042,
+        "p99_ms": 2.9541250000000003,
+        "worst_ms": 5.3073749999999995
+      },
+      "frame_thresholds_passed": true,
+      "gpu_memory_allocated_bytes": 83623936,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 36866,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.4096405544985355e-05,
+          "frame_ms": 1.8934120159992496,
+          "frames": 31689,
+          "gpu_ms": {
+            "frames": 5,
+            "mean": 1.9179999828338623,
+            "p50": 2.2297909259796143,
+            "p99": 2.3998749256134033,
+            "slowest_one_percent_mean": 2.3998749256134033,
+            "worst": 2.3998749256134033
+          },
+          "timed_frames": 5
+        },
+        "other_frames": {
+          "acquire_ms": 1.4096405544985355e-05,
+          "frame_ms": 1.8934120159992514,
+          "frames": 31689,
+          "gpu_ms": {
+            "frames": 5,
+            "mean": 1.9179999828338623,
+            "p50": 2.2297909259796143,
+            "p99": 2.3998749256134033,
+            "slowest_one_percent_mean": 2.3998749256134033,
+            "worst": 2.3998749256134033
+          },
+          "timed_frames": 5
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 1.2479495131910105e-05,
+          "frame_ms": 3.0569229337539428,
+          "frames": 317,
+          "gpu_ms": null,
+          "timed_frames": 0
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "loaded_chunks": 3744,
+      "options": {
+        "camera_route_clearance_blocks": null,
+        "day_cycle": true,
+        "day_time_start": null,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": true,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 0.0,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 60.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 60.004205958,
+      "scene": "building",
+      "schema": 2,
+      "screen_seconds": null,
+      "screens": null,
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": true,
+      "simulation_ticks_within_tolerance": true,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 524828672,
+      "wall_elapsed_seconds": 72.90645866599999,
+      "source_matches_runner": true,
+      "gate_problems": []
+    },
+    {
+      "acceptance_eligible_configuration": true,
+      "chunk_arena_reserved_bytes": 50331648,
+      "chunk_arena_used_bytes": 40940760,
+      "cold_load_ms": 2437.184958,
+      "completed_simulation_ticks": 1200,
+      "discarded_simulation_ms": 0.0,
+      "entities_end": 325,
+      "entities_start": 311,
+      "expected_population": null,
+      "expected_simulation_ticks": 1200.08360416,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.0004484724407071966,
+          "draw": 0.201628767501647,
+          "entities": 0.07187946909784687,
+          "frame": 1.89544485995894,
+          "frames": 31655,
+          "other": 0.016724280483980003,
+          "present": 1.480998071862402,
+          "scene": 0.00633644111068483,
+          "streaming": 0.04903282823690256,
+          "ticks": 0.057211224853173384,
+          "uploads": 0.011185304371596157
+        },
+        "slowest_one_percent": {
+          "acquire": 0.00048433438852195826,
+          "draw": 0.25641972804295154,
+          "entities": 0.08554394003767697,
+          "frame": 3.064450968454257,
+          "frames": 317,
+          "other": 0.030592124658552322,
+          "present": 2.1421336806129534,
+          "scene": 0.006748530004549572,
+          "streaming": 0.057703476191325,
+          "ticks": 0.46104810102504884,
+          "uploads": 0.023777053492677717
+        },
+        "tick_frames": {
+          "acquire": 0.0005966941693501818,
+          "draw": 0.22712230648845433,
+          "entities": 0.07852657498791814,
+          "frame": 2.1960112908333316,
+          "frames": 1200,
+          "other": 0.014358086291423433,
+          "present": 0.34539490160920344,
+          "scene": 0.00686275917920284,
+          "streaming": 0.010432050003437325,
+          "ticks": 1.509184435606003,
+          "uploads": 0.0035334824983389505
+        }
+      },
+      "frame_stats": {
+        "average_fps": 527.5806335097833,
+        "frames": 31655,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 326.3227280495243,
+        "p50_ms": 1.7612089999999998,
+        "p95_ms": 2.842083,
+        "p99_ms": 2.9550829999999997,
+        "worst_ms": 5.265125
+      },
+      "frame_thresholds_passed": true,
+      "gpu_memory_allocated_bytes": 83623936,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 36884,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": null,
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "loaded_chunks": 3744,
+      "options": {
+        "camera_route_clearance_blocks": null,
+        "day_cycle": true,
+        "day_time_start": null,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": true,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 0.0,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 60.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 60.004180208,
+      "scene": "building",
+      "schema": 2,
+      "screen_seconds": null,
+      "screens": null,
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": true,
+      "simulation_ticks_within_tolerance": true,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 479297536,
+      "wall_elapsed_seconds": 72.88806949999997,
+      "source_matches_runner": true,
+      "gate_problems": []
+    },
+    {
+      "acceptance_eligible_configuration": true,
+      "chunk_arena_reserved_bytes": 50331648,
+      "chunk_arena_used_bytes": 40939380,
+      "cold_load_ms": 2367.511583,
+      "completed_simulation_ticks": 1200,
+      "discarded_simulation_ms": 0.0,
+      "entities_end": 332,
+      "entities_start": 310,
+      "expected_population": null,
+      "expected_simulation_ticks": 1200.09,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.0004635128907651425,
+          "draw": 0.20457956533377786,
+          "entities": 0.0716705821751042,
+          "frame": 1.895155845957051,
+          "frames": 31660,
+          "other": 0.016988471907663172,
+          "present": 1.4760592728633486,
+          "scene": 0.006087646623237961,
+          "streaming": 0.05066836144992392,
+          "ticks": 0.05714570040275082,
+          "uploads": 0.011492732310479203
+        },
+        "slowest_one_percent": {
+          "acquire": 0.0009217823393130968,
+          "draw": 0.28303300916020424,
+          "entities": 0.09060070655464374,
+          "frame": 3.0839320788643523,
+          "frames": 317,
+          "other": 0.032858095421365086,
+          "present": 2.181750258489597,
+          "scene": 0.00800328395602643,
+          "streaming": 0.06902088021363018,
+          "ticks": 0.3943046684896908,
+          "uploads": 0.02343939423988197
+        },
+        "tick_frames": {
+          "acquire": 0.0006433783368993318,
+          "draw": 0.23125894842048486,
+          "entities": 0.07913543749290208,
+          "frame": 2.185899274166665,
+          "frames": 1200,
+          "other": 0.01468473399875947,
+          "present": 0.3326891360913093,
+          "scene": 0.006695097510237247,
+          "streaming": 0.010168369179591536,
+          "ticks": 1.5076940622925759,
+          "uploads": 0.0029301108439055193
+        }
+      },
+      "frame_stats": {
+        "average_fps": 527.661090317879,
+        "frames": 31660,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 324.26135674435693,
+        "p50_ms": 1.7598749999999999,
+        "p95_ms": 2.8472079999999997,
+        "p99_ms": 2.971333,
+        "worst_ms": 6.307709
+      },
+      "frame_thresholds_passed": true,
+      "gpu_memory_allocated_bytes": 83623936,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 36730,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.4501263271848906e-05,
+          "frame_ms": 1.895155845957051,
+          "frames": 31660,
+          "gpu_ms": {
+            "frames": 82,
+            "mean": 2.1013048654649316,
+            "p50": 2.0158751010894775,
+            "p99": 3.0817089080810547,
+            "slowest_one_percent_mean": 3.0817089080810547,
+            "worst": 3.0817089080810547
+          },
+          "timed_frames": 82
+        },
+        "other_frames": {
+          "acquire_ms": 1.4501263271848906e-05,
+          "frame_ms": 1.8951558459570494,
+          "frames": 31660,
+          "gpu_ms": {
+            "frames": 82,
+            "mean": 2.1013048654649316,
+            "p50": 2.0158751010894775,
+            "p99": 3.0817089080810547,
+            "slowest_one_percent_mean": 3.0817089080810547,
+            "worst": 3.0817089080810547
+          },
+          "timed_frames": 82
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 1.971608823167501e-05,
+          "frame_ms": 3.0839320788643523,
+          "frames": 317,
+          "gpu_ms": {
+            "frames": 7,
+            "mean": 2.494012015206473,
+            "p50": 2.4031670093536377,
+            "p99": 2.7791669368743896,
+            "slowest_one_percent_mean": 2.7791669368743896,
+            "worst": 2.7791669368743896
+          },
+          "timed_frames": 7
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "loaded_chunks": 3744,
+      "options": {
+        "camera_route_clearance_blocks": null,
+        "day_cycle": true,
+        "day_time_start": null,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": true,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 0.0,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 60.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 60.0045,
+      "scene": "building",
+      "schema": 2,
+      "screen_seconds": null,
+      "screens": null,
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": true,
+      "simulation_ticks_within_tolerance": true,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 582729728,
+      "wall_elapsed_seconds": 72.94550587499998,
+      "source_matches_runner": true,
+      "gate_problems": []
+    },
+    {
+      "acceptance_eligible_configuration": true,
+      "chunk_arena_reserved_bytes": 50331648,
+      "chunk_arena_used_bytes": 40861452,
+      "cold_load_ms": 1738.2592080000002,
+      "completed_simulation_ticks": 1200,
+      "discarded_simulation_ms": 0.0,
+      "entities_end": 157,
+      "entities_start": 160,
+      "expected_population": 160,
+      "expected_simulation_ticks": 1200.08869082,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.0004649917154476845,
+          "draw": 0.2028676096153326,
+          "entities": 0.06242348337427336,
+          "frame": 1.9500889384425453,
+          "frames": 30768,
+          "other": 0.017015227309497893,
+          "present": 1.5552594329284548,
+          "scene": 0.004842519023674768,
+          "streaming": 0.050169921394063906,
+          "ticks": 0.04561062105623807,
+          "uploads": 0.011435132025562317
+        },
+        "slowest_one_percent": {
+          "acquire": 0.0004606461084871886,
+          "draw": 0.2502476782477521,
+          "entities": 0.051525960954559316,
+          "frame": 2.949578061688313,
+          "frames": 308,
+          "other": 0.034066298228697445,
+          "present": 2.285497037588026,
+          "scene": 0.004221185045498242,
+          "streaming": 0.048815308588514614,
+          "ticks": 0.26060728457841004,
+          "uploads": 0.014136662348368214
+        },
+        "tick_frames": {
+          "acquire": 0.0005074625034588583,
+          "draw": 0.2177356809998552,
+          "entities": 0.06356467328034342,
+          "frame": 2.0939669691666674,
+          "frames": 1200,
+          "other": 0.01452459531380823,
+          "present": 0.6100050781411119,
+          "scene": 0.005081005019213383,
+          "streaming": 0.010137019173125737,
+          "ticks": 1.169456323881944,
+          "uploads": 0.0029551308538066224
+        }
+      },
+      "frame_stats": {
+        "average_fps": 512.7971244217499,
+        "frames": 30768,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 339.0315425073404,
+        "p50_ms": 1.86425,
+        "p95_ms": 2.7789580000000003,
+        "p99_ms": 2.870542,
+        "worst_ms": 5.018542
+      },
+      "frame_thresholds_passed": true,
+      "gpu_memory_allocated_bytes": 83623936,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 35836,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.4113786900354495e-05,
+          "frame_ms": 1.9500889384425453,
+          "frames": 30768,
+          "gpu_ms": {
+            "frames": 7,
+            "mean": 1.6997084277016776,
+            "p50": 1.7668750286102295,
+            "p99": 2.511915922164917,
+            "slowest_one_percent_mean": 2.511915922164917,
+            "worst": 2.511915922164917
+          },
+          "timed_frames": 7
+        },
+        "other_frames": {
+          "acquire_ms": 1.4113786900354495e-05,
+          "frame_ms": 1.9500889384425328,
+          "frames": 30768,
+          "gpu_ms": {
+            "frames": 7,
+            "mean": 1.6997084277016776,
+            "p50": 1.7668750286102295,
+            "p99": 2.511915922164917,
+            "slowest_one_percent_mean": 2.511915922164917,
+            "worst": 2.511915922164917
+          },
+          "timed_frames": 7
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 1.2594155713805457e-05,
+          "frame_ms": 2.949578061688313,
+          "frames": 308,
+          "gpu_ms": null,
+          "timed_frames": 0
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "loaded_chunks": 3744,
+      "options": {
+        "camera_route_clearance_blocks": null,
+        "day_cycle": false,
+        "day_time_start": 0.0,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": false,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 0.0,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 60.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 60.004434541,
+      "scene": "entities",
+      "schema": 2,
+      "screen_seconds": null,
+      "screens": null,
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": true,
+      "simulation_ticks_within_tolerance": true,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 424067072,
+      "wall_elapsed_seconds": 72.411307416,
+      "source_matches_runner": true,
+      "gate_problems": []
+    },
+    {
+      "acceptance_eligible_configuration": true,
+      "chunk_arena_reserved_bytes": 50331648,
+      "chunk_arena_used_bytes": 40861380,
+      "cold_load_ms": 1696.357541,
+      "completed_simulation_ticks": 1200,
+      "discarded_simulation_ms": 0.0,
+      "entities_end": 155,
+      "entities_start": 160,
+      "expected_population": 160,
+      "expected_simulation_ticks": 1200.08094832,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.0004419764727462382,
+          "draw": 0.20433402903090467,
+          "entities": 0.06275011311117885,
+          "frame": 1.9393638473075205,
+          "frames": 30938,
+          "other": 0.017131534030127904,
+          "present": 1.5421804644337083,
+          "scene": 0.0043608891423142625,
+          "streaming": 0.0514865534436175,
+          "ticks": 0.0449744518086477,
+          "uploads": 0.011703835834275306
+        },
+        "slowest_one_percent": {
+          "acquire": 0.0004495709723297266,
+          "draw": 0.25200150046617753,
+          "entities": 0.04436132239718591,
+          "frame": 2.9316601290322577,
+          "frames": 310,
+          "other": 0.03345755668294137,
+          "present": 2.288803641023415,
+          "scene": 0.006648648373271909,
+          "streaming": 0.060417890254287954,
+          "ticks": 0.22243735386479285,
+          "uploads": 0.02308264499785559
+        },
+        "tick_frames": {
+          "acquire": 0.0004939108369338403,
+          "draw": 0.21954476177692414,
+          "entities": 0.06324870000438144,
+          "frame": 2.079290763333333,
+          "frames": 1200,
+          "other": 0.01502990513602942,
+          "present": 0.603014831210021,
+          "scene": 0.0045566467123959835,
+          "streaming": 0.011298149277960572,
+          "ticks": 1.1595163250466187,
+          "uploads": 0.00258753333206793
+        }
+      },
+      "frame_stats": {
+        "average_fps": 515.6330006812963,
+        "frames": 30938,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 341.1036600378709,
+        "p50_ms": 1.849792,
+        "p95_ms": 2.753167,
+        "p99_ms": 2.84775,
+        "worst_ms": 4.986584
+      },
+      "frame_thresholds_passed": true,
+      "gpu_memory_allocated_bytes": 83623936,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 36139,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.4045898099672684e-05,
+          "frame_ms": 1.9393638473075205,
+          "frames": 30938,
+          "gpu_ms": {
+            "frames": 8,
+            "mean": 1.8837864696979523,
+            "p50": 1.867292046546936,
+            "p99": 2.684999942779541,
+            "slowest_one_percent_mean": 2.684999942779541,
+            "worst": 2.684999942779541
+          },
+          "timed_frames": 8
+        },
+        "other_frames": {
+          "acquire_ms": 1.4045898099672684e-05,
+          "frame_ms": 1.9393638473075259,
+          "frames": 30938,
+          "gpu_ms": {
+            "frames": 8,
+            "mean": 1.8837864696979523,
+            "p50": 1.867292046546936,
+            "p99": 2.684999942779541,
+            "slowest_one_percent_mean": 2.684999942779541,
+            "worst": 2.684999942779541
+          },
+          "timed_frames": 8
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 1.3967741805601925e-05,
+          "frame_ms": 2.9316601290322577,
+          "frames": 310,
+          "gpu_ms": null,
+          "timed_frames": 0
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "loaded_chunks": 3744,
+      "options": {
+        "camera_route_clearance_blocks": null,
+        "day_cycle": false,
+        "day_time_start": 0.0,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": false,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 0.0,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 60.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 60.004047416,
+      "scene": "entities",
+      "schema": 2,
+      "screen_seconds": null,
+      "screens": null,
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": true,
+      "simulation_ticks_within_tolerance": true,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 424525824,
+      "wall_elapsed_seconds": 72.37492045900001,
+      "source_matches_runner": true,
+      "gate_problems": []
+    },
+    {
+      "acceptance_eligible_configuration": true,
+      "chunk_arena_reserved_bytes": 50331648,
+      "chunk_arena_used_bytes": 40860852,
+      "cold_load_ms": 1721.933042,
+      "completed_simulation_ticks": 1200,
+      "discarded_simulation_ms": 0.0,
+      "entities_end": 159,
+      "entities_start": 160,
+      "expected_population": 160,
+      "expected_simulation_ticks": 1200.104435,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.0004422072529028324,
+          "draw": 0.20274387855823964,
+          "entities": 0.06157531896433747,
+          "frame": 1.9110540563748195,
+          "frames": 31397,
+          "other": 0.016956637784769413,
+          "present": 1.515967779931578,
+          "scene": 0.004703694211098279,
+          "streaming": 0.05190806493393618,
+          "ticks": 0.045171621250385624,
+          "uploads": 0.011584853487572079
+        },
+        "slowest_one_percent": {
+          "acquire": 0.0004462356729470757,
+          "draw": 0.2542891821758762,
+          "entities": 0.05610428325784434,
+          "frame": 3.039509191082802,
+          "frames": 314,
+          "other": 0.033109109685536264,
+          "present": 2.3915725682067217,
+          "scene": 0.0043484809190023005,
+          "streaming": 0.05592343301414423,
+          "ticks": 0.22474615608051324,
+          "uploads": 0.018969742070216535
+        },
+        "tick_frames": {
+          "acquire": 0.0005213458371266218,
+          "draw": 0.21987773514042297,
+          "entities": 0.06361594325552385,
+          "frame": 2.0893754116666683,
+          "frames": 1200,
+          "other": 0.015003896466886157,
+          "present": 0.590276173063709,
+          "scene": 0.004968069228537691,
+          "streaming": 0.01036982417552887,
+          "ticks": 1.1818778269986312,
+          "uploads": 0.0028645975003018975
+        }
+      },
+      "frame_stats": {
+        "average_fps": 523.2714358153497,
+        "frames": 31397,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 329.0004856487233,
+        "p50_ms": 1.792875,
+        "p95_ms": 2.860667,
+        "p99_ms": 2.963917,
+        "worst_ms": 5.1657079999999995
+      },
+      "frame_thresholds_passed": true,
+      "gpu_memory_allocated_bytes": 83623936,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 36374,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.4172818909027863e-05,
+          "frame_ms": 1.9110540563748195,
+          "frames": 31397,
+          "gpu_ms": {
+            "frames": 46,
+            "mean": 1.6513170859088069,
+            "p50": 1.6364580392837524,
+            "p99": 2.5926249027252197,
+            "slowest_one_percent_mean": 2.5926249027252197,
+            "worst": 2.5926249027252197
+          },
+          "timed_frames": 46
+        },
+        "other_frames": {
+          "acquire_ms": 1.4172818909027863e-05,
+          "frame_ms": 1.91105405637482,
+          "frames": 31397,
+          "gpu_ms": {
+            "frames": 46,
+            "mean": 1.6513170859088069,
+            "p50": 1.6364580392837524,
+            "p99": 2.5926249027252197,
+            "slowest_one_percent_mean": 2.5926249027252197,
+            "worst": 2.5926249027252197
+          },
+          "timed_frames": 46
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 1.4060509401695375e-05,
+          "frame_ms": 3.039509191082802,
+          "frames": 314,
+          "gpu_ms": null,
+          "timed_frames": 0
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "loaded_chunks": 3744,
+      "options": {
+        "camera_route_clearance_blocks": null,
+        "day_cycle": false,
+        "day_time_start": 0.0,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": false,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 0.0,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 60.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 60.00522175,
+      "scene": "entities",
+      "schema": 2,
+      "screen_seconds": null,
+      "screens": null,
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": true,
+      "simulation_ticks_within_tolerance": true,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 424607744,
+      "wall_elapsed_seconds": 72.4242495420001,
+      "source_matches_runner": true,
+      "gate_problems": []
+    },
+    {
+      "acceptance_eligible_configuration": true,
+      "chunk_arena_reserved_bytes": 50331648,
+      "chunk_arena_used_bytes": 40898196,
+      "cold_load_ms": 1899.231417,
+      "completed_simulation_ticks": 1200,
+      "discarded_simulation_ms": 0.0,
+      "entities_end": 326,
+      "entities_start": 318,
+      "expected_population": null,
+      "expected_simulation_ticks": 1200.08709332,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.0004705493010601502,
+          "draw": 0.20640606515543583,
+          "entities": 0.07192278625537794,
+          "frame": 1.902784778359173,
+          "frames": 31533,
+          "other": 0.016905650857670595,
+          "present": 1.478489437461391,
+          "scene": 0.0065391963747605955,
+          "streaming": 0.051813429625436946,
+          "ticks": 0.05872449238853102,
+          "uploads": 0.011513170939508616
+        },
+        "slowest_one_percent": {
+          "acquire": 0.0006216645605594681,
+          "draw": 0.27219516548174844,
+          "entities": 0.084065661435546,
+          "frame": 3.1025307405063267,
+          "frames": 316,
+          "other": 0.03133323358435769,
+          "present": 2.1270502347770277,
+          "scene": 0.006710863941867801,
+          "streaming": 0.15752163282713463,
+          "ticks": 0.3906114135361925,
+          "uploads": 0.0324208703618924
+        },
+        "tick_frames": {
+          "acquire": 0.0006460141701124182,
+          "draw": 0.23449479527771472,
+          "entities": 0.07933174351851145,
+          "frame": 2.2149651316666668,
+          "frames": 1200,
+          "other": 0.014226259374814365,
+          "present": 0.3211783221627896,
+          "scene": 0.0071272425023683654,
+          "streaming": 0.011350417590195623,
+          "ticks": 1.543132848739624,
+          "uploads": 0.0034774883305362892
+        }
+      },
+      "frame_stats": {
+        "average_fps": 525.5455117011863,
+        "frames": 31533,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 322.31751548634196,
+        "p50_ms": 1.777,
+        "p95_ms": 2.872875,
+        "p99_ms": 2.981917,
+        "worst_ms": 6.905375
+      },
+      "frame_thresholds_passed": true,
+      "gpu_memory_allocated_bytes": 83623936,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 36807,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.4801731375059439e-05,
+          "frame_ms": 1.902784778359173,
+          "frames": 31533,
+          "gpu_ms": {
+            "frames": 5,
+            "mean": 2.6826915740966797,
+            "p50": 2.985374927520752,
+            "p99": 3.3354580402374268,
+            "slowest_one_percent_mean": 3.3354580402374268,
+            "worst": 3.3354580402374268
+          },
+          "timed_frames": 5
+        },
+        "other_frames": {
+          "acquire_ms": 1.4801731375059439e-05,
+          "frame_ms": 1.9027847783591814,
+          "frames": 31533,
+          "gpu_ms": {
+            "frames": 5,
+            "mean": 2.6826915740966797,
+            "p50": 2.985374927520752,
+            "p99": 3.3354580402374268,
+            "slowest_one_percent_mean": 3.3354580402374268,
+            "worst": 3.3354580402374268
+          },
+          "timed_frames": 5
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 2.0712025236460688e-05,
+          "frame_ms": 3.1025307405063267,
+          "frames": 316,
+          "gpu_ms": {
+            "frames": 1,
+            "mean": 2.4991250038146973,
+            "p50": 2.4991250038146973,
+            "p99": 2.4991250038146973,
+            "slowest_one_percent_mean": 2.4991250038146973,
+            "worst": 2.4991250038146973
+          },
+          "timed_frames": 1
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "loaded_chunks": 3744,
+      "options": {
+        "camera_route_clearance_blocks": null,
+        "day_cycle": true,
+        "day_time_start": null,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": true,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 0.0,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 60.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 60.004354666,
+      "scene": "automation",
+      "schema": 2,
+      "screen_seconds": null,
+      "screens": null,
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": true,
+      "simulation_ticks_within_tolerance": true,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 432193536,
+      "wall_elapsed_seconds": 72.39404349999995,
+      "source_matches_runner": true,
+      "gate_problems": []
+    },
+    {
+      "acceptance_eligible_configuration": true,
+      "chunk_arena_reserved_bytes": 50331648,
+      "chunk_arena_used_bytes": 40898652,
+      "cold_load_ms": 1901.5779579999999,
+      "completed_simulation_ticks": 1200,
+      "discarded_simulation_ms": 0.0,
+      "entities_end": 315,
+      "entities_start": 309,
+      "expected_population": null,
+      "expected_simulation_ticks": 1200.091305,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.0005159790535853824,
+          "draw": 0.20877300135547608,
+          "entities": 0.07106836619123374,
+          "frame": 1.9016455494104878,
+          "frames": 31552,
+          "other": 0.016615652504540668,
+          "present": 1.4756435730755078,
+          "scene": 0.007109079545231665,
+          "streaming": 0.050781137220605545,
+          "ticks": 0.059546911356022345,
+          "uploads": 0.011591849108284598
+        },
+        "slowest_one_percent": {
+          "acquire": 0.0006421392444039318,
+          "draw": 0.26892244801679743,
+          "entities": 0.07817468042426472,
+          "frame": 3.1063441360759527,
+          "frames": 316,
+          "other": 0.03186615112137359,
+          "present": 2.0874809130106735,
+          "scene": 0.0069472911484728134,
+          "streaming": 0.05443931012885952,
+          "ticks": 0.5565457536449915,
+          "uploads": 0.021325449336116065
+        },
+        "tick_frames": {
+          "acquire": 0.0006955866705660203,
+          "draw": 0.23571320220828057,
+          "entities": 0.07746981908567249,
+          "frame": 2.2391089916666687,
+          "frames": 1200,
+          "other": 0.014238223772605973,
+          "present": 0.322604972361587,
+          "scene": 0.0076916374766733495,
+          "streaming": 0.010906575027426394,
+          "ticks": 1.5656867892543476,
+          "uploads": 0.004102185809509441
+        }
+      },
+      "frame_stats": {
+        "average_fps": 525.8603530558054,
+        "frames": 31552,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 321.9218335748326,
+        "p50_ms": 1.778333,
+        "p95_ms": 2.868042,
+        "p99_ms": 2.982375,
+        "worst_ms": 6.309334
+      },
+      "frame_thresholds_passed": true,
+      "gpu_memory_allocated_bytes": 83623936,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 36693,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.5229398941374835e-05,
+          "frame_ms": 1.9016455494104878,
+          "frames": 31552,
+          "gpu_ms": {
+            "frames": 4,
+            "mean": 2.6536874771118164,
+            "p50": 2.552333116531372,
+            "p99": 3.148624897003174,
+            "slowest_one_percent_mean": 3.148624897003174,
+            "worst": 3.148624897003174
+          },
+          "timed_frames": 4
+        },
+        "other_frames": {
+          "acquire_ms": 1.5229398941374835e-05,
+          "frame_ms": 1.90164554941048,
+          "frames": 31552,
+          "gpu_ms": {
+            "frames": 4,
+            "mean": 2.6536874771118164,
+            "p50": 2.552333116531372,
+            "p99": 3.148624897003174,
+            "slowest_one_percent_mean": 3.148624897003174,
+            "worst": 3.148624897003174
+          },
+          "timed_frames": 4
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 1.9376582206894432e-05,
+          "frame_ms": 3.1063441360759527,
+          "frames": 316,
+          "gpu_ms": null,
+          "timed_frames": 0
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "loaded_chunks": 3744,
+      "options": {
+        "camera_route_clearance_blocks": null,
+        "day_cycle": true,
+        "day_time_start": null,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": true,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 0.0,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 60.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 60.00456525,
+      "scene": "automation",
+      "schema": 2,
+      "screen_seconds": null,
+      "screens": null,
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": true,
+      "simulation_ticks_within_tolerance": true,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 433569792,
+      "wall_elapsed_seconds": 72.41441304099999,
+      "source_matches_runner": true,
+      "gate_problems": []
+    },
+    {
+      "acceptance_eligible_configuration": true,
+      "chunk_arena_reserved_bytes": 50331648,
+      "chunk_arena_used_bytes": 40897116,
+      "cold_load_ms": 1896.394666,
+      "completed_simulation_ticks": 1200,
+      "discarded_simulation_ms": 0.0,
+      "entities_end": 325,
+      "entities_start": 310,
+      "expected_population": null,
+      "expected_simulation_ticks": 1200.10259,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.0004649813990226442,
+          "draw": 0.2033242885151814,
+          "entities": 0.07209889198375703,
+          "frame": 1.901663625412025,
+          "frames": 31552,
+          "other": 0.0168110448314418,
+          "present": 1.479542720168856,
+          "scene": 0.006409861442721996,
+          "streaming": 0.0529848999634718,
+          "ticks": 0.058159474785955394,
+          "uploads": 0.011867462321616912
+        },
+        "slowest_one_percent": {
+          "acquire": 0.0005201772179088373,
+          "draw": 0.2656458390853073,
+          "entities": 0.08423232571280832,
+          "frame": 3.100642791139241,
+          "frames": 316,
+          "other": 0.032298409917848936,
+          "present": 2.15379061075399,
+          "scene": 0.006396876612701748,
+          "streaming": 0.15944733915635373,
+          "ticks": 0.36394924453542205,
+          "uploads": 0.034361968146899756
+        },
+        "tick_frames": {
+          "acquire": 0.00061643166939272,
+          "draw": 0.22843286813547214,
+          "entities": 0.07794408755066494,
+          "frame": 2.2078658333333356,
+          "frames": 1200,
+          "other": 0.014150659375267605,
+          "present": 0.3363493353663944,
+          "scene": 0.0067783725040499124,
+          "streaming": 0.011229339171744263,
+          "ticks": 1.5292064570387205,
+          "uploads": 0.0031582825216294927
+        }
+      },
+      "frame_stats": {
+        "average_fps": 525.8553545626843,
+        "frames": 31552,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 322.5137712921065,
+        "p50_ms": 1.7779580000000001,
+        "p95_ms": 2.8726670000000003,
+        "p99_ms": 2.983791,
+        "worst_ms": 5.287667
+      },
+      "frame_thresholds_passed": true,
+      "gpu_memory_allocated_bytes": 83623936,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 36781,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.4329709536341434e-05,
+          "frame_ms": 1.901663625412025,
+          "frames": 31552,
+          "gpu_ms": {
+            "frames": 5,
+            "mean": 3.1549918174743654,
+            "p50": 2.2372920513153076,
+            "p99": 5.149042129516602,
+            "slowest_one_percent_mean": 5.149042129516602,
+            "worst": 5.149042129516602
+          },
+          "timed_frames": 5
+        },
+        "other_frames": {
+          "acquire_ms": 1.4329709536341434e-05,
+          "frame_ms": 1.9016636254120147,
+          "frames": 31552,
+          "gpu_ms": {
+            "frames": 5,
+            "mean": 3.1549918174743654,
+            "p50": 2.2372920513153076,
+            "p99": 5.149042129516602,
+            "slowest_one_percent_mean": 5.149042129516602,
+            "worst": 5.149042129516602
+          },
+          "timed_frames": 5
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 1.6870253004319375e-05,
+          "frame_ms": 3.100642791139241,
+          "frames": 316,
+          "gpu_ms": {
+            "frames": 1,
+            "mean": 1.3077499866485596,
+            "p50": 1.3077499866485596,
+            "p99": 1.3077499866485596,
+            "slowest_one_percent_mean": 1.3077499866485596,
+            "worst": 1.3077499866485596
+          },
+          "timed_frames": 1
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "loaded_chunks": 3744,
+      "options": {
+        "camera_route_clearance_blocks": null,
+        "day_cycle": true,
+        "day_time_start": null,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": true,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 0.0,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 60.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 60.0051295,
+      "scene": "automation",
+      "schema": 2,
+      "screen_seconds": null,
+      "screens": null,
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": true,
+      "simulation_ticks_within_tolerance": true,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 431620096,
+      "wall_elapsed_seconds": 72.36595408300002,
+      "source_matches_runner": true,
+      "gate_problems": []
+    },
+    {
+      "acceptance_eligible_configuration": true,
+      "chunk_arena_reserved_bytes": 50331648,
+      "chunk_arena_used_bytes": 40779576,
+      "cold_load_ms": 10886.373542,
+      "completed_simulation_ticks": 1200,
+      "discarded_simulation_ms": 0.0,
+      "entities_end": 314,
+      "entities_start": 316,
+      "expected_population": null,
+      "expected_simulation_ticks": 1200.09661,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.0006279399477570808,
+          "draw": 0.345810604451655,
+          "entities": 0.5706506040163415,
+          "frame": 1.9690471744552487,
+          "frames": 30472,
+          "other": 0.01549252285833469,
+          "present": 0.8530258256641292,
+          "scene": 0.02529304411002364,
+          "streaming": 0.0674940792213608,
+          "ticks": 0.0757235850709478,
+          "uploads": 0.01492896911469897
+        },
+        "slowest_one_percent": {
+          "acquire": 0.0012523147588611016,
+          "draw": 0.5215256953825717,
+          "entities": 0.6730232100994861,
+          "frame": 3.840712603278687,
+          "frames": 305,
+          "other": 0.02486395288776322,
+          "present": 0.028148353444870378,
+          "scene": 0.0351851081567221,
+          "streaming": 0.09621584553454743,
+          "ticks": 2.446375437642707,
+          "uploads": 0.014122685371157637
+        },
+        "tick_frames": {
+          "acquire": 0.0011059358384712444,
+          "draw": 0.4177688683693608,
+          "entities": 0.6152563912918171,
+          "frame": 3.0415678508333364,
+          "frames": 1200,
+          "other": 0.01931346750913221,
+          "present": 0.019048987510614096,
+          "scene": 0.030232914116544028,
+          "streaming": 0.01182608675386291,
+          "ticks": 1.9228742369016012,
+          "uploads": 0.004140962541932822
+        }
+      },
+      "frame_stats": {
+        "average_fps": 507.8598486481957,
+        "frames": 30472,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 260.3683491304019,
+        "p50_ms": 1.8287920000000002,
+        "p95_ms": 2.9415829999999996,
+        "p99_ms": 3.3598339999999998,
+        "worst_ms": 7.772708
+      },
+      "frame_thresholds_passed": true,
+      "gpu_memory_allocated_bytes": 85901312,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 35358,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.9965016887060492e-05,
+          "frame_ms": 1.9690471744552487,
+          "frames": 30472,
+          "gpu_ms": {
+            "frames": 49,
+            "mean": 2.1745544428728065,
+            "p50": 2.1996660232543945,
+            "p99": 3.2330000400543213,
+            "slowest_one_percent_mean": 3.2330000400543213,
+            "worst": 3.2330000400543213
+          },
+          "timed_frames": 49
+        },
+        "other_frames": {
+          "acquire_ms": 1.9965016887060492e-05,
+          "frame_ms": 1.9690471744552513,
+          "frames": 30472,
+          "gpu_ms": {
+            "frames": 49,
+            "mean": 2.1745544428728065,
+            "p50": 2.1996660232543945,
+            "p99": 3.2330000400543213,
+            "slowest_one_percent_mean": 3.2330000400543213,
+            "worst": 3.2330000400543213
+          },
+          "timed_frames": 49
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 4.152459021825649e-05,
+          "frame_ms": 3.840712603278687,
+          "frames": 305,
+          "gpu_ms": {
+            "frames": 1,
+            "mean": 1.9585000276565552,
+            "p50": 1.9585000276565552,
+            "p99": 1.9585000276565552,
+            "slowest_one_percent_mean": 1.9585000276565552,
+            "worst": 1.9585000276565552
+          },
+          "timed_frames": 1
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "loaded_chunks": 3744,
+      "options": {
+        "camera_route_clearance_blocks": null,
+        "day_cycle": true,
+        "day_time_start": null,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": true,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 0.0,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 60.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 60.0048305,
+      "scene": "materials",
+      "schema": 2,
+      "screen_seconds": null,
+      "screens": null,
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": true,
+      "simulation_ticks_within_tolerance": true,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 1755004928,
+      "wall_elapsed_seconds": 81.139261584,
+      "source_matches_runner": true,
+      "gate_problems": []
+    },
+    {
+      "acceptance_eligible_configuration": true,
+      "chunk_arena_reserved_bytes": 50331648,
+      "chunk_arena_used_bytes": 40781268,
+      "cold_load_ms": 10913.416208999999,
+      "completed_simulation_ticks": 1200,
+      "discarded_simulation_ms": 0.0,
+      "entities_end": 315,
+      "entities_start": 311,
+      "expected_population": null,
+      "expected_simulation_ticks": 1200.08924084,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.0006709432595619466,
+          "draw": 0.354232648944192,
+          "entities": 0.501951071357396,
+          "frame": 1.9645865325955203,
+          "frames": 30541,
+          "other": 0.015969284029710984,
+          "present": 0.9041518235925485,
+          "scene": 0.02615160135107865,
+          "streaming": 0.06896407921701372,
+          "ticks": 0.07746006480244115,
+          "uploads": 0.01503501604157735
+        },
+        "slowest_one_percent": {
+          "acquire": 0.0014075294158496024,
+          "draw": 0.5326675125002082,
+          "entities": 0.640669671733395,
+          "frame": 3.881248486928099,
+          "frames": 306,
+          "other": 0.02628004660309813,
+          "present": 0.17237719646320235,
+          "scene": 0.03708385968933892,
+          "streaming": 0.05724033094893873,
+          "ticks": 2.4015281991241806,
+          "uploads": 0.011994140449887768
+        },
+        "tick_frames": {
+          "acquire": 0.0012180150065978523,
+          "draw": 0.423648424744606,
+          "entities": 0.55103125055631,
+          "frame": 3.0375336724999946,
+          "frames": 1200,
+          "other": 0.02020136709480269,
+          "present": 0.024109719151941437,
+          "scene": 0.03120977753618111,
+          "streaming": 0.010684719996449227,
+          "ticks": 1.9714231992761293,
+          "uploads": 0.004007199136976851
+        }
+      },
+      "frame_stats": {
+        "average_fps": 509.01295687843617,
+        "frames": 30541,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 257.64905374339287,
+        "p50_ms": 1.8281669999999999,
+        "p95_ms": 2.953083,
+        "p99_ms": 3.3936669999999998,
+        "worst_ms": 8.062750000000001
+      },
+      "frame_thresholds_passed": true,
+      "gpu_memory_allocated_bytes": 85901312,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 35591,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 2.2051700826707607e-05,
+          "frame_ms": 1.9645865325955203,
+          "frames": 30541,
+          "gpu_ms": {
+            "frames": 48,
+            "mean": 2.401024172703425,
+            "p50": 2.432957887649536,
+            "p99": 3.1059999465942383,
+            "slowest_one_percent_mean": 3.1059999465942383,
+            "worst": 3.1059999465942383
+          },
+          "timed_frames": 48
+        },
+        "other_frames": {
+          "acquire_ms": 2.2051700826707607e-05,
+          "frame_ms": 1.9645865325955325,
+          "frames": 30541,
+          "gpu_ms": {
+            "frames": 48,
+            "mean": 2.401024172703425,
+            "p50": 2.432957887649536,
+            "p99": 3.1059999465942383,
+            "slowest_one_percent_mean": 3.1059999465942383,
+            "worst": 3.1059999465942383
+          },
+          "timed_frames": 48
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 4.3179738746949906e-05,
+          "frame_ms": 3.881248486928099,
+          "frames": 306,
+          "gpu_ms": {
+            "frames": 2,
+            "mean": 2.83568799495697,
+            "p50": 2.731416940689087,
+            "p99": 2.9399590492248535,
+            "slowest_one_percent_mean": 2.9399590492248535,
+            "worst": 2.9399590492248535
+          },
+          "timed_frames": 2
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "loaded_chunks": 3744,
+      "options": {
+        "camera_route_clearance_blocks": null,
+        "day_cycle": true,
+        "day_time_start": null,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": true,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 0.0,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 60.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 60.004462042,
+      "scene": "materials",
+      "schema": 2,
+      "screen_seconds": null,
+      "screens": null,
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": true,
+      "simulation_ticks_within_tolerance": true,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 1767424000,
+      "wall_elapsed_seconds": 81.15269162499999,
+      "source_matches_runner": true,
+      "gate_problems": []
+    },
+    {
+      "acceptance_eligible_configuration": true,
+      "chunk_arena_reserved_bytes": 50331648,
+      "chunk_arena_used_bytes": 40781184,
+      "cold_load_ms": 10854.197666999999,
+      "completed_simulation_ticks": 1200,
+      "discarded_simulation_ms": 0.0,
+      "entities_end": 319,
+      "entities_start": 316,
+      "expected_population": null,
+      "expected_simulation_ticks": 1200.1027358400002,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.0006290830545230635,
+          "draw": 0.35361125498780727,
+          "entities": 0.5051076169234164,
+          "frame": 1.9649920842312067,
+          "frames": 30535,
+          "other": 0.015770915466638558,
+          "present": 0.901180807942171,
+          "scene": 0.026235690732570878,
+          "streaming": 0.06909080702967488,
+          "ticks": 0.07820677085381122,
+          "uploads": 0.015159137240593364
+        },
+        "slowest_one_percent": {
+          "acquire": 0.0012175882376123256,
+          "draw": 0.5322317572590572,
+          "entities": 0.6396553889403935,
+          "frame": 3.9089371241830055,
+          "frames": 306,
+          "other": 0.025609770704472012,
+          "present": 0.1255176893551073,
+          "scene": 0.03604261432256964,
+          "streaming": 0.07870519493578695,
+          "ticks": 2.457558852395201,
+          "uploads": 0.012398268032805337
+        },
+        "tick_frames": {
+          "acquire": 0.0011033241686285084,
+          "draw": 0.42640709443638725,
+          "entities": 0.5555916382124026,
+          "frame": 3.058220135000001,
+          "frames": 1200,
+          "other": 0.02026741250890085,
+          "present": 0.019263494117185472,
+          "scene": 0.03119317158591002,
+          "streaming": 0.010451155787450261,
+          "ticks": 1.9900364566842714,
+          "uploads": 0.003906387498864206
+        }
+      },
+      "frame_stats": {
+        "average_fps": 508.90790249226114,
+        "frames": 30535,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 255.82401768844178,
+        "p50_ms": 1.823375,
+        "p95_ms": 2.941125,
+        "p99_ms": 3.402083,
+        "worst_ms": 7.936458
+      },
+      "frame_thresholds_passed": true,
+      "gpu_memory_allocated_bytes": 85901312,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 35709,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 2.0801964770484486e-05,
+          "frame_ms": 1.9649920842312067,
+          "frames": 30535,
+          "gpu_ms": {
+            "frames": 22,
+            "mean": 2.732793542471799,
+            "p50": 2.581291913986206,
+            "p99": 5.316667079925537,
+            "slowest_one_percent_mean": 5.316667079925537,
+            "worst": 5.316667079925537
+          },
+          "timed_frames": 22
+        },
+        "other_frames": {
+          "acquire_ms": 2.0801964770484486e-05,
+          "frame_ms": 1.9649920842312087,
+          "frames": 30535,
+          "gpu_ms": {
+            "frames": 22,
+            "mean": 2.732793542471799,
+            "p50": 2.581291913986206,
+            "p99": 5.316667079925537,
+            "slowest_one_percent_mean": 5.316667079925537,
+            "worst": 5.316667079925537
+          },
+          "timed_frames": 22
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 4.8735294304826156e-05,
+          "frame_ms": 3.9089371241830055,
+          "frames": 306,
+          "gpu_ms": {
+            "frames": 1,
+            "mean": 5.272749900817871,
+            "p50": 5.272749900817871,
+            "p99": 5.272749900817871,
+            "slowest_one_percent_mean": 5.272749900817871,
+            "worst": 5.272749900817871
+          },
+          "timed_frames": 1
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "loaded_chunks": 3744,
+      "options": {
+        "camera_route_clearance_blocks": null,
+        "day_cycle": true,
+        "day_time_start": null,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": true,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 0.0,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 60.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 60.005136792,
+      "scene": "materials",
+      "schema": 2,
+      "screen_seconds": null,
+      "screens": null,
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": true,
+      "simulation_ticks_within_tolerance": true,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 1765998592,
+      "wall_elapsed_seconds": 81.19769087499981,
+      "source_matches_runner": true,
+      "gate_problems": []
+    },
+    {
+      "acceptance_eligible_configuration": true,
+      "chunk_arena_reserved_bytes": 100663296,
+      "chunk_arena_used_bytes": 33462144,
+      "cold_load_ms": 944.4956249999999,
+      "completed_simulation_ticks": 3599,
+      "discarded_simulation_ms": 47.756874999999994,
+      "entities_end": 133,
+      "entities_start": 315,
+      "expected_population": null,
+      "expected_simulation_ticks": 3600.12446834,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.0005314049620245823,
+          "draw": 0.2031821325260156,
+          "entities": 0.047757202166645,
+          "frame": 1.778053658161699,
+          "frames": 101235,
+          "other": 0.015461931829537923,
+          "present": 1.1483249316027877,
+          "scene": 0.004772679279977633,
+          "streaming": 0.12902366988357294,
+          "ticks": 0.07697874201417422,
+          "uploads": 0.15202096389696343
+        },
+        "slowest_one_percent": {
+          "acquire": 0.0008978193512840081,
+          "draw": 0.2578737560994298,
+          "entities": 0.05138006420145942,
+          "frame": 4.955619485686083,
+          "frames": 1013,
+          "other": 0.02557084378077512,
+          "present": 0.033414172777227566,
+          "scene": 0.005800139191601819,
+          "streaming": 1.2338760427963762,
+          "ticks": 3.1316303549019984,
+          "uploads": 0.2151762925859298
+        },
+        "tick_frames": {
+          "acquire": 0.0008376600802479038,
+          "draw": 0.23562635969212964,
+          "entities": 0.05282683519077153,
+          "frame": 2.7994543574610273,
+          "frames": 3592,
+          "other": 0.017771195785082572,
+          "present": 0.0852071087499396,
+          "scene": 0.005345807631421245,
+          "streaming": 0.0801767663147875,
+          "ticks": 2.169527546716294,
+          "uploads": 0.15213507730035283
+        }
+      },
+      "frame_stats": {
+        "average_fps": 562.4127232661156,
+        "frames": 101235,
+        "hitches_over_50ms": 2,
+        "one_percent_low_fps": 201.79111872661358,
+        "p50_ms": 1.707917,
+        "p95_ms": 2.4254580000000003,
+        "p99_ms": 3.169292,
+        "worst_ms": 297.749875
+      },
+      "frame_thresholds_passed": false,
+      "gpu_memory_allocated_bytes": 133955584,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 106539,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.8359746942000972e-05,
+          "frame_ms": 1.778053658161699,
+          "frames": 101235,
+          "gpu_ms": {
+            "frames": 103,
+            "mean": 1.7338268878390488,
+            "p50": 1.7392499446868896,
+            "p99": 2.4220829010009766,
+            "slowest_one_percent_mean": 2.428728938102722,
+            "worst": 2.4353749752044678
+          },
+          "timed_frames": 103
+        },
+        "other_frames": {
+          "acquire_ms": 1.8359746942000972e-05,
+          "frame_ms": 1.778053658161703,
+          "frames": 101235,
+          "gpu_ms": {
+            "frames": 103,
+            "mean": 1.7338268878390488,
+            "p50": 1.7392499446868896,
+            "p99": 2.4220829010009766,
+            "slowest_one_percent_mean": 2.428728938102722,
+            "worst": 2.4353749752044678
+          },
+          "timed_frames": 103
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 3.228331683462151e-05,
+          "frame_ms": 4.955619485686083,
+          "frames": 1013,
+          "gpu_ms": {
+            "frames": 1,
+            "mean": 2.3252499103546143,
+            "p50": 2.3252499103546143,
+            "p99": 2.3252499103546143,
+            "slowest_one_percent_mean": 2.3252499103546143,
+            "worst": 2.3252499103546143
+          },
+          "timed_frames": 1
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "loaded_chunks": 3794,
+      "options": {
+        "camera_route_clearance_blocks": 24.0,
+        "day_cycle": true,
+        "day_time_start": null,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": true,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 0.0,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 180.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 180.006223417,
+      "scene": "streaming",
+      "schema": 2,
+      "screen_seconds": null,
+      "screens": null,
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": true,
+      "simulation_ticks_within_tolerance": true,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 490094592,
+      "wall_elapsed_seconds": 191.62577770899998,
+      "source_matches_runner": true,
+      "gate_problems": []
+    },
+    {
+      "acceptance_eligible_configuration": true,
+      "chunk_arena_reserved_bytes": 100663296,
+      "chunk_arena_used_bytes": 33463836,
+      "cold_load_ms": 963.125833,
+      "completed_simulation_ticks": 3599,
+      "discarded_simulation_ms": 43.249458999999995,
+      "entities_end": 128,
+      "entities_start": 314,
+      "expected_population": null,
+      "expected_simulation_ticks": 3600.12618084,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.0005263507047691944,
+          "draw": 0.1920179215805275,
+          "entities": 0.04559602774129031,
+          "frame": 1.7648927027159116,
+          "frames": 101990,
+          "other": 0.01487286987947467,
+          "present": 1.1780117416842575,
+          "scene": 0.004478383862217778,
+          "streaming": 0.12023252259909957,
+          "ticks": 0.07294275621851702,
+          "uploads": 0.1362141284457581
+        },
+        "slowest_one_percent": {
+          "acquire": 0.0008602549043465771,
+          "draw": 0.24389877303266058,
+          "entities": 0.04965278133293431,
+          "frame": 4.665410219607846,
+          "frames": 1020,
+          "other": 0.022459650812148624,
+          "present": 0.08416889293448013,
+          "scene": 0.0055243931407127165,
+          "streaming": 1.1703341250118398,
+          "ticks": 2.903308811491611,
+          "uploads": 0.18520253694711272
+        },
+        "tick_frames": {
+          "acquire": 0.0007962620466371411,
+          "draw": 0.2227790960816413,
+          "entities": 0.05081306994365919,
+          "frame": 2.671228078251187,
+          "frames": 3591,
+          "other": 0.01654189366539116,
+          "present": 0.09293098402199465,
+          "scene": 0.005106394604497868,
+          "streaming": 0.07665037332788376,
+          "ticks": 2.071688027492774,
+          "uploads": 0.13392197706670847
+        }
+      },
+      "frame_stats": {
+        "average_fps": 566.6066829225065,
+        "frames": 101990,
+        "hitches_over_50ms": 2,
+        "one_percent_low_fps": 214.34342382095085,
+        "p50_ms": 1.702709,
+        "p95_ms": 2.420916,
+        "p99_ms": 2.986667,
+        "worst_ms": 293.24829200000005
+      },
+      "frame_thresholds_passed": false,
+      "gpu_memory_allocated_bytes": 133955584,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 107249,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.6758564398926942e-05,
+          "frame_ms": 1.7648927027159116,
+          "frames": 101990,
+          "gpu_ms": {
+            "frames": 145,
+            "mean": 1.6716270245354752,
+            "p50": 1.669124960899353,
+            "p99": 2.4081249237060547,
+            "slowest_one_percent_mean": 2.4141249656677246,
+            "worst": 2.4201250076293945
+          },
+          "timed_frames": 145
+        },
+        "other_frames": {
+          "acquire_ms": 1.6758564398926942e-05,
+          "frame_ms": 1.7648927027159513,
+          "frames": 101990,
+          "gpu_ms": {
+            "frames": 145,
+            "mean": 1.6716270245354752,
+            "p50": 1.669124960899353,
+            "p99": 2.4081249237060547,
+            "slowest_one_percent_mean": 2.4141249656677246,
+            "worst": 2.4201250076293945
+          },
+          "timed_frames": 145
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 2.512058817956131e-05,
+          "frame_ms": 4.665410219607846,
+          "frames": 1020,
+          "gpu_ms": {
+            "frames": 2,
+            "mean": 2.0692079663276672,
+            "p50": 1.9790829420089722,
+            "p99": 2.1593329906463623,
+            "slowest_one_percent_mean": 2.1593329906463623,
+            "worst": 2.1593329906463623
+          },
+          "timed_frames": 2
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "loaded_chunks": 3795,
+      "options": {
+        "camera_route_clearance_blocks": 24.0,
+        "day_cycle": true,
+        "day_time_start": null,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": true,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 0.0,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 180.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 180.006309042,
+      "scene": "streaming",
+      "schema": 2,
+      "screen_seconds": null,
+      "screens": null,
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": true,
+      "simulation_ticks_within_tolerance": true,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 488521728,
+      "wall_elapsed_seconds": 191.29460774999984,
+      "source_matches_runner": true,
+      "gate_problems": []
+    },
+    {
+      "acceptance_eligible_configuration": true,
+      "chunk_arena_reserved_bytes": 100663296,
+      "chunk_arena_used_bytes": 33446220,
+      "cold_load_ms": 944.468584,
+      "completed_simulation_ticks": 3600,
+      "discarded_simulation_ms": 43.244,
+      "entities_end": 125,
+      "entities_start": 310,
+      "expected_population": null,
+      "expected_simulation_ticks": 3600.1242075,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.0005792509273218406,
+          "draw": 0.19222301178976323,
+          "entities": 0.04507816607206266,
+          "frame": 1.7715269458802716,
+          "frames": 101608,
+          "other": 0.015037935855205964,
+          "present": 1.1860630067044038,
+          "scene": 0.004655935830447206,
+          "streaming": 0.11974869193749411,
+          "ticks": 0.07351952102588168,
+          "uploads": 0.13462142573769106
+        },
+        "slowest_one_percent": {
+          "acquire": 0.0009244434642131581,
+          "draw": 0.24440498431758073,
+          "entities": 0.04915991264158235,
+          "frame": 4.651469539823011,
+          "frames": 1017,
+          "other": 0.023113086170971187,
+          "present": 0.08882604804871679,
+          "scene": 0.005697083584149254,
+          "streaming": 1.121382654233604,
+          "ticks": 2.9378530159226326,
+          "uploads": 0.18010831143956121
+        },
+        "tick_frames": {
+          "acquire": 0.0008550247735719526,
+          "draw": 0.22483405166023326,
+          "entities": 0.05070321298262165,
+          "frame": 2.6698363732257215,
+          "frames": 3593,
+          "other": 0.017050074005052984,
+          "present": 0.09198557088038042,
+          "scene": 0.005291414984524967,
+          "streaming": 0.0664728602863363,
+          "ticks": 2.079090312384577,
+          "uploads": 0.13355385126842198
+        }
+      },
+      "frame_stats": {
+        "average_fps": 564.4847809543761,
+        "frames": 101608,
+        "hitches_over_50ms": 2,
+        "one_percent_low_fps": 214.9858214567713,
+        "p50_ms": 1.7050830000000001,
+        "p95_ms": 2.433625,
+        "p99_ms": 2.9945000000000004,
+        "worst_ms": 293.242958
+      },
+      "frame_thresholds_passed": false,
+      "gpu_memory_allocated_bytes": 133955584,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 106696,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.65167504832003e-05,
+          "frame_ms": 1.7715269458802716,
+          "frames": 101608,
+          "gpu_ms": {
+            "frames": 161,
+            "mean": 1.8519883859231605,
+            "p50": 1.9096670150756836,
+            "p99": 2.417083978652954,
+            "slowest_one_percent_mean": 2.456666946411133,
+            "worst": 2.4962499141693115
+          },
+          "timed_frames": 161
+        },
+        "other_frames": {
+          "acquire_ms": 1.65167504832003e-05,
+          "frame_ms": 1.7715269458802239,
+          "frames": 101608,
+          "gpu_ms": {
+            "frames": 161,
+            "mean": 1.8519883859231605,
+            "p50": 1.9096670150756836,
+            "p99": 2.417083978652954,
+            "slowest_one_percent_mean": 2.456666946411133,
+            "worst": 2.4962499141693115
+          },
+          "timed_frames": 161
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 2.2054080483185416e-05,
+          "frame_ms": 4.651469539823011,
+          "frames": 1017,
+          "gpu_ms": {
+            "frames": 2,
+            "mean": 2.20983350276947,
+            "p50": 2.024416923522949,
+            "p99": 2.395250082015991,
+            "slowest_one_percent_mean": 2.395250082015991,
+            "worst": 2.395250082015991
+          },
+          "timed_frames": 2
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "loaded_chunks": 3803,
+      "options": {
+        "camera_route_clearance_blocks": 24.0,
+        "day_cycle": true,
+        "day_time_start": null,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": true,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 0.0,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 180.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 180.006210375,
+      "scene": "streaming",
+      "schema": 2,
+      "screen_seconds": null,
+      "screens": null,
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": true,
+      "simulation_ticks_within_tolerance": true,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 485654528,
+      "wall_elapsed_seconds": 191.17907549999995,
+      "source_matches_runner": true,
+      "gate_problems": []
+    },
+    {
+      "acceptance_eligible_configuration": true,
+      "chunk_arena_reserved_bytes": 50331648,
+      "chunk_arena_used_bytes": 38036052,
+      "cold_load_ms": 970.965084,
+      "completed_simulation_ticks": 118,
+      "discarded_simulation_ms": 0.0,
+      "entities_end": 270,
+      "entities_start": 229,
+      "expected_population": null,
+      "expected_simulation_ticks": 1200.07636666,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.00041807279556214184,
+          "draw": 0.15629977320889293,
+          "entities": 0.05904068448574589,
+          "frame": 1.4553777459674508,
+          "frames": 41227,
+          "other": 0.01563532342666507,
+          "present": 1.1912431718346188,
+          "scene": 0.007628273574884691,
+          "streaming": 0.016208437878435105,
+          "ticks": 0.0047161538766259566,
+          "uploads": 0.004187854886020249
+        },
+        "slowest_one_percent": {
+          "acquire": 0.0004623535146063518,
+          "draw": 0.19704792487996542,
+          "entities": 0.07792090811286365,
+          "frame": 2.5053114213075074,
+          "frames": 413,
+          "other": 0.02885431111097647,
+          "present": 1.8816961204209173,
+          "scene": 0.0043064310332674525,
+          "streaming": 0.09688395618733929,
+          "ticks": 0.18949647157590557,
+          "uploads": 0.028642944471665925
+        },
+        "tick_frames": {
+          "acquire": 0.0006783305131139675,
+          "draw": 0.18940675454372066,
+          "entities": 0.07079238109922005,
+          "frame": 2.1413845932203395,
+          "frames": 118,
+          "other": 0.01310314579385441,
+          "present": 0.17189126189450843,
+          "scene": 0.005730593245539625,
+          "streaming": 0.028626779563945985,
+          "ticks": 1.6477362362004944,
+          "uploads": 0.013419110365942026
+        }
+      },
+      "frame_stats": {
+        "average_fps": 687.1068372254502,
+        "frames": 41227,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 399.15197427955115,
+        "p50_ms": 1.301958,
+        "p95_ms": 2.340125,
+        "p99_ms": 2.419542,
+        "worst_ms": 5.021916
+      },
+      "frame_thresholds_passed": true,
+      "gpu_memory_allocated_bytes": 83738624,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 47387,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.3933223226522367e-05,
+          "frame_ms": 1.4553777459674508,
+          "frames": 41227,
+          "gpu_ms": {
+            "frames": 42,
+            "mean": 1.54958828716051,
+            "p50": 1.3218339681625366,
+            "p99": 2.725832939147949,
+            "slowest_one_percent_mean": 2.725832939147949,
+            "worst": 2.725832939147949
+          },
+          "timed_frames": 42
+        },
+        "other_frames": {
+          "acquire_ms": 1.3933223226522367e-05,
+          "frame_ms": 1.4553777459674495,
+          "frames": 41227,
+          "gpu_ms": {
+            "frames": 42,
+            "mean": 1.54958828716051,
+            "p50": 1.3218339681625366,
+            "p99": 2.725832939147949,
+            "slowest_one_percent_mean": 2.725832939147949,
+            "worst": 2.725832939147949
+          },
+          "timed_frames": 42
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 1.5230024048548922e-05,
+          "frame_ms": 2.5053114213075074,
+          "frames": 413,
+          "gpu_ms": null,
+          "timed_frames": 0
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "loaded_chunks": 3516,
+      "options": {
+        "camera_route_clearance_blocks": null,
+        "day_cycle": true,
+        "day_time_start": null,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": true,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 54099.218458,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 60.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 60.003818333,
+      "scene": "menus",
+      "schema": 2,
+      "screen_seconds": 2.0,
+      "screens": [
+        "pause",
+        "options",
+        "video",
+        "sound",
+        "controls",
+        "mouse",
+        "keybinds",
+        "accessibility",
+        "inventory"
+      ],
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": false,
+      "simulation_ticks_within_tolerance": false,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 368623616,
+      "wall_elapsed_seconds": 71.29400691600017,
+      "source_matches_runner": true,
+      "gate_problems": []
+    },
+    {
+      "acceptance_eligible_configuration": true,
+      "chunk_arena_reserved_bytes": 50331648,
+      "chunk_arena_used_bytes": 38036292,
+      "cold_load_ms": 925.471,
+      "completed_simulation_ticks": 119,
+      "discarded_simulation_ms": 0.0,
+      "entities_end": 271,
+      "entities_start": 218,
+      "expected_population": null,
+      "expected_simulation_ticks": 1200.0691075,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.00043220190716008257,
+          "draw": 0.15750416089821836,
+          "entities": 0.06067157609657736,
+          "frame": 1.4571009519646443,
+          "frames": 41178,
+          "other": 0.015943274299604182,
+          "present": 1.1886235835679149,
+          "scene": 0.007838665323444901,
+          "streaming": 0.01676105845399681,
+          "ticks": 0.0048562925757844886,
+          "uploads": 0.004470138841943365
+        },
+        "slowest_one_percent": {
+          "acquire": 0.0005411844705095858,
+          "draw": 0.20998005062631034,
+          "entities": 0.08036132997751814,
+          "frame": 2.5211657402912633,
+          "frames": 412,
+          "other": 0.02836205290426541,
+          "present": 1.865938913881851,
+          "scene": 0.004775788874062483,
+          "streaming": 0.10581603696122223,
+          "ticks": 0.1914185841106674,
+          "uploads": 0.03397179848485676
+        },
+        "tick_frames": {
+          "acquire": 0.0006879915992246096,
+          "draw": 0.1954919337725439,
+          "entities": 0.07436731103964213,
+          "frame": 2.150537831932773,
+          "frames": 119,
+          "other": 0.013297632243026491,
+          "present": 0.14330257925384937,
+          "scene": 0.005983907590471521,
+          "streaming": 0.026589621799536237,
+          "ticks": 1.6804404679466696,
+          "uploads": 0.010376386687809117
+        }
+      },
+      "frame_stats": {
+        "average_fps": 686.2942465665649,
+        "frames": 41178,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 396.6419121197771,
+        "p50_ms": 1.3003330000000002,
+        "p95_ms": 2.342292,
+        "p99_ms": 2.421583,
+        "worst_ms": 5.174708
+      },
+      "frame_thresholds_passed": true,
+      "gpu_memory_allocated_bytes": 83738624,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 47229,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.4102627472266137e-05,
+          "frame_ms": 1.4571009519646443,
+          "frames": 41178,
+          "gpu_ms": {
+            "frames": 19,
+            "mean": 1.8400768543544568,
+            "p50": 1.8424999713897705,
+            "p99": 2.6760001182556152,
+            "slowest_one_percent_mean": 2.6760001182556152,
+            "worst": 2.6760001182556152
+          },
+          "timed_frames": 19
+        },
+        "other_frames": {
+          "acquire_ms": 1.4102627472266137e-05,
+          "frame_ms": 1.4571009519646467,
+          "frames": 41178,
+          "gpu_ms": {
+            "frames": 19,
+            "mean": 1.8400768543544568,
+            "p50": 1.8424999713897705,
+            "p99": 2.6760001182556152,
+            "slowest_one_percent_mean": 2.6760001182556152,
+            "worst": 2.6760001182556152
+          },
+          "timed_frames": 19
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 1.6970873668505043e-05,
+          "frame_ms": 2.5211657402912633,
+          "frames": 412,
+          "gpu_ms": null,
+          "timed_frames": 0
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "loaded_chunks": 3516,
+      "options": {
+        "camera_route_clearance_blocks": null,
+        "day_cycle": true,
+        "day_time_start": null,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": true,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 54049.92,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 60.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 60.003455375,
+      "scene": "menus",
+      "schema": 2,
+      "screen_seconds": 2.0,
+      "screens": [
+        "pause",
+        "options",
+        "video",
+        "sound",
+        "controls",
+        "mouse",
+        "keybinds",
+        "accessibility",
+        "inventory"
+      ],
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": false,
+      "simulation_ticks_within_tolerance": false,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 365871104,
+      "wall_elapsed_seconds": 71.35483420800006,
+      "source_matches_runner": true,
+      "gate_problems": []
+    },
+    {
+      "acceptance_eligible_configuration": true,
+      "chunk_arena_reserved_bytes": 50331648,
+      "chunk_arena_used_bytes": 38037228,
+      "cold_load_ms": 936.4231669999999,
+      "completed_simulation_ticks": 117,
+      "discarded_simulation_ms": 0.0,
+      "entities_end": 271,
+      "entities_start": 221,
+      "expected_population": null,
+      "expected_simulation_ticks": 1200.07442668,
+      "fixture_overrides": {
+        "camera_flight": true,
+        "initial_health": 10000
+      },
+      "frame_phases_ms": {
+        "all_frames": {
+          "acquire": 0.0004138563600171694,
+          "draw": 0.15657737748385603,
+          "entities": 0.05952445933855582,
+          "frame": 1.4556194980349293,
+          "frames": 41220,
+          "other": 0.015605839563071155,
+          "present": 1.1906186692117071,
+          "scene": 0.0077349009339018485,
+          "streaming": 0.016230269375421904,
+          "ticks": 0.0047012412912460395,
+          "uploads": 0.004212884477152212
+        },
+        "slowest_one_percent": {
+          "acquire": 0.0004572566601402097,
+          "draw": 0.19817414749909834,
+          "entities": 0.08137744570435104,
+          "frame": 2.498484784503631,
+          "frames": 413,
+          "other": 0.02656295822891641,
+          "present": 1.8611371921844437,
+          "scene": 0.004198607773301315,
+          "streaming": 0.08818089344919847,
+          "ticks": 0.20826765093907318,
+          "uploads": 0.030128632065108314
+        },
+        "tick_frames": {
+          "acquire": 0.0005864957285324574,
+          "draw": 0.18794834072518551,
+          "entities": 0.07219372611715753,
+          "frame": 2.1317157948717953,
+          "frames": 117,
+          "other": 0.012851131290469109,
+          "present": 0.16179240877047563,
+          "scene": 0.005588042752769513,
+          "streaming": 0.021595093610688534,
+          "ticks": 1.6562834703005278,
+          "uploads": 0.012877085575989137
+        }
+      },
+      "frame_stats": {
+        "average_fps": 686.9927212090723,
+        "frames": 41220,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 400.2425815047211,
+        "p50_ms": 1.297791,
+        "p95_ms": 2.3418750000000004,
+        "p99_ms": 2.4187499999999997,
+        "worst_ms": 5.1402920000000005
+      },
+      "frame_thresholds_passed": true,
+      "gpu_memory_allocated_bytes": 83738624,
+      "gpu_memory_reserved_bytes": null,
+      "gpu_timer_invalid_frames": 47154,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.3902862539580365e-05,
+          "frame_ms": 1.4556194980349293,
+          "frames": 41220,
+          "gpu_ms": {
+            "frames": 59,
+            "mean": 1.0830367793471127,
+            "p50": 0.961292028427124,
+            "p99": 2.408582925796509,
+            "slowest_one_percent_mean": 2.408582925796509,
+            "worst": 2.408582925796509
+          },
+          "timed_frames": 59
+        },
+        "other_frames": {
+          "acquire_ms": 1.3902862539580365e-05,
+          "frame_ms": 1.455619498034926,
+          "frames": 41220,
+          "gpu_ms": {
+            "frames": 59,
+            "mean": 1.0830367793471127,
+            "p50": 0.961292028427124,
+            "p99": 2.408582925796509,
+            "slowest_one_percent_mean": 2.408582925796509,
+            "worst": 2.408582925796509
+          },
+          "timed_frames": 59
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 1.474334125124599e-05,
+          "frame_ms": 2.498484784503631,
+          "frames": 413,
+          "gpu_ms": {
+            "frames": 1,
+            "mean": 1.6192079782485962,
+            "p50": 1.6192079782485962,
+            "p99": 1.6192079782485962,
+            "slowest_one_percent_mean": 1.6192079782485962,
+            "worst": 1.6192079782485962
+          },
+          "timed_frames": 1
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "loaded_chunks": 3516,
+      "options": {
+        "camera_route_clearance_blocks": null,
+        "day_cycle": true,
+        "day_time_start": null,
+        "debug_overlay": false,
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "enhanced_graphics": true,
+        "fov_degrees": 70.0,
+        "frame_latency": 2,
+        "hud": true,
+        "metal_maximum_drawable_count": 3,
+        "natural_spawning": true,
+        "particles": "All",
+        "render_distance_chunks": 8,
+        "view_bobbing": true,
+        "volume": 1.0,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": 54151.361209,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; normal renderer",
+      "requested_sample_seconds": 60.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 60.003721334,
+      "scene": "menus",
+      "schema": 2,
+      "screen_seconds": 2.0,
+      "screens": [
+        "pause",
+        "options",
+        "video",
+        "sound",
+        "controls",
+        "mouse",
+        "keybinds",
+        "accessibility",
+        "inventory"
+      ],
+      "seed": 12345,
+      "simulation_distance_blocks": 160,
+      "simulation_measured": false,
+      "simulation_ticks_within_tolerance": false,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": 256,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 363085824,
+      "wall_elapsed_seconds": 71.30837195800018,
+      "source_matches_runner": true,
+      "gate_problems": []
+    },
+    {
+      "acceptance_eligible_configuration": true,
+      "completed_simulation_ticks": 0,
+      "frame_stats": {
+        "average_fps": 4353.379170414635,
+        "frames": 261203,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 3518.6530605779467,
+        "p50_ms": 0.228542,
+        "p95_ms": 0.25220899999999996,
+        "p99_ms": 0.26025000000000004,
+        "worst_ms": 0.803
+      },
+      "frame_thresholds_passed": true,
+      "gpu_timer_invalid_frames": 307951,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.6700359324873576e-05,
+          "frame_ms": 0.2297066165970458,
+          "frames": 261203,
+          "gpu_ms": {
+            "frames": 43,
+            "mean": 0.48278397598931955,
+            "p50": 0.4977079927921295,
+            "p99": 0.7256249785423279,
+            "slowest_one_percent_mean": 0.7256249785423279,
+            "worst": 0.7256249785423279
+          },
+          "timed_frames": 43
+        },
+        "other_frames": {
+          "acquire_ms": 1.6700359324873576e-05,
+          "frame_ms": 0.22970661659704797,
+          "frames": 261203,
+          "gpu_ms": {
+            "frames": 43,
+            "mean": 0.48278397598931955,
+            "p50": 0.4977079927921295,
+            "p99": 0.7256249785423279,
+            "slowest_one_percent_mean": 0.7256249785423279,
+            "worst": 0.7256249785423279
+          },
+          "timed_frames": 43
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 1.4893991429572751e-05,
+          "frame_ms": 0.28419965901263017,
+          "frames": 2613,
+          "gpu_ms": {
+            "frames": 1,
+            "mean": 0.23191599547863007,
+            "p50": 0.23191599547863007,
+            "p99": 0.23191599547863007,
+            "slowest_one_percent_mean": 0.23191599547863007,
+            "worst": 0.23191599547863007
+          },
+          "timed_frames": 1
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "options": {
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "frame_latency": 2,
+        "gui_scale": 0,
+        "metal_maximum_drawable_count": 3,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": null,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; title screen",
+      "requested_sample_seconds": 60.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 60.009642167,
+      "scene": "title",
+      "schema": 2,
+      "screen_seconds": 2.0,
+      "screens": [
+        "title",
+        "select",
+        "create",
+        "multiplayer",
+        "direct",
+        "options",
+        "video",
+        "sound",
+        "controls",
+        "mouse",
+        "keybinds",
+        "accessibility"
+      ],
+      "simulation_distance_blocks": null,
+      "simulation_measured": false,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": null,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 225050624,
+      "wall_elapsed_seconds": 70.34242641699984,
+      "source_matches_runner": true,
+      "gate_problems": []
+    },
+    {
+      "acceptance_eligible_configuration": true,
+      "completed_simulation_ticks": 0,
+      "frame_stats": {
+        "average_fps": 4220.427160958709,
+        "frames": 253226,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 3495.73694534496,
+        "p50_ms": 0.23558300000000001,
+        "p95_ms": 0.257708,
+        "p99_ms": 0.2635,
+        "worst_ms": 0.81225
+      },
+      "frame_thresholds_passed": true,
+      "gpu_timer_invalid_frames": 296889,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.6607998225043825e-05,
+          "frame_ms": 0.2369428405850845,
+          "frames": 253226,
+          "gpu_ms": {
+            "frames": 35,
+            "mean": 0.4623333147593907,
+            "p50": 0.4237920045852661,
+            "p99": 0.7077500224113464,
+            "slowest_one_percent_mean": 0.7077500224113464,
+            "worst": 0.7077500224113464
+          },
+          "timed_frames": 35
+        },
+        "other_frames": {
+          "acquire_ms": 1.6607998225043825e-05,
+          "frame_ms": 0.2369428405850864,
+          "frames": 253226,
+          "gpu_ms": {
+            "frames": 35,
+            "mean": 0.4623333147593907,
+            "p50": 0.4237920045852661,
+            "p99": 0.7077500224113464,
+            "slowest_one_percent_mean": 0.7077500224113464,
+            "worst": 0.7077500224113464
+          },
+          "timed_frames": 35
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 1.5250295937426043e-05,
+          "frame_ms": 0.28606271456770604,
+          "frames": 2533,
+          "gpu_ms": {
+            "frames": 2,
+            "mean": 0.22914600372314453,
+            "p50": 0.2222920060157776,
+            "p99": 0.23600000143051147,
+            "slowest_one_percent_mean": 0.23600000143051147,
+            "worst": 0.23600000143051147
+          },
+          "timed_frames": 2
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "options": {
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "frame_latency": 2,
+        "gui_scale": 0,
+        "metal_maximum_drawable_count": 3,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": null,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; title screen",
+      "requested_sample_seconds": 60.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 60.009246,
+      "scene": "title",
+      "schema": 2,
+      "screen_seconds": 2.0,
+      "screens": [
+        "title",
+        "select",
+        "create",
+        "multiplayer",
+        "direct",
+        "options",
+        "video",
+        "sound",
+        "controls",
+        "mouse",
+        "keybinds",
+        "accessibility"
+      ],
+      "simulation_distance_blocks": null,
+      "simulation_measured": false,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": null,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 223690752,
+      "wall_elapsed_seconds": 70.38217908299976,
+      "source_matches_runner": true,
+      "gate_problems": []
+    },
+    {
+      "acceptance_eligible_configuration": true,
+      "completed_simulation_ticks": 0,
+      "frame_stats": {
+        "average_fps": 4233.185069203453,
+        "frames": 253992,
+        "hitches_over_50ms": 0,
+        "one_percent_low_fps": 3532.2924792909425,
+        "p50_ms": 0.235,
+        "p95_ms": 0.256958,
+        "p99_ms": 0.26304099999999997,
+        "worst_ms": 0.778791
+      },
+      "frame_thresholds_passed": true,
+      "gpu_timer_invalid_frames": 297320,
+      "gpu_timer_ring_full_frames": 0,
+      "gpu_timestamp_ms": {
+        "all_frames": {
+          "acquire_ms": 1.6812659282582385e-05,
+          "frame_ms": 0.23622874588569956,
+          "frames": 253992,
+          "gpu_ms": {
+            "frames": 45,
+            "mean": 0.36164088878366685,
+            "p50": 0.2776249945163727,
+            "p99": 0.6882089972496033,
+            "slowest_one_percent_mean": 0.6882089972496033,
+            "worst": 0.6882089972496033
+          },
+          "timed_frames": 45
+        },
+        "other_frames": {
+          "acquire_ms": 1.6812659282582385e-05,
+          "frame_ms": 0.23622874588569676,
+          "frames": 253992,
+          "gpu_ms": {
+            "frames": 45,
+            "mean": 0.36164088878366685,
+            "p50": 0.2776249945163727,
+            "p99": 0.6882089972496033,
+            "slowest_one_percent_mean": 0.6882089972496033,
+            "worst": 0.6882089972496033
+          },
+          "timed_frames": 45
+        },
+        "slow_acquire_frames": {
+          "acquire_ms": -0.0,
+          "frame_ms": -0.0,
+          "frames": 0,
+          "gpu_ms": null,
+          "timed_frames": 0
+        },
+        "slow_acquire_threshold_ms": 4.0,
+        "slowest_one_percent": {
+          "acquire_ms": 1.597834630870704e-05,
+          "frame_ms": 0.28310226456692955,
+          "frames": 2540,
+          "gpu_ms": {
+            "frames": 2,
+            "mean": 0.24781249463558197,
+            "p50": 0.2397499978542328,
+            "p99": 0.25587499141693115,
+            "slowest_one_percent_mean": 0.25587499141693115,
+            "worst": 0.25587499141693115
+          },
+          "timed_frames": 2
+        }
+      },
+      "gpu_timestamps": "render passes",
+      "graphics": "enhanced",
+      "ineligible_reasons": [],
+      "options": {
+        "display": {
+          "mode": "Off",
+          "monitor": {
+            "name": "Monitor #41054",
+            "physical": [
+              3024,
+              1964
+            ],
+            "refresh_millihertz": 120000,
+            "scale_factor": 2.0,
+            "video_modes": null
+          },
+          "window_physical": [
+            1920,
+            1080
+          ]
+        },
+        "frame_latency": 2,
+        "gui_scale": 0,
+        "metal_maximum_drawable_count": 3,
+        "vsync_setting": false,
+        "window_mode": "windowed"
+      },
+      "paused_simulation_ms": null,
+      "present_mode_requested": "AutoNoVsync",
+      "present_mode_resolved": "Immediate",
+      "presentation": "offscreen image, nothing presented; title screen",
+      "requested_sample_seconds": 60.0,
+      "resolution_physical": [
+        1920,
+        1080
+      ],
+      "run_valid": true,
+      "sample_seconds": 60.008873542,
+      "scene": "title",
+      "schema": 2,
+      "screen_seconds": 2.0,
+      "screens": [
+        "title",
+        "select",
+        "create",
+        "multiplayer",
+        "direct",
+        "options",
+        "video",
+        "sound",
+        "controls",
+        "mouse",
+        "keybinds",
+        "accessibility"
+      ],
+      "simulation_distance_blocks": null,
+      "simulation_measured": false,
+      "source_revision": "5b4c708d882c102778ceb8fa62062a6974afa167910e514189b6955f88e35916",
+      "unpresented_frames": 0,
+      "view_distance_blocks": null,
+      "vsync": false,
+      "warmup_seconds": 10.0,
+      "window_mode_applied": "Off",
+      "peak_process_rss_bytes": 224280576,
+      "wall_elapsed_seconds": 70.32472304199973,
+      "source_matches_runner": true,
+      "gate_problems": []
+    }
+  ],
+  "reference_gate_passed": false,
+  "reference_gate_problems": [
+    "frame-time thresholds not met"
+  ],
+  "all_runs_valid": true,
+  "remaining_acceptance": "These scenes do not cover the full roadmap environment/encounter matrix or ordinary player testing. GPU pass timestamps time only the frame's render passes, not uploads or presentation; long-session memory stability remains a separate check."
+}

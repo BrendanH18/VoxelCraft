@@ -78,6 +78,9 @@ roadmap and recorded checks to assess completeness against the current target.
   with about 2 ms of GPU work, most likely on the macOS compositor;
   offscreen, the game's own frames pass in four scenes, and texture paging
   is not the regression.
+- [v0.14 gate run, 2026-11-14](verification/2026-11-14-gate-run.md): both
+  suites at `1ee87eb1` pass the 120 FPS gate in every scene but streaming,
+  whose stalls were explorer maps drawn on the main thread, now on workers.
 - [Build-5000 campaign, from 2026-11-12](verification/2026-11-12-build-5000/README.md):
   how the owner's request for 5,000 features is cut into slices, checked
   against the Java reference and counted, with a record and ledger per slice.
