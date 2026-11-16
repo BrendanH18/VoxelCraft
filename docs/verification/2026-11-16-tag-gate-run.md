@@ -104,5 +104,7 @@ spare.
 
 - Both suites pass at `45870304`, the v0.14 tag candidate, and the
   streaming stalls are gone in both.
-- PERF-02 and PERF-03 meet their acceptance conditions on this run.
+- PERF-02 and PERF-03 meet their acceptance conditions on this run, and
+  the owner marked both Verified (2026-11-16). v0.18 measures the gate
+  again.
 - The owner's play of a new generation 3 world remains before the tag.
