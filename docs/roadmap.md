@@ -578,7 +578,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.15 | Villages and raids | Close M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M4 exit checks. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): the remaining Java 26.3 mobs (happy ghasts, nautiluses, camel husks, parched), mobs holding and picking up equipment, chainmail, books, bundles, spyglasses, armor trims, the remaining status effects and potions, and the village template catalogue | Planned. Part of its list was built early by [build-5000 wave 1](verification/2026-11-12-build-5000/wave-1.md) and ships in v0.14 (see the [assigned content](#content-assigned-by-the-2026-11-09-audit)) |
 | v0.16 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): poplar, cinnabar and sulfur with their terrain and the sulfur cube, abandoned camps, mob heads, infested blocks, nether gold ore, conduits, and the reassessment of dungeons, mineshafts, strongholds, shipwrecks and monuments | Planned |
 | v0.17 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload. Added by the 2026-11-09 audit: the furnace minecart | Planned |
-| v0.18 | Polish and performance | M7: UX, §6 | Typography/contrast, material and mob art, inventory/recipe navigation, HUD/workstations, title/world identity, atmosphere and accessibility ([scope](#v020-scope-presentation-and-performance)); subtitles, asset and sound review in play (including the v0.12 blocks' own sounds), and menu fixes found since v0.11; the 120 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, v0.11's menu and title frame-time run and v0.12's `materials` runs, which moved here unverified ([v0.12 profile](verification/2026-10-29-v0.12-finish.md#frame-time)). The per-frame entity model rebuild that profile found was removed on 2026-11-09 ([record](verification/2026-11-09-entity-frame-time.md)); the streaming route's main-thread terrain column rebuilds from mob biome queries were addressed in the [streaming follow-up](verification/2026-11-09-streaming-biomes-and-gen07.md); valid windowed gate runs, the remaining tick work and per-frame sign text are still owed | Planned; presentation scope expanded by the owner on 2026-11-05. Each release now records its own frame-time run ([§6.1](#61-reference-configuration-and-frame-time-gate)), so what stays here is the final gate, not every release's first measurement |
+| v0.18 | Polish and performance | M7: UX, §6 | Typography/contrast, material and mob art, inventory/recipe navigation, HUD/workstations, title/world identity, atmosphere and accessibility ([scope](#v020-scope-presentation-and-performance)); subtitles, asset and sound review in play (including the v0.12 blocks' own sounds), and menu fixes found since v0.11; the 120 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, v0.11's menu and title frame-time run and v0.12's `materials` runs, which moved here unverified ([v0.12 profile](verification/2026-10-29-v0.12-finish.md#frame-time)). The per-frame entity model rebuild that profile found was removed on 2026-11-09 ([record](verification/2026-11-09-entity-frame-time.md)); the streaming route's main-thread terrain column rebuilds from mob biome queries were addressed in the [streaming follow-up](verification/2026-11-09-streaming-biomes-and-gen07.md); the remaining tick work and per-frame sign text are still owed, and the gate is measured again here (v0.14 passed it on 2026-11-16, [record](verification/2026-11-16-tag-gate-run.md)) | Planned; presentation scope expanded by the owner on 2026-11-05. Each release now records its own frame-time run ([§6.1](#61-reference-configuration-and-frame-time-gate)), so what stays here is the final gate, not every release's first measurement |
 | v1.0 | Acceptance | M7 exit, §8 | Every mandatory row Verified; fresh-world and long-session playthroughs; save-compatibility policy; installer and update checks; current stable Java scope reconciled | Planned |
 
 Notes:
@@ -736,12 +736,10 @@ owed. Work items:
    finish was dropped by the owner on 2026-11-14: the owner's play covers
    them, and they stay unverified until then.) Cargo is at 0.14.0 (0.16.0 until the owner's renumbering on 2026-11-13),
    and `packaging/RELEASE-NOTES.md` covers all of v0.14 with its known gaps.
-   Three valid windowed runs of every scene on AC power with the machine
-   idle (PERF-02/03), including investigation of any remaining streaming
-   outliers. The 2026-11-11 run has three valid runs of every scene and
-   fails what was then a 240 FPS gate ([record](verification/2026-11-11-gate-run.md#scene-run));
-   the drawable wait it found needs fixing or an owner decision before
-   the tag. The [2026-11-14 record](verification/2026-11-14-drawable-wait.md)
+   The frame-time gate (PERF-02/03) is done. The 2026-11-11 run had three
+   valid windowed runs of every scene and failed what was then a 240 FPS
+   gate ([record](verification/2026-11-11-gate-run.md#scene-run)) on a
+   drawable wait. The [2026-11-14 record](verification/2026-11-14-drawable-wait.md)
    ran the experiment matrix and profiled the steady-state drop: the wait
    most likely belongs to the macOS compositor, none of the presentation
    options tried removes it, and the game's own frames pass offscreen in
@@ -752,8 +750,9 @@ owed. Work items:
    ran at `1ee87eb1` on the idle M5 the same day
    ([record](verification/2026-11-14-gate-run.md)): every scene passes in
    both except streaming, whose two stalls per run were explorer maps rolled
-   on the main thread; workers roll them now. What remains is both suites
-   again at the commit to be tagged. ([FE-02](#14-what-can-follow-10) was approved by the owner on
+   on the main thread; workers roll them now. Both suites ran again at
+   `45870304`, the tag candidate, on 2026-11-16 and pass in every scene,
+   streaming included ([record](verification/2026-11-16-tag-gate-run.md)). ([FE-02](#14-what-can-follow-10) was approved by the owner on
    2026-11-10.)
    Ancient cities and trial chambers now run in the GEN-07 order corpus
    ([record](verification/2026-11-09-streaming-biomes-and-gen07.md)).

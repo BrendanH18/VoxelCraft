@@ -82,6 +82,9 @@ roadmap and recorded checks to assess completeness against the current target.
   `1ee87eb1` every scene but streaming meets the 120 FPS, 8.33 ms p99 gate
   offscreen and has no frame over 50 ms windowed. Streaming's stalls were
   explorer maps drawn on the main thread, now drawn on workers.
+- [v0.14 tag gate run, 2026-11-16](verification/2026-11-16-tag-gate-run.md):
+  at `45870304` every scene, streaming included, meets the 120 FPS, 8.33 ms
+  p99 gate offscreen and has no frame over 50 ms windowed.
 - [Build-5000 campaign, from 2026-11-12](verification/2026-11-12-build-5000/README.md):
   how the owner's request for 5,000 features is cut into slices, checked
   against the Java reference and counted, with a record and ledger per slice.
