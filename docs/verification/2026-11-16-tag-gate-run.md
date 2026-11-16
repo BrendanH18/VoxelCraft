@@ -90,15 +90,19 @@ offscreen is the wait for the GPU to finish the frame:
 
 (milliseconds, means over the slowest 1% of frames)
 
-The CPU phases are the same or smaller, the other runs of the same scenes
-match 11-14, and the only source change between the two commits moves
-structure-chest loot rolls from chunk install to the generation workers,
-which these scenes' steady state doesn't reach. The slower runs wait about
-0.6 ms longer for the GPU. The likeliest reason is the order: on 11-14 the
-offscreen suite ran first on a cool machine, while today it followed 37
-minutes of windowed rendering. It isn't a code regression, and every run
-still clears the gate's 1% low by more than twice and its p99 with 4.9 ms to
-spare.
+The CPU phases are the same or smaller, and the other runs of the same
+scenes match 11-14. The one source change between the two commits is #87
+(`src/world/{loot,maps,mod,spawner}.rs`): generation workers now roll
+seeded structure chests and draw their explorer maps, and the main thread
+only numbers the maps and installs the chests. That work happens when a
+chunk is generated and installed, and adds nothing to the renderer or its
+GPU submissions. The slower runs wait about 0.6 ms longer for the GPU, and
+survival and automation each also have a run at the 11-14 speed. The likeliest
+reason is the order: on 11-14 the offscreen suite ran first on a cool
+machine, while today it followed 37 minutes of windowed rendering. That
+hasn't been tested by running both commits in the same order, so a code
+cause isn't ruled out. Every run still clears the gate's 1% low by more
+than twice and its p99 with 4.9 ms to spare.
 
 ## Status
 

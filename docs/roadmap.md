@@ -736,12 +736,10 @@ owed. Work items:
    finish was dropped by the owner on 2026-11-14: the owner's play covers
    them, and they stay unverified until then.) Cargo is at 0.14.0 (0.16.0 until the owner's renumbering on 2026-11-13),
    and `packaging/RELEASE-NOTES.md` covers all of v0.14 with its known gaps.
-   Three valid windowed runs of every scene on AC power with the machine
-   idle (PERF-02/03), including investigation of any remaining streaming
-   outliers. The 2026-11-11 run has three valid runs of every scene and
-   fails what was then a 240 FPS gate ([record](verification/2026-11-11-gate-run.md#scene-run));
-   the drawable wait it found needs fixing or an owner decision before
-   the tag. The [2026-11-14 record](verification/2026-11-14-drawable-wait.md)
+   The frame-time gate (PERF-02/03) is done. The 2026-11-11 run had three
+   valid windowed runs of every scene and failed what was then a 240 FPS
+   gate ([record](verification/2026-11-11-gate-run.md#scene-run)) on a
+   drawable wait. The [2026-11-14 record](verification/2026-11-14-drawable-wait.md)
    ran the experiment matrix and profiled the steady-state drop: the wait
    most likely belongs to the macOS compositor, none of the presentation
    options tried removes it, and the game's own frames pass offscreen in
