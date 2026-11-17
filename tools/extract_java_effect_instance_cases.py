@@ -26,15 +26,16 @@ the particle odds and alpha) from the source itself, so a different source
 fails instead of producing a stale fixture. en_us strings come from the
 pinned client's en_us.json. It reads no VoxelCraft code or fixture.
 """
+
 import argparse
 import functools
 import hashlib
 import json
 import math
-from pathlib import Path
 import random
 import re
 import struct
+from pathlib import Path
 
 # sha256 of each transcribed method body with all whitespace removed.
 PINNED = {
@@ -91,8 +92,13 @@ OVERLOADS = {"LivingEntity.addEffect": "final MobEffectInstance newEffect, @Null
 def method_body(text, name, params=""):
     """The `{...}` body of the first method declaration called `name` whose
     parameters start with `params`."""
-    match = re.search(r"\n   (?:public |private |protected |static |final )*[\w<>\[\], .?]+ " + re.escape(name) + r"\("
-                      + re.escape(params), text)
+    match = re.search(
+        r"\n   (?:public |private |protected |static |final )*[\w<>\[\], .?]+ "
+        + re.escape(name)
+        + r"\("
+        + re.escape(params),
+        text,
+    )
     if not match:
         raise ValueError(f"no method {name}")
     start = text.index("{", match.end())
@@ -100,7 +106,7 @@ def method_body(text, name, params=""):
     for i in range(start, len(text)):
         depth += {"{": 1, "}": -1}.get(text[i], 0)
         if depth == 0:
-            return text[start:i + 1]
+            return text[start : i + 1]
     raise ValueError(f"unbalanced method {name}")
 
 
@@ -131,7 +137,8 @@ class Model:
         self.colour = {}
         self.cls = {}
         for id_, cls, _category, colour in re.findall(
-                r'register\(\s*"(\w+)",\s*new (\w+)\(\s*MobEffectCategory\.(\w+),\s*(-?\d+)', effects):
+            r'register\(\s*"(\w+)",\s*new (\w+)\(\s*MobEffectCategory\.(\w+),\s*(-?\d+)', effects
+        ):
             self.colour[id_] = int(colour)
             self.cls[id_] = cls
         if len(self.colour) != len(re.findall(r'register\(\s*"', effects)):
@@ -141,36 +148,58 @@ class Model:
             body = method_body(sources[cls], "shouldApplyEffectTickThisTick")
             self.interval[cls] = int(need(r"int interval = (\d+) >> amplification;", body, f"{cls} interval")[1])
             need(r"return interval > 0 \? tickCount % interval == 0 : true;", body, f"{cls} rule")
-        need(r"return false;", method_body(sources["MobEffect"], "shouldApplyEffectTickThisTick"),
-             "MobEffect's default")
+        need(
+            r"return false;", method_body(sources["MobEffect"], "shouldApplyEffectTickThisTick"), "MobEffect's default"
+        )
         tick = method_body(sources["LivingEntity"], "tickEffects")
-        self.bound = tuple(int(x) for x in need(r"int bound = this\.isInvisible\(\) \? (\d+) : (\d+);", tick,
-                                                "particle odds").groups())
+        self.bound = tuple(
+            int(x) for x in need(r"int bound = this\.isInvisible\(\) \? (\d+) : (\d+);", tick, "particle odds").groups()
+        )
         self.ambient_factor = int(need(r"int ambientFactor = isAmbient \? (\d+) : 1;", tick, "ambient factor")[1])
         floor_of = float(need(r"AMBIENT_ALPHA = Mth\.floor\(([\d.]+)F\);", sources["MobEffect"], "AMBIENT_ALPHA")[1])
         self.ambient_alpha = math.floor(floor_of)
-        need(r"int alpha = effectInstance\.isAmbient\(\) \? AMBIENT_ALPHA : 255;", sources["MobEffect"],
-             "the particle alpha")
+        need(
+            r"int alpha = effectInstance\.isAmbient\(\) \? AMBIENT_ALPHA : 255;",
+            sources["MobEffect"],
+            "the particle alpha",
+        )
         hud = method_body(sources["Hud"], "extractEffects")
         self.blink = int(need(r"instance\.endsWithin\((\d+)\)", hud, "the HUD blink window")[1])
         need(r"Ordering\.natural\(\)\.reverse\(\)\.sortedCopy\(activeEffects\)", hud, "the HUD order")
         need(r"if \(instance\.showIcon\(\)\)", hud, "the HUD icon flag")
         need(r"sin\[i\] = \(float\)Math\.sin\(i / 10430\.378350470453\);", sources["Mth"], "Mth's SIN table")
         inv = method_body(sources["EffectsInInventory"], "getEffectName")
-        self.level_range = tuple(int(x) for x in need(
-            r"effect\.getAmplifier\(\) >= (\d+) && effect\.getAmplifier\(\) <= (\d+)", inv, "the level text range").groups())
-        need(r"Ordering\.natural\(\)\.sortedCopy\(activeEffects\)", sources["EffectsInInventory"],
-             "the inventory order")
+        self.level_range = tuple(
+            int(x)
+            for x in need(
+                r"effect\.getAmplifier\(\) >= (\d+) && effect\.getAmplifier\(\) <= (\d+)", inv, "the level text range"
+            ).groups()
+        )
+        need(
+            r"Ordering\.natural\(\)\.sortedCopy\(activeEffects\)", sources["EffectsInInventory"], "the inventory order"
+        )
         reg = method_body(sources["EffectCommands"], "register")
-        self.seconds = tuple(int(x) for x in need(r'argument\("seconds", IntegerArgumentType\.integer\((\d+), (\d+)\)\)',
-                                                 reg, "the seconds bounds").groups())
-        self.amplifier = tuple(int(x) for x in need(
-            r'argument\("amplifier", IntegerArgumentType\.integer\((\d+), (\d+)\)\)', reg, "the amplifier bounds").groups())
+        self.seconds = tuple(
+            int(x)
+            for x in need(
+                r'argument\("seconds", IntegerArgumentType\.integer\((\d+), (\d+)\)\)', reg, "the seconds bounds"
+            ).groups()
+        )
+        self.amplifier = tuple(
+            int(x)
+            for x in need(
+                r'argument\("amplifier", IntegerArgumentType\.integer\((\d+), (\d+)\)\)', reg, "the amplifier bounds"
+            ).groups()
+        )
         need(r'Commands\.literal\("infinite"\)', reg, "the infinite literal")
         need(r'argument\("hideParticles", BoolArgumentType\.bool\(\)\)', reg, "hideParticles")
         compute = method_body(sources["EffectCommands"], "computeDurationInTicks")
-        self.default_ticks = tuple(int(x) for x in need(r"return effect\.isInstantaneous\(\) \? (\d+) : (\d+);", compute,
-                                                        "the default durations").groups())
+        self.default_ticks = tuple(
+            int(x)
+            for x in need(
+                r"return effect\.isInstantaneous\(\) \? (\d+) : (\d+);", compute, "the default durations"
+            ).groups()
+        )
         need(r"seconds \* (20)", compute, "seconds to ticks")
         self.instantaneous = {id_ for id_, cls in self.cls.items() if self.is_instantaneous(cls)}
 
@@ -184,8 +213,15 @@ class Model:
 
     @staticmethod
     def new(effect, duration, amplifier, ambient=False, visible=True, show_icon=None):
-        return {"effect": effect, "duration": duration, "amplifier": max(0, min(255, amplifier)), "ambient": ambient,
-                "visible": visible, "show_icon": visible if show_icon is None else show_icon, "hidden": None}
+        return {
+            "effect": effect,
+            "duration": duration,
+            "amplifier": max(0, min(255, amplifier)),
+            "ambient": ambient,
+            "visible": visible,
+            "show_icon": visible if show_icon is None else show_icon,
+            "hidden": None,
+        }
 
     @staticmethod
     def copy(i):
@@ -278,8 +314,12 @@ class Model:
             return 0
 
         if (a["duration"] <= self.cutoff or b["duration"] <= self.cutoff) and (not a["ambient"] or not b["ambient"]):
-            return chain((a["ambient"], b["ambient"]), (self.is_infinite(a), self.is_infinite(b)),
-                         (a["duration"], b["duration"]), (self.colour[a["effect"]], self.colour[b["effect"]]))
+            return chain(
+                (a["ambient"], b["ambient"]),
+                (self.is_infinite(a), self.is_infinite(b)),
+                (a["duration"], b["duration"]),
+                (self.colour[a["effect"]], self.colour[b["effect"]]),
+            )
         return chain((a["ambient"], b["ambient"]), (self.colour[a["effect"]], self.colour[b["effect"]]))
 
     # Screens
@@ -319,7 +359,7 @@ class Model:
                 value = int(word)
             except ValueError:
                 return None
-            return value if lo <= value <= hi and -2**31 <= value < 2**31 else None
+            return value if lo <= value <= hi and -(2**31) <= value < 2**31 else None
 
         if len(args) > 3:
             return None
@@ -365,16 +405,28 @@ def generate(model, lang):
 
     def instance(effect):
         visible = rng.random() < 0.7
-        return model.new(effect, rng.choice(durations), rng.randrange(4), rng.random() < 0.3, visible,
-                         visible if rng.random() < 0.7 else not visible)
+        return model.new(
+            effect,
+            rng.choice(durations),
+            rng.randrange(4),
+            rng.random() < 0.3,
+            visible,
+            visible if rng.random() < 0.7 else not visible,
+        )
 
     def spec(i):
         return [i["duration"], i["amplifier"], i["ambient"], i["visible"], i["show_icon"]]
 
     merges = []
     named = [
-        [(600, 0), (100, 1)], [(100, 1), (600, 0)], [(-1, 0), (600, 1)], [(600, 1), (-1, 0)], [(-1, 0), (-1, 0)],
-        [(600, 0), (-1, 0)], [(-1, 2), (100, 1), (600, 0)], [(600, 2), (900, 1), (1200, 0), (700, 3)],
+        [(600, 0), (100, 1)],
+        [(100, 1), (600, 0)],
+        [(-1, 0), (600, 1)],
+        [(600, 1), (-1, 0)],
+        [(-1, 0), (-1, 0)],
+        [(600, 0), (-1, 0)],
+        [(-1, 2), (100, 1), (600, 0)],
+        [(600, 2), (900, 1), (1200, 0), (700, 3)],
     ]
     for adds in named:
         merges.append([model.new("speed", d, a) for d, a in adds])
@@ -389,8 +441,14 @@ def generate(model, lang):
     for adds in merges:
         active = {}
         changed = [model.add_effect(active, dict(i)) for i in adds]
-        merge_cases.append({"effect": adds[0]["effect"], "adds": [spec(i) for i in adds], "changed": changed,
-                            "chain": chain_of(model, active[adds[0]["effect"]])})
+        merge_cases.append(
+            {
+                "effect": adds[0]["effect"],
+                "adds": [spec(i) for i in adds],
+                "changed": changed,
+                "chain": chain_of(model, active[adds[0]["effect"]]),
+            }
+        )
 
     tick_cases = []
     for k in range(60):
@@ -408,8 +466,16 @@ def generate(model, lang):
                 applied.append(t)
             if not remaining:
                 break
-        tick_cases.append({"effect": effect, "adds": [spec(i) for i in adds], "age": start, "ticks": ticks,
-                           "applied": applied, "chain": chain_of(model, active[effect]) if remaining else []})
+        tick_cases.append(
+            {
+                "effect": effect,
+                "adds": [spec(i) for i in adds],
+                "age": start,
+                "ticks": ticks,
+                "applied": applied,
+                "chain": chain_of(model, active[effect]) if remaining else [],
+            }
+        )
 
     order_cases = []
     for _ in range(150):
@@ -417,20 +483,55 @@ def generate(model, lang):
         group = [model.new(e, rng.choice(durations), 0, rng.random() < 0.3) for e in chosen]
         natural = sorted(group, key=functools.cmp_to_key(model.compare))
         reverse = sorted(group, key=functools.cmp_to_key(lambda a, b: model.compare(b, a)))
-        order_cases.append({"effects": [[i["effect"], i["duration"], i["ambient"]] for i in group],
-                            "natural": [i["effect"] for i in natural], "reverse": [i["effect"] for i in reverse]})
+        order_cases.append(
+            {
+                "effects": [[i["effect"], i["duration"], i["ambient"]] for i in group],
+                "natural": [i["effect"] for i in natural],
+                "reverse": [i["effect"] for i in reverse],
+            }
+        )
 
-    alpha_cases = [{"duration": d, "ambient": a, "alpha": model.hud_alpha(model.new("speed", d, 0, a))}
-                   for d in [-1, 0, 1, 2, 5, 7, 10, 19, 20, 33, 50, 99, 100, 150, 199, 200, 201, 600] for a in (False, True)]
-    duration_cases = [{"duration": d, "text": model.format_duration(model.new("speed", d, 0), lang)}
-                      for d in [-1, 0, 19, 20, 600, 3700, 71999, 72000, 72020, 1_000_000 * 20]]
-    level_cases = [{"amplifier": a, "level_text": model.level_range[0] <= a <= model.level_range[1]}
-                   for a in [0, 1, 2, 8, 9, 10, 255]]
+    alpha_cases = [
+        {"duration": d, "ambient": a, "alpha": model.hud_alpha(model.new("speed", d, 0, a))}
+        for d in [-1, 0, 1, 2, 5, 7, 10, 19, 20, 33, 50, 99, 100, 150, 199, 200, 201, 600]
+        for a in (False, True)
+    ]
+    duration_cases = [
+        {"duration": d, "text": model.format_duration(model.new("speed", d, 0), lang)}
+        for d in [-1, 0, 19, 20, 600, 3700, 71999, 72000, 72020, 1_000_000 * 20]
+    ]
+    level_cases = [
+        {"amplifier": a, "level_text": model.level_range[0] <= a <= model.level_range[1]}
+        for a in [0, 1, 2, 8, 9, 10, 255]
+    ]
 
-    command_args = [[], ["30"], ["1"], ["0"], ["1000000"], ["1000001"], ["-1"], ["infinite"], ["Infinite"], ["+5"],
-                    ["05"], ["1.5"], ["10", "0"], ["10", "255"], ["10", "256"], ["10", "-1"], ["10", "+1"],
-                    ["10", "1", "true"], ["10", "1", "false"], ["10", "1", "TRUE"], ["10", "1", "yes"],
-                    ["infinite", "2"], ["infinite", "2", "true"], ["infinite", "2", "false", "x"], ["10", "1", "true", "x"]]
+    command_args = [
+        [],
+        ["30"],
+        ["1"],
+        ["0"],
+        ["1000000"],
+        ["1000001"],
+        ["-1"],
+        ["infinite"],
+        ["Infinite"],
+        ["+5"],
+        ["05"],
+        ["1.5"],
+        ["10", "0"],
+        ["10", "255"],
+        ["10", "256"],
+        ["10", "-1"],
+        ["10", "+1"],
+        ["10", "1", "true"],
+        ["10", "1", "false"],
+        ["10", "1", "TRUE"],
+        ["10", "1", "yes"],
+        ["infinite", "2"],
+        ["infinite", "2", "true"],
+        ["infinite", "2", "false", "x"],
+        ["10", "1", "true", "x"],
+    ]
     command_cases = []
     for effect in ("speed", "saturation", "instant_health"):
         for args in command_args:
@@ -444,7 +545,7 @@ def generate(model, lang):
         "particle_bound": {"invisible": model.bound[0], "visible": model.bound[1]},
         "all_ambient_factor": model.ambient_factor,
         "hud_blink_ticks": model.blink,
-        "periodic_intervals": {cls[:-len("MobEffect")].lower(): n for cls, n in sorted(model.interval.items())},
+        "periodic_intervals": {cls[: -len("MobEffect")].lower(): n for cls, n in sorted(model.interval.items())},
         "instance_fields": ["duration", "amplifier", "ambient", "show_particles", "show_icon"],
         "merge_cases": merge_cases,
         "tick_cases": tick_cases,
@@ -452,9 +553,12 @@ def generate(model, lang):
         "hud_alpha_cases": alpha_cases,
         "duration_text_cases": duration_cases,
         "inventory_level_cases": level_cases,
-        "command": {"seconds": list(model.seconds), "amplifier": list(model.amplifier),
-                    "default_ticks": {"instantaneous": model.default_ticks[0], "other": model.default_ticks[1]},
-                    "cases": command_cases},
+        "command": {
+            "seconds": list(model.seconds),
+            "amplifier": list(model.amplifier),
+            "default_ticks": {"instantaneous": model.default_ticks[0], "other": model.default_ticks[1]},
+            "cases": command_cases,
+        },
         "feedback": {k: v for k, v in sorted(lang.items()) if k.startswith("commands.effect.")},
     }
 
@@ -468,8 +572,10 @@ def main():
     args = parser.parse_args()
     sources = {name: (args.source / path).read_text() for name, path in FILES.items()}
     sources["root"] = str(args.source)
-    hashes = {key: digest(method_body(sources[key.split(".")[0]], key.split(".")[1], OVERLOADS.get(key, "")))
-              for key in PINNED}
+    hashes = {
+        key: digest(method_body(sources[key.split(".")[0]], key.split(".")[1], OVERLOADS.get(key, "")))
+        for key in PINNED
+    }
     if args.print_pins:
         print(json.dumps(hashes, indent=4))
         return
@@ -480,8 +586,8 @@ def main():
     model = Model(sources)
     fixture = {
         "reference": "Minecraft Java Edition 26.3",
-        "sources": sorted(PINNED) + ["MobEffects registrations (colour, class)",
-                                     "en_us.json commands.effect.* and effect.duration.infinite"],
+        "sources": sorted(PINNED)
+        + ["MobEffects registrations (colour, class)", "en_us.json commands.effect.* and effect.duration.infinite"],
         **generate(model, lang),
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)

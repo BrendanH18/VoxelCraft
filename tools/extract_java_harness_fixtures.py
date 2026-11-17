@@ -12,15 +12,17 @@ advancements and tags: the only way to get one is crafting).
 Requires javap. Unknown bytecode forms fail rather than regenerating a guessed
 fixture. No VoxelCraft source or existing fixture is consulted.
 """
+
 import argparse
 import hashlib
 import io
 import json
-from pathlib import Path
 import re
 import subprocess
 import tempfile
 import zipfile
+from pathlib import Path
+
 from extract_java_item_fixtures import SERVER_SHA1
 
 
@@ -30,7 +32,7 @@ def method(code, signature):
     if start < 0:
         raise ValueError(f"missing method: {signature}")
     end = code.find("\n\n", start)
-    return code[start:end if end >= 0 else len(code)]
+    return code[start : end if end >= 0 else len(code)]
 
 
 def ops(code):
@@ -64,7 +66,7 @@ def sound_id(sounds, field):
 def strip(name):
     if not name.startswith("minecraft:"):
         raise ValueError(f"not a minecraft id: {name}")
-    return name[len("minecraft:"):]
+    return name[len("minecraft:") :]
 
 
 def extract(server):
@@ -83,40 +85,72 @@ def extract(server):
             )
 
         items = inspect("world.item.Items")
-        require_sequence(items, [
-            "Field net/minecraft/references/ItemIds.HARNESS",
-            "invokedynamic",
-            "ColorCollection.registerItems",
-            "putstatic",
-        ], "Items.HARNESS registration")
-        if not re.search(r"ItemIds\.HARNESS:[^\n]*\n[^\n]*invokedynamic[^\n]*\n[^\n]*registerItems[^\n]*\n"
-                         r"[^\n]*putstatic[^\n]*Field HARNESS:", items):
+        require_sequence(
+            items,
+            [
+                "Field net/minecraft/references/ItemIds.HARNESS",
+                "invokedynamic",
+                "ColorCollection.registerItems",
+                "putstatic",
+            ],
+            "Items.HARNESS registration",
+        )
+        if not re.search(
+            r"ItemIds\.HARNESS:[^\n]*\n[^\n]*invokedynamic[^\n]*\n[^\n]*registerItems[^\n]*\n"
+            r"[^\n]*putstatic[^\n]*Field HARNESS:",
+            items,
+        ):
             raise ValueError("Items.HARNESS is no longer registered as one colour collection")
-        lambdas = [m for m in re.split(r"\n\n", items)
-                   if "Equippable.harness:" in m and "private static net.minecraft.world.item.Item lambda$" in m]
+        lambdas = [
+            m
+            for m in re.split(r"\n\n", items)
+            if "Equippable.harness:" in m and "private static net.minecraft.world.item.Item lambda$" in m
+        ]
         if len(lambdas) != 1:
             raise ValueError("expected one item lambda building Equippable.harness")
         properties = lambdas[0]
-        require_sequence(properties, [
-            "Item$Properties.\"<init>\"", "iconst_1", "Item$Properties.stacksTo",
-            "DataComponents.EQUIPPABLE", "Equippable.harness", "Item$Properties.component", "registerItem",
-        ], "harness item properties")
+        require_sequence(
+            properties,
+            [
+                'Item$Properties."<init>"',
+                "iconst_1",
+                "Item$Properties.stacksTo",
+                "DataComponents.EQUIPPABLE",
+                "Equippable.harness",
+                "Item$Properties.component",
+                "registerItem",
+            ],
+            "harness item properties",
+        )
         stack_size = 1
         if re.search(r"Item\$Properties\.(durability|food|fireResistant|rarity|enchantable)", properties):
             raise ValueError("harness properties gained a component this extractor does not record")
 
-        equippable = method(inspect("world.item.equipment.Equippable"),
-                            "public static net.minecraft.world.item.equipment.Equippable harness(")
-        require_sequence(equippable, [
-            "EquipmentSlot.BODY", "Method builder:",
-            "SoundEvents.HARNESS_EQUIP", "setEquipSound",
-            "EquipmentAssets.HARNESSES", "setAsset",
-            "EntityTypeTags.CAN_EQUIP_HARNESS", "setAllowedEntities",
-            "iconst_1", "setEquipOnInteract",
-            "iconst_1", "setCanBeSheared",
-            "SoundEvents.HARNESS_UNEQUIP", "setShearingSound",
-            "build",
-        ], "Equippable.harness")
+        equippable = method(
+            inspect("world.item.equipment.Equippable"),
+            "public static net.minecraft.world.item.equipment.Equippable harness(",
+        )
+        require_sequence(
+            equippable,
+            [
+                "EquipmentSlot.BODY",
+                "Method builder:",
+                "SoundEvents.HARNESS_EQUIP",
+                "setEquipSound",
+                "EquipmentAssets.HARNESSES",
+                "setAsset",
+                "EntityTypeTags.CAN_EQUIP_HARNESS",
+                "setAllowedEntities",
+                "iconst_1",
+                "setEquipOnInteract",
+                "iconst_1",
+                "setCanBeSheared",
+                "SoundEvents.HARNESS_UNEQUIP",
+                "setShearingSound",
+                "build",
+            ],
+            "Equippable.harness",
+        )
         for setter in ("setSwappable", "setDamageOnHurt", "setCameraOverlay", "setDispensable"):
             if setter in equippable:
                 raise ValueError(f"Equippable.harness now calls {setter}")
@@ -125,6 +159,7 @@ def extract(server):
         shear_sound = sound_id(sounds, "HARNESS_UNEQUIP")
 
     with zipfile.ZipFile(io.BytesIO(data)) as jar:
+
         def read(name):
             return json.loads(jar.read(name))
 
@@ -135,7 +170,7 @@ def extract(server):
         for name in tag:
             if not name.endswith("_harness"):
                 raise ValueError(f"unexpected harness tag entry {name}")
-            colours.append(name[:-len("_harness")])
+            colours.append(name[: -len("_harness")])
         recipes = {}
         for colour in colours:
             for key in (f"{colour}_harness", f"dye_{colour}_harness"):
@@ -151,7 +186,10 @@ def extract(server):
                 continue
             if name.startswith(("data/minecraft/recipe/", "data/minecraft/advancement/recipes/")):
                 continue
-            if name in ("data/minecraft/tags/item/harnesses.json", "data/minecraft/tags/entity_type/can_equip_harness.json"):
+            if name in (
+                "data/minecraft/tags/item/harnesses.json",
+                "data/minecraft/tags/entity_type/can_equip_harness.json",
+            ):
                 continue
             if "_harness" in jar.read(name).decode():
                 others.append(name)

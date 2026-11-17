@@ -1,190 +1,350 @@
 #!/usr/bin/env python3
 """Run repeatable live-game scenes and record source, hardware, frames, RSS and gate results."""
+
 import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import platform
 import subprocess
 import time
+from pathlib import Path
 
-ROOT=Path(__file__).resolve().parents[1]
-TICKS_PER_SECOND=20.0
-TICK_TOLERANCE=0.005 # matches voxelcraft::performance::TICK_TOLERANCE
-DEFAULT_FRAME_LATENCY=2 # matches voxelcraft::performance::DEFAULT_FRAME_LATENCY
-WINDOW_MODES=['windowed','borderless','exclusive'] # matches voxelcraft::performance::WINDOW_MODES
-PER_FRAME_KEYS=('frame_times_ms','frame_acquire_ms','frame_gpu_ms') # kept in each scene report, not in summary.json
+ROOT = Path(__file__).resolve().parents[1]
+TICKS_PER_SECOND = 20.0
+TICK_TOLERANCE = 0.005  # matches voxelcraft::performance::TICK_TOLERANCE
+DEFAULT_FRAME_LATENCY = 2  # matches voxelcraft::performance::DEFAULT_FRAME_LATENCY
+WINDOW_MODES = ["windowed", "borderless", "exclusive"]  # matches voxelcraft::performance::WINDOW_MODES
+PER_FRAME_KEYS = (
+    "frame_times_ms",
+    "frame_acquire_ms",
+    "frame_gpu_ms",
+)  # kept in each scene report, not in summary.json
+
 
 def command(*args):
-    return subprocess.check_output(args,cwd=ROOT,text=True).strip()
+    return subprocess.check_output(args, cwd=ROOT, text=True).strip()
+
 
 def source_paths(root=ROOT):
     """Every input compiled into the executable: sources, embedded assets and build.rs inputs."""
-    paths=[root/'Cargo.toml',root/'Cargo.lock',root/'build.rs',
-           root/'tests/fixtures/java/26.3/mining.json'] # build.rs embeds this gameplay tag
-    for directory in ['src','assets','packaging/icons']: # build.rs/window icon embed packaging/icons
-        paths.extend(p for p in (root/directory).rglob('*') if p.is_file())
+    paths = [
+        root / "Cargo.toml",
+        root / "Cargo.lock",
+        root / "build.rs",
+        root / "tests/fixtures/java/26.3/mining.json",
+    ]  # build.rs embeds this gameplay tag
+    for directory in ["src", "assets", "packaging/icons"]:  # build.rs/window icon embed packaging/icons
+        paths.extend(p for p in (root / directory).rglob("*") if p.is_file())
     return sorted(paths)
 
+
 def source():
-    digest=hashlib.sha256()
-    for path in source_paths(): digest.update(path.relative_to(ROOT).as_posix().encode()+b'\0'+path.read_bytes()+b'\0')
-    return {'commit':command('git','rev-parse','HEAD'),'dirty':bool(command('git','status','--porcelain')),'runtime_source_sha256':digest.hexdigest()}
+    digest = hashlib.sha256()
+    for path in source_paths():
+        digest.update(path.relative_to(ROOT).as_posix().encode() + b"\0" + path.read_bytes() + b"\0")
+    return {
+        "commit": command("git", "rev-parse", "HEAD"),
+        "dirty": bool(command("git", "status", "--porcelain")),
+        "runtime_source_sha256": digest.hexdigest(),
+    }
+
 
 def hardware():
-    out={'platform':platform.platform(),'architecture':platform.machine(),'logical_cpus':os.cpu_count()}
-    if platform.system()=='Darwin':
-        out['chip']=command('sysctl','-n','machdep.cpu.brand_string')
-        out['ram_bytes']=int(command('sysctl','-n','hw.memsize'))
-        displays=json.loads(command('system_profiler','SPDisplaysDataType','-json'))['SPDisplaysDataType']
-        out['graphics']=[{'chip':gpu.get('sppci_model'),'cores':gpu.get('sppci_cores'),'displays':[{'resolution':d.get('spdisplays_resolution'),'native_pixels':d.get('_spdisplays_pixels')} for d in gpu.get('spdisplays_ndrvs',[])]} for gpu in displays]
-    else: out['chip']=platform.processor()
+    out = {"platform": platform.platform(), "architecture": platform.machine(), "logical_cpus": os.cpu_count()}
+    if platform.system() == "Darwin":
+        out["chip"] = command("sysctl", "-n", "machdep.cpu.brand_string")
+        out["ram_bytes"] = int(command("sysctl", "-n", "hw.memsize"))
+        displays = json.loads(command("system_profiler", "SPDisplaysDataType", "-json"))["SPDisplaysDataType"]
+        out["graphics"] = [
+            {
+                "chip": gpu.get("sppci_model"),
+                "cores": gpu.get("sppci_cores"),
+                "displays": [
+                    {"resolution": d.get("spdisplays_resolution"), "native_pixels": d.get("_spdisplays_pixels")}
+                    for d in gpu.get("spdisplays_ndrvs", [])
+                ],
+            }
+            for gpu in displays
+        ]
+    else:
+        out["chip"] = platform.processor()
     return out
 
-def ticks_within_tolerance(ticks,seconds):
-    expected=seconds*TICKS_PER_SECOND
-    return abs(ticks-expected)<=max(2.0,expected*TICK_TOLERANCE)
 
-def presentation(frame_latency=None,window_mode=None,gpu_timestamps=True):
+def ticks_within_tolerance(ticks, seconds):
+    expected = seconds * TICKS_PER_SECOND
+    return abs(ticks - expected) <= max(2.0, expected * TICK_TOLERANCE)
+
+
+def presentation(frame_latency=None, window_mode=None, gpu_timestamps=True):
     """Game flags and recorded options for the presentation experiment options, and how they
     differ from the reference configuration (windowed, frame latency 2). Defaults add no flags."""
-    flags=[];differences=[]
-    if frame_latency is not None and frame_latency!=DEFAULT_FRAME_LATENCY:
-        flags+=['--benchmark-frame-latency',str(frame_latency)];differences.append(f'frame latency {frame_latency}')
-    if window_mode is not None and window_mode!='windowed':
-        flags+=['--benchmark-window-mode',window_mode];differences.append(f'window mode {window_mode}')
-    if not gpu_timestamps: flags.append('--benchmark-no-gpu-timestamps')
-    options={'frame_latency':frame_latency or DEFAULT_FRAME_LATENCY,'window_mode':window_mode or 'windowed','gpu_timestamps':gpu_timestamps}
-    return flags,options,differences
+    flags = []
+    differences = []
+    if frame_latency is not None and frame_latency != DEFAULT_FRAME_LATENCY:
+        flags += ["--benchmark-frame-latency", str(frame_latency)]
+        differences.append(f"frame latency {frame_latency}")
+    if window_mode is not None and window_mode != "windowed":
+        flags += ["--benchmark-window-mode", window_mode]
+        differences.append(f"window mode {window_mode}")
+    if not gpu_timestamps:
+        flags.append("--benchmark-no-gpu-timestamps")
+    options = {
+        "frame_latency": frame_latency or DEFAULT_FRAME_LATENCY,
+        "window_mode": window_mode or "windowed",
+        "gpu_timestamps": gpu_timestamps,
+    }
+    return flags, options, differences
+
 
 def gpu_line(report):
     """One line on GPU time against slow acquires, or None when frames weren't timed."""
-    breakdown=report.get('gpu_timestamp_ms')
-    if not breakdown: return None
-    def ms(group,key): return (breakdown[group].get('gpu_ms') or {}).get(key)
-    def fmt(v): return '-' if v is None else f'{v:.3f}'
-    slow=breakdown['slow_acquire_frames']
-    return (f"  GPU ms mean {fmt(ms('all_frames','mean'))}, p99 {fmt(ms('all_frames','p99'))}; slowest 1% of frames: GPU {fmt(ms('slowest_one_percent','mean'))} "
-            f"of {breakdown['slowest_one_percent']['frame_ms']:.3f} ms (acquire {breakdown['slowest_one_percent']['acquire_ms']:.3f}); "
-            f"{slow['frames']} frames acquired over {breakdown['slow_acquire_threshold_ms']:g} ms: GPU mean {fmt(ms('slow_acquire_frames','mean'))}, p99 {fmt(ms('slow_acquire_frames','p99'))}")
+    breakdown = report.get("gpu_timestamp_ms")
+    if not breakdown:
+        return None
 
-def scene_definition(specification,name):
-    return next((s for s in specification['scenes'] if s['name']==name),{})
+    def ms(group, key):
+        return (breakdown[group].get("gpu_ms") or {}).get(key)
 
-def run_problems(report,specification):
+    def fmt(v):
+        return "-" if v is None else f"{v:.3f}"
+
+    slow = breakdown["slow_acquire_frames"]
+    return (
+        f"  GPU ms mean {fmt(ms('all_frames', 'mean'))}, p99 {fmt(ms('all_frames', 'p99'))}; slowest 1% of frames: GPU {fmt(ms('slowest_one_percent', 'mean'))} "
+        f"of {breakdown['slowest_one_percent']['frame_ms']:.3f} ms (acquire {breakdown['slowest_one_percent']['acquire_ms']:.3f}); "
+        f"{slow['frames']} frames acquired over {breakdown['slow_acquire_threshold_ms']:g} ms: GPU mean {fmt(ms('slow_acquire_frames', 'mean'))}, p99 {fmt(ms('slow_acquire_frames', 'p99'))}"
+    )
+
+
+def scene_definition(specification, name):
+    return next((s for s in specification["scenes"] if s["name"] == name), {})
+
+
+def run_problems(report, specification):
     """Reasons one scene report cannot count toward the reference gate; empty when it can.
     Menu scenes pause the simulation, as Java's menus do, and the title scene has no world."""
-    scene=scene_definition(specification,report.get('scene'))
-    world=scene.get('world',True);simulation=scene.get('simulation',True)
-    out=list(report.get('ineligible_reasons',[]))
-    if not report.get('acceptance_eligible_configuration'): out.append('configuration is not the reference configuration')
-    if not report.get('run_valid'): out.append('run reported invalid samples')
-    if report.get('graphics')!=specification['graphics']: out.append(f"graphics is not {specification['graphics']}")
-    for key in ('view_distance_blocks','simulation_distance_blocks') if world else ():
-        if report.get(key)!=specification[key]: out.append(f"{key.replace('_',' ')} is not {specification[key]}")
-    if simulation and report.get('paused_simulation_ms',None)!=0: out.append('simulation pause time is not zero')
-    if report.get('unpresented_frames',None)!=0: out.append('unpresented frame count is not zero')
-    if simulation and not ticks_within_tolerance(report.get('completed_simulation_ticks',0),report.get('sample_seconds',0)):
-        out.append('completed simulation ticks differ from 20 per sampled second')
-    if not report.get('source_matches_runner'): out.append('executable was not built from the measured source')
+    scene = scene_definition(specification, report.get("scene"))
+    world = scene.get("world", True)
+    simulation = scene.get("simulation", True)
+    out = list(report.get("ineligible_reasons", []))
+    if not report.get("acceptance_eligible_configuration"):
+        out.append("configuration is not the reference configuration")
+    if not report.get("run_valid"):
+        out.append("run reported invalid samples")
+    if report.get("graphics") != specification["graphics"]:
+        out.append(f"graphics is not {specification['graphics']}")
+    for key in ("view_distance_blocks", "simulation_distance_blocks") if world else ():
+        if report.get(key) != specification[key]:
+            out.append(f"{key.replace('_', ' ')} is not {specification[key]}")
+    if simulation and report.get("paused_simulation_ms", None) != 0:
+        out.append("simulation pause time is not zero")
+    if report.get("unpresented_frames", None) != 0:
+        out.append("unpresented frame count is not zero")
+    if simulation and not ticks_within_tolerance(
+        report.get("completed_simulation_ticks", 0), report.get("sample_seconds", 0)
+    ):
+        out.append("completed simulation ticks differ from 20 per sampled second")
+    if not report.get("source_matches_runner"):
+        out.append("executable was not built from the measured source")
     return list(dict.fromkeys(out))
 
-def reference_gate(metadata,definitions,quick,native,repeats,offscreen=False,seconds=None,presentation_differences=()):
+
+def reference_gate(
+    metadata, definitions, quick, native, repeats, offscreen=False, seconds=None, presentation_differences=()
+):
     """Overall reference result: protocol, hardware, scene coverage and every run's validity and thresholds.
     Since 2026-11-14 the gate is the offscreen suite (the game's own frames: 1% low 120 FPS, p99 8.33 ms);
     the windowed suite is still recorded and passes when no frame stalls over 50 ms.
     Presentation experiments (another frame latency or window mode) never pass the gate: adopting one
     for it is the owner's decision in roadmap section 6.1, followed by a run with the new defaults."""
-    problems=[]
-    if presentation_differences: problems.append('presentation experiment: '+', '.join(presentation_differences))
-    if quick: problems.append('quick smoke protocol')
-    if seconds: problems.append('sample period overridden')
-    if native: problems.append('native-resolution runs are reported separately')
-    if repeats<3: problems.append('fewer than three repeats')
-    if {r['scene'] for r in metadata['runs']}!=set(definitions): problems.append('not every scene was measured')
-    if 'M5' not in metadata['hardware'].get('chip',''): problems.append('not M5 reference hardware')
-    invalid=[f"{r['scene']}-{i+1}" for i,r in enumerate(metadata['runs']) if r.get('gate_problems')]
-    if invalid: problems.append('invalid runs: '+', '.join(invalid))
-    if not all(r.get('frame_thresholds_passed') for r in metadata['runs']): problems.append('frame-time thresholds not met')
-    return not problems,problems
+    problems = []
+    if presentation_differences:
+        problems.append("presentation experiment: " + ", ".join(presentation_differences))
+    if quick:
+        problems.append("quick smoke protocol")
+    if seconds:
+        problems.append("sample period overridden")
+    if native:
+        problems.append("native-resolution runs are reported separately")
+    if repeats < 3:
+        problems.append("fewer than three repeats")
+    if {r["scene"] for r in metadata["runs"]} != set(definitions):
+        problems.append("not every scene was measured")
+    if "M5" not in metadata["hardware"].get("chip", ""):
+        problems.append("not M5 reference hardware")
+    invalid = [f"{r['scene']}-{i + 1}" for i, r in enumerate(metadata["runs"]) if r.get("gate_problems")]
+    if invalid:
+        problems.append("invalid runs: " + ", ".join(invalid))
+    if not all(r.get("frame_thresholds_passed") for r in metadata["runs"]):
+        problems.append("frame-time thresholds not met")
+    return not problems, problems
+
 
 def main():
-    parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--executable',type=Path)
-    parser.add_argument('--output',type=Path,default=ROOT/'target/benchmarks')
-    parser.add_argument('--scenes',help='comma-separated scene names (default: every scene in benchmarks/scenes.json)')
-    parser.add_argument('--repeats',type=int,default=3)
-    parser.add_argument('--quick',action='store_true',help='five-second smoke only, never acceptance evidence')
-    parser.add_argument('--native-resolution',help='WIDTHxHEIGHT, reported separately from the 1080p gate')
-    parser.add_argument('--offscreen',action='store_true',help='draw offscreen and present nothing: the frame-time gate (1%% low 120 FPS, p99 8.33 ms) measures these runs; without it the windowed runs are checked for stalls over 50 ms')
-    parser.add_argument('--seconds',type=float,help='sample seconds for every scene, for comparison runs; never acceptance evidence')
-    parser.add_argument('--frame-latency',type=int,choices=[1,2,3],help='surface frame latency (default 2; on Metal 1 gives two drawables, 2 and 3 give three); other than 2 is a presentation experiment, never acceptance evidence')
-    parser.add_argument('--window-mode',choices=WINDOW_MODES,help='windowed (default), borderless (macOS native fullscreen) or exclusive (display mode switch, preferring 1920x1080); other than windowed is a presentation experiment, never acceptance evidence')
-    parser.add_argument('--no-gpu-timestamps',action='store_true',help='do not time frames on the GPU (on by default where the adapter supports it), to check the timing costs nothing')
-    args=parser.parse_args()
-    presentation_flags,presentation_options,presentation_differences=presentation(args.frame_latency,args.window_mode,not args.no_gpu_timestamps)
-    assert 1<=args.repeats<=10,'repeat count must be 1..10'
-    specification=json.loads((ROOT/'benchmarks/scenes.json').read_text())
-    definitions={s['name']:s for s in specification['scenes']}
-    names=args.scenes.split(',') if args.scenes else list(definitions)
-    assert all(n in definitions for n in names),'unknown scene'
-    revision=source()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--executable", type=Path)
+    parser.add_argument("--output", type=Path, default=ROOT / "target/benchmarks")
+    parser.add_argument("--scenes", help="comma-separated scene names (default: every scene in benchmarks/scenes.json)")
+    parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument("--quick", action="store_true", help="five-second smoke only, never acceptance evidence")
+    parser.add_argument("--native-resolution", help="WIDTHxHEIGHT, reported separately from the 1080p gate")
+    parser.add_argument(
+        "--offscreen",
+        action="store_true",
+        help="draw offscreen and present nothing: the frame-time gate (1%% low 120 FPS, p99 8.33 ms) measures these runs; without it the windowed runs are checked for stalls over 50 ms",
+    )
+    parser.add_argument(
+        "--seconds", type=float, help="sample seconds for every scene, for comparison runs; never acceptance evidence"
+    )
+    parser.add_argument(
+        "--frame-latency",
+        type=int,
+        choices=[1, 2, 3],
+        help="surface frame latency (default 2; on Metal 1 gives two drawables, 2 and 3 give three); other than 2 is a presentation experiment, never acceptance evidence",
+    )
+    parser.add_argument(
+        "--window-mode",
+        choices=WINDOW_MODES,
+        help="windowed (default), borderless (macOS native fullscreen) or exclusive (display mode switch, preferring 1920x1080); other than windowed is a presentation experiment, never acceptance evidence",
+    )
+    parser.add_argument(
+        "--no-gpu-timestamps",
+        action="store_true",
+        help="do not time frames on the GPU (on by default where the adapter supports it), to check the timing costs nothing",
+    )
+    args = parser.parse_args()
+    presentation_flags, presentation_options, presentation_differences = presentation(
+        args.frame_latency, args.window_mode, not args.no_gpu_timestamps
+    )
+    assert 1 <= args.repeats <= 10, "repeat count must be 1..10"
+    specification = json.loads((ROOT / "benchmarks/scenes.json").read_text())
+    definitions = {s["name"]: s for s in specification["scenes"]}
+    names = args.scenes.split(",") if args.scenes else list(definitions)
+    assert all(n in definitions for n in names), "unknown scene"
+    revision = source()
     if args.executable:
-        executable=args.executable.resolve(strict=True)
+        executable = args.executable.resolve(strict=True)
     else:
-        env=os.environ.copy();env['VOXELCRAFT_BUILD_REVISION']=revision['runtime_source_sha256']
-        subprocess.run(['cargo','build','--release','--bin','voxelcraft'],cwd=ROOT,env=env,check=True)
-        executable=Path(env.get('CARGO_TARGET_DIR',ROOT/'target'))/'release/voxelcraft'
-    executable=executable.resolve(strict=True)
-    args.output.mkdir(parents=True,exist_ok=True)
-    metadata={'schema':2,'source':revision,'hardware':hardware(),'executable_sha256':hashlib.sha256(executable.read_bytes()).hexdigest(),
-              'protocol':'quick smoke' if args.quick else 'offscreen gate' if args.offscreen else 'presentation experiment' if presentation_differences else 'scene baseline',
-              'resolution_class':'native' if args.native_resolution else '1080p','presentation_options':presentation_options,'specification':specification,'runs':[]}
-    resolution=args.native_resolution or '1920x1080'
+        env = os.environ.copy()
+        env["VOXELCRAFT_BUILD_REVISION"] = revision["runtime_source_sha256"]
+        subprocess.run(["cargo", "build", "--release", "--bin", "voxelcraft"], cwd=ROOT, env=env, check=True)
+        executable = Path(env.get("CARGO_TARGET_DIR", ROOT / "target")) / "release/voxelcraft"
+    executable = executable.resolve(strict=True)
+    args.output.mkdir(parents=True, exist_ok=True)
+    metadata = {
+        "schema": 2,
+        "source": revision,
+        "hardware": hardware(),
+        "executable_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
+        "protocol": "quick smoke"
+        if args.quick
+        else "offscreen gate"
+        if args.offscreen
+        else "presentation experiment"
+        if presentation_differences
+        else "scene baseline",
+        "resolution_class": "native" if args.native_resolution else "1080p",
+        "presentation_options": presentation_options,
+        "specification": specification,
+        "runs": [],
+    }
+    resolution = args.native_resolution or "1920x1080"
     for scene in names:
         for run in range(args.repeats):
-            output=args.output/f'{scene}-{run+1}.json'
-            duration=5 if args.quick else args.seconds or definitions[scene].get('sample_seconds',specification['sample_seconds'])
-            warmup=1 if args.quick else specification['warmup_seconds']
-            cmd=[str(executable),'--benchmark-scene',scene,'--benchmark-output',str(output.resolve()),'--benchmark-duration',str(duration),'--benchmark-warmup',str(warmup),
-                 '--size',resolution,'--seed',str(specification['seed']),'--rd','8','--graphics',specification['graphics'],'--no-vsync',
-                 '--data-dir',str((args.output/'player-data').resolve())]
-            if definitions[scene].get('world',True): cmd+=['--new','--world','benchmark']
-            if args.offscreen: cmd.append('--benchmark-offscreen')
-            cmd+=presentation_flags
-            print(f'{scene} run {run+1}/{args.repeats} at {resolution}',flush=True)
-            peak_rss_kib=0;started=time.monotonic()
-            with (args.output/f'{scene}-{run+1}.log').open('w') as log:
-                process=subprocess.Popen(cmd,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT)
+            output = args.output / f"{scene}-{run + 1}.json"
+            duration = (
+                5
+                if args.quick
+                else args.seconds or definitions[scene].get("sample_seconds", specification["sample_seconds"])
+            )
+            warmup = 1 if args.quick else specification["warmup_seconds"]
+            cmd = [
+                str(executable),
+                "--benchmark-scene",
+                scene,
+                "--benchmark-output",
+                str(output.resolve()),
+                "--benchmark-duration",
+                str(duration),
+                "--benchmark-warmup",
+                str(warmup),
+                "--size",
+                resolution,
+                "--seed",
+                str(specification["seed"]),
+                "--rd",
+                "8",
+                "--graphics",
+                specification["graphics"],
+                "--no-vsync",
+                "--data-dir",
+                str((args.output / "player-data").resolve()),
+            ]
+            if definitions[scene].get("world", True):
+                cmd += ["--new", "--world", "benchmark"]
+            if args.offscreen:
+                cmd.append("--benchmark-offscreen")
+            cmd += presentation_flags
+            print(f"{scene} run {run + 1}/{args.repeats} at {resolution}", flush=True)
+            peak_rss_kib = 0
+            started = time.monotonic()
+            with (args.output / f"{scene}-{run + 1}.log").open("w") as log:
+                process = subprocess.Popen(cmd, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
                 try:
                     while process.poll() is None:
-                        if time.monotonic()-started>duration+warmup+240: raise TimeoutError(f'{scene}: process exceeded fixture deadline')
-                        if platform.system() in ('Darwin','Linux'):
-                            rss=subprocess.run(['ps','-o','rss=','-p',str(process.pid)],text=True,capture_output=True)
-                            if rss.stdout.strip(): peak_rss_kib=max(peak_rss_kib,int(rss.stdout.strip()))
+                        if time.monotonic() - started > duration + warmup + 240:
+                            raise TimeoutError(f"{scene}: process exceeded fixture deadline")
+                        if platform.system() in ("Darwin", "Linux"):
+                            rss = subprocess.run(
+                                ["ps", "-o", "rss=", "-p", str(process.pid)], text=True, capture_output=True
+                            )
+                            if rss.stdout.strip():
+                                peak_rss_kib = max(peak_rss_kib, int(rss.stdout.strip()))
                         time.sleep(0.5)
-                    if process.returncode: raise RuntimeError(f'{scene}: exit {process.returncode}; inspect {log.name}')
+                    if process.returncode:
+                        raise RuntimeError(f"{scene}: exit {process.returncode}; inspect {log.name}")
                 finally:
-                    if process.poll() is None: process.terminate();process.wait(timeout=10)
-            report=json.loads(output.read_text());report['peak_process_rss_bytes']=peak_rss_kib*1024
-            report['wall_elapsed_seconds']=time.monotonic()-started
+                    if process.poll() is None:
+                        process.terminate()
+                        process.wait(timeout=10)
+            report = json.loads(output.read_text())
+            report["peak_process_rss_bytes"] = peak_rss_kib * 1024
+            report["wall_elapsed_seconds"] = time.monotonic() - started
             # A supplied binary may have been built from different working source: do not misattribute it.
-            report['source_matches_runner']=report['source_revision']==revision['runtime_source_sha256']
-            report['gate_problems']=run_problems(report,specification)
-            output.write_text(json.dumps(report,indent=2)+'\n')
-            metadata['runs'].append({k:v for k,v in report.items() if k not in PER_FRAME_KEYS})
-            validity='valid' if not report['gate_problems'] else 'INVALID: '+'; '.join(report['gate_problems'])
-            width,height=report.get('resolution_physical',[0,0])
-            print(f"  {report['frame_stats']['one_percent_low_fps']:.1f} FPS 1% low, {report['frame_stats']['p99_ms']:.3f} ms p99 at {width}x{height}; "
-                  f"{report['completed_simulation_ticks']} ticks; peak RSS {peak_rss_kib/1024:.1f} MiB; {validity}",flush=True)
-            if gpu_line(report): print(gpu_line(report),flush=True)
-            (args.output/'summary.json').write_text(json.dumps(metadata,indent=2)+'\n')
-    passed,problems=reference_gate(metadata,definitions,args.quick,args.native_resolution,args.repeats,args.offscreen,args.seconds,presentation_differences)
-    metadata['reference_gate_passed']=passed
-    metadata['reference_gate_problems']=problems
-    metadata['all_runs_valid']=all(not r['gate_problems'] for r in metadata['runs'])
-    metadata['remaining_acceptance']='These scenes do not cover the full roadmap environment/encounter matrix or ordinary player testing. GPU pass timestamps time only the frame\'s render passes, not uploads or presentation; long-session memory stability remains a separate check.'
-    (args.output/'summary.json').write_text(json.dumps(metadata,indent=2)+'\n')
+            report["source_matches_runner"] = report["source_revision"] == revision["runtime_source_sha256"]
+            report["gate_problems"] = run_problems(report, specification)
+            output.write_text(json.dumps(report, indent=2) + "\n")
+            metadata["runs"].append({k: v for k, v in report.items() if k not in PER_FRAME_KEYS})
+            validity = "valid" if not report["gate_problems"] else "INVALID: " + "; ".join(report["gate_problems"])
+            width, height = report.get("resolution_physical", [0, 0])
+            print(
+                f"  {report['frame_stats']['one_percent_low_fps']:.1f} FPS 1% low, {report['frame_stats']['p99_ms']:.3f} ms p99 at {width}x{height}; "
+                f"{report['completed_simulation_ticks']} ticks; peak RSS {peak_rss_kib / 1024:.1f} MiB; {validity}",
+                flush=True,
+            )
+            if gpu_line(report):
+                print(gpu_line(report), flush=True)
+            (args.output / "summary.json").write_text(json.dumps(metadata, indent=2) + "\n")
+    passed, problems = reference_gate(
+        metadata,
+        definitions,
+        args.quick,
+        args.native_resolution,
+        args.repeats,
+        args.offscreen,
+        args.seconds,
+        presentation_differences,
+    )
+    metadata["reference_gate_passed"] = passed
+    metadata["reference_gate_problems"] = problems
+    metadata["all_runs_valid"] = all(not r["gate_problems"] for r in metadata["runs"])
+    metadata["remaining_acceptance"] = (
+        "These scenes do not cover the full roadmap environment/encounter matrix or ordinary player testing. GPU pass timestamps time only the frame's render passes, not uploads or presentation; long-session memory stability remains a separate check."
+    )
+    (args.output / "summary.json").write_text(json.dumps(metadata, indent=2) + "\n")
 
-if __name__=='__main__':main()
+
+if __name__ == "__main__":
+    main()

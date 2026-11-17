@@ -28,6 +28,7 @@ Writes normalized names and numbers, no assets.
   The method body is matched line by line first, so the model fails rather
   than drifts if the source changes.
 """
+
 import argparse
 import hashlib
 import io
@@ -35,8 +36,8 @@ import itertools
 import json
 import re
 import struct
-from pathlib import Path
 import zipfile
+from pathlib import Path
 
 from extract_java_item_fixtures import SERVER_SHA1
 from extract_java_registry_names import CLIENT_SHA1
@@ -116,7 +117,7 @@ def method_body(text, signature):
             if depth == 0:
                 break
         i += 1
-    return [line.strip() for line in text[open_at + 1:i].splitlines() if line.strip()]
+    return [line.strip() for line in text[open_at + 1 : i].splitlines() if line.strip()]
 
 
 def expect_body(text, signature, body):
@@ -129,13 +130,13 @@ def tag(jar, name):
     values = json.loads(jar.read(f"data/minecraft/tags/item/{name}.json"))["values"]
     if not all(isinstance(v, str) and v.startswith("minecraft:") for v in values):
         raise ValueError(f"{name}: unexpected entries")
-    return [v[len("minecraft:"):] for v in values]
+    return [v[len("minecraft:") :] for v in values]
 
 
 def strip(name):
     if not name.startswith("minecraft:"):
         raise ValueError(f"unexpected id {name}")
-    return name[len("minecraft:"):]
+    return name[len("minecraft:") :]
 
 
 def dye_recipes(jar):
@@ -148,7 +149,7 @@ def dye_recipes(jar):
             continue
         if set(r) != {"type", "dye", "group", "result", "target"} or set(r["result"]) != {"id"}:
             raise ValueError(f"{n}: unexpected crafting_dye fields")
-        out[n[len("data/minecraft/recipe/"):-len(".json")]] = {
+        out[n[len("data/minecraft/recipe/") : -len(".json")]] = {
             "target": strip(r["target"]),
             "dye": "#" + strip(r["dye"][1:]) if r["dye"].startswith("#") else strip(r["dye"]),
             "result": strip(r["result"]["id"]),
@@ -180,8 +181,12 @@ def model_tints(node, out):
     if isinstance(node, dict):
         if node.get("type") == "minecraft:dye" and "default" in node:
             out["dye_defaults"].add(node["default"])
-        if node.get("type") == "minecraft:condition" and node.get("property") == "minecraft:has_component" \
-                and node.get("component") == "minecraft:dyed_color" and "tints" not in node["on_false"]:
+        if (
+            node.get("type") == "minecraft:condition"
+            and node.get("property") == "minecraft:has_component"
+            and node.get("component") == "minecraft:dyed_color"
+            and "tints" not in node["on_false"]
+        ):
             out["undyed_untinted"] = True
         for v in node.values():
             model_tints(v, out)
@@ -230,8 +235,9 @@ def vectors(colors):
     cases = []
 
     def add(current, dyes):
-        cases.append([None if current is None else hex6(current), list(dyes),
-                      hex6(apply_dyes(current, [rgb[d] for d in dyes]))])
+        cases.append(
+            [None if current is None else hex6(current), list(dyes), hex6(apply_dyes(current, [rgb[d] for d in dyes]))]
+        )
 
     # Prior colours: a mixed result, a single dye, black, white and an
     # arbitrary colour (a dyed item can hold any RGB through commands).
@@ -272,24 +278,31 @@ def extract(server, client, source):
         for item in dyeable:
             found = {"dye_defaults": set(), "undyed_untinted": False}
             model_tints(json.loads(jar.read(f"assets/minecraft/items/{item}.json")), found)
-            models[item] = {"dye_defaults": sorted(found["dye_defaults"]),
-                            "undyed_untinted": found["undyed_untinted"]}
+            models[item] = {"dye_defaults": sorted(found["dye_defaults"]), "undyed_untinted": found["undyed_untinted"]}
         equipment = json.loads(jar.read("assets/minecraft/equipment/leather.json"))
     leather_layers = {}
     for kind, layers in sorted(equipment["layers"].items()):
         leather_layers[kind] = [
-            {"texture": strip(l["texture"]),
-             "color_when_undyed": l["dyeable"].get("color_when_undyed") if "dyeable" in l else None,
-             "dyeable": "dyeable" in l}
-            for l in layers
+            {
+                "texture": strip(layer["texture"]),
+                "color_when_undyed": layer["dyeable"].get("color_when_undyed") if "dyeable" in layer else None,
+                "dyeable": "dyeable" in layer,
+            }
+            for layer in layers
         ]
     dyed_item_color = (source / "world/item/component/DyedItemColor.java").read_text()
-    expect_body(dyed_item_color, "public static DyedItemColor applyDyes(@Nullable final DyedItemColor currentDye",
-                APPLY_DYES_BODY)
+    expect_body(
+        dyed_item_color,
+        "public static DyedItemColor applyDyes(@Nullable final DyedItemColor currentDye",
+        APPLY_DYES_BODY,
+    )
     cauldron = (source / "core/cauldron/CauldronInteractions.java").read_text()
     if "WATER.put(ItemTags.CAULDRON_CAN_REMOVE_DYE, CauldronInteractions::dyedItemIteration);" not in cauldron:
         raise ValueError("dyedItemIteration is no longer the water cauldron's #cauldron_can_remove_dye use")
-    if "LAVA.put(ItemTags.CAULDRON_CAN_REMOVE_DYE" in cauldron or "POWDER_SNOW.put(ItemTags.CAULDRON_CAN_REMOVE_DYE" in cauldron:
+    if (
+        "LAVA.put(ItemTags.CAULDRON_CAN_REMOVE_DYE" in cauldron
+        or "POWDER_SNOW.put(ItemTags.CAULDRON_CAN_REMOVE_DYE" in cauldron
+    ):
         raise ValueError("dyedItemIteration registered on another cauldron")
     expect_body(cauldron, "private static InteractionResult dyedItemIteration(", DYED_ITEM_ITERATION_BODY)
     layered = (source / "world/level/block/LayeredCauldronBlock.java").read_text()
@@ -342,9 +355,11 @@ def main():
     args = parser.parse_args()
     text = json.dumps(extract(args.server, args.client, args.source), indent=1)
     # One vector per line keeps the file readable and diffs small.
-    text = re.sub(r'\[\n\s+("#[0-9A-F]{6}"|null),\n\s+\[\n((?:\s+"[a-z_]+",?\n)+)\s+\],\n\s+("#[0-9A-F]{6}")\n\s+\]',
-                  lambda m: "[" + m.group(1) + ", [" + ", ".join(re.findall(r'"[a-z_]+"', m.group(2))) + "], "
-                  + m.group(3) + "]", text)
+    text = re.sub(
+        r'\[\n\s+("#[0-9A-F]{6}"|null),\n\s+\[\n((?:\s+"[a-z_]+",?\n)+)\s+\],\n\s+("#[0-9A-F]{6}")\n\s+\]',
+        lambda m: "[" + m.group(1) + ", [" + ", ".join(re.findall(r'"[a-z_]+"', m.group(2))) + "], " + m.group(3) + "]",
+        text,
+    )
     args.output.write_text(text + "\n")
 
 

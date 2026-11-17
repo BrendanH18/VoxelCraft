@@ -7,13 +7,13 @@ result ids and counts, cooking times and experience, stonecutting counts and
 smithing slots. Brewing (`recipe/brewing/`) is a separate system and is not
 included. The extractor never reads VoxelCraft source.
 """
+
 import argparse
 import hashlib
 import io
 import json
-from pathlib import Path
 import zipfile
-
+from pathlib import Path
 
 SERVER_SHA1 = "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c"
 SOURCE = f"https://piston-data.mojang.com/v1/objects/{SERVER_SHA1}/server.jar"
@@ -23,8 +23,16 @@ COOKING = ("smelting", "blasting", "smoking", "campfire_cooking")
 # Recipe types the normalizer understands, besides `crafting_special_*`; an
 # unknown type fails rather than being skipped.
 KNOWN_TYPES = {
-    "crafting_shaped", "crafting_shapeless", "crafting_transmute", "crafting_dye", "crafting_imbue",
-    "crafting_decorated_pot", "stonecutting", "smithing_transform", "smithing_trim", *COOKING,
+    "crafting_shaped",
+    "crafting_shapeless",
+    "crafting_transmute",
+    "crafting_dye",
+    "crafting_imbue",
+    "crafting_decorated_pot",
+    "stonecutting",
+    "smithing_transform",
+    "smithing_trim",
+    *COOKING,
 }
 
 
@@ -61,8 +69,11 @@ def normalize(kind, recipe):
         width = len(recipe["pattern"][0])
         if any(len(row) != width for row in recipe["pattern"]):
             raise ValueError("ragged pattern")
-        return {"pattern": recipe["pattern"], "key": {k: ingredient(v) for k, v in sorted(recipe["key"].items())},
-                **result(recipe)}
+        return {
+            "pattern": recipe["pattern"],
+            "key": {k: ingredient(v) for k, v in sorted(recipe["key"].items())},
+            **result(recipe),
+        }
     if kind == "crafting_shapeless":
         return {"ingredients": [ingredient(v) for v in recipe["ingredients"]], **result(recipe)}
     if kind == "crafting_transmute":
@@ -80,22 +91,29 @@ def normalize(kind, recipe):
     if kind in COOKING:
         if "cookingtime" not in recipe or "experience" not in recipe:
             raise ValueError("cooking recipe without explicit time and experience")
-        return {"ingredient": ingredient(recipe["ingredient"]), **result(recipe),
-                "cookingtime": recipe["cookingtime"], "experience": recipe["experience"]}
+        return {
+            "ingredient": ingredient(recipe["ingredient"]),
+            **result(recipe),
+            "cookingtime": recipe["cookingtime"],
+            "experience": recipe["experience"],
+        }
     if kind == "stonecutting":
         return {"ingredient": ingredient(recipe["ingredient"]), **result(recipe)}
     if kind == "smithing_transform":
         return {slot: ingredient(recipe[slot]) for slot in ("template", "base", "addition")} | result(recipe)
     if kind == "smithing_trim":
         return {slot: ingredient(recipe[slot]) for slot in ("template", "base", "addition")} | {
-            "pattern": short(recipe["pattern"])}
+            "pattern": short(recipe["pattern"])
+        }
     if kind.startswith("crafting_special_"):
+
         def slot(key, value):
             if key == "result":
                 return short(value["id"]) if "id" in value else None
             if isinstance(value, dict):  # firework star shapes: shape -> ingredient
                 return {k: ingredient(v) for k, v in sorted(value.items())}
             return ingredient(value)
+
         return {k: slot(k, v) for k, v in sorted(recipe.items()) if k != "type"}
     raise ValueError(f"unknown recipe type {kind}")
 
@@ -117,15 +135,16 @@ def extract(server):
     with zipfile.ZipFile(io.BytesIO(data)) as bundler:
         data = bundler.read("META-INF/versions/26.3/server-26.3.jar")
     with zipfile.ZipFile(io.BytesIO(data)) as jar:
-        names = sorted(n for n in jar.namelist()
-                       if n.startswith(RECIPES) and n.endswith(".json") and "/" not in n[len(RECIPES):])
+        names = sorted(
+            n for n in jar.namelist() if n.startswith(RECIPES) and n.endswith(".json") and "/" not in n[len(RECIPES) :]
+        )
         recipes, counts = {}, {}
         for path in names:
             recipe = json.loads(jar.read(path))
             kind = short(recipe["type"])
             if kind not in KNOWN_TYPES and not kind.startswith("crafting_special_"):
                 raise ValueError(f"{path}: unknown recipe type {kind}")
-            recipes.setdefault(kind, {})[path[len(RECIPES):-5]] = normalize(kind, recipe)
+            recipes.setdefault(kind, {})[path[len(RECIPES) : -5]] = normalize(kind, recipe)
             counts[kind] = counts.get(kind, 0) + 1
 
         cache = {}
@@ -142,7 +161,7 @@ def extract(server):
                         raise ValueError(f"required object entry in #{tag}")
                     value = value["id"]
                 value = short(value)
-                for item in (expand(value[1:], (*visiting, tag)) if value.startswith("#") else [value]):
+                for item in expand(value[1:], (*visiting, tag)) if value.startswith("#") else [value]:
                     if item not in out:
                         out.append(item)
             cache[tag] = out
@@ -157,9 +176,16 @@ def extract(server):
 
         speed = provider("context_float_provider/cooking/speed_default")
         fast = provider("predicate/block/fast_cooking")
-        if speed != {"type": "minecraft:conditional", "condition": "minecraft:block/fast_cooking",
-                     "on_false": "minecraft:cooking/normal_speed_multiplier",
-                     "on_true": "minecraft:cooking/fast_speed_multiplier"} or fast["type"] != "minecraft:match_block":
+        if (
+            speed
+            != {
+                "type": "minecraft:conditional",
+                "condition": "minecraft:block/fast_cooking",
+                "on_false": "minecraft:cooking/normal_speed_multiplier",
+                "on_true": "minecraft:cooking/fast_speed_multiplier",
+            }
+            or fast["type"] != "minecraft:match_block"
+        ):
             raise ValueError("unexpected cooking speed provider")
         cooking_speed = {
             "normal": provider("context_float_provider/cooking/normal_speed_multiplier"),
@@ -174,9 +200,12 @@ def extract(server):
         "reference": "Minecraft Java Edition 26.3",
         "source": SOURCE,
         "server_sha1": SERVER_SHA1,
-        "recipe_sources": [f"{RECIPES}*.json (not brewing/)", f"{TAGS}*.json (referenced tags, expanded)",
-                           "data/minecraft/context_float_provider/cooking/*.json",
-                           "data/minecraft/predicate/block/fast_cooking.json"],
+        "recipe_sources": [
+            f"{RECIPES}*.json (not brewing/)",
+            f"{TAGS}*.json (referenced tags, expanded)",
+            "data/minecraft/context_float_provider/cooking/*.json",
+            "data/minecraft/predicate/block/fast_cooking.json",
+        ],
         "counts": dict(sorted(counts.items())),
         "cooking_speed": cooking_speed,
         "item_tags": item_tags,
@@ -186,6 +215,7 @@ def extract(server):
 
 def dump(fixture):
     """Two levels of indentation, then one recipe or tag per line."""
+
     def compact(value):
         return json.dumps(value, separators=(",", ":"))
 

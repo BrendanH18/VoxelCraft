@@ -10,6 +10,7 @@ then prints measurements. Build first: `cargo build --release`.
 
 Needs a display (the host is the normal desktop game). Exits non-zero on failure.
 """
+
 import json
 import math
 import os
@@ -50,9 +51,27 @@ class Host:
         self.port = port
         self.log = data / "host.log"
         previous_log_size = self.log.stat().st_size if self.log.exists() else 0
-        args = [EXE, "--world", "lancheck", "--rd", "4", "--mute", "--time", "0.25", "--lan-cheats",
-                "--pose", "0.5,151,0.5,0,0", "--data-dir", str(data), "--host-lan", f"127.0.0.1:{port}",
-                "--profile", "Host", "--open-menu", "pause"]
+        args = [
+            EXE,
+            "--world",
+            "lancheck",
+            "--rd",
+            "4",
+            "--mute",
+            "--time",
+            "0.25",
+            "--lan-cheats",
+            "--pose",
+            "0.5,151,0.5,0,0",
+            "--data-dir",
+            str(data),
+            "--host-lan",
+            f"127.0.0.1:{port}",
+            "--profile",
+            "Host",
+            "--open-menu",
+            "pause",
+        ]
         if new:
             args.append("--new")
             for x in range(-8, 9):
@@ -143,8 +162,8 @@ class Client:
             n = struct.unpack_from("<I", self.buf)[0]
             if len(self.buf) < n + 4:
                 break
-            p = bytes(self.buf[4:n + 4])
-            del self.buf[:n + 4]
+            p = bytes(self.buf[4 : n + 4])
+            del self.buf[: n + 4]
             now = time.monotonic() - self.started
             if p[0] == 1 and self.welcome_at is None:
                 self.welcome_at = now
@@ -222,8 +241,11 @@ def races(data):
         a, b = Client(port, "Alice"), Client(port, "Bob")
         for c in (a, b):
             c.until(lambda s: s["self"]["ground"], why="spawn")
-        check("join: handshake, chunks, first state", all(c.welcome_at and c.first_chunk_at and c.ready_at for c in (a, b)),
-              f"Alice welcome {a.welcome_at:.3f}s, first chunk {a.first_chunk_at:.3f}s, ready {a.ready_at:.3f}s")
+        check(
+            "join: handshake, chunks, first state",
+            all(c.welcome_at and c.first_chunk_at and c.ready_at for c in (a, b)),
+            f"Alice welcome {a.welcome_at:.3f}s, first chunk {a.first_chunk_at:.3f}s, ready {a.ready_at:.3f}s",
+        )
         # Stock the chest with exactly 64 diamonds through Alice.
         a.command("/give diamond 64")
         a.run(0.5)
@@ -242,9 +264,15 @@ def races(data):
         b.click(200)
         for c in (a, b):
             c.run(0.6)
-        chest = sum(int(s.split(":")[1]) for s in a.last["container"]["state"].split(",") if s.startswith(f"{DIAMOND}:"))
+        chest = sum(
+            int(s.split(":")[1]) for s in a.last["container"]["state"].split(",") if s.startswith(f"{DIAMOND}:")
+        )
         total = a.count(DIAMOND) + b.count(DIAMOND) + chest
-        check("chest race conserves items", total == 64, f"Alice {a.count(DIAMOND)}, Bob {b.count(DIAMOND)}, chest {chest}")
+        check(
+            "chest race conserves items",
+            total == 64,
+            f"Alice {a.count(DIAMOND)}, Bob {b.count(DIAMOND)}, chest {chest}",
+        )
         for c in (a, b):
             c.command("close")
             c.run(0.3)
@@ -275,8 +303,11 @@ def races(data):
             if "," in i and i.rsplit(",", 1)[1].startswith(f"{DIRT}:")
         )
         got = a.count(DIRT) + b.count(DIRT)
-        check("block race yields one drop, picked up once", got + dirt_items == 1,
-              f"Alice {a.count(DIRT)}, Bob {b.count(DIRT)}, on ground {dirt_items}")
+        check(
+            "block race yields one drop, picked up once",
+            got + dirt_items == 1,
+            f"Alice {a.count(DIRT)}, Bob {b.count(DIRT)}, on ground {dirt_items}",
+        )
         # Death and respawn.
         a.command("/kill")
         a.until(lambda s: s["self"]["health"] <= 0, why="death")
@@ -290,8 +321,11 @@ def races(data):
         b.close()
         b = Client(port, "Bob")
         b.until(lambda s: s["self"]["ground"], why="rejoin")
-        check("reconnect restores inventory and position", b.count(APPLE) == 5 and math.dist(pos, b.me()["pos"]) < 1.5,
-              f"apples {b.count(APPLE)}, moved {math.dist(pos, b.me()['pos']):.2f}")
+        check(
+            "reconnect restores inventory and position",
+            b.count(APPLE) == 5 and math.dist(pos, b.me()["pos"]) < 1.5,
+            f"apples {b.count(APPLE)}, moved {math.dist(pos, b.me()['pos']):.2f}",
+        )
         # Portal entry by a LAN player is host-controlled.
         a.command("/setblock 2 151 -2 nether_portal")
         a.run(0.3)
@@ -307,8 +341,11 @@ def races(data):
         while a.chunks - before < 300 and time.monotonic() - start < 30:
             a.poll()
             a.control()
-        check("distant streaming after a 2.8 km teleport", a.chunks - before >= 300,
-              f"{a.chunks - before} chunks in {time.monotonic() - start:.1f}s")
+        check(
+            "distant streaming after a 2.8 km teleport",
+            a.chunks - before >= 300,
+            f"{a.chunks - before} chunks in {time.monotonic() - start:.1f}s",
+        )
         # Steady state for the bandwidth/tick log.
         for c in (a, b):
             c.run(0.1)
@@ -344,9 +381,22 @@ def races(data):
 def busy_join(data):
     """Join while water spreads, fire burns and TNT is primed."""
     port = free_port()
-    extra = ["--place", "-6,151,-6,water", "--place", "6,151,6,lava", "--place", "-5,151,5,netherrack",
-             "--place", "-5,152,5,fire", "--place", "5,151,-5,tnt", "--place", "5,151,-4,block_of_redstone",
-             "--place", "-3,155,0,sand"]
+    extra = [
+        "--place",
+        "-6,151,-6,water",
+        "--place",
+        "6,151,6,lava",
+        "--place",
+        "-5,151,5,netherrack",
+        "--place",
+        "-5,152,5,fire",
+        "--place",
+        "5,151,-5,tnt",
+        "--place",
+        "5,151,-4,block_of_redstone",
+        "--place",
+        "-3,155,0,sand",
+    ]
     host = Host(data, port, extra=extra)
     c = None
     try:
@@ -359,8 +409,11 @@ def busy_join(data):
             c.poll()
             saw_tnt |= bool((c.last.get("extras") or {}).get("tnt"))
             time.sleep(0.02)
-        check("join during fluid, fire and TNT activity", c.ready_at is not None and c.chunks > 0,
-              f"ready {c.ready_at:.2f}s, chunks {c.chunks}, saw primed TNT {saw_tnt}")
+        check(
+            "join during fluid, fire and TNT activity",
+            c.ready_at is not None and c.chunks > 0,
+            f"ready {c.ready_at:.2f}s, chunks {c.chunks}, saw primed TNT {saw_tnt}",
+        )
     finally:
         if c:
             c.close()
@@ -391,8 +444,11 @@ def host_travel(data):
         chunks = c.chunks
         c.until(lambda s: s["dimension"] == "nether" and s["self"]["ground"], secs=30, why="land in the Nether")
         c.run(2.0)
-        check("players follow the host through a portal", c.chunks > chunks,
-              f"Nether after {time.monotonic() - start:.1f}s, {c.chunks - chunks} Nether chunks, at {[round(x) for x in c.me()['pos']]}")
+        check(
+            "players follow the host through a portal",
+            c.chunks > chunks,
+            f"Nether after {time.monotonic() - start:.1f}s, {c.chunks - chunks} Nether chunks, at {[round(x) for x in c.me()['pos']]}",
+        )
     finally:
         if c:
             c.close()
@@ -455,8 +511,11 @@ def pvp(data):
                 if after_bow < after_sword:
                     break
             if enabled:
-                check("PvP on: sword and bow hurt another player", start > after_sword > after_bow,
-                      f"{start} -> {after_sword:.1f} -> {after_bow:.1f}")
+                check(
+                    "PvP on: sword and bow hurt another player",
+                    start > after_sword > after_bow,
+                    f"{start} -> {after_sword:.1f} -> {after_bow:.1f}",
+                )
             else:
                 check("PvP off: players can't hurt each other", start == after_sword == after_bow, f"{after_bow}")
         finally:

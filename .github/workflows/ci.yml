@@ -20,6 +20,7 @@ concurrency:
 # `gitrunner` profile (amd64, with a cache volume) and macOS on an inline
 # label with a cache volume, which `nscloud-cache-action` fills. Windows
 # stays on GitHub's runner because the Namespace plan has no Windows.
+# Actions are pinned to full commit SHAs; Dependabot updates them.
 
 jobs:
   fmt:
@@ -27,17 +28,33 @@ jobs:
     runs-on: namespace-profile-gitrunner
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master, 2026-11-15 (no release tags)
         with:
+          toolchain: stable
           components: rustfmt
       - run: cargo fmt --check
+
+  ruff:
+    name: ruff
+    runs-on: namespace-profile-gitrunner
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          # Nothing to cache: Ruff runs through uvx, and the project has no uv lockfile.
+          enable-cache: false
+      - run: uvx ruff@0.17.5 check
+      - run: uvx ruff@0.17.5 format --check
 
   test:
     name: clippy + test (${{ matrix.os }})
     runs-on: ${{ matrix.runner }}
-    # Windows on GitHub's runner has taken up to 39 minutes.
-    timeout-minutes: 60
+    # Windows on GitHub's runner took 28 to 53 minutes over eight runs to
+    # 2026-11-16, most of it building the release tests, and one main run
+    # was cancelled at the old 60-minute limit.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -52,19 +69,20 @@ jobs:
             # The Namespace plan doesn't allow Windows instances (checked 2026-11-06).
             runner: windows-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Linux audio/windowing headers
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev libfontconfig1-dev libfreetype6-dev pkg-config
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master, 2026-11-15 (no release tags)
         with:
+          toolchain: stable
           components: clippy
       - if: runner.os != 'Windows'
-        uses: namespacelabs/nscloud-cache-action@v1
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           cache: rust
       - if: runner.os == 'Windows'
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo clippy --release --all-targets --locked -- -D warnings
       - run: cargo test --release --locked
       - name: Headless generation/meshing benchmark
@@ -93,11 +111,12 @@ jobs:
     runs-on: namespace-profile-gitrunner
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master, 2026-11-15 (no release tags)
         with:
+          toolchain: stable
           components: clippy
-      - uses: namespacelabs/nscloud-cache-action@v1
+      - uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           cache: rust
       - run: cargo clippy --release --no-default-features --all-targets --locked -- -D warnings

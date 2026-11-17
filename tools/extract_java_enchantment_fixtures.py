@@ -11,17 +11,30 @@ order, nested tags inline, first occurrence kept). English names come from the
 pinned client's en_us.json. Unknown keys or entry forms fail. Never reads
 VoxelCraft source or an existing fixture.
 """
+
 import argparse
 import hashlib
 import io
 import json
-from pathlib import Path
 import zipfile
+from pathlib import Path
+
 from extract_java_item_fixtures import SERVER_SHA1
 from extract_java_registry_names import CLIENT_SHA1
 
-KEYS = {"anvil_cost", "description", "effects", "exclusive_set", "max_cost", "max_level", "min_cost",
-        "primary_items", "slots", "supported_items", "weight"}
+KEYS = {
+    "anvil_cost",
+    "description",
+    "effects",
+    "exclusive_set",
+    "max_cost",
+    "max_level",
+    "min_cost",
+    "primary_items",
+    "slots",
+    "supported_items",
+    "weight",
+}
 REQUIRED = KEYS - {"effects", "exclusive_set", "primary_items"}
 SLOTS = {"any", "hand", "mainhand", "offhand", "armor", "feet", "legs", "chest", "head", "body", "saddle"}
 ENCHANTMENT_DIR = "data/minecraft/enchantment/"
@@ -99,9 +112,9 @@ def extract(server, client):
         data = bundler.read("META-INF/versions/26.3/server-26.3.jar")
     with zipfile.ZipFile(io.BytesIO(data)) as jar:
         files = sorted(n for n in jar.namelist() if n.startswith(ENCHANTMENT_DIR) and n.endswith(".json"))
-        if any("/" in n[len(ENCHANTMENT_DIR):] for n in files):
+        if any("/" in n[len(ENCHANTMENT_DIR) :] for n in files):
             raise ValueError("nested enchantment definition folder")
-        known = [n[len(ENCHANTMENT_DIR):-len(".json")] for n in files]
+        known = [n[len(ENCHANTMENT_DIR) : -len(".json")] for n in files]
         enchantments = []
         for name, path in zip(known, files):
             d = json.loads(jar.read(path))
@@ -116,28 +129,38 @@ def extract(server, client):
                 if not isinstance(d[field], int) or d[field] < 1:
                     raise ValueError(f"{name}: bad {field}")
             exclusive = d.get("exclusive_set")
-            enchantments.append({
-                "id": f"minecraft:{name}",
-                "name": lang[key],
-                "max_level": d["max_level"],
-                "weight": d["weight"],
-                "min_cost": cost(d["min_cost"], name),
-                "max_cost": cost(d["max_cost"], name),
-                "anvil_cost": d["anvil_cost"],
-                "slots": d["slots"],
-                "supported_items": tag_name(d["supported_items"], f"{name}.supported_items"),
-                "primary_items": tag_name(d["primary_items"], name) if "primary_items" in d else None,
-                "exclusive_set": tag_name(exclusive, name) if exclusive is not None else None,
-                "effects": sorted(d.get("effects", {})),
-            })
-        item_tags = sorted({n[len(ITEM_TAG_DIR):-len(".json")] for n in jar.namelist()
-                            if n.startswith(ITEM_TAG_DIR + "enchantable/") and n.endswith(".json")})
+            enchantments.append(
+                {
+                    "id": f"minecraft:{name}",
+                    "name": lang[key],
+                    "max_level": d["max_level"],
+                    "weight": d["weight"],
+                    "min_cost": cost(d["min_cost"], name),
+                    "max_cost": cost(d["max_cost"], name),
+                    "anvil_cost": d["anvil_cost"],
+                    "slots": d["slots"],
+                    "supported_items": tag_name(d["supported_items"], f"{name}.supported_items"),
+                    "primary_items": tag_name(d["primary_items"], name) if "primary_items" in d else None,
+                    "exclusive_set": tag_name(exclusive, name) if exclusive is not None else None,
+                    "effects": sorted(d.get("effects", {})),
+                }
+            )
+        item_tags = sorted(
+            {
+                n[len(ITEM_TAG_DIR) : -len(".json")]
+                for n in jar.namelist()
+                if n.startswith(ITEM_TAG_DIR + "enchantable/") and n.endswith(".json")
+            }
+        )
         for e in enchantments:
             for field in ("supported_items", "primary_items"):
                 if e[field] is not None and e[field] not in item_tags:
                     raise ValueError(f"{e['id']}: {field} names a non-enchantable tag {e[field]}")
-        enchantment_tags = sorted(n[len(ENCHANTMENT_TAG_DIR):-len(".json")] for n in jar.namelist()
-                                  if n.startswith(ENCHANTMENT_TAG_DIR) and n.endswith(".json"))
+        enchantment_tags = sorted(
+            n[len(ENCHANTMENT_TAG_DIR) : -len(".json")]
+            for n in jar.namelist()
+            if n.startswith(ENCHANTMENT_TAG_DIR) and n.endswith(".json")
+        )
         for e in enchantments:
             if e["exclusive_set"] is not None and e["exclusive_set"] not in enchantment_tags:
                 raise ValueError(f"{e['id']}: exclusive_set names an unknown tag")
@@ -147,11 +170,13 @@ def extract(server, client):
         "reference": "Minecraft Java Edition 26.3",
         "server_sha1": SERVER_SHA1,
         "client_sha1": CLIENT_SHA1,
-        "sources": [f"{ENCHANTMENT_DIR}*.json ({len(enchantments)})",
-                    f"{ITEM_TAG_DIR}enchantable/*.json ({len(items)}) and the item tags they include",
-                    f"{ENCHANTMENT_TAG_DIR}**/*.json ({len(tags)})",
-                    "assets/minecraft/lang/en_us.json enchantment.minecraft.* (client)",
-                    "net.minecraft.world.item.enchantment.Enchantment (DIRECT_CODEC, isPrimaryItem, areCompatible)"],
+        "sources": [
+            f"{ENCHANTMENT_DIR}*.json ({len(enchantments)})",
+            f"{ITEM_TAG_DIR}enchantable/*.json ({len(items)}) and the item tags they include",
+            f"{ENCHANTMENT_TAG_DIR}**/*.json ({len(tags)})",
+            "assets/minecraft/lang/en_us.json enchantment.minecraft.* (client)",
+            "net.minecraft.world.item.enchantment.Enchantment (DIRECT_CODEC, isPrimaryItem, areCompatible)",
+        ],
         "enchantments": enchantments,
         "item_tags": items,
         "enchantment_tags": tags,

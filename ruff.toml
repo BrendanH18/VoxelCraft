@@ -1,0 +1,12 @@
+# Lint and format settings for the Python tools in tools/ and packaging/.
+# CI runs `uvx ruff@0.17.5 check` and `uvx ruff@0.17.5 format --check`;
+# Ruff is run through uvx, not installed as a project dependency.
+
+# Matches rustfmt.toml's max_width.
+line-length = 120
+# The scripts must keep running on macOS's /usr/bin/python3 (3.9).
+target-version = "py39"
+extend-exclude = ["target", "target-lighting", "saves", "assets"]
+
+[lint]
+select = ["E4", "E7", "E9", "F", "I"]

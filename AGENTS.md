@@ -99,6 +99,18 @@ cargo fmt && cargo clippy --release --all-targets -- -D warnings && cargo test -
 rest on a Namespace instance) plus the headless-build checks, and is the
 preferred way to run it.
 
+When a change touches Python (`tools/`, `packaging/` or `ruff.toml`), also run
+the Ruff checks CI runs and the Python tool tests:
+
+```sh
+uvx ruff@0.17.5 check && uvx ruff@0.17.5 format --check && python3 -m unittest discover -s tools -p 'test_*.py'
+```
+
+`uvx ruff@0.17.5 format` applies the formatting. Ruff runs through `uvx` at
+that pinned version and is not a project dependency; the settings are in
+`ruff.toml`. The scripts must keep running on Python 3.9 (macOS's
+`/usr/bin/python3`).
+
 Documentation-only changes skip this chain (owner, 2026-10-26); check their
 links and rendering instead.
 

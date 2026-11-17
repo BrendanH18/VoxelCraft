@@ -16,7 +16,10 @@ cargo test --release
 
 The Linux CI job also checks the release binary's embedded assets with
 `python3 tools/validate_assets.py --executable target/release/voxelcraft` and
-runs the benchmark-gate tool tests. It also runs
+runs the benchmark-gate tool tests. The **ruff** job lints and
+format-checks the Python tools with `uvx ruff@0.17.5 check` and
+`uvx ruff@0.17.5 format --check` (settings in `ruff.toml`; run
+`uvx ruff@0.17.5 format` to apply the formatting). The Linux job also runs
 `python3 tools/check_doc_links.py` (and its tests,
 `python3 -m unittest tools/test_check_doc_links.py`), which checks that every
 relative link and `#anchor` in the tracked Markdown files resolves, using
@@ -25,7 +28,9 @@ GitHub's heading-anchor rules, and prints each broken one as
 the link check instead. CI runs Cargo with `--locked`, so commit
 `Cargo.lock` changes with the code that needs them. The **Security** workflow
 runs `cargo audit --deny warnings` weekly and on pull requests that change `Cargo.toml`,
-`Cargo.lock` or `.github/workflows/security.yml`. Dependabot proposes weekly
+`Cargo.lock` or `.github/workflows/security.yml`. The **CodeQL** workflow
+analyses the workflows, Python, Rust and the one Java source on pushes to
+`main`, pull requests and weekly. Dependabot proposes weekly
 crate and GitHub Actions updates.
 
 Linux Wayland title bars use winit's supported `wayland-csd-adwaita-crossfont`

@@ -11,15 +11,17 @@ chances.
 Requires javap. Unknown bytecode forms fail rather than regenerating a guessed
 fixture. No VoxelCraft source or existing fixture is consulted.
 """
+
 import argparse
 import hashlib
 import io
 import json
-from pathlib import Path
 import re
 import subprocess
 import tempfile
 import zipfile
+from pathlib import Path
+
 from extract_java_item_fixtures import SERVER_SHA1
 
 
@@ -29,7 +31,7 @@ def method(code, signature):
     if start < 0:
         raise ValueError(f"missing method: {signature}")
     end = code.find("\n\n", start)
-    return code[start:end if end >= 0 else len(code)]
+    return code[start : end if end >= 0 else len(code)]
 
 
 def ops(code):
@@ -127,64 +129,128 @@ def extract(server):
 
         mob = inspect("Mob")
         death = method(mob, "protected void dropCustomDeathLoot(")
-        require_sequence(death, [
-            "EquipmentSlot.VALUES",
-            "DropChances.byEquipment",
-            "fconst_0", "fcmpl",
-            "DropChances.isPreserved",
-            "EnchantmentHelper.processEquipmentDropChance",
-            "ItemStack.isEmpty",
-            "EnchantmentEffectComponents.PREVENT_EQUIPMENT_DROP",
-            "RandomSource.nextFloat", "fcmpg",
-            "ItemStack.isDamageableItem",
-            "ItemStack.getMaxDamage",
-            "iconst_1",
-            "ItemStack.getMaxDamage", "iconst_3", "isub", "iconst_1", "Math.max",
-            "RandomSource.nextInt", "iadd", "RandomSource.nextInt", "isub",
-            "ItemStack.setDamageValue",
-            "spawnAtLocation",
-            "ItemStack.EMPTY", "setItemSlot",
-        ], "Mob.dropCustomDeathLoot")
+        require_sequence(
+            death,
+            [
+                "EquipmentSlot.VALUES",
+                "DropChances.byEquipment",
+                "fconst_0",
+                "fcmpl",
+                "DropChances.isPreserved",
+                "EnchantmentHelper.processEquipmentDropChance",
+                "ItemStack.isEmpty",
+                "EnchantmentEffectComponents.PREVENT_EQUIPMENT_DROP",
+                "RandomSource.nextFloat",
+                "fcmpg",
+                "ItemStack.isDamageableItem",
+                "ItemStack.getMaxDamage",
+                "iconst_1",
+                "ItemStack.getMaxDamage",
+                "iconst_3",
+                "isub",
+                "iconst_1",
+                "Math.max",
+                "RandomSource.nextInt",
+                "iadd",
+                "RandomSource.nextInt",
+                "isub",
+                "ItemStack.setDamageValue",
+                "spawnAtLocation",
+                "ItemStack.EMPTY",
+                "setItemSlot",
+            ],
+            "Mob.dropCustomDeathLoot",
+        )
         # Player kill (argument 3) or preserved (local 8) gates the roll.
         if not re.search(r"iload_3\n\s+\d+: ifne\s+\d+\n\s+\d+: iload\s+8\n\s+\d+: ifeq", death):
             raise ValueError("dropCustomDeathLoot kill gate changed")
         experience = method(mob, "protected int getBaseExperienceReward(")
-        require_sequence(experience, [
-            "Field xpReward", "ifle", "EquipmentSlot.VALUES", "EquipmentSlot.canIncreaseExperience",
-            "getItemBySlot", "ItemStack.isEmpty", "DropChances.byEquipment", "fconst_1", "fcmpg", "ifgt",
-            "iconst_1", "iconst_3", "RandomSource.nextInt", "iadd",
-        ], "Mob.getBaseExperienceReward")
+        require_sequence(
+            experience,
+            [
+                "Field xpReward",
+                "ifle",
+                "EquipmentSlot.VALUES",
+                "EquipmentSlot.canIncreaseExperience",
+                "getItemBySlot",
+                "ItemStack.isEmpty",
+                "DropChances.byEquipment",
+                "fconst_1",
+                "fcmpg",
+                "ifgt",
+                "iconst_1",
+                "iconst_3",
+                "RandomSource.nextInt",
+                "iadd",
+            ],
+            "Mob.getBaseExperienceReward",
+        )
         living = inspect("LivingEntity")
-        require_sequence(method(living, "protected void dropAllDeathLoot("), [
-            "shouldDropLoot", "dropFromLootTable", "dropCustomDeathLoot", "dropEquipment", "dropExperience",
-        ], "LivingEntity.dropAllDeathLoot")
+        require_sequence(
+            method(living, "protected void dropAllDeathLoot("),
+            [
+                "shouldDropLoot",
+                "dropFromLootTable",
+                "dropCustomDeathLoot",
+                "dropEquipment",
+                "dropExperience",
+            ],
+            "LivingEntity.dropAllDeathLoot",
+        )
         order_block = mob.split("  static {};")[1]
-        order_block = order_block[:order_block.index("// Field EQUIPMENT_POPULATION_ORDER")]
-        order_block = order_block[:order_block.rindex("putstatic")]
-        order_block = order_block[order_block.rindex("putstatic"):]
+        order_block = order_block[: order_block.index("// Field EQUIPMENT_POPULATION_ORDER")]
+        order_block = order_block[: order_block.rindex("putstatic")]
+        order_block = order_block[order_block.rindex("putstatic") :]
         population = [s.lower() for s in re.findall(r"EquipmentSlot\.([A-Z]+):", order_block)]
         populate = method(mob, "protected void populateDefaultEquipmentSlots(")
-        require_sequence(populate, [
-            "RandomSource.nextFloat", "float 0.15f", "getSpecialMultiplier",
-            "iconst_3", "RandomSource.nextInt",
-            "float 3.0f", "RandomSource.nextFloat", "float 0.1087f",
-            "Difficulty.HARD", "float 0.1f", "float 0.25f",
-            "EQUIPMENT_POPULATION_ORDER",
-            "RandomSource.nextFloat",
-            "getEquipmentForSlot",
-        ], "Mob.populateDefaultEquipmentSlots")
+        require_sequence(
+            populate,
+            [
+                "RandomSource.nextFloat",
+                "float 0.15f",
+                "getSpecialMultiplier",
+                "iconst_3",
+                "RandomSource.nextInt",
+                "float 3.0f",
+                "RandomSource.nextFloat",
+                "float 0.1087f",
+                "Difficulty.HARD",
+                "float 0.1f",
+                "float 0.25f",
+                "EQUIPMENT_POPULATION_ORDER",
+                "RandomSource.nextFloat",
+                "getEquipmentForSlot",
+            ],
+            "Mob.populateDefaultEquipmentSlots",
+        )
         tiers = method(mob, "public static net.minecraft.world.item.Item getEquipmentForSlot(")
         head_tiers = re.findall(r"Field net/minecraft/world/item/Items\.([A-Z_]+)_HELMET:", tiers)
         enchants = method(mob, "protected void populateDefaultEquipmentEnchantments(")
-        require_sequence(enchants, ["enchantSpawnedWeapon", "EquipmentSlot.VALUES", "EquipmentSlot$Type.HUMANOID_ARMOR",
-                                    "enchantSpawnedArmor"], "Mob.populateDefaultEquipmentEnchantments")
+        require_sequence(
+            enchants,
+            [
+                "enchantSpawnedWeapon",
+                "EquipmentSlot.VALUES",
+                "EquipmentSlot$Type.HUMANOID_ARMOR",
+                "enchantSpawnedArmor",
+            ],
+            "Mob.populateDefaultEquipmentEnchantments",
+        )
         weapon = method(mob, "protected void enchantSpawnedWeapon(")
         armor = method(mob, "protected void enchantSpawnedArmor(")
         if "EquipmentSlot.MAINHAND" not in weapon or "float 0.25f" not in weapon or "float 0.5f" not in armor:
             raise ValueError("spawn enchantment chances changed")
         spawned = method(mob, "private void enchantSpawnedEquipment(")
-        require_sequence(spawned, ["RandomSource.nextFloat", "getSpecialMultiplier", "fmul",
-                                   "VanillaEnchantmentProviders.MOB_SPAWN_EQUIPMENT"], "Mob.enchantSpawnedEquipment")
+        require_sequence(
+            spawned,
+            [
+                "RandomSource.nextFloat",
+                "getSpecialMultiplier",
+                "fmul",
+                "VanillaEnchantmentProviders.MOB_SPAWN_EQUIPMENT",
+            ],
+            "Mob.enchantSpawnedEquipment",
+        )
         spawn = {
             "max_wearing_armor_chance": static_constant(mob, "MAX_WEARING_ARMOR_CHANCE"),
             "upgrade_material_chance": static_constant(mob, "WEARING_ARMOR_UPGRADE_MATERIAL_CHANCE"),
@@ -201,12 +267,28 @@ def extract(server):
             raise ValueError("drowned equipment override changed")
         zombie = inspect("monster.zombie.Zombie")
         zombie_populate = method(zombie, "protected void populateDefaultEquipmentSlots(")
-        require_sequence(zombie_populate, [
-            "Monster.populateDefaultEquipmentSlots", "RandomSource.nextFloat", "Difficulty.HARD", "float 0.05f",
-            "float 0.01f", "bipush 6", "RandomSource.nextInt", "ifne", "EquipmentSlot.MAINHAND", "Items.IRON_SWORD",
-            "iconst_1", "if_icmpne", "EquipmentSlot.MAINHAND", "Items.IRON_SPEAR", "EquipmentSlot.MAINHAND",
-            "Items.IRON_SHOVEL",
-        ], "Zombie.populateDefaultEquipmentSlots")
+        require_sequence(
+            zombie_populate,
+            [
+                "Monster.populateDefaultEquipmentSlots",
+                "RandomSource.nextFloat",
+                "Difficulty.HARD",
+                "float 0.05f",
+                "float 0.01f",
+                "bipush 6",
+                "RandomSource.nextInt",
+                "ifne",
+                "EquipmentSlot.MAINHAND",
+                "Items.IRON_SWORD",
+                "iconst_1",
+                "if_icmpne",
+                "EquipmentSlot.MAINHAND",
+                "Items.IRON_SPEAR",
+                "EquipmentSlot.MAINHAND",
+                "Items.IRON_SHOVEL",
+            ],
+            "Zombie.populateDefaultEquipmentSlots",
+        )
         zombie_weapon = {
             "chance_hard": 0.05,
             "chance_other": 0.01,
@@ -215,28 +297,48 @@ def extract(server):
         }
         conversions = {
             "zombie_to_drowned_husk_to_zombie_skeleton_to_stray": single_conversion(
-                inspect("ConversionTracker"), "private void doConversion("),
+                inspect("ConversionTracker"), "private void doConversion("
+            ),
             "villager_to_zombie_villager": single_conversion(zombie, "public boolean convertVillagerToZombieVillager("),
-            "zombie_villager_cure": single_conversion(inspect("monster.zombie.ZombieVillager"),
-                                                      "private void finishConversion("),
+            "zombie_villager_cure": single_conversion(
+                inspect("monster.zombie.ZombieVillager"), "private void finishConversion("
+            ),
             "villager_to_witch": single_conversion(inspect("npc.villager.Villager"), "public void thunderHit("),
-            "piglin_to_zombified_piglin": single_conversion(inspect("monster.piglin.AbstractPiglin"),
-                                                            "protected void finishConversion("),
+            "piglin_to_zombified_piglin": single_conversion(
+                inspect("monster.piglin.AbstractPiglin"), "protected void finishConversion("
+            ),
             "hoglin_to_zoglin": single_conversion(inspect("monster.hoglin.Hoglin"), "private void finishConversion()"),
         }
         convert = inspect("ConversionType$1")
-        require_sequence(convert, ["keepEquipment", "EquipmentSlot.VALUES", "getItemBySlot", "copyAndClear",
-                                   "setItemSlot", "getDropChances", "DropChances.byEquipment", "setDropChance"],
-                         "ConversionType.SINGLE")
+        require_sequence(
+            convert,
+            [
+                "keepEquipment",
+                "EquipmentSlot.VALUES",
+                "getItemBySlot",
+                "copyAndClear",
+                "setItemSlot",
+                "getDropChances",
+                "DropChances.byEquipment",
+                "setDropChance",
+            ],
+            "ConversionType.SINGLE",
+        )
         cure = method(inspect("monster.zombie.ZombieVillager"), "lambda$finishConversion$")
         require_sequence(cure, ["dropPreservedEquipment", "getIndex", "sipush", "getSlot"], "ZombieVillager cure")
-        preserved = method(mob, "public java.util.Set<net.minecraft.world.entity.EquipmentSlot> dropPreservedEquipment(")
-        require_sequence(preserved, ["Predicate.test", "DropChances.isPreserved", "setItemSlot", "spawnAtLocation"],
-                         "Mob.dropPreservedEquipment")
+        preserved = method(
+            mob, "public java.util.Set<net.minecraft.world.entity.EquipmentSlot> dropPreservedEquipment("
+        )
+        require_sequence(
+            preserved,
+            ["Predicate.test", "DropChances.isPreserved", "setItemSlot", "spawnAtLocation"],
+            "Mob.dropPreservedEquipment",
+        )
         cure_filter = method(inspect("monster.zombie.ZombieVillager"), "lambda$finishConversion$1(")
         if "PREVENT_ARMOR_CHANGE" not in cure_filter:
             raise ValueError("cure no longer keeps binding-cursed items")
     with zipfile.ZipFile(io.BytesIO(data)) as jar:
+
         def read(name):
             return json.loads(jar.read(name))
 

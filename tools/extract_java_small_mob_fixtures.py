@@ -12,15 +12,17 @@ loot table and entity type tags from the data pack.
 Requires javap. Unknown bytecode forms fail rather than regenerating a guessed
 fixture. No VoxelCraft source or existing fixture is consulted.
 """
+
 import argparse
 import hashlib
 import io
 import json
-from pathlib import Path
 import re
 import subprocess
 import tempfile
 import zipfile
+from pathlib import Path
+
 from extract_java_item_fixtures import SERVER_SHA1
 
 
@@ -30,7 +32,7 @@ def method(code, signature):
     if start < 0:
         raise ValueError(f"missing method: {signature}")
     end = code.find("\n\n", start)
-    return code[start:end if end >= 0 else len(code)]
+    return code[start : end if end >= 0 else len(code)]
 
 
 def ops(code):
@@ -91,7 +93,10 @@ def attributes(code, signature):
         if not match:
             continue
         value = literal(listing[i + 1])
-        if isinstance(value, float) and "AttributeSupplier$Builder.add:(Lnet/minecraft/core/Holder;D)" in listing[i + 2]:
+        if (
+            isinstance(value, float)
+            and "AttributeSupplier$Builder.add:(Lnet/minecraft/core/Holder;D)" in listing[i + 2]
+        ):
             found[match[1].lower()] = value
         elif "AttributeSupplier$Builder.add:(Lnet/minecraft/core/Holder;)" in listing[i + 1]:
             found[match[1].lower()] = None
@@ -113,7 +118,7 @@ def goals(code):
         added = [i for i, op in enumerate(chunk) if "GoalSelector.addGoal" in op]
         if len(added) != 1:
             raise ValueError("unrecognized addGoal form")
-        chunk = chunk[:added[0] + 1]
+        chunk = chunk[: added[0] + 1]
         selector = re.search(r"Field (goalSelector|targetSelector):", chunk[0])[1]
         priority = literal(chunk[1])
         created = re.search(r"// class (\S+)$", chunk[2]) if chunk[2].startswith("new") else None
@@ -126,13 +131,15 @@ def goals(code):
             value = literal(op)
             if value is not None:
                 args.append(value)
-        out.append({
-            "selector": selector,
-            "priority": priority,
-            "goal": created[1].rsplit("/", 1)[-1],
-            "args": args,
-            "alert_others": any("setAlertOthers" in op for op in chunk),
-        })
+        out.append(
+            {
+                "selector": selector,
+                "priority": priority,
+                "goal": created[1].rsplit("/", 1)[-1],
+                "args": args,
+                "alert_others": any("setAlertOthers" in op for op in chunk),
+            }
+        )
     return out
 
 
@@ -140,10 +147,10 @@ def entity_type(code, field):
     """The `EntityType.Builder` calls registering `EntityTypes.<field>`."""
     block = code.split("static {};")[1]
     start = block.find(f"EntityTypeIds.{field}:")
-    end = block.find(f"putstatic", start)
-    if start < 0 or end < 0 or f"Field {field}:" not in block[end:block.find(chr(10), end)]:
+    end = block.find("putstatic", start)
+    if start < 0 or end < 0 or f"Field {field}:" not in block[end : block.find(chr(10), end)]:
         raise ValueError(f"missing EntityTypes.{field}")
-    listing = ops(block[block.rfind(chr(10), 0, start) + 1:end])
+    listing = ops(block[block.rfind(chr(10), 0, start) + 1 : end])
     category = None
     sized = eye = None
     peaceful = True
@@ -159,29 +166,39 @@ def entity_type(code, field):
             peaceful = False
     if category is None or sized is None or eye is None:
         raise ValueError(f"unrecognized EntityTypes.{field} builder")
-    return {"category": category, "width": sized[0], "height": sized[1], "eye_height": eye, "allowed_in_peaceful": peaceful}
+    return {
+        "category": category,
+        "width": sized[0],
+        "height": sized[1],
+        "eye_height": eye,
+        "allowed_in_peaceful": peaceful,
+    }
 
 
 def pearl_spawn(code):
     body = method(code, "protected void onHit(net.minecraft.world.phys.HitResult)")
-    require_sequence(body, [
-        "instanceof #",
-        "ServerPlayer",
-        "RandomSource.nextFloat:",
-        "ldc",
-        "fcmpg",
-        "ServerLevel.isSpawningMonsters:",
-        "Difficulty.PEACEFUL:",
-        "EntityTypes.ENDERMITE:",
-        "EntitySpawnReason.TRIGGERED:",
-        "Entity.getX:",
-        "Entity.getY:",
-        "Entity.getZ:",
-        "Entity.getYRot:",
-        "Entity.getXRot:",
-        "Endermite.snapTo:",
-        "ServerPlayer.teleport:",
-    ], "ThrownEnderpearl.onHit endermite spawn")
+    require_sequence(
+        body,
+        [
+            "instanceof #",
+            "ServerPlayer",
+            "RandomSource.nextFloat:",
+            "ldc",
+            "fcmpg",
+            "ServerLevel.isSpawningMonsters:",
+            "Difficulty.PEACEFUL:",
+            "EntityTypes.ENDERMITE:",
+            "EntitySpawnReason.TRIGGERED:",
+            "Entity.getX:",
+            "Entity.getY:",
+            "Entity.getZ:",
+            "Entity.getYRot:",
+            "Entity.getXRot:",
+            "Endermite.snapTo:",
+            "ServerPlayer.teleport:",
+        ],
+        "ThrownEnderpearl.onHit endermite spawn",
+    )
     listing = ops(body)
     roll = next(i for i, op in enumerate(listing) if "RandomSource.nextFloat:" in op)
     chance = literal(listing[roll + 1])
@@ -206,18 +223,36 @@ def endermite_class(code):
         raise ValueError("unrecognized endermite experience")
     life = int_constant(code, "MAX_LIFE")
     ai = method(code, "public void aiStep()")
-    require_sequence(ai, ["Monster.aiStep:", "Level.isClientSide:", "ParticleTypes.PORTAL:", "getRandomX:", "getRandomY:",
-                          "getRandomZ:", "isPersistenceRequired:", f"sipush {life}", "discard:"],
-                     "Endermite.aiStep")
+    require_sequence(
+        ai,
+        [
+            "Monster.aiStep:",
+            "Level.isClientSide:",
+            "ParticleTypes.PORTAL:",
+            "getRandomX:",
+            "getRandomY:",
+            "getRandomZ:",
+            "isPersistenceRequired:",
+            f"sipush {life}",
+            "discard:",
+        ],
+        "Endermite.aiStep",
+    )
     particles = re.search(r"iload_1\n\s+\d+: (iconst_\d|bipush\s+\d+)\n\s+\d+: if_icmpge", ai)
     if not particles:
         raise ValueError("unrecognized particle loop")
-    emission = re.search(r"getMovementEmission\(\);\n\s+Code:\n\s+\d+: getstatic\s+#\d+\s+// Field net/minecraft/world/entity/Entity\$MovementEmission\.(\w+):", code)
+    emission = re.search(
+        r"getMovementEmission\(\);\n\s+Code:\n\s+\d+: getstatic\s+#\d+\s+// Field net/minecraft/world/entity/Entity\$MovementEmission\.(\w+):",
+        code,
+    )
     if not emission:
         raise ValueError("unrecognized movement emission")
     rule = method(code, "public static boolean checkEndermiteSpawnRules(")
-    require_sequence(rule, ["checkAnyLightMonsterSpawnRules:", "EntitySpawnReason.isSpawner:", "LevelAccessor.getNearestPlayer:"],
-                     "checkEndermiteSpawnRules")
+    require_sequence(
+        rule,
+        ["checkAnyLightMonsterSpawnRules:", "EntitySpawnReason.isSpawner:", "LevelAccessor.getNearestPlayer:"],
+        "checkEndermiteSpawnRules",
+    )
     listing = ops(rule)
     near = next(i for i, op in enumerate(listing) if "getNearestPlayer:" in op)
     distance = literal(listing[near - 2])
@@ -225,7 +260,10 @@ def endermite_class(code):
         raise ValueError("unrecognized endermite spawn distance")
     sounds = {}
     for kind in ("Ambient", "Hurt", "Death"):
-        match = re.search(rf"get{kind}Sound\([^)]*\);\n\s+Code:\n\s+\d+: getstatic\s+#\d+\s+// Field net/minecraft/sounds/SoundEvents\.(\w+):", code)
+        match = re.search(
+            rf"get{kind}Sound\([^)]*\);\n\s+Code:\n\s+\d+: getstatic\s+#\d+\s+// Field net/minecraft/sounds/SoundEvents\.(\w+):",
+            code,
+        )
         if not match:
             raise ValueError(f"unrecognized {kind} sound")
         sounds[kind.lower()] = match[1]
@@ -245,15 +283,23 @@ def endermite_class(code):
         "particle_spread_scale": 0.5,
         "movement_emission": emission[1].lower(),
         "step_volume": float(match[2]),
-        "spawn_rule": {"base": "check_any_light_monster_spawn_rules", "spawner_skips_player_check": True,
-                       "no_player_within": distance},
+        "spawn_rule": {
+            "base": "check_any_light_monster_spawn_rules",
+            "spawner_skips_player_check": True,
+            "no_player_within": distance,
+        },
     }, sounds
 
 
 def sound_ids(code, fields):
     found = {}
     for key, field in fields.items():
-        match = re.search(r"ldc(?:_w)?\s+#\d+\s+// String ([\w.]+)\n(?:[^\n]*\n){1,3}?\s+\d+: putstatic\s+#\d+\s+// Field " + field + ":", code)
+        match = re.search(
+            r"ldc(?:_w)?\s+#\d+\s+// String ([\w.]+)\n(?:[^\n]*\n){1,3}?\s+\d+: putstatic\s+#\d+\s+// Field "
+            + field
+            + ":",
+            code,
+        )
         if not match:
             raise ValueError(f"missing sound event {field}")
         found[key] = match[1]
@@ -287,7 +333,8 @@ def extract(server):
 
         def inspect(name):
             return subprocess.check_output(
-                ["javap", "-classpath", str(path), "-c", "-p", "-constants", "net.minecraft." + name], text=True)
+                ["javap", "-classpath", str(path), "-c", "-p", "-constants", "net.minecraft." + name], text=True
+            )
 
         endermite = inspect("world.entity.monster.Endermite")
         facts, sound_fields = endermite_class(endermite)
@@ -314,8 +361,11 @@ def extract(server):
             bane = json.loads(jar.read("data/minecraft/enchantment/bane_of_arthropods.json"))
         damage = bane["effects"]["minecraft:damage"][0]
         slowness = bane["effects"]["minecraft:post_attack"][0]
-        if (damage["effect"]["type"] != "minecraft:add" or damage["effect"]["value"]["type"] != "minecraft:linear"
-                or slowness["effect"]["type"] != "minecraft:apply_mob_effect"):
+        if (
+            damage["effect"]["type"] != "minecraft:add"
+            or damage["effect"]["value"]["type"] != "minecraft:linear"
+            or slowness["effect"]["type"] != "minecraft:apply_mob_effect"
+        ):
             raise ValueError("unrecognized bane of arthropods effects")
         terms = slowness["requirements"]["terms"]
         bane_facts = {
