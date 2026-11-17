@@ -77,17 +77,6 @@ jobs:
         with:
           toolchain: stable
           components: clippy
-      # Windows builds the tests without the release profile's thin LTO and
-      # single codegen unit: on GitHub's 4-core runner that build took 38 of
-      # 48 minutes. Optimisation level and panic=abort are unchanged, and
-      # release.yml still tests the full profile on Windows before packaging.
-      # Set before rust-cache, whose cache key includes CARGO_* variables.
-      - name: Faster Windows release build
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          echo CARGO_PROFILE_RELEASE_LTO=off >> "$GITHUB_ENV"
-          echo CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 >> "$GITHUB_ENV"
       - if: runner.os != 'Windows'
         uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
