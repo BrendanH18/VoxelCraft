@@ -61,8 +61,10 @@ cargo clippy --release --all-targets -- -D warnings
 cargo test --release
 cargo run --release -- --bench --rd 4
 python3 tools/validate_assets.py --executable target/release/voxelcraft
-python3 -m unittest tools/test_benchmark_scenes.py
+python3 -m unittest discover -s tools -p 'test_*.py'
 python3 tools/check_doc_links.py
+uvx ruff@0.17.5 check
+uvx ruff@0.17.5 format --check
 ```
 
 On Windows, pass `target/release/voxelcraft.exe` to `--executable`.
@@ -70,6 +72,12 @@ On Windows, pass `target/release/voxelcraft.exe` to `--executable`.
 For a documentation change, run `python3 tools/check_doc_links.py`: it checks
 that every relative link and `#anchor` in the tracked Markdown files resolves
 and prints each broken one as `file:line: target`.
+
+The Python tools in `tools/` and `packaging/` are linted and formatted with
+[Ruff](https://docs.astral.sh/ruff/), run through [uv](https://docs.astral.sh/uv/)'s
+`uvx` at a pinned version rather than installed as a dependency. Its settings
+are in `ruff.toml`; `uvx ruff@0.17.5 format` applies the formatting. Keep the
+scripts working on Python 3.9, the version macOS ships as `/usr/bin/python3`.
 
 Use `cargo fmt` to apply formatting. The headless benchmark checks generation and
 meshing without opening a window. For rendering or performance changes, also
