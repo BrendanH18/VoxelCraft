@@ -17,6 +17,7 @@ of the same jar). Writes normalized names and numbers, no assets.
 - `DataComponents`: that each component id the stack slots model is a
   registered component type.
 """
+
 import argparse
 import hashlib
 import io
@@ -40,8 +41,11 @@ MODELLED_COMPONENTS = [
 
 def registry_names(jar, folder):
     prefix = f"data/minecraft/{folder}/"
-    return sorted(n[len(prefix):-len(".json")] for n in jar.namelist()
-                  if n.startswith(prefix) and n.endswith(".json") and "/" not in n[len(prefix):])
+    return sorted(
+        n[len(prefix) : -len(".json")]
+        for n in jar.namelist()
+        if n.startswith(prefix) and n.endswith(".json") and "/" not in n[len(prefix) :]
+    )
 
 
 def tag(jar, name, seen=()):
@@ -53,9 +57,9 @@ def tag(jar, name, seen=()):
         if isinstance(v, dict):
             raise ValueError(f"optional tag entry in {name}")
         if v.startswith("#minecraft:"):
-            out |= tag(jar, v[len("#minecraft:"):], seen + (name,))
+            out |= tag(jar, v[len("#minecraft:") :], seen + (name,))
         elif v.startswith("minecraft:"):
-            out.add(v[len("minecraft:"):])
+            out.add(v[len("minecraft:") :])
         else:
             raise ValueError(f"unexpected tag entry {v}")
     return out
@@ -95,8 +99,10 @@ def extract(server, source):
     with zipfile.ZipFile(io.BytesIO(data)) as bundler:
         data = bundler.read("META-INF/versions/26.3/server-26.3.jar")
     with zipfile.ZipFile(io.BytesIO(data)) as jar:
-        patterns = {n: json.loads(jar.read(f"data/minecraft/trim_pattern/{n}.json"))
-                    for n in registry_names(jar, "trim_pattern")}
+        patterns = {
+            n: json.loads(jar.read(f"data/minecraft/trim_pattern/{n}.json"))
+            for n in registry_names(jar, "trim_pattern")
+        }
         trim_patterns = {n: {"asset_id": v["asset_id"], "decal": v["decal"]} for n, v in patterns.items()}
         trim_materials = registry_names(jar, "trim_material")
         banner_patterns = registry_names(jar, "banner_pattern")

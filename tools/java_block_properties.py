@@ -12,6 +12,7 @@ branch and branches whose outcomes differ fail instead of guessing.
 
 Used by fixture extractors only. Never reads VoxelCraft source.
 """
+
 import copy
 import re
 import subprocess
@@ -27,8 +28,12 @@ COPPER_COLLECTION = "net/minecraft/world/level/block/WeatheringCopperCollection"
 BY_STATE = "net/minecraft/world/level/block/WeatheringCopperCollection$ByState"
 DYE_COLOR = "net/minecraft/world/item/DyeColor"
 WEATHER_STATE = "net/minecraft/world/level/block/WeatheringCopper$WeatherState"
-FUNCTIONAL = ("java/util/function/Function", "java/util/function/BiFunction",
-              "org/apache/commons/lang3/function/TriFunction", "java/util/function/Supplier")
+FUNCTIONAL = (
+    "java/util/function/Function",
+    "java/util/function/BiFunction",
+    "org/apache/commons/lang3/function/TriFunction",
+    "java/util/function/Supplier",
+)
 
 
 DEAD = object()
@@ -127,7 +132,7 @@ class Lambda:
 
 def descriptor_args(descriptor):
     """Parameter type codes of a JVM method descriptor."""
-    params = descriptor[descriptor.index("(") + 1:descriptor.index(")")]
+    params = descriptor[descriptor.index("(") + 1 : descriptor.index(")")]
     out, i = [], 0
     while i < len(params):
         start = i
@@ -135,17 +140,25 @@ def descriptor_args(descriptor):
             i += 1
         if params[i] == "L":
             i = params.index(";", i)
-        out.append(params[start:i + 1])
+        out.append(params[start : i + 1])
         i += 1
     return out
 
 
 def descriptor_returns(descriptor):
-    return descriptor[descriptor.index(")") + 1:]
+    return descriptor[descriptor.index(")") + 1 :]
 
 
-JAVA_PRIMITIVES = {"float": "F", "int": "I", "boolean": "Z", "double": "D", "long": "J", "byte": "B",
-                   "short": "S", "char": "C"}
+JAVA_PRIMITIVES = {
+    "float": "F",
+    "int": "I",
+    "boolean": "Z",
+    "double": "D",
+    "long": "J",
+    "byte": "B",
+    "short": "S",
+    "char": "C",
+}
 
 
 def java_type_descriptor(java):
@@ -192,7 +205,7 @@ class ClassCode:
                 match = re.search(r"([\w$<>]+)\(([^)]*)\)", header)
                 params = [p for p in match[2].split(",") if p.strip()]
                 key = (match[1], "(" + "".join(java_type_descriptor(p) for p in params) + ")")
-            self.methods[key] = parse_code(lines[lines.index("    Code:") + 1:])
+            self.methods[key] = parse_code(lines[lines.index("    Code:") + 1 :])
         self.boot = {}
         if "BootstrapMethods:" in verbose:
             table = verbose.split("BootstrapMethods:")[1]
@@ -200,12 +213,15 @@ class ClassCode:
                 head = re.match(r"\s*(\d+): #\d+ REF_invokeStatic ([^\n]+)", entry)
                 if not head:
                     continue
-                handle = re.search(r"REF_(invokeStatic|newInvokeSpecial|invokeVirtual|invokeSpecial|invokeInterface) "
-                                   r"([\w/$]+)\.([\w$<>\"]+):(\([^\s]*)", entry.split("Method arguments:")[-1])
+                handle = re.search(
+                    r"REF_(invokeStatic|newInvokeSpecial|invokeVirtual|invokeSpecial|invokeInterface) "
+                    r"([\w/$]+)\.([\w$<>\"]+):(\([^\s]*)",
+                    entry.split("Method arguments:")[-1],
+                )
                 self.boot[int(head[1])] = (head[2], handle and handle.groups())
 
     def method(self, name, descriptor):
-        params = descriptor[:descriptor.index(")") + 1]
+        params = descriptor[: descriptor.index(")") + 1]
         return self.methods[(name, params)]
 
 
@@ -235,8 +251,24 @@ def parse_code(lines):
     return out, following
 
 
-BRANCHES = {"ifeq", "ifne", "iflt", "ifge", "ifgt", "ifle", "if_icmpeq", "if_icmpne", "if_icmplt", "if_icmpge",
-            "if_icmpgt", "if_icmple", "if_acmpeq", "if_acmpne", "ifnull", "ifnonnull"}
+BRANCHES = {
+    "ifeq",
+    "ifne",
+    "iflt",
+    "ifge",
+    "ifgt",
+    "ifle",
+    "if_icmpeq",
+    "if_icmpne",
+    "if_icmplt",
+    "if_icmpge",
+    "if_icmpgt",
+    "if_icmple",
+    "if_acmpeq",
+    "if_acmpne",
+    "ifnull",
+    "ifnonnull",
+}
 BRANCH_POPS = {op: (2 if op.startswith("if_") else 1) for op in BRANCHES}
 
 
@@ -270,10 +302,21 @@ class Interpreter:
 
     def _copper_prefixes(self):
         code, following = self.cls(COPPER_COLLECTION).method("<clinit>", "()V")
-        strings = [c.split("String", 1)[1].strip() if c.split("String", 1)[1].strip() else ""
-                   for (op, _, c, _) in code.values() if op.startswith("ldc") and c.startswith("String")]
-        expected = ["", "exposed_", "weathered_", "oxidized_", "waxed_", "waxed_exposed_", "waxed_weathered_",
-                    "waxed_oxidized_"]
+        strings = [
+            c.split("String", 1)[1].strip() if c.split("String", 1)[1].strip() else ""
+            for (op, _, c, _) in code.values()
+            if op.startswith("ldc") and c.startswith("String")
+        ]
+        expected = [
+            "",
+            "exposed_",
+            "weathered_",
+            "oxidized_",
+            "waxed_",
+            "waxed_exposed_",
+            "waxed_weathered_",
+            "waxed_oxidized_",
+        ]
         if strings[:8] != expected or self.states != ["UNAFFECTED", "EXPOSED", "WEATHERED", "OXIDIZED"]:
             raise ValueError(f"copper collection prefixes changed: {strings}")
         return {(waxed, state): expected[4 * waxed + i] for waxed in (0, 1) for i, state in enumerate(self.states)}
@@ -347,10 +390,16 @@ class Interpreter:
                 receiver.destroy, receiver.resistance = 0.0, 0.0
             elif method == "mapColor":
                 color = args[1]
-                receiver.map_color = color.name if isinstance(color, Enum) and color.kind == "map_color" else "state_dependent"
+                receiver.map_color = (
+                    color.name if isinstance(color, Enum) and color.kind == "map_color" else "state_dependent"
+                )
                 if isinstance(color, Lambda) and color.owner == BLOCKS:
                     captured = color.captured
-                    if "logProperties" in color.method and len(captured) == 2 and all(isinstance(c, Enum) and c.kind == "map_color" for c in captured):
+                    if (
+                        "logProperties" in color.method
+                        and len(captured) == 2
+                        and all(isinstance(c, Enum) and c.kind == "map_color" for c in captured)
+                    ):
                         receiver.map_color = {"axis": [c.name for c in captured]}
                     elif "netherStemProperties" in color.method and len(captured) == 1:
                         receiver.map_color = captured[0].name
@@ -365,8 +414,11 @@ class Interpreter:
             elif returns != "L" + PROPERTIES + ";":
                 return Opaque(f"Properties.{method}")
             return receiver
-        if owner == BLOCKS and method == "register" and descriptor.startswith("(Lnet/minecraft/resources/ResourceKey;"
-                                                                                 "Ljava/util/function/Function;"):
+        if (
+            owner == BLOCKS
+            and method == "register"
+            and descriptor.startswith("(Lnet/minecraft/resources/ResourceKey;Ljava/util/function/Function;")
+        ):
             return self.register(args[0], args[2])
         if owner in REGISTRATION_CLASSES:
             return self.run(owner, method, descriptor, args)
@@ -382,7 +434,24 @@ class Interpreter:
             # stay unnamed; nothing here reads them.
             return Key(args[1] if isinstance(args[1], str) else None)
         if owner == DYE_COLOR and method == "getMapColor":
-            names = {"WHITE":"SNOW", "ORANGE":"COLOR_ORANGE", "MAGENTA":"COLOR_MAGENTA", "LIGHT_BLUE":"COLOR_LIGHT_BLUE", "YELLOW":"COLOR_YELLOW", "LIME":"COLOR_LIGHT_GREEN", "PINK":"COLOR_PINK", "GRAY":"COLOR_GRAY", "LIGHT_GRAY":"COLOR_LIGHT_GRAY", "CYAN":"COLOR_CYAN", "PURPLE":"COLOR_PURPLE", "BLUE":"COLOR_BLUE", "BROWN":"COLOR_BROWN", "GREEN":"COLOR_GREEN", "RED":"COLOR_RED", "BLACK":"COLOR_BLACK"}
+            names = {
+                "WHITE": "SNOW",
+                "ORANGE": "COLOR_ORANGE",
+                "MAGENTA": "COLOR_MAGENTA",
+                "LIGHT_BLUE": "COLOR_LIGHT_BLUE",
+                "YELLOW": "COLOR_YELLOW",
+                "LIME": "COLOR_LIGHT_GREEN",
+                "PINK": "COLOR_PINK",
+                "GRAY": "COLOR_GRAY",
+                "LIGHT_GRAY": "COLOR_LIGHT_GRAY",
+                "CYAN": "COLOR_CYAN",
+                "PURPLE": "COLOR_PURPLE",
+                "BLUE": "COLOR_BLUE",
+                "BROWN": "COLOR_BROWN",
+                "GREEN": "COLOR_GREEN",
+                "RED": "COLOR_RED",
+                "BLACK": "COLOR_BLACK",
+            }
             return Enum("map_color", names[args[0].name])
         if method == "defaultMapColor" and args and isinstance(args[0], Key):
             color = self.registered[args[0].name].map_color
@@ -411,8 +480,11 @@ class Interpreter:
             return args[0].items[args[1].name]
         if method == "registerBlocks":
             ids, registrar, _factory, props = args
-            return ids.map(lambda c, key: self.call_function(
-                registrar, [key, Opaque("factory"), self.call_function(props, [Enum("color", c)])]))
+            return ids.map(
+                lambda c, key: self.call_function(
+                    registrar, [key, Opaque("factory"), self.call_function(props, [Enum("color", c)])]
+                )
+            )
         if method == "zipMap":
             first, second, fn = args
             if first.items.keys() != second.items.keys():
@@ -440,8 +512,11 @@ class Interpreter:
             return Coll("state", {s: v for (w, s), v in args[0].items.items() if w == waxed})
         if method == "registerBlocks":
             ids, registrar, _waxed, _weathering, props = args
-            return ids.map(lambda k, key: self.call_function(
-                registrar, [key, Opaque("factory"), self.call_function(props, [Enum("state", k[1])])]))
+            return ids.map(
+                lambda k, key: self.call_function(
+                    registrar, [key, Opaque("factory"), self.call_function(props, [Enum("state", k[1])])]
+                )
+            )
         raise ValueError(f"unknown WeatheringCopperCollection.{method}")
 
     def run(self, owner, method, descriptor, args):
@@ -551,8 +626,9 @@ class Interpreter:
                 else:
                     stack.append(Opaque(f"indy {factory}"))
             elif op in ("invokestatic", "invokevirtual", "invokeinterface", "invokespecial"):
-                target, method, desc = re.search(r"(?:Interface)?Method (?:([\w/$]+)\.)?([\w$<>\"]+):(\([^\s]*)",
-                                                 comment).groups()
+                target, method, desc = re.search(
+                    r"(?:Interface)?Method (?:([\w/$]+)\.)?([\w$<>\"]+):(\([^\s]*)", comment
+                ).groups()
                 method = method.strip('"')
                 target = target or owner
                 count = len(descriptor_args(desc)) + (0 if op == "invokestatic" else 1)
@@ -591,12 +667,13 @@ def item_registry_ids(jar):
     clinit = code.split("  static {};")[1]
     result, start = {}, 0
     for match in re.finditer(r"putstatic\s+#[^\n]*// Field ([A-Z0-9_]+):L([\w/$]+);", clinit):
-        chunk = clinit[start:match.start()]
+        chunk = clinit[start : match.start()]
         start = match.end()
         if match[2] not in ("net/minecraft/world/item/Item", COLOR_COLLECTION, COPPER_COLLECTION):
             continue
-        ids = dict.fromkeys(re.findall(r"getstatic\s+#\d+\s+// Field (net/minecraft/references/(?:Block)?ItemIds)\.(\w+):",
-                                       chunk))
+        ids = dict.fromkeys(
+            re.findall(r"getstatic\s+#\d+\s+// Field (net/minecraft/references/(?:Block)?ItemIds)\.(\w+):", chunk)
+        )
         if len(ids) != 1:
             raise ValueError(f"Items.{match[1]} registers {len(ids)} IDs")
         value = interpreter.static(*next(iter(ids)))

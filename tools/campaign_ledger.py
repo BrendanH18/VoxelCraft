@@ -22,39 +22,40 @@ Lines starting with `#` are comments. The exit status is 1 if any fragment
 is malformed, an item lacks evidence or a name repeats; otherwise the totals
 are printed, per fragment and by kind.
 """
+
 import argparse
 import json
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DIR = ROOT / 'docs' / 'verification' / '2026-11-12-build-5000' / 'ledger'
-HEADER = ['kind', 'name', 'evidence']
-KINDS = ('content', 'behaviour', 'fix')
+DEFAULT_DIR = ROOT / "docs" / "verification" / "2026-11-12-build-5000" / "ledger"
+HEADER = ["kind", "name", "evidence"]
+KINDS = ("content", "behaviour", "fix")
 
 
 def read_fragment(path):
     """Return (rows, problems) for one fragment; rows are (kind, name, evidence, line number)."""
     rows, problems = [], []
     try:
-        lines = path.read_text(encoding='utf-8').split('\n')
+        lines = path.read_text(encoding="utf-8").split("\n")
     except (OSError, UnicodeDecodeError) as error:
-        return rows, [f'{path.name}: unreadable ({error})']
-    if lines and lines[-1] == '':
+        return rows, [f"{path.name}: unreadable ({error})"]
+    if lines and lines[-1] == "":
         lines.pop()
-    body = [(number, line) for number, line in enumerate(lines, 1) if not line.startswith('#')]
-    if not body or body[0][1].split('\t') != HEADER:
+    body = [(number, line) for number, line in enumerate(lines, 1) if not line.startswith("#")]
+    if not body or body[0][1].split("\t") != HEADER:
         return rows, [f'{path.name}:1: the first line must be "kind<TAB>name<TAB>evidence"']
     for number, line in body[1:]:
-        fields = line.split('\t')
+        fields = line.split("\t")
         if len(fields) != 3:
-            problems.append(f'{path.name}:{number}: expected 3 tab-separated fields, found {len(fields)}')
+            problems.append(f"{path.name}:{number}: expected 3 tab-separated fields, found {len(fields)}")
             continue
         kind, name, evidence = (field.strip() for field in fields)
         if kind not in KINDS:
             problems.append(f'{path.name}:{number}: unknown kind "{kind}" (use {", ".join(KINDS)})')
         elif not name:
-            problems.append(f'{path.name}:{number}: the item has no name')
+            problems.append(f"{path.name}:{number}: the item has no name")
         elif not evidence:
             problems.append(f'{path.name}:{number}: "{name}" has no evidence')
         else:
@@ -65,7 +66,7 @@ def read_fragment(path):
 def read_ledger(directory):
     """Return (per-fragment counts, totals by kind, problems) for every fragment in `directory`."""
     fragments, totals, problems, seen = {}, dict.fromkeys(KINDS, 0), [], {}
-    for path in sorted(Path(directory).glob('*.tsv')):
+    for path in sorted(Path(directory).glob("*.tsv")):
         rows, found = read_fragment(path)
         problems.extend(found)
         counts = dict.fromkeys(KINDS, 0)
@@ -74,7 +75,7 @@ def read_ledger(directory):
             if key in seen:
                 problems.append(f'{path.name}:{number}: "{name}" is already counted in {seen[key]}')
                 continue
-            seen[key] = f'{path.name}:{number}'
+            seen[key] = f"{path.name}:{number}"
             counts[kind] += 1
             totals[kind] += 1
         fragments[path.stem] = counts
@@ -82,23 +83,24 @@ def read_ledger(directory):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
-    parser.add_argument('--dir', type=Path, default=DEFAULT_DIR, help='ledger folder (default: the tracked one)')
-    parser.add_argument('--json', action='store_true', help='print the totals as JSON')
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--dir", type=Path, default=DEFAULT_DIR, help="ledger folder (default: the tracked one)")
+    parser.add_argument("--json", action="store_true", help="print the totals as JSON")
     options = parser.parse_args(argv)
     fragments, totals, problems = read_ledger(options.dir)
     for problem in problems:
         print(problem, file=sys.stderr)
     total = sum(totals.values())
     if options.json:
-        print(json.dumps({'fragments': fragments, 'totals': totals, 'total': total}, indent=2))
+        print(json.dumps({"fragments": fragments, "totals": totals, "total": total}, indent=2))
     else:
         for name, counts in fragments.items():
-            print(f'{sum(counts.values()):6d}  {name}')
-        print(f'{total:6d}  total ({", ".join(f"{totals[kind]} {kind}" for kind in KINDS)}) '
-              f'in {len(fragments)} fragments')
+            print(f"{sum(counts.values()):6d}  {name}")
+        print(
+            f"{total:6d}  total ({', '.join(f'{totals[kind]} {kind}' for kind in KINDS)}) in {len(fragments)} fragments"
+        )
     return 1 if problems else 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

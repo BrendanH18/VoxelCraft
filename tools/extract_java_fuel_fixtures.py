@@ -4,6 +4,7 @@
 Follows nested Items property callbacks and expands colored collections.
 The exception list also checks implemented lookalike materials that are not fuels.
 """
+
 import argparse
 import hashlib
 import io
@@ -27,26 +28,57 @@ def extract(server):
         path.write_bytes(data)
         providers = provider_ids(path, "COOKING_TIME_")
     with zipfile.ZipFile(io.BytesIO(data)) as jar:
+
         def read(path):
             return json.loads(jar.read(path))
-        if (read("data/minecraft/context_int_provider/cooking/normal_burn_time_reduction_factor.json"),
-                read("data/minecraft/context_int_provider/cooking/fast_burn_time_reduction_factor.json")) != (1, 2):
+
+        if (
+            read("data/minecraft/context_int_provider/cooking/normal_burn_time_reduction_factor.json"),
+            read("data/minecraft/context_int_provider/cooking/fast_burn_time_reduction_factor.json"),
+        ) != (1, 2):
             raise ValueError("cooking reduction factors changed")
-        fuels = [{"item": f"minecraft:{name}", "provider": provider,
-                  "ticks": read(f"data/minecraft/context_int_provider/cooking/time_{provider}.json")["left"]}
-                 for name, provider in sorted(providers.items())]
-    exceptions = [f"{wood}_{form}" for wood in ("crimson", "warped")
-                  for form in ("planks", "stairs", "slab", "fence", "fence_gate", "door", "trapdoor", "button",
-                               "pressure_plate", "stem", "hyphae", "sign", "hanging_sign")]
+        fuels = [
+            {
+                "item": f"minecraft:{name}",
+                "provider": provider,
+                "ticks": read(f"data/minecraft/context_int_provider/cooking/time_{provider}.json")["left"],
+            }
+            for name, provider in sorted(providers.items())
+        ]
+    exceptions = [
+        f"{wood}_{form}"
+        for wood in ("crimson", "warped")
+        for form in (
+            "planks",
+            "stairs",
+            "slab",
+            "fence",
+            "fence_gate",
+            "door",
+            "trapdoor",
+            "button",
+            "pressure_plate",
+            "stem",
+            "hyphae",
+            "sign",
+            "hanging_sign",
+        )
+    ]
     exceptions += [f"stripped_{wood}_{form}" for wood in ("crimson", "warped") for form in ("stem", "hyphae")]
     exceptions += [f"{color}_bed" for color in COLORS]
     exceptions += ["stone", "oak_leaves", "spruce_leaves", "moss_carpet", "pale_moss_carpet", "muddy_mangrove_roots"]
     if any(name in providers for name in exceptions):
         raise ValueError("a reviewed non-fuel exception now burns; reassess")
-    return {"reference": "Minecraft Java Edition 26.3", "server_sha1": SERVER_SHA1,
-            "sources": ["net.minecraft.world.item.Items cookingFuel registrations, including nested callbacks",
-                        "data/minecraft/context_int_provider/cooking/time_*.json"],
-            "fuels": fuels, "non_fuels": sorted(f"minecraft:{name}" for name in exceptions)}
+    return {
+        "reference": "Minecraft Java Edition 26.3",
+        "server_sha1": SERVER_SHA1,
+        "sources": [
+            "net.minecraft.world.item.Items cookingFuel registrations, including nested callbacks",
+            "data/minecraft/context_int_provider/cooking/time_*.json",
+        ],
+        "fuels": fuels,
+        "non_fuels": sorted(f"minecraft:{name}" for name in exceptions),
+    }
 
 
 def main():

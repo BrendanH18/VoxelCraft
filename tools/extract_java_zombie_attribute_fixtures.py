@@ -13,6 +13,7 @@ zombie classes override `canSpawnInLiquids`.
 Requires javap. Unknown bytecode forms fail rather than regenerating a guessed
 fixture. No VoxelCraft source or existing fixture is consulted.
 """
+
 import argparse
 import hashlib
 import io
@@ -64,7 +65,7 @@ def ranged_attribute(attributes, name):
     start = block.find(f"// String {name}\n")
     if start < 0:
         raise ValueError(f"missing attribute {name}")
-    end = block.find("RangedAttribute.\"<init>\"", start)
+    end = block.find('RangedAttribute."<init>"', start)
     values = literals(block[start:end])
     if len(values) != 3:
         raise ValueError(f"unrecognized attribute {name}: {values}")
@@ -123,25 +124,81 @@ def main():
         )
 
         hurt = method(zombie, "public boolean hurtServer(")
-        require_sequence(hurt, [
-            "Monster.hurtServer", "getTarget", "DamageSource.getEntity", "instanceof", "LivingEntity",
-            "Difficulty.HARD", "RandomSource.nextFloat", "Attributes.SPAWN_REINFORCEMENTS_CHANCE",
-            "getAttributeValue", "dcmpg", "isSpawningMonsters",
-            "Mth.floor", "Mth.floor", "Mth.floor", "getType", "EntitySpawnReason.REINFORCEMENT", "EntityType.create",
-            "bipush 50",
-            "bipush 7", "bipush 40", "Mth.nextInt", "iconst_m1", "iconst_1", "Mth.nextInt", "imul", "iadd",
-            "bipush 7", "bipush 40", "Mth.nextInt", "iconst_m1", "iconst_1", "Mth.nextInt", "imul", "iadd",
-            "bipush 7", "bipush 40", "Mth.nextInt", "iconst_m1", "iconst_1", "Mth.nextInt", "imul", "iadd",
-            "SpawnPlacements.isSpawnPositionOk", "EntitySpawnReason.REINFORCEMENT", "SpawnPlacements.checkSpawnRules",
-            "setPos", "double 7.0d", "hasNearbyAlivePlayer", "isUnobstructed", "noCollision",
-            "canSpawnInLiquids", "containsAnyLiquid",
-            "setTarget", "getCurrentDifficultyAt", "EntitySpawnReason.REINFORCEMENT", "finalizeSpawn",
-            "addFreshEntityWithPassengers",
-            "REINFORCEMENT_CALLER_CHARGE_ID", "AttributeModifier.amount", "dconst_0",
-            "REINFORCEMENT_CALLER_CHARGE_ID", "removeModifier",
-            "REINFORCEMENT_CALLER_CHARGE_ID", "double 0.05d", "dsub", "Operation.ADD_VALUE", "addPermanentModifier",
-            "ZOMBIE_REINFORCEMENT_CALLEE_CHARGE", "addPermanentModifier",
-        ], "Zombie.hurtServer")
+        require_sequence(
+            hurt,
+            [
+                "Monster.hurtServer",
+                "getTarget",
+                "DamageSource.getEntity",
+                "instanceof",
+                "LivingEntity",
+                "Difficulty.HARD",
+                "RandomSource.nextFloat",
+                "Attributes.SPAWN_REINFORCEMENTS_CHANCE",
+                "getAttributeValue",
+                "dcmpg",
+                "isSpawningMonsters",
+                "Mth.floor",
+                "Mth.floor",
+                "Mth.floor",
+                "getType",
+                "EntitySpawnReason.REINFORCEMENT",
+                "EntityType.create",
+                "bipush 50",
+                "bipush 7",
+                "bipush 40",
+                "Mth.nextInt",
+                "iconst_m1",
+                "iconst_1",
+                "Mth.nextInt",
+                "imul",
+                "iadd",
+                "bipush 7",
+                "bipush 40",
+                "Mth.nextInt",
+                "iconst_m1",
+                "iconst_1",
+                "Mth.nextInt",
+                "imul",
+                "iadd",
+                "bipush 7",
+                "bipush 40",
+                "Mth.nextInt",
+                "iconst_m1",
+                "iconst_1",
+                "Mth.nextInt",
+                "imul",
+                "iadd",
+                "SpawnPlacements.isSpawnPositionOk",
+                "EntitySpawnReason.REINFORCEMENT",
+                "SpawnPlacements.checkSpawnRules",
+                "setPos",
+                "double 7.0d",
+                "hasNearbyAlivePlayer",
+                "isUnobstructed",
+                "noCollision",
+                "canSpawnInLiquids",
+                "containsAnyLiquid",
+                "setTarget",
+                "getCurrentDifficultyAt",
+                "EntitySpawnReason.REINFORCEMENT",
+                "finalizeSpawn",
+                "addFreshEntityWithPassengers",
+                "REINFORCEMENT_CALLER_CHARGE_ID",
+                "AttributeModifier.amount",
+                "dconst_0",
+                "REINFORCEMENT_CALLER_CHARGE_ID",
+                "removeModifier",
+                "REINFORCEMENT_CALLER_CHARGE_ID",
+                "double 0.05d",
+                "dsub",
+                "Operation.ADD_VALUE",
+                "addPermanentModifier",
+                "ZOMBIE_REINFORCEMENT_CALLEE_CHARGE",
+                "addPermanentModifier",
+            ],
+            "Zombie.hurtServer",
+        )
         # The first successful try ends the loop (`break` to the return).
         if not re.search(r"addPermanentModifier[^\n]*\n\s+\d+: goto\s+(\d+)\n\s+\d+: iinc", hurt):
             raise ValueError("reinforcement loop no longer stops at the first spawn")
@@ -150,28 +207,70 @@ def main():
         static = zombie.split("  static {};")[1]
         callee = re.search(
             r"// String reinforcement_callee_charge\n[^\n]*withDefaultNamespace[^\n]*\n\s+\d+: ldc2_w\s+#\d+\s+"
-            r"// double ([-0-9.Ee]+)d\n\s+\d+: getstatic[^\n]*Operation\.ADD_VALUE", static)
+            r"// double ([-0-9.Ee]+)d\n\s+\d+: getstatic[^\n]*Operation\.ADD_VALUE",
+            static,
+        )
         if not callee:
             raise ValueError("unrecognized callee charge")
-        modifier_ids = re.findall(r"// String ([a-z_]+)\n[^\n]*withDefaultNamespace[^\n]*\n[^\n]*putstatic[^\n]*Field "
-                                  r"([A-Z_]+_ID):", static)
+        modifier_ids = re.findall(
+            r"// String ([a-z_]+)\n[^\n]*withDefaultNamespace[^\n]*\n[^\n]*putstatic[^\n]*Field "
+            r"([A-Z_]+_ID):",
+            static,
+        )
 
         handle = method(zombie, "protected void handleAttributes(")
-        require_sequence(handle, [
-            "randomizeReinforcementsChance",
-            "Attributes.KNOCKBACK_RESISTANCE", "RANDOM_SPAWN_BONUS_ID", "RandomSource.nextDouble", "dmul",
-            "Operation.ADD_VALUE", "addOrReplacePermanentModifier",
-            "RandomSource.nextDouble", "dmul", "fload_1", "f2d", "dmul", "dconst_1", "dcmpl", "ifle",
-            "Attributes.FOLLOW_RANGE", "ZOMBIE_RANDOM_SPAWN_BONUS_ID", "Operation.ADD_MULTIPLIED_TOTAL",
-            "addOrReplacePermanentModifier",
-            "RandomSource.nextFloat", "fload_1", "fmul", "fcmpg", "ifge",
-            "Attributes.SPAWN_REINFORCEMENTS_CHANCE", "LEADER_ZOMBIE_BONUS_ID", "RandomSource.nextDouble", "dmul",
-            "dadd", "Operation.ADD_VALUE", "addOrReplacePermanentModifier",
-            "Attributes.MAX_HEALTH", "LEADER_ZOMBIE_BONUS_ID", "RandomSource.nextDouble", "dmul", "dconst_1", "dadd",
-            "Operation.ADD_MULTIPLIED_TOTAL", "addOrReplacePermanentModifier",
-            "EntitySpawnReason.CONVERSION", "EntitySpawnReason.LOAD", "EntitySpawnReason.DIMENSION_TRAVEL",
-            "getMaxHealth", "setHealth", "iconst_1", "setCanBreakDoors",
-        ], "Zombie.handleAttributes")
+        require_sequence(
+            handle,
+            [
+                "randomizeReinforcementsChance",
+                "Attributes.KNOCKBACK_RESISTANCE",
+                "RANDOM_SPAWN_BONUS_ID",
+                "RandomSource.nextDouble",
+                "dmul",
+                "Operation.ADD_VALUE",
+                "addOrReplacePermanentModifier",
+                "RandomSource.nextDouble",
+                "dmul",
+                "fload_1",
+                "f2d",
+                "dmul",
+                "dconst_1",
+                "dcmpl",
+                "ifle",
+                "Attributes.FOLLOW_RANGE",
+                "ZOMBIE_RANDOM_SPAWN_BONUS_ID",
+                "Operation.ADD_MULTIPLIED_TOTAL",
+                "addOrReplacePermanentModifier",
+                "RandomSource.nextFloat",
+                "fload_1",
+                "fmul",
+                "fcmpg",
+                "ifge",
+                "Attributes.SPAWN_REINFORCEMENTS_CHANCE",
+                "LEADER_ZOMBIE_BONUS_ID",
+                "RandomSource.nextDouble",
+                "dmul",
+                "dadd",
+                "Operation.ADD_VALUE",
+                "addOrReplacePermanentModifier",
+                "Attributes.MAX_HEALTH",
+                "LEADER_ZOMBIE_BONUS_ID",
+                "RandomSource.nextDouble",
+                "dmul",
+                "dconst_1",
+                "dadd",
+                "Operation.ADD_MULTIPLIED_TOTAL",
+                "addOrReplacePermanentModifier",
+                "EntitySpawnReason.CONVERSION",
+                "EntitySpawnReason.LOAD",
+                "EntitySpawnReason.DIMENSION_TRAVEL",
+                "getMaxHealth",
+                "setHealth",
+                "iconst_1",
+                "setCanBreakDoors",
+            ],
+            "Zombie.handleAttributes",
+        )
         values = literals(handle)
         # knockback scale, follow scale, threshold 1, leader chance,
         # reinforcement scale and offset, health scale and offset, then the door flag.
@@ -183,39 +282,63 @@ def main():
             raise ValueError("leader chance no longer ZOMBIE_LEADER_CHANCE")
 
         randomize = method(zombie, "protected void randomizeReinforcementsChance(")
-        require_sequence(randomize, ["Attributes.SPAWN_REINFORCEMENTS_CHANCE", "RandomSource.nextDouble", "dmul",
-                                     "setBaseValue"], "Zombie.randomizeReinforcementsChance")
+        require_sequence(
+            randomize,
+            ["Attributes.SPAWN_REINFORCEMENTS_CHANCE", "RandomSource.nextDouble", "dmul", "setBaseValue"],
+            "Zombie.randomizeReinforcementsChance",
+        )
         (base_scale,) = literals(randomize)
         piglin_randomize = method(piglin, "protected void randomizeReinforcementsChance(")
         if literals(piglin_randomize) != [0.0] or "RandomSource" in piglin_randomize:
             raise ValueError("unrecognized ZombifiedPiglin.randomizeReinforcementsChance")
 
         finalize = method(zombie, "public net.minecraft.world.entity.SpawnGroupData finalizeSpawn(")
-        require_sequence(finalize, ["Monster.finalizeSpawn", "getSpecialMultiplier", "setCanBreakDoors",
-                                    "handleAttributes"], "Zombie.finalizeSpawn")
-        if not re.search(r"getSpecialMultiplier[\s\S]*RandomSource\.nextFloat[^\n]*\n\s+\d+: fload\s+\d+\n\s+\d+: "
-                         r"ldc(?:_w)?\s+#\d+\s+// float 0\.1f\n\s+\d+: fmul\n[\s\S]*setCanBreakDoors", finalize):
+        require_sequence(
+            finalize,
+            ["Monster.finalizeSpawn", "getSpecialMultiplier", "setCanBreakDoors", "handleAttributes"],
+            "Zombie.finalizeSpawn",
+        )
+        if not re.search(
+            r"getSpecialMultiplier[\s\S]*RandomSource\.nextFloat[^\n]*\n\s+\d+: fload\s+\d+\n\s+\d+: "
+            r"ldc(?:_w)?\s+#\d+\s+// float 0\.1f\n\s+\d+: fmul\n[\s\S]*setCanBreakDoors",
+            finalize,
+        ):
             raise ValueError("unrecognized door-breaking roll")
         door_chance = static_number(zombie, "BREAK_DOOR_CHANCE")
 
         mob_finalize = method(mob, "public net.minecraft.world.entity.SpawnGroupData finalizeSpawn(")
-        require_sequence(mob_finalize, [
-            "Attributes.FOLLOW_RANGE", "RANDOM_SPAWN_BONUS_ID", "hasModifier", "ifne",
-            "RANDOM_SPAWN_BONUS_ID", "dconst_0", "RandomSource.triangle:(DD)D", "Operation.ADD_MULTIPLIED_BASE",
-            "addPermanentModifier",
-        ], "Mob.finalizeSpawn")
-        triangle = literals(mob_finalize[:mob_finalize.index("RandomSource.triangle")])
+        require_sequence(
+            mob_finalize,
+            [
+                "Attributes.FOLLOW_RANGE",
+                "RANDOM_SPAWN_BONUS_ID",
+                "hasModifier",
+                "ifne",
+                "RANDOM_SPAWN_BONUS_ID",
+                "dconst_0",
+                "RandomSource.triangle:(DD)D",
+                "Operation.ADD_MULTIPLIED_BASE",
+                "addPermanentModifier",
+            ],
+            "Mob.finalizeSpawn",
+        )
+        triangle = literals(mob_finalize[: mob_finalize.index("RandomSource.triangle")])
         if len(triangle) != 2:
             raise ValueError(f"unrecognized follow-range triangle: {triangle}")
-        random_spawn_id = re.search(r"// String ([a-z_]+)\n[^\n]*withDefaultNamespace[^\n]*\n[^\n]*putstatic[^\n]*"
-                                    r"Field RANDOM_SPAWN_BONUS_ID:", mob.split("  static {};")[1])
+        random_spawn_id = re.search(
+            r"// String ([a-z_]+)\n[^\n]*withDefaultNamespace[^\n]*\n[^\n]*putstatic[^\n]*"
+            r"Field RANDOM_SPAWN_BONUS_ID:",
+            mob.split("  static {};")[1],
+        )
 
         mob_follow = add_value(method(mob, "createMobAttributes("), "FOLLOW_RANGE")
-        zombie_create = method(zombie, "public static net.minecraft.world.entity.ai.attributes."
-                                       "AttributeSupplier$Builder createAttributes(")
+        zombie_create = method(
+            zombie, "public static net.minecraft.world.entity.ai.attributes.AttributeSupplier$Builder createAttributes("
+        )
         zombie_follow = add_value(zombie_create, "FOLLOW_RANGE")
-        piglin_create = method(piglin, "public static net.minecraft.world.entity.ai.attributes."
-                                       "AttributeSupplier$Builder createAttributes(")
+        piglin_create = method(
+            piglin, "public static net.minecraft.world.entity.ai.attributes.AttributeSupplier$Builder createAttributes("
+        )
         if "Zombie.createAttributes" not in piglin_create:
             raise ValueError("zombified piglin attributes no longer extend the zombie's")
 
@@ -244,8 +367,11 @@ def main():
             body = method(code, signature)
             here = "Attributes.SPAWN_REINFORCEMENTS_CHANCE" in body
             base = add_value(body, "SPAWN_REINFORCEMENTS_CHANCE")
-            parent = re.search(r"invokestatic\s+#\d+\s+// Method ([\w/$]+)\.(\w+):\(\)Lnet/minecraft/world/entity/"
-                               r"ai/attributes/AttributeSupplier\$Builder;", body)
+            parent = re.search(
+                r"invokestatic\s+#\d+\s+// Method ([\w/$]+)\.(\w+):\(\)Lnet/minecraft/world/entity/"
+                r"ai/attributes/AttributeSupplier\$Builder;",
+                body,
+            )
             if parent:
                 inherited, inherited_base = supplier(parent[1], parent[2], depth + 1)
                 here = here or inherited
@@ -276,8 +402,10 @@ def main():
 
     fixture = {
         "source": "Minecraft Java Edition 26.3 server bytecode (javap); see tools/extract_java_zombie_attribute_fixtures.py",
-        "attributes": {name: ranged_attribute(attributes, name)
-                       for name in ["spawn_reinforcements", "max_health", "follow_range", "knockback_resistance"]},
+        "attributes": {
+            name: ranged_attribute(attributes, name)
+            for name in ["spawn_reinforcements", "max_health", "follow_range", "knockback_resistance"]
+        },
         "follow_range": {"mob": mob_follow, "zombie": zombie_follow},
         "spawn_reinforcements_carriers": dict(sorted(carriers.items())),
         "modifier_ids": dict(sorted((field.lower(), ident) for ident, field in modifier_ids)),

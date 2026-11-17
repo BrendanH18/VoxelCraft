@@ -4,6 +4,7 @@
 Requires javap. Unknown bytecode forms fail rather than regenerating a guessed
 fixture. No VoxelCraft source or existing fixture is consulted.
 """
+
 import argparse
 import hashlib
 import io
@@ -31,8 +32,8 @@ def field_initialization(code, field):
     end = re.search(r"putstatic\s+#[^\n]*// Field " + field + r":", block)
     if not end:
         raise ValueError(f"missing reference initialization: {field}")
-    start = [m.end() for m in re.finditer(r"putstatic[^\n]*", block[:end.start()])]
-    return block[start[-1] if start else 0:end.start()]
+    start = [m.end() for m in re.finditer(r"putstatic[^\n]*", block[: end.start()])]
+    return block[start[-1] if start else 0 : end.start()]
 
 
 def extract(server):
@@ -72,7 +73,7 @@ def extract(server):
             effects = []
             for match in re.finditer(r"// Field net/minecraft/world/effect/MobEffects\.([A-Z_]+):", block):
                 end = block.index("invokespecial", match.end())
-                values = integer_constants(block[match.end():end])
+                values = integer_constants(block[match.end() : end])
                 if len(values) != 2:
                     raise ValueError(f"unrecognized effect registration: {name}")
                 effects.append({"effect": match[1].lower(), "amplifier": values[1], "ticks": values[0]})
@@ -85,6 +86,7 @@ def extract(server):
         if "AABB.distanceToSqr" not in splash or "ProjectileUtil.computeMargin" not in splash:
             raise ValueError("splash distance calculation changed; reassess geometry tests")
     with zipfile.ZipFile(io.BytesIO(data)) as jar:
+
         def read(path):
             return json.loads(jar.read(path))
 
@@ -95,23 +97,41 @@ def extract(server):
             for suffix in ("awkward_turtle_helmet", "turtle_master_redstone", "turtle_master_glowstone_dust"):
                 path = f"data/minecraft/recipe/brewing/{bottle}_{suffix}.json"
                 rule = read(path)
-                brewing.append({"path": path, "bottle": bottle,
-                                "input": rule["input"]["potion_contents"]["potions"],
-                                "ingredient": rule["reagent"]["item"],
-                                "output": rule["output"]["components"]["minecraft:potion_contents"]["potion"]})
-    return {"reference": "Minecraft Java Edition 26.3", "server_sha1": SERVER_SHA1,
-            "sources": ["data/minecraft/recipe/turtle_helmet.json",
-                        "data/minecraft/tags/item/repairs_turtle_helmet.json",
-                        "net.minecraft.world.item.equipment.ArmorMaterials.TURTLE_SCUTE",
-                        "net.minecraft.world.item.equipment.ArmorType.HELMET",
-                        "net.minecraft.world.entity.player.Player.turtleHelmetTick",
-                        "net.minecraft.world.item.alchemy.Potions turtle registrations",
-                        "net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownSplashPotion default duration scale"],
-            "helmet": {"pattern": recipe["pattern"], "ingredients": recipe["key"],
-                       "result": recipe["result"]["id"], "durability": multiplier * helmet_base,
-                       "defense": helmet, "enchantability": enchantability,
-                       "repair_items": repair["values"], "water_breathing_ticks": breathing},
-            "potions": potions, "brewing": brewing, "splash_default_duration_scale": 1}
+                brewing.append(
+                    {
+                        "path": path,
+                        "bottle": bottle,
+                        "input": rule["input"]["potion_contents"]["potions"],
+                        "ingredient": rule["reagent"]["item"],
+                        "output": rule["output"]["components"]["minecraft:potion_contents"]["potion"],
+                    }
+                )
+    return {
+        "reference": "Minecraft Java Edition 26.3",
+        "server_sha1": SERVER_SHA1,
+        "sources": [
+            "data/minecraft/recipe/turtle_helmet.json",
+            "data/minecraft/tags/item/repairs_turtle_helmet.json",
+            "net.minecraft.world.item.equipment.ArmorMaterials.TURTLE_SCUTE",
+            "net.minecraft.world.item.equipment.ArmorType.HELMET",
+            "net.minecraft.world.entity.player.Player.turtleHelmetTick",
+            "net.minecraft.world.item.alchemy.Potions turtle registrations",
+            "net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownSplashPotion default duration scale",
+        ],
+        "helmet": {
+            "pattern": recipe["pattern"],
+            "ingredients": recipe["key"],
+            "result": recipe["result"]["id"],
+            "durability": multiplier * helmet_base,
+            "defense": helmet,
+            "enchantability": enchantability,
+            "repair_items": repair["values"],
+            "water_breathing_ticks": breathing,
+        },
+        "potions": potions,
+        "brewing": brewing,
+        "splash_default_duration_scale": 1,
+    }
 
 
 def main():

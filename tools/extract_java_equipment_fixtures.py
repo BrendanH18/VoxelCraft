@@ -10,6 +10,7 @@ say who may wear body armor, and the villager trades that sell armor.
 Unknown bytecode forms fail rather than regenerating a guessed fixture.
 No VoxelCraft source or existing fixture is consulted.
 """
+
 import argparse
 import hashlib
 import io
@@ -96,7 +97,8 @@ def extract(server):
         types = {}
         block = inspect("net.minecraft.world.item.equipment.ArmorType").split("  static {};")[1]
         for name, slot, units in re.findall(
-                r"String ([A-Z]+)\n[^\n]*\n[^\n]*EquipmentSlot\.(\w+):[^\n]*\n[^\n]*bipush\s+(\d+)", block):
+            r"String ([A-Z]+)\n[^\n]*\n[^\n]*EquipmentSlot\.(\w+):[^\n]*\n[^\n]*bipush\s+(\d+)", block
+        ):
             types[name.lower()] = {"slot": slot.lower(), "durability_unit": int(units)}
         if set(types) != {"helmet", "chestplate", "leggings", "boots", "body"}:
             raise ValueError(f"unrecognized armor types: {sorted(types)}")
@@ -113,8 +115,9 @@ def extract(server):
             raise ValueError("unrecognized makeDefense parameter order")
         materials = {}
         block = materials_code.split("  static {};")[1]
-        pieces = re.split(r"putstatic\s+#\d+\s+// Field ([A-Z_]+):Lnet/minecraft/world/item/equipment/ArmorMaterial;",
-                          block)
+        pieces = re.split(
+            r"putstatic\s+#\d+\s+// Field ([A-Z_]+):Lnet/minecraft/world/item/equipment/ArmorMaterial;", block
+        )
         for code, name in zip(pieces[0::2], pieces[1::2]):
             ints, floats = int_operands(code), float_operands(code)
             repair = re.search(r"ItemTags\.(\w+):", code)
@@ -139,8 +142,9 @@ def extract(server):
         # Item ids: ItemIds holds each registry key's string.
         ids = {}
         block = inspect("net.minecraft.references.ItemIds").split("  static {};")[1]
-        for key, field in re.findall(r"// String ([a-z0-9_]+)\n[^\n]*Method create:[^\n]*\n\s+\d+: putstatic[^\n]*// Field ([A-Z0-9_]+):",
-                                     block):
+        for key, field in re.findall(
+            r"// String ([a-z0-9_]+)\n[^\n]*Method create:[^\n]*\n\s+\d+: putstatic[^\n]*// Field ([A-Z0-9_]+):", block
+        ):
             ids[field] = key
         items = {}
         block = inspect("net.minecraft.world.item.Items").split("  static {};")[1]
@@ -172,6 +176,7 @@ def extract(server):
                 "fire_resistant": "Item$Properties.fireResistant:" in code,
             }
     with zipfile.ZipFile(io.BytesIO(data)) as jar:
+
         def read(name):
             return json.loads(jar.read(name))
 
@@ -193,13 +198,21 @@ def extract(server):
             if items.get(gives, {}).get("form") is None:
                 continue
             wants = trade["wants"]
-            trades.append({"path": name, "profession": match[1], "level": int(match[2]), "id": match[3],
-                           "wants": {"id": wants["id"].removeprefix("minecraft:"), "count": wants.get("count", 1)},
-                           "gives": {"id": gives, "count": trade["gives"].get("count", 1)},
-                           # VillagerTrade's codec defaults: 4 uses, 1 xp, no discount.
-                           "enchanted": "additional_wants" in trade or "given_item_modifier" in trade,
-                           "max_uses": trade.get("max_uses", 4), "xp": trade.get("xp", 1),
-                           "reputation_discount": trade.get("reputation_discount", 0.0)})
+            trades.append(
+                {
+                    "path": name,
+                    "profession": match[1],
+                    "level": int(match[2]),
+                    "id": match[3],
+                    "wants": {"id": wants["id"].removeprefix("minecraft:"), "count": wants.get("count", 1)},
+                    "gives": {"id": gives, "count": trade["gives"].get("count", 1)},
+                    # VillagerTrade's codec defaults: 4 uses, 1 xp, no discount.
+                    "enchanted": "additional_wants" in trade or "given_item_modifier" in trade,
+                    "max_uses": trade.get("max_uses", 4),
+                    "xp": trade.get("xp", 1),
+                    "reputation_discount": trade.get("reputation_discount", 0.0),
+                }
+            )
     return {
         "reference": "Minecraft Java Edition 26.3",
         "server_sha1": SERVER_SHA1,

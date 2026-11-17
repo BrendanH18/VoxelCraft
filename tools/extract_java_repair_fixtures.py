@@ -9,6 +9,7 @@ are followed through nested callbacks; `Items` fields are resolved to
 registry IDs and item tags are expanded from data. Never reads VoxelCraft
 source.
 """
+
 import argparse
 import hashlib
 import io
@@ -49,7 +50,7 @@ def chunks(code):
     clinit = code.split("  static {};")[1]
     out, start = {}, 0
     for match in re.finditer(r"putstatic\s+#[^\n]*// Field ([A-Z0-9_]+):", clinit):
-        out[match[1]] = clinit[start:match.start()]
+        out[match[1]] = clinit[start : match.start()]
         start = match.end()
     return out
 
@@ -99,17 +100,28 @@ def extract(server):
                 raise ValueError(f"Item.Properties.{form} now sets repairable; reassess")
         tag_field = r"// Field net/minecraft/tags/ItemTags\.(\w+):"
         tool_tags = {f: single(tag_field, c, f"ToolMaterial.{f}") for f, c in chunks(tool_material).items()}
-        armor_tags = {f: single(tag_field, c, f"ArmorMaterials.{f}")
-                      for f, c in chunks(inspect("net.minecraft.world.item.equipment.ArmorMaterials")).items()}
-        tag_names = {f: single(r"// String (\w+)", c, f"ItemTags.{f}")
-                     for f, c in chunks(inspect("net.minecraft.tags.ItemTags")).items() if "Method bind:" in c}
+        armor_tags = {
+            f: single(tag_field, c, f"ArmorMaterials.{f}")
+            for f, c in chunks(inspect("net.minecraft.world.item.equipment.ArmorMaterials")).items()
+        }
+        tag_names = {
+            f: single(r"// String (\w+)", c, f"ItemTags.{f}")
+            for f, c in chunks(inspect("net.minecraft.tags.ItemTags")).items()
+            if "Method bind:" in c
+        }
 
         code = inspect("net.minecraft.world.item.Items")
         verbose = inspect("net.minecraft.world.item.Items", "-v").split("BootstrapMethods:")[1]
-        lambdas = {re.search(r"(lambda\$\w+\$\d+)\(", block).group(1): block for block in code.split("\n\n")
-                   if re.search(r"(lambda\$\w+\$\d+)\(", block.split("\n")[0])}
-        boot = {int(b.split(":")[0].strip()): re.search(r"Items\.(lambda\$\w+\$\d+)", b).group(1)
-                for b in re.split(r"\n(?=  \d+:)", verbose) if re.search(r"Items\.(lambda\$\w+\$\d+)", b)}
+        lambdas = {
+            re.search(r"(lambda\$\w+\$\d+)\(", block).group(1): block
+            for block in code.split("\n\n")
+            if re.search(r"(lambda\$\w+\$\d+)\(", block.split("\n")[0])
+        }
+        boot = {
+            int(b.split(":")[0].strip()): re.search(r"Items\.(lambda\$\w+\$\d+)", b).group(1)
+            for b in re.split(r"\n(?=  \d+:)", verbose)
+            if re.search(r"Items\.(lambda\$\w+\$\d+)", b)
+        }
 
         def with_callbacks(block, visiting=()):
             text = block
@@ -132,13 +144,14 @@ def extract(server):
                 sources.append(("tag", tag_names[tool_tags[material]]))
             for form in re.findall(PROPS + r"\.(\w+):\(Lnet/minecraft/world/item/equipment/ArmorMaterial;", text):
                 if form in ARMOR_FORMS:
-                    material = single(r"// Field net/minecraft/world/item/equipment/ArmorMaterials\.(\w+):", text,
-                                      field)
+                    material = single(
+                        r"// Field net/minecraft/world/item/equipment/ArmorMaterials\.(\w+):", text, field
+                    )
                     sources.append(("tag", tag_names[armor_tags[material]]))
                 elif form not in UNREPAIRABLE_ARMOR_FORMS:
                     raise ValueError(f"Items.{field}: unknown armor form {form}")
             for call in re.finditer(PROPS + r"\.repairable:\(L([\w/]+);", text):
-                before = text[:call.start()]
+                before = text[: call.start()]
                 if call[1] == "net/minecraft/tags/TagKey":
                     sources.append(("tag", tag_names[re.findall(tag_field, before)[-1]]))
                 elif call[1] == "net/minecraft/world/item/Item":
@@ -154,14 +167,24 @@ def extract(server):
                 repairs[name] = sources[0]
     with zipfile.ZipFile(io.BytesIO(data)) as jar:
         tags = {name: sorted(expand(jar, name)) for kind, name in sorted(set(repairs.values())) if kind == "tag"}
-    return {"reference": "Minecraft Java Edition 26.3", "server_sha1": SERVER_SHA1,
-            "sources": ["net.minecraft.world.item.Items repairable registrations, including nested callbacks",
-                        "Item.Properties tool and armor forms", "ToolMaterial", "ArmorMaterials", "ItemTags",
-                        "net.minecraft.references.BlockItemIds and ItemIds (registry IDs)",
-                        *(f"data/minecraft/tags/item/{name}.json" for name in sorted(tags))],
-            "repairs": [{"item": f"minecraft:{name}", ("tag" if kind == "tag" else "material"): value}
-                        for name, (kind, value) in sorted(repairs.items())],
-            "tags": tags}
+    return {
+        "reference": "Minecraft Java Edition 26.3",
+        "server_sha1": SERVER_SHA1,
+        "sources": [
+            "net.minecraft.world.item.Items repairable registrations, including nested callbacks",
+            "Item.Properties tool and armor forms",
+            "ToolMaterial",
+            "ArmorMaterials",
+            "ItemTags",
+            "net.minecraft.references.BlockItemIds and ItemIds (registry IDs)",
+            *(f"data/minecraft/tags/item/{name}.json" for name in sorted(tags)),
+        ],
+        "repairs": [
+            {"item": f"minecraft:{name}", ("tag" if kind == "tag" else "material"): value}
+            for name, (kind, value) in sorted(repairs.items())
+        ],
+        "tags": tags,
+    }
 
 
 def main():

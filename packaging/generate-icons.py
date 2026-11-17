@@ -28,7 +28,7 @@ def render(size):
                 start = max(0, int(left + 0.5))
                 end = min(size, int(right + 0.5))
                 offset = (y * size + start) * 4
-                pixels[offset:offset + (end - start) * 4] = bytes(colour) * (end - start)
+                pixels[offset : offset + (end - start) * 4] = bytes(colour) * (end - start)
 
     def face(origin, along, down, side):
         def point(u, v):
@@ -38,9 +38,11 @@ def render(size):
             for col in range(8):
                 noise = ((col * 31 + row * 17 + side * 13) % 19) - 9
                 grass = side == 0 or row < 1 + (col * 7 % 3)
-                base = ((107, 177, 66), (75, 133, 43), (54, 105, 38))[side] if grass else (
-                    (0, 0, 0), (141, 96, 60), (108, 70, 46)
-                )[side]
+                base = (
+                    ((107, 177, 66), (75, 133, 43), (54, 105, 38))[side]
+                    if grass
+                    else ((0, 0, 0), (141, 96, 60), (108, 70, 46))[side]
+                )
                 colour = tuple(max(0, min(255, c + noise)) for c in base) + (255,)
                 u, v = col / 8, row / 8
                 polygon([point(u, v), point(u + 1 / 8, v), point(u + 1 / 8, v + 1 / 8), point(u, v + 1 / 8)], colour)
@@ -49,10 +51,13 @@ def render(size):
     face((128, 20), (110, 62), (-110, 62), 0)
     face((18, 82), (110, 62), (0, 98), 1)
     face((128, 144), (110, -62), (0, 98), 2)
-    rows = b"".join(b"\0" + pixels[y * size * 4:(y + 1) * size * 4] for y in range(size))
-    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)) + chunk(
-        b"IDAT", zlib.compress(rows, 9)
-    ) + chunk(b"IEND", b"")
+    rows = b"".join(b"\0" + pixels[y * size * 4 : (y + 1) * size * 4] for y in range(size))
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(rows, 9))
+        + chunk(b"IEND", b"")
+    )
 
 
 def main():
@@ -70,7 +75,15 @@ def main():
         offset += len(png)
     (ROOT / "VoxelCraft.ico").write_bytes(struct.pack("<HHH", 0, 1, len(sizes)) + entries + payload)
     payload = bytearray()
-    for size, kind in ((16, b"icp4"), (32, b"icp5"), (64, b"icp6"), (128, b"ic07"), (256, b"ic08"), (512, b"ic09"), (1024, b"ic10")):
+    for size, kind in (
+        (16, b"icp4"),
+        (32, b"icp5"),
+        (64, b"icp6"),
+        (128, b"ic07"),
+        (256, b"ic08"),
+        (512, b"ic09"),
+        (1024, b"ic10"),
+    ):
         png = images[size]
         payload += kind + struct.pack(">I", 8 + len(png)) + png
     (ROOT / "VoxelCraft.icns").write_bytes(b"icns" + struct.pack(">I", 8 + len(payload)) + payload)

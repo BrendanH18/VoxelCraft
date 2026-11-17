@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Normalize the first Java 26.3 item fixtures from a verified official server jar."""
+
 import argparse
 import hashlib
 import io
@@ -37,6 +38,7 @@ def extract(server):
     with zipfile.ZipFile(io.BytesIO(data)) as bundler:
         data = bundler.read("META-INF/versions/26.3/server-26.3.jar")
     with zipfile.ZipFile(io.BytesIO(data)) as jar:
+
         def read(path):
             return json.loads(jar.read(path))
 
@@ -63,23 +65,27 @@ def extract(server):
         for name in ("potion_awkward_pufferfish", "splash_potion_awkward_pufferfish"):
             path = f"data/minecraft/recipe/brewing/{name}.json"
             recipe = read(path)
-            fixture["brewing"].append({
-                "path": path,
-                "bottle": recipe["input"]["item"],
-                "input": recipe["input"]["potion_contents"]["potions"],
-                "ingredient": recipe["reagent"]["item"],
-                "output": recipe["output"]["components"]["minecraft:potion_contents"]["potion"],
-            })
+            fixture["brewing"].append(
+                {
+                    "path": path,
+                    "bottle": recipe["input"]["item"],
+                    "input": recipe["input"]["potion_contents"]["potions"],
+                    "ingredient": recipe["reagent"]["item"],
+                    "output": recipe["output"]["components"]["minecraft:potion_contents"]["potion"],
+                }
+            )
         for name in ("lead", "saddle"):
             path = f"data/minecraft/recipe/{name}.json"
             recipe = read(path)
-            fixture["pending_recipes"].append({
-                "path": path,
-                "pattern": recipe["pattern"],
-                "ingredients": recipe["key"],
-                "result": recipe["result"]["id"],
-                "count": recipe["result"].get("count", 1),
-            })
+            fixture["pending_recipes"].append(
+                {
+                    "path": path,
+                    "pattern": recipe["pattern"],
+                    "ingredients": recipe["key"],
+                    "result": recipe["result"]["id"],
+                    "count": recipe["result"].get("count", 1),
+                }
+            )
     return fixture
 
 

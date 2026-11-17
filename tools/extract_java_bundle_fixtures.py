@@ -20,6 +20,7 @@ table in `tests/java_bundles.rs`.
 Requires javap. Unknown bytecode forms fail rather than regenerating a guessed
 fixture. No VoxelCraft source or existing fixture is consulted.
 """
+
 import argparse
 import copy
 import hashlib
@@ -41,7 +42,7 @@ CASE_ITEMS = ["stone", "leather", "snowball", "ender_pearl", "bucket", "mushroom
 def strip(name):
     if not name.startswith("minecraft:"):
         raise ValueError(f"not a minecraft id: {name}")
-    return name[len("minecraft:"):]
+    return name[len("minecraft:") :]
 
 
 def stack_size(items, default, field):
@@ -50,10 +51,10 @@ def stack_size(items, default, field):
     start = re.search(r"getstatic[^\n]*Field net/minecraft/references/(Block)?ItemIds\." + upper + r":", items)
     if not start:
         raise ValueError(f"no registration for {field}")
-    end = re.search(r"putstatic[^\n]*Field " + upper + r":", items[start.end():])
+    end = re.search(r"putstatic[^\n]*Field " + upper + r":", items[start.end() :])
     if not end:
         raise ValueError(f"no putstatic for {field}")
-    window = items[start.start():start.end() + end.end()]
+    window = items[start.start() : start.end() + end.end()]
     if re.search(r"Properties\.(durability|sword|pickaxe|axe|shovel|hoe|humanoidArmor)", window):
         raise ValueError(f"{field} has durability; this extractor only reads explicit stack sizes")
     if "invokedynamic" in window and re.search(r"lambda\$", window):
@@ -69,6 +70,7 @@ def stack_size(items, default, field):
 
 
 # --- An independent model of BundleContents.Mutable and BundleItem ----------
+
 
 class Model:
     def __init__(self, max_stack):
@@ -100,8 +102,10 @@ class Model:
 
     def same(self, a, b):
         """`isSameItemSameComponents`."""
+
         def strip_count(s):
             return {k: v for k, v in s.items() if k != "count"}
+
         return strip_count(a) == strip_count(b)
 
     def max_amount(self, contents, w):
@@ -182,28 +186,79 @@ def cases(model):
     inner32 = S("bundle", 1, contents=[S("stone", 32)])
     deep = S("red_bundle", 1, contents=[S("bundle", 1, contents=[S("bundle", 1, contents=[S("snowball", 4)])])])
     sequences = [
-        ("a full stack of a 64-stacking item fills a bundle", [], [("insert", S("stone", 64)), ("insert", S("stone", 1))]),
+        (
+            "a full stack of a 64-stacking item fills a bundle",
+            [],
+            [("insert", S("stone", 64)), ("insert", S("stone", 1))],
+        ),
         ("partial stacks merge up to the weight limit", [], [("insert", S("stone", 40)), ("insert", S("stone", 40))]),
-        ("sixteen of a 16-stacking item fill a bundle", [], [("insert", S("ender_pearl", 16)), ("insert", S("leather", 1))]),
-        ("eight pearls and thirty-two stone fill a bundle exactly", [],
-         [("insert", S("ender_pearl", 8)), ("insert", S("stone", 32)), ("insert", S("stone", 1))]),
-        ("the remaining weight is floored", [S("stone", 33)], [("insert", S("ender_pearl", 16)), ("insert", S("bucket", 16))]),
+        (
+            "sixteen of a 16-stacking item fill a bundle",
+            [],
+            [("insert", S("ender_pearl", 16)), ("insert", S("leather", 1))],
+        ),
+        (
+            "eight pearls and thirty-two stone fill a bundle exactly",
+            [],
+            [("insert", S("ender_pearl", 8)), ("insert", S("stone", 32)), ("insert", S("stone", 1))],
+        ),
+        (
+            "the remaining weight is floored",
+            [S("stone", 33)],
+            [("insert", S("ender_pearl", 16)), ("insert", S("bucket", 16))],
+        ),
         ("an unstackable item weighs one", [], [("insert", S("mushroom_stew", 1)), ("insert", S("stone", 1))]),
         ("an unstackable item needs an empty bundle", [S("stone", 1)], [("insert", S("saddle", 1))]),
-        ("merging moves the stack to the front", [],
-         [("insert", S("stone", 10)), ("insert", S("leather", 5)), ("insert", S("stone", 3)),
-          ("insert", S("stone", 2, name="A")), ("remove",), ("remove",), ("remove",), ("remove",)]),
-        ("removing takes the most recent stack first", [],
-         [("insert", S("stone", 1)), ("insert", S("leather", 1)), ("insert", S("snowball", 1)),
-          ("remove",), ("remove",), ("remove",), ("remove",)]),
-        ("empty bundles are unstackable and weigh a sixteenth each", [],
-         [("insert", S("bundle", 1)), ("insert", S("white_bundle", 1)), ("insert", S("bundle", 1)), ("insert", S("stone", 64))]),
-        ("a nested bundle weighs a sixteenth plus its contents", [S("stone", 32)],
-         [("insert", inner32), ("insert", inner16), ("insert", S("stone", 64))]),
+        (
+            "merging moves the stack to the front",
+            [],
+            [
+                ("insert", S("stone", 10)),
+                ("insert", S("leather", 5)),
+                ("insert", S("stone", 3)),
+                ("insert", S("stone", 2, name="A")),
+                ("remove",),
+                ("remove",),
+                ("remove",),
+                ("remove",),
+            ],
+        ),
+        (
+            "removing takes the most recent stack first",
+            [],
+            [
+                ("insert", S("stone", 1)),
+                ("insert", S("leather", 1)),
+                ("insert", S("snowball", 1)),
+                ("remove",),
+                ("remove",),
+                ("remove",),
+                ("remove",),
+            ],
+        ),
+        (
+            "empty bundles are unstackable and weigh a sixteenth each",
+            [],
+            [
+                ("insert", S("bundle", 1)),
+                ("insert", S("white_bundle", 1)),
+                ("insert", S("bundle", 1)),
+                ("insert", S("stone", 64)),
+            ],
+        ),
+        (
+            "a nested bundle weighs a sixteenth plus its contents",
+            [S("stone", 32)],
+            [("insert", inner32), ("insert", inner16), ("insert", S("stone", 64))],
+        ),
         ("bundles nest three deep", [], [("insert", deep), ("insert", S("ender_pearl", 16))]),
         ("a hive holding bees weighs one", [], [("insert", S("beehive", 1, bees=True)), ("insert", S("stone", 1))]),
         ("a hive holding bees needs an empty bundle", [S("stone", 1)], [("insert", S("beehive", 1, bees=True))]),
-        ("an empty hive weighs one sixty-fourth", [S("stone", 54)], [("insert", S("beehive", 16)), ("insert", S("beehive", 1, bees=True))]),
+        (
+            "an empty hive weighs one sixty-fourth",
+            [S("stone", 54)],
+            [("insert", S("beehive", 16)), ("insert", S("beehive", 1, bees=True))],
+        ),
     ]
     out_sequences = []
     for name, start, ops in sequences:
@@ -224,22 +279,57 @@ def cases(model):
         ("held bundle takes a slot's stack", S("bundle", 1), S("stone", 64), False),
         ("held bundle takes what fits", S("bundle", 1, contents=[S("stone", 32)]), S("ender_pearl", 16), False),
         ("held full bundle takes nothing", S("bundle", 1, contents=full), S("leather", 5), False),
-        ("held bundle empties its front stack into an empty slot", S("blue_bundle", 1, contents=[S("leather", 3), S("stone", 2)]), None, True),
+        (
+            "held bundle empties its front stack into an empty slot",
+            S("blue_bundle", 1, contents=[S("leather", 3), S("stone", 2)]),
+            None,
+            True,
+        ),
         ("held empty bundle right-clicks an empty slot", S("bundle", 1), None, True),
         ("held bundle left-clicks an empty slot", S("bundle", 1, contents=[S("stone", 2)]), None, False),
         ("held bundle right-clicks a stack", S("bundle", 1), S("stone", 3), True),
         ("a stack goes into a clicked bundle", S("stone", 64), S("bundle", 1), False),
-        ("a clicked bundle takes all that fits", S("stone", 10), S("bundle", 1, contents=[S("ender_pearl", 12)]), False),
-        ("a clicked bundle takes part of a stack", S("stone", 40), S("bundle", 1, contents=[S("ender_pearl", 12)]), False),
+        (
+            "a clicked bundle takes all that fits",
+            S("stone", 10),
+            S("bundle", 1, contents=[S("ender_pearl", 12)]),
+            False,
+        ),
+        (
+            "a clicked bundle takes part of a stack",
+            S("stone", 40),
+            S("bundle", 1, contents=[S("ender_pearl", 12)]),
+            False,
+        ),
         ("a full clicked bundle refuses a stack", S("leather", 1), S("bundle", 1, contents=full), False),
-        ("right-clicking a bundle with nothing held takes its front stack", None, S("bundle", 1, contents=[S("leather", 3), S("stone", 2)]), True),
+        (
+            "right-clicking a bundle with nothing held takes its front stack",
+            None,
+            S("bundle", 1, contents=[S("leather", 3), S("stone", 2)]),
+            True,
+        ),
         ("right-clicking an empty bundle with nothing held", None, S("bundle", 1), True),
         ("left-clicking a bundle with nothing held picks it up", None, S("bundle", 1, contents=[S("stone", 2)]), False),
         ("right-clicking a bundle with a stack held swaps", S("stone", 3), S("bundle", 1), True),
-        ("a held bundle takes a clicked bundle", S("bundle", 1), S("green_bundle", 1, contents=[S("stone", 16)]), False),
+        (
+            "a held bundle takes a clicked bundle",
+            S("bundle", 1),
+            S("green_bundle", 1, contents=[S("stone", 16)]),
+            False,
+        ),
         ("a held bundle takes a hive holding bees", S("bundle", 1), S("beehive", 1, bees=True), False),
-        ("a held bundle with anything in it refuses a hive holding bees", S("bundle", 1, contents=[S("stone", 1)]), S("beehive", 1, bees=True), False),
-        ("a held bundle and a clicked bundle on right click swap", S("bundle", 1), S("bundle", 1, contents=[S("stone", 1)]), True),
+        (
+            "a held bundle with anything in it refuses a hive holding bees",
+            S("bundle", 1, contents=[S("stone", 1)]),
+            S("beehive", 1, bees=True),
+            False,
+        ),
+        (
+            "a held bundle and a clicked bundle on right click swap",
+            S("bundle", 1),
+            S("bundle", 1, contents=[S("stone", 1)]),
+            True,
+        ),
     ]
     out_clicks = []
     for name, carried, slot, right in clicks:
@@ -278,52 +368,78 @@ def extract(server):
         # a colour collection whose lambda registers the same properties.
         bundle_window = re.search(r"ItemIds\.BUNDLE:.*?putstatic[^\n]*Field BUNDLE:", items, re.S)
         if not bundle_window or not re.search(
-                r"iconst_1\n[^\n]*stacksTo[^\n]*\n[^\n]*DataComponents\.BUNDLE_CONTENTS[^\n]*\n"
-                r"[^\n]*BundleContents\.EMPTY", bundle_window[0]):
+            r"iconst_1\n[^\n]*stacksTo[^\n]*\n[^\n]*DataComponents\.BUNDLE_CONTENTS[^\n]*\n"
+            r"[^\n]*BundleContents\.EMPTY",
+            bundle_window[0],
+        ):
             raise ValueError("unrecognized Items.BUNDLE registration")
-        if not re.search(r"ItemIds\.DYED_BUNDLE:[^\n]*\n[^\n]*invokedynamic[^\n]*\n[^\n]*registerItems[^\n]*\n"
-                         r"[^\n]*putstatic[^\n]*Field DYED_BUNDLE:", items):
+        if not re.search(
+            r"ItemIds\.DYED_BUNDLE:[^\n]*\n[^\n]*invokedynamic[^\n]*\n[^\n]*registerItems[^\n]*\n"
+            r"[^\n]*putstatic[^\n]*Field DYED_BUNDLE:",
+            items,
+        ):
             raise ValueError("Items.DYED_BUNDLE is no longer one colour collection")
-        lambdas = [m for m in items.split("\n\n")
-                   if "BundleContents.EMPTY" in m and "private static net.minecraft.world.item.Item lambda$" in m]
+        lambdas = [
+            m
+            for m in items.split("\n\n")
+            if "BundleContents.EMPTY" in m and "private static net.minecraft.world.item.Item lambda$" in m
+        ]
         if len(lambdas) != 1 or not re.search(
-                r"iconst_1\n[^\n]*stacksTo[^\n]*\n[^\n]*DataComponents\.BUNDLE_CONTENTS[^\n]*\n"
-                r"[^\n]*BundleContents\.EMPTY", lambdas[0]):
+            r"iconst_1\n[^\n]*stacksTo[^\n]*\n[^\n]*DataComponents\.BUNDLE_CONTENTS[^\n]*\n"
+            r"[^\n]*BundleContents\.EMPTY",
+            lambdas[0],
+        ):
             raise ValueError("unrecognized DYED_BUNDLE item lambda")
         max_stack = {name: stack_size(items, default, name) for name in CASE_ITEMS if name != "bundle"}
         max_stack["bundle"] = 1
 
         contents = inspect("world.item.component.BundleContents")
-        if not re.search(r"iconst_1\n[^\n]*bipush\s+16\n[^\n]*Fraction\.getFraction:\(II\)[^\n]*\n"
-                         r"[^\n]*putstatic[^\n]*Field BUNDLE_IN_BUNDLE_WEIGHT:", contents):
+        if not re.search(
+            r"iconst_1\n[^\n]*bipush\s+16\n[^\n]*Fraction\.getFraction:\(II\)[^\n]*\n"
+            r"[^\n]*putstatic[^\n]*Field BUNDLE_IN_BUNDLE_WEIGHT:",
+            contents,
+        ):
             raise ValueError("BUNDLE_IN_BUNDLE_WEIGHT is no longer getFraction(1, 16)")
-        if not re.search(r"Fraction\.ONE:[^\n]*\n[^\n]*DataResult\.success[^\n]*\n"
-                         r"[^\n]*putstatic[^\n]*Field BEEHIVE_WEIGHT:", contents):
+        if not re.search(
+            r"Fraction\.ONE:[^\n]*\n[^\n]*DataResult\.success[^\n]*\n"
+            r"[^\n]*putstatic[^\n]*Field BEEHIVE_WEIGHT:",
+            contents,
+        ):
             raise ValueError("BEEHIVE_WEIGHT is no longer success(Fraction.ONE)")
         mutable = inspect("world.item.component.BundleContents$Mutable")
         if not re.search(r"private int getMaxAmountToAdd\(.*?Fraction\.intValue.*?Math\.max", mutable, re.S):
             raise ValueError("getMaxAmountToAdd no longer truncates with intValue")
 
     with zipfile.ZipFile(io.BytesIO(data)) as jar:
+
         def read(name):
             return json.loads(jar.read(name))
 
         tag = [strip(v) for v in read("data/minecraft/tags/item/bundles.json")["values"]]
         if tag[0] != "bundle" or not all(n.endswith("_bundle") for n in tag[1:]):
             raise ValueError("unexpected bundles tag")
-        colours = [n[:-len("_bundle")] for n in tag[1:]]
+        colours = [n[: -len("_bundle")] for n in tag[1:]]
         plain = read("data/minecraft/recipe/bundle.json")
-        recipes = {"bundle": {
-            "type": strip(plain["type"]), "category": plain.get("category", ""),
-            "pattern": plain["pattern"], "key": {k: strip(v) for k, v in plain["key"].items()},
-            "result": strip(plain["result"]["id"]),
-        }}
+        recipes = {
+            "bundle": {
+                "type": strip(plain["type"]),
+                "category": plain.get("category", ""),
+                "pattern": plain["pattern"],
+                "key": {k: strip(v) for k, v in plain["key"].items()},
+                "result": strip(plain["result"]["id"]),
+            }
+        }
         for colour in colours:
             r = read(f"data/minecraft/recipe/{colour}_bundle.json")
             recipes[f"{colour}_bundle"] = {
-                "type": strip(r["type"]), "category": r.get("category", ""), "group": r.get("group", ""),
-                "input": r["input"], "material": strip(r["material"]), "result": strip(r["result"]["id"]),
-                "material_count": r.get("material_count"), "add_material_count_to_result": r.get("add_material_count_to_result", False),
+                "type": strip(r["type"]),
+                "category": r.get("category", ""),
+                "group": r.get("group", ""),
+                "input": r["input"],
+                "material": strip(r["material"]),
+                "result": strip(r["result"]["id"]),
+                "material_count": r.get("material_count"),
+                "add_material_count_to_result": r.get("add_material_count_to_result", False),
             }
         loot = {}
         for name in sorted(jar.namelist()):
@@ -332,17 +448,24 @@ def extract(server):
             table = read(name)
             for pool in table.get("pools", []):
                 if any(e.get("name") in [f"minecraft:{t}" for t in tag] for e in pool["entries"]):
-                    key = name[len("data/minecraft/loot_table/"):-len(".json")]
+                    key = name[len("data/minecraft/loot_table/") : -len(".json")]
                     entries = []
                     for e in pool["entries"]:
                         functions = e.get("functions", e.get("modifier", []))
                         functions = [functions] if isinstance(functions, dict) else functions
-                        counts = [f["count"] for f in functions
-                                  if strip(f.get("function", f.get("type", ""))) == "set_count"]
+                        counts = [
+                            f["count"] for f in functions if strip(f.get("function", f.get("type", ""))) == "set_count"
+                        ]
                         if len(counts) != len(functions):
                             raise ValueError(f"{key}: unrecognized loot function")
-                        entries.append({"type": strip(e["type"]), "name": strip(e["name"]) if "name" in e else None,
-                                        "weight": e.get("weight", 1), "count": counts[0] if counts else 1})
+                        entries.append(
+                            {
+                                "type": strip(e["type"]),
+                                "name": strip(e["name"]) if "name" in e else None,
+                                "weight": e.get("weight", 1),
+                                "count": counts[0] if counts else 1,
+                            }
+                        )
                     loot.setdefault(key, []).append({"rolls": pool["rolls"], "entries": entries})
 
     # Every bundle stacks to one (both registrations checked above).

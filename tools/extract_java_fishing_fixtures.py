@@ -9,6 +9,7 @@ Unknown loot entry types, keys, conditions or functions fail rather than
 regenerating a guessed fixture. No VoxelCraft source or existing fixture is
 consulted.
 """
+
 import argparse
 import hashlib
 import io
@@ -48,11 +49,18 @@ def condition(entry, path):
     raw = entry.get("condition")
     if raw is None:
         return None
-    if raw == {"type": "minecraft:entity_properties", "entity": "this",
-               "predicate": {"minecraft:type_specific/fishing_hook": {"in_open_water": True}}}:
+    if raw == {
+        "type": "minecraft:entity_properties",
+        "entity": "this",
+        "predicate": {"minecraft:type_specific/fishing_hook": {"in_open_water": True}},
+    }:
         return "in_open_water"
-    if raw.get("type") == "minecraft:location_check" and set(raw) == {"type", "predicate"} \
-            and set(raw["predicate"]) == {"biomes"} and isinstance(raw["predicate"]["biomes"], list):
+    if (
+        raw.get("type") == "minecraft:location_check"
+        and set(raw) == {"type", "predicate"}
+        and set(raw["predicate"]) == {"biomes"}
+        and isinstance(raw["predicate"]["biomes"], list)
+    ):
         return {"biomes": raw["predicate"]["biomes"]}
     raise ValueError(f"unrecognized condition in {path}: {raw}")
 
@@ -70,8 +78,12 @@ def modifiers(entry, path):
             if set(damage) != {"type", "min", "max"} or damage["type"] != "minecraft:uniform":
                 raise ValueError(f"unrecognized damage provider in {path}: {damage}")
             out["damage"] = {"min": damage["min"], "max": damage["max"]}
-        elif kind == "minecraft:enchant_with_levels" and set(function) == {"type", "levels", "options"} \
-                and isinstance(function["levels"], int) and function["options"] == "#minecraft:on_random_loot":
+        elif (
+            kind == "minecraft:enchant_with_levels"
+            and set(function) == {"type", "levels", "options"}
+            and isinstance(function["levels"], int)
+            and function["options"] == "#minecraft:on_random_loot"
+        ):
             if out["damage"] is None and entry["name"] != "minecraft:book":
                 raise ValueError(f"unexpected enchant without damage in {path}")
             out["enchant_with_levels"] = function["levels"]
@@ -87,8 +99,15 @@ def item_entries(path, table):
     for entry in single_pool(table, path):
         if set(entry) - ENTRY_KEYS or entry.get("type") != "minecraft:item" or "value" in entry:
             raise ValueError(f"unrecognized item entry in {path}: {entry}")
-        result.append({"item": entry["name"], "weight": entry.get("weight", 1), "quality": entry.get("quality", 0),
-                       "condition": condition(entry, path), **modifiers(entry, path)})
+        result.append(
+            {
+                "item": entry["name"],
+                "weight": entry.get("weight", 1),
+                "quality": entry.get("quality", 0),
+                "condition": condition(entry, path),
+                **modifiers(entry, path),
+            }
+        )
     return result
 
 
@@ -119,24 +138,34 @@ def extract(server):
 
         pool = inspect("net.minecraft.world.level.storage.loot.LootPool")
         filter_weight = method(pool, "private static void lambda$addRandomItem$0(")
-        if not re.search(r"LootPoolEntry\.getWeight:\(F\)I\n\s+\d+: istore\s+4\n\s+\d+: iload\s+4\n\s+\d+: ifle",
-                         filter_weight):
+        if not re.search(
+            r"LootPoolEntry\.getWeight:\(F\)I\n\s+\d+: istore\s+4\n\s+\d+: iload\s+4\n\s+\d+: ifle", filter_weight
+        ):
             raise ValueError("LootPool no longer keeps only positive weights")
         pick = method(pool, "private void addRandomItem(")
         if "RandomSource.nextInt:(I)I" not in pick or not re.search(r"iconst_1\n\s+\d+: if_icmpne", pick):
             raise ValueError("LootPool single-entry shortcut or nextInt roll changed")
-        damage = method(inspect("net.minecraft.world.level.storage.loot.functions.SetItemDamageFunction"),
-                        "public net.minecraft.world.item.ItemStack run(")
-        if not re.search(r"fconst_1\n(?:.*\n){1,8}.*ContextFloatProvider\.getFloat(?:.*\n){1,3}.*fadd\n.*fconst_0\n"
-                         r".*fconst_1\n.*Mth\.clamp:\(FFF\)F\n.*fsub\n(?:.*\n){1,6}.*fmul\n.*Mth\.floor:\(F\)I\n"
-                         r".*ItemStack\.setDamageValue", damage):
+        damage = method(
+            inspect("net.minecraft.world.level.storage.loot.functions.SetItemDamageFunction"),
+            "public net.minecraft.world.item.ItemStack run(",
+        )
+        if not re.search(
+            r"fconst_1\n(?:.*\n){1,8}.*ContextFloatProvider\.getFloat(?:.*\n){1,3}.*fadd\n.*fconst_0\n"
+            r".*fconst_1\n.*Mth\.clamp:\(FFF\)F\n.*fsub\n(?:.*\n){1,6}.*fmul\n.*Mth\.floor:\(F\)I\n"
+            r".*ItemStack\.setDamageValue",
+            damage,
+        ):
             raise ValueError("SetItemDamageFunction formula changed")
         helper = inspect("net.minecraft.world.item.enchantment.EnchantmentHelper")
-        enchant = method(helper, "public static net.minecraft.world.item.ItemStack enchantItem(net.minecraft.util"
-                         ".RandomSource, net.minecraft.world.item.ItemStack, int, java.util.stream.Stream")
+        enchant = method(
+            helper,
+            "public static net.minecraft.world.item.ItemStack enchantItem(net.minecraft.util"
+            ".RandomSource, net.minecraft.world.item.ItemStack, int, java.util.stream.Stream",
+        )
         if "Items.BOOK" not in enchant or "Items.ENCHANTED_BOOK" not in enchant:
             raise ValueError("enchantItem no longer converts books")
     with zipfile.ZipFile(io.BytesIO(data)) as jar:
+
         def read(name):
             return json.loads(jar.read(name))
 
@@ -148,21 +177,36 @@ def extract(server):
             table = entry["value"].removeprefix("minecraft:gameplay/fishing/")
             if table not in TABLES:
                 raise ValueError(f"unrecognized nested fishing table: {entry['value']}")
-            categories.append({"table": table, "weight": entry.get("weight", 1), "quality": entry.get("quality", 0),
-                               "condition": condition(entry, top)})
-        tables = {name: item_entries(ROOT + f"fishing/{name}.json", read(ROOT + f"fishing/{name}.json"))
-                  for name in TABLES}
+            categories.append(
+                {
+                    "table": table,
+                    "weight": entry.get("weight", 1),
+                    "quality": entry.get("quality", 0),
+                    "condition": condition(entry, top),
+                }
+            )
+        tables = {
+            name: item_entries(ROOT + f"fishing/{name}.json", read(ROOT + f"fishing/{name}.json")) for name in TABLES
+        }
         on_random_loot = expand_tag(read, "minecraft:on_random_loot")
-    return {"reference": "Minecraft Java Edition 26.3", "server_sha1": SERVER_SHA1,
-            "sources": [top] + [ROOT + f"fishing/{name}.json" for name in TABLES] + [
-                "data/minecraft/tags/enchantment/on_random_loot.json (expanded)",
-                "net.minecraft.world.level.storage.loot.LootPool.addRandomItem",
-                "net.minecraft.world.level.storage.loot.functions.SetItemDamageFunction.run",
-                "net.minecraft.world.item.enchantment.EnchantmentHelper.enchantItem"],
-            "weight": "max(floor(weight + quality * luck), 0); only positive weights are eligible; "
-                      "a lone eligible entry is taken without a roll",
-            "set_damage": "damage = floor((1 - clamp(uniform(min, max), 0, 1)) * max_damage)",
-            "categories": categories, "tables": tables, "on_random_loot": on_random_loot}
+    return {
+        "reference": "Minecraft Java Edition 26.3",
+        "server_sha1": SERVER_SHA1,
+        "sources": [top]
+        + [ROOT + f"fishing/{name}.json" for name in TABLES]
+        + [
+            "data/minecraft/tags/enchantment/on_random_loot.json (expanded)",
+            "net.minecraft.world.level.storage.loot.LootPool.addRandomItem",
+            "net.minecraft.world.level.storage.loot.functions.SetItemDamageFunction.run",
+            "net.minecraft.world.item.enchantment.EnchantmentHelper.enchantItem",
+        ],
+        "weight": "max(floor(weight + quality * luck), 0); only positive weights are eligible; "
+        "a lone eligible entry is taken without a roll",
+        "set_damage": "damage = floor((1 - clamp(uniform(min, max), 0, 1)) * max_damage)",
+        "categories": categories,
+        "tables": tables,
+        "on_random_loot": on_random_loot,
+    }
 
 
 def main():

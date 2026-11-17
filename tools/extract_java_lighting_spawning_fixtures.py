@@ -23,6 +23,7 @@ of sky and block light (not VoxelCraft's incremental queues) and Java's spawn
 checks as exact acceptance probabilities out of 256. No VoxelCraft source or
 existing fixture is consulted.
 """
+
 import argparse
 import hashlib
 import io
@@ -59,7 +60,11 @@ def field_initialization(code, field):
 def bootstrap_targets(verbose):
     targets = {}
     table = verbose.split("BootstrapMethods:")[-1]
-    for m in re.finditer(r"\n\s+(\d+): #\d+ REF_invokeStatic java/lang/invoke/LambdaMetafactory[^\n]*\n\s+Method arguments:\n(.*?)(?=\n\s+\d+: #|\Z)", table, re.S):
+    for m in re.finditer(
+        r"\n\s+(\d+): #\d+ REF_invokeStatic java/lang/invoke/LambdaMetafactory[^\n]*\n\s+Method arguments:\n(.*?)(?=\n\s+\d+: #|\Z)",
+        table,
+        re.S,
+    ):
         t = re.search(r"REF_invoke\w+ ([\w/$]+)\.([\w$]+)", m[2])
         if t:
             targets[m[1]] = (t[1].split("/")[-1], t[2])
@@ -75,9 +80,14 @@ def redstone_conductors(properties, blocks, targets):
     construction calls them; the full per-color family is hand-reproduced.
     """
     ptargets = bootstrap_targets(properties)
-    default = re.search(r"InvokeDynamic #(\d+):test:[^\n]*StatePredicate;\n\s+\d+: putfield\s+#\d+\s+// Field isRedstoneConductor:", properties)
-    require(default and ptargets[default[1]] == ("BlockBehaviour$BlockStateBase", "isCollisionShapeFullBlock"),
-            "default isRedstoneConductor changed")
+    default = re.search(
+        r"InvokeDynamic #(\d+):test:[^\n]*StatePredicate;\n\s+\d+: putfield\s+#\d+\s+// Field isRedstoneConductor:",
+        properties,
+    )
+    require(
+        default and ptargets[default[1]] == ("BlockBehaviour$BlockStateBase", "isCollisionShapeFullBlock"),
+        "default isRedstoneConductor changed",
+    )
     for name, value in [("never", "iconst_0"), ("always", "iconst_1")]:
         require(value in method(blocks, f"private static boolean {name}("), f"{name} predicate changed")
 
@@ -130,8 +140,10 @@ def redstone_conductors(properties, blocks, targets):
     result["call_sites_found"] = sites
     for key in ("never", "always"):
         result[key] = sorted(set(result[key]))
-    require(result["call_sites_found"] == 26 and result["never"] and result["always"] and result["families"],
-            "isRedstoneConductor registrations changed; update the fixture model")
+    require(
+        result["call_sites_found"] == 26 and result["never"] and result["always"] and result["families"],
+        "isRedstoneConductor registrations changed; update the fixture model",
+    )
     return result
 
 
@@ -169,10 +181,19 @@ def extract_facts(jar, data):
     # Light propagation.
     opacity = method(inspect("net.minecraft.world.level.lighting.LightEngine"), "protected int getOpacity(")
     require("getLightDampening" in opacity and "iconst_1" in opacity and "Math.max" in opacity, "opacity rule changed")
-    occluded = method(inspect("net.minecraft.world.level.lighting.ChunkSkyLightSources"), "private static boolean isEdgeOccluded(")
+    occluded = method(
+        inspect("net.minecraft.world.level.lighting.ChunkSkyLightSources"), "private static boolean isEdgeOccluded("
+    )
     require("getLightDampening" in occluded and "ifeq" in occluded, "sky source rule changed")
-    dampening = method(inspect("net.minecraft.world.level.block.state.BlockBehaviour"), "protected int getLightDampening(")
-    require(re.search(r"isSolidRender[\s\S]*bipush\s+15[\s\S]*propagatesSkylightDown[\s\S]*iconst_0[\s\S]*iconst_1", dampening), "dampening default changed")
+    dampening = method(
+        inspect("net.minecraft.world.level.block.state.BlockBehaviour"), "protected int getLightDampening("
+    )
+    require(
+        re.search(
+            r"isSolidRender[\s\S]*bipush\s+15[\s\S]*propagatesSkylightDown[\s\S]*iconst_0[\s\S]*iconst_1", dampening
+        ),
+        "dampening default changed",
+    )
     facts["light"] = {
         "step_cost": "max(1, light dampening of the cell entered)",
         "sky_sources": "every cell above the highest block with nonzero light dampening is level 15",
@@ -185,7 +206,12 @@ def extract_facts(jar, data):
     blocks_verbose = inspect("net.minecraft.world.level.block.Blocks", True)
     targets = bootstrap_targets(blocks_verbose)
     emission = {}
-    for field, name in [("TORCH", "torch"), ("GLOWSTONE", "glowstone"), ("JACK_O_LANTERN", "jack_o_lantern"), ("MAGMA_BLOCK", "magma_block")]:
+    for field, name in [
+        ("TORCH", "torch"),
+        ("GLOWSTONE", "glowstone"),
+        ("JACK_O_LANTERN", "jack_o_lantern"),
+        ("MAGMA_BLOCK", "magma_block"),
+    ]:
         init = field_initialization(blocks, field)
         ids = re.findall(r"InvokeDynamic #(\d+):applyAsInt", init)
         require(len(ids) == 1, f"unrecognized light level for {field}")
@@ -211,6 +237,7 @@ def extract_facts(jar, data):
         if "fireImmune" in body:
             return "fire_immune"
         return None
+
     overrides = {}
     pending = []
     current = None
@@ -220,7 +247,10 @@ def extract_facts(jar, data):
             for p in pending:
                 overrides.setdefault(p, []).append(f"{current}()")
             pending, current = [], m[1]
-        m = re.search(r"InvokeDynamic #(\d+):test:\(\)Lnet/minecraft/world/level/block/state/BlockBehaviour\$StateArgumentPredicate", line)
+        m = re.search(
+            r"InvokeDynamic #(\d+):test:\(\)Lnet/minecraft/world/level/block/state/BlockBehaviour\$StateArgumentPredicate",
+            line,
+        )
         if m:
             predicate = targets[m[1]][1]
         if "Properties.isValidSpawn" in line:
@@ -232,14 +262,21 @@ def extract_facts(jar, data):
             for p in pending:
                 overrides.setdefault(p, []).append(m[1].lower())
             pending = []
-    default = method(inspect("net.minecraft.world.level.block.state.BlockBehaviour$Properties"), "private static boolean lambda$new$4(")
-    require("Direction.UP" in default and "isFaceSturdy" in default and re.search(r"bipush\s+14", default), "default isValidSpawn changed")
+    default = method(
+        inspect("net.minecraft.world.level.block.state.BlockBehaviour$Properties"),
+        "private static boolean lambda$new$4(",
+    )
+    require(
+        "Direction.UP" in default and "isFaceSturdy" in default and re.search(r"bipush\s+14", default),
+        "default isValidSpawn changed",
+    )
     facts["spawn_floor"] = {
         "default": "top face sturdy and light emission below 14",
         **{k: sorted(set(v)) for k, v in sorted(overrides.items())},
     }
     facts["redstone_conductor"] = redstone_conductors(
-        inspect("net.minecraft.world.level.block.state.BlockBehaviour$Properties", True), blocks, targets)
+        inspect("net.minecraft.world.level.block.state.BlockBehaviour$Properties", True), blocks, targets
+    )
     dangerous = method(inspect("net.minecraft.world.entity.EntityType"), "public boolean isBlockDangerous(")
     facts["dangerous_blocks"] = ["burning blocks unless fire immune"] + [
         b.lower() for b in re.findall(r"Field net/minecraft/world/level/block/Blocks\.(\w+):", dangerous)
@@ -248,14 +285,30 @@ def extract_facts(jar, data):
 
     # Monster light test and sky darkening.
     dark = method(inspect("net.minecraft.world.entity.monster.Monster"), "public static boolean isDarkEnoughToSpawn(")
-    for token in ["LightLayer.SKY", "bipush        32", "monsterSpawnBlockLightLimit", "LightLayer.BLOCK", "isThundering", "bipush        10", "monsterSpawnLightTest"]:
+    for token in [
+        "LightLayer.SKY",
+        "bipush        32",
+        "monsterSpawnBlockLightLimit",
+        "LightLayer.BLOCK",
+        "isThundering",
+        "bipush        10",
+        "monsterSpawnLightTest",
+    ]:
         require(token in dark, f"isDarkEnoughToSpawn changed: {token}")
     level_code = inspect("net.minecraft.world.level.Level")
     thundering = method(level_code, "public boolean isThundering(")
-    threshold = re.search(r"canHaveWeather[\s\S]*fconst_1[\s\S]*getThunderLevel:\(F\)F\n[^\n]*f2d\n[^\n]*// double ([\d.]+)d\n[^\n]*dcmpl", thundering)
+    threshold = re.search(
+        r"canHaveWeather[\s\S]*fconst_1[\s\S]*getThunderLevel:\(F\)F\n[^\n]*f2d\n[^\n]*// double ([\d.]+)d\n[^\n]*dcmpl",
+        thundering,
+    )
     require(threshold, "isThundering changed")
     thunder_level = method(level_code, "public float getThunderLevel(")
-    require(re.search(r"oThunderLevel[\s\S]*thunderLevel[\s\S]*Mth\.lerp[\s\S]*getRainLevel:\(F\)F\n[^\n]*fmul", thunder_level), "thunder level changed")
+    require(
+        re.search(
+            r"oThunderLevel[\s\S]*thunderLevel[\s\S]*Mth\.lerp[\s\S]*getRainLevel:\(F\)F\n[^\n]*fmul", thunder_level
+        ),
+        "thunder level changed",
+    )
     facts["monster_light"] = {
         "sky_roll": 32,
         "rule": "fail if sky > nextInt(32); fail if block light > the dimension's limit (when below 15); pass if max(sky - darken, block) <= the dimension's light test sample",
@@ -266,19 +319,27 @@ def extract_facts(jar, data):
     sky = method(level_code, "public void updateSkyBrightness(")
     require("float 15.0f" in sky and "SKY_LIGHT_LEVEL" in sky and "f2i" in sky, "sky darkening changed")
     attrs = inspect("net.minecraft.world.attribute.EnvironmentAttributes")
-    default_level = re.search(r"String gameplay/sky_light_level\n[^\n]*\n[^\n]*\n\s+\d+: ldc_w?\s+#\d+\s+// float ([\d.]+)f", attrs)
+    default_level = re.search(
+        r"String gameplay/sky_light_level\n[^\n]*\n[^\n]*\n\s+\d+: ldc_w?\s+#\d+\s+// float ([\d.]+)f", attrs
+    )
     require(default_level, "unrecognized sky light level default")
     weather = inspect("net.minecraft.world.attribute.WeatherAttributes")
-    blends = re.findall(r"SKY_LIGHT_LEVEL:[^\n]*\n[^\n]*ALPHA_BLEND[^\n]*\n[^\n]*new[^\n]*\n[^\n]*dup\n[^\n]*// float ([\d.]+)f\n[^\n]*// float ([\d.]+)f", weather)
+    blends = re.findall(
+        r"SKY_LIGHT_LEVEL:[^\n]*\n[^\n]*ALPHA_BLEND[^\n]*\n[^\n]*new[^\n]*\n[^\n]*dup\n[^\n]*// float ([\d.]+)f\n[^\n]*// float ([\d.]+)f",
+        weather,
+    )
     require(len(blends) == 2, "unrecognized weather sky light blends")
     day = read("data/minecraft/timeline/day.json")["tracks"]["minecraft:gameplay/sky_light_level"]
     require(day["modifier"] == "multiply", "day sky light is no longer a multiplier")
     require(day.get("ease", "linear") == "linear", "day sky light easing changed")
     keyframes = inspect("net.minecraft.util.KeyframeTrack")
     require("EasingType.LINEAR" in keyframes and "String ease" in keyframes, "default keyframe easing changed")
-    require("WeatherAccess.rainLevel:()F" in weather and "WeatherAccess.thunderLevel:()F" in weather
-            and "fsub" in method(weather, "private static java.lang.Object lambda$addLayer$0("),
-            "weather layering changed")
+    require(
+        "WeatherAccess.rainLevel:()F" in weather
+        and "WeatherAccess.thunderLevel:()F" in weather
+        and "fsub" in method(weather, "private static java.lang.Object lambda$addLayer$0("),
+        "weather layering changed",
+    )
     alpha_blend = inspect("net.minecraft.world.attribute.modifier.FloatModifier$1")
     require("Mth.lerp:(FFF)F" in method(alpha_blend, "public java.lang.Float apply("), "weather alpha blend changed")
     facts["sky_darken"] = {
@@ -294,35 +355,63 @@ def extract_facts(jar, data):
     facts["sky_darken"]["cases"] = sky_darkening_cases(facts["sky_darken"], facts["monster_light"])
 
     # Daylight detectors share skyDarken but add the sun-angle cosine.
-    detector = method(inspect("net.minecraft.world.level.block.DaylightDetectorBlock"), "private static void updateSignalStrength(")
-    for token in ["Level.getEffectiveSkyBrightness", "EnvironmentAttributes.SUN_ANGLE", "float 0.017453292f", "INVERTED",
-                  "bipush        15", "float 3.1415927f", "float 6.2831855f", "float 0.2f", "Mth.cos:(D)F", "Math.round:(F)I", "Mth.clamp:(III)I"]:
+    detector = method(
+        inspect("net.minecraft.world.level.block.DaylightDetectorBlock"), "private static void updateSignalStrength("
+    )
+    for token in [
+        "Level.getEffectiveSkyBrightness",
+        "EnvironmentAttributes.SUN_ANGLE",
+        "float 0.017453292f",
+        "INVERTED",
+        "bipush        15",
+        "float 3.1415927f",
+        "float 6.2831855f",
+        "float 0.2f",
+        "Mth.cos:(D)F",
+        "Math.round:(F)I",
+        "Mth.clamp:(III)I",
+    ]:
         require(token in detector, f"daylight detector changed: {token}")
-    effective = method(inspect("net.minecraft.world.level.LevelReader"), "public default int getEffectiveSkyBrightness(")
-    require("LightLayer.SKY" in effective and "getSkyDarken" in effective and "Math.max" in effective, "effective sky brightness changed")
+    effective = method(
+        inspect("net.minecraft.world.level.LevelReader"), "public default int getEffectiveSkyBrightness("
+    )
+    require(
+        "LightLayer.SKY" in effective and "getSkyDarken" in effective and "Math.max" in effective,
+        "effective sky brightness changed",
+    )
     mth = inspect("net.minecraft.util.Mth")
     cos = method(mth, "public static float cos(double)")
-    require("double 10430.378350470453d" in cos and "double 16384.0d" in cos and "long 65535l" in cos, "Mth.cos changed")
+    require(
+        "double 10430.378350470453d" in cos and "double 16384.0d" in cos and "long 65535l" in cos, "Mth.cos changed"
+    )
     require("Math.sin:(D)D" in method(mth, "private static void lambda$static$0(float[])"), "Mth sine table changed")
     bezier = inspect("net.minecraft.util.EasingType$CubicBezier")
-    require("iconst_4" in method(bezier, "private float solveT(") and "float -0.25f" in bezier and "float 1.0E-5f" in bezier,
-            "cubic bezier solver changed")
+    require(
+        "iconst_4" in method(bezier, "private float solveT(")
+        and "float -0.25f" in bezier
+        and "float 1.0E-5f" in bezier,
+        "cubic bezier solver changed",
+    )
     sun = read("data/minecraft/timeline/day.json")["tracks"]["minecraft:visual/sun_angle"]
     require(list(sun["ease"]) == ["cubic_bezier"] and sun.get("modifier") is None, "sun angle track changed")
     attrs_default = re.search(r"String visual/sun_angle\n[^\n]*\n[^\n]*\n\s+\d+: fconst_0", attrs)
     require(attrs_default, "sun angle default changed")
     facts["daylight_detector"] = {
         "rule": "effective = max(0, sky light - skyDarken); inverted: 15 - effective; otherwise if effective > 0: "
-                "a = sun_angle * 0.017453292f, a += ((a < 3.1415927f ? 0 : 6.2831855f) - a) * 0.2f, "
-                "round(effective * Mth.cos(a)); clamp 0..15",
+        "a = sun_angle * 0.017453292f, a += ((a < 3.1415927f ? 0 : 6.2831855f) - a) * 0.2f, "
+        "round(effective * Mth.cos(a)); clamp 0..15",
         "mth_cos": "SIN[(long)(x * 10430.378350470453 + 16384.0) & 65535], SIN[i] = (float) sin(i / 10430.378350470453)",
         "sun_angle_default": 0.0,
         "sun_angle_keyframes": [[k["ticks"], k["value"]] for k in sun["keyframes"]],
         "sun_angle_ease": sun["ease"]["cubic_bezier"],
     }
-    facts["daylight_detector"]["cases"] = detector_cases(facts["daylight_detector"], facts["sky_darken"]["period_ticks"])
+    facts["daylight_detector"]["cases"] = detector_cases(
+        facts["daylight_detector"], facts["sky_darken"]["period_ticks"]
+    )
     attrs_text = inspect("net.minecraft.world.attribute.EnvironmentAttributes")
-    factor = re.search(r"String visual/sky_light_factor\n[^\n]*AttributeTypes\.FLOAT[^\n]*\n[^\n]*\n[^\n]*fconst_1", attrs_text)
+    factor = re.search(
+        r"String visual/sky_light_factor\n[^\n]*AttributeTypes\.FLOAT[^\n]*\n[^\n]*\n[^\n]*fconst_1", attrs_text
+    )
     require(factor, "visual sky light factor default changed")
     sky_factor_default = 1.0
     dims = {}
@@ -331,7 +420,9 @@ def extract_facts(jar, data):
         level = d["monster_spawn_light_level"]
         dims[dim] = {
             "has_skylight": d["has_skylight"],
-            "visual_sky_light_factor": d.get("attributes", {}).get("minecraft:visual/sky_light_factor", sky_factor_default),
+            "visual_sky_light_factor": d.get("attributes", {}).get(
+                "minecraft:visual/sky_light_factor", sky_factor_default
+            ),
             "ambient_light": d["ambient_light"],
             "visual_ambient_light_color": d.get("attributes", {}).get("minecraft:visual/ambient_light_color"),
             "monster_spawn_block_light_limit": d["monster_spawn_block_light_limit"],
@@ -369,14 +460,31 @@ def extract_facts(jar, data):
     # The natural spawn cycle.
     spawner = inspect("net.minecraft.world.level.NaturalSpawner")
     random_pos = method(spawner, "private static net.minecraft.core.BlockPos getRandomPosWithin(")
-    require(random_pos.count("bipush        16") == 2 and "WORLD_SURFACE" in random_pos and "randomBetweenInclusive" in random_pos, "start sampling changed")
-    position = method(spawner, "public static void spawnCategoryForPosition(net.minecraft.world.entity.MobCategory, net.minecraft.server.level.ServerLevel, net.minecraft.world.level.chunk.ChunkAccess")
-    require("isRedstoneConductor" in position and "iconst_3" in position and "float 4.0f" in position and position.count("bipush        6") == 5, "pack walk changed")
+    require(
+        random_pos.count("bipush        16") == 2
+        and "WORLD_SURFACE" in random_pos
+        and "randomBetweenInclusive" in random_pos,
+        "start sampling changed",
+    )
+    position = method(
+        spawner,
+        "public static void spawnCategoryForPosition(net.minecraft.world.entity.MobCategory, net.minecraft.server.level.ServerLevel, net.minecraft.world.level.chunk.ChunkAccess",
+    )
+    require(
+        "isRedstoneConductor" in position
+        and "iconst_3" in position
+        and "float 4.0f" in position
+        and position.count("bipush        6") == 5,
+        "pack walk changed",
+    )
     require("getMaxSpawnClusterSize" in position and "isMaxGroupSizeReached" in position, "pack limits changed")
     distance = method(spawner, "private static boolean isRightDistanceToPlayerAndSpawnPoint(")
     require("double 576.0d" in distance and "double 24.0d" in distance, "player distance changed")
-    spawn_point = re.search(r"ServerLevel\.getRespawnData[\s\S]*RespawnData\.dimension[\s\S]*ServerLevel\.dimension"
-                            r"[\s\S]*RespawnData\.pos[\s\S]*// double ([\d.]+)d\n[^\n]*BlockPos\.closerToCenterThan", distance)
+    spawn_point = re.search(
+        r"ServerLevel\.getRespawnData[\s\S]*RespawnData\.dimension[\s\S]*ServerLevel\.dimension"
+        r"[\s\S]*RespawnData\.pos[\s\S]*// double ([\d.]+)d\n[^\n]*BlockPos\.closerToCenterThan",
+        distance,
+    )
     require(spawn_point, "spawn point distance changed")
     chunk = method(spawner, "public static void spawnCategoryForChunk(")
     require("getMinY" in chunk and "iconst_1" in chunk, "minimum start height changed")
@@ -411,7 +519,18 @@ def extract_facts(jar, data):
             pred = ".".join(ptargets[m[1]])
         if "Method register:" in line:
             rules[etype.lower()] = {"placement": place, "rule": pred}
-    wanted = ["zombie", "zombie_villager", "husk", "skeleton", "creeper", "spider", "enderman", "witch", "slime", "drowned"]
+    wanted = [
+        "zombie",
+        "zombie_villager",
+        "husk",
+        "skeleton",
+        "creeper",
+        "spider",
+        "enderman",
+        "witch",
+        "slime",
+        "drowned",
+    ]
     facts["spawn_rules"] = {k: rules[k] for k in wanted}
 
     # Biome monster lists.
@@ -423,7 +542,12 @@ def extract_facts(jar, data):
         require(attribute and attribute.get("modifier") == "overlay", f"unexpected spawn attribute in {name}")
         monsters = attribute["argument"]["spawns_by_category"].get("monster", [])
         lists[name.split("/")[-1][:-5]] = [
-            {"type": e["type"].removeprefix("minecraft:"), "weight": e["weight"], "min": count(e["count"])[0], "max": count(e["count"])[1]}
+            {
+                "type": e["type"].removeprefix("minecraft:"),
+                "weight": e["weight"],
+                "min": count(e["count"])[0],
+                "max": count(e["count"])[1],
+            }
             for e in monsters
         ]
     facts["monster_spawns"] = lists
@@ -434,15 +558,37 @@ def sky_darkening_cases(facts, monster_light):
     """Explicit clock/weather scenarios, evaluated in Java float precision.
     `thunder` is getThunderLevel(1); thundering is derived from it."""
     thunder_darken = monster_light["thunder_darken"]
+
     def f32(n):
         return struct.unpack("f", struct.pack("f", n))[0]
+
     def lerp(alpha, a, b):
         return f32(a + f32(alpha * f32(b - a)))
+
     period = facts["period_ticks"]
     keys = [(tick, f32(value)) for tick, value in facts["day_multiplier_keyframes"]]
     out = []
-    for tick in [0, 1, 132, 133, 134, 6000, 11866, 11867, 11868, 12768, 13669, 13670, 18000,
-                 22329, 22330, 22331, 23231, 23999, 24000]:
+    for tick in [
+        0,
+        1,
+        132,
+        133,
+        134,
+        6000,
+        11866,
+        11867,
+        11868,
+        12768,
+        13669,
+        13670,
+        18000,
+        22329,
+        22330,
+        22331,
+        23231,
+        23999,
+        24000,
+    ]:
         t = tick % period
         if t < keys[0][0]:
             lo, hi, t = keys[-1], (keys[0][0] + period, keys[0][1]), t + period
@@ -452,7 +598,7 @@ def sky_darkening_cases(facts, monster_light):
             hi = keys[i + 1] if i + 1 < len(keys) else (keys[0][0] + period, keys[0][1])
         alpha = f32(f32(t - lo[0]) / f32(hi[0] - lo[0]))
         day_level = f32(f32(facts["default_level"]) * lerp(alpha, lo[1], hi[1]))
-        for rain, thunder in [(0., 0.), (1., 0.), (1., 1.), (0.5, 0.), (0.7, 0.35), (1., 0.9), (1., 0.95)]:
+        for rain, thunder in [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.5, 0.0), (0.7, 0.35), (1.0, 0.9), (1.0, 0.95)]:
             thundering = f32(thunder) > monster_light["thundering_above"]
             level = day_level
             rain_only = f32(f32(rain) - f32(thunder))
@@ -462,27 +608,39 @@ def sky_darkening_cases(facts, monster_light):
             if thunder > 0:
                 blend = facts["thunder_blend"]
                 level = lerp(f32(thunder), level, lerp(f32(blend["alpha"]), level, f32(blend["toward"])))
-            darken = int(f32(15. - level))
-            out.append({"tick": tick, "rain": rain, "thunder": thunder, "thundering": thundering,
-                        "sky_darken": darken, "monster_darken": thunder_darken if thundering else darken})
+            darken = int(f32(15.0 - level))
+            out.append(
+                {
+                    "tick": tick,
+                    "rain": rain,
+                    "thunder": thunder,
+                    "thundering": thundering,
+                    "sky_darken": darken,
+                    "monster_darken": thunder_darken if thundering else darken,
+                }
+            )
     return out
 
 
 def detector_cases(facts, period):
     """Detector outputs from the timeline, Java float operations and the sine table."""
     import math
+
     def f32(n):
         return struct.unpack("f", struct.pack("f", n))[0]
+
     x1, y1, x2, y2 = (f32(v) for v in facts["sun_angle_ease"])
 
     def curve(c1, c2):
-        return (f32(f32(f32(3. * c1) - f32(3. * c2)) + 1.), f32(f32(-6. * c1) + f32(3. * c2)), f32(3. * c1))
+        return (f32(f32(f32(3.0 * c1) - f32(3.0 * c2)) + 1.0), f32(f32(-6.0 * c1) + f32(3.0 * c2)), f32(3.0 * c1))
 
     xc, yc = curve(x1, x2), curve(y1, y2)
+
     def sample(c, t):
         return f32(f32(f32(f32(f32(c[0] * t) + c[1]) * t) + c[2]) * t)
+
     def gradient(c, t):
-        return f32(f32(f32(f32(f32(3. * c[0]) * t) + f32(2. * c[1])) * t) + c[2])
+        return f32(f32(f32(f32(f32(3.0 * c[0]) * t) + f32(2.0 * c[1])) * t) + c[2])
 
     def ease(x):
         t = x
@@ -494,7 +652,7 @@ def detector_cases(facts, period):
             if g < f32(1e-5):
                 break
             t = f32(t - min(0.25, max(-0.25, f32(err / g))))
-        lo, hi = 0., 1.
+        lo, hi = 0.0, 1.0
         while lo < hi:
             err = f32(sample(xc, t) - x)
             if abs(err) < f32(1e-5):
@@ -503,7 +661,7 @@ def detector_cases(facts, period):
                 lo = t
             else:
                 hi = t
-            t = f32(f32(hi + lo) / 2.)
+            t = f32(f32(hi + lo) / 2.0)
         return sample(yc, t)
 
     (start_tick, start), (end_tick, end) = sorted(facts["sun_angle_keyframes"], key=lambda k: k[1])
@@ -520,8 +678,27 @@ def detector_cases(facts, period):
         return f32(math.sin(i / 10430.378350470453))
 
     out = []
-    for tick in [0, 1000, 3000, 5999, 6000, 6001, 9000, 11000, 12000, 12500, 13000, 13500, 17999, 18000, 18001,
-                 22500, 23000, 23500, 23999]:
+    for tick in [
+        0,
+        1000,
+        3000,
+        5999,
+        6000,
+        6001,
+        9000,
+        11000,
+        12000,
+        12500,
+        13000,
+        13500,
+        17999,
+        18000,
+        18001,
+        22500,
+        23000,
+        23500,
+        23999,
+    ]:
         angle_deg = sun_angle(tick)
         for effective in [15, 12, 4, 0]:
             for inverted in [False, True]:
@@ -530,11 +707,18 @@ def detector_cases(facts, period):
                     power = 15 - power
                 elif power > 0:
                     a = f32(angle_deg * f32(0.017453292))
-                    target = 0. if a < f32(3.1415927) else f32(6.2831855)
+                    target = 0.0 if a < f32(3.1415927) else f32(6.2831855)
                     a = f32(a + f32(f32(target - a) * f32(0.2)))
                     power = math.floor(f32(f32(power) * cos(a)) + 0.5)
-                out.append({"tick": tick, "sun_angle": angle_deg, "effective_sky": effective, "inverted": inverted,
-                            "power": max(0, min(15, power))})
+                out.append(
+                    {
+                        "tick": tick,
+                        "sun_angle": angle_deg,
+                        "effective_sky": effective,
+                        "inverted": inverted,
+                        "power": max(0, min(15, power)),
+                    }
+                )
     return out
 
 
@@ -603,7 +787,7 @@ class Scene:
         # Every cell that is neither opaque nor fixed may change; outside the
         # edited region (flat terrain) values are exact from `own` alone.
         active = set()
-        for (x, y, z) in self.cells:
+        for x, y, z in self.cells:
             for dx in range(-15, 16):
                 for dy in range(-15, 16):
                     for dz in range(-15, 16):
@@ -612,8 +796,10 @@ class Scene:
                             if PROPERTIES[self.block(q)]["damp"] < 15:
                                 active.add(q)
         level = {p: own(p) for p in active}
+
         def get(q):
             return level.get(q, own(q))
+
         changed = True
         while changed:
             changed = False
@@ -630,7 +816,10 @@ class Scene:
         below, at, above = self.block((p[0], p[1] - 1, p[2])), self.block(p), self.block((p[0], p[1] + 1, p[2]))
         rule = PROPERTIES[below]["floor"]
         floor = rule == "always" or (rule is None and PROPERTIES[below]["sturdy"] and EMISSION.get(below, 0) < 14)
-        empty = all(not PROPERTIES[b]["full"] and not PROPERTIES[b].get("fluid") and not PROPERTIES[b].get("rail") for b in (at, above))
+        empty = all(
+            not PROPERTIES[b]["full"] and not PROPERTIES[b].get("fluid") and not PROPERTIES[b].get("rail")
+            for b in (at, above)
+        )
         sky, block = self.sky(p), self.light(p)
         if not floor or not empty or block > limit:
             return 0
@@ -650,16 +839,36 @@ def scenes():
     torch_tunnel = sealed_cave + [box("air", [17, 30, 12], [40, 31, 12])]
     shaft = [box("air", [20, 40, 16], [20, 63, 16]), box("air", [21, 40, 16], [36, 41, 16])]
     pockets = []
-    floors = ["stone", "glass", "oak_leaves", "bedrock", "ice", "magma_block", "soul_sand", "stone_slab",
-              "stone_brick_stairs", "farmland", "glowstone", "jack_o_lantern", "redstone_lamp", "lit_redstone_lamp"]
+    floors = [
+        "stone",
+        "glass",
+        "oak_leaves",
+        "bedrock",
+        "ice",
+        "magma_block",
+        "soul_sand",
+        "stone_slab",
+        "stone_brick_stairs",
+        "farmland",
+        "glowstone",
+        "jack_o_lantern",
+        "redstone_lamp",
+        "lit_redstone_lamp",
+    ]
     for i, floor in enumerate(floors):
         x = 4 + 3 * i
         pockets += [box("air", [x, 30, 8], [x, 31, 8]), box(floor, [x, 29, 8], [x, 29, 8])]
     for i, (feet, head) in enumerate([("rail", "air"), ("water", "air"), ("air", "water")]):
         x = 4 + 3 * i
-        pockets += [box("air", [x, 30, 20], [x, 31, 20]), box(feet, [x, 30, 20], [x, 30, 20]), box(head, [x, 31, 20], [x, 31, 20])]
+        pockets += [
+            box("air", [x, 30, 20], [x, 31, 20]),
+            box(feet, [x, 30, 20], [x, 30, 20]),
+            box(head, [x, 31, 20], [x, 31, 20]),
+        ]
+
     def probe(*cells):
         return [list(c) for c in cells]
+
     return [
         {
             "name": "sealed_cave",
@@ -668,46 +877,94 @@ def scenes():
         {
             "name": "torch_suppression_and_removal",
             "steps": [
-                {"edits": torch_tunnel + [box("torch", [12, 30, 12], [12, 30, 12])],
-                 "probes": probe((9, 30, 9), (16, 30, 16), (24, 30, 12), (25, 30, 12), (26, 30, 12), (27, 30, 12), (40, 30, 12))},
-                {"edits": [box("air", [12, 30, 12], [12, 30, 12])],
-                 "probes": probe((9, 30, 9), (16, 30, 16), (25, 30, 12), (40, 30, 12))},
+                {
+                    "edits": torch_tunnel + [box("torch", [12, 30, 12], [12, 30, 12])],
+                    "probes": probe(
+                        (9, 30, 9), (16, 30, 16), (24, 30, 12), (25, 30, 12), (26, 30, 12), (27, 30, 12), (40, 30, 12)
+                    ),
+                },
+                {
+                    "edits": [box("air", [12, 30, 12], [12, 30, 12])],
+                    "probes": probe((9, 30, 9), (16, 30, 16), (25, 30, 12), (40, 30, 12)),
+                },
             ],
         },
         {
             "name": "sky_shaft_and_side_tunnel",
             "steps": [
-                {"edits": shaft, "probes": probe((20, 40, 16), (20, 55, 16), (21, 40, 16), (24, 40, 16), (28, 40, 16), (31, 40, 16), (34, 40, 16), (36, 40, 16))},
+                {
+                    "edits": shaft,
+                    "probes": probe(
+                        (20, 40, 16),
+                        (20, 55, 16),
+                        (21, 40, 16),
+                        (24, 40, 16),
+                        (28, 40, 16),
+                        (31, 40, 16),
+                        (34, 40, 16),
+                        (36, 40, 16),
+                    ),
+                },
                 {"edits": [box("glass", [20, 63, 16], [20, 63, 16])], "probes": probe((20, 40, 16), (24, 40, 16))},
-                {"edits": [box("oak_leaves", [20, 63, 16], [20, 63, 16])], "probes": probe((20, 64, 16), (20, 55, 16), (20, 50, 16), (20, 49, 16), (24, 40, 16))},
-                {"edits": [box("stone", [20, 63, 16], [20, 63, 16])], "probes": probe((20, 40, 16), (24, 40, 16), (34, 40, 16))},
+                {
+                    "edits": [box("oak_leaves", [20, 63, 16], [20, 63, 16])],
+                    "probes": probe((20, 64, 16), (20, 55, 16), (20, 50, 16), (20, 49, 16), (24, 40, 16)),
+                },
+                {
+                    "edits": [box("stone", [20, 63, 16], [20, 63, 16])],
+                    "probes": probe((20, 40, 16), (24, 40, 16), (34, 40, 16)),
+                },
                 {"edits": [box("air", [20, 63, 16], [20, 63, 16])], "probes": probe((20, 40, 16), (28, 40, 16))},
             ],
         },
         {
             "name": "overhang",
-            "steps": [{"edits": [box("stone", [14, 70, 14], [18, 70, 18])], "probes": probe((16, 64, 16), (15, 64, 16), (14, 64, 16), (13, 64, 16), (16, 69, 16))}],
+            "steps": [
+                {
+                    "edits": [box("stone", [14, 70, 14], [18, 70, 18])],
+                    "probes": probe((16, 64, 16), (15, 64, 16), (14, 64, 16), (13, 64, 16), (16, 69, 16)),
+                }
+            ],
         },
         {
             "name": "loaded_border_tunnel",
             "unload_column": [1, 0],
-            "steps": [{"edits": [box("air", [36, 50, 16], [36, 63, 16]), box("air", [20, 50, 16], [35, 51, 16])],
-                       "probes": probe((36, 50, 16), (31, 50, 16), (28, 50, 16), (24, 50, 16), (21, 50, 16))}],
+            "steps": [
+                {
+                    "edits": [box("air", [36, 50, 16], [36, 63, 16]), box("air", [20, 50, 16], [35, 51, 16])],
+                    "probes": probe((36, 50, 16), (31, 50, 16), (28, 50, 16), (24, 50, 16), (21, 50, 16)),
+                }
+            ],
         },
         {
             "name": "floors_and_occupied_cells",
-            "steps": [{"edits": pockets, "probes": probe(*[(4 + 3 * i, 30, 8) for i in range(len(floors))], *[(4 + 3 * i, 30, 20) for i in range(3)])}],
+            "steps": [
+                {
+                    "edits": pockets,
+                    "probes": probe(
+                        *[(4 + 3 * i, 30, 8) for i in range(len(floors))], *[(4 + 3 * i, 30, 20) for i in range(3)]
+                    ),
+                }
+            ],
         },
     ]
 
 
 def reproduce(facts):
-    EMISSION.update({"torch": facts["light"]["emission"]["torch"], "glowstone": facts["light"]["emission"]["glowstone"],
-                     "jack_o_lantern": facts["light"]["emission"]["jack_o_lantern"],
-                     "lit_redstone_lamp": facts["light"]["emission"]["lit_redstone_lamp"],
-                     "magma_block": facts["light"]["emission"]["magma_block"]})
+    EMISSION.update(
+        {
+            "torch": facts["light"]["emission"]["torch"],
+            "glowstone": facts["light"]["emission"]["glowstone"],
+            "jack_o_lantern": facts["light"]["emission"]["jack_o_lantern"],
+            "lit_redstone_lamp": facts["light"]["emission"]["lit_redstone_lamp"],
+            "magma_block": facts["light"]["emission"]["magma_block"],
+        }
+    )
     overworld = facts["dimensions"]["overworld"]
-    require(overworld["monster_spawn_block_light_limit"] == 0 and overworld["monster_spawn_light_level"] == [0, 7], "overworld spawn light changed")
+    require(
+        overworld["monster_spawn_block_light_limit"] == 0 and overworld["monster_spawn_light_level"] == [0, 7],
+        "overworld spawn light changed",
+    )
     out = []
     for scene in scenes():
         edits = []
@@ -718,8 +975,15 @@ def reproduce(facts):
             probes = []
             for p in step["probes"]:
                 p = tuple(p)
-                probes.append({"cell": list(p), "sky": model.sky(p), "block": model.light(p),
-                               "zombie_night_of_256": model.spawn_odds(p, 11), "zombie_noon_of_256": model.spawn_odds(p, 0)})
+                probes.append(
+                    {
+                        "cell": list(p),
+                        "sky": model.sky(p),
+                        "block": model.light(p),
+                        "zombie_night_of_256": model.spawn_odds(p, 11),
+                        "zombie_noon_of_256": model.spawn_odds(p, 0),
+                    }
+                )
             steps.append({"edits": step["edits"], "probes": probes})
         out.append({k: v for k, v in scene.items() if k != "steps"} | {"steps": steps})
     return out
@@ -739,9 +1003,11 @@ def main():
         jar.write_bytes(inner)
         with zipfile.ZipFile(jar) as reference:
             facts = extract_facts(jar, reference)
-    facts["model"] = ("Scenes are original. Each step adds its edits to a flat world (stone up to y = 63, air above) and "
-                      "is reproduced from scratch: light by fixed-point relaxation, spawn odds out of 256 for a zombie "
-                      "with Java's ON_GROUND checks and isDarkEnoughToSpawn at sky darkening 11 (clear night) and 0 (noon).")
+    facts["model"] = (
+        "Scenes are original. Each step adds its edits to a flat world (stone up to y = 63, air above) and "
+        "is reproduced from scratch: light by fixed-point relaxation, spawn odds out of 256 for a zombie "
+        "with Java's ON_GROUND checks and isDarkEnoughToSpawn at sky darkening 11 (clear night) and 0 (noon)."
+    )
     facts["scenes"] = reproduce(facts)
     args.output.write_text(json.dumps(facts, indent=2) + "\n")
 

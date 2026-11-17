@@ -12,6 +12,7 @@ Every instruction of every registration must match a known form; anything
 else fails rather than producing a guessed fixture. No VoxelCraft source or
 existing fixture is read.
 """
+
 import argparse
 import hashlib
 import io
@@ -45,7 +46,7 @@ def comment(rest):
 
 def int_operand(op, rest):
     if op.startswith("iconst_"):
-        return -1 if op == "iconst_m1" else int(op[len("iconst_"):])
+        return -1 if op == "iconst_m1" else int(op[len("iconst_") :])
     if op in ("bipush", "sipush"):
         return int(rest.split()[0])
     if op in ("ldc", "ldc_w"):
@@ -76,8 +77,12 @@ def lambdas(verbose, code):
     """Bootstrap index -> the int provider its `lambda$static$N` returns."""
     table = verbose.split("BootstrapMethods:", 1)[1]
     targets = {}
-    for match in re.finditer(r"\n  (\d+): #\d+ REF_invokeStatic java/lang/invoke/LambdaMetafactory\.metafactory.*?"
-                             r"REF_invokeStatic net/minecraft/world/effect/MobEffects\.(lambda\$static\$\d+):", table, re.S):
+    for match in re.finditer(
+        r"\n  (\d+): #\d+ REF_invokeStatic java/lang/invoke/LambdaMetafactory\.metafactory.*?"
+        r"REF_invokeStatic net/minecraft/world/effect/MobEffects\.(lambda\$static\$\d+):",
+        table,
+        re.S,
+    ):
         targets[int(match[1])] = match[2]
     providers = {}
     for index, name in targets.items():
@@ -85,9 +90,13 @@ def lambdas(verbose, code):
         ops = [op for op, _ in body]
         if len(body) == 2 and ops[1] == "ireturn" and int_operand(*body[0]) is not None:
             providers[index] = {"constant": int_operand(*body[0])}
-        elif (len(body) == 5 and ops[0] == "aload_0" and ops[4] == "ireturn"
-              and comment(body[3][1]).startswith("Method net/minecraft/util/Mth.randomBetweenInclusive:")
-              and None not in (int_operand(*body[1]), int_operand(*body[2]))):
+        elif (
+            len(body) == 5
+            and ops[0] == "aload_0"
+            and ops[4] == "ireturn"
+            and comment(body[3][1]).startswith("Method net/minecraft/util/Mth.randomBetweenInclusive:")
+            and None not in (int_operand(*body[1]), int_operand(*body[2]))
+        ):
             providers[index] = {"random_between_inclusive": [int_operand(*body[1]), int_operand(*body[2])]}
         else:
             raise ValueError(f"unknown int provider form: {name}")
@@ -123,26 +132,44 @@ def registrations(code, providers, attribute_ids):
         while True:
             op, rest = take()
             if op == "invokespecial":
-                init = re.fullmatch("Method " + re.escape(EFFECT + cls[1]) + r'\."<init>":\(L'
-                                    + re.escape(EFFECT) + r"MobEffectCategory;I(.*)\)V", comment(rest))
+                init = re.fullmatch(
+                    "Method "
+                    + re.escape(EFFECT + cls[1])
+                    + r'\."<init>":\(L'
+                    + re.escape(EFFECT)
+                    + r"MobEffectCategory;I(.*)\)V",
+                    comment(rest),
+                )
                 if not init:
                     raise ValueError(f"unknown constructor of {name[1]}: {rest}")
                 break
             if op in ("iconst_0", "iconst_1"):
                 extras.append({"boolean": op == "iconst_1"})
             elif static_field(op, rest, "net/minecraft/core/particles/ParticleTypes"):
-                extras.append({"particle": static_field(op, rest, "net/minecraft/core/particles/ParticleTypes").lower()})
+                extras.append(
+                    {"particle": static_field(op, rest, "net/minecraft/core/particles/ParticleTypes").lower()}
+                )
             elif op in ("ldc", "ldc_w") and re.fullmatch(r"float (-?[0-9.E-]+)f", comment(rest)):
                 extras.append({"float": float(re.fullmatch(r"float (-?[0-9.E-]+)f", comment(rest))[1])})
             elif op == "invokedynamic":
-                index = int(re.fullmatch(r"InvokeDynamic #(\d+):applyAsInt:\(\)Ljava/util/function/ToIntFunction;", comment(rest))[1])
+                index = int(
+                    re.fullmatch(
+                        r"InvokeDynamic #(\d+):applyAsInt:\(\)Ljava/util/function/ToIntFunction;", comment(rest)
+                    )[1]
+                )
                 extras.append({"int_provider": providers[index]})
             else:
                 raise ValueError(f"unknown constructor argument of {name[1]}: {op} {rest}")
         descriptor = init[1]
-        expected = "".join({"boolean": "Z", "particle": "Lnet/minecraft/core/particles/ParticleOptions;",
-                            "float": "F", "int_provider": "Ljava/util/function/ToIntFunction;"}[next(iter(e))]
-                           for e in extras)
+        expected = "".join(
+            {
+                "boolean": "Z",
+                "particle": "Lnet/minecraft/core/particles/ParticleOptions;",
+                "float": "F",
+                "int_provider": "Ljava/util/function/ToIntFunction;",
+            }[next(iter(e))]
+            for e in extras
+        )
         if descriptor != expected:
             raise ValueError(f"constructor arguments of {name[1]} do not match {descriptor}")
         modifiers, blend, sound = [], None, None
@@ -159,12 +186,20 @@ def registrations(code, providers, attribute_ids):
                 if not comment(take()[1]).startswith("Method net/minecraft/resources/Identifier.withDefaultNamespace:"):
                     raise ValueError(f"unknown modifier identifier of {name[1]}")
                 amount = double_operand(*take())
-                operation = static_field(*take(), "net/minecraft/world/entity/ai/attributes/AttributeModifier$Operation")
+                operation = static_field(
+                    *take(), "net/minecraft/world/entity/ai/attributes/AttributeModifier$Operation"
+                )
                 op, rest = take()
                 if amount is None or operation is None or op != "invokevirtual" or ".addAttributeModifier:" not in rest:
                     raise ValueError(f"unknown attribute modifier of {name[1]}")
-                modifiers.append({"attribute": attribute_ids[attribute], "id": "minecraft:" + modifier_id[1],
-                                  "amount": amount, "operation": operation.lower()})
+                modifiers.append(
+                    {
+                        "attribute": attribute_ids[attribute],
+                        "id": "minecraft:" + modifier_id[1],
+                        "amount": amount,
+                        "operation": operation.lower(),
+                    }
+                )
                 continue
             event = static_field(op, rest, "net/minecraft/sounds/SoundEvents")
             if event:
@@ -186,11 +221,21 @@ def registrations(code, providers, attribute_ids):
         field = re.fullmatch(r"Field ([A-Z_]+):Lnet/minecraft/core/Holder;", comment(rest))
         if op != "putstatic" or not field:
             raise ValueError(f"{name[1]} is not stored in a field")
-        effects.append({"registry_index": len(effects), "id": name[1], "field": field[1], "class": cls[1],
-                        "category": category.lower(), "color": colour,
-                        "constructor_arguments": extras, "attribute_modifiers": modifiers,
-                        "particle": next((e["particle"] for e in extras if "particle" in e), None),
-                        "sound_on_added": sound, "blend": blend})
+        effects.append(
+            {
+                "registry_index": len(effects),
+                "id": name[1],
+                "field": field[1],
+                "class": cls[1],
+                "category": category.lower(),
+                "color": colour,
+                "constructor_arguments": extras,
+                "attribute_modifiers": modifiers,
+                "particle": next((e["particle"] for e in extras if "particle" in e), None),
+                "sound_on_added": sound,
+                "blend": blend,
+            }
+        )
     if i != len(lines) - 1:
         raise ValueError("instructions after the final return")
     return effects
@@ -242,8 +287,9 @@ def extract(server, client):
         def inspect(name, *flags):
             key = (name, flags)
             if key not in cache:
-                cache[key] = subprocess.check_output(["javap", "-classpath", str(path), "-c", "-p", *flags, name],
-                                                     text=True)
+                cache[key] = subprocess.check_output(
+                    ["javap", "-classpath", str(path), "-c", "-p", *flags, name], text=True
+                )
             return cache[key]
 
         code = inspect("net.minecraft.world.effect.MobEffects")
@@ -256,24 +302,41 @@ def extract(server, client):
         tooltip = inspect("net.minecraft.world.effect.MobEffectCategory")
         formatting = {}
         for field in ("BENEFICIAL", "HARMFUL", "NEUTRAL"):
-            match = re.search(r"// String " + field + r"\n.*?\n.*?// Field net/minecraft/ChatFormatting\.([A-Z_]+):", tooltip)
+            match = re.search(
+                r"// String " + field + r"\n.*?\n.*?// Field net/minecraft/ChatFormatting\.([A-Z_]+):", tooltip
+            )
             if not match:
                 raise ValueError(f"unknown tooltip formatting of {field}")
             formatting[field.lower()] = match[1].lower()
-    keys = sorted(k[len("effect.minecraft."):] for k in lang if k.startswith("effect.minecraft."))
+    keys = sorted(k[len("effect.minecraft.") :] for k in lang if k.startswith("effect.minecraft."))
     if keys != sorted(e["id"] for e in effects):
         raise ValueError("en_us effect names and MobEffects registrations differ")
-    ordered = ["registry_index", "id", "name", "field", "class", "category", "color", "instantaneous",
-               "attribute_modifiers", "particle", "sound_on_added", "blend", "constructor_arguments"]
+    ordered = [
+        "registry_index",
+        "id",
+        "name",
+        "field",
+        "class",
+        "category",
+        "color",
+        "instantaneous",
+        "attribute_modifiers",
+        "particle",
+        "sound_on_added",
+        "blend",
+        "constructor_arguments",
+    ]
     return {
         "reference": "Minecraft Java Edition 26.3",
         "server_sha1": SERVER_SHA1,
         "client_sha1": CLIENT_SHA1,
-        "sources": ["net.minecraft.world.effect.MobEffects static initializer and lambdas",
-                    "net.minecraft.world.effect.MobEffectCategory tooltip formatting",
-                    "isInstantaneous on each effect class hierarchy",
-                    "net.minecraft.world.entity.ai.attributes.Attributes registrations",
-                    "assets/minecraft/lang/en_us.json effect.minecraft.*"],
+        "sources": [
+            "net.minecraft.world.effect.MobEffects static initializer and lambdas",
+            "net.minecraft.world.effect.MobEffectCategory tooltip formatting",
+            "isInstantaneous on each effect class hierarchy",
+            "net.minecraft.world.entity.ai.attributes.Attributes registrations",
+            "assets/minecraft/lang/en_us.json effect.minecraft.*",
+        ],
         "category_tooltip_formatting": formatting,
         "effects": [{key: effect[key] for key in ordered} for effect in effects],
     }

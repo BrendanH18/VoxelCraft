@@ -10,6 +10,7 @@ with every `#tag` reference expanded, and protection from each enchantment's
 and `death.fell.*` keys of the client's `assets/minecraft/lang/en_us.json`.
 Never reads VoxelCraft source.
 """
+
 import argparse
 import hashlib
 import io
@@ -32,11 +33,19 @@ ENCHANT_DIR = "data/minecraft/enchantment/"
 def damage_type(name, raw):
     if not set(raw) <= TYPE_KEYS or not {"message_id", "scaling", "exhaustion"} <= set(raw):
         raise ValueError(f"unknown damage type form for {name}: {sorted(raw)}")
-    entry = {"id": name, "message_id": raw["message_id"], "scaling": raw["scaling"],
-             "exhaustion": raw["exhaustion"], "effects": raw.get("effects", "hurt"),
-             "death_message_type": raw.get("death_message_type", "default")}
-    if (entry["scaling"] not in SCALINGS or entry["effects"] not in EFFECTS
-            or entry["death_message_type"] not in DEATH_MESSAGES):
+    entry = {
+        "id": name,
+        "message_id": raw["message_id"],
+        "scaling": raw["scaling"],
+        "exhaustion": raw["exhaustion"],
+        "effects": raw.get("effects", "hurt"),
+        "death_message_type": raw.get("death_message_type", "default"),
+    }
+    if (
+        entry["scaling"] not in SCALINGS
+        or entry["effects"] not in EFFECTS
+        or entry["death_message_type"] not in DEATH_MESSAGES
+    ):
         raise ValueError(f"unknown damage type enum value in {name}: {entry}")
     return entry
 
@@ -52,9 +61,9 @@ def expand(tags, types, name, seen=()):
         if not isinstance(value, str):
             raise ValueError(f"optional tag entries are not expected: {name}")
         if value.startswith("#minecraft:"):
-            members |= expand(tags, types, value[len("#minecraft:"):], seen + (name,))
-        elif value.startswith("minecraft:") and value[len("minecraft:"):] in types:
-            members.add(value[len("minecraft:"):])
+            members |= expand(tags, types, value[len("#minecraft:") :], seen + (name,))
+        elif value.startswith("minecraft:") and value[len("minecraft:") :] in types:
+            members.add(value[len("minecraft:") :])
         else:
             raise ValueError(f"{name} names an unknown damage type {value}")
     return members
@@ -76,9 +85,15 @@ def protection(name, raw):
     for test in requirements["predicate"]["tags"]:
         if not test["id"].startswith("#minecraft:"):
             raise ValueError(f"{name}: requirement is not a tag: {test}")
-        (required if test["expected"] else excluded).append(test["id"][len("#minecraft:"):])
-    return {"enchantment": name, "base": value["base"], "per_level_above_first": value["per_level_above_first"],
-            "max_level": raw["max_level"], "requires": sorted(required), "excludes": sorted(excluded)}
+        (required if test["expected"] else excluded).append(test["id"][len("#minecraft:") :])
+    return {
+        "enchantment": name,
+        "base": value["base"],
+        "per_level_above_first": value["per_level_above_first"],
+        "max_level": raw["max_level"],
+        "requires": sorted(required),
+        "excludes": sorted(excluded),
+    }
 
 
 def extract(server, client):
@@ -91,27 +106,41 @@ def extract(server, client):
     with zipfile.ZipFile(io.BytesIO(data)) as bundler:
         data = bundler.read("META-INF/versions/26.3/server-26.3.jar")
     with zipfile.ZipFile(io.BytesIO(data)) as jar:
+
         def folder(prefix):
-            return {n[len(prefix):-len(".json")]: json.loads(jar.read(n)) for n in jar.namelist()
-                    if n.startswith(prefix) and n.endswith(".json") and "/" not in n[len(prefix):]}
+            return {
+                n[len(prefix) : -len(".json")]: json.loads(jar.read(n))
+                for n in jar.namelist()
+                if n.startswith(prefix) and n.endswith(".json") and "/" not in n[len(prefix) :]
+            }
+
         types = {name: damage_type(name, raw) for name, raw in folder(TYPE_DIR).items()}
         raw_tags = folder(TAG_DIR)
         tags = {name: sorted(expand(raw_tags, types, name)) for name in sorted(raw_tags)}
-        protections = [p for name, raw in sorted(folder(ENCHANT_DIR).items())
-                       if (p := protection(name, raw)) is not None]
+        protections = [
+            p for name, raw in sorted(folder(ENCHANT_DIR).items()) if (p := protection(name, raw)) is not None
+        ]
     for p in protections:
         if not set(p["requires"] + p["excludes"]) <= set(tags):
             raise ValueError(f"{p['enchantment']} names an unknown damage type tag")
     with zipfile.ZipFile(io.BytesIO(client_data)) as jar:
         lang = json.loads(jar.read("assets/minecraft/lang/en_us.json"))
     messages = {k: v for k, v in sorted(lang.items()) if k.startswith(("death.attack.", "death.fell."))}
-    return {"reference": "Minecraft Java Edition 26.3", "server_sha1": SERVER_SHA1, "client_sha1": CLIENT_SHA1,
-            "sources": [TYPE_DIR + "*.json (DamageType codec defaults: effects hurt, death_message_type default)",
-                        TAG_DIR + "*.json (#tag references expanded)",
-                        ENCHANT_DIR + "*.json (minecraft:damage_protection)",
-                        "client assets/minecraft/lang/en_us.json (death.attack.*, death.fell.*)"],
-            "damage_types": [types[n] for n in sorted(types)], "tags": tags,
-            "protection": protections, "death_messages": messages}
+    return {
+        "reference": "Minecraft Java Edition 26.3",
+        "server_sha1": SERVER_SHA1,
+        "client_sha1": CLIENT_SHA1,
+        "sources": [
+            TYPE_DIR + "*.json (DamageType codec defaults: effects hurt, death_message_type default)",
+            TAG_DIR + "*.json (#tag references expanded)",
+            ENCHANT_DIR + "*.json (minecraft:damage_protection)",
+            "client assets/minecraft/lang/en_us.json (death.attack.*, death.fell.*)",
+        ],
+        "damage_types": [types[n] for n in sorted(types)],
+        "tags": tags,
+        "protection": protections,
+        "death_messages": messages,
+    }
 
 
 def main():

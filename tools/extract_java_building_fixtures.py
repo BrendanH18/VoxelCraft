@@ -4,6 +4,7 @@
 No Java implementation or assets are copied. Temporary files stay in this
 checkout's ignored target directory. Tests consume the normalized facts.
 """
+
 import argparse
 import hashlib
 import io
@@ -40,7 +41,10 @@ def extract(server):
         for block, cls in (("soul_sand", "SoulSandBlock"), ("mud", "MudBlock")):
             code = inspect("net.minecraft.world.level.block." + cls)
             static = code.split("  static {};")[1]
-            if "Block.column:(DDD)" not in static or "Field SHAPE:" not in code.split(" getCollisionShape(")[1].split("\n\n")[0]:
+            if (
+                "Block.column:(DDD)" not in static
+                or "Field SHAPE:" not in code.split(" getCollisionShape(")[1].split("\n\n")[0]
+            ):
                 raise ValueError("collision construction changed")
             values = re.findall(r"// double ([0-9.]+)d", static)
             if len(values) != 2 or float(values[0]) != 16:
@@ -56,26 +60,35 @@ def extract(server):
         if "Mth.floor:(D)I" not in fall or "f2d" not in fall or "double 1.0E-6d" not in power:
             raise ValueError("fall rounding changed")
         as_float = struct.unpack("f", struct.pack("f", multiplier))[0]
-        cases = [{"distance": distance, "damage": max(0, math.floor((distance + 1e-6 - 3) * as_float))}
-                 for distance in [3, 3.99, 7.99, 8, 20, 23, 23.5]]
+        cases = [
+            {"distance": distance, "damage": max(0, math.floor((distance + 1e-6 - 3) * as_float))}
+            for distance in [3, 3.99, 7.99, 8, 20, 23, 23.5]
+        ]
         ore = inspect("net.minecraft.world.level.block.RedStoneOreBlock")
         tick = ore.split(" randomTick(")[1].split("\n\n")[0]
         if "iconst_0" not in tick or "BlockState.setValue:" not in tick or "ServerLevel.setBlockAndUpdate:" not in tick:
             raise ValueError("ore random tick changed")
         mushroom = inspect("net.minecraft.world.level.block.MushroomBlock").split(" canSurvive(")[1].split("\n\n")[0]
-        if "LevelReader.getRawBrightness:" not in mushroom or not re.search(r"iconst_0\s+\d+: invokeinterface.*getRawBrightness", mushroom):
+        if "LevelReader.getRawBrightness:" not in mushroom or not re.search(
+            r"iconst_0\s+\d+: invokeinterface.*getRawBrightness", mushroom
+        ):
             raise ValueError("mushroom raw brightness call changed")
         threshold = int(re.findall(r"bipush\s+(\d+)", mushroom)[0])
         with zipfile.ZipFile(io.BytesIO(inner)) as z:
             tag_path = "data/minecraft/tags/block/overrides_mushroom_light_requirement.json"
             overrides = json.loads(z.read(tag_path))["values"]
         sources.append(tag_path)
-    return {"reference": "Minecraft Java Edition 26.3", "server_sha1": SERVER_SHA1,
-            "sources": sources, "collision_height": heights, "hay_fall_multiplier": multiplier,
-            "hay_fall_cases": cases,
-            "redstone_ore_extinguishes_on_random_tick": True,
-            "mushroom_brightness_limit": threshold,
-            "mushroom_light_overrides": [v.removeprefix("minecraft:") for v in overrides]}
+    return {
+        "reference": "Minecraft Java Edition 26.3",
+        "server_sha1": SERVER_SHA1,
+        "sources": sources,
+        "collision_height": heights,
+        "hay_fall_multiplier": multiplier,
+        "hay_fall_cases": cases,
+        "redstone_ore_extinguishes_on_random_tick": True,
+        "mushroom_brightness_limit": threshold,
+        "mushroom_light_overrides": [v.removeprefix("minecraft:") for v in overrides],
+    }
 
 
 if __name__ == "__main__":

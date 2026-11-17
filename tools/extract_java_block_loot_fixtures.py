@@ -22,6 +22,7 @@ keeps each item with chance 1/4. Unknown entry
 types, conditions, functions or keys fail instead of producing a guessed
 fixture. No VoxelCraft source or existing fixture is consulted.
 """
+
 import argparse
 import hashlib
 import io
@@ -35,8 +36,24 @@ from pathlib import Path
 from extract_java_item_fixtures import SERVER_SHA1
 
 ROOT = "data/minecraft/loot_table/blocks/"
-COLORS = ("white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray", "light_gray", "cyan",
-          "purple", "blue", "brown", "green", "red", "black")
+COLORS = (
+    "white",
+    "orange",
+    "magenta",
+    "light_blue",
+    "yellow",
+    "lime",
+    "pink",
+    "gray",
+    "light_gray",
+    "cyan",
+    "purple",
+    "blue",
+    "brown",
+    "green",
+    "red",
+    "black",
+)
 # Tool flags the tables can observe: shears (`tool/can_shear`), Silk Touch
 # (`tool/can_silk_touch`), the Fortune level (`apply_bonus`, `table_bonus`) and a
 # pickaxe (`#cluster_max_harvestables`).
@@ -69,27 +86,46 @@ def check_bytecode(inspect):
     bonus = "net.minecraft.world.level.storage.loot.functions.ApplyBonusCount$"
     calc = "public int calculateNewCount(net.minecraft.util.RandomSource, int, int);"
     ore = method(inspect(bonus + "OreDrops"), calc)
-    if not re.search(r"iload_3\n.*ifle.*\n.*aload_1\n.*iload_3\n.*iconst_2\n.*iadd\n.*nextInt:\(I\)I\n.*iconst_1\n"
-                     r".*isub\n.*istore\s+4\n.*iload\s+4\n.*ifge.*\n.*iconst_0\n.*istore\s+4\n.*iload_2\n.*iload\s+4\n"
-                     r".*iconst_1\n.*iadd\n.*imul", ore):
+    if not re.search(
+        r"iload_3\n.*ifle.*\n.*aload_1\n.*iload_3\n.*iconst_2\n.*iadd\n.*nextInt:\(I\)I\n.*iconst_1\n"
+        r".*isub\n.*istore\s+4\n.*iload\s+4\n.*ifge.*\n.*iconst_0\n.*istore\s+4\n.*iload_2\n.*iload\s+4\n"
+        r".*iconst_1\n.*iadd\n.*imul",
+        ore,
+    ):
         raise ValueError("ore_drops is no longer count * (max(0, nextInt(level + 2) - 1) + 1)")
     uniform = method(inspect(bonus + "UniformBonusCount"), calc)
-    if not re.search(r"iload_2\n.*aload_1\n.*aload_0\n.*bonusMultiplier:I\n.*iload_3\n.*imul\n.*iconst_1\n.*iadd\n"
-                     r".*nextInt:\(I\)I\n.*iadd", uniform):
+    if not re.search(
+        r"iload_2\n.*aload_1\n.*aload_0\n.*bonusMultiplier:I\n.*iload_3\n.*imul\n.*iconst_1\n.*iadd\n"
+        r".*nextInt:\(I\)I\n.*iadd",
+        uniform,
+    ):
         raise ValueError("uniform_bonus_count is no longer count + nextInt(multiplier * level + 1)")
     binomial = method(inspect(bonus + "BinomialWithBonusCount"), calc)
-    if not re.search(r"iload_3\n.*aload_0\n.*extraRounds:I\n.*iadd\n.*if_icmpge(?:.*\n){1,3}.*nextFloat:\(\)F\n"
-                     r".*aload_0\n.*probability:F\n.*fcmpg\n.*ifge.*\n.*iinc\s+2, 1", binomial):
+    if not re.search(
+        r"iload_3\n.*aload_0\n.*extraRounds:I\n.*iadd\n.*if_icmpge(?:.*\n){1,3}.*nextFloat:\(\)F\n"
+        r".*aload_0\n.*probability:F\n.*fcmpg\n.*ifge.*\n.*iinc\s+2, 1",
+        binomial,
+    ):
         raise ValueError("binomial_with_bonus_count is no longer level + extra rounds of nextFloat < p")
-    table = method(inspect("net.minecraft.world.level.storage.loot.predicates.BonusLevelTableCondition"),
-                   "public boolean test(net.minecraft.world.level.storage.loot.LootContext);")
-    if not re.search(r"List\.size:\(\)I\n.*iconst_1\n.*isub\n.*Math\.min:\(II\)I(?:.*\n){1,8}.*nextFloat:\(\)F\n"
-                     r".*fload\s+4\n.*fcmpg\n.*ifge", table):
+    table = method(
+        inspect("net.minecraft.world.level.storage.loot.predicates.BonusLevelTableCondition"),
+        "public boolean test(net.minecraft.world.level.storage.loot.LootContext);",
+    )
+    if not re.search(
+        r"List\.size:\(\)I\n.*iconst_1\n.*isub\n.*Math\.min:\(II\)I(?:.*\n){1,8}.*nextFloat:\(\)F\n"
+        r".*fload\s+4\n.*fcmpg\n.*ifge",
+        table,
+    ):
         raise ValueError("table_bonus is no longer nextFloat < chances[min(level, size - 1)]")
-    count = method(inspect("net.minecraft.world.level.storage.loot.functions.SetItemCountFunction"),
-                   "public net.minecraft.world.item.ItemStack run(")
-    if not re.search(r"add:Z\n.*ifeq(?:.*\n){1,4}.*iconst_0\n.*istore_3(?:.*\n){1,8}.*getInt:.*\n.*iadd\n"
-                     r".*ItemStack\.setCount", count):
+    count = method(
+        inspect("net.minecraft.world.level.storage.loot.functions.SetItemCountFunction"),
+        "public net.minecraft.world.item.ItemStack run(",
+    )
+    if not re.search(
+        r"add:Z\n.*ifeq(?:.*\n){1,4}.*iconst_0\n.*istore_3(?:.*\n){1,8}.*getInt:.*\n.*iadd\n"
+        r".*ItemStack\.setCount",
+        count,
+    ):
         raise ValueError("set_count is no longer (add ? count : 0) + provider")
     ints = "net.minecraft.world.level.storage.loot.providers.number.ints."
     uniform_int = method(inspect(ints + "UniformGenerator"), "public int getIntUnsafe(")
@@ -98,22 +134,37 @@ def check_bytecode(inspect):
     binomial_int = method(inspect(ints + "BinomialDistributionGenerator"), "public int getIntUnsafe(")
     if not re.search(r"nextFloat:\(\)F\n.*fload_3\n.*fcmpg\n.*ifge", binomial_int):
         raise ValueError("binomial count provider is no longer n rounds of nextFloat < p")
-    survives = method(inspect("net.minecraft.world.level.storage.loot.predicates.ExplosionCondition"),
-                      "public boolean test(net.minecraft.world.level.storage.loot.LootContext);")
-    if not re.search(r"EXPLOSION_RADIUS(?:.*\n){1,10}.*fconst_1\n.*aload_2\n.*floatValue:\(\)F\n.*fdiv\n"
-                     r"(?:.*\n){1,3}.*nextFloat:\(\)F\n.*fload\s+4\n.*fcmpg\n.*ifgt", survives):
+    survives = method(
+        inspect("net.minecraft.world.level.storage.loot.predicates.ExplosionCondition"),
+        "public boolean test(net.minecraft.world.level.storage.loot.LootContext);",
+    )
+    if not re.search(
+        r"EXPLOSION_RADIUS(?:.*\n){1,10}.*fconst_1\n.*aload_2\n.*floatValue:\(\)F\n.*fdiv\n"
+        r"(?:.*\n){1,3}.*nextFloat:\(\)F\n.*fload\s+4\n.*fcmpg\n.*ifgt",
+        survives,
+    ):
         raise ValueError("survives_explosion is no longer nextFloat <= 1 / radius")
-    decay = method(inspect("net.minecraft.world.level.storage.loot.functions.ApplyExplosionDecay"),
-                   "public net.minecraft.world.item.ItemStack run(")
-    if not re.search(r"EXPLOSION_RADIUS(?:.*\n){1,14}.*fconst_1\n.*aload_3\n.*floatValue:\(\)F\n.*fdiv\n"
-                     r"(?:.*\n){1,14}.*nextFloat:\(\)F\n.*fload\s+5\n.*fcmpg\n.*ifgt(?:.*\n){1,6}"
-                     r".*ItemStack\.setCount", decay):
+    decay = method(
+        inspect("net.minecraft.world.level.storage.loot.functions.ApplyExplosionDecay"),
+        "public net.minecraft.world.item.ItemStack run(",
+    )
+    if not re.search(
+        r"EXPLOSION_RADIUS(?:.*\n){1,14}.*fconst_1\n.*aload_3\n.*floatValue:\(\)F\n.*fdiv\n"
+        r"(?:.*\n){1,14}.*nextFloat:\(\)F\n.*fload\s+5\n.*fcmpg\n.*ifgt(?:.*\n){1,6}"
+        r".*ItemStack\.setCount",
+        decay,
+    ):
         raise ValueError("explosion_decay is no longer one nextFloat <= 1 / radius per item")
-    pot = method(inspect("net.minecraft.world.level.block.DecoratedPotBlock"),
-                 "public net.minecraft.world.level.block.state.BlockState playerWillDestroy(")
-    if not re.search(r"ItemTags\.BREAKS_DECORATED_POTS(?:.*\n){1,3}.*ifeq(?:.*\n){1,4}"
-                     r".*EnchantmentTags\.PREVENTS_DECORATED_POT_SHATTERING(?:.*\n){1,3}.*ifne(?:.*\n){1,4}"
-                     r".*CRACKED", pot):
+    pot = method(
+        inspect("net.minecraft.world.level.block.DecoratedPotBlock"),
+        "public net.minecraft.world.level.block.state.BlockState playerWillDestroy(",
+    )
+    if not re.search(
+        r"ItemTags\.BREAKS_DECORATED_POTS(?:.*\n){1,3}.*ifeq(?:.*\n){1,4}"
+        r".*EnchantmentTags\.PREVENTS_DECORATED_POT_SHATTERING(?:.*\n){1,3}.*ifne(?:.*\n){1,4}"
+        r".*CRACKED",
+        pot,
+    ):
         raise ValueError("DecoratedPotBlock no longer cracks pots for #breaks_decorated_pots tools")
     decorations = inspect("net.minecraft.world.level.block.entity.PotDecorations")
     if "ItemIds.BRICK" not in decorations:
@@ -125,21 +176,30 @@ def table_redirects(inspect, tables):
     names = {}
     for holder in ("BlockIds", "BlockItemIds"):
         init = inspect(f"net.minecraft.references.{holder}").split("  static {};")[1]
-        for body, field in re.findall(r"((?:.*\n)*?).*putstatic\s+#\d+\s+// Field (\w+):Lnet/minecraft/"
-                                      r"(?:resources/ResourceKey|references/BlockItemId);", init):
+        for body, field in re.findall(
+            r"((?:.*\n)*?).*putstatic\s+#\d+\s+// Field (\w+):Lnet/minecraft/"
+            r"(?:resources/ResourceKey|references/BlockItemId);",
+            init,
+        ):
             strings = re.findall(r"// String ([a-z0-9_]+)\n", body)
             if strings:
                 names[(holder, field)] = strings[0]
     code = inspect("net.minecraft.world.level.block.Blocks")
     init = code.split("  static {};")[1]
-    segments = re.split(r"(putstatic\s+#\d+\s+// Field \w+:Lnet/minecraft/world/level/block/"
-                        r"(?:Block|ColorCollection);)", init)
+    segments = re.split(
+        r"(putstatic\s+#\d+\s+// Field \w+:Lnet/minecraft/world/level/block/"
+        r"(?:Block|ColorCollection);)",
+        init,
+    )
     field_ids = {}
     found = {}
     for body, store in zip(segments[0::2], segments[1::2]):
         field = re.search(r"Field (\w+):", store).group(1)
-        ids = re.findall(r"Field net/minecraft/references/(Block(?:Item)?Ids)\.(\w+):Lnet/minecraft/"
-                         r"(?:resources/ResourceKey|references/BlockItemId);", body)
+        ids = re.findall(
+            r"Field net/minecraft/references/(Block(?:Item)?Ids)\.(\w+):Lnet/minecraft/"
+            r"(?:resources/ResourceKey|references/BlockItemId);",
+            body,
+        )
         if not ids:
             continue
         block = names[ids[0]]
@@ -149,19 +209,28 @@ def table_redirects(inspect, tables):
         call = body.find("Method wallVariant:")
         base = None
         if call >= 0:
-            bases = re.findall(r"getstatic\s+#\d+\s+// Field (\w+):Lnet/minecraft/world/level/block/Block;",
-                               body[:call])
+            bases = re.findall(
+                r"getstatic\s+#\d+\s+// Field (\w+):Lnet/minecraft/world/level/block/Block;", body[:call]
+            )
             base = field_ids[bases[-1]]
-        found[block] = {"loot_table": None if base is None else f"minecraft:{base}",
-                        "source": "Blocks.wallVariant (overrideLootTable)" if base else
-                        ("noLootTable" if "noLootTable" in body else "no table file")}
-    banner = re.search(r"getstatic\s+#\d+\s+// Field BANNER:Lnet/minecraft/world/level/block/ColorCollection;\n"
-                       r".*aload_0\n.*ColorCollection\.pick(?:.*\n){1,3}.*Method wallVariant:", code)
+        found[block] = {
+            "loot_table": None if base is None else f"minecraft:{base}",
+            "source": "Blocks.wallVariant (overrideLootTable)"
+            if base
+            else ("noLootTable" if "noLootTable" in body else "no table file"),
+        }
+    banner = re.search(
+        r"getstatic\s+#\d+\s+// Field BANNER:Lnet/minecraft/world/level/block/ColorCollection;\n"
+        r".*aload_0\n.*ColorCollection\.pick(?:.*\n){1,3}.*Method wallVariant:",
+        code,
+    )
     if not banner or "Field WALL_BANNER:Lnet/minecraft/world/level/block/ColorCollection;" not in init:
         raise ValueError("wall banners no longer take their banner's table")
     for color in COLORS:
-        found[f"{color}_wall_banner"] = {"loot_table": f"minecraft:{color}_banner",
-                                         "source": "Blocks.wallVariant (overrideLootTable)"}
+        found[f"{color}_wall_banner"] = {
+            "loot_table": f"minecraft:{color}_banner",
+            "source": "Blocks.wallVariant (overrideLootTable)",
+        }
     for block, info in found.items():
         if info["loot_table"] and info["loot_table"].removeprefix("minecraft:") not in tables:
             raise ValueError(f"{block} redirects to a missing table {info['loot_table']}")
@@ -222,8 +291,11 @@ class Table:
                 raise ValueError(f"unrecognized match_tool in {self.block}: {c}")
         elif kind == "minecraft:location_check":
             other = c.get("predicate", {}).get("block", {})
-            if set(c) != {"type", "offsetY", "predicate"} or other.get("blocks") != self.block \
-                    or set(other.get("state", {})) != {"half"}:
+            if (
+                set(c) != {"type", "offsetY", "predicate"}
+                or other.get("blocks") != self.block
+                or set(other.get("state", {})) != {"half"}
+            ):
                 raise ValueError(f"unrecognized location_check in {self.block}: {c}")
             self.notes.add("location_check: the other half of the double block is present")
         elif kind == "minecraft:entity_properties":
@@ -250,7 +322,10 @@ class Table:
         elif kind == "minecraft:apply_bonus":
             formula = f.get("formula")
             if f.get("enchantment") != "minecraft:fortune" or formula not in (
-                    "minecraft:ore_drops", "minecraft:uniform_bonus_count", "minecraft:binomial_with_bonus_count"):
+                "minecraft:ore_drops",
+                "minecraft:uniform_bonus_count",
+                "minecraft:binomial_with_bonus_count",
+            ):
                 raise ValueError(f"unrecognized apply_bonus in {self.block}: {f}")
         elif kind == "minecraft:limit_count":
             if keys != {"type", "limit"} or set(f["limit"]) - {"min", "max"}:
@@ -290,8 +365,11 @@ class Table:
         if isinstance(count, int):
             return
         kind = count.get("type") if isinstance(count, dict) else None
-        if kind == "minecraft:uniform" and set(count) == {"type", "min", "max"} \
-                and all(isinstance(count[k], int) for k in ("min", "max")):
+        if (
+            kind == "minecraft:uniform"
+            and set(count) == {"type", "min", "max"}
+            and all(isinstance(count[k], int) for k in ("min", "max"))
+        ):
             return
         if kind == "minecraft:binomial" and set(count) == {"type", "n", "p"} and isinstance(count["n"], int):
             return
@@ -308,8 +386,11 @@ class Table:
                 return float(tool["shears"])
             if predicate == {"items": "#minecraft:cluster_max_harvestables"}:
                 return float(tool["pickaxe"])
-            if predicate == {"predicates": {"minecraft:enchantments": [
-                    {"enchantments": "minecraft:silk_touch", "levels": {"min": 1}}]}}:
+            if predicate == {
+                "predicates": {
+                    "minecraft:enchantments": [{"enchantments": "minecraft:silk_touch", "levels": {"min": 1}}]
+                }
+            }:
                 return float(tool["silk_touch"])
             raise ValueError(f"unknown tool predicate {predicate}")
         if kind == "minecraft:match_block":
@@ -432,8 +513,16 @@ class Table:
                 continue
             mean = sum(c * w for c, w in dist.items())
             var = sum(c * c * w for c, w in dist.items()) - mean * mean
-            rows.append([item, min(present), max(present), rounded(sum(present.values())), rounded(mean),
-                         rounded(max(var, 0.0))])
+            rows.append(
+                [
+                    item,
+                    min(present),
+                    max(present),
+                    rounded(sum(present.values())),
+                    rounded(mean),
+                    rounded(max(var, 0.0)),
+                ]
+            )
         return rows
 
 
@@ -503,7 +592,8 @@ def evaluate(table):
         scenarios = {name: table.drops(state, tool) for name, tool in SCENARIOS.items()}
         base = scenarios["pickaxe"]
         out[case_key(state)] = {"pickaxe": base} | {
-            name: rows for name, rows in scenarios.items() if name != "pickaxe" and rows != base}
+            name: rows for name, rows in scenarios.items() if name != "pickaxe" and rows != base
+        }
     return out
 
 
@@ -526,18 +616,25 @@ def extract(server):
     with zipfile.ZipFile(io.BytesIO(data)) as bundler:
         data = bundler.read("META-INF/versions/26.3/server-26.3.jar")
     with zipfile.ZipFile(io.BytesIO(data)) as jar:
+
         def read(name):
             return json.loads(jar.read(name))
 
-        names = sorted(n[len(ROOT):-5] for n in jar.namelist() if n.startswith(ROOT) and n.endswith(".json"))
+        names = sorted(n[len(ROOT) : -5] for n in jar.namelist() if n.startswith(ROOT) and n.endswith(".json"))
         raw = {name: read(f"{ROOT}{name}.json") for name in names}
-        predicates = {f"minecraft:tool/{name}": read(f"data/minecraft/predicate/tool/{name}.json")
-                      for name in ("can_shear", "can_silk_touch")}
-        if predicates["minecraft:tool/can_shear"] != {"type": "minecraft:match_tool",
-                                                       "predicate": {"items": "minecraft:shears"}}:
+        predicates = {
+            f"minecraft:tool/{name}": read(f"data/minecraft/predicate/tool/{name}.json")
+            for name in ("can_shear", "can_silk_touch")
+        }
+        if predicates["minecraft:tool/can_shear"] != {
+            "type": "minecraft:match_tool",
+            "predicate": {"items": "minecraft:shears"},
+        }:
             raise ValueError("tool/can_shear is no longer shears")
-        tags = {name: expand_item_tag(read, f"minecraft:{name}")
-                for name in ("cluster_max_harvestables", "breaks_decorated_pots", "pickaxes")}
+        tags = {
+            name: expand_item_tag(read, f"minecraft:{name}")
+            for name in ("cluster_max_harvestables", "breaks_decorated_pots", "pickaxes")
+        }
         if tags["cluster_max_harvestables"] != tags["pickaxes"]:
             raise ValueError("#cluster_max_harvestables is no longer exactly the pickaxes")
         shatter = read("data/minecraft/tags/enchantment/prevents_decorated_pot_shattering.json")["values"]
@@ -553,8 +650,11 @@ def extract(server):
     blocks = {}
     for name in names:
         table = Table(name, raw[name], predicates, tags)
-        entry = {"properties": {k: sorted(v, key=lambda v: (len(v), v)) for k, v in sorted(table.properties.items())},
-                 "explosion": sorted(table.explosion), "cases": evaluate(table)}
+        entry = {
+            "properties": {k: sorted(v, key=lambda v: (len(v), v)) for k, v in sorted(table.properties.items())},
+            "explosion": sorted(table.explosion),
+            "cases": evaluate(table),
+        }
         if table.notes:
             entry["notes"] = sorted(table.notes)
         blocks[f"minecraft:{name}"] = entry
@@ -562,8 +662,13 @@ def extract(server):
         if info["loot_table"]:
             blocks[f"minecraft:{name}"] = {"loot_table": info["loot_table"], "source": info["source"]}
         else:
-            blocks[f"minecraft:{name}"] = {"loot_table": None, "source": info["source"], "properties": {},
-                                           "explosion": [], "cases": {"": {"pickaxe": []}}}
+            blocks[f"minecraft:{name}"] = {
+                "loot_table": None,
+                "source": info["source"],
+                "properties": {},
+                "explosion": [],
+                "cases": {"": {"pickaxe": []}},
+            }
     return {
         "reference": "Minecraft Java Edition 26.3",
         "server_sha1": SERVER_SHA1,

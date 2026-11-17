@@ -5,6 +5,7 @@ Every block has a blockstate definition and every item an item model
 definition under `assets/minecraft/`, so their file names are the registry
 names. Display names come from `assets/minecraft/lang/en_us.json`.
 """
+
 import argparse
 import hashlib
 import json
@@ -18,8 +19,11 @@ NOT_BLOCKS = {"item_frame", "glow_item_frame"}
 
 def names(jar, folder):
     prefix = f"assets/minecraft/{folder}/"
-    return sorted(n[len(prefix):-len(".json")] for n in jar.namelist()
-                  if n.startswith(prefix) and n.endswith(".json") and "/" not in n[len(prefix):])
+    return sorted(
+        n[len(prefix) : -len(".json")]
+        for n in jar.namelist()
+        if n.startswith(prefix) and n.endswith(".json") and "/" not in n[len(prefix) :]
+    )
 
 
 def extract(client):

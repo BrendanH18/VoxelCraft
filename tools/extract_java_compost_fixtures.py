@@ -8,6 +8,7 @@ weighted roll in `data/minecraft/context_int_provider/compostable/`. Every
 provider is checked to always add the first layer to an empty composter.
 Never reads VoxelCraft source.
 """
+
 import argparse
 import hashlib
 import io
@@ -20,8 +21,12 @@ from pathlib import Path
 from extract_java_item_fixtures import SERVER_SHA1
 from java_item_associations import provider_ids
 
-FIRST_LAYER = [{"condition": {"type": "minecraft:match_block", "blocks": "minecraft:composter",
-                              "state": {"level": "0"}}, "value": 1}]
+FIRST_LAYER = [
+    {
+        "condition": {"type": "minecraft:match_block", "blocks": "minecraft:composter", "state": {"level": "0"}},
+        "value": 1,
+    }
+]
 
 
 def chance_percent(provider):
@@ -49,22 +54,37 @@ def extract(server):
         path = Path(temporary) / "reference.jar"
         path.write_bytes(data)
         providers = provider_ids(path, "COMPOSTABLE_")
-        composter = subprocess.check_output(["javap", "-classpath", str(path), "-c", "-p",
-                                             "net.minecraft.world.level.block.ComposterBlock"], text=True)
+        composter = subprocess.check_output(
+            ["javap", "-classpath", str(path), "-c", "-p", "net.minecraft.world.level.block.ComposterBlock"], text=True
+        )
         add_layer = composter.split(" addLayer(")[1].split("\n\n")[0]
-        if ("Compostable.layers:" not in add_layer or "ResolvableInt.get:" not in add_layer
-                or "LootContextParams.BLOCK_STATE:" not in add_layer):
+        if (
+            "Compostable.layers:" not in add_layer
+            or "ResolvableInt.get:" not in add_layer
+            or "LootContextParams.BLOCK_STATE:" not in add_layer
+        ):
             raise ValueError("ComposterBlock.addLayer no longer rolls the item's compostable layers")
     with zipfile.ZipFile(io.BytesIO(data)) as jar:
+
         def provider(name):
             return json.loads(jar.read(f"data/minecraft/context_int_provider/compostable/{name}.json"))
-        compost = [{"item": f"minecraft:{name}", "provider": p, "chance_percent": chance_percent(provider(p))}
-                   for name, p in sorted(providers.items())]
-    return {"reference": "Minecraft Java Edition 26.3", "server_sha1": SERVER_SHA1,
-            "sources": ["net.minecraft.world.item.Items compostable registrations, including nested callbacks",
-                        "net.minecraft.references.BlockItemIds and ItemIds (registry IDs)",
-                        "data/minecraft/context_int_provider/compostable/*.json", "ComposterBlock.addLayer"],
-            "empty_composter_always_adds_a_layer": True, "compost": compost}
+
+        compost = [
+            {"item": f"minecraft:{name}", "provider": p, "chance_percent": chance_percent(provider(p))}
+            for name, p in sorted(providers.items())
+        ]
+    return {
+        "reference": "Minecraft Java Edition 26.3",
+        "server_sha1": SERVER_SHA1,
+        "sources": [
+            "net.minecraft.world.item.Items compostable registrations, including nested callbacks",
+            "net.minecraft.references.BlockItemIds and ItemIds (registry IDs)",
+            "data/minecraft/context_int_provider/compostable/*.json",
+            "ComposterBlock.addLayer",
+        ],
+        "empty_composter_always_adds_a_layer": True,
+        "compost": compost,
+    }
 
 
 def main():

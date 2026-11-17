@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Normalize Java 26.3 ice support tags and verify the associated block methods."""
+
 import argparse
 import hashlib
 import io
@@ -43,19 +44,31 @@ def extract(server):
             return values
 
         blocks = sorted(expand("ice_melts_when_destroyed_above"))
+
         # Tool component inputs: ToolMaterial.applyToolProperties denies drops with
         # incorrect_for_<tier>_tool and mines mineable/<kind>; SwordItem and
         # ShearsItem rules use the speed tags. Names are expanded and sorted.
         def shear_entries(node, out, inherited=""):
             if isinstance(node, dict):
                 condition = inherited + json.dumps(node.get("condition", ""))
-                if node.get("type") == "minecraft:item" and "can_shear" in condition and "minecraft:inverted" not in condition:
+                if (
+                    node.get("type") == "minecraft:item"
+                    and "can_shear" in condition
+                    and "minecraft:inverted" not in condition
+                ):
                     count = 1
-                    for modifier in ([node["modifier"]] if isinstance(node.get("modifier"), dict) else node.get("modifier", [])):
+                    for modifier in (
+                        [node["modifier"]] if isinstance(node.get("modifier"), dict) else node.get("modifier", [])
+                    ):
                         if modifier.get("type") == "minecraft:set_count":
                             count = modifier["count"] if isinstance(modifier["count"], int) else None
-                    out.append({"item": node["name"].removeprefix("minecraft:"), "count": count,
-                                "silk_touch": "can_silk_touch" in condition})
+                    out.append(
+                        {
+                            "item": node["name"].removeprefix("minecraft:"),
+                            "count": count,
+                            "silk_touch": "can_silk_touch" in condition,
+                        }
+                    )
                 for value in node.values():
                     shear_entries(value, out, condition)
             elif isinstance(node, list):
@@ -79,7 +92,8 @@ def extract(server):
             "all_blocks": sorted(
                 n.removeprefix("data/minecraft/loot_table/blocks/").removesuffix(".json")
                 for n in jar.namelist()
-                if n.startswith("data/minecraft/loot_table/blocks/") and n.endswith(".json")),
+                if n.startswith("data/minecraft/loot_table/blocks/") and n.endswith(".json")
+            ),
         }
         enchantment_path = "data/minecraft/tags/enchantment/prevents_ice_melting.json"
         enchantments = json.loads(jar.read(enchantment_path))["values"]
@@ -87,7 +101,9 @@ def extract(server):
         for name in ("overworld", "the_nether", "the_end"):
             path = f"data/minecraft/dimension_type/{name}.json"
             visited.add(path)
-            dimensions[name] = json.loads(jar.read(path))["attributes"].get("minecraft:gameplay/water_evaporates", False)
+            dimensions[name] = json.loads(jar.read(path))["attributes"].get(
+                "minecraft:gameplay/water_evaporates", False
+            )
     with tempfile.TemporaryDirectory(prefix="voxelcraft-java-mining-") as temporary:
         jar_path = Path(temporary) / "reference.jar"
         jar_path.write_bytes(inner)
@@ -96,8 +112,12 @@ def extract(server):
             return subprocess.check_output(["javap", "-classpath", str(jar_path), "-c", "-p", name], text=True)
 
         ice = inspect("net.minecraft.world.level.block.IceBlock").split(" playerDestroy(")[1].split("\n\n")[0]
-        for token in ("EnchantmentTags.PREVENTS_ICE_MELTING", "EnvironmentAttributes.WATER_EVAPORATES",
-                      "BlockTags.ICE_MELTS_WHEN_DESTROYED_ABOVE", "BlockState.liquid:"):
+        for token in (
+            "EnchantmentTags.PREVENTS_ICE_MELTING",
+            "EnvironmentAttributes.WATER_EVAPORATES",
+            "BlockTags.ICE_MELTS_WHEN_DESTROYED_ABOVE",
+            "BlockState.liquid:",
+        ):
             if token not in ice:
                 raise ValueError(f"ice destruction changed: {token}")
         egg = inspect("net.minecraft.world.level.block.DragonEggBlock").split(" attack(")[1].split("\n\n")[0]
@@ -106,37 +126,53 @@ def extract(server):
         creative = inspect("net.minecraft.server.level.ServerPlayerGameMode")
         if "Abilities.instabuild:Z" not in creative or "String creative destroy" not in creative:
             raise ValueError("creative destruction changed")
-        progress = inspect("net.minecraft.world.level.block.state.BlockBehaviour").split(" getDestroyProgress(")[1].split("\n\n")[0]
+        progress = (
+            inspect("net.minecraft.world.level.block.state.BlockBehaviour")
+            .split(" getDestroyProgress(")[1]
+            .split("\n\n")[0]
+        )
         divisors = [int(v) for v in re.findall(r"bipush\s+(\d+)", progress)]
         if len(divisors) != 2 or progress.count(" fdiv") != 2 or "Player.hasCorrectToolForDrops:" not in progress:
             raise ValueError("destroy progress formula changed")
         player = inspect("net.minecraft.world.entity.player.Player").split(" getDestroySpeed(")[1].split("\n\n")[0]
         fatigue = re.search(r"// double ([0-9.]+)d", player)
-        if not fatigue or "java/lang/Math.pow:(DD)D" not in player or "Attributes.SUBMERGED_MINING_SPEED:" not in player:
+        if (
+            not fatigue
+            or "java/lang/Math.pow:(DD)D" not in player
+            or "Attributes.SUBMERGED_MINING_SPEED:" not in player
+        ):
             raise ValueError("player mining modifiers changed")
         fatigue_base = float(fatigue[1])
         ground_penalties = re.findall(r"// float ([0-9.]+)f", player)
         if not ground_penalties or "Method onGround:()Z" not in player:
             raise ValueError("airborne mining changed")
         airborne_divisor = float(ground_penalties[-1])
-        attributes = field_initialization(inspect("net.minecraft.world.entity.ai.attributes.Attributes"), "SUBMERGED_MINING_SPEED")
+        attributes = field_initialization(
+            inspect("net.minecraft.world.entity.ai.attributes.Attributes"), "SUBMERGED_MINING_SPEED"
+        )
         defaults = re.findall(r"// double ([0-9.]+)d", attributes)
         if not defaults:
             raise ValueError("submerged mining attribute changed")
         submerged_factor = float(defaults[0])
-        block_range = field_initialization(inspect("net.minecraft.world.entity.ai.attributes.Attributes"), "BLOCK_INTERACTION_RANGE")
+        block_range = field_initialization(
+            inspect("net.minecraft.world.entity.ai.attributes.Attributes"), "BLOCK_INTERACTION_RANGE"
+        )
         block_range = float(re.findall(r"// double ([0-9.]+)d", block_range)[0])
-        creative_range = field_initialization(inspect("net.minecraft.server.level.ServerPlayer"), "CREATIVE_BLOCK_INTERACTION_RANGE_MODIFIER")
+        creative_range = field_initialization(
+            inspect("net.minecraft.server.level.ServerPlayer"), "CREATIVE_BLOCK_INTERACTION_RANGE_MODIFIER"
+        )
         if "Operation.ADD_VALUE:" not in creative_range:
             raise ValueError("creative block range modifier operation changed")
         creative_bonus = float(re.findall(r"// double ([0-9.]+)d", creative_range)[0])
+
     def f32(value):
         return struct.unpack("f", struct.pack("f", value))[0]
+
     factors = [{"amplifier": amp, "factor": f32(math.pow(fatigue_base, amp + 1))} for amp in range(256)]
     cases = []
     # Explicit scenario inputs. The expected calculation reads only the reference
     # operation order/divisors, never VoxelCraft mining code or output.
-    for tool, base_speed, correct in (("hand", 1., False), ("wooden_pickaxe", 2., True), ("iron_pickaxe", 6., True)):
+    for tool, base_speed, correct in (("hand", 1.0, False), ("wooden_pickaxe", 2.0, True), ("iron_pickaxe", 6.0, True)):
         for water, ground in ((False, True), (True, True), (True, False)):
             speed = f32(base_speed)
             if water:
@@ -144,16 +180,40 @@ def extract(server):
             if not ground:
                 speed = f32(speed / f32(airborne_divisor))
             delta = f32(f32(speed / f32(1.5)) / f32(divisors[0 if correct else 1]))
-            cases.append({"block": "stone", "tool": tool, "setup_hardness": 1.5, "setup_speed": base_speed,
-                          "eyes_in_water": water, "on_ground": ground, "delta": delta})
-    return {"reference": "Minecraft Java Edition 26.3", "server_sha1": SERVER_SHA1,
-            "sources": ["IceBlock.playerDestroy", "DragonEggBlock.attack", "ServerPlayerGameMode.handleBlockBreakAction",
-                        "BlockBehaviour.getDestroyProgress", "Player.getDestroySpeed", "Attributes.SUBMERGED_MINING_SPEED",
-                        "Attributes.BLOCK_INTERACTION_RANGE", "ServerPlayer.CREATIVE_BLOCK_INTERACTION_RANGE_MODIFIER",
-                        *sorted(visited), enchantment_path],
-            "ice_support_blocks": blocks, "tool_rules": tool_rules, "ice_melting_prevented_by": [v.removeprefix("minecraft:") for v in enchantments],
-            "water_evaporates": dimensions, "fatigue_factors": factors, "progress_cases": cases,
-            "block_reach": {"survival": block_range, "creative": block_range + creative_bonus}}
+            cases.append(
+                {
+                    "block": "stone",
+                    "tool": tool,
+                    "setup_hardness": 1.5,
+                    "setup_speed": base_speed,
+                    "eyes_in_water": water,
+                    "on_ground": ground,
+                    "delta": delta,
+                }
+            )
+    return {
+        "reference": "Minecraft Java Edition 26.3",
+        "server_sha1": SERVER_SHA1,
+        "sources": [
+            "IceBlock.playerDestroy",
+            "DragonEggBlock.attack",
+            "ServerPlayerGameMode.handleBlockBreakAction",
+            "BlockBehaviour.getDestroyProgress",
+            "Player.getDestroySpeed",
+            "Attributes.SUBMERGED_MINING_SPEED",
+            "Attributes.BLOCK_INTERACTION_RANGE",
+            "ServerPlayer.CREATIVE_BLOCK_INTERACTION_RANGE_MODIFIER",
+            *sorted(visited),
+            enchantment_path,
+        ],
+        "ice_support_blocks": blocks,
+        "tool_rules": tool_rules,
+        "ice_melting_prevented_by": [v.removeprefix("minecraft:") for v in enchantments],
+        "water_evaporates": dimensions,
+        "fatigue_factors": factors,
+        "progress_cases": cases,
+        "block_reach": {"survival": block_range, "creative": block_range + creative_bonus},
+    }
 
 
 def main():
