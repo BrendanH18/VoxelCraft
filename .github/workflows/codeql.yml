@@ -1,0 +1,56 @@
+name: CodeQL
+
+# Advanced CodeQL setup, replacing GitHub's default setup so the analysis runs
+# on Namespace runners like the rest of CI (default setup's labeled-runner
+# option doesn't accept Namespace's ephemeral runners). Default setup must be
+# off for this workflow's results to upload.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '41 5 * * 2'
+
+permissions:
+  contents: read
+
+# A newer push to a pull request cancels its older run; other runs finish.
+concurrency:
+  group: codeql-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            runner: namespace-profile-gitrunner
+          # One tracked source: tools/JavaLootVectors.java, the loot test-vector oracle.
+          - language: java-kotlin
+            runner: namespace-profile-gitrunner
+          - language: python
+            runner: namespace-profile-gitrunner
+          # 16 GB, as in ci.yml's Linux test row: rustc ran out of memory on the
+          # 4x8 gitrunner profile, and Rust extraction loads the whole crate graph.
+          - language: rust
+            runner: nscloud-ubuntu-24.04-amd64-8x16
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: /language:${{ matrix.language }}

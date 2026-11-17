@@ -28,7 +28,9 @@ GitHub's heading-anchor rules, and prints each broken one as
 the link check instead. CI runs Cargo with `--locked`, so commit
 `Cargo.lock` changes with the code that needs them. The **Security** workflow
 runs `cargo audit --deny warnings` weekly and on pull requests that change `Cargo.toml`,
-`Cargo.lock` or `.github/workflows/security.yml`. Dependabot proposes weekly
+`Cargo.lock` or `.github/workflows/security.yml`. The **CodeQL** workflow
+analyses the workflows, Python, Rust and the one Java source on pushes to
+`main`, pull requests and weekly. Dependabot proposes weekly
 crate and GitHub Actions updates.
 
 Linux Wayland title bars use winit's supported `wayland-csd-adwaita-crossfont`
