@@ -11,9 +11,8 @@ import argparse
 import hashlib
 import io
 import json
-from pathlib import Path
 import zipfile
-
+from pathlib import Path
 
 SERVER_SHA1 = "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c"
 SOURCE = f"https://piston-data.mojang.com/v1/objects/{SERVER_SHA1}/server.jar"

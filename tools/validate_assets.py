@@ -2,12 +2,12 @@
 """Validate original asset provenance, formats, references and packaged embedding."""
 import argparse
 import json
-from pathlib import Path
 import struct
 import subprocess
 import tempfile
 import wave
 import zlib
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 

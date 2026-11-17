@@ -31,10 +31,10 @@ import functools
 import hashlib
 import json
 import math
-from pathlib import Path
 import random
 import re
 import struct
+from pathlib import Path
 
 # sha256 of each transcribed method body with all whitespace removed.
 PINNED = {

@@ -182,7 +182,7 @@ class ClassCode:
         self.methods = {}
         for block in code.split("\n\n"):
             lines = block.strip("\n").split("\n")
-            header = next((l for l in lines if l.startswith("  ") and not l.startswith("   ")), None)
+            header = next((line for line in lines if line.startswith("  ") and not line.startswith("   ")), None)
             if header is None or "Code:" not in block:
                 continue
             header = strip_generics(header.strip())
@@ -446,7 +446,6 @@ class Interpreter:
 
     def run(self, owner, method, descriptor, args):
         code, following = self.cls(owner).method(method, descriptor)
-        static = method == "<clinit>" or True
         locals_ = {}
         index = 0
         for value, kind in zip(args, ["L"] * len(args)):

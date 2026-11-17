@@ -17,12 +17,13 @@ import argparse
 import hashlib
 import io
 import json
-from pathlib import Path
 import re
 import struct
 import subprocess
 import tempfile
 import zipfile
+from pathlib import Path
+
 from extract_java_item_fixtures import SERVER_SHA1
 
 NEUTRAL = 'net/minecraft/world/entity/NeutralMob'
@@ -56,7 +57,8 @@ def header(data):
         else:
             raise ValueError(f'unknown constant tag {tag}')
         i += 1
-    name = lambda idx: pool[pool[idx][1]][1] if idx else None
+    def name(idx):
+        return pool[pool[idx][1]][1] if idx else None
     access, this, sup, n = struct.unpack('>HHHH', data[at:at + 8])
     interfaces = [name(struct.unpack('>H', data[at + 8 + 2 * k:at + 10 + 2 * k])[0]) for k in range(n)]
     return access, name(this), name(sup), interfaces

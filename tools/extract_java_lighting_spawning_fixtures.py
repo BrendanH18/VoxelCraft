@@ -27,12 +27,13 @@ import argparse
 import hashlib
 import io
 import json
-from pathlib import Path
 import re
-import subprocess
 import struct
+import subprocess
 import tempfile
 import zipfile
+from pathlib import Path
+
 from extract_java_item_fixtures import SERVER_SHA1
 
 
@@ -433,7 +434,8 @@ def sky_darkening_cases(facts, monster_light):
     """Explicit clock/weather scenarios, evaluated in Java float precision.
     `thunder` is getThunderLevel(1); thundering is derived from it."""
     thunder_darken = monster_light["thunder_darken"]
-    f32 = lambda n: struct.unpack("f", struct.pack("f", n))[0]
+    def f32(n):
+        return struct.unpack("f", struct.pack("f", n))[0]
     def lerp(alpha, a, b):
         return f32(a + f32(alpha * f32(b - a)))
     period = facts["period_ticks"]
@@ -469,15 +471,18 @@ def sky_darkening_cases(facts, monster_light):
 def detector_cases(facts, period):
     """Detector outputs from the timeline, Java float operations and the sine table."""
     import math
-    f32 = lambda n: struct.unpack("f", struct.pack("f", n))[0]
+    def f32(n):
+        return struct.unpack("f", struct.pack("f", n))[0]
     x1, y1, x2, y2 = (f32(v) for v in facts["sun_angle_ease"])
 
     def curve(c1, c2):
         return (f32(f32(f32(3. * c1) - f32(3. * c2)) + 1.), f32(f32(-6. * c1) + f32(3. * c2)), f32(3. * c1))
 
     xc, yc = curve(x1, x2), curve(y1, y2)
-    sample = lambda c, t: f32(f32(f32(f32(f32(c[0] * t) + c[1]) * t) + c[2]) * t)
-    gradient = lambda c, t: f32(f32(f32(f32(f32(3. * c[0]) * t) + f32(2. * c[1])) * t) + c[2])
+    def sample(c, t):
+        return f32(f32(f32(f32(f32(c[0] * t) + c[1]) * t) + c[2]) * t)
+    def gradient(c, t):
+        return f32(f32(f32(f32(f32(3. * c[0]) * t) + f32(2. * c[1])) * t) + c[2])
 
     def ease(x):
         t = x
@@ -607,7 +612,8 @@ class Scene:
                             if PROPERTIES[self.block(q)]["damp"] < 15:
                                 active.add(q)
         level = {p: own(p) for p in active}
-        get = lambda q: level.get(q, own(q))
+        def get(q):
+            return level.get(q, own(q))
         changed = True
         while changed:
             changed = False
@@ -652,7 +658,8 @@ def scenes():
     for i, (feet, head) in enumerate([("rail", "air"), ("water", "air"), ("air", "water")]):
         x = 4 + 3 * i
         pockets += [box("air", [x, 30, 20], [x, 31, 20]), box(feet, [x, 30, 20], [x, 30, 20]), box(head, [x, 31, 20], [x, 31, 20])]
-    probe = lambda *cells: [list(c) for c in cells]
+    def probe(*cells):
+        return [list(c) for c in cells]
     return [
         {
             "name": "sealed_cave",

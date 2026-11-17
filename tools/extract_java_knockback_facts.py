@@ -112,7 +112,7 @@ def mth_tables():
 def extract_knockback(inspect, jar_path):
     player = inspect(PLAYER, constants=True)
     living = inspect(LIVING, constants=True)
-    entity = inspect(ENTITY)
+    inspect(ENTITY)  # fails early if the class moved
     mob = inspect(MOB)
     arrow = inspect(ARROW, constants=True)
     projectile = inspect(PROJECTILE)

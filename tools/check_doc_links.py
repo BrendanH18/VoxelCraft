@@ -10,11 +10,11 @@ and links inside fenced code blocks or inline code are ignored. Broken links
 are printed as `file:line: target`; the exit status is 1 if there are any.
 """
 import html
-from pathlib import Path
 import re
 import subprocess
 import sys
 import unicodedata
+from pathlib import Path
 from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[1]

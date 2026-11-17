@@ -2,10 +2,10 @@
 """Unit tests for the campaign ledger tool: python3 -m unittest tools/test_campaign_ledger.py"""
 import contextlib
 import io
-from pathlib import Path
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import campaign_ledger as ledger

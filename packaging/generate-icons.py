@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Generate the procedural grass-block app icon using only the standard library."""
 
-from pathlib import Path
 import struct
 import zlib
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent / "icons"
 

@@ -16,11 +16,12 @@ import argparse
 import hashlib
 import io
 import json
-from pathlib import Path
 import re
 import subprocess
 import tempfile
 import zipfile
+from pathlib import Path
+
 from extract_java_item_fixtures import SERVER_SHA1
 
 
@@ -140,7 +141,7 @@ def entity_type(code, field):
     """The `EntityType.Builder` calls registering `EntityTypes.<field>`."""
     block = code.split("static {};")[1]
     start = block.find(f"EntityTypeIds.{field}:")
-    end = block.find(f"putstatic", start)
+    end = block.find("putstatic", start)
     if start < 0 or end < 0 or f"Field {field}:" not in block[end:block.find(chr(10), end)]:
         raise ValueError(f"missing EntityTypes.{field}")
     listing = ops(block[block.rfind(chr(10), 0, start) + 1:end])

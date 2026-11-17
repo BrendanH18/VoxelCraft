@@ -9,8 +9,9 @@ import argparse
 import hashlib
 import io
 import json
-from pathlib import Path
 import zipfile
+from pathlib import Path
+
 from extract_java_item_fixtures import SERVER_SHA1
 
 TABLES = ('desert_pyramid', 'jungle_temple', 'igloo_chest', 'pillager_outpost',
@@ -26,7 +27,8 @@ def bounds(value):
 
 
 def extract(data):
-    read = lambda name: json.loads(data.read('data/minecraft/' + name + '.json'))
+    def read(name):
+        return json.loads(data.read('data/minecraft/' + name + '.json'))
     costs = {}
     for biome in ('nether_wastes', 'soul_sand_valley', 'crimson_forest', 'warped_forest', 'basalt_deltas'):
         costs[biome] = read('worldgen/biome/' + biome)['attributes']['minecraft:gameplay/natural_mob_spawns']['argument'].get('spawn_costs', {})

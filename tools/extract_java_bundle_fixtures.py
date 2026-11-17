@@ -22,15 +22,16 @@ fixture. No VoxelCraft source or existing fixture is consulted.
 """
 import argparse
 import copy
-from fractions import Fraction
 import hashlib
 import io
 import json
-from pathlib import Path
 import re
 import subprocess
 import tempfile
 import zipfile
+from fractions import Fraction
+from pathlib import Path
+
 from extract_java_item_fixtures import SERVER_SHA1
 
 # The items the cases use, by Java id.
@@ -99,7 +100,8 @@ class Model:
 
     def same(self, a, b):
         """`isSameItemSameComponents`."""
-        strip_count = lambda s: {k: v for k, v in s.items() if k != "count"}
+        def strip_count(s):
+            return {k: v for k, v in s.items() if k != "count"}
         return strip_count(a) == strip_count(b)
 
     def max_amount(self, contents, w):

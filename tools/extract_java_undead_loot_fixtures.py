@@ -4,8 +4,9 @@ import argparse
 import hashlib
 import io
 import json
-from pathlib import Path
 import zipfile
+from pathlib import Path
+
 from extract_java_item_fixtures import SERVER_SHA1
 
 

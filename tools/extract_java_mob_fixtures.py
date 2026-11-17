@@ -4,12 +4,12 @@ import argparse
 import hashlib
 import io
 import json
-from pathlib import Path
 import re
 import subprocess
 import zipfile
-from extract_java_item_fixtures import SERVER_SHA1
+from pathlib import Path
 
+from extract_java_item_fixtures import SERVER_SHA1
 
 NETHER_BIOMES = ('nether_wastes', 'soul_sand_valley', 'crimson_forest', 'warped_forest', 'basalt_deltas')
 

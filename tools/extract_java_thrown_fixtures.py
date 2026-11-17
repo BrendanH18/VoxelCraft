@@ -18,12 +18,13 @@ import argparse
 import hashlib
 import io
 import json
-from pathlib import Path
 import re
 import struct
 import subprocess
 import tempfile
 import zipfile
+from pathlib import Path
+
 from extract_java_item_fixtures import SERVER_SHA1
 
 
@@ -73,7 +74,7 @@ def registration(code, field):
     """The `Items` static-initializer slice that registers `field`."""
     block = code.split("  static {};")[1]
     start = block.index(f"ItemIds.{field}:")
-    end = block.index(f"putstatic", start)
+    end = block.index("putstatic", start)
     return block[start:end]
 
 

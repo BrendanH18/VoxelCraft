@@ -8,8 +8,8 @@ names. Display names come from `assets/minecraft/lang/en_us.json`.
 import argparse
 import hashlib
 import json
-from pathlib import Path
 import zipfile
+from pathlib import Path
 
 CLIENT_SHA1 = "e877b6a07acd633fb3bb475002175cec036e7b87"
 # Entities whose models are drawn from blockstate files; they are not blocks.

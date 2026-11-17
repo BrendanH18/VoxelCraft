@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Unit tests for the documentation link checker: python3 -m unittest tools/test_check_doc_links.py"""
-from pathlib import Path
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import check_doc_links as checker

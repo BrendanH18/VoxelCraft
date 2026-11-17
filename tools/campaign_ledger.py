@@ -24,8 +24,8 @@ are printed, per fragment and by kind.
 """
 import argparse
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DIR = ROOT / 'docs' / 'verification' / '2026-11-12-build-5000' / 'ledger'

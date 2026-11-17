@@ -35,8 +35,8 @@ import itertools
 import json
 import re
 import struct
-from pathlib import Path
 import zipfile
+from pathlib import Path
 
 from extract_java_item_fixtures import SERVER_SHA1
 from extract_java_registry_names import CLIENT_SHA1
@@ -278,10 +278,10 @@ def extract(server, client, source):
     leather_layers = {}
     for kind, layers in sorted(equipment["layers"].items()):
         leather_layers[kind] = [
-            {"texture": strip(l["texture"]),
-             "color_when_undyed": l["dyeable"].get("color_when_undyed") if "dyeable" in l else None,
-             "dyeable": "dyeable" in l}
-            for l in layers
+            {"texture": strip(layer["texture"]),
+             "color_when_undyed": layer["dyeable"].get("color_when_undyed") if "dyeable" in layer else None,
+             "dyeable": "dyeable" in layer}
+            for layer in layers
         ]
     dyed_item_color = (source / "world/item/component/DyedItemColor.java").read_text()
     expect_body(dyed_item_color, "public static DyedItemColor applyDyes(@Nullable final DyedItemColor currentDye",

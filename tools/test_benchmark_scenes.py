@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Unit tests for the live scene runner's gate logic: python3 -m unittest tools/test_benchmark_scenes.py"""
 import json
-from pathlib import Path
 import sys
 import unittest
+from pathlib import Path
 
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 import benchmark_scenes as runner
@@ -101,7 +101,8 @@ class RunnerGate(unittest.TestCase):
 
     def test_gpu_line_summarises_slow_acquires(self):
         self.assertIsNone(runner.gpu_line({'gpu_timestamp_ms':None}))
-        group=lambda frame,acquire,gpu:{'frames':10,'timed_frames':10,'frame_ms':frame,'acquire_ms':acquire,'gpu_ms':gpu}
+        def group(frame, acquire, gpu):
+            return {'frames':10,'timed_frames':10,'frame_ms':frame,'acquire_ms':acquire,'gpu_ms':gpu}
         line=runner.gpu_line({'gpu_timestamp_ms':{'slow_acquire_threshold_ms':4.0,
             'all_frames':group(2.0,1.3,{'mean':1.1,'p99':1.6}),'slowest_one_percent':group(8.8,7.6,{'mean':1.2,'p99':1.4}),
             'slow_acquire_frames':group(8.6,7.4,{'mean':1.25,'p99':1.5}),'other_frames':group(1.9,1.2,None)}})

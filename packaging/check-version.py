@@ -6,10 +6,10 @@ Release tags are two-part, with or without a leading `v`: `v0.9`, `0.9` and
 `v0.9.1` still works for a fix release.
 """
 
-import os
-from pathlib import Path
 import json
+import os
 import subprocess
+from pathlib import Path
 
 
 def tag_version(tag: str) -> str:

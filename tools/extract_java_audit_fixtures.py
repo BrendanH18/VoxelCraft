@@ -6,9 +6,10 @@ import argparse
 import hashlib
 import io
 import json
-from pathlib import Path
 import tempfile
 import zipfile
+from pathlib import Path
+
 from extract_java_item_fixtures import SERVER_SHA1
 
 COMPOST_NAMES = ['acacia_leaves', 'acacia_sapling', 'allium', 'apple', 'azalea', 'azalea_leaves', 'azure_bluet', 'baked_potato', 'beetroot', 'beetroot_seeds', 'big_dripleaf', 'birch_leaves', 'birch_sapling', 'blue_orchid', 'bread', 'brown_mushroom', 'brown_mushroom_block', 'cactus', 'cake', 'carrot', 'carved_pumpkin', 'cherry_leaves', 'cherry_sapling', 'cocoa_beans', 'cookie', 'cornflower', 'crimson_fungus', 'crimson_roots', 'dandelion', 'dark_oak_leaves', 'dark_oak_sapling', 'dried_kelp', 'dried_kelp_block', 'fern', 'flowering_azalea', 'flowering_azalea_leaves', 'glow_berries', 'hanging_roots', 'hay_block', 'jungle_leaves', 'jungle_sapling', 'kelp', 'large_fern', 'lilac', 'lily_of_the_valley', 'lily_pad', 'mangrove_leaves', 'mangrove_propagule', 'mangrove_roots', 'melon', 'melon_seeds', 'melon_slice', 'moss_block', 'moss_carpet', 'mushroom_stem', 'nether_sprouts', 'nether_wart', 'nether_wart_block', 'oak_sapling', 'orange_tulip', 'oxeye_daisy', 'pale_hanging_moss', 'pale_moss_block', 'pale_moss_carpet', 'pale_oak_leaves', 'pale_oak_sapling', 'peony', 'pink_petals', 'pink_tulip', 'poppy', 'potato', 'pumpkin', 'pumpkin_pie', 'pumpkin_seeds', 'red_mushroom', 'red_mushroom_block', 'red_tulip', 'rose_bush', 'sea_pickle', 'seagrass', 'short_grass', 'shroomlight', 'small_dripleaf', 'spore_blossom', 'spruce_leaves', 'spruce_sapling', 'sugar_cane', 'sunflower', 'sweet_berries', 'tall_grass', 'twisting_vines', 'vine', 'warped_fungus', 'warped_roots', 'warped_wart_block', 'weeping_vines', 'wheat', 'wheat_seeds', 'white_tulip']

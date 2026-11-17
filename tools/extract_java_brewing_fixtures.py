@@ -8,11 +8,12 @@ import argparse
 import hashlib
 import io
 import json
-from pathlib import Path
 import re
 import subprocess
 import tempfile
 import zipfile
+from pathlib import Path
+
 from extract_java_item_fixtures import SERVER_SHA1
 from extract_java_turtle_fixtures import field_initialization, integer_constants
 
@@ -132,7 +133,8 @@ def extract(server):
                     or set(rule["output"]["components"]) != {"minecraft:potion_contents"}
                     or set(rule["output"]["components"]["minecraft:potion_contents"]) != {"potion"}):
                 raise ValueError(f"unknown brewing JSON form: {path}")
-            clean = lambda s: s.removeprefix("minecraft:")
+            def clean(s):
+                return s.removeprefix("minecraft:")
             recipes.append({"path": path, "container": clean(rule["input"]["item"]),
                             "input": clean(rule["input"]["potion_contents"]["potions"]),
                             "ingredient": clean(rule["reagent"]["item"]),

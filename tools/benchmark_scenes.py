@@ -4,10 +4,10 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import platform
 import subprocess
 import time
+from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]
 TICKS_PER_SECOND=20.0

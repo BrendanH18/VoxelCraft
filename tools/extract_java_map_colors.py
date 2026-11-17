@@ -4,6 +4,7 @@ import argparse
 import json
 import re
 from pathlib import Path
+
 from java_block_properties import block_map_colors
 
 p = argparse.ArgumentParser()

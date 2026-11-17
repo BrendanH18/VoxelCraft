@@ -7,10 +7,11 @@ import json
 import math
 import re
 import struct
-from pathlib import Path
 import subprocess
 import tempfile
 import zipfile
+from pathlib import Path
+
 from extract_java_item_fixtures import SERVER_SHA1
 from extract_java_turtle_fixtures import field_initialization
 

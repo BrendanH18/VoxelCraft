@@ -13,10 +13,11 @@ import argparse
 import hashlib
 import io
 import json
-from pathlib import Path
 import subprocess
 import tempfile
 import zipfile
+from pathlib import Path
+
 from extract_java_item_fixtures import SERVER_SHA1
 from java_block_properties import block_properties
 
