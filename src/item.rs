@@ -339,6 +339,14 @@ pub enum Sprite {
     ExperienceBottle,
     /// v0.14: a bundle of this leather colour (`content::bundle`).
     Bundle([u8; 3]),
+    /// v0.15 Track B: a brass spyglass (`content::spyglass`).
+    Spyglass,
+    /// v0.15 Track B: the book and quill and the written book.
+    WritableBook,
+    WrittenBook,
+    /// v0.15 Track B: a pattern item's sheet showing pattern item `i` of
+    /// `content::banner_patterns::PATTERN_ITEMS`.
+    BannerPattern(u8),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -859,6 +867,10 @@ impl Item {
     pub const FERMENTED_SPIDER_EYE: Item = Item(1530);
     /// v0.17 build-5000 (ITEM-02): Java's `experience_bottle`, thrown for experience.
     pub const EXPERIENCE_BOTTLE: Item = Item(1554);
+    /// v0.15 Track B: Java's `spyglass`, `writable_book` and `written_book`.
+    pub const SPYGLASS: Item = crate::content::spyglass::SPYGLASS;
+    pub const WRITABLE_BOOK: Item = crate::content::books::WRITABLE_BOOK;
+    pub const WRITTEN_BOOK: Item = crate::content::books::WRITTEN_BOOK;
     pub const SPIDER_EYE: Item = Item(302);
     pub const PAPER: Item = Item(303);
     pub const BOOK: Item = Item(304);
@@ -1096,6 +1108,12 @@ impl Item {
             return info;
         }
         if let Some(info) = crate::content::bundle::item_info(self) {
+            return info;
+        }
+        if let Some(info) = crate::content::banner_patterns::item_info(self)
+            .or_else(|| crate::content::books::item_info(self))
+            .or_else(|| crate::content::spyglass::item_info(self))
+        {
             return info;
         }
         if self == Self::FERMENTED_SPIDER_EYE {
@@ -1486,7 +1504,9 @@ impl Item {
     /// registrations are pinned so far: the chainmail pieces and the
     /// Bottle o' Enchanting.
     pub fn is_uncommon(self) -> bool {
-        self == Item::EXPERIENCE_BOTTLE || crate::equipment::is_uncommon(self)
+        self == Item::EXPERIENCE_BOTTLE
+            || crate::equipment::is_uncommon(self)
+            || crate::content::banner_patterns::rarity(self) == Some(crate::content::banner_patterns::Rarity::Uncommon)
     }
 
     /// The horse or nautilus armor this is, and its material.
@@ -1496,13 +1516,16 @@ impl Item {
 
     /// Java's `Rarity.RARE` for items registered with it (aqua names).
     pub fn is_rare(self) -> bool {
-        self == Item::ENCHANTED_GOLDEN_APPLE || crate::world::jukebox::is_rare(self) || crate::weapons::is_rare(self)
+        self == Item::ENCHANTED_GOLDEN_APPLE
+            || crate::world::jukebox::is_rare(self)
+            || crate::weapons::is_rare(self)
+            || crate::content::banner_patterns::rarity(self) == Some(crate::content::banner_patterns::Rarity::Rare)
     }
 
     /// Java's `DataComponents.ENCHANTMENT_GLINT_OVERRIDE`: drawn with the
     /// enchantment glint though it carries no enchantment.
     pub fn has_glint(self) -> bool {
-        matches!(self, Item::ENCHANTED_GOLDEN_APPLE | Item::EXPERIENCE_BOTTLE)
+        matches!(self, Item::ENCHANTED_GOLDEN_APPLE | Item::EXPERIENCE_BOTTLE | Item::WRITTEN_BOOK)
     }
 
     pub fn remainder(self) -> Option<Item> {
@@ -1566,6 +1589,10 @@ impl Item {
         // The player-facing label differs from the reference ID.
         if name == "experience_bottle" {
             return Some(Item::EXPERIENCE_BOTTLE);
+        }
+        // Java's `writable_book` is displayed "Book and Quill".
+        if matches!(name, "writable_book" | "writable book") {
+            return Some(Item::WRITABLE_BOOK);
         }
         if let Some(b) = Block::from_name(name) {
             // Doors and nether wart are placed by an item, not as a block.
@@ -1632,6 +1659,10 @@ impl Item {
             .chain([Self::EXPERIENCE_BOTTLE])
             // v0.17 build-5000 ITEM-08-BUNDLE-CORE: the plain and dyed bundles.
             .chain(crate::content::bundle::all())
+            // v0.15 Track B: spyglass, book and quill, written book, then the
+            // ten banner pattern items.
+            .chain([Self::SPYGLASS, Self::WRITABLE_BOOK, Self::WRITTEN_BOOK])
+            .chain(crate::content::banner_patterns::every_item())
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1714,6 +1745,11 @@ fn sprite_index(item: Item) -> Option<u16> {
                 + 1
                 + (i - crate::content::bundle::ITEM_FIRST),
         ),
+        // v0.15 Track B: the spyglass, books and pattern items follow the bundles.
+        1556..=1558 => Some(track_b_icon_base() + item.0 - 1556),
+        i if crate::content::banner_patterns::is_pattern_item(item) => {
+            Some(track_b_icon_base() + 3 + i - crate::content::banner_patterns::ITEM_FIRST)
+        }
         1280..=1281 => Some(passive_icon_base() + 4 + item.0 - 1280),
         1385..=1386 => Some(passive_icon_base() + 9 + item.0 - 1385),
         1395..=1401 => Some(passive_icon_base() + 11 + item.0 - 1395),
@@ -1839,6 +1875,18 @@ pub const fn icon_count() -> u32 {
         + (crate::content::harness::ITEM_END - crate::content::harness::ITEM_FIRST) as u32
         + 1 // Experience bottle.
         + (crate::content::bundle::ITEM_END - crate::content::bundle::ITEM_FIRST) as u32
+        + 3 // v0.15 Track B: spyglass, book and quill, written book.
+        + (crate::content::banner_patterns::ITEM_END - crate::content::banner_patterns::ITEM_FIRST) as u32
+}
+
+/// v0.15 Track B's first icon, after the bundles.
+const fn track_b_icon_base() -> u16 {
+    late_icon_base()
+        + 1
+        + crate::equipment::ICON_COUNT
+        + (crate::content::harness::ITEM_END - crate::content::harness::ITEM_FIRST)
+        + 1
+        + (crate::content::bundle::ITEM_END - crate::content::bundle::ITEM_FIRST)
 }
 
 /// The fermented spider eye's icon: icons appended in v0.14 follow it.

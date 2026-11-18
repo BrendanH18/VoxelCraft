@@ -66,6 +66,9 @@ pub(super) struct Peer {
     /// That editor is open: only it may write the sign (Java's
     /// `playerWhoMayEdit`), once.
     sign_editing: bool,
+    /// v0.15 Track B: a lectern or held book this client should open its
+    /// reader or editor for, numbered like `sign_edit`.
+    book_open: Option<(Value, u32)>,
 }
 impl Peer {
     fn new(connection: Connection) -> Self {
@@ -93,6 +96,7 @@ impl Peer {
             wood_sent: None,
             sign_edit: None,
             sign_editing: false,
+            book_open: None,
         }
     }
 }
@@ -145,6 +149,8 @@ pub(super) struct Lan {
     respawns: Option<u64>,
     /// The last sign editor request this client opened.
     sign_serial: u32,
+    /// The last lectern or book request this client opened.
+    book_serial: u32,
 }
 impl Lan {
     /// What the use button was doing when `input` was sampled: eating or
@@ -275,7 +281,7 @@ const WOOD_BYTES: usize = voxelcraft::lan::MAX_FRAME / 4;
 fn fit_state(mut v: Value) -> (Option<Value>, bool) {
     let fits = |v: &Value| serde_json::to_vec(v).is_ok_and(|b| b.len() < voxelcraft::lan::MAX_FRAME - 16);
     let mut shed_looks = false;
-    for shed in ["extras", "copper_golem_statues", "wood", "decor", "items", "looks", "mobs"] {
+    for shed in ["extras", "workstations", "copper_golem_statues", "wood", "decor", "items", "looks", "mobs"] {
         if fits(&v) {
             return (Some(v), shed_looks);
         }
@@ -831,6 +837,14 @@ impl Game {
                 self.save();
                 let _ = peer.connection.send(Packet::Chat("Saved the game".into()));
             }
+            // v0.15 Track B: the book editor and lectern buttons, through
+            // the same CLI commands and session rules.
+            c if c.starts_with("book ") || c.starts_with("lectern ") => {
+                let parsed = Command::parse(c)?;
+                let name = peer.profile.as_deref().unwrap();
+                let bot = self.agents.players.get_mut(name).unwrap();
+                bot.agent.execute(parsed, &mut self.world, &mut self.mobs.entities, &[]).map_err(|e| e.to_string())?;
+            }
             c if c.starts_with("sign ") => {
                 let Command::Sign(cell, front, lines) = Command::parse(c)? else { return Err("Bad sign text".into()) };
                 if !peer.sign_editing || peer.sign_edit.is_none_or(|(p, f, _)| (p, f) != (cell, front)) {
@@ -897,6 +911,9 @@ impl Game {
             Container::Anvil(p) => near(p, Block::is_anvil),
             Container::Grindstone(p) => near(p, |b| b.base() == Block::GRINDSTONE),
             Container::Smithing(p) => near(p, |b| b == Block::SMITHING_TABLE),
+            Container::Stonecutter(p) => near(p, |b| b.base() == Block::STONECUTTER),
+            Container::Loom(p) => near(p, |b| b.base() == Block::LOOM),
+            Container::Cartography(p) => near(p, |b| b.base() == Block::CARTOGRAPHY_TABLE),
             Container::Trading(id) => self.mobs.entities.merchant_in_reach(id, eye, session.entity_screen_range()),
             Container::Minecart(id) => self.mobs.entities.vehicle_in_reach(id, eye, session.entity_screen_range()),
         }
@@ -1041,6 +1058,14 @@ impl Game {
                             peer.sign_edit = Some((cell, front, serial));
                             peer.sign_editing = true;
                         }
+                        Request::Open(Used::Lectern { cell }) => {
+                            let serial = peer.book_open.as_ref().map_or(1, |(_, n)| n.wrapping_add(1));
+                            peer.book_open = Some((json!({ "lectern": cell.to_array() }), serial));
+                        }
+                        Request::Open(Used::OpenBook { slot }) => {
+                            let serial = peer.book_open.as_ref().map_or(1, |(_, n)| n.wrapping_add(1));
+                            peer.book_open = Some((json!({ "slot": slot }), serial));
+                        }
                         Request::Open(Used::Utility {
                             effect: crate::world::utilities::interact::Effect::EnderChest,
                             cell,
@@ -1085,6 +1110,15 @@ impl Game {
                         }
                         Some(Block::SMITHING_TABLE) => {
                             self.peer_open(peer, Container::Smithing(p));
+                        }
+                        Some(b) if b.base() == Block::STONECUTTER => {
+                            self.peer_open(peer, Container::Stonecutter(p));
+                        }
+                        Some(b) if b.base() == Block::LOOM => {
+                            self.peer_open(peer, Container::Loom(p));
+                        }
+                        Some(b) if b.base() == Block::CARTOGRAPHY_TABLE => {
+                            self.peer_open(peer, Container::Cartography(p));
                         }
                         _ => {}
                     }
@@ -1251,6 +1285,16 @@ impl Game {
                 Container::Anvil(p) => json!({"kind":"anvil","pos":p.to_array(),"work":work}),
                 Container::Grindstone(p) => json!({"kind":"grindstone","pos":p.to_array(),"work":work}),
                 Container::Smithing(p) => json!({"kind":"smithing","pos":p.to_array(),"work":work}),
+                Container::Stonecutter(p) | Container::Loom(p) | Container::Cartography(p) => {
+                    let kind = match peer.body.container() {
+                        Container::Stonecutter(_) => "stonecutter",
+                        Container::Loom(_) => "loom",
+                        _ => "cartography",
+                    };
+                    let s = &bot.agent.session;
+                    let input = s.work_input.map(|i| i.0);
+                    json!({"kind":kind,"pos":p.to_array(),"work":work,"choice":s.work_choice,"input":input})
+                }
                 Container::Trading(id) => match self.mobs.entities.merchant(id) {
                     Some(m) => json!({"kind":"trading","uid":m.uid,"trade":m.trade_view()}),
                     None => json!({"kind":"inventory"}),
@@ -1376,6 +1420,13 @@ impl Game {
             let snapshot = json!({"sequence":peer.applied,"self":state(&bot.agent,name),"players":others,"time":self.day_time,"rain":self.weather.raining,"rain_strength":self.weather.strength,"thunder":self.weather.thundering,"dimension":self.dimension.name(),"seed":self.world.generator.seed,"view":view,"open":peer.open,"container":container,"grid":peer.grid.cells.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),"grid_size":peer.grid.size,"mobs":mobs,"carts":carts,"items":items,"decor":decor,"arrows":arrows,"extras":extras,"falling":falling,"sounds":sounds,"effects":effects,"cracks":cracks,"wood":wood,"sign_edit":sign_edit});
             let mut snapshot = snapshot;
             snapshot["copper_golem_statues"] = json!(self.world.copper_golem_statues_near(here));
+            // v0.15 Track B: banner patterns and lectern books near the player.
+            snapshot["workstations"] = json!(self.world.workstations_near(here, 160.0));
+            if let Some((open, serial)) = &peer.book_open {
+                let mut open = open.clone();
+                open["serial"] = json!(serial);
+                snapshot["book_open"] = open;
+            }
             let (snapshot, shed_looks) = fit_state(snapshot);
             if snapshot.as_ref().is_some_and(|v| v["wood"].is_string()) {
                 peer.wood_sent = Some((wood_version, here));
@@ -1624,6 +1675,9 @@ impl Game {
         if let Some(text) = snapshot["copper_golem_statues"].as_str() {
             self.world.replace_copper_golem_statues(text);
         }
+        if let Some(text) = snapshot["workstations"].as_str() {
+            self.world.replace_workstations(text);
+        }
         let edit = &snapshot["sign_edit"];
         if let (Some(serial), Some(p)) = (edit["serial"].as_u64(), vector(&edit["pos"]))
             && serial as u32 != self.lan.sign_serial
@@ -1631,6 +1685,25 @@ impl Game {
             && self.open_sign_editor(p.as_ivec3(), edit["front"] == true)
         {
             self.lan.sign_serial = serial as u32;
+        }
+        // v0.15 Track B: the host asked for a lectern reader or book screen.
+        let open = &snapshot["book_open"];
+        if let Some(serial) = open["serial"].as_u64()
+            && serial as u32 != self.lan.book_serial
+        {
+            let opened = if let Some(p) = vector(&open["lectern"]) {
+                let p = p.as_ivec3();
+                // Retried until the lectern's book has arrived.
+                self.world.lectern_at(p).is_some() && {
+                    self.open_lectern(p);
+                    true
+                }
+            } else {
+                open["slot"].as_u64().is_some_and(|slot| self.open_held_book(slot as usize))
+            };
+            if opened {
+                self.lan.book_serial = serial as u32;
+            }
         }
         let c = &snapshot["container"];
         let pos = vector(&c["pos"]).map(|p| p.as_ivec3());
@@ -1677,6 +1750,16 @@ impl Game {
             (Some("anvil"), Some(p)) => Container::Anvil(p),
             (Some("grindstone"), Some(p)) => Container::Grindstone(p),
             (Some("smithing"), Some(p)) => Container::Smithing(p),
+            (Some(kind @ ("stonecutter" | "loom" | "cartography")), Some(p)) => {
+                self.session.work_choice = c["choice"].as_u64().and_then(|v| u16::try_from(v).ok());
+                self.session.work_input =
+                    c["input"].as_u64().and_then(|v| u16::try_from(v).ok()).map(crate::item::Item);
+                match kind {
+                    "stonecutter" => Container::Stonecutter(p),
+                    "loom" => Container::Loom(p),
+                    _ => Container::Cartography(p),
+                }
+            }
             (Some("trading"), _) => match c["trade"]["id"].as_u64() {
                 Some(id) => Container::Trading(id),
                 None => Container::Inventory,
@@ -1919,6 +2002,18 @@ pub(super) fn encode_slot(slot: SlotRef) -> Option<u16> {
         SlotRef::SmithAddition => 532,
         SlotRef::SmithResult => 533,
         SlotRef::Trade(i) if i < 10 => 540 + i as u16,
+        // v0.15 Track B workstations.
+        SlotRef::CutInput => 550,
+        SlotRef::CutResult => 551,
+        SlotRef::LoomBanner => 552,
+        SlotRef::LoomDye => 553,
+        SlotRef::LoomPattern => 554,
+        SlotRef::LoomResult => 555,
+        SlotRef::MapInput => 556,
+        SlotRef::MapExtra => 557,
+        SlotRef::MapResult => 558,
+        SlotRef::CutRecipe(i) if i < 100 => 600 + i as u16,
+        SlotRef::LoomChoice(i) if i < 100 => 700 + i as u16,
         SlotRef::Palette(item) => 1000 + crate::item::Item::creative_palette().position(|i| i == item)? as u16,
         _ => return None,
     })
@@ -1953,6 +2048,23 @@ fn decode_slot(slot: u16, container: Container, mode: GameMode, grid_size: usize
             _ => SlotRef::SmithResult,
         }),
         540..=549 if matches!(container, Container::Trading(_)) => Some(SlotRef::Trade((slot - 540) as usize)),
+        550 | 551 | 600..=699 if matches!(container, Container::Stonecutter(_)) => Some(match slot {
+            550 => SlotRef::CutInput,
+            551 => SlotRef::CutResult,
+            i => SlotRef::CutRecipe((i - 600) as usize),
+        }),
+        552..=555 | 700..=799 if matches!(container, Container::Loom(_)) => Some(match slot {
+            552 => SlotRef::LoomBanner,
+            553 => SlotRef::LoomDye,
+            554 => SlotRef::LoomPattern,
+            555 => SlotRef::LoomResult,
+            i => SlotRef::LoomChoice((i - 700) as usize),
+        }),
+        556..=558 if matches!(container, Container::Cartography(_)) => Some(match slot {
+            556 => SlotRef::MapInput,
+            557 => SlotRef::MapExtra,
+            _ => SlotRef::MapResult,
+        }),
         300..=302 if matches!(container, Container::Furnace(_)) => Some(match slot {
             300 => SlotRef::FurnaceInput,
             301 => SlotRef::FurnaceFuel,

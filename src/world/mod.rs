@@ -123,6 +123,7 @@ mod village_life;
 pub mod wall_states;
 pub mod waterlog;
 pub mod wood;
+pub mod workstations;
 
 use std::sync::Arc;
 
@@ -383,6 +384,10 @@ pub struct World {
     pub sniffer_egg_events: Vec<(IVec3, bool)>,
     /// Jukeboxes and their records (see [`jukebox`]).
     pub(crate) jukeboxes: jukebox::State,
+    /// Banner patterns and lecterns (v0.15 Track B, see [`workstations`]).
+    workstations: workstations::State,
+    /// Lectern pages turned since the game last asked (level event 1043).
+    pub page_turns: Vec<workstations::PageTurn>,
     /// Jukebox game events since the entity pass last drained them
     /// (allays dance; track A's vibrations hook in there).
     pub jukebox_events: Vec<(IVec3, jukebox::JukeboxEvent)>,
@@ -488,6 +493,7 @@ impl World {
             self.light_block_changed(p, old, block, old_light);
             self.reheight_and_remesh(p, old, block, false);
             self.track_banner(p, old, block);
+            self.track_workstations(p, old, block);
         }
         self.update_block_light();
     }
@@ -661,6 +667,8 @@ impl World {
             hatched_tadpoles: Vec::new(),
             sniffer_egg_events: Vec::new(),
             jukeboxes: Default::default(),
+            workstations: Default::default(),
+            page_turns: Vec::new(),
             jukebox_events: Vec::new(),
             records: Vec::new(),
             records_started: Vec::new(),
@@ -1003,6 +1011,7 @@ impl World {
         self.track_furnace(p, old, block);
         self.track_chest(p, old, block);
         self.track_banner(p, old, block);
+        self.track_workstations(p, old, block);
         self.track_brewing_stand(p, old, block);
         self.track_wood(p, old, block);
         self.track_beehives(p, old, block);

@@ -47,6 +47,20 @@ pub(super) enum SlotRef {
     SmithAddition,
     SmithResult,
     Trade(usize),
+    /// v0.15 Track B: the stonecutter's input, result and recipe buttons.
+    CutInput,
+    CutResult,
+    CutRecipe(usize),
+    /// The loom's banner, dye and pattern slots, result and pattern buttons.
+    LoomBanner,
+    LoomDye,
+    LoomPattern,
+    LoomResult,
+    LoomChoice(usize),
+    /// The cartography table's map and additional slots and result.
+    MapInput,
+    MapExtra,
+    MapResult,
     /// The off-hand slot (survival inventory).
     Offhand,
     /// Worn armor (survival inventory).
@@ -111,6 +125,9 @@ impl Game {
         if let Some(t) = self.credits {
             self.credits_ui(&mut ui, t);
             return ui.verts;
+        }
+        if self.camera.first_person() && self.session.scoping() {
+            spyglass_overlay(&mut ui, sw, sh, self.session.scoping_ticks());
         }
         if self.portal_time > 0.0 {
             // The portal's purple swims in as it takes hold.
@@ -485,7 +502,7 @@ impl Game {
     }
 
     /// Item icon, durability bar and stack count in an 18x18 slot at (x, y).
-    fn stack_ui(&self, ui: &mut Ui, x: f32, y: f32, stack: Stack) {
+    pub(super) fn stack_ui(&self, ui: &mut Ui, x: f32, y: f32, stack: Stack) {
         draw_stack(ui, x, y, stack, self.session.mode.is_survival(), self.dial_of(&self.session.player));
     }
 }
@@ -658,6 +675,7 @@ pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool
         }
         (None, None) => {}
     }
+    super::patterns::draw_icon_patterns(ui, x, y, &stack);
     if let Some(wear) = stack.wear() {
         // Minecraft's bar: green when new, through yellow to red.
         let w = (13.0 * wear).round().max(1.0);
@@ -757,6 +775,9 @@ impl Game {
                     | Container::Grindstone(_)
                     | Container::Trading(_)
                     | Container::Smithing(_)
+                    | Container::Stonecutter(_)
+                    | Container::Loom(_)
+                    | Container::Cartography(_)
             )
     }
 
@@ -866,6 +887,9 @@ impl Game {
             out.push((SlotRef::SmithAddition, px + 51.0, py + 48.0));
             out.push((SlotRef::SmithResult, px + 105.0, py + 48.0));
             CRAFT_H
+        } else if super::workstations::is_workstation(self.body.container) {
+            self.workstation_slots(px, py, &mut out);
+            CRAFT_H
         } else if let Container::Brewing(_) = self.body.container {
             // Java's layout: fuel top left, the ingredient over three
             // bottles in a fan.
@@ -943,6 +967,12 @@ impl Game {
         {
             return None;
         }
+        if super::workstations::is_workstation(self.body.container) {
+            let (px, py, _) = self.panel((w as f32 / scale, h as f32 / scale));
+            if let Some(button) = self.work_button_at(px, py + self.search_h(), mx, my) {
+                return Some(button);
+            }
+        }
         if let Container::Enchanting(_) = self.body.container {
             let (px, py, _) = self.panel((w as f32 / scale, h as f32 / scale));
             for i in 0..3 {
@@ -984,6 +1014,7 @@ impl Game {
             (Container::Anvil(_), _) => "Anvil",
             (Container::Grindstone(_), _) => "Repair & Disenchant",
             (Container::Smithing(_), _) => "Upgrade Gear",
+            (Container::Stonecutter(_) | Container::Loom(_) | Container::Cartography(_), _) => self.workstation_title(),
             (Container::Trading(_), _) => "",
             (Container::Inventory, GameMode::Survival) => "Inventory",
             (Container::Inventory, GameMode::Creative) => "Creative",
@@ -1007,6 +1038,8 @@ impl Game {
             self.anvil_ui(ui, px, py);
         } else if let Container::Smithing(_) = self.body.container {
             self.smithing_ui(ui, px, py);
+        } else if super::workstations::is_workstation(self.body.container) {
+            self.workstation_ui(ui, px, py);
         } else if self.has_top_section() && !matches!(self.body.container, Container::Chest(_) | Container::Minecart(_))
         {
             // Arrow toward the result; in a furnace it fills with progress
@@ -1062,7 +1095,7 @@ impl Game {
                 SlotRef::Inventory(i) => self.session.inventory.get(i),
                 SlotRef::Palette(b) => Some(Stack::new(b, 1)),
                 SlotRef::Craft(i) => self.craft.cells[i],
-                SlotRef::CraftResult => self.craft.result(),
+                SlotRef::CraftResult => self.craft.result_in(&self.world.maps),
                 SlotRef::Armor(p) => self.session.inventory.armor[p as usize],
                 SlotRef::Offhand => self.session.inventory.offhand,
                 f => self.container_slot(f),
@@ -1075,6 +1108,7 @@ impl Game {
                 (SlotRef::SmithTemplate, None) => Item::NETHERITE_UPGRADE.icon_layer(),
                 (SlotRef::SmithBase, None) => Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Diamond).icon_layer(),
                 (SlotRef::SmithAddition, None) => Item::NETHERITE_INGOT.icon_layer(),
+                (s, None) => Self::workstation_outline(s),
                 _ => None,
             };
             if let Some(layer) = outline {
@@ -1106,7 +1140,7 @@ impl Game {
             Some(SlotRef::Inventory(i)) => self.session.inventory.get(i),
             Some(SlotRef::Palette(item)) => Some(Stack::new(item, 1)),
             Some(SlotRef::Craft(i)) => self.craft.cells[i],
-            Some(SlotRef::CraftResult) => self.craft.result(),
+            Some(SlotRef::CraftResult) => self.craft.result_in(&self.world.maps),
             Some(SlotRef::Armor(p)) => self.session.inventory.armor[p as usize],
             Some(SlotRef::Offhand) => self.session.inventory.offhand,
             Some(f) => self.container_slot(f),
@@ -1220,6 +1254,9 @@ impl Game {
         }
         if let (Container::Chest(p), SlotRef::Chest(i)) = (self.body.container, slot) {
             return self.world.chest_slot(p, i);
+        }
+        if super::workstations::is_workstation_slot(slot) {
+            return self.workstation_slot(slot);
         }
         match slot {
             SlotRef::EnchantItem => return self.session.work[0],
@@ -1608,6 +1645,37 @@ pub(super) fn frozen_overlay(ui: &mut Ui, w: f32, h: f32, ticks: u16) {
         ui.rect(t * 2.0, 16.0, 2.0, (h - 32.0).max(0.0), color);
         ui.rect(w - (t + 1.0) * 2.0, 16.0, 2.0, (h - 32.0).max(0.0), color);
     }
+}
+
+/// `Hud.extractSpyglassOverlay`: the scope, a square `min(width, height)`
+/// times `scopeScale` on a side, with black around it. `scopeScale` eases
+/// from 0.5 toward 1.125 by half the distance a tick, approximated here
+/// from the ticks the spyglass has been up. The scope art is original: a
+/// dark ring and a faint crosshair.
+fn spyglass_overlay(ui: &mut Ui, sw: f32, sh: f32, ticks: u32) {
+    use voxelcraft::content::spyglass::{SCOPE_EASE_PER_TICK, SCOPE_START, SCOPE_TARGET};
+    let scale = SCOPE_TARGET - (SCOPE_TARGET - SCOPE_START) * (-SCOPE_EASE_PER_TICK * ticks as f32).exp();
+    let side = (sw.min(sh) * scale).floor();
+    let (left, top) = (((sw - side) / 2.0).floor(), ((sh - side) / 2.0).floor());
+    let black = [0.0, 0.0, 0.0, 1.0];
+    ui.rect(0.0, 0.0, sw, top.max(0.0), black);
+    ui.rect(0.0, top + side, sw, (sh - top - side).max(0.0), black);
+    ui.rect(0.0, top, left.max(0.0), side, black);
+    ui.rect(left + side, top, (sw - left - side).max(0.0), side, black);
+    // The lens: black outside a circle, drawn as horizontal spans.
+    let r = side / 2.0;
+    let (cx, cy) = (left + r, top + r);
+    let rows = side.max(1.0) as i32;
+    for i in 0..rows {
+        let y = top + i as f32;
+        let dy = (y + 0.5 - cy) / r;
+        let half = if dy.abs() < 1.0 { r * (1.0 - dy * dy).sqrt() } else { 0.0 };
+        ui.rect(left, y, (r - half).max(0.0), 1.0, black);
+        ui.rect(cx + half, y, (r - half).max(0.0), 1.0, black);
+    }
+    let faint = [0.0, 0.0, 0.0, 0.35];
+    ui.rect(cx - r * 0.25, cy, r * 0.5, 1.0, faint);
+    ui.rect(cx, cy - r * 0.25, 1.0, r * 0.5, faint);
 }
 
 #[cfg(test)]

@@ -2,6 +2,8 @@
 //! Start with planks and furnace fuels; other integrations migrate with fixtures.
 use crate::{item::Item, world::block::Block};
 
+pub mod banner_patterns;
+pub mod books;
 pub mod bundle;
 pub mod compost;
 pub mod consumption;
@@ -11,6 +13,7 @@ pub mod harness;
 pub mod interaction;
 pub mod mining;
 pub mod placement;
+pub mod spyglass;
 
 /// All implemented plank ingredients. Oak stays first for recipe-book previews.
 /// Nether planks are valid ingredients but explicitly are not furnace fuels.

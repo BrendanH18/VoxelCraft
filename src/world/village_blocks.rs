@@ -42,7 +42,14 @@ const NAMES: [&str; 15] = [
 pub const BARREL_UP: Block = Block(2523);
 pub const BARREL_DOWN: Block = Block(2524);
 
+/// v0.15 Track B lectern states with a book or power (`world::workstations`).
+const LECTERN_EXTRA: std::ops::RangeInclusive<u16> =
+    super::workstations::LECTERN_FIRST..=super::workstations::LECTERN_LAST;
+
 pub const fn index(id: u16) -> Option<usize> {
+    if id >= super::workstations::LECTERN_FIRST && id <= super::workstations::LECTERN_LAST {
+        return Some(11);
+    }
     match id {
         2523 | 2524 => Some(3),
         900 => Some(0),
@@ -53,6 +60,9 @@ pub const fn index(id: u16) -> Option<usize> {
     }
 }
 pub fn oriented(id: u16) -> Option<(Block, Facing)> {
+    if LECTERN_EXTRA.contains(&id) {
+        return super::workstations::lectern(id).map(|(f, _, _)| (Block::LECTERN, f));
+    }
     (905..=952).contains(&id).then(|| (Block(905 + (id - 905) / 4 * 4), Facing::ALL[((id - 905) % 4) as usize]))
 }
 pub fn base(id: u16) -> Option<Block> {
@@ -83,8 +93,13 @@ pub fn placed(b: Block, normal: glam::IVec3) -> Block {
 }
 /// Java's barrel faces `getNearestLookingDirection().getOpposite()`: looking
 /// mostly down opens it upward, mostly up opens it downward; any other look
-/// keeps the horizontal facing chosen from the yaw.
+/// keeps the horizontal facing chosen from the yaw. Java's cartography
+/// table has no facing (`CartographyTableBlock` is a plain block), so it
+/// always places its first state.
 pub fn placed_with_look(b: Block, forward: glam::Vec3) -> Block {
+    if b.base() == Block::CARTOGRAPHY_TABLE {
+        return Block::CARTOGRAPHY_TABLE;
+    }
     if b.base() != Block::BARREL || forward.y.abs() <= forward.x.abs().max(forward.z.abs()) {
         return b;
     }
@@ -124,6 +139,13 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
     let mut t = [layer, layer, layer + 1, layer + 2, layer, layer];
     if id >= 905 && id <= 952 {
         t[Facing::ALL[((id - 905) % 4) as usize].face()] = layer + 2;
+    }
+    if let Some((facing, book, _)) = super::workstations::lectern(id) {
+        t[facing.face()] = layer + 2;
+        if book {
+            // The open book on the board (`LecternRenderer` draws Java's).
+            t[2] = super::workstations::BOOK_TOP;
+        }
     }
     if id == 2523 || id == 2524 {
         // The open end faces up or down; the other end and the sides are plain.

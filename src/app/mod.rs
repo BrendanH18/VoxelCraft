@@ -6,6 +6,7 @@ mod anvil;
 mod banners;
 mod bed;
 mod benchmark;
+mod books;
 mod bow;
 mod bucket;
 mod console;
@@ -31,6 +32,7 @@ mod mobs;
 mod options;
 mod pad_menu;
 mod particles;
+mod patterns;
 mod player_actions;
 mod recipe_book;
 mod save;
@@ -45,6 +47,7 @@ mod tick;
 mod trading;
 mod trial;
 mod utilities;
+mod workstations;
 pub use crate::simulation::survival;
 pub use voxelcraft::rules::GameMode;
 mod title;
@@ -135,6 +138,10 @@ pub(crate) enum Container {
     Grindstone(IVec3),
     Trading(u64),
     Smithing(IVec3),
+    /// v0.15 Track B workstations.
+    Stonecutter(IVec3),
+    Loom(IVec3),
+    Cartography(IVec3),
 }
 
 struct Game {
@@ -184,6 +191,9 @@ struct Game {
     recipe_book: recipe_book::RecipeBook,
     /// First visible row of the creative palette.
     creative_scroll: usize,
+    /// Rows scrolled in the stonecutter's recipe list or the loom's
+    /// pattern list (v0.15 Track B).
+    work_scroll: usize,
     /// Mouse position in physical pixels (for the inventory screen).
     cursor_px: (f32, f32),
     /// The host player's hands and open screen.
@@ -1363,6 +1373,9 @@ impl Game {
 
     /// Scrolls the creative palette by whole rows.
     fn scroll_palette(&mut self, rows: i32) {
+        if self.scroll_work_list(rows) {
+            return;
+        }
         if self.session.mode.is_creative() {
             let max = hud::palette_rows(&self.search.query).saturating_sub(hud::PALETTE_ROWS);
             self.creative_scroll = self.creative_scroll.saturating_add_signed(rows as isize).min(max);
@@ -1468,6 +1481,17 @@ impl Game {
                 self.show_popup(&format!("Now Playing: {}", crate::world::jukebox::song_title(song)));
             }
         }
+        // Level event 1043, `BOOK_PAGE_TURN`: a lectern's page turned.
+        for voxelcraft::world::workstations::PageTurn(pos) in std::mem::take(&mut self.world.page_turns) {
+            let at = pos.as_dvec3() + glam::DVec3::splat(0.5);
+            self.audio.play_in(
+                crate::audio::SoundSource::Blocks,
+                crate::audio::sounds::Sound::Click,
+                Some(at),
+                0.5,
+                (1.8, 2.0),
+            );
+        }
         for (pos, sound) in std::mem::take(&mut self.world.trip_sounds) {
             // The existing click, at Java's volume 0.4 and the hook's pitch.
             self.audio.play_in(
@@ -1498,6 +1522,19 @@ impl Game {
             Used::EditSign { cell, front } => {
                 self.open_sign_editor(cell, front);
             }
+            Used::Lectern { cell } => self.open_lectern(cell),
+            Used::OpenBook { slot } => {
+                self.open_held_book(slot);
+            }
+            Used::LecternBook { cell } => {
+                let at = cell.as_dvec3() + DVec3::splat(0.5);
+                self.audio.play(
+                    crate::audio::sounds::Sound::Place(crate::audio::sounds::Material::Wood),
+                    Some(at),
+                    1.0,
+                    (1.4, 1.6),
+                );
+            }
             Used::Utility { cell, effect } => self.present_utility(cell, effect),
             _ => {}
         }
@@ -1514,6 +1551,9 @@ impl Game {
             b if b.is_anvil() => self.open_anvil(cell),
             b if b.base() == Block::GRINDSTONE => self.open_grindstone(cell),
             Block::SMITHING_TABLE => self.open_smithing(cell),
+            b if b.base() == Block::STONECUTTER => self.open_workstation(Container::Stonecutter(cell)),
+            b if b.base() == Block::LOOM => self.open_workstation(Container::Loom(cell)),
+            b if b.base() == Block::CARTOGRAPHY_TABLE => self.open_workstation(Container::Cartography(cell)),
             _ => {}
         }
     }
@@ -1605,6 +1645,12 @@ impl Game {
                 Some(b) if b.is_anvil() => self.open_anvil(p),
                 Some(b) if b.base() == Block::GRINDSTONE => self.open_grindstone(p),
                 Some(Block::SMITHING_TABLE) => self.open_smithing(p),
+                Some(b) if b.base() == Block::STONECUTTER => self.open_workstation(Container::Stonecutter(p)),
+                Some(b) if b.base() == Block::LOOM => self.open_workstation(Container::Loom(p)),
+                Some(b) if b.base() == Block::CARTOGRAPHY_TABLE => self.open_workstation(Container::Cartography(p)),
+                Some(b) if voxelcraft::world::workstations::lectern(b.0).is_some_and(|(_, book, _)| book) => {
+                    self.open_lectern(p);
+                }
                 _ => log::warn!("--open-block {p}: no container there"),
             }
         }
@@ -2057,10 +2103,16 @@ impl Game {
                 self.settings.damage_tilt,
             ) * self.distortion.warp(alpha as f32, self.settings.distortion),
             fov_y: self.settings.fov.to_radians()
-                * fov_effects(
-                    self.session.player.fov_modifier(alpha as f32) * (1.0 - 0.15 * self.bow_power().unwrap_or(0.0)),
-                    self.settings.fov_effects,
-                ),
+                * if self.camera.first_person() && self.session.scoping() {
+                    // `getFieldOfViewModifier` returns the spyglass's 0.1
+                    // outright, ignoring FOV Effects.
+                    voxelcraft::content::spyglass::ZOOM_FOV_MODIFIER
+                } else {
+                    fov_effects(
+                        self.session.player.fov_modifier(alpha as f32) * (1.0 - 0.15 * self.bow_power().unwrap_or(0.0)),
+                        self.settings.fov_effects,
+                    )
+                },
             sky_color: fog_color.map(|c| c as f64),
             fog_color,
             fog_start,
@@ -2083,10 +2135,12 @@ impl Game {
                 models
             },
             signs: crate::render::signs::models(&self.world, camera),
+            // `ItemInHandRenderer` hides the hands while scoping.
             hand: (self.camera.first_person()
                 && self.show_hud
                 && !self.session.vitals.is_dead()
-                && self.session.sleeping.is_none())
+                && self.session.sleeping.is_none()
+                && !self.session.scoping())
             .then(|| {
                 let eye = self.session.player.eye();
                 let eating = (self.body.actions.eat_timer / EAT_TIME) as f32;
@@ -2156,6 +2210,7 @@ impl Game {
             .falling_blocks()
             .iter()
             .map(|f| crate::render::BlockModel {
+                patterns: None,
                 min: f.previous_pos.lerp(f.pos, alpha),
                 size: 1.0,
                 block: f.block,
@@ -2169,6 +2224,7 @@ impl Game {
             .chain(self.mobs.entities.tnt.iter().map(|t| {
                 let s = t.size();
                 crate::render::BlockModel {
+                    patterns: None,
                     min: t.previous_pos.lerp(t.pos, alpha)
                         - glam::DVec3::new(s as f64 / 2.0, (s as f64 - 1.0) / 2.0, s as f64 / 2.0),
                     size: s,
@@ -2183,6 +2239,7 @@ impl Game {
                 }
             }))
             .chain(self.world.moving_piston_blocks(alpha).map(|(block, min)| crate::render::BlockModel {
+                patterns: None,
                 min,
                 size: 1.0,
                 block,

@@ -45,7 +45,7 @@ fn layer(pattern: &str, color: DyeColor) -> BannerLayer {
 }
 
 fn banner_payload(base: Option<DyeColor>, layers: Vec<BannerLayer>) -> Payload {
-    Payload::Banner(BannerPatterns { base, layers })
+    Payload::Banner(BannerPatterns { base, layers, ominous: false })
 }
 
 fn written(title: &str, generation: u8) -> Payload {

@@ -28,6 +28,7 @@ pub mod colour;
 pub mod stonecutting;
 mod weapons;
 mod wood;
+mod workstations;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Grid {
@@ -60,7 +61,19 @@ impl Grid {
         Some((x1 - x0 + 1, y1 - y0 + 1, items.collect()))
     }
 
-    /// What the grid crafts right now.
+    /// What the grid crafts right now, with the recipes that read saved
+    /// maps (`MapExtendingRecipe`) checked against `maps`.
+    pub fn result_in(&self, maps: &crate::world::maps::MapStorage) -> Option<Stack> {
+        if self.size == 3
+            && let Some(map) = maps.extending_result(&self.cells)
+        {
+            return Some(map);
+        }
+        self.result()
+    }
+
+    /// What the grid crafts right now, without the map recipes that need
+    /// the world's saved maps ([`Grid::result_in`]).
     pub fn result(&self) -> Option<Stack> {
         if self.size == 3
             && self.cells.iter().enumerate().all(|(i, s)| {
@@ -90,6 +103,12 @@ impl Grid {
         if let Some(result) = crate::content::bundle::transmute(&occupied) {
             return result;
         }
+        // v0.15 Track B: banner duplication, shield decoration and book cloning.
+        if let Some(result) = crate::content::banner_patterns::grid_special(&occupied)
+            .or_else(|| crate::content::books::clone_result(&occupied))
+        {
+            return Some(result);
+        }
         let (w, h, items) = self.trimmed()?;
         recipes().iter().find(|r| r.matches(w, h, &items)).map(|r| r.result)
     }
@@ -103,15 +122,31 @@ impl Grid {
     /// Java crafting remainders: empty ingredient slots keep their bottle;
     /// a still-stacked ingredient returns its bottle to the player inventory.
     pub fn consume_with_remainders(&mut self) -> Vec<Stack> {
+        let occupied: Vec<Stack> = self.cells.iter().take(self.size * self.size).flatten().copied().collect();
         let mut overflow = Vec::new();
+        // `BookCloningRecipe.getRemainingItems` keeps only the first written book.
+        let mut kept_book = false;
         for cell in self.cells.iter_mut().take(self.size * self.size) {
             if let Some(s) = cell {
-                let rest = s.item.remainder();
+                // Special recipes leave their source behind (`getRemainingItems`).
+                let special = crate::content::banner_patterns::duplicate_remainder(&occupied, s).or_else(|| {
+                    if kept_book {
+                        return None;
+                    }
+                    let book = crate::content::books::clone_remainder(&occupied, s);
+                    kept_book |= book.is_some();
+                    book
+                });
+                let rest = special.or_else(|| s.item.remainder().map(|item| Stack::new(item, 1)));
                 s.count -= 1;
                 if s.count == 0 {
-                    *cell = rest.map(|item| Stack::new(item, 1));
-                } else if let Some(item) = rest {
-                    overflow.push(Stack::new(item, 1));
+                    *cell = rest;
+                } else if let Some(rest) = rest {
+                    if rest.stacks_with(s) && s.count < s.max() {
+                        s.count += 1;
+                    } else {
+                        overflow.push(rest);
+                    }
                 }
             }
         }
@@ -669,6 +704,7 @@ pub fn recipes() -> &'static [Recipe] {
         weapons::add(&mut r);
         harness::add(&mut r);
         bundle::add(&mut r);
+        workstations::add(&mut r);
         r
     })
 }

@@ -907,6 +907,23 @@ appended by each track on its own branch. No released build saves the new
 members, so the integrator makes them contiguous in landing order and
 records the result here. Saved names follow Java's registry names.
 
+**Track B allocations (2026-11-18).** Block states 11776–11787: the lectern's
+`has_book`/`powered` states (`11776 + combo * 4 + facing`, combo 0 book,
+1 powered, 2 both; the plain states stay 937–940), in `world::workstations`;
+11788–12223 unused. Items 1556 spyglass, 1557 book and quill
+(`writable_book`), 1558 written book, 1619–1628 the ten banner pattern items
+in `Items` order (flower, creeper, skull, mojang, globe, piglin, flow,
+guster, field masoned, bordure indented); 1642–1645 unused. Texture layers
+3859–3944: the 43 banner pattern masks, two per pattern (top then bottom half
+of the flag, `BANNER_PATTERNS` order), and 3945 the lectern's open book;
+3946–3951 unused. Appended orderings: item icons (spyglass, the two books,
+then the ten pattern items, after the bundles); dimension property key
+`workstations` (banner block entities and lectern books, after
+`ominous_item_spawners`); `SlotRef` and `Container` members and LAN slot
+numbers 550–558, 600–699 (stonecutter recipes) and 700–799 (loom
+patterns). The `banner` stack payload gained an optional `ominous` flag.
+See the [Track B record](verification/2026-11-18-v0.15-workstations.md).
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

@@ -555,10 +555,6 @@
       "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
-    "bordure_indented_banner_pattern": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "breeze_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
@@ -699,10 +695,6 @@
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "creeper_banner_pattern": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "creeper_head": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
@@ -787,10 +779,6 @@
       "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
-    "field_masoned_banner_pattern": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "firework_rocket": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
@@ -803,17 +791,9 @@
       "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
-    "flow_banner_pattern": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "flow_pottery_sherd": {
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
-    },
-    "flower_banner_pattern": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "fox_spawn_egg": {
       "release": "v0.18",
@@ -834,10 +814,6 @@
     "ghast_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "globe_banner_pattern": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "glow_squid_spawn_egg": {
       "release": "v0.18",
@@ -862,10 +838,6 @@
     "guardian_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "guster_banner_pattern": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "guster_pottery_sherd": {
       "release": "deferred",
@@ -975,10 +947,6 @@
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
-    "mojang_banner_pattern": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "mooshroom_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
@@ -1034,10 +1002,6 @@
     "pig_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "piglin_banner_pattern": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "piglin_brute_spawn_egg": {
       "release": "v0.18",
@@ -1295,10 +1259,6 @@
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "skull_banner_pattern": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "skull_pottery_sherd": {
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
@@ -1328,10 +1288,6 @@
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "spire_armor_trim_smithing_template": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
-    "spyglass": {
       "release": "v0.15",
       "reason": "Villages, mounts and carried core equipment/content gaps."
     },
@@ -1502,14 +1458,6 @@
     "woodland_mansion_map": {
       "release": "v0.15",
       "reason": "Cartographer map for the woodland mansion, which is a v0.15 structure."
-    },
-    "writable_book": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
-    "written_book": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "yellow_poplar_leaves": {
       "release": "v0.16",

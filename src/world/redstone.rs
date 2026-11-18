@@ -210,6 +210,9 @@ impl World {
         if let Some(power) = self.sculk_signal(p, b, direction, strong) {
             return power;
         }
+        if let Some(power) = Self::lectern_signal(b, direction, strong) {
+            return power;
+        }
         // `JukeboxBlock`: a weak 15 to every side while a song plays.
         if super::jukebox::is_jukebox(b) {
             return if strong { 0 } else { self.jukebox_signal(p) };
@@ -435,6 +438,9 @@ impl World {
         if self.get_block(p).is_some_and(super::jukebox::is_jukebox) {
             return Some(self.jukebox_comparator(p));
         }
+        if let Some(signal) = self.lectern_comparator(p) {
+            return Some(signal);
+        }
         if self.get_block(p).is_some_and(|b| super::creaking::heart(b).is_some()) {
             return Some(self.creaking_hearts.get(&p.to_array()).map_or(0, |h| h.signal));
         }
@@ -657,6 +663,9 @@ impl World {
         }
         if super::sniffer_egg::owns(b.0) {
             return self.hatch_sniffer_egg(p);
+        }
+        if self.end_lectern_pulse(p) {
+            return;
         }
         if super::archaeology::owns(b.0) {
             return self.archaeology_tick(p);

@@ -32,6 +32,8 @@ pub struct BlockModel {
     pub orient: Option<glam::Quat>,
     /// Per-stack item colour (white for blocks and untinted items).
     pub tint: [u8; 4],
+    /// A banner's pattern layers (v0.15 Track B), drawn over its flag.
+    pub patterns: Option<voxelcraft::inventory::components::StackPayload>,
 }
 
 #[repr(C)]
@@ -144,7 +146,15 @@ fn banner_vertices(
 ) {
     use crate::world::colour_blocks::banner;
     let cell = m.min.floor().as_ivec3();
-    for q in banner::quads(b, banner::phase(cell, ticks)) {
+    let layers = match m.patterns.map(|p| p.get()) {
+        Some(voxelcraft::inventory::components::Payload::Banner(p)) => p.layers.as_slice(),
+        _ => &[],
+    };
+    for q in banner::quads(b, banner::phase(cell, ticks)).into_iter().chain(banner::pattern_quads(
+        b,
+        banner::phase(cell, ticks),
+        layers,
+    )) {
         // FACE_SHADE blended by the normal: up, down, then x and z sides.
         let n = q.normal;
         let vertical = if n.y > 0.0 { FACE_SHADE[2] } else { FACE_SHADE[3] };
@@ -155,7 +165,7 @@ fn banner_vertices(
                 uv: q.uv[i],
                 layer: q.layer as u32,
                 light: [m.sky_light, shade, m.block_light],
-                tint: m.tint,
+                tint: q.tint.unwrap_or(m.tint),
             });
         }
     }
@@ -295,6 +305,7 @@ mod tests {
     #[test]
     fn cubes_and_plants_get_their_triangles() {
         let at = |block| BlockModel {
+            patterns: None,
             min: DVec3::new(10.0, 64.0, 5.0),
             size: 1.0,
             block,

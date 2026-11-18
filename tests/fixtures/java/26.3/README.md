@@ -859,3 +859,34 @@ wash), puts undyed leather on at a water cauldron through the shared equip
 path and the CLI while dyed leather is washed, equips a horse with dyed
 leather horse armor, and saves and reloads dyed stacks in the inventory, on
 an armor stand and as stack strings.
+
+## Workstations (v0.15 Track B)
+
+`workstations.json` holds the facts behind the loom, cartography table,
+stonecutter, lectern, books and spyglass: the 43 banner patterns
+(`data/minecraft/banner_pattern`, each drawing its own asset), the
+`#no_item_required` banner pattern tag in file order (the loom's list
+without a pattern item), every `pattern_item/<x>` tag, the item tags
+`loom_patterns`, `lectern_books`, `book_cloning_target`, `clonable_maps` and
+`extendable_maps` in file order, the stack size, rarity and glint of the
+spyglass, both books and the ten pattern items (`Items`' static
+initializer), the ominous banner's eight layers
+(`Raid.getBannerComponentPatch`, read from its bytecode), constants from
+`SpyglassItem`, `BannerBlockEntity`, `LecternBlock`, `WritableBookContent`
+and `WrittenBookContent`, every input's stonecutter list in recipe id order,
+the loot table entries and villager trades that give or want these items,
+and the lectern's comparator output and page clamp over a table of cases
+from a model of `LecternBlockEntity.getRedstoneSignal` and `setPage`.
+
+```sh
+python3 tools/extract_java_workstation_fixtures.py /path/to/server.jar target/java-workstations.json
+diff tests/fixtures/java/26.3/workstations.json target/java-workstations.json
+scripts/remote-check.sh -- 'cargo test --release --test java_workstations --test java_recipes'
+```
+
+`tests/java_workstations.rs` compares the pattern registry and both loom
+lists, the pattern items, the tags (both ways against the game's own
+predicates), the item facts, the ominous banner, the constants, the lectern
+cases and the stonecutter's order with the game. `tests/java_recipes.rs`
+runs the four special grid recipes (banner duplication, shield decoration,
+book cloning, map extending) on example grids.
