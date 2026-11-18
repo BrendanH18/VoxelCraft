@@ -59,7 +59,9 @@ fn special_check(key: &str) -> Option<Result<(), String>> {
         if got == want { Ok(()) } else { Err(format!("{key}: got {got:?}, want {want:?}")) }
     };
     Some(if let Some(colour) = key.strip_prefix("crafting_special_bannerduplicate/") {
-        let c = DyeColor::ALL.into_iter().find(|c| format!("{}_banner", c.adjective().replace(' ', "_")) == colour)?;
+        let c = DyeColor::ALL
+            .into_iter()
+            .find(|c| format!("{}_banner_duplicate", c.adjective().replace(' ', "_")) == colour)?;
         let source = layered(c);
         let mut g = grid(&[source, Stack::new(bp::banner_item(c), 1)]);
         expect(g.result(), Some(source)).and_then(|_| {
