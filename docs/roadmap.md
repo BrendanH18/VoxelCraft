@@ -1296,6 +1296,14 @@ Wave 2 (after wave 1 is integrated):
 8. **H. Villager parity** (MOB-05a/b/c). A trade fixture from the jar
    (prices, uses, restocks, experience), schedules and POIs, gossip and
    cures, the wandering trader, and the M4 exit audit.
+   *Implemented, unverified (2026-11-18):* every 26.3 default trade (391
+   entries, the trade-rebalance pack excluded) in a fixture-tested table,
+   Java's offer draw, prices, immediate levelling, restocks with demand
+   catch-up, the 26.3 schedules with meeting bells, `GossipContainer`
+   gossip, golem and cure timings, and the wandering trader's 26.3 sets
+   and spawn roll; see the
+   [Track H record](verification/2026-11-18-v0.15-villagers.md), which also
+   holds the [M4 exit audit](verification/2026-11-18-v0.15-villagers.md#m4-exit-assessment).
 
 Then integration: the orderings made contiguous, spawn tables together,
 save/reload of every new mob, block and item, the Namespace checks, the
@@ -1313,6 +1321,20 @@ travel and environmental scenarios. Validate creature category caps and
 behavior in day/night, lit caves, Peaceful and all dimensions.
 Persistent mobs, ages, carried items, homes/jobs and mount/storage state
 survive unloading and restart without continuing unloaded-only timers.
+
+*M4 exit assessment (v0.15 Track H, 2026-11-18):* each exit criterion and
+each MOB, FOO and ENV row released in v0.15 has code and automated tests
+(the [audit table](verification/2026-11-18-v0.15-villagers.md#m4-exit-assessment)
+lists them), but M4 does not close yet. Every row is Implemented, unverified
+or Partial until the owner plays the scenarios above; raids (MOB-05d) wait
+for Track E. The remaining parity gaps are owned by v0.15's other tracks
+(raids, mansions, templates), v0.16 (structure spawn bounds, shulkers),
+v0.17 (minecarts) and v0.18 (polish): mob armor against fire and falls,
+older farm animal and companion parity, leash physics, boat physics tick by
+tick, farmland moisture and low-light crop removal, and lightning on items
+and vehicles. Track H fixed what it found in its own rows: gossip decay
+no longer multiplies over days spent unloaded, and cures grant Strength
+and Nausea.
 
 ### M5 — Complete survival progression
 

@@ -79,6 +79,12 @@ fn anger_target<'a>(mob: &super::Mob, ctx: &'a Ctx) -> Option<&'a super::Target>
 }
 
 const GOLEM_RANGE: f64 = 16.0;
+/// `Villager.TIME_SINCE_SLEEPING_FOR_GOLEM_SPAWNING`.
+pub(super) const GOLEM_SLEEP_TICKS: i64 = 24000;
+/// `getBoundingBox().inflate(10)` around a villager (0.6 by 1.95), as a
+/// bound on the centre of another villager whose box it meets.
+const GOLEM_BOX_XZ: f64 = 10.6;
+const GOLEM_BOX_Y: f64 = 11.95;
 /// Java `DefendVillageTargetGoal`: villagers this unpopular with a player make it a target.
 const HOSTILE_REPUTATION: i16 = -100;
 
@@ -318,50 +324,62 @@ impl Entities {
                 v.golem_seen = if seen { 30.0 } else { (v.golem_seen - 1.0).max(0.0) };
             }
         }
+        let now = self.village_day * 24000 + (self.village_time.rem_euclid(1.0) * 24000.0) as i64;
+        let mut gossiped = Vec::new();
+        self.share_gossip(now, &mut gossiped);
+        // `VillagerPanicTrigger.tick`: a panicking villager checks every 100 ticks.
         self.gossip_timer = (self.gossip_timer - 1.0).max(0.0);
-        if self.gossip_timer <= 0.0 {
-            self.share_gossip();
+        let panic_check = self.gossip_timer <= 0.0;
+        if panic_check {
+            self.gossip_timer = 5.0;
         }
-        self.summon_golems(world);
+        self.summon_golems(world, now, panic_check, &gossiped);
         self.snow_golems(world);
     }
 
-    fn summon_golems<W: MobWorld + ?Sized>(&mut self, world: &W) {
-        let gossip = self.gossip_timer <= 0.0;
-        if gossip {
-            self.gossip_timer = 60.0;
-        }
+    /// Java `Villager.spawnGolemIfNeeded`: a villager that wants a golem
+    /// (slept in the last 24000 ticks, no golem detected recently) counts
+    /// the villagers that want one in its box grown by 10 blocks; three
+    /// suffice when it panics (checked every 100 ticks), five after it
+    /// gossips. The golem tries ten spots within 8 blocks across and 6 up
+    /// or down; every villager in the box then remembers a golem.
+    fn summon_golems<W: MobWorld + ?Sized>(&mut self, world: &W, now: i64, panic_check: bool, gossiped: &[usize]) {
         let n = self.mobs.len();
         for i in 0..n {
             let m = &self.mobs[i];
-            let now = self.village_day * 24000 + (self.village_time * 24000.0) as i64;
-            let eligible_villager = |o: &super::Mob| {
+            let wants_golem = |o: &super::Mob| {
                 o.alive()
                     && o.kind == MobKind::Villager
-                    && o.age >= 0
                     && o.villager.as_ref().is_some_and(|v| {
-                        v.active && v.golem_seen <= 0.0 && v.last_slept.is_some_and(|t| (0..24000).contains(&(now - t)))
+                        v.active
+                            && v.golem_seen <= 0.0
+                            && v.last_slept.is_some_and(|t| (0..GOLEM_SLEEP_TICKS).contains(&(now - t)))
                     })
             };
-            if !eligible_villager(m) {
+            if !wants_golem(m) {
                 continue;
             }
             let fleeing = m.villager.as_ref().is_some_and(|v| v.fleeing);
-            if !fleeing && !gossip {
+            let needed = if fleeing && panic_check {
+                3
+            } else if gossiped.contains(&i) {
+                5
+            } else {
                 continue;
-            }
+            };
             let pos = m.pos;
-
+            let in_box = |o: DVec3| {
+                let d = o - pos;
+                d.x.abs() <= GOLEM_BOX_XZ && d.z.abs() <= GOLEM_BOX_XZ && d.y.abs() <= GOLEM_BOX_Y
+            };
             let mut eligible = 0;
-            self.mob_index.visit(pos, 10.0, |j| {
+            self.mob_index.visit(pos, GOLEM_BOX_Y, |j| {
                 let o = &self.mobs[j];
-                if eligible_villager(o) && o.pos.distance_squared(pos) <= 100.0 {
+                if eligible < 5 && wants_golem(o) && in_box(o.pos) {
                     eligible += 1;
                 }
             });
-            let panic = fleeing && eligible >= 3;
-            let chat = gossip && !fleeing && eligible >= 5;
-            if panic || chat {
+            if eligible >= needed {
                 let mut spawned = false;
                 'attempts: for _ in 0..10 {
                     let x = pos.x.floor() as i32 + self.rng.next_int(17) as i32 - 8;
@@ -379,9 +397,9 @@ impl Entities {
                     }
                 }
                 if spawned {
-                    self.mob_index.visit(pos, GOLEM_RANGE, |j| {
+                    self.mob_index.visit(pos, GOLEM_BOX_Y, |j| {
                         let o = &mut self.mobs[j];
-                        if o.pos.distance_squared(pos) <= GOLEM_RANGE * GOLEM_RANGE
+                        if in_box(o.pos)
                             && o.kind == MobKind::Villager
                             && let Some(v) = &mut o.villager
                         {
@@ -674,6 +692,10 @@ mod tests {
             e.mobs[x].villager.as_mut().unwrap().fleeing = true;
             e.mobs[x].villager.as_mut().unwrap().last_slept = Some(0);
         }
+        // `VillagerPanicTrigger` checks every 100 ticks: not on the next tick.
+        e.gossip_timer = 2.0;
+        e.life_tick(&world);
+        assert_eq!(e.count(MobKind::IronGolem), 0);
         e.life_tick(&world);
         assert_eq!(e.count(MobKind::IronGolem), 1);
         e.life_tick(&world);
@@ -700,6 +722,7 @@ mod tests {
                 v.fleeing = true;
             }
         }
+        e.gossip_timer = 0.0;
         e.life_tick(&world);
         assert_eq!(e.count(MobKind::IronGolem), 2);
         e.mobs.retain(|m| m.kind != MobKind::IronGolem);

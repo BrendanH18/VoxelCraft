@@ -100,8 +100,11 @@ impl Entities {
         if self.villager_griefing {
             self.share_food();
         }
+        // `VillagerMakeLove` runs only in the idle activity (`getIdlePackage`).
+        let tick = (self.village_time.rem_euclid(1.0) * 24000.0) as u32;
+        let idle = super::villager::schedule_activity(tick, false) == super::villager::Activity::Idle;
         let ready = |m: &super::Mob| {
-            m.alive()
+            idle && m.alive()
                 && m.kind == MobKind::Villager
                 && m.age == 0
                 && m.villager.as_ref().is_some_and(|v| {

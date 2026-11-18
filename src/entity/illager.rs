@@ -38,14 +38,14 @@ pub fn is_illager(kind: MobKind) -> bool {
     matches!(kind, MobKind::Evoker | MobKind::Illusioner | MobKind::Pillager | MobKind::Vindicator)
 }
 
-/// `VillagerHostilesSensor.ACCEPTABLE_DISTANCE_FROM_HOSTILES` for the
-/// zombies and the illager family: how close each comes before villagers
-/// flee (zoglins, also listed in Java, are left to the villager track).
+/// `VillagerHostilesSensor.ACCEPTABLE_DISTANCE_FROM_HOSTILES`: how close
+/// each hostile comes before villagers flee (the zombies, the illager
+/// family and, since v0.15 Track H, zoglins).
 pub fn villager_fear(kind: MobKind) -> Option<f64> {
     match kind {
         k if k.is_zombie() => Some(8.0),
         MobKind::Vex => Some(8.0),
-        MobKind::Vindicator => Some(10.0),
+        MobKind::Vindicator | MobKind::Zoglin => Some(10.0),
         MobKind::Evoker | MobKind::Illusioner | MobKind::Ravager => Some(12.0),
         MobKind::Pillager => Some(15.0),
         _ => None,

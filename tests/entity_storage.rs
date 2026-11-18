@@ -55,7 +55,8 @@ fn temp_dir(tag: &str) -> std::path::PathBuf {
 /// keys later versions retired: `animal.nest_time` (VoxelCraft's nesting
 /// timer, replaced by Java's unsaved `TurtleLayEggGoal` counter), and a
 /// mob's `armor` and `glint` (v0.14 saves `equipment` slots instead, and
-/// only when a slot is filled; these records wore nothing).
+/// only when a slot is filled; these records wore nothing). Villager
+/// records written before v0.15 Track H are converted to its keys.
 fn normalized(props: &BTreeMap<String, String>) -> BTreeMap<String, Vec<String>> {
     let mut out = BTreeMap::new();
     for key in ["items", "orbs", "minecarts"] {
@@ -77,6 +78,23 @@ fn normalized(props: &BTreeMap<String, String>) -> BTreeMap<String, Vec<String>>
                 if let Some(record) = m.as_object_mut() {
                     record.remove("armor");
                     record.remove("glint");
+                    // v0.15 Track H: a villager's restock time became an
+                    // absolute tick (`last_restock` from `day` and `last`),
+                    // the meeting bell is saved, the merchant timer is gone
+                    // and gossip keeps its last decay tick.
+                    if let Some(last) = record.remove("last") {
+                        let day = record["day"].as_i64().unwrap().max(0);
+                        record.insert("day".into(), day.into());
+                        record.insert("last_restock".into(), (day * 24000 + last.as_i64().unwrap()).into());
+                        record.insert("meeting".into(), serde_json::Value::Null);
+                        record.remove("promote");
+                        record.remove("promote_pending");
+                        if let Some(gossip) = record.get_mut("gossip").and_then(|g| g.as_object_mut())
+                            && let Some(day) = gossip.remove("day")
+                        {
+                            gossip.insert("decay".into(), (day.as_i64().unwrap() * 24000).into());
+                        }
+                    }
                 }
                 m.to_string()
             })

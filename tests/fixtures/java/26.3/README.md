@@ -983,3 +983,38 @@ scripts/remote-check.sh -- 'cargo test --release --lib -- happy_ghast nautilus c
 The tests in `entity::happy_ghast`, `entity::nautilus` and
 `entity::camel_husk` compare the game's constants, sizes, tags and loot
 with this file.
+
+## Villagers and wandering traders (v0.15 Track H)
+
+`villagers.json` holds Java 26.3's default trade data and the villager
+constants. Trades are data in 26.3: for each profession level and the
+wandering trader's three sets it records the trade set
+(`data/minecraft/trade_set`: how many offers are drawn, whether duplicates
+are allowed) and its `#villager_trade/...` tag resolved in file order, with
+nested tags such as `#common_smith/level_1` expanded where they appear.
+Each `data/minecraft/villager_trade` entry is normalized with the codec
+defaults of `VillagerTrade` (`max_uses` 4, `xp` 1, `reputation_discount` 0,
+counts 1): wanted and additional items, the result, the merchant predicate's
+villager types and the `given_item_modifier` list (enchanting, books,
+explorer maps, dyes, potions, stews). The optional `trade_rebalance` data
+pack ships disabled, so only its trade names are listed. The file also has
+the enchantment and potion tags the trades draw from, the schedules
+(`timeline/villager_schedule.json`), `VillagerData`'s level thresholds,
+`GossipType`, the `PoiTypes` tickets and ranges, the villager hostile
+sensor's distances, the wandering trader's avoid goals and trade-set order,
+the villager food values, and constants of `Villager`, `GossipContainer`,
+`AcquirePoi`, `WorkAtPoi`, `GolemSensor`, `ZombieVillager` and
+`WanderingTraderSpawner`.
+
+```sh
+python3 tools/extract_java_villager_fixtures.py /path/to/server.jar target/java-villagers.json
+diff tests/fixtures/java/26.3/villagers.json target/java-villagers.json
+scripts/remote-check.sh -- 'cargo test --release --lib villager'
+```
+
+`entity::villager::fixture_tests` compares both ways: every Java trade id
+is in the game's table at its profession and level in tag order and every
+game entry is a Java one, with the same items, counts, uses, XP, price
+multiplier, villager types and modifier; the same for the wandering
+trader's sets; the trade-set amounts, enchantment, potion and stew tags,
+schedules, gossip types, constants, food values and flee distances.
