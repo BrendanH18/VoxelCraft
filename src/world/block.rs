@@ -368,7 +368,7 @@ pub mod tex {
     pub const BUBBLE_DOWN: u16 = BUBBLE_BASE + 1;
     pub const COUNT: u32 = {
         // Through the highest layer any v0.15 or v0.16 track uses; unused layers stay reserved.
-        const ENDS: [u32; 8] = [
+        const ENDS: [u32; 9] = [
             super::super::cave_blocks::CAL_TEX_END as u32,
             super::super::eyeblossom::TEX_END as u32,
             super::super::sniffer_egg::TEXTURE_END as u32,

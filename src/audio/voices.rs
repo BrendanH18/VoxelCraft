@@ -85,7 +85,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 47] = [
+    pub const ALL: [Voice; 52] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,

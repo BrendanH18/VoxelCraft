@@ -262,7 +262,7 @@ impl MobKind {
     pub fn from_lan_index(index: usize) -> Option<Self> {
         Self::ALL.get(index).copied()
     }
-    pub const ALL: [MobKind; 80] = [
+    pub const ALL: [MobKind; 85] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
