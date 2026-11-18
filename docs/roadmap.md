@@ -1258,6 +1258,9 @@ Wave 1 (independent):
    materials and drawing; frosted ice and Frost Walker; the behaviour of
    Glowing, Levitation, Health Boost, Wind Charged, Weaving, Oozing and
    Infested, and the four potions with their brewing recipes.
+   *Implemented, unverified (2026-11-18)*, with warm and cold chickens,
+   cows and pigs; brewing matches all 279 recipes
+   ([record](verification/2026-11-18-v0.15-items-effects.md)).
 
 Wave 2 (after wave 1 is integrated):
 
