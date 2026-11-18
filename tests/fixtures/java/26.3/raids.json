@@ -1,0 +1,722 @@
+{
+  "bell": {
+    "DURATION": 50,
+    "GLOW_DURATION": 60,
+    "HEAR_BELL_RADIUS": 32,
+    "HIGHLIGHT_RAIDERS_RADIUS": 48,
+    "MAX_RESONATION_TICKS": 40,
+    "MIN_TICKS_BETWEEN_SEARCHES": 60,
+    "SEARCH_RADIUS": 48,
+    "TICKS_BEFORE_RESONATION": 5
+  },
+  "captain_loot": {
+    "amplifier": [
+      0,
+      4
+    ],
+    "condition": "is_captain",
+    "count": 1,
+    "item": "ominous_bottle"
+  },
+  "captain_loot_tables": [
+    "pillager"
+  ],
+  "enchantment_providers": {
+    "pillager_post_wave_3": {
+      "enchantment": "quick_charge",
+      "level": 1
+    },
+    "pillager_post_wave_5": {
+      "enchantment": "quick_charge",
+      "level": 2
+    },
+    "vindicator": {
+      "enchantment": "sharpness",
+      "level": 1
+    },
+    "vindicator_post_wave_5": {
+      "enchantment": "sharpness",
+      "level": 2
+    }
+  },
+  "environment": {
+    "patrol_forbidden_biomes": [
+      "mushroom_fields"
+    ],
+    "patrol_keyframes": [
+      [
+        0,
+        false
+      ],
+      [
+        120000,
+        true
+      ]
+    ],
+    "raid_forbidden_dimensions": [
+      "the_nether"
+    ]
+  },
+  "gift": {
+    "MAX_TIME_BETWEEN_GIFTS": 6600,
+    "MIN_TIME_BETWEEN_GIFTS": 600,
+    "THROW_GIFT_AT_DISTANCE": 5,
+    "TIME_TO_DELAY_FOR_HEAD_TO_FINISH_TURNING": 20,
+    "loot": {
+      "armorer": [
+        {
+          "entries": [
+            {
+              "item": "chainmail_helmet",
+              "weight": 1
+            },
+            {
+              "item": "chainmail_chestplate",
+              "weight": 1
+            },
+            {
+              "item": "chainmail_leggings",
+              "weight": 1
+            },
+            {
+              "item": "chainmail_boots",
+              "weight": 1
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "baby": [
+        {
+          "entries": [
+            {
+              "item": "poppy",
+              "weight": 1
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "butcher": [
+        {
+          "entries": [
+            {
+              "item": "cooked_rabbit",
+              "weight": 1
+            },
+            {
+              "item": "cooked_chicken",
+              "weight": 1
+            },
+            {
+              "item": "cooked_porkchop",
+              "weight": 1
+            },
+            {
+              "item": "cooked_beef",
+              "weight": 1
+            },
+            {
+              "item": "cooked_mutton",
+              "weight": 1
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "cartographer": [
+        {
+          "entries": [
+            {
+              "item": "map",
+              "weight": 1
+            },
+            {
+              "item": "paper",
+              "weight": 1
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "cleric": [
+        {
+          "entries": [
+            {
+              "item": "redstone",
+              "weight": 1
+            },
+            {
+              "item": "lapis_lazuli",
+              "weight": 1
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "farmer": [
+        {
+          "entries": [
+            {
+              "item": "bread",
+              "weight": 1
+            },
+            {
+              "item": "pumpkin_pie",
+              "weight": 1
+            },
+            {
+              "item": "cookie",
+              "weight": 1
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "fisherman": [
+        {
+          "entries": [
+            {
+              "item": "cod",
+              "weight": 1
+            },
+            {
+              "item": "salmon",
+              "weight": 1
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "fletcher": [
+        {
+          "entries": [
+            {
+              "item": "arrow",
+              "weight": 26
+            },
+            {
+              "count": [
+                0,
+                1
+              ],
+              "item": "tipped_arrow",
+              "potion": "swiftness",
+              "weight": 1
+            },
+            {
+              "count": [
+                0,
+                1
+              ],
+              "item": "tipped_arrow",
+              "potion": "slowness",
+              "weight": 1
+            },
+            {
+              "count": [
+                0,
+                1
+              ],
+              "item": "tipped_arrow",
+              "potion": "strength",
+              "weight": 1
+            },
+            {
+              "count": [
+                0,
+                1
+              ],
+              "item": "tipped_arrow",
+              "potion": "healing",
+              "weight": 1
+            },
+            {
+              "count": [
+                0,
+                1
+              ],
+              "item": "tipped_arrow",
+              "potion": "harming",
+              "weight": 1
+            },
+            {
+              "count": [
+                0,
+                1
+              ],
+              "item": "tipped_arrow",
+              "potion": "leaping",
+              "weight": 1
+            },
+            {
+              "count": [
+                0,
+                1
+              ],
+              "item": "tipped_arrow",
+              "potion": "regeneration",
+              "weight": 1
+            },
+            {
+              "count": [
+                0,
+                1
+              ],
+              "item": "tipped_arrow",
+              "potion": "fire_resistance",
+              "weight": 1
+            },
+            {
+              "count": [
+                0,
+                1
+              ],
+              "item": "tipped_arrow",
+              "potion": "water_breathing",
+              "weight": 1
+            },
+            {
+              "count": [
+                0,
+                1
+              ],
+              "item": "tipped_arrow",
+              "potion": "invisibility",
+              "weight": 1
+            },
+            {
+              "count": [
+                0,
+                1
+              ],
+              "item": "tipped_arrow",
+              "potion": "night_vision",
+              "weight": 1
+            },
+            {
+              "count": [
+                0,
+                1
+              ],
+              "item": "tipped_arrow",
+              "potion": "weakness",
+              "weight": 1
+            },
+            {
+              "count": [
+                0,
+                1
+              ],
+              "item": "tipped_arrow",
+              "potion": "poison",
+              "weight": 1
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "leatherworker": [
+        {
+          "entries": [
+            {
+              "item": "leather",
+              "weight": 1
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "librarian": [
+        {
+          "entries": [
+            {
+              "item": "book",
+              "weight": 1
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "mason": [
+        {
+          "entries": [
+            {
+              "item": "clay",
+              "weight": 1
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "shepherd": [
+        {
+          "entries": [
+            {
+              "item": "white_wool",
+              "weight": 1
+            },
+            {
+              "item": "orange_wool",
+              "weight": 1
+            },
+            {
+              "item": "magenta_wool",
+              "weight": 1
+            },
+            {
+              "item": "light_blue_wool",
+              "weight": 1
+            },
+            {
+              "item": "yellow_wool",
+              "weight": 1
+            },
+            {
+              "item": "lime_wool",
+              "weight": 1
+            },
+            {
+              "item": "pink_wool",
+              "weight": 1
+            },
+            {
+              "item": "gray_wool",
+              "weight": 1
+            },
+            {
+              "item": "light_gray_wool",
+              "weight": 1
+            },
+            {
+              "item": "cyan_wool",
+              "weight": 1
+            },
+            {
+              "item": "purple_wool",
+              "weight": 1
+            },
+            {
+              "item": "blue_wool",
+              "weight": 1
+            },
+            {
+              "item": "brown_wool",
+              "weight": 1
+            },
+            {
+              "item": "green_wool",
+              "weight": 1
+            },
+            {
+              "item": "red_wool",
+              "weight": 1
+            },
+            {
+              "item": "black_wool",
+              "weight": 1
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "toolsmith": [
+        {
+          "entries": [
+            {
+              "item": "stone_pickaxe",
+              "weight": 1
+            },
+            {
+              "item": "stone_axe",
+              "weight": 1
+            },
+            {
+              "item": "stone_hoe",
+              "weight": 1
+            },
+            {
+              "item": "stone_shovel",
+              "weight": 1
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "unemployed": [
+        {
+          "entries": [
+            {
+              "item": "wheat_seeds",
+              "weight": 1
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "weaponsmith": [
+        {
+          "entries": [
+            {
+              "item": "stone_axe",
+              "weight": 1
+            },
+            {
+              "item": "golden_axe",
+              "weight": 1
+            },
+            {
+              "item": "iron_axe",
+              "weight": 1
+            }
+          ],
+          "rolls": 1
+        }
+      ]
+    },
+    "tables": {
+      "armorer": "armorer_gift",
+      "butcher": "butcher_gift",
+      "cartographer": "cartographer_gift",
+      "cleric": "cleric_gift",
+      "farmer": "farmer_gift",
+      "fisherman": "fisherman_gift",
+      "fletcher": "fletcher_gift",
+      "leatherworker": "leatherworker_gift",
+      "librarian": "librarian_gift",
+      "mason": "mason_gift",
+      "shepherd": "shepherd_gift",
+      "toolsmith": "toolsmith_gift",
+      "weaponsmith": "weaponsmith_gift"
+    }
+  },
+  "hero_price": {
+    "base": 0.3,
+    "minimum": 1,
+    "per_level": 0.0625
+  },
+  "omen": {
+    "fires_at": 1,
+    "raid_omen_ticks": 600
+  },
+  "patrol": {
+    "captain_chance": 0.06,
+    "despawn_distance_sqr": 16384.0,
+    "failed_cooldown": 200,
+    "goal": {
+      "arrive_distance": 10.0,
+      "companion_radius": 16.0,
+      "leader_speed": 0.595,
+      "speed": 0.7,
+      "step": 10.0,
+      "turn_degrees": 90.0,
+      "turn_scale": 0.4,
+      "wander": {
+        "offset": -8,
+        "spread": 16
+      }
+    },
+    "max_block_light": 8,
+    "spawner": {
+      "chance": 5,
+      "interval": 12000,
+      "interval_spread": 1200,
+      "loaded_margin": 10,
+      "min_offset": 24,
+      "offset_spread": 24,
+      "village_sections": 2,
+      "wander": 5
+    },
+    "target": {
+      "offset": -500,
+      "spread": 1000
+    }
+  },
+  "raid": {
+    "bonus_spawns": {
+      "easy_bound": 2,
+      "hard": 2,
+      "normal": 1,
+      "ravager_bonus_wave": 1,
+      "witch": 1,
+      "witch_last_early_wave": 2,
+      "witch_skipped_wave": 4
+    },
+    "captain_drop_chance": 2.0,
+    "constants": {
+      "ALLOW_SPAWNING_WITHIN_VILLAGE_SECONDS_THRESHOLD": 7,
+      "DEFAULT_MAX_RAID_OMEN_LEVEL": 5,
+      "DEFAULT_PRE_RAID_TICKS": 300,
+      "HERO_OF_THE_VILLAGE_DURATION": 48000,
+      "LOW_MOB_THRESHOLD": 2,
+      "MAX_CELEBRATION_TICKS": 600,
+      "MAX_NO_ACTION_TIME": 2400,
+      "NUM_SPAWN_ATTEMPTS": 5,
+      "OUTSIDE_RAID_BOUNDS_TIMEOUT": 30,
+      "POST_RAID_TICK_LIMIT": 40,
+      "RAID_REMOVAL_THRESHOLD_SQR": 12544,
+      "RAID_TIMEOUT_TICKS": 48000,
+      "SECTION_RADIUS_FOR_FINDING_NEW_VILLAGE_CENTER": 2,
+      "VALID_RAID_RADIUS": 96,
+      "VALID_RAID_RADIUS_SQR": 9216,
+      "VILLAGE_RADIUS_BUFFER": 16,
+      "VILLAGE_SEARCH_RADIUS": 32
+    },
+    "enchant_odds": {
+      "level2": 0.1,
+      "level3": 0.25,
+      "level4": 0.5,
+      "level5": 0.75
+    },
+    "groups": {
+      "easy": 3,
+      "hard": 7,
+      "normal": 5
+    },
+    "join_offset": [
+      0.5,
+      1.0,
+      0.5
+    ],
+    "ravager_riders": {
+      "evoker_then_vindicators_from_wave": "getNumGroups(HARD)",
+      "pillager_at_wave": "getNumGroups(NORMAL)"
+    },
+    "spawn_search": {
+      "angle_step_divisor": 8.0,
+      "distance_offset": 0.24,
+      "distance_scale": 0.22,
+      "jitter_bound": 3,
+      "loaded_margin": 10,
+      "max_height_difference": 96,
+      "ring_radius": 32.0,
+      "ring_radius_z": 32.0,
+      "village_seconds": 7
+    },
+    "waves": {
+      "evoker": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        2
+      ],
+      "pillager": [
+        0,
+        4,
+        3,
+        3,
+        4,
+        4,
+        4,
+        2
+      ],
+      "ravager": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        1,
+        0,
+        2
+      ],
+      "vindicator": [
+        0,
+        0,
+        2,
+        0,
+        1,
+        4,
+        2,
+        5
+      ],
+      "witch": [
+        0,
+        0,
+        0,
+        0,
+        3,
+        0,
+        0,
+        1
+      ]
+    }
+  },
+  "raider": {
+    "can_be_leader": {
+      "ravager": false,
+      "witch": false
+    },
+    "celebration": {
+      "jump_chance": 50,
+      "sound_chance": 100
+    },
+    "goals": [
+      {
+        "alert_others": false,
+        "args": [],
+        "goal": "Raider$ObtainRaidLeaderBannerGoal",
+        "priority": 1,
+        "selector": "goalSelector"
+      },
+      {
+        "alert_others": false,
+        "args": [],
+        "goal": "PathfindToRaidGoal",
+        "priority": 3,
+        "selector": "goalSelector"
+      },
+      {
+        "alert_others": false,
+        "args": [
+          1.0499999523162842,
+          1
+        ],
+        "goal": "Raider$RaiderMoveThroughVillageGoal",
+        "priority": 4,
+        "selector": "goalSelector"
+      },
+      {
+        "alert_others": false,
+        "args": [],
+        "goal": "Raider$RaiderCelebration",
+        "priority": 5,
+        "selector": "goalSelector"
+      }
+    ],
+    "no_action_step": 2,
+    "witch_natural_spawn_cannot_join": true
+  },
+  "raids": {
+    "max_no_action": 2400,
+    "poi_radius": 64,
+    "radius_sqr": 9216,
+    "save_interval": 200
+  },
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "net.minecraft.world.entity.raid.{Raid,Raid$RaiderType,Raids,Raider,Raider$RaiderCelebration}",
+    "net.minecraft.world.entity.monster.{PatrollingMonster,PatrollingMonster$LongDistancePatrolGoal}",
+    "net.minecraft.world.level.levelgen.PatrolSpawner",
+    "net.minecraft.world.effect.{BadOmenMobEffect,RaidOmenMobEffect}",
+    "net.minecraft.server.level.ServerLevel.{getRaidAt,isVillage,isCloseToVillage}",
+    "net.minecraft.world.level.block.entity.BellBlockEntity",
+    "net.minecraft.world.entity.ai.behavior.GiveGiftToHero",
+    "net.minecraft.world.entity.npc.villager.Villager.updateSpecialPrices",
+    "net.minecraft.world.entity.monster.{Ravager,Witch}.canBeLeader",
+    "data/minecraft/loot_table/gameplay/hero_of_the_village/*.json",
+    "data/minecraft/loot_table/entities/pillager.json",
+    "data/minecraft/enchantment_provider/raid/*.json",
+    "data/minecraft/timeline/early_game.json",
+    "data/minecraft/worldgen/biome/*.json, data/minecraft/dimension_type/*.json"
+  ],
+  "village": {
+    "is_village_sections": 1,
+    "max_sections": 6
+  }
+}

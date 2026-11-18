@@ -916,6 +916,15 @@ appended by each track on its own branch. No released build saves the new
 members, so the integrator makes them contiguous in landing order and
 records the result here. Saved names follow Java's registry names.
 
+**Track E (raids, 2026-11-18, implemented, unverified)** allocated no block,
+item or texture IDs. Appended orderings: `MobSound::Raid` (after
+`Illager`) and `Sound::Raid` with `raid::Cue` `Horn`, `BellResonate`,
+`VillagerCelebrate` (after the illager cues); the dimension property key
+`raids` (after `workstations`); the player property `raid_omen_position`
+(host level file and agent profiles). Mob records gain
+`illager.raider.patrol_target`; raid witches save the `illager` object.
+See the [Track E record](verification/2026-11-18-v0.15-raids.md).
+
 **Track B allocations (2026-11-18).** Block states 11776–11787: the lectern's
 `has_book`/`powered` states (`11776 + combo * 4 + facing`, combo 0 book,
 1 powered, 2 both; the plain states stay 937–940), in `world::workstations`;

@@ -228,7 +228,7 @@ pub const JAVA_RULES: [RuleDef; 59] = [
     integer("players_sleeping_percentage", "playersSleepingPercentage", 100, 0, i32::MAX, I),
     boolean("projectiles_can_break_blocks", "projectilesCanBreakBlocks", true, M("v0.12")),
     boolean("pvp", "pvp", true, M("v1.x")),
-    boolean("raids", "disableRaids", true, M("v0.15")),
+    boolean("raids", "disableRaids", true, I),
     integer("random_tick_speed", "randomTickSpeed", 3, 0, i32::MAX, I),
     boolean("reduced_debug_info", "reducedDebugInfo", false, M("v0.18")),
     integer("respawn_radius", "spawnRadius", 10, 0, i32::MAX, I),
@@ -238,7 +238,7 @@ pub const JAVA_RULES: [RuleDef; 59] = [
     boolean("spawner_blocks_work", "spawnerBlocksEnabled", true, I),
     boolean("spawn_mobs", "doMobSpawning", true, I),
     boolean("spawn_monsters", "spawnMonsters", true, I),
-    boolean("spawn_patrols", "doPatrolSpawning", true, M("v0.15")),
+    boolean("spawn_patrols", "doPatrolSpawning", true, I),
     boolean("spawn_phantoms", "doInsomnia", true, I),
     boolean("spawn_wandering_traders", "doTraderSpawning", true, I),
     boolean("spawn_wardens", "doWardenSpawning", true, I),
@@ -253,6 +253,13 @@ pub const JAVA_RULES: [RuleDef; 59] = [
 const FIRE_RADIUS: usize = 13;
 const LEGACY_FIRE_TICK: &str = "doFireTick";
 const LEGACY_FIRE_AWAY: &str = "allowFireTicksAwayFromPlayer";
+
+/// Whether `name` is a rule's pre-26.1 `disable*` name, which Java's
+/// datafixer inverts (`disableRaids=true` is `raids=false`).
+fn inverted_legacy(rule: &RuleDef, name: &str) -> bool {
+    let name = name.strip_prefix("minecraft:").unwrap_or(name);
+    name == rule.legacy && rule.legacy.starts_with("disable")
+}
 
 fn resolve(name: &str) -> Option<usize> {
     let name = name.strip_prefix("minecraft:").unwrap_or(name);
@@ -309,7 +316,10 @@ impl GameRules {
             return Some(RuleValue::Bool(self.int("fire_spread_radius_around_player") < 0));
         }
         let i = resolve(name).filter(|&i| JAVA_RULES[i].support.enforced())?;
-        Some(self.values[i])
+        match self.values[i] {
+            RuleValue::Bool(b) if inverted_legacy(&JAVA_RULES[i], name) => Some(RuleValue::Bool(!b)),
+            value => Some(value),
+        }
     }
 
     /// Parses and sets one rule, rejecting the wrong type and out-of-range
@@ -340,6 +350,9 @@ impl GameRules {
         let i = resolve(name).filter(|&i| JAVA_RULES[i].support.enforced()).ok_or_else(|| Self::unknown(name))?;
         let rule = &JAVA_RULES[i];
         let value = match rule.kind {
+            // `GameRuleRegistryFix.convertBooleanInverted`: the old
+            // `disable*` names mean the opposite of the rule.
+            RuleType::Bool if inverted_legacy(rule, name) => RuleValue::Bool(!parse_bool(rule.id, text)?),
             RuleType::Bool => RuleValue::Bool(parse_bool(rule.id, text)?),
             RuleType::Int { min, max } => {
                 let value = text.parse::<i32>().map_err(|_| format!("{} needs an integer", rule.id))?;
@@ -369,7 +382,10 @@ impl GameRules {
             .iter()
             .zip(self.values)
             .filter(|(rule, value)| rule.support.enforced() && *value != rule.default)
-            .map(|(rule, value)| format!("{}={value}", rule.legacy))
+            .map(|(rule, value)| match value {
+                RuleValue::Bool(b) if inverted_legacy(rule, rule.legacy) => format!("{}={}", rule.legacy, !b),
+                _ => format!("{}={value}", rule.legacy),
+            })
             .collect::<Vec<_>>()
             .join(";")
     }
@@ -726,7 +742,12 @@ mod tests {
         for rule in JAVA_RULES.iter().filter(|r| r.support.enforced()) {
             let rules = GameRules::default();
             for spelling in [rule.id.to_string(), format!("minecraft:{}", rule.id), rule.legacy.to_string()] {
-                assert_eq!(rules.get(&spelling), Some(rule.default), "{spelling}");
+                // `disable*` legacy names read inverted (`GameRuleRegistryFix`).
+                let want = match rule.default {
+                    RuleValue::Bool(b) if inverted_legacy(rule, &spelling) => RuleValue::Bool(!b),
+                    value => value,
+                };
+                assert_eq!(rules.get(&spelling), Some(want), "{spelling}");
             }
             let (good, bad) = match rule.range() {
                 None => ("true", "1"),
@@ -841,21 +862,47 @@ mod tests {
     #[test]
     fn rules_the_engine_lacks_explain_why_instead_of_silently_storing_values() {
         let mut rules = GameRules::default();
-        assert!(rules.get("raids").is_none() && rules.get("disableRaids").is_none());
-        let error = rules.set("raids", "false").unwrap_err();
-        assert!(error.contains("not implemented") && error.contains("v0.15"), "{error}");
+        assert!(rules.get("limited_crafting").is_none() && rules.get("doLimitedCrafting").is_none());
+        let error = rules.set("limited_crafting", "true").unwrap_err();
+        assert!(error.contains("not implemented") && error.contains("v0.18"), "{error}");
         assert!(rules.set("elytra_movement_check", "false").unwrap_err().contains("no single-player effect"));
         assert!(GameRules::unknown("nope").contains("unknown gamerule"));
         assert_eq!(rules, GameRules::default());
-        assert!(!GameRules::names().any(|name| name == "raids"));
+        assert!(!GameRules::names().any(|name| name == "limited_crafting"));
         assert!(GameRules::names().any(|name| name == "keep_inventory"));
+    }
+
+    /// v0.15 Track E: `raids` saves as Java's inverted `disableRaids`, and
+    /// both spellings load; `spawn_patrols` keeps `doPatrolSpawning`.
+    #[test]
+    fn raids_rule_reads_and_writes_the_inverted_legacy_name() {
+        let mut rules = GameRules::default();
+        assert!(rules.bool("raids") && rules.bool("spawn_patrols"));
+        rules.set("disableRaids", "true").unwrap();
+        assert!(!rules.bool("raids"));
+        assert_eq!(rules.get("disableRaids"), Some(RuleValue::Bool(true)));
+        assert_eq!(rules.get("raids"), Some(RuleValue::Bool(false)));
+        assert_eq!(rules.serialize(), "disableRaids=true");
+        assert_eq!(GameRules::deserialize("disableRaids=true"), rules);
+        let mut by_id = GameRules::default();
+        by_id.set("minecraft:raids", "false").unwrap();
+        assert_eq!(by_id, rules);
+        assert_eq!(GameRules::deserialize("raids=false").serialize(), "disableRaids=true");
+        rules.set("raids", "true").unwrap();
+        assert_eq!(rules, GameRules::default());
+        rules.set("doPatrolSpawning", "false").unwrap();
+        assert!(!rules.bool("spawn_patrols"));
+        assert_eq!(rules.serialize(), "doPatrolSpawning=false");
     }
 
     #[test]
     fn old_worlds_receive_every_default() {
         assert_eq!(GameRules::deserialize(""), GameRules::default());
         assert_eq!(GameRules::deserialize("futureRule=yes;randomTickSpeed=bad"), GameRules::default());
-        assert_eq!(GameRules::deserialize("raids=false;disableRaids=true;keepInventory"), GameRules::default());
+        assert_eq!(
+            GameRules::deserialize("limited_crafting=true;doLimitedCrafting=true;keepInventory"),
+            GameRules::default()
+        );
     }
 
     #[test]

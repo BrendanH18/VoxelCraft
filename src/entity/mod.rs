@@ -70,6 +70,7 @@ mod player_pose;
 pub mod polar_bear;
 pub mod potion;
 mod projectile;
+pub mod raid;
 mod replica;
 pub mod sculk_events;
 mod slime;
@@ -175,6 +176,8 @@ pub enum MobSound {
     Breeze(breeze::Cue),
     /// v0.15 Track A: spells, fangs, vex charges, ravager and crossbow cues.
     Illager(illager::Cue),
+    /// v0.15 Track E: the raid horn, a bell resonating, villagers cheering.
+    Raid(raid::Cue),
 }
 
 /// Something an entity did that the game needs to react to.
@@ -980,6 +983,12 @@ pub struct Entities {
     pub village_time: f64,
     pub village_day: i64,
     next_villager_id: u64,
+    /// v0.15 Track E: this dimension's raids, the patrol spawner, bell
+    /// resonances and hero gifts (saved as the `raids` property).
+    pub raids: raid::Raids,
+    /// Set while a raid or patrol spawns a mob (`EVENT` or `PATROL`), which
+    /// skips the natural captain roll.
+    pub(crate) raids_event_spawn: bool,
     villager_births: rustc_hash::FxHashSet<IVec3>,
     village_timer: f32,
     cat_spawner: cat_spawner::Spawner,
@@ -1093,6 +1102,8 @@ impl Entities {
             village_time: 0.25,
             village_day: 0,
             next_villager_id: 1,
+            raids: Default::default(),
+            raids_event_spawn: false,
             villager_births: Default::default(),
             village_timer: 0.0,
             cat_spawner: Default::default(),
@@ -1252,7 +1263,19 @@ impl Entities {
             p.start_circle(&mut self.rng);
         }
         nether::on_spawn(&mut mob, &mut self.rng);
+        // v0.15 Track E: raid witches carry the raider state; natural
+        // witches can't join raids (`Raider.finalizeSpawn`).
+        if kind == MobKind::Witch && self.raids_event_spawn {
+            mob.illager = Some(Box::default());
+        }
         illager::finalize_spawn(&mut mob, special, &mut self.rng);
+        // `PatrollingMonster.finalizeSpawn`: outside patrols, raids and
+        // structures, one in 17 raiders that can lead becomes a captain. A
+        // roll of its own keeps the shared random stream unchanged.
+        if !self.raids_event_spawn && raid::can_lead(kind) {
+            let mut roll = Rng::new(pos.x.to_bits().rotate_left(13) ^ pos.z.to_bits() ^ yaw.to_bits() as u64 ^ 0xCA97);
+            raid::natural_captain(&mut mob, &mut roll);
+        }
         aquatic::on_spawn(&mut mob, &mut self.rng);
         animals::on_spawn(&mut mob, &mut self.rng);
         // `Mob.finalizeSpawn`'s follow-range bonus and the zombie family's
@@ -1451,6 +1474,17 @@ impl Entities {
         }
         if !player_kill && catalyst {
             self.sculk.deaths.push((pos, 0));
+        }
+        // v0.15 Track E: `entities/pillager`'s captain pool, read while the
+        // banner is still on the head (Java's loot table precedes the
+        // equipment drops).
+        let captain = self
+            .mobs
+            .iter()
+            .find(|m| m.kind == kind && !m.alive() && m.pos.distance_squared(pos) < 0.01)
+            .is_some_and(raid::is_captain);
+        if captain && let Some(bottle) = raid::captain_loot(kind, &mut self.rng) {
+            self.scatter(bottle, pos);
         }
         // `LivingEntity.dropAllDeathLoot`: equipment drops before the experience.
         self.equipment_drops(kind, pos, looting, player_kill);
@@ -1760,6 +1794,7 @@ impl Entities {
         props.insert("nether_mobs".to_string(), self.nether_mobs_to_string());
         props.insert("tridents".to_string(), self.tridents_json());
         props.insert("ominous_item_spawners".to_string(), self.item_spawners_to_value().to_string());
+        props.insert("raids".to_string(), self.raids.save());
     }
 
     /// Restores [`Entities::save_props`]. Every entity starts in the level;
@@ -1792,6 +1827,9 @@ impl Entities {
         }
         if let Some(t) = props.get("tridents") {
             self.load_tridents_json(t);
+        }
+        if let Some(r) = props.get("raids") {
+            self.raids.load(r);
         }
     }
 
@@ -2184,6 +2222,10 @@ impl Entities {
         }
         let kind = mob.kind;
         mob.player_hit();
+        // v0.15 Track E: the killer a raid credits as a hero.
+        if let Some(s) = &mut mob.illager {
+            s.raider.last_player = Some(owner);
+        }
         if kind == MobKind::IronGolem && !self.neutral_universal_anger {
             mob.angry_player = Some(owner);
         }

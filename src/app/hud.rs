@@ -172,8 +172,15 @@ impl Game {
         }
 
         self.hotbar_ui(&mut ui, now);
+        let mut bar_y = 12.0;
         if let Some(health) = self.mobs.entities.fight.as_ref().and_then(|f| f.boss_bar(self.session.player.pos)) {
             boss_bar_ui(&mut ui, "Ender Dragon", health, sw);
+            bar_y += 19.0;
+        }
+        // v0.15 Track E: the raid bar (`BossBarColor.RED`, `NOTCHED_10`),
+        // under any other boss bar as Java stacks them.
+        if let Some(bar) = self.mobs.entities.raids.bar_for(self.session.id) {
+            raid_bar_ui(&mut ui, &bar.title.text(), bar.progress, sw, bar_y);
         }
         if self.show_debug {
             self.debug_ui(&mut ui);
@@ -633,6 +640,24 @@ fn boss_bar_ui(ui: &mut Ui, name: &str, health: f32, sw: f32) {
     if fill > 0.0 {
         ui.rect(x + 1.0, y + 1.0, fill, 3.0, PINK);
         ui.rect(x + 1.0, y + 1.0, fill, 1.0, [1.0, 0.6, 0.9, 1.0]);
+    }
+}
+
+/// The raid's red boss bar with ten notches, at `y`.
+fn raid_bar_ui(ui: &mut Ui, name: &str, progress: f32, sw: f32, y: f32) {
+    const RED: [f32; 4] = [0.9, 0.12, 0.12, 1.0];
+    let (w, x) = (182.0, ((sw - 182.0) / 2.0).floor());
+    ui.text(((sw - Ui::text_width(name)) / 2.0).floor(), y - 9.0, name, WHITE);
+    ui.rect(x, y, w, 5.0, [0.0, 0.0, 0.0, 0.8]);
+    ui.rect(x + 1.0, y + 1.0, w - 2.0, 3.0, [0.3, 0.05, 0.05, 0.9]);
+    let fill = ((w - 2.0) * progress.clamp(0.0, 1.0)).round();
+    if fill > 0.0 {
+        ui.rect(x + 1.0, y + 1.0, fill, 3.0, RED);
+        ui.rect(x + 1.0, y + 1.0, fill, 1.0, [1.0, 0.5, 0.45, 1.0]);
+    }
+    for k in 1..10 {
+        let nx = (x + 1.0 + (w - 2.0) * k as f32 / 10.0).round();
+        ui.rect(nx, y + 1.0, 1.0, 3.0, [0.0, 0.0, 0.0, 0.5]);
     }
 }
 

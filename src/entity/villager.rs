@@ -262,6 +262,10 @@ pub struct Villager {
     /// Java `updateMerchantTimer`: seconds until a pending promotion lands.
     promote_left: f32,
     promote_pending: bool,
+    /// v0.15 Track E: players with Hero of the Village and its amplifier,
+    /// copied in by the raid tick (not saved); [`Villager::priced_for`]
+    /// takes `raid::hero_price_cut` off their prices.
+    pub heroes: Vec<(super::PlayerId, u8)>,
 }
 impl Mob {
     /// What a LAN client's trading screen shows: merchant id, profession, level, xp and offers.
@@ -325,6 +329,7 @@ impl Villager {
             last_restock: 0,
             promote_left: 0.0,
             promote_pending: false,
+            heroes: Vec::new(),
         }
     }
     pub fn observation(&self) -> Value {
@@ -354,7 +359,10 @@ impl Villager {
         }
         let base = offer.price();
         let reputation = self.reputation_of(owner);
-        let cut = (reputation as f32 * offer.multiplier).floor() as i32;
+        // v0.15 Track E hook: `updateSpecialPrices`' Hero of the Village cut.
+        let hero = self.heroes.iter().find(|h| h.0 == owner).map(|h| h.1);
+        let cut =
+            (reputation as f32 * offer.multiplier).floor() as i32 + super::raid::hero_price_cut(offer.cost.count, hero);
         Stack { count: (base.count as i32 - cut).clamp(1, offer.cost.item.max_stack() as i32) as u8, ..base }
     }
     pub fn set_profession(&mut self, p: Profession) {

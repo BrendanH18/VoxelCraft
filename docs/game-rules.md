@@ -20,8 +20,12 @@ holds the same table (`JAVA_RULES`) and a test keeps this file identical to it.
   `fire_spread_radius_around_player` (128: fire ticks within 128 blocks of a
   player, 0: never, -1: everywhere). Old saves convert as Java's datafixer does;
   new saves write `fireSpreadRadiusAroundPlayer`.
-- Rules the engine lacks are not stored: `/gamerule raids false` reports that the
-  rule is not implemented and names the release that adds it.
+- Rules the engine lacks are not stored: `/gamerule limited_crafting true`
+  reports that the rule is not implemented and names the release that adds it.
+- Three legacy names are `disable*` booleans that Java's datafixer inverts
+  (`GameRuleRegistryFix.convertBooleanInverted`). `raids` is the one the
+  engine enforces: `disableRaids=true` loads as `raids false`, and a world
+  with raids off saves `disableRaids=true`.
 - A rule never changes saved IDs. Adding an implemented rule means moving its row
   from Missing to Implemented here, in `JAVA_RULES` and in a test; the test
   `docs_inventory_lists_every_rule_with_its_support_level` fails until they agree.
@@ -83,7 +87,7 @@ enforced.
 | `players_sleeping_percentage` | `playersSleepingPercentage` | integer 0..2147483647 | `100` | Implemented | - | Share of players who must sleep, rounded up and at least one. |
 | `projectiles_can_break_blocks` | `projectilesCanBreakBlocks` | boolean | `true` | Missing | v0.12 | Governs arrows and similar hitting chorus flowers, pointed dripstone and decorated pots (v0.12, v0.16). |
 | `pvp` | `pvp` | boolean | `true` | Missing | v1.x | LAN sessions have their own player-versus-player toggle, off unless chosen; the rule joins the registry with multiplayer. |
-| `raids` | `disableRaids` | boolean | `true` | Missing | v0.15 | Raids arrive with illagers. |
+| `raids` | `disableRaids` | boolean | `true` | Implemented | - | Stops every raid (`Raids.tick`) and keeps omens from starting one (`createOrExtendRaid`); the legacy name is inverted. v0.15 Track E. |
 | `random_tick_speed` | `randomTickSpeed` | integer 0..2147483647 | `3` | Implemented | - | Random ticks per section per tick (`ServerChunkCache.tickChunks`). |
 | `reduced_debug_info` | `reducedDebugInfo` | boolean | `false` | Missing | v0.18 | Client-side F3 content; the server jar cannot confirm the exact reduced screen. |
 | `respawn_radius` | `spawnRadius` | integer 0..2147483647 | `10` | Implemented | - | Spread of the world spawn search (`PlayerSpawnFinder`). |
@@ -93,7 +97,7 @@ enforced.
 | `spawner_blocks_work` | `spawnerBlocksEnabled` | boolean | `true` | Implemented | - | Stops monster cages from ticking (`BaseSpawner.serverTick`); spawn eggs on spawners are not modelled. |
 | `spawn_mobs` | `doMobSpawning` | boolean | `true` | Implemented | - | Natural spawning and custom spawners; chunk-generation herds are not gated, as in Java. |
 | `spawn_monsters` | `spawnMonsters` | boolean | `true` | Implemented | - | Hostile spawn categories only; animals and water creatures still spawn. |
-| `spawn_patrols` | `doPatrolSpawning` | boolean | `true` | Missing | v0.15 | Pillager patrols arrive with illagers. |
+| `spawn_patrols` | `doPatrolSpawning` | boolean | `true` | Implemented | - | Gates the pillager patrol spawner (`PatrolSpawner.tick`). v0.15 Track E. |
 | `spawn_phantoms` | `doInsomnia` | boolean | `true` | Implemented | - | Saved rest statistic and Java PhantomSpawner gate; see the v0.14 hostiles record. |
 | `spawn_wandering_traders` | `doTraderSpawning` | boolean | `true` | Implemented | - | Gates the trader spawner. Like Java it also needs `spawn_mobs`. |
 | `spawn_wardens` | `doWardenSpawning` | boolean | `true` | Implemented | - | Summoning sculk shriekers answer a fourth warning with a warden (v0.14). |

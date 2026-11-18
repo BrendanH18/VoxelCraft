@@ -222,6 +222,9 @@ impl Game {
         if let Some(text) = existing.as_ref().and_then(|l| l.props.get("last_death")) {
             session.load_last_death(text);
         }
+        if let Some(text) = existing.as_ref().and_then(|l| l.props.get("raid_omen_position")) {
+            session.load_raid_omen(text);
+        }
         session.spawn_anchor = existing.as_ref().and_then(|l| l.props.get("spawn_anchor")).and_then(|text| {
             let n: Vec<i32> = text.split(',').filter_map(|value| value.parse().ok()).collect();
             (n.len() == 3).then(|| IVec3::new(n[0], n[1], n[2]))
