@@ -1238,6 +1238,12 @@ changes terrain or structures generates in a new generation 4; generations
 each in its own worktree with IDs from the
 [architecture reservations](architecture.md#v015-villages-and-raids-track-reservations).
 
+*Generation 4 added (2026-11-18):* new worlds save `worldgen=4`;
+generation 3 is pinned by `generation_3_chunk_hashes_stay_identical`
+(blocks and structure features around the nearest village, outpost, trail
+ruins, ancient city and trial chamber on two seeds), alongside the
+generation 1 and 2 pins.
+
 Wave 1 (independent):
 
 1. **A. Illagers** (MOB-04b, MOB-02d). Vindicators, evokers (fangs, vex
