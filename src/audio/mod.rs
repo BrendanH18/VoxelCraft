@@ -9,6 +9,7 @@
 mod breeze;
 mod dsp;
 mod export;
+mod illager;
 pub mod mixer;
 mod sniffer;
 pub mod sounds;

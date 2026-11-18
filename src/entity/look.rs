@@ -58,6 +58,9 @@ impl Mob {
         if let Some(s) = &self.armadillo {
             v["armadillo"] = s.look();
         }
+        if let Some(s) = &self.illager {
+            v["illager"] = s.look();
+        }
         if let Some(s) = &self.panda {
             v["panda"] = s.look();
         }
@@ -136,6 +139,9 @@ impl Mob {
         }
         if let Some(s) = &mut self.sniffer {
             s.apply_look(&v["sniffer"]);
+        }
+        if let Some(s) = &mut self.illager {
+            s.apply_look(&v["illager"]);
         }
         if let Some(s) = &mut self.creaking {
             s.load(&v["creaking"]);

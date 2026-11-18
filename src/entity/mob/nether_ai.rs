@@ -341,11 +341,15 @@ impl Mob {
     }
 
     /// Java's `attack_knockback` attribute (`combat.json`): 1 for hoglins and zoglins, 0 otherwise.
+    /// v0.15 Track A: the ravager's 1.5, and the main-hand weapon's
+    /// Knockback level, which `Mob.getKnockback` adds.
     pub(crate) fn attack_knockback(&self) -> f64 {
-        match self.kind {
+        let base = match self.kind {
             MobKind::Hoglin | MobKind::Zoglin => 1.0,
+            MobKind::Ravager => crate::entity::illager::RAVAGER_ATTACK_KNOCKBACK,
             _ => 0.0,
-        }
+        };
+        base + f64::from(self.weapon_knockback_level())
     }
 
     /// Java's `knockback_resistance` attribute (`combat.json`): 1 for iron golems,
@@ -354,11 +358,20 @@ impl Mob {
         let base = match self.kind {
             MobKind::IronGolem | MobKind::Warden => 1.0,
             MobKind::Hoglin | MobKind::Zoglin => 0.6000000238418579,
+            MobKind::Ravager => crate::entity::illager::RAVAGER_KNOCKBACK_RESISTANCE,
             _ => 0.0,
         };
-        // Netherite horse armor's BODY modifier adds 0.1.
+        // Netherite horse armor's BODY modifier adds 0.1, and so does each
+        // worn netherite piece (v0.15 Track A).
         let body = self.mount.as_ref().and_then(|s| s.slots[1]);
-        let armor = body.map_or(0.0, |s| f64::from(crate::entity::mounts::armor_knockback_resistance(s.item)));
+        let worn: f64 = self
+            .worn_stacks()
+            .iter()
+            .flatten()
+            .filter_map(|s| s.item.as_armor())
+            .map(|(_, m)| f64::from(m.knockback_resistance()))
+            .sum();
+        let armor = worn + body.map_or(0.0, |s| f64::from(crate::entity::mounts::armor_knockback_resistance(s.item)));
         // A zombie's spawn `random_spawn_bonus`, all `ADD_VALUE`, within the attribute's range.
         let (lo, hi) = crate::entity::zombie::KNOCKBACK_RESISTANCE_RANGE;
         (base + armor + self.attributes().knockback_bonus).clamp(lo, hi)

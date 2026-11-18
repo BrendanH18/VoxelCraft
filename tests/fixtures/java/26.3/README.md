@@ -890,3 +890,41 @@ predicates), the item facts, the ominous banner, the constants, the lectern
 cases and the stonecutter's order with the game. `tests/java_recipes.rs`
 runs the four special grid recipes (banner duplication, shield decoration,
 book cloning, map extending) on example grids.
+
+## Illagers, vexes and ravagers
+
+`illagers.json` (v0.15 Track A) holds the facts of the vindicator, evoker,
+illusioner, pillager, vex and ravager: each `EntityTypes` builder (category,
+size, eye height, fire immunity, peaceful flag, riding offset), the
+attributes merged from `Mob`, `Monster` and each `createAttributes`, the
+constructors' experience, every `registerGoals` entry, the
+`entities/*` loot tables (pools, conditions, counts, Looting increases) and
+the `illager`, `illager_friends` and `raiders` tags. Below them: each
+`SpellcasterUseSpellGoal`'s warmup, casting time, interval and spell, with
+the fang rings and line of `EvokerAttackSpellGoal.performSpellCasting`, the
+summon roll, count range, vexes and vex lifetime, `wololo`'s box and
+colours, and the illusioner's invisibility and blindness lengths;
+`EvokerFangs`' life, bite tick, damage and reach; the vex's starvation, charge
+and wander rolls, distances and move control; the ravager's timers, roar,
+`strongKnockback`, stun chance, speed easing, griefing box and attack box,
+and that `CropBlock.entityInside` breaks crops under it;
+`RangedCrossbowAttackGoal`'s see time, delays and path delay with
+`CrossbowItem`'s charge time and mob arrow power; `Mob`'s attack reach,
+pickup reach and replacement drop roll, the 0.55 `CanPickUpLoot` chance of
+zombies and skeletons, and that pillagers set it on load; and the
+vindicator's Johnny name and door rule (`BreakDoorGoal` time, Normal or
+Hard, active raids only). Method bodies are matched against templates of
+their literal values: fixed entries pin the bytecode's shape and named ones
+capture the values, so a changed shape fails.
+
+```sh
+python3 tools/extract_java_illager_fixtures.py /path/to/server.jar --output target/java-illagers.json
+diff tests/fixtures/java/26.3/illagers.json target/java-illagers.json
+scripts/remote-check.sh -- 'cargo test --release --lib illager'
+```
+
+`src/entity/illager/tests.rs` reads every number back from the fixture
+(registration, attributes, experience, spells, fangs, vex, ravager,
+crossbow, shared combat), checks both tags against `MobKind::ALL` in both
+directions, rolls the loot tables against the fixture's pools, and runs the
+behaviour through the entity update.

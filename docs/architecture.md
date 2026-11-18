@@ -924,6 +924,19 @@ numbers 550–558, 600–699 (stonecutter recipes) and 700–799 (loom
 patterns). The `banner` stack payload gained an optional `ominous` flag.
 See the [Track B record](verification/2026-11-18-v0.15-workstations.md).
 
+Track A (illagers, 2026-11-18) used none of its item IDs (1634–1641) or
+texture layers (4040–4055): the illagers drop and hold existing items and
+their models are untextured boxes, so the reservation stays free. It
+appended `MobKind::Vindicator`, `Evoker`, `Vex`, `Ravager` and `Illusioner`
+(LAN indices 75–79 on its branch, saved as `vindicator`, `evoker`, `vex`,
+`ravager`, `illusioner`); `Voice::Vindicator`, `Evoker`, `Vex`, `Ravager`
+and `Illusioner`; the sound family `Sound::Illager` with the 16
+`illager::Cue`s after `Sound::Breeze`; `MobSound::Illager`; and the
+unsaved `EntityEvent::MobArrow` and `MobGrief`. Mob records gain the
+`illager` object (raid hook, spells, Johnny, vex owner, bound position and
+life, ravager timers) and `can_pick_up_loot`. See the
+[Track A record](verification/2026-11-18-v0.15-illagers.md).
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

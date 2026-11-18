@@ -19,6 +19,7 @@ mod drowned;
 mod endermite;
 mod frog;
 pub(crate) mod goals;
+mod illager;
 mod navigate;
 mod nether_ai;
 mod ocelot;
@@ -203,6 +204,17 @@ pub enum MobKind {
     /// v0.14 (MOBN-26): the pearl pest. Saved as `endermite`; its LAN index
     /// is its position in [`MobKind::ALL`].
     Endermite,
+    /// v0.15 Track A: an axe-swinging illager. Saved as `vindicator`; its
+    /// LAN index is its position in [`MobKind::ALL`] (see `entity::illager`).
+    Vindicator,
+    /// v0.15 Track A: the spellcaster that raises fangs and vexes.
+    Evoker,
+    /// v0.15 Track A: an evoker's summoned flier.
+    Vex,
+    /// v0.15 Track A: the illagers' beast, which an illager can ride.
+    Ravager,
+    /// v0.15 Track A: commands only, as in Java.
+    Illusioner,
 }
 
 impl MobKind {
@@ -237,7 +249,7 @@ impl MobKind {
     pub fn from_lan_index(index: usize) -> Option<Self> {
         Self::ALL.get(index).copied()
     }
-    pub const ALL: [MobKind; 75] = [
+    pub const ALL: [MobKind; 80] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -313,6 +325,11 @@ impl MobKind {
         MobKind::Warden,
         MobKind::Breeze,
         MobKind::Endermite,
+        MobKind::Vindicator,
+        MobKind::Evoker,
+        MobKind::Vex,
+        MobKind::Ravager,
+        MobKind::Illusioner,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -393,6 +410,11 @@ impl MobKind {
             MobKind::Warden => "warden",
             MobKind::Breeze => "breeze",
             MobKind::Endermite => "endermite",
+            MobKind::Vindicator => "vindicator",
+            MobKind::Evoker => "evoker",
+            MobKind::Vex => "vex",
+            MobKind::Ravager => "ravager",
+            MobKind::Illusioner => "illusioner",
         }
     }
 
@@ -411,6 +433,11 @@ impl MobKind {
             MobKind::Breeze => Shape::new(0.3, 1.77),
             // `EntityTypes.ENDERMITE`: 0.4 x 0.3.
             MobKind::Endermite => Shape::new(0.2, 0.3),
+            // `EntityTypes`: illagers 0.6 x 1.95, the vex 0.4 x 0.8 and the
+            // ravager 1.95 x 2.2 (`tests/fixtures/java/26.3/illagers.json`).
+            MobKind::Vindicator | MobKind::Evoker | MobKind::Illusioner => Shape::new(0.3, 1.95),
+            MobKind::Vex => Shape::new(0.2, 0.8),
+            MobKind::Ravager => Shape::new(0.975, 2.2),
             MobKind::Bat => Shape::new(0.25, 0.9),
             MobKind::Frog => Shape::new(0.25, 0.5),
             MobKind::Tadpole => Shape::new(0.2, 0.3),
@@ -531,6 +558,10 @@ impl MobKind {
             MobKind::ZombieHorse => 25.,
             MobKind::Bee => 10.0,
             MobKind::Phantom => 20.0,
+            MobKind::Vindicator | MobKind::Evoker => 24.0,
+            MobKind::Vex => 14.0,
+            MobKind::Ravager => 100.0,
+            MobKind::Illusioner => 32.0,
         }
     }
 
@@ -569,6 +600,11 @@ impl MobKind {
                 | MobKind::Pillager
                 | MobKind::Breeze
                 | MobKind::Endermite
+                | MobKind::Vindicator
+                | MobKind::Evoker
+                | MobKind::Vex
+                | MobKind::Ravager
+                | MobKind::Illusioner
         )
     }
 
@@ -592,6 +628,8 @@ impl MobKind {
                 | MobKind::Zoglin
                 | MobKind::Strider
                 | MobKind::Warden
+                // `EntityTypes.VEX.fireImmune()`.
+                | MobKind::Vex
         )
     }
 
@@ -627,6 +665,10 @@ impl MobKind {
             MobKind::Silverfish | MobKind::CaveSpider => false,
             // No biome lists it; only landed ender pearls make them.
             MobKind::Endermite => false,
+            // No biome lists illagers: raids, patrols and mansions bring them
+            // (later v0.15 tracks), vexes come only from evokers and
+            // illusioners only from commands.
+            MobKind::Vindicator | MobKind::Evoker | MobKind::Vex | MobKind::Ravager | MobKind::Illusioner => false,
             // Only generated with bastions (`nether::populate_bastions`).
             MobKind::PiglinBrute | MobKind::Zoglin | MobKind::ElderGuardian | MobKind::Cat | MobKind::Pillager => false,
             // Picked by the Nether biome spawn lists (`world::nether_biome`).
@@ -885,6 +927,14 @@ impl MobKind {
             MobKind::Hoglin => (6.0, Cause::mob("was slain by a hoglin")),
             MobKind::Zoglin => (6.0, Cause::mob("was slain by a zoglin")),
             MobKind::Warden => (super::warden::MELEE_DAMAGE, super::warden::CAUSE_MELEE),
+            // `createAttributes` attack damage, before the held weapon.
+            MobKind::Vindicator => (5.0, Cause::mob("was slain by a vindicator")),
+            MobKind::Pillager => (5.0, Cause::mob("was slain by a pillager")),
+            MobKind::Vex => (4.0, Cause::mob("was slain by a vex")),
+            MobKind::Ravager => (12.0, Cause::mob("was slain by a ravager")),
+            // `Monster.createMonsterAttributes`' registry default 2.
+            MobKind::Evoker => (2.0, Cause::mob("was slain by an evoker")),
+            MobKind::Illusioner => (2.0, Cause::mob("was slain by an illusioner")),
             _ => (3.0, Cause::mob("was slain by a zombie")),
         }
     }
@@ -955,6 +1005,11 @@ impl MobKind {
             MobKind::Guardian => &[(Item::PRISMARINE_SHARD, 0, 2)],
             MobKind::ElderGuardian => &[(Item::PRISMARINE_SHARD, 0, 2), (SPONGE, 1, 1)],
             MobKind::Sniffer | MobKind::Axolotl | MobKind::Cat | MobKind::Ocelot | MobKind::Pillager => &[],
+            // `entities/vindicator` and the evoker's emerald pool (killed by
+            // a player, 0-1 plus Looting) and the evoker's totem, the
+            // ravager's saddle: rolled in `illager::drops`. `entities/vex`
+            // and `entities/illusioner` have no pools.
+            MobKind::Vindicator | MobKind::Evoker | MobKind::Vex | MobKind::Ravager | MobKind::Illusioner => &[],
             MobKind::Turtle => &[(SEAGRASS, 0, 2)],
             MobKind::Wolf | MobKind::Fox | MobKind::Goat => &[],
             MobKind::Parrot => &[(Item::FEATHER, 1, 2)],
@@ -1047,6 +1102,9 @@ impl MobKind {
             | MobKind::WanderingTrader => 0,
             MobKind::Blaze | MobKind::Guardian | MobKind::ElderGuardian | MobKind::Breeze => 10,
             MobKind::Endermite => super::endermite::EXPERIENCE,
+            MobKind::Evoker => 10,
+            MobKind::Vex => 3,
+            MobKind::Ravager => 20,
             k if k.is_hostile() => 5,
             _ => 1 + (rng.next_f32() * 3.0) as u32,
         }
@@ -1097,6 +1155,9 @@ pub struct Mob {
     /// Breach's armor-effectiveness change for the hit being applied (0
     /// outside a player's mace hit); never saved.
     pub(super) armor_effectiveness: f32,
+    /// The damage type of the hit being applied, when a caller knows it (an
+    /// arrow or a blast); consumed by `take_damage`. Never saved.
+    pub(crate) hit_cause: Option<Cause>,
     pub phantom: Option<Box<super::phantom::State>>,
     pub freezing: Option<super::hostiles::Freezing>,
     pub mooshroom: Option<Box<super::mooshroom::State>>,
@@ -1114,6 +1175,12 @@ pub struct Mob {
     pub warden: Option<Box<super::warden::State>>,
     /// Endermites: lifetime and target (see `entity::endermite`).
     pub endermite: Option<Box<super::endermite::State>>,
+    /// v0.15 Track A: illager, vex and ravager state, raid membership
+    /// included (see `entity::illager`).
+    pub illager: Option<Box<super::illager::State>>,
+    /// `Mob.canPickUpLoot` (saved as `can_pick_up_loot`): items within reach
+    /// are equipped under `mobGriefing` (see `entity::mob_combat`).
+    pub can_pick_up_loot: bool,
     pub wolf_armor: Option<Box<super::wolf_armor::State>>,
     /// Witch: seconds left drinking, and the potion it is drinking.
     drink_left: f32,
@@ -1307,6 +1374,7 @@ impl Mob {
                 e
             },
             armor_effectiveness: 0.0,
+            hit_cause: None,
             phantom: (kind == MobKind::Phantom).then(|| Box::new(super::phantom::State::new(pos))),
             mooshroom: (kind == MobKind::Mooshroom).then(Box::default),
             bat: (kind == MobKind::Bat).then(Box::default),
@@ -1323,6 +1391,8 @@ impl Mob {
             allay: (kind == MobKind::Allay).then(Box::default),
             warden: (kind == MobKind::Warden).then(Box::default),
             endermite: (kind == MobKind::Endermite).then(Box::default),
+            illager: super::illager::State::for_kind(kind),
+            can_pick_up_loot: false,
             wolf_armor: (kind == MobKind::Wolf).then(Box::default),
             drink_left: 0.0,
             drinking: "",
@@ -1426,7 +1496,10 @@ impl Mob {
         } else {
             0.0
         };
-        ((base + strength + held - weakness).max(0.0), cause)
+        // `Mob.doHurtTarget` reads the attack damage attribute, which the
+        // main-hand item's modifiers raise (`entity::mob_combat`).
+        let weapon = if self.kind == MobKind::ZombifiedPiglin { 0.0 } else { self.weapon_attack_bonus() };
+        ((base + strength + held + weapon - weakness).max(0.0), cause)
     }
 
     /// Retaliation from the armor worn by a player struck in melee.
@@ -1614,6 +1687,7 @@ impl Mob {
         if !self.alive() || self.warden.as_ref().is_some_and(|s| s.digging_or_emerging()) {
             return false;
         }
+        self.hit_cause = Some(Cause::TNT);
         let killed = self.take_damage(amount, true, false, rng);
         self.vel += push * crate::knockback::TICK_RATE;
         killed
@@ -1631,6 +1705,15 @@ impl Mob {
             self.knock_back(push, rng);
         }
         self.take_damage(amount, true, false, rng)
+    }
+
+    /// [`Mob::damage_pushed`] for a projectile's hit: armor and Projectile
+    /// Protection see an arrow-type hit.
+    pub fn damage_projectile(&mut self, amount: f32, pushes: &[crate::knockback::Push], rng: &mut Rng) -> bool {
+        self.hit_cause = Some(Cause::ARROW);
+        let killed = self.damage_pushed(amount, pushes, rng);
+        self.hit_cause = None;
+        killed
     }
 
     /// Punch's shove of an arrow with `motion` (blocks per tick), added to the mob's velocity.
@@ -1698,7 +1781,20 @@ impl Mob {
         } else {
             amount
         };
+        // Worn humanoid armor (`getDamageAfterArmorAbsorb`), then
+        // Resistance, then the armor's protection enchantments
+        // (`getDamageAfterMagicAbsorb`); only hits from an attack or a blast
+        // carry a damage type here (`entity::mob_combat`).
+        let cause = self.hit_cause.take().or(attacked.then_some(super::mob_combat::ATTACK_CAUSE));
+        let amount = match cause {
+            Some(cause) if !bypass_wolf_armor => super::mob_combat::after_worn_armor(self, amount, cause),
+            _ => amount,
+        };
         let amount = amount * self.effects.resistance_factor();
+        let amount = match cause {
+            Some(cause) if !bypass_wolf_armor => crate::enchant::protect(amount, &self.worn_stacks(), cause),
+            _ => amount,
+        };
         self.health -= self.effects.absorb(amount);
         // `Zombie.hurtServer` calls reinforcements after any accepted hit.
         if super::zombie::calls_reinforcements(self.kind) && self.reinforce_call.is_none() {
@@ -1956,6 +2052,9 @@ impl Mob {
             super::bee::travel(self, dt, world, wish, speed);
         } else if self.kind == MobKind::Phantom {
             // PhantomMoveControl already moved this flying body.
+        } else if self.kind == MobKind::Vex {
+            // `Vex.tick` sets `noPhysics`: it flies through blocks.
+            super::illager::vex_travel(self, dt);
         } else if java {
             // Whole Java ticks of simulated time; the fixed 20 Hz step runs one.
             // The move controls apply Speed and Slowness to the raw speed.
@@ -2079,6 +2178,11 @@ impl Mob {
         {
             return wish;
         }
+        if self.illager.is_some()
+            && let Some(wish) = self.illager_think(dt, world, ctx, rng, events)
+        {
+            return wish;
+        }
         if self.kind == MobKind::Bat {
             self.bat_sense(world, ctx);
             return (None, 0.0);
@@ -2165,9 +2269,6 @@ impl Mob {
         }
         if self.kind.is_aquatic() {
             return super::aquatic::steer(self, dt, world, ctx, rng, events);
-        }
-        if self.kind == MobKind::Pillager {
-            return super::aquatic::pillager(self, dt, world, ctx, events);
         }
         if matches!(self.kind, MobKind::Villager | MobKind::WanderingTrader)
             && let Some(v) = &self.villager
@@ -2308,6 +2409,7 @@ impl Mob {
             && self.nether.is_none()
             && self.kind != MobKind::Blaze
             && self.kind != MobKind::Endermite
+            && self.illager.is_none()
         {
             let aggressive = match self.kind {
                 MobKind::Spider | MobKind::CaveSpider => ctx.daylight < SPIDER_CALM_DAYLIGHT || self.provoked > 0.0,
@@ -2395,6 +2497,11 @@ impl Mob {
                                 cause,
                             });
                             events.push(EntityEvent::OwnerHurt { player: target.id, attacker: self.uid });
+                            // MOB-02d: the held weapon's Fire Aspect.
+                            let fire = self.weapon_fire_seconds();
+                            if fire > 0.0 {
+                                events.push(EntityEvent::Ignite { player: target.id, secs: fire });
+                            }
                             if self.kind == MobKind::Husk {
                                 // `Husk.doHurtTarget`: 140 ticks times the whole part of the
                                 // local effective difficulty.
@@ -3213,6 +3320,7 @@ impl Mob {
         let step_height = if self.kind == MobKind::Camel {
             1.5
         } else if self.kind == MobKind::CopperGolem
+            || self.kind == MobKind::Ravager
             || super::mounts::equine(self.kind)
             || self.mount.as_ref().is_some_and(|s| s.controlled())
         {
@@ -3662,7 +3770,8 @@ impl super::Entities {
                     | MobKind::Panda
                     | MobKind::Armadillo
                     | MobKind::Endermite
-            ) || super::neutral::is_neutral(m.kind)
+            ) || m.illager.is_some()
+                || super::neutral::is_neutral(m.kind)
         }) {
             self.ensure_mob_ids();
             let uid = self.mobs[index].uid;
@@ -3702,6 +3811,7 @@ impl super::Entities {
                 MobKind::Panda => self.panda_hurt(index, super::nether::Foe::Player(player)),
                 MobKind::Armadillo => self.armadillo_hurt(index, super::nether::Foe::Player(player)),
                 MobKind::Endermite => self.endermite_hurt(index, super::nether::Foe::Player(player)),
+                _ if self.mobs[index].illager.is_some() => self.illager_hurt(index, super::nether::Foe::Player(player)),
                 MobKind::Wolf | MobKind::IronGolem | MobKind::Enderman | MobKind::ZombifiedPiglin => {
                     self.neutral_hurt_by(index, player)
                 }

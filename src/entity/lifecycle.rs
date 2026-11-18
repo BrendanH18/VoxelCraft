@@ -57,6 +57,7 @@ impl Entities {
         self.cat_spawner_tick(dt, world, ctx);
         self.assign_hunts(ctx);
         self.endermite_upkeep(dt, world);
+        self.illager_upkeep(dt, world, ctx, &mut events);
         self.trader_upkeep();
         // `Entity.hasMovedHorizontallyRecently`, from last update's positions.
         let moved: Vec<(PlayerId, bool)> = ctx
@@ -232,6 +233,8 @@ impl Entities {
             i += 1;
         }
         self.resolve_breeding();
+        self.illager_after(dt, world, ctx, &mut events);
+        self.mobs_pick_up_loot(&mut events);
         self.mob_index.rebuild(&self.mobs);
         self.watch_doors(dt as f32, &mut events);
         self.resolve_strikes(ctx, &mut events);
@@ -311,6 +314,13 @@ impl Entities {
                     self.sculk.post(from, crate::world::vibration::GameEvent::ProjectileShoot, source, None);
                     self.arrows.push(arrow);
                 }
+                EntityEvent::MobArrow { from, vel, cause, shooter, enchants } => {
+                    let mut arrow = Arrow::mob_shot(from, vel, cause, shooter);
+                    arrow.enchants = enchants;
+                    let source = crate::world::vibration::EventSource::mob(shooter);
+                    self.sculk.post(from, crate::world::vibration::GameEvent::ProjectileShoot, source, None);
+                    self.arrows.push(arrow);
+                }
                 EntityEvent::ThrowTrident { from, target, shooter } => {
                     let stack = self
                         .mobs
@@ -350,6 +360,7 @@ impl Entities {
             !matches!(
                 e,
                 EntityEvent::Shoot { .. }
+                    | EntityEvent::MobArrow { .. }
                     | EntityEvent::Fireball { .. }
                     | EntityEvent::ThrowPotion { .. }
                     | EntityEvent::ThrowTrident { .. }
@@ -458,7 +469,8 @@ impl Entities {
                                 | MobKind::Panda
                                 | MobKind::Armadillo
                                 | MobKind::Endermite
-                        ) || super::neutral::is_neutral(kind))
+                        ) || super::illager::State::for_kind(kind).is_some()
+                            || super::neutral::is_neutral(kind))
                         && let Some(i) = self.mobs.iter().position(|m| m.kind == kind && m.pos == pos && m.alive())
                     {
                         self.hurt_by_player_target(i, owner);

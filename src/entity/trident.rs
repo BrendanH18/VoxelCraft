@@ -403,7 +403,7 @@ impl Trident {
                     if owner_player.is_some() {
                         mob.player_hit();
                     }
-                    let killed = mob.damage_pushed(damage, &[crate::knockback::Push::projectile(motion)], rng);
+                    let killed = mob.damage_projectile(damage, &[crate::knockback::Push::projectile(motion)], rng);
                     let hurt = killed || mob.health < before;
                     if hurt {
                         events.push(EntityEvent::MobShot {

@@ -647,6 +647,7 @@ impl Entities {
                 self.panda_hurt(i, Foe::Mob(attacker));
                 self.armadillo_hurt(i, Foe::Mob(attacker));
                 self.endermite_hurt(i, Foe::Mob(attacker));
+                self.illager_hurt(i, Foe::Mob(attacker));
                 if let Some(owner) = self.mobs[i].animal.as_ref().and_then(|a| a.owner) {
                     self.animals_defend_owner(attacker, owner);
                 }
@@ -1020,6 +1021,8 @@ impl Entities {
                     || m.kind == MobKind::Bat
                     // `Lifetime` keeps counting across a restart.
                     || m.kind == MobKind::Endermite
+                    // Raid membership, spells, a vex's life and owner.
+                    || m.illager.is_some()
                     // A heart's protector keeps its binding across a restart.
                     || m.creaking.as_ref().is_some_and(|s| s.home.is_some())
                     || m.freezing.as_ref().is_some_and(|f| f.exposure > 0 || f.conversion.is_some()))
@@ -1650,6 +1653,12 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if let Some(s) = &m.endermite {
         s.save_into(&mut v);
     }
+    if let Some(s) = &m.illager {
+        v["illager"] = s.save();
+    }
+    if m.can_pick_up_loot {
+        v["can_pick_up_loot"] = true.into();
+    }
     if let Some(s) = &m.copper_golem {
         v["copper_golem"] = s.save();
     }
@@ -1767,6 +1776,11 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     if let Some(s) = &mut m.endermite {
         s.load(v);
     }
+    if let Some(s) = &mut m.illager {
+        s.load(&v["illager"]);
+    }
+    // `Pillager.readAdditionalSaveData` turns `CanPickUpLoot` on.
+    m.can_pick_up_loot = v["can_pick_up_loot"] == true || kind == MobKind::Pillager;
     if let Some(s) = &mut m.copper_golem {
         s.load(&v["copper_golem"]);
     }
