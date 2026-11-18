@@ -859,3 +859,23 @@ wash), puts undyed leather on at a water cauldron through the shared equip
 path and the CLI while dyed leather is washed, equips a horse with dyed
 leather horse armor, and saves and reloads dyed stacks in the inventory, on
 an armor stand and as stack strings.
+
+`new_mobs.json` (v0.15 Track C) holds the facts of happy ghasts, dried
+ghasts, nautiluses, zombie nautiluses, camel husks and parched: their
+`EntityTypes` sizes and categories, the attributes their `createAttributes`
+add, the static constants of `DriedGhastBlock`, `HappyGhast`,
+`HappyGhastAi`, `AbstractNautilus`, `Nautilus`, `NautilusAi`,
+`ZombieNautilusAi`, `Drowned` and `Camel`, the husk's camel chance and the
+parched's arrow effect and intervals from method bytecode, their loot
+tables, the dried ghast recipe, and the item, block, entity-type and biome
+tags they use. Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_new_mob_fixtures.py /path/to/server.jar --output target/java-new-mobs.json
+diff tests/fixtures/java/26.3/new_mobs.json target/java-new-mobs.json
+scripts/remote-check.sh -- 'cargo test --release --lib -- happy_ghast nautilus camel_husk dried_ghast'
+```
+
+The tests in `entity::happy_ghast`, `entity::nautilus` and
+`entity::camel_husk` compare the game's constants, sizes, tags and loot
+with this file.

@@ -268,7 +268,9 @@ fn ridden_nautiluses_swim_dash_and_give_breath_of_the_nautilus() {
     let world2 = ocean();
     e.update(0.05, &world2, &c);
     assert!(e.mobs[i].vel.x * TICK > v0.x * TICK + 0.9, "{} {}", e.mobs[i].vel.x * TICK, v0.x * TICK);
-    assert_eq!(e.mobs[i].nautilus.as_ref().unwrap().dash_cooldown, DASH_COOLDOWN - 1);
+    // The upkeep counts down before movement, so the dash tick ends at 40
+    // (Java's `tick` has already taken one off: a recorded difference).
+    assert_eq!(e.mobs[i].nautilus.as_ref().unwrap().dash_cooldown, DASH_COOLDOWN);
 }
 
 #[test]

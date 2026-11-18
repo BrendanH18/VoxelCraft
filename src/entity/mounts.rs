@@ -336,12 +336,17 @@ impl State {
         self.jump_held = input.jump;
     }
     pub fn save(&self) -> Value {
-        json!({"tame":self.tame,"temper":self.temper,"owner":self.owner.map(|p|p.0),"rider":self.rider.map(|p|p.0),
+        let mut v = json!({"tame":self.tame,"temper":self.temper,"owner":self.owner.map(|p|p.0),"rider":self.rider.map(|p|p.0),
             "health":self.max_health,"speed":self.speed,"jump":self.jump,"variant":self.variant,"marking":self.marking,
             "chest":self.chest,"strength":self.strength,"passenger":self.passenger.map(|p|p.0),
             "sit_ticks":self.sit_ticks,"stand_ticks":self.stand_ticks,
-            "seats":self.seats.map(|p|p.map(|p|p.0)),
-            "slots":self.slots.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>()})
+            "slots":self.slots.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>()});
+        // A happy ghast's third and fourth seats, written only when taken so
+        // older mounts save byte for byte as before.
+        if self.seats.iter().any(Option::is_some) {
+            v["seats"] = json!(self.seats.map(|p| p.map(|p| p.0)));
+        }
+        v
     }
     pub fn load(kind: MobKind, v: &Value) -> Option<Self> {
         let mut s = Self::new(kind, &mut Rng::new(0));
