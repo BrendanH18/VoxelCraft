@@ -8,7 +8,10 @@ impl MobKind {
     pub fn accepts_potion_effect(self, e: Effect) -> bool {
         !(self.creature() == crate::enchant::Creature::Undead && matches!(e, Effect::Poison | Effect::Regeneration)
             || matches!(self, Self::Spider | Self::CaveSpider) && e == Effect::Poison
-            || self == Self::WitherSkeleton && e == Effect::Wither)
+            || self == Self::WitherSkeleton && e == Effect::Wither
+            // `Parched.canBeAffected` and `AbstractNautilus.canBeAffected`.
+            || self == Self::Parched && e == Effect::Weakness
+            || super::nautilus::is_nautilus(self) && e == Effect::Poison)
     }
 }
 impl Stack {

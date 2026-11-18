@@ -41,6 +41,7 @@ pub mod crops;
 pub mod deep_dark;
 pub mod dismount;
 pub mod double_chest;
+pub mod dried_ghast;
 pub mod dungeon;
 pub mod end;
 pub mod end_portal;
@@ -381,6 +382,8 @@ pub struct World {
     pub hatched_tadpoles: Vec<(IVec3, u8)>,
     /// Sniffer eggs that cracked (false) or hatched (true); entities spawn and play them.
     pub sniffer_egg_events: Vec<(IVec3, bool)>,
+    /// Dried ghasts that hydrated or hatched; entities spawn and play them.
+    pub dried_ghast_events: Vec<dried_ghast::Hydration>,
     /// Jukeboxes and their records (see [`jukebox`]).
     pub(crate) jukeboxes: jukebox::State,
     /// Jukebox game events since the entity pass last drained them
@@ -660,6 +663,7 @@ impl World {
             hatched_turtles: Vec::new(),
             hatched_tadpoles: Vec::new(),
             sniffer_egg_events: Vec::new(),
+            dried_ghast_events: Vec::new(),
             jukeboxes: Default::default(),
             jukebox_events: Vec::new(),
             records: Vec::new(),

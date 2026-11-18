@@ -250,14 +250,14 @@ pub(crate) fn table(kind: MobKind) -> &'static [Entry] {
         K::Strider => STRIDER,
         K::Parrot => PARROT,
         K::Goat => GOAT,
-        K::Camel => CAMEL,
+        K::Camel | K::CamelHusk => CAMEL,
         K::Bee => BEE,
         K::Axolotl => AXOLOTL,
         K::Cod | K::Salmon | K::TropicalFish | K::Pufferfish => FISH,
         K::Guardian | K::ElderGuardian => GUARDIAN,
         K::Hoglin => HOGLIN,
         K::Creeper => CREEPER,
-        K::Skeleton | K::Stray | K::Bogged | K::WitherSkeleton => SKELETON,
+        K::Skeleton | K::Stray | K::Bogged | K::Parched | K::WitherSkeleton => SKELETON,
         K::WanderingTrader => WANDERING_TRADER,
         _ => &[],
     }
@@ -270,14 +270,22 @@ pub(crate) fn movement_speed(kind: MobKind) -> f64 {
     match kind {
         K::Allay => f64::from(0.1_f32),
         K::Cow | K::Mooshroom | K::Parrot | K::Goat | K::CopperGolem => 0.2,
-        K::Pig | K::Chicken | K::Turtle | K::Creeper | K::Skeleton | K::Stray | K::Bogged | K::WitherSkeleton => 0.25,
+        K::Pig
+        | K::Chicken
+        | K::Turtle
+        | K::Creeper
+        | K::Skeleton
+        | K::Stray
+        | K::Bogged
+        | K::Parched
+        | K::WitherSkeleton => 0.25,
         K::Endermite => super::super::endermite::MOVEMENT_SPEED,
         K::Sheep | K::Zombie => 0.23,
         K::Bee | K::Wolf | K::Cat | K::Fox | K::Rabbit | K::Hoglin => 0.3,
         K::Strider | K::Donkey | K::Mule | K::Llama | K::TraderLlama => 0.175,
         K::Sniffer => f64::from(0.1_f32),
         K::Warden => super::super::warden::MOVEMENT_SPEED,
-        K::Camel => 0.09,
+        K::Camel | K::CamelHusk => 0.09,
         K::Panda => f64::from(0.15_f32),
         K::Armadillo => 0.14,
         K::Ocelot => f64::from(0.3_f32),

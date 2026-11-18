@@ -56,6 +56,16 @@ pub enum Voice {
     Breeze,
     /// v0.14 (MOBN-26): `entity.endermite.ambient`, `.hurt` and `.death`.
     Endermite,
+    /// v0.15 Track C: `entity.happy_ghast.*` (ghastlings pitch it up).
+    HappyGhast,
+    /// v0.15 Track C: `entity.nautilus.*`.
+    Nautilus,
+    /// v0.15 Track C: `entity.zombie_nautilus.*`.
+    ZombieNautilus,
+    /// v0.15 Track C: `entity.camel_husk.*`.
+    CamelHusk,
+    /// v0.15 Track C: `entity.parched.*`.
+    Parched,
 }
 
 /// What kind of sound a voice makes.
@@ -68,7 +78,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 42] = [
+    pub const ALL: [Voice; 47] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -111,6 +121,11 @@ impl Voice {
         Voice::Allay,
         Voice::Breeze,
         Voice::Endermite,
+        Voice::HappyGhast,
+        Voice::Nautilus,
+        Voice::ZombieNautilus,
+        Voice::CamelHusk,
+        Voice::Parched,
     ];
 
     /// The category the creature plays in: `Monster`, `Ghast`, `Hoglin` and
@@ -121,6 +136,7 @@ impl Voice {
             Voice::Creaking
             | Voice::Breeze
             | Voice::Endermite
+            | Voice::Parched
             | Voice::Zombie
             | Voice::Skeleton
             | Voice::Creeper
@@ -159,7 +175,13 @@ impl Voice {
             | Voice::Rabbit
             | Voice::Goat
             | Voice::Horse
-            | Voice::Bee => SoundSource::Neutral,
+            | Voice::Bee
+            // `HappyGhast.getSoundSource` is NEUTRAL; nautiluses and camel
+            // husks are animals.
+            | Voice::HappyGhast
+            | Voice::Nautilus
+            | Voice::ZombieNautilus
+            | Voice::CamelHusk => SoundSource::Neutral,
         }
     }
 
@@ -178,6 +200,11 @@ impl Voice {
             Voice::Allay => "allay",
             Voice::Breeze => "breeze",
             Voice::Endermite => "endermite",
+            Voice::HappyGhast => "happy_ghast",
+            Voice::Nautilus => "nautilus",
+            Voice::ZombieNautilus => "zombie_nautilus",
+            Voice::CamelHusk => "camel_husk",
+            Voice::Parched => "parched",
             Voice::Cow => "cow",
             Voice::Sheep => "sheep",
             Voice::Chicken => "chicken",
@@ -310,6 +337,11 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::Blaze => blaze(call, rng),
         Voice::Breeze => breeze(call, rng),
         Voice::Endermite => endermite(call, rng),
+        Voice::HappyGhast => happy_ghast(call, rng),
+        Voice::Nautilus => nautilus(call, rng, false),
+        Voice::ZombieNautilus => nautilus(call, rng, true),
+        Voice::CamelHusk => camel_husk(call, rng),
+        Voice::Parched => parched(call, rng),
         Voice::Slime => slime(call, rng),
         Voice::Ghast => ghast(call, rng),
         Voice::Witch => witch(call, rng),
@@ -864,6 +896,82 @@ fn ghast(call: Call, rng: &mut Rng) -> Vec<f32> {
         },
     );
     dsp::finish(out, 0.55)
+}
+
+/// A happy ghast: a soft, contented hum that lifts at the end, gentler
+/// and higher than a ghast's wail; a short squeak when hurt.
+fn happy_ghast(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let (secs, base, lift) = match call {
+        Call::Ambient => (rng.range(0.9, 1.3), rng.range(170.0, 200.0), 1.35),
+        Call::Hurt => (0.35, 260.0, 1.1),
+        Call::Death => (1.1, 180.0, 0.6),
+    };
+    let out = utter(
+        rng,
+        &Utterance {
+            secs,
+            f0: &|t| base * lerp(1.0, lift, (t / secs).powi(2)),
+            env: &|t| swell(t, 0.12, 0.35, secs) * 0.8,
+            formants: [(380.0, 2.5, 1.0), (1100.0, 4.0, 0.35), (2600.0, 5.0, 0.1)],
+            shift: FLAT,
+            jitter: 0.03,
+            breath: 0.35,
+        },
+    );
+    dsp::finish(out, 0.5)
+}
+
+/// A nautilus: a hollow, bubbling click from inside the shell; the zombie
+/// one lower and rougher.
+fn nautilus(call: Call, rng: &mut Rng, zombie: bool) -> Vec<f32> {
+    let secs = match call {
+        Call::Ambient => rng.range(0.4, 0.6),
+        Call::Hurt => 0.25,
+        Call::Death => 0.8,
+    };
+    let rate = if zombie { 14.0 } else { 22.0 };
+    let mut out = clatter(rng, secs, |t| rate * (1.0 - 0.5 * t / secs));
+    Biquad::lowpass(if zombie { 900.0 } else { 1600.0 }, 1.2).run(&mut out);
+    let mut hum = noise(rng, samples(secs), |t| swell(t, 0.03, secs * 0.3, secs) * 0.5);
+    Biquad::bandpass(if zombie { 220.0 } else { 420.0 }, 4.0).run(&mut hum);
+    mix_into(&mut out, &hum, 0.6, 0);
+    dsp::finish(out, 0.45)
+}
+
+/// A camel husk: a dry, rasping groan through a long throat.
+fn camel_husk(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let (secs, base) = match call {
+        Call::Ambient => (rng.range(0.9, 1.2), rng.range(70.0, 85.0)),
+        Call::Hurt => (0.45, 110.0),
+        Call::Death => (1.3, 80.0),
+    };
+    let out = utter(
+        rng,
+        &Utterance {
+            secs,
+            f0: &|t| base * lerp(1.1, 0.7, t / secs),
+            env: &|t| swell(t, 0.1, 0.4, secs),
+            formants: [(420.0, 3.0, 1.0), (880.0, 4.0, 0.5), (2000.0, 5.0, 0.25)],
+            shift: FLAT,
+            jitter: 0.22,
+            breath: 1.0,
+        },
+    );
+    dsp::finish(out, 0.55)
+}
+
+/// A parched: dry bones with a papery hiss of sand.
+fn parched(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let secs = match call {
+        Call::Ambient => 0.5,
+        Call::Hurt => 0.3,
+        Call::Death => 0.9,
+    };
+    let mut out = clatter(rng, secs, |t| 28.0 * (1.0 - 0.4 * t / secs));
+    let mut sand = noise(rng, samples(secs), |t| swell(t, 0.02, secs * 0.5, secs) * 0.4);
+    Biquad::highpass(2500.0, 0.7).run(&mut sand);
+    mix_into(&mut out, &sand, 0.5, 0);
+    dsp::finish(out, 0.5)
 }
 
 fn slime(call: Call, rng: &mut Rng) -> Vec<f32> {

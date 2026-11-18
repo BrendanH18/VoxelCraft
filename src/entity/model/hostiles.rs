@@ -29,7 +29,15 @@ pub(super) fn pose(m: &Mob, swing: f32, head: Quat) -> Parts {
         part(SKELETON_BOW_ARM, [5., 22., 0.], arm(-1.)),
         part(SKELETON_HEAD, [0., 24., 0.], head),
     ];
-    p.push(part(if m.kind == MobKind::Stray { FROST } else { MOSS }, [0.; 3], Quat::IDENTITY));
+    p.push(part(
+        match m.kind {
+            MobKind::Stray => FROST,
+            MobKind::Parched => super::new_mobs::PARCHED_WRAPS,
+            _ => MOSS,
+        },
+        [0.; 3],
+        Quat::IDENTITY,
+    ));
     if m.kind == MobKind::Bogged && !m.sheared {
         p.push(part(MUSHROOMS, [0., 24., 0.], head));
     }

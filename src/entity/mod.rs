@@ -28,6 +28,7 @@ pub mod decor;
 pub mod path;
 pub use bobber::{CatchContext, roll_catch, set_damage};
 pub mod armadillo;
+pub mod camel_husk;
 pub mod copper_golem;
 pub mod creaking;
 pub mod dragon;
@@ -38,6 +39,7 @@ pub mod eye;
 pub mod fireball;
 pub mod frog;
 pub mod golem;
+pub mod happy_ghast;
 pub mod hostiles;
 pub mod item;
 pub mod leash;
@@ -52,6 +54,7 @@ pub mod model;
 mod monster_spawns;
 pub mod mooshroom;
 pub mod mounts;
+pub mod nautilus;
 pub mod nether;
 pub mod neutral;
 pub mod ocelot;
@@ -1212,6 +1215,9 @@ impl Entities {
         // `handleAttributes`, drawn last so earlier rolls keep their order.
         zombie::finalize_spawn(&mut mob, special, true, &mut self.rng);
         self.mobs.push(mob);
+        if nautilus::is_nautilus(kind) {
+            self.nautilus_on_spawn(false);
+        }
     }
 
     /// Removes the mobs Java discards on Peaceful (`Mob.checkDespawn` with a
@@ -1453,6 +1459,14 @@ impl Entities {
             }
             drops.push((crate::world::trial::BREEZE_ROD, n.min(64) as u8));
         }
+        // `entities/nautilus`: `random_chance_with_enchanted_bonus`, 0.05
+        // unenchanted, 0.06 + 0.01 per Looting level above I.
+        if kind == MobKind::Nautilus && player_kill {
+            let chance = if looting == 0 { 0.05 } else { 0.06 + 0.01 * f32::from(looting - 1) };
+            if self.rng.next_f32() < chance {
+                drops.push((crate::item::Item::NAUTILUS_SHELL, 1));
+            }
+        }
         if kind == MobKind::Rabbit && player_kill && self.rng.chance(0.1 + looting as f32 * 0.03) {
             drops.push((crate::item::Item::RABBIT_FOOT, 1));
         }
@@ -1481,7 +1495,9 @@ impl Entities {
                         item,
                         crate::item::Item::IRON_INGOT | crate::item::Item::CARROT | crate::item::Item::POTATO
                     )
-                    || kind == MobKind::Drowned && item == crate::item::Item::COPPER_INGOT)
+                    || kind == MobKind::Drowned && item == crate::item::Item::COPPER_INGOT
+                    // `entities/zombie_nautilus` is `killed_by_player`.
+                    || kind == MobKind::ZombieNautilus)
             {
                 continue;
             }
@@ -2320,6 +2336,10 @@ impl Entities {
         };
         if retaliates {
             m.angry_player = Some(owner);
+        }
+        // `AbstractNautilus.hurtServer` → `NautilusAi.setAngerTarget` for 400 ticks.
+        if let Some(s) = m.nautilus.as_mut() {
+            s.anger = Some((owner, nautilus::ANGER_DURATION));
         }
     }
 

@@ -57,6 +57,8 @@ impl Entities {
         self.cat_spawner_tick(dt, world, ctx);
         self.assign_hunts(ctx);
         self.endermite_upkeep(dt, world);
+        self.happy_ghast_upkeep(dt, world, ctx);
+        self.nautilus_upkeep(dt, world, ctx, &mut events);
         self.trader_upkeep();
         // `Entity.hasMovedHorizontallyRecently`, from last update's positions.
         let moved: Vec<(PlayerId, bool)> = ctx

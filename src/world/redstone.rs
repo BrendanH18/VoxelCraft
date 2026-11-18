@@ -658,6 +658,9 @@ impl World {
         if super::sniffer_egg::owns(b.0) {
             return self.hatch_sniffer_egg(p);
         }
+        if super::dried_ghast::owns(b.0) {
+            return self.dried_ghast_tick(p);
+        }
         if super::archaeology::owns(b.0) {
             return self.archaeology_tick(p);
         }
@@ -1166,6 +1169,7 @@ impl World {
                             || u16::try_from(family).is_ok_and(|f| super::lightning::rod(Block(f)).is_some())
                             || family == i64::from(super::frog_blocks::FROGSPAWN.0)
                             || family == i64::from(super::sniffer_egg::EGG.0)
+                            || family == i64::from(super::dried_ghast::DRIED_GHAST.0)
                             || family == i64::from(super::eyeblossom::OPEN.0)
                             || family == i64::from(super::eyeblossom::CLOSED.0)
                             || u16::try_from(family).is_ok_and(super::archaeology::owns)

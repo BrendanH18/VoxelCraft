@@ -669,6 +669,13 @@ pub fn recipes() -> &'static [Recipe] {
         weapons::add(&mut r);
         harness::add(&mut r);
         bundle::add(&mut r);
+        // v0.15 Track C: `recipe/dried_ghast.json`, eight ghast tears around soul sand.
+        r.push(shaped(
+            &["###", "#X#", "###"],
+            &[('#', &[Item::GHAST_TEAR]), ('X', const { &[b(Block::SOUL_SAND)] })],
+            Item::from_block(crate::world::dried_ghast::DRIED_GHAST),
+            1,
+        ));
         r
     })
 }

@@ -73,6 +73,12 @@ impl Mob {
         if let Some(s) = &self.mooshroom {
             v["mooshroom_brown"] = json!(s.brown);
         }
+        if let Some(s) = &self.happy_ghast {
+            v["happy_ghast"] = json!({"still": s.still(), "goggles": s.goggles_down});
+        }
+        if let Some(s) = &self.nautilus {
+            v["nautilus"] = json!({"dashing": s.dashing});
+        }
         if let Some(name) = self.name.as_str() {
             v["name"] = json!(name);
         }
@@ -185,6 +191,13 @@ impl Mob {
         if let Some(s) = &mut self.mooshroom {
             s.brown = v["mooshroom_brown"] == true;
         }
+        if let Some(s) = &mut self.happy_ghast {
+            s.still_timeout = i32::from(v["happy_ghast"]["still"] == true);
+            s.goggles_down = v["happy_ghast"]["goggles"] == true;
+        }
+        if let Some(s) = &mut self.nautilus {
+            s.dashing = v["nautilus"]["dashing"] == true;
+        }
         if v["equipment"].is_object() {
             self.equipment = super::equipment::Equipment::load(&v["equipment"], &Value::Null);
         }
@@ -237,7 +250,12 @@ impl Mob {
                 .as_u64()
                 .and_then(|i| u16::try_from(i).ok())
                 .map(Item)
-                .filter(|i| super::mounts::armor_points(*i) > 0 || super::mounts::is_carpet(*i))
+                .filter(|i| {
+                    super::mounts::armor_points(*i) > 0
+                        || super::mounts::is_carpet(*i)
+                        || crate::content::harness::colour(*i).is_some()
+                        || super::nautilus::wears(*i)
+                })
                 .map(|i| crate::inventory::Stack::new(i, 1));
         }
         if let (Some(a), w) = (self.aquatic.as_mut(), &v["aquatic"])

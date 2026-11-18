@@ -668,6 +668,7 @@ mod copper_golem;
 mod creaking;
 mod hostiles;
 mod mounts;
+mod new_mobs;
 mod passive;
 mod phantom;
 mod sniffer;
@@ -685,7 +686,9 @@ fn pose(m: &Mob, time: f32) -> Parts {
             mounts::pose(m)
         }
         MobKind::Llama => mounts::llama(m),
-        MobKind::Camel => mounts::camel(m),
+        MobKind::Camel | MobKind::CamelHusk => mounts::camel(m),
+        MobKind::HappyGhast => new_mobs::happy_ghast(m, time),
+        MobKind::Nautilus | MobKind::ZombieNautilus => new_mobs::nautilus(m, time),
         MobKind::Cod
         | MobKind::Salmon
         | MobKind::TropicalFish
@@ -752,7 +755,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
                 part(CHICKEN_HEAD, [0.0, 8.0, 2.0], head),
             ]
         }
-        MobKind::Stray | MobKind::Bogged => hostiles::pose(m, swing, head),
+        MobKind::Stray | MobKind::Bogged | MobKind::Parched => hostiles::pose(m, swing, head),
         MobKind::Skeleton => {
             // Bow raised toward the target while hunting, arms swinging otherwise.
             let aiming = m.ai == Ai::Chase;
@@ -1065,6 +1068,8 @@ pub fn build(
                     0.7
                 } else if m.kind == MobKind::Armadillo {
                     0.6
+                } else if m.kind == MobKind::HappyGhast {
+                    super::happy_ghast::BABY_SCALE as f32
                 } else {
                     0.5
                 }
@@ -1118,6 +1123,7 @@ pub fn build(
                 }
                 passive::colour(m, &mut cuboid);
                 copper_golem::colour(m, &mut cuboid);
+                new_mobs::colour(m, &mut cuboid);
                 if m.kind == MobKind::GlowSquid && c.color == [49, 71, 80] {
                     cuboid.color = [44, 161, 151];
                 }

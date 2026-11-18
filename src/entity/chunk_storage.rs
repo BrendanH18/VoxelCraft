@@ -216,7 +216,7 @@ impl Entities {
         let horse_chunks: FxHashMap<_, _> = self
             .mobs
             .iter()
-            .filter(|m| super::undead_mounts::undead(m.kind))
+            .filter(|m| super::camel_husk::mob_mount(m.kind))
             .map(|m| {
                 (
                     super::mounts::MOB_VEHICLE | m.uid,

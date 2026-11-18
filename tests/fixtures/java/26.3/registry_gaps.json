@@ -109,10 +109,6 @@
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
-    "dried_ghast": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "end_rod": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
@@ -738,10 +734,6 @@
     "dragon_head": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "dried_ghast": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "drowned_spawn_egg": {
       "release": "v0.18",

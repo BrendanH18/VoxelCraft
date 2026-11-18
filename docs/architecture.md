@@ -901,6 +901,15 @@ Texture layers are never saved and may be repacked at integration.
 | — | — | — | H. Villager parity (wave 2) |
 | — | — | 4072–4095 | Integrator spare |
 
+Track C allocation (2026-11-18, implemented, unverified): block states
+12224–12255 are the dried ghast, `12224 + ((hydration * 4 + facing) * 2 +
+waterlogged)` in `Facing::ALL` order, all 32 used; texture layers
+3968–3979 (3980–3999 unused); no item IDs (the dried ghast is a block
+item; 1646–1649 stay unregistered). Appended: `MobKind` `HappyGhast`,
+`Nautilus`, `ZombieNautilus`, `CamelHusk`, `Parched` after `Endermite`;
+`Voice` the same five after `Endermite`; `Cause::PARCHED_ARROW` after
+`BOGGED_ARROW`. See the [Track C record](verification/2026-11-18-v0.15-new-mobs.md).
+
 Append-only orderings (`MobKind` and its LAN index, `Effect`, `POTIONS`,
 sounds, item icons, thrown kinds, entity and dimension property keys) are
 appended by each track on its own branch. No released build saves the new

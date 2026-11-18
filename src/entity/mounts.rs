@@ -21,10 +21,18 @@ pub fn equine(kind: MobKind) -> bool {
             | MobKind::Mule
             | MobKind::Llama
             | MobKind::Camel
+            | MobKind::CamelHusk
     )
 }
 pub fn rideable(kind: MobKind) -> bool {
-    equine(kind) || matches!(kind, MobKind::Pig | MobKind::Strider)
+    equine(kind)
+        || matches!(kind, MobKind::Pig | MobKind::Strider | MobKind::HappyGhast)
+        || super::nautilus::is_nautilus(kind)
+}
+/// The camel and the camel husk (`CamelHusk extends Camel`): two seats,
+/// sitting, the dash and no taming.
+pub fn camel_like(kind: MobKind) -> bool {
+    matches!(kind, MobKind::Camel | MobKind::CamelHusk)
 }
 /// Mounts with a charged jump (a camel's charge is its dash).
 pub fn jumps(kind: MobKind) -> bool {
@@ -36,6 +44,7 @@ pub fn jumps(kind: MobKind) -> bool {
             | MobKind::Donkey
             | MobKind::Mule
             | MobKind::Camel
+            | MobKind::CamelHusk
     )
 }
 /// Donkeys, mules and llamas can carry a chest.
@@ -127,7 +136,17 @@ pub struct State {
     pub sit_ticks: u32,
     pub stand_ticks: u16,
     /// Saddle (llamas: unused), horse armor or llama carpet, then fifteen storage slots.
+    /// Happy ghasts wear their harness and nautiluses their armor in slot 1.
     pub slots: [Option<Stack>; 17],
+    /// A happy ghast's third and fourth seats (`MAX_PASSANGERS` is 4).
+    pub seats: [Option<PlayerId>; 2],
+    /// The controlling rider's look pitch (radians, positive up) and raw
+    /// forward, strafe and jump keys, for flying and swimming mounts that
+    /// steer with Java's `getRiddenInput`.
+    pub look_pitch: f32,
+    pub forward: f32,
+    pub strafe: f32,
+    pub ascend: bool,
     pub jump_charge: f32,
     jump_ticks: u32,
     jump_held: bool,
@@ -135,7 +154,8 @@ pub struct State {
     pub boost_ticks: u16,
     pub boost_total: u16,
     wish: DVec3,
-    yaw: f32,
+    /// The controlling rider's yaw (radians).
+    pub(crate) yaw: f32,
     steering: bool,
     sprinting: bool,
     pub fall_distance: f64,
@@ -146,7 +166,7 @@ pub struct State {
 impl State {
     pub fn new(kind: MobKind, rng: &mut Rng) -> Self {
         let horse = kind == MobKind::Horse;
-        let camel = kind == MobKind::Camel;
+        let camel = camel_like(kind);
         let max_health = if equine(kind) && !camel && !super::undead_mounts::undead(kind) {
             (15 + rng.next_int(8) + rng.next_int(9)) as f32
         } else {
@@ -160,6 +180,10 @@ impl State {
             (0.45 + rng.next_f32() as f64 * 0.3 + rng.next_f32() as f64 * 0.3 + rng.next_f32() as f64 * 0.3) * 0.25
         } else if camel {
             0.09
+        } else if kind == MobKind::HappyGhast {
+            super::happy_ghast::FLYING_SPEED
+        } else if super::nautilus::is_nautilus(kind) {
+            super::nautilus::movement_speed(kind)
         } else {
             0.175
         };
@@ -178,8 +202,8 @@ impl State {
             0.5
         };
         Self {
-            // Camels need no taming, only a saddle.
-            tame: !equine(kind) || camel,
+            // Camels need no taming, only a saddle; nautiluses are tamed with pufferfish.
+            tame: (!equine(kind) || camel) && !super::nautilus::is_nautilus(kind),
             temper: 0,
             owner: None,
             rider: None,
@@ -201,6 +225,11 @@ impl State {
             sit_ticks: 0,
             stand_ticks: 0,
             slots: [None; 17],
+            seats: [None; 2],
+            look_pitch: 0.,
+            forward: 0.,
+            strafe: 0.,
+            ascend: false,
             jump_charge: 0.,
             jump_ticks: 0,
             jump_held: false,
@@ -219,11 +248,21 @@ impl State {
     pub fn controlled(&self) -> bool {
         self.rider.is_some() && self.steering
     }
+    #[cfg(test)]
+    pub fn pending_jump_for_test(&mut self, charge: f32) {
+        self.pending_jump = Some(charge);
+    }
+    /// The charged jump the rider released, once (a nautilus's dash).
+    pub fn take_pending_jump(&mut self) -> Option<f32> {
+        self.pending_jump.take()
+    }
     pub fn saddled(&self) -> bool {
         self.slots[0].is_some_and(|s| s.item == Item::SADDLE)
     }
     pub fn slot_count(&self, kind: MobKind) -> usize {
         match kind {
+            MobKind::HappyGhast => 2,
+            k if super::nautilus::is_nautilus(k) => 2,
             MobKind::Llama if self.chest => 2 + 3 * self.strength as usize,
             _ if self.chest => 17,
             MobKind::SkeletonHorse | MobKind::ZombieHorse | MobKind::Horse | MobKind::Llama => 2,
@@ -231,12 +270,22 @@ impl State {
         }
     }
     pub fn accepts(&self, kind: MobKind, slot: usize, item: Item) -> bool {
+        if kind == MobKind::HappyGhast {
+            return slot == 1 && crate::content::harness::colour(item).is_some();
+        }
         if !self.tame {
             return false;
         }
+        if super::nautilus::is_nautilus(kind) {
+            return match slot {
+                0 => item == Item::SADDLE,
+                1 => super::nautilus::wears(item),
+                _ => false,
+            };
+        }
         match slot {
             0 => item == Item::SADDLE && kind != MobKind::Llama,
-            1 => wears_horse_armor(kind) && armor_points(item) > 0 || kind == MobKind::Llama && is_carpet(item),
+            1 => wears_horse_armor(kind) && horse_material(item).is_some() || kind == MobKind::Llama && is_carpet(item),
             2..=16 => self.chest && slot < self.slot_count(kind),
             _ => false,
         }
@@ -251,12 +300,16 @@ impl State {
     ) {
         // Java 26.3 Camel.tickRidden: mounting alone keeps a camel seated;
         // positive forward input requests the 52-tick standing transition.
-        if kind == MobKind::Camel && input.forward > 0.0 && self.sit_ticks > 0 {
+        if camel_like(kind) && input.forward > 0.0 && self.sit_ticks > 0 {
             self.sit_ticks = 0;
             self.stand_ticks = 52;
         }
         self.wish = player.ride_push(input) / 0.22;
         self.yaw = player.yaw;
+        self.look_pitch = player.pitch;
+        self.forward = input.forward as f32;
+        self.strafe = input.right as f32;
+        self.ascend = input.jump;
         self.sprinting = input.sprint;
         let steering_item = match kind {
             MobKind::Pig => Some(Item::CARROT_ON_A_STICK),
@@ -265,7 +318,12 @@ impl State {
         };
         self.steering =
             self.saddled() && self.tame && steering_item.is_none_or(|i| held == Some(i) || offhand == Some(i));
-        if equine(kind) && self.steering {
+        if kind == MobKind::HappyGhast {
+            // `HappyGhast.getControllingPassenger`: a harness; the still
+            // timeout is checked where it flies.
+            self.steering = self.slots[1].is_some();
+        }
+        if (equine(kind) || super::nautilus::is_nautilus(kind)) && self.steering {
             if input.jump {
                 self.jump_ticks = self.jump_ticks.saturating_add(1);
                 self.jump_charge = jump_charge(self.jump_ticks);
@@ -282,6 +340,7 @@ impl State {
             "health":self.max_health,"speed":self.speed,"jump":self.jump,"variant":self.variant,"marking":self.marking,
             "chest":self.chest,"strength":self.strength,"passenger":self.passenger.map(|p|p.0),
             "sit_ticks":self.sit_ticks,"stand_ticks":self.stand_ticks,
+            "seats":self.seats.map(|p|p.map(|p|p.0)),
             "slots":self.slots.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>()})
     }
     pub fn load(kind: MobKind, v: &Value) -> Option<Self> {
@@ -293,9 +352,12 @@ impl State {
         s.max_health = v["health"].as_f64()? as f32;
         s.speed = v["speed"].as_f64()?;
         s.jump = v["jump"].as_f64()?;
+        // Happy ghasts and nautiluses keep their fixed attribute speeds.
+        let speeds =
+            if kind == MobKind::HappyGhast || super::nautilus::is_nautilus(kind) { 0.01..=1.2 } else { 0.05..=0.4 };
         if !s.max_health.is_finite()
             || !(1. ..=40.).contains(&s.max_health)
-            || !(0.05..=0.4).contains(&s.speed)
+            || !speeds.contains(&s.speed)
             || !(0.4..=1.).contains(&s.jump)
         {
             return None;
@@ -305,7 +367,14 @@ impl State {
         s.chest = v["chest"].as_bool().unwrap_or(false) && chested(kind);
         s.strength = v["strength"].as_u64().map_or(s.strength, |n| n.clamp(1, 5) as u8);
         s.passenger = v["passenger"].as_u64().and_then(|p| u32::try_from(p).ok()).map(PlayerId);
-        if kind == MobKind::Camel {
+        if kind == MobKind::HappyGhast
+            && let Some(seats) = v["seats"].as_array()
+        {
+            for (seat, p) in s.seats.iter_mut().zip(seats) {
+                *seat = p.as_u64().and_then(|p| u32::try_from(p).ok()).map(PlayerId);
+            }
+        }
+        if camel_like(kind) {
             s.sit_ticks = v["sit_ticks"].as_u64().unwrap_or(0).min(1200) as u32;
             s.stand_ticks = v["stand_ticks"].as_u64().unwrap_or(0).min(52) as u16;
         }
@@ -340,20 +409,25 @@ fn horse_material(item: Item) -> Option<crate::item::ArmorMaterial> {
     item.body_armor().filter(|(fits, _)| *fits == crate::equipment::BodyArmor::Horse).map(|(_, m)| m)
 }
 
-/// The armor a horse gains from wearing `item` (`ArmorType.BODY` defense);
-/// 0 for anything that is not horse armor.
+/// Any body armor's material: horse armor, or nautilus armor (v0.15).
+fn body_material(item: Item) -> Option<crate::item::ArmorMaterial> {
+    item.body_armor().map(|(_, m)| m)
+}
+
+/// The armor a horse or nautilus gains from wearing `item` (`ArmorType.BODY`
+/// defense); 0 for anything that is not body armor.
 pub fn armor_points(item: Item) -> u32 {
-    horse_material(item).map_or(0, |m| u32::from(m.body_defense()))
+    body_material(item).map_or(0, |m| u32::from(m.body_defense()))
 }
 
-/// The armor toughness horse armor adds (`ArmorMaterial.toughness`).
+/// The armor toughness body armor adds (`ArmorMaterial.toughness`).
 pub fn armor_toughness(item: Item) -> f32 {
-    horse_material(item).map_or(0.0, |m| m.toughness())
+    body_material(item).map_or(0.0, |m| m.toughness())
 }
 
-/// The knockback resistance horse armor adds (netherite's 0.1).
+/// The knockback resistance body armor adds (netherite's 0.1).
 pub fn armor_knockback_resistance(item: Item) -> f32 {
-    horse_material(item).map_or(0.0, |m| m.knockback_resistance())
+    body_material(item).map_or(0.0, |m| m.knockback_resistance())
 }
 /// Java charge peaks after ten ticks then drops toward 0.8 for a long hold.
 pub fn jump_charge(ticks: u32) -> f32 {
@@ -400,6 +474,10 @@ pub fn food(kind: MobKind, item: Item) -> Option<(f32, u8, i32)> {
     if kind == MobKind::Camel {
         return (item == Item::from_block(crate::world::block::Block::CACTUS)).then_some((2., 0, 200));
     }
+    // `#camel_husk_food`: a rabbit's foot heals 2; husks never love or grow.
+    if kind == MobKind::CamelHusk {
+        return (item == Item::RABBIT_FOOT).then_some((2., 0, 0));
+    }
     Some(match item {
         Item::SUGAR => (1., 3, 600),
         Item::WHEAT => (2., 3, 400),
@@ -414,6 +492,14 @@ pub fn food(kind: MobKind, item: Item) -> Option<(f32, u8, i32)> {
 /// Run before ordinary AI movement. Untamed mounts run and occasionally buck/tame.
 /// Tamed unsaddled animals and pigs without a steering item keep their normal AI.
 pub(super) fn control(mob: &mut Mob, dt: f64, rng: &mut Rng) -> Option<(Option<DVec3>, f64)> {
+    if mob.kind == MobKind::HappyGhast || super::nautilus::is_nautilus(mob.kind) {
+        // Flying and swimming mounts travel in their own Java ticks
+        // (`happy_ghast`, `nautilus`); a steering rider replaces their AI.
+        mob.mount.as_ref()?;
+        let steered =
+            if mob.kind == MobKind::HappyGhast { mob.happy_ghast_controlled() } else { mob.nautilus_controlled() };
+        return (steered && mob.alive()).then_some((None, 0.));
+    }
     let s = mob.mount.as_mut()?;
     if mob.health <= 0.0 {
         s.rider = None;
@@ -427,7 +513,7 @@ pub(super) fn control(mob: &mut Mob, dt: f64, rng: &mut Rng) -> Option<(Option<D
         s.regen_ticks = 0.;
     }
     s.dash_cooldown = s.dash_cooldown.saturating_sub(ticks as u16);
-    if mob.kind == MobKind::Camel {
+    if camel_like(mob.kind) {
         // Idle camels already sit automatically. Ridden camels stand on
         // forward input (in State::input), rather than simply on mounting.
         if s.rider.is_none() && s.sit_ticks == 0 && !mob.baby && mob.on_ground && rng.chance(ticks as f32 / 2400.) {
@@ -470,7 +556,7 @@ pub(super) fn control(mob: &mut Mob, dt: f64, rng: &mut Rng) -> Option<(Option<D
     }
     mob.yaw = s.yaw;
     let forward = DVec3::new(mob.yaw.cos() as f64, 0., mob.yaw.sin() as f64);
-    if mob.kind == MobKind::Camel {
+    if camel_like(mob.kind) {
         // Java dash: forward 22.2 x charge x speed and up 1.43 x charge x 0.42 blocks/tick.
         if let Some(charge) = s.pending_jump.take()
             && mob.on_ground
@@ -487,7 +573,7 @@ pub(super) fn control(mob: &mut Mob, dt: f64, rng: &mut Rng) -> Option<(Option<D
     {
         mob.vel.y = launch_speed(s.jump * if charge >= 0.9 { 1. } else { 0.4 + 0.4 * charge as f64 / 0.9 });
     }
-    let mut speed = if mob.kind == MobKind::Camel {
+    let mut speed = if camel_like(mob.kind) {
         // Java's ridden camel: +0.1 speed while sprinting with the dash ready.
         (s.speed + if s.sprinting && s.dash_cooldown == 0 { 0.1 } else { 0. }) * 43.17
     } else if equine(mob.kind) {
@@ -657,7 +743,13 @@ impl Entities {
         let m = self.mount(vehicle)?;
         let s = m.mount.as_ref()?;
         let seat = m.pos + DVec3::Y * (m.shape().height * 0.75 - 0.35);
-        if m.kind != MobKind::Camel {
+        if m.kind == MobKind::HappyGhast {
+            return super::happy_ghast::seat(m, s, player);
+        }
+        if super::nautilus::is_nautilus(m.kind) {
+            return (s.rider == Some(player)).then(|| super::nautilus::seat(m));
+        }
+        if !camel_like(m.kind) {
             return (s.rider == Some(player)).then_some(seat);
         }
         // Java camel seats: 0.5 blocks either side of centre when both are taken.
@@ -673,7 +765,10 @@ impl Entities {
         self.mobs
             .iter()
             .find(|m| {
-                m.alive() && m.mount.as_ref().is_some_and(|s| s.rider == Some(player) || s.passenger == Some(player))
+                m.alive()
+                    && m.mount.as_ref().is_some_and(|s| {
+                        s.rider == Some(player) || s.passenger == Some(player) || s.seats.contains(&Some(player))
+                    })
             })
             .map(|m| MOB_VEHICLE | m.uid)
     }
@@ -709,6 +804,10 @@ impl Entities {
         let Some((i, _)) = self.raycast(eye, dir, reach) else { return false };
         self.ensure_mob_ids();
         let occupied = self.mobs.iter().any(|r| r.riding == Some(MOB_VEHICLE | self.mobs[i].uid) && r.alive());
+        if self.mobs[i].kind == MobKind::HappyGhast {
+            // `HappyGhast.mobInteract`: a harnessed adult takes up to four players.
+            return !occupied && self.board_happy_ghast(i, player);
+        }
         let m = &mut self.mobs[i];
         if occupied
             || m.kind == MobKind::SkeletonHorse && m.mount.as_ref().is_some_and(|s| !s.tame)
@@ -725,7 +824,8 @@ impl Entities {
             s.slots[0] = Some(Stack::new(Item::SADDLE, 1));
             consume = true;
         } else if let Some(item) = held
-            && matches!(kind, MobKind::SkeletonHorse | MobKind::ZombieHorse | MobKind::Horse | MobKind::Llama)
+            && (matches!(kind, MobKind::SkeletonHorse | MobKind::ZombieHorse | MobKind::Horse | MobKind::Llama)
+                || super::nautilus::is_nautilus(kind))
             && !m.baby
             && s.accepts(kind, 1, item)
         {
@@ -771,11 +871,13 @@ impl Entities {
             }
         } else if !m.baby
             && s.rider.is_none()
-            && (equine(kind) && (s.tame || held.is_none()) || !equine(kind) && s.saddled())
+            && (equine(kind) && (s.tame || held.is_none())
+                || super::nautilus::is_nautilus(kind) && s.tame && !held.is_some_and(super::nautilus::food)
+                || !equine(kind) && !super::nautilus::is_nautilus(kind) && s.saddled())
         {
             s.rider = Some(player);
         } else if !m.baby
-            && kind == MobKind::Camel
+            && camel_like(kind)
             && s.rider.is_some_and(|r| r != player)
             && s.passenger.is_none()
             && held.is_none_or(|i| food(kind, i).is_none())
@@ -827,6 +929,9 @@ impl Entities {
         let id = self.mount_for_player(player)?;
         let m = self.mount_mut(id)?;
         let s = m.mount.as_mut()?;
+        if m.kind == MobKind::HappyGhast {
+            return Some(super::happy_ghast::dismount(m, player));
+        }
         if s.rider == Some(player) {
             // The rear passenger slides forward, as in Java.
             s.rider = s.passenger.take();
