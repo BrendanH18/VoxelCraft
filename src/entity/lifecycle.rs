@@ -54,6 +54,7 @@ impl Entities {
         self.trader_tick(dt as f32, world, ctx);
         self.tick_decor(world);
         self.village_upkeep(dt as f32, world);
+        self.populate_village_residents(world, difficulty);
         self.cat_spawner_tick(dt, world, ctx);
         self.assign_hunts(ctx);
         self.endermite_upkeep(dt, world);

@@ -1,4 +1,5 @@
 //! Loaded POIs and natural residents; generation is queried only when chunks arrive.
+use super::village::Resident;
 use super::{
     World,
     block::Block,
@@ -35,11 +36,27 @@ impl World {
             }
         }
         for (p, f) in self.generator.villages.features(&self.generator, cpos) {
-            if let Feature::VillageHome(spawn) = f {
-                let l = local_of(p);
-                if data.get(l.x as usize, l.y as usize, l.z as usize) == Block::BED_HEAD {
-                    self.village_homes.insert(p, spawn);
+            match f {
+                Feature::VillageHome(spawn) => {
+                    let l = local_of(p);
+                    if data.get(l.x as usize, l.y as usize, l.z as usize) == Block::BED_HEAD {
+                        self.village_homes.insert(p, spawn);
+                    }
                 }
+                Feature::VillageResident(r) => {
+                    self.village_residents.insert(p, r);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Generation 4 village residents whose spawn cell is loaded (Java's
+    /// spawn pieces: each spawns once, recorded by the entity side).
+    pub fn visit_village_residents(&self, visit: &mut dyn FnMut(IVec3, Resident)) {
+        for (&p, &r) in &self.village_residents {
+            if self.is_loaded(p) {
+                visit(p, r)
             }
         }
     }

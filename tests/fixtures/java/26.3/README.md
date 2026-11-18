@@ -1049,3 +1049,29 @@ game entry is a Java one, with the same items, counts, uses, XP, price
 multiplier, villager types and modifier; the same for the wandering
 trader's sets; the trade-set amounts, enchantment, potion and stew tags,
 schedules, gossip types, constants, food values and flee distances.
+
+## Structure catalogues (v0.15 Track G)
+
+`structure_catalogues.json` holds the facts behind generation 4's village,
+trial chamber and ancient city catalogues (FE-02): the seven structures'
+jigsaw settings, every template pool under `village/`, `trial_chambers/`
+and `ancient_city/` element by element, the 20 processor lists those pools
+name, and for each of the 727 templates the pools name its size, jigsaw
+connectors (orientation, name, target, pool, joint, priorities),
+residents, counted blocks (bells, bed heads, job sites, containers, pots,
+cobwebs, trial spawners, vaults), each container's loot table, each trial
+spawner's configuration and each vault's loot table. Block layouts are
+not recorded. `ancient_city/walls/intact_horizontal_wall_stairs_5`, which
+`ancient_city/walls/no_corners` names, is missing from the jar and is
+recorded as missing.
+
+```sh
+python3 tools/extract_java_structure_catalogues.py /path/to/server.jar --output target/java-structure-catalogues.json
+diff tests/fixtures/java/26.3/structure_catalogues.json target/java-structure-catalogues.json
+scripts/remote-check.sh -- 'cargo test --release structure_catalogue'
+```
+
+`src/world/jigsaw/catalogue_tests.rs` compares the catalogue files, the
+templates drawn from them and the processor rule tables with the fixture
+both ways.
+

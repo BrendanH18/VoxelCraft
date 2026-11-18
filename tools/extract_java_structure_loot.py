@@ -32,7 +32,43 @@ TABLES = [
     "ancient_city_ice_box",
     "village/village_cartographer",
     *["village/village_" + s + "_house" for s in ["plains", "desert", "savanna", "taiga", "snowy"]],
+    # v0.16 trial chambers (chests, dispensers, spawner drops, equipment).
+    *["trial_chambers/" + t for t in ["corridor", "entrance", "intersection", "intersection_barrel", "supply"]],
+    *["trial_chambers/reward" + t for t in ["", "_common", "_rare", "_unique"]],
+    *["trial_chambers/reward_ominous" + t for t in ["", "_common", "_rare", "_unique"]],
+    *["dispensers/trial_chambers/" + t for t in ["chamber", "corridor", "water"]],
+    "spawners/trial_chamber/consumables",
+    "spawners/trial_chamber/key",
+    "spawners/trial_chamber/items_to_drop_when_ominous",
+    "spawners/ominous/trial_chamber/consumables",
+    "spawners/ominous/trial_chamber/key",
+    *["equipment/trial_chamber" + t for t in ["", "_melee", "_ranged"]],
+    # v0.15 Track G: generation 4 trial chambers' decorated pots, and the
+    # village profession chests.
+    "pots/trial_chambers/corridor",
+    *[
+        "village/village_" + t
+        for t in [
+            "armorer",
+            "butcher",
+            "fisher",
+            "fletcher",
+            "mason",
+            "shepherd",
+            "tannery",
+            "temple",
+            "toolsmith",
+            "weaponsmith",
+        ]
+    ],
 ]
+
+# Tables outside `loot_table/chests/`, by their own directory.
+OUTSIDE_CHESTS = ("dispensers/", "spawners/", "equipment/", "pots/")
+
+
+def path(name):
+    return ("loot_table/" if name.startswith(OUTSIDE_CHESTS) else "loot_table/chests/") + name
 
 
 def extract(base):
@@ -65,7 +101,7 @@ def extract(base):
         enchantments[name]["exclusive"] = expand("enchantment", e.get("exclusive_set", []))
     return {
         "reference": "Java 26.3 behaviour data only; no artwork or structure templates",
-        "tables": {name: read("loot_table/chests/" + name) for name in TABLES},
+        "tables": {name: read(path(name)) for name in TABLES},
         "enchantment_order": order,
         "enchantments": enchantments,
     }

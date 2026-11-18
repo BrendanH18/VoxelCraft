@@ -344,6 +344,8 @@ pub struct World {
     village_pois: FxHashMap<IVec3, Block>,
     navigation_updates: navigation::Updates,
     village_homes: FxHashMap<IVec3, IVec3>,
+    /// Generation 4 village residents by spawn cell (see `village_life`).
+    village_residents: FxHashMap<IVec3, village::Resident>,
     /// Banners in loaded chunks (see `colour_blocks`), which draw as models.
     banners: FxHashMap<IVec3, Block>,
     /// Straw beds in use (head, where the sleeper lies), which break when left.
@@ -651,6 +653,7 @@ impl World {
             village_pois: FxHashMap::default(),
             navigation_updates: navigation::Updates::default(),
             village_homes: FxHashMap::default(),
+            village_residents: FxHashMap::default(),
             banners: FxHashMap::default(),
             straw_sleepers: Vec::new(),
             leaf_decay: FxHashMap::default(),
@@ -1498,6 +1501,7 @@ impl World {
         }
         self.village_pois.retain(|p, _| chunk_of(*p) != pos);
         self.village_homes.retain(|p, _| chunk_of(*p) != pos);
+        self.village_residents.retain(|p, _| chunk_of(*p) != pos);
         self.banners.retain(|p, _| chunk_of(*p) != pos);
         self.forget_campfires(pos);
         self.unload_block_light(pos, slot.block_light.as_ref());

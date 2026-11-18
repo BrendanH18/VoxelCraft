@@ -655,6 +655,80 @@ impl Entities {
         let v = m.villager.as_ref()?;
         (matches!(m.kind, MobKind::Villager | MobKind::WanderingTrader) && m.age >= 0 && !v.sleeping).then_some(v.id)
     }
+    /// v0.15 Track G: spawns each generation 4 village resident (Java's
+    /// villager, cat, iron golem, animal and camel spawn pieces) once, when
+    /// its cell ticks. The spawn cell joins `villager_births`, which is
+    /// saved, so a resident never respawns; zombie villagers wait out
+    /// Peaceful. Armor stands (the taiga armorer's) are not spawned.
+    pub(super) fn populate_village_residents<W: MobWorld + ?Sized>(
+        &mut self,
+        world: &W,
+        difficulty: crate::simulation::difficulty::Difficulty,
+    ) {
+        use crate::world::village::Resident as R;
+        let mut due = Vec::new();
+        world.village_residents(&mut |p, r| {
+            if !self.villager_births.contains(&p) && world.entity_ticking(p) {
+                due.push((p, r));
+            }
+        });
+        for (p, r) in due {
+            let kind = match r {
+                R::Villager { .. } => MobKind::Villager,
+                R::ZombieVillager { .. } => MobKind::ZombieVillager,
+                R::Cat(_) => MobKind::Cat,
+                R::IronGolem => MobKind::IronGolem,
+                R::Cow => MobKind::Cow,
+                R::Pig => MobKind::Pig,
+                R::Sheep => MobKind::Sheep,
+                R::Horse(_) => MobKind::Horse,
+                R::Camel => MobKind::Camel,
+                R::ArmorStand => {
+                    self.villager_births.insert(p);
+                    continue;
+                }
+            };
+            if difficulty == crate::simulation::difficulty::Difficulty::Peaceful && kind.is_hostile() {
+                continue;
+            }
+            self.villager_births.insert(p);
+            self.spawn(kind, p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
+            let m = self.mobs.last_mut().unwrap();
+            match r {
+                R::Villager { nitwit, baby } => {
+                    // The baby piece's villager is `Age -21359`.
+                    if baby {
+                        m.age = -21359;
+                    }
+                    if nitwit && let Some(v) = &mut m.villager {
+                        v.set_profession(Profession::Nitwit);
+                    }
+                }
+                R::ZombieVillager { nitwit } => {
+                    m.persistent = true;
+                    if nitwit && let Some(v) = &mut m.villager {
+                        v.set_profession(Profession::Nitwit);
+                    }
+                }
+                R::Cat(variant) => {
+                    m.persistent = true;
+                    if let Some(a) = &mut m.animal {
+                        a.variant = variant;
+                    }
+                }
+                R::Horse(variant) => {
+                    m.persistent = true;
+                    if let Some(s) = &mut m.mount {
+                        s.variant = (variant & 0xFF).min(6) as u8;
+                        s.marking = (variant >> 8).min(4) as u8;
+                    }
+                }
+                R::Camel => {}
+                _ => m.persistent = true,
+            }
+        }
+    }
+
     pub(super) fn village_upkeep<W: MobWorld + ?Sized>(&mut self, dt: f32, world: &W) {
         self.village_timer -= dt;
         if self.village_timer > 0.0 {
@@ -1764,5 +1838,99 @@ fn map_variant(b: crate::world::terrain::Biome) -> &'static str {
             | Biome::JaggedPeaks => "snow",
             _ => "plains",
         }
+    }
+}
+
+#[cfg(test)]
+mod resident_tests {
+    use super::*;
+    use crate::physics::BlockSource;
+    use crate::simulation::difficulty::Difficulty;
+    use crate::world::village::Resident;
+
+    /// Flat ground holding a generation 4 village's resident spawn cells.
+    struct Village(Vec<(IVec3, Resident)>);
+
+    impl BlockSource for Village {
+        fn block(&self, p: IVec3) -> Option<Block> {
+            Some(if p.y < 0 { Block::STONE } else { Block::AIR })
+        }
+    }
+
+    impl MobWorld for Village {
+        fn loaded(&self, _: IVec3) -> bool {
+            true
+        }
+        fn surface(&self, _: i32, _: i32) -> Option<i32> {
+            Some(-1)
+        }
+        fn exposed(&self, _: IVec3) -> bool {
+            true
+        }
+        fn village_residents(&self, visit: &mut dyn FnMut(IVec3, Resident)) {
+            for &(p, r) in &self.0 {
+                visit(p, r)
+            }
+        }
+    }
+
+    #[test]
+    fn generation_4_residents_spawn_once_with_their_java_data_and_never_again_after_reload() {
+        let w = Village(vec![
+            (IVec3::new(0, 0, 0), Resident::parse("villager:none:plains:baby").unwrap()),
+            (IVec3::new(2, 0, 0), Resident::parse("villager:nitwit:plains").unwrap()),
+            (IVec3::new(4, 0, 0), Resident::parse("iron_golem:persistent").unwrap()),
+            (IVec3::new(6, 0, 0), Resident::parse("cat:calico:persistent").unwrap()),
+            (IVec3::new(8, 0, 0), Resident::parse("horse:261:persistent").unwrap()),
+            (IVec3::new(10, 0, 0), Resident::parse("zombie_villager:none:plains:persistent").unwrap()),
+            (IVec3::new(12, 0, 0), Resident::parse("sheep:persistent").unwrap()),
+        ]);
+        let mut e = Entities::new(7);
+        // Peaceful holds the zombie villager back without forgetting it.
+        e.populate_village_residents(&w, Difficulty::Peaceful);
+        assert_eq!(e.mobs.len(), 6);
+        assert!(!e.mobs.iter().any(|m| m.kind == MobKind::ZombieVillager));
+        e.populate_village_residents(&w, Difficulty::Normal);
+        assert_eq!(e.mobs.len(), 7);
+        fn find(e: &Entities, k: MobKind) -> &Mob {
+            e.mobs.iter().find(|m| m.kind == k).unwrap()
+        }
+        let baby = e.mobs.iter().find(|m| m.kind == MobKind::Villager && m.age < 0).unwrap();
+        assert_eq!(baby.age, -21359);
+        let nitwit = e.mobs.iter().find(|m| m.kind == MobKind::Villager && m.age >= 0).unwrap();
+        assert_eq!(nitwit.villager.as_ref().unwrap().profession, Profession::Nitwit);
+        assert!(find(&e, MobKind::IronGolem).persistent);
+        let cat = find(&e, MobKind::Cat);
+        let calico = crate::entity::cat_spawner::VARIANTS.iter().position(|v| *v == "calico").unwrap() as u8;
+        assert_eq!(cat.animal.as_ref().unwrap().variant, calico);
+        // Java's `Variant` 261: coat 5 (gray), markings 1 (white).
+        let horse = find(&e, MobKind::Horse);
+        let s = horse.mount.as_ref().unwrap();
+        assert_eq!((s.variant, s.marking), (5, 1));
+        assert!(find(&e, MobKind::ZombieVillager).persistent);
+        // Nothing respawns, now or after a save and reload.
+        e.populate_village_residents(&w, Difficulty::Normal);
+        assert_eq!(e.mobs.len(), 7);
+        let saved = e.villagers_to_string();
+        let mut reloaded = Entities::new(7);
+        reloaded.load_villagers(&saved);
+        reloaded.mobs.clear();
+        reloaded.populate_village_residents(&w, Difficulty::Normal);
+        assert!(reloaded.mobs.is_empty(), "a reloaded world respawned {:?}", reloaded.mobs.len());
+    }
+
+    #[test]
+    fn residents_parse_every_java_spawn_piece() {
+        assert_eq!(Resident::parse("villager:none:snow:baby"), Some(Resident::Villager { nitwit: false, baby: true }));
+        assert_eq!(
+            Resident::parse("zombie_villager:nitwit:taiga:persistent"),
+            Some(Resident::ZombieVillager { nitwit: true })
+        );
+        assert_eq!(Resident::parse("horse:773:persistent"), Some(Resident::Horse(773)));
+        assert_eq!(Resident::parse("camel"), Some(Resident::Camel));
+        assert_eq!(Resident::parse("cow:persistent"), Some(Resident::Cow));
+        assert_eq!(Resident::parse("pig:persistent"), Some(Resident::Pig));
+        assert_eq!(Resident::parse("armor_stand"), Some(Resident::ArmorStand));
+        assert_eq!(Resident::parse("parrot"), None);
     }
 }

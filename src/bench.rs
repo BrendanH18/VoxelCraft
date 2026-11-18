@@ -260,7 +260,10 @@ fn storage_profiles<'a>(chunks: impl Iterator<Item = &'a ChunkData>) {
     }
 }
 
-/// Like-for-like generation timing at the template structures changed by v0.14.
+/// Like-for-like generation timing at the template structures changed by
+/// v0.14 (outposts and bastions, generation 2 against 3) and v0.15 Track G
+/// (villages, trial chambers and ancient cities, generation 3 against 4).
+/// Each run uses a fresh generator, so structure layout is included.
 fn structure_generations(seed: u64, r: i32) {
     use crate::world::{
         temples::Kind,
@@ -269,11 +272,22 @@ fn structure_generations(seed: u64, r: i32) {
     let g = Generator::new(seed);
     let outpost = g.temples.nearest(&g, Kind::Outpost, glam::IVec2::ZERO, 20_000);
     let bastion = crate::world::bastion::Bastions::new(seed).nearest(glam::IVec2::ZERO);
-    for (name, dimension, at) in [("outpost", Dimension::Overworld, outpost), ("bastion", Dimension::Nether, bastion)] {
+    // v0.15 Track G: generation 4's template catalogues against generation 3.
+    let village = g.villages.nearest(&g, IVec3::ZERO);
+    let chamber = g.trial_chambers.nearest(&g, glam::IVec2::ZERO, 20_000);
+    let city = g.ancient_cities.nearest(&g, glam::IVec2::ZERO, 20_000);
+    let catalogue = [Generation::V3, Generation::V4];
+    for (name, dimension, at, generations) in [
+        ("outpost", Dimension::Overworld, outpost, &[Generation::V2, Generation::V3][..]),
+        ("bastion", Dimension::Nether, bastion, &[Generation::V2, Generation::V3][..]),
+        ("village", Dimension::Overworld, village, &catalogue[..]),
+        ("trial chamber", Dimension::Overworld, chamber, &catalogue[..]),
+        ("ancient city", Dimension::Overworld, city, &catalogue[..]),
+    ] {
         let Some(at) = at else { continue };
         println!("structure benchmark {name} seed {seed} at {at}");
         let centre = crate::world::chunk::chunk_of(at);
-        for generation in [Generation::V2, Generation::V3] {
+        for &generation in generations {
             let g = Generator::with_generation(seed, dimension, generation);
             let t = Instant::now();
             let mut n = 0;
@@ -291,5 +305,17 @@ fn structure_generations(seed: u64, r: i32) {
                 t.elapsed().as_secs_f64() * 1e3 / n as f64
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// The structure part of `--bench` alone (seed 12345, the benchmark's
+    /// default, and radius 3): `cargo test --release --bin voxelcraft
+    /// structure_benchmark -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn structure_benchmark() {
+        super::structure_generations(12345, 3);
     }
 }
