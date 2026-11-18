@@ -108,12 +108,13 @@ impl MobKind {
             | K::Mule
             | K::Llama
             | K::Camel
+            | K::HappyGhast
             | K::Bee
             | K::Allay => MobCategory::Creature,
             K::Bat => MobCategory::Ambient,
             K::CopperGolem | K::Villager | K::IronGolem | K::SnowGolem => MobCategory::Misc,
             K::Cod | K::Salmon | K::TropicalFish | K::Pufferfish => MobCategory::WaterAmbient,
-            K::Squid | K::Dolphin => MobCategory::WaterCreature,
+            K::Squid | K::Dolphin | K::Nautilus => MobCategory::WaterCreature,
             K::GlowSquid => MobCategory::UndergroundWaterCreature,
             K::Axolotl => MobCategory::Axolotls,
             _ => MobCategory::Monster,

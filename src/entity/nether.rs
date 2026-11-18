@@ -1014,7 +1014,7 @@ impl Entities {
                     || m.lightning_charged
                     || m.kind.never_distance_despawns()
                     || m.kind.has_animal_state()
-                    || super::undead_mounts::undead(m.kind)
+                    || super::camel_husk::mob_mount(m.kind)
                     || m.riding.is_some()
                     || matches!(m.kind, MobKind::Zombie | MobKind::Husk | MobKind::Drowned)
                     || matches!(m.kind, MobKind::Stray | MobKind::Bogged | MobKind::Phantom)
@@ -1088,7 +1088,9 @@ impl Entities {
             // armor an older build let one wear drops beside it.
             if !super::mounts::wears_horse_armor(mob.kind)
                 && let Some(s) = mob.mount.as_mut()
-                && let Some(stack) = s.slots[1].take_if(|s| super::mounts::armor_points(s.item) > 0)
+                && let Some(stack) = s.slots[1].take_if(|s| {
+                    s.item.body_armor().is_some_and(|(fits, _)| fits == crate::equipment::BodyArmor::Horse)
+                })
             {
                 self.scatter(stack, mob.pos);
             }
@@ -1663,6 +1665,12 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if m.can_pick_up_loot {
         v["can_pick_up_loot"] = true.into();
     }
+    if let Some(s) = &m.happy_ghast {
+        v["happy_ghast"] = s.save();
+    }
+    if let Some(s) = &m.nautilus {
+        v["nautilus"] = s.save();
+    }
     if let Some(s) = &m.copper_golem {
         v["copper_golem"] = s.save();
     }
@@ -1785,6 +1793,12 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     }
     // `Pillager.readAdditionalSaveData` turns `CanPickUpLoot` on.
     m.can_pick_up_loot = v["can_pick_up_loot"] == true || kind == MobKind::Pillager;
+    if let Some(s) = &mut m.happy_ghast {
+        **s = super::happy_ghast::State::load(&v["happy_ghast"]);
+    }
+    if let Some(s) = &mut m.nautilus {
+        **s = super::nautilus::State::load(&v["nautilus"]);
+    }
     if let Some(s) = &mut m.copper_golem {
         s.load(&v["copper_golem"]);
     }

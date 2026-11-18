@@ -58,7 +58,7 @@ pub(crate) struct MoveCtl {
     /// `tickCount`, for the guardian's sway.
     ticks: u32,
     /// `GhastMoveControl.floatDuration`.
-    float_duration: i32,
+    pub float_duration: i32,
     /// `Guardian.isMoving`.
     pub moving: bool,
     /// Extra strokes goals asked for since the last tick (`moveRelative`
@@ -117,7 +117,7 @@ impl MobKind {
 
 /// `Entity.getInputVector` added to `dm`: `input` (normalized past length 1)
 /// times `speed`, turned to face `yrot` degrees.
-fn move_relative(dm: &mut DVec3, speed: f64, input: DVec3, yrot: f32) {
+pub(crate) fn move_relative(dm: &mut DVec3, speed: f64, input: DVec3, yrot: f32) {
     let len = input.length_squared();
     if len < 1e-7 {
         return;
@@ -172,7 +172,7 @@ impl Mob {
         self.yaw.to_degrees() - 90.0
     }
 
-    fn set_yrot(&mut self, r: f32) {
+    pub(crate) fn set_yrot(&mut self, r: f32) {
         self.yaw = super::wrap((r + 90.0).to_radians());
     }
 
@@ -183,19 +183,20 @@ impl Mob {
             k if k.water_bound() => true,
             MobKind::Axolotl | MobKind::Turtle | MobKind::PolarBear => self.touching_water(world),
             MobKind::Panda | MobKind::Ocelot => !self.touching_water(world),
-            MobKind::Ghast | MobKind::Bat | MobKind::Frog => true,
+            MobKind::Ghast | MobKind::Bat | MobKind::Frog | MobKind::HappyGhast => true,
+            k if super::super::nautilus::is_nautilus(k) => true,
             MobKind::Blaze => self.alive() && (!self.on_ground || self.lift),
             _ => false,
         }
     }
 
     /// `isInWater`: the box touches water.
-    fn touching_water<W: BlockSource + ?Sized>(&self, world: &W) -> bool {
+    pub(crate) fn touching_water<W: BlockSource + ?Sized>(&self, world: &W) -> bool {
         physics::touches_block(world, self.pos, self.shape(), Block::holds_water)
     }
 
     /// `isInLava`.
-    fn touching_lava<W: BlockSource + ?Sized>(&self, world: &W) -> bool {
+    pub(crate) fn touching_lava<W: BlockSource + ?Sized>(&self, world: &W) -> bool {
         physics::touches_block(world, self.pos, self.shape(), Block::is_lava)
     }
 
@@ -206,7 +207,7 @@ impl Mob {
 
     /// `Entity.move`: collide `dm` against blocks, stepping up `maxUpStep`
     /// from the ground. Collisions zero the blocked components of `dm`.
-    fn java_move<W: BlockSource + ?Sized>(&mut self, world: &W, dm: &mut DVec3, step: f64) {
+    pub(crate) fn java_move<W: BlockSource + ?Sized>(&mut self, world: &W, dm: &mut DVec3, step: f64) {
         let shape = self.shape();
         let delta = *dm;
         let hit = if self.on_ground && step > 0.0 {
@@ -308,6 +309,8 @@ impl Mob {
             MobKind::Turtle => self.turtle_tick(world, &mut dm, alive),
             MobKind::Squid | MobKind::GlowSquid => self.squid_tick(world, &mut dm, in_water, alive, rng),
             MobKind::Ghast => self.ghast_tick(world, &mut dm, alive, rng),
+            MobKind::HappyGhast => self.happy_ghast_tick(world, &mut dm, rng),
+            k if super::super::nautilus::is_nautilus(k) => self.nautilus_tick(world, &mut dm, in_water, alive),
             MobKind::Blaze => self.blaze_tick(world, &mut dm, wish, speed),
             _ => {}
         }
@@ -362,7 +365,13 @@ impl Mob {
 
     /// `SmoothSwimmingMoveControl.tick` and the dolphin's and axolotl's
     /// `travelInWater`.
-    fn smooth_swim_tick<W: MobWorld + ?Sized>(&mut self, world: &W, dm: &mut DVec3, in_water: bool, alive: bool) {
+    pub(crate) fn smooth_swim_tick<W: MobWorld + ?Sized>(
+        &mut self,
+        world: &W,
+        dm: &mut DVec3,
+        in_water: bool,
+        alive: bool,
+    ) {
         let dolphin = self.kind == MobKind::Dolphin;
         let buoyant = dolphin || matches!(self.kind, MobKind::Frog | MobKind::Tadpole);
         let (in_factor, out_factor) = if buoyant { (0.02, 0.1) } else { (0.1, 0.5) };

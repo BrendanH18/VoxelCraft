@@ -8,29 +8,41 @@ use crate::world::terrain::Biome;
 const LIST_0: [MonsterSpawn; 1] = [e(J::Known(MobKind::PolarBear), 1, 1, 2)];
 const LIST_1: [MonsterSpawn; 1] = [e(J::Known(MobKind::Bat), 10, 8, 8)];
 const LIST_2: [MonsterSpawn; 1] = [e(J::Known(MobKind::GlowSquid), 10, 4, 6)];
-const LIST_3: [MonsterSpawn; 2] = [e(J::Known(MobKind::Squid), 1, 1, 4), e(J::Missing("nautilus"), 2, 1, 1)];
+const LIST_3: [MonsterSpawn; 2] = [e(J::Known(MobKind::Squid), 1, 1, 4), e(J::Known(MobKind::Nautilus), 2, 1, 1)];
 const LIST_4: [MonsterSpawn; 1] = [e(J::Known(MobKind::Salmon), 15, 1, 5)];
-const LIST_5: [MonsterSpawn; 2] = [e(J::Known(MobKind::Squid), 3, 1, 4), e(J::Missing("nautilus"), 2, 1, 1)];
+const LIST_5: [MonsterSpawn; 2] = [e(J::Known(MobKind::Squid), 3, 1, 4), e(J::Known(MobKind::Nautilus), 2, 1, 1)];
 const LIST_6: [MonsterSpawn; 2] = [e(J::Known(MobKind::Cod), 15, 3, 6), e(J::Known(MobKind::Salmon), 15, 1, 5)];
-const LIST_7: [MonsterSpawn; 3] =
-    [e(J::Known(MobKind::Squid), 1, 1, 4), e(J::Known(MobKind::Dolphin), 1, 1, 2), e(J::Missing("nautilus"), 5, 1, 1)];
+const LIST_7: [MonsterSpawn; 3] = [
+    e(J::Known(MobKind::Squid), 1, 1, 4),
+    e(J::Known(MobKind::Dolphin), 1, 1, 2),
+    e(J::Known(MobKind::Nautilus), 5, 1, 1),
+];
 const LIST_8: [MonsterSpawn; 1] = [e(J::Known(MobKind::Cod), 10, 3, 6)];
-const LIST_9: [MonsterSpawn; 3] =
-    [e(J::Known(MobKind::Squid), 8, 1, 4), e(J::Known(MobKind::Dolphin), 2, 1, 2), e(J::Missing("nautilus"), 5, 1, 1)];
+const LIST_9: [MonsterSpawn; 3] = [
+    e(J::Known(MobKind::Squid), 8, 1, 4),
+    e(J::Known(MobKind::Dolphin), 2, 1, 2),
+    e(J::Known(MobKind::Nautilus), 5, 1, 1),
+];
 const LIST_10: [MonsterSpawn; 3] = [
     e(J::Known(MobKind::Cod), 8, 3, 6),
     e(J::Known(MobKind::Pufferfish), 5, 1, 3),
     e(J::Known(MobKind::TropicalFish), 25, 8, 8),
 ];
-const LIST_11: [MonsterSpawn; 3] =
-    [e(J::Known(MobKind::Squid), 10, 1, 2), e(J::Known(MobKind::Dolphin), 2, 1, 2), e(J::Missing("nautilus"), 5, 1, 1)];
+const LIST_11: [MonsterSpawn; 3] = [
+    e(J::Known(MobKind::Squid), 10, 1, 2),
+    e(J::Known(MobKind::Dolphin), 2, 1, 2),
+    e(J::Known(MobKind::Nautilus), 5, 1, 1),
+];
 const LIST_12: [MonsterSpawn; 3] = [
     e(J::Known(MobKind::Cod), 15, 3, 6),
     e(J::Known(MobKind::Pufferfish), 5, 1, 3),
     e(J::Known(MobKind::TropicalFish), 25, 8, 8),
 ];
-const LIST_13: [MonsterSpawn; 3] =
-    [e(J::Missing("nautilus"), 5, 1, 1), e(J::Known(MobKind::Squid), 10, 4, 4), e(J::Known(MobKind::Dolphin), 2, 1, 2)];
+const LIST_13: [MonsterSpawn; 3] = [
+    e(J::Known(MobKind::Nautilus), 5, 1, 1),
+    e(J::Known(MobKind::Squid), 10, 4, 4),
+    e(J::Known(MobKind::Dolphin), 2, 1, 2),
+];
 const LIST_14: [MonsterSpawn; 2] =
     [e(J::Known(MobKind::Pufferfish), 15, 1, 3), e(J::Known(MobKind::TropicalFish), 25, 8, 8)];
 const LIST_15: [MonsterSpawn; 1] = [e(J::Known(MobKind::Mooshroom), 8, 4, 8)];

@@ -122,6 +122,7 @@ impl MobKind {
             }
             Self::Llama => food == Item::from_block(crate::world::block::Block::HAY_BALE),
             Self::Camel => food == Item::from_block(crate::world::block::Block::CACTUS),
+            Self::Nautilus => super::nautilus::food(food),
             _ => false,
         }
     }
@@ -155,6 +156,7 @@ impl MobKind {
                 | Self::Donkey
                 | Self::Llama
                 | Self::Camel
+                | Self::Nautilus
         )
     }
     /// Mates must match, except that a horse and a donkey make a mule.
@@ -358,6 +360,14 @@ impl Entities {
             } else {
                 b.aquatic.as_ref().unwrap().variant
             };
+        }
+        // `Nautilus.getBreedOffspring`: a tame parent's baby is tame, with its owner.
+        if let (Some(c), Some(p)) = (child.mount.as_mut(), a.mount.as_ref())
+            && super::nautilus::is_nautilus(child.kind)
+            && p.tame
+        {
+            c.tame = true;
+            c.owner = p.owner;
         }
         super::mooshroom::inherit(&mut child, a, b, &mut self.rng);
         super::panda::inherit(&mut child, a, b, &mut self.rng);

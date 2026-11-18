@@ -63,6 +63,7 @@ impl MobKind {
                 | MobKind::Llama
                 | MobKind::TraderLlama
                 | MobKind::Camel
+                | MobKind::CamelHusk
                 | MobKind::Turtle
                 | MobKind::Hoglin
                 | MobKind::Strider
@@ -115,7 +116,7 @@ impl MobKind {
         caps.step = match self {
             K::Sniffer => 1.0,
             K::Creaking => 1.0625,
-            K::Camel => 1.5,
+            K::Camel | K::CamelHusk => 1.5,
             K::Horse
             | K::Donkey
             | K::Mule
@@ -159,6 +160,7 @@ impl MobKind {
                 | K::Rabbit
                 | K::Goat
                 | K::Camel
+                | K::CamelHusk
                 | K::Creeper
                 | K::Spider
                 | K::CaveSpider
@@ -177,7 +179,7 @@ impl MobKind {
                 | K::MagmaCube
                 | K::Warden
         );
-        caps.can_walk_over_fences = self == K::Camel;
+        caps.can_walk_over_fences = matches!(self, K::Camel | K::CamelHusk);
         caps.stand_on_lava = self == K::Strider;
         caps = caps.follow_range(self.follow_range_base() as f32);
         let mut m = Malus::default();

@@ -216,6 +216,7 @@ impl Mob {
 impl Entities {
     /// Called from the same authoritative update_world transaction as bees and golems.
     pub fn tick_sniffers(&mut self, dt: f64, w: &mut World, ctx: &Ctx) {
+        self.hatch_dried_ghasts(w);
         for (p, hatched) in std::mem::take(&mut w.sniffer_egg_events) {
             let pos = p.as_dvec3() + DVec3::splat(0.5);
             let cue = if hatched { Cue::EggHatch } else { Cue::EggCrack };

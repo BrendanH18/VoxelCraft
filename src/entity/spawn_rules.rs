@@ -45,6 +45,13 @@ pub(super) fn spot_ok<W: MobWorld + ?Sized>(
         return world.block(IVec3::new(cell.x, y, cell.z)) == Some(Block::AIR)
             && !physics::overlaps_solid(world, pos, kind.shape());
     }
+    // `AbstractNautilus.checkNautilusSpawnRules` (`IN_WATER`, then `isUnobstructed`).
+    if kind == MobKind::Nautilus {
+        return at.holds_water()
+            && !monster_spawns::is_redstone_conductor(above)
+            && super::nautilus::spawn_ok(at, below, above, cell.y)
+            && !physics::overlaps_solid(world, pos, kind.shape());
+    }
     if kind.is_aquatic() && kind != MobKind::Turtle {
         // IN_WATER permits a solid clay floor (axolotls), and checks the
         // conductor above; it does not require water below for every species.

@@ -1267,7 +1267,11 @@ Wave 1 (independent):
    [Track B record](verification/2026-11-18-v0.15-workstations.md).
 3. **C. New mobs** (MOB-03, MOB-04b, FOO-04c). Happy ghasts grown from
    dried ghasts, ridden with harnesses; nautiluses and zombie nautiluses
-   with nautilus armor; camel husks and parched.
+   with nautilus armor; camel husks and parched. *Implemented, unverified
+   (2026-11-18): all five mobs and the dried ghast, with their spawning,
+   riding, saves and LAN looks; differences (Java brains, sounds and
+   particles, the nautilus inventory screen) are in the
+   [record](verification/2026-11-18-v0.15-new-mobs.md).*
 4. **D. Items and effects** (PLY-03b, PRO-02, PRO-04, PRO-03). Spectral
    arrows; blue and brown eggs; armor trims, their 18 templates, trim
    materials and drawing; frosted ice and Frost Walker; the behaviour of

@@ -649,6 +649,8 @@ static TABLES: LazyLock<Tables> = LazyLock::new(|| {
             6.0
         } else if super::heavy_core::owns(b.0) {
             super::heavy_core::BLAST_RESISTANCE
+        } else if super::dried_ghast::owns(b.0) {
+            0.0
         } else {
             resistance.get(name).copied().unwrap_or_else(|| b.hardness())
         };

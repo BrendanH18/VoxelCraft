@@ -126,13 +126,12 @@ fn every_armor_item_matches_its_java_material_and_form() {
                 assert_eq!(item.body_armor(), Some((fits, material)), "{id}");
                 assert_eq!(item.as_armor(), None, "{id} is not humanoid armor");
                 assert_eq!(u64::from(material.body_defense()), defense, "{id} body defense");
-                let horse = if fits == BodyArmor::Horse { defense } else { 0 };
-                assert_eq!(u64::from(mounts::armor_points(item)), horse, "{id} on a horse");
-                if fits == BodyArmor::Horse {
-                    assert_eq!(f64::from(mounts::armor_toughness(item)), m["toughness"].as_f64().unwrap());
-                    let kb = m["knockback_resistance"].as_f64().unwrap() as f32;
-                    assert_eq!(mounts::armor_knockback_resistance(item), kb, "{id}");
-                }
+                // Worn by its animal (a horse, or since v0.15 a nautilus), the
+                // armor gives its `BODY` defense, toughness and knockback resistance.
+                assert_eq!(u64::from(mounts::armor_points(item)), defense, "{id} worn");
+                assert_eq!(f64::from(mounts::armor_toughness(item)), m["toughness"].as_f64().unwrap());
+                let kb = m["knockback_resistance"].as_f64().unwrap() as f32;
+                assert_eq!(mounts::armor_knockback_resistance(item), kb, "{id}");
             }
             "wolf" => assert_eq!(item, Item::WOLF_ARMOR),
             other => panic!("unknown armor form {other}"),

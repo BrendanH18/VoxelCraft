@@ -901,6 +901,15 @@ Texture layers are never saved and may be repacked at integration.
 | — | — | — | H. Villager parity (wave 2) |
 | — | — | 4072–4095 | Integrator spare |
 
+Track C allocation (2026-11-18, implemented, unverified): block states
+12224–12255 are the dried ghast, `12224 + ((hydration * 4 + facing) * 2 +
+waterlogged)` in `Facing::ALL` order, all 32 used; texture layers
+3968–3979 (3980–3999 unused); no item IDs (the dried ghast is a block
+item; 1646–1649 stay unregistered). Appended: `MobKind` `HappyGhast`,
+`Nautilus`, `ZombieNautilus`, `CamelHusk`, `Parched` after `Endermite`;
+`Voice` the same five after `Endermite`; `Cause::PARCHED_ARROW` after
+`BOGGED_ARROW`. See the [Track C record](verification/2026-11-18-v0.15-new-mobs.md).
+
 Append-only orderings (`MobKind` and its LAN index, `Effect`, `POTIONS`,
 sounds, item icons, thrown kinds, entity and dimension property keys) are
 appended by each track on its own branch. No released build saves the new
@@ -960,6 +969,15 @@ key `farm_variant` (Java's variant name; absent for temperate and older
 records). The charged-crossbow `entity_data` value `u32::MAX - 1`
 (`entity::SPECTRAL_BOLT`) marks a spectral bolt. No `MobKind`, `Effect` or
 sound is added; the four effects were registered in v0.14.
+
+**Wave 1 integration (2026-11-18).** Landing order B, A, D, C. `MobKind`
+and `Voice` end `Endermite` (LAN 74), then Track A's `Vindicator`,
+`Evoker`, `Vex`, `Ravager`, `Illusioner` (75–79), then Track C's
+`HappyGhast`, `Nautilus`, `ZombieNautilus`, `CamelHusk`, `Parched`
+(80–84). Item icons after the bundles run Track B (spyglass, the two
+books, the ten pattern items), then Track D (spectral arrow, the two
+eggs, the 18 templates). Each track's record gives the LAN indices it
+had on its own branch; these are the merged ones.
 
 ## Assessment branch ID reservations
 
