@@ -1,9 +1,8 @@
-//! Java 1.21 wandering trader attempts, stock, potions and linked llama lifetime.
-use super::villager::{Offer, Villager};
+//! Java 26.3 wandering trader attempts (`WanderingTraderSpawner`), stock,
+//! potions and linked llama lifetime.
+use super::villager::Villager;
 use super::{Ctx, Entities, Mob, MobKind, MobWorld};
 use crate::{
-    inventory::Stack,
-    item::Item,
     physics,
     world::{block::Block, terrain::Dimension},
 };
@@ -52,6 +51,17 @@ impl Trader {
         Self { despawn: 2400.0, invisible: false, hide_left: 0.0, drink: 0.0, leader: 0, destination: pos }
     }
 }
+/// `WanderingTraderSpawner`: every `DEFAULT_TICK_DELAY` (1200) ticks it
+/// counts down a `DEFAULT_SPAWN_DELAY`-tick wait, here counted in seconds
+/// as one span; the chance starts at 25, rises by 25 to 75 per failed day
+/// and resets on a spawn; a spawn also needs one in ten, and takes ten
+/// tries for a spot.
+pub(super) const SPAWN_DELAY: u32 = 24000;
+pub(super) const MIN_CHANCE: u8 = 25;
+pub(super) const MAX_CHANCE: u8 = 75;
+pub(super) const CHANCE_STEP: u8 = 25;
+pub(super) const ONE_IN: u32 = 10;
+pub(super) const SPAWN_ATTEMPTS: u32 = 10;
 #[derive(Clone, Copy)]
 pub(super) struct Spawner {
     pub delay: f32,
@@ -59,7 +69,7 @@ pub(super) struct Spawner {
 }
 impl Default for Spawner {
     fn default() -> Self {
-        Self { delay: 1200.0, chance: 25 }
+        Self { delay: SPAWN_DELAY as f32 / 20.0, chance: MIN_CHANCE }
     }
 }
 impl Spawner {
@@ -68,90 +78,29 @@ impl Spawner {
         if self.delay > 0.0 {
             return None;
         }
-        self.delay += 1200.0;
+        self.delay += SPAWN_DELAY as f32 / 20.0;
         let chance = self.chance;
-        self.chance = (self.chance + 25).min(75);
+        self.chance = (self.chance + CHANCE_STEP).clamp(MIN_CHANCE, MAX_CHANCE);
         Some(chance)
     }
 }
-// Five common offers plus one rare, skipping families unavailable in the engine.
-const COMMON: &[(&str, u8, u8, u8)] = &[
-    ("slimeball", 4, 1, 5),
-    ("glowstone", 2, 1, 5),
-    ("sugar cane", 1, 1, 8),
-    ("pumpkin", 1, 1, 4),
-    ("cactus", 3, 1, 8),
-    ("dandelion", 1, 1, 12),
-    ("poppy", 1, 1, 12),
-    ("wheat seeds", 1, 1, 12),
-    ("pumpkin seeds", 1, 1, 12),
-    ("oak sapling", 5, 1, 8),
-    ("spruce sapling", 5, 1, 8),
-    ("birch sapling", 5, 1, 8),
-    ("jungle sapling", 5, 1, 8),
-    ("acacia sapling", 5, 1, 8),
-    ("red dye", 1, 3, 12),
-    ("white dye", 1, 3, 12),
-    ("blue dye", 1, 3, 12),
-    ("pink dye", 1, 3, 12),
-    ("black dye", 1, 3, 12),
-    ("green dye", 1, 3, 12),
-    ("light gray dye", 1, 3, 12),
-    ("magenta dye", 1, 3, 12),
-    ("yellow dye", 1, 3, 12),
-    ("gray dye", 1, 3, 12),
-    ("purple dye", 1, 3, 12),
-    ("light blue dye", 1, 3, 12),
-    ("lime dye", 1, 3, 12),
-    ("orange dye", 1, 3, 12),
-    ("brown dye", 1, 3, 12),
-    ("cyan dye", 1, 3, 12),
-    ("brown mushroom", 1, 1, 12),
-    ("red mushroom", 1, 1, 12),
-    ("sand", 1, 8, 8),
-];
-const RARE: &[(&str, u8, u8, u8)] = &[("gunpowder", 1, 1, 8), ("podzol", 3, 3, 6), ("packed ice", 3, 1, 6)];
 impl Villager {
+    /// Java 26.3 `WanderingTrader.updateTrades`: two `buying`, two
+    /// `uncommon` and five `common` offers, each set drawn without
+    /// duplicates; entries naming items the game lacks are redrawn.
     pub(super) fn trader_stock(&mut self, rng: &mut super::Rng) {
         self.wandering = true;
         self.offers = [None; 10];
-        let mut picks = [None; 5];
-        let mut seen = 0;
-        for &d in COMMON {
-            if Item::from_name(d.0).is_none() {
-                continue;
-            }
-            seen += 1;
-            let i = rng.next_int(seen) as usize;
-            if seen <= 5 {
-                picks[(seen - 1) as usize] = Some(d);
-            } else if i < 5 {
-                picks[i] = Some(d);
-            }
-        }
-        let mut rare = None;
-        let mut seen = 0;
-        for &d in RARE {
-            if Item::from_name(d.0).is_some() {
-                seen += 1;
-                if rng.next_int(seen) == 0 {
-                    rare = Some(d);
+        for (_, amount, set) in super::villager::trades::WANDERING {
+            let mut left: Vec<&super::villager::trades::TradeDef> = set.iter().collect();
+            let mut found = 0;
+            while found < amount as usize && !left.is_empty() {
+                let d = left.remove(rng.next_int(left.len() as u32) as usize);
+                if let Some(offer) = d.offer(rng.next_int(u32::MAX) as u64, "plains") {
+                    self.push_offer(offer);
+                    found += 1;
                 }
             }
-        }
-        for (i, d) in picks.into_iter().chain([rare]).enumerate() {
-            self.offers[i] = d.and_then(|(name, price, count, uses)| {
-                Some(Offer {
-                    cost: Stack::new(Item::EMERALD, price),
-                    second: None,
-                    output: Stack::new(Item::from_name(name)?, count),
-                    uses: 0,
-                    max_uses: uses,
-                    xp: 0,
-                    demand: 0,
-                    multiplier: 0.05,
-                })
-            });
         }
     }
 }
@@ -162,7 +111,7 @@ fn spot<W: MobWorld + ?Sized>(
     kind: MobKind,
     rng: &mut super::Rng,
 ) -> Option<DVec3> {
-    for _ in 0..10 {
+    for _ in 0..SPAWN_ATTEMPTS {
         let x = center.x.floor() as i32 + rng.next_int((range * 2) as u32) as i32 - range;
         let z = center.z.floor() as i32 + rng.next_int((range * 2) as u32) as i32 - range;
         let Some(y) = world.surface(x, z) else {
@@ -187,11 +136,20 @@ impl Entities {
         let Some(chance) = self.trader_spawner.attempt(dt) else {
             return;
         };
-        if !self.rng.chance(chance as f32 / 100.0) || self.rng.next_int(10) != 0 || ctx.players.is_empty() {
+        // `random.nextInt(100) <= chance`: 26, 51 or 76 percent.
+        if self.rng.next_int(100) > chance as u32 {
             return;
         }
-        let player = &ctx.players[self.rng.next_int(ctx.players.len() as u32) as usize];
-        if !player.alive {
+        // `getRandomPlayer` picks among living players; with none, Java's
+        // `spawn` reports success, so the chance resets.
+        let alive = ctx.players.iter().filter(|p| p.alive).count();
+        if alive == 0 {
+            self.trader_spawner.chance = MIN_CHANCE;
+            return;
+        }
+        let pick = self.rng.next_int(alive as u32) as usize;
+        let player = ctx.players.iter().filter(|p| p.alive).nth(pick).unwrap();
+        if self.rng.next_int(ONE_IN) != 0 {
             return;
         }
         let mut center = player.pos;
@@ -230,7 +188,7 @@ impl Entities {
                 self.mobs.last_mut().unwrap().trader.as_mut().unwrap().leader = id;
             }
         }
-        self.trader_spawner.chance = 25;
+        self.trader_spawner.chance = MIN_CHANCE;
         true
     }
     pub(super) fn trader_upkeep(&mut self) {
@@ -309,14 +267,18 @@ impl Mob {
         drank
     }
 }
-/// Every name used by the wandering trader's stock filter.
+/// Every Java item name the wandering trader's trades use.
 pub fn trade_item_names() -> impl Iterator<Item = &'static str> {
-    COMMON.iter().chain(RARE).map(|row| row.0)
+    super::villager::trades::WANDERING
+        .into_iter()
+        .flat_map(|(_, _, set)| set)
+        .flat_map(|t| [Some(t.wants.0), t.also.map(|a| a.0), Some(t.gives.0)].into_iter().flatten())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::item::Item;
     use crate::physics::test_util::Grid;
     #[test]
     fn merchant_leads_render_after_reload_and_clear_when_the_merchant_is_gone() {
@@ -382,12 +344,13 @@ mod tests {
         assert_eq!(e.count(MobKind::WanderingTrader), 1);
         assert_eq!(e.count(MobKind::TraderLlama), 2);
         let v = e.mobs[0].villager.as_ref().unwrap();
-        assert_eq!(v.offers.iter().flatten().count(), 6);
+        // Java 26.3: two `buying` offers (paid in emeralds), then two
+        // `uncommon` and five `common` (sold for emeralds), all distinct.
+        assert_eq!(v.offers.iter().flatten().count(), 9);
         for (i, o) in v.offers.iter().flatten().enumerate() {
-            assert_eq!(o.cost.item, Item::EMERALD);
-            if i < 5 {
-                assert!(v.offers[..i].iter().flatten().all(|p| p.output.item != o.output.item));
-            }
+            assert_eq!(o.output.item == Item::EMERALD, i < 2, "{o:?}");
+            assert_eq!(o.cost.item == Item::EMERALD, i >= 2, "{o:?}");
+            assert!(v.offers[..i].iter().flatten().all(|p| p != o));
         }
         for _ in 0..33 {
             e.mobs[0].update_trader(0.05, true);
@@ -410,7 +373,7 @@ mod tests {
         assert!(e.spawn_trader(&w, DVec3::ZERO));
         e.trader_spawner.delay = 123.5;
         e.trader_spawner.chance = 75;
-        e.mobs[0].villager.as_mut().unwrap().offers[0].as_mut().unwrap().uses = 3;
+        e.mobs[0].villager.as_mut().unwrap().offers[0].as_mut().unwrap().uses = 1;
         e.mobs[0].trader.as_mut().unwrap().despawn = 900.25;
         e.mobs[0].trader.as_mut().unwrap().invisible = true;
         e.trader_upkeep();

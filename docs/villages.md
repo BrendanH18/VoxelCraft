@@ -168,10 +168,14 @@ librarian, cartographer, cleric, armorer, weaponsmith, toolsmith, butcher and
 mason. Breaking a job site releases it. Untraded villagers become unemployed;
 a villager with trade XP retains its profession and seeks a matching site.
 Beds of every supported colour are claimed exclusively among villagers.
-Sensors run once a second without allocating. Work runs from day tick 2000
-to 9000; rest starts at 12000. Residents walk toward work/home, open wooden
-doors, sleep near their beds, and flee zombies/husks/drowned within eight
-blocks. Sleeping villagers lie down. Unloaded or distant residents freeze
+Sensors run once a second without allocating. The day follows Java 26.3's
+`villager_schedule` timeline: adults idle from tick 10, work from 2000, meet
+at their bell from 9000 (each bell takes 32 villagers, claimed within 48
+blocks), idle from 11000 and rest from 12000; babies play from 3000 to 6000
+and from 10000. Residents walk toward work, the bell or home, open wooden
+doors, sleep near their beds, and flee zombies, husks, drowned and zombie
+villagers within eight blocks, vexes within 8, vindicators and zoglins
+within 10, evokers, illusioners and ravagers within 12 and pillagers within 15. Sleeping villagers lie down. Unloaded or distant residents freeze
 and remain saved; their POIs leave the loaded index when chunks unload.
 
 Right-click a villager to see prices, stock, rank and level progress. Controller
@@ -185,16 +189,19 @@ Opening a screen holds that merchant still; leaving reach closes it.
 `--open-trading` opens the targeted merchant after job acquisition for captures,
 including a virtual `--pad-player play` screen.
 
-Normal Java trade definitions keep their quantities, stock caps, villager XP
-and price multipliers. Two distinct supported offers unlock per tier where
-available. Novice/Apprentice/Journeyman/Expert/Master thresholds are 0/10/70/150/250
-XP. Enchanted gear and librarian books use Java enchantment levels and price
-ranges; treasure books cost double. Successful trades release 3–6 player XP,
-plus 5 on a promotion. The new tier unlocks 40 ticks (2 s) after the
-trade that crosses the XP threshold, paused while a screen is open, and then
-grants Regeneration for 200 ticks (Java `updateMerchantTimer`). At most two restocks occur per day, while near the job
-site during work hours, separated by 2400 day ticks. Restocking updates Java's
-supply/demand term and resets uses. Offers, enchantments, demand, stock, rank,
+Trades are Java 26.3's default data (`villager_trade`, drawn through each
+level's `trade_set`), checked against `tests/fixtures/java/26.3/villagers.json`;
+the [Track H record](verification/2026-11-18-v0.15-villagers.md) describes
+them. Each level draws two distinct offers (three for the master librarian),
+skipping entries for another villager type and entries naming items the
+game lacks. Novice/Apprentice/Journeyman/Expert/Master thresholds are
+0/10/70/150/250 XP. Enchanted gear and librarian books use Java enchantment
+levels and price rules; treasure books cost double. Successful trades
+release 3–6 player XP, plus 5 on a promotion, which in 26.3 is immediate and
+grants Regeneration for 200 ticks. Prices add demand and then the
+reputation discount, clamped once. While working, a villager within 1.73
+blocks of its job site restocks up to twice a day, 2400 ticks apart; a new
+day first applies the demand updates of the restocks it missed. Offers, enchantments, demand, stock, rank,
 XP, bed/job claims, age, identity and restock counters survive dimension saves.
 Older saves without the additive `villagers` property remain valid.
 
@@ -206,13 +213,10 @@ Villager-opened doors close again one second after no villager is within 1.6 blo
 Simplifications: procedural house templates/resident ages rather than vanilla
 NBT assets; residents walk Java ground paths to their walk targets and open
 the doors on them (see the [navigation record](verification/2026-10-14-mob-navigation.md)),
-but the full villager brain is not ported. Trade selection uses an independent deterministic seed
-stream and the
-restock interval is a fixed day-time interval. Item families absent from the
-engine are filtered from trade pools, so some tiers offer fewer than two trades
-(or none): fish/buckets, campfires, maps, banners, item frames, suspicious stew,
-glazed terracotta, tipped arrows, and unavailable foods/stone variants. The
-leatherworker has no cauldron job site yet (there is no cauldron block). Raids remain
+but the full villager brain is not ported. Trade selection uses each villager's
+own seed rather than Java's world-wide random sequences, and entries naming
+items the game lacks are redrawn. The leatherworker has no cauldron job site
+yet. Raids remain
 a gap; farmers on shift walk to ripe wheat, carrot or potato crops within five blocks of their
 composter and cut and replant them (Java `HarvestFarmland`, gated by mobGriefing; replanting
 is free instead of using seeds from the villager's inventory, and they do not compost or
@@ -239,12 +243,14 @@ their source correctly and do not award player-kill loot/XP; they suffer water
 and heat damage. Snow layers now exist (1 to 8), but snow golems do not yet
 leave snow-layer trails.
 
-Village summoning requires recent sleep, three eligible villagers panicking
-or five on a gossip check, no nearby golem, and a supported unobstructed spawn
-position. Each resident remembers detecting a golem for 30 seconds; the
-memory survives saves and distant villages summon independently. Remaining
-simplifications: spherical sensors and minute gossip checks rather than the complete Java
-brain memory/sensor scheduling. Snow golem melting now follows Java 26.3's biome environment attribute: deserts,
+Village summoning requires sleep in the last 24000 ticks, no recently
+detected golem, and three such villagers in the asking villager's box grown
+by 10 blocks when it panics (checked every 100 ticks) or five when it has
+just gossiped, plus a supported unobstructed spawn position. Each resident
+remembers detecting a golem for 30 seconds; the memory survives saves and
+distant villages summon independently. Remaining simplifications: a
+spherical golem sensor rather than the complete Java brain memory/sensor
+scheduling. Snow golem melting now follows Java 26.3's biome environment attribute: deserts,
 all badlands and savanna variants, plus the Nether dimension. Cave biomes override
 the surface biome. The extracted `mob_integrations.json` fixture and damage tests
 cover the heat locations; the retained once-a-second heat damage cadence still
@@ -256,7 +262,8 @@ a 5% zombie-villager roll. Weakness plus a regular golden apple starts a
 3600–6000-tick cure, removes Weakness and keeps the zombie persistent. Trades,
 profession, XP, age, armor, weakness/conversion timers and golem health/build
 state survive saves. Baby zombies remain babies until curing, then grow as
-villagers. Conversion grants Strength I, and the Java one-percent special-block scan
+villagers. Conversion grants Strength I for its whole length (since v0.15
+Track H; the cured villager then has Nausea for 200 ticks), and the Java one-percent special-block scan
 accelerates curing with up to fourteen nearby beds/iron bars. Fractional ticks
 survive saves. Natural armor is discarded at completion; picked-up equipment
 and binding-curse handling await support for equipped item stacks. Cures
@@ -305,16 +312,17 @@ not yet swing. The existing floor-mounted model/orientation is retained.
 
 ## Wandering traders
 
-Overworld traders attempt every 24000 ticks with a 25/50/75 percent roll
-and a further one-in-ten roll (2.5/5/7.5 percent effective chance), resetting
-on success. Attempts choose a player and prefer a bell within 48 blocks;
+Overworld traders attempt every 24000 ticks with Java's `nextInt(100) <= chance`
+roll (26/51/76 percent) and a further one-in-ten roll, resetting to 25 on
+success or when no player is alive. Attempts choose a living player and prefer a bell within 48 blocks;
 ten candidate ground locations within 48 blocks need clear spawn space.
 Two trader llamas attempt nearby spawns, follow their merchant through a
 reused ID index, and share its despawn lifetime. Trader event spawning is
 independent of difficulty, gated by doMobSpawning and doTraderSpawning.
 
-Traders offer five distinct common and one rare supported Java 1.21 offer,
-with exact quantities/prices/stock caps, no leveling or restocking, through
+Traders offer Java 26.3's two `buying`, two `uncommon` and five `common`
+offers, each set drawn without duplicates, with exact quantities, prices and
+stock caps, no leveling or restocking, through
 the shared merchant UI/controller/CLI transaction. They disappear after
 48000 loaded ticks (paused while trading), drink for 32 ticks to become
 invisible when it is dark (Invisibility lasts 3600 ticks, after which they drink
@@ -323,7 +331,7 @@ procedural stand-ins). Offers, remaining
 lifetime, destination, potion state, llama links and attempt progression
 survive saves. Models and robes are original procedural geometry.
 
-Remaining simplifications: trade pools filter absent items, shared resident
+Remaining simplifications: entries naming absent items are redrawn, shared resident
 navigation, merchant-linked trader llamas now render the existing procedural lead rope
 (including after save/reload and through mob replicas); physical merchant-lead
 breaking remains simplified. Trader llamas have no
@@ -335,17 +343,17 @@ radius, as other persistent village entities currently do.
 
 ## Reputation
 
-Gossip is stored per player with Java's five weighted types and caps. Curing
-records the initiating player, grants major-positive 20 and minor-positive 25
-(125 initial reputation, 100 after the temporary bonus decays), and repeat
-cures do not stack. Successful trades add trading gossip; melee harm and
-nearby witnessed kills add negative gossip. Daily decay and nearby minute
-sharing preserve type-specific rules, including non-transferable permanent
-cure gossip. Host, controller and CLI prices/payments use the same player's
+Gossip is stored per player with Java's five weighted types and caps
+(`GossipContainer`). Curing records the initiating player, grants
+major-positive 20 and minor-positive 25 (125 initial reputation, 100 after
+the temporary bonus decays), and repeat cures do not stack. Successful
+trades add trading gossip; melee harm and nearby witnessed kills add
+negative gossip. Gossip decays once 24000 ticks after the last decay, and a
+villager within √5 blocks of another hears up to ten weighted picks of its
+gossip when neither has gossiped in 1200 ticks; permanent cure gossip never
+transfers. Host, controller and CLI prices/payments use the same player's
 reputation, and gossip/cure identity survive saves. Older single-number
-reputation migrates as a host-only legacy discount. Sharing currently visits
-the closest resident and transfers all eligible entries rather than Java's
-weighted selection of ten. Arrow and splash-potion damage from a player adds the same
+reputation migrates as a host-only legacy discount. Arrow and splash-potion damage from a player adds the same
 hurt/kill gossip as melee (Java `VILLAGER_HURT`/`VILLAGER_KILLED`). A wild iron golem
 targets a player within its `inflate(10, 8, 10)` box whom a villager in that box rates
 at -100 or worse (`DefendVillageTargetGoal`); player-built golems still never do.

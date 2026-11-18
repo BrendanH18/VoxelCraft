@@ -979,6 +979,17 @@ records). The charged-crossbow `entity_data` value `u32::MAX - 1`
 (`entity::SPECTRAL_BOLT`) marks a spectral bolt. No `MobKind`, `Effect` or
 sound is added; the four effects were registered in v0.14.
 
+**Track H (villager parity, 2026-11-18; implemented, unverified):** no IDs
+reserved or used. Appended: suspicious stew effect codes 12 (jump boost,
+160 ticks), 13 (blindness, 120) and 14 (poison, 280) after 11 in
+`entity::mooshroom::effect`, saved in a stew's `entity_data`, for the
+farmer's trade stews. Villager records gain `last_restock` (absolute
+ticks, replacing `last`, which older saves still convert from) and
+`meeting` (the claimed bell); their gossip saves `decay` (absolute ticks,
+replacing `day`), and `promote`/`promote_pending` are no longer written
+(an old pending promotion lands on load). See the
+[Track H record](verification/2026-11-18-v0.15-villagers.md).
+
 **Wave 1 integration (2026-11-18).** Landing order B, A, D, C. `MobKind`
 and `Voice` end `Endermite` (LAN 74), then Track A's `Vindicator`,
 `Evoker`, `Vex`, `Ravager`, `Illusioner` (75–79), then Track C's

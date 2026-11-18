@@ -1634,11 +1634,11 @@ impl Mob {
         }
         if let Some(v) = &mut self.villager {
             v.reputation = 0;
-            if let Some(owner) = self.convert_by
-                && v.gossip.entries.get(&owner).is_none_or(|g| g[2] < 20)
-            {
-                v.gossip.add(owner, 2, 20);
-                v.gossip.add(owner, 3, 25);
+            // `ZOMBIE_VILLAGER_CURED`: major positive 20 and minor positive
+            // 25; their caps keep repeat cures from stacking.
+            if let Some(owner) = self.convert_by {
+                v.gossip.add(owner, super::villager_gossip::MAJOR_POSITIVE, 20);
+                v.gossip.add(owner, super::villager_gossip::MINOR_POSITIVE, 25);
             }
             self.convert_by = None;
             v.sleeping = false;
@@ -1646,6 +1646,8 @@ impl Mob {
             v.fleeing = false;
             v.goal = None;
         }
+        // `finishConversion`: the villager wakes with 200 ticks of Nausea.
+        self.effects.add(crate::simulation::effects::Effect::Nausea, 0, 200);
         dropped
     }
 

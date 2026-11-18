@@ -996,6 +996,8 @@ pub struct Entities {
     separation: mob_index::Separation,
     claimed_beds: rustc_hash::FxHashSet<IVec3>,
     claimed_jobs: rustc_hash::FxHashSet<IVec3>,
+    /// Villagers meeting at each bell (Java `PoiTypes.MEETING`: 32 tickets).
+    claimed_meetings: rustc_hash::FxHashMap<IVec3, u8>,
     pending_sounds: Vec<EntityEvent>,
     /// Doors villagers opened, with seconds since a villager was last close by.
     door_watch: Vec<(IVec3, f32)>,
@@ -1111,6 +1113,7 @@ impl Entities {
             separation: Default::default(),
             claimed_beds: Default::default(),
             claimed_jobs: Default::default(),
+            claimed_meetings: Default::default(),
             pending_sounds: Vec::new(),
             door_watch: Vec::new(),
             trader_spawner: Default::default(),
@@ -1124,7 +1127,7 @@ impl Entities {
             villager_griefing: true,
             max_entity_cramming: 24,
             effect_deaths: Vec::new(),
-            gossip_timer: 60.0,
+            gossip_timer: 5.0,
             rng: Rng::new(seed ^ 0x6d6f_6273),
             pvp: false,
             spawner_delays: Default::default(),
@@ -1186,7 +1189,7 @@ impl Entities {
         if matches!(kind, MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader) {
             **mob.villager.as_mut().unwrap() =
                 villager::Villager::new(self.next_villager_id, self.rng.next_int(u32::MAX) as u64);
-            mob.villager.as_mut().unwrap().gossip.day = self.village_day;
+            mob.villager.as_mut().unwrap().gossip.last_decay = self.village_day * 24000;
             self.next_villager_id = self.next_villager_id.saturating_add(1);
         }
         if kind == MobKind::WanderingTrader {
