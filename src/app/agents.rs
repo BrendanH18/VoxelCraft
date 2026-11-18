@@ -180,6 +180,7 @@ impl Agents {
             agent.session.vitals.warden = crate::world::sculk::WardenSpawnTracker::load(&p["warden_spawn_tracker"]);
             if let Some(text) = p["effects"].as_str() {
                 agent.session.vitals.effects = crate::simulation::effects::Effects::deserialize(text);
+                agent.session.vitals.restore_boosted_health(p["health"].as_f64().unwrap_or(20.0) as f32);
             }
             // Replacing a profile frees its old ID.
             self.players.remove(name);

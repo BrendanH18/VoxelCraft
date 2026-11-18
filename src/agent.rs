@@ -635,15 +635,23 @@ impl Agent {
                     return Err("target is not a smithing table".into());
                 }
                 let base = self.session.inventory.get(self.selected).ok_or("selected slot empty")?;
-                let template_slot =
-                    self.session.inventory.find(Item::NETHERITE_UPGRADE).ok_or("no upgrade template")?;
-                let addition_slot = self.session.inventory.find(Item::NETHERITE_INGOT).ok_or("no Netherite ingot")?;
-                let result = crate::smithing::upgrade(
-                    self.session.inventory.get(template_slot).unwrap(),
-                    base,
-                    self.session.inventory.get(addition_slot).unwrap(),
-                )
-                .ok_or("selected item is not diamond gear")?;
+                // v0.15 Track D: an armor trim template and a trim material
+                // work too; the upgrade template is tried first.
+                let (inv, selected) = (&self.session.inventory, self.selected);
+                let slots = |want: fn(Item) -> bool| {
+                    (0..inv.slots.len()).filter(move |&i| i != selected && inv.get(i).is_some_and(|s| want(s.item)))
+                };
+                let found = slots(crate::smithing::is_template)
+                    .flat_map(|t| slots(crate::smithing::is_addition).map(move |a| (t, a)))
+                    .find_map(|(t, a)| {
+                        let (template, addition) = (inv.get(t).unwrap(), inv.get(a).unwrap());
+                        crate::smithing::upgrade(template, base, addition).map(|r| (t, a, r))
+                    });
+                if !inv.slots.iter().flatten().any(|s| crate::smithing::is_template(s.item)) {
+                    return Err("no smithing template".into());
+                }
+                let (template_slot, addition_slot, result) =
+                    found.ok_or("no template and addition in the inventory fit the selected item")?;
                 self.session.inventory.take_one(template_slot);
                 self.session.inventory.take_one(addition_slot);
                 self.session.inventory.slots[self.selected] = Some(result);
@@ -984,6 +992,10 @@ impl Agent {
                 self.session.sleeping = None;
             }
         }
+        // v0.15 Track D: silverfish from hits taken under Infested, and
+        // Frost Walker's ice.
+        self.session.settle_effect_hooks(entities);
+        self.session.frost_walk(world, entities);
         if self.session.vitals.is_dead() {
             self.drop_everything(entities);
             self.remaining = 0;

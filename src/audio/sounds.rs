@@ -119,6 +119,7 @@ pub fn material(block: Block) -> Material {
         b if b == Block::GLASS
             || b == Block::GLOWSTONE
             || b == Block::ICE
+            || crate::world::frosted_ice::owns(b.0)
             || b.stained_glass_color().is_some()
             || b.is_glass_pane() =>
         {

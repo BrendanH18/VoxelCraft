@@ -928,3 +928,38 @@ scripts/remote-check.sh -- 'cargo test --release --lib illager'
 crossbow, shared combat), checks both tags against `MobKind::ALL` in both
 directions, rolls the loot tables against the fixture's pools, and runs the
 behaviour through the entity update.
+
+## Items and effects (v0.15 Track D)
+
+`items_effects.json` holds the facts behind v0.15 Track D: the Wind
+Charged, Weaving, Oozing and Infested registrations in `MobEffects` (colour,
+category, Infested's 0.1 chance and the counts their lambdas return: 2–3
+cobwebs, 2 slimes, 1–2 silverfish), their four potions in `Potions`
+(3600 ticks, level I), `FrostedIceBlock`'s delays (60–120 after a change,
+20–40 otherwise), its one-in-three ageing roll, brightness base 11 and
+neighbour limits 4 and 2, Frost Walker's `replace_disk` from
+`enchantment/frost_walker.json`, `LivingEntity.travelInAir`'s Levitation
+constants (0.05 a level, a fifth of the gap a tick), `WebBlock`'s speed
+multipliers with and without Weaving, `SpectralArrow`'s 200 Glowing ticks,
+the trim patterns and materials (description colours), the templates'
+rarities, the `trim_materials` and `eggs` item tags, the chicken, cow and
+pig variants with their warm and cold biome tags expanded,
+`gameplay/chicken_lay`, the chicken's egg timer, and every loot table entry
+naming a spectral arrow, a coloured egg or a trim template.
+
+```sh
+python3 tools/extract_java_items_effects_fixtures.py /path/to/server.jar --output target/java-items-effects.json
+diff tests/fixtures/java/26.3/items_effects.json target/java-items-effects.json
+scripts/remote-check.sh -- 'cargo test --release --test java_items_effects --test java_brewing --test java_recipes'
+```
+
+`tests/java_items_effects.rs` compares each fact with the game both ways:
+the effect constants and colours, the potions and their item IDs, the
+frosted ice and Frost Walker constants, the trim patterns, material
+colours, tag and template rarities, the farm variants' biomes and the
+chicken's eggs, the loot tables the game carries (the trail ruins'
+archaeology table, end city and woodland mansion chests are owned
+elsewhere and listed in the test), and saves and reloads the new stacks,
+farm variants and frosted ice with its pending tick. Recipes are checked by
+`tests/java_recipes.rs` (the spectral arrow, the 18 template copies and the
+18 `smithing_trim` recipes) and brewing by `tests/java_brewing.rs`.

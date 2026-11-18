@@ -31,6 +31,11 @@ impl ArrowEffectGate {
     }
 }
 
+/// v0.15 Track D: the `entity_data` of a crossbow charged with a spectral
+/// arrow (a tipped bolt stores its potion + 1, an empty tipped one
+/// `u32::MAX`).
+pub const SPECTRAL_BOLT: u32 = u32::MAX - 1;
+
 impl Stack {
     pub fn tipped_arrow(potion: Potion, count: u8) -> Self {
         let mut stack = Self::new(Item::TIPPED_ARROW, count);
@@ -47,6 +52,9 @@ impl Stack {
 }
 impl Arrow {
     pub fn pickup_stack(&self) -> Stack {
+        if self.spectral {
+            return Stack::new(Item::SPECTRAL_ARROW, 1);
+        }
         self.potion.map_or_else(
             || Stack::new(if self.tipped { Item::TIPPED_ARROW } else { Item::ARROW }, 1),
             |p| Stack::tipped_arrow(p, 1),
@@ -58,6 +66,8 @@ impl Arrow {
             .flat_map(|p| p.effects())
             .map(|(effect, amp, ticks)| (effect, amp, (ticks / 8).max(1)))
             .chain(self.custom_effect)
+            // v0.15 Track D: `SpectralArrow.doPostHurtEffects`.
+            .chain(self.spectral.then_some((Effect::Glowing, 0, crate::simulation::effects::SPECTRAL_GLOWING_TICKS)))
     }
     pub(super) fn effects_on_player(&self, player: PlayerId, events: &mut Vec<EntityEvent>) {
         for (effect, amplifier, ticks) in self.effects() {

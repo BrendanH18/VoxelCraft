@@ -45,6 +45,10 @@ pub enum Kind {
     BreezeWindCharge,
     /// v0.17 build-5000 (ITEM-02): a thrown Bottle o' Enchanting.
     ExperienceBottle,
+    /// v0.15 Track D (appended): a blue egg (cold chick) and a brown egg
+    /// (warm chick).
+    BlueEgg,
+    BrownEgg,
 }
 
 impl Kind {
@@ -52,10 +56,24 @@ impl Kind {
         matches!(self, Kind::WindCharge | Kind::BreezeWindCharge)
     }
 
+    /// v0.15 Track D: the chick variant a thrown egg hatches
+    /// (`ThrownEgg.onHit` reads the item's `chicken/variant`).
+    pub fn egg_variant(self) -> Option<crate::content::farm_variant::FarmVariant> {
+        use crate::content::farm_variant::FarmVariant;
+        match self {
+            Kind::Egg => Some(FarmVariant::Temperate),
+            Kind::BlueEgg => Some(FarmVariant::Cold),
+            Kind::BrownEgg => Some(FarmVariant::Warm),
+            _ => None,
+        }
+    }
+
     pub fn from_item(item: Item) -> Option<Self> {
         match item {
             Item::SNOWBALL => Some(Self::Snowball),
             Item::EGG => Some(Self::Egg),
+            crate::content::farm_variant::BLUE_EGG => Some(Self::BlueEgg),
+            crate::content::farm_variant::BROWN_EGG => Some(Self::BrownEgg),
             crate::world::trial::WIND_CHARGE => Some(Self::WindCharge),
             Item::EXPERIENCE_BOTTLE => Some(Self::ExperienceBottle),
             _ => None,
@@ -69,7 +87,7 @@ impl Kind {
             Kind::LlamaSpit => 0.06,
             Kind::ExperienceBottle => BOTTLE_GRAVITY,
             Kind::WindCharge | Kind::BreezeWindCharge => 0.0,
-            Kind::Snowball | Kind::Egg => 0.03,
+            Kind::Snowball | Kind::Egg | Kind::BlueEgg | Kind::BrownEgg => 0.03,
         }
     }
 }
@@ -420,11 +438,11 @@ impl Thrown {
             self.burst(pos, events);
             return;
         }
-        if self.kind == Kind::Egg
+        if let Some(variant) = self.kind.egg_variant()
             && let count = hatch_count(rng)
             && count > 0
         {
-            events.push(EntityEvent::Hatched { pos, count });
+            events.push(EntityEvent::Hatched { pos, count, variant });
         }
     }
 }

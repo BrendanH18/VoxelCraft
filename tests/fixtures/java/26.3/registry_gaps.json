@@ -117,10 +117,6 @@
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
-    "frosted_ice": {
-      "release": "v0.15",
-      "reason": "Frost Walker temporary ice states are absent; carried enchantment gap (PRO-03)."
-    },
     "golden_dandelion": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
@@ -539,10 +535,6 @@
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "blue_egg": {
-      "release": "v0.15",
-      "reason": "Chicken climate-variant egg items are absent; carried farming gap (assignment proposed)."
-    },
     "blue_shulker_box": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
@@ -551,10 +543,6 @@
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "bolt_armor_trim_smithing_template": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "breeze_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
@@ -562,10 +550,6 @@
     "brewer_pottery_sherd": {
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
-    },
-    "brown_egg": {
-      "release": "v0.15",
-      "reason": "Chicken climate-variant egg items are absent; carried farming gap (assignment proposed)."
     },
     "brown_shulker_box": {
       "release": "v0.16",
@@ -659,10 +643,6 @@
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
-    "coast_armor_trim_smithing_template": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "cod_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
@@ -739,10 +719,6 @@
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "dune_armor_trim_smithing_template": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "elder_guardian_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
@@ -775,10 +751,6 @@
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "eye_armor_trim_smithing_template": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "firework_rocket": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
@@ -786,10 +758,6 @@
     "firework_star": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "flow_armor_trim_smithing_template": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "flow_pottery_sherd": {
       "release": "deferred",
@@ -862,10 +830,6 @@
     "horse_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "host_armor_trim_smithing_template": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "howl_pottery_sherd": {
       "release": "deferred",
@@ -1171,10 +1135,6 @@
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "raiser_armor_trim_smithing_template": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "ravager_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
@@ -1195,10 +1155,6 @@
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
     },
-    "rib_armor_trim_smithing_template": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "salmon_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
@@ -1206,14 +1162,6 @@
     "scrape_pottery_sherd": {
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
-    },
-    "sentry_armor_trim_smithing_template": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
-    "shaper_armor_trim_smithing_template": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "sheaf_pottery_sherd": {
       "release": "deferred",
@@ -1238,10 +1186,6 @@
     "shulker_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "silence_armor_trim_smithing_template": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "silverfish_spawn_egg": {
       "release": "v0.18",
@@ -1271,25 +1215,13 @@
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "snout_armor_trim_smithing_template": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "snow_golem_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "spectral_arrow": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "spider_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "spire_armor_trim_smithing_template": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "squid_spawn_egg": {
       "release": "v0.18",
@@ -1375,10 +1307,6 @@
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
     },
-    "tide_armor_trim_smithing_template": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "trader_llama_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
@@ -1390,10 +1318,6 @@
     "turtle_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "vex_armor_trim_smithing_template": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "vex_spawn_egg": {
       "release": "v0.18",
@@ -1411,10 +1335,6 @@
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "ward_armor_trim_smithing_template": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "warden_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
@@ -1423,17 +1343,9 @@
       "release": "v0.15",
       "reason": "Cartographer map item for an existing destination; carried village-trade integration."
     },
-    "wayfinder_armor_trim_smithing_template": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
-    },
     "white_shulker_box": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "wild_armor_trim_smithing_template": {
-      "release": "v0.15",
-      "reason": "Villages, mounts and carried core equipment/content gaps."
     },
     "witch_spawn_egg": {
       "release": "v0.18",
@@ -1497,22 +1409,6 @@
     }
   },
   "potions": {
-    "infested": {
-      "release": "v0.15",
-      "reason": "Effect-triggered entity/block systems and survival integration are not implemented."
-    },
-    "oozing": {
-      "release": "v0.15",
-      "reason": "Effect-triggered entity/block systems and survival integration are not implemented."
-    },
-    "weaving": {
-      "release": "v0.15",
-      "reason": "Effect-triggered entity/block systems and survival integration are not implemented."
-    },
-    "wind_charged": {
-      "release": "v0.15",
-      "reason": "Effect-triggered entity/block systems and survival integration are not implemented."
-    },
     "luck": {
       "release": "none",
       "reason": "Creative-only potion; no Java survival brewing recipe."

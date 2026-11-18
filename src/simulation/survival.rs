@@ -242,8 +242,14 @@ impl Hunger {
 
     /// Advances regeneration and starvation; returns (health healed,
     /// starvation damage).
-    fn tick(&mut self, dt: f32, health: f32, difficulty: Difficulty, natural_regeneration: bool) -> (f32, f32) {
-        let hurt = health < MAX_HEALTH;
+    fn tick(
+        &mut self,
+        dt: f32,
+        (health, max_health): (f32, f32),
+        difficulty: Difficulty,
+        natural_regeneration: bool,
+    ) -> (f32, f32) {
+        let hurt = health < max_health;
         if natural_regeneration && self.food >= MAX_FOOD && self.saturation > 0.0 && hurt {
             // Full and saturated: heal fast, paying in saturation.
             self.timer += dt;
@@ -329,6 +335,9 @@ pub struct Vitals {
     pub warden: crate::world::sculk::WardenSpawnTracker,
     freeze_clock: f32,
     freeze_tick: u64,
+    /// v0.15 Track D: hits taken under Infested since the session last
+    /// rolled them for silverfish (`InfestedMobEffect.onMobHurt`). Not saved.
+    pub infested_hits: u8,
 }
 
 impl Default for Vitals {
@@ -362,6 +371,7 @@ impl Default for Vitals {
             warden: Default::default(),
             freeze_clock: 0.0,
             freeze_tick: 0,
+            infested_hits: 0,
         }
     }
 }
@@ -386,6 +396,22 @@ impl Vitals {
 
     pub fn is_dead(&self) -> bool {
         self.death.is_some()
+    }
+
+    /// Health saved above 20 under Health Boost: Java reads the effects
+    /// before `Health` (`LivingEntity.readAdditionalSaveData`), so once the
+    /// effects are restored the saved health is clamped to the boosted
+    /// maximum instead of 20.
+    pub fn restore_boosted_health(&mut self, saved: f32) {
+        if self.health > 0.0 && saved > MAX_HEALTH {
+            self.health = saved.min(self.max_health());
+        }
+    }
+
+    /// Java's `getMaxHealth`: the 20 of the `max_health` attribute plus
+    /// Health Boost's 4 per level.
+    pub fn max_health(&self) -> f32 {
+        MAX_HEALTH + self.effects.max_health_bonus()
     }
 
     /// The damage type that killed this player, when it died this session.
@@ -493,6 +519,8 @@ impl Vitals {
             self.death = Some(cause.text.to_string());
             self.killed_by = Some(cause.kind);
             self.time_since_rest = 0;
+        } else if self.effects.has(super::effects::Effect::Infested) {
+            self.infested_hits = self.infested_hits.saturating_add(1);
         }
         taken
     }
@@ -555,7 +583,9 @@ impl Vitals {
         if env.turtle_helmet && !env.head_in_water {
             self.effects.add(Effect::WaterBreathing, 0, 200);
         }
-        self.health = (self.health + effect.heal).min(MAX_HEALTH);
+        // `onAttributeUpdated(MAX_HEALTH)`: Health Boost running out takes
+        // the health above the new maximum with it.
+        self.health = (self.health + effect.heal).min(self.max_health());
         if effect.food > 0 {
             self.hunger.eat(effect.food.min(255) as u8, effect.food as f32 * 2.0);
         }
@@ -575,14 +605,21 @@ impl Vitals {
         }
         let fire_proof = self.effects.has(Effect::FireResistance);
         // Slow falling cancels falls; jump boost forgives a block per level.
-        if self.effects.has(Effect::SlowFalling) && !env.on_ground {
+        // `LivingEntity.travel` resets the fall under Slow Falling or Levitation.
+        if (self.effects.has(Effect::SlowFalling) || self.effects.has(Effect::Levitation)) && !env.on_ground {
             self.fall_peak = self.fall_peak.map(|_| env.y);
         }
         let jump_levels = self.effects.jump_boost() as f64;
 
         // Java accumulates downward moves, even if a bounce rises in between.
         // Keep the retained fall-damage peak separately from critical eligibility.
-        if env.on_ground || env.flying || env.in_water || env.climbing || self.effects.has(Effect::SlowFalling) {
+        if env.on_ground
+            || env.flying
+            || env.in_water
+            || env.climbing
+            || self.effects.has(Effect::SlowFalling)
+            || self.effects.has(Effect::Levitation)
+        {
             self.critical_fall_distance = 0.0;
         } else if let Some(y) = self.previous_fall_y {
             self.critical_fall_distance += f64::from((y - env.y).max(0.0) as f32);
@@ -710,8 +747,9 @@ impl Vitals {
             if env.jumped {
                 h.exhaust(if env.sprinting { EXHAUST_SPRINT_JUMP } else { EXHAUST_JUMP });
             }
-            let (heal, starve) = h.tick(dt, self.health, difficulty, natural_regeneration);
-            self.health = (self.health + heal).min(MAX_HEALTH);
+            let max_health = MAX_HEALTH + self.effects.max_health_bonus();
+            let (heal, starve) = h.tick(dt, (self.health, max_health), difficulty, natural_regeneration);
+            self.health = (self.health + heal).min(max_health);
             hurts.starve = starve;
         }
         // Java's `ServerPlayer.tickRegeneration`, which runs in every game mode and is behind the
@@ -722,8 +760,8 @@ impl Vitals {
             self.peaceful_timer += dt;
             while self.peaceful_timer >= 1.0 {
                 self.peaceful_timer -= 1.0;
-                if self.health < MAX_HEALTH {
-                    self.health = (self.health + 1.0).min(MAX_HEALTH);
+                if self.health < self.max_health() {
+                    self.health = (self.health + 1.0).min(self.max_health());
                 }
                 if self.hunger.saturation < MAX_FOOD {
                     self.hunger.saturation = (self.hunger.saturation + 1.0).min(MAX_FOOD);
@@ -757,7 +795,7 @@ impl Vitals {
             return (0.0, false);
         }
         let (out, changed) = self.effects.add_instance(instance);
-        self.health = (self.health + out.heal).min(MAX_HEALTH);
+        self.health = (self.health + out.heal).min(self.max_health());
         (out.damage, changed)
     }
 

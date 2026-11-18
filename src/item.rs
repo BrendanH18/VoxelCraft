@@ -215,6 +215,12 @@ pub enum Sprite {
     Bowl(Option<[u8; 3]>),
     /// A white egg.
     Egg,
+    /// v0.15 Track D: a blue or brown egg, by shell colour.
+    TintedEgg([u8; 3]),
+    /// v0.15 Track D: a spectral arrow, with a glowing gold head.
+    SpectralArrow,
+    /// v0.15 Track D: an armor trim smithing template, by `TrimPattern` index.
+    TrimTemplate(u8),
     /// A compass face; the needle direction is a separate texture frame.
     Compass,
     /// A clock face; the sun's position is a separate texture frame.
@@ -735,7 +741,14 @@ const AUDIT_SPLASH_POTION: u16 = 1044;
 /// so these start at 361.
 const EXTRA_ITEM: u16 = 361;
 const POTION_COUNT: u16 = crate::potion::Potion::COUNT as u16;
-const _: () = assert!(POTION_COUNT == 41);
+const _: () = assert!(POTION_COUNT == 45);
+/// v0.15 Track D: the wind charged, weaving, oozing and infested potions
+/// (potion indices 41..=44) are items 1650..=1653, their splash potions
+/// 1654..=1657; 1658..=1659 stay reserved.
+const TRACK_D_POTION: u16 = 41;
+const TRACK_D_POTIONS: u16 = 4;
+const TRACK_D_POTION_ITEM: u16 = 1650;
+const _: () = assert!(TRACK_D_POTION + TRACK_D_POTIONS == POTION_COUNT);
 
 impl Item {
     pub const MAP: Self = Self(1255);
@@ -967,6 +980,8 @@ impl Item {
 
     /// v0.15 hostiles: potion contents use Stack::entity_data, not extra item IDs.
     pub const TIPPED_ARROW: Item = Item(1330);
+    /// v0.15 Track D: `Items.SPECTRAL_ARROW`.
+    pub const SPECTRAL_ARROW: Item = Item(1555);
     pub const LINGERING_POTION: Item = Item(1332);
     pub const DRAGON_BREATH: Item = Item(1333);
 
@@ -974,6 +989,8 @@ impl Item {
         let index = potion.0 as u16;
         Item(if index < LEGACY_POTION_COUNT {
             FIRST_POTION + index
+        } else if index >= TRACK_D_POTION {
+            TRACK_D_POTION_ITEM + index - TRACK_D_POTION
         } else if index >= 39 {
             1531 + index - 39
         } else {
@@ -985,6 +1002,8 @@ impl Item {
         let index = potion.0 as u16;
         Item(if index < LEGACY_POTION_COUNT {
             SPLASH_POTION + index
+        } else if index >= TRACK_D_POTION {
+            TRACK_D_POTION_ITEM + TRACK_D_POTIONS + index - TRACK_D_POTION
         } else if index >= 39 {
             1533 + index - 39
         } else {
@@ -994,7 +1013,10 @@ impl Item {
 
     /// The potion of a throwable splash potion item.
     pub fn as_splash_potion(self) -> Option<crate::potion::Potion> {
-        let i = if (1533..1535).contains(&self.0) {
+        let i = if (TRACK_D_POTION_ITEM + TRACK_D_POTIONS..TRACK_D_POTION_ITEM + 2 * TRACK_D_POTIONS).contains(&self.0)
+        {
+            TRACK_D_POTION + self.0 - TRACK_D_POTION_ITEM - TRACK_D_POTIONS
+        } else if (1533..1535).contains(&self.0) {
             39 + self.0 - 1533
         } else if (AUDIT_SPLASH_POTION..AUDIT_SPLASH_POTION + 3).contains(&self.0) {
             LEGACY_POTION_COUNT + self.0 - AUDIT_SPLASH_POTION
@@ -1006,7 +1028,9 @@ impl Item {
 
     /// The potion this item is (a water bottle is one too).
     pub fn as_potion(self) -> Option<crate::potion::Potion> {
-        let i = if (1531..1533).contains(&self.0) {
+        let i = if (TRACK_D_POTION_ITEM..TRACK_D_POTION_ITEM + TRACK_D_POTIONS).contains(&self.0) {
+            TRACK_D_POTION + self.0 - TRACK_D_POTION_ITEM
+        } else if (1531..1533).contains(&self.0) {
             39 + self.0 - 1531
         } else if (AUDIT_POTION..AUDIT_POTION + 3).contains(&self.0) {
             LEGACY_POTION_COUNT + self.0 - AUDIT_POTION
@@ -1105,6 +1129,16 @@ impl Item {
 
     pub fn info(self) -> ItemInfo {
         if let Some(info) = crate::content::harness::item_info(self) {
+            return info;
+        }
+        // v0.15 Track D: spectral arrows, coloured eggs and trim templates.
+        if self == Self::SPECTRAL_ARROW {
+            return item("spectral arrow", Sprite::SpectralArrow);
+        }
+        if let Some(info) = crate::content::farm_variant::item_info(self) {
+            return info;
+        }
+        if let Some(info) = crate::content::trim::item_info(self) {
             return info;
         }
         if let Some(info) = crate::content::bundle::item_info(self) {
@@ -1507,6 +1541,8 @@ impl Item {
         self == Item::EXPERIENCE_BOTTLE
             || crate::equipment::is_uncommon(self)
             || crate::content::banner_patterns::rarity(self) == Some(crate::content::banner_patterns::Rarity::Uncommon)
+            || crate::content::trim::template_pattern(self)
+                .is_some_and(|p| crate::content::trim::rarity(p) == crate::content::trim::Rarity::Uncommon)
     }
 
     /// The horse or nautilus armor this is, and its material.
@@ -1520,6 +1556,8 @@ impl Item {
             || crate::world::jukebox::is_rare(self)
             || crate::weapons::is_rare(self)
             || crate::content::banner_patterns::rarity(self) == Some(crate::content::banner_patterns::Rarity::Rare)
+            || crate::content::trim::template_pattern(self)
+                .is_some_and(|p| crate::content::trim::rarity(p) == crate::content::trim::Rarity::Rare)
     }
 
     /// Java's `DataComponents.ENCHANTMENT_GLINT_OVERRIDE`: drawn with the
@@ -1663,6 +1701,9 @@ impl Item {
             // ten banner pattern items.
             .chain([Self::SPYGLASS, Self::WRITABLE_BOOK, Self::WRITTEN_BOOK])
             .chain(crate::content::banner_patterns::every_item())
+            // v0.15 Track D: the spectral arrow, blue and brown eggs and the
+            // eighteen trim templates.
+            .chain(track_d_items())
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1736,6 +1777,8 @@ fn sprite_index(item: Item) -> Option<u16> {
                 + crate::equipment::ICON_COUNT
                 + (crate::content::harness::ITEM_END - crate::content::harness::ITEM_FIRST),
         ),
+        // v0.15 Track D: its items follow Track B's.
+        i if let Some(k) = track_d_items().position(|t| t.0 == i) => Some(track_d_icon_base() + k as u16),
         // v0.17 build-5000 ITEM-08: the bundles follow the experience bottle.
         i if (crate::content::bundle::ITEM_FIRST..crate::content::bundle::ITEM_END).contains(&i) => Some(
             late_icon_base()
@@ -1877,6 +1920,12 @@ pub const fn icon_count() -> u32 {
         + (crate::content::bundle::ITEM_END - crate::content::bundle::ITEM_FIRST) as u32
         + 3 // v0.15 Track B: spyglass, book and quill, written book.
         + (crate::content::banner_patterns::ITEM_END - crate::content::banner_patterns::ITEM_FIRST) as u32
+        + TRACK_D_ICONS
+}
+
+/// v0.15 Track D's first icon, after Track B's.
+const fn track_d_icon_base() -> u16 {
+    track_b_icon_base() + 3 + (crate::content::banner_patterns::ITEM_END - crate::content::banner_patterns::ITEM_FIRST)
 }
 
 /// v0.15 Track B's first icon, after the bundles.
@@ -1888,6 +1937,14 @@ const fn track_b_icon_base() -> u16 {
         + 1
         + (crate::content::bundle::ITEM_END - crate::content::bundle::ITEM_FIRST)
 }
+
+/// v0.15 Track D's items, in icon order.
+fn track_d_items() -> impl Iterator<Item = Item> {
+    [Item::SPECTRAL_ARROW, crate::content::farm_variant::BLUE_EGG, crate::content::farm_variant::BROWN_EGG]
+        .into_iter()
+        .chain(crate::content::trim::all())
+}
+const TRACK_D_ICONS: u32 = 3 + (crate::content::trim::ITEM_END - crate::content::trim::ITEM_FIRST) as u32;
 
 /// The fermented spider eye's icon: icons appended in v0.14 follow it.
 const fn late_icon_base() -> u16 {

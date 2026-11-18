@@ -2064,6 +2064,17 @@ impl Game {
         push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
         crate::render::signs::text(&self.world, camera, verts);
         if !self.camera.first_person() {
+            let glow = verts.glow_start();
+            let look = Self::stamp_look(
+                dial,
+                self.hand.appearance(
+                    &self.session.vitals,
+                    (self.body.actions.eat_timer / EAT_TIME) as f32,
+                    alpha,
+                    self.session.inventory.armor,
+                    self.session.inventory.get(self.body.actions.selected),
+                ),
+            );
             crate::entity::model::build_player(
                 &self.session.player,
                 eye - (self.session.player.eye() - self.session.player.pos),
@@ -2073,18 +2084,10 @@ impl Game {
                     self.world.block_light(eye.floor().as_ivec3()) as f32 / 15.0,
                 ),
                 scene.time,
-                Self::stamp_look(
-                    dial,
-                    self.hand.appearance(
-                        &self.session.vitals,
-                        (self.body.actions.eat_timer / EAT_TIME) as f32,
-                        alpha,
-                        self.session.inventory.armor,
-                        self.session.inventory.get(self.body.actions.selected),
-                    ),
-                ),
+                look,
                 verts,
             );
+            verts.glow_end(glow, look.glowing);
         }
         self.renderer.set_entities(verts);
         benchmark::mark(&mut self.benchmark, 3);
@@ -2271,6 +2274,7 @@ fn push_avatars(
         // A body around the camera (players can share a spot) would fill the view.
         let inside = (camera - feet).with_y(0.0).length() < 0.4 && (feet.y..feet.y + 1.9).contains(&camera.y);
         if !inside && feet.distance_squared(camera) < (fog_end as f64 + 2.0).powi(2) {
+            let glow = verts.glow_start();
             crate::entity::model::build_player(
                 player,
                 feet,
@@ -2283,6 +2287,7 @@ fn push_avatars(
                 appearance,
                 verts,
             );
+            verts.glow_end(glow, appearance.glowing);
             if appearance.death.is_none() && !appearance.invisible {
                 crate::entity::model::build_player_name(player, feet, name, camera, verts);
             }

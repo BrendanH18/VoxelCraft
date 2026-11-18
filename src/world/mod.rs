@@ -53,6 +53,7 @@ mod foraging;
 pub mod forms;
 pub mod fortress;
 pub mod frog_blocks;
+pub mod frosted_ice;
 pub mod furnace;
 pub mod gadgets;
 pub mod geode;
@@ -1002,6 +1003,7 @@ impl World {
         self.track_lightning_rod(p, old, block);
         self.track_frog_blocks(p, old, block);
         self.track_sniffer_egg(p, old, block);
+        self.track_frosted_ice(p, old, block);
         self.track_jukebox(p, old, block);
         if old != block {
             self.scaffolding_changed(p);

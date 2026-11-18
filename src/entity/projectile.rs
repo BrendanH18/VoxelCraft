@@ -24,6 +24,9 @@ pub struct Arrow {
     pub tipped: bool,
     pub potion: Option<crate::potion::Potion>,
     pub custom_effect: Option<(crate::simulation::effects::Effect, u8, u32)>,
+    /// v0.15 Track D: a spectral arrow (`SpectralArrow`), which gives what
+    /// it hits Glowing for 200 ticks and picks up as a spectral arrow.
+    pub spectral: bool,
     pub pos: DVec3,
     /// Position at the start of the last simulation step, for rendering.
     pub previous_pos: DVec3,
@@ -102,6 +105,7 @@ impl Arrow {
             tipped: false,
             potion: None,
             custom_effect: None,
+            spectral: false,
             pos: from,
             previous_pos: from,
             vel,
@@ -132,6 +136,7 @@ impl Arrow {
             tipped: false,
             potion: None,
             custom_effect: None,
+            spectral: false,
             pos: eye + dir * 0.3,
             previous_pos: eye + dir * 0.3,
             vel,
@@ -486,7 +491,7 @@ impl Arrow {
                     knockback: push.as_vec3(),
                     cause: if self.from_player { crate::simulation::damage::Cause::PLAYER_ARROW } else { self.cause },
                 });
-                if self.potion.is_some() || self.custom_effect.is_some() {
+                if self.potion.is_some() || self.custom_effect.is_some() || self.spectral {
                     events.push(EntityEvent::ArrowEffectsStart { player: hit.id });
                     self.effects_on_player(hit.id, events);
                     events.push(EntityEvent::ArrowEffectsEnd);

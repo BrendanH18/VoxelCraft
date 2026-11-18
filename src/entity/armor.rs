@@ -69,6 +69,9 @@ pub struct Worn {
     pub kind: ArmorKind,
     pub glint: bool,
     pub dye: Option<[u8; 3]>,
+    /// v0.15 Track D: the stack's armor trim, as its pattern and the
+    /// colour its material draws in on this armor.
+    pub trim: Option<(crate::inventory::components::TrimPattern, [u8; 3])>,
 }
 
 impl Worn {
@@ -79,6 +82,7 @@ impl Worn {
             kind: ArmorKind::of(material),
             glint: !stack.enchants.is_empty(),
             dye: crate::inventory::components::dyed_color(stack),
+            trim: stack.trim.map(|t| (t.pattern, crate::content::trim::layer_colour(t, material))),
         })
     }
 }
@@ -93,8 +97,22 @@ pub struct Equipped {
 /// Java's undyed leather colour (`#A06540`, `DyedItemColor.LEATHER_COLOR`).
 pub const LEATHER_DYE: [u8; 3] = crate::inventory::components::LEATHER_COLOR;
 
-/// Skin occupies array layer 0. Two sheets per material, then leather overlays.
-pub const ARRAY_LAYERS: u32 = 19;
+/// Skin occupies array layer 0. Two sheets per material, then leather
+/// overlays, then (v0.15 Track D) an outer and inner sheet per trim pattern.
+pub const ARRAY_LAYERS: u32 = TRIM_LAYERS + 2 * 18;
+/// The first trim sheet.
+const TRIM_LAYERS: u32 = 19;
+
+/// The armor-sheet layer of a trim pattern's mask: the outer sheet (helmet,
+/// chestplate, boots) or the inner one (leggings).
+pub fn trim_layer(pattern: crate::inventory::components::TrimPattern, inner: bool) -> u16 {
+    TRIM_LAYERS as u16 + pattern as u16 * 2 + u16::from(inner)
+}
+
+/// The vertex colour of a trim layer: its material's colour, without glint.
+pub fn trim_tint(colour: [u8; 3]) -> [u8; 4] {
+    [colour[0], colour[1], colour[2], 0]
+}
 
 pub fn layer(kind: ArmorKind, inner: bool) -> u16 {
     match kind {
@@ -173,7 +191,59 @@ pub fn layer_pixels() -> Vec<u8> {
     }
     paint(&mut pixels, leather_overlay(false), ArmorKind::Leather, false, true);
     paint(&mut pixels, leather_overlay(true), ArmorKind::Leather, true, true);
+    for pattern in crate::inventory::components::TrimPattern::ALL {
+        for inner in [false, true] {
+            paint_trim(&mut pixels, pattern, inner);
+        }
+    }
     pixels
+}
+
+/// A trim pattern's grey mask over the parts its sheet covers; the
+/// material's colour tints it when drawn.
+fn paint_trim(pixels: &mut [u8], pattern: crate::inventory::components::TrimPattern, inner: bool) {
+    let base = (trim_layer(pattern, inner) as usize - 1) * 64 * 64 * 4;
+    for_each_texel(inner, |part, face, [x, y], [u, v], h| {
+        let _ = (part, face, h);
+        if let Some(grey) = crate::content::trim::mask(pattern, inner, [u + x, v + y]) {
+            let i = base + ((v + y) * 64 + u + x) * 4;
+            pixels[i..i + 3].copy_from_slice(&[grey; 3]);
+            pixels[i + 3] = 255;
+        }
+    });
+}
+
+/// Every texel of the sheet's covered faces: its part, face, offset in the
+/// face, the face's corner in the 64x64 net and the part's height.
+fn for_each_texel(inner: bool, mut f: impl FnMut(Part, usize, [usize; 2], [usize; 2], usize)) {
+    let parts = [
+        ([0usize, 0], [8usize, 8, 8], Part::Head),
+        ([16, 16], [8, 12, 4], Part::Body),
+        ([40, 16], [4, 12, 4], Part::Arm),
+        ([32, 48], [4, 12, 4], Part::Arm),
+        ([0, 16], [4, 12, 4], Part::Leg),
+        ([16, 48], [4, 12, 4], Part::Leg),
+    ];
+    for (uv, size, part) in parts {
+        let [w, h, d] = size;
+        let faces = [
+            [uv[0] + d, uv[1], w, d],
+            [uv[0] + d + w, uv[1], w, d],
+            [uv[0], uv[1] + d, d, h],
+            [uv[0] + d, uv[1] + d, w, h],
+            [uv[0] + d + w, uv[1] + d, d, h],
+            [uv[0] + 2 * d + w, uv[1] + d, w, h],
+        ];
+        for (face, [u, v, width, height]) in faces.into_iter().enumerate() {
+            for y in 0..height {
+                for x in 0..width {
+                    if covered(part, inner, face, y, h) {
+                        f(part, face, [x, y], [u, v], h);
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -323,8 +393,15 @@ mod tests {
             assert!(!seen[i]);
             seen[i] = true;
         }
+        for pattern in crate::inventory::components::TrimPattern::ALL {
+            for inner in [false, true] {
+                let i = trim_layer(pattern, inner) as usize;
+                assert!(!seen[i], "{pattern:?} {inner}");
+                seen[i] = true;
+            }
+        }
         assert!(seen.iter().all(|s| *s));
-        assert_eq!(layer_pixels().len(), 18 * 64 * 64 * 4);
+        assert_eq!(layer_pixels().len(), (ARRAY_LAYERS as usize - 1) * 64 * 64 * 4);
         assert_eq!((leather_overlay(false), leather_overlay(true)), (13, 14));
         assert_eq!((layer(ArmorKind::Turtle, false), layer(ArmorKind::Turtle, true)), (15, 16));
     }
@@ -350,9 +427,9 @@ mod tests {
         let boots = Stack::new(Item::armor(ArmorPiece::Boots, ArmorMaterial::Leather), 1);
         let plate = Stack::new(Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Netherite), 1);
         let worn = from_stacks(&[Some(helmet), Some(plate), None, Some(boots)]);
-        assert_eq!(worn[0], Some(Worn { kind: ArmorKind::Diamond, glint: true, dye: None }));
-        assert_eq!(worn[1], Some(Worn { kind: ArmorKind::Netherite, glint: false, dye: None }));
-        assert_eq!(worn[3], Some(Worn { kind: ArmorKind::Leather, glint: false, dye: None }));
+        assert_eq!(worn[0], Some(Worn { kind: ArmorKind::Diamond, glint: true, dye: None, trim: None }));
+        assert_eq!(worn[1], Some(Worn { kind: ArmorKind::Netherite, glint: false, dye: None, trim: None }));
+        assert_eq!(worn[3], Some(Worn { kind: ArmorKind::Leather, glint: false, dye: None, trim: None }));
         assert!(worn[2].is_none());
     }
 

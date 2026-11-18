@@ -1023,6 +1023,21 @@ fn build_stand(d: &Decor, rel: Vec3, light: Light, out: &mut EntityMesh) {
             ArmorPiece::Boots => ([-4.4, 0.8, -2.4], [4.4, 5.0, 2.4]),
         };
         push_cuboid(out, &cube(min, max, c, 14), &xf, rot, light, ([0.; 3], 0.), 13.0);
+        // v0.15 Track D: an armor trim as bands in its material's colour,
+        // placed by its pattern, just outside the shell.
+        if let (Some(trim), Some((_, material))) = (stack.trim, stack.item.as_armor()) {
+            let colour = crate::content::trim::layer_colour(trim, material);
+            let k = trim.pattern as u8;
+            let (lo, hi) = (min[1], max[1]);
+            let at = lo + (hi - lo) * (0.2 + 0.15 * f32::from(k % 5));
+            let band = ([min[0] - 0.15, at, min[2] - 0.15], [max[0] + 0.15, at + 0.8, max[2] + 0.15]);
+            push_cuboid(out, &cube(band.0, band.1, colour, 8), &xf, rot, light, ([0.; 3], 0.), 14.0);
+            if k % 2 == 1 {
+                let x = (min[0] + max[0]) / 2.0 + f32::from(k % 3) - 1.0;
+                let stripe = ([x - 0.4, lo + 0.3, min[2] - 0.2], [x + 0.4, hi - 0.3, max[2] + 0.2]);
+                push_cuboid(out, &cube(stripe.0, stripe.1, colour, 8), &xf, rot, light, ([0.; 3], 0.), 15.0);
+            }
+        }
     }
 }
 

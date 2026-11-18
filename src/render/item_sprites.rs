@@ -267,19 +267,22 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
         }
     };
     let out = match sprite {
-        Sprite::Egg => {
+        Sprite::Egg | Sprite::TintedEgg(_) => {
             let egg = |x: i32, y: i32| {
                 let (px, py) = centre(x, y);
                 let nx = (px - 8.0) / 3.2;
                 let ny = (py - 8.2) / 4.4;
                 nx * nx + ny * ny <= 1.0
             };
-            shaded(&egg, x, y, [244, 236, 214], 0.04).map(
-                |p| {
-                    if (x + y) % 5 == 0 { tint([214, 168, 92], 0.9) } else { p }
-                },
-            )
+            // v0.15 Track D: blue and brown eggs share the white egg's shape,
+            // speckled in a deeper shade of their shell.
+            let (shell, speck) = match sprite {
+                Sprite::TintedEgg(c) => (c, c.map(|v| (u16::from(v) * 7 / 10) as u8)),
+                _ => ([244, 236, 214], [214, 168, 92]),
+            };
+            shaded(&egg, x, y, shell, 0.04).map(|p| if (x + y) % 5 == 0 { tint(speck, 0.9) } else { p })
         }
+        Sprite::TrimTemplate(pattern) => trim_template(pattern, x, y),
         Sprite::Bowl(soup) => {
             let bowl = |x: i32, y: i32| (3..=12).contains(&x) && (8..=13).contains(&y) && y < 17 - (x - 7).abs();
             if (4..=11).contains(&x)
@@ -1174,7 +1177,7 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             }
         }
         Sprite::Clock => compass_face(0, 64, x, y, [236, 214, 150], [250, 196, 48]),
-        Sprite::Arrow | Sprite::TippedArrow => {
+        Sprite::Arrow | Sprite::TippedArrow | Sprite::SpectralArrow => {
             let head = |x: i32, y: i32| {
                 let (u, v) = (x + y, x - y);
                 (6..=11).contains(&v) && (u - 15).abs() <= (12 - v) / 2
@@ -1187,14 +1190,74 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 &head,
                 x,
                 y,
-                if matches!(sprite, Sprite::TippedArrow) { [162, 99, 181] } else { [160, 160, 160] },
+                match sprite {
+                    Sprite::TippedArrow => [162, 99, 181],
+                    Sprite::SpectralArrow => [246, 206, 72],
+                    _ => [160, 160, 160],
+                },
                 0.02,
             )
-            .or_else(|| (x + y == 15 && (1..=10).contains(&x)).then_some(tint(HANDLE, 1.0)))
-            .or_else(|| fletch(x, y).then_some(tint([235, 235, 235], if (x + y) % 2 == 0 { 1.0 } else { 0.8 })))
+            .or_else(|| {
+                (x + y == 15 && (1..=10).contains(&x)).then_some(if matches!(sprite, Sprite::SpectralArrow) {
+                    // Glowstone-dusted shaft.
+                    tint([226, 186, 82], if x % 3 == 0 { 1.15 } else { 0.95 })
+                } else {
+                    tint(HANDLE, 1.0)
+                })
+            })
+            .or_else(|| {
+                let feather = if matches!(sprite, Sprite::SpectralArrow) { [250, 228, 140] } else { [235, 235, 235] };
+                fletch(x, y).then_some(tint(feather, if (x + y) % 2 == 0 { 1.0 } else { 0.8 }))
+            })
         }
     };
     out.unwrap_or(CLEAR)
+}
+
+/// v0.15 Track D: an armor trim smithing template. Each pattern has its own
+/// original tablet colour, chipped at the rim, with a glyph sampled from the
+/// pattern's armor mask in a lighter shade.
+fn trim_template(pattern: u8, x: i32, y: i32) -> Option<Rgba> {
+    const BODY: [[u8; 3]; 18] = [
+        [176, 104, 70],  // bolt: copper
+        [92, 112, 128],  // coast: slate
+        [204, 180, 120], // dune: sand
+        [96, 156, 132],  // eye: teal
+        [120, 160, 200], // flow: sky
+        [150, 92, 70],   // host: clay
+        [168, 108, 80],  // raiser
+        [112, 44, 44],   // rib: nether red
+        [104, 104, 112], // sentry: cobble
+        [140, 96, 64],   // shaper
+        [44, 60, 72],    // silence: deep dark
+        [64, 52, 56],    // snout: blackstone
+        [150, 110, 160], // spire: purpur
+        [72, 150, 140],  // tide: prismarine
+        [132, 140, 150], // vex
+        [36, 72, 84],    // ward
+        [176, 128, 92],  // wayfinder
+        [86, 120, 70],   // wild: moss
+    ];
+    let body = BODY[usize::from(pattern) % 18];
+    let tablet = |x: i32, y: i32| match y {
+        1 | 13 => (4..=12).contains(&x),
+        2..=12 => (3..=13).contains(&x),
+        14 => (6..=10).contains(&x),
+        _ => false,
+    };
+    if !tablet(x, y) {
+        return None;
+    }
+    let rim = !tablet(x - 1, y) || !tablet(x + 1, y) || !tablet(x, y - 1) || !tablet(x, y + 1);
+    if rim {
+        return Some(tint(body, 0.45));
+    }
+    let p = crate::inventory::components::TrimPattern::ALL[usize::from(pattern) % 18];
+    // A 7x7 window of the pattern's mask, from the chestplate front.
+    let glyph = (5..=11).contains(&x)
+        && (4..=10).contains(&y)
+        && voxelcraft::content::trim::mask(p, false, [20 + (x - 5) as usize, 20 + (y - 4) as usize]).is_some();
+    Some(if glyph { tint(body, 1.45) } else { tint(body, 0.88 + noise(x, y, 43) * 0.2) })
 }
 
 /// The v0.12 decoration items: a frame (golden for the glow frame) round

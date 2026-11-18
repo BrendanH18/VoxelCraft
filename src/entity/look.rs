@@ -31,6 +31,13 @@ impl Mob {
         if let Some(p) = &self.phantom {
             v["phantom_size"] = json!(p.size);
         }
+        // v0.15 Track D: a farm animal's climate variant and Glowing.
+        if super::animals::has_farm_variant(self.kind) {
+            v["farm_variant"] = json!(self.farm_variant().name());
+        }
+        if self.effects.glowing() {
+            v["glowing"] = json!(true);
+        }
         if let Some(stack) = self.wolf_armor.as_ref().and_then(|s| s.armor) {
             v["wolf_armor"] = json!(crate::inventory::stack_to_string(Some(stack)));
         }
@@ -129,6 +136,15 @@ impl Mob {
     pub fn apply_look(&mut self, v: &Value) {
         if let Some(c) = dye(&v["wool"]) {
             self.wool_color = c;
+        }
+        if let Some(variant) = v["farm_variant"].as_str().and_then(crate::content::farm_variant::FarmVariant::from_name)
+        {
+            self.set_farm_variant(variant);
+        }
+        if v["glowing"] == true {
+            self.effects.add(crate::simulation::effects::Effect::Glowing, 0, crate::simulation::effects::INFINITE);
+        } else {
+            self.effects.remove(crate::simulation::effects::Effect::Glowing);
         }
         if let Some(p) = &mut self.phantom {
             p.size = v["phantom_size"].as_u64().unwrap_or(0).min(64) as u8;

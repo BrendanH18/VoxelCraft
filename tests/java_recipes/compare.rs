@@ -773,8 +773,8 @@ pub fn compare_stonecutting(r: &Reference) -> Section {
     s
 }
 
-/// Compares the smithing transforms both ways; trims are a mechanic
-/// VoxelCraft doesn't have.
+/// Compares the smithing transforms and (v0.15 Track D) the trim recipes
+/// both ways.
 pub fn compare_smithing(r: &Reference) -> Section {
     use voxelcraft::smithing;
     let mut s = Section::default();
@@ -805,16 +805,51 @@ pub fn compare_smithing(r: &Reference) -> Section {
         }
     }
     for item in every_item(&r.names) {
-        if smithing::is_base(Item(item)) && !bases.contains(&item) {
+        if smithing::is_upgrade_base(Item(item)) && !bases.contains(&item) {
             s.failures.push(format!("invented smithing base {}", r.names.name(Item(item))));
         }
     }
+    let (mut templates, mut trim_bases, mut additions) = (BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
     for (id, recipe) in r.recipes("smithing_trim") {
         let key = format!("smithing_trim/{id}");
-        if r.ingredient(&recipe["template"]).is_none() {
+        let slots = ["template", "base", "addition"].map(|k| r.ingredient(&recipe[k]));
+        let pattern = recipe["pattern"].as_str().and_then(voxelcraft::inventory::components::TrimPattern::from_name);
+        let ([Some(template), Some(base), Some(addition)], Some(pattern)) = (slots, pattern) else {
             s.unregistered.insert(key, r.missing_names(recipe));
-        } else {
-            s.special.push(key);
+            continue;
+        };
+        s.compared += 1;
+        let mut ok = true;
+        for &t in &template {
+            templates.insert(t);
+            for &b in &base {
+                trim_bases.insert(b);
+                for &a in &addition {
+                    additions.insert(a);
+                    let got = smithing::upgrade(Stack::new(Item(t), 1), Stack::new(Item(b), 1), Stack::new(Item(a), 1));
+                    let want = voxelcraft::content::trim::provides_material(Item(a))
+                        .map(|material| voxelcraft::inventory::components::Trim { pattern, material });
+                    if got.map(|s| (s.item, s.count, s.trim)) != Some((Item(b), 1, want)) || want.is_none() {
+                        s.failures.push(format!("{key}: {} gives {got:?}", r.names.name(Item(b))));
+                        ok = false;
+                    }
+                }
+            }
+        }
+        if ok {
+            s.matched += 1;
+        }
+    }
+    for item in every_item(&r.names) {
+        let i = Item(item);
+        if voxelcraft::content::trim::template_pattern(i).is_some() && !templates.contains(&item) {
+            s.failures.push(format!("invented trim template {}", r.names.name(i)));
+        }
+        if voxelcraft::inventory::components::trimmable(i) && !trim_bases.contains(&item) {
+            s.failures.push(format!("invented trimmable armor {}", r.names.name(i)));
+        }
+        if voxelcraft::content::trim::provides_material(i).is_some() && !additions.contains(&item) {
+            s.failures.push(format!("invented trim material {}", r.names.name(i)));
         }
     }
     s

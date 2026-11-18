@@ -937,6 +937,30 @@ unsaved `EntityEvent::MobArrow` and `MobGrief`. Mob records gain the
 life, ravager timers) and `can_pick_up_loot`. See the
 [Track A record](verification/2026-11-18-v0.15-illagers.md).
 
+**Track D allocation** (2026-11-18, implemented, unverified;
+[record](verification/2026-11-18-v0.15-items-effects.md)):
+
+| Kind | Used | Meaning |
+| --- | --- | --- |
+| Block states | 12256–12259 | Frosted ice ages 0–3 (`world::frosted_ice`); 12260–12287 stay unregistered |
+| Items | 1555 | Spectral arrow (`Item::SPECTRAL_ARROW`) |
+| Items | 1559, 1560 | Blue egg, brown egg (`content::farm_variant`) |
+| Items | 1601–1618 | The 18 armor trim smithing templates in `TrimPattern` order (`content::trim`) |
+| Items | 1650–1653, 1654–1657 | Wind charged, weaving, oozing and infested potions, then their splash potions; 1658–1659 stay unregistered |
+| Texture layers | 4000–4003 | Frosted ice ages 0–3; 4004–4039 stay unused |
+| Armor sheet layers | 19–54 | Trim pattern masks, outer then inner sheet per pattern (`entity::armor::trim_layer`; not saved) |
+
+Appended orderings: `POTIONS` indices 41–44 (`wind_charged`, `weaving`,
+`oozing`, `infested`; saved stacks keep the index in `entity_data` for
+lingering potions and tipped arrows), `thrown::Kind::BlueEgg` and
+`BrownEgg` (LAN indices 6 and 7), the item icons after the bundles
+(spectral arrow, blue egg, brown egg, then the 18 templates),
+`Sprite::TintedEgg`, `SpectralArrow` and `TrimTemplate`, and the mob save
+key `farm_variant` (Java's variant name; absent for temperate and older
+records). The charged-crossbow `entity_data` value `u32::MAX - 1`
+(`entity::SPECTRAL_BOLT`) marks a spectral bolt. No `MobKind`, `Effect` or
+sound is added; the four effects were registered in v0.14.
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

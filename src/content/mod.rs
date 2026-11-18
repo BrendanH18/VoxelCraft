@@ -7,6 +7,7 @@ pub mod books;
 pub mod bundle;
 pub mod compost;
 pub mod consumption;
+pub mod farm_variant;
 pub mod fishing;
 pub mod fuel;
 pub mod harness;
@@ -14,6 +15,7 @@ pub mod interaction;
 pub mod mining;
 pub mod placement;
 pub mod spyglass;
+pub mod trim;
 
 /// All implemented plank ingredients. Oak stays first for recipe-book previews.
 /// Nether planks are valid ingredients but explicitly are not furnace fuels.

@@ -1209,6 +1209,9 @@ pub struct Mob {
     pub head_pitch: f32,
     pub health: f32,
     pub effects: crate::simulation::effects::Effects,
+    /// v0.15 Track D: silverfish Infested rolled on hits this tick, spawned
+    /// by `Entities::update_world` (`InfestedMobEffect.onMobHurt`). Not saved.
+    pub(crate) infested: u8,
     /// Seconds of hurt flash left.
     pub hurt: f32,
     /// Seconds since death, while the death animation plays.
@@ -1346,6 +1349,7 @@ impl Mob {
         let health = mount.as_ref().map_or(kind.max_health(), |s| s.max_health);
         Self {
             simulation_active: true,
+            infested: 0,
             mount,
             kind,
             name: Default::default(),
@@ -1796,6 +1800,15 @@ impl Mob {
             _ => amount,
         };
         self.health -= self.effects.absorb(amount);
+        // `InfestedMobEffect.onMobHurt`, after a hit that didn't kill (a
+        // death clears the effects first).
+        if self.health > 0.0
+            && self.effects.has(crate::simulation::effects::Effect::Infested)
+            && rng.next_f32() <= crate::simulation::effects::INFESTED_CHANCE
+        {
+            let (lo, hi) = crate::simulation::effects::INFESTED_SILVERFISH;
+            self.infested = self.infested.saturating_add((lo + rng.next_int(hi - lo + 1)) as u8);
+        }
         // `Zombie.hurtServer` calls reinforcements after any accepted hit.
         if super::zombie::calls_reinforcements(self.kind) && self.reinforce_call.is_none() {
             self.reinforce_call = Some(None);
@@ -1907,9 +1920,15 @@ impl Mob {
             s.hit_cooldown = (s.hit_cooldown - dtf).max(0.0);
         }
         if self.alive() {
+            let boosted = self.effects.max_health_bonus();
             let outcome = self.effects.tick(dtf);
             if outcome.heal > 0.0 {
                 self.health = (self.health + outcome.heal).min(self.max_health());
+            }
+            // `onAttributeUpdated(MAX_HEALTH)` when Health Boost runs out.
+            if self.effects.max_health_bonus() < boosted {
+                let base = self.mount.as_ref().map_or(self.max_health(), |s| s.max_health);
+                self.health = self.health.min(base + self.effects.max_health_bonus());
             }
             let damage = outcome.damage + outcome.wither + outcome.poison.min((self.health - 1.0).max(0.0));
             if damage > 0.0 {
@@ -2142,7 +2161,7 @@ impl Mob {
             self.egg_timer -= dtf;
             if self.egg_timer <= 0.0 {
                 self.egg_timer = rng.range(300.0, 600.0);
-                events.push(EntityEvent::LaidEgg { pos: self.pos });
+                events.push(EntityEvent::LaidEgg { pos: self.pos, variant: self.farm_variant() });
             }
         }
         // A lethal Thorns response is emitted during thinking, before the
@@ -3266,7 +3285,14 @@ impl Mob {
                 self.vel.x += (target.x - self.vel.x) * k;
                 self.vel.z += (target.z - self.vel.z) * k;
             }
-            self.vel.y = if super::mounts::equine(self.kind) {
+            self.vel.y = if let Some(amplifier) = self.effects.levitation() {
+                // v0.15 Track D: `LivingEntity.travelInAir` eases the motion
+                // toward 0.05 blocks a tick per level (0.2 of the gap a tick,
+                // then 0.98 drag) instead of falling.
+                let ticks = dt * 20.0;
+                let target = 0.05 * (f64::from(amplifier) + 1.0) * 20.0;
+                (target + (self.vel.y - target) * 0.8f64.powf(ticks)) * 0.98f64.powf(ticks)
+            } else if super::mounts::equine(self.kind) {
                 // Java: gravity 0.08 blocks/tick and vertical drag 0.98.
                 ((self.vel.y - 32.0 * dt) * 0.98f64.powf(dt * 20.)).max(-78.)
             } else {

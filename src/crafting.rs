@@ -23,6 +23,7 @@ mod crops;
 mod harness;
 mod music;
 mod sculk;
+mod track_d;
 pub use copper::stonecutting as copper_stonecutting;
 pub mod colour;
 pub mod stonecutting;
@@ -354,7 +355,8 @@ const SNOWBALL: Ingredient = &[Item::SNOWBALL];
 const PUMPKIN: Ingredient = &[b(Block::PUMPKIN)];
 const MILK: Ingredient = &[Item::MILK_BUCKET];
 const SUGAR: Ingredient = &[Item::SUGAR];
-const EGG: Ingredient = &[Item::EGG];
+/// Java's `#eggs`: the white egg and v0.15 Track D's blue and brown eggs.
+const EGG: Ingredient = &[Item::EGG, crate::content::farm_variant::BLUE_EGG, crate::content::farm_variant::BROWN_EGG];
 const WHEAT: Ingredient = &[Item::WHEAT];
 const STRING: Ingredient = &[Item::STRING];
 
@@ -705,6 +707,7 @@ pub fn recipes() -> &'static [Recipe] {
         harness::add(&mut r);
         bundle::add(&mut r);
         workstations::add(&mut r);
+        track_d::add(&mut r);
         r
     })
 }

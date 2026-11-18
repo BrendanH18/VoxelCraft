@@ -74,6 +74,9 @@ pub struct PlayerSession {
     hands: hands::State,
     mining: mining::State,
     weapons: weapons::State,
+    /// v0.15 Track D: the block the player last stood in, for Frost
+    /// Walker's `location_changed` effect (Java's `lastPos`, not saved).
+    frost_last: Option<IVec3>,
 }
 
 /// Where a sleeper lay down: the bed's head block and the spot on it.
@@ -188,6 +191,7 @@ impl PlayerSession {
             hands: Default::default(),
             mining: Default::default(),
             weapons: Default::default(),
+            frost_last: None,
         }
     }
 
@@ -218,6 +222,7 @@ impl PlayerSession {
             hands: Default::default(),
             mining: Default::default(),
             weapons: Default::default(),
+            frost_last: None,
         }
     }
 
@@ -245,6 +250,10 @@ impl PlayerSession {
         let pos = self.player.pos;
         // `tellNeutralMobsThatIDied`, gated on `forgive_dead_players`.
         entities.player_died(self.id, pos);
+        // v0.15 Track D: `triggerOnDeathMobEffects` (Wind Charged, Weaving,
+        // Oozing); the effects themselves end with the respawn.
+        entities.player_death_effects(&self.vitals.effects, pos);
+        self.vitals.infested_hits = 0;
         if keep_inventory || self.mode == GameMode::Spectator {
             for stack in extra {
                 let left = self.inventory.add_stack(stack);
@@ -262,6 +271,38 @@ impl PlayerSession {
         }
         let xp = self.vitals.xp.die();
         entities.spawn_xp(pos, xp);
+    }
+
+    /// v0.15 Track D: rolls the silverfish of hits taken under Infested
+    /// since the last call. Every adapter calls it once a tick after damage.
+    pub fn settle_effect_hooks(&mut self, entities: &mut Entities) {
+        let hits = std::mem::take(&mut self.vitals.infested_hits);
+        if hits > 0 && !self.vitals.is_dead() {
+            let at = self.player.pos + DVec3::Y * 0.9;
+            entities.player_infested_hits(hits, at, self.player.forward().as_dvec3());
+        }
+    }
+
+    /// v0.15 Track D: Frost Walker (`enchantment/frost_walker.json`'s
+    /// `location_changed` effect): when the player moves into another block
+    /// while on the ground and not riding, still water around the feet
+    /// freezes into frosted ice. Every adapter calls it once a tick.
+    pub fn frost_walk(&mut self, world: &mut crate::world::World, entities: &Entities) -> usize {
+        let cell = self.player.pos.floor().as_ivec3();
+        if self.frost_last == Some(cell) {
+            return 0;
+        }
+        self.frost_last = Some(cell);
+        let level = crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::FrostWalker);
+        if level == 0
+            || !self.player.on_ground
+            || self.player.vehicle.is_some()
+            || self.mode == GameMode::Spectator
+            || self.vitals.is_dead()
+        {
+            return 0;
+        }
+        world.frost_walk(self.player.pos, level, |p| entities.cell_occupied(p))
     }
 
     /// Java's respawn (`ServerPlayer.restoreFrom` after a death): a fresh

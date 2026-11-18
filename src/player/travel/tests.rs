@@ -310,6 +310,64 @@ fn cobwebs_hold_a_falling_player() {
     assert!(ticks > 40, "the web slows the fall to a crawl: {ticks} ticks");
 }
 
+/// v0.15 Track D: Weaving (`WebBlock.entityInside`) holds the player less:
+/// (0.5, 0.25, 0.5) instead of (0.25, 0.05, 0.25).
+#[test]
+fn weaving_slips_through_cobwebs_faster() {
+    use crate::simulation::effects::{Effect, Effects};
+    let fall = |weaving: bool| {
+        let mut world = ground();
+        for y in FLOOR..FLOOR + 3 {
+            world.set(IVec3::new(0, y, 0), Block::COBWEB);
+        }
+        let mut effects = Effects::default();
+        if weaving {
+            effects.add(Effect::Weaving, 0, 3600);
+        }
+        let mut p = Player::new(DVec3::new(0.5, FLOOR as f64 + 4.0, 0.5));
+        let mut ticks = 0;
+        while !p.on_ground && ticks < 1000 {
+            p.apply_effects(&effects);
+            p.tick(MoveInput::default(), &world);
+            ticks += 1;
+        }
+        ticks
+    };
+    let (plain, woven) = (fall(false), fall(true));
+    assert!(woven * 2 < plain, "weaving {woven} ticks vs {plain}");
+}
+
+/// v0.15 Track D: `LivingEntity.travelInAir` under Levitation: the vertical
+/// motion eases a fifth of the way toward 0.05 a tick per level, then takes
+/// the 0.98 drag, so a levitating player rises at a steady
+/// `0.98 * 0.2 * target / (1 - 0.98 * 0.8)` a tick, and no fall is counted.
+#[test]
+fn levitation_lifts_the_player_steadily() {
+    use crate::simulation::effects::{Effect, Effects};
+    for amplifier in [0u8, 1, 4] {
+        let world = ground();
+        let mut p = standing(&world);
+        let mut effects = Effects::default();
+        effects.add(Effect::Levitation, amplifier, 3600);
+        p.apply_effects(&effects);
+        let rise = run(&mut p, &world, MoveInput::default(), 200);
+        let target = 0.05 * (f64::from(amplifier) + 1.0);
+        let steady = 0.98 * 0.2 * target / (1.0 - 0.98 * 0.8);
+        near(rise.y, steady, 1e-6, "levitating");
+        assert!(!p.on_ground);
+    }
+    // Without it, the player falls back.
+    let world = ground();
+    let mut p = standing(&world);
+    let mut effects = Effects::default();
+    effects.add(Effect::Levitation, 0, 3600);
+    p.apply_effects(&effects);
+    run(&mut p, &world, MoveInput::default(), 40);
+    p.apply_effects(&Effects::default());
+    let fall = run(&mut p, &world, MoveInput::default(), 3);
+    assert!(fall.y < 0.0);
+}
+
 #[test]
 fn still_water_sinks_at_half_a_block_a_second() {
     let mut world = ground();

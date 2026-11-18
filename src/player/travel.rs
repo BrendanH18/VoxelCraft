@@ -61,6 +61,7 @@ pub(super) struct Motion {
 pub fn friction(b: Option<Block>) -> f32 {
     match b {
         Some(Block::ICE) | Some(crate::world::gadgets::PACKED_ICE) => 0.98,
+        Some(b) if crate::world::frosted_ice::owns(b.0) => crate::world::frosted_ice::FRICTION,
         Some(crate::world::overworld_blocks::BLUE_ICE) => 0.989,
         Some(crate::world::stone_blocks::SLIME_BLOCK) => 0.8,
         _ => 0.6,
@@ -409,7 +410,11 @@ impl Player {
         let below = self.block_below_affecting_movement(world);
         let block_friction = if self.on_ground { friction(world.block(below)) } else { 1.0 };
         let movement = self.relative_friction_movement(world, input, block_friction, jumping, dm);
-        let y = movement.y - self.effective_gravity(*dm);
+        let y = match self.modifiers.levitation {
+            // `travelInAir`: Levitation eases toward 0.05 a tick per level.
+            Some(amplifier) => movement.y + (0.05 * (f64::from(amplifier) + 1.0) - movement.y) * 0.2,
+            None => movement.y - self.effective_gravity(*dm),
+        };
         let f = (block_friction * 0.91_f32) as f64;
         *dm = DVec3::new(movement.x * f, y * 0.98_f32 as f64, movement.z * f);
     }
@@ -931,7 +936,11 @@ impl Player {
                         }
                         DVec3::new(f64::from(0.9_f32), 1.5, f64::from(0.9_f32))
                     } else if b == Block::COBWEB {
-                        DVec3::new(0.25, 0.05_f32 as f64, 0.25)
+                        if self.modifiers.weaving {
+                            DVec3::from_array(crate::simulation::effects::WEAVING_WEB_SPEED)
+                        } else {
+                            DVec3::new(0.25, 0.05_f32 as f64, 0.25)
+                        }
                     } else if crate::world::overworld_blocks::berry_age(b).is_some() {
                         DVec3::new(0.8_f32 as f64, 0.75, 0.8_f32 as f64)
                     } else {
