@@ -182,7 +182,9 @@ impl Entities {
         self.tick_copper_golems(dt, world);
         self.finish_copper_statues(world);
         world.tick_beehives(self, dt, ctx);
-        let events = self.update_difficulty(dt, world, ctx, difficulty);
+        let mut events = self.update_difficulty(dt, world, ctx, difficulty);
+        // v0.15 Track D: Wind Charged, Weaving, Oozing and Infested.
+        self.settle_effect_hooks(world, &mut events);
         self.mob_game_events(world);
         self.settle_sculk_deaths(world);
         self.flush_sculk_events(world);

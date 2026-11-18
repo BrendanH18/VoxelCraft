@@ -101,7 +101,7 @@ pub(super) fn spot_ok<W: MobWorld + ?Sized>(
     let ground = match kind {
         MobKind::PolarBear => {
             if matches!(world.cave_biome(cell), Biome::FrozenOcean | Biome::DeepFrozenOcean) {
-                below == Block::ICE
+                below == Block::ICE || crate::world::frosted_ice::owns(below.0)
             } else {
                 below == Block::GRASS
             }

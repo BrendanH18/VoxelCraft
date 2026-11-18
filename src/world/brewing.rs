@@ -71,6 +71,11 @@ pub fn brew(potion: Potion, ingredient: Item) -> Option<Potion> {
             to("mundane")
         }
         ("awkward", Item::TURTLE_HELMET) => to("turtle_master"),
+        // v0.15 Track D: `VanillaBrewingProvider`'s 1.21 start mixes.
+        ("awkward", i) if i == crate::world::trial::BREEZE_ROD => to("wind_charged"),
+        ("awkward", i) if i == Item::from_block(crate::world::stone_blocks::SLIME_BLOCK) => to("oozing"),
+        ("awkward", i) if i == Item::from_block(Block::STONE) => to("infested"),
+        ("awkward", i) if i == Item::from_block(Block::COBWEB) => to("weaving"),
         ("water", Item::MAGMA_CREAM | Item::REDSTONE | Item::GHAST_TEAR) => to("mundane"),
         (id, Item::REDSTONE) if to(&format!("long_{id}")).is_some() => to(&format!("long_{id}")),
         // Glowstone strengthens to level II.

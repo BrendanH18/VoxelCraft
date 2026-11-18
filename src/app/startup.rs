@@ -139,6 +139,9 @@ impl Game {
         }
         if let Some(text) = prop("effects") {
             vitals.effects = crate::simulation::effects::Effects::deserialize(text);
+            if let Some(h) = prop("health").and_then(|s| s.parse().ok()) {
+                vitals.restore_boosted_health(h);
+            }
         }
         for &instance in &args.effects {
             let (damage, _) = vitals.give_effect(instance);

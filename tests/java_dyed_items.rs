@@ -252,7 +252,7 @@ fn undyed_and_dyed_colours_follow_the_models_and_the_leather_equipment_asset() {
         let mut worn = [None; 4];
         worn[piece as usize] = Some(dyed);
         let w = armor::from_stacks(&worn)[piece as usize].unwrap();
-        assert_eq!(w, Worn { kind: ArmorKind::Leather, glint: false, dye: Some(want) });
+        assert_eq!(w, Worn { kind: ArmorKind::Leather, glint: false, dye: Some(want), trim: None });
         assert_eq!(armor::tint(&w, false)[..3], want);
         assert_eq!(armor::tint(&w, true)[..3], [255; 3], "the overlay is not dyed");
         worn[piece as usize] = Some(plain);

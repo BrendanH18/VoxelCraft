@@ -160,6 +160,7 @@ fn yaw_to(d: DVec3) -> f32 {
 fn friction(b: Option<Block>) -> f64 {
     match b {
         Some(Block::ICE | crate::world::gadgets::PACKED_ICE) => 0.98,
+        Some(b) if crate::world::frosted_ice::owns(b.0) => 0.98,
         Some(crate::world::overworld_blocks::BLUE_ICE) => 0.989,
         _ => 0.6,
     }

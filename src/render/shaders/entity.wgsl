@@ -258,3 +258,17 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let alpha = select(1.0, 0.62, in.material == 4u);
     return vec4<f32>(apply_fog(c, in.dist), alpha);
 }
+
+// v0.15 Track D: Glowing. Glowing entities are drawn again, without depth,
+// into a one-channel mask that `outline.wgsl` traces round. Skin and armor
+// cutouts keep their holes so the outline hugs the drawn silhouette.
+@fragment
+fn fs_mask(in: VsOut) -> @location(0) vec4<f32> {
+    let texel = clamp(vec2<i32>(floor(in.uv)), vec2<i32>(0), vec2<i32>(63));
+    if in.material == 1u {
+        if textureLoad(skin, texel, 0, 0).a < 0.5 { discard; }
+    } else if in.material == 3u {
+        if textureLoad(skin, texel, i32(in.layer), 0).a < 0.5 { discard; }
+    }
+    return vec4<f32>(1.0, 1.0, 1.0, 1.0);
+}

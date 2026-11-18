@@ -46,5 +46,5 @@ fn stonecutting_recipes_match_java() {
 
 #[test]
 fn smithing_recipes_match_java() {
-    check("smithing", &compare::compare_smithing(&Reference::load()), 9);
+    check("smithing", &compare::compare_smithing(&Reference::load()), 9 + 18);
 }

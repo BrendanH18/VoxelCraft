@@ -116,6 +116,10 @@ struct Modifiers {
     slowness_level: u32,
     jump_levels: u32,
     slow_falling: bool,
+    /// Levitation's amplifier (v0.15 Track D).
+    levitation: Option<u8>,
+    /// Weaving: cobwebs hold the player less (`WebBlock.entityInside`).
+    weaving: bool,
     /// Depth strider level of the worn boots (see [`Player::wear_boots`]).
     depth_strider: u8,
     /// Swift Sneak level of the worn leggings (see
@@ -263,7 +267,8 @@ impl Player {
     }
 
     /// Takes on the movement effects of Speed, Slowness, Jump Boost,
-    /// Slow Falling and Dolphin's Grace; call before each tick.
+    /// Slow Falling, Levitation, Weaving and Dolphin's Grace; call before
+    /// each tick.
     pub fn apply_effects(&mut self, effects: &crate::simulation::effects::Effects) {
         use crate::simulation::effects::Effect;
         let (speed_level, slowness_level) = effects.movement_speed_levels();
@@ -273,6 +278,8 @@ impl Player {
             dolphins_grace: effects.has(Effect::DolphinsGrace),
             jump_levels: effects.jump_boost(),
             slow_falling: effects.has(Effect::SlowFalling),
+            levitation: effects.levitation(),
+            weaving: effects.has(Effect::Weaving),
             depth_strider: self.modifiers.depth_strider,
             swift_sneak: self.modifiers.swift_sneak,
         };

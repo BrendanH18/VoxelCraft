@@ -1,19 +1,28 @@
 //! Smithing recipes. Netherite transforms are deliberately separate from
 //! crafting: one upgrade template, one piece of diamond gear and one
-//! Netherite ingot make the matching Netherite item.
+//! Netherite ingot make the matching Netherite item. v0.15 Track D adds
+//! Java's `smithing_trim` recipes: a trim template, a piece of trimmable
+//! armor and a trim material give the armor that trim
+//! ([`crate::content::trim::apply`]).
 
 use crate::inventory::Stack;
 use crate::item::{ArmorMaterial, Item, Tier};
 
 pub fn is_template(item: Item) -> bool {
-    item == Item::NETHERITE_UPGRADE
+    item == Item::NETHERITE_UPGRADE || crate::content::trim::template_pattern(item).is_some()
 }
 
-pub fn is_base(item: Item) -> bool {
+/// The Netherite upgrade's bases: diamond gear.
+pub fn is_upgrade_base(item: Item) -> bool {
     matches!(item.as_tool(), Some((_, Tier::Diamond)))
         || matches!(item.as_armor(), Some((_, ArmorMaterial::Diamond)))
         || item == crate::weapons::spear(Tier::Diamond)
         || netherite_body_armor(item).is_some()
+}
+
+/// Any smithing base: the Netherite upgrade's, or `#trimmable_armor`.
+pub fn is_base(item: Item) -> bool {
+    crate::inventory::components::trimmable(item) || is_upgrade_base(item)
 }
 
 /// `recipe/netherite_{horse,nautilus}_armor_smithing.json`: diamond horse or
@@ -28,14 +37,17 @@ fn netherite_body_armor(item: Item) -> Option<Item> {
 }
 
 pub fn is_addition(item: Item) -> bool {
-    item == Item::NETHERITE_INGOT
+    item == Item::NETHERITE_INGOT || crate::content::trim::provides_material(item).is_some()
 }
 
 /// Applies the Netherite upgrade recipe. The result copies the base stack's
 /// damage, enchantments, prior-work penalty and custom name, like Java's
 /// `SmithingTransformRecipe`.
 pub fn upgrade(template: Stack, base: Stack, addition: Stack) -> Option<Stack> {
-    if !is_template(template.item) || !is_addition(addition.item) {
+    if crate::content::trim::template_pattern(template.item).is_some() {
+        return crate::content::trim::apply(template, base, addition);
+    }
+    if template.item != Item::NETHERITE_UPGRADE || addition.item != Item::NETHERITE_INGOT {
         return None;
     }
     // `recipe/netherite_spear_smithing.json`.

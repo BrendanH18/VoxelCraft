@@ -377,6 +377,8 @@ pub mod tex {
             super::super::jukebox::t::END as u32,
             super::super::trial::TEX_END as u32,
         ];
+        // v0.15 Track D's frosted ice (layers 4000..4004) sets the count.
+        const ENDS2: [u32; 1] = [super::super::frosted_ice::TEX_END as u32];
         let mut max = 0;
         let mut i = 0;
         while i < ENDS.len() {
@@ -384,6 +386,9 @@ pub mod tex {
                 max = ENDS[i];
             }
             i += 1;
+        }
+        if ENDS2[0] > max {
+            max = ENDS2[0];
         }
         max
     };
@@ -1304,6 +1309,9 @@ impl Block {
         if super::sniffer_egg::owns(self.0) {
             return super::sniffer_egg::EGG;
         }
+        if super::frosted_ice::owns(self.0) {
+            return super::frosted_ice::FIRST;
+        }
         if super::heavy_core::owns(self.0) {
             return super::heavy_core::HEAVY_CORE;
         }
@@ -1784,6 +1792,8 @@ impl Block {
             b if b.is_leaves() => None,
             b if b.stained_glass_color().is_some() || b.is_glass_pane() => None,
             Block::GLASS | Block::BEDROCK | Block::TALL_GRASS | Block::FERN | Block::ICE => None,
+            // v0.15 Track D: `blocks/frosted_ice` is an empty table.
+            b if super::frosted_ice::owns(b.0) => None,
             b if b.is_fluid() || b.is_fire() || b == Block::AIR => None,
             b => Some(b.into()),
         }
@@ -1812,6 +1822,9 @@ impl Block {
         }
         if super::sniffer_egg::owns(self.0) {
             return 0.5;
+        }
+        if super::frosted_ice::owns(self.0) {
+            return super::frosted_ice::HARDNESS;
         }
         if super::heavy_core::owns(self.0) {
             return super::heavy_core::HARDNESS;
@@ -3083,6 +3096,7 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         super::crops::FIRST..=super::crops::LAST => super::crops::registry(id),
         super::sniffer_plants::FIRST..=super::sniffer_plants::LAST => super::sniffer_plants::registry(id),
         15120..=super::sniffer_egg::LAST => super::sniffer_egg::registry(id),
+        12256..=super::frosted_ice::LAST => super::frosted_ice::registry(id),
         super::heavy_core::FIRST..=super::heavy_core::LAST => super::heavy_core::registry(id),
         super::jukebox::FIRST..=super::jukebox::LAST => super::jukebox::registry(id),
         super::archaeology::FIRST..=super::archaeology::LAST => super::archaeology::registry(id),

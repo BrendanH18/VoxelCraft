@@ -324,7 +324,10 @@ impl Minecart {
         } else if self.on_ground {
             if ground == crate::world::overworld_blocks::BLUE_ICE {
                 0.989
-            } else if ground == Block::ICE || ground == crate::world::gadgets::PACKED_ICE {
+            } else if ground == Block::ICE
+                || ground == crate::world::gadgets::PACKED_ICE
+                || crate::world::frosted_ice::owns(ground.0)
+            {
                 0.98
             } else {
                 0.3

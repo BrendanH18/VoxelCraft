@@ -309,7 +309,9 @@ impl Game {
         let tick = ((now - self.started).as_secs_f32() * 20.0) as u32;
         // Java's `Gui.renderHearts`: golden absorption hearts follow the
         // health hearts, ten to a row, rows closing up as there are more.
-        let health_hearts = MAX_HEALTH as u32 / 2;
+        // `Gui.extractPlayerHealth`: Health Boost adds hearts (`max_health`
+        // rounded up, in half hearts).
+        let health_hearts = (v.max_health().max(v.health).ceil() as u32).div_ceil(2);
         let hearts = health_hearts + absorption.div_ceil(2);
         let rows = hearts.div_ceil(10);
         let row_step = (10 - (rows as i32 - 2)).max(3) as f32;
@@ -1126,6 +1128,10 @@ impl Game {
                 .or(stack.arrow_potion())
             {
                 Some(potion) => self.potion_tooltip(ui, stack.display_name(), potion),
+                // v0.15 Track D: armor trims and trim templates.
+                None if stack.trim.is_some() || voxelcraft::content::trim::template_pattern(stack.item).is_some() => {
+                    self.trim_tooltip(ui, stack)
+                }
                 None if !stack.enchants.is_empty() => self.enchant_tooltip(ui, stack),
                 // Java's `Rarity.RARE` names are aqua.
                 None if stack.item.is_rare() => self.tooltip_coloured(ui, stack.display_name(), [0.33, 1.0, 1.0, 1.0]),
@@ -1394,6 +1400,35 @@ impl Game {
         for (i, (line, curse)) in lines.iter().enumerate() {
             let c = if *curse { [1.0, 0.33, 0.33, 1.0] } else { [0.67, 0.67, 0.67, 1.0] };
             ui.text(x, y + 11.0 * (i + 1) as f32, line, c);
+        }
+    }
+
+    /// v0.15 Track D: a trimmed piece of armor (`ArmorTrim.addToTooltip`:
+    /// "Upgrade:", then the pattern and material in the material's colour,
+    /// before any enchantments) or a trim template
+    /// (`SmithingTemplateItem.appendHoverText`), named in its rarity's colour.
+    fn trim_tooltip(&self, ui: &mut Ui, stack: Stack) {
+        let rgb = |c: [u8; 3]| [f32::from(c[0]) / 255.0, f32::from(c[1]) / 255.0, f32::from(c[2]) / 255.0, 1.0];
+        let title = capitalize(stack.display_name());
+        let colour = match voxelcraft::content::trim::title_colour(stack.item) {
+            Some(c) => rgb(c),
+            None if !stack.enchants.is_empty() => [0.33, 1.0, 1.0, 1.0],
+            None => WHITE,
+        };
+        let mut lines: Vec<(String, Color)> =
+            voxelcraft::content::trim::tooltip_lines(&stack).into_iter().map(|(l, c)| (l, rgb(c))).collect();
+        for (line, curse) in stack.enchants.lines() {
+            lines.push((line, if curse { [1.0, 0.33, 0.33, 1.0] } else { [0.67, 0.67, 0.67, 1.0] }));
+        }
+        let w = lines.iter().map(|(l, _)| Ui::text_width(l)).fold(Ui::text_width(&title), f32::max);
+        let h = 14.0 + 11.0 * lines.len() as f32;
+        let (sw, sh) = ui.size();
+        let x = (self.cursor_px.0 / ui.scale + 10.0).min(sw - w - 6.0).max(3.0);
+        let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - h + 3.0).max(3.0));
+        ui.rect(x - 3.0, y - 3.0, w + 6.0, h, [0.08, 0.02, 0.12, 0.92]);
+        ui.text(x, y, &title, colour);
+        for (i, (line, c)) in lines.iter().enumerate() {
+            ui.text(x, y + 11.0 * (i + 1) as f32, line, *c);
         }
     }
 

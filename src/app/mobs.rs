@@ -124,6 +124,7 @@ impl Game {
         self.mobs.entities.monster_spawning = self.gamerules.bool("spawn_monsters");
         self.mobs.entities.spawner_blocks = self.gamerules.bool("spawner_blocks_work");
         self.mobs.entities.villager_griefing = self.gamerules.bool("mob_griefing");
+        self.mobs.entities.max_entity_cramming = self.gamerules.int("max_entity_cramming");
         self.mobs.entities.mob_loot = self.gamerules.bool("mob_drops");
         self.mobs.entities.neutral_forgive_dead_players = self.gamerules.bool("forgive_dead_players");
         self.mobs.entities.thundering = self.dimension.has_sky() && self.weather.thunder_level() > 0.9;
@@ -405,7 +406,7 @@ impl Game {
                             self.damage_player(amount, Cause::MAGIC);
                         } else {
                             self.session.vitals.health =
-                                (self.session.vitals.health - amount).min(crate::simulation::survival::MAX_HEALTH);
+                                (self.session.vitals.health - amount).min(self.session.vitals.max_health());
                         }
                     }
                 }
@@ -418,7 +419,7 @@ impl Game {
                             bot.agent.hurt_magic(amount, &mut self.mobs.entities);
                         } else {
                             bot.agent.session.vitals.health =
-                                (bot.agent.session.vitals.health - amount).min(crate::simulation::survival::MAX_HEALTH);
+                                (bot.agent.session.vitals.health - amount).min(bot.agent.session.vitals.max_health());
                         }
                     }
                 }

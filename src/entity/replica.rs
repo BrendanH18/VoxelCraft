@@ -101,6 +101,8 @@ impl Entities {
                     3 => thrown::Kind::WindCharge,
                     4 => thrown::Kind::BreezeWindCharge,
                     5 => thrown::Kind::ExperienceBottle,
+                    6 => thrown::Kind::BlueEgg,
+                    7 => thrown::Kind::BrownEgg,
                     _ => thrown::Kind::LlamaSpit,
                 };
                 Some(thrown::Thrown::replica(kind, p, q))
@@ -200,7 +202,16 @@ mod tests {
     #[test]
     fn every_thrown_kind_round_trips() {
         use thrown::Kind as K;
-        let kinds = [K::Snowball, K::Egg, K::LlamaSpit, K::WindCharge, K::BreezeWindCharge, K::ExperienceBottle];
+        let kinds = [
+            K::Snowball,
+            K::Egg,
+            K::LlamaSpit,
+            K::WindCharge,
+            K::BreezeWindCharge,
+            K::ExperienceBottle,
+            K::BlueEgg,
+            K::BrownEgg,
+        ];
         let mut host = Entities::new(1);
         for (i, &kind) in kinds.iter().enumerate() {
             assert_eq!(kind as usize, i, "declaration order is the LAN index");

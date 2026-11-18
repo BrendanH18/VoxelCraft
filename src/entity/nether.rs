@@ -308,7 +308,7 @@ pub const BARTERING: [(Barter, u32, u8, u8); 18] = [
     (Barter::Item(Item::LEATHER), 40, 2, 4),
     (Barter::Item(Item::from_block(Block::SOUL_SAND)), 40, 2, 8),
     (Barter::Item(Item::NETHER_BRICK), 40, 2, 8),
-    (Barter::Missing("spectral arrow"), 40, 6, 12),
+    (Barter::Item(Item::SPECTRAL_ARROW), 40, 6, 12),
     (Barter::Item(Item::from_block(Block::GRAVEL)), 40, 8, 16),
     (Barter::Item(Item::from_block(Block::BLACKSTONE)), 40, 8, 16),
 ];
@@ -1595,6 +1595,10 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
         "celebrate": n.filter(|n| n.celebrate_left > 0.0).map(|n| json!([n.celebrate_left, n.celebrate_at.to_array(), n.dancing])),
     });
     // Optional additions preserve legacy records byte-for-byte when absent.
+    // v0.15 Track D: a chicken's, cow's or pig's variant by registry name.
+    if super::animals::has_farm_variant(m.kind) && m.farm_variant() != Default::default() {
+        v["farm_variant"] = json!(m.farm_variant().name());
+    }
     if m.water_conversion != super::lightning::WaterConversion::default() {
         v["water_conversion"] = m.water_conversion.save();
     }
@@ -1796,6 +1800,14 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
         if kind == MobKind::Cat {
             a.variant = v["animal"]["variant"].as_u64().unwrap_or(0).min(10) as u8;
         }
+    }
+    if super::animals::has_farm_variant(kind) {
+        // Older saves (and temperate animals) have no name: temperate.
+        let variant = v["farm_variant"]
+            .as_str()
+            .and_then(crate::content::farm_variant::FarmVariant::from_name)
+            .unwrap_or_default();
+        m.set_farm_variant(variant);
     }
     m.effects = crate::simulation::effects::Effects::deserialize(v["effects"].as_str().unwrap_or(""));
     m.grow = v["grow"].as_f64().filter(|g| g.is_finite() && *g >= 0.0).unwrap_or(0.0) as f32;
@@ -2010,10 +2022,11 @@ mod tests {
                 None => empty += 1,
             }
         }
-        // Expected 4000 obsidian, 1000 pearls and 4500 missing-item rolls.
+        // Expected 4000 obsidian, 1000 pearls and 500 missing-item rolls
+        // (the Soul Speed book; spectral arrows exist since v0.15 Track D).
         assert!((3700..4300).contains(&obsidian), "{obsidian}");
         assert!((850..1150).contains(&pearls), "{pearls}");
-        assert!((4200..4800).contains(&empty), "{empty}");
+        assert!((400..600).contains(&empty), "{empty}");
         // Every existing output is a real item.
         let mut rng = Rng::new(1);
         assert!((0..2000).filter_map(|_| barter(&mut rng)).all(|s| s.item.is_valid()));

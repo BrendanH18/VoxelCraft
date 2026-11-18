@@ -483,15 +483,14 @@ impl Entities {
                 EntityEvent::MobKilled { kind, pos, burning, player_kill, looting } => {
                     self.drop_loot_with_fire(kind, pos, looting, burning, player_kill);
                 }
-                EntityEvent::LaidEgg { pos } => {
-                    self.drop_from_block(
-                        crate::inventory::Stack::new(crate::item::Item::EGG, 1),
-                        pos.floor().as_ivec3(),
-                    );
+                EntityEvent::LaidEgg { pos, variant } => {
+                    // `gameplay/chicken_lay`: the variant's egg.
+                    self.drop_from_block(crate::inventory::Stack::new(variant.egg(), 1), pos.floor().as_ivec3());
                 }
-                EntityEvent::Hatched { pos, count } => {
+                EntityEvent::Hatched { pos, count, variant } => {
                     for _ in 0..count {
                         self.spawn_baby(MobKind::Chicken, pos);
+                        self.mobs.last_mut().unwrap().set_farm_variant(variant);
                     }
                 }
                 EntityEvent::ExperienceBurst { pos, toward, points } => self.spawn_xp_toward(pos, toward, points),

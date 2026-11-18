@@ -107,6 +107,17 @@ pub struct EntityMesh {
     boxes: Vec<BoxInstance>,
     /// Expand every box into `verts` on the CPU where it is emitted.
     flat: bool,
+    /// v0.15 Track D: copies of the geometry of entities under Glowing,
+    /// which the renderer draws into its outline mask.
+    glow_verts: Vec<EntityVertex>,
+    glow_boxes: Vec<BoxInstance>,
+}
+
+/// Where an entity's geometry starts in an [`EntityMesh`].
+#[derive(Clone, Copy, Debug)]
+pub struct GlowMark {
+    verts: usize,
+    boxes: usize,
 }
 
 impl EntityMesh {
@@ -120,6 +131,31 @@ impl EntityMesh {
     pub fn clear(&mut self) {
         self.verts.clear();
         self.boxes.clear();
+        self.glow_verts.clear();
+        self.glow_boxes.clear();
+    }
+
+    /// Marks where the next entity's geometry starts.
+    pub fn glow_start(&self) -> GlowMark {
+        GlowMark { verts: self.verts.len(), boxes: self.boxes.len() }
+    }
+
+    /// v0.15 Track D: when `glowing`, copies everything emitted since `mark`
+    /// into the outline geometry (`LivingEntity.isCurrentlyGlowing`).
+    pub fn glow_end(&mut self, mark: GlowMark, glowing: bool) {
+        if glowing {
+            self.glow_verts.extend_from_slice(&self.verts[mark.verts.min(self.verts.len())..]);
+            self.glow_boxes.extend_from_slice(&self.boxes[mark.boxes.min(self.boxes.len())..]);
+        }
+    }
+
+    /// The outline geometry: glowing entities' boxes and triangles.
+    pub fn glow_boxes(&self) -> &[BoxInstance] {
+        &self.glow_boxes
+    }
+
+    pub fn glow_verts(&self) -> &[EntityVertex] {
+        &self.glow_verts
     }
 
     /// The boxes the GPU expands.
@@ -1034,6 +1070,7 @@ pub fn build(
             continue;
         }
         drawn += 1;
+        let glow = out.glow_start();
 
         // Death: topple onto the side, lifted so it doesn't sink into the
         // ground.
@@ -1147,6 +1184,11 @@ pub fn build(
                         [[237, 160, 184], [139, 104, 81], [225, 186, 66], [184, 217, 221], [89, 101, 184]];
                     cuboid.color = COLORS[m.aquatic.as_ref().map_or(0, |a| a.variant as usize) % 5];
                 }
+                // v0.15 Track D: warm and cold chickens, cows and pigs take
+                // their variant's original colouring.
+                if super::animals::has_farm_variant(m.kind) {
+                    cuboid.color = crate::content::farm_variant::tint(m.farm_variant(), cuboid.color);
+                }
                 if m.kind == MobKind::Sheep && c.color == WOOL {
                     cuboid.color = if m.sheared { SHEEP_SKIN } else { m.wool_color.sheep_rgb() };
                     if m.sheared {
@@ -1168,6 +1210,7 @@ pub fn build(
         if m.burning {
             flames(out, m, rel, time);
         }
+        out.glow_end(glow, m.effects.glowing() && m.alive());
     }
     drawn
 }
@@ -1210,7 +1253,10 @@ pub fn build_arrows(arrows: &[Arrow], camera: DVec3, alpha: f64, out: &mut Entit
         for (i, c) in ARROW.iter().enumerate() {
             let mut c = *c;
             if i == 1 {
-                if let Some(p) = a.potion {
+                if a.spectral {
+                    // v0.15 Track D: a glowstone-gold spectral head.
+                    c.color = [246, 206, 72];
+                } else if let Some(p) = a.potion {
                     c.color = p.colour();
                 } else if a.custom_effect.is_some() || a.tipped {
                     c.color = [162, 99, 181];
@@ -1259,6 +1305,8 @@ pub fn build_thrown(thrown: &[super::thrown::Thrown], camera: DVec3, alpha: f64,
             super::thrown::Kind::WindCharge => ([200, 224, 240], 2.4),
             super::thrown::Kind::BreezeWindCharge => ([170, 200, 236], 3.0),
             super::thrown::Kind::ExperienceBottle => ([96, 186, 168], 2.4),
+            super::thrown::Kind::BlueEgg => (crate::content::farm_variant::BLUE_SHELL, 2.2),
+            super::thrown::Kind::BrownEgg => (crate::content::farm_variant::BROWN_SHELL, 2.2),
         };
         let c = cube([-size, -size, -size], [size, size, size], color, 16);
         push_cuboid(out, &c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([230, 0, 0, 0], 0), (FIRE, 0.0), 0.0);

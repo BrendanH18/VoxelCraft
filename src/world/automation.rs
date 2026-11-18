@@ -791,7 +791,11 @@ impl World {
         // The flag marks a dispenser-shot projectile (arrow, fire charge or
         // experience bottle); everything else, including a dropper's fire
         // charge, is spawned as an item.
-        let shot = !dropper && matches!(stack.item, Item::ARROW | Item::FIRE_CHARGE | Item::EXPERIENCE_BOTTLE);
+        let shot = !dropper
+            && matches!(
+                stack.item,
+                Item::ARROW | Item::SPECTRAL_ARROW | Item::TIPPED_ARROW | Item::FIRE_CHARGE | Item::EXPERIENCE_BOTTLE
+            );
         self.automation.output.push((p, facing, shot, one));
     }
 
@@ -815,7 +819,7 @@ impl World {
             } else if arrow && stack.item == Item::EXPERIENCE_BOTTLE {
                 entities.dispense_thrown(stack.item, p, step);
             } else if arrow {
-                entities.dispense_arrow(p, step);
+                entities.dispense_arrow_stack(stack, p, step);
             } else {
                 entities.dispense_item(stack, p, step);
             }

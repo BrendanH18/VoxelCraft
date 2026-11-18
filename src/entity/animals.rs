@@ -550,6 +550,30 @@ pub fn wolf_food(food: Item) -> bool {
             | Item::RABBIT_STEW
     )
 }
+/// v0.15 Track D: the mobs with Java's climate variants.
+pub fn has_farm_variant(kind: MobKind) -> bool {
+    matches!(kind, MobKind::Chicken | MobKind::Cow | MobKind::Pig)
+}
+
+impl Mob {
+    /// The climate variant of a chicken, cow or pig (temperate otherwise).
+    pub fn farm_variant(&self) -> crate::content::farm_variant::FarmVariant {
+        match &self.animal {
+            Some(a) if has_farm_variant(self.kind) => crate::content::farm_variant::FarmVariant::from_index(a.variant),
+            _ => Default::default(),
+        }
+    }
+
+    /// Sets a chicken's, cow's or pig's climate variant; other mobs keep theirs.
+    pub fn set_farm_variant(&mut self, variant: crate::content::farm_variant::FarmVariant) {
+        if has_farm_variant(self.kind)
+            && let Some(a) = &mut self.animal
+        {
+            a.variant = variant as u8;
+        }
+    }
+}
+
 pub(super) fn on_spawn(m: &mut Mob, rng: &mut Rng) {
     super::armadillo::fresh(m, rng);
     let Some(a) = m.animal.as_mut() else { return };
@@ -569,13 +593,15 @@ pub(super) fn on_spawn(m: &mut Mob, rng: &mut Rng) {
 impl Mob {
     /// Java 1.21 tamed wolves have 40 health; wild wolves have eight.
     pub fn max_health(&self) -> f32 {
-        if self.panda.as_ref().is_some_and(|s| s.variant() == super::panda::Gene::Weak) {
+        let base = if self.panda.as_ref().is_some_and(|s| s.variant() == super::panda::Gene::Weak) {
             10.0
         } else if self.kind == MobKind::Wolf && self.animal.as_ref().is_some_and(|a| a.owner.is_some()) {
             40.0
         } else {
             self.leader_max_health(self.kind.max_health())
-        }
+        };
+        // v0.15 Track D: Health Boost's `max_health` modifier.
+        base + self.effects.max_health_bonus()
     }
     pub(super) fn companion_think<W: MobWorld + ?Sized>(
         &mut self,
@@ -832,6 +858,8 @@ impl Entities {
             s.hidden = super::panda::Gene::random(&mut self.rng);
             m.health = m.max_health();
         }
+        // v0.15 Track D: `VariantUtils.selectVariantToSpawn` by biome.
+        m.set_farm_variant(crate::content::farm_variant::for_biome(biome.name()));
         let a = m.animal.as_mut().unwrap();
         if m.kind == MobKind::Fox {
             a.variant = matches!(biome, SnowyTaiga | Grove) as u8;

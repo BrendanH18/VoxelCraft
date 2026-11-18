@@ -851,9 +851,10 @@ impl World {
     /// block it's planted on.
     pub fn cane_has_water(&self, p: IVec3) -> bool {
         let soil = p - IVec3::Y;
-        [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z]
-            .iter()
-            .any(|&d| self.get_block(soil + d).is_some_and(|b| b.holds_water() || b == Block::ICE))
+        [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z].iter().any(|&d| {
+            self.get_block(soil + d)
+                .is_some_and(|b| b.holds_water() || b == Block::ICE || super::frosted_ice::owns(b.0))
+        })
     }
 }
 

@@ -390,6 +390,7 @@ fn apply(agent: &mut Agent, v: &Value) {
     agent.session.vitals.ticks_frozen = v["ticks_frozen"].as_u64().unwrap_or(0).min(140) as u16;
     if let Some(effects) = v["effects"].as_str() {
         agent.session.vitals.effects = crate::simulation::effects::Effects::deserialize(effects);
+        agent.session.vitals.restore_boosted_health(v["health"].as_f64().unwrap_or(20.0) as f32);
     }
     agent.session.sleeping = v["sleep"].as_f64().map(|f| f as f32);
     agent.session.player.vehicle = v["vehicle"].as_u64().and_then(|id| u32::try_from(id).ok());

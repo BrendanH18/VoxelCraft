@@ -239,7 +239,9 @@ pub fn throw_held(
     entities: &mut Entities,
 ) -> bool {
     let Some(held) = inventory.get(slot) else { return false };
-    if !matches!(held.item, Item::SNOWBALL | Item::EGG | Item::EXPERIENCE_BOTTLE) {
+    if !matches!(held.item, Item::SNOWBALL | Item::EXPERIENCE_BOTTLE)
+        && !crate::content::farm_variant::is_egg(held.item)
+    {
         return false;
     }
     let carry = if player.on_ground { player.vel.with_y(0.0) } else { player.vel };

@@ -32,6 +32,7 @@ pub mod copper_golem;
 pub mod creaking;
 pub mod dragon;
 mod dragon_model;
+mod effect_triggers;
 pub mod endermite;
 pub mod equipment;
 pub mod eye;
@@ -102,7 +103,7 @@ pub use item::ItemEntity;
 pub use mob::{Mob, MobKind, sky_light};
 pub use orb::XpOrb;
 pub use projectile::Arrow;
-pub use tipped_arrow::ArrowEffectGate;
+pub use tipped_arrow::{ArrowEffectGate, SPECTRAL_BOLT};
 
 /// Spawns happen this far from the player (blocks).
 pub const SPAWN_MIN_DIST: f64 = 24.0;
@@ -380,14 +381,18 @@ pub enum EntityEvent {
     VillagerDoorClose {
         cell: IVec3,
     },
-    /// A chicken laid an egg at its feet.
+    /// A chicken laid an egg at its feet (v0.15 Track D: brown for a warm
+    /// chicken, blue for a cold one).
     LaidEgg {
         pos: DVec3,
+        variant: crate::content::farm_variant::FarmVariant,
     },
-    /// A thrown egg hatched `count` chicks (one or four) at `pos`.
+    /// A thrown egg hatched `count` chicks (one or four) of the egg's
+    /// variant at `pos`.
     Hatched {
         pos: DVec3,
         count: u8,
+        variant: crate::content::farm_variant::FarmVariant,
     },
     /// A thrown Bottle o' Enchanting broke at `pos`: `points` of experience
     /// as orbs thrown roughly along `toward` (`ExperienceOrb.awardWithDirection`).
@@ -972,6 +977,12 @@ pub struct Entities {
     pub world_spawn: Option<IVec3>,
     /// The mobGriefing gamerule, shared by villager, piglin and allay item pickup.
     pub villager_griefing: bool,
+    /// v0.15 Track D: the `max_entity_cramming` gamerule, which caps
+    /// Oozing's slimes.
+    pub max_entity_cramming: i32,
+    /// v0.15 Track D: bodies killed with Wind Charged, Weaving or Oozing,
+    /// waiting for the world step.
+    effect_deaths: Vec<effect_triggers::EffectDeath>,
     /// Seconds until another iron golem may be summoned.
     /// Seconds until the next gossip summon roll.
     gossip_timer: f32,
@@ -1067,6 +1078,8 @@ impl Entities {
             spawner_blocks: true,
             world_spawn: None,
             villager_griefing: true,
+            max_entity_cramming: 24,
+            effect_deaths: Vec::new(),
             gossip_timer: 60.0,
             rng: Rng::new(seed ^ 0x6d6f_6273),
             pvp: false,
@@ -1444,6 +1457,11 @@ impl Entities {
             }
         }
         let mut drops = kind.drops(&mut self.rng, looting);
+        // v0.15 Track D: `entities/elder_guardian`'s last pool, empty
+        // (weight 4) or the tide armor trim template (weight 1).
+        if kind == MobKind::ElderGuardian && self.rng.next_int(5) == 4 {
+            drops.push((crate::content::trim::template(crate::inventory::components::TrimPattern::Tide), 1));
+        }
         // `entities/breeze`: killed by a player, 1-2 rods.
         if kind == MobKind::Breeze && player_kill {
             // `enchanted_count_increase`: round(level * uniform(1, 2)).
@@ -1568,9 +1586,20 @@ impl Entities {
     /// plus 0.7 along the facing and 0.1 up, flying at power 1.1 blocks per tick along the
     /// facing perturbed by `triangle` noise of `0.0172275 * 6` per axis (no upward bias).
     pub fn dispense_arrow(&mut self, block: IVec3, step: IVec3) {
+        self.dispense_arrow_stack(crate::inventory::Stack::new(crate::item::Item::ARROW, 1), block, step);
+    }
+
+    /// v0.15 Track D: `ProjectileDispenseBehavior` for any arrow item: a
+    /// spectral arrow keeps its glow and a tipped arrow its potion
+    /// (`ArrowItem.asProjectile`).
+    pub fn dispense_arrow_stack(&mut self, stack: crate::inventory::Stack, block: IVec3, step: IVec3) {
         let heading = self.dispense_heading(step, 6.0);
         let pos = block.as_dvec3() + DVec3::splat(0.5) + step.as_dvec3() * 0.7 + DVec3::Y * 0.1;
-        self.arrows.push(Arrow::dispensed(pos, heading * 1.1 * 20.0));
+        let mut arrow = Arrow::dispensed(pos, heading * 1.1 * 20.0);
+        arrow.spectral = stack.item == crate::item::Item::SPECTRAL_ARROW;
+        arrow.tipped = stack.item == crate::item::Item::TIPPED_ARROW;
+        arrow.potion = stack.arrow_potion();
+        self.arrows.push(arrow);
     }
 
     /// Java 26.3 `FireChargeItem.asProjectile`: a small fireball one block out whose

@@ -504,5 +504,6 @@ fn brush_sound(audio: &mut Audio, stroke: voxelcraft::session::Stroke) {
 
 fn once_per_click(i: Item) -> bool {
     (i != Item::GLASS_BOTTLE && voxelcraft::survival_items::bucket::handles(i))
-        || matches!(i, Item::SNOWBALL | Item::EGG | Item::FISHING_ROD)
+        || matches!(i, Item::SNOWBALL | Item::FISHING_ROD)
+        || voxelcraft::content::farm_variant::is_egg(i)
 }
