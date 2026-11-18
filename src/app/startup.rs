@@ -268,6 +268,7 @@ impl Game {
             craft: crate::crafting::Grid::new(2),
             recipe_book: recipe_book::RecipeBook::default(),
             creative_scroll: 0,
+            work_scroll: 0,
             cursor_px: (0.0, 0.0),
             body: Default::default(),
             show_hud: !args.no_hud,

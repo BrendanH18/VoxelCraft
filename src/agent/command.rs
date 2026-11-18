@@ -88,7 +88,31 @@ pub enum Command {
     /// Upgrades held diamond gear at the targeted smithing table, consuming
     /// a template and Netherite ingot from the inventory.
     Smithing,
+    /// v0.15 Track B: cuts one held stack into the named result at the
+    /// targeted stonecutter.
+    Stonecut(Item),
+    /// Weaves the named pattern in the named dye onto the held banner at
+    /// the targeted loom, using a pattern item from the inventory when the
+    /// pattern needs one.
+    Loom(String, crate::color::DyeColor),
+    /// Copies, zooms out or locks the held map at the targeted
+    /// cartography table, with an empty map, paper or a glass pane from
+    /// the inventory.
+    Cartography(CartographyAction),
+    /// Writes JSON `pages` into the held book and quill, or signs it with a
+    /// title.
+    Book(Vec<String>, Option<String>),
+    /// Turns the lectern at a cell to a page, or takes its book.
+    Lectern(IVec3, Option<i64>),
     Say(String),
+}
+
+/// What `cartography` does to the held map.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CartographyAction {
+    Copy,
+    Zoom,
+    Lock,
 }
 
 /// `/time query` targets.
@@ -133,6 +157,11 @@ const COMMAND_NAMES: &[&str] = &[
     "enchant",
     "say",
     "smithing",
+    "stonecut",
+    "loom",
+    "cartography",
+    "book",
+    "lectern",
     "grindstone",
     "trade",
     "players",
@@ -629,6 +658,20 @@ impl Command {
         Some(Self::Sign(pos, front, lines))
     }
 
+    /// `book write` or `book sign` with JSON text, which keeps spaces and
+    /// newlines: `book write ["page", ...]`, `book sign "title" ["page", ...]`.
+    fn parse_book(text: &str) -> Option<Self> {
+        let rest = text.trim().trim_start_matches('/').strip_prefix("book")?.trim_start();
+        if let Some(pages) = rest.strip_prefix("write") {
+            return Some(Self::Book(serde_json::from_str(pages.trim()).ok()?, None));
+        }
+        let rest = rest.strip_prefix("sign")?.trim_start();
+        let mut stream = serde_json::Deserializer::from_str(rest).into_iter::<serde_json::Value>();
+        let title = stream.next()?.ok()?.as_str()?.to_string();
+        let pages: Vec<String> = serde_json::from_value(stream.next()?.ok()?).ok()?;
+        Some(Self::Book(pages, Some(title)))
+    }
+
     /// Parse slash commands and CLI input identically, rejecting extra arguments and non-finite numbers.
     pub fn parse(text: &str) -> Result<Self, String> {
         let mut words: Vec<_> = text.trim().trim_start_matches('/').split_whitespace().collect();
@@ -645,6 +688,10 @@ impl Command {
         let bad = || "unknown command or arguments; use /help".to_string();
         if words.first() == Some(&"sign") {
             return Self::parse_sign(text).ok_or_else(|| "use: sign x y z front|back [\"line\", ...]".to_string());
+        }
+        if words.first() == Some(&"book") {
+            return Self::parse_book(text)
+                .ok_or_else(|| "use: book write [\"page\", ...] | book sign \"title\" [\"page\", ...]".to_string());
         }
         let item = |name: &str| Item::from_name(name).ok_or_else(|| format!("unknown item: {name}"));
         let xyz = |x: &str, y: &str, z: &str| -> Result<DVec3, String> {
@@ -842,6 +889,24 @@ impl Command {
                 Self::Grindstone(Some(n.parse::<usize>().ok().filter(|n| (1..=9).contains(n)).ok_or_else(bad)? - 1))
             }
             ["smithing"] => Self::Smithing,
+            ["stonecut", name] => Self::Stonecut(item(name)?),
+            ["loom", pattern, dye] => Self::Loom(
+                voxelcraft_pattern(pattern).ok_or_else(|| format!("unknown banner pattern: {pattern}"))?,
+                crate::color::DyeColor::ALL
+                    .into_iter()
+                    .find(|c| c.adjective().replace(' ', "_") == dye.trim_end_matches("_dye"))
+                    .ok_or_else(|| format!("unknown dye: {dye}"))?,
+            ),
+            ["cartography", what] => Self::Cartography(match *what {
+                "copy" => CartographyAction::Copy,
+                "zoom" => CartographyAction::Zoom,
+                "lock" => CartographyAction::Lock,
+                _ => return Err(bad()),
+            }),
+            ["lectern", x, y, z, "take"] => Self::Lectern(cell(x, y, z).ok_or_else(bad)?, None),
+            ["lectern", x, y, z, "page", n] => {
+                Self::Lectern(cell(x, y, z).ok_or_else(bad)?, Some(n.parse::<i64>().map_err(|_| bad())?))
+            }
             ["enchanting", n] => {
                 Self::Enchanting(n.parse::<usize>().ok().filter(|n| (1..=3).contains(n)).ok_or_else(bad)? - 1)
             }
@@ -883,3 +948,14 @@ impl Command {
 
 #[cfg(test)]
 mod tests;
+
+/// A banner pattern by registry name (with or without `minecraft:`).
+fn voxelcraft_pattern(name: &str) -> Option<String> {
+    let name = name.trim_start_matches("minecraft:");
+    crate::inventory::components::BannerPattern::from_name(name).map(|p| p.name().to_string())
+}
+
+/// A block cell from three whole coordinates.
+fn cell(x: &str, y: &str, z: &str) -> Option<IVec3> {
+    Some(IVec3::new(x.parse().ok()?, y.parse().ok()?, z.parse().ok()?))
+}

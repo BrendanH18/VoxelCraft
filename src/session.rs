@@ -3,6 +3,7 @@
 //! Desktop, controller, LAN and CLI adapters own one of these for each player.
 //! Camera, hand animation and screen navigation belong to their adapters.
 mod archaeology;
+pub mod books;
 pub use archaeology::Stroke;
 mod allay;
 pub mod combat;
@@ -37,6 +38,12 @@ pub struct PlayerSession {
     pub mode: GameMode,
     /// Transient workstation inputs are owned by the player, not a device.
     pub work: [Option<Stack>; 3],
+    /// v0.15 Track B: the stonecutter recipe (`selectedRecipeIndex`) or loom
+    /// pattern (`selectedBannerPatternIndex`, as a `BannerPattern` index)
+    /// chosen on the open workstation, and the stonecutter input it was
+    /// chosen for.
+    pub work_choice: Option<u16>,
+    pub work_input: Option<crate::item::Item>,
     pub sleeping: Option<f32>,
     /// The bed `sleeping` lies in, so waking can stand the player up beside it.
     sleep_spot: Option<SleepSpot>,
@@ -162,6 +169,8 @@ impl PlayerSession {
             vitals: Vitals::default(),
             mode: GameMode::Survival,
             work: [None; 3],
+            work_choice: None,
+            work_input: None,
             sleeping: None,
             sleep_spot: None,
             spawn_bed: None,
@@ -190,6 +199,8 @@ impl PlayerSession {
             vitals,
             mode,
             work: [None; 3],
+            work_choice: None,
+            work_input: None,
             sleeping: None,
             sleep_spot: None,
             spawn_bed: None,

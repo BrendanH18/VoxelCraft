@@ -378,7 +378,13 @@ impl Game {
                     self.settings.view_bobbing,
                     self.settings.damage_tilt,
                 ),
-                fov_y: self.settings.fov.to_radians(),
+                // v0.15 Track B: a scoping player's view zooms to a tenth.
+                fov_y: self.settings.fov.to_radians()
+                    * if bot.camera.first_person() && a.session.scoping() {
+                        voxelcraft::content::spyglass::ZOOM_FOV_MODIFIER
+                    } else {
+                        1.0
+                    },
                 sky_color: fog.color.map(|c| c as f64),
                 fog_color: fog.color,
                 fog_start: fog.start,
@@ -403,26 +409,28 @@ impl Game {
                     models
                 },
                 signs: crate::render::signs::models(&self.world, camera),
-                hand: (bot.camera.first_person() && self.show_hud && !a.vitals.is_dead()).then(|| {
-                    let eating = pad.map_or(a.eating(), |p| p.1);
-                    let held = a.session.inventory.get(a.selected);
-                    self.map_hand(
-                        &a.session,
-                        a.selected,
-                        Self::stamp_hand(
-                            held.map_or(host_dial, |s| host_dial.for_stack(&s)).at(
-                                a.player.yaw,
-                                a.player.pos.x,
-                                a.player.pos.z,
+                hand: (bot.camera.first_person() && self.show_hud && !a.vitals.is_dead() && !a.session.scoping()).then(
+                    || {
+                        let eating = pad.map_or(a.eating(), |p| p.1);
+                        let held = a.session.inventory.get(a.selected);
+                        self.map_hand(
+                            &a.session,
+                            a.selected,
+                            Self::stamp_hand(
+                                held.map_or(host_dial, |s| host_dial.for_stack(&s)).at(
+                                    a.player.yaw,
+                                    a.player.pos.x,
+                                    a.player.pos.z,
+                                ),
+                                bot.hand.view(
+                                    eating,
+                                    crate::entity::sky_light(&self.world, camera),
+                                    self.torch_light(camera),
+                                ),
                             ),
-                            bot.hand.view(
-                                eating,
-                                crate::entity::sky_light(&self.world, camera),
-                                self.torch_light(camera),
-                            ),
-                        ),
-                    )
-                }),
+                        )
+                    },
+                ),
                 rain: scene.rain,
                 night_vision: a.vitals.effects.night_vision(scene.time),
                 ui,

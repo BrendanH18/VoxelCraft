@@ -1328,7 +1328,9 @@ mod tests {
                 v.unlock();
             }
             for o in v.offers.iter().flatten() {
-                assert!(o.cost.count > 0 && o.cost.count <= o.cost.max());
+                // Java's librarian wants two books and quill, which don't
+                // stack; the payment comes from several slots (`trade_for`).
+                assert!(o.cost.count > 0 && (o.cost.count <= o.cost.max() || o.cost.item == Item::WRITABLE_BOOK));
                 assert!(o.output.count > 0 && o.output.count <= o.output.max(), "{p:?} {o:?}");
                 assert!(o.xp > 0);
             }

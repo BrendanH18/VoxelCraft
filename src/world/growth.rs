@@ -183,6 +183,11 @@ impl World {
             self.drops.push((p, statue.item_stack(self.copper_golem_statue_name(p))));
             return;
         }
+        // `copy_components` from the banner's block entity.
+        if let Some(stack) = self.banner_drop(p, block) {
+            self.drops.push((p, stack));
+            return;
+        }
         if super::creaking::heart(block).is_some() {
             let silk = tool.has(crate::enchant::Enchantment::SilkTouch);
             let item = if silk { super::creaking::HEART } else { super::creaking::RESIN_CLUMP };

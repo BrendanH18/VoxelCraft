@@ -70,6 +70,12 @@ impl MapData {
         let rotation = (((d.rotation + if d.rotation < 0.0 { -8.0 } else { 8.0 }) * 16.0 / 360.0) as i32 & 15) as u8;
         Some((clamp(x) as f32 / 2.0 + 64.0, clamp(z) as f32 / 2.0 + 64.0, rotation, player && !inside))
     }
+    /// `MapItemSavedData.locked`: the same image and markers, frozen.
+    pub fn locked_copy(&self) -> Self {
+        Self { locked: true, ..self.clone() }
+    }
+    /// `MapItemSavedData.scaled`: a blank map one scale out (at most 4),
+    /// centred on the grid square of the new scale that holds this centre.
     pub fn scaled(&self) -> Self {
         Self::fresh(
             self.center.x,
@@ -235,6 +241,24 @@ impl MapData {
         }
     }
 }
+/// `MapPostProcessing` (Java's `map_post_processing` component), carried in
+/// a map stack's [`Stack::entity_data`] between the crafting or cartography
+/// result and the take that applies it (`MapItem.onCraftedBy`).
+pub const POST_SCALE: u32 = 1;
+pub const POST_LOCK: u32 = 2;
+/// `MapItemSavedData`'s largest `scale`.
+pub const MAX_SCALE: u8 = 4;
+
+/// `#extendable_maps`: only the plain filled map zooms out.
+pub fn extendable(item: Item) -> bool {
+    item == Item::FILLED_MAP
+}
+
+/// A stack with a `map_id` (`DataComponents.MAP_ID`).
+pub fn has_map_id(stack: &Stack) -> bool {
+    stack.map_id.is_some() && stack.item.is_map() && stack.item != Item::MAP
+}
+
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct MapStorage {
     pub next_id: u32,
@@ -251,6 +275,65 @@ impl MapStorage {
         self.maps.insert(id, map);
         Stack { map_id: Some(id), ..Stack::new(item, 1) }
     }
+    /// `CartographyTableMenu.setupResultSlot` for the map and additional
+    /// slots: paper zooms an unlocked filled map out (below scale 4), a
+    /// glass pane locks an unlocked map, an empty map makes two copies.
+    pub fn cartography_result(&self, map: Option<Stack>, extra: Option<Stack>) -> Option<Stack> {
+        let (map, extra) = (map?, extra?);
+        if !has_map_id(&map) {
+            return None;
+        }
+        let data = self.maps.get(&map.map_id?)?;
+        if extra.item == Item::PAPER && extendable(map.item) && !data.locked && data.scale < MAX_SCALE {
+            Some(Stack { count: 1, entity_data: POST_SCALE, ..map })
+        } else if extra.item == Item::from_block(Block::GLASS_PANE) && !data.locked {
+            Some(Stack { count: 1, entity_data: POST_LOCK, ..map })
+        } else if extra.item == Item::MAP {
+            Some(Stack { count: 2, ..map })
+        } else {
+            None
+        }
+    }
+
+    /// `MapExtendingRecipe`: a filled map ringed by eight paper. Java only
+    /// checks the scale here, so a locked map zooms out to an unlocked one.
+    pub fn extending_result(&self, cells: &[Option<Stack>]) -> Option<Stack> {
+        if cells.len() != 9 {
+            return None;
+        }
+        let map = cells[4]?;
+        let ring = cells.iter().enumerate().all(|(i, c)| i == 4 || c.is_some_and(|s| s.item == Item::PAPER));
+        if !ring || !extendable(map.item) || !has_map_id(&map) {
+            return None;
+        }
+        (self.maps.get(&map.map_id?)?.scale < MAX_SCALE).then_some(Stack { count: 1, entity_data: POST_SCALE, ..map })
+    }
+
+    /// `MapItem.onCraftedBy`: applies a result's post-processing, giving it
+    /// a new map id holding the zoomed-out or locked map.
+    pub fn post_process(&mut self, stack: &mut Stack) {
+        if !stack.item.is_map() || stack.entity_data == 0 {
+            return;
+        }
+        let post = std::mem::take(&mut stack.entity_data);
+        let Some(data) = stack.map_id.and_then(|id| self.maps.get(&id)) else { return };
+        let data = match post {
+            POST_SCALE => data.scaled(),
+            POST_LOCK => data.locked_copy(),
+            _ => return,
+        };
+        let id = self.next_id;
+        self.next_id = id.checked_add(1).expect("map id exhausted");
+        self.maps.insert(id, data);
+        stack.map_id = Some(id);
+    }
+
+    /// A map stack's scale and lock, for its tooltip (`MapItem.appendHoverText`).
+    pub fn describe(&self, stack: &Stack) -> Option<(u8, bool)> {
+        let data = self.maps.get(&stack.map_id?)?;
+        Some((data.scale, data.locked))
+    }
+
     pub fn explorer(&mut self, g: &Generator, from: IVec3, item: Item, radius: i32) -> Option<Stack> {
         let data = explorer_map(g, from, item, radius)?;
         Some(self.create(data, item))
@@ -645,6 +728,54 @@ mod tests {
         let legacy = Generator::with_generation(42, Dimension::Overworld, super::super::terrain::Generation::V2);
         assert!(storage.explorer(&legacy, IVec3::ZERO, Item::BURIED_TREASURE_MAP, 50).is_none());
     }
+    #[test]
+    fn cartography_copies_zooms_and_locks_like_java() {
+        let mut storage = MapStorage::default();
+        let mut data = MapData::fresh(100, -40, 0, Dimension::Overworld, true, false);
+        data.colors[5000] = 77;
+        let map = storage.create(data, Item::FILLED_MAP);
+        let paper = Stack::new(Item::PAPER, 1);
+        let pane = Stack::new(Block::GLASS_PANE, 1);
+        assert_eq!(
+            storage.cartography_result(Some(map), Some(Stack::new(Item::MAP, 1))),
+            Some(Stack { count: 2, ..map })
+        );
+        let mut zoomed = storage.cartography_result(Some(map), Some(paper)).unwrap();
+        storage.post_process(&mut zoomed);
+        assert_ne!(zoomed.map_id, map.map_id, "a zoomed map is a new map");
+        assert_eq!(zoomed.entity_data, 0);
+        let c = storage.maps[&map.map_id.unwrap()].center;
+        let z = &storage.maps[&zoomed.map_id.unwrap()];
+        // `scaled` snaps the old centre to the wider grid.
+        assert_eq!((z.scale, z.locked, z.center), (1, false, map_center(c.x, c.y, 1)));
+        assert!(z.colors.iter().all(|&c| c == 0), "a zoomed-out map starts blank");
+        let mut locked = storage.cartography_result(Some(map), Some(pane)).unwrap();
+        storage.post_process(&mut locked);
+        let l = &storage.maps[&locked.map_id.unwrap()];
+        assert!(l.locked);
+        assert_eq!(l.colors[5000], 77, "a locked copy keeps the image");
+        assert_eq!(storage.cartography_result(Some(locked), Some(pane)), None, "already locked");
+        assert_eq!(storage.cartography_result(Some(locked), Some(paper)), None, "locked maps don't zoom");
+        let mut far = Stack { map_id: zoomed.map_id, ..map };
+        for _ in 0..3 {
+            far = storage.cartography_result(Some(far), Some(paper)).unwrap();
+            storage.post_process(&mut far);
+        }
+        assert_eq!(storage.maps[&far.map_id.unwrap()].scale, MAX_SCALE);
+        assert_eq!(storage.cartography_result(Some(far), Some(paper)), None, "scale 4 is the widest");
+        // Explorer maps lock and copy but don't zoom (`#extendable_maps`).
+        let explorer =
+            storage.create(MapData::fresh(0, 0, 2, Dimension::Overworld, true, true), Item::OCEAN_MONUMENT_MAP);
+        assert_eq!(storage.cartography_result(Some(explorer), Some(paper)), None);
+        assert!(storage.cartography_result(Some(explorer), Some(pane)).is_some());
+        let reloaded = MapStorage::load(&storage.serialize()).unwrap();
+        assert!(reloaded.maps[&locked.map_id.unwrap()].locked, "locks survive saving");
+    }
+
+    fn map_center(x: i32, z: i32, scale: u8) -> IVec2 {
+        MapData::fresh(x, z, scale, Dimension::Overworld, true, false).center
+    }
+
     #[test]
     fn map_recipe_and_cloning_keep_the_id_and_name() {
         let mut grid = crate::crafting::Grid::new(3);

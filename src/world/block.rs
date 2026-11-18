@@ -368,7 +368,7 @@ pub mod tex {
     pub const BUBBLE_DOWN: u16 = BUBBLE_BASE + 1;
     pub const COUNT: u32 = {
         // Through the highest layer any v0.15 or v0.16 track uses; unused layers stay reserved.
-        const ENDS: [u32; 7] = [
+        const ENDS: [u32; 8] = [
             super::super::cave_blocks::CAL_TEX_END as u32,
             super::super::eyeblossom::TEX_END as u32,
             super::super::sniffer_egg::TEXTURE_END as u32,
@@ -376,6 +376,7 @@ pub mod tex {
             super::super::heavy_core::TEX_END as u32,
             super::super::jukebox::t::END as u32,
             super::super::trial::TEX_END as u32,
+            super::super::workstations::TEX_END as u32,
         ];
         let mut max = 0;
         let mut i = 0;
@@ -3121,10 +3122,16 @@ pub(super) const fn make(id: u16) -> BlockInfo {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },
-        900..=952 | 961..=968 | 2523 | 2524 => match super::village_blocks::registry(id) {
-            Some(info) => info,
-            None => ("unknown", Invisible, all(0)),
-        },
+        900..=952
+        | 961..=968
+        | 2523
+        | 2524
+        | super::workstations::LECTERN_FIRST..=super::workstations::LECTERN_LAST => {
+            match super::village_blocks::registry(id) {
+                Some(info) => info,
+                None => ("unknown", Invisible, all(0)),
+            }
+        }
         id if super::redstone_blocks::registry(id).is_some() => super::redstone_blocks::registry(id).unwrap(),
         id if super::rails::registry(id).is_some() => super::rails::registry(id).unwrap(),
         id if super::gadgets::registry(id).is_some() => super::gadgets::registry(id).unwrap(),

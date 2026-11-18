@@ -127,6 +127,25 @@ pub fn use_block(
             inventory.slots[slot] = Some(stack);
             return Some(Effect::Washed);
         }
+        if let Some(held) = inventory.get(slot)
+            && let Some((next, cleaned)) = super::cauldron::wash_banner(contents, held)
+        {
+            // `ItemUtils.createFilledResult(held, player, cleaned, false)`.
+            world.set_block(pos, cauldron(next));
+            if creative {
+                if !inventory.slots.iter().flatten().any(|s| *s == cleaned) && inventory.add_stack(cleaned) != 0 {
+                    entities.throw(cleaned, player.eye(), player.forward().as_dvec3());
+                }
+            } else if held.count == 1 {
+                inventory.slots[slot] = Some(cleaned);
+            } else {
+                inventory.slots[slot] = Some(Stack { count: held.count - 1, ..held });
+                if inventory.add_stack(cleaned) != 0 {
+                    entities.throw(cleaned, player.eye(), player.forward().as_dvec3());
+                }
+            }
+            return Some(Effect::Washed);
+        }
         let item = held?;
         let (next, result) = super::cauldron::exchange(contents, item)?;
         world.set_block(pos, cauldron(next));

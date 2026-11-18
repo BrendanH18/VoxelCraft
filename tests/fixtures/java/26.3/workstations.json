@@ -1,0 +1,2532 @@
+{
+ "banner_patterns": [
+  "base",
+  "border",
+  "bricks",
+  "circle",
+  "creeper",
+  "cross",
+  "curly_border",
+  "diagonal_left",
+  "diagonal_right",
+  "diagonal_up_left",
+  "diagonal_up_right",
+  "flow",
+  "flower",
+  "globe",
+  "gradient",
+  "gradient_up",
+  "guster",
+  "half_horizontal",
+  "half_horizontal_bottom",
+  "half_vertical",
+  "half_vertical_right",
+  "mojang",
+  "piglin",
+  "rhombus",
+  "skull",
+  "small_stripes",
+  "square_bottom_left",
+  "square_bottom_right",
+  "square_top_left",
+  "square_top_right",
+  "straight_cross",
+  "stripe_bottom",
+  "stripe_center",
+  "stripe_downleft",
+  "stripe_downright",
+  "stripe_left",
+  "stripe_middle",
+  "stripe_right",
+  "stripe_top",
+  "triangle_bottom",
+  "triangle_top",
+  "triangles_bottom",
+  "triangles_top"
+ ],
+ "constants": {
+  "BannerBlockEntity.MAX_PATTERNS": 6,
+  "LecternBlock.PAGE_CHANGE_IMPULSE_TICKS": 2,
+  "SpyglassItem.USE_DURATION": 1200,
+  "SpyglassItem.ZOOM_FOV_MODIFIER": 0.1,
+  "WritableBookContent.MAX_PAGES": 100,
+  "WritableBookContent.PAGE_EDIT_LENGTH": 1024,
+  "WrittenBookContent.MAX_GENERATION": 3,
+  "WrittenBookContent.TITLE_MAX_LENGTH": 32
+ },
+ "item_tags": {
+  "book_cloning_target": [
+   "writable_book"
+  ],
+  "clonable_maps": [
+   "filled_map",
+   "ocean_monument_map",
+   "woodland_mansion_map",
+   "buried_trial_chambers_map",
+   "jungle_pyramid_map",
+   "swamp_hut_map",
+   "desert_village_map",
+   "plains_village_map",
+   "savanna_village_map",
+   "snowy_village_map",
+   "taiga_village_map",
+   "buried_treasure_map",
+   "buried_ancient_city_map",
+   "buried_mineshaft_map",
+   "desert_pyramid_map",
+   "abandoned_camp_map",
+   "warm_ocean_ruins_map"
+  ],
+  "extendable_maps": [
+   "filled_map"
+  ],
+  "lectern_books": [
+   "written_book",
+   "writable_book"
+  ],
+  "loom_patterns": [
+   "flower_banner_pattern",
+   "creeper_banner_pattern",
+   "skull_banner_pattern",
+   "mojang_banner_pattern",
+   "globe_banner_pattern",
+   "piglin_banner_pattern",
+   "flow_banner_pattern",
+   "guster_banner_pattern",
+   "field_masoned_banner_pattern",
+   "bordure_indented_banner_pattern"
+  ]
+ },
+ "items": {
+  "bordure_indented_banner_pattern": {
+   "glint": false,
+   "max_stack": 1,
+   "rarity": "common"
+  },
+  "creeper_banner_pattern": {
+   "glint": false,
+   "max_stack": 1,
+   "rarity": "uncommon"
+  },
+  "field_masoned_banner_pattern": {
+   "glint": false,
+   "max_stack": 1,
+   "rarity": "common"
+  },
+  "flow_banner_pattern": {
+   "glint": false,
+   "max_stack": 1,
+   "rarity": "rare"
+  },
+  "flower_banner_pattern": {
+   "glint": false,
+   "max_stack": 1,
+   "rarity": "common"
+  },
+  "globe_banner_pattern": {
+   "glint": false,
+   "max_stack": 1,
+   "rarity": "common"
+  },
+  "guster_banner_pattern": {
+   "glint": false,
+   "max_stack": 1,
+   "rarity": "rare"
+  },
+  "mojang_banner_pattern": {
+   "glint": false,
+   "max_stack": 1,
+   "rarity": "rare"
+  },
+  "piglin_banner_pattern": {
+   "glint": false,
+   "max_stack": 1,
+   "rarity": "uncommon"
+  },
+  "skull_banner_pattern": {
+   "glint": false,
+   "max_stack": 1,
+   "rarity": "rare"
+  },
+  "spyglass": {
+   "glint": false,
+   "max_stack": 1,
+   "rarity": "common"
+  },
+  "writable_book": {
+   "glint": false,
+   "max_stack": 1,
+   "rarity": "common"
+  },
+  "written_book": {
+   "glint": true,
+   "max_stack": 16,
+   "rarity": "common"
+  }
+ },
+ "lectern_signal": [
+  {
+   "clamped": 0,
+   "page": -1,
+   "pages": 0,
+   "signal": 15
+  },
+  {
+   "clamped": 0,
+   "page": 0,
+   "pages": 0,
+   "signal": 15
+  },
+  {
+   "clamped": 0,
+   "page": 1,
+   "pages": 0,
+   "signal": 15
+  },
+  {
+   "clamped": 0,
+   "page": 3,
+   "pages": 0,
+   "signal": 15
+  },
+  {
+   "clamped": 0,
+   "page": -1,
+   "pages": 1,
+   "signal": 15
+  },
+  {
+   "clamped": 0,
+   "page": 0,
+   "pages": 1,
+   "signal": 15
+  },
+  {
+   "clamped": 0,
+   "page": 1,
+   "pages": 1,
+   "signal": 15
+  },
+  {
+   "clamped": 0,
+   "page": 4,
+   "pages": 1,
+   "signal": 15
+  },
+  {
+   "clamped": 0,
+   "page": -1,
+   "pages": 2,
+   "signal": 1
+  },
+  {
+   "clamped": 0,
+   "page": 0,
+   "pages": 2,
+   "signal": 1
+  },
+  {
+   "clamped": 1,
+   "page": 1,
+   "pages": 2,
+   "signal": 15
+  },
+  {
+   "clamped": 1,
+   "page": 2,
+   "pages": 2,
+   "signal": 15
+  },
+  {
+   "clamped": 1,
+   "page": 5,
+   "pages": 2,
+   "signal": 15
+  },
+  {
+   "clamped": 0,
+   "page": -1,
+   "pages": 3,
+   "signal": 1
+  },
+  {
+   "clamped": 0,
+   "page": 0,
+   "pages": 3,
+   "signal": 1
+  },
+  {
+   "clamped": 1,
+   "page": 1,
+   "pages": 3,
+   "signal": 8
+  },
+  {
+   "clamped": 2,
+   "page": 2,
+   "pages": 3,
+   "signal": 15
+  },
+  {
+   "clamped": 2,
+   "page": 3,
+   "pages": 3,
+   "signal": 15
+  },
+  {
+   "clamped": 2,
+   "page": 6,
+   "pages": 3,
+   "signal": 15
+  },
+  {
+   "clamped": 0,
+   "page": -1,
+   "pages": 5,
+   "signal": 1
+  },
+  {
+   "clamped": 0,
+   "page": 0,
+   "pages": 5,
+   "signal": 1
+  },
+  {
+   "clamped": 1,
+   "page": 1,
+   "pages": 5,
+   "signal": 4
+  },
+  {
+   "clamped": 2,
+   "page": 2,
+   "pages": 5,
+   "signal": 8
+  },
+  {
+   "clamped": 4,
+   "page": 4,
+   "pages": 5,
+   "signal": 15
+  },
+  {
+   "clamped": 4,
+   "page": 5,
+   "pages": 5,
+   "signal": 15
+  },
+  {
+   "clamped": 4,
+   "page": 8,
+   "pages": 5,
+   "signal": 15
+  },
+  {
+   "clamped": 0,
+   "page": -1,
+   "pages": 15,
+   "signal": 1
+  },
+  {
+   "clamped": 0,
+   "page": 0,
+   "pages": 15,
+   "signal": 1
+  },
+  {
+   "clamped": 1,
+   "page": 1,
+   "pages": 15,
+   "signal": 2
+  },
+  {
+   "clamped": 7,
+   "page": 7,
+   "pages": 15,
+   "signal": 8
+  },
+  {
+   "clamped": 14,
+   "page": 14,
+   "pages": 15,
+   "signal": 15
+  },
+  {
+   "clamped": 14,
+   "page": 15,
+   "pages": 15,
+   "signal": 15
+  },
+  {
+   "clamped": 14,
+   "page": 18,
+   "pages": 15,
+   "signal": 15
+  },
+  {
+   "clamped": 0,
+   "page": -1,
+   "pages": 16,
+   "signal": 1
+  },
+  {
+   "clamped": 0,
+   "page": 0,
+   "pages": 16,
+   "signal": 1
+  },
+  {
+   "clamped": 1,
+   "page": 1,
+   "pages": 16,
+   "signal": 1
+  },
+  {
+   "clamped": 8,
+   "page": 8,
+   "pages": 16,
+   "signal": 8
+  },
+  {
+   "clamped": 15,
+   "page": 15,
+   "pages": 16,
+   "signal": 15
+  },
+  {
+   "clamped": 15,
+   "page": 16,
+   "pages": 16,
+   "signal": 15
+  },
+  {
+   "clamped": 15,
+   "page": 19,
+   "pages": 16,
+   "signal": 15
+  },
+  {
+   "clamped": 0,
+   "page": -1,
+   "pages": 100,
+   "signal": 1
+  },
+  {
+   "clamped": 0,
+   "page": 0,
+   "pages": 100,
+   "signal": 1
+  },
+  {
+   "clamped": 1,
+   "page": 1,
+   "pages": 100,
+   "signal": 1
+  },
+  {
+   "clamped": 50,
+   "page": 50,
+   "pages": 100,
+   "signal": 8
+  },
+  {
+   "clamped": 99,
+   "page": 99,
+   "pages": 100,
+   "signal": 15
+  },
+  {
+   "clamped": 99,
+   "page": 100,
+   "pages": 100,
+   "signal": 15
+  },
+  {
+   "clamped": 99,
+   "page": 103,
+   "pages": 100,
+   "signal": 15
+  }
+ ],
+ "loot": {
+  "chests/abandoned_camp_common_chest": [
+   {
+    "item": "spyglass",
+    "pool": 1,
+    "total_weight": 10,
+    "weight": 1
+   }
+  ],
+  "chests/bastion_other": [
+   {
+    "item": "piglin_banner_pattern",
+    "pool": 0,
+    "total_weight": 89,
+    "weight": 9
+   }
+  ],
+  "chests/trial_chambers/reward_ominous_unique": [
+   {
+    "item": "flow_banner_pattern",
+    "pool": 0,
+    "total_weight": 10,
+    "weight": 2
+   }
+  ],
+  "chests/trial_chambers/reward_unique": [
+   {
+    "item": "guster_banner_pattern",
+    "pool": 0,
+    "total_weight": 12,
+    "weight": 2
+   }
+  ]
+ },
+ "no_item_required": [
+  "square_bottom_left",
+  "square_bottom_right",
+  "square_top_left",
+  "square_top_right",
+  "stripe_bottom",
+  "stripe_top",
+  "stripe_left",
+  "stripe_right",
+  "stripe_center",
+  "stripe_middle",
+  "stripe_downright",
+  "stripe_downleft",
+  "small_stripes",
+  "cross",
+  "straight_cross",
+  "triangle_bottom",
+  "triangle_top",
+  "triangles_bottom",
+  "triangles_top",
+  "diagonal_left",
+  "diagonal_up_right",
+  "diagonal_up_left",
+  "diagonal_right",
+  "circle",
+  "rhombus",
+  "half_vertical",
+  "half_horizontal",
+  "half_vertical_right",
+  "half_horizontal_bottom",
+  "border",
+  "gradient",
+  "gradient_up"
+ ],
+ "ominous_banner": {
+  "base": "white",
+  "layers": [
+   {
+    "color": "cyan",
+    "pattern": "rhombus"
+   },
+   {
+    "color": "light_gray",
+    "pattern": "stripe_bottom"
+   },
+   {
+    "color": "gray",
+    "pattern": "stripe_center"
+   },
+   {
+    "color": "light_gray",
+    "pattern": "border"
+   },
+   {
+    "color": "black",
+    "pattern": "stripe_middle"
+   },
+   {
+    "color": "light_gray",
+    "pattern": "half_horizontal"
+   },
+   {
+    "color": "light_gray",
+    "pattern": "circle"
+   },
+   {
+    "color": "black",
+    "pattern": "border"
+   }
+  ]
+ },
+ "pattern_item_tags": {
+  "bordure_indented": [
+   "curly_border"
+  ],
+  "creeper": [
+   "creeper"
+  ],
+  "field_masoned": [
+   "bricks"
+  ],
+  "flow": [
+   "flow"
+  ],
+  "flower": [
+   "flower"
+  ],
+  "globe": [
+   "globe"
+  ],
+  "guster": [
+   "guster"
+  ],
+  "mojang": [
+   "mojang"
+  ],
+  "piglin": [
+   "piglin"
+  ],
+  "skull": [
+   "skull"
+  ]
+ },
+ "reference": "Java 26.3 behaviour data only; no artwork",
+ "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+ "source": "official 26.3 server.jar via tools/extract_java_workstation_fixtures.py",
+ "stonecutter_menus": {
+  "andesite": [
+   {
+    "count": 2,
+    "id": "andesite_slab_from_andesite_stonecutting",
+    "result": "andesite_slab"
+   },
+   {
+    "count": 1,
+    "id": "andesite_stairs_from_andesite_stonecutting",
+    "result": "andesite_stairs"
+   },
+   {
+    "count": 1,
+    "id": "andesite_wall_from_andesite_stonecutting",
+    "result": "andesite_wall"
+   },
+   {
+    "count": 1,
+    "id": "polished_andesite_from_andesite_stonecutting",
+    "result": "polished_andesite"
+   },
+   {
+    "count": 2,
+    "id": "polished_andesite_slab_from_andesite_stonecutting",
+    "result": "polished_andesite_slab"
+   },
+   {
+    "count": 1,
+    "id": "polished_andesite_stairs_from_andesite_stonecutting",
+    "result": "polished_andesite_stairs"
+   }
+  ],
+  "basalt": [
+   {
+    "count": 1,
+    "id": "polished_basalt_from_basalt_stonecutting",
+    "result": "polished_basalt"
+   }
+  ],
+  "black_concrete": [
+   {
+    "count": 2,
+    "id": "black_concrete_slab_from_black_concrete_stonecutting",
+    "result": "black_concrete_slab"
+   },
+   {
+    "count": 1,
+    "id": "black_concrete_stairs_from_black_concrete_stonecutting",
+    "result": "black_concrete_stairs"
+   }
+  ],
+  "blackstone": [
+   {
+    "count": 2,
+    "id": "blackstone_slab_from_blackstone_stonecutting",
+    "result": "blackstone_slab"
+   },
+   {
+    "count": 1,
+    "id": "blackstone_stairs_from_blackstone_stonecutting",
+    "result": "blackstone_stairs"
+   },
+   {
+    "count": 1,
+    "id": "blackstone_wall_from_blackstone_stonecutting",
+    "result": "blackstone_wall"
+   },
+   {
+    "count": 1,
+    "id": "chiseled_polished_blackstone_from_blackstone_stonecutting",
+    "result": "chiseled_polished_blackstone"
+   },
+   {
+    "count": 2,
+    "id": "polished_blackstone_brick_slab_from_blackstone_stonecutting",
+    "result": "polished_blackstone_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "polished_blackstone_brick_stairs_from_blackstone_stonecutting",
+    "result": "polished_blackstone_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "polished_blackstone_brick_wall_from_blackstone_stonecutting",
+    "result": "polished_blackstone_brick_wall"
+   },
+   {
+    "count": 1,
+    "id": "polished_blackstone_bricks_from_blackstone_stonecutting",
+    "result": "polished_blackstone_bricks"
+   },
+   {
+    "count": 1,
+    "id": "polished_blackstone_from_blackstone_stonecutting",
+    "result": "polished_blackstone"
+   },
+   {
+    "count": 2,
+    "id": "polished_blackstone_slab_from_blackstone_stonecutting",
+    "result": "polished_blackstone_slab"
+   },
+   {
+    "count": 1,
+    "id": "polished_blackstone_stairs_from_blackstone_stonecutting",
+    "result": "polished_blackstone_stairs"
+   },
+   {
+    "count": 1,
+    "id": "polished_blackstone_wall_from_blackstone_stonecutting",
+    "result": "polished_blackstone_wall"
+   }
+  ],
+  "blue_concrete": [
+   {
+    "count": 2,
+    "id": "blue_concrete_slab_from_blue_concrete_stonecutting",
+    "result": "blue_concrete_slab"
+   },
+   {
+    "count": 1,
+    "id": "blue_concrete_stairs_from_blue_concrete_stonecutting",
+    "result": "blue_concrete_stairs"
+   }
+  ],
+  "bricks": [
+   {
+    "count": 2,
+    "id": "brick_slab_from_bricks_stonecutting",
+    "result": "brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "brick_stairs_from_bricks_stonecutting",
+    "result": "brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "brick_wall_from_bricks_stonecutting",
+    "result": "brick_wall"
+   }
+  ],
+  "brown_concrete": [
+   {
+    "count": 2,
+    "id": "brown_concrete_slab_from_brown_concrete_stonecutting",
+    "result": "brown_concrete_slab"
+   },
+   {
+    "count": 1,
+    "id": "brown_concrete_stairs_from_brown_concrete_stonecutting",
+    "result": "brown_concrete_stairs"
+   }
+  ],
+  "cinnabar": [
+   {
+    "count": 1,
+    "id": "chiseled_cinnabar_from_cinnabar_stonecutting",
+    "result": "chiseled_cinnabar"
+   },
+   {
+    "count": 2,
+    "id": "cinnabar_brick_slab_from_cinnabar_stonecutting",
+    "result": "cinnabar_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "cinnabar_brick_stairs_from_cinnabar_stonecutting",
+    "result": "cinnabar_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "cinnabar_brick_wall_from_cinnabar_stonecutting",
+    "result": "cinnabar_brick_wall"
+   },
+   {
+    "count": 1,
+    "id": "cinnabar_bricks_from_cinnabar_stonecutting",
+    "result": "cinnabar_bricks"
+   },
+   {
+    "count": 2,
+    "id": "cinnabar_slab_from_cinnabar_stonecutting",
+    "result": "cinnabar_slab"
+   },
+   {
+    "count": 1,
+    "id": "cinnabar_stairs_from_cinnabar_stonecutting",
+    "result": "cinnabar_stairs"
+   },
+   {
+    "count": 1,
+    "id": "cinnabar_wall_from_cinnabar_stonecutting",
+    "result": "cinnabar_wall"
+   },
+   {
+    "count": 1,
+    "id": "polished_cinnabar_from_cinnabar_stonecutting",
+    "result": "polished_cinnabar"
+   },
+   {
+    "count": 2,
+    "id": "polished_cinnabar_slab_from_cinnabar_stonecutting",
+    "result": "polished_cinnabar_slab"
+   },
+   {
+    "count": 1,
+    "id": "polished_cinnabar_stairs_from_cinnabar_stonecutting",
+    "result": "polished_cinnabar_stairs"
+   },
+   {
+    "count": 1,
+    "id": "polished_cinnabar_wall_from_cinnabar_stonecutting",
+    "result": "polished_cinnabar_wall"
+   }
+  ],
+  "cinnabar_bricks": [
+   {
+    "count": 2,
+    "id": "cinnabar_brick_slab_from_cinnabar_bricks_stonecutting",
+    "result": "cinnabar_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "cinnabar_brick_stairs_from_cinnabar_bricks_stonecutting",
+    "result": "cinnabar_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "cinnabar_brick_wall_from_cinnabar_bricks_stonecutting",
+    "result": "cinnabar_brick_wall"
+   }
+  ],
+  "cobbled_deepslate": [
+   {
+    "count": 1,
+    "id": "chiseled_deepslate_from_cobbled_deepslate_stonecutting",
+    "result": "chiseled_deepslate"
+   },
+   {
+    "count": 2,
+    "id": "cobbled_deepslate_slab_from_cobbled_deepslate_stonecutting",
+    "result": "cobbled_deepslate_slab"
+   },
+   {
+    "count": 1,
+    "id": "cobbled_deepslate_stairs_from_cobbled_deepslate_stonecutting",
+    "result": "cobbled_deepslate_stairs"
+   },
+   {
+    "count": 1,
+    "id": "cobbled_deepslate_wall_from_cobbled_deepslate_stonecutting",
+    "result": "cobbled_deepslate_wall"
+   },
+   {
+    "count": 2,
+    "id": "deepslate_brick_slab_from_cobbled_deepslate_stonecutting",
+    "result": "deepslate_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_brick_stairs_from_cobbled_deepslate_stonecutting",
+    "result": "deepslate_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_brick_wall_from_cobbled_deepslate_stonecutting",
+    "result": "deepslate_brick_wall"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_bricks_from_cobbled_deepslate_stonecutting",
+    "result": "deepslate_bricks"
+   },
+   {
+    "count": 2,
+    "id": "deepslate_tile_slab_from_cobbled_deepslate_stonecutting",
+    "result": "deepslate_tile_slab"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_tile_stairs_from_cobbled_deepslate_stonecutting",
+    "result": "deepslate_tile_stairs"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_tile_wall_from_cobbled_deepslate_stonecutting",
+    "result": "deepslate_tile_wall"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_tiles_from_cobbled_deepslate_stonecutting",
+    "result": "deepslate_tiles"
+   },
+   {
+    "count": 1,
+    "id": "polished_deepslate_from_cobbled_deepslate_stonecutting",
+    "result": "polished_deepslate"
+   },
+   {
+    "count": 2,
+    "id": "polished_deepslate_slab_from_cobbled_deepslate_stonecutting",
+    "result": "polished_deepslate_slab"
+   },
+   {
+    "count": 1,
+    "id": "polished_deepslate_stairs_from_cobbled_deepslate_stonecutting",
+    "result": "polished_deepslate_stairs"
+   },
+   {
+    "count": 1,
+    "id": "polished_deepslate_wall_from_cobbled_deepslate_stonecutting",
+    "result": "polished_deepslate_wall"
+   }
+  ],
+  "cobblestone": [
+   {
+    "count": 2,
+    "id": "cobblestone_slab_from_cobblestone_stonecutting",
+    "result": "cobblestone_slab"
+   },
+   {
+    "count": 1,
+    "id": "cobblestone_stairs_from_cobblestone_stonecutting",
+    "result": "cobblestone_stairs"
+   },
+   {
+    "count": 1,
+    "id": "cobblestone_wall_from_cobblestone_stonecutting",
+    "result": "cobblestone_wall"
+   }
+  ],
+  "copper_block": [
+   {
+    "count": 4,
+    "id": "chiseled_copper_from_copper_block_stonecutting",
+    "result": "chiseled_copper"
+   },
+   {
+    "count": 4,
+    "id": "copper_grate_from_copper_block_stonecutting",
+    "result": "copper_grate"
+   },
+   {
+    "count": 4,
+    "id": "cut_copper_from_copper_block_stonecutting",
+    "result": "cut_copper"
+   },
+   {
+    "count": 8,
+    "id": "cut_copper_slab_from_copper_block_stonecutting",
+    "result": "cut_copper_slab"
+   },
+   {
+    "count": 4,
+    "id": "cut_copper_stairs_from_copper_block_stonecutting",
+    "result": "cut_copper_stairs"
+   }
+  ],
+  "cut_copper": [
+   {
+    "count": 1,
+    "id": "chiseled_copper_from_cut_copper_stonecutting",
+    "result": "chiseled_copper"
+   },
+   {
+    "count": 2,
+    "id": "cut_copper_slab_from_cut_copper_stonecutting",
+    "result": "cut_copper_slab"
+   },
+   {
+    "count": 1,
+    "id": "cut_copper_stairs_from_cut_copper_stonecutting",
+    "result": "cut_copper_stairs"
+   }
+  ],
+  "cut_red_sandstone": [
+   {
+    "count": 2,
+    "id": "cut_red_sandstone_slab_from_cut_red_sandstone_stonecutting",
+    "result": "cut_red_sandstone_slab"
+   }
+  ],
+  "cut_sandstone": [
+   {
+    "count": 2,
+    "id": "cut_sandstone_slab_from_cut_sandstone_stonecutting",
+    "result": "cut_sandstone_slab"
+   }
+  ],
+  "cyan_concrete": [
+   {
+    "count": 2,
+    "id": "cyan_concrete_slab_from_cyan_concrete_stonecutting",
+    "result": "cyan_concrete_slab"
+   },
+   {
+    "count": 1,
+    "id": "cyan_concrete_stairs_from_cyan_concrete_stonecutting",
+    "result": "cyan_concrete_stairs"
+   }
+  ],
+  "dark_prismarine": [
+   {
+    "count": 2,
+    "id": "dark_prismarine_slab_from_dark_prismarine_stonecutting",
+    "result": "dark_prismarine_slab"
+   },
+   {
+    "count": 1,
+    "id": "dark_prismarine_stairs_from_dark_prismarine_stonecutting",
+    "result": "dark_prismarine_stairs"
+   }
+  ],
+  "deepslate": [
+   {
+    "count": 1,
+    "id": "chiseled_deepslate_from_deepslate_stonecutting",
+    "result": "chiseled_deepslate"
+   },
+   {
+    "count": 1,
+    "id": "cobbled_deepslate_from_deepslate_stonecutting",
+    "result": "cobbled_deepslate"
+   },
+   {
+    "count": 2,
+    "id": "cobbled_deepslate_slab_from_deepslate_stonecutting",
+    "result": "cobbled_deepslate_slab"
+   },
+   {
+    "count": 1,
+    "id": "cobbled_deepslate_stairs_from_deepslate_stonecutting",
+    "result": "cobbled_deepslate_stairs"
+   },
+   {
+    "count": 1,
+    "id": "cobbled_deepslate_wall_from_deepslate_stonecutting",
+    "result": "cobbled_deepslate_wall"
+   },
+   {
+    "count": 2,
+    "id": "deepslate_brick_slab_from_deepslate_stonecutting",
+    "result": "deepslate_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_brick_stairs_from_deepslate_stonecutting",
+    "result": "deepslate_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_brick_wall_from_deepslate_stonecutting",
+    "result": "deepslate_brick_wall"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_bricks_from_deepslate_stonecutting",
+    "result": "deepslate_bricks"
+   },
+   {
+    "count": 2,
+    "id": "deepslate_tile_slab_from_deepslate_stonecutting",
+    "result": "deepslate_tile_slab"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_tile_stairs_from_deepslate_stonecutting",
+    "result": "deepslate_tile_stairs"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_tile_wall_from_deepslate_stonecutting",
+    "result": "deepslate_tile_wall"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_tiles_from_deepslate_stonecutting",
+    "result": "deepslate_tiles"
+   },
+   {
+    "count": 1,
+    "id": "polished_deepslate_from_deepslate_stonecutting",
+    "result": "polished_deepslate"
+   },
+   {
+    "count": 2,
+    "id": "polished_deepslate_slab_from_deepslate_stonecutting",
+    "result": "polished_deepslate_slab"
+   },
+   {
+    "count": 1,
+    "id": "polished_deepslate_stairs_from_deepslate_stonecutting",
+    "result": "polished_deepslate_stairs"
+   },
+   {
+    "count": 1,
+    "id": "polished_deepslate_wall_from_deepslate_stonecutting",
+    "result": "polished_deepslate_wall"
+   }
+  ],
+  "deepslate_bricks": [
+   {
+    "count": 2,
+    "id": "deepslate_brick_slab_from_deepslate_bricks_stonecutting",
+    "result": "deepslate_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_brick_stairs_from_deepslate_bricks_stonecutting",
+    "result": "deepslate_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_brick_wall_from_deepslate_bricks_stonecutting",
+    "result": "deepslate_brick_wall"
+   },
+   {
+    "count": 2,
+    "id": "deepslate_tile_slab_from_deepslate_bricks_stonecutting",
+    "result": "deepslate_tile_slab"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_tile_stairs_from_deepslate_bricks_stonecutting",
+    "result": "deepslate_tile_stairs"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_tile_wall_from_deepslate_bricks_stonecutting",
+    "result": "deepslate_tile_wall"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_tiles_from_deepslate_bricks_stonecutting",
+    "result": "deepslate_tiles"
+   }
+  ],
+  "deepslate_tiles": [
+   {
+    "count": 2,
+    "id": "deepslate_tile_slab_from_deepslate_tiles_stonecutting",
+    "result": "deepslate_tile_slab"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_tile_stairs_from_deepslate_tiles_stonecutting",
+    "result": "deepslate_tile_stairs"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_tile_wall_from_deepslate_tiles_stonecutting",
+    "result": "deepslate_tile_wall"
+   }
+  ],
+  "diorite": [
+   {
+    "count": 2,
+    "id": "diorite_slab_from_diorite_stonecutting",
+    "result": "diorite_slab"
+   },
+   {
+    "count": 1,
+    "id": "diorite_stairs_from_diorite_stonecutting",
+    "result": "diorite_stairs"
+   },
+   {
+    "count": 1,
+    "id": "diorite_wall_from_diorite_stonecutting",
+    "result": "diorite_wall"
+   },
+   {
+    "count": 1,
+    "id": "polished_diorite_from_diorite_stonecutting",
+    "result": "polished_diorite"
+   },
+   {
+    "count": 2,
+    "id": "polished_diorite_slab_from_diorite_stonecutting",
+    "result": "polished_diorite_slab"
+   },
+   {
+    "count": 1,
+    "id": "polished_diorite_stairs_from_diorite_stonecutting",
+    "result": "polished_diorite_stairs"
+   }
+  ],
+  "end_stone": [
+   {
+    "count": 2,
+    "id": "end_stone_brick_slab_from_end_stone_stonecutting",
+    "result": "end_stone_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "end_stone_brick_stairs_from_end_stone_stonecutting",
+    "result": "end_stone_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "end_stone_brick_wall_from_end_stone_stonecutting",
+    "result": "end_stone_brick_wall"
+   },
+   {
+    "count": 1,
+    "id": "end_stone_bricks_from_end_stone_stonecutting",
+    "result": "end_stone_bricks"
+   }
+  ],
+  "end_stone_bricks": [
+   {
+    "count": 2,
+    "id": "end_stone_brick_slab_from_end_stone_bricks_stonecutting",
+    "result": "end_stone_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "end_stone_brick_stairs_from_end_stone_bricks_stonecutting",
+    "result": "end_stone_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "end_stone_brick_wall_from_end_stone_bricks_stonecutting",
+    "result": "end_stone_brick_wall"
+   }
+  ],
+  "exposed_copper": [
+   {
+    "count": 4,
+    "id": "exposed_chiseled_copper_from_exposed_copper_stonecutting",
+    "result": "exposed_chiseled_copper"
+   },
+   {
+    "count": 4,
+    "id": "exposed_copper_grate_from_exposed_copper_stonecutting",
+    "result": "exposed_copper_grate"
+   },
+   {
+    "count": 4,
+    "id": "exposed_cut_copper_from_exposed_copper_stonecutting",
+    "result": "exposed_cut_copper"
+   },
+   {
+    "count": 8,
+    "id": "exposed_cut_copper_slab_from_exposed_copper_stonecutting",
+    "result": "exposed_cut_copper_slab"
+   },
+   {
+    "count": 4,
+    "id": "exposed_cut_copper_stairs_from_exposed_copper_stonecutting",
+    "result": "exposed_cut_copper_stairs"
+   }
+  ],
+  "exposed_cut_copper": [
+   {
+    "count": 1,
+    "id": "exposed_chiseled_copper_from_exposed_cut_copper_stonecutting",
+    "result": "exposed_chiseled_copper"
+   },
+   {
+    "count": 2,
+    "id": "exposed_cut_copper_slab_from_exposed_cut_copper_stonecutting",
+    "result": "exposed_cut_copper_slab"
+   },
+   {
+    "count": 1,
+    "id": "exposed_cut_copper_stairs_from_exposed_cut_copper_stonecutting",
+    "result": "exposed_cut_copper_stairs"
+   }
+  ],
+  "granite": [
+   {
+    "count": 2,
+    "id": "granite_slab_from_granite_stonecutting",
+    "result": "granite_slab"
+   },
+   {
+    "count": 1,
+    "id": "granite_stairs_from_granite_stonecutting",
+    "result": "granite_stairs"
+   },
+   {
+    "count": 1,
+    "id": "granite_wall_from_granite_stonecutting",
+    "result": "granite_wall"
+   },
+   {
+    "count": 1,
+    "id": "polished_granite_from_granite_stonecutting",
+    "result": "polished_granite"
+   },
+   {
+    "count": 2,
+    "id": "polished_granite_slab_from_granite_stonecutting",
+    "result": "polished_granite_slab"
+   },
+   {
+    "count": 1,
+    "id": "polished_granite_stairs_from_granite_stonecutting",
+    "result": "polished_granite_stairs"
+   }
+  ],
+  "gray_concrete": [
+   {
+    "count": 2,
+    "id": "gray_concrete_slab_from_gray_concrete_stonecutting",
+    "result": "gray_concrete_slab"
+   },
+   {
+    "count": 1,
+    "id": "gray_concrete_stairs_from_gray_concrete_stonecutting",
+    "result": "gray_concrete_stairs"
+   }
+  ],
+  "green_concrete": [
+   {
+    "count": 2,
+    "id": "green_concrete_slab_from_green_concrete_stonecutting",
+    "result": "green_concrete_slab"
+   },
+   {
+    "count": 1,
+    "id": "green_concrete_stairs_from_green_concrete_stonecutting",
+    "result": "green_concrete_stairs"
+   }
+  ],
+  "light_blue_concrete": [
+   {
+    "count": 2,
+    "id": "light_blue_concrete_slab_from_light_blue_concrete_stonecutting",
+    "result": "light_blue_concrete_slab"
+   },
+   {
+    "count": 1,
+    "id": "light_blue_concrete_stairs_from_light_blue_concrete_stonecutting",
+    "result": "light_blue_concrete_stairs"
+   }
+  ],
+  "light_gray_concrete": [
+   {
+    "count": 2,
+    "id": "light_gray_concrete_slab_from_light_gray_concrete_stonecutting",
+    "result": "light_gray_concrete_slab"
+   },
+   {
+    "count": 1,
+    "id": "light_gray_concrete_stairs_from_light_gray_concrete_stonecutting",
+    "result": "light_gray_concrete_stairs"
+   }
+  ],
+  "lime_concrete": [
+   {
+    "count": 2,
+    "id": "lime_concrete_slab_from_lime_concrete_stonecutting",
+    "result": "lime_concrete_slab"
+   },
+   {
+    "count": 1,
+    "id": "lime_concrete_stairs_from_lime_concrete_stonecutting",
+    "result": "lime_concrete_stairs"
+   }
+  ],
+  "magenta_concrete": [
+   {
+    "count": 2,
+    "id": "magenta_concrete_slab_from_magenta_concrete_stonecutting",
+    "result": "magenta_concrete_slab"
+   },
+   {
+    "count": 1,
+    "id": "magenta_concrete_stairs_from_magenta_concrete_stonecutting",
+    "result": "magenta_concrete_stairs"
+   }
+  ],
+  "mossy_cobblestone": [
+   {
+    "count": 2,
+    "id": "mossy_cobblestone_slab_from_mossy_cobblestone_stonecutting",
+    "result": "mossy_cobblestone_slab"
+   },
+   {
+    "count": 1,
+    "id": "mossy_cobblestone_stairs_from_mossy_cobblestone_stonecutting",
+    "result": "mossy_cobblestone_stairs"
+   },
+   {
+    "count": 1,
+    "id": "mossy_cobblestone_wall_from_mossy_cobblestone_stonecutting",
+    "result": "mossy_cobblestone_wall"
+   }
+  ],
+  "mossy_stone_bricks": [
+   {
+    "count": 2,
+    "id": "mossy_stone_brick_slab_from_mossy_stone_bricks_stonecutting",
+    "result": "mossy_stone_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "mossy_stone_brick_stairs_from_mossy_stone_bricks_stonecutting",
+    "result": "mossy_stone_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "mossy_stone_brick_wall_from_mossy_stone_bricks_stonecutting",
+    "result": "mossy_stone_brick_wall"
+   }
+  ],
+  "mud_bricks": [
+   {
+    "count": 2,
+    "id": "mud_brick_slab_from_mud_bricks_stonecutting",
+    "result": "mud_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "mud_brick_stairs_from_mud_bricks_stonecutting",
+    "result": "mud_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "mud_brick_wall_from_mud_bricks_stonecutting",
+    "result": "mud_brick_wall"
+   }
+  ],
+  "nether_bricks": [
+   {
+    "count": 1,
+    "id": "chiseled_nether_bricks_from_nether_bricks_stonecutting",
+    "result": "chiseled_nether_bricks"
+   },
+   {
+    "count": 2,
+    "id": "nether_brick_slab_from_nether_bricks_stonecutting",
+    "result": "nether_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "nether_brick_stairs_from_nether_bricks_stonecutting",
+    "result": "nether_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "nether_brick_wall_from_nether_bricks_stonecutting",
+    "result": "nether_brick_wall"
+   }
+  ],
+  "orange_concrete": [
+   {
+    "count": 2,
+    "id": "orange_concrete_slab_from_orange_concrete_stonecutting",
+    "result": "orange_concrete_slab"
+   },
+   {
+    "count": 1,
+    "id": "orange_concrete_stairs_from_orange_concrete_stonecutting",
+    "result": "orange_concrete_stairs"
+   }
+  ],
+  "oxidized_copper": [
+   {
+    "count": 4,
+    "id": "oxidized_chiseled_copper_from_oxidized_copper_stonecutting",
+    "result": "oxidized_chiseled_copper"
+   },
+   {
+    "count": 4,
+    "id": "oxidized_copper_grate_from_oxidized_copper_stonecutting",
+    "result": "oxidized_copper_grate"
+   },
+   {
+    "count": 4,
+    "id": "oxidized_cut_copper_from_oxidized_copper_stonecutting",
+    "result": "oxidized_cut_copper"
+   },
+   {
+    "count": 8,
+    "id": "oxidized_cut_copper_slab_from_oxidized_copper_stonecutting",
+    "result": "oxidized_cut_copper_slab"
+   },
+   {
+    "count": 4,
+    "id": "oxidized_cut_copper_stairs_from_oxidized_copper_stonecutting",
+    "result": "oxidized_cut_copper_stairs"
+   }
+  ],
+  "oxidized_cut_copper": [
+   {
+    "count": 1,
+    "id": "oxidized_chiseled_copper_from_oxidized_cut_copper_stonecutting",
+    "result": "oxidized_chiseled_copper"
+   },
+   {
+    "count": 2,
+    "id": "oxidized_cut_copper_slab_from_oxidized_cut_copper_stonecutting",
+    "result": "oxidized_cut_copper_slab"
+   },
+   {
+    "count": 1,
+    "id": "oxidized_cut_copper_stairs_from_oxidized_cut_copper_stonecutting",
+    "result": "oxidized_cut_copper_stairs"
+   }
+  ],
+  "pink_concrete": [
+   {
+    "count": 2,
+    "id": "pink_concrete_slab_from_pink_concrete_stonecutting",
+    "result": "pink_concrete_slab"
+   },
+   {
+    "count": 1,
+    "id": "pink_concrete_stairs_from_pink_concrete_stonecutting",
+    "result": "pink_concrete_stairs"
+   }
+  ],
+  "polished_andesite": [
+   {
+    "count": 2,
+    "id": "polished_andesite_slab_from_polished_andesite_stonecutting",
+    "result": "polished_andesite_slab"
+   },
+   {
+    "count": 1,
+    "id": "polished_andesite_stairs_from_polished_andesite_stonecutting",
+    "result": "polished_andesite_stairs"
+   }
+  ],
+  "polished_blackstone": [
+   {
+    "count": 1,
+    "id": "chiseled_polished_blackstone_from_polished_blackstone_stonecutting",
+    "result": "chiseled_polished_blackstone"
+   },
+   {
+    "count": 2,
+    "id": "polished_blackstone_brick_slab_from_polished_blackstone_stonecutting",
+    "result": "polished_blackstone_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "polished_blackstone_brick_stairs_from_polished_blackstone_stonecutting",
+    "result": "polished_blackstone_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "polished_blackstone_brick_wall_from_polished_blackstone_stonecutting",
+    "result": "polished_blackstone_brick_wall"
+   },
+   {
+    "count": 1,
+    "id": "polished_blackstone_bricks_from_polished_blackstone_stonecutting",
+    "result": "polished_blackstone_bricks"
+   },
+   {
+    "count": 2,
+    "id": "polished_blackstone_slab_from_polished_blackstone_stonecutting",
+    "result": "polished_blackstone_slab"
+   },
+   {
+    "count": 1,
+    "id": "polished_blackstone_stairs_from_polished_blackstone_stonecutting",
+    "result": "polished_blackstone_stairs"
+   },
+   {
+    "count": 1,
+    "id": "polished_blackstone_wall_from_polished_blackstone_stonecutting",
+    "result": "polished_blackstone_wall"
+   }
+  ],
+  "polished_blackstone_bricks": [
+   {
+    "count": 2,
+    "id": "polished_blackstone_brick_slab_from_polished_blackstone_bricks_stonecutting",
+    "result": "polished_blackstone_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "polished_blackstone_brick_stairs_from_polished_blackstone_bricks_stonecutting",
+    "result": "polished_blackstone_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "polished_blackstone_brick_wall_from_polished_blackstone_bricks_stonecutting",
+    "result": "polished_blackstone_brick_wall"
+   }
+  ],
+  "polished_cinnabar": [
+   {
+    "count": 2,
+    "id": "cinnabar_brick_slab_from_polished_cinnabar_stonecutting",
+    "result": "cinnabar_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "cinnabar_brick_stairs_from_polished_cinnabar_stonecutting",
+    "result": "cinnabar_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "cinnabar_brick_wall_from_polished_cinnabar_stonecutting",
+    "result": "cinnabar_brick_wall"
+   },
+   {
+    "count": 1,
+    "id": "cinnabar_bricks_from_polished_cinnabar_stonecutting",
+    "result": "cinnabar_bricks"
+   },
+   {
+    "count": 2,
+    "id": "polished_cinnabar_slab_from_polished_cinnabar_stonecutting",
+    "result": "polished_cinnabar_slab"
+   },
+   {
+    "count": 1,
+    "id": "polished_cinnabar_stairs_from_polished_cinnabar_stonecutting",
+    "result": "polished_cinnabar_stairs"
+   },
+   {
+    "count": 1,
+    "id": "polished_cinnabar_wall_from_polished_cinnabar_stonecutting",
+    "result": "polished_cinnabar_wall"
+   }
+  ],
+  "polished_deepslate": [
+   {
+    "count": 2,
+    "id": "deepslate_brick_slab_from_polished_deepslate_stonecutting",
+    "result": "deepslate_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_brick_stairs_from_polished_deepslate_stonecutting",
+    "result": "deepslate_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_brick_wall_from_polished_deepslate_stonecutting",
+    "result": "deepslate_brick_wall"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_bricks_from_polished_deepslate_stonecutting",
+    "result": "deepslate_bricks"
+   },
+   {
+    "count": 2,
+    "id": "deepslate_tile_slab_from_polished_deepslate_stonecutting",
+    "result": "deepslate_tile_slab"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_tile_stairs_from_polished_deepslate_stonecutting",
+    "result": "deepslate_tile_stairs"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_tile_wall_from_polished_deepslate_stonecutting",
+    "result": "deepslate_tile_wall"
+   },
+   {
+    "count": 1,
+    "id": "deepslate_tiles_from_polished_deepslate_stonecutting",
+    "result": "deepslate_tiles"
+   },
+   {
+    "count": 2,
+    "id": "polished_deepslate_slab_from_polished_deepslate_stonecutting",
+    "result": "polished_deepslate_slab"
+   },
+   {
+    "count": 1,
+    "id": "polished_deepslate_stairs_from_polished_deepslate_stonecutting",
+    "result": "polished_deepslate_stairs"
+   },
+   {
+    "count": 1,
+    "id": "polished_deepslate_wall_from_polished_deepslate_stonecutting",
+    "result": "polished_deepslate_wall"
+   }
+  ],
+  "polished_diorite": [
+   {
+    "count": 2,
+    "id": "polished_diorite_slab_from_polished_diorite_stonecutting",
+    "result": "polished_diorite_slab"
+   },
+   {
+    "count": 1,
+    "id": "polished_diorite_stairs_from_polished_diorite_stonecutting",
+    "result": "polished_diorite_stairs"
+   }
+  ],
+  "polished_granite": [
+   {
+    "count": 2,
+    "id": "polished_granite_slab_from_polished_granite_stonecutting",
+    "result": "polished_granite_slab"
+   },
+   {
+    "count": 1,
+    "id": "polished_granite_stairs_from_polished_granite_stonecutting",
+    "result": "polished_granite_stairs"
+   }
+  ],
+  "polished_sulfur": [
+   {
+    "count": 2,
+    "id": "polished_sulfur_slab_from_polished_sulfur_stonecutting",
+    "result": "polished_sulfur_slab"
+   },
+   {
+    "count": 1,
+    "id": "polished_sulfur_stairs_from_polished_sulfur_stonecutting",
+    "result": "polished_sulfur_stairs"
+   },
+   {
+    "count": 1,
+    "id": "polished_sulfur_wall_from_polished_sulfur_stonecutting",
+    "result": "polished_sulfur_wall"
+   },
+   {
+    "count": 2,
+    "id": "sulfur_brick_slab_from_polished_sulfur_stonecutting",
+    "result": "sulfur_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "sulfur_brick_stairs_from_polished_sulfur_stonecutting",
+    "result": "sulfur_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "sulfur_brick_wall_from_polished_sulfur_stonecutting",
+    "result": "sulfur_brick_wall"
+   },
+   {
+    "count": 1,
+    "id": "sulfur_bricks_from_polished_sulfur_stonecutting",
+    "result": "sulfur_bricks"
+   }
+  ],
+  "polished_tuff": [
+   {
+    "count": 1,
+    "id": "chiseled_tuff_bricks_from_polished_tuff_stonecutting",
+    "result": "chiseled_tuff_bricks"
+   },
+   {
+    "count": 2,
+    "id": "polished_tuff_slab_from_polished_tuff_stonecutting",
+    "result": "polished_tuff_slab"
+   },
+   {
+    "count": 1,
+    "id": "polished_tuff_stairs_from_polished_tuff_stonecutting",
+    "result": "polished_tuff_stairs"
+   },
+   {
+    "count": 1,
+    "id": "polished_tuff_wall_from_polished_tuff_stonecutting",
+    "result": "polished_tuff_wall"
+   },
+   {
+    "count": 2,
+    "id": "tuff_brick_slab_from_polished_tuff_stonecutting",
+    "result": "tuff_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "tuff_brick_stairs_from_polished_tuff_stonecutting",
+    "result": "tuff_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "tuff_brick_wall_from_polished_tuff_stonecutting",
+    "result": "tuff_brick_wall"
+   },
+   {
+    "count": 1,
+    "id": "tuff_bricks_from_polished_tuff_stonecutting",
+    "result": "tuff_bricks"
+   }
+  ],
+  "prismarine": [
+   {
+    "count": 2,
+    "id": "prismarine_slab_from_prismarine_stonecutting",
+    "result": "prismarine_slab"
+   },
+   {
+    "count": 1,
+    "id": "prismarine_stairs_from_prismarine_stonecutting",
+    "result": "prismarine_stairs"
+   },
+   {
+    "count": 1,
+    "id": "prismarine_wall_from_prismarine_stonecutting",
+    "result": "prismarine_wall"
+   }
+  ],
+  "prismarine_bricks": [
+   {
+    "count": 2,
+    "id": "prismarine_brick_slab_from_prismarine_bricks_stonecutting",
+    "result": "prismarine_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "prismarine_brick_stairs_from_prismarine_bricks_stonecutting",
+    "result": "prismarine_brick_stairs"
+   }
+  ],
+  "purple_concrete": [
+   {
+    "count": 2,
+    "id": "purple_concrete_slab_from_purple_concrete_stonecutting",
+    "result": "purple_concrete_slab"
+   },
+   {
+    "count": 1,
+    "id": "purple_concrete_stairs_from_purple_concrete_stonecutting",
+    "result": "purple_concrete_stairs"
+   }
+  ],
+  "purpur_block": [
+   {
+    "count": 1,
+    "id": "purpur_pillar_from_purpur_block_stonecutting",
+    "result": "purpur_pillar"
+   },
+   {
+    "count": 2,
+    "id": "purpur_slab_from_purpur_block_stonecutting",
+    "result": "purpur_slab"
+   },
+   {
+    "count": 1,
+    "id": "purpur_stairs_from_purpur_block_stonecutting",
+    "result": "purpur_stairs"
+   }
+  ],
+  "quartz_block": [
+   {
+    "count": 1,
+    "id": "chiseled_quartz_block_from_quartz_block_stonecutting",
+    "result": "chiseled_quartz_block"
+   },
+   {
+    "count": 1,
+    "id": "quartz_bricks_from_quartz_block_stonecutting",
+    "result": "quartz_bricks"
+   },
+   {
+    "count": 1,
+    "id": "quartz_pillar_from_quartz_block_stonecutting",
+    "result": "quartz_pillar"
+   },
+   {
+    "count": 2,
+    "id": "quartz_slab_from_quartz_block_stonecutting",
+    "result": "quartz_slab"
+   },
+   {
+    "count": 1,
+    "id": "quartz_stairs_from_quartz_block_stonecutting",
+    "result": "quartz_stairs"
+   }
+  ],
+  "red_concrete": [
+   {
+    "count": 2,
+    "id": "red_concrete_slab_from_red_concrete_stonecutting",
+    "result": "red_concrete_slab"
+   },
+   {
+    "count": 1,
+    "id": "red_concrete_stairs_from_red_concrete_stonecutting",
+    "result": "red_concrete_stairs"
+   }
+  ],
+  "red_nether_bricks": [
+   {
+    "count": 2,
+    "id": "red_nether_brick_slab_from_red_nether_bricks_stonecutting",
+    "result": "red_nether_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "red_nether_brick_stairs_from_red_nether_bricks_stonecutting",
+    "result": "red_nether_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "red_nether_brick_wall_from_red_nether_bricks_stonecutting",
+    "result": "red_nether_brick_wall"
+   }
+  ],
+  "red_sandstone": [
+   {
+    "count": 1,
+    "id": "chiseled_red_sandstone_from_red_sandstone_stonecutting",
+    "result": "chiseled_red_sandstone"
+   },
+   {
+    "count": 1,
+    "id": "cut_red_sandstone_from_red_sandstone_stonecutting",
+    "result": "cut_red_sandstone"
+   },
+   {
+    "count": 2,
+    "id": "cut_red_sandstone_slab_from_red_sandstone_stonecutting",
+    "result": "cut_red_sandstone_slab"
+   },
+   {
+    "count": 2,
+    "id": "red_sandstone_slab_from_red_sandstone_stonecutting",
+    "result": "red_sandstone_slab"
+   },
+   {
+    "count": 1,
+    "id": "red_sandstone_stairs_from_red_sandstone_stonecutting",
+    "result": "red_sandstone_stairs"
+   },
+   {
+    "count": 1,
+    "id": "red_sandstone_wall_from_red_sandstone_stonecutting",
+    "result": "red_sandstone_wall"
+   }
+  ],
+  "resin_bricks": [
+   {
+    "count": 1,
+    "id": "chiseled_resin_bricks_from_resin_bricks_stonecutting",
+    "result": "chiseled_resin_bricks"
+   },
+   {
+    "count": 2,
+    "id": "resin_brick_slab_from_resin_bricks_stonecutting",
+    "result": "resin_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "resin_brick_stairs_from_resin_bricks_stonecutting",
+    "result": "resin_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "resin_brick_wall_from_resin_bricks_stonecutting",
+    "result": "resin_brick_wall"
+   }
+  ],
+  "sandstone": [
+   {
+    "count": 1,
+    "id": "chiseled_sandstone_from_sandstone_stonecutting",
+    "result": "chiseled_sandstone"
+   },
+   {
+    "count": 1,
+    "id": "cut_sandstone_from_sandstone_stonecutting",
+    "result": "cut_sandstone"
+   },
+   {
+    "count": 2,
+    "id": "cut_sandstone_slab_from_sandstone_stonecutting",
+    "result": "cut_sandstone_slab"
+   },
+   {
+    "count": 2,
+    "id": "sandstone_slab_from_sandstone_stonecutting",
+    "result": "sandstone_slab"
+   },
+   {
+    "count": 1,
+    "id": "sandstone_stairs_from_sandstone_stonecutting",
+    "result": "sandstone_stairs"
+   },
+   {
+    "count": 1,
+    "id": "sandstone_wall_from_sandstone_stonecutting",
+    "result": "sandstone_wall"
+   }
+  ],
+  "smooth_quartz": [
+   {
+    "count": 2,
+    "id": "smooth_quartz_slab_from_smooth_quartz_stonecutting",
+    "result": "smooth_quartz_slab"
+   },
+   {
+    "count": 1,
+    "id": "smooth_quartz_stairs_from_smooth_quartz_stonecutting",
+    "result": "smooth_quartz_stairs"
+   }
+  ],
+  "smooth_red_sandstone": [
+   {
+    "count": 2,
+    "id": "smooth_red_sandstone_slab_from_smooth_red_sandstone_stonecutting",
+    "result": "smooth_red_sandstone_slab"
+   },
+   {
+    "count": 1,
+    "id": "smooth_red_sandstone_stairs_from_smooth_red_sandstone_stonecutting",
+    "result": "smooth_red_sandstone_stairs"
+   }
+  ],
+  "smooth_sandstone": [
+   {
+    "count": 2,
+    "id": "smooth_sandstone_slab_from_smooth_sandstone_stonecutting",
+    "result": "smooth_sandstone_slab"
+   },
+   {
+    "count": 1,
+    "id": "smooth_sandstone_stairs_from_smooth_sandstone_stonecutting",
+    "result": "smooth_sandstone_stairs"
+   }
+  ],
+  "smooth_stone": [
+   {
+    "count": 2,
+    "id": "smooth_stone_slab_from_smooth_stone_stonecutting",
+    "result": "smooth_stone_slab"
+   }
+  ],
+  "stone": [
+   {
+    "count": 1,
+    "id": "chiseled_stone_bricks_from_stone_stonecutting",
+    "result": "chiseled_stone_bricks"
+   },
+   {
+    "count": 1,
+    "id": "cobblestone_from_stone_stonecutting",
+    "result": "cobblestone"
+   },
+   {
+    "count": 2,
+    "id": "cobblestone_slab_from_stone_stonecutting",
+    "result": "cobblestone_slab"
+   },
+   {
+    "count": 1,
+    "id": "cobblestone_stairs_from_stone_stonecutting",
+    "result": "cobblestone_stairs"
+   },
+   {
+    "count": 1,
+    "id": "cobblestone_wall_from_stone_stonecutting",
+    "result": "cobblestone_wall"
+   },
+   {
+    "count": 2,
+    "id": "stone_brick_slab_from_stone_stonecutting",
+    "result": "stone_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "stone_brick_stairs_from_stone_stonecutting",
+    "result": "stone_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "stone_brick_wall_from_stone_stonecutting",
+    "result": "stone_brick_wall"
+   },
+   {
+    "count": 1,
+    "id": "stone_bricks_from_stone_stonecutting",
+    "result": "stone_bricks"
+   },
+   {
+    "count": 2,
+    "id": "stone_slab_from_stone_stonecutting",
+    "result": "stone_slab"
+   },
+   {
+    "count": 1,
+    "id": "stone_stairs_from_stone_stonecutting",
+    "result": "stone_stairs"
+   }
+  ],
+  "stone_bricks": [
+   {
+    "count": 1,
+    "id": "chiseled_stone_bricks_from_stone_bricks_stonecutting",
+    "result": "chiseled_stone_bricks"
+   },
+   {
+    "count": 2,
+    "id": "stone_brick_slab_from_stone_bricks_stonecutting",
+    "result": "stone_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "stone_brick_stairs_from_stone_bricks_stonecutting",
+    "result": "stone_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "stone_brick_wall_from_stone_bricks_stonecutting",
+    "result": "stone_brick_wall"
+   }
+  ],
+  "sulfur": [
+   {
+    "count": 1,
+    "id": "chiseled_sulfur_from_sulfur_stonecutting",
+    "result": "chiseled_sulfur"
+   },
+   {
+    "count": 1,
+    "id": "polished_sulfur_from_sulfur_stonecutting",
+    "result": "polished_sulfur"
+   },
+   {
+    "count": 2,
+    "id": "polished_sulfur_slab_from_sulfur_stonecutting",
+    "result": "polished_sulfur_slab"
+   },
+   {
+    "count": 1,
+    "id": "polished_sulfur_stairs_from_sulfur_stonecutting",
+    "result": "polished_sulfur_stairs"
+   },
+   {
+    "count": 1,
+    "id": "polished_sulfur_wall_from_sulfur_stonecutting",
+    "result": "polished_sulfur_wall"
+   },
+   {
+    "count": 2,
+    "id": "sulfur_brick_slab_from_sulfur_stonecutting",
+    "result": "sulfur_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "sulfur_brick_stairs_from_sulfur_stonecutting",
+    "result": "sulfur_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "sulfur_brick_wall_from_sulfur_stonecutting",
+    "result": "sulfur_brick_wall"
+   },
+   {
+    "count": 1,
+    "id": "sulfur_bricks_from_sulfur_stonecutting",
+    "result": "sulfur_bricks"
+   },
+   {
+    "count": 2,
+    "id": "sulfur_slab_from_sulfur_stonecutting",
+    "result": "sulfur_slab"
+   },
+   {
+    "count": 1,
+    "id": "sulfur_stairs_from_sulfur_stonecutting",
+    "result": "sulfur_stairs"
+   },
+   {
+    "count": 1,
+    "id": "sulfur_wall_from_sulfur_stonecutting",
+    "result": "sulfur_wall"
+   }
+  ],
+  "sulfur_bricks": [
+   {
+    "count": 2,
+    "id": "sulfur_brick_slab_from_sulfur_bricks_stonecutting",
+    "result": "sulfur_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "sulfur_brick_stairs_from_sulfur_bricks_stonecutting",
+    "result": "sulfur_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "sulfur_brick_wall_from_sulfur_bricks_stonecutting",
+    "result": "sulfur_brick_wall"
+   }
+  ],
+  "tuff": [
+   {
+    "count": 1,
+    "id": "chiseled_tuff_bricks_from_tuff_stonecutting",
+    "result": "chiseled_tuff_bricks"
+   },
+   {
+    "count": 1,
+    "id": "chiseled_tuff_from_tuff_stonecutting",
+    "result": "chiseled_tuff"
+   },
+   {
+    "count": 1,
+    "id": "polished_tuff_from_tuff_stonecutting",
+    "result": "polished_tuff"
+   },
+   {
+    "count": 2,
+    "id": "polished_tuff_slab_from_tuff_stonecutting",
+    "result": "polished_tuff_slab"
+   },
+   {
+    "count": 1,
+    "id": "polished_tuff_stairs_from_tuff_stonecutting",
+    "result": "polished_tuff_stairs"
+   },
+   {
+    "count": 1,
+    "id": "polished_tuff_wall_from_tuff_stonecutting",
+    "result": "polished_tuff_wall"
+   },
+   {
+    "count": 2,
+    "id": "tuff_brick_slab_from_tuff_stonecutting",
+    "result": "tuff_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "tuff_brick_stairs_from_tuff_stonecutting",
+    "result": "tuff_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "tuff_brick_wall_from_tuff_stonecutting",
+    "result": "tuff_brick_wall"
+   },
+   {
+    "count": 1,
+    "id": "tuff_bricks_from_tuff_stonecutting",
+    "result": "tuff_bricks"
+   },
+   {
+    "count": 2,
+    "id": "tuff_slab_from_tuff_stonecutting",
+    "result": "tuff_slab"
+   },
+   {
+    "count": 1,
+    "id": "tuff_stairs_from_tuff_stonecutting",
+    "result": "tuff_stairs"
+   },
+   {
+    "count": 1,
+    "id": "tuff_wall_from_tuff_stonecutting",
+    "result": "tuff_wall"
+   }
+  ],
+  "tuff_bricks": [
+   {
+    "count": 1,
+    "id": "chiseled_tuff_bricks_from_tuff_bricks_stonecutting",
+    "result": "chiseled_tuff_bricks"
+   },
+   {
+    "count": 2,
+    "id": "tuff_brick_slab_from_tuff_bricks_stonecutting",
+    "result": "tuff_brick_slab"
+   },
+   {
+    "count": 1,
+    "id": "tuff_brick_stairs_from_tuff_bricks_stonecutting",
+    "result": "tuff_brick_stairs"
+   },
+   {
+    "count": 1,
+    "id": "tuff_brick_wall_from_tuff_bricks_stonecutting",
+    "result": "tuff_brick_wall"
+   }
+  ],
+  "waxed_copper_block": [
+   {
+    "count": 4,
+    "id": "waxed_chiseled_copper_from_waxed_copper_block_stonecutting",
+    "result": "waxed_chiseled_copper"
+   },
+   {
+    "count": 4,
+    "id": "waxed_copper_grate_from_waxed_copper_block_stonecutting",
+    "result": "waxed_copper_grate"
+   },
+   {
+    "count": 4,
+    "id": "waxed_cut_copper_from_waxed_copper_block_stonecutting",
+    "result": "waxed_cut_copper"
+   },
+   {
+    "count": 8,
+    "id": "waxed_cut_copper_slab_from_waxed_copper_block_stonecutting",
+    "result": "waxed_cut_copper_slab"
+   },
+   {
+    "count": 4,
+    "id": "waxed_cut_copper_stairs_from_waxed_copper_block_stonecutting",
+    "result": "waxed_cut_copper_stairs"
+   }
+  ],
+  "waxed_cut_copper": [
+   {
+    "count": 1,
+    "id": "waxed_chiseled_copper_from_waxed_cut_copper_stonecutting",
+    "result": "waxed_chiseled_copper"
+   },
+   {
+    "count": 2,
+    "id": "waxed_cut_copper_slab_from_waxed_cut_copper_stonecutting",
+    "result": "waxed_cut_copper_slab"
+   },
+   {
+    "count": 1,
+    "id": "waxed_cut_copper_stairs_from_waxed_cut_copper_stonecutting",
+    "result": "waxed_cut_copper_stairs"
+   }
+  ],
+  "waxed_exposed_copper": [
+   {
+    "count": 4,
+    "id": "waxed_exposed_chiseled_copper_from_waxed_exposed_copper_stonecutting",
+    "result": "waxed_exposed_chiseled_copper"
+   },
+   {
+    "count": 4,
+    "id": "waxed_exposed_copper_grate_from_waxed_exposed_copper_stonecutting",
+    "result": "waxed_exposed_copper_grate"
+   },
+   {
+    "count": 4,
+    "id": "waxed_exposed_cut_copper_from_waxed_exposed_copper_stonecutting",
+    "result": "waxed_exposed_cut_copper"
+   },
+   {
+    "count": 8,
+    "id": "waxed_exposed_cut_copper_slab_from_waxed_exposed_copper_stonecutting",
+    "result": "waxed_exposed_cut_copper_slab"
+   },
+   {
+    "count": 4,
+    "id": "waxed_exposed_cut_copper_stairs_from_waxed_exposed_copper_stonecutting",
+    "result": "waxed_exposed_cut_copper_stairs"
+   }
+  ],
+  "waxed_exposed_cut_copper": [
+   {
+    "count": 1,
+    "id": "waxed_exposed_chiseled_copper_from_waxed_exposed_cut_copper_stonecutting",
+    "result": "waxed_exposed_chiseled_copper"
+   },
+   {
+    "count": 2,
+    "id": "waxed_exposed_cut_copper_slab_from_waxed_exposed_cut_copper_stonecutting",
+    "result": "waxed_exposed_cut_copper_slab"
+   },
+   {
+    "count": 1,
+    "id": "waxed_exposed_cut_copper_stairs_from_waxed_exposed_cut_copper_stonecutting",
+    "result": "waxed_exposed_cut_copper_stairs"
+   }
+  ],
+  "waxed_oxidized_copper": [
+   {
+    "count": 4,
+    "id": "waxed_oxidized_chiseled_copper_from_waxed_oxidized_copper_stonecutting",
+    "result": "waxed_oxidized_chiseled_copper"
+   },
+   {
+    "count": 4,
+    "id": "waxed_oxidized_copper_grate_from_waxed_oxidized_copper_stonecutting",
+    "result": "waxed_oxidized_copper_grate"
+   },
+   {
+    "count": 4,
+    "id": "waxed_oxidized_cut_copper_from_waxed_oxidized_copper_stonecutting",
+    "result": "waxed_oxidized_cut_copper"
+   },
+   {
+    "count": 8,
+    "id": "waxed_oxidized_cut_copper_slab_from_waxed_oxidized_copper_stonecutting",
+    "result": "waxed_oxidized_cut_copper_slab"
+   },
+   {
+    "count": 4,
+    "id": "waxed_oxidized_cut_copper_stairs_from_waxed_oxidized_copper_stonecutting",
+    "result": "waxed_oxidized_cut_copper_stairs"
+   }
+  ],
+  "waxed_oxidized_cut_copper": [
+   {
+    "count": 1,
+    "id": "waxed_oxidized_chiseled_copper_from_waxed_oxidized_cut_copper_stonecutting",
+    "result": "waxed_oxidized_chiseled_copper"
+   },
+   {
+    "count": 2,
+    "id": "waxed_oxidized_cut_copper_slab_from_waxed_oxidized_cut_copper_stonecutting",
+    "result": "waxed_oxidized_cut_copper_slab"
+   },
+   {
+    "count": 1,
+    "id": "waxed_oxidized_cut_copper_stairs_from_waxed_oxidized_cut_copper_stonecutting",
+    "result": "waxed_oxidized_cut_copper_stairs"
+   }
+  ],
+  "waxed_weathered_copper": [
+   {
+    "count": 4,
+    "id": "waxed_weathered_chiseled_copper_from_waxed_weathered_copper_stonecutting",
+    "result": "waxed_weathered_chiseled_copper"
+   },
+   {
+    "count": 4,
+    "id": "waxed_weathered_copper_grate_from_waxed_weathered_copper_stonecutting",
+    "result": "waxed_weathered_copper_grate"
+   },
+   {
+    "count": 4,
+    "id": "waxed_weathered_cut_copper_from_waxed_weathered_copper_stonecutting",
+    "result": "waxed_weathered_cut_copper"
+   },
+   {
+    "count": 8,
+    "id": "waxed_weathered_cut_copper_slab_from_waxed_weathered_copper_stonecutting",
+    "result": "waxed_weathered_cut_copper_slab"
+   },
+   {
+    "count": 4,
+    "id": "waxed_weathered_cut_copper_stairs_from_waxed_weathered_copper_stonecutting",
+    "result": "waxed_weathered_cut_copper_stairs"
+   }
+  ],
+  "waxed_weathered_cut_copper": [
+   {
+    "count": 1,
+    "id": "waxed_weathered_chiseled_copper_from_waxed_weathered_cut_copper_stonecutting",
+    "result": "waxed_weathered_chiseled_copper"
+   },
+   {
+    "count": 2,
+    "id": "waxed_weathered_cut_copper_slab_from_waxed_weathered_cut_copper_stonecutting",
+    "result": "waxed_weathered_cut_copper_slab"
+   },
+   {
+    "count": 1,
+    "id": "waxed_weathered_cut_copper_stairs_from_waxed_weathered_cut_copper_stonecutting",
+    "result": "waxed_weathered_cut_copper_stairs"
+   }
+  ],
+  "weathered_copper": [
+   {
+    "count": 4,
+    "id": "weathered_chiseled_copper_from_weathered_copper_stonecutting",
+    "result": "weathered_chiseled_copper"
+   },
+   {
+    "count": 4,
+    "id": "weathered_copper_grate_from_weathered_copper_stonecutting",
+    "result": "weathered_copper_grate"
+   },
+   {
+    "count": 4,
+    "id": "weathered_cut_copper_from_weathered_copper_stonecutting",
+    "result": "weathered_cut_copper"
+   },
+   {
+    "count": 8,
+    "id": "weathered_cut_copper_slab_from_weathered_copper_stonecutting",
+    "result": "weathered_cut_copper_slab"
+   },
+   {
+    "count": 4,
+    "id": "weathered_cut_copper_stairs_from_weathered_copper_stonecutting",
+    "result": "weathered_cut_copper_stairs"
+   }
+  ],
+  "weathered_cut_copper": [
+   {
+    "count": 1,
+    "id": "weathered_chiseled_copper_from_weathered_cut_copper_stonecutting",
+    "result": "weathered_chiseled_copper"
+   },
+   {
+    "count": 2,
+    "id": "weathered_cut_copper_slab_from_weathered_cut_copper_stonecutting",
+    "result": "weathered_cut_copper_slab"
+   },
+   {
+    "count": 1,
+    "id": "weathered_cut_copper_stairs_from_weathered_cut_copper_stonecutting",
+    "result": "weathered_cut_copper_stairs"
+   }
+  ],
+  "white_concrete": [
+   {
+    "count": 2,
+    "id": "white_concrete_slab_from_white_concrete_stonecutting",
+    "result": "white_concrete_slab"
+   },
+   {
+    "count": 1,
+    "id": "white_concrete_stairs_from_white_concrete_stonecutting",
+    "result": "white_concrete_stairs"
+   }
+  ],
+  "yellow_concrete": [
+   {
+    "count": 2,
+    "id": "yellow_concrete_slab_from_yellow_concrete_stonecutting",
+    "result": "yellow_concrete_slab"
+   },
+   {
+    "count": 1,
+    "id": "yellow_concrete_stairs_from_yellow_concrete_stonecutting",
+    "result": "yellow_concrete_stairs"
+   }
+  ]
+ },
+ "trades": [
+  {
+   "gives": "globe_banner_pattern",
+   "gives_count": 1,
+   "level": 5,
+   "max_uses": 12,
+   "profession": "cartographer",
+   "wants": "emerald",
+   "wants_count": 8,
+   "xp": 30
+  },
+  {
+   "gives": "emerald",
+   "gives_count": 1,
+   "level": 4,
+   "max_uses": 12,
+   "profession": "librarian",
+   "wants": "writable_book",
+   "wants_count": 2,
+   "xp": 30
+  }
+ ]
+}

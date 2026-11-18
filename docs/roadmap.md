@@ -1250,6 +1250,11 @@ Wave 1 (independent):
    the cartography table (copy, zoom out, lock) with map scaling and
    locking; book and quill, written books and the lectern (reading,
    page turning, comparator output); the spyglass.
+   *Implemented, unverified (2026-11-18)*: all five parts on desktop, with
+   controller workstation tabs, LAN and CLI commands; differences (no
+   creeper pattern recipe until creeper heads, original pattern art, no
+   dedicated sounds) in the
+   [Track B record](verification/2026-11-18-v0.15-workstations.md).
 3. **C. New mobs** (MOB-03, MOB-04b, FOO-04c). Happy ghasts grown from
    dried ghasts, ridden with harnesses; nautiluses and zombie nautiluses
    with nautilus armor; camel husks and parched.

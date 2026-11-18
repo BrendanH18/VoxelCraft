@@ -237,6 +237,17 @@ impl Stack {
         {
             return crate::item::lingering_name(p);
         }
+        // `WrittenBookItem.getName`: the title; the ominous banner's `item_name`.
+        if self.name.as_str().is_none() {
+            if let Some(book) = crate::content::books::written(self)
+                && !book.title.is_empty()
+            {
+                return &book.title;
+            }
+            if crate::content::banner_patterns::is_ominous(self) {
+                return crate::content::banner_patterns::OMINOUS_NAME;
+            }
+        }
         // `CompassItem.getName`.
         self.name
             .as_str()

@@ -285,6 +285,12 @@ pub(super) trait Screen<H: Host>: 'static {
     fn raw(&mut self, _host: &mut H, _input: Raw) -> Option<Step<H>> {
         None
     }
+    /// Every key press (repeats included) with the text it types, before
+    /// anything else; `true` consumes it. The book editor types its page
+    /// here (v0.15 Track B).
+    fn typed(&mut self, _host: &mut H, _key: &Key) -> bool {
+        false
+    }
     /// Once a frame while this screen is on top.
     fn tick(&mut self, _host: &mut H) -> Step<H> {
         Step::Stay
@@ -359,6 +365,7 @@ pub(super) trait Dyn<H: Host> {
     fn field_at(&mut self, host: &H, size: Size, index: usize) -> Option<&mut TextField>;
     fn back_dyn(&mut self, host: &mut H) -> Step<H>;
     fn raw_dyn(&mut self, host: &mut H, input: Raw) -> Option<Step<H>>;
+    fn typed_dyn(&mut self, host: &mut H, key: &Key) -> bool;
     fn tick_dyn(&mut self, host: &mut H) -> Step<H>;
     fn scroll_step_dyn(&self) -> f32;
     fn initial_focus_at(&self, host: &H, size: Size) -> Option<usize>;
@@ -444,6 +451,10 @@ impl<H: Host, S: Screen<H>> Dyn<H> for S {
 
     fn raw_dyn(&mut self, host: &mut H, input: Raw) -> Option<Step<H>> {
         self.raw(host, input)
+    }
+
+    fn typed_dyn(&mut self, host: &mut H, key: &Key) -> bool {
+        self.typed(host, key)
     }
 
     fn tick_dyn(&mut self, host: &mut H) -> Step<H> {
@@ -683,6 +694,9 @@ impl<H: Host> Stack<H> {
 
     pub fn key(&mut self, host: &mut H, key: &Key, size: Size) -> Option<H::Out> {
         let entry = top(&mut self.entries, host, size)?;
+        if entry.screen.typed_dyn(host, key) {
+            return None;
+        }
         if !key.repeat
             && let Some(step) = entry.screen.raw_dyn(host, Raw::Key(key.code))
         {

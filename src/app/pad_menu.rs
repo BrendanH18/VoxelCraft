@@ -53,6 +53,24 @@ pub(super) enum Tab {
     Grindstone(IVec3),
     Trading(u64),
     Smithing(IVec3),
+    /// v0.15 Track B workstations: inputs and result on the first row,
+    /// then the recipe or pattern choices nine to a row.
+    Stonecutter(IVec3),
+    Loom(IVec3),
+    Cartography(IVec3),
+}
+
+/// The first row of each v0.15 workstation tab.
+const STONECUTTER: [SlotRef; 2] = [SlotRef::CutInput, SlotRef::CutResult];
+const LOOM: [SlotRef; 4] = [SlotRef::LoomBanner, SlotRef::LoomDye, SlotRef::LoomPattern, SlotRef::LoomResult];
+const CARTOGRAPHY: [SlotRef; 3] = [SlotRef::MapInput, SlotRef::MapExtra, SlotRef::MapResult];
+
+/// Rows of choices a tab shows under its first row.
+fn choice_rows(tab: Tab, lists: Lists) -> usize {
+    match tab {
+        Tab::Stonecutter(_) | Tab::Loom(_) => lists.choices.div_ceil(COLS),
+        _ => 0,
+    }
 }
 
 impl Tab {
@@ -67,6 +85,9 @@ impl Tab {
             Tab::Anvil(_) => block.is_anvil(),
             Tab::Grindstone(_) => block.base() == Block::GRINDSTONE,
             Tab::Smithing(_) => block == Block::SMITHING_TABLE,
+            Tab::Stonecutter(_) => block.base() == Block::STONECUTTER,
+            Tab::Loom(_) => block.base() == Block::LOOM,
+            Tab::Cartography(_) => block.base() == Block::CARTOGRAPHY_TABLE,
             _ => false,
         }
     }
@@ -84,6 +105,9 @@ impl Tab {
             Tab::Grindstone(p) => Container::Grindstone(p),
             Tab::Trading(id) => Container::Trading(id),
             Tab::Smithing(p) => Container::Smithing(p),
+            Tab::Stonecutter(p) => Container::Stonecutter(p),
+            Tab::Loom(p) => Container::Loom(p),
+            Tab::Cartography(p) => Container::Cartography(p),
             _ => Container::Inventory,
         }
     }
@@ -144,10 +168,12 @@ pub(super) struct Lists {
     pub crafts: usize,
     pub palette: usize,
     pub container: usize,
+    /// The stonecutter's recipes or the loom's patterns.
+    pub choices: usize,
 }
 impl Default for Lists {
     fn default() -> Self {
-        Self { crafts: 0, palette: 0, container: 27 }
+        Self { crafts: 0, palette: 0, container: 27, choices: 0 }
     }
 }
 
@@ -305,6 +331,7 @@ fn rows(tab: Tab, lists: Lists) -> usize {
         | Tab::Anvil(_)
         | Tab::Grindstone(_)
         | Tab::Smithing(_) => 5,
+        Tab::Stonecutter(_) | Tab::Loom(_) | Tab::Cartography(_) => 5 + choice_rows(tab, lists),
         Tab::Trading(_) => 6,
         Tab::Chest(_) | Tab::EnderChest(_) | Tab::Vehicle(_) => container_rows(lists) + 4,
         Tab::Crafting => lists.crafts.div_ceil(COLS),
@@ -324,6 +351,12 @@ fn row_len(tab: Tab, row: usize, lists: Lists) -> usize {
         Tab::Enchanting(_) if row == 0 => return ENCHANTING.len(),
         Tab::Anvil(_) | Tab::Grindstone(_) if row == 0 => return ANVIL.len(),
         Tab::Smithing(_) if row == 0 => return SMITHING.len(),
+        Tab::Stonecutter(_) if row == 0 => return STONECUTTER.len(),
+        Tab::Loom(_) if row == 0 => return LOOM.len(),
+        Tab::Cartography(_) if row == 0 => return CARTOGRAPHY.len(),
+        Tab::Stonecutter(_) | Tab::Loom(_) if row <= choice_rows(tab, lists) => {
+            return (lists.choices - (row - 1) * COLS).min(COLS);
+        }
         Tab::Crafting => lists.crafts,
         Tab::Palette => lists.palette,
         _ => return COLS,
@@ -343,6 +376,15 @@ fn slot(tab: Tab, col: usize, row: usize, lists: Lists) -> Slot {
         Tab::Enchanting(_) if row == 0 => Slot::Ref(ENCHANTING[col]),
         Tab::Anvil(_) | Tab::Grindstone(_) if row == 0 => Slot::Ref(ANVIL[col]),
         Tab::Smithing(_) if row == 0 => Slot::Ref(SMITHING[col]),
+        Tab::Stonecutter(_) if row == 0 => Slot::Ref(STONECUTTER[col]),
+        Tab::Loom(_) if row == 0 => Slot::Ref(LOOM[col]),
+        Tab::Cartography(_) if row == 0 => Slot::Ref(CARTOGRAPHY[col]),
+        Tab::Stonecutter(_) if row <= choice_rows(tab, lists) => Slot::Ref(SlotRef::CutRecipe((row - 1) * COLS + col)),
+        Tab::Loom(_) if row <= choice_rows(tab, lists) => Slot::Ref(SlotRef::LoomChoice((row - 1) * COLS + col)),
+        Tab::Stonecutter(_) | Tab::Loom(_) | Tab::Cartography(_) => {
+            let r = row - choice_rows(tab, lists);
+            if r == 4 { inv(col) } else { inv(COLS * r + col) }
+        }
         Tab::Inventory
         | Tab::Furnace(_)
         | Tab::Brewing(_)
@@ -382,10 +424,43 @@ impl Game {
         self.agents.players.get(name).map_or_else(Vec::new, |b| b.agent.craftable(&self.world))
     }
 
+    /// How many recipes or patterns `name`'s workstation tab offers.
+    fn pad_choices(&self, name: &str, tab: Tab) -> usize {
+        let Some(b) = self.agents.players.get(name) else { return 0 };
+        match tab {
+            Tab::Stonecutter(_) => super::workstations::cut_list(&b.agent.session).len(),
+            Tab::Loom(_) => super::workstations::loom_view(&b.agent.session).0.len(),
+            _ => 0,
+        }
+    }
+
+    /// What a workstation slot or choice shows for controller player `name`:
+    /// a choice shows what it would make.
+    fn pad_workstation_slot(&self, name: &str, slot: SlotRef) -> Option<Stack> {
+        use super::workstations as ws;
+        let session = &self.agents.players.get(name)?.agent.session;
+        match slot {
+            SlotRef::CutRecipe(i) => {
+                let &(item, n) = ws::cut_list(session).get(i)?;
+                Some(Stack::new(item, n))
+            }
+            SlotRef::LoomChoice(i) => {
+                let (list, _, _) = ws::loom_view(session);
+                let [banner, dye, _] = session.work;
+                voxelcraft::content::banner_patterns::loom_result(banner?, dye?, *list.get(i)?)
+            }
+            SlotRef::CutResult => ws::cut_result(session),
+            SlotRef::LoomResult => ws::loom_view(session).2,
+            SlotRef::MapResult => ws::cartography_result(session, &self.world),
+            s => session.work[ws::work_index(s)?],
+        }
+    }
+
     /// List lengths for `name`'s screens.
     pub(super) fn pad_lists(&self, name: &str, tab: Tab) -> Lists {
         let creative = self.agents.players.get(name).is_some_and(|b| b.agent.creative);
         Lists {
+            choices: self.pad_choices(name, tab),
             crafts: if tab == Tab::Crafting { self.pad_crafts(name).len() } else { 0 },
             palette: if creative { Item::creative_palette().count() } else { 0 },
             container: match tab {
@@ -539,6 +614,7 @@ impl Game {
         let crafts = if tab == Tab::Crafting { self.pad_crafts(name) } else { Vec::new() };
         let items = if tab == Tab::Palette { palette() } else { Vec::new() };
         let lists = Lists {
+            choices: self.pad_choices(name, tab),
             crafts: crafts.len(),
             palette: items.len(),
             container: match tab {
@@ -563,6 +639,10 @@ impl Game {
             | Tab::Anvil(_)
             | Tab::Grindstone(_)
             | Tab::Smithing(_) => 4.0 * ((r >= 1) as u8 + (r >= 4) as u8) as f32,
+            Tab::Stonecutter(_) | Tab::Loom(_) | Tab::Cartography(_) => {
+                let k = choice_rows(tab, lists);
+                4.0 * ((r >= 1) as u8 + (r > k) as u8 + (r >= 4 + k) as u8) as f32
+            }
             Tab::Trading(_) => 4.0 * ((r >= 2) as u8 + (r >= 5) as u8) as f32,
             Tab::Chest(_) | Tab::EnderChest(_) | Tab::Vehicle(_) => {
                 4.0 * ((r >= container_rows(lists)) as u8 + (r >= container_rows(lists) + 3) as u8) as f32
@@ -590,6 +670,9 @@ impl Game {
             Tab::Grindstone(_) => "Repair & Disenchant  (item, item, result)",
             Tab::Trading(_) => "Trading  (select an offer)",
             Tab::Smithing(_) => "Smithing  (template, diamond gear, ingot, result)",
+            Tab::Stonecutter(_) => "Stonecutter  (input, result; then recipes)",
+            Tab::Loom(_) => "Loom  (banner, dye, pattern, result; then patterns)",
+            Tab::Cartography(_) => "Cartography Table  (map, paper/map/glass pane, result)",
         };
         ui.text(px + 6.0, py + 5.0, title, WHITE);
         let chest = match tab {
@@ -692,6 +775,7 @@ impl Game {
                     Slot::Ref(SlotRef::SmithBase) => work[1],
                     Slot::Ref(SlotRef::SmithAddition) => work[2],
                     Slot::Ref(SlotRef::SmithResult) => smithing,
+                    Slot::Ref(s) if super::workstations::is_workstation_slot(s) => self.pad_workstation_slot(name, s),
                     Slot::Ref(_) => None,
                     Slot::Recipe(i) => crafts.get(i).copied(),
                     Slot::Palette(i) => items.get(i).map(|&item| Stack::new(item, 1)),
@@ -762,7 +846,7 @@ impl Game {
 mod tests {
     use super::*;
 
-    const NONE: Lists = Lists { crafts: 0, palette: 0, container: 27 };
+    const NONE: Lists = Lists { crafts: 0, palette: 0, container: 27, choices: 0 };
     fn inv(i: usize) -> Option<Slot> {
         Some(Slot::Ref(SlotRef::Inventory(i)))
     }
@@ -837,7 +921,7 @@ mod tests {
 
     #[test]
     fn list_tabs_follow_their_lengths_and_cycle() {
-        let lists = Lists { crafts: 11, palette: 0, container: 27 };
+        let lists = Lists { crafts: 11, palette: 0, container: 27, choices: 0 };
         let mut m = Menu::items(Tab::Inventory);
         m.press(Nav::Rb, lists);
         assert_eq!(m.slot(lists), Some(Slot::Recipe(0)));
@@ -851,7 +935,7 @@ mod tests {
         m.press(Nav::Rb, NONE);
         assert!(matches!(m, Menu::Items { tab: Tab::Inventory, .. }), "no palette in survival");
 
-        let creative = Lists { crafts: 0, palette: 30, container: 27 };
+        let creative = Lists { crafts: 0, palette: 30, container: 27, choices: 0 };
         m.press(Nav::Lb, creative);
         assert!(matches!(m, Menu::Items { tab: Tab::Palette, .. }), "LB wraps back to the palette");
         m.press(Nav::Up, creative);

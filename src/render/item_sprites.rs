@@ -661,6 +661,76 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             shaded(&sheet, x, y, [236, 234, 222], 0.03)
                 .map(|p| if y % 3 == 0 && (5..=11).contains(&x) { tint([p[0], p[1], p[2]], 0.85) } else { p })
         }
+        Sprite::Spyglass => {
+            // Original v0.15 icon: a brass tube lying corner to corner, a
+            // copper eyepiece ring and a violet lens at the far end.
+            let along = (px + py - 16.0) / std::f32::consts::SQRT_2;
+            let across = (px - py) / std::f32::consts::SQRT_2;
+            let t = (along + 7.0) / 14.0;
+            let radius = 1.3 + 0.6 * t;
+            if !(0.0..=1.0).contains(&t) || across.abs() > radius {
+                None
+            } else if t > 0.88 {
+                Some(tint([168, 112, 220], if across < 0.0 { 1.15 } else { 0.85 }))
+            } else if (0.3..0.38).contains(&t) || t < 0.1 {
+                Some(tint([196, 104, 62], if across < 0.0 { 1.1 } else { 0.8 }))
+            } else {
+                Some(tint(
+                    [214, 170, 76],
+                    if across < -0.4 {
+                        1.12
+                    } else if across > 0.6 {
+                        0.72
+                    } else {
+                        0.95
+                    },
+                ))
+            }
+        }
+        Sprite::WritableBook | Sprite::WrittenBook => {
+            // Original v0.15 icons: the book's cover (brown for the book and
+            // quill, deep red for a signed book with a gold clasp), with a
+            // white quill across the book and quill.
+            let written = sprite == Sprite::WrittenBook;
+            let cover_rgb = if written { [128, 36, 34] } else { [122, 78, 46] };
+            let quill = !written && ((x - 3) - (12 - y)).abs() <= 0 && (5..=14).contains(&x);
+            let nib = !written && (x, y) == (4, 13);
+            if nib {
+                return [40, 40, 48, 255];
+            }
+            if quill {
+                return tint([240, 240, 236], if x > 10 { 1.0 } else { 0.92 });
+            }
+            if written && (5..=6).contains(&x) && (7..=8).contains(&y) {
+                return tint([236, 196, 72], 1.0);
+            }
+            let cover = |x: i32, y: i32| (3..=12).contains(&x) && (2..=13).contains(&y);
+            if (11..=12).contains(&x) && (3..=12).contains(&y) {
+                Some(tint([232, 226, 206], if y % 2 == 0 { 1.0 } else { 0.9 }))
+            } else {
+                shaded(&cover, x, y, cover_rgb, 0.06).map(|p| if x == 4 { tint([p[0], p[1], p[2]], 0.75) } else { p })
+            }
+        }
+        Sprite::BannerPattern(i) => {
+            // Original v0.15 icon: a parchment sheet with the pattern's
+            // design pressed into it, as the item gives it to a loom.
+            let sheet = |x: i32, y: i32| (3..=12).contains(&x) && (1..=14).contains(&y);
+            if !sheet(x, y) {
+                None
+            } else {
+                let item = voxelcraft::content::banner_patterns::item(i as usize);
+                let design = voxelcraft::content::banner_patterns::provides(item).is_some_and(|p| {
+                    let fx = (px - 3.0) / 10.0 * voxelcraft::content::banner_patterns::FLAG_W;
+                    let fy = (py - 1.0) / 14.0 * voxelcraft::content::banner_patterns::FLAG_H;
+                    voxelcraft::content::banner_patterns::mask(p, fx, fy) > 0.5
+                });
+                if design {
+                    Some(tint([92, 70, 48], 0.95 + noise(x, y, 913) * 0.1))
+                } else {
+                    shaded(&sheet, x, y, [226, 214, 182], 0.05)
+                }
+            }
+        }
         Sprite::Book(colour) => {
             // A leather cover with pale page edges on the right.
             let cover = |x: i32, y: i32| (3..=12).contains(&x) && (2..=13).contains(&y);

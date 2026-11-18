@@ -310,9 +310,22 @@ pub fn wash_dyed(contents: Contents, stack: crate::inventory::Stack) -> Option<(
     Some((lowered, crate::inventory::components::remove_dye(stack)?))
 }
 
+/// `CauldronInteractions.bannerInteraction` (v0.15 Track B): a water
+/// cauldron washes one banner's top pattern layer off and loses a level.
+/// `None` for a plain banner (the use falls through) or no water.
+pub fn wash_banner(contents: Contents, stack: crate::inventory::Stack) -> Option<(Contents, crate::inventory::Stack)> {
+    let Contents::Water(level) = contents else { return None };
+    if level == 0 {
+        return None;
+    }
+    let lowered = if level == 1 { Contents::Empty } else { Contents::Water(level - 1) };
+    Some((lowered, crate::content::banner_patterns::wash(stack)?))
+}
+
 /// Whether the cauldron `b` washes the held stack. Java's interaction
 /// returns `TRY_WITH_EMPTY_HAND` for an undyed item, so only a dyed one
 /// takes the click before the item's own use (equipping leather armor).
 pub fn washes(b: Block, held: Option<crate::inventory::Stack>) -> bool {
-    matches!((cauldron_of(b), held), (Some(contents), Some(stack)) if wash_dyed(contents, stack).is_some())
+    matches!((cauldron_of(b), held), (Some(contents), Some(stack))
+        if wash_dyed(contents, stack).is_some() || wash_banner(contents, stack).is_some())
 }

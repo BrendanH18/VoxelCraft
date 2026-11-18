@@ -276,6 +276,9 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     if (crate::world::sniffer_egg::TEX..crate::world::sniffer_egg::TEXTURE_END).contains(&layer) {
         return crate::world::sniffer_egg::pixel(layer, x, y);
     }
+    if (crate::world::workstations::TEX..crate::world::workstations::TEX_END).contains(&layer) {
+        return crate::world::workstations::pixel(layer, x, y);
+    }
     if (crate::world::heavy_core::TEX..crate::world::heavy_core::TEX_END).contains(&layer) {
         return crate::world::heavy_core::pixel(layer, x, y);
     }

@@ -24,7 +24,7 @@ use crate::world::terrain::{Dimension, Generator, SEA_LEVEL};
 use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 26] = [
+pub(super) const DIMENSION_KEYS: [&str; 27] = [
     "furnaces",
     "chests",
     "items",
@@ -51,6 +51,7 @@ pub(super) const DIMENSION_KEYS: [&str; 26] = [
     "tridents",
     "trial",
     "ominous_item_spawners",
+    "workstations",
 ];
 /// How far around the arrival point to look for an existing portal.
 const SEARCH_RADIUS: i32 = 16;
@@ -143,6 +144,7 @@ impl Game {
         props.insert("trial".into(), self.world.trial_to_string());
         props.insert("spawners".to_string(), self.world.spawners_to_string());
         props.insert("utilities".to_string(), self.world.utilities_to_string());
+        props.insert("workstations".to_string(), self.world.workstations_to_string());
         self.mobs.entities.save_props(&mut props);
         if let Some(fight) = &self.mobs.entities.fight {
             props.insert("dragon".to_string(), fight.serialize());
@@ -203,6 +205,9 @@ impl Game {
         }
         if let Some(u) = props.get("utilities") {
             self.world.load_utilities(u);
+        }
+        if let Some(w) = props.get("workstations") {
+            self.world.load_workstations(w);
         }
         // Entities in chunks that haven't streamed in yet move to per-chunk
         // storage on the first tick; ridden vehicles stay with their riders.
@@ -546,6 +551,13 @@ mod tests {
         for key in props.keys() {
             assert!(DIMENSION_KEYS.contains(&key.as_str()), "{key} would be dropped on reload");
         }
+    }
+
+    #[test]
+    fn workstation_entities_stay_with_their_dimension() {
+        // v0.15 Track B: banner patterns and lectern books.
+        let props = [("workstations".into(), "l:1,2,3=1558:1;0".into())].into_iter().collect();
+        assert_eq!(dimension_props(&props), props);
     }
 
     #[test]

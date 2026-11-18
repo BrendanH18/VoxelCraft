@@ -174,12 +174,20 @@ impl Actor<'_> {
                 self.hand.swing();
             }
             let did = self.use_held();
-            // A click nothing answered raises a shield held in either hand.
-            if !did && self.session.consumable_in_hands(self.body.actions.selected).is_none() {
+            // A click nothing answered raises a spyglass (`SpyglassItem.use`)
+            // or a shield held in either hand.
+            if !did && self.session.start_scoping(self.body.actions.selected) {
+                let eye = self.session.player.eye();
+                self.audio.play_in(SoundSource::Players, Sound::Click, Some(eye), 0.4, (1.6, 1.7));
+            } else if !did && self.session.consumable_in_hands(self.body.actions.selected).is_none() {
                 self.session.start_blocking(self.body.actions.selected);
             }
             self.body.action_cooldown = ACTION_REPEAT;
         } else if !pressed {
+            if self.session.stop_scoping() {
+                let eye = self.session.player.eye();
+                self.audio.play_in(SoundSource::Players, Sound::Click, Some(eye), 0.4, (1.2, 1.3));
+            }
             self.session.stop_blocking();
             self.session.cancel_consumption();
             self.body.actions.eat_timer = 0.0;
@@ -211,6 +219,7 @@ impl Actor<'_> {
             && self.body.right_held
             && !self.session.drawing()
             && !self.session.shield_raised()
+            && !self.session.scoping()
             && !self.session.consuming()
             && !self.session.brushing()
             // Buckets, snowballs, eggs and rods act once per click, in either hand.
@@ -232,6 +241,7 @@ impl Actor<'_> {
             brush_sound(self.audio, stroke);
         }
         self.session.tick_blocking(self.body.actions.selected, acting && self.body.right_held);
+        self.session.tick_scoping(self.body.actions.selected, acting && self.body.right_held);
         self.eat(acting, dt);
         if let Some(shot) = self.session.tick_draw(self.body.actions.selected, acting, self.world, self.entities) {
             self.present_shot(shot);

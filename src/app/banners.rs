@@ -29,6 +29,7 @@ impl Game {
                     icon: None,
                     orient: None,
                     tint: [255; 4],
+                    patterns: self.world.banner_entity(cell).and_then(|e| e.patterns),
                 }
             })
             .collect()
