@@ -575,7 +575,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.14 (planned as v0.15) | Wildlife | M4: MOB-03/04, FOO, ENV-03 | Bats, frogs, pandas, polar bears, armadillos, mooshrooms, strays, bogged, phantoms and zombie horses (with lightning); drowned conversion and the cat spawner; melon, pumpkin and beetroot crops; animal and mount acceptance. See [v0.14 scope](#v015-scope-wildlife) | Implemented, unverified (2026-11-04): started early while v0.14 waits for the owner's play; four tracks (lightning and undead mounts, crops and bees, passive mobs, hostiles) merged and council-reviewed ([integration](verification/2026-11-04-v0.15-integration.md)); copper golems (2026-11-05), then creaking and resin, allays, sniffers and ocean ruins with suspicious blocks (2026-11-06, [integration](verification/2026-11-06-v0.15-final-integration.md)) complete the scope; awaits the owner's play |
 | v0.14 (planned as v0.16) | Deep dark and trials | M3 + M4 + PRO-07 | Ancient cities with sculk and the warden; trial chambers with breezes, trial spawners, vaults and the mace; tridents, spears and the other modern weapon families; a jukebox with music discs. See [v0.14 scope](#v016-scope-deep-dark-and-trials) | Implemented, unverified (2026-11-07): scope approved by the owner on 2026-11-06; four tracks (sculk and the warden, ancient cities and music, trial chambers, weapons) merged and integrated ([integration](verification/2026-11-07-v0.16-integration.md)); awaits the owner's play |
 | — | Stabilisation | Gate before the v0.14 tag | No new content: the entity frame-time fix and a full scene run, terrain blending for generation 3 structures, the audit's data fixes, the owner's play, and one tag for v0.14. See the [stabilisation gate](#stabilisation-gate-before-v017) | In progress (2026-11-09). The owner lifted its content freeze on 2026-11-12; the owner's play, the frame-time gate and the tag are still owed |
-| v0.15 | Villages and raids | Close M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M4 exit checks. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): the remaining Java 26.3 mobs (happy ghasts, nautiluses, camel husks, parched), mobs holding and picking up equipment, chainmail, books, bundles, spyglasses, armor trims, the remaining status effects and potions, and the village template catalogue | Planned. Part of its list was built early by [build-5000 wave 1](verification/2026-11-12-build-5000/wave-1.md) and ships in v0.14 (see the [assigned content](#content-assigned-by-the-2026-11-09-audit)) |
+| v0.15 | Villages and raids | Close M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M4 exit checks. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): the remaining Java 26.3 mobs (happy ghasts, nautiluses, camel husks, parched), mobs holding and picking up equipment, chainmail, books, bundles, spyglasses, armor trims, the remaining status effects and potions, and the village template catalogue | In progress (2026-11-18): scope approved by the owner, eight tracks in two waves ([v0.15 scope](#v015-scope-villages-and-raids)). Part of its list was built early by [build-5000 wave 1](verification/2026-11-12-build-5000/wave-1.md) and ships in v0.14 (see the [assigned content](#content-assigned-by-the-2026-11-09-audit)) |
 | v0.16 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): poplar, cinnabar and sulfur with their terrain and the sulfur cube, abandoned camps, mob heads, infested blocks, nether gold ore, conduits, and the reassessment of dungeons, mineshafts, strongholds, shipwrecks and monuments | Planned |
 | v0.17 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload. Added by the 2026-11-09 audit: the furnace minecart | Planned |
 | v0.18 | Polish and performance | M7: UX, §6 | Typography/contrast, material and mob art, inventory/recipe navigation, HUD/workstations, title/world identity, atmosphere and accessibility ([scope](#v020-scope-presentation-and-performance)); subtitles, asset and sound review in play (including the v0.12 blocks' own sounds), and menu fixes found since v0.11; the 120 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, v0.11's menu and title frame-time run and v0.12's `materials` runs, which moved here unverified ([v0.12 profile](verification/2026-10-29-v0.12-finish.md#frame-time)). The per-frame entity model rebuild that profile found was removed on 2026-11-09 ([record](verification/2026-11-09-entity-frame-time.md)); the streaming route's main-thread terrain column rebuilds from mob biome queries were addressed in the [streaming follow-up](verification/2026-11-09-streaming-biomes-and-gen07.md); the remaining tick work and per-frame sign text are still owed, and the gate is measured again here (v0.14 passed it on 2026-11-16, [record](verification/2026-11-16-tag-gate-run.md)) | Planned; presentation scope expanded by the owner on 2026-11-05. Each release now records its own frame-time run ([§6.1](#61-reference-configuration-and-frame-time-gate)), so what stays here is the final gate, not every release's first measurement |
@@ -1225,6 +1225,61 @@ in parallel, each with its own IDs in the
    reconciled, and the jukebox, trident, Wind Burst, breeze rod and trial
    loot links wired. The owner's play remains. See the
    [integration record](verification/2026-11-07-v0.16-integration.md).
+
+#### v0.15 scope: villages and raids
+
+Approved by the owner on 2026-11-18, while v0.14 (tagged 2026-11-16) waits
+for the owner's play. Mechanics, loot tables, spawn rules, trades and
+timers follow Java 26.3, checked against fixtures extracted from the
+server jar; models, textures, sounds and structure templates are original
+(templates to the [FE-02 contract](#14-what-can-follow-10)). Content that
+changes terrain or structures generates in a new generation 4; generations
+1 to 3 stay pinned by golden hashes. Eight tracks run in two waves of four,
+each in its own worktree with IDs from the
+[architecture reservations](architecture.md#v015-villages-and-raids-track-reservations).
+
+Wave 1 (independent):
+
+1. **A. Illagers** (MOB-04b, MOB-02d). Vindicators, evokers (fangs, vex
+   summoning, turning blue sheep red), vexes, ravagers and illusioners
+   (commands only, as in Java); pillagers brought to Java's crossbow AI;
+   held weapons drawn on mobs and counted in their attack damage.
+2. **B. Workstations** (AUT-04c, BLD-01d, BLD-05b, GEN-06, PLY-05b). The
+   stonecutter screen; the loom with the banner patterns and their items,
+   shield patterns, banner washing in cauldrons and the ominous banner;
+   the cartography table (copy, zoom out, lock) with map scaling and
+   locking; book and quill, written books and the lectern (reading,
+   page turning, comparator output); the spyglass.
+3. **C. New mobs** (MOB-03, MOB-04b, FOO-04c). Happy ghasts grown from
+   dried ghasts, ridden with harnesses; nautiluses and zombie nautiluses
+   with nautilus armor; camel husks and parched.
+4. **D. Items and effects** (PLY-03b, PRO-02, PRO-04, PRO-03). Spectral
+   arrows; blue and brown eggs; armor trims, their 18 templates, trim
+   materials and drawing; frosted ice and Frost Walker; the behaviour of
+   Glowing, Levitation, Health Boost, Wind Charged, Weaving, Oozing and
+   Infested, and the four potions with their brewing recipes.
+
+Wave 2 (after wave 1 is integrated):
+
+5. **E. Raids** (MOB-05d). Bad Omen from captains, Raid Omen, raids with
+   Java's waves per difficulty, the raid bar, captains and patrols,
+   villagers hiding at the bell, Hero of the Village and its discounts.
+6. **F. Woodland mansions** (GEN-05i, GEN-06). Java's room-grid layout in
+   generation 4 with its residents and loot; the mansion map and the
+   desert pyramid, warm ocean ruin, buried mineshaft and buried ancient
+   city maps.
+7. **G. Template catalogues** (GEN-05b, GEN-05j). Profession buildings
+   with fixed job sites, decorations, animal pens and abandoned villages,
+   and the trial chamber and ancient city catalogues, in generation 4.
+8. **H. Villager parity** (MOB-05a/b/c). A trade fixture from the jar
+   (prices, uses, restocks, experience), schedules and POIs, gossip and
+   cures, the wandering trader, and the M4 exit audit.
+
+Then integration: the orderings made contiguous, spawn tables together,
+save/reload of every new mob, block and item, the Namespace checks, the
+requirement inventory and `registry_gaps.json` refreshed, and a
+frame-time run of the offscreen suite. Rows stay Implemented, unverified
+until the owner has played them.
 
 ### M4 — A complete living world
 

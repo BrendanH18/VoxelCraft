@@ -879,6 +879,34 @@ sounds, item icons), which no released build has saved.
 | Block states | 12256–12259 | Frosted ice ages 0–3; 12260–12287 spare |
 | Texture layers | 3859–4095 | v0.17 and later blocks; layers are never saved, so the integrator may repack them |
 
+### v0.15 villages and raids track reservations
+
+Reserved on 2026-11-18 for the [v0.15 tracks](roadmap.md#v015-scope-villages-and-raids),
+after `examples/id_map.rs` showed states 11776–12287 and items 1555–1560
+and 1601–1659 unregistered at `9e72930c`. They keep the meanings the
+[build-5000 reservations](#v017-build-5000-reservations) gave them and split
+the spare rows between tracks. Each track allocates only inside its own
+rows, records what it used here, and leaves unused IDs unregistered.
+Texture layers are never saved and may be repacked at integration.
+
+| Block states | Item IDs | Texture layers | Track |
+| --- | --- | --- | --- |
+| — | 1634–1641 | 4040–4055 | A. Illagers: vindicators, evokers, vexes, ravagers, illusioners, pillager parity, held weapons |
+| 11776–12223 | 1556, 1557–1558, 1619–1628, 1642–1645 | 3859–3951 | B. Workstations: stonecutter, loom and banner patterns (with the ominous banner), cartography table, books and the lectern, spyglass |
+| 12224–12255 | 1646–1649 | 3968–3999 | C. New mobs: happy ghasts and dried ghasts, nautiluses and zombie nautiluses, camel husks, parched |
+| 12256–12287 | 1555, 1559–1560, 1601–1618, 1650–1659 | 4000–4039 | D. Items and effects: spectral arrows, coloured eggs, armor trims, frosted ice, effect behaviour and the four potions |
+| — | — | — | E. Raids (wave 2; no new IDs expected) |
+| — | 1629–1633 | 4056–4071 | F. Woodland mansions and the five missing explorer maps (wave 2) |
+| — | — | — | G. Village, trial chamber and ancient city template catalogues (wave 2) |
+| — | — | — | H. Villager parity (wave 2) |
+| — | — | 4072–4095 | Integrator spare |
+
+Append-only orderings (`MobKind` and its LAN index, `Effect`, `POTIONS`,
+sounds, item icons, thrown kinds, entity and dimension property keys) are
+appended by each track on its own branch. No released build saves the new
+members, so the integrator makes them contiguous in landing order and
+records the result here. Saved names follow Java's registry names.
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating
