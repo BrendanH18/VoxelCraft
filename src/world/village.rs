@@ -4,7 +4,16 @@
 //!
 //! Generation 3 worlds build villages with the jigsaw assembler
 //! ([`super::jigsaw`]) from the templates in `jigsaw/village.txt`; older
-//! generations keep the hand-grown layout below, unchanged.
+//! generations keep the hand-grown layout below, unchanged. Generation 4
+//! (v0.15 Track G) uses Java 26.3's village pools and connector graph with
+//! an original template for every Java location ([`catalogue`]): profession
+//! buildings with their fixed job sites, meeting points with bells, streets,
+//! farms, pens with animals, lamps, decorations, the residents Java's spawn
+//! pieces place, and the abandoned variant (Java's zombie town centres, 4
+//! in 204 by weight).
+
+pub mod catalogue;
+
 use super::block::{Block, Facing};
 use super::chunk::{CHUNK_SIZE_I, CHUNK_VOLUME};
 use super::fortress::Feature;
@@ -80,6 +89,10 @@ impl Oriented for Piece {
 pub struct Village {
     pub center: IVec3,
     pub style: Style,
+    /// Generation 4: placed from the [`catalogue`] library.
+    pub v4: bool,
+    /// Generation 4's block entities and residents, worked out once.
+    v4_cache: Vec<(IVec3, Feature)>,
     /// Generations 1 and 2: the hand-grown layout.
     pub pieces: Vec<Piece>,
     /// Generation 3: templates placed by the jigsaw assembler.
@@ -187,7 +200,15 @@ impl Builder<'_> {
             }
         }
         let bounds = self.pieces.iter().fold(self.pieces[0].bounds, |a, p| a.union(&p.bounds));
-        Village { center: self.center, style, pieces: self.pieces, placed: Vec::new(), bounds }
+        Village {
+            center: self.center,
+            style,
+            v4: false,
+            v4_cache: Vec::new(),
+            pieces: self.pieces,
+            placed: Vec::new(),
+            bounds,
+        }
     }
 }
 fn horizontal_intersects(a: &Bounds, b: &Bounds) -> bool {
@@ -285,6 +306,97 @@ impl jigsaw::Palette for Style {
     }
 }
 
+impl Style {
+    /// Java's start pool for this style's village structure.
+    pub fn start_pool(self) -> &'static str {
+        match self {
+            Style::Plains => "village/plains/town_centers",
+            Style::Desert => "village/desert/town_centers",
+            Style::Savanna => "village/savanna/town_centers",
+            Style::Taiga => "village/taiga/town_centers",
+            Style::Snowy => "village/snowy/town_centers",
+        }
+    }
+}
+
+/// Generation 4's palette: each piece's Java processor list, and feature
+/// elements (trees, piles) that only fill air and plants, as Java's
+/// features do.
+struct V4Palette(Style);
+
+/// The compiled processor list of each of the catalogue's list indices.
+fn v4_processors() -> &'static [Option<&'static jigsaw::rules::Compiled>] {
+    static LISTS: std::sync::OnceLock<Vec<Option<&'static jigsaw::rules::Compiled>>> = std::sync::OnceLock::new();
+    LISTS.get_or_init(|| catalogue::library().processor_lists.iter().map(|n| jigsaw::rules::list(n)).collect())
+}
+
+impl jigsaw::Palette for V4Palette {
+    fn clear_above(&self) -> i32 {
+        0
+    }
+    fn role(&self, role: &str) -> Option<Block> {
+        match role {
+            "foundation" => self.0.role("foundation"),
+            _ => None,
+        }
+    }
+    fn process_at(&self, block: Block, at: IVec3, piece: &Placed, existing: Block) -> Option<Block> {
+        let t = &catalogue::library().templates[piece.template as usize];
+        if t.overhang > 0 && existing != Block::AIR && !existing.is_replaceable() {
+            return None;
+        }
+        match t.processors.and_then(|i| v4_processors()[i as usize]) {
+            Some(list) => list.apply(block, at, existing),
+            None => Some(block),
+        }
+    }
+}
+
+/// A resident of Java's village spawn pieces (`villagers`, `animals`,
+/// `cats`, `iron_golem`, `camel` pools), as the template names it:
+/// `id[:profession:type][:baby][:variant][:persistent]`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Resident {
+    Villager {
+        nitwit: bool,
+        baby: bool,
+    },
+    ZombieVillager {
+        nitwit: bool,
+    },
+    /// A cat of `cat_spawner::VARIANTS` index.
+    Cat(u8),
+    IronGolem,
+    Cow,
+    Pig,
+    Sheep,
+    /// A horse of Java's `Variant`: coat in the low byte, markings above.
+    Horse(u16),
+    Camel,
+    ArmorStand,
+}
+
+impl Resident {
+    pub fn parse(name: &str) -> Option<Resident> {
+        let parts: Vec<&str> = name.split(':').collect();
+        Some(match parts[0] {
+            "villager" => Resident::Villager { nitwit: parts.get(1) == Some(&"nitwit"), baby: parts.contains(&"baby") },
+            "zombie_villager" => Resident::ZombieVillager { nitwit: parts.get(1) == Some(&"nitwit") },
+            "cat" => Resident::Cat(
+                crate::entity::cat_spawner::VARIANTS.iter().position(|v| Some(v) == parts.get(1)).unwrap_or(0) as u8,
+            ),
+            "iron_golem" => Resident::IronGolem,
+            "cow" => Resident::Cow,
+            "pig" => Resident::Pig,
+            "sheep" => Resident::Sheep,
+            "horse" => Resident::Horse(parts.get(1).and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "camel" => Resident::Camel,
+            "armor_stand" => Resident::ArmorStand,
+            _ => return None,
+        })
+    }
+}
+
 /// The top block of a column, water included.
 fn surface(g: &Generator, x: i32, z: i32) -> i32 {
     g.column(x, z).height.max(SEA_LEVEL - 1)
@@ -292,6 +404,26 @@ fn surface(g: &Generator, x: i32, z: i32) -> i32 {
 
 impl Village {
     fn generate(g: &Generator, center: IVec3, style: Style, seed: u64) -> Self {
+        if g.generation >= Generation::V4 {
+            let lib = catalogue::library();
+            let settings = jigsaw::Settings { start_pool: style.start_pool(), max_depth: 6, max_distance: 80 };
+            let placed = jigsaw::assemble_enveloped(
+                lib,
+                &settings,
+                IVec2::new(center.x, center.z),
+                &|x, z| surface(g, x, z),
+                seed,
+                &|ps, p| g.beard_fit(lib, ps, p),
+            );
+            let bounds = placed
+                .iter()
+                .map(|p| p.bounds)
+                .reduce(|a, b| a.union(&b))
+                .unwrap_or(Bounds { min: center, max: center });
+            let mut v = Village { center, style, v4: true, v4_cache: Vec::new(), pieces: Vec::new(), placed, bounds };
+            v.v4_cache = v.v4_features().collect();
+            return v;
+        }
         if g.generation >= Generation::V3 {
             let lib = jigsaw::villages();
             let placed = jigsaw::assemble_enveloped(
@@ -307,25 +439,78 @@ impl Village {
                 .map(|p| p.bounds)
                 .reduce(|a, b| a.union(&b))
                 .unwrap_or(Bounds { min: center, max: center });
-            return Village { center, style, pieces: Vec::new(), placed, bounds };
+            return Village { center, style, v4: false, v4_cache: Vec::new(), pieces: Vec::new(), placed, bounds };
         }
         let bounds = Bounds { min: center - IVec3::new(4, 0, 4), max: center + IVec3::new(4, 6, 4) };
         let meeting = Piece { kind: Kind::Meeting, bounds, facing: Facing::South, job: Block::BELL, seed };
         Builder { generator: g, center, rng: Rng(seed), pieces: vec![meeting] }.grow(style)
     }
-    /// Every bed (its head) of a generated house.
+    /// The template library the village was placed from.
+    pub fn library(&self) -> &'static jigsaw::Library {
+        if self.v4 { catalogue::library() } else { jigsaw::villages() }
+    }
+
+    /// Whether this is an abandoned (zombie) village: Java's zombie town
+    /// centres, which lead only to zombie pools.
+    pub fn abandoned(&self) -> bool {
+        self.v4
+            && self
+                .placed
+                .first()
+                .is_some_and(|p| self.library().templates[p.template as usize].name.contains("/zombie/"))
+    }
+
+    /// Every bed (its head) of a generated house. Generation 4 villages
+    /// house no one by bed: Java's residents come from spawn pieces.
     pub fn homes(&self) -> Vec<IVec3> {
+        if self.v4 {
+            return self
+                .v4_cache
+                .iter()
+                .filter_map(|&(at, f)| matches!(f, Feature::VillageBed).then_some(at))
+                .collect();
+        }
         if !self.placed.is_empty() {
             return self.features().filter_map(|(at, f)| matches!(f, Feature::VillageHome(_)).then_some(at)).collect();
         }
         self.pieces.iter().filter(|p| p.kind == Kind::House).map(|p| p.world(1, 0, 4)).collect()
     }
 
+    /// Generation 4's block entities and residents: loot containers with
+    /// their Java tables, job sites (for their block entities), bed heads
+    /// and the residents of Java's spawn pieces.
+    fn v4_features(&self) -> impl Iterator<Item = (IVec3, Feature)> + '_ {
+        let lib = catalogue::library();
+        let surface = |_: i32, _: i32| 0;
+        let markers = jigsaw::markers(lib, &self.placed, &surface).into_iter().filter_map(|m| match m {
+            jigsaw::Marker::Loot(at, table, seed) => {
+                // The library's own copy of the name lives for the program.
+                let table: &'static str = lib.loot.iter().find(|l| l.as_str() == table)?.as_str();
+                Some((at, Feature::StructureLoot(seed, table.strip_prefix("chests/").unwrap_or(table))))
+            }
+            jigsaw::Marker::Mob(at, name) => Resident::parse(name).map(|r| (at, Feature::VillageResident(r))),
+            jigsaw::Marker::Spawner(..) => None,
+        });
+        let blocks = self.placed.iter().flat_map(move |p| {
+            lib.templates[p.template as usize].cells.iter().filter_map(move |c| match c.spec.base {
+                jigsaw::Base::Block(b) if JOBS.contains(&b.base()) || b.base() == Block::BELL => {
+                    Some((p.world(c.pos), Feature::VillageWorkstation(b.base())))
+                }
+                jigsaw::Base::BedHead => Some((p.world(c.pos), Feature::VillageBed)),
+                _ => None,
+            })
+        });
+        markers.chain(blocks)
+    }
+
     /// Block entities and homes of a generation 3 village: chests, job
     /// sites and beds, wherever they are.
-    fn features(&self) -> impl Iterator<Item = (IVec3, Feature)> + '_ {
+    fn features(&self) -> Box<dyn Iterator<Item = (IVec3, Feature)> + '_> {
+        if self.v4 {
+            return Box::new(self.v4_cache.iter().copied());
+        }
         let lib = jigsaw::villages();
-        self.placed.iter().flat_map(move |p| {
+        Box::new(self.placed.iter().flat_map(move |p| {
             let t = &lib.templates[p.template as usize];
             let cells = t.cells.iter().filter_map(move |c| match c.spec.base {
                 jigsaw::Base::Chest => {
@@ -339,10 +524,17 @@ impl Village {
             });
             let homes = t.homes.iter().map(move |&(bed, spawn)| (p.world(bed), Feature::VillageHome(p.world(spawn))));
             cells.chain(homes)
-        })
+        }))
     }
 
     fn paint(&self, g: &Generator, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3) {
+        if self.v4 {
+            let surface = |x: i32, z: i32| g.terrain_column(x, z).height.max(SEA_LEVEL - 1);
+            let solid = |x: i32, z: i32| g.terrain_column(x, z).height;
+            let ground = jigsaw::Ground { surface: &surface, solid: &solid };
+            jigsaw::paint(catalogue::library(), &self.placed, &V4Palette(self.style), &ground, blocks, base);
+            return;
+        }
         if !self.placed.is_empty() {
             let surface = |x: i32, z: i32| g.terrain_column(x, z).height.max(SEA_LEVEL - 1);
             let solid = |x: i32, z: i32| g.terrain_column(x, z).height;
@@ -521,8 +713,13 @@ impl Villages {
         }
         cache.entry(region).or_insert(v).clone()
     }
-    pub(in crate::world) fn terrain_pieces(&self, g: &Generator, base: IVec3, mut f: impl FnMut(&[Placed])) {
-        self.visit_margin(g, base, 13, |v| f(&v.placed));
+    pub(in crate::world) fn terrain_pieces(
+        &self,
+        g: &Generator,
+        base: IVec3,
+        mut f: impl FnMut(&jigsaw::Library, &[Placed]),
+    ) {
+        self.visit_margin(g, base, 13, |v| f(v.library(), &v.placed));
     }
     fn visit(&self, g: &Generator, base: IVec3, f: impl FnMut(&Village)) {
         self.visit_margin(g, base, 0, f);
@@ -557,6 +754,9 @@ impl Villages {
     pub fn cartographer_chest(&self, g: &Generator, chest: IVec3) -> bool {
         let mut found = false;
         self.visit(g, chest, |v| {
+            if v.v4 {
+                return;
+            }
             for piece in &v.placed {
                 if jigsaw::Palette::job(&v.style, piece) == Block::CARTOGRAPHY_TABLE
                     && jigsaw::villages().templates[piece.template as usize]
@@ -797,7 +997,7 @@ mod tests {
     #[ignore]
     fn terrain_envelope_availability() {
         for seed in [42, 12345, 2024] {
-            let g = Generator::new(seed);
+            let g = Generator::with_generation(seed, Dimension::Overworld, Generation::V3);
             let (mut before, mut after, mut old_pieces, mut new_pieces, mut lost, mut small) = (0, 0, 0, 0, 0, 0);
             for z in -22..=22 {
                 for x in -22..=22 {
@@ -1034,7 +1234,7 @@ mod tests {
                     super::super::noise::hash3(region.x, 0, region.y, seed ^ SALT),
                 );
                 let bounds = placed.iter().map(|p| p.bounds).reduce(|a, b| a.union(&b)).unwrap();
-                Arc::new(Village { center, style, pieces: Vec::new(), placed, bounds })
+                Arc::new(Village { center, style, v4: false, v4_cache: Vec::new(), pieces: Vec::new(), placed, bounds })
             } else {
                 g.villages.get(&g, region).unwrap()
             };
@@ -1169,5 +1369,42 @@ mod registration_tests {
             }
             assert!(chests > 0, "{generation:?}: no chests checked");
         }
+    }
+
+    /// v0.15 Track G: generation 4's chests take Java's tables (the house
+    /// and profession tables), fill when their chunk registers, and stay
+    /// empty once looted, across a save and reload.
+    #[test]
+    fn generation_4_chests_fill_from_javas_tables_and_never_refill() {
+        let g = Arc::new(Generator::with_generation(42, Dimension::Overworld, Generation::V4));
+        let mut tables = std::collections::BTreeSet::new();
+        let mut checked = 0;
+        for z in -6..=6 {
+            for x in -6..=6 {
+                let Some(v) = g.villages.get(&g, IVec2::new(x, z)) else { continue };
+                let mut world = super::super::World::new_headless(Arc::clone(&g), Default::default(), 1);
+                for &(at, f) in &v.v4_cache {
+                    let Feature::StructureLoot(_, table) = f else { continue };
+                    let c = super::super::chunk::chunk_of(at);
+                    world.register_structure_features(c, &g.generate(c));
+                    let chest = world.chest(at).unwrap_or_else(|| panic!("no chest for {table} at {at}"));
+                    assert!(chest.slots.iter().any(Option::is_some), "{table} at {at} is empty");
+                    tables.insert(table);
+                    world.chest_mut(at).unwrap().slots.fill(None);
+                    let saved = world.chests_to_string();
+                    let mut other = super::super::World::new_headless(Arc::clone(&g), Default::default(), 1);
+                    other.load_chests(&saved);
+                    other.register_structure_features(c, &g.generate(c));
+                    assert!(other.chest(at).unwrap().slots.iter().all(Option::is_none), "{table} refilled");
+                    checked += 1;
+                }
+                if checked >= 12 {
+                    break;
+                }
+            }
+        }
+        println!("{checked} generation 4 chests from {tables:?}");
+        assert!(checked > 0);
+        assert!(tables.iter().all(|t| t.starts_with("village/village_")));
     }
 }

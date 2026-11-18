@@ -979,6 +979,16 @@ books, the ten pattern items), then Track D (spectral arrow, the two
 eggs, the 18 templates). Each track's record gives the LAN indices it
 had on its own branch; these are the merged ones.
 
+**Track G** (2026-11-18, implemented, unverified;
+[record](verification/2026-11-18-v0.15-catalogues.md)) allocated no block
+states, items or texture layers and appended to no saved ordering. It adds
+unsaved `fortress::Feature` members (`StructureLoot`, `VillageResident`,
+`VillageBed`, generated from the seed and never written), the
+`village::Resident` kinds of generation 4's spawn pieces (each spawn cell
+recorded in the existing saved `births` list), and `jigsaw::Base::LootIn`.
+`entity::cat_spawner` is now `pub(crate)` so the village catalogue can name
+Java's cat variants.
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

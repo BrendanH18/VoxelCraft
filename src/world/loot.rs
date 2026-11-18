@@ -362,6 +362,7 @@ pub fn java_item(name: &str) -> Option<crate::item::Item> {
                                 "porkchop" => Some(Item::RAW_PORKCHOP),
                                 "beef" => Some(Item::RAW_BEEF),
                                 "chicken" => Some(Item::RAW_CHICKEN),
+                                "mutton" => Item::from_name("raw mutton"),
                                 "leather_helmet" => Some(Item::armor(ArmorPiece::Helmet, ArmorMaterial::Leather)),
                                 "leather_chestplate" => {
                                     Some(Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Leather))
@@ -742,7 +743,7 @@ impl super::World {
 /// `chests/` folder here; spawner, dispenser, equipment and entity tables
 /// keep theirs.
 pub fn sequence_key(name: &str) -> String {
-    if ["spawners/", "dispensers/", "equipment/", "entities/"].iter().any(|f| name.starts_with(f)) {
+    if ["spawners/", "dispensers/", "equipment/", "entities/", "pots/"].iter().any(|f| name.starts_with(f)) {
         format!("minecraft:{name}")
     } else {
         format!("minecraft:chests/{name}")

@@ -1,0 +1,150 @@
+# Ancient city template catalogue for generation 4 (v0.15 Track G, FE-02).
+#
+# Every `piece` line holds Java 26.3's facts about one template location that
+# Java's pools name: size, job sites, beds, bells, loot tables, residents and
+# jigsaw connectors (see src/world/jigsaw/catalogue.rs for the syntax). The
+# templates themselves are original: src/world/ancient_city/catalogue.rs draws each one at its size.
+# The pools below are Java's, element by element. Both are checked against
+# tests/fixtures/java/26.3/structure_catalogues.json by the catalogue tests.
+
+# Pieces: Java's facts per template location (see jigsaw/catalogue.rs).
+piece feature:sculk_patch_ancient_city feature 1 1 1 ds:/empty>empty
+piece ancient_city/city/entrance/entrance_connector entrance 30 15 39 e:entrance_start/empty>empty n:empty/connect_wall>ancient_city/walls s:empty/connect_wall>ancient_city/walls w:empty/entrance_middle>ancient_city/city/entrance
+piece ancient_city/city/entrance/entrance_path_1 entrance 35 15 39 e:entrance_middle/empty>ancient_city/city/entrance n:empty/connect_wall>ancient_city/walls s:empty/connect_wall>ancient_city/walls
+piece ancient_city/city/entrance/entrance_path_2 entrance 35 15 39 e:entrance_middle/empty>ancient_city/city/entrance n:empty/connect_wall>ancient_city/walls s:empty/connect_wall>ancient_city/walls
+piece ancient_city/city/entrance/entrance_path_3 entrance 35 15 39 e:entrance_middle/empty>ancient_city/city/entrance n:empty/connect_wall>ancient_city/walls s:empty/connect_wall>ancient_city/walls
+piece ancient_city/city/entrance/entrance_path_4 entrance 35 15 39 e:entrance_middle/empty>ancient_city/city/entrance n:empty/connect_wall>ancient_city/walls s:empty/connect_wall>ancient_city/walls
+piece ancient_city/city/entrance/entrance_path_5 entrance 35 15 39 e:entrance_middle/empty>ancient_city/city/entrance n:empty/connect_wall>ancient_city/walls s:empty/connect_wall>ancient_city/walls
+piece ancient_city/city_center/city_center_1 center 18 31 41 block=lectern dw:city_anchor/empty>empty e:empty/connect_top>ancient_city/city_center/walls n:empty/connect_left>ancient_city/city_center/walls s:empty/connect_right>ancient_city/city_center/walls w:empty/connect_bottom>ancient_city/city_center/walls
+piece ancient_city/city_center/city_center_2 center 18 31 41 chest=1 block=lectern dw:city_anchor/empty>empty e:empty/connect_top>ancient_city/city_center/walls n:empty/connect_left>ancient_city/city_center/walls s:empty/connect_right>ancient_city/city_center/walls w:empty/connect_bottom>ancient_city/city_center/walls
+piece ancient_city/city_center/city_center_3 center 18 31 41 block=lectern dw:city_anchor/empty>empty e:empty/connect_top>ancient_city/city_center/walls n:empty/connect_left>ancient_city/city_center/walls s:empty/connect_right>ancient_city/city_center/walls w:empty/connect_bottom>ancient_city/city_center/walls
+piece ancient_city/city_center/walls/bottom_1 center_wall 14 24 41 e:connect_bottom/empty>empty n:empty/connect_bottom_left_corner>ancient_city/city_center/walls s:empty/connect_bottom_right_corner>ancient_city/city_center/walls w:empty/entrance_start>ancient_city/city/entrance
+piece ancient_city/city_center/walls/bottom_2 center_wall 14 24 41 e:connect_bottom/empty>empty n:empty/connect_bottom_left_corner>ancient_city/city_center/walls s:empty/connect_bottom_right_corner>ancient_city/city_center/walls w:empty/entrance_start>ancient_city/city/entrance
+piece ancient_city/city_center/walls/bottom_left_corner center_wall 14 24 14 s:connect_bottom_left_corner/empty>empty
+piece ancient_city/city_center/walls/bottom_right_corner_1 center_wall 14 24 14 n:connect_bottom_right_corner/empty>empty
+piece ancient_city/city_center/walls/bottom_right_corner_2 center_wall 14 24 14 n:connect_bottom_right_corner/empty>empty
+piece ancient_city/city_center/walls/left center_wall 18 24 14 n:empty/connect_wall>ancient_city/walls s:connect_left/empty>empty
+piece ancient_city/city_center/walls/right center_wall 18 24 14 n:connect_right/empty>empty s:empty/connect_wall>ancient_city/walls
+piece ancient_city/city_center/walls/top center_wall 14 24 41 e:empty/connect_wall>ancient_city/walls n:empty/connect_top_left_corner>ancient_city/city_center/walls s:empty/connect_top_right_corner>ancient_city/city_center/walls w:connect_top/empty>empty
+piece ancient_city/city_center/walls/top_left_corner center_wall 14 24 14 s:connect_top_left_corner/empty>empty
+piece ancient_city/city_center/walls/top_right_corner center_wall 14 24 14 n:connect_top_right_corner/empty>empty
+piece ancient_city/structures/barracks structure 21 12 17 chest=2 loot=chest:chests/ancient_city*2 un:bottom>ancient_city/sculk uw:bottom>ancient_city/sculk w:connect_structure/empty>empty
+piece ancient_city/structures/camp_1 structure 17 5 17 w:connect_structure/empty>empty
+piece ancient_city/structures/camp_2 structure 17 5 17 w:connect_structure/empty>empty
+piece ancient_city/structures/camp_3 structure 17 5 17 w:connect_structure/empty>empty
+piece ancient_city/structures/chamber_1 structure 19 10 15 chest=1 loot=chest:chests/ancient_city e:connect_structure/empty>empty uw:bottom>ancient_city/sculk*2
+piece ancient_city/structures/chamber_2 structure 12 6 11 chest=1 loot=chest:chests/ancient_city e:connect_structure/empty>empty uw:bottom>ancient_city/sculk
+piece ancient_city/structures/chamber_3 structure 10 6 11 chest=1 loot=chest:chests/ancient_city e:connect_structure/empty>empty un:bottom>ancient_city/sculk
+piece ancient_city/structures/ice_box_1 structure 19 10 15 chest=1 loot=chest:chests/ancient_city_ice_box e:connect_structure/empty>empty uw:bottom>ancient_city/sculk*2
+piece ancient_city/structures/large_pillar_1 structure 6 15 6 e:connect_structure/empty>empty
+piece ancient_city/structures/large_ruin_1 structure 17 5 17 w:connect_structure/empty>empty
+piece ancient_city/structures/medium_pillar_1 structure 7 11 8 e:connect_structure/empty>empty*2
+piece ancient_city/structures/medium_ruin_1 structure 8 5 13 w:connect_structure/empty>empty
+piece ancient_city/structures/medium_ruin_2 structure 16 5 11 w:connect_structure/empty>empty
+piece ancient_city/structures/sauna_1 structure 29 10 37 chest=3 loot=chest:chests/ancient_city*3 e:connect_structure/empty>empty ue:bottom>ancient_city/sculk uw:bottom>ancient_city/sculk*3
+piece ancient_city/structures/small_ruin_1 structure 7 5 8 w:connect_structure/empty>empty
+piece ancient_city/structures/small_ruin_2 structure 8 5 4 w:connect_structure/empty>empty
+piece ancient_city/structures/small_statue structure 10 8 8 w:connect_structure/empty>empty*2
+piece ancient_city/structures/tall_ruin_1 structure 17 23 17 chest=1 loot=chest:chests/ancient_city s:connect_structure/empty>empty
+piece ancient_city/structures/tall_ruin_2 structure 17 23 17 chest=2 loot=chest:chests/ancient_city*2 n:connect_structure/empty>empty
+piece ancient_city/structures/tall_ruin_3 structure 17 23 17 chest=1 loot=chest:chests/ancient_city s:connect_structure/empty>empty
+piece ancient_city/structures/tall_ruin_4 structure 17 23 17 chest=1 loot=chest:chests/ancient_city n:connect_structure/empty>empty
+piece ancient_city/walls/intact_corner_wall_1 wall 21 15 21 e:connect_wall>ancient_city/walls/no_corners n:connect_wall>ancient_city/walls/no_corners s:connect_wall>ancient_city/walls/no_corners w:connect_wall>ancient_city/walls/no_corners
+piece ancient_city/walls/intact_horizontal_wall_1 wall 18 15 21 e:connect_wall>ancient_city/walls n:empty/connect_structure>ancient_city/structures s:empty/connect_structure>ancient_city/structures w:connect_wall>ancient_city/walls
+piece ancient_city/walls/intact_horizontal_wall_2 wall 18 15 21 e:connect_wall>ancient_city/walls n:empty/connect_structure>ancient_city/structures s:empty/connect_structure>ancient_city/structures w:connect_wall>ancient_city/walls
+piece ancient_city/walls/intact_horizontal_wall_bridge wall 18 15 21 n:empty/connect_structure>ancient_city/structures s:empty/connect_structure>ancient_city/structures w:connect_wall>ancient_city/walls
+piece ancient_city/walls/intact_horizontal_wall_passage_1 wall 18 15 21 e:connect_wall>ancient_city/walls n:empty/connect_structure>ancient_city/structures s:empty/connect_structure>ancient_city/structures w:connect_wall>ancient_city/walls
+piece ancient_city/walls/intact_horizontal_wall_stairs_1 wall 18 15 21 e:connect_wall>ancient_city/walls n:empty/connect_structure>ancient_city/structures s:empty/connect_structure>ancient_city/structures w:connect_wall>ancient_city/walls
+piece ancient_city/walls/intact_horizontal_wall_stairs_2 wall 18 15 21 e:connect_wall>ancient_city/walls n:empty/connect_structure>ancient_city/structures s:empty/connect_structure>ancient_city/structures w:connect_wall>ancient_city/walls
+piece ancient_city/walls/intact_horizontal_wall_stairs_3 wall 18 15 21 e:connect_wall>ancient_city/walls n:empty/connect_structure>ancient_city/structures s:empty/connect_structure>ancient_city/structures*2 w:connect_wall>ancient_city/walls
+piece ancient_city/walls/intact_horizontal_wall_stairs_4 wall 18 15 21 e:connect_wall>ancient_city/walls n:empty/connect_structure>ancient_city/structures s:empty/connect_structure>ancient_city/structures w:connect_wall>ancient_city/walls
+piece ancient_city/walls/intact_horizontal_wall_stairs_5 missing
+piece ancient_city/walls/intact_intersection_wall_1 wall 21 15 21 e:connect_wall>ancient_city/walls/no_corners s:connect_wall>ancient_city/walls/no_corners w:connect_wall>ancient_city/walls/no_corners
+piece ancient_city/walls/intact_lshape_wall_1 wall 21 15 21 e:connect_wall>ancient_city/walls/no_corners s:connect_wall>ancient_city/walls/no_corners
+piece ancient_city/walls/ruined_corner_wall_1 wall 21 15 21 e:connect_wall>ancient_city/walls/no_corners n:connect_wall>ancient_city/walls/no_corners s:connect_wall>ancient_city/walls/no_corners w:connect_wall>ancient_city/walls/no_corners
+piece ancient_city/walls/ruined_corner_wall_2 wall 21 15 21 e:connect_wall>ancient_city/walls/no_corners n:connect_wall>ancient_city/walls/no_corners s:connect_wall>ancient_city/walls/no_corners w:connect_wall>ancient_city/walls/no_corners
+piece ancient_city/walls/ruined_horizontal_wall_stairs_1 wall 18 15 21 e:connect_wall>ancient_city/walls n:empty/connect_structure>ancient_city/structures s:empty/connect_structure>ancient_city/structures w:connect_wall>ancient_city/walls
+piece ancient_city/walls/ruined_horizontal_wall_stairs_2 wall 18 15 21 e:connect_wall>ancient_city/walls n:empty/connect_structure>ancient_city/structures s:empty/connect_structure>ancient_city/structures w:connect_wall>ancient_city/walls
+piece ancient_city/walls/ruined_horizontal_wall_stairs_3 wall 18 15 21 e:connect_wall>ancient_city/walls n:empty/connect_structure>ancient_city/structures s:empty/connect_structure>ancient_city/structures*2 w:connect_wall>ancient_city/walls
+piece ancient_city/walls/ruined_horizontal_wall_stairs_4 wall 18 15 21 e:connect_wall>ancient_city/walls n:empty/connect_structure>ancient_city/structures s:empty/connect_structure>ancient_city/structures w:connect_wall>ancient_city/walls
+
+# Pools: Java's template_pool files, element by element.
+pool ancient_city/city/entrance
+1 ancient_city/city/entrance/entrance_connector@ancient_city_generic_degradation
+1 ancient_city/city/entrance/entrance_path_1@ancient_city_generic_degradation
+1 ancient_city/city/entrance/entrance_path_2@ancient_city_generic_degradation
+1 ancient_city/city/entrance/entrance_path_3@ancient_city_generic_degradation
+1 ancient_city/city/entrance/entrance_path_4@ancient_city_generic_degradation
+1 ancient_city/city/entrance/entrance_path_5@ancient_city_generic_degradation
+end
+pool ancient_city/city_center
+1 ancient_city/city_center/city_center_1@ancient_city_start_degradation
+1 ancient_city/city_center/city_center_2@ancient_city_start_degradation
+1 ancient_city/city_center/city_center_3@ancient_city_start_degradation
+end
+pool ancient_city/city_center/walls
+1 ancient_city/city_center/walls/bottom_1@ancient_city_generic_degradation
+1 ancient_city/city_center/walls/bottom_2@ancient_city_generic_degradation
+1 ancient_city/city_center/walls/bottom_left_corner@ancient_city_generic_degradation
+1 ancient_city/city_center/walls/bottom_right_corner_1@ancient_city_generic_degradation
+1 ancient_city/city_center/walls/bottom_right_corner_2@ancient_city_generic_degradation
+1 ancient_city/city_center/walls/left@ancient_city_generic_degradation
+1 ancient_city/city_center/walls/right@ancient_city_generic_degradation
+1 ancient_city/city_center/walls/top@ancient_city_generic_degradation
+1 ancient_city/city_center/walls/top_right_corner@ancient_city_generic_degradation
+1 ancient_city/city_center/walls/top_left_corner@ancient_city_generic_degradation
+end
+pool ancient_city/sculk
+6 feature:sculk_patch_ancient_city
+1 empty
+end
+pool ancient_city/structures
+7 empty
+4 ancient_city/structures/barracks@ancient_city_generic_degradation
+4 ancient_city/structures/chamber_1@ancient_city_generic_degradation
+4 ancient_city/structures/chamber_2@ancient_city_generic_degradation
+4 ancient_city/structures/chamber_3@ancient_city_generic_degradation
+4 ancient_city/structures/sauna_1@ancient_city_generic_degradation
+4 ancient_city/structures/small_statue@ancient_city_generic_degradation
+1 ancient_city/structures/large_ruin_1@ancient_city_generic_degradation
+1 ancient_city/structures/tall_ruin_1@ancient_city_generic_degradation
+1 ancient_city/structures/tall_ruin_2@ancient_city_generic_degradation
+2 ancient_city/structures/tall_ruin_3@ancient_city_generic_degradation
+2 ancient_city/structures/tall_ruin_4@ancient_city_generic_degradation
+1 list:ancient_city/structures/camp_1@ancient_city_generic_degradation+ancient_city/structures/camp_2@ancient_city_generic_degradation+ancient_city/structures/camp_3@ancient_city_generic_degradation
+1 ancient_city/structures/medium_ruin_1@ancient_city_generic_degradation
+1 ancient_city/structures/medium_ruin_2@ancient_city_generic_degradation
+1 ancient_city/structures/small_ruin_1@ancient_city_generic_degradation
+1 ancient_city/structures/small_ruin_2@ancient_city_generic_degradation
+1 ancient_city/structures/large_pillar_1@ancient_city_generic_degradation
+1 ancient_city/structures/medium_pillar_1@ancient_city_generic_degradation
+1 list:ancient_city/structures/ice_box_1
+end
+pool ancient_city/walls
+1 ancient_city/walls/intact_corner_wall_1@ancient_city_walls_degradation
+1 ancient_city/walls/intact_intersection_wall_1@ancient_city_walls_degradation
+1 ancient_city/walls/intact_lshape_wall_1@ancient_city_walls_degradation
+1 ancient_city/walls/intact_horizontal_wall_1@ancient_city_walls_degradation
+1 ancient_city/walls/intact_horizontal_wall_2@ancient_city_walls_degradation
+1 ancient_city/walls/intact_horizontal_wall_stairs_1@ancient_city_walls_degradation
+1 ancient_city/walls/intact_horizontal_wall_stairs_2@ancient_city_walls_degradation
+1 ancient_city/walls/intact_horizontal_wall_stairs_3@ancient_city_walls_degradation
+4 ancient_city/walls/intact_horizontal_wall_stairs_4@ancient_city_walls_degradation
+3 ancient_city/walls/intact_horizontal_wall_passage_1@ancient_city_walls_degradation
+1 ancient_city/walls/ruined_corner_wall_1@ancient_city_walls_degradation
+1 ancient_city/walls/ruined_corner_wall_2@ancient_city_walls_degradation
+2 ancient_city/walls/ruined_horizontal_wall_stairs_1@ancient_city_walls_degradation
+2 ancient_city/walls/ruined_horizontal_wall_stairs_2@ancient_city_walls_degradation
+3 ancient_city/walls/ruined_horizontal_wall_stairs_3@ancient_city_walls_degradation
+3 ancient_city/walls/ruined_horizontal_wall_stairs_4@ancient_city_walls_degradation
+end
+pool ancient_city/walls/no_corners
+1 ancient_city/walls/intact_horizontal_wall_1@ancient_city_walls_degradation
+1 ancient_city/walls/intact_horizontal_wall_2@ancient_city_walls_degradation
+1 ancient_city/walls/intact_horizontal_wall_stairs_1@ancient_city_walls_degradation
+1 ancient_city/walls/intact_horizontal_wall_stairs_2@ancient_city_walls_degradation
+1 ancient_city/walls/intact_horizontal_wall_stairs_3@ancient_city_walls_degradation
+1 ancient_city/walls/intact_horizontal_wall_stairs_4@ancient_city_walls_degradation
+1 ancient_city/walls/intact_horizontal_wall_stairs_5@ancient_city_walls_degradation
+1 ancient_city/walls/intact_horizontal_wall_bridge@ancient_city_walls_degradation
+end

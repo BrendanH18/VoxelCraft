@@ -191,7 +191,11 @@ fn generation_ignores_order_threads_and_caches(generation: Generation) {
     drop(g);
     let all: Vec<_> = reference.iter().flat_map(|(_, f)| f.iter().map(|(_, f)| *f)).collect();
     let has = |f: fn(&Feature) -> bool| all.iter().any(f);
-    assert!(has(|f| matches!(f, Feature::VillageHome(_) | Feature::VillageChest(..))), "{generation:?}: no village");
+    assert!(
+        has(|f| matches!(f, Feature::VillageHome(_) | Feature::VillageChest(..)))
+            || generation >= Generation::V4 && has(|f| matches!(f, Feature::VillageBed | Feature::VillageResident(_))),
+        "{generation:?}: no village"
+    );
     assert!(has(|f| matches!(f, Feature::TempleChest(..))), "{generation:?}: no temple-family chest");
     if generation >= Generation::V3 {
         assert!(has(|f| matches!(f, Feature::Archaeology(..))), "no ocean ruin archaeology");
@@ -231,6 +235,12 @@ fn generation_ignores_order_threads_and_caches(generation: Generation) {
                 match feature {
                     Feature::AncientCityChest(..) => assert_eq!(block.base(), Block::CHEST, "city chest at {at}"),
                     Feature::TrialLoot(..) => assert!(crate::world::chest::is_chest(block), "trial loot at {at}"),
+                    // Generation 4: profession chests and decorated pots.
+                    Feature::StructureLoot(..) => assert!(
+                        crate::world::chest::is_chest(block)
+                            || crate::world::utilities::decorated_pot_of(block).is_some(),
+                        "structure loot at {at}"
+                    ),
                     Feature::TrialSpawner(_) => {
                         assert!(crate::world::trial::spawner(block).is_some(), "trial spawner at {at}")
                     }
@@ -310,6 +320,13 @@ fn generation_2_ignores_order_threads_and_caches() {
 #[test]
 fn generation_3_ignores_order_threads_and_caches() {
     generation_ignores_order_threads_and_caches(Generation::V3);
+}
+
+/// v0.15 Track G: generation 4's villages, trial chambers and ancient
+/// cities from the full catalogues.
+#[test]
+fn generation_4_ignores_order_threads_and_caches() {
+    generation_ignores_order_threads_and_caches(Generation::V4);
 }
 
 /// GEN-07's Nether counterpart includes every chunk intersecting a treasure

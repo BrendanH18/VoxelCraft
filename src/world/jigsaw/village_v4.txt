@@ -1,0 +1,1276 @@
+# Village template catalogue for generation 4 (v0.15 Track G, FE-02).
+#
+# Every `piece` line holds Java 26.3's facts about one template location that
+# Java's pools name: size, job sites, beds, bells, loot tables, residents and
+# jigsaw connectors (see src/world/jigsaw/catalogue.rs for the syntax). The
+# templates themselves are original: src/world/village/catalogue.rs draws each one at its size.
+# The pools below are Java's, element by element. Both are checked against
+# tests/fixtures/java/26.3/structure_catalogues.json by the catalogue tests.
+
+# Pieces: Java's facts per template location (see jigsaw/catalogue.rs).
+piece feature:acacia feature 1 1 1 ds:/empty>empty
+piece feature:flower_plain feature 1 1 1 ds:/empty>empty
+piece feature:oak feature 1 1 1 ds:/empty>empty
+piece feature:patch_berry_bush feature 1 1 1 ds:/empty>empty
+piece feature:patch_cactus feature 1 1 1 ds:/empty>empty
+piece feature:patch_taiga_grass feature 1 1 1 ds:/empty>empty
+piece feature:pile_hay feature 1 1 1 ds:/empty>empty
+piece feature:pile_ice feature 1 1 1 ds:/empty>empty
+piece feature:pile_melon feature 1 1 1 ds:/empty>empty
+piece feature:pile_pumpkin feature 1 1 1 ds:/empty>empty
+piece feature:pile_snow feature 1 1 1 ds:/empty>empty
+piece feature:pine feature 1 1 1 ds:/empty>empty
+piece feature:spruce feature 1 1 1 ds:/empty>empty
+piece village/common/animals/cat_black resident 1 3 1 mob=cat:black:persistent ds:bottom>empty
+piece village/common/animals/cat_british resident 1 3 1 mob=cat:british_shorthair:persistent ds:bottom>empty
+piece village/common/animals/cat_calico resident 1 3 1 mob=cat:calico:persistent ds:bottom>empty
+piece village/common/animals/cat_jellie resident 1 3 1 mob=cat:all_black:persistent ds:bottom>empty
+piece village/common/animals/cat_persian resident 1 3 1 mob=cat:persian:persistent ds:bottom>empty
+piece village/common/animals/cat_ragdoll resident 1 3 1 mob=cat:ragdoll:persistent ds:bottom>empty
+piece village/common/animals/cat_red resident 1 3 1 mob=cat:red:persistent ds:bottom>empty
+piece village/common/animals/cat_siamese resident 1 3 1 mob=cat:siamese:persistent ds:bottom>empty
+piece village/common/animals/cat_tabby resident 1 3 1 mob=cat:tabby:persistent ds:bottom>empty
+piece village/common/animals/cat_white resident 1 3 1 mob=cat:white:persistent ds:bottom>empty
+piece village/common/animals/cows_1 resident 1 3 1 mob=cow:persistent*2 ds:bottom>empty
+piece village/common/animals/horses_1 resident 1 3 1 mob=horse:261:persistent ds:bottom>empty
+piece village/common/animals/horses_2 resident 1 3 1 mob=horse:768:persistent mob=horse:773:persistent ds:bottom>empty
+piece village/common/animals/horses_3 resident 1 3 1 mob=horse:261:persistent*2 ds:bottom>empty
+piece village/common/animals/horses_4 resident 1 3 1 mob=horse:515:persistent ds:bottom>empty
+piece village/common/animals/horses_5 resident 1 3 1 mob=horse:6:persistent ds:bottom>empty
+piece village/common/animals/pigs_1 resident 1 3 1 mob=pig:persistent*2 ds:bottom>empty
+piece village/common/animals/sheep_1 resident 1 3 1 mob=sheep:persistent*2 ds:bottom>empty
+piece village/common/animals/sheep_2 resident 1 3 1 mob=sheep:persistent*2 ds:bottom>empty
+piece village/common/iron_golem resident 1 3 1 mob=iron_golem:persistent ds:bottom>empty
+piece village/common/well_bottom well_bottom 4 3 4 un:bottom>village/common/well_bottoms
+piece village/desert/camel_spawn resident 1 4 2 mob=camel dn!:empty>empty
+piece village/desert/desert_lamp_1 lamp 1 4 1 ds:bottom>empty
+piece village/desert/houses/desert_animal_pen_1 animal_pen 10 6 7 n:building_entrance>empty un:bottom>village/common/animals
+piece village/desert/houses/desert_animal_pen_2 animal_pen 10 6 8 n:building_entrance>empty un:bottom>village/common/animals
+piece village/desert/houses/desert_armorer_1 house 7 7 7 job=blast_furnace w:building_entrance>empty
+piece village/desert/houses/desert_butcher_shop_1 house 8 5 8 job=smoker un:bottom>village/common/butcher_animals w:building_entrance>empty
+piece village/desert/houses/desert_cartographer_house_1 house 7 7 7 job=cartography_table un:bottom>village/common/cats w:building_entrance>empty
+piece village/desert/houses/desert_farm_1 small_farm 5 6 7 job=composter w:building_entrance>empty
+piece village/desert/houses/desert_farm_2 small_farm 7 7 10 job=composter w:building_entrance>empty
+piece village/desert/houses/desert_fisher_1 house 8 6 11 barrel=6 un:bottom>village/common/cats w:building_entrance>empty
+piece village/desert/houses/desert_fletcher_house_1 house 6 12 12 job=fletching_table w:building_entrance>empty
+piece village/desert/houses/desert_large_farm_1 large_farm 11 7 13 job=composter*2 w:building_entrance>empty
+piece village/desert/houses/desert_library_1 house 9 7 5 job=lectern n:building_entrance>empty un:bottom>village/common/cats
+piece village/desert/houses/desert_mason_1 house 7 5 8 job=stonecutter w:building_entrance>empty
+piece village/desert/houses/desert_medium_house_1 house 6 6 7 bed=2 chest=1 loot=chest:chests/village/village_desert_house un:bottom>village/desert/villagers*2 w:building_entrance>empty
+piece village/desert/houses/desert_medium_house_2 house 11 9 7 bed=2 chest=1 loot=chest:chests/village/village_desert_house n:building_entrance>empty un:bottom>village/desert/villagers*2
+piece village/desert/houses/desert_shepherd_house_1 house 11 6 5 job=loom*2 s:building_entrance>empty un:bottom>village/common/sheep
+piece village/desert/houses/desert_small_house_1 house 6 6 5 bed=1 un:bottom>village/desert/villagers w:building_entrance>empty
+piece village/desert/houses/desert_small_house_2 house 7 6 5 bed=1 un:bottom>village/common/cats un:bottom>village/desert/villagers w:building_entrance>empty
+piece village/desert/houses/desert_small_house_3 house 5 5 6 bed=1 s:building_entrance>empty un:bottom>village/desert/villagers
+piece village/desert/houses/desert_small_house_4 house 5 5 5 bed=1 chest=1 loot=chest:chests/village/village_desert_house s:building_entrance>empty un:bottom>village/desert/villagers
+piece village/desert/houses/desert_small_house_5 house 5 6 6 bed=1 n:building_entrance>empty un:bottom>village/desert/villagers
+piece village/desert/houses/desert_small_house_6 house 6 18 5 bed=1 chest=1 loot=chest:chests/village/village_desert_house un:bottom>village/desert/villagers w:building_entrance>empty
+piece village/desert/houses/desert_small_house_7 house 8 5 7 bed=1 un:bottom>village/desert/villagers w:building_entrance>empty
+piece village/desert/houses/desert_small_house_8 house 5 5 5 bed=1 n:building_entrance>empty un:bottom>village/desert/villagers
+piece village/desert/houses/desert_tannery_1 house 7 10 6 job=water_cauldron n:building_entrance>empty
+piece village/desert/houses/desert_temple_1 house 11 7 10 chest=1 job=brewing_stand loot=chest:chests/village/village_temple w:building_entrance>empty
+piece village/desert/houses/desert_temple_2 house 10 6 12 job=brewing_stand w:building_entrance>empty
+piece village/desert/houses/desert_tool_smith_1 house 9 9 9 chest=1 job=smithing_table loot=chest:chests/village/village_toolsmith w:building_entrance>empty
+piece village/desert/houses/desert_weaponsmith_1 house 10 6 7 chest=1 job=grindstone loot=chest:chests/village/village_weaponsmith n:building_entrance>empty
+piece village/desert/streets/corner_01 street 7 2 15 n:street>village/desert/streets s:building_entrance>village/desert/houses un:bottom>village/common/cats un:bottom>village/desert/decor w:street>village/desert/streets
+piece village/desert/streets/corner_02 street 6 2 6 s:street>village/desert/streets un:bottom>village/desert/decor w:street>village/desert/streets
+piece village/desert/streets/crossroad_01 street 18 2 15 e:building_entrance>village/desert/houses*3 n:building_entrance>village/desert/houses*2 n:street>village/desert/streets s:building_entrance>village/desert/houses*2 s:street>village/desert/streets un:bottom>village/common/cats un:bottom>village/desert/decor w:street>village/desert/streets
+piece village/desert/streets/crossroad_02 street 11 2 11 e:street>village/desert/streets n:street>village/desert/streets s:street>village/desert/streets un:bottom>village/desert/decor*3 w:street>village/desert/streets
+piece village/desert/streets/crossroad_03 street 5 2 5 e:street>village/desert/streets n:street>village/desert/streets s:street>village/desert/streets w:street>village/desert/streets
+piece village/desert/streets/square_01 street 13 2 28 e:street>village/desert/streets n:building_entrance>village/desert/houses*7 s:building_entrance>village/desert/houses*9 un:bottom>village/desert/decor*2 w:street>village/desert/streets
+piece village/desert/streets/square_02 street 16 2 19 e:building_entrance>village/desert/houses n:building_entrance>village/desert/houses s:building_entrance>village/desert/houses un:bottom>village/desert/decor*2 w:street>empty
+piece village/desert/streets/straight_01 street 15 2 12 e:street>village/desert/streets s:building_entrance>village/desert/houses*3 un:bottom>village/desert/decor*2 w:street>village/desert/streets
+piece village/desert/streets/straight_02 street 15 2 18 e:street>village/desert/streets n:building_entrance>village/desert/houses*3 un:bottom>village/desert/decor*2 w:street>village/desert/streets
+piece village/desert/streets/straight_03 street 4 2 3 e:street>village/desert/streets w:street>village/desert/streets
+piece village/desert/streets/turn_01 street 4 2 4 n:street>village/desert/streets un:bottom>village/desert/decor w:street>village/desert/streets
+piece village/desert/terminators/terminator_01 terminator 3 2 3 w:street>empty
+piece village/desert/terminators/terminator_02 terminator 3 2 3 un:bottom>village/desert/decor w:street>empty
+piece village/desert/town_centers/desert_meeting_point_1 center 17 6 9 bell=1 e:street>village/desert/streets n:street>village/desert/streets s:street>village/desert/streets un:bottom>village/common/cats un:bottom>village/common/iron_golem un:bottom>village/desert/villagers*3 us!:empty>village/desert/camel w:building_entrance>village/desert/houses*5
+piece village/desert/town_centers/desert_meeting_point_2 center 12 6 12 bell=1 e:street>village/desert/streets n:street>village/desert/streets s:street>village/desert/streets un:bottom>village/common/cats*2 un:bottom>village/common/iron_golem un:bottom>village/desert/villagers*3 uw!:empty>village/desert/camel w:street>village/desert/streets
+piece village/desert/town_centers/desert_meeting_point_3 center 15 6 15 bell=1 e:street>village/desert/streets s:street>village/desert/streets un!:empty>village/desert/camel un:bottom>village/common/cats*2 un:bottom>village/common/iron_golem un:bottom>village/desert/decor*3 un:bottom>village/desert/villagers*3 w:street>village/desert/streets
+piece village/desert/villagers/baby resident 1 2 1 mob=villager:none:desert:baby ds:bottom>empty
+piece village/desert/villagers/nitwit resident 1 3 1 mob=villager:nitwit:desert ds:bottom>empty
+piece village/desert/villagers/unemployed resident 1 3 1 mob=villager:none:desert ds:bottom>empty
+piece village/desert/zombie/houses/desert_medium_house_1 house 6 6 7 bed=2 chest=1 loot=chest:chests/village/village_desert_house un:bottom>village/desert/zombie/villagers w:building_entrance>empty
+piece village/desert/zombie/houses/desert_medium_house_2 house 11 9 7 bed=2 chest=1 loot=chest:chests/village/village_desert_house n:building_entrance>empty un:bottom>village/desert/zombie/villagers*2
+piece village/desert/zombie/houses/desert_small_house_1 house 6 6 5 bed=1 un:bottom>village/desert/zombie/villagers w:building_entrance>empty
+piece village/desert/zombie/houses/desert_small_house_2 house 7 6 5 bed=1 un:bottom>village/common/cats un:bottom>village/desert/zombie/villagers w:building_entrance>empty
+piece village/desert/zombie/houses/desert_small_house_3 house 5 5 6 bed=1 s:building_entrance>empty un:bottom>village/desert/zombie/villagers
+piece village/desert/zombie/houses/desert_small_house_4 house 5 5 5 bed=1 chest=1 loot=chest:chests/village/village_desert_house s:building_entrance>empty un:bottom>village/desert/zombie/villagers
+piece village/desert/zombie/houses/desert_small_house_5 house 5 6 6 bed=1 n:building_entrance>empty un:bottom>village/desert/zombie/villagers
+piece village/desert/zombie/houses/desert_small_house_6 house 5 17 5 bed=1 chest=1 loot=chest:chests/village/village_desert_house un:bottom>village/desert/zombie/villagers w:building_entrance>empty
+piece village/desert/zombie/houses/desert_small_house_7 house 8 5 7 bed=1 un:bottom>village/desert/zombie/villagers w:building_entrance>empty
+piece village/desert/zombie/houses/desert_small_house_8 house 5 5 5 bed=1 n:building_entrance>empty un:bottom>village/desert/zombie/villagers
+piece village/desert/zombie/streets/corner_01 street 7 2 15 n:street>village/desert/zombie/streets s:building_entrance>village/desert/zombie/houses un:bottom>village/common/cats un:bottom>village/desert/zombie/decor w:street>village/desert/zombie/streets
+piece village/desert/zombie/streets/corner_02 street 6 2 6 s:street>village/desert/zombie/streets un:bottom>village/desert/zombie/decor w:street>village/desert/zombie/streets
+piece village/desert/zombie/streets/crossroad_01 street 18 2 15 e:building_entrance>village/desert/zombie/houses*3 n:building_entrance>village/desert/zombie/houses*2 n:street>village/desert/zombie/streets s:building_entrance>village/desert/zombie/houses*2 s:street>village/desert/zombie/streets un:bottom>village/common/cats un:bottom>village/desert/zombie/decor w:street>village/desert/zombie/streets
+piece village/desert/zombie/streets/crossroad_02 street 11 2 11 e:street>village/desert/zombie/streets n:street>village/desert/zombie/streets s:street>village/desert/zombie/streets un:bottom>village/desert/zombie/decor*3 w:street>village/desert/zombie/streets
+piece village/desert/zombie/streets/crossroad_03 street 5 2 5 e:street>village/desert/zombie/streets n:street>village/desert/zombie/streets s:street>village/desert/zombie/streets w:street>village/desert/zombie/streets
+piece village/desert/zombie/streets/square_01 street 13 2 28 e:street>village/desert/zombie/streets n:building_entrance>village/desert/zombie/houses*7 s:building_entrance>village/desert/zombie/houses*9 un:bottom>village/desert/zombie/decor*2 w:street>village/desert/zombie/streets
+piece village/desert/zombie/streets/square_02 street 16 2 19 e:building_entrance>village/desert/zombie/houses n:building_entrance>village/desert/zombie/houses s:building_entrance>village/desert/zombie/houses un:bottom>village/desert/zombie/decor*2 w:street>empty
+piece village/desert/zombie/streets/straight_01 street 15 2 12 e:street>village/desert/zombie/streets s:building_entrance>village/desert/zombie/houses*3 un:bottom>village/desert/zombie/decor*2 w:street>village/desert/zombie/streets
+piece village/desert/zombie/streets/straight_02 street 15 2 18 e:street>village/desert/zombie/streets n:building_entrance>village/desert/zombie/houses*3 un:bottom>village/desert/zombie/decor*2 w:street>village/desert/zombie/streets
+piece village/desert/zombie/streets/straight_03 street 4 2 3 e:street>village/desert/zombie/streets w:street>village/desert/zombie/streets
+piece village/desert/zombie/streets/turn_01 street 4 2 4 n:street>village/desert/zombie/streets un:bottom>village/desert/zombie/decor w:street>village/desert/zombie/streets
+piece village/desert/zombie/terminators/terminator_02 terminator 3 2 3 un:bottom>village/desert/zombie/decor w:street>empty
+piece village/desert/zombie/town_centers/desert_meeting_point_1 center 17 6 9 bell=1 e:street>village/desert/zombie/streets n:street>village/desert/zombie/streets s:street>village/desert/zombie/streets un:bottom>village/common/cats w:building_entrance>village/desert/zombie/houses*5
+piece village/desert/zombie/town_centers/desert_meeting_point_2 center 12 6 12 bell=1 e:street>village/desert/zombie/streets n:street>village/desert/zombie/streets s:street>village/desert/zombie/streets un:bottom>village/common/cats*2 w:street>village/desert/zombie/streets
+piece village/desert/zombie/town_centers/desert_meeting_point_3 center 15 6 15 bell=1 e:street>village/desert/zombie/streets s:street>village/desert/zombie/streets un:bottom>village/common/cats*2 un:bottom>village/desert/zombie/decor*3 w:street>village/desert/zombie/streets
+piece village/desert/zombie/villagers/nitwit resident 1 3 1 mob=zombie_villager:nitwit:desert:persistent ds:bottom>empty
+piece village/desert/zombie/villagers/unemployed resident 1 3 1 mob=zombie_villager:none:desert:persistent ds:bottom>empty
+piece village/plains/houses/plains_accessory_1 accessory 3 2 5 w:building_entrance>village/plains/streets
+piece village/plains/houses/plains_animal_pen_1 animal_pen 5 8 6 un:bottom>village/common/animals un:bottom>village/plains/trees w:building_entrance>empty
+piece village/plains/houses/plains_animal_pen_2 animal_pen 7 7 11 un:bottom>village/common/animals*2 un:bottom>village/plains/trees w:building_entrance>empty
+piece village/plains/houses/plains_animal_pen_3 animal_pen 8 6 11 un:bottom>village/common/animals*3 un:bottom>village/plains/decor*4 w:building_entrance>empty
+piece village/plains/houses/plains_armorer_house_1 house 9 8 8 job=blast_furnace w:building_entrance>empty
+piece village/plains/houses/plains_big_house_1 house 7 11 11 bed=4 chest=1 loot=chest:chests/village/village_plains_house un:bottom>village/plains/villagers*4 w:building_entrance>empty
+piece village/plains/houses/plains_butcher_shop_1 house 11 8 12 job=smoker un:bottom>village/common/butcher_animals w:building_entrance>village/plains/streets
+piece village/plains/houses/plains_butcher_shop_2 house 15 12 7 job=smoker un:bottom>village/common/butcher_animals un:bottom>village/common/cats*2 un:bottom>village/plains/decor*2 w:building_entrance>village/plains/streets
+piece village/plains/houses/plains_cartographer_1 house 10 8 7 chest=1 job=cartography_table loot=chest:chests/village/village_cartographer w:building_entrance>village/plains/streets
+piece village/plains/houses/plains_fisher_cottage_1 house 11 9 10 chest=1 barrel=2 loot=chest:chests/village/village_fisher w:building_entrance>empty
+piece village/plains/houses/plains_fletcher_house_1 house 9 7 11 job=fletching_table un:bottom>village/plains/decor w:building_entrance>empty
+piece village/plains/houses/plains_large_farm_1 large_farm 13 6 9 job=composter*2 w:building_entrance>village/plains/streets
+piece village/plains/houses/plains_library_1 house 11 10 17 job=lectern*2 w:building_entrance>empty
+piece village/plains/houses/plains_library_2 house 8 10 9 job=lectern w:building_entrance>village/plains/streets
+piece village/plains/houses/plains_masons_house_1 house 8 7 9 job=stonecutter w:building_entrance>village/plains/streets
+piece village/plains/houses/plains_medium_house_1 house 13 8 11 bed=2 un:bottom>village/plains/decor un:bottom>village/plains/villagers*2 w:building_entrance>empty
+piece village/plains/houses/plains_medium_house_2 house 7 6 13 bed=2 chest=1 loot=chest:chests/village/village_plains_house un:bottom>village/plains/villagers*2 w:building_entrance>village/plains/streets
+piece village/plains/houses/plains_meeting_point_4 meeting_point 10 7 16 bell=1 un:bottom>village/plains/decor*3 un:bottom>village/plains/trees w:building_entrance>empty
+piece village/plains/houses/plains_meeting_point_5 meeting_point 10 6 11 bell=1 un:bottom>village/common/cats un:bottom>village/plains/decor*2 w:building_entrance>village/plains/streets
+piece village/plains/houses/plains_shepherds_house_1 house 9 6 13 job=loom*2 un:bottom>village/common/sheep un:bottom>village/plains/decor*2 w:building_entrance>empty
+piece village/plains/houses/plains_small_farm_1 small_farm 7 6 9 job=composter w:building_entrance>village/plains/streets
+piece village/plains/houses/plains_small_house_1 house 7 7 7 bed=1 un:bottom>village/plains/villagers w:building_entrance>village/plains/streets
+piece village/plains/houses/plains_small_house_2 house 7 7 7 bed=1 un:bottom>village/plains/villagers w:building_entrance>village/plains/streets
+piece village/plains/houses/plains_small_house_3 house 7 7 7 bed=1 un:bottom>village/plains/villagers w:building_entrance>village/plains/streets
+piece village/plains/houses/plains_small_house_4 house 7 7 7 bed=1 un:bottom>village/plains/villagers w:building_entrance>village/plains/streets
+piece village/plains/houses/plains_small_house_5 house 9 11 9 bed=1 un:bottom>village/plains/decor*3 un:bottom>village/plains/villagers*2 w:building_entrance>village/plains/streets
+piece village/plains/houses/plains_small_house_6 house 7 7 7 bed=1 un:bottom>village/plains/villagers w:building_entrance>village/plains/streets
+piece village/plains/houses/plains_small_house_7 house 7 7 8 bed=1 chest=1 loot=chest:chests/village/village_plains_house un:bottom>village/plains/villagers w:building_entrance>village/plains/streets
+piece village/plains/houses/plains_small_house_8 house 8 9 9 bed=1 un:bottom>village/plains/villagers w:building_entrance>empty
+piece village/plains/houses/plains_stable_1 stable 9 7 16 un:bottom>village/common/animals*2 un:bottom>village/common/cats*2 un:bottom>village/plains/decor*3 w:building_entrance>village/plains/streets
+piece village/plains/houses/plains_stable_2 stable 7 6 17 un:bottom>village/common/animals*2 un:bottom>village/common/cats*2 w:building_entrance>village/plains/streets
+piece village/plains/houses/plains_tannery_1 house 8 7 10 chest=1 job=water_cauldron*4 loot=chest:chests/village/village_tannery w:building_entrance>village/plains/streets
+piece village/plains/houses/plains_temple_3 house 11 7 7 job=brewing_stand w:building_entrance>village/plains/streets
+piece village/plains/houses/plains_temple_4 house 10 12 7 job=brewing_stand w:building_entrance>empty
+piece village/plains/houses/plains_tool_smith_1 house 9 6 12 job=smithing_table w:building_entrance>empty
+piece village/plains/houses/plains_weaponsmith_1 house 9 8 11 chest=1 job=grindstone loot=chest:chests/village/village_weaponsmith w:building_entrance>village/plains/streets
+piece village/plains/plains_lamp_1 lamp 3 4 3 ds:bottom>empty
+piece village/plains/streets/corner_01 street 16 2 16 e:building_entrance>village/plains/houses n:street>village/plains/streets un:bottom>village/plains/decor*5 w:street>village/plains/streets
+piece village/plains/streets/corner_02 street 16 2 16 e:street>village/plains/streets n:building_entrance>village/plains/houses n:street>village/plains/streets
+piece village/plains/streets/corner_03 street 4 2 4 e:street>village/plains/streets s:street>village/plains/streets
+piece village/plains/streets/crossroad_01 street 16 2 16 e:building_entrance>village/plains/houses*2 e:street>village/plains/streets n:street>village/plains/streets s:street>village/plains/streets un:bottom>village/plains/decor w:building_entrance>village/plains/houses*7
+piece village/plains/streets/crossroad_02 street 16 2 16 e:street>village/plains/streets n:street>village/plains/streets s:street>village/plains/streets un:bottom>village/plains/decor*5 w:street>village/plains/streets
+piece village/plains/streets/crossroad_03 street 16 2 16 e:street>village/plains/streets n:building_entrance>village/plains/houses n:street>village/plains/streets s:street>village/plains/streets un:bottom>village/plains/decor*2 w:street>village/plains/streets
+piece village/plains/streets/crossroad_04 street 4 2 5 n:street>village/plains/streets s:street>village/plains/streets w:street>village/plains/streets
+piece village/plains/streets/crossroad_05 street 5 2 5 e:street>village/plains/streets n:street>village/plains/streets s:street>village/plains/streets w:street>village/plains/streets
+piece village/plains/streets/crossroad_06 street 5 2 5 e:street>village/plains/streets n:street>village/plains/streets s:street>village/plains/streets un:bottom>village/plains/decor w:street>village/plains/streets
+piece village/plains/streets/straight_01 street 16 2 16 n:street>village/plains/streets s:street>village/plains/streets un:bottom>village/plains/decor*5
+piece village/plains/streets/straight_02 street 16 2 16 e:building_entrance>village/plains/houses n:street>village/plains/streets s:street>village/plains/streets
+piece village/plains/streets/straight_03 street 13 2 11 e:building_entrance>village/plains/houses*5 n:street>village/plains/streets s:street>village/plains/streets
+piece village/plains/streets/straight_04 street 11 2 9 e:building_entrance>village/plains/houses n:street>village/plains/streets s:street>village/plains/streets
+piece village/plains/streets/straight_05 street 20 2 17 e:building_entrance>village/plains/houses*4 n:street>village/plains/streets s:street>village/plains/streets
+piece village/plains/streets/straight_06 street 21 2 18 e:building_entrance>village/plains/houses*8 n:street>village/plains/streets s:street>village/plains/streets un:bottom>village/plains/decor*3 w:building_entrance>village/plains/houses*6
+piece village/plains/streets/turn_01 street 18 2 8 e:building_entrance>village/plains/houses n:street>village/plains/streets s:street>village/plains/streets w:building_entrance>village/plains/houses
+piece village/plains/terminators/terminator_01 terminator 2 2 3 e:street>empty
+piece village/plains/terminators/terminator_02 terminator 1 2 1 e:street>empty
+piece village/plains/terminators/terminator_03 terminator 3 2 3 e:street>empty
+piece village/plains/terminators/terminator_04 terminator 4 2 4 e:street>empty
+piece village/plains/town_centers/plains_fountain_01 center 9 4 9 bell=1 e:street>village/plains/streets n:street>village/plains/streets s:street>village/plains/streets un:bottom>village/common/cats*2 un:bottom>village/common/iron_golem un:bottom>village/plains/villagers*3 w:street>village/plains/streets
+piece village/plains/town_centers/plains_meeting_point_1 center 10 7 10 bell=1 ds:bottom>village/common/well_bottoms e:street>village/plains/streets n:street>village/plains/streets s:street>village/plains/streets un:bottom>village/common/cats*3 un:bottom>village/common/iron_golem un:bottom>village/plains/villagers*2 w:street>village/plains/streets
+piece village/plains/town_centers/plains_meeting_point_2 center 8 5 15 bell=1 e:street>village/plains/streets n:street>village/plains/streets s:street>village/plains/streets un:bottom>village/common/cats*3 un:bottom>village/common/iron_golem un:bottom>village/plains/villagers*3 w:street>village/plains/streets
+piece village/plains/town_centers/plains_meeting_point_3 center 11 9 11 bell=2 e:street>village/plains/streets s:street>village/plains/streets un:bottom>village/common/cats*2 un:bottom>village/common/iron_golem un:bottom>village/plains/villagers*2 w:street>village/plains/streets
+piece village/plains/villagers/baby resident 1 2 1 mob=villager:none:plains:baby ds:bottom>empty
+piece village/plains/villagers/nitwit resident 1 3 1 mob=villager:nitwit:plains ds:bottom>empty
+piece village/plains/villagers/unemployed resident 1 3 1 mob=villager:none:plains ds:bottom>empty
+piece village/plains/zombie/houses/plains_animal_pen_3 animal_pen 8 6 11 un:bottom>village/common/animals*3 un:bottom>village/plains/zombie/decor*4 w:building_entrance>empty
+piece village/plains/zombie/houses/plains_big_house_1 house 7 11 11 bed=4 chest=1 loot=chest:chests/village/village_plains_house un:bottom>village/plains/zombie/villagers*4 w:building_entrance>empty
+piece village/plains/zombie/houses/plains_butcher_shop_2 house 15 12 7 job=smoker un:bottom>village/common/butcher_animals un:bottom>village/common/cats*2 un:bottom>village/plains/zombie/decor*2 w:building_entrance>village/plains/zombie/streets
+piece village/plains/zombie/houses/plains_fletcher_house_1 house 9 7 11 job=fletching_table un:bottom>village/plains/zombie/decor w:building_entrance>empty
+piece village/plains/zombie/houses/plains_medium_house_1 house 13 8 11 bed=2 un:bottom>village/plains/zombie/decor un:bottom>village/plains/zombie/villagers*2 w:building_entrance>empty
+piece village/plains/zombie/houses/plains_medium_house_2 house 7 6 13 bed=2 chest=1 loot=chest:chests/village/village_plains_house un:bottom>village/plains/zombie/villagers*2 w:building_entrance>village/plains/zombie/streets
+piece village/plains/zombie/houses/plains_meeting_point_4 meeting_point 10 7 16 bell=1 un:bottom>village/plains/trees un:bottom>village/plains/zombie/decor*3 w:building_entrance>empty
+piece village/plains/zombie/houses/plains_meeting_point_5 meeting_point 10 6 11 bell=1 un:bottom>village/plains/zombie/decor*2 w:building_entrance>village/plains/zombie/streets
+piece village/plains/zombie/houses/plains_shepherds_house_1 house 9 6 13 job=loom*2 un:bottom>village/common/sheep un:bottom>village/plains/zombie/decor*2 w:building_entrance>empty
+piece village/plains/zombie/houses/plains_small_house_1 house 7 7 7 bed=1 un:bottom>village/plains/zombie/villagers w:building_entrance>village/plains/zombie/streets
+piece village/plains/zombie/houses/plains_small_house_2 house 7 7 7 bed=1 un:bottom>village/plains/zombie/villagers w:building_entrance>village/plains/zombie/streets
+piece village/plains/zombie/houses/plains_small_house_3 house 7 7 7 bed=1 un:bottom>village/plains/zombie/villagers w:building_entrance>village/plains/zombie/streets
+piece village/plains/zombie/houses/plains_small_house_4 house 7 7 7 bed=1 un:bottom>village/plains/zombie/villagers w:building_entrance>village/plains/zombie/streets
+piece village/plains/zombie/houses/plains_small_house_5 house 9 11 9 bed=1 un:bottom>village/plains/zombie/decor*3 un:bottom>village/plains/zombie/villagers*2 w:building_entrance>village/plains/zombie/streets
+piece village/plains/zombie/houses/plains_small_house_6 house 7 7 7 bed=1 un:bottom>village/plains/zombie/villagers w:building_entrance>village/plains/zombie/streets
+piece village/plains/zombie/houses/plains_small_house_7 house 7 7 8 bed=1 chest=1 loot=chest:chests/village/village_plains_house un:bottom>village/plains/zombie/villagers w:building_entrance>village/plains/zombie/streets
+piece village/plains/zombie/houses/plains_small_house_8 house 8 9 9 bed=1 un:bottom>village/plains/zombie/villagers w:building_entrance>empty
+piece village/plains/zombie/houses/plains_stable_1 stable 9 7 16 un:bottom>village/common/animals*2 un:bottom>village/common/cats*2 un:bottom>village/plains/zombie/decor*3 w:building_entrance>village/plains/zombie/streets
+piece village/plains/zombie/streets/corner_01 street 16 2 16 e:building_entrance>village/plains/zombie/houses n:street>village/plains/zombie/streets un:bottom>village/plains/zombie/decor*5 w:street>village/plains/zombie/streets
+piece village/plains/zombie/streets/corner_02 street 16 2 16 e:street>village/plains/zombie/streets n:building_entrance>village/plains/zombie/houses n:street>village/plains/zombie/streets
+piece village/plains/zombie/streets/corner_03 street 4 2 4 e:street>village/plains/zombie/streets s:street>village/plains/zombie/streets
+piece village/plains/zombie/streets/crossroad_01 street 16 2 16 e:building_entrance>village/plains/zombie/houses*2 e:street>village/plains/zombie/streets n:street>village/plains/zombie/streets s:street>village/plains/zombie/streets un:bottom>village/plains/zombie/decor w:building_entrance>village/plains/zombie/houses*7
+piece village/plains/zombie/streets/crossroad_02 street 16 2 16 e:street>village/plains/zombie/streets n:street>village/plains/zombie/streets s:street>village/plains/zombie/streets un:bottom>village/plains/zombie/decor*5 w:street>village/plains/zombie/streets
+piece village/plains/zombie/streets/crossroad_03 street 16 2 16 e:street>village/plains/zombie/streets n:building_entrance>village/plains/zombie/houses n:street>village/plains/zombie/streets s:street>village/plains/zombie/streets un:bottom>village/plains/zombie/decor*2 w:street>village/plains/zombie/streets
+piece village/plains/zombie/streets/crossroad_04 street 4 2 5 n:street>village/plains/zombie/streets s:street>village/plains/zombie/streets w:street>village/plains/zombie/streets
+piece village/plains/zombie/streets/crossroad_05 street 5 2 5 e:street>village/plains/zombie/streets n:street>village/plains/zombie/streets s:street>village/plains/zombie/streets w:street>village/plains/zombie/streets
+piece village/plains/zombie/streets/crossroad_06 street 5 2 5 e:street>village/plains/zombie/streets n:street>village/plains/zombie/streets s:street>village/plains/zombie/streets un:bottom>village/plains/zombie/decor w:street>village/plains/zombie/streets
+piece village/plains/zombie/streets/straight_01 street 16 2 16 n:street>village/plains/zombie/streets s:street>village/plains/zombie/streets un:bottom>village/plains/zombie/decor*5
+piece village/plains/zombie/streets/straight_02 street 16 2 16 e:building_entrance>village/plains/zombie/houses n:street>village/plains/zombie/streets s:street>village/plains/zombie/streets
+piece village/plains/zombie/streets/straight_03 street 13 2 11 e:building_entrance>village/plains/zombie/houses*5 n:street>village/plains/zombie/streets s:street>village/plains/zombie/streets
+piece village/plains/zombie/streets/straight_04 street 11 2 9 e:building_entrance>village/plains/zombie/houses n:street>village/plains/zombie/streets s:street>village/plains/zombie/streets
+piece village/plains/zombie/streets/straight_05 street 20 2 17 e:building_entrance>village/plains/zombie/houses*4 n:street>village/plains/zombie/streets s:street>village/plains/zombie/streets
+piece village/plains/zombie/streets/straight_06 street 21 2 18 e:building_entrance>village/plains/zombie/houses*8 n:street>village/plains/zombie/streets s:street>village/plains/zombie/streets un:bottom>village/plains/zombie/decor*3 w:building_entrance>village/plains/zombie/houses*6
+piece village/plains/zombie/streets/turn_01 street 18 2 8 e:building_entrance>village/plains/zombie/houses n:street>village/plains/zombie/streets s:street>village/plains/zombie/streets w:building_entrance>village/plains/zombie/houses
+piece village/plains/zombie/town_centers/plains_fountain_01 center 9 6 9 bell=1 e:street>village/plains/zombie/streets n:street>village/plains/zombie/streets s:street>village/plains/zombie/streets un:bottom>village/common/cats*2 w:street>village/plains/zombie/streets
+piece village/plains/zombie/town_centers/plains_meeting_point_1 center 10 7 10 bell=1 ds:bottom>village/common/well_bottoms e:street>village/plains/zombie/streets n:street>village/plains/zombie/streets s:street>village/plains/zombie/streets un:bottom>village/common/cats*3 w:street>village/plains/zombie/streets
+piece village/plains/zombie/town_centers/plains_meeting_point_2 center 8 5 15 bell=1 e:bottom>village/common/cats*2 n:street>village/plains/zombie/streets*2 s:street>village/plains/zombie/streets w:street>village/plains/zombie/streets
+piece village/plains/zombie/town_centers/plains_meeting_point_3 center 11 9 11 bell=2 e:street>village/plains/zombie/streets s:street>village/plains/zombie/streets un:bottom>village/common/cats*2 w:street>village/plains/zombie/streets
+piece village/plains/zombie/villagers/nitwit resident 1 3 1 mob=zombie_villager:nitwit:plains:persistent ds:bottom>empty
+piece village/plains/zombie/villagers/unemployed resident 1 3 1 mob=zombie_villager:none:plains:persistent ds:bottom>empty
+piece village/savanna/houses/savanna_animal_pen_1 animal_pen 9 5 9 n:building_entrance>empty un:bottom>village/common/animals
+piece village/savanna/houses/savanna_animal_pen_2 animal_pen 13 7 12 n:building_entrance>empty un:bottom>village/common/animals*2 un:bottom>village/common/cats*2 un:bottom>village/savanna/decor
+piece village/savanna/houses/savanna_animal_pen_3 animal_pen 8 5 9 s:building_entrance>empty un:bottom>village/common/animals un:bottom>village/savanna/decor
+piece village/savanna/houses/savanna_armorer_1 house 7 7 7 job=blast_furnace w:building_entrance>empty
+piece village/savanna/houses/savanna_butchers_shop_1 house 11 8 11 job=smoker un:bottom>village/common/butcher_animals w:building_entrance>empty
+piece village/savanna/houses/savanna_butchers_shop_2 house 13 10 9 chest=1 job=smoker loot=chest:chests/village/village_butcher un:bottom>village/common/butcher_animals w:building_entrance>empty
+piece village/savanna/houses/savanna_cartographer_1 house 8 8 9 chest=1 job=cartography_table loot=chest:chests/village/village_cartographer un:bottom>village/common/cats w:building_entrance>empty
+piece village/savanna/houses/savanna_fisher_cottage_1 house 8 11 9 barrel=3 n:building_entrance>empty un:bottom>village/common/cats*3
+piece village/savanna/houses/savanna_fletcher_house_1 house 11 7 9 job=fletching_table s:building_entrance>empty
+piece village/savanna/houses/savanna_large_farm_1 large_farm 9 6 9 job=composter*2 s:building_entrance>empty
+piece village/savanna/houses/savanna_large_farm_2 large_farm 10 7 8 job=composter n:building_entrance>empty un:bottom>village/savanna/decor
+piece village/savanna/houses/savanna_library_1 house 10 8 8 job=lectern n:building_entrance>empty
+piece village/savanna/houses/savanna_mason_1 house 8 7 10 chest=1 job=stonecutter loot=chest:chests/village/village_mason w:building_entrance>empty
+piece village/savanna/houses/savanna_medium_house_1 house 8 7 15 bed=2 chest=1 loot=chest:chests/village/village_savanna_house un:bottom>village/savanna/decor un:bottom>village/savanna/villagers*2 w:building_entrance>empty
+piece village/savanna/houses/savanna_medium_house_2 house 10 8 11 bed=2 chest=1 loot=chest:chests/village/village_savanna_house un:bottom>village/savanna/decor un:bottom>village/savanna/villagers*2 w:building_entrance>empty
+piece village/savanna/houses/savanna_shepherd_1 house 13 14 11 job=loom un:bottom>village/common/sheep un:bottom>village/savanna/trees w:building_entrance>empty
+piece village/savanna/houses/savanna_small_farm small_farm 6 7 9 job=composter n:building_entrance>empty
+piece village/savanna/houses/savanna_small_house_1 house 7 7 7 bed=1 s:building_entrance>empty un:bottom>village/savanna/villagers
+piece village/savanna/houses/savanna_small_house_2 house 7 7 7 bed=1 chest=1 loot=chest:chests/village/village_savanna_house s:building_entrance>empty un:bottom>village/savanna/villagers
+piece village/savanna/houses/savanna_small_house_3 house 7 7 7 bed=1 s:building_entrance>empty un:bottom>village/savanna/villagers
+piece village/savanna/houses/savanna_small_house_4 house 10 8 7 bed=1 chest=1 loot=chest:chests/village/village_savanna_house s:building_entrance>empty un:bottom>village/savanna/villagers
+piece village/savanna/houses/savanna_small_house_5 house 7 10 7 bed=1 e:building_entrance>empty un:bottom>village/savanna/villagers
+piece village/savanna/houses/savanna_small_house_6 house 7 7 7 bed=1 un:bottom>village/common/cats un:bottom>village/savanna/villagers w:building_entrance>empty
+piece village/savanna/houses/savanna_small_house_7 house 7 7 7 bed=1 chest=1 loot=chest:chests/village/village_savanna_house s:building_entrance>empty un:bottom>village/savanna/villagers
+piece village/savanna/houses/savanna_small_house_8 house 6 7 7 bed=1 un:bottom>village/savanna/decor un:bottom>village/savanna/villagers w:building_entrance>empty
+piece village/savanna/houses/savanna_tannery_1 house 8 6 9 chest=1 job=water_cauldron*2 loot=chest:chests/village/village_tannery e:building_entrance>empty
+piece village/savanna/houses/savanna_temple_1 house 13 8 9 job=brewing_stand w:building_entrance>empty
+piece village/savanna/houses/savanna_temple_2 house 7 7 9 job=brewing_stand w:building_entrance>empty
+piece village/savanna/houses/savanna_tool_smith_1 house 7 7 11 job=smithing_table w:building_entrance>empty
+piece village/savanna/houses/savanna_weaponsmith_1 house 8 6 9 job=grindstone e:building_entrance>empty
+piece village/savanna/houses/savanna_weaponsmith_2 house 9 7 13 chest=1 job=grindstone*2 loot=chest:chests/village/village_weaponsmith w:building_entrance>empty
+piece village/savanna/savanna_lamp_post_01 lamp 1 2 1 ds:bottom>empty
+piece village/savanna/streets/corner_01 street 16 2 16 e:building_entrance>village/savanna/houses n:street>village/savanna/streets s:building_entrance>village/savanna/houses un:bottom>village/savanna/decor*5 w:street>village/savanna/streets
+piece village/savanna/streets/corner_03 street 4 2 4 e:street>village/savanna/streets s:street>village/savanna/streets
+piece village/savanna/streets/crossroad_02 street 7 2 10 e:street>village/savanna/streets n:street>village/savanna/streets s:street>village/savanna/streets un:bottom>village/savanna/decor*2 w:street>village/savanna/streets
+piece village/savanna/streets/crossroad_03 street 16 2 16 e:street>village/savanna/streets n:building_entrance>village/savanna/houses*2 n:street>village/savanna/streets s:street>village/savanna/streets un:bottom>village/savanna/decor*3 w:street>village/savanna/streets
+piece village/savanna/streets/crossroad_04 street 4 2 5 n:street>village/savanna/streets s:street>village/savanna/streets w:street>village/savanna/streets
+piece village/savanna/streets/crossroad_05 street 5 2 5 e:street>village/savanna/streets n:street>village/savanna/streets s:street>village/savanna/streets w:street>village/savanna/streets
+piece village/savanna/streets/crossroad_06 street 5 2 5 e:street>village/savanna/streets n:street>village/savanna/streets s:street>village/savanna/streets un:bottom>village/savanna/decor w:street>village/savanna/streets
+piece village/savanna/streets/crossroad_07 street 15 2 14 e:street>village/savanna/streets n:street>village/savanna/streets s:street>village/savanna/streets un:bottom>village/savanna/decor*3 w:building_entrance>village/savanna/houses w:street>village/savanna/streets
+piece village/savanna/streets/split_01 street 8 2 6 e:street>village/savanna/streets n:street>village/savanna/streets un:bottom>village/savanna/decor w:street>village/savanna/streets
+piece village/savanna/streets/split_02 street 14 2 9 e:street>village/savanna/streets n:street>village/savanna/streets s:street>village/savanna/streets w:building_entrance>village/savanna/houses
+piece village/savanna/streets/straight_02 street 16 2 16 e:building_entrance>village/savanna/houses*7 n:street>village/savanna/streets s:street>village/savanna/streets
+piece village/savanna/streets/straight_04 street 11 2 9 e:building_entrance>village/savanna/houses n:street>village/savanna/streets s:street>village/savanna/streets
+piece village/savanna/streets/straight_05 street 20 2 17 e:building_entrance>village/savanna/houses*4 n:street>village/savanna/streets s:street>village/savanna/streets
+piece village/savanna/streets/straight_06 street 9 2 14 n:street>village/savanna/streets s:street>village/savanna/streets un:bottom>village/savanna/decor*2
+piece village/savanna/streets/straight_08 street 10 2 16 n:street>village/savanna/streets s:street>village/savanna/streets un:bottom>village/savanna/decor*3
+piece village/savanna/streets/straight_09 street 23 2 16 e:building_entrance>village/savanna/houses*2 n:street>village/savanna/streets s:street>village/savanna/streets un:bottom>village/savanna/decor*2 w:building_entrance>village/savanna/houses*2
+piece village/savanna/streets/straight_10 street 6 2 11 n:street>village/savanna/streets s:street>village/savanna/streets
+piece village/savanna/streets/straight_11 street 17 2 17 e:building_entrance>village/savanna/houses n:street>village/savanna/streets s:street>village/savanna/streets
+piece village/savanna/streets/turn_01 street 19 2 11 e:building_entrance>village/savanna/houses*2 n:street>village/savanna/streets s:street>village/savanna/streets w:building_entrance>village/savanna/houses
+piece village/savanna/terminators/terminator_05 terminator 16 2 16 e:building_entrance>village/savanna/houses un:bottom>village/savanna/decor*3 w:street>empty
+piece village/savanna/town_centers/savanna_meeting_point_1 center 14 5 12 bell=1 n:street>village/savanna/streets s:street>village/savanna/streets un:bottom>village/common/cats*3 un:bottom>village/common/iron_golem un:bottom>village/savanna/villagers*3 w:street>village/savanna/streets
+piece village/savanna/town_centers/savanna_meeting_point_2 center 11 6 11 bell=2 e:street>village/savanna/streets n:street>village/savanna/streets s:street>village/savanna/streets un:bottom>village/common/cats*2 un:bottom>village/common/iron_golem un:bottom>village/savanna/villagers*3 w:street>village/savanna/streets
+piece village/savanna/town_centers/savanna_meeting_point_3 center 9 6 11 bell=1 e:street>village/savanna/streets n:street>village/savanna/streets s:street>village/savanna/streets un:bottom>village/common/cats*3 un:bottom>village/common/iron_golem un:bottom>village/savanna/villagers*2 w:street>village/savanna/streets
+piece village/savanna/town_centers/savanna_meeting_point_4 center 9 6 9 bell=1 e:street>village/savanna/streets n:street>village/savanna/streets s:street>village/savanna/streets un:bottom>village/common/cats*2 un:bottom>village/common/iron_golem un:bottom>village/savanna/villagers*2 w:street>village/savanna/streets
+piece village/savanna/villagers/baby resident 1 2 1 mob=villager:none:savanna:baby ds:bottom>empty
+piece village/savanna/villagers/nitwit resident 1 3 1 mob=villager:nitwit:savanna ds:bottom>empty
+piece village/savanna/villagers/unemployed resident 1 3 1 mob=villager:none:savanna ds:bottom>empty
+piece village/savanna/zombie/houses/savanna_animal_pen_2 animal_pen 13 7 12 n:building_entrance>empty un:bottom>village/common/animals*2 un:bottom>village/common/cats*2 un:bottom>village/savanna/zombie/decor
+piece village/savanna/zombie/houses/savanna_animal_pen_3 animal_pen 8 5 9 s:building_entrance>empty un:bottom>village/common/animals un:bottom>village/savanna/zombie/decor
+piece village/savanna/zombie/houses/savanna_large_farm_2 large_farm 10 7 8 job=composter n:building_entrance>empty un:bottom>village/savanna/zombie/decor
+piece village/savanna/zombie/houses/savanna_medium_house_1 house 8 7 15 bed=2 chest=1 loot=chest:chests/village/village_savanna_house un:bottom>village/savanna/zombie/decor un:bottom>village/savanna/zombie/villagers*2 w:building_entrance>empty
+piece village/savanna/zombie/houses/savanna_medium_house_2 house 10 8 11 bed=2 chest=1 loot=chest:chests/village/village_savanna_house un:bottom>village/savanna/zombie/decor un:bottom>village/savanna/zombie/villagers*2 w:building_entrance>empty
+piece village/savanna/zombie/houses/savanna_small_house_1 house 7 7 7 bed=1 s:building_entrance>empty un:bottom>village/savanna/zombie/villagers
+piece village/savanna/zombie/houses/savanna_small_house_2 house 7 7 7 bed=1 chest=1 loot=chest:chests/village/village_savanna_house s:building_entrance>empty un:bottom>village/savanna/zombie/villagers
+piece village/savanna/zombie/houses/savanna_small_house_3 house 7 7 7 bed=1 s:building_entrance>empty un:bottom>village/savanna/zombie/villagers
+piece village/savanna/zombie/houses/savanna_small_house_4 house 10 8 7 bed=1 chest=1 loot=chest:chests/village/village_savanna_house s:building_entrance>empty un:bottom>village/savanna/zombie/villagers
+piece village/savanna/zombie/houses/savanna_small_house_5 house 7 10 7 bed=1 e:building_entrance>empty un:bottom>village/savanna/zombie/villagers
+piece village/savanna/zombie/houses/savanna_small_house_6 house 7 7 7 bed=1 un:bottom>village/common/cats un:bottom>village/savanna/zombie/villagers w:building_entrance>empty
+piece village/savanna/zombie/houses/savanna_small_house_7 house 7 7 7 bed=1 chest=1 loot=chest:chests/village/village_savanna_house s:building_entrance>empty un:bottom>village/savanna/zombie/villagers
+piece village/savanna/zombie/houses/savanna_small_house_8 house 6 7 7 bed=1 un:bottom>village/savanna/zombie/decor un:bottom>village/savanna/zombie/villagers w:building_entrance>empty
+piece village/savanna/zombie/streets/corner_01 street 16 2 16 e:building_entrance>village/savanna/zombie/houses n:street>village/savanna/zombie/streets s:building_entrance>village/savanna/zombie/houses un:bottom>village/savanna/zombie/decor*5 w:street>village/savanna/zombie/streets
+piece village/savanna/zombie/streets/corner_03 street 4 2 4 e:street>village/savanna/zombie/streets s:street>village/savanna/zombie/streets
+piece village/savanna/zombie/streets/crossroad_02 street 7 2 10 e:street>village/savanna/zombie/streets n:street>village/savanna/zombie/streets s:street>village/savanna/zombie/streets un:bottom>village/savanna/zombie/decor*2 w:street>village/savanna/zombie/streets
+piece village/savanna/zombie/streets/crossroad_03 street 16 2 16 e:street>village/savanna/zombie/streets n:building_entrance>village/savanna/zombie/houses*2 n:street>village/savanna/zombie/streets s:street>village/savanna/zombie/streets un:bottom>village/savanna/zombie/decor*3 w:street>village/savanna/zombie/streets
+piece village/savanna/zombie/streets/crossroad_04 street 4 2 5 n:street>village/savanna/zombie/streets s:street>village/savanna/zombie/streets w:street>village/savanna/zombie/streets
+piece village/savanna/zombie/streets/crossroad_05 street 5 2 5 e:street>village/savanna/zombie/streets n:street>village/savanna/zombie/streets s:street>village/savanna/zombie/streets w:street>village/savanna/zombie/streets
+piece village/savanna/zombie/streets/crossroad_06 street 5 2 5 e:street>village/savanna/zombie/streets n:street>village/savanna/zombie/streets s:street>village/savanna/zombie/streets un:bottom>village/savanna/zombie/decor w:street>village/savanna/zombie/streets
+piece village/savanna/zombie/streets/crossroad_07 street 15 2 14 e:street>village/savanna/zombie/streets n:street>village/savanna/zombie/streets s:street>village/savanna/zombie/streets un:bottom>village/savanna/zombie/decor*3 w:building_entrance>village/savanna/zombie/houses w:street>village/savanna/zombie/streets
+piece village/savanna/zombie/streets/split_01 street 8 2 6 e:street>village/savanna/zombie/streets n:street>village/savanna/zombie/streets un:bottom>village/savanna/zombie/decor w:street>village/savanna/zombie/streets
+piece village/savanna/zombie/streets/split_02 street 14 2 9 e:street>village/savanna/zombie/streets n:street>village/savanna/zombie/streets s:street>village/savanna/zombie/streets w:building_entrance>village/savanna/zombie/houses
+piece village/savanna/zombie/streets/straight_02 street 16 2 16 e:building_entrance>village/savanna/zombie/houses*7 n:street>village/savanna/zombie/streets s:street>village/savanna/zombie/streets
+piece village/savanna/zombie/streets/straight_04 street 11 2 9 e:building_entrance>village/savanna/zombie/houses n:street>village/savanna/zombie/streets s:street>village/savanna/zombie/streets
+piece village/savanna/zombie/streets/straight_05 street 20 2 17 e:building_entrance>village/savanna/zombie/houses*4 n:street>village/savanna/zombie/streets s:street>village/savanna/zombie/streets
+piece village/savanna/zombie/streets/straight_06 street 9 2 14 n:street>village/savanna/zombie/streets s:street>village/savanna/zombie/streets un:bottom>village/savanna/zombie/decor*2
+piece village/savanna/zombie/streets/straight_08 street 10 2 16 n:street>village/savanna/zombie/streets s:street>village/savanna/zombie/streets un:bottom>village/savanna/zombie/decor*3
+piece village/savanna/zombie/streets/straight_09 street 23 2 16 e:building_entrance>village/savanna/zombie/houses*2 n:street>village/savanna/zombie/streets s:street>village/savanna/zombie/streets un:bottom>village/savanna/zombie/decor*2 w:building_entrance>village/savanna/zombie/houses*2
+piece village/savanna/zombie/streets/straight_10 street 6 2 11 n:street>village/savanna/zombie/streets s:street>village/savanna/zombie/streets
+piece village/savanna/zombie/streets/straight_11 street 17 2 17 e:building_entrance>village/savanna/zombie/houses n:street>village/savanna/zombie/streets s:street>village/savanna/zombie/streets
+piece village/savanna/zombie/streets/turn_01 street 19 2 11 e:building_entrance>village/savanna/zombie/houses*2 n:street>village/savanna/zombie/streets s:street>village/savanna/zombie/streets w:building_entrance>village/savanna/zombie/houses
+piece village/savanna/zombie/terminators/terminator_05 terminator 16 2 16 e:building_entrance>village/savanna/zombie/houses un:bottom>village/savanna/zombie/decor*3 w:street>village/savanna/zombie/streets
+piece village/savanna/zombie/town_centers/savanna_meeting_point_1 center 14 6 12 bell=1 n:street>village/savanna/zombie/streets s:street>village/savanna/zombie/streets w:street>village/savanna/zombie/streets
+piece village/savanna/zombie/town_centers/savanna_meeting_point_2 center 11 6 11 bell=2 e:street>village/savanna/zombie/streets n:street>village/savanna/zombie/streets s:street>village/savanna/zombie/streets un:bottom>village/common/cats*2 w:street>village/savanna/zombie/streets
+piece village/savanna/zombie/town_centers/savanna_meeting_point_3 center 9 6 11 bell=1 e:street>village/savanna/zombie/streets n:street>village/savanna/zombie/streets s:street>village/savanna/zombie/streets un:bottom>village/common/cats*3 w:street>village/savanna/zombie/streets
+piece village/savanna/zombie/town_centers/savanna_meeting_point_4 center 9 6 9 bell=1 e:street>village/savanna/zombie/streets n:street>village/savanna/zombie/streets s:street>village/savanna/zombie/streets un:bottom>village/common/cats*2 w:street>village/savanna/zombie/streets
+piece village/savanna/zombie/villagers/nitwit resident 1 3 1 mob=zombie_villager:nitwit:savanna:persistent ds:bottom>empty
+piece village/savanna/zombie/villagers/unemployed resident 1 3 1 mob=zombie_villager:none:savanna:persistent ds:bottom>empty
+piece village/snowy/houses/snowy_animal_pen_1 animal_pen 8 6 9 un:bottom>village/common/animals w:building_entrance>empty
+piece village/snowy/houses/snowy_animal_pen_2 animal_pen 9 6 8 n:building_entrance>empty un:bottom>village/common/animals*2
+piece village/snowy/houses/snowy_armorer_house_1 house 8 8 7 chest=1 job=blast_furnace loot=chest:chests/village/village_armorer w:building_entrance>empty
+piece village/snowy/houses/snowy_armorer_house_2 house 7 8 7 job=blast_furnace n:building_entrance>empty
+piece village/snowy/houses/snowy_butchers_shop_1 house 7 8 9 job=smoker n:building_entrance>empty un:bottom>village/common/butcher_animals
+piece village/snowy/houses/snowy_butchers_shop_2 house 9 5 5 job=smoker un:bottom>village/common/butcher_animals w:building_entrance>empty
+piece village/snowy/houses/snowy_cartographer_house_1 house 7 7 11 chest=1 job=cartography_table loot=chest:chests/village/village_cartographer w:building_entrance>empty
+piece village/snowy/houses/snowy_farm_1 small_farm 6 6 7 job=composter w:building_entrance>empty
+piece village/snowy/houses/snowy_farm_2 small_farm 7 6 9 job=composter w:building_entrance>empty
+piece village/snowy/houses/snowy_fisher_cottage house 9 8 7 barrel=3 s:building_entrance>empty
+piece village/snowy/houses/snowy_fletcher_house_1 house 9 8 7 job=fletching_table w:building_entrance>empty
+piece village/snowy/houses/snowy_library_1 house 13 10 7 job=lectern w:building_entrance>empty
+piece village/snowy/houses/snowy_masons_house_1 house 10 8 9 job=stonecutter s:building_entrance>empty
+piece village/snowy/houses/snowy_masons_house_2 house 9 10 9 job=stonecutter w:building_entrance>empty
+piece village/snowy/houses/snowy_medium_house_1 house 7 6 8 bed=2 e:building_entrance>empty un:bottom>village/snowy/villagers*2
+piece village/snowy/houses/snowy_medium_house_2 house 14 9 7 bed=2 n:building_entrance>empty un:bottom>village/snowy/villagers*2
+piece village/snowy/houses/snowy_medium_house_3 house 5 5 7 bed=2 un:bottom>village/snowy/villagers*2 w:building_entrance>empty
+piece village/snowy/houses/snowy_shepherds_house_1 house 9 5 10 chest=1 job=loom*2 loot=chest:chests/village/village_shepherd un:bottom>village/common/sheep w:buidling_entrance>empty
+piece village/snowy/houses/snowy_small_house_1 house 7 5 6 bed=1 s:building_entrance>empty un:bottom>village/snowy/villagers
+piece village/snowy/houses/snowy_small_house_2 house 7 8 7 bed=1 n:building_entrance>empty un:bottom>village/snowy/villagers
+piece village/snowy/houses/snowy_small_house_3 house 7 6 7 bed=1 s:building_entrance>empty un:bottom>village/snowy/villagers
+piece village/snowy/houses/snowy_small_house_4 house 8 5 7 bed=1 un:bottom>village/snowy/villagers w:building_entrance>empty
+piece village/snowy/houses/snowy_small_house_5 house 7 5 5 bed=1 chest=1 loot=chest:chests/village/village_snowy_house un:bottom>village/snowy/villagers w:building_entrance>empty
+piece village/snowy/houses/snowy_small_house_6 house 7 9 7 bed=1 chest=1 loot=chest:chests/village/village_snowy_house un:bottom>village/snowy/villagers w:building_entrance>empty
+piece village/snowy/houses/snowy_small_house_7 house 6 7 7 bed=1 un:bottom>village/snowy/villagers w:building_entrance>empty
+piece village/snowy/houses/snowy_small_house_8 house 6 5 5 bed=1 un:bottom>village/snowy/villagers w:building_entrance>empty
+piece village/snowy/houses/snowy_tannery_1 house 8 9 9 chest=1 job=water_cauldron*2 loot=chest:chests/village/village_tannery w:building_entrance>empty
+piece village/snowy/houses/snowy_temple_1 house 10 14 7 job=brewing_stand w:building_entrance>empty
+piece village/snowy/houses/snowy_tool_smith_1 house 8 8 7 job=smithing_table w:building_entrance>empty
+piece village/snowy/houses/snowy_weapon_smith_1 house 9 7 10 chest=1 job=grindstone*2 loot=chest:chests/village/village_weaponsmith w:building_entrance>empty
+piece village/snowy/snowy_lamp_post_01 lamp 3 4 1 ds:bottom>empty
+piece village/snowy/snowy_lamp_post_02 lamp 2 4 1 ds:bottom>empty
+piece village/snowy/snowy_lamp_post_03 lamp 3 4 3 ds:bottom>empty
+piece village/snowy/streets/corner_01 street 13 2 16 e:building_entrance>village/snowy/houses n:street>village/snowy/streets un:bottom>village/common/cats un:bottom>village/snowy/decor*5 w:street>village/snowy/streets
+piece village/snowy/streets/corner_02 street 16 2 16 e:street>village/snowy/streets n:building_entrance>village/snowy/houses n:street>village/snowy/streets
+piece village/snowy/streets/corner_03 street 4 2 4 e:street>village/snowy/streets s:street>village/snowy/streets
+piece village/snowy/streets/crossroad_02 street 16 2 16 e:building_entrance>village/snowy/houses*2 e:street>village/snowy/streets n:building_entrance>village/snowy/houses n:street>village/snowy/streets s:street>village/snowy/streets un:bottom>village/snowy/decor*8 w:street>village/snowy/streets
+piece village/snowy/streets/crossroad_03 street 16 2 17 e:street>village/snowy/streets n:building_entrance>village/snowy/houses n:street>village/snowy/streets s:building_entrance>village/snowy/houses s:street>village/snowy/streets un:bottom>village/snowy/decor*4 w:street>village/snowy/streets
+piece village/snowy/streets/crossroad_04 street 4 2 5 n:street>village/snowy/streets s:street>village/snowy/streets w:street>village/snowy/streets
+piece village/snowy/streets/crossroad_05 street 5 2 5 e:street>village/snowy/streets n:street>village/snowy/streets s:street>village/snowy/streets w:street>village/snowy/streets
+piece village/snowy/streets/crossroad_06 street 5 2 5 e:street>village/snowy/streets n:street>village/snowy/streets s:street>village/snowy/streets un:bottom>village/snowy/decor w:street>village/snowy/streets
+piece village/snowy/streets/square_01 street 20 2 17 n:street>village/snowy/streets s:building_entrance>village/snowy/houses un:bottom>village/snowy/decor*2 w:building_entrance>village/snowy/houses
+piece village/snowy/streets/straight_01 street 16 2 16 n:street>village/snowy/streets s:street>village/snowy/streets un:bottom>village/snowy/decor*5
+piece village/snowy/streets/straight_02 street 16 2 16 e:building_entrance>village/snowy/houses n:street>village/snowy/streets s:street>village/snowy/streets
+piece village/snowy/streets/straight_03 street 13 2 11 e:building_entrance>village/snowy/houses*5 n:street>village/snowy/streets s:street>village/snowy/streets un:bottom>village/snowy/decor*2
+piece village/snowy/streets/straight_04 street 11 2 9 e:building_entrance>village/snowy/houses n:street>village/snowy/streets s:street>village/snowy/streets un:bottom>village/common/cats un:bottom>village/snowy/decor
+piece village/snowy/streets/straight_06 street 21 2 18 e:building_entrance>village/snowy/houses*8 n:street>village/snowy/streets s:street>village/snowy/streets un:bottom>village/snowy/decor*3 w:building_entrance>village/snowy/houses*6
+piece village/snowy/streets/straight_08 street 16 2 17 e:building_entrance>village/snowy/houses*4 n:street>village/snowy/streets s:street>village/snowy/streets un:bottom>village/snowy/decor*2
+piece village/snowy/streets/turn_01 street 18 2 8 e:building_entrance>village/snowy/houses n:street>village/snowy/streets s:street>village/snowy/streets un:bottom>village/snowy/decor w:building_entrance>village/snowy/houses
+piece village/snowy/town_centers/snowy_meeting_point_1 center 12 8 8 bell=1 e:street>village/snowy/streets n:street>village/snowy/streets s:street>village/snowy/streets un:bottom>village/common/cats*3 un:bottom>village/common/iron_golem un:bottom>village/snowy/decor*2 un:bottom>village/snowy/villagers*2 w:street>village/snowy/streets
+piece village/snowy/town_centers/snowy_meeting_point_2 center 11 5 9 bell=1 e:street>village/snowy/streets n:street>village/snowy/streets s:street>village/snowy/streets un:bottom>village/common/cats*2 un:bottom>village/common/iron_golem un:bottom>village/snowy/villagers*2 w:street>village/snowy/streets
+piece village/snowy/town_centers/snowy_meeting_point_3 center 7 7 7 bell=1 e:street>village/snowy/streets n:street>village/snowy/streets s:street>village/snowy/streets un:bottom>village/common/cats*2 un:bottom>village/common/iron_golem un:bottom>village/snowy/villagers*2 w:street>village/snowy/streets
+piece village/snowy/villagers/baby resident 1 2 1 mob=villager:none:snow:baby ds:bottom>empty
+piece village/snowy/villagers/nitwit resident 1 3 1 mob=villager:nitwit:snow ds:bottom>empty
+piece village/snowy/villagers/unemployed resident 1 3 1 mob=villager:none:snow ds:bottom>empty
+piece village/snowy/zombie/houses/snowy_medium_house_1 house 7 6 8 bed=2 e:building_entrance>empty un:bottom>village/snowy/zombie/villagers*2
+piece village/snowy/zombie/houses/snowy_medium_house_2 house 14 9 7 bed=2 n:building_entrance>empty un:bottom>village/snowy/zombie/villagers*2
+piece village/snowy/zombie/houses/snowy_medium_house_3 house 5 5 7 bed=2 un:bottom>village/snowy/zombie/villagers*2 w:building_entrance>empty
+piece village/snowy/zombie/houses/snowy_small_house_1 house 7 5 6 bed=1 s:building_entrance>empty un:bottom>village/snowy/zombie/villagers
+piece village/snowy/zombie/houses/snowy_small_house_2 house 7 8 7 bed=1 n:building_entrance>empty un:bottom>village/snowy/zombie/villagers
+piece village/snowy/zombie/houses/snowy_small_house_3 house 7 6 7 bed=1 s:building_entrance>empty un:bottom>village/snowy/zombie/villagers
+piece village/snowy/zombie/houses/snowy_small_house_4 house 8 5 7 bed=1 un:bottom>village/snowy/zombie/villagers w:building_entrance>empty
+piece village/snowy/zombie/houses/snowy_small_house_5 house 7 5 5 bed=1 chest=1 loot=chest:chests/village/village_snowy_house un:bottom>village/snowy/zombie/villagers w:building_entrance>empty
+piece village/snowy/zombie/houses/snowy_small_house_6 house 7 9 7 bed=1 chest=1 loot=chest:chests/village/village_snowy_house un:bottom>village/snowy/zombie/villagers w:building_entrance>empty
+piece village/snowy/zombie/houses/snowy_small_house_7 house 6 7 7 bed=1 un:bottom>village/snowy/zombie/villagers w:building_entrance>empty
+piece village/snowy/zombie/houses/snowy_small_house_8 house 6 4 5 bed=1 w:building_entrance>empty
+piece village/snowy/zombie/streets/corner_01 street 13 2 16 e:building_entrance>village/snowy/zombie/houses n:street>village/snowy/zombie/streets un:bottom>village/common/cats un:bottom>village/snowy/zombie/decor*5 w:street>village/snowy/zombie/streets
+piece village/snowy/zombie/streets/corner_02 street 16 2 16 e:street>village/snowy/zombie/streets n:building_entrance>village/snowy/zombie/houses n:street>village/snowy/zombie/streets
+piece village/snowy/zombie/streets/corner_03 street 4 2 4 e:street>village/snowy/zombie/streets s:street>village/snowy/zombie/streets
+piece village/snowy/zombie/streets/crossroad_02 street 16 2 16 e:building_entrance>village/snowy/zombie/houses*2 e:street>village/snowy/zombie/streets n:building_entrance>village/snowy/zombie/houses n:street>village/snowy/zombie/streets s:street>village/snowy/zombie/streets un:bottom>village/snowy/zombie/decor*8 w:street>village/snowy/zombie/streets
+piece village/snowy/zombie/streets/crossroad_03 street 16 2 17 e:street>village/snowy/zombie/streets n:building_entrance>village/snowy/zombie/houses n:street>village/snowy/zombie/streets s:building_entrance>village/snowy/zombie/houses s:street>village/snowy/zombie/streets un:bottom>village/snowy/zombie/decor*4 w:street>village/snowy/zombie/streets
+piece village/snowy/zombie/streets/crossroad_04 street 4 2 5 n:street>village/snowy/zombie/streets s:street>village/snowy/zombie/streets w:street>village/snowy/zombie/streets
+piece village/snowy/zombie/streets/crossroad_05 street 5 2 5 e:street>village/snowy/zombie/streets n:street>village/snowy/zombie/streets s:street>village/snowy/zombie/streets w:street>village/snowy/zombie/streets
+piece village/snowy/zombie/streets/crossroad_06 street 5 2 5 e:street>village/snowy/zombie/streets n:street>village/snowy/zombie/streets s:street>village/snowy/zombie/streets un:bottom>village/snowy/zombie/decor w:street>village/snowy/zombie/streets
+piece village/snowy/zombie/streets/square_01 street 20 2 17 n:street>village/snowy/zombie/streets s:building_entrance>village/snowy/zombie/houses un:bottom>village/snowy/zombie/decor*2 w:building_entrance>village/snowy/zombie/houses
+piece village/snowy/zombie/streets/straight_01 street 16 2 16 n:street>village/snowy/zombie/streets s:street>village/snowy/zombie/streets un:bottom>village/snowy/zombie/decor*5
+piece village/snowy/zombie/streets/straight_02 street 16 2 16 e:building_entrance>village/snowy/zombie/houses n:street>village/snowy/zombie/streets s:street>village/snowy/zombie/streets
+piece village/snowy/zombie/streets/straight_03 street 13 2 11 e:building_entrance>village/snowy/zombie/houses*5 n:street>village/snowy/zombie/streets s:street>village/snowy/zombie/streets un:bottom>village/snowy/zombie/decor*2
+piece village/snowy/zombie/streets/straight_04 street 11 2 9 e:building_entrance>village/snowy/zombie/houses n:street>village/snowy/zombie/streets s:street>village/snowy/zombie/streets un:bottom>village/common/cats un:bottom>village/snowy/zombie/decor
+piece village/snowy/zombie/streets/straight_06 street 21 2 18 e:building_entrance>village/snowy/zombie/houses*8 n:street>village/snowy/zombie/streets s:street>village/snowy/zombie/streets un:bottom>village/snowy/zombie/decor*3 w:building_entrance>village/snowy/zombie/houses*6
+piece village/snowy/zombie/streets/straight_08 street 16 2 17 e:building_entrance>village/snowy/zombie/houses*4 n:street>village/snowy/zombie/streets s:street>village/snowy/zombie/streets un:bottom>village/snowy/zombie/decor*2
+piece village/snowy/zombie/streets/turn_01 street 18 2 8 e:building_entrance>village/snowy/zombie/houses n:street>village/snowy/zombie/streets s:street>village/snowy/zombie/streets un:bottom>village/snowy/zombie/decor w:building_entrance>village/snowy/zombie/houses
+piece village/snowy/zombie/town_centers/snowy_meeting_point_1 center 12 8 8 bell=1 e:street>village/snowy/zombie/streets n:street>village/snowy/zombie/streets s:street>village/snowy/zombie/streets un:bottom>village/common/cats*3 un:bottom>village/snowy/zombie/decor*2 w:street>village/snowy/zombie/streets
+piece village/snowy/zombie/town_centers/snowy_meeting_point_2 center 11 6 9 bell=1 e:street>village/snowy/zombie/streets n:street>village/snowy/zombie/streets s:street>village/snowy/zombie/streets un:bottom>village/common/cats*2 w:street>village/snowy/zombie/streets
+piece village/snowy/zombie/town_centers/snowy_meeting_point_3 center 7 7 7 bell=1 e:street>village/snowy/zombie/streets n:street>village/snowy/zombie/streets s:street>village/snowy/zombie/streets un:bottom>village/common/cats*2 w:street>village/snowy/zombie/streets
+piece village/snowy/zombie/villagers/nitwit resident 1 3 1 mob=zombie_villager:nitwit:snow:persistent ds:bottom>empty
+piece village/snowy/zombie/villagers/unemployed resident 1 3 1 mob=zombie_villager:none:snow:persistent ds:bottom>empty
+piece village/taiga/houses/taiga_animal_pen_1 animal_pen 13 5 8 s:building_entrance>empty un:bottom>village/common/animals*2
+piece village/taiga/houses/taiga_armorer_2 house 7 8 7 job=blast_furnace mob=armor_stand*2 un:bottom>village/common/cats un:bottom>village/taiga/decor w:building_entrance>empty
+piece village/taiga/houses/taiga_armorer_house_1 house 10 7 7 job=blast_furnace*2 w:building_entrance>empty
+piece village/taiga/houses/taiga_butcher_shop_1 house 11 7 9 job=smoker s:building_entrance>empty un:bottom>village/common/butcher_animals
+piece village/taiga/houses/taiga_cartographer_house_1 house 7 10 8 chest=1 job=cartography_table loot=chest:chests/village/village_cartographer n:building_entrance>empty un:bottom>village/taiga/decor
+piece village/taiga/houses/taiga_fisher_cottage_1 house 10 8 12 barrel=2 s:building_entrance>empty un:bottom>village/common/cats*2 un:bottom>village/taiga/decor*2
+piece village/taiga/houses/taiga_fletcher_house_1 house 10 6 11 chest=1 job=fletching_table loot=chest:chests/village/village_fletcher w:building_entrance>empty
+piece village/taiga/houses/taiga_large_farm_1 large_farm 10 7 10 job=composter un:bottom>village/common/cats w:building_entrance>empty
+piece village/taiga/houses/taiga_large_farm_2 large_farm 8 7 9 job=composter s:building_entrance>empty un:bottom>village/taiga/decor
+piece village/taiga/houses/taiga_library_1 house 11 10 8 job=lectern n:building_entrance>empty un:bottom>village/common/cats*2 un:bottom>village/taiga/decor
+piece village/taiga/houses/taiga_masons_house_1 house 8 7 9 job=stonecutter uw:empty>empty*2 w:building_entrance>empty
+piece village/taiga/houses/taiga_medium_house_1 house 8 11 7 bed=2 chest=1 loot=chest:chests/village/village_taiga_house s:building_entrance>empty un:bottom>village/taiga/villagers*2
+piece village/taiga/houses/taiga_medium_house_2 house 7 11 8 bed=2 chest=1 loot=chest:chests/village/village_taiga_house n:building_entrance>empty un:bottom>village/taiga/villagers*2
+piece village/taiga/houses/taiga_medium_house_3 house 8 7 13 bed=2 chest=1 loot=chest:chests/village/village_taiga_house un:bottom>village/common/cats un:bottom>village/taiga/decor un:bottom>village/taiga/villagers*2 w:building_entrance>empty
+piece village/taiga/houses/taiga_medium_house_4 house 9 7 9 bed=2 s:building_entrance>empty un:bottom>village/taiga/villagers*2
+piece village/taiga/houses/taiga_shepherds_house_1 house 10 7 11 job=loom*2 un:bottom>village/common/sheep un:bottom>village/taiga/decor w:building_entrance>empty
+piece village/taiga/houses/taiga_small_farm_1 small_farm 7 7 8 job=composter n:building_entrance>empty un:bottom>village/common/cats
+piece village/taiga/houses/taiga_small_house_1 house 7 8 9 bed=1 n:building_entrance>empty un:bottom>village/taiga/villagers
+piece village/taiga/houses/taiga_small_house_2 house 7 7 7 bed=1 n:building_entrance>empty un:bottom>village/taiga/villagers
+piece village/taiga/houses/taiga_small_house_3 house 7 7 7 bed=1 chest=1 loot=chest:chests/village/village_taiga_house n:building_entrance>empty un:bottom>village/taiga/villagers
+piece village/taiga/houses/taiga_small_house_4 house 7 6 8 bed=1 s:building_entrance>empty un:bottom>village/taiga/decor un:bottom>village/taiga/villagers
+piece village/taiga/houses/taiga_small_house_5 house 9 7 7 bed=1 chest=1 loot=chest:chests/village/village_taiga_house un:bottom>village/taiga/villagers w:building_entrance>empty
+piece village/taiga/houses/taiga_tannery_1 house 9 6 9 chest=1 job=water_cauldron*2 loot=chest:chests/village/village_tannery w:building_entrance>empty
+piece village/taiga/houses/taiga_temple_1 house 13 14 11 job=brewing_stand s:building_entrance>empty uw:empty>empty
+piece village/taiga/houses/taiga_tool_smith_1 house 11 6 8 chest=1 job=smithing_table loot=chest:chests/village/village_toolsmith s:building_entrance>empty un:bottom>village/common/cats un:bottom>village/taiga/decor
+piece village/taiga/houses/taiga_weaponsmith_1 house 7 9 7 chest=1 job=grindstone*2 loot=chest:chests/village/village_weaponsmith n:building_entrance>empty
+piece village/taiga/houses/taiga_weaponsmith_2 house 6 5 7 job=grindstone n:building_entrance>empty un:bottom>village/taiga/decor
+piece village/taiga/streets/corner_01 street 16 2 16 e:building_entrance>village/taiga/houses n:street>village/taiga/streets un:bottom>village/taiga/decor*5 w:street>village/taiga/streets
+piece village/taiga/streets/corner_02 street 16 2 16 e:street>village/taiga/streets n:building_entrance>village/taiga/houses n:street>village/taiga/streets un:bottom>village/taiga/decor*2
+piece village/taiga/streets/corner_03 street 4 2 4 e:street>village/taiga/streets s:street>village/taiga/streets
+piece village/taiga/streets/crossroad_01 street 16 2 16 e:building_entrance>village/taiga/houses*2 e:street>village/taiga/streets n:street>village/taiga/streets s:street>village/taiga/streets un:bottom>village/taiga/decor w:building_entrance>village/taiga/houses*7
+piece village/taiga/streets/crossroad_02 street 16 2 16 e:street>village/taiga/streets n:street>village/taiga/streets s:street>village/taiga/streets un:bottom>village/taiga/decor*5 w:street>village/taiga/streets
+piece village/taiga/streets/crossroad_03 street 16 2 16 e:street>village/taiga/streets n:building_entrance>village/taiga/houses n:street>village/taiga/streets s:street>village/taiga/streets un:bottom>village/taiga/decor*2 w:street>village/taiga/streets
+piece village/taiga/streets/crossroad_04 street 4 2 5 n:street>village/taiga/streets s:street>village/taiga/streets un:bottom>village/taiga/decor w:street>village/taiga/streets
+piece village/taiga/streets/crossroad_05 street 5 2 5 e:street>village/taiga/streets n:street>village/taiga/streets s:street>village/taiga/streets w:street>village/taiga/streets
+piece village/taiga/streets/crossroad_06 street 5 2 5 e:street>village/taiga/streets n:street>village/taiga/streets s:street>village/taiga/streets un:bottom>village/taiga/decor w:street>village/taiga/streets
+piece village/taiga/streets/straight_01 street 16 2 16 n:street>village/taiga/streets s:street>village/taiga/streets un:bottom>village/taiga/decor*5
+piece village/taiga/streets/straight_02 street 16 2 16 e:building_entrance>village/taiga/houses n:street>village/taiga/streets s:street>village/taiga/streets un:bottom>village/taiga/decor*2
+piece village/taiga/streets/straight_03 street 13 2 11 e:building_entrance>village/taiga/houses*5 n:street>village/taiga/streets s:street>village/taiga/streets
+piece village/taiga/streets/straight_04 street 11 2 9 e:building_entrance>village/taiga/houses n:street>village/taiga/streets s:street>village/taiga/streets un:bottom>village/taiga/decor
+piece village/taiga/streets/straight_05 street 20 2 17 e:building_entrance>village/taiga/houses*4 n:street>village/taiga/streets s:street>village/taiga/streets un:bottom>village/taiga/decor*2
+piece village/taiga/streets/straight_06 street 21 2 18 e:building_entrance>village/taiga/houses*8 n:street>village/taiga/streets s:street>village/taiga/streets un:bottom>village/taiga/decor*3 w:building_entrance>village/taiga/houses*6
+piece village/taiga/streets/turn_01 street 18 2 8 e:building_entrance>village/taiga/houses n:street>village/taiga/streets s:street>village/taiga/streets w:building_entrance>village/taiga/houses
+piece village/taiga/taiga_decoration_1 decoration 3 2 6 ds:bottom>empty
+piece village/taiga/taiga_decoration_2 decoration 2 2 3 ds:bottom>empty
+piece village/taiga/taiga_decoration_3 decoration 1 2 2 ds:bottom>empty
+piece village/taiga/taiga_decoration_4 decoration 1 2 2 ds:bottom>empty
+piece village/taiga/taiga_decoration_5 decoration 1 1 1 ds:bottom>empty
+piece village/taiga/taiga_decoration_6 decoration 3 2 3 ds:bottom>empty
+piece village/taiga/taiga_lamp_post_1 lamp 1 2 1 ds:bottom>empty
+piece village/taiga/town_centers/taiga_meeting_point_1 center 22 3 18 bell=1 e:building_entrance>village/taiga/houses*4 n:street>village/taiga/streets s:building_entrance>village/taiga/houses*6 un:bottom>village/common/cats*2 un:bottom>village/common/iron_golem un:bottom>village/taiga/villagers*3 w:street>village/taiga/streets
+piece village/taiga/town_centers/taiga_meeting_point_2 center 9 7 9 bell=1 e:street>village/taiga/streets n:street>village/taiga/streets s:street>village/taiga/streets un:bottom>village/common/cats*2 un:bottom>village/common/iron_golem un:bottom>village/taiga/decor*2 un:bottom>village/taiga/villagers*3 w:street>village/taiga/streets
+piece village/taiga/villagers/baby resident 1 2 1 mob=villager:none:taiga:baby ds:bottom>empty
+piece village/taiga/villagers/nitwit resident 1 3 1 mob=villager:nitwit:taiga ds:bottom>empty
+piece village/taiga/villagers/unemployed resident 1 3 1 mob=villager:none:taiga ds:bottom>empty
+piece village/taiga/zombie/houses/taiga_cartographer_house_1 house 7 10 8 chest=1 job=cartography_table loot=chest:chests/village/village_cartographer n:building_entrance>empty un:bottom>village/taiga/zombie/decor
+piece village/taiga/zombie/houses/taiga_fisher_cottage_1 house 10 8 12 barrel=2 s:building_entrance>empty un:bottom>village/common/cats*2 un:bottom>village/taiga/zombie/decor*2
+piece village/taiga/zombie/houses/taiga_large_farm_2 large_farm 8 7 9 job=composter s:building_entrance>empty un:bottom>village/taiga/zombie/decor
+piece village/taiga/zombie/houses/taiga_library_1 house 11 10 8 job=lectern n:building_entrance>empty un:bottom>village/common/cats*2 un:bottom>village/taiga/zombie/decor
+piece village/taiga/zombie/houses/taiga_medium_house_1 house 8 11 7 bed=2 chest=1 loot=chest:chests/village/village_taiga_house s:building_entrance>empty un:bottom>village/taiga/zombie/villagers
+piece village/taiga/zombie/houses/taiga_medium_house_2 house 7 11 8 bed=2 chest=1 loot=chest:chests/village/village_taiga_house n:building_entrance>empty un:bottom>village/taiga/zombie/villagers*2
+piece village/taiga/zombie/houses/taiga_medium_house_3 house 8 7 13 bed=2 chest=1 loot=chest:chests/village/village_taiga_house un:bottom>village/common/cats un:bottom>village/taiga/zombie/decor w:building_entrance>empty
+piece village/taiga/zombie/houses/taiga_medium_house_4 house 9 7 9 bed=2 s:building_entrance>empty
+piece village/taiga/zombie/houses/taiga_shepherds_house_1 house 10 7 11 job=loom*2 un:bottom>village/common/sheep un:bottom>village/taiga/zombie/decor w:building_entrance>empty
+piece village/taiga/zombie/houses/taiga_small_house_1 house 7 8 9 bed=1 n:building_entrance>empty un:bottom>village/taiga/zombie/villagers
+piece village/taiga/zombie/houses/taiga_small_house_2 house 7 7 7 bed=1 n:building_entrance>empty un:bottom>village/taiga/zombie/villagers
+piece village/taiga/zombie/houses/taiga_small_house_3 house 7 7 7 bed=1 chest=1 loot=chest:chests/village/village_taiga_house n:building_entrance>empty un:bottom>village/taiga/zombie/villagers
+piece village/taiga/zombie/houses/taiga_small_house_4 house 7 6 8 bed=1 s:building_entrance>empty un:bottom>village/taiga/zombie/decor un:bottom>village/taiga/zombie/villagers
+piece village/taiga/zombie/houses/taiga_small_house_5 house 9 7 7 bed=1 chest=1 loot=chest:chests/village/village_taiga_house un:bottom>village/taiga/zombie/villagers w:building_entrance>empty
+piece village/taiga/zombie/houses/taiga_temple_1 house 13 14 11 job=brewing_stand s:building_entrance>empty uw:empty>empty
+piece village/taiga/zombie/houses/taiga_tool_smith_1 house 11 6 8 chest=1 job=smithing_table loot=chest:chests/village/village_toolsmith s:building_entrance>empty un:bottom>village/common/cats un:bottom>village/taiga/zombie/decor
+piece village/taiga/zombie/houses/taiga_weaponsmith_2 house 6 5 7 job=grindstone n:building_entrance>empty un:bottom>village/taiga/zombie/decor
+piece village/taiga/zombie/streets/corner_01 street 16 2 16 e:building_entrance>village/taiga/zombie/houses n:street>village/taiga/zombie/streets un:bottom>village/taiga/zombie/decor*5 w:street>village/taiga/zombie/streets
+piece village/taiga/zombie/streets/corner_02 street 16 2 16 e:street>village/taiga/zombie/streets n:building_entrance>village/taiga/zombie/houses n:street>village/taiga/zombie/streets un:bottom>village/taiga/zombie/decor*2
+piece village/taiga/zombie/streets/corner_03 street 4 2 4 e:street>village/taiga/zombie/streets s:street>village/taiga/zombie/streets
+piece village/taiga/zombie/streets/crossroad_01 street 16 2 16 e:building_entrance>village/taiga/zombie/houses*2 e:street>village/taiga/zombie/streets n:street>village/taiga/zombie/streets s:street>village/taiga/zombie/streets un:bottom>village/taiga/zombie/decor w:building_entrance>village/taiga/zombie/houses*7
+piece village/taiga/zombie/streets/crossroad_02 street 16 2 16 e:street>village/taiga/zombie/streets n:street>village/taiga/zombie/streets s:street>village/taiga/zombie/streets un:bottom>village/taiga/zombie/decor*5 w:street>village/taiga/zombie/streets
+piece village/taiga/zombie/streets/crossroad_03 street 16 2 16 e:street>village/taiga/zombie/streets n:building_entrance>village/taiga/zombie/houses n:street>village/taiga/zombie/streets s:street>village/taiga/zombie/streets un:bottom>village/taiga/zombie/decor*2 w:street>village/taiga/zombie/streets
+piece village/taiga/zombie/streets/crossroad_04 street 4 2 5 n:street>village/taiga/zombie/streets s:street>village/taiga/zombie/streets un:bottom>village/taiga/zombie/decor w:street>village/taiga/zombie/streets
+piece village/taiga/zombie/streets/crossroad_05 street 5 2 5 e:street>village/taiga/zombie/streets n:street>village/taiga/zombie/streets s:street>village/taiga/zombie/streets w:street>village/taiga/zombie/streets
+piece village/taiga/zombie/streets/crossroad_06 street 5 2 5 e:street>village/taiga/zombie/streets n:street>village/taiga/zombie/streets s:street>village/taiga/zombie/streets un:bottom>village/taiga/zombie/decor w:street>village/taiga/zombie/streets
+piece village/taiga/zombie/streets/straight_01 street 16 2 16 n:street>village/taiga/zombie/streets s:street>village/taiga/zombie/streets un:bottom>village/taiga/zombie/decor*5
+piece village/taiga/zombie/streets/straight_02 street 16 2 16 e:building_entrance>village/taiga/zombie/houses n:street>village/taiga/zombie/streets s:street>village/taiga/zombie/streets un:bottom>village/taiga/zombie/decor*2
+piece village/taiga/zombie/streets/straight_03 street 13 2 11 e:building_entrance>village/taiga/zombie/houses*5 n:street>village/taiga/zombie/streets s:street>village/taiga/zombie/streets
+piece village/taiga/zombie/streets/straight_04 street 11 2 9 e:building_entrance>village/taiga/zombie/houses n:street>village/taiga/zombie/streets s:street>village/taiga/zombie/streets un:bottom>village/taiga/zombie/decor
+piece village/taiga/zombie/streets/straight_05 street 20 2 17 e:building_entrance>village/taiga/zombie/houses*4 n:street>village/taiga/zombie/streets s:street>village/taiga/zombie/streets un:bottom>village/taiga/zombie/decor*2
+piece village/taiga/zombie/streets/straight_06 street 21 2 18 e:building_entrance>village/taiga/zombie/houses*8 n:street>village/taiga/zombie/streets s:street>village/taiga/zombie/streets un:bottom>village/taiga/zombie/decor*3 w:building_entrance>village/taiga/zombie/houses*6
+piece village/taiga/zombie/streets/turn_01 street 18 2 8 e:building_entrance>village/taiga/zombie/houses n:street>village/taiga/zombie/streets s:street>village/taiga/zombie/streets w:building_entrance>village/taiga/zombie/houses
+piece village/taiga/zombie/town_centers/taiga_meeting_point_1 center 22 6 18 bell=1 e:building_entrance>village/taiga/zombie/houses*4 n:street>village/taiga/zombie/streets s:building_entrance>village/taiga/zombie/houses*6 un:bottom>village/common/cats*2 w:street>village/taiga/zombie/streets
+piece village/taiga/zombie/town_centers/taiga_meeting_point_2 center 9 7 9 e:street>village/taiga/zombie/streets n:street>village/taiga/zombie/streets s:street>village/taiga/zombie/streets un:bottom>village/common/cats*2 un:bottom>village/taiga/zombie/decor*2 w:street>village/taiga/zombie/streets
+piece village/taiga/zombie/villagers/nitwit resident 1 3 1 mob=zombie_villager:nitwit:taiga:persistent ds:bottom>empty
+piece village/taiga/zombie/villagers/unemployed resident 1 3 1 mob=zombie_villager:none:taiga:persistent ds:bottom>empty
+
+# Pools: Java's template_pool files, element by element.
+pool village/common/animals
+7 village/common/animals/cows_1
+7 village/common/animals/pigs_1
+1 village/common/animals/horses_1
+1 village/common/animals/horses_2
+1 village/common/animals/horses_3
+1 village/common/animals/horses_4
+1 village/common/animals/horses_5
+1 village/common/animals/sheep_1
+1 village/common/animals/sheep_2
+5 empty
+end
+pool village/common/butcher_animals
+3 village/common/animals/cows_1
+3 village/common/animals/pigs_1
+1 village/common/animals/sheep_1
+1 village/common/animals/sheep_2
+end
+pool village/common/cats
+1 village/common/animals/cat_black
+1 village/common/animals/cat_british
+1 village/common/animals/cat_calico
+1 village/common/animals/cat_persian
+1 village/common/animals/cat_ragdoll
+1 village/common/animals/cat_red
+1 village/common/animals/cat_siamese
+1 village/common/animals/cat_tabby
+1 village/common/animals/cat_white
+1 village/common/animals/cat_jellie
+3 empty
+end
+pool village/common/iron_golem
+1 village/common/iron_golem
+end
+pool village/common/sheep
+1 village/common/animals/sheep_1
+1 village/common/animals/sheep_2
+end
+pool village/common/well_bottoms
+1 village/common/well_bottom
+end
+pool village/desert/camel
+1 village/desert/camel_spawn
+end
+pool village/desert/decor
+10 village/desert/desert_lamp_1
+4 feature:patch_cactus
+4 feature:pile_hay
+10 empty
+end
+pool village/desert/houses fallback village/desert/terminators
+2 village/desert/houses/desert_small_house_1
+2 village/desert/houses/desert_small_house_2
+2 village/desert/houses/desert_small_house_3
+2 village/desert/houses/desert_small_house_4
+2 village/desert/houses/desert_small_house_5
+1 village/desert/houses/desert_small_house_6
+2 village/desert/houses/desert_small_house_7
+2 village/desert/houses/desert_small_house_8
+2 village/desert/houses/desert_medium_house_1
+2 village/desert/houses/desert_medium_house_2
+2 village/desert/houses/desert_butcher_shop_1
+2 village/desert/houses/desert_tool_smith_1
+2 village/desert/houses/desert_fletcher_house_1
+2 village/desert/houses/desert_shepherd_house_1
+1 village/desert/houses/desert_armorer_1
+2 village/desert/houses/desert_fisher_1
+2 village/desert/houses/desert_tannery_1
+2 village/desert/houses/desert_cartographer_house_1
+2 village/desert/houses/desert_library_1
+2 village/desert/houses/desert_mason_1
+2 village/desert/houses/desert_weaponsmith_1
+2 village/desert/houses/desert_temple_1
+2 village/desert/houses/desert_temple_2
+11 village/desert/houses/desert_large_farm_1@farm_desert
+4 village/desert/houses/desert_farm_1@farm_desert
+4 village/desert/houses/desert_farm_2@farm_desert
+2 village/desert/houses/desert_animal_pen_1
+2 village/desert/houses/desert_animal_pen_2
+5 empty
+end
+pool village/desert/streets fallback village/desert/terminators
+3 village/desert/streets/corner_01~terrain
+3 village/desert/streets/corner_02~terrain
+4 village/desert/streets/straight_01~terrain
+4 village/desert/streets/straight_02~terrain
+3 village/desert/streets/straight_03~terrain
+3 village/desert/streets/crossroad_01~terrain
+3 village/desert/streets/crossroad_02~terrain
+3 village/desert/streets/crossroad_03~terrain
+3 village/desert/streets/square_01~terrain
+3 village/desert/streets/square_02~terrain
+3 village/desert/streets/turn_01~terrain
+end
+pool village/desert/terminators
+1 village/desert/terminators/terminator_01~terrain
+1 village/desert/terminators/terminator_02~terrain
+end
+pool village/desert/town_centers
+98 village/desert/town_centers/desert_meeting_point_1
+98 village/desert/town_centers/desert_meeting_point_2
+49 village/desert/town_centers/desert_meeting_point_3
+2 village/desert/zombie/town_centers/desert_meeting_point_1@zombie_desert
+2 village/desert/zombie/town_centers/desert_meeting_point_2@zombie_desert
+1 village/desert/zombie/town_centers/desert_meeting_point_3@zombie_desert
+end
+pool village/desert/villagers
+1 village/desert/villagers/nitwit
+1 village/desert/villagers/baby
+10 village/desert/villagers/unemployed
+end
+pool village/desert/zombie/decor
+10 village/desert/desert_lamp_1@zombie_desert
+4 feature:patch_cactus
+4 feature:pile_hay
+10 empty
+end
+pool village/desert/zombie/houses fallback village/desert/zombie/terminators
+2 village/desert/zombie/houses/desert_small_house_1@zombie_desert
+2 village/desert/zombie/houses/desert_small_house_2@zombie_desert
+2 village/desert/zombie/houses/desert_small_house_3@zombie_desert
+2 village/desert/zombie/houses/desert_small_house_4@zombie_desert
+2 village/desert/zombie/houses/desert_small_house_5@zombie_desert
+1 village/desert/zombie/houses/desert_small_house_6@zombie_desert
+2 village/desert/zombie/houses/desert_small_house_7@zombie_desert
+2 village/desert/zombie/houses/desert_small_house_8@zombie_desert
+2 village/desert/zombie/houses/desert_medium_house_1@zombie_desert
+2 village/desert/zombie/houses/desert_medium_house_2@zombie_desert
+2 village/desert/houses/desert_butcher_shop_1@zombie_desert
+2 village/desert/houses/desert_tool_smith_1@zombie_desert
+2 village/desert/houses/desert_fletcher_house_1@zombie_desert
+2 village/desert/houses/desert_shepherd_house_1@zombie_desert
+1 village/desert/houses/desert_armorer_1@zombie_desert
+2 village/desert/houses/desert_fisher_1@zombie_desert
+2 village/desert/houses/desert_tannery_1@zombie_desert
+2 village/desert/houses/desert_cartographer_house_1@zombie_desert
+2 village/desert/houses/desert_library_1@zombie_desert
+2 village/desert/houses/desert_mason_1@zombie_desert
+2 village/desert/houses/desert_weaponsmith_1@zombie_desert
+2 village/desert/houses/desert_temple_1@zombie_desert
+2 village/desert/houses/desert_temple_2@zombie_desert
+7 village/desert/houses/desert_large_farm_1@zombie_desert
+4 village/desert/houses/desert_farm_1@zombie_desert
+4 village/desert/houses/desert_farm_2@zombie_desert
+2 village/desert/houses/desert_animal_pen_1@zombie_desert
+2 village/desert/houses/desert_animal_pen_2@zombie_desert
+5 empty
+end
+pool village/desert/zombie/streets fallback village/desert/zombie/terminators
+3 village/desert/zombie/streets/corner_01~terrain
+3 village/desert/zombie/streets/corner_02~terrain
+4 village/desert/zombie/streets/straight_01~terrain
+4 village/desert/zombie/streets/straight_02~terrain
+3 village/desert/zombie/streets/straight_03~terrain
+3 village/desert/zombie/streets/crossroad_01~terrain
+3 village/desert/zombie/streets/crossroad_02~terrain
+3 village/desert/zombie/streets/crossroad_03~terrain
+3 village/desert/zombie/streets/square_01~terrain
+3 village/desert/zombie/streets/square_02~terrain
+3 village/desert/zombie/streets/turn_01~terrain
+end
+pool village/desert/zombie/terminators
+1 village/desert/terminators/terminator_01~terrain
+1 village/desert/zombie/terminators/terminator_02~terrain
+end
+pool village/desert/zombie/villagers
+1 village/desert/zombie/villagers/nitwit
+10 village/desert/zombie/villagers/unemployed
+end
+pool village/plains/decor
+2 village/plains/plains_lamp_1
+1 feature:oak
+1 feature:flower_plain
+1 feature:pile_hay
+2 empty
+end
+pool village/plains/houses fallback village/plains/terminators
+2 village/plains/houses/plains_small_house_1@mossify_10_percent
+2 village/plains/houses/plains_small_house_2@mossify_10_percent
+2 village/plains/houses/plains_small_house_3@mossify_10_percent
+2 village/plains/houses/plains_small_house_4@mossify_10_percent
+2 village/plains/houses/plains_small_house_5@mossify_10_percent
+1 village/plains/houses/plains_small_house_6@mossify_10_percent
+2 village/plains/houses/plains_small_house_7@mossify_10_percent
+3 village/plains/houses/plains_small_house_8@mossify_10_percent
+2 village/plains/houses/plains_medium_house_1@mossify_10_percent
+2 village/plains/houses/plains_medium_house_2@mossify_10_percent
+2 village/plains/houses/plains_big_house_1@mossify_10_percent
+2 village/plains/houses/plains_butcher_shop_1@mossify_10_percent
+2 village/plains/houses/plains_butcher_shop_2@mossify_10_percent
+2 village/plains/houses/plains_tool_smith_1@mossify_10_percent
+2 village/plains/houses/plains_fletcher_house_1@mossify_10_percent
+2 village/plains/houses/plains_shepherds_house_1
+2 village/plains/houses/plains_armorer_house_1@mossify_10_percent
+2 village/plains/houses/plains_fisher_cottage_1@mossify_10_percent
+2 village/plains/houses/plains_tannery_1@mossify_10_percent
+1 village/plains/houses/plains_cartographer_1@mossify_10_percent
+5 village/plains/houses/plains_library_1@mossify_10_percent
+1 village/plains/houses/plains_library_2@mossify_10_percent
+2 village/plains/houses/plains_masons_house_1@mossify_10_percent
+2 village/plains/houses/plains_weaponsmith_1@mossify_10_percent
+2 village/plains/houses/plains_temple_3@mossify_10_percent
+2 village/plains/houses/plains_temple_4@mossify_10_percent
+2 village/plains/houses/plains_stable_1@mossify_10_percent
+2 village/plains/houses/plains_stable_2
+4 village/plains/houses/plains_large_farm_1@farm_plains
+4 village/plains/houses/plains_small_farm_1@farm_plains
+1 village/plains/houses/plains_animal_pen_1
+1 village/plains/houses/plains_animal_pen_2
+5 village/plains/houses/plains_animal_pen_3
+1 village/plains/houses/plains_accessory_1
+3 village/plains/houses/plains_meeting_point_4@mossify_70_percent
+1 village/plains/houses/plains_meeting_point_5
+10 empty
+end
+pool village/plains/streets fallback village/plains/terminators
+2 village/plains/streets/corner_01@street_plains~terrain
+2 village/plains/streets/corner_02@street_plains~terrain
+2 village/plains/streets/corner_03@street_plains~terrain
+4 village/plains/streets/straight_01@street_plains~terrain
+4 village/plains/streets/straight_02@street_plains~terrain
+7 village/plains/streets/straight_03@street_plains~terrain
+7 village/plains/streets/straight_04@street_plains~terrain
+3 village/plains/streets/straight_05@street_plains~terrain
+4 village/plains/streets/straight_06@street_plains~terrain
+2 village/plains/streets/crossroad_01@street_plains~terrain
+1 village/plains/streets/crossroad_02@street_plains~terrain
+2 village/plains/streets/crossroad_03@street_plains~terrain
+2 village/plains/streets/crossroad_04@street_plains~terrain
+2 village/plains/streets/crossroad_05@street_plains~terrain
+2 village/plains/streets/crossroad_06@street_plains~terrain
+3 village/plains/streets/turn_01@street_plains~terrain
+end
+pool village/plains/terminators
+1 village/plains/terminators/terminator_01@street_plains~terrain
+1 village/plains/terminators/terminator_02@street_plains~terrain
+1 village/plains/terminators/terminator_03@street_plains~terrain
+1 village/plains/terminators/terminator_04@street_plains~terrain
+end
+pool village/plains/town_centers
+50 village/plains/town_centers/plains_fountain_01@mossify_20_percent
+50 village/plains/town_centers/plains_meeting_point_1@mossify_20_percent
+50 village/plains/town_centers/plains_meeting_point_2
+50 village/plains/town_centers/plains_meeting_point_3@mossify_70_percent
+1 village/plains/zombie/town_centers/plains_fountain_01@zombie_plains
+1 village/plains/zombie/town_centers/plains_meeting_point_1@zombie_plains
+1 village/plains/zombie/town_centers/plains_meeting_point_2@zombie_plains
+1 village/plains/zombie/town_centers/plains_meeting_point_3@zombie_plains
+end
+pool village/plains/trees
+1 feature:oak
+end
+pool village/plains/villagers
+1 village/plains/villagers/nitwit
+1 village/plains/villagers/baby
+10 village/plains/villagers/unemployed
+end
+pool village/plains/zombie/decor
+1 village/plains/plains_lamp_1@zombie_plains
+1 feature:oak
+1 feature:flower_plain
+1 feature:pile_hay
+2 empty
+end
+pool village/plains/zombie/houses fallback village/plains/terminators
+2 village/plains/zombie/houses/plains_small_house_1@zombie_plains
+2 village/plains/zombie/houses/plains_small_house_2@zombie_plains
+2 village/plains/zombie/houses/plains_small_house_3@zombie_plains
+2 village/plains/zombie/houses/plains_small_house_4@zombie_plains
+2 village/plains/zombie/houses/plains_small_house_5@zombie_plains
+1 village/plains/zombie/houses/plains_small_house_6@zombie_plains
+2 village/plains/zombie/houses/plains_small_house_7@zombie_plains
+2 village/plains/zombie/houses/plains_small_house_8@zombie_plains
+2 village/plains/zombie/houses/plains_medium_house_1@zombie_plains
+2 village/plains/zombie/houses/plains_medium_house_2@zombie_plains
+2 village/plains/zombie/houses/plains_big_house_1@zombie_plains
+2 village/plains/houses/plains_butcher_shop_1@zombie_plains
+2 village/plains/zombie/houses/plains_butcher_shop_2@zombie_plains
+2 village/plains/houses/plains_tool_smith_1@zombie_plains
+2 village/plains/zombie/houses/plains_fletcher_house_1@zombie_plains
+2 village/plains/zombie/houses/plains_shepherds_house_1@zombie_plains
+2 village/plains/houses/plains_armorer_house_1@zombie_plains
+2 village/plains/houses/plains_fisher_cottage_1@zombie_plains
+2 village/plains/houses/plains_tannery_1@zombie_plains
+1 village/plains/houses/plains_cartographer_1@zombie_plains
+3 village/plains/houses/plains_library_1@zombie_plains
+1 village/plains/houses/plains_library_2@zombie_plains
+2 village/plains/houses/plains_masons_house_1@zombie_plains
+2 village/plains/houses/plains_weaponsmith_1@zombie_plains
+2 village/plains/houses/plains_temple_3@zombie_plains
+2 village/plains/houses/plains_temple_4@zombie_plains
+2 village/plains/zombie/houses/plains_stable_1@zombie_plains
+2 village/plains/houses/plains_stable_2@zombie_plains
+4 village/plains/houses/plains_large_farm_1@zombie_plains
+4 village/plains/houses/plains_small_farm_1@zombie_plains
+1 village/plains/houses/plains_animal_pen_1@zombie_plains
+1 village/plains/houses/plains_animal_pen_2@zombie_plains
+5 village/plains/zombie/houses/plains_animal_pen_3@zombie_plains
+3 village/plains/zombie/houses/plains_meeting_point_4@zombie_plains
+1 village/plains/zombie/houses/plains_meeting_point_5@zombie_plains
+10 empty
+end
+pool village/plains/zombie/streets fallback village/plains/terminators
+2 village/plains/zombie/streets/corner_01@street_plains~terrain
+2 village/plains/zombie/streets/corner_02@street_plains~terrain
+2 village/plains/zombie/streets/corner_03@street_plains~terrain
+4 village/plains/zombie/streets/straight_01@street_plains~terrain
+4 village/plains/zombie/streets/straight_02@street_plains~terrain
+7 village/plains/zombie/streets/straight_03@street_plains~terrain
+7 village/plains/zombie/streets/straight_04@street_plains~terrain
+3 village/plains/zombie/streets/straight_05@street_plains~terrain
+4 village/plains/zombie/streets/straight_06@street_plains~terrain
+2 village/plains/zombie/streets/crossroad_01@street_plains~terrain
+1 village/plains/zombie/streets/crossroad_02@street_plains~terrain
+2 village/plains/zombie/streets/crossroad_03@street_plains~terrain
+2 village/plains/zombie/streets/crossroad_04@street_plains~terrain
+2 village/plains/zombie/streets/crossroad_05@street_plains~terrain
+2 village/plains/zombie/streets/crossroad_06@street_plains~terrain
+3 village/plains/zombie/streets/turn_01@street_plains~terrain
+end
+pool village/plains/zombie/villagers
+1 village/plains/zombie/villagers/nitwit
+10 village/plains/zombie/villagers/unemployed
+end
+pool village/savanna/decor
+4 village/savanna/savanna_lamp_post_01
+4 feature:acacia
+4 feature:pile_hay
+1 feature:pile_melon
+4 empty
+end
+pool village/savanna/houses fallback village/savanna/terminators
+2 village/savanna/houses/savanna_small_house_1
+2 village/savanna/houses/savanna_small_house_2
+2 village/savanna/houses/savanna_small_house_3
+2 village/savanna/houses/savanna_small_house_4
+2 village/savanna/houses/savanna_small_house_5
+2 village/savanna/houses/savanna_small_house_6
+2 village/savanna/houses/savanna_small_house_7
+2 village/savanna/houses/savanna_small_house_8
+2 village/savanna/houses/savanna_medium_house_1
+2 village/savanna/houses/savanna_medium_house_2
+2 village/savanna/houses/savanna_butchers_shop_1
+2 village/savanna/houses/savanna_butchers_shop_2
+2 village/savanna/houses/savanna_tool_smith_1
+2 village/savanna/houses/savanna_fletcher_house_1
+7 village/savanna/houses/savanna_shepherd_1
+1 village/savanna/houses/savanna_armorer_1
+3 village/savanna/houses/savanna_fisher_cottage_1
+2 village/savanna/houses/savanna_tannery_1
+2 village/savanna/houses/savanna_cartographer_1
+2 village/savanna/houses/savanna_library_1
+2 village/savanna/houses/savanna_mason_1
+2 village/savanna/houses/savanna_weaponsmith_1
+2 village/savanna/houses/savanna_weaponsmith_2
+2 village/savanna/houses/savanna_temple_1
+3 village/savanna/houses/savanna_temple_2
+4 village/savanna/houses/savanna_large_farm_1@farm_savanna
+6 village/savanna/houses/savanna_large_farm_2@farm_savanna
+4 village/savanna/houses/savanna_small_farm@farm_savanna
+2 village/savanna/houses/savanna_animal_pen_1
+2 village/savanna/houses/savanna_animal_pen_2
+2 village/savanna/houses/savanna_animal_pen_3
+5 empty
+end
+pool village/savanna/streets fallback village/savanna/terminators
+2 village/savanna/streets/corner_01@street_savanna~terrain
+2 village/savanna/streets/corner_03@street_savanna~terrain
+4 village/savanna/streets/straight_02@street_savanna~terrain
+7 village/savanna/streets/straight_04@street_savanna~terrain
+3 village/savanna/streets/straight_05@street_savanna~terrain
+4 village/savanna/streets/straight_06@street_savanna~terrain
+4 village/savanna/streets/straight_08@street_savanna~terrain
+4 village/savanna/streets/straight_09@street_savanna~terrain
+4 village/savanna/streets/straight_10@street_savanna~terrain
+4 village/savanna/streets/straight_11@street_savanna~terrain
+1 village/savanna/streets/crossroad_02@street_savanna~terrain
+2 village/savanna/streets/crossroad_03@street_savanna~terrain
+2 village/savanna/streets/crossroad_04@street_savanna~terrain
+2 village/savanna/streets/crossroad_05@street_savanna~terrain
+2 village/savanna/streets/crossroad_06@street_savanna~terrain
+2 village/savanna/streets/crossroad_07@street_savanna~terrain
+2 village/savanna/streets/split_01@street_savanna~terrain
+2 village/savanna/streets/split_02@street_savanna~terrain
+3 village/savanna/streets/turn_01@street_savanna~terrain
+end
+pool village/savanna/terminators
+1 village/plains/terminators/terminator_01@street_savanna~terrain
+1 village/plains/terminators/terminator_02@street_savanna~terrain
+1 village/plains/terminators/terminator_03@street_savanna~terrain
+1 village/plains/terminators/terminator_04@street_savanna~terrain
+1 village/savanna/terminators/terminator_05@street_savanna~terrain
+end
+pool village/savanna/town_centers
+100 village/savanna/town_centers/savanna_meeting_point_1
+50 village/savanna/town_centers/savanna_meeting_point_2
+150 village/savanna/town_centers/savanna_meeting_point_3
+150 village/savanna/town_centers/savanna_meeting_point_4
+2 village/savanna/zombie/town_centers/savanna_meeting_point_1@zombie_savanna
+1 village/savanna/zombie/town_centers/savanna_meeting_point_2@zombie_savanna
+3 village/savanna/zombie/town_centers/savanna_meeting_point_3@zombie_savanna
+3 village/savanna/zombie/town_centers/savanna_meeting_point_4@zombie_savanna
+end
+pool village/savanna/trees
+1 feature:acacia
+end
+pool village/savanna/villagers
+1 village/savanna/villagers/nitwit
+1 village/savanna/villagers/baby
+10 village/savanna/villagers/unemployed
+end
+pool village/savanna/zombie/decor
+4 village/savanna/savanna_lamp_post_01@zombie_savanna
+4 feature:acacia
+4 feature:pile_hay
+1 feature:pile_melon
+4 empty
+end
+pool village/savanna/zombie/houses fallback village/savanna/zombie/terminators
+2 village/savanna/zombie/houses/savanna_small_house_1@zombie_savanna
+2 village/savanna/zombie/houses/savanna_small_house_2@zombie_savanna
+2 village/savanna/zombie/houses/savanna_small_house_3@zombie_savanna
+2 village/savanna/zombie/houses/savanna_small_house_4@zombie_savanna
+2 village/savanna/zombie/houses/savanna_small_house_5@zombie_savanna
+2 village/savanna/zombie/houses/savanna_small_house_6@zombie_savanna
+2 village/savanna/zombie/houses/savanna_small_house_7@zombie_savanna
+2 village/savanna/zombie/houses/savanna_small_house_8@zombie_savanna
+2 village/savanna/zombie/houses/savanna_medium_house_1@zombie_savanna
+2 village/savanna/zombie/houses/savanna_medium_house_2@zombie_savanna
+2 village/savanna/houses/savanna_butchers_shop_1@zombie_savanna
+2 village/savanna/houses/savanna_butchers_shop_2@zombie_savanna
+2 village/savanna/houses/savanna_tool_smith_1@zombie_savanna
+2 village/savanna/houses/savanna_fletcher_house_1@zombie_savanna
+2 village/savanna/houses/savanna_shepherd_1@zombie_savanna
+1 village/savanna/houses/savanna_armorer_1@zombie_savanna
+2 village/savanna/houses/savanna_fisher_cottage_1@zombie_savanna
+2 village/savanna/houses/savanna_tannery_1@zombie_savanna
+2 village/savanna/houses/savanna_cartographer_1@zombie_savanna
+2 village/savanna/houses/savanna_library_1@zombie_savanna
+2 village/savanna/houses/savanna_mason_1@zombie_savanna
+2 village/savanna/houses/savanna_weaponsmith_1@zombie_savanna
+2 village/savanna/houses/savanna_weaponsmith_2@zombie_savanna
+1 village/savanna/houses/savanna_temple_1@zombie_savanna
+3 village/savanna/houses/savanna_temple_2@zombie_savanna
+4 village/savanna/houses/savanna_large_farm_1@zombie_savanna
+4 village/savanna/zombie/houses/savanna_large_farm_2@zombie_savanna
+4 village/savanna/houses/savanna_small_farm@zombie_savanna
+2 village/savanna/houses/savanna_animal_pen_1@zombie_savanna
+2 village/savanna/zombie/houses/savanna_animal_pen_2@zombie_savanna
+2 village/savanna/zombie/houses/savanna_animal_pen_3@zombie_savanna
+5 empty
+end
+pool village/savanna/zombie/streets fallback village/savanna/zombie/terminators
+2 village/savanna/zombie/streets/corner_01@street_savanna~terrain
+2 village/savanna/zombie/streets/corner_03@street_savanna~terrain
+4 village/savanna/zombie/streets/straight_02@street_savanna~terrain
+7 village/savanna/zombie/streets/straight_04@street_savanna~terrain
+3 village/savanna/zombie/streets/straight_05@street_savanna~terrain
+4 village/savanna/zombie/streets/straight_06@street_savanna~terrain
+4 village/savanna/zombie/streets/straight_08@street_savanna~terrain
+4 village/savanna/zombie/streets/straight_09@street_savanna~terrain
+4 village/savanna/zombie/streets/straight_10@street_savanna~terrain
+4 village/savanna/zombie/streets/straight_11@street_savanna~terrain
+1 village/savanna/zombie/streets/crossroad_02@street_savanna~terrain
+2 village/savanna/zombie/streets/crossroad_03@street_savanna~terrain
+2 village/savanna/zombie/streets/crossroad_04@street_savanna~terrain
+2 village/savanna/zombie/streets/crossroad_05@street_savanna~terrain
+2 village/savanna/zombie/streets/crossroad_06@street_savanna~terrain
+2 village/savanna/zombie/streets/crossroad_07@street_savanna~terrain
+2 village/savanna/zombie/streets/split_01@street_savanna~terrain
+2 village/savanna/zombie/streets/split_02@street_savanna~terrain
+3 village/savanna/zombie/streets/turn_01@street_savanna~terrain
+end
+pool village/savanna/zombie/terminators
+1 village/plains/terminators/terminator_01@street_savanna~terrain
+1 village/plains/terminators/terminator_02@street_savanna~terrain
+1 village/plains/terminators/terminator_03@street_savanna~terrain
+1 village/plains/terminators/terminator_04@street_savanna~terrain
+1 village/savanna/zombie/terminators/terminator_05@street_savanna~terrain
+end
+pool village/savanna/zombie/villagers
+1 village/savanna/zombie/villagers/nitwit
+10 village/savanna/zombie/villagers/unemployed
+end
+pool village/snowy/decor
+4 village/snowy/snowy_lamp_post_01
+4 village/snowy/snowy_lamp_post_02
+1 village/snowy/snowy_lamp_post_03
+4 feature:spruce
+4 feature:pile_snow
+1 feature:pile_ice
+9 empty
+end
+pool village/snowy/houses fallback village/snowy/terminators
+2 village/snowy/houses/snowy_small_house_1
+2 village/snowy/houses/snowy_small_house_2
+2 village/snowy/houses/snowy_small_house_3
+3 village/snowy/houses/snowy_small_house_4
+2 village/snowy/houses/snowy_small_house_5
+2 village/snowy/houses/snowy_small_house_6
+2 village/snowy/houses/snowy_small_house_7
+2 village/snowy/houses/snowy_small_house_8
+2 village/snowy/houses/snowy_medium_house_1
+2 village/snowy/houses/snowy_medium_house_2
+2 village/snowy/houses/snowy_medium_house_3
+2 village/snowy/houses/snowy_butchers_shop_1
+2 village/snowy/houses/snowy_butchers_shop_2
+2 village/snowy/houses/snowy_tool_smith_1
+2 village/snowy/houses/snowy_fletcher_house_1
+3 village/snowy/houses/snowy_shepherds_house_1
+1 village/snowy/houses/snowy_armorer_house_1
+1 village/snowy/houses/snowy_armorer_house_2
+2 village/snowy/houses/snowy_fisher_cottage
+2 village/snowy/houses/snowy_tannery_1
+2 village/snowy/houses/snowy_cartographer_house_1
+2 village/snowy/houses/snowy_library_1
+2 village/snowy/houses/snowy_masons_house_1
+2 village/snowy/houses/snowy_masons_house_2
+2 village/snowy/houses/snowy_weapon_smith_1
+2 village/snowy/houses/snowy_temple_1
+3 village/snowy/houses/snowy_farm_1@farm_snowy
+3 village/snowy/houses/snowy_farm_2@farm_snowy
+2 village/snowy/houses/snowy_animal_pen_1
+2 village/snowy/houses/snowy_animal_pen_2
+6 empty
+end
+pool village/snowy/streets fallback village/snowy/terminators
+2 village/snowy/streets/corner_01@street_snowy_or_taiga~terrain
+2 village/snowy/streets/corner_02@street_snowy_or_taiga~terrain
+2 village/snowy/streets/corner_03@street_snowy_or_taiga~terrain
+2 village/snowy/streets/square_01@street_snowy_or_taiga~terrain
+4 village/snowy/streets/straight_01@street_snowy_or_taiga~terrain
+4 village/snowy/streets/straight_02@street_snowy_or_taiga~terrain
+4 village/snowy/streets/straight_03@street_snowy_or_taiga~terrain
+7 village/snowy/streets/straight_04@street_snowy_or_taiga~terrain
+4 village/snowy/streets/straight_06@street_snowy_or_taiga~terrain
+4 village/snowy/streets/straight_08@street_snowy_or_taiga~terrain
+1 village/snowy/streets/crossroad_02@street_snowy_or_taiga~terrain
+2 village/snowy/streets/crossroad_03@street_snowy_or_taiga~terrain
+2 village/snowy/streets/crossroad_04@street_snowy_or_taiga~terrain
+2 village/snowy/streets/crossroad_05@street_snowy_or_taiga~terrain
+2 village/snowy/streets/crossroad_06@street_snowy_or_taiga~terrain
+3 village/snowy/streets/turn_01@street_snowy_or_taiga~terrain
+end
+pool village/snowy/terminators
+1 village/plains/terminators/terminator_01@street_snowy_or_taiga~terrain
+1 village/plains/terminators/terminator_02@street_snowy_or_taiga~terrain
+1 village/plains/terminators/terminator_03@street_snowy_or_taiga~terrain
+1 village/plains/terminators/terminator_04@street_snowy_or_taiga~terrain
+end
+pool village/snowy/town_centers
+100 village/snowy/town_centers/snowy_meeting_point_1
+50 village/snowy/town_centers/snowy_meeting_point_2
+150 village/snowy/town_centers/snowy_meeting_point_3
+2 village/snowy/zombie/town_centers/snowy_meeting_point_1
+1 village/snowy/zombie/town_centers/snowy_meeting_point_2
+3 village/snowy/zombie/town_centers/snowy_meeting_point_3
+end
+pool village/snowy/trees
+1 feature:spruce
+end
+pool village/snowy/villagers
+1 village/snowy/villagers/nitwit
+1 village/snowy/villagers/baby
+10 village/snowy/villagers/unemployed
+end
+pool village/snowy/zombie/decor
+1 village/snowy/snowy_lamp_post_01@zombie_snowy
+1 village/snowy/snowy_lamp_post_02@zombie_snowy
+1 village/snowy/snowy_lamp_post_03@zombie_snowy
+4 feature:spruce
+4 feature:pile_snow
+4 feature:pile_ice
+7 empty
+end
+pool village/snowy/zombie/houses fallback village/snowy/terminators
+2 village/snowy/zombie/houses/snowy_small_house_1@zombie_snowy
+2 village/snowy/zombie/houses/snowy_small_house_2@zombie_snowy
+2 village/snowy/zombie/houses/snowy_small_house_3@zombie_snowy
+2 village/snowy/zombie/houses/snowy_small_house_4@zombie_snowy
+2 village/snowy/zombie/houses/snowy_small_house_5@zombie_snowy
+2 village/snowy/zombie/houses/snowy_small_house_6@zombie_snowy
+2 village/snowy/zombie/houses/snowy_small_house_7@zombie_snowy
+2 village/snowy/zombie/houses/snowy_small_house_8@zombie_snowy
+2 village/snowy/zombie/houses/snowy_medium_house_1@zombie_snowy
+2 village/snowy/zombie/houses/snowy_medium_house_2@zombie_snowy
+1 village/snowy/zombie/houses/snowy_medium_house_3@zombie_snowy
+2 village/snowy/houses/snowy_butchers_shop_1@zombie_snowy
+2 village/snowy/houses/snowy_butchers_shop_2@zombie_snowy
+2 village/snowy/houses/snowy_tool_smith_1@zombie_snowy
+2 village/snowy/houses/snowy_fletcher_house_1@zombie_snowy
+2 village/snowy/houses/snowy_shepherds_house_1@zombie_snowy
+1 village/snowy/houses/snowy_armorer_house_1@zombie_snowy
+1 village/snowy/houses/snowy_armorer_house_2@zombie_snowy
+2 village/snowy/houses/snowy_fisher_cottage@zombie_snowy
+2 village/snowy/houses/snowy_tannery_1@zombie_snowy
+2 village/snowy/houses/snowy_cartographer_house_1@zombie_snowy
+2 village/snowy/houses/snowy_library_1@zombie_snowy
+2 village/snowy/houses/snowy_masons_house_1@zombie_snowy
+2 village/snowy/houses/snowy_masons_house_2@zombie_snowy
+2 village/snowy/houses/snowy_weapon_smith_1@zombie_snowy
+2 village/snowy/houses/snowy_temple_1@zombie_snowy
+3 village/snowy/houses/snowy_farm_1@zombie_snowy
+3 village/snowy/houses/snowy_farm_2@zombie_snowy
+2 village/snowy/houses/snowy_animal_pen_1@zombie_snowy
+2 village/snowy/houses/snowy_animal_pen_2@zombie_snowy
+6 empty
+end
+pool village/snowy/zombie/streets fallback village/snowy/terminators
+2 village/snowy/zombie/streets/corner_01@street_snowy_or_taiga~terrain
+2 village/snowy/zombie/streets/corner_02@street_snowy_or_taiga~terrain
+2 village/snowy/zombie/streets/corner_03@street_snowy_or_taiga~terrain
+2 village/snowy/zombie/streets/square_01@street_snowy_or_taiga~terrain
+4 village/snowy/zombie/streets/straight_01@street_snowy_or_taiga~terrain
+4 village/snowy/zombie/streets/straight_02@street_snowy_or_taiga~terrain
+4 village/snowy/zombie/streets/straight_03@street_snowy_or_taiga~terrain
+7 village/snowy/zombie/streets/straight_04@street_snowy_or_taiga~terrain
+4 village/snowy/zombie/streets/straight_06@street_snowy_or_taiga~terrain
+4 village/snowy/zombie/streets/straight_08@street_snowy_or_taiga~terrain
+1 village/snowy/zombie/streets/crossroad_02@street_snowy_or_taiga~terrain
+2 village/snowy/zombie/streets/crossroad_03@street_snowy_or_taiga~terrain
+2 village/snowy/zombie/streets/crossroad_04@street_snowy_or_taiga~terrain
+2 village/snowy/zombie/streets/crossroad_05@street_snowy_or_taiga~terrain
+2 village/snowy/zombie/streets/crossroad_06@street_snowy_or_taiga~terrain
+3 village/snowy/zombie/streets/turn_01@street_snowy_or_taiga~terrain
+end
+pool village/snowy/zombie/villagers
+1 village/snowy/zombie/villagers/nitwit
+10 village/snowy/zombie/villagers/unemployed
+end
+pool village/taiga/decor
+10 village/taiga/taiga_lamp_post_1
+4 village/taiga/taiga_decoration_1
+1 village/taiga/taiga_decoration_2
+1 village/taiga/taiga_decoration_3
+1 village/taiga/taiga_decoration_4
+2 village/taiga/taiga_decoration_5
+1 village/taiga/taiga_decoration_6
+4 feature:spruce
+4 feature:pine
+2 feature:pile_pumpkin
+4 feature:patch_taiga_grass
+1 feature:patch_berry_bush
+4 empty
+end
+pool village/taiga/houses fallback village/taiga/terminators
+4 village/taiga/houses/taiga_small_house_1@mossify_10_percent
+4 village/taiga/houses/taiga_small_house_2@mossify_10_percent
+4 village/taiga/houses/taiga_small_house_3@mossify_10_percent
+4 village/taiga/houses/taiga_small_house_4@mossify_10_percent
+4 village/taiga/houses/taiga_small_house_5@mossify_10_percent
+2 village/taiga/houses/taiga_medium_house_1@mossify_10_percent
+2 village/taiga/houses/taiga_medium_house_2@mossify_10_percent
+2 village/taiga/houses/taiga_medium_house_3@mossify_10_percent
+2 village/taiga/houses/taiga_medium_house_4@mossify_10_percent
+2 village/taiga/houses/taiga_butcher_shop_1@mossify_10_percent
+2 village/taiga/houses/taiga_tool_smith_1@mossify_10_percent
+2 village/taiga/houses/taiga_fletcher_house_1@mossify_10_percent
+2 village/taiga/houses/taiga_shepherds_house_1@mossify_10_percent
+1 village/taiga/houses/taiga_armorer_house_1@mossify_10_percent
+1 village/taiga/houses/taiga_armorer_2@mossify_10_percent
+3 village/taiga/houses/taiga_fisher_cottage_1@mossify_10_percent
+2 village/taiga/houses/taiga_tannery_1@mossify_10_percent
+2 village/taiga/houses/taiga_cartographer_house_1@mossify_10_percent
+2 village/taiga/houses/taiga_library_1@mossify_10_percent
+2 village/taiga/houses/taiga_masons_house_1@mossify_10_percent
+2 village/taiga/houses/taiga_weaponsmith_1@mossify_10_percent
+2 village/taiga/houses/taiga_weaponsmith_2@mossify_10_percent
+2 village/taiga/houses/taiga_temple_1@mossify_10_percent
+6 village/taiga/houses/taiga_large_farm_1@farm_taiga
+6 village/taiga/houses/taiga_large_farm_2@farm_taiga
+1 village/taiga/houses/taiga_small_farm_1@mossify_10_percent
+2 village/taiga/houses/taiga_animal_pen_1@mossify_10_percent
+6 empty
+end
+pool village/taiga/streets fallback village/taiga/terminators
+2 village/taiga/streets/corner_01@street_snowy_or_taiga~terrain
+2 village/taiga/streets/corner_02@street_snowy_or_taiga~terrain
+2 village/taiga/streets/corner_03@street_snowy_or_taiga~terrain
+4 village/taiga/streets/straight_01@street_snowy_or_taiga~terrain
+4 village/taiga/streets/straight_02@street_snowy_or_taiga~terrain
+4 village/taiga/streets/straight_03@street_snowy_or_taiga~terrain
+7 village/taiga/streets/straight_04@street_snowy_or_taiga~terrain
+7 village/taiga/streets/straight_05@street_snowy_or_taiga~terrain
+4 village/taiga/streets/straight_06@street_snowy_or_taiga~terrain
+1 village/taiga/streets/crossroad_01@street_snowy_or_taiga~terrain
+1 village/taiga/streets/crossroad_02@street_snowy_or_taiga~terrain
+2 village/taiga/streets/crossroad_03@street_snowy_or_taiga~terrain
+2 village/taiga/streets/crossroad_04@street_snowy_or_taiga~terrain
+2 village/taiga/streets/crossroad_05@street_snowy_or_taiga~terrain
+2 village/taiga/streets/crossroad_06@street_snowy_or_taiga~terrain
+3 village/taiga/streets/turn_01@street_snowy_or_taiga~terrain
+end
+pool village/taiga/terminators
+1 village/plains/terminators/terminator_01@street_snowy_or_taiga~terrain
+1 village/plains/terminators/terminator_02@street_snowy_or_taiga~terrain
+1 village/plains/terminators/terminator_03@street_snowy_or_taiga~terrain
+1 village/plains/terminators/terminator_04@street_snowy_or_taiga~terrain
+end
+pool village/taiga/town_centers
+49 village/taiga/town_centers/taiga_meeting_point_1@mossify_10_percent
+49 village/taiga/town_centers/taiga_meeting_point_2@mossify_10_percent
+1 village/taiga/zombie/town_centers/taiga_meeting_point_1@zombie_taiga
+1 village/taiga/zombie/town_centers/taiga_meeting_point_2@zombie_taiga
+end
+pool village/taiga/villagers
+1 village/taiga/villagers/nitwit
+1 village/taiga/villagers/baby
+10 village/taiga/villagers/unemployed
+end
+pool village/taiga/zombie/decor
+4 village/taiga/taiga_decoration_1
+1 village/taiga/taiga_decoration_2
+1 village/taiga/taiga_decoration_3
+1 village/taiga/taiga_decoration_4
+4 feature:spruce
+4 feature:pine
+2 feature:pile_pumpkin
+4 feature:patch_taiga_grass
+1 feature:patch_berry_bush
+4 empty
+end
+pool village/taiga/zombie/houses fallback village/taiga/terminators
+4 village/taiga/zombie/houses/taiga_small_house_1@zombie_taiga
+4 village/taiga/zombie/houses/taiga_small_house_2@zombie_taiga
+4 village/taiga/zombie/houses/taiga_small_house_3@zombie_taiga
+4 village/taiga/zombie/houses/taiga_small_house_4@zombie_taiga
+4 village/taiga/zombie/houses/taiga_small_house_5@zombie_taiga
+2 village/taiga/zombie/houses/taiga_medium_house_1@zombie_taiga
+2 village/taiga/zombie/houses/taiga_medium_house_2@zombie_taiga
+2 village/taiga/zombie/houses/taiga_medium_house_3@zombie_taiga
+2 village/taiga/zombie/houses/taiga_medium_house_4@zombie_taiga
+2 village/taiga/houses/taiga_butcher_shop_1@zombie_taiga
+2 village/taiga/zombie/houses/taiga_tool_smith_1@zombie_taiga
+2 village/taiga/houses/taiga_fletcher_house_1@zombie_taiga
+2 village/taiga/zombie/houses/taiga_shepherds_house_1@zombie_taiga
+1 village/taiga/houses/taiga_armorer_house_1@zombie_taiga
+2 village/taiga/zombie/houses/taiga_fisher_cottage_1@zombie_taiga
+2 village/taiga/houses/taiga_tannery_1@zombie_taiga
+2 village/taiga/zombie/houses/taiga_cartographer_house_1@zombie_taiga
+2 village/taiga/zombie/houses/taiga_library_1@zombie_taiga
+2 village/taiga/houses/taiga_masons_house_1@zombie_taiga
+2 village/taiga/houses/taiga_weaponsmith_1@zombie_taiga
+2 village/taiga/zombie/houses/taiga_weaponsmith_2@zombie_taiga
+2 village/taiga/zombie/houses/taiga_temple_1@zombie_taiga
+6 village/taiga/houses/taiga_large_farm_1@zombie_taiga
+6 village/taiga/zombie/houses/taiga_large_farm_2@zombie_taiga
+1 village/taiga/houses/taiga_small_farm_1@zombie_taiga
+2 village/taiga/houses/taiga_animal_pen_1@zombie_taiga
+6 empty
+end
+pool village/taiga/zombie/streets fallback village/taiga/terminators
+2 village/taiga/zombie/streets/corner_01@street_snowy_or_taiga~terrain
+2 village/taiga/zombie/streets/corner_02@street_snowy_or_taiga~terrain
+2 village/taiga/zombie/streets/corner_03@street_snowy_or_taiga~terrain
+4 village/taiga/zombie/streets/straight_01@street_snowy_or_taiga~terrain
+4 village/taiga/zombie/streets/straight_02@street_snowy_or_taiga~terrain
+4 village/taiga/zombie/streets/straight_03@street_snowy_or_taiga~terrain
+7 village/taiga/zombie/streets/straight_04@street_snowy_or_taiga~terrain
+7 village/taiga/zombie/streets/straight_05@street_snowy_or_taiga~terrain
+4 village/taiga/zombie/streets/straight_06@street_snowy_or_taiga~terrain
+1 village/taiga/zombie/streets/crossroad_01@street_snowy_or_taiga~terrain
+1 village/taiga/zombie/streets/crossroad_02@street_snowy_or_taiga~terrain
+2 village/taiga/zombie/streets/crossroad_03@street_snowy_or_taiga~terrain
+2 village/taiga/zombie/streets/crossroad_04@street_snowy_or_taiga~terrain
+2 village/taiga/zombie/streets/crossroad_05@street_snowy_or_taiga~terrain
+2 village/taiga/zombie/streets/crossroad_06@street_snowy_or_taiga~terrain
+3 village/taiga/zombie/streets/turn_01@street_snowy_or_taiga~terrain
+end
+pool village/taiga/zombie/villagers
+1 village/taiga/zombie/villagers/nitwit
+10 village/taiga/zombie/villagers/unemployed
+end

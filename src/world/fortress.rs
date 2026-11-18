@@ -324,6 +324,13 @@ pub enum Feature {
     VillageChest(u64, super::village::Style),
     VillageHome(IVec3),
     VillageWorkstation(Block),
+    /// v0.15 Track G: a loot container filled from a named Java table
+    /// (without its `chests/` prefix).
+    StructureLoot(u64, &'static str),
+    /// A generation 4 village resident, spawned once (see `village_life`).
+    VillageResident(super::village::Resident),
+    /// A generation 4 village bed's head (beds house no one by themselves).
+    VillageBed,
     /// A chest or dispenser filled from a v0.6 structure's table.
     TempleChest(u64, super::temples::LootTable),
     /// Functional furnace or brewing stand in a non-village structure.

@@ -153,6 +153,23 @@ by Java's "expansion hack".
 
 ![A generation 3 desert village](images/v0.14-village-desert.jpg)
 
+## Generation 4: Java's catalogue
+
+Generation 4 worlds (v0.15) build villages from Java 26.3's own pools:
+every pool, weight, processor list, connector and resident of
+`village_plains`, `_desert`, `_savanna`, `_snowy` and `_taiga`, with an
+original template for each of the 478 template locations those pools
+name, drawn by `src/world/village/catalogue.rs` from the facts in
+`src/world/jigsaw/village_v4.txt`. Every style has a building for each of
+the 13 professions with its job site fixed in place, meeting points with
+bells, farms, animal pens and stables with Java's animals, lamps and
+decorations. Residents come from Java's spawn pieces (villagers, cats,
+iron golems, farm animals, horses, camels), not from beds; each spawns
+once. About one village in fifty is abandoned: Java's zombie town centres,
+whose pools and processors leave zombie villagers, cobwebs and no doors or
+torches. Generation 3's templates below stay as they are for generation 3
+worlds. See the [Track G record](verification/2026-11-18-v0.15-catalogues.md).
+
 ## Residents and trading
 
 Each generated house registers one resident and a permanent birth receipt.

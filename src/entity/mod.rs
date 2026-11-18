@@ -21,7 +21,7 @@ pub mod bee;
 mod bell;
 mod bobber;
 pub mod breeze;
-mod cat_spawner;
+pub(crate) mod cat_spawner;
 pub mod category;
 mod chunk_storage;
 pub mod decor;
@@ -569,6 +569,9 @@ pub trait MobWorld: BlockSource {
     }
     fn village_pois(&self, _visit: &mut dyn FnMut(IVec3, Block)) {}
     fn village_homes(&self, _visit: &mut dyn FnMut(IVec3, IVec3)) {}
+    /// Generation 4 village residents (v0.15 Track G): spawn cells of
+    /// Java's villager, cat, golem and animal pieces.
+    fn village_residents(&self, _visit: &mut dyn FnMut(IVec3, crate::world::village::Resident)) {}
     fn seed(&self) -> u64 {
         0
     }
@@ -652,6 +655,9 @@ impl MobWorld for World {
     }
     fn village_homes(&self, visit: &mut dyn FnMut(IVec3, IVec3)) {
         self.visit_village_homes(visit);
+    }
+    fn village_residents(&self, visit: &mut dyn FnMut(IVec3, crate::world::village::Resident)) {
+        self.visit_village_residents(visit);
     }
     fn seed(&self) -> u64 {
         self.generator.seed

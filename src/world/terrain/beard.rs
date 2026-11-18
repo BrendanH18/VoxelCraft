@@ -291,7 +291,7 @@ impl Generator {
         }
         let base = IVec3::new(pos.x * CHUNK_SIZE_I, 0, pos.y * CHUNK_SIZE_I);
         let mut terms = Vec::new();
-        self.villages.terrain_pieces(self, base, |p| add(&mut terms, jigsaw::villages(), p, base, Mode::Thin));
+        self.villages.terrain_pieces(self, base, |lib, p| add(&mut terms, lib, p, base, Mode::Thin));
         self.temples.terrain_pieces(self, base, |p| add(&mut terms, jigsaw::outposts(), p, base, Mode::Thin));
         let c = if terms.is_empty() {
             self.chunk_columns(pos)
@@ -466,7 +466,36 @@ pub(super) mod tests {
                     {
                         continue;
                     }
-                    assert_eq!(block(x, col.height, z), expected, "seed {seed} at {x},{z}");
+                    // A top over open air takes the surface rule's ceiling
+                    // form (`density.rs`: sand hangs as sandstone, soil as
+                    // rock), as Java's desert ceilings do.
+                    let overhang = block(x, col.height - 1, z) == Block::AIR;
+                    let expected = match expected {
+                        Block::SAND if overhang => Block::SANDSTONE,
+                        Block::GRASS | Block::SNOWY_GRASS if overhang => Block::STONE,
+                        e => e,
+                    };
+                    if block(x, col.height, z) != expected {
+                        let column: Vec<Block> = (col.height - 3..=col.height + 4).map(|y| block(x, y, z)).collect();
+                        let lib = v.library();
+                        let near: Vec<(&str, i32)> = v
+                            .placed
+                            .iter()
+                            .map(|p| {
+                                let dx = (p.bounds.min.x - x).max(x - p.bounds.max.x).max(0);
+                                let dz = (p.bounds.min.z - z).max(z - p.bounds.max.z).max(0);
+                                (lib.templates[p.template as usize].name.as_str(), dx.max(dz))
+                            })
+                            .filter(|(_, d)| *d <= 4)
+                            .collect();
+                        panic!(
+                            "seed {seed} at {x},{z}: top {:?} not {expected:?}; heights raw {} blended {}; column from {}: {column:?}; pieces within 4: {near:?}",
+                            block(x, col.height, z),
+                            g.column(x, z).height,
+                            col.height,
+                            col.height - 3
+                        );
+                    }
                     for y in col.height - 8..=col.height + 8 {
                         let b = block(x, y, z);
                         if matches!(
@@ -557,7 +586,11 @@ pub(super) mod tests {
                 let mut checked = 0;
                 let mut worst_ring = (0, 0, 0, 0);
                 let mut worst_step = (0, 0, 0, 0);
-                let lib = if name == "village" { jigsaw::villages() } else { jigsaw::outposts() };
+                let lib = match name {
+                    "village" if g.generation >= Generation::V4 => crate::world::village::catalogue::library(),
+                    "village" => jigsaw::villages(),
+                    _ => jigsaw::outposts(),
+                };
                 // Sandstone/terracotta walls are building material, not terrain.
                 // Exclude explicit upper template cells, not arbitrary block types.
                 let mut building = rustc_hash::FxHashSet::default();

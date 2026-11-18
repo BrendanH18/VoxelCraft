@@ -40,6 +40,10 @@
 
 use std::sync::OnceLock;
 
+pub mod catalogue;
+pub mod draw;
+pub mod rules;
+
 use glam::{IVec2, IVec3};
 use rustc_hash::FxHashMap;
 
@@ -75,6 +79,9 @@ pub enum Base {
     Loot(u16),
     /// A mob spawner of a named mob ([`Library::mobs`]).
     Spawner(u16),
+    /// A container block filled from a named loot table (generation 4
+    /// catalogues: barrels, dispensers and decorated pots as Java has them).
+    LootIn(u16, Block),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -106,6 +113,15 @@ pub struct Jigsaw {
     pub target: String,
     /// The pool children come from (`empty` for none).
     pub pool: String,
+    /// A vertical connector's top: with an aligned joint, a child's
+    /// connector must turn to the same top (Java's `JointType.ALIGNED`).
+    pub top: Facing,
+    pub aligned: bool,
+    /// Java's placement priority: children of higher priority connectors
+    /// are expanded first.
+    pub placement: i32,
+    /// Java's selection priority: connectors are tried highest first.
+    pub selection: i32,
 }
 
 #[derive(Clone, Debug)]
@@ -121,6 +137,12 @@ pub struct Template {
     pub fills: Vec<(IVec3, IVec3, Spec)>,
     /// Resident mobs placed with the structure, by name.
     pub mobs: Vec<(IVec3, String)>,
+    /// The processor list of the pool element this template stands for
+    /// ([`Library::processor_lists`]); generation 4 catalogues only.
+    pub processors: Option<u16>,
+    /// How far cells may reach outside the placement box (Java's feature
+    /// elements take a 1×1×1 box but grow a tree or a pile around it).
+    pub overhang: i32,
 }
 
 #[derive(Clone, Debug)]
@@ -141,6 +163,15 @@ pub struct Library {
     pub loot: Vec<String>,
     /// Mob names used by `spawner:<mob>` specs ([`Base::Spawner`]).
     pub mobs: Vec<String>,
+    /// Processor list names used by [`Template::processors`].
+    pub processor_lists: Vec<String>,
+    /// Pool names that exist only as aliases (Java's `pool_aliases`): a
+    /// connector may name one, and the structure's lookup resolves it.
+    pub aliases: Vec<String>,
+    /// Java's `use_expansion_hack` (villages): a child no taller than 16
+    /// whose own connectors point into it grows to hold the tallest piece
+    /// of those connectors' pools.
+    pub expansion_hack: bool,
 }
 
 fn intern(names: &mut Vec<String>, name: &str) -> u16 {
@@ -170,8 +201,16 @@ type PendingPool = (String, Vec<(String, u32)>, Option<String>);
 impl Library {
     /// Parses a template file; errors name the line.
     pub fn parse(text: &str) -> Result<Library, String> {
-        let mut lib = Library::default();
-        let mut names: FxHashMap<String, u16> = FxHashMap::default();
+        Library::parse_onto(Library::default(), FxHashMap::default(), text)
+    }
+
+    /// Parses `text` onto a library that already holds templates (built in
+    /// code), whose pool names are `names` (generation 4 catalogues, where
+    /// one Java location can stand for several templates, one per
+    /// processor list).
+    pub fn parse_onto(lib: Library, names: FxHashMap<String, u16>, text: &str) -> Result<Library, String> {
+        let mut lib = lib;
+        let mut names = names;
         let mut pending_pools: Vec<PendingPool> = Vec::new();
         let mut lines = text.lines().enumerate().peekable();
         while let Some((n, line)) = lines.next() {
@@ -231,7 +270,7 @@ impl Library {
         }
         for t in &lib.templates {
             for j in &t.jigsaws {
-                if j.pool != "empty" && !lib.pools.contains_key(&j.pool) {
+                if j.pool != "empty" && !lib.pools.contains_key(&j.pool) && !lib.aliases.contains(&j.pool) {
                     return Err(format!("{}: connector pool {} is missing", t.name, j.pool));
                 }
             }
@@ -338,6 +377,10 @@ impl Library {
                         name: words[5].to_string(),
                         target: words[6].to_string(),
                         pool: words[7].to_string(),
+                        top: Facing::North,
+                        aligned: false,
+                        placement: 0,
+                        selection: 0,
                     })
                 }
                 "home" if words.len() == 7 => homes.push((vec3(&words[1..4])?, vec3(&words[4..7])?)),
@@ -396,11 +439,31 @@ impl Library {
         if layers_seen.iter().any(|&y| y < 0 || y >= size.y) {
             return Err(format!("{name}: layer outside the size"));
         }
-        Ok(Template { name, size, projection, cells, jigsaws, homes, fills, mobs })
+        Ok(Template { name, size, projection, cells, jigsaws, homes, fills, mobs, processors: None, overhang: 0 })
     }
 
     pub fn template(&self, name: &str) -> Option<&Template> {
         self.templates.iter().find(|t| t.name == name)
+    }
+
+    /// Interns a role name for [`Base::Role`] (templates built in code).
+    pub fn role_index(&mut self, role: &str) -> u16 {
+        intern(&mut self.roles, role)
+    }
+
+    /// Interns a loot table name for [`Base::Loot`].
+    pub fn loot_index(&mut self, table: &str) -> u16 {
+        intern(&mut self.loot, table)
+    }
+
+    /// Interns a spawner name for [`Base::Spawner`].
+    pub fn mob_index(&mut self, mob: &str) -> u16 {
+        intern(&mut self.mobs, mob)
+    }
+
+    /// Interns a processor list name for [`Template::processors`].
+    pub fn processor_index(&mut self, list: &str) -> u16 {
+        intern(&mut self.processor_lists, list)
     }
 }
 
@@ -633,9 +696,40 @@ fn assemble_impl(
     seed: u64,
     validate: Option<&PlacementCheck<'_>>,
 ) -> Vec<Placed> {
+    assemble_aliased(lib, settings, place, surface, seed, validate, &|p| p)
+}
+
+/// Java's `PoolAliasLookup`: the pool a connector (or the start) names
+/// before it is looked up.
+pub type Aliases<'a> = dyn for<'p> Fn(&'p str) -> &'p str + 'a;
+
+/// [`assemble_with`] with pool aliases (trial chambers' `pool_aliases`).
+pub fn assemble_with_aliases(
+    lib: &Library,
+    settings: &Settings,
+    place: &dyn Fn(&Template, u8) -> IVec3,
+    surface: &dyn Fn(i32, i32) -> i32,
+    seed: u64,
+    aliases: &Aliases<'_>,
+) -> Vec<Placed> {
+    assemble_aliased(lib, settings, place, surface, seed, None, aliases)
+}
+
+/// The assembler behind every entry point; `aliases` maps pool names
+/// (identity outside trial chambers).
+fn assemble_aliased(
+    lib: &Library,
+    settings: &Settings,
+    place: &dyn Fn(&Template, u8) -> IVec3,
+    surface: &dyn Fn(i32, i32) -> i32,
+    seed: u64,
+    validate: Option<&PlacementCheck<'_>>,
+    aliases: &Aliases<'_>,
+) -> Vec<Placed> {
     let bounded = validate.is_some();
     let mut rng = Rng(seed);
-    let Some(start_pool) = lib.pools.get(settings.start_pool) else { return Vec::new() };
+    let mut max_heights: FxHashMap<String, i32> = FxHashMap::default();
+    let Some(start_pool) = lib.pools.get(aliases(settings.start_pool)) else { return Vec::new() };
     let start = pick(start_pool, &mut rng);
     let Some(start) = start else { return Vec::new() };
     let rotation = rng.below(4) as u8;
@@ -677,17 +771,22 @@ fn assemble_impl(
     // Each piece's free space, and its own interior once something is put in it.
     let mut space = vec![0usize];
     let mut inner: Vec<Option<usize>> = vec![None];
-    let mut queue = std::collections::VecDeque::from([0usize]);
-    while let Some(i) = queue.pop_front() {
+    // Java's `SequencedPriorityIterator`: the highest placement priority
+    // first, first in first out within one priority.
+    let mut queue: Vec<(i32, std::collections::VecDeque<usize>)> =
+        vec![(0, std::collections::VecDeque::from([0usize]))];
+    while let Some(i) = queue.iter_mut().rev().find_map(|(_, q)| q.pop_front()) {
         let piece = pieces[i];
         let t = &lib.templates[piece.template as usize];
         let mut order: Vec<usize> = (0..t.jigsaws.len()).collect();
         shuffle(&mut order, &mut rng);
+        // `sortBySelectionPriority` after the shuffle (stable).
+        order.sort_by_key(|&j| std::cmp::Reverse(t.jigsaws[j].selection));
         'connectors: for j in order {
             // Java reads the surface at most once per connector.
             let mut ground_at = None;
             let jig = &t.jigsaws[j];
-            let Some(pool) = lib.pools.get(&jig.pool) else { continue };
+            let Some(pool) = lib.pools.get(aliases(&jig.pool)) else { continue };
             let p = piece.world(jig.pos);
             let facing = rotate_facing(jig.facing, piece.rotation);
             let target = p + jig_offset(jig, piece.rotation);
@@ -712,13 +811,20 @@ fn assemble_impl(
                 for r in rotations {
                     let mut joints: Vec<usize> = (0..ct.jigsaws.len()).collect();
                     shuffle(&mut joints, &mut rng);
+                    joints.sort_by_key(|&k| std::cmp::Reverse(ct.jigsaws[k].selection));
                     for k in joints {
                         let cj = &ct.jigsaws[k];
                         let faces_back = match jig.vertical {
                             0 => cj.vertical == 0 && rotate_facing(cj.facing, r) == facing.opposite(),
-                            v => cj.vertical == -v,
+                            v => {
+                                cj.vertical == -v
+                                    && (!jig.aligned
+                                        || rotate_facing(cj.top, r) == rotate_facing(jig.top, piece.rotation))
+                            }
                         };
-                        if !faces_back || cj.name != jig.target {
+                        // Java's `JigsawBlock.canAttach`: a child connector
+                        // without a name (a feature element's) takes any target.
+                        if !faces_back || !cj.name.is_empty() && cj.name != jig.target {
                             continue;
                         }
                         let local = rotate(cj.pos, r);
@@ -772,9 +878,15 @@ fn assemble_impl(
                         };
                         let depth = piece.depth + 1;
                         let mut accepted = None;
+                        let grow =
+                            if lib.expansion_hack { expansion(lib, ct, r, aliases, &mut max_heights) } else { 0 };
                         for floor in options {
                             origin.y = floor - child_delta;
-                            let bounds = bounds_of(ct, origin, r);
+                            let mut bounds = bounds_of(ct, origin, r);
+                            if grow > 0 {
+                                bounds.max.y =
+                                    bounds.max.y.max(bounds.min.y + (grow + 1).max(bounds.max.y - bounds.min.y));
+                            }
                             // Original outpost feature plates are marker-only.
                             // Their reserved box must not reject their own rigid
                             // child after connector-heightmap projection.
@@ -817,7 +929,11 @@ fn assemble_impl(
                         space.push(free);
                         inner.push(None);
                         if depth <= settings.max_depth {
-                            queue.push_back(pieces.len() - 1);
+                            let at = queue.partition_point(|(p, _)| *p < jig.placement);
+                            if queue.get(at).is_none_or(|(p, _)| *p != jig.placement) {
+                                queue.insert(at, (jig.placement, std::collections::VecDeque::new()));
+                            }
+                            queue[at].1.push_back(pieces.len() - 1);
                         }
                         continue 'connectors;
                     }
@@ -826,6 +942,42 @@ fn assemble_impl(
         }
     }
     pieces
+}
+
+/// Java's expansion hack for a child turned `r` times: the tallest piece
+/// (or fallback piece) of the pools its inward-pointing connectors name, or
+/// 0 when it is taller than 16 or has no such connector.
+fn expansion(
+    lib: &Library,
+    t: &Template,
+    r: u8,
+    aliases: &Aliases<'_>,
+    max_heights: &mut FxHashMap<String, i32>,
+) -> i32 {
+    let b = bounds_of(t, IVec3::ZERO, r);
+    if b.max.y - b.min.y + 1 > 16 {
+        return 0;
+    }
+    let mut height = |name: &str| -> i32 {
+        if let Some(&h) = max_heights.get(name) {
+            return h;
+        }
+        let h = lib.pools.get(name).map_or(0, |p| {
+            p.elements.iter().filter_map(|e| e.0).map(|i| lib.templates[i as usize].size.y).max().unwrap_or(0)
+        });
+        max_heights.insert(name.to_string(), h);
+        h
+    };
+    let mut grow = 0;
+    for j in &t.jigsaws {
+        if !b.contains(rotate(j.pos, r) + jig_offset(j, r)) {
+            continue;
+        }
+        let pool = aliases(&j.pool);
+        let fallback = lib.pools.get(pool).and_then(|p| p.fallback.clone());
+        grow = grow.max(height(pool)).max(fallback.map_or(0, |f| height(&f)));
+    }
+    grow
 }
 
 /// Where a connector of a piece turned `rotation` times leads, from its cell.
@@ -883,6 +1035,11 @@ pub trait Palette {
     fn process(&self, block: Block, _at: IVec3, _piece: &Placed) -> Option<Block> {
         Some(block)
     }
+    /// [`Palette::process`] seeing the block already at `at` (Java's rule
+    /// processors' location predicates).
+    fn process_at(&self, block: Block, at: IVec3, piece: &Placed, _existing: Block) -> Option<Block> {
+        self.process(block, at, piece)
+    }
     /// How far above a rigid piece's floor terrain is cleared (0: buried
     /// structures keep the ground around them).
     fn clear_above(&self) -> i32 {
@@ -918,6 +1075,7 @@ pub fn resolve(
         Base::Crop => palette.crop(hash3(pos.x, pos.y, pos.z, piece.seed)),
         Base::Job => palette.job(piece),
         Base::Chest | Base::Loot(_) => Block::CHEST,
+        Base::LootIn(_, b) => b,
         Base::Spawner(_) => Block::SPAWNER,
     };
     Some(match spec.facing {
@@ -980,7 +1138,14 @@ pub fn paint(
 pub fn paint_canvas(lib: &Library, pieces: &[Placed], palette: &dyn Palette, ground: &Ground, canvas: &mut Canvas) {
     let (base, top) = (canvas.base, canvas.top);
     let roles: Vec<Option<Block>> = lib.roles.iter().map(|r| palette.role(r)).collect();
-    let near: Vec<&Placed> = pieces.iter().filter(|p| meets_columns(&p.bounds, base, top)).collect();
+    let near: Vec<&Placed> = pieces
+        .iter()
+        .filter(|p| {
+            let o = lib.templates[p.template as usize].overhang;
+            let b = Bounds { min: p.bounds.min - IVec3::new(o, 0, o), max: p.bounds.max + IVec3::new(o, o, o) };
+            meets_columns(&b, base, top)
+        })
+        .collect();
     let clear = palette.clear_above();
     // Clear above rigid pieces first so later pieces aren't cut away.
     for p in &near {
@@ -1022,7 +1187,7 @@ pub fn paint_canvas(lib: &Library, pieces: &[Placed], palette: &dyn Palette, gro
                 if wet {
                     b = palette.on_water(b);
                 }
-                if let Some(b) = palette.process(b, at, p) {
+                if let Some(b) = palette.process_at(b, at, p, canvas.blocks[i]) {
                     canvas.blocks[i] = b;
                 }
             }
@@ -1054,7 +1219,9 @@ pub fn paint_canvas(lib: &Library, pieces: &[Placed], palette: &dyn Palette, gro
     let Some(foundation) = palette.role("foundation") else { return };
     for p in &near {
         let t = &lib.templates[p.template as usize];
-        if t.projection != Projection::Rigid {
+        // Feature pieces (overhang) stand on their parent; nothing props
+        // up the cells round their box.
+        if t.projection != Projection::Rigid || t.overhang > 0 {
             continue;
         }
         let bottom = t.cells.iter().filter(|c| c.pos.y == 0).map(|c| (c.pos, c.spec));
@@ -1120,7 +1287,7 @@ pub fn markers<'a>(lib: &'a Library, pieces: &'a [Placed], surface: &dyn Fn(i32,
         };
         for c in &t.cells {
             match c.spec.base {
-                Base::Loot(i) => {
+                Base::Loot(i) | Base::LootIn(i, _) => {
                     let w = at(c.pos);
                     out.push(Marker::Loot(w, &lib.loot[i as usize], hash3(w.x, w.y, w.z, p.seed)));
                 }

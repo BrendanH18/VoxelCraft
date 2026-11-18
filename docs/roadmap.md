@@ -1293,6 +1293,11 @@ Wave 2 (after wave 1 is integrated):
 7. **G. Template catalogues** (GEN-05b, GEN-05j). Profession buildings
    with fixed job sites, decorations, animal pens and abandoned villages,
    and the trial chamber and ancient city catalogues, in generation 4.
+   *Implemented, unverified (2026-11-18):* Java's pools, weights,
+   connector graph, residents, processors and loot for all three
+   structures, checked both ways against a jar fixture, with an original
+   template for every one of Java's 727 template locations; differences in
+   the [Track G record](verification/2026-11-18-v0.15-catalogues.md).
 8. **H. Villager parity** (MOB-05a/b/c). A trade fixture from the jar
    (prices, uses, restocks, experience), schedules and POIs, gossip and
    cures, the wandering trader, and the M4 exit audit.
