@@ -54,6 +54,11 @@ pub struct Arrow {
     pierced: Vec<u32>,
     /// Vehicles and decorations ([`ArrowTarget::key`]) it passed through.
     pierced_other: Vec<u64>,
+    /// v0.15 Track A: a mob's arrow shot Java's way (a pillager's crossbow,
+    /// an illusioner's bow): `AbstractArrow`'s base damage times its speed
+    /// in blocks a tick, rounded up, instead of the older mob arrow's
+    /// estimate.
+    pub java_base: Option<f64>,
 }
 
 /// Something other than a mob an arrow can hit: a minecart, boat or
@@ -114,6 +119,7 @@ impl Arrow {
             enchants: Default::default(),
             pierced: Vec::new(),
             pierced_other: Vec::new(),
+            java_base: None,
         }
     }
 
@@ -143,6 +149,7 @@ impl Arrow {
             enchants: Default::default(),
             pierced: Vec::new(),
             pierced_other: Vec::new(),
+            java_base: None,
         }
     }
 
@@ -157,6 +164,32 @@ impl Arrow {
         arrow.from_player = false;
         arrow.owner = None;
         arrow
+    }
+
+    /// A mob's arrow loosed Java's way from `from` at `vel` blocks a second
+    /// (`Projectile.shoot` already applied), with base damage 2.
+    pub fn mob_shot(from: DVec3, vel: DVec3, cause: crate::simulation::damage::Cause, shooter: u32) -> Self {
+        let mut arrow = Self::shot(from, vel, 0.0, false);
+        arrow.pos = from;
+        arrow.previous_pos = from;
+        arrow.vel = vel;
+        arrow.dir = vel.normalize_or(DVec3::X).as_vec3();
+        arrow.critical = false;
+        arrow.from_player = false;
+        arrow.owner = None;
+        arrow.shooter = Some(shooter);
+        arrow.cause = cause;
+        arrow.java_base = Some(2.0);
+        arrow
+    }
+
+    /// A mob arrow's damage at `speed` blocks a second: Java's
+    /// `ceil(speed per tick * base damage)` for [`Arrow::mob_shot`] arrows.
+    fn mob_damage(&self, speed: f64) -> f32 {
+        match self.java_base {
+            Some(base) => (speed / crate::knockback::TICK_RATE * base * self.power_factor()).ceil() as f32,
+            None => (speed / SPEED * 3.0 * self.power_factor()).ceil() as f32,
+        }
     }
 
     /// Power raises Java's base arrow damage of 2 by 0.5 per level + 0.5.
@@ -260,7 +293,11 @@ impl Arrow {
                             self.pierced_other.push(o.key);
                         }
                         let damage = if self.shooter.is_some() {
-                            (self.vel.length() / SPEED * 3.0).ceil() as f32
+                            if self.java_base.is_some() {
+                                self.mob_damage(self.vel.length())
+                            } else {
+                                (self.vel.length() / SPEED * 3.0).ceil() as f32
+                            }
                         } else {
                             let mut damage =
                                 (self.vel.length() / BOW_SPEED * BOW_DAMAGE * self.power_factor()).ceil() as f32;
@@ -350,14 +387,15 @@ impl Arrow {
                                 events.push(EntityEvent::MobHit {
                                     target: mob.uid,
                                     attacker,
-                                    damage: (speed / SPEED * 3.0 * self.power_factor()).ceil() as f32,
+                                    damage: self.mob_damage(speed),
                                     knockback: push,
                                 });
                                 return false;
                             }
                             // `hurtServer`'s 0.4 push along the arrow, then Punch's shove (`doKnockback`).
                             let motion = self.vel / crate::knockback::TICK_RATE;
-                            let killed = mob.damage_pushed(damage, &[crate::knockback::Push::projectile(motion)], rng);
+                            let killed =
+                                mob.damage_projectile(damage, &[crate::knockback::Push::projectile(motion)], rng);
                             if !killed && !refused {
                                 self.effects_on_mob(mob, rng);
                             }
@@ -436,7 +474,7 @@ impl Arrow {
                         events.push(EntityEvent::Ignite { player: hit.id, secs: 5. });
                     }
                     (
-                        (self.vel.length() / SPEED * 3.0 * self.power_factor()).ceil() as f32,
+                        self.mob_damage(self.vel.length()),
                         DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 3.0 + DVec3::Y * 3.0,
                     )
                 };

@@ -198,7 +198,8 @@ mod tests {
         let mut copy = Entities::new(12);
         copy.load_villagers(&e.villagers_to_string());
         assert_eq!(copy.mobs[0].convert_tick, 0.5);
-        assert_eq!(copy.mobs[0].melee_attack().0, 6.0);
+        // v0.15 Track A (MOB-02d): the held iron sword's 5 counts too.
+        assert_eq!(copy.mobs[0].melee_attack().0, 11.0);
         copy.mobs[0].convert_left = 0.05;
         assert_eq!(copy.mobs[0].equipment, e.mobs[0].equipment, "equipment survives the save");
         let mut events = Vec::new();

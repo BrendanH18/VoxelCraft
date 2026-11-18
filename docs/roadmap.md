@@ -1244,6 +1244,10 @@ Wave 1 (independent):
    summoning, turning blue sheep red), vexes, ravagers and illusioners
    (commands only, as in Java); pillagers brought to Java's crossbow AI;
    held weapons drawn on mobs and counted in their attack damage.
+   *Implemented, unverified (2026-11-18):* the five mobs, the pillager's
+   crossbow goal, held weapons, worn mob armor and `CanPickUpLoot`, with
+   the raid hook Track E attaches to; see the
+   [Track A record](verification/2026-11-18-v0.15-illagers.md).
 2. **B. Workstations** (AUT-04c, BLD-01d, BLD-05b, GEN-06, PLY-05b). The
    stonecutter screen; the loom with the banner patterns and their items,
    shield patterns, banner washing in cauldrons and the ominous banner;

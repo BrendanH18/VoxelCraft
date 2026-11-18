@@ -39,6 +39,7 @@ pub mod fireball;
 pub mod frog;
 pub mod golem;
 pub mod hostiles;
+pub mod illager;
 pub mod item;
 pub mod leash;
 mod lifecycle;
@@ -47,6 +48,7 @@ pub mod lingering;
 mod look;
 pub mod minecart;
 mod mob;
+pub mod mob_combat;
 mod mob_index;
 pub mod model;
 mod monster_spawns;
@@ -167,6 +169,8 @@ pub enum MobSound {
     Weapon(crate::weapons::Cue),
     /// v0.16 Track C: breeze, wind charge, trial spawner and vault cues.
     Breeze(breeze::Cue),
+    /// v0.15 Track A: spells, fangs, vex charges, ravager and crossbow cues.
+    Illager(illager::Cue),
 }
 
 /// Something an entity did that the game needs to react to.
@@ -290,6 +294,24 @@ pub enum EntityEvent {
         cause: crate::simulation::damage::Cause,
         /// The shooting mob's uid, so its target's wolves can retaliate.
         shooter: u32,
+    },
+    /// v0.15 Track A: a mob loosed an arrow Java's way (a pillager's
+    /// crossbow, an illusioner's bow) at `vel` blocks a second, with the
+    /// weapon's enchantments (turned into an arrow internally).
+    MobArrow {
+        from: DVec3,
+        vel: DVec3,
+        cause: crate::simulation::damage::Cause,
+        shooter: u32,
+        enchants: crate::enchant::Enchants,
+    },
+    /// v0.15 Track A: a ravager breaks leaves or a crop it pushes into or
+    /// walks through (with drops), or a vindicator a wooden door in a raid
+    /// (without), when `mobGriefing` allows; `block` is what it found there.
+    MobGrief {
+        cell: IVec3,
+        block: Block,
+        drops: bool,
     },
     /// A drowned threw its trident at `target` (turned into a thrown trident internally).
     ThrowTrident {
@@ -723,6 +745,8 @@ pub struct Target {
     pub shape: crate::physics::Shape,
     /// Wears a piece of golden armor, which keeps piglins calm.
     pub gold_armor: bool,
+    /// A raised shield (`isBlocking`): a ravager it stops may be stunned.
+    pub blocking: bool,
     /// Selected food for animal temptation, shared by every input device.
     pub held_item: Option<crate::item::Item>,
     pub on_ground: bool,
@@ -790,6 +814,7 @@ impl Target {
             sneaking: false,
             time_since_rest: 0,
             darkness_ticks: 0,
+            blocking: false,
         }
     }
 
@@ -893,6 +918,9 @@ impl Rng {
 
 pub struct Entities {
     pub mobs: Vec<Mob>,
+    /// v0.15 Track A: evoker fangs (not saved; each lives under two seconds).
+    pub fangs: Vec<illager::Fang>,
+    fang_carry: f64,
     pub phantom_spawning: bool,
     pub(super) phantom_next: i32,
     pub(super) phantom_clock: f64,
@@ -1013,6 +1041,8 @@ impl Entities {
     pub fn new(seed: u64) -> Self {
         Self {
             mobs: Vec::new(),
+            fangs: Vec::new(),
+            fang_carry: 0.0,
             phantom_spawning: true,
             phantom_next: 0,
             phantom_clock: 0.,
@@ -1206,11 +1236,20 @@ impl Entities {
             p.start_circle(&mut self.rng);
         }
         nether::on_spawn(&mut mob, &mut self.rng);
+        illager::finalize_spawn(&mut mob, special, &mut self.rng);
         aquatic::on_spawn(&mut mob, &mut self.rng);
         animals::on_spawn(&mut mob, &mut self.rng);
         // `Mob.finalizeSpawn`'s follow-range bonus and the zombie family's
         // `handleAttributes`, drawn last so earlier rolls keep their order.
         zombie::finalize_spawn(&mut mob, special, true, &mut self.rng);
+        // `Zombie` and `AbstractSkeleton.finalizeSpawn`: `CanPickUpLoot`
+        // with chance 0.55 x the special multiplier (drawn last here).
+        // A roll of its own, seeded by the spawn, so the shared random
+        // stream (and every seeded spawn sequence) is unchanged.
+        if kind.is_zombie() || kind.is_bow_skeleton() || kind == MobKind::WitherSkeleton {
+            let mut roll = Rng::new(pos.x.to_bits().rotate_left(7) ^ pos.z.to_bits() ^ yaw.to_bits() as u64 ^ 0x55);
+            mob.can_pick_up_loot = roll.next_f32() < mob_combat::CAN_PICK_UP_LOOT_CHANCE * special;
+        }
         self.mobs.push(mob);
     }
 
@@ -1444,6 +1483,7 @@ impl Entities {
             }
         }
         let mut drops = kind.drops(&mut self.rng, looting);
+        illager::loot(kind, player_kill, looting, &mut self.rng, &mut drops);
         // `entities/breeze`: killed by a player, 1-2 rods.
         if kind == MobKind::Breeze && player_kill {
             // `enchanted_count_increase`: round(level * uniform(1, 2)).
@@ -1782,6 +1822,7 @@ impl Entities {
         self.rendered = model::build(&self.mobs, camera, forward, max_dist, time, alpha, &mut self.mesh);
         model::build_arrows(&self.arrows, camera, alpha, &mut self.mesh);
         model::build_tridents(&self.tridents, camera, alpha, &mut self.mesh);
+        model::build_fangs(&self.fangs, camera, &mut self.mesh);
         model::build_pearls(&self.pearls, camera, alpha, &mut self.mesh);
         model::build_potions(&self.potions, camera, alpha, &mut self.mesh);
         model::build_clouds(&self.clouds, camera, &mut self.mesh);

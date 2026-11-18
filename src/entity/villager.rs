@@ -680,9 +680,12 @@ impl Entities {
         }
         let tick = (self.village_time.rem_euclid(1.0) * 24000.0) as u32;
         for i in 0..self.mobs.len() {
+            let pos = self.mobs[i].pos;
             let threat = self
                 .mob_index
-                .nearest(&self.mobs, self.mobs[i].pos, 8.0, |o| o.kind.is_zombie())
+                .nearest(&self.mobs, pos, 15.0, |o| {
+                    super::illager::villager_fear(o.kind).is_some_and(|d| o.pos.distance_squared(pos) <= d * d)
+                })
                 .map(|j| self.mobs[j].pos);
             let m = &mut self.mobs[i];
             if !m.alive() || !world.entity_ticking(m.pos.floor().as_ivec3()) {

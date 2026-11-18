@@ -76,24 +76,6 @@ const CAT: &[Cuboid] = &[
 const CAT_COLLAR: &[Cuboid] = &[cube([-2.6, 4.0, 3.0], [2.6, 7.0, 4.0], [255, 0, 254], 0)];
 const CAT_LEG: &[Cuboid] = &[cube([-0.8, -3.0, -0.8], [0.8, 0.0, 0.8], [27, 27, 29], 16)];
 const CAT_TAIL: &[Cuboid] = &[cube([-0.6, 0.0, -8.0], [0.6, 1.2, 0.0], [27, 27, 29], 18)];
-const PILLAGER_BODY: &[Cuboid] = &[
-    cube([-4.0, 12.0, -2.0], [4.0, 24.0, 2.0], [86, 69, 63], 28),
-    cube([-4.0, 19.0, 2.0], [4.0, 21.0, 2.1], [158, 151, 140], 20),
-];
-const PILLAGER_HEAD: &[Cuboid] = &[
-    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], [149, 153, 148], 20),
-    cube([-1.0, 1.0, 4.0], [1.0, 5.0, 6.0], [135, 140, 135], 18),
-    cube([-3.0, 4.0, 4.0], [-1.0, 5.0, 4.1], [194, 211, 175], 0),
-    cube([1.0, 4.0, 4.0], [3.0, 5.0, 4.1], [194, 211, 175], 0),
-    cube([-3.0, 5.0, 4.0], [3.0, 6.0, 4.1], [49, 45, 43], 0),
-];
-const PILLAGER_ARM: &[Cuboid] = &[cube([-7.0, -3.0, -2.0], [7.0, 0.0, 2.0], [103, 91, 85], 22)];
-const PILLAGER_LEG: &[Cuboid] = &[cube([-2.0, -12.0, -2.0], [2.0, 0.0, 2.0], [58, 53, 49], 24)];
-const CROSSBOW: &[Cuboid] = &[
-    cube([-7.0, -0.5, 3.0], [7.0, 0.5, 5.0], [99, 66, 40], 18),
-    cube([-1.0, -1.0, -2.0], [1.0, 1.0, 8.0], [111, 78, 42], 18),
-    cube([-7.0, -0.1, 1.0], [7.0, 0.1, 1.3], [198, 188, 167], 0),
-];
 const TURTLE_SHELL: &[Cuboid] = &[
     cube([-7.0, 2.0, -8.0], [7.0, 6.0, 8.0], [70, 110, 62], 26),
     cube([-6.0, 6.0, -6.0], [6.0, 8.0, 6.0], [86, 126, 74], 22),
@@ -172,14 +154,6 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
             }
             p
         }
-        MobKind::Pillager => parts![
-            part(PILLAGER_BODY, [0.0; 3], Quat::IDENTITY),
-            part(PILLAGER_LEG, [-2.0, 12.0, 0.0], Quat::from_rotation_x(m.limb_phase.sin() * m.limb_amp)),
-            part(PILLAGER_LEG, [2.0, 12.0, 0.0], Quat::from_rotation_x(-m.limb_phase.sin() * m.limb_amp)),
-            part(PILLAGER_HEAD, [0.0, 24.0, 0.0], Quat::IDENTITY),
-            part(PILLAGER_ARM, [0.0, 20.0, 0.0], Quat::from_rotation_x(-0.5)),
-            part(CROSSBOW, [0.0, 18.0, 5.0], Quat::IDENTITY)
-        ],
         MobKind::Turtle => {
             let paddle = if m.in_water { (time * 4.0).sin() * 0.6 } else { m.limb_phase.sin() * m.limb_amp };
             parts![

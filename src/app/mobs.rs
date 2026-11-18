@@ -197,6 +197,7 @@ impl Game {
             swimming: self.session.player.swimming,
             time_since_rest: self.session.vitals.time_since_rest,
             sprinting: self.session.player.sprinting,
+            blocking: self.session.blocking(),
             passenger: self.session.player.vehicle.is_some(),
             ..Target::new(
                 PlayerId::HOST,
@@ -458,9 +459,21 @@ impl Game {
                     }
                 }
                 EntityEvent::Fireball { .. }
+                | EntityEvent::MobArrow { .. }
                 | EntityEvent::ThrowPotion { .. }
                 | EntityEvent::ThrowTrident { .. }
                 | EntityEvent::ShootWindCharge { .. } => {}
+                EntityEvent::MobGrief { cell, block, drops } => {
+                    // `destroyBlock(pos, true, ravager)` or the door goal's
+                    // `removeBlock`, both under `mobGriefing`.
+                    if self.gamerules.bool("mob_griefing") && self.world.get_block(cell) == Some(block) {
+                        if drops {
+                            self.world.spill_block(cell, block);
+                        }
+                        self.world.set_block(cell, crate::world::block::Block::AIR);
+                        self.audio.block_break(block, cell);
+                    }
+                }
                 EntityEvent::TridentBrokeDripstone { cell, mob_owned } => {
                     // `Projectile.mayInteract` (a mob's needs `mobGriefing`) and `mayBreak`.
                     let may = self.gamerules.bool("projectiles_can_break_blocks")
@@ -506,6 +519,7 @@ impl Game {
                             continue;
                         }
                         MobSound::Breeze(cue) => (Sound::Breeze(cue), 1.0),
+                        MobSound::Illager(cue) => (Sound::Illager(cue), 1.0),
                         MobSound::CopperGolem(action, stage) => (Sound::CopperGolem(action, stage), 0.7),
                         MobSound::Hurt(MobKind::CopperGolem) => {
                             (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Hurt, 0), 0.9)
@@ -723,6 +737,11 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Warden => Voice::Creaking,
         MobKind::Breeze => Voice::Breeze,
         MobKind::Endermite => Voice::Endermite,
+        MobKind::Vindicator => Voice::Vindicator,
+        MobKind::Evoker => Voice::Evoker,
+        MobKind::Vex => Voice::Vex,
+        MobKind::Ravager => Voice::Ravager,
+        MobKind::Illusioner => Voice::Illusioner,
         MobKind::Allay => Voice::Allay,
         MobKind::CopperGolem => Voice::Skeleton,
         MobKind::Creaking => Voice::Creaking,

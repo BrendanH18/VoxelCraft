@@ -65,6 +65,7 @@ impl Entities {
             held.name.as_str()?;
             m.name = held.name;
             m.persistent = true;
+            super::illager::named(m);
             return Some(true);
         }
         // Using a leashed animal takes its lead off, even with an empty
