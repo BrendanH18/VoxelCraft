@@ -1286,6 +1286,14 @@ Wave 2 (after wave 1 is integrated):
 5. **E. Raids** (MOB-05d). Bad Omen from captains, Raid Omen, raids with
    Java's waves per difficulty, the raid bar, captains and patrols,
    villagers hiding at the bell, Hero of the Village and its discounts.
+   *Implemented, unverified (2026-11-18):* raids saved per dimension with
+   Java's waves, bonus wave, riders, raid buffs, bar, victory and defeat;
+   Bad Omen (from the pillager captain's ominous bottle, as in 26.3) to
+   Raid Omen; patrols and captains; villagers sheltering, bell glow, Hero
+   of the Village with its price cut and gifts; the `raids` and
+   `spawn_patrols` rules. Differences (no LAN raid bar, no statistics,
+   witches don't heal raiders) are in the
+   [Track E record](verification/2026-11-18-v0.15-raids.md).
 6. **F. Woodland mansions** (GEN-05i, GEN-06). Java's room-grid layout in
    generation 4 with its residents and loot; the mansion map and the
    desert pyramid, warm ocean ruin, buried mineshaft and buried ancient

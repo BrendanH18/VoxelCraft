@@ -44,6 +44,8 @@ impl Entities {
     pub fn ring_bell(&mut self, pos: IVec3) {
         let center = pos.as_dvec3() + DVec3::splat(0.5);
         self.pending_sounds.push(EntityEvent::Sound { sound: MobSound::Bell, pos: center });
+        // v0.15 Track E: raiders nearby may make it resonate.
+        self.bell_rang(pos);
         self.mob_index.rebuild(&self.mobs);
         self.mob_index.visit(center, 32.0, |i| {
             let m = &mut self.mobs[i];

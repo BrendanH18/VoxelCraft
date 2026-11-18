@@ -15,6 +15,7 @@ mod jukebox;
 mod lodestone;
 pub mod mining;
 pub mod placement;
+pub mod raid;
 pub mod ranged;
 mod recovery;
 mod weapons;
@@ -77,6 +78,9 @@ pub struct PlayerSession {
     /// v0.15 Track D: the block the player last stood in, for Frost
     /// Walker's `location_changed` effect (Java's `lastPos`, not saved).
     frost_last: Option<IVec3>,
+    /// v0.15 Track E: where Bad Omen became Raid Omen (Java's saved
+    /// `raid_omen_position`); the raid starts there when the omen ends.
+    pub raid_omen_pos: Option<IVec3>,
 }
 
 /// Where a sleeper lay down: the bed's head block and the spot on it.
@@ -192,6 +196,7 @@ impl PlayerSession {
             mining: Default::default(),
             weapons: Default::default(),
             frost_last: None,
+            raid_omen_pos: None,
         }
     }
 
@@ -223,6 +228,7 @@ impl PlayerSession {
             mining: Default::default(),
             weapons: Default::default(),
             frost_last: None,
+            raid_omen_pos: None,
         }
     }
 

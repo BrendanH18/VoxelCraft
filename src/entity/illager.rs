@@ -487,10 +487,11 @@ pub fn named(m: &mut Mob) {
 // ---------------------------------------------------------------- state
 
 /// What a raid needs from a raider (`Raider` and `PatrollingMonster`): the
-/// hook v0.15 Track E attaches raids and patrols to. Nothing in Track A
-/// sets a raid; `raid_active` gates the vindicator's door breaking and
-/// `celebrating` the celebration pose.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// hook v0.15 Track E attaches raids and patrols to (`entity::raid`).
+/// `raid_active` gates the vindicator's door breaking and `celebrating`
+/// the celebration pose; the raid tick refreshes both and the goal inputs
+/// below every tick.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Raider {
     /// `Raider.wave` (saved as Java's `Wave`).
     pub wave: i32,
@@ -505,12 +506,39 @@ pub struct Raider {
     /// `PatrollingMonster`'s `PatrolLeader` and `Patrolling`.
     pub patrol_leader: bool,
     pub patrolling: bool,
+    /// `PatrollingMonster.patrolTarget` (saved as `patrol_target`).
+    pub patrol_target: Option<IVec3>,
+    /// `Raider.ticksOutsideRaid` (not saved, as in Java).
+    pub ticks_outside: i32,
+    /// The last player to hit it, credited as a hero if it dies in a raid.
+    pub last_player: Option<super::PlayerId>,
+    /// Its death has been handled by the raid tick.
+    pub dead_seen: bool,
+    /// Goal inputs from the raid tick: the active raid's centre while it is
+    /// undecided, whether it stands in a village, a home to walk through,
+    /// the homes it walked to lately (`RaiderMoveThroughVillageGoal`) and an
+    /// ominous banner to fetch (`ObtainRaidLeaderBannerGoal`).
+    pub raid_center: Option<IVec3>,
+    pub in_village: bool,
+    pub village_target: Option<IVec3>,
+    pub visited: Vec<IVec3>,
+    pub banner_target: Option<glam::DVec3>,
+    /// `LongDistancePatrolGoal`: other patrollers within 16, the step a
+    /// leader just chose for its companions, and the cooldown after a
+    /// failed path.
+    pub companions: bool,
+    pub patrol_step: Option<IVec3>,
+    pub patrol_cooldown: u32,
 }
 
 impl Raider {
     fn save(&self) -> Value {
-        json!({"wave": self.wave, "can_join_raid": self.can_join_raid, "raid_id": self.raid,
-            "patrol_leader": self.patrol_leader, "patrolling": self.patrolling})
+        let mut v = json!({"wave": self.wave, "can_join_raid": self.can_join_raid, "raid_id": self.raid,
+            "patrol_leader": self.patrol_leader, "patrolling": self.patrolling});
+        if let Some(t) = self.patrol_target {
+            v["patrol_target"] = json!(t.to_array());
+        }
+        v
     }
 
     fn load(v: &Value) -> Raider {
@@ -518,10 +546,13 @@ impl Raider {
             wave: v["wave"].as_i64().map_or(0, |w| w.clamp(0, 1000) as i32),
             can_join_raid: v["can_join_raid"] == true,
             raid: v["raid_id"].as_u64().and_then(|r| u32::try_from(r).ok()),
-            raid_active: false,
-            celebrating: false,
             patrol_leader: v["patrol_leader"] == true,
             patrolling: v["patrolling"] == true,
+            patrol_target: v["patrol_target"].as_array().and_then(|a| {
+                let c = |i: usize| a.get(i).and_then(Value::as_i64).and_then(|n| i32::try_from(n).ok());
+                Some(IVec3::new(c(0)?, c(1)?, c(2)?))
+            }),
+            ..Raider::default()
         }
     }
 }
@@ -634,6 +665,8 @@ pub struct State {
     /// `isAggressive`: drawn as the attacking pose.
     pub aggressive: bool,
     pub(crate) actions: Vec<Action>,
+    /// v0.15 Track E: where a raid or patrol goal is walking.
+    pub(crate) raider_walk: Option<DVec3>,
 }
 
 impl Default for State {
@@ -674,6 +707,7 @@ impl Default for State {
             attack_wait: 0,
             aggressive: false,
             actions: Vec::new(),
+            raider_walk: None,
         }
     }
 }
@@ -896,6 +930,11 @@ impl Entities {
             }
             let Some(s) = m.illager.as_mut() else { continue };
             let ticks = s.take_ticks(dt);
+            // Raid witches only count their ticks; their goals are the witch's.
+            if m.kind == MobKind::Witch {
+                s.ticks = s.ticks.wrapping_add(ticks);
+                continue;
+            }
             s.ticks = s.ticks.wrapping_add(ticks);
             // `Vex.tick`: starve once the life runs out, then every second.
             let mut starve = 0;
@@ -929,7 +968,7 @@ impl Entities {
         };
         for i in 0..self.mobs.len() {
             let Some(s) = self.mobs[i].illager.as_ref() else { continue };
-            if !self.mobs[i].simulation_active || !self.mobs[i].alive() {
+            if !self.mobs[i].simulation_active || !self.mobs[i].alive() || self.mobs[i].kind == MobKind::Witch {
                 continue;
             }
             let (pos, kind, uid, johnny, owner) =

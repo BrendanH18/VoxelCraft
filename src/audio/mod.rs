@@ -11,6 +11,7 @@ mod dsp;
 mod export;
 mod illager;
 pub mod mixer;
+mod raid;
 mod sniffer;
 pub mod sounds;
 mod source;

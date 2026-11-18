@@ -34,6 +34,7 @@ mod pad_menu;
 mod particles;
 mod patterns;
 mod player_actions;
+mod raid;
 mod recipe_book;
 mod save;
 mod screen;

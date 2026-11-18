@@ -983,3 +983,34 @@ scripts/remote-check.sh -- 'cargo test --release --lib -- happy_ghast nautilus c
 The tests in `entity::happy_ghast`, `entity::nautilus` and
 `entity::camel_husk` compare the game's constants, sizes, tags and loot
 with this file.
+
+## Raids, patrols and heroes (v0.15 Track E)
+
+`raids.json` holds the facts of raids: `Raid`'s constants, the
+`Raid.RaiderType` wave table (vindicator, evoker, pillager, witch and
+ravager spawns per wave, in spawn order), `getNumGroups`, `getEnchantOdds`,
+the branches of `getPotentialBonusSpawns`, the `findRandomSpawnPos` ring
+search and `joinRaid`'s placement; `Raids.createOrExtendRaid`'s POI radius,
+`canJoinRaid`'s idle limit and the save interval; `ServerLevel.getRaidAt`,
+`isVillage` and `isCloseToVillage`; `Raider.updateNoActionTime`, its
+celebration odds and goals, which raiders can lead (`canBeLeader` of the
+ravager and witch); `PatrollingMonster`'s captain chance, light rule,
+despawn distance, patrol target and `LongDistancePatrolGoal`;
+`PatrolSpawner.tick`; the Bad Omen and Raid Omen ticks; `BellBlockEntity`'s
+constants; `GiveGiftToHero`'s timings and profession tables with the 16
+`gameplay/hero_of_the_village/*_gift` loot tables; the hero discount of
+`Villager.updateSpecialPrices`; the pillager's captain pool (the only 26.3
+entity table naming captains, an ominous bottle of amplifier 0 to 4); the
+four `enchantment_provider/raid/*` providers; the `early_game` timeline
+that keeps patrols away before tick 120000 and the biomes and dimension
+types that forbid patrols and raids. Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_raid_fixtures.py /path/to/server.jar --output target/java-raids.json
+diff tests/fixtures/java/26.3/raids.json target/java-raids.json
+scripts/remote-check.sh -- 'cargo test --release --lib -- entity::raid'
+```
+
+The tests in `entity::raid` compare every constant and table with this
+file both ways and run a raid from Bad Omen to Hero of the Village and
+through a save and reload.

@@ -121,6 +121,9 @@ impl Game {
         self.mobs.entities.trader_spawning =
             self.gamerules.bool("spawn_wandering_traders") && self.gamerules.bool("spawn_mobs");
         self.mobs.entities.phantom_spawning = self.gamerules.bool("spawn_phantoms");
+        // v0.15 Track E: the `raids` and `spawn_patrols` rules.
+        self.mobs.entities.raids.enabled = self.gamerules.bool("raids");
+        self.mobs.entities.raids.patrols = self.gamerules.bool("spawn_patrols");
         self.mobs.entities.monster_spawning = self.gamerules.bool("spawn_monsters");
         self.mobs.entities.spawner_blocks = self.gamerules.bool("spawner_blocks_work");
         self.mobs.entities.villager_griefing = self.gamerules.bool("mob_griefing");
@@ -521,6 +524,7 @@ impl Game {
                         }
                         MobSound::Breeze(cue) => (Sound::Breeze(cue), 1.0),
                         MobSound::Illager(cue) => (Sound::Illager(cue), 1.0),
+                        MobSound::Raid(cue) => (Sound::Raid(cue), 1.0),
                         MobSound::CopperGolem(action, stage) => (Sound::CopperGolem(action, stage), 0.7),
                         MobSound::Hurt(MobKind::CopperGolem) => {
                             (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Hurt, 0), 0.9)

@@ -24,6 +24,7 @@ mod navigate;
 mod nether_ai;
 mod ocelot;
 mod polar_bear;
+mod raider;
 pub(crate) mod selector;
 pub(crate) mod swim;
 pub(crate) mod turtle;
@@ -2271,7 +2272,9 @@ impl Mob {
         {
             return wish;
         }
+        // Raid witches carry the raider state but keep the witch's own goals.
         if self.illager.is_some()
+            && self.kind != MobKind::Witch
             && let Some(wish) = self.illager_think(dt, world, ctx, rng, events)
         {
             return wish;
@@ -2475,6 +2478,14 @@ impl Mob {
         if self.kind == MobKind::Witch && self.witch_upkeep(dt, world, rng) {
             return (None, 0.0);
         }
+        // v0.15 Track E: a raid witch not chasing anyone walks the raid.
+        if self.kind == MobKind::Witch
+            && self.ai != Ai::Chase
+            && self.illager.is_some()
+            && let Some(wish) = self.raider_goals(world, rng)
+        {
+            return wish;
+        }
         if self.nether.is_some()
             && let Some(wish) = self.nether_think(dt, world, ctx, rng, events)
         {
@@ -2519,7 +2530,7 @@ impl Mob {
             && self.nether.is_none()
             && self.kind != MobKind::Blaze
             && self.kind != MobKind::Endermite
-            && self.illager.is_none()
+            && (self.illager.is_none() || self.kind == MobKind::Witch)
         {
             let aggressive = match self.kind {
                 MobKind::Spider | MobKind::CaveSpider => ctx.daylight < SPIDER_CALM_DAYLIGHT || self.provoked > 0.0,

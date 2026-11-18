@@ -146,6 +146,27 @@ impl Mob {
         if self.illager.as_ref().is_some_and(|s| s.raider.celebrating) && aim.is_none() {
             self.celebrate(rng, events);
         }
+        // v0.15 Track E: `HoldGroundAttackGoal` before the attack goals,
+        // and the raid and patrol goals when there is nothing to attack.
+        if self.hold_ground(aim.map(|a| a.pos())) {
+            if let Some(a) = aim {
+                self.face(a.eye());
+            }
+            return Some((None, 0.0));
+        }
+        if aim.is_none()
+            && !self.illager.as_ref().is_some_and(|s| s.casting_spell())
+            && let Some(wish) = self.raider_goals(world, rng)
+        {
+            return Some(wish);
+        }
+        // `Raider.aiStep`: a raid member after a player or golem is busy.
+        if let Some(a) = aim
+            && self.illager.as_ref().is_some_and(|s| s.raider.raid.is_some())
+            && matches!(a, Aim::Player(_))
+        {
+            self.idle = 0.0;
+        }
         match self.kind {
             MobKind::Vex => {
                 self.vex_goals(full, aim, world, rng, events);

@@ -1788,6 +1788,10 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     if let Some(s) = &mut m.endermite {
         s.load(v);
     }
+    // v0.15 Track E: a raid witch keeps its raider state.
+    if kind == MobKind::Witch && v["illager"].is_object() {
+        m.illager = Some(Box::default());
+    }
     if let Some(s) = &mut m.illager {
         s.load(&v["illager"]);
     }
