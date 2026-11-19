@@ -363,6 +363,7 @@ fn blk(id: &'static str) -> Block {
 }
 
 /// Every template's ids that resolved to no block.
+#[cfg(test)]
 pub fn unresolved() -> Vec<&'static str> {
     for i in 0..TEMPLATES.len() {
         template(i as u8);
