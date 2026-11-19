@@ -96,12 +96,6 @@ impl EntityStorage {
         self.jobs.contains_key(&p)
     }
 
-    /// Every bed and job site a stored villager has claimed, from the claim
-    /// indexes rather than the stored mobs.
-    pub(super) fn claimed_pois(&self) -> impl Iterator<Item = IVec3> + '_ {
-        self.beds.keys().chain(self.jobs.keys()).copied()
-    }
-
     fn entry(&mut self, chunk: IVec3) -> &mut ChunkEntities {
         self.len += 1;
         self.chunks.entry(chunk).or_default()

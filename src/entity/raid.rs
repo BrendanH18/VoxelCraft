@@ -930,15 +930,17 @@ impl Entities {
     /// village POIs is occupied. Beds and job sites count when a villager
     /// claims them (stored villagers too, as Java's POI tickets outlive the
     /// entity's chunk); bells, whose meeting claims VoxelCraft doesn't
-    /// track, count within 48 blocks of a claimed POI.
+    /// track, count within 48 blocks of a claimed loaded POI or of a loaded
+    /// villager's claim.
     pub(super) fn refresh_villages<W: MobWorld + ?Sized>(&mut self, world: &W, force: bool) {
         let now = self.raids.tick;
         if !force && self.raids.villages.built.is_some_and(|t| now - t < 20 && t <= now) {
             return;
         }
-        // Loaded villagers' claims, then stored villagers' from the storage's
-        // claim indexes, so the cost doesn't grow with the explored save.
-        let mut claimed: FxHashSet<IVec3> = self.storage.claimed_pois().collect();
+        // Loaded villagers' claims; stored villagers' are looked up per
+        // loaded POI in the storage's claim indexes, so the cost doesn't
+        // grow with the explored save.
+        let mut claimed: FxHashSet<IVec3> = FxHashSet::default();
         for m in &self.mobs {
             if m.kind == MobKind::Villager
                 && m.alive()
@@ -950,11 +952,13 @@ impl Entities {
         }
         let mut v = VillageSections { built: Some(now), ..Default::default() };
         let mut bells = Vec::new();
+        let storage = &self.storage;
         world.village_pois(&mut |p, b| {
             if b.is_bed_head() {
                 v.homes.push(p);
             }
-            if claimed.contains(&p) {
+            if claimed.contains(&p) || storage.claims_bed(p) || storage.claims_job(p) {
+                claimed.insert(p);
                 v.insert(p);
             } else if b.base() == crate::world::block::Block::BELL {
                 bells.push(p);
