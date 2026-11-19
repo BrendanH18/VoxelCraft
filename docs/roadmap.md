@@ -1289,7 +1289,10 @@ Wave 2 (after wave 1 is integrated):
 6. **F. Woodland mansions** (GEN-05i, GEN-06). Java's room-grid layout in
    generation 4 with its residents and loot; the mansion map and the
    desert pyramid, warm ocean ruin, buried mineshaft and buried ancient
-   city maps.
+   city maps. *Implemented, unverified (2026-11-18):* placement, layout
+   (golden-pinned), original rooms of Java's kinds, residents, loot,
+   foundation, `/locate` and the five maps with `skip_existing_chunks`;
+   see the [Track F record](verification/2026-11-18-v0.15-mansions.md).
 7. **G. Template catalogues** (GEN-05b, GEN-05j). Profession buildings
    with fixed job sites, decorations, animal pens and abandoned villages,
    and the trial chamber and ancient city catalogues, in generation 4.

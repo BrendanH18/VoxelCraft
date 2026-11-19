@@ -168,6 +168,9 @@ pub(super) const TRADES: &[(Profession, u8, TradeDef)] = &[
     (Profession::Cartographer, 4, TradeDef::sell("orange banner", 3, 1, 12, 15, 0.05)),
     (Profession::Cartographer, 4, TradeDef::sell("light gray banner", 3, 1, 12, 15, 0.05)),
     (Profession::Cartographer, 5, TradeDef::sell("globe banner pattern", 8, 1, 12, 30, 0.05)),
+    // v0.15 Track F: `emerald_and_compass_woodland_mansion_map` (14 emeralds
+    // and a compass, 12 uses, 30 xp, discount 0.2, search radius 100).
+    (Profession::Cartographer, 5, TradeDef::explorer("woodland mansion map", 14, 30)),
     (Profession::Cleric, 1, TradeDef::buy("rotten flesh", 32, 16, 2)),
     (Profession::Cleric, 1, TradeDef::sell("redstone", 1, 2, 12, 1, 0.05)),
     (Profession::Cleric, 2, TradeDef::buy("gold ingot", 3, 12, 10)),

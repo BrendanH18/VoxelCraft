@@ -228,6 +228,7 @@ const UNNUMBERED_MAP: u32 = u32::MAX - 1024;
 pub struct RolledChest {
     chest: Chest,
     maps: Vec<(crate::item::Item, super::maps::MapData)>,
+    origin: glam::IVec3,
 }
 
 impl RolledChest {
@@ -239,7 +240,7 @@ impl RolledChest {
             maps.push((s.item, data));
             Some(Stack { map_id: Some(id), ..Stack::new(s.item, 1) })
         });
-        Self { chest, maps }
+        Self { chest, maps, origin }
     }
 }
 
@@ -716,12 +717,21 @@ impl super::World {
     /// `rolled`'s chest with its explorer maps numbered, in roll order, as
     /// [`World::structure_loot`] would have numbered them.
     pub(super) fn number_maps(&mut self, rolled: RolledChest) -> Chest {
-        let RolledChest { mut chest, maps } = rolled;
+        let RolledChest { mut chest, maps, origin } = rolled;
         for (i, (item, data)) in maps.into_iter().enumerate() {
-            let id = self.maps.create(data, item).map_id;
+            // A map whose target an earlier map referenced searches again
+            // here, where the references are (`skip_existing_chunks`).
+            let id = if self.maps.claim_target(item, &data) {
+                self.maps.create(data, item).map_id
+            } else {
+                self.maps.explorer(&self.generator, origin, item, 50).and_then(|s| s.map_id)
+            };
             let unnumbered = Some(UNNUMBERED_MAP + i as u32);
-            if let Some(stack) = chest.slots.iter_mut().flatten().find(|s| s.map_id == unnumbered) {
-                stack.map_id = id;
+            if let Some(slot) = chest.slots.iter_mut().find(|s| s.is_some_and(|s| s.map_id == unnumbered)) {
+                match id {
+                    Some(id) => slot.as_mut().unwrap().map_id = Some(id),
+                    None => *slot = None,
+                }
             }
         }
         chest

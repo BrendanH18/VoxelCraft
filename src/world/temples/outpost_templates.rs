@@ -50,7 +50,16 @@ pub(super) fn build(g: &Generator, centre: IVec2, seed: u64) -> Built {
             _ => panic!("unsupported outpost marker {marker:?}"),
         }
     }
-    Built { kind: Kind::Outpost, bounds, blocks: Vec::new(), features, spawns: bounds, residents, placed }
+    Built {
+        kind: Kind::Outpost,
+        bounds,
+        blocks: Vec::new(),
+        features,
+        spawns: bounds,
+        residents,
+        placed,
+        mansion: None,
+    }
 }
 
 pub(super) fn paint(g: &Generator, built: &Built, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3) {

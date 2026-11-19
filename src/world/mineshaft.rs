@@ -475,6 +475,11 @@ impl Mineshafts {
         hash_f(chunk16.x, 0, chunk16.y, self.seed ^ SALT) < FREQUENCY
     }
 
+    /// Whether a mineshaft starts in the 16-block chunk `chunk16`.
+    pub fn starts_at(&self, chunk16: IVec2) -> bool {
+        self.frequency_hit(chunk16)
+    }
+
     fn get(&self, chunk16: IVec2) -> Option<Arc<Mineshaft>> {
         if let Some(found) = self.cache.lock().unwrap().get(&chunk16) {
             return found.clone();

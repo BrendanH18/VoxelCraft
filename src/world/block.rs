@@ -379,8 +379,10 @@ pub mod tex {
             super::super::trial::TEX_END as u32,
             super::super::workstations::TEX_END as u32,
         ];
-        // v0.15 Track D's frosted ice (layers 4000..4004) sets the count.
-        const ENDS2: [u32; 1] = [super::super::frosted_ice::TEX_END as u32];
+        // v0.15 Track D's frosted ice (layers 4000..4004) and Track F's
+        // explorer maps (4056..4066) set the count.
+        const ENDS2: [u32; 2] =
+            [super::super::frosted_ice::TEX_END as u32, super::super::explorer_maps::TEX_END as u32];
         let mut max = 0;
         let mut i = 0;
         while i < ENDS.len() {
@@ -389,8 +391,12 @@ pub mod tex {
             }
             i += 1;
         }
-        if ENDS2[0] > max {
-            max = ENDS2[0];
+        let mut i = 0;
+        while i < ENDS2.len() {
+            if ENDS2[i] > max {
+                max = ENDS2[i];
+            }
+            i += 1;
         }
         max
     };

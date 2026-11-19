@@ -340,6 +340,9 @@ pub enum Feature {
     TrialVault,
     /// A chest, barrel or dispenser filled from a trial chamber table.
     TrialLoot(u64, super::trial_chambers::Table),
+    /// v0.15 Track F: a woodland mansion chest of set contents
+    /// (`mansion::FIXED` index).
+    MansionChest(u8),
 }
 
 /// Fortress layouts for one Nether, cached by region.

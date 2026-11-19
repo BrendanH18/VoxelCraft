@@ -107,6 +107,9 @@ impl World {
                     self.register_trial_spawner(p, config);
                 }
                 Feature::TrialVault if super::trial::vault(block).is_some() => self.register_trial_vault(p),
+                Feature::MansionChest(i) if is_chest(block) => {
+                    self.chests.entry(p).or_insert_with(|| super::mansion::fixed_chest(i));
+                }
                 Feature::Spawner(kind) if block == Block::SPAWNER => {
                     self.spawners.entry(p).or_insert(kind);
                 }
