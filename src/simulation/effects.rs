@@ -688,6 +688,71 @@ impl PartialEq for Effects {
 /// Java 26.3 `MobEffects.ABSORPTION`'s `ADD_VALUE` modifier on the
 /// max-absorption attribute, per level.
 const ABSORPTION_PER_LEVEL: f32 = 4.0;
+/// `MobEffects.HEALTH_BOOST`'s `ADD_VALUE` modifier on `max_health`, per level.
+pub const HEALTH_BOOST_PER_LEVEL: f32 = 4.0;
+
+/// The death behaviours of Wind Charged, Weaving and Oozing
+/// (`WindChargedMobEffect`, `WeavingMobEffect`, `OozingMobEffect`
+/// `.onMobRemoved` with `RemovalReason.KILLED`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DeathTriggers {
+    /// A wind burst of strength `3 + nextFloat() * 2` at half height.
+    pub wind_burst: bool,
+    /// Two or three cobwebs in the 15-block cube around the body (players
+    /// always; mobs only with `mobGriefing`).
+    pub cobwebs: bool,
+    /// Two size-2 slimes, capped by `maxEntityCramming`.
+    pub slimes: bool,
+}
+
+impl DeathTriggers {
+    pub fn any(self) -> bool {
+        self.wind_burst || self.cobwebs || self.slimes
+    }
+}
+
+/// `MobEffects.WIND_CHARGED`: `3.0F + random.nextFloat() * 2.0F`.
+pub const WIND_CHARGED_MIN_STRENGTH: f32 = 3.0;
+pub const WIND_CHARGED_STRENGTH_SPREAD: f32 = 2.0;
+/// `MobEffects.WEAVING`: `Mth.randomBetweenInclusive(random, 2, 3)` cobwebs,
+/// searched over `BlockPos.randomInCube(random, 15, pos, 1)`.
+pub const WEAVING_COBWEBS: (u32, u32) = (2, 3);
+pub const WEAVING_SEARCHES: u32 = 15;
+pub const WEAVING_RADIUS: i32 = 1;
+/// `MobEffects.OOZING`: always two slimes (`random -> 2`) of
+/// `OozingMobEffect.SLIME_SIZE`, counted within 2 blocks.
+pub const OOZING_SLIMES: u32 = 2;
+pub const OOZING_SLIME_SIZE: u8 = 2;
+pub const OOZING_RADIUS: f64 = 2.0;
+/// `MobEffects.INFESTED`: a 0.1 chance per hurt of
+/// `Mth.randomBetweenInclusive(random, 1, 2)` silverfish.
+pub const INFESTED_CHANCE: f32 = 0.1;
+pub const INFESTED_SILVERFISH: (u32, u32) = (1, 2);
+/// `WebBlock.entityInside`: the stuck multiplier with Weaving (0.5, 0.25,
+/// 0.5) instead of (0.25, 0.05, 0.25).
+pub const WEAVING_WEB_SPEED: [f64; 3] = [0.5, 0.25, 0.5];
+/// `SpectralArrow.duration`: Glowing for 200 ticks.
+pub const SPECTRAL_GLOWING_TICKS: u32 = 200;
+
+/// `OozingMobEffect.numberOfSlimesToSpawn`: with a cramming limit below 1
+/// every requested slime spawns; otherwise only as many as keep the slimes
+/// within 2 blocks (counted up to the limit) under it.
+pub fn oozing_slimes(max_entity_cramming: i32, nearby_slimes: impl FnOnce(i32) -> i32, requested: i32) -> i32 {
+    if max_entity_cramming < 1 {
+        requested
+    } else {
+        // `Mth.clamp(0, max - nearby, requested)`: Java's argument order makes
+        // the value 0 and the bounds `max - nearby` and `requested`.
+        let lower = max_entity_cramming - nearby_slimes(max_entity_cramming);
+        mth_clamp(0, lower, requested)
+    }
+}
+
+/// Java's `Mth.clamp(int value, int min, int max)`:
+/// `Math.min(Math.max(value, min), max)`.
+fn mth_clamp(value: i32, min: i32, max: i32) -> i32 {
+    value.max(min).min(max)
+}
 
 impl Effects {
     pub fn iter(&self) -> impl Iterator<Item = &Active> {
@@ -949,6 +1014,35 @@ impl Effects {
     pub fn mining_factor(&self) -> f32 {
         self.get(Effect::MiningFatigue).map_or(1.0, |a| 0.3f64.powf(f64::from(a.amplifier) + 1.) as f32)
     }
+    /// Health Boost's `MAX_HEALTH` modifier: `4 * (amplifier + 1)` added to
+    /// the attribute (`MobEffects.HEALTH_BOOST`, `ADD_VALUE`).
+    pub fn max_health_bonus(&self) -> f32 {
+        self.levels(Effect::HealthBoost) as f32 * HEALTH_BOOST_PER_LEVEL
+    }
+
+    /// Levitation's amplifier, if active: `LivingEntity.travelInAir` eases
+    /// the vertical motion toward `0.05 * (amplifier + 1)` a tick instead of
+    /// falling.
+    pub fn levitation(&self) -> Option<u8> {
+        self.get(Effect::Levitation).map(|a| a.amplifier)
+    }
+
+    /// Glowing: the entity is outlined through walls
+    /// (`LivingEntity.isCurrentlyGlowing`).
+    pub fn glowing(&self) -> bool {
+        self.has(Effect::Glowing)
+    }
+
+    /// What `MobEffect.onMobRemoved` does for these effects when their
+    /// bearer is killed (`RemovalReason.KILLED`), in Java's order.
+    pub fn death_triggers(&self) -> DeathTriggers {
+        DeathTriggers {
+            wind_burst: self.has(Effect::WindCharged),
+            cobwebs: self.has(Effect::Weaving),
+            slimes: self.has(Effect::Oozing),
+        }
+    }
+
     /// Extra jump height levels (Jump Boost).
     pub fn jump_boost(&self) -> u32 {
         self.levels(Effect::JumpBoost)

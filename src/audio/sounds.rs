@@ -119,6 +119,7 @@ pub fn material(block: Block) -> Material {
         b if b == Block::GLASS
             || b == Block::GLOWSTONE
             || b == Block::ICE
+            || crate::world::frosted_ice::owns(b.0)
             || b.stained_glass_color().is_some()
             || b.is_glass_pane() =>
         {
@@ -227,6 +228,10 @@ pub enum Sound {
     Weapon(crate::weapons::Cue),
     /// v0.16 Track C cues (breeze, wind charges, trial spawners, vaults).
     Breeze(crate::entity::breeze::Cue),
+    /// v0.15 Track A: spells, fangs, vex charges, ravagers and crossbows.
+    Illager(crate::entity::illager::Cue),
+    /// v0.15 Track E: the raid horn, bell resonance and villagers' cheers.
+    Raid(crate::entity::raid::Cue),
 }
 
 const M: usize = Material::ALL.len();
@@ -239,7 +244,9 @@ impl Sound {
     const WARDEN_END: usize = Self::SNIFFER_END + crate::entity::warden::Cue::ALL.len();
     const SCULK_END: usize = Self::WARDEN_END + crate::world::sculk::SculkCue::ALL.len();
     const WEAPON_END: usize = Self::SCULK_END + crate::weapons::Cue::ALL.len();
-    pub const COUNT: usize = Self::WEAPON_END + crate::entity::breeze::Cue::ALL.len();
+    const BREEZE_END: usize = Self::WEAPON_END + crate::entity::breeze::Cue::ALL.len();
+    const ILLAGER_END: usize = Self::BREEZE_END + crate::entity::illager::Cue::ALL.len();
+    pub const COUNT: usize = Self::ILLAGER_END + crate::entity::raid::Cue::ALL.len();
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -251,6 +258,10 @@ impl Sound {
             Sound::Sculk(cue) => Self::WARDEN_END + cue as usize,
             Sound::Weapon(cue) => Self::SCULK_END + cue as usize,
             Sound::Breeze(cue) => Self::WEAPON_END + cue as usize,
+            Sound::Illager(cue) => {
+                Self::BREEZE_END + crate::entity::illager::Cue::ALL.iter().position(|&c| c == cue).unwrap_or(0)
+            }
+            Sound::Raid(cue) => Self::ILLAGER_END + cue as usize,
             Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
             Sound::Thunder => Self::BASE_COUNT - 1,
             Sound::Bell => Self::BASE_COUNT - 4,
@@ -370,6 +381,8 @@ impl Sound {
             .chain(crate::world::sculk::SculkCue::ALL.map(Sound::Sculk))
             .chain(crate::weapons::Cue::ALL.map(Sound::Weapon))
             .chain(crate::entity::breeze::Cue::ALL.map(Sound::Breeze))
+            .chain(crate::entity::illager::Cue::ALL.map(Sound::Illager))
+            .chain(crate::entity::raid::Cue::ALL.map(Sound::Raid))
     }
 
     /// Stable sound name used when exporting or identifying samples.
@@ -382,6 +395,8 @@ impl Sound {
             Sound::Sculk(c) => format!("sculk_{c:?}").to_lowercase(),
             Sound::Weapon(c) => format!("weapon_{c:?}").to_lowercase(),
             Sound::Breeze(c) => format!("trial_{c:?}").to_lowercase(),
+            Sound::Illager(c) => c.key().replace('.', "_"),
+            Sound::Raid(c) => c.key().replace('.', "_"),
             Sound::Thunder => "lightning_thunder".into(),
             Sound::HoneySlide => "honey_block_slide".into(),
             Sound::HoneyDrink => "honey_drink".into(),
@@ -497,6 +512,13 @@ impl Sound {
                     _ => SoundSource::Blocks,
                 }
             }
+            // Illagers, vexes and ravagers are `Monster`s (`HOSTILE`); the
+            // crossbow plays in the shooter's category too.
+            Sound::Illager(_) => SoundSource::Hostile,
+            // `RAID_HORN` plays as `NEUTRAL`, `BELL_RESONATE` as `BLOCKS`
+            // and the villagers' cheers as `NEUTRAL`.
+            Sound::Raid(crate::entity::raid::Cue::BellResonate) => SoundSource::Blocks,
+            Sound::Raid(_) => SoundSource::Neutral,
             Sound::Mob(voice, _) => voice.source(),
         }
     }
@@ -509,6 +531,8 @@ impl Sound {
     pub fn variants(self) -> u32 {
         match self {
             Sound::Allay(..) | Sound::CopperGolem(..) | Sound::Note(_) | Sound::Breeze(_) => 1,
+            Sound::Illager(_) => 2,
+            Sound::Raid(_) => 1,
             Sound::Warden(_) | Sound::Sculk(_) => 2,
             Sound::Sniffer(_) | Sound::Weapon(_) => 2,
             Sound::Step(_) => 4,
@@ -555,6 +579,8 @@ impl Sound {
             Sound::Sculk(c) => super::warden::render_sculk(c, &mut rng),
             Sound::Weapon(c) => super::weapons::render(c, &mut rng),
             Sound::Breeze(c) => super::breeze::render(c, &mut rng),
+            Sound::Illager(c) => super::illager::render(c, &mut rng),
+            Sound::Raid(c) => super::raid::render(c, &mut rng),
             Sound::Thunder => thunder(&mut rng),
             Sound::HoneySlide => honey_sound(&mut rng, 0.35),
             Sound::HoneyDrink => honey_sound(&mut rng, 0.22),

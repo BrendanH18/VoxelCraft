@@ -1,0 +1,517 @@
+# Trial chamber template catalogue for generation 4 (v0.15 Track G, FE-02).
+#
+# Every `piece` line holds Java 26.3's facts about one template location that
+# Java's pools name: size, job sites, beds, bells, loot tables, residents and
+# jigsaw connectors (see src/world/jigsaw/catalogue.rs for the syntax). The
+# templates themselves are original: src/world/trial_chambers/catalogue.rs draws each one at its size.
+# The pools below are Java's, element by element. Both are checked against
+# tests/fixtures/java/26.3/structure_catalogues.json by the catalogue tests.
+
+# Pieces: Java's facts per template location (see jigsaw/catalogue.rs).
+piece trial_chambers/chamber/addon/c1_breeze chamber_addon 5 16 5 dn!:c1_breeze/empty>empty e:empty/spawner_connector>trial_chambers/spawner/breeze^1,1 e:empty/upper_addon_extension>trial_chambers/chamber/addon n:empty/upper_addon_extension>trial_chambers/chamber/addon s:empty/lower_addon_extension>trial_chambers/chamber/addon s:empty/upper_addon_extension>trial_chambers/chamber/addon w:empty/upper_addon_extension>trial_chambers/chamber/addon
+piece trial_chambers/chamber/addon/full_corner_column chamber_addon 5 17 15 de!:empty/copper_dispenser>trial_chambers/dispensers/chamber e:empty/upper_addon_extension>trial_chambers/chamber/addon n:empty/upper_addon_extension>trial_chambers/chamber/addon w:upper_start/empty>empty
+piece trial_chambers/chamber/addon/full_stacked_walkway chamber_addon 5 17 16 dw!:empty/copper_dispenser>trial_chambers/dispensers/chamber*2 e:middle_start/empty>empty e:upper_start/empty>empty w:empty/spawner_connector>trial_chambers/spawner/ranged^1,1
+piece trial_chambers/chamber/addon/full_stacked_walkway_2 chamber_addon 5 17 16 dw!:empty/dispenser>trial_chambers/dispensers/chamber*2 e:empty/reward_connector>trial_chambers/reward/all e:middle_start/empty>empty e:upper_start/empty>empty w:empty/spawner_connector>trial_chambers/spawner/ranged^1,1
+piece trial_chambers/chamber/addon/grate_bridge chamber_addon 5 11 10 n:upper_start/empty>empty
+piece trial_chambers/chamber/addon/hanging_platform chamber_addon 5 8 5 n:upper_addon_extension/empty>empty
+piece trial_chambers/chamber/addon/lower_staircase_down chamber_addon 1 6 5 e:lower_addon_extension/empty>empty
+piece trial_chambers/chamber/addon/short_grate_platform chamber_addon 5 6 5 e:upper_start/empty>empty n:empty/upper_addon_extension>trial_chambers/chamber/addon s:empty/upper_addon_extension>trial_chambers/chamber/addon w:empty/upper_addon_extension>trial_chambers/chamber/addon
+piece trial_chambers/chamber/addon/short_platform chamber_addon 5 4 5 w:upper_start/empty>empty
+piece trial_chambers/chamber/addon/walkway_with_bridge_1 chamber_addon 11 12 15
+piece trial_chambers/chamber/assembly chamber 34 19 29 dn!:empty/copper_dispenser>trial_chambers/dispensers/chamber*4 ds!:empty/copper_dispenser>trial_chambers/dispensers/chamber*5 ds:empty/upper_addon>trial_chambers/chamber/assembly*11 dw!:empty/copper_dispenser>trial_chambers/dispensers/chamber e:empty/spawner_connector>trial_chambers/spawner/ranged^1,1 e:in_connector/entrance_cap>trial_chambers/chamber/entrance_cap*2 n:empty/ominous_vault>trial_chambers/reward/ominous_vault n:empty/reward_connector>trial_chambers/reward/all n:empty/right_staircase>trial_chambers/chamber/assembly n:in_connector/entrance_cap>trial_chambers/chamber/entrance_cap s:empty/left_staircase>trial_chambers/chamber/assembly ue!:empty/disposal>trial_chambers/decor/disposal*2 un!:empty/disposal>trial_chambers/decor/disposal un:empty/lower_addon>trial_chambers/chamber/assembly*11 w:empty/reward_connector>trial_chambers/reward/all*3 w:empty/spawner_connector>trial_chambers/spawner/breeze^1,1
+piece trial_chambers/chamber/assembly/cover_1 chamber_part 5 7 5 dn:lower_addon/empty>empty
+piece trial_chambers/chamber/assembly/cover_2 chamber_part 5 7 5 dn:lower_addon/empty>empty
+piece trial_chambers/chamber/assembly/cover_3 chamber_part 5 7 5 dn:lower_addon/empty>empty
+piece trial_chambers/chamber/assembly/cover_4 chamber_part 5 7 5 dn:lower_addon/empty>empty
+piece trial_chambers/chamber/assembly/cover_5 chamber_part 5 7 5 dn:lower_addon/empty>empty s:empty/floor_dispenser>trial_chambers/dispensers/chamber
+piece trial_chambers/chamber/assembly/cover_6 chamber_part 5 7 5 dn:lower_addon/empty>empty s:empty/floor_dispenser>trial_chambers/dispensers/chamber
+piece trial_chambers/chamber/assembly/cover_7 chamber_part 5 4 5 dn:lower_addon/empty>empty
+piece trial_chambers/chamber/assembly/full_column chamber_part 3 12 3 dw:lower_addon/empty>empty
+piece trial_chambers/chamber/assembly/hanging_1 chamber_part 5 5 3 un:upper_addon/empty>empty
+piece trial_chambers/chamber/assembly/hanging_2 chamber_part 5 7 5 un:upper_addon/empty>empty
+piece trial_chambers/chamber/assembly/hanging_3 chamber_part 3 6 3 un:upper_addon/empty>empty
+piece trial_chambers/chamber/assembly/hanging_4 chamber_part 3 6 5 un:upper_addon/empty>empty
+piece trial_chambers/chamber/assembly/hanging_5 chamber_part 3 2 3 un:upper_addon/empty>empty
+piece trial_chambers/chamber/assembly/left_staircase_1 chamber_part 6 12 11 s:right_staircase/empty>empty
+piece trial_chambers/chamber/assembly/left_staircase_2 chamber_part 6 12 11 s:right_staircase/empty>empty
+piece trial_chambers/chamber/assembly/left_staircase_3 chamber_part 6 12 11 n:empty/spawner_connector>trial_chambers/spawner/all^1,1 s:right_staircase/empty>empty
+piece trial_chambers/chamber/assembly/platform_1 chamber_part 5 2 5 dn:lower_addon/empty>empty
+piece trial_chambers/chamber/assembly/right_staircase_1 chamber_part 6 12 11 n:left_staircase/empty>empty
+piece trial_chambers/chamber/assembly/right_staircase_2 chamber_part 6 12 11 n:left_staircase/empty>empty
+piece trial_chambers/chamber/assembly/right_staircase_3 chamber_part 6 12 11 n:left_staircase/empty>empty s:empty/spawner_connector>trial_chambers/spawner/all^1,1
+piece trial_chambers/chamber/assembly/spawner_1 chamber_part 5 7 5 dn:lower_addon/empty>empty
+piece trial_chambers/chamber/chamber_1 chamber 24 19 29 de!:empty/copper_dispenser>trial_chambers/dispensers/chamber*4 dn!:empty/copper_dispenser>trial_chambers/dispensers/chamber*3 ds!:empty/copper_dispenser>trial_chambers/dispensers/chamber*3 dw!:empty/copper_dispenser>trial_chambers/dispensers/chamber*5 e:empty/upper_start>trial_chambers/chamber/addon e:in_connector/entrance_cap>trial_chambers/chamber/entrance_cap n:empty/upper_start>trial_chambers/chamber/addon n:in_connector/entrance_cap>trial_chambers/chamber/entrance_cap s:empty/upper_start>trial_chambers/chamber/addon s:in_connector/entrance_cap>trial_chambers/chamber/entrance_cap ue!:empty/disposal>trial_chambers/decor/disposal un!:empty/c1_breeze>trial_chambers/chamber/addon^2,2 un!:empty/disposal>trial_chambers/decor/disposal us!:empty/disposal>trial_chambers/decor/disposal uw!:empty/disposal>trial_chambers/decor/disposal w:empty/middle_start>trial_chambers/chamber/addon^1,1 w:empty/ominous_vault>trial_chambers/reward/ominous_vault^3,0 w:in_connector/entrance_cap>trial_chambers/chamber/entrance_cap
+piece trial_chambers/chamber/chamber_2 chamber 24 19 29 de!:empty/copper_dispenser>trial_chambers/dispensers/chamber*2 dn!:empty/copper_dispenser>trial_chambers/dispensers/chamber*2 ds!:empty/copper_dispenser>trial_chambers/dispensers/chamber*3 dw!:empty/copper_dispenser>trial_chambers/dispensers/chamber*5 e:empty/ominous_vault>trial_chambers/reward/ominous_vault e:empty/spawner_connector>trial_chambers/spawner/ranged^1,1 e:empty/upper_addon_extension>trial_chambers/chamber/addon e:empty/upper_start>trial_chambers/chamber/addon e:in_connector/entrance_cap>trial_chambers/chamber/entrance_cap n:empty/upper_addon_extension>trial_chambers/chamber/addon n:empty/upper_start>trial_chambers/chamber/addon n:in_connector/entrance_cap>trial_chambers/chamber/entrance_cap s:empty/lower_addon_extension>trial_chambers/chamber/addon s:empty/upper_addon_extension>trial_chambers/chamber/addon s:empty/upper_start>trial_chambers/chamber/addon s:in_connector/entrance_cap>trial_chambers/chamber/entrance_cap ue!:empty/disposal>trial_chambers/decor/disposal un!:empty/disposal>trial_chambers/decor/disposal us!:empty/disposal>trial_chambers/decor/disposal uw!:empty/disposal>trial_chambers/decor/disposal w:empty/middle_start>trial_chambers/chamber/addon w:empty/upper_addon_extension>trial_chambers/chamber/addon w:in_connector/entrance_cap>trial_chambers/chamber/entrance_cap
+piece trial_chambers/chamber/chamber_4 chamber 24 14 24 e:empty/decor>trial_chambers/decor/chamber*6 e:empty/reward_connector>trial_chambers/reward/all n:empty/decor>trial_chambers/decor/chamber*2 n:empty/ominous_vault>trial_chambers/reward/ominous_vault n:empty/spawner_connector>trial_chambers/spawner/small_melee^1,1 n:in_connector/entrance_cap>trial_chambers/chamber/entrance_cap s:empty/decor>trial_chambers/decor/chamber*3 un!:empty/disposal>trial_chambers/decor/disposal uw!:empty/disposal>trial_chambers/decor/disposal*2 w:empty/decor>trial_chambers/decor/chamber*3 w:empty/reward_connector>trial_chambers/reward/all w:empty/spawner_connector>trial_chambers/spawner/small_melee^1,1 w:in_connector/entrance_cap>trial_chambers/chamber/entrance_cap*2
+piece trial_chambers/chamber/chamber_8 chamber 19 24 14 de!:empty/copper_dispenser>trial_chambers/dispensers/chamber*4 dn!:empty/copper_dispenser>trial_chambers/dispensers/chamber*3 ds!:empty/copper_dispenser>trial_chambers/dispensers/chamber*5 dw!:empty/copper_dispenser>trial_chambers/dispensers/chamber*4 n:empty/reward_connector>trial_chambers/reward/all n:empty/spawner_connector>trial_chambers/spawner/slow_ranged n:in_connector/entrance_cap>trial_chambers/chamber/entrance_cap s:empty/reward_connector>trial_chambers/reward/all*2 s:empty/spawner_connector>trial_chambers/spawner/slow_ranged*3 s:in_connector/entrance_cap>trial_chambers/chamber/entrance_cap un!:empty/disposal>trial_chambers/decor/disposal us!:empty/disposal>trial_chambers/decor w:empty/ominous_vault>trial_chambers/reward/ominous_vault
+piece trial_chambers/chamber/entrance_cap cap 5 5 1 n:entrance_cap/empty>empty
+piece trial_chambers/chamber/eruption chamber 29 14 29 n:in_connector/entrance_cap>trial_chambers/chamber/entrance_cap s:in_connector/entrance_cap>trial_chambers/chamber/entrance_cap un!:empty/center>trial_chambers/chamber/eruption^1,0 un!:empty/disposal>trial_chambers/decor/disposal us!:empty/disposal>trial_chambers/decor/disposal uw!:empty/disposal>trial_chambers/decor/disposal w:in_connector/entrance_cap>trial_chambers/chamber/entrance_cap
+piece trial_chambers/chamber/eruption/breeze_slice_1 chamber_part 5 12 11 e:empty/quadrant>trial_chambers/chamber/eruption n:breeze_slice/empty>empty n:empty/spawner_connector>trial_chambers/spawner/breeze s:empty/ominous_vault>trial_chambers/reward/ominous_vault
+piece trial_chambers/chamber/eruption/center_1 chamber_part 5 12 5 dn!:center/empty>empty e:empty/breeze_slice>trial_chambers/chamber/eruption n:empty/slice>trial_chambers/chamber/eruption s:empty/slice>trial_chambers/chamber/eruption w:empty/reward_connector>trial_chambers/reward/all w:empty/slice>trial_chambers/chamber/eruption
+piece trial_chambers/chamber/eruption/quadrant_1 chamber_part 11 12 11 w:quadrant/empty>empty
+piece trial_chambers/chamber/eruption/quadrant_2 chamber_part 11 12 11 e:empty/reward_connector>trial_chambers/reward/all w:quadrant/empty>empty
+piece trial_chambers/chamber/eruption/quadrant_3 chamber_part 11 12 11 e:empty/reward_connector>trial_chambers/reward/all w:quadrant/empty>empty
+piece trial_chambers/chamber/eruption/quadrant_4 chamber_part 11 12 11 n:empty/spawner_connector>trial_chambers/spawner/ranged w:quadrant/empty>empty
+piece trial_chambers/chamber/eruption/quadrant_5 chamber_part 11 12 11 n:empty/spawner_connector>trial_chambers/spawner/ranged w:quadrant/empty>empty
+piece trial_chambers/chamber/eruption/slice_1 chamber_part 5 12 11 e:empty/quadrant>trial_chambers/chamber/eruption n:empty/reward_connector>trial_chambers/reward/all n:slice/empty>empty
+piece trial_chambers/chamber/eruption/slice_2 chamber_part 5 12 11 e:empty/quadrant>trial_chambers/chamber/eruption n:slice/empty>empty
+piece trial_chambers/chamber/eruption/slice_3 chamber_part 5 12 11 e:empty/quadrant>trial_chambers/chamber/eruption n:slice/empty>empty s:empty/spawner_connector>trial_chambers/spawner/melee
+piece trial_chambers/chamber/pedestal chamber 34 14 34 de!:empty/copper_dispenser>trial_chambers/dispensers/chamber*8 dn!:empty/copper_dispenser>trial_chambers/dispensers/chamber*7 ds!:empty/copper_dispenser>trial_chambers/dispensers/chamber*8 dw!:empty/copper_dispenser>trial_chambers/dispensers/chamber*7 e:in_connector/entrance_cap>trial_chambers/chamber/entrance_cap n:in_connector/entrance_cap>trial_chambers/chamber/entrance_cap ue!:empty/disposal>trial_chambers/decor/disposal un!:empty/center>trial_chambers/chamber/pedestal^2,2 un!:empty/disposal>trial_chambers/decor/disposal
+piece trial_chambers/chamber/pedestal/center_1 chamber_part 10 12 10 dn!:center/empty>empty^2,2 e:empty/slice>trial_chambers/chamber/pedestal^1,0*2 n:empty/slice>trial_chambers/chamber/pedestal^1,0*2 n:empty/spawner_connector>trial_chambers/spawner/all n:empty/spawner_connector>trial_chambers/spawner/breeze^1,1 s:empty/ominous_slice>trial_chambers/chamber/pedestal^1,0 s:empty/slice>trial_chambers/chamber/pedestal^1,0 s:empty/spawner_connector>trial_chambers/spawner/all^1,1 w:empty/slice>trial_chambers/chamber/pedestal^1,0*2
+piece trial_chambers/chamber/pedestal/ominous_slice_1 chamber_part 5 12 11 e:empty/quadrant>trial_chambers/chamber/pedestal*2 n:ominous_slice/empty>empty s:empty/ominous_vault>trial_chambers/reward/ominous_vault w:empty/quadrant>trial_chambers/chamber/pedestal
+piece trial_chambers/chamber/pedestal/quadrant_1 chamber_part 11 12 11 n:quadrant/empty>empty w:quadrant/empty>empty
+piece trial_chambers/chamber/pedestal/quadrant_2 chamber_part 11 12 11 w:quadrant/empty>empty*2
+piece trial_chambers/chamber/pedestal/quadrant_3 chamber_part 11 12 11 n:quadrant/empty>empty w:quadrant/empty>empty*2
+piece trial_chambers/chamber/pedestal/slice_1 chamber_part 5 12 11 e:empty/quadrant>trial_chambers/chamber/pedestal*2 n:empty/reward_connector>trial_chambers/reward/all n:slice/empty>empty w:empty/quadrant>trial_chambers/chamber/pedestal*2
+piece trial_chambers/chamber/pedestal/slice_2 chamber_part 5 12 11 e:empty/quadrant>trial_chambers/chamber/pedestal*2 n:slice/empty>empty s:empty/reward_connector>trial_chambers/reward/all w:empty/quadrant>trial_chambers/chamber/pedestal*2
+piece trial_chambers/chamber/pedestal/slice_3 chamber_part 5 12 11 e:empty/quadrant>trial_chambers/chamber/pedestal n:slice/empty>empty s:empty/reward_connector>trial_chambers/reward/all w:empty/quadrant>trial_chambers/chamber/pedestal
+piece trial_chambers/chamber/pedestal/slice_4 chamber_part 5 12 11 e:empty/quadrant>trial_chambers/chamber/pedestal n:slice/empty>empty w:empty/reward_connector>trial_chambers/reward/all w:quadrant/empty>empty
+piece trial_chambers/chamber/pedestal/slice_5 chamber_part 5 12 11 e:empty/quadrant>trial_chambers/chamber/pedestal*2 n:slice/empty>empty s:empty/reward_connector>trial_chambers/reward/all w:empty/quadrant>trial_chambers/chamber/pedestal
+piece trial_chambers/chamber/slanted chamber 29 14 29 e:in_connector/entrance_cap>trial_chambers/chamber/entrance_cap n:in_connector/entrance_cap>trial_chambers/chamber/entrance_cap ue!:empty/disposal>trial_chambers/decor/disposal ue:empty/center>trial_chambers/chamber/slanted un!:empty/disposal>trial_chambers/decor/disposal
+piece trial_chambers/chamber/slanted/center chamber_part 5 12 5 dn:center/empty>empty e:empty/lower_arm>trial_chambers/chamber/slanted e:empty/upper_arm>trial_chambers/chamber/slanted n:empty/lower_arm>trial_chambers/chamber/slanted n:empty/upper_arm>trial_chambers/chamber/slanted s:empty/lower_arm>trial_chambers/chamber/slanted s:empty/ominous_upper_arm>trial_chambers/chamber/slanted s:empty/spawner_connector>trial_chambers/spawner/breeze^1,1 w:empty/lower_arm>trial_chambers/chamber/slanted w:empty/upper_arm>trial_chambers/chamber/slanted
+piece trial_chambers/chamber/slanted/hallway_1 chamber_part 5 5 10 e:empty/quadrant>trial_chambers/chamber/slanted*2 n:lower_arm/empty>empty w:empty/quadrant>trial_chambers/chamber/slanted*2
+piece trial_chambers/chamber/slanted/hallway_2 chamber_part 5 5 10 e:empty/quadrant>trial_chambers/chamber/slanted*2 n:empty/reward_connector>trial_chambers/reward/all n:lower_arm/empty>empty w:empty/quadrant>trial_chambers/chamber/slanted*2
+piece trial_chambers/chamber/slanted/hallway_3 chamber_part 5 5 10 e:empty/quadrant>trial_chambers/chamber/slanted^1,0 n:lower_arm/empty>empty
+piece trial_chambers/chamber/slanted/ominous_upper_arm_1 chamber_part 5 7 10 n:empty/ominous_vault>trial_chambers/reward/ominous_vault n:ominous_upper_arm/empty>empty
+piece trial_chambers/chamber/slanted/quadrant_1 chamber_part 10 12 10 e:empty/reward_connector>trial_chambers/reward/all e:quadrant/empty>empty n:quadrant/empty>empty s:empty/spawner_connector>trial_chambers/spawner/melee^1,1 s:quadrant/empty>empty w:quadrant/empty>empty
+piece trial_chambers/chamber/slanted/quadrant_2 chamber_part 10 12 10 e:empty/reward_connector>trial_chambers/reward/all n:quadrant/empty>empty w:empty/reward_connector>trial_chambers/reward/all w:quadrant/empty>empty
+piece trial_chambers/chamber/slanted/quadrant_3 chamber_part 10 12 10 e:empty/reward_connector>trial_chambers/reward/all e:quadrant/empty>empty s:quadrant/empty>empty w:empty/reward_connector>trial_chambers/reward/all w:quadrant/empty>empty*2
+piece trial_chambers/chamber/slanted/quadrant_4 chamber_part 11 12 11 ds!:empty/copper_dispenser>trial_chambers/dispensers/chamber*4 dw!:empty/copper_dispenser>trial_chambers/dispensers/chamber*4 s:quadrant/empty>empty w:quadrant/empty>empty*2
+piece trial_chambers/chamber/slanted/ramp_1 chamber_part 5 7 10 n:empty/spawner_connector>trial_chambers/spawner/melee^1,1 n:upper_arm/empty>empty
+piece trial_chambers/chamber/slanted/ramp_2 chamber_part 5 7 10 n:upper_arm/empty>empty s:empty/spawner_connector>trial_chambers/spawner/melee^1,1
+piece trial_chambers/chamber/slanted/ramp_3 chamber_part 5 7 10 n:upper_arm/empty>empty s:empty/spawner_connector>trial_chambers/spawner/ranged^1,1
+piece trial_chambers/chamber/slanted/ramp_4 chamber_part 5 7 10 n:upper_arm/empty>empty
+piece trial_chambers/chests/connectors/supply chest_connector 3 1 3 dn!:empty/chest>trial_chambers/chests/contents/supply n:chest_connector/empty>empty
+piece trial_chambers/chests/supply supply 3 2 3 chest=1 loot=chest:chests/trial_chambers/supply un!:chest/empty>empty
+piece trial_chambers/corridor/addon/arrow_dispenser corridor_addon 9 2 5 loot=dispenser:dispensers/trial_chambers/corridor dw!:addon/empty>empty
+piece trial_chambers/corridor/addon/bridge_lower corridor_addon 9 2 5 dw!:addon/empty>empty
+piece trial_chambers/corridor/addon/chandelier_upper corridor_addon 5 4 3 dn!:addon_upper/empty>empty
+piece trial_chambers/corridor/addon/decoration_upper corridor_addon 5 4 3 dn!:addon_upper/empty>empty
+piece trial_chambers/corridor/addon/display_1 corridor_addon 5 6 5 e:display/empty>empty
+piece trial_chambers/corridor/addon/display_2 corridor_addon 6 8 6 e:display/empty>empty
+piece trial_chambers/corridor/addon/display_3 corridor_addon 6 4 6 e:display/empty>empty
+piece trial_chambers/corridor/addon/head_upper corridor_addon 5 4 3 dn!:addon_upper/empty>empty
+piece trial_chambers/corridor/addon/ladder_to_middle corridor_addon 3 8 3 dw!:addon/empty>empty
+piece trial_chambers/corridor/addon/open_walkway corridor_addon 5 10 5 dn:addon/empty>empty un!:empty/addon_upper>trial_chambers/corridors/addon/middle_upper w:empty/spawner_connector>trial_chambers/spawner/all
+piece trial_chambers/corridor/addon/open_walkway_upper corridor_addon 5 4 3 dn!:addon_upper/empty>empty e:empty/spawner_connector>trial_chambers/spawner/ranged
+piece trial_chambers/corridor/addon/reward_upper corridor_addon 5 4 3 dn!:addon_upper/empty>empty w:empty/reward_connector>trial_chambers/reward/all
+piece trial_chambers/corridor/addon/staircase corridor_addon 2 2 3 dw!:addon/empty>empty
+piece trial_chambers/corridor/addon/wall corridor_addon 9 6 5
+piece trial_chambers/corridor/addon/walled_walkway corridor_addon 5 10 5 dn:addon/empty>empty un!:empty/addon_upper>trial_chambers/corridors/addon/middle_upper w:empty/spawner_connector>trial_chambers/spawner/all
+piece trial_chambers/corridor/atrium/bogged_relief atrium_part 7 11 12 w:relief/empty>empty
+piece trial_chambers/corridor/atrium/breeze_relief atrium_part 7 11 12 w:relief/empty>empty
+piece trial_chambers/corridor/atrium/grand_staircase_1 atrium_part 13 8 8 n:grand_staircase/empty>empty
+piece trial_chambers/corridor/atrium/grand_staircase_2 atrium_part 13 8 8 n:grand_staircase/empty>empty
+piece trial_chambers/corridor/atrium/grand_staircase_3 atrium_part 13 8 8 n:grand_staircase/empty>empty
+piece trial_chambers/corridor/atrium/spider_relief atrium_part 7 14 12 w:relief/empty>empty
+piece trial_chambers/corridor/atrium/spiral_relief atrium_part 7 12 12 w:relief/empty>empty
+piece trial_chambers/corridor/atrium_1 atrium 29 20 21 e:empty/relief>trial_chambers/atrium n:atrium/empty>empty^1,1 s:empty/entrance>trial_chambers/corridor s:empty/grand_staircase>trial_chambers/atrium s:empty/ominous_vault>trial_chambers/reward/ominous_vault w:empty/relief>trial_chambers/atrium
+piece trial_chambers/corridor/end_1 corridor_end 19 20 19 n:empty/second_corridor>trial_chambers/corridor s:empty/in_connector>trial_chambers/chambers/end^2,0 s:empty/ominous_vault>trial_chambers/reward/ominous_vault
+piece trial_chambers/corridor/end_2 corridor_end 19 20 19 chest=1 loot=chest:chests/trial_chambers/intersection e:empty/reward_connector>trial_chambers/reward/all n:empty/second_corridor>trial_chambers/corridor s:empty/in_connector>trial_chambers/chambers/end^2,0 s:empty/ominous_vault>trial_chambers/reward/ominous_vault
+piece trial_chambers/corridor/entrance_1 entrance 19 20 19 bed=1 chest=3 loot=chest:chests/trial_chambers/entrance*2 loot=chest:chests/trial_chambers/reward s:empty/reward_connector>trial_chambers/reward/all s:entrance/empty>empty w:empty/display>trial_chambers/entrance
+piece trial_chambers/corridor/entrance_2 entrance 19 20 19 chest=2 loot=chest:chests/trial_chambers/entrance*2 e:empty/reward_connector>trial_chambers/reward/all w:empty/display>trial_chambers/entrance w:entrance/empty>empty
+piece trial_chambers/corridor/entrance_3 entrance 19 22 19 chest=3 loot=chest:chests/trial_chambers/entrance*3 n:empty/reward_connector>trial_chambers/reward/all*2 w:entrance/empty>empty
+piece trial_chambers/corridor/first_plate plate 19 1 20 n:empty/atrium>trial_chambers/corridor^1,1 s:first_corridor/empty>empty^1,1 un!:empty/slice>trial_chambers/corridor/slices*4
+piece trial_chambers/corridor/second_plate plate 19 1 20 n:empty/intersection>trial_chambers/corridor^1,1 s:second_corridor/empty>empty^1,1 un!:empty/slice>trial_chambers/corridor/slices*4
+piece trial_chambers/corridor/straight_1 corridor_slice 19 19 5 dn!:slice/empty>empty e:empty/decor>trial_chambers/decor*11 n:empty/decor>trial_chambers/decor*2 s:empty/decor>trial_chambers/decor*2 ue!:empty/addon>trial_chambers/corridors/addon/lower un!:empty/addon>trial_chambers/corridors/addon/middle uw!:empty/addon>trial_chambers/corridors/addon/lower uw!:empty/addon_upper>trial_chambers/corridors/addon/middle_upper w:empty/decor>trial_chambers/decor*11
+piece trial_chambers/corridor/straight_2 corridor_slice 19 19 5 dn!:slice/empty>empty e:empty/decor>trial_chambers/decor*11 n:empty/decor>trial_chambers/decor*2 s:empty/decor>trial_chambers/decor*2 un!:empty/addon>trial_chambers/corridors/addon/middle uw!:empty/addon>trial_chambers/corridors/addon/lower uw!:empty/addon_upper>trial_chambers/corridors/addon/middle_upper w:empty/decor>trial_chambers/decor*7 w:empty/lower_corridor_connector>trial_chambers/hallway
+piece trial_chambers/corridor/straight_3 corridor_slice 19 19 5 dn!:slice/empty>empty e:empty/decor>trial_chambers/decor*8 n:empty/decor>trial_chambers/decor s:empty/decor>trial_chambers/decor ue!:empty/addon>trial_chambers/corridors/addon/lower un!:empty/addon>trial_chambers/corridors/addon/middle uw!:empty/addon>trial_chambers/corridors/addon/lower uw!:empty/addon_upper>trial_chambers/corridors/addon/middle_upper w:empty/decor>trial_chambers/decor*8 w:empty/in_connector>trial_chambers/hallway
+piece trial_chambers/corridor/straight_4 corridor_slice 19 19 5 dn!:slice/empty>empty e:empty/decor>trial_chambers/decor*11 n:empty/decor>trial_chambers/decor s:empty/decor>trial_chambers/decor ue!:empty/addon>trial_chambers/corridors/addon/lower un!:empty/addon>trial_chambers/corridors/addon/middle uw!:empty/addon>trial_chambers/corridors/addon/lower uw!:empty/addon_upper>trial_chambers/corridors/addon/middle_upper w:empty/decor>trial_chambers/decor*9 w:empty/upper_corridor_connector>trial_chambers/hallway
+piece trial_chambers/corridor/straight_5 corridor_slice 19 19 5 dn!:slice/empty>empty e:empty/decor>trial_chambers/decor*10 e:empty/lower_corridor_connector>trial_chambers/hallway n:empty/decor>trial_chambers/decor s:empty/decor>trial_chambers/decor ue!:empty/addon>trial_chambers/corridors/addon/lower un!:empty/addon>trial_chambers/corridors/addon/middle uw!:empty/addon>trial_chambers/corridors/addon/lower uw!:empty/addon_upper>trial_chambers/corridors/addon/middle_upper w:empty/decor>trial_chambers/decor*11
+piece trial_chambers/corridor/straight_6 corridor_slice 19 19 5 dn!:slice/empty>empty e:empty/in_connector>trial_chambers/hallway n:empty/spawner_connector>trial_chambers/spawner/all un!:empty/addon>trial_chambers/corridors/addon/middle uw!:empty/addon_upper>trial_chambers/corridors/addon/middle_upper w:empty/decor>trial_chambers/decor*8
+piece trial_chambers/corridor/straight_7 corridor_slice 19 19 5 dn!:slice/empty>empty e:empty/decor>trial_chambers/decor*9 e:empty/reward_connector>trial_chambers/reward/all e:empty/upper_corridor_connector>trial_chambers/hallway ue!:empty/addon>trial_chambers/corridors/addon/lower un!:empty/addon>trial_chambers/corridors/addon/middle uw!:empty/addon>trial_chambers/corridors/addon/lower w:empty/decor>trial_chambers/decor*6
+piece trial_chambers/corridor/straight_8 corridor_slice 19 19 5 dn!:slice/empty>empty e:empty/decor>trial_chambers/decor*6 n:empty/decor>trial_chambers/decor*3 s:empty/decor>trial_chambers/decor*3 w:empty/decor>trial_chambers/decor*6 w:empty/spawner_connector>trial_chambers/spawner/all
+piece trial_chambers/decor/barrel decor 1 2 1 barrel=1 loot=barrel:chests/trial_chambers/corridor w:decor/empty>empty
+piece trial_chambers/decor/black_bed decor 2 2 1 bed=1 e:bed/empty>empty
+piece trial_chambers/decor/blue_bed decor 2 2 1 bed=1 e:bed/empty>empty
+piece trial_chambers/decor/brown_bed decor 2 2 1 bed=1 e:bed/empty>empty
+piece trial_chambers/decor/candle_1 decor 1 2 1 w:decor/empty>empty
+piece trial_chambers/decor/candle_2 decor 1 2 1 w:decor/empty>empty
+piece trial_chambers/decor/candle_3 decor 1 2 1 w:decor/empty>empty
+piece trial_chambers/decor/candle_4 decor 1 2 1 w:decor/empty>empty
+piece trial_chambers/decor/cyan_bed decor 2 2 1 bed=1 e:bed/empty>empty
+piece trial_chambers/decor/dead_bush_pot decor 1 2 1 w:decor/empty>empty
+piece trial_chambers/decor/disposal decor 1 4 3 barrel=1 de!:disposal/empty>empty
+piece trial_chambers/decor/empty_pot decor 1 2 1 w:decor/empty>empty
+piece trial_chambers/decor/flow_pot decor 1 2 1 decorated_pot=1 loot=decorated_pot:pots/trial_chambers/corridor w:decor/empty>empty
+piece trial_chambers/decor/gray_bed decor 2 2 1 bed=1 e:bed/empty>empty
+piece trial_chambers/decor/green_bed decor 2 2 1 bed=1 e:bed/empty>empty
+piece trial_chambers/decor/guster_pot decor 1 2 1 decorated_pot=1 loot=decorated_pot:pots/trial_chambers/corridor w:decor/empty>empty
+piece trial_chambers/decor/light_blue_bed decor 2 2 1 bed=1 e:bed/empty>empty
+piece trial_chambers/decor/light_gray_bed decor 2 2 1 bed=1 e:bed/empty>empty
+piece trial_chambers/decor/lime_bed decor 2 2 1 bed=1 e:bed/empty>empty
+piece trial_chambers/decor/magenta_bed decor 2 2 1 bed=1 e:bed/empty>empty
+piece trial_chambers/decor/orange_bed decor 2 2 1 bed=1 e:bed/empty>empty
+piece trial_chambers/decor/pink_bed decor 2 2 1 bed=1 e:bed/empty>empty
+piece trial_chambers/decor/purple_bed decor 2 2 1 bed=1 e:bed/empty>empty
+piece trial_chambers/decor/red_bed decor 2 2 1 bed=1 e:bed/empty>empty
+piece trial_chambers/decor/scrape_pot decor 1 2 1 decorated_pot=1 loot=decorated_pot:pots/trial_chambers/corridor w:decor/empty>empty
+piece trial_chambers/decor/undecorated_pot decor 1 2 1 decorated_pot=1 loot=decorated_pot:pots/trial_chambers/corridor w:decor/empty>empty
+piece trial_chambers/decor/white_bed decor 2 2 1 bed=1 e:bed/empty>empty
+piece trial_chambers/decor/yellow_bed decor 2 2 1 bed=1 e:bed/empty>empty
+piece trial_chambers/dispensers/chamber dispenser 2 1 3 loot=dispenser:dispensers/trial_chambers/chamber uw!:dispenser/empty>empty
+piece trial_chambers/dispensers/floor_dispenser dispenser 2 2 1 loot=dispenser:dispensers/trial_chambers/chamber e:floor_dispenser/empty>empty
+piece trial_chambers/dispensers/wall_dispenser dispenser 2 2 3 loot=dispenser:dispensers/trial_chambers/chamber uw!:copper_dispenser/empty>empty
+piece trial_chambers/hallway/cache_1 hallway 8 7 15 n:in_connector/empty>empty s:empty/in_connector>trial_chambers/hallway w:empty/chest_connector>trial_chambers/chests/supply
+piece trial_chambers/hallway/corner_staircase hallway 5 12 5 n:in_connector/empty>empty w:empty/in_connector>trial_chambers/hallway
+piece trial_chambers/hallway/corner_staircase_down hallway 5 12 5 n:empty/in_connector>trial_chambers/hallway w:in_connector/empty>empty
+piece trial_chambers/hallway/corridor_connector_1 hallway 5 7 3 n:in_connector/empty>empty s:empty/in_connector>trial_chambers/hallway
+piece trial_chambers/hallway/encounter_1 hallway 12 11 17 e:empty/reward_connector>trial_chambers/reward/all e:in_connector/empty>empty w:empty/in_connector>trial_chambers/hallway w:empty/spawner_connector>trial_chambers/spawner/all^1,1
+piece trial_chambers/hallway/encounter_2 hallway 14 11 14 de!:empty/copper_dispenser>trial_chambers/dispensers/chamber dn!:empty/copper_dispenser>trial_chambers/dispensers/chamber*2 ds!:empty/copper_dispenser>trial_chambers/dispensers/chamber dw!:empty/copper_dispenser>trial_chambers/dispensers/chamber e:empty/spawner_connector>trial_chambers/spawner/breeze^1,1 e:in_connector/empty>empty n:empty/in_connector>trial_chambers/hallway n:empty/reward_connector>trial_chambers/reward/all
+piece trial_chambers/hallway/encounter_3 hallway 9 22 9 n:in_connector/empty>empty s:empty/reward_connector>trial_chambers/reward/all s:empty/spawner_connector>trial_chambers/spawner/all^1,1 w:empty/in_connector>trial_chambers/hallway
+piece trial_chambers/hallway/encounter_4 hallway 14 22 19 loot=dispenser:dispensers/trial_chambers/corridor*2 e:empty/in_connector>trial_chambers/hallway e:empty/reward_connector>trial_chambers/reward/all e:empty/spawner_connector>trial_chambers/spawner/slow_ranged^1,1 n:in_connector/empty>empty
+piece trial_chambers/hallway/encounter_5 hallway 19 10 24 de!:empty/copper_dispenser>trial_chambers/dispensers/chamber*4 dn!:empty/copper_dispenser>trial_chambers/dispensers/chamber*3 ds!:empty/copper_dispenser>trial_chambers/dispensers/chamber*4 dw!:empty/copper_dispenser>trial_chambers/dispensers/chamber*2 e:empty/decor>trial_chambers/decor*4 e:empty/reward_connector>trial_chambers/reward/all e:in_connector/empty>empty n:empty/decor>trial_chambers/decor*6 s:empty/decor>trial_chambers/decor*6 s:empty/in_connector>trial_chambers/hallway s:empty/spawner_connector>trial_chambers/spawner/breeze^1,1 w:empty/decor>trial_chambers/decor*13
+piece trial_chambers/hallway/left_corner hallway 5 7 5 e:empty/in_connector>trial_chambers/hallway n:in_connector/empty>empty
+piece trial_chambers/hallway/long_straight_staircase hallway 5 14 10 n:in_connector/empty>empty s:empty/in_connector>trial_chambers/hallway
+piece trial_chambers/hallway/long_straight_staircase_down hallway 5 14 10 n:empty/in_connector>trial_chambers/hallway s:in_connector/empty>empty
+piece trial_chambers/hallway/lower_hallway_connector hallway 11 17 5 e:empty/in_connector>trial_chambers/hallway e:lower_corridor_connector/empty>empty
+piece trial_chambers/hallway/right_corner hallway 5 7 5 n:in_connector/empty>empty w:empty/in_connector>trial_chambers/hallway
+piece trial_chambers/hallway/rubble hallway 5 7 4 chest=1 loot=chest:chests/trial_chambers/reward n:in_connector/empty>empty
+piece trial_chambers/hallway/rubble_chamber hallway 5 7 4 chest=1 loot=chest:chests/trial_chambers/reward n:in_connector/empty>empty
+piece trial_chambers/hallway/rubble_chamber_thin hallway 5 7 1 n:in_connector/empty>empty
+piece trial_chambers/hallway/rubble_thin hallway 5 7 1 n:in_connector/empty>empty
+piece trial_chambers/hallway/straight hallway 5 7 5 n:in_connector/empty>empty s:empty/in_connector>trial_chambers/hallway
+piece trial_chambers/hallway/straight_staircase hallway 5 9 5 n:in_connector/empty>empty s:empty/in_connector>trial_chambers/hallway
+piece trial_chambers/hallway/straight_staircase_down hallway 5 9 5 n:empty/in_connector>trial_chambers/hallway s:in_connector/empty>empty
+piece trial_chambers/hallway/trapped_staircase hallway 11 27 5 e:empty/in_connector>trial_chambers/hallway e:lower_corridor_connector/empty>empty
+piece trial_chambers/hallway/upper_hallway_connector hallway 11 14 5 e:empty/in_connector>trial_chambers/hallway e:upper_corridor_connector/empty>empty
+piece trial_chambers/intersection/intersection_1 intersection 22 20 22 e:empty/bed>trial_chambers/decor/bed*2 e:intersection/empty>empty^1,1 s:empty/first_corridor>trial_chambers/corridor^1,1 s:empty/ominous_vault>trial_chambers/reward/ominous_vault w:empty/bed>trial_chambers/decor/bed*2 w:empty/in_connector>trial_chambers/hallway
+piece trial_chambers/intersection/intersection_2 intersection 23 20 22 bed=1 decorated_pot=1 barrel=1 loot=barrel:chests/trial_chambers/intersection_barrel e:empty/in_connector>trial_chambers/hallway e:empty/ominous_vault>trial_chambers/reward/ominous_vault n:empty/bed>trial_chambers/decor/bed*2 s:empty/bed>trial_chambers/decor/bed*2 s:empty/first_corridor>trial_chambers/corridor^1,1 w:intersection/empty>empty^1,1
+piece trial_chambers/intersection/intersection_3 intersection 21 37 22 barrel=1 loot=barrel:chests/trial_chambers/intersection_barrel e:empty/bed>trial_chambers/decor/bed*3 s:empty/first_corridor>trial_chambers/corridor^1,1 s:empty/in_connector>trial_chambers/hallway w:intersection/empty>empty^1,1
+piece trial_chambers/reward/ominous_vault vault 3 4 3 vault=1 vault_loot=chests/trial_chambers/reward_ominous:ominous n:ominous_vault/empty>empty
+piece trial_chambers/reward/vault vault 3 3 2 vault=1 vault_loot=chests/trial_chambers/reward n:reward_connector/empty>empty
+piece trial_chambers/spawner/breeze/breeze spawner 3 2 3 trial_spawner=1 trial_spawner_config=trial_chamber/breeze/normal un!:spawner/empty>empty
+piece trial_chambers/spawner/connectors/breeze spawner_connector 3 1 3 dn!:empty/spawner>trial_chambers/spawner/contents/breeze n:spawner_connector/empty>empty
+piece trial_chambers/spawner/connectors/melee spawner_connector 3 1 3 dn!:empty/spawner>trial_chambers/spawner/contents/melee n:spawner_connector/empty>empty
+piece trial_chambers/spawner/connectors/ranged spawner_connector 3 1 3 dn!:empty/spawner>trial_chambers/spawner/contents/ranged n:spawner_connector/empty>empty
+piece trial_chambers/spawner/connectors/slow_ranged spawner_connector 3 1 3 dn!:empty/spawner>trial_chambers/spawner/contents/slow_ranged n:spawner_connector/empty>empty
+piece trial_chambers/spawner/connectors/small_melee spawner_connector 3 1 3 dn!:empty/spawner>trial_chambers/spawner/contents/small_melee n:spawner_connector/empty>empty
+piece trial_chambers/spawner/melee/husk spawner 3 2 3 trial_spawner=1 trial_spawner_config=trial_chamber/melee/husk/normal un!:spawner/empty>empty
+piece trial_chambers/spawner/melee/spider spawner 3 2 3 cobweb=5 trial_spawner=1 trial_spawner_config=trial_chamber/melee/spider/normal un!:spawner/empty>empty
+piece trial_chambers/spawner/melee/zombie spawner 3 2 3 trial_spawner=1 trial_spawner_config=trial_chamber/melee/zombie/normal un!:spawner/empty>empty
+piece trial_chambers/spawner/ranged/poison_skeleton spawner 3 2 3 trial_spawner=1 trial_spawner_config=trial_chamber/ranged/poison_skeleton/normal un!:spawner/empty>empty
+piece trial_chambers/spawner/ranged/skeleton spawner 3 2 3 trial_spawner=1 trial_spawner_config=trial_chamber/ranged/skeleton/normal un!:spawner/empty>empty
+piece trial_chambers/spawner/ranged/stray spawner 3 2 3 trial_spawner=1 trial_spawner_config=trial_chamber/ranged/stray/normal un!:spawner/empty>empty
+piece trial_chambers/spawner/slow_ranged/poison_skeleton spawner 3 2 3 trial_spawner=1 trial_spawner_config=trial_chamber/slow_ranged/poison_skeleton/normal un!:spawner/empty>empty
+piece trial_chambers/spawner/slow_ranged/skeleton spawner 3 2 3 trial_spawner=1 trial_spawner_config=trial_chamber/slow_ranged/skeleton/normal un!:spawner/empty>empty
+piece trial_chambers/spawner/slow_ranged/stray spawner 3 2 3 trial_spawner=1 trial_spawner_config=trial_chamber/slow_ranged/stray/normal un!:spawner/empty>empty
+piece trial_chambers/spawner/small_melee/baby_zombie spawner 3 2 3 trial_spawner=1 trial_spawner_config=trial_chamber/small_melee/baby_zombie/normal un!:spawner/empty>empty
+piece trial_chambers/spawner/small_melee/cave_spider spawner 3 2 3 cobweb=3 trial_spawner=1 trial_spawner_config=trial_chamber/small_melee/cave_spider/normal un!:spawner/empty>empty
+piece trial_chambers/spawner/small_melee/silverfish spawner 3 2 3 trial_spawner=1 trial_spawner_config=trial_chamber/small_melee/silverfish/normal un!:spawner/empty>empty
+piece trial_chambers/spawner/small_melee/slime spawner 3 2 3 trial_spawner=1 trial_spawner_config=trial_chamber/small_melee/slime/normal un!:spawner/empty>empty
+
+# Pool aliases: the trial_chambers structure's `pool_aliases` (resolved by
+# trial_chambers::Aliases::pool).
+alias trial_chambers/spawner/contents/ranged
+alias trial_chambers/spawner/contents/slow_ranged
+alias trial_chambers/spawner/contents/melee
+alias trial_chambers/spawner/contents/small_melee
+
+# Pools: Java's template_pool files, element by element.
+pool trial_chambers/atrium
+1 trial_chambers/corridor/atrium/bogged_relief
+1 trial_chambers/corridor/atrium/breeze_relief
+1 trial_chambers/corridor/atrium/spiral_relief
+1 trial_chambers/corridor/atrium/spider_relief
+1 trial_chambers/corridor/atrium/grand_staircase_1
+1 trial_chambers/corridor/atrium/grand_staircase_2
+1 trial_chambers/corridor/atrium/grand_staircase_3
+end
+pool trial_chambers/chamber/addon
+1 trial_chambers/chamber/addon/full_stacked_walkway
+1 trial_chambers/chamber/addon/full_stacked_walkway_2
+1 trial_chambers/chamber/addon/full_corner_column
+1 trial_chambers/chamber/addon/grate_bridge
+1 trial_chambers/chamber/addon/hanging_platform
+1 trial_chambers/chamber/addon/short_grate_platform
+1 trial_chambers/chamber/addon/short_platform
+1 trial_chambers/chamber/addon/lower_staircase_down
+1 trial_chambers/chamber/addon/walkway_with_bridge_1
+1 trial_chambers/chamber/addon/c1_breeze
+end
+pool trial_chambers/chamber/assembly
+2 trial_chambers/chamber/assembly/full_column
+2 trial_chambers/chamber/assembly/cover_1
+2 trial_chambers/chamber/assembly/cover_2
+2 trial_chambers/chamber/assembly/cover_3
+2 trial_chambers/chamber/assembly/cover_4
+2 trial_chambers/chamber/assembly/cover_5
+2 trial_chambers/chamber/assembly/cover_6
+5 trial_chambers/chamber/assembly/cover_7
+2 trial_chambers/chamber/assembly/platform_1
+1 trial_chambers/chamber/assembly/spawner_1
+2 trial_chambers/chamber/assembly/hanging_1
+1 trial_chambers/chamber/assembly/hanging_2
+2 trial_chambers/chamber/assembly/hanging_3
+2 trial_chambers/chamber/assembly/hanging_4
+4 trial_chambers/chamber/assembly/hanging_5
+1 trial_chambers/chamber/assembly/left_staircase_1
+1 trial_chambers/chamber/assembly/left_staircase_2
+1 trial_chambers/chamber/assembly/left_staircase_3
+1 trial_chambers/chamber/assembly/right_staircase_1
+1 trial_chambers/chamber/assembly/right_staircase_2
+1 trial_chambers/chamber/assembly/right_staircase_3
+end
+pool trial_chambers/chamber/end
+1 trial_chambers/corridor/end_1@trial_chambers_copper_bulb_degradation
+1 trial_chambers/corridor/end_2@trial_chambers_copper_bulb_degradation
+end
+pool trial_chambers/chamber/entrance_cap
+1 trial_chambers/chamber/entrance_cap@trial_chambers_copper_bulb_degradation
+end
+pool trial_chambers/chamber/eruption
+1 trial_chambers/chamber/eruption/center_1
+1 trial_chambers/chamber/eruption/breeze_slice_1
+1 trial_chambers/chamber/eruption/slice_1
+1 trial_chambers/chamber/eruption/slice_2
+1 trial_chambers/chamber/eruption/slice_3
+1 trial_chambers/chamber/eruption/quadrant_1
+1 trial_chambers/chamber/eruption/quadrant_2
+1 trial_chambers/chamber/eruption/quadrant_3
+1 trial_chambers/chamber/eruption/quadrant_4
+1 trial_chambers/chamber/eruption/quadrant_5
+end
+pool trial_chambers/chamber/pedestal
+1 trial_chambers/chamber/pedestal/center_1
+1 trial_chambers/chamber/pedestal/slice_1
+3 trial_chambers/chamber/pedestal/slice_2
+3 trial_chambers/chamber/pedestal/slice_3
+3 trial_chambers/chamber/pedestal/slice_4
+3 trial_chambers/chamber/pedestal/slice_5
+1 trial_chambers/chamber/pedestal/ominous_slice_1
+1 trial_chambers/chamber/pedestal/quadrant_1
+1 trial_chambers/chamber/pedestal/quadrant_2
+1 trial_chambers/chamber/pedestal/quadrant_3
+1 trial_chambers/chamber/slanted/quadrant_1
+1 trial_chambers/chamber/slanted/quadrant_2
+1 trial_chambers/chamber/slanted/quadrant_3
+1 trial_chambers/chamber/slanted/quadrant_4
+end
+pool trial_chambers/chamber/slanted
+1 trial_chambers/chamber/slanted/center
+1 trial_chambers/chamber/slanted/hallway_1
+1 trial_chambers/chamber/slanted/hallway_2
+1 trial_chambers/chamber/slanted/hallway_3
+1 trial_chambers/chamber/slanted/quadrant_1
+1 trial_chambers/chamber/slanted/quadrant_2
+1 trial_chambers/chamber/slanted/quadrant_3
+1 trial_chambers/chamber/slanted/quadrant_4
+1 trial_chambers/chamber/slanted/ramp_1
+1 trial_chambers/chamber/slanted/ramp_2
+1 trial_chambers/chamber/slanted/ramp_3
+1 trial_chambers/chamber/slanted/ramp_4
+1 trial_chambers/chamber/slanted/ominous_upper_arm_1
+end
+pool trial_chambers/chambers/end fallback trial_chambers/hallway/fallback
+1 trial_chambers/chamber/chamber_1@trial_chambers_copper_bulb_degradation
+1 trial_chambers/chamber/assembly@trial_chambers_copper_bulb_degradation
+1 trial_chambers/chamber/eruption@trial_chambers_copper_bulb_degradation
+1 trial_chambers/chamber/slanted@trial_chambers_copper_bulb_degradation
+end
+pool trial_chambers/chests/contents/supply
+1 trial_chambers/chests/supply
+end
+pool trial_chambers/chests/supply
+1 trial_chambers/chests/connectors/supply
+end
+pool trial_chambers/corridor
+1 trial_chambers/corridor/second_plate
+1 trial_chambers/intersection/intersection_1@trial_chambers_copper_bulb_degradation
+1 trial_chambers/intersection/intersection_2@trial_chambers_copper_bulb_degradation
+1 trial_chambers/intersection/intersection_3@trial_chambers_copper_bulb_degradation
+1 trial_chambers/corridor/first_plate
+1 trial_chambers/corridor/atrium_1@trial_chambers_copper_bulb_degradation
+1 trial_chambers/corridor/entrance_1@trial_chambers_copper_bulb_degradation
+1 trial_chambers/corridor/entrance_2@trial_chambers_copper_bulb_degradation
+1 trial_chambers/corridor/entrance_3@trial_chambers_copper_bulb_degradation
+end
+pool trial_chambers/corridor/slices
+1 trial_chambers/corridor/straight_1@trial_chambers_copper_bulb_degradation
+2 trial_chambers/corridor/straight_2@trial_chambers_copper_bulb_degradation
+2 trial_chambers/corridor/straight_3@trial_chambers_copper_bulb_degradation
+2 trial_chambers/corridor/straight_4@trial_chambers_copper_bulb_degradation
+2 trial_chambers/corridor/straight_5@trial_chambers_copper_bulb_degradation
+2 trial_chambers/corridor/straight_6@trial_chambers_copper_bulb_degradation
+1 trial_chambers/corridor/straight_7@trial_chambers_copper_bulb_degradation
+2 trial_chambers/corridor/straight_8@trial_chambers_copper_bulb_degradation
+end
+pool trial_chambers/corridors/addon/lower
+8 empty
+1 trial_chambers/corridor/addon/staircase
+1 trial_chambers/corridor/addon/wall
+1 trial_chambers/corridor/addon/ladder_to_middle
+1 trial_chambers/corridor/addon/arrow_dispenser
+2 trial_chambers/corridor/addon/bridge_lower
+end
+pool trial_chambers/corridors/addon/middle
+8 empty
+2 trial_chambers/corridor/addon/open_walkway
+1 trial_chambers/corridor/addon/walled_walkway
+end
+pool trial_chambers/corridors/addon/middle_upper
+6 empty
+2 trial_chambers/corridor/addon/open_walkway_upper
+1 trial_chambers/corridor/addon/chandelier_upper
+1 trial_chambers/corridor/addon/decoration_upper
+1 trial_chambers/corridor/addon/head_upper
+1 trial_chambers/corridor/addon/reward_upper
+end
+pool trial_chambers/decor
+22 empty
+2 trial_chambers/decor/empty_pot
+2 trial_chambers/decor/dead_bush_pot
+10 trial_chambers/decor/undecorated_pot
+1 trial_chambers/decor/flow_pot
+1 trial_chambers/decor/guster_pot
+1 trial_chambers/decor/scrape_pot
+1 trial_chambers/decor/candle_1
+1 trial_chambers/decor/candle_2
+1 trial_chambers/decor/candle_3
+1 trial_chambers/decor/candle_4
+2 trial_chambers/decor/barrel
+end
+pool trial_chambers/decor/bed
+3 trial_chambers/decor/white_bed
+3 trial_chambers/decor/light_gray_bed
+3 trial_chambers/decor/gray_bed
+3 trial_chambers/decor/black_bed
+3 trial_chambers/decor/brown_bed
+3 trial_chambers/decor/red_bed
+3 trial_chambers/decor/orange_bed
+3 trial_chambers/decor/yellow_bed
+3 trial_chambers/decor/lime_bed
+3 trial_chambers/decor/green_bed
+3 trial_chambers/decor/cyan_bed
+3 trial_chambers/decor/light_blue_bed
+3 trial_chambers/decor/blue_bed
+3 trial_chambers/decor/purple_bed
+3 trial_chambers/decor/magenta_bed
+1 trial_chambers/decor/pink_bed
+end
+pool trial_chambers/decor/chamber
+4 empty
+1 trial_chambers/decor/undecorated_pot
+end
+pool trial_chambers/decor/disposal
+1 trial_chambers/decor/disposal
+end
+pool trial_chambers/dispensers/chamber
+1 empty
+1 trial_chambers/dispensers/chamber
+1 trial_chambers/dispensers/wall_dispenser
+1 trial_chambers/dispensers/floor_dispenser
+end
+pool trial_chambers/entrance
+1 trial_chambers/corridor/addon/display_1
+1 trial_chambers/corridor/addon/display_2
+1 trial_chambers/corridor/addon/display_3
+end
+pool trial_chambers/hallway fallback trial_chambers/hallway/fallback
+1 trial_chambers/hallway/corridor_connector_1
+1 trial_chambers/hallway/upper_hallway_connector@trial_chambers_copper_bulb_degradation
+1 trial_chambers/hallway/lower_hallway_connector@trial_chambers_copper_bulb_degradation
+1 trial_chambers/hallway/rubble
+150 trial_chambers/chamber/chamber_1@trial_chambers_copper_bulb_degradation
+150 trial_chambers/chamber/chamber_2@trial_chambers_copper_bulb_degradation
+150 trial_chambers/chamber/chamber_4@trial_chambers_copper_bulb_degradation
+150 trial_chambers/chamber/chamber_8@trial_chambers_copper_bulb_degradation
+150 trial_chambers/chamber/assembly@trial_chambers_copper_bulb_degradation
+150 trial_chambers/chamber/eruption@trial_chambers_copper_bulb_degradation
+150 trial_chambers/chamber/slanted@trial_chambers_copper_bulb_degradation
+150 trial_chambers/chamber/pedestal@trial_chambers_copper_bulb_degradation
+10 trial_chambers/hallway/rubble_chamber@trial_chambers_copper_bulb_degradation
+1 trial_chambers/hallway/rubble_chamber_thin@trial_chambers_copper_bulb_degradation
+1 trial_chambers/hallway/cache_1@trial_chambers_copper_bulb_degradation
+1 trial_chambers/hallway/left_corner@trial_chambers_copper_bulb_degradation
+1 trial_chambers/hallway/right_corner@trial_chambers_copper_bulb_degradation
+1 trial_chambers/hallway/corner_staircase@trial_chambers_copper_bulb_degradation
+1 trial_chambers/hallway/corner_staircase_down@trial_chambers_copper_bulb_degradation
+1 trial_chambers/hallway/long_straight_staircase@trial_chambers_copper_bulb_degradation
+1 trial_chambers/hallway/long_straight_staircase_down@trial_chambers_copper_bulb_degradation
+1 trial_chambers/hallway/straight@trial_chambers_copper_bulb_degradation
+1 trial_chambers/hallway/straight_staircase@trial_chambers_copper_bulb_degradation
+1 trial_chambers/hallway/straight_staircase_down@trial_chambers_copper_bulb_degradation
+1 trial_chambers/hallway/trapped_staircase@trial_chambers_copper_bulb_degradation
+1 trial_chambers/hallway/encounter_1@trial_chambers_copper_bulb_degradation
+1 trial_chambers/hallway/encounter_2@trial_chambers_copper_bulb_degradation
+1 trial_chambers/hallway/encounter_3@trial_chambers_copper_bulb_degradation
+1 trial_chambers/hallway/encounter_4@trial_chambers_copper_bulb_degradation
+1 trial_chambers/hallway/encounter_5@trial_chambers_copper_bulb_degradation
+end
+pool trial_chambers/hallway/fallback
+1 trial_chambers/hallway/rubble
+1 trial_chambers/hallway/rubble_chamber
+1 trial_chambers/hallway/rubble_thin
+1 trial_chambers/hallway/rubble_chamber_thin
+end
+pool trial_chambers/reward/all
+1 trial_chambers/reward/vault
+end
+pool trial_chambers/reward/contents/default
+1 trial_chambers/reward/vault
+end
+pool trial_chambers/reward/ominous_vault
+1 trial_chambers/reward/ominous_vault
+end
+pool trial_chambers/spawner/all
+1 trial_chambers/spawner/connectors/ranged
+1 trial_chambers/spawner/connectors/melee
+1 trial_chambers/spawner/connectors/small_melee
+end
+pool trial_chambers/spawner/breeze
+1 trial_chambers/spawner/connectors/breeze
+end
+pool trial_chambers/spawner/contents/breeze
+1 trial_chambers/spawner/breeze/breeze
+end
+pool trial_chambers/spawner/melee
+1 trial_chambers/spawner/connectors/melee
+end
+pool trial_chambers/spawner/melee/husk
+1 trial_chambers/spawner/melee/husk
+end
+pool trial_chambers/spawner/melee/spider
+1 trial_chambers/spawner/melee/spider
+end
+pool trial_chambers/spawner/melee/zombie
+1 trial_chambers/spawner/melee/zombie
+end
+pool trial_chambers/spawner/ranged
+1 trial_chambers/spawner/connectors/ranged
+end
+pool trial_chambers/spawner/ranged/poison_skeleton
+1 trial_chambers/spawner/ranged/poison_skeleton
+end
+pool trial_chambers/spawner/ranged/skeleton
+1 trial_chambers/spawner/ranged/skeleton
+end
+pool trial_chambers/spawner/ranged/stray
+1 trial_chambers/spawner/ranged/stray
+end
+pool trial_chambers/spawner/slow_ranged
+1 trial_chambers/spawner/connectors/slow_ranged
+end
+pool trial_chambers/spawner/slow_ranged/poison_skeleton
+1 trial_chambers/spawner/slow_ranged/poison_skeleton
+end
+pool trial_chambers/spawner/slow_ranged/skeleton
+1 trial_chambers/spawner/slow_ranged/skeleton
+end
+pool trial_chambers/spawner/slow_ranged/stray
+1 trial_chambers/spawner/slow_ranged/stray
+end
+pool trial_chambers/spawner/small_melee
+1 trial_chambers/spawner/connectors/small_melee
+end
+pool trial_chambers/spawner/small_melee/baby_zombie
+1 trial_chambers/spawner/small_melee/baby_zombie
+end
+pool trial_chambers/spawner/small_melee/cave_spider
+1 trial_chambers/spawner/small_melee/cave_spider
+end
+pool trial_chambers/spawner/small_melee/silverfish
+1 trial_chambers/spawner/small_melee/silverfish
+end
+pool trial_chambers/spawner/small_melee/slime
+1 trial_chambers/spawner/small_melee/slime
+end

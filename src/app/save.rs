@@ -57,6 +57,9 @@ impl Game {
         if let Some(text) = self.session.last_death_to_string() {
             props.insert("last_death".to_string(), text);
         }
+        if let Some(text) = self.session.raid_omen_to_string() {
+            props.insert("raid_omen_position".to_string(), text);
+        }
         if let Some(p) = self.session.spawn_point {
             props.insert("spawn_point".to_string(), format!("{},{},{}", p.x, p.y, p.z));
         }

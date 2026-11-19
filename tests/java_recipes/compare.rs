@@ -29,23 +29,93 @@ pub const JAVA_ALLOWED: &[(&str, &str)] = &[
         "DEF-02, owner 2026-11-05: ocean-ruin sherds are plain items only; decorated-pot patterns stay deferred",
     ),
     (
-        "crafting_special_shielddecoration/shield_decoration",
-        "banner patterns arrive with the loom (v0.17); a shield has no pattern to carry yet",
-    ),
-    (
         "crafting_special_repairitem/repair_item",
         "general grid repair remains deferred; wolf armor supports paired repair, and anvils/grindstones repair",
     ),
-    (
-        "crafting_special_mapextending/map_extending",
-        "map scale data exists, but crafting/cartography scaling is not wired; see the v0.14 maps record",
-    ),
 ];
 
-/// Banner duplication copies a patterned banner's layers onto a blank one;
-/// banners are plain until the loom (owner decision for v0.12; v0.17).
-fn banner_duplicate(key: &str) -> bool {
-    key.starts_with("crafting_special_bannerduplicate/")
+/// The special grid recipes v0.15 Track B implements, run on example grids
+/// (`BannerDuplicateRecipe`, `ShieldDecorationRecipe`, `BookCloningRecipe`,
+/// `MapExtendingRecipe`). `None` for other keys.
+fn special_check(key: &str) -> Option<Result<(), String>> {
+    use voxelcraft::color::DyeColor;
+    use voxelcraft::content::{banner_patterns as bp, books};
+    let layered = |c: DyeColor| {
+        bp::loom_result(
+            Stack::new(bp::banner_item(c), 1),
+            Stack::new(DyeColor::Black.dye(), 1),
+            voxelcraft::inventory::components::BannerPattern::from_name("cross").unwrap(),
+        )
+        .unwrap()
+    };
+    let grid = |stacks: &[Stack]| {
+        let mut g = Grid::new(3);
+        for (cell, s) in g.cells.iter_mut().zip(stacks) {
+            *cell = Some(*s);
+        }
+        g
+    };
+    let expect = |got: Option<Stack>, want: Option<Stack>| {
+        if got == want { Ok(()) } else { Err(format!("{key}: got {got:?}, want {want:?}")) }
+    };
+    Some(if let Some(colour) = key.strip_prefix("crafting_special_bannerduplicate/") {
+        let c = DyeColor::ALL
+            .into_iter()
+            .find(|c| format!("{}_banner_duplicate", c.adjective().replace(' ', "_")) == colour)?;
+        let source = layered(c);
+        let mut g = grid(&[source, Stack::new(bp::banner_item(c), 1)]);
+        expect(g.result(), Some(source)).and_then(|_| {
+            let rest = g.consume_with_remainders();
+            if g.cells[0] == Some(source) && g.cells[1].is_none() && rest.is_empty() {
+                Ok(())
+            } else {
+                Err(format!("{key}: the patterned banner should stay"))
+            }
+        })
+    } else if key == "crafting_special_shielddecoration/shield_decoration" {
+        let banner = layered(DyeColor::Red);
+        let mut want = bp::patterns(&banner);
+        want.base = Some(DyeColor::Red);
+        let shield = bp::with_patterns(Stack::new(Item::SHIELD, 1), want);
+        expect(grid(&[Stack::new(Item::SHIELD, 1), banner]).result(), Some(shield))
+            .and_then(|_| expect(grid(&[shield, banner]).result(), None))
+    } else if key == "crafting_special_bookcloning/book_cloning" {
+        let pages = vec!["text".to_string()];
+        let quill = books::edit(Stack::new(Item::WRITABLE_BOOK, 1), &pages).unwrap();
+        let original = books::sign(quill, &pages, "Title", "Author").unwrap();
+        let copies = grid(&[original, Stack::new(Item::WRITABLE_BOOK, 1), Stack::new(Item::WRITABLE_BOOK, 1)]).result();
+        match copies.and_then(|c| books::written(&c).map(|b| (c.count, b.generation))) {
+            Some((2, 1)) => Ok(()),
+            other => Err(format!("{key}: copies {other:?}")),
+        }
+    } else if key == "crafting_special_mapextending/map_extending" {
+        let mut maps = voxelcraft::world::maps::MapStorage::default();
+        let data = voxelcraft::world::maps::MapData::fresh(
+            0,
+            0,
+            0,
+            voxelcraft::world::terrain::Dimension::Overworld,
+            true,
+            false,
+        );
+        let map = maps.create(data, Item::FILLED_MAP);
+        let mut g = Grid::new(3);
+        for (i, cell) in g.cells.iter_mut().enumerate() {
+            *cell = Some(if i == 4 { map } else { Stack::new(Item::PAPER, 1) });
+        }
+        match g.result_in(&maps) {
+            None => Err(format!("{key}: no result")),
+            Some(mut result) => {
+                maps.post_process(&mut result);
+                match maps.describe(&result) {
+                    Some((1, false)) if result.map_id != map.map_id => Ok(()),
+                    other => Err(format!("{key}: zoomed map {other:?}")),
+                }
+            }
+        }
+    } else {
+        return None;
+    })
 }
 
 /// VoxelCraft recipes with no Java 26.3 counterpart that are kept, by
@@ -517,8 +587,12 @@ pub fn compare_crafting(r: &Reference) -> Section {
                     continue;
                 }
                 JavaCrafting::Special => {
-                    if banner_duplicate(&key) {
-                        s.allowed.push((key, "banner patterns arrive with the loom (v0.17); banners are plain".into()));
+                    if let Some(checked) = special_check(&key) {
+                        s.compared += 1;
+                        match checked {
+                            Ok(()) => s.matched += 1,
+                            Err(e) => s.failures.push(e),
+                        }
                     } else if let Some(reason) = allowed.get(key.as_str()) {
                         s.allowed.push((key, reason.to_string()));
                     } else {
@@ -699,8 +773,8 @@ pub fn compare_stonecutting(r: &Reference) -> Section {
     s
 }
 
-/// Compares the smithing transforms both ways; trims are a mechanic
-/// VoxelCraft doesn't have.
+/// Compares the smithing transforms and (v0.15 Track D) the trim recipes
+/// both ways.
 pub fn compare_smithing(r: &Reference) -> Section {
     use voxelcraft::smithing;
     let mut s = Section::default();
@@ -731,16 +805,51 @@ pub fn compare_smithing(r: &Reference) -> Section {
         }
     }
     for item in every_item(&r.names) {
-        if smithing::is_base(Item(item)) && !bases.contains(&item) {
+        if smithing::is_upgrade_base(Item(item)) && !bases.contains(&item) {
             s.failures.push(format!("invented smithing base {}", r.names.name(Item(item))));
         }
     }
+    let (mut templates, mut trim_bases, mut additions) = (BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
     for (id, recipe) in r.recipes("smithing_trim") {
         let key = format!("smithing_trim/{id}");
-        if r.ingredient(&recipe["template"]).is_none() {
+        let slots = ["template", "base", "addition"].map(|k| r.ingredient(&recipe[k]));
+        let pattern = recipe["pattern"].as_str().and_then(voxelcraft::inventory::components::TrimPattern::from_name);
+        let ([Some(template), Some(base), Some(addition)], Some(pattern)) = (slots, pattern) else {
             s.unregistered.insert(key, r.missing_names(recipe));
-        } else {
-            s.special.push(key);
+            continue;
+        };
+        s.compared += 1;
+        let mut ok = true;
+        for &t in &template {
+            templates.insert(t);
+            for &b in &base {
+                trim_bases.insert(b);
+                for &a in &addition {
+                    additions.insert(a);
+                    let got = smithing::upgrade(Stack::new(Item(t), 1), Stack::new(Item(b), 1), Stack::new(Item(a), 1));
+                    let want = voxelcraft::content::trim::provides_material(Item(a))
+                        .map(|material| voxelcraft::inventory::components::Trim { pattern, material });
+                    if got.map(|s| (s.item, s.count, s.trim)) != Some((Item(b), 1, want)) || want.is_none() {
+                        s.failures.push(format!("{key}: {} gives {got:?}", r.names.name(Item(b))));
+                        ok = false;
+                    }
+                }
+            }
+        }
+        if ok {
+            s.matched += 1;
+        }
+    }
+    for item in every_item(&r.names) {
+        let i = Item(item);
+        if voxelcraft::content::trim::template_pattern(i).is_some() && !templates.contains(&item) {
+            s.failures.push(format!("invented trim template {}", r.names.name(i)));
+        }
+        if voxelcraft::inventory::components::trimmable(i) && !trim_bases.contains(&item) {
+            s.failures.push(format!("invented trimmable armor {}", r.names.name(i)));
+        }
+        if voxelcraft::content::trim::provides_material(i).is_some() && !additions.contains(&item) {
+            s.failures.push(format!("invented trim material {}", r.names.name(i)));
         }
     }
     s

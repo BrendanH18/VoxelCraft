@@ -42,6 +42,7 @@ enum RandomRule {
     Eyeblossom,
     Copper,
     Statue,
+    DriedGhast,
     Mushroom,
     NetherFlora,
     Flora,
@@ -75,6 +76,7 @@ fn growth_rule(b: Block) -> RandomRule {
         super::eyeblossom::OPEN | super::eyeblossom::CLOSED => RandomRule::Eyeblossom,
         b if super::copper::ages(b) => RandomRule::Copper,
         b if super::copper_golem_statue::ages(b) => RandomRule::Statue,
+        b if super::dried_ghast::owns(b.0) => RandomRule::DriedGhast,
         b if b.is_mushroom() => RandomRule::Mushroom,
         b if (1600..=1687).contains(&b.0) => RandomRule::NetherFlora,
         b if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&b.canonical().0)
@@ -181,6 +183,11 @@ impl World {
         }
         if let Some(statue) = super::copper_golem_statue::decode(block) {
             self.drops.push((p, statue.item_stack(self.copper_golem_statue_name(p))));
+            return;
+        }
+        // `copy_components` from the banner's block entity.
+        if let Some(stack) = self.banner_drop(p, block) {
+            self.drops.push((p, stack));
             return;
         }
         if super::creaking::heart(block).is_some() {
@@ -470,6 +477,7 @@ impl World {
             }
             RandomRule::Copper => self.tick_copper(p, b),
             RandomRule::Statue => self.tick_copper_golem_statue(p, b),
+            RandomRule::DriedGhast => self.dried_ghast_random_tick(p, b),
             RandomRule::Mushroom => self.tick_mushroom(p, b),
             RandomRule::NetherFlora => self.tick_nether_flora(p, b),
             RandomRule::Flora => {
@@ -851,9 +859,10 @@ impl World {
     /// block it's planted on.
     pub fn cane_has_water(&self, p: IVec3) -> bool {
         let soil = p - IVec3::Y;
-        [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z]
-            .iter()
-            .any(|&d| self.get_block(soil + d).is_some_and(|b| b.holds_water() || b == Block::ICE))
+        [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z].iter().any(|&d| {
+            self.get_block(soil + d)
+                .is_some_and(|b| b.holds_water() || b == Block::ICE || super::frosted_ice::owns(b.0))
+        })
     }
 }
 

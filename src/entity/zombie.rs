@@ -412,7 +412,9 @@ fn spot_ok<W: MobWorld + ?Sized>(
         // `checkZombifiedPiglinSpawnRules`: any light, not on nether wart.
         MobKind::ZombifiedPiglin => below.name() != "nether wart block",
         // `checkSurfaceMonstersSpawnRules`: dark, and under open sky.
-        MobKind::Husk => dark_enough(world, cell, rules, rng) && world.sky_light_level(cell) == Some(15),
+        MobKind::Husk | MobKind::Parched => {
+            dark_enough(world, cell, rules, rng) && world.sky_light_level(cell) == Some(15)
+        }
         // `checkMonsterSpawnRules`.
         _ => dark_enough(world, cell, rules, rng),
     }

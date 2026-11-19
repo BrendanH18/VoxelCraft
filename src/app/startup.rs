@@ -139,6 +139,9 @@ impl Game {
         }
         if let Some(text) = prop("effects") {
             vitals.effects = crate::simulation::effects::Effects::deserialize(text);
+            if let Some(h) = prop("health").and_then(|s| s.parse().ok()) {
+                vitals.restore_boosted_health(h);
+            }
         }
         for &instance in &args.effects {
             let (damage, _) = vitals.give_effect(instance);
@@ -219,6 +222,9 @@ impl Game {
         if let Some(text) = existing.as_ref().and_then(|l| l.props.get("last_death")) {
             session.load_last_death(text);
         }
+        if let Some(text) = existing.as_ref().and_then(|l| l.props.get("raid_omen_position")) {
+            session.load_raid_omen(text);
+        }
         session.spawn_anchor = existing.as_ref().and_then(|l| l.props.get("spawn_anchor")).and_then(|text| {
             let n: Vec<i32> = text.split(',').filter_map(|value| value.parse().ok()).collect();
             (n.len() == 3).then(|| IVec3::new(n[0], n[1], n[2]))
@@ -268,6 +274,7 @@ impl Game {
             craft: crate::crafting::Grid::new(2),
             recipe_book: recipe_book::RecipeBook::default(),
             creative_scroll: 0,
+            work_scroll: 0,
             cursor_px: (0.0, 0.0),
             body: Default::default(),
             show_hud: !args.no_hud,
@@ -402,25 +409,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_worlds_save_and_reload_as_generation_3() {
+    fn new_worlds_save_and_reload_as_generation_4() {
         let dir = std::env::temp_dir().join(format!("voxelcraft-worldgen-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let storage = Storage::new(&dir);
 
-        // A new world: generation 3, written as `worldgen=3`.
+        // A new world: generation 4, written as `worldgen=4`.
         let generation = world_generation(None);
-        assert_eq!(generation, Generation::V3);
+        assert_eq!(generation, Generation::V4);
         let generator = Generator::with_generation(7, Dimension::Overworld, generation);
         let mut props = std::collections::BTreeMap::new();
         super::super::save::record_generation(&mut props, generator.generation);
         storage.save(&LevelInfo { seed: 7, player: None, props }, &[]).unwrap();
         let text = std::fs::read_to_string(dir.join("level.txt")).unwrap();
-        assert!(text.lines().any(|line| line == "worldgen=3"), "{text}");
+        assert!(text.lines().any(|line| line == "worldgen=4"), "{text}");
 
-        // Reloaded, it stays generation 3.
+        // Reloaded, it stays generation 4.
         let saved = storage.load_level().unwrap();
-        assert_eq!(world_generation(Some(&saved)), Generation::V3);
-        assert_eq!(Generator::with_generation(saved.seed, Dimension::Overworld, Generation::V3).generation.number(), 3);
+        assert_eq!(world_generation(Some(&saved)), Generation::V4);
+        assert_eq!(Generator::with_generation(saved.seed, Dimension::Overworld, Generation::V4).generation.number(), 4);
 
         // Older worlds keep theirs.
         storage.set_props(&[(Generation::KEY, "2")]).unwrap();

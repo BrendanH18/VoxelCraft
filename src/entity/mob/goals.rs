@@ -39,6 +39,13 @@ pub(crate) enum Avoided {
     Zombie,
     Pillager,
     Zoglin,
+    /// v0.15 Track A: illagers flee creakings; the wandering trader flees
+    /// evokers, vindicators, vexes and illusioners.
+    Creaking,
+    Evoker,
+    Vindicator,
+    Vex,
+    Illusioner,
 }
 
 /// `AvoidEntityGoal(mob, class, maxDist, walkSpeedModifier, sprintSpeedModifier)`.
@@ -198,13 +205,25 @@ const FISH: &[Entry] = &[e(0, G::Panic, 1.25), avoid(2, Avoided::Player, 8.0, 1.
 const GUARDIAN: &[Entry] = &[e(7, G::Stroll, 1.0)];
 // Hoglins follow no temptation.
 const HOGLIN: &[Entry] = &[e(1, G::Breed, 1.0), e(2, G::FollowAdult, 0.6)];
-// `WanderingTrader.registerGoals`: the avoid goals VoxelCraft has mobs for
-// (evokers, vindicators, vexes and illusioners aren't registered).
+// `WanderingTrader.registerGoals`'s avoid goals.
 const WANDERING_TRADER: &[Entry] = &[
     avoid(1, Avoided::Zombie, 8.0, 0.5, 0.5),
+    avoid(1, Avoided::Evoker, 12.0, 0.5, 0.5),
+    avoid(1, Avoided::Vindicator, 8.0, 0.5, 0.5),
+    avoid(1, Avoided::Vex, 8.0, 0.5, 0.5),
     avoid(1, Avoided::Pillager, 15.0, 0.5, 0.5),
+    avoid(1, Avoided::Illusioner, 12.0, 0.5, 0.5),
     avoid(1, Avoided::Zoglin, 10.0, 0.5, 0.5),
 ];
+// v0.15 Track A: the illagers' movement goals (`registerGoals`); their
+// combat and spell goals run in `mob::illager`. The evoker runs from
+// players within 8 blocks.
+const VINDICATOR: &[Entry] = &[avoid(1, Avoided::Creaking, 8.0, 1.0, 1.2), e(8, G::Stroll, 0.6)];
+const EVOKER: &[Entry] =
+    &[avoid(2, Avoided::Player, 8.0, 0.6, 1.0), avoid(3, Avoided::Creaking, 8.0, 0.6, 1.0), e(8, G::Stroll, 0.6)];
+const ILLUSIONER: &[Entry] = &[avoid(3, Avoided::Creaking, 8.0, 1.0, 1.2), e(8, G::Stroll, 0.6)];
+// `WaterAvoidingRandomStrollGoal(0.4)`.
+const RAVAGER: &[Entry] = &[e(5, G::Stroll, 0.4)];
 const CREEPER: &[Entry] = &[avoid(3, Avoided::Cat, 6.0, 1.0, 1.2)];
 const FROG: &[Entry] = &[e(0, G::Panic, 2.0), e(1, G::Breed, 1.0), e(2, G::Tempt, 1.25), e(3, G::Stroll, 1.0)];
 const ARMADILLO: &[Entry] =
@@ -250,15 +269,19 @@ pub(crate) fn table(kind: MobKind) -> &'static [Entry] {
         K::Strider => STRIDER,
         K::Parrot => PARROT,
         K::Goat => GOAT,
-        K::Camel => CAMEL,
+        K::Camel | K::CamelHusk => CAMEL,
         K::Bee => BEE,
         K::Axolotl => AXOLOTL,
         K::Cod | K::Salmon | K::TropicalFish | K::Pufferfish => FISH,
         K::Guardian | K::ElderGuardian => GUARDIAN,
         K::Hoglin => HOGLIN,
         K::Creeper => CREEPER,
-        K::Skeleton | K::Stray | K::Bogged | K::WitherSkeleton => SKELETON,
+        K::Skeleton | K::Stray | K::Bogged | K::Parched | K::WitherSkeleton => SKELETON,
         K::WanderingTrader => WANDERING_TRADER,
+        K::Vindicator | K::Pillager => VINDICATOR,
+        K::Evoker => EVOKER,
+        K::Illusioner => ILLUSIONER,
+        K::Ravager => RAVAGER,
         _ => &[],
     }
 }
@@ -270,14 +293,30 @@ pub(crate) fn movement_speed(kind: MobKind) -> f64 {
     match kind {
         K::Allay => f64::from(0.1_f32),
         K::Cow | K::Mooshroom | K::Parrot | K::Goat | K::CopperGolem => 0.2,
-        K::Pig | K::Chicken | K::Turtle | K::Creeper | K::Skeleton | K::Stray | K::Bogged | K::WitherSkeleton => 0.25,
+        K::Pig
+        | K::Chicken
+        | K::Turtle
+        | K::Creeper
+        | K::Skeleton
+        | K::Stray
+        | K::Bogged
+        | K::Parched
+        | K::WitherSkeleton => 0.25,
         K::Endermite => super::super::endermite::MOVEMENT_SPEED,
+        // `createAttributes`: `0.35F` widened, the evoker and illusioner
+        // 0.5; the ravager's 0.3 is its base (`illager::ravager_speed`
+        // eases it toward 0.35 with a target).
+        K::Vindicator | K::Pillager => f64::from(0.35_f32),
+        K::Evoker | K::Illusioner => 0.5,
+        K::Ravager => 0.3,
+        // `Mob.createMobAttributes` leaves the vex the 0.7 default.
+        K::Vex => 0.7,
         K::Sheep | K::Zombie => 0.23,
         K::Bee | K::Wolf | K::Cat | K::Fox | K::Rabbit | K::Hoglin => 0.3,
         K::Strider | K::Donkey | K::Mule | K::Llama | K::TraderLlama => 0.175,
         K::Sniffer => f64::from(0.1_f32),
         K::Warden => super::super::warden::MOVEMENT_SPEED,
-        K::Camel => 0.09,
+        K::Camel | K::CamelHusk => 0.09,
         K::Panda => f64::from(0.15_f32),
         K::Armadillo => 0.14,
         K::Ocelot => f64::from(0.3_f32),
@@ -323,6 +362,11 @@ pub(crate) fn avoided_kind(what: Avoided, kind: MobKind) -> bool {
         Avoided::Zombie => kind.is_zombie() || kind == MobKind::ZombifiedPiglin,
         Avoided::Pillager => kind == MobKind::Pillager,
         Avoided::Zoglin => kind == MobKind::Zoglin,
+        Avoided::Creaking => kind == MobKind::Creaking,
+        Avoided::Evoker => kind == MobKind::Evoker,
+        Avoided::Vindicator => kind == MobKind::Vindicator,
+        Avoided::Vex => kind == MobKind::Vex,
+        Avoided::Illusioner => kind == MobKind::Illusioner,
     }
 }
 
@@ -377,6 +421,9 @@ impl Mob {
     fn attribute_speed(&self) -> f64 {
         if self.panda.as_ref().is_some_and(|s| s.variant() == crate::entity::panda::Gene::Lazy) {
             return f64::from(0.07_f32);
+        }
+        if let Some(s) = self.illager.as_ref().filter(|_| self.kind == MobKind::Ravager) {
+            return s.ravager_speed;
         }
         match &self.mount {
             Some(s) if super::super::mounts::equine(self.kind) && s.speed > 0.0 => s.speed,

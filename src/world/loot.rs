@@ -228,6 +228,7 @@ const UNNUMBERED_MAP: u32 = u32::MAX - 1024;
 pub struct RolledChest {
     chest: Chest,
     maps: Vec<(crate::item::Item, super::maps::MapData)>,
+    origin: glam::IVec3,
 }
 
 impl RolledChest {
@@ -239,7 +240,7 @@ impl RolledChest {
             maps.push((s.item, data));
             Some(Stack { map_id: Some(id), ..Stack::new(s.item, 1) })
         });
-        Self { chest, maps }
+        Self { chest, maps, origin }
     }
 }
 
@@ -362,6 +363,7 @@ pub fn java_item(name: &str) -> Option<crate::item::Item> {
                                 "porkchop" => Some(Item::RAW_PORKCHOP),
                                 "beef" => Some(Item::RAW_BEEF),
                                 "chicken" => Some(Item::RAW_CHICKEN),
+                                "mutton" => Item::from_name("raw mutton"),
                                 "leather_helmet" => Some(Item::armor(ArmorPiece::Helmet, ArmorMaterial::Leather)),
                                 "leather_chestplate" => {
                                     Some(Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Leather))
@@ -695,6 +697,16 @@ pub fn table(seed: u64, name: &str) -> Chest {
     table_with_random(name, &mut LootRandom::new(seed), |_| None)
 }
 
+/// A table rolled into a one-slot container (a decorated pot's
+/// `unpackLootTable`): `fill` places the first stack whole and drops the rest.
+pub fn single_slot(seed: u64, name: &str) -> Option<Stack> {
+    let mut rng = LootRandom::new(seed);
+    let items = roll_items(name, &mut rng, |_| None);
+    let mut chest = Chest::default();
+    fill(&mut chest, items, &mut rng, 1);
+    chest.slots[0]
+}
+
 impl super::World {
     /// A zero/absent loot seed follows the table's persistent world sequence,
     /// as LootParams.Builder.withOptionalRandomSeed does in Java.
@@ -716,12 +728,21 @@ impl super::World {
     /// `rolled`'s chest with its explorer maps numbered, in roll order, as
     /// [`World::structure_loot`] would have numbered them.
     pub(super) fn number_maps(&mut self, rolled: RolledChest) -> Chest {
-        let RolledChest { mut chest, maps } = rolled;
+        let RolledChest { mut chest, maps, origin } = rolled;
         for (i, (item, data)) in maps.into_iter().enumerate() {
-            let id = self.maps.create(data, item).map_id;
+            // A map whose target an earlier map referenced searches again
+            // here, where the references are (`skip_existing_chunks`).
+            let id = if self.maps.claim_target(item, &data) {
+                self.maps.create(data, item).map_id
+            } else {
+                self.maps.explorer(&self.generator, origin, item, 50).and_then(|s| s.map_id)
+            };
             let unnumbered = Some(UNNUMBERED_MAP + i as u32);
-            if let Some(stack) = chest.slots.iter_mut().flatten().find(|s| s.map_id == unnumbered) {
-                stack.map_id = id;
+            if let Some(slot) = chest.slots.iter_mut().find(|s| s.is_some_and(|s| s.map_id == unnumbered)) {
+                match id {
+                    Some(id) => slot.as_mut().unwrap().map_id = Some(id),
+                    None => *slot = None,
+                }
             }
         }
         chest
@@ -742,7 +763,7 @@ impl super::World {
 /// `chests/` folder here; spawner, dispenser, equipment and entity tables
 /// keep theirs.
 pub fn sequence_key(name: &str) -> String {
-    if ["spawners/", "dispensers/", "equipment/", "entities/"].iter().any(|f| name.starts_with(f)) {
+    if ["spawners/", "dispensers/", "equipment/", "entities/", "pots/"].iter().any(|f| name.starts_with(f)) {
         format!("minecraft:{name}")
     } else {
         format!("minecraft:chests/{name}")
@@ -891,6 +912,21 @@ mod rolled_chest_tests {
     use crate::world::terrain::{Dimension, Generator};
     use glam::IVec3;
     use std::sync::Arc;
+
+    /// v0.15 integration review: a decorated pot's one slot keeps the whole
+    /// rolled stack, as `LootTable.fill` into a one-slot container does.
+    #[test]
+    fn a_pot_keeps_its_whole_rolled_stack() {
+        let name = "pots/trial_chambers/corridor";
+        let mut multi = 0;
+        for seed in 0..200u64 {
+            let rolled = roll_items(name, &mut LootRandom::new(seed), |_| None);
+            let [only] = rolled.as_slice() else { continue };
+            multi += usize::from(only.count > 1);
+            assert_eq!(single_slot(seed, name), Some(*only), "seed {seed}");
+        }
+        assert!(multi > 0, "some rolls give more than one item");
+    }
 
     /// A shipwreck map chest rolled on a worker and numbered by the world
     /// equals the same chest rolled on the main thread, map numbers and the

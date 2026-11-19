@@ -172,6 +172,14 @@ impl World {
                     self.schedule_sniffer_egg(p);
                 }
             }
+            // v0.15 Track D: frosted ice in a chunk whose save carried no
+            // tick (Java saves the tick; a lost one would freeze the ice).
+            if super::frosted_ice::owns(b.0) {
+                let p = c * CHUNK_SIZE_I + local;
+                if !self.redstone.pending.contains_key(&p) {
+                    self.schedule_redstone(p, 20, 0);
+                }
+            }
             if b == super::frog_blocks::FROGSPAWN {
                 let local =
                     IVec3::new(i % CHUNK_SIZE_I, i / (CHUNK_SIZE_I * CHUNK_SIZE_I), i / CHUNK_SIZE_I % CHUNK_SIZE_I);
@@ -208,6 +216,9 @@ impl World {
     fn emitted_signal(&self, p: IVec3, direction: IVec3, strong: bool, wires: bool) -> u8 {
         let Some(b) = self.get_block(p) else { return 0 };
         if let Some(power) = self.sculk_signal(p, b, direction, strong) {
+            return power;
+        }
+        if let Some(power) = Self::lectern_signal(b, direction, strong) {
             return power;
         }
         // `JukeboxBlock`: a weak 15 to every side while a song plays.
@@ -435,6 +446,9 @@ impl World {
         if self.get_block(p).is_some_and(super::jukebox::is_jukebox) {
             return Some(self.jukebox_comparator(p));
         }
+        if let Some(signal) = self.lectern_comparator(p) {
+            return Some(signal);
+        }
         if self.get_block(p).is_some_and(|b| super::creaking::heart(b).is_some()) {
             return Some(self.creaking_hearts.get(&p.to_array()).map_or(0, |h| h.signal));
         }
@@ -657,6 +671,15 @@ impl World {
         }
         if super::sniffer_egg::owns(b.0) {
             return self.hatch_sniffer_egg(p);
+        }
+        if self.end_lectern_pulse(p) {
+            return;
+        }
+        if super::frosted_ice::owns(b.0) {
+            return self.frosted_ice_tick(p);
+        }
+        if super::dried_ghast::owns(b.0) {
+            return self.dried_ghast_tick(p);
         }
         if super::archaeology::owns(b.0) {
             return self.archaeology_tick(p);
@@ -1166,6 +1189,10 @@ impl World {
                             || u16::try_from(family).is_ok_and(|f| super::lightning::rod(Block(f)).is_some())
                             || family == i64::from(super::frog_blocks::FROGSPAWN.0)
                             || family == i64::from(super::sniffer_egg::EGG.0)
+                            || family == i64::from(super::frosted_ice::FIRST.0)
+                            || family == i64::from(super::dried_ghast::DRIED_GHAST.0)
+                            // A lectern's page-turn pulse (`LecternBlock.tick`).
+                            || family == i64::from(Block::LECTERN.0)
                             || family == i64::from(super::eyeblossom::OPEN.0)
                             || family == i64::from(super::eyeblossom::CLOSED.0)
                             || u16::try_from(family).is_ok_and(super::archaeology::owns)

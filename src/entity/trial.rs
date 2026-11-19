@@ -558,10 +558,14 @@ impl Entities {
                     super::thrown::Thrown::launch(kind, PlayerId::HOST, s.pos, down, DVec3::ZERO, &mut self.rng);
                 thrown.owner = None;
                 self.thrown.push(thrown);
-            } else if item == crate::item::Item::ARROW || item == crate::item::Item::TIPPED_ARROW {
+            } else if matches!(
+                item,
+                crate::item::Item::ARROW | crate::item::Item::TIPPED_ARROW | crate::item::Item::SPECTRAL_ARROW
+            ) {
                 let mut arrow = super::Arrow::dispensed(s.pos, down * 1.1 * 20.0);
                 arrow.potion = s.item.arrow_potion();
                 arrow.tipped = arrow.potion.is_some();
+                arrow.spectral = item == crate::item::Item::SPECTRAL_ARROW;
                 self.arrows.push(arrow);
             } else if item == crate::item::Item::FIRE_CHARGE {
                 self.fireballs.push(super::fireball::Fireball::new(s.pos, down));

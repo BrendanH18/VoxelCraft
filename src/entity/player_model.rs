@@ -99,6 +99,8 @@ pub struct PlayerAppearance {
     /// `None` falls back to the item's undyed tint.
     pub held_tint: Option<[u8; 3]>,
     pub aim: Aim,
+    /// v0.15 Track D: under Glowing, outlined through walls.
+    pub glowing: bool,
 }
 
 const PLAYER_SCALE: f32 = 0.9375;
@@ -428,6 +430,10 @@ pub(crate) fn draw_armor(
         if piece.kind == super::armor::ArmorKind::Leather {
             paint(out, 0.08, super::armor::leather_overlay(inner), super::armor::tint(&piece, true));
         }
+        // v0.15 Track D: the armor trim, just outside the armor.
+        if let Some((pattern, colour)) = piece.trim {
+            paint(out, 0.04, super::armor::trim_layer(pattern, inner), super::armor::trim_tint(colour));
+        }
     }
 }
 
@@ -593,10 +599,18 @@ mod tests {
         let body = limb([0.; 3], [-4., -12., -2.], [4., 0., 2.], [16., 16.], Quat::IDENTITY);
         let parts = [body; 6];
         let mut worn = [None; 4];
-        worn[1] =
-            Some(crate::entity::armor::Worn { kind: crate::entity::armor::ArmorKind::Iron, glint: false, dye: None });
-        worn[2] =
-            Some(crate::entity::armor::Worn { kind: crate::entity::armor::ArmorKind::Iron, glint: true, dye: None });
+        worn[1] = Some(crate::entity::armor::Worn {
+            kind: crate::entity::armor::ArmorKind::Iron,
+            glint: false,
+            dye: None,
+            trim: None,
+        });
+        worn[2] = Some(crate::entity::armor::Worn {
+            kind: crate::entity::armor::ArmorKind::Iron,
+            glint: true,
+            dye: None,
+            trim: None,
+        });
         let mut out = Vec::new();
         draw_armor(&mut out, &parts, &worn, Vec3::ZERO, Quat::IDENTITY, 1.0, ([255, 0, 0, 0], 0));
         let extent = |inner: bool| {

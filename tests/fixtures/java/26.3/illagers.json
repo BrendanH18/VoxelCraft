@@ -1,0 +1,1101 @@
+{
+  "crossbow": {
+    "attack_delay_base": 20,
+    "attack_delay_spread": 20,
+    "attack_radius": 8.0,
+    "charge_seconds": 1.25,
+    "mob_arrow_power": 1.6,
+    "path_delay_max_seconds": 2,
+    "path_delay_min_seconds": 1,
+    "see_time_min": 5,
+    "speed_modifier": 1.0,
+    "walk_while_loaded": 0.5
+  },
+  "entity_type_tags": {
+    "illager": [
+      "evoker",
+      "illusioner",
+      "pillager",
+      "vindicator"
+    ],
+    "illager_friends": [
+      "evoker",
+      "illusioner",
+      "pillager",
+      "vindicator"
+    ],
+    "raiders": [
+      "evoker",
+      "illusioner",
+      "pillager",
+      "ravager",
+      "vindicator",
+      "witch"
+    ]
+  },
+  "fangs": {
+    "attack_at_warmup": -8,
+    "attack_duration": 20,
+    "damage": 6.0,
+    "entity_type": {
+      "allowed_in_peaceful": true,
+      "category": "misc",
+      "eye_height": null,
+      "fire_immune": false,
+      "height": 0.8,
+      "no_loot_table": true,
+      "width": 0.5
+    },
+    "inflate": [
+      0.2,
+      0.0,
+      0.2
+    ],
+    "life_ticks": 22,
+    "spares_owner_allies": true
+  },
+  "mob_combat": {
+    "attack_reach": {
+      "minus": 0.6000000238418579,
+      "sqrt_of": 2.0399999618530273
+    },
+    "pickup_reach": [
+      1,
+      0,
+      1
+    ],
+    "pillager_can_pick_up_loot_after_load": true,
+    "replace_drop_offset": 0.1,
+    "skeleton_can_pick_up_loot_chance": 0.55,
+    "zombie_can_pick_up_loot_chance": 0.55
+  },
+  "mobs": {
+    "evoker": {
+      "attributes": {
+        "attack_damage": null,
+        "follow_range": 12.0,
+        "max_health": 24.0,
+        "movement_speed": 0.5
+      },
+      "entity_type": {
+        "allowed_in_peaceful": false,
+        "category": "monster",
+        "eye_height": null,
+        "fire_immune": false,
+        "height": 1.95,
+        "no_loot_table": false,
+        "riding_offset": -0.6,
+        "width": 0.6
+      },
+      "experience": 10,
+      "goals": [
+        {
+          "alert_others": false,
+          "args": [],
+          "goal": "FloatGoal",
+          "priority": 0,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [],
+          "goal": "Evoker$EvokerCastingSpellGoal",
+          "priority": 1,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:Player",
+            8.0,
+            0.6,
+            1.0
+          ],
+          "goal": "AvoidEntityGoal",
+          "priority": 2,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:Creaking",
+            8.0,
+            0.6,
+            1.0
+          ],
+          "goal": "AvoidEntityGoal",
+          "priority": 3,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [],
+          "goal": "Evoker$EvokerSummonSpellGoal",
+          "priority": 4,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [],
+          "goal": "Evoker$EvokerAttackSpellGoal",
+          "priority": 5,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [],
+          "goal": "Evoker$EvokerWololoSpellGoal",
+          "priority": 6,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            0.6
+          ],
+          "goal": "RandomStrollGoal",
+          "priority": 8,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:Player",
+            3.0,
+            1.0
+          ],
+          "goal": "LookAtPlayerGoal",
+          "priority": 9,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:Mob",
+            8.0
+          ],
+          "goal": "LookAtPlayerGoal",
+          "priority": 10,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": true,
+          "args": [
+            1,
+            0,
+            "class:Raider"
+          ],
+          "goal": "HurtByTargetGoal",
+          "priority": 1,
+          "selector": "targetSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:Player",
+            1
+          ],
+          "goal": "NearestAttackableTargetGoal",
+          "priority": 2,
+          "selector": "targetSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:AbstractVillager",
+            0
+          ],
+          "goal": "NearestAttackableTargetGoal",
+          "priority": 3,
+          "selector": "targetSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:IronGolem",
+            0
+          ],
+          "goal": "NearestAttackableTargetGoal",
+          "priority": 3,
+          "selector": "targetSelector"
+        }
+      ],
+      "loot_table": {
+        "pools": [
+          {
+            "conditions": [],
+            "entries": [
+              {
+                "count": [
+                  1,
+                  1
+                ],
+                "item": "totem_of_undying",
+                "looting": null
+              }
+            ],
+            "rolls": 1
+          },
+          {
+            "conditions": [
+              "killed_by_player"
+            ],
+            "entries": [
+              {
+                "count": [
+                  0,
+                  1
+                ],
+                "item": "emerald",
+                "looting": [
+                  0.0,
+                  1.0
+                ]
+              }
+            ],
+            "rolls": 1
+          }
+        ]
+      }
+    },
+    "illusioner": {
+      "attributes": {
+        "attack_damage": null,
+        "follow_range": 18.0,
+        "max_health": 32.0,
+        "movement_speed": 0.5
+      },
+      "entity_type": {
+        "allowed_in_peaceful": false,
+        "category": "monster",
+        "eye_height": null,
+        "fire_immune": false,
+        "height": 1.95,
+        "no_loot_table": false,
+        "riding_offset": -0.6,
+        "width": 0.6
+      },
+      "experience": 5,
+      "goals": [
+        {
+          "alert_others": false,
+          "args": [],
+          "goal": "FloatGoal",
+          "priority": 0,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [],
+          "goal": "SpellcasterIllager$SpellcasterCastingSpellGoal",
+          "priority": 1,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:Creaking",
+            8.0,
+            1.0,
+            1.2
+          ],
+          "goal": "AvoidEntityGoal",
+          "priority": 3,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [],
+          "goal": "Illusioner$IllusionerMirrorSpellGoal",
+          "priority": 4,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [],
+          "goal": "Illusioner$IllusionerBlindnessSpellGoal",
+          "priority": 5,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            0.5,
+            20,
+            15.0
+          ],
+          "goal": "RangedBowAttackGoal",
+          "priority": 6,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            0.6
+          ],
+          "goal": "RandomStrollGoal",
+          "priority": 8,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:Player",
+            3.0,
+            1.0
+          ],
+          "goal": "LookAtPlayerGoal",
+          "priority": 9,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:Mob",
+            8.0
+          ],
+          "goal": "LookAtPlayerGoal",
+          "priority": 10,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": true,
+          "args": [
+            1,
+            0,
+            "class:Raider"
+          ],
+          "goal": "HurtByTargetGoal",
+          "priority": 1,
+          "selector": "targetSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:Player",
+            1
+          ],
+          "goal": "NearestAttackableTargetGoal",
+          "priority": 2,
+          "selector": "targetSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:AbstractVillager",
+            0
+          ],
+          "goal": "NearestAttackableTargetGoal",
+          "priority": 3,
+          "selector": "targetSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:IronGolem",
+            0
+          ],
+          "goal": "NearestAttackableTargetGoal",
+          "priority": 3,
+          "selector": "targetSelector"
+        }
+      ],
+      "loot_table": {
+        "pools": []
+      }
+    },
+    "pillager": {
+      "attributes": {
+        "attack_damage": 5.0,
+        "follow_range": 32.0,
+        "max_health": 24.0,
+        "movement_speed": 0.3499999940395355
+      },
+      "entity_type": {
+        "allowed_in_peaceful": false,
+        "category": "monster",
+        "eye_height": null,
+        "fire_immune": false,
+        "height": 1.95,
+        "no_loot_table": false,
+        "riding_offset": -0.6,
+        "width": 0.6
+      },
+      "experience": 5,
+      "goals": [
+        {
+          "alert_others": false,
+          "args": [],
+          "goal": "FloatGoal",
+          "priority": 0,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:Creaking",
+            8.0,
+            1.0,
+            1.2
+          ],
+          "goal": "AvoidEntityGoal",
+          "priority": 1,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            10.0
+          ],
+          "goal": "Raider$HoldGroundAttackGoal",
+          "priority": 2,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            1.0,
+            8.0
+          ],
+          "goal": "RangedCrossbowAttackGoal",
+          "priority": 3,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            0.6
+          ],
+          "goal": "RandomStrollGoal",
+          "priority": 8,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:Player",
+            15.0,
+            1.0
+          ],
+          "goal": "LookAtPlayerGoal",
+          "priority": 9,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:Mob",
+            15.0
+          ],
+          "goal": "LookAtPlayerGoal",
+          "priority": 10,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": true,
+          "args": [
+            1,
+            0,
+            "class:Raider"
+          ],
+          "goal": "HurtByTargetGoal",
+          "priority": 1,
+          "selector": "targetSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:Player",
+            1
+          ],
+          "goal": "NearestAttackableTargetGoal",
+          "priority": 2,
+          "selector": "targetSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:AbstractVillager",
+            0
+          ],
+          "goal": "NearestAttackableTargetGoal",
+          "priority": 3,
+          "selector": "targetSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:IronGolem",
+            1
+          ],
+          "goal": "NearestAttackableTargetGoal",
+          "priority": 3,
+          "selector": "targetSelector"
+        }
+      ],
+      "loot_table": {
+        "pools": [
+          {
+            "conditions": [
+              "raid_captain"
+            ],
+            "entries": [
+              {
+                "count": [
+                  1,
+                  1
+                ],
+                "item": "ominous_bottle",
+                "looting": null
+              }
+            ],
+            "rolls": 1
+          }
+        ]
+      }
+    },
+    "ravager": {
+      "attributes": {
+        "attack_damage": 12.0,
+        "attack_knockback": 1.5,
+        "follow_range": 32.0,
+        "knockback_resistance": 0.75,
+        "max_health": 100.0,
+        "movement_speed": 0.3,
+        "step_height": 1.0
+      },
+      "entity_type": {
+        "allowed_in_peaceful": false,
+        "category": "monster",
+        "eye_height": null,
+        "fire_immune": false,
+        "height": 2.2,
+        "no_loot_table": false,
+        "width": 1.95
+      },
+      "experience": 20,
+      "goals": [
+        {
+          "alert_others": false,
+          "args": [],
+          "goal": "FloatGoal",
+          "priority": 0,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            1.0,
+            1
+          ],
+          "goal": "MeleeAttackGoal",
+          "priority": 4,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            0.4
+          ],
+          "goal": "WaterAvoidingRandomStrollGoal",
+          "priority": 5,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:Player",
+            6.0
+          ],
+          "goal": "LookAtPlayerGoal",
+          "priority": 6,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:Mob",
+            8.0
+          ],
+          "goal": "LookAtPlayerGoal",
+          "priority": 10,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": true,
+          "args": [
+            1,
+            0,
+            "class:Raider"
+          ],
+          "goal": "HurtByTargetGoal",
+          "priority": 2,
+          "selector": "targetSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:Player",
+            1
+          ],
+          "goal": "NearestAttackableTargetGoal",
+          "priority": 3,
+          "selector": "targetSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:AbstractVillager",
+            1
+          ],
+          "goal": "NearestAttackableTargetGoal",
+          "priority": 4,
+          "selector": "targetSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:IronGolem",
+            1
+          ],
+          "goal": "NearestAttackableTargetGoal",
+          "priority": 4,
+          "selector": "targetSelector"
+        }
+      ],
+      "loot_table": {
+        "pools": [
+          {
+            "conditions": [],
+            "entries": [
+              {
+                "count": [
+                  1,
+                  1
+                ],
+                "item": "saddle",
+                "looting": null
+              }
+            ],
+            "rolls": 1
+          }
+        ]
+      }
+    },
+    "vex": {
+      "attributes": {
+        "attack_damage": 4.0,
+        "follow_range": 16.0,
+        "max_health": 14.0
+      },
+      "entity_type": {
+        "allowed_in_peaceful": false,
+        "category": "monster",
+        "eye_height": 0.51875,
+        "fire_immune": true,
+        "height": 0.8,
+        "no_loot_table": false,
+        "riding_offset": 0.04,
+        "width": 0.4
+      },
+      "experience": 3,
+      "goals": [
+        {
+          "alert_others": false,
+          "args": [],
+          "goal": "FloatGoal",
+          "priority": 0,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [],
+          "goal": "Vex$VexChargeAttackGoal",
+          "priority": 4,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [],
+          "goal": "Vex$VexRandomMoveGoal",
+          "priority": 8,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:Player",
+            3.0,
+            1.0
+          ],
+          "goal": "LookAtPlayerGoal",
+          "priority": 9,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:Mob",
+            8.0
+          ],
+          "goal": "LookAtPlayerGoal",
+          "priority": 10,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": true,
+          "args": [
+            1,
+            0,
+            "class:Raider"
+          ],
+          "goal": "HurtByTargetGoal",
+          "priority": 1,
+          "selector": "targetSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [],
+          "goal": "Vex$VexCopyOwnerTargetGoal",
+          "priority": 2,
+          "selector": "targetSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:Player",
+            1
+          ],
+          "goal": "NearestAttackableTargetGoal",
+          "priority": 3,
+          "selector": "targetSelector"
+        }
+      ],
+      "loot_table": {
+        "pools": []
+      }
+    },
+    "vindicator": {
+      "attributes": {
+        "attack_damage": 5.0,
+        "follow_range": 12.0,
+        "max_health": 24.0,
+        "movement_speed": 0.3499999940395355
+      },
+      "entity_type": {
+        "allowed_in_peaceful": false,
+        "category": "monster",
+        "eye_height": null,
+        "fire_immune": false,
+        "height": 1.95,
+        "no_loot_table": false,
+        "riding_offset": -0.6,
+        "width": 0.6
+      },
+      "experience": 5,
+      "goals": [
+        {
+          "alert_others": false,
+          "args": [],
+          "goal": "FloatGoal",
+          "priority": 0,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:Creaking",
+            8.0,
+            1.0,
+            1.2
+          ],
+          "goal": "AvoidEntityGoal",
+          "priority": 1,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [],
+          "goal": "Vindicator$VindicatorBreakDoorGoal",
+          "priority": 2,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [],
+          "goal": "AbstractIllager$RaiderOpenDoorGoal",
+          "priority": 3,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            10.0
+          ],
+          "goal": "Raider$HoldGroundAttackGoal",
+          "priority": 4,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            1.0,
+            0
+          ],
+          "goal": "MeleeAttackGoal",
+          "priority": 5,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": true,
+          "args": [
+            1,
+            0,
+            "class:Raider"
+          ],
+          "goal": "HurtByTargetGoal",
+          "priority": 1,
+          "selector": "targetSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:Player",
+            1
+          ],
+          "goal": "NearestAttackableTargetGoal",
+          "priority": 2,
+          "selector": "targetSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:AbstractVillager",
+            1
+          ],
+          "goal": "NearestAttackableTargetGoal",
+          "priority": 3,
+          "selector": "targetSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:IronGolem",
+            1
+          ],
+          "goal": "NearestAttackableTargetGoal",
+          "priority": 3,
+          "selector": "targetSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [],
+          "goal": "Vindicator$VindicatorJohnnyAttackGoal",
+          "priority": 4,
+          "selector": "targetSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            0.6
+          ],
+          "goal": "RandomStrollGoal",
+          "priority": 8,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:Player",
+            3.0,
+            1.0
+          ],
+          "goal": "LookAtPlayerGoal",
+          "priority": 9,
+          "selector": "goalSelector"
+        },
+        {
+          "alert_others": false,
+          "args": [
+            "class:Mob",
+            8.0
+          ],
+          "goal": "LookAtPlayerGoal",
+          "priority": 10,
+          "selector": "goalSelector"
+        }
+      ],
+      "loot_table": {
+        "pools": [
+          {
+            "conditions": [
+              "killed_by_player"
+            ],
+            "entries": [
+              {
+                "count": [
+                  0,
+                  1
+                ],
+                "item": "emerald",
+                "looting": [
+                  0.0,
+                  1.0
+                ]
+              }
+            ],
+            "rolls": 1
+          }
+        ]
+      }
+    }
+  },
+  "ravager": {
+    "attack_box_deflate": 0.05,
+    "attack_speed": 0.35,
+    "attack_ticks": 10,
+    "base_speed": 0.3,
+    "grief_inflate": 0.2,
+    "griefs": [
+      "leaves",
+      "crops"
+    ],
+    "knockback": {
+      "min_distance_sqr": 0.001,
+      "push": 4.0,
+      "push_up": 0.2
+    },
+    "roar_at": 10,
+    "roar_damage": 6.0,
+    "roar_radius": 4.0,
+    "roar_spares": "illagers take no damage; players get no server push",
+    "roar_ticks": 20,
+    "save_keys": [
+      "AttackTick",
+      "StunTick",
+      "RoarTick"
+    ],
+    "speed_lerp": 0.1,
+    "stun_chance": 0.5,
+    "stun_ticks": 40
+  },
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "net.minecraft.world.entity.monster.illager.{Vindicator,Evoker,Illusioner,Pillager,SpellcasterIllager}",
+    "net.minecraft.world.entity.monster.{Vex,Ravager,Monster}",
+    "net.minecraft.world.entity.projectile.EvokerFangs",
+    "net.minecraft.world.entity.ai.goal.{RangedCrossbowAttackGoal,BreakDoorGoal}",
+    "net.minecraft.world.item.CrossbowItem",
+    "net.minecraft.world.entity.Mob",
+    "net.minecraft.world.entity.monster.zombie.Zombie.finalizeSpawn",
+    "net.minecraft.world.entity.monster.skeleton.AbstractSkeleton.finalizeSpawn",
+    "net.minecraft.world.level.block.CropBlock.entityInside",
+    "net.minecraft.world.entity.EntityTypes",
+    "data/minecraft/loot_table/entities/{vindicator,evoker,illusioner,pillager,vex,ravager}.json",
+    "data/minecraft/tags/entity_type/{illager,illager_friends,raiders}.json"
+  ],
+  "spells": {
+    "default_warmup": 20,
+    "evoker_fangs": {
+      "casting_time": 40,
+      "close_distance_sqr": 9.0,
+      "inner_count": 5,
+      "inner_radius": 1.5,
+      "inner_radius_z": 1.5,
+      "inner_step_pi": 0.4,
+      "interval": 100,
+      "line_count": 16,
+      "line_spacing": 1.25,
+      "outer_count": 8,
+      "outer_delay": 3,
+      "outer_offset": 1.2566371,
+      "outer_radius": 2.5,
+      "outer_radius_z": 2.5,
+      "spell": "fangs",
+      "warmup": 20
+    },
+    "evoker_summon": {
+      "casting_time": 100,
+      "count_range": 16.0,
+      "interval": 340,
+      "life_min_seconds": 30,
+      "life_spread_seconds": 90,
+      "offset_min": -2,
+      "offset_span": 5,
+      "offset_y": 1,
+      "roll": 8,
+      "spell": "summon_vex",
+      "ticks_per_second": 20,
+      "vexes": 3,
+      "warmup": 20
+    },
+    "evoker_wololo": {
+      "box_horizontal": 16.0,
+      "box_vertical": 4.0,
+      "casting_time": 60,
+      "from": "blue",
+      "interval": 140,
+      "needs_mob_griefing": true,
+      "range": 16.0,
+      "spell": "wololo",
+      "to": "red",
+      "warmup": 40
+    },
+    "illusioner_blindness": {
+      "blindness_ticks": 400,
+      "casting_time": 20,
+      "harder_than": "normal",
+      "interval": 180,
+      "spell": "blindness",
+      "warmup": 20
+    },
+    "illusioner_mirror": {
+      "casting_time": 20,
+      "interval": 340,
+      "invisibility_ticks": 1200,
+      "spell": "disappear",
+      "warmup": 20
+    }
+  },
+  "vex": {
+    "charge": {
+      "min_distance_sqr": 4.0,
+      "reaim_distance_sqr": 9.0,
+      "roll": 7
+    },
+    "main_hand": "iron_sword",
+    "main_hand_drop_chance": 0.0,
+    "move": {
+      "acceleration": 0.05,
+      "arrive_damping": 0.5
+    },
+    "save_keys": [
+      "bound_pos",
+      "life_ticks",
+      "owner"
+    ],
+    "starve_damage": 1.0,
+    "starve_interval": 20,
+    "wander": {
+      "attempts": 3,
+      "offset_xz": 7,
+      "offset_y": 5,
+      "roll": 7,
+      "span_xz": 15,
+      "span_y": 11,
+      "speed": 0.25
+    }
+  },
+  "vindicator": {
+    "door_break_difficulties": [
+      "normal",
+      "hard"
+    ],
+    "door_break_needs_active_raid": true,
+    "door_break_time": 240,
+    "johnny_name": "Johnny",
+    "johnny_save_key": "Johnny",
+    "main_hand_outside_raid": "iron_axe"
+  }
+}

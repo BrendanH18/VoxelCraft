@@ -400,10 +400,10 @@ impl Trident {
                     false
                 } else {
                     let before = mob.health;
-                    if owner_player.is_some() {
-                        mob.player_hit();
+                    if let Some(owner) = owner_player {
+                        mob.player_hit_by(owner);
                     }
-                    let killed = mob.damage_pushed(damage, &[crate::knockback::Push::projectile(motion)], rng);
+                    let killed = mob.damage_projectile(damage, &[crate::knockback::Push::projectile(motion)], rng);
                     let hurt = killed || mob.health < before;
                     if hurt {
                         events.push(EntityEvent::MobShot {

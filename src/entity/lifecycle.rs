@@ -54,9 +54,14 @@ impl Entities {
         self.trader_tick(dt as f32, world, ctx);
         self.tick_decor(world);
         self.village_upkeep(dt as f32, world);
+        self.populate_village_residents(world, difficulty);
         self.cat_spawner_tick(dt, world, ctx);
         self.assign_hunts(ctx);
         self.endermite_upkeep(dt, world);
+        self.illager_upkeep(dt, world, ctx, &mut events);
+        self.raid_tick(dt, world, ctx, &mut events);
+        self.happy_ghast_upkeep(dt, world, ctx);
+        self.nautilus_upkeep(dt, world, ctx, &mut events);
         self.trader_upkeep();
         // `Entity.hasMovedHorizontallyRecently`, from last update's positions.
         let moved: Vec<(PlayerId, bool)> = ctx
@@ -112,14 +117,21 @@ impl Entities {
                 || m.built
                 || m.riding.is_some()
                 || m.convert_left > 0.0
-                || m.villager.as_ref().is_some_and(|v| v.xp > 0);
+                || m.villager.as_ref().is_some_and(|v| v.xp > 0)
+                // `Raider.removeWhenFarAway`: never while in a raid.
+                || m.illager.as_ref().is_some_and(|s| s.raider.raid.is_some());
+            // `PatrollingMonster.removeWhenFarAway`: a patroller only goes
+            // beyond 128 blocks.
+            let patrolling = m.illager.as_ref().is_some_and(|s| s.raider.patrolling);
             // Java's `Mob.checkDespawn`: a despawnable mob goes at once beyond
             // its category's despawn distance, and at random (1 in 800 a tick)
             // beyond 32 blocks once it has done nothing for 600 ticks.
             let near = ctx.nearest_player_dist2(m.pos);
             let far = m.kind.category().despawn_distance();
             let calm = category::MobCategory::NO_DESPAWN_DISTANCE;
-            let idle_out = m.idle > 30.0 && near.is_some_and(|d| d > calm * calm);
+            let idle_out = m.idle > 30.0
+                && near.is_some_and(|d| d > calm * calm)
+                && (!patrolling || near.is_some_and(|d| d > super::raid::PATROL_DESPAWN_SQR));
             let gone = m.trader.as_ref().is_some_and(|t| t.despawn <= 0.0)
                 || m.dying.is_some_and(|t| t >= mob::DEATH_TIME)
                 || !resident
@@ -232,6 +244,8 @@ impl Entities {
             i += 1;
         }
         self.resolve_breeding();
+        self.illager_after(dt, world, ctx, &mut events);
+        self.mobs_pick_up_loot(&mut events);
         self.mob_index.rebuild(&self.mobs);
         self.watch_doors(dt as f32, &mut events);
         self.resolve_strikes(ctx, &mut events);
@@ -311,6 +325,13 @@ impl Entities {
                     self.sculk.post(from, crate::world::vibration::GameEvent::ProjectileShoot, source, None);
                     self.arrows.push(arrow);
                 }
+                EntityEvent::MobArrow { from, vel, cause, shooter, enchants } => {
+                    let mut arrow = Arrow::mob_shot(from, vel, cause, shooter);
+                    arrow.enchants = enchants;
+                    let source = crate::world::vibration::EventSource::mob(shooter);
+                    self.sculk.post(from, crate::world::vibration::GameEvent::ProjectileShoot, source, None);
+                    self.arrows.push(arrow);
+                }
                 EntityEvent::ThrowTrident { from, target, shooter } => {
                     let stack = self
                         .mobs
@@ -350,6 +371,7 @@ impl Entities {
             !matches!(
                 e,
                 EntityEvent::Shoot { .. }
+                    | EntityEvent::MobArrow { .. }
                     | EntityEvent::Fireball { .. }
                     | EntityEvent::ThrowPotion { .. }
                     | EntityEvent::ThrowTrident { .. }
@@ -458,7 +480,8 @@ impl Entities {
                                 | MobKind::Panda
                                 | MobKind::Armadillo
                                 | MobKind::Endermite
-                        ) || super::neutral::is_neutral(kind))
+                        ) || super::illager::State::for_kind(kind).is_some()
+                            || super::neutral::is_neutral(kind))
                         && let Some(i) = self.mobs.iter().position(|m| m.kind == kind && m.pos == pos && m.alive())
                     {
                         self.hurt_by_player_target(i, owner);
@@ -483,15 +506,14 @@ impl Entities {
                 EntityEvent::MobKilled { kind, pos, burning, player_kill, looting } => {
                     self.drop_loot_with_fire(kind, pos, looting, burning, player_kill);
                 }
-                EntityEvent::LaidEgg { pos } => {
-                    self.drop_from_block(
-                        crate::inventory::Stack::new(crate::item::Item::EGG, 1),
-                        pos.floor().as_ivec3(),
-                    );
+                EntityEvent::LaidEgg { pos, variant } => {
+                    // `gameplay/chicken_lay`: the variant's egg.
+                    self.drop_from_block(crate::inventory::Stack::new(variant.egg(), 1), pos.floor().as_ivec3());
                 }
-                EntityEvent::Hatched { pos, count } => {
+                EntityEvent::Hatched { pos, count, variant } => {
                     for _ in 0..count {
                         self.spawn_baby(MobKind::Chicken, pos);
+                        self.mobs.last_mut().unwrap().set_farm_variant(variant);
                     }
                 }
                 EntityEvent::ExperienceBurst { pos, toward, points } => self.spawn_xp_toward(pos, toward, points),

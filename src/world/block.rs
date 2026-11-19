@@ -368,20 +368,33 @@ pub mod tex {
     pub const BUBBLE_DOWN: u16 = BUBBLE_BASE + 1;
     pub const COUNT: u32 = {
         // Through the highest layer any v0.15 or v0.16 track uses; unused layers stay reserved.
-        const ENDS: [u32; 7] = [
+        const ENDS: [u32; 9] = [
             super::super::cave_blocks::CAL_TEX_END as u32,
             super::super::eyeblossom::TEX_END as u32,
             super::super::sniffer_egg::TEXTURE_END as u32,
             super::super::archaeology::t::END as u32,
             super::super::heavy_core::TEX_END as u32,
+            super::super::dried_ghast::TEX_END as u32,
             super::super::jukebox::t::END as u32,
             super::super::trial::TEX_END as u32,
+            super::super::workstations::TEX_END as u32,
         ];
+        // v0.15 Track D's frosted ice (layers 4000..4004) and Track F's
+        // explorer maps (4056..4066) set the count.
+        const ENDS2: [u32; 2] =
+            [super::super::frosted_ice::TEX_END as u32, super::super::explorer_maps::TEX_END as u32];
         let mut max = 0;
         let mut i = 0;
         while i < ENDS.len() {
             if ENDS[i] > max {
                 max = ENDS[i];
+            }
+            i += 1;
+        }
+        let mut i = 0;
+        while i < ENDS2.len() {
+            if ENDS2[i] > max {
+                max = ENDS2[i];
             }
             i += 1;
         }
@@ -935,7 +948,7 @@ impl Block {
 
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
-        if super::sniffer_egg::owns(self.0) || super::heavy_core::owns(self.0) {
+        if super::sniffer_egg::owns(self.0) || super::heavy_core::owns(self.0) || super::dried_ghast::owns(self.0) {
             return Some(Shaped::Custom);
         }
         if super::creaking::wall_local(self.0).is_some() {
@@ -1304,8 +1317,14 @@ impl Block {
         if super::sniffer_egg::owns(self.0) {
             return super::sniffer_egg::EGG;
         }
+        if super::frosted_ice::owns(self.0) {
+            return super::frosted_ice::FIRST;
+        }
         if super::heavy_core::owns(self.0) {
             return super::heavy_core::HEAVY_CORE;
+        }
+        if super::dried_ghast::owns(self.0) {
+            return super::dried_ghast::DRIED_GHAST;
         }
         if self.0 == super::sniffer_plants::PITCHER_PLANT.0 + 1 {
             return super::sniffer_plants::PITCHER_PLANT;
@@ -1402,6 +1421,10 @@ impl Block {
         }
         if let Some(s) = super::copper_golem_statue::decode(self) {
             return super::copper_golem_statue::block(super::copper_golem_statue::Statue { facing, ..s });
+        }
+        // `DriedGhastBlock.getStateForPlacement`: facing the player.
+        if let Some(s) = super::dried_ghast::decode(self) {
+            return super::dried_ghast::block(super::dried_ghast::State { facing, ..s });
         }
         if let Some((nest, _, honey)) = super::bees::hive(self) {
             return super::bees::block(nest, facing, honey);
@@ -1651,6 +1674,10 @@ impl Block {
         if super::heavy_core::owns(self.0) {
             return Some(Item::from_block(super::heavy_core::HEAVY_CORE));
         }
+        // `blocks/dried_ghast`: itself, when it survives an explosion.
+        if super::dried_ghast::owns(self.0) {
+            return Some(Item::from_block(super::dried_ghast::DRIED_GHAST));
+        }
         if self == super::sniffer_plants::POTTED_TORCHFLOWER {
             return Some(super::utilities::FLOWER_POT.into());
         }
@@ -1784,6 +1811,8 @@ impl Block {
             b if b.is_leaves() => None,
             b if b.stained_glass_color().is_some() || b.is_glass_pane() => None,
             Block::GLASS | Block::BEDROCK | Block::TALL_GRASS | Block::FERN | Block::ICE => None,
+            // v0.15 Track D: `blocks/frosted_ice` is an empty table.
+            b if super::frosted_ice::owns(b.0) => None,
             b if b.is_fluid() || b.is_fire() || b == Block::AIR => None,
             b => Some(b.into()),
         }
@@ -1813,8 +1842,15 @@ impl Block {
         if super::sniffer_egg::owns(self.0) {
             return 0.5;
         }
+        if super::frosted_ice::owns(self.0) {
+            return super::frosted_ice::HARDNESS;
+        }
         if super::heavy_core::owns(self.0) {
             return super::heavy_core::HARDNESS;
+        }
+        // `Blocks.DRIED_GHAST`: `instabreak()`.
+        if super::dried_ghast::owns(self.0) {
+            return 0.0;
         }
         if super::archaeology::owns(self.0) {
             return 0.25;
@@ -2399,6 +2435,7 @@ impl Block {
                 super::sniffer_plants::PITCHER_PLANT.0,
                 super::sniffer_egg::EGG.0,
                 super::heavy_core::HEAVY_CORE.0,
+                super::dried_ghast::DRIED_GHAST.0,
             ])
             .chain(super::forms::palette_ids())
             .chain(super::nether_blocks::palette_ids())
@@ -3083,7 +3120,9 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         super::crops::FIRST..=super::crops::LAST => super::crops::registry(id),
         super::sniffer_plants::FIRST..=super::sniffer_plants::LAST => super::sniffer_plants::registry(id),
         15120..=super::sniffer_egg::LAST => super::sniffer_egg::registry(id),
+        12256..=super::frosted_ice::LAST => super::frosted_ice::registry(id),
         super::heavy_core::FIRST..=super::heavy_core::LAST => super::heavy_core::registry(id),
+        super::dried_ghast::FIRST..=super::dried_ghast::LAST => super::dried_ghast::registry(id),
         super::jukebox::FIRST..=super::jukebox::LAST => super::jukebox::registry(id),
         super::archaeology::FIRST..=super::archaeology::LAST => super::archaeology::registry(id),
         super::copper::FIRST..=super::copper::RESERVED_LAST
@@ -3121,10 +3160,16 @@ pub(super) const fn make(id: u16) -> BlockInfo {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },
-        900..=952 | 961..=968 | 2523 | 2524 => match super::village_blocks::registry(id) {
-            Some(info) => info,
-            None => ("unknown", Invisible, all(0)),
-        },
+        900..=952
+        | 961..=968
+        | 2523
+        | 2524
+        | super::workstations::LECTERN_FIRST..=super::workstations::LECTERN_LAST => {
+            match super::village_blocks::registry(id) {
+                Some(info) => info,
+                None => ("unknown", Invisible, all(0)),
+            }
+        }
         id if super::redstone_blocks::registry(id).is_some() => super::redstone_blocks::registry(id).unwrap(),
         id if super::rails::registry(id).is_some() => super::rails::registry(id).unwrap(),
         id if super::gadgets::registry(id).is_some() => super::gadgets::registry(id).unwrap(),

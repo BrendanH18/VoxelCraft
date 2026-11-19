@@ -51,8 +51,9 @@ pub(super) fn inherit(child: &mut Mob, a: &Mob, b: &Mob, rng: &mut Rng) {
     }
 }
 
-/// Stored codes are independent of Effect's enum order and flower block IDs.
-fn effect(code: u32) -> Option<(Effect, u32)> {
+/// A suspicious stew's effect code: the effect and its ticks. Stored codes
+/// are independent of Effect's enum order and flower block IDs.
+pub fn effect(code: u32) -> Option<(Effect, u32)> {
     Some(match code {
         1 => (Effect::Saturation, 7),
         2 => (Effect::NightVision, 100),
@@ -65,6 +66,11 @@ fn effect(code: u32) -> Option<(Effect, u32)> {
         9 => (Effect::Poison, 220),
         10 => (Effect::Nausea, 140),
         11 => (Effect::Blindness, 220),
+        // v0.15 Track H: the farmer's trade stews (`set_stew_effect`, seconds
+        // times 20) whose durations no flower gives.
+        12 => (Effect::JumpBoost, 160),
+        13 => (Effect::Blindness, 120),
+        14 => (Effect::Poison, 280),
         _ => return None,
     })
 }

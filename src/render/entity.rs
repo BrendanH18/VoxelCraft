@@ -24,6 +24,16 @@ pub(super) struct EntityPass {
     buffer: wgpu::Buffer,
     capacity: usize,
     count: u32,
+    /// v0.15 Track D: the Glowing mask pipelines and the glowing entities'
+    /// geometry (see `super::outline`).
+    mask_boxes: wgpu::RenderPipeline,
+    mask_verts: wgpu::RenderPipeline,
+    glow_box_buffer: wgpu::Buffer,
+    glow_box_capacity: usize,
+    glow_box_count: u32,
+    glow_buffer: wgpu::Buffer,
+    glow_capacity: usize,
+    glow_count: u32,
 }
 
 impl EntityPass {
@@ -129,6 +139,35 @@ impl EntityPass {
                 cache: None,
             })
         };
+        let make_mask = |label, entry_point, buffer| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some(entry_point),
+                    compilation_options: Default::default(),
+                    buffers: &[Some(buffer)],
+                },
+                primitive: Default::default(),
+                depth_stencil: None,
+                multisample: Default::default(),
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_mask"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: super::outline::MASK_FORMAT,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+        let mask_boxes = make_mask("glow mask boxes", "vs_box", instances.clone());
+        let mask_verts = make_mask("glow mask", "vs_main", vertices.clone());
         let boxes = make("entity boxes", "vs_box", instances, true, None);
         let pipeline = make("entities", "vs_main", vertices.clone(), true, None);
         let translucent =
@@ -148,6 +187,34 @@ impl EntityPass {
             buffer: Self::create_buffer(device, "entity vertices", capacity * std::mem::size_of::<EntityVertex>()),
             capacity,
             count: 0,
+            mask_boxes,
+            mask_verts,
+            glow_box_buffer: Self::create_buffer(device, "glow boxes", 64 * std::mem::size_of::<BoxInstance>()),
+            glow_box_capacity: 64,
+            glow_box_count: 0,
+            glow_buffer: Self::create_buffer(device, "glow vertices", 256 * std::mem::size_of::<EntityVertex>()),
+            glow_capacity: 256,
+            glow_count: 0,
+        }
+    }
+
+    /// Whether any glowing entity is in this frame's geometry.
+    pub(super) fn glowing(&self) -> bool {
+        self.glow_box_count > 0 || self.glow_count > 0
+    }
+
+    /// Draws the glowing entities into the outline mask.
+    pub(super) fn draw_mask(&self, pass: &mut wgpu::RenderPass<'_>) {
+        pass.set_bind_group(2, &self.skin, &[]);
+        if self.glow_box_count > 0 {
+            pass.set_pipeline(&self.mask_boxes);
+            pass.set_vertex_buffer(0, self.glow_box_buffer.slice(..));
+            pass.draw(0..BOX_VERTICES, 0..self.glow_box_count);
+        }
+        if self.glow_count > 0 {
+            pass.set_pipeline(&self.mask_verts);
+            pass.set_vertex_buffer(0, self.glow_buffer.slice(..));
+            pass.draw(0..self.glow_count, 0..1);
         }
     }
 
@@ -223,5 +290,31 @@ impl Renderer {
             self.queue.write_buffer(&e.buffer, 0, bytemuck::cast_slice(verts));
         }
         e.count = verts.len() as u32;
+        // v0.15 Track D: the glowing entities, for the outline mask.
+        let (glow_boxes, glow) = (mesh.glow_boxes(), mesh.glow_verts());
+        if glow_boxes.len() > e.glow_box_capacity {
+            e.glow_box_capacity = glow_boxes.len().next_power_of_two();
+            e.glow_box_buffer = EntityPass::create_buffer(
+                &self.device,
+                "glow boxes",
+                e.glow_box_capacity * std::mem::size_of::<BoxInstance>(),
+            );
+        }
+        if !glow_boxes.is_empty() {
+            self.queue.write_buffer(&e.glow_box_buffer, 0, bytemuck::cast_slice(glow_boxes));
+        }
+        e.glow_box_count = glow_boxes.len() as u32;
+        if glow.len() > e.glow_capacity {
+            e.glow_capacity = glow.len().next_power_of_two();
+            e.glow_buffer = EntityPass::create_buffer(
+                &self.device,
+                "glow vertices",
+                e.glow_capacity * std::mem::size_of::<EntityVertex>(),
+            );
+        }
+        if !glow.is_empty() {
+            self.queue.write_buffer(&e.glow_buffer, 0, bytemuck::cast_slice(glow));
+        }
+        e.glow_count = glow.len() as u32;
     }
 }

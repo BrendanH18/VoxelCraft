@@ -52,14 +52,21 @@ impl Freezing {
         }
     }
 }
+/// `Parched.getArrow`: Weakness for 600 ticks on every arrow it shoots.
+pub const PARCHED_WEAKNESS_TICKS: u32 = 600;
+/// `Parched.getHardAttackInterval` and `getAttackInterval`.
+pub const PARCHED_ATTACK_INTERVAL: (u32, u32) = (50, 70);
+
 impl MobKind {
     pub fn is_bow_skeleton(self) -> bool {
-        matches!(self, Self::Skeleton | Self::Stray | Self::Bogged)
+        matches!(self, Self::Skeleton | Self::Stray | Self::Bogged | Self::Parched)
     }
     pub(super) fn arrow_potion(self) -> Option<Potion> {
         match self {
             Self::Stray => Potion::from_id("slowness"),
             Self::Bogged => Potion::from_id("poison"),
+            // `entities/parched`: `set_potion` weakness.
+            Self::Parched => Potion::from_id("weakness"),
             _ => None,
         }
     }
@@ -69,13 +76,15 @@ impl MobKind {
         match self {
             Self::Stray => Some((Effect::Slowness, 0, 600)),
             Self::Bogged => Some((Effect::Poison, 0, 100)),
+            // `Parched.getArrow`: `new MobEffectInstance(WEAKNESS, 600)`.
+            Self::Parched => Some((Effect::Weakness, 0, PARCHED_WEAKNESS_TICKS)),
             _ => None,
         }
     }
     pub(super) fn bow_interval(self, hard: bool) -> f32 {
         let ticks = match (self, hard) {
-            (Self::Bogged, true) => 50,
-            (Self::Bogged, false) => 70,
+            (Self::Bogged | Self::Parched, true) => 50,
+            (Self::Bogged | Self::Parched, false) => 70,
             (_, true) => 20,
             (_, false) => 40,
         };

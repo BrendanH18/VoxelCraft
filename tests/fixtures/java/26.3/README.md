@@ -859,3 +859,245 @@ wash), puts undyed leather on at a water cauldron through the shared equip
 path and the CLI while dyed leather is washed, equips a horse with dyed
 leather horse armor, and saves and reloads dyed stacks in the inventory, on
 an armor stand and as stack strings.
+
+## Workstations (v0.15 Track B)
+
+`workstations.json` holds the facts behind the loom, cartography table,
+stonecutter, lectern, books and spyglass: the 43 banner patterns
+(`data/minecraft/banner_pattern`, each drawing its own asset), the
+`#no_item_required` banner pattern tag in file order (the loom's list
+without a pattern item), every `pattern_item/<x>` tag, the item tags
+`loom_patterns`, `lectern_books`, `book_cloning_target`, `clonable_maps` and
+`extendable_maps` in file order, the stack size, rarity and glint of the
+spyglass, both books and the ten pattern items (`Items`' static
+initializer), the ominous banner's eight layers
+(`Raid.getBannerComponentPatch`, read from its bytecode), constants from
+`SpyglassItem`, `BannerBlockEntity`, `LecternBlock`, `WritableBookContent`
+and `WrittenBookContent`, every input's stonecutter list in recipe id order,
+the loot table entries and villager trades that give or want these items,
+and the lectern's comparator output and page clamp over a table of cases
+from a model of `LecternBlockEntity.getRedstoneSignal` and `setPage`.
+
+```sh
+python3 tools/extract_java_workstation_fixtures.py /path/to/server.jar target/java-workstations.json
+diff tests/fixtures/java/26.3/workstations.json target/java-workstations.json
+scripts/remote-check.sh -- 'cargo test --release --test java_workstations --test java_recipes'
+```
+
+`tests/java_workstations.rs` compares the pattern registry and both loom
+lists, the pattern items, the tags (both ways against the game's own
+predicates), the item facts, the ominous banner, the constants, the lectern
+cases and the stonecutter's order with the game. `tests/java_recipes.rs`
+runs the four special grid recipes (banner duplication, shield decoration,
+book cloning, map extending) on example grids.
+
+## Illagers, vexes and ravagers
+
+`illagers.json` (v0.15 Track A) holds the facts of the vindicator, evoker,
+illusioner, pillager, vex and ravager: each `EntityTypes` builder (category,
+size, eye height, fire immunity, peaceful flag, riding offset), the
+attributes merged from `Mob`, `Monster` and each `createAttributes`, the
+constructors' experience, every `registerGoals` entry, the
+`entities/*` loot tables (pools, conditions, counts, Looting increases) and
+the `illager`, `illager_friends` and `raiders` tags. Below them: each
+`SpellcasterUseSpellGoal`'s warmup, casting time, interval and spell, with
+the fang rings and line of `EvokerAttackSpellGoal.performSpellCasting`, the
+summon roll, count range, vexes and vex lifetime, `wololo`'s box and
+colours, and the illusioner's invisibility and blindness lengths;
+`EvokerFangs`' life, bite tick, damage and reach; the vex's starvation, charge
+and wander rolls, distances and move control; the ravager's timers, roar,
+`strongKnockback`, stun chance, speed easing, griefing box and attack box,
+and that `CropBlock.entityInside` breaks crops under it;
+`RangedCrossbowAttackGoal`'s see time, delays and path delay with
+`CrossbowItem`'s charge time and mob arrow power; `Mob`'s attack reach,
+pickup reach and replacement drop roll, the 0.55 `CanPickUpLoot` chance of
+zombies and skeletons, and that pillagers set it on load; and the
+vindicator's Johnny name and door rule (`BreakDoorGoal` time, Normal or
+Hard, active raids only). Method bodies are matched against templates of
+their literal values: fixed entries pin the bytecode's shape and named ones
+capture the values, so a changed shape fails.
+
+```sh
+python3 tools/extract_java_illager_fixtures.py /path/to/server.jar --output target/java-illagers.json
+diff tests/fixtures/java/26.3/illagers.json target/java-illagers.json
+scripts/remote-check.sh -- 'cargo test --release --lib illager'
+```
+
+`src/entity/illager/tests.rs` reads every number back from the fixture
+(registration, attributes, experience, spells, fangs, vex, ravager,
+crossbow, shared combat), checks both tags against `MobKind::ALL` in both
+directions, rolls the loot tables against the fixture's pools, and runs the
+behaviour through the entity update.
+
+## Items and effects (v0.15 Track D)
+
+`items_effects.json` holds the facts behind v0.15 Track D: the Wind
+Charged, Weaving, Oozing and Infested registrations in `MobEffects` (colour,
+category, Infested's 0.1 chance and the counts their lambdas return: 2–3
+cobwebs, 2 slimes, 1–2 silverfish), their four potions in `Potions`
+(3600 ticks, level I), `FrostedIceBlock`'s delays (60–120 after a change,
+20–40 otherwise), its one-in-three ageing roll, brightness base 11 and
+neighbour limits 4 and 2, Frost Walker's `replace_disk` from
+`enchantment/frost_walker.json`, `LivingEntity.travelInAir`'s Levitation
+constants (0.05 a level, a fifth of the gap a tick), `WebBlock`'s speed
+multipliers with and without Weaving, `SpectralArrow`'s 200 Glowing ticks,
+the trim patterns and materials (description colours), the templates'
+rarities, the `trim_materials` and `eggs` item tags, the chicken, cow and
+pig variants with their warm and cold biome tags expanded,
+`gameplay/chicken_lay`, the chicken's egg timer, and every loot table entry
+naming a spectral arrow, a coloured egg or a trim template.
+
+```sh
+python3 tools/extract_java_items_effects_fixtures.py /path/to/server.jar --output target/java-items-effects.json
+diff tests/fixtures/java/26.3/items_effects.json target/java-items-effects.json
+scripts/remote-check.sh -- 'cargo test --release --test java_items_effects --test java_brewing --test java_recipes'
+```
+
+`tests/java_items_effects.rs` compares each fact with the game both ways:
+the effect constants and colours, the potions and their item IDs, the
+frosted ice and Frost Walker constants, the trim patterns, material
+colours, tag and template rarities, the farm variants' biomes and the
+chicken's eggs, the loot tables the game carries (the trail ruins'
+archaeology table and end city chests are owned elsewhere and listed in
+the test; woodland mansion chests carry the vex template since v0.15
+Track F), and saves and reloads the new stacks,
+farm variants and frosted ice with its pending tick. Recipes are checked by
+`tests/java_recipes.rs` (the spectral arrow, the 18 template copies and the
+18 `smithing_trim` recipes) and brewing by `tests/java_brewing.rs`.
+
+`new_mobs.json` (v0.15 Track C) holds the facts of happy ghasts, dried
+ghasts, nautiluses, zombie nautiluses, camel husks and parched: their
+`EntityTypes` sizes and categories, the attributes their `createAttributes`
+add, the static constants of `DriedGhastBlock`, `HappyGhast`,
+`HappyGhastAi`, `AbstractNautilus`, `Nautilus`, `NautilusAi`,
+`ZombieNautilusAi`, `Drowned` and `Camel`, the husk's camel chance and the
+parched's arrow effect and intervals from method bytecode, their loot
+tables, the dried ghast recipe, and the item, block, entity-type and biome
+tags they use. Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_new_mob_fixtures.py /path/to/server.jar --output target/java-new-mobs.json
+diff tests/fixtures/java/26.3/new_mobs.json target/java-new-mobs.json
+scripts/remote-check.sh -- 'cargo test --release --lib -- happy_ghast nautilus camel_husk dried_ghast'
+```
+
+The tests in `entity::happy_ghast`, `entity::nautilus` and
+`entity::camel_husk` compare the game's constants, sizes, tags and loot
+with this file.
+
+## Raids, patrols and heroes (v0.15 Track E)
+
+`raids.json` holds the facts of raids: `Raid`'s constants, the
+`Raid.RaiderType` wave table (vindicator, evoker, pillager, witch and
+ravager spawns per wave, in spawn order), `getNumGroups`, `getEnchantOdds`,
+the branches of `getPotentialBonusSpawns`, the `findRandomSpawnPos` ring
+search and `joinRaid`'s placement; `Raids.createOrExtendRaid`'s POI radius,
+`canJoinRaid`'s idle limit and the save interval; `ServerLevel.getRaidAt`,
+`isVillage` and `isCloseToVillage`; `Raider.updateNoActionTime`, its
+celebration odds and goals, which raiders can lead (`canBeLeader` of the
+ravager and witch); `PatrollingMonster`'s captain chance, light rule,
+despawn distance, patrol target and `LongDistancePatrolGoal`;
+`PatrolSpawner.tick`; the Bad Omen and Raid Omen ticks; `BellBlockEntity`'s
+constants; `GiveGiftToHero`'s timings and profession tables with the 16
+`gameplay/hero_of_the_village/*_gift` loot tables; the hero discount of
+`Villager.updateSpecialPrices`; the pillager's captain pool (the only 26.3
+entity table naming captains, an ominous bottle of amplifier 0 to 4); the
+four `enchantment_provider/raid/*` providers; the `early_game` timeline
+that keeps patrols away before tick 120000 and the biomes and dimension
+types that forbid patrols and raids. Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_raid_fixtures.py /path/to/server.jar --output target/java-raids.json
+diff tests/fixtures/java/26.3/raids.json target/java-raids.json
+scripts/remote-check.sh -- 'cargo test --release --lib -- entity::raid'
+```
+
+The tests in `entity::raid` compare every constant and table with this
+file both ways and run a raid from Bad Omen to Hero of the Village and
+through a save and reload.
+
+## Villagers and wandering traders (v0.15 Track H)
+
+`villagers.json` holds Java 26.3's default trade data and the villager
+constants. Trades are data in 26.3: for each profession level and the
+wandering trader's three sets it records the trade set
+(`data/minecraft/trade_set`: how many offers are drawn, whether duplicates
+are allowed) and its `#villager_trade/...` tag resolved in file order, with
+nested tags such as `#common_smith/level_1` expanded where they appear.
+Each `data/minecraft/villager_trade` entry is normalized with the codec
+defaults of `VillagerTrade` (`max_uses` 4, `xp` 1, `reputation_discount` 0,
+counts 1): wanted and additional items, the result, the merchant predicate's
+villager types and the `given_item_modifier` list (enchanting, books,
+explorer maps, dyes, potions, stews). The optional `trade_rebalance` data
+pack ships disabled, so only its trade names are listed. The file also has
+the enchantment and potion tags the trades draw from, the schedules
+(`timeline/villager_schedule.json`), `VillagerData`'s level thresholds,
+`GossipType`, the `PoiTypes` tickets and ranges, the villager hostile
+sensor's distances, the wandering trader's avoid goals and trade-set order,
+the villager food values, and constants of `Villager`, `GossipContainer`,
+`AcquirePoi`, `WorkAtPoi`, `GolemSensor`, `ZombieVillager` and
+`WanderingTraderSpawner`.
+
+```sh
+python3 tools/extract_java_villager_fixtures.py /path/to/server.jar target/java-villagers.json
+diff tests/fixtures/java/26.3/villagers.json target/java-villagers.json
+scripts/remote-check.sh -- 'cargo test --release --lib villager'
+```
+
+`entity::villager::fixture_tests` compares both ways: every Java trade id
+is in the game's table at its profession and level in tag order and every
+game entry is a Java one, with the same items, counts, uses, XP, price
+multiplier, villager types and modifier; the same for the wandering
+trader's sets; the trade-set amounts, enchantment, potion and stew tags,
+schedules, gossip types, constants, food values and flee distances.
+
+## Structure catalogues (v0.15 Track G)
+
+`structure_catalogues.json` holds the facts behind generation 4's village,
+trial chamber and ancient city catalogues (FE-02): the seven structures'
+jigsaw settings, every template pool under `village/`, `trial_chambers/`
+and `ancient_city/` element by element, the 20 processor lists those pools
+name, and for each of the 727 templates the pools name its size, jigsaw
+connectors (orientation, name, target, pool, joint, priorities),
+residents, counted blocks (bells, bed heads, job sites, containers, pots,
+cobwebs, trial spawners, vaults), each container's loot table, each trial
+spawner's configuration and each vault's loot table. Block layouts are
+not recorded. `ancient_city/walls/intact_horizontal_wall_stairs_5`, which
+`ancient_city/walls/no_corners` names, is missing from the jar and is
+recorded as missing.
+
+```sh
+python3 tools/extract_java_structure_catalogues.py /path/to/server.jar --output target/java-structure-catalogues.json
+diff tests/fixtures/java/26.3/structure_catalogues.json target/java-structure-catalogues.json
+scripts/remote-check.sh -- 'cargo test --release structure_catalogue'
+```
+
+`src/world/jigsaw/catalogue_tests.rs` compares the catalogue files, the
+templates drawn from them and the processor rule tables with the fixture
+both ways.
+
+`mansions.json` (v0.15 Track F) holds the woodland mansion's and the five
+new explorer maps' facts: the `woodland_mansion` structure and its
+`woodland_mansions` structure set (registered in code, read with `javap`
+from `Structures`, `StructureSets` and `Structure$StructureSettings`), the
+start offset and lowest start y of `WoodlandMansionStructure`, the
+`has_structure/woodland_mansion` biome tag, the `on_*_maps` structure tags,
+the `chests/woodland_mansion` table, and for each of the 73
+`structure/woodland_mansion/*.nbt` templates only its size, whether every
+cell is stored, its data markers (name and position), its containers with
+fixed contents, its empty chest count and the room-kind block families it
+contains. No template layout is copied (fidelity exception FE-02). It also
+lists every `villager_trade` and loot table that gives one of the five maps,
+the cartographer trade tags and `clonable_maps`. Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_mansion_fixtures.py /path/to/server.jar --output target/java-mansions.json
+diff tests/fixtures/java/26.3/mansions.json target/java-mansions.json
+scripts/remote-check.sh -- 'cargo test --release --lib -- mansion explorer_maps master_cartographer'
+```
+
+`world::mansion` checks its template table, fixed containers, placement
+constants, biome tag and room kinds against this file both ways, and
+`world::explorer_maps` the maps' names, sources, decorations and trade.
+The woodland mansion chest table itself is in `src/world/loot_tables.json`
+(added to `tools/extract_java_structure_loot.py`'s list).

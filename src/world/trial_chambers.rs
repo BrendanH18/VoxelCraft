@@ -12,6 +12,10 @@
 //! husk or spider, small melee slime, cave spider, silverfish or baby
 //! zombie. Processors: the copper bulb degradation rules (and every bulb
 //! placed lit), loot containers as barrels or dispensers by table.
+//! Generation 4 (v0.15 Track G) builds chambers from Java's full pool
+//! lists with an original template for every Java location ([`catalogue`]),
+//! resolving the spawner pools through the same aliases, so each spawner
+//! takes the configuration of the contents piece Java's alias picks.
 use std::sync::{Arc, Mutex};
 
 use glam::{IVec2, IVec3};
@@ -112,6 +116,35 @@ pub struct Aliases {
 }
 
 impl Aliases {
+    /// Java's `PoolAliasLookup` for this choice: the spawner contents pools
+    /// a generation 4 chamber's connectors name.
+    pub fn pool<'p>(&self, pool: &'p str) -> &'p str {
+        match pool {
+            "trial_chambers/spawner/contents/ranged" => [
+                "trial_chambers/spawner/ranged/skeleton",
+                "trial_chambers/spawner/ranged/stray",
+                "trial_chambers/spawner/ranged/poison_skeleton",
+            ][self.ranged as usize],
+            "trial_chambers/spawner/contents/slow_ranged" => [
+                "trial_chambers/spawner/slow_ranged/skeleton",
+                "trial_chambers/spawner/slow_ranged/stray",
+                "trial_chambers/spawner/slow_ranged/poison_skeleton",
+            ][self.ranged as usize],
+            "trial_chambers/spawner/contents/melee" => [
+                "trial_chambers/spawner/melee/zombie",
+                "trial_chambers/spawner/melee/husk",
+                "trial_chambers/spawner/melee/spider",
+            ][self.melee as usize],
+            "trial_chambers/spawner/contents/small_melee" => [
+                "trial_chambers/spawner/small_melee/slime",
+                "trial_chambers/spawner/small_melee/cave_spider",
+                "trial_chambers/spawner/small_melee/silverfish",
+                "trial_chambers/spawner/small_melee/baby_zombie",
+            ][self.small_melee as usize],
+            other => other,
+        }
+    }
+
     /// The spawner configuration for a template's `trial:<alias>` name at
     /// `at` (`trial_chambers/spawner/all` picks one of its three
     /// connectors per position).
@@ -212,6 +245,52 @@ impl Palette for ChamberPalette {
     }
 }
 
+/// Generation 4's palette: Java's processor list per piece (the copper bulb
+/// degradation), every bulb lit, spawners as trial spawners and dispensers
+/// turned with their piece.
+struct V4Palette;
+
+fn v4_processors() -> &'static [Option<&'static jigsaw::rules::Compiled>] {
+    static LISTS: std::sync::OnceLock<Vec<Option<&'static jigsaw::rules::Compiled>>> = std::sync::OnceLock::new();
+    LISTS.get_or_init(|| catalogue::library().processor_lists.iter().map(|n| jigsaw::rules::list(n)).collect())
+}
+
+impl Palette for V4Palette {
+    fn role(&self, _role: &str) -> Option<Block> {
+        None
+    }
+
+    fn process_at(&self, block: Block, at: IVec3, piece: &Placed, existing: Block) -> Option<Block> {
+        if block == Block::SPAWNER {
+            return Some(super::trial::TRIAL_SPAWNER);
+        }
+        if let Some(super::redstone_blocks::Component::Dispenser { facing, .. }) =
+            super::redstone_blocks::component(block)
+            && facing < 4
+        {
+            let f = super::block::Facing::ALL[facing as usize];
+            let turned = jigsaw::rotate_facing(f, piece.rotation);
+            let i = super::block::Facing::ALL.iter().position(|&g| g == turned).unwrap() as u8;
+            return Some(super::redstone_blocks::dispenser(i, false));
+        }
+        let t = &catalogue::library().templates[piece.template as usize];
+        let out = match t.processors.and_then(|i| v4_processors()[i as usize]) {
+            Some(list) => list.apply(block, at, existing)?,
+            None => block,
+        };
+        if let Some(c) = super::copper::state(out)
+            && c.family == super::copper::Family::Bulb
+        {
+            return Some(super::copper::encode(super::copper::Copper { local: 1, ..c }));
+        }
+        Some(out)
+    }
+
+    fn clear_above(&self) -> i32 {
+        0
+    }
+}
+
 /// One trial chamber layout.
 #[derive(Debug)]
 pub struct Chamber {
@@ -220,9 +299,16 @@ pub struct Chamber {
     pub pieces: Vec<Placed>,
     pub aliases: Aliases,
     pub seed: u64,
+    /// Generation 4: placed from the [`catalogue`] library.
+    pub v4: bool,
 }
 
 impl Chamber {
+    /// The template library the chamber was placed from.
+    pub fn library(&self) -> &'static jigsaw::Library {
+        if self.v4 { catalogue::library() } else { jigsaw::trial_chambers() }
+    }
+
     /// Whether `p` lies in one of the pieces (Java's `spawn_overrides`
     /// with `bounding_box: piece`, which empty every category inside).
     pub fn holds(&self, p: IVec3) -> bool {
@@ -259,23 +345,28 @@ impl TrialChambers {
         let seed = hash3(at.x, 0, at.y, self.seed ^ SALT);
         // `start_height`: uniform -40..=-20 (absolute).
         let start_y = -40 + (seed % 21) as i32;
-        let pieces = jigsaw::assemble(
-            jigsaw::trial_chambers(),
-            &jigsaw::Settings {
-                start_pool: "trial_chambers/chamber/end",
-                max_depth: MAX_DEPTH,
-                max_distance: MAX_DISTANCE,
-            },
-            at,
-            &|_, _| start_y - 1,
-            seed,
-        );
+        let settings = jigsaw::Settings {
+            start_pool: "trial_chambers/chamber/end",
+            max_depth: MAX_DEPTH,
+            max_distance: MAX_DISTANCE,
+        };
         let a = seed.rotate_left(17);
         let aliases = Aliases { ranged: (a % 3) as u8, melee: (a / 3 % 3) as u8, small_melee: (a / 9 % 4) as u8 };
+        let v4 = g.generation >= Generation::V4;
+        let pieces = if v4 {
+            // The start on the start column, its floor one below the start
+            // height, as `jigsaw::assemble` places generation 3's.
+            let place = |_: &jigsaw::Template, _: u8| IVec3::new(at.x, start_y - 1, at.y);
+            jigsaw::assemble_with_aliases(catalogue::library(), &settings, &place, &|_, _| start_y - 1, seed, &|p| {
+                aliases.pool(p)
+            })
+        } else {
+            jigsaw::assemble(jigsaw::trial_chambers(), &settings, at, &|_, _| start_y - 1, seed)
+        };
         let found = pieces.first().copied().and_then(|p| {
             let mut at = (p.bounds.min + p.bounds.max) / 2;
             at.y = p.origin.y + 1;
-            allowed(g.biome_at(at)).then(|| Arc::new(Chamber { at, pieces, aliases, seed }))
+            allowed(g.biome_at(at)).then(|| Arc::new(Chamber { at, pieces, aliases, seed, v4 }))
         });
         let mut cache = self.cache.lock().unwrap();
         if cache.len() >= CACHE_LIMIT {
@@ -306,10 +397,11 @@ impl TrialChambers {
         let min = IVec2::new(base.x, base.z);
         let ground = |_: i32, _: i32| 0;
         for c in self.around(g, min, min + IVec2::splat(CHUNK_SIZE_I - 1)) {
+            let palette: &dyn Palette = if c.v4 { &V4Palette } else { &ChamberPalette };
             jigsaw::paint(
-                jigsaw::trial_chambers(),
+                c.library(),
                 &c.pieces,
-                &ChamberPalette,
+                palette,
                 &jigsaw::Ground { surface: &ground, solid: &ground },
                 blocks,
                 base,
@@ -327,13 +419,26 @@ impl TrialChambers {
         let inside =
             |p: IVec3| (p - base).cmpge(IVec3::ZERO).all() && (p - base).cmplt(IVec3::splat(CHUNK_SIZE_I)).all();
         let min = IVec2::new(base.x, base.z);
-        let lib = jigsaw::trial_chambers();
         for c in self.around(g, min, min + IVec2::splat(CHUNK_SIZE_I - 1)) {
+            let lib = c.library();
             for m in jigsaw::markers(lib, &c.pieces, &|_, _| 0) {
                 match m {
                     Marker::Loot(p, name, seed) if inside(p) => {
+                        let name = name.strip_prefix("chests/").unwrap_or(name);
                         if let Some(table) = Table::from_name(name) {
                             out.push((p, Feature::TrialLoot(seed, table)));
+                        } else if c.v4
+                            && let Some(table) = lib.loot.iter().find(|l| l.as_str() == name)
+                        {
+                            // Decorated pots' `pots/trial_chambers/corridor`.
+                            out.push((p, Feature::StructureLoot(seed, table.as_str())));
+                        }
+                    }
+                    // Generation 4 spawners name Java's configuration.
+                    Marker::Spawner(p, name) if inside(p) && c.v4 => {
+                        let config = name.strip_suffix("/normal").unwrap_or(name);
+                        if let Some(id) = super::trial::spawner::config_id(config) {
+                            out.push((p, Feature::TrialSpawner(id)));
                         }
                     }
                     Marker::Spawner(p, name) if inside(p) => {
@@ -407,6 +512,8 @@ fn jigsaw_meets(b: &Bounds, base: IVec3) -> bool {
     let top = base + IVec3::splat(CHUNK_SIZE_I - 1);
     b.min.cmple(top).all() && b.max.cmpge(base).all()
 }
+
+pub mod catalogue;
 
 #[cfg(test)]
 mod tests;

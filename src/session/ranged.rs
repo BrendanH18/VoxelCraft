@@ -105,7 +105,8 @@ pub struct Shot {
 impl PlayerSession {
     /// Java prefers projectiles held in the offhand, then inventory order.
     fn arrow_ammo(&self) -> Option<(Option<usize>, crate::inventory::Stack)> {
-        let is_arrow = |s: crate::inventory::Stack| matches!(s.item, Item::ARROW | Item::TIPPED_ARROW);
+        let is_arrow =
+            |s: crate::inventory::Stack| matches!(s.item, Item::ARROW | Item::TIPPED_ARROW | Item::SPECTRAL_ARROW);
         if let Some(s) = self.inventory.offhand.filter(|s| is_arrow(*s)) {
             return Some((None, s));
         }
@@ -212,6 +213,7 @@ impl PlayerSession {
         entities.shoot_enchanted_for(eye, dir, power, survival && !infinite, enchants, self.id);
         entities.arrows.last_mut().unwrap().potion = potion;
         entities.arrows.last_mut().unwrap().tipped = ammo.is_some_and(|s| s.item == Item::TIPPED_ARROW);
+        entities.arrows.last_mut().unwrap().spectral = ammo.is_some_and(|s| s.item == Item::SPECTRAL_ARROW);
         if survival {
             self.vitals.hunger.exhaust(survival::EXHAUST_ATTACK);
         }
@@ -256,7 +258,11 @@ impl PlayerSession {
         if let Some(stack) = &mut self.inventory.slots[slot] {
             stack.item = Item::CHARGED_CROSSBOW;
             stack.entity_data = potion.map_or_else(
-                || if ammo.is_some_and(|s| s.item == Item::TIPPED_ARROW) { u32::MAX } else { 0 },
+                || match ammo.map(|s| s.item) {
+                    Some(Item::TIPPED_ARROW) => u32::MAX,
+                    Some(Item::SPECTRAL_ARROW) => crate::entity::SPECTRAL_BOLT,
+                    _ => 0,
+                },
                 |p| u32::from(p.0) + 1,
             );
         }
@@ -270,7 +276,8 @@ impl PlayerSession {
         let survival = self.mode.is_survival();
         let (eye, forward) = (self.player.eye(), self.player.forward().as_dvec3());
         let held = self.inventory.get(slot).map_or(Enchants::NONE, |s| s.active_enchants());
-        let tipped = self.inventory.get(slot).is_some_and(|s| s.entity_data != 0);
+        let spectral = self.inventory.get(slot).is_some_and(|s| s.entity_data == crate::entity::SPECTRAL_BOLT);
+        let tipped = self.inventory.get(slot).is_some_and(|s| s.entity_data != 0) && !spectral;
         let potion = self.inventory.get(slot).and_then(|s| s.arrow_potion());
         let piercing = Enchants::NONE.with(Enchantment::Piercing, held.level(Enchantment::Piercing));
         if let Some(stack) = &mut self.inventory.slots[slot] {
@@ -282,6 +289,7 @@ impl PlayerSession {
             entities.shoot_enchanted_for(eye, dir, CROSSBOW_POWER, survival && real, piercing, self.id);
             entities.arrows.last_mut().unwrap().potion = potion;
             entities.arrows.last_mut().unwrap().tipped = tipped;
+            entities.arrows.last_mut().unwrap().spectral = spectral;
             if survival && self.inventory.wear(slot, 1) {
                 broken = Some(Item::CROSSBOW);
                 break;

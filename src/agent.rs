@@ -13,8 +13,9 @@ use crate::rules::GameMode;
 use crate::simulation::damage::Cause;
 use crate::simulation::{self, TICK_SECONDS};
 use crate::world::{World, block::Block};
+use command::CartographyAction;
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink, or hold a brush for 200 ticks) | draw [ticks] (hold use with a bow or crossbow: a bow shoots at that draw, a crossbow loads after 25 ticks; a charged crossbow fires at once) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot (an aimed ender chest holds your own items) | sign x y z front|back [\"line\", ...] (write one side of a sign within reach) | furnace take/put input/fuel/output | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp|teleport [@s] x y z, tp @s x y z yaw pitch|facing x y z|facing entity @s [eyes|feet], rotate @s yaw pitch|facing x y z|facing entity @s [eyes|feet] (Java degrees: yaw 0 south, 90 west; pitch -90 up; ~ is relative), spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink, or hold a brush for 200 ticks) | draw [ticks] (hold use with a bow or crossbow: a bow shoots at that draw, a crossbow loads after 25 ticks; a charged crossbow fires at once) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot (an aimed ender chest holds your own items) | sign x y z front|back [\"line\", ...] (write one side of a sign within reach) | furnace take/put input/fuel/output | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | stonecut item (cut the held stack at an aimed stonecutter) | loom pattern dye (weave onto the held banner at an aimed loom) | cartography copy|zoom|lock (the held map at an aimed cartography table) | book write [\"page\", ...] | book sign \"title\" [\"page\", ...] (the held book and quill) | lectern x y z page n|take | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp|teleport [@s] x y z, tp @s x y z yaw pitch|facing x y z|facing entity @s [eyes|feet], rotate @s yaw pitch|facing x y z|facing entity @s [eyes|feet] (Java degrees: yaw 0 south, 90 west; pitch -90 up; ~ is relative), spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -634,20 +635,43 @@ impl Agent {
                     return Err("target is not a smithing table".into());
                 }
                 let base = self.session.inventory.get(self.selected).ok_or("selected slot empty")?;
-                let template_slot =
-                    self.session.inventory.find(Item::NETHERITE_UPGRADE).ok_or("no upgrade template")?;
-                let addition_slot = self.session.inventory.find(Item::NETHERITE_INGOT).ok_or("no Netherite ingot")?;
-                let result = crate::smithing::upgrade(
-                    self.session.inventory.get(template_slot).unwrap(),
-                    base,
-                    self.session.inventory.get(addition_slot).unwrap(),
-                )
-                .ok_or("selected item is not diamond gear")?;
+                // v0.15 Track D: an armor trim template and a trim material
+                // work too; the upgrade template is tried first.
+                let (inv, selected) = (&self.session.inventory, self.selected);
+                let slots = |want: fn(Item) -> bool| {
+                    (0..inv.slots.len()).filter(move |&i| i != selected && inv.get(i).is_some_and(|s| want(s.item)))
+                };
+                let found = slots(crate::smithing::is_template)
+                    .flat_map(|t| slots(crate::smithing::is_addition).map(move |a| (t, a)))
+                    .find_map(|(t, a)| {
+                        let (template, addition) = (inv.get(t).unwrap(), inv.get(a).unwrap());
+                        crate::smithing::upgrade(template, base, addition).map(|r| (t, a, r))
+                    });
+                if !inv.slots.iter().flatten().any(|s| crate::smithing::is_template(s.item)) {
+                    return Err("no smithing template".into());
+                }
+                let (template_slot, addition_slot, result) =
+                    found.ok_or("no template and addition in the inventory fit the selected item")?;
                 self.session.inventory.take_one(template_slot);
                 self.session.inventory.take_one(addition_slot);
                 self.session.inventory.slots[self.selected] = Some(result);
             }
             Command::Sign(pos, front, lines) => self.session.edit_sign(world, pos, front, lines)?,
+            Command::Stonecut(output) => self.stonecut(output, world)?,
+            Command::Loom(pattern, dye) => self.loom(&pattern, dye, world)?,
+            Command::Cartography(action) => self.cartography(action, world)?,
+            Command::Book(pages, title) => match title {
+                Some(title) => self.session.sign_book(self.selected, &pages, &title, "Player")?,
+                None => self.session.edit_book(self.selected, &pages)?,
+            },
+            Command::Lectern(pos, Some(page)) => {
+                self.session.turn_lectern_page(world, pos, page)?;
+            }
+            Command::Lectern(pos, None) => {
+                if let Some(rest) = self.session.take_lectern_book(world, pos)? {
+                    entities.throw(rest, self.session.player.eye(), self.session.player.forward().as_dvec3());
+                }
+            }
             Command::Drop => {
                 let stack = self.session.inventory.slots[self.selected].take().ok_or("selected slot empty")?;
                 entities.throw(stack, self.session.player.eye(), self.session.player.forward().as_dvec3());
@@ -680,6 +704,86 @@ impl Agent {
             entities.throw(remainder, self.session.player.eye(), self.session.player.forward().as_dvec3());
         }
         Ok(())
+    }
+
+    /// The targeted block, when its base is `base`.
+    fn targeted(&self, world: &World, base: Block, what: &str) -> Result<IVec3, String> {
+        let (pos, _) = self.target(world).ok_or_else(|| format!("no {what} within reach"))?;
+        if world.get_block(pos).is_none_or(|b| b.base() != base) {
+            return Err(format!("target is not a {what}"));
+        }
+        Ok(pos)
+    }
+
+    /// Uses up one item from each of `inputs` and adds `result`, all or
+    /// nothing: refused when the result wouldn't fit.
+    fn exchange(&mut self, inputs: &[usize], result: Stack) -> Result<(), String> {
+        let mut inventory = self.session.inventory.clone();
+        for &i in inputs {
+            inventory.take_one(i);
+        }
+        if inventory.add_stack(result) > 0 {
+            return Err("no room for the result".into());
+        }
+        self.session.inventory = inventory;
+        Ok(())
+    }
+
+    /// v0.15 Track B `stonecut <item>`: one held stack cut into `output`.
+    fn stonecut(&mut self, output: Item, world: &World) -> Result<(), String> {
+        self.targeted(world, Block::STONECUTTER, "stonecutter")?;
+        let input = self.session.inventory.get(self.selected).ok_or("selected slot empty")?;
+        let &(item, count) = crate::crafting::stonecutting::menu(input.item)
+            .iter()
+            .find(|(o, _)| *o == output)
+            .ok_or("the stonecutter can't make that from the held item")?;
+        self.exchange(&[self.selected], Stack::new(item, count))
+    }
+
+    /// `loom <pattern> <dye>`: the held banner gains a layer.
+    fn loom(&mut self, pattern: &str, dye: crate::color::DyeColor, world: &World) -> Result<(), String> {
+        use crate::content::banner_patterns as bp;
+        self.targeted(world, Block::LOOM, "loom")?;
+        let banner = self.session.inventory.get(self.selected).ok_or("selected slot empty")?;
+        bp::banner_color(banner.item).ok_or("the held item is not a banner")?;
+        let pattern = crate::inventory::components::BannerPattern::from_name(pattern).ok_or("unknown pattern")?;
+        let pattern_item = bp::every_item().find(|&i| bp::provides(i) == Some(pattern));
+        if let Some(item) = pattern_item {
+            self.session.inventory.find(item).ok_or("that pattern needs its banner pattern item")?;
+        } else if !bp::selectable(None).contains(&pattern) {
+            return Err("the loom can't weave that pattern".into());
+        }
+        if bp::patterns(&banner).layers.len() >= bp::MAX_LAYERS {
+            return Err("the banner already has six layers".into());
+        }
+        let dye_slot = self.session.inventory.find(dye.dye()).ok_or("no dye of that colour")?;
+        let result = bp::loom_result(banner, Stack::new(dye.dye(), 1), pattern).ok_or("that can't be woven")?;
+        self.exchange(&[dye_slot, self.selected], result)
+    }
+
+    /// `cartography copy|zoom|lock`: the held map at the targeted table.
+    fn cartography(&mut self, action: CartographyAction, world: &mut World) -> Result<(), String> {
+        self.targeted(world, Block::CARTOGRAPHY_TABLE, "cartography table")?;
+        let map = self.session.inventory.get(self.selected).ok_or("selected slot empty")?;
+        let extra = match action {
+            CartographyAction::Copy => Item::MAP,
+            CartographyAction::Zoom => Item::PAPER,
+            CartographyAction::Lock => Item::from_block(Block::GLASS_PANE),
+        };
+        let extra_slot = self.session.inventory.find(extra).ok_or_else(|| format!("no {}", extra.name()))?;
+        let result = world
+            .maps
+            .cartography_result(Some(map), Some(Stack::new(extra, 1)))
+            .ok_or("the table can't do that to the held map")?;
+        let mut check = self.session.inventory.clone();
+        check.take_one(extra_slot);
+        check.take_one(self.selected);
+        if check.add_stack(result) > 0 {
+            return Err("no room for the result".into());
+        }
+        let mut made = result;
+        world.maps.post_process(&mut made);
+        self.exchange(&[extra_slot, self.selected], made)
     }
 
     fn at_crafting_table(&self, world: &World) -> bool {
@@ -888,6 +992,10 @@ impl Agent {
                 self.session.sleeping = None;
             }
         }
+        // v0.15 Track D: silverfish from hits taken under Infested, and
+        // Frost Walker's ice.
+        self.session.settle_effect_hooks(entities);
+        self.session.frost_walk(world, entities);
         if self.session.vitals.is_dead() {
             self.drop_everything(entities);
             self.remaining = 0;

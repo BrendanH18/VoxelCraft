@@ -47,7 +47,11 @@ impl Entities {
         if !mob.alive() || mob.kind != MobKind::ZombieVillager || mob.weakness_left <= 0.0 || mob.convert_left > 0.0 {
             return false;
         }
-        mob.convert_left = (3600 + self.rng.next_int(2401)) as f32 / 20.0;
+        // `mobInteract`: `nextInt(2401) + 3600` ticks; `startConverting`
+        // removes Weakness and grants Strength for the whole conversion.
+        let ticks = CONVERSION_MIN + self.rng.next_int(CONVERSION_MAX - CONVERSION_MIN + 1);
+        mob.convert_left = ticks as f32 / 20.0;
+        mob.effects.add(crate::simulation::effects::Effect::Strength, 0, ticks);
         mob.weakness_left = 0.0;
         mob.convert_tick = 0.0;
         mob.convert_by = Some(owner);
@@ -89,6 +93,13 @@ impl Entities {
     }
 }
 
+/// `ZombieVillager.VILLAGER_CONVERSION_WAIT_MIN` and `_MAX` (ticks), and
+/// the special-block scan's `MAX_SPECIAL_BLOCKS_COUNT` and `SPECIAL_BLOCK_RADIUS`.
+pub(super) const CONVERSION_MIN: u32 = 3600;
+pub(super) const CONVERSION_MAX: u32 = 6000;
+pub(super) const SPECIAL_BLOCKS: u32 = 14;
+pub(super) const SPECIAL_RADIUS: i32 = 4;
+
 impl Mob {
     pub(super) fn advance_cure<W: MobWorld + ?Sized>(
         &mut self,
@@ -121,15 +132,15 @@ fn conversion_progress<W: MobWorld + ?Sized>(pos: IVec3, world: &W, rng: &mut Rn
         return progress;
     }
     let mut count = 0;
-    'blocks: for x in pos.x - 4..pos.x + 4 {
-        for y in pos.y - 4..pos.y + 4 {
-            for z in pos.z - 4..pos.z + 4 {
+    'blocks: for x in pos.x - SPECIAL_RADIUS..pos.x + SPECIAL_RADIUS {
+        for y in pos.y - SPECIAL_RADIUS..pos.y + SPECIAL_RADIUS {
+            for z in pos.z - SPECIAL_RADIUS..pos.z + SPECIAL_RADIUS {
                 if world.block(IVec3::new(x, y, z)).is_some_and(|b| b == Block::IRON_BARS || b.is_bed()) {
                     if rng.chance(0.3) {
                         progress += 1;
                     }
                     count += 1;
-                    if count == 14 {
+                    if count == SPECIAL_BLOCKS {
                         break 'blocks;
                     }
                 }
@@ -198,7 +209,8 @@ mod tests {
         let mut copy = Entities::new(12);
         copy.load_villagers(&e.villagers_to_string());
         assert_eq!(copy.mobs[0].convert_tick, 0.5);
-        assert_eq!(copy.mobs[0].melee_attack().0, 6.0);
+        // v0.15 Track A (MOB-02d): the held iron sword's 5 counts too.
+        assert_eq!(copy.mobs[0].melee_attack().0, 11.0);
         copy.mobs[0].convert_left = 0.05;
         assert_eq!(copy.mobs[0].equipment, e.mobs[0].equipment, "equipment survives the save");
         let mut events = Vec::new();

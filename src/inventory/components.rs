@@ -280,6 +280,10 @@ pub struct BannerLayer {
 pub struct BannerPatterns {
     pub base: Option<DyeColor>,
     pub layers: Vec<BannerLayer>,
+    /// The ominous banner's other components (`Raid.getBannerComponentPatch`:
+    /// `item_name` "Ominous Banner", `rarity` uncommon and the patterns
+    /// hidden from the tooltip), which no other banner can carry.
+    pub ominous: bool,
 }
 
 /// `WrittenBookContent`. Java's pages are text components; these are plain
@@ -346,7 +350,7 @@ impl Payload {
             Payload::Bundle(items) => items.is_empty(),
             Payload::WritableBook(pages) => pages.is_empty(),
             Payload::WrittenBook(_) => false,
-            Payload::Banner(b) => b.base.is_none() && b.layers.is_empty(),
+            Payload::Banner(b) => b.base.is_none() && b.layers.is_empty() && !b.ominous,
         }
     }
 
@@ -395,10 +399,14 @@ impl Payload {
             }}),
             Payload::Banner(b) => {
                 let layers: Vec<Value> = b.layers.iter().map(|l| json!([l.pattern.name(), dye_id(l.color)])).collect();
-                match b.base {
-                    Some(base) => json!({"banner": {"base": dye_id(base), "layers": layers}}),
-                    None => json!({"banner": {"layers": layers}}),
+                let mut body = json!({"layers": layers});
+                if let Some(base) = b.base {
+                    body["base"] = json!(dye_id(base));
                 }
+                if b.ominous {
+                    body["ominous"] = json!(true);
+                }
+                json!({ "banner": body })
             }
         }
     }
@@ -435,6 +443,10 @@ impl Payload {
                         })
                     })
                     .collect::<Option<_>>()?,
+                ominous: match &body["ominous"] {
+                    Value::Null => false,
+                    v => v.as_bool()?,
+                },
             }),
             _ => return None,
         };

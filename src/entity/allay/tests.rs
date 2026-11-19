@@ -398,6 +398,76 @@ fn outpost_residents_spawn_once_persist_and_do_not_resurrect() {
     loaded.populate_structures(1., &world, &c, Difficulty::Peaceful);
     assert!(loaded.mobs.iter().all(|m| m.kind != MobKind::Allay));
 }
+/// v0.15 Track F: a woodland mansion's evokers, vindicators and jail
+/// allays spawn once at their markers, persist, and stay spawned across a
+/// save; the allays keep their own stats (not the outpost cage's).
+#[test]
+fn mansion_residents_spawn_once_and_persist() {
+    use crate::physics::BlockSource;
+    use std::sync::Arc;
+    struct StructureWorld {
+        grid: Grid,
+        structure: Arc<crate::world::temples::Built>,
+    }
+    impl BlockSource for StructureWorld {
+        fn block(&self, p: IVec3) -> Option<Block> {
+            self.grid.block(p)
+        }
+    }
+    impl MobWorld for StructureWorld {
+        fn loaded(&self, _: IVec3) -> bool {
+            true
+        }
+        fn exposed(&self, _: IVec3) -> bool {
+            true
+        }
+        fn surface(&self, _: i32, _: i32) -> Option<i32> {
+            Some(0)
+        }
+        fn structures_near(&self, _: IVec3, _: i32) -> Vec<Arc<crate::world::temples::Built>> {
+            vec![self.structure.clone()]
+        }
+    }
+    use crate::world::temples::Kind;
+    let generator = Generator::with_generation(42, Dimension::Overworld, crate::world::terrain::Generation::V4);
+    let mut found = None;
+    for i in 0..60 {
+        let from = glam::IVec2::new(i * 1280, (i % 7) * 1280);
+        if let Some(at) = generator.temples.nearest(&generator, Kind::Mansion, from, 4000) {
+            let b = generator.temples.near(&generator, at, 120).into_iter().find(|b| b.kind == Kind::Mansion);
+            if b.as_ref().is_some_and(|b| b.residents.iter().any(|r| r.0 == MobKind::Allay)) {
+                found = b;
+                break;
+            }
+        }
+    }
+    let b = found.expect("a mansion with an allay jail");
+    let count = |e: &Entities, k: MobKind| e.mobs.iter().filter(|m| m.kind == k).count();
+    let want = |k: MobKind| b.residents.iter().filter(|r| r.0 == k).count();
+    let world = StructureWorld { grid: Grid::flat(-64), structure: b.clone() };
+    let mut e = Entities::new(1);
+    let c = ctx();
+    e.populate_structures(1., &world, &c, Difficulty::Normal);
+    for k in [MobKind::Evoker, MobKind::Vindicator, MobKind::Allay] {
+        assert_eq!(count(&e, k), want(k), "{k:?}");
+    }
+    assert!(e.mobs.iter().all(|m| m.persistent));
+    assert!(
+        e.mobs
+            .iter()
+            .filter(|m| m.kind == MobKind::Allay)
+            .all(|m| m.health == 20. && m.allay.as_ref().unwrap().ground_speed.is_none())
+    );
+    assert!(e.mobs.iter().filter(|m| m.kind == MobKind::Vindicator).all(|m| {
+        m.equipment
+            .get(crate::entity::equipment::Slot::MainHand)
+            .is_some_and(|s| s.item == crate::item::Item::tool(crate::item::ToolKind::Axe, crate::item::Tier::Iron))
+    }));
+    let mut loaded = Entities::new(2);
+    loaded.load_nether_mobs(&e.nether_mobs_to_string());
+    loaded.populate_structures(1., &world, &c, Difficulty::Normal);
+    assert_eq!(loaded.mobs.len(), e.mobs.len(), "nothing spawns twice");
+}
 #[test]
 fn allay_unload_save_restart_reload_keeps_inventory_and_memory() {
     use std::sync::Arc;

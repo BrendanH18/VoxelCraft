@@ -17,6 +17,14 @@ pub fn blocks_item_use(b: Block) -> bool {
         || b.is_anvil()
         || b == Block::SMITHING_TABLE
         || b.base() == Block::GRINDSTONE
+        || workstation_screen(b)
+        || crate::world::workstations::is_lectern(b)
+}
+
+/// v0.15 Track B: the workstations whose use opens a screen (stonecutter,
+/// loom, cartography table), in any of their states.
+pub fn workstation_screen(b: Block) -> bool {
+    matches!(b.base(), Block::STONECUTTER | Block::LOOM | Block::CARTOGRAPHY_TABLE)
 }
 
 /// Shelves and chiseled bookshelves act only for a click on their front

@@ -1,0 +1,564 @@
+{
+  "attributes": {
+    "camel_husk": {
+      "jump_strength": 0.41999998688697815,
+      "max_health": 32.0,
+      "movement_speed": 0.09000000357627869,
+      "step_height": 1.5
+    },
+    "happy_ghast": {
+      "camera_distance": 8.0,
+      "flying_speed": 0.05,
+      "follow_range": 16.0,
+      "max_health": 20.0,
+      "movement_speed": 0.05,
+      "tempt_range": 16.0
+    },
+    "nautilus": {
+      "attack_damage": 3.0,
+      "knockback_resistance": 0.30000001192092896,
+      "max_health": 15.0,
+      "movement_speed": 1.0
+    },
+    "parched": {
+      "max_health": 16.0
+    },
+    "zombie_nautilus": {
+      "movement_speed": 1.100000023841858
+    }
+  },
+  "constants": {
+    "abstract_nautilus": {
+      "BUBBLE_DIRECTION_SCALE": 1.1,
+      "BUBBLE_PROBABILITY_MAX": 1.0,
+      "BUBBLE_PROBABILITY_MIN": 0.15,
+      "BUBBLE_PROBABILITY_MULTIPLIER": 2.0,
+      "BUBBLE_SPREAD_FACTOR": 0.8,
+      "BUBBLE_Y_OFFSET": 0.25,
+      "DASH_COOLDOWN_TICKS": 40,
+      "DASH_MINIMUM_DURATION_TICKS": 5,
+      "DASH_MOMENTUM_IN_WATER": 1.2,
+      "DASH_MOMENTUM_ON_LAND": 0.5,
+      "EFFECT_DURATION": 60,
+      "EFFECT_REFRESH_RATE": 40,
+      "INVENTORY_ROWS": 3,
+      "INVENTORY_SLOT_OFFSET": 500,
+      "IN_WATER_SPEED_MODIFIER": 0.011,
+      "LARGE_RESTRICTION_RADIUS": 32,
+      "NAUTILUS_WATER_RESISTANCE": 0.9,
+      "RESTRICTION_RADIUS_BUFFER": 8,
+      "RIDDEN_SPEED_MODIFIER_IN_WATER": 0.0325,
+      "RIDDEN_SPEED_MODIFIER_ON_LAND": 0.02,
+      "SMALL_RESTRICTION_RADIUS": 16
+    },
+    "camel": {
+      "BABY_SCALE": 0.6,
+      "DASH_COOLDOWN_TICKS": 55,
+      "DASH_HORIZONTAL_MOMENTUM": 22.2222,
+      "DASH_MINIMUM_DURATION_TICKS": 5,
+      "DASH_VERTICAL_MOMENTUM": 1.4285,
+      "DEFAULT_LAST_POSE_CHANGE_TICK": 0,
+      "IDLE_MINIMAL_DURATION_TICKS": 80,
+      "MAX_HEAD_Y_ROT": 30,
+      "RUNNING_SPEED_BONUS": 0.1,
+      "SITDOWN_DURATION_TICKS": 40,
+      "SITTING_HEIGHT_DIFFERENCE": 1.43,
+      "STANDUP_DURATION_TICKS": 52
+    },
+    "dried_ghast_block": {
+      "HYDRATION_TICK_DELAY": 5000,
+      "MAX_HYDRATION_LEVEL": 3
+    },
+    "drowned": {
+      "NAUTILUS_SHELL_CHANCE": 0.03,
+      "ZOMBIE_NAUTILUS_JOCKEY_CHANCE": 0.5
+    },
+    "happy_ghast": {
+      "BABY_SCALE": 0.2375,
+      "FAST_HEALING_TICKS": 20,
+      "LARGE_RESTRICTION_RADIUS": 64,
+      "MAX_PASSANGERS": 4,
+      "MAX_SCALE": 1.0,
+      "MAX_STILL_TIMEOUT": 10,
+      "RESTRICTION_RADIUS_BUFFER": 16,
+      "SLOW_HEALING_TICKS": 600,
+      "SMALL_RESTRICTION_RADIUS": 32,
+      "SPEED_MULTIPLIER_WHEN_PANICKING": 2.0,
+      "STILL_TIMEOUT_ON_LOAD_GRACE_PERIOD": 60,
+      "WANDER_GROUND_DISTANCE": 16
+    },
+    "happy_ghast_ai": {
+      "BABY_GHAST_CLOSE_ENOUGH_DIST": 3.0,
+      "SPEED_MULTIPLIER_WHEN_FOLLOWING_ADULT": 1.1,
+      "SPEED_MULTIPLIER_WHEN_IDLING": 1.0,
+      "SPEED_MULTIPLIER_WHEN_TEMPTED": 1.25
+    },
+    "nautilus": {
+      "NAUTILUS_TOTAL_AIR_SUPPLY": 300
+    },
+    "nautilus_ai": {
+      "ANGER_DURATION": 400,
+      "ATTACK_KNOCKBACK_FORCE": 2.0,
+      "MAX_CHARGE_DISTANCE": 12.0,
+      "MAX_TARGET_DETECTION_DISTANCE": 11.0,
+      "SPEED_MULTIPLIER_WHEN_IDLING_IN_WATER": 1.0,
+      "SPEED_MULTIPLIER_WHEN_MAKING_LOVE": 0.4,
+      "SPEED_MULTIPLIER_WHEN_PANICKING": 1.6,
+      "SPEED_MULTIPLIER_WHEN_TEMPTED": 1.3,
+      "SPEED_WHEN_ATTACKING": 0.6,
+      "TIME_BETWEEN_ATTACKS": 80
+    },
+    "zombie_nautilus_ai": {
+      "ATTACK_KNOCKBACK_FORCE": 2.0,
+      "MAX_CHARGE_DISTANCE": 12.0,
+      "MAX_TARGET_DETECTION_DISTANCE": 11.0,
+      "SPEED_MULTIPLIER_WHEN_IDLING_IN_WATER": 1.0,
+      "SPEED_MULTIPLIER_WHEN_TEMPTED": 0.9,
+      "SPEED_WHEN_ATTACKING": 0.5,
+      "TIME_BETWEEN_ATTACKS": 80
+    }
+  },
+  "dried_ghast_recipe": {
+    "key": {
+      "#": "ghast_tear",
+      "X": "soul_sand"
+    },
+    "pattern": [
+      "###",
+      "#X#",
+      "###"
+    ],
+    "result": "dried_ghast"
+  },
+  "entity_types": {
+    "camel_husk": {
+      "category": "monster",
+      "height": 2.375,
+      "width": 1.7
+    },
+    "happy_ghast": {
+      "category": "creature",
+      "height": 4.0,
+      "width": 4.0
+    },
+    "nautilus": {
+      "category": "water_creature",
+      "height": 0.95,
+      "width": 0.875
+    },
+    "parched": {
+      "category": "monster",
+      "height": 1.99,
+      "width": 0.6
+    },
+    "zombie_nautilus": {
+      "category": "monster",
+      "height": 0.95,
+      "width": 0.875
+    }
+  },
+  "husk_camel_husk_chance": 0.1,
+  "loot_tables": {
+    "blocks/dried_ghast": {
+      "pools": [
+        {
+          "condition": {
+            "type": "minecraft:survives_explosion"
+          },
+          "entries": [
+            {
+              "name": "minecraft:dried_ghast",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:block"
+    },
+    "entities/camel_husk": {
+      "pools": [
+        {
+          "entries": [
+            {
+              "modifier": [
+                {
+                  "count": {
+                    "max": 3,
+                    "min": 2,
+                    "type": "minecraft:uniform"
+                  },
+                  "type": "minecraft:set_count"
+                },
+                {
+                  "count": {
+                    "max": 1.0,
+                    "min": 0.0,
+                    "type": "minecraft:uniform"
+                  },
+                  "enchantment": "minecraft:looting",
+                  "type": "minecraft:enchanted_count_increase"
+                }
+              ],
+              "name": "minecraft:rotten_flesh",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:entity"
+    },
+    "entities/happy_ghast": {
+      "type": "minecraft:entity"
+    },
+    "entities/nautilus": {
+      "pools": [
+        {
+          "condition": {
+            "terms": [
+              {
+                "type": "minecraft:killed_by_player"
+              },
+              {
+                "enchanted_chance": {
+                  "base": 0.060000002,
+                  "per_level_above_first": 0.01,
+                  "type": "minecraft:linear"
+                },
+                "enchantment": "minecraft:looting",
+                "type": "minecraft:random_chance_with_enchanted_bonus",
+                "unenchanted_chance": 0.05
+              }
+            ],
+            "type": "minecraft:all_of"
+          },
+          "entries": [
+            {
+              "name": "minecraft:nautilus_shell",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:entity"
+    },
+    "entities/parched": {
+      "pools": [
+        {
+          "entries": [
+            {
+              "modifier": [
+                {
+                  "count": {
+                    "max": 2,
+                    "min": 0,
+                    "type": "minecraft:uniform"
+                  },
+                  "type": "minecraft:set_count"
+                },
+                {
+                  "count": {
+                    "max": 1.0,
+                    "min": 0.0,
+                    "type": "minecraft:uniform"
+                  },
+                  "enchantment": "minecraft:looting",
+                  "type": "minecraft:enchanted_count_increase"
+                }
+              ],
+              "name": "minecraft:arrow",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        },
+        {
+          "entries": [
+            {
+              "modifier": [
+                {
+                  "count": {
+                    "max": 2,
+                    "min": 0,
+                    "type": "minecraft:uniform"
+                  },
+                  "type": "minecraft:set_count"
+                },
+                {
+                  "count": {
+                    "max": 1.0,
+                    "min": 0.0,
+                    "type": "minecraft:uniform"
+                  },
+                  "enchantment": "minecraft:looting",
+                  "type": "minecraft:enchanted_count_increase"
+                }
+              ],
+              "name": "minecraft:bone",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        },
+        {
+          "condition": {
+            "type": "minecraft:killed_by_player"
+          },
+          "entries": [
+            {
+              "modifier": [
+                {
+                  "count": {
+                    "max": 1,
+                    "min": 0,
+                    "type": "minecraft:uniform"
+                  },
+                  "type": "minecraft:set_count"
+                },
+                {
+                  "count": {
+                    "max": 1.0,
+                    "min": 0.0,
+                    "type": "minecraft:uniform"
+                  },
+                  "enchantment": "minecraft:looting",
+                  "limit": 1,
+                  "type": "minecraft:enchanted_count_increase"
+                },
+                {
+                  "id": "minecraft:weakness",
+                  "type": "minecraft:set_potion"
+                }
+              ],
+              "name": "minecraft:tipped_arrow",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:entity"
+    },
+    "entities/zombie_nautilus": {
+      "pools": [
+        {
+          "condition": {
+            "type": "minecraft:killed_by_player"
+          },
+          "entries": [
+            {
+              "modifier": [
+                {
+                  "count": {
+                    "max": 3,
+                    "min": 0,
+                    "type": "minecraft:uniform"
+                  },
+                  "type": "minecraft:set_count"
+                },
+                {
+                  "count": {
+                    "max": 1.0,
+                    "min": 0.0,
+                    "type": "minecraft:uniform"
+                  },
+                  "enchantment": "minecraft:looting",
+                  "type": "minecraft:enchanted_count_increase"
+                }
+              ],
+              "name": "minecraft:rotten_flesh",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:entity"
+    }
+  },
+  "parched": {
+    "arrow_weakness_ticks": 600,
+    "attack_interval": 70,
+    "hard_attack_interval": 50
+  },
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "net.minecraft.world.entity.EntityTypes (sized, MobCategory)",
+    "createAttributes of HappyGhast, AbstractNautilus, ZombieNautilus, Camel, Parched",
+    "static constants of world.entity.animal.camel.Camel, world.entity.animal.happyghast.HappyGhast, world.entity.animal.happyghast.HappyGhastAi, world.entity.animal.nautilus.AbstractNautilus, world.entity.animal.nautilus.Nautilus, world.entity.animal.nautilus.NautilusAi, world.entity.animal.nautilus.ZombieNautilusAi, world.entity.monster.zombie.Drowned, world.level.block.DriedGhastBlock",
+    "Husk.finalizeSpawn (camel husk chance)",
+    "Parched.getArrow, getHardAttackInterval, getAttackInterval",
+    "data/minecraft/loot_table, tags, recipe/dried_ghast.json"
+  ],
+  "tags": {
+    "biome": {
+      "more_frequent_drowned_spawns": [
+        "#minecraft:is_river"
+      ],
+      "spawns_coral_variant_zombie_nautilus": [
+        "warm_ocean"
+      ]
+    },
+    "block": {
+      "happy_ghast_avoids": [
+        "sweet_berry_bush",
+        "cactus",
+        "wither_rose",
+        "magma_block",
+        "fire",
+        "#minecraft:speleothems"
+      ],
+      "triggers_ambient_dried_ghast_block_sounds": [
+        "soul_sand",
+        "soul_soil"
+      ]
+    },
+    "entity_type": {
+      "aquatic": [
+        "turtle",
+        "axolotl",
+        "guardian",
+        "elder_guardian",
+        "cod",
+        "pufferfish",
+        "salmon",
+        "tropical_fish",
+        "dolphin",
+        "squid",
+        "glow_squid",
+        "tadpole",
+        "nautilus",
+        "zombie_nautilus"
+      ],
+      "burn_in_daylight": [
+        "skeleton",
+        "stray",
+        "wither_skeleton",
+        "bogged",
+        "zombie",
+        "zombie_horse",
+        "zombie_villager",
+        "drowned",
+        "zombie_nautilus",
+        "phantom"
+      ],
+      "can_breathe_under_water": [
+        "#minecraft:undead",
+        "axolotl",
+        "frog",
+        "guardian",
+        "elder_guardian",
+        "turtle",
+        "glow_squid",
+        "cod",
+        "pufferfish",
+        "salmon",
+        "squid",
+        "tropical_fish",
+        "tadpole",
+        "armor_stand",
+        "copper_golem",
+        "nautilus"
+      ],
+      "can_equip_harness": [
+        "happy_ghast"
+      ],
+      "can_equip_saddle": [
+        "horse",
+        "skeleton_horse",
+        "zombie_horse",
+        "donkey",
+        "mule",
+        "pig",
+        "strider",
+        "camel",
+        "camel_husk",
+        "nautilus",
+        "zombie_nautilus"
+      ],
+      "can_wear_nautilus_armor": [
+        "nautilus",
+        "zombie_nautilus"
+      ],
+      "fall_damage_immune": [
+        "copper_golem",
+        "iron_golem",
+        "snow_golem",
+        "shulker",
+        "allay",
+        "bat",
+        "bee",
+        "blaze",
+        "cat",
+        "chicken",
+        "ghast",
+        "happy_ghast",
+        "phantom",
+        "magma_cube",
+        "ocelot",
+        "parrot",
+        "wither",
+        "breeze"
+      ],
+      "nautilus_hostiles": [
+        "pufferfish"
+      ],
+      "skeletons": [
+        "skeleton",
+        "stray",
+        "wither_skeleton",
+        "skeleton_horse",
+        "bogged",
+        "parched"
+      ],
+      "zombies": [
+        "zombie_horse",
+        "camel_husk",
+        "zombie",
+        "zombie_villager",
+        "zombified_piglin",
+        "zoglin",
+        "drowned",
+        "husk",
+        "zombie_nautilus"
+      ]
+    },
+    "item": {
+      "camel_husk_food": [
+        "rabbit_foot"
+      ],
+      "fishes": [
+        "cod",
+        "cooked_cod",
+        "salmon",
+        "cooked_salmon",
+        "pufferfish",
+        "tropical_fish"
+      ],
+      "happy_ghast_food": [
+        "snowball"
+      ],
+      "happy_ghast_tempt_items": [
+        "#minecraft:happy_ghast_food",
+        "#minecraft:harnesses"
+      ],
+      "nautilus_bucket_food": [
+        "pufferfish_bucket",
+        "cod_bucket",
+        "salmon_bucket",
+        "tropical_fish_bucket"
+      ],
+      "nautilus_food": [
+        "#minecraft:fishes",
+        "#minecraft:nautilus_bucket_food"
+      ],
+      "nautilus_taming_items": [
+        "pufferfish_bucket",
+        "pufferfish"
+      ]
+    }
+  }
+}

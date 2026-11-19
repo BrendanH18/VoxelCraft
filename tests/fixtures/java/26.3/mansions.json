@@ -1,0 +1,2076 @@
+{
+ "biome_tag": [
+  "dark_forest",
+  "pale_garden"
+ ],
+ "cartographer_trade_tags": {
+  "level_1": [
+   "cartographer/1/paper_emerald",
+   "cartographer/1/emerald_map"
+  ],
+  "level_2": [
+   "cartographer/2/glass_pane_emerald",
+   "cartographer/2/emerald_and_compass_village_taiga_map",
+   "cartographer/2/emerald_and_compass_explorer_swamp_map",
+   "cartographer/2/emerald_and_compass_village_snowy_map",
+   "cartographer/2/emerald_and_compass_village_savanna_map",
+   "cartographer/2/emerald_and_compass_village_plains_map",
+   "cartographer/2/emerald_and_compass_explorer_jungle_map",
+   "cartographer/2/emerald_and_compass_village_desert_map"
+  ],
+  "level_3": [
+   "cartographer/3/compass_emerald",
+   "cartographer/3/emerald_and_compass_ocean_monument_map",
+   "cartographer/3/emerald_and_compass_buried_trial_chambers_map"
+  ],
+  "level_4": [
+   "cartographer/4/emerald_item_frame",
+   "cartographer/4/emerald_white_banner",
+   "cartographer/4/emerald_orange_banner",
+   "cartographer/4/emerald_magenta_banner",
+   "cartographer/4/emerald_blue_banner",
+   "cartographer/4/emerald_light_blue_banner",
+   "cartographer/4/emerald_yellow_banner",
+   "cartographer/4/emerald_lime_banner",
+   "cartographer/4/emerald_pink_banner",
+   "cartographer/4/emerald_gray_banner",
+   "cartographer/4/emerald_cyan_banner",
+   "cartographer/4/emerald_purple_banner",
+   "cartographer/4/emerald_brown_banner",
+   "cartographer/4/emerald_green_banner",
+   "cartographer/4/emerald_red_banner",
+   "cartographer/4/emerald_black_banner"
+  ],
+  "level_5": [
+   "cartographer/5/emerald_globe_banner_pattern",
+   "cartographer/5/emerald_and_compass_woodland_mansion_map"
+  ]
+ },
+ "clonable_maps": [
+  "filled_map",
+  "ocean_monument_map",
+  "woodland_mansion_map",
+  "buried_trial_chambers_map",
+  "jungle_pyramid_map",
+  "swamp_hut_map",
+  "desert_village_map",
+  "plains_village_map",
+  "savanna_village_map",
+  "snowy_village_map",
+  "taiga_village_map",
+  "buried_treasure_map",
+  "buried_ancient_city_map",
+  "buried_mineshaft_map",
+  "desert_pyramid_map",
+  "abandoned_camp_map",
+  "warm_ocean_ruins_map"
+ ],
+ "generation_point": {
+  "min_start_y": 60,
+  "start_offset_in_chunk": 7
+ },
+ "loot_table": {
+  "pools": [
+   {
+    "entries": [
+     {
+      "name": "lead",
+      "type": "item",
+      "weight": 20
+     },
+     {
+      "name": "golden_apple",
+      "type": "item",
+      "weight": 15
+     },
+     {
+      "name": "enchanted_golden_apple",
+      "type": "item",
+      "weight": 2
+     },
+     {
+      "name": "music_disc_13",
+      "type": "item",
+      "weight": 15
+     },
+     {
+      "name": "music_disc_cat",
+      "type": "item",
+      "weight": 15
+     },
+     {
+      "name": "chainmail_chestplate",
+      "type": "item",
+      "weight": 10
+     },
+     {
+      "name": "diamond_hoe",
+      "type": "item",
+      "weight": 15
+     },
+     {
+      "name": "diamond_chestplate",
+      "type": "item",
+      "weight": 5
+     },
+     {
+      "modifier": {
+       "options": "#minecraft:on_random_loot",
+       "type": "enchant_randomly"
+      },
+      "name": "book",
+      "type": "item",
+      "weight": 10
+     }
+    ],
+    "rolls": {
+     "max": 3,
+     "min": 1,
+     "type": "uniform"
+    }
+   },
+   {
+    "entries": [
+     {
+      "modifier": {
+       "count": {
+        "max": 4,
+        "min": 1,
+        "type": "uniform"
+       },
+       "type": "set_count"
+      },
+      "name": "iron_ingot",
+      "type": "item",
+      "weight": 10
+     },
+     {
+      "modifier": {
+       "count": {
+        "max": 4,
+        "min": 1,
+        "type": "uniform"
+       },
+       "type": "set_count"
+      },
+      "name": "gold_ingot",
+      "type": "item",
+      "weight": 5
+     },
+     {
+      "name": "bread",
+      "type": "item",
+      "weight": 20
+     },
+     {
+      "modifier": {
+       "count": {
+        "max": 4,
+        "min": 1,
+        "type": "uniform"
+       },
+       "type": "set_count"
+      },
+      "name": "wheat",
+      "type": "item",
+      "weight": 20
+     },
+     {
+      "name": "bucket",
+      "type": "item",
+      "weight": 10
+     },
+     {
+      "modifier": {
+       "count": {
+        "max": 4,
+        "min": 1,
+        "type": "uniform"
+       },
+       "type": "set_count"
+      },
+      "name": "redstone",
+      "type": "item",
+      "weight": 15
+     },
+     {
+      "modifier": {
+       "count": {
+        "max": 4,
+        "min": 1,
+        "type": "uniform"
+       },
+       "type": "set_count"
+      },
+      "name": "coal",
+      "type": "item",
+      "weight": 15
+     },
+     {
+      "modifier": {
+       "count": {
+        "max": 4,
+        "min": 2,
+        "type": "uniform"
+       },
+       "type": "set_count"
+      },
+      "name": "melon_seeds",
+      "type": "item",
+      "weight": 10
+     },
+     {
+      "modifier": {
+       "count": {
+        "max": 4,
+        "min": 2,
+        "type": "uniform"
+       },
+       "type": "set_count"
+      },
+      "name": "pumpkin_seeds",
+      "type": "item",
+      "weight": 10
+     },
+     {
+      "modifier": {
+       "count": {
+        "max": 4,
+        "min": 2,
+        "type": "uniform"
+       },
+       "type": "set_count"
+      },
+      "name": "beetroot_seeds",
+      "type": "item",
+      "weight": 10
+     },
+     {
+      "modifier": {
+       "count": {
+        "max": 4,
+        "min": 2,
+        "type": "uniform"
+       },
+       "type": "set_count"
+      },
+      "name": "resin_clump",
+      "type": "item",
+      "weight": 50
+     }
+    ],
+    "rolls": {
+     "max": 4,
+     "min": 1,
+     "type": "uniform"
+    }
+   },
+   {
+    "entries": [
+     {
+      "modifier": {
+       "count": {
+        "max": 8,
+        "min": 1,
+        "type": "uniform"
+       },
+       "type": "set_count"
+      },
+      "name": "bone",
+      "type": "item",
+      "weight": 10
+     },
+     {
+      "modifier": {
+       "count": {
+        "max": 8,
+        "min": 1,
+        "type": "uniform"
+       },
+       "type": "set_count"
+      },
+      "name": "gunpowder",
+      "type": "item",
+      "weight": 10
+     },
+     {
+      "modifier": {
+       "count": {
+        "max": 8,
+        "min": 1,
+        "type": "uniform"
+       },
+       "type": "set_count"
+      },
+      "name": "rotten_flesh",
+      "type": "item",
+      "weight": 10
+     },
+     {
+      "modifier": {
+       "count": {
+        "max": 8,
+        "min": 1,
+        "type": "uniform"
+       },
+       "type": "set_count"
+      },
+      "name": "string",
+      "type": "item",
+      "weight": 10
+     }
+    ],
+    "rolls": 3
+   },
+   {
+    "entries": [
+     {
+      "type": "empty"
+     },
+     {
+      "name": "vex_armor_trim_smithing_template",
+      "type": "item"
+     }
+    ],
+    "rolls": 1
+   }
+  ],
+  "random_sequence": "chests/woodland_mansion",
+  "type": "chest"
+ },
+ "map_loot_sources": {
+  "chests/abandoned_camp_secret_chest": [
+   {
+    "item": "buried_ancient_city_map",
+    "modifier": [
+     {
+      "decoration": "ancient_city",
+      "destination": "#minecraft:on_ancient_city_maps",
+      "type": "exploration_map"
+     },
+     {
+      "item_filter": {
+       "predicates": {
+        "minecraft:map_id": {}
+       }
+      },
+      "on_fail": {
+       "type": "discard"
+      },
+      "type": "filtered"
+     }
+    ],
+    "weight": 1
+   },
+   {
+    "item": "buried_mineshaft_map",
+    "modifier": [
+     {
+      "decoration": "mineshaft",
+      "destination": "#minecraft:on_mineshaft_maps",
+      "type": "exploration_map"
+     },
+     {
+      "item_filter": {
+       "predicates": {
+        "minecraft:map_id": {}
+       }
+      },
+      "on_fail": {
+       "type": "discard"
+      },
+      "type": "filtered"
+     }
+    ],
+    "weight": 1
+   },
+   {
+    "item": "desert_pyramid_map",
+    "modifier": [
+     {
+      "decoration": "desert_pyramid",
+      "destination": "#minecraft:on_desert_pyramid_maps",
+      "type": "exploration_map"
+     },
+     {
+      "item_filter": {
+       "predicates": {
+        "minecraft:map_id": {}
+       }
+      },
+      "on_fail": {
+       "type": "discard"
+      },
+      "type": "filtered"
+     }
+    ],
+    "weight": 1
+   },
+   {
+    "item": "warm_ocean_ruins_map",
+    "modifier": [
+     {
+      "decoration": "ocean_ruin_warm",
+      "destination": "#minecraft:on_ocean_ruin_warm_maps",
+      "type": "exploration_map"
+     },
+     {
+      "item_filter": {
+       "predicates": {
+        "minecraft:map_id": {}
+       }
+      },
+      "on_fail": {
+       "type": "discard"
+      },
+      "type": "filtered"
+     }
+    ],
+    "weight": 1
+   },
+   {
+    "item": "woodland_mansion_map",
+    "modifier": [
+     {
+      "destination": "#minecraft:on_woodland_mansion_maps",
+      "type": "exploration_map"
+     },
+     {
+      "item_filter": {
+       "predicates": {
+        "minecraft:map_id": {}
+       }
+      },
+      "on_fail": {
+       "type": "discard"
+      },
+      "type": "filtered"
+     }
+    ],
+    "weight": 1
+   }
+  ]
+ },
+ "map_trades": {
+  "cartographer/5/emerald_and_compass_woodland_mansion_map": {
+   "additional_wants": {
+    "id": "compass"
+   },
+   "given_item_modifier": [
+    {
+     "destination": "#minecraft:on_woodland_mansion_maps",
+     "search_radius": 100,
+     "type": "exploration_map"
+    },
+    {
+     "item_filter": {
+      "predicates": {
+       "minecraft:map_id": {}
+      }
+     },
+     "on_fail": {
+      "type": "discard"
+     },
+     "type": "filtered"
+    }
+   ],
+   "gives": {
+    "id": "woodland_mansion_map"
+   },
+   "max_uses": 12,
+   "reputation_discount": 0.2,
+   "wants": {
+    "count": 14,
+    "id": "emerald"
+   },
+   "xp": 30
+  }
+ },
+ "maps": [
+  "woodland_mansion_map",
+  "desert_pyramid_map",
+  "warm_ocean_ruins_map",
+  "buried_mineshaft_map",
+  "buried_ancient_city_map"
+ ],
+ "note": "Template sizes, markers, fixed containers and room-kind families only; no layout is copied (FE-02).",
+ "reference": "Minecraft Java Edition 26.3",
+ "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+ "sources": [
+  "data/minecraft/structure/woodland_mansion/*.nbt (size, DATA structure blocks)",
+  "net.minecraft.data.worldgen.Structures.bootstrap (woodland_mansion)",
+  "net.minecraft.data.worldgen.StructureSets.bootstrap (woodland_mansions)",
+  "net.minecraft.world.level.levelgen.structure.Structure$StructureSettings.DEFAULT",
+  "net.minecraft.world.level.levelgen.structure.structures.WoodlandMansionStructure.findGenerationPoint",
+  "data/minecraft/tags/worldgen/biome/has_structure/woodland_mansion.json",
+  "data/minecraft/tags/worldgen/structure/on_*_maps.json",
+  "data/minecraft/loot_table/chests/woodland_mansion.json",
+  "data/minecraft/villager_trade/**, data/minecraft/tags/villager_trade/cartographer/*",
+  "data/minecraft/loot_table/** (entries giving explorer maps)",
+  "data/minecraft/tags/item/clonable_maps.json"
+ ],
+ "structure": {
+  "biomes": "#has_structure/woodland_mansion",
+  "spawn_overrides": {},
+  "step": "surface_structures",
+  "terrain_adaptation": "none",
+  "type": "woodland_mansion"
+ },
+ "structure_set": {
+  "exclusion_zone": null,
+  "frequency": 1.0,
+  "locate_offset": [
+   0,
+   0,
+   0
+  ],
+  "salt": 10387319,
+  "separation": 20,
+  "spacing": 80,
+  "spread_type": "triangular",
+  "type": "random_spread"
+ },
+ "structure_tags": {
+  "on_ancient_city_maps": [
+   "ancient_city"
+  ],
+  "on_desert_pyramid_maps": [
+   "desert_pyramid"
+  ],
+  "on_mineshaft_maps": [
+   "mineshaft"
+  ],
+  "on_ocean_ruin_warm_maps": [
+   "ocean_ruin_warm"
+  ],
+  "on_woodland_mansion_maps": [
+   "mansion"
+  ]
+ },
+ "templates": {
+  "1x1_a1": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "flower_pot"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    8,
+    7
+   ]
+  },
+  "1x1_a2": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carved_pumpkin",
+    "ladder",
+    "rail"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    8,
+    7
+   ]
+  },
+  "1x1_a3": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet",
+    "flower_pot"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    8,
+    7
+   ]
+  },
+  "1x1_a4": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "marker": "ChestWest",
+     "pos": [
+      6,
+      6,
+      3
+     ]
+    }
+   ],
+   "size": [
+    7,
+    8,
+    7
+   ]
+  },
+  "1x1_a5": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "flower_pot"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    8,
+    7
+   ]
+  },
+  "1x1_as1": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [],
+   "filled": true,
+   "markers": [
+    {
+     "marker": "ChestWest",
+     "pos": [
+      5,
+      1,
+      1
+     ]
+    }
+   ],
+   "size": [
+    7,
+    8,
+    7
+   ]
+  },
+  "1x1_as2": {
+   "containers": [
+    {
+     "block": "spawner",
+     "pos": [
+      4,
+      1,
+      3
+     ],
+     "spawner": {
+      "MaxNearbyEntities": 6,
+      "MaxSpawnDelay": 800,
+      "MinSpawnDelay": 200,
+      "RequiredPlayerRange": 16,
+      "SpawnCount": 4,
+      "SpawnRange": 4,
+      "entity": "spider"
+     }
+    }
+   ],
+   "empty_chests": 0,
+   "families": [
+    "cobweb",
+    "spawner"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    8,
+    7
+   ]
+  },
+  "1x1_as3": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "diamond_block",
+    "obsidian"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    8,
+    7
+   ]
+  },
+  "1x1_as4": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    8,
+    7
+   ]
+  },
+  "1x1_b1": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet",
+    "flower_pot"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    11,
+    7
+   ]
+  },
+  "1x1_b2": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    11,
+    7
+   ]
+  },
+  "1x1_b3": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "leaves",
+    "wool"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    11,
+    7
+   ]
+  },
+  "1x1_b4": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "bookshelf",
+    "flower_pot"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    11,
+    7
+   ]
+  },
+  "1x1_b5": {
+   "containers": [
+    {
+     "block": "chest",
+     "items": [
+      {
+       "count": 1,
+       "id": "allium",
+       "slot": 8
+      },
+      {
+       "count": 1,
+       "id": "allium",
+       "slot": 10
+      },
+      {
+       "count": 1,
+       "id": "allium",
+       "slot": 11
+      },
+      {
+       "count": 1,
+       "id": "allium",
+       "slot": 12
+      },
+      {
+       "count": 1,
+       "id": "allium",
+       "slot": 14
+      },
+      {
+       "count": 1,
+       "id": "allium",
+       "slot": 15
+      },
+      {
+       "count": 1,
+       "id": "allium",
+       "slot": 16
+      },
+      {
+       "count": 1,
+       "id": "allium",
+       "slot": 18
+      }
+     ],
+     "pos": [
+      6,
+      1,
+      6
+     ]
+    }
+   ],
+   "empty_chests": 0,
+   "families": [
+    "cauldron",
+    "chest",
+    "flower_pot",
+    "vine",
+    "water"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    11,
+    7
+   ]
+  },
+  "1x2_a1": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "banner"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "marker": "Warrior",
+     "pos": [
+      3,
+      1,
+      3
+     ]
+    },
+    {
+     "marker": "ChestSouth",
+     "pos": [
+      3,
+      1,
+      12
+     ]
+    }
+   ],
+   "size": [
+    7,
+    8,
+    15
+   ]
+  },
+  "1x2_a2": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet",
+    "crops",
+    "torch",
+    "water"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    8,
+    15
+   ]
+  },
+  "1x2_a3": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "anvil",
+    "lava"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "marker": "Warrior",
+     "pos": [
+      3,
+      2,
+      8
+     ]
+    }
+   ],
+   "size": [
+    7,
+    8,
+    15
+   ]
+  },
+  "1x2_a4": {
+   "containers": [
+    {
+     "block": "chest",
+     "items": [
+      {
+       "count": 9,
+       "id": "dark_oak_sapling",
+       "slot": 4
+      },
+      {
+       "count": 10,
+       "id": "dark_oak_sapling",
+       "slot": 10
+      },
+      {
+       "count": 9,
+       "id": "dark_oak_sapling",
+       "slot": 23
+      }
+     ],
+     "pos": [
+      6,
+      1,
+      5
+     ]
+    }
+   ],
+   "empty_chests": 0,
+   "families": [
+    "carpet",
+    "chest",
+    "ladder",
+    "sapling"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    8,
+    15
+   ]
+  },
+  "1x2_a5": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "wool"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    8,
+    15
+   ]
+  },
+  "1x2_a6": {
+   "containers": [
+    {
+     "block": "chest",
+     "items": [
+      {
+       "count": 1,
+       "enchantments": {
+        "minecraft:efficiency": 1
+       },
+       "id": "iron_axe",
+       "slot": 10
+      }
+     ],
+     "pos": [
+      2,
+      1,
+      8
+     ]
+    }
+   ],
+   "empty_chests": 0,
+   "families": [
+    "chest",
+    "leaves"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    8,
+    15
+   ]
+  },
+  "1x2_a7": {
+   "containers": [],
+   "empty_chests": 1,
+   "families": [
+    "chest",
+    "mushroom"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    8,
+    15
+   ]
+  },
+  "1x2_a8": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "crops",
+    "pumpkin_melon",
+    "torch",
+    "water"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "marker": "Warrior",
+     "pos": [
+      2,
+      1,
+      2
+     ]
+    }
+   ],
+   "size": [
+    7,
+    8,
+    15
+   ]
+  },
+  "1x2_a9": {
+   "containers": [],
+   "empty_chests": 42,
+   "families": [
+    "chest"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "marker": "Warrior",
+     "pos": [
+      5,
+      1,
+      1
+     ]
+    }
+   ],
+   "size": [
+    7,
+    8,
+    15
+   ]
+  },
+  "1x2_b1": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet",
+    "cauldron",
+    "iron_door",
+    "lever",
+    "redstone"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "marker": "Warrior",
+     "pos": [
+      3,
+      1,
+      13
+     ]
+    }
+   ],
+   "size": [
+    7,
+    8,
+    15
+   ]
+  },
+  "1x2_b2": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet",
+    "cauldron",
+    "iron_door",
+    "lever"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "marker": "Warrior",
+     "pos": [
+      5,
+      1,
+      11
+     ]
+    }
+   ],
+   "size": [
+    7,
+    8,
+    15
+   ]
+  },
+  "1x2_b3": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [],
+   "filled": true,
+   "markers": [
+    {
+     "marker": "ChestSouth",
+     "pos": [
+      3,
+      1,
+      0
+     ]
+    },
+    {
+     "marker": "Warrior",
+     "pos": [
+      3,
+      1,
+      4
+     ]
+    }
+   ],
+   "size": [
+    7,
+    8,
+    15
+   ]
+  },
+  "1x2_b4": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [],
+   "filled": true,
+   "markers": [
+    {
+     "marker": "ChestNorth",
+     "pos": [
+      4,
+      3,
+      9
+     ]
+    }
+   ],
+   "size": [
+    7,
+    8,
+    15
+   ]
+  },
+  "1x2_b5": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "wool"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    8,
+    15
+   ]
+  },
+  "1x2_c1": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet",
+    "flower_pot",
+    "torch"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    11,
+    15
+   ]
+  },
+  "1x2_c2": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet",
+    "flower_pot",
+    "wool"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    11,
+    15
+   ]
+  },
+  "1x2_c3": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet",
+    "flower_pot",
+    "wool"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "marker": "Warrior",
+     "pos": [
+      4,
+      1,
+      6
+     ]
+    },
+    {
+     "marker": "Warrior",
+     "pos": [
+      4,
+      1,
+      9
+     ]
+    },
+    {
+     "marker": "Warrior",
+     "pos": [
+      4,
+      1,
+      12
+     ]
+    }
+   ],
+   "size": [
+    7,
+    11,
+    15
+   ]
+  },
+  "1x2_c4": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "bookshelf",
+    "flower_pot"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    11,
+    15
+   ]
+  },
+  "1x2_c_stairs": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet",
+    "wool"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    22,
+    15
+   ]
+  },
+  "1x2_d1": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "banner",
+    "bookshelf",
+    "carpet",
+    "flower_pot",
+    "sapling",
+    "wool"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    11,
+    15
+   ]
+  },
+  "1x2_d2": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet",
+    "flower_pot",
+    "ladder",
+    "wool"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "marker": "ChestWest",
+     "pos": [
+      6,
+      7,
+      12
+     ]
+    }
+   ],
+   "size": [
+    7,
+    11,
+    15
+   ]
+  },
+  "1x2_d3": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "banner",
+    "carpet"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "marker": "Warrior",
+     "pos": [
+      2,
+      2,
+      10
+     ]
+    },
+    {
+     "marker": "Warrior",
+     "pos": [
+      4,
+      2,
+      10
+     ]
+    },
+    {
+     "marker": "Mage",
+     "pos": [
+      3,
+      3,
+      3
+     ]
+    }
+   ],
+   "size": [
+    7,
+    11,
+    15
+   ]
+  },
+  "1x2_d4": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "wool"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    11,
+    15
+   ]
+  },
+  "1x2_d5": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "wool"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    11,
+    15
+   ]
+  },
+  "1x2_d_stairs": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet",
+    "wool"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    22,
+    15
+   ]
+  },
+  "1x2_s1": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "torch"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "marker": "ChestSouth",
+     "pos": [
+      3,
+      1,
+      4
+     ]
+    }
+   ],
+   "size": [
+    7,
+    8,
+    15
+   ]
+  },
+  "1x2_s2": {
+   "containers": [
+    {
+     "block": "trapped_chest",
+     "items": [
+      {
+       "count": 1,
+       "id": "ender_pearl",
+       "slot": 11
+      },
+      {
+       "count": 1,
+       "id": "ender_pearl",
+       "slot": 15
+      }
+     ],
+     "pos": [
+      3,
+      4,
+      5
+     ]
+    }
+   ],
+   "empty_chests": 0,
+   "families": [
+    "infested",
+    "tnt",
+    "trapped_chest",
+    "wool"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    8,
+    15
+   ]
+  },
+  "1x2_se1": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [],
+   "filled": true,
+   "markers": [
+    {
+     "marker": "ChestSouth",
+     "pos": [
+      3,
+      9,
+      1
+     ]
+    },
+    {
+     "marker": "ChestNorth",
+     "pos": [
+      3,
+      9,
+      13
+     ]
+    }
+   ],
+   "size": [
+    7,
+    11,
+    15
+   ]
+  },
+  "2x2_a1": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet",
+    "cauldron",
+    "iron_bars",
+    "iron_door",
+    "lever"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "marker": "Warrior",
+     "pos": [
+      12,
+      1,
+      3
+     ]
+    },
+    {
+     "marker": "Group of Allays",
+     "pos": [
+      4,
+      2,
+      2
+     ]
+    },
+    {
+     "marker": "Group of Allays",
+     "pos": [
+      2,
+      2,
+      8
+     ]
+    },
+    {
+     "marker": "Group of Allays",
+     "pos": [
+      5,
+      2,
+      12
+     ]
+    },
+    {
+     "marker": "Group of Allays",
+     "pos": [
+      12,
+      2,
+      12
+     ]
+    }
+   ],
+   "size": [
+    15,
+    8,
+    15
+   ]
+  },
+  "2x2_a2": {
+   "containers": [],
+   "empty_chests": 26,
+   "families": [
+    "carpet",
+    "chest",
+    "flower_pot"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "marker": "Warrior",
+     "pos": [
+      9,
+      1,
+      2
+     ]
+    }
+   ],
+   "size": [
+    15,
+    8,
+    15
+   ]
+  },
+  "2x2_a3": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "lapis_block",
+    "wool"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    15,
+    8,
+    15
+   ]
+  },
+  "2x2_a4": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "leaves",
+    "water"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    15,
+    8,
+    15
+   ]
+  },
+  "2x2_b1": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet",
+    "flower_pot",
+    "sapling",
+    "torch"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "marker": "Warrior",
+     "pos": [
+      4,
+      1,
+      4
+     ]
+    },
+    {
+     "marker": "Mage",
+     "pos": [
+      2,
+      1,
+      8
+     ]
+    },
+    {
+     "marker": "Warrior",
+     "pos": [
+      8,
+      1,
+      9
+     ]
+    }
+   ],
+   "size": [
+    15,
+    11,
+    15
+   ]
+  },
+  "2x2_b2": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet",
+    "flower_pot",
+    "torch"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "marker": "Warrior",
+     "pos": [
+      13,
+      1,
+      2
+     ]
+    },
+    {
+     "marker": "Mage",
+     "pos": [
+      2,
+      1,
+      7
+     ]
+    },
+    {
+     "marker": "Warrior",
+     "pos": [
+      9,
+      1,
+      8
+     ]
+    }
+   ],
+   "size": [
+    15,
+    11,
+    15
+   ]
+  },
+  "2x2_b3": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "bookshelf"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    15,
+    11,
+    15
+   ]
+  },
+  "2x2_b4": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "bookshelf",
+    "carpet",
+    "torch"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "marker": "Warrior",
+     "pos": [
+      3,
+      1,
+      3
+     ]
+    },
+    {
+     "marker": "Mage",
+     "pos": [
+      3,
+      1,
+      8
+     ]
+    },
+    {
+     "marker": "Warrior",
+     "pos": [
+      4,
+      1,
+      11
+     ]
+    }
+   ],
+   "size": [
+    15,
+    11,
+    15
+   ]
+  },
+  "2x2_b5": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "ladder"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "marker": "ChestSouth",
+     "pos": [
+      7,
+      7,
+      0
+     ]
+    }
+   ],
+   "size": [
+    15,
+    11,
+    15
+   ]
+  },
+  "2x2_s1": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "diamond_block",
+    "glass",
+    "lava",
+    "obsidian"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    15,
+    11,
+    15
+   ]
+  },
+  "carpet_east": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet"
+   ],
+   "filled": false,
+   "markers": [],
+   "size": [
+    2,
+    1,
+    5
+   ]
+  },
+  "carpet_north": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet"
+   ],
+   "filled": false,
+   "markers": [],
+   "size": [
+    5,
+    1,
+    2
+   ]
+  },
+  "carpet_south_1": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet",
+    "torch"
+   ],
+   "filled": false,
+   "markers": [],
+   "size": [
+    8,
+    8,
+    3
+   ]
+  },
+  "carpet_south_2": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet",
+    "torch"
+   ],
+   "filled": false,
+   "markers": [],
+   "size": [
+    8,
+    11,
+    3
+   ]
+  },
+  "carpet_west_1": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet",
+    "torch"
+   ],
+   "filled": false,
+   "markers": [],
+   "size": [
+    3,
+    8,
+    8
+   ]
+  },
+  "carpet_west_2": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet",
+    "torch"
+   ],
+   "filled": false,
+   "markers": [],
+   "size": [
+    3,
+    11,
+    8
+   ]
+  },
+  "corridor_floor": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    8,
+    7
+   ]
+  },
+  "entrance": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "carpet",
+    "glass",
+    "torch"
+   ],
+   "filled": false,
+   "markers": [],
+   "size": [
+    21,
+    19,
+    16
+   ]
+  },
+  "indoors_door_1": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [],
+   "filled": true,
+   "markers": [],
+   "size": [
+    1,
+    8,
+    8
+   ]
+  },
+  "indoors_door_2": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [],
+   "filled": true,
+   "markers": [],
+   "size": [
+    1,
+    11,
+    8
+   ]
+  },
+  "indoors_wall_1": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [],
+   "filled": true,
+   "markers": [],
+   "size": [
+    1,
+    8,
+    8
+   ]
+  },
+  "indoors_wall_2": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [],
+   "filled": true,
+   "markers": [],
+   "size": [
+    1,
+    11,
+    8
+   ]
+  },
+  "roof": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [],
+   "filled": true,
+   "markers": [],
+   "size": [
+    8,
+    1,
+    8
+   ]
+  },
+  "roof_corner": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [],
+   "filled": false,
+   "markers": [],
+   "size": [
+    4,
+    4,
+    4
+   ]
+  },
+  "roof_front": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [],
+   "filled": false,
+   "markers": [],
+   "size": [
+    4,
+    4,
+    8
+   ]
+  },
+  "roof_inner_corner": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [],
+   "filled": false,
+   "markers": [],
+   "size": [
+    4,
+    4,
+    4
+   ]
+  },
+  "small_wall": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [],
+   "filled": false,
+   "markers": [],
+   "size": [
+    2,
+    4,
+    8
+   ]
+  },
+  "small_wall_corner": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [],
+   "filled": true,
+   "markers": [],
+   "size": [
+    2,
+    4,
+    2
+   ]
+  },
+  "wall_corner": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [],
+   "filled": false,
+   "markers": [],
+   "size": [
+    9,
+    8,
+    2
+   ]
+  },
+  "wall_flat": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [],
+   "filled": false,
+   "markers": [],
+   "size": [
+    2,
+    8,
+    8
+   ]
+  },
+  "wall_window": {
+   "containers": [],
+   "empty_chests": 0,
+   "families": [
+    "glass"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    2,
+    8,
+    8
+   ]
+  }
+ }
+}

@@ -97,6 +97,7 @@ impl HandAnim {
                 .filter(|s| Some(s.item) == self.shown)
                 .and_then(|s| voxelcraft::inventory::components::dye_tint(&s)),
             aim: self.aim(),
+            glowing: vitals.effects.glowing() && vitals.death_time().is_none(),
         }
     }
 

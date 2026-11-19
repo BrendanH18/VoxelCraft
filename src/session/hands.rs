@@ -48,6 +48,9 @@ pub(super) struct State {
     /// Shared device hands ticked the shield this step (see
     /// [`PlayerSession::tick_blocking_unless_ticked`]).
     ticked: bool,
+    /// v0.15 Track B: the hand holding a spyglass up and the ticks it has
+    /// been held (`LivingEntity.useItem` for `SpyglassItem`).
+    scoping: Option<(Hand, u32)>,
 }
 
 /// What a shield did to one attack.
@@ -64,7 +67,7 @@ fn claims_use(item: Item, can_eat: bool) -> bool {
     item == Item::SHIELD
         || item.is_drink()
         || (item.food().is_some() && can_eat)
-        || matches!(item, Item::BOW | Item::CROSSBOW | Item::CHARGED_CROSSBOW)
+        || matches!(item, Item::BOW | Item::CROSSBOW | Item::CHARGED_CROSSBOW | Item::SPYGLASS)
         || item == crate::weapons::TRIDENT
         || crate::weapons::is_spear(item)
 }
@@ -125,6 +128,63 @@ impl PlayerSession {
             self.tick_blocking(slot, held);
             self.hands.ticked = false;
         }
+    }
+
+    /// `SpyglassItem.use`: a right-click with a spyglass in the main hand
+    /// (or in the off-hand while the main hand claims nothing) raises it.
+    pub fn start_scoping(&mut self, slot: usize) -> bool {
+        if self.hands.scoping.is_some() || self.vitals.is_dead() || !self.mode.can_interact() {
+            return false;
+        }
+        let main = self.inventory.get(slot).map(|s| s.item);
+        let hand = if main == Some(Item::SPYGLASS) {
+            Hand::Main
+        } else if self.inventory.offhand.is_some_and(|s| s.item == Item::SPYGLASS)
+            && !main.is_some_and(|i| claims_use(i, self.can_eat(i)))
+        {
+            Hand::Off
+        } else {
+            return false;
+        };
+        self.hands.scoping = Some((hand, 0));
+        true
+    }
+
+    /// One tick of scoping: releasing use, losing the spyglass or
+    /// `USE_DURATION` ticks (`finishUsingItem`) lower it. Returns whether it
+    /// was lowered this tick.
+    pub fn tick_scoping(&mut self, slot: usize, held: bool) -> bool {
+        let Some((hand, ticks)) = self.hands.scoping else { return false };
+        let there = match hand {
+            Hand::Main => self.inventory.get(slot).is_some_and(|s| s.item == Item::SPYGLASS),
+            Hand::Off => self.inventory.offhand.is_some_and(|s| s.item == Item::SPYGLASS),
+        };
+        let ticks = ticks + 1;
+        if !held || !there || self.vitals.is_dead() || ticks >= crate::content::spyglass::USE_DURATION {
+            self.hands.scoping = None;
+            return true;
+        }
+        self.hands.scoping = Some((hand, ticks));
+        false
+    }
+
+    pub fn stop_scoping(&mut self) -> bool {
+        self.hands.scoping.take().is_some()
+    }
+
+    /// Java's `isScoping`: using a spyglass.
+    pub fn scoping(&self) -> bool {
+        self.hands.scoping.is_some()
+    }
+
+    /// Ticks the spyglass has been up.
+    pub fn scoping_ticks(&self) -> u32 {
+        self.hands.scoping.map_or(0, |(_, t)| t)
+    }
+
+    /// The hand the spyglass is up in.
+    pub fn scoping_hand(&self) -> Option<Hand> {
+        self.hands.scoping.map(|(h, _)| h)
     }
 
     pub fn stop_blocking(&mut self) {

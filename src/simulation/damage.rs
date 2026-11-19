@@ -546,6 +546,7 @@ impl Cause {
     pub const SKELETON_ARROW: Cause = Cause::new(DamageType::Arrow, "was shot by a skeleton");
     pub const STRAY_ARROW: Cause = Cause::new(DamageType::Arrow, "was shot by a stray");
     pub const BOGGED_ARROW: Cause = Cause::new(DamageType::Arrow, "was shot by a bogged");
+    pub const PARCHED_ARROW: Cause = Cause::new(DamageType::Arrow, "was shot by a parched");
     pub const PIGLIN_ARROW: Cause = Cause::new(DamageType::Arrow, "was shot by a piglin");
     pub const PILLAGER_ARROW: Cause = Cause::new(DamageType::Arrow, "was shot by a pillager");
     pub const DROWNED_TRIDENT: Cause = Cause::new(DamageType::Trident, "was impaled by a drowned");
@@ -613,6 +614,7 @@ impl Cause {
         Cause::SKELETON_ARROW,
         Cause::STRAY_ARROW,
         Cause::BOGGED_ARROW,
+        Cause::PARCHED_ARROW,
         Cause::PIGLIN_ARROW,
         Cause::PILLAGER_ARROW,
         Cause::DROWNED_TRIDENT,

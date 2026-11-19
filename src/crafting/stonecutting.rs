@@ -169,3 +169,42 @@ pub fn all() -> Vec<(Item, Item, u8)> {
 pub fn from(input: Item) -> impl Iterator<Item = (Item, u8)> {
     all().into_iter().filter(move |r| r.0 == input).map(|r| (r.1, r.2))
 }
+
+/// The Java registry id of a stonecutting input or output: its name with
+/// underscores, except the blocks Java names "Block of ..." (v0.15 Track B).
+pub fn java_id(item: Item) -> String {
+    match item.name() {
+        "block of copper" => "copper_block".into(),
+        "waxed block of copper" => "waxed_copper_block".into(),
+        "block of quartz" => "quartz_block".into(),
+        "smooth quartz block" => "smooth_quartz".into(),
+        n => n.replace(' ', "_"),
+    }
+}
+
+/// What the stonecutter's screen lists for `input`, in Java's order: its
+/// recipes by recipe id (`RecipeManager` registers recipes in id order and
+/// `StonecutterMenu` filters them by input; every 26.3 id is
+/// `<result>_from_<input>_stonecutting`).
+pub fn menu(input: Item) -> &'static [(Item, u8)] {
+    use std::collections::HashMap;
+    use std::sync::OnceLock;
+    static MENUS: OnceLock<HashMap<Item, Vec<(Item, u8)>>> = OnceLock::new();
+    let menus = MENUS.get_or_init(|| {
+        let mut out: HashMap<Item, Vec<(Item, u8)>> = HashMap::new();
+        for (i, o, n) in all() {
+            out.entry(i).or_default().push((o, n));
+        }
+        for (input, list) in &mut out {
+            let from = java_id(*input);
+            list.sort_by_cached_key(|(o, _)| format!("{}_from_{from}_stonecutting", java_id(*o)));
+        }
+        out
+    });
+    menus.get(&input).map_or(&[], Vec::as_slice)
+}
+
+/// `StonecutterRecipes.acceptsInput`: whether any recipe takes `input`.
+pub fn accepts(input: Item) -> bool {
+    !menu(input).is_empty()
+}

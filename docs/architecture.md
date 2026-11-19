@@ -879,6 +879,148 @@ sounds, item icons), which no released build has saved.
 | Block states | 12256–12259 | Frosted ice ages 0–3; 12260–12287 spare |
 | Texture layers | 3859–4095 | v0.17 and later blocks; layers are never saved, so the integrator may repack them |
 
+### v0.15 villages and raids track reservations
+
+Reserved on 2026-11-18 for the [v0.15 tracks](roadmap.md#v015-scope-villages-and-raids),
+after `examples/id_map.rs` showed states 11776–12287 and items 1555–1560
+and 1601–1659 unregistered at `9e72930c`. They keep the meanings the
+[build-5000 reservations](#v017-build-5000-reservations) gave them and split
+the spare rows between tracks. Each track allocates only inside its own
+rows, records what it used here, and leaves unused IDs unregistered.
+Texture layers are never saved and may be repacked at integration.
+
+| Block states | Item IDs | Texture layers | Track |
+| --- | --- | --- | --- |
+| — | 1634–1641 | 4040–4055 | A. Illagers: vindicators, evokers, vexes, ravagers, illusioners, pillager parity, held weapons |
+| 11776–12223 | 1556, 1557–1558, 1619–1628, 1642–1645 | 3859–3951 | B. Workstations: stonecutter, loom and banner patterns (with the ominous banner), cartography table, books and the lectern, spyglass |
+| 12224–12255 | 1646–1649 | 3968–3999 | C. New mobs: happy ghasts and dried ghasts, nautiluses and zombie nautiluses, camel husks, parched |
+| 12256–12287 | 1555, 1559–1560, 1601–1618, 1650–1659 | 4000–4039 | D. Items and effects: spectral arrows, coloured eggs, armor trims, frosted ice, effect behaviour and the four potions |
+| — | — | — | E. Raids (wave 2; no new IDs expected) |
+| — | 1629–1633 | 4056–4071 | F. Woodland mansions and the five missing explorer maps (wave 2) |
+| — | — | — | G. Village, trial chamber and ancient city template catalogues (wave 2) |
+| — | — | — | H. Villager parity (wave 2) |
+| — | — | 4072–4095 | Integrator spare |
+
+Track C allocation (2026-11-18, implemented, unverified): block states
+12224–12255 are the dried ghast, `12224 + ((hydration * 4 + facing) * 2 +
+waterlogged)` in `Facing::ALL` order, all 32 used; texture layers
+3968–3979 (3980–3999 unused); no item IDs (the dried ghast is a block
+item; 1646–1649 stay unregistered). Appended: `MobKind` `HappyGhast`,
+`Nautilus`, `ZombieNautilus`, `CamelHusk`, `Parched` after `Endermite`;
+`Voice` the same five after `Endermite`; `Cause::PARCHED_ARROW` after
+`BOGGED_ARROW`. See the [Track C record](verification/2026-11-18-v0.15-new-mobs.md).
+
+Append-only orderings (`MobKind` and its LAN index, `Effect`, `POTIONS`,
+sounds, item icons, thrown kinds, entity and dimension property keys) are
+appended by each track on its own branch. No released build saves the new
+members, so the integrator makes them contiguous in landing order and
+records the result here. Saved names follow Java's registry names.
+
+**Track E (raids, 2026-11-18, implemented, unverified)** allocated no block,
+item or texture IDs. Appended orderings: `MobSound::Raid` (after
+`Illager`) and `Sound::Raid` with `raid::Cue` `Horn`, `BellResonate`,
+`VillagerCelebrate` (after the illager cues); the dimension property key
+`raids` (after `workstations`); the player property `raid_omen_position`
+(host level file and agent profiles). Mob records gain
+`illager.raider.patrol_target`; raid witches save the `illager` object.
+See the [Track E record](verification/2026-11-18-v0.15-raids.md).
+
+**Track B allocations (2026-11-18).** Block states 11776–11787: the lectern's
+`has_book`/`powered` states (`11776 + combo * 4 + facing`, combo 0 book,
+1 powered, 2 both; the plain states stay 937–940), in `world::workstations`;
+11788–12223 unused. Items 1556 spyglass, 1557 book and quill
+(`writable_book`), 1558 written book, 1619–1628 the ten banner pattern items
+in `Items` order (flower, creeper, skull, mojang, globe, piglin, flow,
+guster, field masoned, bordure indented); 1642–1645 unused. Texture layers
+3859–3944: the 43 banner pattern masks, two per pattern (top then bottom half
+of the flag, `BANNER_PATTERNS` order), and 3945 the lectern's open book;
+3946–3951 unused. Appended orderings: item icons (spyglass, the two books,
+then the ten pattern items, after the bundles); dimension property key
+`workstations` (banner block entities and lectern books, after
+`ominous_item_spawners`); `SlotRef` and `Container` members and LAN slot
+numbers 550–558, 600–699 (stonecutter recipes) and 700–799 (loom
+patterns). The `banner` stack payload gained an optional `ominous` flag.
+See the [Track B record](verification/2026-11-18-v0.15-workstations.md).
+
+Track A (illagers, 2026-11-18) used none of its item IDs (1634–1641) or
+texture layers (4040–4055): the illagers drop and hold existing items and
+their models are untextured boxes, so the reservation stays free. It
+appended `MobKind::Vindicator`, `Evoker`, `Vex`, `Ravager` and `Illusioner`
+(LAN indices 75–79 on its branch, saved as `vindicator`, `evoker`, `vex`,
+`ravager`, `illusioner`); `Voice::Vindicator`, `Evoker`, `Vex`, `Ravager`
+and `Illusioner`; the sound family `Sound::Illager` with the 16
+`illager::Cue`s after `Sound::Breeze`; `MobSound::Illager`; and the
+unsaved `EntityEvent::MobArrow` and `MobGrief`. Mob records gain the
+`illager` object (raid hook, spells, Johnny, vex owner, bound position and
+life, ravager timers) and `can_pick_up_loot`. See the
+[Track A record](verification/2026-11-18-v0.15-illagers.md).
+
+**Track F allocation** (2026-11-18, implemented, unverified;
+[record](verification/2026-11-18-v0.15-mansions.md)): items 1629–1633 are
+the woodland mansion, desert pyramid, warm ocean ruins, buried mineshaft and
+buried ancient city maps in that order (`world::explorer_maps`); texture
+layers 4056–4060 are their icons and 4061–4065 their map decorations
+(4066–4071 unused); no block states. Appended: `temples::Kind::Mansion`
+(saved by name only as `/locate` input, never in saves),
+`temples::LootTable::Mansion`, `fortress::Feature::MansionChest` (not
+saved), and the map save's `references` list (destination tag and start
+chunk; older saves load with none). The woodland mansion lives in
+`world::mansion` and is painted, cached and located through `temples`.
+
+**Track D allocation** (2026-11-18, implemented, unverified;
+[record](verification/2026-11-18-v0.15-items-effects.md)):
+
+| Kind | Used | Meaning |
+| --- | --- | --- |
+| Block states | 12256–12259 | Frosted ice ages 0–3 (`world::frosted_ice`); 12260–12287 stay unregistered |
+| Items | 1555 | Spectral arrow (`Item::SPECTRAL_ARROW`) |
+| Items | 1559, 1560 | Blue egg, brown egg (`content::farm_variant`) |
+| Items | 1601–1618 | The 18 armor trim smithing templates in `TrimPattern` order (`content::trim`) |
+| Items | 1650–1653, 1654–1657 | Wind charged, weaving, oozing and infested potions, then their splash potions; 1658–1659 stay unregistered |
+| Texture layers | 4000–4003 | Frosted ice ages 0–3; 4004–4039 stay unused |
+| Armor sheet layers | 19–54 | Trim pattern masks, outer then inner sheet per pattern (`entity::armor::trim_layer`; not saved) |
+
+Appended orderings: `POTIONS` indices 41–44 (`wind_charged`, `weaving`,
+`oozing`, `infested`; saved stacks keep the index in `entity_data` for
+lingering potions and tipped arrows), `thrown::Kind::BlueEgg` and
+`BrownEgg` (LAN indices 6 and 7), the item icons after the bundles
+(spectral arrow, blue egg, brown egg, then the 18 templates),
+`Sprite::TintedEgg`, `SpectralArrow` and `TrimTemplate`, and the mob save
+key `farm_variant` (Java's variant name; absent for temperate and older
+records). The charged-crossbow `entity_data` value `u32::MAX - 1`
+(`entity::SPECTRAL_BOLT`) marks a spectral bolt. No `MobKind`, `Effect` or
+sound is added; the four effects were registered in v0.14.
+
+**Track H (villager parity, 2026-11-18; implemented, unverified):** no IDs
+reserved or used. Appended: suspicious stew effect codes 12 (jump boost,
+160 ticks), 13 (blindness, 120) and 14 (poison, 280) after 11 in
+`entity::mooshroom::effect`, saved in a stew's `entity_data`, for the
+farmer's trade stews. Villager records gain `last_restock` (absolute
+ticks, replacing `last`, which older saves still convert from) and
+`meeting` (the claimed bell); their gossip saves `decay` (absolute ticks,
+replacing `day`), and `promote`/`promote_pending` are no longer written
+(an old pending promotion lands on load). See the
+[Track H record](verification/2026-11-18-v0.15-villagers.md).
+
+**Wave 1 integration (2026-11-18).** Landing order B, A, D, C. `MobKind`
+and `Voice` end `Endermite` (LAN 74), then Track A's `Vindicator`,
+`Evoker`, `Vex`, `Ravager`, `Illusioner` (75–79), then Track C's
+`HappyGhast`, `Nautilus`, `ZombieNautilus`, `CamelHusk`, `Parched`
+(80–84). Item icons after the bundles run Track B (spyglass, the two
+books, the ten pattern items), then Track D (spectral arrow, the two
+eggs, the 18 templates). Each track's record gives the LAN indices it
+had on its own branch; these are the merged ones.
+
+**Track G** (2026-11-18, implemented, unverified;
+[record](verification/2026-11-18-v0.15-catalogues.md)) allocated no block
+states, items or texture layers and appended to no saved ordering. It adds
+unsaved `fortress::Feature` members (`StructureLoot`, `VillageResident`,
+`VillageBed`, generated from the seed and never written), the
+`village::Resident` kinds of generation 4's spawn pieces (each spawn cell
+recorded in the existing saved `births` list), and `jigsaw::Base::LootIn`.
+`entity::cat_spawner` is now `pub(crate)` so the village catalogue can name
+Java's cat variants.
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

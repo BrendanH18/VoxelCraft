@@ -41,9 +41,11 @@ pub mod crops;
 pub mod deep_dark;
 pub mod dismount;
 pub mod double_chest;
+pub mod dried_ghast;
 pub mod dungeon;
 pub mod end;
 pub mod end_portal;
+pub mod explorer_maps;
 pub mod explosion;
 pub mod eyeblossom;
 pub mod falling;
@@ -53,6 +55,7 @@ mod foraging;
 pub mod forms;
 pub mod fortress;
 pub mod frog_blocks;
+pub mod frosted_ice;
 pub mod furnace;
 pub mod gadgets;
 pub mod geode;
@@ -65,6 +68,7 @@ mod light_shape;
 pub(crate) mod lighting;
 pub mod lightning;
 pub mod loot;
+pub mod mansion;
 pub mod maps;
 pub mod mineshaft;
 pub mod mount_states;
@@ -123,6 +127,7 @@ mod village_life;
 pub mod wall_states;
 pub mod waterlog;
 pub mod wood;
+pub mod workstations;
 
 use std::sync::Arc;
 
@@ -341,6 +346,8 @@ pub struct World {
     village_pois: FxHashMap<IVec3, Block>,
     navigation_updates: navigation::Updates,
     village_homes: FxHashMap<IVec3, IVec3>,
+    /// Generation 4 village residents by spawn cell (see `village_life`).
+    village_residents: FxHashMap<IVec3, village::Resident>,
     /// Banners in loaded chunks (see `colour_blocks`), which draw as models.
     banners: FxHashMap<IVec3, Block>,
     /// Straw beds in use (head, where the sleeper lies), which break when left.
@@ -381,8 +388,14 @@ pub struct World {
     pub hatched_tadpoles: Vec<(IVec3, u8)>,
     /// Sniffer eggs that cracked (false) or hatched (true); entities spawn and play them.
     pub sniffer_egg_events: Vec<(IVec3, bool)>,
+    /// Dried ghasts that hydrated or hatched; entities spawn and play them.
+    pub dried_ghast_events: Vec<dried_ghast::Hydration>,
     /// Jukeboxes and their records (see [`jukebox`]).
     pub(crate) jukeboxes: jukebox::State,
+    /// Banner patterns and lecterns (v0.15 Track B, see [`workstations`]).
+    workstations: workstations::State,
+    /// Lectern pages turned since the game last asked (level event 1043).
+    pub page_turns: Vec<workstations::PageTurn>,
     /// Jukebox game events since the entity pass last drained them
     /// (allays dance; track A's vibrations hook in there).
     pub jukebox_events: Vec<(IVec3, jukebox::JukeboxEvent)>,
@@ -488,6 +501,7 @@ impl World {
             self.light_block_changed(p, old, block, old_light);
             self.reheight_and_remesh(p, old, block, false);
             self.track_banner(p, old, block);
+            self.track_workstations(p, old, block);
         }
         self.update_block_light();
     }
@@ -641,6 +655,7 @@ impl World {
             village_pois: FxHashMap::default(),
             navigation_updates: navigation::Updates::default(),
             village_homes: FxHashMap::default(),
+            village_residents: FxHashMap::default(),
             banners: FxHashMap::default(),
             straw_sleepers: Vec::new(),
             leaf_decay: FxHashMap::default(),
@@ -660,7 +675,10 @@ impl World {
             hatched_turtles: Vec::new(),
             hatched_tadpoles: Vec::new(),
             sniffer_egg_events: Vec::new(),
+            dried_ghast_events: Vec::new(),
             jukeboxes: Default::default(),
+            workstations: Default::default(),
+            page_turns: Vec::new(),
             jukebox_events: Vec::new(),
             records: Vec::new(),
             records_started: Vec::new(),
@@ -994,6 +1012,7 @@ impl World {
         self.track_lightning_rod(p, old, block);
         self.track_frog_blocks(p, old, block);
         self.track_sniffer_egg(p, old, block);
+        self.track_frosted_ice(p, old, block);
         self.track_jukebox(p, old, block);
         if old != block {
             self.scaffolding_changed(p);
@@ -1003,6 +1022,7 @@ impl World {
         self.track_furnace(p, old, block);
         self.track_chest(p, old, block);
         self.track_banner(p, old, block);
+        self.track_workstations(p, old, block);
         self.track_brewing_stand(p, old, block);
         self.track_wood(p, old, block);
         self.track_beehives(p, old, block);
@@ -1483,6 +1503,7 @@ impl World {
         }
         self.village_pois.retain(|p, _| chunk_of(*p) != pos);
         self.village_homes.retain(|p, _| chunk_of(*p) != pos);
+        self.village_residents.retain(|p, _| chunk_of(*p) != pos);
         self.banners.retain(|p, _| chunk_of(*p) != pos);
         self.forget_campfires(pos);
         self.unload_block_light(pos, slot.block_light.as_ref());

@@ -29,7 +29,7 @@ fn templates_parse_and_every_alias_resolves() {
 #[test]
 fn a_generation_3_chamber_assembles_paints_and_registers_its_blocks() {
     use super::super::chunk::index;
-    let g = Generator::new(12345);
+    let g = Generator::with_generation(12345, Dimension::Overworld, Generation::V3);
     let at = g.trial_chambers.nearest(&g, IVec2::ZERO, 6400).expect("a chamber within 6400 blocks");
     let region = IVec2::new(at.x, at.z).div_euclid(IVec2::splat(16 * SPACING));
     let c = g.trial_chambers.get(&g, region).unwrap();

@@ -8,7 +8,10 @@
 //! biome tag (deep dark), the three `ancient_city_*_degradation` processor
 //! lists, the `ancient_city/sculk` pool and `sculk_patch_ancient_city`.
 //! Templates are original (`jigsaw/ancient_city.txt`); see the
-//! verification record for every difference.
+//! verification record for every difference. Generation 4 (v0.15 Track G)
+//! builds cities from Java's full pool lists with an original template for
+//! every Java location ([`catalogue`]), its start placed by the
+//! `city_anchor` connector as Java's `start_jigsaw_name` does.
 
 use std::sync::{Arc, Mutex};
 
@@ -42,7 +45,7 @@ const BEARD: i32 = 6;
 const REACH: i32 = MAX_DISTANCE + MARGIN + 2;
 /// The lowest and highest cells a city touches.
 const MIN_Y: i32 = FLOOR_Y - BEARD;
-const MAX_Y: i32 = FLOOR_Y + 26;
+const MAX_Y: i32 = FLOOR_Y + 32;
 const CACHE_LIMIT: usize = 64;
 const PATCH_SALT: u64 = 0xAC17_5C01;
 
@@ -52,7 +55,7 @@ pub fn allowed(b: Biome) -> bool {
 }
 
 /// `#ancient_city_replaceable`, the block rot's target.
-fn rottable(b: Block) -> bool {
+pub(in crate::world) fn rottable(b: Block) -> bool {
     b == Block::DEEPSLATE
         || b == sb::DEEPSLATE_BRICKS
         || b == sb::DEEPSLATE_TILES
@@ -174,6 +177,45 @@ impl Palette for CityPalette {
     }
 }
 
+/// Generation 4's palette: the roles of [`CityPalette`] and each piece's
+/// Java processor list run by the rules engine.
+struct V4Palette;
+
+fn v4_processors() -> &'static [Option<&'static jigsaw::rules::Compiled>] {
+    static LISTS: std::sync::OnceLock<Vec<Option<&'static jigsaw::rules::Compiled>>> = std::sync::OnceLock::new();
+    LISTS.get_or_init(|| catalogue::library().processor_lists.iter().map(|n| jigsaw::rules::list(n)).collect())
+}
+
+impl Palette for V4Palette {
+    fn role(&self, role: &str) -> Option<Block> {
+        CityPalette.role(role)
+    }
+
+    fn process(&self, block: Block, at: IVec3, piece: &Placed) -> Option<Block> {
+        // Cities are laid out before the terrain is known: the world block
+        // a rule sees is the carved air (protected blocks never occur).
+        self.process_at(block, at, piece, Block::AIR)
+    }
+
+    fn process_at(&self, block: Block, at: IVec3, piece: &Placed, existing: Block) -> Option<Block> {
+        let t = &catalogue::library().templates[piece.template as usize];
+        match t.processors.and_then(|i| v4_processors()[i as usize]) {
+            Some(list) => list.apply(block, at, existing),
+            None => Some(block),
+        }
+    }
+
+    fn clear_above(&self) -> i32 {
+        0
+    }
+}
+
+/// Whether a template is the sculk patch (generation 3's template, or
+/// generation 4's `sculk_patch_ancient_city` feature element).
+fn sculk_patch(name: &str) -> bool {
+    name == "ancient_city/sculk_patch" || name == "feature:sculk_patch_ancient_city"
+}
+
 /// What a sculk patch does to one cell, decided when the city is laid out
 /// and applied to the generated terrain.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -212,16 +254,16 @@ fn carved(b: &Bounds) -> Bounds {
 }
 
 impl City {
-    fn build(pieces: Vec<Placed>, seed: u64) -> City {
-        let lib = jigsaw::ancient_cities();
-        let palette = CityPalette;
+    fn build(pieces: Vec<Placed>, seed: u64, v4: bool) -> City {
+        let (lib, palette): (&jigsaw::Library, &dyn Palette) =
+            if v4 { (catalogue::library(), &V4Palette) } else { (jigsaw::ancient_cities(), &CityPalette) };
         let roles: Vec<_> = lib.roles.iter().map(|r| palette.role(r)).collect();
         let mut baked: FxHashMap<IVec3, Block> = FxHashMap::default();
         for p in &pieces {
             let t = &lib.templates[p.template as usize];
             let mut put = |at: IVec3, spec: &jigsaw::Spec| {
                 let w = p.world(at);
-                if let Some(b) = jigsaw::resolve(spec, &roles, &palette, p, at).and_then(|b| palette.process(b, w, p)) {
+                if let Some(b) = jigsaw::resolve(spec, &roles, palette, p, at).and_then(|b| palette.process(b, w, p)) {
                     baked.insert(w, b);
                 }
             };
@@ -253,7 +295,7 @@ impl City {
         };
         let mut ops: Vec<(IVec3, PatchOp)> = Vec::new();
         for p in &pieces {
-            if lib.templates[p.template as usize].name != "ancient_city/sculk_patch" {
+            if !sculk_patch(&lib.templates[p.template as usize].name) {
                 continue;
             }
             let o = p.origin;
@@ -338,7 +380,9 @@ impl City {
         let chests = jigsaw::markers(lib, &pieces, &|_, _| FLOOR_Y)
             .into_iter()
             .filter_map(|m| match m {
-                jigsaw::Marker::Loot(at, name, seed) => Some((at, seed, name == "ancient_city_ice_box")),
+                jigsaw::Marker::Loot(at, name, seed) => {
+                    Some((at, seed, name == "ancient_city_ice_box" || name == "chests/ancient_city_ice_box"))
+                }
                 _ => None,
             })
             .collect();
@@ -444,8 +488,16 @@ impl AncientCities {
         // the stub (the start box's centre, at the start height) can run
         // before the assembly.
         let found = self.stub(g, region).map(|_| {
-            let lib = jigsaw::ancient_cities();
+            let v4 = g.generation >= Generation::V4;
+            let lib = if v4 { catalogue::library() } else { jigsaw::ancient_cities() };
             let place = |t: &jigsaw::Template, r: u8| {
+                if v4 {
+                    // Java's `start_jigsaw_name`: the `city_anchor` connector
+                    // lands on the start position (its column, height -27).
+                    let anchor = t.jigsaws.iter().find(|j| j.name == "city_anchor").map_or(IVec3::ZERO, |j| j.pos);
+                    let a = jigsaw::rotate(anchor, r);
+                    return IVec3::new(at.x - a.x, START_Y - a.y, at.y - a.z);
+                }
                 let centre = jigsaw::rotate(IVec3::new(t.size.x / 2, 0, t.size.z / 2), r);
                 IVec3::new(at.x - centre.x, FLOOR_Y, at.y - centre.z)
             };
@@ -456,7 +508,7 @@ impl AncientCities {
             };
             let seed = hash3(at.x, 0, at.y, self.seed ^ SALT);
             let pieces = jigsaw::assemble_with(lib, &settings, &place, &|_, _| FLOOR_Y, seed);
-            Arc::new(City::build(pieces, seed))
+            Arc::new(City::build(pieces, seed, v4))
         });
         let mut cache = self.cache.lock().unwrap();
         if cache.len() >= CACHE_LIMIT {
@@ -541,6 +593,8 @@ impl AncientCities {
         best
     }
 }
+
+pub mod catalogue;
 
 #[cfg(test)]
 mod tests;

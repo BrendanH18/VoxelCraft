@@ -484,36 +484,6 @@ fn axolotl<W: MobWorld + ?Sized>(
     (m.follow_path(w, s, false), s)
 }
 
-pub(super) fn pillager<W: MobWorld + ?Sized>(
-    m: &mut Mob,
-    _dt: f32,
-    w: &W,
-    ctx: &Ctx,
-    events: &mut Vec<EntityEvent>,
-) -> (Option<DVec3>, f64) {
-    let Some(t) = ctx.nearest_detectable_target(m.pos, 32.) else { return (None, 0.0) };
-    let delta = t.pos - m.pos;
-    if delta.length_squared() > 1024.0 {
-        return (None, 0.0);
-    }
-    let from = m.pos + DVec3::Y * 1.55;
-    let visible = super::mob::line_of_sight(w, from, t.pos + DVec3::Y);
-    m.charged = visible && delta.length_squared() < 225.0;
-    if m.charged && m.attack_cooldown <= 0.0 {
-        events.push(EntityEvent::Shoot {
-            from,
-            target: t.pos + DVec3::Y,
-            cause: crate::simulation::damage::Cause::PILLAGER_ARROW,
-            shooter: m.uid,
-        });
-        m.attack_cooldown = 2.5;
-        m.attack_anim = 0.4;
-    }
-    let dir = (delta * DVec3::new(1.0, 0.0, 1.0)).normalize_or_zero();
-    m.yaw = (dir.z as f32).atan2(dir.x as f32);
-    (if m.charged { None } else { Some(dir) }, 2.4)
-}
-
 #[cfg(test)]
 pub(super) fn spawn_spot<W: MobWorld + ?Sized>(
     w: &W,
@@ -895,7 +865,9 @@ impl Entities {
                     self.spawn(kind, p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
                     let m = self.mobs.last_mut().unwrap();
                     m.persistent = kind != MobKind::Pillager;
-                    if let Some(s) = &mut m.allay {
+                    if let Some(s) = &mut m.allay
+                        && b.kind == crate::world::temples::Kind::Outpost
+                    {
                         // Pinned cage NBT: Health 10 and movement_speed .3.
                         m.health = 10.;
                         s.ground_speed = Some(f64::from(0.3_f32));

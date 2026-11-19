@@ -15,6 +15,13 @@ impl World {
         self.utilities.decorated.get(&p).copied()
     }
 
+    /// v0.15 Track G: what a generated decorated pot holds (Java's pot
+    /// `LootTable`, rolled when its chunk's structure features register; a
+    /// pot already holding something keeps it).
+    pub(in crate::world) fn generate_pot_loot(&mut self, p: IVec3, stack: Stack) {
+        self.utilities.decorated.entry(p).or_insert(stack);
+    }
+
     /// Adds one item to the decorated pot at `p` (`DecoratedPotBlock.useItemOn`).
     pub fn decorated_pot_insert(&mut self, p: IVec3, one: Stack) -> bool {
         if !self.get_block(p).is_some_and(|b| super::decorated_pot_of(b).is_some()) {

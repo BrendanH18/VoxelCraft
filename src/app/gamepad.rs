@@ -733,7 +733,10 @@ impl Game {
                             | Tab::Enchanting(pos)
                             | Tab::Anvil(pos)
                             | Tab::Grindstone(pos)
-                            | Tab::Smithing(pos)),
+                            | Tab::Smithing(pos)
+                            | Tab::Stonecutter(pos)
+                            | Tab::Loom(pos)
+                            | Tab::Cartography(pos)),
                         ..
                     } => {
                         !self.world.get_block(pos).is_some_and(|b| tab.matches_block(b))
@@ -1025,6 +1028,12 @@ impl Game {
             seat.open(Menu::items(Tab::Grindstone(pos)));
         } else if block == Block::SMITHING_TABLE {
             seat.open(Menu::items(Tab::Smithing(pos)));
+        } else if block.base() == Block::STONECUTTER {
+            seat.open(Menu::items(Tab::Stonecutter(pos)));
+        } else if block.base() == Block::LOOM {
+            seat.open(Menu::items(Tab::Loom(pos)));
+        } else if block.base() == Block::CARTOGRAPHY_TABLE {
+            seat.open(Menu::items(Tab::Cartography(pos)));
         } else if block.is_bed() || super::bed::is_straw(Some(block)) {
             self.pad_sleep(i, pos);
         }

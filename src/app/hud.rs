@@ -47,6 +47,20 @@ pub(super) enum SlotRef {
     SmithAddition,
     SmithResult,
     Trade(usize),
+    /// v0.15 Track B: the stonecutter's input, result and recipe buttons.
+    CutInput,
+    CutResult,
+    CutRecipe(usize),
+    /// The loom's banner, dye and pattern slots, result and pattern buttons.
+    LoomBanner,
+    LoomDye,
+    LoomPattern,
+    LoomResult,
+    LoomChoice(usize),
+    /// The cartography table's map and additional slots and result.
+    MapInput,
+    MapExtra,
+    MapResult,
     /// The off-hand slot (survival inventory).
     Offhand,
     /// Worn armor (survival inventory).
@@ -112,6 +126,9 @@ impl Game {
             self.credits_ui(&mut ui, t);
             return ui.verts;
         }
+        if self.camera.first_person() && self.session.scoping() {
+            spyglass_overlay(&mut ui, sw, sh, self.session.scoping_ticks());
+        }
         if self.portal_time > 0.0 {
             // The portal's purple swims in as it takes hold.
             let k = (self.portal_time / self.portal_needed()).min(1.0);
@@ -155,8 +172,15 @@ impl Game {
         }
 
         self.hotbar_ui(&mut ui, now);
+        let mut bar_y = 12.0;
         if let Some(health) = self.mobs.entities.fight.as_ref().and_then(|f| f.boss_bar(self.session.player.pos)) {
             boss_bar_ui(&mut ui, "Ender Dragon", health, sw);
+            bar_y += 19.0;
+        }
+        // v0.15 Track E: the raid bar (`BossBarColor.RED`, `NOTCHED_10`),
+        // under any other boss bar as Java stacks them.
+        if let Some(bar) = self.mobs.entities.raids.bar_for(self.session.id) {
+            raid_bar_ui(&mut ui, &bar.title.text(), bar.progress, sw, bar_y);
         }
         if self.show_debug {
             self.debug_ui(&mut ui);
@@ -309,7 +333,9 @@ impl Game {
         let tick = ((now - self.started).as_secs_f32() * 20.0) as u32;
         // Java's `Gui.renderHearts`: golden absorption hearts follow the
         // health hearts, ten to a row, rows closing up as there are more.
-        let health_hearts = MAX_HEALTH as u32 / 2;
+        // `Gui.extractPlayerHealth`: Health Boost adds hearts (`max_health`
+        // rounded up, in half hearts).
+        let health_hearts = (v.max_health().max(v.health).ceil() as u32).div_ceil(2);
         let hearts = health_hearts + absorption.div_ceil(2);
         let rows = hearts.div_ceil(10);
         let row_step = (10 - (rows as i32 - 2)).max(3) as f32;
@@ -485,7 +511,7 @@ impl Game {
     }
 
     /// Item icon, durability bar and stack count in an 18x18 slot at (x, y).
-    fn stack_ui(&self, ui: &mut Ui, x: f32, y: f32, stack: Stack) {
+    pub(super) fn stack_ui(&self, ui: &mut Ui, x: f32, y: f32, stack: Stack) {
         draw_stack(ui, x, y, stack, self.session.mode.is_survival(), self.dial_of(&self.session.player));
     }
 }
@@ -617,6 +643,24 @@ fn boss_bar_ui(ui: &mut Ui, name: &str, health: f32, sw: f32) {
     }
 }
 
+/// The raid's red boss bar with ten notches, at `y`.
+fn raid_bar_ui(ui: &mut Ui, name: &str, progress: f32, sw: f32, y: f32) {
+    const RED: [f32; 4] = [0.9, 0.12, 0.12, 1.0];
+    let (w, x) = (182.0, ((sw - 182.0) / 2.0).floor());
+    ui.text(((sw - Ui::text_width(name)) / 2.0).floor(), y - 9.0, name, WHITE);
+    ui.rect(x, y, w, 5.0, [0.0, 0.0, 0.0, 0.8]);
+    ui.rect(x + 1.0, y + 1.0, w - 2.0, 3.0, [0.3, 0.05, 0.05, 0.9]);
+    let fill = ((w - 2.0) * progress.clamp(0.0, 1.0)).round();
+    if fill > 0.0 {
+        ui.rect(x + 1.0, y + 1.0, fill, 3.0, RED);
+        ui.rect(x + 1.0, y + 1.0, fill, 1.0, [1.0, 0.5, 0.45, 1.0]);
+    }
+    for k in 1..10 {
+        let nx = (x + 1.0 + (w - 2.0) * k as f32 / 10.0).round();
+        ui.rect(nx, y + 1.0, 1.0, 3.0, [0.0, 0.0, 0.0, 0.5]);
+    }
+}
+
 fn xp_bar_ui(ui: &mut Ui, xp: Experience, x: f32, y: f32, w: f32) {
     const GREEN: [f32; 4] = [0.5, 1.0, 0.125, 1.0];
     ui.rect(x, y, w, 5.0, [0.0, 0.0, 0.0, 0.8]);
@@ -658,6 +702,7 @@ pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool
         }
         (None, None) => {}
     }
+    super::patterns::draw_icon_patterns(ui, x, y, &stack);
     if let Some(wear) = stack.wear() {
         // Minecraft's bar: green when new, through yellow to red.
         let w = (13.0 * wear).round().max(1.0);
@@ -757,6 +802,9 @@ impl Game {
                     | Container::Grindstone(_)
                     | Container::Trading(_)
                     | Container::Smithing(_)
+                    | Container::Stonecutter(_)
+                    | Container::Loom(_)
+                    | Container::Cartography(_)
             )
     }
 
@@ -866,6 +914,9 @@ impl Game {
             out.push((SlotRef::SmithAddition, px + 51.0, py + 48.0));
             out.push((SlotRef::SmithResult, px + 105.0, py + 48.0));
             CRAFT_H
+        } else if super::workstations::is_workstation(self.body.container) {
+            self.workstation_slots(px, py, &mut out);
+            CRAFT_H
         } else if let Container::Brewing(_) = self.body.container {
             // Java's layout: fuel top left, the ingredient over three
             // bottles in a fan.
@@ -943,6 +994,12 @@ impl Game {
         {
             return None;
         }
+        if super::workstations::is_workstation(self.body.container) {
+            let (px, py, _) = self.panel((w as f32 / scale, h as f32 / scale));
+            if let Some(button) = self.work_button_at(px, py + self.search_h(), mx, my) {
+                return Some(button);
+            }
+        }
         if let Container::Enchanting(_) = self.body.container {
             let (px, py, _) = self.panel((w as f32 / scale, h as f32 / scale));
             for i in 0..3 {
@@ -984,6 +1041,7 @@ impl Game {
             (Container::Anvil(_), _) => "Anvil",
             (Container::Grindstone(_), _) => "Repair & Disenchant",
             (Container::Smithing(_), _) => "Upgrade Gear",
+            (Container::Stonecutter(_) | Container::Loom(_) | Container::Cartography(_), _) => self.workstation_title(),
             (Container::Trading(_), _) => "",
             (Container::Inventory, GameMode::Survival) => "Inventory",
             (Container::Inventory, GameMode::Creative) => "Creative",
@@ -1007,6 +1065,8 @@ impl Game {
             self.anvil_ui(ui, px, py);
         } else if let Container::Smithing(_) = self.body.container {
             self.smithing_ui(ui, px, py);
+        } else if super::workstations::is_workstation(self.body.container) {
+            self.workstation_ui(ui, px, py);
         } else if self.has_top_section() && !matches!(self.body.container, Container::Chest(_) | Container::Minecart(_))
         {
             // Arrow toward the result; in a furnace it fills with progress
@@ -1062,7 +1122,7 @@ impl Game {
                 SlotRef::Inventory(i) => self.session.inventory.get(i),
                 SlotRef::Palette(b) => Some(Stack::new(b, 1)),
                 SlotRef::Craft(i) => self.craft.cells[i],
-                SlotRef::CraftResult => self.craft.result(),
+                SlotRef::CraftResult => self.craft.result_in(&self.world.maps),
                 SlotRef::Armor(p) => self.session.inventory.armor[p as usize],
                 SlotRef::Offhand => self.session.inventory.offhand,
                 f => self.container_slot(f),
@@ -1075,6 +1135,7 @@ impl Game {
                 (SlotRef::SmithTemplate, None) => Item::NETHERITE_UPGRADE.icon_layer(),
                 (SlotRef::SmithBase, None) => Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Diamond).icon_layer(),
                 (SlotRef::SmithAddition, None) => Item::NETHERITE_INGOT.icon_layer(),
+                (s, None) => Self::workstation_outline(s),
                 _ => None,
             };
             if let Some(layer) = outline {
@@ -1106,7 +1167,7 @@ impl Game {
             Some(SlotRef::Inventory(i)) => self.session.inventory.get(i),
             Some(SlotRef::Palette(item)) => Some(Stack::new(item, 1)),
             Some(SlotRef::Craft(i)) => self.craft.cells[i],
-            Some(SlotRef::CraftResult) => self.craft.result(),
+            Some(SlotRef::CraftResult) => self.craft.result_in(&self.world.maps),
             Some(SlotRef::Armor(p)) => self.session.inventory.armor[p as usize],
             Some(SlotRef::Offhand) => self.session.inventory.offhand,
             Some(f) => self.container_slot(f),
@@ -1126,6 +1187,10 @@ impl Game {
                 .or(stack.arrow_potion())
             {
                 Some(potion) => self.potion_tooltip(ui, stack.display_name(), potion),
+                // v0.15 Track D: armor trims and trim templates.
+                None if stack.trim.is_some() || voxelcraft::content::trim::template_pattern(stack.item).is_some() => {
+                    self.trim_tooltip(ui, stack)
+                }
                 None if !stack.enchants.is_empty() => self.enchant_tooltip(ui, stack),
                 // Java's `Rarity.RARE` names are aqua.
                 None if stack.item.is_rare() => self.tooltip_coloured(ui, stack.display_name(), [0.33, 1.0, 1.0, 1.0]),
@@ -1220,6 +1285,9 @@ impl Game {
         }
         if let (Container::Chest(p), SlotRef::Chest(i)) = (self.body.container, slot) {
             return self.world.chest_slot(p, i);
+        }
+        if super::workstations::is_workstation_slot(slot) {
+            return self.workstation_slot(slot);
         }
         match slot {
             SlotRef::EnchantItem => return self.session.work[0],
@@ -1394,6 +1462,35 @@ impl Game {
         for (i, (line, curse)) in lines.iter().enumerate() {
             let c = if *curse { [1.0, 0.33, 0.33, 1.0] } else { [0.67, 0.67, 0.67, 1.0] };
             ui.text(x, y + 11.0 * (i + 1) as f32, line, c);
+        }
+    }
+
+    /// v0.15 Track D: a trimmed piece of armor (`ArmorTrim.addToTooltip`:
+    /// "Upgrade:", then the pattern and material in the material's colour,
+    /// before any enchantments) or a trim template
+    /// (`SmithingTemplateItem.appendHoverText`), named in its rarity's colour.
+    fn trim_tooltip(&self, ui: &mut Ui, stack: Stack) {
+        let rgb = |c: [u8; 3]| [f32::from(c[0]) / 255.0, f32::from(c[1]) / 255.0, f32::from(c[2]) / 255.0, 1.0];
+        let title = capitalize(stack.display_name());
+        let colour = match voxelcraft::content::trim::title_colour(stack.item) {
+            Some(c) => rgb(c),
+            None if !stack.enchants.is_empty() => [0.33, 1.0, 1.0, 1.0],
+            None => WHITE,
+        };
+        let mut lines: Vec<(String, Color)> =
+            voxelcraft::content::trim::tooltip_lines(&stack).into_iter().map(|(l, c)| (l, rgb(c))).collect();
+        for (line, curse) in stack.enchants.lines() {
+            lines.push((line, if curse { [1.0, 0.33, 0.33, 1.0] } else { [0.67, 0.67, 0.67, 1.0] }));
+        }
+        let w = lines.iter().map(|(l, _)| Ui::text_width(l)).fold(Ui::text_width(&title), f32::max);
+        let h = 14.0 + 11.0 * lines.len() as f32;
+        let (sw, sh) = ui.size();
+        let x = (self.cursor_px.0 / ui.scale + 10.0).min(sw - w - 6.0).max(3.0);
+        let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - h + 3.0).max(3.0));
+        ui.rect(x - 3.0, y - 3.0, w + 6.0, h, [0.08, 0.02, 0.12, 0.92]);
+        ui.text(x, y, &title, colour);
+        for (i, (line, c)) in lines.iter().enumerate() {
+            ui.text(x, y + 11.0 * (i + 1) as f32, line, *c);
         }
     }
 
@@ -1608,6 +1705,37 @@ pub(super) fn frozen_overlay(ui: &mut Ui, w: f32, h: f32, ticks: u16) {
         ui.rect(t * 2.0, 16.0, 2.0, (h - 32.0).max(0.0), color);
         ui.rect(w - (t + 1.0) * 2.0, 16.0, 2.0, (h - 32.0).max(0.0), color);
     }
+}
+
+/// `Hud.extractSpyglassOverlay`: the scope, a square `min(width, height)`
+/// times `scopeScale` on a side, with black around it. `scopeScale` eases
+/// from 0.5 toward 1.125 by half the distance a tick, approximated here
+/// from the ticks the spyglass has been up. The scope art is original: a
+/// dark ring and a faint crosshair.
+fn spyglass_overlay(ui: &mut Ui, sw: f32, sh: f32, ticks: u32) {
+    use voxelcraft::content::spyglass::{SCOPE_EASE_PER_TICK, SCOPE_START, SCOPE_TARGET};
+    let scale = SCOPE_TARGET - (SCOPE_TARGET - SCOPE_START) * (-SCOPE_EASE_PER_TICK * ticks as f32).exp();
+    let side = (sw.min(sh) * scale).floor();
+    let (left, top) = (((sw - side) / 2.0).floor(), ((sh - side) / 2.0).floor());
+    let black = [0.0, 0.0, 0.0, 1.0];
+    ui.rect(0.0, 0.0, sw, top.max(0.0), black);
+    ui.rect(0.0, top + side, sw, (sh - top - side).max(0.0), black);
+    ui.rect(0.0, top, left.max(0.0), side, black);
+    ui.rect(left + side, top, (sw - left - side).max(0.0), side, black);
+    // The lens: black outside a circle, drawn as horizontal spans.
+    let r = side / 2.0;
+    let (cx, cy) = (left + r, top + r);
+    let rows = side.max(1.0) as i32;
+    for i in 0..rows {
+        let y = top + i as f32;
+        let dy = (y + 0.5 - cy) / r;
+        let half = if dy.abs() < 1.0 { r * (1.0 - dy * dy).sqrt() } else { 0.0 };
+        ui.rect(left, y, (r - half).max(0.0), 1.0, black);
+        ui.rect(cx + half, y, (r - half).max(0.0), 1.0, black);
+    }
+    let faint = [0.0, 0.0, 0.0, 0.35];
+    ui.rect(cx - r * 0.25, cy, r * 0.5, 1.0, faint);
+    ui.rect(cx, cy - r * 0.25, 1.0, r * 0.5, faint);
 }
 
 #[cfg(test)]

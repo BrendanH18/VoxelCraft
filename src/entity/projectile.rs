@@ -24,6 +24,9 @@ pub struct Arrow {
     pub tipped: bool,
     pub potion: Option<crate::potion::Potion>,
     pub custom_effect: Option<(crate::simulation::effects::Effect, u8, u32)>,
+    /// v0.15 Track D: a spectral arrow (`SpectralArrow`), which gives what
+    /// it hits Glowing for 200 ticks and picks up as a spectral arrow.
+    pub spectral: bool,
     pub pos: DVec3,
     /// Position at the start of the last simulation step, for rendering.
     pub previous_pos: DVec3,
@@ -54,6 +57,11 @@ pub struct Arrow {
     pierced: Vec<u32>,
     /// Vehicles and decorations ([`ArrowTarget::key`]) it passed through.
     pierced_other: Vec<u64>,
+    /// v0.15 Track A: a mob's arrow shot Java's way (a pillager's crossbow,
+    /// an illusioner's bow): `AbstractArrow`'s base damage times its speed
+    /// in blocks a tick, rounded up, instead of the older mob arrow's
+    /// estimate.
+    pub java_base: Option<f64>,
 }
 
 /// Something other than a mob an arrow can hit: a minecart, boat or
@@ -97,6 +105,7 @@ impl Arrow {
             tipped: false,
             potion: None,
             custom_effect: None,
+            spectral: false,
             pos: from,
             previous_pos: from,
             vel,
@@ -114,6 +123,7 @@ impl Arrow {
             enchants: Default::default(),
             pierced: Vec::new(),
             pierced_other: Vec::new(),
+            java_base: None,
         }
     }
 
@@ -126,6 +136,7 @@ impl Arrow {
             tipped: false,
             potion: None,
             custom_effect: None,
+            spectral: false,
             pos: eye + dir * 0.3,
             previous_pos: eye + dir * 0.3,
             vel,
@@ -143,6 +154,7 @@ impl Arrow {
             enchants: Default::default(),
             pierced: Vec::new(),
             pierced_other: Vec::new(),
+            java_base: None,
         }
     }
 
@@ -157,6 +169,32 @@ impl Arrow {
         arrow.from_player = false;
         arrow.owner = None;
         arrow
+    }
+
+    /// A mob's arrow loosed Java's way from `from` at `vel` blocks a second
+    /// (`Projectile.shoot` already applied), with base damage 2.
+    pub fn mob_shot(from: DVec3, vel: DVec3, cause: crate::simulation::damage::Cause, shooter: u32) -> Self {
+        let mut arrow = Self::shot(from, vel, 0.0, false);
+        arrow.pos = from;
+        arrow.previous_pos = from;
+        arrow.vel = vel;
+        arrow.dir = vel.normalize_or(DVec3::X).as_vec3();
+        arrow.critical = false;
+        arrow.from_player = false;
+        arrow.owner = None;
+        arrow.shooter = Some(shooter);
+        arrow.cause = cause;
+        arrow.java_base = Some(2.0);
+        arrow
+    }
+
+    /// A mob arrow's damage at `speed` blocks a second: Java's
+    /// `ceil(speed per tick * base damage)` for [`Arrow::mob_shot`] arrows.
+    fn mob_damage(&self, speed: f64) -> f32 {
+        match self.java_base {
+            Some(base) => (speed / crate::knockback::TICK_RATE * base * self.power_factor()).ceil() as f32,
+            None => (speed / SPEED * 3.0 * self.power_factor()).ceil() as f32,
+        }
     }
 
     /// Power raises Java's base arrow damage of 2 by 0.5 per level + 0.5.
@@ -260,7 +298,11 @@ impl Arrow {
                             self.pierced_other.push(o.key);
                         }
                         let damage = if self.shooter.is_some() {
-                            (self.vel.length() / SPEED * 3.0).ceil() as f32
+                            if self.java_base.is_some() {
+                                self.mob_damage(self.vel.length())
+                            } else {
+                                (self.vel.length() / SPEED * 3.0).ceil() as f32
+                            }
                         } else {
                             let mut damage =
                                 (self.vel.length() / BOW_SPEED * BOW_DAMAGE * self.power_factor()).ceil() as f32;
@@ -339,7 +381,10 @@ impl Arrow {
                                 mob.ignite(5.0);
                             }
                             if self.from_player {
-                                mob.player_hit();
+                                match self.owner {
+                                    Some(owner) => mob.player_hit_by(owner),
+                                    None => mob.player_hit(),
+                                }
                             }
                             if let Some(attacker) = self.shooter {
                                 if !refused {
@@ -350,14 +395,15 @@ impl Arrow {
                                 events.push(EntityEvent::MobHit {
                                     target: mob.uid,
                                     attacker,
-                                    damage: (speed / SPEED * 3.0 * self.power_factor()).ceil() as f32,
+                                    damage: self.mob_damage(speed),
                                     knockback: push,
                                 });
                                 return false;
                             }
                             // `hurtServer`'s 0.4 push along the arrow, then Punch's shove (`doKnockback`).
                             let motion = self.vel / crate::knockback::TICK_RATE;
-                            let killed = mob.damage_pushed(damage, &[crate::knockback::Push::projectile(motion)], rng);
+                            let killed =
+                                mob.damage_projectile(damage, &[crate::knockback::Push::projectile(motion)], rng);
                             if !killed && !refused {
                                 self.effects_on_mob(mob, rng);
                             }
@@ -436,7 +482,7 @@ impl Arrow {
                         events.push(EntityEvent::Ignite { player: hit.id, secs: 5. });
                     }
                     (
-                        (self.vel.length() / SPEED * 3.0 * self.power_factor()).ceil() as f32,
+                        self.mob_damage(self.vel.length()),
                         DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 3.0 + DVec3::Y * 3.0,
                     )
                 };
@@ -448,7 +494,7 @@ impl Arrow {
                     knockback: push.as_vec3(),
                     cause: if self.from_player { crate::simulation::damage::Cause::PLAYER_ARROW } else { self.cause },
                 });
-                if self.potion.is_some() || self.custom_effect.is_some() {
+                if self.potion.is_some() || self.custom_effect.is_some() || self.spectral {
                     events.push(EntityEvent::ArrowEffectsStart { player: hit.id });
                     self.effects_on_player(hit.id, events);
                     events.push(EntityEvent::ArrowEffectsEnd);
@@ -666,6 +712,34 @@ mod tests {
             }
         }
     }
+    /// v0.15 integration review: a raider killed only by a player's arrow
+    /// still names that player, so a ranged raid win crowns the hero.
+    #[test]
+    fn a_player_arrow_marks_the_raider_it_hits_with_its_owner() {
+        let world = Grid::flat(10);
+        let mut arrow = Arrow::shot(DVec3::new(0.5, 11.5, 0.5), DVec3::X, 1.0, true);
+        arrow.owner = Some(PlayerId::HOST);
+        let mut mobs = vec![Mob::new(MobKind::Pillager, DVec3::new(3.0, 10.0, 0.5), 0.0)];
+        let ctx = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+            players: vec![Target::new(PlayerId::HOST, DVec3::new(-50.0, 10.0, 0.5), true)],
+            daylight: 1.0,
+            spawning: false,
+            raining: false,
+            dimension: Dimension::Overworld,
+        };
+        let mut events = Vec::new();
+        let mut rng = Rng::new(7);
+        for _ in 0..20 {
+            if !arrow.update(0.05, &world, &ctx, &mut mobs, &[], None, &mut rng, &mut events) {
+                break;
+            }
+        }
+        assert!(mobs[0].health < MobKind::Pillager.max_health(), "the arrow hit");
+        assert!(mobs[0].player_hit_left > 0.0);
+        assert_eq!(mobs[0].illager.as_ref().unwrap().raider.last_player, Some(PlayerId::HOST));
+    }
+
     #[test]
     fn embedded_potion_contents_expire_after_six_hundred_ticks() {
         let mut a = Arrow::shot(DVec3::new(0.5, 9.5, 0.5), DVec3::X, 1., true);

@@ -75,10 +75,12 @@ fn loot_names<'a>(v: &'a Value, names: &mut BTreeSet<&'a str>) {
 fn runtime_table_names_resolve_or_have_explicit_registry_gaps() {
     let g = gaps();
     let r: Value = serde_json::from_str(include_str!("fixtures/java/26.3/registry_names.json")).unwrap();
+    // Trade tables name Java items and resolve them as the game does.
+    let resolve = voxelcraft::entity::villager::trades::item;
     let trades: BTreeSet<_> = voxelcraft::entity::villager::trade_item_names().collect();
     let mut pending = 0;
     for name in &trades {
-        if Item::from_name(name).is_none() {
+        if resolve(name).is_none() {
             pending += 1;
             assert!(owned_item(name, &g, &r), "unowned trade name {name}");
         }
@@ -87,7 +89,7 @@ fn runtime_table_names_resolve_or_have_explicit_registry_gaps() {
     let wandering: BTreeSet<_> = voxelcraft::entity::wandering_trader::trade_item_names().collect();
     pending = 0;
     for name in &wandering {
-        if Item::from_name(name).is_none() {
+        if resolve(name).is_none() {
             pending += 1;
             assert!(owned_item(name, &g, &r), "unowned wandering-trader name {name}");
         }

@@ -215,14 +215,17 @@ mod tests {
             for item in [COPPER_HORSE_ARMOR, NETHERITE_HORSE_ARMOR, Item::DIAMOND_HORSE_ARMOR] {
                 assert_eq!(s.accepts(kind, 1, item), tag.contains(&kind), "{kind:?} {}", item.name());
             }
-            // No animal the game has wears nautilus armor (`#can_wear_nautilus_armor`
-            // names the nautilus and zombie nautilus).
+            // `#can_wear_nautilus_armor`: the nautilus and zombie nautilus (v0.15).
+            let nautilus: Vec<MobKind> = f["entity_tags"]["can_wear_nautilus_armor"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|n| MobKind::from_name(n.as_str().unwrap()).unwrap())
+                .collect();
             for item in [COPPER_NAUTILUS_ARMOR, NETHERITE_NAUTILUS_ARMOR] {
-                assert!(!s.accepts(kind, 1, item), "{kind:?} {}", item.name());
+                assert_eq!(s.accepts(kind, 1, item), nautilus.contains(&kind), "{kind:?} {}", item.name());
             }
         }
-        let nautilus = f["entity_tags"]["can_wear_nautilus_armor"].as_array().unwrap();
-        assert!(nautilus.iter().all(|n| MobKind::from_name(n.as_str().unwrap()).is_none()));
     }
 
     /// A tamed horse takes copper and netherite armor from the player's hand

@@ -107,6 +107,14 @@ impl World {
                     self.register_trial_spawner(p, config);
                 }
                 Feature::TrialVault if super::trial::vault(block).is_some() => self.register_trial_vault(p),
+                Feature::StructureLoot(seed, table) if super::utilities::decorated_pot_of(block).is_some() => {
+                    if let Some(stack) = super::loot::single_slot(seed, table) {
+                        self.generate_pot_loot(p, stack);
+                    }
+                }
+                Feature::MansionChest(i) if is_chest(block) => {
+                    self.chests.entry(p).or_insert_with(|| super::mansion::fixed_chest(i));
+                }
                 Feature::Spawner(kind) if block == Block::SPAWNER => {
                     self.spawners.entry(p).or_insert(kind);
                 }
@@ -169,6 +177,7 @@ pub(super) fn chest_loot(g: &Generator, block: Block, p: IVec3, feature: &Featur
     }
     Some(match *feature {
         Feature::TrialLoot(seed, table) => (table.name(), seed),
+        Feature::StructureLoot(seed, table) => (table, seed),
         Feature::Chest(seed) => ("nether_bridge", seed),
         Feature::StrongholdChest(seed) => (
             match seed & 3 {

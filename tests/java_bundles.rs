@@ -445,13 +445,9 @@ fn game_table(java: &str) -> String {
 }
 
 /// Java tables that name a bundle but that the game doesn't roll yet:
-/// villages (tannery, weaponsmith) and abandoned camps (v0.16) own them.
-const TABLE_GAPS: &[&str] = &[
-    "barrels/abandoned_camp_barrel",
-    "chests/abandoned_camp_common_chest",
-    "chests/village/village_tannery",
-    "chests/village/village_weaponsmith",
-];
+/// abandoned camps (v0.16) own them. The village tannery and weaponsmith
+/// chests are rolled since v0.15 Track G's generation 4 villages.
+const TABLE_GAPS: &[&str] = &["barrels/abandoned_camp_barrel", "chests/abandoned_camp_common_chest"];
 
 #[test]
 fn village_chests_hold_a_bundle_one_time_in_three() {
@@ -491,7 +487,7 @@ fn village_chests_hold_a_bundle_one_time_in_three() {
         assert!((with_bundle as i64 - 2000).abs() <= 183, "{java}: {with_bundle} of {N}");
         live.push(java.as_str());
     }
-    assert_eq!(live.len(), 6, "{live:?}");
+    assert_eq!(live.len(), 8, "{live:?}");
 }
 
 #[test]

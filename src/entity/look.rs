@@ -31,6 +31,13 @@ impl Mob {
         if let Some(p) = &self.phantom {
             v["phantom_size"] = json!(p.size);
         }
+        // v0.15 Track D: a farm animal's climate variant and Glowing.
+        if super::animals::has_farm_variant(self.kind) {
+            v["farm_variant"] = json!(self.farm_variant().name());
+        }
+        if self.effects.glowing() {
+            v["glowing"] = json!(true);
+        }
         if let Some(stack) = self.wolf_armor.as_ref().and_then(|s| s.armor) {
             v["wolf_armor"] = json!(crate::inventory::stack_to_string(Some(stack)));
         }
@@ -58,6 +65,9 @@ impl Mob {
         if let Some(s) = &self.armadillo {
             v["armadillo"] = s.look();
         }
+        if let Some(s) = &self.illager {
+            v["illager"] = s.look();
+        }
         if let Some(s) = &self.panda {
             v["panda"] = s.look();
         }
@@ -72,6 +82,12 @@ impl Mob {
         }
         if let Some(s) = &self.mooshroom {
             v["mooshroom_brown"] = json!(s.brown);
+        }
+        if let Some(s) = &self.happy_ghast {
+            v["happy_ghast"] = json!({"still": s.still(), "goggles": s.goggles_down});
+        }
+        if let Some(s) = &self.nautilus {
+            v["nautilus"] = json!({"dashing": s.dashing});
         }
         if let Some(name) = self.name.as_str() {
             v["name"] = json!(name);
@@ -127,6 +143,15 @@ impl Mob {
         if let Some(c) = dye(&v["wool"]) {
             self.wool_color = c;
         }
+        if let Some(variant) = v["farm_variant"].as_str().and_then(crate::content::farm_variant::FarmVariant::from_name)
+        {
+            self.set_farm_variant(variant);
+        }
+        if v["glowing"] == true {
+            self.effects.add(crate::simulation::effects::Effect::Glowing, 0, crate::simulation::effects::INFINITE);
+        } else {
+            self.effects.remove(crate::simulation::effects::Effect::Glowing);
+        }
         if let Some(p) = &mut self.phantom {
             p.size = v["phantom_size"].as_u64().unwrap_or(0).min(64) as u8;
         }
@@ -136,6 +161,9 @@ impl Mob {
         }
         if let Some(s) = &mut self.sniffer {
             s.apply_look(&v["sniffer"]);
+        }
+        if let Some(s) = &mut self.illager {
+            s.apply_look(&v["illager"]);
         }
         if let Some(s) = &mut self.creaking {
             s.load(&v["creaking"]);
@@ -184,6 +212,13 @@ impl Mob {
         }
         if let Some(s) = &mut self.mooshroom {
             s.brown = v["mooshroom_brown"] == true;
+        }
+        if let Some(s) = &mut self.happy_ghast {
+            s.still_timeout = i32::from(v["happy_ghast"]["still"] == true);
+            s.goggles_down = v["happy_ghast"]["goggles"] == true;
+        }
+        if let Some(s) = &mut self.nautilus {
+            s.dashing = v["nautilus"]["dashing"] == true;
         }
         if v["equipment"].is_object() {
             self.equipment = super::equipment::Equipment::load(&v["equipment"], &Value::Null);
@@ -237,7 +272,12 @@ impl Mob {
                 .as_u64()
                 .and_then(|i| u16::try_from(i).ok())
                 .map(Item)
-                .filter(|i| super::mounts::armor_points(*i) > 0 || super::mounts::is_carpet(*i))
+                .filter(|i| {
+                    super::mounts::armor_points(*i) > 0
+                        || super::mounts::is_carpet(*i)
+                        || crate::content::harness::colour(*i).is_some()
+                        || super::nautilus::wears(*i)
+                })
                 .map(|i| crate::inventory::Stack::new(i, 1));
         }
         if let (Some(a), w) = (self.aquatic.as_mut(), &v["aquatic"])

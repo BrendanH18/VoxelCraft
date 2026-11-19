@@ -56,6 +56,23 @@ pub enum Voice {
     Breeze,
     /// v0.14 (MOBN-26): `entity.endermite.ambient`, `.hurt` and `.death`.
     Endermite,
+    /// v0.15 Track A: `entity.vindicator.*`, `entity.evoker.*`,
+    /// `entity.vex.*`, `entity.ravager.*` and `entity.illusioner.*`.
+    Vindicator,
+    Evoker,
+    Vex,
+    Ravager,
+    Illusioner,
+    /// v0.15 Track C: `entity.happy_ghast.*` (ghastlings pitch it up).
+    HappyGhast,
+    /// v0.15 Track C: `entity.nautilus.*`.
+    Nautilus,
+    /// v0.15 Track C: `entity.zombie_nautilus.*`.
+    ZombieNautilus,
+    /// v0.15 Track C: `entity.camel_husk.*`.
+    CamelHusk,
+    /// v0.15 Track C: `entity.parched.*`.
+    Parched,
 }
 
 /// What kind of sound a voice makes.
@@ -68,7 +85,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 42] = [
+    pub const ALL: [Voice; 52] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -111,6 +128,16 @@ impl Voice {
         Voice::Allay,
         Voice::Breeze,
         Voice::Endermite,
+        Voice::Vindicator,
+        Voice::Evoker,
+        Voice::Vex,
+        Voice::Ravager,
+        Voice::Illusioner,
+        Voice::HappyGhast,
+        Voice::Nautilus,
+        Voice::ZombieNautilus,
+        Voice::CamelHusk,
+        Voice::Parched,
     ];
 
     /// The category the creature plays in: `Monster`, `Ghast`, `Hoglin` and
@@ -121,6 +148,12 @@ impl Voice {
             Voice::Creaking
             | Voice::Breeze
             | Voice::Endermite
+            | Voice::Vindicator
+            | Voice::Evoker
+            | Voice::Vex
+            | Voice::Ravager
+            | Voice::Illusioner
+            | Voice::Parched
             | Voice::Zombie
             | Voice::Skeleton
             | Voice::Creeper
@@ -159,7 +192,13 @@ impl Voice {
             | Voice::Rabbit
             | Voice::Goat
             | Voice::Horse
-            | Voice::Bee => SoundSource::Neutral,
+            | Voice::Bee
+            // `HappyGhast.getSoundSource` is NEUTRAL; nautiluses and camel
+            // husks are animals.
+            | Voice::HappyGhast
+            | Voice::Nautilus
+            | Voice::ZombieNautilus
+            | Voice::CamelHusk => SoundSource::Neutral,
         }
     }
 
@@ -178,6 +217,16 @@ impl Voice {
             Voice::Allay => "allay",
             Voice::Breeze => "breeze",
             Voice::Endermite => "endermite",
+            Voice::Vindicator => "vindicator",
+            Voice::Evoker => "evoker",
+            Voice::Vex => "vex",
+            Voice::Ravager => "ravager",
+            Voice::Illusioner => "illusioner",
+            Voice::HappyGhast => "happy_ghast",
+            Voice::Nautilus => "nautilus",
+            Voice::ZombieNautilus => "zombie_nautilus",
+            Voice::CamelHusk => "camel_husk",
+            Voice::Parched => "parched",
             Voice::Cow => "cow",
             Voice::Sheep => "sheep",
             Voice::Chicken => "chicken",
@@ -310,6 +359,14 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::Blaze => blaze(call, rng),
         Voice::Breeze => breeze(call, rng),
         Voice::Endermite => endermite(call, rng),
+        Voice::Vindicator | Voice::Evoker | Voice::Illusioner => illager(voice, call, rng),
+        Voice::Vex => vex(call, rng),
+        Voice::Ravager => ravager(call, rng),
+        Voice::HappyGhast => happy_ghast(call, rng),
+        Voice::Nautilus => nautilus(call, rng, false),
+        Voice::ZombieNautilus => nautilus(call, rng, true),
+        Voice::CamelHusk => camel_husk(call, rng),
+        Voice::Parched => parched(call, rng),
         Voice::Slime => slime(call, rng),
         Voice::Ghast => ghast(call, rng),
         Voice::Witch => witch(call, rng),
@@ -866,6 +923,82 @@ fn ghast(call: Call, rng: &mut Rng) -> Vec<f32> {
     dsp::finish(out, 0.55)
 }
 
+/// A happy ghast: a soft, contented hum that lifts at the end, gentler
+/// and higher than a ghast's wail; a short squeak when hurt.
+fn happy_ghast(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let (secs, base, lift) = match call {
+        Call::Ambient => (rng.range(0.9, 1.3), rng.range(170.0, 200.0), 1.35),
+        Call::Hurt => (0.35, 260.0, 1.1),
+        Call::Death => (1.1, 180.0, 0.6),
+    };
+    let out = utter(
+        rng,
+        &Utterance {
+            secs,
+            f0: &|t| base * lerp(1.0, lift, (t / secs).powi(2)),
+            env: &|t| swell(t, 0.12, 0.35, secs) * 0.8,
+            formants: [(380.0, 2.5, 1.0), (1100.0, 4.0, 0.35), (2600.0, 5.0, 0.1)],
+            shift: FLAT,
+            jitter: 0.03,
+            breath: 0.35,
+        },
+    );
+    dsp::finish(out, 0.5)
+}
+
+/// A nautilus: a hollow, bubbling click from inside the shell; the zombie
+/// one lower and rougher.
+fn nautilus(call: Call, rng: &mut Rng, zombie: bool) -> Vec<f32> {
+    let secs = match call {
+        Call::Ambient => rng.range(0.4, 0.6),
+        Call::Hurt => 0.25,
+        Call::Death => 0.8,
+    };
+    let rate = if zombie { 14.0 } else { 22.0 };
+    let mut out = clatter(rng, secs, |t| rate * (1.0 - 0.5 * t / secs));
+    Biquad::lowpass(if zombie { 900.0 } else { 1600.0 }, 1.2).run(&mut out);
+    let mut hum = noise(rng, samples(secs), |t| swell(t, 0.03, secs * 0.3, secs) * 0.5);
+    Biquad::bandpass(if zombie { 220.0 } else { 420.0 }, 4.0).run(&mut hum);
+    mix_into(&mut out, &hum, 0.6, 0);
+    dsp::finish(out, 0.45)
+}
+
+/// A camel husk: a dry, rasping groan through a long throat.
+fn camel_husk(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let (secs, base) = match call {
+        Call::Ambient => (rng.range(0.9, 1.2), rng.range(70.0, 85.0)),
+        Call::Hurt => (0.45, 110.0),
+        Call::Death => (1.3, 80.0),
+    };
+    let out = utter(
+        rng,
+        &Utterance {
+            secs,
+            f0: &|t| base * lerp(1.1, 0.7, t / secs),
+            env: &|t| swell(t, 0.1, 0.4, secs),
+            formants: [(420.0, 3.0, 1.0), (880.0, 4.0, 0.5), (2000.0, 5.0, 0.25)],
+            shift: FLAT,
+            jitter: 0.22,
+            breath: 1.0,
+        },
+    );
+    dsp::finish(out, 0.55)
+}
+
+/// A parched: dry bones with a papery hiss of sand.
+fn parched(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let secs = match call {
+        Call::Ambient => 0.5,
+        Call::Hurt => 0.3,
+        Call::Death => 0.9,
+    };
+    let mut out = clatter(rng, secs, |t| 28.0 * (1.0 - 0.4 * t / secs));
+    let mut sand = noise(rng, samples(secs), |t| swell(t, 0.02, secs * 0.5, secs) * 0.4);
+    Biquad::highpass(2500.0, 0.7).run(&mut sand);
+    mix_into(&mut out, &sand, 0.5, 0);
+    dsp::finish(out, 0.5)
+}
+
 fn slime(call: Call, rng: &mut Rng) -> Vec<f32> {
     let secs = if call == Call::Death { 0.45 } else { 0.2 };
     let mut buf = noise(rng, samples(secs), |t| dsp::ad(t, 0.01, 0.07));
@@ -895,6 +1028,86 @@ fn villager(call: Call, rng: &mut Rng) -> Vec<f32> {
         },
     );
     dsp::finish(out, 0.5)
+}
+
+/// An illager's grumble: the villager's nasal tract pitched down and
+/// rougher, scowling for the vindicator, reedier for the evoker and
+/// breathier for the illusioner.
+fn illager(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
+    let secs = match call {
+        Call::Ambient => 0.5,
+        Call::Hurt => 0.3,
+        Call::Death => 0.8,
+    };
+    let (lo, hi, breath, f2) = match voice {
+        Voice::Vindicator => (88.0, 104.0, 0.12, 950.0),
+        Voice::Evoker => (100.0, 120.0, 0.08, 1250.0),
+        _ => (110.0, 128.0, 0.2, 1150.0),
+    };
+    let base = rng.range(lo, hi) * if call == Call::Hurt { 1.25 } else { 1.0 };
+    let fall = if call == Call::Death { 0.45 } else { 0.12 };
+    let out = utter(
+        rng,
+        &Utterance {
+            secs,
+            f0: &|t| base * (1.0 + 0.12 * (t / secs * std::f32::consts::PI * 2.0).sin() - fall * t / secs),
+            env: &|t| swell(t, 0.03, secs * 0.6, secs),
+            formants: [(300.0, 5.0, 1.0), (f2, 7.0, 0.4), (2350.0, 8.0, 0.18)],
+            shift: FLAT,
+            jitter: 0.04,
+            breath,
+        },
+    );
+    dsp::finish(out, 0.5)
+}
+
+/// A vex: a thin, glassy whine that bends up when hurt and spirals down
+/// as it dies, with a faint shimmer of wing noise.
+fn vex(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let (secs, from, to) = match call {
+        Call::Ambient => (0.45, rng.range(1300.0, 1500.0), 1650.0),
+        Call::Hurt => (0.25, 1500.0, 2300.0),
+        Call::Death => (0.9, 1800.0, 500.0),
+    };
+    let mut out = vec![0.0; samples(secs)];
+    let mut phase = 0.0f32;
+    for (i, v) in out.iter_mut().enumerate() {
+        let t = i as f32 / RATE;
+        let f = lerp(from, to, t / secs) * (1.0 + 0.02 * (t * 37.0).sin());
+        phase += std::f32::consts::TAU * f / RATE;
+        *v = (phase.sin() * 0.6 + (phase * 2.01).sin() * 0.15) * swell(t, 0.02, secs * 0.5, secs);
+    }
+    let mut air = noise(rng, out.len(), |t| swell(t, 0.05, secs * 0.6, secs) * 0.25);
+    Biquad::bandpass(4200.0, 2.0).run(&mut air);
+    mix_into(&mut out, &air, 0.5, 0);
+    dsp::finish(out, 0.4)
+}
+
+/// A ravager: a deep, wet bellow of low formants over rumbling noise.
+fn ravager(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let secs = match call {
+        Call::Ambient => 0.9,
+        Call::Hurt => 0.4,
+        Call::Death => 1.3,
+    };
+    let base = rng.range(52.0, 60.0) * if call == Call::Hurt { 1.4 } else { 1.0 };
+    let fall = if call == Call::Death { 0.5 } else { 0.15 };
+    let mut out = utter(
+        rng,
+        &Utterance {
+            secs,
+            f0: &|t| base * (1.0 + 0.1 * (t / secs * std::f32::consts::PI).sin() - fall * t / secs),
+            env: &|t| swell(t, 0.06, secs * 0.6, secs),
+            formants: [(180.0, 4.0, 1.0), (520.0, 5.0, 0.5), (1300.0, 6.0, 0.15)],
+            shift: FLAT,
+            jitter: 0.06,
+            breath: 0.25,
+        },
+    );
+    let mut rumble = noise(rng, out.len(), |t| swell(t, 0.05, secs * 0.7, secs) * 0.4);
+    Biquad::lowpass(240.0, 0.7).run(&mut rumble);
+    mix_into(&mut out, &rumble, 0.6, 0);
+    dsp::finish(out, 0.6)
 }
 
 /// Water clicks, dolphin whistles, guardian rasps and cats' tonal meows.

@@ -19,8 +19,8 @@
 //!
 //! Remaining VoxelCraft limits, recorded in the lighting/spawning report:
 //! structure spawn overrides (swamp huts, monuments, outposts) are not
-//! applied, and list entries for mobs VoxelCraft lacks (parched, ocelots)
-//! end their pack.
+//! applied. Every list entry names a mob VoxelCraft has since v0.15
+//! (parched, Track C).
 
 use super::category::{self, MobCategory};
 use super::*;
@@ -45,7 +45,6 @@ pub(super) enum JavaMonster {
     Bogged,
     Ocelot,
     Known(MobKind),
-    Missing(&'static str),
 }
 
 impl JavaMonster {
@@ -54,7 +53,6 @@ impl JavaMonster {
     pub(super) fn id(self) -> &'static str {
         match self {
             JavaMonster::Known(k) => k.name(),
-            JavaMonster::Missing(id) => id,
             JavaMonster::Spider => "spider",
             JavaMonster::Zombie => "zombie",
             JavaMonster::ZombieVillager => "zombie_villager",
@@ -73,8 +71,7 @@ impl JavaMonster {
         }
     }
 
-    /// The kind this cycle spawns for the entry; parched are not in
-    /// VoxelCraft yet.
+    /// The kind this cycle spawns for the entry.
     pub(super) fn kind(self) -> Option<MobKind> {
         Some(match self {
             JavaMonster::Known(k) => k,
@@ -92,7 +89,7 @@ impl JavaMonster {
             JavaMonster::Slime => MobKind::Slime,
             JavaMonster::Drowned => MobKind::Drowned,
             JavaMonster::Ocelot => MobKind::Ocelot,
-            _ => return None,
+            JavaMonster::Parched => MobKind::Parched,
         })
     }
 }
@@ -467,8 +464,8 @@ pub(super) fn monster_spot_ok<W: MobWorld + ?Sized>(
             return false;
         }
     }
-    // Husks use `checkSurfaceMonstersSpawnRules`: they also need to see the sky.
-    if kind == MobKind::Husk && world.sky_light_level(cell) != Some(15) {
+    // Husks and parched use `checkSurfaceMonstersSpawnRules`: they also need to see the sky.
+    if matches!(kind, MobKind::Husk | MobKind::Parched) && world.sky_light_level(cell) != Some(15) {
         return false;
     }
     !physics::overlaps_solid(world, pos, kind.shape())
@@ -592,6 +589,7 @@ impl Entities {
                     continue;
                 }
                 self.spawn_natural(kind, pos, world.cave_biome(cell), &mut group);
+                self.natural_jockeys(world, world.cave_biome(cell));
                 state.add(kind.category(), pos);
                 spawned += 1;
                 // Java's default `getMaxSpawnClusterSize` is 4 for these monsters.

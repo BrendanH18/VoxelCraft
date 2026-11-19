@@ -107,6 +107,17 @@ pub struct EntityMesh {
     boxes: Vec<BoxInstance>,
     /// Expand every box into `verts` on the CPU where it is emitted.
     flat: bool,
+    /// v0.15 Track D: copies of the geometry of entities under Glowing,
+    /// which the renderer draws into its outline mask.
+    glow_verts: Vec<EntityVertex>,
+    glow_boxes: Vec<BoxInstance>,
+}
+
+/// Where an entity's geometry starts in an [`EntityMesh`].
+#[derive(Clone, Copy, Debug)]
+pub struct GlowMark {
+    verts: usize,
+    boxes: usize,
 }
 
 impl EntityMesh {
@@ -120,6 +131,31 @@ impl EntityMesh {
     pub fn clear(&mut self) {
         self.verts.clear();
         self.boxes.clear();
+        self.glow_verts.clear();
+        self.glow_boxes.clear();
+    }
+
+    /// Marks where the next entity's geometry starts.
+    pub fn glow_start(&self) -> GlowMark {
+        GlowMark { verts: self.verts.len(), boxes: self.boxes.len() }
+    }
+
+    /// v0.15 Track D: when `glowing`, copies everything emitted since `mark`
+    /// into the outline geometry (`LivingEntity.isCurrentlyGlowing`).
+    pub fn glow_end(&mut self, mark: GlowMark, glowing: bool) {
+        if glowing {
+            self.glow_verts.extend_from_slice(&self.verts[mark.verts.min(self.verts.len())..]);
+            self.glow_boxes.extend_from_slice(&self.boxes[mark.boxes.min(self.boxes.len())..]);
+        }
+    }
+
+    /// The outline geometry: glowing entities' boxes and triangles.
+    pub fn glow_boxes(&self) -> &[BoxInstance] {
+        &self.glow_boxes
+    }
+
+    pub fn glow_verts(&self) -> &[EntityVertex] {
+        &self.glow_verts
     }
 
     /// The boxes the GPU expands.
@@ -667,7 +703,9 @@ mod breeze;
 mod copper_golem;
 mod creaking;
 mod hostiles;
+mod illager;
 mod mounts;
+mod new_mobs;
 mod passive;
 mod phantom;
 mod sniffer;
@@ -685,7 +723,9 @@ fn pose(m: &Mob, time: f32) -> Parts {
             mounts::pose(m)
         }
         MobKind::Llama => mounts::llama(m),
-        MobKind::Camel => mounts::camel(m),
+        MobKind::Camel | MobKind::CamelHusk => mounts::camel(m),
+        MobKind::HappyGhast => new_mobs::happy_ghast(m, time),
+        MobKind::Nautilus | MobKind::ZombieNautilus => new_mobs::nautilus(m, time),
         MobKind::Cod
         | MobKind::Salmon
         | MobKind::TropicalFish
@@ -697,8 +737,12 @@ fn pose(m: &Mob, time: f32) -> Parts {
         | MobKind::Guardian
         | MobKind::ElderGuardian
         | MobKind::Cat
-        | MobKind::Pillager
         | MobKind::Turtle => aquatic::pose(m, time),
+        MobKind::Pillager | MobKind::Vindicator | MobKind::Evoker | MobKind::Illusioner => {
+            illager::pose(m, swing, head, time)
+        }
+        MobKind::Vex => illager::vex(m, head, time),
+        MobKind::Ravager => illager::ravager(m, swing, head, time),
         MobKind::Wolf | MobKind::Fox | MobKind::Parrot | MobKind::Rabbit | MobKind::Goat => animals::pose(m, time),
         MobKind::Pig => parts![
             part(PIG_BODY, [0.0; 3], Quat::IDENTITY),
@@ -752,7 +796,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
                 part(CHICKEN_HEAD, [0.0, 8.0, 2.0], head),
             ]
         }
-        MobKind::Stray | MobKind::Bogged => hostiles::pose(m, swing, head),
+        MobKind::Stray | MobKind::Bogged | MobKind::Parched => hostiles::pose(m, swing, head),
         MobKind::Skeleton => {
             // Bow raised toward the target while hunting, arms swinging otherwise.
             let aiming = m.ai == Ai::Chase;
@@ -1034,6 +1078,7 @@ pub fn build(
             continue;
         }
         drawn += 1;
+        let glow = out.glow_start();
 
         // Death: topple onto the side, lifted so it doesn't sink into the
         // ground.
@@ -1065,6 +1110,8 @@ pub fn build(
                     0.7
                 } else if m.kind == MobKind::Armadillo {
                     0.6
+                } else if m.kind == MobKind::HappyGhast {
+                    super::happy_ghast::BABY_SCALE as f32
                 } else {
                     0.5
                 }
@@ -1118,6 +1165,7 @@ pub fn build(
                 }
                 passive::colour(m, &mut cuboid);
                 copper_golem::colour(m, &mut cuboid);
+                new_mobs::colour(m, &mut cuboid);
                 if m.kind == MobKind::GlowSquid && c.color == [49, 71, 80] {
                     cuboid.color = [44, 161, 151];
                 }
@@ -1147,6 +1195,11 @@ pub fn build(
                         [[237, 160, 184], [139, 104, 81], [225, 186, 66], [184, 217, 221], [89, 101, 184]];
                     cuboid.color = COLORS[m.aquatic.as_ref().map_or(0, |a| a.variant as usize) % 5];
                 }
+                // v0.15 Track D: warm and cold chickens, cows and pigs take
+                // their variant's original colouring.
+                if super::animals::has_farm_variant(m.kind) {
+                    cuboid.color = crate::content::farm_variant::tint(m.farm_variant(), cuboid.color);
+                }
                 if m.kind == MobKind::Sheep && c.color == WOOL {
                     cuboid.color = if m.sheared { SHEEP_SKIN } else { m.wool_color.sheep_rgb() };
                     if m.sheared {
@@ -1165,11 +1218,76 @@ pub fn build(
             let worn = m.equipment.worn();
             super::player_model::draw_armor(out, &limbs, &worn, origin, body, scale, (light, torch));
         }
+        if let Some(stack) = held_stack(m) {
+            draw_held(out, &posed[4], stack.item, origin, body, scale, (light, torch));
+        }
         if m.burning {
             flames(out, m, rel, time);
         }
+        out.glow_end(glow, m.effects.glowing() && m.alive());
     }
     drawn
+}
+
+/// MOB-02d: the main-hand item drawn in the weapon hand (the `x = 5` arm
+/// of the humanoid models) of the mobs whose models don't carry their own
+/// weapon: zombies, husks and drowned, skeletons, strays and bogged
+/// holding something other than their bow, and illagers and vexes when
+/// `ItemInHandLayer` shows it.
+fn held_stack(m: &Mob) -> Option<crate::inventory::Stack> {
+    let stack = m.main_hand()?;
+    let shown = match m.kind {
+        MobKind::Zombie | MobKind::Husk | MobKind::Drowned => true,
+        k if k.is_bow_skeleton() => stack.item != crate::item::Item::BOW,
+        MobKind::Pillager | MobKind::Vindicator | MobKind::Evoker | MobKind::Illusioner | MobKind::Vex => {
+            illager::shows_item(m)
+        }
+        _ => false,
+    };
+    shown.then_some(stack)
+}
+
+/// `ItemInHandLayer`'s right grip on `arm`: a block item as a small cube,
+/// anything else as its flat icon in the third-person hand display.
+fn draw_held(
+    out: &mut EntityMesh,
+    arm: &Part,
+    item: crate::item::Item,
+    origin: Vec3,
+    body: Quat,
+    scale: f32,
+    light: ([u8; 4], u8),
+) {
+    let mut held = super::player_model::Limb {
+        pivot: arm.pivot + arm.rot * Vec3::new(0.0, -9.0, 1.0),
+        rot: arm.rot * Quat::from_rotation_x(-FRAC_PI_2) * Quat::from_rotation_y(PI),
+        min: [-4.0, -4.0, -0.5],
+        max: [4.0, 4.0, 0.5],
+        uv: [0.0; 2],
+    };
+    if let Some(block) = item.block().filter(|b| !b.flat_icon()) {
+        held.min = [-3.2; 3];
+        held.max = [3.2; 3];
+        super::player_model::textured_box(
+            out,
+            &held,
+            0.0,
+            origin,
+            body,
+            light,
+            2,
+            block.info().tex[0],
+            scale,
+            [255, 255, 255, 0],
+        );
+        return;
+    }
+    held.rot *= Quat::from_rotation_y(-FRAC_PI_2) * Quat::from_rotation_z(55f32.to_radians());
+    let layer = item
+        .block()
+        .map_or_else(|| item.icon_layer().unwrap_or(crate::world::block::tex::ITEM_BASE), |b| b.info().tex[0]);
+    let tint = crate::inventory::components::undyed_tint(item).map_or([255, 255, 255, 0], |[r, g, b]| [r, g, b, 0]);
+    super::player_model::textured_box(out, &held, 0.0, origin, body, light, 2, layer, scale, tint);
 }
 
 /// Small glowing cubes rising around a burning mob.
@@ -1210,7 +1328,10 @@ pub fn build_arrows(arrows: &[Arrow], camera: DVec3, alpha: f64, out: &mut Entit
         for (i, c) in ARROW.iter().enumerate() {
             let mut c = *c;
             if i == 1 {
-                if let Some(p) = a.potion {
+                if a.spectral {
+                    // v0.15 Track D: a glowstone-gold spectral head.
+                    c.color = [246, 206, 72];
+                } else if let Some(p) = a.potion {
                     c.color = p.colour();
                 } else if a.custom_effect.is_some() || a.tipped {
                     c.color = [162, 99, 181];
@@ -1232,6 +1353,8 @@ const TRIDENT: &[Cuboid] = &[
 ];
 
 /// Thrown tridents (v0.16): stuck ones sit with their prongs buried.
+pub use illager::build_fangs;
+
 pub fn build_tridents(tridents: &[super::trident::Trident], camera: DVec3, alpha: f64, out: &mut EntityMesh) {
     for t in tridents {
         let rel = (t.previous_pos.lerp(t.pos, alpha) - camera).as_vec3();
@@ -1259,6 +1382,8 @@ pub fn build_thrown(thrown: &[super::thrown::Thrown], camera: DVec3, alpha: f64,
             super::thrown::Kind::WindCharge => ([200, 224, 240], 2.4),
             super::thrown::Kind::BreezeWindCharge => ([170, 200, 236], 3.0),
             super::thrown::Kind::ExperienceBottle => ([96, 186, 168], 2.4),
+            super::thrown::Kind::BlueEgg => (crate::content::farm_variant::BLUE_SHELL, 2.2),
+            super::thrown::Kind::BrownEgg => (crate::content::farm_variant::BROWN_SHELL, 2.2),
         };
         let c = cube([-size, -size, -size], [size, size, size], color, 16);
         push_cuboid(out, &c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([230, 0, 0, 0], 0), (FIRE, 0.0), 0.0);

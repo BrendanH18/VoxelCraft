@@ -16,6 +16,7 @@ pub mod entity;
 mod gpu_timer;
 pub mod hand;
 mod item_sprites;
+mod outline;
 pub mod particles;
 pub mod signs;
 pub mod textures;
@@ -267,6 +268,8 @@ pub struct Renderer {
     cloud_pipeline: wgpu::RenderPipeline,
     ui_pipeline: wgpu::RenderPipeline,
     entities: entity::EntityPass,
+    /// v0.15 Track D: the Glowing outline.
+    outline: outline::Outline,
     particles: particles::ParticlePass,
     block_models: block_model::BlockModelPass,
     weather: weather::WeatherPass,
@@ -812,6 +815,7 @@ impl Renderer {
         let particles =
             particles::ParticlePass::new(&device, &queue, &globals_layout, &blocks_layout, format, paged_blocks);
         let entities = entity::EntityPass::new(&device, &queue, &globals_layout, &blocks_layout, format, paged_blocks);
+        let outline = outline::Outline::new(&device, format);
         let block_models = block_model::BlockModelPass::new(&device, &layout, format, paged_blocks);
         let weather = weather::WeatherPass::new(&device, &layout, format);
 
@@ -857,6 +861,7 @@ impl Renderer {
             cloud_pipeline,
             ui_pipeline,
             entities,
+            outline,
             particles,
             block_models,
             weather,
@@ -1378,6 +1383,33 @@ impl Renderer {
         let mut stats = std::mem::take(&mut self.stats);
         stats.visible += self.visible.len();
         let mut encoder = self.device.create_command_encoder(&Default::default());
+        // v0.15 Track D: glowing entities into the outline mask, only on
+        // frames that have one.
+        let glowing = self.entities.glowing();
+        if glowing {
+            let (mask, _) = self.outline.mask(&self.device, (self.config.width, self.config.height));
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("glow mask"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: mask,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_viewport(vp.x as f32, vp.y as f32, vp.width as f32, vp.height as f32, 0.0, 1.0);
+            pass.set_scissor_rect(vp.x, vp.y, vp.width, vp.height);
+            pass.set_bind_group(0, &self.globals_bg, &[]);
+            pass.set_bind_group(1, &self.blocks_bg, &[]);
+            self.entities.draw_mask(&mut pass);
+        }
         let timed = self.gpu_timer.as_mut().and_then(|timer| timer.next_pass());
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -1485,6 +1517,13 @@ impl Renderer {
             stats.draw_calls += particle_draws;
             self.weather.draw(&mut pass);
 
+            if glowing && let Some(mask) = self.outline.bind_group() {
+                pass.set_pipeline(&self.outline.pipeline);
+                pass.set_bind_group(0, mask, &[]);
+                pass.draw(0..3, 0..1);
+                pass.set_bind_group(0, &self.globals_bg, &[]);
+            }
+
             if !hud.is_empty() {
                 pass.set_pipeline(&self.ui_pipeline);
                 pass.set_bind_group(2, &self.font_bg, &[]);
@@ -1569,6 +1608,7 @@ mod tests {
             ("overlay", include_str!("shaders/overlay.wgsl")),
             ("sky", include_str!("shaders/sky.wgsl")),
             ("weather", include_str!("shaders/weather.wgsl")),
+            ("outline", include_str!("shaders/outline.wgsl")),
         ];
         for (name, source) in shaders {
             for paged in [None, Some(256), Some(2048)] {

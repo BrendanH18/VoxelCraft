@@ -298,7 +298,9 @@ pub(super) fn vertices(
                     );
                 }
             } else {
-                let layer = if d.kind.contains("monument") {
+                let layer = if let Some(layer) = crate::world::explorer_maps::decoration_layer(&d.kind) {
+                    layer
+                } else if d.kind.contains("monument") {
                     2956
                 } else if d.kind.contains("jungle") {
                     2957

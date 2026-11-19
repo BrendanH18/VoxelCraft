@@ -154,6 +154,10 @@ impl Game {
             }
         }
 
+        // v0.15 Track D: silverfish from hits taken under Infested, and
+        // Frost Walker's ice.
+        self.session.settle_effect_hooks(&mut self.mobs.entities);
+        self.session.frost_walk(&mut self.world, &self.mobs.entities);
         let acting = !self.menu.is_open() && !self.console.open && self.mouse_grabbed && !self.inventory_open;
         self.act(acting, dt);
         self.drive_lan(dt);
@@ -254,7 +258,9 @@ impl Game {
         }
         self.world.tick_automation_entities(&mut self.mobs.entities);
         self.tick_trial();
+        self.tick_raid_omens();
         self.update_mobs(dt);
+        self.apply_raid_outcomes();
         self.update_items();
         self.tick_particles();
         (self.day_time, self.day_count) =

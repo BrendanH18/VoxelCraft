@@ -33,6 +33,9 @@ pub const fn pair(id: u16) -> Option<(u16, bool)> {
     if let Some(p) = super::heavy_core::water_pair(id) {
         return Some(p);
     }
+    if let Some(p) = super::dried_ghast::water_pair(id) {
+        return Some(p);
+    }
     if let Some(p) = super::copper::water_pair(id) {
         return Some(p);
     }

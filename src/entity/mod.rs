@@ -21,24 +21,28 @@ pub mod bee;
 mod bell;
 mod bobber;
 pub mod breeze;
-mod cat_spawner;
+pub(crate) mod cat_spawner;
 pub mod category;
 mod chunk_storage;
 pub mod decor;
 pub mod path;
 pub use bobber::{CatchContext, roll_catch, set_damage};
 pub mod armadillo;
+pub mod camel_husk;
 pub mod copper_golem;
 pub mod creaking;
 pub mod dragon;
 mod dragon_model;
+mod effect_triggers;
 pub mod endermite;
 pub mod equipment;
 pub mod eye;
 pub mod fireball;
 pub mod frog;
 pub mod golem;
+pub mod happy_ghast;
 pub mod hostiles;
+pub mod illager;
 pub mod item;
 pub mod leash;
 mod lifecycle;
@@ -47,11 +51,13 @@ pub mod lingering;
 mod look;
 pub mod minecart;
 mod mob;
+pub mod mob_combat;
 mod mob_index;
 pub mod model;
 mod monster_spawns;
 pub mod mooshroom;
 pub mod mounts;
+pub mod nautilus;
 pub mod nether;
 pub mod neutral;
 pub mod ocelot;
@@ -64,6 +70,7 @@ mod player_pose;
 pub mod polar_bear;
 pub mod potion;
 mod projectile;
+pub mod raid;
 mod replica;
 pub mod sculk_events;
 mod slime;
@@ -102,7 +109,7 @@ pub use item::ItemEntity;
 pub use mob::{Mob, MobKind, sky_light};
 pub use orb::XpOrb;
 pub use projectile::Arrow;
-pub use tipped_arrow::ArrowEffectGate;
+pub use tipped_arrow::{ArrowEffectGate, SPECTRAL_BOLT};
 
 /// Spawns happen this far from the player (blocks).
 pub const SPAWN_MIN_DIST: f64 = 24.0;
@@ -167,6 +174,10 @@ pub enum MobSound {
     Weapon(crate::weapons::Cue),
     /// v0.16 Track C: breeze, wind charge, trial spawner and vault cues.
     Breeze(breeze::Cue),
+    /// v0.15 Track A: spells, fangs, vex charges, ravager and crossbow cues.
+    Illager(illager::Cue),
+    /// v0.15 Track E: the raid horn, a bell resonating, villagers cheering.
+    Raid(raid::Cue),
 }
 
 /// Something an entity did that the game needs to react to.
@@ -291,6 +302,24 @@ pub enum EntityEvent {
         /// The shooting mob's uid, so its target's wolves can retaliate.
         shooter: u32,
     },
+    /// v0.15 Track A: a mob loosed an arrow Java's way (a pillager's
+    /// crossbow, an illusioner's bow) at `vel` blocks a second, with the
+    /// weapon's enchantments (turned into an arrow internally).
+    MobArrow {
+        from: DVec3,
+        vel: DVec3,
+        cause: crate::simulation::damage::Cause,
+        shooter: u32,
+        enchants: crate::enchant::Enchants,
+    },
+    /// v0.15 Track A: a ravager breaks leaves or a crop it pushes into or
+    /// walks through (with drops), or a vindicator a wooden door in a raid
+    /// (without), when `mobGriefing` allows; `block` is what it found there.
+    MobGrief {
+        cell: IVec3,
+        block: Block,
+        drops: bool,
+    },
     /// A drowned threw its trident at `target` (turned into a thrown trident internally).
     ThrowTrident {
         from: DVec3,
@@ -380,14 +409,18 @@ pub enum EntityEvent {
     VillagerDoorClose {
         cell: IVec3,
     },
-    /// A chicken laid an egg at its feet.
+    /// A chicken laid an egg at its feet (v0.15 Track D: brown for a warm
+    /// chicken, blue for a cold one).
     LaidEgg {
         pos: DVec3,
+        variant: crate::content::farm_variant::FarmVariant,
     },
-    /// A thrown egg hatched `count` chicks (one or four) at `pos`.
+    /// A thrown egg hatched `count` chicks (one or four) of the egg's
+    /// variant at `pos`.
     Hatched {
         pos: DVec3,
         count: u8,
+        variant: crate::content::farm_variant::FarmVariant,
     },
     /// A thrown Bottle o' Enchanting broke at `pos`: `points` of experience
     /// as orbs thrown roughly along `toward` (`ExperienceOrb.awardWithDirection`).
@@ -539,6 +572,9 @@ pub trait MobWorld: BlockSource {
     }
     fn village_pois(&self, _visit: &mut dyn FnMut(IVec3, Block)) {}
     fn village_homes(&self, _visit: &mut dyn FnMut(IVec3, IVec3)) {}
+    /// Generation 4 village residents (v0.15 Track G): spawn cells of
+    /// Java's villager, cat, golem and animal pieces.
+    fn village_residents(&self, _visit: &mut dyn FnMut(IVec3, crate::world::village::Resident)) {}
     fn seed(&self) -> u64 {
         0
     }
@@ -622,6 +658,9 @@ impl MobWorld for World {
     }
     fn village_homes(&self, visit: &mut dyn FnMut(IVec3, IVec3)) {
         self.visit_village_homes(visit);
+    }
+    fn village_residents(&self, visit: &mut dyn FnMut(IVec3, crate::world::village::Resident)) {
+        self.visit_village_residents(visit);
     }
     fn seed(&self) -> u64 {
         self.generator.seed
@@ -723,6 +762,8 @@ pub struct Target {
     pub shape: crate::physics::Shape,
     /// Wears a piece of golden armor, which keeps piglins calm.
     pub gold_armor: bool,
+    /// A raised shield (`isBlocking`): a ravager it stops may be stunned.
+    pub blocking: bool,
     /// Selected food for animal temptation, shared by every input device.
     pub held_item: Option<crate::item::Item>,
     pub on_ground: bool,
@@ -790,6 +831,7 @@ impl Target {
             sneaking: false,
             time_since_rest: 0,
             darkness_ticks: 0,
+            blocking: false,
         }
     }
 
@@ -893,6 +935,9 @@ impl Rng {
 
 pub struct Entities {
     pub mobs: Vec<Mob>,
+    /// v0.15 Track A: evoker fangs (not saved; each lives under two seconds).
+    pub fangs: Vec<illager::Fang>,
+    fang_carry: f64,
     pub phantom_spawning: bool,
     pub(super) phantom_next: i32,
     pub(super) phantom_clock: f64,
@@ -944,6 +989,12 @@ pub struct Entities {
     pub village_time: f64,
     pub village_day: i64,
     next_villager_id: u64,
+    /// v0.15 Track E: this dimension's raids, the patrol spawner, bell
+    /// resonances and hero gifts (saved as the `raids` property).
+    pub raids: raid::Raids,
+    /// Set while a raid or patrol spawns a mob (`EVENT` or `PATROL`), which
+    /// skips the natural captain roll.
+    pub(crate) raids_event_spawn: bool,
     villager_births: rustc_hash::FxHashSet<IVec3>,
     village_timer: f32,
     cat_spawner: cat_spawner::Spawner,
@@ -951,6 +1002,8 @@ pub struct Entities {
     separation: mob_index::Separation,
     claimed_beds: rustc_hash::FxHashSet<IVec3>,
     claimed_jobs: rustc_hash::FxHashSet<IVec3>,
+    /// Villagers meeting at each bell (Java `PoiTypes.MEETING`: 32 tickets).
+    claimed_meetings: rustc_hash::FxHashMap<IVec3, u8>,
     pending_sounds: Vec<EntityEvent>,
     /// Doors villagers opened, with seconds since a villager was last close by.
     door_watch: Vec<(IVec3, f32)>,
@@ -972,6 +1025,12 @@ pub struct Entities {
     pub world_spawn: Option<IVec3>,
     /// The mobGriefing gamerule, shared by villager, piglin and allay item pickup.
     pub villager_griefing: bool,
+    /// v0.15 Track D: the `max_entity_cramming` gamerule, which caps
+    /// Oozing's slimes.
+    pub max_entity_cramming: i32,
+    /// v0.15 Track D: bodies killed with Wind Charged, Weaving or Oozing,
+    /// waiting for the world step.
+    effect_deaths: Vec<effect_triggers::EffectDeath>,
     /// Seconds until another iron golem may be summoned.
     /// Seconds until the next gossip summon roll.
     gossip_timer: f32,
@@ -1013,6 +1072,8 @@ impl Entities {
     pub fn new(seed: u64) -> Self {
         Self {
             mobs: Vec::new(),
+            fangs: Vec::new(),
+            fang_carry: 0.0,
             phantom_spawning: true,
             phantom_next: 0,
             phantom_clock: 0.,
@@ -1049,6 +1110,8 @@ impl Entities {
             village_time: 0.25,
             village_day: 0,
             next_villager_id: 1,
+            raids: Default::default(),
+            raids_event_spawn: false,
             villager_births: Default::default(),
             village_timer: 0.0,
             cat_spawner: Default::default(),
@@ -1056,6 +1119,7 @@ impl Entities {
             separation: Default::default(),
             claimed_beds: Default::default(),
             claimed_jobs: Default::default(),
+            claimed_meetings: Default::default(),
             pending_sounds: Vec::new(),
             door_watch: Vec::new(),
             trader_spawner: Default::default(),
@@ -1067,7 +1131,9 @@ impl Entities {
             spawner_blocks: true,
             world_spawn: None,
             villager_griefing: true,
-            gossip_timer: 60.0,
+            max_entity_cramming: 24,
+            effect_deaths: Vec::new(),
+            gossip_timer: 5.0,
             rng: Rng::new(seed ^ 0x6d6f_6273),
             pvp: false,
             spawner_delays: Default::default(),
@@ -1129,7 +1195,7 @@ impl Entities {
         if matches!(kind, MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader) {
             **mob.villager.as_mut().unwrap() =
                 villager::Villager::new(self.next_villager_id, self.rng.next_int(u32::MAX) as u64);
-            mob.villager.as_mut().unwrap().gossip.day = self.village_day;
+            mob.villager.as_mut().unwrap().gossip.last_decay = self.village_day * 24000;
             self.next_villager_id = self.next_villager_id.saturating_add(1);
         }
         if kind == MobKind::WanderingTrader {
@@ -1206,12 +1272,36 @@ impl Entities {
             p.start_circle(&mut self.rng);
         }
         nether::on_spawn(&mut mob, &mut self.rng);
+        // v0.15 Track E: raid witches carry the raider state; natural
+        // witches can't join raids (`Raider.finalizeSpawn`).
+        if kind == MobKind::Witch && self.raids_event_spawn {
+            mob.illager = Some(Box::default());
+        }
+        illager::finalize_spawn(&mut mob, special, &mut self.rng);
+        // `PatrollingMonster.finalizeSpawn`: outside patrols, raids and
+        // structures, one in 17 raiders that can lead becomes a captain. A
+        // roll of its own keeps the shared random stream unchanged.
+        if !self.raids_event_spawn && raid::can_lead(kind) {
+            let mut roll = Rng::new(pos.x.to_bits().rotate_left(13) ^ pos.z.to_bits() ^ yaw.to_bits() as u64 ^ 0xCA97);
+            raid::natural_captain(&mut mob, &mut roll);
+        }
         aquatic::on_spawn(&mut mob, &mut self.rng);
         animals::on_spawn(&mut mob, &mut self.rng);
         // `Mob.finalizeSpawn`'s follow-range bonus and the zombie family's
         // `handleAttributes`, drawn last so earlier rolls keep their order.
         zombie::finalize_spawn(&mut mob, special, true, &mut self.rng);
+        // `Zombie` and `AbstractSkeleton.finalizeSpawn`: `CanPickUpLoot`
+        // with chance 0.55 x the special multiplier (drawn last here).
+        // A roll of its own, seeded by the spawn, so the shared random
+        // stream (and every seeded spawn sequence) is unchanged.
+        if kind.is_zombie() || kind.is_bow_skeleton() || kind == MobKind::WitherSkeleton {
+            let mut roll = Rng::new(pos.x.to_bits().rotate_left(7) ^ pos.z.to_bits() ^ yaw.to_bits() as u64 ^ 0x55);
+            mob.can_pick_up_loot = roll.next_f32() < mob_combat::CAN_PICK_UP_LOOT_CHANCE * special;
+        }
         self.mobs.push(mob);
+        if nautilus::is_nautilus(kind) {
+            self.nautilus_on_spawn(false);
+        }
     }
 
     /// Removes the mobs Java discards on Peaceful (`Mob.checkDespawn` with a
@@ -1394,6 +1484,17 @@ impl Entities {
         if !player_kill && catalyst {
             self.sculk.deaths.push((pos, 0));
         }
+        // v0.15 Track E: `entities/pillager`'s captain pool, read while the
+        // banner is still on the head (Java's loot table precedes the
+        // equipment drops).
+        let captain = self
+            .mobs
+            .iter()
+            .find(|m| m.kind == kind && !m.alive() && m.pos.distance_squared(pos) < 0.01)
+            .is_some_and(raid::is_captain);
+        if captain && let Some(bottle) = raid::captain_loot(kind, &mut self.rng) {
+            self.scatter(bottle, pos);
+        }
         // `LivingEntity.dropAllDeathLoot`: equipment drops before the experience.
         self.equipment_drops(kind, pos, looting, player_kill);
         self.mob_equipment_drops(kind, pos, looting, player_kill);
@@ -1444,6 +1545,12 @@ impl Entities {
             }
         }
         let mut drops = kind.drops(&mut self.rng, looting);
+        illager::loot(kind, player_kill, looting, &mut self.rng, &mut drops);
+        // v0.15 Track D: `entities/elder_guardian`'s last pool, empty
+        // (weight 4) or the tide armor trim template (weight 1).
+        if kind == MobKind::ElderGuardian && self.rng.next_int(5) == 4 {
+            drops.push((crate::content::trim::template(crate::inventory::components::TrimPattern::Tide), 1));
+        }
         // `entities/breeze`: killed by a player, 1-2 rods.
         if kind == MobKind::Breeze && player_kill {
             // `enchanted_count_increase`: round(level * uniform(1, 2)).
@@ -1452,6 +1559,14 @@ impl Entities {
                 n += (f32::from(looting) * (1.0 + self.rng.next_f32())).round() as u32;
             }
             drops.push((crate::world::trial::BREEZE_ROD, n.min(64) as u8));
+        }
+        // `entities/nautilus`: `random_chance_with_enchanted_bonus`, 0.05
+        // unenchanted, 0.06 + 0.01 per Looting level above I.
+        if kind == MobKind::Nautilus && player_kill {
+            let chance = if looting == 0 { 0.05 } else { 0.06 + 0.01 * f32::from(looting - 1) };
+            if self.rng.next_f32() < chance {
+                drops.push((crate::item::Item::NAUTILUS_SHELL, 1));
+            }
         }
         if kind == MobKind::Rabbit && player_kill && self.rng.chance(0.1 + looting as f32 * 0.03) {
             drops.push((crate::item::Item::RABBIT_FOOT, 1));
@@ -1481,7 +1596,9 @@ impl Entities {
                         item,
                         crate::item::Item::IRON_INGOT | crate::item::Item::CARROT | crate::item::Item::POTATO
                     )
-                    || kind == MobKind::Drowned && item == crate::item::Item::COPPER_INGOT)
+                    || kind == MobKind::Drowned && item == crate::item::Item::COPPER_INGOT
+                    // `entities/zombie_nautilus` is `killed_by_player`.
+                    || kind == MobKind::ZombieNautilus)
             {
                 continue;
             }
@@ -1568,9 +1685,20 @@ impl Entities {
     /// plus 0.7 along the facing and 0.1 up, flying at power 1.1 blocks per tick along the
     /// facing perturbed by `triangle` noise of `0.0172275 * 6` per axis (no upward bias).
     pub fn dispense_arrow(&mut self, block: IVec3, step: IVec3) {
+        self.dispense_arrow_stack(crate::inventory::Stack::new(crate::item::Item::ARROW, 1), block, step);
+    }
+
+    /// v0.15 Track D: `ProjectileDispenseBehavior` for any arrow item: a
+    /// spectral arrow keeps its glow and a tipped arrow its potion
+    /// (`ArrowItem.asProjectile`).
+    pub fn dispense_arrow_stack(&mut self, stack: crate::inventory::Stack, block: IVec3, step: IVec3) {
         let heading = self.dispense_heading(step, 6.0);
         let pos = block.as_dvec3() + DVec3::splat(0.5) + step.as_dvec3() * 0.7 + DVec3::Y * 0.1;
-        self.arrows.push(Arrow::dispensed(pos, heading * 1.1 * 20.0));
+        let mut arrow = Arrow::dispensed(pos, heading * 1.1 * 20.0);
+        arrow.spectral = stack.item == crate::item::Item::SPECTRAL_ARROW;
+        arrow.tipped = stack.item == crate::item::Item::TIPPED_ARROW;
+        arrow.potion = stack.arrow_potion();
+        self.arrows.push(arrow);
     }
 
     /// Java 26.3 `FireChargeItem.asProjectile`: a small fireball one block out whose
@@ -1675,6 +1803,7 @@ impl Entities {
         props.insert("nether_mobs".to_string(), self.nether_mobs_to_string());
         props.insert("tridents".to_string(), self.tridents_json());
         props.insert("ominous_item_spawners".to_string(), self.item_spawners_to_value().to_string());
+        props.insert("raids".to_string(), self.raids.save());
     }
 
     /// Restores [`Entities::save_props`]. Every entity starts in the level;
@@ -1707,6 +1836,9 @@ impl Entities {
         }
         if let Some(t) = props.get("tridents") {
             self.load_tridents_json(t);
+        }
+        if let Some(r) = props.get("raids") {
+            self.raids.load(r);
         }
     }
 
@@ -1782,6 +1914,7 @@ impl Entities {
         self.rendered = model::build(&self.mobs, camera, forward, max_dist, time, alpha, &mut self.mesh);
         model::build_arrows(&self.arrows, camera, alpha, &mut self.mesh);
         model::build_tridents(&self.tridents, camera, alpha, &mut self.mesh);
+        model::build_fangs(&self.fangs, camera, &mut self.mesh);
         model::build_pearls(&self.pearls, camera, alpha, &mut self.mesh);
         model::build_potions(&self.potions, camera, alpha, &mut self.mesh);
         model::build_clouds(&self.clouds, camera, &mut self.mesh);
@@ -2097,7 +2230,8 @@ impl Entities {
             return None;
         }
         let kind = mob.kind;
-        mob.player_hit();
+        // v0.15 Track E: the killer a raid credits as a hero.
+        mob.player_hit_by(owner);
         if kind == MobKind::IronGolem && !self.neutral_universal_anger {
             mob.angry_player = Some(owner);
         }
@@ -2320,6 +2454,10 @@ impl Entities {
         };
         if retaliates {
             m.angry_player = Some(owner);
+        }
+        // `AbstractNautilus.hurtServer` → `NautilusAi.setAngerTarget` for 400 ticks.
+        if let Some(s) = m.nautilus.as_mut() {
+            s.anger = Some((owner, nautilus::ANGER_DURATION));
         }
     }
 

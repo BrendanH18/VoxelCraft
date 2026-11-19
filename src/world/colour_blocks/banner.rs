@@ -4,8 +4,8 @@
 //!
 //! Banners have no collision and draw outside the chunk meshes (their
 //! rotations aren't axis-aligned and the flag reaches past the cell), as
-//! Java draws them with a block entity renderer. Patterns arrive with the
-//! loom (v0.17).
+//! Java draws them with a block entity renderer. Pattern layers (v0.15
+//! Track B) draw over both faces of the flag ([`pattern_quads`]).
 
 use glam::{IVec3, Vec3};
 
@@ -127,6 +127,8 @@ pub struct Quad {
     pub uv: [[f32; 2]; 4],
     pub layer: u16,
     pub normal: Vec3,
+    /// A pattern layer's dye (sRGB); `None` draws untinted.
+    pub tint: Option<[u8; 4]>,
 }
 
 /// A box of Java's banner models in model pixels (y down, z toward the
@@ -196,7 +198,43 @@ pub fn quads(b: Banner, phase: f32) -> Vec<Quad> {
                 uv,
                 layer: part.layer,
                 normal: turn(normal, part),
+                tint: None,
             });
+        }
+    }
+    out
+}
+
+/// The pattern layers of banner `b` at sway `phase`: each layer's two mask
+/// halves (`world::workstations::pattern_layer`) over the flag's front and
+/// back, tinted with its dye and lifted off the cloth a little more per
+/// layer so later layers cover earlier ones, as `BannerRenderer` stacks
+/// them.
+pub fn pattern_quads(b: Banner, phase: f32, layers: &[crate::inventory::components::BannerLayer]) -> Vec<Quad> {
+    if layers.is_empty() {
+        return Vec::new();
+    }
+    let all = quads(b, phase);
+    // The flag is the last part; its last two faces are its back (+z in
+    // model space) and front (-z).
+    let faces = [all[all.len() - 2], all[all.len() - 1]];
+    let mut out = Vec::with_capacity(layers.len() * 4);
+    for (k, l) in layers.iter().enumerate() {
+        let lift = 0.0015 * (k + 1) as f32;
+        let [r, g, bl] = l.color.rgb();
+        for face in faces {
+            let c = face.corners.map(|c| c + face.normal * lift);
+            let mid = [c[0].lerp(c[3], 0.5), c[1].lerp(c[2], 0.5)];
+            let halves = [[c[0], c[1], mid[1], mid[0]], [mid[0], mid[1], c[2], c[3]]];
+            for (half, corners) in halves.into_iter().enumerate() {
+                out.push(Quad {
+                    corners,
+                    uv: [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+                    layer: crate::world::workstations::pattern_layer(l.pattern, half as u8),
+                    normal: face.normal,
+                    tint: Some([r, g, bl, 255]),
+                });
+            }
         }
     }
     out

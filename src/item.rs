@@ -215,6 +215,12 @@ pub enum Sprite {
     Bowl(Option<[u8; 3]>),
     /// A white egg.
     Egg,
+    /// v0.15 Track D: a blue or brown egg, by shell colour.
+    TintedEgg([u8; 3]),
+    /// v0.15 Track D: a spectral arrow, with a glowing gold head.
+    SpectralArrow,
+    /// v0.15 Track D: an armor trim smithing template, by `TrimPattern` index.
+    TrimTemplate(u8),
     /// A compass face; the needle direction is a separate texture frame.
     Compass,
     /// A clock face; the sun's position is a separate texture frame.
@@ -339,6 +345,14 @@ pub enum Sprite {
     ExperienceBottle,
     /// v0.14: a bundle of this leather colour (`content::bundle`).
     Bundle([u8; 3]),
+    /// v0.15 Track B: a brass spyglass (`content::spyglass`).
+    Spyglass,
+    /// v0.15 Track B: the book and quill and the written book.
+    WritableBook,
+    WrittenBook,
+    /// v0.15 Track B: a pattern item's sheet showing pattern item `i` of
+    /// `content::banner_patterns::PATTERN_ITEMS`.
+    BannerPattern(u8),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -727,7 +741,14 @@ const AUDIT_SPLASH_POTION: u16 = 1044;
 /// so these start at 361.
 const EXTRA_ITEM: u16 = 361;
 const POTION_COUNT: u16 = crate::potion::Potion::COUNT as u16;
-const _: () = assert!(POTION_COUNT == 41);
+const _: () = assert!(POTION_COUNT == 45);
+/// v0.15 Track D: the wind charged, weaving, oozing and infested potions
+/// (potion indices 41..=44) are items 1650..=1653, their splash potions
+/// 1654..=1657; 1658..=1659 stay reserved.
+const TRACK_D_POTION: u16 = 41;
+const TRACK_D_POTIONS: u16 = 4;
+const TRACK_D_POTION_ITEM: u16 = 1650;
+const _: () = assert!(TRACK_D_POTION + TRACK_D_POTIONS == POTION_COUNT);
 
 impl Item {
     pub const MAP: Self = Self(1255);
@@ -859,6 +880,10 @@ impl Item {
     pub const FERMENTED_SPIDER_EYE: Item = Item(1530);
     /// v0.17 build-5000 (ITEM-02): Java's `experience_bottle`, thrown for experience.
     pub const EXPERIENCE_BOTTLE: Item = Item(1554);
+    /// v0.15 Track B: Java's `spyglass`, `writable_book` and `written_book`.
+    pub const SPYGLASS: Item = crate::content::spyglass::SPYGLASS;
+    pub const WRITABLE_BOOK: Item = crate::content::books::WRITABLE_BOOK;
+    pub const WRITTEN_BOOK: Item = crate::content::books::WRITTEN_BOOK;
     pub const SPIDER_EYE: Item = Item(302);
     pub const PAPER: Item = Item(303);
     pub const BOOK: Item = Item(304);
@@ -955,6 +980,8 @@ impl Item {
 
     /// v0.15 hostiles: potion contents use Stack::entity_data, not extra item IDs.
     pub const TIPPED_ARROW: Item = Item(1330);
+    /// v0.15 Track D: `Items.SPECTRAL_ARROW`.
+    pub const SPECTRAL_ARROW: Item = Item(1555);
     pub const LINGERING_POTION: Item = Item(1332);
     pub const DRAGON_BREATH: Item = Item(1333);
 
@@ -962,6 +989,8 @@ impl Item {
         let index = potion.0 as u16;
         Item(if index < LEGACY_POTION_COUNT {
             FIRST_POTION + index
+        } else if index >= TRACK_D_POTION {
+            TRACK_D_POTION_ITEM + index - TRACK_D_POTION
         } else if index >= 39 {
             1531 + index - 39
         } else {
@@ -973,6 +1002,8 @@ impl Item {
         let index = potion.0 as u16;
         Item(if index < LEGACY_POTION_COUNT {
             SPLASH_POTION + index
+        } else if index >= TRACK_D_POTION {
+            TRACK_D_POTION_ITEM + TRACK_D_POTIONS + index - TRACK_D_POTION
         } else if index >= 39 {
             1533 + index - 39
         } else {
@@ -982,7 +1013,10 @@ impl Item {
 
     /// The potion of a throwable splash potion item.
     pub fn as_splash_potion(self) -> Option<crate::potion::Potion> {
-        let i = if (1533..1535).contains(&self.0) {
+        let i = if (TRACK_D_POTION_ITEM + TRACK_D_POTIONS..TRACK_D_POTION_ITEM + 2 * TRACK_D_POTIONS).contains(&self.0)
+        {
+            TRACK_D_POTION + self.0 - TRACK_D_POTION_ITEM - TRACK_D_POTIONS
+        } else if (1533..1535).contains(&self.0) {
             39 + self.0 - 1533
         } else if (AUDIT_SPLASH_POTION..AUDIT_SPLASH_POTION + 3).contains(&self.0) {
             LEGACY_POTION_COUNT + self.0 - AUDIT_SPLASH_POTION
@@ -994,7 +1028,9 @@ impl Item {
 
     /// The potion this item is (a water bottle is one too).
     pub fn as_potion(self) -> Option<crate::potion::Potion> {
-        let i = if (1531..1533).contains(&self.0) {
+        let i = if (TRACK_D_POTION_ITEM..TRACK_D_POTION_ITEM + TRACK_D_POTIONS).contains(&self.0) {
+            TRACK_D_POTION + self.0 - TRACK_D_POTION_ITEM
+        } else if (1531..1533).contains(&self.0) {
             39 + self.0 - 1531
         } else if (AUDIT_POTION..AUDIT_POTION + 3).contains(&self.0) {
             LEGACY_POTION_COUNT + self.0 - AUDIT_POTION
@@ -1088,14 +1124,32 @@ impl Item {
     }
 
     pub fn is_map(self) -> bool {
-        (1255..=1265).contains(&self.0) || self == crate::world::trial::TRIAL_CHAMBERS_MAP
+        (1255..=1265).contains(&self.0)
+            || self == crate::world::trial::TRIAL_CHAMBERS_MAP
+            || crate::world::explorer_maps::is_explorer(self)
     }
 
     pub fn info(self) -> ItemInfo {
         if let Some(info) = crate::content::harness::item_info(self) {
             return info;
         }
+        // v0.15 Track D: spectral arrows, coloured eggs and trim templates.
+        if self == Self::SPECTRAL_ARROW {
+            return item("spectral arrow", Sprite::SpectralArrow);
+        }
+        if let Some(info) = crate::content::farm_variant::item_info(self) {
+            return info;
+        }
+        if let Some(info) = crate::content::trim::item_info(self) {
+            return info;
+        }
         if let Some(info) = crate::content::bundle::item_info(self) {
+            return info;
+        }
+        if let Some(info) = crate::content::banner_patterns::item_info(self)
+            .or_else(|| crate::content::books::item_info(self))
+            .or_else(|| crate::content::spyglass::item_info(self))
+        {
             return info;
         }
         if self == Self::FERMENTED_SPIDER_EYE {
@@ -1105,6 +1159,10 @@ impl Item {
             return item("bottle o' enchanting", Sprite::ExperienceBottle);
         }
         if let Some(info) = crate::world::trial::item_info(self) {
+            return info;
+        }
+        // v0.15 Track F: the woodland mansion and four more explorer maps.
+        if let Some(info) = crate::world::explorer_maps::item_info(self) {
             return info;
         }
         if self == Self::TORCHFLOWER_SEEDS {
@@ -1486,7 +1544,11 @@ impl Item {
     /// registrations are pinned so far: the chainmail pieces and the
     /// Bottle o' Enchanting.
     pub fn is_uncommon(self) -> bool {
-        self == Item::EXPERIENCE_BOTTLE || crate::equipment::is_uncommon(self)
+        self == Item::EXPERIENCE_BOTTLE
+            || crate::equipment::is_uncommon(self)
+            || crate::content::banner_patterns::rarity(self) == Some(crate::content::banner_patterns::Rarity::Uncommon)
+            || crate::content::trim::template_pattern(self)
+                .is_some_and(|p| crate::content::trim::rarity(p) == crate::content::trim::Rarity::Uncommon)
     }
 
     /// The horse or nautilus armor this is, and its material.
@@ -1496,13 +1558,18 @@ impl Item {
 
     /// Java's `Rarity.RARE` for items registered with it (aqua names).
     pub fn is_rare(self) -> bool {
-        self == Item::ENCHANTED_GOLDEN_APPLE || crate::world::jukebox::is_rare(self) || crate::weapons::is_rare(self)
+        self == Item::ENCHANTED_GOLDEN_APPLE
+            || crate::world::jukebox::is_rare(self)
+            || crate::weapons::is_rare(self)
+            || crate::content::banner_patterns::rarity(self) == Some(crate::content::banner_patterns::Rarity::Rare)
+            || crate::content::trim::template_pattern(self)
+                .is_some_and(|p| crate::content::trim::rarity(p) == crate::content::trim::Rarity::Rare)
     }
 
     /// Java's `DataComponents.ENCHANTMENT_GLINT_OVERRIDE`: drawn with the
     /// enchantment glint though it carries no enchantment.
     pub fn has_glint(self) -> bool {
-        matches!(self, Item::ENCHANTED_GOLDEN_APPLE | Item::EXPERIENCE_BOTTLE)
+        matches!(self, Item::ENCHANTED_GOLDEN_APPLE | Item::EXPERIENCE_BOTTLE | Item::WRITTEN_BOOK)
     }
 
     pub fn remainder(self) -> Option<Item> {
@@ -1537,6 +1604,9 @@ impl Item {
         if self == crate::world::trial::TRIAL_CHAMBERS_MAP {
             return Some(crate::world::trial::MAP_TEX);
         }
+        if let Some(layer) = crate::world::explorer_maps::icon_layer(self) {
+            return Some(layer);
+        }
         if self.is_map() {
             return Some(2944 + self.0 - 1255);
         }
@@ -1566,6 +1636,10 @@ impl Item {
         // The player-facing label differs from the reference ID.
         if name == "experience_bottle" {
             return Some(Item::EXPERIENCE_BOTTLE);
+        }
+        // Java's `writable_book` is displayed "Book and Quill".
+        if matches!(name, "writable_book" | "writable book") {
+            return Some(Item::WRITABLE_BOOK);
         }
         if let Some(b) = Block::from_name(name) {
             // Doors and nether wart are placed by an item, not as a block.
@@ -1632,6 +1706,15 @@ impl Item {
             .chain([Self::EXPERIENCE_BOTTLE])
             // v0.17 build-5000 ITEM-08-BUNDLE-CORE: the plain and dyed bundles.
             .chain(crate::content::bundle::all())
+            // v0.15 Track B: spyglass, book and quill, written book, then the
+            // ten banner pattern items.
+            .chain([Self::SPYGLASS, Self::WRITABLE_BOOK, Self::WRITTEN_BOOK])
+            .chain(crate::content::banner_patterns::every_item())
+            // v0.15 Track D: the spectral arrow, blue and brown eggs and the
+            // eighteen trim templates.
+            .chain(track_d_items())
+            // v0.15 Track F: five explorer maps, which draw their own layers.
+            .chain(crate::world::explorer_maps::items())
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1705,6 +1788,8 @@ fn sprite_index(item: Item) -> Option<u16> {
                 + crate::equipment::ICON_COUNT
                 + (crate::content::harness::ITEM_END - crate::content::harness::ITEM_FIRST),
         ),
+        // v0.15 Track D: its items follow Track B's.
+        i if let Some(k) = track_d_items().position(|t| t.0 == i) => Some(track_d_icon_base() + k as u16),
         // v0.17 build-5000 ITEM-08: the bundles follow the experience bottle.
         i if (crate::content::bundle::ITEM_FIRST..crate::content::bundle::ITEM_END).contains(&i) => Some(
             late_icon_base()
@@ -1714,6 +1799,11 @@ fn sprite_index(item: Item) -> Option<u16> {
                 + 1
                 + (i - crate::content::bundle::ITEM_FIRST),
         ),
+        // v0.15 Track B: the spyglass, books and pattern items follow the bundles.
+        1556..=1558 => Some(track_b_icon_base() + item.0 - 1556),
+        i if crate::content::banner_patterns::is_pattern_item(item) => {
+            Some(track_b_icon_base() + 3 + i - crate::content::banner_patterns::ITEM_FIRST)
+        }
         1280..=1281 => Some(passive_icon_base() + 4 + item.0 - 1280),
         1385..=1386 => Some(passive_icon_base() + 9 + item.0 - 1385),
         1395..=1401 => Some(passive_icon_base() + 11 + item.0 - 1395),
@@ -1839,7 +1929,33 @@ pub const fn icon_count() -> u32 {
         + (crate::content::harness::ITEM_END - crate::content::harness::ITEM_FIRST) as u32
         + 1 // Experience bottle.
         + (crate::content::bundle::ITEM_END - crate::content::bundle::ITEM_FIRST) as u32
+        + 3 // v0.15 Track B: spyglass, book and quill, written book.
+        + (crate::content::banner_patterns::ITEM_END - crate::content::banner_patterns::ITEM_FIRST) as u32
+        + TRACK_D_ICONS
 }
+
+/// v0.15 Track D's first icon, after Track B's.
+const fn track_d_icon_base() -> u16 {
+    track_b_icon_base() + 3 + (crate::content::banner_patterns::ITEM_END - crate::content::banner_patterns::ITEM_FIRST)
+}
+
+/// v0.15 Track B's first icon, after the bundles.
+const fn track_b_icon_base() -> u16 {
+    late_icon_base()
+        + 1
+        + crate::equipment::ICON_COUNT
+        + (crate::content::harness::ITEM_END - crate::content::harness::ITEM_FIRST)
+        + 1
+        + (crate::content::bundle::ITEM_END - crate::content::bundle::ITEM_FIRST)
+}
+
+/// v0.15 Track D's items, in icon order.
+fn track_d_items() -> impl Iterator<Item = Item> {
+    [Item::SPECTRAL_ARROW, crate::content::farm_variant::BLUE_EGG, crate::content::farm_variant::BROWN_EGG]
+        .into_iter()
+        .chain(crate::content::trim::all())
+}
+const TRACK_D_ICONS: u32 = 3 + (crate::content::trim::ITEM_END - crate::content::trim::ITEM_FIRST) as u32;
 
 /// The fermented spider eye's icon: icons appended in v0.14 follow it.
 const fn late_icon_base() -> u16 {

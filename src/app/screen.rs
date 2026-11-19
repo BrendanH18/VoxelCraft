@@ -90,6 +90,9 @@ impl Screen<'_> {
     /// open container and the inventory, or the hotbar and the main grid);
     /// on a crafting result, crafts as many as fit.
     pub(super) fn quick_move(&mut self, slot: SlotRef) {
+        if self.workstation_quick_move(slot) {
+            return;
+        }
         match slot {
             SlotRef::Inventory(i) => {
                 let Some(stack) = self.session.inventory.slots[i].take() else { return };
@@ -129,12 +132,13 @@ impl Screen<'_> {
             SlotRef::CraftResult => {
                 // Craft until the ingredients run out or the result won't fit.
                 let order = to_player_order();
-                while let Some(result) = self.craft.result() {
+                while let Some(mut result) = self.craft.result_in(&self.world.maps) {
                     let mut slots = self.session.inventory.slots;
                     if move_into(result, &mut slots, &order).is_some() {
                         break;
                     }
-                    self.session.inventory.slots = slots;
+                    self.world.maps.post_process(&mut result);
+                    move_into(result, &mut self.session.inventory.slots, &order);
                     self.consume_craft();
                 }
             }
@@ -213,6 +217,17 @@ impl Screen<'_> {
                 self.session.inventory.armor[piece as usize] = self.move_to_player(stack);
             }
             SlotRef::Trade(i) => self.buy_trade(i),
+            SlotRef::CutInput
+            | SlotRef::CutResult
+            | SlotRef::CutRecipe(_)
+            | SlotRef::LoomBanner
+            | SlotRef::LoomDye
+            | SlotRef::LoomPattern
+            | SlotRef::LoomResult
+            | SlotRef::LoomChoice(_)
+            | SlotRef::MapInput
+            | SlotRef::MapExtra
+            | SlotRef::MapResult => {}
             SlotRef::Palette(item) => {
                 if self.session.mode.is_creative() {
                     self.session.inventory.add(item, item.max_stack());
@@ -300,6 +315,13 @@ impl Screen<'_> {
             Container::Smithing(_) => {
                 let left = self.move_to_smithing(stack);
                 if left != Some(stack) {
+                    return left;
+                }
+            }
+            Container::Stonecutter(_) | Container::Loom(_) | Container::Cartography(_) => {
+                if let Some(left) = self.move_to_workstation(stack)
+                    && left != Some(stack)
+                {
                     return left;
                 }
             }
@@ -404,10 +426,18 @@ impl Screen<'_> {
     /// Clicking the crafting result: takes one craft onto the cursor (or
     /// onto a matching held stack, if it fits) and uses up the ingredients.
     pub(super) fn take_craft_result(&mut self) {
-        let Some(result) = self.craft.result() else { return };
+        let Some(mut result) = self.craft.result_in(&self.world.maps) else { return };
         match &mut self.session.inventory.cursor {
-            None => self.session.inventory.cursor = Some(result),
-            Some(c) if c.stacks_with(&result) && c.count as u16 + result.count as u16 <= c.max() as u16 => {
+            None => {
+                // `MapItem.onCraftedBy`: a zoomed-out map gets its new map id.
+                self.world.maps.post_process(&mut result);
+                self.session.inventory.cursor = Some(result);
+            }
+            Some(c)
+                if !(result.item.is_map() && result.entity_data != 0)
+                    && c.stacks_with(&result)
+                    && c.count as u16 + result.count as u16 <= c.max() as u16 =>
+            {
                 c.count += result.count
             }
             Some(_) => return,
@@ -417,6 +447,9 @@ impl Screen<'_> {
 
     /// A left (or right) click on a slot of the open container screen.
     pub(super) fn click_slot(&mut self, slot: SlotRef, right: bool) {
+        if self.workstation_click(slot, right) {
+            return;
+        }
         match Some(slot) {
             Some(SlotRef::Inventory(i)) => self.session.inventory.click(i, right),
             Some(SlotRef::Craft(i)) => {
@@ -468,6 +501,19 @@ impl Screen<'_> {
             Some(s @ (SlotRef::SmithTemplate | SlotRef::SmithBase | SlotRef::SmithAddition | SlotRef::SmithResult)) => {
                 self.smithing_click(s, right)
             }
+            Some(
+                SlotRef::CutInput
+                | SlotRef::CutResult
+                | SlotRef::CutRecipe(_)
+                | SlotRef::LoomBanner
+                | SlotRef::LoomDye
+                | SlotRef::LoomPattern
+                | SlotRef::LoomResult
+                | SlotRef::LoomChoice(_)
+                | SlotRef::MapInput
+                | SlotRef::MapExtra
+                | SlotRef::MapResult,
+            ) => {}
             Some(SlotRef::Palette(item)) => {
                 // Creative palette: take a full stack, or trash the held one.
                 self.session.inventory.cursor = match self.session.inventory.cursor {
@@ -712,6 +758,8 @@ impl Screen<'_> {
         if !self.entities.merchant_in_reach(id, self.session.player.eye(), self.session.entity_screen_range()) {
             return;
         }
+        // A level-up while the screen is open can unlock an explorer map.
+        self.entities.prepare_merchant_maps(self.world, id);
         match self.entities.trade_for(id, index, &mut self.session.inventory, self.session.id) {
             Ok(xp) => {
                 self.entities.spawn_xp(self.session.player.pos, xp);

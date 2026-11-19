@@ -25,7 +25,7 @@ fn city(g: &Generator) -> Arc<City> {
 
 #[test]
 fn cities_stand_in_the_deep_dark_round_their_portal() {
-    let g = Generator::new(SEED);
+    let g = Generator::with_generation(SEED, Dimension::Overworld, Generation::V3);
     let city = city(&g);
     let lib = jigsaw::ancient_cities();
     assert!(allowed(g.biome_at(city.at)));
@@ -66,7 +66,7 @@ fn cities_stand_in_the_deep_dark_round_their_portal() {
 
 #[test]
 fn generated_chunks_carry_the_city_and_its_chests() {
-    let g = Arc::new(Generator::new(SEED));
+    let g = Arc::new(Generator::with_generation(SEED, Dimension::Overworld, Generation::V3));
     let city = city(&g);
     let start = city.pieces[0];
     // The portal frame's west pillar, and open air over the plaza's corner.

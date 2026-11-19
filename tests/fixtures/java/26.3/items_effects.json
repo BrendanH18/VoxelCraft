@@ -1,0 +1,604 @@
+{
+  "biome_tags": {
+    "spawns_cold_variant_farm_animals": [
+      "snowy_plains",
+      "ice_spikes",
+      "frozen_peaks",
+      "jagged_peaks",
+      "snowy_slopes",
+      "frozen_ocean",
+      "deep_frozen_ocean",
+      "grove",
+      "deep_dark",
+      "frozen_river",
+      "snowy_taiga",
+      "snowy_beach",
+      "the_end",
+      "end_highlands",
+      "end_midlands",
+      "small_end_islands",
+      "end_barrens",
+      "cold_ocean",
+      "deep_cold_ocean",
+      "old_growth_pine_taiga",
+      "old_growth_spruce_taiga",
+      "taiga",
+      "windswept_forest",
+      "windswept_gravelly_hills",
+      "windswept_hills",
+      "stony_peaks",
+      "dappled_forest"
+    ],
+    "spawns_warm_variant_farm_animals": [
+      "desert",
+      "warm_ocean",
+      "bamboo_jungle",
+      "jungle",
+      "sparse_jungle",
+      "savanna",
+      "savanna_plateau",
+      "windswept_savanna",
+      "nether_wastes",
+      "soul_sand_valley",
+      "crimson_forest",
+      "warped_forest",
+      "basalt_deltas",
+      "badlands",
+      "eroded_badlands",
+      "wooded_badlands",
+      "mangrove_swamp",
+      "deep_lukewarm_ocean",
+      "lukewarm_ocean"
+    ]
+  },
+  "chicken_egg_time": {
+    "base": 6000,
+    "bound": 6000
+  },
+  "chicken_lay": {
+    "cold": "blue_egg",
+    "temperate": "egg",
+    "warm": "brown_egg"
+  },
+  "effects": {
+    "infested": {
+      "category": "harmful",
+      "chance": 0.1,
+      "class": "InfestedMobEffect",
+      "colour": 9214860,
+      "count": {
+        "max": 2,
+        "min": 1,
+        "type": "uniform"
+      }
+    },
+    "oozing": {
+      "category": "harmful",
+      "class": "OozingMobEffect",
+      "colour": 10092451,
+      "count": {
+        "type": "constant",
+        "value": 2
+      }
+    },
+    "weaving": {
+      "category": "harmful",
+      "class": "WeavingMobEffect",
+      "colour": 7891290,
+      "count": {
+        "max": 3,
+        "min": 2,
+        "type": "uniform"
+      }
+    },
+    "wind_charged": {
+      "category": "harmful",
+      "class": "WindChargedMobEffect",
+      "colour": 12438015
+    }
+  },
+  "farm_variants": {
+    "chicken": {
+      "cold": {
+        "model": "cold",
+        "spawn_conditions": [
+          {
+            "biome_tag": "spawns_cold_variant_farm_animals",
+            "priority": 1
+          }
+        ]
+      },
+      "temperate": {
+        "model": "normal",
+        "spawn_conditions": [
+          {
+            "priority": 0
+          }
+        ]
+      },
+      "warm": {
+        "model": "normal",
+        "spawn_conditions": [
+          {
+            "biome_tag": "spawns_warm_variant_farm_animals",
+            "priority": 1
+          }
+        ]
+      }
+    },
+    "cow": {
+      "cold": {
+        "model": "cold",
+        "spawn_conditions": [
+          {
+            "biome_tag": "spawns_cold_variant_farm_animals",
+            "priority": 1
+          }
+        ]
+      },
+      "temperate": {
+        "model": "normal",
+        "spawn_conditions": [
+          {
+            "priority": 0
+          }
+        ]
+      },
+      "warm": {
+        "model": "warm",
+        "spawn_conditions": [
+          {
+            "biome_tag": "spawns_warm_variant_farm_animals",
+            "priority": 1
+          }
+        ]
+      }
+    },
+    "pig": {
+      "cold": {
+        "model": "cold",
+        "spawn_conditions": [
+          {
+            "biome_tag": "spawns_cold_variant_farm_animals",
+            "priority": 1
+          }
+        ]
+      },
+      "temperate": {
+        "model": "normal",
+        "spawn_conditions": [
+          {
+            "priority": 0
+          }
+        ]
+      },
+      "warm": {
+        "model": "normal",
+        "spawn_conditions": [
+          {
+            "biome_tag": "spawns_warm_variant_farm_animals",
+            "priority": 1
+          }
+        ]
+      }
+    }
+  },
+  "frost_walker": {
+    "age": 0,
+    "block": "frosted_ice",
+    "height": 1.0,
+    "max_level": 2,
+    "offset": [
+      0,
+      -1,
+      0
+    ],
+    "predicates": [
+      "minecraft:matching_block_tag",
+      "minecraft:matching_blocks",
+      "minecraft:matching_fluids",
+      "minecraft:unobstructed"
+    ],
+    "radius_base": 3.0,
+    "radius_max": 16.0,
+    "radius_min": 0.0,
+    "radius_per_level_above_first": 1.0
+  },
+  "frosted_ice": {
+    "age_chance_bound": 3,
+    "brightness_base": 11,
+    "drops": 0,
+    "max_age": 3,
+    "neighbors_to_age": 4,
+    "neighbors_to_melt": 2,
+    "place_delay": [
+      60,
+      120
+    ],
+    "tick_delay": [
+      20,
+      40
+    ]
+  },
+  "item_tags": {
+    "eggs": [
+      "egg",
+      "blue_egg",
+      "brown_egg"
+    ],
+    "trim_materials": [
+      "amethyst_shard",
+      "copper_ingot",
+      "diamond",
+      "emerald",
+      "gold_ingot",
+      "iron_ingot",
+      "lapis_lazuli",
+      "netherite_ingot",
+      "quartz",
+      "redstone",
+      "resin_brick"
+    ]
+  },
+  "loot": {
+    "archaeology/trail_ruins_rare": [
+      {
+        "name": "wayfinder_armor_trim_smithing_template",
+        "weight": 1
+      },
+      {
+        "name": "raiser_armor_trim_smithing_template",
+        "weight": 1
+      },
+      {
+        "name": "shaper_armor_trim_smithing_template",
+        "weight": 1
+      },
+      {
+        "name": "host_armor_trim_smithing_template",
+        "weight": 1
+      }
+    ],
+    "chests/ancient_city": [
+      {
+        "name": "ward_armor_trim_smithing_template",
+        "weight": 4
+      },
+      {
+        "name": "silence_armor_trim_smithing_template",
+        "weight": 1
+      }
+    ],
+    "chests/bastion_bridge": [
+      {
+        "name": "spectral_arrow",
+        "weight": 1
+      },
+      {
+        "name": "snout_armor_trim_smithing_template",
+        "weight": 1
+      }
+    ],
+    "chests/bastion_hoglin_stable": [
+      {
+        "name": "snout_armor_trim_smithing_template",
+        "weight": 1
+      }
+    ],
+    "chests/bastion_other": [
+      {
+        "name": "spectral_arrow",
+        "weight": 10
+      },
+      {
+        "name": "snout_armor_trim_smithing_template",
+        "weight": 1
+      }
+    ],
+    "chests/bastion_treasure": [
+      {
+        "name": "spectral_arrow",
+        "weight": 1
+      },
+      {
+        "name": "snout_armor_trim_smithing_template",
+        "weight": 1
+      }
+    ],
+    "chests/desert_pyramid": [
+      {
+        "name": "dune_armor_trim_smithing_template",
+        "weight": 1
+      }
+    ],
+    "chests/end_city_treasure": [
+      {
+        "name": "spire_armor_trim_smithing_template",
+        "weight": 1
+      }
+    ],
+    "chests/jungle_temple": [
+      {
+        "name": "wild_armor_trim_smithing_template",
+        "weight": 1
+      }
+    ],
+    "chests/nether_bridge": [
+      {
+        "name": "rib_armor_trim_smithing_template",
+        "weight": 1
+      }
+    ],
+    "chests/pillager_outpost": [
+      {
+        "name": "sentry_armor_trim_smithing_template",
+        "weight": 1
+      }
+    ],
+    "chests/shipwreck_map": [
+      {
+        "name": "coast_armor_trim_smithing_template",
+        "weight": 1
+      }
+    ],
+    "chests/shipwreck_supply": [
+      {
+        "name": "coast_armor_trim_smithing_template",
+        "weight": 1
+      }
+    ],
+    "chests/shipwreck_treasure": [
+      {
+        "name": "coast_armor_trim_smithing_template",
+        "weight": 1
+      }
+    ],
+    "chests/stronghold_corridor": [
+      {
+        "name": "eye_armor_trim_smithing_template",
+        "weight": 1
+      }
+    ],
+    "chests/stronghold_library": [
+      {
+        "name": "eye_armor_trim_smithing_template",
+        "weight": 1
+      }
+    ],
+    "chests/trial_chambers/reward_ominous_unique": [
+      {
+        "name": "flow_armor_trim_smithing_template",
+        "weight": 3
+      }
+    ],
+    "chests/trial_chambers/reward_unique": [
+      {
+        "name": "bolt_armor_trim_smithing_template",
+        "weight": 3
+      }
+    ],
+    "chests/woodland_mansion": [
+      {
+        "name": "vex_armor_trim_smithing_template",
+        "weight": 1
+      }
+    ],
+    "entities/elder_guardian": [
+      {
+        "name": "tide_armor_trim_smithing_template",
+        "weight": 1
+      }
+    ],
+    "gameplay/chicken_lay": [
+      {
+        "name": "brown_egg",
+        "weight": 1
+      },
+      {
+        "name": "blue_egg",
+        "weight": 1
+      }
+    ],
+    "gameplay/piglin_bartering": [
+      {
+        "name": "spectral_arrow",
+        "weight": 40
+      }
+    ]
+  },
+  "movement": {
+    "levitation_ease": 0.2,
+    "levitation_speed_per_level": 0.05,
+    "spectral_glowing_ticks": 200,
+    "web_speed": [
+      0.25,
+      0.05000000074505806,
+      0.25
+    ],
+    "web_speed_weaving": [
+      0.5,
+      0.25,
+      0.5
+    ]
+  },
+  "potions": {
+    "infested": {
+      "amplifier": 0,
+      "duration": 3600,
+      "effect": "infested"
+    },
+    "oozing": {
+      "amplifier": 0,
+      "duration": 3600,
+      "effect": "oozing"
+    },
+    "weaving": {
+      "amplifier": 0,
+      "duration": 3600,
+      "effect": "weaving"
+    },
+    "wind_charged": {
+      "amplifier": 0,
+      "duration": 3600,
+      "effect": "wind_charged"
+    }
+  },
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "net.minecraft.world.effect.MobEffects (WIND_CHARGED, WEAVING, OOZING, INFESTED and their lambdas)",
+    "net.minecraft.world.item.alchemy.Potions (WIND_CHARGED, WEAVING, OOZING, INFESTED)",
+    "net.minecraft.world.level.block.FrostedIceBlock.onPlace/tick",
+    "net.minecraft.world.entity.LivingEntity.travelInAir",
+    "net.minecraft.world.level.block.WebBlock.entityInside",
+    "net.minecraft.world.entity.projectile.arrow.SpectralArrow (duration)",
+    "net.minecraft.world.item.Items (*_ARMOR_TRIM_SMITHING_TEMPLATE rarities)",
+    "net.minecraft.world.entity.animal.chicken.Chicken.<init> (eggTime)",
+    "data/minecraft/trim_pattern/*.json, data/minecraft/trim_material/*.json",
+    "data/minecraft/{chicken,cow,pig}_variant/*.json and their biome tags",
+    "data/minecraft/loot_table/gameplay/chicken_lay.json",
+    "data/minecraft/enchantment/frost_walker.json",
+    "data/minecraft/loot_table/**/*.json (entries naming Track D items)",
+    "data/minecraft/tags/item/{trim_materials,eggs}.json"
+  ],
+  "template_rarity": {
+    "bolt_armor_trim_smithing_template": "uncommon",
+    "coast_armor_trim_smithing_template": "uncommon",
+    "dune_armor_trim_smithing_template": "uncommon",
+    "eye_armor_trim_smithing_template": "rare",
+    "flow_armor_trim_smithing_template": "uncommon",
+    "host_armor_trim_smithing_template": "uncommon",
+    "raiser_armor_trim_smithing_template": "uncommon",
+    "rib_armor_trim_smithing_template": "uncommon",
+    "sentry_armor_trim_smithing_template": "uncommon",
+    "shaper_armor_trim_smithing_template": "uncommon",
+    "silence_armor_trim_smithing_template": "epic",
+    "snout_armor_trim_smithing_template": "uncommon",
+    "spire_armor_trim_smithing_template": "rare",
+    "tide_armor_trim_smithing_template": "uncommon",
+    "vex_armor_trim_smithing_template": "rare",
+    "ward_armor_trim_smithing_template": "rare",
+    "wayfinder_armor_trim_smithing_template": "uncommon",
+    "wild_armor_trim_smithing_template": "uncommon"
+  },
+  "trim_materials": {
+    "amethyst": {
+      "colour": "#9A5CC6",
+      "palette": "trim/amethyst"
+    },
+    "copper": {
+      "colour": "#B4684D",
+      "palette": "trim/copper"
+    },
+    "diamond": {
+      "colour": "#6EECD2",
+      "palette": "trim/diamond"
+    },
+    "emerald": {
+      "colour": "#11A036",
+      "palette": "trim/emerald"
+    },
+    "gold": {
+      "colour": "#DEB12D",
+      "palette": "trim/gold"
+    },
+    "iron": {
+      "colour": "#ECECEC",
+      "palette": "trim/iron"
+    },
+    "lapis": {
+      "colour": "#416E97",
+      "palette": "trim/lapis"
+    },
+    "netherite": {
+      "colour": "#625859",
+      "palette": "trim/netherite"
+    },
+    "quartz": {
+      "colour": "#E3D4C4",
+      "palette": "trim/quartz"
+    },
+    "redstone": {
+      "colour": "#971607",
+      "palette": "trim/redstone"
+    },
+    "resin": {
+      "colour": "#FC7812",
+      "palette": "trim/resin"
+    }
+  },
+  "trim_patterns": {
+    "bolt": {
+      "asset_id": "bolt",
+      "decal": false
+    },
+    "coast": {
+      "asset_id": "coast",
+      "decal": false
+    },
+    "dune": {
+      "asset_id": "dune",
+      "decal": false
+    },
+    "eye": {
+      "asset_id": "eye",
+      "decal": false
+    },
+    "flow": {
+      "asset_id": "flow",
+      "decal": false
+    },
+    "host": {
+      "asset_id": "host",
+      "decal": false
+    },
+    "raiser": {
+      "asset_id": "raiser",
+      "decal": false
+    },
+    "rib": {
+      "asset_id": "rib",
+      "decal": false
+    },
+    "sentry": {
+      "asset_id": "sentry",
+      "decal": false
+    },
+    "shaper": {
+      "asset_id": "shaper",
+      "decal": false
+    },
+    "silence": {
+      "asset_id": "silence",
+      "decal": false
+    },
+    "snout": {
+      "asset_id": "snout",
+      "decal": false
+    },
+    "spire": {
+      "asset_id": "spire",
+      "decal": false
+    },
+    "tide": {
+      "asset_id": "tide",
+      "decal": false
+    },
+    "vex": {
+      "asset_id": "vex",
+      "decal": false
+    },
+    "ward": {
+      "asset_id": "ward",
+      "decal": false
+    },
+    "wayfinder": {
+      "asset_id": "wayfinder",
+      "decal": false
+    },
+    "wild": {
+      "asset_id": "wild",
+      "decal": false
+    }
+  }
+}

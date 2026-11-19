@@ -121,9 +121,13 @@ impl Game {
         self.mobs.entities.trader_spawning =
             self.gamerules.bool("spawn_wandering_traders") && self.gamerules.bool("spawn_mobs");
         self.mobs.entities.phantom_spawning = self.gamerules.bool("spawn_phantoms");
+        // v0.15 Track E: the `raids` and `spawn_patrols` rules.
+        self.mobs.entities.raids.enabled = self.gamerules.bool("raids");
+        self.mobs.entities.raids.patrols = self.gamerules.bool("spawn_patrols");
         self.mobs.entities.monster_spawning = self.gamerules.bool("spawn_monsters");
         self.mobs.entities.spawner_blocks = self.gamerules.bool("spawner_blocks_work");
         self.mobs.entities.villager_griefing = self.gamerules.bool("mob_griefing");
+        self.mobs.entities.max_entity_cramming = self.gamerules.int("max_entity_cramming");
         self.mobs.entities.mob_loot = self.gamerules.bool("mob_drops");
         self.mobs.entities.neutral_forgive_dead_players = self.gamerules.bool("forgive_dead_players");
         self.mobs.entities.thundering = self.dimension.has_sky() && self.weather.thunder_level() > 0.9;
@@ -197,6 +201,7 @@ impl Game {
             swimming: self.session.player.swimming,
             time_since_rest: self.session.vitals.time_since_rest,
             sprinting: self.session.player.sprinting,
+            blocking: self.session.blocking(),
             passenger: self.session.player.vehicle.is_some(),
             ..Target::new(
                 PlayerId::HOST,
@@ -405,7 +410,7 @@ impl Game {
                             self.damage_player(amount, Cause::MAGIC);
                         } else {
                             self.session.vitals.health =
-                                (self.session.vitals.health - amount).min(crate::simulation::survival::MAX_HEALTH);
+                                (self.session.vitals.health - amount).min(self.session.vitals.max_health());
                         }
                     }
                 }
@@ -418,7 +423,7 @@ impl Game {
                             bot.agent.hurt_magic(amount, &mut self.mobs.entities);
                         } else {
                             bot.agent.session.vitals.health =
-                                (bot.agent.session.vitals.health - amount).min(crate::simulation::survival::MAX_HEALTH);
+                                (bot.agent.session.vitals.health - amount).min(bot.agent.session.vitals.max_health());
                         }
                     }
                 }
@@ -458,9 +463,21 @@ impl Game {
                     }
                 }
                 EntityEvent::Fireball { .. }
+                | EntityEvent::MobArrow { .. }
                 | EntityEvent::ThrowPotion { .. }
                 | EntityEvent::ThrowTrident { .. }
                 | EntityEvent::ShootWindCharge { .. } => {}
+                EntityEvent::MobGrief { cell, block, drops } => {
+                    // `destroyBlock(pos, true, ravager)` or the door goal's
+                    // `removeBlock`, both under `mobGriefing`.
+                    if self.gamerules.bool("mob_griefing") && self.world.get_block(cell) == Some(block) {
+                        if drops {
+                            self.world.spill_block(cell, block);
+                        }
+                        self.world.set_block(cell, crate::world::block::Block::AIR);
+                        self.audio.block_break(block, cell);
+                    }
+                }
                 EntityEvent::TridentBrokeDripstone { cell, mob_owned } => {
                     // `Projectile.mayInteract` (a mob's needs `mobGriefing`) and `mayBreak`.
                     let may = self.gamerules.bool("projectiles_can_break_blocks")
@@ -506,6 +523,8 @@ impl Game {
                             continue;
                         }
                         MobSound::Breeze(cue) => (Sound::Breeze(cue), 1.0),
+                        MobSound::Illager(cue) => (Sound::Illager(cue), 1.0),
+                        MobSound::Raid(cue) => (Sound::Raid(cue), 1.0),
                         MobSound::CopperGolem(action, stage) => (Sound::CopperGolem(action, stage), 0.7),
                         MobSound::Hurt(MobKind::CopperGolem) => {
                             (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Hurt, 0), 0.9)
@@ -723,6 +742,16 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Warden => Voice::Creaking,
         MobKind::Breeze => Voice::Breeze,
         MobKind::Endermite => Voice::Endermite,
+        MobKind::Vindicator => Voice::Vindicator,
+        MobKind::Evoker => Voice::Evoker,
+        MobKind::Vex => Voice::Vex,
+        MobKind::Ravager => Voice::Ravager,
+        MobKind::Illusioner => Voice::Illusioner,
+        MobKind::HappyGhast => Voice::HappyGhast,
+        MobKind::Nautilus => Voice::Nautilus,
+        MobKind::ZombieNautilus => Voice::ZombieNautilus,
+        MobKind::CamelHusk => Voice::CamelHusk,
+        MobKind::Parched => Voice::Parched,
         MobKind::Allay => Voice::Allay,
         MobKind::CopperGolem => Voice::Skeleton,
         MobKind::Creaking => Voice::Creaking,

@@ -69,6 +69,9 @@ impl Game {
                 !self.mobs.entities.merchant_in_reach(id, session.player.eye(), session.entity_screen_range())
             }
             Container::Smithing(pos) => self.world.get_block(pos) != Some(Block::SMITHING_TABLE) || far(pos),
+            Container::Stonecutter(pos) | Container::Loom(pos) | Container::Cartography(pos) => {
+                self.workstation_gone(pos, far)
+            }
             _ => false,
         };
         if gone && self.inventory_open {
@@ -236,6 +239,7 @@ impl Game {
                     + offset
                     + DVec3::new(-size / 2.0, bob + k * 0.03, -size / 2.0);
                 out.push(BlockModel {
+                    patterns: None,
                     min,
                     size: size as f32,
                     block: block.unwrap_or(Block::AIR),

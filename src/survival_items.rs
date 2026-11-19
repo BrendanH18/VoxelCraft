@@ -136,6 +136,37 @@ pub fn use_animal_target(
         }
         return true;
     }
+    if let Some(used) = entities.use_happy_ghast(index, held) {
+        use crate::entity::happy_ghast::Use;
+        match used {
+            Use::Fed | Use::Harnessed if !creative => {
+                inventory.take_one(slot);
+            }
+            Use::Sheared if !creative => {
+                inventory.wear(slot, 1);
+            }
+            _ => {}
+        }
+        return true;
+    }
+    if let Some(used) = entities.use_nautilus(index, held, owner) {
+        use crate::entity::nautilus::Use;
+        match used {
+            Use::Ate { bucket } | Use::Tamed { bucket, .. } if !creative => {
+                if bucket {
+                    // `usePlayerItem`: fish buckets leave a water bucket.
+                    exchange(inventory, slot, Item::WATER_BUCKET, false, entities, player);
+                } else {
+                    inventory.take_one(slot);
+                }
+            }
+            Use::Sheared if !creative => {
+                inventory.wear(slot, 1);
+            }
+            _ => {}
+        }
+        return true;
+    }
     let Some(result) = entities.use_animal_with_materials(index, held, owner, creative) else { return false };
     if result && !creative {
         if held.is_some_and(|s| s.item == Item::TROPICAL_FISH_BUCKET) {
@@ -239,7 +270,9 @@ pub fn throw_held(
     entities: &mut Entities,
 ) -> bool {
     let Some(held) = inventory.get(slot) else { return false };
-    if !matches!(held.item, Item::SNOWBALL | Item::EGG | Item::EXPERIENCE_BOTTLE) {
+    if !matches!(held.item, Item::SNOWBALL | Item::EXPERIENCE_BOTTLE)
+        && !crate::content::farm_variant::is_egg(held.item)
+    {
         return false;
     }
     let carry = if player.on_ground { player.vel.with_y(0.0) } else { player.vel };

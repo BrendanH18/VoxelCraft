@@ -75,13 +75,22 @@ impl Entities {
         }
         // Mob passengers hand their pursuit to the mount; the passenger's
         // own skeleton bow/zombie attack goal continues ticking in place.
-        let ridden: rustc_hash::FxHashMap<_, _> = self
-            .mobs
-            .iter()
-            .filter(|r| r.alive())
-            .filter_map(|r| r.riding.filter(|v| v & super::mounts::MOB_VEHICLE != 0).map(|v| (v, r.kind)))
-            .collect();
-        for m in self.mobs.iter_mut().filter(|m| m.simulation_active && undead(m.kind)) {
+        // The first rider controls (Java's first passenger): a camel husk's husk.
+        let mut ridden: rustc_hash::FxHashMap<u32, MobKind> = rustc_hash::FxHashMap::default();
+        for r in self.mobs.iter().filter(|r| r.alive()) {
+            if let Some(v) = r.riding.filter(|v| v & super::mounts::MOB_VEHICLE != 0) {
+                ridden.entry(v).or_insert(r.kind);
+            }
+        }
+        for m in self.mobs.iter_mut().filter(|m| m.simulation_active && super::camel_husk::mob_mount(m.kind)) {
+            if m.kind == MobKind::CamelHusk
+                && ridden.contains_key(&(super::mounts::MOB_VEHICLE | m.uid))
+                && let Some(s) = m.mount.as_mut()
+            {
+                // `RandomSitting` waits while a mob steers (`isMobControlled`).
+                s.sit_ticks = 0;
+                s.stand_ticks = 0;
+            }
             if let Some(&rider) = ridden.get(&(super::mounts::MOB_VEHICLE | m.uid)) {
                 m.hunt = ctx
                     .nearest_target(m.pos)
@@ -144,22 +153,7 @@ impl Entities {
     /// Horsemen share the saved tagged vehicle id. Ordinary mounted player
     /// controls still use State::rider; the two occupancy paths never overlap.
     pub(super) fn position_undead_riders(&mut self) {
-        let seats: rustc_hash::FxHashMap<_, _> = self
-            .mobs
-            .iter()
-            .filter(|m| m.alive() && undead(m.kind))
-            .map(|m| (m.uid, (m.pos + DVec3::Y * (m.shape().height - 0.25), m.vel)))
-            .collect();
-        for m in &mut self.mobs {
-            let Some(vehicle) = m.riding.filter(|v| v & super::mounts::MOB_VEHICLE != 0) else { continue };
-            m.previous_pos = m.pos;
-            if let Some((p, v)) = seats.get(&(vehicle & !super::mounts::MOB_VEHICLE)) {
-                m.pos = *p;
-                m.vel = *v;
-            } else {
-                m.riding = None;
-            }
-        }
+        self.position_mob_riders();
     }
 }
 

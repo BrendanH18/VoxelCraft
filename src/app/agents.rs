@@ -95,6 +95,7 @@ impl Agents {
             swimming: b.agent.session.player.swimming,
             time_since_rest: b.agent.session.vitals.time_since_rest,
             sprinting: b.agent.session.player.sprinting,
+            blocking: b.agent.session.blocking(),
             passenger: b.agent.session.player.vehicle.is_some(),
             ..Target::new(b.id, b.agent.session.player.pos, b.agent.targetable())
         })
@@ -111,7 +112,7 @@ impl Agents {
             let mut inventory = b.agent.session.inventory.clone();
             inventory.return_stacks(b.agent.session.work.into_iter().flatten());
             let mode = if b.agent.creative { voxelcraft::rules::GameMode::Creative } else { b.agent.session.mode };
-            json!({"name":name,"id":b.id.0,"position":b.agent.session.player.pos.to_array(),"yaw":b.agent.session.player.yaw,"pitch":b.agent.session.player.pitch,"mode":mode.name(),"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.session.player.flying,"time_since_rest":b.agent.session.vitals.time_since_rest,"ticks_frozen":b.agent.session.vitals.ticks_frozen,"warden_spawn_tracker":b.agent.session.vitals.warden.save(),"health":b.agent.session.vitals.health,"air":b.agent.session.vitals.air,"food":b.agent.session.vitals.hunger.food,"saturation":b.agent.session.vitals.hunger.saturation,"exhaustion":b.agent.session.vitals.hunger.exhaustion,"xp":b.agent.session.vitals.xp.serialize(),"effects":b.agent.session.vitals.effects.serialize(),"inventory":inventory.serialize(),"ender_chest":b.agent.session.ender.serialize(),"bed":b.agent.session.spawn_bed.map(|p|p.to_array()),"spawn_point":b.agent.session.spawn_point.map(|p|p.to_array()),"last_death":b.agent.session.last_death_to_string(),"dimension":dimension})
+            json!({"name":name,"id":b.id.0,"position":b.agent.session.player.pos.to_array(),"yaw":b.agent.session.player.yaw,"pitch":b.agent.session.player.pitch,"mode":mode.name(),"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.session.player.flying,"time_since_rest":b.agent.session.vitals.time_since_rest,"ticks_frozen":b.agent.session.vitals.ticks_frozen,"warden_spawn_tracker":b.agent.session.vitals.warden.save(),"health":b.agent.session.vitals.health,"air":b.agent.session.vitals.air,"food":b.agent.session.vitals.hunger.food,"saturation":b.agent.session.vitals.hunger.saturation,"exhaustion":b.agent.session.vitals.hunger.exhaustion,"xp":b.agent.session.vitals.xp.serialize(),"effects":b.agent.session.vitals.effects.serialize(),"inventory":inventory.serialize(),"ender_chest":b.agent.session.ender.serialize(),"bed":b.agent.session.spawn_bed.map(|p|p.to_array()),"spawn_point":b.agent.session.spawn_point.map(|p|p.to_array()),"last_death":b.agent.session.last_death_to_string(),"raid_omen_position":b.agent.session.raid_omen_to_string(),"dimension":dimension})
         }).collect();
         json!(profiles).to_string()
     }
@@ -157,6 +158,9 @@ impl Agents {
             if let Some(text) = p["last_death"].as_str() {
                 agent.session.load_last_death(text);
             }
+            if let Some(text) = p["raid_omen_position"].as_str() {
+                agent.session.load_raid_omen(text);
+            }
             agent.selected = p["selected"].as_u64().filter(|n| *n < 9).unwrap_or(0) as usize;
             agent.session.player.yaw = p["yaw"].as_f64().unwrap_or(0.0) as f32;
             agent.session.player.pitch = p["pitch"].as_f64().unwrap_or(0.0) as f32;
@@ -179,6 +183,7 @@ impl Agents {
             agent.session.vitals.warden = crate::world::sculk::WardenSpawnTracker::load(&p["warden_spawn_tracker"]);
             if let Some(text) = p["effects"].as_str() {
                 agent.session.vitals.effects = crate::simulation::effects::Effects::deserialize(text);
+                agent.session.vitals.restore_boosted_health(p["health"].as_f64().unwrap_or(20.0) as f32);
             }
             // Replacing a profile frees its old ID.
             self.players.remove(name);
@@ -247,6 +252,13 @@ impl Game {
                 state["clock"] =
                     if overworld { json!({"time":self.day_time,"spinning":false}) } else { json!({"spinning":true}) };
             }
+        }
+        // v0.15 Track E: the raid bar this agent sees, as the host's HUD draws it.
+        if let Some(bar) = self.mobs.entities.raids.bar_for(agent.session.id) {
+            state["raid"] = json!({"title":bar.title.text(),"progress":bar.progress});
+        }
+        if let Some(p) = agent.session.raid_omen_pos {
+            state["raid_omen_position"] = json!([p.x, p.y, p.z]);
         }
         json!({"ok":true,"version":VERSION,"tick":self.clock.ticks(),"time":self.day_time,"raining":self.weather.raining,"state":state})
     }

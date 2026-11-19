@@ -21,7 +21,7 @@ impl MobKind {
     /// slimes and swimmers steer themselves. Striders walk paths across lava
     /// (`StriderPathNavigation`).
     pub(crate) fn walks_paths(self) -> bool {
-        !self.is_aquatic() && !self.is_cube() && !matches!(self, MobKind::Ghast | MobKind::Pillager)
+        !self.is_aquatic() && !self.is_cube() && !matches!(self, MobKind::Ghast | MobKind::Vex)
     }
 
     /// `RandomStrollGoal.interval`: the mean ticks between stroll starts.
@@ -63,6 +63,7 @@ impl MobKind {
                 | MobKind::Llama
                 | MobKind::TraderLlama
                 | MobKind::Camel
+                | MobKind::CamelHusk
                 | MobKind::Turtle
                 | MobKind::Hoglin
                 | MobKind::Strider
@@ -79,7 +80,10 @@ impl MobKind {
             K::Enderman => 64.0,
             K::Blaze | K::CopperGolem | K::Allay => 48.0,
             K::Ghast => 100.0,
-            K::Fox | K::Pillager => 32.0,
+            K::Fox | K::Pillager | K::Ravager => 32.0,
+            // `Vindicator`, `Evoker` and `Illusioner.createAttributes`.
+            K::Vindicator | K::Evoker => 12.0,
+            K::Illusioner => 18.0,
             K::Llama | K::TraderLlama => 40.0,
             K::PiglinBrute => 12.0,
             K::PolarBear => 20.0,
@@ -112,7 +116,7 @@ impl MobKind {
         caps.step = match self {
             K::Sniffer => 1.0,
             K::Creaking => 1.0625,
-            K::Camel => 1.5,
+            K::Camel | K::CamelHusk => 1.5,
             K::Horse
             | K::Donkey
             | K::Mule
@@ -124,7 +128,9 @@ impl MobKind {
             | K::Drowned
             | K::Turtle
             | K::Axolotl
-            | K::Frog => 1.0,
+            | K::Frog
+            // `Ravager.createAttributes` step height 1.
+            | K::Ravager => 1.0,
             _ => 0.6,
         };
         caps.can_open_doors =
@@ -154,6 +160,7 @@ impl MobKind {
                 | K::Rabbit
                 | K::Goat
                 | K::Camel
+                | K::CamelHusk
                 | K::Creeper
                 | K::Spider
                 | K::CaveSpider
@@ -164,11 +171,15 @@ impl MobKind {
                 | K::Villager
                 | K::WanderingTrader
                 | K::Pillager
+                | K::Vindicator
+                | K::Evoker
+                | K::Illusioner
+                | K::Ravager
                 | K::Slime
                 | K::MagmaCube
                 | K::Warden
         );
-        caps.can_walk_over_fences = self == K::Camel;
+        caps.can_walk_over_fences = matches!(self, K::Camel | K::CamelHusk);
         caps.stand_on_lava = self == K::Strider;
         caps = caps.follow_range(self.follow_range_base() as f32);
         let mut m = Malus::default();
@@ -194,6 +205,8 @@ impl MobKind {
             K::Enderman => m.with(T::Water, -1.0),
             K::Sniffer => m.with(T::Water, -1.0).with(T::OnTopOfPowderSnow, -1.0).with(T::DamageCautious, -1.0),
             K::WitherSkeleton | K::ZombifiedPiglin => m.with(T::Lava, 8.0),
+            // `Ravager`'s constructor: it walks through leaves.
+            K::Ravager => m.with(T::Leaves, 0.0),
             // `Warden`'s constructor.
             K::Warden => m
                 .with(T::UnpassableRail, 0.0)

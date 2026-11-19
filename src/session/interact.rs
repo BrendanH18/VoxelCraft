@@ -38,6 +38,20 @@ pub enum Used {
     CushionPlaced {
         at: DVec3,
     },
+    /// v0.15 Track B: a lectern holding a book was used; its reading
+    /// screen opens (`LecternMenu`).
+    Lectern {
+        cell: IVec3,
+    },
+    /// A book and quill or written book in hotbar `slot` was used: its
+    /// editor or reader opens.
+    OpenBook {
+        slot: usize,
+    },
+    /// A book went onto the lectern at `cell` (`BOOK_PUT`).
+    LecternBook {
+        cell: IVec3,
+    },
     /// A villager with offers was targeted; its trading screen should open.
     OpenMerchant(u64),
     /// A villager with no offers was targeted; nothing else happens.
@@ -301,7 +315,12 @@ impl PlayerSession {
             match result {
                 Ok(u) => {
                     off_hand = u.is_some();
-                    used = u;
+                    // The book that opened is the off-hand's, not the
+                    // hotbar stack swapped back into `slot`.
+                    used = match u {
+                        Some(Used::OpenBook { .. }) => Some(Used::OpenBook { slot: super::books::OFFHAND_SLOT }),
+                        u => u,
+                    };
                 }
                 Err(e) => return Err(main_error.unwrap_or(e)),
             }
@@ -498,6 +517,11 @@ impl PlayerSession {
         if self.block_takes_use(slot, world, ctx.sneaking) {
             return Ok(None);
         }
+        // v0.15 Track B: `WritableBookItem.use` / `WrittenBookItem.use` open
+        // the book (`Player.openItemGui`).
+        if self.inventory.get(slot).is_some_and(|s| matches!(s.item, Item::WRITABLE_BOOK | Item::WRITTEN_BOOK)) {
+            return Ok(Some(Used::OpenBook { slot }));
+        }
         if self.inventory.get(slot).is_some_and(|s| s.item == Item::MAP) {
             let pos = self.player.pos.floor().as_ivec3();
             let data = crate::world::maps::MapData::fresh(pos.x, pos.z, 0, world.generator.dimension, true, false);
@@ -656,9 +680,10 @@ impl PlayerSession {
             Used::TntPrimed { cell } => (cell, E::PrimeFuse),
             Used::CakeBitten { cell } => (cell, E::Eat),
             Used::Screen { cell, block } if crate::world::chest::is_chest(block) => (cell, E::ContainerOpen),
-            Used::Composter { cell } | Used::Harvested { cell } | Used::EyeInserted { cell, .. } => {
-                (cell, E::BlockChange)
-            }
+            Used::Composter { cell }
+            | Used::Harvested { cell }
+            | Used::EyeInserted { cell, .. }
+            | Used::LecternBook { cell } => (cell, E::BlockChange),
             Used::Ignited { cell, .. } => (cell, E::BlockPlace),
             _ => return,
         };
@@ -735,6 +760,28 @@ impl PlayerSession {
         if let Some(used) = self.use_colour_block(slot, world, pos, ctx) {
             return Ok(Some(used));
         }
+        // v0.15 Track B: `LecternBlock.useItemOn` / `useWithoutItem`. A
+        // lectern with a book opens; an empty one takes a held book, and
+        // otherwise swallows the click.
+        if !(ctx.sneaking && held.is_some())
+            && let Some((_, has_book, _)) = world.get_block(pos).and_then(|b| crate::world::workstations::lectern(b.0))
+        {
+            if has_book {
+                return Ok(Some(Used::Lectern { cell: pos }));
+            }
+            if let Some(book) = self.inventory.get(slot).filter(|s| crate::content::books::lectern_book(s.item))
+                && can_build
+                && world.place_lectern_book(pos, book)
+            {
+                // `consumeAndReturn`: players with infinite materials keep it.
+                if !creative {
+                    self.inventory.take_one(slot);
+                }
+                return Ok(Some(Used::LecternBook { cell: pos }));
+            }
+            let effect = crate::world::utilities::interact::Effect::Consumed;
+            return Ok(Some(Used::Utility { cell: pos, effect }));
+        }
         // Java skips block use only when sneaking with something in hand.
         if !(ctx.sneaking && held.is_some())
             && let Some(effect) = crate::world::utilities::interact::use_block(
@@ -789,7 +836,8 @@ impl PlayerSession {
                         || b == Block::ENCHANTING_TABLE
                         || b.is_anvil()
                         || b.base() == Block::GRINDSTONE
-                        || b == Block::SMITHING_TABLE =>
+                        || b == Block::SMITHING_TABLE
+                        || crate::content::interaction::workstation_screen(b) =>
                 {
                     return Ok(Some(Used::Screen { cell: pos, block: b }));
                 }

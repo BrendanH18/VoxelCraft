@@ -73,11 +73,15 @@ pub enum Generation {
     /// v0.14: generation 2's terrain with structures built from templates
     /// by the jigsaw assembler (villages first).
     V3 = 3,
+    /// v0.15: generation 3 with woodland mansions and Java's village,
+    /// trial chamber and ancient city template catalogues. Generation 3's
+    /// output is pinned by `generation_3_chunk_hashes_stay_identical`.
+    V4 = 4,
 }
 
 impl Generation {
     /// What new worlds use.
-    pub const LATEST: Generation = Generation::V3;
+    pub const LATEST: Generation = Generation::V4;
     /// The `level.txt` key.
     pub const KEY: &'static str = "worldgen";
 
@@ -90,6 +94,7 @@ impl Generation {
             Some(Ok(1)) => Generation::V1,
             Some(Ok(2)) => Generation::V2,
             Some(Ok(3)) => Generation::V3,
+            Some(Ok(4)) => Generation::V4,
             Some(_) => {
                 log::warn!("unknown world generation {value:?}; using {:?}", Generation::LATEST);
                 Generation::LATEST
@@ -870,6 +875,9 @@ impl Generator {
                 self.relics.paint(self, &mut blocks, base);
                 if portals {
                     self.ruined_portals.paint(self, &mut blocks, base);
+                }
+                if self.generation >= Generation::V4 {
+                    self.temples.paint_mansions(self, &mut blocks, base);
                 }
                 return ChunkData::from_dense(blocks);
             }
@@ -2068,12 +2076,68 @@ mod tests {
         }
     }
 
+    /// Golden block IDs and structure features of [`Generation::V3`] (v0.14,
+    /// tagged 2026-11-16), so v0.15's generation 4 work (woodland mansions
+    /// and the template catalogues) can't leak into generation-3 worlds.
+    /// Beyond generation 1's chunk set, each seed covers its nearest
+    /// village, outpost, trail ruins, ancient city and trial chamber. Their
+    /// positions are part of the structure hash. Captured at v0.15's start.
+    #[test]
+    fn generation_3_chunk_hashes_stay_identical() {
+        use super::super::temples::Kind;
+        for (seed, expected) in [
+            (12345, (0x7a4a_60f4_f1f4_1b0bu64, 0xee68_342d_682a_ed93u64)),
+            (99, (0xa887_2f0f_db52_d162u64, 0x37bf_202b_caf9_7215u64)),
+        ] {
+            let g = Generator::with_generation(seed, Dimension::Overworld, Generation::V3);
+            let fnv = |hash: &mut u64, bytes: &[u8]| {
+                for &byte in bytes {
+                    *hash = (*hash ^ u64::from(byte)).wrapping_mul(0x100_0000_01b3);
+                }
+            };
+            let (mut blocks, mut features) = (0xcbf2_9ce4_8422_2325u64, 0xcbf2_9ce4_8422_2325u64);
+            let structures = [
+                ("village", g.villages.nearest(&g, IVec3::ZERO), 3),
+                ("outpost", g.temples.nearest(&g, Kind::Outpost, IVec2::ZERO, 3000), 2),
+                ("trail ruins", g.trail_ruins.nearest(&g, IVec2::ZERO, 3000), 1),
+                ("ancient city", g.ancient_cities.nearest(&g, IVec2::ZERO, 3000), 2),
+                ("trial chamber", g.trial_chambers.nearest(&g, IVec2::ZERO, 3000), 2),
+            ];
+            let (lo, hi) = (Dimension::Overworld.chunk_rows().start, Dimension::Overworld.chunk_rows().end);
+            let mut positions: Vec<_> =
+                (-3..=3).flat_map(|x| (-3..=3).flat_map(move |z| (lo..hi).map(move |y| IVec3::new(x, y, z)))).collect();
+            positions.extend([IVec3::new(-31, 0, 17), IVec3::new(17, 1, -23), IVec3::new(4, 4, 39)]);
+            let around = |p: IVec3, r: i32| {
+                let c = p.div_euclid(IVec3::splat(CHUNK_SIZE_I));
+                (-r..=r).flat_map(move |x| (-r..=r).flat_map(move |z| (-1..=1).map(move |y| c + IVec3::new(x, y, z))))
+            };
+            for (name, at, r) in structures {
+                // Not every seed has every structure within reach; a missing
+                // one is pinned as missing.
+                let Some(at) = at else {
+                    fnv(&mut features, format!("{name} none").as_bytes());
+                    continue;
+                };
+                fnv(&mut features, format!("{name} {at:?}").as_bytes());
+                positions.extend(around(at, r));
+            }
+            let mut seen = std::collections::HashSet::new();
+            positions.retain(|p| seen.insert(*p));
+            for p in positions {
+                g.generate(p).for_each_block(|block| fnv(&mut blocks, &block.0.to_le_bytes()));
+                fnv(&mut features, format!("{p:?} {:?}", g.structure_features(p)).as_bytes());
+            }
+            assert_eq!((blocks, features), expected, "seed {seed}: ({blocks:#x}, {features:#x})");
+        }
+    }
+
     #[test]
     fn saved_worlds_keep_their_generation() {
         assert_eq!(Generation::from_prop(None), Generation::V1, "worlds from before v0.13");
         assert_eq!(Generation::from_prop(Some("1")), Generation::V1);
         assert_eq!(Generation::from_prop(Some("2")), Generation::V2);
         assert_eq!(Generation::from_prop(Some("3")), Generation::V3);
+        assert_eq!(Generation::from_prop(Some("4")), Generation::V4);
         assert_eq!(Generation::from_prop(Some("99")), Generation::LATEST);
         assert_eq!(Generation::from_prop(Some(&Generation::LATEST.number().to_string())), Generation::LATEST);
         assert_eq!(Generator::new(1).generation, Generation::LATEST);

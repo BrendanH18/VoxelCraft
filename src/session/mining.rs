@@ -293,7 +293,7 @@ impl PlayerSession {
         let harvest = mining::can_harvest(block, held.map(|s| s.item));
         let tool = held.map_or(Default::default(), |s| s.active_enchants());
         let melts = survival
-            && block == Block::ICE
+            && (block == Block::ICE || crate::world::frosted_ice::owns(block.0))
             && !tool.has(Enchantment::SilkTouch)
             && world.generator.dimension != crate::world::terrain::Dimension::Nether
             && world.get_block(pos - IVec3::Y).is_some_and(crate::content::mining::ice_support);

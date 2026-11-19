@@ -308,7 +308,7 @@ pub const BARTERING: [(Barter, u32, u8, u8); 18] = [
     (Barter::Item(Item::LEATHER), 40, 2, 4),
     (Barter::Item(Item::from_block(Block::SOUL_SAND)), 40, 2, 8),
     (Barter::Item(Item::NETHER_BRICK), 40, 2, 8),
-    (Barter::Missing("spectral arrow"), 40, 6, 12),
+    (Barter::Item(Item::SPECTRAL_ARROW), 40, 6, 12),
     (Barter::Item(Item::from_block(Block::GRAVEL)), 40, 8, 16),
     (Barter::Item(Item::from_block(Block::BLACKSTONE)), 40, 8, 16),
 ];
@@ -647,6 +647,7 @@ impl Entities {
                 self.panda_hurt(i, Foe::Mob(attacker));
                 self.armadillo_hurt(i, Foe::Mob(attacker));
                 self.endermite_hurt(i, Foe::Mob(attacker));
+                self.illager_hurt(i, Foe::Mob(attacker));
                 if let Some(owner) = self.mobs[i].animal.as_ref().and_then(|a| a.owner) {
                     self.animals_defend_owner(attacker, owner);
                 }
@@ -1013,13 +1014,15 @@ impl Entities {
                     || m.lightning_charged
                     || m.kind.never_distance_despawns()
                     || m.kind.has_animal_state()
-                    || super::undead_mounts::undead(m.kind)
+                    || super::camel_husk::mob_mount(m.kind)
                     || m.riding.is_some()
                     || matches!(m.kind, MobKind::Zombie | MobKind::Husk | MobKind::Drowned)
                     || matches!(m.kind, MobKind::Stray | MobKind::Bogged | MobKind::Phantom)
                     || m.kind == MobKind::Bat
                     // `Lifetime` keeps counting across a restart.
                     || m.kind == MobKind::Endermite
+                    // Raid membership, spells, a vex's life and owner.
+                    || m.illager.is_some()
                     // A heart's protector keeps its binding across a restart.
                     || m.creaking.as_ref().is_some_and(|s| s.home.is_some())
                     || m.freezing.as_ref().is_some_and(|f| f.exposure > 0 || f.conversion.is_some()))
@@ -1085,7 +1088,9 @@ impl Entities {
             // armor an older build let one wear drops beside it.
             if !super::mounts::wears_horse_armor(mob.kind)
                 && let Some(s) = mob.mount.as_mut()
-                && let Some(stack) = s.slots[1].take_if(|s| super::mounts::armor_points(s.item) > 0)
+                && let Some(stack) = s.slots[1].take_if(|s| {
+                    s.item.body_armor().is_some_and(|(fits, _)| fits == crate::equipment::BodyArmor::Horse)
+                })
             {
                 self.scatter(stack, mob.pos);
             }
@@ -1595,6 +1600,10 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
         "celebrate": n.filter(|n| n.celebrate_left > 0.0).map(|n| json!([n.celebrate_left, n.celebrate_at.to_array(), n.dancing])),
     });
     // Optional additions preserve legacy records byte-for-byte when absent.
+    // v0.15 Track D: a chicken's, cow's or pig's variant by registry name.
+    if super::animals::has_farm_variant(m.kind) && m.farm_variant() != Default::default() {
+        v["farm_variant"] = json!(m.farm_variant().name());
+    }
     if m.water_conversion != super::lightning::WaterConversion::default() {
         v["water_conversion"] = m.water_conversion.save();
     }
@@ -1649,6 +1658,18 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     }
     if let Some(s) = &m.endermite {
         s.save_into(&mut v);
+    }
+    if let Some(s) = &m.illager {
+        v["illager"] = s.save();
+    }
+    if m.can_pick_up_loot {
+        v["can_pick_up_loot"] = true.into();
+    }
+    if let Some(s) = &m.happy_ghast {
+        v["happy_ghast"] = s.save();
+    }
+    if let Some(s) = &m.nautilus {
+        v["nautilus"] = s.save();
     }
     if let Some(s) = &m.copper_golem {
         v["copper_golem"] = s.save();
@@ -1767,6 +1788,21 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     if let Some(s) = &mut m.endermite {
         s.load(v);
     }
+    // v0.15 Track E: a raid witch keeps its raider state.
+    if kind == MobKind::Witch && v["illager"].is_object() {
+        m.illager = Some(Box::default());
+    }
+    if let Some(s) = &mut m.illager {
+        s.load(&v["illager"]);
+    }
+    // `Pillager.readAdditionalSaveData` turns `CanPickUpLoot` on.
+    m.can_pick_up_loot = v["can_pick_up_loot"] == true || kind == MobKind::Pillager;
+    if let Some(s) = &mut m.happy_ghast {
+        **s = super::happy_ghast::State::load(&v["happy_ghast"]);
+    }
+    if let Some(s) = &mut m.nautilus {
+        **s = super::nautilus::State::load(&v["nautilus"]);
+    }
     if let Some(s) = &mut m.copper_golem {
         s.load(&v["copper_golem"]);
     }
@@ -1797,6 +1833,14 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
             a.variant = v["animal"]["variant"].as_u64().unwrap_or(0).min(10) as u8;
         }
     }
+    if super::animals::has_farm_variant(kind) {
+        // Older saves (and temperate animals) have no name: temperate.
+        let variant = v["farm_variant"]
+            .as_str()
+            .and_then(crate::content::farm_variant::FarmVariant::from_name)
+            .unwrap_or_default();
+        m.set_farm_variant(variant);
+    }
     m.effects = crate::simulation::effects::Effects::deserialize(v["effects"].as_str().unwrap_or(""));
     m.grow = v["grow"].as_f64().filter(|g| g.is_finite() && *g >= 0.0).unwrap_or(0.0) as f32;
     m.wool_color = crate::color::DyeColor::ALL.get(v["color"].as_u64().unwrap_or(0).min(15) as usize).copied().unwrap();
@@ -1805,6 +1849,14 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     }
     let fresh = std::mem::take(&mut m.equipment);
     m.equipment = super::equipment::load_mob_equipment(v, fresh, &super::equipment::Legacy::nether(v, kind));
+    // A pillager saved before v0.15 shot from an implied crossbow; its record
+    // has no `illager` state, and the v0.15 attack needs one in hand.
+    if kind == MobKind::Pillager
+        && v["illager"].is_null()
+        && m.equipment.get(super::equipment::Slot::MainHand).is_none()
+    {
+        m.equipment.set(super::equipment::Slot::MainHand, Some(crate::inventory::Stack::new(Item::CROSSBOW, 1)));
+    }
     m.held = v["held"].as_str().map(Weapon::from_name);
     m.restrict = v["restrict"].as_array().filter(|a| a.len() == 4).and_then(|a| {
         let n = |i: usize| a[i].as_i64().and_then(|n| i32::try_from(n).ok());
@@ -2010,10 +2062,11 @@ mod tests {
                 None => empty += 1,
             }
         }
-        // Expected 4000 obsidian, 1000 pearls and 4500 missing-item rolls.
+        // Expected 4000 obsidian, 1000 pearls and 500 missing-item rolls
+        // (the Soul Speed book; spectral arrows exist since v0.15 Track D).
         assert!((3700..4300).contains(&obsidian), "{obsidian}");
         assert!((850..1150).contains(&pearls), "{pearls}");
-        assert!((4200..4800).contains(&empty), "{empty}");
+        assert!((400..600).contains(&empty), "{empty}");
         // Every existing output is a real item.
         let mut rng = Rng::new(1);
         assert!((0..2000).filter_map(|_| barter(&mut rng)).all(|s| s.item.is_valid()));

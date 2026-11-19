@@ -1,6 +1,7 @@
 //! Overworld structures added in v0.6: desert pyramids, jungle temples,
 //! swamp huts, igloos, pillager outposts, shipwrecks, ocean ruins and ocean
-//! monuments.
+//! monuments; and v0.15's woodland mansions (generation 4, laid out by
+//! [`super::mansion`]).
 //!
 //! Placement follows Java's `random_spread` structure sets: the world is
 //! cut into regions of `spacing` 16×16 chunks and each region holds at
@@ -46,10 +47,12 @@ pub enum Kind {
     Shipwreck,
     OceanRuin,
     Monument,
+    /// v0.15 Track F: woodland mansions, in generation 4 only.
+    Mansion,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 8] = [
+    pub const ALL: [Kind; 9] = [
         Kind::DesertPyramid,
         Kind::JungleTemple,
         Kind::SwampHut,
@@ -58,6 +61,7 @@ impl Kind {
         Kind::Shipwreck,
         Kind::OceanRuin,
         Kind::Monument,
+        Kind::Mansion,
     ];
 
     /// Java's structure id.
@@ -71,6 +75,7 @@ impl Kind {
             Kind::Shipwreck => "shipwreck",
             Kind::OceanRuin => "ocean_ruin",
             Kind::Monument => "monument",
+            Kind::Mansion => "mansion",
         }
     }
 
@@ -81,6 +86,7 @@ impl Kind {
             "ocean_monument" => "monument",
             "outpost" => "pillager_outpost",
             "witch_hut" => "swamp_hut",
+            "woodland_mansion" => "mansion",
             other => other,
         };
         Self::ALL.into_iter().find(|k| k.name() == name)
@@ -97,12 +103,14 @@ impl Kind {
             Kind::Shipwreck => (24, 4, 165_745_295),
             Kind::Outpost => (32, 8, 165_745_296),
             Kind::Monument => (32, 5, 10_387_313),
+            Kind::Mansion => (super::mansion::SPACING, super::mansion::SEPARATION, super::mansion::SALT),
         }
     }
 
     /// Furthest a build reaches from its start chunk's centre.
     fn reach(self) -> i32 {
         match self {
+            Kind::Mansion => super::mansion::REACH,
             Kind::Monument => 40,
             Kind::Shipwreck => 20,
             Kind::Outpost | Kind::DesertPyramid | Kind::JungleTemple => 16,
@@ -135,6 +143,7 @@ impl Kind {
             Kind::Shipwreck => biome.is_ocean() || biome == Beach || biome == SnowyBeach,
             Kind::OceanRuin => biome.is_ocean(),
             Kind::Monument => biome.is_deep_ocean(),
+            Kind::Mansion => super::mansion::allowed(biome),
         }
     }
 }
@@ -155,6 +164,8 @@ pub enum LootTable {
     RuinBig,
     RuinedPortal,
     BuriedTreasure,
+    /// v0.15 Track F: `chests/woodland_mansion`.
+    Mansion,
 }
 
 /// One built structure: its blocks, chests and where its mobs live.
@@ -168,6 +179,24 @@ pub struct Built {
     pub residents: Vec<(crate::entity::MobKind, IVec3)>,
     /// Generation 3 outposts; legacy structures keep their sparse block list.
     placed: Vec<super::jigsaw::Placed>,
+    /// A woodland mansion's layout, painted by [`super::mansion`].
+    pub mansion: Option<Arc<super::mansion::Layout>>,
+}
+
+impl Built {
+    /// A woodland mansion as a temple: its box, chests and residents.
+    fn mansion(layout: super::mansion::Layout) -> Built {
+        Built {
+            kind: Kind::Mansion,
+            bounds: layout.bounds,
+            blocks: Vec::new(),
+            features: layout.features.clone(),
+            spawns: layout.bounds,
+            residents: layout.residents.clone(),
+            placed: Vec::new(),
+            mansion: Some(Arc::new(layout)),
+        }
+    }
 }
 
 /// Lays out a build in a rotated local frame: x across, z away from the
@@ -422,7 +451,16 @@ impl Builder {
         blocks.sort_unstable_by_key(|(p, _)| (p.y, p.z, p.x));
         let bounds = Bounds { min, max };
         let spawns = Bounds { min, max: max + IVec3::Y * spawns_up };
-        Built { kind, bounds, blocks, features: self.features, spawns, residents: self.residents, placed: Vec::new() }
+        Built {
+            kind,
+            bounds,
+            blocks,
+            features: self.features,
+            spawns,
+            residents: self.residents,
+            placed: Vec::new(),
+            mansion: None,
+        }
     }
 }
 
@@ -452,7 +490,7 @@ impl Temples {
         let mut rng = JavaRandom::new(seed as i64);
         let span = spacing - separation;
         let offset = |rng: &mut JavaRandom| {
-            if kind == Kind::Monument {
+            if matches!(kind, Kind::Monument | Kind::Mansion) {
                 (rng.next_bounded(span) + rng.next_bounded(span)) / 2
             } else {
                 rng.next_bounded(span)
@@ -461,6 +499,24 @@ impl Temples {
         let ox = offset(&mut rng);
         let oz = offset(&mut rng);
         region * spacing + IVec2::new(ox, oz)
+    }
+
+    /// The start chunk `kind` would use in placement region `region`.
+    pub fn start_chunk(&self, kind: Kind, region: IVec2) -> IVec2 {
+        self.start(kind, region)
+    }
+
+    /// Whether a structure of `kind` starts at its placement's start chunk
+    /// `start` (the checks `get` builds after), without building it.
+    pub fn generates(&self, g: &Generator, kind: Kind, start: IVec2) -> bool {
+        self.valid_start(g, kind, start)
+    }
+
+    /// Whether the ocean ruin starting at `start` is a warm one (Java's
+    /// `ocean_ruin_warm`, which shares the `ocean_ruins` placement).
+    pub fn ocean_ruin_is_warm(&self, g: &Generator, start: IVec2) -> bool {
+        let centre = start * 16 + IVec2::splat(8);
+        ocean_ruins::warm(g.column(centre.x, centre.y).biome)
     }
 
     /// The structure of `kind` in `region`, built on first use.
@@ -472,12 +528,17 @@ impl Temples {
             return found.clone();
         }
         let start = self.start(kind, region);
-        let centre = start * 16 + IVec2::splat(8);
-        let col = g.column(centre.x, centre.y);
-        let mut rng = Rng(hash3(start.x, start.y, kind as i32, self.seed ^ 0x7E3D));
-        let ok = self.valid_start(g, kind, start);
-        let built = ok
-            .then(|| Arc::new(self.build(g, kind, centre, col.height, &mut rng)))
+        let built = if kind == Kind::Mansion {
+            // Laid out once per start and cached with the other structures.
+            super::mansion::start(g, start).map(|s| Arc::new(Built::mansion(super::mansion::Layout::build(g, s))))
+        } else {
+            let centre = start * 16 + IVec2::splat(8);
+            let col = g.column(centre.x, centre.y);
+            let mut rng = Rng(hash3(start.x, start.y, kind as i32, self.seed ^ 0x7E3D));
+            let ok = self.valid_start(g, kind, start);
+            ok.then(|| Arc::new(self.build(g, kind, centre, col.height, &mut rng)))
+        };
+        let built = built
             .filter(|b| kind != Kind::Outpost || g.generation < super::terrain::Generation::V3 || !b.placed.is_empty());
         let mut cache = self.cache.lock().unwrap();
         if let Some(found) = cache.get(&(kind, region)) {
@@ -494,6 +555,9 @@ impl Temples {
     /// Whether a structure of `kind` generates at its start chunk `start`:
     /// the biome and ground checks `get` builds after, without building it.
     fn valid_start(&self, g: &Generator, kind: Kind, start: IVec2) -> bool {
+        if kind == Kind::Mansion {
+            return super::mansion::start(g, start).is_some();
+        }
         let centre = start * 16 + IVec2::splat(8);
         let col = g.column(centre.x, centre.y);
         kind.allowed(col.biome)
@@ -624,8 +688,12 @@ impl Temples {
         }
     }
     fn around(&self, g: &Generator, lo: IVec2, hi: IVec2) -> Vec<Arc<Built>> {
+        self.around_kinds(g, lo, hi, &Kind::ALL)
+    }
+
+    fn around_kinds(&self, g: &Generator, lo: IVec2, hi: IVec2, kinds: &[Kind]) -> Vec<Arc<Built>> {
         let mut out = Vec::new();
-        for kind in Kind::ALL {
+        for &kind in kinds {
             let (spacing, _, _) = kind.placement();
             let r = if g.generation >= super::terrain::Generation::V3 && matches!(kind, Kind::Outpost | Kind::OceanRuin)
             {
@@ -666,6 +734,10 @@ impl Temples {
                 outpost_templates::paint(g, &b, blocks, base);
                 continue;
             }
+            if let Some(layout) = &b.mansion {
+                layout.paint(blocks, base);
+                continue;
+            }
             let start = b.blocks.partition_point(|(p, _)| p.y < base.y);
             for &(p, block) in &b.blocks[start..] {
                 if p.y > top.y {
@@ -675,6 +747,18 @@ impl Temples {
                     let l = p - base;
                     blocks[index(l.x as usize, l.y as usize, l.z as usize)] = block;
                 }
+            }
+        }
+    }
+
+    /// Paints only the woodland mansions crossing the chunk at `base`: a
+    /// mansion's roof can stand in a chunk above the terrain's open-sky
+    /// cut-off (generation 4).
+    pub fn paint_mansions(&self, g: &Generator, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3) {
+        let top = base + IVec3::splat(CHUNK_SIZE_I - 1);
+        for b in self.around_kinds(g, IVec2::new(base.x, base.z), IVec2::new(top.x, top.z), &[Kind::Mansion]) {
+            if let Some(layout) = &b.mansion {
+                layout.paint(blocks, base);
             }
         }
     }
@@ -737,6 +821,13 @@ impl Temples {
                     if ocean_warm.is_some_and(|want| ocean_ruins::warm(g.column(c.x, c.y).biome) != want) {
                         continue;
                     }
+                    // A mansion's start is known without laying it out.
+                    if kind == Kind::Mansion {
+                        if let Some(s) = super::mansion::start(g, self.start(kind, region)) {
+                            best = Some((d, IVec3::new(c.x, s.origin.y, c.y)));
+                        }
+                        continue;
+                    }
                     if let Some(b) = self.get(g, kind, region) {
                         let y = (b.bounds.min.y + b.bounds.max.y) / 2;
                         best = Some((d, IVec3::new(c.x, y, c.y)));
@@ -775,6 +866,7 @@ impl Temples {
             }
             Kind::OceanRuin => ocean_ruin(g, centre, ground, rot, seed, rng),
             Kind::Monument => monument(g, centre, rot, rng),
+            Kind::Mansion => unreachable!("mansions are built by `get`"),
         }
     }
 }
@@ -1822,6 +1914,7 @@ impl LootTable {
             Self::RuinBig => "underwater_ruin_big",
             Self::RuinedPortal => "ruined_portal",
             Self::BuriedTreasure => "buried_treasure",
+            Self::Mansion => "woodland_mansion",
         }
     }
 }
@@ -1886,6 +1979,8 @@ mod tests {
                     Kind::Shipwreck => shipwreck(&g, centre, 40, rot, 9, &mut rng),
                     Kind::OceanRuin => ocean_ruin(&g, centre, 40, rot, 9, &mut rng),
                     Kind::Monument => monument(&g, centre, rot, &mut rng),
+                    // Laid out by `mansion`, which has its own tests.
+                    Kind::Mansion => continue,
                 };
                 assert!(
                     built.bounds.contains(IVec3::new(centre.x, built.bounds.min.y, centre.y)),
@@ -2379,7 +2474,8 @@ mod tests {
         // generation 3 outpost has dedicated chunk/marker/order regressions.
         let g = Generator::with_generation(1, Dimension::Overworld, super::super::terrain::Generation::V2);
         let mut found = 0;
-        for kind in Kind::ALL {
+        // Woodland mansions are generation 4 templates with their own tests.
+        for kind in Kind::ALL.into_iter().filter(|&k| k != Kind::Mansion) {
             let at =
                 g.temples.nearest(&g, kind, IVec2::ZERO, 8000).expect("seed 1 has every structure within 8000 blocks");
             found += 1;
@@ -2412,7 +2508,7 @@ mod tests {
                 }
             }
         }
-        assert_eq!(found, Kind::ALL.len());
+        assert_eq!(found, Kind::ALL.len() - 1);
         // Loot is deterministic.
         assert_eq!(loot(9, LootTable::DesertPyramid).slots, loot(9, LootTable::DesertPyramid).slots);
     }

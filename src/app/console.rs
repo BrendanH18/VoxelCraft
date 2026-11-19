@@ -401,6 +401,8 @@ impl Game {
                     )
                     .ok_or("no villager within reach")?;
                 if let Some(i) = index {
+                    // As the trading screen does: an offer unlocked since can be an unresolved map.
+                    self.mobs.entities.prepare_merchant_maps(&mut self.world, id);
                     let xp = self.mobs.entities.trade_for(id, i, &mut self.session.inventory, self.session.id)?;
                     self.mobs.entities.spawn_xp(self.session.player.pos, xp);
                 } else {
