@@ -5,3 +5,10 @@
 .DS_Store
 /.claude/settings.local.json
 /.claude/worktrees/
+
+# Secrets and local-only files
+.env
+.env.*
+*.pem
+*.key
+!.env.example
