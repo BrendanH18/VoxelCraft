@@ -876,6 +876,9 @@ impl Generator {
                 if portals {
                     self.ruined_portals.paint(self, &mut blocks, base);
                 }
+                if self.generation >= Generation::V4 {
+                    self.temples.paint_mansions(self, &mut blocks, base);
+                }
                 return ChunkData::from_dense(blocks);
             }
             return ChunkData::Uniform(Block::AIR);

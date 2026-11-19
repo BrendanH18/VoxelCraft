@@ -958,8 +958,9 @@ the effect constants and colours, the potions and their item IDs, the
 frosted ice and Frost Walker constants, the trim patterns, material
 colours, tag and template rarities, the farm variants' biomes and the
 chicken's eggs, the loot tables the game carries (the trail ruins'
-archaeology table, end city and woodland mansion chests are owned
-elsewhere and listed in the test), and saves and reloads the new stacks,
+archaeology table and end city chests are owned elsewhere and listed in
+the test; woodland mansion chests carry the vex template since v0.15
+Track F), and saves and reloads the new stacks,
 farm variants and frosted ice with its pending tick. Recipes are checked by
 `tests/java_recipes.rs` (the spectral arrow, the 18 template copies and the
 18 `smithing_trim` recipes) and brewing by `tests/java_brewing.rs`.
@@ -1075,3 +1076,28 @@ scripts/remote-check.sh -- 'cargo test --release structure_catalogue'
 templates drawn from them and the processor rule tables with the fixture
 both ways.
 
+`mansions.json` (v0.15 Track F) holds the woodland mansion's and the five
+new explorer maps' facts: the `woodland_mansion` structure and its
+`woodland_mansions` structure set (registered in code, read with `javap`
+from `Structures`, `StructureSets` and `Structure$StructureSettings`), the
+start offset and lowest start y of `WoodlandMansionStructure`, the
+`has_structure/woodland_mansion` biome tag, the `on_*_maps` structure tags,
+the `chests/woodland_mansion` table, and for each of the 73
+`structure/woodland_mansion/*.nbt` templates only its size, whether every
+cell is stored, its data markers (name and position), its containers with
+fixed contents, its empty chest count and the room-kind block families it
+contains. No template layout is copied (fidelity exception FE-02). It also
+lists every `villager_trade` and loot table that gives one of the five maps,
+the cartographer trade tags and `clonable_maps`. Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_mansion_fixtures.py /path/to/server.jar --output target/java-mansions.json
+diff tests/fixtures/java/26.3/mansions.json target/java-mansions.json
+scripts/remote-check.sh -- 'cargo test --release --lib -- mansion explorer_maps master_cartographer'
+```
+
+`world::mansion` checks its template table, fixed containers, placement
+constants, biome tag and room kinds against this file both ways, and
+`world::explorer_maps` the maps' names, sources, decorations and trade.
+The woodland mansion chest table itself is in `src/world/loot_tables.json`
+(added to `tools/extract_java_structure_loot.py`'s list).

@@ -955,6 +955,18 @@ unsaved `EntityEvent::MobArrow` and `MobGrief`. Mob records gain the
 life, ravager timers) and `can_pick_up_loot`. See the
 [Track A record](verification/2026-11-18-v0.15-illagers.md).
 
+**Track F allocation** (2026-11-18, implemented, unverified;
+[record](verification/2026-11-18-v0.15-mansions.md)): items 1629–1633 are
+the woodland mansion, desert pyramid, warm ocean ruins, buried mineshaft and
+buried ancient city maps in that order (`world::explorer_maps`); texture
+layers 4056–4060 are their icons and 4061–4065 their map decorations
+(4066–4071 unused); no block states. Appended: `temples::Kind::Mansion`
+(saved by name only as `/locate` input, never in saves),
+`temples::LootTable::Mansion`, `fortress::Feature::MansionChest` (not
+saved), and the map save's `references` list (destination tag and start
+chunk; older saves load with none). The woodland mansion lives in
+`world::mansion` and is painted, cached and located through `temples`.
+
 **Track D allocation** (2026-11-18, implemented, unverified;
 [record](verification/2026-11-18-v0.15-items-effects.md)):
 

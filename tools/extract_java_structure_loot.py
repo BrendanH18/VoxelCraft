@@ -30,6 +30,7 @@ TABLES = [
     "stronghold_library",
     "ancient_city",
     "ancient_city_ice_box",
+    "woodland_mansion",
     "village/village_cartographer",
     *["village/village_" + s + "_house" for s in ["plains", "desert", "savanna", "taiga", "snowy"]],
     # v0.16 trial chambers (chests, dispensers, spawner drops, equipment).

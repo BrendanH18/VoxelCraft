@@ -1793,6 +1793,31 @@ mod map_tests {
         );
         assert_eq!(loaded.mobs[0].villager.as_ref().unwrap().map_variant.as_deref(), Some("desert"));
     }
+    /// v0.15 Track F: the master cartographer's
+    /// `emerald_and_compass_woodland_mansion_map` offer points at a mansion.
+    #[test]
+    fn master_cartographer_sells_the_woodland_mansion_map() {
+        let generator = Arc::new(Generator::new(42));
+        let mut world = World::new_headless(generator.clone(), Default::default(), 1);
+        let mut entities = Entities::new(42);
+        entities.spawn(MobKind::Villager, DVec3::new(0.0, 80.0, 0.0));
+        let v = entities.mobs[0].villager.as_mut().unwrap();
+        v.set_profession(Profession::Cartographer);
+        v.level = 5;
+        v.unlock();
+        let id = v.id;
+        entities.prepare_merchant_maps(&mut world, id);
+        let map = crate::world::explorer_maps::WOODLAND_MANSION_MAP;
+        let offer =
+            entities.mobs[0].villager.as_ref().unwrap().offers.iter().flatten().find(|o| o.output.item == map).unwrap();
+        assert_eq!(offer.cost, Stack::new(Item::EMERALD, 14));
+        assert_eq!(offer.second, Some(Stack::new(Item::COMPASS, 1)));
+        assert_eq!((offer.max_uses, offer.xp, offer.multiplier), (12, 30, 0.2));
+        let data = &world.maps.maps[&offer.output.map_id.unwrap()];
+        let d = data.decorations.iter().find(|d| d.kind == "mansion").unwrap();
+        let chunk = glam::IVec2::new(d.x as i32, d.z as i32).div_euclid(glam::IVec2::splat(16));
+        assert!(crate::world::mansion::start(&generator, chunk).is_some());
+    }
     #[test]
     fn java_26_3_cartographer_predicates_filter_biome_variants() {
         let map = |name| trades::item(name).unwrap();

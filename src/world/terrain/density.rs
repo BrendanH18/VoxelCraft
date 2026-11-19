@@ -579,6 +579,33 @@ impl Generator {
         super::StructureColumn { min_y: WORLD_MIN_Y, blocks }
     }
 
+    /// The highest solid block of base terrain below `y` in column
+    /// `(x, z)` (`WORLD_MIN_Y - 1` if none): where a woodland mansion's
+    /// cobblestone foundation stops (`WoodlandMansionStructure.afterPlace`
+    /// fills air and liquid down to the first other block).
+    pub(in crate::world) fn solid_below(&self, x: i32, z: i32, y: i32) -> i32 {
+        let columns = self.chunk_columns(IVec2::new(x.div_euclid(CHUNK_SIZE_I), z.div_euclid(CHUNK_SIZE_I)));
+        let Some(relief) = columns.relief.as_deref() else {
+            return columns
+                .at(x.rem_euclid(CHUNK_SIZE_I) as usize, z.rem_euclid(CHUNK_SIZE_I) as usize)
+                .height
+                .min(y - 1);
+        };
+        let (lx, lz) = (x.rem_euclid(CHUNK_SIZE_I), z.rem_euclid(CHUNK_SIZE_I));
+        let mut top = y - 1;
+        while top >= WORLD_MIN_Y {
+            let y0 = (top - 63).max(WORLD_MIN_Y);
+            let mask = relief.mask(lx, lz, y0);
+            for bit in (0..=top - y0).rev() {
+                if mask >> bit & 1 == 1 {
+                    return y0 + bit;
+                }
+            }
+            top = y0 - 1;
+        }
+        WORLD_MIN_Y - 1
+    }
+
     /// Generation 2's [`Generator::natural_block`].
     pub(super) fn natural_block_v2(&self, p: IVec3, nodes: &mut FxHashMap<IVec3, [f32; 7]>) -> Block {
         let columns = self.terrain_columns(IVec2::new(p.x.div_euclid(CHUNK_SIZE_I), p.z.div_euclid(CHUNK_SIZE_I)));

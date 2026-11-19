@@ -9,7 +9,7 @@ use super::{
 use crate::{inventory::Stack, item::Item};
 use glam::{DVec3, IVec2, IVec3};
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub const WIDTH: usize = 128;
 #[derive(Clone, Debug, PartialEq)]
@@ -267,6 +267,11 @@ pub struct MapStorage {
     pub game_ticks: u64,
     pub maps: BTreeMap<u32, MapData>,
     steps: BTreeMap<(u32, u64), u32>,
+    /// Structure starts explorer maps have referenced, as destination tag
+    /// and start chunk (`StructureStart.references`, which
+    /// `skip_existing_chunks` searches skip). v0.15 Track F's five maps
+    /// record and honour them.
+    pub references: BTreeSet<(String, i32, i32)>,
 }
 impl MapStorage {
     pub fn create(&mut self, map: MapData, item: Item) -> Stack {
@@ -335,12 +340,31 @@ impl MapStorage {
     }
 
     pub fn explorer(&mut self, g: &Generator, from: IVec3, item: Item, radius: i32) -> Option<Stack> {
+        if let Some(m) = super::explorer_maps::get(item) {
+            let known = |tag: &str, s: IVec2| self.references.contains(&(tag.to_owned(), s.x, s.y));
+            let start = super::explorer_maps::locate(g, from, item, radius, &known)?;
+            self.references.insert((m.destination.to_owned(), start.x, start.y));
+            let data = explorer_data(g, IVec3::new(start.x * 16, 0, start.y * 16), item);
+            return Some(self.create(data, item));
+        }
         let data = explorer_map(g, from, item, radius)?;
         Some(self.create(data, item))
     }
+
+    /// Whether an explorer map drawn away from the world (a worker's chest)
+    /// points at a start an earlier map already referenced; otherwise the
+    /// start gains its reference. Maps without `skip_existing_chunks`
+    /// handling always pass.
+    pub fn claim_target(&mut self, item: Item, data: &MapData) -> bool {
+        let Some(m) = super::explorer_maps::get(item) else { return true };
+        let Some(d) = data.decorations.iter().find(|d| d.kind == m.decoration) else { return true };
+        let key = (m.destination.to_owned(), (d.x as i32).div_euclid(16), (d.z as i32).div_euclid(16));
+        self.references.insert(key)
+    }
     pub fn serialize(&self) -> String {
         let maps: Vec<_> = self.maps.iter().map(|(id,m)| json!({"id":id,"x":m.center.x,"z":m.center.y,"scale":m.scale,"dimension":m.dimension.name(),"tracking":m.tracking,"unlimited":m.unlimited,"locked":m.locked,"colors":m.colors.iter().map(|b|format!("{b:02x}")).collect::<String>(),"decorations":m.decorations.iter().map(|d|json!([d.kind,d.x,d.z,d.rotation])).collect::<Vec<_>>()})).collect();
-        json!({"version":1,"next":self.next_id,"time":self.game_ticks,"maps":maps}).to_string()
+        let references: Vec<_> = self.references.iter().map(|(tag, x, z)| json!([tag, x, z])).collect();
+        json!({"version":1,"next":self.next_id,"time":self.game_ticks,"maps":maps,"references":references}).to_string()
     }
     pub fn load(text: &str) -> Option<Self> {
         let v: Value = serde_json::from_str(text).ok()?;
@@ -378,6 +402,11 @@ impl MapStorage {
             out.next_id = out.next_id.max(id.checked_add(1)?);
             out.maps.insert(id, data);
         }
+        // Saves before v0.15 Track F have no references.
+        for r in v["references"].as_array().into_iter().flatten() {
+            let (tag, x, z) = (r[0].as_str()?, r[1].as_i64()?, r[2].as_i64()?);
+            out.references.insert((tag.to_owned(), i32::try_from(x).ok()?, i32::try_from(z).ok()?));
+        }
         Some(out)
     }
 }
@@ -392,6 +421,13 @@ fn buried_treasure(g: &Generator, from: IVec3, radius: i32) -> Option<IVec3> {
 /// ([`super::loot::RolledChest`]).
 pub fn explorer_map(g: &Generator, from: IVec3, item: Item, radius: i32) -> Option<MapData> {
     let target = locate(g, from, item, radius)?;
+    Some(explorer_data(g, target, item))
+}
+
+/// An explorer map of `item` centred on `target` with its biome preview and
+/// target decoration (`MapItem.applyNewSavedData` at zoom 2, or 1 for
+/// buried treasure; `renderBiomePreviewMap`; `addTargetDecoration`).
+fn explorer_data(g: &Generator, target: IVec3, item: Item) -> MapData {
     let mut data = MapData::fresh(
         target.x,
         target.z,
@@ -404,13 +440,12 @@ pub fn explorer_map(g: &Generator, from: IVec3, item: Item, radius: i32) -> Opti
         let biome = g.biome_at(IVec3::new(x, super::terrain::SEA_LEVEL, z));
         biome.is_watery() || biome.is_swamp()
     });
-    data.decorations.push(Decoration {
-        kind: item.name().replace(' ', "_"),
-        x: target.x as f64,
-        z: target.z as f64,
-        rotation: 180.0,
-    });
-    Some(data)
+    let kind = match super::explorer_maps::get(item) {
+        Some(m) => m.decoration.to_owned(),
+        None => item.name().replace(' ', "_"),
+    };
+    data.decorations.push(Decoration { kind, x: target.x as f64, z: target.z as f64, rotation: 180.0 });
+    data
 }
 
 pub fn locate(g: &Generator, from: IVec3, item: Item, radius: i32) -> Option<IVec3> {
@@ -419,6 +454,11 @@ pub fn locate(g: &Generator, from: IVec3, item: Item, radius: i32) -> Option<IVe
         Item::JUNGLE_PYRAMID_MAP => g.temples.locate_rings(g, &[Kind::JungleTemple], from, radius),
         Item::SWAMP_HUT_MAP => g.temples.locate_rings(g, &[Kind::SwampHut], from, radius),
         Item::BURIED_TREASURE_MAP => buried_treasure(g, from, radius),
+        // v0.15 Track F: searched without references here (workers);
+        // `MapStorage::explorer` and `World::number_maps` apply them.
+        i if super::explorer_maps::is_explorer(i) => {
+            super::explorer_maps::locate(g, from, i, radius, &|_, _| false).map(|s| IVec3::new(s.x * 16, 0, s.y * 16))
+        }
         // `on_buried_trial_chambers_maps`; `search_radius` is in chunks.
         super::trial::TRIAL_CHAMBERS_MAP => {
             g.trial_chambers.nearest(g, glam::IVec2::new(from.x, from.z), radius.saturating_mul(16))

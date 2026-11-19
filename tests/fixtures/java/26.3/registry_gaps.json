@@ -551,14 +551,6 @@
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
-    "buried_ancient_city_map": {
-      "release": "v0.15",
-      "reason": "Cartographer map item for an existing destination; carried village-trade integration."
-    },
-    "buried_mineshaft_map": {
-      "release": "v0.15",
-      "reason": "Cartographer map item for an existing destination; carried village-trade integration."
-    },
     "burn_pottery_sherd": {
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
@@ -690,10 +682,6 @@
     "debug_stick": {
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
-    },
-    "desert_pyramid_map": {
-      "release": "v0.15",
-      "reason": "Cartographer map item for an existing destination; carried village-trade integration."
     },
     "dolphin_spawn_egg": {
       "release": "v0.18",
@@ -1331,10 +1319,6 @@
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "warm_ocean_ruins_map": {
-      "release": "v0.15",
-      "reason": "Cartographer map item for an existing destination; carried village-trade integration."
-    },
     "white_shulker_box": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
@@ -1358,10 +1342,6 @@
     "wolf_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "woodland_mansion_map": {
-      "release": "v0.15",
-      "reason": "Cartographer map for the woodland mansion, which is a v0.15 structure."
     },
     "yellow_poplar_leaves": {
       "release": "v0.16",

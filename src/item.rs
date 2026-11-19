@@ -1124,7 +1124,9 @@ impl Item {
     }
 
     pub fn is_map(self) -> bool {
-        (1255..=1265).contains(&self.0) || self == crate::world::trial::TRIAL_CHAMBERS_MAP
+        (1255..=1265).contains(&self.0)
+            || self == crate::world::trial::TRIAL_CHAMBERS_MAP
+            || crate::world::explorer_maps::is_explorer(self)
     }
 
     pub fn info(self) -> ItemInfo {
@@ -1157,6 +1159,10 @@ impl Item {
             return item("bottle o' enchanting", Sprite::ExperienceBottle);
         }
         if let Some(info) = crate::world::trial::item_info(self) {
+            return info;
+        }
+        // v0.15 Track F: the woodland mansion and four more explorer maps.
+        if let Some(info) = crate::world::explorer_maps::item_info(self) {
             return info;
         }
         if self == Self::TORCHFLOWER_SEEDS {
@@ -1598,6 +1604,9 @@ impl Item {
         if self == crate::world::trial::TRIAL_CHAMBERS_MAP {
             return Some(crate::world::trial::MAP_TEX);
         }
+        if let Some(layer) = crate::world::explorer_maps::icon_layer(self) {
+            return Some(layer);
+        }
         if self.is_map() {
             return Some(2944 + self.0 - 1255);
         }
@@ -1704,6 +1713,8 @@ impl Item {
             // v0.15 Track D: the spectral arrow, blue and brown eggs and the
             // eighteen trim templates.
             .chain(track_d_items())
+            // v0.15 Track F: five explorer maps, which draw their own layers.
+            .chain(crate::world::explorer_maps::items())
     }
 
     /// Everything a creative player can pick from: blocks, then items.
