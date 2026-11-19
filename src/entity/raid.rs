@@ -930,8 +930,7 @@ impl Entities {
     /// village POIs is occupied. Beds and job sites count when a villager
     /// claims them (stored villagers too, as Java's POI tickets outlive the
     /// entity's chunk); bells, whose meeting claims VoxelCraft doesn't
-    /// track, count within 48 blocks of a claimed loaded POI or of a loaded
-    /// villager's claim.
+    /// track, count within 48 blocks of a claimed POI.
     pub(super) fn refresh_villages<W: MobWorld + ?Sized>(&mut self, world: &W, force: bool) {
         let now = self.raids.tick;
         if !force && self.raids.villages.built.is_some_and(|t| now - t < 20 && t <= now) {
@@ -965,7 +964,9 @@ impl Entities {
             }
         });
         for p in bells {
-            if claimed.iter().any(|c| c.as_dvec3().distance_squared(p.as_dvec3()) <= 48.0 * 48.0) {
+            if claimed.iter().any(|c| c.as_dvec3().distance_squared(p.as_dvec3()) <= 48.0 * 48.0)
+                || self.storage.claimed_near(p, 48.0)
+            {
                 v.insert(p);
             }
         }

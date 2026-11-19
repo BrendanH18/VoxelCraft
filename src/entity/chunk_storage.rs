@@ -71,6 +71,9 @@ pub(super) struct EntityStorage {
     /// Beds and job sites claimed by stored villagers, with claim counts.
     beds: FxHashMap<IVec3, u32>,
     jobs: FxHashMap<IVec3, u32>,
+    /// The same claims by 16-block cell, one entry per claim, so a raid's
+    /// bell can find stored claims near it without walking them all.
+    claim_cells: FxHashMap<IVec3, Vec<IVec3>>,
     len: usize,
 }
 
@@ -96,6 +99,23 @@ impl EntityStorage {
         self.jobs.contains_key(&p)
     }
 
+    /// Whether a stored villager has claimed a bed or job site within
+    /// `radius` blocks of `p`.
+    pub(super) fn claimed_near(&self, p: IVec3, radius: f64) -> bool {
+        let r = radius.ceil() as i32;
+        let (lo, hi) =
+            ((p - IVec3::splat(r)).div_euclid(IVec3::splat(16)), (p + IVec3::splat(r)).div_euclid(IVec3::splat(16)));
+        (lo.x..=hi.x).any(|x| {
+            (lo.y..=hi.y).any(|y| {
+                (lo.z..=hi.z).any(|z| {
+                    self.claim_cells.get(&IVec3::new(x, y, z)).is_some_and(|claims| {
+                        claims.iter().any(|c| c.as_dvec3().distance_squared(p.as_dvec3()) <= radius * radius)
+                    })
+                })
+            })
+        })
+    }
+
     fn entry(&mut self, chunk: IVec3) -> &mut ChunkEntities {
         self.len += 1;
         self.chunks.entry(chunk).or_default()
@@ -106,6 +126,7 @@ impl EntityStorage {
             for (map, p) in [(&mut self.beds, home), (&mut self.jobs, job)] {
                 if let Some(p) = p {
                     *map.entry(p).or_default() += 1;
+                    self.claim_cells.entry(p.div_euclid(IVec3::splat(16))).or_default().push(p);
                 }
             }
         }
@@ -121,6 +142,15 @@ impl EntityStorage {
                 *n -= 1;
                 if *n == 0 {
                     map.remove(&p);
+                }
+                let cell = p.div_euclid(IVec3::splat(16));
+                if let Some(claims) = self.claim_cells.get_mut(&cell) {
+                    if let Some(i) = claims.iter().position(|&c| c == p) {
+                        claims.swap_remove(i);
+                    }
+                    if claims.is_empty() {
+                        self.claim_cells.remove(&cell);
+                    }
                 }
             }
         }
@@ -414,6 +444,9 @@ mod tests {
         assert_eq!(normalized(&e), saved, "a save while unloaded keeps every entity");
         assert!(e.storage.claims_bed(IVec3::new(67, GROUND + 1, 28)));
         assert!(e.storage.claims_job(IVec3::new(65, GROUND + 1, 24)));
+        // A raid's bell finds the stored claims within 48 blocks, and only those.
+        assert!(e.storage.claimed_near(IVec3::new(20, GROUND + 1, 28), 48.0));
+        assert!(!e.storage.claimed_near(IVec3::new(10, GROUND + 1, 28), 48.0));
         let c = ctx(at(10.5, 0.5));
         for _ in 0..40 {
             e.update(0.05, &w, &c);
@@ -430,6 +463,7 @@ mod tests {
         let after: Vec<String> = e.mobs.iter().filter(|m| m.pos.x >= 64.0).map(state).collect();
         assert_eq!(after, before);
         assert!(e.storage.beds.is_empty() && e.storage.jobs.is_empty(), "restored villagers own their claims again");
+        assert!(e.storage.claim_cells.is_empty());
         assert_eq!(
             e.items.len() + e.orbs.len() + e.minecarts.len() + e.arrows.len() + e.tnt.len() + after.len(),
             count
