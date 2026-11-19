@@ -697,6 +697,16 @@ pub fn table(seed: u64, name: &str) -> Chest {
     table_with_random(name, &mut LootRandom::new(seed), |_| None)
 }
 
+/// A table rolled into a one-slot container (a decorated pot's
+/// `unpackLootTable`): `fill` places the first stack whole and drops the rest.
+pub fn single_slot(seed: u64, name: &str) -> Option<Stack> {
+    let mut rng = LootRandom::new(seed);
+    let items = roll_items(name, &mut rng, |_| None);
+    let mut chest = Chest::default();
+    fill(&mut chest, items, &mut rng, 1);
+    chest.slots[0]
+}
+
 impl super::World {
     /// A zero/absent loot seed follows the table's persistent world sequence,
     /// as LootParams.Builder.withOptionalRandomSeed does in Java.
@@ -902,6 +912,21 @@ mod rolled_chest_tests {
     use crate::world::terrain::{Dimension, Generator};
     use glam::IVec3;
     use std::sync::Arc;
+
+    /// v0.15 integration review: a decorated pot's one slot keeps the whole
+    /// rolled stack, as `LootTable.fill` into a one-slot container does.
+    #[test]
+    fn a_pot_keeps_its_whole_rolled_stack() {
+        let name = "pots/trial_chambers/corridor";
+        let mut multi = 0;
+        for seed in 0..200u64 {
+            let rolled = roll_items(name, &mut LootRandom::new(seed), |_| None);
+            let [only] = rolled.as_slice() else { continue };
+            multi += usize::from(only.count > 1);
+            assert_eq!(single_slot(seed, name), Some(*only), "seed {seed}");
+        }
+        assert!(multi > 0, "some rolls give more than one item");
+    }
 
     /// A shipwreck map chest rolled on a worker and numbered by the world
     /// equals the same chest rolled on the main thread, map numbers and the

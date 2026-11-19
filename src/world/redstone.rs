@@ -1191,6 +1191,8 @@ impl World {
                             || family == i64::from(super::sniffer_egg::EGG.0)
                             || family == i64::from(super::frosted_ice::FIRST.0)
                             || family == i64::from(super::dried_ghast::DRIED_GHAST.0)
+                            // A lectern's page-turn pulse (`LecternBlock.tick`).
+                            || family == i64::from(Block::LECTERN.0)
                             || family == i64::from(super::eyeblossom::OPEN.0)
                             || family == i64::from(super::eyeblossom::CLOSED.0)
                             || u16::try_from(family).is_ok_and(super::archaeology::owns)

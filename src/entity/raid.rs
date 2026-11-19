@@ -468,8 +468,8 @@ pub const BELL_DURATION: u32 = 50;
 pub const HERO_BASE_DISCOUNT: f32 = 0.3;
 pub const HERO_DISCOUNT_PER_LEVEL: f32 = 0.0625;
 
-/// The documented hook the villager price calculation calls
-/// ([`super::villager::Villager::priced_for`]): how many items Hero of the
+/// The Hero of the Village part of the villager price calculation
+/// ([`super::villager::special_price_diff`]): how many items Hero of the
 /// Village at `amplifier` takes off an offer whose base first cost is
 /// `base_count` (0 without the effect).
 pub fn hero_price_cut(base_count: u8, amplifier: Option<u8>) -> i32 {
@@ -936,8 +936,10 @@ impl Entities {
         if !force && self.raids.villages.built.is_some_and(|t| now - t < 20 && t <= now) {
             return;
         }
-        let mut claimed: FxHashSet<IVec3> = FxHashSet::default();
-        for m in self.mobs.iter().chain(self.storage.mobs()) {
+        // Loaded villagers' claims, then stored villagers' from the storage's
+        // claim indexes, so the cost doesn't grow with the explored save.
+        let mut claimed: FxHashSet<IVec3> = self.storage.claimed_pois().collect();
+        for m in &self.mobs {
             if m.kind == MobKind::Villager
                 && m.alive()
                 && let Some(v) = &m.villager

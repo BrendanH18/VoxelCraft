@@ -108,9 +108,8 @@ impl World {
                 }
                 Feature::TrialVault if super::trial::vault(block).is_some() => self.register_trial_vault(p),
                 Feature::StructureLoot(seed, table) if super::utilities::decorated_pot_of(block).is_some() => {
-                    let rolled = super::loot::table(seed, table);
-                    if let Some(stack) = rolled.slots.iter().flatten().next() {
-                        self.generate_pot_loot(p, *stack);
+                    if let Some(stack) = super::loot::single_slot(seed, table) {
+                        self.generate_pot_loot(p, stack);
                     }
                 }
                 Feature::MansionChest(i) if is_chest(block) => {

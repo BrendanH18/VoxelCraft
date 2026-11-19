@@ -2230,11 +2230,8 @@ impl Entities {
             return None;
         }
         let kind = mob.kind;
-        mob.player_hit();
         // v0.15 Track E: the killer a raid credits as a hero.
-        if let Some(s) = &mut mob.illager {
-            s.raider.last_player = Some(owner);
-        }
+        mob.player_hit_by(owner);
         if kind == MobKind::IronGolem && !self.neutral_universal_anger {
             mob.angry_player = Some(owner);
         }

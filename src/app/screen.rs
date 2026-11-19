@@ -758,6 +758,8 @@ impl Screen<'_> {
         if !self.entities.merchant_in_reach(id, self.session.player.eye(), self.session.entity_screen_range()) {
             return;
         }
+        // A level-up while the screen is open can unlock an explorer map.
+        self.entities.prepare_merchant_maps(self.world, id);
         match self.entities.trade_for(id, index, &mut self.session.inventory, self.session.id) {
             Ok(xp) => {
                 self.entities.spawn_xp(self.session.player.pos, xp);

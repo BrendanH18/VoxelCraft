@@ -1974,6 +1974,15 @@ impl Mob {
         self.player_hit_left = 5.0;
     }
 
+    /// [`Self::player_hit`] by `owner`, melee or projectile: a raider
+    /// remembers its player attacker so the raid can credit them as a hero.
+    pub(super) fn player_hit_by(&mut self, owner: super::PlayerId) {
+        self.player_hit();
+        if let Some(s) = &mut self.illager {
+            s.raider.last_player = Some(owner);
+        }
+    }
+
     /// Advances the mob by `dt` seconds.
     pub fn update<W: MobWorld + ?Sized>(
         &mut self,

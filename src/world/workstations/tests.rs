@@ -69,6 +69,25 @@ fn books_go_on_lecterns_turn_pages_pulse_and_come_back() {
     assert_eq!(w.lectern_comparator(P), Some(0));
 }
 
+/// v0.15 integration review: a save during the two-tick pulse keeps the
+/// pulse's scheduled end, so the reloaded lectern turns itself off.
+#[test]
+fn a_lectern_saved_mid_pulse_turns_off_after_reload() {
+    let mut w = world();
+    w.set_block(P, lectern_state(Facing::North, false, false));
+    assert!(w.place_lectern_book(P, written(3)));
+    assert!(w.set_lectern_page(P, 1));
+    assert_eq!(w.get_block(P), Some(lectern_state(Facing::North, true, true)));
+    let saved = w.redstone_to_string();
+    let mut loaded = world();
+    loaded.set_block(P, lectern_state(Facing::North, true, true));
+    loaded.load_redstone(&saved);
+    for _ in 0..3 {
+        loaded.tick_redstone();
+    }
+    assert_eq!(loaded.get_block(P), Some(lectern_state(Facing::North, true, false)));
+}
+
 #[test]
 fn breaking_a_lectern_drops_its_book() {
     let mut w = world();

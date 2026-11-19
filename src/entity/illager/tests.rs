@@ -687,3 +687,18 @@ fn illagers_survive_save_and_reload() {
     assert!(back.mobs.iter().find(|m| m.kind == MobKind::Pillager).unwrap().can_pick_up_loot);
     assert!(!back.mobs.iter().find(|m| m.kind == MobKind::Vindicator).unwrap().can_pick_up_loot);
 }
+
+/// v0.15 integration review: a pillager saved by v0.14 (no `illager` state,
+/// an empty main hand) loads holding the crossbow its attack now needs;
+/// one saved by v0.15 with an empty hand stays empty-handed.
+#[test]
+fn a_v0_14_pillager_loads_with_a_crossbow() {
+    let mut p = Mob::new(MobKind::Pillager, DVec3::new(0.5, 1.0, 0.5), 0.0);
+    p.equipment.set(Slot::MainHand, None);
+    let mut old = crate::entity::nether::save_mob(&p);
+    let current = crate::entity::nether::load_mob(&old).unwrap();
+    assert_eq!(current.main_hand(), None, "a v0.15 empty hand stays empty");
+    old.as_object_mut().unwrap().remove("illager");
+    let loaded = crate::entity::nether::load_mob(&old).unwrap();
+    assert_eq!(loaded.main_hand().map(|s| s.item), Some(Item::CROSSBOW));
+}

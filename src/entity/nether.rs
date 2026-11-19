@@ -1849,6 +1849,14 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     }
     let fresh = std::mem::take(&mut m.equipment);
     m.equipment = super::equipment::load_mob_equipment(v, fresh, &super::equipment::Legacy::nether(v, kind));
+    // A pillager saved before v0.15 shot from an implied crossbow; its record
+    // has no `illager` state, and the v0.15 attack needs one in hand.
+    if kind == MobKind::Pillager
+        && v["illager"].is_null()
+        && m.equipment.get(super::equipment::Slot::MainHand).is_none()
+    {
+        m.equipment.set(super::equipment::Slot::MainHand, Some(crate::inventory::Stack::new(Item::CROSSBOW, 1)));
+    }
     m.held = v["held"].as_str().map(Weapon::from_name);
     m.restrict = v["restrict"].as_array().filter(|a| a.len() == 4).and_then(|a| {
         let n = |i: usize| a[i].as_i64().and_then(|n| i32::try_from(n).ok());

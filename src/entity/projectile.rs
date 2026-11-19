@@ -381,7 +381,10 @@ impl Arrow {
                                 mob.ignite(5.0);
                             }
                             if self.from_player {
-                                mob.player_hit();
+                                match self.owner {
+                                    Some(owner) => mob.player_hit_by(owner),
+                                    None => mob.player_hit(),
+                                }
                             }
                             if let Some(attacker) = self.shooter {
                                 if !refused {
@@ -709,6 +712,34 @@ mod tests {
             }
         }
     }
+    /// v0.15 integration review: a raider killed only by a player's arrow
+    /// still names that player, so a ranged raid win crowns the hero.
+    #[test]
+    fn a_player_arrow_marks_the_raider_it_hits_with_its_owner() {
+        let world = Grid::flat(10);
+        let mut arrow = Arrow::shot(DVec3::new(0.5, 11.5, 0.5), DVec3::X, 1.0, true);
+        arrow.owner = Some(PlayerId::HOST);
+        let mut mobs = vec![Mob::new(MobKind::Pillager, DVec3::new(3.0, 10.0, 0.5), 0.0)];
+        let ctx = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+            players: vec![Target::new(PlayerId::HOST, DVec3::new(-50.0, 10.0, 0.5), true)],
+            daylight: 1.0,
+            spawning: false,
+            raining: false,
+            dimension: Dimension::Overworld,
+        };
+        let mut events = Vec::new();
+        let mut rng = Rng::new(7);
+        for _ in 0..20 {
+            if !arrow.update(0.05, &world, &ctx, &mut mobs, &[], None, &mut rng, &mut events) {
+                break;
+            }
+        }
+        assert!(mobs[0].health < MobKind::Pillager.max_health(), "the arrow hit");
+        assert!(mobs[0].player_hit_left > 0.0);
+        assert_eq!(mobs[0].illager.as_ref().unwrap().raider.last_player, Some(PlayerId::HOST));
+    }
+
     #[test]
     fn embedded_potion_contents_expire_after_six_hundred_ticks() {
         let mut a = Arrow::shot(DVec3::new(0.5, 9.5, 0.5), DVec3::X, 1., true);

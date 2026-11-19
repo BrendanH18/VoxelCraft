@@ -407,6 +407,11 @@ impl Villager {
         if !offer.stocked() {
             return Err("offer out of stock");
         }
+        // An explorer map whose destination `prepare_merchant_maps` hasn't
+        // found yet (an offer unlocked while the screen was open) isn't sold.
+        if offer.output.item.is_map() && offer.output.item != Item::MAP && offer.output.map_id.is_none() {
+            return Err("map not ready");
+        }
         let mut slots = inv.slots;
         for cost in [Some(self.priced_for(offer, owner)), offer.second].into_iter().flatten() {
             let mut left = cost.count;
@@ -472,10 +477,7 @@ pub fn special_price_diff(offer: Offer, reputation: i32, hero: Option<u8>) -> i3
     if reputation != 0 {
         diff -= (reputation as f32 * offer.multiplier).floor() as i32;
     }
-    if let Some(amplifier) = hero {
-        let modifier = (0.3f32 + 0.0625f32 * amplifier as f32) as f64;
-        diff -= ((modifier * offer.cost.count as f64).floor() as i32).max(1);
-    }
+    diff -= super::raid::hero_price_cut(offer.cost.count, hero);
     diff
 }
 
@@ -1817,6 +1819,26 @@ mod map_tests {
         let d = data.decorations.iter().find(|d| d.kind == "mansion").unwrap();
         let chunk = glam::IVec2::new(d.x as i32, d.z as i32).div_euclid(glam::IVec2::splat(16));
         assert!(crate::world::mansion::start(&generator, chunk).is_some());
+    }
+    /// v0.15 integration review: an explorer map offer that unlocked after
+    /// the screen opened has no destination yet, so it isn't sold.
+    #[test]
+    fn an_unresolved_explorer_map_offer_takes_no_payment() {
+        let mut entities = Entities::new(42);
+        entities.spawn(MobKind::Villager, DVec3::new(0.0, 80.0, 0.0));
+        let v = entities.mobs[0].villager.as_mut().unwrap();
+        v.set_profession(Profession::Cartographer);
+        v.level = 5;
+        v.unlock();
+        let id = v.id;
+        let map = crate::world::explorer_maps::WOODLAND_MANSION_MAP;
+        let index = v.offers.iter().position(|o| o.is_some_and(|o| o.output.item == map)).unwrap();
+        let mut inv = Inventory::default();
+        inv.slots[0] = Some(Stack::new(Item::EMERALD, 64));
+        inv.slots[1] = Some(Stack::new(Item::COMPASS, 1));
+        let before = inv.slots;
+        assert_eq!(entities.trade_for(id, index, &mut inv, crate::entity::PlayerId::HOST), Err("map not ready"));
+        assert_eq!(inv.slots, before, "nothing was paid");
     }
     #[test]
     fn java_26_3_cartographer_predicates_filter_biome_variants() {
