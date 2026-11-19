@@ -315,7 +315,12 @@ impl PlayerSession {
             match result {
                 Ok(u) => {
                     off_hand = u.is_some();
-                    used = u;
+                    // The book that opened is the off-hand's, not the
+                    // hotbar stack swapped back into `slot`.
+                    used = match u {
+                        Some(Used::OpenBook { .. }) => Some(Used::OpenBook { slot: super::books::OFFHAND_SLOT }),
+                        u => u,
+                    };
                 }
                 Err(e) => return Err(main_error.unwrap_or(e)),
             }

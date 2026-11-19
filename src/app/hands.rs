@@ -372,7 +372,10 @@ impl Actor<'_> {
             | Used::OpenMerchant(_)
             | Used::Screen { .. }
             | Used::Bed { .. }
-            | Used::EditSign { .. } => {
+            | Used::EditSign { .. }
+            | Used::Lectern { .. }
+            | Used::OpenBook { .. }
+            | Used::LecternBook { .. } => {
                 self.requests.push(Request::Open(done.used));
             }
             // Dyes, ink sacs and glow ink sacs on signs; shelves and chiseled

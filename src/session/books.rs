@@ -72,3 +72,35 @@ impl PlayerSession {
         Ok((left > 0).then_some(Stack { count: left, ..book }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entity::{Entities, PlayerId};
+    use crate::session::interact::{UseContext, Used};
+    use crate::world::{block::Block, chunk::ChunkData, terrain::Generator};
+    use glam::DVec3;
+    use std::sync::Arc;
+
+    /// v0.15 PR review: a book used from the off-hand names the off-hand,
+    /// not the hotbar stack swapped back into the selected slot.
+    #[test]
+    fn a_book_used_from_either_hand_opens_that_hand() {
+        for off in [false, true] {
+            let mut w = World::new_remote(Arc::new(Generator::new(42)), 2);
+            w.receive_chunk(IVec3::new(0, 4, 0), Arc::new(ChunkData::Uniform(Block::AIR)));
+            let mut s = PlayerSession::new(PlayerId(1), DVec3::new(6.5, 144., 8.5));
+            s.player.pitch = -1.5;
+            let book = Some(Stack::new(books::WRITABLE_BOOK, 1));
+            if off {
+                s.inventory.offhand = book;
+            } else {
+                s.inventory.slots[0] = book;
+            }
+            let mut e = Entities::new(42);
+            let used = s.use_held(0, &mut w, &mut e, &UseContext { sneaking: false, others: &[] }).unwrap().unwrap();
+            assert_eq!(used.used, Used::OpenBook { slot: if off { OFFHAND_SLOT } else { 0 } });
+            assert_eq!(used.off_hand, off);
+        }
+    }
+}
