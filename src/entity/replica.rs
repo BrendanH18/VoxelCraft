@@ -35,6 +35,7 @@ impl Entities {
             "bobbers": self.bobbers.iter().filter(|b| near(b.pos)).take(MAX)
                 .map(|b| json!({"at": pair(b.pos, b.previous_pos), "owner": b.owner.0, "biting": b.biting})).collect::<Vec<_>>(),
             "eyes": self.eyes.iter().filter(|e| near(e.pos)).take(MAX).map(|e| pair(e.pos, e.previous_pos)).collect::<Vec<_>>(),
+            "shulker_bullets": self.shulker_bullets.iter().filter(|b| near(b.pos)).take(MAX).map(|b| pair(b.pos, b.previous_pos)).collect::<Vec<_>>(),
             "fireballs": self.fireballs.iter().filter(|f| near(f.pos)).take(MAX)
                 .map(|f| json!({"at": pair(f.pos, f.previous_pos), "large": f.is_large()})).collect::<Vec<_>>(),
             "puffs": self.puffs.iter().filter(|p| near(p.pos)).take(MAX)
@@ -117,6 +118,11 @@ impl Entities {
             })
             .collect();
         self.eyes = list("eyes").into_iter().filter_map(unpair).map(|(p, q)| EnderEye::replica(p, q)).collect();
+        self.shulker_bullets = list("shulker_bullets")
+            .into_iter()
+            .filter_map(unpair)
+            .map(|(p, q)| super::shulker::Bullet::replica(p, q))
+            .collect();
         self.fireballs = list("fireballs")
             .into_iter()
             .filter_map(|e| {

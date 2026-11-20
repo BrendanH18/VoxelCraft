@@ -245,6 +245,11 @@ impl Game {
                     if burning {
                         self.world.light_candle(cell);
                     }
+                    // v0.16 Track A: `ChorusFlowerBlock.onProjectileHit`: a
+                    // projectile that may break blocks breaks the flower.
+                    if self.gamerules.bool("projectiles_can_break_blocks") {
+                        self.world.chorus_flower_shot(cell);
+                    }
                 }
                 EntityEvent::PlayerHit { player: PlayerId::HOST, damage, knockback, java, cause } => {
                     // Knockback only lands with damage, so hurt immunity
@@ -525,6 +530,17 @@ impl Game {
                         MobSound::Breeze(cue) => (Sound::Breeze(cue), 1.0),
                         MobSound::Illager(cue) => (Sound::Illager(cue), 1.0),
                         MobSound::Raid(cue) => (Sound::Raid(cue), 1.0),
+                        // v0.16 Track A: the nearest shared sounds for the shulker's cues.
+                        MobSound::Shulker(cue) => {
+                            use voxelcraft::entity::shulker::Cue;
+                            match cue {
+                                Cue::Open => (Sound::Door(true), 0.6),
+                                Cue::Close => (Sound::Door(false), 0.6),
+                                Cue::Shoot => (Sound::Bow, 1.0),
+                                Cue::Teleport => (Sound::Teleport, 1.0),
+                                Cue::BulletHit | Cue::BulletHurt => (Sound::Hit, 1.0),
+                            }
+                        }
                         MobSound::CopperGolem(action, stage) => (Sound::CopperGolem(action, stage), 0.7),
                         MobSound::Hurt(MobKind::CopperGolem) => {
                             (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Hurt, 0), 0.9)
@@ -702,6 +718,7 @@ fn mob_sound_source(sound: MobSound) -> Option<SoundSource> {
         MobSound::DragonSmash => Some(SoundSource::Hostile),
         // Skeletons and pillagers shoot as hostile mobs, not as the player.
         MobSound::Bow => Some(SoundSource::Hostile),
+        MobSound::Shulker(_) => Some(SoundSource::Hostile),
         // The snow golem borrows the slime's voice but is a friendly mob.
         MobSound::Ambient(MobKind::SnowGolem)
         | MobSound::Hurt(MobKind::SnowGolem)
@@ -752,6 +769,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::ZombieNautilus => Voice::ZombieNautilus,
         MobKind::CamelHusk => Voice::CamelHusk,
         MobKind::Parched => Voice::Parched,
+        MobKind::Shulker => Voice::Shulker,
         MobKind::Allay => Voice::Allay,
         MobKind::CopperGolem => Voice::Skeleton,
         MobKind::Creaking => Voice::Creaking,

@@ -51,6 +51,7 @@ impl Entities {
         self.spawn_phantoms(dt, world, ctx);
         self.sense_phantoms();
         self.populate_structures(dt as f32, world, ctx, difficulty);
+        self.populate_end_cities(dt as f32, world, ctx);
         self.trader_tick(dt as f32, world, ctx);
         self.tick_decor(world);
         self.village_upkeep(dt as f32, world);
@@ -62,6 +63,7 @@ impl Entities {
         self.raid_tick(dt, world, ctx, &mut events);
         self.happy_ghast_upkeep(dt, world, ctx);
         self.nautilus_upkeep(dt, world, ctx, &mut events);
+        self.shulker_upkeep(dt, world, ctx, &mut events);
         self.trader_upkeep();
         // `Entity.hasMovedHorizontallyRecently`, from last update's positions.
         let moved: Vec<(PlayerId, bool)> = ctx

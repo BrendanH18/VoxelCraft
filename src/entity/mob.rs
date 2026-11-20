@@ -229,6 +229,9 @@ pub enum MobKind {
     CamelHusk,
     /// v0.15 Track C: the desert skeleton with Weakness arrows. Saved as `parched`.
     Parched,
+    /// v0.16 Track A: the End city's shell-dwelling turret. Saved as
+    /// `shulker` (see `entity::shulker`).
+    Shulker,
 }
 
 impl MobKind {
@@ -263,7 +266,7 @@ impl MobKind {
     pub fn from_lan_index(index: usize) -> Option<Self> {
         Self::ALL.get(index).copied()
     }
-    pub const ALL: [MobKind; 85] = [
+    pub const ALL: [MobKind; 86] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -349,6 +352,7 @@ impl MobKind {
         MobKind::ZombieNautilus,
         MobKind::CamelHusk,
         MobKind::Parched,
+        MobKind::Shulker,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -439,6 +443,7 @@ impl MobKind {
             MobKind::ZombieNautilus => "zombie_nautilus",
             MobKind::CamelHusk => "camel_husk",
             MobKind::Parched => "parched",
+            MobKind::Shulker => "shulker",
         }
     }
 
@@ -470,6 +475,8 @@ impl MobKind {
             MobKind::CamelHusk => Shape::new(0.85, 2.375),
             // `EntityTypes.PARCHED`: 0.6 x 1.99.
             MobKind::Parched => Shape::new(0.3, 1.99),
+            // `EntityTypes.SHULKER`: 1 x 1 (shut; the lid is not modelled in the box).
+            MobKind::Shulker => Shape::new(0.5, 1.0),
             MobKind::Bat => Shape::new(0.25, 0.9),
             MobKind::Frog => Shape::new(0.25, 0.5),
             MobKind::Tadpole => Shape::new(0.2, 0.3),
@@ -600,6 +607,7 @@ impl MobKind {
             MobKind::Nautilus | MobKind::ZombieNautilus => super::nautilus::MAX_HEALTH,
             MobKind::CamelHusk => 32.0,
             MobKind::Parched => 16.0,
+            MobKind::Shulker => super::shulker::MAX_HEALTH,
         }
     }
 
@@ -644,6 +652,7 @@ impl MobKind {
                 | MobKind::Ravager
                 | MobKind::Illusioner
                 | MobKind::Parched
+                | MobKind::Shulker
         )
     }
 
@@ -704,6 +713,8 @@ impl MobKind {
             MobKind::Silverfish | MobKind::CaveSpider => false,
             // No biome lists it; only landed ender pearls make them.
             MobKind::Endermite => false,
+            // Only End city and ship markers and duplication make them.
+            MobKind::Shulker => false,
             // No biome lists illagers: raids, patrols and mansions bring them
             // (later v0.15 tracks), vexes come only from evokers and
             // illusioners only from commands.
@@ -1032,8 +1043,10 @@ impl MobKind {
             // `entities/breeze`: 1-2 rods, killed by a player (rolled in `drops`).
             MobKind::Breeze => &[],
             // Piglins drop only what they carry (`nether::equipment_drops`).
-            // `entities/endermite` has no pools.
-            MobKind::Endermite
+            // `entities/endermite` has no pools; `entities/shulker`'s shell
+            // is rolled in `drops`.
+            MobKind::Shulker
+            | MobKind::Endermite
             | MobKind::Silverfish
             | MobKind::Villager
             | MobKind::WanderingTrader
@@ -1164,6 +1177,7 @@ impl MobKind {
             | MobKind::WanderingTrader => 0,
             MobKind::Blaze | MobKind::Guardian | MobKind::ElderGuardian | MobKind::Breeze => 10,
             MobKind::Endermite => super::endermite::EXPERIENCE,
+            MobKind::Shulker => super::shulker::EXPERIENCE,
             MobKind::Evoker => 10,
             MobKind::Vex => 3,
             MobKind::Ravager => 20,
@@ -1237,6 +1251,8 @@ pub struct Mob {
     pub warden: Option<Box<super::warden::State>>,
     /// Endermites: lifetime and target (see `entity::endermite`).
     pub endermite: Option<Box<super::endermite::State>>,
+    /// v0.16 Track A: a shulker's face, lid, colour and goals (see `entity::shulker`).
+    pub shulker: Option<Box<super::shulker::State>>,
     /// v0.15 Track A: illager, vex and ravager state, raid membership
     /// included (see `entity::illager`).
     pub illager: Option<Box<super::illager::State>>,
@@ -1461,6 +1477,7 @@ impl Mob {
             allay: (kind == MobKind::Allay).then(Box::default),
             warden: (kind == MobKind::Warden).then(Box::default),
             endermite: (kind == MobKind::Endermite).then(Box::default),
+            shulker: (kind == MobKind::Shulker).then(Box::default),
             illager: super::illager::State::for_kind(kind),
             can_pick_up_loot: false,
             happy_ghast: (kind == MobKind::HappyGhast).then(Box::default),
@@ -1786,6 +1803,10 @@ impl Mob {
     /// [`Mob::damage_pushed`] for a projectile's hit: armor and Projectile
     /// Protection see an arrow-type hit.
     pub fn damage_projectile(&mut self, amount: f32, pushes: &[crate::knockback::Push], rng: &mut Rng) -> bool {
+        // `Shulker.hurtServer`: a shut shulker shrugs off arrows.
+        if self.shulker.as_ref().is_some_and(|s| s.closed()) {
+            return false;
+        }
         self.hit_cause = Some(Cause::ARROW);
         let killed = self.damage_pushed(amount, pushes, rng);
         self.hit_cause = None;
@@ -1835,6 +1856,15 @@ impl Mob {
         if self.armadillo.is_some() && amount <= 0.0 {
             return false;
         }
+        // v0.16 Track A: a shut shulker's shell is 20 armor; the hit
+        // decides on its teleport and duplication next tick.
+        let amount = match &mut self.shulker {
+            Some(s) => {
+                s.hurt = true;
+                crate::simulation::survival::armor_reduce_with(amount, s.armor(), 0.0, self.armor_effectiveness)
+            }
+            None => amount,
+        };
         let amount = if self.kind == MobKind::MagmaCube {
             crate::simulation::survival::armor_reduce_with(amount, self.size as u32 * 3, 0.0, self.armor_effectiveness)
         } else {
@@ -2146,7 +2176,7 @@ impl Mob {
         let steps = (dt / MAX_STEP).ceil().max(1.0) as u32;
         let h = dt / steps as f64;
         let alive_before_move = self.alive();
-        if self.creaking.as_ref().is_some_and(|s| !s.can_move || s.teardown > 0.0) {
+        if self.creaking.as_ref().is_some_and(|s| !s.can_move || s.teardown > 0.0) || self.shulker.is_some() {
             self.vel = DVec3::ZERO;
         } else if self.riding.is_some() || self.animal.as_ref().is_some_and(|a| a.perched.is_some()) {
             self.vel = DVec3::ZERO;
@@ -2277,6 +2307,10 @@ impl Mob {
         }
         if self.breeze.is_some() {
             return self.breeze_think(dt, world, ctx, rng, events);
+        }
+        // v0.16 Track A: shulkers act in `Entities::shulker_upkeep`.
+        if self.shulker.is_some() {
+            return (None, 0.0);
         }
         if self.endermite.is_some()
             && let Some(wish) = self.endermite_think(dt, world, ctx, rng, events)
@@ -3910,6 +3944,7 @@ impl super::Entities {
                     | MobKind::Panda
                     | MobKind::Armadillo
                     | MobKind::Endermite
+                    | MobKind::Shulker
             ) || m.illager.is_some()
                 || super::neutral::is_neutral(m.kind)
         }) {
@@ -3951,6 +3986,7 @@ impl super::Entities {
                 MobKind::Panda => self.panda_hurt(index, super::nether::Foe::Player(player)),
                 MobKind::Armadillo => self.armadillo_hurt(index, super::nether::Foe::Player(player)),
                 MobKind::Endermite => self.endermite_hurt(index, super::nether::Foe::Player(player)),
+                MobKind::Shulker => self.shulker_hurt_by(index, player),
                 _ if self.mobs[index].illager.is_some() => self.illager_hurt(index, super::nether::Foe::Player(player)),
                 MobKind::Wolf | MobKind::IronGolem | MobKind::Enderman | MobKind::ZombifiedPiglin => {
                     self.neutral_hurt_by(index, player)
