@@ -1,16 +1,17 @@
-VoxelCraft 0.14.0 is the biggest update yet: three releases' worth of content at once. **Structures:** villages,
-pillager outposts, bastions, fossils, desert wells, ruined portals, trail
-ruins, buried treasure and explorer maps, all rebuilt for new worlds.
-**Wildlife:** lightning, bees, frogs, pandas, polar bears, armadillos,
-copper golems, the creaking, allays, sniffers, ocean ruins and more.
-**Deep dark and trials:** ancient cities and the warden, trial chambers
-and the breeze, the mace, tridents, spears and a jukebox with every
-music disc. **And more:** mobs that wear and drop gear, zombie
-reinforcements, endermites, chainmail, bundles, harnesses, the Bottle
-o' Enchanting, dyed leather and eleven more status effects. If you have 0.10.0 or later, the title screen offers this
-update; choose **Update and Restart**. If you're coming from 0.9.0 or
-earlier, install it by hand once, as below, and it updates itself from
-then on.
+VoxelCraft 0.15.0 brings villages to life and lets illagers fight back.
+**Raids:** pillager patrols and captains, Bad Omen and Raid Omen, Java's
+waves with vindicators, evokers, vexes, ravagers and witches, the raid bar,
+and Hero of the Village. **Villages:** profession buildings with their job
+sites, animal pens and abandoned villages, every Java trade, schedules,
+gossip and the wandering trader. **Woodland mansions** and five new explorer
+maps. **Workstations:** stonecutters, looms with banner patterns,
+cartography tables, books and lecterns, and the spyglass. **New mobs:**
+happy ghasts, nautiluses, camel husks and the parched. **And more:** armor
+trims, spectral arrows, Frost Walker, four new potions and new trial
+chamber and ancient city rooms. If you have 0.10.0 or later, the title
+screen offers this update; choose **Update and Restart**. If you're coming
+from 0.9.0 or earlier, install it by hand once, as below, and it updates
+itself from then on.
 
 VoxelCraft is an unofficial fan project, inspired by Minecraft Java Edition. It
 is not affiliated with or endorsed by Mojang Studios or Microsoft, and it
@@ -18,13 +19,82 @@ contains no Minecraft code or assets.
 
 Choose your download:
 
-- **Windows 10/11 x64:** `VoxelCraft-0.14.0-windows-x64-Setup.exe`
-- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.14.0-macos-apple-silicon.dmg`
+- **Windows 10/11 x64:** `VoxelCraft-0.15.0-windows-x64-Setup.exe`
+- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.15.0-macos-apple-silicon.dmg`
 
-This is the first release since 0.13.0, and it carries what was planned
-as three releases.
+## What's new in 0.15.0
 
-## What's new in 0.14.0
+### Raids and illagers
+
+- Vindicators, evokers (with their fangs and vexes, and the blue sheep they
+  turn red), ravagers and illusioners (by command only, as in Java).
+  Pillagers aim and reload their crossbows the way Java's do.
+- Mobs hold weapons and tools and wear armor that count in a fight, and
+  mobs that can pick up loot equip what they find.
+- Pillager patrols spawn in daylight, led by a captain carrying the
+  ominous banner. Pillager captains drop an ominous bottle; drinking it
+  gives Bad Omen, which becomes Raid Omen in a village and starts a raid.
+- Raids follow Java's waves for each difficulty, with a bonus wave, riders
+  on ravagers and the raid bar. Villagers run to shelter when the bell
+  rings. Win and you get Hero of the Village: lower prices and gifts from
+  the villagers. The `raids` and `spawn_patrols` game rules work.
+
+### Villages and villagers (new worlds only for buildings)
+
+- Villages are built from Java's full set of building pools: profession
+  houses with their job sites, decorations, animal pens and abandoned
+  villages.
+- Villagers trade Java 26.3's default offers, with Java's prices, uses,
+  restocks and levelling. They follow Java's daily schedules, gather at the
+  meeting bell, spread gossip and remember a cure.
+- The wandering trader sells Java's sets, except five offers whose items
+  aren't in the game yet.
+
+### Woodland mansions and maps
+
+- Woodland mansions generate in dark forests in new worlds, with their
+  rooms, vindicators and evokers, allays in the jail cells, and their loot.
+- In worlds created in 0.15.0, the master cartographer sells the woodland
+  mansion map. Desert pyramid, warm ocean ruin, buried mineshaft and buried
+  ancient city maps exist too.
+- Trial chambers and ancient cities have Java's full set of room kinds in
+  new worlds.
+
+### Workstations and books
+
+- Stonecutters cut stone blocks one step at a time.
+- Looms weave all of Java's banner patterns, including the ten pattern
+  items. Shields carry banner patterns, cauldrons wash banners, and raid
+  captains carry the ominous banner.
+- Cartography tables copy, zoom out and lock maps.
+- Write in a book and quill, sign it, and put it on a lectern to read and
+  turn pages; a lectern powers a comparator.
+- The spyglass zooms in.
+
+### New mobs
+
+- Happy ghasts grow from dried ghasts kept in water. Put a harness on one
+  and up to four players can ride it.
+- Nautiluses and zombie nautiluses swim in the oceans and take nautilus
+  armor. Camel husks roam deserts with their riders, and the parched shoot
+  weakness arrows.
+- Chickens, cows and pigs come in warm and cold variants. Warm chickens lay
+  brown eggs and cold chickens lay blue eggs.
+
+### Items and effects
+
+- Armor trims: the 18 smithing templates and every trim material.
+- Spectral arrows make their target glow.
+- Frost Walker freezes water into frosted ice.
+- Glowing, Levitation, Health Boost, Wind Charged, Weaving, Oozing and
+  Infested all act, and the four new potions (Wind Charging, Weaving,
+  Oozing and Infestation) can be brewed. Every Java brewing recipe matches.
+
+### Fixes
+
+- A LAN guest's book written from the off-hand is saved in the off-hand.
+
+## What's new in 0.14.0 (if you're coming from 0.13.0 or earlier)
 
 ### Structures (new worlds only)
 
@@ -400,29 +470,28 @@ new giant trees.
 
 ## Known limitations
 
-- Structures are VoxelCraft's own designs, not Java's buildings. Villages
-  don't yet have profession buildings with fixed job sites, decorations,
-  animals in pens or abandoned villages, and trial chambers and ancient
-  cities have fewer room kinds than Java's; these come in 0.15. Water from
-  a nearby cave can pour into an ancient city.
+- Structures are VoxelCraft's own designs laid out the way Java lays them
+  out, not Java's buildings. Water from a nearby cave can pour into an
+  ancient city.
 - On steep ground some villages and outposts are smaller or don't appear,
   because a building is left out rather than stood on a pillar.
-- Abandoned camps, woodland mansions, End cities and strongholds,
-  mineshafts and dungeons piece by piece aren't in the new generator yet,
-  and neither are the explorer maps only those give.
+- Abandoned camps, End cities and strongholds, mineshafts and dungeons
+  piece by piece aren't in the new generator yet. Of the five new explorer
+  maps, only the woodland mansion map can be found in survival until
+  abandoned camps arrive.
 - Archaeology covers suspicious sand and gravel in ocean ruins only; trail
   ruins have no suspicious blocks yet, and decorated pots can't carry
   sherd patterns.
 - Brushing has no sounds of its own, and other LAN players don't see the
   find rising out of the block.
-- Raids, vindicators, evokers, ravagers, woodland mansions, happy ghasts
-  and nautiluses aren't in yet; they come in 0.15. Mobs don't pick up
-  items from the ground yet. Lecterns, looms, cartography tables and
-  stonecutters are decorative, so maps can't be scaled, copied or locked,
-  and item frames don't show map images.
-- The potions of Weaving, Oozing, Infested and Wind Charging aren't in
-  yet, and some of the new effects (Raid Omen, Hero of the Village, Conduit
-  Power) wait for the raids and blocks that give them.
+- Other LAN players don't see the raid bar. Witches in a raid don't heal
+  raiders, and raids add nothing to statistics.
+- The new mobs and villagers use simpler brains than Java's, and many of
+  them borrow other mobs' sounds. Item frames don't show map images.
+- Conduits and the effects of Conduit Power are planned for 0.16.
+- The Host, Raiser, Shaper, Wayfinder and Spire armor trim templates have
+  no survival source yet: trail ruins have no suspicious gravel loot and
+  End cities aren't generated.
 - Music discs can be heard 24 blocks away (Java: 64), and other music
   doesn't fade while a disc plays.
 - Some Java options aren't in yet because nothing in the game uses them:
@@ -450,10 +519,9 @@ new giant trees.
 - Mobs and dropped items treat scaffolding and powder snow as plain blocks.
 - Walls built in older versions show their posts until a neighbouring block
   changes.
-- Shields can't carry banner patterns, the off-hand item isn't drawn in your
-  hand, and bows can't be drawn from the off-hand.
-- There is no Soul Speed, no wither skeleton skull block and no frosted ice
-  (Frost Walker).
+- The off-hand item isn't drawn in your hand, and bows can't be drawn from
+  the off-hand.
+- There is no Soul Speed and no wither skeleton skull block.
 - Complex redstone contraptions that depend on Java's exact update order may
   behave differently.
 - The Ender Dragon can't be respawned, and the End has no chorus trees, cities,
@@ -470,12 +538,13 @@ new giant trees.
 
 Players on 0.10.0 or later get this version from the title screen. Install
 it by hand if you're on 0.9.0 or earlier; later versions then arrive in game.
-Worlds and options from 0.13.0 and earlier load in 0.14.0 and keep the
-terrain and structures they were created with; the new structures, creaking
-hearts and eyeblossom patches appear only in worlds created in 0.14.0. The
-new mobs, lightning, crops and blocks work in every world. Once 0.14.0 has
-saved a world, don't open it in an older version: older versions can't read
-chunks holding the new blocks and lose the new mobs and items. Back up your
+Worlds and options from 0.14.0 and earlier load in 0.15.0 and keep the
+terrain and structures they were created with; woodland mansions and the
+new village buildings, trial chamber rooms and ancient city rooms appear
+only in worlds created in 0.15.0. Raids, patrols, the new mobs, trades,
+workstations and items work in every world. Once 0.15.0 has saved a world,
+don't open it in an older version: older versions can't read chunks
+holding the new blocks and lose the new mobs and items. Back up your
 worlds before upgrading from 0.8.0, and don't open a world saved by 0.9.0
 or later in 0.8.0. LAN players all need the same version.
 

@@ -26,6 +26,16 @@ do not need a separate Visual C++ redistributable installation.
   releases are left unchanged.
 
 Update Cargo.toml, Cargo.lock and the release notes together for each version.
+Before pushing a tag, check out the exact commit it will point at and check
+that the tag names that commit's Cargo version, as the build will (the
+`v0.15` tag of 2026-11-18 failed here because Cargo.toml still said 0.14.0).
+Use the tag you are about to push:
+
+```sh
+git checkout --detach <commit> && git status --short   # nothing listed
+GITHUB_REF_TYPE=tag GITHUB_REF_NAME=<tag> python3 packaging/check-version.py
+```
+
 Review both packages before publishing the draft through GitHub Releases.
 Do not move published version tags or replace published binaries; create a new
 version for fixes so downloads remain identifiable.
