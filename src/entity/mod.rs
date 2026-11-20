@@ -80,6 +80,7 @@ pub mod sniffer;
 mod spawn_lists;
 mod spawn_rules;
 mod spawning;
+pub mod sulfur_cube;
 pub mod thrown;
 mod tipped_arrow;
 pub mod tnt;
@@ -187,6 +188,9 @@ pub enum MobSound {
     Wither(wither::Cue),
     /// v0.16 Track A: a shulker's lid, shot and teleport, and its bullets.
     Shulker(shulker::Cue),
+    /// v0.16 Track D: sulfur cube squishes, swallowed and ejected blocks,
+    /// hits, pushes and buckets.
+    SulfurCube(sulfur_cube::Cue),
 }
 
 /// Something an entity did that the game needs to react to.
@@ -645,6 +649,11 @@ pub trait MobWorld: BlockSource {
     fn nether_biome_at(&self, p: IVec3) -> Option<crate::world::nether_biome::NetherBiome> {
         self.nether_biome(p.x, p.z)
     }
+    /// `getBestOwnOrNeighbourSignal` at `p`: what primes an explosive
+    /// sulfur cube standing there.
+    fn redstone_signal(&self, _p: IVec3) -> u8 {
+        0
+    }
     /// Java moon brightness; clients set this from their saved day count.
     /// Inside a Nether fortress piece, where fortress mobs spawn.
     fn in_fortress(&self, _p: IVec3) -> bool {
@@ -665,6 +674,11 @@ pub trait MobWorld: BlockSource {
     /// v0.16 Track A: the shulker cells (`Sentry` markers) of End cities
     /// within `r` blocks of `p`.
     fn end_city_sentries(&self, _p: IVec3, _r: i32) -> Vec<IVec3> {
+        Vec::new()
+    }
+    /// The End ships' elytra item frames (cell and facing out of the wall)
+    /// within `r` blocks of `p`.
+    fn end_city_elytra_frames(&self, _p: IVec3, _r: i32) -> Vec<(IVec3, IVec3)> {
         Vec::new()
     }
     /// `findNearestMapStructure(DOLPHIN_LOCATED, p, 50, false)`: the nearest
@@ -688,6 +702,9 @@ pub trait MobWorld: BlockSource {
 }
 
 impl MobWorld for World {
+    fn redstone_signal(&self, p: IVec3) -> u8 {
+        self.redstone_power(p)
+    }
     fn bee_night(&self, daylight: f32) -> bool {
         self.beehives.night.unwrap_or(daylight < 0.35)
     }
@@ -776,6 +793,16 @@ impl MobWorld for World {
         end.cities_near(lo, hi)
             .iter()
             .flat_map(|c| c.sentries.iter().copied().filter(|s| (*s - p).abs().max_element() <= r).collect::<Vec<_>>())
+            .collect()
+    }
+    fn end_city_elytra_frames(&self, p: IVec3, r: i32) -> Vec<(IVec3, IVec3)> {
+        let Some(end) = self.generator.end() else { return Vec::new() };
+        let (lo, hi) = (glam::IVec2::new(p.x - r, p.z - r), glam::IVec2::new(p.x + r, p.z + r));
+        end.cities_near(lo, hi)
+            .iter()
+            .filter_map(|c| c.elytra_frame)
+            .filter(|f| (f.cell - p).abs().max_element() <= r)
+            .map(|f| (f.cell, f.facing.offset()))
             .collect()
     }
     fn dolphin_treasure(&self, p: IVec3) -> Option<IVec3> {
@@ -1364,7 +1391,10 @@ impl Entities {
         if kind.is_zombie() || kind.is_bow_skeleton() {
             mob.equipment.enchant_spawned(&mut self.rng, special);
         }
-        if kind.is_cube() {
+        if kind == MobKind::SulfurCube {
+            // `SulfurCube.setSpawnSize`: an adult is size 2.
+            mob.set_sulfur_size(sulfur_cube::ADULT_SIZE);
+        } else if kind.is_cube() {
             // `AbstractCubeMob.setSpawnSize`: sizes 1, 2 and 4 from nextInt(3),
             // and the smaller two grow one step with chance 0.5 x the local
             // difficulty's special multiplier.
@@ -1485,6 +1515,18 @@ impl Entities {
             if credit_player {
                 m.player_hit();
             }
+            // v0.16 Track D: a blast lights an explosive sulfur cube on a
+            // short fuse (`primeTime(true)`); its archetype's explosion
+            // knockback resistance scales the push.
+            let push = match m.sulfur_physics() {
+                Some(p) => {
+                    if p.explosion.is_some() && m.prime_sulfur_cube(true, self.tnt_explodes, &mut self.rng) {
+                        self.pending_sounds.push(EntityEvent::Sound { sound: MobSound::Fuse, pos: m.pos });
+                    }
+                    push * (1.0 - p.explosion_knockback_resistance)
+                }
+                None => push,
+            };
             if m.blast(damage, push, &mut self.rng) {
                 killed.push((m.kind, m.pos, m.burning));
             }
@@ -1630,7 +1672,10 @@ impl Entities {
         self.equipment_drops(kind, pos, looting, player_kill);
         self.mob_equipment_drops(kind, pos, looting, player_kill);
         if player_kill {
-            let xp = if kind.is_cube() {
+            let xp = if kind == MobKind::SulfurCube {
+                // `SulfurCube.getBaseExperienceReward`: babies give none.
+                if baby { 0 } else { 1 + self.rng.next_int(2) }
+            } else if kind.is_cube() {
                 size as u32
             } else if let Some(xp) = nether::xp(kind, baby) {
                 xp
@@ -2438,6 +2483,7 @@ impl Entities {
             owner,
             smash: 0.0,
             armor_effectiveness: 0.0,
+            pitch: 0.0,
         };
         self.player_melee(index, hit)
     }
@@ -2460,6 +2506,7 @@ impl Entities {
             owner,
             smash,
             armor_effectiveness,
+            pitch,
         } = hit;
         let target = self.mobs.get(index).filter(|m| m.alive())?;
         if target.allay.as_ref().is_some_and(|s| s.player == Some(owner)) {
@@ -2493,6 +2540,20 @@ impl Entities {
         }
         self.animals_owner_attack(index, owner);
         let old_health = self.mobs[index].health;
+        // v0.16 Track D: a sulfur cube with a block takes the hit only as
+        // its archetype's angled knockback (`SulfurCube.hurtServer` and
+        // `knockback`, from `dealDefaultKnockback`).
+        if self.mobs[index].sulfur_has_block() {
+            let (sy, cy) = (-yaw).to_radians().sin_cos();
+            let (sp, cp) = pitch.to_radians().sin_cos();
+            let look = DVec3::new(f64::from(sy * cp), f64::from(-sp), f64::from(cy * cp));
+            let eye = origin + DVec3::Y * crate::player::EYE_HEIGHT;
+            let m = &mut self.mobs[index];
+            m.player_hit_by(owner);
+            m.sulfur_knockback(eye, look, origin, damage, origin.x - pos.x, origin.z - pos.z);
+            self.sulfur_sound(sulfur_cube::Cue::Hit, pos);
+            return None;
+        }
         let hit = crate::knockback::Hit::melee(origin, pos, yaw, extra);
         self.mobs[index].armor_effectiveness = armor_effectiveness;
         let killed = self.hurt_by_player(index, damage, &hit.pushes, owner);
@@ -2643,6 +2704,9 @@ pub struct PlayerMelee {
     pub smash: f32,
     /// The weapon's armor-effectiveness change (Breach), applied to this hit.
     pub armor_effectiveness: f32,
+    /// The attacker's Java pitch in degrees (positive looks down): a sulfur
+    /// cube with a block takes its knockback along the attacker's aim.
+    pub pitch: f32,
 }
 
 /// Whether `kind` may spawn standing on `ground` at this daylight level.

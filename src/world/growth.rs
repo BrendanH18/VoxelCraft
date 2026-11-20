@@ -235,10 +235,21 @@ impl World {
             return;
         }
         let fortune = tool.level(Enchantment::Fortune) as u64;
+        // `blocks/nether_gold_ore`: two to six nuggets, times Java's ore
+        // bonus with Fortune.
+        if block == super::gen5_blocks::NETHER_GOLD_ORE {
+            let times = 1 + (self.roll() % (fortune + 2)).saturating_sub(1);
+            let n = ((2 + self.roll() % 5) * times).min(64);
+            self.drops.push((p, Stack::new(Item::GOLD_NUGGET, n as u8)));
+            return;
+        }
         let mut out = Vec::new();
-        // Java's slab loot table: two for `type=double`; candles, one per candle.
-        let count =
-            double_slab_count(block) * super::colour_blocks::drop_count(block) * super::biome_plants::drop_count(block);
+        // Java's slab loot table: two for `type=double`; candles, one per
+        // candle; a grown shelf mushroom, two.
+        let count = double_slab_count(block)
+            * super::colour_blocks::drop_count(block)
+            * super::biome_plants::drop_count(block)
+            * super::gen5_blocks::drop_count(block);
         out.extend(block.drop().map(|item| Stack::new(item, count)));
         out.extend(super::utilities::extra_drops(block));
         self.chorus_plant_drops(block, &mut out);
@@ -730,6 +741,15 @@ impl World {
         }
         if let Some(used) = self.plant_bone_meal(p, b) {
             return used;
+        }
+        // v0.16 Track D: `ShelfMushroomBlock.performBonemeal` grows a young
+        // shelf mushroom (age 0) to age 1, every time.
+        if let Some((facing, age)) = super::gen5_blocks::shelf_of(b) {
+            if age == 0 {
+                self.edit(p, super::gen5_blocks::shelf_mushroom(facing, 1), true);
+                return true;
+            }
+            return false;
         }
         match b {
             b if b.as_crop().is_some_and(|(crop, age)| age < crop.max_age()) => {

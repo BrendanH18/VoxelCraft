@@ -1193,3 +1193,52 @@ both ways, and `entity::shulker` its constants and loot. The
 `chests/end_city_treasure` table the chests roll is in
 `src/world/loot_tables.json` (added to `tools/extract_java_structure_loot.py`'s
 list).
+
+## Generation 5 Overworld (v0.16 Track D)
+
+`gen5_overworld.json` holds the generation 5 facts v0.16 Track D follows:
+the six poplar tree features (trunk and foliage placer parameters, leaf
+provider, decorators with the leaf-litter decorators' tries and radii),
+`fallen_poplar_tree`, the `trees_dappled_forest` selector and its count,
+`patch_red_shrub`, the `dappled_forest` and `sulfur_caves` biomes
+(temperature, downfall, colours, feature lists, spawn settings), the
+`sulfur_cave_bands` thresholds and `sulfur_cave_gradient` noise, the
+sulfur spike, spike cluster and pool placements, and `ore_gold_nether` and
+`ore_gold_deltas`. Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_gen5_fixtures.py /path/to/server.jar --output target/java-gen5.json
+diff tests/fixtures/java/26.3/gen5_overworld.json target/java-gen5.json
+scripts/remote-check.sh -- 'cargo test --release --lib -- poplar sulfur'
+```
+
+`world::poplar_trees` and `world::terrain::sulfur_caves` check their
+constants against this file. The two new biomes' friendly spawn lists were
+added to `spawn_categories.json` from the same biome files
+(`biome/{dappled_forest,sulfur_caves}.json`), in that file's format.
+
+## Sulfur cube (v0.16 Track D)
+
+`sulfur_cube.json` holds the sulfur cube's facts: `EntityTypes.SULFUR_CUBE`
+(category, size, eye height, spawn dimensions scale), the static constants
+of `SulfurCube` and `AbstractCubeMob`, the attribute
+`createSulfurCubeAttributes` adds (tempt range), the twelve
+`sulfur_cube_archetype` entries with their item tags expanded to item
+names, the `sulfur_cube_swallowable` and `sulfur_cube_food` tags, the
+expanded `sulfur_cube_with_block_immune_to` damage-type tag, the
+`sulfur_cube_hot` damage type, the empty `entities/sulfur_cube` loot table,
+the sulfur caves' monster entry and the bucket item's class
+(`MobBucketItem`). Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_sulfur_cube_fixtures.py /path/to/server.jar --output target/java-sulfur-cube.json
+diff tests/fixtures/java/26.3/sulfur_cube.json target/java-sulfur-cube.json
+cargo test --release --lib sulfur_cube
+```
+
+`entity::sulfur_cube` holds the archetype item lists generated from this
+file (with their English names from `registry_names.json` for resolution)
+and its tests check every list, modifier, constant and tag against it.
+The abandoned camps' three loot tables were added to
+`src/world/loot_tables.json` from `loot_table/chests/abandoned_camp_*_chest.json`
+and `loot_table/barrels/abandoned_camp_barrel.json` unchanged.

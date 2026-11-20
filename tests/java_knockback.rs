@@ -977,6 +977,7 @@ fn an_angry_wolf_bites_with_the_mob_melee_push() {
         owner: PlayerId::HOST,
         smash: 0.0,
         armor_effectiveness: 0.0,
+        pitch: 0.0,
     };
     e.player_melee(0, punch);
     assert_eq!(e.mobs[0].angry_at(), Some(PlayerId::HOST), "a hit wild wolf turns on the player");

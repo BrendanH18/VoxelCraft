@@ -441,7 +441,7 @@ pub fn stripped(b: Block) -> Option<Block> {
 pub const fn switch_oak(id: u16) -> Option<(Block, u16)> {
     let id = super::waterlog::canonical(id);
     // The v0.12 wood families (switch woods 4..=11, `wood::switches`).
-    if id >= super::wood::switches::FIRST && id < super::wood::switches::END {
+    if (id >= super::wood::switches::FIRST && id < super::wood::switches::END) || super::wood::switches::owns(id) {
         return super::wood::switches::twin(id);
     }
     // Floor and ceiling buttons (`mount_states`): kinds 2.. are the wood twins.

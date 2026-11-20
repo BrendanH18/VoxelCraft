@@ -234,8 +234,9 @@ pub struct RolledChest {
 impl RolledChest {
     pub fn roll(g: &super::terrain::Generator, name: &str, seed: u64, origin: glam::IVec3) -> Self {
         let mut maps = Vec::new();
-        let chest = table_with_random(name, &mut LootRandom::new(seed), |s| {
-            let data = super::maps::explorer_map(g, origin, s.item, 50)?;
+        let biome = g.biome_at(origin);
+        let chest = table_with_random_at(name, &mut LootRandom::new(seed), Some(biome.name()), |s| {
+            let data = super::maps::explorer_map_stack(g, origin, s, 50)?;
             let id = UNNUMBERED_MAP + maps.len() as u32;
             maps.push((s.item, data));
             Some(Stack { map_id: Some(id), ..Stack::new(s.item, 1) })
@@ -520,7 +521,18 @@ fn enchant_levels(stack: &mut Stack, name: &str, modifier: &serde_json::Value, r
 /// exploration modifiers before the fill shuffles, so discarded maps do not
 /// consume a slot or a stack-splitting draw.
 pub fn table_with_random(name: &str, rng: &mut impl Random, resolve: impl FnMut(Stack) -> Option<Stack>) -> Chest {
-    let items = roll_items(name, rng, resolve);
+    table_with_random_at(name, rng, None, resolve)
+}
+
+/// [`table_with_random`] for a container in `biome` (Java's `ORIGIN`), which
+/// `location_check` conditions test.
+pub fn table_with_random_at(
+    name: &str,
+    rng: &mut impl Random,
+    biome: Option<&str>,
+    resolve: impl FnMut(Stack) -> Option<Stack>,
+) -> Chest {
+    let items = roll_items_at(name, rng, biome, resolve);
     let mut chest = Chest::default();
     let size = if name == "jungle_temple_dispenser" || name.starts_with("dispensers/") { 9 } else { 27 };
     fill(&mut chest, items, rng, size);
@@ -529,13 +541,41 @@ pub fn table_with_random(name: &str, rng: &mut impl Random, resolve: impl FnMut(
 
 /// `LootTable.getRandomItems`: every stack a named table yields, in roll
 /// order, before any container fill. Unknown tables yield nothing.
-pub fn roll_items(name: &str, rng: &mut impl Random, mut resolve: impl FnMut(Stack) -> Option<Stack>) -> Vec<Stack> {
+pub fn roll_items(name: &str, rng: &mut impl Random, resolve: impl FnMut(Stack) -> Option<Stack>) -> Vec<Stack> {
+    roll_items_at(name, rng, None, resolve)
+}
+
+/// [`roll_items`] at a position in `biome`: entries with a `location_check`
+/// condition are kept when it holds there (and dropped without a biome).
+pub fn roll_items_at(
+    name: &str,
+    rng: &mut impl Random,
+    biome: Option<&str>,
+    mut resolve: impl FnMut(Stack) -> Option<Stack>,
+) -> Vec<Stack> {
     let mut items = Vec::new();
     let table = &facts()["tables"][name];
     if table.is_object() {
-        roll_table(table, rng, &mut resolve, &mut items, 0);
+        roll_table(table, rng, &mut resolve, &mut items, 0, biome);
     }
     items
+}
+
+/// A loot condition at a position in `biome`: `location_check` on biomes
+/// and `inverted`; anything else fails.
+fn condition_holds(c: &serde_json::Value, biome: &str) -> bool {
+    match c["type"].as_str().unwrap_or("").trim_start_matches("minecraft:") {
+        "inverted" => !condition_holds(&c["term"], biome),
+        "location_check" => {
+            let wanted = &c["predicate"]["biomes"];
+            let is = |v: &serde_json::Value| v.as_str().is_some_and(|b| b.trim_start_matches("minecraft:") == biome);
+            match wanted {
+                serde_json::Value::Array(list) => list.iter().any(is),
+                v => is(v),
+            }
+        }
+        _ => false,
+    }
 }
 
 /// One table's pools; `loot_table` entries recurse with the same random,
@@ -546,6 +586,7 @@ fn roll_table(
     resolve: &mut impl FnMut(Stack) -> Option<Stack>,
     items: &mut Vec<Stack>,
     depth: u32,
+    biome: Option<&str>,
 ) {
     for pool in table["pools"].as_array().into_iter().flatten() {
         // Pool conditions this corpus uses: `random_chance` draws a float;
@@ -564,8 +605,13 @@ fn roll_table(
         // The only conditional entry in this corpus requires sulfur_caves,
         // a biome this generator cannot produce. Java excludes it before
         // summing weights, rather than rolling it as an empty item.
-        let entries: Vec<_> =
-            pool["entries"].as_array().unwrap().iter().filter(|e| e.get("condition").is_none()).collect();
+        // Java drops entries whose conditions fail before summing weights.
+        let entries: Vec<_> = pool["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|e| e.get("condition").is_none_or(|c| biome.is_some_and(|b| condition_holds(c, b))))
+            .collect();
         if entries.is_empty() {
             continue;
         }
@@ -591,10 +637,12 @@ fn roll_table(
                             let n = n.trim_start_matches("minecraft:");
                             let nested = &facts()["tables"][n.strip_prefix("chests/").unwrap_or(n)];
                             if nested.is_object() {
-                                roll_table(nested, rng, resolve, items, depth + 1);
+                                roll_table(nested, rng, resolve, items, depth + 1, biome);
                             }
                         }
-                        inline @ serde_json::Value::Object(_) => roll_table(inline, rng, resolve, items, depth + 1),
+                        inline @ serde_json::Value::Object(_) => {
+                            roll_table(inline, rng, resolve, items, depth + 1, biome)
+                        }
                         _ => {}
                     }
                 }
@@ -660,9 +708,26 @@ fn roll_table(
                     "set_instrument" => {
                         stack.item = crate::item::Item(crate::item::Item::GOAT_HORN.0 + rng.bounded(4) as u16);
                     }
+                    // v0.16 Track D: an abandoned camp map's `filled_map.*` name.
+                    "set_name" => {
+                        if let Some(key) = m["name"]["translate"].as_str().and_then(|k| k.strip_prefix("filled_map.")) {
+                            let words: Vec<String> = key
+                                .split('_')
+                                .filter(|w| !w.is_empty())
+                                .map(|w| w[..1].to_uppercase() + &w[1..])
+                                .collect();
+                            stack.name = crate::inventory::StackName::new(&words.join(" ")).unwrap_or_default();
+                        }
+                    }
                     "exploration_map" => {
+                        // An abandoned camp map carries its destination to the resolver.
+                        if name == "abandoned_camp_map"
+                            && let Some(i) = m["destination"].as_str().and_then(super::camp_maps::destination_of_tag)
+                        {
+                            stack.entity_data = i as u32 + 1;
+                        }
                         if let Some(mapped) = resolve(stack) {
-                            stack = mapped;
+                            stack = crate::inventory::Stack { name: stack.name, ..mapped };
                         } else {
                             discard = true;
                         }
@@ -711,15 +776,18 @@ impl super::World {
     /// A zero/absent loot seed follows the table's persistent world sequence,
     /// as LootParams.Builder.withOptionalRandomSeed does in Java.
     pub fn structure_loot(&mut self, name: &str, seed: Option<u64>, origin: glam::IVec3) -> Chest {
+        // `location_check` conditions test the container's biome.
+        let biome = self.generator.biome_at(origin).name();
         if let Some(seed) = seed.filter(|&s| s != 0) {
-            table_with_random(name, &mut LootRandom::new(seed), |s| {
-                self.maps.explorer(&self.generator, origin, s.item, 50)
+            table_with_random_at(name, &mut LootRandom::new(seed), Some(biome), |s| {
+                self.maps.explorer_stack(&self.generator, origin, s, 50)
             })
         } else {
             let key = sequence_key(name);
             let mut sequence = *self.loot_sequences.get(self.generator.seed, &key);
-            let chest =
-                table_with_random(name, &mut sequence, |s| self.maps.explorer(&self.generator, origin, s.item, 50));
+            let chest = table_with_random_at(name, &mut sequence, Some(biome), |s| {
+                self.maps.explorer_stack(&self.generator, origin, s, 50)
+            });
             *self.loot_sequences.get(self.generator.seed, &key) = sequence;
             chest
         }
@@ -763,7 +831,8 @@ impl super::World {
 /// `chests/` folder here; spawner, dispenser, equipment and entity tables
 /// keep theirs.
 pub fn sequence_key(name: &str) -> String {
-    if ["spawners/", "dispensers/", "equipment/", "entities/", "pots/"].iter().any(|f| name.starts_with(f)) {
+    if ["spawners/", "dispensers/", "equipment/", "entities/", "pots/", "barrels/"].iter().any(|f| name.starts_with(f))
+    {
         format!("minecraft:{name}")
     } else {
         format!("minecraft:chests/{name}")
@@ -871,6 +940,7 @@ mod reference_tests {
                                 | "minecraft:set_stew_effect"
                                 | "minecraft:set_ominous_bottle_amplifier"
                                 | "minecraft:set_enchantments"
+                                | "minecraft:set_name"
                         ));
                     }
                 }

@@ -53,6 +53,7 @@ pub fn handles(item: Item) -> bool {
         item,
         Item::BUCKET | Item::WATER_BUCKET | Item::LAVA_BUCKET | Item::POWDER_SNOW_BUCKET | Item::GLASS_BOTTLE
     ) || crate::entity::aquatic::bucket_kind(item).is_some()
+        || item == crate::entity::sulfur_cube::BUCKET
 }
 
 /// The shared input priority for buckets and bottles. Every adapter runs its
@@ -146,6 +147,20 @@ pub fn use_bucket(
                 super::exchange(inventory, slot, Item::BUCKET, false, entities, player);
             }
             Some(effect)
+        }
+        // v0.16 Track D: `MobBucketItem` with no fluid (`Fluids.EMPTY`):
+        // the cube comes out on the clicked face, fluids ignored.
+        crate::entity::sulfur_cube::BUCKET => {
+            let (hit, normal) = world.raycast(eye, dir, reach)?;
+            let at = hit + normal;
+            if at.y < world.min_y() || at.y >= world.max_y() {
+                return None;
+            }
+            entities.release_sulfur_cube(stack, at.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
+            if !creative {
+                super::exchange(inventory, slot, Item::BUCKET, false, entities, player);
+            }
+            Some(Effect::Released { at })
         }
         _ if creature => {
             let effect = pour(world, eye, dir, reach, Block::WATER, player.sneaking)?;

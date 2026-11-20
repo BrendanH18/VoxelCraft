@@ -39,6 +39,7 @@ pub fn item(id: &str, english: &str) -> Option<Item> {
         "salmon_bucket" => "bucket of salmon",
         "tropical_fish_bucket" => "bucket of tropical fish",
         "pufferfish_bucket" => "bucket of pufferfish",
+        "sulfur_cube_bucket" => "bucket of sulfur cube",
         "turtle_scute" => "turtle scute",
         // The one alias whose Java block and item differ: the crop and its harvest.
         "wheat" => "wheat",

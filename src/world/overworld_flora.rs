@@ -36,13 +36,18 @@ impl World {
                 && !super::biome_plants::owns(b.0)
                 && ob::propagule_age(b).is_none()
                 && ob::bud_facing(b).is_none()
+                && super::gen5_blocks::spike_of(b).is_none()
+                && super::gen5_blocks::shelf_of(b).is_none()
             {
                 continue;
             }
             // Ceiling plants: the whole run below drops when unsupported.
             if let Some(false) = self.get_block(q + IVec3::Y).and_then(|above| ob::hangs_from(b, above.canonical())) {
                 // Stalactites fall instead (`PointedDripstoneBlock.tick`).
-                if matches!(ob::dripstone_of(b), Some((true, _))) {
+                // v0.16 Track D: sulfur spikes are `SpeleothemBlock`s too.
+                if matches!(ob::dripstone_of(b), Some((true, _)))
+                    || matches!(super::gen5_blocks::spike_of(b), Some((true, _, _)))
+                {
                     self.drop_stalactite(q);
                     continue;
                 }

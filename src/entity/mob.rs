@@ -26,6 +26,7 @@ mod ocelot;
 mod polar_bear;
 mod raider;
 pub(crate) mod selector;
+mod sulfur_cube;
 pub(crate) mod swim;
 pub(crate) mod turtle;
 #[cfg(test)]
@@ -235,6 +236,9 @@ pub enum MobKind {
     /// v0.16 Track A: the End city's shell-dwelling turret. Saved as
     /// `shulker` (see `entity::shulker`).
     Shulker,
+    /// v0.16 Track D: the sulfur caves' block-swallowing cube. Saved as
+    /// `sulfur_cube` (see `entity::sulfur_cube`).
+    SulfurCube,
 }
 
 impl MobKind {
@@ -260,7 +264,7 @@ impl MobKind {
         matches!(self, Self::Zombie | Self::Husk | Self::Drowned | Self::ZombieVillager)
     }
     pub fn is_cube(self) -> bool {
-        matches!(self, Self::Slime | Self::MagmaCube)
+        matches!(self, Self::Slime | Self::MagmaCube | Self::SulfurCube)
     }
     /// Wire index: the position in [`MobKind::ALL`] (warden 72, breeze 73).
     pub fn lan_index(self) -> usize {
@@ -269,7 +273,7 @@ impl MobKind {
     pub fn from_lan_index(index: usize) -> Option<Self> {
         Self::ALL.get(index).copied()
     }
-    pub const ALL: [MobKind; 86] = [
+    pub const ALL: [MobKind; 88] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -357,6 +361,7 @@ impl MobKind {
         MobKind::Parched,
         MobKind::Wither,
         MobKind::Shulker,
+        MobKind::SulfurCube,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -449,6 +454,7 @@ impl MobKind {
             MobKind::Parched => "parched",
             MobKind::Wither => "wither",
             MobKind::Shulker => "shulker",
+            MobKind::SulfurCube => "sulfur_cube",
         }
     }
 
@@ -515,6 +521,8 @@ impl MobKind {
             MobKind::Spider => Shape::new(0.7, 0.9),
             MobKind::CaveSpider => Shape::new(0.35, 0.5),
             MobKind::Slime | MobKind::MagmaCube => Shape::new(0.255, 0.51),
+            // `EntityTypes.SULFUR_CUBE`: 0.49 x 0.49, scaled by the size.
+            MobKind::SulfurCube => Shape::new(super::sulfur_cube::BASE_SIZE * 0.5, super::sulfur_cube::BASE_SIZE),
             MobKind::Enderman => Shape::new(0.3, 2.9),
             MobKind::Blaze => Shape::new(0.3, 1.8),
             MobKind::Ghast => Shape::new(2.0, 4.0),
@@ -616,6 +624,8 @@ impl MobKind {
             MobKind::Parched => 16.0,
             MobKind::Wither => super::wither::MAX_HEALTH,
             MobKind::Shulker => super::shulker::MAX_HEALTH,
+            // `SulfurCube.setCubeMobHealth`: 4 x size (an adult's 2).
+            MobKind::SulfurCube => 8.0,
         }
     }
 
@@ -662,6 +672,7 @@ impl MobKind {
                 | MobKind::Parched
                 | MobKind::Wither
                 | MobKind::Shulker
+                | MobKind::SulfurCube
         )
     }
 
@@ -670,7 +681,8 @@ impl MobKind {
     /// is not registered with `notInPeaceful()` (piglin brutes, hoglins and
     /// zoglins are).
     pub fn despawns_in_peaceful(self) -> bool {
-        self.is_hostile() && self != MobKind::Piglin
+        // The sulfur cube's type isn't `notInPeaceful` either.
+        self.is_hostile() && !matches!(self, MobKind::Piglin | MobKind::SulfurCube)
     }
 
     /// Unharmed by fire and lava.
@@ -1057,10 +1069,12 @@ impl MobKind {
             // `entities/breeze`: 1-2 rods, killed by a player (rolled in `drops`).
             MobKind::Breeze => &[],
             // Piglins drop only what they carry (`nether::equipment_drops`).
-            // `entities/endermite` has no pools; `entities/shulker`'s shell
-            // is rolled in `drops`.
+            // `entities/endermite` and `entities/sulfur_cube` have no pools
+            // (a sulfur cube drops only the block it holds); `entities/shulker`'s
+            // shell is rolled in `drops`.
             MobKind::Shulker
             | MobKind::Endermite
+            | MobKind::SulfurCube
             | MobKind::Silverfish
             | MobKind::Villager
             | MobKind::WanderingTrader
@@ -1235,6 +1249,9 @@ pub struct Mob {
     /// Saved with the level and never despawned (bastion residents, piglins
     /// that picked something up), like Java's persistence flag.
     pub persistent: bool,
+    /// Java 26.3 `AgeableMob.AGE_LOCKED`: a golden dandelion stopped this
+    /// baby growing up (v0.16 Track D). Saved.
+    pub age_locked: bool,
     /// Java slime size (1, 2 or 4).
     pub size: u8,
     /// A baby zombie: half size and 50% faster.
@@ -1271,6 +1288,8 @@ pub struct Mob {
     pub endermite: Option<Box<super::endermite::State>>,
     /// v0.16 Track A: a shulker's face, lid, colour and goals (see `entity::shulker`).
     pub shulker: Option<Box<super::shulker::State>>,
+    /// v0.16 Track D: sulfur cube timers, fuse and goals (see `entity::sulfur_cube`).
+    pub sulfur_cube: Option<Box<super::sulfur_cube::State>>,
     /// v0.15 Track A: illager, vex and ravager state, raid membership
     /// included (see `entity::illager`).
     pub illager: Option<Box<super::illager::State>>,
@@ -1468,6 +1487,7 @@ impl Mob {
             uid: 0,
             persistent: super::mounts::equine(kind) && kind != MobKind::CamelHusk
                 || matches!(kind, MobKind::Tadpole | MobKind::CopperGolem | MobKind::Allay),
+            age_locked: false,
             size: 1,
             baby: false,
             grow: 0.0,
@@ -1501,6 +1521,7 @@ impl Mob {
             warden: (kind == MobKind::Warden).then(Box::default),
             endermite: (kind == MobKind::Endermite).then(Box::default),
             shulker: (kind == MobKind::Shulker).then(Box::default),
+            sulfur_cube: (kind == MobKind::SulfurCube).then(Box::default),
             illager: super::illager::State::for_kind(kind),
             can_pick_up_loot: false,
             happy_ghast: (kind == MobKind::HappyGhast).then(Box::default),
@@ -1705,6 +1726,9 @@ impl Mob {
         if let Some(p) = &self.phantom {
             let s = 1. + f64::from(p.size) * 0.15;
             Shape::new(0.45 * s, 0.5 * s)
+        } else if self.kind == MobKind::SulfurCube {
+            let base = super::sulfur_cube::BASE_SIZE * f64::from(self.size);
+            Shape::new(base * 0.5, base)
         } else if self.kind.is_cube() {
             Shape::new(0.255 * self.size as f64, 0.51 * self.size as f64)
         } else if self.baby || self.age < 0 {
@@ -1791,6 +1815,8 @@ impl Mob {
             || self.warden.as_ref().is_some_and(|s| s.digging_or_emerging())
             || self.undead_mount.protection > 0.
             || self.armadillo.as_ref().is_some_and(|s| s.scared() && amount <= 1.0)
+            // `primeTime` makes a lit sulfur cube permanently invulnerable.
+            || self.sulfur_cube.as_ref().is_some_and(|s| s.primed())
     }
     fn damage_typed(&mut self, amount: f32, knockback: Option<DVec3>, bypass_wolf_armor: bool, rng: &mut Rng) -> bool {
         // `isInvulnerableTo` refuses the hit before any knockback.
@@ -1808,6 +1834,10 @@ impl Mob {
             self.vel.z = kb.z;
             self.vel.y = self.vel.y.max(kb.y);
         }
+        // A sulfur cube with a block takes a mob's hit only as knockback.
+        if knockback.is_some() && self.sulfur_shrugs_off(crate::simulation::damage::DamageType::MobAttack) {
+            return false;
+        }
         self.take_damage(amount, knockback.is_some(), bypass_wolf_armor, rng)
     }
 
@@ -1817,6 +1847,10 @@ impl Mob {
     pub fn blast(&mut self, amount: f32, push: DVec3, rng: &mut Rng) -> bool {
         // `Warden.ignoreExplosion` while digging or emerging.
         if !self.alive() || self.warden.as_ref().is_some_and(|s| s.digging_or_emerging()) {
+            return false;
+        }
+        if self.sulfur_shrugs_off(crate::simulation::damage::DamageType::Explosion) {
+            self.vel += push * crate::knockback::TICK_RATE;
             return false;
         }
         self.hit_cause = Some(Cause::TNT);
@@ -1835,6 +1869,13 @@ impl Mob {
         }
         for &push in pushes {
             self.knock_back(push, rng);
+        }
+        // A sulfur cube with a block takes melee and projectile hits only
+        // as knockback (`#sulfur_cube_with_block_immune_to`).
+        let kind = self.hit_cause.map_or(crate::simulation::damage::DamageType::PlayerAttack, |c| c.kind);
+        if self.sulfur_shrugs_off(kind) {
+            self.hit_cause = None;
+            return false;
         }
         self.take_damage(amount, true, false, rng)
     }
@@ -2253,6 +2294,8 @@ impl Mob {
         } else if self.kind == MobKind::Vex {
             // `Vex.tick` sets `noPhysics`: it flies through blocks.
             super::illager::vex_travel(self, dt);
+        } else if self.sulfur_has_block() {
+            self.sulfur_travel(dt, world);
         } else if java {
             // Whole Java ticks of simulated time; the fixed 20 Hz step runs one.
             // The move controls apply Speed and Slowness to the raw speed.
@@ -2414,6 +2457,11 @@ impl Mob {
             return (self.pursue(world, goal, speed, sees, true, rng), speed);
         }
         if let Some(wish) = self.leash_think(dt, world, rng) {
+            return wish;
+        }
+        if self.sulfur_cube.is_some()
+            && let Some(wish) = self.sulfur_cube_think(dt, world, rng)
+        {
             return wish;
         }
         if self.sniffer.is_some()

@@ -121,8 +121,7 @@ pub const TEMPLATES: [Facts; 20] = [
 
 /// The ship's dragon head: its cell in the ship's frame (on the bow's
 /// stand) and the way it faces. Java's ship holds a `dragon_wall_head` on
-/// its bow; the head block is v0.16 Track C's, so the stand stays empty
-/// until integration places one here.
+/// its bow; `City::paint` places Track C's head here.
 pub const DRAGON_HEAD: ([i32; 3], Facing) = ([6, 7, 28], Facing::South);
 
 pub fn template_index(name: &str) -> Option<u8> {

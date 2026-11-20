@@ -428,8 +428,10 @@ mod tests {
     /// flammability table (the wiki's "Fire" page), by registry name; `None`
     /// for names the table does not mention (checked to burn nothing).
     fn documented(name: &str) -> Option<(u8, u8)> {
-        const WOODS: [&str; 10] =
-            ["oak", "spruce", "birch", "jungle", "acacia", "dark oak", "mangrove", "cherry", "pale oak", "bamboo"];
+        const WOODS: [&str; 11] = [
+            "oak", "spruce", "birch", "jungle", "acacia", "dark oak", "mangrove", "cherry", "pale oak", "bamboo",
+            "poplar",
+        ];
         let wood = WOODS.iter().find_map(|w| name.strip_prefix(w).and_then(|rest| rest.strip_prefix(' ')));
         if let Some(kind) = wood {
             return match kind {
@@ -449,6 +451,8 @@ mod tests {
         }
         Some(match name {
             "azalea leaves" | "flowering azalea leaves" => (30, 60),
+            "orange poplar leaves" | "red poplar leaves" | "yellow poplar leaves" => (30, 60),
+            "red shrub" | "golden dandelion" => (60, 100),
             "wool" => (30, 60),
             n if n.ends_with(" wool") => (30, 60),
             n if n.ends_with(" carpet") && !n.contains("moss") => (60, 20),

@@ -787,6 +787,22 @@ impl Entities {
                 self.mobs.push(m);
             }
         }
+        // The ship's `Elytra` marker: an item frame holding an elytra
+        // (v0.16 Track B's item), hung once.
+        let mut frames = Vec::new();
+        for t in &ctx.players {
+            for (cell, facing) in w.end_city_elytra_frames(t.pos.floor().as_ivec3(), 96) {
+                if w.loaded(cell) && !self.structures_populated.contains(&cell) && !frames.contains(&(cell, facing)) {
+                    frames.push((cell, facing));
+                }
+            }
+        }
+        for (cell, facing) in frames {
+            if self.structures_populated.insert(cell) {
+                let elytra = crate::inventory::Stack::new(crate::content::elytra::ELYTRA, 1);
+                self.decor.push(super::decor::Decor::structure_frame(cell, facing, elytra));
+            }
+        }
     }
 
     /// `Shulker`'s `HurtByTargetGoal().setAlertOthers()`: the shulker a

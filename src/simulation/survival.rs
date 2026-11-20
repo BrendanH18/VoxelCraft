@@ -131,6 +131,9 @@ pub struct Env {
     pub on_hay: bool,
     /// HoneyBlock.fallOn uses the same 0.2f multiplier as hay.
     pub on_honey: bool,
+    /// v0.16 Track D: `Block.fallOn`'s `fallDistanceReduction` of the block
+    /// landed on (0.5 for a shelf mushroom): the fall counts that much less.
+    pub fall_reduction: f32,
     /// Landing on a slime block. Java 26.3's `SlimeBlock.fallOn` multiplies
     /// the damage by zero, and when sneaking suppresses the bounce it
     /// returns without calling `causeFallDamage` at all.
@@ -682,6 +685,8 @@ impl Vitals {
                     0.0
                 } else if env.on_hay || env.on_honey {
                     hay_fall_damage(distance)
+                } else if env.fall_reduction > 0.0 {
+                    fall_damage(distance * f64::from(1.0 - env.fall_reduction))
                 } else {
                     fall_damage(distance)
                 };
@@ -1020,6 +1025,15 @@ mod tests {
         let hay = Env { on_hay: true, ..ground(64.0) };
         assert_eq!(fall(&mut v, 84.0, 64.0, hay).fall, 3.0, "20 blocks onto hay vs 17 on stone");
         assert_eq!(fall(&mut v, 84.0, 64.0, ground(64.0)).fall, 17.0);
+    }
+
+    /// v0.16 Track D: a shelf mushroom's `fallDistanceReduction(0.5F)`
+    /// halves the fall distance `Block.fallOn` passes on.
+    #[test]
+    fn shelf_mushrooms_halve_the_fall() {
+        let mut v = Vitals::default();
+        let shelf = Env { fall_reduction: 0.5, ..ground(64.0) };
+        assert_eq!(fall(&mut v, 84.0, 64.0, shelf).fall, 7.0, "20 blocks count as 10");
     }
 
     #[test]

@@ -416,7 +416,8 @@ impl World {
                 if let &[x, y, z, stack] = rest.split(',').collect::<Vec<_>>().as_slice()
                     && let (Ok(x), Ok(y), Ok(z), Some(Some(stack))) =
                         (x.parse(), y.parse(), z.parse(), crate::inventory::stack_from_str(stack))
-                    && crate::entity::aquatic::bucket_kind(stack.item).is_some()
+                    && (crate::entity::aquatic::bucket_kind(stack.item).is_some()
+                        || stack.item == crate::entity::sulfur_cube::BUCKET)
                 {
                     self.automation.creatures.push((IVec3::new(x, y, z), stack));
                 }
@@ -782,6 +783,12 @@ impl World {
                     self.automation.creatures.push((front, one));
                     Some(Item::BUCKET)
                 }
+                // v0.16 Track D: a sulfur cube bucket has no fluid to pour;
+                // `MobBucketItem.checkExtraContent` lets the cube out.
+                crate::entity::sulfur_cube::BUCKET => {
+                    self.automation.creatures.push((front, one));
+                    Some(Item::BUCKET)
+                }
                 // `DispensibleContainerItem.emptyContents(null, level, target, null)`:
                 // water fills a waterloggable block and evaporates in the Nether.
                 Item::POWDER_SNOW_BUCKET => (self.get_block(front) == Some(Block::AIR)
@@ -827,7 +834,10 @@ impl World {
     /// Headless callers use this same method with their Entities collection.
     pub fn tick_automation_entities(&mut self, entities: &mut crate::entity::Entities) {
         for (p, stack) in std::mem::take(&mut self.automation.creatures) {
-            entities.release_water_creature(stack, p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
+            let at = p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
+            if !entities.release_sulfur_cube(stack, at) {
+                entities.release_water_creature(stack, at);
+            }
         }
         let mut rings = std::mem::take(&mut self.bell_rings);
         for &pos in &rings {

@@ -28,6 +28,10 @@ pub const WOOD_STRIDE: u16 = 23;
 /// Woods laid out from [`WOOD_ORIGIN`]; the rest start at `NETHER_WOOD_ORIGIN`.
 const OVERWORLD_WOODS: u16 = 7;
 const WOODS: u16 = 12;
+/// v0.16 Track D: poplar is wood index 12, with only its fence, gate and
+/// door here (locals 5..=22, in `wood::poplar`'s range); its stairs and
+/// slab are a `slab_stair_states` family of their own.
+pub const POPLAR: u16 = 12;
 const EXTRA_WOOD_ORIGIN: u16 = 2200;
 const EXTRA_STONE_ORIGIN: u16 = 2360;
 const NETHER_WOOD_ORIGIN: u16 = super::nether_biome_blocks::WOOD_ORIGIN;
@@ -120,7 +124,7 @@ const WALL_NAMES: [&str; 19] = [
     "",
 ];
 
-const WOOD_STAIRS: [&str; 12] = [
+const WOOD_STAIRS: [&str; 13] = [
     "dark oak stairs",
     "spruce stairs",
     "birch stairs",
@@ -133,8 +137,9 @@ const WOOD_STAIRS: [&str; 12] = [
     "pale oak stairs",
     "bamboo stairs",
     "bamboo mosaic stairs",
+    "poplar stairs",
 ];
-const WOOD_SLABS: [&str; 12] = [
+const WOOD_SLABS: [&str; 13] = [
     "dark oak slab",
     "spruce slab",
     "birch slab",
@@ -147,8 +152,9 @@ const WOOD_SLABS: [&str; 12] = [
     "pale oak slab",
     "bamboo slab",
     "bamboo mosaic slab",
+    "poplar slab",
 ];
-const WOOD_FENCES: [&str; 12] = [
+const WOOD_FENCES: [&str; 13] = [
     "dark oak fence",
     "spruce fence",
     "birch fence",
@@ -161,8 +167,9 @@ const WOOD_FENCES: [&str; 12] = [
     "pale oak fence",
     "bamboo fence",
     "bamboo mosaic fence",
+    "poplar fence",
 ];
-const WOOD_GATES: [&str; 12] = [
+const WOOD_GATES: [&str; 13] = [
     "dark oak fence gate",
     "spruce fence gate",
     "birch fence gate",
@@ -175,8 +182,9 @@ const WOOD_GATES: [&str; 12] = [
     "pale oak fence gate",
     "bamboo fence gate",
     "bamboo mosaic fence gate",
+    "poplar fence gate",
 ];
-const WOOD_DOORS: [&str; 12] = [
+const WOOD_DOORS: [&str; 13] = [
     "dark oak door",
     "spruce door",
     "birch door",
@@ -189,9 +197,10 @@ const WOOD_DOORS: [&str; 12] = [
     "pale oak door",
     "bamboo door",
     "bamboo mosaic door",
+    "poplar door",
 ];
 
-const DOOR_TEX: [(u16, u16); 12] = [
+const DOOR_TEX: [(u16, u16); 13] = [
     (tex::DARK_OAK_DOOR_BOTTOM, tex::DARK_OAK_DOOR_TOP),
     (tex::SPRUCE_DOOR_BOTTOM, tex::SPRUCE_DOOR_TOP),
     (tex::BIRCH_DOOR_BOTTOM, tex::BIRCH_DOOR_TOP),
@@ -204,6 +213,7 @@ const DOOR_TEX: [(u16, u16); 12] = [
     (tex::BUILDING_DOORS, tex::BUILDING_DOORS + 1),
     (tex::BUILDING_DOORS + 2, tex::BUILDING_DOORS + 3),
     (super::overworld_blocks::t::BAMBOO_MOSAIC, super::overworld_blocks::t::BAMBOO_MOSAIC),
+    (super::wood::poplar::t::DOOR_BOTTOM, super::wood::poplar::t::DOOR_TOP),
 ];
 
 #[derive(Clone, Copy)]
@@ -239,6 +249,9 @@ pub const fn stone_id(index: u16, local: u16) -> Block {
 }
 
 pub const fn wood_id(index: u16, local: u16) -> Block {
+    if index == POPLAR {
+        return Block(super::wood::poplar::FORMS + local);
+    }
     if index < OVERWORLD_WOODS {
         Block(WOOD_ORIGIN + index * WOOD_STRIDE + local)
     } else if index < 9 {
@@ -273,6 +286,7 @@ pub const fn wood_planks(index: u16) -> Block {
         8 => super::nether_biome_blocks::WARPED_PLANKS,
         9 => super::overworld_blocks::PALE_OAK_PLANKS,
         10 => super::overworld_blocks::BAMBOO_PLANKS,
+        POPLAR => super::wood::poplar::PLANKS,
         _ => super::overworld_blocks::BAMBOO_MOSAIC,
     }
 }
@@ -310,7 +324,9 @@ pub const fn stone_form(id: u16) -> Option<StoneForm> {
 }
 
 pub const fn wood_form(id: u16) -> Option<WoodForm> {
-    let (i, first) = if id >= WOOD_ORIGIN && id < WOOD_ORIGIN + OVERWORLD_WOODS * WOOD_STRIDE {
+    let (i, first) = if let Some(local) = super::wood::poplar::form_local(id) {
+        (local, POPLAR)
+    } else if id >= WOOD_ORIGIN && id < WOOD_ORIGIN + OVERWORLD_WOODS * WOOD_STRIDE {
         (id - WOOD_ORIGIN, 0)
     } else if id >= NETHER_WOOD_ORIGIN && id < NETHER_WOOD_ORIGIN + 2 * WOOD_STRIDE {
         (id - NETHER_WOOD_ORIGIN, OVERWORLD_WOODS)

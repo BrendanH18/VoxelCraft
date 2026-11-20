@@ -293,6 +293,9 @@ impl Generator {
         let mut terms = Vec::new();
         self.villages.terrain_pieces(self, base, |lib, p| add(&mut terms, lib, p, base, Mode::Thin));
         self.temples.terrain_pieces(self, base, |p| add(&mut terms, jigsaw::outposts(), p, base, Mode::Thin));
+        // v0.16 Track D: abandoned camps (`beard_thin`), generation 5 only.
+        self.temples
+            .camp_terrain_pieces(self, base, |p| add(&mut terms, jigsaw::abandoned_camps(), p, base, Mode::Thin));
         let c = if terms.is_empty() {
             self.chunk_columns(pos)
         } else {

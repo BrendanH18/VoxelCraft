@@ -568,6 +568,7 @@ pub fn tab_complete(input: &str) -> Option<String> {
                 "trail_ruins",
                 "ancient_city",
                 "trial_chambers",
+                "abandoned_camp",
                 "nether_fossil",
                 "ruined_portal",
                 "buried_treasure",

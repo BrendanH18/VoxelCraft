@@ -408,8 +408,8 @@ pub struct City {
 
 /// Where `handleDataMarker("Elytra")` hangs its item frame: the marker cell,
 /// facing the piece's rotation applied to south (it hangs on the block
-/// behind). The frame and its elytra are wired up at integration: the
-/// elytra item is v0.16 Track B's.
+/// behind). The entities populate it with an item frame holding Track B's
+/// elytra when a player first comes near (`Entities::populate_end_cities`).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ElytraFrame {
     pub cell: IVec3,
@@ -481,6 +481,15 @@ impl City {
                     }
                 }
             }
+        }
+        // The ship's `dragon_wall_head` on the bow (v0.16 integration:
+        // Track C's head block).
+        if let Some((cell, facing)) = self.dragon_head
+            && chunk.contains(cell)
+        {
+            let l = cell - base;
+            blocks[index(l.x as usize, l.y as usize, l.z as usize)] =
+                super::skulls::wall(super::skulls::Kind::Dragon, facing);
         }
     }
 

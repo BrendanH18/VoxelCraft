@@ -88,6 +88,8 @@ pub fn jump_factor(b: Option<Block>) -> f32 {
 pub fn bounciness(b: Option<Block>) -> f64 {
     match b {
         Some(b) if b.is_bed() => 0.75_f32 as f64,
+        // v0.16 Track D: `Blocks.SHELF_MUSHROOM.bounceRestitution(0.75F)`.
+        Some(b) if crate::world::gen5_blocks::shelf_of(b).is_some() => 0.75_f32 as f64,
         Some(crate::world::stone_blocks::SLIME_BLOCK) => 1.0,
         _ => 0.0,
     }

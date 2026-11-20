@@ -240,6 +240,8 @@ pub enum Sound {
     Wither(crate::entity::wither::Cue),
     /// v0.16 Track C: a beacon's activation, hum, power choice and shutdown.
     Beacon(crate::world::beacon::Cue),
+    /// v0.16 Track D: the sulfur cube's squishes, blocks and pushes.
+    SulfurCube(crate::entity::sulfur_cube::Cue),
 }
 
 const M: usize = Material::ALL.len();
@@ -257,7 +259,8 @@ impl Sound {
     const RAID_END: usize = Self::ILLAGER_END + crate::entity::raid::Cue::ALL.len();
     const FLIGHT_END: usize = Self::RAID_END + voxelcraft::content::fireworks::Cue::ALL.len();
     const WITHER_END: usize = Self::FLIGHT_END + crate::entity::wither::Cue::ALL.len();
-    pub const COUNT: usize = Self::WITHER_END + crate::world::beacon::Cue::ALL.len();
+    const BEACON_END: usize = Self::WITHER_END + crate::world::beacon::Cue::ALL.len();
+    pub const COUNT: usize = Self::BEACON_END + crate::entity::sulfur_cube::Cue::ALL.len();
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -276,6 +279,7 @@ impl Sound {
             Sound::Flight(cue) => Self::RAID_END + cue as usize,
             Sound::Wither(cue) => Self::FLIGHT_END + cue as usize,
             Sound::Beacon(cue) => Self::WITHER_END + cue as usize,
+            Sound::SulfurCube(cue) => Self::BEACON_END + cue as usize,
             Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
             Sound::Thunder => Self::BASE_COUNT - 1,
             Sound::Bell => Self::BASE_COUNT - 4,
@@ -400,6 +404,7 @@ impl Sound {
             .chain(voxelcraft::content::fireworks::Cue::ALL.map(Sound::Flight))
             .chain(crate::entity::wither::Cue::ALL.map(Sound::Wither))
             .chain(crate::world::beacon::Cue::ALL.map(Sound::Beacon))
+            .chain(crate::entity::sulfur_cube::Cue::ALL.map(Sound::SulfurCube))
     }
 
     /// Stable sound name used when exporting or identifying samples.
@@ -417,6 +422,7 @@ impl Sound {
             Sound::Flight(c) => c.key().replace('.', "_"),
             Sound::Wither(c) => format!("wither_{c:?}").to_lowercase(),
             Sound::Beacon(c) => format!("beacon_{c:?}").to_lowercase(),
+            Sound::SulfurCube(c) => c.key().replace('.', "_"),
             Sound::Thunder => "lightning_thunder".into(),
             Sound::HoneySlide => "honey_block_slide".into(),
             Sound::HoneyDrink => "honey_drink".into(),
@@ -544,6 +550,8 @@ impl Sound {
             // The Wither is a `Monster`; beacons play as `BLOCKS`.
             Sound::Wither(_) => SoundSource::Hostile,
             Sound::Beacon(_) => SoundSource::Blocks,
+            // `SulfurCube.getSoundSource` is NEUTRAL, as are its buckets.
+            Sound::SulfurCube(_) => SoundSource::Neutral,
             Sound::Mob(voice, _) => voice.source(),
         }
     }
@@ -560,6 +568,7 @@ impl Sound {
             Sound::Raid(_) => 1,
             Sound::Flight(_) => 2,
             Sound::Wither(_) | Sound::Beacon(_) => 1,
+            Sound::SulfurCube(_) => 2,
             Sound::Warden(_) | Sound::Sculk(_) => 2,
             Sound::Sniffer(_) | Sound::Weapon(_) => 2,
             Sound::Step(_) => 4,
@@ -611,6 +620,7 @@ impl Sound {
             Sound::Flight(c) => super::flight::render(c, &mut rng),
             Sound::Wither(c) => super::wither::render(c, &mut rng),
             Sound::Beacon(c) => super::wither::render_beacon(c, &mut rng),
+            Sound::SulfurCube(c) => super::sulfur_cube::render(c, &mut rng),
             Sound::Thunder => thunder(&mut rng),
             Sound::HoneySlide => honey_sound(&mut rng, 0.35),
             Sound::HoneyDrink => honey_sound(&mut rng, 0.22),

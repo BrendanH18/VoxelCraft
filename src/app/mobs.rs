@@ -587,6 +587,7 @@ impl Game {
                                 Cue::BulletHit | Cue::BulletHurt => (Sound::Hit, 1.0),
                             }
                         }
+                        MobSound::SulfurCube(cue) => (Sound::SulfurCube(cue), 0.8),
                         MobSound::CopperGolem(action, stage) => (Sound::CopperGolem(action, stage), 0.7),
                         MobSound::Hurt(MobKind::CopperGolem) => {
                             (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Hurt, 0), 0.9)
@@ -833,6 +834,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Parched => Voice::Parched,
         MobKind::Wither => Voice::Wither,
         MobKind::Shulker => Voice::Shulker,
+        MobKind::SulfurCube => Voice::SulfurCube,
         MobKind::Allay => Voice::Allay,
         MobKind::CopperGolem => Voice::Skeleton,
         MobKind::Creaking => Voice::Creaking,

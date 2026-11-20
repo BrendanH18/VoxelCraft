@@ -127,6 +127,12 @@ const RESISTANCE: &[(f32, &[&str])] = &[
             "pale oak shelf",
             "pale oak slab",
             "pale oak stairs",
+            "poplar fence",
+            "poplar fence gate",
+            "poplar planks",
+            "poplar shelf",
+            "poplar slab",
+            "poplar stairs",
             "pointed dripstone",
             "spruce fence",
             "spruce fence gate",
@@ -513,6 +519,7 @@ const DECAY: &[&str] = &[
     "oxidized cut copper slab",
     "pale moss carpet",
     "pale oak slab",
+    "poplar slab",
     "pink candle",
     "pink concrete slab",
     "pink petals",
@@ -647,6 +654,8 @@ static TABLES: LazyLock<Tables> = LazyLock::new(|| {
             || super::copper_golem_statue::owns(b.0)
         {
             6.0
+        } else if let Some(r) = super::gen5_blocks::resistance(b) {
+            r
         } else if super::heavy_core::owns(b.0) {
             super::heavy_core::BLAST_RESISTANCE
         } else if super::dried_ghast::owns(b.0) {
@@ -674,6 +683,7 @@ static TABLES: LazyLock<Tables> = LazyLock::new(|| {
             None if b == super::end_blocks::CHORUS_PLANT || b.slab_base() == Some(super::end_blocks::PURPUR_BLOCK) => {
                 Loot::Decay
             }
+            None if super::gen5_blocks::explosion_decays(b) => Loot::Decay,
             None => Loot::Survives,
         };
     }

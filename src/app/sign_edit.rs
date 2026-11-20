@@ -133,9 +133,10 @@ impl Game {
         let board = match sign.kind {
             crate::world::wood::Kind::Crimson => [0.40, 0.19, 0.27, 1.0],
             crate::world::wood::Kind::Warped => [0.17, 0.41, 0.39, 1.0],
-            crate::world::wood::Kind::Cherry | crate::world::wood::Kind::PaleOak | crate::world::wood::Kind::Birch => {
-                [0.80, 0.70, 0.55, 1.0]
-            }
+            crate::world::wood::Kind::Cherry
+            | crate::world::wood::Kind::PaleOak
+            | crate::world::wood::Kind::Birch
+            | crate::world::wood::Kind::Poplar => [0.80, 0.70, 0.55, 1.0],
             crate::world::wood::Kind::DarkOak | crate::world::wood::Kind::Spruce => [0.30, 0.21, 0.12, 1.0],
             _ => [0.60, 0.47, 0.29, 1.0],
         };

@@ -11,8 +11,14 @@
 //! builds in the shape and materials of Java's, built once per start,
 //! cached, and painted clipped into every chunk they cross.
 
+pub mod camp_templates;
 mod ocean_ruins;
 mod outpost_templates;
+
+/// The generated abandoned camp catalogue (`jigsaw::abandoned_camps`).
+pub(super) fn camp_catalogue() -> String {
+    camp_templates::catalogue()
+}
 
 use std::sync::{Arc, Mutex};
 
@@ -49,10 +55,13 @@ pub enum Kind {
     Monument,
     /// v0.15 Track F: woodland mansions, in generation 4 only.
     Mansion,
+    /// v0.16 Track D: the eighteen `abandoned_camp_<biome>` structures of
+    /// the `abandoned_camp` set, in generation 5 only.
+    AbandonedCamp,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 9] = [
+    pub const ALL: [Kind; 10] = [
         Kind::DesertPyramid,
         Kind::JungleTemple,
         Kind::SwampHut,
@@ -62,6 +71,7 @@ impl Kind {
         Kind::OceanRuin,
         Kind::Monument,
         Kind::Mansion,
+        Kind::AbandonedCamp,
     ];
 
     /// Java's structure id.
@@ -76,6 +86,7 @@ impl Kind {
             Kind::OceanRuin => "ocean_ruin",
             Kind::Monument => "monument",
             Kind::Mansion => "mansion",
+            Kind::AbandonedCamp => "abandoned_camp",
         }
     }
 
@@ -87,6 +98,8 @@ impl Kind {
             "outpost" => "pillager_outpost",
             "witch_hut" => "swamp_hut",
             "woodland_mansion" => "mansion",
+            // `#abandoned_camp` and each `abandoned_camp_<biome>`.
+            camp if camp.starts_with("abandoned_camp") => "abandoned_camp",
             other => other,
         };
         Self::ALL.into_iter().find(|k| k.name() == name)
@@ -104,6 +117,7 @@ impl Kind {
             Kind::Outpost => (32, 8, 165_745_296),
             Kind::Monument => (32, 5, 10_387_313),
             Kind::Mansion => (super::mansion::SPACING, super::mansion::SEPARATION, super::mansion::SALT),
+            Kind::AbandonedCamp => (camp_templates::SPACING, camp_templates::SEPARATION, camp_templates::SALT),
         }
     }
 
@@ -111,6 +125,8 @@ impl Kind {
     fn reach(self) -> i32 {
         match self {
             Kind::Mansion => super::mansion::REACH,
+            // A tent and campsite from the start chunk's corner, and trees.
+            Kind::AbandonedCamp => 48,
             Kind::Monument => 40,
             Kind::Shipwreck => 20,
             Kind::Outpost | Kind::DesertPyramid | Kind::JungleTemple => 16,
@@ -144,6 +160,7 @@ impl Kind {
             Kind::OceanRuin => biome.is_ocean(),
             Kind::Monument => biome.is_deep_ocean(),
             Kind::Mansion => super::mansion::allowed(biome),
+            Kind::AbandonedCamp => camp_templates::camp_of(biome).is_some(),
         }
     }
 }
@@ -503,6 +520,11 @@ impl Temples {
         region * spacing + IVec2::new(ox, oz)
     }
 
+    /// Whether an abandoned camp generates in placement region `region`.
+    pub fn camp_at(&self, g: &Generator, region: IVec2) -> bool {
+        self.get(g, Kind::AbandonedCamp, region).is_some()
+    }
+
     /// The start chunk `kind` would use in placement region `region`.
     pub fn start_chunk(&self, kind: Kind, region: IVec2) -> IVec2 {
         self.start(kind, region)
@@ -530,7 +552,10 @@ impl Temples {
             return found.clone();
         }
         let start = self.start(kind, region);
-        let built = if kind == Kind::Mansion {
+        let built = if kind == Kind::AbandonedCamp {
+            let seed = hash3(start.x, start.y, kind as i32, self.seed ^ 0x7E3D);
+            self.valid_start(g, kind, start).then(|| camp_templates::build(g, start, seed)).flatten().map(Arc::new)
+        } else if kind == Kind::Mansion {
             // Laid out once per start and cached with the other structures.
             super::mansion::start(g, start).map(|s| Arc::new(Built::mansion(super::mansion::Layout::build(g, s))))
         } else {
@@ -559,6 +584,9 @@ impl Temples {
     fn valid_start(&self, g: &Generator, kind: Kind, start: IVec2) -> bool {
         if kind == Kind::Mansion {
             return super::mansion::start(g, start).is_some();
+        }
+        if kind == Kind::AbandonedCamp {
+            return g.generation >= super::terrain::Generation::V5 && camp_templates::start_biome(g, start).is_some();
         }
         let centre = start * 16 + IVec2::splat(8);
         let col = g.column(centre.x, centre.y);
@@ -600,8 +628,8 @@ impl Temples {
                         }
                         let start = self.start(kind, home + IVec2::new(x, z));
                         (self.valid_start(g, kind, start)
-                            && (kind != Kind::Outpost
-                                || g.generation < super::terrain::Generation::V3
+                            && (!matches!(kind, Kind::Outpost | Kind::AbandonedCamp)
+                                || (kind == Kind::Outpost && g.generation < super::terrain::Generation::V3)
                                 || self.get(g, kind, home + IVec2::new(x, z)).is_some()))
                         .then(|| IVec3::new(start.x * 16, 0, start.y * 16))
                     })
@@ -662,6 +690,36 @@ impl Temples {
             })
             .collect()
     }
+    /// v0.16 Track D: the abandoned camps whose pieces' `beard_thin` may
+    /// reach the chunk column at `base` (generation 5).
+    pub(in crate::world) fn camp_terrain_pieces(
+        &self,
+        g: &Generator,
+        base: IVec3,
+        mut f: impl FnMut(&[super::jigsaw::Placed]),
+    ) {
+        if g.generation < super::terrain::Generation::V5 || g.dimension != Dimension::Overworld {
+            return;
+        }
+        let span = camp_templates::SPACING * 16;
+        let reach = Kind::AbandonedCamp.reach() + 13;
+        let lo = IVec2::new(base.x, base.z);
+        let hi = lo + IVec2::splat(CHUNK_SIZE_I - 1);
+        let rlo = (lo - IVec2::splat(reach + 16)).div_euclid(IVec2::splat(span));
+        let rhi = (hi + IVec2::splat(reach)).div_euclid(IVec2::splat(span));
+        for z in rlo.y..=rhi.y {
+            for x in rlo.x..=rhi.x {
+                let region = IVec2::new(x, z);
+                let c = self.start(Kind::AbandonedCamp, region) * 16;
+                if c.x + reach < lo.x || c.x - reach > hi.x || c.y + reach < lo.y || c.y - reach > hi.y {
+                    continue;
+                }
+                if let Some(b) = self.get(g, Kind::AbandonedCamp, region) {
+                    f(&b.placed);
+                }
+            }
+        }
+    }
     /// Only the outpost placement set, with assembler extent plus the beard's
     /// 12-block kernel and the density column ring. No other temple lookups.
     pub(in crate::world) fn terrain_pieces(
@@ -697,6 +755,9 @@ impl Temples {
         let mut out = Vec::new();
         for &kind in kinds {
             let (spacing, _, _) = kind.placement();
+            if kind == Kind::AbandonedCamp && g.generation < super::terrain::Generation::V5 {
+                continue;
+            }
             let r = if g.generation >= super::terrain::Generation::V3 && matches!(kind, Kind::Outpost | Kind::OceanRuin)
             {
                 96
@@ -730,6 +791,10 @@ impl Temples {
         let chunk = Bounds { min: base, max: top };
         for b in self.around(g, IVec2::new(base.x, base.z), IVec2::new(top.x, top.z)) {
             if b.placed.is_empty() && !b.bounds.intersects(&chunk) {
+                continue;
+            }
+            if b.kind == Kind::AbandonedCamp {
+                camp_templates::paint(g, &b, blocks, base);
                 continue;
             }
             if !b.placed.is_empty() {
@@ -868,7 +933,7 @@ impl Temples {
             }
             Kind::OceanRuin => ocean_ruin(g, centre, ground, rot, seed, rng),
             Kind::Monument => monument(g, centre, rot, rng),
-            Kind::Mansion => unreachable!("mansions are built by `get`"),
+            Kind::Mansion | Kind::AbandonedCamp => unreachable!("mansions and camps are built by `get`"),
         }
     }
 }
@@ -1982,8 +2047,8 @@ mod tests {
                     Kind::Shipwreck => shipwreck(&g, centre, 40, rot, 9, &mut rng),
                     Kind::OceanRuin => ocean_ruin(&g, centre, 40, rot, 9, &mut rng),
                     Kind::Monument => monument(&g, centre, rot, &mut rng),
-                    // Laid out by `mansion`, which has its own tests.
-                    Kind::Mansion => continue,
+                    // Laid out by `mansion` and `camp_templates`, which have their own tests.
+                    Kind::Mansion | Kind::AbandonedCamp => continue,
                 };
                 assert!(
                     built.bounds.contains(IVec3::new(centre.x, built.bounds.min.y, centre.y)),

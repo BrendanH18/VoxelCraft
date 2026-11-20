@@ -95,6 +95,9 @@ fn smokes(item: Item) -> bool {
 /// Java's `*_from_blasting` inputs: ores, raw metal, ancient debris and the
 /// metal gear that melts into nuggets.
 fn blasts(item: Item) -> bool {
+    if item == Item::from_block(super::gen5_blocks::NETHER_GOLD_ORE) {
+        return true;
+    }
     ore_of(item).is_some_and(|b| {
         matches!(
             b,
@@ -146,6 +149,8 @@ pub fn smelt(item: Item) -> Option<Item> {
         i if i == b(super::creaking::RESIN_CLUMP) => Item::RESIN_BRICK,
         // `smelting/popped_chorus_fruit` (smelting only).
         crate::content::chorus::CHORUS_FRUIT => crate::content::chorus::POPPED_CHORUS_FRUIT,
+        // v0.16 Track D: `gold_ingot_from_smelting_nether_gold_ore`.
+        i if i == b(super::gen5_blocks::NETHER_GOLD_ORE) => Item::GOLD_INGOT,
         i if ore_of(i) == Some(Block::IRON_ORE) || i == Item::RAW_IRON => Item::IRON_INGOT,
         i if ore_of(i) == Some(Block::GOLD_ORE) || i == Item::RAW_GOLD => Item::GOLD_INGOT,
         i if ore_of(i) == Some(Block::COPPER_ORE) || i == Item::RAW_COPPER => Item::COPPER_INGOT,

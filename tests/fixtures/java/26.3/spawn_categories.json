@@ -2650,6 +2650,80 @@
         ]
       ],
       "creature": []
+    },
+    "dappled_forest": {
+      "creature": [
+        [
+          "sheep",
+          12,
+          4,
+          4
+        ],
+        [
+          "pig",
+          10,
+          4,
+          4
+        ],
+        [
+          "chicken",
+          10,
+          4,
+          4
+        ],
+        [
+          "cow",
+          8,
+          4,
+          4
+        ],
+        [
+          "rabbit",
+          4,
+          2,
+          4
+        ],
+        [
+          "fox",
+          4,
+          2,
+          4
+        ]
+      ],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [
+        [
+          "glow_squid",
+          10,
+          4,
+          6
+        ]
+      ],
+      "water_creature": [],
+      "water_ambient": []
+    },
+    "sulfur_caves": {
+      "creature": [],
+      "ambient": [
+        [
+          "bat",
+          10,
+          8,
+          8
+        ]
+      ],
+      "axolotls": [],
+      "underground_water_creature": [],
+      "water_creature": [],
+      "water_ambient": []
     }
   },
   "tags": {

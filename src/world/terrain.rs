@@ -37,7 +37,10 @@ pub(in crate::world) use beard::{beard_reaches, beard_thin};
 mod biome_features;
 mod density;
 #[cfg(test)]
+mod gen5_tests;
+#[cfg(test)]
 mod order_tests;
+mod sulfur_caves;
 
 const TREE_CELL: i32 = 5;
 const TREE_REACH: i32 = trees::REACH;
@@ -420,7 +423,7 @@ impl Generator {
     pub(super) fn biome_at_height(&self, p: IVec3, height: i32) -> Biome {
         let climate = self.climate.sample(p.x, p.z);
         super::deep_dark::cave_biome(self.generation, &climate, height, p.y)
-            .unwrap_or_else(|| super::biome::pick(&climate))
+            .unwrap_or_else(|| super::biome::pick_in(&climate, self.generation >= Generation::V5))
     }
 
     /// Original, unadapted Overworld heights for gameplay biome queries.
@@ -454,10 +457,11 @@ impl Generator {
                 return super::deep_dark::locate_y(&c.climate, c.height).is_some();
             }
             let climate = self.climate.sample(x, z);
+            let v5 = self.generation >= Generation::V5;
             if target.is_cave() {
-                super::biome::cave(&climate, 40) == Some(target)
+                super::biome::cave_in(&climate, 40, v5) == Some(target)
             } else {
-                super::biome::pick(&climate) == target
+                super::biome::pick_in(&climate, v5) == target
             }
         };
         let found = |x, z| {
@@ -506,7 +510,7 @@ impl Generator {
         }
         let climate = self.climate.sample(x, z);
         let mut h = self.climate.height(&climate, x, z);
-        let biome = super::biome::pick(&climate);
+        let biome = super::biome::pick_in(&climate, self.generation >= Generation::V5);
         let (fx, fz) = (x as f32, z as f32);
         if biome.is_badlands() && h > SEA_LEVEL as f32 + 6.0 {
             // Badlands: terraced cliffs, and in eroded badlands spires.
@@ -572,7 +576,7 @@ impl Generator {
 
     /// The biome alone, without the height (cheaper than [`Generator::column`]).
     fn climate_biome(&self, x: i32, z: i32) -> Biome {
-        super::biome::pick(&self.climate.sample(x, z))
+        super::biome::pick_in(&self.climate.sample(x, z), self.generation >= Generation::V5)
     }
 
     /// Whether a column under water gets a patch of clay on its floor.
@@ -905,6 +909,11 @@ impl Generator {
                 None => self.carve(&mut blocks, base, &columns),
             }
         }
+        // Generation 5: the sulfur caves' cinnabar and sulfur strata (Java's
+        // surface rules, so ahead of every feature).
+        if self.generation >= Generation::V5 && base.y <= max_h {
+            self.sulfur_bands(&mut blocks, base, &columns);
+        }
         // Java places geodes in `local_modifications`, after carvers and
         // before monster rooms, ores and cave vegetation.
         self.geodes.paint(self, &mut blocks, base);
@@ -932,6 +941,9 @@ impl Generator {
             super::ore::paint(self.seed, self.generation, blocks.as_mut(), base, biome_at, cave_at);
             if base.y < max_h - 15 {
                 self.decorate_caves(&mut blocks, base, &columns);
+            }
+            if self.generation >= Generation::V5 {
+                self.sulfur_features(&mut blocks, base, &columns);
             }
         }
         if base.y <= max_h + TREE_TOP && top >= min_h - 40 {
@@ -1431,8 +1443,14 @@ impl Generator {
                 let surface = self.ground_block(col, tx, tz);
                 let mut tree_blocks: Vec<(IVec3, Block)> = Vec::new();
                 let collect = &mut |p, b| tree_blocks.push((p, b));
-                // Generation 3 pale gardens grow Java's pale oak and its creaking variant.
-                if self.generation >= Generation::V3
+                // Generation 5 dappled forests: Java's `trees_dappled_forest`.
+                if self.generation >= Generation::V5 && col.biome == Biome::DappledForest {
+                    if !ob::dirt_like(surface) {
+                        continue;
+                    }
+                    let ground_at = |x: i32, z: i32| Some(self.terrain_column(x, z).height);
+                    super::poplar_trees::dappled_forest_tree(ground, h, &ground_at, collect);
+                } else if self.generation >= Generation::V3
                     && col.biome == Biome::PaleGarden
                     && pick < 90
                     && ob::dirt_like(surface)
@@ -1637,6 +1655,13 @@ impl Generator {
                     (PaleGarden, true) if roll < 0.3 => Some((ob::PALE_MOSS_CARPET, None)),
                     (CherryGrove, true) if roll < 0.35 && !patch.is_multiple_of(3) => Some((ob::PINK_PETALS, None)),
                     (CherryGrove, true) if roll < 0.5 => Some((Block::TALL_GRASS, None)),
+                    // Generation 5 dappled forests: `patch_red_shrub`, the
+                    // dappled brown mushrooms and `patch_grass_forest`.
+                    (DappledForest, true) if patch.is_multiple_of(4) && roll < 0.12 => {
+                        Some((super::gen5_blocks::RED_SHRUB, None))
+                    }
+                    (DappledForest, true) if patch % 7 == 3 && roll < 0.03 => Some((Block::BROWN_MUSHROOM, None)),
+                    (DappledForest, true) if roll < 0.15 => Some((Block::TALL_GRASS, None)),
                     (b, true) if b.is_savanna() && roll < 0.05 && tall_grass(blocks) => {
                         Some((ob::DOUBLE_TALL_GRASS, Some(Block(ob::DOUBLE_TALL_GRASS.0 + 1))))
                     }
@@ -1838,6 +1863,8 @@ fn tree_density(biome: Biome) -> f32 {
         WindsweptSavanna => 0.08,
         Desert => 0.1,
         Plains | SunflowerPlains => 0.05,
+        // Six `trees_dappled_forest` attempts a chunk (generation 5).
+        DappledForest => 0.59,
         Meadow => 0.03,
         WindsweptHills => 0.08,
         SnowyPlains => 0.03,

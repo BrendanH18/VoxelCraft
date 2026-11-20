@@ -730,6 +730,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
         MobKind::HappyGhast => new_mobs::happy_ghast(m, time),
         MobKind::Wither => wither::pose(m, time),
         MobKind::Nautilus | MobKind::ZombieNautilus => new_mobs::nautilus(m, time),
+        MobKind::SulfurCube => new_mobs::sulfur_cube(m),
         MobKind::Cod
         | MobKind::Salmon
         | MobKind::TropicalFish
@@ -1132,7 +1133,11 @@ pub fn build(
         } else {
             origin
         };
-        let tint = if m.fuse > 0.0 {
+        let sulfur_fuse = m.sulfur_cube.as_ref().filter(|s| s.primed()).map(|s| s.fuse);
+        let tint = if let Some(fuse) = sulfur_fuse {
+            // `TntRenderer`'s white flash every 5 ticks of the fuse.
+            ([255.0; 3], if (fuse / 5) % 2 == 0 { 0.8 } else { 0.0 })
+        } else if m.fuse > 0.0 {
             ([255.0; 3], ((m.fuse * (8.0 + 16.0 * fuse)).sin() * 0.5 + 0.5) * 0.7)
         } else if m.kind == MobKind::CaveSpider {
             ([40.0, 80.0, 95.0], 0.65)
@@ -1235,6 +1240,9 @@ pub fn build(
         }
         if let Some(stack) = held_stack(m) {
             draw_held(out, &posed[4], stack.item, origin, body, scale, (light, torch));
+        }
+        if m.kind == MobKind::SulfurCube {
+            new_mobs::sulfur_block(m, origin, body, scale, (light, torch), out);
         }
         if m.burning {
             flames(out, m, rel, time);
@@ -1628,6 +1636,8 @@ pub(super) fn build_minecarts(carts: &[super::minecart::Minecart], camera: DVec3
                 [226, 174, 174],
                 [228, 218, 214],
                 [196, 176, 82],
+                // v0.16 Track D: poplar.
+                [196, 188, 166],
             ];
             let color = colors[wood as usize];
             let boxes = [

@@ -172,6 +172,14 @@ impl Decor {
         }
     }
 
+    /// A structure's item frame at `cell`, facing `facing` out of the wall,
+    /// holding `item` (`EndCityPieces.handleDataMarker("Elytra")`).
+    pub(super) fn structure_frame(cell: IVec3, facing: IVec3, item: Stack) -> Self {
+        let mut d = Decor::new(Kind::Frame { glow: false }, cell, facing);
+        d.item = Some(item);
+        d
+    }
+
     pub fn is_hanging(&self) -> bool {
         self.kind != Kind::Stand
     }

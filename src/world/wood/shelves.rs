@@ -19,6 +19,14 @@ use crate::item::{Item, ToolKind};
 pub const FIRST: u16 = 18560;
 pub const STRIDE: u16 = 64;
 pub const END: u16 = FIRST + STRIDE * 12;
+
+/// First id of `kind`'s shelves: poplar's are in `poplar::SHELVES`.
+pub const fn kind_first(kind: Kind) -> u16 {
+    match kind {
+        Kind::Poplar => super::poplar::SHELVES,
+        _ => FIRST + kind.index() * STRIDE,
+    }
+}
 /// Java's `getMaxChainLength`.
 pub const MAX_CHAIN: usize = 3;
 
@@ -85,8 +93,7 @@ pub struct Shelf {
 impl Shelf {
     pub const fn block(self) -> Block {
         Block(
-            FIRST
-                + self.kind.index() * STRIDE
+            kind_first(self.kind)
                 + self.wet as u16 * 32
                 + self.powered as u16 * 16
                 + self.chain as u16 * 4
@@ -106,12 +113,15 @@ impl Shelf {
 
 pub const fn shelf(b: Block) -> Option<Shelf> {
     let id = b.0;
-    if id < FIRST || id >= END {
+    let (kind, local) = if id >= super::poplar::SHELVES && id < super::poplar::SHELVES + STRIDE {
+        (Kind::Poplar, id - super::poplar::SHELVES)
+    } else if id < FIRST || id >= END {
         return None;
-    }
-    let local = (id - FIRST) % STRIDE;
+    } else {
+        (Kind::of((id - FIRST) / STRIDE), (id - FIRST) % STRIDE)
+    };
     Some(Shelf {
-        kind: Kind::of((id - FIRST) / STRIDE),
+        kind,
         facing: super::FACINGS[(local % 4) as usize],
         chain: Chain::ALL[(local / 4 % 4) as usize],
         powered: local % 32 >= 16,
@@ -127,7 +137,7 @@ const fn mirrored(facing: Facing) -> bool {
 
 pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
     let Some(s) = shelf(Block(id)) else { return None };
-    const NAMES: [&str; 12] = [
+    const NAMES: [&str; 13] = [
         "oak shelf",
         "spruce shelf",
         "birch shelf",
@@ -140,6 +150,7 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
         "bamboo shelf",
         "crimson shelf",
         "warped shelf",
+        "poplar shelf",
     ];
     let k = s.kind.index();
     let variant = if !s.powered {
@@ -164,8 +175,12 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
             }
         }
     };
-    let mut t = [super::tex::SHELF + k; 6];
-    t[s.facing.face()] = super::tex::SHELF_FRONTS + k * 5 + variant;
+    let (body, fronts) = match s.kind {
+        Kind::Poplar => (super::poplar::t::SHELF, super::poplar::t::SHELF_FRONTS),
+        _ => (super::tex::SHELF + k, super::tex::SHELF_FRONTS + k * 5),
+    };
+    let mut t = [body; 6];
+    t[s.facing.face()] = fronts + variant;
     Some((NAMES[k as usize], RenderKind::Shaped, t))
 }
 

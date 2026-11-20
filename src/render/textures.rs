@@ -19,6 +19,8 @@ mod copper;
 mod copper_golem_statue;
 #[path = "crop_textures.rs"]
 mod crops;
+#[path = "gen5_textures.rs"]
+mod gen5;
 #[path = "nether_textures.rs"]
 mod nether;
 #[path = "overworld_textures.rs"]
@@ -123,6 +125,12 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     }
     if (crate::world::beacon::GLASS_TEX..crate::world::beacon::TEX_END).contains(&layer) {
         return crate::world::beacon::pixel(layer, x, y);
+    }
+    if (crate::world::camp_maps::TEX..crate::world::camp_maps::TEX_END).contains(&layer) {
+        return crate::world::camp_maps::pixel(layer, x, y);
+    }
+    if gen5::owns(layer) {
+        return gen5::pixel(layer, x, y);
     }
     if (crate::world::eyeblossom::TEX..crate::world::eyeblossom::TEX_END).contains(&layer) {
         return match crate::world::eyeblossom::pot_layer_plant(layer) {

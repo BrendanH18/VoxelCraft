@@ -168,6 +168,7 @@ pub fn all() -> Vec<(Item, Item, u8)> {
         .chain(super::copper::stonecutting())
         .chain(super::colour::stonecutting())
         .chain(super::end::stonecutting())
+        .chain(super::gen5::stonecutting())
         .collect()
 }
 

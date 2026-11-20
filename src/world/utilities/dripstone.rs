@@ -9,12 +9,21 @@ use crate::world::{World, block::Block, falling::FallingBlock, overworld_blocks 
 /// Java's `fallDamageMax` for a stalactite.
 const MAX_DAMAGE: f32 = 40.0;
 
-/// The thickness of a downward pointed dripstone.
+/// The thickness of a downward pointed dripstone or sulfur spike (v0.16
+/// Track D: `SulfurSpikeBlock` is a `SpeleothemBlock` like dripstone).
 fn stalactite(b: Block) -> Option<ob::Thickness> {
     match ob::dripstone_of(b.canonical()) {
         Some((true, t)) => Some(t),
-        _ => None,
+        _ => match crate::world::gen5_blocks::spike_of(b) {
+            Some((true, t, _)) => Some(t),
+            _ => None,
+        },
     }
+}
+
+/// A pointed dripstone or sulfur spike of either direction.
+fn speleothem(b: Block) -> bool {
+    ob::dripstone_of(b.canonical()).is_some() || crate::world::gen5_blocks::spike_of(b).is_some()
 }
 
 /// `FallingBlockEntity.causeFallDamage`: `min(floor(ceil(distance - 1) *
@@ -71,7 +80,7 @@ impl World {
     /// item instead of settling, and a stalactite's tip hurts whatever is
     /// in that cell. Returns whether it was dripstone.
     pub(in crate::world) fn stalactite_landed(&mut self, p: IVec3, fell: &FallingBlock) -> bool {
-        if ob::dripstone_of(fell.block.canonical()).is_none() {
+        if !speleothem(fell.block) {
             return false;
         }
         if self.tile_drops {
