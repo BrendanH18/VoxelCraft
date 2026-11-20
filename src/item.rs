@@ -2310,7 +2310,8 @@ pub fn effect_icon_layer(effect: crate::simulation::effects::Effect) -> u16 {
 /// The sprite drawn on item icon `index` (see `tex::item_layer`).
 pub fn sprite_for_layer(index: u16) -> Option<Sprite> {
     Item::all_items()
-        .filter(|i| !i.is_map() && *i != Item::SUSPICIOUS_STEW)
+        // v0.16 Track A's chorus items draw block texture layers.
+        .filter(|i| !i.is_map() && *i != Item::SUSPICIOUS_STEW && !crate::content::chorus::is_item(*i))
         .nth(index as usize)
         .map(|i| i.info().sprite)
 }

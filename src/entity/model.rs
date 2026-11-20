@@ -2093,7 +2093,12 @@ mod tests {
             let h = kind.shape().height as f32 + if kind == MobKind::Mooshroom { 0.4 } else { 0.0 };
             assert!((hi.y - h).abs() < 0.15, "{kind:?} top {} vs box {h}", hi.y);
             assert!(
-                hi.x > if kind.is_aquatic() || matches!(kind, MobKind::Bat | MobKind::Allay) { 10.05 } else { 10.25 },
+                // A sulfur cube is a plain cube with no head to lead.
+                hi.x > if kind.is_aquatic() || matches!(kind, MobKind::Bat | MobKind::Allay | MobKind::SulfurCube) {
+                    10.05
+                } else {
+                    10.25
+                },
                 "{kind:?} should extend forward along +X"
             );
             // Behind the camera: culled.

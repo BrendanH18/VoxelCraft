@@ -2542,8 +2542,9 @@ mod tests {
         // generation 3 outpost has dedicated chunk/marker/order regressions.
         let g = Generator::with_generation(1, Dimension::Overworld, super::super::terrain::Generation::V2);
         let mut found = 0;
-        // Woodland mansions are generation 4 templates with their own tests.
-        for kind in Kind::ALL.into_iter().filter(|&k| k != Kind::Mansion) {
+        // Woodland mansions (generation 4) and abandoned camps (generation 5)
+        // are templates with their own tests.
+        for kind in Kind::ALL.into_iter().filter(|&k| !matches!(k, Kind::Mansion | Kind::AbandonedCamp)) {
             let at =
                 g.temples.nearest(&g, kind, IVec2::ZERO, 8000).expect("seed 1 has every structure within 8000 blocks");
             found += 1;
@@ -2576,7 +2577,7 @@ mod tests {
                 }
             }
         }
-        assert_eq!(found, Kind::ALL.len() - 1);
+        assert_eq!(found, Kind::ALL.len() - 2);
         // Loot is deterministic.
         assert_eq!(loot(9, LootTable::DesertPyramid).slots, loot(9, LootTable::DesertPyramid).slots);
     }

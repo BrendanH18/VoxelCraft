@@ -793,6 +793,10 @@ impl MobKind {
             // Java lists parched only in deserts (`monster_spawns::DESERT`).
             (MobKind::Parched, Biome::Desert) => 1.0,
             (MobKind::Parched, _) => 0.0,
+            // v0.16 Track D: Java lists the sulfur cube only in sulfur caves
+            // (`monster_spawns::SULFUR_CAVES`).
+            (MobKind::SulfurCube, Biome::SulfurCaves) => 1.0,
+            (MobKind::SulfurCube, _) => 0.0,
             (MobKind::Zombie, Biome::Desert) => 0.2,
             (MobKind::Zombie, b) if b.is_watery() => 0.2,
             (MobKind::Drowned, b) if b.is_watery() => 1.0,
