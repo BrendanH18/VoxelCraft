@@ -3667,13 +3667,32 @@ static SHAPE_LIGHT: [bool; STATE_CAPACITY] = {
     arr
 };
 
-// Bounded by `STATE_CAPACITY`, like `INFO`.
-#[allow(long_running_const_eval)]
+const fn opacity_part(start: usize) -> [u8; INFO_PART] {
+    let mut arr = [15u8; INFO_PART];
+    let mut i = 0;
+    while i < INFO_PART {
+        arr[i] = opacity_of(start + i);
+        i += 1;
+    }
+    arr
+}
+
+// Evaluated in four parts, like `INFO`, to keep each evaluation short.
+#[allow(long_running_const_eval, clippy::large_const_arrays)]
+const OPACITY_0: [u8; INFO_PART] = opacity_part(0);
+#[allow(long_running_const_eval, clippy::large_const_arrays)]
+const OPACITY_1: [u8; INFO_PART] = opacity_part(INFO_PART);
+#[allow(long_running_const_eval, clippy::large_const_arrays)]
+const OPACITY_2: [u8; INFO_PART] = opacity_part(2 * INFO_PART);
+#[allow(long_running_const_eval, clippy::large_const_arrays)]
+const OPACITY_3: [u8; INFO_PART] = opacity_part(3 * INFO_PART);
+
 static LIGHT_OPACITY: [u8; STATE_CAPACITY] = {
+    let parts = [OPACITY_0, OPACITY_1, OPACITY_2, OPACITY_3];
     let mut arr = [15u8; STATE_CAPACITY];
     let mut i = 0;
     while i < STATE_CAPACITY {
-        arr[i] = opacity_of(i);
+        arr[i] = parts[i / INFO_PART][i % INFO_PART];
         i += 1;
     }
     arr

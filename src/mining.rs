@@ -296,6 +296,7 @@ pub fn silk_drop(block: Block) -> Option<Item> {
             | Block::EMERALD_ORE
             | Block::QUARTZ_ORE
             | Block::LAPIS_ORE
+            | crate::world::gen5_blocks::NETHER_GOLD_ORE
             | Block::GLASS
             | Block::GLASS_PANE
             | Block::GRAVEL

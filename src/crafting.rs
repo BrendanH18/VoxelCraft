@@ -351,7 +351,9 @@ const NETHERITE_INGOT: Ingredient = &[Item::NETHERITE_INGOT];
 const NETHERITE_BLOCK: Ingredient = &[b(Block::NETHERITE_BLOCK)];
 const FUEL_LUMP: Ingredient = &[Item::COAL, Item::CHARCOAL];
 /// Java's `#mushrooms`.
-const MUSHROOMS: Ingredient = &[b(Block::BROWN_MUSHROOM), b(Block::RED_MUSHROOM)];
+/// Java's `#mushrooms` (the shelf mushroom since 26.x).
+const MUSHROOMS: Ingredient =
+    &[b(Block::BROWN_MUSHROOM), b(Block::RED_MUSHROOM), b(crate::world::gen5_blocks::SHELF_MUSHROOM)];
 const BOWL: Ingredient = &[Item::BOWL];
 const SNOWBALL: Ingredient = &[Item::SNOWBALL];
 const PUMPKIN: Ingredient = &[b(Block::PUMPKIN)];

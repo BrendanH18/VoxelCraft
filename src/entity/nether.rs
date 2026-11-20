@@ -1582,7 +1582,6 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
         "health": m.health,
         "effects": m.effects.serialize(),
         "baby": m.baby,
-        "age_locked": m.age_locked,
         "grow": m.grow,
         "age": m.age,
         "egg_timer": m.egg_timer,
@@ -1602,6 +1601,11 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
         "home": n.and_then(|n| n.home).map(|h| h.to_array()),
         "celebrate": n.filter(|n| n.celebrate_left > 0.0).map(|n| json!([n.celebrate_left, n.celebrate_at.to_array(), n.dancing])),
     });
+    // Java writes `AgeLocked` with the age; older saves have neither.
+    if m.age_locked {
+        v["age_locked"] = true.into();
+    }
+
     // Optional additions preserve legacy records byte-for-byte when absent.
     // v0.15 Track D: a chicken's, cow's or pig's variant by registry name.
     if super::animals::has_farm_variant(m.kind) && m.farm_variant() != Default::default() {
