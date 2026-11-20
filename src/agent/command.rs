@@ -100,8 +100,13 @@ pub enum Command {
     /// the inventory.
     Cartography(CartographyAction),
     /// Writes JSON `pages` into the held book and quill, or signs it with a
-    /// title.
-    Book(Vec<String>, Option<String>),
+    /// title. `offhand` edits the off-hand book rather than the selected
+    /// hotbar slot (`ServerboundEditBookPacket`'s slot 40).
+    Book {
+        pages: Vec<String>,
+        title: Option<String>,
+        offhand: bool,
+    },
     /// Turns the lectern at a cell to a page, or takes its book.
     Lectern(IVec3, Option<i64>),
     Say(String),
@@ -659,17 +664,38 @@ impl Command {
     }
 
     /// `book write` or `book sign` with JSON text, which keeps spaces and
-    /// newlines: `book write ["page", ...]`, `book sign "title" ["page", ...]`.
+    /// newlines: `book write [offhand] ["page", ...]`,
+    /// `book sign [offhand] "title" ["page", ...]`.
     fn parse_book(text: &str) -> Option<Self> {
         let rest = text.trim().trim_start_matches('/').strip_prefix("book")?.trim_start();
-        if let Some(pages) = rest.strip_prefix("write") {
-            return Some(Self::Book(serde_json::from_str(pages.trim()).ok()?, None));
+        fn hand(rest: &str) -> (&str, bool) {
+            match rest.trim_start().strip_prefix("offhand") {
+                Some(after) if after.is_empty() || after.starts_with(char::is_whitespace) => (after.trim_start(), true),
+                _ => (rest.trim_start(), false),
+            }
         }
-        let rest = rest.strip_prefix("sign")?.trim_start();
+        if let Some(pages) = rest.strip_prefix("write") {
+            let (pages, offhand) = hand(pages);
+            return Some(Self::Book { pages: serde_json::from_str(pages).ok()?, title: None, offhand });
+        }
+        let (rest, offhand) = hand(rest.strip_prefix("sign")?);
         let mut stream = serde_json::Deserializer::from_str(rest).into_iter::<serde_json::Value>();
         let title = stream.next()?.ok()?.as_str()?.to_string();
         let pages: Vec<String> = serde_json::from_value(stream.next()?.ok()?).ok()?;
-        Some(Self::Book(pages, Some(title)))
+        Some(Self::Book { pages, title: Some(title), offhand })
+    }
+
+    /// The `book` command text that [`Command::parse`] reads back as
+    /// [`Command::Book`]: how a LAN guest's book editor, opened on `slot`,
+    /// submits to the host. Slot 40 is the off-hand; any other slot is the
+    /// selected hotbar slot, which the host already tracks.
+    pub fn book_text(slot: usize, pages: &[String], title: Option<&str>) -> String {
+        let pages = serde_json::to_string(pages).unwrap_or_else(|_| "[]".into());
+        let hand = if slot == crate::session::books::OFFHAND_SLOT { " offhand" } else { "" };
+        match title {
+            Some(t) => format!("book sign{hand} {} {pages}", serde_json::json!(t)),
+            None => format!("book write{hand} {pages}"),
+        }
     }
 
     /// Parse slash commands and CLI input identically, rejecting extra arguments and non-finite numbers.
@@ -690,8 +716,9 @@ impl Command {
             return Self::parse_sign(text).ok_or_else(|| "use: sign x y z front|back [\"line\", ...]".to_string());
         }
         if words.first() == Some(&"book") {
-            return Self::parse_book(text)
-                .ok_or_else(|| "use: book write [\"page\", ...] | book sign \"title\" [\"page\", ...]".to_string());
+            return Self::parse_book(text).ok_or_else(|| {
+                "use: book write [offhand] [\"page\", ...] | book sign [offhand] \"title\" [\"page\", ...]".to_string()
+            });
         }
         let item = |name: &str| Item::from_name(name).ok_or_else(|| format!("unknown item: {name}"));
         let xyz = |x: &str, y: &str, z: &str| -> Result<DVec3, String> {

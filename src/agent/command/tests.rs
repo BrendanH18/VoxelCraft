@@ -162,3 +162,20 @@ fn completes_turn_words() {
     assert_eq!(tab_complete("/rotate @s facing e").as_deref(), Some("/rotate @s facing entity"));
     assert_eq!(tab_complete("/rotate @s facing entity @s e").as_deref(), Some("/rotate @s facing entity @s eyes"));
 }
+
+/// Issue #92: a LAN guest's editor names the hand its book came from, and
+/// the text it sends reads back as the same command.
+#[test]
+fn book_commands_round_trip_with_their_hand() {
+    let pages = vec!["one two".to_string(), "line\nbreak \"quoted\"".to_string()];
+    for (slot, offhand) in [(0, false), (8, false), (crate::session::books::OFFHAND_SLOT, true)] {
+        for title in [None, Some("A \"title\"")] {
+            let text = Command::book_text(slot, &pages, title);
+            let Command::Book { pages: p, title: t, offhand: o } = parse(&text) else { panic!("{text}") };
+            assert_eq!((p, t.as_deref(), o), (pages.clone(), title, offhand), "{text}");
+        }
+    }
+    let Command::Book { pages: p, title: None, offhand: false } = parse("book write [\"p\"]") else { panic!() };
+    assert_eq!(p, ["p"]);
+    assert!(Command::parse("book write offhandx [\"p\"]").is_err());
+}

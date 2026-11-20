@@ -15,7 +15,7 @@ use crate::simulation::{self, TICK_SECONDS};
 use crate::world::{World, block::Block};
 use command::CartographyAction;
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink, or hold a brush for 200 ticks) | draw [ticks] (hold use with a bow or crossbow: a bow shoots at that draw, a crossbow loads after 25 ticks; a charged crossbow fires at once) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot (an aimed ender chest holds your own items) | sign x y z front|back [\"line\", ...] (write one side of a sign within reach) | furnace take/put input/fuel/output | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | stonecut item (cut the held stack at an aimed stonecutter) | loom pattern dye (weave onto the held banner at an aimed loom) | cartography copy|zoom|lock (the held map at an aimed cartography table) | book write [\"page\", ...] | book sign \"title\" [\"page\", ...] (the held book and quill) | lectern x y z page n|take | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp|teleport [@s] x y z, tp @s x y z yaw pitch|facing x y z|facing entity @s [eyes|feet], rotate @s yaw pitch|facing x y z|facing entity @s [eyes|feet] (Java degrees: yaw 0 south, 90 west; pitch -90 up; ~ is relative), spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink, or hold a brush for 200 ticks) | draw [ticks] (hold use with a bow or crossbow: a bow shoots at that draw, a crossbow loads after 25 ticks; a charged crossbow fires at once) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot (an aimed ender chest holds your own items) | sign x y z front|back [\"line\", ...] (write one side of a sign within reach) | furnace take/put input/fuel/output | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | stonecut item (cut the held stack at an aimed stonecutter) | loom pattern dye (weave onto the held banner at an aimed loom) | cartography copy|zoom|lock (the held map at an aimed cartography table) | book write [offhand] [\"page\", ...] | book sign [offhand] \"title\" [\"page\", ...] (the book and quill in the selected slot, or the off-hand) | lectern x y z page n|take | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp|teleport [@s] x y z, tp @s x y z yaw pitch|facing x y z|facing entity @s [eyes|feet], rotate @s yaw pitch|facing x y z|facing entity @s [eyes|feet] (Java degrees: yaw 0 south, 90 west; pitch -90 up; ~ is relative), spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -660,10 +660,13 @@ impl Agent {
             Command::Stonecut(output) => self.stonecut(output, world)?,
             Command::Loom(pattern, dye) => self.loom(&pattern, dye, world)?,
             Command::Cartography(action) => self.cartography(action, world)?,
-            Command::Book(pages, title) => match title {
-                Some(title) => self.session.sign_book(self.selected, &pages, &title, "Player")?,
-                None => self.session.edit_book(self.selected, &pages)?,
-            },
+            Command::Book { pages, title, offhand } => {
+                let slot = if offhand { crate::session::books::OFFHAND_SLOT } else { self.selected };
+                match title {
+                    Some(title) => self.session.sign_book(slot, &pages, &title, "Player")?,
+                    None => self.session.edit_book(slot, &pages)?,
+                }
+            }
             Command::Lectern(pos, Some(page)) => {
                 self.session.turn_lectern_page(world, pos, page)?;
             }
@@ -1518,6 +1521,32 @@ mod tests {
         }
         assert_eq!(a.inventory.get(0).unwrap().item, Item::BOWL);
         assert_eq!(a.vitals.hunger.food, 16.0);
+    }
+
+    /// Issue #92: a LAN guest's book opened from the off-hand is saved and
+    /// signed there, with the selected hotbar slot empty and left alone.
+    #[test]
+    fn book_commands_edit_the_offhand_book_when_named() {
+        use crate::content::books;
+        use crate::session::books::OFFHAND_SLOT;
+        let mut w = world();
+        let mut e = Entities::new(7);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        a.inventory.offhand = Some(Stack::new(books::WRITABLE_BOOK, 1));
+        let write = Command::parse(&Command::book_text(OFFHAND_SLOT, &["draft".into()], None)).unwrap();
+        a.execute(write, &mut w, &mut e, &[]).unwrap();
+        assert_eq!(books::pages(&a.inventory.offhand.unwrap()), ["draft"]);
+        assert!(a.inventory.slots[a.selected].is_none());
+        let sign = Command::parse(&Command::book_text(OFFHAND_SLOT, &["final".into()], Some("Notes"))).unwrap();
+        a.execute(sign, &mut w, &mut e, &[]).unwrap();
+        let signed = a.inventory.offhand.unwrap();
+        assert_eq!((signed.item, books::pages(&signed)), (books::WRITTEN_BOOK, vec!["final".to_string()]));
+        assert!(a.inventory.slots[a.selected].is_none());
+        // Without `offhand` the command still names the selected slot, which
+        // is empty here, so it's refused rather than touching the off-hand.
+        let hotbar = Command::parse(&Command::book_text(a.selected, &["x".into()], None)).unwrap();
+        assert!(a.execute(hotbar, &mut w, &mut e, &[]).is_err());
+        assert_eq!(a.inventory.offhand.unwrap().item, books::WRITTEN_BOOK);
     }
 
     #[test]
