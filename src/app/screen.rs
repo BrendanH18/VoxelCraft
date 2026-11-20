@@ -250,7 +250,7 @@ impl Screen<'_> {
     /// Where a shift-clicked inventory stack goes: into the open chest, a
     /// furnace's input (smeltables) or fuel slot, or else between the hotbar
     /// and the main grid. Returns what didn't move.
-    pub(super) fn move_from_inventory(&mut self, from: usize, stack: Stack) -> Option<Stack> {
+    pub(super) fn move_from_inventory(&mut self, from: usize, mut stack: Stack) -> Option<Stack> {
         match *self.container {
             Container::Minecart(id) => {
                 if self.entities.vehicle_slots(id).is_none() {
@@ -341,8 +341,13 @@ impl Screen<'_> {
                 if let Some(piece) = stack.item.wear_slot()
                     && self.session.inventory.armor[piece as usize].is_none()
                 {
-                    self.session.inventory.armor[piece as usize] = Some(stack);
-                    return None;
+                    // One item fits (`ArmorSlot.getMaxStackSize`); the rest
+                    // of a stack of heads moves on below.
+                    self.session.inventory.armor[piece as usize] = Some(Stack { count: 1, ..stack });
+                    if stack.count <= 1 {
+                        return None;
+                    }
+                    stack.count -= 1;
                 }
             }
             Container::Inventory | Container::CraftingTable | Container::Trading(_) => {}

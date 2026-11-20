@@ -456,9 +456,23 @@ impl Inventory {
     /// piece stays on.
     pub fn click_armor(&mut self, piece: ArmorPiece, right: bool, creative: bool) {
         let fits = self.cursor.is_none_or(|c| c.item.wear_slot() == Some(piece));
-        if fits && self.can_unequip(piece, creative) {
-            click_slot(&mut self.armor[piece as usize], &mut self.cursor, right);
+        if !fits || !self.can_unequip(piece, creative) {
+            return;
         }
+        // An armor slot holds one item (`ArmorSlot.getMaxStackSize`), which
+        // matters for stackable mob heads: from a larger stack one goes on
+        // an empty slot and nothing swaps.
+        if let Some(c) = &mut self.cursor
+            && c.count > 1
+        {
+            let slot = &mut self.armor[piece as usize];
+            if slot.is_none() {
+                *slot = Some(Stack { count: 1, ..*c });
+                c.count -= 1;
+            }
+            return;
+        }
+        click_slot(&mut self.armor[piece as usize], &mut self.cursor, right);
     }
 
     /// Clicks the off-hand slot: any stack goes in, as in Java.
@@ -752,6 +766,20 @@ pub fn click_slot(slot: &mut Option<Stack>, cursor: &mut Option<Stack>, right: b
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_stack_of_heads_puts_one_on_the_head() {
+        // `ArmorSlot.getMaxStackSize` is 1: a stack of heads leaves one worn.
+        let head = crate::world::skulls::item(crate::world::skulls::Kind::Zombie);
+        let mut inv = Inventory { cursor: Some(Stack::new(head, 5)), ..Inventory::default() };
+        inv.click_armor(ArmorPiece::Helmet, false, false);
+        assert_eq!(inv.armor[ArmorPiece::Helmet as usize], Some(Stack::new(head, 1)));
+        assert_eq!(inv.cursor, Some(Stack::new(head, 4)));
+        // Worn, it doesn't swap with or top up from a larger stack.
+        inv.click_armor(ArmorPiece::Helmet, false, false);
+        assert_eq!(inv.armor[ArmorPiece::Helmet as usize], Some(Stack::new(head, 1)));
+        assert_eq!(inv.cursor, Some(Stack::new(head, 4)));
+    }
 
     #[test]
     fn v0_4_bone_block_items_load_as_the_axis_bone_block() {

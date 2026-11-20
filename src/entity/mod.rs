@@ -4450,6 +4450,15 @@ mod tests {
     }
 
     #[test]
+    fn peaceful_keeps_shulkers_and_discards_the_wither() {
+        // Java 26.3 registers the Wither `notInPeaceful()` and the shulker
+        // and the sulfur cube without it, so End city shulkers stay.
+        assert!(!MobKind::Shulker.despawns_in_peaceful());
+        assert!(!MobKind::SulfurCube.despawns_in_peaceful());
+        assert!(MobKind::Wither.despawns_in_peaceful());
+    }
+
+    #[test]
     fn spawners_work_near_players_up_to_six_mobs() {
         // A closed room around the cage, so nothing wanders off.
         let mut room = Grid::flat(10);

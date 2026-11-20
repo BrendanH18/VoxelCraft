@@ -681,8 +681,10 @@ impl MobKind {
     /// is not registered with `notInPeaceful()` (piglin brutes, hoglins and
     /// zoglins are).
     pub fn despawns_in_peaceful(self) -> bool {
-        // The sulfur cube's type isn't `notInPeaceful` either.
-        self.is_hostile() && !matches!(self, MobKind::Piglin | MobKind::SulfurCube)
+        // The shulker's and the sulfur cube's types aren't `notInPeaceful`
+        // either (checked in the 26.3 jar's `EntityTypes`), so End city
+        // shulkers stay in Peaceful.
+        self.is_hostile() && !matches!(self, MobKind::Piglin | MobKind::Shulker | MobKind::SulfurCube)
     }
 
     /// Unharmed by fire and lava.

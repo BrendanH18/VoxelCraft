@@ -606,6 +606,8 @@ fn ship(b: &mut B) {
     b.fill((6, 4, 28), (6, 6, 28), Cell::Purpur);
     b.put((6, 3, 28), Cell::Purpur);
     b.put((6, 6, 27), Cell::Purpur);
+    // The wall the bow's dragon head hangs on.
+    b.put((6, 7, 27), Cell::Purpur);
     b.put((6, 11, 26), Cell::Rod(Dir::Up));
     // A ledge under the bow sentry.
     b.put((8, 5, 27), Cell::Purpur);
