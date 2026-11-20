@@ -379,13 +379,10 @@ impl Game {
     /// The editor closed with Done (`title` `None`) or Sign and Close.
     pub(super) fn finish_book_edit(&mut self, slot: usize, pages: Vec<String>, title: Option<String>) {
         if self.lan.client.is_some() {
-            let pages = serde_json::to_string(&pages).unwrap_or_default();
-            // The host edits the peer's selected slot (`book` commands).
-            let _ = slot;
-            match title {
-                Some(t) => self.lan_command(&format!("book sign {} {pages}", serde_json::json!(t))),
-                None => self.lan_command(&format!("book write {pages}")),
-            }
+            // The host edits the peer's selected slot, or its off-hand when
+            // the book was opened from there (issue #92).
+            let offhand = slot == voxelcraft::session::books::OFFHAND_SLOT;
+            self.lan_command(&voxelcraft::agent::Command::book_text(&pages, title.as_deref(), offhand));
             return;
         }
         let result = match title {
