@@ -416,6 +416,8 @@ impl Entities {
         }
         self.pearl_endermites(&events, ctx);
         self.update_tridents(dt, world, ctx, &mut events);
+        // v0.16 Track B: firework rockets.
+        self.update_fireworks(world, ctx, &mut events);
         {
             let (rng, mobs, index) = (&mut self.rng, &self.mobs, &self.mob_index);
             let mut i = 0;

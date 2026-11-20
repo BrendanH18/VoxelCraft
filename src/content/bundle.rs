@@ -178,10 +178,9 @@ impl Ord for Fraction {
 }
 
 /// `BundleContents.canItemBeInBundle`: anything but a shulker box
-/// (`BlockItem.canFitInsideContainerItems`). The game registers no shulker
-/// boxes yet (v0.16), so every item fits.
-pub fn can_fit(_stack: &Stack) -> bool {
-    true
+/// (`BlockItem.canFitInsideContainerItems`).
+pub fn can_fit(stack: &Stack) -> bool {
+    crate::content::shulker_box::can_fit_inside_container(stack)
 }
 
 /// The stacks a stack holds as a bundle (Java reads the component, which

@@ -190,6 +190,11 @@ impl World {
             self.drops.push((p, stack));
             return;
         }
+        // v0.16 Track B: the box with its contents (`copy_components`).
+        if let Some(stack) = self.shulker_box_drop(p, block) {
+            self.drops.push((p, stack));
+            return;
+        }
         if super::creaking::heart(block).is_some() {
             let silk = tool.has(crate::enchant::Enchantment::SilkTouch);
             let item = if silk { super::creaking::HEART } else { super::creaking::RESIN_CLUMP };

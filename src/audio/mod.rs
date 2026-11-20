@@ -9,6 +9,7 @@
 mod breeze;
 mod dsp;
 mod export;
+mod flight;
 mod illager;
 pub mod mixer;
 mod raid;

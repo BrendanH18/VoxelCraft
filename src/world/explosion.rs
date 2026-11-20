@@ -663,6 +663,8 @@ static TABLES: LazyLock<Tables> = LazyLock::new(|| {
                 Loot::Decay
             }
             None if b.is_leaves() => Loot::Leaves,
+            // `blocks/*shulker_box` has no explosion condition.
+            None if super::shulker_box::owns(b.0) => Loot::Keep,
             None => Loot::Survives,
         };
     }

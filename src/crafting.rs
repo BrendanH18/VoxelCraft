@@ -20,6 +20,7 @@ mod bundle;
 mod copper;
 mod creaking;
 mod crops;
+pub mod flight;
 mod harness;
 mod music;
 mod sculk;
@@ -103,6 +104,14 @@ impl Grid {
         // and the bundle's own colour is no recipe (`TransmuteRecipe`).
         if let Some(result) = crate::content::bundle::transmute(&occupied) {
             return result;
+        }
+        // v0.16 Track B: shulker box dyeing keeps the contents, and the
+        // firework star, fade and rocket recipes build their components.
+        if let Some(result) = crate::content::shulker_box::transmute(&occupied) {
+            return result;
+        }
+        if let Some(result) = crate::content::fireworks::grid_special(&occupied) {
+            return Some(result);
         }
         // v0.15 Track B: banner duplication, shield decoration and book cloning.
         if let Some(result) = crate::content::banner_patterns::grid_special(&occupied)
@@ -708,6 +717,7 @@ pub fn recipes() -> &'static [Recipe] {
         bundle::add(&mut r);
         workstations::add(&mut r);
         track_d::add(&mut r);
+        flight::add(&mut r);
         // v0.15 Track C: `recipe/dried_ghast.json`, eight ghast tears around soul sand.
         r.push(shaped(
             &["###", "#X#", "###"],

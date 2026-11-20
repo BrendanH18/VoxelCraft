@@ -10,10 +10,14 @@ use crate::physics::{self, BlockSource, Shape};
 use crate::world::block::Block;
 
 mod ambient;
+mod firework;
 mod types;
+pub use firework::Spark;
 pub use types::{Burst, Kind, System};
 
 pub const CAPACITY: usize = 16_384;
+/// v0.16 Track B: the most firework trail copies spawned in one tick.
+const TRAIL_CAPACITY: usize = 2048;
 const REQUEST_CAPACITY: usize = 1024;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -84,6 +88,8 @@ pub struct Particle {
     pub style: Kind,
     pub successor_lifetime: u16,
     pub landing_lifetime: u16,
+    /// v0.16 Track B: a firework spark's fade colour, trail and twinkle.
+    pub spark: Option<Spark>,
     stopped: bool,
     on_ground: bool,
     random_state: u64,
@@ -111,6 +117,7 @@ impl Particle {
             style: Kind::Smoke,
             successor_lifetime: 64,
             landing_lifetime: 20,
+            spark: None,
             stopped: false,
             on_ground: false,
             random_state: pos.x.to_bits() ^ pos.z.to_bits() ^ 0x5350_4c41_5348,
@@ -133,6 +140,11 @@ impl Particle {
         }
         self.age += 1;
         let t = self.age as f64 / self.lifetime.max(1) as f64;
+        // v0.16 Track B: the firework flash grows and fades in place.
+        if self.style == Kind::FireworkFlash {
+            firework::tick_flash(self);
+            return true;
+        }
         match self.motion {
             Motion::Stationary => return true,
             Motion::DripHang => {
@@ -265,6 +277,13 @@ pub enum Request {
         count: u8,
         sound: bool,
     },
+    /// v0.16 Track B: a firework burst (entity event 17,
+    /// `FireworkParticles.Starter`) from a rocket's `fireworks`.
+    Firework {
+        pos: DVec3,
+        vel: DVec3,
+        fireworks: Option<crate::inventory::components::StackPayload>,
+    },
 }
 
 impl Request {
@@ -273,7 +292,10 @@ impl Request {
         match self {
             Request::Particle(p) => p.pos,
             Request::Burst(b) | Request::Tracking(b) => b.pos,
-            Request::Explosion { pos, .. } | Request::EyeBreak { pos } | Request::Honey { pos, .. } => *pos,
+            Request::Explosion { pos, .. }
+            | Request::EyeBreak { pos }
+            | Request::Honey { pos, .. }
+            | Request::Firework { pos, .. } => *pos,
             Request::Break { cell, .. } | Request::Hit { cell, .. } => cell.as_dvec3() + DVec3::splat(0.5),
         }
     }
@@ -295,6 +317,9 @@ impl Request {
             Request::Hit { cell, block, face } => json!({"t": "h", "p": c(*cell), "b": block.0, "d": c(*face)}),
             Request::EyeBreak { pos } => json!({"t": "e", "p": v(*pos)}),
             Request::Honey { pos, count, sound } => json!({"t": "honey", "p": v(*pos), "n": count, "sound": sound}),
+            Request::Firework { pos, vel, fireworks } => {
+                json!({"t": "fw", "p": v(*pos), "v": v(*vel), "f": fireworks.map(|f| f.field())})
+            }
         })
     }
 
@@ -344,6 +369,15 @@ impl Request {
                 count: u8::try_from(j["n"].as_u64()?).ok()?.min(10),
                 sound: j["sound"] == true,
             },
+            "fw" => Request::Firework {
+                pos: v("p")?,
+                vel: v("v")?,
+                fireworks: match &j["f"] {
+                    serde_json::Value::Null => None,
+                    f => crate::inventory::components::Payload::from_field(f.as_str()?)?
+                        .filter(|p| matches!(p.get(), crate::inventory::components::Payload::Fireworks(_))),
+                },
+            },
             _ => return None,
         })
     }
@@ -379,11 +413,13 @@ impl Requests {
 /// is reserved at construction; tick, spawn and iteration never allocate.
 pub struct Pool {
     particles: VecDeque<Particle>,
+    /// v0.16 Track B: firework spark trails left this tick (reserved once).
+    trails: Vec<Particle>,
 }
 
 impl Default for Pool {
     fn default() -> Self {
-        Self { particles: VecDeque::with_capacity(CAPACITY) }
+        Self { particles: VecDeque::with_capacity(CAPACITY), trails: Vec::with_capacity(TRAIL_CAPACITY) }
     }
 }
 
@@ -404,7 +440,22 @@ impl Pool {
     }
 
     pub fn tick<W: BlockSource + ?Sized>(&mut self, world: &W) {
-        self.particles.retain_mut(|p| p.tick(world));
+        let mut trails = std::mem::take(&mut self.trails);
+        self.particles.retain_mut(|p| {
+            let keep = p.tick(world);
+            if keep
+                && p.spark.is_some()
+                && let Some(copy) = firework::after_spark_tick(p)
+                && trails.len() < TRAIL_CAPACITY
+            {
+                trails.push(copy);
+            }
+            keep
+        });
+        for p in trails.drain(..) {
+            self.spawn(p);
+        }
+        self.trails = trails;
     }
 }
 

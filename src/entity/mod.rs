@@ -38,6 +38,7 @@ pub mod endermite;
 pub mod equipment;
 pub mod eye;
 pub mod fireball;
+pub mod firework;
 pub mod frog;
 pub mod golem;
 pub mod happy_ghast;
@@ -178,6 +179,8 @@ pub enum MobSound {
     Illager(illager::Cue),
     /// v0.15 Track E: the raid horn, a bell resonating, villagers cheering.
     Raid(raid::Cue),
+    /// v0.16 Track B: shulker boxes, rockets and elytra.
+    Flight(crate::content::fireworks::Cue),
 }
 
 /// Something an entity did that the game needs to react to.
@@ -478,6 +481,25 @@ pub enum EntityEvent {
     DropEquipment {
         stack: crate::inventory::Stack,
         pos: DVec3,
+    },
+    /// v0.16 Track B: a rocket held by gliding `player` pushes it this tick
+    /// (`FireworkRocketEntity.tick`).
+    RocketBoost {
+        player: PlayerId,
+    },
+    /// v0.16 Track B: a rocket burst (entity event 17): its particles and
+    /// sounds, from its `fireworks` (`None`: no stars).
+    FireworkBurst {
+        pos: DVec3,
+        vel: DVec3,
+        fireworks: Option<crate::inventory::components::StackPayload>,
+    },
+    /// v0.16 Track B: a burst hurt `player` (`fireworks` damage, an
+    /// explosion type never scaled by difficulty) from a rocket at `from`.
+    PlayerFirework {
+        player: PlayerId,
+        damage: f32,
+        from: DVec3,
     },
 }
 
@@ -783,6 +805,8 @@ pub struct Target {
     /// Ticks of Darkness left (0 without it): wardens and shriekers only
     /// renew it once under 200.
     pub darkness_ticks: u32,
+    /// v0.16 Track B: gliding on elytra (`isFallFlying`): a held rocket pushes.
+    pub fall_flying: bool,
 }
 
 impl Target {
@@ -832,6 +856,7 @@ impl Target {
             time_since_rest: 0,
             darkness_ticks: 0,
             blocking: false,
+            fall_flying: false,
         }
     }
 
@@ -953,6 +978,10 @@ pub struct Entities {
     pub bobbers: Vec<bobber::Bobber>,
     pub eyes: Vec<eye::EnderEye>,
     pub fireballs: Vec<fireball::Fireball>,
+    /// v0.16 Track B: firework rockets (not saved; each lives under four seconds).
+    pub fireworks: Vec<firework::Rocket>,
+    /// Bursts whose twinkle is still to sound, and the ticks until it does.
+    firework_twinkles: Vec<(DVec3, u32)>,
     /// Ominous item spawners over trial chamber fights (see [`trial`]).
     pub item_spawners: Vec<trial::ItemSpawner>,
     pub puffs: Vec<Puff>,
@@ -1087,6 +1116,8 @@ impl Entities {
             bobbers: Vec::new(),
             eyes: Vec::new(),
             fireballs: Vec::new(),
+            fireworks: Vec::new(),
+            firework_twinkles: Vec::new(),
             item_spawners: Vec::new(),
             puffs: Vec::new(),
             lightning: Vec::new(),
@@ -1916,6 +1947,7 @@ impl Entities {
         model::build_tridents(&self.tridents, camera, alpha, &mut self.mesh);
         model::build_fangs(&self.fangs, camera, &mut self.mesh);
         model::build_pearls(&self.pearls, camera, alpha, &mut self.mesh);
+        model::build_fireworks(&self.fireworks, camera, alpha, &mut self.mesh);
         model::build_potions(&self.potions, camera, alpha, &mut self.mesh);
         model::build_clouds(&self.clouds, camera, &mut self.mesh);
         model::build_thrown(&self.thrown, camera, alpha, &mut self.mesh);

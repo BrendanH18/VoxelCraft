@@ -431,7 +431,7 @@ impl Inventory {
     /// becomes the held stack. Identical components do not swap.
     pub fn equip_in_mode(&mut self, slot: usize, creative: bool) -> bool {
         let Some(held) = self.get(slot) else { return false };
-        let Some((piece, _)) = held.item.as_armor() else { return false };
+        let Some(piece) = held.item.equip_piece() else { return false };
         let worn = self.armor[piece as usize];
         if !self.can_unequip(piece, creative)
             || worn.is_some_and(|mut worn| {
@@ -455,7 +455,7 @@ impl Inventory {
     /// Clicks an armor slot: only the matching piece goes in, and a bound
     /// piece stays on.
     pub fn click_armor(&mut self, piece: ArmorPiece, right: bool, creative: bool) {
-        let fits = self.cursor.is_none_or(|c| c.item.as_armor().is_some_and(|(p, _)| p == piece));
+        let fits = self.cursor.is_none_or(|c| c.item.equip_piece() == Some(piece));
         if fits && self.can_unequip(piece, creative) {
             click_slot(&mut self.armor[piece as usize], &mut self.cursor, right);
         }

@@ -323,7 +323,8 @@ fn state(agent: &Agent, name: &str) -> Value {
         "cursor":stack_to_string(agent.session.inventory.cursor),"time_since_rest":agent.session.vitals.time_since_rest,"ticks_frozen":agent.session.vitals.ticks_frozen,"health":agent.session.vitals.health,"air":agent.session.vitals.air,
         "food":agent.session.vitals.hunger.food,"saturation":agent.session.vitals.hunger.saturation,"exhaustion":agent.session.vitals.hunger.exhaustion,
         "death":agent.session.vitals.death,"xp":agent.session.vitals.xp.serialize(),"effects":agent.session.vitals.effects.serialize(),"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle,
-        "respawns":agent.session.respawns,"drawing":agent.session.drawing_slot(),"consuming":agent.session.consuming()})
+        "respawns":agent.session.respawns,"drawing":agent.session.drawing_slot(),"consuming":agent.session.consuming(),
+        "glide":agent.session.player.fall_flying,"glide_ticks":agent.session.player.fall_fly_ticks})
 }
 /// What clients need of *other* players: pose, held item, armor and health, not their inventory.
 /// Rounds to a millimetre (or a thousandth of a radian): plenty for drawing, far fewer bytes.
@@ -338,7 +339,8 @@ fn state_lite(agent: &Agent, name: &str, swing: Option<f32>, eating: f32) -> Val
         "held":stack_to_string(agent.session.inventory.get(agent.selected)),
         "armor":agent.session.inventory.armor.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),
         "offhand":stack_to_string(agent.session.inventory.offhand),
-        "time_since_rest":agent.session.vitals.time_since_rest,"ticks_frozen":agent.session.vitals.ticks_frozen,"health":agent.session.vitals.health,"death":agent.session.vitals.death,"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle})
+        "time_since_rest":agent.session.vitals.time_since_rest,"ticks_frozen":agent.session.vitals.ticks_frozen,"health":agent.session.vitals.health,"death":agent.session.vitals.death,"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle,
+        "glide":agent.session.player.fall_flying,"glide_ticks":agent.session.player.fall_fly_ticks})
 }
 fn apply(agent: &mut Agent, v: &Value) {
     if let Some(pos) = vector(&v["pos"]) {
@@ -355,6 +357,9 @@ fn apply(agent: &mut Agent, v: &Value) {
     agent.session.player.pitch = v["pitch"].as_f64().unwrap_or(0.0) as f32;
     agent.session.player.on_ground = v["ground"] == true;
     agent.session.player.flying = v["flying"] == true;
+    // v0.16 Track B: gliding on elytra.
+    agent.session.player.fall_flying = v["glide"] == true;
+    agent.session.player.fall_fly_ticks = v["glide_ticks"].as_u64().unwrap_or(0).min(u64::from(u32::MAX)) as u32;
     // Java's latched sprint, so a client's replayed inputs accelerate as the host's did.
     agent.session.player.sprinting = v["sprint"] == true;
     if let Some(m) = v["motion"].as_array().filter(|m| m.len() == 4) {
@@ -1423,6 +1428,8 @@ impl Game {
             snapshot["copper_golem_statues"] = json!(self.world.copper_golem_statues_near(here));
             // v0.15 Track B: banner patterns and lectern books near the player.
             snapshot["workstations"] = json!(self.world.workstations_near(here, 160.0));
+            // v0.16 Track B: shulker box lids that are open or moving.
+            snapshot["shulker_lids"] = json!(self.world.shulker_lids_near(here, 160.0));
             if let Some((open, serial)) = &peer.book_open {
                 let mut open = open.clone();
                 open["serial"] = json!(serial);
@@ -1679,6 +1686,7 @@ impl Game {
         if let Some(text) = snapshot["workstations"].as_str() {
             self.world.replace_workstations(text);
         }
+        self.world.apply_shulker_lids(&snapshot["shulker_lids"]);
         let edit = &snapshot["sign_edit"];
         if let (Some(serial), Some(p)) = (edit["serial"].as_u64(), vector(&edit["pos"]))
             && serial as u32 != self.lan.sign_serial

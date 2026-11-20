@@ -311,6 +311,15 @@ pub enum Payload {
     WrittenBook(WrittenBook),
     /// `banner_patterns` and `base_color`.
     Banner(BannerPatterns),
+    /// v0.16 Track B: `container` (`ItemContainerContents`), slot by slot
+    /// with trailing empty slots trimmed (`fromItems`), as a shulker box
+    /// item carries its contents.
+    Container(Vec<Option<Stack>>),
+    /// v0.16 Track B: `fireworks` on a firework rocket, or on the rocket a
+    /// crossbow holds (its `charged_projectiles`).
+    Fireworks(crate::content::fireworks::Fireworks),
+    /// v0.16 Track B: `firework_explosion` on a firework star.
+    Explosion(crate::content::fireworks::Explosion),
 }
 
 /// Java's `String.length` (UTF-16 code units), which its codecs limit.
@@ -351,6 +360,10 @@ impl Payload {
             Payload::WritableBook(pages) => pages.is_empty(),
             Payload::WrittenBook(_) => false,
             Payload::Banner(b) => b.base.is_none() && b.layers.is_empty() && !b.ominous,
+            Payload::Container(slots) => slots.iter().all(Option::is_none),
+            // `Items.FIREWORK_ROCKET`'s default `Fireworks(1, [])`.
+            Payload::Fireworks(f) => f.is_default(),
+            Payload::Explosion(_) => false,
         }
     }
 
@@ -367,6 +380,12 @@ impl Payload {
                     && b.pages.iter().all(|p| java_json_len(p) <= WRITTEN_PAGE_LENGTH)
             }
             Payload::Banner(_) => true,
+            Payload::Container(slots) => {
+                slots.len() <= crate::content::shulker_box::MAX_CONTAINER_SLOTS
+                    && slots.iter().flatten().all(|s| s.count >= 1)
+            }
+            Payload::Fireworks(f) => f.is_valid(),
+            Payload::Explosion(e) => e.is_valid(),
         }
     }
 
@@ -408,6 +427,12 @@ impl Payload {
                 }
                 json!({ "banner": body })
             }
+            Payload::Container(slots) => json!({"container": slots
+                .iter()
+                .map(|s| s.as_ref().map_or(Value::Null, stack_json))
+                .collect::<Vec<_>>()}),
+            Payload::Fireworks(f) => json!({ "fireworks": f.to_json() }),
+            Payload::Explosion(e) => json!({ "firework_explosion": e.to_json() }),
         }
     }
 
@@ -448,6 +473,20 @@ impl Payload {
                     v => v.as_bool()?,
                 },
             }),
+            "container" => {
+                let mut slots: Vec<Option<Stack>> = body
+                    .as_array()?
+                    .iter()
+                    .map(|v| if v.is_null() { Some(None) } else { stack_from_json(v).map(Some) })
+                    .collect::<Option<_>>()?;
+                // `fromItems` keeps no trailing empty slots.
+                while slots.last().is_some_and(Option::is_none) {
+                    slots.pop();
+                }
+                Payload::Container(slots)
+            }
+            "fireworks" => Payload::Fireworks(crate::content::fireworks::Fireworks::from_json(body)?),
+            "firework_explosion" => Payload::Explosion(crate::content::fireworks::Explosion::from_json(body)?),
             _ => return None,
         };
         payload.is_valid().then_some(payload)
@@ -653,7 +692,10 @@ pub fn undyed_tint(item: Item) -> Option<[u8; 3]> {
 /// multiplied by: its `dyed_color`, else [`undyed_tint`]; `None` draws the
 /// texture as it is.
 pub fn dye_tint(stack: &Stack) -> Option<[u8; 3]> {
-    dyed_color(stack).or_else(|| undyed_tint(stack.item))
+    dyed_color(stack)
+        .or_else(|| undyed_tint(stack.item))
+        // v0.16 Track B: a firework star's `Firework` tint.
+        .or_else(|| crate::content::fireworks::star_tint(stack))
 }
 
 /// [`dye_tint`] as an opaque vertex colour (white when untinted).

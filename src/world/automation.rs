@@ -159,6 +159,11 @@ impl World {
         if b == Block::AIR || b.is_fluid() {
             return Reaction::Empty;
         }
+        // v0.16 Track B: shulker boxes pop (`PushReaction.POPPED`), dropping
+        // themselves with their contents.
+        if super::shulker_box::owns(b.0) {
+            return Reaction::Destroy;
+        }
         if !b.hardness().is_finite()
             || matches!(
                 b,
@@ -541,7 +546,9 @@ impl World {
             return slot == 0 && super::jukebox::song_of(item).is_some() && self.container_stack(p, 0).is_none();
         }
         if self.chest(p).is_some() {
-            return true;
+            // v0.16 Track B: `ShulkerBoxBlockEntity.canPlaceItemThroughFace`.
+            return !(self.get_block(p).is_some_and(|b| super::shulker_box::owns(b.0))
+                && crate::content::shulker_box::is_shulker_box(item));
         }
         if self.furnace(p).is_some() {
             return if side == IVec3::Y {
@@ -733,6 +740,14 @@ impl World {
         if !dropper && stack.item.block() == Some(Block::TNT) && !self.rules.tnt_explodes {
             return;
         }
+        // v0.16 Track B: `ShulkerBoxDispenseBehavior` places the box; a box
+        // that can't be placed stays in the dispenser.
+        if !dropper && crate::content::shulker_box::is_shulker_box(stack.item) {
+            if self.dispense_shulker_box(front, d, &one) {
+                self.set_container_stack(p, slot, None);
+            }
+            return;
+        }
         if !dropper && stack.item == Item::BONE_MEAL {
             // Java `BoneMealDispenseItemBehavior`: it fertilises the block in front and is only
             // used up when that grew something; otherwise the stack stays in the slot.
@@ -794,7 +809,12 @@ impl World {
         let shot = !dropper
             && matches!(
                 stack.item,
-                Item::ARROW | Item::SPECTRAL_ARROW | Item::TIPPED_ARROW | Item::FIRE_CHARGE | Item::EXPERIENCE_BOTTLE
+                Item::ARROW
+                    | Item::SPECTRAL_ARROW
+                    | Item::TIPPED_ARROW
+                    | Item::FIRE_CHARGE
+                    | Item::EXPERIENCE_BOTTLE
+                    | crate::content::fireworks::FIREWORK_ROCKET
             );
         self.automation.output.push((p, facing, shot, one));
     }
@@ -818,6 +838,8 @@ impl World {
                 entities.dispense_fire_charge(p, step);
             } else if arrow && stack.item == Item::EXPERIENCE_BOTTLE {
                 entities.dispense_thrown(stack.item, p, step);
+            } else if arrow && stack.item == crate::content::fireworks::FIREWORK_ROCKET {
+                entities.dispense_firework(stack, p, step);
             } else if arrow {
                 entities.dispense_arrow_stack(stack, p, step);
             } else {

@@ -15,7 +15,7 @@ use crate::simulation::{self, TICK_SECONDS};
 use crate::world::{World, block::Block};
 use command::CartographyAction;
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink, or hold a brush for 200 ticks) | draw [ticks] (hold use with a bow or crossbow: a bow shoots at that draw, a crossbow loads after 25 ticks; a charged crossbow fires at once) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot (an aimed ender chest holds your own items) | sign x y z front|back [\"line\", ...] (write one side of a sign within reach) | furnace take/put input/fuel/output | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | stonecut item (cut the held stack at an aimed stonecutter) | loom pattern dye (weave onto the held banner at an aimed loom) | cartography copy|zoom|lock (the held map at an aimed cartography table) | book write [offhand] [\"page\", ...] | book sign [offhand] \"title\" [\"page\", ...] (the book and quill in the selected slot, or the off-hand) | lectern x y z page n|take | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp|teleport [@s] x y z, tp @s x y z yaw pitch|facing x y z|facing entity @s [eyes|feet], rotate @s yaw pitch|facing x y z|facing entity @s [eyes|feet] (Java degrees: yaw 0 south, 90 west; pitch -90 up; ~ is relative), spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink, or hold a brush for 200 ticks) | draw [ticks] (hold use with a bow or crossbow: a bow shoots at that draw, a crossbow loads after 25 ticks; a charged crossbow fires at once) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, puts the eye in a targeted End portal frame, or launches a firework rocket, which boosts a glide; a fresh jump in mid-air with elytra worn glides) | attack | select 1..9 | fly on/off | craft item | chest take/put slot (an aimed ender chest holds your own items) | sign x y z front|back [\"line\", ...] (write one side of a sign within reach) | furnace take/put input/fuel/output | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | stonecut item (cut the held stack at an aimed stonecutter) | loom pattern dye (weave onto the held banner at an aimed loom) | cartography copy|zoom|lock (the held map at an aimed cartography table) | book write [offhand] [\"page\", ...] | book sign [offhand] \"title\" [\"page\", ...] (the book and quill in the selected slot, or the off-hand) | lectern x y z page n|take | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp|teleport [@s] x y z, tp @s x y z yaw pitch|facing x y z|facing entity @s [eyes|feet], rotate @s yaw pitch|facing x y z|facing entity @s [eyes|feet] (Java degrees: yaw 0 south, 90 west; pitch -90 up; ~ is relative), spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -394,7 +394,7 @@ impl Agent {
                 }
             }
             Command::Place
-                if self.session.inventory.get(self.selected).is_some_and(|s| s.item.as_armor().is_some())
+                if self.session.inventory.get(self.selected).is_some_and(|s| s.item.equip_piece().is_some())
                     && !self.session.block_takes_use(self.selected, world, self.session.player.sneaking) =>
             {
                 if !crate::survival_items::equip_armor(
@@ -550,6 +550,18 @@ impl Agent {
                     && !world.chest_opens(pos)
                 {
                     return Err("the chest is blocked from above".into());
+                }
+                // v0.16 Track B: a shulker box needs room for its lid, and
+                // takes no shulker box.
+                if !ender && world.get_block(pos).is_some_and(|b| crate::world::shulker_box::owns(b.0)) {
+                    if !world.shulker_box_opens(pos) {
+                        return Err("the shulker box's lid is blocked".into());
+                    }
+                    if !take
+                        && self.session.inventory.get(self.selected).is_some_and(|s| !world.container_accepts(pos, &s))
+                    {
+                        return Err("a shulker box can't hold a shulker box".into());
+                    }
                 }
                 let slots = if ender { crate::world::chest::SLOTS } else { world.container_slots(pos) };
                 if slot >= slots {
@@ -985,6 +997,7 @@ impl Agent {
             (hurts.drown, Cause::DROWN),
             (hurts.lava, Cause::LAVA),
             (hurts.stalactite, Cause::FALLING_STALACTITE),
+            (hurts.kinetic, Cause::FLY_INTO_WALL),
             (hurts.fire, Cause::IN_FIRE),
             (hurts.hot_floor, Cause::HOT_FLOOR),
             (hurts.campfire, Cause::CAMPFIRE),
@@ -999,6 +1012,7 @@ impl Agent {
         // Frost Walker's ice.
         self.session.settle_effect_hooks(entities);
         self.session.frost_walk(world, entities);
+        self.session.tick_elytra();
         if self.session.vitals.is_dead() {
             self.drop_everything(entities);
             self.remaining = 0;
@@ -1438,7 +1452,7 @@ impl Agent {
         let target = self.target(world).map(|(p, n)| {
             json!({"position":p.to_array(),"face":n.to_array(),"block":world.get_block(p).map(|b|b.name()),"enchanting_offers":offers})
         });
-        json!({"position":self.session.player.pos.to_array(),"yaw":self.session.player.yaw.to_degrees(),"pitch":self.session.player.pitch.to_degrees(),"loaded":world.is_loaded(center),"dimension":world.generator.dimension.name(),"health":self.session.vitals.health,"absorption":self.session.vitals.effects.absorption(),"food":self.session.vitals.hunger.food,"level":self.session.vitals.xp.level,"xp_progress":self.session.vitals.xp.progress(),"dead":self.session.vitals.is_dead(),"mode":self.session.mode.name(),"creative":self.creative,"flying":self.session.player.flying,"sleeping":self.session.sleeping.is_some(),"spawn_bed":self.session.spawn_bed.map(|p|p.to_array()),"spawn_point":self.session.spawn_point.map(|p|p.to_array()),"selected":self.selected+1,"inventory":inventory,"target":target,"blocks":blocks})
+        json!({"position":self.session.player.pos.to_array(),"yaw":self.session.player.yaw.to_degrees(),"pitch":self.session.player.pitch.to_degrees(),"loaded":world.is_loaded(center),"dimension":world.generator.dimension.name(),"health":self.session.vitals.health,"absorption":self.session.vitals.effects.absorption(),"food":self.session.vitals.hunger.food,"level":self.session.vitals.xp.level,"xp_progress":self.session.vitals.xp.progress(),"dead":self.session.vitals.is_dead(),"mode":self.session.mode.name(),"creative":self.creative,"flying":self.session.player.flying,"gliding":self.session.player.fall_flying,"sleeping":self.session.sleeping.is_some(),"spawn_bed":self.session.spawn_bed.map(|p|p.to_array()),"spawn_point":self.session.spawn_point.map(|p|p.to_array()),"selected":self.selected+1,"inventory":inventory,"target":target,"blocks":blocks})
     }
 }
 

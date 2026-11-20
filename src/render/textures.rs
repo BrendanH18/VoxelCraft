@@ -291,6 +291,13 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     if (crate::world::dried_ghast::TEX..crate::world::dried_ghast::TEX_END).contains(&layer) {
         return crate::world::dried_ghast::pixel(layer, x, y);
     }
+    // v0.16 Track B: shulker boxes.
+    if (crate::world::shulker_box::TEX..crate::world::shulker_box::TEX_END).contains(&layer) {
+        return crate::world::shulker_box::pixel(layer, x, y);
+    }
+    if layer == voxelcraft::content::elytra::WING_TEX {
+        return voxelcraft::content::elytra::wing_pixel(x, y);
+    }
     if (crate::world::sniffer_plants::t::BASE..crate::world::sniffer_plants::t::END).contains(&layer) {
         return sniffer_plants::pixel(layer, x, y);
     }

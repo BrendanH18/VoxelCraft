@@ -101,6 +101,8 @@ pub fn tick_world_rules(world: &mut World, player: DVec3, fire_tick: bool, rando
     world.maps.game_ticks = world.maps.game_ticks.wrapping_add(1);
     world.simulation_player(player);
     world.clear_removed_banners();
+    world.clear_removed_shulker_boxes();
+    world.tick_shulker_boxes();
     world.tick_redstone();
     world.tick_sculk();
     world.tick_fluids(TICK_SECONDS);
@@ -197,6 +199,9 @@ pub fn player_environment(player: &Player, world: &World, moved: f64) -> Env {
             && world.get_block((player.pos - DVec3::Y * 0.2).floor().as_ivec3())
                 == Some(crate::world::scaffolding::POWDER_SNOW),
         freeze_immune: player.freeze_immune || player.noclip,
+        fall_flying: player.fall_flying,
+        fall_speed: player.vel.y / 20.0,
+        kinetic: player.kinetic_damage,
     }
 }
 

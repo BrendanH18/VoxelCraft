@@ -16,6 +16,10 @@ pub mod mining;
 pub mod placement;
 pub mod spyglass;
 pub mod trim;
+// v0.16 Track B: flight and storage.
+pub mod elytra;
+pub mod fireworks;
+pub mod shulker_box;
 
 /// All implemented plank ingredients. Oak stays first for recipe-book previews.
 /// Nether planks are valid ingredients but explicitly are not furnace fuels.

@@ -396,6 +396,8 @@ fn is_food(item: Item) -> bool {
 /// idle piglins nearby.
 pub fn guarded_by_piglins(block: Block) -> bool {
     matches!(block.base(), Block::CHEST | Block::BARREL)
+        // v0.16 Track B: `#guarded_by_piglins` lists every shulker box.
+        || crate::world::shulker_box::owns(block.0)
         || matches!(
             block,
             Block::GOLD_BLOCK

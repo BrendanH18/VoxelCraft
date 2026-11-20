@@ -353,6 +353,12 @@ pub enum Sprite {
     /// v0.15 Track B: a pattern item's sheet showing pattern item `i` of
     /// `content::banner_patterns::PATTERN_ITEMS`.
     BannerPattern(u8),
+    /// v0.16 Track B: folded grey-violet wings (`content::elytra`).
+    Elytra,
+    /// v0.16 Track B: a paper rocket with a fuse (`content::fireworks`).
+    FireworkRocket,
+    /// v0.16 Track B: a pale star ball, tinted by its colours.
+    FireworkStar,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1133,6 +1139,12 @@ impl Item {
         if let Some(info) = crate::content::harness::item_info(self) {
             return info;
         }
+        // v0.16 Track B: elytra, firework rockets and firework stars.
+        if let Some(info) =
+            crate::content::elytra::item_info(self).or_else(|| crate::content::fireworks::item_info(self))
+        {
+            return info;
+        }
         // v0.15 Track D: spectral arrows, coloured eggs and trim templates.
         if self == Self::SPECTRAL_ARROW {
             return item("spectral arrow", Sprite::SpectralArrow);
@@ -1349,6 +1361,9 @@ impl Item {
             // Java registers signs and hanging signs with `stacksTo(16)`.
             let max_stack = if crate::world::wood::signs::sign(b).is_some() {
                 16
+            } else if crate::world::shulker_box::owns(b.0) {
+                // `Items.SHULKER_BOX` and `DYED_SHULKER_BOX`: `stacksTo(1)`.
+                1
             } else {
                 crate::world::colour_blocks::max_stack(b).unwrap_or(64)
             };
@@ -1474,6 +1489,9 @@ impl Item {
         if matches!(self, Self::BRUSH | Self::WOLF_ARMOR) {
             return Some(64);
         }
+        if self == crate::content::elytra::ELYTRA {
+            return Some(crate::content::elytra::DURABILITY);
+        }
         if self == Self::CARROT_ON_A_STICK {
             return Some(25);
         }
@@ -1564,6 +1582,20 @@ impl Item {
             || crate::content::banner_patterns::rarity(self) == Some(crate::content::banner_patterns::Rarity::Rare)
             || crate::content::trim::template_pattern(self)
                 .is_some_and(|p| crate::content::trim::rarity(p) == crate::content::trim::Rarity::Rare)
+    }
+
+    /// The equipment slot this goes in (`Equippable.slot`): armor's own, and
+    /// the chest for v0.16 Track B's elytra.
+    pub fn equip_piece(self) -> Option<ArmorPiece> {
+        if self == crate::content::elytra::ELYTRA {
+            return Some(ArmorPiece::Chestplate);
+        }
+        self.as_armor().map(|(piece, _)| piece)
+    }
+
+    /// Java's `Rarity.EPIC` (light purple names): v0.16 Track B's elytra.
+    pub fn is_epic(self) -> bool {
+        self == crate::content::elytra::ELYTRA
     }
 
     /// Java's `DataComponents.ENCHANTMENT_GLINT_OVERRIDE`: drawn with the
@@ -1715,6 +1747,8 @@ impl Item {
             .chain(track_d_items())
             // v0.15 Track F: five explorer maps, which draw their own layers.
             .chain(crate::world::explorer_maps::items())
+            // v0.16 Track B: elytra, firework rocket and firework star.
+            .chain(track_b16_items())
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1790,6 +1824,10 @@ fn sprite_index(item: Item) -> Option<u16> {
         ),
         // v0.15 Track D: its items follow Track B's.
         i if let Some(k) = track_d_items().position(|t| t.0 == i) => Some(track_d_icon_base() + k as u16),
+        // v0.16 Track B: its items follow v0.15 Track D's.
+        i if let Some(k) = track_b16_items().position(|t| t.0 == i) => {
+            Some(track_d_icon_base() + TRACK_D_ICONS as u16 + k as u16)
+        }
         // v0.17 build-5000 ITEM-08: the bundles follow the experience bottle.
         i if (crate::content::bundle::ITEM_FIRST..crate::content::bundle::ITEM_END).contains(&i) => Some(
             late_icon_base()
@@ -1932,7 +1970,19 @@ pub const fn icon_count() -> u32 {
         + 3 // v0.15 Track B: spyglass, book and quill, written book.
         + (crate::content::banner_patterns::ITEM_END - crate::content::banner_patterns::ITEM_FIRST) as u32
         + TRACK_D_ICONS
+        + TRACK_B16_ICONS
 }
+
+/// v0.16 Track B's items, in icon order (after v0.15 Track D's).
+fn track_b16_items() -> impl Iterator<Item = Item> {
+    [
+        crate::content::elytra::ELYTRA,
+        crate::content::fireworks::FIREWORK_ROCKET,
+        crate::content::fireworks::FIREWORK_STAR,
+    ]
+    .into_iter()
+}
+const TRACK_B16_ICONS: u32 = 3;
 
 /// v0.15 Track D's first icon, after Track B's.
 const fn track_d_icon_base() -> u16 {

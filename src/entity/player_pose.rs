@@ -82,7 +82,9 @@ pub fn resolve_pose<W: BlockSource + ?Sized>(player: &Player, world: &W, shift: 
     if !fits_player(world, player, PlayerPose::Swimming) {
         return player.pose;
     }
-    let desired = if player.swimming {
+    // v0.16 Track B: `Pose.FALL_FLYING` has the swimming pose's 0.6 box and
+    // 0.4 eyes, so gliding takes it (the model tells them apart).
+    let desired = if player.swimming || player.fall_flying {
         PlayerPose::Swimming
     } else if shift && !player.flying {
         PlayerPose::Crouching

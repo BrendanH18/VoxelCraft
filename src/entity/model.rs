@@ -1419,6 +1419,25 @@ pub fn build_pearls(pearls: &[super::pearl::Pearl], camera: DVec3, alpha: f64, o
     }
 }
 
+/// v0.16 Track B: firework rockets in flight (`FireworkEntityRenderer`
+/// draws the item; this is an original stand-in): a red-banded paper tube
+/// with a grey cap, nose along the flight. Held rockets aren't drawn.
+pub fn build_fireworks(rockets: &[super::firework::Rocket], camera: DVec3, alpha: f64, out: &mut EntityMesh) {
+    const ROCKET: &[Cuboid] = &[
+        cube([-1.0, -3.0, -1.0], [1.0, 3.0, 1.0], [226, 220, 204], 10),
+        cube([-1.1, -0.6, -1.1], [1.1, 0.6, 1.1], [190, 50, 42], 6),
+        cube([-0.9, 3.0, -0.9], [0.9, 4.0, 0.9], [120, 120, 128], 6),
+        cube([-0.3, -4.2, -0.3], [0.3, -3.0, 0.3], [70, 58, 44], 0),
+    ];
+    for r in rockets.iter().filter(|r| r.attached.is_none()) {
+        let rel = (r.previous_pos.lerp(r.pos, alpha) - camera).as_vec3();
+        let turn = Quat::from_rotation_arc(Vec3::Y, r.heading());
+        for (i, c) in ROCKET.iter().enumerate() {
+            push_cuboid(out, c, &|v: Vec3| rel + turn * v / 16.0, turn, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
+        }
+    }
+}
+
 /// Thrown splash potions: a small tumbling flask tinted like its liquid.
 pub fn build_potions(potions: &[super::potion::ThrownPotion], camera: DVec3, alpha: f64, out: &mut EntityMesh) {
     for p in potions {

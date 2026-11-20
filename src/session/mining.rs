@@ -334,6 +334,11 @@ impl PlayerSession {
         let hive_handled = world.mine_beehive(entities, pos, block, held, self.id, drops && harvest);
         let statue_handled = world.mine_copper_golem_statue(pos, drops && harvest);
         world.set_block(pos, if melts { Block::WATER } else { Block::AIR });
+        // v0.16 Track B: `ShulkerBoxBlock.playerWillDestroy` drops a Creative
+        // player's box when it holds something.
+        if self.mode.is_creative() {
+            world.creative_shulker_box_drop(pos, block);
+        }
         if melts {
             world.particles.push(Request::Break { cell: pos, block });
         }

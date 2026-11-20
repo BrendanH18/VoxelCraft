@@ -102,6 +102,7 @@ pub mod scaffolding;
 pub mod sculk;
 pub mod sculk_spread;
 pub mod shape;
+pub mod shulker_box;
 pub mod slab_stair_states;
 pub mod sniffer_egg;
 pub mod sniffer_plants;
@@ -396,6 +397,8 @@ pub struct World {
     workstations: workstations::State,
     /// Lectern pages turned since the game last asked (level event 1043).
     pub page_turns: Vec<workstations::PageTurn>,
+    /// v0.16 Track B: shulker box lids, viewers and removed contents.
+    shulker_boxes: shulker_box::Shulkers,
     /// Jukebox game events since the entity pass last drained them
     /// (allays dance; track A's vibrations hook in there).
     pub jukebox_events: Vec<(IVec3, jukebox::JukeboxEvent)>,
@@ -502,6 +505,7 @@ impl World {
             self.reheight_and_remesh(p, old, block, false);
             self.track_banner(p, old, block);
             self.track_workstations(p, old, block);
+            self.track_shulker_box(p, old, block);
         }
         self.update_block_light();
     }
@@ -524,6 +528,8 @@ impl World {
         // The snapshot replaces the chunk's banners for the renderer.
         self.banners.retain(|p, _| chunk_of(*p) != pos);
         self.register_banners(pos, &data);
+        self.forget_shulker_boxes(pos);
+        self.register_shulker_boxes(pos, &data);
         self.forget_campfires(pos);
         self.register_campfires(pos, &data);
         self.register_beehives(pos, &data, true);
@@ -679,6 +685,7 @@ impl World {
             jukeboxes: Default::default(),
             workstations: Default::default(),
             page_turns: Vec::new(),
+            shulker_boxes: Default::default(),
             jukebox_events: Vec::new(),
             records: Vec::new(),
             records_started: Vec::new(),
@@ -1436,6 +1443,7 @@ impl World {
     fn install_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>, modified: bool) {
         self.register_village_life(pos, &data);
         self.register_banners(pos, &data);
+        self.register_shulker_boxes(pos, &data);
         self.register_campfires(pos, &data);
         self.register_beehives(pos, &data, modified);
         self.register_creaking_hearts(pos, &data);
@@ -1505,6 +1513,7 @@ impl World {
         self.village_homes.retain(|p, _| chunk_of(*p) != pos);
         self.village_residents.retain(|p, _| chunk_of(*p) != pos);
         self.banners.retain(|p, _| chunk_of(*p) != pos);
+        self.forget_shulker_boxes(pos);
         self.forget_campfires(pos);
         self.unload_block_light(pos, slot.block_light.as_ref());
         if slot.modified {

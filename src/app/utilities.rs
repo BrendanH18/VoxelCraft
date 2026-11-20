@@ -82,6 +82,7 @@ impl Game {
             let out = if block.is_some() { (orient * glam::Vec3::Z).as_dvec3() * (size / 2.0) } else { DVec3::ZERO };
             crate::render::BlockModel {
                 patterns: None,
+                lid: None,
                 min: centre + out - DVec3::splat(size / 2.0),
                 size: size as f32,
                 block: block.unwrap_or(voxelcraft::world::block::Block::AIR),
