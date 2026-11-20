@@ -409,25 +409,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_worlds_save_and_reload_as_generation_4() {
+    fn new_worlds_save_and_reload_as_generation_5() {
         let dir = std::env::temp_dir().join(format!("voxelcraft-worldgen-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let storage = Storage::new(&dir);
 
-        // A new world: generation 4, written as `worldgen=4`.
+        // A new world: generation 5, written as `worldgen=5`.
         let generation = world_generation(None);
-        assert_eq!(generation, Generation::V4);
+        assert_eq!(generation, Generation::V5);
         let generator = Generator::with_generation(7, Dimension::Overworld, generation);
         let mut props = std::collections::BTreeMap::new();
         super::super::save::record_generation(&mut props, generator.generation);
         storage.save(&LevelInfo { seed: 7, player: None, props }, &[]).unwrap();
         let text = std::fs::read_to_string(dir.join("level.txt")).unwrap();
-        assert!(text.lines().any(|line| line == "worldgen=4"), "{text}");
+        assert!(text.lines().any(|line| line == "worldgen=5"), "{text}");
 
-        // Reloaded, it stays generation 4.
+        // Reloaded, it stays generation 5.
         let saved = storage.load_level().unwrap();
-        assert_eq!(world_generation(Some(&saved)), Generation::V4);
-        assert_eq!(Generator::with_generation(saved.seed, Dimension::Overworld, Generation::V4).generation.number(), 4);
+        assert_eq!(world_generation(Some(&saved)), Generation::V5);
+        assert_eq!(Generator::with_generation(saved.seed, Dimension::Overworld, Generation::V5).generation.number(), 5);
 
         // Older worlds keep theirs.
         storage.set_props(&[(Generation::KEY, "2")]).unwrap();

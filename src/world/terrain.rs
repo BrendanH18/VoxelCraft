@@ -77,11 +77,17 @@ pub enum Generation {
     /// trial chamber and ancient city template catalogues. Generation 3's
     /// output is pinned by `generation_3_chunk_hashes_stay_identical`.
     V4 = 4,
+    /// v0.16: generation 4 with End cities and ships, poplar, cinnabar and
+    /// sulfur, abandoned camps, nether gold ore, and Java's piece rules for
+    /// dungeons, mineshafts, strongholds, fortresses, shipwrecks and
+    /// monuments. Generation 4's Overworld, Nether and End output is pinned
+    /// by `generation_4_chunk_hashes_stay_identical`.
+    V5 = 5,
 }
 
 impl Generation {
     /// What new worlds use.
-    pub const LATEST: Generation = Generation::V4;
+    pub const LATEST: Generation = Generation::V5;
     /// The `level.txt` key.
     pub const KEY: &'static str = "worldgen";
 
@@ -95,6 +101,7 @@ impl Generation {
             Some(Ok(2)) => Generation::V2,
             Some(Ok(3)) => Generation::V3,
             Some(Ok(4)) => Generation::V4,
+            Some(Ok(5)) => Generation::V5,
             Some(_) => {
                 log::warn!("unknown world generation {value:?}; using {:?}", Generation::LATEST);
                 Generation::LATEST
@@ -2131,6 +2138,93 @@ mod tests {
         }
     }
 
+    /// Generation 4 (v0.15) must never change: every v0.16 world change
+    /// goes in generation 5. Pins blocks and structure features in the
+    /// Overworld around spawn and the nearest village, outpost, trail ruins,
+    /// ancient city, trial chamber, mansion, stronghold and mineshaft; in the
+    /// Nether around spawn, the nearest fortress and bastion; and in the End
+    /// on the central island and an outer-island stretch.
+    #[test]
+    fn generation_4_chunk_hashes_stay_identical() {
+        use super::super::temples::Kind;
+        let fnv = |hash: &mut u64, bytes: &[u8]| {
+            for &byte in bytes {
+                *hash = (*hash ^ u64::from(byte)).wrapping_mul(0x100_0000_01b3);
+            }
+        };
+        let around = |p: IVec3, r: i32, rows: std::ops::Range<i32>| {
+            let c = p.div_euclid(IVec3::splat(CHUNK_SIZE_I));
+            let rows = rows.clone();
+            (-r..=r).flat_map(move |x| {
+                let rows = rows.clone();
+                (-r..=r).flat_map(move |z| rows.clone().map(move |y| IVec3::new(c.x + x, y, c.z + z)))
+            })
+        };
+        let column = |c: IVec3| (c.y - 1)..(c.y + 2);
+        let mut got = Vec::new();
+        for seed in [12345u64, 99] {
+            for dimension in [Dimension::Overworld, Dimension::Nether, Dimension::End] {
+                let g = Generator::with_generation(seed, dimension, Generation::V4);
+                let (mut blocks, mut features) = (0xcbf2_9ce4_8422_2325u64, 0xcbf2_9ce4_8422_2325u64);
+                let rows = dimension.chunk_rows();
+                let mut positions: Vec<IVec3> = match dimension {
+                    Dimension::End => around(IVec3::ZERO, 3, rows.clone())
+                        .chain(around(IVec3::new(1200, 0, 300), 2, rows.clone()))
+                        .collect(),
+                    _ => around(IVec3::ZERO, 2, rows.clone()).collect(),
+                };
+                let structures: Vec<(&str, Option<IVec3>, i32)> = match dimension {
+                    Dimension::Overworld => vec![
+                        ("village", g.villages.nearest(&g, IVec3::ZERO), 3),
+                        ("outpost", g.temples.nearest(&g, Kind::Outpost, IVec2::ZERO, 3000), 2),
+                        ("trail ruins", g.trail_ruins.nearest(&g, IVec2::ZERO, 3000), 1),
+                        ("ancient city", g.ancient_cities.nearest(&g, IVec2::ZERO, 3000), 2),
+                        ("trial chamber", g.trial_chambers.nearest(&g, IVec2::ZERO, 3000), 2),
+                        ("mansion", g.temples.nearest(&g, Kind::Mansion, IVec2::ZERO, 12000), 2),
+                        ("stronghold", g.strongholds.nearest(IVec3::ZERO), 2),
+                        ("mineshaft", g.mineshafts.nearest(IVec3::ZERO), 1),
+                    ],
+                    Dimension::Nether => vec![
+                        ("fortress", g.nearest_fortress(IVec2::ZERO), 2),
+                        ("bastion", g.nether.as_ref().and_then(|n| n.fortresses.bastions.nearest(IVec2::ZERO)), 2),
+                    ],
+                    Dimension::End => vec![],
+                };
+                for (name, at, r) in structures {
+                    let Some(at) = at else {
+                        fnv(&mut features, format!("{name} none").as_bytes());
+                        continue;
+                    };
+                    fnv(&mut features, format!("{name} {at:?}").as_bytes());
+                    let c = at.div_euclid(IVec3::splat(CHUNK_SIZE_I));
+                    let ys = column(c);
+                    positions.extend(around(at, r, ys.start.max(rows.start)..ys.end.min(rows.end)));
+                }
+                let mut seen = std::collections::HashSet::new();
+                positions.retain(|p| seen.insert(*p));
+                for p in positions {
+                    g.generate(p).for_each_block(|block| fnv(&mut blocks, &block.0.to_le_bytes()));
+                    fnv(&mut features, format!("{p:?} {:?}", g.structure_features(p)).as_bytes());
+                }
+                got.push((seed, dimension.name(), blocks, features));
+            }
+        }
+        let expected: [(u64, &str, u64, u64); 6] = [
+            (12345, "overworld", 0x29c9_7a5b_559c_416a, 0x1268_69d5_c171_fd59),
+            (12345, "nether", 0xed87_ce93_de7c_6d20, 0xf7a7_7011_1015_26fd),
+            (12345, "end", 0xe4de_1648_e0b2_46db, 0x1806_a074_0327_f605),
+            (99, "overworld", 0xc1c6_34b8_4cb8_4603, 0x363d_5b56_632e_f156),
+            (99, "nether", 0x88da_9bcc_aee7_cd7e, 0x51fa_3b17_9c36_651c),
+            (99, "end", 0xd9e0_ccff_e7a9_6153, 0x1806_a074_0327_f605),
+        ];
+        for got in &got {
+            println!("PIN ({}, \"{}\", {:#x}, {:#x}),", got.0, got.1, got.2, got.3);
+        }
+        for (got, expected) in got.iter().zip(expected) {
+            assert_eq!(*got, expected, "generation 4 changed: {got:#x?}");
+        }
+    }
+
     #[test]
     fn saved_worlds_keep_their_generation() {
         assert_eq!(Generation::from_prop(None), Generation::V1, "worlds from before v0.13");
@@ -2138,6 +2232,7 @@ mod tests {
         assert_eq!(Generation::from_prop(Some("2")), Generation::V2);
         assert_eq!(Generation::from_prop(Some("3")), Generation::V3);
         assert_eq!(Generation::from_prop(Some("4")), Generation::V4);
+        assert_eq!(Generation::from_prop(Some("5")), Generation::V5);
         assert_eq!(Generation::from_prop(Some("99")), Generation::LATEST);
         assert_eq!(Generation::from_prop(Some(&Generation::LATEST.number().to_string())), Generation::LATEST);
         assert_eq!(Generator::new(1).generation, Generation::LATEST);

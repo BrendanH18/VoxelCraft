@@ -342,7 +342,7 @@ count, the potions' item IDs and the encodings the orderings must fit.
 | 14336–14591 | v0.15 | Copper golem statue states (2026-11-05 reservation) |
 | 14592–15487 | v0.15 | Creaking, sniffer, ocean ruin and spare states (2026-11-05 reservation) |
 | 15488–15999 | v0.16 | Trial chamber, weapon and spare states (2026-11-06 reservation) |
-| 16000–16383 | — | Unassigned reserve |
+| 16000–16383 | v0.16 | Cinnabar and sulfur ([v0.16 tracks](#v016-the-end-and-the-wither-track-reservations), 2026-11-20) |
 | 16384–32767 | v0.12 and later | Added by the 32,768 raise (2026-10-25); see the v0.12 tracks below |
 
 ### v0.12 track reservations
@@ -1020,6 +1020,41 @@ unsaved `fortress::Feature` members (`StructureLoot`, `VillageResident`,
 recorded in the existing saved `births` list), and `jigsaw::Base::LootIn`.
 `entity::cat_spawner` is now `pub(crate)` so the village catalogue can name
 Java's cat variants.
+
+### v0.16 The End and the Wither track reservations
+
+Reserved on 2026-11-20 for the [v0.16 tracks](roadmap.md#v016-scope-the-end-and-the-wither)
+(the release this table's first rows call v0.18, renumbered on 2026-11-13).
+`examples/id_map.rs` at `53194210` showed states 12260–14335, 16000–16383,
+19584–20479 and 30536–32767 unregistered (30536–30719 stay with the v0.15 crops track), non-block items free from 1658,
+and texture layers 529–1099 unreferenced. A census of `render::textures::pixel`
+at the same commit confirmed that every layer in 529–1099 draws the
+missing-texture pattern, so no model, icon or HUD element paints it.
+Poplar is a wood family and takes the unused rest of the v0.12 wood
+track's states; cinnabar and sulfur take the unassigned reserve. Each
+track allocates only inside its own rows, records what it used here, and
+leaves unused IDs unregistered. Texture layers are never saved and may be
+repacked at integration.
+
+| Block states | Item IDs | Texture layers | Track |
+| --- | --- | --- | --- |
+| 12288–12415 | 1660–1674 | 529–608 | A. Outer End: End cities and ships, chorus, purpur, End rods, shulkers |
+| 12416–12543 | 1675–1689 | 609–668 | B. Flight and storage: shulker boxes, elytra, fireworks |
+| 12544–12799 | 1690–1704 | 669–748 | C. Wither and beacons: heads and skulls, the Wither, wither roses, Nether stars, beacons |
+| 16000–16383, 19584–20479 | 1705–1729 | 749–948 | D. Generation 5 Overworld: poplar, shrubs, golden dandelions, shelf mushrooms, cinnabar and sulfur, the sulfur cube, nether gold ore, abandoned camps |
+| 30720–30847 | 1730–1739 | 949–988 | E. Classic structures: infested blocks, dungeons, mineshafts, strongholds, fortresses (wave 2) |
+| 30848–30975 | 1740–1749 | 989–1028 | F. Ocean structures: shipwrecks, monuments, the conduit (wave 2) |
+| 30976–31103 | 1750–1759 | 1029–1048 | G. Dragon respawn and the exit audits (wave 2) |
+| 31104–31231 | 1760–1769 | 1049–1099 | Integrator spare |
+
+Block items are `BLOCK_ITEM_BASE + state` and need no item ID; the item
+rows are for items without a block. Append-only orderings (`MobKind` and
+its LAN index, `Effect`, sounds, item icons, thrown kinds, particle kinds,
+entity and dimension property keys, `slab_stair_states::FAMILIES`,
+`waterlog::RUNS`, `utilities::POTTED`) are appended by each track on its
+own branch. No released build saves the new members, so the integrator
+makes them contiguous in landing order (A, B, C, D, then E, F, G) and
+records the result here. Saved names follow Java's registry names.
 
 ## Assessment branch ID reservations
 

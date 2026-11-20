@@ -226,9 +226,11 @@ landform variety, overhangs, cave and aquifer types, ore bands, features
 and their continuity across chunk borders), checked by VoxelCraft fixtures
 and play rather than Java seed/coordinate fixtures. Player impact: Java
 seeds and coordinates from guides don't carry over. FE-02 below is the
-other approved exception. Two things lean on it without the owner having
-ruled on them: the Nether's terrain also uses original noise (GEN-04a), and
-the 2026-11-09 terrain blending converts VoxelCraft's block-distance density
+other approved exception. The owner extended FE-01 to the Nether on
+2026-11-20: the Nether's density and biome noise stay original (GEN-04a),
+while its biomes, features and structure placement follow Java as for the
+Overworld. One thing still leans on it without the owner having ruled on
+it: the 2026-11-09 terrain blending converts VoxelCraft's block-distance density
 to Java's units where a structure's beard applies
 ([record](verification/2026-11-09-structure-terrain-blending.md)).
 
@@ -576,7 +578,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.14 (planned as v0.16) | Deep dark and trials | M3 + M4 + PRO-07 | Ancient cities with sculk and the warden; trial chambers with breezes, trial spawners, vaults and the mace; tridents, spears and the other modern weapon families; a jukebox with music discs. See [v0.14 scope](#v016-scope-deep-dark-and-trials) | Implemented, unverified (2026-11-07): scope approved by the owner on 2026-11-06; four tracks (sculk and the warden, ancient cities and music, trial chambers, weapons) merged and integrated ([integration](verification/2026-11-07-v0.16-integration.md)); awaits the owner's play |
 | — | Stabilisation | Gate before the v0.14 tag | No new content: the entity frame-time fix and a full scene run, terrain blending for generation 3 structures, the audit's data fixes, the owner's play, and one tag for v0.14. See the [stabilisation gate](#stabilisation-gate-before-v017) | In progress (2026-11-09). The owner lifted its content freeze on 2026-11-12; the frame-time gate passed and v0.14 was tagged on 2026-11-16 ([record](verification/2026-11-16-tag-gate-run.md)); the owner's play is still owed |
 | v0.15 | Villages and raids | Close M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M4 exit checks. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): the remaining Java 26.3 mobs (happy ghasts, nautiluses, camel husks, parched), mobs holding and picking up equipment, chainmail, books, bundles, spyglasses, armor trims, the remaining status effects and potions, and the village template catalogue | Implemented, unverified (2026-11-18): scope approved by the owner, all eight tracks merged and checked together ([v0.15 scope](#v015-scope-villages-and-raids), [integration](verification/2026-11-18-v0.15-integration.md)); the offscreen frame-time suite passes ([run](verification/2026-11-18-v0.15-frame-time.md)); the owner's play remains. Tagged `v0.15` at `b16fe0b5` on 2026-11-18, but its release build stopped at the version check because `Cargo.toml` still said 0.14.0, so no draft release exists. Version 0.15.0 and its release notes were added on 2026-11-19; the tag moves to that commit to build the draft. Part of its list was built early by [build-5000 wave 1](verification/2026-11-12-build-5000/wave-1.md) and ships in v0.14 (see the [assigned content](#content-assigned-by-the-2026-11-09-audit)) |
-| v0.16 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): poplar, cinnabar and sulfur with their terrain and the sulfur cube, abandoned camps, mob heads, infested blocks, nether gold ore, conduits, and the reassessment of dungeons, mineshafts, strongholds, shipwrecks and monuments | Planned |
+| v0.16 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): poplar, cinnabar and sulfur with their terrain and the sulfur cube, abandoned camps, mob heads, infested blocks, nether gold ore, conduits, and the reassessment of dungeons, mineshafts, strongholds, shipwrecks and monuments | In progress (2026-11-20): scope approved by the owner, seven tracks in two waves; see the [v0.16 scope](#v016-scope-the-end-and-the-wither) |
 | v0.17 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload. Added by the 2026-11-09 audit: the furnace minecart | Planned |
 | v0.18 | Polish and performance | M7: UX, §6 | Typography/contrast, material and mob art, inventory/recipe navigation, HUD/workstations, title/world identity, atmosphere and accessibility ([scope](#v020-scope-presentation-and-performance)); subtitles, asset and sound review in play (including the v0.12 blocks' own sounds), and menu fixes found since v0.11; the 120 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, v0.11's menu and title frame-time run and v0.12's `materials` runs, which moved here unverified ([v0.12 profile](verification/2026-10-29-v0.12-finish.md#frame-time)). The per-frame entity model rebuild that profile found was removed on 2026-11-09 ([record](verification/2026-11-09-entity-frame-time.md)); the streaming route's main-thread terrain column rebuilds from mob biome queries were addressed in the [streaming follow-up](verification/2026-11-09-streaming-biomes-and-gen07.md); the remaining tick work and per-frame sign text are still owed, and the gate is measured again here (v0.14 passed it on 2026-11-16, [record](verification/2026-11-16-tag-gate-run.md)) | Planned; presentation scope expanded by the owner on 2026-11-05. Each release now records its own frame-time run ([§6.1](#61-reference-configuration-and-frame-time-gate)), so what stays here is the final gate, not every release's first measurement |
 | v1.0 | Acceptance | M7 exit, §8 | Every mandatory row Verified; fresh-world and long-session playthroughs; save-compatibility policy; installer and update checks; current stable Java scope reconciled | Planned |
@@ -1332,6 +1334,78 @@ through one formula, and `registry_gaps.json` lists nothing for v0.15. The
 offscreen frame-time suite passes in every scene
 ([run](verification/2026-11-18-v0.15-frame-time.md)); the owner's play
 remains. See the [integration record](verification/2026-11-18-v0.15-integration.md).
+
+#### v0.16 scope: the End and the Wither
+
+Approved by the owner on 2026-11-20, while v0.15 waits for the owner's
+play. Mechanics, loot tables, spawn rules and timers follow Java 26.3,
+checked against fixtures extracted from the server jar; models, textures,
+sounds and structure templates are original (templates to the
+[FE-02 contract](#14-what-can-follow-10)). The owner extended FE-01 to the
+Nether's terrain noise the same day (GEN-04a). Content that changes terrain
+or structures generates in a new generation 5; generations 1 to 4 stay
+pinned by golden hashes. Seven tracks run in two waves, at most four at
+once, each in its own worktree with IDs from the
+[architecture reservations](architecture.md#v016-the-end-and-the-wither-track-reservations).
+Every v0.16 entry in `tests/fixtures/java/26.3/registry_gaps.json` belongs
+to one track.
+
+*Generation 5 added (2026-11-20):* new worlds save `worldgen=5`;
+generation 4 is pinned by `generation_4_chunk_hashes_stay_identical`
+(Overworld blocks and structure features around spawn and the nearest
+village, outpost, trail ruins, ancient city, trial chamber, mansion,
+stronghold and mineshaft; Nether around spawn, the nearest fortress and
+bastion; End on the central island and an outer stretch; two seeds).
+
+Wave 1 (independent):
+
+1. **A. Outer End** (GEN-05h, GEN-04b, MOB-04b, BLD-01b). End cities and
+   End ships on the outer islands (Java's placement and piece rules, the
+   `end_city_treasure` loot, the elytra in the ship's item frame and the
+   dragon head on its bow); chorus plants, flowers and fruit with
+   teleporting and popped chorus fruit; the purpur family and End rods;
+   shulkers (bullets, Levitation, peeking, teleporting, 26.3 duplication)
+   and shulker shells.
+2. **B. Flight and storage** (PRO-05, BLD-05a, PLY-05c). The 17 shulker
+   boxes: contents kept when broken, dyeing and cauldron washing,
+   comparator output, no nesting; elytra gliding with Java's flight
+   physics, durability, phantom membrane repair and fall/wall damage;
+   firework stars and rockets (crafting, shapes, colours, fades, trails,
+   twinkles, explosion damage), the elytra boost and crossbow firing.
+3. **C. Wither and beacons** (PRO-06, BLD-05a, BLD-01b). Every mob head
+   and skull with floor and wall states (skeleton, wither skeleton,
+   zombie, creeper, piglin, dragon, player); wither skeleton skull drops
+   and charged creeper head drops; wearing heads; the creeper banner
+   pattern recipe; Wither summoning, its phases, skulls, armor and
+   regeneration, block breaking and wither roses; the Nether star; beacons
+   with pyramid levels, range, primary and secondary effects, the beam and
+   the beacon screen on every input path.
+4. **D. Generation 5 Overworld** (BLD-01a, BLD-01b, GEN-03, GEN-05f,
+   MOB-04b, GEN-04a). The poplar wood family with boats, leaves in their
+   three colours and saplings; shrubs, golden dandelions and shelf
+   mushrooms; the cinnabar and sulfur families, sulfur springs and caves,
+   sulfur spikes and potent sulfur; the sulfur cube and its bucket; nether
+   gold ore; abandoned camps with their chests and the abandoned camp map.
+
+Wave 2 (after wave 1 is integrated):
+
+5. **E. Classic structures piece by piece** (GEN-05c, GEN-05g, MOB-01c).
+   Dungeons, mineshafts, strongholds and fortresses rebuilt to Java's
+   piece rules in generation 5; infested blocks and silverfish behaviour;
+   structure spawn overrides using Java's piece bounds.
+6. **F. Ocean structures** (GEN-05e). Shipwrecks and ocean monuments
+   reassessed against Java's templates, placement and residents in
+   generation 5; the conduit with its frame, Conduit Power and its attack.
+7. **G. Dragon respawn and the exit audits** (PRO-01, PRO-05, GEN-04b,
+   GEN-04c, GEN-07). Placeable End crystals and the respawn ritual; a
+   gateway and portal-forcer parity check; the M3 exit corpus and the M5
+   progression audit.
+
+Then integration: the orderings made contiguous, spawn tables together,
+save/reload of every new mob, block and item, the Namespace checks, the
+requirement inventory and `registry_gaps.json` refreshed (nothing left for
+v0.16), and a frame-time run of the offscreen suite. Rows stay Implemented,
+unverified until the owner has played them.
 
 ### M4 — A complete living world
 
