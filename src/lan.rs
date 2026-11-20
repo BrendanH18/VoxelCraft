@@ -16,7 +16,9 @@ use glam::IVec3;
 /// 2: chunk states may be 4096 and above (`STATE_CAPACITY` 16,384).
 /// 3: chunk states may be 16,384 and above (`STATE_CAPACITY` 32,768).
 /// 4: `Welcome` carries the world's generation (v0.13).
-pub const PROTOCOL: u16 = 4;
+/// 5: v0.16's mobs, voices and sounds shift the dense `MobKind` and sound
+/// numbers, so a build still versioned 0.15.0 refuses v0.15 peers.
+pub const PROTOCOL: u16 = 5;
 pub const GAME_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const MAX_FRAME: usize = 256 * 1024;
 const MAX_QUEUE: usize = 2 * 1024 * 1024;

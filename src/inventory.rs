@@ -460,17 +460,20 @@ impl Inventory {
             return;
         }
         // An armor slot holds one item (`ArmorSlot.getMaxStackSize`), which
-        // matters for stackable mob heads: from a larger stack one goes on
-        // an empty slot and nothing swaps.
-        if let Some(c) = &mut self.cursor
-            && c.count > 1
-        {
+        // matters for stackable mob heads: a worn head never stacks, and
+        // from a larger stack one goes on an empty slot and nothing swaps.
+        if let Some(c) = &mut self.cursor {
             let slot = &mut self.armor[piece as usize];
-            if slot.is_none() {
-                *slot = Some(Stack { count: 1, ..*c });
-                c.count -= 1;
+            if slot.is_some_and(|s| c.stacks_with(&s)) {
+                return;
             }
-            return;
+            if c.count > 1 {
+                if slot.is_none() {
+                    *slot = Some(Stack { count: 1, ..*c });
+                    c.count -= 1;
+                }
+                return;
+            }
         }
         click_slot(&mut self.armor[piece as usize], &mut self.cursor, right);
     }
@@ -779,6 +782,13 @@ mod tests {
         inv.click_armor(ArmorPiece::Helmet, false, false);
         assert_eq!(inv.armor[ArmorPiece::Helmet as usize], Some(Stack::new(head, 1)));
         assert_eq!(inv.cursor, Some(Stack::new(head, 4)));
+        // Nor with a single matching head, by either button.
+        for right in [false, true] {
+            inv.cursor = Some(Stack::new(head, 1));
+            inv.click_armor(ArmorPiece::Helmet, right, false);
+            assert_eq!(inv.armor[ArmorPiece::Helmet as usize], Some(Stack::new(head, 1)));
+            assert_eq!(inv.cursor, Some(Stack::new(head, 1)));
+        }
     }
 
     #[test]
