@@ -292,6 +292,9 @@ pub struct Vitals {
     pub pearl_cooldown: f32,
     /// Seconds until another wind charge can be thrown (10 ticks).
     pub wind_charge_cooldown: f32,
+    /// v0.16 Track A: seconds before more chorus fruit can be eaten
+    /// (`useCooldown(1.0F)`).
+    pub chorus_cooldown: f32,
     /// Potion and other status effects.
     pub effects: super::effects::Effects,
     /// Seconds since the last damage (drives the hurt flash).
@@ -349,6 +352,7 @@ impl Default for Vitals {
             xp: Default::default(),
             pearl_cooldown: 0.0,
             wind_charge_cooldown: 0.0,
+            chorus_cooldown: 0.0,
             effects: Default::default(),
             since_damage: 1e3,
             death_time: 0.0,
@@ -554,6 +558,7 @@ impl Vitals {
         self.xp.tick(dt);
         self.pearl_cooldown = (self.pearl_cooldown - dt).max(0.0);
         self.wind_charge_cooldown = (self.wind_charge_cooldown - dt).max(0.0);
+        self.chorus_cooldown = (self.chorus_cooldown - dt).max(0.0);
         if self.is_dead() {
             self.time_since_rest = 0;
             // `LivingEntity.baseTick` keeps counting effects down on the death

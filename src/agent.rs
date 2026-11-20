@@ -1023,7 +1023,7 @@ impl Agent {
         if self.session.brushing() && self.eating && self.remaining > 0 {
             self.session.tick_brushing(self.selected, true, world);
         } else {
-            self.chew(entities);
+            self.chew(world, entities);
         }
         if self.session.vitals.is_dead() {
             self.drop_everything(entities);
@@ -1096,7 +1096,7 @@ impl Agent {
 
     /// Advance the shared consumption clock; item-specific duration comes from
     /// the reference content definition. Switching slots restarts the bite.
-    fn chew(&mut self, entities: &mut Entities) {
+    fn chew(&mut self, world: &World, entities: &mut Entities) {
         // Controller/LAN hands drive their session's consumption through the desktop
         // adapter; an idle CLI input must not cancel that other adapter's current tick.
         if !self.eating || self.remaining == 0 {
@@ -1121,6 +1121,9 @@ impl Agent {
             });
         }
         if let Some(consumed) = step.completed {
+            if consumed.item == crate::content::chorus::CHORUS_FRUIT {
+                self.session.chorus_teleport(world, entities);
+            }
             self.damage(consumed.magic_damage, Cause::MAGIC);
             if self.remaining <= 1 {
                 self.eating = false;

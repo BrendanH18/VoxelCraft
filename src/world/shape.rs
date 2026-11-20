@@ -253,6 +253,10 @@ impl Above {
     /// What `block` needs from above, read through `at` (offsets from its
     /// cell); [`Above::NONE`] without any lookups unless it is a wall.
     pub fn read(block: Block, at: impl Fn(glam::IVec3) -> Block) -> Above {
+        // v0.16 Track A: a chorus plant joins what is above it.
+        if block == super::end_blocks::CHORUS_PLANT {
+            return Above { block: at(glam::IVec3::Y), sides: [Block::AIR; 4] };
+        }
         if !matches!(block.shaped(), Some(Shaped::Wall)) {
             return Above::NONE;
         }
@@ -385,6 +389,9 @@ pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) ->
 
 /// [`shape`] with what is above the cell (walls read it).
 pub fn shape_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block, above: Above) -> Boxes {
+    if let Some(boxes) = super::end_blocks::boxes(block, &neighbour, below, above.block) {
+        return boxes;
+    }
     if super::sniffer_egg::owns(block.0) {
         return super::sniffer_egg::boxes();
     }
@@ -554,6 +561,9 @@ pub fn outline(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) 
 
 /// [`outline`] with what is above the cell (walls read it).
 pub fn outline_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block, above: Above) -> Boxes {
+    if let Some(boxes) = super::end_blocks::outline(block, &neighbour, below, above.block) {
+        return boxes;
+    }
     if super::sniffer_egg::owns(block.0) {
         return super::sniffer_egg::boxes();
     }
@@ -807,6 +817,9 @@ pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: 
         let (lo, hi, h) = if age == 0 { (5, 11, 3) } else { (3, 13, 5) };
         return Boxes::from_box(b([lo, 0, lo], [hi, h, hi]));
     }
+    if let Some(boxes) = super::end_blocks::outline(block, &neighbour, below, above.block) {
+        return boxes;
+    }
     if super::sniffer_egg::owns(block.0) {
         return super::sniffer_egg::boxes();
     }
@@ -909,6 +922,9 @@ pub fn item_shape(block: Block) -> Boxes {
             out.push(b);
         }
         return out;
+    }
+    if let Some(boxes) = super::end_blocks::item_boxes(block) {
+        return boxes;
     }
     let block = if block.stairs_base().is_some() { block.with_facing(Facing::East) } else { block };
     shape(block, |f| if f.along_x() { block } else { Block::AIR }, Block::AIR)

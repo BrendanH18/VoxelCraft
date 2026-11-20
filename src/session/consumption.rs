@@ -28,6 +28,20 @@ pub struct Step {
 }
 
 impl PlayerSession {
+    /// v0.16 Track A: after eating chorus fruit (`Consumed::item`), the
+    /// consume effect `TeleportRandomlyConsumeEffect` moves the player to
+    /// a random spot within eight blocks with ground under it, resetting
+    /// the fall. Returns where they left from, or `None` when no try fitted.
+    pub fn chorus_teleport(&mut self, world: &crate::world::World, entities: &mut Entities) -> Option<glam::DVec3> {
+        let mut next = || f64::from(entities.roll());
+        let to = crate::content::chorus::teleport_target(world, self.player.pos, crate::player::SHAPE, &mut next)?;
+        let from = self.player.pos;
+        self.player.pos = to;
+        self.player.vel = glam::DVec3::ZERO;
+        self.vitals.reset_fall();
+        Some(from)
+    }
+
     pub fn cancel_consumption(&mut self) {
         self.consumption = State::default();
         self.hands.eating_off = false;
@@ -66,6 +80,10 @@ impl PlayerSession {
             return Err("invalid held stack");
         }
         let duration = crate::content::consumption::ticks(held.item).ok_or("selected item is not food or a drink")?;
+        // `UseCooldown`: chorus fruit can't be eaten again for a second.
+        if held.item == crate::content::chorus::CHORUS_FRUIT && self.vitals.chorus_cooldown > 0.0 {
+            return Err("chorus fruit is cooling down");
+        }
         if !held.item.is_drink() && !self.can_eat(held.item) {
             return Err("not hungry");
         }
@@ -151,6 +169,9 @@ impl PlayerSession {
             }
             if held.item == Item::HONEY_BOTTLE {
                 self.vitals.effects.remove(crate::simulation::effects::Effect::Poison);
+            }
+            if held.item == crate::content::chorus::CHORUS_FRUIT {
+                self.vitals.chorus_cooldown = crate::content::chorus::COOLDOWN;
             }
             for &(effect, amplifier, ticks) in effects {
                 magic_damage += self.vitals.apply_effect(effect, amplifier, ticks);

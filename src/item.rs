@@ -1130,6 +1130,10 @@ impl Item {
     }
 
     pub fn info(self) -> ItemInfo {
+        // v0.16 Track A: chorus fruit, popped chorus fruit and the shulker shell.
+        if let Some(info) = crate::content::chorus::item_info(self) {
+            return info;
+        }
         if let Some(info) = crate::content::harness::item_info(self) {
             return info;
         }
@@ -1534,10 +1538,16 @@ impl Item {
         if unit < self.food_effect_chance() { self.food_effects() } else { &[] }
     }
 
-    /// Java's `FoodProperties.canAlwaysEat`: edible even when full. The
-    /// reference also lists chorus fruit, which is not yet registered.
+    /// Java's `FoodProperties.canAlwaysEat`: edible even when full.
     pub fn always_edible(self) -> bool {
-        matches!(self, Item::GOLDEN_APPLE | Item::ENCHANTED_GOLDEN_APPLE | Item::HONEY_BOTTLE | Item::SUSPICIOUS_STEW)
+        matches!(
+            self,
+            Item::GOLDEN_APPLE
+                | Item::ENCHANTED_GOLDEN_APPLE
+                | Item::HONEY_BOTTLE
+                | Item::SUSPICIOUS_STEW
+                | crate::content::chorus::CHORUS_FRUIT
+        )
     }
 
     /// Java's `Rarity.UNCOMMON` (yellow names), for the items whose
@@ -1605,6 +1615,9 @@ impl Item {
             return Some(crate::world::trial::MAP_TEX);
         }
         if let Some(layer) = crate::world::explorer_maps::icon_layer(self) {
+            return Some(layer);
+        }
+        if let Some(layer) = crate::content::chorus::icon_layer(self) {
             return Some(layer);
         }
         if self.is_map() {
@@ -1715,6 +1728,8 @@ impl Item {
             .chain(track_d_items())
             // v0.15 Track F: five explorer maps, which draw their own layers.
             .chain(crate::world::explorer_maps::items())
+            // v0.16 Track A: chorus fruit, popped chorus fruit and the shulker shell.
+            .chain(crate::content::chorus::items())
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -2335,15 +2350,18 @@ mod tests {
 
     #[test]
     fn icon_layers_fit_the_texture_array() {
-        for i in Item::all_items().filter(|i| !i.is_map()) {
+        // Maps and v0.16 Track A's items draw their own texture layers.
+        for i in Item::all_items().filter(|i| !i.is_map() && !crate::content::chorus::is_item(*i)) {
             let index = tex::item_index(i.icon_layer().unwrap()).unwrap();
             assert!((index as u32) < icon_count());
 
             assert_eq!(sprite_for_layer(index), Some(i.info().sprite));
         }
         // Every atlas slot is covered; visually identical items can share one.
-        let layers: std::collections::HashSet<_> =
-            Item::all_items().filter(|i| !i.is_map()).map(|i| i.icon_layer().unwrap()).collect();
+        let layers: std::collections::HashSet<_> = Item::all_items()
+            .filter(|i| !i.is_map() && !crate::content::chorus::is_item(*i))
+            .map(|i| i.icon_layer().unwrap())
+            .collect();
         assert_eq!(layers.len() as u32, icon_count());
         assert_eq!(Item::SUSPICIOUS_STEW.icon_layer(), Item::MUSHROOM_STEW.icon_layer());
         // Icons stay addressable by the UI's and models' 16-bit layers.

@@ -5,6 +5,7 @@ use crate::{item::Item, world::block::Block};
 pub mod banner_patterns;
 pub mod books;
 pub mod bundle;
+pub mod chorus;
 pub mod compost;
 pub mod consumption;
 pub mod farm_variant;

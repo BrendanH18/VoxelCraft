@@ -651,6 +651,8 @@ static TABLES: LazyLock<Tables> = LazyLock::new(|| {
             super::heavy_core::BLAST_RESISTANCE
         } else if super::dried_ghast::owns(b.0) {
             0.0
+        } else if let Some(r) = super::end_blocks::resistance(b) {
+            r
         } else {
             resistance.get(name).copied().unwrap_or_else(|| b.hardness())
         };
@@ -663,6 +665,10 @@ static TABLES: LazyLock<Tables> = LazyLock::new(|| {
                 Loot::Decay
             }
             None if b.is_leaves() => Loot::Leaves,
+            // `blocks/chorus_plant` and `blocks/purpur_slab`: `explosion_decay`.
+            None if b == super::end_blocks::CHORUS_PLANT || b.slab_base() == Some(super::end_blocks::PURPUR_BLOCK) => {
+                Loot::Decay
+            }
             None => Loot::Survives,
         };
     }

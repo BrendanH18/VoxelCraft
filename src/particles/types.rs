@@ -38,10 +38,12 @@ pub enum Kind {
     SoulFlame,
     /// Java's `NoteParticle`, tinted by the note's pitch (`note / 24`).
     Note,
+    /// v0.16 Track A: `EndRodParticle`, from End rods and shulker bullets.
+    EndRod,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 24] = [
+    pub const ALL: [Kind; 25] = [
         Kind::Smoke,
         Kind::LargeSmoke,
         Kind::Rain,
@@ -66,6 +68,7 @@ impl Kind {
         Kind::WhiteAsh,
         Kind::SoulFlame,
         Kind::Note,
+        Kind::EndRod,
     ];
 
     pub fn sprite(self) -> u16 {
@@ -86,6 +89,8 @@ impl Kind {
             Self::CrimsonSpore | Self::WarpedSpore | Self::Ash | Self::WhiteAsh => 13,
             Self::SoulFlame => 14,
             Self::Note => 15,
+            // A white glint on the critical-hit sprite.
+            Self::EndRod => 2,
         }
     }
 }
@@ -453,6 +458,17 @@ impl System {
                 p.velocity = java_velocity(rng, DVec3::ZERO) * 0.01 + DVec3::new(0.0, 0.2, 0.0);
                 p.size *= 1.5;
                 p.lifetime = 6;
+            }
+            Kind::EndRod => {
+                // `EndRodParticle`: the given velocity, gravity 0.0125,
+                // friction 0.91, 60–71 ticks, three-quarter size, white.
+                p.physics = false;
+                p.friction = 0.91;
+                p.gravity = 0.0125;
+                p.velocity = velocity;
+                p.size *= 0.75;
+                p.lifetime = 60 + (rng.next_f32() * 12.0) as u16;
+                p.color = [0.97, 0.97, 0.97, 1.0];
             }
             Kind::Heart | Kind::Angry => {
                 p.velocity *= 0.01;
