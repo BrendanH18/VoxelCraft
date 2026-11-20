@@ -1391,7 +1391,8 @@ Wave 1 (independent):
    on desktop, controller, LAN and CLI, all saved; checked against a new
    jar fixture. Differences and gaps (only piglin and dragon heads store
    `powered`, simplified Wither goal timing and flight, unsaved skulls,
-   no dispenser placement) are in the
+   no dispenser placement, the dragon head creative-only until Track A's
+   End ships) are in the
    [record](verification/2026-11-20-v0.16-wither-beacons.md).
 4. **D. Generation 5 Overworld** (BLD-01a, BLD-01b, GEN-03, GEN-05f,
    MOB-04b, GEN-04a). The poplar wood family with boats, leaves in their
