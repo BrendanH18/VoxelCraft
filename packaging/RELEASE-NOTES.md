@@ -31,9 +31,9 @@ Choose your download:
   Pillagers aim and reload their crossbows the way Java's do.
 - Mobs hold weapons and tools and wear armor that count in a fight, and
   mobs that can pick up loot equip what they find.
-- Pillager patrols roam at night, led by a captain carrying the ominous
-  banner. A captain drops an ominous bottle; drinking it gives Bad Omen,
-  which becomes Raid Omen in a village and starts a raid.
+- Pillager patrols spawn in daylight, led by a captain carrying the
+  ominous banner. Pillager captains drop an ominous bottle; drinking it
+  gives Bad Omen, which becomes Raid Omen in a village and starts a raid.
 - Raids follow Java's waves for each difficulty, with a bonus wave, riders
   on ravagers and the raid bar. Villagers run to shelter when the bell
   rings. Win and you get Hero of the Village: lower prices and gifts from
@@ -44,17 +44,19 @@ Choose your download:
 - Villages are built from Java's full set of building pools: profession
   houses with their job sites, decorations, animal pens and abandoned
   villages.
-- Villagers trade every Java 26.3 offer, with Java's prices, uses,
+- Villagers trade Java 26.3's default offers, with Java's prices, uses,
   restocks and levelling. They follow Java's daily schedules, gather at the
   meeting bell, spread gossip and remember a cure.
-- The wandering trader sells Java's sets.
+- The wandering trader sells Java's sets, except five offers whose items
+  aren't in the game yet.
 
 ### Woodland mansions and maps
 
 - Woodland mansions generate in dark forests in new worlds, with their
   rooms, vindicators and evokers, allays in the jail cells, and their loot.
-- The master cartographer sells the woodland mansion map. Desert pyramid,
-  warm ocean ruin, buried mineshaft and buried ancient city maps exist too.
+- In worlds created in 0.15.0, the master cartographer sells the woodland
+  mansion map. Desert pyramid, warm ocean ruin, buried mineshaft and buried
+  ancient city maps exist too.
 - Trial chambers and ancient cities have Java's full set of room kinds in
   new worlds.
 
@@ -76,8 +78,8 @@ Choose your download:
 - Nautiluses and zombie nautiluses swim in the oceans and take nautilus
   armor. Camel husks roam deserts with their riders, and the parched shoot
   weakness arrows.
-- Chickens, cows and pigs come in warm and cold variants, and so do their
-  eggs.
+- Chickens, cows and pigs come in warm and cold variants. Warm chickens lay
+  brown eggs and cold chickens lay blue eggs.
 
 ### Items and effects
 
@@ -474,8 +476,9 @@ new giant trees.
 - On steep ground some villages and outposts are smaller or don't appear,
   because a building is left out rather than stood on a pillar.
 - Abandoned camps, End cities and strongholds, mineshafts and dungeons
-  piece by piece aren't in the new generator yet. Until abandoned camps
-  arrive, only the woodland mansion map can be found in survival.
+  piece by piece aren't in the new generator yet. Of the five new explorer
+  maps, only the woodland mansion map can be found in survival until
+  abandoned camps arrive.
 - Archaeology covers suspicious sand and gravel in ocean ruins only; trail
   ruins have no suspicious blocks yet, and decorated pots can't carry
   sherd patterns.
@@ -485,7 +488,10 @@ new giant trees.
   raiders, and raids add nothing to statistics.
 - The new mobs and villagers use simpler brains than Java's, and many of
   them borrow other mobs' sounds. Item frames don't show map images.
-- Conduits and Conduit Power aren't in yet; they come in 0.16.
+- Conduits and the effects of Conduit Power are planned for 0.16.
+- The Host, Raiser, Shaper, Wayfinder and Spire armor trim templates have
+  no survival source yet: trail ruins have no suspicious gravel loot and
+  End cities aren't generated.
 - Music discs can be heard 24 blocks away (Java: 64), and other music
   doesn't fade while a disc plays.
 - Some Java options aren't in yet because nothing in the game uses them:
