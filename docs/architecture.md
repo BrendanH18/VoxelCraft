@@ -1056,6 +1056,24 @@ own branch. No released build saves the new members, so the integrator
 makes them contiguous in landing order (A, B, C, D, then E, F, G) and
 records the result here. Saved names follow Java's registry names.
 
+**Track A (outer End), allocated 2026-11-20.** Block states 12288–12389 of
+12288–12415 (`world::end_blocks`): 12288 purpur block, 12289–12291 purpur
+pillar (axis y, x, z), 12292–12371 purpur stairs (an appended
+`slab_stair_states` family, `PURPUR_FAMILY`, laid out like every v0.12
+family), 12372–12376 purpur slab, 12377–12382 End rod (`facing` in Java's
+`Direction` order), 12383 chorus plant (one state: the six connections are
+read from the neighbours), 12384–12389 chorus flower (age 0–5);
+12390–12415 stay unregistered. Items 1660–1662 of 1660–1674 (chorus fruit,
+popped chorus fruit, shulker shell; `content::chorus`); 1663–1674 stay
+unregistered. Texture layers 529–540 of 529–608 (nine block layers and three
+item icons); 541–608 stay unused. Appended orderings: `MobKind::Shulker`
+(LAN index 85 on this branch, saved as `shulker`), `audio::voices::Voice::Shulker`,
+`entity::MobSound::Shulker`, `particles::Kind::EndRod`,
+`slab_stair_states::PURPUR_FAMILY` (after `RESIN_FAMILY`) and
+`temples::LootTable::EndCity` (`chests/end_city_treasure`). No effects,
+thrown kinds, property keys, `waterlog::RUNS` or `utilities::POTTED`
+entries were added.
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

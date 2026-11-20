@@ -1366,6 +1366,15 @@ Wave 1 (independent):
    teleporting and popped chorus fruit; the purpur family and End rods;
    shulkers (bullets, Levitation, peeking, teleporting, 26.3 duplication)
    and shulker shells.
+   *Implemented, unverified (2026-11-20):* generation 5's End has Java's
+   End biome rules over the original islands, chorus plants in the
+   highlands, and End cities and ships placed and assembled by Java's rules
+   from original templates, with `end_city_treasure` chests, shulkers and
+   `/locate`; the purpur family, End rods, chorus plants, flowers and fruit,
+   popped chorus fruit and shulker shells; shulkers with bullets,
+   Levitation, peeking, armor, teleporting and duplication. The ship's
+   elytra frame and dragon head wait for Tracks B and C at integration
+   ([record](verification/2026-11-20-v0.16-outer-end.md)).
 2. **B. Flight and storage** (PRO-05, BLD-05a, PLY-05c). The 17 shulker
    boxes: contents kept when broken, dyeing and cauldron washing,
    comparator output, no nesting; elytra gliding with Java's flight
