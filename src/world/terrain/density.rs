@@ -280,7 +280,7 @@ impl Generator {
                 let (lx, lz) = (sx as i32 - M as i32, sz as i32 - M as i32);
                 let (x, z) = (origin.x + lx, origin.y + lz);
                 let climate = self.climate.sample(x, z);
-                let biome = super::super::biome::pick(&climate);
+                let biome = super::super::biome::pick_in(&climate, self.generation >= Generation::V5);
                 let base = self.climate.height(&climate, x, z);
                 let extra = if biome == Biome::ErodedBadlands && base > SEA_LEVEL as f32 + 6.0 {
                     let n = self.feature.fbm2(x as f32 / 11.0, z as f32 / 11.0, 2);

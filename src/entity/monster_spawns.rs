@@ -44,6 +44,9 @@ pub(super) enum JavaMonster {
     Stray,
     Bogged,
     Ocelot,
+    CaveSpider,
+    /// v0.16 Track D: Java's sulfur cube (sulfur caves).
+    SulfurCube,
     Known(MobKind),
 }
 
@@ -68,6 +71,8 @@ impl JavaMonster {
             JavaMonster::Stray => "stray",
             JavaMonster::Bogged => "bogged",
             JavaMonster::Ocelot => "ocelot",
+            JavaMonster::CaveSpider => "cave_spider",
+            JavaMonster::SulfurCube => "sulfur_cube",
         }
     }
 
@@ -90,8 +95,15 @@ impl JavaMonster {
             JavaMonster::Drowned => MobKind::Drowned,
             JavaMonster::Ocelot => MobKind::Ocelot,
             JavaMonster::Parched => MobKind::Parched,
+            JavaMonster::CaveSpider => MobKind::CaveSpider,
+            JavaMonster::SulfurCube => return sulfur_cube(),
         })
     }
+}
+
+/// The sulfur cube, once it spawns here (`None` skips the entry).
+const fn sulfur_cube() -> Option<MobKind> {
+    None
 }
 
 /// One weighted entry of a biome's monster list and its pack size range.
@@ -203,6 +215,18 @@ const RIVER: [MonsterSpawn; 9] = plus(e(J::Drowned, 100, 1, 1));
 const FROZEN_RIVER: [MonsterSpawn; 9] = plus(e(J::Drowned, 1, 1, 1));
 const DRIPSTONE: [MonsterSpawn; 9] = plus(e(J::Drowned, 95, 4, 4));
 const JUNGLE: [MonsterSpawn; 9] = plus(e(J::Ocelot, 2, 1, 3));
+/// Generation 5's sulfur caves (`biome/sulfur_caves.json`).
+const SULFUR_CAVES: [MonsterSpawn; 9] = [
+    e(J::SulfurCube, 100, 2, 4),
+    e(J::Creeper, 50, 2, 2),
+    e(J::Skeleton, 50, 2, 2),
+    e(J::Slime, 25, 1, 1),
+    e(J::CaveSpider, 20, 1, 1),
+    e(J::Zombie, 50, 2, 2),
+    e(J::Enderman, 10, 1, 1),
+    e(J::Witch, 1, 1, 1),
+    e(J::ZombieVillager, 5, 1, 1),
+];
 const BAMBOO_JUNGLE: [MonsterSpawn; 9] = plus(e(J::Ocelot, 2, 1, 1));
 
 /// A biome's 26.3 `monster` spawn list, in Java's order.
@@ -221,6 +245,7 @@ pub(super) fn monster_list(biome: Biome) -> &'static [MonsterSpawn] {
         River => &RIVER,
         FrozenRiver => &FROZEN_RIVER,
         DripstoneCaves => &DRIPSTONE,
+        SulfurCaves => &SULFUR_CAVES,
         Jungle => &JUNGLE,
         BambooJungle => &BAMBOO_JUNGLE,
         MushroomFields | DeepDark => &[],

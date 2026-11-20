@@ -552,6 +552,15 @@ impl NetherGen {
         }
         // Basalt deltas carry twice the quartz (Java's ore_quartz_deltas).
         let h = |salt: u64| hash_f(wx, wy, wz, self.seed ^ salt);
+        // Generation 5 (v0.16 Track D): Java's `ore_gold_nether` (ten veins
+        // of size 10 a chunk, twenty in basalt deltas as `ore_gold_deltas`)
+        // at heights 10..=117, in netherrack, scaled to quartz's 16 of 14.
+        if self.generation >= super::terrain::Generation::V5 && (10..=117).contains(&wy) {
+            let gold = |salt: u64| hash_f(wx >> 1, wy >> 1, wz >> 1, self.seed ^ salt) < 0.016;
+            if (gold(0x601D) || (biome == NetherBiome::BasaltDeltas && gold(0x601E))) && h(0x601F) < 0.55 {
+                return super::gen5_blocks::NETHER_GOLD_ORE;
+            }
+        }
         let quartz = |salt: u64| hash_f(wx >> 1, wy >> 1, wz >> 1, self.seed ^ salt) < 0.035;
         if (quartz(3) || (biome == NetherBiome::BasaltDeltas && quartz(5))) && h(4) < 0.55 {
             Block::QUARTZ_ORE

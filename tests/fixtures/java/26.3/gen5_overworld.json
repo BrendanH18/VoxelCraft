@@ -1,0 +1,971 @@
+{
+ "biomes": {
+  "dappled_forest": {
+   "downfall": 0.6,
+   "effects": {
+    "dry_foliage_color": "#8c3a04",
+    "foliage_color": "#e68e30",
+    "grass_color": "#df6827",
+    "water_color": "#375154"
+   },
+   "features": [
+    [],
+    [
+     "lake_lava_underground",
+     "lake_lava_surface"
+    ],
+    [
+     "amethyst_geode"
+    ],
+    [
+     "monster_room",
+     "monster_room_deep"
+    ],
+    [],
+    [],
+    [
+     "ore_dirt",
+     "ore_gravel",
+     "ore_granite_upper",
+     "ore_granite_lower",
+     "ore_diorite_upper",
+     "ore_diorite_lower",
+     "ore_andesite_upper",
+     "ore_andesite_lower",
+     "ore_tuff",
+     "ore_coal_upper",
+     "ore_coal_lower",
+     "ore_iron_upper",
+     "ore_iron_middle",
+     "ore_iron_small",
+     "ore_gold",
+     "ore_gold_lower",
+     "ore_redstone",
+     "ore_redstone_lower",
+     "ore_diamond",
+     "ore_diamond_medium",
+     "ore_diamond_large",
+     "ore_diamond_buried",
+     "ore_lapis",
+     "ore_lapis_buried",
+     "ore_copper",
+     "underwater_magma",
+     "disk_sand",
+     "disk_clay",
+     "disk_gravel"
+    ],
+    [],
+    [
+     "spring_water",
+     "spring_lava"
+    ],
+    [
+     "glow_lichen",
+     "trees_dappled_forest",
+     "brown_mushroom_dappled_forest",
+     "patch_red_shrub",
+     "patch_grass_forest"
+    ],
+    [
+     "freeze_top_layer"
+    ]
+   ],
+   "spawns": {
+    "ambient": [
+     {
+      "count": 8,
+      "type": "bat",
+      "weight": 10
+     }
+    ],
+    "creature": [
+     {
+      "count": 4,
+      "type": "sheep",
+      "weight": 12
+     },
+     {
+      "count": 4,
+      "type": "pig",
+      "weight": 10
+     },
+     {
+      "count": 4,
+      "type": "chicken",
+      "weight": 10
+     },
+     {
+      "count": 4,
+      "type": "cow",
+      "weight": 8
+     },
+     {
+      "count": {
+       "max_inclusive": 4,
+       "min_inclusive": 2,
+       "type": "uniform"
+      },
+      "type": "rabbit",
+      "weight": 4
+     },
+     {
+      "count": {
+       "max_inclusive": 4,
+       "min_inclusive": 2,
+       "type": "uniform"
+      },
+      "type": "fox",
+      "weight": 4
+     }
+    ],
+    "monster": [
+     {
+      "count": 4,
+      "type": "spider",
+      "weight": 100
+     },
+     {
+      "count": 4,
+      "type": "zombie",
+      "weight": 95
+     },
+     {
+      "count": 1,
+      "type": "zombie_villager",
+      "weight": 5
+     },
+     {
+      "count": 4,
+      "type": "skeleton",
+      "weight": 100
+     },
+     {
+      "count": 4,
+      "type": "creeper",
+      "weight": 100
+     },
+     {
+      "count": 4,
+      "type": "slime",
+      "weight": 100
+     },
+     {
+      "count": {
+       "max_inclusive": 4,
+       "min_inclusive": 1,
+       "type": "uniform"
+      },
+      "type": "enderman",
+      "weight": 10
+     },
+     {
+      "count": 1,
+      "type": "witch",
+      "weight": 5
+     }
+    ],
+    "underground_water_creature": [
+     {
+      "count": {
+       "max_inclusive": 6,
+       "min_inclusive": 4,
+       "type": "uniform"
+      },
+      "type": "glow_squid",
+      "weight": 10
+     }
+    ]
+   },
+   "temperature": 0.6
+  },
+  "sulfur_caves": {
+   "downfall": 0.4,
+   "effects": {
+    "grass_color": "#aba64f",
+    "water_color": "#34bf89"
+   },
+   "features": [
+    [],
+    [
+     "lake_lava_underground",
+     "lake_lava_surface",
+     "rooted_sulfur_spring",
+     "sulfur_pool"
+    ],
+    [
+     "amethyst_geode"
+    ],
+    [
+     "monster_room",
+     "monster_room_deep"
+    ],
+    [],
+    [],
+    [
+     "ore_dirt",
+     "ore_gravel",
+     "ore_granite_upper",
+     "ore_granite_lower",
+     "ore_diorite_upper",
+     "ore_diorite_lower",
+     "ore_andesite_upper",
+     "ore_andesite_lower",
+     "ore_tuff",
+     "ore_coal_upper",
+     "ore_coal_lower",
+     "ore_iron_upper",
+     "ore_iron_middle",
+     "ore_iron_small",
+     "ore_gold",
+     "ore_gold_lower",
+     "ore_redstone",
+     "ore_redstone_lower",
+     "ore_diamond",
+     "ore_diamond_medium",
+     "ore_diamond_large",
+     "ore_diamond_buried",
+     "ore_lapis",
+     "ore_lapis_buried",
+     "ore_copper",
+     "underwater_magma",
+     "disk_sand",
+     "disk_clay",
+     "disk_gravel"
+    ],
+    [
+     "sulfur_spike_cluster",
+     "sulfur_spike"
+    ],
+    [
+     "spring_water",
+     "spring_lava"
+    ],
+    [
+     "glow_lichen",
+     "patch_tall_grass_2"
+    ],
+    [
+     "freeze_top_layer"
+    ]
+   ],
+   "spawns": {
+    "ambient": [
+     {
+      "count": 8,
+      "type": "bat",
+      "weight": 10
+     }
+    ],
+    "monster": [
+     {
+      "count": {
+       "max_inclusive": 4,
+       "min_inclusive": 2,
+       "type": "uniform"
+      },
+      "type": "sulfur_cube",
+      "weight": 100
+     },
+     {
+      "count": 2,
+      "type": "creeper",
+      "weight": 50
+     },
+     {
+      "count": 2,
+      "type": "skeleton",
+      "weight": 50
+     },
+     {
+      "count": 1,
+      "type": "slime",
+      "weight": 25
+     },
+     {
+      "count": 1,
+      "type": "cave_spider",
+      "weight": 20
+     },
+     {
+      "count": 2,
+      "type": "zombie",
+      "weight": 50
+     },
+     {
+      "count": 1,
+      "type": "enderman",
+      "weight": 10
+     },
+     {
+      "count": 1,
+      "type": "witch",
+      "weight": 1
+     },
+     {
+      "count": 1,
+      "type": "zombie_villager",
+      "weight": 5
+     }
+    ]
+   },
+   "temperature": 0.8
+  }
+ },
+ "fallen_poplar_tree": {
+  "log_decorators": [
+   {
+    "block_provider": {
+     "id": "brown_mushroom"
+    },
+    "directions": [
+     "up"
+    ],
+    "probability": 0.1,
+    "type": "attached_to_logs"
+   },
+   {
+    "probability": 0.8,
+    "type": "shelf_mushroom"
+   }
+  ],
+  "log_length": {
+   "max_inclusive": 7,
+   "min_inclusive": 4,
+   "type": "uniform"
+  },
+  "trunk": "poplar_log"
+ },
+ "ore_nether_gold": {
+  "discard_chance_on_air_exposure": 0.0,
+  "size": 10,
+  "targets": [
+   {
+    "state": "nether_gold_ore",
+    "target": {
+     "block": "netherrack",
+     "predicate_type": "block_match"
+    }
+   }
+  ],
+  "type": "ore"
+ },
+ "patch_red_shrub": {
+  "count": 8
+ },
+ "placements": {
+  "ore_gold_deltas": [
+   {
+    "count": 20,
+    "type": "count"
+   },
+   {
+    "type": "in_square"
+   },
+   {
+    "height": {
+     "max_inclusive": {
+      "below_top": 10
+     },
+     "min_inclusive": {
+      "above_bottom": 10
+     },
+     "type": "uniform"
+    },
+    "type": "height_range"
+   },
+   {
+    "type": "biome"
+   }
+  ],
+  "ore_gold_nether": [
+   {
+    "count": 10,
+    "type": "count"
+   },
+   {
+    "type": "in_square"
+   },
+   {
+    "height": {
+     "max_inclusive": {
+      "below_top": 10
+     },
+     "min_inclusive": {
+      "above_bottom": 10
+     },
+     "type": "uniform"
+    },
+    "type": "height_range"
+   },
+   {
+    "type": "biome"
+   }
+  ],
+  "sulfur_pool": [
+   {
+    "count": 256,
+    "type": "count"
+   },
+   {
+    "type": "in_square"
+   },
+   {
+    "height": {
+     "max_inclusive": {
+      "absolute": 256
+     },
+     "min_inclusive": {
+      "above_bottom": 0
+     },
+     "type": "uniform"
+    },
+    "type": "height_range"
+   },
+   {
+    "predicate": {
+     "type": "solid"
+    },
+    "type": "block_predicate_filter"
+   },
+   {
+    "direction_of_search": "up",
+    "max_steps": 32,
+    "target_condition": {
+     "tag": "air",
+     "type": "matching_block_tag"
+    },
+    "type": "environment_scan"
+   },
+   {
+    "type": "offset",
+    "x": 0,
+    "y": -1,
+    "z": 0
+   },
+   {
+    "predicate": {
+     "blocks": "sulfur",
+     "type": "matching_blocks"
+    },
+    "type": "block_predicate_filter"
+   },
+   {
+    "type": "biome"
+   }
+  ],
+  "sulfur_spike": [
+   {
+    "count": {
+     "max_inclusive": 256,
+     "min_inclusive": 192,
+     "type": "uniform"
+    },
+    "type": "count"
+   },
+   {
+    "type": "in_square"
+   },
+   {
+    "height": {
+     "max_inclusive": {
+      "absolute": 256
+     },
+     "min_inclusive": {
+      "above_bottom": 0
+     },
+     "type": "uniform"
+    },
+    "type": "height_range"
+   },
+   {
+    "count": {
+     "max_inclusive": 5,
+     "min_inclusive": 1,
+     "type": "uniform"
+    },
+    "type": "count"
+   },
+   {
+    "type": "offset",
+    "x": {
+     "deviation": 3.0,
+     "max_inclusive": 10,
+     "mean": 0.0,
+     "min_inclusive": -10,
+     "type": "clamped_normal"
+    },
+    "y": {
+     "deviation": 0.6,
+     "max_inclusive": 2,
+     "mean": 0.0,
+     "min_inclusive": -2,
+     "type": "clamped_normal"
+    },
+    "z": {
+     "deviation": 3.0,
+     "max_inclusive": 10,
+     "mean": 0.0,
+     "min_inclusive": -10,
+     "type": "clamped_normal"
+    }
+   },
+   {
+    "type": "biome"
+   }
+  ],
+  "sulfur_spike_cluster": [
+   {
+    "count": {
+     "max_inclusive": 96,
+     "min_inclusive": 48,
+     "type": "uniform"
+    },
+    "type": "count"
+   },
+   {
+    "type": "in_square"
+   },
+   {
+    "height": {
+     "max_inclusive": {
+      "absolute": 256
+     },
+     "min_inclusive": {
+      "above_bottom": 0
+     },
+     "type": "uniform"
+    },
+    "type": "height_range"
+   },
+   {
+    "type": "biome"
+   }
+  ]
+ },
+ "poplar_trees": {
+  "orange_poplar": {
+   "decorators": [
+    {
+     "probability": 0.4,
+     "type": "shelf_mushroom"
+    }
+   ],
+   "foliage": "orange_poplar_leaves",
+   "foliage_placer": {
+    "height": {
+     "max_inclusive": 6,
+     "min_inclusive": 5,
+     "type": "uniform"
+    },
+    "offset": 0,
+    "radius": {
+     "distribution": [
+      {
+       "data": 5,
+       "weight": 5
+      },
+      {
+       "data": 6,
+       "weight": 5
+      },
+      {
+       "data": 7,
+       "weight": 1
+      },
+      {
+       "data": 8,
+       "weight": 1
+      }
+     ],
+     "type": "weighted_list"
+    },
+    "side_hole_chance": 0.15,
+    "type": "poplar_foliage_placer"
+   },
+   "trunk": "poplar_log",
+   "trunk_placer": {
+    "base_height": 7,
+    "branch_amount": {
+     "max_inclusive": 4,
+     "min_inclusive": 1,
+     "type": "uniform"
+    },
+    "height_rand_a": 4,
+    "height_rand_b": 0,
+    "trunk_height_above_branches": 4,
+    "type": "poplar_trunk_placer"
+   }
+  },
+  "orange_poplar_leaf_litter": {
+   "decorators": [
+    {
+     "height": 2,
+     "litter_states": 12,
+     "radius": 4,
+     "tries": 96,
+     "type": "place_on_ground"
+    },
+    {
+     "height": 2,
+     "litter_states": 16,
+     "tries": 150,
+     "type": "place_on_ground"
+    },
+    {
+     "probability": 0.4,
+     "type": "shelf_mushroom"
+    }
+   ],
+   "foliage": "orange_poplar_leaves",
+   "foliage_placer": {
+    "height": {
+     "max_inclusive": 6,
+     "min_inclusive": 5,
+     "type": "uniform"
+    },
+    "offset": 0,
+    "radius": {
+     "distribution": [
+      {
+       "data": 5,
+       "weight": 5
+      },
+      {
+       "data": 6,
+       "weight": 5
+      },
+      {
+       "data": 7,
+       "weight": 1
+      },
+      {
+       "data": 8,
+       "weight": 1
+      }
+     ],
+     "type": "weighted_list"
+    },
+    "side_hole_chance": 0.15,
+    "type": "poplar_foliage_placer"
+   },
+   "trunk": "poplar_log",
+   "trunk_placer": {
+    "base_height": 7,
+    "branch_amount": {
+     "max_inclusive": 4,
+     "min_inclusive": 1,
+     "type": "uniform"
+    },
+    "height_rand_a": 4,
+    "height_rand_b": 0,
+    "trunk_height_above_branches": 4,
+    "type": "poplar_trunk_placer"
+   }
+  },
+  "red_poplar": {
+   "decorators": [
+    {
+     "probability": 0.4,
+     "type": "shelf_mushroom"
+    }
+   ],
+   "foliage": "red_poplar_leaves",
+   "foliage_placer": {
+    "height": {
+     "max_inclusive": 6,
+     "min_inclusive": 5,
+     "type": "uniform"
+    },
+    "offset": 0,
+    "radius": {
+     "distribution": [
+      {
+       "data": 5,
+       "weight": 5
+      },
+      {
+       "data": 6,
+       "weight": 5
+      },
+      {
+       "data": 7,
+       "weight": 1
+      },
+      {
+       "data": 8,
+       "weight": 1
+      }
+     ],
+     "type": "weighted_list"
+    },
+    "side_hole_chance": 0.15,
+    "type": "poplar_foliage_placer"
+   },
+   "trunk": "poplar_log",
+   "trunk_placer": {
+    "base_height": 7,
+    "branch_amount": {
+     "max_inclusive": 4,
+     "min_inclusive": 1,
+     "type": "uniform"
+    },
+    "height_rand_a": 4,
+    "height_rand_b": 0,
+    "trunk_height_above_branches": 4,
+    "type": "poplar_trunk_placer"
+   }
+  },
+  "red_poplar_leaf_litter": {
+   "decorators": [
+    {
+     "height": 2,
+     "litter_states": 12,
+     "radius": 4,
+     "tries": 96,
+     "type": "place_on_ground"
+    },
+    {
+     "height": 2,
+     "litter_states": 16,
+     "tries": 150,
+     "type": "place_on_ground"
+    },
+    {
+     "probability": 0.4,
+     "type": "shelf_mushroom"
+    }
+   ],
+   "foliage": "red_poplar_leaves",
+   "foliage_placer": {
+    "height": {
+     "max_inclusive": 6,
+     "min_inclusive": 5,
+     "type": "uniform"
+    },
+    "offset": 0,
+    "radius": {
+     "distribution": [
+      {
+       "data": 5,
+       "weight": 5
+      },
+      {
+       "data": 6,
+       "weight": 5
+      },
+      {
+       "data": 7,
+       "weight": 1
+      },
+      {
+       "data": 8,
+       "weight": 1
+      }
+     ],
+     "type": "weighted_list"
+    },
+    "side_hole_chance": 0.15,
+    "type": "poplar_foliage_placer"
+   },
+   "trunk": "poplar_log",
+   "trunk_placer": {
+    "base_height": 7,
+    "branch_amount": {
+     "max_inclusive": 4,
+     "min_inclusive": 1,
+     "type": "uniform"
+    },
+    "height_rand_a": 4,
+    "height_rand_b": 0,
+    "trunk_height_above_branches": 4,
+    "type": "poplar_trunk_placer"
+   }
+  },
+  "yellow_poplar": {
+   "decorators": [
+    {
+     "probability": 0.4,
+     "type": "shelf_mushroom"
+    }
+   ],
+   "foliage": "yellow_poplar_leaves",
+   "foliage_placer": {
+    "height": {
+     "max_inclusive": 6,
+     "min_inclusive": 5,
+     "type": "uniform"
+    },
+    "offset": 0,
+    "radius": {
+     "distribution": [
+      {
+       "data": 5,
+       "weight": 5
+      },
+      {
+       "data": 6,
+       "weight": 5
+      },
+      {
+       "data": 7,
+       "weight": 1
+      },
+      {
+       "data": 8,
+       "weight": 1
+      }
+     ],
+     "type": "weighted_list"
+    },
+    "side_hole_chance": 0.15,
+    "type": "poplar_foliage_placer"
+   },
+   "trunk": "poplar_log",
+   "trunk_placer": {
+    "base_height": 7,
+    "branch_amount": {
+     "max_inclusive": 4,
+     "min_inclusive": 1,
+     "type": "uniform"
+    },
+    "height_rand_a": 4,
+    "height_rand_b": 0,
+    "trunk_height_above_branches": 4,
+    "type": "poplar_trunk_placer"
+   }
+  },
+  "yellow_poplar_leaf_litter": {
+   "decorators": [
+    {
+     "height": 2,
+     "litter_states": 12,
+     "radius": 4,
+     "tries": 96,
+     "type": "place_on_ground"
+    },
+    {
+     "height": 2,
+     "litter_states": 16,
+     "tries": 150,
+     "type": "place_on_ground"
+    },
+    {
+     "probability": 0.4,
+     "type": "shelf_mushroom"
+    }
+   ],
+   "foliage": "yellow_poplar_leaves",
+   "foliage_placer": {
+    "height": {
+     "max_inclusive": 6,
+     "min_inclusive": 5,
+     "type": "uniform"
+    },
+    "offset": 0,
+    "radius": {
+     "distribution": [
+      {
+       "data": 5,
+       "weight": 5
+      },
+      {
+       "data": 6,
+       "weight": 5
+      },
+      {
+       "data": 7,
+       "weight": 1
+      },
+      {
+       "data": 8,
+       "weight": 1
+      }
+     ],
+     "type": "weighted_list"
+    },
+    "side_hole_chance": 0.15,
+    "type": "poplar_foliage_placer"
+   },
+   "trunk": "poplar_log",
+   "trunk_placer": {
+    "base_height": 7,
+    "branch_amount": {
+     "max_inclusive": 4,
+     "min_inclusive": 1,
+     "type": "uniform"
+    },
+    "height_rand_a": 4,
+    "height_rand_b": 0,
+    "trunk_height_above_branches": 4,
+    "type": "poplar_trunk_placer"
+   }
+  }
+ },
+ "reference": {
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+   "data/minecraft/worldgen/feature/{orange,red,yellow}_poplar{,_leaf_litter}.json",
+   "data/minecraft/worldgen/feature/fallen_poplar_tree.json",
+   "data/minecraft/worldgen/{feature,placed_feature}/trees_dappled_forest.json",
+   "data/minecraft/worldgen/placed_feature/patch_red_shrub.json",
+   "data/minecraft/worldgen/biome/{dappled_forest,sulfur_caves}.json",
+   "data/minecraft/worldgen/material_rule/overworld/sulfur_cave_bands.json",
+   "data/minecraft/worldgen/noise/sulfur_cave_gradient.json",
+   "data/minecraft/worldgen/placed_feature/{sulfur_spike,sulfur_spike_cluster,sulfur_pool}.json",
+   "data/minecraft/worldgen/placed_feature/ore_gold_{nether,deltas}.json"
+  ],
+  "version": "26.3"
+ },
+ "sulfur_cave_bands": [
+  {
+   "block": "cinnabar",
+   "max": -0.10000000149011612,
+   "min": -0.4000000059604645
+  },
+  {
+   "block": "sulfur",
+   "max": 0.4000000059604645,
+   "min": 0.0
+  },
+  {
+   "block": "cinnabar",
+   "max": 1.7976931348623157e+308,
+   "min": 0.4000000059604645
+  }
+ ],
+ "sulfur_cave_gradient": {
+  "amplitude_modifiers": [
+   1.0,
+   0.0,
+   1.0
+  ],
+  "base_amplitude": 1.1817507833955654,
+  "base_octave": -5,
+  "octave_count": 3
+ },
+ "trees_dappled_forest": {
+  "count": 6,
+  "selector": [
+   {
+    "feature": "red_poplar_leaf_litter",
+    "weight": 200
+   },
+   {
+    "feature": "orange_poplar_leaf_litter",
+    "weight": 240
+   },
+   {
+    "feature": "yellow_poplar_leaf_litter",
+    "weight": 90
+   },
+   {
+    "feature": "spruce_checked",
+    "weight": 27
+   },
+   {
+    "feature": "fallen_poplar_tree",
+    "weight": 120
+   }
+  ]
+ }
+}

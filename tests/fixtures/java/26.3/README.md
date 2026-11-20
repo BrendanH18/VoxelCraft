@@ -1101,3 +1101,26 @@ constants, biome tag and room kinds against this file both ways, and
 `world::explorer_maps` the maps' names, sources, decorations and trade.
 The woodland mansion chest table itself is in `src/world/loot_tables.json`
 (added to `tools/extract_java_structure_loot.py`'s list).
+
+## Generation 5 Overworld (v0.16 Track D)
+
+`gen5_overworld.json` holds the generation 5 facts v0.16 Track D follows:
+the six poplar tree features (trunk and foliage placer parameters, leaf
+provider, decorators with the leaf-litter decorators' tries and radii),
+`fallen_poplar_tree`, the `trees_dappled_forest` selector and its count,
+`patch_red_shrub`, the `dappled_forest` and `sulfur_caves` biomes
+(temperature, downfall, colours, feature lists, spawn settings), the
+`sulfur_cave_bands` thresholds and `sulfur_cave_gradient` noise, the
+sulfur spike, spike cluster and pool placements, and `ore_gold_nether` and
+`ore_gold_deltas`. Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_gen5_fixtures.py /path/to/server.jar --output target/java-gen5.json
+diff tests/fixtures/java/26.3/gen5_overworld.json target/java-gen5.json
+scripts/remote-check.sh -- 'cargo test --release --lib -- poplar sulfur'
+```
+
+`world::poplar_trees` and `world::terrain::sulfur_caves` check their
+constants against this file. The two new biomes' friendly spawn lists were
+added to `spawn_categories.json` from the same biome files
+(`biome/{dappled_forest,sulfur_caves}.json`), in that file's format.
