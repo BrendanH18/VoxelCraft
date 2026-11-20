@@ -1101,3 +1101,33 @@ constants, biome tag and room kinds against this file both ways, and
 `world::explorer_maps` the maps' names, sources, decorations and trade.
 The woodland mansion chest table itself is in `src/world/loot_tables.json`
 (added to `tools/extract_java_structure_loot.py`'s list).
+
+## The outer End (v0.16 Track A)
+
+`end_cities.json` holds v0.16 Track A's facts, written by
+`tools/extract_java_end_fixtures.py` from the pinned server (SHA-1
+checked): for each of the 20 `structure/end_city/*.nbt` templates only its
+size, whether every cell is stored, its data markers (name and position)
+and the block names it uses (no layout is copied: fidelity exception
+FE-02); the `end_city` structure, the `end_cities` structure set and the
+`has_structure/end_city` biome tag; the five End biomes' feature lists, the
+`chorus_plant` placed feature and the `supports_chorus_*` block tags; the
+loot tables `chests/end_city_treasure`, `entities/shulker` and the track's
+blocks; the purpur, End rod and popped chorus fruit recipes; and, read with
+`javap`, the static constants of `Shulker`, `ShulkerBullet`,
+`ChorusFlowerBlock`, `EndCityPieces`, `EndCityStructure` and
+`TeleportRandomlyConsumeEffect`, the shulker's 30 health
+(`createAttributes`) and 20 covered armor, and the bullet's 4 damage and
+200 ticks of Levitation (`onHitEntity`). Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_end_fixtures.py /path/to/server.jar --output target/java-end.json
+diff tests/fixtures/java/26.3/end_cities.json target/java-end.json
+scripts/remote-check.sh -- 'cargo test --release --lib -- end_city end_blocks shulker'
+```
+
+`world::end_city` checks its template table and placement against the file
+both ways, and `entity::shulker` its constants and loot. The
+`chests/end_city_treasure` table the chests roll is in
+`src/world/loot_tables.json` (added to `tools/extract_java_structure_loot.py`'s
+list).

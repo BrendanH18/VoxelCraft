@@ -166,6 +166,8 @@ pub enum LootTable {
     BuriedTreasure,
     /// v0.15 Track F: `chests/woodland_mansion`.
     Mansion,
+    /// v0.16 Track A: `chests/end_city_treasure` (End cities and ships).
+    EndCity,
 }
 
 /// One built structure: its blocks, chests and where its mobs live.
@@ -1915,6 +1917,7 @@ impl LootTable {
             Self::RuinedPortal => "ruined_portal",
             Self::BuriedTreasure => "buried_treasure",
             Self::Mansion => "woodland_mansion",
+            Self::EndCity => "end_city_treasure",
         }
     }
 }

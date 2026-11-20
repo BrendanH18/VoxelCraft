@@ -37,14 +37,6 @@
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
-    "chorus_flower": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "chorus_plant": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "cinnabar": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
@@ -106,10 +98,6 @@
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "dragon_wall_head": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "end_rod": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
@@ -334,22 +322,6 @@
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "purple_shulker_box": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "purpur_block": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "purpur_pillar": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "purpur_slab": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "purpur_stairs": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
@@ -587,18 +559,6 @@
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
-    "chorus_flower": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "chorus_fruit": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "chorus_plant": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "cinnabar": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
@@ -708,10 +668,6 @@
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "end_crystal": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "end_rod": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
@@ -1075,10 +1031,6 @@
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
-    "popped_chorus_fruit": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "potent_sulfur": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
@@ -1092,22 +1044,6 @@
       "reason": "Creative spawn-egg catalogue, polish release."
     },
     "purple_shulker_box": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "purpur_block": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "purpur_pillar": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "purpur_slab": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "purpur_stairs": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
@@ -1156,10 +1092,6 @@
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "shulker_box": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "shulker_shell": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },

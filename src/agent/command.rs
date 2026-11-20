@@ -566,6 +566,7 @@ pub fn tab_complete(input: &str) -> Option<String> {
                 "nether_fossil",
                 "ruined_portal",
                 "buried_treasure",
+                "end_city",
             ],
             partial,
         )?,
