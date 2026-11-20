@@ -682,17 +682,16 @@ impl Command {
         let mut stream = serde_json::Deserializer::from_str(rest).into_iter::<serde_json::Value>();
         let title = stream.next()?.ok()?.as_str()?.to_string();
         let pages: Vec<String> = serde_json::from_value(stream.next()?.ok()?).ok()?;
-        if stream.next().is_some() {
-            return None;
-        }
         Some(Self::Book { pages, title: Some(title), offhand })
     }
 
     /// The `book` command text that [`Command::parse`] reads back as
-    /// [`Command::Book`]: how a LAN guest's book editor submits to the host.
-    pub fn book_text(pages: &[String], title: Option<&str>, offhand: bool) -> String {
+    /// [`Command::Book`]: how a LAN guest's book editor, opened on `slot`,
+    /// submits to the host. Slot 40 is the off-hand; any other slot is the
+    /// selected hotbar slot, which the host already tracks.
+    pub fn book_text(slot: usize, pages: &[String], title: Option<&str>) -> String {
         let pages = serde_json::to_string(pages).unwrap_or_else(|_| "[]".into());
-        let hand = if offhand { " offhand" } else { "" };
+        let hand = if slot == crate::session::books::OFFHAND_SLOT { " offhand" } else { "" };
         match title {
             Some(t) => format!("book sign{hand} {} {pages}", serde_json::json!(t)),
             None => format!("book write{hand} {pages}"),

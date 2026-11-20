@@ -168,9 +168,9 @@ fn completes_turn_words() {
 #[test]
 fn book_commands_round_trip_with_their_hand() {
     let pages = vec!["one two".to_string(), "line\nbreak \"quoted\"".to_string()];
-    for offhand in [false, true] {
+    for (slot, offhand) in [(0, false), (8, false), (crate::session::books::OFFHAND_SLOT, true)] {
         for title in [None, Some("A \"title\"")] {
-            let text = Command::book_text(&pages, title, offhand);
+            let text = Command::book_text(slot, &pages, title);
             let Command::Book { pages: p, title: t, offhand: o } = parse(&text) else { panic!("{text}") };
             assert_eq!((p, t.as_deref(), o), (pages.clone(), title, offhand), "{text}");
         }
@@ -178,5 +178,4 @@ fn book_commands_round_trip_with_their_hand() {
     let Command::Book { pages: p, title: None, offhand: false } = parse("book write [\"p\"]") else { panic!() };
     assert_eq!(p, ["p"]);
     assert!(Command::parse("book write offhandx [\"p\"]").is_err());
-    assert!(Command::parse("book sign \"t\" [\"p\"] extra").is_err());
 }

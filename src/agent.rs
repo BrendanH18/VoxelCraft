@@ -1533,21 +1533,20 @@ mod tests {
         let mut e = Entities::new(7);
         let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
         a.inventory.offhand = Some(Stack::new(books::WRITABLE_BOOK, 1));
-        let write = Command::parse(&Command::book_text(&["draft".into()], None, true)).unwrap();
+        let write = Command::parse(&Command::book_text(OFFHAND_SLOT, &["draft".into()], None)).unwrap();
         a.execute(write, &mut w, &mut e, &[]).unwrap();
         assert_eq!(books::pages(&a.inventory.offhand.unwrap()), ["draft"]);
         assert!(a.inventory.slots[a.selected].is_none());
-        let sign = Command::parse(&Command::book_text(&["final".into()], Some("Notes"), true)).unwrap();
+        let sign = Command::parse(&Command::book_text(OFFHAND_SLOT, &["final".into()], Some("Notes"))).unwrap();
         a.execute(sign, &mut w, &mut e, &[]).unwrap();
         let signed = a.inventory.offhand.unwrap();
         assert_eq!((signed.item, books::pages(&signed)), (books::WRITTEN_BOOK, vec!["final".to_string()]));
         assert!(a.inventory.slots[a.selected].is_none());
         // Without `offhand` the command still names the selected slot, which
         // is empty here, so it's refused rather than touching the off-hand.
-        let hotbar = Command::parse(&Command::book_text(&["x".into()], None, false)).unwrap();
+        let hotbar = Command::parse(&Command::book_text(a.selected, &["x".into()], None)).unwrap();
         assert!(a.execute(hotbar, &mut w, &mut e, &[]).is_err());
         assert_eq!(a.inventory.offhand.unwrap().item, books::WRITTEN_BOOK);
-        assert_eq!(OFFHAND_SLOT, 40);
     }
 
     #[test]

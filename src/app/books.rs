@@ -381,8 +381,7 @@ impl Game {
         if self.lan.client.is_some() {
             // The host edits the peer's selected slot, or its off-hand when
             // the book was opened from there (issue #92).
-            let offhand = slot == voxelcraft::session::books::OFFHAND_SLOT;
-            self.lan_command(&voxelcraft::agent::Command::book_text(&pages, title.as_deref(), offhand));
+            self.lan_command(&voxelcraft::agent::Command::book_text(slot, &pages, title.as_deref()));
             return;
         }
         let result = match title {
