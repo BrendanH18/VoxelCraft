@@ -180,6 +180,15 @@ pub fn player_environment(player: &Player, world: &World, moved: f64) -> Env {
             let (min, max) = player.collision_shape().aabb(player.pos);
             world.stalactite_damage(min, max)
         },
+        fall_reduction: if player.on_ground
+            && world
+                .get_block((player.pos - DVec3::Y * 0.01).floor().as_ivec3())
+                .is_some_and(|b| crate::world::gen5_blocks::shelf_of(b).is_some())
+        {
+            0.5
+        } else {
+            0.0
+        },
         on_hay: player.on_ground
             && world.get_block((player.pos - DVec3::Y * 0.01).floor().as_ivec3()).map(|b| b.base())
                 == Some(crate::world::block::Block::HAY_BALE),

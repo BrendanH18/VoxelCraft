@@ -339,6 +339,22 @@ impl MapStorage {
         Some((data.scale, data.locked))
     }
 
+    /// [`MapStorage::explorer`] for a rolled stack; an abandoned camp map
+    /// skips camps an earlier map referenced (`skip_existing_chunks`).
+    pub fn explorer_stack(&mut self, g: &Generator, from: IVec3, stack: Stack, radius: i32) -> Option<Stack> {
+        if stack.item == super::camp_maps::CAMP_MAP {
+            let i =
+                (stack.entity_data as usize).checked_sub(1).filter(|&i| i < super::camp_maps::DESTINATIONS.len())?;
+            let tag = super::camp_maps::tag(i);
+            let known = |s: IVec2| self.references.contains(&(tag.clone(), s.x, s.y));
+            let start = super::camp_maps::locate(g, from, super::camp_maps::DESTINATIONS[i].0, radius, &known)?;
+            self.references.insert((tag, start.x, start.y));
+            let data = explorer_data(g, IVec3::new(start.x * 16, 0, start.y * 16), stack.item);
+            return Some(self.create(data, stack.item));
+        }
+        self.explorer(g, from, stack.item, radius)
+    }
+
     pub fn explorer(&mut self, g: &Generator, from: IVec3, item: Item, radius: i32) -> Option<Stack> {
         if let Some(m) = super::explorer_maps::get(item) {
             let known = |tag: &str, s: IVec2| self.references.contains(&(tag.to_owned(), s.x, s.y));
@@ -419,6 +435,18 @@ fn buried_treasure(g: &Generator, from: IVec3, radius: i32) -> Option<IVec3> {
 /// its target marked on a biome preview. Drawing the preview samples
 /// 16,384 biomes, so workers do it for fresh chunks' chests
 /// ([`super::loot::RolledChest`]).
+/// [`explorer_map`] for a rolled stack: an abandoned camp map's destination
+/// rides in its `entity_data` (v0.16 Track D).
+pub fn explorer_map_stack(g: &Generator, from: IVec3, stack: Stack, radius: i32) -> Option<MapData> {
+    if stack.item == super::camp_maps::CAMP_MAP {
+        let i = (stack.entity_data as usize).checked_sub(1).filter(|&i| i < super::camp_maps::DESTINATIONS.len())?;
+        let biome = super::camp_maps::DESTINATIONS[i].0;
+        let start = super::camp_maps::locate(g, from, biome, radius, &|_| false)?;
+        return Some(explorer_data(g, IVec3::new(start.x * 16, 0, start.y * 16), stack.item));
+    }
+    explorer_map(g, from, stack.item, radius)
+}
+
 pub fn explorer_map(g: &Generator, from: IVec3, item: Item, radius: i32) -> Option<MapData> {
     let target = locate(g, from, item, radius)?;
     Some(explorer_data(g, target, item))
@@ -442,6 +470,7 @@ fn explorer_data(g: &Generator, target: IVec3, item: Item) -> MapData {
     });
     let kind = match super::explorer_maps::get(item) {
         Some(m) => m.decoration.to_owned(),
+        None if item == super::camp_maps::CAMP_MAP => super::camp_maps::DECORATION.to_owned(),
         None => item.name().replace(' ', "_"),
     };
     data.decorations.push(Decoration { kind, x: target.x as f64, z: target.z as f64, rotation: 180.0 });

@@ -730,6 +730,15 @@ impl World {
         if let Some(used) = self.plant_bone_meal(p, b) {
             return used;
         }
+        // v0.16 Track D: `ShelfMushroomBlock.performBonemeal` grows a young
+        // shelf mushroom (age 0) to age 1, every time.
+        if let Some((facing, age)) = super::gen5_blocks::shelf_of(b) {
+            if age == 0 {
+                self.edit(p, super::gen5_blocks::shelf_mushroom(facing, 1), true);
+                return true;
+            }
+            return false;
+        }
         match b {
             b if b.as_crop().is_some_and(|(crop, age)| age < crop.max_age()) => {
                 let (crop, stage) = b.as_crop().unwrap();

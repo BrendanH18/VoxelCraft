@@ -1075,7 +1075,17 @@ sulfur, polished sulfur, sulfur bricks), six `wall_states` family bytes
 after resin's, two item icons after v0.15 Track D's, `wood::Kind::Poplar`,
 `Wood::Poplar`, boat wood 10 (minecart codes 40 and 41) and the
 `DappledForest` and `SulfurCaves` biomes (never saved). No `MobKind`,
-`Effect`, sound, particle or `utilities::POTTED` entries. Record:
+`Effect`, sound, particle or `utilities::POTTED` entries in that first
+slice. The second slice (same day) used items 1707 (`sulfur_cube_bucket`)
+and 1708 (`abandoned_camp_map`) and texture layers 796 (the camp map icon)
+and 797 (its decoration), and appended `MobKind::SulfurCube` (after
+`Parched`, saved as `sulfur_cube`), `audio::voices::Voice::SulfurCube`,
+`sulfur_cube::Cue` as `Sound::SulfurCube` and `MobSound::SulfurCube` (after
+the raid cues), the bucket's item icon after the poplar chest boat's,
+`temples::Kind::AbandonedCamp` (after `Mansion`; never saved) and the
+`abandoned_camp` jigsaw library (generated, not a file). Still unused and
+unregistered: states 16013–16015, 16036–16039, 16094–16095, 16108–16383,
+19638–19647 and 19984–19999, items 1709–1729 and layers 798–948. Record:
 [v0.16 generation 5 Overworld](verification/2026-11-20-v0.16-generation-5-overworld.md).
 
 ## Assessment branch ID reservations

@@ -1154,6 +1154,7 @@ impl Item {
         (1255..=1265).contains(&self.0)
             || self == crate::world::trial::TRIAL_CHAMBERS_MAP
             || crate::world::explorer_maps::is_explorer(self)
+            || self == crate::world::camp_maps::CAMP_MAP
     }
 
     pub fn info(self) -> ItemInfo {
@@ -1196,6 +1197,9 @@ impl Item {
             return info;
         }
         // v0.15 Track F: the woodland mansion and four more explorer maps.
+        if let Some(info) = crate::world::camp_maps::item_info(self) {
+            return info;
+        }
         if let Some(info) = crate::world::explorer_maps::item_info(self) {
             return info;
         }
@@ -1641,6 +1645,9 @@ impl Item {
         if let Some(layer) = crate::world::explorer_maps::icon_layer(self) {
             return Some(layer);
         }
+        if self == crate::world::camp_maps::CAMP_MAP {
+            return Some(crate::world::camp_maps::TEX);
+        }
         if self.is_map() {
             return Some(2944 + self.0 - 1255);
         }
@@ -1749,8 +1756,10 @@ impl Item {
             .chain(track_d_items())
             // v0.15 Track F: five explorer maps, which draw their own layers.
             .chain(crate::world::explorer_maps::items())
-            // v0.16 Track D: poplar boats.
+            // v0.16 Track D: poplar boats and the sulfur cube bucket.
             .chain(gen5_items())
+            // v0.16 Track D: the abandoned camp map, which draws its own layers.
+            .chain([crate::world::camp_maps::CAMP_MAP])
     }
 
     /// Everything a creative player can pick from: blocks, then items.

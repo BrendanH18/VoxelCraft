@@ -581,6 +581,27 @@ pub fn shelf_supported(b: Block, behind: Block) -> Option<bool> {
 mod tests {
     use super::*;
 
+    /// `ShelfMushroomBlock`: bone meal always grows age 0 to age 1 and does
+    /// nothing to a grown one.
+    #[test]
+    fn bone_meal_grows_young_shelf_mushrooms() {
+        use crate::world::chunk::ChunkData;
+        let mut w = super::super::World::new_headless(
+            std::sync::Arc::new(super::super::terrain::Generator::new(5)),
+            Default::default(),
+            2,
+        );
+        for y in w.generator.dimension.chunk_rows() {
+            w.insert_chunk(glam::IVec3::new(0, y, 0), std::sync::Arc::new(ChunkData::Uniform(Block::AIR)), false);
+        }
+        let at = glam::IVec3::new(6, 80, 6);
+        w.set_block(at + glam::IVec3::Z, Block::STONE);
+        w.set_block(at, shelf_mushroom(Facing::North, 0));
+        assert!(w.apply_bone_meal(at));
+        assert_eq!(w.get_block(at), Some(shelf_mushroom(Facing::North, 1)));
+        assert!(!w.apply_bone_meal(at));
+    }
+
     #[test]
     fn layout_fits_the_reservation() {
         const { assert!(SPIKE_FIRST >= POTENT_SULFUR.0 + 5) };

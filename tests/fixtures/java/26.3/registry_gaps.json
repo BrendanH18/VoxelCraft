@@ -259,10 +259,6 @@
     }
   },
   "items": {
-    "abandoned_camp_map": {
-      "release": "v0.16",
-      "reason": "Explorer-map destination/structure integration remains incomplete."
-    },
     "allay_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."

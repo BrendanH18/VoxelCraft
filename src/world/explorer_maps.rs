@@ -111,6 +111,10 @@ pub fn icon_layer(item: Item) -> Option<u16> {
 
 /// The texture layer a map draws for decoration `kind`.
 pub fn decoration_layer(kind: &str) -> Option<u16> {
+    // v0.16 Track D: the abandoned camp map's tent.
+    if kind == super::camp_maps::DECORATION {
+        return Some(super::camp_maps::DECORATION_TEX);
+    }
     MAPS.iter().position(|m| m.decoration == kind).map(|i| DECORATION_TEX + i as u16)
 }
 
@@ -157,7 +161,12 @@ pub fn locate(
 
 /// `ChunkGenerator.getNearestGeneratedStructure` over rings `0..=rings`
 /// for one random-spread placement of `spacing` chunks.
-fn ring_search(from: IVec3, rings: i32, spacing: i32, start: &dyn Fn(IVec2) -> Option<IVec2>) -> Option<IVec2> {
+pub(super) fn ring_search(
+    from: IVec3,
+    rings: i32,
+    spacing: i32,
+    start: &dyn Fn(IVec2) -> Option<IVec2>,
+) -> Option<IVec2> {
     let chunk = IVec2::new(from.x, from.z).div_euclid(IVec2::splat(16));
     for radius in 0..=rings {
         for x in -radius..=radius {

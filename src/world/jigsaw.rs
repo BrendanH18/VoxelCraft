@@ -306,6 +306,13 @@ impl Library {
             "chest" => Base::Chest,
             role if role.starts_with('$') => Base::Role(intern(&mut self.roles, &role[1..])),
             loot if loot.starts_with("chest:") => Base::Loot(intern(&mut self.loot, &loot[6..])),
+            // `loot:<container block>:<table>`: a barrel or copper chest
+            // filled from a named table.
+            loot if loot.starts_with("loot:") => {
+                let (block, table) = loot[5..].split_once(':').ok_or_else(|| format!("bad loot spec {loot:?}"))?;
+                let container = Block::from_name(block).ok_or_else(|| format!("unknown block {block:?}"))?;
+                Base::LootIn(intern(&mut self.loot, table), container)
+            }
             mob if mob.starts_with("spawner:") => Base::Spawner(intern(&mut self.mobs, &mob[8..])),
             block => Base::Block(Block::from_name(block).ok_or_else(|| format!("unknown block {block:?}"))?),
         };
@@ -486,6 +493,13 @@ pub fn bastions() -> &'static Library {
 }
 
 /// Trail ruin templates and pools (v0.14).
+/// v0.16 Track D: the abandoned camps' generated catalogue
+/// (`temples::camp_templates`).
+pub fn abandoned_camps() -> &'static Library {
+    static LIB: OnceLock<Library> = OnceLock::new();
+    LIB.get_or_init(|| Library::parse(&super::temples::camp_catalogue()).expect("abandoned camp templates"))
+}
+
 pub fn trail_ruins() -> &'static Library {
     static LIB: OnceLock<Library> = OnceLock::new();
     LIB.get_or_init(|| Library::parse(include_str!("jigsaw/trail_ruins.txt")).expect("trail ruin templates"))
@@ -517,13 +531,14 @@ pub fn trial_chambers() -> &'static Library {
 }
 
 /// Every template library, for tests that check them all.
-pub fn all() -> [(&'static str, &'static Library); 8] {
+pub fn all() -> [(&'static str, &'static Library); 9] {
     [
         ("ancient_city", ancient_cities()),
         ("village", villages()),
         ("outpost", outposts()),
         ("bastion", bastions()),
         ("trail_ruins", trail_ruins()),
+        ("abandoned_camp", abandoned_camps()),
         ("relics", relics()),
         ("ruined_portals", ruined_portals()),
         ("trial_chambers", trial_chambers()),

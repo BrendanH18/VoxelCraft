@@ -113,6 +113,9 @@ const DIRT: [u8; 3] = [134, 96, 67];
 const GRASS: [u8; 3] = [95, 159, 53];
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
+    if (crate::world::camp_maps::TEX..crate::world::camp_maps::TEX_END).contains(&layer) {
+        return crate::world::camp_maps::pixel(layer, x, y);
+    }
     if gen5::owns(layer) {
         return gen5::pixel(layer, x, y);
     }

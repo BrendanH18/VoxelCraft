@@ -26,6 +26,7 @@ pub mod block;
 pub mod brewing;
 pub mod bubble;
 pub mod buried_treasure;
+pub mod camp_maps;
 pub mod cave_blocks;
 pub mod caves;
 pub mod chest;
