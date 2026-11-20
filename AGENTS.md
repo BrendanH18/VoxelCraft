@@ -56,15 +56,16 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
 - No step requires an agent to play the game through computer use (owner,
   2026-11-14). The owner's own play is the hands-on evidence, and nothing
   waits for an agent's hands-on pass.
-- Build in the cloud, not on the owner's Mac (owner, 2026-11-05).
-  `scripts/remote-check.sh` copies the worktree, uncommitted edits included,
-  to a fresh Namespace Linux instance and runs clippy and the tests there
-  (`--full` adds the `--no-default-features` checks; `-- CMD` runs any
-  command), with dependencies cached on a shared Namespace volume. Every run
-  has its own instance, so agents don't wait on each other. Build locally
-  only to run the game: screenshots, scripted scenes and benchmarks, whose
-  frame-time gate is measured on the reference M5. When `nsc` isn't
-  installed or logged in, fall back to the local rules below. See
+- Iterate locally, check in the cloud (owner, 2026-11-20; it replaces the
+  2026-11-05 rule that every build ran on Namespace, after 113 Namespace
+  instances in two days). While working, agents build and test on the Mac:
+  `cargo check`, `cargo clippy` and focused `cargo test --release <filter>`
+  runs, in the shared target directory below, so cargo's lock lets one
+  compile run at a time. Namespace runs only the hand-off checks:
+  `scripts/remote-check.sh --full` once a piece of work is finished (a
+  track's hand-off, an integration, a pull request's last state), not after
+  every edit. Don't use `remote-check.sh -- CMD` for focused test runs. When
+  `nsc` isn't installed or logged in, run the full chain locally. See
   [remote checks](docs/development.md#remote-checks).
 - Agents must not each build the project (owner, 2026-10-17). Agent worktrees
   share one cargo target directory, so dependencies build once and builds take

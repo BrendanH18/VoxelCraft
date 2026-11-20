@@ -49,6 +49,12 @@ builds do not use that path.
 `scripts/remote-check.sh` runs the checks on a [Namespace](https://namespace.so)
 cloud instance instead of this machine, so several agents can check their
 work at once without competing for the Mac's memory or cargo's build lock.
+Since 2026-11-20 (owner) it is for hand-off checks only: iterate locally
+with `cargo check`, `cargo clippy` and focused tests in the shared target
+directory, and run `scripts/remote-check.sh --full` once when the work is
+finished. Every run creates and bills a fresh 8-vCPU instance and rebuilds
+the `voxelcraft` crate from scratch, so focused runs through
+`remote-check.sh -- CMD` cost far more than they save.
 It needs the `nsc` command-line tool, installed and logged in
 (`nsc login`).
 
