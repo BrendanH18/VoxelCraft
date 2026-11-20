@@ -99,6 +99,10 @@ pub enum Command {
     /// cartography table, with an empty map, paper or a glass pane from
     /// the inventory.
     Cartography(CartographyAction),
+    /// v0.16 Track C: pays the targeted beacon one payment item from the
+    /// inventory for a primary power and an optional secondary
+    /// (`regeneration`, or the primary again for level II).
+    Beacon(crate::simulation::effects::Effect, Option<crate::simulation::effects::Effect>),
     /// Writes JSON `pages` into the held book and quill, or signs it with a
     /// title. `offhand` edits the off-hand book rather than the selected
     /// hotbar slot (`ServerboundEditBookPacket`'s slot 40).
@@ -165,6 +169,7 @@ const COMMAND_NAMES: &[&str] = &[
     "stonecut",
     "loom",
     "cartography",
+    "beacon",
     "book",
     "lectern",
     "grindstone",
@@ -924,6 +929,14 @@ impl Command {
                     .find(|c| c.adjective().replace(' ', "_") == dye.trim_end_matches("_dye"))
                     .ok_or_else(|| format!("unknown dye: {dye}"))?,
             ),
+            ["beacon", primary, rest @ ..] if rest.len() <= 1 => {
+                let effect = |name: &str| {
+                    crate::simulation::effects::Effect::from_id(name.trim_start_matches("minecraft:"))
+                        .filter(|&e| crate::world::beacon::required_levels(e).is_some())
+                        .ok_or_else(|| format!("not a beacon power: {name}"))
+                };
+                Self::Beacon(effect(primary)?, rest.first().map(|s| effect(s)).transpose()?)
+            }
             ["cartography", what] => Self::Cartography(match *what {
                 "copy" => CartographyAction::Copy,
                 "zoom" => CartographyAction::Zoom,

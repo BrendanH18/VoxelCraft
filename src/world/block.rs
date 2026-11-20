@@ -779,7 +779,7 @@ impl Block {
         if let Some(odds) = super::overworld_blocks::fire_odds(self).or_else(|| super::biome_plants::fire_odds(self)) {
             return odds;
         }
-        if matches!(self, super::eyeblossom::OPEN | super::eyeblossom::CLOSED) {
+        if matches!(self, super::eyeblossom::OPEN | super::eyeblossom::CLOSED | super::wither_rose::WITHER_ROSE) {
             return (60, 100);
         }
         // `FireBlock.bootStrap` lists no doors: the wooden ones only burn from lava.
@@ -949,6 +949,10 @@ impl Block {
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
         if super::sniffer_egg::owns(self.0) || super::heavy_core::owns(self.0) || super::dried_ghast::owns(self.0) {
+            return Some(Shaped::Custom);
+        }
+        // v0.16 Track C: heads (drawn as models) and the beacon.
+        if super::skulls::owns(self.0) || self == super::beacon::BEACON {
             return Some(Shaped::Custom);
         }
         if super::creaking::wall_local(self.0).is_some() {
@@ -1326,6 +1330,9 @@ impl Block {
         if super::dried_ghast::owns(self.0) {
             return super::dried_ghast::DRIED_GHAST;
         }
+        if let Some(s) = super::skulls::decode(self) {
+            return super::skulls::item_block(s.kind);
+        }
         if self.0 == super::sniffer_plants::PITCHER_PLANT.0 + 1 {
             return super::sniffer_plants::PITCHER_PLANT;
         }
@@ -1425,6 +1432,10 @@ impl Block {
         // `DriedGhastBlock.getStateForPlacement`: facing the player.
         if let Some(s) = super::dried_ghast::decode(self) {
             return super::dried_ghast::block(super::dried_ghast::State { facing, ..s });
+        }
+        // Heads place by their own rules (`skulls::placed`).
+        if super::skulls::owns(self.0) {
+            return self;
         }
         if let Some((nest, _, honey)) = super::bees::hive(self) {
             return super::bees::block(nest, facing, honey);
@@ -1678,6 +1689,14 @@ impl Block {
         if super::dried_ghast::owns(self.0) {
             return Some(Item::from_block(super::dried_ghast::DRIED_GHAST));
         }
+        // v0.16 Track C: `blocks/*_head`, `*_skull`, `wither_rose` and
+        // `beacon` drop themselves.
+        if let Some(s) = super::skulls::decode(self) {
+            return Some(super::skulls::item(s.kind));
+        }
+        if self == super::wither_rose::WITHER_ROSE || self == super::beacon::BEACON {
+            return Some(Item::from_block(self));
+        }
         if self == super::sniffer_plants::POTTED_TORCHFLOWER {
             return Some(super::utilities::FLOWER_POT.into());
         }
@@ -1850,6 +1869,17 @@ impl Block {
         }
         // `Blocks.DRIED_GHAST`: `instabreak()`.
         if super::dried_ghast::owns(self.0) {
+            return 0.0;
+        }
+        // v0.16 Track C: heads `strength(1.0)`, the beacon `strength(3.0)`,
+        // the wither rose `instabreak()`.
+        if super::skulls::owns(self.0) {
+            return 1.0;
+        }
+        if self == super::beacon::BEACON {
+            return 3.0;
+        }
+        if self == super::wither_rose::WITHER_ROSE {
             return 0.0;
         }
         if super::archaeology::owns(self.0) {
@@ -2437,6 +2467,8 @@ impl Block {
                 super::heavy_core::HEAVY_CORE.0,
                 super::dried_ghast::DRIED_GHAST.0,
             ])
+            .chain(super::skulls::palette_ids())
+            .chain([super::wither_rose::WITHER_ROSE.0, super::beacon::BEACON.0])
             .chain(super::forms::palette_ids())
             .chain(super::nether_blocks::palette_ids())
             .chain(super::village_blocks::palette_ids())
@@ -2545,6 +2577,9 @@ impl Block {
             return ok;
         }
         if let Some(ok) = super::eyeblossom::can_stay_on(self, below) {
+            return ok;
+        }
+        if let Some(ok) = super::wither_rose::can_stay_on(self, below) {
             return ok;
         }
         if self.alias().is_some() || below.alias().is_some() {
@@ -3123,6 +3158,9 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         12256..=super::frosted_ice::LAST => super::frosted_ice::registry(id),
         super::heavy_core::FIRST..=super::heavy_core::LAST => super::heavy_core::registry(id),
         super::dried_ghast::FIRST..=super::dried_ghast::LAST => super::dried_ghast::registry(id),
+        super::skulls::FIRST..=super::skulls::LAST => super::skulls::registry(id),
+        12724..=12725 => super::wither_rose::registry(id),
+        12726 => super::beacon::registry(),
         super::jukebox::FIRST..=super::jukebox::LAST => super::jukebox::registry(id),
         super::archaeology::FIRST..=super::archaeology::LAST => super::archaeology::registry(id),
         super::copper::FIRST..=super::copper::RESERVED_LAST
@@ -3577,18 +3615,19 @@ const fn emission_of(i: usize) -> u8 {
         match i {
             _ if super::frog_blocks::owns(i as u16) => super::frog_blocks::emission(i as u16),
             _ if super::trial::owns(i as u16) => super::trial::emission(i as u16),
-            22 | 37..=41 | 165..=180 | 208 | 210 => 15, // glowstone, lava, fire, portals
-            36 => 14,                                   // torch
-            46 | 50..=52 | 913..=916 | 921..=924 => 13, // lit furnace, every facing
-            104 => 11,                                  // Nether portal
-            200..=207 | 209 => 1,                       // portal frames and dragon egg
-            213 => 7,                                   // enchanting table
-            1152 | 1154 | 1156 | 1158 | 1160 => 7,      // lit redstone torches
-            1435..=1436 => 9,                           // glowing redstone ores
-            1211 => 15,                                 // lit redstone lamp
-            957..=960 => 15,                            // jack o'lanterns
+            12726 => 15,                                            // beacon
+            22 | 37..=41 | 165..=180 | 208 | 210 => 15,             // glowstone, lava, fire, portals
+            36 => 14,                                               // torch
+            46 | 50..=52 | 913..=916 | 921..=924 => 13,             // lit furnace, every facing
+            104 => 11,                                              // Nether portal
+            200..=207 | 209 => 1,                                   // portal frames and dragon egg
+            213 => 7,                                               // enchanting table
+            1152 | 1154 | 1156 | 1158 | 1160 => 7,                  // lit redstone torches
+            1435..=1436 => 9,                                       // glowing redstone ores
+            1211 => 15,                                             // lit redstone lamp
+            957..=960 => 15,                                        // jack o'lanterns
             7920..=7927 => super::mount_states::emission(i as u16), // lanterns
-            812 => 3,                                   // magma
+            812 => 3,                                               // magma
             1600..=1687 => super::nether_biome_blocks::emission(i as u16),
             1800 => 10, // crying obsidian
             1900..=2076 | 2400..=2415 => super::overworld_blocks::emission(i as u16),
@@ -3730,6 +3769,10 @@ mod tests {
                 if let Some((_, lit)) = candle::decode_cake(block.0) {
                     return if lit { 3 } else { 0 };
                 }
+            }
+            // `Blocks.BEACON`: `lightLevel(state -> 15)`.
+            if block == super::super::beacon::BEACON {
+                return 15;
             }
             // `TrialSpawnerState.lightLevel` and `VaultState.LightLevel`.
             if let Some((state, _)) = super::super::trial::spawner(block) {

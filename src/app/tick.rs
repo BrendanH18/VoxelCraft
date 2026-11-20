@@ -258,6 +258,7 @@ impl Game {
         }
         self.world.tick_automation_entities(&mut self.mobs.entities);
         self.tick_trial();
+        self.tick_beacons();
         self.tick_raid_omens();
         self.update_mobs(dt);
         self.apply_raid_outcomes();

@@ -84,6 +84,8 @@ const CHANCE_50: &[Item] = &[
     Item::from_block(nb::TWISTING_VINES),
 ];
 const CHANCE_65: &[Item] = &[
+    // v0.16 Track C: `ComposterBlock.add(0.65F, Items.WITHER_ROSE)`.
+    Item::from_block(crate::world::wither_rose::WITHER_ROSE),
     Item::from_block(crate::world::eyeblossom::OPEN),
     Item::from_block(crate::world::eyeblossom::CLOSED),
     Item::CARROT,

@@ -660,6 +660,7 @@ impl Agent {
             Command::Stonecut(output) => self.stonecut(output, world)?,
             Command::Loom(pattern, dye) => self.loom(&pattern, dye, world)?,
             Command::Cartography(action) => self.cartography(action, world)?,
+            Command::Beacon(primary, secondary) => self.beacon(primary, secondary, world)?,
             Command::Book { pages, title, offhand } => {
                 let slot = if offhand { crate::session::books::OFFHAND_SLOT } else { self.selected };
                 match title {
@@ -787,6 +788,26 @@ impl Agent {
         let mut made = result;
         world.maps.post_process(&mut made);
         self.exchange(&[extra_slot, self.selected], made)
+    }
+
+    /// v0.16 Track C `beacon <primary> [secondary]`: the beacon screen's
+    /// Done (`BeaconMenu.updateEffects`) with the first payment item in the
+    /// inventory, refused when the pyramid doesn't allow the powers.
+    fn beacon(
+        &mut self,
+        primary: crate::simulation::effects::Effect,
+        secondary: Option<crate::simulation::effects::Effect>,
+        world: &mut World,
+    ) -> Result<(), String> {
+        let pos = self.targeted(world, crate::world::beacon::BEACON, "beacon")?;
+        let slot = (0..crate::inventory::SLOTS)
+            .find(|&i| self.session.inventory.get(i).is_some_and(|s| crate::world::beacon::is_payment(s.item)))
+            .ok_or("no iron ingot, gold ingot, emerald, diamond or netherite ingot to pay with")?;
+        if !world.set_beacon_powers(pos, Some(primary), secondary) {
+            return Err("the beacon's pyramid doesn't allow those powers".into());
+        }
+        self.session.inventory.take_one(slot);
+        Ok(())
     }
 
     fn at_crafting_table(&self, world: &World) -> bool {

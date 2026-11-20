@@ -295,6 +295,11 @@ impl PlayerSession {
                         placed.ok_or("block cannot survive here")?
                     } else if let Some(banner) = cb::placed(raw, &ctx, |c| world.get_block(c)) {
                         banner.ok_or("block cannot survive here")?
+                    } else if let Some(head) =
+                        crate::world::skulls::placed(raw, &ctx, world.redstone_power(at) > 0, |c| world.get_block(c))
+                    {
+                        // v0.16 Track C: heads on the floor or a wall.
+                        head.ok_or("block cannot survive here")?
                     } else if let Some(mounted) = crate::world::copper::placed(raw, &ctx, |c| world.get_block(c))
                         .or_else(|| crate::world::mount_states::placed(raw, &ctx, |c| world.get_block(c)))
                     {
@@ -372,6 +377,7 @@ impl PlayerSession {
                         || ss::slab(block).is_some()
                         || crate::world::wood::owns(block.0)
                         || crate::world::copper_golem_statue::owns(block.0)
+                        || crate::world::skulls::owns(block.0)
                         || cb::owns(block.0);
                     if (block.is_solid() && if shaped_half { obstructed(world, at, block) } else { blocked(at) })
                         || partner.is_some_and(|(p, b)| !free(world, p) || (b.is_solid() && blocked(p)))

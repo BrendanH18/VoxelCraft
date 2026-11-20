@@ -513,6 +513,10 @@ impl World {
         if super::gadgets::is_note(b) {
             return self.note_neighbour(p, b);
         }
+        // v0.16 Track C: piglin and dragon heads follow the signal.
+        if let Some(s) = super::skulls::decode(b) {
+            return self.skull_neighbour(p, s);
+        }
         if super::gadgets::is_hook(b) {
             if let Some((facing, _, _)) = super::gadgets::hook_state(b)
                 && self.get_block(p - facing.offset()).is_some_and(|s| !s.supports_fire())

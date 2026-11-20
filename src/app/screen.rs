@@ -25,6 +25,9 @@ use super::hud::SlotRef;
 #[derive(Debug, PartialEq)]
 pub(super) enum Request {
     Popup(String),
+    /// v0.16 Track C: the screen asked to close (the beacon's Done and
+    /// Cancel buttons).
+    Close,
 }
 
 pub(super) struct Screen<'a> {
@@ -227,7 +230,11 @@ impl Screen<'_> {
             | SlotRef::LoomChoice(_)
             | SlotRef::MapInput
             | SlotRef::MapExtra
-            | SlotRef::MapResult => {}
+            | SlotRef::MapResult
+            | SlotRef::BeaconPayment
+            | SlotRef::BeaconPower(_)
+            | SlotRef::BeaconDone
+            | SlotRef::BeaconCancel => {}
             SlotRef::Palette(item) => {
                 if self.session.mode.is_creative() {
                     self.session.inventory.add(item, item.max_stack());
@@ -318,7 +325,7 @@ impl Screen<'_> {
                     return left;
                 }
             }
-            Container::Stonecutter(_) | Container::Loom(_) | Container::Cartography(_) => {
+            Container::Stonecutter(_) | Container::Loom(_) | Container::Cartography(_) | Container::Beacon(_) => {
                 if let Some(left) = self.move_to_workstation(stack)
                     && left != Some(stack)
                 {
@@ -326,8 +333,8 @@ impl Screen<'_> {
                 }
             }
             Container::Inventory if self.session.mode.is_survival() => {
-                // Armor goes on, if that slot is free.
-                if let Some((piece, _)) = stack.item.as_armor()
+                // Armor (and a mob head) goes on, if that slot is free.
+                if let Some(piece) = stack.item.wear_slot()
                     && self.session.inventory.armor[piece as usize].is_none()
                 {
                     self.session.inventory.armor[piece as usize] = Some(stack);
@@ -512,7 +519,11 @@ impl Screen<'_> {
                 | SlotRef::LoomChoice(_)
                 | SlotRef::MapInput
                 | SlotRef::MapExtra
-                | SlotRef::MapResult,
+                | SlotRef::MapResult
+                | SlotRef::BeaconPayment
+                | SlotRef::BeaconPower(_)
+                | SlotRef::BeaconDone
+                | SlotRef::BeaconCancel,
             ) => {}
             Some(SlotRef::Palette(item)) => {
                 // Creative palette: take a full stack, or trash the held one.

@@ -1380,6 +1380,19 @@ Wave 1 (independent):
    regeneration, block breaking and wither roses; the Nether star; beacons
    with pyramid levels, range, primary and secondary effects, the beam and
    the beacon screen on every input path.
+   *Implemented, unverified (2026-11-20):* all seven heads (16 floor
+   rotations, 4 wall facings, `powered` piglin and dragon heads that
+   animate), worn heads lowering their mob's detection, note block head
+   sounds, skull and charged creeper head drops, the creeper banner
+   pattern; wither roses; Wither summoning by Java's block pattern in any
+   orientation, its charge-up, three heads, skulls, armor phase, block
+   breaking, boss bar, Nether star and roses; beacons with pyramids,
+   coloured beams, Java's cadence, ranges and powers and the beacon screen
+   on desktop, controller, LAN and CLI, all saved; checked against a new
+   jar fixture. Differences and gaps (only piglin and dragon heads store
+   `powered`, simplified Wither goal timing and flight, unsaved skulls,
+   no dispenser placement) are in the
+   [record](verification/2026-11-20-v0.16-wither-beacons.md).
 4. **D. Generation 5 Overworld** (BLD-01a, BLD-01b, GEN-03, GEN-05f,
    MOB-04b, GEN-04a). The poplar wood family with boats, leaves in their
    three colours and saplings; shrubs, golden dandelions and shelf

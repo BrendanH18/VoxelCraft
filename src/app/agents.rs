@@ -83,6 +83,7 @@ impl Agents {
             health: b.agent.session.vitals.health,
             effects: b.agent.session.vitals.effects.mask(),
             armor_pieces: b.agent.session.inventory.armor.iter().flatten().count() as u8,
+            head: b.agent.session.inventory.armor[0].and_then(|s| crate::world::skulls::kind_of_item(s.item)),
             sneaking: b.agent.session.player.sneaking,
             darkness_ticks: b
                 .agent

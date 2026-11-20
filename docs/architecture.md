@@ -1056,6 +1056,29 @@ own branch. No released build saves the new members, so the integrator
 makes them contiguous in landing order (A, B, C, D, then E, F, G) and
 records the result here. Saved names follow Java's registry names.
 
+**Track C (Wither and beacons) used:** block states 12544–12726
+(`world::skulls`: 12544–12683 the seven heads unpowered,
+`12544 + kind * 20 + local` with `SkullBlock.Types` order and `local` 0–15
+a floor head's rotation, 16–19 a wall head's facing in `Facing::ALL`
+order; 12684–12723 powered piglin then dragon heads, the only kinds whose
+`powered` does anything; `world::wither_rose`: 12724 the wither rose,
+12725 the potted wither rose; `world::beacon`: 12726 the beacon);
+12727–12799 stay unregistered. Item 1690, the Nether star; 1691–1704 stay
+free. The wither skeleton skull keeps its pre-v0.16 item 641 as the block
+item of its floor state (`Item::from_block`/`Item::block`), so saved
+skulls stay skulls. Texture layers 669–710 (heads 669–705, the rose and
+its pot 706–707, the beacon's shell, core and beam 708–710); 711–748 stay
+unused. Appended orderings: `MobKind::Wither` (after `Parched`),
+`audio::voices::Voice::Wither`, `Sound::Wither` and `Sound::Beacon`,
+`MobSound::Wither`, the mob-head `gadgets::Instrument`s (`Zombie` to
+`Piglin`, 16–21, outside `Instrument::ALL`), `Sprite::NetherStar` and its
+item icon after Track D's, the `beacons` dimension property key, the
+`wither_skulls` entity replica key, and the beacon screen's LAN slot
+numbers 560–569. Its new `EntityEvent`s (`WitherBlast`, `WitherBreak`,
+`WitherRose`, `ChargedBlast`), `Container::Beacon`, the beacon `SlotRef`s,
+the controller's `Tab::Beacon` and `screen::Request::Close` are not saved.
+See the [record](verification/2026-11-20-v0.16-wither-beacons.md).
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

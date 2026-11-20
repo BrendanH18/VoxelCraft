@@ -284,6 +284,9 @@ pub fn potted(plant: Block) -> Option<Block> {
     if let Some(pot) = super::eyeblossom::potted(plant) {
         return Some(pot);
     }
+    if let Some(pot) = super::wither_rose::potted(plant) {
+        return Some(pot);
+    }
     POTTED.iter().position(|(p, _)| *p == plant).map(|i| Block(POTTED_FIRST + i as u16))
 }
 
@@ -294,6 +297,8 @@ pub const fn potted_plant(b: Block) -> Option<Block> {
     }
     if b.0 >= POTTED_FIRST && b.0 < POTTED_END {
         Some(POTTED[(b.0 - POTTED_FIRST) as usize].0)
+    } else if let Some(plant) = super::wither_rose::potted_plant(b) {
+        Some(plant)
     } else {
         super::eyeblossom::potted_plant(b)
     }
@@ -304,6 +309,7 @@ pub const fn is_pot(b: Block) -> bool {
     b.0 == super::sniffer_plants::POTTED_TORCHFLOWER.0
         || (b.0 >= FLOWER_POT.0 && b.0 < POTTED_END)
         || super::eyeblossom::potted_plant(b).is_some()
+        || super::wither_rose::potted_plant(b).is_some()
 }
 
 /// A respawn anchor with `charges` 0..=4.
@@ -600,6 +606,7 @@ pub const fn emission(id: u16) -> u8 {
 pub fn is_custom(b: Block) -> bool {
     ((owns(b.0) || b == super::sniffer_plants::POTTED_TORCHFLOWER) && b.kind() == RenderKind::Shaped)
         || super::eyeblossom::potted_plant(b).is_some()
+        || super::wither_rose::potted_plant(b).is_some()
 }
 
 /// Shaped states with see-through texels (plants, flames, fans): drawn in
@@ -655,7 +662,7 @@ pub fn picked(b: Block) -> Option<Item> {
 /// properties and `mineable/*` and `needs_*_tool` tags.
 pub fn mining(b: Block) -> Option<(f32, Option<ToolKind>, Option<u8>)> {
     use ToolKind::*;
-    let eyeblossom_pot = super::eyeblossom::potted_plant(b).is_some();
+    let eyeblossom_pot = super::eyeblossom::potted_plant(b).is_some() || super::wither_rose::potted_plant(b).is_some();
     if !eyeblossom_pot && (!owns(b.0) || registry(b.0).is_none() || dripleaf_of(b).is_some()) {
         return None;
     }
@@ -684,7 +691,10 @@ pub fn mining(b: Block) -> Option<(f32, Option<ToolKind>, Option<u8>)> {
 /// What breaking the block drops (`Some(None)`: nothing here; extra and
 /// counted drops come from [`extra_drops`]); `None` for other blocks.
 pub fn drop(b: Block) -> Option<Option<Item>> {
-    if super::eyeblossom::potted_plant(b).is_none() && (!owns(b.0) || dripleaf_of(b).is_some()) {
+    if super::eyeblossom::potted_plant(b).is_none()
+        && super::wither_rose::potted_plant(b).is_none()
+        && (!owns(b.0) || dripleaf_of(b).is_some())
+    {
         return None;
     }
     Some(if cauldron_of(b).is_some() {

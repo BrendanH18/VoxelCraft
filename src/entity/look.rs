@@ -89,6 +89,10 @@ impl Mob {
         if let Some(s) = &self.nautilus {
             v["nautilus"] = json!({"dashing": s.dashing});
         }
+        // v0.16 Track C: the charge (model scale, boss bar) and side heads.
+        if let Some(s) = &self.wither {
+            v["wither"] = json!({"invul": s.invul, "heads": s.head_rot.map(|(y, p)| [y, p])});
+        }
         if let Some(name) = self.name.as_str() {
             v["name"] = json!(name);
         }
@@ -212,6 +216,14 @@ impl Mob {
         }
         if let Some(s) = &mut self.mooshroom {
             s.brown = v["mooshroom_brown"] == true;
+        }
+        if let Some(s) = &mut self.wither {
+            let w = &v["wither"];
+            s.invul = w["invul"].as_i64().unwrap_or(0).clamp(0, i64::from(super::wither::INVULNERABLE_TICKS)) as i32;
+            for (i, h) in w["heads"].as_array().into_iter().flatten().take(2).enumerate() {
+                let f = |k: usize| h[k].as_f64().filter(|x| x.is_finite()).unwrap_or(0.0) as f32;
+                s.head_rot[i] = (f(0), f(1));
+            }
         }
         if let Some(s) = &mut self.happy_ghast {
             s.still_timeout = i32::from(v["happy_ghast"]["still"] == true);

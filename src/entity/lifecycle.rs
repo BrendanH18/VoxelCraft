@@ -93,6 +93,8 @@ impl Entities {
         self.sense_goals(world);
         self.sense_schools();
         self.sense_dolphins(world, &moved);
+        // v0.16 Track C: the Wither's server AI before the mobs move.
+        self.wither_tick(dt, world, ctx, &mut events);
         let mut i = 0;
         while i < self.mobs.len() {
             let m = &self.mobs[i];
@@ -111,6 +113,8 @@ impl Entities {
                     | MobKind::TraderLlama
             ) || m.kind.never_distance_despawns()
                 || m.kind == MobKind::Warden
+                // v0.16 Track C: `WitherBoss.checkDespawn` only leaves in Peaceful.
+                || m.kind == MobKind::Wither
                 || m.ocelot.as_ref().is_some_and(|s| s.trusting || s.ticks <= 2400)
                 || m.persistent
                 || m.creaking.as_ref().is_some_and(|s| s.home.is_some())
@@ -354,6 +358,7 @@ impl Entities {
                 EntityEvent::ShootWindCharge { from, dir, inaccuracy, shooter } => {
                     self.thrown.push(thrown::Thrown::breeze_charge(from, dir, inaccuracy, shooter, &mut self.rng));
                 }
+                EntityEvent::ChargedBlast { center } => self.charged_blasts.push(center),
                 EntityEvent::Fireball { from, dir, large } => {
                     let ball =
                         if large { fireball::Fireball::large(from, dir) } else { fireball::Fireball::new(from, dir) };
@@ -373,11 +378,13 @@ impl Entities {
                 EntityEvent::Shoot { .. }
                     | EntityEvent::MobArrow { .. }
                     | EntityEvent::Fireball { .. }
+                    | EntityEvent::ChargedBlast { .. }
                     | EntityEvent::ThrowPotion { .. }
                     | EntityEvent::ThrowTrident { .. }
                     | EntityEvent::ShootWindCharge { .. }
             )
         });
+        self.update_wither_skulls(world, ctx, &mut events);
         {
             let mobs = &self.mobs;
             self.fireballs.retain_mut(|f| {

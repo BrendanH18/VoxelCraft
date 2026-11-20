@@ -58,6 +58,8 @@ pub(super) enum Tab {
     Stonecutter(IVec3),
     Loom(IVec3),
     Cartography(IVec3),
+    /// v0.16 Track C: the payment slot, power buttons and Done on the first row.
+    Beacon(IVec3),
 }
 
 /// The first row of each v0.15 workstation tab.
@@ -88,6 +90,7 @@ impl Tab {
             Tab::Stonecutter(_) => block.base() == Block::STONECUTTER,
             Tab::Loom(_) => block.base() == Block::LOOM,
             Tab::Cartography(_) => block.base() == Block::CARTOGRAPHY_TABLE,
+            Tab::Beacon(_) => block == crate::world::beacon::BEACON,
             _ => false,
         }
     }
@@ -108,6 +111,7 @@ impl Tab {
             Tab::Stonecutter(p) => Container::Stonecutter(p),
             Tab::Loom(p) => Container::Loom(p),
             Tab::Cartography(p) => Container::Cartography(p),
+            Tab::Beacon(p) => Container::Beacon(p),
             _ => Container::Inventory,
         }
     }
@@ -330,7 +334,8 @@ fn rows(tab: Tab, lists: Lists) -> usize {
         | Tab::Enchanting(_)
         | Tab::Anvil(_)
         | Tab::Grindstone(_)
-        | Tab::Smithing(_) => 5,
+        | Tab::Smithing(_)
+        | Tab::Beacon(_) => 5,
         Tab::Stonecutter(_) | Tab::Loom(_) | Tab::Cartography(_) => 5 + choice_rows(tab, lists),
         Tab::Trading(_) => 6,
         Tab::Chest(_) | Tab::EnderChest(_) | Tab::Vehicle(_) => container_rows(lists) + 4,
@@ -354,6 +359,7 @@ fn row_len(tab: Tab, row: usize, lists: Lists) -> usize {
         Tab::Stonecutter(_) if row == 0 => return STONECUTTER.len(),
         Tab::Loom(_) if row == 0 => return LOOM.len(),
         Tab::Cartography(_) if row == 0 => return CARTOGRAPHY.len(),
+        Tab::Beacon(_) if row == 0 => return super::beacon::PAD_ROW.len(),
         Tab::Stonecutter(_) | Tab::Loom(_) if row <= choice_rows(tab, lists) => {
             return (lists.choices - (row - 1) * COLS).min(COLS);
         }
@@ -379,6 +385,7 @@ fn slot(tab: Tab, col: usize, row: usize, lists: Lists) -> Slot {
         Tab::Stonecutter(_) if row == 0 => Slot::Ref(STONECUTTER[col]),
         Tab::Loom(_) if row == 0 => Slot::Ref(LOOM[col]),
         Tab::Cartography(_) if row == 0 => Slot::Ref(CARTOGRAPHY[col]),
+        Tab::Beacon(_) if row == 0 => Slot::Ref(super::beacon::PAD_ROW[col]),
         Tab::Stonecutter(_) if row <= choice_rows(tab, lists) => Slot::Ref(SlotRef::CutRecipe((row - 1) * COLS + col)),
         Tab::Loom(_) if row <= choice_rows(tab, lists) => Slot::Ref(SlotRef::LoomChoice((row - 1) * COLS + col)),
         Tab::Stonecutter(_) | Tab::Loom(_) | Tab::Cartography(_) => {
@@ -392,6 +399,7 @@ fn slot(tab: Tab, col: usize, row: usize, lists: Lists) -> Slot {
         | Tab::Anvil(_)
         | Tab::Grindstone(_)
         | Tab::Smithing(_)
+        | Tab::Beacon(_)
             if row == 4 =>
         {
             inv(col)
@@ -402,7 +410,8 @@ fn slot(tab: Tab, col: usize, row: usize, lists: Lists) -> Slot {
         | Tab::Enchanting(_)
         | Tab::Anvil(_)
         | Tab::Grindstone(_)
-        | Tab::Smithing(_) => inv(COLS * row + col),
+        | Tab::Smithing(_)
+        | Tab::Beacon(_) => inv(COLS * row + col),
         Tab::Chest(_) | Tab::EnderChest(_) | Tab::Vehicle(_) if row < container_rows(lists) => {
             Slot::Ref(SlotRef::Chest(container_cols(lists) * row + col))
         }
@@ -638,7 +647,8 @@ impl Game {
             | Tab::Enchanting(_)
             | Tab::Anvil(_)
             | Tab::Grindstone(_)
-            | Tab::Smithing(_) => 4.0 * ((r >= 1) as u8 + (r >= 4) as u8) as f32,
+            | Tab::Smithing(_)
+            | Tab::Beacon(_) => 4.0 * ((r >= 1) as u8 + (r >= 4) as u8) as f32,
             Tab::Stonecutter(_) | Tab::Loom(_) | Tab::Cartography(_) => {
                 let k = choice_rows(tab, lists);
                 4.0 * ((r >= 1) as u8 + (r > k) as u8 + (r >= 4 + k) as u8) as f32
@@ -673,6 +683,7 @@ impl Game {
             Tab::Stonecutter(_) => "Stonecutter  (input, result; then recipes)",
             Tab::Loom(_) => "Loom  (banner, dye, pattern, result; then patterns)",
             Tab::Cartography(_) => "Cartography Table  (map, paper/map/glass pane, result)",
+            Tab::Beacon(_) => "Beacon  (payment, powers, done)",
         };
         ui.text(px + 6.0, py + 5.0, title, WHITE);
         let chest = match tab {
@@ -782,6 +793,11 @@ impl Game {
                 };
                 if let Some(stack) = stack {
                     draw_stack(ui, x - 0.5, y - 0.5, stack, true, dial);
+                }
+                // v0.16 Track C: the beacon's power buttons and Done.
+                if let (Tab::Beacon(pos), Slot::Ref(s)) = (tab, slot(tab, c, r, lists)) {
+                    let levels = self.world.beacon(pos).map_or(0, |b| b.levels);
+                    super::beacon::draw_pad_control(ui, &bot.agent.session, levels, s, x, y);
                 }
                 if let Slot::Ref(SlotRef::EnchantOffer(i)) = slot(tab, c, r, lists)
                     && offers[i].cost > 0

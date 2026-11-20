@@ -73,6 +73,8 @@ pub enum Voice {
     CamelHusk,
     /// v0.15 Track C: `entity.parched.*`.
     Parched,
+    /// v0.16 Track C: `entity.wither.*`.
+    Wither,
 }
 
 /// What kind of sound a voice makes.
@@ -85,7 +87,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 52] = [
+    pub const ALL: [Voice; 53] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -138,6 +140,7 @@ impl Voice {
         Voice::ZombieNautilus,
         Voice::CamelHusk,
         Voice::Parched,
+        Voice::Wither,
     ];
 
     /// The category the creature plays in: `Monster`, `Ghast`, `Hoglin` and
@@ -154,6 +157,7 @@ impl Voice {
             | Voice::Ravager
             | Voice::Illusioner
             | Voice::Parched
+            | Voice::Wither
             | Voice::Zombie
             | Voice::Skeleton
             | Voice::Creeper
@@ -227,6 +231,7 @@ impl Voice {
             Voice::ZombieNautilus => "zombie_nautilus",
             Voice::CamelHusk => "camel_husk",
             Voice::Parched => "parched",
+            Voice::Wither => "wither",
             Voice::Cow => "cow",
             Voice::Sheep => "sheep",
             Voice::Chicken => "chicken",
@@ -367,6 +372,7 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::ZombieNautilus => nautilus(call, rng, true),
         Voice::CamelHusk => camel_husk(call, rng),
         Voice::Parched => parched(call, rng),
+        Voice::Wither => wither(call, rng),
         Voice::Slime => slime(call, rng),
         Voice::Ghast => ghast(call, rng),
         Voice::Witch => witch(call, rng),
@@ -997,6 +1003,41 @@ fn parched(call: Call, rng: &mut Rng) -> Vec<f32> {
     Biquad::highpass(2500.0, 0.7).run(&mut sand);
     mix_into(&mut out, &sand, 0.5, 0);
     dsp::finish(out, 0.5)
+}
+
+/// v0.16 Track C: an original rasping, layered growl for the Wither: three
+/// detuned throats over a rattling undertone, falling for its death.
+fn wither(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let secs = match call {
+        Call::Ambient => 1.6,
+        Call::Hurt => 0.6,
+        Call::Death => 2.4,
+    };
+    let base = match call {
+        Call::Ambient => 72.0,
+        Call::Hurt => 110.0,
+        Call::Death => 64.0,
+    };
+    let mut out = vec![0.0; samples(secs)];
+    for (k, detune) in [1.0f32, 1.19, 0.84].into_iter().enumerate() {
+        let voice = utter(
+            rng,
+            &Utterance {
+                secs,
+                f0: &|t| base * detune * lerp(1.15, if call == Call::Death { 0.45 } else { 0.8 }, t / secs),
+                env: &|t| swell(t, 0.12, secs * 0.45, secs),
+                formants: [(300.0, 2.0, 1.0), (760.0, 3.5, 0.45), (1900.0, 5.0, 0.15)],
+                shift: FLAT,
+                jitter: 0.14,
+                breath: 1.2,
+            },
+        );
+        mix_into(&mut out, &voice, 0.45 - k as f32 * 0.08, 0);
+    }
+    let mut rattle = crackle(rng, samples(secs), (14.0, 40.0), |t| 24.0 * swell(t, 0.05, secs * 0.6, secs));
+    Biquad::bandpass(900.0, 0.8).run(&mut rattle);
+    mix_into(&mut out, &rattle, 0.35, 0);
+    dsp::finish(out, 0.6)
 }
 
 fn slime(call: Call, rng: &mut Rng) -> Vec<f32> {

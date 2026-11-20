@@ -61,6 +61,12 @@ pub(super) enum SlotRef {
     MapInput,
     MapExtra,
     MapResult,
+    /// v0.16 Track C: the beacon's payment slot, its power buttons (five
+    /// primaries, Regeneration, the primary's level II), Done and Cancel.
+    BeaconPayment,
+    BeaconPower(u8),
+    BeaconDone,
+    BeaconCancel,
     /// The off-hand slot (survival inventory).
     Offhand,
     /// Worn armor (survival inventory).
@@ -175,6 +181,11 @@ impl Game {
         let mut bar_y = 12.0;
         if let Some(health) = self.mobs.entities.fight.as_ref().and_then(|f| f.boss_bar(self.session.player.pos)) {
             boss_bar_ui(&mut ui, "Ender Dragon", health, sw);
+            bar_y += 19.0;
+        }
+        // v0.16 Track C: each Wither in range (`BossBarColor.PURPLE`, `PROGRESS`).
+        for progress in self.mobs.entities.wither_bars(self.session.player.pos) {
+            super::wither::boss_bar_ui(&mut ui, progress, sw, bar_y);
             bar_y += 19.0;
         }
         // v0.15 Track E: the raid bar (`BossBarColor.RED`, `NOTCHED_10`),
@@ -805,6 +816,7 @@ impl Game {
                     | Container::Stonecutter(_)
                     | Container::Loom(_)
                     | Container::Cartography(_)
+                    | Container::Beacon(_)
             )
     }
 
@@ -1041,7 +1053,9 @@ impl Game {
             (Container::Anvil(_), _) => "Anvil",
             (Container::Grindstone(_), _) => "Repair & Disenchant",
             (Container::Smithing(_), _) => "Upgrade Gear",
-            (Container::Stonecutter(_) | Container::Loom(_) | Container::Cartography(_), _) => self.workstation_title(),
+            (Container::Stonecutter(_) | Container::Loom(_) | Container::Cartography(_) | Container::Beacon(_), _) => {
+                self.workstation_title()
+            }
             (Container::Trading(_), _) => "",
             (Container::Inventory, GameMode::Survival) => "Inventory",
             (Container::Inventory, GameMode::Creative) => "Creative",

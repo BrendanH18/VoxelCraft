@@ -229,6 +229,9 @@ pub enum MobKind {
     CamelHusk,
     /// v0.15 Track C: the desert skeleton with Weakness arrows. Saved as `parched`.
     Parched,
+    /// v0.16 Track C: the three-headed boss built from soul sand and
+    /// wither skeleton skulls. Saved as `wither` (see `entity::wither`).
+    Wither,
 }
 
 impl MobKind {
@@ -263,7 +266,7 @@ impl MobKind {
     pub fn from_lan_index(index: usize) -> Option<Self> {
         Self::ALL.get(index).copied()
     }
-    pub const ALL: [MobKind; 85] = [
+    pub const ALL: [MobKind; 86] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -349,6 +352,7 @@ impl MobKind {
         MobKind::ZombieNautilus,
         MobKind::CamelHusk,
         MobKind::Parched,
+        MobKind::Wither,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -439,6 +443,7 @@ impl MobKind {
             MobKind::ZombieNautilus => "zombie_nautilus",
             MobKind::CamelHusk => "camel_husk",
             MobKind::Parched => "parched",
+            MobKind::Wither => "wither",
         }
     }
 
@@ -470,6 +475,8 @@ impl MobKind {
             MobKind::CamelHusk => Shape::new(0.85, 2.375),
             // `EntityTypes.PARCHED`: 0.6 x 1.99.
             MobKind::Parched => Shape::new(0.3, 1.99),
+            // `EntityTypes.WITHER`: 0.9 x 3.5.
+            MobKind::Wither => Shape::new(0.45, 3.5),
             MobKind::Bat => Shape::new(0.25, 0.9),
             MobKind::Frog => Shape::new(0.25, 0.5),
             MobKind::Tadpole => Shape::new(0.2, 0.3),
@@ -600,6 +607,7 @@ impl MobKind {
             MobKind::Nautilus | MobKind::ZombieNautilus => super::nautilus::MAX_HEALTH,
             MobKind::CamelHusk => 32.0,
             MobKind::Parched => 16.0,
+            MobKind::Wither => super::wither::MAX_HEALTH,
         }
     }
 
@@ -644,6 +652,7 @@ impl MobKind {
                 | MobKind::Ravager
                 | MobKind::Illusioner
                 | MobKind::Parched
+                | MobKind::Wither
         )
     }
 
@@ -669,6 +678,8 @@ impl MobKind {
                 | MobKind::Warden
                 // `EntityTypes.VEX.fireImmune()`.
                 | MobKind::Vex
+                // `EntityTypes.WITHER.fireImmune()`.
+                | MobKind::Wither
         )
     }
 
@@ -711,6 +722,8 @@ impl MobKind {
             // Dried ghasts hatch happy ghasts; camel husks come with husks
             // and zombie nautiluses with drowned (`Husk`/`Drowned.finalizeSpawn`).
             MobKind::HappyGhast | MobKind::CamelHusk | MobKind::ZombieNautilus => false,
+            // Only built from soul sand and wither skeleton skulls (v0.16 Track C).
+            MobKind::Wither => false,
             // Only generated with bastions (`nether::populate_bastions`).
             MobKind::PiglinBrute | MobKind::Zoglin | MobKind::ElderGuardian | MobKind::Cat | MobKind::Pillager => false,
             // Picked by the Nether biome spawn lists (`world::nether_biome`).
@@ -872,7 +885,8 @@ impl MobKind {
             | MobKind::Parched
             | MobKind::CamelHusk
             | MobKind::ZombieNautilus
-            | MobKind::Phantom => Creature::Undead,
+            | MobKind::Phantom
+            | MobKind::Wither => Creature::Undead,
             // `#sensitive_to_bane_of_arthropods` (`#arthropod`).
             MobKind::Spider | MobKind::CaveSpider | MobKind::Silverfish | MobKind::Endermite | MobKind::Bee => {
                 Creature::Arthropod
@@ -1078,6 +1092,9 @@ impl MobKind {
             MobKind::Rabbit => &[(Item::RAW_RABBIT, 0, 1), (Item::RABBIT_HIDE, 0, 1)],
             // The skull is rolled in `drops`.
             MobKind::WitherSkeleton => &[(Item::COAL, 0, 1), (Item::BONE, 0, 2)],
+            // `entities/wither` has no pools; the Nether star is
+            // `dropCustomDeathLoot` (`Entities::wither_star`).
+            MobKind::Wither => &[],
             // Java rolls a few of these; each is rolled on its own here.
             MobKind::Phantom => &[(Item::PHANTOM_MEMBRANE, 0, 1)],
             MobKind::Witch => &[
@@ -1167,6 +1184,7 @@ impl MobKind {
             MobKind::Evoker => 10,
             MobKind::Vex => 3,
             MobKind::Ravager => 20,
+            MobKind::Wither => super::wither::EXPERIENCE,
             k if k.is_hostile() => 5,
             _ => 1 + (rng.next_f32() * 3.0) as u32,
         }
@@ -1248,6 +1266,11 @@ pub struct Mob {
     /// v0.15 Track C: nautilus air, dash, anger and charge (see `entity::nautilus`).
     pub nautilus: Option<Box<super::nautilus::State>>,
     pub wolf_armor: Option<Box<super::wolf_armor::State>>,
+    /// v0.16 Track C: the Wither's charge, heads and targets (see `entity::wither`).
+    pub wither: Option<Box<super::wither::State>>,
+    /// v0.16 Track C: seconds left in which a death counts as the Wither's
+    /// kill (its skull or blast hurt this mob), growing a wither rose. Never saved.
+    pub(crate) wither_credit: f32,
     /// Witch: seconds left drinking, and the potion it is drinking.
     drink_left: f32,
     drinking: &'static str,
@@ -1466,6 +1489,8 @@ impl Mob {
             happy_ghast: (kind == MobKind::HappyGhast).then(Box::default),
             nautilus: super::nautilus::is_nautilus(kind).then(Box::default),
             wolf_armor: (kind == MobKind::Wolf).then(Box::default),
+            wither: (kind == MobKind::Wither).then(Box::default),
+            wither_credit: 0.0,
             drink_left: 0.0,
             drinking: "",
             age: 0,
@@ -1731,6 +1756,20 @@ impl Mob {
     /// armadillo shrugs off a hit of 1 or less. Arrows apply their potion
     /// and Flame only to hits `hurtOrSimulate` accepts.
     pub fn refuses_hit(&self, amount: f32) -> bool {
+        // v0.16 Track C: `WitherBoss.hurtServer` refuses everything while it
+        // charges, and arrows (`AbstractArrow`, tridents too) once its armor
+        // is up at half health.
+        if self.wither.as_ref().is_some_and(|s| s.invul > 0)
+            || super::wither::powered(self)
+                && self.hit_cause.is_some_and(|c| {
+                    matches!(
+                        c.kind,
+                        crate::simulation::damage::DamageType::Arrow | crate::simulation::damage::DamageType::Trident
+                    )
+                })
+        {
+            return true;
+        }
         !self.alive()
             || self.warden.as_ref().is_some_and(|s| s.digging_or_emerging())
             || self.undead_mount.protection > 0.
@@ -1837,9 +1876,15 @@ impl Mob {
         }
         let amount = if self.kind == MobKind::MagmaCube {
             crate::simulation::survival::armor_reduce_with(amount, self.size as u32 * 3, 0.0, self.armor_effectiveness)
+        } else if self.kind == MobKind::Wither && !bypass_wolf_armor {
+            // `WitherBoss.createAttributes`: 4 armor points.
+            crate::simulation::survival::armor_reduce_with(amount, super::wither::ARMOR, 0.0, self.armor_effectiveness)
         } else {
             amount
         };
+        if let Some(s) = &mut self.wither {
+            s.hurt();
+        }
         if let Some(a) = &mut self.animal {
             a.love = 0.0;
             a.courtship = 0.0;
@@ -2061,6 +2106,19 @@ impl Mob {
         }
         self.attack_cooldown -= dtf;
         self.player_hit_left = (self.player_hit_left - dtf).max(0.0);
+        self.wither_credit = (self.wither_credit - dtf).max(0.0);
+        // v0.16 Track C: `WitherRoseBlock.entityInside` (not in Peaceful;
+        // wither skeletons and the Wither take no Wither).
+        if self.alive()
+            && self.difficulty != crate::simulation::difficulty::Difficulty::Peaceful
+            && !matches!(self.kind, MobKind::WitherSkeleton | MobKind::Wither)
+            && crate::physics::touches_block(world, self.pos, self.shape(), |b| {
+                b == crate::world::wither_rose::WITHER_ROSE
+            })
+        {
+            let ticks = crate::world::wither_rose::CONTACT_TICKS;
+            self.effects.add(crate::simulation::effects::Effect::Wither, 0, ticks);
+        }
         self.weakness_left = (self.weakness_left - dtf).max(0.0);
         self.advance_cure(dtf, world, rng, events);
         self.freeze_in_powder_snow(dtf, world);
@@ -2105,6 +2163,9 @@ impl Mob {
             if self.riding.is_none() {
                 self.phantom_flight(dt, world, ctx, rng, events);
             }
+            (None, 0.)
+        } else if self.kind == MobKind::Wither {
+            self.wither_wander(rng);
             (None, 0.)
         } else {
             super::mounts::control(self, dt, rng).unwrap_or_else(|| self.think(dtf, world, ctx, rng, events))
@@ -2157,6 +2218,8 @@ impl Mob {
             super::bee::travel(self, dt, world, wish, speed);
         } else if self.kind == MobKind::Phantom {
             // PhantomMoveControl already moved this flying body.
+        } else if self.kind == MobKind::Wither {
+            self.wither_motion(dt, world);
         } else if self.kind == MobKind::Vex {
             // `Vex.tick` sets `noPhysics`: it flies through blocks.
             super::illager::vex_travel(self, dt);
@@ -2187,6 +2250,11 @@ impl Mob {
             }
         }
         if self.health <= 0.0 && (self.dying.is_none() || alive_before_move) {
+            // v0.16 Track C: `LivingEntity.createWitherRose` for a death
+            // the Wither is credited with.
+            if self.wither_credit > 0.0 && self.kind != MobKind::Wither {
+                events.push(EntityEvent::WitherRose { pos: self.pos });
+            }
             self.dying = Some(0.0);
             self.cry = Some(if let Some(s) = &self.copper_golem {
                 MobSound::CopperGolem(super::copper_golem::Sound::Death, s.stage as u8)
@@ -2521,7 +2589,7 @@ impl Mob {
                     t.id == id
                         && t.targetable
                         && t.alive
-                        && t.pos.distance_squared(self.pos) <= t.detection_range(CHASE_RANGE).powi(2)
+                        && t.pos.distance_squared(self.pos) <= t.detection_range_for(CHASE_RANGE, self.kind).powi(2)
                 })
             })
         } else if self.kind.is_hostile() && self.nether.is_none() {
@@ -2557,7 +2625,7 @@ impl Mob {
             };
             let sent = self.reinforce_target;
             let chasing = aggressive
-                && target.is_some_and(|t| hdist < t.detection_range(range) || sent == Some(t.id))
+                && target.is_some_and(|t| hdist < t.detection_range_for(range, self.kind) || sent == Some(t.id))
                 && to_player.y.abs() < height;
             if chasing {
                 self.ai = Ai::Chase;
@@ -2804,7 +2872,7 @@ impl Mob {
             .filter(|t| {
                 t.targetable
                     && t.alive
-                    && t.pos.distance_squared(self.pos) <= t.detection_range(range).powi(2)
+                    && t.pos.distance_squared(self.pos) <= t.detection_range_for(range, self.kind).powi(2)
                     && accept(t)
             })
             .filter(|t| sees(t))
@@ -3284,6 +3352,9 @@ impl Mob {
         self.fuse += dt;
         if self.fuse >= FUSE_TIME {
             let center = self.pos + DVec3::Y * (self.shape().height * 0.5);
+            if self.lightning_charged {
+                events.push(EntityEvent::ChargedBlast { center });
+            }
             events.push(EntityEvent::Explosion {
                 center,
                 power: CREEPER_POWER * if self.lightning_charged { 2. } else { 1. },
@@ -3903,7 +3974,8 @@ impl super::Entities {
         if self.mobs.get(index).is_some_and(|m| {
             matches!(
                 m.kind,
-                MobKind::Dolphin
+                MobKind::Wither
+                    | MobKind::Dolphin
                     | MobKind::Blaze
                     | MobKind::Bee
                     | MobKind::PolarBear
@@ -3947,6 +4019,7 @@ impl super::Entities {
                 MobKind::Bee => self.anger_bees(self.mobs[index].pos.floor().as_ivec3(), player),
                 MobKind::Dolphin => self.dolphin_hurt_by(index, player),
                 MobKind::Blaze => self.blaze_hurt_by(index, player),
+                MobKind::Wither => self.wither_hurt_by(index, player),
                 MobKind::PolarBear => self.polar_hurt(index, super::nether::Foe::Player(player)),
                 MobKind::Panda => self.panda_hurt(index, super::nether::Foe::Player(player)),
                 MobKind::Armadillo => self.armadillo_hurt(index, super::nether::Foe::Player(player)),

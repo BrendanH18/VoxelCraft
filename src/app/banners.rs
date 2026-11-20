@@ -1,5 +1,6 @@
-//! Banners draw as free-standing models, as Java's `BannerRenderer` draws
-//! them, within its block entity view distance of the camera.
+//! Banners and (v0.16 Track C) mob heads draw as free-standing models, as
+//! Java's `BannerRenderer` and `SkullBlockRenderer` draw them, within the
+//! block entity view distance of the camera.
 
 use glam::DVec3;
 
@@ -16,6 +17,8 @@ impl Game {
         let eye = camera;
         self.world
             .banners()
+            // Beacons share the index for LAN replicas; their beams draw elsewhere.
+            .filter(|(_, block)| *block != crate::world::beacon::BEACON)
             .filter(|(cell, _)| (cell.as_dvec3() + DVec3::splat(0.5)).distance_squared(eye) < VIEW_DISTANCE.powi(2))
             .map(|(cell, block)| {
                 let centre = cell.as_dvec3() + DVec3::splat(0.5);

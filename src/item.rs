@@ -353,6 +353,8 @@ pub enum Sprite {
     /// v0.15 Track B: a pattern item's sheet showing pattern item `i` of
     /// `content::banner_patterns::PATTERN_ITEMS`.
     BannerPattern(u8),
+    /// v0.16 Track C: the Wither's Nether star.
+    NetherStar,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1044,6 +1046,11 @@ impl Item {
         if block.0 == Block::HONEY_BLOCK.0 {
             return Self::HONEY_BLOCK;
         }
+        // v0.16 Track C: the wither skeleton skull keeps item 641, which it
+        // had before it could be placed.
+        if block.0 == crate::world::skulls::WITHER_SKELETON_SKULL.0 {
+            return Self::WITHER_SKULL;
+        }
         if crate::world::scaffolding::is_scaffolding(block) {
             return Self::SCAFFOLDING;
         }
@@ -1080,6 +1087,9 @@ impl Item {
     pub fn block(self) -> Option<Block> {
         if self == Self::HONEY_BLOCK {
             return Some(Block::HONEY_BLOCK);
+        }
+        if self == Self::WITHER_SKULL {
+            return Some(crate::world::skulls::WITHER_SKELETON_SKULL);
         }
         if self == Self::SCAFFOLDING {
             return Some(crate::world::scaffolding::SCAFFOLDING);
@@ -1132,6 +1142,10 @@ impl Item {
     pub fn info(self) -> ItemInfo {
         if let Some(info) = crate::content::harness::item_info(self) {
             return info;
+        }
+        // v0.16 Track C: the Nether star.
+        if self == crate::entity::wither::NETHER_STAR {
+            return item("nether star", Sprite::NetherStar);
         }
         // v0.15 Track D: spectral arrows, coloured eggs and trim templates.
         if self == Self::SPECTRAL_ARROW {
@@ -1544,7 +1558,8 @@ impl Item {
     /// registrations are pinned so far: the chainmail pieces and the
     /// Bottle o' Enchanting.
     pub fn is_uncommon(self) -> bool {
-        self == Item::EXPERIENCE_BOTTLE
+        crate::world::skulls::kind_of_item(self).is_some_and(|k| k.rarity() == 1)
+            || self == Item::EXPERIENCE_BOTTLE
             || crate::equipment::is_uncommon(self)
             || crate::content::banner_patterns::rarity(self) == Some(crate::content::banner_patterns::Rarity::Uncommon)
             || crate::content::trim::template_pattern(self)
@@ -1558,7 +1573,11 @@ impl Item {
 
     /// Java's `Rarity.RARE` for items registered with it (aqua names).
     pub fn is_rare(self) -> bool {
-        self == Item::ENCHANTED_GOLDEN_APPLE
+        // v0.16 Track C: `Items.WITHER_SKELETON_SKULL`, `NETHER_STAR` and `BEACON`.
+        self == Item::WITHER_SKULL
+            || self == crate::entity::wither::NETHER_STAR
+            || self == Item::from_block(crate::world::beacon::BEACON)
+            || self == Item::ENCHANTED_GOLDEN_APPLE
             || crate::world::jukebox::is_rare(self)
             || crate::weapons::is_rare(self)
             || crate::content::banner_patterns::rarity(self) == Some(crate::content::banner_patterns::Rarity::Rare)
@@ -1570,6 +1589,27 @@ impl Item {
     /// enchantment glint though it carries no enchantment.
     pub fn has_glint(self) -> bool {
         matches!(self, Item::ENCHANTED_GOLDEN_APPLE | Item::EXPERIENCE_BOTTLE | Item::WRITTEN_BOOK)
+            || self == crate::entity::wither::NETHER_STAR
+    }
+
+    /// The equipment slot this goes on (`Equippable.slot`): armor its
+    /// piece, a mob head the head (`equippableUnswappable(HEAD)`).
+    pub fn wear_slot(self) -> Option<ArmorPiece> {
+        if let Some((piece, _)) = self.as_armor() {
+            return Some(piece);
+        }
+        crate::world::skulls::kind_of_item(self).map(|_| ArmorPiece::Helmet)
+    }
+
+    /// Java's `Rarity.EPIC` (light purple names): the dragon head.
+    pub fn is_epic(self) -> bool {
+        crate::world::skulls::kind_of_item(self).is_some_and(|k| k.rarity() == 3)
+    }
+
+    /// `DataComponents.DAMAGE_RESISTANT` with `#is_explosion`: dropped, the
+    /// Nether star survives blasts.
+    pub fn explosion_proof(self) -> bool {
+        self == crate::entity::wither::NETHER_STAR
     }
 
     pub fn remainder(self) -> Option<Item> {
@@ -1715,6 +1755,8 @@ impl Item {
             .chain(track_d_items())
             // v0.15 Track F: five explorer maps, which draw their own layers.
             .chain(crate::world::explorer_maps::items())
+            // v0.16 Track C: the Nether star (its icon follows Track D's).
+            .chain([crate::entity::wither::NETHER_STAR])
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1790,6 +1832,8 @@ fn sprite_index(item: Item) -> Option<u16> {
         ),
         // v0.15 Track D: its items follow Track B's.
         i if let Some(k) = track_d_items().position(|t| t.0 == i) => Some(track_d_icon_base() + k as u16),
+        // v0.16 Track C: the Nether star follows Track D's.
+        i if i == crate::entity::wither::NETHER_STAR.0 => Some(track_d_icon_base() + TRACK_D_ICONS as u16),
         // v0.17 build-5000 ITEM-08: the bundles follow the experience bottle.
         i if (crate::content::bundle::ITEM_FIRST..crate::content::bundle::ITEM_END).contains(&i) => Some(
             late_icon_base()
@@ -1932,6 +1976,7 @@ pub const fn icon_count() -> u32 {
         + 3 // v0.15 Track B: spyglass, book and quill, written book.
         + (crate::content::banner_patterns::ITEM_END - crate::content::banner_patterns::ITEM_FIRST) as u32
         + TRACK_D_ICONS
+        + 1 // v0.16 Track C: the Nether star.
 }
 
 /// v0.15 Track D's first icon, after Track B's.

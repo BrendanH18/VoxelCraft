@@ -1101,3 +1101,34 @@ constants, biome tag and room kinds against this file both ways, and
 `world::explorer_maps` the maps' names, sources, decorations and trade.
 The woodland mansion chest table itself is in `src/world/loot_tables.json`
 (added to `tools/extract_java_structure_loot.py`'s list).
+
+## The Wither, heads and beacons (v0.16 Track C)
+
+`wither_beacon.json` holds the facts behind the Wither, its skulls, mob
+heads, the wither rose and beacons, read from the server jar with `javap`:
+the `wither` and `wither_skull` entity types' size, category and fire
+immunity; `WitherBoss`'s attributes, constants and the numbers its methods
+push (the charge's heal and blast, the spawn level event, the idle heal,
+the head ranges, offsets and targeting box, the dangerous skull chance, the
+ranged attack goal, the armor and charge health divisors, its experience);
+`WitherSkull`'s damages, Wither amplifier and seconds, blast power,
+inertias, kill heal and blast resistance cap; the wither rose's contact
+ticks; every head's item (rarity, `loweredMobVisibility`, head equipping),
+floor and wall block strength and note block instrument; the Nether
+star's rarity, glint and `damage_resistant`; `BeaconBlockEntity`'s power
+tiers, constants, update cadence and `applyEffects` numbers and
+`BeaconMenu`'s payment slot; the loot tables of the Wither, wither
+skeleton, charged creeper, heads, beacon and rose; the `beacon` and
+`creeper_banner_pattern` recipes; and the tags `beacon_base_blocks`,
+`beacon_payment_items`, `wither_summon_base_blocks`, `wither_immune`,
+`supports_wither_rose`, `supports_vegetation`, `noteblock_top_instruments`,
+`skulls`, `undead`, `wither_friends` and `wither_immune_to`. Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_wither_beacon_fixtures.py /path/to/server.jar --output target/java-wither-beacon.json
+diff tests/fixtures/java/26.3/wither_beacon.json target/java-wither-beacon.json
+scripts/remote-check.sh -- 'cargo test --release --test java_wither_beacon'
+```
+
+`tests/java_wither_beacon.rs` checks the game's numbers, items, blocks,
+loot and tags against it ([record](../../../../docs/verification/2026-11-20-v0.16-wither-beacons.md)).

@@ -45,6 +45,9 @@ impl Entities {
                 .map(|t| json!({"at": pair(t.pos, t.previous_pos), "fuse": t.fuse})).collect::<Vec<_>>(),
             "lightning": self.lightning.iter().filter(|b| near(b.pos)).take(MAX).map(|b| json!([b.pos.to_array(),b.seed,b.life])).collect::<Vec<_>>(),
             "fight": self.fight.as_ref().map(|f| f.replica_json()),
+            // v0.16 Track C: the Wither's skulls.
+            "wither_skulls": self.wither_skulls.iter().filter(|k| near(k.pos)).take(MAX)
+                .map(|k| json!({"at": pair(k.pos, k.previous_pos), "dangerous": k.dangerous})).collect::<Vec<_>>(),
         })
     }
 
@@ -117,6 +120,13 @@ impl Entities {
             })
             .collect();
         self.eyes = list("eyes").into_iter().filter_map(unpair).map(|(p, q)| EnderEye::replica(p, q)).collect();
+        self.wither_skulls = list("wither_skulls")
+            .into_iter()
+            .filter_map(|e| {
+                let (p, q) = unpair(&e["at"])?;
+                Some(super::wither::Skull::replica(p, q, e["dangerous"] == true))
+            })
+            .collect();
         self.fireballs = list("fireballs")
             .into_iter()
             .filter_map(|e| {

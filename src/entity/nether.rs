@@ -1386,7 +1386,12 @@ fn sense<W: MobWorld + ?Sized>(
             .filter(|t| {
                 t.targetable
                     && (brute || !t.gold_armor)
-                    && t.pos.distance_squared(pos) <= t.detection_range(ANGER_RANGE).powi(2)
+                    && t.pos.distance_squared(pos)
+                        <= t.detection_range_for(
+                            ANGER_RANGE,
+                            if brute { MobKind::PiglinBrute } else { MobKind::Piglin },
+                        )
+                        .powi(2)
                     && super::mob::line_of_sight(world, eye, t.pos + DVec3::Y * 1.5)
             })
             .min_by(|a, b| a.pos.distance_squared(pos).total_cmp(&b.pos.distance_squared(pos)));
@@ -1668,6 +1673,10 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if let Some(s) = &m.happy_ghast {
         v["happy_ghast"] = s.save();
     }
+    // v0.16 Track C: `WitherBoss.addAdditionalSaveData` (`Invul`).
+    if let Some(s) = &m.wither {
+        v["wither"] = s.save();
+    }
     if let Some(s) = &m.nautilus {
         v["nautilus"] = s.save();
     }
@@ -1799,6 +1808,9 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     m.can_pick_up_loot = v["can_pick_up_loot"] == true || kind == MobKind::Pillager;
     if let Some(s) = &mut m.happy_ghast {
         **s = super::happy_ghast::State::load(&v["happy_ghast"]);
+    }
+    if let Some(s) = &mut m.wither {
+        **s = super::wither::State::load(&v["wither"]);
     }
     if let Some(s) = &mut m.nautilus {
         **s = super::nautilus::State::load(&v["nautilus"]);

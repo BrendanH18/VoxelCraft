@@ -915,6 +915,7 @@ impl Game {
             Container::Stonecutter(p) => near(p, |b| b.base() == Block::STONECUTTER),
             Container::Loom(p) => near(p, |b| b.base() == Block::LOOM),
             Container::Cartography(p) => near(p, |b| b.base() == Block::CARTOGRAPHY_TABLE),
+            Container::Beacon(p) => near(p, |b| b == crate::world::beacon::BEACON),
             Container::Trading(id) => self.mobs.entities.merchant_in_reach(id, eye, session.entity_screen_range()),
             Container::Minecart(id) => self.mobs.entities.vehicle_in_reach(id, eye, session.entity_screen_range()),
         }
@@ -941,8 +942,13 @@ impl Game {
             if quick { s.quick_move(slot) } else { s.click_slot(slot, right) }
         });
         peer.body.container = container;
-        for super::screen::Request::Popup(text) in done.map(|(_, r)| r).unwrap_or_default() {
-            let _ = peer.connection.send(Packet::Chat(text));
+        for request in done.map(|(_, r)| r).unwrap_or_default() {
+            match request {
+                super::screen::Request::Popup(text) => {
+                    let _ = peer.connection.send(Packet::Chat(text));
+                }
+                super::screen::Request::Close => self.peer_close(peer),
+            }
         }
     }
     pub(super) fn drive_lan(&mut self, dt: f64) {
@@ -1121,6 +1127,12 @@ impl Game {
                         Some(b) if b.base() == Block::CARTOGRAPHY_TABLE => {
                             self.peer_open(peer, Container::Cartography(p));
                         }
+                        Some(crate::world::beacon::BEACON) => {
+                            self.peer_open(peer, Container::Beacon(p));
+                            if let Some(bot) = self.agents.players.get_mut(&name) {
+                                super::beacon::init_choice(&mut bot.agent.session, &self.world, p);
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -1295,6 +1307,12 @@ impl Game {
                     let s = &bot.agent.session;
                     let input = s.work_input.map(|i| i.0);
                     json!({"kind":kind,"pos":p.to_array(),"work":work,"choice":s.work_choice,"input":input})
+                }
+                // v0.16 Track C: the beacon's payment, chosen powers and levels.
+                Container::Beacon(p) => {
+                    let levels = self.world.beacon(p).map_or(0, |b| b.levels);
+                    json!({"kind":"beacon","pos":p.to_array(),"work":work,"choice":bot.agent.session.work_choice,
+                        "levels":levels})
                 }
                 Container::Trading(id) => match self.mobs.entities.merchant(id) {
                     Some(m) => json!({"kind":"trading","uid":m.uid,"trade":m.trade_view()}),
@@ -1546,6 +1564,8 @@ impl Game {
             self.lan.predictions.push_back((input, use_state));
         }
         if self.lan.ready {
+            // v0.16 Track C: beacon beams from the replicated blocks.
+            self.world.tick_beacon_replicas();
             self.tick_particles();
             // The client doesn't track portal time; nausea comes from the host.
             let nausea =
@@ -1769,6 +1789,10 @@ impl Game {
                 Some(id) => Container::Minecart(id),
                 None => Container::Inventory,
             },
+            (Some("beacon"), Some(p)) => {
+                self.session.work_choice = c["choice"].as_u64().and_then(|v| u16::try_from(v).ok());
+                Container::Beacon(p)
+            }
             (Some("crafting"), _) => Container::CraftingTable,
             _ => Container::Inventory,
         };
@@ -2015,6 +2039,11 @@ pub(super) fn encode_slot(slot: SlotRef) -> Option<u16> {
         SlotRef::MapResult => 558,
         SlotRef::CutRecipe(i) if i < 100 => 600 + i as u16,
         SlotRef::LoomChoice(i) if i < 100 => 700 + i as u16,
+        // v0.16 Track C: the beacon's payment slot and buttons.
+        SlotRef::BeaconPayment => 560,
+        SlotRef::BeaconPower(i) if i < 7 => 561 + u16::from(i),
+        SlotRef::BeaconDone => 568,
+        SlotRef::BeaconCancel => 569,
         SlotRef::Palette(item) => 1000 + crate::item::Item::creative_palette().position(|i| i == item)? as u16,
         _ => return None,
     })
@@ -2065,6 +2094,12 @@ fn decode_slot(slot: u16, container: Container, mode: GameMode, grid_size: usize
             556 => SlotRef::MapInput,
             557 => SlotRef::MapExtra,
             _ => SlotRef::MapResult,
+        }),
+        560..=569 if matches!(container, Container::Beacon(_)) => Some(match slot {
+            560 => SlotRef::BeaconPayment,
+            568 => SlotRef::BeaconDone,
+            569 => SlotRef::BeaconCancel,
+            i => SlotRef::BeaconPower((i - 561) as u8),
         }),
         300..=302 if matches!(container, Container::Furnace(_)) => Some(match slot {
             300 => SlotRef::FurnaceInput,
