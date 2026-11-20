@@ -1429,7 +1429,7 @@ Integration placed what the tracks left to it: End ships hang an item
 frame with Track B's elytra and carry Track C's dragon wall head on the
 bow, so both are obtainable in survival, and Track B's shulker box recipe
 and creeper star shape resolve now that Track A's shell and Track C's heads
-exist.
+exist ([integration](verification/2026-11-20-v0.16-wave-1-integration.md)).
 
 Wave 2 (after wave 1 is integrated). *Not started:* the owner asked on
 2026-11-20 for this push to build wave 1 only. Tracks E, F and G stay in
