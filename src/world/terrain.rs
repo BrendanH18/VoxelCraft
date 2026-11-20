@@ -344,7 +344,7 @@ impl Generator {
             generation,
             nether: (dimension == Dimension::Nether)
                 .then(|| super::nether::NetherGen::with_generation(seed, generation)),
-            end: (dimension == Dimension::End).then(|| super::end::EndGen::new(seed)),
+            end: (dimension == Dimension::End).then(|| super::end::EndGen::with_generation(seed, generation)),
             strongholds: super::stronghold::Strongholds::new(seed),
             dungeons: super::dungeon::Dungeons::new(seed),
             geodes: super::geode::Geodes::new(seed),
@@ -776,6 +776,8 @@ impl Generator {
                 features.extend(self.temples.features(self, cpos));
                 features
             }
+            // v0.16 Track A: generation 5's End city chests.
+            (None, Dimension::End) => self.end.as_ref().map_or(Vec::new(), |e| e.structure_features(cpos)),
             _ => Vec::new(),
         };
         if self.generation >= Generation::V3 {

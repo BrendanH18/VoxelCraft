@@ -144,6 +144,8 @@ pub fn smelt(item: Item) -> Option<Item> {
     }
     Some(match item {
         i if i == b(super::creaking::RESIN_CLUMP) => Item::RESIN_BRICK,
+        // `smelting/popped_chorus_fruit` (smelting only).
+        crate::content::chorus::CHORUS_FRUIT => crate::content::chorus::POPPED_CHORUS_FRUIT,
         i if ore_of(i) == Some(Block::IRON_ORE) || i == Item::RAW_IRON => Item::IRON_INGOT,
         i if ore_of(i) == Some(Block::GOLD_ORE) || i == Item::RAW_GOLD => Item::GOLD_INGOT,
         i if ore_of(i) == Some(Block::COPPER_ORE) || i == Item::RAW_COPPER => Item::COPPER_INGOT,

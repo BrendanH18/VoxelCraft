@@ -1509,6 +1509,26 @@ impl Game {
                 (1.8, 2.0),
             );
         }
+        // v0.16 Track A: level events 1033 and 1034 (`CHORUS_FLOWER_GROW`
+        // and `CHORUS_FLOWER_DEATH`, `BLOCKS`), with the nearest shared sounds.
+        for event in std::mem::take(&mut self.world.chorus_events) {
+            use crate::world::end_blocks::ChorusEvent;
+            let (cell, sound) = match event {
+                ChorusEvent::Grew(cell) => {
+                    (cell, crate::audio::sounds::Sound::Place(crate::audio::sounds::Material::Wood))
+                }
+                ChorusEvent::Died(cell) => {
+                    (cell, crate::audio::sounds::Sound::Break(crate::audio::sounds::Material::Wood))
+                }
+            };
+            self.audio.play_in(
+                crate::audio::SoundSource::Blocks,
+                sound,
+                Some(cell.as_dvec3() + glam::DVec3::splat(0.5)),
+                1.0,
+                (0.8, 1.0),
+            );
+        }
         for (pos, sound) in std::mem::take(&mut self.world.trip_sounds) {
             // The existing click, at Java's volume 0.4 and the hook's pitch.
             self.audio.play_in(

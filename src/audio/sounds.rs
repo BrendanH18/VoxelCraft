@@ -67,6 +67,8 @@ pub fn material(block: Block) -> Material {
     }
     match block.base() {
         Block::HONEY_BLOCK => Material::Honey,
+        // `SoundType.WOOD` for End rods and chorus (purpur is `STONE`).
+        b if crate::world::end_blocks::is_end_rod(b) || crate::world::end_blocks::is_chorus(b) => Material::Wood,
         b if crate::world::creaking::heart(b).is_some() => Material::Wood,
         // `SoundType.WOOD` for the jukebox; reinforced deepslate falls through to stone.
         b if crate::world::jukebox::is_jukebox(b) => Material::Wood,

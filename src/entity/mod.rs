@@ -74,6 +74,7 @@ mod projectile;
 pub mod raid;
 mod replica;
 pub mod sculk_events;
+pub mod shulker;
 mod slime;
 pub mod sniffer;
 mod spawn_lists;
@@ -184,6 +185,8 @@ pub enum MobSound {
     Flight(crate::content::fireworks::Cue),
     /// v0.16 Track C: the Wither's spawn, shots and block breaking.
     Wither(wither::Cue),
+    /// v0.16 Track A: a shulker's lid, shot and teleport, and its bullets.
+    Shulker(shulker::Cue),
 }
 
 /// Something an entity did that the game needs to react to.
@@ -659,6 +662,11 @@ pub trait MobWorld: BlockSource {
     fn structures_near(&self, _p: IVec3, _r: i32) -> Vec<std::sync::Arc<crate::world::temples::Built>> {
         Vec::new()
     }
+    /// v0.16 Track A: the shulker cells (`Sentry` markers) of End cities
+    /// within `r` blocks of `p`.
+    fn end_city_sentries(&self, _p: IVec3, _r: i32) -> Vec<IVec3> {
+        Vec::new()
+    }
     /// `findNearestMapStructure(DOLPHIN_LOCATED, p, 50, false)`: the nearest
     /// ocean ruin or shipwreck a fed dolphin leads to.
     fn dolphin_treasure(&self, _p: IVec3) -> Option<IVec3> {
@@ -761,6 +769,14 @@ impl MobWorld for World {
     }
     fn structures_near(&self, p: IVec3, r: i32) -> Vec<std::sync::Arc<crate::world::temples::Built>> {
         self.generator.temples.near(&self.generator, p, r)
+    }
+    fn end_city_sentries(&self, p: IVec3, r: i32) -> Vec<IVec3> {
+        let Some(end) = self.generator.end() else { return Vec::new() };
+        let (lo, hi) = (glam::IVec2::new(p.x - r, p.z - r), glam::IVec2::new(p.x + r, p.z + r));
+        end.cities_near(lo, hi)
+            .iter()
+            .flat_map(|c| c.sentries.iter().copied().filter(|s| (*s - p).abs().max_element() <= r).collect::<Vec<_>>())
+            .collect()
     }
     fn dolphin_treasure(&self, p: IVec3) -> Option<IVec3> {
         use crate::world::temples::Kind;
@@ -1033,6 +1049,10 @@ pub struct Entities {
     pub wither_skulls: Vec<wither::Skull>,
     /// v0.16 Track C: charged creeper blasts about to go off (never saved).
     pub(crate) charged_blasts: Vec<DVec3>,
+    /// v0.16 Track A: shulker bullets (not saved; see `shulker`).
+    pub shulker_bullets: Vec<shulker::Bullet>,
+    /// Seconds until End city sentries are checked again.
+    end_city_timer: f32,
     /// Ominous item spawners over trial chamber fights (see [`trial`]).
     pub item_spawners: Vec<trial::ItemSpawner>,
     pub puffs: Vec<Puff>,
@@ -1171,6 +1191,8 @@ impl Entities {
             firework_twinkles: Vec::new(),
             wither_skulls: Vec::new(),
             charged_blasts: Vec::new(),
+            shulker_bullets: Vec::new(),
+            end_city_timer: 0.0,
             item_spawners: Vec::new(),
             puffs: Vec::new(),
             lightning: Vec::new(),
@@ -1669,6 +1691,14 @@ impl Entities {
             }
             drops.push((crate::world::trial::BREEZE_ROD, n.min(64) as u8));
         }
+        // v0.16 Track A: `entities/shulker`: a shell with chance 0.5, or
+        // 0.5625 + 0.0625 per Looting level above I.
+        if kind == MobKind::Shulker {
+            let chance = if looting == 0 { 0.5 } else { 0.5625 + 0.0625 * f32::from(looting - 1) };
+            if self.rng.next_f32() < chance {
+                drops.push((crate::content::chorus::SHULKER_SHELL, 1));
+            }
+        }
         // `entities/nautilus`: `random_chance_with_enchanted_bonus`, 0.05
         // unenchanted, 0.06 + 0.01 per Looting level above I.
         if kind == MobKind::Nautilus && player_kill {
@@ -2036,6 +2066,7 @@ impl Entities {
         model::build_eyes(&self.eyes, camera, time, alpha, &mut self.mesh);
         model::build_fireballs(&self.fireballs, camera, time, alpha, &mut self.mesh);
         model::build_wither_skulls(&self.wither_skulls, camera, time, alpha, &mut self.mesh);
+        model::build_shulker_bullets(&self.shulker_bullets, camera, time, alpha, &mut self.mesh);
         model::build_lightning(&self.lightning, camera, &mut self.mesh);
         model::build_puffs(&self.puffs, camera, alpha, &mut self.mesh);
         model::build_orbs(&self.orbs, camera, max_dist, time, alpha, &mut self.mesh);

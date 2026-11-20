@@ -381,8 +381,12 @@ pub mod tex {
         ];
         // v0.15 Track D's frosted ice (layers 4000..4004) and Track F's
         // explorer maps (4056..4066) set the count.
-        const ENDS2: [u32; 2] =
-            [super::super::frosted_ice::TEX_END as u32, super::super::explorer_maps::TEX_END as u32];
+        const ENDS2: [u32; 3] = [
+            super::super::frosted_ice::TEX_END as u32,
+            super::super::explorer_maps::TEX_END as u32,
+            // v0.16 Track A (layers 529..541).
+            super::super::end_blocks::TEX_END as u32,
+        ];
         let mut max = 0;
         let mut i = 0;
         while i < ENDS.len() {
@@ -948,6 +952,17 @@ impl Block {
 
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
+        // v0.16 Track A: End rods and chorus are custom; purpur stairs and
+        // slabs are the shared shapes.
+        if super::end_blocks::owns(self.0) {
+            return if super::end_blocks::owns_shape(self.0) {
+                super::slab_stair_states::shaped(self.0)
+            } else if super::end_blocks::is_end_rod(self) || super::end_blocks::is_chorus(self) {
+                Some(Shaped::Custom)
+            } else {
+                None
+            };
+        }
         if super::sniffer_egg::owns(self.0)
             || super::heavy_core::owns(self.0)
             || super::dried_ghast::owns(self.0)
@@ -1322,6 +1337,9 @@ impl Block {
         if let Some(b) = super::trial::base(self) {
             return b;
         }
+        if let Some(b) = super::end_blocks::base(self) {
+            return b;
+        }
         if super::sniffer_egg::owns(self.0) {
             return super::sniffer_egg::EGG;
         }
@@ -1447,7 +1465,10 @@ impl Block {
         if let Some((nest, _, honey)) = super::bees::hive(self) {
             return super::bees::block(nest, facing, honey);
         }
-        if super::scaffolding::is_scaffolding(self) || super::stone_blocks::is_pillar(self) {
+        if super::scaffolding::is_scaffolding(self)
+            || super::stone_blocks::is_pillar(self)
+            || (super::end_blocks::owns(self.0) && !super::end_blocks::owns_shape(self.0))
+        {
             return self;
         }
         if let Some(b) = super::copper::with_facing(self, facing) {
@@ -1682,6 +1703,9 @@ impl Block {
         if let Some(drop) = super::jukebox::drop(self) {
             return drop;
         }
+        if let Some(drop) = super::end_blocks::drop(self) {
+            return drop;
+        }
         // `blocks/trial_spawner` and `blocks/vault` are empty tables.
         if super::trial::owns(self.0) {
             return None;
@@ -1863,6 +1887,9 @@ impl Block {
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
     pub fn hardness(self) -> f32 {
         if let Some(h) = super::jukebox::hardness(self) {
+            return h;
+        }
+        if let Some(h) = super::end_blocks::hardness(self) {
             return h;
         }
         // `strength(50.0F)` for both the trial spawner and the vault.
@@ -2128,6 +2155,9 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
+        if let Some(tool) = super::end_blocks::best_tool(self) {
+            return tool;
+        }
         if super::jukebox::is_jukebox(self) {
             return Some(ToolKind::Axe);
         }
@@ -2330,6 +2360,9 @@ impl Block {
         if super::jukebox::owns(self.0) {
             return None;
         }
+        if let Some(level) = super::end_blocks::harvest_level(self) {
+            return level;
+        }
         if super::creaking::owns(self.0)
             && super::creaking::heart(self).is_none()
             && self != super::creaking::RESIN_BLOCK
@@ -2514,6 +2547,7 @@ impl Block {
             .chain(super::trial::palette_ids())
             // v0.16 Track B: the seventeen shulker boxes.
             .chain((0..super::shulker_box::COLOURS).map(|c| super::shulker_box::FIRST + c * 6))
+            .chain(super::end_blocks::palette_ids())
             .map(Block)
     }
 
@@ -2712,7 +2746,11 @@ impl Block {
         (0..STATE_CAPACITY as u16)
             .map(Block)
             .find(|b| b.kind() != RenderKind::Invisible && b.name() == name)
-            .map(|b| if super::copper_golem_statue::owns(b.0) { b.base() } else { b })
+            .map(
+                |b| {
+                    if super::copper_golem_statue::owns(b.0) || super::end_blocks::is_end_rod(b) { b.base() } else { b }
+                },
+            )
             .or((name == "air").then_some(Block::AIR))
     }
 
@@ -3179,6 +3217,7 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         super::skulls::FIRST..=super::skulls::LAST => super::skulls::registry(id),
         12724..=12725 => super::wither_rose::registry(id),
         12726 => super::beacon::registry(),
+        super::end_blocks::FIRST..=super::end_blocks::LAST => super::end_blocks::registry(id),
         super::jukebox::FIRST..=super::jukebox::LAST => super::jukebox::registry(id),
         super::archaeology::FIRST..=super::archaeology::LAST => super::archaeology::registry(id),
         super::copper::FIRST..=super::copper::RESERVED_LAST
@@ -3633,6 +3672,7 @@ const fn emission_of(i: usize) -> u8 {
         match i {
             _ if super::frog_blocks::owns(i as u16) => super::frog_blocks::emission(i as u16),
             _ if super::trial::owns(i as u16) => super::trial::emission(i as u16),
+            _ if super::end_blocks::owns(i as u16) => super::end_blocks::emission(i as u16),
             12726 => 15,                                            // beacon
             22 | 37..=41 | 165..=180 | 208 | 210 => 15,             // glowstone, lava, fire, portals
             36 => 14,                                               // torch
@@ -3798,6 +3838,10 @@ mod tests {
             }
             if let Some((_, state, _)) = super::super::trial::vault(block) {
                 return state.light();
+            }
+            // `Blocks.END_ROD`: `lightLevel(14)`.
+            if super::super::end_blocks::is_end_rod(block) {
+                return 14;
             }
             // Checked against Java in `cave_blocks::tests`.
             if super::super::cave_blocks::owns(block.0) {

@@ -201,7 +201,6 @@ fn loot_tables_carry_the_new_items() {
     // Not data-driven here: implemented in code and checked below, or owned elsewhere.
     let elsewhere = BTreeMap::from([
         ("archaeology/trail_ruins_rare", "trail ruin suspicious gravel has no loot yet (archaeology gap)"),
-        ("chests/end_city_treasure", "end cities' chests are not generated yet (v0.16 End content)"),
         ("entities/elder_guardian", "coded in Entities::drop_loot_with_fire"),
         ("gameplay/chicken_lay", "coded as FarmVariant::egg"),
         ("gameplay/piglin_bartering", "coded as entity::nether::BARTERING"),

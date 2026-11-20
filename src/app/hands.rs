@@ -316,6 +316,21 @@ impl Actor<'_> {
             }
         }
         if let Some(consumed) = step.completed {
+            // v0.16 Track A: chorus fruit teleports (`CHORUS_FRUIT_TELEPORT`, `PLAYERS`).
+            if consumed.item == voxelcraft::content::chorus::CHORUS_FRUIT
+                && let Some(from) = self.session.chorus_teleport(self.world, self.entities)
+            {
+                let to = self.session.player.pos;
+                for at in [from, to] {
+                    self.audio.play_in(
+                        crate::audio::SoundSource::Players,
+                        Sound::Teleport,
+                        Some(at + DVec3::Y),
+                        1.0,
+                        (0.9, 1.1),
+                    );
+                }
+            }
             self.requests.push(Request::MagicDamage(consumed.magic_damage));
         }
     }

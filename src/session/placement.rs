@@ -309,6 +309,8 @@ impl PlayerSession {
                         mounted.ok_or("block cannot survive here")?
                     } else {
                         let raw = crate::world::creaking::placed(raw, normal);
+                        // v0.16 Track A: purpur pillar axes and End rod facings.
+                        let raw = crate::world::end_blocks::placed(raw, normal, world.get_block(hit));
                         let raw = crate::world::frog_blocks::placed(raw, normal);
                         let block = ob::placed(raw, normal).unwrap_or(raw);
                         let block = crate::world::village_blocks::placed(
@@ -358,7 +360,8 @@ impl PlayerSession {
                     }
                     let below = world.get_block(at - IVec3::Y);
                     let support = world
-                        .overworld_placement_ok(at, block)
+                        .chorus_placement_ok(at, block)
+                        .or_else(|| world.overworld_placement_ok(at, block))
                         .unwrap_or_else(|| below.is_some_and(|b| block.can_stay_on(b)))
                         && (block != Block::SUGAR_CANE || below == Some(Block::SUGAR_CANE) || world.cane_has_water(at))
                         && (!block.is_mushroom() || world.mushroom_survives(at));

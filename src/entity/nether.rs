@@ -1666,6 +1666,9 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if let Some(s) = &m.endermite {
         s.save_into(&mut v);
     }
+    if let Some(s) = &m.shulker {
+        v["shulker"] = s.save();
+    }
     if let Some(s) = &m.illager {
         v["illager"] = s.save();
     }
@@ -1798,6 +1801,9 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     }
     if let Some(s) = &mut m.endermite {
         s.load(v);
+    }
+    if let Some(s) = &mut m.shulker {
+        **s = super::shulker::State::load(&v["shulker"]);
     }
     // v0.15 Track E: a raid witch keeps its raider state.
     if kind == MobKind::Witch && v["illager"].is_object() {

@@ -282,7 +282,13 @@ fn food_effects_chances_and_always_edible_foods_match_the_reference() {
         .collect();
     assert_eq!(
         registered,
-        vec![Item::ENCHANTED_GOLDEN_APPLE, Item::GOLDEN_APPLE, Item::HONEY_BOTTLE, Item::SUSPICIOUS_STEW]
+        vec![
+            voxelcraft::content::chorus::CHORUS_FRUIT,
+            Item::ENCHANTED_GOLDEN_APPLE,
+            Item::GOLDEN_APPLE,
+            Item::HONEY_BOTTLE,
+            Item::SUSPICIOUS_STEW
+        ]
     );
     assert!(registered.iter().all(|i| i.always_edible()));
     assert!(!Item::APPLE.always_edible());

@@ -708,6 +708,7 @@ mod mounts;
 mod new_mobs;
 mod passive;
 mod phantom;
+mod shulker;
 mod sniffer;
 mod warden;
 mod wither;
@@ -769,6 +770,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
         MobKind::Allay => allay::pose(m, time),
         MobKind::Breeze => breeze::pose(m, time),
         MobKind::Endermite => hostiles::endermite(time),
+        MobKind::Shulker => shulker::pose(m, time),
         MobKind::Tadpole => passive::tadpole(m, time),
         MobKind::Cow => parts![
             part(COW_BODY, [0.0; 3], Quat::IDENTITY),
@@ -1178,6 +1180,7 @@ pub fn build(
                 passive::colour(m, &mut cuboid);
                 copper_golem::colour(m, &mut cuboid);
                 new_mobs::colour(m, &mut cuboid);
+                shulker::colour(m, &mut cuboid);
                 if m.kind == MobKind::GlowSquid && c.color == [49, 71, 80] {
                     cuboid.color = [44, 161, 151];
                 }
@@ -1484,6 +1487,8 @@ pub fn build_eyes(eyes: &[super::eye::EnderEye], camera: DVec3, time: f32, alpha
 }
 
 /// Blaze fireballs: a glowing orange cube around a yellow core, tumbling.
+pub use shulker::build_shulker_bullets;
+
 pub fn build_fireballs(
     fireballs: &[super::fireball::Fireball],
     camera: DVec3,

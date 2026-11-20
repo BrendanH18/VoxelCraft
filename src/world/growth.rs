@@ -43,6 +43,7 @@ enum RandomRule {
     Copper,
     Statue,
     DriedGhast,
+    ChorusFlower,
     Mushroom,
     NetherFlora,
     Flora,
@@ -77,6 +78,10 @@ fn growth_rule(b: Block) -> RandomRule {
         b if super::copper::ages(b) => RandomRule::Copper,
         b if super::copper_golem_statue::ages(b) => RandomRule::Statue,
         b if super::dried_ghast::owns(b.0) => RandomRule::DriedGhast,
+        // `ChorusFlowerBlock.isRandomlyTicking`: below the dead age.
+        b if super::end_blocks::flower_age(b).is_some_and(|a| a < super::end_blocks::DEAD_AGE) => {
+            RandomRule::ChorusFlower
+        }
         b if b.is_mushroom() => RandomRule::Mushroom,
         b if (1600..=1687).contains(&b.0) => RandomRule::NetherFlora,
         b if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&b.canonical().0)
@@ -236,6 +241,7 @@ impl World {
             double_slab_count(block) * super::colour_blocks::drop_count(block) * super::biome_plants::drop_count(block);
         out.extend(block.drop().map(|item| Stack::new(item, count)));
         out.extend(super::utilities::extra_drops(block));
+        self.chorus_plant_drops(block, &mut out);
         self.crop_drops(block, fortune, &mut out);
         if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&block.0)
             || super::overworld_blocks::snow_layers(block).is_some()
@@ -483,6 +489,7 @@ impl World {
             RandomRule::Copper => self.tick_copper(p, b),
             RandomRule::Statue => self.tick_copper_golem_statue(p, b),
             RandomRule::DriedGhast => self.dried_ghast_random_tick(p, b),
+            RandomRule::ChorusFlower => self.chorus_flower_random_tick(p),
             RandomRule::Mushroom => self.tick_mushroom(p, b),
             RandomRule::NetherFlora => self.tick_nether_flora(p, b),
             RandomRule::Flora => {

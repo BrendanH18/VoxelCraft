@@ -45,6 +45,8 @@ pub mod double_chest;
 pub mod dried_ghast;
 pub mod dungeon;
 pub mod end;
+pub mod end_blocks;
+pub mod end_city;
 pub mod end_portal;
 pub mod explorer_maps;
 pub mod explosion;
@@ -401,6 +403,8 @@ pub struct World {
     pub sniffer_egg_events: Vec<(IVec3, bool)>,
     /// Dried ghasts that hydrated or hatched; entities spawn and play them.
     pub dried_ghast_events: Vec<dried_ghast::Hydration>,
+    /// v0.16 Track A: chorus flowers that grew or died; the game plays them.
+    pub chorus_events: Vec<end_blocks::ChorusEvent>,
     /// Jukeboxes and their records (see [`jukebox`]).
     pub(crate) jukeboxes: jukebox::State,
     /// Banner patterns and lecterns (v0.15 Track B, see [`workstations`]).
@@ -695,6 +699,7 @@ impl World {
             hatched_tadpoles: Vec::new(),
             sniffer_egg_events: Vec::new(),
             dried_ghast_events: Vec::new(),
+            chorus_events: Vec::new(),
             jukeboxes: Default::default(),
             workstations: Default::default(),
             page_turns: Vec::new(),

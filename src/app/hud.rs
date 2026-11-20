@@ -296,10 +296,16 @@ impl Game {
                 // Java's item cooldown: a pale veil that drains downward.
                 let cooling = if stack.item == crate::world::trial::WIND_CHARGE {
                     hud.vitals.wind_charge_cooldown / (voxelcraft::entity::wind::COOLDOWN_TICKS as f32 * 0.05)
+                } else if stack.item == voxelcraft::content::chorus::CHORUS_FRUIT {
+                    hud.vitals.chorus_cooldown / voxelcraft::content::chorus::COOLDOWN
                 } else {
                     hud.vitals.pearl_cooldown / crate::entity::pearl::COOLDOWN
                 };
-                if matches!(stack.item, Item::ENDER_PEARL | crate::world::trial::WIND_CHARGE) && cooling > 0.0 {
+                if matches!(
+                    stack.item,
+                    Item::ENDER_PEARL | crate::world::trial::WIND_CHARGE | voxelcraft::content::chorus::CHORUS_FRUIT
+                ) && cooling > 0.0
+                {
                     let h = (16.0 * cooling).ceil();
                     ui.rect(sx + 2.0, y0 + 3.0 + 16.0 - h, 16.0, h, [1.0, 1.0, 1.0, 0.5]);
                 }

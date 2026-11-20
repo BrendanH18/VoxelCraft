@@ -31,6 +31,8 @@ TABLES = [
     "ancient_city",
     "ancient_city_ice_box",
     "woodland_mansion",
+    # v0.16 Track A: End cities and ships.
+    "end_city_treasure",
     "village/village_cartographer",
     *["village/village_" + s + "_house" for s in ["plains", "desert", "savanna", "taiga", "snowy"]],
     # v0.16 trial chambers (chests, dispensers, spawner drops, equipment).

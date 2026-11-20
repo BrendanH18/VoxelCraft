@@ -56,6 +56,9 @@ impl Mob {
         if let Some(s) = &self.warden {
             v["warden"] = s.look_state();
         }
+        if let Some(s) = &self.shulker {
+            v["shulker"] = s.look();
+        }
         if let Some(s) = &self.copper_golem {
             v["copper_golem"] = s.look();
         }
@@ -180,6 +183,9 @@ impl Mob {
         }
         if let Some(s) = &mut self.warden {
             s.apply_look(&v["warden"]);
+        }
+        if let Some(s) = &mut self.shulker {
+            s.apply_look(&v["shulker"]);
         }
         if let Some(s) = &mut self.copper_golem {
             s.load_look(&v["copper_golem"]);

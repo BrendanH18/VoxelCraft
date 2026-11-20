@@ -1090,7 +1090,7 @@ free. The wither skeleton skull keeps its pre-v0.16 item 641 as the block
 item of its floor state (`Item::from_block`/`Item::block`), so saved
 skulls stay skulls. Texture layers 669–710 (heads 669–705, the rose and
 its pot 706–707, the beacon's shell, core and beam 708–710); 711–748 stay
-unused. Appended orderings: `MobKind::Wither` (after `Parched`),
+unused. Appended orderings: `MobKind::Wither` (after `Parched`, LAN index 85),
 `audio::voices::Voice::Wither`, `Sound::Wither` and `Sound::Beacon`,
 `MobSound::Wither`, the mob-head `gadgets::Instrument`s (`Zombie` to
 `Piglin`, 16–21, outside `Instrument::ALL`), `Sprite::NetherStar` and its
@@ -1100,6 +1100,24 @@ numbers 560–569. Its new `EntityEvent`s (`WitherBlast`, `WitherBreak`,
 `WitherRose`, `ChargedBlast`), `Container::Beacon`, the beacon `SlotRef`s,
 the controller's `Tab::Beacon` and `screen::Request::Close` are not saved.
 See the [record](verification/2026-11-20-v0.16-wither-beacons.md).
+
+**Track A (outer End), allocated 2026-11-20.** Block states 12288–12389 of
+12288–12415 (`world::end_blocks`): 12288 purpur block, 12289–12291 purpur
+pillar (axis y, x, z), 12292–12371 purpur stairs (an appended
+`slab_stair_states` family, `PURPUR_FAMILY`, laid out like every v0.12
+family), 12372–12376 purpur slab, 12377–12382 End rod (`facing` in Java's
+`Direction` order), 12383 chorus plant (one state: the six connections are
+read from the neighbours), 12384–12389 chorus flower (age 0–5);
+12390–12415 stay unregistered. Items 1660–1662 of 1660–1674 (chorus fruit,
+popped chorus fruit, shulker shell; `content::chorus`); 1663–1674 stay
+unregistered. Texture layers 529–540 of 529–608 (nine block layers and three
+item icons); 541–608 stay unused. Appended orderings: `MobKind::Shulker`
+(LAN index 86 after the merge, behind Track C's `Wither` at 85; saved as `shulker`), `audio::voices::Voice::Shulker`,
+`entity::MobSound::Shulker`, `particles::Kind::EndRod`,
+`slab_stair_states::PURPUR_FAMILY` (after `RESIN_FAMILY`) and
+`temples::LootTable::EndCity` (`chests/end_city_treasure`). No effects,
+thrown kinds, property keys, `waterlog::RUNS` or `utilities::POTTED`
+entries were added.
 
 ## Assessment branch ID reservations
 

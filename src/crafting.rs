@@ -20,6 +20,7 @@ mod bundle;
 mod copper;
 mod creaking;
 mod crops;
+mod end;
 pub mod flight;
 mod harness;
 mod music;
@@ -718,6 +719,8 @@ pub fn recipes() -> &'static [Recipe] {
         workstations::add(&mut r);
         track_d::add(&mut r);
         flight::add(&mut r);
+        // v0.16 Track A: purpur and End rods.
+        end::add(&mut r);
         // v0.15 Track C: `recipe/dried_ghast.json`, eight ghast tears around soul sand.
         r.push(shaped(
             &["###", "#X#", "###"],

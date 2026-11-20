@@ -122,6 +122,18 @@ impl System {
             let flame = if block == SOUL_TORCH { Kind::SoulFlame } else { Kind::Flame };
             self.burst(Burst::new(Kind::Smoke, pos, 1), setting);
             self.burst(Burst::new(flame, pos, 1), setting);
+        } else if let Some(d) = crate::world::end_blocks::rod_facing(block) {
+            // `EndRodBlock.animateTick`.
+            let rng = &mut self.rng;
+            let x = base.x + 0.55 - f64::from(rng.next_f32()) * 0.1;
+            let y = base.y + 0.55 - f64::from(rng.next_f32()) * 0.1;
+            let z = base.z + 0.55 - f64::from(rng.next_f32()) * 0.1;
+            let r = 0.4 - f64::from(rng.next_f32() + rng.next_f32()) * 0.4;
+            if rng.next_int(5) == 0 {
+                let mut b = Burst::new(Kind::EndRod, DVec3::new(x, y, z) + d.offset().as_dvec3() * r, 1);
+                b.velocity_spread = DVec3::splat(0.005);
+                self.burst(b, setting);
+            }
         } else if crate::world::colour_blocks::candle::is_lit(block) {
             self.candle_flames(block, base, setting);
         } else if block.is_fire() {

@@ -150,6 +150,7 @@ impl World {
         self.update_sniffer_plants(p);
         self.update_utilities(p);
         self.update_multiface(p);
+        self.update_chorus(p);
         loop {
             self.wake_fluids(p);
             let Some(b) = self.get_block(p) else { return };

@@ -75,6 +75,8 @@ pub enum Voice {
     Parched,
     /// v0.16 Track C: `entity.wither.*`.
     Wither,
+    /// v0.16 Track A: `entity.shulker.*`.
+    Shulker,
 }
 
 /// What kind of sound a voice makes.
@@ -141,6 +143,7 @@ impl Voice {
         Voice::CamelHusk,
         Voice::Parched,
         Voice::Wither,
+        Voice::Shulker,
     ];
 
     /// The category the creature plays in: `Monster`, `Ghast`, `Hoglin` and
@@ -158,6 +161,7 @@ impl Voice {
             | Voice::Illusioner
             | Voice::Parched
             | Voice::Wither
+            | Voice::Shulker
             | Voice::Zombie
             | Voice::Skeleton
             | Voice::Creeper
@@ -232,6 +236,7 @@ impl Voice {
             Voice::CamelHusk => "camel_husk",
             Voice::Parched => "parched",
             Voice::Wither => "wither",
+            Voice::Shulker => "shulker",
             Voice::Cow => "cow",
             Voice::Sheep => "sheep",
             Voice::Chicken => "chicken",
@@ -373,6 +378,7 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::CamelHusk => camel_husk(call, rng),
         Voice::Parched => parched(call, rng),
         Voice::Wither => wither(call, rng),
+        Voice::Shulker => shulker(call, rng),
         Voice::Slime => slime(call, rng),
         Voice::Ghast => ghast(call, rng),
         Voice::Witch => witch(call, rng),
@@ -1038,6 +1044,21 @@ fn wither(call: Call, rng: &mut Rng) -> Vec<f32> {
     Biquad::bandpass(900.0, 0.8).run(&mut rattle);
     mix_into(&mut out, &rattle, 0.35, 0);
     dsp::finish(out, 0.6)
+}
+
+/// v0.16 Track A: a hollow knock inside a shell with a soft, wet chirp
+/// (original synthesized audio).
+fn shulker(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let secs = match call {
+        Call::Ambient => rng.range(0.3, 0.45),
+        Call::Hurt => 0.25,
+        Call::Death => 0.8,
+    };
+    let mut out = noise(rng, samples(secs), |t| swell(t, 0.01, secs * 0.3, secs) * 0.5);
+    Biquad::bandpass(if call == Call::Hurt { 1400.0 } else { 900.0 }, 3.0).run(&mut out);
+    let base = rng.range(170.0, 210.0) * if call == Call::Death { 0.7 } else { 1.0 };
+    add_mode(&mut out, 0, Mode { freq: base, amp: 0.7, tau: secs * 0.4, glide: 0.8, glide_tau: secs * 0.5 });
+    dsp::finish(out, 0.45)
 }
 
 fn slime(call: Call, rng: &mut Rng) -> Vec<f32> {
