@@ -1101,3 +1101,34 @@ constants, biome tag and room kinds against this file both ways, and
 `world::explorer_maps` the maps' names, sources, decorations and trade.
 The woodland mansion chest table itself is in `src/world/loot_tables.json`
 (added to `tools/extract_java_structure_loot.py`'s list).
+
+## Flight and storage (v0.16 Track B)
+
+`flight.json` holds the facts behind shulker boxes, elytra and fireworks:
+`FireworkRocketEntity`'s launch drift and speed, lifetime terms, free-flight
+acceleration, gliding boost and burst damage (read from its bytecode);
+`FireworkRocketItem`'s craftable durations, placement offset and dispenser
+shot; `CrossbowItem`'s powers and a rocket's durability use;
+`Fireworks.MAX_EXPLOSIONS` and the explosion shapes in id order; every
+dye's `fireworkColor` (`DyeColor`'s static initializer); the elytra's
+durability, rarity, slot and repair item (`Items`), and `LivingEntity`'s
+glide drag, wear interval and every constant of `updateFallFlyingMovement`
+and `handleFallFlyingCollisions`; `ShulkerBoxBlockEntity`'s size and lid
+constants, `Blocks.shulkerBoxProperties`' strength and push reaction; the
+seventeen boxes' loot tables; the firework and shulker box recipes; and the
+tags that name them. It then runs an independent model of the glide
+(`updateFallFlyingMovement` with `Entity.calculateViewVector` and the
+`Mth` sine table, in Java's float and double arithmetic) for forty ticks
+over five pitch, yaw and velocity cases, and of the rocket boost.
+
+```sh
+python3 tools/extract_java_flight_fixtures.py /path/to/server.jar target/java-flight.json
+diff tests/fixtures/java/26.3/flight.json target/java-flight.json
+scripts/remote-check.sh -- 'cargo test --release --test java_flight --test java_recipes'
+```
+
+`tests/java_flight.rs` compares the rocket, crossbow and dispenser numbers,
+the shapes and colours, the elytra's item rules, the glide and boost tick by
+tick (within 1e-9), the shulker boxes' constants, names, stack size, loot
+and tag order, and the recipes (the box recipe waits for v0.16 Track A's
+shulker shell and is checked once it is registered).

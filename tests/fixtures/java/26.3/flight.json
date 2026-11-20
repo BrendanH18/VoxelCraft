@@ -1,0 +1,1685 @@
+{
+ "boost_cases": [
+  {
+   "result": [
+    0.0,
+    -0.25,
+    1.1
+   ],
+   "start": [
+    0.0,
+    -0.5,
+    0.5
+   ],
+   "x_rot": 0.0,
+   "y_rot": 0.0
+  },
+  {
+   "result": [
+    0.7517001911997795,
+    0.5249764665961265,
+    -1.1917239516973495
+   ],
+   "start": [
+    1.0,
+    0.2,
+    -1.0
+   ],
+   "x_rot": -30.0,
+   "y_rot": 200.0
+  }
+ ],
+ "crossbow": {
+  "arrow_power": 3.15,
+  "firework_durability_use": 3,
+  "firework_power": 1.6
+ },
+ "elytra": {
+  "drag": [
+   0.99,
+   0.98
+  ],
+  "durability": 432,
+  "free_fall_events_per_break": 2,
+  "glide_constants": {
+   "climb": 3.2,
+   "convert": -0.1,
+   "degrees": 0.017453292,
+   "dive": 0.04,
+   "drag_h": 0.9900000095367432,
+   "drag_v": 0.9800000190734863,
+   "lift": 0.75,
+   "minus_one": -1.0,
+   "steer": 0.1
+  },
+  "rarity": "epic",
+  "repair": "phantom_membrane",
+  "slot": "chest",
+  "ticks_per_free_fall_event": 10,
+  "wall_damage": [
+   10.0,
+   3.0
+  ]
+ },
+ "firework_colors": {
+  "black": 1973019,
+  "blue": 2437522,
+  "brown": 5320730,
+  "cyan": 2651799,
+  "gray": 4408131,
+  "green": 3887386,
+  "light_blue": 6719955,
+  "light_gray": 11250603,
+  "lime": 4312372,
+  "magenta": 12801229,
+  "orange": 15435844,
+  "pink": 14188952,
+  "purple": 8073150,
+  "red": 11743532,
+  "white": 15790320,
+  "yellow": 14602026
+ },
+ "fireworks": {
+  "max_explosions": 256,
+  "shapes": [
+   "small_ball",
+   "large_ball",
+   "star",
+   "creeper",
+   "burst"
+  ]
+ },
+ "glide_cases": [
+  {
+   "gravity": 0.08,
+   "start": [
+    0.0,
+    0.0,
+    0.5
+   ],
+   "ticks": [
+    [
+     0.0,
+     -0.017640000343322755,
+     0.49678200478553775
+    ],
+    [
+     0.0,
+     -0.03319848094894409,
+     0.4951679135382615
+    ],
+    [
+     0.0,
+     -0.046921061110181135,
+     0.4949562238233796
+    ],
+    [
+     0.0,
+     -0.059024377047955906,
+     0.4959693329077721
+    ],
+    [
+     0.0,
+     -0.06969950191284045,
+     0.4980507163714266
+    ],
+    [
+     0.0,
+     -0.07911496222691929,
+     0.5010624396549178
+    ],
+    [
+     0.0,
+     -0.08741939838556391,
+     0.504882963256362
+    ],
+    [
+     0.0,
+     -0.09474391122004355,
+     0.50940520692709
+    ],
+    [
+     0.0,
+     -0.1012041316657882,
+     0.5145348423040771
+    ],
+    [
+     0.0,
+     -0.10690204620983201,
+     0.520188787023475
+    ],
+    [
+     0.0,
+     -0.11192760693548982,
+     0.5262938765403641
+    ],
+    [
+     0.0,
+     -0.1163601515817895,
+     0.5327856926852765
+    ],
+    [
+     0.0,
+     -0.12026965603591547,
+     0.5396075304624403
+    ],
+    [
+     0.0,
+     -0.12371783903156566,
+     0.5467094867771087
+    ],
+    [
+     0.0,
+     -0.12675913649292112,
+     0.5540476567042321
+    ],
+    [
+     0.0,
+     -0.12944156090604397,
+     0.5615834246084835
+    ],
+    [
+     0.0,
+     -0.1318074592844652,
+     0.5692828389230709
+    ],
+    [
+     0.0,
+     -0.13389418169484604,
+     0.5771160607154876
+    ],
+    [
+     0.0,
+     -0.13573467089662292,
+     0.5850568773332395
+    ],
+    [
+     0.0,
+     -0.1373579824041842,
+     0.5930822734500016
+    ],
+    [
+     0.0,
+     -0.13878974318171924,
+     0.6011720527388492
+    ],
+    [
+     0.0,
+     -0.14005255621208296,
+     0.6093085041984656
+    ],
+    [
+     0.0,
+     -0.14116635732654137,
+     0.6174761078631704
+    ],
+    [
+     0.0,
+     -0.14214872992861338,
+     0.6256612752493748
+    ],
+    [
+     0.0,
+     -0.1430151825805044,
+     0.6338521204394647
+    ],
+    [
+     0.0,
+     -0.14377939383434596,
+     0.6420382581877949
+    ],
+    [
+     0.0,
+     -0.14445342817335274,
+     0.6502106258600842
+    ],
+    [
+     0.0,
+     -0.1450479264719273,
+     0.6583613263937723
+    ],
+    [
+     0.0,
+     -0.1455722739814753,
+     0.6664834897987679
+    ],
+    [
+     0.0,
+     -0.14603474849389766,
+     0.6745711510107234
+    ],
+    [
+     0.0,
+     -0.1464426510217931,
+     0.682619142167143
+    ],
+    [
+     0.0,
+     -0.14680242105839897,
+     0.6906229976043357
+    ],
+    [
+     0.0,
+     -0.1471197382368612,
+     0.6985788700740574
+    ],
+    [
+     0.0,
+     -0.14739961199371202,
+     0.7064834568558285
+    ],
+    [
+     0.0,
+     -0.14764646065205878,
+     0.7143339345971413
+    ],
+    [
+     0.0,
+     -0.14786418117295808,
+     0.7221279018515797
+    ],
+    [
+     0.0,
+     -0.14805621067612865,
+     0.7298633284064017
+    ],
+    [
+     0.0,
+     -0.14822558070122152,
+     0.7375385105983436
+    ],
+    [
+     0.0,
+     -0.14837496506626086,
+     0.7451520319109436
+    ],
+    [
+     0.0,
+     -0.1485067220787899,
+     0.752702728230079
+    ]
+   ],
+   "x_rot": 0.0,
+   "y_rot": 0.0
+  },
+  {
+   "gravity": 0.08,
+   "start": [
+    0.2,
+    -0.3,
+    0.6
+   ],
+   "ticks": [
+    [
+     0.11809341663877296,
+     -0.3036775070109726,
+     0.5947008276771057
+    ],
+    [
+     0.04677104784546537,
+     -0.3070111671858492,
+     0.5883230262098592
+    ],
+    [
+     -0.015805256892586668,
+     -0.3100331301973129,
+     0.5816685717595809
+    ],
+    [
+     -0.07112277233550697,
+     -0.31277253972425806,
+     0.5753015221608849
+    ],
+    [
+     -0.1203859689962447,
+     -0.3152558145121528,
+     0.5696037732091088
+    ],
+    [
+     -0.16457221972177594,
+     -0.31750690315426255,
+     0.5648197928563294
+    ],
+    [
+     -0.204477031310487,
+     -0.3195475150508347,
+     0.5610920768555718
+    ],
+    [
+     -0.2407504593920566,
+     -0.3213973297736032,
+     0.5584888536211158
+    ],
+    [
+     -0.27392620531912004,
+     -0.3230741868547165,
+     0.5570254208136965
+    ],
+    [
+     -0.3044447344382948,
+     -0.32459425783040413,
+     0.5566803494475242
+    ],
+    [
+     -0.3326715795659452,
+     -0.3259722021985632,
+     0.557407627065877
+    ],
+    [
+     -0.3589118111159015,
+     -0.32722130879431444,
+     0.5591456392175536
+    ],
+    [
+     -0.3834214804376239,
+     -0.32835362394694556,
+     0.5618237225456824
+    ],
+    [
+     -0.40641668598322633,
+     -0.3293800676541833,
+     0.5653668738508493
+    ],
+    [
+     -0.42808077785431237,
+     -0.3303105388941731,
+     0.5696990725420608
+    ],
+    [
+     -0.44857010571289985,
+     -0.3311540110907908,
+     0.5747455696645746
+    ],
+    [
+     -0.46801862607915046,
+     -0.33191861865294914,
+     0.5804344133820506
+    ],
+    [
+     -0.4865416146680236,
+     -0.3326117354224811,
+     0.5866974154531531
+    ],
+    [
+     -0.504238674385845,
+     -0.3332400457871476,
+     0.5934707126955214
+    ],
+    [
+     -0.5211961868900543,
+     -0.33380960914458,
+     0.6006950387068658
+    ],
+    [
+     -0.5374893226036241,
+     -0.3343259183388457,
+     0.6083157916598408
+    ],
+    [
+     -0.5531836986232352,
+     -0.3347939526331951,
+     0.6162829617053428
+    ],
+    [
+     -0.5683367543499964,
+     -0.3352182257298592,
+     0.6245509647331043
+    ],
+    [
+     -0.5829988995547504,
+     -0.33560282929999524,
+     0.6330784166381483
+    ],
+    [
+     -0.5972144779204869,
+     -0.33595147244358475,
+     0.6418278728141049
+    ],
+    [
+     -0.6110225800765554,
+     -0.3362675174598309,
+     0.6507655505640291
+    ],
+    [
+     -0.624457733136047,
+     -0.3365540122730248,
+     0.6598610468956726
+    ],
+    [
+     -0.6375504882973297,
+     -0.3368137198265939,
+     0.669087060303358
+    ],
+    [
+     -0.6503279238134293,
+     -0.3370491447288076,
+     0.6784191222940068
+    ],
+    [
+     -0.6628140772941999,
+     -0.337262557407109,
+     0.6878353423347955
+    ],
+    [
+     -0.6750303186764649,
+     -0.33745601600401837,
+     0.6973161683915882
+    ],
+    [
+     -0.6869956731163516,
+     -0.33763138622576905,
+     0.7068441641455182
+    ],
+    [
+     -0.6987271014032861,
+     -0.33779035933509705,
+     0.7164038032105805
+    ],
+    [
+     -0.7102397441725068,
+     -0.3379344684617042,
+     0.725981280145686
+    ],
+    [
+     -0.7215471351301886,
+     -0.3380651033876943,
+     0.7355643376985926
+    ],
+    [
+     -0.7326613876466106,
+     -0.3381835239505706,
+     0.7451421094901511
+    ],
+    [
+     -0.743593358375154,
+     -0.3382908721930538,
+     0.7547049772107034
+    ],
+    [
+     -0.7543527909848861,
+     -0.3383881833768914,
+     0.7642444413303247
+    ],
+    [
+     -0.7649484426260655,
+     -0.3384763959668774,
+     0.7737530043015727
+    ],
+    [
+     -0.7753881953608128,
+     -0.3385563606813652,
+     0.7832240652431607
+    ]
+   ],
+   "x_rot": 30.0,
+   "y_rot": 45.0
+  },
+  {
+   "gravity": 0.08,
+   "start": [
+    0.8,
+    0.1,
+    -0.4
+   ],
+   "ticks": [
+    [
+     0.7800465066901561,
+     0.1098863415849449,
+     -0.3952219234368902
+    ],
+    [
+     0.7607664164010366,
+     0.11871832376634696,
+     -0.39009781379299485
+    ],
+    [
+     0.7421214382584591,
+     0.1265370642589726,
+     -0.38468565797183707
+    ],
+    [
+     0.7240763382187033,
+     0.13338222123878976,
+     -0.3790364775247435
+    ],
+    [
+     0.706598694230138,
+     0.13929207294154683,
+     -0.37319513888283995
+    ],
+    [
+     0.6896586641576339,
+     0.1443035877252953,
+     -0.3672010672349913
+    ],
+    [
+     0.6732287676397952,
+     0.14845248624874838,
+     -0.36108887603286405
+    ],
+    [
+     0.6572836824404794,
+     0.15177329710989665,
+     -0.35488892252063753
+    ],
+    [
+     0.641800055404485,
+     0.15429940703969627,
+     -0.3486277983281885
+    ],
+    [
+     0.6267563277984645,
+     0.15606310654298267,
+     -0.34232876299841963
+    ],
+    [
+     0.6121325745847893,
+     0.15709563171419114,
+     -0.3360121273130234
+    ],
+    [
+     0.5979103570166159,
+     0.15742720282180347,
+     -0.3296955924122336
+    ],
+    [
+     0.5840725878395852,
+     0.15708706014686374,
+     -0.3233945499527532
+    ],
+    [
+     0.5706034083258679,
+     0.15610349747269164,
+     -0.3171223478969835
+    ],
+    [
+     0.5574880763389292,
+     0.1545038935512343,
+     -0.31089052596152883
+    ],
+    [
+     0.5447128646240372,
+     0.1523147418132275,
+     -0.30470902426152013
+    ],
+    [
+     0.532264968533603,
+     0.14956167854195962,
+     -0.29858636825928386
+    ],
+    [
+     0.5201324224228111,
+     0.14626950969189842,
+     -0.29252983275250904
+    ],
+    [
+     0.5083040239857337,
+     0.1424622365020869,
+     -0.2865455873108743
+    ],
+    [
+     0.49676926584218956,
+     0.1381630800286941,
+     -0.28063882528472905
+    ],
+    [
+     0.4855182737287176,
+     0.13339450470031936,
+     -0.2748138782594327
+    ],
+    [
+     0.4745417506914535,
+     0.12817824098270816,
+     -0.2690743176096906
+    ],
+    [
+     0.46383092672316073,
+     0.12253530722572155,
+     -0.26342304461567034
+    ],
+    [
+     0.45337751333024395,
+     0.11648603075412156,
+     -0.25786237043341237
+    ],
+    [
+     0.4431736625576195,
+     0.11005006825451763,
+     -0.2523940870630814
+    ],
+    [
+     0.43321193003939384,
+     0.1032464255032772,
+     -0.247019530327386
+    ],
+    [
+     0.42348524168113255,
+     0.0960934764740225,
+     -0.24173963575680327
+    ],
+    [
+     0.4139868636149299,
+     0.08860898185826191,
+     -0.23655498817615844
+    ],
+    [
+     0.404710375101459,
+     0.08081010702853013,
+     -0.2314658656969589
+    ],
+    [
+     0.3956496440836925,
+     0.07271343946996925,
+     -0.2264722787402139
+    ],
+    [
+     0.3867988051250926,
+     0.06433500570343649,
+     -0.22157400464401977
+    ],
+    [
+     0.37815223949086224,
+     0.0556902877208624,
+     -0.21677061834785202
+    ],
+    [
+     0.36970455715444395,
+     0.0467942389516165,
+     -0.2120615195903113
+    ],
+    [
+     0.3614505805329664,
+     0.03766129977699221,
+     -0.20744595700818225
+    ],
+    [
+     0.3533853297749129,
+     0.028305412608540113,
+     -0.20292304948133227
+    ],
+    [
+     0.3455040094410508,
+     0.01874003654481011,
+     -0.1984918050295613
+    ],
+    [
+     0.3383660838994848,
+     0.009694562616302405,
+     -0.1944767895517454
+    ],
+    [
+     0.33200682716182867,
+     0.0012614952594575846,
+     -0.19089977730603416
+    ],
+    [
+     0.32636680404845264,
+     -0.006586089271685666,
+     -0.18772771248545841
+    ],
+    [
+     0.32138977940784347,
+     -0.01387516333566973,
+     -0.1849292497168289
+    ]
+   ],
+   "x_rot": -20.0,
+   "y_rot": -120.0
+  },
+  {
+   "gravity": 0.08,
+   "start": [
+    0.0,
+    -1.2,
+    0.3
+   ],
+   "ticks": [
+    [
+     -0.010053423016800895,
+     -1.20870752810019,
+     0.2103019601581896
+    ],
+    [
+     -0.017506363930028523,
+     -1.2170275713833878,
+     0.13891169458901256
+    ],
+    [
+     -0.022966238209938587,
+     -1.2249773729157853,
+     0.08199694297098903
+    ],
+    [
+     -0.026918387768008305,
+     -1.2325734084474924,
+     0.03645989040945774
+    ],
+    [
+     -0.029784173480958912,
+     -1.2398314205580858,
+     -0.00039680492655772747
+    ],
+    [
+     -0.032098552937628026,
+     -1.246766451282683,
+     -0.03188090441764357
+    ],
+    [
+     -0.034453246289875124,
+     -1.253392873286156,
+     -0.061592031329267875
+    ],
+    [
+     -0.03701254941225707,
+     -1.2597244196500919,
+     -0.09067983081114166
+    ],
+    [
+     -0.03978803780956957,
+     -1.2657742123342375,
+     -0.11940431722851073
+    ],
+    [
+     -0.04276446499529226,
+     -1.271554789371407,
+     -0.14785224907269987
+    ],
+    [
+     -0.04592124815478852,
+     -1.277078130852218,
+     -0.17606125178177068
+    ],
+    [
+     -0.04923747887333074,
+     -1.2823556837535093,
+     -0.20405028391643137
+    ],
+    [
+     -0.052693390144827545,
+     -1.2873983856618902,
+     -0.2318297878654952
+    ],
+    [
+     -0.05627079707041802,
+     -1.2922166874415972,
+     -0.25940582202077
+    ],
+    [
+     -0.05995318069501946,
+     -1.2968205748936283,
+     -0.2867819916515257
+    ],
+    [
+     -0.0637256351776107,
+     -1.301219589451047,
+     -0.313960446291167
+    ],
+    [
+     -0.06757476202524854,
+     -1.3054228479533472,
+     -0.3409424356381959
+    ],
+    [
+     -0.0714885464971019,
+     -1.3094390615408573,
+     -0.36772863841563885
+    ],
+    [
+     -0.07545623179367807,
+     -1.3132765537083442,
+     -0.3943193664484231
+    ],
+    [
+     -0.07946819811348424,
+     -1.3169432775552332,
+     -0.4207146963441333
+    ],
+    [
+     -0.08351584967316092,
+     -1.3204468322681928,
+     -0.4469145572293734
+    ],
+    [
+     -0.08759151083996039,
+     -1.3237944788702454,
+     -0.47291879076647125
+    ],
+    [
+     -0.09168833155113587,
+     -1.326993155269041,
+     -0.498727193092891
+    ],
+    [
+     -0.09580020170784295,
+     -1.3300494906354858,
+     -0.5243395446217317
+    ],
+    [
+     -0.09992167399749091,
+     -1.3329698191425203,
+     -0.5497556314765855
+    ],
+    [
+     -0.10404789449981257,
+     -1.335760193092523,
+     -0.5749752610258866
+    ],
+    [
+     -0.10817454040606556,
+     -1.338426395460543,
+     -0.599998273168163
+    ],
+    [
+     -0.11229776419399619,
+     -1.3409739518793629,
+     -0.6248245485001314
+    ],
+    [
+     -0.11641414363473629,
+     -1.3434081420912216,
+     -0.6494540141601072
+    ],
+    [
+     -0.12052063705106347,
+     -1.3457340108899407,
+     -0.673886647912576
+    ],
+    [
+     -0.12461454329339848,
+     -1.3479563785761226,
+     -0.6981224808854559
+    ],
+    [
+     -0.128693465947113,
+     -1.3500798509470944,
+     -0.7221615992645611
+    ],
+    [
+     -0.132755281330274,
+     -1.352108828842299,
+     -0.7460041451742414
+    ],
+    [
+     -0.13679810988384777,
+     -1.3540475172639177,
+     -0.769650316918972
+    ],
+    [
+     -0.14082029059615814,
+     -1.3558999340916218,
+     -0.7931003687211617
+    ],
+    [
+     -0.14482035813987837,
+     -1.3576699184095236,
+     -0.8163546100611921
+    ],
+    [
+     -0.14879702243306747,
+     -1.359361138462572,
+     -0.8394134047037325
+    ],
+    [
+     -0.15274915036586992,
+     -1.3609770992588932,
+     -0.8622771694776354
+    ],
+    [
+     -0.15667574946167492,
+     -1.3625211498338263,
+     -0.8849463728637934
+    ],
+    [
+     -0.16057595326599622,
+     -1.363996490190708,
+     -0.9074215334352236
+    ]
+   ],
+   "x_rot": 60.0,
+   "y_rot": 170.0
+  },
+  {
+   "gravity": 0.08,
+   "start": [
+    1.2,
+    -0.2,
+    0.0
+   ],
+   "ticks": [
+    [
+     0.9695040520679435,
+     -0.1263106364778584,
+     0.0
+    ],
+    [
+     0.784425326391443,
+     -0.07815070708007675,
+     0.0
+    ],
+    [
+     0.6353242772207259,
+     -0.049730197606567945,
+     0.0
+    ],
+    [
+     0.5147448406864142,
+     -0.036495887470471874,
+     0.0
+    ],
+    [
+     0.41679675772308167,
+     -0.03487007716275577,
+     0.0
+    ],
+    [
+     0.3368258875133318,
+     -0.04204439125379695,
+     0.0
+    ],
+    [
+     0.2711539732839409,
+     -0.05581705200805035,
+     0.0
+    ],
+    [
+     0.2168732280381703,
+     -0.07446446375322478,
+     0.0
+    ],
+    [
+     0.17168419066674462,
+     -0.09663987806305246,
+     0.0
+    ],
+    [
+     0.13376773621802512,
+     -0.1212934331181993,
+     0.0
+    ],
+    [
+     0.10168404477163895,
+     -0.14760906297147264,
+     0.0
+    ],
+    [
+     0.07429284936350253,
+     -0.17495472148030297,
+     0.0
+    ],
+    [
+     0.05069048001075403,
+     -0.20284311475404382,
+     0.0
+    ],
+    [
+     0.030160165376931402,
+     -0.2309007272235387,
+     0.0
+    ],
+    [
+     0.012132799117043666,
+     -0.2588433931274597,
+     0.0
+    ],
+    [
+     -0.0038440336257241983,
+     -0.2864570335701819,
+     0.0
+    ],
+    [
+     -0.018697879130446637,
+     -0.3129005425280096,
+     0.0
+    ],
+    [
+     -0.03420690860447141,
+     -0.33620192160790824,
+     0.0
+    ],
+    [
+     -0.05020807685480164,
+     -0.35651986323378926,
+     0.0
+    ],
+    [
+     -0.06655114783451678,
+     -0.37401657207852357,
+     0.0
+    ],
+    [
+     -0.08309840021517265,
+     -0.38885638655430443,
+     0.0
+    ],
+    [
+     -0.09972428191082641,
+     -0.401204521535721,
+     0.0
+    ],
+    [
+     -0.11631502075157148,
+     -0.4112259284784514,
+     0.0
+    ],
+    [
+     -0.1327681980801503,
+     -0.4190842687227964,
+     0.0
+    ],
+    [
+     -0.1489922916191845,
+     -0.42494099546100456,
+     0.0
+    ],
+    [
+     -0.16490619353170735,
+     -0.4289545395962705,
+     0.0
+    ],
+    [
+     -0.18043870917660024,
+     -0.4312795945252225,
+     0.0
+    ],
+    [
+     -0.19552804164553805,
+     -0.4320664947305349,
+     0.0
+    ],
+    [
+     -0.21012126676119378,
+     -0.4314606829719384,
+     0.0
+    ],
+    [
+     -0.22417380281953647,
+     -0.4296022608084246,
+     0.0
+    ],
+    [
+     -0.23764887897364173,
+     -0.4266256171679886,
+     0.0
+    ],
+    [
+     -0.25051700578385305,
+     -0.42265912970012803,
+     0.0
+    ],
+    [
+     -0.26275545110050735,
+     -0.4178249336969374,
+     0.0
+    ],
+    [
+     -0.2743477241016922,
+     -0.4122387534475685,
+     0.0
+    ],
+    [
+     -0.2852830699803741,
+     -0.40600979099480966,
+     0.0
+    ],
+    [
+     -0.2955559774632903,
+     -0.3992406673884453,
+     0.0
+    ],
+    [
+     -0.30516570104864105,
+     -0.3920274116749482,
+     0.0
+    ],
+    [
+     -0.3141157995711157,
+     -0.3844594930241483,
+     0.0
+    ],
+    [
+     -0.32241369244126183,
+     -0.37661989156820197,
+     0.0
+    ],
+    [
+     -0.33007023466167057,
+     -0.3685852037140091,
+     0.0
+    ]
+   ],
+   "x_rot": -45.0,
+   "y_rot": 90.0
+  }
+ ],
+ "recipes": {
+  "black_shulker_box": {
+   "group": "shulker_box_dye",
+   "input": "#minecraft:shulker_boxes",
+   "material": "minecraft:black_dye",
+   "result": {
+    "id": "minecraft:black_shulker_box"
+   },
+   "type": "minecraft:crafting_transmute"
+  },
+  "blue_shulker_box": {
+   "group": "shulker_box_dye",
+   "input": "#minecraft:shulker_boxes",
+   "material": "minecraft:blue_dye",
+   "result": {
+    "id": "minecraft:blue_shulker_box"
+   },
+   "type": "minecraft:crafting_transmute"
+  },
+  "brown_shulker_box": {
+   "group": "shulker_box_dye",
+   "input": "#minecraft:shulker_boxes",
+   "material": "minecraft:brown_dye",
+   "result": {
+    "id": "minecraft:brown_shulker_box"
+   },
+   "type": "minecraft:crafting_transmute"
+  },
+  "cyan_shulker_box": {
+   "group": "shulker_box_dye",
+   "input": "#minecraft:shulker_boxes",
+   "material": "minecraft:cyan_dye",
+   "result": {
+    "id": "minecraft:cyan_shulker_box"
+   },
+   "type": "minecraft:crafting_transmute"
+  },
+  "firework_rocket": {
+   "fuel": "minecraft:gunpowder",
+   "result": {
+    "count": 3,
+    "id": "minecraft:firework_rocket"
+   },
+   "shell": "minecraft:paper",
+   "star": "minecraft:firework_star",
+   "type": "minecraft:crafting_special_firework_rocket"
+  },
+  "firework_rocket_simple": {
+   "ingredients": [
+    "minecraft:gunpowder",
+    "minecraft:paper"
+   ],
+   "result": {
+    "count": 3,
+    "id": "minecraft:firework_rocket"
+   },
+   "type": "minecraft:crafting_shapeless"
+  },
+  "firework_star": {
+   "dye": "#minecraft:dyes",
+   "fuel": "minecraft:gunpowder",
+   "result": {
+    "id": "minecraft:firework_star"
+   },
+   "shapes": {
+    "burst": "minecraft:feather",
+    "creeper": "#minecraft:skulls",
+    "large_ball": "minecraft:fire_charge",
+    "star": "minecraft:gold_nugget"
+   },
+   "trail": "minecraft:diamond",
+   "twinkle": "minecraft:glowstone_dust",
+   "type": "minecraft:crafting_special_firework_star"
+  },
+  "firework_star_fade": {
+   "dye": "#minecraft:dyes",
+   "result": {
+    "id": "minecraft:firework_star"
+   },
+   "target": "minecraft:firework_star",
+   "type": "minecraft:crafting_special_firework_star_fade"
+  },
+  "gray_shulker_box": {
+   "group": "shulker_box_dye",
+   "input": "#minecraft:shulker_boxes",
+   "material": "minecraft:gray_dye",
+   "result": {
+    "id": "minecraft:gray_shulker_box"
+   },
+   "type": "minecraft:crafting_transmute"
+  },
+  "green_shulker_box": {
+   "group": "shulker_box_dye",
+   "input": "#minecraft:shulker_boxes",
+   "material": "minecraft:green_dye",
+   "result": {
+    "id": "minecraft:green_shulker_box"
+   },
+   "type": "minecraft:crafting_transmute"
+  },
+  "light_blue_shulker_box": {
+   "group": "shulker_box_dye",
+   "input": "#minecraft:shulker_boxes",
+   "material": "minecraft:light_blue_dye",
+   "result": {
+    "id": "minecraft:light_blue_shulker_box"
+   },
+   "type": "minecraft:crafting_transmute"
+  },
+  "light_gray_shulker_box": {
+   "group": "shulker_box_dye",
+   "input": "#minecraft:shulker_boxes",
+   "material": "minecraft:light_gray_dye",
+   "result": {
+    "id": "minecraft:light_gray_shulker_box"
+   },
+   "type": "minecraft:crafting_transmute"
+  },
+  "lime_shulker_box": {
+   "group": "shulker_box_dye",
+   "input": "#minecraft:shulker_boxes",
+   "material": "minecraft:lime_dye",
+   "result": {
+    "id": "minecraft:lime_shulker_box"
+   },
+   "type": "minecraft:crafting_transmute"
+  },
+  "magenta_shulker_box": {
+   "group": "shulker_box_dye",
+   "input": "#minecraft:shulker_boxes",
+   "material": "minecraft:magenta_dye",
+   "result": {
+    "id": "minecraft:magenta_shulker_box"
+   },
+   "type": "minecraft:crafting_transmute"
+  },
+  "orange_shulker_box": {
+   "group": "shulker_box_dye",
+   "input": "#minecraft:shulker_boxes",
+   "material": "minecraft:orange_dye",
+   "result": {
+    "id": "minecraft:orange_shulker_box"
+   },
+   "type": "minecraft:crafting_transmute"
+  },
+  "pink_shulker_box": {
+   "group": "shulker_box_dye",
+   "input": "#minecraft:shulker_boxes",
+   "material": "minecraft:pink_dye",
+   "result": {
+    "id": "minecraft:pink_shulker_box"
+   },
+   "type": "minecraft:crafting_transmute"
+  },
+  "purple_shulker_box": {
+   "group": "shulker_box_dye",
+   "input": "#minecraft:shulker_boxes",
+   "material": "minecraft:purple_dye",
+   "result": {
+    "id": "minecraft:purple_shulker_box"
+   },
+   "type": "minecraft:crafting_transmute"
+  },
+  "red_shulker_box": {
+   "group": "shulker_box_dye",
+   "input": "#minecraft:shulker_boxes",
+   "material": "minecraft:red_dye",
+   "result": {
+    "id": "minecraft:red_shulker_box"
+   },
+   "type": "minecraft:crafting_transmute"
+  },
+  "shulker_box": {
+   "key": {
+    "#": "minecraft:chest",
+    "-": "minecraft:shulker_shell"
+   },
+   "pattern": [
+    "-",
+    "#",
+    "-"
+   ],
+   "result": {
+    "id": "minecraft:shulker_box"
+   },
+   "type": "minecraft:crafting_shaped"
+  },
+  "white_shulker_box": {
+   "group": "shulker_box_dye",
+   "input": "#minecraft:shulker_boxes",
+   "material": "minecraft:white_dye",
+   "result": {
+    "id": "minecraft:white_shulker_box"
+   },
+   "type": "minecraft:crafting_transmute"
+  },
+  "yellow_shulker_box": {
+   "group": "shulker_box_dye",
+   "input": "#minecraft:shulker_boxes",
+   "material": "minecraft:yellow_dye",
+   "result": {
+    "id": "minecraft:yellow_shulker_box"
+   },
+   "type": "minecraft:crafting_transmute"
+  }
+ },
+ "reference": "Java 26.3 behaviour data only; no artwork",
+ "rocket": {
+  "boost": {
+   "add": 0.1,
+   "blend": 0.5,
+   "power": 1.5
+  },
+  "damage_base": 5.0,
+  "damage_per_star": 2,
+  "damage_radius": 5.0,
+  "horizontal_acceleration": 1.15,
+  "launch_drift": 0.002297,
+  "launch_speed": 0.05,
+  "lifetime_per_flight": 10,
+  "lifetime_rolls": [
+   6,
+   7
+  ],
+  "vertical_acceleration": 0.04
+ },
+ "rocket_item": {
+  "craftable_durations": [
+   1,
+   2,
+   3
+  ],
+  "default_flight": 1,
+  "dispense_event": 1004,
+  "dispense_power": 0.5,
+  "dispense_uncertainty": 1.0,
+  "placement_offset": 0.15
+ },
+ "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+ "shulker_box": {
+  "blocks": [
+   "shulker_box",
+   "white_shulker_box",
+   "orange_shulker_box",
+   "magenta_shulker_box",
+   "light_blue_shulker_box",
+   "yellow_shulker_box",
+   "lime_shulker_box",
+   "pink_shulker_box",
+   "gray_shulker_box",
+   "light_gray_shulker_box",
+   "cyan_shulker_box",
+   "purple_shulker_box",
+   "blue_shulker_box",
+   "brown_shulker_box",
+   "green_shulker_box",
+   "red_shulker_box",
+   "black_shulker_box"
+  ],
+  "columns": 9,
+  "container_size": 27,
+  "loot": {
+   "black_shulker_box": {
+    "conditions": [],
+    "copies": [
+     "container",
+     "container_loot",
+     "custom_name",
+     "lock"
+    ],
+    "item": "black_shulker_box"
+   },
+   "blue_shulker_box": {
+    "conditions": [],
+    "copies": [
+     "container",
+     "container_loot",
+     "custom_name",
+     "lock"
+    ],
+    "item": "blue_shulker_box"
+   },
+   "brown_shulker_box": {
+    "conditions": [],
+    "copies": [
+     "container",
+     "container_loot",
+     "custom_name",
+     "lock"
+    ],
+    "item": "brown_shulker_box"
+   },
+   "cyan_shulker_box": {
+    "conditions": [],
+    "copies": [
+     "container",
+     "container_loot",
+     "custom_name",
+     "lock"
+    ],
+    "item": "cyan_shulker_box"
+   },
+   "gray_shulker_box": {
+    "conditions": [],
+    "copies": [
+     "container",
+     "container_loot",
+     "custom_name",
+     "lock"
+    ],
+    "item": "gray_shulker_box"
+   },
+   "green_shulker_box": {
+    "conditions": [],
+    "copies": [
+     "container",
+     "container_loot",
+     "custom_name",
+     "lock"
+    ],
+    "item": "green_shulker_box"
+   },
+   "light_blue_shulker_box": {
+    "conditions": [],
+    "copies": [
+     "container",
+     "container_loot",
+     "custom_name",
+     "lock"
+    ],
+    "item": "light_blue_shulker_box"
+   },
+   "light_gray_shulker_box": {
+    "conditions": [],
+    "copies": [
+     "container",
+     "container_loot",
+     "custom_name",
+     "lock"
+    ],
+    "item": "light_gray_shulker_box"
+   },
+   "lime_shulker_box": {
+    "conditions": [],
+    "copies": [
+     "container",
+     "container_loot",
+     "custom_name",
+     "lock"
+    ],
+    "item": "lime_shulker_box"
+   },
+   "magenta_shulker_box": {
+    "conditions": [],
+    "copies": [
+     "container",
+     "container_loot",
+     "custom_name",
+     "lock"
+    ],
+    "item": "magenta_shulker_box"
+   },
+   "orange_shulker_box": {
+    "conditions": [],
+    "copies": [
+     "container",
+     "container_loot",
+     "custom_name",
+     "lock"
+    ],
+    "item": "orange_shulker_box"
+   },
+   "pink_shulker_box": {
+    "conditions": [],
+    "copies": [
+     "container",
+     "container_loot",
+     "custom_name",
+     "lock"
+    ],
+    "item": "pink_shulker_box"
+   },
+   "purple_shulker_box": {
+    "conditions": [],
+    "copies": [
+     "container",
+     "container_loot",
+     "custom_name",
+     "lock"
+    ],
+    "item": "purple_shulker_box"
+   },
+   "red_shulker_box": {
+    "conditions": [],
+    "copies": [
+     "container",
+     "container_loot",
+     "custom_name",
+     "lock"
+    ],
+    "item": "red_shulker_box"
+   },
+   "shulker_box": {
+    "conditions": [],
+    "copies": [
+     "container",
+     "container_loot",
+     "custom_name",
+     "lock"
+    ],
+    "item": "shulker_box"
+   },
+   "white_shulker_box": {
+    "conditions": [],
+    "copies": [
+     "container",
+     "container_loot",
+     "custom_name",
+     "lock"
+    ],
+    "item": "white_shulker_box"
+   },
+   "yellow_shulker_box": {
+    "conditions": [],
+    "copies": [
+     "container",
+     "container_loot",
+     "custom_name",
+     "lock"
+    ],
+    "item": "yellow_shulker_box"
+   }
+  },
+  "max_lid_height": 0.5,
+  "max_lid_rotation": 270.0,
+  "opening_tick_length": 10,
+  "push_reaction": "popped",
+  "rows": 3,
+  "strength": 2.0
+ },
+ "source": "official 26.3 server.jar via tools/extract_java_flight_fixtures.py",
+ "tags": {
+  "block/can_glide_through": [
+   "vine",
+   "twisting_vines",
+   "twisting_vines_plant",
+   "weeping_vines",
+   "weeping_vines_plant",
+   "#minecraft:cave_vines"
+  ],
+  "block/shulker_boxes": [
+   "shulker_box",
+   "white_shulker_box",
+   "orange_shulker_box",
+   "magenta_shulker_box",
+   "light_blue_shulker_box",
+   "yellow_shulker_box",
+   "lime_shulker_box",
+   "pink_shulker_box",
+   "gray_shulker_box",
+   "light_gray_shulker_box",
+   "cyan_shulker_box",
+   "purple_shulker_box",
+   "blue_shulker_box",
+   "brown_shulker_box",
+   "green_shulker_box",
+   "red_shulker_box",
+   "black_shulker_box"
+  ],
+  "item/enchantable/durability": [
+   "#minecraft:foot_armor",
+   "#minecraft:leg_armor",
+   "#minecraft:chest_armor",
+   "#minecraft:head_armor",
+   "elytra",
+   "shield",
+   "#minecraft:swords",
+   "#minecraft:axes",
+   "#minecraft:pickaxes",
+   "#minecraft:shovels",
+   "#minecraft:hoes",
+   "bow",
+   "crossbow",
+   "trident",
+   "flint_and_steel",
+   "shears",
+   "brush",
+   "fishing_rod",
+   "carrot_on_a_stick",
+   "warped_fungus_on_a_stick",
+   "mace",
+   "#minecraft:spears"
+  ],
+  "item/enchantable/equippable": [
+   "#minecraft:foot_armor",
+   "#minecraft:leg_armor",
+   "#minecraft:chest_armor",
+   "#minecraft:head_armor",
+   "elytra",
+   "#minecraft:skulls",
+   "carved_pumpkin"
+  ],
+  "item/shulker_boxes": [
+   "shulker_box",
+   "white_shulker_box",
+   "orange_shulker_box",
+   "magenta_shulker_box",
+   "light_blue_shulker_box",
+   "yellow_shulker_box",
+   "lime_shulker_box",
+   "pink_shulker_box",
+   "gray_shulker_box",
+   "light_gray_shulker_box",
+   "cyan_shulker_box",
+   "purple_shulker_box",
+   "blue_shulker_box",
+   "brown_shulker_box",
+   "green_shulker_box",
+   "red_shulker_box",
+   "black_shulker_box"
+  ],
+  "item/skulls": [
+   "player_head",
+   "creeper_head",
+   "zombie_head",
+   "skeleton_skull",
+   "wither_skeleton_skull",
+   "dragon_head",
+   "piglin_head"
+  ]
+ }
+}
