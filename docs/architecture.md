@@ -1056,6 +1056,28 @@ own branch. No released build saves the new members, so the integrator
 makes them contiguous in landing order (A, B, C, D, then E, F, G) and
 records the result here. Saved names follow Java's registry names.
 
+**Track B allocation** (flight and storage, 2026-11-20, implemented,
+unverified; [record](verification/2026-11-20-v0.16-flight-storage.md)):
+
+| Kind | Used | Meaning |
+| --- | --- | --- |
+| Block states | 12416–12517 | The 17 shulker boxes (`world::shulker_box`): `12416 + colour * 6 + facing`, colour 0 the plain box then `DyeColor` order, facing up, down, north, south, west, east (up first: the item's state); 12518–12543 stay unregistered |
+| Items | 1675, 1676, 1677 | Elytra (`content::elytra`), firework rocket and firework star (`content::fireworks`); 1678–1689 stay unregistered |
+| Texture layers | 609–659, 660 | Three per box colour (side, lid top, bottom), then the elytra's wing texture; 661–668 stay unused |
+
+Appended orderings: item icons after v0.15 Track D's (elytra, firework
+rocket, firework star); `Sound::Flight` with the twelve
+`content::fireworks::Cue`s after `Sound::Raid`; `MobSound::Flight` after
+`MobSound::Raid`; particle kinds `FireworkSpark` and `FireworkFlash` after
+`Note`; the unsaved `EntityEvent::RocketBoost`, `FireworkBurst` and
+`PlayerFirework`. Stack payloads gain the `container`, `fireworks` and
+`firework_explosion` kinds (Java's component names), and the
+charged-crossbow `entity_data` value `u32::MAX - 2`
+(`session::ranged::FIREWORK_BOLT`) marks a loaded rocket whose `fireworks`
+ride in the payload. Box contents are ordinary chest-table entries. No
+`MobKind`, `Effect`, thrown kind, `slab_stair_states`/`waterlog`/`POTTED`
+member or entity or dimension property key is added; rockets aren't saved.
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

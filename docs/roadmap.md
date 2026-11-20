@@ -1372,6 +1372,10 @@ Wave 1 (independent):
    physics, durability, phantom membrane repair and fall/wall damage;
    firework stars and rockets (crafting, shapes, colours, fades, trails,
    twinkles, explosion damage), the elytra boost and crossbow firing.
+   *Implemented, unverified (2026-11-20):* all three, checked against
+   `flight.json` from the server jar; the shulker box recipe waits for
+   Track A's shulker shell and the creeper star shape for Track C's heads
+   ([record](verification/2026-11-20-v0.16-flight-storage.md)).
 3. **C. Wither and beacons** (PRO-06, BLD-05a, BLD-01b). Every mob head
    and skull with floor and wall states (skeleton, wither skeleton,
    zombie, creeper, piglin, dragon, player); wither skeleton skull drops
