@@ -33,7 +33,7 @@ TABLES = (
 def bounds(value):
     if isinstance(value, (int, float)):
         return [value, value]
-    assert value["type"] == "minecraft:uniform", value
+    if value["type"] != "minecraft:uniform": raise AssertionError(value)
     return [value["min"], value["max"]]
 
 
@@ -81,7 +81,8 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     outer = args.server.read_bytes()
-    assert hashlib.sha1(outer).hexdigest() == SERVER_SHA1, "not the pinned server"
+    if hashlib.sha1(outer).hexdigest() != SERVER_SHA1:
+        raise AssertionError("not the pinned server")
     with zipfile.ZipFile(io.BytesIO(outer)) as bundler:
         inner = bundler.read("META-INF/versions/26.3/server-26.3.jar")
     with zipfile.ZipFile(io.BytesIO(inner)) as data:

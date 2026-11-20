@@ -218,11 +218,13 @@ def main():
     presentation_flags, presentation_options, presentation_differences = presentation(
         args.frame_latency, args.window_mode, not args.no_gpu_timestamps
     )
-    assert 1 <= args.repeats <= 10, "repeat count must be 1..10"
+    if not (1 <= args.repeats <= 10):
+        raise AssertionError("repeat count must be 1..10")
     specification = json.loads((ROOT / "benchmarks/scenes.json").read_text())
     definitions = {s["name"]: s for s in specification["scenes"]}
     names = args.scenes.split(",") if args.scenes else list(definitions)
-    assert all(n in definitions for n in names), "unknown scene"
+    if not all(n in definitions for n in names):
+        raise AssertionError("unknown scene")
     revision = source()
     if args.executable:
         executable = args.executable.resolve(strict=True)

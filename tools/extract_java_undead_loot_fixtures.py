@@ -28,9 +28,10 @@ def extract(server):
                 )
                 if chance is None:
                     continue
-                assert any(c["type"] == "minecraft:killed_by_player" for c in conditions)
-                entries = pool["entries"]
-                assert pool["rolls"] == 1 and all(e.get("weight", 1) == 1 for e in entries)
+                if not any(c["type"] == "minecraft:killed_by_player" for c in conditions):
+                    raise AssertionError()
+                if not (pool["rolls"] == 1 and all(e.get("weight", 1) == 1 for e in entries)):
+                    raise AssertionError()
                 pools[name] = {
                     "rolls": pool["rolls"],
                     "requires_player_kill": True,
