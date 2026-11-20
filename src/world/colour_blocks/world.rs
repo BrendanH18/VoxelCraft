@@ -7,9 +7,13 @@ use super::super::block::{Block, Facing};
 use super::super::chunk::{CHUNK_SIZE, ChunkData};
 use super::{BANNER_ORIGIN, WALL_BANNER_ORIGIN, banner, candle, straw_bed};
 
-/// Whether `b` is a standing or wall banner.
+/// Whether `b` is a standing or wall banner, or another block entity the
+/// index serves: v0.16 Track C's heads (drawn as models) and beacons
+/// (whose beams LAN replicas draw).
 fn is_banner(b: Block) -> bool {
     (BANNER_ORIGIN..WALL_BANNER_ORIGIN + 64).contains(&b.0)
+        || super::super::skulls::owns(b.0)
+        || b == super::super::beacon::BEACON
 }
 
 /// Whether a chunk can hold a banner, without visiting every cell when
@@ -38,7 +42,8 @@ impl World {
         &mut self.straw_sleepers
     }
 
-    /// Banners in loaded chunks, for the renderer: their cell and state.
+    /// Banners, heads and beacons in loaded chunks, for the renderer: their
+    /// cell and state.
     pub fn banners(&self) -> impl Iterator<Item = (IVec3, Block)> + '_ {
         self.banners.iter().map(|(&p, &b)| (p, b))
     }

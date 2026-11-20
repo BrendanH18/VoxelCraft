@@ -92,6 +92,7 @@ pub mod wandering_trader;
 pub mod warden;
 pub mod weapon_hits;
 pub mod wind;
+pub mod wither;
 pub mod wolf_armor;
 pub mod zombie;
 mod zombie_villager;
@@ -181,6 +182,8 @@ pub enum MobSound {
     Raid(raid::Cue),
     /// v0.16 Track B: shulker boxes, rockets and elytra.
     Flight(crate::content::fireworks::Cue),
+    /// v0.16 Track C: the Wither's spawn, shots and block breaking.
+    Wither(wither::Cue),
 }
 
 /// Something an entity did that the game needs to react to.
@@ -501,6 +504,33 @@ pub enum EntityEvent {
         damage: f32,
         from: DVec3,
     },
+    /// v0.16 Track C: the Wither's charge-up blast or a skull's, as a mob
+    /// explosion (`mobGriefing`); a `dangerous` skull's caps block
+    /// resistance at 0.8 (`WitherSkull.getBlockExplosionResistance`).
+    WitherBlast {
+        center: DVec3,
+        power: f32,
+        dangerous: bool,
+    },
+    /// v0.16 Track C: a hurt Wither breaks every breakable block in the box
+    /// (`destroyBlocksTick`, under `mobGriefing`), with drops.
+    WitherBreak {
+        min: IVec3,
+        max: IVec3,
+        pos: DVec3,
+    },
+    /// v0.16 Track C: a charged creeper is about to explode at `center`;
+    /// the first mob its blast kills that has a head drops it
+    /// (`Creeper.killedEntity`, `loot_table/charged_creeper/*`). Handled
+    /// internally.
+    ChargedBlast {
+        center: DVec3,
+    },
+    /// v0.16 Track C: something the Wither killed died here: a wither rose
+    /// grows if the cell is air and can hold one (`mobGriefing`), else one drops.
+    WitherRose {
+        pos: DVec3,
+    },
 }
 
 /// Java 26.3 `ServerExplosion.hurtEntities` for an entity standing `dist`
@@ -807,6 +837,9 @@ pub struct Target {
     pub darkness_ticks: u32,
     /// v0.16 Track B: gliding on elytra (`isFallFlying`): a held rocket pushes.
     pub fall_flying: bool,
+    /// v0.16 Track C: the mob head worn in the helmet slot, which halves
+    /// how far its own kind sees this player (`MobVisibility`).
+    pub head: Option<crate::world::skulls::Kind>,
 }
 
 impl Target {
@@ -828,6 +861,19 @@ impl Target {
     /// TargetingConditions.test has a two-block minimum acquisition range.
     pub fn detection_range(&self, range: f64) -> f64 {
         (range * self.visibility_percent()).max(2.)
+    }
+
+    /// v0.16 Track C: [`Target::visibility_percent`] as `mob` sees it: a
+    /// head of its own kind in the helmet slot halves it (`Items.*_HEAD`'s
+    /// `loweredMobVisibility`).
+    pub fn visibility_percent_for(&self, mob: MobKind) -> f64 {
+        let disguise = self.head.is_some_and(|k| k.disguises_from(mob));
+        (self.visibility_percent() * if disguise { 0.5 } else { 1.0 }).clamp(0.0, 10.0)
+    }
+
+    /// [`Target::detection_range`] for `mob`, heads included.
+    pub fn detection_range_for(&self, range: f64, mob: MobKind) -> f64 {
+        (range * self.visibility_percent_for(mob)).max(2.)
     }
 
     /// A living player; set [`Target::alive`] for one waiting to respawn.
@@ -855,6 +901,7 @@ impl Target {
             sneaking: false,
             time_since_rest: 0,
             darkness_ticks: 0,
+            head: None,
             blocking: false,
             fall_flying: false,
         }
@@ -982,6 +1029,10 @@ pub struct Entities {
     pub fireworks: Vec<firework::Rocket>,
     /// Bursts whose twinkle is still to sound, and the ticks until it does.
     firework_twinkles: Vec<(DVec3, u32)>,
+    /// v0.16 Track C: the Wither's flying skulls.
+    pub wither_skulls: Vec<wither::Skull>,
+    /// v0.16 Track C: charged creeper blasts about to go off (never saved).
+    pub(crate) charged_blasts: Vec<DVec3>,
     /// Ominous item spawners over trial chamber fights (see [`trial`]).
     pub item_spawners: Vec<trial::ItemSpawner>,
     pub puffs: Vec<Puff>,
@@ -1118,6 +1169,8 @@ impl Entities {
             fireballs: Vec::new(),
             fireworks: Vec::new(),
             firework_twinkles: Vec::new(),
+            wither_skulls: Vec::new(),
+            charged_blasts: Vec::new(),
             item_spawners: Vec::new(),
             puffs: Vec::new(),
             lightning: Vec::new(),
@@ -1388,6 +1441,13 @@ impl Entities {
         if let Some(fight) = &mut self.fight {
             fight.explode(center, power);
         }
+        // v0.16 Track C: a charged creeper's blast knocks one head off.
+        let charged = self
+            .charged_blasts
+            .iter()
+            .position(|c| c.distance_squared(center) < 1e-6)
+            .map(|i| self.charged_blasts.swap_remove(i))
+            .is_some();
         let mut killed = Vec::new();
         for m in &mut self.mobs {
             if !m.alive() || m.pos.distance(center) > f64::from(power) * 2.0 {
@@ -1408,6 +1468,14 @@ impl Entities {
             }
         }
         self.particles.push(crate::particles::Request::Explosion { pos: center, large: power >= 2.0 });
+        let mut headless = charged && self.mob_loot;
+        for &(kind, pos, _) in &killed {
+            if headless && let Some(head) = crate::world::skulls::Kind::of_mob(kind) {
+                let stack = crate::inventory::Stack::new(crate::world::skulls::item(head), 1);
+                self.items.push(ItemEntity::new(stack, pos, DVec3::ZERO, item::PICKUP_DELAY, &mut self.rng));
+                headless = false;
+            }
+        }
         for (kind, pos, burning) in killed {
             if credit_player {
                 self.drop_loot_with_fire(kind, pos, 0, burning, true);
@@ -1435,6 +1503,12 @@ impl Entities {
         };
         if items {
             self.items.retain_mut(|item| match hit(item.pos, item.aabb(), item::ItemEntity::EYE) {
+                // v0.16 Track C: the Nether star's `damage_resistant`
+                // spares it the damage, not the push.
+                Some((_, push)) if item.stack.item.explosion_proof() => {
+                    item.vel += push;
+                    true
+                }
                 Some((damage, push)) => {
                     item.vel += push;
                     item.hurt(damage)
@@ -1525,6 +1599,10 @@ impl Entities {
             .is_some_and(raid::is_captain);
         if captain && let Some(bottle) = raid::captain_loot(kind, &mut self.rng) {
             self.scatter(bottle, pos);
+        }
+        // v0.16 Track C: `WitherBoss.dropCustomDeathLoot`, kill or not.
+        if kind == MobKind::Wither {
+            self.wither_star(pos);
         }
         // `LivingEntity.dropAllDeathLoot`: equipment drops before the experience.
         self.equipment_drops(kind, pos, looting, player_kill);
@@ -1918,6 +1996,9 @@ impl Entities {
         for f in &mut self.fireballs {
             f.previous_pos = f.pos;
         }
+        for k in &mut self.wither_skulls {
+            k.previous_pos = k.pos;
+        }
         for item in &mut self.items {
             item.previous_pos = item.pos;
         }
@@ -1954,6 +2035,7 @@ impl Entities {
         model::build_bobbers(&self.bobbers, camera, alpha, &mut self.mesh);
         model::build_eyes(&self.eyes, camera, time, alpha, &mut self.mesh);
         model::build_fireballs(&self.fireballs, camera, time, alpha, &mut self.mesh);
+        model::build_wither_skulls(&self.wither_skulls, camera, time, alpha, &mut self.mesh);
         model::build_lightning(&self.lightning, camera, &mut self.mesh);
         model::build_puffs(&self.puffs, camera, alpha, &mut self.mesh);
         model::build_orbs(&self.orbs, camera, max_dist, time, alpha, &mut self.mesh);

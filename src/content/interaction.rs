@@ -25,6 +25,8 @@ pub fn blocks_item_use(b: Block) -> bool {
 /// loom, cartography table), in any of their states.
 pub fn workstation_screen(b: Block) -> bool {
     matches!(b.base(), Block::STONECUTTER | Block::LOOM | Block::CARTOGRAPHY_TABLE)
+        // v0.16 Track C: `BeaconBlock.useWithoutItem` opens its menu.
+        || b == crate::world::beacon::BEACON
 }
 
 /// Shelves and chiseled bookshelves act only for a click on their front
@@ -52,6 +54,14 @@ pub fn block_use_precedes_item(
         return false;
     }
     let Some(b) = world.get_block(pos) else { return false };
+    // v0.16 Track C: `NoteBlock.useItemOn` passes a head item used on its
+    // top, which then places the head.
+    if crate::world::gadgets::is_note(b)
+        && held.is_some_and(|i| crate::world::skulls::kind_of_item(i).is_some())
+        && crate::physics::ray_shape(world, pos, aim.0, aim.1).is_some_and(|(_, n)| n == IVec3::Y)
+    {
+        return false;
+    }
     blocks_item_use(b)
         || crate::world::bees::hive(b)
             .is_some_and(|(_, _, h)| h == 5 && matches!(held, Some(Item::SHEARS | Item::GLASS_BOTTLE)))

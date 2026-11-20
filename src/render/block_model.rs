@@ -69,6 +69,17 @@ pub fn vertices(models: &[BlockModel], camera: DVec3, ticks: f64) -> Vec<BlockVe
             crate::world::shulker_box::quads(s, lid, |q| push_quad(&mut out, m, min, q));
             continue;
         }
+        // v0.16 Track C: placed heads (`SkullBlockRenderer`); a powered
+        // piglin or dragon head animates with the game ticks.
+        if m.icon.is_none()
+            && m.orient.is_none()
+            && m.size == 1.0
+            && let Some(s) = crate::world::skulls::decode(m.block)
+        {
+            let anim = if s.powered { ticks as f32 } else { 0.0 };
+            quad_vertices(&mut out, m, &crate::world::skulls::quads(s, anim), min);
+            continue;
+        }
         let tex = m.block.info().tex;
         let (sin, cos) = m.yaw.sin_cos();
         // Unit-cube corner -> camera-relative position, turned about the centre.
@@ -140,6 +151,30 @@ pub fn vertices(models: &[BlockModel], camera: DVec3, ticks: f64) -> Vec<BlockVe
         }
     }
     out
+}
+
+/// Quads of a block-entity model, lit by its cell and shaded by how each
+/// face is turned.
+fn quad_vertices(
+    out: &mut Vec<BlockVertex>,
+    m: &BlockModel,
+    quads: &[crate::world::colour_blocks::banner::Quad],
+    min: Vec3,
+) {
+    for q in quads {
+        let n = q.normal;
+        let vertical = if n.y > 0.0 { FACE_SHADE[2] } else { FACE_SHADE[3] };
+        let shade = n.y * n.y * vertical + n.x * n.x * FACE_SHADE[0] + n.z * n.z * FACE_SHADE[4];
+        for i in [0, 1, 2, 2, 3, 0] {
+            out.push(BlockVertex {
+                pos: (min + q.corners[i] * m.size).to_array(),
+                uv: q.uv[i],
+                layer: q.layer as u32,
+                light: [m.sky_light, shade, m.block_light],
+                tint: q.tint.unwrap_or(m.tint),
+            });
+        }
+    }
 }
 
 /// A banner's pole, bar and flag (`colour_blocks::banner::quads`), lit by

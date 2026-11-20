@@ -725,6 +725,17 @@ pub fn recipes() -> &'static [Recipe] {
             Item::from_block(crate::world::dried_ghast::DRIED_GHAST),
             1,
         ));
+        // v0.16 Track C: `recipe/beacon.json`, glass over a Nether star on obsidian.
+        r.push(shaped(
+            &["GGG", "GSG", "OOO"],
+            &[
+                ('G', const { &[b(Block::GLASS)] }),
+                ('S', &[crate::entity::wither::NETHER_STAR]),
+                ('O', const { &[b(Block::OBSIDIAN)] }),
+            ],
+            Item::from_block(crate::world::beacon::BEACON),
+            1,
+        ));
         r
     })
 }
@@ -1226,8 +1237,10 @@ fn add_overworld_recipes(r: &mut Vec<Recipe>) {
         1,
     ));
     // Dyes from cocoa, ink and the new flowers.
-    let dyes: [(Item, DyeColor, u8); 21] = [
+    let dyes: [(Item, DyeColor, u8); 22] = [
         (Item::COCOA_BEANS, DyeColor::Brown, 1),
+        // v0.16 Track C: `black_dye_from_wither_rose`.
+        (one(crate::world::wither_rose::WITHER_ROSE), DyeColor::Black, 1),
         (Item::INK_SAC, DyeColor::Black, 1),
         (one(ob::CORNFLOWER), DyeColor::Blue, 1),
         (one(ob::LILY_OF_THE_VALLEY), DyeColor::White, 1),

@@ -17,6 +17,7 @@ pub mod ancient_city;
 pub mod archaeology;
 mod automation;
 pub mod bastion;
+pub mod beacon;
 pub mod bees;
 pub mod bell;
 pub mod biome;
@@ -103,6 +104,7 @@ pub mod sculk;
 pub mod sculk_spread;
 pub mod shape;
 pub mod shulker_box;
+pub mod skulls;
 pub mod slab_stair_states;
 pub mod sniffer_egg;
 pub mod sniffer_plants;
@@ -127,6 +129,7 @@ pub mod village_blocks;
 mod village_life;
 pub mod wall_states;
 pub mod waterlog;
+pub mod wither_rose;
 pub mod wood;
 pub mod workstations;
 
@@ -384,6 +387,13 @@ pub struct World {
     pub trip_sounds: Vec<(IVec3, gadgets::TripSound)>,
     /// Freshly placed carved pumpkins and jack o'lanterns, checked for golem patterns by the game.
     pub golem_heads: Vec<IVec3>,
+    /// v0.16 Track C: freshly placed wither skeleton skulls, checked for
+    /// the Wither's pattern by the game (`WitherSkullBlock.setPlacedBy`).
+    pub wither_skulls: Vec<IVec3>,
+    /// v0.16 Track C: beacons (see [`beacon`]) and what they did since the
+    /// game last asked.
+    pub(crate) beacons: beacon::State,
+    pub(crate) beacon_events: Vec<beacon::Event>,
     /// Turtle eggs that hatched: cell and how many babies; the game spawns them.
     pub hatched_turtles: Vec<(IVec3, u8)>,
     pub hatched_tadpoles: Vec<(IVec3, u8)>,
@@ -678,6 +688,9 @@ impl World {
             allay_notes: Vec::new(),
             trip_sounds: Vec::new(),
             golem_heads: Vec::new(),
+            wither_skulls: Vec::new(),
+            beacons: Default::default(),
+            beacon_events: Vec::new(),
             hatched_turtles: Vec::new(),
             hatched_tadpoles: Vec::new(),
             sniffer_egg_events: Vec::new(),
@@ -1047,6 +1060,10 @@ impl World {
         if pumpkin_blocks::is_head(block) {
             self.golem_heads.push(p);
         }
+        if old != block && skulls::is_wither_skull(block) && !skulls::is_wither_skull(old) {
+            self.wither_skulls.push(p);
+        }
+        self.track_beacon(p, old, block);
         if old.is_log() && !block.is_log() {
             self.log_removed(p);
         }

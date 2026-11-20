@@ -399,6 +399,13 @@ pub fn shape_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bloc
     if super::shulker_box::owns(block.0) {
         return Boxes::new();
     }
+    // v0.16 Track C: heads draw as block-entity models, not in chunk meshes.
+    if super::skulls::owns(block.0) {
+        return Boxes::new();
+    }
+    if block == super::beacon::BEACON {
+        return super::beacon::boxes();
+    }
     if super::cave_blocks::is_custom(block) {
         return super::cave_blocks::boxes(block);
     }
@@ -571,6 +578,12 @@ pub fn outline_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bl
     // A shut shulker box's shape (`getShape` grows with the lid; see the record).
     if super::shulker_box::owns(block.0) {
         return Boxes::from_box(Box16::FULL);
+    }
+    if let Some(s) = super::skulls::decode(block) {
+        return super::skulls::outline(s);
+    }
+    if block == super::beacon::BEACON {
+        return super::beacon::collision();
     }
     if super::cave_blocks::is_custom(block) {
         return super::cave_blocks::outline(block);
@@ -828,6 +841,12 @@ pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: 
     if super::shulker_box::owns(block.0) {
         return Boxes::from_box(Box16::FULL);
     }
+    if let Some(s) = super::skulls::decode(block) {
+        return super::skulls::collision(s);
+    }
+    if block == super::beacon::BEACON {
+        return super::beacon::collision();
+    }
     if super::cave_blocks::is_custom(block) {
         return super::cave_blocks::collision(block);
     }
@@ -912,6 +931,10 @@ pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: 
 /// icon, and fences reach out east and west.
 pub fn item_shape(block: Block) -> Boxes {
     let block = block.canonical();
+    // v0.16 Track C: a head item is drawn as a cube carrying the head's faces.
+    if super::skulls::owns(block.0) {
+        return super::skulls::item_boxes();
+    }
     if block == Block::STONE {
         static MODEL: std::sync::LazyLock<Vec<Box16>> = std::sync::LazyLock::new(|| {
             crate::assets::model_boxes("voxelcraft:stone_model").expect("invalid original stone model")

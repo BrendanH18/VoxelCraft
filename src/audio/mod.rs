@@ -19,6 +19,7 @@ mod source;
 mod voices;
 mod warden;
 mod weapons;
+mod wither;
 
 use std::sync::Arc;
 use std::time::Instant;

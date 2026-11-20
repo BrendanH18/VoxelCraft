@@ -118,6 +118,13 @@ fn identity_aliases_do_not_conflate_short_and_tall_grass_or_skull_items_and_bloc
     assert_eq!(java_registry::item("splash_potion", ""), Some(Item::splash_potion(Potion::WATER)));
     assert_eq!(voxelcraft::world::loot::java_item("cooked_beef"), Item::from_name("steak"));
     assert_eq!(voxelcraft::world::loot::java_item("quartz"), Some(Item::NETHER_QUARTZ));
+    // v0.16 Track C: the skull places; its block and item keep item 641.
     assert!(java_registry::resolves_item("wither_skeleton_skull", ""));
-    assert!(!java_registry::resolves_block("wither_skeleton_skull", ""));
+    assert!(java_registry::resolves_block("wither_skeleton_skull", ""));
+    assert_eq!(
+        java_registry::item("wither_skeleton_skull", ""),
+        java_registry::block("wither_skeleton_skull", "").map(Item::from_block)
+    );
+    assert_eq!(java_registry::item("wither_skeleton_skull", "").map(|i| i.0), Some(641));
+    assert!(java_registry::resolves_block("wither_skeleton_wall_skull", ""));
 }

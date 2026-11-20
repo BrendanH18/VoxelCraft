@@ -951,6 +951,24 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             let key = |x: i32, y: i32| ring(x, y) || shaft(x, y) || teeth(x, y);
             shaded(&key, x, y, c, 0.06)
         }
+        Sprite::NetherStar => {
+            // v0.16 Track C: an original pale four-pointed star with a
+            // warm core and shorter diagonal rays.
+            let (px, py) = centre(x, y);
+            let (dx, dy) = ((px - 8.0).abs(), (py - 8.0).abs());
+            let axis = dx * dy <= 1.2 && dx + dy <= 7.0;
+            let diagonal = (dx - dy).abs() <= 0.8 && dx + dy <= 5.0;
+            let core = dx + dy <= 2.5;
+            if core {
+                Some(tint([255, 252, 214], 1.0))
+            } else if axis {
+                Some(tint([236, 240, 228], 0.92 + noise(x, y, 31) * 0.1))
+            } else if diagonal {
+                Some(tint([214, 220, 236], 0.85))
+            } else {
+                None
+            }
+        }
         Sprite::BreezeRod => {
             // A pale, twisting rod with a cyan core.
             let on = (x + y - 15).abs() <= 1 && (2..=13).contains(&x);

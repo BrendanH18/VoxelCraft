@@ -47,6 +47,9 @@ impl Entities {
             "fight": self.fight.as_ref().map(|f| f.replica_json()),
             // v0.16 Track B: firework rockets in flight.
             "fireworks": self.fireworks_near(center, radius),
+            // v0.16 Track C: the Wither's skulls.
+            "wither_skulls": self.wither_skulls.iter().filter(|k| near(k.pos)).take(MAX)
+                .map(|k| json!({"at": pair(k.pos, k.previous_pos), "dangerous": k.dangerous})).collect::<Vec<_>>(),
         })
     }
 
@@ -120,6 +123,13 @@ impl Entities {
             })
             .collect();
         self.eyes = list("eyes").into_iter().filter_map(unpair).map(|(p, q)| EnderEye::replica(p, q)).collect();
+        self.wither_skulls = list("wither_skulls")
+            .into_iter()
+            .filter_map(|e| {
+                let (p, q) = unpair(&e["at"])?;
+                Some(super::wither::Skull::replica(p, q, e["dangerous"] == true))
+            })
+            .collect();
         self.fireballs = list("fireballs")
             .into_iter()
             .filter_map(|e| {

@@ -4,6 +4,7 @@ mod actions;
 mod agents;
 mod anvil;
 mod banners;
+mod beacon;
 mod bed;
 mod benchmark;
 mod books;
@@ -54,6 +55,7 @@ pub use crate::simulation::survival;
 pub use voxelcraft::rules::GameMode;
 mod title;
 mod weather;
+mod wither;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -144,6 +146,8 @@ pub(crate) enum Container {
     Stonecutter(IVec3),
     Loom(IVec3),
     Cartography(IVec3),
+    /// v0.16 Track C: a beacon's power screen.
+    Beacon(IVec3),
 }
 
 struct Game {
@@ -1357,10 +1361,15 @@ impl Game {
             requests: Vec::new(),
         };
         let result = f(&mut s);
+        let mut close = false;
         for request in std::mem::take(&mut s.requests) {
             match request {
                 screen::Request::Popup(text) => self.show_popup(&text),
+                screen::Request::Close => close = true,
             }
+        }
+        if close && self.inventory_open {
+            self.toggle_inventory();
         }
         result
     }
@@ -1448,6 +1457,11 @@ impl Game {
         self.play_shulker_sounds();
         let notes = std::mem::take(&mut self.world.notes);
         for (pos, pitch, instrument) in notes {
+            // v0.16 Track C: a head above imitates its mob at pitch 1.
+            if let Some(sound) = mobs::head_note(crate::world::gadgets::Instrument::from_u8(instrument)) {
+                self.audio.play(sound, Some(pos.as_dvec3() + glam::DVec3::splat(0.5)), 1.0, (1.0, 1.0));
+                continue;
+            }
             let sound = crate::audio::sounds::Sound::Note(crate::world::gadgets::Instrument::from_u8(instrument));
             let hz = crate::world::gadgets::pitch_hz(pitch);
             self.audio.play(sound, Some(pos.as_dvec3() + glam::DVec3::splat(0.5)), 1.0, (hz, hz));
@@ -1557,6 +1571,7 @@ impl Game {
             b if b.base() == Block::STONECUTTER => self.open_workstation(Container::Stonecutter(cell)),
             b if b.base() == Block::LOOM => self.open_workstation(Container::Loom(cell)),
             b if b.base() == Block::CARTOGRAPHY_TABLE => self.open_workstation(Container::Cartography(cell)),
+            crate::world::beacon::BEACON => self.open_beacon(cell),
             _ => {}
         }
     }
@@ -1651,6 +1666,7 @@ impl Game {
                 Some(b) if b.base() == Block::STONECUTTER => self.open_workstation(Container::Stonecutter(p)),
                 Some(b) if b.base() == Block::LOOM => self.open_workstation(Container::Loom(p)),
                 Some(b) if b.base() == Block::CARTOGRAPHY_TABLE => self.open_workstation(Container::Cartography(p)),
+                Some(crate::world::beacon::BEACON) => self.open_beacon(p),
                 Some(b) if voxelcraft::world::workstations::lectern(b.0).is_some_and(|(_, book, _)| book) => {
                     self.open_lectern(p);
                 }
@@ -2066,6 +2082,7 @@ impl Game {
         let verts = self.mobs.entities.mesh(camera, forward, fog_end, scene.time, alpha);
         push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
         crate::render::signs::text(&self.world, camera, verts);
+        crate::entity::model::build_beacon_beams(&self.world, camera, scene.time, fog_end, verts);
         if !self.camera.first_person() {
             let glow = verts.glow_start();
             let look = Self::stamp_look(

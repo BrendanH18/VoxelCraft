@@ -665,6 +665,9 @@ static TABLES: LazyLock<Tables> = LazyLock::new(|| {
             None if b.is_leaves() => Loot::Leaves,
             // `blocks/*shulker_box` has no explosion condition.
             None if super::shulker_box::owns(b.0) => Loot::Keep,
+            // v0.16 Track C: the head and beacon tables have no
+            // `survives_explosion` condition.
+            None if super::skulls::owns(b.0) || b == super::beacon::BEACON => Loot::Keep,
             None => Loot::Survives,
         };
     }
@@ -706,6 +709,21 @@ impl World {
     /// barrier isn't registered) stop its rays, every other block costs nothing.
     pub fn wind_exploded_cells(&mut self, center: DVec3, radius: f32) -> Vec<IVec3> {
         self.exploded_cells_with(center, radius, |b| (b == Block::BEDROCK).then_some(3_600_000.0))
+    }
+
+    /// v0.16 Track C: [`World::exploded_cells`] for a Wither skull; a
+    /// `dangerous` (blue) one caps the resistance of every block the Wither
+    /// can destroy at 0.8 (`WitherSkull.getBlockExplosionResistance`).
+    pub fn wither_exploded_cells(&mut self, center: DVec3, radius: f32, dangerous: bool) -> Vec<IVec3> {
+        self.exploded_cells_with(center, radius, |b| {
+            resistance_against(b).map(|r| {
+                if dangerous && crate::entity::wither::can_destroy(b) {
+                    r.min(crate::entity::wither::DANGEROUS_RESISTANCE)
+                } else {
+                    r
+                }
+            })
+        })
     }
 
     fn exploded_cells_with(

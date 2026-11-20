@@ -190,6 +190,8 @@ impl World {
             // Jukeboxes (a block entity) and reinforced deepslate
             // (`PushReaction.IMMOVEABLE`).
             || super::jukebox::piston_immovable(b)
+            // v0.16 Track C: the beacon's block entity.
+            || b == super::beacon::BEACON
             || super::utilities::campfire_of(b).is_some()
             || matches!(
                 r::component(b),
@@ -216,6 +218,8 @@ impl World {
             || super::utilities::decorated_pot_of(b).is_some()
             || super::scaffolding::is_scaffolding(b)
             || super::colour_blocks::pops_on_push(b)
+            // v0.16 Track C: heads are `PushReaction.POPPED`.
+            || super::skulls::owns(b.0)
             || b.is_fire()
             || matches!(
                 r::component(b),

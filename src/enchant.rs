@@ -165,8 +165,8 @@ impl ItemSet {
         let sword = tool(ToolKind::Sword);
         let mining_tool = matches!(kind, ItemKind::Tool(t, _) if t != ToolKind::Sword);
         let melee = sword || is_spear(item);
-        // `#skulls`: only the wither skeleton skull is registered.
-        let skull = item == Item::WITHER_SKULL;
+        // `#skulls`: every mob head and skull (v0.16 Track C).
+        let skull = crate::world::skulls::kind_of_item(item).is_some();
         let carved_pumpkin = item == Item::from_block(crate::world::pumpkin_blocks::CARVED);
         match self {
             ItemSet::Armor => matches!(kind, ItemKind::Armor(..)),

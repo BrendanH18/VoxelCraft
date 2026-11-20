@@ -736,7 +736,8 @@ impl Game {
                             | Tab::Smithing(pos)
                             | Tab::Stonecutter(pos)
                             | Tab::Loom(pos)
-                            | Tab::Cartography(pos)),
+                            | Tab::Cartography(pos)
+                            | Tab::Beacon(pos)),
                         ..
                     } => {
                         !self.world.get_block(pos).is_some_and(|b| tab.matches_block(b))
@@ -960,8 +961,14 @@ impl Game {
             if quick { s.quick_move(slot) } else { s.click_slot(slot, right) }
         });
         self.pads.seats[seat].body.container = container;
-        for super::screen::Request::Popup(text) in done.map(|(_, r)| r).unwrap_or_default() {
-            self.pads.seats[seat].message = Some((text, Instant::now()));
+        for request in done.map(|(_, r)| r).unwrap_or_default() {
+            match request {
+                super::screen::Request::Popup(text) => self.pads.seats[seat].message = Some((text, Instant::now())),
+                super::screen::Request::Close => {
+                    self.pads.seats[seat].menu = None;
+                    self.close_pad_menu(name);
+                }
+            }
         }
     }
 
@@ -1034,6 +1041,12 @@ impl Game {
             seat.open(Menu::items(Tab::Loom(pos)));
         } else if block.base() == Block::CARTOGRAPHY_TABLE {
             seat.open(Menu::items(Tab::Cartography(pos)));
+        } else if block == crate::world::beacon::BEACON {
+            seat.open(Menu::items(Tab::Beacon(pos)));
+            let name = seat.name.clone();
+            if let Some(bot) = self.agents.players.get_mut(&name) {
+                super::beacon::init_choice(&mut bot.agent.session, &self.world, pos);
+            }
         } else if block.is_bed() || super::bed::is_straw(Some(block)) {
             self.pad_sleep(i, pos);
         }

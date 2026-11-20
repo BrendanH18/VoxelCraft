@@ -111,6 +111,19 @@ const DIRT: [u8; 3] = [134, 96, 67];
 const GRASS: [u8; 3] = [95, 159, 53];
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
+    // v0.16 Track C: heads, the wither rose and its pot, the beacon.
+    if (crate::world::skulls::TEX..crate::world::skulls::TEX_END).contains(&layer) {
+        return crate::world::skulls::pixel(layer, x, y);
+    }
+    if (crate::world::wither_rose::TEX..crate::world::wither_rose::TEX_END).contains(&layer) {
+        return match crate::world::wither_rose::pot_layer_plant(layer) {
+            Some(plant) => utility::potted_side(layer, plant, x, y),
+            None => crate::world::wither_rose::pixel(x, y),
+        };
+    }
+    if (crate::world::beacon::GLASS_TEX..crate::world::beacon::TEX_END).contains(&layer) {
+        return crate::world::beacon::pixel(layer, x, y);
+    }
     if (crate::world::eyeblossom::TEX..crate::world::eyeblossom::TEX_END).contains(&layer) {
         return match crate::world::eyeblossom::pot_layer_plant(layer) {
             Some(plant) => utility::potted_side(layer, plant, x, y),

@@ -169,6 +169,7 @@ impl Game {
             self.audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05));
         }
         crate::entity::golem::finish_golems(&mut self.world, &mut self.mobs.entities);
+        self.finish_withers();
         crate::entity::frog::finish_hatches(&mut self.world, &mut self.mobs.entities);
         for (cell, count) in std::mem::take(&mut self.world.hatched_turtles) {
             self.mobs.entities.hatch_turtles(cell, count);
@@ -190,6 +191,7 @@ impl Game {
             health: self.session.vitals.health,
             effects: self.session.vitals.effects.mask(),
             armor_pieces: self.session.inventory.armor.iter().flatten().count() as u8,
+            head: self.session.inventory.armor[0].and_then(|s| crate::world::skulls::kind_of_item(s.item)),
             sneaking: self.session.player.sneaking,
             darkness_ticks: self
                 .session
@@ -469,6 +471,10 @@ impl Game {
                     self.explode(center, power, cause, credit_player)
                 }
                 EntityEvent::WindBurst(burst) => self.wind_burst(&burst),
+                // v0.16 Track C: the Wither's blasts, broken blocks and roses.
+                EntityEvent::WitherBlast { center, power, dangerous } => self.wither_explode(center, power, dangerous),
+                EntityEvent::WitherBreak { min, max, pos } => self.wither_break(min, max, pos),
+                EntityEvent::WitherRose { pos } => self.wither_rose(pos),
                 EntityEvent::PearlLanded { owner, pos } => {
                     let mut burst = crate::particles::Burst::new(crate::particles::Kind::Portal, pos + DVec3::Y, 32);
                     burst.spread = DVec3::Y;
@@ -494,6 +500,7 @@ impl Game {
                     }
                 }
                 EntityEvent::Fireball { .. }
+                | EntityEvent::ChargedBlast { .. }
                 | EntityEvent::MobArrow { .. }
                 | EntityEvent::ThrowPotion { .. }
                 | EntityEvent::ThrowTrident { .. }
@@ -557,6 +564,13 @@ impl Game {
                         MobSound::Illager(cue) => (Sound::Illager(cue), 1.0),
                         MobSound::Raid(cue) => (Sound::Raid(cue), 1.0),
                         MobSound::Flight(cue) => (Sound::Flight(self.far_firework(cue, pos)), 1.0),
+                        // `globalLevelEvent(1023)`: the whole dimension hears the Wither arrive.
+                        MobSound::Wither(voxelcraft::entity::wither::Cue::Spawn) => {
+                            let sound = Sound::Wither(voxelcraft::entity::wither::Cue::Spawn);
+                            self.audio.play_in(SoundSource::Hostile, sound, None, 1.0, (1.0, 1.0));
+                            continue;
+                        }
+                        MobSound::Wither(cue) => (Sound::Wither(cue), 1.0),
                         MobSound::CopperGolem(action, stage) => (Sound::CopperGolem(action, stage), 0.7),
                         MobSound::Hurt(MobKind::CopperGolem) => {
                             (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Hurt, 0), 0.9)
@@ -759,6 +773,22 @@ fn mob_volume(kind: MobKind) -> f32 {
     if kind == MobKind::Bat { 0.1 } else { 1.0 }
 }
 
+/// v0.16 Track C: `NOTE_BLOCK_IMITATE_*`, the sound a note block plays with
+/// a mob head on it: the mob's own ambient call (the dragon's growl).
+pub(super) fn head_note(i: crate::world::gadgets::Instrument) -> Option<Sound> {
+    use crate::world::gadgets::Instrument as I;
+    let kind = match i {
+        I::Zombie => MobKind::Zombie,
+        I::Skeleton => MobKind::Skeleton,
+        I::Creeper => MobKind::Creeper,
+        I::WitherSkeleton => MobKind::WitherSkeleton,
+        I::Piglin => MobKind::Piglin,
+        I::Dragon => return Some(Sound::DragonGrowl),
+        _ => return None,
+    };
+    Some(Sound::Mob(voice(kind), Call::Ambient))
+}
+
 fn voice(kind: MobKind) -> Voice {
     match kind {
         MobKind::Pig => Voice::Pig,
@@ -784,6 +814,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::ZombieNautilus => Voice::ZombieNautilus,
         MobKind::CamelHusk => Voice::CamelHusk,
         MobKind::Parched => Voice::Parched,
+        MobKind::Wither => Voice::Wither,
         MobKind::Allay => Voice::Allay,
         MobKind::CopperGolem => Voice::Skeleton,
         MobKind::Creaking => Voice::Creaking,

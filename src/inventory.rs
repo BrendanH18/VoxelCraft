@@ -455,7 +455,7 @@ impl Inventory {
     /// Clicks an armor slot: only the matching piece goes in, and a bound
     /// piece stays on.
     pub fn click_armor(&mut self, piece: ArmorPiece, right: bool, creative: bool) {
-        let fits = self.cursor.is_none_or(|c| c.item.equip_piece() == Some(piece));
+        let fits = self.cursor.is_none_or(|c| c.item.wear_slot() == Some(piece));
         if fits && self.can_unequip(piece, creative) {
             click_slot(&mut self.armor[piece as usize], &mut self.cursor, right);
         }

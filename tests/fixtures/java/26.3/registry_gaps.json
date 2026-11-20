@@ -5,10 +5,6 @@
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
     },
-    "beacon": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "cave_air": {
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
@@ -77,22 +73,6 @@
       "release": "v0.17",
       "reason": "Redstone and automation completion."
     },
-    "creeper_head": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "creeper_wall_head": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "dragon_head": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "dragon_wall_head": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "end_rod": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
@@ -152,22 +132,6 @@
     "petrified_oak_slab": {
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
-    },
-    "piglin_head": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "piglin_wall_head": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "player_head": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "player_wall_head": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "polished_cinnabar": {
       "release": "v0.16",
@@ -281,10 +245,6 @@
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
-    "potted_wither_rose": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "purpur_block": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
@@ -314,14 +274,6 @@
       "reason": "Technical or creative-only; no survival acquisition role."
     },
     "shelf_mushroom": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "skeleton_skull": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "skeleton_wall_skull": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
@@ -389,27 +341,7 @@
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
     },
-    "wither_rose": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "wither_skeleton_skull": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "wither_skeleton_wall_skull": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "yellow_poplar_leaves": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "zombie_head": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "zombie_wall_head": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     }
@@ -446,10 +378,6 @@
     "bat_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "beacon": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "bee_spawn_egg": {
       "release": "v0.18",
@@ -583,10 +511,6 @@
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "creeper_head": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "creeper_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
@@ -606,10 +530,6 @@
     "donkey_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "dragon_head": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "drowned_spawn_egg": {
       "release": "v0.18",
@@ -787,10 +707,6 @@
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
-    "nether_star": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "ocelot_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
@@ -827,10 +743,6 @@
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "piglin_head": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "piglin_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
@@ -838,10 +750,6 @@
     "pillager_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "player_head": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "polar_bear_spawn_egg": {
       "release": "v0.18",
@@ -1035,10 +943,6 @@
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "skeleton_skull": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "skeleton_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
@@ -1183,10 +1087,6 @@
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "wither_rose": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "wither_skeleton_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
@@ -1206,10 +1106,6 @@
     "zoglin_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "zombie_head": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "zombie_horse_spawn_egg": {
       "release": "v0.18",
