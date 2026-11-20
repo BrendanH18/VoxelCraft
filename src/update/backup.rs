@@ -150,7 +150,13 @@ fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
     for entry in std::fs::read_dir(from)? {
         let entry = entry?;
         let kind = entry.file_type()?;
-        let target = to.join(entry.file_name());
+        // Prevent path traversal attacks by rejecting paths containing '..'.
+        let file_name = entry.file_name();
+        let file_path = std::path::Path::new(&file_name);
+        if file_path.components().any(|c| c == std::path::Component::ParentDir) {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid input: {}", file_path.display())));
+        }
+        let target = to.join(file_name);
         if kind.is_dir() {
             copy_tree(&entry.path(), &target)?;
         } else if kind.is_file() {

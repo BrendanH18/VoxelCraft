@@ -42,6 +42,13 @@ pub fn listed_hash(sums: &str, name: &str) -> Option<[u8; 32]> {
 }
 
 pub fn sha256_file(path: &Path) -> std::io::Result<[u8; 32]> {
+    // Prevent path traversal attacks by rejecting paths containing '..'.
+    if path.components().any(|c| c == std::path::Component::ParentDir) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("Invalid input: {}", path.display()),
+        ));
+    }
     let mut file = std::fs::File::open(path)?;
     let mut hasher = Sha256::new();
     let mut buf = vec![0u8; 1 << 16];
