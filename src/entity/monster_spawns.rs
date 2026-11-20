@@ -101,9 +101,9 @@ impl JavaMonster {
     }
 }
 
-/// The sulfur cube, once it spawns here (`None` skips the entry).
+/// v0.16 Track D: the sulfur cube spawns from its entry.
 const fn sulfur_cube() -> Option<MobKind> {
-    None
+    Some(MobKind::SulfurCube)
 }
 
 /// One weighted entry of a biome's monster list and its pack size range.
@@ -475,6 +475,8 @@ pub(super) fn monster_spot_ok<W: MobWorld + ?Sized>(
         if !slime_rules(world, cell, rules, rng) {
             return false;
         }
+    } else if kind == MobKind::SulfurCube {
+        // `checkSulfurCubeSpawnRules` is always true: no light check.
     } else if !dark_enough(world, cell, rules.light.monster_darken, rng) {
         return false;
     }
@@ -643,6 +645,15 @@ impl Entities {
         // so they count toward caps. Animal.removeWhenFarAway keeps creatures anyway.
         self.mobs.last_mut().unwrap().persistent = false;
         self.natural_animal(biome, group.size);
+        // `AgeableMob.finalizeSpawn`: after the first, a pack's sulfur cubes
+        // are babies one time in twenty.
+        if kind == MobKind::SulfurCube
+            && group.size > 0
+            && self.rng.next_f32() <= super::sulfur_cube::PACK_BABY_CHANCE
+            && let Some(m) = self.mobs.last_mut()
+        {
+            m.set_sulfur_size(super::sulfur_cube::BABY_SIZE);
+        }
         group.size += 1;
         let Some(m) = self.mobs.last_mut() else { return };
         // The first member picks the horse coat, llama colour, rabbit or fox

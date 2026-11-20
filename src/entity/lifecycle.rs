@@ -58,6 +58,7 @@ impl Entities {
         self.cat_spawner_tick(dt, world, ctx);
         self.assign_hunts(ctx);
         self.endermite_upkeep(dt, world);
+        self.sulfur_cube_upkeep(dt, world, ctx, &mut events);
         self.illager_upkeep(dt, world, ctx, &mut events);
         self.raid_tick(dt, world, ctx, &mut events);
         self.happy_ghast_upkeep(dt, world, ctx);
@@ -205,12 +206,23 @@ impl Entities {
                     }
                 }
                 if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME) && dead.kind.is_cube() && dead.size > 1 {
-                    let count = 2 + (self.rng.next_f32() * 3.0) as usize;
+                    // `SulfurCube.getSplitCount`: two babies (none once primed).
+                    let count = if dead.kind == MobKind::SulfurCube {
+                        if dead.sulfur_cube.as_ref().is_some_and(|s| s.primed()) { 0 } else { 2 }
+                    } else {
+                        2 + (self.rng.next_f32() * 3.0) as usize
+                    };
                     for n in 0..count {
                         let offset =
                             DVec3::new((n % 2) as f64 - 0.5, 0.5, (n / 2) as f64 - 0.5) * dead.size as f64 * 0.25;
                         let mut child = Mob::new(dead.kind, dead.pos + offset, self.rng.range(0.0, TAU));
-                        child.set_size(dead.size / 2);
+                        if dead.kind == MobKind::SulfurCube {
+                            // `setUpSplitCube`: `setBaby(true)`.
+                            child.set_sulfur_size(dead.size / 2);
+                            child.persistent = dead.persistent;
+                        } else {
+                            child.set_size(dead.size / 2);
+                        }
                         self.mobs.push(child);
                     }
                 }

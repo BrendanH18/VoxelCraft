@@ -364,6 +364,7 @@ impl PlayerSession {
                 owner: self.id,
                 smash: 0.0,
                 armor_effectiveness: 0.0,
+                pitch: -self.player.pitch.to_degrees(),
             };
             let at = entities.mobs[i].pos + DVec3::Y * 0.5;
             entities.player_melee(i, hit);

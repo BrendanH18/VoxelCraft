@@ -1,0 +1,1290 @@
+{
+  "archetypes": {
+    "bouncy": {
+      "attribute_modifiers": [
+        {
+          "amount": -2.0,
+          "attribute": "knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": -2.0,
+          "attribute": "explosion_knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": 0.8999999761581421,
+          "attribute": "bounciness",
+          "operation": "add_value"
+        },
+        {
+          "amount": -0.699999988079071,
+          "attribute": "friction_modifier",
+          "operation": "add_multiplied_total"
+        },
+        {
+          "amount": -0.9900000002235174,
+          "attribute": "air_drag_modifier",
+          "operation": "add_multiplied_total"
+        }
+      ],
+      "buoyant": true,
+      "items": [
+        "oak_planks",
+        "spruce_planks",
+        "birch_planks",
+        "jungle_planks",
+        "acacia_planks",
+        "dark_oak_planks",
+        "pale_oak_planks",
+        "crimson_planks",
+        "warped_planks",
+        "mangrove_planks",
+        "bamboo_planks",
+        "cherry_planks",
+        "poplar_planks",
+        "bamboo_mosaic",
+        "dark_oak_log",
+        "dark_oak_wood",
+        "stripped_dark_oak_log",
+        "stripped_dark_oak_wood",
+        "pale_oak_log",
+        "pale_oak_wood",
+        "stripped_pale_oak_log",
+        "stripped_pale_oak_wood",
+        "oak_log",
+        "oak_wood",
+        "stripped_oak_log",
+        "stripped_oak_wood",
+        "acacia_log",
+        "acacia_wood",
+        "stripped_acacia_log",
+        "stripped_acacia_wood",
+        "birch_log",
+        "birch_wood",
+        "stripped_birch_log",
+        "stripped_birch_wood",
+        "jungle_log",
+        "jungle_wood",
+        "stripped_jungle_log",
+        "stripped_jungle_wood",
+        "spruce_log",
+        "spruce_wood",
+        "stripped_spruce_log",
+        "stripped_spruce_wood",
+        "mangrove_log",
+        "mangrove_wood",
+        "stripped_mangrove_log",
+        "stripped_mangrove_wood",
+        "cherry_log",
+        "cherry_wood",
+        "stripped_cherry_log",
+        "stripped_cherry_wood",
+        "poplar_log",
+        "poplar_wood",
+        "stripped_poplar_log",
+        "stripped_poplar_wood",
+        "crimson_stem",
+        "stripped_crimson_stem",
+        "crimson_hyphae",
+        "stripped_crimson_hyphae",
+        "warped_stem",
+        "stripped_warped_stem",
+        "warped_hyphae",
+        "stripped_warped_hyphae",
+        "bamboo_block",
+        "stripped_bamboo_block"
+      ],
+      "knockback_modifiers": {
+        "horizontal_power": 0.4125,
+        "vertical_power": 0.105
+      },
+      "sound_settings": {
+        "hit_sound": "entity.sulfur_cube.bouncy.hit",
+        "push_sound": "entity.sulfur_cube.bouncy.push",
+        "push_sound_cooldown": 0.7,
+        "push_sound_impulse_threshold": 0.3
+      }
+    },
+    "explosive": {
+      "attribute_modifiers": [
+        {
+          "amount": -1.0,
+          "attribute": "knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": -1.0,
+          "attribute": "explosion_knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": 0.5,
+          "attribute": "bounciness",
+          "operation": "add_value"
+        },
+        {
+          "amount": -0.699999988079071,
+          "attribute": "friction_modifier",
+          "operation": "add_multiplied_total"
+        },
+        {
+          "amount": -0.699999988079071,
+          "attribute": "air_drag_modifier",
+          "operation": "add_multiplied_total"
+        }
+      ],
+      "buoyant": true,
+      "explosion": {
+        "causes_fire": false,
+        "fuse": 120,
+        "power": 3
+      },
+      "items": [
+        "tnt"
+      ],
+      "knockback_modifiers": {
+        "horizontal_power": 0.4125,
+        "vertical_power": 0.09
+      },
+      "sound_settings": {
+        "hit_sound": "entity.sulfur_cube.explosive.hit",
+        "push_sound": "entity.sulfur_cube.explosive.push",
+        "push_sound_cooldown": 0.7,
+        "push_sound_impulse_threshold": 0.1
+      }
+    },
+    "fast_flat": {
+      "attribute_modifiers": [
+        {
+          "amount": -1.0,
+          "attribute": "knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": -1.0,
+          "attribute": "explosion_knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": 0.5,
+          "attribute": "bounciness",
+          "operation": "add_value"
+        },
+        {
+          "amount": -0.7999999970197678,
+          "attribute": "friction_modifier",
+          "operation": "add_multiplied_total"
+        },
+        {
+          "amount": -0.9900000002235174,
+          "attribute": "air_drag_modifier",
+          "operation": "add_multiplied_total"
+        }
+      ],
+      "items": [
+        "tube_coral_block",
+        "brain_coral_block",
+        "bubble_coral_block",
+        "fire_coral_block",
+        "horn_coral_block",
+        "dead_tube_coral_block",
+        "dead_brain_coral_block",
+        "dead_bubble_coral_block",
+        "dead_fire_coral_block",
+        "dead_horn_coral_block",
+        "sponge",
+        "wet_sponge",
+        "dried_kelp_block",
+        "moss_block",
+        "pale_moss_block",
+        "resin_block",
+        "resin_bricks",
+        "chiseled_resin_bricks",
+        "melon",
+        "hay_block",
+        "pumpkin",
+        "carved_pumpkin",
+        "jack_o_lantern",
+        "ochre_froglight",
+        "pearlescent_froglight",
+        "verdant_froglight"
+      ],
+      "knockback_modifiers": {
+        "horizontal_power": 0.9125,
+        "vertical_power": 0.09
+      },
+      "sound_settings": {
+        "hit_sound": "entity.sulfur_cube.fast_flat.hit",
+        "push_sound": "entity.sulfur_cube.fast_flat.push",
+        "push_sound_cooldown": 0.9,
+        "push_sound_impulse_threshold": 0.03
+      }
+    },
+    "fast_sliding": {
+      "attribute_modifiers": [
+        {
+          "amount": 0.5,
+          "attribute": "knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": 0.5,
+          "attribute": "explosion_knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": 0.10000000149011612,
+          "attribute": "bounciness",
+          "operation": "add_value"
+        },
+        {
+          "amount": -0.9499999992549419,
+          "attribute": "friction_modifier",
+          "operation": "add_multiplied_total"
+        },
+        {
+          "amount": -0.9900000002235174,
+          "attribute": "air_drag_modifier",
+          "operation": "add_multiplied_total"
+        }
+      ],
+      "items": [
+        "blue_ice",
+        "packed_ice",
+        "snow_block"
+      ],
+      "knockback_modifiers": {
+        "horizontal_power": 0.6625,
+        "vertical_power": 0.09
+      },
+      "sound_settings": {
+        "hit_sound": "entity.sulfur_cube.fast_sliding.hit",
+        "push_sound": "entity.sulfur_cube.fast_sliding.push",
+        "push_sound_cooldown": 1.0,
+        "push_sound_impulse_threshold": 0.05
+      }
+    },
+    "high_resistance": {
+      "attribute_modifiers": [
+        {
+          "amount": 0.699999988079071,
+          "attribute": "knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": 0.699999988079071,
+          "attribute": "explosion_knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": 0.20000000298023224,
+          "attribute": "bounciness",
+          "operation": "add_value"
+        },
+        {
+          "amount": 0.0,
+          "attribute": "friction_modifier",
+          "operation": "add_multiplied_total"
+        },
+        {
+          "amount": -0.9900000002235174,
+          "attribute": "air_drag_modifier",
+          "operation": "add_multiplied_total"
+        }
+      ],
+      "items": [
+        "soul_sand",
+        "soul_soil"
+      ],
+      "knockback_modifiers": {
+        "horizontal_power": 0.4125,
+        "vertical_power": 0.09
+      },
+      "sound_settings": {
+        "hit_sound": "entity.sulfur_cube.high_resistance.hit",
+        "push_sound": "entity.sulfur_cube.high_resistance.push",
+        "push_sound_cooldown": 0.7,
+        "push_sound_impulse_threshold": 0.03
+      }
+    },
+    "hot": {
+      "attribute_modifiers": [
+        {
+          "amount": -1.0,
+          "attribute": "knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": -1.0,
+          "attribute": "explosion_knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": 0.5,
+          "attribute": "bounciness",
+          "operation": "add_value"
+        },
+        {
+          "amount": -0.699999988079071,
+          "attribute": "friction_modifier",
+          "operation": "add_multiplied_total"
+        },
+        {
+          "amount": -0.8999999985098839,
+          "attribute": "air_drag_modifier",
+          "operation": "add_multiplied_total"
+        }
+      ],
+      "buoyant": true,
+      "contact_damage": {
+        "amount": 1.0,
+        "attribute_to_source": false,
+        "damage_type": "sulfur_cube_hot"
+      },
+      "items": [
+        "magma_block"
+      ],
+      "knockback_modifiers": {
+        "horizontal_power": 0.4125,
+        "vertical_power": 0.09
+      },
+      "sound_settings": {
+        "hit_sound": "entity.sulfur_cube.hot.hit",
+        "push_sound": "entity.sulfur_cube.hot.push",
+        "push_sound_cooldown": 0.7,
+        "push_sound_impulse_threshold": 0.2
+      }
+    },
+    "light": {
+      "attribute_modifiers": [
+        {
+          "amount": -1.0,
+          "attribute": "knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": -1.0,
+          "attribute": "explosion_knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": 1.0,
+          "attribute": "bounciness",
+          "operation": "add_value"
+        },
+        {
+          "amount": -0.699999988079071,
+          "attribute": "friction_modifier",
+          "operation": "add_multiplied_total"
+        },
+        {
+          "amount": 0.7999999523162842,
+          "attribute": "air_drag_modifier",
+          "operation": "add_multiplied_total"
+        }
+      ],
+      "buoyant": true,
+      "items": [
+        "white_wool",
+        "orange_wool",
+        "magenta_wool",
+        "light_blue_wool",
+        "yellow_wool",
+        "lime_wool",
+        "pink_wool",
+        "gray_wool",
+        "light_gray_wool",
+        "cyan_wool",
+        "purple_wool",
+        "blue_wool",
+        "brown_wool",
+        "green_wool",
+        "red_wool",
+        "black_wool"
+      ],
+      "knockback_modifiers": {
+        "horizontal_power": 0.4125,
+        "vertical_power": 0.18
+      },
+      "sound_settings": {
+        "hit_sound": "entity.sulfur_cube.light.hit",
+        "push_sound": "entity.sulfur_cube.light.push",
+        "push_sound_cooldown": 0.7,
+        "push_sound_impulse_threshold": 0.2
+      }
+    },
+    "regular": {
+      "attribute_modifiers": [
+        {
+          "amount": -1.0,
+          "attribute": "knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": -1.0,
+          "attribute": "explosion_knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": 0.5,
+          "attribute": "bounciness",
+          "operation": "add_value"
+        },
+        {
+          "amount": -0.699999988079071,
+          "attribute": "friction_modifier",
+          "operation": "add_multiplied_total"
+        },
+        {
+          "amount": -0.8999999985098839,
+          "attribute": "air_drag_modifier",
+          "operation": "add_multiplied_total"
+        }
+      ],
+      "buoyant": true,
+      "items": [
+        "white_concrete_powder",
+        "orange_concrete_powder",
+        "magenta_concrete_powder",
+        "light_blue_concrete_powder",
+        "yellow_concrete_powder",
+        "lime_concrete_powder",
+        "pink_concrete_powder",
+        "gray_concrete_powder",
+        "light_gray_concrete_powder",
+        "cyan_concrete_powder",
+        "purple_concrete_powder",
+        "blue_concrete_powder",
+        "brown_concrete_powder",
+        "green_concrete_powder",
+        "red_concrete_powder",
+        "black_concrete_powder",
+        "mud",
+        "muddy_mangrove_roots",
+        "packed_mud",
+        "coal_block",
+        "dirt",
+        "coarse_dirt",
+        "rooted_dirt",
+        "podzol",
+        "grass_block",
+        "clay",
+        "bone_block"
+      ],
+      "knockback_modifiers": {
+        "horizontal_power": 0.4125,
+        "vertical_power": 0.09
+      },
+      "sound_settings": {
+        "hit_sound": "entity.sulfur_cube.regular.hit",
+        "push_sound": "entity.sulfur_cube.regular.push",
+        "push_sound_cooldown": 0.5,
+        "push_sound_impulse_threshold": 0.2
+      }
+    },
+    "slow_bouncy": {
+      "attribute_modifiers": [
+        {
+          "amount": 0.4000000059604645,
+          "attribute": "knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": 0.4000000059604645,
+          "attribute": "explosion_knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": 0.6000000238418579,
+          "attribute": "bounciness",
+          "operation": "add_value"
+        },
+        {
+          "amount": -0.699999988079071,
+          "attribute": "friction_modifier",
+          "operation": "add_multiplied_total"
+        },
+        {
+          "amount": -0.9499999992549419,
+          "attribute": "air_drag_modifier",
+          "operation": "add_multiplied_total"
+        }
+      ],
+      "items": [
+        "amethyst_block",
+        "andesite",
+        "basalt",
+        "blackstone",
+        "bricks",
+        "calcite",
+        "chiseled_cinnabar",
+        "chiseled_deepslate",
+        "chiseled_nether_bricks",
+        "chiseled_polished_blackstone",
+        "chiseled_quartz_block",
+        "chiseled_red_sandstone",
+        "chiseled_sandstone",
+        "chiseled_stone_bricks",
+        "chiseled_sulfur",
+        "chiseled_tuff",
+        "chiseled_tuff_bricks",
+        "cinnabar",
+        "cinnabar_bricks",
+        "cobbled_deepslate",
+        "cobblestone",
+        "cracked_deepslate_bricks",
+        "cracked_deepslate_tiles",
+        "cracked_nether_bricks",
+        "cracked_polished_blackstone_bricks",
+        "cracked_stone_bricks",
+        "crimson_nylium",
+        "crying_obsidian",
+        "cut_red_sandstone",
+        "cut_sandstone",
+        "dark_prismarine",
+        "deepslate",
+        "deepslate_bricks",
+        "deepslate_tiles",
+        "diamond_block",
+        "diorite",
+        "dripstone_block",
+        "emerald_block",
+        "end_stone",
+        "end_stone_bricks",
+        "gilded_blackstone",
+        "glowstone",
+        "granite",
+        "lapis_block",
+        "mossy_cobblestone",
+        "mossy_stone_bricks",
+        "mud_bricks",
+        "nether_bricks",
+        "netherrack",
+        "observer",
+        "obsidian",
+        "polished_andesite",
+        "polished_basalt",
+        "polished_blackstone",
+        "polished_blackstone_bricks",
+        "polished_cinnabar",
+        "polished_deepslate",
+        "polished_diorite",
+        "polished_granite",
+        "polished_sulfur",
+        "polished_tuff",
+        "prismarine",
+        "prismarine_bricks",
+        "purpur_block",
+        "purpur_pillar",
+        "quartz_block",
+        "quartz_bricks",
+        "nether_quartz_ore",
+        "quartz_pillar",
+        "red_nether_bricks",
+        "red_sandstone",
+        "redstone_lamp",
+        "sandstone",
+        "sea_lantern",
+        "smooth_basalt",
+        "smooth_quartz",
+        "smooth_red_sandstone",
+        "smooth_sandstone",
+        "smooth_stone",
+        "stone",
+        "stone_bricks",
+        "sulfur",
+        "sulfur_bricks",
+        "tuff",
+        "tuff_bricks",
+        "warped_nylium",
+        "white_concrete",
+        "orange_concrete",
+        "magenta_concrete",
+        "light_blue_concrete",
+        "yellow_concrete",
+        "lime_concrete",
+        "pink_concrete",
+        "gray_concrete",
+        "light_gray_concrete",
+        "cyan_concrete",
+        "purple_concrete",
+        "blue_concrete",
+        "brown_concrete",
+        "green_concrete",
+        "red_concrete",
+        "black_concrete",
+        "coal_ore",
+        "deepslate_coal_ore",
+        "lapis_ore",
+        "deepslate_lapis_ore",
+        "redstone_ore",
+        "deepslate_redstone_ore",
+        "diamond_ore",
+        "deepslate_diamond_ore",
+        "emerald_ore",
+        "deepslate_emerald_ore",
+        "terracotta",
+        "white_terracotta",
+        "orange_terracotta",
+        "magenta_terracotta",
+        "light_blue_terracotta",
+        "yellow_terracotta",
+        "lime_terracotta",
+        "pink_terracotta",
+        "gray_terracotta",
+        "light_gray_terracotta",
+        "cyan_terracotta",
+        "purple_terracotta",
+        "blue_terracotta",
+        "brown_terracotta",
+        "green_terracotta",
+        "red_terracotta",
+        "black_terracotta",
+        "white_glazed_terracotta",
+        "orange_glazed_terracotta",
+        "magenta_glazed_terracotta",
+        "light_blue_glazed_terracotta",
+        "yellow_glazed_terracotta",
+        "lime_glazed_terracotta",
+        "pink_glazed_terracotta",
+        "gray_glazed_terracotta",
+        "light_gray_glazed_terracotta",
+        "cyan_glazed_terracotta",
+        "purple_glazed_terracotta",
+        "blue_glazed_terracotta",
+        "brown_glazed_terracotta",
+        "green_glazed_terracotta",
+        "red_glazed_terracotta",
+        "black_glazed_terracotta"
+      ],
+      "knockback_modifiers": {
+        "horizontal_power": 0.4125,
+        "vertical_power": 0.24
+      },
+      "sound_settings": {
+        "hit_sound": "entity.sulfur_cube.slow_bouncy.hit",
+        "push_sound": "entity.sulfur_cube.slow_bouncy.push",
+        "push_sound_cooldown": 0.5,
+        "push_sound_impulse_threshold": 0.05
+      }
+    },
+    "slow_flat": {
+      "attribute_modifiers": [
+        {
+          "amount": 0.5,
+          "attribute": "knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": 0.5,
+          "attribute": "explosion_knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": 0.4000000059604645,
+          "attribute": "bounciness",
+          "operation": "add_value"
+        },
+        {
+          "amount": -0.5999999940395355,
+          "attribute": "friction_modifier",
+          "operation": "add_multiplied_total"
+        },
+        {
+          "amount": -0.8999999985098839,
+          "attribute": "air_drag_modifier",
+          "operation": "add_multiplied_total"
+        }
+      ],
+      "items": [
+        "iron_block",
+        "gold_block",
+        "raw_copper_block",
+        "raw_gold_block",
+        "raw_iron_block",
+        "gold_ore",
+        "nether_gold_ore",
+        "deepslate_gold_ore",
+        "iron_ore",
+        "deepslate_iron_ore",
+        "copper_ore",
+        "deepslate_copper_ore",
+        "netherite_block",
+        "ancient_debris",
+        "copper_block",
+        "exposed_copper",
+        "weathered_copper",
+        "oxidized_copper",
+        "waxed_copper_block",
+        "waxed_exposed_copper",
+        "waxed_weathered_copper",
+        "waxed_oxidized_copper",
+        "copper_bulb",
+        "exposed_copper_bulb",
+        "weathered_copper_bulb",
+        "oxidized_copper_bulb",
+        "waxed_copper_bulb",
+        "waxed_exposed_copper_bulb",
+        "waxed_weathered_copper_bulb",
+        "waxed_oxidized_copper_bulb",
+        "cut_copper",
+        "exposed_cut_copper",
+        "weathered_cut_copper",
+        "oxidized_cut_copper",
+        "waxed_cut_copper",
+        "waxed_exposed_cut_copper",
+        "waxed_weathered_cut_copper",
+        "waxed_oxidized_cut_copper",
+        "chiseled_copper",
+        "exposed_chiseled_copper",
+        "weathered_chiseled_copper",
+        "oxidized_chiseled_copper",
+        "waxed_chiseled_copper",
+        "waxed_exposed_chiseled_copper",
+        "waxed_weathered_chiseled_copper",
+        "waxed_oxidized_chiseled_copper"
+      ],
+      "knockback_modifiers": {
+        "horizontal_power": 0.4125,
+        "vertical_power": 0.105
+      },
+      "sound_settings": {
+        "hit_sound": "entity.sulfur_cube.slow_flat.hit",
+        "push_sound": "entity.sulfur_cube.slow_flat.push",
+        "push_sound_cooldown": 0.9,
+        "push_sound_impulse_threshold": 0.03
+      }
+    },
+    "slow_sliding": {
+      "attribute_modifiers": [
+        {
+          "amount": 0.800000011920929,
+          "attribute": "knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": 0.800000011920929,
+          "attribute": "explosion_knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": 0.10000000149011612,
+          "attribute": "bounciness",
+          "operation": "add_value"
+        },
+        {
+          "amount": -0.9499999992549419,
+          "attribute": "friction_modifier",
+          "operation": "add_multiplied_total"
+        },
+        {
+          "amount": -0.9900000002235174,
+          "attribute": "air_drag_modifier",
+          "operation": "add_multiplied_total"
+        }
+      ],
+      "items": [
+        "brown_mushroom_block",
+        "red_mushroom_block",
+        "mushroom_stem",
+        "mycelium",
+        "nether_wart_block",
+        "warped_wart_block",
+        "shroomlight"
+      ],
+      "knockback_modifiers": {
+        "horizontal_power": 0.4125,
+        "vertical_power": 0.09
+      },
+      "sound_settings": {
+        "hit_sound": "entity.sulfur_cube.slow_sliding.hit",
+        "push_sound": "entity.sulfur_cube.slow_sliding.push",
+        "push_sound_cooldown": 1.0,
+        "push_sound_impulse_threshold": 0.02
+      }
+    },
+    "sticky": {
+      "attribute_modifiers": [
+        {
+          "amount": -2.0,
+          "attribute": "knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": -2.0,
+          "attribute": "explosion_knockback_resistance",
+          "operation": "add_value"
+        },
+        {
+          "amount": 0.0,
+          "attribute": "bounciness",
+          "operation": "add_value"
+        },
+        {
+          "amount": 1.0,
+          "attribute": "friction_modifier",
+          "operation": "add_multiplied_total"
+        },
+        {
+          "amount": -0.9900000002235174,
+          "attribute": "air_drag_modifier",
+          "operation": "add_multiplied_total"
+        }
+      ],
+      "items": [
+        "honeycomb_block"
+      ],
+      "knockback_modifiers": {
+        "horizontal_power": 0.4125,
+        "vertical_power": 0.09
+      },
+      "sound_settings": {
+        "hit_sound": "entity.sulfur_cube.sticky.hit",
+        "push_sound": "entity.sulfur_cube.sticky.push",
+        "push_sound_cooldown": 0.5,
+        "push_sound_impulse_threshold": 0.05
+      }
+    }
+  },
+  "attributes": {
+    "tempt_range": 8.0
+  },
+  "bucket_item_class": "MobBucketItem",
+  "constants": {
+    "abstract_cube_mob": {
+      "MAX_NATURAL_SIZE": 4,
+      "MAX_SIZE": 127,
+      "MIN_SIZE": 1
+    },
+    "sulfur_cube": {
+      "EXTRA_KNOCKBACK_DAMPENING": 0.25,
+      "HORIZONTAL_HIT_ANGLE_SCALE": 1.6,
+      "MAX_PLAYER_PUSH_SPEED": 0.5,
+      "MAX_SIZE": 2,
+      "MIN_SIZE": 1,
+      "PICKUP_TIMER_DURATION": 100,
+      "PLAYER_PUSH_SPEED_SCALE_MULTIPLIER": 0.3,
+      "PUSH_DISTANCE_THRESHOLD": 1.2999999523162842,
+      "SPLIT_COUNT": 2,
+      "VEHICLE_PUSH_SPEED_SCALE_MULTIPLIER": 0.16,
+      "VERTICAL_HIT_ANGLE_SCALE": 0.5,
+      "VERTICAL_POSITION_ANGLE_SCALE": 0.8,
+      "VERTICAL_PUSH_MULTIPLIER": 0.3
+    }
+  },
+  "damage_type_hot": {
+    "effects": "burning",
+    "exhaustion": 0.1,
+    "message_id": "sulfurCubeHot",
+    "scaling": "when_caused_by_living_non_player"
+  },
+  "entity_type": {
+    "category": "monster",
+    "eye_height": 0.175,
+    "fire_immune": false,
+    "height": 0.49,
+    "spawn_dimensions_scale": 2.0,
+    "width": 0.49
+  },
+  "loot_table": {
+    "type": "minecraft:entity"
+  },
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "net.minecraft.world.entity.EntityTypes (SULFUR_CUBE)",
+    "net.minecraft.world.entity.monster.cubemob.SulfurCube and AbstractCubeMob (constants)",
+    "SulfurCube.createSulfurCubeAttributes",
+    "net.minecraft.world.item.Items (SULFUR_CUBE_BUCKET)",
+    "data/minecraft/sulfur_cube_archetype, tags/item, tags/damage_type, damage_type",
+    "data/minecraft/loot_table/entities/sulfur_cube.json",
+    "data/minecraft/worldgen/biome/sulfur_caves.json (monster spawns)"
+  ],
+  "sulfur_caves_monster": [
+    {
+      "count": {
+        "max_inclusive": 4,
+        "min_inclusive": 2,
+        "type": "uniform"
+      },
+      "type": "sulfur_cube",
+      "weight": 100
+    }
+  ],
+  "tags": {
+    "food": [
+      "slime_ball"
+    ],
+    "immune_with_block": [
+      "arrow",
+      "cactus",
+      "dry_out",
+      "fall",
+      "falling_anvil",
+      "falling_block",
+      "falling_stalactite",
+      "freeze",
+      "mace_smash",
+      "hot_floor",
+      "mob_attack",
+      "mob_attack_no_aggro",
+      "mob_projectile",
+      "player_attack",
+      "spear",
+      "spit",
+      "stalagmite",
+      "sting",
+      "sulfur_cube_hot",
+      "sweet_berry_bush",
+      "thrown",
+      "trident",
+      "wind_charge",
+      "fireworks",
+      "explosion",
+      "player_explosion",
+      "bad_respawn_point"
+    ],
+    "swallowable": [
+      "oak_planks",
+      "spruce_planks",
+      "birch_planks",
+      "jungle_planks",
+      "acacia_planks",
+      "dark_oak_planks",
+      "pale_oak_planks",
+      "crimson_planks",
+      "warped_planks",
+      "mangrove_planks",
+      "bamboo_planks",
+      "cherry_planks",
+      "poplar_planks",
+      "bamboo_mosaic",
+      "dark_oak_log",
+      "dark_oak_wood",
+      "stripped_dark_oak_log",
+      "stripped_dark_oak_wood",
+      "pale_oak_log",
+      "pale_oak_wood",
+      "stripped_pale_oak_log",
+      "stripped_pale_oak_wood",
+      "oak_log",
+      "oak_wood",
+      "stripped_oak_log",
+      "stripped_oak_wood",
+      "acacia_log",
+      "acacia_wood",
+      "stripped_acacia_log",
+      "stripped_acacia_wood",
+      "birch_log",
+      "birch_wood",
+      "stripped_birch_log",
+      "stripped_birch_wood",
+      "jungle_log",
+      "jungle_wood",
+      "stripped_jungle_log",
+      "stripped_jungle_wood",
+      "spruce_log",
+      "spruce_wood",
+      "stripped_spruce_log",
+      "stripped_spruce_wood",
+      "mangrove_log",
+      "mangrove_wood",
+      "stripped_mangrove_log",
+      "stripped_mangrove_wood",
+      "cherry_log",
+      "cherry_wood",
+      "stripped_cherry_log",
+      "stripped_cherry_wood",
+      "poplar_log",
+      "poplar_wood",
+      "stripped_poplar_log",
+      "stripped_poplar_wood",
+      "crimson_stem",
+      "stripped_crimson_stem",
+      "crimson_hyphae",
+      "stripped_crimson_hyphae",
+      "warped_stem",
+      "stripped_warped_stem",
+      "warped_hyphae",
+      "stripped_warped_hyphae",
+      "bamboo_block",
+      "stripped_bamboo_block",
+      "white_concrete_powder",
+      "orange_concrete_powder",
+      "magenta_concrete_powder",
+      "light_blue_concrete_powder",
+      "yellow_concrete_powder",
+      "lime_concrete_powder",
+      "pink_concrete_powder",
+      "gray_concrete_powder",
+      "light_gray_concrete_powder",
+      "cyan_concrete_powder",
+      "purple_concrete_powder",
+      "blue_concrete_powder",
+      "brown_concrete_powder",
+      "green_concrete_powder",
+      "red_concrete_powder",
+      "black_concrete_powder",
+      "mud",
+      "muddy_mangrove_roots",
+      "packed_mud",
+      "coal_block",
+      "dirt",
+      "coarse_dirt",
+      "rooted_dirt",
+      "podzol",
+      "grass_block",
+      "clay",
+      "bone_block",
+      "iron_block",
+      "gold_block",
+      "raw_copper_block",
+      "raw_gold_block",
+      "raw_iron_block",
+      "gold_ore",
+      "nether_gold_ore",
+      "deepslate_gold_ore",
+      "iron_ore",
+      "deepslate_iron_ore",
+      "copper_ore",
+      "deepslate_copper_ore",
+      "netherite_block",
+      "ancient_debris",
+      "copper_block",
+      "exposed_copper",
+      "weathered_copper",
+      "oxidized_copper",
+      "waxed_copper_block",
+      "waxed_exposed_copper",
+      "waxed_weathered_copper",
+      "waxed_oxidized_copper",
+      "copper_bulb",
+      "exposed_copper_bulb",
+      "weathered_copper_bulb",
+      "oxidized_copper_bulb",
+      "waxed_copper_bulb",
+      "waxed_exposed_copper_bulb",
+      "waxed_weathered_copper_bulb",
+      "waxed_oxidized_copper_bulb",
+      "cut_copper",
+      "exposed_cut_copper",
+      "weathered_cut_copper",
+      "oxidized_cut_copper",
+      "waxed_cut_copper",
+      "waxed_exposed_cut_copper",
+      "waxed_weathered_cut_copper",
+      "waxed_oxidized_cut_copper",
+      "chiseled_copper",
+      "exposed_chiseled_copper",
+      "weathered_chiseled_copper",
+      "oxidized_chiseled_copper",
+      "waxed_chiseled_copper",
+      "waxed_exposed_chiseled_copper",
+      "waxed_weathered_chiseled_copper",
+      "waxed_oxidized_chiseled_copper",
+      "tube_coral_block",
+      "brain_coral_block",
+      "bubble_coral_block",
+      "fire_coral_block",
+      "horn_coral_block",
+      "dead_tube_coral_block",
+      "dead_brain_coral_block",
+      "dead_bubble_coral_block",
+      "dead_fire_coral_block",
+      "dead_horn_coral_block",
+      "sponge",
+      "wet_sponge",
+      "dried_kelp_block",
+      "moss_block",
+      "pale_moss_block",
+      "resin_block",
+      "resin_bricks",
+      "chiseled_resin_bricks",
+      "melon",
+      "hay_block",
+      "pumpkin",
+      "carved_pumpkin",
+      "jack_o_lantern",
+      "ochre_froglight",
+      "pearlescent_froglight",
+      "verdant_froglight",
+      "white_wool",
+      "orange_wool",
+      "magenta_wool",
+      "light_blue_wool",
+      "yellow_wool",
+      "lime_wool",
+      "pink_wool",
+      "gray_wool",
+      "light_gray_wool",
+      "cyan_wool",
+      "purple_wool",
+      "blue_wool",
+      "brown_wool",
+      "green_wool",
+      "red_wool",
+      "black_wool",
+      "blue_ice",
+      "packed_ice",
+      "snow_block",
+      "brown_mushroom_block",
+      "red_mushroom_block",
+      "mushroom_stem",
+      "mycelium",
+      "nether_wart_block",
+      "warped_wart_block",
+      "shroomlight",
+      "honeycomb_block",
+      "soul_sand",
+      "soul_soil",
+      "tnt",
+      "magma_block",
+      "amethyst_block",
+      "andesite",
+      "basalt",
+      "blackstone",
+      "bricks",
+      "calcite",
+      "chiseled_cinnabar",
+      "chiseled_deepslate",
+      "chiseled_nether_bricks",
+      "chiseled_polished_blackstone",
+      "chiseled_quartz_block",
+      "chiseled_red_sandstone",
+      "chiseled_sandstone",
+      "chiseled_stone_bricks",
+      "chiseled_sulfur",
+      "chiseled_tuff",
+      "chiseled_tuff_bricks",
+      "cinnabar",
+      "cinnabar_bricks",
+      "cobbled_deepslate",
+      "cobblestone",
+      "cracked_deepslate_bricks",
+      "cracked_deepslate_tiles",
+      "cracked_nether_bricks",
+      "cracked_polished_blackstone_bricks",
+      "cracked_stone_bricks",
+      "crimson_nylium",
+      "crying_obsidian",
+      "cut_red_sandstone",
+      "cut_sandstone",
+      "dark_prismarine",
+      "deepslate",
+      "deepslate_bricks",
+      "deepslate_tiles",
+      "diamond_block",
+      "diorite",
+      "dripstone_block",
+      "emerald_block",
+      "end_stone",
+      "end_stone_bricks",
+      "gilded_blackstone",
+      "glowstone",
+      "granite",
+      "lapis_block",
+      "mossy_cobblestone",
+      "mossy_stone_bricks",
+      "mud_bricks",
+      "nether_bricks",
+      "netherrack",
+      "observer",
+      "obsidian",
+      "polished_andesite",
+      "polished_basalt",
+      "polished_blackstone",
+      "polished_blackstone_bricks",
+      "polished_cinnabar",
+      "polished_deepslate",
+      "polished_diorite",
+      "polished_granite",
+      "polished_sulfur",
+      "polished_tuff",
+      "prismarine",
+      "prismarine_bricks",
+      "purpur_block",
+      "purpur_pillar",
+      "quartz_block",
+      "quartz_bricks",
+      "nether_quartz_ore",
+      "quartz_pillar",
+      "red_nether_bricks",
+      "red_sandstone",
+      "redstone_lamp",
+      "sandstone",
+      "sea_lantern",
+      "smooth_basalt",
+      "smooth_quartz",
+      "smooth_red_sandstone",
+      "smooth_sandstone",
+      "smooth_stone",
+      "stone",
+      "stone_bricks",
+      "sulfur",
+      "sulfur_bricks",
+      "tuff",
+      "tuff_bricks",
+      "warped_nylium",
+      "white_concrete",
+      "orange_concrete",
+      "magenta_concrete",
+      "light_blue_concrete",
+      "yellow_concrete",
+      "lime_concrete",
+      "pink_concrete",
+      "gray_concrete",
+      "light_gray_concrete",
+      "cyan_concrete",
+      "purple_concrete",
+      "blue_concrete",
+      "brown_concrete",
+      "green_concrete",
+      "red_concrete",
+      "black_concrete",
+      "coal_ore",
+      "deepslate_coal_ore",
+      "lapis_ore",
+      "deepslate_lapis_ore",
+      "redstone_ore",
+      "deepslate_redstone_ore",
+      "diamond_ore",
+      "deepslate_diamond_ore",
+      "emerald_ore",
+      "deepslate_emerald_ore",
+      "terracotta",
+      "white_terracotta",
+      "orange_terracotta",
+      "magenta_terracotta",
+      "light_blue_terracotta",
+      "yellow_terracotta",
+      "lime_terracotta",
+      "pink_terracotta",
+      "gray_terracotta",
+      "light_gray_terracotta",
+      "cyan_terracotta",
+      "purple_terracotta",
+      "blue_terracotta",
+      "brown_terracotta",
+      "green_terracotta",
+      "red_terracotta",
+      "black_terracotta",
+      "white_glazed_terracotta",
+      "orange_glazed_terracotta",
+      "magenta_glazed_terracotta",
+      "light_blue_glazed_terracotta",
+      "yellow_glazed_terracotta",
+      "lime_glazed_terracotta",
+      "pink_glazed_terracotta",
+      "gray_glazed_terracotta",
+      "light_gray_glazed_terracotta",
+      "cyan_glazed_terracotta",
+      "purple_glazed_terracotta",
+      "blue_glazed_terracotta",
+      "brown_glazed_terracotta",
+      "green_glazed_terracotta",
+      "red_glazed_terracotta",
+      "black_glazed_terracotta"
+    ]
+  }
+}

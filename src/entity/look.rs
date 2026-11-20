@@ -86,6 +86,9 @@ impl Mob {
         if let Some(s) = &self.happy_ghast {
             v["happy_ghast"] = json!({"still": s.still(), "goggles": s.goggles_down});
         }
+        if let Some(s) = &self.sulfur_cube {
+            v["sulfur_cube"] = json!({"fuse": s.fuse, "size": self.size});
+        }
         if let Some(s) = &self.nautilus {
             v["nautilus"] = json!({"dashing": s.dashing});
         }
@@ -216,6 +219,10 @@ impl Mob {
         if let Some(s) = &mut self.happy_ghast {
             s.still_timeout = i32::from(v["happy_ghast"]["still"] == true);
             s.goggles_down = v["happy_ghast"]["goggles"] == true;
+        }
+        if let Some(s) = &mut self.sulfur_cube {
+            s.fuse = v["sulfur_cube"]["fuse"].as_i64().map_or(-1, |f| f.clamp(-1, 1000) as i32);
+            self.size = v["sulfur_cube"]["size"].as_u64().map_or(self.size, |n| n.clamp(1, 2) as u8);
         }
         if let Some(s) = &mut self.nautilus {
             s.dashing = v["nautilus"]["dashing"] == true;

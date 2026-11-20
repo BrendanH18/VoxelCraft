@@ -219,3 +219,52 @@ mod tests {
         assert_ne!(out.iter().map(|v| v.color).collect::<Vec<_>>(), temperate);
     }
 }
+
+// ------------------------------------------------------------ sulfur cube
+// v0.16 Track D: an original sulfur cube — a cloudy, sulfur-yellow jelly
+// shell around a mustard core with a sleepy face; holding a block, the core
+// gives way to the block itself.
+const SULFUR_CORE: Rgb = [190, 164, 52];
+const SULFUR_FACE: Rgb = [92, 70, 24];
+const SULFUR_SHELL: Rgb = [226, 206, 88];
+const SULFUR_CUBE: &[Cuboid] = &[
+    cube([-2.8, 1.1, -2.8], [2.8, 6.7, 2.8], SULFUR_CORE, 40),
+    cube([-2.0, 4.2, 2.8], [-0.7, 4.8, 2.9], SULFUR_FACE, 0),
+    cube([0.7, 4.2, 2.8], [2.0, 4.8, 2.9], SULFUR_FACE, 0),
+    cube([-0.6, 2.4, 2.8], [0.6, 3.0, 2.9], SULFUR_FACE, 0),
+    glass([-3.92, 0.0, -3.92], [3.92, 7.84, 3.92], SULFUR_SHELL, 50),
+];
+const SULFUR_SHELL_ONLY: &[Cuboid] = &[glass([-3.92, 0.0, -3.92], [3.92, 7.84, 3.92], SULFUR_SHELL, 50)];
+
+pub(super) fn sulfur_cube(m: &Mob) -> Parts {
+    // A lit cube flashes like TNT through the fuse's last ticks (see `build`).
+    if m.sulfur_has_block() {
+        parts![part(SULFUR_SHELL_ONLY, [0.0; 3], Quat::IDENTITY)]
+    } else {
+        parts![part(SULFUR_CUBE, [0.0; 3], Quat::IDENTITY)]
+    }
+}
+
+/// The block a sulfur cube holds, textured, inside its shell.
+pub(super) fn sulfur_block(m: &Mob, origin: Vec3, body: Quat, scale: f32, light: ([u8; 4], u8), out: &mut EntityMesh) {
+    let Some(block) = m.sulfur_body().and_then(|s| s.item.block()) else { return };
+    let held = crate::entity::player_model::Limb {
+        pivot: Vec3::new(0.0, 3.92, 0.0),
+        rot: Quat::IDENTITY,
+        min: [-2.9; 3],
+        max: [2.9; 3],
+        uv: [0.0; 2],
+    };
+    crate::entity::player_model::textured_box(
+        out,
+        &held,
+        0.0,
+        origin,
+        body,
+        light,
+        2,
+        block.info().tex[0],
+        scale,
+        [255, 255, 255, 0],
+    );
+}

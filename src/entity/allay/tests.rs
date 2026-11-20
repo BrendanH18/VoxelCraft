@@ -286,6 +286,7 @@ fn liked_player_cannot_melee_or_fire_aspect_the_allay_and_death_drops_once() {
             owner: PlayerId::HOST,
             smash: 0.,
             armor_effectiveness: 0.,
+            pitch: 0.,
         },
     );
     assert_eq!(e.mobs[0].health, 20.);

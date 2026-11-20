@@ -1164,6 +1164,7 @@ impl Item {
         match self {
             Self::POPLAR_BOAT => return single("poplar boat", Sprite::Boat([196, 188, 166], false)),
             Self::POPLAR_CHEST_BOAT => return single("poplar chest boat", Sprite::Boat([196, 188, 166], true)),
+            crate::entity::sulfur_cube::BUCKET => return bucket_of("bucket of sulfur cube", [222, 200, 80]),
             _ => {}
         }
         // v0.15 Track D: spectral arrows, coloured eggs and trim templates.
@@ -1999,9 +2000,9 @@ const TRACK_D_ICONS: u32 = 3 + (crate::content::trim::ITEM_END - crate::content:
 
 /// v0.16 Track D's items (ids 1705..=1729), in icon order.
 fn gen5_items() -> impl Iterator<Item = Item> {
-    [Item::POPLAR_BOAT, Item::POPLAR_CHEST_BOAT].into_iter()
+    [Item::POPLAR_BOAT, Item::POPLAR_CHEST_BOAT, crate::entity::sulfur_cube::BUCKET].into_iter()
 }
-const GEN5_ICONS: u32 = 2;
+const GEN5_ICONS: u32 = 3;
 
 /// The fermented spider eye's icon: icons appended in v0.14 follow it.
 const fn late_icon_base() -> u16 {

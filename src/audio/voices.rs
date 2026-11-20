@@ -73,6 +73,9 @@ pub enum Voice {
     CamelHusk,
     /// v0.15 Track C: `entity.parched.*`.
     Parched,
+    /// v0.16 Track D: `entity.sulfur_cube.hurt`/`death` (and the small
+    /// cube's, pitched up). It has no ambient call.
+    SulfurCube,
 }
 
 /// What kind of sound a voice makes.
@@ -85,7 +88,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 52] = [
+    pub const ALL: [Voice; 53] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -138,6 +141,7 @@ impl Voice {
         Voice::ZombieNautilus,
         Voice::CamelHusk,
         Voice::Parched,
+        Voice::SulfurCube,
     ];
 
     /// The category the creature plays in: `Monster`, `Ghast`, `Hoglin` and
@@ -174,7 +178,9 @@ impl Voice {
             | Voice::PolarBear
             | Voice::Panda
             | Voice::Armadillo
-            | Voice::Ocelot => SoundSource::Neutral,
+            | Voice::Ocelot
+            // `SulfurCube.getSoundSource` is NEUTRAL.
+            | Voice::SulfurCube => SoundSource::Neutral,
             Voice::Pig
             | Voice::Cow
             | Voice::Sheep
@@ -227,6 +233,7 @@ impl Voice {
             Voice::ZombieNautilus => "zombie_nautilus",
             Voice::CamelHusk => "camel_husk",
             Voice::Parched => "parched",
+            Voice::SulfurCube => "sulfur_cube",
             Voice::Cow => "cow",
             Voice::Sheep => "sheep",
             Voice::Chicken => "chicken",
@@ -368,6 +375,7 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::CamelHusk => camel_husk(call, rng),
         Voice::Parched => parched(call, rng),
         Voice::Slime => slime(call, rng),
+        Voice::SulfurCube => sulfur_cube(call, rng),
         Voice::Ghast => ghast(call, rng),
         Voice::Witch => witch(call, rng),
         Voice::Villager => villager(call, rng),
@@ -1004,6 +1012,20 @@ fn slime(call: Call, rng: &mut Rng) -> Vec<f32> {
     let mut buf = noise(rng, samples(secs), |t| dsp::ad(t, 0.01, 0.07));
     Biquad::lowpass(650.0, 1.5).run(&mut buf);
     add_mode(&mut buf, 0, Mode { freq: 140.0, amp: 0.6, tau: 0.08, glide: 0.5, glide_tau: 0.03 });
+    dsp::finish(buf, 0.5)
+}
+
+/// A sulfur cube: a thick, wet, crackling squelch, lower and grittier than
+/// a slime's, sagging as it dies.
+fn sulfur_cube(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let secs = if call == Call::Death { 0.6 } else { 0.25 };
+    let mut buf = noise(rng, samples(secs), |t| dsp::ad(t, 0.01, if call == Call::Death { 0.2 } else { 0.08 }));
+    Biquad::lowpass(520.0, 1.8).run(&mut buf);
+    let mut grit = noise(rng, samples(secs), |t| 0.25 * dsp::ad(t, 0.005, 0.05));
+    Biquad::bandpass(2400.0, 3.0).run(&mut grit);
+    dsp::mix_into(&mut buf, &grit, 1.0, 0);
+    let glide = if call == Call::Death { 0.4 } else { 0.7 };
+    add_mode(&mut buf, 0, Mode { freq: 110.0, amp: 0.7, tau: 0.1, glide, glide_tau: 0.05 });
     dsp::finish(buf, 0.5)
 }
 

@@ -1023,6 +1023,8 @@ impl Entities {
                     || m.kind == MobKind::Bat
                     // `Lifetime` keeps counting across a restart.
                     || m.kind == MobKind::Endermite
+                    // Java saves every sulfur cube with its chunk.
+                    || m.kind == MobKind::SulfurCube
                     // Raid membership, spells, a vex's life and owner.
                     || m.illager.is_some()
                     // A heart's protector keeps its binding across a restart.
@@ -1666,6 +1668,11 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if let Some(s) = &m.endermite {
         s.save_into(&mut v);
     }
+    if let Some(s) = &m.sulfur_cube {
+        s.save_into(&mut v);
+        // `AbstractCubeMob` saves `Size` (one less than the size).
+        v["sulfur_cube"]["size"] = (m.size - 1).into();
+    }
     if let Some(s) = &m.illager {
         v["illager"] = s.save();
     }
@@ -1795,6 +1802,15 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     }
     if let Some(s) = &mut m.endermite {
         s.load(v);
+    }
+    if let Some(s) = &mut m.sulfur_cube {
+        s.load(v);
+        let size = v["sulfur_cube"]["size"].as_u64().map_or(super::sulfur_cube::ADULT_SIZE, |n| n.min(1) as u8 + 1);
+        let (baby, age) = (m.baby, m.age);
+        m.set_sulfur_size(size);
+        if size == super::sulfur_cube::BABY_SIZE && baby {
+            m.age = age.min(-1);
+        }
     }
     // v0.15 Track E: a raid witch keeps its raider state.
     if kind == MobKind::Witch && v["illager"].is_object() {

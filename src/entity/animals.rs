@@ -219,7 +219,7 @@ impl Entities {
         let m = self.mobs.get_mut(index)?;
         if !m.alive()
             || !m.baby
-            || m.animal.is_none()
+            || (m.animal.is_none() && m.kind != MobKind::SulfurCube)
             || matches!(m.kind, MobKind::ZombieHorse | MobKind::SkeletonHorse | MobKind::Villager)
         {
             return None;
@@ -635,6 +635,8 @@ impl Mob {
             10.0
         } else if self.kind == MobKind::Wolf && self.animal.as_ref().is_some_and(|a| a.owner.is_some()) {
             40.0
+        } else if self.kind == MobKind::SulfurCube {
+            super::sulfur_cube::HEALTH_PER_SIZE * f32::from(self.size)
         } else {
             self.leader_max_health(self.kind.max_health())
         };

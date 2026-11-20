@@ -133,7 +133,7 @@ pub fn froglight(variant: u8) -> Block {
     }
 }
 pub fn prey(m: &Mob) -> bool {
-    m.alive() && m.size == 1 && m.kind.is_cube()
+    m.alive() && m.size == 1 && matches!(m.kind, MobKind::Slime | MobKind::MagmaCube)
 }
 
 impl Entities {
