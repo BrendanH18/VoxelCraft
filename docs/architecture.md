@@ -1056,6 +1056,28 @@ own branch. No released build saves the new members, so the integrator
 makes them contiguous in landing order (A, B, C, D, then E, F, G) and
 records the result here. Saved names follow Java's registry names.
 
+**Track D (generation 5 Overworld), 2026-11-20.** Used: states 16000–16107
+(`world::gen5_blocks`: the eight cinnabar and sulfur blocks, potent sulfur
+16008–16012, sulfur spikes 16016–16035, the six slabs 16040–16069 and walls
+16070–16093, nether gold ore 16096, red shrub 16097, golden dandelion 16098
+and its pot 16099, shelf mushrooms 16100–16107), 19584–19983
+(`world::wood::poplar`: logs, wood and stripped blocks, planks, leaves,
+sapling and pot, `forms` wood index 12's fence, gate and door, right-hinge
+doors, slab, stairs, `wood::switches` family 8, `wood::Kind::Poplar`'s
+signs and shelf) and 20000–20479 (the six cinnabar and sulfur stairs
+families, 80 each, kept in the wood range and named by `gen5_blocks`);
+items 1705 (poplar boat) and 1706 (poplar chest boat); texture layers
+749–795. Unused and unregistered: 16013–16015, 16036–16039, 16094–16095,
+16108–16383, 19638–19647, 19984–19999, items 1707–1729 and layers 796–948.
+Appended orderings: seven `slab_stair_states::FAMILIES` after resin
+(`TRACK_D_FIRST`: poplar, cinnabar, polished cinnabar, cinnabar bricks,
+sulfur, polished sulfur, sulfur bricks), six `wall_states` family bytes
+after resin's, two item icons after v0.15 Track D's, `wood::Kind::Poplar`,
+`Wood::Poplar`, boat wood 10 (minecart codes 40 and 41) and the
+`DappledForest` and `SulfurCaves` biomes (never saved). No `MobKind`,
+`Effect`, sound, particle or `utilities::POTTED` entries. Record:
+[v0.16 generation 5 Overworld](verification/2026-11-20-v0.16-generation-5-overworld.md).
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

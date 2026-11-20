@@ -1386,6 +1386,12 @@ Wave 1 (independent):
    mushrooms; the cinnabar and sulfur families, sulfur springs and caves,
    sulfur spikes and potent sulfur; the sulfur cube and its bucket; nether
    gold ore; abandoned camps with their chests and the abandoned camp map.
+   *Implemented, unverified (2026-11-20):* poplar wood with boats, leaves,
+   saplings and trees; dappled forests and sulfur caves in generation 5;
+   cinnabar, sulfur, potent sulfur and sulfur spikes; red shrubs, golden
+   dandelions and shelf mushrooms; nether gold ore. The sulfur cube and its
+   bucket, abandoned camps and their map, potent sulfur's gas and geysers,
+   spike behaviour and sulfur springs remain ([record](verification/2026-11-20-v0.16-generation-5-overworld.md)).
 
 Wave 2 (after wave 1 is integrated):
 
