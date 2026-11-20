@@ -365,6 +365,7 @@ pub fn is_loved(item: Item) -> bool {
             "light weighted pressure plate",
             "nether gold ore",
             "golden horse armor",
+            "golden dandelion",
         ]
         .into_iter()
         .filter_map(Item::from_name)
@@ -403,6 +404,7 @@ pub fn guarded_by_piglins(block: Block) -> bool {
                 | Block::GOLD_ORE
                 | Block::DEEPSLATE_GOLD_ORE
                 | Block::RAW_GOLD_BLOCK
+                | crate::world::gen5_blocks::NETHER_GOLD_ORE
         )
 }
 
@@ -1580,6 +1582,7 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
         "health": m.health,
         "effects": m.effects.serialize(),
         "baby": m.baby,
+        "age_locked": m.age_locked,
         "grow": m.grow,
         "age": m.age,
         "egg_timer": m.egg_timer,
@@ -1739,6 +1742,7 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     // Before health, which the leader's max health bounds.
     m.attrs = super::zombie::Attrs::load(&v["attributes"]);
     m.baby = v["baby"].as_bool().unwrap_or(false);
+    m.age_locked = v["age_locked"] == true;
     // Snifflets take twice as long as other babies to grow up.
     let youngest = if kind == MobKind::Sniffer { -48000 } else { -24000 };
     m.age = v["age"].as_i64().unwrap_or(if m.baby && kind.is_breedable() { -24000 } else { 0 }).clamp(youngest, 6000)
@@ -2114,6 +2118,7 @@ mod tests {
         e.update(0.05, &world, &ctx);
         assert!(guarded_by_piglins(Block::CHEST) && guarded_by_piglins(Block::GOLD_BLOCK));
         assert!(!guarded_by_piglins(Block::STONE));
+        assert!(guarded_by_piglins(crate::world::gen5_blocks::NETHER_GOLD_ORE));
         e.piglins_notice(PlayerId::HOST, gold.pos, true, &world);
         assert_eq!(e.mobs[a].nether.as_ref().unwrap().foe, Some(Foe::Player(PlayerId::HOST)));
         assert_eq!(e.mobs[b].nether.as_ref().unwrap().foe, None, "too far away to notice");

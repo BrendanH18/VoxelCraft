@@ -191,7 +191,8 @@ impl Mob {
         }
     }
     pub(super) fn advance_animal_age(&mut self, dt: f32) {
-        if !self.alive() || self.kind == MobKind::Turtle && self.baby {
+        // `AgeableMob.canAgeUp`: an age-locked baby stays one.
+        if !self.alive() || self.kind == MobKind::Turtle && self.baby || self.age_locked && self.baby {
             return;
         }
         if self.baby && self.age == 0 {
@@ -207,6 +208,30 @@ impl Mob {
     }
 }
 impl Entities {
+    /// Java 26.3 `AgeableMob.mobInteract` with a golden dandelion (v0.16
+    /// Track D): on a baby animal outside `#cannot_be_age_locked` it toggles
+    /// the age lock, resets the baby to its youngest age, uses up the flower
+    /// and keeps a locked baby from despawning.
+    fn use_golden_dandelion(&mut self, index: usize, held: Option<Stack>) -> Option<bool> {
+        if held?.item != Item::from_block(crate::world::gen5_blocks::GOLDEN_DANDELION) {
+            return None;
+        }
+        let m = self.mobs.get_mut(index)?;
+        if !m.alive()
+            || !m.baby
+            || m.animal.is_none()
+            || matches!(m.kind, MobKind::ZombieHorse | MobKind::SkeletonHorse | MobKind::Villager)
+        {
+            return None;
+        }
+        m.age_locked = !m.age_locked;
+        m.age = if m.kind == MobKind::Sniffer { -48000 } else { BABY_AGE };
+        if m.age_locked {
+            m.persistent = true;
+        }
+        Some(true)
+    }
+
     /// Shared action. `Some(true)` consumes food; `Some(false)` uses an
     /// empty hand/owner command; `None` permits ordinary item actions.
     pub fn use_animal(&mut self, index: usize, held: Option<Stack>, player: PlayerId) -> Option<bool> {
@@ -220,6 +245,9 @@ impl Entities {
         infinite: bool,
     ) -> Option<bool> {
         if let Some(result) = self.use_lead_or_name(index, held, player) {
+            return Some(result);
+        }
+        if let Some(result) = self.use_golden_dandelion(index, held) {
             return Some(result);
         }
         if let Some(result) = self.feed_dolphin(index, held) {
@@ -975,6 +1003,27 @@ mod tests {
             assert_eq!(e.mobs[0].age, 0);
             assert!(!e.mobs[0].baby);
         }
+    }
+    #[test]
+    fn a_golden_dandelion_locks_and_unlocks_a_babys_age_and_saves() {
+        let dandelion = Stack::new(crate::world::gen5_blocks::GOLDEN_DANDELION, 1);
+        let mut e = Entities::new(7);
+        e.spawn(MobKind::Cow, DVec3::new(0.0, 1.0, 0.0));
+        // Grown animals ignore it.
+        assert_eq!(e.use_animal(0, Some(dandelion), PlayerId(4)), None);
+        e.mobs[0].age = -1200;
+        e.mobs[0].baby = true;
+        assert_eq!(e.use_animal(0, Some(dandelion), PlayerId(4)), Some(true));
+        assert!(e.mobs[0].age_locked && e.mobs[0].persistent);
+        assert_eq!(e.mobs[0].age, BABY_AGE, "`setAge(getBabyStartAge())`");
+        e.mobs[0].advance_animal_age(10_000.0);
+        assert_eq!((e.mobs[0].age, e.mobs[0].baby), (BABY_AGE, true), "a locked baby stays one");
+        let saved = super::super::nether::save_mob(&e.mobs[0]);
+        assert_eq!(saved["age_locked"], true);
+        assert_eq!(e.use_animal(0, Some(dandelion), PlayerId(4)), Some(true));
+        assert!(!e.mobs[0].age_locked);
+        e.mobs[0].advance_animal_age(1200.0);
+        assert!(!e.mobs[0].baby, "unlocked, it grows up");
     }
     #[test]
     fn tiny_steps_do_not_accelerate_growth() {

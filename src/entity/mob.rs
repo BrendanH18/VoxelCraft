@@ -1203,6 +1203,9 @@ pub struct Mob {
     /// Saved with the level and never despawned (bastion residents, piglins
     /// that picked something up), like Java's persistence flag.
     pub persistent: bool,
+    /// Java 26.3 `AgeableMob.AGE_LOCKED`: a golden dandelion stopped this
+    /// baby growing up (v0.16 Track D). Saved.
+    pub age_locked: bool,
     /// Java slime size (1, 2 or 4).
     pub size: u8,
     /// A baby zombie: half size and 50% faster.
@@ -1429,6 +1432,7 @@ impl Mob {
             uid: 0,
             persistent: super::mounts::equine(kind) && kind != MobKind::CamelHusk
                 || matches!(kind, MobKind::Tadpole | MobKind::CopperGolem | MobKind::Allay),
+            age_locked: false,
             size: 1,
             baby: false,
             grow: 0.0,
