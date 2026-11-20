@@ -117,6 +117,9 @@ pub const fn component(id: u16) -> Option<r::Component> {
 /// The left-hinge lower door with the same facing and open state as the
 /// right-hinge lower door `id`.
 pub const fn door_twin(id: u16) -> Option<Block> {
+    if let Some(twin) = super::wood::poplar::door_twin(id) {
+        return Some(twin);
+    }
     if id < DOOR_FIRST || id >= DOOR_FIRST + DOOR_FAMILIES * 8 {
         return None;
     }
@@ -132,6 +135,9 @@ pub const fn door_twin(id: u16) -> Option<Block> {
 /// The right-hinge twin of a left-hinge lower door (`None` for anything else).
 pub const fn right_of(left: Block) -> Option<Block> {
     if let Some(right) = super::copper::right_of(left) {
+        return Some(right);
+    }
+    if let Some(right) = super::wood::poplar::right_of(left) {
         return Some(right);
     }
     let id = left.0;
@@ -153,7 +159,9 @@ pub const fn right_of(left: Block) -> Option<Block> {
 /// Java `DoorBlock.HINGE == RIGHT`. Upper halves answer `false`; read the
 /// lower half.
 pub const fn is_right_hinge(b: Block) -> bool {
-    (b.0 >= DOOR_FIRST && b.0 < DOOR_FIRST + DOOR_FAMILIES * 8) || super::copper::is_right_hinge(b.0)
+    (b.0 >= DOOR_FIRST && b.0 < DOOR_FIRST + DOOR_FAMILIES * 8)
+        || super::copper::is_right_hinge(b.0)
+        || super::wood::poplar::door_twin(b.0).is_some()
 }
 
 /// `to` (a door state computed from `from`) with `from`'s hinge.

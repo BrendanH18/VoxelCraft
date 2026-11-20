@@ -26,6 +26,7 @@ pub mod bookshelf;
 pub mod entities;
 #[cfg(test)]
 mod entity_tests;
+pub mod poplar;
 pub mod shelves;
 pub mod signs;
 pub mod switches;
@@ -88,10 +89,13 @@ pub enum Kind {
     Bamboo,
     Crimson,
     Warped,
+    /// v0.16 Track D (`poplar`): its signs and shelves live in
+    /// [`poplar`]'s range, not after the warped ones.
+    Poplar,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 12] = [
+    pub const ALL: [Kind; 13] = [
         Kind::Oak,
         Kind::Spruce,
         Kind::Birch,
@@ -104,6 +108,7 @@ impl Kind {
         Kind::Bamboo,
         Kind::Crimson,
         Kind::Warped,
+        Kind::Poplar,
     ];
 
     pub const fn index(self) -> u16 {
@@ -113,7 +118,7 @@ impl Kind {
     pub const fn name(self) -> &'static str {
         [
             "oak", "spruce", "birch", "jungle", "acacia", "dark oak", "mangrove", "cherry", "pale oak", "bamboo",
-            "crimson", "warped",
+            "crimson", "warped", "poplar",
         ][self as usize]
     }
 
@@ -122,6 +127,7 @@ impl Kind {
             Kind::Bamboo => super::overworld_blocks::BAMBOO_PLANKS,
             Kind::Crimson => super::nether_biome_blocks::CRIMSON_PLANKS,
             Kind::Warped => super::nether_biome_blocks::WARPED_PLANKS,
+            Kind::Poplar => poplar::PLANKS,
             _ => Wood::ALL[self as usize].planks(),
         }
     }
@@ -132,6 +138,7 @@ impl Kind {
             Kind::Bamboo => Block(STRIPPED_BAMBOO),
             Kind::Crimson => super::nether_biome_blocks::STRIPPED_CRIMSON_STEM,
             Kind::Warped => super::nether_biome_blocks::STRIPPED_WARPED_STEM,
+            Kind::Poplar => poplar::STRIPPED_LOG,
             _ => pillar(self as u16, Pillar::StrippedLog, 0),
         }
     }
@@ -307,6 +314,9 @@ const fn pillar_registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])
 /// Logs, wood and stripped blocks take the axis of the clicked face
 /// (Java's `RotatedPillarBlock.getStateForPlacement`).
 pub fn axis_placed(block: Block, normal: IVec3) -> Option<Block> {
+    if let Some(b) = poplar::axis_placed(block, normal) {
+        return Some(b);
+    }
     let s = pillar_state(block.0)?;
     let axis = if normal.x != 0 {
         1
@@ -320,12 +330,15 @@ pub fn axis_placed(block: Block, normal: IVec3) -> Option<Block> {
 
 /// The axis of a pillar state (0 Y, 1 X, 2 Z).
 pub fn axis(block: Block) -> Option<u16> {
-    pillar_state(block.0).map(|s| s.axis)
+    pillar_state(block.0).map(|s| s.axis).or_else(|| poplar::axis(block))
 }
 
 /// What an axe strips a log, wood or bamboo block into, keeping its axis
 /// (Java 26.3 `data/minecraft/block_transformer/axe.json`).
 pub fn stripped(block: Block) -> Option<Block> {
+    if poplar::pillar_state(block.0).is_some() {
+        return poplar::stripped(block);
+    }
     let s = pillar_state(block.0)?;
     let y = match (s.form, s.index) {
         (0, 9) => STRIPPED_BAMBOO,
@@ -339,7 +352,7 @@ pub fn stripped(block: Block) -> Option<Block> {
 /// Java's `#logs` members of this module (wood and stripped forms; the
 /// bamboo blocks are `#bamboo_blocks` instead).
 pub fn is_log(block: Block) -> bool {
-    pillar_state(block.0).is_some_and(|s| s.form > 0 && s.index < 9)
+    pillar_state(block.0).is_some_and(|s| s.form > 0 && s.index < 9) || poplar::is_log(block)
 }
 
 /// Java's `#jungle_logs`: jungle log, wood and their stripped forms.
@@ -368,12 +381,17 @@ pub const LOG_TAGS: [[Item; 4]; 9] = {
 pub const BAMBOO_BLOCKS: [Item; 2] =
     [Item::from_block(super::overworld_blocks::BAMBOO_BLOCK), Item::from_block(Block(STRIPPED_BAMBOO))];
 
-/// Every overworld log, wood and stripped block (`#logs_that_burn`).
-pub const ALL_LOGS: [Item; 36] = {
-    let mut out = [Item(0); 36];
+/// Every overworld log, wood and stripped block (`#logs_that_burn`),
+/// poplar's last.
+pub const ALL_LOGS: [Item; 40] = {
+    let mut out = [Item(0); 40];
     let mut i = 0;
     while i < 36 {
         out[i] = LOG_TAGS[i % 9][i / 9];
+        i += 1;
+    }
+    while i < 40 {
+        out[i] = poplar::LOG_TAG[i - 36];
         i += 1;
     }
     out
@@ -391,6 +409,18 @@ pub const fn owns(id: u16) -> bool {
 pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
     if !owns(id) {
         return None;
+    }
+    if let Some(r) = switches::registry(id) {
+        return Some(r);
+    }
+    if let Some(r) = signs::registry(id) {
+        return Some(r);
+    }
+    if let Some(r) = shelves::registry(id) {
+        return Some(r);
+    }
+    if poplar::owns(id) {
+        return poplar::registry(id);
     }
     if let Some(r) = pillar_registry(id) {
         return Some(r);
@@ -411,6 +441,9 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
 /// Y-axis log, and a wood or stripped block as its Y-axis state.
 #[inline]
 pub const fn alias(id: u16) -> Option<u16> {
+    if poplar::owns(id) {
+        return poplar::alias(id);
+    }
     if !(id >= AXIS_FIRST && id < PILLAR_END) {
         return None;
     }
@@ -431,7 +464,10 @@ pub const fn water_pair(id: u16) -> Option<(u16, bool)> {
     if let Some(p) = signs::water_pair(id) {
         return Some(p);
     }
-    shelves::water_pair(id)
+    if let Some(p) = shelves::water_pair(id) {
+        return Some(p);
+    }
+    poplar::water_pair(id)
 }
 
 /// The dry state of a wet state of this module (`id` itself otherwise).
@@ -451,7 +487,7 @@ pub fn base(id: u16) -> Option<Block> {
     if let Some(s) = pillar_state(id) {
         return Some(Block(s.y));
     }
-    signs::base(id).or_else(|| shelves::base(id)).or_else(|| bookshelf::base(id))
+    signs::base(id).or_else(|| shelves::base(id)).or_else(|| bookshelf::base(id)).or_else(|| poplar::base(id))
 }
 
 /// Mining, fire and drop properties of this module's own blocks (switch
@@ -482,7 +518,10 @@ pub fn props(block: Block) -> Option<Props> {
             drop: Some(Item::from_block(Block(s.y))),
         });
     }
-    signs::props(Block(id)).or_else(|| shelves::props(Block(id))).or_else(|| bookshelf::props(Block(id)))
+    signs::props(Block(id))
+        .or_else(|| shelves::props(Block(id)))
+        .or_else(|| bookshelf::props(Block(id)))
+        .or_else(|| poplar::props(Block(id)))
 }
 
 /// The same state turned to face `facing`, for the module's states that have
@@ -507,7 +546,7 @@ pub fn fuel(block: Block) -> Option<crate::content::fuel::FuelClass> {
     if bookshelf::slots(block).is_some() {
         return Some(FuelClass::Wood);
     }
-    None
+    poplar::fuel(block)
 }
 
 /// Default states for the creative palette.
@@ -521,6 +560,7 @@ pub fn palette_ids() -> impl Iterator<Item = u16> {
         .chain(signs::palette_ids())
         .chain(shelves::palette_ids())
         .chain(bookshelf::palette_ids())
+        .chain(poplar::palette_ids())
 }
 
 /// Whether a state of this module draws as `Shaped::Custom` boxes (signs and shelves).
@@ -609,7 +649,9 @@ pub fn wooden(block: Block) -> bool {
     pillar_state(id).is_some()
         || custom_shape(id)
         || bookshelf::slots(Block(id)).is_some()
-        || super::nether_biome_blocks::switch_oak(id).is_some_and(|(_, wood)| (2..=10).contains(&wood))
+        || poplar::wooden(id)
+        || super::nether_biome_blocks::switch_oak(id)
+            .is_some_and(|(_, wood)| (2..=10).contains(&wood) || wood == switches::POPLAR)
 }
 
 /// Java's horizontal `FACING` value order (north, south, west, east), which

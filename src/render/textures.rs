@@ -19,6 +19,8 @@ mod copper;
 mod copper_golem_statue;
 #[path = "crop_textures.rs"]
 mod crops;
+#[path = "gen5_textures.rs"]
+mod gen5;
 #[path = "nether_textures.rs"]
 mod nether;
 #[path = "overworld_textures.rs"]
@@ -111,6 +113,9 @@ const DIRT: [u8; 3] = [134, 96, 67];
 const GRASS: [u8; 3] = [95, 159, 53];
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
+    if gen5::owns(layer) {
+        return gen5::pixel(layer, x, y);
+    }
     if (crate::world::eyeblossom::TEX..crate::world::eyeblossom::TEX_END).contains(&layer) {
         return match crate::world::eyeblossom::pot_layer_plant(layer) {
             Some(plant) => utility::potted_side(layer, plant, x, y),

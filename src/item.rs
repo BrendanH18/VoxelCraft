@@ -520,6 +520,8 @@ static NETHER_MOB_ITEMS: [ItemInfo; 2] = [
     },
 ];
 const _: () = assert!(NETHER_MOB_ITEM as usize + NETHER_MOB_ITEMS.len() <= 900);
+/// The boat wood index of poplar (`Item::boat`): after bamboo's 9.
+pub const POPLAR_BOAT_WOOD: u8 = 10;
 /// v0.6 Overworld items (cave, ocean and jungle drops), ids 900..=959.
 const OVERWORLD_ITEM: u16 = 900;
 const fn bucket_of(name: &'static str, colour: [u8; 3]) -> ItemInfo {
@@ -849,9 +851,34 @@ impl Item {
     pub const GOLDEN_HORSE_ARMOR: Item = Item(985);
     pub const DIAMOND_HORSE_ARMOR: Item = Item(986);
     pub const GOLDEN_CARROT: Item = Item(987);
-    /// Wood index follows Wood::ALL; index 9 is bamboo.
+    /// Wood index follows Wood::ALL; index 9 is bamboo and 10 poplar
+    /// (v0.16 Track D, items 1705 and 1706).
     pub const fn boat(wood: u8, chest: bool) -> Item {
+        if wood == POPLAR_BOAT_WOOD {
+            return if chest { Self::POPLAR_CHEST_BOAT } else { Self::POPLAR_BOAT };
+        }
         Item(960 + wood as u16 + if chest { 10 } else { 0 })
+    }
+    pub const POPLAR_BOAT: Item = Item(1705);
+    pub const POPLAR_CHEST_BOAT: Item = Item(1706);
+
+    /// The boat wood index and chest of a boat or raft item.
+    pub const fn boat_of(self) -> Option<(u8, bool)> {
+        match self.0 {
+            960..=979 => Some((((self.0 - 960) % 10) as u8, self.0 >= 970)),
+            1705 => Some((POPLAR_BOAT_WOOD, false)),
+            1706 => Some((POPLAR_BOAT_WOOD, true)),
+            _ => None,
+        }
+    }
+
+    /// The planks a boat of `wood` is made of.
+    pub const fn boat_planks(wood: u8) -> Block {
+        match wood {
+            9 => crate::world::overworld_blocks::BAMBOO_PLANKS,
+            POPLAR_BOAT_WOOD => crate::world::wood::poplar::PLANKS,
+            w => crate::world::block::Wood::ALL[w as usize].planks(),
+        }
     }
     pub const MINECART: Item = Item(761);
     pub const CHEST_MINECART: Item = Item(762);
@@ -1132,6 +1159,12 @@ impl Item {
     pub fn info(self) -> ItemInfo {
         if let Some(info) = crate::content::harness::item_info(self) {
             return info;
+        }
+        // v0.16 Track D: the poplar boats.
+        match self {
+            Self::POPLAR_BOAT => return single("poplar boat", Sprite::Boat([196, 188, 166], false)),
+            Self::POPLAR_CHEST_BOAT => return single("poplar chest boat", Sprite::Boat([196, 188, 166], true)),
+            _ => {}
         }
         // v0.15 Track D: spectral arrows, coloured eggs and trim templates.
         if self == Self::SPECTRAL_ARROW {
@@ -1715,6 +1748,8 @@ impl Item {
             .chain(track_d_items())
             // v0.15 Track F: five explorer maps, which draw their own layers.
             .chain(crate::world::explorer_maps::items())
+            // v0.16 Track D: poplar boats.
+            .chain(gen5_items())
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1790,6 +1825,10 @@ fn sprite_index(item: Item) -> Option<u16> {
         ),
         // v0.15 Track D: its items follow Track B's.
         i if let Some(k) = track_d_items().position(|t| t.0 == i) => Some(track_d_icon_base() + k as u16),
+        // v0.16 Track D: its items follow v0.15 Track D's.
+        i if let Some(k) = gen5_items().position(|t| t.0 == i) => {
+            Some(track_d_icon_base() + TRACK_D_ICONS as u16 + k as u16)
+        }
         // v0.17 build-5000 ITEM-08: the bundles follow the experience bottle.
         i if (crate::content::bundle::ITEM_FIRST..crate::content::bundle::ITEM_END).contains(&i) => Some(
             late_icon_base()
@@ -1932,6 +1971,7 @@ pub const fn icon_count() -> u32 {
         + 3 // v0.15 Track B: spyglass, book and quill, written book.
         + (crate::content::banner_patterns::ITEM_END - crate::content::banner_patterns::ITEM_FIRST) as u32
         + TRACK_D_ICONS
+        + GEN5_ICONS
 }
 
 /// v0.15 Track D's first icon, after Track B's.
@@ -1956,6 +1996,12 @@ fn track_d_items() -> impl Iterator<Item = Item> {
         .chain(crate::content::trim::all())
 }
 const TRACK_D_ICONS: u32 = 3 + (crate::content::trim::ITEM_END - crate::content::trim::ITEM_FIRST) as u32;
+
+/// v0.16 Track D's items (ids 1705..=1729), in icon order.
+fn gen5_items() -> impl Iterator<Item = Item> {
+    [Item::POPLAR_BOAT, Item::POPLAR_CHEST_BOAT].into_iter()
+}
+const GEN5_ICONS: u32 = 2;
 
 /// The fermented spider eye's icon: icons appended in v0.14 follow it.
 const fn late_icon_base() -> u16 {

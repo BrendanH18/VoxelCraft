@@ -32,9 +32,19 @@ pub const END: u16 = FIRST + STRIDE * FAMILIES;
 pub const WOOD_OFFSET: u16 = 4;
 /// The polished blackstone family's switch wood index.
 pub const POLISHED_BLACKSTONE: u16 = WOOD_OFFSET + 7;
+/// v0.16 Track D: poplar is family 8 (switch wood 12), laid out like the
+/// others but from `poplar::SWITCHES`, outside the contiguous families.
+pub const POPLAR_FAMILY: u16 = 8;
+pub const POPLAR: u16 = WOOD_OFFSET + POPLAR_FAMILY;
+const POPLAR_FIRST: u16 = super::poplar::SWITCHES;
 
-const NAMES: [&str; 8] =
-    ["spruce", "birch", "jungle", "acacia", "dark oak", "mangrove", "cherry", "polished blackstone"];
+/// First id of family `f`.
+const fn family_first(family: u16) -> u16 {
+    if family == POPLAR_FAMILY { POPLAR_FIRST } else { FIRST + family * STRIDE }
+}
+
+const NAMES: [&str; 9] =
+    ["spruce", "birch", "jungle", "acacia", "dark oak", "mangrove", "cherry", "polished blackstone", "poplar"];
 
 const fn planks(family: u16) -> u16 {
     match family {
@@ -45,6 +55,7 @@ const fn planks(family: u16) -> u16 {
         4 => block_tex::DARK_OAK_PLANKS,
         5 => block_tex::MANGROVE_PLANKS,
         6 => block_tex::CHERRY_PLANKS,
+        8 => super::poplar::t::PLANKS,
         _ => block_tex::POLISHED_BLACKSTONE,
     }
 }
@@ -59,11 +70,15 @@ pub const fn material(family: u16) -> Block {
         4 => Block::DARK_OAK_PLANKS,
         5 => Block::MANGROVE_PLANKS,
         6 => Block::CHERRY_PLANKS,
+        8 => super::poplar::PLANKS,
         _ => Block::POLISHED_BLACKSTONE,
     }
 }
 
 const fn split(id: u16) -> Option<(u16, u16)> {
+    if id >= POPLAR_FIRST && id < POPLAR_FIRST + 58 {
+        return Some((POPLAR_FAMILY, id - POPLAR_FIRST));
+    }
     if id < FIRST || id >= END {
         return None;
     }
@@ -71,6 +86,11 @@ const fn split(id: u16) -> Option<(u16, u16)> {
     let local = (id - FIRST) % STRIDE;
     let used = if family == 7 { local >= 16 && local < 42 } else { local < 58 };
     if used { Some((family, local)) } else { None }
+}
+
+/// Whether `id` is one of this module's states (the poplar family included).
+pub const fn owns(id: u16) -> bool {
+    split(id).is_some()
 }
 
 /// The oak (or stone) state `id` mirrors and its switch wood index.
@@ -99,7 +119,7 @@ pub const fn twin(id: u16) -> Option<(Block, u16)> {
 /// returned unchanged.
 pub const fn reskin(original: Block, wood: u16) -> Block {
     let family = wood - WOOD_OFFSET;
-    let base = FIRST + family * STRIDE;
+    let base = family_first(family);
     let o = original.0;
     if family == 7 {
         return match o {
@@ -121,15 +141,15 @@ pub const fn reskin(original: Block, wood: u16) -> Block {
 /// Wet trapdoors pair with the dry ones 42 ids before them.
 pub const fn water_pair(id: u16) -> Option<(u16, bool)> {
     match split(id) {
-        Some((family, local)) if family < 7 && local < 16 => Some((id + 42, false)),
-        Some((family, local)) if family < 7 && local >= 42 => Some((id - 42, true)),
+        Some((family, local)) if family != 7 && local < 16 => Some((id + 42, false)),
+        Some((family, local)) if family != 7 && local >= 42 => Some((id - 42, true)),
         _ => None,
     }
 }
 
 pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
     let Some((family, local)) = split(id) else { return None };
-    const TRAPDOORS: [&str; 7] = [
+    const TRAPDOORS: [&str; 9] = [
         "spruce trapdoor",
         "birch trapdoor",
         "jungle trapdoor",
@@ -137,8 +157,10 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
         "dark oak trapdoor",
         "mangrove trapdoor",
         "cherry trapdoor",
+        "",
+        "poplar trapdoor",
     ];
-    const BUTTONS: [&str; 8] = [
+    const BUTTONS: [&str; 9] = [
         "spruce button",
         "birch button",
         "jungle button",
@@ -147,8 +169,9 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
         "mangrove button",
         "cherry button",
         "polished blackstone button",
+        "poplar button",
     ];
-    const PLATES: [&str; 8] = [
+    const PLATES: [&str; 9] = [
         "spruce pressure plate",
         "birch pressure plate",
         "jungle pressure plate",
@@ -157,9 +180,11 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
         "mangrove pressure plate",
         "cherry pressure plate",
         "polished blackstone pressure plate",
+        "poplar pressure plate",
     ];
     let f = family as usize;
     let (name, layer) = match local {
+        0..=15 | 42..=57 if family == POPLAR_FAMILY => (TRAPDOORS[f], super::poplar::t::TRAPDOOR),
         0..=15 | 42..=57 => (TRAPDOORS[f], super::tex::TRAPDOORS + family),
         28..=29 => (PLATES[f], planks(family)),
         _ => (BUTTONS[f], planks(family)),
@@ -169,13 +194,13 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
 
 /// The trapdoor, button and plate of family `f` (default states).
 pub const fn trapdoor(family: u16) -> Block {
-    Block(FIRST + family * STRIDE)
+    Block(family_first(family))
 }
 pub const fn button(family: u16) -> Block {
-    Block(FIRST + family * STRIDE + 16)
+    Block(family_first(family) + 16)
 }
 pub const fn plate(family: u16) -> Block {
-    Block(FIRST + family * STRIDE + 28)
+    Block(family_first(family) + 28)
 }
 
 /// The family of a switch state.
@@ -187,9 +212,9 @@ pub const fn family(id: u16) -> Option<u16> {
 }
 
 pub fn palette_ids() -> impl Iterator<Item = u16> {
-    (0..FAMILIES).flat_map(|f| {
+    (0..=POPLAR_FAMILY).flat_map(|f| {
         let ids = [trapdoor(f).0, button(f).0, plate(f).0];
-        ids.into_iter().filter(move |&id| f < 7 || id != trapdoor(f).0)
+        ids.into_iter().filter(move |&id| f != 7 || id != trapdoor(f).0)
     })
 }
 

@@ -34,6 +34,8 @@ pub fn tree(wood: Wood, ground: IVec3, v: u32, put: Put) {
         Wood::Mangrove => mangrove(ground, v, put),
         Wood::Cherry => cherry(ground, v, put),
         Wood::PaleOak => pale_oak(ground, v, put),
+        // `TreeGrower.POPLAR`: red, orange or yellow, equally likely.
+        Wood::Poplar => super::poplar_trees::poplar((v % 3) as u16, ground, u64::from(v), None, put),
     }
 }
 
@@ -748,7 +750,11 @@ mod tests {
                 let mut blocks = Vec::new();
                 tree(wood, IVec3::ZERO, v.wrapping_mul(0x9E37_79B9), &mut |p, b| blocks.push((p, b)));
                 assert!(blocks.contains(&(IVec3::Y, wood.log())), "{wood:?} trunk starts on the ground");
-                assert!(blocks.iter().any(|&(_, b)| b == wood.leaves()), "{wood:?} has leaves");
+                // Poplars grow red, orange or yellow leaves; `wood.leaves()` is orange.
+                assert!(
+                    blocks.iter().any(|&(_, b)| b == wood.leaves() || (wood == Wood::Poplar && b.is_leaves())),
+                    "{wood:?} has leaves"
+                );
                 for &(p, _) in &blocks {
                     assert!(p.x.abs() <= REACH && p.z.abs() <= REACH && p.y <= TOP, "{wood:?} {p}");
                 }

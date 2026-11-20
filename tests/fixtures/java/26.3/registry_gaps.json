@@ -29,51 +29,11 @@
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
     },
-    "chiseled_cinnabar": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "chiseled_sulfur": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "chorus_flower": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "chorus_plant": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "cinnabar": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "cinnabar_brick_slab": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "cinnabar_brick_stairs": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "cinnabar_brick_wall": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "cinnabar_bricks": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "cinnabar_slab": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "cinnabar_stairs": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "cinnabar_wall": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
@@ -110,10 +70,6 @@
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "end_rod": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "golden_dandelion": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
@@ -181,14 +137,6 @@
       "release": "v0.17",
       "reason": "Redstone and automation completion."
     },
-    "nether_gold_ore": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "orange_poplar_leaves": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "orange_shulker_box": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
@@ -217,118 +165,6 @@
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
-    "polished_cinnabar": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "polished_cinnabar_slab": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "polished_cinnabar_stairs": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "polished_cinnabar_wall": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "polished_sulfur": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "polished_sulfur_slab": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "polished_sulfur_stairs": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "polished_sulfur_wall": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_button": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_door": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_fence": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_fence_gate": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_hanging_sign": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_log": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_planks": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_pressure_plate": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_sapling": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_shelf": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_sign": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_slab": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_stairs": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_trapdoor": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_wall_hanging_sign": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_wall_sign": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_wood": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "potent_sulfur": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "potted_golden_dandelion": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "potted_poplar_sapling": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "potted_wither_rose": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
@@ -353,14 +189,6 @@
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
-    "red_poplar_leaves": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "red_shrub": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "red_shulker_box": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
@@ -368,10 +196,6 @@
     "repeating_command_block": {
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
-    },
-    "shelf_mushroom": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "shulker_box": {
       "release": "v0.16",
@@ -385,14 +209,6 @@
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
-    "stripped_poplar_log": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "stripped_poplar_wood": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "structure_block": {
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
@@ -400,42 +216,6 @@
     "structure_void": {
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
-    },
-    "sulfur": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "sulfur_brick_slab": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "sulfur_brick_stairs": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "sulfur_brick_wall": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "sulfur_bricks": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "sulfur_slab": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "sulfur_spike": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "sulfur_stairs": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "sulfur_wall": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "test_block": {
       "release": "none",
@@ -462,10 +242,6 @@
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "wither_skeleton_wall_skull": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "yellow_poplar_leaves": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
@@ -579,14 +355,6 @@
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "chiseled_cinnabar": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "chiseled_sulfur": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "chorus_flower": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
@@ -596,38 +364,6 @@
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "chorus_plant": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "cinnabar": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "cinnabar_brick_slab": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "cinnabar_brick_stairs": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "cinnabar_brick_wall": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "cinnabar_bricks": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "cinnabar_slab": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "cinnabar_stairs": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "cinnabar_wall": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
@@ -771,10 +507,6 @@
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "golden_dandelion": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "gray_shulker_box": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
@@ -903,10 +635,6 @@
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "nether_gold_ore": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "nether_star": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
@@ -914,10 +642,6 @@
     "ocelot_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "orange_poplar_leaves": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "orange_shulker_box": {
       "release": "v0.16",
@@ -975,111 +699,7 @@
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "polished_cinnabar": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "polished_cinnabar_slab": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "polished_cinnabar_stairs": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "polished_cinnabar_wall": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "polished_sulfur": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "polished_sulfur_slab": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "polished_sulfur_stairs": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "polished_sulfur_wall": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_boat": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_button": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_chest_boat": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_door": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_fence": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_fence_gate": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_hanging_sign": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_log": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_planks": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_pressure_plate": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_sapling": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_shelf": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_sign": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_slab": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_stairs": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_trapdoor": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "poplar_wood": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "popped_chorus_fruit": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "potent_sulfur": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
@@ -1119,14 +739,6 @@
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "red_poplar_leaves": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "red_shrub": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "red_shulker_box": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
@@ -1150,10 +762,6 @@
     "sheep_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "shelf_mushroom": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "shulker_box": {
       "release": "v0.16",
@@ -1215,14 +823,6 @@
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "stripped_poplar_log": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "stripped_poplar_wood": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "structure_block": {
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
@@ -1231,26 +831,6 @@
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
     },
-    "sulfur": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "sulfur_brick_slab": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "sulfur_brick_stairs": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "sulfur_brick_wall": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "sulfur_bricks": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "sulfur_cube_bucket": {
       "release": "v0.16",
       "reason": "End/Wither progression and remaining terrain, plants and material families."
@@ -1258,22 +838,6 @@
     "sulfur_cube_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "sulfur_slab": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "sulfur_spike": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "sulfur_stairs": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "sulfur_wall": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "tadpole_spawn_egg": {
       "release": "v0.18",
@@ -1342,10 +906,6 @@
     "wolf_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "yellow_poplar_leaves": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "yellow_shulker_box": {
       "release": "v0.16",

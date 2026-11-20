@@ -36,6 +36,8 @@ impl World {
                 && !super::biome_plants::owns(b.0)
                 && ob::propagule_age(b).is_none()
                 && ob::bud_facing(b).is_none()
+                && super::gen5_blocks::spike_of(b).is_none()
+                && super::gen5_blocks::shelf_of(b).is_none()
             {
                 continue;
             }

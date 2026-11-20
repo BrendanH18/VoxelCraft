@@ -19,7 +19,7 @@ pub mod trim;
 
 /// All implemented plank ingredients. Oak stays first for recipe-book previews.
 /// Nether planks are valid ingredients but explicitly are not furnace fuels.
-pub const PLANKS: [Item; 12] = [
+pub const PLANKS: [Item; 13] = [
     Item::from_block(Block::PLANKS),
     Item::from_block(Block::SPRUCE_PLANKS),
     Item::from_block(Block::BIRCH_PLANKS),
@@ -32,6 +32,7 @@ pub const PLANKS: [Item; 12] = [
     Item::from_block(crate::world::nether_biome_blocks::WARPED_PLANKS),
     Item::from_block(crate::world::overworld_blocks::PALE_OAK_PLANKS),
     Item::from_block(crate::world::overworld_blocks::BAMBOO_PLANKS),
+    Item::from_block(crate::world::wood::poplar::PLANKS),
 ];
 
 pub fn burnable_planks(item: Item) -> bool {

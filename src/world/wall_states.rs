@@ -43,6 +43,9 @@ pub const fn original(id: u16) -> Option<Block> {
     if let Some(local) = super::creaking::wall_local(id) {
         return if local >= 2 { Some(super::creaking::WALL) } else { None };
     }
+    if let Some((w, local)) = super::gen5_blocks::wall_local(id) {
+        return if local >= 2 { Some(super::gen5_blocks::wall(w)) } else { None };
+    }
     match super::stone_blocks::wall_local(id) {
         Some((w, 2 | 3)) => Some(super::stone_blocks::wall(w)),
         _ => None,
@@ -55,6 +58,9 @@ pub const fn water_pair(id: u16) -> Option<(u16, bool)> {
     }
     if let Some(local) = super::creaking::wall_local(id) {
         return Some((super::creaking::WALL.0 + (local ^ 1), local % 2 == 1));
+    }
+    if let Some(p) = super::gen5_blocks::wall_water_pair(id) {
+        return Some(p);
     }
     super::stone_blocks::wall_water_pair(id)
 }
@@ -90,6 +96,17 @@ static STATES: [u8; super::block::STATE_CAPACITY] = {
     states[first + 1] = family;
     states[first + 2] = family | 128;
     states[first + 3] = family | 128;
+    // v0.16 Track D's cinnabar and sulfur walls, after resin's.
+    let mut w = 0;
+    while w < 6 {
+        let family = (FAMILIES.len() + super::stone_blocks::WALL_COUNT as usize + 2 + w) as u8;
+        let first = super::gen5_blocks::wall(w as u16).0 as usize;
+        states[first] = family;
+        states[first + 1] = family;
+        states[first + 2] = family | 128;
+        states[first + 3] = family | 128;
+        w += 1;
+    }
     states
 };
 const _: () = assert!(FAMILIES.len() + (super::stone_blocks::WALL_COUNT as usize) < 128);
@@ -110,6 +127,9 @@ pub fn with_up(block: Block, up: bool) -> Block {
     let wet = block.is_waterlogged();
     if super::creaking::wall_local(block.0).is_some() {
         return Block(super::creaking::WALL.0 + (!up as u16) * 2 + wet as u16);
+    }
+    if let Some((w, _)) = super::gen5_blocks::wall_local(block.0) {
+        return Block(super::gen5_blocks::wall(w).0 + (!up as u16) * 2 + wet as u16);
     }
     if i >= FAMILIES.len() {
         let first = super::stone_blocks::wall((i - FAMILIES.len()) as u16).0;

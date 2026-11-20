@@ -29,6 +29,14 @@ pub const FIRST: u16 = 17024;
 pub const STRIDE: u16 = 128;
 pub const END: u16 = FIRST + STRIDE * 12;
 
+/// First id of `kind`'s signs: poplar's are in `poplar::SIGNS`.
+pub const fn kind_first(kind: Kind) -> u16 {
+    match kind {
+        Kind::Poplar => super::poplar::SIGNS,
+        _ => FIRST + kind.index() * STRIDE,
+    }
+}
+
 /// How a sign is held up.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Mount {
@@ -68,7 +76,7 @@ impl Sign {
             Mount::Hanging { rotation, attached } => 40 + self.wet as u16 * 32 + attached as u16 * 16 + rotation as u16,
             Mount::WallHanging { facing } => 104 + self.wet as u16 * 4 + facing as u16,
         };
-        Block(FIRST + self.kind.index() * STRIDE + local)
+        Block(kind_first(self.kind) + local)
     }
 
     /// The block the sign's item places: standing or hanging, rotation 0, dry.
@@ -151,11 +159,13 @@ pub fn look_yaw(look: Vec3) -> f32 {
 
 pub const fn sign(b: Block) -> Option<Sign> {
     let id = b.0;
-    if id < FIRST || id >= END {
+    let (kind, local) = if id >= super::poplar::SIGNS && id < super::poplar::SIGNS + STRIDE {
+        (Kind::Poplar, id - super::poplar::SIGNS)
+    } else if id < FIRST || id >= END {
         return None;
-    }
-    let kind = Kind::of((id - FIRST) / STRIDE);
-    let local = (id - FIRST) % STRIDE;
+    } else {
+        (Kind::of((id - FIRST) / STRIDE), (id - FIRST) % STRIDE)
+    };
     let (mount, wet) = match local {
         0..=31 => (Mount::Standing { rotation: (local % 16) as u8 }, local >= 16),
         32..=39 => (Mount::Wall { facing: Facing::ALL[(local % 4) as usize] }, local >= 36),
@@ -171,7 +181,7 @@ pub const fn sign(b: Block) -> Option<Sign> {
 
 pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
     let Some(s) = sign(Block(id)) else { return None };
-    const STANDING: [&str; 12] = [
+    const STANDING: [&str; 13] = [
         "oak sign",
         "spruce sign",
         "birch sign",
@@ -184,8 +194,9 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
         "bamboo sign",
         "crimson sign",
         "warped sign",
+        "poplar sign",
     ];
-    const WALL: [&str; 12] = [
+    const WALL: [&str; 13] = [
         "oak wall sign",
         "spruce wall sign",
         "birch wall sign",
@@ -198,8 +209,9 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
         "bamboo wall sign",
         "crimson wall sign",
         "warped wall sign",
+        "poplar wall sign",
     ];
-    const HANGING: [&str; 12] = [
+    const HANGING: [&str; 13] = [
         "oak hanging sign",
         "spruce hanging sign",
         "birch hanging sign",
@@ -212,8 +224,9 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
         "bamboo hanging sign",
         "crimson hanging sign",
         "warped hanging sign",
+        "poplar hanging sign",
     ];
-    const WALL_HANGING: [&str; 12] = [
+    const WALL_HANGING: [&str; 13] = [
         "oak wall hanging sign",
         "spruce wall hanging sign",
         "birch wall hanging sign",
@@ -226,13 +239,18 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
         "bamboo wall hanging sign",
         "crimson wall hanging sign",
         "warped wall hanging sign",
+        "poplar wall hanging sign",
     ];
     let k = s.kind.index();
+    let (sign_icon, hanging_icon) = match s.kind {
+        Kind::Poplar => (super::poplar::t::SIGN_ICON, super::poplar::t::HANGING_SIGN_ICON),
+        _ => (super::tex::SIGN_ICONS + k, super::tex::HANGING_SIGN_ICONS + k),
+    };
     let (names, icon) = match s.mount {
-        Mount::Standing { .. } => (STANDING, super::tex::SIGN_ICONS + k),
-        Mount::Wall { .. } => (WALL, super::tex::SIGN_ICONS + k),
-        Mount::Hanging { .. } => (HANGING, super::tex::HANGING_SIGN_ICONS + k),
-        Mount::WallHanging { .. } => (WALL_HANGING, super::tex::HANGING_SIGN_ICONS + k),
+        Mount::Standing { .. } => (STANDING, sign_icon),
+        Mount::Wall { .. } => (WALL, sign_icon),
+        Mount::Hanging { .. } => (HANGING, hanging_icon),
+        Mount::WallHanging { .. } => (WALL_HANGING, hanging_icon),
     };
     Some((names[k as usize], RenderKind::Shaped, [icon; 6]))
 }

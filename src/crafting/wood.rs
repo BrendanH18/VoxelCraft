@@ -16,9 +16,9 @@ pub(super) fn add(r: &mut Vec<Recipe>) {
     }
     // Trapdoors (2), buttons and pressure plates of the seven woods, and the
     // polished blackstone button and plate (`spruce_trapdoor.json` and so on).
-    for f in 0..switches::FAMILIES {
+    for f in (0..switches::FAMILIES).chain([switches::POPLAR_FAMILY]) {
         let mat = ingredient(b(switches::material(f)));
-        if f < 7 {
+        if f != 7 {
             r.push(shaped(&["###", "###"], &[('#', mat)], b(switches::trapdoor(f)), 2));
         }
         r.push(shapeless(&[mat], b(switches::button(f)), 1));

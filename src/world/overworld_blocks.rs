@@ -847,6 +847,9 @@ pub const fn snow_layer(layers: u8) -> Block {
 /// `SaplingBlock.advanceTree`'s first step: the stage-1 state of a stage-0
 /// sapling (`None` for anything else, including stage-1 saplings).
 pub fn sapling_stage_one(b: Block) -> Option<Block> {
+    if b == super::wood::poplar::SAPLING {
+        return Some(super::wood::poplar::SAPLING_STAGE_ONE);
+    }
     STAGE_ZERO.iter().position(|&s| s == b).map(|i| Block(SAPLING_STAGE_ONE + i as u16))
 }
 
@@ -864,6 +867,9 @@ fn sturdy(b: Block) -> bool {
 /// Whether `block` can rest on `below` (`None`: not a block of this module).
 /// Hanging plants check the block above instead (see [`hangs_from`]).
 pub fn can_stay_on(block: Block, below: Block) -> Option<bool> {
+    if let Some(ok) = super::gen5_blocks::spike_stands(block, below) {
+        return Some(ok);
+    }
     let id = block.0;
     if egg_count(block).is_some() {
         return Some(true);
@@ -913,6 +919,9 @@ pub fn can_stay_on(block: Block, below: Block) -> Option<bool> {
 /// Whether a ceiling plant at a cell can hang under `above` (`None`: not a
 /// hanging plant).
 pub fn hangs_from(block: Block, above: Block) -> Option<bool> {
+    if super::gen5_blocks::spike_of(block.canonical()).is_some() {
+        return super::gen5_blocks::spike_hangs(block, above);
+    }
     Some(match block.0 {
         2160..=2164 => above == MANGROVE_LEAVES,
         1919..=1923 => sturdy(above) || matches!(dripstone_of(above), Some((true, _))),
@@ -926,6 +935,9 @@ pub fn hangs_from(block: Block, above: Block) -> Option<bool> {
 
 /// Whether a wall-mounted plant (vines, cocoa) still has its wall.
 pub fn wall_ok(block: Block, wall: Block) -> Option<bool> {
+    if let Some(ok) = super::gen5_blocks::shelf_supported(block, wall) {
+        return Some(ok);
+    }
     if is_wall_bud(block.0) {
         return Some(sturdy(wall));
     }
@@ -940,6 +952,9 @@ pub fn wall_ok(block: Block, wall: Block) -> Option<bool> {
 
 /// The wall direction of a wall-mounted plant.
 pub fn wall_of(block: Block) -> Option<Facing> {
+    if let Some((facing, _)) = super::gen5_blocks::shelf_of(block) {
+        return Some(facing.opposite());
+    }
     if is_wall_bud(block.0) {
         return Facing::from_offset(-bud_facing(block)?.1);
     }

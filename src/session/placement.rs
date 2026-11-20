@@ -293,6 +293,9 @@ impl PlayerSession {
                     } else if let Some(placed) = crate::world::wood::placed(raw, &ctx, |c| world.get_block(c)) {
                         // Signs, shelves and chiseled bookshelves (`world::wood`).
                         placed.ok_or("block cannot survive here")?
+                    } else if let Some(placed) = crate::world::gen5_blocks::placed(raw, &ctx, |c| world.get_block(c)) {
+                        // Sulfur spikes and shelf mushrooms (`world::gen5_blocks`).
+                        placed.ok_or("block cannot survive here")?
                     } else if let Some(banner) = cb::placed(raw, &ctx, |c| world.get_block(c)) {
                         banner.ok_or("block cannot survive here")?
                     } else if let Some(mounted) = crate::world::copper::placed(raw, &ctx, |c| world.get_block(c))

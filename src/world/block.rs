@@ -761,6 +761,9 @@ impl Block {
         if let Some(odds) = super::cave_blocks::fire_odds(self) {
             return odds;
         }
+        if let Some(odds) = super::gen5_blocks::fire_odds(self) {
+            return odds;
+        }
         if let Some(p) = super::wood::props(self) {
             return p.fire;
         }
@@ -940,6 +943,9 @@ impl Block {
         if let Some(b) = super::stone_blocks::wall_base(self.0) {
             return Some(b);
         }
+        if let Some(b) = super::gen5_blocks::wall_base(self.0) {
+            return Some(b);
+        }
         match super::forms::stone_form(self.0) {
             Some(super::forms::StoneForm::Wall { index }) => Some(super::forms::wall_material(index)),
             _ => None,
@@ -951,8 +957,11 @@ impl Block {
         if super::sniffer_egg::owns(self.0) || super::heavy_core::owns(self.0) || super::dried_ghast::owns(self.0) {
             return Some(Shaped::Custom);
         }
-        if super::creaking::wall_local(self.0).is_some() {
+        if super::creaking::wall_local(self.0).is_some() || super::gen5_blocks::wall_local(self.0).is_some() {
             return Some(Shaped::Wall);
+        }
+        if super::gen5_blocks::shelf_of(self).is_some() {
+            return Some(Shaped::Custom);
         }
         if super::copper_golem_statue::owns(self.0) {
             return Some(Shaped::Custom);
@@ -1154,6 +1163,9 @@ impl Block {
     /// The kind of wood a log, leaves, planks or sapling block is made of.
     pub fn wood(self) -> Option<Wood> {
         let block = self.base();
+        if super::wood::poplar::is_leaves(block) {
+            return Some(Wood::Poplar);
+        }
         Wood::ALL.into_iter().find(|w| [w.log(), w.leaves(), w.planks(), w.sapling()].contains(&block))
     }
 
@@ -1168,21 +1180,27 @@ impl Block {
         if let Some(c) = self.alias() {
             return c.is_leaves();
         }
-        matches!(self.0, 7 | 23 | 73..=75) || super::overworld_blocks::is_leaves(self)
+        matches!(self.0, 7 | 23 | 73..=75)
+            || super::overworld_blocks::is_leaves(self)
+            || super::wood::poplar::is_leaves(self)
     }
 
     pub fn is_planks(self) -> bool {
         if let Some(c) = self.alias() {
             return c.is_planks();
         }
-        matches!(self.0, 8 | 76..=79 | 336..=338) || super::overworld_blocks::is_planks(self)
+        matches!(self.0, 8 | 76..=79 | 336..=338)
+            || super::overworld_blocks::is_planks(self)
+            || super::wood::poplar::is_planks(self)
     }
 
     pub fn is_sapling(self) -> bool {
         if let Some(c) = self.alias() {
             return c.is_sapling();
         }
-        matches!(self.0, 67 | 68 | 80..=82) || super::overworld_blocks::is_sapling(self)
+        matches!(self.0, 67 | 68 | 80..=82)
+            || super::overworld_blocks::is_sapling(self)
+            || super::wood::poplar::is_sapling(self)
     }
 
     /// Holds a water source in its cell: always (kelp and seagrass) or as
@@ -1336,6 +1354,9 @@ impl Block {
         if super::creaking::wall_local(self.0).is_some() {
             return super::creaking::WALL;
         }
+        if let Some(b) = super::gen5_blocks::base(self.0) {
+            return b;
+        }
         if super::creaking::heart(self).is_some() {
             return super::creaking::HEART;
         }
@@ -1439,7 +1460,10 @@ impl Block {
         if let Some(s) = super::double_chest::state(self) {
             return super::double_chest::block(super::double_chest::ChestState { facing, ..s });
         }
-        if super::wood::owns(self.0) && super::wood::switches::twin(self.0).is_none() {
+        if super::wood::owns(self.0)
+            && super::wood::switches::twin(self.0).is_none()
+            && !super::wood::poplar::generic(self.0)
+        {
             return super::wood::with_facing(self, facing);
         }
         // Candles, cakes, banners and straw beds keep their state; stairs
@@ -1708,6 +1732,9 @@ impl Block {
         if let Some(drop) = super::utilities::drop(self) {
             return drop;
         }
+        if let Some(drop) = super::gen5_blocks::drop(self) {
+            return drop;
+        }
         if super::scaffolding::is_scaffolding(self) {
             return Some(Item::SCAFFOLDING);
         }
@@ -1917,6 +1944,9 @@ impl Block {
         }
         if let Some(c) = self.alias() {
             return c.hardness();
+        }
+        if let Some((hardness, ..)) = super::gen5_blocks::mining(self.material()) {
+            return hardness;
         }
         if let Some(h) = super::stone_blocks::slab_hardness(self) {
             return h;
@@ -2146,6 +2176,9 @@ impl Block {
         if let Some(c) = self.alias() {
             return c.best_tool();
         }
+        if let Some((_, tool, _)) = super::gen5_blocks::mining(self.material()) {
+            return tool;
+        }
         if let Some((_, tool, _)) = super::colour_blocks::mining(self) {
             return tool;
         }
@@ -2309,6 +2342,9 @@ impl Block {
         if let Some(c) = self.alias() {
             return c.harvest_level();
         }
+        if let Some((.., level)) = super::gen5_blocks::mining(self.material()) {
+            return level;
+        }
         if let Some((.., level)) = super::colour_blocks::mining(self) {
             return level;
         }
@@ -2465,6 +2501,7 @@ impl Block {
             .chain(super::frog_blocks::palette_ids())
             .chain(super::jukebox::palette_ids())
             .chain(super::trial::palette_ids())
+            .chain(super::gen5_blocks::palette_ids())
             .map(Block)
     }
 
@@ -2483,6 +2520,7 @@ impl Block {
             || super::overworld_blocks::replaceable(self)
             || super::biome_plants::replaceable(self)
             || super::cave_blocks::replaceable(self)
+            || super::gen5_blocks::replaceable(self)
     }
 
     /// Java `BlockBehaviour.canBeReplaced(state, fluid)`: replaceable, or not
@@ -2545,6 +2583,9 @@ impl Block {
             return ok;
         }
         if let Some(ok) = super::eyeblossom::can_stay_on(self, below) {
+            return ok;
+        }
+        if let Some(ok) = super::gen5_blocks::can_stay_on(self, below) {
             return ok;
         }
         if self.alias().is_some() || below.alias().is_some() {
@@ -2745,10 +2786,13 @@ pub enum Wood {
     Mangrove,
     Cherry,
     PaleOak,
+    /// v0.16 Track D (`wood::poplar`). Its leaves come in three colours;
+    /// [`Wood::leaves`] is the orange ones.
+    Poplar,
 }
 
 impl Wood {
-    pub const ALL: [Wood; 9] = [
+    pub const ALL: [Wood; 10] = [
         Wood::Oak,
         Wood::Spruce,
         Wood::Birch,
@@ -2758,6 +2802,7 @@ impl Wood {
         Wood::Mangrove,
         Wood::Cherry,
         Wood::PaleOak,
+        Wood::Poplar,
     ];
 
     pub const fn log(self) -> Block {
@@ -2771,6 +2816,7 @@ impl Wood {
             Wood::Mangrove => Block::MANGROVE_LOG,
             Wood::Cherry => Block::CHERRY_LOG,
             Wood::PaleOak => super::overworld_blocks::PALE_OAK_LOG,
+            Wood::Poplar => super::wood::poplar::LOG,
         }
     }
 
@@ -2785,6 +2831,7 @@ impl Wood {
             Wood::Mangrove => super::overworld_blocks::MANGROVE_LEAVES,
             Wood::Cherry => super::overworld_blocks::CHERRY_LEAVES,
             Wood::PaleOak => super::overworld_blocks::PALE_OAK_LEAVES,
+            Wood::Poplar => super::wood::poplar::ORANGE_LEAVES,
         }
     }
 
@@ -2799,6 +2846,7 @@ impl Wood {
             Wood::Mangrove => Block::MANGROVE_PLANKS,
             Wood::Cherry => Block::CHERRY_PLANKS,
             Wood::PaleOak => super::overworld_blocks::PALE_OAK_PLANKS,
+            Wood::Poplar => super::wood::poplar::PLANKS,
         }
     }
 
@@ -2813,6 +2861,7 @@ impl Wood {
             Wood::Mangrove => super::overworld_blocks::MANGROVE_PROPAGULE,
             Wood::Cherry => super::overworld_blocks::CHERRY_SAPLING,
             Wood::PaleOak => super::overworld_blocks::PALE_OAK_SAPLING,
+            Wood::Poplar => super::wood::poplar::SAPLING,
         }
     }
 }
@@ -3098,6 +3147,10 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         },
         id if super::creaking::owns(id) => super::creaking::registry(id),
         id if super::eyeblossom::owns(id) => super::eyeblossom::registry(id),
+        id if super::gen5_blocks::owns(id) => match super::gen5_blocks::registry(id) {
+            Some(info) => info,
+            None => ("unknown", Invisible, all(0)),
+        },
         id if super::cave_blocks::owns(id) => match super::cave_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),

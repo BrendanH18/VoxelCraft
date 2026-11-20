@@ -20,6 +20,7 @@ mod bundle;
 mod copper;
 mod creaking;
 mod crops;
+mod gen5;
 mod harness;
 mod music;
 mod sculk;
@@ -290,6 +291,7 @@ const WOOD_SLAB: Ingredient = &[
     b(crate::world::forms::wood_id(8, 4)),
     b(crate::world::forms::wood_id(9, 4)),
     b(crate::world::forms::wood_id(10, 4)),
+    b(crate::world::wood::poplar::SLAB),
 ];
 const FURNACE: Ingredient = &[b(Block::FURNACE)];
 const STONE_SLAB: Ingredient = &[b(Block::STONE_SLAB)];
@@ -708,6 +710,7 @@ pub fn recipes() -> &'static [Recipe] {
         bundle::add(&mut r);
         workstations::add(&mut r);
         track_d::add(&mut r);
+        gen5::add(&mut r);
         // v0.15 Track C: `recipe/dried_ghast.json`, eight ghast tears around soul sand.
         r.push(shaped(
             &["###", "#X#", "###"],
@@ -1611,9 +1614,8 @@ fn add_shield_recipes(r: &mut Vec<Recipe>) {
 
 /// Java 1.21: five matching planks, no shovel; chest variants are shapeless.
 fn add_mount_recipes(r: &mut Vec<Recipe>) {
-    use crate::world::block::Wood;
-    for i in 0..10u8 {
-        let plank = if i == 9 { crate::world::overworld_blocks::BAMBOO_PLANKS } else { Wood::ALL[i as usize].planks() };
+    for i in 0..=crate::item::POPLAR_BOAT_WOOD {
+        let plank = Item::boat_planks(i);
         r.push(shaped(&["# #", "###"], &[('#', ingredient(b(plank)))], Item::boat(i, false), 1));
         r.push(shapeless(&[ingredient(Item::boat(i, false)), ingredient(b(Block::CHEST))], Item::boat(i, true), 1));
     }

@@ -61,7 +61,7 @@ pub fn class(item: Item) -> Option<FuelClass> {
         // `Items.WOODEN_SPEAR`: `cookingFuel(COOKING_TIME_WOOD_ITEMS_LARGE)`.
         i if i == crate::weapons::spear(Tier::Wood) => return Some(Large),
         // Append-only v0.7 boat/raft and chest-boat item range. Minecarts do not burn.
-        Item(960..=979) => return Some(Boat),
+        Item(960..=979) | Item::POPLAR_BOAT | Item::POPLAR_CHEST_BOAT => return Some(Boat),
         _ => {}
     }
     let block = item.block()?.base();
@@ -98,8 +98,7 @@ pub fn class(item: Item) -> Option<FuelClass> {
     if let Some((oak, wood)) = crate::world::nether_biome_blocks::switch_oak(block.0) {
         // Crimson/warped and polished blackstone switches are explicitly
         // non-fuels; the other woods burn.
-        return (2..=10)
-            .contains(&wood)
+        return ((2..=10).contains(&wood) || wood == crate::world::wood::switches::POPLAR)
             .then_some(if matches!(rb::component(oak), Some(rb::Component::Button { .. })) { Small } else { Wood });
     }
     if let Some(form) = forms::wood_form(block.0) {

@@ -1592,6 +1592,8 @@ pub(super) fn build_minecarts(carts: &[super::minecart::Minecart], camera: DVec3
                 [226, 174, 174],
                 [228, 218, 214],
                 [196, 176, 82],
+                // v0.16 Track D: poplar.
+                [196, 188, 166],
             ];
             let color = colors[wood as usize];
             let boxes = [

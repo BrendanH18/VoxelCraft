@@ -51,6 +51,9 @@ pub const fn pair(id: u16) -> Option<(u16, bool)> {
     if let Some(p) = super::cave_blocks::water_pair(id) {
         return Some(p);
     }
+    if let Some(p) = super::gen5_blocks::water_pair(id) {
+        return Some(p);
+    }
     family_pair(id)
 }
 
@@ -213,6 +216,9 @@ pub const fn canonical(id: u16) -> u16 {
     if super::wood::owns(id) {
         return super::wood::canonical(id);
     }
+    if super::gen5_blocks::owns(id) {
+        return super::gen5_blocks::canonical(id);
+    }
     if id >= FIRST && id < FIRST + COUNT { CANONICAL[(id - FIRST) as usize] } else { id }
 }
 
@@ -231,6 +237,8 @@ static CANONICAL: [u16; COUNT as usize] = {
 
 /// The other state of each pair (0 where there is none) with the wet flag
 /// in the top bit: one load for [`partner`] in edits and fluid ticks.
+/// Bounded by `STATE_CAPACITY`, like `INFO`.
+#[allow(long_running_const_eval)]
 static PAIRS: [u16; STATE_CAPACITY] = {
     let mut arr = [0; STATE_CAPACITY];
     let mut i = 0;
