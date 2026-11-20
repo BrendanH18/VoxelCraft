@@ -45,6 +45,7 @@ impl Chest {
 pub fn is_chest(b: Block) -> bool {
     matches!(b.base(), Block::CHEST | Block::BARREL | super::utilities::TRAPPED_CHEST)
         || super::copper::is_chest(b)
+        || super::shulker_box::owns(b.0)
         || matches!(
             super::redstone_blocks::component(b),
             Some(
@@ -102,6 +103,15 @@ impl World {
     pub(super) fn track_chest(&mut self, p: IVec3, old: Block, new: Block) {
         if !is_chest(new) || (is_chest(old) && old.base() != new.base() && !super::copper::same_chest(old, new)) {
             self.chest_positions.remove(&p.to_array());
+        }
+        // v0.16 Track B: a shulker box never spills (`preRemoveSideEffects`
+        // does nothing); its slots wait for the drop that carries them.
+        self.track_shulker_box(p, old, new);
+        if super::shulker_box::owns(old.0)
+            && old.base() != new.base()
+            && let Some(chest) = self.chests.remove(&p)
+        {
+            self.stash_shulker_box(p, chest);
         }
         if is_chest(old)
             && old.base() != new.base()

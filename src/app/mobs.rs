@@ -202,6 +202,7 @@ impl Game {
             time_since_rest: self.session.vitals.time_since_rest,
             sprinting: self.session.player.sprinting,
             blocking: self.session.blocking(),
+            fall_flying: self.session.player.fall_flying,
             passenger: self.session.player.vehicle.is_some(),
             ..Target::new(
                 PlayerId::HOST,
@@ -308,6 +309,36 @@ impl Game {
                         bot.agent.hurt(5., Cause::LIGHTNING, DVec3::ZERO, &mut self.mobs.entities);
                     }
                 }
+                // v0.16 Track B: a held rocket pushes a gliding player.
+                EntityEvent::RocketBoost { player } => {
+                    if player == PlayerId::HOST {
+                        self.session.player.rocket_boost();
+                    } else if let Some(bot) = self.agents.by_id_mut(player) {
+                        bot.agent.session.player.rocket_boost();
+                    }
+                }
+                // v0.16 Track B: `fireworks` damage, never scaled by
+                // difficulty, with the rocket's knockback toward it.
+                EntityEvent::PlayerFirework { player, damage, from } => {
+                    let push = |victim: DVec3| crate::knockback::Hit {
+                        pushes: [Some(crate::knockback::Push::hurt(victim, from)), None],
+                        punch: None,
+                        throw: None,
+                    };
+                    if player == PlayerId::HOST {
+                        let hit = push(self.session.player.pos);
+                        let toward = from - self.session.player.pos;
+                        if self.damage_player_from(damage, Cause::FIREWORKS, Some(toward)) > 0.0 {
+                            let entities = &mut self.mobs.entities;
+                            self.session.knocked_back(&hit, &mut || f64::from(entities.roll_range(0.0, 1.0)));
+                        }
+                    } else if let Some(bot) = self.agents.by_id_mut(player) {
+                        let hit = push(bot.agent.session.player.pos);
+                        bot.agent.hurt_knocked(damage, Cause::FIREWORKS, &hit, &mut self.mobs.entities);
+                    }
+                }
+                // Its sounds and particles came from the entity pass.
+                EntityEvent::FireworkBurst { .. } => {}
                 EntityEvent::PlayerFall { player, damage } => {
                     if player == PlayerId::HOST {
                         self.damage_player(damage, Cause::FALL);
@@ -525,6 +556,7 @@ impl Game {
                         MobSound::Breeze(cue) => (Sound::Breeze(cue), 1.0),
                         MobSound::Illager(cue) => (Sound::Illager(cue), 1.0),
                         MobSound::Raid(cue) => (Sound::Raid(cue), 1.0),
+                        MobSound::Flight(cue) => (Sound::Flight(self.far_firework(cue, pos)), 1.0),
                         MobSound::CopperGolem(action, stage) => (Sound::CopperGolem(action, stage), 0.7),
                         MobSound::Hurt(MobKind::CopperGolem) => {
                             (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Hurt, 0), 0.9)

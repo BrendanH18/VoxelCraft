@@ -101,6 +101,8 @@ pub struct PlayerAppearance {
     pub aim: Aim,
     /// v0.15 Track D: under Glowing, outlined through walls.
     pub glowing: bool,
+    /// v0.16 Track B: an elytra is worn (its wings are drawn).
+    pub elytra: bool,
 }
 
 const PLAYER_SCALE: f32 = 0.9375;
@@ -122,7 +124,12 @@ fn limb(pivot: [f32; 3], min: [f32; 3], max: [f32; 3], uv: [f32; 2], rot: Quat) 
 /// Head, torso, right arm, left arm, right leg, left leg. Overlays/armor
 /// copy these transforms so they cannot lag behind an attack or sneak pose.
 pub(super) fn pose(player: &Player, appearance: &PlayerAppearance, time: f32) -> [Limb; 6] {
-    let (position, amount) = player.animation.sample(appearance.alpha);
+    let (position, mut amount) = player.animation.sample(appearance.alpha);
+    // v0.16 Track B: `speedValue` damps the limbs of a fast glide.
+    if player.fall_flying {
+        let speed = (player.vel / 20.0).length_squared() as f32 / 0.2;
+        amount /= (speed * speed * speed).max(1.0);
+    }
     let phase = position * 0.6662;
     let mut right_arm = (phase + PI).cos() * amount;
     let mut left_arm = phase.cos() * amount;
@@ -205,7 +212,9 @@ pub(super) fn pose(player: &Player, appearance: &PlayerAppearance, time: f32) ->
             [-4.0, 0.0, -4.0],
             [4.0, 8.0, 4.0],
             [0.0, 0.0],
-            ry(angle(player.animation.body_yaw - player.yaw)) * rx(-player.pitch),
+            // v0.16 Track B: a gliding head looks 45 degrees up from the body.
+            ry(angle(player.animation.body_yaw - player.yaw))
+                * rx(if player.fall_flying { -std::f32::consts::FRAC_PI_4 } else { -player.pitch }),
         ),
         limb(
             [0.0, if crouch { 20.8 } else { 24.0 }, 0.0],
@@ -338,7 +347,24 @@ pub fn build_player(
 ) {
     let origin = (position - camera).as_vec3();
     let fall = appearance.death.map_or(0.0, |t| (((t * 20.0 - 1.0).max(0.0) / 20.0 * 1.6).sqrt()).min(1.0) * FRAC_PI_2);
-    let body = Quat::from_rotation_y(FRAC_PI_2 - player.animation.body_yaw) * Quat::from_rotation_z(fall);
+    let mut body = Quat::from_rotation_y(FRAC_PI_2 - player.animation.body_yaw) * Quat::from_rotation_z(fall);
+    // v0.16 Track B: `AvatarRenderer.setupRotations` while gliding: the body
+    // tips toward the look (scaled in over the first ten ticks) and rolls
+    // toward the turn between motion and look.
+    if player.fall_flying {
+        let ticks = player.fall_fly_ticks as f32 + appearance.alpha;
+        let scale = (ticks * ticks / 100.0).clamp(0.0, 1.0);
+        body *= Quat::from_rotation_x(scale * (-FRAC_PI_2 + player.pitch));
+        let look = player.look_angle();
+        let motion = player.vel;
+        let (m, l) = (motion.with_y(0.0), look.with_y(0.0));
+        if m.length_squared() > 1.0e-5 * 400.0 && l.length_squared() > 1.0e-5 {
+            let dot = m.normalize().dot(l.normalize());
+            let sign = motion.x * look.z - motion.z * look.x;
+            let roll = (sign.signum() * dot.abs().min(1.0).acos()) as f32;
+            body *= Quat::from_rotation_y(-roll);
+        }
+    }
     let light = (
         [(lighting.0.clamp(0.0, 1.0) * 255.0) as u8, 0, if appearance.hurt { 255 } else { 0 }, 0],
         (lighting.1.clamp(0.0, 1.0) * 255.0) as u8,
@@ -352,6 +378,9 @@ pub fn build_player(
         textured_box(out, &overlay, if i == 0 { 0.5 } else { 0.25 }, origin, body, light, 1, 0, PLAYER_SCALE, UNTINTED);
     }
     draw_armor(out, &parts, &appearance.armor, origin, body, PLAYER_SCALE, light);
+    if appearance.elytra {
+        draw_wings(out, player, appearance.alpha, origin, body, light);
+    }
     if let Some(item) = appearance.held {
         let arm = parts[2];
         // ItemInHandLayer's right grip: translated to the fist, then down 90°.
@@ -399,6 +428,41 @@ pub fn build_player(
                 .map_or(UNTINTED, |[r, g, b]| [r, g, b, 0]);
             textured_box(out, &held, 0.0, origin, body, light, 2, layer, PLAYER_SCALE, tint);
         }
+    }
+}
+
+/// v0.16 Track B: `WingsLayer` with `ElytraModel`: two 10x20x2 wings
+/// (inflated by one) hinged at the shoulders behind the body, turned by
+/// `ElytraAnimationState`, mirrored across the body, in the original wing
+/// texture (`content::elytra::WING_TEX`).
+fn draw_wings(
+    out: &mut Vec<EntityVertex>,
+    player: &Player,
+    alpha: f32,
+    origin: Vec3,
+    body: Quat,
+    light: ([u8; 4], u8),
+) {
+    let [x, y, z] = player.elytra_rotation(alpha);
+    let top = if player.crouching { 21.0 } else { 24.0 };
+    // Java's model y points down and its back is +Z; this model's y is up
+    // and its back -Z, which turns rotations about y and z around.
+    let left = limb(
+        [5.0, top, 0.0],
+        [-10.0, -20.0, -4.0],
+        [0.0, 0.0, -2.0],
+        [0.0, 0.0],
+        Quat::from_rotation_z(-z) * Quat::from_rotation_y(-y) * Quat::from_rotation_x(x),
+    );
+    let right = limb(
+        [-5.0, top, 0.0],
+        [0.0, -20.0, -4.0],
+        [10.0, 0.0, -2.0],
+        [0.0, 0.0],
+        Quat::from_rotation_z(z) * Quat::from_rotation_y(y) * Quat::from_rotation_x(x),
+    );
+    for wing in [left, right] {
+        textured_box(out, &wing, 1.0, origin, body, light, 2, crate::content::elytra::WING_TEX, PLAYER_SCALE, UNTINTED);
     }
 }
 

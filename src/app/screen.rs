@@ -256,6 +256,10 @@ impl Screen<'_> {
                 return move_into(stack, &mut self.session.ender.slots, &order);
             }
             Container::Chest(p) => {
+                // v0.16 Track B: a shulker box doesn't move into a shulker box.
+                if !self.world.container_accepts(p, &stack) {
+                    return Some(stack);
+                }
                 let order: Vec<usize> = (0..self.world.container_slots(p)).collect();
                 return self.world.with_chest_slots(p, |slots| move_into(stack, slots, &order)).unwrap_or(Some(stack));
             }
@@ -327,7 +331,7 @@ impl Screen<'_> {
             }
             Container::Inventory if self.session.mode.is_survival() => {
                 // Armor goes on, if that slot is free.
-                if let Some((piece, _)) = stack.item.as_armor()
+                if let Some(piece) = stack.item.equip_piece()
                     && self.session.inventory.armor[piece as usize].is_none()
                 {
                     self.session.inventory.armor[piece as usize] = Some(stack);
@@ -478,6 +482,8 @@ impl Screen<'_> {
                 }
                 if let Container::Chest(pos) = *self.container
                     && i < self.world.container_slots(pos)
+                    // v0.16 Track B: `ShulkerBoxSlot.mayPlace`.
+                    && self.session.inventory.cursor.is_none_or(|c| self.world.container_accepts(pos, &c))
                 {
                     let cursor = &mut self.session.inventory.cursor;
                     self.world

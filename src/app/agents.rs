@@ -97,6 +97,7 @@ impl Agents {
             sprinting: b.agent.session.player.sprinting,
             blocking: b.agent.session.blocking(),
             passenger: b.agent.session.player.vehicle.is_some(),
+            fall_flying: b.agent.session.player.fall_flying,
             ..Target::new(b.id, b.agent.session.player.pos, b.agent.targetable())
         })
     }

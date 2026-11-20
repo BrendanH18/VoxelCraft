@@ -293,6 +293,9 @@ impl PlayerSession {
                     } else if let Some(placed) = crate::world::wood::placed(raw, &ctx, |c| world.get_block(c)) {
                         // Signs, shelves and chiseled bookshelves (`world::wood`).
                         placed.ok_or("block cannot survive here")?
+                    } else if let Some(shulker) = crate::world::shulker_box::placed(raw, normal) {
+                        // v0.16 Track B: the lid faces away from the clicked face.
+                        shulker
                     } else if let Some(banner) = cb::placed(raw, &ctx, |c| world.get_block(c)) {
                         banner.ok_or("block cannot survive here")?
                     } else if let Some(mounted) = crate::world::copper::placed(raw, &ctx, |c| world.get_block(c))
@@ -407,6 +410,7 @@ impl PlayerSession {
         let placed = world.set_block(cell, block);
         debug_assert!(placed, "validated loaded placement must succeed");
         world.restore_hive_item(cell, held.hive);
+        world.restore_shulker_box_item(cell, &held);
         world.name_copper_golem_statue(cell, held.name);
         if kind != Kind::Block
             && let Some((pos, partner)) = partner

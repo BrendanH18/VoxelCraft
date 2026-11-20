@@ -17,6 +17,7 @@ mod distortion;
 mod doors;
 mod enchanting;
 mod farming;
+mod flight;
 mod frame_limit;
 mod fullscreen;
 mod gamepad;
@@ -1444,6 +1445,7 @@ impl Game {
     }
 
     fn play_notes(&mut self) {
+        self.play_shulker_sounds();
         let notes = std::mem::take(&mut self.world.notes);
         for (pos, pitch, instrument) in notes {
             let sound = crate::audio::sounds::Sound::Note(crate::world::gadgets::Instrument::from_u8(instrument));
@@ -2215,6 +2217,7 @@ impl Game {
             .iter()
             .map(|f| crate::render::BlockModel {
                 patterns: None,
+                lid: None,
                 min: f.previous_pos.lerp(f.pos, alpha),
                 size: 1.0,
                 block: f.block,
@@ -2229,6 +2232,7 @@ impl Game {
                 let s = t.size();
                 crate::render::BlockModel {
                     patterns: None,
+                    lid: None,
                     min: t.previous_pos.lerp(t.pos, alpha)
                         - glam::DVec3::new(s as f64 / 2.0, (s as f64 - 1.0) / 2.0, s as f64 / 2.0),
                     size: s,
@@ -2244,6 +2248,7 @@ impl Game {
             }))
             .chain(self.world.moving_piston_blocks(alpha).map(|(block, min)| crate::render::BlockModel {
                 patterns: None,
+                lid: None,
                 min,
                 size: 1.0,
                 block,
@@ -2256,6 +2261,7 @@ impl Game {
             }))
             .chain(self.item_models(alpha))
             .chain(self.banner_models(camera))
+            .chain(self.shulker_models(camera, alpha))
             .chain(self.decor_models())
             .collect()
     }

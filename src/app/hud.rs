@@ -526,6 +526,8 @@ pub(super) fn container_title(block: Option<crate::world::block::Block>) -> &'st
     use crate::world::redstone_blocks::{self as r, Component};
     match block {
         Some(b) if b.base() == crate::world::block::Block::BARREL => "Barrel",
+        // `container.shulkerBox`.
+        Some(b) if crate::world::shulker_box::owns(b.0) => "Shulker Box",
         Some(b) if crate::world::utilities::ender_chest_of(b).is_some() => "Ender Chest",
         Some(b) => match r::component(b) {
             Some(Component::Hopper { .. }) => "Item Hopper",
@@ -1191,6 +1193,16 @@ impl Game {
                 None if stack.trim.is_some() || voxelcraft::content::trim::template_pattern(stack.item).is_some() => {
                     self.trim_tooltip(ui, stack)
                 }
+                // v0.16 Track B: shulker box contents, fireworks, epic elytra.
+                None if stack.item.is_epic()
+                    || voxelcraft::content::shulker_box::is_shulker_box(stack.item)
+                    || matches!(
+                        stack.item,
+                        voxelcraft::content::fireworks::FIREWORK_ROCKET | voxelcraft::content::fireworks::FIREWORK_STAR
+                    ) =>
+                {
+                    self.flight_tooltip(ui, stack)
+                }
                 None if !stack.enchants.is_empty() => self.enchant_tooltip(ui, stack),
                 // Java's `Rarity.RARE` names are aqua.
                 None if stack.item.is_rare() => self.tooltip_coloured(ui, stack.display_name(), [0.33, 1.0, 1.0, 1.0]),
@@ -1481,6 +1493,39 @@ impl Game {
             voxelcraft::content::trim::tooltip_lines(&stack).into_iter().map(|(l, c)| (l, rgb(c))).collect();
         for (line, curse) in stack.enchants.lines() {
             lines.push((line, if curse { [1.0, 0.33, 0.33, 1.0] } else { [0.67, 0.67, 0.67, 1.0] }));
+        }
+        let w = lines.iter().map(|(l, _)| Ui::text_width(l)).fold(Ui::text_width(&title), f32::max);
+        let h = 14.0 + 11.0 * lines.len() as f32;
+        let (sw, sh) = ui.size();
+        let x = (self.cursor_px.0 / ui.scale + 10.0).min(sw - w - 6.0).max(3.0);
+        let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - h + 3.0).max(3.0));
+        ui.rect(x - 3.0, y - 3.0, w + 6.0, h, [0.08, 0.02, 0.12, 0.92]);
+        ui.text(x, y, &title, colour);
+        for (i, (line, c)) in lines.iter().enumerate() {
+            ui.text(x, y + 11.0 * (i + 1) as f32, line, *c);
+        }
+    }
+
+    /// v0.16 Track B: a shulker box's contents
+    /// (`ItemContainerContents.addToTooltip`, the "more" line italic in
+    /// Java), a firework's flight and stars in grey (`Fireworks` and
+    /// `FireworkExplosion.addToTooltip`), then enchantments; epic items
+    /// (the elytra) are named in light purple.
+    fn flight_tooltip(&self, ui: &mut Ui, stack: Stack) {
+        let title = capitalize(stack.display_name());
+        let colour = if stack.item.is_epic() {
+            [1.0, 0.33, 1.0, 1.0]
+        } else if !stack.enchants.is_empty() {
+            [0.33, 1.0, 1.0, 1.0]
+        } else {
+            WHITE
+        };
+        let grey = [0.67, 0.67, 0.67, 1.0];
+        let mut lines: Vec<(String, Color)> =
+            voxelcraft::content::shulker_box::tooltip_lines(&stack).into_iter().map(|l| (l, WHITE)).collect();
+        lines.extend(voxelcraft::content::fireworks::tooltip_lines(&stack).into_iter().map(|l| (l, grey)));
+        for (line, curse) in stack.enchants.lines() {
+            lines.push((line, if curse { [1.0, 0.33, 0.33, 1.0] } else { grey }));
         }
         let w = lines.iter().map(|(l, _)| Ui::text_width(l)).fold(Ui::text_width(&title), f32::max);
         let h = 14.0 + 11.0 * lines.len() as f32;

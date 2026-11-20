@@ -394,6 +394,11 @@ pub fn shape_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bloc
     if super::dried_ghast::owns(block.0) {
         return super::dried_ghast::boxes();
     }
+    // Shulker boxes draw as block-entity models (`render::block_model`),
+    // not in the chunk meshes; icons and dropped items fall back to a cube.
+    if super::shulker_box::owns(block.0) {
+        return Boxes::new();
+    }
     if super::cave_blocks::is_custom(block) {
         return super::cave_blocks::boxes(block);
     }
@@ -562,6 +567,10 @@ pub fn outline_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bl
     }
     if super::dried_ghast::owns(block.0) {
         return super::dried_ghast::boxes();
+    }
+    // A shut shulker box's shape (`getShape` grows with the lid; see the record).
+    if super::shulker_box::owns(block.0) {
+        return Boxes::from_box(Box16::FULL);
     }
     if super::cave_blocks::is_custom(block) {
         return super::cave_blocks::outline(block);
@@ -815,6 +824,9 @@ pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: 
     }
     if super::dried_ghast::owns(block.0) {
         return super::dried_ghast::boxes();
+    }
+    if super::shulker_box::owns(block.0) {
+        return Boxes::from_box(Box16::FULL);
     }
     if super::cave_blocks::is_custom(block) {
         return super::cave_blocks::collision(block);

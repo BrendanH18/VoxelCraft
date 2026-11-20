@@ -948,7 +948,11 @@ impl Block {
 
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
-        if super::sniffer_egg::owns(self.0) || super::heavy_core::owns(self.0) || super::dried_ghast::owns(self.0) {
+        if super::sniffer_egg::owns(self.0)
+            || super::heavy_core::owns(self.0)
+            || super::dried_ghast::owns(self.0)
+            || super::shulker_box::owns(self.0)
+        {
             return Some(Shaped::Custom);
         }
         if super::creaking::wall_local(self.0).is_some() {
@@ -1326,6 +1330,9 @@ impl Block {
         if super::dried_ghast::owns(self.0) {
             return super::dried_ghast::DRIED_GHAST;
         }
+        if let Some(s) = super::shulker_box::decode(self) {
+            return super::shulker_box::item_state(s.colour);
+        }
         if self.0 == super::sniffer_plants::PITCHER_PLANT.0 + 1 {
             return super::sniffer_plants::PITCHER_PLANT;
         }
@@ -1678,6 +1685,10 @@ impl Block {
         if super::dried_ghast::owns(self.0) {
             return Some(Item::from_block(super::dried_ghast::DRIED_GHAST));
         }
+        // `blocks/*shulker_box`: itself; `World::shulker_box_drop` adds the contents.
+        if let Some(s) = super::shulker_box::decode(self) {
+            return Some(Item::from_block(super::shulker_box::item_state(s.colour)));
+        }
         if self == super::sniffer_plants::POTTED_TORCHFLOWER {
             return Some(super::utilities::FLOWER_POT.into());
         }
@@ -1851,6 +1862,9 @@ impl Block {
         // `Blocks.DRIED_GHAST`: `instabreak()`.
         if super::dried_ghast::owns(self.0) {
             return 0.0;
+        }
+        if super::shulker_box::owns(self.0) {
+            return super::shulker_box::HARDNESS;
         }
         if super::archaeology::owns(self.0) {
             return 0.25;
@@ -2096,7 +2110,8 @@ impl Block {
         if super::archaeology::owns(self.0) {
             return Some(ToolKind::Shovel);
         }
-        if super::heavy_core::owns(self.0) {
+        // `#mineable/pickaxe` lists every shulker box.
+        if super::heavy_core::owns(self.0) || super::shulker_box::owns(self.0) {
             return Some(ToolKind::Pickaxe);
         }
         if super::creaking::heart(self).is_some() {
@@ -2465,6 +2480,8 @@ impl Block {
             .chain(super::frog_blocks::palette_ids())
             .chain(super::jukebox::palette_ids())
             .chain(super::trial::palette_ids())
+            // v0.16 Track B: the seventeen shulker boxes.
+            .chain((0..super::shulker_box::COLOURS).map(|c| super::shulker_box::FIRST + c * 6))
             .map(Block)
     }
 
@@ -3122,6 +3139,7 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         15120..=super::sniffer_egg::LAST => super::sniffer_egg::registry(id),
         12256..=super::frosted_ice::LAST => super::frosted_ice::registry(id),
         super::heavy_core::FIRST..=super::heavy_core::LAST => super::heavy_core::registry(id),
+        super::shulker_box::FIRST..=super::shulker_box::LAST => super::shulker_box::registry(id),
         super::dried_ghast::FIRST..=super::dried_ghast::LAST => super::dried_ghast::registry(id),
         super::jukebox::FIRST..=super::jukebox::LAST => super::jukebox::registry(id),
         super::archaeology::FIRST..=super::archaeology::LAST => super::archaeology::registry(id),

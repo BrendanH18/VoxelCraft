@@ -45,6 +45,8 @@ impl Entities {
                 .map(|t| json!({"at": pair(t.pos, t.previous_pos), "fuse": t.fuse})).collect::<Vec<_>>(),
             "lightning": self.lightning.iter().filter(|b| near(b.pos)).take(MAX).map(|b| json!([b.pos.to_array(),b.seed,b.life])).collect::<Vec<_>>(),
             "fight": self.fight.as_ref().map(|f| f.replica_json()),
+            // v0.16 Track B: firework rockets in flight.
+            "fireworks": self.fireworks_near(center, radius),
         })
     }
 
@@ -66,6 +68,7 @@ impl Entities {
             })
             .collect();
         self.pearls = list("pearls").into_iter().filter_map(unpair).map(|(p, q)| Pearl::replica(p, q)).collect();
+        self.replace_fireworks(&v["fireworks"]);
         self.clouds = list("potion_clouds").into_iter().filter_map(super::lingering::Cloud::load).collect();
         self.potions = list("potions")
             .into_iter()

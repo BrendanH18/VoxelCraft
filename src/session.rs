@@ -289,6 +289,25 @@ impl PlayerSession {
         }
     }
 
+    /// v0.16 Track B: `LivingEntity.updateFallFlying`'s wear: a tick that
+    /// used the glider costs the worn elytra one durability (Unbreaking's
+    /// non-armor chance; none in Creative). Gliding stops at the last point,
+    /// so a glide never breaks it. Every adapter calls it once a tick.
+    pub fn tick_elytra(&mut self) {
+        if !std::mem::take(&mut self.player.glider_used) || self.mode.is_creative() {
+            return;
+        }
+        if let Some(s) = &mut self.inventory.armor[1]
+            && s.item == crate::content::elytra::ELYTRA
+            && crate::enchant::wears(s.enchants, false, crate::enchant::roll())
+        {
+            s.damage = s.damage.saturating_add(1);
+            if s.damage >= crate::content::elytra::DURABILITY {
+                self.inventory.armor[1] = None;
+            }
+        }
+    }
+
     /// v0.15 Track D: Frost Walker (`enchantment/frost_walker.json`'s
     /// `location_changed` effect): when the player moves into another block
     /// while on the ground and not riding, still water around the feet

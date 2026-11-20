@@ -664,6 +664,54 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             shaded(&sheet, x, y, [236, 234, 222], 0.03)
                 .map(|p| if y % 3 == 0 && (5..=11).contains(&x) { tint([p[0], p[1], p[2]], 0.85) } else { p })
         }
+        Sprite::Elytra => {
+            // Original v0.16 icon: two folded wings side by side, grey-violet
+            // membrane over darker ribs, the leading edges lighter.
+            let wing = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                let side = if px < 8.0 { 8.0 - px } else { px - 8.0 };
+                (1.0..=6.5).contains(&side) && py >= 2.0 + side * 0.3 && py <= 14.0 - (side - 3.0).abs() * 0.8
+            };
+            shaded(&wing, x, y, [146, 140, 168], 0.05).map(|p| {
+                let (px, _) = centre(x, y);
+                let side = if px < 8.0 { 8.0 - px } else { px - 8.0 };
+                if (side - 2.5).abs() < 0.5 || (side - 4.5).abs() < 0.5 && y > 6 {
+                    tint([96, 88, 120], 0.95)
+                } else if side < 1.6 {
+                    tint([196, 190, 214], 1.0)
+                } else {
+                    p
+                }
+            })
+        }
+        Sprite::FireworkRocket => {
+            // Original v0.16 icon: a red-banded paper tube on a diagonal with
+            // a grey cap and a short fuse.
+            let along = (px - py) / std::f32::consts::SQRT_2;
+            let across = (px + py - 16.0) / std::f32::consts::SQRT_2;
+            let t = (along + 6.5) / 13.0;
+            if (0.0..=0.82).contains(&t) && across.abs() <= 1.6 {
+                let base = if (0.25..0.35).contains(&t) || (0.55..0.65).contains(&t) {
+                    [196, 52, 44]
+                } else if t > 0.7 {
+                    [120, 120, 128]
+                } else {
+                    [232, 226, 210]
+                };
+                Some(tint(base, if across < 0.0 { 1.1 } else { 0.82 }))
+            } else if (0.82..=1.0).contains(&t) && across.abs() <= 0.6 {
+                Some(tint([70, 58, 44], 1.0))
+            } else {
+                None
+            }
+        }
+        Sprite::FireworkStar => {
+            // Original v0.16 icon: a pale ball of powder with lighter
+            // flecks; the icon is tinted by the star's colours.
+            let ball = disc(8.0, 8.5, 4.6);
+            shaded(&ball, x, y, [232, 232, 232], 0.06)
+                .map(|p| if (x * 3 + y * 5) % 7 == 0 { tint([255, 255, 255], 1.0) } else { p })
+        }
         Sprite::Spyglass => {
             // Original v0.15 icon: a brass tube lying corner to corner, a
             // copper eyepiece ring and a violet lens at the far end.

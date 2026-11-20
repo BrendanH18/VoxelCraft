@@ -187,7 +187,7 @@ impl ItemSet {
             ItemSet::Trident => item == TRIDENT,
             ItemSet::Mace => item == MACE,
             ItemSet::Lunge => is_spear(item),
-            // Armor, elytra (unregistered), shield, tools, bow, crossbow,
+            // Armor, elytra, shield, tools, bow, crossbow,
             // trident, flint and steel, shears, brush, fishing rod, both
             // sticks, mace and spears.
             ItemSet::Durability => {
@@ -208,8 +208,12 @@ impl ItemSet {
                     || item == TRIDENT
                     || item == MACE
                     || is_spear(item)
+                    // v0.16 Track B.
+                    || item == crate::content::elytra::ELYTRA
             }
-            ItemSet::Equippable => matches!(kind, ItemKind::Armor(..)) || skull || carved_pumpkin,
+            ItemSet::Equippable => {
+                matches!(kind, ItemKind::Armor(..)) || skull || carved_pumpkin || item == crate::content::elytra::ELYTRA
+            }
             ItemSet::Vanishing => {
                 ItemSet::Durability.contains(item) || item == Item::COMPASS || carved_pumpkin || skull
             }
@@ -1077,6 +1081,10 @@ pub fn repairs(item: Item, material: Item) -> bool {
     }
     if item == Item::WOLF_ARMOR {
         return material == Item::ARMADILLO_SCUTE;
+    }
+    // v0.16 Track B: `Items.ELYTRA`'s `repairable(PHANTOM_MEMBRANE)`.
+    if item == crate::content::elytra::ELYTRA {
+        return material == Item::PHANTOM_MEMBRANE;
     }
     use crate::item::{ArmorMaterial, Tier};
     if item == Item::SHIELD {

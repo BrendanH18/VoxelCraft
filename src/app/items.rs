@@ -240,6 +240,7 @@ impl Game {
                     + DVec3::new(-size / 2.0, bob + k * 0.03, -size / 2.0);
                 out.push(BlockModel {
                     patterns: None,
+                    lid: None,
                     min,
                     size: size as f32,
                     block: block.unwrap_or(Block::AIR),

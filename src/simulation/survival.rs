@@ -146,6 +146,11 @@ pub struct Env {
     pub moved: f64,
     pub sprinting: bool,
     pub jumped: bool,
+    /// v0.16 Track B: gliding on elytra, the vertical motion in blocks per
+    /// tick, and the `fly_into_wall` damage the glide took this tick.
+    pub fall_flying: bool,
+    pub fall_speed: f64,
+    pub kinetic: f32,
 }
 
 /// Damage produced by one [`Vitals::tick`]; the caller applies it through
@@ -169,6 +174,8 @@ pub struct Hurts {
     pub freeze: f32,
     /// A falling stalactite (`DamageTypes.FALLING_STALACTITE`).
     pub stalactite: f32,
+    /// v0.16 Track B: a glide into a wall (`fly_into_wall`).
+    pub kinetic: f32,
 }
 
 /// Minecraft's hunger: a food bar backed by a hidden saturation buffer that
@@ -609,6 +616,15 @@ impl Vitals {
         if (self.effects.has(Effect::SlowFalling) || self.effects.has(Effect::Levitation)) && !env.on_ground {
             self.fall_peak = self.fall_peak.map(|_| env.y);
         }
+        // v0.16 Track B: `Entity.checkFallDistanceAccumulation` while gliding:
+        // a glide that isn't diving steeply keeps at most one block of fall.
+        if env.fall_flying
+            && env.fall_speed > -0.5
+            && let Some(peak) = self.fall_peak
+            && peak - env.y > 1.0
+        {
+            self.fall_peak = Some(env.y + 1.0);
+        }
         let jump_levels = self.effects.jump_boost() as f64;
 
         // Java accumulates downward moves, even if a bounce rises in between.
@@ -727,6 +743,9 @@ impl Vitals {
         }
         if !creative {
             hurts.stalactite = env.stalactite;
+        }
+        if !creative {
+            hurts.kinetic = env.kinetic;
         }
         if fire_proof {
             (hurts.lava, hurts.fire, hurts.burn, hurts.hot_floor, hurts.campfire) = (0.0, 0.0, 0.0, 0.0, 0.0);

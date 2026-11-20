@@ -319,7 +319,10 @@ pub fn wash_banner(contents: Contents, stack: crate::inventory::Stack) -> Option
         return None;
     }
     let lowered = if level == 1 { Contents::Empty } else { Contents::Water(level - 1) };
-    Some((lowered, crate::content::banner_patterns::wash(stack)?))
+    // v0.16 Track B: `shulkerBoxInteraction` takes the same path (a dyed
+    // box comes out plain with its contents, `createFilledResult(.., false)`).
+    let washed = crate::content::banner_patterns::wash(stack).or_else(|| crate::content::shulker_box::washed(stack))?;
+    Some((lowered, washed))
 }
 
 /// Whether the cauldron `b` washes the held stack. Java's interaction

@@ -143,6 +143,7 @@ impl Game {
             (hurts.drown, Cause::DROWN),
             (hurts.lava, Cause::LAVA),
             (hurts.stalactite, Cause::FALLING_STALACTITE),
+            (hurts.kinetic, Cause::FLY_INTO_WALL),
             (hurts.fire, Cause::IN_FIRE),
             (hurts.hot_floor, Cause::HOT_FLOOR),
             (hurts.campfire, Cause::CAMPFIRE),
@@ -158,6 +159,8 @@ impl Game {
         // Frost Walker's ice.
         self.session.settle_effect_hooks(&mut self.mobs.entities);
         self.session.frost_walk(&mut self.world, &self.mobs.entities);
+        self.session.tick_elytra();
+        self.elytra_wind();
         let acting = !self.menu.is_open() && !self.console.open && self.mouse_grabbed && !self.inventory_open;
         self.act(acting, dt);
         self.drive_lan(dt);
@@ -199,6 +202,8 @@ impl Game {
             _ => None,
         };
         let open: Vec<_> = keyboard.into_iter().chain(self.pads.open_chests()).chain(self.open_chests()).collect();
+        // v0.16 Track B: open shulker boxes lift their lids.
+        self.world.set_shulker_viewers(&open);
         self.world.set_chest_viewers(open);
         crate::simulation::tick_world_rules(
             &mut self.world,
