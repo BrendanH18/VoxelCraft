@@ -1497,6 +1497,27 @@ mod tests {
     }
 
     #[test]
+    fn chorus_fruit_dismounts_a_boat_rider_before_teleporting() {
+        // `TeleportRandomlyConsumeEffect` calls `stopRiding` first, so the
+        // seat can't pull the player back.
+        let mut e = super::super::Entities::new(1);
+        let mut w = world();
+        for x in 0..16 {
+            for z in 0..16 {
+                w.set_block(IVec3::new(x, 139, z), Block::STONE);
+            }
+        }
+        let player = super::super::PlayerId(3);
+        let id = e.spawn_cart(CartKind::Boat { wood: 0, chest: false }, DVec3::new(8., 140., 8.));
+        assert_eq!(e.mount_cart(DVec3::new(8., 140.3, 6.), DVec3::Z, 5., player), Some(id));
+        let mut s = crate::session::PlayerSession::new(player, DVec3::new(8., 140., 8.));
+        s.player.vehicle = Some(id);
+        s.chorus_teleport(&w, &mut e);
+        assert_eq!(s.player.vehicle, None);
+        assert_eq!(e.cart(id).unwrap().rider, None);
+    }
+
+    #[test]
     fn straight_rail_keeps_speed_under_the_cap_and_friction_slows_it() {
         let mut w = world();
         track(&mut w, 0, 16);

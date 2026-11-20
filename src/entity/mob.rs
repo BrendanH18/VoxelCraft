@@ -1851,8 +1851,12 @@ impl Mob {
     /// then `Entity.pushFromExplosion` adds `push` (blocks per tick) to the
     /// motion. Returns `true` if this killed the mob.
     pub fn blast(&mut self, amount: f32, push: DVec3, rng: &mut Rng) -> bool {
-        // `Warden.ignoreExplosion` while digging or emerging.
-        if !self.alive() || self.warden.as_ref().is_some_and(|s| s.digging_or_emerging()) {
+        // `Warden.ignoreExplosion` while digging or emerging, and
+        // `WitherBoss.hurtServer` refusing everything while it charges.
+        if !self.alive()
+            || self.warden.as_ref().is_some_and(|s| s.digging_or_emerging())
+            || self.wither.as_ref().is_some_and(|s| s.invul > 0)
+        {
             return false;
         }
         if self.sulfur_shrugs_off(crate::simulation::damage::DamageType::Explosion) {

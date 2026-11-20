@@ -33,6 +33,11 @@ impl PlayerSession {
     /// a random spot within eight blocks with ground under it, resetting
     /// the fall. Returns where they left from, or `None` when no try fitted.
     pub fn chorus_teleport(&mut self, world: &crate::world::World, entities: &mut Entities) -> Option<glam::DVec3> {
+        // `TeleportRandomlyConsumeEffect`: `stopRiding` first, or the seat
+        // would pull the player back.
+        if self.player.vehicle.take().is_some() {
+            entities.dismount(world, self.id);
+        }
         let mut next = || f64::from(entities.roll());
         let to = crate::content::chorus::teleport_target(world, self.player.pos, crate::player::SHAPE, &mut next)?;
         let from = self.player.pos;

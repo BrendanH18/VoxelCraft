@@ -121,6 +121,8 @@ fn the_wither_is_registered_and_saves_its_charge() {
     assert!(MobKind::Wither.loot().is_empty());
     let mut e = Entities::new(1);
     e.spawn_wither(DVec3::new(0.5, 70.55, 0.5), 90.0);
+    // Explosions are refused while it charges too (`hurtServer`).
+    assert!(!e.mobs[0].blast(50.0, DVec3::ZERO, &mut Rng::new(1)));
     let m = &e.mobs[0];
     assert_eq!(m.health, 100.0, "a third of its health");
     assert_eq!(m.wither.as_ref().unwrap().invul, INVULNERABLE_TICKS);
