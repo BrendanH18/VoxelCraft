@@ -668,10 +668,12 @@ impl Command {
     /// `book sign [offhand] "title" ["page", ...]`.
     fn parse_book(text: &str) -> Option<Self> {
         let rest = text.trim().trim_start_matches('/').strip_prefix("book")?.trim_start();
-        let hand = |rest: &str| match rest.trim_start().strip_prefix("offhand") {
-            Some(after) if after.is_empty() || after.starts_with(char::is_whitespace) => (after.trim_start(), true),
-            _ => (rest.trim_start(), false),
-        };
+        fn hand(rest: &str) -> (&str, bool) {
+            match rest.trim_start().strip_prefix("offhand") {
+                Some(after) if after.is_empty() || after.starts_with(char::is_whitespace) => (after.trim_start(), true),
+                _ => (rest.trim_start(), false),
+            }
+        }
         if let Some(pages) = rest.strip_prefix("write") {
             let (pages, offhand) = hand(pages);
             return Some(Self::Book { pages: serde_json::from_str(pages).ok()?, title: None, offhand });
