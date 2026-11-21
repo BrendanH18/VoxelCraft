@@ -1172,7 +1172,10 @@ impl Game {
             self.set_mode(GameMode::Spectator);
             self.show_popup("Game over - Spectator mode");
         }
-        self.set_grab(false);
+        // An immediate respawn keeps the mouse; the death screen frees it.
+        if !self.gamerules.respawns_immediately(self.hardcore) {
+            self.set_grab(false);
+        }
         self.keys.clear();
         // Java's `resetToggleKeys`.
         self.sneak_toggled = false;
@@ -1187,6 +1190,28 @@ impl Game {
             self.set_grab(true);
         } else if self.gamerules.respawns_immediately(self.hardcore) {
             self.respawn_due = true;
+        }
+    }
+
+    /// Runs the immediate respawn a death asked for, once the step that
+    /// killed the player (a tick, a save's settling) is over.
+    fn respawn_if_due(&mut self) {
+        if std::mem::take(&mut self.respawn_due) && self.session.vitals.is_dead() {
+            self.respawn();
+        }
+    }
+
+    /// Takes the mouse back after a respawn, unless a menu, the console or
+    /// a scripted run has it.
+    fn grab_after_respawn(&mut self) {
+        if !self.menu.is_open()
+            && !self.console.open
+            && self.credits.is_none()
+            && self.screenshot.is_none()
+            && self.benchmark.is_none()
+            && self.bench_render.is_none()
+        {
+            self.set_grab(true);
         }
     }
 
@@ -1206,19 +1231,29 @@ impl Game {
             } else {
                 self.switch_dimension(Dimension::Nether, dimension::Arrival::Anchor(anchor));
             }
-            self.set_grab(true);
+            self.grab_after_respawn();
             return;
         }
         if self.dimension != Dimension::Overworld {
             let here = self.session.player.pos;
             self.session.respawn(here, voxelcraft::session::DEFAULT_SPAWN_YAW, keep_inventory);
             self.switch_dimension(Dimension::Overworld, dimension::Arrival::Respawn);
-            self.set_grab(true);
+            self.grab_after_respawn();
+            return;
+        }
+        // Still arriving (a death while travelling): the world isn't in, so
+        // the bed can't be checked yet. Respawn here and let the arrival
+        // wait for the bed's chunk, replacing any portal arrival.
+        if self.arrival.is_some() {
+            let here = self.session.player.pos;
+            self.session.respawn(here, voxelcraft::session::DEFAULT_SPAWN_YAW, keep_inventory);
+            self.arrival = Some(dimension::Arrival::Respawn);
+            self.grab_after_respawn();
             return;
         }
         let (at, yaw) = self.respawn_point();
         self.session.respawn(at, yaw, keep_inventory);
-        self.set_grab(true);
+        self.grab_after_respawn();
     }
 
     fn set_mode(&mut self, mode: GameMode) {
@@ -1949,9 +1984,7 @@ impl Game {
             self.menu.is_open() || self.console.open || self.credits.is_some(),
             self.agents.host.is_some() || self.lan.host.is_some() || self.lan.client.is_some(),
         );
-        if std::mem::take(&mut self.respawn_due) && self.session.vitals.is_dead() {
-            self.respawn();
-        }
+        self.respawn_if_due();
         let elapsed = now - self.last_frame;
         self.last_frame = now;
         let ticks = self.clock.advance(elapsed, paused);
@@ -1985,6 +2018,7 @@ impl Game {
             } else {
                 let started = Instant::now();
                 self.tick();
+                self.respawn_if_due();
                 let took = started.elapsed().as_secs_f64();
                 self.lan.stats_tick_secs += took;
                 self.lan.stats_tick_max = self.lan.stats_tick_max.max(took);
@@ -2040,6 +2074,7 @@ impl Game {
         // Scripted runs (screenshots, benchmarks) have no options path and never autosave.
         if self.settings_path.is_some() && now - self.last_save > AUTOSAVE_EVERY {
             self.save();
+            self.respawn_if_due();
         }
 
         // --- Render ---------------------------------------------------------
