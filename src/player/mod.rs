@@ -210,6 +210,19 @@ impl Player {
         self.pos + DVec3::Y * self.pose.eye_height()
     }
 
+    /// v0.16 Track H: a geyser's lift (`PotentSulfurBlockEntity.LAUNCH_ENTITY_TICKER`):
+    /// `checkFallDistanceAccumulation`, then 0.2 a tick up unless flying or
+    /// already rising at `limit` (blocks a tick) or faster.
+    pub fn geyser_launch(&mut self, limit: f64) {
+        let dy = self.vel.y / 20.0;
+        if dy > -0.5 && self.motion.fall_distance > 1.0 {
+            self.motion.fall_distance = 1.0;
+        }
+        if !self.flying && dy < limit {
+            self.vel.y += f64::from(crate::world::potent_sulfur::LAUNCH_FORCE) * 20.0;
+        }
+    }
+
     pub fn forward(&self) -> Vec3 {
         let (sy, cy) = self.yaw.sin_cos();
         let (sp, cp) = self.pitch.sin_cos();

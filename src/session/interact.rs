@@ -25,6 +25,10 @@ use glam::{DVec3, IVec3};
 pub enum Used {
     /// A ridden mount was boosted (carrot/fungus on a stick).
     Boosted,
+    /// v0.16 Track G: an End crystal now stands here (feet).
+    CrystalPlaced {
+        at: DVec3,
+    },
     /// Ridden or targeted vehicle storage should open.
     OpenVehicle(u32),
     /// A lead, name tag, food or taming item was used on an animal.
@@ -930,6 +934,20 @@ impl PlayerSession {
         }
         if let Some(used) = self.use_item_on(slot, world, entities, pos, normal, tool_broken) {
             return Ok(Some(used));
+        }
+        // v0.16 Track G: `EndCrystalItem.useOn`, on the clicked block
+        // whatever face was hit.
+        if held == Some(crate::entity::crystal::END_CRYSTAL) {
+            let mut players = ctx.others.to_vec();
+            players.push(self.player.pos);
+            if !entities.place_crystal(world, pos, &players) {
+                return Err("an End crystal needs obsidian or bedrock with room above it");
+            }
+            if survival {
+                self.inventory.take_one(slot);
+            }
+            let at = pos.as_dvec3() + DVec3::new(0.5, 1.0, 0.5);
+            return Ok(Some(Used::CrystalPlaced { at }));
         }
         // `HangingEntityItem` and `ArmorStandItem`: decorations hang on or
         // stand against the clicked face.

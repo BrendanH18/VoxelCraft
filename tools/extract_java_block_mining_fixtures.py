@@ -54,6 +54,13 @@ def extract(server):
             for n in jar.namelist()
             if n.startswith("data/minecraft/loot_table/blocks/") and n.endswith(".json")
         }
+        # `InfestedBlock`'s constructor halves its host's hardness; the host
+        # is what its table drops with Silk Touch.
+        hosts = {}
+        for name in loot_tables:
+            if name.startswith("infested_"):
+                table = json.loads(jar.read(f"data/minecraft/loot_table/blocks/{name}.json"))
+                hosts[name] = table["pools"][0]["entries"][0]["name"].removeprefix("minecraft:")
     with tempfile.TemporaryDirectory(prefix="voxelcraft-java-block-mining-") as temporary:
         jar_path = Path(temporary) / "reference.jar"
         jar_path.write_bytes(inner)
@@ -87,6 +94,25 @@ def extract(server):
             ):
                 raise ValueError(f"{name}: only cobweb is correct for drops no longer holds")
         properties = block_properties(jar_path)
+        infested = method(
+            "net.minecraft.world.level.block.InfestedBlock", "net.minecraft.world.level.block.InfestedBlock"
+        )
+        if not all(
+            form in infested
+            for form in (
+                "Block.defaultDestroyTime:()F",
+                "fdiv",
+                "Properties.destroyTime:(F)",
+                "float 0.75f",
+                "Properties.explosionResistance:(F)",
+            )
+        ):
+            raise ValueError("InfestedBlock no longer sets destroyTime(host / 2) and explosionResistance(0.75)")
+        if len(hosts) != 7:
+            raise ValueError(f"expected seven infested blocks, found {sorted(hosts)}")
+        for name, host in hosts.items():
+            _, _, requires = properties[name]
+            properties[name] = (properties[host][0] / 2.0, 0.75, requires)
     unknown = sorted(name for names in incorrect.values() for name in names if name not in properties)
     if unknown or not loot_tables <= properties.keys():
         raise ValueError(f"tag or loot table names a block Blocks doesn't register: {unknown}")
@@ -101,6 +127,8 @@ def extract(server):
             "net.minecraft.world.level.block.Blocks.<clinit> (BlockBehaviour.Properties strength, "
             "destroyTime, explosionResistance, instabreak, requiresCorrectToolForDrops, ofFullCopy, "
             "ofLegacyCopy; ColorCollection and WeatheringCopperCollection registrations)",
+            "InfestedBlock.<init> (destroyTime of the host's / 2, explosionResistance 0.75; the host from "
+            "data/minecraft/loot_table/blocks/infested_*.json's Silk Touch drop)",
             "net.minecraft.references.BlockItemIds and BlockIds",
             "Player.hasCorrectToolForDrops",
             "Tool.isCorrectForDrops",

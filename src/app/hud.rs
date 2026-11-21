@@ -208,7 +208,10 @@ impl Game {
                 ui.text(((sw - Ui::text_width(hint)) / 2.0).floor(), (sh / 2.0 + 4.0).floor(), hint, WHITE);
             }
         }
-        if let Some(cause) = &self.session.vitals.death {
+        // An immediate respawn due next frame skips the death screen.
+        if let Some(cause) = &self.session.vitals.death
+            && !self.respawn_due
+        {
             // Blending is in linear space: it takes a high alpha to look dark.
             ui.rect(0.0, 0.0, sw, sh, [0.18, 0.0, 0.0, 0.9]);
             let title = "You died!";

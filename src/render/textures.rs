@@ -123,11 +123,18 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             None => crate::world::wither_rose::pixel(x, y),
         };
     }
+    if (crate::world::conduit::SHELL_TEX..crate::world::conduit::TEX_END).contains(&layer) {
+        return crate::world::conduit::pixel(layer, x, y);
+    }
     if (crate::world::beacon::GLASS_TEX..crate::world::beacon::TEX_END).contains(&layer) {
         return crate::world::beacon::pixel(layer, x, y);
     }
     if (crate::world::camp_maps::TEX..crate::world::camp_maps::TEX_END).contains(&layer) {
         return crate::world::camp_maps::pixel(layer, x, y);
+    }
+    // v0.16 Track G: the End crystal's icon.
+    if (crate::entity::crystal::ICON_TEX..crate::entity::crystal::TEX_END).contains(&layer) {
+        return crate::entity::crystal::icon_pixel(x, y);
     }
     if gen5::owns(layer) {
         return gen5::pixel(layer, x, y);

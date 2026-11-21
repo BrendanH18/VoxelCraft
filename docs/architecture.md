@@ -1151,6 +1151,22 @@ unregistered: states 16013–16015, 16036–16039, 16094–16095, 16108–16383,
 19638–19647 and 19984–19999, items 1709–1729 and layers 798–948. Record:
 [v0.16 generation 5 Overworld](verification/2026-11-20-v0.16-generation-5-overworld.md).
 
+**Track H allocation (wave 1 leftovers, 2026-11-21, implemented,
+unverified; [record](verification/2026-11-21-v0.16-wave-1-leftovers.md)).**
+Reserved: the unused rest of Track D's rows for sulfur work (states
+16108–16383 and the holes 16013–16015, 16036–16039 and 16094–16095, items
+1709–1729, layers 798–948) and Track C's (states 12727–12799, items
+1691–1704, layers 711–748) for the Wither. **Used: none.** Potent sulfur
+and sulfur spike behaviour reuse Track D's states (16008–16012,
+16016–16035), the spring templates are generated from existing blocks and
+the geyser draws with existing particle kinds, so every id above stays
+unregistered and free. Appended orderings: `Sound::Geyser` (the five
+`world::potent_sulfur::Cue`s) after `Sound::SulfurCube`; the dimension
+property key `potent_sulfur` and the entity property key `wither_skulls`
+after `beacons` in `app::dimension::DIMENSION_KEYS`. No `MobKind`,
+`Effect`, particle kind, item icon, `slab_stair_states`/`waterlog`/`POTTED`
+entry or LAN index was added.
+
 **Integrated order (2026-11-20).** Wave 1 landed B, C, A, D, and the
 appended orderings follow that order: `MobKind` Wither (LAN 85), Shulker
 (86), SulfurCube (87), with `Voice` and `MobSound` alike; `Sound` Flight,
@@ -1160,7 +1176,72 @@ rocket, firework star (B), the Nether star (C), then poplar boat, poplar
 chest boat and the sulfur cube bucket (D) (Track A's three items and the
 camp map draw from block texture layers); `slab_stair_states` purpur
 (`PURPUR_FAMILY`) then Track D's seven (`TRACK_D_FIRST`). Wave 2 (Tracks
-E, F and G) was not started this push and keeps its reserved rows.
+E, F and G, with the owner's added Track H) followed on 2026-11-21; its
+order is below the track paragraphs.
+
+**Track E (classic structures), 2026-11-21, implemented, unverified.**
+Block states 30720–30728 of 30720–30847 (`world::infested`): 30720
+infested stone, 30721 infested cobblestone, 30722 infested stone bricks,
+30723 infested mossy stone bricks, 30724 infested cracked stone bricks,
+30725 infested chiseled stone bricks, 30726–30728 infested deepslate
+(`axis` y, x, z; y the item's state); 30729–30847 stay unregistered. No
+items (1730–1739 stay free) and no texture layers (949–988 stay unused):
+each infested block draws its host's layers. No append-only ordering is
+touched: no `MobKind`, `Effect`, sound, particle, item icon or property key.
+The silverfish's goal state (`Mob::silverfish`) and generation 5's new
+`stronghold::Kind::FillerCorridor` are never saved. Record:
+[v0.16 classic structures](verification/2026-11-21-v0.16-classic-structures.md).
+
+**Track F (ocean structures), 2026-11-21, implemented, unverified.** Used:
+block states 30848 (`world::conduit::CONDUIT`, dry) and 30849 (its
+waterlogged state, a `waterlog::pair` like the heavy core's), so the
+conduit's block item is `BLOCK_ITEM_BASE + 30848`; texture layer 989 (the
+conduit's shell; the active cage and eye draw as model boxes). Unused and
+unregistered: states 30850–30975, items 1740–1749 (no new non-block item:
+the nautilus shell and heart of the sea already existed) and layers
+990–1028. Appended orderings: `Sound::Conduit` with
+`world::conduit::Cue`'s five cues after `Sound::SulfurCube`, particle kind
+`Nautilus` after `EndRod`, and the `conduits` dimension property key after
+`beacons`. The conduit joins the block-entity index the banners and
+beacons share (`colour_blocks::world::is_banner`) so LAN replicas animate
+it. Not saved: `conduit::Event`, a conduit's target (mob uids are not
+persistent). No `MobKind`, `Effect` (Conduit Power was registered in
+2026-11-13's effect slice), item icon, thrown kind, `slab_stair_states`,
+`wall_states` or `utilities::POTTED` member. New modules:
+`world::monument`, `world::shipwreck` (with `templates`),
+`world::worldgen_random`, `world::conduit`, `entity::conduit_hunt`,
+`entity::model::conduit`, `app::conduit`. Record:
+[v0.16 ocean structures](verification/2026-11-21-v0.16-ocean-structures.md).
+
+**Track G (dragon respawn and the exit audits), 2026-11-21, implemented,
+unverified; [record](verification/2026-11-21-v0.16-dragon-respawn.md).**
+Used: item 1750 (`end_crystal`, `entity::crystal::END_CRYSTAL`) and texture
+layer 1029 (its icon, drawn by the item from its own layer like the camp
+map, so no item icon ordering is appended). No block state is used:
+30976–31103, items 1751–1759 and layers 1030–1048 stay unregistered and
+unused. Appended: the `end_crystals` dimension property key (after
+`beacons`) and the `end_crystals` LAN replica key; `Cause::EXPLOSION`
+("blew up", after `END_CRYSTAL` in `Cause::KNOWN`). Not saved: the
+`EntityEvent`s `CrystalFire`, `ExitPortal`, `RespawnPillar` and
+`QuietBlast` (after `WitherRose`), `session::interact::Used::CrystalPlaced`
+and the `Arrival::PortalAt` travel state. The fight's saved `dragon`
+property writes `-` where it kept the pillar crystal mask (older masks
+still load) and appends `;r stage time x,y,z ...` during the respawn
+ritual. No `MobKind`, `Effect`, sound, particle kind or `slab_stair_states`,
+`waterlog` or `POTTED` member is added.
+
+**Wave 2 integrated order (2026-11-21).** Wave 2 landed E, F, H, G, then
+the M3 exit audit (no IDs). Appended orderings follow that order: `Sound`
+SulfurCube, then Conduit (F, `CONDUIT_END`), then Geyser (H); particle kind
+Nautilus (F) after EndRod; dimension property keys `conduits` (F),
+`potent_sulfur` and `wither_skulls` (H), then `end_crystals` (G) after
+`beacons`; LAN replica keys `wither_skulls` (H) and `end_crystals` (G).
+No `MobKind`, `Effect`, item icon or `slab_stair_states` member was added,
+so no LAN index or save ordering moved; `lan::PROTOCOL` stays 5, which
+wave 1 already set apart from v0.15. Used IDs: states 30720–30728 (E) and
+30848–30849 (F), items 1750 (G), layers 989 (F) and 1029 (G); Track H
+used none. Everything else in wave 2's rows and the integrator spare
+31104–31231 stays unregistered. [Integration record](verification/2026-11-21-v0.16-wave-2-integration.md).
 
 ## Assessment branch ID reservations
 

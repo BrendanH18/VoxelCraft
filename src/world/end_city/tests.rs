@@ -106,7 +106,7 @@ fn generation_5_end_has_reachable_cities_with_loot_and_shulkers() {
     let g = EndGen::with_generation(42, Generation::V5);
     // A city within reach of where each of the first gateways leads.
     for gateway in g.gateways().iter().take(4) {
-        let (exit, _) = g.gateway_exit(*gateway);
+        let exit = crate::world::end_portal::gateway_exit(&g, &|_| None, *gateway, 256).exit;
         let found = g.nearest_city(IVec2::new(exit.x, exit.z), 1200);
         assert!(found.is_some(), "no End city near the gateway exit {exit}");
     }

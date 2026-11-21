@@ -229,6 +229,20 @@ impl ChunkData {
     }
 
     /// Iterates all blocks in storage order.
+    /// v0.16 Track G: whether any block of the section is `block`
+    /// (a palette check where there is one).
+    pub fn contains(&self, block: Block) -> bool {
+        match self {
+            ChunkData::Uniform(b) => *b == block,
+            ChunkData::Paletted { palette, len, .. } => palette[..usize::from(*len)].contains(&block),
+            _ => {
+                let mut found = false;
+                self.for_each_block(|b| found |= b == block);
+                found
+            }
+        }
+    }
+
     pub fn for_each_block(&self, mut f: impl FnMut(Block)) {
         match self {
             ChunkData::Uniform(b) => (0..CHUNK_VOLUME).for_each(|_| f(*b)),

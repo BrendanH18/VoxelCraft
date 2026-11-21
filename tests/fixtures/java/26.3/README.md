@@ -1242,3 +1242,121 @@ and its tests check every list, modifier, constant and tag against it.
 The abandoned camps' three loot tables were added to
 `src/world/loot_tables.json` from `loot_table/chests/abandoned_camp_*_chest.json`
 and `loot_table/barrels/abandoned_camp_barrel.json` unchanged.
+
+## Classic structures and infested blocks (v0.16 Track E)
+
+`classic_structures.json` holds layout vectors printed by the 26.3 jar's
+own piece generators: `tools/JavaStructureVectors.java` (original code that
+only calls the jar's public API) builds Nether fortresses
+(`NetherFortressPieces.StartPiece`, the pending loop and
+`moveInsideHeights(48, 70)`), strongholds (`StrongholdStructure`'s retry
+loop with `moveBelowSeaLevel(63, -64, random, 10)`), normal mineshafts
+(`MineShaftRoom` after the placement's `nextDouble`, then
+`moveBelowSeaLevel`) and mesa mineshafts (centred between sea level and a
+surface given as `mesa_surface`) for two seeds and three start chunks each,
+with every piece's class, orientation, depth and box in builder order. It
+also records each infested block's host, hardness and blast resistance
+(`InfestedBlock`), the `ore_infested` feature, its placement and the biomes
+that list it, the placement of the `nether_complexes`, `strongholds` and
+`mineshafts` structure sets with their structures, the four structures'
+spawn overrides, and the biomes each mineshaft type takes. The extractor
+needs a JDK 25 (`javac`, `java`) on `PATH`. Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_classic_structure_fixtures.py /path/to/server.jar --output target/java-classic-structures.json
+diff tests/fixtures/java/26.3/classic_structures.json target/java-classic-structures.json
+cargo test --release --lib java_pieces
+```
+
+`world::java_pieces::layout_tests` lays out every vector with generation
+5's builders and compares each piece's kind, facing and box. The same
+change taught `extract_java_block_mining_fixtures.py` that `InfestedBlock`'s
+constructor sets `destroyTime(host / 2)` and `explosionResistance(0.75)`,
+which `Blocks.<clinit>` alone doesn't show: `block_mining.json`'s seven
+infested entries now carry Java's values instead of 0.
+
+## Wave 1 leftovers (v0.16 Track H)
+
+`wave1_leftovers.json` holds what Track H follows, read from the pinned
+server artifact with `javap` and from its data files:
+`PotentSulfurBlock`'s and `PotentSulfurBlockEntity`'s constants (water
+depth, Nausea cadence, duration and range, particle and sound cadence,
+launch speed and force, `GEYSER_SALT`), the
+`causes_continuous_geyser_eruptions`, `causes_periodic_geyser_eruptions`
+and `not_affected_by_geysers` tags and the geyser sound event names;
+`SpeleothemBlock`'s growth, falling and damage constants,
+`SulfurSpikeBlock`'s growth length and landing event, pointed dripstone's
+landing event and `fallOn` numbers, which classes declare `fallOn`, and the
+`speleothems` tag; the `sulfur_spring` selector (weights, tuff scatter,
+template names and offset), the ten spring templates' sizes (from the NBT
+header only; no block is copied), `rooted_sulfur_spring`'s root system and
+placement, the sulfur caves' feature step and the
+`azalea_root_replaceable` and `base_stone_overworld` tags; `WitherBoss`'s
+goals and priorities, `WaterAvoidingRandomFlyingGoal`'s `HoverRandomPos` and
+`AirAndWaterRandomPos` arguments, `RandomStrollGoal`'s interval,
+`Goal.reducedTickDelay`'s divisor, `Mob.serverAiStep`'s selector cadence and
+`WitherSkullBlock`'s patterns and `canSpawnMob` height offset. Its
+`geyser_countdowns` are draws made by the jar's own `XoroshiroRandomSource`
+through `tools/JavaGeyserVectors.java` (an original JDK oracle the script
+compiles against the jar and the libraries its bundler carries). Regenerate
+and compare with (a JDK 21 or newer on `PATH`):
+
+```sh
+python3 tools/extract_java_wave1_leftovers_fixtures.py /path/to/server.jar --output target/java-wave1-leftovers.json
+diff tests/fixtures/java/26.3/wave1_leftovers.json target/java-wave1-leftovers.json
+scripts/boat-check.sh -- 'cargo test --release --lib -- potent_sulfur speleothem sulfur_springs wither'
+```
+
+`world::potent_sulfur`, `world::speleothem`, `world::sulfur_springs` and
+`entity::wither` test against it ([record](../../../../docs/verification/2026-11-21-v0.16-wave-1-leftovers.md)).
+
+## End crystals, the dragon respawn and portals (v0.16 Track G)
+
+`dragon_respawn.json` holds the facts behind End crystals, the respawn
+ritual, End gateways and the Nether portal forcer, read from the server
+jar with `javap`: the `end_crystal` entity type's size and fire immunity,
+`EndCrystal`'s blast power and `EndCrystalItem`'s blocks and box, the
+item's glint and rarity and its recipe; `EnderDragonFight`'s constants,
+player range, gateway height and spawn numbers, `tryRespawn`'s edge
+distance, `DragonRespawnStage`'s names and the constants each stage's
+`tick` pushes; `EnderDragon`'s kill experience, death numbers, crystal
+search and destroy range; `EndSpikeFeature`'s constants, cache key mask
+and spike sizes; `TheEndGatewayBlockEntity`'s constants and the numbers its
+exit search and arrival push, and `EndIslandFeature`'s; `PortalForcer`'s
+constants and `createPortal` numbers; and the `entities/blaze`, `enderman`
+and `ghast` loot tables the progression audit checks. Regenerate and
+compare with:
+
+```sh
+python3 tools/extract_java_dragon_respawn_fixtures.py /path/to/server.jar --output target/java-dragon-respawn.json
+diff tests/fixtures/java/26.3/dragon_respawn.json target/java-dragon-respawn.json
+scripts/boat-check.sh -- 'cargo test --release --test java_dragon_respawn'
+```
+
+`tests/java_dragon_respawn.rs` checks the game's numbers against it, and
+`entity::tests::progression_mobs_drop_their_java_loot` the loot tables
+([record](../../../../docs/verification/2026-11-21-v0.16-dragon-respawn.md)).
+
+## The M3 exit corpus (v0.16)
+
+`m3_corpus.json` holds the placement and container facts every GEN-05
+structure family is checked against, read from the pinned server artifact's
+data files by `tools/extract_java_m3_corpus_fixtures.py`: every
+`worldgen/structure_set` (its placement, with spacing, separation, salt,
+spread type, frequency and reduction method, exclusion zone, locate offset
+or concentric rings, and its weighted structures); every
+`worldgen/structure`'s type, biome tag, step, terrain adaptation and spawn
+overrides (no start pool or template data); the placed features of
+dungeons, fossils and desert wells; and the names of Java's chest, barrel,
+dispenser and pot loot tables. Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_m3_corpus_fixtures.py /path/to/server.jar --output target/java-m3-corpus.json
+diff tests/fixtures/java/26.3/m3_corpus.json target/java-m3-corpus.json
+scripts/boat-check.sh -- 'cargo test --release --lib m3_corpus'
+```
+
+`world::terrain::m3_corpus` ports Java's placement (random spread, the
+frequency reducers, the outposts' exclusion zone, the stronghold rings) from
+this file and checks a located instance of every family on two seeds
+([record](../../../../docs/verification/2026-11-21-v0.16-m3-exit.md)).

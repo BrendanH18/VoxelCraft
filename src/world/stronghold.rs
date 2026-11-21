@@ -59,6 +59,9 @@ pub enum Kind {
     ChestCorridor,
     Library,
     PortalRoom,
+    /// v0.16 Track E: Java's `FillerCorridor`, a short stub that closes a
+    /// doorway against a piece at the same height (generation 5).
+    FillerCorridor,
 }
 
 impl Kind {
@@ -76,6 +79,7 @@ impl Kind {
             Kind::FiveCrossing => (v(10, 9, 11), v(-4, -3, 0)),
             Kind::Library => (v(14, if tall { 11 } else { 6 }, 15), v(-4, -1, 0)),
             Kind::PortalRoom => (v(11, 8, 16), v(-4, -1, 0)),
+            Kind::FillerCorridor => (v(5, 5, 4), v(-1, -1, 0)),
         }
     }
 }
@@ -101,6 +105,10 @@ pub struct Piece {
     flags: u8,
     /// Seeds wall stones, cobwebs, eyes and loot.
     variant: u64,
+    /// v0.16 Track E: laid out by [`Stronghold::generate_java`]
+    /// (generation 5): Java's turn openings, filler corridors and infested
+    /// wall stones.
+    java: bool,
 }
 
 impl Oriented for Piece {
@@ -209,7 +217,7 @@ impl Builder {
             _ => 0,
         };
         let variant = self.rng.next_u64();
-        Some(Piece { kind, facing, bounds, depth, door, flags, variant })
+        Some(Piece { kind, facing, bounds, depth, door, flags, variant, java: false })
     }
 
     /// Java's `generatePieceFromSmallDoor`.
@@ -303,7 +311,7 @@ impl Builder {
                     self.grow(p.side(false, 5, 7), d);
                 }
             }
-            Kind::Library | Kind::PortalRoom => {}
+            Kind::Library | Kind::PortalRoom | Kind::FillerCorridor => {}
         }
     }
 }
@@ -336,6 +344,7 @@ impl Stronghold {
                 door,
                 flags: 0,
                 variant: rng.next_u64(),
+                java: false,
             };
             let mut b = Builder {
                 rng,
@@ -377,6 +386,266 @@ impl Stronghold {
     }
 }
 
+// ---- Generation 5: Java's `StrongholdPieces` ------------------------------
+
+/// v0.16 Track E: Java's `StrongholdPieces` generation, drawing from
+/// `setLargeFeatureSeed(seed + tries, chunk)` in Java's order.
+struct JavaBuilder {
+    rng: crate::enchant::JavaRandom,
+    pieces: Vec<Piece>,
+    pending: Vec<usize>,
+    weights: Vec<Weight>,
+    previous: Option<Kind>,
+    imposed: Option<Kind>,
+    portal: bool,
+}
+
+impl JavaBuilder {
+    fn collision(&self, b: &Bounds) -> Option<&Piece> {
+        self.pieces.iter().find(|p| p.bounds.intersects(b))
+    }
+
+    /// `randomSmallDoor`.
+    fn door(&mut self) -> Door {
+        match self.rng.next_bounded(5) {
+            0 | 1 => Door::Opening,
+            2 => Door::Wood,
+            3 => Door::Grates,
+            _ => Door::Iron,
+        }
+    }
+
+    /// The pieces' `createPiece`s: the box (`isOkBox`, no collision), then
+    /// the constructor's draws.
+    fn create(&mut self, kind: Kind, foot: IVec3, facing: Facing, depth: u32) -> Option<Piece> {
+        let ok = |b: &Bounds, s: &Self| b.min.y > 10 && s.collision(b).is_none();
+        let (size, off) = kind.dims(true);
+        let mut bounds = Bounds::oriented(foot, off, size, facing);
+        let mut tall = true;
+        if !ok(&bounds, self) {
+            if kind != Kind::Library {
+                return None;
+            }
+            // `Library.createPiece`: the low library when the tall one won't fit.
+            let (size, off) = kind.dims(false);
+            bounds = Bounds::oriented(foot, off, size, facing);
+            tall = false;
+            if !ok(&bounds, self) {
+                return None;
+            }
+        }
+        let door = if kind == Kind::PortalRoom { Door::Opening } else { self.door() };
+        let flags = match kind {
+            Kind::Straight => {
+                let left = self.rng.next_bounded(2) == 0;
+                let right = self.rng.next_bounded(2) == 0;
+                left as u8 | (right as u8) << 1
+            }
+            Kind::FiveCrossing => {
+                let left_low = self.rng.next_boolean();
+                let left_high = self.rng.next_boolean();
+                let right_low = self.rng.next_boolean();
+                let right_high = self.rng.next_bounded(3) > 0;
+                left_low as u8 | (left_high as u8) << 1 | (right_low as u8) << 2 | (right_high as u8) << 3
+            }
+            Kind::RoomCrossing => self.rng.next_bounded(5) as u8,
+            Kind::Library => tall as u8,
+            _ => 0,
+        };
+        let variant = hash3(bounds.min.x, bounds.min.y, bounds.min.z, SALT);
+        Some(Piece { kind, facing, bounds, depth, door, flags, variant, java: true })
+    }
+
+    /// `FillerCorridor.findPieceBox`: when the plain corridor would run into
+    /// a piece at the same height, the longest stub (one to three) short of it.
+    fn filler(&self, foot: IVec3, facing: Facing, depth: u32) -> Option<Piece> {
+        let (size, off) = Kind::FillerCorridor.dims(true);
+        let first = Bounds::oriented(foot, off, size, facing);
+        let hit = self.collision(&first)?.bounds;
+        if hit.min.y != first.min.y {
+            return None;
+        }
+        for len in (1..=2).rev() {
+            let b = Bounds::oriented(foot, off, IVec3::new(5, 5, len), facing);
+            if !hit.intersects(&b) {
+                let bounds = Bounds::oriented(foot, off, IVec3::new(5, 5, len + 1), facing);
+                // `generatePieceFromSmallDoor` keeps it only above y 1.
+                return (bounds.min.y > 1).then_some(Piece {
+                    kind: Kind::FillerCorridor,
+                    facing,
+                    bounds,
+                    depth,
+                    door: Door::Opening,
+                    flags: 0,
+                    variant: 0,
+                    java: true,
+                });
+            }
+        }
+        None
+    }
+
+    /// `generatePieceFromSmallDoor`.
+    fn pick(&mut self, foot: IVec3, facing: Facing, depth: u32) -> Option<Piece> {
+        if !self.weights.iter().any(|w| w.max > 0 && w.placed < w.max) {
+            return None;
+        }
+        if let Some(kind) = self.imposed.take()
+            && let Some(piece) = self.create(kind, foot, facing, depth)
+        {
+            return Some(piece);
+        }
+        let total: u32 = self.weights.iter().map(|w| w.weight).sum();
+        for _ in 0..5 {
+            let mut r = self.rng.next_bounded(total as i32);
+            for i in 0..self.weights.len() {
+                let w = &self.weights[i];
+                r -= w.weight as i32;
+                if r >= 0 {
+                    continue;
+                }
+                if !w.can_place(depth) || self.previous == Some(w.kind) {
+                    break;
+                }
+                let kind = w.kind;
+                if let Some(piece) = self.create(kind, foot, facing, depth) {
+                    self.weights[i].placed += 1;
+                    self.previous = Some(kind);
+                    if self.weights[i].exhausted() {
+                        self.weights.remove(i);
+                    }
+                    return Some(piece);
+                }
+            }
+        }
+        self.filler(foot, facing, depth)
+    }
+
+    /// `StrongholdPieces.generateAndAddPiece`.
+    fn grow(&mut self, (foot, facing): (IVec3, Facing), depth: u32) {
+        let start = self.pieces[0].bounds.min;
+        if depth > MAX_DEPTH || (foot.x - start.x).abs() > REACH || (foot.z - start.z).abs() > REACH {
+            return;
+        }
+        if let Some(piece) = self.pick(foot, facing, depth + 1) {
+            self.pieces.push(piece);
+            self.pending.push(self.pieces.len() - 1);
+        }
+    }
+
+    /// Each piece's `addChildren`, with Java's world-axis offsets.
+    fn add_children(&mut self, i: usize) {
+        use super::java_pieces::{forward, left, right};
+        let p = self.pieces[i];
+        let (b, f, d) = (p.bounds, p.facing, p.depth);
+        let flag = |bit: u8| p.flags >> bit & 1 == 1;
+        let north_or_east = matches!(f, Facing::North | Facing::East);
+        match p.kind {
+            Kind::StairsDown => {
+                if i == 0 {
+                    self.imposed = Some(Kind::FiveCrossing);
+                }
+                self.grow(forward(&b, f, 1, 1), d);
+            }
+            Kind::Straight => {
+                self.grow(forward(&b, f, 1, 1), d);
+                if flag(0) {
+                    self.grow(left(&b, f, 1, 2), d);
+                }
+                if flag(1) {
+                    self.grow(right(&b, f, 1, 2), d);
+                }
+            }
+            Kind::ChestCorridor | Kind::StraightStairsDown | Kind::PrisonHall => self.grow(forward(&b, f, 1, 1), d),
+            Kind::LeftTurn if north_or_east => self.grow(left(&b, f, 1, 1), d),
+            Kind::LeftTurn => self.grow(right(&b, f, 1, 1), d),
+            Kind::RightTurn if north_or_east => self.grow(right(&b, f, 1, 1), d),
+            Kind::RightTurn => self.grow(left(&b, f, 1, 1), d),
+            Kind::RoomCrossing => {
+                self.grow(forward(&b, f, 4, 1), d);
+                self.grow(left(&b, f, 1, 4), d);
+                self.grow(right(&b, f, 1, 4), d);
+            }
+            Kind::FiveCrossing => {
+                let (a, c) = if matches!(f, Facing::West | Facing::North) { (5, 3) } else { (3, 5) };
+                self.grow(forward(&b, f, 5, 1), d);
+                if flag(0) {
+                    self.grow(left(&b, f, a, 1), d);
+                }
+                if flag(1) {
+                    self.grow(left(&b, f, c, 7), d);
+                }
+                if flag(2) {
+                    self.grow(right(&b, f, a, 1), d);
+                }
+                if flag(3) {
+                    self.grow(right(&b, f, c, 7), d);
+                }
+            }
+            Kind::PortalRoom => self.portal = true,
+            Kind::Library | Kind::FillerCorridor => {}
+        }
+    }
+}
+
+impl Stronghold {
+    /// v0.16 Track E, generation 5: `StrongholdStructure.generatePieces` for
+    /// the start chunk `chunk`. Each try reseeds with
+    /// `setLargeFeatureSeed(seed + tries, chunk)`, grows the pieces from a
+    /// spiral staircase facing a random way, and sinks them with
+    /// `moveBelowSeaLevel(63, -64, random, 10)`, until one has a portal room.
+    pub fn generate_java(seed: u64, chunk: IVec2) -> Stronghold {
+        let corner = chunk * 16 + IVec2::splat(2);
+        for tries in 0u64.. {
+            let rng = super::java_pieces::large_feature_random(seed.wrapping_add(tries), chunk);
+            let mut b = JavaBuilder {
+                rng,
+                pieces: Vec::new(),
+                pending: Vec::new(),
+                weights: weights(),
+                previous: None,
+                imposed: None,
+                portal: false,
+            };
+            let facing = super::java_pieces::random_horizontal(&mut b.rng);
+            let bounds = super::java_pieces::make_box(IVec3::new(corner.x, 64, corner.y), facing, 5, 11, 5);
+            b.pieces.push(Piece {
+                kind: Kind::StairsDown,
+                facing,
+                bounds,
+                depth: 0,
+                door: Door::Opening,
+                flags: 0,
+                variant: hash3(bounds.min.x, bounds.min.y, bounds.min.z, SALT),
+                java: true,
+            });
+            b.add_children(0);
+            while !b.pending.is_empty() {
+                let i = b.rng.next_bounded(b.pending.len() as i32) as usize;
+                let piece = b.pending.remove(i);
+                b.add_children(piece);
+            }
+            let all = b.pieces.iter().fold(bounds, |acc, p| acc.union(&p.bounds));
+            let dy = super::java_pieces::below_sea_level_shift(
+                &all,
+                SEA_LEVEL,
+                super::chunk::WORLD_MIN_Y,
+                &mut b.rng,
+                BELOW_SEA,
+            );
+            if !b.portal {
+                continue;
+            }
+            let shift = IVec3::new(0, dy, 0);
+            for p in &mut b.pieces {
+                p.bounds = p.bounds.shifted(shift);
+            }
+            return Stronghold { pieces: b.pieces, bounds: all.shifted(shift) };
+        }
+        unreachable!("the tries never run out")
+    }
+}
+
 /// Java's concentric ring placement: the start corner (block 2, 2 of a
 /// chunk) of every stronghold.
 fn ring_positions(seed: u64) -> Vec<IVec2> {
@@ -401,21 +670,65 @@ fn ring_positions(seed: u64) -> Vec<IVec2> {
     out
 }
 
+/// v0.16 Track E, generation 5: `ChunkGeneratorStructureState
+/// .generateRingPositions` drawing from Java's random sequence (seeded with
+/// the world seed): the first angle, each position's distance and its
+/// biome-search fork, the next ring's turn, and `spread = min(spread,
+/// count - i)`. Java then moves each position to a random
+/// `#stronghold_biased_to` biome within 112 blocks; VoxelCraft keeps the
+/// ring position (its biomes are its own, see the Track E record).
+fn java_ring_positions(seed: u64) -> Vec<IVec2> {
+    use super::java_pieces::{next_double, next_long};
+    let mut rng = crate::enchant::JavaRandom::new(seed as i64);
+    let mut angle = next_double(&mut rng) * std::f64::consts::TAU;
+    let (mut circle, mut in_circle, mut spread) = (0i32, 0i32, FIRST_RING as i32);
+    let mut out = Vec::with_capacity(COUNT);
+    for i in 0..COUNT as i32 {
+        let dist = 4.0 * RING_DISTANCE
+            + RING_DISTANCE * f64::from(circle) * 6.0
+            + (next_double(&mut rng) - 0.5) * (RING_DISTANCE * 2.5);
+        let chunk = IVec2::new((angle.cos() * dist).round() as i32, (angle.sin() * dist).round() as i32);
+        // `random.fork()` for the biome search.
+        let _ = next_long(&mut rng);
+        out.push(chunk * 16 + IVec2::splat(2));
+        angle += std::f64::consts::TAU / f64::from(spread);
+        in_circle += 1;
+        if in_circle == spread {
+            circle += 1;
+            in_circle = 0;
+            spread += 2 * spread / (circle + 1);
+            spread = spread.min(COUNT as i32 - i);
+            angle += next_double(&mut rng) * std::f64::consts::TAU;
+        }
+    }
+    out
+}
+
 /// Every stronghold of one overworld, with cached layouts.
 pub struct Strongholds {
     seed: u64,
+    /// Generation 5 places and lays out strongholds by Java's random sequence.
+    generation: super::terrain::Generation,
     starts: OnceLock<Vec<IVec2>>,
     cache: Mutex<FxHashMap<usize, Arc<Stronghold>>>,
 }
 
 impl Strongholds {
     pub fn new(seed: u64) -> Self {
-        Self { seed, starts: OnceLock::new(), cache: Mutex::new(FxHashMap::default()) }
+        Self::with_generation(seed, super::terrain::Generation::LATEST)
+    }
+
+    pub fn with_generation(seed: u64, generation: super::terrain::Generation) -> Self {
+        Self { seed, generation, starts: OnceLock::new(), cache: Mutex::new(FxHashMap::default()) }
+    }
+
+    fn java(&self) -> bool {
+        self.generation >= super::terrain::Generation::V5
     }
 
     /// Start corners of all 128 strongholds.
     pub fn starts(&self) -> &[IVec2] {
-        self.starts.get_or_init(|| ring_positions(self.seed))
+        self.starts.get_or_init(|| if self.java() { java_ring_positions(self.seed) } else { ring_positions(self.seed) })
     }
 
     fn get(&self, i: usize) -> Arc<Stronghold> {
@@ -423,8 +736,12 @@ impl Strongholds {
             return s.clone();
         }
         let start = self.starts()[i];
-        let rng = Rng(hash3(start.x, 0, start.y, self.seed ^ SALT));
-        let stronghold = Arc::new(Stronghold::generate(rng, start.x, start.y));
+        let stronghold = Arc::new(if self.java() {
+            Stronghold::generate_java(self.seed, start.div_euclid(IVec2::splat(16)))
+        } else {
+            let rng = Rng(hash3(start.x, 0, start.y, self.seed ^ SALT));
+            Stronghold::generate(rng, start.x, start.y)
+        });
         self.cache.lock().unwrap().entry(i).or_insert(stronghold).clone()
     }
 
@@ -585,6 +902,8 @@ impl Paint<'_, Piece> {
         match hash3(p.x, p.y, p.z, self.piece.variant) % 100 {
             0..20 => Block::CRACKED_STONE_BRICKS,
             20..50 => Block::MOSSY_STONE_BRICKS,
+            // v0.16 Track E: `SmoothStoneSelector`'s 0.5..0.55 band.
+            50..55 if self.piece.java => super::infested::INFESTED_STONE_BRICKS,
             _ => BRICKS,
         }
     }
@@ -683,8 +1002,24 @@ impl Paint<'_, Piece> {
             Kind::LeftTurn | Kind::RightTurn => {
                 self.shell(0, 0, 0, 4, 4, 4, true);
                 self.door(p.door, 1, 1, 0);
-                let x = if p.kind == Kind::LeftTurn { 0 } else { 4 };
+                // Java opens a left turn's local west side only when it
+                // faces north or east (east otherwise), a right turn the
+                // other way round; earlier generations mirror the doorway.
+                let west = if p.java {
+                    (p.kind == Kind::LeftTurn) == matches!(p.facing, Facing::North | Facing::East)
+                } else {
+                    p.kind == Kind::LeftTurn
+                };
+                let x = if west { 0 } else { 4 };
                 self.fill(x, 1, 1, x, 3, 3, AIR);
+            }
+            Kind::FillerCorridor => {
+                // `FillerCorridor.postProcess`: plain stone bricks round an
+                // air core, `steps` long.
+                for i in 0..p.length() {
+                    self.fill(0, 0, i, 4, 4, i, BRICKS);
+                    self.fill(1, 1, i, 3, 3, i, AIR);
+                }
             }
             Kind::RoomCrossing => self.room_crossing(),
             Kind::PrisonHall => self.prison_hall(),
@@ -959,6 +1294,11 @@ mod tests {
             assert_eq!(sh.pieces[1].kind, Kind::FiveCrossing, "the start leads to a five-way crossing");
             for (j, p) in sh.pieces.iter().enumerate() {
                 for q in &sh.pieces[j + 1..] {
+                    // Java's `FillerCorridor.findPieceBox` reaches one block
+                    // into the piece it stops against.
+                    if p.kind == Kind::FillerCorridor || q.kind == Kind::FillerCorridor {
+                        continue;
+                    }
                     assert!(!p.bounds.intersects(&q.bounds), "{p:?} overlaps {q:?}");
                 }
             }

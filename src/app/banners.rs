@@ -18,7 +18,7 @@ impl Game {
         self.world
             .banners()
             // Beacons share the index for LAN replicas; their beams draw elsewhere.
-            .filter(|(_, block)| *block != crate::world::beacon::BEACON)
+            .filter(|(_, block)| *block != crate::world::beacon::BEACON && !crate::world::conduit::owns(block.0))
             .filter(|(cell, _)| (cell.as_dvec3() + DVec3::splat(0.5)).distance_squared(eye) < VIEW_DISTANCE.powi(2))
             .map(|(cell, block)| {
                 let centre = cell.as_dvec3() + DVec3::splat(0.5);

@@ -25,7 +25,7 @@ fn main() {
         ("ocean_ruin_warm", g.temples.nearest_ocean_ruin(&g, flat, 6400, true)),
         ("ocean_ruin_cold", g.temples.nearest_ocean_ruin(&g, flat, 6400, false)),
         ("stronghold", g.strongholds.nearest(origin)),
-        ("mineshaft", g.mineshafts.nearest(origin)),
+        ("mineshaft", g.mineshafts.nearest(&g, origin)),
         ("desert_well", g.relics.find(&g, relics::Kind::Well, flat, 160)),
     ];
     found.extend(Kind::ALL.into_iter().map(|k| (k.name(), g.temples.nearest(&g, k, flat, 6400))));

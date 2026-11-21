@@ -565,6 +565,9 @@ impl Cause {
     /// Unowned primed TNT.
     pub const TNT: Cause = Cause::new(DamageType::Explosion, "was blown up by TNT");
     pub const END_CRYSTAL: Cause = Cause::new(DamageType::Explosion, "was blown up by an End crystal");
+    /// v0.16 Track G: a blast with no source (`death.attack.explosion`),
+    /// the dragon respawn ritual's pillar blasts.
+    pub const EXPLOSION: Cause = Cause::new(DamageType::Explosion, "blew up");
     /// v0.16 Track B: `death.attack.fireworks` and `death.attack.flyIntoWall`.
     pub const FIREWORKS: Cause = Cause::new(DamageType::Fireworks, "went off with a bang");
     pub const FLY_INTO_WALL: Cause = Cause::new(DamageType::FlyIntoWall, "experienced kinetic energy");
@@ -630,6 +633,7 @@ impl Cause {
         Cause::GHAST_FIREBALL,
         Cause::TNT,
         Cause::END_CRYSTAL,
+        Cause::EXPLOSION,
         Cause::BAD_RESPAWN_POINT,
         Cause::GUARDIAN_SPIKES,
         Cause::GUARDIAN_BEAM,

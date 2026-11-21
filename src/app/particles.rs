@@ -64,7 +64,12 @@ impl Game {
                 );
             }
         }
+        for pos in std::mem::take(&mut self.particles.gas_sounds) {
+            let cue = voxelcraft::world::potent_sulfur::Cue::NoxiousGas;
+            self.audio.play(crate::audio::Sound::Geyser(cue), Some(pos), 1.0, (1.0, 1.0));
+        }
         self.particles.entities(&self.world, &self.mobs.entities, centers, setting);
+        self.particles.conduits(&self.world, &self.mobs.entities, centers, setting);
         self.particles.effects(self.session.player.pos, &self.session.vitals.effects, setting);
         for bot in self.agents.players.values().filter(|b| b.active && !b.agent.session.vitals.is_dead()) {
             if centers.iter().any(|p| p.distance_squared(bot.agent.session.player.pos) <= 32.0 * 32.0) {

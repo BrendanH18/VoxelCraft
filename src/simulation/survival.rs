@@ -391,6 +391,21 @@ impl Default for Vitals {
 }
 
 impl Vitals {
+    /// `Entity.checkFallDistanceAccumulation` at height `y`: keep at most
+    /// a block of fall (a geyser's lift), for landing damage and for the
+    /// fall a mace smash reads.
+    pub fn cap_fall(&mut self, y: f64) {
+        if let Some(peak) = self.fall_peak
+            && peak > y + 1.0
+        {
+            self.fall_peak = Some(y + 1.0);
+        }
+        if self.fall_distance(y) > 1.0 {
+            self.critical_fall_distance = 1.0;
+            self.previous_fall_y = Some(y);
+        }
+    }
+
     /// Restores saved values; zero health means the player died.
     pub fn restore(health: f32, air: f32, death: Option<String>) -> Self {
         let mut v = Self { health: health.clamp(0.0, MAX_HEALTH), air: air.clamp(0.0, MAX_AIR), ..Self::default() };
@@ -701,7 +716,7 @@ impl Vitals {
         }
 
         // Air and drowning.
-        if env.head_in_water && !creative && !self.effects.has(Effect::WaterBreathing) {
+        if env.head_in_water && !creative && !self.effects.water_breathing() {
             self.air = (self.air - dt / (env.respiration as f32 + 1.0)).max(0.0);
             if self.air <= 0.0 {
                 self.drown_timer += dt;

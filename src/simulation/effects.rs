@@ -983,11 +983,32 @@ impl Effects {
         self.get(Effect::Resistance).map_or(1.0, |e| (1.0 - 0.2 * (f32::from(e.amplifier) + 1.0)).max(0.0))
     }
 
-    /// `Player.getDestroySpeed`'s Haste multiplier, `1 + (amplifier + 1) * 0.2`
-    /// in single precision; exactly 1.0 without Haste. Conduit Power shares
-    /// the formula in Java; it is registered but its behaviour waits for v0.16.
+    /// `Player.getDestroySpeed`'s dig-speed multiplier, `1 + (amplifier + 1)
+    /// * 0.2` in single precision, exactly 1.0 without Haste or Conduit Power
+    /// (`MobEffectUtil.hasDigSpeed`); the amplifier is the larger of the two
+    /// (`getDigSpeedAmplification`, each 0 when absent).
     pub fn dig_speed_factor(&self) -> f32 {
-        self.get(Effect::Haste).map_or(1.0, |a| 1.0 + (i32::from(a.amplifier) + 1) as f32 * 0.2)
+        let (haste, conduit) = (self.get(Effect::Haste), self.get(Effect::ConduitPower));
+        if haste.is_none() && conduit.is_none() {
+            return 1.0;
+        }
+        let amplifier = haste.map_or(0, |a| a.amplifier).max(conduit.map_or(0, |a| a.amplifier));
+        1.0 + (i32::from(amplifier) + 1) as f32 * 0.2
+    }
+
+    /// `MobEffectUtil.hasWaterBreathing` for the air supply: Water
+    /// Breathing or Conduit Power (Breath of the Nautilus keeps its own rule).
+    pub fn water_breathing(&self) -> bool {
+        self.has(Effect::WaterBreathing) || self.has(Effect::ConduitPower)
+    }
+
+    /// The light map's night-vision scale: Night Vision's, else full
+    /// underwater vision with Conduit Power while the eyes are in water
+    /// (`LightTexture`; Java ramps the underwater vision in over the first
+    /// 30 seconds under water, which isn't modelled).
+    pub fn vision(&self, time: f32, eye_in_water: bool) -> f32 {
+        let night = self.night_vision(time);
+        if night > 0.0 || !eye_in_water || !self.has(Effect::ConduitPower) { night } else { 1.0 }
     }
 
     /// The Luck attribute the effects add: +1 per Luck level, -1 per Bad Luck level.

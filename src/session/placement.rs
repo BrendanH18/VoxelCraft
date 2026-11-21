@@ -314,6 +314,8 @@ impl PlayerSession {
                         let raw = crate::world::creaking::placed(raw, normal);
                         // v0.16 Track A: purpur pillar axes and End rod facings.
                         let raw = crate::world::end_blocks::placed(raw, normal, world.get_block(hit));
+                        // v0.16 Track E: infested deepslate's axis.
+                        let raw = crate::world::infested::placed(raw, normal).unwrap_or(raw);
                         let raw = crate::world::frog_blocks::placed(raw, normal);
                         let block = ob::placed(raw, normal).unwrap_or(raw);
                         let block = crate::world::village_blocks::placed(

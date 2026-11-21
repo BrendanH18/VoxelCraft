@@ -99,7 +99,39 @@ pub struct State {
     /// Simulated seconds not yet spent on whole ticks.
     time: f64,
     motion_time: f64,
+    /// v0.16 Track H: the target selector's running goal.
+    target_goal: TargetGoal,
+    /// `getLastHurtByMob` (player or mob), the tick it hurt, and how many
+    /// accepted hurts there were (`lastHurtByMobTimestamp`) against the
+    /// count `HurtByTargetGoal` last started on.
+    last_hurt_by: Option<Foe>,
+    last_hurt_tick: i32,
+    hurt_stamp: u32,
+    hurt_goal_stamp: u32,
+    /// `RangedAttackGoal` and `WaterAvoidingRandomFlyingGoal` running.
+    ranged: bool,
+    strolling: bool,
 }
+
+/// Which target goal runs (`HurtByTargetGoal` at priority 1,
+/// `NearestAttackableTargetGoal` at 2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+enum TargetGoal {
+    #[default]
+    None,
+    HurtBy,
+    Nearest,
+}
+
+/// `LivingEntity.baseTick` forgets the last attacker after 100 ticks.
+const HURT_MEMORY: i32 = 100;
+/// `WaterAvoidingRandomFlyingGoal`: `RandomStrollGoal`'s default interval
+/// 120, halved by `reducedTickDelay` (goals are checked every other tick).
+pub const STROLL_INTERVAL: u32 = 60;
+/// `HoverRandomPos.getPos(mob, 8, 7, view, PI/2, 3, 1)` and the fallback
+/// `AirAndWaterRandomPos.getPos(mob, 8, 4, -2, view, PI/2)`.
+pub const HOVER: (i32, i32, i32, i32) = (8, 7, 3, 1);
+pub const AIR_AND_WATER: (i32, i32, i32) = (8, 4, -2);
 
 impl Default for State {
     fn default() -> Self {
@@ -117,6 +149,13 @@ impl Default for State {
             head_rot: [(0.0, 0.0); 2],
             time: 0.0,
             motion_time: 0.0,
+            target_goal: TargetGoal::None,
+            last_hurt_by: None,
+            last_hurt_tick: 0,
+            hurt_stamp: 0,
+            hurt_goal_stamp: 0,
+            ranged: false,
+            strolling: false,
         }
     }
 }
@@ -204,8 +243,26 @@ impl PatternMatch {
 /// `WitherSkullBlock.getOrCreateWitherFull`: `^^^`, `###`, `~#~` (skulls,
 /// soul sand or soul soil, air) found by `BlockPattern.find` from `origin`.
 pub fn find_pattern(get: impl Fn(IVec3) -> Option<Block>, origin: IVec3) -> Option<PatternMatch> {
-    let rows: [&[u8; 3]; 3] = [b"^^^", b"###", b"~#~"];
+    find_rows(get, origin, [b"^^^", b"###", b"~#~"])
+}
+
+/// v0.16 Track H: `WitherSkullBlock.getOrCreateWitherBase` (`   `, `###`,
+/// `~#~`: any top row), which `canSpawnMob` looks for around the cell a
+/// dispenser would put a skull in.
+pub fn find_base(get: impl Fn(IVec3) -> Option<Block>, origin: IVec3) -> Option<PatternMatch> {
+    find_rows(get, origin, [b"   ", b"###", b"~#~"])
+}
+
+/// `WitherSkullBlock.canSpawnMob` for a wither skeleton skull a dispenser
+/// holds: two blocks over the world's bottom, not in Peaceful, and part of a
+/// Wither's base.
+pub fn can_spawn_mob(get: impl Fn(IVec3) -> Option<Block>, at: IVec3, min_y: i32, peaceful: bool) -> bool {
+    at.y >= min_y + 2 && !peaceful && find_base(get, at).is_some()
+}
+
+fn find_rows(get: impl Fn(IVec3) -> Option<Block>, origin: IVec3, rows: [&[u8; 3]; 3]) -> Option<PatternMatch> {
     let test = |c: u8, b: Option<Block>| match (c, b) {
+        (b' ', _) => true,
         (b'^', Some(b)) => crate::world::skulls::is_wither_skull(b),
         (b'#', Some(b)) => b == Block::SOUL_SAND || b == crate::world::nether_biome_blocks::SOUL_SOIL,
         (b'~', Some(b)) => b == Block::AIR,
@@ -409,46 +466,49 @@ impl Entities {
             self.wither_particles(i);
             return;
         }
-        // Targets (`HurtByTargetGoal`, then `NearestAttackableTargetGoal`).
-        let main = s.targets[0].and_then(|f| self.foe_at(ctx, f).map(|at| (f, at)));
-        let main = match main {
-            Some((f, (p, _))) if p.distance_squared(self.mobs[i].pos) <= FOLLOW_RANGE * FOLLOW_RANGE => Some(f),
-            _ => {
-                let range = DVec3::splat(FOLLOW_RANGE);
-                self.wither_candidates(world, ctx, i, range, FOLLOW_RANGE).first().map(|&(f, _)| f)
-            }
-        };
+        // `Mob.serverAiStep`: the selectors choose goals every other tick
+        // (`(tickCount + id) % 2 == 0`, and the first tick); running goals
+        // that need it tick every tick.
+        let select = s.tick_count <= 1 || (s.tick_count as u32).wrapping_add(w.uid).is_multiple_of(2);
+        if select {
+            self.wither_select_goals(i, world, ctx);
+        }
+        let main = self.mobs[i].wither.as_ref().unwrap().targets[0];
         let main_at = main.and_then(|f| self.foe_at(ctx, f));
         let w_pos = self.mobs[i].pos;
         let body_yrot = self.mobs[i].yrot();
         let mut shots: Vec<(usize, DVec3, bool)> = Vec::new();
-        // `RangedAttackGoal.tick` for head 0.
+        // `RangedAttackGoal.tick` for head 0, and its `moveTo` or `stop`.
+        let mut path_to = None;
         {
             let s = self.mobs[i].wither.as_mut().unwrap();
-            s.targets[0] = main;
             s.target_at = main_at.map(|(p, _)| p);
-            if let Some((p, eye_h)) = main_at {
-                let aim = p + DVec3::Y * (eye_h * 0.5);
-                let d2 = p.distance_squared(w_pos);
-                let sees = super::mob::line_of_sight(world, eye, p + DVec3::Y * eye_h);
-                s.see_time = if sees { s.see_time + 1 } else { 0 };
-                // Out of range or unseen: fly straight at it (`moveTo`).
-                s.wanted = (d2 > ATTACK_RADIUS * ATTACK_RADIUS || s.see_time < 5).then_some(p);
-                s.attack_time -= 1;
-                if s.attack_time == 0 {
-                    if sees {
-                        let dangerous = self.rng.next_f32() < 0.001;
-                        shots.push((0, aim, dangerous));
+            match main_at.filter(|_| s.ranged) {
+                Some((p, eye_h)) => {
+                    let aim = p + DVec3::Y * (eye_h * 0.5);
+                    let d2 = p.distance_squared(w_pos);
+                    let sees = super::mob::line_of_sight(world, eye, p + DVec3::Y * eye_h);
+                    s.see_time = if sees { s.see_time + 1 } else { 0 };
+                    // Out of range or unseen: fly a path to it (`moveTo`).
+                    path_to = Some((d2 > ATTACK_RADIUS * ATTACK_RADIUS || s.see_time < 5).then_some(p));
+                    s.attack_time -= 1;
+                    if s.attack_time == 0 {
+                        if sees {
+                            let dangerous = self.rng.next_f32() < 0.001;
+                            shots.push((0, aim, dangerous));
+                            s.attack_time = ATTACK_INTERVAL;
+                        }
+                    } else if s.attack_time < 0 {
                         s.attack_time = ATTACK_INTERVAL;
                     }
-                } else if s.attack_time < 0 {
-                    s.attack_time = ATTACK_INTERVAL;
                 }
-            } else {
-                s.see_time = 0;
-                s.attack_time = -1;
+                None => {
+                    s.see_time = 0;
+                    s.attack_time = -1;
+                }
             }
         }
+        self.wither_navigate(i, world, path_to);
         // The side heads.
         for h in 1..3usize {
             let s = self.mobs[i].wither.as_mut().unwrap();
@@ -571,10 +631,114 @@ impl Entities {
         }
     }
 
-    /// Who hurt a Wither becomes its main target (`HurtByTargetGoal`).
+    /// A player hurt the Wither (`setLastHurtByMob`): its
+    /// `HurtByTargetGoal` decides on the next selector tick.
     pub(super) fn wither_hurt_by(&mut self, index: usize, player: PlayerId) {
-        if let Some(s) = self.mobs[index].wither.as_mut() {
-            s.targets[0] = Some(Foe::Player(player));
+        self.wither_hurt_by_foe(index, Foe::Player(player));
+    }
+
+    /// v0.16 Track H: a mob hurt the Wither (`HurtByTargetGoal` against
+    /// mobs).
+    pub(super) fn wither_hurt_by_mob(&mut self, index: usize, attacker: u32) {
+        self.wither_hurt_by_foe(index, Foe::Mob(attacker));
+    }
+
+    fn wither_hurt_by_foe(&mut self, index: usize, foe: Foe) {
+        if let Some(s) = self.mobs.get_mut(index).and_then(|m| m.wither.as_mut()) {
+            s.last_hurt_by = Some(foe);
+            s.last_hurt_tick = s.tick_count;
+            s.hurt_stamp = s.hurt_stamp.wrapping_add(1);
+        }
+    }
+
+    /// `GoalSelector.tick` on a selection tick: the target goals
+    /// (`HurtByTargetGoal` 1, `NearestAttackableTargetGoal` 2), then
+    /// `RangedAttackGoal` (2) and `WaterAvoidingRandomFlyingGoal` (5), which
+    /// share the `MOVE` flag.
+    fn wither_select_goals<W: MobWorld + ?Sized>(&mut self, i: usize, world: &W, ctx: &Ctx) {
+        let pos = self.mobs[i].pos;
+        let s = self.mobs[i].wither.as_ref().unwrap();
+        // `TargetGoal.canContinueToUse`: alive, attackable, within range.
+        let (mut target, mut goal) = (s.targets[0], s.target_goal);
+        let reach = |at: Option<(DVec3, f64)>| at.is_some_and(|(p, _)| p.distance_squared(pos) <= FOLLOW_RANGE.powi(2));
+        if !target.is_some_and(|f| reach(self.foe_at(ctx, f))) {
+            (target, goal) = (None, TargetGoal::None);
+        }
+        // `HurtByTargetGoal.canUse`: a newer hurt by someone attackable.
+        let fresh = s.tick_count - s.last_hurt_tick <= HURT_MEMORY;
+        if goal != TargetGoal::HurtBy
+            && s.hurt_stamp != s.hurt_goal_stamp
+            && fresh
+            && let Some(foe) = s.last_hurt_by.filter(|&f| self.foe_at(ctx, f).is_some())
+        {
+            let stamp = s.hurt_stamp;
+            (target, goal) = (Some(foe), TargetGoal::HurtBy);
+            self.mobs[i].wither.as_mut().unwrap().hurt_goal_stamp = stamp;
+        }
+        // `NearestAttackableTargetGoal.canUse` when no target goal runs.
+        if goal == TargetGoal::None {
+            let range = DVec3::splat(FOLLOW_RANGE);
+            if let Some(&(foe, _)) = self.wither_candidates(world, ctx, i, range, FOLLOW_RANGE).first() {
+                (target, goal) = (Some(foe), TargetGoal::Nearest);
+            }
+        }
+        let m = &mut self.mobs[i];
+        let nav_done = m.nav.is_done();
+        let s = m.wither.as_mut().unwrap();
+        (s.targets[0], s.target_goal) = (target, goal);
+        // `RangedAttackGoal`: runs while there is a target (or its path).
+        if s.ranged && target.is_none() && nav_done {
+            s.ranged = false;
+            s.see_time = 0;
+            s.attack_time = -1;
+        }
+        if !s.ranged && target.is_some() {
+            // It takes `MOVE` from the flight goal, which stops.
+            s.ranged = true;
+            s.strolling = false;
+            m.nav.stop();
+        }
+        let s = m.wither.as_mut().unwrap();
+        if s.strolling && nav_done {
+            s.strolling = false;
+        }
+        // `WaterAvoidingRandomFlyingGoal.canUse`: `nextInt(60) == 0`, then a
+        // spot to hover over.
+        if !s.ranged && !s.strolling && self.rng.next_int(STROLL_INTERVAL) == 0 {
+            let spot = self.mobs[i].hover_spot(world, ctx, &mut self.rng);
+            if let Some(spot) = spot {
+                let m = &mut self.mobs[i];
+                if m.walk_to(world, spot, 1, super::path::ground_speed(FLYING_SPEED), false) {
+                    m.wither.as_mut().unwrap().strolling = true;
+                }
+            }
+        }
+    }
+
+    /// The Wither's `FlyingPathNavigation`: `RangedAttackGoal`'s `moveTo`
+    /// (`Some(Some(target))`) or `stop` (`Some(None)`), then
+    /// `PathNavigation.tick` sets the move control's wanted spot.
+    fn wither_navigate<W: MobWorld + ?Sized>(&mut self, i: usize, world: &W, path_to: Option<Option<DVec3>>) {
+        let m = &mut self.mobs[i];
+        match path_to {
+            Some(Some(target)) => {
+                // `moveTo(entity)`: a path to its block, reach 1.
+                if !m.walk_to(world, target.floor().as_ivec3(), 1, super::path::ground_speed(FLYING_SPEED), true) {
+                    m.nav.stop();
+                }
+            }
+            Some(None) => m.nav.stop(),
+            None => {}
+        }
+        let wanted = if m.nav.is_done() {
+            None
+        } else {
+            let caps = m.caps(true);
+            let mover = m.mover(super::path::ground_speed(FLYING_SPEED));
+            m.nav.tick(world, &caps, &mover)
+        };
+        if let Some(s) = m.wither.as_mut() {
+            s.wanted = wanted;
         }
     }
 
@@ -591,16 +755,26 @@ impl Entities {
         let mut skulls = std::mem::take(&mut self.wither_skulls);
         let difficulty = self.difficulty;
         skulls.retain_mut(|k| {
-            if !world.entity_ticking(k.pos.floor().as_ivec3()) {
+            // Frozen where entities don't tick, including a restored skull
+            // whose chunk hasn't streamed in yet; gone if a ticking cell
+            // still has no block.
+            let cell = k.pos.floor().as_ivec3();
+            if !world.entity_ticking(cell) {
                 return true;
             }
-            let owner_alive =
-                k.owner.is_none_or(|u| self.mobs.iter().any(|m| m.uid == u && m.kind == MobKind::Wither && m.alive()));
-            if !owner_alive {
+            if world.block(cell).is_none() {
+                return false;
+            }
+            // `AbstractHurtingProjectile.tick`: an owner that can't be found
+            // (unloaded) keeps the skull; only one found dead discards it.
+            let owner_dead = k
+                .owner
+                .is_some_and(|u| self.mobs.iter().any(|m| m.uid == u && m.kind == MobKind::Wither && !m.alive()));
+            if owner_dead {
                 return false;
             }
             match k.tick(world, ctx, &self.mobs) {
-                None => k.age < SKULL_LIFETIME,
+                None => true,
                 Some(hit) => {
                     self.wither_skull_hit(k, hit, difficulty, events);
                     events.push(EntityEvent::WitherBlast { center: k.pos, power: SKULL_POWER, dangerous: k.dangerous });
@@ -683,6 +857,10 @@ impl Entities {
         self.blast_drops(world, center, power, breaks_blocks);
         self.blast_carts(world, center, power);
         self.blast_decor(center, power);
+        if let Some(fight) = &mut self.fight {
+            fight.explode(center, power);
+        }
+        self.crystals.explode(center, power);
         let mut killed = Vec::new();
         for m in &mut self.mobs {
             if !m.alive() || m.kind == MobKind::Wither || m.pos.distance(center) > f64::from(power) * 2.0 {
@@ -817,25 +995,100 @@ impl Mob {
         self.limb_amp = 0.0;
     }
 
-    /// `WaterAvoidingRandomFlyingGoal` while it has no target: now and then
-    /// a spot within 8 blocks ahead and up to 7 up.
-    pub(super) fn wither_wander(&mut self, rng: &mut Rng) {
-        let Some(s) = self.wither.as_mut() else { return };
-        if s.invul > 0 || s.target_at.is_some() || s.wanted.is_some() || rng.next_int(60) != 0 {
-            return;
+    /// `WaterAvoidingRandomFlyingGoal.getPosition`: `HoverRandomPos` (a
+    /// spot over solid ground ahead, one to three blocks up), else
+    /// `AirAndWaterRandomPos`; the best-valued of ten tries each
+    /// (`RandomPos.generateRandomPos`).
+    pub(super) fn hover_spot<W: MobWorld + ?Sized>(&self, world: &W, ctx: &Ctx, rng: &mut Rng) -> Option<IVec3> {
+        let view = self.look_dir();
+        let (h, v, above_max, above_min) = HOVER;
+        let solid = |p: IVec3| world.block(p).is_some_and(Block::is_solid);
+        let open = |p: IVec3| {
+            let caps = self.caps(false);
+            !world.block(p).is_some_and(|b| b.holds_water())
+                && caps.malus.get(super::path::static_type(world, p)) == 0.0
+        };
+        let in_world = |p: IVec3| (crate::world::chunk::WORLD_MIN_Y..crate::world::chunk::WORLD_MAX_Y).contains(&p.y);
+        let mut best: Option<(f32, IVec3)> = None;
+        for _ in 0..10 {
+            let Some(d) = direction_within(rng, f64::from(h), v, 0, view) else { continue };
+            let p = (self.pos + d.as_dvec3()).floor().as_ivec3();
+            // `LandRandomPos.generateRandomPosTowardDirection`: in the world
+            // and a stable destination (solid to stand on) for flight.
+            if !in_world(p) || !solid(p) {
+                continue;
+            }
+            // `RandomPos.moveUpToAboveSolid` by 1..=3.
+            let above = rng.next_int((above_max - above_min + 1) as u32) as i32 + above_min;
+            let mut q = p + IVec3::Y;
+            while q.y < crate::world::chunk::WORLD_MAX_Y && solid(q) {
+                q.y += 1;
+            }
+            let first = q.y;
+            while q.y < crate::world::chunk::WORLD_MAX_Y && q.y - first < above {
+                q.y += 1;
+                if solid(q) {
+                    q.y -= 1;
+                    break;
+                }
+            }
+            if !open(q) {
+                continue;
+            }
+            let value = self.walk_value(world, ctx, q);
+            if value > best.map_or(f32::NEG_INFINITY, |(b, _)| b) {
+                best = Some((value, q));
+            }
         }
-        let yrot = (self.yaw.to_degrees() - 90.0 + rng.range(-90.0, 90.0)).to_radians();
-        let r = rng.range(1.0, 8.0) as f64;
-        let dir = DVec3::new(-(yrot as f64).sin(), 0.0, (yrot as f64).cos());
-        let up = rng.range(-2.0, 7.0) as f64;
-        s.wanted = Some(self.pos + dir * r + DVec3::Y * up);
+        if best.is_some() {
+            return best.map(|(_, p)| p);
+        }
+        let (h, v, flying) = AIR_AND_WATER;
+        for _ in 0..10 {
+            let Some(d) = direction_within(rng, f64::from(h), v, flying, view) else { continue };
+            let mut p = (self.pos + d.as_dvec3()).floor().as_ivec3();
+            if !in_world(p) {
+                continue;
+            }
+            // `RandomPos.moveUpOutOfSolid`.
+            while p.y < crate::world::chunk::WORLD_MAX_Y && solid(p) {
+                p.y += 1;
+            }
+            let caps = self.caps(false);
+            if caps.malus.get(super::path::static_type(world, p)) != 0.0 {
+                continue;
+            }
+            let value = self.walk_value(world, ctx, p);
+            if value > best.map_or(f32::NEG_INFINITY, |(b, _)| b) {
+                best = Some((value, p));
+            }
+        }
+        best.map(|(_, p)| p)
     }
+
+    /// `getViewVector(0)`'s horizontal part.
+    fn look_dir(&self) -> DVec3 {
+        let yrot = f64::from(self.yrot()).to_radians();
+        DVec3::new(-yrot.sin(), 0.0, yrot.cos())
+    }
+}
+
+/// `RandomPos.generateRandomDirectionWithinRadians(random, 0, max,
+/// vertical, flying, view.x, view.z, PI / 2)`.
+fn direction_within(rng: &mut Rng, max: f64, vertical: i32, flying: i32, view: DVec3) -> Option<IVec3> {
+    let centre = view.z.atan2(view.x) - f64::from(std::f32::consts::FRAC_PI_2);
+    let yrad = centre + f64::from(2.0 * rng.next_f32() - 1.0) * f64::from(std::f32::consts::FRAC_PI_2);
+    let dist = f64::from(rng.next_f32()).sqrt() * max * f64::from(std::f32::consts::SQRT_2);
+    let (x, z) = (-dist * yrad.sin(), dist * yrad.cos());
+    if x.abs() > max || z.abs() > max {
+        return None;
+    }
+    let y = rng.next_int((2 * vertical + 1) as u32) as i32 - vertical + flying;
+    Some(IVec3::new(x.floor() as i32, y, z.floor() as i32))
 }
 
 // -------------------------------------------------------------------- skulls
 
-/// Ticks a skull flies before it's dropped; Java keeps one until it hits.
-const SKULL_LIFETIME: u32 = 1200;
 /// `AbstractHurtingProjectile.INITAL_ACCELERATION_POWER`, `getInertia`
 /// (`WitherSkull`'s 0.73 when dangerous) and `getLiquidInertia`.
 pub const ACCELERATION_POWER: f64 = 0.1;
@@ -942,6 +1195,47 @@ impl Skull {
     /// The skull's direction, for drawing.
     pub fn heading(&self) -> Vec3 {
         self.motion.as_vec3().normalize_or(Vec3::Z)
+    }
+
+    /// v0.16 Track H: what a saved skull keeps (`Entity.saveWithoutId`'s
+    /// position and motion, `Projectile`'s owner and `WitherSkull`'s
+    /// `dangerous`).
+    pub fn save(&self) -> Value {
+        json!({
+            "pos": self.pos.to_array(),
+            "motion": self.motion.to_array(),
+            "dangerous": self.dangerous,
+            "owner": self.owner,
+        })
+    }
+
+    pub fn load(v: &Value) -> Option<Self> {
+        let vec = |key: &str| -> Option<DVec3> {
+            let a = v[key].as_array().filter(|a| a.len() == 3)?;
+            let xyz: Option<Vec<f64>> = a.iter().map(Value::as_f64).collect();
+            xyz.map(|c| DVec3::new(c[0], c[1], c[2])).filter(|p| p.is_finite())
+        };
+        let pos = vec("pos")?;
+        Some(Skull {
+            pos,
+            previous_pos: pos,
+            motion: vec("motion").unwrap_or(DVec3::ZERO),
+            dangerous: v["dangerous"].as_bool().unwrap_or(false),
+            owner: v["owner"].as_u64().and_then(|u| u32::try_from(u).ok()),
+            age: 0,
+        })
+    }
+}
+
+impl Entities {
+    /// v0.16 Track H: the skulls in flight, for the level's `wither_skulls`.
+    pub(super) fn wither_skulls_json(&self) -> String {
+        Value::Array(self.wither_skulls.iter().map(Skull::save).collect()).to_string()
+    }
+
+    pub(super) fn load_wither_skulls_json(&mut self, text: &str) {
+        let Ok(Value::Array(list)) = serde_json::from_str::<Value>(text) else { return };
+        self.wither_skulls.extend(list.iter().filter_map(Skull::load));
     }
 }
 

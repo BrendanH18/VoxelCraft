@@ -15,6 +15,15 @@ const MAX_W: i32 = 21;
 const MIN_H: i32 = 3;
 const MAX_H: i32 = 21;
 const SIDES: [IVec3; 6] = [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z];
+/// v0.16 Track G: `PortalForcer.NETHER_PORTAL_RADIUS` and
+/// `OVERWORLD_PORTAL_RADIUS`, the existing-portal search into and out of
+/// the Nether; `createPortal` spirals 16 out; its fallback ledge sits at y
+/// 70 or more and 9 or more below the top.
+pub const NETHER_PORTAL_RADIUS: i32 = 16;
+pub const OVERWORLD_PORTAL_RADIUS: i32 = 128;
+pub const CREATE_RADIUS: i32 = 16;
+pub const LEDGE_MIN_Y: i32 = 70;
+pub const LEDGE_BELOW_TOP: i32 = 9;
 
 impl World {
     fn is(&self, p: IVec3, b: Block) -> bool {
@@ -102,79 +111,193 @@ impl World {
         }
     }
 
-    /// The lowest portal block nearest `near` within `radius` blocks
-    /// horizontally (loaded chunks only).
-    pub fn find_portal(&self, near: IVec3, radius: i32, (min_y, max_y): (i32, i32)) -> Option<IVec3> {
-        let mut best: Option<(i32, IVec3)> = None;
-        for dz in -radius..=radius {
-            for dx in -radius..=radius {
-                for y in min_y..=max_y {
-                    let p = IVec3::new(near.x + dx, y, near.z + dz);
-                    if self.is(p, Block::NETHER_PORTAL) && !self.is(p - IVec3::Y, Block::NETHER_PORTAL) {
-                        let d = (p - near).length_squared();
-                        if best.is_none_or(|(bd, _)| d < bd) {
-                            best = Some((d, p));
+    /// v0.16 Track G: `PortalForcer.findClosestPortalPosition`. Every
+    /// Nether portal block is a point of interest; of those within `radius`
+    /// blocks horizontally (16 into the Nether, 128 out of it) at any
+    /// height, the nearest to `near` (Java's `distSqr`, lower first on a
+    /// tie). Chunks that are neither loaded nor saved were never changed,
+    /// so hold no portal. Returns the lowest portal block under the one
+    /// found, where the traveller stands.
+    pub fn find_portal(&self, near: IVec3, radius: i32) -> Option<IVec3> {
+        use super::chunk::{CHUNK_SIZE, CHUNK_SIZE_I as S};
+        let mut best: Option<(i64, i32, IVec3)> = None;
+        let (min_y, max_y) = (self.min_y(), self.max_y());
+        for cz in (near.z - radius).div_euclid(S)..=(near.z + radius).div_euclid(S) {
+            for cx in (near.x - radius).div_euclid(S)..=(near.x + radius).div_euclid(S) {
+                for cy in min_y.div_euclid(S)..=(max_y - 1).div_euclid(S) {
+                    let Some(data) = self.section_data(IVec3::new(cx, cy, cz)) else { continue };
+                    if !data.contains(Block::NETHER_PORTAL) {
+                        continue;
+                    }
+                    for i in 0..super::chunk::CHUNK_VOLUME {
+                        let (x, y, z) = (i % CHUNK_SIZE, (i / CHUNK_SIZE) % CHUNK_SIZE, i / (CHUNK_SIZE * CHUNK_SIZE));
+                        if data.get(x, y, z) != Block::NETHER_PORTAL {
+                            continue;
+                        }
+                        let p = IVec3::new(cx * S + x as i32, cy * S + y as i32, cz * S + z as i32);
+                        if (p.x - near.x).abs() > radius || (p.z - near.z).abs() > radius {
+                            continue;
+                        }
+                        let d = (p - near).as_i64vec3().length_squared();
+                        if best.is_none_or(|(bd, by, _)| (d, p.y) < (bd, by)) {
+                            best = Some((d, p.y, p));
                         }
                     }
                 }
             }
         }
-        best.map(|(_, p)| p)
+        let (_, _, mut p) = best?;
+        // The portal may be in a saved, unloaded chunk: read the sections.
+        let block_at = |q: IVec3| {
+            let c = IVec3::new(q.x.div_euclid(S), q.y.div_euclid(S), q.z.div_euclid(S));
+            let l = q - c * S;
+            self.section_data(c).map(|d| d.get(l.x as usize, l.y as usize, l.z as usize))
+        };
+        while p.y > min_y && block_at(p - IVec3::Y) == Some(Block::NETHER_PORTAL) {
+            p.y -= 1;
+        }
+        Some(p)
     }
 
-    /// Builds a lit 2x3 portal along X near `near`, preferring a dry spot
-    /// with ground to stand on in front and behind, and otherwise carving a
-    /// space on an obsidian ledge. Returns its lowest interior cell on the
-    /// -X side.
-    pub fn build_portal(&mut self, near: IVec3, (min_y, max_y): (i32, i32)) -> IVec3 {
-        let at = self.portal_site(near, 16, (min_y, max_y)).unwrap_or_else(|| {
-            let p = IVec3::new(near.x, near.y.clamp(min_y, max_y), near.z);
-            for dz in -1..=1 {
-                for dx in -1..=2 {
-                    for dy in 0..4 {
-                        self.set_block(p + IVec3::new(dx, dy, dz), Block::AIR);
+    /// `canPortalReplaceBlock`: replaceable and holding no fluid.
+    fn portal_can_replace(&self, p: IVec3) -> bool {
+        self.get_block(p).is_some_and(|b| b.is_replaceable() && !b.is_fluid() && !b.holds_water())
+    }
+
+    /// `canHostFrame`: the frame's footprint (four along `dir`, `offset`
+    /// to the side) has solid ground under it and five replaceable cells up.
+    fn portal_can_host(&self, at: IVec3, dir: IVec3, side: IVec3, offset: i32) -> bool {
+        (-1..3).all(|w| {
+            (-1..4).all(|h| {
+                let p = at + dir * w + side * offset + IVec3::Y * h;
+                if h < 0 { self.get_block(p).is_some_and(|b| b.is_solid()) } else { self.portal_can_replace(p) }
+            })
+        })
+    }
+
+    /// The highest y a portal's frame may reach (`getMaxY`, or the
+    /// Nether's logical height of 128).
+    fn portal_max_y(&self) -> i32 {
+        match self.generator.dimension {
+            super::terrain::Dimension::Nether => (self.max_y() - 1).min(127),
+            _ => self.max_y() - 1,
+        }
+    }
+
+    /// v0.16 Track G: `PortalForcer.createPortal` at `origin`, along X or
+    /// Z as the portal travelled through. Columns spiral out to 16 blocks
+    /// (`BlockPos.spiralAround`, east then south); in each, from the
+    /// `MOTION_BLOCKING` height down, the bottom of every run of
+    /// replaceable cells (a single cell or at least three high) that can
+    /// hold the frame is a site; the nearest with room on both sides wins,
+    /// else the nearest with room only for the frame. With none, an
+    /// obsidian ledge is built at y 70 up to 9 below the top. Returns the
+    /// lowest interior cell on the frame's negative side.
+    pub fn create_portal(&mut self, origin: IVec3, along_x: bool) -> IVec3 {
+        let dir = if along_x { IVec3::X } else { IVec3::Z };
+        // `Direction.getClockWise`: east turns south, south turns west.
+        let side = if along_x { IVec3::Z } else { IVec3::NEG_X };
+        let max_placeable = self.portal_max_y();
+        let min_y = self.min_y();
+        let mut full: Option<(i64, IVec3)> = None;
+        let mut partial: Option<(i64, IVec3)> = None;
+        for column in spiral(origin, CREATE_RADIUS) {
+            let height = max_placeable.min(self.motion_blocking_height(column.x, column.z));
+            let mut y = height;
+            while y >= min_y {
+                let here = IVec3::new(column.x, y, column.z);
+                if self.portal_can_replace(here) {
+                    let first_empty = y;
+                    while y > min_y && self.portal_can_replace(IVec3::new(column.x, y - 1, column.z)) {
+                        y -= 1;
                     }
-                    self.set_block(p + IVec3::new(dx, -1, dz), Block::OBSIDIAN);
+                    let gap = first_empty - y;
+                    if y + 4 <= max_placeable && (gap <= 0 || gap >= 3) {
+                        let at = IVec3::new(column.x, y, column.z);
+                        if self.portal_can_host(at, dir, side, 0) {
+                            let d = (at - origin).as_i64vec3().length_squared();
+                            if self.portal_can_host(at, dir, side, -1)
+                                && self.portal_can_host(at, dir, side, 1)
+                                && full.is_none_or(|(fd, _)| fd > d)
+                            {
+                                full = Some((d, at));
+                            }
+                            if full.is_none() && partial.is_none_or(|(pd, _)| pd > d) {
+                                partial = Some((d, at));
+                            }
+                        }
+                    }
+                }
+                y -= 1;
+            }
+        }
+        let at = match full.or(partial) {
+            Some((_, at)) => at,
+            None => {
+                let low = (min_y + 1).max(LEDGE_MIN_Y);
+                let high = max_placeable - LEDGE_BELOW_TOP;
+                let at = IVec3::new(origin.x, origin.y.clamp(low, high.max(low)), origin.z) - dir;
+                for b in -1..2 {
+                    for w in 0..2 {
+                        for h in -1..3 {
+                            let block = if h < 0 { Block::OBSIDIAN } else { Block::AIR };
+                            self.set_block(at + dir * w + side * b + IVec3::Y * h, block);
+                        }
+                    }
+                }
+                at
+            }
+        };
+        for w in -1..3 {
+            for h in -1..4 {
+                if w == -1 || w == 2 || h == -1 || h == 3 {
+                    self.set_block(at + dir * w + IVec3::Y * h, Block::OBSIDIAN);
                 }
             }
-            p
-        });
-        for dx in -1..=2 {
-            self.set_block(at + IVec3::new(dx, -1, 0), Block::OBSIDIAN);
-            self.set_block(at + IVec3::new(dx, 3, 0), Block::OBSIDIAN);
         }
-        for dy in 0..3 {
-            self.set_block(at + IVec3::new(-1, dy, 0), Block::OBSIDIAN);
-            self.set_block(at + IVec3::new(2, dy, 0), Block::OBSIDIAN);
+        for w in 0..2 {
+            for h in 0..3 {
+                self.edit(at + dir * w + IVec3::Y * h, Block::NETHER_PORTAL, true);
+            }
         }
-        self.light_portal(at);
         at
     }
 
-    /// A spot for a new portal: the 4x4x3 box from `p - (1, 0, 1)` is
-    /// open (no fluids) and there's solid ground under the interior and in
-    /// front of and behind it.
-    fn portal_site(&self, near: IVec3, radius: i32, (min_y, max_y): (i32, i32)) -> Option<IVec3> {
-        let fits = |p: IVec3| {
-            let ground = (0..=1)
-                .all(|dx| (-1..=1).all(|dz| self.get_block(p + IVec3::new(dx, -1, dz)).is_some_and(|b| b.is_opaque())));
-            ground
-                && (-1..=2)
-                    .all(|dx| (-1..=1).all(|dz| (0..4).all(|dy| self.is(p + IVec3::new(dx, dy, dz), Block::AIR))))
-        };
-        let mut best: Option<(i32, IVec3)> = None;
-        for dz in -radius..=radius {
-            for dx in -radius..=radius {
-                for y in min_y..=max_y {
-                    let p = IVec3::new(near.x + dx, y, near.z + dz);
-                    let score = (y - near.y).abs() * 2 + dx.abs() + dz.abs();
-                    if best.is_none_or(|(s, _)| score < s) && fits(p) {
-                        best = Some((score, p));
-                    }
-                }
+    /// `Heightmap.Types.MOTION_BLOCKING`: one above the highest block that
+    /// blocks motion or holds a fluid in the column.
+    fn motion_blocking_height(&self, x: i32, z: i32) -> i32 {
+        let mut y = self.max_y() - 1;
+        while y >= self.min_y() {
+            if self.get_block(IVec3::new(x, y, z)).is_some_and(|b| b.is_solid() || b.is_fluid() || b.holds_water()) {
+                return y + 1;
             }
+            y -= 1;
         }
-        best.map(|(_, p)| p)
+        self.min_y()
+    }
+}
+
+/// `BlockPos.spiralAround(center, radius, EAST, SOUTH)`: the centre, then
+/// legs east, south, west and north, each pair one longer.
+pub fn spiral(center: IVec3, radius: i32) -> Vec<IVec3> {
+    let dirs = [IVec3::X, IVec3::Z, IVec3::NEG_X, IVec3::NEG_Z];
+    let legs = 4 * radius;
+    let (mut leg, mut leg_size, mut leg_index) = (-1i32, 0i32, 0i32);
+    let mut last = center + IVec3::Z;
+    let mut out = Vec::with_capacity(((2 * radius + 1) * (2 * radius + 1)) as usize);
+    loop {
+        let cursor = last + dirs[((leg + 4) % 4) as usize];
+        last = cursor;
+        if leg_index >= leg_size {
+            if leg >= legs {
+                return out;
+            }
+            leg += 1;
+            leg_index = 0;
+            leg_size = leg / 2 + 1;
+        }
+        leg_index += 1;
+        out.push(cursor);
     }
 }
 
@@ -220,7 +343,7 @@ mod tests {
         for (dx, dy) in [(0, 0), (1, 0), (0, 2), (1, 2)] {
             assert_eq!(world.get_block(at + IVec3::new(dx, dy, 0)), Some(Block::NETHER_PORTAL));
         }
-        assert_eq!(world.find_portal(at + IVec3::new(-5, 3, 2), 8, (200, 240)), Some(at));
+        assert_eq!(world.find_portal(at + IVec3::new(-5, 3, 2), 8), Some(at));
         // Knocking out one side of the frame takes the whole portal down.
         world.set_block(at + IVec3::new(2, 1, 0), Block::AIR);
         for dy in 0..3 {
@@ -240,10 +363,76 @@ mod tests {
     #[test]
     fn missing_portals_are_built_with_somewhere_to_stand() {
         let mut world = world();
-        let at = world.build_portal(IVec3::new(2, 230, 2), (200, 240));
+        // High in the sky the nearest site is on the ground below, within
+        // 16 blocks across.
+        let at = world.create_portal(IVec3::new(2, 230, 2), true);
+        assert!((at.x - 2).abs() <= 16 && (at.z - 2).abs() <= 16, "{at}");
         assert_eq!(world.get_block(at), Some(Block::NETHER_PORTAL));
         assert_eq!(world.get_block(at + IVec3::new(1, 2, 0)), Some(Block::NETHER_PORTAL));
-        assert!(world.get_block(at + IVec3::new(0, -1, 1)).unwrap().is_opaque(), "a ledge to step onto");
-        assert_eq!(world.find_portal(at, 4, (200, 240)), Some(at));
+        assert_eq!(world.get_block(at + IVec3::new(-1, 3, 0)), Some(Block::OBSIDIAN));
+        assert_eq!(world.get_block(at - IVec3::Y), Some(Block::OBSIDIAN));
+        assert!(world.get_block(at + IVec3::new(0, -1, 1)).unwrap().is_solid(), "ground to step onto");
+        assert_eq!(world.find_portal(at + IVec3::new(0, 2, 0), 4), Some(at));
+    }
+
+    #[test]
+    fn new_portals_pick_the_nearest_site_with_room_on_both_sides() {
+        let mut world = world();
+        // A floor at y 220 with room above it: the frame goes on it, at the
+        // cell nearest the origin.
+        for z in -8..=8 {
+            for x in -8..=8 {
+                world.set_block(IVec3::new(x, 219, z), Block::STONE);
+            }
+        }
+        let at = world.create_portal(IVec3::new(0, 225, 0), true);
+        assert_eq!(at, IVec3::new(0, 220, 0));
+        assert_eq!(world.get_block(at - IVec3::Y), Some(Block::OBSIDIAN));
+        assert_eq!(world.get_block(at + IVec3::X), Some(Block::NETHER_PORTAL));
+        // Along Z (an entry portal along Z) it turns.
+        let at = world.create_portal(IVec3::new(4, 224, 4), false);
+        assert_eq!(world.get_block(at + IVec3::Z), Some(Block::NETHER_PORTAL));
+        assert_eq!(world.get_block(at - IVec3::Z), Some(Block::OBSIDIAN));
+        // The nearer portal is found from either side.
+        assert_eq!(world.find_portal(IVec3::new(5, 222, 7), 128), Some(at + IVec3::Z));
+    }
+
+    #[test]
+    fn a_saved_unloaded_portal_is_entered_at_its_bottom() {
+        let mut world = world();
+        let at = IVec3::new(4, 220, 4);
+        frame(&mut world, at, 2, 3);
+        assert!(world.light_portal(at + IVec3::new(1, 2, 0)));
+        // Unload the portal's chunk: it is now only in the saved sections,
+        // which `get_block` doesn't read.
+        world.remove_chunk(crate::world::chunk::chunk_of(at));
+        assert_eq!(world.get_block(at), None);
+        // From above, the nearest portal cell is the top row; the traveller
+        // still arrives at the bottom.
+        assert_eq!(world.find_portal(at + IVec3::new(0, 6, 0), 16), Some(at));
+    }
+
+    #[test]
+    fn the_portal_search_spirals_out_like_java() {
+        let s = spiral(IVec3::ZERO, 1);
+        assert_eq!(
+            s,
+            vec![
+                IVec3::new(0, 0, 0),
+                IVec3::new(1, 0, 0),
+                IVec3::new(1, 0, 1),
+                IVec3::new(0, 0, 1),
+                IVec3::new(-1, 0, 1),
+                IVec3::new(-1, 0, 0),
+                IVec3::new(-1, 0, -1),
+                IVec3::new(0, 0, -1),
+                IVec3::new(1, 0, -1),
+            ]
+        );
+        let mut all = spiral(IVec3::ZERO, 16);
+        assert_eq!(all.len(), 33 * 33);
+        all.sort_by_key(|p| (p.x, p.z));
+        all.dedup();
+        assert_eq!(all.len(), 33 * 33);
     }
 }

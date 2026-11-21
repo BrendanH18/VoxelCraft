@@ -113,9 +113,9 @@ impl Kind {
             Kind::JungleTemple => (32, 8, 14_357_619),
             Kind::SwampHut => (32, 8, 14_357_620),
             Kind::OceanRuin => (20, 8, 14_357_621),
-            Kind::Shipwreck => (24, 4, 165_745_295),
+            Kind::Shipwreck => (super::shipwreck::SPACING, super::shipwreck::SEPARATION, super::shipwreck::SALT),
             Kind::Outpost => (32, 8, 165_745_296),
-            Kind::Monument => (32, 5, 10_387_313),
+            Kind::Monument => (super::monument::SPACING, super::monument::SEPARATION, super::monument::SALT),
             Kind::Mansion => (super::mansion::SPACING, super::mansion::SEPARATION, super::mansion::SALT),
             Kind::AbandonedCamp => (camp_templates::SPACING, camp_templates::SEPARATION, camp_templates::SALT),
         }
@@ -127,8 +127,9 @@ impl Kind {
             Kind::Mansion => super::mansion::REACH,
             // A tent and campsite from the start chunk's corner, and trees.
             Kind::AbandonedCamp => 48,
-            Kind::Monument => 40,
-            Kind::Shipwreck => 20,
+            // Generation 5's building, skirt and the start chunk's offset.
+            Kind::Monument => super::monument::REACH,
+            Kind::Shipwreck => super::shipwreck::REACH,
             Kind::Outpost | Kind::DesertPyramid | Kind::JungleTemple => 16,
             _ => 12,
         }
@@ -555,6 +556,13 @@ impl Temples {
         let built = if kind == Kind::AbandonedCamp {
             let seed = hash3(start.x, start.y, kind as i32, self.seed ^ 0x7E3D);
             self.valid_start(g, kind, start).then(|| camp_templates::build(g, start, seed)).flatten().map(Arc::new)
+        } else if kind == Kind::Shipwreck && g.generation >= super::terrain::Generation::V5 {
+            // v0.16 Track F: Java's shipwreck set, catalogue and heights.
+            let seed = hash3(start.x, start.y, kind as i32, self.seed ^ 0x7E3D);
+            super::shipwreck::start(g, start).map(|s| Arc::new(shipwreck_v5(g, s, seed)))
+        } else if kind == Kind::Monument && g.generation >= super::terrain::Generation::V5 {
+            // v0.16 Track F: Java's `OceanMonumentPieces`, laid out once per start.
+            self.valid_start(g, kind, start).then(|| Arc::new(monument_v5(g, start)))
         } else if kind == Kind::Mansion {
             // Laid out once per start and cached with the other structures.
             super::mansion::start(g, start).map(|s| Arc::new(Built::mansion(super::mansion::Layout::build(g, s))))
@@ -587,6 +595,12 @@ impl Temples {
         }
         if kind == Kind::AbandonedCamp {
             return g.generation >= super::terrain::Generation::V5 && camp_templates::start_biome(g, start).is_some();
+        }
+        if kind == Kind::Monument && g.generation >= super::terrain::Generation::V5 {
+            return super::monument::biomes_allow(g, start);
+        }
+        if kind == Kind::Shipwreck && g.generation >= super::terrain::Generation::V5 {
+            return super::shipwreck::kind_at(g, start).is_some();
         }
         let centre = start * 16 + IVec2::splat(8);
         let col = g.column(centre.x, centre.y);
@@ -805,6 +819,9 @@ impl Temples {
                 layout.paint(blocks, base);
                 continue;
             }
+            // Generation 5 shipwrecks waterlog what they place in water, as
+            // `StructureTemplate.placeInWorld` does.
+            let waterlogs = b.kind == Kind::Shipwreck && g.generation >= super::terrain::Generation::V5;
             let start = b.blocks.partition_point(|(p, _)| p.y < base.y);
             for &(p, block) in &b.blocks[start..] {
                 if p.y > top.y {
@@ -812,7 +829,8 @@ impl Temples {
                 }
                 if chunk.contains(p) {
                     let l = p - base;
-                    blocks[index(l.x as usize, l.y as usize, l.z as usize)] = block;
+                    let i = index(l.x as usize, l.y as usize, l.z as usize);
+                    blocks[i] = if waterlogs { super::waterlog::carried(blocks[i], block) } else { block };
                 }
             }
         }
@@ -1436,6 +1454,46 @@ fn ocean_ruin(g: &Generator, centre: IVec2, ground: i32, rot: u8, seed: u64, rng
         b.set(cx + 1, 1, cz, Block::MAGMA);
     }
     b.finish(Kind::OceanRuin, 6)
+}
+
+/// v0.16 Track F: a generation 5 shipwreck (`super::shipwreck`) as a
+/// temple: its template's blocks and chests.
+fn shipwreck_v5(g: &Generator, start: super::shipwreck::Start, seed: u64) -> Built {
+    let w = super::shipwreck::build(g, start, seed);
+    Built {
+        kind: Kind::Shipwreck,
+        bounds: w.bounds,
+        blocks: w.blocks,
+        features: w.chests,
+        spawns: w.bounds,
+        residents: Vec::new(),
+        placed: Vec::new(),
+        mansion: None,
+    }
+}
+
+/// v0.16 Track F: a generation 5 monument (`super::monument`) as a temple:
+/// its blocks, the building's box as the spawn override's `full` box, and
+/// its three elder guardians.
+fn monument_v5(g: &Generator, start: IVec2) -> Built {
+    let layout = super::monument::layout(g.seed, start);
+    let built = super::monument::build(g, &layout);
+    let mut min = IVec3::splat(i32::MAX);
+    let mut max = IVec3::splat(i32::MIN);
+    for (p, _) in &built.blocks {
+        min = min.min(*p);
+        max = max.max(*p);
+    }
+    Built {
+        kind: Kind::Monument,
+        bounds: Bounds { min, max },
+        residents: super::monument::residents(&built),
+        blocks: built.blocks,
+        features: Vec::new(),
+        spawns: built.bounds,
+        placed: Vec::new(),
+        mansion: None,
+    }
 }
 
 /// Java's ocean monument: a 58×58 prismarine building on the deep sea

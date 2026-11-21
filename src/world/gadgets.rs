@@ -275,7 +275,8 @@ pub fn instrument(below: Block) -> Instrument {
         b if b == Block::SAND || b == Block::RED_SAND || b == Block::GRAVEL || b.concrete_powder_color().is_some() => {
             Instrument::Snare
         }
-        b if b == Block::GLASS || b.stained_glass_color().is_some() => Instrument::Hat,
+        // v0.16 Track F: `Blocks.CONDUIT` has `instrument(HAT)`.
+        b if b == Block::GLASS || b.stained_glass_color().is_some() || super::conduit::owns(b.0) => Instrument::Hat,
         b if b == Block::STONE
             || b == Block::COBBLESTONE
             || b == Block::BEDROCK

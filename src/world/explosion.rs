@@ -656,6 +656,8 @@ static TABLES: LazyLock<Tables> = LazyLock::new(|| {
             6.0
         } else if let Some(r) = super::gen5_blocks::resistance(b) {
             r
+        } else if super::infested::owns(b.0) {
+            super::infested::RESISTANCE
         } else if super::heavy_core::owns(b.0) {
             super::heavy_core::BLAST_RESISTANCE
         } else if super::dried_ghast::owns(b.0) {
@@ -679,11 +681,15 @@ static TABLES: LazyLock<Tables> = LazyLock::new(|| {
             // v0.16 Track C: the head and beacon tables have no
             // `survives_explosion` condition.
             None if super::skulls::owns(b.0) || b == super::beacon::BEACON => Loot::Keep,
+            // v0.16 Track F: `blocks/conduit` has none either.
+            None if super::conduit::owns(b.0) => Loot::Keep,
             // `blocks/chorus_plant` and `blocks/purpur_slab`: `explosion_decay`.
             None if b == super::end_blocks::CHORUS_PLANT || b.slab_base() == Some(super::end_blocks::PURPUR_BLOCK) => {
                 Loot::Decay
             }
             None if super::gen5_blocks::explosion_decays(b) => Loot::Decay,
+            // v0.16 Track E: `blocks/infested_*` has no explosion condition.
+            None if super::infested::owns(b.0) => Loot::Keep,
             None => Loot::Survives,
         };
     }
@@ -812,6 +818,12 @@ impl World {
             let start = self.drops.len();
             if drop_blocks {
                 self.spill_exploded(p, b, decay.then_some(radius));
+                // v0.16 Track E: `onExplosionHit` runs `spawnAfterBreak`
+                // with an empty tool, so an infested block's silverfish
+                // gets out.
+                if super::infested::owns(b.0) {
+                    self.released_silverfish.push(p);
+                }
             }
             let dropped: Vec<Stack> = self.drops.drain(start..).map(|(_, s)| s).collect();
             if self.edit(p, Block::AIR, false) {

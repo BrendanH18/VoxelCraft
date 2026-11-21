@@ -297,6 +297,16 @@ impl Entities {
         let dir = (self.mobs[victim].pos - pos).normalize_or_zero();
         let at = self.mobs[victim].pos;
         let victim_kind = self.mobs[victim].kind;
+        // v0.16 Track H: `WitherBoss.hurtServer` refuses `#wither_friends`
+        // and charging hits; the rest feed its `HurtByTargetGoal`.
+        if victim_kind == MobKind::Wither {
+            let charging = self.mobs[victim].wither.as_ref().is_some_and(|s| s.invul > 0);
+            if charging || super::wither::friend(self.mobs[attacker].kind) {
+                return;
+            }
+            let uid = self.mobs[attacker].uid;
+            self.wither_hurt_by_mob(victim, uid);
+        }
         if self.mobs[victim].damage(damage, Some(dir * 6.0 + DVec3::Y * up), &mut self.rng) {
             events.push(EntityEvent::MobKilled {
                 kind: victim_kind,

@@ -14,6 +14,7 @@ fn is_banner(b: Block) -> bool {
     (BANNER_ORIGIN..WALL_BANNER_ORIGIN + 64).contains(&b.0)
         || super::super::skulls::owns(b.0)
         || b == super::super::beacon::BEACON
+        || super::super::conduit::owns(b.0)
 }
 
 /// Whether a chunk can hold a banner, without visiting every cell when

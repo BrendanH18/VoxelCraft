@@ -3,11 +3,15 @@
 //! and block breaking (`entity.wither.break_block`), and the beacon's
 //! `block.beacon.activate`, `ambient`, `power_select` and `deactivate`.
 //! Nothing is sampled: roars are noise through moving band-passes, the
-//! beacon's hum a few slowly beating sine partials.
+//! beacon's hum a few slowly beating sine partials. v0.16 Track F's
+//! conduit (`block.conduit.activate`, `deactivate`, `ambient`,
+//! `ambient.short` and `attack.target`) shares the beacon's partials, lower
+//! and bubbling, with a sharp low thud for its strike.
 
 use super::dsp::{self, Biquad, Mode, Rng, add_mode, crackle, mix_into, noise, samples};
 use crate::entity::wither::Cue;
 use crate::world::beacon::Cue as BeaconCue;
+use crate::world::conduit::Cue as ConduitCue;
 
 /// A roar: noise through a band-pass that sweeps from `from` to `to` Hz.
 fn roar(out: &mut [f32], rng: &mut Rng, len: f32, from: f32, to: f32, gain: f32) {
@@ -89,6 +93,49 @@ pub(super) fn render_beacon(cue: BeaconCue, rng: &mut Rng) -> Vec<f32> {
             let mut out = vec![0.0; samples(1.4)];
             hum(&mut out, base * 1.5, 1.2, 0.8, 0.5);
             dsp::finish(out, 0.6)
+        }
+    }
+}
+
+pub(super) fn render_conduit(cue: ConduitCue, rng: &mut Rng) -> Vec<f32> {
+    // Slow, watery partials with a bubbling tremor.
+    let swell = |out: &mut [f32], base: f32, glide: f32, gain: f32, tau: f32| {
+        for (ratio, amp) in [(1.0, 0.55), (1.26, 0.25), (2.0, 0.18), (2.52, 0.08)] {
+            add_mode(out, 0, Mode { freq: base * ratio, amp: amp * gain, tau, glide, glide_tau: tau * 0.5 });
+            add_mode(
+                out,
+                0,
+                Mode { freq: base * ratio * 0.993, amp: amp * gain * 0.5, tau, glide, glide_tau: tau * 0.5 },
+            );
+        }
+    };
+    let base = 130.0 * rng.range(0.98, 1.02);
+    match cue {
+        ConduitCue::Activate => {
+            let mut out = vec![0.0; samples(2.2)];
+            swell(&mut out, base * 0.8, 1.5, 0.9, 1.0);
+            dsp::finish(out, 0.6)
+        }
+        ConduitCue::Deactivate => {
+            let mut out = vec![0.0; samples(2.2)];
+            swell(&mut out, base * 1.2, 0.6, 0.9, 0.9);
+            dsp::finish(out, 0.6)
+        }
+        ConduitCue::Ambient => {
+            let mut out = vec![0.0; samples(3.5)];
+            swell(&mut out, base, 1.0, 0.5, 2.2);
+            dsp::finish(out, 0.4)
+        }
+        ConduitCue::AmbientShort => {
+            let mut out = vec![0.0; samples(1.2)];
+            swell(&mut out, base * 1.5, 1.05, 0.45, 0.5);
+            dsp::finish(out, 0.35)
+        }
+        ConduitCue::AttackTarget => {
+            let mut out = vec![0.0; samples(0.8)];
+            add_mode(&mut out, 0, Mode { freq: 70.0, amp: 1.0, tau: 0.25, glide: 0.5, glide_tau: 0.2 });
+            swell(&mut out, base * 2.0, 0.8, 0.5, 0.3);
+            dsp::finish(out, 0.7)
         }
     }
 }

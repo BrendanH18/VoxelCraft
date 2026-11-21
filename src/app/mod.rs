@@ -10,6 +10,7 @@ mod benchmark;
 mod books;
 mod bow;
 mod bucket;
+mod conduit;
 mod console;
 mod containers;
 mod credits;
@@ -173,6 +174,10 @@ struct Game {
     /// Sneak and Sprint while their Controls option is Toggle.
     sneak_toggled: bool,
     sprint_toggled: bool,
+    /// An immediate respawn waits for the step that killed the player
+    /// (a blast, a save's settling) to finish; the next frame runs it, as
+    /// Java's client sends its respawn request after the death.
+    respawn_due: bool,
     /// Java's `ScrollWheelHandler`: wheel movement short of a whole notch.
     scroll: f64,
     frame_limit: frame_limit::FrameLimit,
@@ -1167,7 +1172,10 @@ impl Game {
             self.set_mode(GameMode::Spectator);
             self.show_popup("Game over - Spectator mode");
         }
-        self.set_grab(false);
+        // An immediate respawn keeps the mouse; the death screen frees it.
+        if !self.gamerules.respawns_immediately(self.hardcore) {
+            self.set_grab(false);
+        }
         self.keys.clear();
         // Java's `resetToggleKeys`.
         self.sneak_toggled = false;
@@ -1181,7 +1189,31 @@ impl Game {
         if self.hardcore {
             self.set_grab(true);
         } else if self.gamerules.respawns_immediately(self.hardcore) {
+            self.respawn_due = true;
+        }
+    }
+
+    /// Runs the immediate respawn a death asked for, once the step that
+    /// killed the player (a tick, a save's settling) is over.
+    fn respawn_if_due(&mut self) {
+        if std::mem::take(&mut self.respawn_due) && self.session.vitals.is_dead() {
             self.respawn();
+            // A teleport: the camera snaps instead of gliding from the death spot.
+            self.previous_eye = self.session.player.eye();
+        }
+    }
+
+    /// Takes the mouse back after a respawn, unless a menu, the console or
+    /// a scripted run has it.
+    fn grab_after_respawn(&mut self) {
+        if !self.menu.is_open()
+            && !self.console.open
+            && self.credits.is_none()
+            && self.screenshot.is_none()
+            && self.benchmark.is_none()
+            && self.bench_render.is_none()
+        {
+            self.set_grab(true);
         }
     }
 
@@ -1201,19 +1233,29 @@ impl Game {
             } else {
                 self.switch_dimension(Dimension::Nether, dimension::Arrival::Anchor(anchor));
             }
-            self.set_grab(true);
+            self.grab_after_respawn();
             return;
         }
         if self.dimension != Dimension::Overworld {
             let here = self.session.player.pos;
             self.session.respawn(here, voxelcraft::session::DEFAULT_SPAWN_YAW, keep_inventory);
             self.switch_dimension(Dimension::Overworld, dimension::Arrival::Respawn);
-            self.set_grab(true);
+            self.grab_after_respawn();
+            return;
+        }
+        // Still arriving (a death while travelling): the world isn't in, so
+        // the bed can't be checked yet. Respawn here and let the arrival
+        // wait for the bed's chunk, replacing any portal arrival.
+        if self.arrival.is_some() {
+            let here = self.session.player.pos;
+            self.session.respawn(here, voxelcraft::session::DEFAULT_SPAWN_YAW, keep_inventory);
+            self.arrival = Some(dimension::Arrival::Respawn);
+            self.grab_after_respawn();
             return;
         }
         let (at, yaw) = self.respawn_point();
         self.session.respawn(at, yaw, keep_inventory);
-        self.set_grab(true);
+        self.grab_after_respawn();
     }
 
     fn set_mode(&mut self, mode: GameMode) {
@@ -1944,6 +1986,7 @@ impl Game {
             self.menu.is_open() || self.console.open || self.credits.is_some(),
             self.agents.host.is_some() || self.lan.host.is_some() || self.lan.client.is_some(),
         );
+        self.respawn_if_due();
         let elapsed = now - self.last_frame;
         self.last_frame = now;
         let ticks = self.clock.advance(elapsed, paused);
@@ -1957,7 +2000,13 @@ impl Game {
 
         // Streaming and GPU uploads continue during offline pause.
         if self.lan.client.is_none() {
+            let eye = self.session.player.eye();
             self.update_arrival();
+            // Moved by the arrival (a portal, a respawn, or towards a target
+            // still loading): the camera snaps, as for any teleport.
+            if self.session.player.eye() != eye {
+                self.previous_eye = self.session.player.eye();
+            }
         }
         let viewers: Vec<DVec3> = self.followed().map(|(_, b)| b.agent.session.player.pos).collect();
         self.world.set_viewers(&viewers);
@@ -1977,6 +2026,7 @@ impl Game {
             } else {
                 let started = Instant::now();
                 self.tick();
+                self.respawn_if_due();
                 let took = started.elapsed().as_secs_f64();
                 self.lan.stats_tick_secs += took;
                 self.lan.stats_tick_max = self.lan.stats_tick_max.max(took);
@@ -2031,6 +2081,8 @@ impl Game {
         }
         // Scripted runs (screenshots, benchmarks) have no options path and never autosave.
         if self.settings_path.is_some() && now - self.last_save > AUTOSAVE_EVERY {
+            // A death the save's settling caused respawns at the next
+            // frame's start, before its camera is sampled.
             self.save();
         }
 
@@ -2103,6 +2155,7 @@ impl Game {
         push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
         crate::render::signs::text(&self.world, camera, verts);
         crate::entity::model::build_beacon_beams(&self.world, camera, scene.time, fog_end, verts);
+        crate::entity::model::build_conduits(&self.world, camera, fog_end, verts);
         if !self.camera.first_person() {
             let glow = verts.glow_start();
             let look = Self::stamp_look(
@@ -2198,7 +2251,11 @@ impl Game {
                 )
             }),
             rain: scene.rain,
-            night_vision: self.session.vitals.effects.night_vision(scene.time),
+            night_vision: self
+                .session
+                .vitals
+                .effects
+                .vision(scene.time, self.session.player.head_in_water(&self.world)),
             ui: if self.show_hud
                 || self.session.vitals.is_dead()
                 || self.menu.is_open()

@@ -162,3 +162,193 @@ fn heads_sit_beside_and_above_the_body() {
     assert!((left.x - 1.3).abs() < 1e-6 && (left.y - 66.2).abs() < 1e-9);
     assert!((right.x + 1.3).abs() < 1e-6);
 }
+
+// ------------------------------------------------------- v0.16 Track H
+
+fn ctx() -> Ctx {
+    Ctx {
+        spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
+        players: vec![],
+        daylight: 0.0,
+        spawning: false,
+        raining: false,
+        dimension: crate::world::terrain::Dimension::Overworld,
+    }
+}
+
+/// A charged Wither at `at`, simulated, with its id.
+fn ready_wither(e: &mut Entities, at: DVec3) -> (usize, u32) {
+    e.spawn_wither(at, 0.0);
+    let i = e.mobs.len() - 1;
+    e.mobs[i].wither.as_mut().unwrap().invul = 0;
+    e.mobs[i].health = MAX_HEALTH;
+    e.mobs[i].simulation_active = true;
+    e.ensure_mob_ids();
+    (i, e.mobs[i].uid)
+}
+
+fn add(e: &mut Entities, kind: MobKind, at: DVec3) -> u32 {
+    let mut m = Mob::new(kind, at, 0.0);
+    m.simulation_active = true;
+    e.mobs.push(m);
+    e.ensure_mob_ids();
+    e.mobs.last().unwrap().uid
+}
+
+#[test]
+fn skulls_in_flight_are_saved_with_dangerous() {
+    let mut e = Entities::new(1);
+    let mut k = Skull::new(DVec3::new(1.5, 70.0, -3.25), DVec3::X, true, Some(42));
+    k.motion = DVec3::new(0.3, -0.1, 0.05);
+    e.wither_skulls.push(k);
+    e.wither_skulls.push(Skull::new(DVec3::new(0.0, 64.0, 0.0), DVec3::Z, false, None));
+    let mut props = std::collections::BTreeMap::new();
+    e.save_props(&mut props);
+    let mut back = Entities::new(2);
+    back.load_props(&props);
+    assert_eq!(back.wither_skulls.len(), 2);
+    let k2 = back.wither_skulls[0];
+    assert_eq!((k2.pos, k2.motion, k2.dangerous, k2.owner), (k.pos, k.motion, true, Some(42)));
+    assert!(!back.wither_skulls[1].dangerous && back.wither_skulls[1].owner.is_none());
+}
+
+/// `HurtByTargetGoal` turns the Wither on a mob that hurt it, on a goal
+/// selection tick (every other tick, by `tickCount + id`); its friends'
+/// hits are refused and change nothing.
+#[test]
+fn mobs_that_hurt_it_become_its_target_on_selection_ticks() {
+    let world = crate::physics::test_util::Grid::flat(0);
+    let ctx = ctx();
+    let mut e = Entities::new(5);
+    let (w, wid) = ready_wither(&mut e, DVec3::new(0.5, 8.0, 0.5));
+    let pig = add(&mut e, MobKind::Pig, DVec3::new(4.5, 1.0, 0.5));
+    let golem = add(&mut e, MobKind::IronGolem, DVec3::new(20.5, 1.0, 0.5));
+    let skeleton = add(&mut e, MobKind::Skeleton, DVec3::new(-10.5, 1.0, 0.5));
+    let mut events = Vec::new();
+    e.wither_tick(0.05, &world, &ctx, &mut events);
+    assert_eq!(e.mobs[w].wither.as_ref().unwrap().targets[0], Some(Foe::Mob(pig)), "the nearest first");
+    // A friend's hit is refused: no damage, no new target.
+    let health = e.mobs[w].health;
+    let mut hits = vec![EntityEvent::MobHit { target: wid, attacker: skeleton, damage: 4.0, knockback: DVec3::ZERO }];
+    e.resolve_mob_hits(&mut hits);
+    assert_eq!(e.mobs[w].health, health);
+    let mut hits = vec![EntityEvent::MobHit { target: wid, attacker: golem, damage: 7.0, knockback: DVec3::ZERO }];
+    e.resolve_mob_hits(&mut hits);
+    assert!(e.mobs[w].health < health);
+    let mut switched = None;
+    for _ in 0..4 {
+        e.wither_tick(0.05, &world, &ctx, &mut events);
+        let s = e.mobs[w].wither.as_ref().unwrap();
+        if s.targets[0] == Some(Foe::Mob(golem)) {
+            switched = Some(s.tick_count);
+            break;
+        }
+        assert_eq!(s.targets[0], Some(Foe::Mob(pig)));
+    }
+    let tick = switched.expect("the golem becomes the target") as u32;
+    assert!(tick.wrapping_add(wid).is_multiple_of(2), "chosen on a selection tick");
+    // The hurt goal keeps its target while the pig stays nearer.
+    for _ in 0..6 {
+        e.wither_tick(0.05, &world, &ctx, &mut events);
+    }
+    assert_eq!(e.mobs[w].wither.as_ref().unwrap().targets[0], Some(Foe::Mob(golem)));
+}
+
+/// `HoverRandomPos`: a spot one to three blocks over solid ground below
+/// the Wither (`moveUpToAboveSolid`).
+#[test]
+fn idle_flight_hovers_over_the_ground() {
+    let world = crate::physics::test_util::Grid::flat(0);
+    let ctx = ctx();
+    let m = Mob::new(MobKind::Wither, DVec3::new(0.5, 2.0, 0.5), 0.0);
+    let mut rng = Rng::new(9);
+    let mut hovered = 0;
+    for _ in 0..40 {
+        let Some(p) = m.hover_spot(&world, &ctx, &mut rng) else { continue };
+        // The grid's ground is y -1, so one to three over it is 1..=3.
+        assert!(p.y >= 0, "{p}");
+        hovered += usize::from((1..=3).contains(&p.y));
+        assert!(p.x.abs() <= 9 && p.z.abs() <= 9, "{p}");
+    }
+    assert!(hovered >= 24, "{hovered} of 40 hover over the ground");
+}
+
+#[test]
+fn goal_numbers_match_the_jar() {
+    let f: serde_json::Value =
+        serde_json::from_str(include_str!("../../../tests/fixtures/java/26.3/wave1_leftovers.json")).unwrap();
+    let w = &f["wither"];
+    assert_eq!(w["hover_random_pos"][0], HOVER.0);
+    assert_eq!(w["hover_random_pos"][1], HOVER.1);
+    assert_eq!(w["hover_random_pos"][3], HOVER.2);
+    assert_eq!(w["hover_random_pos"][4], HOVER.3);
+    assert_eq!(w["air_and_water_random_pos"][0], AIR_AND_WATER.0);
+    assert_eq!(w["air_and_water_random_pos"][1], AIR_AND_WATER.1);
+    assert_eq!(w["air_and_water_random_pos"][2], AIR_AND_WATER.2);
+    let interval = w["random_stroll_interval"].as_u64().unwrap() as u32;
+    let divisor = w["reduced_tick_delay_divisor"].as_u64().unwrap() as u32;
+    assert_eq!(interval.div_ceil(divisor), STROLL_INTERVAL);
+    assert_eq!(w["selector_cadence"], 2);
+    assert_eq!(w["skull_patterns"]["base"], serde_json::json!(["###", "~#~"]));
+    assert_eq!(w["can_spawn_mob_min_y_offset"], 2);
+    let goals: Vec<(String, i64)> = w["goals"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|g| (g["goal"].as_str().unwrap().to_string(), g["priority"].as_i64().unwrap()))
+        .collect();
+    assert!(goals.contains(&("HurtByTargetGoal".into(), 1)));
+    assert!(goals.contains(&("NearestAttackableTargetGoal".into(), 2)));
+    assert!(goals.contains(&("RangedAttackGoal".into(), 2)));
+    assert!(goals.contains(&("WaterAvoidingRandomFlyingGoal".into(), 5)));
+}
+
+/// `WitherSkullBlock.canSpawnMob`'s base: the T and its air corners, with
+/// the skull row free.
+#[test]
+fn the_base_pattern_needs_only_the_t() {
+    let o = IVec3::new(0, 64, 0);
+    let mut cells = t_shape(o, Block::AIR);
+    cells.retain(|&(_, b)| b != Block::AIR);
+    let get = grid(&cells);
+    assert!(find_base(&get, o + IVec3::new(1, 2, 0)).is_some());
+    assert!(can_spawn_mob(&get, o + IVec3::new(1, 2, 0), -64, false));
+    assert!(!can_spawn_mob(&get, o + IVec3::new(1, 2, 0), -64, true), "never in Peaceful");
+    assert!(!can_spawn_mob(&get, o + IVec3::new(1, 2, 0), 65, false), "two above the bottom");
+    assert!(find_base(grid(&[]), o).is_none());
+}
+
+/// A world that hasn't streamed in yet: no chunk is loaded.
+struct Streaming;
+impl crate::physics::BlockSource for Streaming {
+    fn block(&self, _: IVec3) -> Option<Block> {
+        None
+    }
+}
+impl MobWorld for Streaming {
+    fn loaded(&self, _: IVec3) -> bool {
+        false
+    }
+    fn exposed(&self, _: IVec3) -> bool {
+        false
+    }
+    fn surface(&self, _: i32, _: i32) -> Option<i32> {
+        None
+    }
+}
+
+/// A restored skull waits for its chunk, and its Wither still in chunk
+/// storage (not among the loaded mobs) doesn't discard it.
+#[test]
+fn restored_skulls_wait_for_their_chunk_and_unloaded_owner() {
+    let mut e = Entities::new(3);
+    e.wither_skulls.push(Skull::new(DVec3::new(0.5, 70.0, 0.5), DVec3::X, true, Some(42)));
+    let mut events = Vec::new();
+    e.update_wither_skulls(&Streaming, &ctx(), &mut events);
+    assert_eq!(e.wither_skulls.len(), 1, "kept while its chunk streams in");
+    let world = crate::physics::test_util::Grid::flat(0);
+    let before = e.wither_skulls[0].pos;
+    e.update_wither_skulls(&world, &ctx(), &mut events);
+    assert_eq!(e.wither_skulls.len(), 1, "an owner that isn't loaded keeps it");
+    assert_ne!(e.wither_skulls[0].pos, before, "and it flies on");
+}

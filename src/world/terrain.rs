@@ -39,6 +39,8 @@ mod density;
 #[cfg(test)]
 mod gen5_tests;
 #[cfg(test)]
+mod m3_corpus;
+#[cfg(test)]
 mod order_tests;
 mod sulfur_caves;
 
@@ -287,6 +289,8 @@ pub struct Generator {
     pub dungeons: super::dungeon::Dungeons,
     /// Amethyst geodes are laid out once and clipped into every chunk.
     pub geodes: super::geode::Geodes,
+    /// v0.16 Track H: generation 5's sulfur springs, laid out like geodes.
+    pub sulfur_springs: super::sulfur_springs::SulfurSprings,
     /// Abandoned mineshafts, placed per Java 16×16 chunk.
     pub mineshafts: super::mineshaft::Mineshafts,
     pub villages: super::village::Villages,
@@ -329,6 +333,18 @@ fn is_rock(b: Block) -> bool {
         || b == Block::GRAVEL
 }
 
+/// v0.16 Track E: generation 5's mineshaft placement reads biomes and the
+/// `WORLD_SURFACE_WG` height here.
+impl super::mineshaft::ShaftTerrain for Generator {
+    fn biome(&self, p: IVec3) -> Biome {
+        self.biome_at(p)
+    }
+
+    fn surface(&self, x: i32, z: i32) -> i32 {
+        self.structure_column(x, z).top(false) + 1
+    }
+}
+
 impl Generator {
     pub fn new(seed: u64) -> Self {
         Self::for_dimension(seed, Dimension::Overworld)
@@ -348,10 +364,11 @@ impl Generator {
             nether: (dimension == Dimension::Nether)
                 .then(|| super::nether::NetherGen::with_generation(seed, generation)),
             end: (dimension == Dimension::End).then(|| super::end::EndGen::with_generation(seed, generation)),
-            strongholds: super::stronghold::Strongholds::new(seed),
+            strongholds: super::stronghold::Strongholds::with_generation(seed, generation),
             dungeons: super::dungeon::Dungeons::new(seed),
             geodes: super::geode::Geodes::new(seed),
-            mineshafts: super::mineshaft::Mineshafts::new(seed),
+            sulfur_springs: super::sulfur_springs::SulfurSprings::new(seed),
+            mineshafts: super::mineshaft::Mineshafts::with_generation(seed, generation),
             villages: super::village::Villages::new(seed),
             temples: super::temples::Temples::new(seed),
             relics: super::relics::Relics::new(seed),
@@ -775,7 +792,7 @@ impl Generator {
             (None, Dimension::Overworld) => {
                 let mut features = self.strongholds.features(cpos);
                 features.extend(self.dungeons.features(self, cpos));
-                features.extend(self.mineshafts.features(cpos));
+                features.extend(self.mineshafts.features(self, cpos));
                 features.extend(self.villages.features(self, cpos));
                 features.extend(self.temples.features(self, cpos));
                 features
@@ -803,6 +820,12 @@ impl Generator {
     /// spawn (Nether fortresses).
     pub fn in_fortress(&self, p: IVec3) -> bool {
         self.nether.as_ref().is_some_and(|n| n.fortresses.inside(p))
+    }
+
+    /// v0.16 Track E: whether `p` lies in a fortress's whole bounding box
+    /// (the union of its pieces, `StructureStart.getBoundingBox`).
+    pub fn in_fortress_bounds(&self, p: IVec3) -> bool {
+        self.nether.as_ref().is_some_and(|n| n.fortresses.within_bounds(p))
     }
 
     /// Bastion remnants within `r` blocks of `p` (none outside the Nether).
@@ -914,6 +937,11 @@ impl Generator {
         if self.generation >= Generation::V5 && base.y <= max_h {
             self.sulfur_bands(&mut blocks, base, &columns);
         }
+        // v0.16 Track H: `rooted_sulfur_spring` (Java's lakes step, ahead of
+        // geodes, ores and the sulfur caves' other features).
+        if self.generation >= Generation::V5 && base.y <= max_h + 8 {
+            self.sulfur_springs.paint(self, &mut blocks, base);
+        }
         // Java places geodes in `local_modifications`, after carvers and
         // before monster rooms, ores and cave vegetation.
         self.geodes.paint(self, &mut blocks, base);
@@ -965,7 +993,7 @@ impl Generator {
             self.strongholds.paint(&mut blocks, base);
         }
         self.dungeons.paint(self, &mut blocks, base);
-        self.mineshafts.paint(&mut blocks, base);
+        self.mineshafts.paint(self, &mut blocks, base);
         self.villages.paint(self, &mut blocks, base);
         self.temples.paint(self, &mut blocks, base);
         if self.generation >= Generation::V3 {
@@ -2073,7 +2101,7 @@ mod tests {
         ] {
             let g = Generator::with_generation(seed, Dimension::Overworld, Generation::V2);
             assert_eq!(g.villages.nearest(&g, IVec3::ZERO), Some(village), "seed {seed} village");
-            assert_eq!(g.mineshafts.nearest(IVec3::ZERO), Some(mineshaft), "seed {seed} mineshaft");
+            assert_eq!(g.mineshafts.nearest(&g, IVec3::ZERO), Some(mineshaft), "seed {seed} mineshaft");
             let (lo, hi) = (Dimension::Overworld.chunk_rows().start, Dimension::Overworld.chunk_rows().end);
             let mut positions: Vec<_> =
                 (-3..=3).flat_map(|x| (-3..=3).flat_map(move |z| (lo..hi).map(move |y| IVec3::new(x, y, z)))).collect();
@@ -2211,7 +2239,7 @@ mod tests {
                         ("trial chamber", g.trial_chambers.nearest(&g, IVec2::ZERO, 3000), 2),
                         ("mansion", g.temples.nearest(&g, Kind::Mansion, IVec2::ZERO, 12000), 2),
                         ("stronghold", g.strongholds.nearest(IVec3::ZERO), 2),
-                        ("mineshaft", g.mineshafts.nearest(IVec3::ZERO), 1),
+                        ("mineshaft", g.mineshafts.nearest(&g, IVec3::ZERO), 1),
                     ],
                     Dimension::Nether => vec![
                         ("fortress", g.nearest_fortress(IVec2::ZERO), 2),

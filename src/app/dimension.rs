@@ -19,12 +19,12 @@ use crate::world::World;
 use crate::world::block::Block;
 use crate::world::chunk::ChunkData;
 use crate::world::storage::Storage;
-use crate::world::terrain::{Dimension, Generator, SEA_LEVEL};
+use crate::world::terrain::{Dimension, Generator};
 
 use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 29] = [
+pub(super) const DIMENSION_KEYS: [&str; 33] = [
     "furnaces",
     "chests",
     "items",
@@ -55,6 +55,13 @@ pub(super) const DIMENSION_KEYS: [&str; 29] = [
     "raids",
     // v0.16 Track C.
     "beacons",
+    // v0.16 Track F.
+    "conduits",
+    // v0.16 Track H.
+    "potent_sulfur",
+    "wither_skulls",
+    // v0.16 Track G.
+    "end_crystals",
 ];
 /// How far around the arrival point to look for an existing portal.
 const SEARCH_RADIUS: i32 = 16;
@@ -64,31 +71,27 @@ pub(super) const NETHER_FOG: [f32; 3] = [0.20, 0.035, 0.025];
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(super) enum Arrival {
     /// Through a portal, to the nearest portal around this cell (one is
-    /// built if there's none).
-    Portal(IVec3),
+    /// built, along X if `true` else Z, if there's none).
+    Portal(IVec3, bool),
+    /// v0.16 Track G: the portal the search found, out of the loaded area:
+    /// wait for it to load, then step in.
+    PortalAt(IVec3),
     /// Back from the dead: the bed or world spawn.
     Respawn,
     /// Back from the dead to the Nether respawn anchor at this cell.
     Anchor(IVec3),
     EndSpawn,
     /// Through an End gateway at `from` to the one at `exit`, which is
-    /// built (with an island under it if `island`) and linked back if it's
-    /// new.
+    /// built (after the `EndIslandFeature` island at `island`, if any) and
+    /// linked back if it's new. The traveller keeps `vel` (Java's
+    /// `Relative.DELTA`).
     Gateway {
         exit: IVec3,
         from: IVec3,
-        island: bool,
+        island: Option<IVec3>,
         link: bool,
+        vel: DVec3,
     },
-}
-
-/// Heights a portal may stand at in a dimension.
-fn portal_range(dim: Dimension) -> (i32, i32) {
-    match dim {
-        Dimension::Nether => (crate::world::nether::LAVA_SEA + 3, 116),
-        Dimension::Overworld => (Dimension::Overworld.min_y() + 2, 304),
-        Dimension::End => (2, 240),
-    }
 }
 
 /// Where a dimension's save lives inside the world folder.
@@ -149,9 +152,11 @@ impl Game {
         props.insert("utilities".to_string(), self.world.utilities_to_string());
         props.insert("workstations".to_string(), self.world.workstations_to_string());
         props.insert("beacons".to_string(), self.world.beacons_to_string());
+        props.insert("conduits".to_string(), self.world.conduits_to_string());
+        props.insert("potent_sulfur".to_string(), self.world.potent_sulfur_to_string());
         self.mobs.entities.save_props(&mut props);
         if let Some(fight) = &self.mobs.entities.fight {
-            props.insert("dragon".to_string(), fight.serialize());
+            props.insert("dragon".to_string(), fight.serialize(&self.mobs.entities.crystals));
         }
         props
     }
@@ -216,6 +221,12 @@ impl Game {
         if let Some(b) = props.get("beacons") {
             self.world.load_beacons(b);
         }
+        if let Some(c) = props.get("conduits") {
+            self.world.load_conduits(c);
+        }
+        if let Some(g) = props.get("potent_sulfur") {
+            self.world.load_potent_sulfur(g);
+        }
         // Entities in chunks that haven't streamed in yet move to per-chunk
         // storage on the first tick; ridden vehicles stay with their riders.
         self.mobs.entities.load_props(props);
@@ -245,6 +256,11 @@ impl Game {
             .generator
             .end()
             .map(|end| crate::entity::dragon::Fight::load(end, props.get("dragon").map(String::as_str)));
+        // v0.16 Track G: older saves kept the pillar crystals in the fight.
+        let entities = &mut self.mobs.entities;
+        if let Some(fight) = &mut entities.fight {
+            fight.restore_crystals(&mut entities.crystals, props.contains_key("end_crystals"));
+        }
     }
 
     /// Saves this dimension and swaps in `to`, with the player waiting at
@@ -261,6 +277,9 @@ impl Game {
             self.save();
         }
         if self.dimension == Dimension::Overworld {
+            if self.lan.client.is_none() {
+                self.settle_crystal_hits();
+            }
             self.overworld_props = self.dimension_props();
         }
         let (chunks, props) = load_dimension(&self.storage, to, &self.overworld_props);
@@ -297,16 +316,14 @@ impl Game {
         let scale = if to == Dimension::Nether { 1.0 / 8.0 } else { 8.0 };
         let (x, z) =
             ((self.session.player.pos.x * scale).floor() as i32, (self.session.player.pos.z * scale).floor() as i32);
-        let y = match to {
-            Dimension::Nether => (self.session.player.pos.y as i32).clamp(40, 100),
-            Dimension::End => unreachable!("Nether portals cannot enter the End"),
-            Dimension::Overworld => {
-                let (seed, generation) = (self.world.generator.seed, self.world.generator.generation);
-                let ground = Generator::with_generation(seed, Dimension::Overworld, generation).column(x, z).height;
-                ground.max(SEA_LEVEL) + 1
-            }
-        };
-        self.switch_dimension(to, Arrival::Portal(IVec3::new(x, y, z)));
+        // `NetherPortalBlock.getPortalDestination`: the scaled position at
+        // the traveller's own height; a new portal follows the one entered.
+        let y = self.session.player.pos.y.floor() as i32;
+        let along_x = self.touched(Block::NETHER_PORTAL).is_none_or(|cell| {
+            let holds = |p: IVec3| matches!(self.world.get_block(p), Some(Block::NETHER_PORTAL | Block::OBSIDIAN));
+            holds(cell + IVec3::X) && holds(cell - IVec3::X)
+        });
+        self.switch_dimension(to, Arrival::Portal(IVec3::new(x, y, z), along_x));
     }
 
     /// While travelling: holds the player in place until the destination
@@ -315,7 +332,7 @@ impl Game {
     pub(super) fn update_arrival(&mut self) -> bool {
         let Some(arrival) = self.arrival else { return false };
         let target = match arrival {
-            Arrival::Portal(p) => p,
+            Arrival::Portal(p, _) | Arrival::PortalAt(p) => p,
             Arrival::EndSpawn => crate::world::end::SPAWN,
             Arrival::Gateway { exit, .. } => exit,
             // Load where `respawn_point` will put the player: the bed (checked
@@ -325,11 +342,14 @@ impl Game {
             Arrival::Anchor(anchor) => anchor,
         };
         let r = match arrival {
-            Arrival::Portal(_) => SEARCH_RADIUS,
+            Arrival::Portal(..) => SEARCH_RADIUS,
+            Arrival::PortalAt(_) => 2,
             Arrival::Respawn => 0,
             Arrival::Anchor(_) => 1,
             Arrival::EndSpawn => 2,
-            Arrival::Gateway { .. } => 6,
+            // Room for the gateway's arrival search and a new island.
+            Arrival::Gateway { island: None, .. } => 6,
+            Arrival::Gateway { island: Some(_), .. } => 16,
         };
         let ready = [(-r, -r), (r, -r), (-r, r), (r, r), (0, 0)]
             .iter()
@@ -349,10 +369,28 @@ impl Game {
             }
         }
         self.session.player.pos = match arrival {
-            Arrival::Portal(p) => {
-                let range = portal_range(self.dimension);
-                let at = self.world.find_portal(p, SEARCH_RADIUS, range);
-                let at = at.unwrap_or_else(|| self.world.build_portal(p, range));
+            Arrival::Portal(..) | Arrival::PortalAt(_) => {
+                let at = match arrival {
+                    Arrival::Portal(p, along_x) => {
+                        // `PortalForcer`: an existing portal within 16 blocks
+                        // into the Nether or 128 out of it, else a new one.
+                        let radius = if self.dimension == Dimension::Nether {
+                            crate::world::portal::NETHER_PORTAL_RADIUS
+                        } else {
+                            crate::world::portal::OVERWORLD_PORTAL_RADIUS
+                        };
+                        match self.world.find_portal(p, radius) {
+                            Some(at) if !self.world.column_loaded(at.x, at.z) => {
+                                self.arrival = Some(Arrival::PortalAt(at));
+                                return true;
+                            }
+                            Some(at) => at,
+                            None => self.world.create_portal(p, along_x),
+                        }
+                    }
+                    Arrival::PortalAt(at) => at,
+                    _ => unreachable!(),
+                };
                 // Arriving in a portal doesn't send you straight back.
                 self.portal_locked = true;
                 // Face out of the portal's open side.
@@ -397,9 +435,9 @@ impl Game {
                     return true;
                 }
             },
-            Arrival::Gateway { exit, from, island, link } => {
-                if island && self.world.get_block(exit - IVec3::Y * 10) == Some(Block::AIR) {
-                    self.world.build_end_island(exit - IVec3::Y * 10);
+            Arrival::Gateway { exit, from, island, link, .. } => {
+                if let Some(origin) = island {
+                    self.world.build_end_island(origin);
                 }
                 if self.world.get_block(exit) != Some(Block::END_GATEWAY) {
                     self.world.build_gateway(exit);
@@ -413,7 +451,10 @@ impl Game {
             }
         };
         self.relocate_agents();
-        self.session.player.vel = DVec3::ZERO;
+        self.session.player.vel = match arrival {
+            Arrival::Gateway { vel, .. } => vel,
+            _ => DVec3::ZERO,
+        };
         self.session.player.flying = self.session.player.flying && self.session.mode.can_fly();
         self.session.vitals.reset_fall();
         self.arrival = None;
@@ -436,12 +477,14 @@ impl Game {
     /// exit, or out to the outer islands the first time.
     pub(super) fn enter_gateway(&mut self, cell: IVec3) {
         let Some(fight) = &self.mobs.entities.fight else { return };
+        // `EndGatewayBlock.getPortalDestination`: players keep their motion
+        // and facing (`Relative.DELTA`, `ROTATION`).
+        let vel = self.session.player.vel;
         let arrival = match fight.gateway_exit(cell) {
-            Some(exit) => Arrival::Gateway { exit, from: cell, island: false, link: false },
+            Some(exit) => Arrival::Gateway { exit, from: cell, island: None, link: false, vel },
             None => {
-                let Some(end) = self.world.generator.end() else { return };
-                let (exit, island) = end.gateway_exit(cell);
-                Arrival::Gateway { exit, from: cell, island, link: true }
+                let Some(found) = self.world.find_gateway_exit(cell) else { return };
+                Arrival::Gateway { exit: found.exit, from: cell, island: found.island, link: true, vel }
             }
         };
         self.audio.play_in(SoundSource::Ambient, Sound::Teleport, None, 0.8, (0.7, 0.8));

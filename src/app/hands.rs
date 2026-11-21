@@ -491,6 +491,8 @@ impl Actor<'_> {
                 self.requests.push(Request::Open(done.used));
             }
             Used::Decor { at, effect } => super::utilities::decor_feedback(audio, at, effect),
+            // `EndCrystalItem` plays no sound (only `ENTITY_PLACE`).
+            Used::CrystalPlaced { .. } => {}
             Used::Placed(placement) => {
                 use voxelcraft::session::placement::{Kind, Outcome};
                 match placement {

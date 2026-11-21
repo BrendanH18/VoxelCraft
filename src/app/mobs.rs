@@ -108,6 +108,70 @@ impl Game {
         }
     }
 
+    /// What the entities see of the players and the world this update.
+    pub(super) fn entity_ctx(&self) -> entity::Ctx {
+        let mut players = vec![Target {
+            spectator: self.session.mode == voxelcraft::rules::GameMode::Spectator,
+            alive: !self.session.vitals.is_dead(),
+            look: self.session.player.forward().as_dvec3(),
+            thorns: Target::thorns_of(&self.session.inventory.armor),
+            held_enchants: self
+                .session
+                .inventory
+                .get(self.body.actions.selected)
+                .map_or(Default::default(), |s| s.active_enchants()),
+            shape: self.session.player.collision_shape(),
+            gold_armor: crate::entity::nether::wears_gold(&self.session.inventory.armor),
+            held_item: self.held_item(),
+            on_ground: self.session.player.on_ground,
+            health: self.session.vitals.health,
+            effects: self.session.vitals.effects.mask(),
+            armor_pieces: self.session.inventory.armor.iter().flatten().count() as u8,
+            head: self.session.inventory.armor[0].and_then(|s| crate::world::skulls::kind_of_item(s.item)),
+            sneaking: self.session.player.sneaking,
+            darkness_ticks: self
+                .session
+                .vitals
+                .effects
+                .get(voxelcraft::simulation::effects::Effect::Darkness)
+                .map_or(0, |e| e.ticks),
+            in_water: self.session.player.in_water,
+            swimming: self.session.player.swimming,
+            time_since_rest: self.session.vitals.time_since_rest,
+            sprinting: self.session.player.sprinting,
+            blocking: self.session.blocking(),
+            fall_flying: self.session.player.fall_flying,
+            passenger: self.session.player.vehicle.is_some(),
+            ..Target::new(
+                PlayerId::HOST,
+                self.session.player.pos,
+                self.session.mode.targetable() && !self.session.vitals.is_dead(),
+            )
+        }];
+        // Agents keep source-dimension positions until arrival relocates them.
+        if self.arrival.is_none() {
+            players.extend(self.agents.targets());
+        }
+        entity::Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::for_dimension(
+                self.dimension,
+                (self.day_time.rem_euclid(1.) * 24000.).floor() as u32,
+                self.weather.rain_level(),
+                self.weather.thunder_level(),
+            ),
+            players,
+            // The Nether has no sun to burn the undead.
+            daylight: if self.dimension.has_sky() {
+                self.weather.dim(super::sky_state(self.day_time).daylight)
+            } else {
+                0.0
+            },
+            raining: self.weather.is_raining() && self.dimension.has_sky(),
+            spawning: self.gamerules.bool("spawn_mobs"),
+            dimension: self.dimension,
+        }
+    }
+
     pub(super) fn update_mobs(&mut self, dt: f64) {
         // Entities leave the level with their chunk and return when it loads.
         self.mobs.entities.sync_chunk_entities(&mut self.world);
@@ -168,72 +232,15 @@ impl Game {
             self.mobs.entities.prime_tnt(cell, short_fuse);
             self.audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05));
         }
+        // v0.16 Track E: silverfish out of broken infested blocks.
+        self.mobs.entities.release_silverfish(&mut self.world.released_silverfish);
         crate::entity::golem::finish_golems(&mut self.world, &mut self.mobs.entities);
         self.finish_withers();
         crate::entity::frog::finish_hatches(&mut self.world, &mut self.mobs.entities);
         for (cell, count) in std::mem::take(&mut self.world.hatched_turtles) {
             self.mobs.entities.hatch_turtles(cell, count);
         }
-        let mut players = vec![Target {
-            spectator: self.session.mode == voxelcraft::rules::GameMode::Spectator,
-            alive: !self.session.vitals.is_dead(),
-            look: self.session.player.forward().as_dvec3(),
-            thorns: Target::thorns_of(&self.session.inventory.armor),
-            held_enchants: self
-                .session
-                .inventory
-                .get(self.body.actions.selected)
-                .map_or(Default::default(), |s| s.active_enchants()),
-            shape: self.session.player.collision_shape(),
-            gold_armor: crate::entity::nether::wears_gold(&self.session.inventory.armor),
-            held_item: self.held_item(),
-            on_ground: self.session.player.on_ground,
-            health: self.session.vitals.health,
-            effects: self.session.vitals.effects.mask(),
-            armor_pieces: self.session.inventory.armor.iter().flatten().count() as u8,
-            head: self.session.inventory.armor[0].and_then(|s| crate::world::skulls::kind_of_item(s.item)),
-            sneaking: self.session.player.sneaking,
-            darkness_ticks: self
-                .session
-                .vitals
-                .effects
-                .get(voxelcraft::simulation::effects::Effect::Darkness)
-                .map_or(0, |e| e.ticks),
-            in_water: self.session.player.in_water,
-            swimming: self.session.player.swimming,
-            time_since_rest: self.session.vitals.time_since_rest,
-            sprinting: self.session.player.sprinting,
-            blocking: self.session.blocking(),
-            fall_flying: self.session.player.fall_flying,
-            passenger: self.session.player.vehicle.is_some(),
-            ..Target::new(
-                PlayerId::HOST,
-                self.session.player.pos,
-                self.session.mode.targetable() && !self.session.vitals.is_dead(),
-            )
-        }];
-        // Agents keep source-dimension positions until arrival relocates them.
-        if self.arrival.is_none() {
-            players.extend(self.agents.targets());
-        }
-        let ctx = entity::Ctx {
-            spawn_light: crate::simulation::lighting::SpawnLight::for_dimension(
-                self.dimension,
-                (self.day_time.rem_euclid(1.) * 24000.).floor() as u32,
-                self.weather.rain_level(),
-                self.weather.thunder_level(),
-            ),
-            players,
-            // The Nether has no sun to burn the undead.
-            daylight: if self.dimension.has_sky() {
-                self.weather.dim(super::sky_state(self.day_time).daylight)
-            } else {
-                0.0
-            },
-            raining: self.weather.is_raining() && self.dimension.has_sky(),
-            spawning: self.gamerules.bool("spawn_mobs"),
-            dimension: self.dimension,
-        };
+        let ctx = self.entity_ctx();
         self.world.set_bee_clock(self.dimension, (self.day_time.rem_euclid(1.) * 24000.).floor() as u32);
         self.mobs.entities.tick_lightning(dt, &mut self.world, &ctx, self.weather.is_thundering());
         let mut smashed = Vec::new();
@@ -413,7 +420,10 @@ impl Game {
                     }
                 }
                 EntityEvent::PlayerEffect { player: PlayerId::HOST, effect, amplifier, ticks } => {
-                    if arrow_effects.allows() && self.session.mode.is_survival() {
+                    if arrow_effects.allows()
+                        && self.session.mode.is_survival()
+                        && !elder_curse_held(&self.session.vitals.effects, effect, amplifier, ticks)
+                    {
                         let damage = self.session.vitals.apply_effect(effect, amplifier, ticks);
                         if damage > 0.0 {
                             self.damage_player(damage, Cause::MAGIC);
@@ -424,6 +434,7 @@ impl Game {
                     if arrow_effects.allows()
                         && let Some(bot) = self.agents.by_id_mut(player)
                         && bot.agent.session.mode.is_survival()
+                        && !elder_curse_held(&bot.agent.session.vitals.effects, effect, amplifier, ticks)
                     {
                         let damage = bot.agent.session.vitals.apply_effect(effect, amplifier, ticks);
                         if damage > 0.0 {
@@ -466,14 +477,7 @@ impl Game {
                     }
                 }
                 EntityEvent::Explosion { center, power, cause, credit_player } => {
-                    // `ServerExplosion.explode` posts `explode` at its centre.
-                    self.world.emit_game_event(
-                        center,
-                        crate::world::vibration::GameEvent::Explode,
-                        crate::world::vibration::EventSource::NONE,
-                        None,
-                    );
-                    self.explode(center, power, cause, credit_player)
+                    self.explosion_event(center, power, cause, credit_player)
                 }
                 EntityEvent::WindBurst(burst) => self.wind_burst(&burst),
                 // v0.16 Track C: the Wither's blasts, broken blocks and roses.
@@ -724,6 +728,21 @@ impl Game {
                     self.world.open_exit_portal(first);
                     self.audio.play(Sound::PortalSpawn, None, 1.0, (1.0, 1.0));
                 }
+                // v0.16 Track G: End crystals and the dragon respawn ritual.
+                EntityEvent::CrystalFire { cell } => {
+                    self.world.crystal_fire(cell);
+                }
+                EntityEvent::ExitPortal { active } => self.world.set_exit_portal(active, false),
+                EntityEvent::RespawnPillar { index } => self.respawn_pillar(index),
+                EntityEvent::QuietBlast { center, power } => {
+                    self.world.emit_game_event(
+                        center,
+                        crate::world::vibration::GameEvent::Explode,
+                        crate::world::vibration::EventSource::NONE,
+                        None,
+                    );
+                    self.explode_with(center, power, Cause::END_CRYSTAL, false, false);
+                }
             }
         }
         if self.difficulty == crate::simulation::difficulty::Difficulty::Peaceful {
@@ -899,12 +918,62 @@ impl Game {
         );
     }
 
+    /// Before a save: End crystal hits still queued for the next tick are
+    /// resolved now, as Java resolves them at once (`EndCrystal.hurtServer`),
+    /// so a save never keeps a hit crystal whole. Their blasts go off here
+    /// and may hit more crystals, so this repeats (each pass removes one).
+    pub(super) fn settle_crystal_hits(&mut self) {
+        while self.mobs.entities.crystals.hits_pending() {
+            let ctx = self.entity_ctx();
+            let mut events = Vec::new();
+            self.mobs.entities.settle_crystal_hits(&ctx, &mut events);
+            for event in events {
+                match event {
+                    EntityEvent::Explosion { center, power, cause, credit_player } => {
+                        self.explosion_event(center, power, cause, credit_player)
+                    }
+                    EntityEvent::ExitPortal { active } => self.world.set_exit_portal(active, false),
+                    _ => {}
+                }
+            }
+            // What the blasts broke drops now, before the save is written.
+            self.spawn_world_drops();
+            self.mobs.entities.release_silverfish(&mut self.world.released_silverfish);
+        }
+    }
+
+    /// An entity's [`EntityEvent::Explosion`]: `ServerExplosion.explode`
+    /// posts `explode` at its centre, then the blast.
+    fn explosion_event(&mut self, center: DVec3, power: f32, cause: Cause, credit_player: bool) {
+        self.world.emit_game_event(
+            center,
+            crate::world::vibration::GameEvent::Explode,
+            crate::world::vibration::EventSource::NONE,
+            None,
+        );
+        self.explode(center, power, cause, credit_player);
+    }
+
     /// Blows a hole in the world and hurts everything around `center`.
     /// `cause` completes the death message, as for [`Game::damage_player`].
     pub(super) fn explode(&mut self, center: DVec3, power: f32, cause: Cause, credit_player: bool) {
+        self.explode_with(center, power, cause, credit_player, true);
+    }
+
+    /// [`Game::explode`], breaking no blocks unless `breaks_blocks`
+    /// (`ExplosionInteraction.NONE`).
+    pub(super) fn explode_with(
+        &mut self,
+        center: DVec3,
+        power: f32,
+        cause: Cause,
+        credit_player: bool,
+        breaks_blocks: bool,
+    ) {
         // `ServerLevel.explode`: the interaction decides whether blocks break
         // and whether their drops decay.
-        let blast = self.gamerules.explosion(voxelcraft::rules::ExplosionSource::of_cause(cause.text));
+        let mut blast = self.gamerules.explosion(voxelcraft::rules::ExplosionSource::of_cause(cause.text));
+        blast.destroys_blocks &= breaks_blocks;
         // `ServerExplosion.explode`: find the cells, hurt entities while the
         // walls about to go still shield them, then break the blocks.
         let cells = if blast.destroys_blocks { self.world.exploded_cells(center, power) } else { Vec::new() };
@@ -935,6 +1004,26 @@ impl Game {
         self.audio.play(Sound::Explosion, Some(center), 1.0, (0.9, 1.05));
     }
 
+    /// v0.16 Track G: `SUMMONING_PILLARS` rebuilds pillar `index`: its top
+    /// cleared, a power 5 blast with no source at the cap (breaking
+    /// blocks), the spike rebuilt, and a new invulnerable crystal beaming
+    /// at (0, 128, 0).
+    fn respawn_pillar(&mut self, index: usize) {
+        let Some(p) = self.world.generator.end().and_then(|e| e.pillars().get(index).copied()) else { return };
+        self.world.clear_spike_top(&p);
+        let center = DVec3::new(f64::from(p.x) + 0.5, f64::from(p.top), f64::from(p.z) + 0.5);
+        self.world.emit_game_event(
+            center,
+            crate::world::vibration::GameEvent::Explode,
+            crate::world::vibration::EventSource::NONE,
+            None,
+        );
+        self.explode(center, crate::entity::dragon::PILLAR_BLAST, Cause::EXPLOSION, false);
+        self.world.build_spike(&p);
+        let beam = Some(crate::entity::dragon::RESPAWN_BEAM);
+        self.mobs.entities.crystals.spawn(p.crystal(), beam, true, true);
+    }
+
     /// F3 line with entity counts.
     /// F3's entity statistics, kept to two short lines (like Java's
     /// `E:` line) so they fit beside the left column.
@@ -961,4 +1050,22 @@ impl Game {
             ),
         ]
     }
+}
+
+/// v0.16 Track F: `MobEffectUtil.addEffectToPlayersAround` as the elder
+/// guardian calls it (Mining Fatigue III for 6000 ticks, display limit
+/// 1200) skips a player whose Mining Fatigue is already at least III with
+/// more than 1199 ticks left. The elder's pulse is the only source of that
+/// exact effect.
+fn elder_curse_held(
+    effects: &voxelcraft::simulation::effects::Effects,
+    effect: voxelcraft::simulation::effects::Effect,
+    amplifier: u8,
+    ticks: u32,
+) -> bool {
+    use voxelcraft::simulation::effects::Effect;
+    effect == Effect::MiningFatigue
+        && amplifier == 2
+        && ticks == 6000
+        && effects.get(Effect::MiningFatigue).is_some_and(|a| a.amplifier >= 2 && a.ticks > 1199)
 }

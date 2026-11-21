@@ -36,6 +36,7 @@ pub mod climate;
 pub mod colors;
 pub mod colour_blocks;
 pub mod composter;
+pub mod conduit;
 pub mod copper;
 pub mod copper_golem_statue;
 pub mod creaking;
@@ -67,6 +68,8 @@ pub mod geode;
 mod growth;
 pub mod heavy_core;
 mod honey;
+pub mod infested;
+pub mod java_pieces;
 pub mod jigsaw;
 pub mod jukebox;
 mod light_shape;
@@ -76,6 +79,7 @@ pub mod loot;
 pub mod mansion;
 pub mod maps;
 pub mod mineshaft;
+pub mod monument;
 pub mod mount_states;
 mod navigation;
 pub mod nether;
@@ -93,7 +97,8 @@ pub mod overworld_blocks;
 mod overworld_flora;
 pub mod pale_garden;
 pub mod poplar_trees;
-mod portal;
+pub mod portal;
+pub mod potent_sulfur;
 pub mod precipitation;
 pub mod pumpkin_blocks;
 pub mod rails;
@@ -108,6 +113,7 @@ pub mod scaffolding;
 pub mod sculk;
 pub mod sculk_spread;
 pub mod shape;
+pub mod shipwreck;
 pub mod shulker_box;
 pub mod skulls;
 pub mod slab_stair_states;
@@ -115,11 +121,13 @@ pub mod sniffer_egg;
 pub mod sniffer_plants;
 pub mod spawn_finder;
 mod spawner;
+pub mod speleothem;
 mod sponge;
 pub mod stone_blocks;
 pub mod storage;
 pub mod stronghold;
 pub mod structure;
+pub mod sulfur_springs;
 pub mod temples;
 pub mod terrain;
 pub mod trail_ruins;
@@ -137,6 +145,7 @@ pub mod waterlog;
 pub mod wither_rose;
 pub mod wood;
 pub mod workstations;
+pub mod worldgen_random;
 
 use std::sync::Arc;
 
@@ -385,6 +394,9 @@ pub struct World {
     /// TNT blocks a blast or fire took out, with whether to shorten the
     /// fuse (blasts only); the game turns them into entities.
     pub primed_tnt: Vec<(IVec3, bool)>,
+    /// v0.16 Track E: infested blocks broken this tick that let their
+    /// silverfish out (`InfestedBlock.spawnAfterBreak`); the game spawns them.
+    pub released_silverfish: Vec<IVec3>,
     /// Note blocks that played this tick: position, pitch 0..=24, instrument.
     pub notes: Vec<(IVec3, u8, u8)>,
     pub(crate) allay_notes: Vec<IVec3>,
@@ -399,6 +411,16 @@ pub struct World {
     /// game last asked.
     pub(crate) beacons: beacon::State,
     pub(crate) beacon_events: Vec<beacon::Event>,
+    /// v0.16 Track F: conduits (see [`conduit`]) and what they did since
+    /// the game last asked.
+    pub(crate) conduits: conduit::State,
+    pub(crate) conduit_events: Vec<conduit::Event>,
+    /// v0.16 Track H: potent sulfur block entities (see [`potent_sulfur`]),
+    /// what they did since the game last asked, and freshly loaded cells
+    /// whose state is settled on the next tick.
+    pub(crate) potent_sulfur: potent_sulfur::State,
+    pub(crate) potent_events: Vec<potent_sulfur::Event>,
+    pub(crate) potent_settle: Vec<IVec3>,
     /// Turtle eggs that hatched: cell and how many babies; the game spawns them.
     pub hatched_turtles: Vec<(IVec3, u8)>,
     pub hatched_tadpoles: Vec<(IVec3, u8)>,
@@ -551,6 +573,7 @@ impl World {
         self.register_campfires(pos, &data);
         self.register_beehives(pos, &data, true);
         self.register_creaking_hearts(pos, &data);
+        self.register_potent_sulfur(pos, &data);
         self.chunks.insert(
             pos,
             ChunkSlot {
@@ -691,6 +714,7 @@ impl World {
             xp_drops: Vec::new(),
             brews_done: Vec::new(),
             primed_tnt: Vec::new(),
+            released_silverfish: Vec::new(),
             notes: Vec::new(),
             allay_notes: Vec::new(),
             trip_sounds: Vec::new(),
@@ -698,6 +722,11 @@ impl World {
             wither_skulls: Vec::new(),
             beacons: Default::default(),
             beacon_events: Vec::new(),
+            conduits: Default::default(),
+            conduit_events: Vec::new(),
+            potent_sulfur: Default::default(),
+            potent_events: Vec::new(),
+            potent_settle: Vec::new(),
             hatched_turtles: Vec::new(),
             hatched_tadpoles: Vec::new(),
             sniffer_egg_events: Vec::new(),
@@ -720,6 +749,13 @@ impl World {
 
     pub fn render_distance(&self) -> i32 {
         self.render_distance
+    }
+
+    /// v0.16 Track G: the blocks of chunk section `cpos` as they stand,
+    /// loaded or saved (player-modified but unloaded); `None` if it has
+    /// only ever been generated and isn't loaded.
+    pub fn section_data(&self, cpos: IVec3) -> Option<Arc<ChunkData>> {
+        self.chunks.get(&cpos).map(|s| s.data.clone()).or_else(|| self.saved.get(&cpos).cloned())
     }
 
     /// Lowest block y of this world's dimension.
@@ -1072,6 +1108,13 @@ impl World {
             self.wither_skulls.push(p);
         }
         self.track_beacon(p, old, block);
+        self.track_conduit(p, old, block);
+        // v0.16 Track H: potent sulfur's block entity and `updateShape`.
+        self.track_potent_sulfur(p, old, block);
+        if old != block {
+            self.potent_sulfur_neighbours(p);
+            self.speleothem_neighbours(p);
+        }
         if old.is_log() && !block.is_log() {
             self.log_removed(p);
         }
@@ -1472,6 +1515,7 @@ impl World {
         self.register_campfires(pos, &data);
         self.register_beehives(pos, &data, modified);
         self.register_creaking_hearts(pos, &data);
+        self.register_potent_sulfur(pos, &data);
         self.register_sculk(pos, &data);
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
         let workers = &self.workers;
@@ -1931,17 +1975,23 @@ mod tests {
     fn fortress_chunks_register_loot_chests_and_blaze_spawners() {
         use super::fortress::{Fortresses, Kind};
         let layouts = Fortresses::new(1);
-        let fortress = (-2..=2).find_map(|x| layouts.get(IVec2::new(x, 0))).unwrap();
         let generator = Arc::new(Generator::for_dimension(1, super::terrain::Dimension::Nether));
         let mut found = (None, None);
-        for piece in &fortress.pieces {
-            let chunk = chunk_of(piece.bounds.min);
-            for (p, f) in generator.structure_features(chunk) {
-                match f {
-                    super::fortress::Feature::Chest(_) if found.0.is_none() => found.0 = Some(p),
-                    super::fortress::Feature::Spawner(_) if piece.kind == Kind::Throne => found.1 = Some(p),
-                    _ => {}
+        // The first fortress with both a chest turn and a throne.
+        for fortress in (-4..=4).flat_map(|z| (-4..=4).map(move |x| IVec2::new(x, z))).filter_map(|r| layouts.get(r)) {
+            found = (None, None);
+            for piece in &fortress.pieces {
+                let chunk = chunk_of(piece.bounds.min);
+                for (p, f) in generator.structure_features(chunk) {
+                    match f {
+                        super::fortress::Feature::Chest(_) if found.0.is_none() => found.0 = Some(p),
+                        super::fortress::Feature::Spawner(_) if piece.kind == Kind::Throne => found.1 = Some(p),
+                        _ => {}
+                    }
                 }
+            }
+            if found.0.is_some() && found.1.is_some() {
+                break;
             }
         }
         let (chest, cage) = (found.0.expect("a loot chest"), found.1.expect("a throne"));

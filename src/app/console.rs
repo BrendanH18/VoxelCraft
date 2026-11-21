@@ -313,9 +313,11 @@ impl Game {
                             6400,
                         )
                     }),
-                    "mineshaft" | "abandoned_mineshaft" => {
-                        self.world.generator.mineshafts.nearest(self.session.player.pos.floor().as_ivec3())
-                    }
+                    "mineshaft" | "abandoned_mineshaft" => self
+                        .world
+                        .generator
+                        .mineshafts
+                        .nearest(&*self.world.generator, self.session.player.pos.floor().as_ivec3()),
                     other
                         if self.dimension == Dimension::Overworld
                             && crate::world::temples::Kind::from_name(other).is_some() =>
@@ -361,7 +363,7 @@ impl Game {
                     let arrival = match to {
                         crate::world::terrain::Dimension::End => super::dimension::Arrival::EndSpawn,
                         crate::world::terrain::Dimension::Nether => {
-                            super::dimension::Arrival::Portal(glam::IVec3::new(0, 64, 0))
+                            super::dimension::Arrival::Portal(glam::IVec3::new(0, 64, 0), true)
                         }
                         crate::world::terrain::Dimension::Overworld => super::dimension::Arrival::Respawn,
                     };

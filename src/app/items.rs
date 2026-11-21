@@ -17,21 +17,26 @@ use crate::entity::PlayerId;
 const DRAW_DIST: f64 = 64.0;
 
 impl Game {
+    /// The items and experience the world dropped become entities.
+    pub(super) fn spawn_world_drops(&mut self) {
+        for (cell, stack) in std::mem::take(&mut self.world.drops) {
+            self.mobs.entities.drop_from_block(stack, cell);
+        }
+        for (cell, xp) in std::mem::take(&mut self.world.xp_drops) {
+            self.mobs.entities.spawn_xp(cell.as_dvec3() + DVec3::splat(0.5), xp);
+        }
+    }
+
     /// Spawns what the world dropped and what didn't fit in the inventory,
     /// then picks up items the player is touching. Closes a furnace or chest
     /// screen whose block is gone.
     pub(super) fn update_items(&mut self) {
-        for (cell, stack) in std::mem::take(&mut self.world.drops) {
-            self.mobs.entities.drop_from_block(stack, cell);
-        }
+        self.spawn_world_drops();
         for cell in std::mem::take(&mut self.world.brews_done) {
             // Java's brewing stand bubbling as a brew finishes.
             let at = cell.as_dvec3() + DVec3::splat(0.5);
             // The brewing stand's bubbling is `BLOCKS` in Java.
             self.audio.play_in(SoundSource::Blocks, crate::audio::sounds::Sound::Swim, Some(at), 0.5, (1.6, 1.9));
-        }
-        for (cell, xp) in std::mem::take(&mut self.world.xp_drops) {
-            self.mobs.entities.spawn_xp(cell.as_dvec3() + DVec3::splat(0.5), xp);
         }
         for stack in self.session.inventory.take_spill() {
             self.mobs.entities.throw(stack, self.session.player.eye(), self.session.player.forward().as_dvec3());

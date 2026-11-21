@@ -1296,6 +1296,8 @@ pub struct Mob {
     pub shulker: Option<Box<super::shulker::State>>,
     /// v0.16 Track D: sulfur cube timers, fuse and goals (see `entity::sulfur_cube`).
     pub sulfur_cube: Option<Box<super::sulfur_cube::State>>,
+    /// v0.16 Track E: a silverfish's merge and wake-up goals (see `entity::silverfish`).
+    pub silverfish: Option<Box<super::silverfish::State>>,
     /// v0.15 Track A: illager, vex and ravager state, raid membership
     /// included (see `entity::illager`).
     pub illager: Option<Box<super::illager::State>>,
@@ -1528,6 +1530,7 @@ impl Mob {
             endermite: (kind == MobKind::Endermite).then(Box::default),
             shulker: (kind == MobKind::Shulker).then(Box::default),
             sulfur_cube: (kind == MobKind::SulfurCube).then(Box::default),
+            silverfish: (kind == MobKind::Silverfish).then(Box::default),
             illager: super::illager::State::for_kind(kind),
             can_pick_up_loot: false,
             happy_ghast: (kind == MobKind::HappyGhast).then(Box::default),
@@ -1966,6 +1969,11 @@ impl Mob {
         if let Some(s) = &mut self.wither {
             s.hurt();
         }
+        // v0.16 Track E: `Silverfish.hurtServer` wakes its friends when an
+        // entity's hit lands.
+        if attacked && let Some(s) = &mut self.silverfish {
+            s.notify_hurt();
+        }
         if let Some(a) = &mut self.animal {
             a.love = 0.0;
             a.courtship = 0.0;
@@ -2246,7 +2254,7 @@ impl Mob {
             }
             (None, 0.)
         } else if self.kind == MobKind::Wither {
-            self.wither_wander(rng);
+            // Its goals run in `Entities::wither_tick`.
             (None, 0.)
         } else {
             super::mounts::control(self, dt, rng).unwrap_or_else(|| self.think(dtf, world, ctx, rng, events))

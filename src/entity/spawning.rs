@@ -255,7 +255,15 @@ pub(super) fn spawn_list<W: MobWorld + ?Sized>(
         e(J::Known(MobKind::MagmaCube), 3, 4, 4),
     ];
     if dimension == Dimension::Nether {
-        if category == C::Monster && world.in_fortress(cell) {
+        // `fortress.json`'s monster override holds inside a piece
+        // (`BoundingBoxType.PIECE`); `NaturalSpawner.isInNetherFortressBounds`
+        // also gives the list on nether bricks anywhere in the fortress's
+        // whole box (v0.16 Track E).
+        if category == C::Monster
+            && (world.in_fortress(cell)
+                || (world.block(cell - IVec3::Y) == Some(crate::world::block::Block::NETHER_BRICKS)
+                    && world.in_fortress_bounds(cell)))
+        {
             return &FORTRESS;
         }
         return spawn_lists::dimension_list(

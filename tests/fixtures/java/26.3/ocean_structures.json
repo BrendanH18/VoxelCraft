@@ -1,0 +1,1226 @@
+{
+ "biome_tags": {
+  "has_structure/ocean_monument": [
+   "deep_cold_ocean",
+   "deep_frozen_ocean",
+   "deep_lukewarm_ocean",
+   "deep_ocean"
+  ],
+  "has_structure/shipwreck": [
+   "cold_ocean",
+   "deep_cold_ocean",
+   "deep_frozen_ocean",
+   "deep_lukewarm_ocean",
+   "deep_ocean",
+   "frozen_ocean",
+   "lukewarm_ocean",
+   "ocean",
+   "warm_ocean"
+  ],
+  "has_structure/shipwreck_beached": [
+   "beach",
+   "snowy_beach"
+  ],
+  "required_ocean_monument_surrounding": [
+   "cold_ocean",
+   "deep_cold_ocean",
+   "deep_frozen_ocean",
+   "deep_lukewarm_ocean",
+   "deep_ocean",
+   "frozen_ocean",
+   "frozen_river",
+   "lukewarm_ocean",
+   "ocean",
+   "river",
+   "warm_ocean"
+  ]
+ },
+ "conduit": {
+  "ambient_interval": 80,
+  "attack_damage": 4.0,
+  "block_strength": [
+   3.0
+  ],
+  "constants": {
+   "BLOCK_REFRESH_RATE": 2,
+   "EFFECT_DURATION": 13,
+   "KILL_RANGE": 8,
+   "MIN_ACTIVE_SIZE": 16,
+   "MIN_KILL_SIZE": 42,
+   "ROTATION_SPEED": -0.0375
+  },
+  "effect_ticks": 260,
+  "item_rarity": "uncommon",
+  "kill_range": 8.0,
+  "range_divisor": 7,
+  "range_multiplier": 16,
+  "shape_interval": 40,
+  "short_ambient": [
+   60,
+   40
+  ]
+ },
+ "conduit_effect_block": [
+  "prismarine",
+  "prismarine_bricks",
+  "sea_lantern",
+  "dark_prismarine"
+ ],
+ "elder_guardian": {
+  "effect_amplifier": 2,
+  "effect_display_limit": 1200,
+  "effect_duration": 6000,
+  "effect_interval": 1200,
+  "effect_radius": 50,
+  "home_radius": 16
+ },
+ "generation_steps": [
+  "raw_generation",
+  "lakes",
+  "local_modifications",
+  "underground_structures",
+  "surface_structures",
+  "strongholds",
+  "underground_ores",
+  "underground_decoration",
+  "fluid_springs",
+  "vegetal_decoration",
+  "top_layer_modification"
+ ],
+ "loot_table": {
+  "pools": [
+   {
+    "entries": [
+     {
+      "name": "conduit",
+      "type": "item"
+     }
+    ],
+    "rolls": 1
+   }
+  ],
+  "random_sequence": "blocks/conduit",
+  "type": "block"
+ },
+ "monument": {
+  "biome_check_radius": 29,
+  "constants": {
+   "GRIDROOM_DEPTH": 8,
+   "GRIDROOM_HEIGHT": 4,
+   "GRIDROOM_WIDTH": 8,
+   "GRID_DEPTH": 5,
+   "GRID_FLOOR_COUNT": 25,
+   "GRID_HEIGHT": 3,
+   "GRID_SIZE": 75,
+   "GRID_WIDTH": 5,
+   "LEFTWING_INDEX": 1001,
+   "PENTHOUSE_INDEX": 1003,
+   "RIGHTWING_INDEX": 1002,
+   "building_BIOME_RANGE_CHECK": 29,
+   "building_DEPTH": 58,
+   "building_HEIGHT": 22,
+   "building_TOP_POSITION": 61,
+   "building_WIDTH": 58
+  },
+  "start_offset_in_chunk": 9,
+  "top_piece_offset": -29
+ },
+ "note": "Shipwreck template sizes, markers, palettes and block names only; no layout is copied (FE-02).",
+ "recipe": {
+  "key": {
+   "#": "nautilus_shell",
+   "X": "heart_of_the_sea"
+  },
+  "pattern": [
+   "###",
+   "#X#",
+   "###"
+  ],
+  "result": {
+   "id": "conduit"
+  },
+  "type": "crafting_shaped"
+ },
+ "reference": "Minecraft Java Edition 26.3",
+ "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+ "shipwreck_palettes": [
+  {
+   "oak": "oak",
+   "spruce": "spruce"
+  },
+  {
+   "oak": "jungle",
+   "spruce": "spruce"
+  },
+  {
+   "oak": "dark_oak",
+   "spruce": "jungle"
+  },
+  {
+   "oak": "dark_oak",
+   "spruce": "spruce"
+  },
+  {
+   "oak": "spruce",
+   "spruce": "oak"
+  },
+  {
+   "oak": "spruce",
+   "spruce": "jungle"
+  },
+  {
+   "oak": "spruce",
+   "spruce": "dark_oak"
+  },
+  {
+   "oak": "oak",
+   "spruce": "birch"
+  }
+ ],
+ "shipwreck_pieces": {
+  "beached": [
+   "shipwreck/with_mast",
+   "shipwreck/sideways_full",
+   "shipwreck/sideways_fronthalf",
+   "shipwreck/sideways_backhalf",
+   "shipwreck/rightsideup_full",
+   "shipwreck/rightsideup_fronthalf",
+   "shipwreck/rightsideup_backhalf",
+   "shipwreck/with_mast_degraded",
+   "shipwreck/rightsideup_full_degraded",
+   "shipwreck/rightsideup_fronthalf_degraded",
+   "shipwreck/rightsideup_backhalf_degraded"
+  ],
+  "beached_drop_bound": 3,
+  "max_region_size": 32,
+  "ocean": [
+   "shipwreck/with_mast",
+   "shipwreck/upsidedown_full",
+   "shipwreck/upsidedown_fronthalf",
+   "shipwreck/upsidedown_backhalf",
+   "shipwreck/sideways_full",
+   "shipwreck/sideways_fronthalf",
+   "shipwreck/sideways_backhalf",
+   "shipwreck/rightsideup_full",
+   "shipwreck/rightsideup_fronthalf",
+   "shipwreck/rightsideup_backhalf",
+   "shipwreck/with_mast_degraded",
+   "shipwreck/upsidedown_full_degraded",
+   "shipwreck/upsidedown_fronthalf_degraded",
+   "shipwreck/upsidedown_backhalf_degraded",
+   "shipwreck/sideways_full_degraded",
+   "shipwreck/sideways_fronthalf_degraded",
+   "shipwreck/sideways_backhalf_degraded",
+   "shipwreck/rightsideup_full_degraded",
+   "shipwreck/rightsideup_fronthalf_degraded",
+   "shipwreck/rightsideup_backhalf_degraded"
+  ],
+  "pivot": [
+   4,
+   0,
+   15
+  ],
+  "start_y": 90
+ },
+ "shipwreck_templates": {
+  "rightsideup_backhalf": {
+   "blocks": [
+    "chest",
+    "oak_door",
+    "oak_fence",
+    "oak_log",
+    "oak_planks",
+    "oak_slab",
+    "oak_stairs",
+    "oak_trapdoor",
+    "spruce_fence",
+    "spruce_planks",
+    "spruce_slab",
+    "spruce_stairs"
+   ],
+   "entities": 0,
+   "markers": [
+    {
+     "chest_facing": "west",
+     "name": "map_chest",
+     "pos": [
+      5,
+      3,
+      6
+     ]
+    },
+    {
+     "chest_facing": "north",
+     "name": "treasure_chest",
+     "pos": [
+      6,
+      5,
+      12
+     ]
+    }
+   ],
+   "size": [
+    9,
+    9,
+    16
+   ],
+   "stored": 414
+  },
+  "rightsideup_backhalf_degraded": {
+   "blocks": [
+    "chest",
+    "oak_door",
+    "oak_fence",
+    "oak_log",
+    "oak_planks",
+    "oak_slab",
+    "oak_stairs",
+    "oak_trapdoor",
+    "spruce_fence",
+    "spruce_planks",
+    "spruce_slab",
+    "spruce_stairs"
+   ],
+   "entities": 0,
+   "markers": [
+    {
+     "chest_facing": "west",
+     "name": "map_chest",
+     "pos": [
+      5,
+      3,
+      6
+     ]
+    },
+    {
+     "chest_facing": "north",
+     "name": "treasure_chest",
+     "pos": [
+      6,
+      5,
+      12
+     ]
+    }
+   ],
+   "size": [
+    9,
+    9,
+    16
+   ],
+   "stored": 385
+  },
+  "rightsideup_fronthalf": {
+   "blocks": [
+    "chest",
+    "oak_door",
+    "oak_log",
+    "oak_planks",
+    "oak_stairs",
+    "oak_trapdoor",
+    "spruce_fence",
+    "spruce_planks",
+    "spruce_stairs"
+   ],
+   "entities": 0,
+   "markers": [
+    {
+     "chest_facing": "south",
+     "name": "supply_chest",
+     "pos": [
+      4,
+      3,
+      8
+     ]
+    }
+   ],
+   "size": [
+    9,
+    9,
+    24
+   ],
+   "stored": 355
+  },
+  "rightsideup_fronthalf_degraded": {
+   "blocks": [
+    "chest",
+    "oak_door",
+    "oak_log",
+    "oak_planks",
+    "oak_stairs",
+    "oak_trapdoor",
+    "spruce_fence",
+    "spruce_planks",
+    "spruce_stairs"
+   ],
+   "entities": 0,
+   "markers": [
+    {
+     "chest_facing": "south",
+     "name": "supply_chest",
+     "pos": [
+      4,
+      3,
+      8
+     ]
+    }
+   ],
+   "size": [
+    9,
+    9,
+    24
+   ],
+   "stored": 299
+  },
+  "rightsideup_full": {
+   "blocks": [
+    "chest",
+    "oak_door",
+    "oak_fence",
+    "oak_log",
+    "oak_planks",
+    "oak_slab",
+    "oak_stairs",
+    "oak_trapdoor",
+    "spruce_fence",
+    "spruce_planks",
+    "spruce_slab",
+    "spruce_stairs"
+   ],
+   "entities": 0,
+   "markers": [
+    {
+     "chest_facing": "south",
+     "name": "supply_chest",
+     "pos": [
+      4,
+      3,
+      8
+     ]
+    },
+    {
+     "chest_facing": "west",
+     "name": "map_chest",
+     "pos": [
+      5,
+      3,
+      18
+     ]
+    },
+    {
+     "chest_facing": "north",
+     "name": "treasure_chest",
+     "pos": [
+      6,
+      5,
+      24
+     ]
+    }
+   ],
+   "size": [
+    9,
+    9,
+    28
+   ],
+   "stored": 662
+  },
+  "rightsideup_full_degraded": {
+   "blocks": [
+    "chest",
+    "oak_door",
+    "oak_fence",
+    "oak_log",
+    "oak_planks",
+    "oak_slab",
+    "oak_stairs",
+    "oak_trapdoor",
+    "spruce_fence",
+    "spruce_planks",
+    "spruce_slab",
+    "spruce_stairs"
+   ],
+   "entities": 0,
+   "markers": [
+    {
+     "chest_facing": "south",
+     "name": "supply_chest",
+     "pos": [
+      4,
+      3,
+      8
+     ]
+    },
+    {
+     "chest_facing": "west",
+     "name": "map_chest",
+     "pos": [
+      5,
+      3,
+      18
+     ]
+    },
+    {
+     "chest_facing": "north",
+     "name": "treasure_chest",
+     "pos": [
+      6,
+      5,
+      24
+     ]
+    }
+   ],
+   "size": [
+    9,
+    9,
+    28
+   ],
+   "stored": 619
+  },
+  "sideways_backhalf": {
+   "blocks": [
+    "chest",
+    "oak_fence",
+    "oak_log",
+    "oak_planks",
+    "oak_stairs",
+    "oak_trapdoor",
+    "spruce_fence",
+    "spruce_planks",
+    "spruce_stairs"
+   ],
+   "entities": 0,
+   "markers": [
+    {
+     "chest_facing": "north",
+     "name": "treasure_chest",
+     "pos": [
+      3,
+      3,
+      13
+     ]
+    },
+    {
+     "chest_facing": "north",
+     "name": "map_chest",
+     "pos": [
+      6,
+      4,
+      8
+     ]
+    }
+   ],
+   "size": [
+    9,
+    9,
+    17
+   ],
+   "stored": 381
+  },
+  "sideways_backhalf_degraded": {
+   "blocks": [
+    "chest",
+    "oak_fence",
+    "oak_log",
+    "oak_planks",
+    "oak_stairs",
+    "oak_trapdoor",
+    "spruce_fence",
+    "spruce_planks",
+    "spruce_stairs"
+   ],
+   "entities": 0,
+   "markers": [
+    {
+     "chest_facing": "north",
+     "name": "treasure_chest",
+     "pos": [
+      3,
+      3,
+      13
+     ]
+    },
+    {
+     "chest_facing": "north",
+     "name": "map_chest",
+     "pos": [
+      6,
+      4,
+      8
+     ]
+    }
+   ],
+   "size": [
+    9,
+    9,
+    17
+   ],
+   "stored": 340
+  },
+  "sideways_fronthalf": {
+   "blocks": [
+    "chest",
+    "oak_log",
+    "oak_planks",
+    "oak_stairs",
+    "oak_trapdoor",
+    "spruce_fence",
+    "spruce_planks",
+    "spruce_stairs"
+   ],
+   "entities": 0,
+   "markers": [
+    {
+     "chest_facing": "south",
+     "name": "supply_chest",
+     "pos": [
+      5,
+      4,
+      8
+     ]
+    }
+   ],
+   "size": [
+    9,
+    9,
+    24
+   ],
+   "stored": 321
+  },
+  "sideways_fronthalf_degraded": {
+   "blocks": [
+    "chest",
+    "oak_log",
+    "oak_planks",
+    "oak_stairs",
+    "oak_trapdoor",
+    "spruce_fence",
+    "spruce_planks",
+    "spruce_stairs"
+   ],
+   "entities": 0,
+   "markers": [
+    {
+     "chest_facing": "south",
+     "name": "supply_chest",
+     "pos": [
+      5,
+      4,
+      8
+     ]
+    }
+   ],
+   "size": [
+    9,
+    9,
+    24
+   ],
+   "stored": 246
+  },
+  "sideways_full": {
+   "blocks": [
+    "chest",
+    "oak_fence",
+    "oak_log",
+    "oak_planks",
+    "oak_stairs",
+    "oak_trapdoor",
+    "spruce_fence",
+    "spruce_planks",
+    "spruce_stairs"
+   ],
+   "entities": 0,
+   "markers": [
+    {
+     "chest_facing": "north",
+     "name": "treasure_chest",
+     "pos": [
+      3,
+      3,
+      24
+     ]
+    },
+    {
+     "chest_facing": "south",
+     "name": "supply_chest",
+     "pos": [
+      5,
+      4,
+      8
+     ]
+    },
+    {
+     "chest_facing": "north",
+     "name": "map_chest",
+     "pos": [
+      6,
+      4,
+      19
+     ]
+    }
+   ],
+   "size": [
+    9,
+    9,
+    28
+   ],
+   "stored": 641
+  },
+  "sideways_full_degraded": {
+   "blocks": [
+    "chest",
+    "oak_fence",
+    "oak_log",
+    "oak_planks",
+    "oak_stairs",
+    "oak_trapdoor",
+    "spruce_fence",
+    "spruce_planks",
+    "spruce_stairs"
+   ],
+   "entities": 0,
+   "markers": [
+    {
+     "chest_facing": "north",
+     "name": "treasure_chest",
+     "pos": [
+      3,
+      3,
+      24
+     ]
+    },
+    {
+     "chest_facing": "south",
+     "name": "supply_chest",
+     "pos": [
+      5,
+      4,
+      8
+     ]
+    },
+    {
+     "chest_facing": "north",
+     "name": "map_chest",
+     "pos": [
+      6,
+      4,
+      19
+     ]
+    }
+   ],
+   "size": [
+    9,
+    9,
+    28
+   ],
+   "stored": 583
+  },
+  "upsidedown_backhalf": {
+   "blocks": [
+    "chest",
+    "oak_fence",
+    "oak_log",
+    "oak_planks",
+    "oak_slab",
+    "oak_stairs",
+    "oak_trapdoor",
+    "spruce_fence",
+    "spruce_planks",
+    "spruce_slab",
+    "spruce_stairs"
+   ],
+   "entities": 0,
+   "markers": [
+    {
+     "chest_facing": "north",
+     "name": "treasure_chest",
+     "pos": [
+      2,
+      3,
+      12
+     ]
+    },
+    {
+     "chest_facing": "east",
+     "name": "map_chest",
+     "pos": [
+      3,
+      6,
+      5
+     ]
+    }
+   ],
+   "size": [
+    9,
+    9,
+    16
+   ],
+   "stored": 387
+  },
+  "upsidedown_backhalf_degraded": {
+   "blocks": [
+    "chest",
+    "oak_fence",
+    "oak_log",
+    "oak_planks",
+    "oak_slab",
+    "oak_stairs",
+    "oak_trapdoor",
+    "spruce_fence",
+    "spruce_planks",
+    "spruce_slab",
+    "spruce_stairs"
+   ],
+   "entities": 0,
+   "markers": [
+    {
+     "chest_facing": "north",
+     "name": "treasure_chest",
+     "pos": [
+      2,
+      3,
+      12
+     ]
+    },
+    {
+     "chest_facing": "east",
+     "name": "map_chest",
+     "pos": [
+      3,
+      6,
+      5
+     ]
+    }
+   ],
+   "size": [
+    9,
+    9,
+    16
+   ],
+   "stored": 362
+  },
+  "upsidedown_fronthalf": {
+   "blocks": [
+    "chest",
+    "oak_log",
+    "oak_planks",
+    "oak_stairs",
+    "oak_trapdoor",
+    "spruce_fence",
+    "spruce_planks",
+    "spruce_stairs"
+   ],
+   "entities": 0,
+   "markers": [
+    {
+     "chest_facing": "south",
+     "name": "supply_chest",
+     "pos": [
+      4,
+      6,
+      8
+     ]
+    },
+    {
+     "chest_facing": "east",
+     "name": "map_chest",
+     "pos": [
+      3,
+      6,
+      17
+     ]
+    }
+   ],
+   "size": [
+    9,
+    9,
+    22
+   ],
+   "stored": 332
+  },
+  "upsidedown_fronthalf_degraded": {
+   "blocks": [
+    "chest",
+    "oak_log",
+    "oak_planks",
+    "oak_stairs",
+    "oak_trapdoor",
+    "spruce_fence",
+    "spruce_planks",
+    "spruce_stairs"
+   ],
+   "entities": 0,
+   "markers": [
+    {
+     "chest_facing": "south",
+     "name": "supply_chest",
+     "pos": [
+      4,
+      6,
+      8
+     ]
+    },
+    {
+     "chest_facing": "east",
+     "name": "map_chest",
+     "pos": [
+      3,
+      6,
+      17
+     ]
+    }
+   ],
+   "size": [
+    9,
+    9,
+    22
+   ],
+   "stored": 300
+  },
+  "upsidedown_full": {
+   "blocks": [
+    "chest",
+    "oak_fence",
+    "oak_log",
+    "oak_planks",
+    "oak_slab",
+    "oak_stairs",
+    "oak_trapdoor",
+    "spruce_fence",
+    "spruce_planks",
+    "spruce_slab",
+    "spruce_stairs"
+   ],
+   "entities": 0,
+   "markers": [
+    {
+     "chest_facing": "north",
+     "name": "treasure_chest",
+     "pos": [
+      2,
+      3,
+      24
+     ]
+    },
+    {
+     "chest_facing": "south",
+     "name": "supply_chest",
+     "pos": [
+      4,
+      6,
+      8
+     ]
+    },
+    {
+     "chest_facing": "east",
+     "name": "map_chest",
+     "pos": [
+      3,
+      6,
+      17
+     ]
+    }
+   ],
+   "size": [
+    9,
+    9,
+    28
+   ],
+   "stored": 601
+  },
+  "upsidedown_full_degraded": {
+   "blocks": [
+    "chest",
+    "oak_fence",
+    "oak_log",
+    "oak_planks",
+    "oak_slab",
+    "oak_stairs",
+    "oak_trapdoor",
+    "spruce_fence",
+    "spruce_planks",
+    "spruce_slab",
+    "spruce_stairs"
+   ],
+   "entities": 0,
+   "markers": [
+    {
+     "chest_facing": "north",
+     "name": "treasure_chest",
+     "pos": [
+      2,
+      3,
+      24
+     ]
+    },
+    {
+     "chest_facing": "south",
+     "name": "supply_chest",
+     "pos": [
+      4,
+      6,
+      8
+     ]
+    },
+    {
+     "chest_facing": "east",
+     "name": "map_chest",
+     "pos": [
+      3,
+      6,
+      17
+     ]
+    }
+   ],
+   "size": [
+    9,
+    9,
+    28
+   ],
+   "stored": 546
+  },
+  "with_mast": {
+   "blocks": [
+    "chest",
+    "oak_door",
+    "oak_fence",
+    "oak_log",
+    "oak_planks",
+    "oak_slab",
+    "oak_stairs",
+    "oak_trapdoor",
+    "spruce_fence",
+    "spruce_planks",
+    "spruce_slab",
+    "spruce_stairs"
+   ],
+   "entities": 0,
+   "markers": [
+    {
+     "chest_facing": "south",
+     "name": "supply_chest",
+     "pos": [
+      4,
+      3,
+      9
+     ]
+    },
+    {
+     "chest_facing": "west",
+     "name": "map_chest",
+     "pos": [
+      5,
+      3,
+      18
+     ]
+    },
+    {
+     "chest_facing": "north",
+     "name": "treasure_chest",
+     "pos": [
+      6,
+      5,
+      24
+     ]
+    }
+   ],
+   "size": [
+    9,
+    21,
+    28
+   ],
+   "stored": 729
+  },
+  "with_mast_degraded": {
+   "blocks": [
+    "chest",
+    "oak_door",
+    "oak_fence",
+    "oak_log",
+    "oak_planks",
+    "oak_slab",
+    "oak_stairs",
+    "oak_trapdoor",
+    "spruce_fence",
+    "spruce_planks",
+    "spruce_slab",
+    "spruce_stairs"
+   ],
+   "entities": 0,
+   "markers": [
+    {
+     "chest_facing": "south",
+     "name": "supply_chest",
+     "pos": [
+      4,
+      3,
+      9
+     ]
+    },
+    {
+     "chest_facing": "west",
+     "name": "map_chest",
+     "pos": [
+      5,
+      3,
+      18
+     ]
+    },
+    {
+     "chest_facing": "north",
+     "name": "treasure_chest",
+     "pos": [
+      6,
+      5,
+      24
+     ]
+    }
+   ],
+   "size": [
+    9,
+    21,
+    28
+   ],
+   "stored": 652
+  }
+ },
+ "sources": [
+  "data/minecraft/structure/shipwreck/*.nbt (size, DATA structure blocks, chests, palettes, block names)",
+  "data/minecraft/worldgen/structure/{shipwreck,shipwreck_beached,monument}.json",
+  "data/minecraft/worldgen/structure_set/{shipwrecks,ocean_monuments}.json",
+  "data/minecraft/worldgen/structure/*.json (step, for the surface_structures order)",
+  "data/minecraft/tags/worldgen/biome/{has_structure/*,required_ocean_monument_surrounding}.json",
+  "data/minecraft/tags/block/conduit_effect_block.json",
+  "data/minecraft/recipe/conduit.json, loot_table/blocks/conduit.json",
+  "net.minecraft.world.level.levelgen.structure.structures.ShipwreckPieces, ShipwreckStructure",
+  "net.minecraft.world.level.levelgen.structure.structures.OceanMonumentPieces, OceanMonumentStructure",
+  "net.minecraft.world.entity.monster.ElderGuardian (customServerAiStep)",
+  "net.minecraft.world.level.block.entity.ConduitBlockEntity",
+  "net.minecraft.world.level.block.Blocks, net.minecraft.world.item.Items (CONDUIT)",
+  "net.minecraft.world.level.levelgen.GenerationStep$Decoration"
+ ],
+ "structure_sets": {
+  "ocean_monuments": {
+   "placement": {
+    "salt": 10387313,
+    "separation": 5,
+    "spacing": 32,
+    "spread_type": "triangular",
+    "type": "random_spread"
+   },
+   "structures": [
+    {
+     "structure": "monument",
+     "weight": 1
+    }
+   ]
+  },
+  "shipwrecks": {
+   "placement": {
+    "salt": 165745295,
+    "separation": 4,
+    "spacing": 24,
+    "type": "random_spread"
+   },
+   "structures": [
+    {
+     "structure": "shipwreck",
+     "weight": 1
+    },
+    {
+     "structure": "shipwreck_beached",
+     "weight": 1
+    }
+   ]
+  }
+ },
+ "structures": {
+  "monument": {
+   "biomes": "#minecraft:has_structure/ocean_monument",
+   "spawn_overrides": {
+    "axolotls": {
+     "bounding_box": "full",
+     "spawns": []
+    },
+    "monster": {
+     "bounding_box": "full",
+     "spawns": [
+      {
+       "count": {
+        "max_inclusive": 4,
+        "min_inclusive": 2,
+        "type": "uniform"
+       },
+       "type": "guardian",
+       "weight": 1
+      }
+     ]
+    },
+    "underground_water_creature": {
+     "bounding_box": "full",
+     "spawns": []
+    }
+   },
+   "step": "surface_structures",
+   "type": "ocean_monument"
+  },
+  "shipwreck": {
+   "biomes": "#minecraft:has_structure/shipwreck",
+   "is_beached": false,
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "type": "shipwreck"
+  },
+  "shipwreck_beached": {
+   "biomes": "#minecraft:has_structure/shipwreck_beached",
+   "is_beached": true,
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "type": "shipwreck"
+  }
+ },
+ "surface_structures": [
+  "abandoned_camp_bamboo_jungle",
+  "abandoned_camp_birch_forest",
+  "abandoned_camp_cherry_grove",
+  "abandoned_camp_dappled_forest",
+  "abandoned_camp_flower_forest",
+  "abandoned_camp_forest",
+  "abandoned_camp_meadow",
+  "abandoned_camp_old_growth_birch_forest",
+  "abandoned_camp_old_growth_pine_taiga",
+  "abandoned_camp_old_growth_spruce_taiga",
+  "abandoned_camp_pale_garden",
+  "abandoned_camp_savanna",
+  "abandoned_camp_snowy_taiga",
+  "abandoned_camp_sparse_jungle",
+  "abandoned_camp_swamp",
+  "abandoned_camp_taiga",
+  "abandoned_camp_windswept_forest",
+  "abandoned_camp_wooded_badlands",
+  "bastion_remnant",
+  "desert_pyramid",
+  "end_city",
+  "igloo",
+  "jungle_pyramid",
+  "mansion",
+  "monument",
+  "ocean_ruin_cold",
+  "ocean_ruin_warm",
+  "pillager_outpost",
+  "ruined_portal",
+  "ruined_portal_desert",
+  "ruined_portal_jungle",
+  "ruined_portal_mountain",
+  "ruined_portal_nether",
+  "ruined_portal_ocean",
+  "ruined_portal_swamp",
+  "shipwreck",
+  "shipwreck_beached",
+  "stronghold",
+  "swamp_hut",
+  "village_desert",
+  "village_plains",
+  "village_savanna",
+  "village_snowy",
+  "village_taiga"
+ ]
+}

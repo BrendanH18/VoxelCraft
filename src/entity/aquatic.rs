@@ -836,11 +836,12 @@ impl Entities {
                 if b.residents.is_empty() || !b.residents.iter().all(|(_, p)| w.loaded(*p)) {
                     continue;
                 }
-                // Wait for blocks, not just the chunk addresses, before recording it.
-                if b.residents
-                    .iter()
-                    .any(|(k, p)| physics::overlaps_solid(w, p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5), k.shape()))
-                {
+                // Wait for blocks, not just the chunk addresses, before
+                // recording it. Java spawns structure mobs where the piece
+                // puts them without a collision check (an elder guardian's
+                // 2x2 box can reach into a monument wall), so only every
+                // cell under each box has to be loaded, not empty.
+                if !b.residents.iter().all(|(k, p)| cells_loaded(w, p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5), *k)) {
                     continue;
                 }
                 // Residents are recorded one by one, so hostiles skipped on
@@ -886,6 +887,13 @@ impl Entities {
             }
         }
     }
+}
+
+/// Whether every block cell a `kind` standing at `pos` would cover is loaded.
+fn cells_loaded<W: MobWorld + ?Sized>(w: &W, pos: DVec3, kind: MobKind) -> bool {
+    let (lo, hi) = kind.shape().aabb(pos);
+    let (lo, hi) = (lo.floor().as_ivec3(), (hi - DVec3::splat(1e-7)).floor().as_ivec3());
+    (lo.x..=hi.x).all(|x| (lo.y..=hi.y).all(|y| (lo.z..=hi.z).all(|z| w.block(IVec3::new(x, y, z)).is_some())))
 }
 
 #[cfg(test)]

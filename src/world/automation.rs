@@ -32,6 +32,8 @@ pub(super) struct AutomationState {
     pickups: Vec<IVec3>,
     output: Vec<(IVec3, u8, bool, Stack)>,
     creatures: Vec<(IVec3, Stack)>,
+    /// v0.16 Track H: blocks a dispenser offers a sulfur cube in front.
+    cube_feeds: Vec<(IVec3, u8, Stack)>,
 }
 
 #[derive(PartialEq)]
@@ -192,6 +194,8 @@ impl World {
             || super::jukebox::piston_immovable(b)
             // v0.16 Track C: the beacon's block entity.
             || b == super::beacon::BEACON
+            // v0.16 Track F: and the conduit's.
+            || super::conduit::owns(b.0)
             || super::utilities::campfire_of(b).is_some()
             || matches!(
                 r::component(b),
@@ -753,6 +757,52 @@ impl World {
             }
             return;
         }
+        // v0.16 Track H: `DispenseItemBehavior`'s wither skeleton skull. It
+        // goes into an empty cell that is part of a Wither's base
+        // (`WitherSkullBlock.canSpawnMob`), turned the dispenser's way, and
+        // the placement checks the full pattern; otherwise it stays put
+        // (`EquipmentDispenseItemBehavior` onto an entity isn't modelled).
+        let wither_skull = super::skulls::item(super::skulls::Kind::WitherSkeleton);
+        if !dropper && stack.item == wither_skull {
+            let peaceful = self.rules.difficulty == 0;
+            let get = |q: IVec3| self.get_block(q);
+            if self.get_block(front) == Some(Block::AIR)
+                && crate::entity::wither::can_spawn_mob(get, front, self.min_y(), peaceful)
+            {
+                // `RotationSegment.convertToSegment(direction)`: south 0, west
+                // 4, north 8, east 12, vertical 0.
+                let rotation = match (d.x, d.z) {
+                    (-1, _) => 4,
+                    (_, -1) => 8,
+                    (1, _) => 12,
+                    _ => 0,
+                };
+                self.set_block(front, super::skulls::floor(super::skulls::Kind::WitherSkeleton, rotation));
+                self.emit_game_event(
+                    front.as_dvec3() + DVec3::splat(0.5),
+                    super::vibration::GameEvent::BlockPlace,
+                    super::vibration::EventSource::NONE,
+                    None,
+                );
+                self.set_container_stack(
+                    p,
+                    slot,
+                    (stack.count > 1).then_some(Stack { count: stack.count - 1, ..stack }),
+                );
+            }
+            return;
+        }
+        // v0.16 Track H: `SulfurCubeBlockDispenseItemBehavior`: a swallowable
+        // block (without a behaviour of its own) or TNT goes into an adult
+        // sulfur cube in front instead, which the entities decide; until
+        // then it is dispensed (or primed) as usual.
+        if !dropper
+            && (stack.item.block() == Some(Block::TNT)
+                || crate::entity::sulfur_cube::swallowable(stack.item)
+                    && stack.item.block() != Some(Block::CARVED_PUMPKIN))
+        {
+            self.automation.cube_feeds.push((p, facing, one));
+        }
         if !dropper && stack.item == Item::BONE_MEAL {
             // Java `BoneMealDispenseItemBehavior`: it fertilises the block in front and is only
             // used up when that grew something; otherwise the stack stays in the slot.
@@ -833,6 +883,25 @@ impl World {
     /// Consume entity work after shared world rules and before entity physics.
     /// Headless callers use this same method with their Entities collection.
     pub fn tick_automation_entities(&mut self, entities: &mut crate::entity::Entities) {
+        // v0.16 Track H: `SulfurCubeBlockDispenseItemBehavior.dispenseBlock`:
+        // the first adult cube in the cell in front that takes the block;
+        // otherwise TNT is primed and other blocks are dispensed as items.
+        for (p, facing, stack) in std::mem::take(&mut self.automation.cube_feeds) {
+            let front = p + r::direction(facing);
+            if !entities.feed_sulfur_cube(front, stack) {
+                continue;
+            }
+            // The cube took it: no primed TNT, no dispensed item.
+            if stack.item.block() == Some(Block::TNT) {
+                if let Some(i) = self.primed_tnt.iter().position(|&t| t == (front, false)) {
+                    self.primed_tnt.remove(i);
+                }
+            } else if let Some(i) =
+                self.automation.output.iter().position(|&(q, f, shot, s)| q == p && f == facing && !shot && s == stack)
+            {
+                self.automation.output.remove(i);
+            }
+        }
         for (p, stack) in std::mem::take(&mut self.automation.creatures) {
             let at = p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
             if !entities.release_sulfur_cube(stack, at) {
@@ -1317,6 +1386,70 @@ mod tests {
         w.dispense(P, 2, false);
         assert_eq!(w.primed_tnt.len(), 1);
     }
+    /// v0.16 Track H: `DispenseItemBehavior`'s wither skeleton skull goes
+    /// only where `WitherSkullBlock.canSpawnMob` finds a Wither's base.
+    #[test]
+    fn dispensers_set_wither_skulls_only_on_a_wither_base() {
+        use crate::world::skulls::{self, Kind};
+        let mut w = world();
+        put(&mut w, P, r::dispenser(2, false));
+        let skull = skulls::item(Kind::WitherSkeleton);
+        w.chest_mut(P).unwrap().slots[0] = Some(Stack::new(skull, 2));
+        let front = P + r::direction(2);
+        w.dispense(P, 2, false);
+        assert_eq!(w.get_block(front), Some(Block::AIR));
+        assert_eq!(w.chest(P).unwrap().slots[0], Some(Stack::new(skull, 2)), "no base: the skull stays");
+        assert!(w.automation.output.is_empty());
+        for dz in -1..=1 {
+            put(&mut w, front + IVec3::new(0, -1, dz), Block::SOUL_SAND);
+        }
+        put(&mut w, front + IVec3::new(0, -2, 0), Block::SOUL_SAND);
+        w.wither_skulls.clear();
+        w.dispense(P, 2, false);
+        // Facing east, the dispenser's way (`RotationSegment` 12).
+        assert_eq!(w.get_block(front), Some(skulls::floor(Kind::WitherSkeleton, 12)));
+        assert_eq!(w.chest(P).unwrap().slots[0], Some(Stack::new(skull, 1)));
+        assert_eq!(w.wither_skulls, vec![front], "the placement checks for a Wither");
+        w.rules.difficulty = 0;
+        put(&mut w, front, Block::AIR);
+        w.dispense(P, 2, false);
+        assert_eq!(w.get_block(front), Some(Block::AIR), "never in Peaceful");
+    }
+
+    /// v0.16 Track H: `SulfurCubeBlockDispenseItemBehavior`: a swallowable
+    /// block (or TNT) goes into the adult sulfur cube in front; without
+    /// one it is dispensed (or primed) as before.
+    #[test]
+    fn dispensers_feed_blocks_to_sulfur_cubes() {
+        use crate::entity::{Entities, MobKind};
+        let mut w = world();
+        put(&mut w, P, r::dispenser(2, false));
+        let front = P + r::direction(2);
+        let dirt = Item::from_block(Block::DIRT);
+        assert!(crate::entity::sulfur_cube::swallowable(dirt));
+        w.chest_mut(P).unwrap().slots[0] = Some(Stack::new(dirt, 2));
+        w.chest_mut(P).unwrap().slots[1] = Some(Stack::new(Item::from_block(Block::TNT), 1));
+        let mut e = Entities::new(3);
+        e.spawn(MobKind::SulfurCube, front.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
+        e.ensure_mob_ids();
+        w.chest_mut(P).unwrap().slots[1] = None;
+        w.dispense(P, 2, false);
+        w.tick_automation_entities(&mut e);
+        assert_eq!(e.mobs[0].sulfur_body().map(|s| s.item), Some(dirt));
+        assert!(e.items.is_empty(), "nothing was dropped");
+        // The same block again: refused, so it is dispensed as an item.
+        w.dispense(P, 2, false);
+        w.tick_automation_entities(&mut e);
+        assert_eq!(e.items.len(), 1);
+        // TNT goes in instead of being primed.
+        w.chest_mut(P).unwrap().slots[0] = Some(Stack::new(Item::from_block(Block::TNT), 1));
+        w.dispense(P, 2, false);
+        assert_eq!(w.primed_tnt.len(), 1);
+        w.tick_automation_entities(&mut e);
+        assert!(w.primed_tnt.is_empty());
+        assert_eq!(e.mobs[0].sulfur_body().map(|s| s.item), Some(Item::from_block(Block::TNT)));
+    }
+
     #[test]
     fn dispensers_keep_tnt_without_tnt_explodes() {
         let mut w = world();

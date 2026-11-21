@@ -980,6 +980,10 @@ impl Block {
         if super::skulls::owns(self.0) || self == super::beacon::BEACON {
             return Some(Shaped::Custom);
         }
+        // v0.16 Track F: the conduit's shell.
+        if super::conduit::owns(self.0) {
+            return Some(Shaped::Custom);
+        }
         if super::creaking::wall_local(self.0).is_some() || super::gen5_blocks::wall_local(self.0).is_some() {
             return Some(Shaped::Wall);
         }
@@ -1367,6 +1371,9 @@ impl Block {
         if super::heavy_core::owns(self.0) {
             return super::heavy_core::HEAVY_CORE;
         }
+        if super::conduit::owns(self.0) {
+            return super::conduit::CONDUIT;
+        }
         if super::dried_ghast::owns(self.0) {
             return super::dried_ghast::DRIED_GHAST;
         }
@@ -1387,6 +1394,9 @@ impl Block {
             return super::creaking::WALL;
         }
         if let Some(b) = super::gen5_blocks::base(self.0) {
+            return b;
+        }
+        if let Some(b) = super::infested::base(self.0) {
             return b;
         }
         if super::creaking::heart(self).is_some() {
@@ -1740,6 +1750,10 @@ impl Block {
         if super::heavy_core::owns(self.0) {
             return Some(Item::from_block(super::heavy_core::HEAVY_CORE));
         }
+        // v0.16 Track F: `blocks/conduit` drops itself.
+        if super::conduit::owns(self.0) {
+            return Some(Item::from_block(super::conduit::CONDUIT));
+        }
         // `blocks/dried_ghast`: itself, when it survives an explosion.
         if super::dried_ghast::owns(self.0) {
             return Some(Item::from_block(super::dried_ghast::DRIED_GHAST));
@@ -1787,6 +1801,9 @@ impl Block {
             return drop;
         }
         if let Some(drop) = super::gen5_blocks::drop(self) {
+            return drop;
+        }
+        if let Some(drop) = super::infested::drop(self) {
             return drop;
         }
         if super::scaffolding::is_scaffolding(self) {
@@ -1932,6 +1949,9 @@ impl Block {
         if super::heavy_core::owns(self.0) {
             return super::heavy_core::HARDNESS;
         }
+        if super::conduit::owns(self.0) {
+            return super::conduit::HARDNESS;
+        }
         // `Blocks.DRIED_GHAST`: `instabreak()`.
         if super::dried_ghast::owns(self.0) {
             return 0.0;
@@ -2017,6 +2037,9 @@ impl Block {
             return c.hardness();
         }
         if let Some((hardness, ..)) = super::gen5_blocks::mining(self.material()) {
+            return hardness;
+        }
+        if let Some((hardness, ..)) = super::infested::mining(self) {
             return hardness;
         }
         if let Some(h) = super::stone_blocks::slab_hardness(self) {
@@ -2201,7 +2224,7 @@ impl Block {
             return Some(ToolKind::Shovel);
         }
         // `#mineable/pickaxe` lists every shulker box.
-        if super::heavy_core::owns(self.0) || super::shulker_box::owns(self.0) {
+        if super::heavy_core::owns(self.0) || super::shulker_box::owns(self.0) || super::conduit::owns(self.0) {
             return Some(ToolKind::Pickaxe);
         }
         if super::creaking::heart(self).is_some() {
@@ -2252,6 +2275,9 @@ impl Block {
             return c.best_tool();
         }
         if let Some((_, tool, _)) = super::gen5_blocks::mining(self.material()) {
+            return tool;
+        }
+        if let Some((_, tool, _)) = super::infested::mining(self) {
             return tool;
         }
         if let Some((_, tool, _)) = super::colour_blocks::mining(self) {
@@ -2423,6 +2449,9 @@ impl Block {
         if let Some((.., level)) = super::gen5_blocks::mining(self.material()) {
             return level;
         }
+        if let Some((.., level)) = super::infested::mining(self) {
+            return level;
+        }
         if let Some((.., level)) = super::colour_blocks::mining(self) {
             return level;
         }
@@ -2553,6 +2582,7 @@ impl Block {
             ])
             .chain(super::skulls::palette_ids())
             .chain([super::wither_rose::WITHER_ROSE.0, super::beacon::BEACON.0])
+            .chain([super::conduit::CONDUIT.0])
             .chain(super::forms::palette_ids())
             .chain(super::nether_blocks::palette_ids())
             .chain(super::village_blocks::palette_ids())
@@ -2585,6 +2615,8 @@ impl Block {
             .chain((0..super::shulker_box::COLOURS).map(|c| super::shulker_box::FIRST + c * 6))
             .chain(super::end_blocks::palette_ids())
             .chain(super::gen5_blocks::palette_ids())
+            // v0.16 Track E: the seven infested blocks.
+            .chain(super::infested::palette_ids())
             .map(Block)
     }
 
@@ -3237,6 +3269,10 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         },
         id if super::creaking::owns(id) => super::creaking::registry(id),
         id if super::eyeblossom::owns(id) => super::eyeblossom::registry(id),
+        id if super::infested::owns(id) => match super::infested::registry(id) {
+            Some(info) => info,
+            None => ("unknown", Invisible, all(0)),
+        },
         id if super::gen5_blocks::owns(id) => match super::gen5_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
@@ -3265,6 +3301,7 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         15120..=super::sniffer_egg::LAST => super::sniffer_egg::registry(id),
         12256..=super::frosted_ice::LAST => super::frosted_ice::registry(id),
         super::heavy_core::FIRST..=super::heavy_core::LAST => super::heavy_core::registry(id),
+        super::conduit::FIRST..=super::conduit::LAST => super::conduit::registry(id),
         super::shulker_box::FIRST..=super::shulker_box::LAST => super::shulker_box::registry(id),
         super::dried_ghast::FIRST..=super::dried_ghast::LAST => super::dried_ghast::registry(id),
         super::skulls::FIRST..=super::skulls::LAST => super::skulls::registry(id),
@@ -3727,6 +3764,7 @@ const fn emission_of(i: usize) -> u8 {
             _ if super::trial::owns(i as u16) => super::trial::emission(i as u16),
             _ if super::end_blocks::owns(i as u16) => super::end_blocks::emission(i as u16),
             12726 => 15,                                            // beacon
+            30848..=30849 => super::conduit::LIGHT,                 // conduit
             22 | 37..=41 | 165..=180 | 208 | 210 => 15,             // glowstone, lava, fire, portals
             36 => 14,                                               // torch
             46 | 50..=52 | 913..=916 | 921..=924 => 13,             // lit furnace, every facing
@@ -3902,6 +3940,10 @@ mod tests {
             }
             // `Blocks.BEACON`: `lightLevel(state -> 15)`.
             if block == super::super::beacon::BEACON {
+                return 15;
+            }
+            // `Blocks.CONDUIT`: `lightLevel(state -> 15)`.
+            if super::super::conduit::owns(block.0) {
                 return 15;
             }
             // `TrialSpawnerState.lightLevel` and `VaultState.LightLevel`.
