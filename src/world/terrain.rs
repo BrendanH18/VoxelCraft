@@ -348,7 +348,7 @@ impl Generator {
             nether: (dimension == Dimension::Nether)
                 .then(|| super::nether::NetherGen::with_generation(seed, generation)),
             end: (dimension == Dimension::End).then(|| super::end::EndGen::with_generation(seed, generation)),
-            strongholds: super::stronghold::Strongholds::new(seed),
+            strongholds: super::stronghold::Strongholds::with_generation(seed, generation),
             dungeons: super::dungeon::Dungeons::new(seed),
             geodes: super::geode::Geodes::new(seed),
             mineshafts: super::mineshaft::Mineshafts::new(seed),
@@ -803,6 +803,12 @@ impl Generator {
     /// spawn (Nether fortresses).
     pub fn in_fortress(&self, p: IVec3) -> bool {
         self.nether.as_ref().is_some_and(|n| n.fortresses.inside(p))
+    }
+
+    /// v0.16 Track E: whether `p` lies in a fortress's whole bounding box
+    /// (the union of its pieces, `StructureStart.getBoundingBox`).
+    pub fn in_fortress_bounds(&self, p: IVec3) -> bool {
+        self.nether.as_ref().is_some_and(|n| n.fortresses.within_bounds(p))
     }
 
     /// Bastion remnants within `r` blocks of `p` (none outside the Nether).

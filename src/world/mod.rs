@@ -68,6 +68,7 @@ mod growth;
 pub mod heavy_core;
 mod honey;
 pub mod infested;
+pub mod java_pieces;
 pub mod jigsaw;
 pub mod jukebox;
 mod light_shape;

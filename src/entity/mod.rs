@@ -660,6 +660,11 @@ pub trait MobWorld: BlockSource {
     fn in_fortress(&self, _p: IVec3) -> bool {
         false
     }
+    /// v0.16 Track E: inside a Nether fortress's whole bounding box
+    /// (`StructureManager.getStructureAt`), for `isInNetherFortressBounds`.
+    fn in_fortress_bounds(&self, _p: IVec3) -> bool {
+        false
+    }
     /// Inside an ancient city's bounding box, where its empty
     /// `spawn_overrides` stop every natural spawn.
     fn in_ancient_city(&self, _p: IVec3) -> bool {
@@ -815,6 +820,9 @@ impl MobWorld for World {
     }
     fn in_fortress(&self, p: IVec3) -> bool {
         self.generator.in_fortress(p)
+    }
+    fn in_fortress_bounds(&self, p: IVec3) -> bool {
+        self.generator.in_fortress_bounds(p)
     }
     fn in_ancient_city(&self, p: IVec3) -> bool {
         self.generator.in_ancient_city(p)
