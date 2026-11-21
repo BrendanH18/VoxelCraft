@@ -166,7 +166,9 @@ fn generation_5_overworld_structures_stay_cleared_after_a_restart() {
     while entities.count(MobKind::ElderGuardian) < 3 {
         world.update(monument.as_dvec3());
         entities.populate_structures(1.0, &world, &near, Difficulty::Normal);
-        assert!(Instant::now() < deadline, "the monument at {monument} never populated");
+        if Instant::now() >= deadline {
+            panic!("the monument at {monument} never populated: {}", monument_report(&world, monument));
+        }
         std::thread::sleep(Duration::from_millis(2));
     }
     assert_eq!(entities.count(MobKind::ElderGuardian), 3);
@@ -193,6 +195,44 @@ fn generation_5_overworld_structures_stay_cleared_after_a_restart() {
         entities.populate_structures(1.0, &world, &near, Difficulty::Normal);
     }
     assert_eq!(entities.count(MobKind::ElderGuardian), 0, "elder guardians respawned after the restart");
+}
+
+/// Why a monument's elders haven't spawned: each resident's cell, whether
+/// it is loaded and whether the mob's box meets a block there.
+fn monument_report(world: &World, monument: IVec3) -> String {
+    use super::MobWorld;
+    let near = world.structures_near(monument, 80);
+    let Some(b) = near.iter().find(|b| b.kind == crate::world::temples::Kind::Monument) else {
+        return format!("no monument among {} structures near", near.len());
+    };
+    b.residents
+        .iter()
+        .map(|&(kind, p)| {
+            let pos = p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
+            let (lo, hi) = kind.shape().aabb(pos);
+            let mut solid = Vec::new();
+            for x in lo.x.floor() as i32..=hi.x.floor() as i32 {
+                for y in lo.y.floor() as i32..=hi.y.floor() as i32 {
+                    for z in lo.z.floor() as i32..=hi.z.floor() as i32 {
+                        let q = IVec3::new(x, y, z);
+                        match world.get_block(q) {
+                            Some(b) if b.is_solid() => solid.push(format!("{q} {}", b.name())),
+                            None => solid.push(format!("{q} unloaded")),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            format!(
+                "{} at {p}: loaded {}, overlaps {} [{}]",
+                kind.name(),
+                world.is_loaded(p),
+                crate::physics::overlaps_solid(world, pos, kind.shape()),
+                solid.join(", ")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 /// The Nether: a fortress chest looted and a blaze spawner broken.
