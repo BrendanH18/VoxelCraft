@@ -94,7 +94,9 @@ def extract(server):
             ):
                 raise ValueError(f"{name}: only cobweb is correct for drops no longer holds")
         properties = block_properties(jar_path)
-        infested = method("net.minecraft.world.level.block.InfestedBlock", "net.minecraft.world.level.block.InfestedBlock")
+        infested = method(
+            "net.minecraft.world.level.block.InfestedBlock", "net.minecraft.world.level.block.InfestedBlock"
+        )
         if not all(
             form in infested
             for form in (
