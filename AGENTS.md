@@ -57,8 +57,8 @@ Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; neve
   `-- 'cargo clippy --release --all-targets'` or
   `-- 'cargo test --release <filter>'` while working (release builds, which
   the warm snapshot has already compiled),
-  `--full` once the work is finished, and `--save` after dependency or
-  toolchain changes to refresh the warm snapshot runs start from.
+  `--full` once the work is finished, and `--save --full` after dependency
+  or toolchain changes to refresh the warm snapshot runs start from.
 - Stay on this Mac: running the game (Metal rendering, screenshots, scripted
   scenes, hands-on runs) and benchmarks, whose frame-time gate is measured on
   the reference M5. Boat is x86_64 Linux with no GPU, so it can't check

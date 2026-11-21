@@ -103,7 +103,7 @@ cleanup() {
         [ -n "$id" ] || id=$(sandbox_id)
         if [ -n "$id" ] && [ "$saving" = 1 ]; then
             if boat stop "$id" --json >/dev/null 2>&1; then
-                echo "boat-check: stopped $id. Check boat snapshots: if $snapshot is ready, boat delete $id --yes; if not, boat snapshot $id $snapshot" >&2
+                echo "boat-check: stopped $id. Once boat snapshots --json shows $snapshot ready with sourceSandboxId $id: boat delete $id --yes. If no save from $id is pending: boat snapshot $id $snapshot" >&2
             else
                 echo "boat-check: couldn't stop $id: boat stop $id, then check boat snapshots" >&2
             fi
@@ -124,7 +124,7 @@ set -e
 [ "$save" = 1 ] || exit "$status"
 
 id=$(sandbox_id)
-[ -n "$id" ] || { echo "boat-check: couldn't find the sandbox id in boat run's output" >&2; exit "$(( status ? status : 1 ))"; }
+[ -n "$id" ] || { echo "boat-check: couldn't find the sandbox id in boat run's output; a kept sandbox may still be running (boat list)" >&2; exit "$(( status ? status : 1 ))"; }
 [ "$status" = 0 ] || exit "$status"   # the exit trap deletes the kept sandbox
 
 # The save runs in the background. Wait for this sandbox's save of the name
@@ -134,10 +134,11 @@ deadline=$((SECONDS + 600))
 echo "boat-check: saving $id as $snapshot" >&2
 boat snapshot "$id" "$snapshot" >/dev/null || { echo "boat-check: saving $snapshot failed" >&2; exit 1; }
 state=""
-while [ "$SECONDS" -lt "$deadline" ]; do
+while :; do   # poll once more after the deadline before giving up
     state=$(boat snapshots --json 2>/dev/null | jq -r --arg n "$snapshot" --arg id "$id" \
         '[.named[]? | select(.name == $n and .sourceSandboxId == $id) | .status][0] // ""' || true)
     case "$state" in ready|failed) break ;; esac
+    [ "$SECONDS" -lt "$deadline" ] || break
     sleep 5
 done
 case "$state" in
@@ -145,7 +146,7 @@ case "$state" in
         echo "boat-check: saved $snapshot" >&2
         if boat delete "$id" --yes --json >/dev/null; then handled=1; else exit 1; fi ;;
     failed) echo "boat-check: saving $snapshot failed (boat snapshots shows why)" >&2; exit 1 ;;
-    *) echo "boat-check: $snapshot isn't ready after 10 minutes" >&2; exit 1 ;;
+    *) echo "boat-check: $snapshot isn't ready after about 10 minutes" >&2; exit 1 ;;
 esac
 exit 0
 }

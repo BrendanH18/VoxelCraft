@@ -59,7 +59,9 @@ scripts/boat-check.sh -- cargo test --release some_test   # any command
 ```
 
 Each run is one `boat run`: it pushes the working tree (tracked and untracked,
-non-ignored files), runs the command and deletes the sandbox. Sandboxes are
+non-ignored files), runs the command and deletes the sandbox. (After a
+failed or unconfirmed `--save`, the script stops the sandbox instead, so
+the passing build can be saved again.) Sandboxes are
 `large` (8 vCPU, 16 GB; `VC_BOAT_TYPE` to change it), because the release
 test build runs out of memory on 8 GB. They start with `--no-env`, so none of
 the account's stored secrets go in. The script installs the Linux audio,
@@ -70,7 +72,7 @@ device and font libraries the build needs, updates Rust to current stable
 snapshot `voxelcraft-warm` (`VC_BOAT_SNAPSHOT`): system libraries, toolchain
 and the built target directory. Later runs start from a copy of it, so each
 run has its own warm target directory and no lock to wait on. Re-run with
-`--save` after dependency or toolchain changes to keep it warm. `boat push`
+`--save --full` after dependency or toolchain changes to keep it warm. `boat push`
 keeps files' original timestamps, so the script stamps every pushed file as
 new; otherwise cargo could take an edited file for one the snapshot already
 built. The free trial allows neither `large` sandboxes nor saved snapshots.
