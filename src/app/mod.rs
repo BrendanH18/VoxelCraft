@@ -2000,11 +2000,11 @@ impl Game {
 
         // Streaming and GPU uploads continue during offline pause.
         if self.lan.client.is_none() {
-            let arriving = self.arrival.is_some();
+            let eye = self.session.player.eye();
             self.update_arrival();
-            // Placed by the arrival (a portal, a respawn): the camera snaps,
-            // as for any teleport.
-            if arriving && self.arrival.is_none() {
+            // Moved by the arrival (a portal, a respawn, or towards a target
+            // still loading): the camera snaps, as for any teleport.
+            if self.session.player.eye() != eye {
                 self.previous_eye = self.session.player.eye();
             }
         }
