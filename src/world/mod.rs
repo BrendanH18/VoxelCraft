@@ -97,7 +97,7 @@ pub mod overworld_blocks;
 mod overworld_flora;
 pub mod pale_garden;
 pub mod poplar_trees;
-mod portal;
+pub mod portal;
 pub mod potent_sulfur;
 pub mod precipitation;
 pub mod pumpkin_blocks;
@@ -749,6 +749,13 @@ impl World {
 
     pub fn render_distance(&self) -> i32 {
         self.render_distance
+    }
+
+    /// v0.16 Track G: the blocks of chunk section `cpos` as they stand,
+    /// loaded or saved (player-modified but unloaded); `None` if it has
+    /// only ever been generated and isn't loaded.
+    pub fn section_data(&self, cpos: IVec3) -> Option<Arc<ChunkData>> {
+        self.chunks.get(&cpos).map(|s| s.data.clone()).or_else(|| self.saved.get(&cpos).cloned())
     }
 
     /// Lowest block y of this world's dimension.

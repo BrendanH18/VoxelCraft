@@ -11,6 +11,7 @@
 
 use glam::{DVec3, IVec3};
 
+use super::crystal::{Blow, Crystals, Destroyed};
 use super::{Ctx, EntityEvent, MobSound, PlayerId, Rng, Target};
 use crate::physics::{self, BlockSource};
 use crate::world::block::Block;
@@ -21,7 +22,7 @@ pub const MAX_HEALTH: f32 = 200.0;
 pub const FIRST_XP: u32 = 12_000;
 pub const LATER_XP: u32 = 500;
 /// An End crystal's blast.
-pub const CRYSTAL_POWER: f32 = 6.0;
+pub const CRYSTAL_POWER: f32 = super::crystal::POWER;
 /// Players within this distance of the island centre see the boss bar
 /// (Java's fight area).
 pub const ARENA: f64 = 192.0;
@@ -29,10 +30,30 @@ const TICK: f64 = 0.05;
 const FRAC_PI_12: f64 = std::f64::consts::PI / 12.0;
 /// Ticks the death takes, rising and glowing.
 pub const DEATH_TICKS: u32 = 200;
-/// Where a new dragon appears.
-const SPAWN: DVec3 = DVec3::new(0.0, 110.0, 0.0);
-/// Crystals heal a dragon this close.
-const HEAL_RANGE: f64 = 32.0;
+/// Where a new dragon appears (`EnderDragonFight.createNewDragon`:
+/// `DRAGON_SPAWN_Y` 128 over the fight's origin).
+pub const SPAWN: DVec3 = DVec3::new(0.0, 128.0, 0.0);
+/// `DragonRespawnStage`'s beam and growl point, `(0, 128, 0)`.
+pub const RESPAWN_BEAM: IVec3 = IVec3::new(0, 128, 0);
+/// `EnderDragonFight.TIME_BETWEEN_CRYSTAL_SCANS`.
+pub const CRYSTAL_SCAN_TICKS: u32 = 100;
+/// `CRYSTAL_DESTROY_TARGETING`: a crystal destroyed by no player turns
+/// the dragon on the nearest player this close.
+pub const CRYSTAL_DESTROY_RANGE: f64 = 64.0;
+/// `tryRespawn`: the crystals stand this far out from the portal's pillar.
+pub const RESPAWN_EDGE: i32 = 3;
+/// `PREPARING_TO_SUMMON_PILLARS` lasts this long (then moves on at this time).
+pub const PREPARE_TICKS: u32 = 100;
+/// `SUMMONING_PILLARS`: a pillar every 40 ticks, rebuilt at the 39th.
+pub const PILLAR_TICKS: u32 = 40;
+/// The block radius cleared around a pillar's cap, and its blast's power.
+pub const PILLAR_CLEAR: i32 = 10;
+pub const PILLAR_BLAST: f32 = 5.0;
+/// `SUMMONING_DRAGON`: growls from 80, the dragon at 100.
+pub const SUMMON_TICKS: u32 = 100;
+pub const SUMMON_GROWL_FROM: u32 = 80;
+/// Crystals heal a dragon this close (`checkCrystals`' box grown by 32).
+pub const HEAL_RANGE: f64 = 32.0;
 
 /// One hit box of the dragon (Java's `EnderDragonPart`s).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -107,8 +128,8 @@ pub struct Dragon {
     /// Flame bursts since landing (it takes off after four).
     flame_count: u32,
     sitting_damage: f32,
-    /// Index of the crystal healing it (drawn as a beam).
-    pub healer: Option<usize>,
+    /// The crystal healing it (Java's `nearestCrystal`, drawn as a beam).
+    pub healer: Option<u32>,
     /// Seconds of the red hurt flash left.
     pub hurt: f32,
     /// Damage taken during the current immunity window (Java's
@@ -125,27 +146,6 @@ pub struct Dragon {
     parts: [(Part, DVec3, DVec3); 8],
     /// Ticks until the next growl.
     growl: u32,
-}
-
-/// A crystal on a pillar.
-pub struct Crystal {
-    /// Feet, centred.
-    pub pos: DVec3,
-    /// Ticks alive, for the spin and bob.
-    pub age: u32,
-    /// Which pillar it stands on, for the save.
-    pillar: usize,
-}
-
-impl Crystal {
-    /// The crystal's 2x2x2 box.
-    pub fn aabb(&self) -> (DVec3, DVec3) {
-        (self.pos - DVec3::new(1.0, 0.0, 1.0), self.pos + DVec3::new(1.0, 2.0, 1.0))
-    }
-
-    pub fn center(&self) -> DVec3 {
-        self.pos + DVec3::Y
-    }
 }
 
 /// A dragon fireball (Java's `DragonFireball`): speeds up like a blaze's and
@@ -172,10 +172,47 @@ pub struct BreathCloud {
     cooldowns: Vec<(PlayerId, u32)>,
 }
 
+/// `DragonRespawnStage`, in order (the respawn ritual).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Stage {
+    Start,
+    PreparingToSummonPillars,
+    SummoningPillars,
+    SummoningDragon,
+}
+
+impl Stage {
+    /// The saved name (`getSerializedName`).
+    pub fn name(self) -> &'static str {
+        match self {
+            Stage::Start => "start",
+            Stage::PreparingToSummonPillars => "preparing_to_summon_pillars",
+            Stage::SummoningPillars => "summoning_pillars",
+            Stage::SummoningDragon => "summoning_dragon",
+        }
+    }
+
+    fn named(name: &str) -> Option<Self> {
+        [Stage::Start, Stage::PreparingToSummonPillars, Stage::SummoningPillars, Stage::SummoningDragon]
+            .into_iter()
+            .find(|s| s.name() == name)
+    }
+}
+
+/// A respawn ritual under way (`respawnStage`, `respawnTime`,
+/// `respawnCrystals`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Respawn {
+    pub stage: Stage,
+    /// Ticks in this stage.
+    pub time: u32,
+    /// The crystals on the exit portal's edges that started it.
+    pub crystals: Vec<u32>,
+}
+
 /// The fight in one End.
 pub struct Fight {
     pub dragon: Option<Dragon>,
-    pub crystals: Vec<Crystal>,
     pub fireballs: Vec<DragonFireball>,
     pub clouds: Vec<BreathCloud>,
     /// The dragon of this End has died at least once.
@@ -183,8 +220,22 @@ pub struct Fight {
     /// The exit portal's centre.
     pub podium: IVec3,
     nodes: [DVec3; 24],
-    /// Crystals waiting to blow up (hit last tick), and who hit them.
-    detonating: Vec<(usize, Option<PlayerId>)>,
+    /// The ten obsidian pillars (Java's spikes).
+    pillars: [Pillar; 10],
+    /// `aliveCrystals`: crystals on the pillars at the last scan.
+    alive_crystals: u32,
+    /// Ticks since that scan (`ticksSinceCrystalsScanned`).
+    crystal_scan: u32,
+    /// The respawn ritual, while one runs.
+    pub respawn: Option<Respawn>,
+    /// A saved ritual whose crystals (saved by position) are matched to
+    /// the loaded ones on the next tick.
+    respawn_saved: Option<(Stage, u32, Vec<DVec3>)>,
+    /// A crystal was placed in this End: `tryRespawn` at the next tick.
+    respawn_check: bool,
+    /// The pillar crystals an older save recorded as a mask, before
+    /// crystals were saved as entities (`None` once they are).
+    pub legacy_crystals: Option<u32>,
     /// Game time not yet run as whole ticks.
     pending: f64,
     /// The dragon died but the exit portal hasn't opened yet: part of it
@@ -224,7 +275,6 @@ impl Fight {
                 "health": d.health, "phase": phase(d.phase), "flap": d.flap, "prev_flap": d.previous_flap,
                 "hurt": d.hurt, "death": d.death_ticks, "healer": d.healer,
             })),
-            "crystals": self.crystals.iter().map(|c| json!([c.pos.x, c.pos.y, c.pos.z, c.age])).collect::<Vec<_>>(),
             "fireballs": self.fireballs.iter().map(|f| json!([v3(f.pos), v3(f.previous_pos), v3(f.dir)])).collect::<Vec<_>>(),
         })
     }
@@ -239,13 +289,18 @@ impl Fight {
         );
         let mut fight = Self {
             dragon: None,
-            crystals: Vec::new(),
             fireballs: Vec::new(),
             clouds: Vec::new(),
             previously_killed: false,
             podium,
             nodes: [DVec3::ZERO; 24],
-            detonating: Vec::new(),
+            pillars: [Pillar { x: 0, z: 0, radius: 0, top: 0, guarded: false, java: false }; 10],
+            alive_crystals: 0,
+            crystal_scan: 0,
+            respawn: None,
+            respawn_saved: None,
+            respawn_check: false,
+            legacy_crystals: None,
             pending: 0.0,
             unopened: false,
             gateway_order: [IVec3::ZERO; 20],
@@ -276,7 +331,7 @@ impl Fight {
                 dragon.previous_flap = d["prev_flap"].as_f64().unwrap_or(dragon.flap as f64) as f32;
                 dragon.hurt = d["hurt"].as_f64().unwrap_or(0.0) as f32;
                 dragon.death_ticks = d["death"].as_u64().unwrap_or(0).min(1000) as u32;
-                dragon.healer = d["healer"].as_u64().map(|i| i as usize);
+                dragon.healer = d["healer"].as_u64().map(|i| i as u32);
                 dragon.phase = match d["phase"].as_u64().unwrap_or(0) {
                     1 => Phase::Strafe(PlayerId::HOST),
                     2 => Phase::LandingApproach,
@@ -296,18 +351,6 @@ impl Fight {
             }
             None => self.dragon = None,
         }
-        self.crystals = v["crystals"]
-            .as_array()
-            .map(|cs| {
-                cs.iter()
-                    .take(32)
-                    .filter_map(|c| {
-                        let pos = v3(c)?;
-                        Some(Crystal { pos, age: c.get(3)?.as_u64()? as u32, pillar: 0 })
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
         self.fireballs = v["fireballs"]
             .as_array()
             .map(|fs| {
@@ -328,12 +371,42 @@ impl Fight {
             .unwrap_or_default();
     }
 
-    /// A fresh fight: a dragon and a crystal on every pillar.
+    /// A fresh fight: a dragon, and (as [`Fight::legacy_crystals`]) a
+    /// crystal for every pillar, which the caller spawns.
     pub fn new(end: &EndGen) -> Self {
         let mut fight = Self::empty(end);
         fight.dragon = Some(Dragon::new(SPAWN));
-        fight.crystals = end.pillars().iter().enumerate().map(|(i, p)| crystal_on(i, p)).collect();
+        fight.legacy_crystals = Some((1 << 10) - 1);
         fight
+    }
+
+    /// Spawns the pillar crystals [`Fight::legacy_crystals`] lists (a new
+    /// fight's, or an older save's), standing on the bedrock caps with the
+    /// bottom plate showing.
+    pub fn spawn_pillar_crystals(&mut self, crystals: &mut Crystals) {
+        let Some(mask) = self.legacy_crystals.take() else { return };
+        for (i, p) in self.pillars.iter().enumerate() {
+            if mask & (1 << i) != 0 {
+                crystals.spawn(p.crystal(), None, true, false);
+            }
+        }
+        self.scan_crystals(crystals);
+    }
+
+    /// After a load: the pillar crystals of an older save (or a new End)
+    /// spawn unless the crystals were `saved` as entities, then the
+    /// pillars are counted.
+    pub fn restore_crystals(&mut self, crystals: &mut Crystals, saved: bool) {
+        if saved {
+            self.legacy_crystals = None;
+        }
+        self.spawn_pillar_crystals(crystals);
+        self.scan_crystals(crystals);
+    }
+
+    /// The pillars, in Java's spike order.
+    pub fn pillars(&self) -> &[Pillar; 10] {
+        &self.pillars
     }
 
     fn empty(end: &EndGen) -> Self {
@@ -352,13 +425,18 @@ impl Fight {
         });
         Self {
             dragon: None,
-            crystals: Vec::new(),
             fireballs: Vec::new(),
             clouds: Vec::new(),
             previously_killed: false,
             podium: end.podium(),
             nodes,
-            detonating: Vec::new(),
+            pillars: *end.pillars(),
+            alive_crystals: 0,
+            crystal_scan: 0,
+            respawn: None,
+            respawn_saved: None,
+            respawn_check: false,
+            legacy_crystals: None,
             pending: 0.0,
             unopened: false,
             gateway_order: end.gateways(),
@@ -382,7 +460,25 @@ impl Fight {
         fight.gateways = fields.get(4).and_then(|g| g.parse().ok()).unwrap_or(0usize).min(20);
         let unbuilt: u32 = fields.get(5).and_then(|g| g.parse().ok()).unwrap_or(0);
         fight.unbuilt = (0..20).filter(|i| unbuilt & (1 << i) != 0).collect();
+        let sections: Vec<&str> = sections.collect();
+        // The respawn ritual: `r stage time` then each crystal's feet.
+        fight.respawn_saved = sections.iter().find_map(|r| {
+            let mut f = r.strip_prefix("r ")?.split(' ');
+            let stage = Stage::named(f.next()?)?;
+            let time = f.next()?.parse().ok()?;
+            let at = f
+                .filter_map(|p| {
+                    let v: Vec<f64> = p.split(',').filter_map(|v| v.parse().ok()).collect();
+                    match v[..] {
+                        [x, y, z] => Some(DVec3::new(x, y, z)),
+                        _ => None,
+                    }
+                })
+                .collect();
+            Some((stage, time, at))
+        });
         fight.links = sections
+            .iter()
             .filter_map(|link| {
                 let n: Vec<i32> = link.split(' ').filter_map(|v| v.parse().ok()).collect();
                 let [a, b, c, d, e, f] = n[..] else { return None };
@@ -408,33 +504,40 @@ impl Fight {
             }
             _ => {}
         }
-        let mask: u32 = mask.parse().unwrap_or(0);
-        fight.crystals = end
-            .pillars()
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| mask & (1 << i) != 0)
-            .map(|(i, p)| crystal_on(i, p))
-            .collect();
+        // Saves from before v0.16 Track G kept the pillar crystals as a
+        // mask; newer ones write `-` and save crystals as entities.
+        fight.legacy_crystals = mask.parse().ok();
         fight
     }
 
-    /// `state,previously_killed,health,crystal mask,gateways,unbuilt mask`
-    /// then `;a b c d e f` per gateway link. The state is 0 for dead, 1
-    /// alive, 2 dying (health holds the death's ticks so far) and 3 dead
-    /// with the exit portal still to open.
-    pub fn serialize(&self) -> String {
+    /// `state,previously_killed,health,-,gateways,unbuilt mask` then
+    /// `;a b c d e f` per gateway link and, during the respawn ritual,
+    /// `;r stage time x,y,z ...` with its crystals' feet. The state is 0
+    /// for dead, 1 alive, 2 dying (health holds the death's ticks so far)
+    /// and 3 dead with the exit portal still to open. The fourth field was
+    /// the pillar crystal mask before crystals were saved as entities.
+    pub fn serialize(&self, crystals: &Crystals) -> String {
         let (state, health) = match &self.dragon {
             Some(d) if d.phase == Phase::Dying => (2, d.death_ticks as f32),
             Some(d) => (1, d.health),
             None if self.unopened => (3, 0.0),
             None => (0, 0.0),
         };
-        let mask: u32 = self.crystals.iter().map(|c| 1 << c.pillar).sum();
         let unbuilt: u32 = self.unbuilt.iter().map(|i| 1 << i).sum();
+        let mask = self.legacy_crystals.map_or("-".to_string(), |m| m.to_string());
         let mut out = format!("{state},{},{health},{mask},{},{unbuilt}", self.previously_killed as u8, self.gateways);
         for (a, b) in &self.links {
             out += &format!(";{} {} {} {} {} {}", a.x, a.y, a.z, b.x, b.y, b.z);
+        }
+        let saved = self.respawn.as_ref().map(|r| {
+            let at: Vec<DVec3> = r.crystals.iter().filter_map(|&id| crystals.get(id)).map(|c| c.pos).collect();
+            (r.stage, r.time, at)
+        });
+        if let Some((stage, time, at)) = saved.or_else(|| self.respawn_saved.clone()) {
+            out += &format!(";r {} {time}", stage.name());
+            for p in at {
+                out += &format!(" {},{},{}", p.x, p.y, p.z);
+            }
         }
         out
     }
@@ -476,26 +579,63 @@ impl Fight {
         (player.with_y(0.0).length() < ARENA).then_some(d.health.max(0.0) / MAX_HEALTH)
     }
 
-    /// Advances the fight by `dt` game seconds.
+    /// Advances the fight, and the End's crystals with it, by `dt` game
+    /// seconds.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn update<W: BlockSource + ?Sized>(
         &mut self,
         dt: f64,
         world: &W,
         ctx: &Ctx,
         rng: &mut Rng,
+        crystals: &mut Crystals,
         events: &mut Vec<EntityEvent>,
     ) {
         self.pending += dt;
         while self.pending >= TICK - 1e-9 {
             self.pending -= TICK;
-            self.tick(world, ctx, rng, events);
+            crystals.tick(world, true, events);
+            self.tick(world, ctx, rng, crystals, events);
         }
     }
 
-    fn tick<W: BlockSource + ?Sized>(&mut self, world: &W, ctx: &Ctx, rng: &mut Rng, events: &mut Vec<EntityEvent>) {
-        // One at a time, so `blow_up` can remap the ones still queued.
-        while let Some((index, by)) = self.detonating.pop() {
-            self.blow_up(index, by, events);
+    /// `EndCrystalItem.useOn` placed a crystal in this End: the next tick
+    /// tries to start the respawn ritual.
+    pub fn crystal_placed(&mut self) {
+        self.respawn_check = true;
+    }
+
+    fn tick<W: BlockSource + ?Sized>(
+        &mut self,
+        world: &W,
+        ctx: &Ctx,
+        rng: &mut Rng,
+        crystals: &mut Crystals,
+        events: &mut Vec<EntityEvent>,
+    ) {
+        for d in std::mem::take(&mut crystals.destroyed) {
+            self.crystal_destroyed(d, ctx, crystals, events);
+        }
+        self.crystal_scan += 1;
+        if self.crystal_scan >= CRYSTAL_SCAN_TICKS {
+            self.scan_crystals(crystals);
+        }
+        if let Some((stage, time, at)) = self.respawn_saved.take() {
+            let ids = at
+                .iter()
+                .filter_map(|p| crystals.list.iter().find(|c| c.pos.distance_squared(*p) < 1e-6).map(|c| c.id))
+                .collect();
+            self.respawn = Some(Respawn { stage, time, crystals: ids });
+        }
+        if std::mem::take(&mut self.respawn_check) {
+            self.try_respawn(crystals, events);
+        }
+        // `EnderDragonFight.tick` runs only while players are in the
+        // fight's area and the arena is loaded.
+        let watched =
+            ctx.players.iter().any(|t| t.alive && t.pos.distance_squared(RESPAWN_BEAM.as_dvec3()) < ARENA * ARENA);
+        if self.respawn.is_some() && watched && self.arena_loaded(world) {
+            self.respawn_tick(rng, crystals, events);
         }
         let order = self.gateway_order;
         self.unbuilt.retain(|&i| {
@@ -505,16 +645,8 @@ impl Fight {
             }
             !ready
         });
-        for c in &mut self.crystals {
-            c.age += 1;
-            // Java keeps a fire burning under every crystal in the End.
-            let cell = c.pos.floor().as_ivec3();
-            if c.age % 20 == 1 && world.block(cell) == Some(Block::AIR) {
-                events.push(EntityEvent::IgniteBlock { cell });
-            }
-        }
         if let Some(mut dragon) = self.dragon.take() {
-            let keep = dragon.tick(self, world, ctx, rng, events);
+            let keep = dragon.tick(self, world, ctx, rng, crystals, events);
             if keep {
                 self.dragon = Some(dragon);
             } else {
@@ -532,81 +664,226 @@ impl Fight {
         self.clouds.retain_mut(|c| c.tick(ctx, events));
     }
 
-    /// Something hit crystal `index` (melee, an arrow or a blast): it blows
-    /// up on the next tick. `by` is the player who did it.
-    pub fn hit_crystal(&mut self, index: usize, by: Option<PlayerId>) {
-        if !self.detonating.iter().any(|&(i, _)| i == index) {
-            self.detonating.push((index, by));
-        }
+    /// `updateCrystalCount`: the crystals in the pillars' columns.
+    fn scan_crystals(&mut self, crystals: &Crystals) {
+        self.crystal_scan = 0;
+        self.alive_crystals = self
+            .pillars
+            .iter()
+            .map(|p| {
+                let r = f64::from(p.radius);
+                let min = DVec3::new(f64::from(p.x) - r, -1.0e7, f64::from(p.z) - r);
+                let max = DVec3::new(f64::from(p.x) + r, 1.0e7, f64::from(p.z) + r);
+                crystals.touching(min, max).count() as u32
+            })
+            .sum();
     }
 
-    fn blow_up(&mut self, index: usize, by: Option<PlayerId>, events: &mut Vec<EntityEvent>) {
-        if index >= self.crystals.len() {
+    /// Crystals on the pillars at the last scan (`aliveCrystals`).
+    pub fn alive_crystals(&self) -> u32 {
+        self.alive_crystals
+    }
+
+    /// `onCrystalDestroyed`: a ritual crystal ends the ritual; any other
+    /// recounts the pillars, hurts the dragon if it was healing it, and
+    /// turns a circling dragon on the player behind it (or the nearest
+    /// within 64).
+    fn crystal_destroyed(&mut self, d: Destroyed, ctx: &Ctx, crystals: &mut Crystals, events: &mut Vec<EntityEvent>) {
+        if self.respawn.as_ref().is_some_and(|r| r.crystals.contains(&d.id)) {
+            self.abort_respawn(crystals, events);
             return;
         }
-        let crystal = self.crystals.swap_remove(index);
-        // Keep pending detonations pointing at the same crystals.
-        let moved = self.crystals.len();
-        for (i, _) in &mut self.detonating {
-            if *i == moved {
-                *i = index;
-            }
-        }
-        events.push(EntityEvent::Explosion {
-            center: crystal.center(),
-            power: CRYSTAL_POWER,
-            cause: crate::simulation::damage::Cause::END_CRYSTAL,
-            credit_player: false,
+        self.scan_crystals(crystals);
+        let Some(dragon) = &mut self.dragon else { return };
+        let player = d.by.or_else(|| {
+            ctx.players
+                .iter()
+                .filter(|t| {
+                    t.targetable && t.pos.distance_squared(d.pos) <= CRYSTAL_DESTROY_RANGE * CRYSTAL_DESTROY_RANGE
+                })
+                .min_by(|a, b| a.pos.distance_squared(d.pos).total_cmp(&b.pos.distance_squared(d.pos)))
+                .map(|t| t.id)
         });
-        if let Some(d) = &mut self.dragon {
-            // Destroying the crystal healing it hurts the dragon.
-            match d.healer {
-                Some(h) if h == index => {
-                    d.healer = None;
-                    d.hurt_by(Part::Head, 10.0, true);
-                }
-                Some(h) if h == moved => d.healer = Some(index),
-                _ => {}
+        if dragon.healer == Some(d.id) {
+            dragon.healer = None;
+            dragon.hurt_by(Part::Head, 10.0, true);
+        }
+        if let (Phase::HoldingPattern, Some(player)) = (dragon.phase, player) {
+            dragon.set_phase(Phase::Strafe(player));
+        }
+    }
+
+    /// The dragon is dead and no ritual runs (`dragonKilled`, no `respawnStage`).
+    pub fn dragon_dead(&self) -> bool {
+        self.dragon.is_none() && !self.unopened && self.previously_killed
+    }
+
+    /// `tryRespawn`: a crystal on each of the exit portal's four edges (in
+    /// the cells three out from the pillar, one above the rim) starts the
+    /// ritual with every crystal found there.
+    fn try_respawn(&mut self, crystals: &Crystals, events: &mut Vec<EntityEvent>) {
+        if !self.dragon_dead() || self.respawn.is_some() {
+            return;
+        }
+        let center = self.podium + IVec3::Y;
+        let mut found = Vec::new();
+        // `Direction.Plane.HORIZONTAL`: north, east, south, west.
+        for d in [IVec3::NEG_Z, IVec3::X, IVec3::Z, IVec3::NEG_X] {
+            let cell = (center + d * RESPAWN_EDGE).as_dvec3();
+            let here: Vec<u32> = crystals.touching(cell, cell + DVec3::ONE).map(|c| c.id).collect();
+            if here.is_empty() {
+                return;
             }
-            // While circling, it turns on whoever did it.
-            if let (Phase::HoldingPattern, Some(player)) = (d.phase, by) {
-                d.set_phase(Phase::Strafe(player));
+            found.extend(here);
+        }
+        // `respawnDragon`: the exit portal goes out (its bedrock and portal
+        // blocks to end stone, then the shut podium again).
+        events.push(EntityEvent::ExitPortal { active: false });
+        self.respawn = Some(Respawn { stage: Stage::Start, time: 0, crystals: found });
+    }
+
+    /// `abortRespawnSequence`: the pillar crystals lose their beams and
+    /// invulnerability and the exit portal opens again.
+    fn abort_respawn(&mut self, crystals: &mut Crystals, events: &mut Vec<EntityEvent>) {
+        self.respawn = None;
+        self.reset_spike_crystals(crystals);
+        events.push(EntityEvent::ExitPortal { active: true });
+    }
+
+    /// `resetSpikeCrystals`.
+    fn reset_spike_crystals(&self, crystals: &mut Crystals) {
+        for p in &self.pillars {
+            let r = f64::from(p.radius);
+            let min = DVec3::new(f64::from(p.x) - r, -1.0e7, f64::from(p.z) - r);
+            let max = DVec3::new(f64::from(p.x) + r, 1.0e7, f64::from(p.z) + r);
+            let ids: Vec<u32> = crystals.touching(min, max).map(|c| c.id).collect();
+            for id in ids {
+                if let Some(c) = crystals.get_mut(id) {
+                    c.invulnerable = false;
+                    c.beam = None;
+                }
             }
         }
     }
 
-    /// The nearest crystal or dragon part a ray hits within `max_dist`.
+    /// Whether the pillars and exit portal the ritual works on are loaded.
+    fn arena_loaded<W: BlockSource + ?Sized>(&self, world: &W) -> bool {
+        world.block(self.podium).is_some()
+            && self.pillars.iter().all(|p| {
+                let r = p.radius.max(2) + 1;
+                loaded(world, IVec3::new(p.x, p.top, p.z), IVec3::new(r, 0, r), 0..=0)
+            })
+    }
+
+    /// One tick of the ritual (`DragonRespawnStage.tick` with
+    /// `respawnTime++`).
+    fn respawn_tick(&mut self, rng: &mut Rng, crystals: &mut Crystals, events: &mut Vec<EntityEvent>) {
+        let Some(r) = &mut self.respawn else { return };
+        r.crystals.retain(|&id| crystals.get(id).is_some());
+        if r.crystals.is_empty() {
+            self.abort_respawn(crystals, events);
+            return;
+        }
+        let time = r.time;
+        r.time += 1;
+        let ids = r.crystals.clone();
+        let growl = |events: &mut Vec<EntityEvent>| {
+            // Level event 3001: the dragon's growl at (0, 128, 0), heard
+            // across the island (volume 64).
+            events.push(EntityEvent::Sound { sound: MobSound::DragonGrowl, pos: RESPAWN_BEAM.as_dvec3() });
+        };
+        let beam = |crystals: &mut Crystals, to: Option<IVec3>| {
+            for &id in &ids {
+                if let Some(c) = crystals.get_mut(id) {
+                    c.beam = to;
+                }
+            }
+        };
+        match r.stage {
+            Stage::Start => {
+                beam(crystals, Some(RESPAWN_BEAM));
+                self.set_stage(Stage::PreparingToSummonPillars);
+            }
+            Stage::PreparingToSummonPillars => {
+                if time < PREPARE_TICKS {
+                    if time == 0 || (50..=52).contains(&time) || time >= 95 {
+                        growl(events);
+                    }
+                } else {
+                    self.set_stage(Stage::SummoningPillars);
+                }
+            }
+            Stage::SummoningPillars => {
+                let (start, end) = (time % PILLAR_TICKS == 0, time % PILLAR_TICKS == PILLAR_TICKS - 1);
+                if start || end {
+                    let index = (time / PILLAR_TICKS) as usize;
+                    if let Some(p) = self.pillars.get(index) {
+                        if start {
+                            beam(crystals, Some(IVec3::new(p.x, p.top + 1, p.z)));
+                        } else {
+                            events.push(EntityEvent::RespawnPillar { index });
+                        }
+                    } else if start {
+                        self.set_stage(Stage::SummoningDragon);
+                    }
+                }
+            }
+            Stage::SummoningDragon => {
+                if time >= SUMMON_TICKS {
+                    // `setRespawnStage(END)`: the new dragon, at a random heading.
+                    self.respawn = None;
+                    let mut dragon = Dragon::new(SPAWN);
+                    dragon.yaw = rng.next_f32() * 360.0;
+                    dragon.previous_yaw = dragon.yaw;
+                    self.dragon = Some(dragon);
+                    self.reset_spike_crystals(crystals);
+                    for &id in &ids {
+                        let Some(c) = crystals.get(id) else { continue };
+                        // `level.explode(crystal, .., 6.0F, NONE)`: no blocks break.
+                        events.push(EntityEvent::QuietBlast { center: c.pos, power: CRYSTAL_POWER });
+                        crystals.discard(id);
+                    }
+                } else if time >= SUMMON_GROWL_FROM {
+                    growl(events);
+                } else if time == 0 {
+                    beam(crystals, Some(RESPAWN_BEAM));
+                } else if time < 5 {
+                    growl(events);
+                }
+            }
+        }
+    }
+
+    /// `setRespawnStage`: the next stage starts at time 0.
+    fn set_stage(&mut self, stage: Stage) {
+        if let Some(r) = &mut self.respawn {
+            r.stage = stage;
+            r.time = 0;
+        }
+    }
+
+    /// The dragon or its part a ray hits within `max_dist`.
     pub fn raycast(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<(Hit, f64)> {
-        let crystals = self.crystals.iter().enumerate().filter_map(|(i, c)| {
-            let (min, max) = c.aabb();
-            physics::ray_aabb(origin, dir, min, max).map(|t| (Hit::Crystal(i), t))
-        });
         let parts = self.dragon.iter().filter(|d| d.phase != Phase::Dying).flat_map(|d| {
             d.parts.iter().filter_map(|&(part, min, max)| {
                 physics::ray_aabb(origin, dir, min, max).map(|t| (Hit::Dragon(part), t))
             })
         });
-        crystals.chain(parts).filter(|&(_, t)| t <= max_dist).min_by(|a, b| a.1.total_cmp(&b.1))
+        parts.filter(|&(_, t)| t <= max_dist).min_by(|a, b| a.1.total_cmp(&b.1))
     }
 
-    /// Whatever `p` is inside of.
+    /// The dragon part `p` is inside of.
     pub fn hit_at(&self, p: DVec3) -> Option<Hit> {
         let inside = |(min, max): (DVec3, DVec3)| p.cmpge(min).all() && p.cmple(max).all();
-        if let Some(i) = self.crystals.iter().position(|c| inside(c.aabb())) {
-            return Some(Hit::Crystal(i));
-        }
         let d = self.dragon.as_ref().filter(|d| d.phase != Phase::Dying)?;
         d.parts.iter().find(|&&(_, min, max)| inside((min, max))).map(|&(part, ..)| Hit::Dragon(part))
     }
 
-    /// Applies a player's hit; returns whether it did anything. Arrows
+    /// Applies a hit on the dragon; returns whether it did anything. Arrows
     /// bounce off a perched dragon.
-    pub fn strike(&mut self, hit: Hit, damage: f32, by: Option<PlayerId>, arrow: bool) -> bool {
+    pub fn strike(&mut self, hit: Hit, damage: f32, arrow: bool) -> bool {
         match hit {
-            Hit::Crystal(i) => {
-                self.hit_crystal(i, by);
-                true
-            }
+            Hit::Crystal(_) => false,
             Hit::Dragon(part) => self.dragon.as_mut().is_some_and(|d| {
                 if arrow && d.phase.sitting() {
                     return false;
@@ -616,14 +893,8 @@ impl Fight {
         }
     }
 
-    /// A blast at `center`: crystals in reach go off too, and the dragon
-    /// takes the damage of its nearest part.
+    /// A blast at `center`: the dragon takes the damage of its nearest part.
     pub fn explode(&mut self, center: DVec3, power: f32) {
-        for i in 0..self.crystals.len() {
-            if super::explosion_damage(power, self.crystals[i].center().distance(center), 1.0).is_some() {
-                self.hit_crystal(i, None);
-            }
-        }
         if let Some(d) = &mut self.dragon {
             let worst = d
                 .parts
@@ -666,15 +937,50 @@ fn loaded<W: BlockSource + ?Sized>(world: &W, center: IVec3, reach: IVec3, dy: s
     })
 }
 
-/// What a player's attack hit in the fight.
+/// What a player's attack or projectile hit: an End crystal (by id) or a
+/// part of the dragon.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Hit {
-    Crystal(usize),
+    Crystal(u32),
     Dragon(Part),
 }
 
-fn crystal_on(pillar: usize, p: &Pillar) -> Crystal {
-    Crystal { pos: p.crystal(), age: (pillar as u32 * 37) % 200, pillar }
+/// The End crystals (in any dimension) and, in the End, the fight, as a
+/// ray meets them: the nearest within `max_dist`.
+pub fn raycast(
+    fight: Option<&Fight>,
+    crystals: &Crystals,
+    origin: DVec3,
+    dir: DVec3,
+    max_dist: f64,
+) -> Option<(Hit, f64)> {
+    let crystal = crystals.raycast(origin, dir, max_dist).map(|(id, t)| (Hit::Crystal(id), t));
+    let dragon = fight.and_then(|f| f.raycast(origin, dir, max_dist));
+    crystal.into_iter().chain(dragon).min_by(|a, b| a.1.total_cmp(&b.1))
+}
+
+/// What projectiles strike in flight: the crystals and, in the End, the fight.
+pub struct Targets<'a> {
+    pub fight: Option<&'a mut Fight>,
+    pub crystals: &'a mut Crystals,
+}
+
+impl Targets<'_> {
+    pub fn raycast(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<(Hit, f64)> {
+        raycast(self.fight.as_deref(), self.crystals, origin, dir, max_dist)
+    }
+
+    /// A projectile's hit for `damage`, shot by `by`; returns whether it
+    /// did anything (arrows bounce off a perched dragon).
+    pub fn strike(&mut self, hit: Hit, damage: f32, by: Option<PlayerId>, arrow: bool) -> bool {
+        match hit {
+            Hit::Crystal(id) => {
+                let blow = by.map_or(Blow::Other, |id| Blow::Player { id, creative: false });
+                self.crystals.hit(id, blow)
+            }
+            Hit::Dragon(_) => self.fight.as_deref_mut().is_some_and(|f| f.strike(hit, damage, arrow)),
+        }
+    }
 }
 
 /// Java: hits anywhere but the head do a quarter, plus up to one.
@@ -796,12 +1102,14 @@ impl Dragon {
     }
 
     /// One tick; returns `false` once the death is over.
+    #[allow(clippy::too_many_arguments)]
     fn tick<W: BlockSource + ?Sized>(
         &mut self,
         fight: &mut Fight,
         world: &W,
         ctx: &Ctx,
         rng: &mut Rng,
+        crystals: &Crystals,
         events: &mut Vec<EntityEvent>,
     ) -> bool {
         self.previous_pos = self.pos;
@@ -839,7 +1147,7 @@ impl Dragon {
         self.think(fight, world, ctx, rng, events);
         self.fly(world);
         self.place_parts();
-        self.heal(fight, rng);
+        self.heal(crystals, rng);
         if !self.phase.sitting() {
             self.smash(world, events);
         }
@@ -1028,7 +1336,7 @@ impl Dragon {
     /// otherwise on round the pillars.
     fn holding_target(&mut self, fight: &Fight, ctx: &Ctx, rng: &mut Rng) {
         if self.path.is_empty() && self.target.is_some() {
-            let alive = fight.crystals.len() as u32;
+            let alive = fight.alive_crystals;
             if (rng.next_f32() * (alive + 3) as f32) < 1.0 {
                 self.set_phase(Phase::LandingApproach);
                 return;
@@ -1164,27 +1472,23 @@ impl Dragon {
         });
     }
 
-    /// Picks the nearest crystal now and then, and heals a point every ten
-    /// ticks while one is in range.
-    fn heal(&mut self, fight: &Fight, rng: &mut Rng) {
-        if self.healer.is_some_and(|i| i >= fight.crystals.len()) {
+    /// `checkCrystals`: heals a point every ten ticks while a crystal is
+    /// healing it, and one tick in ten picks the nearest crystal within its
+    /// box grown by 32.
+    fn heal(&mut self, crystals: &Crystals, rng: &mut Rng) {
+        if self.healer.is_some_and(|id| crystals.get(id).is_none()) {
             self.healer = None;
-        }
-        if self.healer.is_some() && self.phase_ticks.is_multiple_of(10) && self.health < MAX_HEALTH {
+        } else if self.healer.is_some() && self.phase_ticks.is_multiple_of(10) && self.health < MAX_HEALTH {
             self.health = (self.health + 1.0).min(MAX_HEALTH);
         }
         if rng.next_f32() < 0.1 {
-            // Java searches its 16-block-long box grown by 32.
-            let reach = HEAL_RANGE + 8.0;
-            self.healer = fight
-                .crystals
-                .iter()
-                .enumerate()
-                .filter(|(_, c)| c.center().distance_squared(self.pos) < reach * reach)
-                .min_by(|a, b| {
-                    a.1.center().distance_squared(self.pos).total_cmp(&b.1.center().distance_squared(self.pos))
-                })
-                .map(|(i, _)| i);
+            // `EnderDragon` is 16 wide and 8 tall.
+            let grow = DVec3::splat(HEAL_RANGE);
+            let (min, max) = (self.pos - DVec3::new(8.0, 0.0, 8.0) - grow, self.pos + DVec3::new(8.0, 8.0, 8.0) + grow);
+            self.healer = crystals
+                .touching(min, max)
+                .min_by(|a, b| a.pos.distance_squared(self.pos).total_cmp(&b.pos.distance_squared(self.pos)))
+                .map(|c| c.id);
         }
     }
 
@@ -1403,31 +1707,51 @@ mod tests {
         }
     }
 
+    /// A fresh fight with its crystal on every pillar.
+    fn fresh(end: &EndGen) -> (Fight, Crystals) {
+        let mut fight = Fight::new(end);
+        let mut crystals = Crystals::default();
+        fight.spawn_pillar_crystals(&mut crystals);
+        (fight, crystals)
+    }
+
     #[test]
     fn a_new_fight_has_a_crystal_on_every_pillar_and_saves() {
         let end = EndGen::new(3);
-        let fight = Fight::new(&end);
-        assert_eq!(fight.crystals.len(), 10);
-        assert_eq!(fight.serialize(), "1,0,200,1023,0,0");
-        let loaded = Fight::load(&end, Some("1,1,57.5,5"));
-        assert_eq!(loaded.crystals.len(), 2);
+        let (fight, crystals) = fresh(&end);
+        assert_eq!(crystals.len(), 10);
+        assert!(crystals.list.iter().all(|c| c.show_bottom && !c.invulnerable && c.beam.is_none()));
+        assert_eq!(fight.alive_crystals(), 10);
+        assert_eq!(fight.serialize(&crystals), "1,0,200,-,0,0");
+        // An older save's mask still gives its pillars their crystals.
+        let mut loaded = Fight::load(&end, Some("1,1,57.5,5"));
+        let mut old = Crystals::default();
+        loaded.spawn_pillar_crystals(&mut old);
+        assert_eq!(old.len(), 2);
+        assert_eq!(old.list[1].pos, end.pillars()[2].crystal());
         assert!(loaded.previously_killed);
         assert_eq!(loaded.dragon.as_ref().unwrap().health, 57.5);
-        let dead = Fight::load(&end, Some("0,1,0,0"));
-        assert!(dead.dragon.is_none() && dead.crystals.is_empty());
+        let mut dead = Fight::load(&end, Some("0,1,0,0"));
+        let mut none = Crystals::default();
+        dead.spawn_pillar_crystals(&mut none);
+        assert!(dead.dragon.is_none() && none.is_empty());
+        // A newer save leaves its crystals to the entity save.
+        let mut newer = Fight::load(&end, Some("1,0,200,-,0,0"));
+        newer.spawn_pillar_crystals(&mut none);
+        assert!(none.is_empty());
 
         // Saved while dying: the death resumes and still pays out in full.
-        let mut dying = Fight::new(&end);
+        let (mut dying, mut crystals) = fresh(&end);
         dying.dragon.as_mut().unwrap().hurt_by(Part::Head, 500.0, true);
         let mut events = Vec::new();
         let mut rng = Rng::new(1);
         for _ in 0..100 {
-            dying.update(TICK, &Air, &ctx(Vec::new()), &mut rng, &mut events);
+            dying.update(TICK, &Air, &ctx(Vec::new()), &mut rng, &mut crystals, &mut events);
         }
-        assert_eq!(dying.serialize(), "2,0,100,1023,0,0");
-        let mut reloaded = Fight::load(&end, Some(&dying.serialize()));
+        assert_eq!(dying.serialize(&crystals), "2,0,100,-,0,0");
+        let mut reloaded = Fight::load(&end, Some(&dying.serialize(&crystals)));
         for _ in 0..DEATH_TICKS {
-            reloaded.update(TICK, &Air, &ctx(Vec::new()), &mut rng, &mut events);
+            reloaded.update(TICK, &Air, &ctx(Vec::new()), &mut rng, &mut crystals, &mut events);
         }
         let xp: u32 = events
             .iter()
@@ -1435,18 +1759,18 @@ mod tests {
             .sum();
         assert_eq!(xp, FIRST_XP);
         assert!(events.contains(&EntityEvent::DragonKilled { first: true }));
-        assert_eq!(reloaded.serialize(), "0,1,0,1023,1,0");
+        assert_eq!(reloaded.serialize(&crystals), "0,1,0,-,1,0");
     }
 
     #[test]
     fn the_dragon_circles_the_pillars() {
         let end = EndGen::new(5);
-        let mut fight = Fight::new(&end);
+        let (mut fight, mut crystals) = fresh(&end);
         let mut rng = Rng::new(1);
         let mut events = Vec::new();
         let mut far = 0;
         for _ in 0..20 * 60 {
-            fight.update(TICK, &Air, &ctx(Vec::new()), &mut rng, &mut events);
+            fight.update(TICK, &Air, &ctx(Vec::new()), &mut rng, &mut crystals, &mut events);
             let d = fight.dragon.as_ref().unwrap();
             assert!(d.pos.is_finite());
             if d.pos.with_y(0.0).length() > 30.0 {
@@ -1461,38 +1785,45 @@ mod tests {
     fn head_hits_count_fully_and_body_hits_quarter() {
         let end = EndGen::new(5);
         let mut fight = Fight::new(&end);
-        assert!(fight.strike(Hit::Dragon(Part::Head), 8.0, Some(PlayerId::HOST), false));
+        assert!(fight.strike(Hit::Dragon(Part::Head), 8.0, false));
         assert_eq!(fight.dragon.as_ref().unwrap().health, 192.0);
         // A weaker hit inside the immunity window does nothing.
-        assert!(!fight.strike(Hit::Dragon(Part::Body), 8.0, None, false));
+        assert!(!fight.strike(Hit::Dragon(Part::Body), 8.0, false));
         fight.dragon.as_mut().unwrap().immune = (0, 0.0);
-        assert!(fight.strike(Hit::Dragon(Part::Wing(0)), 8.0, None, false));
+        assert!(fight.strike(Hit::Dragon(Part::Wing(0)), 8.0, false));
         assert_eq!(fight.dragon.as_ref().unwrap().health, 189.0);
     }
 
     #[test]
     fn breaking_the_healing_crystal_hurts_the_dragon_and_explodes() {
         let end = EndGen::new(5);
-        let mut fight = Fight::new(&end);
-        fight.dragon.as_mut().unwrap().healer = Some(4);
-        fight.hit_crystal(4, Some(PlayerId::HOST));
+        let (mut fight, mut crystals) = fresh(&end);
+        let healer = crystals.list[4].id;
+        fight.dragon.as_mut().unwrap().healer = Some(healer);
+        let player = Target::new(PlayerId::HOST, DVec3::new(0.0, 70.0, 0.0), true);
+        let mut targets = Targets { fight: Some(&mut fight), crystals: &mut crystals };
+        assert!(targets.strike(Hit::Crystal(healer), 1.0, Some(PlayerId::HOST), false));
         let mut events = Vec::new();
-        fight.update(TICK, &Air, &ctx(Vec::new()), &mut Rng::new(1), &mut events);
-        assert_eq!(fight.crystals.len(), 9);
+        fight.update(TICK, &Air, &ctx(vec![player]), &mut Rng::new(1), &mut crystals, &mut events);
+        assert_eq!(crystals.len(), 9);
+        assert_eq!(fight.alive_crystals(), 9);
         assert!(events.iter().any(|e| matches!(e, EntityEvent::Explosion { power, .. } if *power == CRYSTAL_POWER)));
-        assert!(fight.dragon.as_ref().unwrap().health <= 190.0);
+        let d = fight.dragon.as_ref().unwrap();
+        assert!(d.health <= 190.0);
+        // Circling, it turns on the player who did it.
+        assert_eq!(d.phase, Phase::Strafe(PlayerId::HOST));
     }
 
     #[test]
     fn death_takes_ten_seconds_and_pays_out_experience() {
         let end = EndGen::new(5);
-        let mut fight = Fight::new(&end);
-        fight.crystals.clear();
+        let (mut fight, mut crystals) = fresh(&end);
+        crystals.list.clear();
         fight.dragon.as_mut().unwrap().hurt_by(Part::Head, 500.0, true);
         let mut events = Vec::new();
         let mut rng = Rng::new(1);
         for _ in 0..DEATH_TICKS + 5 {
-            fight.update(TICK, &Air, &ctx(Vec::new()), &mut rng, &mut events);
+            fight.update(TICK, &Air, &ctx(Vec::new()), &mut rng, &mut crystals, &mut events);
         }
         assert!(fight.dragon.is_none());
         assert!(fight.previously_killed);
@@ -1505,16 +1836,16 @@ mod tests {
         // The kill's gateway goes up at the first of the 20 spots.
         let gateway = end.gateways()[0];
         assert!(events.contains(&EntityEvent::BuildGateway { pos: gateway }));
-        assert_eq!(fight.serialize(), "0,1,0,0,1,0");
+        assert_eq!(fight.serialize(&crystals), "0,1,0,-,1,0");
 
         // Gateway links survive a save.
         let exit = IVec3::new(900, 80, -400);
         fight.link_gateways(gateway, exit);
         fight.link_gateways(exit, gateway);
-        let loaded = Fight::load(&end, Some(&fight.serialize()));
+        let loaded = Fight::load(&end, Some(&fight.serialize(&crystals)));
         assert_eq!(loaded.gateway_exit(gateway), Some(exit));
         assert_eq!(loaded.gateway_exit(exit), Some(gateway));
-        assert_eq!(loaded.serialize(), fight.serialize());
+        assert_eq!(loaded.serialize(&crystals), fight.serialize(&crystals));
     }
 
     /// Loaded only within `radius` blocks of the origin (horizontally).
@@ -1528,43 +1859,40 @@ mod tests {
     #[test]
     fn the_exit_portal_waits_for_its_whole_footprint() {
         let end = EndGen::new(5);
-        let mut fight = Fight::new(&end);
-        fight.crystals.clear();
+        let (mut fight, mut crystals) = fresh(&end);
+        crystals.list.clear();
         fight.dragon.as_mut().unwrap().hurt_by(Part::Head, 500.0, true);
         let mut events = Vec::new();
         let mut rng = Rng::new(1);
         for _ in 0..DEATH_TICKS + 5 {
-            fight.update(TICK, &Near(2), &ctx(Vec::new()), &mut rng, &mut events);
+            fight.update(TICK, &Near(2), &ctx(Vec::new()), &mut rng, &mut crystals, &mut events);
         }
         assert!(!events.iter().any(|e| matches!(e, EntityEvent::DragonKilled { .. })));
-        assert!(fight.serialize().starts_with("3,0,"));
-        fight.update(TICK, &Near(16), &ctx(Vec::new()), &mut rng, &mut events);
+        assert!(fight.serialize(&crystals).starts_with("3,0,"));
+        fight.update(TICK, &Near(16), &ctx(Vec::new()), &mut rng, &mut crystals, &mut events);
         assert!(events.contains(&EntityEvent::DragonKilled { first: true }));
     }
 
     #[test]
     fn crystals_hit_together_all_blow_up() {
         let end = EndGen::new(5);
-        let mut fight = Fight::new(&end);
-        // Each blast swap-removes, moving the last crystal into the gap,
-        // so the queued indices must follow it.
-        for i in [5, 9, 0] {
-            fight.hit_crystal(i, None);
+        let (mut fight, mut crystals) = fresh(&end);
+        let ids: Vec<u32> = [5, 9, 0].iter().map(|&i| crystals.list[i].id).collect();
+        for &id in &ids {
+            crystals.hit(id, Blow::Other);
         }
         let mut events = Vec::new();
-        fight.update(TICK, &Air, &ctx(Vec::new()), &mut Rng::new(1), &mut events);
-        assert_eq!(fight.crystals.len(), 7);
+        fight.update(TICK, &Air, &ctx(Vec::new()), &mut Rng::new(1), &mut crystals, &mut events);
+        assert_eq!(crystals.len(), 7);
         let blasts = events.iter().filter(|e| matches!(e, EntityEvent::Explosion { .. })).count();
         assert_eq!(blasts, 3);
-        let mut gone: Vec<usize> = (0..10).filter(|&i| !fight.crystals.iter().any(|c| c.pillar == i)).collect();
-        gone.sort();
-        assert_eq!(gone, vec![0, 5, 9]);
+        assert!(ids.iter().all(|&id| crystals.get(id).is_none()));
     }
 
     #[test]
     fn strafing_dragons_spit_fireballs_that_leave_breath() {
         let end = EndGen::new(5);
-        let mut fight = Fight::new(&end);
+        let (mut fight, mut crystals) = fresh(&end);
         let player = Target::new(PlayerId::HOST, DVec3::new(0.0, 70.0, 0.0), true);
         let d = fight.dragon.as_mut().unwrap();
         d.pos = DVec3::new(0.0, 90.0, 50.0);
@@ -1574,7 +1902,7 @@ mod tests {
         let mut events = Vec::new();
         let mut shot = false;
         for _ in 0..20 * 30 {
-            fight.update(TICK, &Air, &ctx(vec![player]), &mut rng, &mut events);
+            fight.update(TICK, &Air, &ctx(vec![player]), &mut rng, &mut crystals, &mut events);
             shot |= !fight.fireballs.is_empty();
             if !fight.clouds.is_empty() {
                 break;
@@ -1590,8 +1918,8 @@ mod tests {
         let end = EndGen::new(5);
         let mut fight = Fight::new(&end);
         fight.dragon.as_mut().unwrap().phase = Phase::SittingScanning;
-        assert!(!fight.strike(Hit::Dragon(Part::Head), 9.0, Some(PlayerId::HOST), true));
-        assert!(fight.strike(Hit::Dragon(Part::Head), 9.0, Some(PlayerId::HOST), false));
+        assert!(!fight.strike(Hit::Dragon(Part::Head), 9.0, true));
+        assert!(fight.strike(Hit::Dragon(Part::Head), 9.0, false));
     }
 
     #[test]
@@ -1603,5 +1931,169 @@ mod tests {
             cloud.tick(&ctx(players.clone()), &mut events);
         }
         assert_eq!(events.len(), 2);
+    }
+
+    /// A dead dragon's End with `n` crystals on the exit portal's edges.
+    fn ritual_ready(end: &EndGen, edges: usize) -> (Fight, Crystals, Vec<u32>) {
+        let mut fight = Fight::load(end, Some("0,1,0,-,1,0"));
+        let mut crystals = Crystals::default();
+        fight.spawn_pillar_crystals(&mut crystals);
+        let center = fight.podium + IVec3::Y;
+        let ids = [IVec3::NEG_Z, IVec3::X, IVec3::Z, IVec3::NEG_X]
+            .iter()
+            .take(edges)
+            .map(|&d| crystals.place((center + d * 3).as_dvec3() + DVec3::new(0.5, 0.0, 0.5)))
+            .collect();
+        fight.crystal_placed();
+        (fight, crystals, ids)
+    }
+
+    /// Runs `ticks` ticks with a player by the portal, doing what the game
+    /// does for [`EntityEvent::RespawnPillar`] (a new invulnerable crystal
+    /// beaming at the centre) and collecting the events.
+    fn run(fight: &mut Fight, crystals: &mut Crystals, ticks: u32, events: &mut Vec<(u32, EntityEvent)>) {
+        let player = Target::new(PlayerId::HOST, DVec3::new(0.0, 70.0, 6.0), true);
+        let mut rng = Rng::new(9);
+        for t in 0..ticks {
+            let mut out = Vec::new();
+            fight.update(TICK, &Air, &ctx(vec![player]), &mut rng, crystals, &mut out);
+            for e in out {
+                if let EntityEvent::RespawnPillar { index } = e {
+                    let p = fight.pillars()[index];
+                    crystals.spawn(p.crystal(), Some(RESPAWN_BEAM), true, true);
+                }
+                events.push((t, e));
+            }
+        }
+    }
+
+    #[test]
+    fn four_edge_crystals_respawn_the_dragon_on_javas_timetable() {
+        let end = EndGen::new(11);
+        let (mut fight, mut crystals, ritual) = ritual_ready(&end, 4);
+        // The old pillar crystals go in the pillar blasts (here, by hand).
+        for id in crystals.list.iter().filter(|c| c.show_bottom).map(|c| c.id).collect::<Vec<_>>() {
+            crystals.discard(id);
+        }
+        let mut events = Vec::new();
+        run(&mut fight, &mut crystals, 1, &mut events);
+        assert!(events.iter().any(|(_, e)| *e == EntityEvent::ExitPortal { active: false }));
+        let r = fight.respawn.clone().expect("the ritual started");
+        assert_eq!(r.stage, Stage::PreparingToSummonPillars);
+        assert_eq!(r.crystals, ritual);
+        assert!(ritual.iter().all(|&id| crystals.get(id).unwrap().beam == Some(RESPAWN_BEAM)));
+
+        // START took one tick; PREPARING_TO_SUMMON_PILLARS 101, growling at
+        // 0, 50-52 and 95-99; each pillar's beam at 40 i and rebuild at
+        // 40 i + 39 of SUMMONING_PILLARS (401 ticks); SUMMONING_DRAGON 101.
+        run(&mut fight, &mut crystals, 101 + 401 + 100, &mut events);
+        assert!(fight.dragon.is_none(), "not yet");
+        let growls: Vec<u32> = events
+            .iter()
+            .filter(|(_, e)| matches!(e, EntityEvent::Sound { sound: MobSound::DragonGrowl, .. }))
+            .map(|&(t, _)| t)
+            .collect();
+        // (Ticks counted from PREPARING_TO_SUMMON_PILLARS' first.)
+        let mut expected: Vec<u32> = vec![0, 50, 51, 52, 95, 96, 97, 98, 99];
+        expected.extend((1..5).map(|t| 101 + 401 + t));
+        expected.extend((80..100).map(|t| 101 + 401 + t));
+        assert_eq!(growls, expected);
+        let pillars: Vec<(u32, usize)> = events
+            .iter()
+            .filter_map(|&(t, e)| if let EntityEvent::RespawnPillar { index } = e { Some((t, index)) } else { None })
+            .collect();
+        assert_eq!(pillars, (0..10).map(|i| (101 + 40 * i as u32 + 39, i)).collect::<Vec<_>>());
+        run(&mut fight, &mut crystals, 1, &mut events);
+        let d = fight.dragon.as_ref().expect("the dragon is back");
+        assert_eq!(d.health, MAX_HEALTH);
+        // Made at (0, 128, 0) and flown one tick since.
+        assert!(d.pos.distance(SPAWN) < 2.0, "{}", d.pos);
+        assert!(fight.respawn.is_none());
+        // The ritual crystals blow up without breaking blocks and are gone;
+        // the new pillar crystals lose their beams and invulnerability.
+        let quiet = events.iter().filter(|(_, e)| matches!(e, EntityEvent::QuietBlast { .. })).count();
+        assert_eq!(quiet, 4);
+        assert!(ritual.iter().all(|&id| crystals.get(id).is_none()));
+        assert_eq!(crystals.len(), 10);
+        assert!(crystals.list.iter().all(|c| !c.invulnerable && c.beam.is_none()));
+
+        // The second kill: 500 experience, no egg, the next gateway.
+        fight.dragon.as_mut().unwrap().hurt_by(Part::Head, 500.0, true);
+        let mut out = Vec::new();
+        let mut rng = Rng::new(1);
+        crystals.list.clear();
+        for _ in 0..DEATH_TICKS + 5 {
+            fight.update(TICK, &Air, &ctx(Vec::new()), &mut rng, &mut crystals, &mut out);
+        }
+        let xp: u32 = out
+            .iter()
+            .filter_map(|e| if let EntityEvent::DragonXp { points, .. } = e { Some(*points) } else { None })
+            .sum();
+        assert_eq!(xp, 10 * 40 + 100);
+        assert!(out.contains(&EntityEvent::DragonKilled { first: false }));
+        assert!(out.contains(&EntityEvent::BuildGateway { pos: end.gateways()[1] }));
+    }
+
+    #[test]
+    fn the_ritual_needs_all_four_edges_players_and_its_crystals() {
+        let end = EndGen::new(11);
+        // Three edges: nothing.
+        let (mut fight, mut crystals, _) = ritual_ready(&end, 3);
+        let mut events = Vec::new();
+        run(&mut fight, &mut crystals, 5, &mut events);
+        assert!(fight.respawn.is_none() && events.iter().all(|(_, e)| !matches!(e, EntityEvent::ExitPortal { .. })));
+        // A living dragon: nothing.
+        let (mut fight, mut crystals, _) = ritual_ready(&end, 4);
+        fight.dragon = Some(Dragon::new(SPAWN));
+        run(&mut fight, &mut crystals, 5, &mut events);
+        assert!(fight.respawn.is_none());
+
+        // With nobody near, the ritual waits.
+        let (mut fight, mut crystals, ritual) = ritual_ready(&end, 4);
+        let mut out = Vec::new();
+        let mut rng = Rng::new(1);
+        for _ in 0..50 {
+            fight.update(TICK, &Air, &ctx(Vec::new()), &mut rng, &mut crystals, &mut out);
+        }
+        assert_eq!(fight.respawn.as_ref().unwrap().stage, Stage::Start);
+
+        // Breaking one of its crystals ends it: the portal opens again and
+        // the rebuilt pillars' crystals stop beaming.
+        run(&mut fight, &mut crystals, 200, &mut events);
+        assert_eq!(fight.respawn.as_ref().unwrap().stage, Stage::SummoningPillars);
+        assert!(crystals.list.iter().any(|c| c.invulnerable));
+        crystals.hit(ritual[2], Blow::Player { id: PlayerId::HOST, creative: false });
+        events.clear();
+        run(&mut fight, &mut crystals, 1, &mut events);
+        assert!(fight.respawn.is_none());
+        assert!(events.iter().any(|(_, e)| *e == EntityEvent::ExitPortal { active: true }));
+        assert!(crystals.list.iter().all(|c| !c.invulnerable && (c.beam.is_none() || ritual.contains(&c.id))));
+        assert!(fight.dragon.is_none());
+    }
+
+    #[test]
+    fn a_ritual_survives_a_save_mid_way() {
+        let end = EndGen::new(11);
+        let (mut fight, mut crystals, _) = ritual_ready(&end, 4);
+        let mut events = Vec::new();
+        run(&mut fight, &mut crystals, 1 + 101 + 123, &mut events);
+        let r = fight.respawn.clone().unwrap();
+        assert_eq!((r.stage, r.time), (Stage::SummoningPillars, 123));
+        let (text, saved) = (fight.serialize(&crystals), crystals.serialize());
+        assert!(text.contains(";r summoning_pillars 123 "), "{text}");
+
+        let mut fight = Fight::load(&end, Some(&text));
+        let mut crystals = Crystals::default();
+        crystals.load(&saved);
+        fight.spawn_pillar_crystals(&mut crystals);
+        let mut later = Vec::new();
+        // The rest: 401 - 123 + 101 ticks.
+        run(&mut fight, &mut crystals, 401 - 123 + 100, &mut later);
+        assert!(fight.dragon.is_none());
+        run(&mut fight, &mut crystals, 1, &mut later);
+        assert!(fight.dragon.is_some(), "the reloaded ritual finished on time");
+        let rebuilt = later.iter().filter(|(_, e)| matches!(e, EntityEvent::RespawnPillar { .. })).count();
+        let before = events.iter().filter(|(_, e)| matches!(e, EntityEvent::RespawnPillar { .. })).count();
+        assert_eq!(before + rebuilt, 10);
     }
 }

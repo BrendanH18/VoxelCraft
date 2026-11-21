@@ -212,7 +212,7 @@ impl Arrow {
         ctx: &Ctx,
         mobs: &mut [Mob],
         others: &[ArrowTarget],
-        mut fight: Option<&mut super::dragon::Fight>,
+        mut boss: Option<&mut super::dragon::Targets<'_>>,
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> bool {
@@ -260,7 +260,7 @@ impl Arrow {
                         crate::physics::ray_aabb(from, step, min, max).filter(|&t| t <= reach).map(|t| (i, t))
                     })
                     .min_by(|a, b| a.1.total_cmp(&b.1));
-                let boss = fight.as_deref().and_then(|f| f.raycast(from, step, reach));
+                let boss_hit = boss.as_deref().and_then(|b| b.raycast(from, step, reach));
                 // `AbstractArrow.onHitEntity` on a vehicle, cushion or
                 // decoration nearer than any mob or dragon part: it takes the
                 // arrow's damage and the arrow is gone, unless it pierces.
@@ -281,7 +281,7 @@ impl Arrow {
                 'hit: {
                     if let Some((o, t)) = other
                         && mob.is_none_or(|(_, m)| t < m)
-                        && boss.as_ref().is_none_or(|(_, b)| t < *b)
+                        && boss_hit.as_ref().is_none_or(|(_, b)| t < *b)
                     {
                         if o.mob_proof && self.shooter.is_some() {
                             // `hurtOrSimulate` refused: the arrow bounces back off it,
@@ -324,11 +324,12 @@ impl Arrow {
                         }
                         break 'hit;
                     }
-                    if let Some((hit, _)) = boss.filter(|&(_, t)| mob.is_none_or(|(_, m)| t < m))
-                        && let Some(fight) = fight.as_deref_mut()
+                    if let Some((hit, _)) = boss_hit.filter(|&(_, t)| mob.is_none_or(|(_, m)| t < m))
+                        && let Some(boss) = boss.as_deref_mut()
                     {
                         let damage = (self.vel.length() / BOW_SPEED * BOW_DAMAGE * self.power_factor()).ceil() as f32;
-                        if fight.strike(hit, damage, None, self.from_player) {
+                        let by = if self.from_player { self.owner } else { None };
+                        if boss.strike(hit, damage, by, self.from_player) {
                             return false;
                         }
                         // Bounced off a perched dragon's scales.

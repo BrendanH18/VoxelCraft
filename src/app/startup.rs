@@ -169,7 +169,7 @@ impl Game {
             }
             let scale = if dimension == Dimension::Nether { 1.0 / 8.0 } else { 8.0 };
             let p = (player.pos * DVec3::new(scale, 0.0, scale)).floor().as_ivec3();
-            dimension::Arrival::Portal(p.with_y(if dimension == Dimension::Nether { 64 } else { 100 }))
+            dimension::Arrival::Portal(p.with_y(if dimension == Dimension::Nether { 64 } else { 100 }), true)
         });
         if let Some([x, y, z, yaw, pitch]) = args.pose {
             player.pos = DVec3::new(x, y, z);

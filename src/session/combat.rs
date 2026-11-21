@@ -330,7 +330,7 @@ impl PlayerSession {
             Target::Fight => {
                 let (hit, t) = entities.fight_raycast(eye, dir, reach).ok_or("target vanished")?;
                 living_hit = matches!(hit, crate::entity::dragon::Hit::Dragon(_));
-                landed = entities.strike(hit, base + other, self.id);
+                landed = entities.strike_as(hit, base + other, self.id, self.mode.is_creative());
                 if landed && other > 0.0 {
                     let mut burst = crate::particles::Burst::new(crate::particles::Kind::MagicCrit, eye + dir * t, 16);
                     burst.spread = DVec3::splat(0.4);

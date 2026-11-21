@@ -51,6 +51,8 @@ impl Entities {
             // v0.16 Track C: the Wither's skulls.
             "wither_skulls": self.wither_skulls.iter().filter(|k| near(k.pos)).take(MAX)
                 .map(|k| json!({"at": pair(k.pos, k.previous_pos), "dangerous": k.dangerous})).collect::<Vec<_>>(),
+            // v0.16 Track G: End crystals (beams reach far, so all of them).
+            "end_crystals": self.crystals.replica_json(),
         })
     }
 
@@ -180,6 +182,7 @@ impl Entities {
                 Some(PrimedTnt::replica(p, q, e["fuse"].as_f64()? as f32))
             })
             .collect();
+        self.crystals.apply_replica(&v["end_crystals"]);
         match (&mut self.fight, &v["fight"]) {
             (_, Value::Null) => self.fight = None,
             (Some(f), fight) => f.apply_replica(fight),

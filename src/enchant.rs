@@ -719,6 +719,11 @@ impl JavaRandom {
         self.next(1) != 0
     }
 
+    /// `Random.nextLong`: two 32-bit draws, high then low.
+    pub fn next_long(&mut self) -> i64 {
+        (i64::from(self.next(32)) << 32).wrapping_add(i64::from(self.next(32)))
+    }
+
     pub fn next_float(&mut self) -> f32 {
         self.next(24) as f32 / (1 << 24) as f32
     }

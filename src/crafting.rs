@@ -194,6 +194,19 @@ pub struct Recipe {
 }
 
 impl Recipe {
+    /// Every slot's accepted items (v0.16 Track G: the progression audit
+    /// walks what can be crafted from what).
+    pub fn slots(&self) -> Vec<Ingredient> {
+        match &self.shape {
+            Shape::Shaped(rows, key) => rows
+                .iter()
+                .flat_map(|row| row.chars())
+                .filter_map(|c| key.iter().find(|(k, _)| *k == c).map(|&(_, options)| options))
+                .collect(),
+            Shape::Shapeless(ingredients) => ingredients.clone(),
+        }
+    }
+
     /// A valid ingredient layout for the guide, using the first alternative
     /// for each slot. These previews are never placed in the player's grid.
     pub fn preview(&self) -> Grid {
@@ -726,6 +739,14 @@ pub fn recipes() -> &'static [Recipe] {
         // v0.16 Track A: purpur and End rods.
         end::add(&mut r);
         gen5::add(&mut r);
+        // v0.16 Track G: `recipe/end_crystal.json`, glass around an eye of
+        // ender over a ghast tear.
+        r.push(shaped(
+            &["GGG", "GEG", "GTG"],
+            &[('G', const { &[b(Block::GLASS)] }), ('E', &[Item::EYE_OF_ENDER]), ('T', &[Item::GHAST_TEAR])],
+            crate::entity::crystal::END_CRYSTAL,
+            1,
+        ));
         // v0.15 Track C: `recipe/dried_ghast.json`, eight ghast tears around soul sand.
         r.push(shaped(
             &["###", "#X#", "###"],

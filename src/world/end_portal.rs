@@ -56,6 +56,218 @@ pub fn rings_loaded(frame: IVec3, get: impl Fn(IVec3) -> Option<Block>) -> bool 
     })
 }
 
+/// `TheEndGatewayBlockEntity`'s exit search: 1024 blocks out, stepping a
+/// chunk (16) at a time at most 16 times, end stone from y 30, the island
+/// at y 75, the tallest block within 16, the exit ten above it; arrivals
+/// stand on the tallest block within 5 of the exit gateway's cap.
+pub const EXIT_DISTANCE: f64 = 1024.0;
+pub const EXIT_STEPS: i32 = 16;
+pub const SPAWN_MIN_Y: i32 = 30;
+pub const ISLAND_Y: i32 = 75;
+pub const TALLEST_RADIUS: i32 = 16;
+pub const EXIT_ABOVE: i32 = 10;
+pub const ARRIVAL_RADIUS: i32 = 5;
+
+/// v0.16 Track G: where a new End gateway's exit goes
+/// (`TheEndGatewayBlockEntity.findOrCreateValidTeleportPos`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GatewayExit {
+    /// The exit gateway's cell: ten above the tallest block found.
+    pub exit: IVec3,
+    /// Where an `EndIslandFeature` island must be built first, when the
+    /// search found no end stone to stand on.
+    pub island: Option<IVec3>,
+}
+
+/// `BlockPos.asLong`: 26 bits of x at 38, 26 of z at 12, 12 of y at 0.
+pub fn block_pos_long(p: IVec3) -> i64 {
+    const H: i64 = (1 << 26) - 1;
+    const V: i64 = (1 << 12) - 1;
+    ((i64::from(p.x) & H) << 38) | ((i64::from(p.z) & H) << 12) | (i64::from(p.y) & V)
+}
+
+/// The end stone cells of `EndIslandFeature.place` at `origin`, with the
+/// gateway's `RandomSource.create(origin.asLong())` (a legacy LCG): a disc
+/// of radius 4–6 shrinking by 0.5–1.5 per layer down.
+pub fn java_island(origin: IVec3) -> Vec<IVec3> {
+    let mut rng = crate::enchant::JavaRandom::new(block_pos_long(origin));
+    let mut size = rng.next_bounded(3) as f32 + 4.0;
+    let mut out = Vec::new();
+    let mut y = 0;
+    while size > 0.5 {
+        let (lo, hi) = ((-size).floor() as i32, size.ceil() as i32);
+        for x in lo..=hi {
+            for z in lo..=hi {
+                if (x * x + z * z) as f32 <= (size + 1.0) * (size + 1.0) {
+                    out.push(origin + IVec3::new(x, y, z));
+                }
+            }
+        }
+        size -= rng.next_bounded(2) as f32 + 0.5;
+        y -= 1;
+    }
+    out
+}
+
+/// The End as it stands for the gateway search: loaded or saved chunks,
+/// else the generator's, plus an island about to be built.
+struct EndView<'a> {
+    end: &'a super::end::EndGen,
+    loaded: &'a dyn Fn(IVec3) -> Option<std::sync::Arc<super::chunk::ChunkData>>,
+    sections: std::cell::RefCell<rustc_hash::FxHashMap<IVec3, std::sync::Arc<super::chunk::ChunkData>>>,
+    island: Vec<IVec3>,
+    max_y: i32,
+}
+
+impl EndView<'_> {
+    fn section(&self, cpos: IVec3) -> std::sync::Arc<super::chunk::ChunkData> {
+        if let Some(d) = self.sections.borrow().get(&cpos) {
+            return d.clone();
+        }
+        let d = (self.loaded)(cpos).unwrap_or_else(|| std::sync::Arc::new(self.end.generate(cpos)));
+        self.sections.borrow_mut().insert(cpos, d.clone());
+        d
+    }
+
+    fn get(&self, p: IVec3) -> Block {
+        if p.y < 0 || p.y >= self.max_y {
+            return Block::AIR;
+        }
+        if self.island.contains(&p) {
+            return Block::END_STONE;
+        }
+        let l = super::chunk::local_of(p);
+        self.section(super::chunk::chunk_of(p)).get(l.x as usize, l.y as usize, l.z as usize)
+    }
+
+    /// For Java's 16-block chunk column `cx, cz`, the top of its highest
+    /// non-empty 16-high section, if any (`getHighestSectionPosition() +
+    /// 15`). VoxelCraft's chunks are larger cubes, so the column's own
+    /// cells are read.
+    fn highest(&self, cx: i32, cz: i32) -> Option<i32> {
+        use super::chunk::CHUNK_SIZE_I as S;
+        let (x0, z0) = (cx * 16, cz * 16);
+        for cy in (0..self.max_y.div_euclid(S)).rev() {
+            let cpos = IVec3::new(x0.div_euclid(S), cy, z0.div_euclid(S));
+            if self.section(cpos).uniform() == Some(Block::AIR) {
+                continue;
+            }
+            for y in (cy * S..cy * S + S).rev() {
+                let filled = (z0..z0 + 16).any(|z| (x0..x0 + 16).any(|x| self.get(IVec3::new(x, y, z)) != Block::AIR));
+                if filled {
+                    return Some(y.div_euclid(16) * 16 + 15);
+                }
+            }
+        }
+        None
+    }
+}
+
+impl crate::physics::BlockSource for EndView<'_> {
+    fn block(&self, p: IVec3) -> Option<Block> {
+        Some(self.get(p))
+    }
+}
+
+/// `findTallestBlock`: over the columns within `dist` of `around` (x
+/// outer, z inner; its own column only `with_bedrock`), the highest
+/// full-collision block, a later column only when strictly taller;
+/// `around` itself if there's none.
+pub fn tallest_block<W: crate::physics::BlockSource + ?Sized>(
+    world: &W,
+    around: IVec3,
+    dist: i32,
+    with_bedrock: bool,
+    (min_y, max_y): (i32, i32),
+) -> IVec3 {
+    let mut tallest: Option<IVec3> = None;
+    for xd in -dist..=dist {
+        for zd in -dist..=dist {
+            if xd == 0 && zd == 0 && !with_bedrock {
+                continue;
+            }
+            let floor = tallest.map_or(min_y, |t| t.y);
+            let mut y = max_y - 1;
+            while y > floor {
+                let p = IVec3::new(around.x + xd, y, around.z + zd);
+                let b = world.block(p).unwrap_or(Block::AIR);
+                if b != Block::AIR && crate::physics::full_collision(world, p) && (with_bedrock || b != Block::BEDROCK)
+                {
+                    tallest = Some(p);
+                    break;
+                }
+                y -= 1;
+            }
+        }
+    }
+    tallest.unwrap_or(around)
+}
+
+/// `findOrCreateValidTeleportPos` for the gateway at `entry`: 1024 blocks
+/// straight out from the centre, back past chunks with blocks (up to 16)
+/// then on past empty ones (up to 16); in that chunk, the end stone from
+/// y 30 up with two non-full blocks above nearest the world origin (else
+/// an island at y 75); then the tallest block within 16 of it, and ten up.
+/// `loaded` gives the chunk sections as they stand where they exist.
+pub fn gateway_exit(
+    end: &super::end::EndGen,
+    loaded: &dyn Fn(IVec3) -> Option<std::sync::Arc<super::chunk::ChunkData>>,
+    entry: IVec3,
+    max_y: i32,
+) -> GatewayExit {
+    let mut view = EndView { end, loaded, sections: Default::default(), island: Vec::new(), max_y };
+    let dir = glam::DVec2::new(f64::from(entry.x), f64::from(entry.z)).normalize_or_zero();
+    let mut at = dir * EXIT_DISTANCE;
+    let chunk = |at: glam::DVec2| ((at.x / 16.0).floor() as i32, (at.y / 16.0).floor() as i32);
+    let empty = |view: &EndView, at: glam::DVec2| {
+        let (cx, cz) = chunk(at);
+        view.highest(cx, cz).is_none()
+    };
+    let mut limit = EXIT_STEPS;
+    while !empty(&view, at) && limit > 0 {
+        limit -= 1;
+        at -= dir * 16.0;
+    }
+    let mut limit = EXIT_STEPS;
+    while empty(&view, at) && limit > 0 {
+        limit -= 1;
+        at += dir * 16.0;
+    }
+    // `findValidSpawnInChunk`: x fastest, then y, then z; the first of
+    // the nearest kept.
+    let (cx, cz) = chunk(at);
+    let mut found: Option<(f64, IVec3)> = None;
+    if let Some(top) = view.highest(cx, cz) {
+        for z in cz * 16..cz * 16 + 16 {
+            for y in SPAWN_MIN_Y..=top {
+                for x in cx * 16..cx * 16 + 16 {
+                    let p = IVec3::new(x, y, z);
+                    if view.get(p) != Block::END_STONE
+                        || crate::physics::full_collision(&view, p + IVec3::Y)
+                        || crate::physics::full_collision(&view, p + IVec3::Y * 2)
+                    {
+                        continue;
+                    }
+                    let d = (p.as_dvec3() + glam::DVec3::splat(0.5)).length_squared();
+                    if found.is_none_or(|(best, _)| d < best) {
+                        found = Some((d, p));
+                    }
+                }
+            }
+        }
+    }
+    let (start, island) = match found {
+        Some((_, p)) => (p, None),
+        None => {
+            let origin = IVec3::new((at.x + 0.5).floor() as i32, ISLAND_Y, (at.y + 0.5).floor() as i32);
+            view.island = java_island(origin);
+            (origin, Some(origin))
+        }
+    };
+    let tallest = tallest_block(&view, start, TALLEST_RADIUS, true, (0, max_y));
+    GatewayExit { exit: tallest + IVec3::Y * EXIT_ABOVE, island }
+}
+
 /// Java draws X, Y, then Z, each as the difference of two bounded draws.
 fn egg_offset(mut draw: impl FnMut(u32) -> i32) -> IVec3 {
     IVec3::new(draw(16) - draw(16), draw(8) - draw(8), draw(16) - draw(16))
@@ -78,48 +290,27 @@ impl World {
         }
     }
 
-    /// A small end stone island hanging from `top` (Java's `EndIslandFeature`),
+    /// v0.16 Track G: the gateway exit search for the gateway at `entry`
+    /// against the End as it stands (see [`gateway_exit`]).
+    pub fn find_gateway_exit(&self, entry: IVec3) -> Option<GatewayExit> {
+        let end = self.generator.end()?;
+        Some(gateway_exit(end, &|c| self.section_data(c), entry, self.max_y()))
+    }
+
+    /// The `EndIslandFeature` island at `origin` (see [`java_island`]),
     /// for gateways that lead out over the void.
-    pub fn build_end_island(&mut self, top: IVec3) {
-        let mut radius = (self.roll() % 3) as f32 + 4.0;
-        let mut y = 0;
-        while radius > 0.5 {
-            let r = radius.ceil() as i32;
-            for dz in -r..=r {
-                for dx in -r..=r {
-                    if ((dx * dx + dz * dz) as f32) <= (radius + 1.0) * (radius + 1.0) {
-                        self.set_block(top + IVec3::new(dx, y, dz), Block::END_STONE);
-                    }
-                }
-            }
-            radius -= (self.roll() % 2) as f32 + 0.5;
-            y -= 1;
+    pub fn build_end_island(&mut self, origin: IVec3) {
+        for p in java_island(origin) {
+            self.set_block(p, Block::END_STONE);
         }
     }
 
-    /// Where someone coming out of the gateway at `gateway` stands: on the
-    /// highest full block (not bedrock) within five of it, like Java's
-    /// `findExitPosition`, or on the gateway's cap if there's none.
+    /// Where someone coming out of the gateway at `gateway` stands
+    /// (`findExitPosition`): on the highest full block, not bedrock, within
+    /// five of it (its own column aside), or on its cap if there's none.
     pub fn gateway_arrival(&self, gateway: IVec3) -> glam::DVec3 {
         let from = gateway + IVec3::Y * 2;
-        let mut best: Option<IVec3> = None;
-        for dz in -5..=5 {
-            for dx in -5..=5 {
-                if (dx, dz) == (0, 0) {
-                    continue;
-                }
-                let floor = best.map_or(self.min_y(), |b| b.y);
-                for y in (floor + 1..self.max_y()).rev() {
-                    let p = IVec3::new(from.x + dx, y, from.z + dz);
-                    let b = self.get_block(p).unwrap_or(Block::AIR);
-                    if b.is_opaque() && b != Block::BEDROCK {
-                        best = Some(p);
-                        break;
-                    }
-                }
-            }
-        }
-        let stand = best.unwrap_or(from) + IVec3::Y;
+        let stand = tallest_block(self, from, ARRIVAL_RADIUS, false, (self.min_y(), self.max_y())) + IVec3::Y;
         stand.as_dvec3() + glam::DVec3::new(0.5, 0.0, 0.5)
     }
 
@@ -152,12 +343,21 @@ impl World {
     /// Opens the exit portal in the End's podium once the dragon is dead,
     /// with the dragon egg on its pillar after the first kill.
     pub fn open_exit_portal(&mut self, egg: bool) {
+        self.set_exit_portal(true, egg);
+    }
+
+    /// v0.16 Track G: builds the exit portal open (`END_PODIUM_ACTIVE`) or
+    /// shut (`END_PODIUM_INACTIVE`, the respawn ritual's), with the dragon
+    /// egg on top if `egg`. Shutting it is `respawnDragon`'s: every bedrock
+    /// and portal block of the podium turns to end stone, then the shut
+    /// podium is built over it, which leaves the bowl empty.
+    pub fn set_exit_portal(&mut self, active: bool, egg: bool) {
         let Some(origin) = self.generator.end().map(|e| e.podium()) else { return };
         for dy in -1..=3 {
             for dz in -4..=4 {
                 for dx in -4..=4 {
                     let p = origin + IVec3::new(dx, dy, dz);
-                    if let Some(b) = super::end::podium_block(origin, p, true)
+                    if let Some(b) = super::end::podium_block(origin, p, active)
                         && self.get_block(p) != Some(b)
                     {
                         self.set_block(p, b);
@@ -168,6 +368,47 @@ impl World {
         if egg {
             self.set_block(origin + IVec3::Y * 4, Block::DRAGON_EGG);
         }
+    }
+
+    /// v0.16 Track G: the first half of `SUMMONING_PILLARS`' rebuild: every
+    /// block within 10 of the pillar's bedrock cap goes (`removeBlock`).
+    pub fn clear_spike_top(&mut self, p: &super::end::Pillar) {
+        let top = IVec3::new(p.x, p.top, p.z);
+        let r = crate::entity::dragon::PILLAR_CLEAR;
+        for dy in -r..=r {
+            for dz in -r..=r {
+                for dx in -r..=r {
+                    let at = top + IVec3::new(dx, dy, dz);
+                    if self.get_block(at).is_some_and(|b| b != Block::AIR) {
+                        self.set_block(at, Block::AIR);
+                    }
+                }
+            }
+        }
+    }
+
+    /// v0.16 Track G: the second half, `EndSpikeFeature.placeSpike`: the
+    /// pillar, its cage and bedrock cap rebuilt, with fire where its
+    /// crystal stands (the caller adds the crystal).
+    pub fn build_spike(&mut self, p: &super::end::Pillar) {
+        let r = p.radius.max(2);
+        for y in self.min_y()..=p.top + 10 {
+            for dz in -r..=r {
+                for dx in -r..=r {
+                    let at = IVec3::new(p.x + dx, y, p.z + dz);
+                    if let Some(b) = p.block_at(at)
+                        && self.get_block(at).is_some_and(|old| old != b)
+                    {
+                        self.set_block(at, b);
+                    }
+                }
+            }
+        }
+        let cell = p.crystal().floor().as_ivec3();
+        if self.get_block(cell) != Some(Block::AIR) {
+            self.set_block(cell, Block::AIR);
+        }
+        self.crystal_fire(cell);
     }
 
     /// Puts an eye of ender in the empty frame at `pos`. Returns `None` if

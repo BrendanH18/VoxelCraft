@@ -320,7 +320,16 @@ impl Entities {
             }
         }
         if let Some(fight) = &mut self.fight {
-            fight.update(dt, world, ctx, &mut self.rng, &mut events);
+            // The End's crystals tick with the fight.
+            fight.update(dt, world, ctx, &mut self.rng, &mut self.crystals, &mut events);
+        } else if !self.crystals.is_empty() {
+            self.crystal_time += dt;
+            while self.crystal_time >= 0.05 - 1e-9 {
+                self.crystal_time -= 0.05;
+                self.crystals.tick(world, false, &mut events);
+            }
+        } else {
+            self.crystal_time = 0.0;
         }
 
         // Mob bow/crossbow shots become arrows, blaze shots fireballs.
@@ -411,13 +420,14 @@ impl Entities {
         }
         let targets = if self.arrows.is_empty() { Vec::new() } else { self.arrow_targets() };
         {
-            let (mobs, rng, fight, sculk) = (&mut self.mobs, &mut self.rng, &mut self.fight, &mut self.sculk);
+            let (mobs, rng, sculk) = (&mut self.mobs, &mut self.rng, &mut self.sculk);
+            let mut boss = super::dragon::Targets { fight: self.fight.as_mut(), crystals: &mut self.crystals };
             self.arrows.retain_mut(|a| {
                 if !world.entity_ticking(a.pos.floor().as_ivec3()) {
                     return true;
                 }
                 let was_stuck = a.is_stuck();
-                let keep = a.update(dt, world, ctx, mobs, &targets, fight.as_mut(), rng, &mut events);
+                let keep = a.update(dt, world, ctx, mobs, &targets, Some(&mut boss), rng, &mut events);
                 // `Projectile.onHit`: `projectile_land` where it stuck.
                 if !was_stuck && a.is_stuck() {
                     let source = sculk_events::Sculk::projectile_source(a.owner, a.shooter);

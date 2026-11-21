@@ -19,9 +19,41 @@ pub struct Pillar {
     pub top: i32,
     /// Ringed by an iron bar cage (the second and third shortest).
     pub guarded: bool,
+    /// Generation 5 (v0.16 Track G): Java's `EndSpikeFeature.placeSpike`
+    /// shape (`dx² + dz² <= r² + 1`, and air above y 65 in the rest of
+    /// its square) rather than the original round `dx² + dz² <= r²`.
+    pub java: bool,
 }
 
 impl Pillar {
+    /// Whether the column `x, z` is part of the pillar's obsidian.
+    pub fn holds(&self, x: i32, z: i32) -> bool {
+        let (dx, dz) = (x - self.x, z - self.z);
+        let r2 = self.radius * self.radius + i32::from(self.java);
+        dx.abs() <= self.radius && dz.abs() <= self.radius && dx * dx + dz * dz <= r2
+    }
+
+    /// The block `placeSpike` leaves at `p` (with the cage, bedrock cap and
+    /// the cleared air above y 65 in its square), or `None` outside it.
+    /// Generations before 5 only ever build the round pillar this way when
+    /// the respawn ritual rebuilds it.
+    pub fn block_at(&self, p: IVec3) -> Option<Block> {
+        let (dx, dz) = (p.x - self.x, p.z - self.z);
+        if self.caged(p.x, p.y, p.z) {
+            return Some(Block::IRON_BARS);
+        }
+        if dx.abs() > self.radius || dz.abs() > self.radius || p.y > self.top + 10 {
+            return None;
+        }
+        if dx == 0 && dz == 0 && p.y == self.top {
+            return Some(Block::BEDROCK);
+        }
+        if self.holds(p.x, p.z) && p.y < self.top {
+            return Some(Block::OBSIDIAN);
+        }
+        (p.y > 65).then_some(Block::AIR)
+    }
+
     /// Where the pillar's End crystal stands (feet), above the bedrock cap.
     pub fn crystal(&self) -> glam::DVec3 {
         glam::DVec3::new(self.x as f64 + 0.5, (self.top + 1) as f64, self.z as f64 + 0.5)
@@ -38,6 +70,54 @@ impl Pillar {
             && (dx.abs() == 2 || dz.abs() == 2 || dy == 3)
     }
 }
+/// Java's `EndSpikeFeature.SpikeCacheLoader` for a world seed: the cache
+/// key is the first `nextLong` of the seed's `SingleThreadedRandomSource`
+/// (low 16 bits), the sizes 0..10 shuffled by `Util.toShuffledList` with a
+/// source seeded by that key, and the spikes at `floor(42 cos)`,
+/// `floor(42 sin)` of `2(-π + π/10 i)`.
+pub fn java_spikes(seed: u64) -> [Pillar; 10] {
+    let key = crate::enchant::JavaRandom::new(seed as i64).next_long() & 0xFFFF;
+    let mut sizes: [i32; 10] = std::array::from_fn(|i| i as i32);
+    java_shuffle(&mut sizes, &mut crate::enchant::JavaRandom::new(key));
+    std::array::from_fn(|i| {
+        let a = 2.0 * (-std::f64::consts::PI + std::f64::consts::PI / 10.0 * i as f64);
+        let size = sizes[i];
+        Pillar {
+            x: (42.0 * a.cos()).floor() as i32,
+            z: (42.0 * a.sin()).floor() as i32,
+            radius: 2 + size / 3,
+            top: 76 + size * 3,
+            guarded: size == 1 || size == 2,
+            java: true,
+        }
+    })
+}
+
+/// `Util.shuffle`: from the end, swap each slot with one drawn below it.
+fn java_shuffle<T>(list: &mut [T], rng: &mut crate::enchant::JavaRandom) {
+    for i in (2..=list.len()).rev() {
+        let j = rng.next_bounded(i as i32) as usize;
+        list.swap(i - 1, j);
+    }
+}
+
+/// `EnderDragonFight.init`'s gateway list, `0..20` shuffled by the world
+/// seed's `SingleThreadedRandomSource`, in the order kills use it
+/// (`spawnNewGateway` takes from the end).
+pub fn java_gateway_order(seed: u64) -> [usize; 20] {
+    let mut list: [usize; 20] = std::array::from_fn(|i| i);
+    java_shuffle(&mut list, &mut crate::enchant::JavaRandom::new(seed as i64));
+    list.reverse();
+    list
+}
+
+/// Where the gateway numbered `i` (0..20) goes: `floor(96 cos)`,
+/// `floor(96 sin)` of `2(-π + π/20 i)`, at y 75.
+pub fn gateway_spot(i: usize) -> IVec3 {
+    let a = 2.0 * (-std::f64::consts::PI + std::f64::consts::PI / 20.0 * i as f64);
+    IVec3::new((96.0 * a.cos()).floor() as i32, 75, (96.0 * a.sin()).floor() as i32)
+}
+
 pub struct EndGen {
     shape: Perlin,
     detail: Perlin,
@@ -91,19 +171,24 @@ impl EndGen {
     }
 
     pub fn with_generation(seed: u64, generation: super::terrain::Generation) -> Self {
-        let mut ranks: [usize; 10] = std::array::from_fn(|i| i);
-        ranks.sort_unstable_by_key(|&i| hash3(i as i32, 0, 0, seed ^ 0x454E44));
-        let pillars = std::array::from_fn(|i| {
-            let angle = i as f64 * std::f64::consts::TAU / 10.0;
-            let rank = ranks[i] as i32;
-            Pillar {
-                x: (angle.cos() * 42.0).round() as i32,
-                z: (angle.sin() * 42.0).round() as i32,
-                radius: 2 + rank / 3,
-                top: 76 + rank * 3,
-                guarded: rank == 1 || rank == 2,
-            }
-        });
+        let pillars = if generation >= super::terrain::Generation::V5 {
+            java_spikes(seed)
+        } else {
+            let mut ranks: [usize; 10] = std::array::from_fn(|i| i);
+            ranks.sort_unstable_by_key(|&i| hash3(i as i32, 0, 0, seed ^ 0x454E44));
+            std::array::from_fn(|i| {
+                let angle = i as f64 * std::f64::consts::TAU / 10.0;
+                let rank = ranks[i] as i32;
+                Pillar {
+                    x: (angle.cos() * 42.0).round() as i32,
+                    z: (angle.sin() * 42.0).round() as i32,
+                    radius: 2 + rank / 3,
+                    top: 76 + rank * 3,
+                    guarded: rank == 1 || rank == 2,
+                    java: false,
+                }
+            })
+        };
         Self {
             shape: Perlin::new(seed ^ 0x454E4401),
             detail: Perlin::new(seed ^ 0x454E4402),
@@ -123,71 +208,28 @@ impl EndGen {
         &self.pillars
     }
 
-    /// The exit portal's centre: the cell above the central island's
-    /// surface at 0, 0 (Java's `EndPodiumFeature` origin).
+    /// The exit portal's centre (Java's `EndPodiumFeature` origin): the
+    /// cell above the central island's surface at 0, 0. Generation 5 (v0.16
+    /// Track G) puts it where `spawnExitPortal` does, on the surface block
+    /// itself (`MOTION_BLOCKING_NO_LEAVES` heightmap, one down).
     pub fn podium(&self) -> IVec3 {
         let top = self.column(0, 0).map_or(SPAWN.y, |(top, _)| top);
-        IVec3::new(0, top + 1, 0)
+        IVec3::new(0, top + i32::from(!self.v5()), 0)
     }
     /// The 20 spots around the central island where a gateway appears for
     /// each dragon killed, in the order they're used (Java shuffles them by
     /// the world seed).
+    ///
+    /// Generation 5 (v0.16 Track G) uses Java's own order for the seed
+    /// ([`java_gateway_order`]); older worlds keep the original order so
+    /// their saved gateway counts still name the same spots.
     pub fn gateways(&self) -> [IVec3; 20] {
+        if self.v5() {
+            return java_gateway_order(self.seed).map(gateway_spot);
+        }
         let mut order: [usize; 20] = std::array::from_fn(|i| i);
         order.sort_unstable_by_key(|&i| hash3(i as i32, 1, 0, self.seed ^ 0x4741_5445));
-        order.map(|i| {
-            let a = 2.0 * (-std::f64::consts::PI + std::f64::consts::PI / 20.0 * i as f64);
-            IVec3::new((96.0 * a.cos()).floor() as i32, 75, (96.0 * a.sin()).floor() as i32)
-        })
-    }
-
-    /// Where the gateway at `gateway` leads, found like Java's
-    /// `TheEndGatewayBlockEntity.findOrCreateValidTeleportPos`: 1024 blocks
-    /// straight out from the centre, moved to the first chunk with land
-    /// (up to 16 chunks either way), then ten blocks above the highest
-    /// block within 16. Returns the exit gateway's cell, and whether no
-    /// land was found, so a small island must be built under it.
-    pub fn gateway_exit(&self, gateway: IVec3) -> (IVec3, bool) {
-        let dir = glam::DVec2::new(gateway.x as f64, gateway.z as f64).normalize_or(glam::DVec2::X);
-        let mut at = dir * 1024.0;
-        let chunk_land = |at: glam::DVec2| {
-            let (cx, cz) = ((at.x.floor() as i32) >> 4 << 4, (at.y.floor() as i32) >> 4 << 4);
-            (0..16)
-                .flat_map(|z| (0..16).map(move |x| (cx + x, cz + z)))
-                .filter_map(|(x, z)| self.column(x, z).map(|(top, _)| (IVec3::new(x, top, z), cx, cz)))
-                .min_by_key(|(p, cx, cz)| (p.x - cx - 8).pow(2) + (p.z - cz - 8).pow(2))
-                .map(|(p, ..)| p)
-        };
-        for _ in 0..16 {
-            if chunk_land(at).is_none() {
-                break;
-            }
-            at -= dir * 16.0;
-        }
-        for _ in 0..16 {
-            if chunk_land(at).is_some() {
-                break;
-            }
-            at += dir * 16.0;
-        }
-        let Some(land) = chunk_land(at) else {
-            return (IVec3::new((at.x + 0.5).floor() as i32, 75 + 10, (at.y + 0.5).floor() as i32), true);
-        };
-        // The tallest land within 16, the land itself excluded like Java.
-        let mut best = land;
-        for dz in -16..=16 {
-            for dx in -16..=16 {
-                if (dx, dz) == (0, 0) {
-                    continue;
-                }
-                if let Some((top, _)) = self.column(land.x + dx, land.z + dz)
-                    && top > best.y
-                {
-                    best = IVec3::new(land.x + dx, top, land.z + dz);
-                }
-            }
-        }
-        (best + IVec3::Y * 10, false)
+        order.map(gateway_spot)
     }
 
     /// Surface and bottom of the floating island, or no land. No bedrock floor under the void.
@@ -369,10 +411,12 @@ impl EndGen {
             for x in 0..CHUNK_SIZE {
                 let (wx, wz) = (base.x + x as i32, base.z + z as i32);
                 let column = self.column(wx, wz);
-                let pillar = self.pillars.iter().find(|p| {
-                    let (dx, dz) = (wx - p.x, wz - p.z);
-                    dx.abs() <= p.radius && dz.abs() <= p.radius && dx * dx + dz * dz <= p.radius * p.radius
-                });
+                let pillar = self.pillars.iter().find(|p| p.holds(wx, wz));
+                // Generation 5: `placeSpike` also clears its square above y 65.
+                let square = self
+                    .pillars
+                    .iter()
+                    .find(|p| p.java && (wx - p.x).abs() <= p.radius && (wz - p.z).abs() <= p.radius);
                 // Cages reach past the round pillar, to its 5x5 square.
                 let cage = self.pillars.iter().find(|p| p.guarded && (wx - p.x).abs() <= 2 && (wz - p.z).abs() <= 2);
                 for y in 0..CHUNK_SIZE {
@@ -388,6 +432,8 @@ impl EndGen {
                         Block::OBSIDIAN
                     } else if cage.is_some_and(|p| p.caged(wx, wy, wz)) {
                         Block::IRON_BARS
+                    } else if square.is_some_and(|p| wy > 65 && wy <= p.top + 10) {
+                        Block::AIR
                     } else if let Some(b) = podium_block(podium, IVec3::new(wx, wy, wz), false) {
                         b
                     } else if column.is_some_and(|(top, bottom)| wy >= bottom && wy <= top) {
@@ -533,13 +579,57 @@ mod tests {
         }
         assert_ne!(EndGen::new(43).gateways(), gateways);
         for g in &gateways[..5] {
-            let (exit, island) = generator.gateway_exit(*g);
+            let found = super::super::end_portal::gateway_exit(&generator, &|_| None, *g, 256);
+            let exit = found.exit;
             let r = ((exit.x * exit.x + exit.z * exit.z) as f64).sqrt();
             assert!((768.0..=1300.0).contains(&r), "exit {exit} at {r}");
-            if !island {
+            if found.island.is_none() {
+                // Ten above the tallest block found, an island column's
+                // top in generation 4.
                 assert_eq!(generator.column(exit.x, exit.z).map(|(top, _)| top + 10), Some(exit.y));
             }
         }
+    }
+
+    #[test]
+    fn generation_5_uses_javas_spikes_and_gateway_order() {
+        // `EndSpikeFeature`'s spike positions are fixed; sizes and cages
+        // come from the seed's shuffle.
+        let spikes = java_spikes(0);
+        let xz: Vec<(i32, i32)> = spikes.iter().map(|p| (p.x, p.z)).collect();
+        assert_eq!(
+            xz,
+            vec![
+                (42, 0),
+                (33, 24),
+                (12, 39),
+                (-13, 39),
+                (-34, 24),
+                (-42, -1),
+                (-34, -25),
+                (-13, -40),
+                (12, -40),
+                (33, -25)
+            ]
+        );
+        let mut sizes: Vec<i32> = spikes.iter().map(|p| (p.top - 76) / 3).collect();
+        sizes.sort_unstable();
+        assert_eq!(sizes, (0..10).collect::<Vec<_>>());
+        assert!(
+            spikes.iter().all(|p| p.radius == 2 + (p.top - 76) / 9 && p.guarded == matches!((p.top - 76) / 3, 1 | 2))
+        );
+        let v5 = EndGen::with_generation(0, super::super::terrain::Generation::V5);
+        assert_eq!(v5.pillars(), &spikes);
+        // The gateway list is every spot once, used from its shuffled end.
+        let order = java_gateway_order(0);
+        let mut sorted = order.to_vec();
+        sorted.sort_unstable();
+        assert_eq!(sorted, (0..20).collect::<Vec<_>>());
+        assert_eq!(v5.gateways()[0], gateway_spot(order[0]));
+        assert_eq!(gateway_spot(0), IVec3::new(96, 75, 0));
+        assert_eq!(gateway_spot(5), IVec3::new(-1, 75, 96));
+        // Generation 4 keeps its own order and round pillars.
+        assert!(EndGen::new(0).pillars().iter().all(|p| !p.java));
     }
 
     #[test]

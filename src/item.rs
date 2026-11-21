@@ -1191,6 +1191,10 @@ impl Item {
         if self == crate::entity::wither::NETHER_STAR {
             return item("nether star", Sprite::NetherStar);
         }
+        // v0.16 Track G: the End crystal.
+        if let Some(info) = crate::entity::crystal::item_info(self) {
+            return info;
+        }
         // v0.16 Track D: the poplar boats.
         match self {
             Self::POPLAR_BOAT => return single("poplar boat", Sprite::Boat([196, 188, 166], false)),
@@ -1667,6 +1671,7 @@ impl Item {
     pub fn has_glint(self) -> bool {
         matches!(self, Item::ENCHANTED_GOLDEN_APPLE | Item::EXPERIENCE_BOTTLE | Item::WRITTEN_BOOK)
             || self == crate::entity::wither::NETHER_STAR
+            || self == crate::entity::crystal::END_CRYSTAL
     }
 
     /// The equipment slot this goes on (`Equippable.slot`): armor its
@@ -1730,6 +1735,10 @@ impl Item {
         }
         if self == crate::world::camp_maps::CAMP_MAP {
             return Some(crate::world::camp_maps::TEX);
+        }
+        // v0.16 Track G: the End crystal draws its own layer.
+        if self == crate::entity::crystal::END_CRYSTAL {
+            return Some(crate::entity::crystal::ICON_TEX);
         }
         if self.is_map() {
             return Some(2944 + self.0 - 1255);
@@ -1849,6 +1858,8 @@ impl Item {
             .chain(gen5_items())
             // v0.16 Track D: the abandoned camp map, which draws its own layers.
             .chain([crate::world::camp_maps::CAMP_MAP])
+            // v0.16 Track G: the End crystal, which draws its own layer.
+            .chain([crate::entity::crystal::END_CRYSTAL])
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -2503,7 +2514,10 @@ mod tests {
     #[test]
     fn icon_layers_fit_the_texture_array() {
         // Maps and v0.16 Track A's items draw their own texture layers.
-        for i in Item::all_items().filter(|i| !i.is_map() && !crate::content::chorus::is_item(*i)) {
+        // So does v0.16 Track G's End crystal.
+        for i in Item::all_items().filter(|i| {
+            !i.is_map() && !crate::content::chorus::is_item(*i) && *i != crate::entity::crystal::END_CRYSTAL
+        }) {
             let index = tex::item_index(i.icon_layer().unwrap()).unwrap();
             assert!((index as u32) < icon_count());
 
@@ -2511,7 +2525,9 @@ mod tests {
         }
         // Every atlas slot is covered; visually identical items can share one.
         let layers: std::collections::HashSet<_> = Item::all_items()
-            .filter(|i| !i.is_map() && !crate::content::chorus::is_item(*i))
+            .filter(|i| {
+                !i.is_map() && !crate::content::chorus::is_item(*i) && *i != crate::entity::crystal::END_CRYSTAL
+            })
             .map(|i| i.icon_layer().unwrap())
             .collect();
         assert_eq!(layers.len() as u32, icon_count());
