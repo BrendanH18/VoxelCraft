@@ -17,8 +17,8 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
 - Match the selected Java reference behavior, including generation and structure
   layouts. Record sources and differences; do not substitute approximate behavior
   without an explicit scope decision.
-- Retain useful existing and pending work. Do not delete branches, discard
-  uncommitted changes, or rewrite working features because the plan changed.
+- Retain useful existing and pending work. Don't discard uncommitted changes
+  or rewrite working features because the plan changed.
 - Existing controller, CLI-agent and multiplayer paths receive maintenance and
   shared-feature integration; expansion is deferred under the roadmap.
 - Update `docs/roadmap.md` with verified behavior, discovered gaps and approved
@@ -39,12 +39,35 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
 - Project configuration (hooks, scripts, CI, tool settings) lives in tracked
   files too, so a fresh clone from GitHub has every rule and setting.
 
+## Cloud sandboxes (Boat)
+
+Use a Boat sandbox for builds, tests, untrusted code, Docker, and long jobs. Never run them on this computer.
+Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; never quote prices from memory.
+
+- Create: `id=$(boat new --json | jq -r 'select(.event=="ready") | .id')`
+- One-shot job: `boat run --push . -- npm test` (new sandbox, run, cost, delete; exits with the test exit code)
+- Run: `boat exec "$id" --cwd my-app "npm test"` (30 s timeout; `--timeout 0` = no limit)
+- Server: `boat exec "$id" --detach "npm run dev"`, then `boat exec "$id" --status <pid>`
+- Copy files: `boat push "$id" ./my-app` (git-tracked files, to /home/user/my-app) or clone the repo inside the sandbox
+- Public URL for a port: `boat ssh "$id" "host 3000 --private"`
+- Always pass the sandbox id. `current` does not work in a non-interactive shell.
+- When done: `boat stop "$id"` (keeps the disk for at least 14 days) or `boat delete "$id" --yes` (erases it)
+- Rust builds and tests, while iterating and at hand-off, run through
+  `scripts/boat-check.sh` (see [Boat checks](docs/development.md#boat-checks)):
+  `-- 'cargo check'` or `-- 'cargo test --release <filter>'` while working,
+  `--full` once the work is finished, and `--save` after dependency or
+  toolchain changes to refresh the warm snapshot runs start from.
+- Stay on this Mac: running the game (Metal rendering, screenshots, scripted
+  scenes, hands-on runs) and benchmarks, whose frame-time gate is measured on
+  the reference M5. Boat is x86_64 Linux with no GPU, so it can't check
+  macOS-only code either; CI covers macOS and Windows. `cargo fmt`, Ruff and
+  the doc-link check stay local too: they don't build or run tests.
+
 ## Delegation and builds
 
 - Release tags are two-part (owner, 2026-10-22): `v0.9`, `0.9` or `1.0`, naming
   Cargo version `0.9.0` / `1.0.0`. See [releases](docs/releases.md).
-- Preserve unrelated changes and other worktrees. Never delete
-  `refs/t3/checkpoints/*`, use `git push --mirror`, or use a bare `git stash`.
+- Preserve unrelated changes and other worktrees.
 - Keep saves, build output, credentials, local backups and
   machine-specific coordination files out of git: put them under an ignored
   path such as `target/` (for example `--data-dir target/playtest`), never as
@@ -56,52 +79,37 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
 - No step requires an agent to play the game through computer use (owner,
   2026-11-14). The owner's own play is the hands-on evidence, and nothing
   waits for an agent's hands-on pass.
-- Iterate locally, check in the cloud (owner, 2026-11-20; it replaces the
-  2026-11-05 rule that every build ran on Namespace, after 113 Namespace
-  instances in two days). While working, agents build and test on the Mac:
-  `cargo check`, `cargo clippy` and focused `cargo test --release <filter>`
-  runs, in the shared target directory below, so cargo's lock lets one
-  compile run at a time. Namespace runs only the hand-off checks:
-  `scripts/remote-check.sh --full` once a piece of work is finished (a
-  track's hand-off, an integration, a pull request's last state), not after
-  every edit. Don't use `remote-check.sh -- CMD` for focused test runs. When
-  `nsc` isn't installed or logged in, run the full chain locally. See
-  [remote checks](docs/development.md#remote-checks).
-- Agents must not each build the project (owner, 2026-10-17). Agent worktrees
-  share one cargo target directory, so dependencies build once and builds take
-  turns under cargo's lock: put the worktrees under one folder whose
-  `.cargo/config.toml` sets `build.target-dir` (or set `CARGO_TARGET_DIR`),
-  and tell agents that "Blocking waiting for file lock" means wait, not retry.
-  This shares build output, not responsibility for checks: each agent still
-  runs the hand-off chain below in its own worktree, taking turns under the
-  lock, and the integrator runs it again on the merged result.
-- A shared target directory can hand one worktree another's build: cargo
-  treats the `voxelcraft` crate as fresh when none of your source files is
-  newer than the last build, whichever worktree made it (found 2026-10-20).
-  Before checks or benchmarks in a tree whose files didn't change since
-  another tree built, run `cargo clean --release -p voxelcraft` (it keeps the
-  dependencies), and keep copies of binaries you compare.
-- The build script writes absolute asset paths into its output and reruns
-  only when the assets change (found 2026-10-26). In a shared target, a
-  build of another checkout, or of a temporary copy that has since been
-  deleted, leaves that output pointing there ("couldn't read
-  `/tmp/…/assets/…`"). Run `touch build.rs` before checks so it
-  regenerates for your tree.
+- Build and test in Boat, not on this Mac (owner, 2026-11-20). This
+  replaces the 2026-11-05 rule that builds ran on Namespace and the
+  2026-11-20 rule that agents iterated on the Mac; Namespace now runs CI
+  only. Every `boat-check.sh` run has its own sandbox started from the warm
+  snapshot, so agents don't wait on each other or on cargo's lock. Each
+  agent runs the hand-off chain on its own worktree, and the integrator runs
+  it again on the merged result. If `boat` isn't installed or signed in,
+  stop and tell the owner; don't build locally.
+- Local game builds share one cargo target directory (owner, 2026-10-17):
+  put the worktrees under one folder whose `.cargo/config.toml` sets
+  `build.target-dir` (or set `CARGO_TARGET_DIR`), and "Blocking waiting for
+  file lock" means wait, not retry. A shared target can hand one worktree
+  another's build (found 2026-10-20 and 2026-10-26): before running or
+  benchmarking a tree that another tree built last, run `touch build.rs` and
+  `cargo clean --release -p voxelcraft` (it keeps the dependencies), and keep
+  copies of binaries you compare.
 
 ## Before handing work back
 
-Run this exact chain so a failure stops at the first broken step:
+The hand-off chain, which stops at the first broken step:
 
 ```sh
 cargo fmt && cargo clippy --release --all-targets -- -D warnings && cargo test --release
 ```
 
-`scripts/remote-check.sh --full` runs the same chain (formatting here, the
-rest on a Namespace instance) plus the headless-build checks, and is the
-preferred way to run it.
+Run it with `scripts/boat-check.sh --full`: formatting here, the rest in a
+Boat sandbox, plus the headless-build checks.
 
 When a change touches Python (`tools/`, `packaging/` or `ruff.toml`), also run
-the Ruff checks CI runs and the Python tool tests:
+the Ruff checks CI runs here and the Python tool tests in Boat
+(`scripts/boat-check.sh -- "python3 -m unittest discover -s tools -p 'test_*.py'"`):
 
 ```sh
 uvx ruff@0.17.5 check && uvx ruff@0.17.5 format --check && python3 -m unittest discover -s tools -p 'test_*.py'

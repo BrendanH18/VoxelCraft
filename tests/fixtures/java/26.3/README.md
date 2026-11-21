@@ -385,7 +385,7 @@ from `Potions`, independently of Rust.
 ```sh
 python3 tools/extract_java_brewing_fixtures.py /path/to/server.jar --output target/java-brewing.json
 diff tests/fixtures/java/26.3/brewing.json target/java-brewing.json
-scripts/remote-check.sh -- 'cargo test --release --no-default-features --test java_brewing --test java_registry --test process_persistence -- --nocapture'
+scripts/boat-check.sh -- 'cargo test --release --no-default-features --test java_brewing --test java_registry --test process_persistence -- --nocapture'
 ```
 
 `tests/java_brewing.rs` checks every recipe with registered inputs/results,
@@ -426,7 +426,7 @@ does not read VoxelCraft source or the existing fixture.
 ```sh
 python3 tools/extract_java_mob_equipment_fixtures.py /path/to/server.jar --output target/java-mob-equipment.json
 diff tests/fixtures/java/26.3/mob_equipment.json target/java-mob-equipment.json
-scripts/remote-check.sh -- 'cargo test --release --test java_mob_equipment --test entity_storage'
+scripts/boat-check.sh -- 'cargo test --release --test java_mob_equipment --test entity_storage'
 ```
 
 `tests/java_mob_equipment.rs` compares the slot table in both directions,
@@ -453,7 +453,7 @@ forms and requirement forms, and never reads VoxelCraft source.
 ```sh
 python3 tools/extract_java_damage_fixtures.py /path/to/server.jar /path/to/client.jar --output target/java-damage-types.json
 diff tests/fixtures/java/26.3/damage_types.json target/java-damage-types.json
-scripts/remote-check.sh -- 'cargo test --release --test java_damage_types'
+scripts/boat-check.sh -- 'cargo test --release --test java_damage_types'
 ```
 
 `tests/java_damage_types.rs` compares `simulation::damage::DamageType` and
@@ -489,7 +489,7 @@ bundled server SHA-1 and fails on unknown registration forms.
 ```sh
 python3 tools/extract_java_equipment_fixtures.py /path/to/server.jar --output target/java-equipment.json
 diff tests/fixtures/java/26.3/equipment.json target/java-equipment.json
-scripts/remote-check.sh -- 'cargo test --release --test java_equipment && cargo test --release --lib equipment::'
+scripts/boat-check.sh -- 'cargo test --release --test java_equipment && cargo test --release --lib equipment::'
 ```
 
 `tests/java_equipment.rs` compares every armor item both ways (each Java item
@@ -518,7 +518,7 @@ fails on any form it does not know. It reads no VoxelCraft code or fixture.
 ```sh
 python3 tools/extract_java_effect_fixtures.py /path/to/server.jar --client /path/to/client.jar --output target/java-effects.json
 diff tests/fixtures/java/26.3/mob_effects.json target/java-effects.json
-scripts/remote-check.sh -- 'cargo test --release --test java_effects'
+scripts/boat-check.sh -- 'cargo test --release --test java_effects'
 ```
 
 `tests/java_effects.rs` checks both directions. Every Java effect must be an
@@ -544,7 +544,7 @@ decompiled source of the same version, nothing else.
 ```sh
 python3 tools/extract_java_stack_component_fixtures.py /path/to/server.jar /path/to/decompiled/net/minecraft --output target/java-stack-components.json
 diff tests/fixtures/java/26.3/stack_components.json target/java-stack-components.json
-scripts/remote-check.sh -- 'cargo test --release --test stack_components'
+scripts/boat-check.sh -- 'cargo test --release --test stack_components'
 ```
 
 `tests/stack_components.rs` compares the registries and dye colours both
@@ -571,7 +571,7 @@ or the existing fixture.
 ```sh
 python3 tools/extract_java_harness_fixtures.py /path/to/server.jar --output target/java-harnesses.json
 diff tests/fixtures/java/26.3/harnesses.json target/java-harnesses.json
-scripts/remote-check.sh -- 'cargo test --release --test java_harnesses --test java_recipes'
+scripts/boat-check.sh -- 'cargo test --release --test java_harnesses --test java_recipes'
 ```
 
 `tests/java_harnesses.rs` compares the items with the tag both ways, checks
@@ -605,7 +605,7 @@ fixture. Other thrown items may add their own top-level keys.
 ```sh
 python3 tools/extract_java_thrown_fixtures.py /path/to/server.jar --output target/java-thrown-items.json
 diff tests/fixtures/java/26.3/thrown_items.json target/java-thrown-items.json
-scripts/remote-check.sh -- 'cargo test --release --test java_thrown_items'
+scripts/boat-check.sh -- 'cargo test --release --test java_thrown_items'
 ```
 
 `tests/java_thrown_items.rs` checks the registration, throws bottles at
@@ -634,7 +634,7 @@ entry forms, and reads no VoxelCraft code or fixture.
 ```sh
 python3 tools/extract_java_enchantment_fixtures.py /path/to/server.jar --client /path/to/client.jar --output target/java-enchantments.json
 diff tests/fixtures/java/26.3/enchantments.json target/java-enchantments.json
-scripts/remote-check.sh -- 'cargo test --release --test java_enchantments'
+scripts/boat-check.sh -- 'cargo test --release --test java_enchantments'
 ```
 
 `tests/java_enchantments.rs` checks every definition against `enchant::Def`
@@ -670,7 +670,7 @@ VoxelCraft source or fixture.
 ```sh
 python3 tools/extract_java_small_mob_fixtures.py /path/to/server.jar --output target/java-small-mobs.json
 diff tests/fixtures/java/26.3/small_mobs.json target/java-small-mobs.json
-scripts/remote-check.sh -- 'cargo test --release --lib endermite'
+scripts/boat-check.sh -- 'cargo test --release --lib endermite'
 ```
 
 `src/entity/endermite/tests.rs` compares the registration, attributes,
@@ -708,7 +708,7 @@ VoxelCraft source or the existing fixture.
 ```sh
 python3 tools/extract_java_zombie_attribute_fixtures.py /path/to/server.jar --output target/java-zombie-attributes.json
 diff tests/fixtures/java/26.3/zombie_attributes.json target/java-zombie-attributes.json
-scripts/remote-check.sh -- 'cargo test --release --test java_zombie_attributes && cargo test --release --lib entity::zombie'
+scripts/boat-check.sh -- 'cargo test --release --test java_zombie_attributes && cargo test --release --lib entity::zombie'
 ```
 
 `tests/java_zombie_attributes.rs` compares the carriers in both directions
@@ -751,7 +751,7 @@ show_icon]` with -1 for an infinite duration.
 ```sh
 python3 tools/extract_java_effect_instance_cases.py /path/to/decompiled/net/minecraft --en-us /path/to/en_us.json --output target/java-effect-instances.json
 diff tests/fixtures/java/26.3/effect_instances.json target/java-effect-instances.json
-scripts/remote-check.sh -- 'cargo test --release --test java_effect_instances'
+scripts/boat-check.sh -- 'cargo test --release --test java_effect_instances'
 ```
 
 `tests/java_effect_instances.rs` replays every case through `Effects`,
@@ -782,7 +782,7 @@ or the existing fixture.
 ```sh
 python3 tools/extract_java_neutral_mob_fixtures.py /path/to/server.jar --output target/java-neutral-mobs.json
 diff tests/fixtures/java/26.3/neutral_mobs.json target/java-neutral-mobs.json
-scripts/remote-check.sh -- 'cargo test --release --test game_rules'
+scripts/boat-check.sh -- 'cargo test --release --test game_rules'
 ```
 
 `tests/game_rules.rs` compares `entity::neutral` with it both ways: every
@@ -815,7 +815,7 @@ fixture.
 ```sh
 python3 tools/extract_java_bundle_fixtures.py /path/to/server.jar --output target/java-bundles.json
 diff tests/fixtures/java/26.3/bundles.json target/java-bundles.json
-scripts/remote-check.sh -- 'cargo test --release --test java_bundles'
+scripts/boat-check.sh -- 'cargo test --release --test java_bundles'
 ```
 
 `tests/java_bundles.rs` checks the seventeen items against the tag both
@@ -846,7 +846,7 @@ decompiled source of the same version, nothing else.
 ```sh
 python3 tools/extract_java_dyed_item_fixtures.py /path/to/server.jar /path/to/client.jar /path/to/decompiled/net/minecraft --output target/java-dyed-items.json
 diff tests/fixtures/java/26.3/dyed_items.json target/java-dyed-items.json
-scripts/remote-check.sh -- 'cargo test --release --test java_dyed_items --test java_recipes'
+scripts/boat-check.sh -- 'cargo test --release --test java_dyed_items --test java_recipes'
 ```
 
 `tests/java_dyed_items.rs` compares both tags and the dye recipes both ways
@@ -881,7 +881,7 @@ from a model of `LecternBlockEntity.getRedstoneSignal` and `setPage`.
 ```sh
 python3 tools/extract_java_workstation_fixtures.py /path/to/server.jar target/java-workstations.json
 diff tests/fixtures/java/26.3/workstations.json target/java-workstations.json
-scripts/remote-check.sh -- 'cargo test --release --test java_workstations --test java_recipes'
+scripts/boat-check.sh -- 'cargo test --release --test java_workstations --test java_recipes'
 ```
 
 `tests/java_workstations.rs` compares the pattern registry and both loom
@@ -920,7 +920,7 @@ capture the values, so a changed shape fails.
 ```sh
 python3 tools/extract_java_illager_fixtures.py /path/to/server.jar --output target/java-illagers.json
 diff tests/fixtures/java/26.3/illagers.json target/java-illagers.json
-scripts/remote-check.sh -- 'cargo test --release --lib illager'
+scripts/boat-check.sh -- 'cargo test --release --lib illager'
 ```
 
 `src/entity/illager/tests.rs` reads every number back from the fixture
@@ -950,7 +950,7 @@ naming a spectral arrow, a coloured egg or a trim template.
 ```sh
 python3 tools/extract_java_items_effects_fixtures.py /path/to/server.jar --output target/java-items-effects.json
 diff tests/fixtures/java/26.3/items_effects.json target/java-items-effects.json
-scripts/remote-check.sh -- 'cargo test --release --test java_items_effects --test java_brewing --test java_recipes'
+scripts/boat-check.sh -- 'cargo test --release --test java_items_effects --test java_brewing --test java_recipes'
 ```
 
 `tests/java_items_effects.rs` compares each fact with the game both ways:
@@ -978,7 +978,7 @@ tags they use. Regenerate and compare with:
 ```sh
 python3 tools/extract_java_new_mob_fixtures.py /path/to/server.jar --output target/java-new-mobs.json
 diff tests/fixtures/java/26.3/new_mobs.json target/java-new-mobs.json
-scripts/remote-check.sh -- 'cargo test --release --lib -- happy_ghast nautilus camel_husk dried_ghast'
+scripts/boat-check.sh -- 'cargo test --release --lib -- happy_ghast nautilus camel_husk dried_ghast'
 ```
 
 The tests in `entity::happy_ghast`, `entity::nautilus` and
@@ -1009,7 +1009,7 @@ types that forbid patrols and raids. Regenerate and compare with:
 ```sh
 python3 tools/extract_java_raid_fixtures.py /path/to/server.jar --output target/java-raids.json
 diff tests/fixtures/java/26.3/raids.json target/java-raids.json
-scripts/remote-check.sh -- 'cargo test --release --lib -- entity::raid'
+scripts/boat-check.sh -- 'cargo test --release --lib -- entity::raid'
 ```
 
 The tests in `entity::raid` compare every constant and table with this
@@ -1041,7 +1041,7 @@ the villager food values, and constants of `Villager`, `GossipContainer`,
 ```sh
 python3 tools/extract_java_villager_fixtures.py /path/to/server.jar target/java-villagers.json
 diff tests/fixtures/java/26.3/villagers.json target/java-villagers.json
-scripts/remote-check.sh -- 'cargo test --release --lib villager'
+scripts/boat-check.sh -- 'cargo test --release --lib villager'
 ```
 
 `entity::villager::fixture_tests` compares both ways: every Java trade id
@@ -1069,7 +1069,7 @@ recorded as missing.
 ```sh
 python3 tools/extract_java_structure_catalogues.py /path/to/server.jar --output target/java-structure-catalogues.json
 diff tests/fixtures/java/26.3/structure_catalogues.json target/java-structure-catalogues.json
-scripts/remote-check.sh -- 'cargo test --release structure_catalogue'
+scripts/boat-check.sh -- 'cargo test --release structure_catalogue'
 ```
 
 `src/world/jigsaw/catalogue_tests.rs` compares the catalogue files, the
@@ -1093,7 +1093,7 @@ the cartographer trade tags and `clonable_maps`. Regenerate and compare with:
 ```sh
 python3 tools/extract_java_mansion_fixtures.py /path/to/server.jar --output target/java-mansions.json
 diff tests/fixtures/java/26.3/mansions.json target/java-mansions.json
-scripts/remote-check.sh -- 'cargo test --release --lib -- mansion explorer_maps master_cartographer'
+scripts/boat-check.sh -- 'cargo test --release --lib -- mansion explorer_maps master_cartographer'
 ```
 
 `world::mansion` checks its template table, fixed containers, placement
@@ -1124,7 +1124,7 @@ over five pitch, yaw and velocity cases, and of the rocket boost.
 ```sh
 python3 tools/extract_java_flight_fixtures.py /path/to/server.jar target/java-flight.json
 diff tests/fixtures/java/26.3/flight.json target/java-flight.json
-scripts/remote-check.sh -- 'cargo test --release --test java_flight --test java_recipes'
+scripts/boat-check.sh -- 'cargo test --release --test java_flight --test java_recipes'
 ```
 
 `tests/java_flight.rs` compares the rocket, crossbow and dispenser numbers,
@@ -1158,7 +1158,7 @@ skeleton, charged creeper, heads, beacon and rose; the `beacon` and
 ```sh
 python3 tools/extract_java_wither_beacon_fixtures.py /path/to/server.jar --output target/java-wither-beacon.json
 diff tests/fixtures/java/26.3/wither_beacon.json target/java-wither-beacon.json
-scripts/remote-check.sh -- 'cargo test --release --test java_wither_beacon'
+scripts/boat-check.sh -- 'cargo test --release --test java_wither_beacon'
 ```
 
 `tests/java_wither_beacon.rs` checks the game's numbers, items, blocks,
@@ -1185,7 +1185,7 @@ blocks; the purpur, End rod and popped chorus fruit recipes; and, read with
 ```sh
 python3 tools/extract_java_end_fixtures.py /path/to/server.jar --output target/java-end.json
 diff tests/fixtures/java/26.3/end_cities.json target/java-end.json
-scripts/remote-check.sh -- 'cargo test --release --lib -- end_city end_blocks shulker'
+scripts/boat-check.sh -- 'cargo test --release --lib -- end_city end_blocks shulker'
 ```
 
 `world::end_city` checks its template table and placement against the file
@@ -1209,7 +1209,7 @@ sulfur spike, spike cluster and pool placements, and `ore_gold_nether` and
 ```sh
 python3 tools/extract_java_gen5_fixtures.py /path/to/server.jar --output target/java-gen5.json
 diff tests/fixtures/java/26.3/gen5_overworld.json target/java-gen5.json
-scripts/remote-check.sh -- 'cargo test --release --lib -- poplar sulfur'
+scripts/boat-check.sh -- 'cargo test --release --lib -- poplar sulfur'
 ```
 
 `world::poplar_trees` and `world::terrain::sulfur_caves` check their
