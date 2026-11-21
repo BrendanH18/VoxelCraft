@@ -59,6 +59,13 @@
   "village/village_weaponsmith",
   "woodland_mansion"
  ],
+ "other_container_loot_tables": [
+  "barrels/abandoned_camp_barrel",
+  "dispensers/trial_chambers/chamber",
+  "dispensers/trial_chambers/corridor",
+  "dispensers/trial_chambers/water",
+  "pots/trial_chambers/corridor"
+ ],
  "placed_features": {
   "desert_well": {
    "feature": "desert_well",
@@ -232,7 +239,7 @@
    "data/minecraft/worldgen/structure_set/*.json",
    "data/minecraft/worldgen/structure/*.json",
    "data/minecraft/worldgen/placed_feature/{monster_room,monster_room_deep,fossil_upper,fossil_lower,desert_well}.json",
-   "data/minecraft/loot_table/chests/**.json (names only)"
+   "data/minecraft/loot_table/{chests,barrels,dispensers,pots}/**.json (names only)"
   ],
   "version": "26.3"
  },

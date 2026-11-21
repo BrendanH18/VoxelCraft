@@ -15,8 +15,9 @@ GEN-05 structure family is placed and filled from:
   `fossil_lower`, `desert_well`): their placement modifiers, and the
   feature they place;
 - the name of every chest loot table (`loot_table/chests/**`, without the
-  `chests/` prefix), so the corpus can check that each table a generated
-  container names exists in Java.
+  `chests/` prefix) and of every barrel, dispenser and pot table (with their
+  folder), so the corpus can check that each table a generated container
+  names exists in Java.
 
 No template, layout or VoxelCraft source is read. The output is
 `tests/fixtures/java/26.3/m3_corpus.json`; `src/world/m3_corpus.rs` checks
@@ -35,6 +36,7 @@ from extract_java_item_fixtures import SERVER_SHA1
 
 INNER = "META-INF/versions/26.3/server-26.3.jar"
 DATA = "data/minecraft/"
+OTHER_CONTAINERS = ["barrels", "dispensers", "pots"]
 FEATURES = ["monster_room", "monster_room_deep", "fossil_upper", "fossil_lower", "desert_well"]
 
 
@@ -93,6 +95,9 @@ def extract(server):
         chests = listed(jar, "loot_table/chests")
         if not chests:
             raise ValueError("no chest loot tables")
+        others = sorted(
+            f"{folder}/{name}" for folder in OTHER_CONTAINERS for name in listed(jar, "loot_table/" + folder)
+        )
     return {
         "reference": {
             "version": "26.3",
@@ -101,13 +106,14 @@ def extract(server):
                 "data/minecraft/worldgen/structure_set/*.json",
                 "data/minecraft/worldgen/structure/*.json",
                 "data/minecraft/worldgen/placed_feature/{" + ",".join(FEATURES) + "}.json",
-                "data/minecraft/loot_table/chests/**.json (names only)",
+                "data/minecraft/loot_table/{chests,barrels,dispensers,pots}/**.json (names only)",
             ],
         },
         "structure_sets": sets,
         "structures": structures,
         "placed_features": features,
         "chest_loot_tables": chests,
+        "other_container_loot_tables": others,
     }
 
 

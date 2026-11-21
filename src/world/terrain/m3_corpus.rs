@@ -45,7 +45,58 @@ const SEEDS: [u64; 2] = [12345, 42];
 /// Where each family's located instance is, by seed: the `/locate` answer
 /// (the start chunk's centre for temples, a structure's own anchor for the
 /// others; see [`locate`]). Printed by the test when it differs.
-const CORPUS: &[(&str, u64, [i32; 3])] = &[];
+const CORPUS: &[(&str, u64, [i32; 3])] = &[
+    ("abandoned_camp", 42, [-264, 69, 1256]),
+    ("abandoned_camp", 12345, [88, 77, 152]),
+    ("ancient_city", 42, [144, -27, 176]),
+    ("ancient_city", 12345, [960, -27, 192]),
+    ("bastion_remnant", 42, [-346, 33, 729]),
+    ("bastion_remnant", 12345, [167, 33, 336]),
+    ("buried_treasure", 42, [-263, 0, -151]),
+    ("buried_treasure", 12345, [-39, 0, 153]),
+    ("desert_pyramid", 42, [-984, 74, -2504]),
+    ("desert_pyramid", 12345, [-2904, 59, 840]),
+    ("desert_well", 42, [3407, 69, -2298]),
+    ("desert_well", 12345, [3313, 67, -2494]),
+    ("dungeon", 42, [59, -22, -5]),
+    ("dungeon", 12345, [44, 40, -32]),
+    ("end_city", 42, [-569, 60, -905]),
+    ("end_city", 12345, [695, 66, 1079]),
+    ("fortress", 42, [9, 48, 38]),
+    ("fortress", 12345, [771, 48, -169]),
+    ("fossil", 42, [55, -8, -317]),
+    ("fossil", 12345, [20, 49, -156]),
+    ("igloo", 42, [280, 67, -2472]),
+    ("igloo", 12345, [1064, 70, 24]),
+    ("jungle_pyramid", 42, [-504, 80, 2072]),
+    ("jungle_pyramid", 12345, [-1976, 69, 520]),
+    ("mansion", 42, [1976, 63, 4584]),
+    ("mansion", 12345, [4600, 69, -424]),
+    ("mineshaft", 42, [72, 0, 25]),
+    ("mineshaft", 12345, [70, -57, -5]),
+    ("monument", 42, [24, 48, 712]),
+    ("monument", 12345, [-392, 48, -360]),
+    ("nether_fossil", 42, [-444, 36, 774]),
+    ("nether_fossil", 12345, [1093, 52, 388]),
+    ("ocean_ruin", 42, [-152, 49, -216]),
+    ("ocean_ruin", 12345, [-248, 50, 88]),
+    ("pillager_outpost", 42, [1544, 79, -2920]),
+    ("pillager_outpost", 12345, [-2696, 85, -792]),
+    ("ruined_portal", 42, [256, 64, 352]),
+    ("ruined_portal", 12345, [16, 45, 0]),
+    ("shipwreck", 42, [-120, 58, 120]),
+    ("shipwreck", 12345, [-184, 52, -328]),
+    ("stronghold", 42, [1636, 11, 660]),
+    ("stronghold", 12345, [-620, 12, -1708]),
+    ("swamp_hut", 42, [808, 66, -472]),
+    ("swamp_hut", 12345, [648, 67, -1864]),
+    ("trail_ruins", 42, [-397, 48, 109]),
+    ("trail_ruins", 12345, [99, 74, 275]),
+    ("trial_chambers", 42, [263, -33, 103]),
+    ("trial_chambers", 12345, [-9, -22, 233]),
+    ("village", 42, [-384, 72, -784]),
+    ("village", 12345, [-208, 78, 400]),
+];
 
 fn fixture() -> &'static Value {
     static DATA: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
@@ -281,13 +332,8 @@ fn locate(family: &str, g: &Generator) -> Found {
             }
             panic!("no dungeon near the origin on {seed}")
         }
-        "mineshaft" | "mineshaft_mesa" => {
-            let from = if family == "mineshaft" {
-                IVec3::ZERO
-            } else {
-                g.nearest_biome(IVec2::ZERO, Biome::Badlands, 12_800).expect("badlands")
-            };
-            let at = g.mineshafts.nearest(g, from).unwrap_or_else(|| panic!("{family} on {seed}"));
+        "mineshaft" => {
+            let at = g.mineshafts.nearest(g, IVec3::ZERO).unwrap_or_else(|| panic!("{family} on {seed}"));
             // The located shaft's start: the chunk whose start VoxelCraft
             // accepts nearest the located centre.
             let here = chunk16(at);
@@ -296,9 +342,25 @@ fn locate(family: &str, g: &Generator) -> Found {
                 .filter(|&c| g.mineshafts.starts_at(g, c))
                 .min_by_key(|&c| (c - here).length_squared())
                 .expect("the located shaft's start");
-            let mesa = g.column(start.x * 16 + 8, start.y * 16 + 8).biome.is_badlands();
-            assert_eq!(mesa, family == "mineshaft_mesa", "{family} on {seed} at {at}");
+            assert!(!g.mineshafts.get(g, start).unwrap().is_mesa());
             Found::new(at, Some(start), around_bounds(at, 96, rows(Dimension::Overworld)))
+        }
+        "mineshaft_mesa" => {
+            // `/locate` doesn't tell the two apart: the nearest start that
+            // builds a mesa shaft, ring by ring from the nearest badlands.
+            let badlands = g.nearest_biome(IVec2::ZERO, Biome::Badlands, 12_800).expect("badlands");
+            let home = chunk16(badlands);
+            let (start, shaft) = (0..=64)
+                .flat_map(|r| {
+                    (-r..=r)
+                        .flat_map(move |z| (-r..=r).map(move |x| IVec2::new(x, z)))
+                        .filter(move |p| p.abs().max_element() == r)
+                })
+                .find_map(|d| g.mineshafts.get(g, home + d).filter(|s| s.is_mesa()).map(|s| (home + d, s)))
+                .unwrap_or_else(|| panic!("no mesa mineshaft near the badlands at {badlands} on {seed}"));
+            let b = shaft.bounds;
+            let at = IVec3::new((b.min.x + b.max.x) / 2, b.min.y, (b.min.z + b.max.z) / 2);
+            Found::new(at, Some(start), b)
         }
         "buried_treasure" => {
             let at = g.buried_treasure.nearest_buried_treasure(g, IVec3::ZERO, 400).expect("buried treasure");
@@ -508,8 +570,11 @@ fn check(family: &str, seed: u64, failures: &mut Vec<String>) -> (IVec3, String)
 
     // Block entities: containers, spawners and their blocks.
     let features = features_in(&g, found.bounds);
-    let java_tables: BTreeSet<&str> =
-        fixture()["chest_loot_tables"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
+    let java_tables: BTreeSet<&str> = ["chest_loot_tables", "other_container_loot_tables"]
+        .iter()
+        .flat_map(|k| fixture()[*k].as_array().unwrap())
+        .map(|v| v.as_str().unwrap())
+        .collect();
     let ours: Value = serde_json::from_str(include_str!("../loot_tables.json")).unwrap();
     let mut tables = BTreeSet::new();
     let mut spawners = BTreeSet::new();
@@ -523,7 +588,7 @@ fn check(family: &str, seed: u64, failures: &mut Vec<String>) -> (IVec3, String)
         };
         if let Some(table) = table_of(&g, *at, f) {
             if !java_tables.contains(table) {
-                fail(format!("{table} at {at} is not a Java chest table"));
+                fail(format!("{table} at {at} is not a Java container table"));
             }
             if !ours["tables"][table].is_object() {
                 fail(format!("{table} at {at} has no VoxelCraft loot data"));
