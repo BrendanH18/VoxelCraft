@@ -7,6 +7,7 @@ impl Game {
             self.last_save = Instant::now();
             return;
         }
+        self.settle_crystal_hits();
         let mut props = std::collections::BTreeMap::new();
         props.insert("loot_sequences".into(), self.world.loot_sequences.serialize());
         props.insert("maps".into(), self.world.maps.serialize());

@@ -224,11 +224,9 @@ impl Crystals {
             .map(|c| c.id)
     }
 
-    /// One tick: crystals hit since the last one go (blowing up unless a
-    /// blast got them), the rest age, and in the End (`getDragonFight() !=
-    /// null`) each keeps a fire in its own cell while that is air.
-    pub fn tick<W: BlockSource + ?Sized>(&mut self, world: &W, in_end: bool, events: &mut Vec<EntityEvent>) {
-        self.destroyed.clear();
+    /// Crystals hit since the last tick go (blowing up unless a blast got
+    /// them), each recorded in [`Crystals::destroyed`].
+    pub(super) fn settle(&mut self, events: &mut Vec<EntityEvent>) {
         for (id, blow) in std::mem::take(&mut self.pending) {
             let Some(i) = self.list.iter().position(|c| c.id == id) else { continue };
             let c = self.list.remove(i);
@@ -243,6 +241,19 @@ impl Crystals {
             }
             self.destroyed.push(Destroyed { id, pos: c.pos, by: blow.player() });
         }
+    }
+
+    /// Whether a hit waits for the next tick.
+    pub fn hits_pending(&self) -> bool {
+        !self.pending.is_empty()
+    }
+
+    /// One tick: crystals hit since the last one go (blowing up unless a
+    /// blast got them), the rest age, and in the End (`getDragonFight() !=
+    /// null`) each keeps a fire in its own cell while that is air.
+    pub fn tick<W: BlockSource + ?Sized>(&mut self, world: &W, in_end: bool, events: &mut Vec<EntityEvent>) {
+        self.destroyed.clear();
+        self.settle(events);
         for c in &mut self.list {
             c.age = c.age.wrapping_add(1);
             if in_end && world.block(c.cell()) == Some(Block::AIR) {

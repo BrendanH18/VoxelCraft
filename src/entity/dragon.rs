@@ -613,9 +613,7 @@ impl Fight {
         crystals: &mut Crystals,
         events: &mut Vec<EntityEvent>,
     ) {
-        for d in std::mem::take(&mut crystals.destroyed) {
-            self.crystal_destroyed(d, ctx, crystals, events);
-        }
+        self.settle_destroyed(ctx, crystals, events);
         self.crystal_scan += 1;
         if self.crystal_scan >= CRYSTAL_SCAN_TICKS {
             self.scan_crystals(crystals);
@@ -682,6 +680,13 @@ impl Fight {
     /// Crystals on the pillars at the last scan (`aliveCrystals`).
     pub fn alive_crystals(&self) -> u32 {
         self.alive_crystals
+    }
+
+    /// [`Fight::crystal_destroyed`] for each crystal gone since it last ran.
+    pub(super) fn settle_destroyed(&mut self, ctx: &Ctx, crystals: &mut Crystals, events: &mut Vec<EntityEvent>) {
+        for d in std::mem::take(&mut crystals.destroyed) {
+            self.crystal_destroyed(d, ctx, crystals, events);
+        }
     }
 
     /// `onCrystalDestroyed`: a ritual crystal ends the ritual; any other
@@ -2069,6 +2074,29 @@ mod tests {
         assert!(events.iter().any(|(_, e)| *e == EntityEvent::ExitPortal { active: true }));
         assert!(crystals.list.iter().all(|c| !c.invulnerable && (c.beam.is_none() || ritual.contains(&c.id))));
         assert!(fight.dragon.is_none());
+    }
+
+    /// A save settles a hit still queued for the next tick (Java resolves
+    /// it at once): the ritual's crystal goes and blows up, the ritual ends
+    /// and the portal opens, before anything is written.
+    #[test]
+    fn a_save_settles_a_queued_hit_on_a_ritual_crystal() {
+        let end = EndGen::new(11);
+        let (mut fight, mut crystals, ritual) = ritual_ready(&end, 4);
+        let mut events = Vec::new();
+        run(&mut fight, &mut crystals, 1 + 101 + 10, &mut events);
+        assert!(fight.respawn.is_some());
+        assert!(crystals.hit(ritual[2], Blow::Player { id: PlayerId::HOST, creative: false }));
+        let mut e = crate::entity::Entities::new(1);
+        e.fight = Some(fight);
+        e.crystals = crystals;
+        let mut out = Vec::new();
+        e.settle_crystal_hits(&ctx(Vec::new()), &mut out);
+        assert!(!e.crystals.hits_pending());
+        assert!(e.crystals.get(ritual[2]).is_none(), "the hit crystal is gone");
+        assert!(out.iter().any(|ev| matches!(ev, EntityEvent::Explosion { .. })), "with its blast");
+        assert!(out.contains(&EntityEvent::ExitPortal { active: true }), "the ritual ends");
+        assert!(e.fight.as_ref().unwrap().respawn.is_none());
     }
 
     #[test]

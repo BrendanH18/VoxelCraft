@@ -2254,6 +2254,18 @@ impl Entities {
         self.strike_as(hit, damage, by, false)
     }
 
+    /// Java resolves an End crystal's hit at once; here it lands on the next
+    /// crystal tick. Before a save, the hits still queued are resolved:
+    /// the crystals go, the fight hears of it, and the blasts are returned
+    /// for the caller to set off (which may hit more crystals).
+    pub fn settle_crystal_hits(&mut self, ctx: &Ctx, events: &mut Vec<EntityEvent>) {
+        self.crystals.settle(events);
+        match &mut self.fight {
+            Some(fight) => fight.settle_destroyed(ctx, &mut self.crystals, events),
+            None => self.crystals.destroyed.clear(),
+        }
+    }
+
     /// [`Entities::strike`] by a player who may be in Creative (whose hits
     /// get through the ritual crystals' invulnerability).
     pub fn strike_as(&mut self, hit: dragon::Hit, damage: f32, by: PlayerId, creative: bool) -> bool {

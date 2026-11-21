@@ -108,6 +108,70 @@ impl Game {
         }
     }
 
+    /// What the entities see of the players and the world this update.
+    pub(super) fn entity_ctx(&self) -> entity::Ctx {
+        let mut players = vec![Target {
+            spectator: self.session.mode == voxelcraft::rules::GameMode::Spectator,
+            alive: !self.session.vitals.is_dead(),
+            look: self.session.player.forward().as_dvec3(),
+            thorns: Target::thorns_of(&self.session.inventory.armor),
+            held_enchants: self
+                .session
+                .inventory
+                .get(self.body.actions.selected)
+                .map_or(Default::default(), |s| s.active_enchants()),
+            shape: self.session.player.collision_shape(),
+            gold_armor: crate::entity::nether::wears_gold(&self.session.inventory.armor),
+            held_item: self.held_item(),
+            on_ground: self.session.player.on_ground,
+            health: self.session.vitals.health,
+            effects: self.session.vitals.effects.mask(),
+            armor_pieces: self.session.inventory.armor.iter().flatten().count() as u8,
+            head: self.session.inventory.armor[0].and_then(|s| crate::world::skulls::kind_of_item(s.item)),
+            sneaking: self.session.player.sneaking,
+            darkness_ticks: self
+                .session
+                .vitals
+                .effects
+                .get(voxelcraft::simulation::effects::Effect::Darkness)
+                .map_or(0, |e| e.ticks),
+            in_water: self.session.player.in_water,
+            swimming: self.session.player.swimming,
+            time_since_rest: self.session.vitals.time_since_rest,
+            sprinting: self.session.player.sprinting,
+            blocking: self.session.blocking(),
+            fall_flying: self.session.player.fall_flying,
+            passenger: self.session.player.vehicle.is_some(),
+            ..Target::new(
+                PlayerId::HOST,
+                self.session.player.pos,
+                self.session.mode.targetable() && !self.session.vitals.is_dead(),
+            )
+        }];
+        // Agents keep source-dimension positions until arrival relocates them.
+        if self.arrival.is_none() {
+            players.extend(self.agents.targets());
+        }
+        entity::Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::for_dimension(
+                self.dimension,
+                (self.day_time.rem_euclid(1.) * 24000.).floor() as u32,
+                self.weather.rain_level(),
+                self.weather.thunder_level(),
+            ),
+            players,
+            // The Nether has no sun to burn the undead.
+            daylight: if self.dimension.has_sky() {
+                self.weather.dim(super::sky_state(self.day_time).daylight)
+            } else {
+                0.0
+            },
+            raining: self.weather.is_raining() && self.dimension.has_sky(),
+            spawning: self.gamerules.bool("spawn_mobs"),
+            dimension: self.dimension,
+        }
+    }
+
     pub(super) fn update_mobs(&mut self, dt: f64) {
         // Entities leave the level with their chunk and return when it loads.
         self.mobs.entities.sync_chunk_entities(&mut self.world);
@@ -176,66 +240,7 @@ impl Game {
         for (cell, count) in std::mem::take(&mut self.world.hatched_turtles) {
             self.mobs.entities.hatch_turtles(cell, count);
         }
-        let mut players = vec![Target {
-            spectator: self.session.mode == voxelcraft::rules::GameMode::Spectator,
-            alive: !self.session.vitals.is_dead(),
-            look: self.session.player.forward().as_dvec3(),
-            thorns: Target::thorns_of(&self.session.inventory.armor),
-            held_enchants: self
-                .session
-                .inventory
-                .get(self.body.actions.selected)
-                .map_or(Default::default(), |s| s.active_enchants()),
-            shape: self.session.player.collision_shape(),
-            gold_armor: crate::entity::nether::wears_gold(&self.session.inventory.armor),
-            held_item: self.held_item(),
-            on_ground: self.session.player.on_ground,
-            health: self.session.vitals.health,
-            effects: self.session.vitals.effects.mask(),
-            armor_pieces: self.session.inventory.armor.iter().flatten().count() as u8,
-            head: self.session.inventory.armor[0].and_then(|s| crate::world::skulls::kind_of_item(s.item)),
-            sneaking: self.session.player.sneaking,
-            darkness_ticks: self
-                .session
-                .vitals
-                .effects
-                .get(voxelcraft::simulation::effects::Effect::Darkness)
-                .map_or(0, |e| e.ticks),
-            in_water: self.session.player.in_water,
-            swimming: self.session.player.swimming,
-            time_since_rest: self.session.vitals.time_since_rest,
-            sprinting: self.session.player.sprinting,
-            blocking: self.session.blocking(),
-            fall_flying: self.session.player.fall_flying,
-            passenger: self.session.player.vehicle.is_some(),
-            ..Target::new(
-                PlayerId::HOST,
-                self.session.player.pos,
-                self.session.mode.targetable() && !self.session.vitals.is_dead(),
-            )
-        }];
-        // Agents keep source-dimension positions until arrival relocates them.
-        if self.arrival.is_none() {
-            players.extend(self.agents.targets());
-        }
-        let ctx = entity::Ctx {
-            spawn_light: crate::simulation::lighting::SpawnLight::for_dimension(
-                self.dimension,
-                (self.day_time.rem_euclid(1.) * 24000.).floor() as u32,
-                self.weather.rain_level(),
-                self.weather.thunder_level(),
-            ),
-            players,
-            // The Nether has no sun to burn the undead.
-            daylight: if self.dimension.has_sky() {
-                self.weather.dim(super::sky_state(self.day_time).daylight)
-            } else {
-                0.0
-            },
-            raining: self.weather.is_raining() && self.dimension.has_sky(),
-            spawning: self.gamerules.bool("spawn_mobs"),
-            dimension: self.dimension,
-        };
+        let ctx = self.entity_ctx();
         self.world.set_bee_clock(self.dimension, (self.day_time.rem_euclid(1.) * 24000.).floor() as u32);
         self.mobs.entities.tick_lightning(dt, &mut self.world, &ctx, self.weather.is_thundering());
         let mut smashed = Vec::new();
@@ -922,6 +927,27 @@ impl Game {
 
     /// Blows a hole in the world and hurts everything around `center`.
     /// `cause` completes the death message, as for [`Game::damage_player`].
+    /// Before a save: End crystal hits still queued for the next tick are
+    /// resolved now, as Java resolves them at once (`EndCrystal.hurtServer`),
+    /// so a save never keeps a hit crystal whole. Their blasts go off here
+    /// and may hit more crystals, so this repeats (each pass removes one).
+    pub(super) fn settle_crystal_hits(&mut self) {
+        while self.mobs.entities.crystals.hits_pending() {
+            let ctx = self.entity_ctx();
+            let mut events = Vec::new();
+            self.mobs.entities.settle_crystal_hits(&ctx, &mut events);
+            for event in events {
+                match event {
+                    EntityEvent::Explosion { center, power, cause, credit_player } => {
+                        self.explode(center, power, cause, credit_player)
+                    }
+                    EntityEvent::ExitPortal { active } => self.world.set_exit_portal(active, false),
+                    _ => {}
+                }
+            }
+        }
+    }
+
     pub(super) fn explode(&mut self, center: DVec3, power: f32, cause: Cause, credit_player: bool) {
         self.explode_with(center, power, cause, credit_player, true);
     }

@@ -277,6 +277,9 @@ impl Game {
             self.save();
         }
         if self.dimension == Dimension::Overworld {
+            if self.lan.client.is_none() {
+                self.settle_crystal_hits();
+            }
             self.overworld_props = self.dimension_props();
         }
         let (chunks, props) = load_dimension(&self.storage, to, &self.overworld_props);
