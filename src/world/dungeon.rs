@@ -26,6 +26,13 @@ use crate::item::Item;
 
 const FULL_SALT: u64 = 0x004D_4F4E_5354_4552;
 const DEEP_SALT: u64 = 0x004D_4F4E_4445_4550;
+/// `monster_room`'s count per 16x16 chunk and its height band
+/// (`absolute 0` to `below_top 0`).
+pub const ATTEMPTS: u32 = 10;
+pub const FULL_BAND: (i32, i32) = (0, 319);
+/// `monster_room_deep`'s count and band (`above_bottom 6` to `absolute -1`).
+pub const DEEP_ATTEMPTS: u32 = 4;
+pub const DEEP_BAND: (i32, i32) = (-58, -1);
 const CACHE_LIMIT: usize = 512;
 const REACH: i32 = 4;
 const MOBS: [MobKind; 4] = [MobKind::Skeleton, MobKind::Zombie, MobKind::Zombie, MobKind::Spider];
@@ -191,7 +198,7 @@ impl Dungeons {
         for sub_z in 0..2 {
             for sub_x in 0..2 {
                 let chunk16 = column * 2 + IVec2::new(sub_x, sub_z);
-                for (salt, attempts, deep) in [(FULL_SALT, 10, false), (DEEP_SALT, 4, true)] {
+                for (salt, attempts, deep) in [(FULL_SALT, ATTEMPTS, false), (DEEP_SALT, DEEP_ATTEMPTS, true)] {
                     let mut rng = Rng(hash3(chunk16.x, 0, chunk16.y, self.seed ^ salt));
                     for _ in 0..attempts {
                         let x = chunk16.x * 16 + rng.below(16) as i32;
@@ -199,7 +206,11 @@ impl Dungeons {
                         // Java `monster_room_deep`: uniform from above_bottom 6
                         // (y = -58) through absolute -1. The old `6..=63` was
                         // that range plus 64.
-                        let y = if deep { rng.range(0, 57) as i32 - 58 } else { rng.below(320) as i32 };
+                        let y = if deep {
+                            rng.range(0, (DEEP_BAND.1 - DEEP_BAND.0) as u32) as i32 + DEEP_BAND.0
+                        } else {
+                            rng.below((FULL_BAND.1 - FULL_BAND.0 + 1) as u32) as i32 + FULL_BAND.0
+                        };
                         let center = IVec3::new(x, y, z);
                         let room = Room::new(center, &mut rng);
                         // Most upper attempts are above the surface; reject

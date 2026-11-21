@@ -1,0 +1,1157 @@
+{
+ "chest_loot_tables": [
+  "abandoned_camp_common_chest",
+  "abandoned_camp_secret_chest",
+  "abandoned_mineshaft",
+  "ancient_city",
+  "ancient_city_ice_box",
+  "bastion_bridge",
+  "bastion_hoglin_stable",
+  "bastion_other",
+  "bastion_treasure",
+  "buried_treasure",
+  "desert_pyramid",
+  "end_city_treasure",
+  "igloo_chest",
+  "jungle_temple",
+  "jungle_temple_dispenser",
+  "nether_bridge",
+  "pillager_outpost",
+  "ruined_portal",
+  "shipwreck_map",
+  "shipwreck_supply",
+  "shipwreck_treasure",
+  "simple_dungeon",
+  "spawn_bonus_chest",
+  "stronghold_corridor",
+  "stronghold_crossing",
+  "stronghold_library",
+  "trial_chambers/corridor",
+  "trial_chambers/entrance",
+  "trial_chambers/intersection",
+  "trial_chambers/intersection_barrel",
+  "trial_chambers/reward",
+  "trial_chambers/reward_common",
+  "trial_chambers/reward_ominous",
+  "trial_chambers/reward_ominous_common",
+  "trial_chambers/reward_ominous_rare",
+  "trial_chambers/reward_ominous_unique",
+  "trial_chambers/reward_rare",
+  "trial_chambers/reward_unique",
+  "trial_chambers/supply",
+  "underwater_ruin_big",
+  "underwater_ruin_small",
+  "village/village_armorer",
+  "village/village_butcher",
+  "village/village_cartographer",
+  "village/village_desert_house",
+  "village/village_fisher",
+  "village/village_fletcher",
+  "village/village_mason",
+  "village/village_plains_house",
+  "village/village_savanna_house",
+  "village/village_shepherd",
+  "village/village_snowy_house",
+  "village/village_taiga_house",
+  "village/village_tannery",
+  "village/village_temple",
+  "village/village_toolsmith",
+  "village/village_weaponsmith",
+  "woodland_mansion"
+ ],
+ "placed_features": {
+  "desert_well": {
+   "feature": "desert_well",
+   "placement": [
+    {
+     "chance": 1000,
+     "type": "rarity_filter"
+    },
+    {
+     "type": "in_square"
+    },
+    {
+     "heightmap": "MOTION_BLOCKING",
+     "type": "heightmap"
+    },
+    {
+     "type": "offset",
+     "x": 0,
+     "y": -1,
+     "z": 0
+    },
+    {
+     "predicate": {
+      "predicates": [
+       {
+        "blocks": "sand",
+        "type": "matching_blocks"
+       },
+       {
+        "match": {
+         "predicate": {
+          "tag": "air",
+          "type": "matching_block_tag"
+         },
+         "type": "not"
+        },
+        "max": [
+         2,
+         -1,
+         2
+        ],
+        "min": [
+         -2,
+         -2,
+         -2
+        ],
+        "type": "volume_match"
+       }
+      ],
+      "type": "all_of"
+     },
+     "type": "block_predicate_filter"
+    },
+    {
+     "type": "biome"
+    }
+   ]
+  },
+  "fossil_lower": {
+   "feature": "fossil_diamonds",
+   "placement": [
+    {
+     "chance": 64,
+     "type": "rarity_filter"
+    },
+    {
+     "type": "in_square"
+    },
+    {
+     "height": {
+      "max_inclusive": {
+       "absolute": -8
+      },
+      "min_inclusive": {
+       "above_bottom": 0
+      },
+      "type": "uniform"
+     },
+     "type": "height_range"
+    },
+    {
+     "type": "biome"
+    }
+   ]
+  },
+  "fossil_upper": {
+   "feature": "fossil_coal",
+   "placement": [
+    {
+     "chance": 64,
+     "type": "rarity_filter"
+    },
+    {
+     "type": "in_square"
+    },
+    {
+     "height": {
+      "max_inclusive": {
+       "below_top": 0
+      },
+      "min_inclusive": {
+       "absolute": 0
+      },
+      "type": "uniform"
+     },
+     "type": "height_range"
+    },
+    {
+     "type": "biome"
+    }
+   ]
+  },
+  "monster_room": {
+   "feature": "monster_room",
+   "placement": [
+    {
+     "count": 10,
+     "type": "count"
+    },
+    {
+     "type": "in_square"
+    },
+    {
+     "height": {
+      "max_inclusive": {
+       "below_top": 0
+      },
+      "min_inclusive": {
+       "absolute": 0
+      },
+      "type": "uniform"
+     },
+     "type": "height_range"
+    },
+    {
+     "type": "biome"
+    }
+   ]
+  },
+  "monster_room_deep": {
+   "feature": "monster_room",
+   "placement": [
+    {
+     "count": 4,
+     "type": "count"
+    },
+    {
+     "type": "in_square"
+    },
+    {
+     "height": {
+      "max_inclusive": {
+       "absolute": -1
+      },
+      "min_inclusive": {
+       "above_bottom": 6
+      },
+      "type": "uniform"
+     },
+     "type": "height_range"
+    },
+    {
+     "type": "biome"
+    }
+   ]
+  }
+ },
+ "reference": {
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+   "data/minecraft/worldgen/structure_set/*.json",
+   "data/minecraft/worldgen/structure/*.json",
+   "data/minecraft/worldgen/placed_feature/{monster_room,monster_room_deep,fossil_upper,fossil_lower,desert_well}.json",
+   "data/minecraft/loot_table/chests/**.json (names only)"
+  ],
+  "version": "26.3"
+ },
+ "structure_sets": {
+  "abandoned_camp": {
+   "placement": {
+    "salt": 91231127,
+    "separation": 8,
+    "spacing": 37,
+    "type": "random_spread"
+   },
+   "structures": [
+    [
+     "abandoned_camp_bamboo_jungle",
+     1
+    ],
+    [
+     "abandoned_camp_birch_forest",
+     1
+    ],
+    [
+     "abandoned_camp_cherry_grove",
+     1
+    ],
+    [
+     "abandoned_camp_dappled_forest",
+     1
+    ],
+    [
+     "abandoned_camp_flower_forest",
+     1
+    ],
+    [
+     "abandoned_camp_forest",
+     1
+    ],
+    [
+     "abandoned_camp_meadow",
+     1
+    ],
+    [
+     "abandoned_camp_old_growth_pine_taiga",
+     1
+    ],
+    [
+     "abandoned_camp_old_growth_birch_forest",
+     1
+    ],
+    [
+     "abandoned_camp_old_growth_spruce_taiga",
+     1
+    ],
+    [
+     "abandoned_camp_pale_garden",
+     1
+    ],
+    [
+     "abandoned_camp_savanna",
+     1
+    ],
+    [
+     "abandoned_camp_snowy_taiga",
+     1
+    ],
+    [
+     "abandoned_camp_sparse_jungle",
+     1
+    ],
+    [
+     "abandoned_camp_swamp",
+     1
+    ],
+    [
+     "abandoned_camp_taiga",
+     1
+    ],
+    [
+     "abandoned_camp_windswept_forest",
+     1
+    ],
+    [
+     "abandoned_camp_wooded_badlands",
+     1
+    ]
+   ]
+  },
+  "ancient_cities": {
+   "placement": {
+    "salt": 20083232,
+    "separation": 8,
+    "spacing": 24,
+    "type": "random_spread"
+   },
+   "structures": [
+    [
+     "ancient_city",
+     1
+    ]
+   ]
+  },
+  "buried_treasures": {
+   "placement": {
+    "frequency": 0.01,
+    "frequency_reduction_method": "legacy_type_2",
+    "locate_offset": [
+     9,
+     0,
+     9
+    ],
+    "salt": 0,
+    "separation": 0,
+    "spacing": 1,
+    "type": "random_spread"
+   },
+   "structures": [
+    [
+     "buried_treasure",
+     1
+    ]
+   ]
+  },
+  "desert_pyramids": {
+   "placement": {
+    "salt": 14357617,
+    "separation": 8,
+    "spacing": 32,
+    "type": "random_spread"
+   },
+   "structures": [
+    [
+     "desert_pyramid",
+     1
+    ]
+   ]
+  },
+  "end_cities": {
+   "placement": {
+    "salt": 10387313,
+    "separation": 11,
+    "spacing": 20,
+    "spread_type": "triangular",
+    "type": "random_spread"
+   },
+   "structures": [
+    [
+     "end_city",
+     1
+    ]
+   ]
+  },
+  "igloos": {
+   "placement": {
+    "salt": 14357618,
+    "separation": 8,
+    "spacing": 32,
+    "type": "random_spread"
+   },
+   "structures": [
+    [
+     "igloo",
+     1
+    ]
+   ]
+  },
+  "jungle_temples": {
+   "placement": {
+    "salt": 14357619,
+    "separation": 8,
+    "spacing": 32,
+    "type": "random_spread"
+   },
+   "structures": [
+    [
+     "jungle_pyramid",
+     1
+    ]
+   ]
+  },
+  "mineshafts": {
+   "placement": {
+    "frequency": 0.004,
+    "frequency_reduction_method": "legacy_type_3",
+    "salt": 0,
+    "separation": 0,
+    "spacing": 1,
+    "type": "random_spread"
+   },
+   "structures": [
+    [
+     "mineshaft",
+     1
+    ],
+    [
+     "mineshaft_mesa",
+     1
+    ]
+   ]
+  },
+  "nether_complexes": {
+   "placement": {
+    "salt": 30084232,
+    "separation": 4,
+    "spacing": 27,
+    "type": "random_spread"
+   },
+   "structures": [
+    [
+     "fortress",
+     2
+    ],
+    [
+     "bastion_remnant",
+     3
+    ]
+   ]
+  },
+  "nether_fossils": {
+   "placement": {
+    "salt": 14357921,
+    "separation": 1,
+    "spacing": 2,
+    "type": "random_spread"
+   },
+   "structures": [
+    [
+     "nether_fossil",
+     1
+    ]
+   ]
+  },
+  "ocean_monuments": {
+   "placement": {
+    "salt": 10387313,
+    "separation": 5,
+    "spacing": 32,
+    "spread_type": "triangular",
+    "type": "random_spread"
+   },
+   "structures": [
+    [
+     "monument",
+     1
+    ]
+   ]
+  },
+  "ocean_ruins": {
+   "placement": {
+    "salt": 14357621,
+    "separation": 8,
+    "spacing": 20,
+    "type": "random_spread"
+   },
+   "structures": [
+    [
+     "ocean_ruin_cold",
+     1
+    ],
+    [
+     "ocean_ruin_warm",
+     1
+    ]
+   ]
+  },
+  "pillager_outposts": {
+   "placement": {
+    "exclusion_zone": {
+     "chunk_count": 10,
+     "other_set": "villages"
+    },
+    "frequency": 0.2,
+    "frequency_reduction_method": "legacy_type_1",
+    "salt": 165745296,
+    "separation": 8,
+    "spacing": 32,
+    "type": "random_spread"
+   },
+   "structures": [
+    [
+     "pillager_outpost",
+     1
+    ]
+   ]
+  },
+  "ruined_portals": {
+   "placement": {
+    "salt": 34222645,
+    "separation": 15,
+    "spacing": 40,
+    "type": "random_spread"
+   },
+   "structures": [
+    [
+     "ruined_portal",
+     1
+    ],
+    [
+     "ruined_portal_desert",
+     1
+    ],
+    [
+     "ruined_portal_jungle",
+     1
+    ],
+    [
+     "ruined_portal_swamp",
+     1
+    ],
+    [
+     "ruined_portal_mountain",
+     1
+    ],
+    [
+     "ruined_portal_ocean",
+     1
+    ],
+    [
+     "ruined_portal_nether",
+     1
+    ]
+   ]
+  },
+  "shipwrecks": {
+   "placement": {
+    "salt": 165745295,
+    "separation": 4,
+    "spacing": 24,
+    "type": "random_spread"
+   },
+   "structures": [
+    [
+     "shipwreck",
+     1
+    ],
+    [
+     "shipwreck_beached",
+     1
+    ]
+   ]
+  },
+  "strongholds": {
+   "placement": {
+    "count": 128,
+    "distance": 32,
+    "preferred_biomes": "#minecraft:stronghold_biased_to",
+    "salt": 0,
+    "spread": 3,
+    "type": "concentric_rings"
+   },
+   "structures": [
+    [
+     "stronghold",
+     1
+    ]
+   ]
+  },
+  "swamp_huts": {
+   "placement": {
+    "salt": 14357620,
+    "separation": 8,
+    "spacing": 32,
+    "type": "random_spread"
+   },
+   "structures": [
+    [
+     "swamp_hut",
+     1
+    ]
+   ]
+  },
+  "trail_ruins": {
+   "placement": {
+    "salt": 83469867,
+    "separation": 8,
+    "spacing": 34,
+    "type": "random_spread"
+   },
+   "structures": [
+    [
+     "trail_ruins",
+     1
+    ]
+   ]
+  },
+  "trial_chambers": {
+   "placement": {
+    "salt": 94251327,
+    "separation": 12,
+    "spacing": 34,
+    "type": "random_spread"
+   },
+   "structures": [
+    [
+     "trial_chambers",
+     1
+    ]
+   ]
+  },
+  "villages": {
+   "placement": {
+    "salt": 10387312,
+    "separation": 8,
+    "spacing": 34,
+    "type": "random_spread"
+   },
+   "structures": [
+    [
+     "village_plains",
+     1
+    ],
+    [
+     "village_desert",
+     1
+    ],
+    [
+     "village_savanna",
+     1
+    ],
+    [
+     "village_snowy",
+     1
+    ],
+    [
+     "village_taiga",
+     1
+    ]
+   ]
+  },
+  "woodland_mansions": {
+   "placement": {
+    "salt": 10387319,
+    "separation": 20,
+    "spacing": 80,
+    "spread_type": "triangular",
+    "type": "random_spread"
+   },
+   "structures": [
+    [
+     "mansion",
+     1
+    ]
+   ]
+  }
+ },
+ "structures": {
+  "abandoned_camp_bamboo_jungle": {
+   "biomes": "#has_structure/abandoned_camp_bamboo_jungle",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  },
+  "abandoned_camp_birch_forest": {
+   "biomes": "#has_structure/abandoned_camp_birch_forest",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  },
+  "abandoned_camp_cherry_grove": {
+   "biomes": "#has_structure/abandoned_camp_cherry_grove",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  },
+  "abandoned_camp_dappled_forest": {
+   "biomes": "#has_structure/abandoned_camp_dappled_forest",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  },
+  "abandoned_camp_flower_forest": {
+   "biomes": "#has_structure/abandoned_camp_flower_forest",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  },
+  "abandoned_camp_forest": {
+   "biomes": "#has_structure/abandoned_camp_forest",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  },
+  "abandoned_camp_meadow": {
+   "biomes": "#has_structure/abandoned_camp_meadow",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  },
+  "abandoned_camp_old_growth_birch_forest": {
+   "biomes": "#has_structure/abandoned_camp_old_growth_birch_forest",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  },
+  "abandoned_camp_old_growth_pine_taiga": {
+   "biomes": "#has_structure/abandoned_camp_old_growth_pine_taiga",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  },
+  "abandoned_camp_old_growth_spruce_taiga": {
+   "biomes": "#has_structure/abandoned_camp_old_growth_spruce_taiga",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  },
+  "abandoned_camp_pale_garden": {
+   "biomes": "#has_structure/abandoned_camp_pale_garden",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  },
+  "abandoned_camp_savanna": {
+   "biomes": "#has_structure/abandoned_camp_savanna",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  },
+  "abandoned_camp_snowy_taiga": {
+   "biomes": "#has_structure/abandoned_camp_snowy_taiga",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  },
+  "abandoned_camp_sparse_jungle": {
+   "biomes": "#has_structure/abandoned_camp_sparse_jungle",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  },
+  "abandoned_camp_swamp": {
+   "biomes": "#has_structure/abandoned_camp_swamp",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  },
+  "abandoned_camp_taiga": {
+   "biomes": "#has_structure/abandoned_camp_taiga",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  },
+  "abandoned_camp_windswept_forest": {
+   "biomes": "#has_structure/abandoned_camp_windswept_forest",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  },
+  "abandoned_camp_wooded_badlands": {
+   "biomes": "#has_structure/abandoned_camp_wooded_badlands",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  },
+  "ancient_city": {
+   "biomes": "#has_structure/ancient_city",
+   "spawn_overrides": {
+    "ambient": {
+     "bounding_box": "full",
+     "spawns": []
+    },
+    "axolotls": {
+     "bounding_box": "full",
+     "spawns": []
+    },
+    "creature": {
+     "bounding_box": "full",
+     "spawns": []
+    },
+    "misc": {
+     "bounding_box": "full",
+     "spawns": []
+    },
+    "monster": {
+     "bounding_box": "full",
+     "spawns": []
+    },
+    "underground_water_creature": {
+     "bounding_box": "full",
+     "spawns": []
+    },
+    "water_ambient": {
+     "bounding_box": "full",
+     "spawns": []
+    },
+    "water_creature": {
+     "bounding_box": "full",
+     "spawns": []
+    }
+   },
+   "step": "underground_decoration",
+   "terrain_adaptation": "beard_box",
+   "type": "jigsaw"
+  },
+  "bastion_remnant": {
+   "biomes": "#has_structure/bastion_remnant",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "none",
+   "type": "jigsaw"
+  },
+  "buried_treasure": {
+   "biomes": "#has_structure/buried_treasure",
+   "spawn_overrides": {},
+   "step": "underground_structures",
+   "terrain_adaptation": "none",
+   "type": "buried_treasure"
+  },
+  "desert_pyramid": {
+   "biomes": "#has_structure/desert_pyramid",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "none",
+   "type": "desert_pyramid"
+  },
+  "end_city": {
+   "biomes": "#has_structure/end_city",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "none",
+   "type": "end_city"
+  },
+  "fortress": {
+   "biomes": "#has_structure/nether_fortress",
+   "spawn_overrides": {
+    "monster": {
+     "bounding_box": "piece",
+     "spawns": [
+      "blaze",
+      "magma_cube",
+      "skeleton",
+      "wither_skeleton",
+      "zombified_piglin"
+     ]
+    }
+   },
+   "step": "underground_decoration",
+   "terrain_adaptation": "none",
+   "type": "fortress"
+  },
+  "igloo": {
+   "biomes": "#has_structure/igloo",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "none",
+   "type": "igloo"
+  },
+  "jungle_pyramid": {
+   "biomes": "#has_structure/jungle_temple",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "none",
+   "type": "jungle_temple"
+  },
+  "mansion": {
+   "biomes": "#has_structure/woodland_mansion",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "none",
+   "type": "woodland_mansion"
+  },
+  "mineshaft": {
+   "biomes": "#has_structure/mineshaft",
+   "spawn_overrides": {},
+   "step": "underground_structures",
+   "terrain_adaptation": "none",
+   "type": "mineshaft"
+  },
+  "mineshaft_mesa": {
+   "biomes": "#has_structure/mineshaft_mesa",
+   "spawn_overrides": {},
+   "step": "underground_structures",
+   "terrain_adaptation": "none",
+   "type": "mineshaft"
+  },
+  "monument": {
+   "biomes": "#has_structure/ocean_monument",
+   "spawn_overrides": {
+    "axolotls": {
+     "bounding_box": "full",
+     "spawns": []
+    },
+    "monster": {
+     "bounding_box": "full",
+     "spawns": [
+      "guardian"
+     ]
+    },
+    "underground_water_creature": {
+     "bounding_box": "full",
+     "spawns": []
+    }
+   },
+   "step": "surface_structures",
+   "terrain_adaptation": "none",
+   "type": "ocean_monument"
+  },
+  "nether_fossil": {
+   "biomes": "#has_structure/nether_fossil",
+   "spawn_overrides": {},
+   "step": "underground_decoration",
+   "terrain_adaptation": "beard_thin",
+   "type": "nether_fossil"
+  },
+  "ocean_ruin_cold": {
+   "biomes": "#has_structure/ocean_ruin_cold",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "none",
+   "type": "ocean_ruin"
+  },
+  "ocean_ruin_warm": {
+   "biomes": "#has_structure/ocean_ruin_warm",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "none",
+   "type": "ocean_ruin"
+  },
+  "pillager_outpost": {
+   "biomes": "#has_structure/pillager_outpost",
+   "spawn_overrides": {
+    "monster": {
+     "bounding_box": "full",
+     "spawns": [
+      "pillager"
+     ]
+    }
+   },
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  },
+  "ruined_portal": {
+   "biomes": "#has_structure/ruined_portal_standard",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "none",
+   "type": "ruined_portal"
+  },
+  "ruined_portal_desert": {
+   "biomes": "#has_structure/ruined_portal_desert",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "none",
+   "type": "ruined_portal"
+  },
+  "ruined_portal_jungle": {
+   "biomes": "#has_structure/ruined_portal_jungle",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "none",
+   "type": "ruined_portal"
+  },
+  "ruined_portal_mountain": {
+   "biomes": "#has_structure/ruined_portal_mountain",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "none",
+   "type": "ruined_portal"
+  },
+  "ruined_portal_nether": {
+   "biomes": "#has_structure/ruined_portal_nether",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "none",
+   "type": "ruined_portal"
+  },
+  "ruined_portal_ocean": {
+   "biomes": "#has_structure/ruined_portal_ocean",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "none",
+   "type": "ruined_portal"
+  },
+  "ruined_portal_swamp": {
+   "biomes": "#has_structure/ruined_portal_swamp",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "none",
+   "type": "ruined_portal"
+  },
+  "shipwreck": {
+   "biomes": "#has_structure/shipwreck",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "none",
+   "type": "shipwreck"
+  },
+  "shipwreck_beached": {
+   "biomes": "#has_structure/shipwreck_beached",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "none",
+   "type": "shipwreck"
+  },
+  "stronghold": {
+   "biomes": "#has_structure/stronghold",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "bury",
+   "type": "stronghold"
+  },
+  "swamp_hut": {
+   "biomes": "#has_structure/swamp_hut",
+   "spawn_overrides": {
+    "creature": {
+     "bounding_box": "piece",
+     "spawns": [
+      "cat"
+     ]
+    },
+    "monster": {
+     "bounding_box": "piece",
+     "spawns": [
+      "witch"
+     ]
+    }
+   },
+   "step": "surface_structures",
+   "terrain_adaptation": "none",
+   "type": "swamp_hut"
+  },
+  "trail_ruins": {
+   "biomes": "#has_structure/trail_ruins",
+   "spawn_overrides": {},
+   "step": "underground_structures",
+   "terrain_adaptation": "bury",
+   "type": "jigsaw"
+  },
+  "trial_chambers": {
+   "biomes": "#has_structure/trial_chambers",
+   "spawn_overrides": {
+    "ambient": {
+     "bounding_box": "piece",
+     "spawns": []
+    },
+    "axolotls": {
+     "bounding_box": "piece",
+     "spawns": []
+    },
+    "creature": {
+     "bounding_box": "piece",
+     "spawns": []
+    },
+    "misc": {
+     "bounding_box": "piece",
+     "spawns": []
+    },
+    "monster": {
+     "bounding_box": "piece",
+     "spawns": []
+    },
+    "underground_water_creature": {
+     "bounding_box": "piece",
+     "spawns": []
+    },
+    "water_ambient": {
+     "bounding_box": "piece",
+     "spawns": []
+    },
+    "water_creature": {
+     "bounding_box": "piece",
+     "spawns": []
+    }
+   },
+   "step": "underground_structures",
+   "terrain_adaptation": "encapsulate",
+   "type": "jigsaw"
+  },
+  "village_desert": {
+   "biomes": "#has_structure/village_desert",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  },
+  "village_plains": {
+   "biomes": "#has_structure/village_plains",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  },
+  "village_savanna": {
+   "biomes": "#has_structure/village_savanna",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  },
+  "village_snowy": {
+   "biomes": "#has_structure/village_snowy",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  },
+  "village_taiga": {
+   "biomes": "#has_structure/village_taiga",
+   "spawn_overrides": {},
+   "step": "surface_structures",
+   "terrain_adaptation": "beard_thin",
+   "type": "jigsaw"
+  }
+ }
+}
