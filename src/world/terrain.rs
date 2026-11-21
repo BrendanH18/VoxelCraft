@@ -287,6 +287,8 @@ pub struct Generator {
     pub dungeons: super::dungeon::Dungeons,
     /// Amethyst geodes are laid out once and clipped into every chunk.
     pub geodes: super::geode::Geodes,
+    /// v0.16 Track H: generation 5's sulfur springs, laid out like geodes.
+    pub sulfur_springs: super::sulfur_springs::SulfurSprings,
     /// Abandoned mineshafts, placed per Java 16×16 chunk.
     pub mineshafts: super::mineshaft::Mineshafts,
     pub villages: super::village::Villages,
@@ -351,6 +353,7 @@ impl Generator {
             strongholds: super::stronghold::Strongholds::new(seed),
             dungeons: super::dungeon::Dungeons::new(seed),
             geodes: super::geode::Geodes::new(seed),
+            sulfur_springs: super::sulfur_springs::SulfurSprings::new(seed),
             mineshafts: super::mineshaft::Mineshafts::new(seed),
             villages: super::village::Villages::new(seed),
             temples: super::temples::Temples::new(seed),
@@ -913,6 +916,11 @@ impl Generator {
         // surface rules, so ahead of every feature).
         if self.generation >= Generation::V5 && base.y <= max_h {
             self.sulfur_bands(&mut blocks, base, &columns);
+        }
+        // v0.16 Track H: `rooted_sulfur_spring` (Java's lakes step, ahead of
+        // geodes, ores and the sulfur caves' other features).
+        if self.generation >= Generation::V5 && base.y <= max_h + 8 {
+            self.sulfur_springs.paint(self, &mut blocks, base);
         }
         // Java places geodes in `local_modifications`, after carvers and
         // before monster rooms, ores and cave vegetation.
