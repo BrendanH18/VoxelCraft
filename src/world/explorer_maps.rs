@@ -149,7 +149,7 @@ pub fn locate(
         // Badlands chunks hold Java's `mineshaft_mesa`, which no map seeks.
         BURIED_MINESHAFT_MAP => ring_search(from, rings, 1, &|r| {
             let centre = r * 16 + IVec2::splat(8);
-            (g.mineshafts.starts_at(r) && !g.column(centre.x, centre.y).biome.is_badlands() && !skip(r)).then_some(r)
+            (g.mineshafts.starts_at(g, r) && !g.column(centre.x, centre.y).biome.is_badlands() && !skip(r)).then_some(r)
         }),
         BURIED_ANCIENT_CITY_MAP => ring_search(from, rings, super::ancient_city::SPACING, &|r| {
             let s = g.ancient_cities.start_chunk(r);
@@ -342,7 +342,7 @@ mod tests {
                 WARM_OCEAN_RUINS_MAP => {
                     assert!(g.temples.generates(&g, Kind::OceanRuin, start) && g.temples.ocean_ruin_is_warm(&g, start))
                 }
-                BURIED_MINESHAFT_MAP => assert!(g.mineshafts.starts_at(start)),
+                BURIED_MINESHAFT_MAP => assert!(g.mineshafts.starts_at(&g, start)),
                 _ => assert!(
                     g.ancient_cities
                         .stub(&g, start.div_euclid(IVec2::splat(crate::world::ancient_city::SPACING)))

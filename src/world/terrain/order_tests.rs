@@ -92,7 +92,7 @@ fn corpus(generation: Generation) -> Vec<IVec3> {
             .0;
         chunks.extend(around(treasure, 0));
     }
-    chunks.extend(around(g.mineshafts.nearest(IVec3::ZERO).expect("a mineshaft"), 1));
+    chunks.extend(around(g.mineshafts.nearest(&g, IVec3::ZERO).expect("a mineshaft"), 1));
     if generation >= Generation::V3 {
         // Bounded, deterministic search in negative placement regions. Pick
         // a city with both loot variants and a chamber crossing a vertical

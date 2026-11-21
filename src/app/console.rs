@@ -313,9 +313,11 @@ impl Game {
                             6400,
                         )
                     }),
-                    "mineshaft" | "abandoned_mineshaft" => {
-                        self.world.generator.mineshafts.nearest(self.session.player.pos.floor().as_ivec3())
-                    }
+                    "mineshaft" | "abandoned_mineshaft" => self
+                        .world
+                        .generator
+                        .mineshafts
+                        .nearest(&*self.world.generator, self.session.player.pos.floor().as_ivec3()),
                     other
                         if self.dimension == Dimension::Overworld
                             && crate::world::temples::Kind::from_name(other).is_some() =>
