@@ -77,6 +77,9 @@ impl Entities {
     /// Spawns the silverfish of infested blocks broken at `cells`
     /// (`InfestedBlock.spawnInfestation`), emptying the list.
     pub fn release_silverfish(&mut self, cells: &mut Vec<IVec3>) {
+        // Two silverfish waking on one tick may both pick the same block.
+        let mut seen = std::collections::HashSet::new();
+        cells.retain(|c| seen.insert(*c));
         for cell in cells.drain(..) {
             let at = cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
             self.spawn(MobKind::Silverfish, at);

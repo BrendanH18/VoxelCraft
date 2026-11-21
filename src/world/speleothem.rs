@@ -230,6 +230,10 @@ impl World {
                 self.grow_speleothem(p - IVec3::Y, false);
                 return;
             }
+            // `canDripThrough`: a solid block ends the search.
+            if b != Block::AIR && b.is_solid() {
+                return;
+            }
         }
     }
 }

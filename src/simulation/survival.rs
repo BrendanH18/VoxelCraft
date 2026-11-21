@@ -391,6 +391,16 @@ impl Default for Vitals {
 }
 
 impl Vitals {
+    /// `Entity.checkFallDistanceAccumulation`: keep at most a block of
+    /// fall above `y_plus_one` (a geyser's lift).
+    pub fn cap_fall(&mut self, y_plus_one: f64) {
+        if let Some(peak) = self.fall_peak
+            && peak > y_plus_one
+        {
+            self.fall_peak = Some(y_plus_one);
+        }
+    }
+
     /// Restores saved values; zero health means the player died.
     pub fn restore(health: f32, air: f32, death: Option<String>) -> Self {
         let mut v = Self { health: health.clamp(0.0, MAX_HEALTH), air: air.clamp(0.0, MAX_AIR), ..Self::default() };

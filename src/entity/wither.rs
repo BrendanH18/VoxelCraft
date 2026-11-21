@@ -755,18 +755,22 @@ impl Entities {
         let mut skulls = std::mem::take(&mut self.wither_skulls);
         let difficulty = self.difficulty;
         skulls.retain_mut(|k| {
-            // `AbstractHurtingProjectile.tick`: gone where no chunk is
-            // loaded; frozen where entities don't tick.
+            // Frozen where entities don't tick, including a restored skull
+            // whose chunk hasn't streamed in yet; gone beyond the world's
+            // height (a loaded cell with no block).
             let cell = k.pos.floor().as_ivec3();
-            if world.block(cell).is_none() {
-                return false;
-            }
             if !world.entity_ticking(cell) {
                 return true;
             }
-            let owner_alive =
-                k.owner.is_none_or(|u| self.mobs.iter().any(|m| m.uid == u && m.kind == MobKind::Wither && m.alive()));
-            if !owner_alive {
+            if world.block(cell).is_none() {
+                return false;
+            }
+            // `AbstractHurtingProjectile.tick`: an owner that can't be found
+            // (unloaded) keeps the skull; only one found dead discards it.
+            let owner_dead = k
+                .owner
+                .is_some_and(|u| self.mobs.iter().any(|m| m.uid == u && m.kind == MobKind::Wither && !m.alive()));
+            if owner_dead {
                 return false;
             }
             match k.tick(world, ctx, &self.mobs) {
@@ -853,6 +857,10 @@ impl Entities {
         self.blast_drops(world, center, power, breaks_blocks);
         self.blast_carts(world, center, power);
         self.blast_decor(center, power);
+        if let Some(fight) = &mut self.fight {
+            fight.explode(center, power);
+        }
+        self.crystals.explode(center, power);
         let mut killed = Vec::new();
         for m in &mut self.mobs {
             if !m.alive() || m.kind == MobKind::Wither || m.pos.distance(center) > f64::from(power) * 2.0 {

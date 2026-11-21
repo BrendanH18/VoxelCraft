@@ -57,7 +57,10 @@ impl Entities {
             && let Some(i) = self.mobs.iter().position(|m| m.uid == uid)
         {
             struck = Some(self.mobs[i].pos);
-            self.mobs[i].damage_bypassing_wolf_armor(ATTACK_DAMAGE, None, &mut self.rng);
+            let (kind, pos, burning) = (self.mobs[i].kind, self.mobs[i].pos, self.mobs[i].burning);
+            if self.mobs[i].damage_bypassing_wolf_armor(ATTACK_DAMAGE, None, &mut self.rng) {
+                self.drop_loot_with_fire(kind, pos, 0, burning, false);
+            }
         }
         (target, struck)
     }

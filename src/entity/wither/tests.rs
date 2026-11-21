@@ -317,3 +317,38 @@ fn the_base_pattern_needs_only_the_t() {
     assert!(!can_spawn_mob(&get, o + IVec3::new(1, 2, 0), 65, false), "two above the bottom");
     assert!(find_base(grid(&[]), o).is_none());
 }
+
+/// A world that hasn't streamed in yet: no chunk is loaded.
+struct Streaming;
+impl crate::physics::BlockSource for Streaming {
+    fn block(&self, _: IVec3) -> Option<Block> {
+        None
+    }
+}
+impl MobWorld for Streaming {
+    fn loaded(&self, _: IVec3) -> bool {
+        false
+    }
+    fn exposed(&self, _: IVec3) -> bool {
+        false
+    }
+    fn surface(&self, _: i32, _: i32) -> Option<i32> {
+        None
+    }
+}
+
+/// A restored skull waits for its chunk, and its Wither still in chunk
+/// storage (not among the loaded mobs) doesn't discard it.
+#[test]
+fn restored_skulls_wait_for_their_chunk_and_unloaded_owner() {
+    let mut e = Entities::new(3);
+    e.wither_skulls.push(Skull::new(DVec3::new(0.5, 70.0, 0.5), DVec3::X, true, Some(42)));
+    let mut events = Vec::new();
+    e.update_wither_skulls(&Streaming, &ctx(), &mut events);
+    assert_eq!(e.wither_skulls.len(), 1, "kept while its chunk streams in");
+    let world = crate::physics::test_util::Grid::flat(0);
+    let before = e.wither_skulls[0].pos;
+    e.update_wither_skulls(&world, &ctx(), &mut events);
+    assert_eq!(e.wither_skulls.len(), 1, "an owner that isn't loaded keeps it");
+    assert_ne!(e.wither_skulls[0].pos, before, "and it flies on");
+}

@@ -147,7 +147,13 @@ impl World {
             }
         }
         let (_, _, mut p) = best?;
-        while self.get_block(p - IVec3::Y) == Some(Block::NETHER_PORTAL) {
+        // The portal may be in a saved, unloaded chunk: read the sections.
+        let block_at = |q: IVec3| {
+            let c = IVec3::new(q.x.div_euclid(S), q.y.div_euclid(S), q.z.div_euclid(S));
+            let l = q - c * S;
+            self.section_data(c).map(|d| d.get(l.x as usize, l.y as usize, l.z as usize))
+        };
+        while p.y > min_y && block_at(p - IVec3::Y) == Some(Block::NETHER_PORTAL) {
             p.y -= 1;
         }
         Some(p)
@@ -389,6 +395,21 @@ mod tests {
         assert_eq!(world.get_block(at - IVec3::Z), Some(Block::OBSIDIAN));
         // The nearer portal is found from either side.
         assert_eq!(world.find_portal(IVec3::new(5, 222, 7), 128), Some(at + IVec3::Z));
+    }
+
+    #[test]
+    fn a_saved_unloaded_portal_is_entered_at_its_bottom() {
+        let mut world = world();
+        let at = IVec3::new(4, 220, 4);
+        frame(&mut world, at, 2, 3);
+        assert!(world.light_portal(at + IVec3::new(1, 2, 0)));
+        // Unload the portal's chunk: it is now only in the saved sections,
+        // which `get_block` doesn't read.
+        world.remove_chunk(crate::world::chunk::chunk_of(at));
+        assert_eq!(world.get_block(at), None);
+        // From above, the nearest portal cell is the top row; the traveller
+        // still arrives at the bottom.
+        assert_eq!(world.find_portal(at + IVec3::new(0, 6, 0), 16), Some(at));
     }
 
     #[test]
