@@ -83,7 +83,11 @@ pub(super) fn render_geyser(cue: crate::world::potent_sulfur::Cue, rng: &mut Rng
         for i in 0..pops {
             let at = samples(secs * (i as f32 + rng.range(0.0, 0.8)) / pops as f32);
             let freq = rng.range(70.0, 140.0) * pitch;
-            add_mode(&mut out, at, Mode { freq, amp: gain * rng.range(0.5, 1.0), tau: 0.05, glide: 1.6, glide_tau: 0.03 });
+            add_mode(
+                &mut out,
+                at,
+                Mode { freq, amp: gain * rng.range(0.5, 1.0), tau: 0.05, glide: 1.6, glide_tau: 0.03 },
+            );
         }
         out
     };

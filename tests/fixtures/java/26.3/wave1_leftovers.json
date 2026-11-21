@@ -1,0 +1,559 @@
+{
+  "geyser_countdowns": [
+    {
+      "dormant_draw": 19,
+      "erupting_draw": 1,
+      "seed": 0,
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "dormant_draw": 29,
+      "erupting_draw": 2,
+      "seed": 0,
+      "x": 4,
+      "y": 10,
+      "z": 4
+    },
+    {
+      "dormant_draw": 26,
+      "erupting_draw": 1,
+      "seed": 0,
+      "x": 10,
+      "y": -20,
+      "z": 30
+    },
+    {
+      "dormant_draw": 25,
+      "erupting_draw": 2,
+      "seed": 0,
+      "x": -123,
+      "y": 45,
+      "z": 678
+    },
+    {
+      "dormant_draw": 22,
+      "erupting_draw": 1,
+      "seed": 0,
+      "x": 30000,
+      "y": -60,
+      "z": -30000
+    },
+    {
+      "dormant_draw": 27,
+      "erupting_draw": 1,
+      "seed": 7,
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "dormant_draw": 21,
+      "erupting_draw": 1,
+      "seed": 7,
+      "x": 4,
+      "y": 10,
+      "z": 4
+    },
+    {
+      "dormant_draw": 19,
+      "erupting_draw": 2,
+      "seed": 7,
+      "x": 10,
+      "y": -20,
+      "z": 30
+    },
+    {
+      "dormant_draw": 17,
+      "erupting_draw": 1,
+      "seed": 7,
+      "x": -123,
+      "y": 45,
+      "z": 678
+    },
+    {
+      "dormant_draw": 15,
+      "erupting_draw": 2,
+      "seed": 7,
+      "x": 30000,
+      "y": -60,
+      "z": -30000
+    },
+    {
+      "dormant_draw": 23,
+      "erupting_draw": 1,
+      "seed": 12345,
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "dormant_draw": 24,
+      "erupting_draw": 2,
+      "seed": 12345,
+      "x": 4,
+      "y": 10,
+      "z": 4
+    },
+    {
+      "dormant_draw": 16,
+      "erupting_draw": 1,
+      "seed": 12345,
+      "x": 10,
+      "y": -20,
+      "z": 30
+    },
+    {
+      "dormant_draw": 29,
+      "erupting_draw": 2,
+      "seed": 12345,
+      "x": -123,
+      "y": 45,
+      "z": 678
+    },
+    {
+      "dormant_draw": 21,
+      "erupting_draw": 1,
+      "seed": 12345,
+      "x": 30000,
+      "y": -60,
+      "z": -30000
+    },
+    {
+      "dormant_draw": 28,
+      "erupting_draw": 1,
+      "seed": -7,
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "dormant_draw": 30,
+      "erupting_draw": 2,
+      "seed": -7,
+      "x": 4,
+      "y": 10,
+      "z": 4
+    },
+    {
+      "dormant_draw": 21,
+      "erupting_draw": 1,
+      "seed": -7,
+      "x": 10,
+      "y": -20,
+      "z": 30
+    },
+    {
+      "dormant_draw": 18,
+      "erupting_draw": 2,
+      "seed": -7,
+      "x": -123,
+      "y": 45,
+      "z": 678
+    },
+    {
+      "dormant_draw": 28,
+      "erupting_draw": 1,
+      "seed": -7,
+      "x": 30000,
+      "y": -60,
+      "z": -30000
+    },
+    {
+      "dormant_draw": 20,
+      "erupting_draw": 2,
+      "seed": 4242424242,
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "dormant_draw": 22,
+      "erupting_draw": 1,
+      "seed": 4242424242,
+      "x": 4,
+      "y": 10,
+      "z": 4
+    },
+    {
+      "dormant_draw": 28,
+      "erupting_draw": 1,
+      "seed": 4242424242,
+      "x": 10,
+      "y": -20,
+      "z": 30
+    },
+    {
+      "dormant_draw": 26,
+      "erupting_draw": 1,
+      "seed": 4242424242,
+      "x": -123,
+      "y": 45,
+      "z": 678
+    },
+    {
+      "dormant_draw": 30,
+      "erupting_draw": 2,
+      "seed": 4242424242,
+      "x": 30000,
+      "y": -60,
+      "z": -30000
+    }
+  ],
+  "potent_sulfur": {
+    "allowed_water_blocks_above": 4,
+    "continuous_tag": [
+      "lava"
+    ],
+    "effect_application_frequency_ticks": 10,
+    "effect_duration_in_ticks": 80,
+    "effect_range": 3.0,
+    "geyser_base_launch_speed": 0.3,
+    "geyser_launch_force": 0.2,
+    "geyser_salt": -904011478,
+    "not_affected_by_geysers": [
+      "ender_dragon"
+    ],
+    "particle_frequency_ticks": 20,
+    "periodic_tag": [
+      "magma_block"
+    ],
+    "sound_frequency_ticks": 40,
+    "sounds": [
+      "block.potent_sulfur.geyser_continuous_eruption",
+      "block.potent_sulfur.geyser_continuous_eruption_active",
+      "block.potent_sulfur.geyser_eruption",
+      "block.potent_sulfur.geyser_eruption_active",
+      "block.potent_sulfur.noxious_gas"
+    ]
+  },
+  "reference": {
+    "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+    "sources": [
+      "net/minecraft/world/level/block/{PotentSulfurBlock,SpeleothemBlock,SulfurSpikeBlock,PointedDripstoneBlock,WitherSkullBlock}.class",
+      "net/minecraft/world/level/block/entity/PotentSulfurBlockEntity.class",
+      "net/minecraft/world/entity/boss/wither/WitherBoss.class",
+      "net/minecraft/world/entity/ai/goal/{WaterAvoidingRandomFlyingGoal,RandomStrollGoal,Goal}.class",
+      "net/minecraft/world/entity/Mob.class",
+      "net/minecraft/sounds/SoundEvents.class",
+      "data/minecraft/worldgen/{feature,placed_feature}/rooted_sulfur_spring.json",
+      "data/minecraft/worldgen/feature/sulfur_spring.json",
+      "data/minecraft/worldgen/biome/sulfur_caves.json",
+      "data/minecraft/structure/spring/sulfur_spring_*.nbt (size only)",
+      "data/minecraft/tags/{block,entity_type}/...",
+      "tools/JavaGeyserVectors.java run against the jar"
+    ],
+    "version": "26.3"
+  },
+  "speleothems": {
+    "delay_before_falling": 2,
+    "dripstone_landing_event": 1045,
+    "fall_on_declared_by": [
+      "PointedDripstoneBlock"
+    ],
+    "growth_probability_per_random_tick": 0.011377778,
+    "max_growth_length": 7,
+    "max_stalagmite_search_range_when_growing": 10,
+    "min_trident_velocity_to_break": 0.6,
+    "stalactite_damage_per_fall_distance_and_size": 1.0,
+    "stalactite_max_damage": 40,
+    "stalagmite_fall_damage_modifier": 2,
+    "stalagmite_fall_distance_offset": 2.5,
+    "sulfur_spike_landing_event": 1052,
+    "sulfur_spike_max_growing_length": 2,
+    "tag": [
+      "pointed_dripstone",
+      "sulfur_spike"
+    ]
+  },
+  "sulfur_springs": {
+    "allowed_tree_position": "air",
+    "azalea_root_replaceable": [
+      "#minecraft:base_stone_overworld",
+      "#minecraft:substrate_overworld",
+      "#minecraft:terracotta",
+      "red_sand",
+      "clay",
+      "gravel",
+      "sand",
+      "snow_block",
+      "powder_snow"
+    ],
+    "base_stone_overworld": [
+      "stone",
+      "granite",
+      "diorite",
+      "andesite",
+      "tuff",
+      "deepslate"
+    ],
+    "biome_step": 1,
+    "biome_step_features": [
+      "lake_lava_underground",
+      "lake_lava_surface",
+      "rooted_sulfur_spring",
+      "sulfur_pool"
+    ],
+    "hanging_root_state": "sulfur",
+    "placement": [
+      {
+        "count": {
+          "max_inclusive": 2,
+          "min_inclusive": 1,
+          "type": "minecraft:uniform"
+        },
+        "type": "minecraft:count"
+      },
+      {
+        "type": "minecraft:in_square"
+      },
+      {
+        "height": {
+          "max_inclusive": {
+            "absolute": 256
+          },
+          "min_inclusive": {
+            "above_bottom": 0
+          },
+          "type": "minecraft:uniform"
+        },
+        "type": "minecraft:height_range"
+      },
+      {
+        "allowed_search_condition": {
+          "tag": "minecraft:air",
+          "type": "minecraft:matching_block_tag"
+        },
+        "direction_of_search": "up",
+        "max_steps": 12,
+        "target_condition": {
+          "type": "minecraft:solid"
+        },
+        "type": "minecraft:environment_scan"
+      },
+      {
+        "type": "minecraft:offset",
+        "x": 0,
+        "y": -1,
+        "z": 0
+      },
+      {
+        "type": "minecraft:biome"
+      }
+    ],
+    "root_state": "sulfur",
+    "root_system": {
+      "allowed_vertical_water_for_tree": 1,
+      "hanging_root_placement_attempts": 1,
+      "hanging_root_radius": 1,
+      "hanging_roots_vertical_span": 1,
+      "level_test_distance": 8,
+      "max_level_deviation": 2,
+      "required_vertical_space_for_tree": 5,
+      "root_column_max_height": 184,
+      "root_placement_attempts": 20,
+      "root_radius": 3,
+      "root_replaceable": "#minecraft:azalea_root_replaceable"
+    },
+    "selector": [
+      {
+        "template_offset_y": -7,
+        "templates": [
+          "spring/sulfur_spring_small_1",
+          "spring/sulfur_spring_small_2",
+          "spring/sulfur_spring_small_3",
+          "spring/sulfur_spring_small_4"
+        ],
+        "tuff": "tuff",
+        "tuff_count": 64,
+        "tuff_scan": 4,
+        "tuff_xz": [
+          -7,
+          7
+        ],
+        "tuff_y": [
+          -3,
+          3
+        ],
+        "weight": 200
+      },
+      {
+        "template_offset_y": -7,
+        "templates": [
+          "spring/sulfur_spring_medium_1",
+          "spring/sulfur_spring_medium_2",
+          "spring/sulfur_spring_medium_3"
+        ],
+        "tuff": "tuff",
+        "tuff_count": 80,
+        "tuff_scan": 4,
+        "tuff_xz": [
+          -8,
+          8
+        ],
+        "tuff_y": [
+          -3,
+          3
+        ],
+        "weight": 90
+      },
+      {
+        "template_offset_y": -7,
+        "templates": [
+          "spring/sulfur_spring_large_1",
+          "spring/sulfur_spring_large_2"
+        ],
+        "tuff": "tuff",
+        "tuff_count": 96,
+        "tuff_scan": 4,
+        "tuff_xz": [
+          -9,
+          9
+        ],
+        "tuff_y": [
+          -3,
+          3
+        ],
+        "weight": 20
+      },
+      {
+        "template_offset_y": -7,
+        "templates": [
+          "spring/sulfur_spring_extra_large_1"
+        ],
+        "tuff": "tuff",
+        "tuff_count": 128,
+        "tuff_scan": 4,
+        "tuff_xz": [
+          -10,
+          10
+        ],
+        "tuff_y": [
+          -3,
+          3
+        ],
+        "weight": 5
+      }
+    ],
+    "template_sizes": {
+      "spring/sulfur_spring_extra_large_1": [
+        16,
+        11,
+        16
+      ],
+      "spring/sulfur_spring_large_1": [
+        13,
+        11,
+        12
+      ],
+      "spring/sulfur_spring_large_2": [
+        12,
+        11,
+        13
+      ],
+      "spring/sulfur_spring_medium_1": [
+        11,
+        11,
+        11
+      ],
+      "spring/sulfur_spring_medium_2": [
+        12,
+        11,
+        11
+      ],
+      "spring/sulfur_spring_medium_3": [
+        12,
+        11,
+        12
+      ],
+      "spring/sulfur_spring_small_1": [
+        8,
+        11,
+        9
+      ],
+      "spring/sulfur_spring_small_2": [
+        9,
+        11,
+        8
+      ],
+      "spring/sulfur_spring_small_3": [
+        9,
+        11,
+        9
+      ],
+      "spring/sulfur_spring_small_4": [
+        9,
+        11,
+        9
+      ]
+    }
+  },
+  "wither": {
+    "air_and_water_random_pos": [
+      8,
+      4,
+      -2,
+      1.5707963705062866
+    ],
+    "can_spawn_mob_min_y_offset": 2,
+    "goals": [
+      {
+        "goal": "WitherBoss$WitherDoNothingGoal",
+        "priority": 0,
+        "selector": "goalSelector"
+      },
+      {
+        "goal": "RangedAttackGoal",
+        "priority": 2,
+        "selector": "goalSelector"
+      },
+      {
+        "goal": "WaterAvoidingRandomFlyingGoal",
+        "priority": 5,
+        "selector": "goalSelector"
+      },
+      {
+        "goal": "LookAtPlayerGoal",
+        "priority": 6,
+        "selector": "goalSelector"
+      },
+      {
+        "goal": "RandomLookAroundGoal",
+        "priority": 7,
+        "selector": "goalSelector"
+      },
+      {
+        "goal": "HurtByTargetGoal",
+        "priority": 1,
+        "selector": "targetSelector"
+      },
+      {
+        "goal": "NearestAttackableTargetGoal",
+        "priority": 2,
+        "selector": "targetSelector"
+      }
+    ],
+    "hover_random_pos": [
+      8,
+      7,
+      1.5707964,
+      3,
+      1
+    ],
+    "random_stroll_interval": 120,
+    "reduced_tick_delay_divisor": 2,
+    "selector_cadence": 2,
+    "skull_patterns": {
+      "base": [
+        "###",
+        "~#~"
+      ],
+      "full": [
+        "^^^",
+        "###",
+        "~#~"
+      ]
+    }
+  }
+}

@@ -61,7 +61,11 @@ fn countdowns_follow_javas_positional_random() {
     assert!(!vectors.is_empty());
     for v in vectors {
         let seed = v["seed"].as_i64().unwrap() as u64;
-        let p = IVec3::new(v["x"].as_i64().unwrap() as i32, v["y"].as_i64().unwrap() as i32, v["z"].as_i64().unwrap() as i32);
+        let p = IVec3::new(
+            v["x"].as_i64().unwrap() as i32,
+            v["y"].as_i64().unwrap() as i32,
+            v["z"].as_i64().unwrap() as i32,
+        );
         // One block of water: the dormant draw is 15..=30 itself, the
         // erupting one 1..=2.
         assert_eq!(countdown(seed, p, true, 1), v["dormant_draw"].as_i64().unwrap() as i32, "{v}");
