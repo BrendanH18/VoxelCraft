@@ -558,7 +558,7 @@ impl crate::session::PlayerSession {
             Event::Launch { min, max, limit } => {
                 if overlaps(aabb, (min, max)) && self.player.vehicle.is_none() {
                     if self.player.vel.y / 20.0 > -0.5 {
-                        self.vitals.cap_fall(self.player.pos.y + 1.0);
+                        self.vitals.cap_fall(self.player.pos.y);
                     }
                     self.player.geyser_launch(limit);
                 }

@@ -756,8 +756,8 @@ impl Entities {
         let difficulty = self.difficulty;
         skulls.retain_mut(|k| {
             // Frozen where entities don't tick, including a restored skull
-            // whose chunk hasn't streamed in yet; gone beyond the world's
-            // height (a loaded cell with no block).
+            // whose chunk hasn't streamed in yet; gone if a ticking cell
+            // still has no block.
             let cell = k.pos.floor().as_ivec3();
             if !world.entity_ticking(cell) {
                 return true;

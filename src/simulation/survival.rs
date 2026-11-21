@@ -391,13 +391,18 @@ impl Default for Vitals {
 }
 
 impl Vitals {
-    /// `Entity.checkFallDistanceAccumulation`: keep at most a block of
-    /// fall above `y_plus_one` (a geyser's lift).
-    pub fn cap_fall(&mut self, y_plus_one: f64) {
+    /// `Entity.checkFallDistanceAccumulation` at height `y`: keep at most
+    /// a block of fall (a geyser's lift), for landing damage and for the
+    /// fall a mace smash reads.
+    pub fn cap_fall(&mut self, y: f64) {
         if let Some(peak) = self.fall_peak
-            && peak > y_plus_one
+            && peak > y + 1.0
         {
-            self.fall_peak = Some(y_plus_one);
+            self.fall_peak = Some(y + 1.0);
+        }
+        if self.fall_distance(y) > 1.0 {
+            self.critical_fall_distance = 1.0;
+            self.previous_fall_y = Some(y);
         }
     }
 
