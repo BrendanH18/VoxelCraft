@@ -19,9 +19,41 @@ pub struct Pillar {
     pub top: i32,
     /// Ringed by an iron bar cage (the second and third shortest).
     pub guarded: bool,
+    /// Generation 5 (v0.16 Track G): Java's `EndSpikeFeature.placeSpike`
+    /// shape (`dx² + dz² <= r² + 1`, and air above y 65 in the rest of
+    /// its square) rather than the original round `dx² + dz² <= r²`.
+    pub java: bool,
 }
 
 impl Pillar {
+    /// Whether the column `x, z` is part of the pillar's obsidian.
+    pub fn holds(&self, x: i32, z: i32) -> bool {
+        let (dx, dz) = (x - self.x, z - self.z);
+        let r2 = self.radius * self.radius + i32::from(self.java);
+        dx.abs() <= self.radius && dz.abs() <= self.radius && dx * dx + dz * dz <= r2
+    }
+
+    /// The block `placeSpike` leaves at `p` (with the cage, bedrock cap and
+    /// the cleared air above y 65 in its square), or `None` outside it.
+    /// Generations before 5 only ever build the round pillar this way when
+    /// the respawn ritual rebuilds it.
+    pub fn block_at(&self, p: IVec3) -> Option<Block> {
+        let (dx, dz) = (p.x - self.x, p.z - self.z);
+        if self.caged(p.x, p.y, p.z) {
+            return Some(Block::IRON_BARS);
+        }
+        if dx.abs() > self.radius || dz.abs() > self.radius || p.y > self.top + 10 {
+            return None;
+        }
+        if dx == 0 && dz == 0 && p.y == self.top {
+            return Some(Block::BEDROCK);
+        }
+        if self.holds(p.x, p.z) && p.y < self.top {
+            return Some(Block::OBSIDIAN);
+        }
+        (p.y > 65).then_some(Block::AIR)
+    }
+
     /// Where the pillar's End crystal stands (feet), above the bedrock cap.
     pub fn crystal(&self) -> glam::DVec3 {
         glam::DVec3::new(self.x as f64 + 0.5, (self.top + 1) as f64, self.z as f64 + 0.5)
@@ -38,6 +70,54 @@ impl Pillar {
             && (dx.abs() == 2 || dz.abs() == 2 || dy == 3)
     }
 }
+/// Java's `EndSpikeFeature.SpikeCacheLoader` for a world seed: the cache
+/// key is the first `nextLong` of the seed's `SingleThreadedRandomSource`
+/// (low 16 bits), the sizes 0..10 shuffled by `Util.toShuffledList` with a
+/// source seeded by that key, and the spikes at `floor(42 cos)`,
+/// `floor(42 sin)` of `2(-π + π/10 i)`.
+pub fn java_spikes(seed: u64) -> [Pillar; 10] {
+    let key = crate::enchant::JavaRandom::new(seed as i64).next_long() & 0xFFFF;
+    let mut sizes: [i32; 10] = std::array::from_fn(|i| i as i32);
+    java_shuffle(&mut sizes, &mut crate::enchant::JavaRandom::new(key));
+    std::array::from_fn(|i| {
+        let a = 2.0 * (-std::f64::consts::PI + std::f64::consts::PI / 10.0 * i as f64);
+        let size = sizes[i];
+        Pillar {
+            x: (42.0 * a.cos()).floor() as i32,
+            z: (42.0 * a.sin()).floor() as i32,
+            radius: 2 + size / 3,
+            top: 76 + size * 3,
+            guarded: size == 1 || size == 2,
+            java: true,
+        }
+    })
+}
+
+/// `Util.shuffle`: from the end, swap each slot with one drawn below it.
+fn java_shuffle<T>(list: &mut [T], rng: &mut crate::enchant::JavaRandom) {
+    for i in (2..=list.len()).rev() {
+        let j = rng.next_bounded(i as i32) as usize;
+        list.swap(i - 1, j);
+    }
+}
+
+/// `EnderDragonFight.init`'s gateway list, `0..20` shuffled by the world
+/// seed's `SingleThreadedRandomSource`, in the order kills use it
+/// (`spawnNewGateway` takes from the end).
+pub fn java_gateway_order(seed: u64) -> [usize; 20] {
+    let mut list: [usize; 20] = std::array::from_fn(|i| i);
+    java_shuffle(&mut list, &mut crate::enchant::JavaRandom::new(seed as i64));
+    list.reverse();
+    list
+}
+
+/// Where the gateway numbered `i` (0..20) goes: `floor(96 cos)`,
+/// `floor(96 sin)` of `2(-π + π/20 i)`, at y 75.
+pub fn gateway_spot(i: usize) -> IVec3 {
+    let a = 2.0 * (-std::f64::consts::PI + std::f64::consts::PI / 20.0 * i as f64);
+    IVec3::new((96.0 * a.cos()).floor() as i32, 75, (96.0 * a.sin()).floor() as i32)
+}
+
 pub struct EndGen {
     shape: Perlin,
     detail: Perlin,
@@ -91,19 +171,24 @@ impl EndGen {
     }
 
     pub fn with_generation(seed: u64, generation: super::terrain::Generation) -> Self {
-        let mut ranks: [usize; 10] = std::array::from_fn(|i| i);
-        ranks.sort_unstable_by_key(|&i| hash3(i as i32, 0, 0, seed ^ 0x454E44));
-        let pillars = std::array::from_fn(|i| {
-            let angle = i as f64 * std::f64::consts::TAU / 10.0;
-            let rank = ranks[i] as i32;
-            Pillar {
-                x: (angle.cos() * 42.0).round() as i32,
-                z: (angle.sin() * 42.0).round() as i32,
-                radius: 2 + rank / 3,
-                top: 76 + rank * 3,
-                guarded: rank == 1 || rank == 2,
-            }
-        });
+        let pillars = if generation >= super::terrain::Generation::V5 {
+            java_spikes(seed)
+        } else {
+            let mut ranks: [usize; 10] = std::array::from_fn(|i| i);
+            ranks.sort_unstable_by_key(|&i| hash3(i as i32, 0, 0, seed ^ 0x454E44));
+            std::array::from_fn(|i| {
+                let angle = i as f64 * std::f64::consts::TAU / 10.0;
+                let rank = ranks[i] as i32;
+                Pillar {
+                    x: (angle.cos() * 42.0).round() as i32,
+                    z: (angle.sin() * 42.0).round() as i32,
+                    radius: 2 + rank / 3,
+                    top: 76 + rank * 3,
+                    guarded: rank == 1 || rank == 2,
+                    java: false,
+                }
+            })
+        };
         Self {
             shape: Perlin::new(seed ^ 0x454E4401),
             detail: Perlin::new(seed ^ 0x454E4402),
@@ -132,13 +217,17 @@ impl EndGen {
     /// The 20 spots around the central island where a gateway appears for
     /// each dragon killed, in the order they're used (Java shuffles them by
     /// the world seed).
+    ///
+    /// Generation 5 (v0.16 Track G) uses Java's own order for the seed
+    /// ([`java_gateway_order`]); older worlds keep the original order so
+    /// their saved gateway counts still name the same spots.
     pub fn gateways(&self) -> [IVec3; 20] {
+        if self.v5() {
+            return java_gateway_order(self.seed).map(gateway_spot);
+        }
         let mut order: [usize; 20] = std::array::from_fn(|i| i);
         order.sort_unstable_by_key(|&i| hash3(i as i32, 1, 0, self.seed ^ 0x4741_5445));
-        order.map(|i| {
-            let a = 2.0 * (-std::f64::consts::PI + std::f64::consts::PI / 20.0 * i as f64);
-            IVec3::new((96.0 * a.cos()).floor() as i32, 75, (96.0 * a.sin()).floor() as i32)
-        })
+        order.map(gateway_spot)
     }
 
     /// Where the gateway at `gateway` leads, found like Java's
@@ -369,9 +458,10 @@ impl EndGen {
             for x in 0..CHUNK_SIZE {
                 let (wx, wz) = (base.x + x as i32, base.z + z as i32);
                 let column = self.column(wx, wz);
-                let pillar = self.pillars.iter().find(|p| {
-                    let (dx, dz) = (wx - p.x, wz - p.z);
-                    dx.abs() <= p.radius && dz.abs() <= p.radius && dx * dx + dz * dz <= p.radius * p.radius
+                let pillar = self.pillars.iter().find(|p| p.holds(wx, wz));
+                // Generation 5: `placeSpike` also clears its square above y 65.
+                let square = self.pillars.iter().find(|p| {
+                    p.java && (wx - p.x).abs() <= p.radius && (wz - p.z).abs() <= p.radius
                 });
                 // Cages reach past the round pillar, to its 5x5 square.
                 let cage = self.pillars.iter().find(|p| p.guarded && (wx - p.x).abs() <= 2 && (wz - p.z).abs() <= 2);
@@ -388,6 +478,8 @@ impl EndGen {
                         Block::OBSIDIAN
                     } else if cage.is_some_and(|p| p.caged(wx, wy, wz)) {
                         Block::IRON_BARS
+                    } else if square.is_some_and(|p| wy > 65 && wy <= p.top + 10) {
+                        Block::AIR
                     } else if let Some(b) = podium_block(podium, IVec3::new(wx, wy, wz), false) {
                         b
                     } else if column.is_some_and(|(top, bottom)| wy >= bottom && wy <= top) {

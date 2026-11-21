@@ -31,6 +31,7 @@ pub mod armadillo;
 pub mod camel_husk;
 pub mod copper_golem;
 pub mod creaking;
+pub mod crystal;
 pub mod dragon;
 mod dragon_model;
 mod effect_triggers;
@@ -537,6 +538,30 @@ pub enum EntityEvent {
     /// grows if the cell is air and can hold one (`mobGriefing`), else one drops.
     WitherRose {
         pos: DVec3,
+    },
+    /// v0.16 Track G: an End crystal in the End keeps fire in its own air
+    /// cell (`EndCrystal.tick`, not under `mobGriefing`).
+    CrystalFire {
+        cell: IVec3,
+    },
+    /// v0.16 Track G: the exit portal goes out for the respawn ritual
+    /// (`respawnDragon`, `active: false`) or opens again when the ritual is
+    /// broken off (`abortRespawnSequence`), with no egg.
+    ExitPortal {
+        active: bool,
+    },
+    /// v0.16 Track G: the ritual rebuilds pillar `index`
+    /// (`DragonRespawnStage.SUMMONING_PILLARS`): its top cleared, a power 5
+    /// blast, the spike rebuilt with an invulnerable crystal beaming at
+    /// (0, 128, 0).
+    RespawnPillar {
+        index: usize,
+    },
+    /// v0.16 Track G: a blast that hurts entities but breaks no blocks
+    /// (`ExplosionInteraction.NONE`): the ritual's crystals at its end.
+    QuietBlast {
+        center: DVec3,
+        power: f32,
     },
 }
 
@@ -1101,6 +1126,11 @@ pub struct Entities {
     storage: chunk_storage::EntityStorage,
     /// The dragon fight, in the End.
     pub fight: Option<dragon::Fight>,
+    /// v0.16 Track G: End crystals, in any dimension (the End's tick with
+    /// the fight).
+    pub crystals: crystal::Crystals,
+    /// Game time the crystals haven't run as whole ticks (outside the End).
+    crystal_time: f64,
     /// Java `doMobLoot`; set by the world before each update.
     pub mob_loot: bool,
     pub neutral_forgive_dead_players: bool,
@@ -1233,6 +1263,8 @@ impl Entities {
             decor_clock: 0,
             storage: Default::default(),
             fight: None,
+            crystals: crystal::Crystals::default(),
+            crystal_time: 0.0,
             mob_loot: true,
             neutral_forgive_dead_players: true,
             neutral_universal_anger: false,
@@ -1493,6 +1525,7 @@ impl Entities {
         if let Some(fight) = &mut self.fight {
             fight.explode(center, power);
         }
+        self.crystals.explode(center, power);
         // v0.16 Track C: a charged creeper's blast knocks one head off.
         let charged = self
             .charged_blasts
@@ -1988,6 +2021,9 @@ impl Entities {
         props.insert("tridents".to_string(), self.tridents_json());
         props.insert("ominous_item_spawners".to_string(), self.item_spawners_to_value().to_string());
         props.insert("raids".to_string(), self.raids.save());
+        // v0.16 Track G: End crystals, saved even when there are none, so
+        // a load knows the pillars' crystals are among them.
+        props.insert("end_crystals".to_string(), self.crystals.serialize());
     }
 
     /// Restores [`Entities::save_props`]. Every entity starts in the level;
@@ -2023,6 +2059,9 @@ impl Entities {
         }
         if let Some(r) = props.get("raids") {
             self.raids.load(r);
+        }
+        if let Some(c) = props.get("end_crystals") {
+            self.crystals.load(c);
         }
     }
 
@@ -2165,7 +2204,7 @@ impl Entities {
         if self.raycast(eye, dir, max_dist).is_some_and(|(_, mt)| mt < t) {
             return None;
         }
-        if self.fight.as_ref().and_then(|f| f.raycast(eye, dir, max_dist)).is_some_and(|(_, ft)| ft < t) {
+        if self.fight_raycast_all(eye, dir, max_dist).is_some_and(|(_, ft)| ft < t) {
             return None;
         }
         Some(i)
@@ -2178,17 +2217,54 @@ impl Entities {
         true
     }
 
-    /// The End crystal or dragon part a ray hits within `max_dist`, if it's
-    /// nearer than any mob.
+    /// The End crystal or dragon part a ray hits within `max_dist`.
+    fn fight_raycast_all(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<(dragon::Hit, f64)> {
+        dragon::raycast(self.fight.as_ref(), &self.crystals, origin, dir, max_dist)
+    }
+
+    /// The End crystal (in any dimension) or dragon part a ray hits within
+    /// `max_dist`, if it's nearer than any mob.
     pub fn fight_raycast(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<(dragon::Hit, f64)> {
-        let hit = self.fight.as_ref()?.raycast(origin, dir, max_dist)?;
+        let hit = self.fight_raycast_all(origin, dir, max_dist)?;
         let mob = self.raycast(origin, dir, max_dist).map_or(f64::INFINITY, |(_, t)| t);
         (hit.1 < mob).then_some(hit)
     }
 
-    /// A player's melee `hit` in the fight for `damage`.
+    /// A player's melee `hit` on a crystal or the dragon for `damage`.
     pub fn strike(&mut self, hit: dragon::Hit, damage: f32, by: PlayerId) -> bool {
-        self.fight.as_mut().is_some_and(|f| f.strike(hit, damage, Some(by), false))
+        self.strike_as(hit, damage, by, false)
+    }
+
+    /// [`Entities::strike`] by a player who may be in Creative (whose hits
+    /// get through the ritual crystals' invulnerability).
+    pub fn strike_as(&mut self, hit: dragon::Hit, damage: f32, by: PlayerId, creative: bool) -> bool {
+        match hit {
+            dragon::Hit::Crystal(id) => self.crystals.hit(id, crystal::Blow::Player { id: by, creative }),
+            dragon::Hit::Dragon(_) => self.fight.as_mut().is_some_and(|f| f.strike(hit, damage, false)),
+        }
+    }
+
+    /// v0.16 Track G: `EndCrystalItem.useOn` on the block `clicked`. Places
+    /// a crystal (and in the End lets the fight try the respawn ritual);
+    /// `players` are the feet of every player, who also block it. Returns
+    /// whether one was placed.
+    pub fn place_crystal<W: BlockSource + ?Sized>(&mut self, world: &W, clicked: IVec3, players: &[DVec3]) -> bool {
+        let overlaps = |(a, b): (DVec3, DVec3), (min, max): (DVec3, DVec3)| a.cmplt(max).all() && b.cmpgt(min).all();
+        let occupied = |min: DVec3, max: DVec3| {
+            let player = crate::player::SHAPE;
+            players.iter().any(|&p| overlaps(player.aabb(p), (min, max)))
+                || self.mobs.iter().any(|m| m.alive() && overlaps(m.aabb(), (min, max)))
+                || self.decor.iter().any(|d| overlaps(d.aabb(), (min, max)))
+                || self.items.iter().any(|i| overlaps(i.aabb(), (min, max)))
+                || self.minecarts.iter().any(|c| overlaps(c.aabb(), (min, max)))
+                || self.tnt.iter().any(|t| overlaps((t.pos - DVec3::new(0.49, 0.0, 0.49), t.pos + DVec3::new(0.49, 0.98, 0.49)), (min, max)))
+        };
+        let Some(at) = self.crystals.placement(world, clicked, occupied) else { return false };
+        self.crystals.place(at);
+        if let Some(fight) = &mut self.fight {
+            fight.crystal_placed();
+        }
+        true
     }
 
     /// Lights the TNT block at `cell` (now gone from the world): a short
