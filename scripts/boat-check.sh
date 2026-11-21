@@ -103,7 +103,7 @@ cleanup() {
         [ -n "$id" ] || id=$(sandbox_id)
         if [ -n "$id" ] && [ "$saving" = 1 ]; then
             if boat stop "$id" --json >/dev/null 2>&1; then
-                echo "boat-check: stopped $id. Once boat snapshots --json shows $snapshot ready with sourceSandboxId $id: boat delete $id --yes. If no save from $id is pending: boat snapshot $id $snapshot" >&2
+                echo "boat-check: asked Boat to stop $id; boat info $id shows when it is stopped. Once boat snapshots --json shows $snapshot ready with sourceSandboxId $id: boat delete $id --yes. If it is stopped and no save from $id is pending: boat snapshot $id $snapshot" >&2
             else
                 echo "boat-check: couldn't stop $id: boat stop $id, then check boat snapshots" >&2
             fi

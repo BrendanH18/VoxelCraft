@@ -59,9 +59,10 @@ scripts/boat-check.sh -- cargo test --release some_test   # any command
 ```
 
 Each run is one `boat run`: it pushes the working tree (tracked and untracked,
-non-ignored files), runs the command and deletes the sandbox. (After a
-failed or unconfirmed `--save`, the script stops the sandbox instead, so
-the passing build can be saved again.) Sandboxes are
+non-ignored files), runs the command and deletes the sandbox. (With
+`--save`, once the checks pass and a save has started, any outcome other
+than a confirmed save asks Boat to stop the sandbox instead, so the passing
+build can be saved again once `boat info` shows it stopped.) Sandboxes are
 `large` (8 vCPU, 16 GB; `VC_BOAT_TYPE` to change it), because the release
 test build runs out of memory on 8 GB. They start with `--no-env`, so none of
 the account's stored secrets go in. The script installs the Linux audio,
