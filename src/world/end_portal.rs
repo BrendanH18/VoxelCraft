@@ -56,6 +56,18 @@ pub fn rings_loaded(frame: IVec3, get: impl Fn(IVec3) -> Option<Block>) -> bool 
     })
 }
 
+/// `TheEndGatewayBlockEntity`'s exit search: 1024 blocks out, stepping a
+/// chunk (16) at a time at most 16 times, end stone from y 30, the island
+/// at y 75, the tallest block within 16, the exit ten above it; arrivals
+/// stand on the tallest block within 5 of the exit gateway's cap.
+pub const EXIT_DISTANCE: f64 = 1024.0;
+pub const EXIT_STEPS: i32 = 16;
+pub const SPAWN_MIN_Y: i32 = 30;
+pub const ISLAND_Y: i32 = 75;
+pub const TALLEST_RADIUS: i32 = 16;
+pub const EXIT_ABOVE: i32 = 10;
+pub const ARRIVAL_RADIUS: i32 = 5;
+
 /// v0.16 Track G: where a new End gateway's exit goes
 /// (`TheEndGatewayBlockEntity.findOrCreateValidTeleportPos`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -192,18 +204,18 @@ pub fn gateway_exit(
 ) -> GatewayExit {
     let mut view = EndView { end, loaded, sections: Default::default(), island: Vec::new(), max_y };
     let dir = glam::DVec2::new(f64::from(entry.x), f64::from(entry.z)).normalize_or_zero();
-    let mut at = dir * 1024.0;
+    let mut at = dir * EXIT_DISTANCE;
     let chunk = |at: glam::DVec2| ((at.x / 16.0).floor() as i32, (at.y / 16.0).floor() as i32);
     let empty = |view: &EndView, at: glam::DVec2| {
         let (cx, cz) = chunk(at);
         view.highest(cx, cz).is_none()
     };
-    let mut limit = 16;
+    let mut limit = EXIT_STEPS;
     while !empty(&view, at) && limit > 0 {
         limit -= 1;
         at -= dir * 16.0;
     }
-    let mut limit = 16;
+    let mut limit = EXIT_STEPS;
     while empty(&view, at) && limit > 0 {
         limit -= 1;
         at += dir * 16.0;
@@ -214,7 +226,7 @@ pub fn gateway_exit(
     let mut found: Option<(f64, IVec3)> = None;
     if let Some(top) = view.highest(cx, cz) {
         for z in cz * 16..cz * 16 + 16 {
-            for y in 30..=top {
+            for y in SPAWN_MIN_Y..=top {
                 for x in cx * 16..cx * 16 + 16 {
                     let p = IVec3::new(x, y, z);
                     if view.get(p) != Block::END_STONE
@@ -234,13 +246,13 @@ pub fn gateway_exit(
     let (start, island) = match found {
         Some((_, p)) => (p, None),
         None => {
-            let origin = IVec3::new((at.x + 0.5).floor() as i32, 75, (at.y + 0.5).floor() as i32);
+            let origin = IVec3::new((at.x + 0.5).floor() as i32, ISLAND_Y, (at.y + 0.5).floor() as i32);
             view.island = java_island(origin);
             (origin, Some(origin))
         }
     };
-    let tallest = tallest_block(&view, start, 16, true, (0, max_y));
-    GatewayExit { exit: tallest + IVec3::Y * 10, island }
+    let tallest = tallest_block(&view, start, TALLEST_RADIUS, true, (0, max_y));
+    GatewayExit { exit: tallest + IVec3::Y * EXIT_ABOVE, island }
 }
 
 /// Java draws X, Y, then Z, each as the difference of two bounded draws.
@@ -285,7 +297,7 @@ impl World {
     /// five of it (its own column aside), or on its cap if there's none.
     pub fn gateway_arrival(&self, gateway: IVec3) -> glam::DVec3 {
         let from = gateway + IVec3::Y * 2;
-        let stand = tallest_block(self, from, 5, false, (self.min_y(), self.max_y())) + IVec3::Y;
+        let stand = tallest_block(self, from, ARRIVAL_RADIUS, false, (self.min_y(), self.max_y())) + IVec3::Y;
         stand.as_dvec3() + glam::DVec3::new(0.5, 0.0, 0.5)
     }
 
@@ -349,9 +361,10 @@ impl World {
     /// block within 10 of the pillar's bedrock cap goes (`removeBlock`).
     pub fn clear_spike_top(&mut self, p: &super::end::Pillar) {
         let top = IVec3::new(p.x, p.top, p.z);
-        for dy in -10..=10 {
-            for dz in -10..=10 {
-                for dx in -10..=10 {
+        let r = crate::entity::dragon::PILLAR_CLEAR;
+        for dy in -r..=r {
+            for dz in -r..=r {
+                for dx in -r..=r {
                     let at = top + IVec3::new(dx, dy, dz);
                     if self.get_block(at).is_some_and(|b| b != Block::AIR) {
                         self.set_block(at, Block::AIR);

@@ -358,7 +358,11 @@ impl Game {
                     Arrival::Portal(p, along_x) => {
                         // `PortalForcer`: an existing portal within 16 blocks
                         // into the Nether or 128 out of it, else a new one.
-                        let radius = if self.dimension == Dimension::Nether { 16 } else { 128 };
+                        let radius = if self.dimension == Dimension::Nether {
+                            crate::world::portal::NETHER_PORTAL_RADIUS
+                        } else {
+                            crate::world::portal::OVERWORLD_PORTAL_RADIUS
+                        };
                         match self.world.find_portal(p, radius) {
                             Some(at) if !self.world.column_loaded(at.x, at.z) => {
                                 self.arrival = Some(Arrival::PortalAt(at));

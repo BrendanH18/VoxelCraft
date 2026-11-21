@@ -32,16 +32,28 @@ const FRAC_PI_12: f64 = std::f64::consts::PI / 12.0;
 pub const DEATH_TICKS: u32 = 200;
 /// Where a new dragon appears (`EnderDragonFight.createNewDragon`:
 /// `DRAGON_SPAWN_Y` 128 over the fight's origin).
-const SPAWN: DVec3 = DVec3::new(0.0, 128.0, 0.0);
+pub const SPAWN: DVec3 = DVec3::new(0.0, 128.0, 0.0);
 /// `DragonRespawnStage`'s beam and growl point, `(0, 128, 0)`.
 pub const RESPAWN_BEAM: IVec3 = IVec3::new(0, 128, 0);
 /// `EnderDragonFight.TIME_BETWEEN_CRYSTAL_SCANS`.
-const CRYSTAL_SCAN_TICKS: u32 = 100;
+pub const CRYSTAL_SCAN_TICKS: u32 = 100;
 /// `CRYSTAL_DESTROY_TARGETING`: a crystal destroyed by no player turns
 /// the dragon on the nearest player this close.
-const CRYSTAL_DESTROY_RANGE: f64 = 64.0;
-/// Crystals heal a dragon this close.
-const HEAL_RANGE: f64 = 32.0;
+pub const CRYSTAL_DESTROY_RANGE: f64 = 64.0;
+/// `tryRespawn`: the crystals stand this far out from the portal's pillar.
+pub const RESPAWN_EDGE: i32 = 3;
+/// `PREPARING_TO_SUMMON_PILLARS` lasts this long (then moves on at this time).
+pub const PREPARE_TICKS: u32 = 100;
+/// `SUMMONING_PILLARS`: a pillar every 40 ticks, rebuilt at the 39th.
+pub const PILLAR_TICKS: u32 = 40;
+/// The block radius cleared around a pillar's cap, and its blast's power.
+pub const PILLAR_CLEAR: i32 = 10;
+pub const PILLAR_BLAST: f32 = 5.0;
+/// `SUMMONING_DRAGON`: growls from 80, the dragon at 100.
+pub const SUMMON_TICKS: u32 = 100;
+pub const SUMMON_GROWL_FROM: u32 = 80;
+/// Crystals heal a dragon this close (`checkCrystals`' box grown by 32).
+pub const HEAL_RANGE: f64 = 32.0;
 
 /// One hit box of the dragon (Java's `EnderDragonPart`s).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -717,7 +729,7 @@ impl Fight {
         let mut found = Vec::new();
         // `Direction.Plane.HORIZONTAL`: north, east, south, west.
         for d in [IVec3::NEG_Z, IVec3::X, IVec3::Z, IVec3::NEG_X] {
-            let cell = (center + d * 3).as_dvec3();
+            let cell = (center + d * RESPAWN_EDGE).as_dvec3();
             let here: Vec<u32> = crystals.touching(cell, cell + DVec3::ONE).map(|c| c.id).collect();
             if here.is_empty() {
                 return;
@@ -793,7 +805,7 @@ impl Fight {
                 self.set_stage(Stage::PreparingToSummonPillars);
             }
             Stage::PreparingToSummonPillars => {
-                if time < 100 {
+                if time < PREPARE_TICKS {
                     if time == 0 || (50..=52).contains(&time) || time >= 95 {
                         growl(events);
                     }
@@ -802,9 +814,9 @@ impl Fight {
                 }
             }
             Stage::SummoningPillars => {
-                let (start, end) = (time % 40 == 0, time % 40 == 39);
+                let (start, end) = (time % PILLAR_TICKS == 0, time % PILLAR_TICKS == PILLAR_TICKS - 1);
                 if start || end {
-                    let index = (time / 40) as usize;
+                    let index = (time / PILLAR_TICKS) as usize;
                     if let Some(p) = self.pillars.get(index) {
                         if start {
                             beam(crystals, Some(IVec3::new(p.x, p.top + 1, p.z)));
@@ -817,7 +829,7 @@ impl Fight {
                 }
             }
             Stage::SummoningDragon => {
-                if time >= 100 {
+                if time >= SUMMON_TICKS {
                     // `setRespawnStage(END)`: the new dragon, at a random heading.
                     self.respawn = None;
                     let mut dragon = Dragon::new(SPAWN);
@@ -831,7 +843,7 @@ impl Fight {
                         events.push(EntityEvent::QuietBlast { center: c.pos, power: CRYSTAL_POWER });
                         crystals.discard(id);
                     }
-                } else if time >= 80 {
+                } else if time >= SUMMON_GROWL_FROM {
                     growl(events);
                 } else if time == 0 {
                     beam(crystals, Some(RESPAWN_BEAM));

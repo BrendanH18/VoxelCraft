@@ -978,7 +978,7 @@ impl Game {
             crate::world::vibration::EventSource::NONE,
             None,
         );
-        self.explode(center, 5.0, Cause::EXPLOSION, false);
+        self.explode(center, crate::entity::dragon::PILLAR_BLAST, Cause::EXPLOSION, false);
         self.world.build_spike(&p);
         let beam = Some(crate::entity::dragon::RESPAWN_BEAM);
         self.mobs.entities.crystals.spawn(p.crystal(), beam, true, true);

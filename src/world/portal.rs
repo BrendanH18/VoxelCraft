@@ -15,6 +15,15 @@ const MAX_W: i32 = 21;
 const MIN_H: i32 = 3;
 const MAX_H: i32 = 21;
 const SIDES: [IVec3; 6] = [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z];
+/// v0.16 Track G: `PortalForcer.NETHER_PORTAL_RADIUS` and
+/// `OVERWORLD_PORTAL_RADIUS`, the existing-portal search into and out of
+/// the Nether; `createPortal` spirals 16 out; its fallback ledge sits at y
+/// 70 or more and 9 or more below the top.
+pub const NETHER_PORTAL_RADIUS: i32 = 16;
+pub const OVERWORLD_PORTAL_RADIUS: i32 = 128;
+pub const CREATE_RADIUS: i32 = 16;
+pub const LEDGE_MIN_Y: i32 = 70;
+pub const LEDGE_BELOW_TOP: i32 = 9;
 
 impl World {
     fn is(&self, p: IVec3, b: Block) -> bool {
@@ -185,7 +194,7 @@ impl World {
         let min_y = self.min_y();
         let mut full: Option<(i64, IVec3)> = None;
         let mut partial: Option<(i64, IVec3)> = None;
-        for column in spiral(origin, 16) {
+        for column in spiral(origin, CREATE_RADIUS) {
             let height = max_placeable.min(self.motion_blocking_height(column.x, column.z));
             let mut y = height;
             while y >= min_y {
@@ -218,8 +227,8 @@ impl World {
         let at = match full.or(partial) {
             Some((_, at)) => at,
             None => {
-                let low = (min_y + 1).max(70);
-                let high = max_placeable - 9;
+                let low = (min_y + 1).max(LEDGE_MIN_Y);
+                let high = max_placeable - LEDGE_BELOW_TOP;
                 let at = IVec3::new(origin.x, origin.y.clamp(low, high.max(low)), origin.z) - dir;
                 for b in -1..2 {
                     for w in 0..2 {

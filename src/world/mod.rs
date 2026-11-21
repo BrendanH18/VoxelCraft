@@ -93,7 +93,7 @@ pub mod overworld_blocks;
 mod overworld_flora;
 pub mod pale_garden;
 pub mod poplar_trees;
-mod portal;
+pub mod portal;
 pub mod precipitation;
 pub mod pumpkin_blocks;
 pub mod rails;

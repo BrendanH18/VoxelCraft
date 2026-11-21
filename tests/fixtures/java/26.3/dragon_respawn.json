@@ -1,0 +1,340 @@
+{
+  "dragon": {
+    "check_crystals": [
+      10,
+      1.0,
+      10,
+      32.0,
+      1.7976931348623157e+308
+    ],
+    "crystal_destroy_range": 64.0,
+    "death_numbers": [
+      1,
+      180,
+      200,
+      0.5,
+      8.0,
+      0.5,
+      4.0,
+      0.5,
+      8.0,
+      2.0,
+      0.0,
+      0.0,
+      0.0,
+      500,
+      12000,
+      150,
+      5,
+      0.08,
+      1,
+      1028,
+      0,
+      0.0,
+      0.10000000149011612,
+      0.0,
+      0,
+      200,
+      0.2
+    ],
+    "first_kill_xp": 12000,
+    "later_kill_xp": 500
+  },
+  "end_crystal": {
+    "explosion_power": 6.0,
+    "placeable_on": [
+      "obsidian",
+      "bedrock"
+    ],
+    "placement_numbers": [
+      1.0,
+      2.0,
+      1.0,
+      0.5,
+      0.5,
+      0,
+      1
+    ]
+  },
+  "entity_types": {
+    "end_crystal": {
+      "category": "misc",
+      "fire_immune": true,
+      "height": 2.0,
+      "width": 2.0
+    }
+  },
+  "fight": {
+    "constants": {
+      "ARENA_SIZE_CHUNKS": 8,
+      "ARENA_TICKET_LEVEL": 9,
+      "DRAGON_SPAWN_Y": 128,
+      "GATEWAY_COUNT": 20,
+      "GATEWAY_DISTANCE": 96,
+      "MAX_TICKS_BEFORE_DRAGON_RESPAWN": 1200,
+      "TIME_BETWEEN_CRYSTAL_SCANS": 100,
+      "TIME_BETWEEN_PLAYER_SCANS": 20
+    },
+    "dragon_spawn_numbers": [
+      128,
+      128,
+      360.0,
+      0.0
+    ],
+    "gateway_y": 75,
+    "valid_player_distance": 192.0
+  },
+  "gateway": {
+    "constants": {
+      "ATTENTION_INTERVAL": 2400,
+      "COOLDOWN_TIME": 40,
+      "DEFAULT_AGE": 0,
+      "EVENT_COOLDOWN": 1,
+      "GATEWAY_HEIGHT_ABOVE_SURFACE": 10,
+      "SPAWN_TIME": 200
+    },
+    "exit_position": [
+      0,
+      2,
+      0,
+      5,
+      0
+    ],
+    "island": [
+      3,
+      4.0,
+      0,
+      0.5,
+      1.0,
+      1.0,
+      2,
+      0.5,
+      1
+    ],
+    "teleport_pos": [
+      0.5,
+      75.0,
+      0.5,
+      16,
+      1
+    ],
+    "tentative": [
+      0.0,
+      1024,
+      1024.0,
+      16,
+      -16.0,
+      16,
+      16.0
+    ],
+    "valid_spawn": [
+      30,
+      16,
+      1,
+      0.0,
+      2,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "items": {
+    "end_crystal": {
+      "damage_resistant": false,
+      "equips_head": false,
+      "glint": true,
+      "lowered_mob_visibility": null,
+      "rarity": "common"
+    }
+  },
+  "portal_forcer": {
+    "constants": {
+      "FRAME_BOX": 3,
+      "FRAME_BOX_END": 2,
+      "FRAME_BOX_START": -1,
+      "FRAME_HEIGHT": 5,
+      "FRAME_HEIGHT_END": 4,
+      "FRAME_HEIGHT_START": -1,
+      "FRAME_WIDTH": 4,
+      "FRAME_WIDTH_END": 3,
+      "FRAME_WIDTH_START": -1,
+      "NETHER_PORTAL_RADIUS": 16,
+      "NOTHING_FOUND": -1,
+      "OVERWORLD_PORTAL_RADIUS": 128,
+      "TICKET_RADIUS": 3
+    },
+    "create_portal": [
+      -1.0,
+      -1.0,
+      1,
+      1,
+      16,
+      1,
+      1,
+      4,
+      3,
+      0,
+      -1,
+      1,
+      -1.0,
+      -1.0,
+      -1.0,
+      -1.0,
+      -1.0,
+      -1.0,
+      -1,
+      70,
+      9,
+      1,
+      1,
+      -1,
+      2,
+      0,
+      2,
+      -1,
+      3,
+      -1,
+      3,
+      -1,
+      4,
+      -1,
+      2,
+      -1,
+      3,
+      0,
+      2,
+      0,
+      3,
+      18,
+      2,
+      3
+    ]
+  },
+  "recipe": {
+    "key": {
+      "E": "minecraft:ender_eye",
+      "G": "minecraft:glass",
+      "T": "minecraft:ghast_tear"
+    },
+    "pattern": [
+      "GGG",
+      "GEG",
+      "GTG"
+    ],
+    "result": {
+      "id": "minecraft:end_crystal"
+    },
+    "type": "minecraft:crafting_shaped"
+  },
+  "reference": "Minecraft Java Edition 26.3",
+  "respawn": {
+    "edge_distance": 3,
+    "preparing_to_summon_pillars": [
+      100,
+      50,
+      51,
+      52,
+      95,
+      3001,
+      0,
+      128,
+      0,
+      0
+    ],
+    "stages": [
+      "start",
+      "preparing_to_summon_pillars",
+      "summoning_pillars",
+      "summoning_dragon",
+      "end"
+    ],
+    "summoning_dragon": [
+      100,
+      6.0,
+      80,
+      3001,
+      0,
+      128,
+      0,
+      0,
+      0,
+      128,
+      0,
+      5,
+      3001,
+      0,
+      128,
+      0,
+      0
+    ],
+    "summoning_pillars": [
+      40,
+      40,
+      1,
+      0,
+      40,
+      39,
+      1,
+      0,
+      40,
+      1,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      0,
+      0.5,
+      0.5,
+      5.0,
+      1,
+      0,
+      128,
+      0,
+      45
+    ]
+  },
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "net.minecraft.world.entity.EntityTypes (END_CRYSTAL), Items (END_CRYSTAL)",
+    "EndCrystal.hurtServer, EndCrystalItem.useOn",
+    "EnderDragonFight (constants, init, tryRespawn, spawnNewGateway, createNewDragon)",
+    "DragonRespawnStage (names; PREPARING_TO_SUMMON_PILLARS, SUMMONING_PILLARS, SUMMONING_DRAGON tick)",
+    "EnderDragon (tickDeath, checkCrystals, CRYSTAL_DESTROY_TARGETING)",
+    "EndSpikeFeature (constants, getSpikesForLevel, SpikeCacheLoader.load)",
+    "TheEndGatewayBlockEntity (constants, findExitPortalXZPosTentative, findValidSpawnInChunk, findOrCreateValidTeleportPos, findExitPosition), EndIslandFeature.place",
+    "PortalForcer (constants, createPortal)",
+    "data/minecraft/recipe/end_crystal.json"
+  ],
+  "spikes": {
+    "cache_key_mask": 65535,
+    "constants": {
+      "NUMBER_OF_SPIKES": 10,
+      "SPIKE_DISTANCE": 42
+    },
+    "loader_numbers": [
+      0,
+      10,
+      0,
+      10,
+      42.0,
+      2.0,
+      -3.141592653589793,
+      0.3141592653589793,
+      42.0,
+      2.0,
+      -3.141592653589793,
+      0.3141592653589793,
+      2,
+      3,
+      76,
+      3,
+      1,
+      2,
+      1,
+      0
+    ]
+  }
+}
