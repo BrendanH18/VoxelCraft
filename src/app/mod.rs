@@ -2000,7 +2000,13 @@ impl Game {
 
         // Streaming and GPU uploads continue during offline pause.
         if self.lan.client.is_none() {
+            let arriving = self.arrival.is_some();
             self.update_arrival();
+            // Placed by the arrival (a portal, a respawn): the camera snaps,
+            // as for any teleport.
+            if arriving && self.arrival.is_none() {
+                self.previous_eye = self.session.player.eye();
+            }
         }
         let viewers: Vec<DVec3> = self.followed().map(|(_, b)| b.agent.session.player.pos).collect();
         self.world.set_viewers(&viewers);
