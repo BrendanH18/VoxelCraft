@@ -6,7 +6,8 @@ Run commands from the repository root. See the README for platform prerequisites
 
 ## Checks
 
-Use the same checks as [CI](../.github/workflows/ci.yml):
+Use the same checks as [CI](../.github/workflows/ci.yml). Agents run them in
+Boat through `scripts/boat-check.sh` (see [Boat checks](#boat-checks)):
 
 ```sh
 cargo fmt --check
@@ -44,53 +45,47 @@ The lockfile's Tokio dependency comes through `wasm-bindgen-futures` only for
 its experimental Emscripten configuration; keep it patched even though desktop
 builds do not use that path.
 
-## Remote checks
+## Boat checks
 
-`scripts/remote-check.sh` runs the checks on a [Namespace](https://namespace.so)
-cloud instance instead of this machine, so several agents can check their
-work at once without competing for the Mac's memory or cargo's build lock.
-Since 2026-11-20 (owner) it is for hand-off checks only: iterate locally
-with `cargo check`, `cargo clippy` and focused tests in the shared target
-directory, and run `scripts/remote-check.sh --full` once when the work is
-finished. Every run creates and bills a fresh 8-vCPU instance and rebuilds
-the `voxelcraft` crate from scratch, so focused runs through
-`remote-check.sh -- CMD` cost far more than they save.
-It needs the `nsc` command-line tool, installed and logged in
-(`nsc login`).
+`scripts/boat-check.sh` runs the hand-off checks on a [Boat](https://boat.dev)
+sandbox instead of this Mac. It needs the `boat` CLI, installed and signed in
+(`curl -fsSL https://boat.dev/install | sh`), and `jq`.
 
 ```sh
-scripts/remote-check.sh            # cargo fmt here, then clippy and tests remotely
-scripts/remote-check.sh --full     # also the --no-default-features clippy and tests
-scripts/remote-check.sh -- cargo test --release some_test   # any command
-scripts/remote-check.sh -- 'cargo build --release && ls "$CARGO_TARGET_DIR"/release'  # one argument: a shell line
+scripts/boat-check.sh --save --full   # first run: builds both feature sets, then saves the warm snapshot
+scripts/boat-check.sh          # cargo fmt here, then clippy and tests in Boat
+scripts/boat-check.sh --full   # also the --no-default-features checks
+scripts/boat-check.sh -- cargo test --release some_test   # any command
 ```
 
-Each run creates a bare Linux instance (8 vCPU, 16 GB by default,
-`VC_REMOTE_SHAPE` to change it), uploads the working tree with uncommitted
-edits and untracked, non-ignored files, runs the command and destroys the
-instance. The Rust toolchain, cargo registry and target directory live on
-the 20 GB `voxelcraft-check` cache volume (`VC_REMOTE_CACHE_TAG`), so
-dependencies build once and later runs start warm. On the current Namespace
-plan (checked 2026-11-05), instances with a cache volume are limited to
-8 vCPU and 16 GB with a volume of at most 20 GB; larger shapes or volumes
-fail with "not supported". Uploaded files get the
-upload time as their modification time, so the `voxelcraft` crate and its
-build script always rebuild for the uploaded tree. `VC_REMOTE_KEEP=1`
-leaves the instance running for inspection (`nsc ssh <id>`, then
-`nsc destroy <id> --force`).
+Each run is one `boat run`: it pushes the working tree (tracked and untracked,
+non-ignored files), runs the command and deletes the sandbox. (With
+`--save`, once the checks pass and a save has started, any outcome other
+than a confirmed save asks Boat to stop the sandbox instead, so the passing
+build can be saved again once `boat info` shows it stopped.) Sandboxes are
+`large` (8 vCPU, 16 GB; `VC_BOAT_TYPE` to change it), because the release
+test build runs out of memory on 8 GB. They start with `--no-env`, so none of
+the account's stored secrets go in. The script installs the Linux audio,
+device and font libraries the build needs, updates Rust to current stable
+(CI's toolchain) and keeps the target directory in `/home/user/target`.
 
-The instance runs Linux, like the Linux CI job: it checks the code and
-tests but not macOS- or Windows-only code, the GPU, or performance. Run
-the game, screenshots, scripted scenes and benchmarks locally; frame-time
-gates are measured on the reference M5 MacBook Pro. CI runs the same checks
-on every pull request: Linux on the owner's `namespace-profile-gitrunner`
-Namespace profile, macOS on an inline `nscloud-*` label with a cache volume,
-and Windows on GitHub's `windows-latest`, since the Namespace plan doesn't
-allow Windows instances. Timing on 8 vCPU with dependencies cached (2026-11-05): clippy about
-1 minute, compiling the release test binaries about 8 minutes, the tests
-under a minute, so a default run takes about 11 minutes and `--full`
-about 21. That is slower than the M5, but runs don't share a machine or
-wait on each other.
+`--save` stores a passing run's sandbox, without the checkout, as the saved
+snapshot `voxelcraft-warm` (`VC_BOAT_SNAPSHOT`): system libraries, toolchain
+and the built target directory. Later runs start from a copy of it, so each
+run has its own warm target directory and no lock to wait on. Re-run with
+`--save --full` after dependency or toolchain changes to keep it warm. `boat push`
+keeps files' original timestamps, so the script stamps every pushed file as
+new; otherwise cargo could take an edited file for one the snapshot already
+built. The free trial allows neither `large` sandboxes nor saved snapshots.
+
+Sandboxes run Linux, like the Linux CI job: they check the code and tests
+but not macOS- or Windows-only code, the GPU or performance. Run the game,
+screenshots, scripted scenes and benchmarks locally; frame-time gates are
+measured on the reference M5 MacBook Pro. CI runs the same checks on every
+pull request: Linux on the owner's `namespace-profile-gitrunner` Namespace
+profile, macOS on an inline `nscloud-*` label with a cache volume, and
+Windows on GitHub's `windows-latest`, since the Namespace plan doesn't allow
+Windows instances.
 
 ## Headless simulation foundation
 
@@ -227,7 +222,7 @@ monument, stronghold, mineshaft and desert well to the origin for that seed
 in the latest world generation, then the buried treasure chest's depth, the
 nearest trail ruin's piece bounds (for cut-away poses), the nearest Nether
 fossil and the eight nearest bastions with their kind (run it through
-`scripts/remote-check.sh -- 'cargo run …'` to keep the build off the Mac).
+`scripts/boat-check.sh -- 'cargo run …'` to keep the build off the Mac).
 To dig into buried content with `--place x,y,z,air`, list the cells top
 down: removing a cell under sand or gravel first drops it into the hole. The camera looks along `(cos yaw, sin yaw)` in x and z,
 so a pose of `x-40,y+35,z+40,-45,-30` looks down at a structure at `x,y,z`.
