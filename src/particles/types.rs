@@ -161,6 +161,9 @@ pub struct System {
     tracking: VecDeque<Tracking>,
     /// v0.16 Track B: firework bursts in progress.
     pub(super) fireworks: VecDeque<super::firework::Starter>,
+    /// v0.16 Track H: where potent sulfur's `animateTick` played its
+    /// noxious gas sound since the game last asked.
+    pub gas_sounds: Vec<DVec3>,
 }
 
 impl System {
@@ -172,6 +175,7 @@ impl System {
             explosions: VecDeque::with_capacity(256),
             tracking: VecDeque::with_capacity(256),
             fireworks: VecDeque::with_capacity(64),
+            gas_sounds: Vec::new(),
         }
     }
 

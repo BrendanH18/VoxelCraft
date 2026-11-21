@@ -1475,6 +1475,29 @@ v0.16.
    GEN-04c, GEN-07). Placeable End crystals and the respawn ritual; a
    gateway and portal-forcer parity check; the M3 exit corpus and the M5
    progression audit.
+8. **H. Wave 1 leftovers** (BLD-01b, GEN-03, PRO-06, MOB-04b; approved by
+   the owner on 2026-11-21). What Tracks C and D left: potent sulfur's
+   states, gas and geysers; sulfur spike growth and thickness updates;
+   sulfur springs in generation 5's sulfur caves; the Wither's saved
+   skulls, goal cadence, `HurtByTargetGoal` against mobs, flying
+   navigation and hover flight, and dispensers placing skulls; the
+   dispenser's block-into-sulfur-cube behaviour.
+   *Implemented, unverified (2026-11-21):* potent sulfur's
+   `validBlockState`, Nausea gas, countdowns from Java's positional random
+   (checked against the jar's draws), eruptions lifting entities, bubbles,
+   plume and original sounds, all saved; `SpeleothemBlock`'s thickness
+   updates (shared with pointed dripstone), placement thickness and sulfur
+   spike growth, and tridents breaking spikes (sulfur spikes hurt nothing
+   that lands on them, as in Java); generation 5 sulfur springs placed by
+   Java's `rooted_sulfur_spring` rules from ten original templates, each a
+   dormant geyser over a sulfur root column; the Wither's skulls saved with
+   `dangerous`, its selectors on Java's every-other-tick cadence with
+   `HurtByTargetGoal` against mobs, `FlyingPathNavigation` pursuit and
+   `HoverRandomPos` idle flight; dispensers setting wither skulls where
+   `canSpawnMob` allows and feeding blocks to sulfur cubes. No new ids.
+   Differences and gaps (dripstone growth and landing damage, original
+   particles, LAN plumes, dispensers equipping entities) are in the
+   [record](verification/2026-11-21-v0.16-wave-1-leftovers.md).
 
 Then integration: the orderings made contiguous, spawn tables together,
 save/reload of every new mob, block and item, the Namespace checks, the

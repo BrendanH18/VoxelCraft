@@ -51,6 +51,8 @@ enum RandomRule {
     Crop,
     Stem,
     Wart,
+    /// v0.16 Track H: hanging sulfur spikes grow (`SpeleothemBlock.randomTick`).
+    Speleothem,
 }
 
 /// The rule for `b`: fire and lava first, then the first matching growth rule.
@@ -83,6 +85,7 @@ fn growth_rule(b: Block) -> RandomRule {
             RandomRule::ChorusFlower
         }
         b if b.is_mushroom() => RandomRule::Mushroom,
+        b if matches!(super::gen5_blocks::spike_of(b), Some((true, _, _))) => RandomRule::Speleothem,
         b if (1600..=1687).contains(&b.0) => RandomRule::NetherFlora,
         b if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&b.canonical().0)
             || (2150..=2157).contains(&b.0)
@@ -502,6 +505,7 @@ impl World {
             RandomRule::DriedGhast => self.dried_ghast_random_tick(p, b),
             RandomRule::ChorusFlower => self.chorus_flower_random_tick(p),
             RandomRule::Mushroom => self.tick_mushroom(p, b),
+            RandomRule::Speleothem => self.speleothem_random_tick(p, b),
             RandomRule::NetherFlora => self.tick_nether_flora(p, b),
             RandomRule::Flora => {
                 self.utilities_random_tick(p, b);

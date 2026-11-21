@@ -24,7 +24,7 @@ use crate::world::terrain::{Dimension, Generator, SEA_LEVEL};
 use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 30] = [
+pub(super) const DIMENSION_KEYS: [&str; 32] = [
     "furnaces",
     "chests",
     "items",
@@ -57,6 +57,9 @@ pub(super) const DIMENSION_KEYS: [&str; 30] = [
     "beacons",
     // v0.16 Track F.
     "conduits",
+    // v0.16 Track H.
+    "potent_sulfur",
+    "wither_skulls",
 ];
 /// How far around the arrival point to look for an existing portal.
 const SEARCH_RADIUS: i32 = 16;
@@ -152,6 +155,7 @@ impl Game {
         props.insert("workstations".to_string(), self.world.workstations_to_string());
         props.insert("beacons".to_string(), self.world.beacons_to_string());
         props.insert("conduits".to_string(), self.world.conduits_to_string());
+        props.insert("potent_sulfur".to_string(), self.world.potent_sulfur_to_string());
         self.mobs.entities.save_props(&mut props);
         if let Some(fight) = &self.mobs.entities.fight {
             props.insert("dragon".to_string(), fight.serialize());
@@ -221,6 +225,9 @@ impl Game {
         }
         if let Some(c) = props.get("conduits") {
             self.world.load_conduits(c);
+        }
+        if let Some(g) = props.get("potent_sulfur") {
+            self.world.load_potent_sulfur(g);
         }
         // Entities in chunks that haven't streamed in yet move to per-chunk
         // storage on the first tick; ridden vehicles stay with their riders.

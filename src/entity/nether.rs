@@ -638,6 +638,15 @@ impl Entities {
             for (target, attacker, damage, knockback) in hits {
                 let Some(i) = self.mobs.iter().position(|m| m.uid == target && m.alive()) else { continue };
                 let (kind, pos, burning) = (self.mobs[i].kind, self.mobs[i].pos, self.mobs[i].burning);
+                // v0.16 Track H: `WitherBoss.hurtServer` refuses hits from
+                // `#wither_friends`; any other hit feeds its `HurtByTargetGoal`.
+                if kind == MobKind::Wither {
+                    let friend = self.mobs.iter().any(|m| m.uid == attacker && super::wither::friend(m.kind));
+                    if friend || self.mobs[i].wither.as_ref().is_some_and(|s| s.invul > 0) {
+                        continue;
+                    }
+                    self.wither_hurt_by_mob(i, attacker);
+                }
                 let anger = self.mobs[i].provocation();
                 let killed = self.mobs[i].damage(damage, Some(knockback), &mut self.rng);
                 if kind == MobKind::Enderman

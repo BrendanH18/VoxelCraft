@@ -1998,6 +1998,8 @@ impl Entities {
         props.insert("tridents".to_string(), self.tridents_json());
         props.insert("ominous_item_spawners".to_string(), self.item_spawners_to_value().to_string());
         props.insert("raids".to_string(), self.raids.save());
+        // v0.16 Track H.
+        props.insert("wither_skulls".to_string(), self.wither_skulls_json());
     }
 
     /// Restores [`Entities::save_props`]. Every entity starts in the level;
@@ -2033,6 +2035,9 @@ impl Entities {
         }
         if let Some(r) = props.get("raids") {
             self.raids.load(r);
+        }
+        if let Some(w) = props.get("wither_skulls") {
+            self.load_wither_skulls_json(w);
         }
     }
 

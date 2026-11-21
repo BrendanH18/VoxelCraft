@@ -461,10 +461,9 @@ impl Trident {
         effects: &mut Vec<Effect>,
     ) {
         let block = world.block(cell);
-        // `SpeleothemBlock.onProjectileHit`: a trident faster than 0.6 breaks pointed dripstone.
-        if self.vel.length() > 0.6
-            && block.is_some_and(|b| crate::world::overworld_blocks::dripstone_of(b.canonical()).is_some())
-        {
+        // `SpeleothemBlock.onProjectileHit`: a trident faster than 0.6 breaks
+        // pointed dripstone and (v0.16 Track H) sulfur spikes.
+        if self.vel.length() > 0.6 && block.is_some_and(|b| crate::world::speleothem::of(b).is_some()) {
             let mob_owned = matches!(self.owner, Some(Owner::Mob(_)));
             events.push(EntityEvent::TridentBrokeDripstone { cell, mob_owned });
         }
@@ -633,10 +632,12 @@ fn inside_collision<W: MobWorld + ?Sized>(world: &W, cell: IVec3, pos: DVec3) ->
     out.iter().any(|c| c.cell == cell && pos.cmpge(c.min).all() && pos.cmple(c.max).all())
 }
 
-/// Java's pointed dripstone shape at `cell`, if `b` is pointed dripstone.
+/// Java's `SpeleothemBlock` shape at `cell`, if `b` is pointed dripstone
+/// or a sulfur spike.
 fn dripstone_box(b: Block, cell: IVec3) -> Option<(DVec3, DVec3)> {
-    use crate::world::overworld_blocks::{Thickness, dripstone_of};
-    let (down, thickness) = dripstone_of(b.canonical())?;
+    use crate::world::overworld_blocks::Thickness;
+    let s = crate::world::speleothem::of(b)?;
+    let (down, thickness) = (s.down, s.thickness);
     let (width, lo, hi) = match thickness {
         Thickness::Tip if down => (6.0, 5.0, 16.0),
         Thickness::Tip => (6.0, 0.0, 11.0),

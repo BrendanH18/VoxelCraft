@@ -79,6 +79,7 @@ impl MobKind {
             }
             K::Enderman => 64.0,
             K::Blaze | K::CopperGolem | K::Allay => 48.0,
+            K::Wither => super::super::wither::FOLLOW_RANGE,
             K::Ghast => 100.0,
             K::Fox | K::Pillager | K::Ravager => 32.0,
             // `Vindicator`, `Evoker` and `Illusioner.createAttributes`.
@@ -106,7 +107,8 @@ impl MobKind {
             K::Dolphin => Evaluator::Swim { breaching: true },
             K::Drowned | K::Axolotl | K::Turtle => Evaluator::Amphibious { shallow: false },
             K::Frog => Evaluator::Amphibious { shallow: true },
-            K::Parrot | K::Bee | K::Allay => Evaluator::Fly,
+            // v0.16 Track H: the Wither's `FlyingPathNavigation`.
+            K::Parrot | K::Bee | K::Allay | K::Wither => Evaluator::Fly,
             _ => Evaluator::Walk,
         };
         if matches!(caps.evaluator, Evaluator::Swim { .. }) {
@@ -400,7 +402,7 @@ impl Mob {
 
     /// `Mob.getWalkTargetValue`: animals favour grass and light, monsters
     /// darkness, everyone else is indifferent.
-    fn walk_value<W: MobWorld + ?Sized>(&self, world: &W, ctx: &Ctx, p: IVec3) -> f32 {
+    pub(crate) fn walk_value<W: MobWorld + ?Sized>(&self, world: &W, ctx: &Ctx, p: IVec3) -> f32 {
         if self.kind == MobKind::Strider {
             if world.block(p).is_some_and(Block::is_lava) {
                 return 10.0;

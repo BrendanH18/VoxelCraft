@@ -38,7 +38,8 @@ impl World {
     /// hit (`SpeleothemBlock.onProjectileHit`): the block breaks with its
     /// drops and whatever it held up falls. Returns the broken block.
     pub fn trident_breaks_dripstone(&mut self, cell: IVec3) -> Option<Block> {
-        let block = self.get_block(cell).filter(|b| ob::dripstone_of(b.canonical()).is_some())?;
+        // v0.16 Track H: sulfur spikes too (`SpeleothemBlock.onProjectileHit`).
+        let block = self.get_block(cell).filter(|&b| crate::world::speleothem::of(b).is_some())?;
         if !self.set_block(cell, Block::AIR) {
             return None;
         }

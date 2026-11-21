@@ -1151,6 +1151,22 @@ unregistered: states 16013–16015, 16036–16039, 16094–16095, 16108–16383,
 19638–19647 and 19984–19999, items 1709–1729 and layers 798–948. Record:
 [v0.16 generation 5 Overworld](verification/2026-11-20-v0.16-generation-5-overworld.md).
 
+**Track H allocation (wave 1 leftovers, 2026-11-21, implemented,
+unverified; [record](verification/2026-11-21-v0.16-wave-1-leftovers.md)).**
+Reserved: the unused rest of Track D's rows for sulfur work (states
+16108–16383 and the holes 16013–16015, 16036–16039 and 16094–16095, items
+1709–1729, layers 798–948) and Track C's (states 12727–12799, items
+1691–1704, layers 711–748) for the Wither. **Used: none.** Potent sulfur
+and sulfur spike behaviour reuse Track D's states (16008–16012,
+16016–16035), the spring templates are generated from existing blocks and
+the geyser draws with existing particle kinds, so every id above stays
+unregistered and free. Appended orderings: `Sound::Geyser` (the five
+`world::potent_sulfur::Cue`s) after `Sound::SulfurCube`; the dimension
+property key `potent_sulfur` and the entity property key `wither_skulls`
+after `beacons` in `app::dimension::DIMENSION_KEYS`. No `MobKind`,
+`Effect`, particle kind, item icon, `slab_stair_states`/`waterlog`/`POTTED`
+entry or LAN index was added.
+
 **Integrated order (2026-11-20).** Wave 1 landed B, C, A, D, and the
 appended orderings follow that order: `MobKind` Wither (LAN 85), Shulker
 (86), SulfurCube (87), with `Voice` and `MobSound` alike; `Sound` Flight,
