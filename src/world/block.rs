@@ -1389,6 +1389,9 @@ impl Block {
         if let Some(b) = super::gen5_blocks::base(self.0) {
             return b;
         }
+        if let Some(b) = super::infested::base(self.0) {
+            return b;
+        }
         if super::creaking::heart(self).is_some() {
             return super::creaking::HEART;
         }
@@ -1789,6 +1792,9 @@ impl Block {
         if let Some(drop) = super::gen5_blocks::drop(self) {
             return drop;
         }
+        if let Some(drop) = super::infested::drop(self) {
+            return drop;
+        }
         if super::scaffolding::is_scaffolding(self) {
             return Some(Item::SCAFFOLDING);
         }
@@ -2017,6 +2023,9 @@ impl Block {
             return c.hardness();
         }
         if let Some((hardness, ..)) = super::gen5_blocks::mining(self.material()) {
+            return hardness;
+        }
+        if let Some((hardness, ..)) = super::infested::mining(self) {
             return hardness;
         }
         if let Some(h) = super::stone_blocks::slab_hardness(self) {
@@ -2254,6 +2263,9 @@ impl Block {
         if let Some((_, tool, _)) = super::gen5_blocks::mining(self.material()) {
             return tool;
         }
+        if let Some((_, tool, _)) = super::infested::mining(self) {
+            return tool;
+        }
         if let Some((_, tool, _)) = super::colour_blocks::mining(self) {
             return tool;
         }
@@ -2423,6 +2435,9 @@ impl Block {
         if let Some((.., level)) = super::gen5_blocks::mining(self.material()) {
             return level;
         }
+        if let Some((.., level)) = super::infested::mining(self) {
+            return level;
+        }
         if let Some((.., level)) = super::colour_blocks::mining(self) {
             return level;
         }
@@ -2585,6 +2600,8 @@ impl Block {
             .chain((0..super::shulker_box::COLOURS).map(|c| super::shulker_box::FIRST + c * 6))
             .chain(super::end_blocks::palette_ids())
             .chain(super::gen5_blocks::palette_ids())
+            // v0.16 Track E: the seven infested blocks.
+            .chain(super::infested::palette_ids())
             .map(Block)
     }
 
@@ -3237,6 +3254,10 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         },
         id if super::creaking::owns(id) => super::creaking::registry(id),
         id if super::eyeblossom::owns(id) => super::eyeblossom::registry(id),
+        id if super::infested::owns(id) => match super::infested::registry(id) {
+            Some(info) => info,
+            None => ("unknown", Invisible, all(0)),
+        },
         id if super::gen5_blocks::owns(id) => match super::gen5_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),

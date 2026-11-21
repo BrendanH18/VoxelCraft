@@ -75,6 +75,7 @@ pub mod raid;
 mod replica;
 pub mod sculk_events;
 pub mod shulker;
+pub mod silverfish;
 mod slime;
 pub mod sniffer;
 mod spawn_lists;

@@ -356,6 +356,11 @@ impl PlayerSession {
         if drops && harvest && !hive_handled && !statue_handled {
             world.spill_with_item(pos, block, held);
             entities.drop_mined_xp(block, pos, tool);
+            // v0.16 Track E: `InfestedBlock.spawnAfterBreak` (Survival,
+            // `blockDrops`, no Silk Touch).
+            if crate::world::infested::releases(block, tool) {
+                world.released_silverfish.push(pos);
+            }
         }
         if block.is_bed() {
             world.break_bed_partner(pos, block, drops);

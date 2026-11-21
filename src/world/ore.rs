@@ -61,11 +61,15 @@ enum Where {
     Dripstone,
     /// Generation 2: anywhere but dripstone caves.
     NotDripstone,
+    /// Not placed in this generation.
+    Never,
 }
 
 /// The large copper vein (`ore_copper_large`) and the plain one.
 const COPPER_LARGE: u64 = 0xC0C1;
 const COPPER_PLAIN: u64 = 0xC0C2;
+/// v0.16 Track E: `ore_infested`, placed from generation 5.
+const INFESTED: u64 = 0x1F57;
 
 /// Where `feature` places in `generation`: generation 1 placed both copper
 /// features everywhere.
@@ -73,6 +77,7 @@ fn where_in(feature: &Feature, generation: Generation) -> Where {
     match feature.salt {
         COPPER_LARGE if generation >= Generation::V2 => Where::Dripstone,
         COPPER_PLAIN if generation >= Generation::V2 => Where::NotDripstone,
+        INFESTED if generation < Generation::V5 => Where::Never,
         _ => feature.where_,
     }
 }
@@ -346,6 +351,19 @@ const FEATURES: &[Feature] = &[
         where_: Where::Overworld,
         ore: Block::TUFF,
     },
+    // v0.16 Track E: `ore_infested` (count 14, `in_square`, uniform from
+    // the bottom to y 63, size 9, no air discard) in the ten mountain
+    // biomes whose feature lists carry it (`Biome::is_mountain`), from
+    // generation 5. Infested stone in stone, infested deepslate in deepslate.
+    Feature {
+        salt: INFESTED,
+        tries: Tries::Count(14),
+        band: Band::Uniform(-64, 63),
+        size: 9,
+        discard: 0.0,
+        where_: Where::Mountains,
+        ore: super::infested::INFESTED_STONE,
+    },
 ];
 
 fn band_limits(band: Band) -> (i32, i32) {
@@ -419,8 +437,9 @@ pub fn paint(
         paint_ore_veins(seed, blocks, base);
     }
     for feature in FEATURES {
+        let where_ = where_in(feature, generation);
         let reach = vein_reach(feature.size);
-        if !overlaps_chunk(feature.band, reach, base.y) {
+        if where_ == Where::Never || !overlaps_chunk(feature.band, reach, base.y) {
             continue;
         }
         // Each feature scans only the cells its own blob can reach, so a
@@ -431,7 +450,7 @@ pub fn paint(
         let max_cz = (base.z + CHUNK_SIZE_I - 1 + reach).div_euclid(JAVA_CELL);
         for cz in min_cz..=max_cz {
             for cx in min_cx..=max_cx {
-                paint_cell(seed, feature, where_in(feature, generation), cx, cz, blocks, base, &biome_at, &cave_at);
+                paint_cell(seed, feature, where_, cx, cz, blocks, base, &biome_at, &cave_at);
             }
         }
     }
@@ -473,6 +492,7 @@ fn paint_cell(
                 Where::Dripstone => cave_at(x, y, z) == Biome::DripstoneCaves,
                 Where::NotDripstone => cave_at(x, y, z) != Biome::DripstoneCaves,
                 Where::Overworld => true,
+                Where::Never => false,
             };
             if !ok {
                 continue;
@@ -619,6 +639,7 @@ fn deepslate_variant(ore: Block) -> Block {
         Block::EMERALD_ORE => Block::DEEPSLATE_EMERALD_ORE,
         Block::LAPIS_ORE => Block::DEEPSLATE_LAPIS_ORE,
         Block::DIAMOND_ORE => Block::DEEPSLATE_DIAMOND_ORE,
+        super::infested::INFESTED_STONE => super::infested::INFESTED_DEEPSLATE,
         other => other,
     }
 }

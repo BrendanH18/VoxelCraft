@@ -67,6 +67,7 @@ pub mod geode;
 mod growth;
 pub mod heavy_core;
 mod honey;
+pub mod infested;
 pub mod jigsaw;
 pub mod jukebox;
 mod light_shape;
@@ -385,6 +386,9 @@ pub struct World {
     /// TNT blocks a blast or fire took out, with whether to shorten the
     /// fuse (blasts only); the game turns them into entities.
     pub primed_tnt: Vec<(IVec3, bool)>,
+    /// v0.16 Track E: infested blocks broken this tick that let their
+    /// silverfish out (`InfestedBlock.spawnAfterBreak`); the game spawns them.
+    pub released_silverfish: Vec<IVec3>,
     /// Note blocks that played this tick: position, pitch 0..=24, instrument.
     pub notes: Vec<(IVec3, u8, u8)>,
     pub(crate) allay_notes: Vec<IVec3>,
@@ -691,6 +695,7 @@ impl World {
             xp_drops: Vec::new(),
             brews_done: Vec::new(),
             primed_tnt: Vec::new(),
+            released_silverfish: Vec::new(),
             notes: Vec::new(),
             allay_notes: Vec::new(),
             trip_sounds: Vec::new(),

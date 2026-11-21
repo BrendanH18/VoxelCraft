@@ -168,6 +168,8 @@ impl Game {
             self.mobs.entities.prime_tnt(cell, short_fuse);
             self.audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05));
         }
+        // v0.16 Track E: silverfish out of broken infested blocks.
+        self.mobs.entities.release_silverfish(&mut self.world.released_silverfish);
         crate::entity::golem::finish_golems(&mut self.world, &mut self.mobs.entities);
         self.finish_withers();
         crate::entity::frog::finish_hatches(&mut self.world, &mut self.mobs.entities);
