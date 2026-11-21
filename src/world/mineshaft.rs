@@ -559,7 +559,7 @@ impl JavaBuilder {
     }
 
     fn add_children(&mut self, i: usize) {
-        let p = self.pieces[i];
+        let p = self.pieces[i].clone();
         let (b, d) = (p.bounds, p.depth);
         match p.kind {
             Kind::Room => self.room_children(b, d),
@@ -1348,7 +1348,7 @@ mod tests {
             .find_map(|i| {
                 generator
                     .mineshafts
-                    .get(IVec2::new(i % 200, i / 200))
+                    .get(&generator, IVec2::new(i % 200, i / 200))
                     .and_then(|s| s.pieces.iter().find(|p| p.kind == Kind::Corridor && p.spider).cloned())
             })
             .expect("some mineshaft should have a spider corridor");
