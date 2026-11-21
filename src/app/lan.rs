@@ -1573,6 +1573,8 @@ impl Game {
         if self.lan.ready {
             // v0.16 Track C: beacon beams from the replicated blocks.
             self.world.tick_beacon_replicas();
+            // v0.16 Track F: conduits animate from the replicated blocks.
+            self.world.tick_conduit_replicas();
             self.tick_particles();
             // The client doesn't track portal time; nausea comes from the host.
             let nausea =

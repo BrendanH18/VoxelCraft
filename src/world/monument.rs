@@ -631,25 +631,20 @@ impl Run<'_, '_> {
         }
     }
 
-    /// `fillColumnDown`.
+    /// `fillColumnDown`: down through air and fluid to the base terrain's
+    /// first solid block, never below the world's bottom two layers.
     fn column_down(&mut self, f: &Frame, b: Block, x: i32, y: i32, z: i32) {
-        let mut p = f.world(x, y, z);
+        let p = f.world(x, y, z);
         if !self.inside(p) {
             return;
         }
-        let min_y = super::chunk::WORLD_MIN_Y;
-        while p.y > min_y + 1 {
-            let here = match self.level.cells.get(&p) {
-                Some(b) => *b,
-                // Below the sea floor the base column decides.
-                None if p.y <= self.level.g.solid_below(p.x, p.z, p.y + 1) => Block::STONE,
-                None => self.level.get(p),
-            };
-            if !replaceable(here) {
+        let floor = self.level.g.solid_below(p.x, p.z, p.y + 1).max(super::chunk::WORLD_MIN_Y + 1);
+        for wy in (floor + 1..=p.y).rev() {
+            let q = IVec3::new(p.x, wy, p.z);
+            if self.level.cells.get(&q).is_some_and(|c| !replaceable(*c)) {
                 break;
             }
-            self.level.cells.insert(p, b);
-            p.y -= 1;
+            self.level.cells.insert(q, b);
         }
     }
 

@@ -343,6 +343,7 @@ impl Game {
             super::push_avatars(&self.world, &others, camera, fog.end, scene.time, verts);
             crate::render::signs::text(&self.world, camera, verts);
             crate::entity::model::build_beacon_beams(&self.world, camera, scene.time, fog.end, verts);
+            crate::entity::model::build_conduits(&self.world, camera, fog.end, verts);
             if !bot.camera.first_person() {
                 crate::entity::model::build_player(
                     &a.player,
@@ -433,7 +434,7 @@ impl Game {
                     },
                 ),
                 rain: scene.rain,
-                night_vision: a.vitals.effects.night_vision(scene.time),
+                night_vision: a.vitals.effects.vision(scene.time, a.player.head_in_water(&self.world)),
                 ui,
             };
             self.renderer.set_particles(&self.particles.pool, &self.world, camera, forward, scene.alpha);

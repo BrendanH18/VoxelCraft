@@ -140,6 +140,15 @@ fn every_write_stays_within_the_building_chunks() {
     for (p, _) in &b.blocks {
         assert!(p.x >= lo.x && p.x <= hi.x && p.z >= lo.y && p.z <= hi.y, "{p}");
     }
-    // The legs reach down from the floor.
-    assert!(b.blocks.iter().any(|(p, x)| p.y < BASE_Y && *x == LIGHT));
+    // The legs fill down through water to the sea floor, and stop at solid
+    // ground (`fillColumnDown`).
+    for (x, z) in [(0, 0), (1, 2), (54, 0), (57, 57), (27, 54)] {
+        let leg = l.building.world(x, -1, z);
+        let floor = g.solid_below(leg.x, leg.z, leg.y + 1);
+        let below = |y: i32| b.blocks.iter().find(|(p, _)| *p == IVec3::new(leg.x, y, leg.z)).map(|(_, x)| *x);
+        for y in floor + 1..=leg.y {
+            assert_eq!(below(y), Some(LIGHT), "{leg} y {y} over {floor}");
+        }
+        assert_ne!(below(floor), Some(LIGHT), "{leg} floor {floor}");
+    }
 }

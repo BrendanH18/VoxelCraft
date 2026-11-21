@@ -44,10 +44,13 @@ pub enum Kind {
     FireworkFlash,
     /// v0.16 Track A: `EndRodParticle`, from End rods and shulker bullets.
     EndRod,
+    /// v0.16 Track F: `FlyTowardsPositionParticle.NautilusProvider`, the
+    /// conduit's motes flying in from its frame and around its target.
+    Nautilus,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 27] = [
+    pub const ALL: [Kind; 28] = [
         Kind::Smoke,
         Kind::LargeSmoke,
         Kind::Rain,
@@ -75,6 +78,7 @@ impl Kind {
         Kind::FireworkSpark,
         Kind::FireworkFlash,
         Kind::EndRod,
+        Kind::Nautilus,
     ];
 
     pub fn sprite(self) -> u16 {
@@ -100,6 +104,8 @@ impl Kind {
             Self::FireworkFlash => 9,
             // A white glint on the critical-hit sprite.
             Self::EndRod => 2,
+            // The enchanting glyphs' flight, tinted sea-blue.
+            Self::Nautilus => 6,
         }
     }
 }
@@ -445,6 +451,18 @@ impl System {
                 let c = rng.range(0.4, 1.0);
                 p.color = [c * 0.9, c * 0.3, c, 1.0];
                 p.lifetime = 40 + (rng.next_f32() * 10.0) as u16;
+            }
+            Kind::Nautilus => {
+                // `FlyTowardsPositionParticle`, like the glyphs.
+                p.motion = Motion::Glyph;
+                p.physics = false;
+                p.velocity = velocity;
+                p.pos = pos + velocity;
+                p.previous = p.pos;
+                p.size = 0.1 * rng.range(0.2, 0.7);
+                let c = rng.range(0.4, 1.0);
+                p.color = [c * 0.35, c * 0.85, c * 0.9, 1.0];
+                p.lifetime = 30 + (rng.next_f32() * 10.0) as u16;
             }
             Kind::Glyph => {
                 p.motion = Motion::Glyph;

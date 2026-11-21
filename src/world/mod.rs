@@ -36,6 +36,7 @@ pub mod climate;
 pub mod colors;
 pub mod colour_blocks;
 pub mod composter;
+pub mod conduit;
 pub mod copper;
 pub mod copper_golem_statue;
 pub mod creaking;
@@ -402,6 +403,10 @@ pub struct World {
     /// game last asked.
     pub(crate) beacons: beacon::State,
     pub(crate) beacon_events: Vec<beacon::Event>,
+    /// v0.16 Track F: conduits (see [`conduit`]) and what they did since
+    /// the game last asked.
+    pub(crate) conduits: conduit::State,
+    pub(crate) conduit_events: Vec<conduit::Event>,
     /// Turtle eggs that hatched: cell and how many babies; the game spawns them.
     pub hatched_turtles: Vec<(IVec3, u8)>,
     pub hatched_tadpoles: Vec<(IVec3, u8)>,
@@ -701,6 +706,8 @@ impl World {
             wither_skulls: Vec::new(),
             beacons: Default::default(),
             beacon_events: Vec::new(),
+            conduits: Default::default(),
+            conduit_events: Vec::new(),
             hatched_turtles: Vec::new(),
             hatched_tadpoles: Vec::new(),
             sniffer_egg_events: Vec::new(),
@@ -1075,6 +1082,7 @@ impl World {
             self.wither_skulls.push(p);
         }
         self.track_beacon(p, old, block);
+        self.track_conduit(p, old, block);
         if old.is_log() && !block.is_log() {
             self.log_removed(p);
         }

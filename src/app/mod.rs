@@ -10,6 +10,7 @@ mod benchmark;
 mod books;
 mod bow;
 mod bucket;
+mod conduit;
 mod console;
 mod containers;
 mod credits;
@@ -2103,6 +2104,7 @@ impl Game {
         push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
         crate::render::signs::text(&self.world, camera, verts);
         crate::entity::model::build_beacon_beams(&self.world, camera, scene.time, fog_end, verts);
+        crate::entity::model::build_conduits(&self.world, camera, fog_end, verts);
         if !self.camera.first_person() {
             let glow = verts.glow_start();
             let look = Self::stamp_look(
@@ -2198,7 +2200,11 @@ impl Game {
                 )
             }),
             rain: scene.rain,
-            night_vision: self.session.vitals.effects.night_vision(scene.time),
+            night_vision: self
+                .session
+                .vitals
+                .effects
+                .vision(scene.time, self.session.player.head_in_water(&self.world)),
             ui: if self.show_hud
                 || self.session.vitals.is_dead()
                 || self.menu.is_open()

@@ -701,7 +701,7 @@ impl Vitals {
         }
 
         // Air and drowning.
-        if env.head_in_water && !creative && !self.effects.has(Effect::WaterBreathing) {
+        if env.head_in_water && !creative && !self.effects.water_breathing() {
             self.air = (self.air - dt / (env.respiration as f32 + 1.0)).max(0.0);
             if self.air <= 0.0 {
                 self.drown_timer += dt;

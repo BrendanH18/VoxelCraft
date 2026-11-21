@@ -3,7 +3,7 @@
 //! differences.
 //!
 //! States 30848 (dry) and 30849 (waterlogged) from Track F's reservation
-//! 30848–30975; texture layers 989–993 from 989–1028. The block is the
+//! 30848–30975; texture layer 989 (the shell) from 989–1028. The block is the
 //! 6 × 6 × 6 shell `Block.cube(6)`, strength 3, light 15, mined faster with
 //! a pickaxe but dropping itself either way, and placed waterlogged in a
 //! water source (`getStateForPlacement`).
@@ -17,7 +17,7 @@
 //!   more make it active, 42 make it hunt;
 //! - while active, the same pulse gives Conduit Power (260 ticks, ambient,
 //!   with particles) to players in water or rain within
-//!   `frame / 7 * 16` blocks (16, 32, 48, 64 or 80), and a hunting conduit
+//!   `frame / 7 * 16` blocks (32 for 16 frame blocks up to 96 for 42), and a hunting conduit
 //!   keeps or picks a hostile mob in water or rain within 8 blocks and hurts
 //!   it for 4 (magic);
 //! - it plays its activation and deactivation sounds when that changes, an
@@ -40,14 +40,9 @@ pub const CONDUIT: Block = Block(FIRST);
 pub const WATERLOGGED: Block = Block(FIRST + 1);
 pub const LAST: u16 = FIRST + 1;
 
-/// The shell (the block and the inactive model), the open and the hunting
-/// eye, the cage and the wind.
+/// The shell's texture layer (the active cage and eye are model boxes).
 pub const SHELL_TEX: u16 = 989;
-pub const EYE_TEX: u16 = 990;
-pub const HUNT_EYE_TEX: u16 = 991;
-pub const CAGE_TEX: u16 = 992;
-pub const WIND_TEX: u16 = 993;
-pub const TEX_END: u16 = 994;
+pub const TEX_END: u16 = 990;
 // Inside Track F's reservations: states 30848–30975, layers 989–1028.
 const _: () = assert!(FIRST >= 30848 && LAST <= 30975 && SHELL_TEX >= 989 && TEX_END <= 1029);
 
@@ -182,11 +177,17 @@ pub enum Event {
     Sound(Cue, IVec3),
     /// `applyEffects`: Conduit Power to players in water or rain whose block
     /// is closer than `range` to `pos`.
-    Power { pos: IVec3, range: i32 },
+    Power {
+        pos: IVec3,
+        range: i32,
+    },
     /// `updateAndAttackTarget`: keep or choose the target and strike it;
     /// `hunting` is false when the frame is short of 42 (the target is
     /// dropped).
-    Hunt { pos: IVec3, hunting: bool },
+    Hunt {
+        pos: IVec3,
+        hunting: bool,
+    },
 }
 
 impl super::World {
@@ -324,42 +325,14 @@ impl super::World {
     }
 }
 
-/// Original art: a curled cream shell banded in tan, an eye of sea-blue
-/// with a dark pupil (red-ringed while hunting), a weathered prismarine
-/// cage and pale streaks for the wind.
-pub fn pixel(layer: u16, x: usize, y: usize) -> [u8; 4] {
-    let (cx, cy) = (x as i32 - 8, y as i32 - 8);
-    let r2 = cx * cx + cy * cy;
+/// Original art: a curled cream shell banded in tan.
+pub fn pixel(_layer: u16, x: usize, y: usize) -> [u8; 4] {
+    let (cx, cy) = (x as f32 - 7.5, y as f32 - 7.5);
     let n = ((x * 7 + y * 13 + x * y) % 9) as u8;
-    match layer {
-        SHELL_TEX => {
-            // A spiral of growth bands around the middle.
-            let angle = (cy as f32).atan2(cx as f32);
-            let band = ((r2 as f32).sqrt() + angle * 1.6).rem_euclid(3.0) < 1.0;
-            let c: [u8; 3] = if band { [196, 160, 118] } else { [236, 220, 188] };
-            [c[0] - n, c[1] - n, c[2] - n, 255]
-        }
-        EYE_TEX | HUNT_EYE_TEX => {
-            let hunt = layer == HUNT_EYE_TEX;
-            if r2 <= 4 {
-                [16, 24, 32, 255]
-            } else if r2 <= 16 {
-                if hunt { [196, 40, 36, 255] } else { [40, 150, 196, 255] }
-            } else if r2 <= 36 {
-                [214, 236, 240, 255]
-            } else {
-                [0; 4]
-            }
-        }
-        CAGE_TEX => {
-            let edge = x == 0 || y == 0 || x == 15 || y == 15 || x == y || x + y == 15;
-            if edge { [92 + n * 2, 162 + n, 148 + n, 255] } else { [0; 4] }
-        }
-        _ => {
-            let streak = (x + y * 3) % 7 == 0;
-            if streak { [220, 240, 244, 160] } else { [0; 4] }
-        }
-    }
+    // A spiral of growth bands around the middle.
+    let band = ((cx * cx + cy * cy).sqrt() + cy.atan2(cx) * 1.6).rem_euclid(3.0) < 1.0;
+    let c: [u8; 3] = if band { [196, 160, 118] } else { [236, 220, 188] };
+    [c[0] - n, c[1] - n, c[2] - n, 255]
 }
 
 #[cfg(test)]
