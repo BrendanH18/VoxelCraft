@@ -115,6 +115,7 @@ pub mod slab_stair_states;
 pub mod sniffer_egg;
 pub mod sniffer_plants;
 pub mod spawn_finder;
+pub mod speleothem;
 mod spawner;
 mod sponge;
 pub mod stone_blocks;
@@ -1087,6 +1088,7 @@ impl World {
         self.track_potent_sulfur(p, old, block);
         if old != block {
             self.potent_sulfur_neighbours(p);
+            self.speleothem_neighbours(p);
         }
         if old.is_log() && !block.is_log() {
             self.log_removed(p);

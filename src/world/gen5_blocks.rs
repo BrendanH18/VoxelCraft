@@ -528,7 +528,6 @@ pub fn placed(
     ctx: &crate::session::placement::PlaceContext,
     get: impl Fn(glam::IVec3) -> Option<Block>,
 ) -> Option<Option<Block>> {
-    use super::overworld_blocks::Thickness;
     use glam::IVec3;
     let at = ctx.at;
     let block = |p: IVec3| get(p).unwrap_or(Block::AIR);
@@ -538,16 +537,8 @@ pub fn placed(
         return Some(Some(potent(state)));
     }
     if raw == SULFUR_SPIKE {
-        let first_down = ctx.look.y > 0.0;
-        for down in [first_down, !first_down] {
-            let support = if down { at + IVec3::Y } else { at - IVec3::Y };
-            let s = block(support);
-            let face = if down { IVec3::NEG_Y } else { IVec3::Y };
-            if sturdy(s, face) || matches!(spike_of(s.canonical()), Some((d, _, _)) if d == down) {
-                return Some(Some(spike(down, Thickness::Tip, false)));
-            }
-        }
-        return Some(None);
+        // v0.16 Track H: the thickness and water too (`SpeleothemBlock`).
+        return Some(super::speleothem::placed_spike(at, ctx.look.y > 0.0, ctx.sneaking, block));
     }
     if raw == SHELF_MUSHROOM {
         for d in super::mount_states::nearest_looking(ctx.look) {
