@@ -361,7 +361,7 @@ impl Game {
                     let arrival = match to {
                         crate::world::terrain::Dimension::End => super::dimension::Arrival::EndSpawn,
                         crate::world::terrain::Dimension::Nether => {
-                            super::dimension::Arrival::Portal(glam::IVec3::new(0, 64, 0))
+                            super::dimension::Arrival::Portal(glam::IVec3::new(0, 64, 0), true)
                         }
                         crate::world::terrain::Dimension::Overworld => super::dimension::Arrival::Respawn,
                     };

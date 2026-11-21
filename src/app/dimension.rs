@@ -19,7 +19,7 @@ use crate::world::World;
 use crate::world::block::Block;
 use crate::world::chunk::ChunkData;
 use crate::world::storage::Storage;
-use crate::world::terrain::{Dimension, Generator, SEA_LEVEL};
+use crate::world::terrain::{Dimension, Generator};
 
 use super::Game;
 
@@ -66,8 +66,11 @@ pub(super) const NETHER_FOG: [f32; 3] = [0.20, 0.035, 0.025];
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(super) enum Arrival {
     /// Through a portal, to the nearest portal around this cell (one is
-    /// built if there's none).
-    Portal(IVec3),
+    /// built, along X if `true` else Z, if there's none).
+    Portal(IVec3, bool),
+    /// v0.16 Track G: the portal the search found, out of the loaded area:
+    /// wait for it to load, then step in.
+    PortalAt(IVec3),
     /// Back from the dead: the bed or world spawn.
     Respawn,
     /// Back from the dead to the Nether respawn anchor at this cell.
@@ -84,15 +87,6 @@ pub(super) enum Arrival {
         link: bool,
         vel: DVec3,
     },
-}
-
-/// Heights a portal may stand at in a dimension.
-fn portal_range(dim: Dimension) -> (i32, i32) {
-    match dim {
-        Dimension::Nether => (crate::world::nether::LAVA_SEA + 3, 116),
-        Dimension::Overworld => (Dimension::Overworld.min_y() + 2, 304),
-        Dimension::End => (2, 240),
-    }
 }
 
 /// Where a dimension's save lives inside the world folder.
@@ -306,16 +300,14 @@ impl Game {
         let scale = if to == Dimension::Nether { 1.0 / 8.0 } else { 8.0 };
         let (x, z) =
             ((self.session.player.pos.x * scale).floor() as i32, (self.session.player.pos.z * scale).floor() as i32);
-        let y = match to {
-            Dimension::Nether => (self.session.player.pos.y as i32).clamp(40, 100),
-            Dimension::End => unreachable!("Nether portals cannot enter the End"),
-            Dimension::Overworld => {
-                let (seed, generation) = (self.world.generator.seed, self.world.generator.generation);
-                let ground = Generator::with_generation(seed, Dimension::Overworld, generation).column(x, z).height;
-                ground.max(SEA_LEVEL) + 1
-            }
-        };
-        self.switch_dimension(to, Arrival::Portal(IVec3::new(x, y, z)));
+        // `NetherPortalBlock.getPortalDestination`: the scaled position at
+        // the traveller's own height; a new portal follows the one entered.
+        let y = self.session.player.pos.y.floor() as i32;
+        let along_x = self.touched(Block::NETHER_PORTAL).is_none_or(|cell| {
+            let holds = |p: IVec3| matches!(self.world.get_block(p), Some(Block::NETHER_PORTAL | Block::OBSIDIAN));
+            holds(cell + IVec3::X) && holds(cell - IVec3::X)
+        });
+        self.switch_dimension(to, Arrival::Portal(IVec3::new(x, y, z), along_x));
     }
 
     /// While travelling: holds the player in place until the destination
@@ -324,7 +316,7 @@ impl Game {
     pub(super) fn update_arrival(&mut self) -> bool {
         let Some(arrival) = self.arrival else { return false };
         let target = match arrival {
-            Arrival::Portal(p) => p,
+            Arrival::Portal(p, _) | Arrival::PortalAt(p) => p,
             Arrival::EndSpawn => crate::world::end::SPAWN,
             Arrival::Gateway { exit, .. } => exit,
             // Load where `respawn_point` will put the player: the bed (checked
@@ -334,7 +326,8 @@ impl Game {
             Arrival::Anchor(anchor) => anchor,
         };
         let r = match arrival {
-            Arrival::Portal(_) => SEARCH_RADIUS,
+            Arrival::Portal(..) => SEARCH_RADIUS,
+            Arrival::PortalAt(_) => 2,
             Arrival::Respawn => 0,
             Arrival::Anchor(_) => 1,
             Arrival::EndSpawn => 2,
@@ -360,10 +353,24 @@ impl Game {
             }
         }
         self.session.player.pos = match arrival {
-            Arrival::Portal(p) => {
-                let range = portal_range(self.dimension);
-                let at = self.world.find_portal(p, SEARCH_RADIUS, range);
-                let at = at.unwrap_or_else(|| self.world.build_portal(p, range));
+            Arrival::Portal(..) | Arrival::PortalAt(_) => {
+                let at = match arrival {
+                    Arrival::Portal(p, along_x) => {
+                        // `PortalForcer`: an existing portal within 16 blocks
+                        // into the Nether or 128 out of it, else a new one.
+                        let radius = if self.dimension == Dimension::Nether { 16 } else { 128 };
+                        match self.world.find_portal(p, radius) {
+                            Some(at) if !self.world.column_loaded(at.x, at.z) => {
+                                self.arrival = Some(Arrival::PortalAt(at));
+                                return true;
+                            }
+                            Some(at) => at,
+                            None => self.world.create_portal(p, along_x),
+                        }
+                    }
+                    Arrival::PortalAt(at) => at,
+                    _ => unreachable!(),
+                };
                 // Arriving in a portal doesn't send you straight back.
                 self.portal_locked = true;
                 // Face out of the portal's open side.
