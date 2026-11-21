@@ -3743,7 +3743,7 @@ const fn emission_of(i: usize) -> u8 {
             _ if super::trial::owns(i as u16) => super::trial::emission(i as u16),
             _ if super::end_blocks::owns(i as u16) => super::end_blocks::emission(i as u16),
             12726 => 15,                                            // beacon
-            30848 => super::conduit::LIGHT,                         // conduit
+            30848..=30849 => super::conduit::LIGHT,                 // conduit
             22 | 37..=41 | 165..=180 | 208 | 210 => 15,             // glowstone, lava, fire, portals
             36 => 14,                                               // torch
             46 | 50..=52 | 913..=916 | 921..=924 => 13,             // lit furnace, every facing
@@ -3922,7 +3922,7 @@ mod tests {
                 return 15;
             }
             // `Blocks.CONDUIT`: `lightLevel(state -> 15)`.
-            if block == super::super::conduit::CONDUIT {
+            if super::super::conduit::owns(block.0) {
                 return 15;
             }
             // `TrialSpawnerState.lightLevel` and `VaultState.LightLevel`.

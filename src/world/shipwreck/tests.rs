@@ -113,9 +113,15 @@ fn generated_wrecks_follow_java_lists_and_heights() {
                 beached += 1;
             } else {
                 ocean += 1;
-                // The mean floor height, so the hull's bottom is near the floor.
-                let floor = g.structure_column(w.position.x, w.position.z).top(true) + 1;
-                assert!((w.position.y - floor).abs() < 12, "{name} at {} over {floor}", w.position);
+                // The mean `OCEAN_FLOOR_WG` height of the unturned footprint.
+                let size = TEMPLATES[s.template as usize].size;
+                let heights: Vec<i32> = (0..size[2])
+                    .flat_map(|z| (0..size[0]).map(move |x| (x, z)))
+                    .map(|(x, z)| g.structure_column(w.position.x + x, w.position.z + z).top(true) + 1)
+                    .collect();
+                let (lo, hi) = (*heights.iter().min().unwrap(), *heights.iter().max().unwrap());
+                assert!((lo..=hi).contains(&w.position.y), "{name} at {} over {lo}..{hi}", w.position);
+                assert_eq!(w.position.y, heights.iter().sum::<i32>() / heights.len() as i32);
             }
         }
     }

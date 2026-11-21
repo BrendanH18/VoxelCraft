@@ -57,7 +57,7 @@ fn the_frame_is_javas_42_cells() {
 #[test]
 fn the_block_matches_java() {
     assert_eq!(CONDUIT.name(), "conduit");
-    assert_eq!(WATERLOGGED.canonical(), CONDUIT);
+    assert_eq!(WATERLOGGED.base(), CONDUIT);
     assert!(WATERLOGGED.is_waterlogged() && !CONDUIT.is_waterlogged());
     assert_eq!((CONDUIT.emission(), WATERLOGGED.emission()), (15, 15));
     assert_eq!(CONDUIT.hardness(), 3.0);
