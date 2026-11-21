@@ -21,8 +21,9 @@
 # (by size: 300 on xlarge, 900 otherwise): a forgotten sandbox stops by itself, and the
 # next check resumes it. One
 # sandbox per worktree; agents sharing a worktree each set VC_BOAT_SLOT. Overrides:
-# VC_BOAT_TYPE (default large: the test build needs 16 GB), VC_BOAT_SNAPSHOT. See
-# docs/development.md#boat-checks.
+# VC_BOAT_TYPE (default large for every mode, owner, 2026-11-21: measured from the same warm
+# state, xlarge took 450 s to large's 197 s for the test build and 1543 s to 1006 s for the
+# full chain, at about 2.8 times the price), VC_BOAT_SNAPSHOT. See docs/development.md#boat-checks.
 main() {
 set -euo pipefail
 export BOAT_NO_UPDATE=1
@@ -135,14 +136,19 @@ start_failed() {
     exit 3
 }
 # With --fail-fast, a start that finds no ready machine creates nothing and isn't counted against
-# the start limits, so retry it a few times.
+# the start limits, so retry it a few times. A failed attempt can leave Boat finishing a resume for
+# a moment ("resume already in progress"), which a retry also waits out (as jev_fsd's script does).
 fast_start() {   # fast_start WHAT boat ARGS...; leaves the output in $out
     local what=$1 attempt
     shift
     for attempt in 1 2 3 4 5 6; do
         if out=$("$@" --fail-fast --json 2>&1); then return 0; fi
-        case "$out" in *no_ready_machine*) ;; *) return 1 ;; esac
-        [ "$attempt" = 6 ] || { echo "boat-check: no machine ready for $what; trying again in 10 s" >&2; sleep 10; }
+        case "$out" in
+            *no_ready_machine*) [ "$attempt" = 6 ] || echo "boat-check: no machine ready for $what; trying again in 10 s" >&2 ;;
+            *"already in progress"*) [ "$attempt" = 6 ] || echo "boat-check: Boat is still busy with $what; trying again in 10 s" >&2 ;;
+            *) return 1 ;;
+        esac
+        [ "$attempt" = 6 ] || sleep 10
     done
     return 1
 }

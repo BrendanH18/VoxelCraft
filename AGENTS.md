@@ -96,7 +96,9 @@ Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; neve
   one exists, it keeps cargo's target directory between checks, stops itself
   after an idle timeout set by its size (owner, 2026-11-21: about 15
   minutes on `default` and `large`, 5 on `xlarge`, `VC_BOAT_IDLE` to
-  override) and is deleted with `--done`. Never share
+  override) and is deleted with `--done`. Checks use `large` sandboxes
+  (owner, 2026-11-21): measured, `xlarge` was slower for this build at
+  about 2.8 times the price. Never share
   a sandbox between agents: agents in one worktree each set `VC_BOAT_SLOT`.
   Each agent runs the hand-off chain on its own worktree, and the integrator
   runs it again on the merged result. Check `boat limits` before work that
@@ -122,9 +124,9 @@ cargo fmt && cargo clippy --profile ci --all-targets --locked -- -D warnings && 
 ```
 
 Checks and tests use the `ci` profile (owner, 2026-11-21): release's
-optimisations and assertions without its link-time optimisation, so the
-test binaries build in a fraction of the time. Only shipped builds use
-`--release`.
+optimisations and assertions without its link-time optimisation. On a
+`large` sandbox the test build after a source change takes 259 s instead of
+858 s with `--release`. Only shipped builds use `--release`.
 
 Run it with `scripts/boat-check.sh --full`: formatting here, the rest in a
 Boat sandbox, plus the headless-build checks.

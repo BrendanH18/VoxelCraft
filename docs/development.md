@@ -17,8 +17,9 @@ cargo test --profile ci
 
 The `ci` profile (in `Cargo.toml`, owner, 2026-11-21) is the release profile
 without link-time optimisation and with 16 codegen units: the same
-optimisations and assertions, but every test binary builds and links much
-faster. Its output goes to `target/ci/`. Only shipped builds use `--release`
+optimisations and assertions, but the ~70 test binaries build and link
+about three times as fast (259 s instead of 858 s after a source change on
+a `large` Boat sandbox). Its output goes to `target/ci/`. Only shipped builds use `--release`
 ([releases](releases.md)).
 
 The Linux CI job also checks the built binary's embedded assets with
@@ -98,8 +99,12 @@ two checks in one slot from racing. Starts use `--fail-fast` and retry, so a
 busy moment costs nothing; when Boat refuses a start (no starts left today),
 the script stops and says so.
 
-Sandboxes are `large` (8 vCPU, 16 GB; `VC_BOAT_TYPE` to change it), because
-the test build runs out of memory on 8 GB, and start with `--no-env`, so none
+Sandboxes are `large` (8 vCPU, 16 GB; `VC_BOAT_TYPE` to change it) for every
+mode (owner, 2026-11-21). The test build runs out of memory on 8 GB, and
+`xlarge` (16 vCPU, 32 GB) was slower, not faster: from the same warm state
+it took 450 s to `large`'s 197 s for the test build after a source change
+and 1,543 s to 1,006 s for the full chain, at about 2.8 times the price.
+They start with `--no-env`, so none
 of the account's stored secrets go in. The script installs the Linux audio,
 device and font libraries and `rsync` when they're missing and updates Rust
 to current stable (CI's toolchain).
