@@ -29,6 +29,11 @@ pub enum Kind {
 }
 
 impl Kind {
+    /// The placed feature's `rarity_filter` chance.
+    pub fn rarity(self) -> u32 {
+        self.settings().1
+    }
+
     fn settings(self) -> (u64, u32) {
         match self {
             Self::FossilUpper => (FOSSIL_UPPER, 64),

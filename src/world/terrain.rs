@@ -39,6 +39,8 @@ mod density;
 #[cfg(test)]
 mod gen5_tests;
 #[cfg(test)]
+mod m3_corpus;
+#[cfg(test)]
 mod order_tests;
 mod sulfur_caves;
 

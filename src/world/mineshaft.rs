@@ -428,6 +428,11 @@ impl Builder {
 }
 
 impl Mineshaft {
+    /// Whether this is a `mineshaft_mesa` (generation 5, dark oak).
+    pub fn is_mesa(&self) -> bool {
+        self.pieces.first().is_some_and(|p| p.mesa)
+    }
+
     fn generate(mut rng: Rng, x: i32, z: i32) -> Mineshaft {
         let w = 7 + rng.below(6) as i32;
         let h = 4 + rng.below(6) as i32;
@@ -794,7 +799,8 @@ impl Mineshafts {
         if self.java() { self.get(t, chunk16).is_some() } else { self.frequency_hit(chunk16) }
     }
 
-    fn get(&self, t: &dyn ShaftTerrain, chunk16: IVec2) -> Option<Arc<Mineshaft>> {
+    /// The mineshaft starting in the 16-block chunk `chunk16`, if any.
+    pub(crate) fn get(&self, t: &dyn ShaftTerrain, chunk16: IVec2) -> Option<Arc<Mineshaft>> {
         if let Some(found) = self.cache.lock().unwrap().get(&chunk16) {
             return found.clone();
         }
