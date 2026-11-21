@@ -1448,6 +1448,19 @@ v0.16.
    GEN-04c, GEN-07). Placeable End crystals and the respawn ritual; a
    gateway and portal-forcer parity check; the M3 exit corpus and the M5
    progression audit.
+   *Implemented, unverified (2026-11-21):* End crystals as one entity in
+   every dimension (the fight's pillar crystals included), crafted and
+   placed on obsidian or bedrock by Java's rules, blowing up at power 6,
+   saved; the respawn ritual with Java's stages and timings, pillar
+   rebuilds, abort and save mid-way, and later kills' 500 experience and
+   gateways; the dragon now appears at y 128; generation 5's End uses
+   Java's spikes, gateway order and podium height; the gateway exit
+   search, its island and arrivals, and the Nether portal forcer (search
+   radius, spiral site choice, axis) follow Java, checked against a new jar
+   fixture. The M5 audit table found ghast tears dropping only to players
+   (fixed); the remaining gaps are in the
+   [record](verification/2026-11-21-v0.16-dragon-respawn.md). The M3 exit
+   corpus moved to integration, after Tracks E and F merge.
 
 Then integration: the orderings made contiguous, spawn tables together,
 save/reload of every new mob, block and item, the Namespace checks, the

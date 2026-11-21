@@ -1162,6 +1162,23 @@ camp map draw from block texture layers); `slab_stair_states` purpur
 (`PURPUR_FAMILY`) then Track D's seven (`TRACK_D_FIRST`). Wave 2 (Tracks
 E, F and G) was not started this push and keeps its reserved rows.
 
+**Track G (dragon respawn and the exit audits), 2026-11-21, implemented,
+unverified; [record](verification/2026-11-21-v0.16-dragon-respawn.md).**
+Used: item 1750 (`end_crystal`, `entity::crystal::END_CRYSTAL`) and texture
+layer 1029 (its icon, drawn by the item from its own layer like the camp
+map, so no item icon ordering is appended). No block state is used:
+30976–31103, items 1751–1759 and layers 1030–1048 stay unregistered and
+unused. Appended: the `end_crystals` dimension property key (after
+`beacons`) and the `end_crystals` LAN replica key; `Cause::EXPLOSION`
+("blew up", after `END_CRYSTAL` in `Cause::KNOWN`). Not saved: the
+`EntityEvent`s `CrystalFire`, `ExitPortal`, `RespawnPillar` and
+`QuietBlast` (after `WitherRose`), `session::interact::Used::CrystalPlaced`
+and the `Arrival::PortalAt` travel state. The fight's saved `dragon`
+property writes `-` where it kept the pillar crystal mask (older masks
+still load) and appends `;r stage time x,y,z ...` during the respawn
+ritual. No `MobKind`, `Effect`, sound, particle kind or `slab_stair_states`,
+`waterlog` or `POTTED` member is added.
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

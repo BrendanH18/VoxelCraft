@@ -194,6 +194,19 @@ pub struct Recipe {
 }
 
 impl Recipe {
+    /// Every slot's accepted items (v0.16 Track G: the progression audit
+    /// walks what can be crafted from what).
+    pub fn slots(&self) -> Vec<Ingredient> {
+        match &self.shape {
+            Shape::Shaped(rows, key) => rows
+                .iter()
+                .flat_map(|row| row.chars())
+                .filter_map(|c| key.iter().find(|(k, _)| *k == c).map(|&(_, options)| options))
+                .collect(),
+            Shape::Shapeless(ingredients) => ingredients.clone(),
+        }
+    }
+
     /// A valid ingredient layout for the guide, using the first alternative
     /// for each slot. These previews are never placed in the player's grid.
     pub fn preview(&self) -> Grid {

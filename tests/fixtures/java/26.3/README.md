@@ -1242,3 +1242,30 @@ and its tests check every list, modifier, constant and tag against it.
 The abandoned camps' three loot tables were added to
 `src/world/loot_tables.json` from `loot_table/chests/abandoned_camp_*_chest.json`
 and `loot_table/barrels/abandoned_camp_barrel.json` unchanged.
+
+## End crystals, the dragon respawn and portals (v0.16 Track G)
+
+`dragon_respawn.json` holds the facts behind End crystals, the respawn
+ritual, End gateways and the Nether portal forcer, read from the server
+jar with `javap`: the `end_crystal` entity type's size and fire immunity,
+`EndCrystal`'s blast power and `EndCrystalItem`'s blocks and box, the
+item's glint and rarity and its recipe; `EnderDragonFight`'s constants,
+player range, gateway height and spawn numbers, `tryRespawn`'s edge
+distance, `DragonRespawnStage`'s names and the constants each stage's
+`tick` pushes; `EnderDragon`'s kill experience, death numbers, crystal
+search and destroy range; `EndSpikeFeature`'s constants, cache key mask
+and spike sizes; `TheEndGatewayBlockEntity`'s constants and the numbers its
+exit search and arrival push, and `EndIslandFeature`'s; `PortalForcer`'s
+constants and `createPortal` numbers; and the `entities/blaze`, `enderman`
+and `ghast` loot tables the progression audit checks. Regenerate and
+compare with:
+
+```sh
+python3 tools/extract_java_dragon_respawn_fixtures.py /path/to/server.jar --output target/java-dragon-respawn.json
+diff tests/fixtures/java/26.3/dragon_respawn.json target/java-dragon-respawn.json
+scripts/boat-check.sh -- 'cargo test --release --test java_dragon_respawn'
+```
+
+`tests/java_dragon_respawn.rs` checks the game's numbers against it, and
+`entity::tests::progression_mobs_drop_their_java_loot` the loot tables
+([record](../../../../docs/verification/2026-11-21-v0.16-dragon-respawn.md)).
