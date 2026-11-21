@@ -37,8 +37,9 @@ command -v boat >/dev/null || { echo "boat-check: boat is not installed" >&2; ex
 cd "$(git rev-parse --show-toplevel)"
 if [ -z "$cmd" ]; then
     cargo fmt   # formatting rewrites files, so it runs here and the result is pushed
-    cmd="cargo clippy --release --all-targets -- -D warnings && cargo test --release"
-    [ "$full" = 0 ] || cmd="$cmd && cargo clippy --release --no-default-features --all-targets -- -D warnings && cargo test --release --no-default-features"
+    # --locked, as CI runs them, so a stale Cargo.lock fails here too
+    cmd="cargo clippy --release --all-targets --locked -- -D warnings && cargo test --release --locked"
+    [ "$full" = 0 ] || cmd="$cmd && cargo clippy --release --no-default-features --all-targets --locked -- -D warnings && cargo test --release --no-default-features --locked"
 fi
 
 # Install what a bare machine lacks (a no-op on the snapshot). `boat push`
@@ -66,7 +67,7 @@ echo "boat-check: $(rustc --version) on $(nproc) vCPUs" >&2
 [ "$save" = 0 ] || remote="$remote"' && dir=$PWD && cd && rm -rf "$dir"'
 
 from=()
-if boat snapshots --json 2>/dev/null | jq -e --arg n "$snapshot" '.named[]? | select(.name == $n)' >/dev/null; then
+if boat snapshots --json 2>/dev/null | jq -e --arg n "$snapshot" '.named[]? | select(.name == $n) | select((.status // .state // "ready") | IN("ready", "saved", "completed"))' >/dev/null; then
     from=(--from "$snapshot")
 else
     echo "boat-check: no $snapshot snapshot yet, so this is a cold build; --save makes one" >&2
@@ -97,10 +98,11 @@ if [ "$save" = 1 ]; then
         # wait for the name's record to change before trusting its state.
         record() { boat snapshots --json | jq -c --arg n "$snapshot" '[.named[]? | select(.name == $n)][0] // {}'; }
         before=$(record)
-        boat snapshot "$id" "$snapshot" >/dev/null && echo "boat-check: saving $id as $snapshot" >&2
+        boat snapshot "$id" "$snapshot" >/dev/null || { echo "boat-check: saving $snapshot failed" >&2; exit 1; }
+        echo "boat-check: saving $id as $snapshot" >&2
         state=""
         for _ in $(seq 1 120); do
-            now=$(record)
+            now=$(record) || now=$before
             if [ "$now" != "$before" ]; then
                 state=$(printf '%s' "$now" | jq -r '.status // .state // ""')
                 case "$state" in ready|saved|completed) break ;; esac

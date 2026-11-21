@@ -82,10 +82,10 @@ Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; neve
 - Build and test in Boat, not on this Mac (owner, 2026-11-20). This
   replaces the 2026-11-05 rule that builds ran on Namespace and the
   2026-11-20 rule that agents iterated on the Mac; Namespace now runs CI
-  only. Every `boat-check.sh` run has its own sandbox started from the warm
-  snapshot, so agents don't wait on each other or on cargo's lock. Each
-  agent runs the hand-off chain on its own worktree, and the integrator runs
-  it again on the merged result. If `boat` isn't installed or signed in,
+  only. Every `boat-check.sh` run has its own sandbox, started from the warm
+  snapshot when one exists (otherwise it builds cold), so agents don't wait
+  on each other or on cargo's lock. Each agent runs the hand-off chain on its
+  own worktree, and the integrator runs it again on the merged result. If `boat` isn't installed or signed in,
   stop and tell the owner; don't build locally.
 - Local game builds share one cargo target directory (owner, 2026-10-17):
   put the worktrees under one folder whose `.cargo/config.toml` sets
@@ -101,7 +101,7 @@ Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; neve
 The hand-off chain, which stops at the first broken step:
 
 ```sh
-cargo fmt && cargo clippy --release --all-targets -- -D warnings && cargo test --release
+cargo fmt && cargo clippy --release --all-targets --locked -- -D warnings && cargo test --release --locked
 ```
 
 Run it with `scripts/boat-check.sh --full`: formatting here, the rest in a
