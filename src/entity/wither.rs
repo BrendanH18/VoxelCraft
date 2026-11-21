@@ -708,7 +708,7 @@ impl Entities {
             let spot = self.mobs[i].hover_spot(world, ctx, &mut self.rng);
             if let Some(spot) = spot {
                 let m = &mut self.mobs[i];
-                if m.walk_to(world, spot, 1, FLYING_SPEED, false) {
+                if m.walk_to(world, spot, 1, super::path::ground_speed(FLYING_SPEED), false) {
                     m.wither.as_mut().unwrap().strolling = true;
                 }
             }
@@ -723,7 +723,7 @@ impl Entities {
         match path_to {
             Some(Some(target)) => {
                 // `moveTo(entity)`: a path to its block, reach 1.
-                if !m.walk_to(world, target.floor().as_ivec3(), 1, FLYING_SPEED, true) {
+                if !m.walk_to(world, target.floor().as_ivec3(), 1, super::path::ground_speed(FLYING_SPEED), true) {
                     m.nav.stop();
                 }
             }
@@ -734,7 +734,7 @@ impl Entities {
             None
         } else {
             let caps = m.caps(true);
-            let mover = m.mover(FLYING_SPEED);
+            let mover = m.mover(super::path::ground_speed(FLYING_SPEED));
             m.nav.tick(world, &caps, &mover)
         };
         if let Some(s) = m.wither.as_mut() {
@@ -1064,7 +1064,6 @@ impl Mob {
         DVec3::new(-yrot.sin(), 0.0, yrot.cos())
     }
 }
-
 
 /// `RandomPos.generateRandomDirectionWithinRadians(random, 0, max,
 /// vertical, flying, view.x, view.z, PI / 2)`.
