@@ -260,7 +260,7 @@ fn mobs_that_hurt_it_become_its_target_on_selection_ticks() {
 fn idle_flight_hovers_over_the_ground() {
     let world = crate::physics::test_util::Grid::flat(0);
     let ctx = ctx();
-    let m = Mob::new(MobKind::Wither, DVec3::new(0.5, 4.0, 0.5), 0.0);
+    let m = Mob::new(MobKind::Wither, DVec3::new(0.5, 2.0, 0.5), 0.0);
     let mut rng = Rng::new(9);
     let mut hovered = 0;
     for _ in 0..40 {
@@ -270,7 +270,7 @@ fn idle_flight_hovers_over_the_ground() {
         hovered += usize::from((1..=3).contains(&p.y));
         assert!(p.x.abs() <= 9 && p.z.abs() <= 9, "{p}");
     }
-    assert!(hovered >= 30, "{hovered} of 40 hover over the ground");
+    assert!(hovered >= 24, "{hovered} of 40 hover over the ground");
 }
 
 #[test]

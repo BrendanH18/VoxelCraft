@@ -97,49 +97,50 @@ fn turned_templates_stay_centred() {
     }
 }
 
-/// On seed 12345 a generation 5 sulfur cave holds a spring: its template,
-/// a dormant vent over magma, roots of sulfur under it; generation 4 has
-/// no springs.
+/// On seed 12345 generation 5's sulfur caves hold springs: a template, a
+/// dormant vent over magma in the generated chunk; generation 4 has none.
+/// Sulfur cave regions are small, so several are searched.
 #[test]
 fn generation_5_grows_sulfur_springs() {
     let generator = Generator::with_generation(12345, Dimension::Overworld, Generation::V5);
-    let at = generator.nearest_biome(IVec2::ZERO, Biome::SulfurCaves, 6000).expect("a sulfur cave within 6000 blocks");
-    let c = at.div_euclid(IVec3::splat(CHUNK_SIZE_I));
+    let mut why: std::collections::BTreeMap<String, usize> = Default::default();
+    let mut sites = Vec::new();
     let mut found = None;
-    'search: for r in 0i32..12 {
-        for dz in -r..=r {
-            for dx in -r..=r {
-                if dx.abs().max(dz.abs()) != r {
-                    continue;
-                }
-                if let Some(s) = generator.sulfur_springs.source(&generator, IVec2::new(c.x + dx, c.z + dz)).first() {
-                    found = Some(s.clone());
-                    break 'search;
-                }
+    let per = CHUNK_SIZE_I / JAVA_CHUNK;
+    'search: for oz in -3i32..=3 {
+        for ox in -3i32..=3 {
+            let Some(at) = generator.nearest_biome(IVec2::new(ox, oz) * 1500, Biome::SulfurCaves, 1500) else {
+                continue;
+            };
+            let c = at.div_euclid(IVec3::splat(CHUNK_SIZE_I));
+            if sites.contains(&(c.x, c.z)) {
+                continue;
             }
-        }
-    }
-    if found.is_none() {
-        // Why every try near the cave failed, for the failure message.
-        let mut why: std::collections::BTreeMap<String, usize> = Default::default();
-        let per = CHUNK_SIZE_I / JAVA_CHUNK;
-        for dz in -12..=12 {
-            for dx in -12..=12 {
-                for sub in 0..per * per {
-                    let col = IVec2::new(c.x + dx, c.z + dz) * per + IVec2::new(sub % per, sub / per);
-                    for (start, rng) in generator.sulfur_springs.candidates(col) {
-                        let r = generator.sulfur_springs.try_build(&generator, start, rng);
-                        *why.entry(format!("{:?}", r.map(|_| ()))).or_default() += 1;
+            sites.push((c.x, c.z));
+            for dz in -4..=4 {
+                for dx in -4..=4 {
+                    for sub in 0..per * per {
+                        let col = IVec2::new(c.x + dx, c.z + dz) * per + IVec2::new(sub % per, sub / per);
+                        for (start, rng) in generator.sulfur_springs.candidates(col) {
+                            match generator.sulfur_springs.try_build(&generator, start, rng) {
+                                Ok(s) => {
+                                    found = Some(s);
+                                    break 'search;
+                                }
+                                Err(r) => *why.entry(format!("{r:?}")).or_default() += 1,
+                            }
+                        }
                     }
                 }
             }
         }
-        panic!("no sulfur spring near {at}: {why:?}");
     }
-    let spring = found.unwrap();
+    let spring = found.unwrap_or_else(|| panic!("no sulfur spring at {} sites: {why:?}", sites.len()));
     assert!(spring.spring.y > spring.origin.y);
     assert_eq!(generator.biome_at(spring.origin), Biome::SulfurCaves);
-    // The generated chunks hold the vent and the template's water.
+    // The cached layout agrees, and the generated chunk holds the vent.
+    let column = IVec2::new(spring.origin.x, spring.origin.z).div_euclid(IVec2::splat(CHUNK_SIZE_I));
+    assert!(generator.sulfur_springs.source(&generator, column).iter().any(|s| s.origin == spring.origin));
     let vent = spring.cells.iter().find(|c| c.1 == g::potent(Potent::Dormant)).expect("a vent").0;
     let chunk = vent.div_euclid(IVec3::splat(CHUNK_SIZE_I));
     let data = generator.generate(chunk);
