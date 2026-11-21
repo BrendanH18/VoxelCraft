@@ -87,7 +87,9 @@ Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; neve
   only. Every `boat-check.sh` run has its own sandbox, started from the warm
   snapshot when one exists (otherwise it builds cold), so agents don't wait
   on each other or on cargo's lock. Each agent runs the hand-off chain on its
-  own worktree, and the integrator runs it again on the merged result. If `boat` isn't installed or signed in,
+  own worktree, and the integrator runs it again on the merged result. If
+  `boat` isn't installed or signed in, or `boat-check.sh` says it is using
+  `default` (8 GB, where the full release test build runs out of memory),
   stop and tell the owner; don't build locally.
 - Local game builds share one cargo target directory (owner, 2026-10-17):
   put the worktrees under one folder whose `.cargo/config.toml` sets

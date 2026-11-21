@@ -6,7 +6,8 @@ Run commands from the repository root. See the README for platform prerequisites
 
 ## Checks
 
-Use the same checks as [CI](../.github/workflows/ci.yml):
+Use the same checks as [CI](../.github/workflows/ci.yml). Agents run them in
+Boat through `scripts/boat-check.sh` (see [Boat checks](#boat-checks)):
 
 ```sh
 cargo fmt --check
@@ -51,7 +52,7 @@ sandbox instead of this Mac. It needs the `boat` CLI, installed and signed in
 (`curl -fsSL https://boat.dev/install | sh`), and `jq`.
 
 ```sh
-scripts/boat-check.sh --save   # first run: builds from scratch, then saves the warm snapshot
+scripts/boat-check.sh --save --full   # first run: builds both feature sets, then saves the warm snapshot
 scripts/boat-check.sh          # cargo fmt here, then clippy and tests in Boat
 scripts/boat-check.sh --full   # also the --no-default-features checks
 scripts/boat-check.sh -- cargo test --release some_test   # any command

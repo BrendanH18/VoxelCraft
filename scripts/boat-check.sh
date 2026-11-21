@@ -25,6 +25,7 @@ while [ $# -gt 0 ]; do
         --) shift
             [ $# -gt 0 ] || { echo "boat-check: -- needs a command" >&2; exit 2; }
             if [ $# -eq 1 ]; then cmd=$1; else cmd=$(printf '%q ' "$@"); fi
+            [ -n "$cmd" ] || { echo "boat-check: -- needs a command" >&2; exit 2; }
             break ;;
         -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "boat-check: unknown option $1 (try --help)" >&2; exit 2 ;;
@@ -71,6 +72,7 @@ export CARGO_TARGET_DIR=$HOME/target CARGO_TERM_COLOR=always
 find . -type f -exec touch -c {} +
 echo "boat-check: $(rustc --version) on $(nproc) vCPUs" >&2
 (
+:
 '"$cmd"'
 )'
 if [ "$save" = 1 ]; then
@@ -92,15 +94,19 @@ log=$(mktemp "${TMPDIR:-/tmp}/boat-check.XXXXXX")
 id="" handled=0 saving=0
 sandbox_id() { awk 'match($0, /bx_[a-z0-9]+/) { print substr($0, RSTART, RLENGTH); exit }' "$log" 2>/dev/null || true; }
 # A --save run keeps its sandbox. If the script stops before handling it,
-# delete it; once a save has started, stop it instead, because the snapshot
-# needs its source until the save reads ready.
+# delete it. Once a save has been attempted, stop it instead (a stopped
+# sandbox costs nothing): an unfinished save needs its source, and after a
+# failed one the passing build can be saved again without rebuilding.
 cleanup() {
     set +e
     if [ "$save" = 1 ] && [ "$handled" = 0 ]; then
         [ -n "$id" ] || id=$(sandbox_id)
         if [ -n "$id" ] && [ "$saving" = 1 ]; then
-            boat stop "$id" --json >/dev/null 2>&1
-            echo "boat-check: stopped $id mid-save; once boat snapshots shows $snapshot ready: boat delete $id --yes" >&2
+            if boat stop "$id" --json >/dev/null 2>&1; then
+                echo "boat-check: stopped $id. Check boat snapshots: if $snapshot is ready, boat delete $id --yes; if not, boat snapshot $id $snapshot" >&2
+            else
+                echo "boat-check: couldn't stop $id: boat stop $id, then check boat snapshots" >&2
+            fi
         elif [ -n "$id" ]; then
             boat delete "$id" --yes --json >/dev/null 2>&1 || echo "boat-check: delete sandbox $id: boat delete $id --yes" >&2
         fi
@@ -123,11 +129,12 @@ id=$(sandbox_id)
 
 # The save runs in the background. Wait for this sandbox's save of the name
 # (sourceSandboxId) to read ready; an older save of the name doesn't count.
-boat snapshot "$id" "$snapshot" >/dev/null || { echo "boat-check: saving $snapshot failed" >&2; exit 1; }
-saving=1
+saving=1   # from here on the exit trap stops the sandbox instead of deleting it
+deadline=$((SECONDS + 600))
 echo "boat-check: saving $id as $snapshot" >&2
+boat snapshot "$id" "$snapshot" >/dev/null || { echo "boat-check: saving $snapshot failed" >&2; exit 1; }
 state=""
-for _ in $(seq 1 120); do
+while [ "$SECONDS" -lt "$deadline" ]; do
     state=$(boat snapshots --json 2>/dev/null | jq -r --arg n "$snapshot" --arg id "$id" \
         '[.named[]? | select(.name == $n and .sourceSandboxId == $id) | .status][0] // ""' || true)
     case "$state" in ready|failed) break ;; esac
@@ -136,15 +143,9 @@ done
 case "$state" in
     ready)
         echo "boat-check: saved $snapshot" >&2
-        handled=1
-        boat delete "$id" --yes --json >/dev/null || echo "boat-check: delete sandbox $id: boat delete $id --yes" >&2 ;;
-    failed)
-        echo "boat-check: saving $snapshot failed (boat snapshots shows why)" >&2
-        saving=0   # nothing left to protect: the exit trap deletes the sandbox
-        exit 1 ;;
-    *)
-        echo "boat-check: $snapshot isn't ready after 10 minutes" >&2
-        exit 1 ;;   # the exit trap stops the sandbox
+        if boat delete "$id" --yes --json >/dev/null; then handled=1; else exit 1; fi ;;
+    failed) echo "boat-check: saving $snapshot failed (boat snapshots shows why)" >&2; exit 1 ;;
+    *) echo "boat-check: $snapshot isn't ready after 10 minutes" >&2; exit 1 ;;
 esac
 exit 0
 }
