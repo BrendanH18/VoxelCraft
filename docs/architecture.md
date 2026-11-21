@@ -1176,7 +1176,8 @@ rocket, firework star (B), the Nether star (C), then poplar boat, poplar
 chest boat and the sulfur cube bucket (D) (Track A's three items and the
 camp map draw from block texture layers); `slab_stair_states` purpur
 (`PURPUR_FAMILY`) then Track D's seven (`TRACK_D_FIRST`). Wave 2 (Tracks
-E, F and G) was not started this push and keeps its reserved rows.
+E, F and G, with the owner's added Track H) followed on 2026-11-21; its
+order is below the track paragraphs.
 
 **Track E (classic structures), 2026-11-21, implemented, unverified.**
 Block states 30720–30728 of 30720–30847 (`world::infested`): 30720
@@ -1228,6 +1229,19 @@ property writes `-` where it kept the pillar crystal mask (older masks
 still load) and appends `;r stage time x,y,z ...` during the respawn
 ritual. No `MobKind`, `Effect`, sound, particle kind or `slab_stair_states`,
 `waterlog` or `POTTED` member is added.
+
+**Wave 2 integrated order (2026-11-21).** Wave 2 landed E, F, H, G, then
+the M3 exit audit (no IDs). Appended orderings follow that order: `Sound`
+SulfurCube, then Conduit (F, `CONDUIT_END`), then Geyser (H); particle kind
+Nautilus (F) after EndRod; dimension property keys `conduits` (F),
+`potent_sulfur` and `wither_skulls` (H), then `end_crystals` (G) after
+`beacons`; LAN replica keys `wither_skulls` (H) and `end_crystals` (G).
+No `MobKind`, `Effect`, item icon or `slab_stair_states` member was added,
+so no LAN index or save ordering moved; `lan::PROTOCOL` stays 5, which
+wave 1 already set apart from v0.15. Used IDs: states 30720–30728 (E) and
+30848–30849 (F), items 1750 (G), layers 989 (F) and 1029 (G); Track H
+used none. Everything else in wave 2's rows and the integrator spare
+31104–31231 stays unregistered. [Integration record](verification/2026-11-21-v0.16-wave-2-integration.md).
 
 ## Assessment branch ID reservations
 
