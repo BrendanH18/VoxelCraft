@@ -22,7 +22,7 @@ import net.minecraft.world.level.levelgen.structure.StructurePiece;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.structures.OceanMonumentPieces;
 
-public class MonumentLayouts {
+class MonumentLayouts {
     public static void main(String[] a) throws Exception {
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
