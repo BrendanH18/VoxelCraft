@@ -36,7 +36,7 @@ const HEAD: &[Cuboid] = &[
     cube([-5.0, 8.0, 2.0], [-3.0, 12.0, 8.0], SPINE, 16),
     cube([3.0, 8.0, 2.0], [5.0, 12.0, 8.0], SPINE, 16),
 ];
-const EYES: &[Cuboid] =
+static EYES: &[Cuboid] =
     &[cube([-8.1, 0.0, 8.0], [-7.9, 2.0, 12.0], EYE, 0), cube([7.9, 0.0, 8.0], [8.1, 2.0, 12.0], EYE, 0)];
 const JAW: &[Cuboid] = &[cube([-6.0, -4.0, 0.0], [6.0, 0.0, 16.0], BELLY, 24)];
 const WING_R: &[Cuboid] =

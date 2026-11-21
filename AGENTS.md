@@ -44,21 +44,25 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
 Use a Boat sandbox for builds, tests, untrusted code, Docker, and long jobs. Never run them on this computer.
 Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; never quote prices from memory.
 
-- Create: `id=$(boat new --json | jq -r 'select(.event=="ready") | .id')`
-- One-shot job: `boat run --push . -- npm test` (new sandbox, run, cost, delete; exits with the test exit code)
+- Create: `id=$(boat new --name voxelcraft-<purpose> --json | jq -r 'select(.event=="ready") | .id')`
+- One-shot job, for genuine one-offs only: `boat run --push . -- npm test` (new sandbox, run, cost, delete; exits with the test exit code). Checks go through `scripts/boat-check.sh`.
 - Run: `boat exec "$id" --cwd my-app "npm test"` (30 s timeout; `--timeout 0` = no limit)
 - Server: `boat exec "$id" --detach "npm run dev"`, then `boat exec "$id" --status <pid>`
 - Copy files: `boat push "$id" ./my-app` (git-tracked files, to /home/user/my-app) or clone the repo inside the sandbox
 - Public URL for a port: `boat ssh "$id" "host 3000 --private"`
 - Always pass the sandbox id. `current` does not work in a non-interactive shell.
 - When done: `boat stop "$id"` (keeps the disk for at least 14 days) or `boat delete "$id" --yes` (erases it)
+- Every sandbox says which project it belongs to (owner, 2026-11-21): all the
+  owner's projects share one Boat account. A sandbox an agent creates by hand
+  passes `--name voxelcraft-<purpose>` and is never left unnamed;
+  `boat-check.sh` names its own (`voxelcraft-check-<worktree>`,
+  `voxelcraft-warm-build`).
 - Rust builds and tests, while iterating and at hand-off, run through
   `scripts/boat-check.sh` (see [Boat checks](docs/development.md#boat-checks)):
-  `-- 'cargo clippy --release --all-targets'` or
-  `-- 'cargo test --release <filter>'` while working (release builds, which
-  the warm snapshot has already compiled),
-  `--full` once the work is finished, and `--save --full` after dependency
-  or toolchain changes to refresh the warm snapshot runs start from.
+  `-- 'cargo test --profile ci <filter>'` while working,
+  `--full` once the work is finished, `--done` when the agent's work ends
+  (it deletes the worktree's sandbox), and `--save` after dependency or
+  toolchain changes to refresh the warm snapshot sandboxes start from.
 - Stay on this Mac: running the game (Metal rendering, screenshots, scripted
   scenes, hands-on runs) and benchmarks, whose frame-time gate is measured on
   the reference M5. Boat is x86_64 Linux with no GPU, so it can't check
@@ -76,21 +80,30 @@ Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; neve
   untracked files git would pick up.
 - Delegate only when requested. Give each implementation agent an isolated
   worktree, explicit scope and reserved IDs; delegated agents do not delegate further.
-- Run at most four agents at once (owner, 2026-10-17): the owner's machine has
-  16 GB of RAM. Queue further work until a slot frees.
+- There is no fixed cap on parallel agents (owner, 2026-11-21; it replaces
+  the 2026-10-17 limit of four, set when builds ran on the owner's 16 GB
+  machine). Size parallel work to what Boat's daily starts and included
+  hours allow (`boat limits`) and to what the owner can review.
 - No step requires an agent to play the game through computer use (owner,
   2026-11-14). The owner's own play is the hands-on evidence, and nothing
   waits for an agent's hands-on pass.
 - Build and test in Boat, not on this Mac (owner, 2026-11-20). This
   replaces the 2026-11-05 rule that builds ran on Namespace and the
   2026-11-20 rule that agents iterated on the Mac; Namespace now runs CI
-  only. Every `boat-check.sh` run has its own sandbox, started from the warm
-  snapshot when one exists (otherwise it builds cold), so agents don't wait
-  on each other or on cargo's lock. Each agent runs the hand-off chain on its
-  own worktree, and the integrator runs it again on the merged result. If
-  `boat` isn't installed or signed in, or `boat-check.sh` refuses the full
-  checks because the account can't start `large` sandboxes yet (the free
-  trial), stop and tell the owner; don't build locally.
+  only. Each worktree has one long-lived sandbox, reused by every
+  `boat-check.sh` run (owner, 2026-11-21; it replaces one `boat run` per
+  check, which used a daily start each): created from the warm snapshot when
+  one exists, it keeps cargo's target directory between checks, stops itself
+  after an idle timeout set by its size (owner, 2026-11-21: about 15
+  minutes on `default` and `large`, 5 on `xlarge`, `VC_BOAT_IDLE` to
+  override) and is deleted with `--done`. Never share
+  a sandbox between agents: agents in one worktree each set `VC_BOAT_SLOT`.
+  Each agent runs the hand-off chain on its own worktree, and the integrator
+  runs it again on the merged result. Check `boat limits` before work that
+  starts sandboxes: the account's daily starts are shared by every project. If
+  `boat` isn't installed or signed in, or `boat-check.sh` can't start a
+  sandbox (no starts left today, or the account can't start `large`
+  sandboxes), stop and tell the owner; don't build locally.
 - Local game builds share one cargo target directory (owner, 2026-10-17):
   put the worktrees under one folder whose `.cargo/config.toml` sets
   `build.target-dir` (or set `CARGO_TARGET_DIR`), and "Blocking waiting for
@@ -105,8 +118,13 @@ Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; neve
 The hand-off chain, which stops at the first broken step:
 
 ```sh
-cargo fmt && cargo clippy --release --all-targets --locked -- -D warnings && cargo test --release --locked
+cargo fmt && cargo clippy --profile ci --all-targets --locked -- -D warnings && cargo test --profile ci --locked
 ```
+
+Checks and tests use the `ci` profile (owner, 2026-11-21): release's
+optimisations and assertions without its link-time optimisation, so the
+test binaries build in a fraction of the time. Only shipped builds use
+`--release`.
 
 Run it with `scripts/boat-check.sh --full`: formatting here, the rest in a
 Boat sandbox, plus the headless-build checks.

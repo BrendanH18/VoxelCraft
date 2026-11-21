@@ -177,7 +177,7 @@ const LLAMA_FUR: [u8; 3] = [221, 207, 178];
 const CARPET: [u8; 3] = [1, 2, 3];
 const LY: f32 = super::trader_model::LLAMA_Y;
 const LLAMA_BODY: &[Cuboid] = &[cube([-4.5, 14.0 * LY, -7.0], [4.5, 23.0 * LY, 7.0], LLAMA_FUR, 20)];
-const LLAMA_DECOR: &[Cuboid] = &[
+static LLAMA_DECOR: &[Cuboid] = &[
     cube([-4.7, 21.0 * LY, -7.2], [4.7, 23.3 * LY, 7.2], CARPET, 10),
     cube([-4.8, 15.5 * LY, -5.0], [-4.6, 21.0 * LY, 5.0], CARPET, 10),
     cube([4.6, 15.5 * LY, -5.0], [4.8, 21.0 * LY, 5.0], CARPET, 10),
