@@ -320,16 +320,16 @@ state=""
 if [ -n "$id" ]; then
     state=$(sandbox_state "$id") || { echo "boat-check: try again once Boat answers" >&2; exit 1; }
 fi
-# A sandbox still starting, provisioning or stopping is waited for, not replaced.
-case "$state" in init|provisioning|starting|resuming|stopping)
+# A sandbox not yet ready (starting, provisioning, cloning) or stopping is waited for, not replaced.
+case "$state" in init|provisioning|provisioned|cloning|starting|resuming|stopping)
     for _ in $(seq 1 24); do
         sleep 5; state=$(sandbox_state "$id") || exit 1
-        case "$state" in init|provisioning|starting|resuming|stopping) ;; *) break ;; esac
+        case "$state" in init|provisioning|provisioned|cloning|starting|resuming|stopping) ;; *) break ;; esac
     done ;;
 esac
 case "$state" in
-    provisioned|cloning|ready|idle|running) ;;
-    init|provisioning|starting|resuming|stopping) echo "boat-check: $id is still $state; try again in a minute" >&2; exit 2 ;;
+    ready|idle|running) ;;
+    init|provisioning|provisioned|cloning|starting|resuming|stopping) echo "boat-check: $id is still $state; try again in a minute" >&2; exit 2 ;;
     stopped)
         echo "boat-check: resuming $id as $type" >&2
         if ! fast_start "resuming $id" boat resume "$id" --no-env --type "$type" --ttl "$budget"; then
@@ -360,10 +360,11 @@ if [ -z "$state" ]; then
     echo "$id" > "$id_file"
 fi
 extended=1   # from here on, the exit trap sets the idle auto-stop
-# The idle timeout follows the sandbox's own size, whatever this run asked for.
+# The idle timeout follows the sandbox's own size, whatever this run asked for; when Boat
+# doesn't say, the shorter (xlarge) timeout costs least.
 if [ -z "${VC_BOAT_IDLE:-}" ]; then
     size=$(boat info "$id" --json 2>/dev/null | jq -r '.sandbox.type // empty' || true)
-    idle=$(idle_for "${size:-$type}")
+    idle=$(idle_for "${size:-xlarge}")
 fi
 boat extend "$id" --ttl "$budget" --json >/dev/null
 echo "boat-check: sandbox $id ($name)" >&2
